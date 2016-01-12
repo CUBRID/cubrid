@@ -47,38 +47,24 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
-static int db_mod_short (DB_VALUE * value, DB_VALUE * value1,
-			 DB_VALUE * value2);
-static int db_mod_int (DB_VALUE * value, DB_VALUE * value1,
-		       DB_VALUE * value2);
-static int db_mod_bigint (DB_VALUE * value, DB_VALUE * value1,
-			  DB_VALUE * value2);
-static int db_mod_float (DB_VALUE * value, DB_VALUE * value1,
-			 DB_VALUE * value2);
-static int db_mod_double (DB_VALUE * value, DB_VALUE * value1,
-			  DB_VALUE * value2);
-static int db_mod_string (DB_VALUE * value, DB_VALUE * value1,
-			  DB_VALUE * value2);
-static int db_mod_numeric (DB_VALUE * value, DB_VALUE * value1,
-			   DB_VALUE * value2);
-static int db_mod_monetary (DB_VALUE * value, DB_VALUE * value1,
-			    DB_VALUE * value2);
+static int db_mod_short (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
+static int db_mod_int (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
+static int db_mod_bigint (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
+static int db_mod_float (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
+static int db_mod_double (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
+static int db_mod_string (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
+static int db_mod_numeric (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
+static int db_mod_monetary (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
 static double round_double (double num, double integer);
-static int move_n_days (int *monthp, int *dayp,
-			int *yearp, const int interval);
-static int round_date (DB_VALUE * result,
-		       DB_VALUE * value1, DB_VALUE * value2);
+static int move_n_days (int *monthp, int *dayp, int *yearp, const int interval);
+static int round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2);
 static double truncate_double (double num, double integer);
 static DB_BIGINT truncate_bigint (DB_BIGINT num, DB_BIGINT integer);
 static int truncate_date (DB_DATE * date, const DB_VALUE * format_str);
 static int get_number_dbval_as_double (double *d, const DB_VALUE * value);
-static int get_number_dbval_as_long_double (long double *ld,
-					    const DB_VALUE * value);
-static int db_width_bucket_calculate_numeric (double *result,
-					      const DB_VALUE * value1,
-					      const DB_VALUE * value2,
-					      const DB_VALUE * value3,
-					      const DB_VALUE * value4);
+static int get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value);
+static int db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, const DB_VALUE * value2,
+					      const DB_VALUE * value3, const DB_VALUE * value4);
 
 /*
  * db_floor_dbval () - take floor of db_value
@@ -120,11 +106,9 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       DB_MAKE_NULL (&cast_value);
-      er_status = tp_value_str_auto_cast_to_number (value, &cast_value,
-						    &res_type);
+      er_status = tp_value_str_auto_cast_to_number (value, &cast_value, &res_type);
       if (er_status != NO_ERROR
-	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true && res_type != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && res_type != DB_TYPE_DOUBLE))
 	{
 	  return er_status;
 	}
@@ -152,8 +136,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 	    bool decrement = false;
 
 	    num_str_p = num_str + 1;
-	    numeric_coerce_num_to_dec_str (DB_PULL_NUMERIC (value),
-					   num_str_p);
+	    numeric_coerce_num_to_dec_str (DB_PULL_NUMERIC (value), num_str_p);
 	    num_str_len = strlen (num_str_p);
 
 	    num_str_p += num_str_len - s;
@@ -171,8 +154,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 
 	    if (decrement && num_str[1] == '-')
 	      {
-		/* To decrement a negative value, the absolute value (the
-		 * digits) actually has to be incremented. */
+		/* To decrement a negative value, the absolute value (the digits) actually has to be incremented. */
 
 		char *num_str_digits = num_str + num_str_len - p;
 		bool carry = true;
@@ -237,8 +219,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_MONETARY:
       dtmp = (DB_GET_MONETARY (value))->amount;
       dtmp = floor (dtmp);
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value))->type,
-				    dtmp);
+      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value))->type, dtmp);
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
@@ -292,11 +273,9 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       DB_MAKE_NULL (&cast_value);
-      er_status = tp_value_str_auto_cast_to_number (value, &cast_value,
-						    &res_type);
+      er_status = tp_value_str_auto_cast_to_number (value, &cast_value, &res_type);
       if (er_status != NO_ERROR
-	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true && res_type != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && res_type != DB_TYPE_DOUBLE))
 	{
 	  return er_status;
 	}
@@ -323,8 +302,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 	    bool increment = false;
 
 	    num_str_p = num_str + 1;
-	    numeric_coerce_num_to_dec_str (db_locate_numeric (value),
-					   num_str_p);
+	    numeric_coerce_num_to_dec_str (db_locate_numeric (value), num_str_p);
 	    if (num_str_p[0] == '-')
 	      {
 		num_str_p++;
@@ -416,8 +394,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_MONETARY:
       dtmp = (DB_GET_MONETARY (value))->amount;
       dtmp = ceil (dtmp);
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value))->type,
-				    dtmp);
+      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value))->type, dtmp);
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
@@ -531,8 +508,7 @@ db_sign_dbval (DB_VALUE * result, DB_VALUE * value)
 	}
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (value),
-				    DB_VALUE_SCALE (value), &dtmp);
+      numeric_coerce_num_to_double (db_locate_numeric (value), DB_VALUE_SCALE (value), &dtmp);
       if (dtmp == 0)
 	{
 	  DB_MAKE_INT (result, 0);
@@ -619,11 +595,9 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       DB_MAKE_NULL (&cast_value);
-      er_status = tp_value_str_auto_cast_to_number (value, &cast_value,
-						    &res_type);
+      er_status = tp_value_str_auto_cast_to_number (value, &cast_value, &res_type);
       if (er_status != NO_ERROR
-	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true && res_type != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && res_type != DB_TYPE_DOUBLE))
 	{
 	  return er_status;
 	}
@@ -644,15 +618,13 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
 	unsigned char num[DB_NUMERIC_BUF_SIZE];
 
 	numeric_db_value_abs (db_locate_numeric (value), num);
-	DB_MAKE_NUMERIC (result, num,
-			 DB_VALUE_PRECISION (value), DB_VALUE_SCALE (value));
+	DB_MAKE_NUMERIC (result, num, DB_VALUE_PRECISION (value), DB_VALUE_SCALE (value));
 	break;
       }
     case DB_TYPE_MONETARY:
       dtmp = (DB_GET_MONETARY (value))->amount;
       dtmp = fabs (dtmp);
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value))->type,
-				    dtmp);
+      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value))->type, dtmp);
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
@@ -713,8 +685,7 @@ db_exp_dbval (DB_VALUE * result, DB_VALUE * value)
       dtmp = exp (d);
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (value),
-				    DB_VALUE_SCALE (value), &d);
+      numeric_coerce_num_to_double (db_locate_numeric (value), DB_VALUE_SCALE (value), &d);
       dtmp = exp (d);
       break;
     case DB_TYPE_MONETARY:
@@ -806,8 +777,7 @@ db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value)
       dtmp = sqrt (d);
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (value),
-				    DB_VALUE_SCALE (value), &d);
+      numeric_coerce_num_to_double (db_locate_numeric (value), DB_VALUE_SCALE (value), &d);
       if (d < 0)
 	{
 	  goto sqrt_error;
@@ -839,8 +809,7 @@ sqrt_error:
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR,
-	      1, "sqrt()");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR, 1, "sqrt()");
     }
   return ER_FAILED;
 }
@@ -1004,11 +973,9 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
-						    &type2);
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
-	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1031,8 +998,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (value2),
-				    DB_VALUE_SCALE (value2), &d2);
+      numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
       if (d2 == 0)
 	{
 	  (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
@@ -1040,9 +1006,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (s1, d2);
-	  (void) numeric_internal_double_to_num (dtmp,
-						 DB_VALUE_SCALE (value2),
-						 num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
 	  DB_MAKE_NUMERIC (result, num, p, s);
 	}
       break;
@@ -1050,21 +1014,17 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       d2 = (DB_GET_MONETARY (value2))->amount;
       if (d2 == 0)
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type, s1);
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, s1);
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					(double) fmod (s1, d2));
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod (s1, d2));
 	}
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_INVALID_DATATYPE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  er_status = ER_QPROC_INVALID_DATATYPE;
 	}
       goto exit;
@@ -1162,11 +1122,9 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
-						    &type2);
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
-	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1189,8 +1147,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (value2),
-				    DB_VALUE_SCALE (value2), &d2);
+      numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
       if (d2 == 0)
 	{
 	  (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
@@ -1198,9 +1155,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (i1, d2);
-	  (void) numeric_internal_double_to_num (dtmp,
-						 DB_VALUE_SCALE (value2),
-						 num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
 	  DB_MAKE_NUMERIC (result, num, p, s);
 	}
       break;
@@ -1208,21 +1163,17 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       d2 = (DB_GET_MONETARY (value2))->amount;
       if (d2 == 0)
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type, i1);
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, i1);
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					(double) fmod (i1, d2));
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod (i1, d2));
 	}
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_INVALID_DATATYPE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  er_status = ER_QPROC_INVALID_DATATYPE;
 	}
       goto exit;
@@ -1320,11 +1271,9 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
-						    &type2);
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
-	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1347,8 +1296,7 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (value2),
-				    DB_VALUE_SCALE (value2), &d2);
+      numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
       if (d2 == 0)
 	{
 	  (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
@@ -1356,9 +1304,7 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod ((double) bi1, d2);
-	  (void) numeric_internal_double_to_num (dtmp,
-						 DB_VALUE_SCALE (value2),
-						 num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
 	  DB_MAKE_NUMERIC (result, num, p, s);
 	}
       break;
@@ -1366,22 +1312,17 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       d2 = (DB_GET_MONETARY (value2))->amount;
       if (d2 == 0)
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					(double) bi1);
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) bi1);
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					(double) fmod ((double) bi1, d2));
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod ((double) bi1, d2));
 	}
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_INVALID_DATATYPE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  er_status = ER_QPROC_INVALID_DATATYPE;
 	}
       goto exit;
@@ -1475,11 +1416,9 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
-						    &type2);
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
-	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1502,8 +1441,7 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (value2),
-				    DB_VALUE_SCALE (value2), &d2);
+      numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
       /* common type of float and numeric is double. */
       if (d2 == 0)
 	{
@@ -1518,21 +1456,17 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       d2 = (DB_GET_MONETARY (value2))->amount;
       if (d2 == 0)
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type, f1);
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, f1);
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					(double) fmod ((double) f1, d2));
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod ((double) f1, d2));
 	}
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_INVALID_DATATYPE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  er_status = ER_QPROC_INVALID_DATATYPE;
 	}
       goto exit;
@@ -1626,11 +1560,9 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
-						    &type2);
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
-	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1653,8 +1585,7 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (value2),
-				    DB_VALUE_SCALE (value2), &d2);
+      numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
       if (d2 == 0)
 	{
 	  DB_MAKE_DOUBLE (result, d1);
@@ -1668,21 +1599,17 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       d2 = (DB_GET_MONETARY (value2))->amount;
       if (d2 == 0)
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type, d1);
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, d1);
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					(double) fmod (d1, d2));
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod (d1, d2));
 	}
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_INVALID_DATATYPE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  er_status = ER_QPROC_INVALID_DATATYPE;
 	}
       goto exit;
@@ -1717,8 +1644,7 @@ db_mod_string (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   er_status = tp_value_str_auto_cast_to_number (value1, &cast_value1, &type1);
   if (er_status != NO_ERROR
-      || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true
-	  && type1 != DB_TYPE_DOUBLE))
+      || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type1 != DB_TYPE_DOUBLE))
     {
       return er_status;
     }
@@ -1765,8 +1691,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   assert (type1 == DB_TYPE_NUMERIC);
 #endif
 
-  numeric_coerce_num_to_double (db_locate_numeric (value1),
-				DB_VALUE_SCALE (value1), &d1);
+  numeric_coerce_num_to_double (db_locate_numeric (value1), DB_VALUE_SCALE (value1), &d1);
 
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
   switch (type2)
@@ -1780,9 +1705,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (d1, s2);
-	  (void) numeric_internal_double_to_num (dtmp,
-						 DB_VALUE_SCALE (value1),
-						 num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
 	  DB_MAKE_NUMERIC (result, num, p, s);
 	}
       break;
@@ -1795,9 +1718,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (d1, i2);
-	  (void) numeric_internal_double_to_num (dtmp,
-						 DB_VALUE_SCALE (value1),
-						 num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
 	  DB_MAKE_NUMERIC (result, num, p, s);
 	}
       break;
@@ -1810,9 +1731,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (d1, (double) bi2);
-	  (void) numeric_internal_double_to_num (dtmp,
-						 DB_VALUE_SCALE (value1),
-						 num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
 	  DB_MAKE_NUMERIC (result, num, p, s);
 	}
       break;
@@ -1832,11 +1751,9 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
-						    &type2);
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
-	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1859,8 +1776,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (value2),
-				    DB_VALUE_SCALE (value2), &d2);
+      numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
       if (d2 == 0)
 	{
 	  (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
@@ -1868,11 +1784,8 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  dtmp = fmod (d1, d2);
-	  (void) numeric_internal_double_to_num (dtmp,
-						 MAX (DB_VALUE_SCALE
-						      (value1),
-						      DB_VALUE_SCALE
-						      (value2)), num, &p, &s);
+	  (void) numeric_internal_double_to_num (dtmp, MAX (DB_VALUE_SCALE (value1), DB_VALUE_SCALE (value2)), num, &p,
+						 &s);
 	  DB_MAKE_NUMERIC (result, num, p, s);
 	}
       break;
@@ -1880,21 +1793,17 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       d2 = (DB_GET_MONETARY (value2))->amount;
       if (d2 == 0)
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type, d1);
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, d1);
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					(double) fmod (d1, d2));
+	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod (d1, d2));
 	}
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_INVALID_DATATYPE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  er_status = ER_QPROC_INVALID_DATATYPE;
 	}
       goto exit;
@@ -1953,11 +1862,9 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2,
-						    &type2);
+      er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
-	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true && type2 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
 	{
 	  goto exit;
 	}
@@ -1972,8 +1879,7 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       d2 = DB_GET_DOUBLE (value2);
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (value2),
-				    DB_VALUE_SCALE (value2), &d2);
+      numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
       break;
     case DB_TYPE_MONETARY:
       d2 = (DB_GET_MONETARY (value2))->amount;
@@ -1981,8 +1887,7 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_INVALID_DATATYPE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  er_status = ER_QPROC_INVALID_DATATYPE;
 	}
       goto exit;
@@ -1990,14 +1895,11 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   if (d2 == 0)
     {
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-				    (DB_GET_MONETARY (value1))->type, d1);
+      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value1))->type, d1);
     }
   else
     {
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-				    (DB_GET_MONETARY (value1))->type,
-				    (double) fmod (d1, d2));
+      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value1))->type, (double) fmod (d1, d2));
     }
 
 exit:
@@ -2054,8 +1956,7 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  return ER_QPROC_INVALID_DATATYPE;
 	}
       else
@@ -2074,7 +1975,7 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 static double
 round_double (double num, double integer)
 {
-  /*
+  /* 
    * Under high optimization level, some optimizers (e.g, gcc -O3 on linux)
    * generates a wrong result without "volatile".
    */
@@ -2089,8 +1990,7 @@ round_double (double num, double integer)
   num_scale_up = num / scale_down;
   if (!FINITE (num_scale_up))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-	      tp_Double_domain.type->name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, tp_Double_domain.type->name);
     }
 
   if (num_scale_up > 0)
@@ -2152,8 +2052,7 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   DB_DATE date;
   DB_TIME time;
   DB_TYPE type;
-  int year = 0, month = 0, day = 0, hour = 0, minute = 0,
-    second = 0, millisecond = 0;
+  int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, millisecond = 0;
   int weekday = 0;
   int error = NO_ERROR;
   TIMESTAMP_FORMAT format;
@@ -2178,8 +2077,7 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   else if (type == DB_TYPE_TIMESTAMPTZ)
     {
       pstamptz = db_get_timestamptz (value1);
-      error = db_timestamp_decode_w_tz_id (&pstamptz->timestamp,
-					   &pstamptz->tz_id, &date, &time);
+      error = db_timestamp_decode_w_tz_id (&pstamptz->timestamp, &pstamptz->tz_id, &date, &time);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -2190,8 +2088,7 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   else if (type == DB_TYPE_DATETIME)
     {
       pdatetime = db_get_datetime (value1);
-      db_datetime_decode (pdatetime, &month, &day, &year,
-			  &hour, &minute, &second, &millisecond);
+      db_datetime_decode (pdatetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
     }
   else if (type == DB_TYPE_DATETIMELTZ)
     {
@@ -2203,23 +2100,20 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  goto end;
 	}
 
-      db_datetime_decode (&local_dt, &month, &day, &year,
-			  &hour, &minute, &second, &millisecond);
+      db_datetime_decode (&local_dt, &month, &day, &year, &hour, &minute, &second, &millisecond);
     }
   else if (type == DB_TYPE_DATETIMETZ)
     {
       pdatetimetz = db_get_datetimetz (value1);
 
-      error = tz_utc_datetimetz_to_local (&pdatetimetz->datetime,
-					  &pdatetimetz->tz_id, &local_dt);
+      error = tz_utc_datetimetz_to_local (&pdatetimetz->datetime, &pdatetimetz->tz_id, &local_dt);
 
       if (error != NO_ERROR)
 	{
 	  goto end;
 	}
 
-      db_datetime_decode (&local_dt, &month, &day, &year,
-			  &hour, &minute, &second, &millisecond);
+      db_datetime_decode (&local_dt, &month, &day, &year, &hour, &minute, &second, &millisecond);
     }
   else if (type == DB_TYPE_DATE)
     {
@@ -2289,7 +2183,7 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     case DT_MI:
-      if (second >= 30)		/*rounds up on HH:MM:30 */
+      if (second >= 30)		/* rounds up on HH:MM:30 */
 	{
 	  if (++minute == 60)
 	    {
@@ -2387,8 +2281,7 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   if (year < 0 || year > 9999)
     {
       error = ER_IT_DATA_OVERFLOW;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      error, 1, tp_Date_domain.type->name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, tp_Date_domain.type->name);
       goto end;
     }
 
@@ -2396,8 +2289,7 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   error = DB_MAKE_DATE (result, month, day, year);
 
 end:
-  if (error != NO_ERROR
-      && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+  if (error != NO_ERROR && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       error = NO_ERROR;
       DB_MAKE_NULL (result);
@@ -2445,13 +2337,11 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
 
   /* first check if round a date: */
-  if (type1 == DB_TYPE_DATETIME || type1 == DB_TYPE_DATETIMELTZ
-      || type1 == DB_TYPE_DATETIMETZ
-      || type1 == DB_TYPE_TIMESTAMP || type1 == DB_TYPE_TIMESTAMPLTZ
-      || type1 == DB_TYPE_TIMESTAMPTZ || type1 == DB_TYPE_DATE)
+  if (type1 == DB_TYPE_DATETIME || type1 == DB_TYPE_DATETIMELTZ || type1 == DB_TYPE_DATETIMETZ
+      || type1 == DB_TYPE_TIMESTAMP || type1 == DB_TYPE_TIMESTAMPLTZ || type1 == DB_TYPE_TIMESTAMPTZ
+      || type1 == DB_TYPE_DATE)
     {				/* round date */
-      if (QSTR_IS_ANY_CHAR (type2)
-	  && strcasecmp (DB_GET_STRING_SAFE (value2), "default") == 0)
+      if (QSTR_IS_ANY_CHAR (type2) && strcasecmp (DB_GET_STRING_SAFE (value2), "default") == 0)
 	{
 	  DB_MAKE_STRING (&cast_format, "dd");
 	  value2 = &cast_format;
@@ -2473,8 +2363,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	    }
 	  else
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_QPROC_INVALID_DATATYPE, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	      return ER_QPROC_INVALID_DATATYPE;
 	    }
 	}
@@ -2501,8 +2390,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     }
   else				/* cast to INTEGER */
     {
-      if (QSTR_IS_ANY_CHAR (type2)
-	  && strcasecmp (DB_GET_STRING_SAFE (value2), "default") == 0)
+      if (QSTR_IS_ANY_CHAR (type2) && strcasecmp (DB_GET_STRING_SAFE (value2), "default") == 0)
 	{
 	  DB_MAKE_INT (&cast_format, 0);
 	  value2 = &cast_format;
@@ -2514,8 +2402,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  /* try type int */
 	  type2 = DB_TYPE_UNKNOWN;
 	  domain = tp_domain_resolve_default (DB_TYPE_INTEGER);
-	  if (tp_value_coerce (value2, &cast_format,
-			       domain) != DOMAIN_COMPATIBLE)
+	  if (tp_value_coerce (value2, &cast_format, domain) != DOMAIN_COMPATIBLE)
 	    {
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		{
@@ -2523,8 +2410,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 		}
 	      else
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_QPROC_INVALID_DATATYPE, 0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 		  return ER_QPROC_INVALID_DATATYPE;
 		}
 	    }
@@ -2552,8 +2438,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       dtmp = round_double ((double) bi1, d2);
       bi_tmp = (DB_BIGINT) dtmp;
 #if defined(AIX)
-      /* in AIX, double to long will not overflow, make
-       * it the same as linux. */
+      /* in AIX, double to long will not overflow, make it the same as linux. */
       if (dtmp == (double) DB_BIGINT_MAX)
 	{
 	  bi_tmp = DB_BIGINT_MIN;
@@ -2571,11 +2456,9 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       DB_MAKE_NULL (&cast_value);
-      er_status = tp_value_str_auto_cast_to_number (value1, &cast_value,
-						    &type1);
+      er_status = tp_value_str_auto_cast_to_number (value1, &cast_value, &type1);
       if (er_status != NO_ERROR
-	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true && type1 != DB_TYPE_DOUBLE))
+	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type1 != DB_TYPE_DOUBLE))
 	{
 	  return er_status;
 	}
@@ -2658,17 +2541,14 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 		      if (strlen (ptr) > DB_MAX_NUMERIC_PRECISION)
 			{
 			  /* overflow happened during round up */
-			  if (prm_get_bool_value
-			      (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+			  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 			    {
 			      return NO_ERROR;
 			    }
 			  else
 			    {
-			      domain =
-				tp_domain_resolve_default (DB_TYPE_NUMERIC);
-			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				      ER_IT_DATA_OVERFLOW, 1,
+			      domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
 				      pr_type_name (TP_DOMAIN_TYPE (domain)));
 			      return ER_IT_DATA_OVERFLOW;
 			    }
@@ -2685,21 +2565,18 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_MONETARY:
       d1 = (DB_GET_MONETARY (value1))->amount;
       dtmp = round_double (d1, d2);
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value1))->type,
-				    dtmp);
+      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value1))->type, dtmp);
       break;
     default:
       if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  return ER_QPROC_INVALID_DATATYPE;
 	}
     }
 
 
-  if (er_errid () < 0
-      && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
+  if (er_errid () < 0 && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
     {
       return ER_FAILED;
     }
@@ -2785,8 +2662,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) d2) / log10 ((double) s1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2802,8 +2678,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 ((double) s1);
 	  break;
 	default:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  break;
 	}
       break;
@@ -2858,8 +2733,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) d2) / log10 ((double) bi1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2875,8 +2749,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 ((double) bi1);
 	  break;
 	default:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  break;
 	}
       break;
@@ -2931,8 +2804,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 ((double) i1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2948,8 +2820,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 ((double) i1);
 	  break;
 	default:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  break;
 	}
       break;
@@ -3004,8 +2875,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 ((double) f1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -3021,8 +2891,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (f1);
 	  break;
 	default:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  break;
 	}
       break;
@@ -3077,8 +2946,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (d1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -3094,15 +2962,13 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (d1);
 	  break;
 	default:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  break;
 	}
       break;
 
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (value1),
-				    DB_VALUE_SCALE (value1), &d1);
+      numeric_coerce_num_to_double (db_locate_numeric (value1), DB_VALUE_SCALE (value1), &d1);
       if (d1 <= 1)
 	{
 	  goto log_error;
@@ -3151,8 +3017,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (d1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -3168,8 +3033,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (d1);
 	  break;
 	default:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  break;
 	}
       break;
@@ -3224,8 +3088,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (d1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -3241,8 +3104,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (d1);
 	  break;
 	default:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  break;
 	}
       break;
@@ -3256,8 +3118,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   return NO_ERROR;
 
 log_error:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR, 1,
-	  "log()");
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR, 1, "log()");
   return ER_FAILED;
 }
 
@@ -3270,7 +3131,7 @@ log_error:
 static double
 truncate_double (double num, double integer)
 {
-  /*
+  /* 
    * Under high optimization level, some optimizers (e.g, gcc -O3 on linux)
    * generates a wrong result without "volatile".
    */
@@ -3398,8 +3259,7 @@ truncate_date (DB_DATE * date, const DB_VALUE * format_str)
 	      year = year - 1;
 	      month = 12;
 	    }
-	  if (month == 2
-	      && (year % 400 == 0 || (year % 100 != 0 && year % 4 == 0)))
+	  if (month == 2 && (year % 400 == 0 || (year % 100 != 0 && year % 4 == 0)))
 	    {
 	      days_months[2] = 29;
 	    }
@@ -3461,10 +3321,8 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   type1 = DB_VALUE_DOMAIN_TYPE (value1);
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
-  if (type2 != DB_TYPE_SHORT && type2 != DB_TYPE_INTEGER
-      && type2 != DB_TYPE_BIGINT && type2 != DB_TYPE_NUMERIC
-      && type2 != DB_TYPE_FLOAT && type2 != DB_TYPE_DOUBLE
-      && type2 != DB_TYPE_MONETARY && !QSTR_IS_ANY_CHAR (type2))
+  if (type2 != DB_TYPE_SHORT && type2 != DB_TYPE_INTEGER && type2 != DB_TYPE_BIGINT && type2 != DB_TYPE_NUMERIC
+      && type2 != DB_TYPE_FLOAT && type2 != DB_TYPE_DOUBLE && type2 != DB_TYPE_MONETARY && !QSTR_IS_ANY_CHAR (type2))
     {
       er_status = ER_QPROC_INVALID_DATATYPE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 0);
@@ -3506,8 +3364,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       /* convert fail */
       if (type1 == DB_TYPE_UNKNOWN)
 	{
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true)
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 	    {
 	      DB_MAKE_NULL (result);
 	      er_status = NO_ERROR;
@@ -3523,8 +3380,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     }
 
   /* translate default fmt */
-  if (type2 == DB_TYPE_CHAR
-      && strcasecmp (DB_PULL_STRING (value2), "default") == 0)
+  if (type2 == DB_TYPE_CHAR && strcasecmp (DB_PULL_STRING (value2), "default") == 0)
     {
       if (TP_IS_DATE_TYPE (type1))
 	{
@@ -3551,17 +3407,15 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     {
       bi2 = DB_GET_SHORT (value2);
     }
-  else if (type1 != DB_TYPE_DATE
-	   && type1 != DB_TYPE_DATETIME && type1 != DB_TYPE_DATETIMELTZ
-	   && type1 != DB_TYPE_DATETIMETZ && type1 != DB_TYPE_TIMESTAMP
-	   && type1 != DB_TYPE_TIMESTAMPLTZ && type1 != DB_TYPE_TIMESTAMPTZ)
+  else if (type1 != DB_TYPE_DATE && type1 != DB_TYPE_DATETIME && type1 != DB_TYPE_DATETIMELTZ
+	   && type1 != DB_TYPE_DATETIMETZ && type1 != DB_TYPE_TIMESTAMP && type1 != DB_TYPE_TIMESTAMPLTZ
+	   && type1 != DB_TYPE_TIMESTAMPTZ)
     {
       domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
       cast_status = tp_value_coerce (value2, &cast_format, domain);
       if (cast_status != DOMAIN_COMPATIBLE)
 	{
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true)
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 	    {
 	      DB_MAKE_NULL (result);
 	      er_status = NO_ERROR;
@@ -3638,8 +3492,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	int p, s;
 
 	memset (num_string, 0, sizeof (num_string));
-	numeric_coerce_num_to_dec_str (db_locate_numeric (value1),
-				       num_string);
+	numeric_coerce_num_to_dec_str (db_locate_numeric (value1), num_string);
 	p = DB_VALUE_PRECISION (value1);
 	s = DB_VALUE_SCALE (value1);
 	end = num_string + strlen (num_string);
@@ -3673,8 +3526,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
 	d1 = (DB_GET_MONETARY (value1))->amount;
 	dtmp = truncate_double (d1, (double) bi2);
-	DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-				      (DB_GET_MONETARY (value1))->type, dtmp);
+	DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value1))->type, dtmp);
       }
       break;
     case DB_TYPE_DATE:
@@ -3701,8 +3553,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  er_status = tz_datetimeltz_to_local (p_dt, &local_dt);
 	  if (er_status != NO_ERROR)
 	    {
-	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS)
-		  == true)
+	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 		{
 		  er_clear ();
 		  DB_MAKE_NULL (result);
@@ -3720,13 +3571,11 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
 	  p_dt_tz = DB_GET_DATETIMETZ (value1);
 
-	  er_status = tz_utc_datetimetz_to_local (&p_dt_tz->datetime,
-						  &p_dt_tz->tz_id, &local_dt);
+	  er_status = tz_utc_datetimetz_to_local (&p_dt_tz->datetime, &p_dt_tz->tz_id, &local_dt);
 
 	  if (er_status != NO_ERROR)
 	    {
-	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS)
-		  == true)
+	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 		{
 		  er_clear ();
 		  DB_MAKE_NULL (result);
@@ -3742,13 +3591,10 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  DB_TIMESTAMPTZ *p_ts_tz;
 
 	  p_ts_tz = db_get_timestamptz (value1);
-	  er_status = db_timestamp_decode_w_tz_id (&p_ts_tz->timestamp,
-						   &p_ts_tz->tz_id, &date,
-						   NULL);
+	  er_status = db_timestamp_decode_w_tz_id (&p_ts_tz->timestamp, &p_ts_tz->tz_id, &date, NULL);
 	  if (er_status != NO_ERROR)
 	    {
-	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS)
-		  == true)
+	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 		{
 		  er_clear ();
 		  DB_MAKE_NULL (result);
@@ -3759,17 +3605,14 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  assert (type1 == DB_TYPE_TIMESTAMP
-		  || type1 == DB_TYPE_TIMESTAMPLTZ);
-	  (void) db_timestamp_decode_ses (DB_GET_TIMESTAMP (value1), &date,
-					  NULL);
+	  assert (type1 == DB_TYPE_TIMESTAMP || type1 == DB_TYPE_TIMESTAMPLTZ);
+	  (void) db_timestamp_decode_ses (DB_GET_TIMESTAMP (value1), &date, NULL);
 	}
 
       er_status = truncate_date (&date, value2);
       if (er_status != NO_ERROR)
 	{
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ==
-	      true)
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 	    {
 	      er_clear ();
 	      er_status = NO_ERROR;
@@ -3860,8 +3703,7 @@ get_number_dbval_as_double (double *d, const DB_VALUE * value)
       dtmp = DB_GET_DOUBLE (value);
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (value),
-				    DB_VALUE_SCALE (value), &dtmp);
+      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (value), DB_VALUE_SCALE (value), &dtmp);
       break;
     case DB_TYPE_MONETARY:
       dtmp = (DB_GET_MONETARY (value))->amount;
@@ -4054,8 +3896,7 @@ error:
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR,
-	      1, "acos()");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR, 1, "acos()");
       return ER_QPROC_FUNCTION_ARG_ERROR;
     }
 }
@@ -4104,8 +3945,7 @@ error:
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR,
-	      1, "asin()");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR, 1, "asin()");
       return ER_QPROC_FUNCTION_ARG_ERROR;
     }
 }
@@ -4311,8 +4151,7 @@ db_log_generic_dbval (DB_VALUE * result, DB_VALUE * value, long b)
 	  break;
 	}
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR,
-	      1, log_func);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR, 1, log_func);
       return ER_QPROC_FUNCTION_ARG_ERROR;
     }
 
@@ -4409,11 +4248,9 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  if (tp_value_cast (value, &tmpval,
-			     &tp_Double_domain, false) != DOMAIN_COMPATIBLE)
+	  if (tp_value_cast (value, &tmpval, &tp_Double_domain, false) != DOMAIN_COMPATIBLE)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_QPROC_INVALID_DATATYPE, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	      return ER_FAILED;
 	    }
 	  tmpval_p = &tmpval;
@@ -4435,8 +4272,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	  break;
 
 	default:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_QPROC_INVALID_DATATYPE, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  return ER_QPROC_INVALID_DATATYPE;
 	}
 
@@ -4479,21 +4315,18 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
       buf = db_private_alloc (NULL, 128);
       if (buf == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) 128);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 128);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
       if (type == DB_TYPE_NUMERIC)
 	{
-	  snprintf (buf, 128, "%s (%u, %u)", type_name,
-		    value->domain.numeric_info.precision,
+	  snprintf (buf, 128, "%s (%u, %u)", type_name, value->domain.numeric_info.precision,
 		    value->domain.numeric_info.scale);
 	}
       else
 	{
-	  snprintf (buf, 128, "%s (%d)", type_name,
-		    value->domain.char_info.length);
+	  snprintf (buf, 128, "%s (%d)", type_name, value->domain.char_info.length);
 	}
 
       db_make_string (result, buf);
@@ -4551,11 +4384,9 @@ get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value)
       break;
 
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_dec_str ((DB_C_NUMERIC) db_locate_numeric (value),
-				     num_string);
+      numeric_coerce_num_to_dec_str ((DB_C_NUMERIC) db_locate_numeric (value), num_string);
 #ifdef _ISOC99_SOURCE
-      dtmp =
-	strtold (num_string, &tail_ptr) / powl (10.0, DB_VALUE_SCALE (value));
+      dtmp = strtold (num_string, &tail_ptr) / powl (10.0, DB_VALUE_SCALE (value));
 #else
       dtmp = atof (num_string) / pow (10.0, DB_VALUE_SCALE (value));
 #endif
@@ -4582,24 +4413,18 @@ get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value)
  *   value1-4(in) : input db_value
  */
 static int
-db_width_bucket_calculate_numeric (double *result,
-				   const DB_VALUE * value1,
-				   const DB_VALUE * value2,
-				   const DB_VALUE * value3,
-				   const DB_VALUE * value4)
+db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, const DB_VALUE * value2,
+				   const DB_VALUE * value3, const DB_VALUE * value4)
 {
   int er_status = NO_ERROR, c;
   DB_VALUE cmp_result;
   DB_VALUE n1, n2, n3, n4;
   double res = 0.0;
 
-  assert (value1 != NULL && value2 != NULL
-	  && value3 != NULL && value4 != NULL && result != NULL);
+  assert (value1 != NULL && value2 != NULL && value3 != NULL && value4 != NULL && result != NULL);
 
-  assert (DB_VALUE_TYPE (value1) == DB_TYPE_NUMERIC
-	  && DB_VALUE_TYPE (value2) == DB_TYPE_NUMERIC
-	  && DB_VALUE_TYPE (value3) == DB_TYPE_NUMERIC
-	  && DB_VALUE_TYPE (value4) == DB_TYPE_NUMERIC);
+  assert (DB_VALUE_TYPE (value1) == DB_TYPE_NUMERIC && DB_VALUE_TYPE (value2) == DB_TYPE_NUMERIC
+	  && DB_VALUE_TYPE (value3) == DB_TYPE_NUMERIC && DB_VALUE_TYPE (value4) == DB_TYPE_NUMERIC);
 
   DB_MAKE_NULL (&cmp_result);
   DB_MAKE_NULL (&n1);
@@ -4638,9 +4463,7 @@ db_width_bucket_calculate_numeric (double *result,
 
 	  if (DB_GET_INTEGER (&cmp_result) < 1)
 	    {
-	      numeric_coerce_num_to_double ((DB_C_NUMERIC)
-					    DB_GET_NUMERIC (value4),
-					    DB_VALUE_SCALE (value4), &res);
+	      numeric_coerce_num_to_double ((DB_C_NUMERIC) DB_GET_NUMERIC (value4), DB_VALUE_SCALE (value4), &res);
 	      res += 1.0;
 	    }
 	  else
@@ -4670,8 +4493,7 @@ db_width_bucket_calculate_numeric (double *result,
 		  return er_status;
 		}
 
-	      numeric_coerce_num_to_double (DB_GET_NUMERIC (&n4),
-					    DB_VALUE_SCALE (&n4), &res);
+	      numeric_coerce_num_to_double (DB_GET_NUMERIC (&n4), DB_VALUE_SCALE (&n4), &res);
 	      if (OR_CHECK_DOUBLE_OVERFLOW (res))
 		{
 		  return ER_IT_DATA_OVERFLOW;
@@ -4706,9 +4528,7 @@ db_width_bucket_calculate_numeric (double *result,
 
 	  if (DB_GET_INTEGER (&cmp_result) < 1)
 	    {
-	      numeric_coerce_num_to_double ((DB_C_NUMERIC)
-					    DB_GET_NUMERIC (value4),
-					    DB_VALUE_SCALE (value4), &res);
+	      numeric_coerce_num_to_double ((DB_C_NUMERIC) DB_GET_NUMERIC (value4), DB_VALUE_SCALE (value4), &res);
 	      res += 1.0;
 	    }
 	  else
@@ -4738,8 +4558,7 @@ db_width_bucket_calculate_numeric (double *result,
 		  return er_status;
 		}
 
-	      numeric_coerce_num_to_double (DB_GET_NUMERIC (&n4),
-					    DB_VALUE_SCALE (&n4), &res);
+	      numeric_coerce_num_to_double (DB_GET_NUMERIC (&n4), DB_VALUE_SCALE (&n4), &res);
 	      if (OR_CHECK_DOUBLE_OVERFLOW (res))
 		{
 		  return ER_IT_DATA_OVERFLOW;
@@ -4766,8 +4585,7 @@ db_width_bucket_calculate_numeric (double *result,
  *   value1-4(in) : input db_value
  */
 int
-db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
-		 const DB_VALUE * value2, const DB_VALUE * value3,
+db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * value2, const DB_VALUE * value3,
 		 const DB_VALUE * value4)
 {
 #define RETURN_ERROR(err) \
@@ -4816,18 +4634,15 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
   char buf[MAX_DOMAIN_NAME_SIZE];
   DB_TIME time_local;
 
-  assert (result != NULL && value1 != NULL
-	  && value2 != NULL && value3 != NULL && value4 != NULL);
+  assert (result != NULL && value1 != NULL && value2 != NULL && value3 != NULL && value4 != NULL);
 
   DB_MAKE_NULL (&cast_value1);
   DB_MAKE_NULL (&cast_value2);
   DB_MAKE_NULL (&cast_value3);
   DB_MAKE_NULL (&cast_value4);
 
-  if (DB_VALUE_TYPE (value1) == DB_TYPE_NULL
-      || DB_VALUE_TYPE (value2) == DB_TYPE_NULL
-      || DB_VALUE_TYPE (value3) == DB_TYPE_NULL
-      || DB_VALUE_TYPE (value4) == DB_TYPE_NULL)
+  if (DB_VALUE_TYPE (value1) == DB_TYPE_NULL || DB_VALUE_TYPE (value2) == DB_TYPE_NULL
+      || DB_VALUE_TYPE (value3) == DB_TYPE_NULL || DB_VALUE_TYPE (value4) == DB_TYPE_NULL)
     {
       DB_MAKE_NULL (result);
       return NO_ERROR;
@@ -4841,9 +4656,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 
   d4 = (int) floor (d4);
 
-  /* find the common type of value1, value2 and value3
-   * and cast them to the common type
-   */
+  /* find the common type of value1, value2 and value3 and cast them to the common type */
   type = DB_VALUE_DOMAIN_TYPE (value1);
   switch (type)
     {
@@ -4861,9 +4674,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 	}
       else
 	{
-	  /* try datetime
-	   * date, timestamp is compatible with datetime
-	   */
+	  /* try datetime date, timestamp is compatible with datetime */
 	  cast_domain = tp_domain_resolve_default (DB_TYPE_DATETIME);
 	  cast_status = tp_value_coerce (value1, &cast_value1, cast_domain);
 	  if (cast_status == DOMAIN_COMPATIBLE)
@@ -4874,8 +4685,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 	    {
 	      /* try time */
 	      cast_domain = tp_domain_resolve_default (DB_TYPE_TIME);
-	      cast_status = tp_value_coerce (value1, &cast_value1,
-					     cast_domain);
+	      cast_status = tp_value_coerce (value1, &cast_value1, cast_domain);
 	      if (cast_status == DOMAIN_COMPATIBLE)
 		{
 		  cast_type = DB_TYPE_TIME;
@@ -4933,22 +4743,22 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMELTZ:
       /* double can hold datetime type */
-      d1 = ((double) DB_GET_DATETIME (value1)->date)
-	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value1)->time;
-      d2 = ((double) DB_GET_DATETIME (value2)->date)
-	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value2)->time;
-      d3 = ((double) DB_GET_DATETIME (value3)->date)
-	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value3)->time;
+      d1 = ((double) DB_GET_DATETIME (value1)->date) * MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value1)->time;
+      d2 = ((double) DB_GET_DATETIME (value2)->date) * MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value2)->time;
+      d3 = ((double) DB_GET_DATETIME (value3)->date) * MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value3)->time;
       break;
 
     case DB_TYPE_DATETIMETZ:
       /* double can hold datetime type */
-      d1 = ((double) DB_GET_DATETIMETZ (value1)->datetime.date)
-	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIMETZ (value1)->datetime.time;
-      d2 = ((double) DB_GET_DATETIMETZ (value2)->datetime.date)
-	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIMETZ (value2)->datetime.time;
-      d3 = ((double) DB_GET_DATETIMETZ (value3)->datetime.date)
-	* MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIMETZ (value3)->datetime.time;
+      d1 =
+	((double) DB_GET_DATETIMETZ (value1)->datetime.date) * MILLISECONDS_OF_ONE_DAY +
+	DB_GET_DATETIMETZ (value1)->datetime.time;
+      d2 =
+	((double) DB_GET_DATETIMETZ (value2)->datetime.date) * MILLISECONDS_OF_ONE_DAY +
+	DB_GET_DATETIMETZ (value2)->datetime.time;
+      d3 =
+	((double) DB_GET_DATETIMETZ (value3)->datetime.date) * MILLISECONDS_OF_ONE_DAY +
+	DB_GET_DATETIMETZ (value3)->datetime.time;
       break;
 
     case DB_TYPE_TIMESTAMP:
@@ -4996,23 +4806,19 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
       break;
 
     case DB_TYPE_TIMETZ:
-      er_status = tz_utc_timetz_to_local (&DB_GET_TIMETZ (value1)->time,
-					  &DB_GET_TIMETZ (value1)->tz_id,
-					  &time_local);
+      er_status = tz_utc_timetz_to_local (&DB_GET_TIMETZ (value1)->time, &DB_GET_TIMETZ (value1)->tz_id, &time_local);
       if (er_status == NO_ERROR)
 	{
 	  d1 = (double) time_local;
-	  er_status = tz_utc_timetz_to_local (&DB_GET_TIMETZ (value2)->time,
-					      &DB_GET_TIMETZ (value2)->tz_id,
-					      &time_local);
+	  er_status =
+	    tz_utc_timetz_to_local (&DB_GET_TIMETZ (value2)->time, &DB_GET_TIMETZ (value2)->tz_id, &time_local);
 	}
 
       if (er_status == NO_ERROR)
 	{
 	  d2 = (double) time_local;
-	  er_status = tz_utc_timetz_to_local (&DB_GET_TIMETZ (value3)->time,
-					      &DB_GET_TIMETZ (value3)->tz_id,
-					      &time_local);
+	  er_status =
+	    tz_utc_timetz_to_local (&DB_GET_TIMETZ (value3)->time, &DB_GET_TIMETZ (value3)->tz_id, &time_local);
 	}
 
       if (er_status == NO_ERROR)
@@ -5048,9 +4854,8 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
     case DB_TYPE_NUMERIC:
       d1 = d2 = d3 = 0;		/* to make compiler be silent */
 
-      /* gcc fully support long double (80 or 128bits)
-       * if long double is not fully supported, do calculation with numeric
-       */
+      /* gcc fully support long double (80 or 128bits) if long double is not fully supported, do calculation with
+       * numeric */
       numeric_domain = tp_domain_new (DB_TYPE_NUMERIC);
       if (numeric_domain == NULL)
 	{
@@ -5064,13 +4869,9 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 
       if (type == DB_TYPE_BIGINT)
 	{
-	  /* cast bigint to numeric
-	   * Compiler doesn't support long double (80 or 128bits), so we use
-	   * numeric instead.
-	   * If a high precision lib is introduced or long double is full
-	   * supported, remove this part and use the lib or long double
-	   * to calculate.
-	   */
+	  /* cast bigint to numeric Compiler doesn't support long double (80 or 128bits), so we use numeric instead. If 
+	   * a high precision lib is introduced or long double is full supported, remove this part and use the lib or
+	   * long double to calculate. */
 	  /* convert value1 */
 	  cast_status = tp_value_coerce (value1, &cast_value1, cast_domain);
 	  if (cast_status != DOMAIN_COMPATIBLE)
@@ -5134,8 +4935,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
 
   if (is_deal_with_numeric)
     {
-      er_status = db_width_bucket_calculate_numeric (&d_ret, value1, value2,
-						     value3, value4);
+      er_status = db_width_bucket_calculate_numeric (&d_ret, value1, value2, value3, value4);
       if (er_status != NO_ERROR)
 	{
 	  RETURN_ERROR (er_status);
@@ -5190,8 +4990,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
     {
       RETURN_ERROR (ER_QPROC_OVERFLOW_SUBTRACTION);
     }
-  else if (OR_CHECK_DOUBLE_OVERFLOW (tmp_d3)
-	   || OR_CHECK_DOUBLE_OVERFLOW (tmp_d4))
+  else if (OR_CHECK_DOUBLE_OVERFLOW (tmp_d3) || OR_CHECK_DOUBLE_OVERFLOW (tmp_d4))
     {
       RETURN_ERROR (ER_QPROC_OVERFLOW_DIVISION);
     }
@@ -5221,8 +5020,7 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
   long million_sec = 0;
 
   assert (result != NULL && value != NULL);
-  assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NULL
-	  || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_DOUBLE);
+  assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NULL || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_DOUBLE);
 
   DB_MAKE_NULL (result);
 
@@ -5279,9 +5077,7 @@ db_crc32_dbval (DB_VALUE * result, DB_VALUE * value)
 
       if (QSTR_IS_ANY_CHAR (type))
 	{
-	  error_status =
-	    crypt_crc32 (NULL, DB_PULL_STRING (value),
-			 DB_GET_STRING_SIZE (value), &hash_result);
+	  error_status = crypt_crc32 (NULL, DB_PULL_STRING (value), DB_GET_STRING_SIZE (value), &hash_result);
 	  if (error_status != NO_ERROR)
 	    {
 	      goto error;

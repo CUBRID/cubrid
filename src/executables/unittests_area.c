@@ -258,8 +258,7 @@ test_area (AREA_CREATE_INFO * info, int nthreads, void *(*proc) (void *))
   int i;
 
   assert (info != NULL);
-  sprintf (msg, "%s(size:%d, count:%d), %d threads",
-	   info->name, info->entry_size, info->alloc_cnt, nthreads);
+  sprintf (msg, "%s(size:%d, count:%d), %d threads", info->name, info->entry_size, info->alloc_cnt, nthreads);
   begin (msg);
 
   /* initialization */
@@ -302,16 +301,14 @@ test_area (AREA_CREATE_INFO * info, int nthreads, void *(*proc) (void *))
     AREA_BLOCKSET_LIST *blockset;
     AREA_BLOCK *block;
     int i, j, blockset_cnt = 0, block_cnt = 0, chunk_count;
-    for (blockset = area->blockset_list; blockset != NULL;
-	 blockset = blockset->next)
+    for (blockset = area->blockset_list; blockset != NULL; blockset = blockset->next)
       {
 	for (i = 0; i < blockset->used_count; i++)
 	  {
 	    block = blockset->items[i];
 	    assert (block != NULL);
 
-	    chunk_count =
-	      CEIL_PTVDIV (block->bitmap.entry_count, LF_BITFIELD_WORD_SIZE);
+	    chunk_count = CEIL_PTVDIV (block->bitmap.entry_count, LF_BITFIELD_WORD_SIZE);
 
 	    for (j = 0; j < chunk_count; j++)
 	      {
@@ -346,13 +343,20 @@ main (int argc, char **argv)
   /* test_cubrid_area */
   {
     AREA_CREATE_INFO cubrid_infos[] = {
-      {"Schema templates", sizeof (SM_TEMPLATE), 4},
-      {"Domains", sizeof (TP_DOMAIN), 1024},
-      {"Value containers", sizeof (DB_VALUE), 1024},
-      {"Object templates", sizeof (OBJ_TEMPLATE), 32},
-      {"Assignment templates", sizeof (OBJ_TEMPASSIGN), 64},
-      {"Set references", sizeof (DB_COLLECTION), 1024},
-      {"Set objects", sizeof (COL), 1024},
+      {"Schema templates", sizeof (SM_TEMPLATE), 4}
+      ,
+      {"Domains", sizeof (TP_DOMAIN), 1024}
+      ,
+      {"Value containers", sizeof (DB_VALUE), 1024}
+      ,
+      {"Object templates", sizeof (OBJ_TEMPLATE), 32}
+      ,
+      {"Assignment templates", sizeof (OBJ_TEMPASSIGN), 64}
+      ,
+      {"Set references", sizeof (DB_COLLECTION), 1024}
+      ,
+      {"Set objects", sizeof (COL), 1024}
+      ,
       {"Object list links", sizeof (DB_OBJLIST), 4096}
     };
 
@@ -399,13 +403,20 @@ main (int argc, char **argv)
   /* test different alloc count */
   {
     AREA_CREATE_INFO diff_count_infos[] = {
-      {"size 1", 50, 32},
-      {"size 2", 50, 32 * 2},
-      {"size 4", 50, 32 * 4},
-      {"size 8", 50, 32 * 8},
-      {"size 16", 50, 32 * 16},
-      {"size 32", 50, 32 * 32},
-      {"size 64", 50, 32 * 64},
+      {"size 1", 50, 32}
+      ,
+      {"size 2", 50, 32 * 2}
+      ,
+      {"size 4", 50, 32 * 4}
+      ,
+      {"size 8", 50, 32 * 8}
+      ,
+      {"size 16", 50, 32 * 16}
+      ,
+      {"size 32", 50, 32 * 32}
+      ,
+      {"size 64", 50, 32 * 64}
+      ,
       {"size 128", 50, 32 * 128}
     };
 
@@ -415,8 +426,7 @@ main (int argc, char **argv)
       {
 	for (j = 0; j < (int) DIM (diff_count_infos); j++)
 	  {
-	    if (test_area (&diff_count_infos[j], i, test_area_proc) !=
-		NO_ERROR)
+	    if (test_area (&diff_count_infos[j], i, test_area_proc) != NO_ERROR)
 	      {
 		goto fail;
 	      }

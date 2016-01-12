@@ -44,11 +44,11 @@ typedef struct hash_tab_impl HASH_TAB_IMPL;
 struct hash_tab_impl
 {
   HASH_TAB ifs;
-  int size;			/* Max number of elements in table     */
+  int size;			/* Max number of elements in table */
   int numsyms;			/* Current number of elements in table */
-  HT_HASH_FN hash;		/* Hash function                       */
-  HT_CMP_FN cmp;		/* Comparison function                 */
-  BUCKET *table[1];		/* First element of actual table       */
+  HT_HASH_FN hash;		/* Hash function */
+  HT_CMP_FN cmp;		/* Comparison function */
+  BUCKET *table[1];		/* First element of actual table */
 };
 
 enum
@@ -69,8 +69,7 @@ static void *es_ht_add_symbol (HASH_TAB * table, void *sym);
 static void es_ht_remove_symbol (HASH_TAB * table, void *sym);
 static void *es_ht_find_symbol (HASH_TAB * table, void *sym);
 static void *es_ht_next_symbol (HASH_TAB * tbl, void *last_sym);
-static int
-es_ht_print_table (HASH_TAB * table, void (*print) (), void *param, int sort);
+static int es_ht_print_table (HASH_TAB * table, void (*print) (), void *param, int sort);
 static int es_ht_get_symbol_count (HASH_TAB * table);
 
 /*
@@ -87,8 +86,7 @@ es_write_log (const char *fname, const char *msg)
   /* We have to copy the message in case it came from pp_get_msg(). */
   msg_copy = pp_strdup (msg);
 
-  fprintf (stderr,
-	   pp_get_msg (EX_HASH_SET, MSG_INTERNAL_ERROR), fname, msg_copy);
+  fprintf (stderr, pp_get_msg (EX_HASH_SET, MSG_INTERNAL_ERROR), fname, msg_copy);
 
   free_and_init (msg_copy);
 }
@@ -276,7 +274,7 @@ es_ht_print_table (HASH_TAB * table, void (*print) (), void *param, int sort)
     {
       for (symtab = tbl->table, i = tbl->size; --i >= 0; ++symtab)
 	{
-	  /*
+	  /* 
 	   * Print all symbols in the current chain.  The +1 in the
 	   * print call adjusts the bucket pointer to point to the user
 	   * area of the bucket.
@@ -289,7 +287,7 @@ es_ht_print_table (HASH_TAB * table, void (*print) (), void *param, int sort)
     }
   else
     {
-      /*
+      /* 
        * Allocate enough memory for 'outtab', an array of pointers to
        * BUCKETs, and initialize it.  'outtab' is different from the
        * actual hash table in that every 'outtab' element points to a
@@ -307,8 +305,7 @@ es_ht_print_table (HASH_TAB * table, void (*print) (), void *param, int sort)
 	    {
 	      if (outp > outtab + tbl->numsyms)
 		{
-		  es_write_log ("es_ht_print_table",
-				pp_get_msg (EX_HASH_SET, MSG_TABLE_OVERFLOW));
+		  es_write_log ("es_ht_print_table", pp_get_msg (EX_HASH_SET, MSG_TABLE_OVERFLOW));
 		  free_and_init (outtab);
 		  return 0;
 		}
@@ -316,7 +313,7 @@ es_ht_print_table (HASH_TAB * table, void (*print) (), void *param, int sort)
 	    }
 	}
 
-      /*
+      /* 
        * Sort 'outtab' and then print it.
        */
       es_User_cmp = tbl->cmp;
@@ -384,8 +381,7 @@ es_ht_free_symbol (void *sym)
  * cmp_function(in): The comparison function used to compare two entries.
  */
 HASH_TAB *
-es_ht_make_table (unsigned maxsym, HT_HASH_FN hash_function,
-		  HT_CMP_FN cmp_function)
+es_ht_make_table (unsigned maxsym, HT_HASH_FN hash_function, HT_CMP_FN cmp_function)
 {
   HASH_TAB_IMPL *p;
   int n;

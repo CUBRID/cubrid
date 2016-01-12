@@ -75,13 +75,11 @@ typedef struct
   CSQL_STATEMENT_STATE state;
 } CSQL_EDIT_CONTENTS;
 
-static CSQL_EDIT_CONTENTS csql_Edit_contents =
-  { NULL, 0, 0, CSQL_STATE_GENERAL };
+static CSQL_EDIT_CONTENTS csql_Edit_contents = { NULL, 0, 0, CSQL_STATE_GENERAL };
 
 
 static void iq_pipe_handler (int sig_no);
-static void iq_format_err (char *string, int buf_size, int line_no,
-			   int col_no);
+static void iq_format_err (char *string, int buf_size, int line_no, int col_no);
 static bool iq_input_device_is_a_tty (void);
 static bool iq_output_device_is_a_tty (void);
 #if !defined(WINDOWS)
@@ -190,7 +188,7 @@ csql_get_real_path (const char *pathname)
       return NULL;
     }
 
-  /*
+  /* 
    * Do tilde-expansion here.
    */
   if (pathname[0] == '~')
@@ -384,9 +382,7 @@ csql_fputs_console_conv (const char *str, FILE * fp)
     }
 
   if (csql_text_utf8_to_console != NULL
-      && (*csql_text_utf8_to_console) (str, strlen (str), &conv_buf,
-				       &conv_buf_size) == NO_ERROR
-      && conv_buf != NULL)
+      && (*csql_text_utf8_to_console) (str, strlen (str), &conv_buf, &conv_buf_size) == NO_ERROR && conv_buf != NULL)
     {
       conv_buf_ptr = conv_buf;
     }
@@ -417,9 +413,8 @@ csql_popen (const char *cmd, FILE * fd)
 {
 
 #if defined(WINDOWS)
-  /* Nothing yet currently equivalent to the pagers on NT.
-   * Return iq_Output_fp so it can be simply sump stuff to the console.
-   */
+  /* Nothing yet currently equivalent to the pagers on NT. Return iq_Output_fp so it can be simply sump stuff to the
+   * console. */
   return fd;
 #else /* ! WINDOWS */
   FILE *pf;			/* pipe stream to pager */
@@ -486,13 +481,11 @@ iq_format_err (char *string, int buf_size, int line_no, int col_no)
     {
       if (col_no > 0)
 	snprintf (string, buf_size,
-		  msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
-				  CSQL_EXACT_POSITION_ERR_FORMAT), line_no,
+		  msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_EXACT_POSITION_ERR_FORMAT), line_no,
 		  col_no);
       else
 	snprintf (string, buf_size,
-		  msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
-				  CSQL_START_POSITION_ERR_FORMAT), line_no);
+		  msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_START_POSITION_ERR_FORMAT), line_no);
       strcat (string, "\n");
     }
 }
@@ -547,8 +540,7 @@ csql_display_session_err (DB_SESSION * session, int line_no)
       if (line_no > 0)
 	{
 	  csql_fputs ("\n", csql_Error_fp);
-	  iq_format_err (csql_Scratch_text, SCRATCH_TEXT_LEN, line_no,
-			 col_no);
+	  iq_format_err (csql_Scratch_text, SCRATCH_TEXT_LEN, line_no, col_no);
 	  csql_fputs_console_conv (csql_Scratch_text, csql_Error_fp);
 	}
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
@@ -583,9 +575,8 @@ csql_append_more_line (int indent, const char *line)
   char *conv_buf = NULL;
   int conv_buf_size = 0;
 
-  if (csql_text_utf8_to_console != NULL &&
-      (*csql_text_utf8_to_console) (line, strlen (line), &conv_buf,
-				    &conv_buf_size) == NO_ERROR)
+  if (csql_text_utf8_to_console != NULL
+      && (*csql_text_utf8_to_console) (line, strlen (line), &conv_buf, &conv_buf_size) == NO_ERROR)
     {
       line = (conv_buf != NULL) ? conv_buf : line;
     }
@@ -605,8 +596,7 @@ csql_append_more_line (int indent, const char *line)
 	}
       else
 	{
-	  t_lines =
-	    (char **) realloc (iq_More_lines, sizeof (char *) * new_num);
+	  t_lines = (char **) realloc (iq_More_lines, sizeof (char *) * new_num);
 	}
       if (t_lines == NULL)
 	{
@@ -621,9 +611,7 @@ csql_append_more_line (int indent, const char *line)
       iq_More_lines = t_lines;
     }
 
-  /* calculate # of bytes should be allocated to store
-   * the given line in tab-expanded form
-   */
+  /* calculate # of bytes should be allocated to store the given line in tab-expanded form */
   for (i = exp_len = 0, q = line; *q != '\0'; q++)
     {
       if (*q == '\n')
@@ -816,7 +804,7 @@ csql_get_tmp_buf (size_t size)
     }
   else
     {
-      /*
+      /* 
        * buf isn't big enough, so see if we have an already-malloc'ed
        * thing that is big enough.  If so, use it; if not, free it if
        * it exists, and then allocate a big enough one.
@@ -867,17 +855,15 @@ nonscr_display_error (char *buffer, int buf_length)
   strncpy (buffer, "\n", remaining);
   remaining -= strlen ("\n");
 
-  msg = msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
-			CSQL_ERROR_PREFIX);
+  msg = msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_ERROR_PREFIX);
   strncat (buffer, msg, remaining);
   remaining -= strlen (msg);
 
   errmsg = csql_errmsg (csql_Error_code);
   len_errmsg = strlen (errmsg);
 
-  if (csql_text_utf8_to_console != NULL &&
-      (*csql_text_utf8_to_console) (errmsg, len_errmsg,
-				    &con_buf_ptr, &con_buf_size) == NO_ERROR)
+  if (csql_text_utf8_to_console != NULL
+      && (*csql_text_utf8_to_console) (errmsg, len_errmsg, &con_buf_ptr, &con_buf_size) == NO_ERROR)
     {
       if (con_buf_ptr != NULL)
 	{
@@ -946,8 +932,7 @@ csql_edit_contents_expand (int required_size)
     {
       new_alloc_size *= 2;
     }
-  csql_Edit_contents.contents =
-    realloc (csql_Edit_contents.contents, new_alloc_size);
+  csql_Edit_contents.contents = realloc (csql_Edit_contents.contents, new_alloc_size);
   if (csql_Edit_contents.contents == NULL)
     {
       csql_Edit_contents.alloc_size = 0;
@@ -978,8 +963,7 @@ csql_edit_contents_append (const char *str, bool flag_append_new_line)
     {
       return CSQL_FAILURE;
     }
-  memcpy (csql_Edit_contents.contents + csql_Edit_contents.data_size, str,
-	  str_len);
+  memcpy (csql_Edit_contents.contents + csql_Edit_contents.data_size, str, str_len);
   csql_Edit_contents.data_size = new_data_size;
   if (flag_append_new_line)
     {
@@ -997,9 +981,8 @@ csql_edit_contents_append (const char *str, bool flag_append_new_line)
 void
 csql_walk_statement (const char *str)
 {
-  /* using flags but not adding many states in here may be not good choice,
-   * but it will not change the state machine model and save a lot of states.
-   */
+  /* using flags but not adding many states in here may be not good choice, but it will not change the state machine
+   * model and save a lot of states. */
   bool include_stmt = false;
   bool is_last_stmt_valid = true;
   const char *p;
@@ -1125,8 +1108,7 @@ csql_walk_statement (const char *str)
 	  break;
 
 	case CSQL_STATE_SINGLE_QUOTE:
-	  if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false
-	      && *p == '\\')
+	  if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false && *p == '\\')
 	    {
 	      p++;
 	    }
@@ -1145,8 +1127,7 @@ csql_walk_statement (const char *str)
 	  break;
 
 	case CSQL_STATE_MYSQL_QUOTE:
-	  if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false
-	      && *p == '\\')
+	  if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false && *p == '\\')
 	    {
 	      p++;
 	    }
@@ -1193,8 +1174,7 @@ csql_walk_statement (const char *str)
 
   /* when include other stmts and the last smt is non sense stmt. */
   if (include_stmt && !is_last_stmt_valid
-      && (state == CSQL_STATE_SQL_COMMENT || state == CSQL_STATE_CPP_COMMENT
-	  || state == CSQL_STATE_GENERAL))
+      && (state == CSQL_STATE_SQL_COMMENT || state == CSQL_STATE_CPP_COMMENT || state == CSQL_STATE_GENERAL))
     {
       state = CSQL_STATE_STATEMENT_END;
     }
@@ -1228,10 +1208,8 @@ bool
 csql_is_statement_in_block (void)
 {
   CSQL_STATEMENT_STATE state = csql_Edit_contents.state;
-  if (state == CSQL_STATE_C_COMMENT || state == CSQL_STATE_SINGLE_QUOTE
-      || state == CSQL_STATE_MYSQL_QUOTE
-      || state == CSQL_STATE_DOUBLE_QUOTE_IDENTIFIER
-      || state == CSQL_STATE_BACKTICK_IDENTIFIER
+  if (state == CSQL_STATE_C_COMMENT || state == CSQL_STATE_SINGLE_QUOTE || state == CSQL_STATE_MYSQL_QUOTE
+      || state == CSQL_STATE_DOUBLE_QUOTE_IDENTIFIER || state == CSQL_STATE_BACKTICK_IDENTIFIER
       || state == CSQL_STATE_BRACKET_IDENTIFIER)
     {
       return true;
@@ -1278,8 +1256,7 @@ csql_edit_read_file (FILE * fp)
     {
       char *line_begin = line_buf;
 
-      if (is_first_read_line
-	  && intl_is_bom_magic (line_buf, strlen (line_buf)))
+      if (is_first_read_line && intl_is_bom_magic (line_buf, strlen (line_buf)))
 	{
 	  line_begin += 3;
 	}
@@ -1305,9 +1282,7 @@ csql_edit_write_file (FILE * fp)
   int write_len;
   while (remain_size > 0)
     {
-      write_len =
-	(int) fwrite (p + (csql_Edit_contents.data_size - remain_size), 1,
-		      remain_size, fp);
+      write_len = (int) fwrite (p + (csql_Edit_contents.data_size - remain_size), 1, remain_size, fp);
       if (write_len <= 0)
 	{
 	  csql_Error_code = CSQL_ERR_OS_ERROR;

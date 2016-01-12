@@ -85,8 +85,7 @@ char_isdigit (int c)
 int
 char_isxdigit (int c)
 {
-  return (char_isdigit ((c)) || ((c) >= 'a' && (c) <= 'f')
-	  || ((c) >= 'A' && (c) <= 'F'));
+  return (char_isdigit ((c)) || ((c) >= 'a' && (c) <= 'f') || ((c) >= 'A' && (c) <= 'F'));
 }
 
 /*
@@ -110,8 +109,7 @@ char_isalnum (int c)
 int
 char_isspace (int c)
 {
-  return ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n'
-	  || (c) == '\f' || (c) == '\v');
+  return ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n' || (c) == '\f' || (c) == '\v');
 }
 
 /*
@@ -179,9 +177,7 @@ static const int SMALL_THORN = 254;
 int
 char_isupper_iso8859 (int c)
 {
-  return (char_isupper (c)
-	  || ((c) >= A_GRAVE_ACCENT && (c) <= CAPITAL_THORN
-	      && (c) != MULT_ISO8859));
+  return (char_isupper (c) || ((c) >= A_GRAVE_ACCENT && (c) <= CAPITAL_THORN && (c) != MULT_ISO8859));
 }
 
 /*
@@ -193,9 +189,7 @@ char_isupper_iso8859 (int c)
 int
 char_islower_iso8859 (int c)
 {
-  return (char_islower (c)
-	  || ((c) >= a_GRAVE_ACCENT && (c) <= SMALL_THORN
-	      && (c) != DIV_ISO8859));
+  return (char_islower (c) || ((c) >= a_GRAVE_ACCENT && (c) <= SMALL_THORN && (c) != DIV_ISO8859));
 }
 
 /*

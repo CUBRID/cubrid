@@ -41,25 +41,18 @@ ACCESS_INFO access_info[ACL_MAX_ITEM_COUNT];
 int num_access_info;
 int access_info_changed;
 
-static ACCESS_INFO *access_control_find_access_info (ACCESS_INFO ai[],
-						     int size, char *dbname,
-						     char *dbuser);
-static int access_control_read_ip_info (IP_INFO * ip_info, char *filename,
-					char *admin_err_msg);
+static ACCESS_INFO *access_control_find_access_info (ACCESS_INFO ai[], int size, char *dbname, char *dbuser);
+static int access_control_read_ip_info (IP_INFO * ip_info, char *filename, char *admin_err_msg);
 static void access_control_repath_file (char *path);
-static int access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p,
-						char *dbname, char *dbuser,
+static int access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p, char *dbname, char *dbuser,
 						unsigned char *address);
-static int access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p,
-				    IP_INFO * ip_info, unsigned char *address,
+static int access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, IP_INFO * ip_info, unsigned char *address,
 				    int info_index);
 static char *access_control_trim (char *str);
-static int record_ip_access_time (T_SHM_APPL_SERVER * shm_as_p,
-				  int info_index, int list_index);
+static int record_ip_access_time (T_SHM_APPL_SERVER * shm_as_p, int info_index, int list_index);
 
 int
-access_control_set_shm (T_SHM_APPL_SERVER * shm_as_p,
-			T_BROKER_INFO * br_info_p, T_SHM_BROKER * shm_br,
+access_control_set_shm (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p, T_SHM_BROKER * shm_br,
 			char *admin_err_msg)
 {
   shm_as_p->access_control = shm_br->access_control;
@@ -75,26 +68,21 @@ access_control_set_shm (T_SHM_APPL_SERVER * shm_as_p,
 
       if (uw_sem_init (sem_name) < 0)
 	{
-	  sprintf (admin_err_msg, "%s: cannot initialize acl semaphore",
-		   br_info_p->name);
+	  sprintf (admin_err_msg, "%s: cannot initialize acl semaphore", br_info_p->name);
 	  return -1;
 	}
 #else
       if (uw_sem_init (&shm_as_p->acl_sem) < 0)
 	{
-	  sprintf (admin_err_msg, "%s: cannot initialize acl semaphore",
-		   br_info_p->name);
+	  sprintf (admin_err_msg, "%s: cannot initialize acl semaphore", br_info_p->name);
 	  return -1;
 	}
 #endif
       if (shm_br->access_control_file[0] != '\0')
 	{
-	  set_cubrid_file (FID_ACCESS_CONTROL_FILE,
-			   shm_br->access_control_file);
+	  set_cubrid_file (FID_ACCESS_CONTROL_FILE, shm_br->access_control_file);
 	  access_file_name = get_cubrid_file_ptr (FID_ACCESS_CONTROL_FILE);
-	  if (access_control_read_config_file (shm_as_p,
-					       access_file_name,
-					       admin_err_msg) != 0)
+	  if (access_control_read_config_file (shm_as_p, access_file_name, admin_err_msg) != 0)
 	    {
 	      return -1;
 	    }
@@ -107,15 +95,13 @@ access_control_set_shm (T_SHM_APPL_SERVER * shm_as_p,
 }
 
 static ACCESS_INFO *
-access_control_find_access_info (ACCESS_INFO ai[], int size,
-				 char *dbname, char *dbuser)
+access_control_find_access_info (ACCESS_INFO ai[], int size, char *dbname, char *dbuser)
 {
   int i;
 
   for (i = 0; i < size; i++)
     {
-      if (strcmp (ai[i].dbname, dbname) == 0
-	  && strcmp (ai[i].dbuser, dbuser) == 0)
+      if (strcmp (ai[i].dbname, dbname) == 0 && strcmp (ai[i].dbuser, dbuser) == 0)
 	{
 	  return &ai[i];
 	}
@@ -125,8 +111,7 @@ access_control_find_access_info (ACCESS_INFO ai[], int size,
 }
 
 int
-access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
-				 char *filename, char *admin_err_msg)
+access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, char *admin_err_msg)
 {
   char buf[1024], path_buf[BROKER_PATH_MAX], *files, *token, *save = NULL;
   FILE *fd_access_list;
@@ -142,9 +127,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
 
   if (fd_access_list == NULL)
     {
-      sprintf (admin_err_msg,
-	       "%s: error while loading access control file(%s)",
-	       shm_appl->broker_name, filename);
+      sprintf (admin_err_msg, "%s: error while loading access control file(%s)", shm_appl->broker_name, filename);
       return -1;
     }
 
@@ -170,8 +153,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
 	  continue;
 	}
 
-      if (is_current_broker_section == false &&
-	  strncmp (buf, "[%", 2) == 0 && buf[strlen (buf) - 1] == ']')
+      if (is_current_broker_section == false && strncmp (buf, "[%", 2) == 0 && buf[strlen (buf) - 1] == ']')
 	{
 	  buf[strlen (buf) - 1] = '\0';
 	  if (strcasecmp (shm_appl->broker_name, buf + 2) == 0)
@@ -196,9 +178,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
 
       if (num_access_list >= ACL_MAX_ITEM_COUNT)
 	{
-	  sprintf (admin_err_msg,
-		   "%s: error while loading access control file(%s)"
-		   " - max item count(%d) exceeded.",
+	  sprintf (admin_err_msg, "%s: error while loading access control file(%s)" " - max item count(%d) exceeded.",
 		   shm_appl->broker_name, filename, ACL_MAX_ITEM_COUNT);
 	  goto error;
 	}
@@ -207,8 +187,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
       if (dbname == NULL || strlen (dbname) > (ACL_MAX_DBNAME_LENGTH - 1))
 	{
 	  sprintf (admin_err_msg,
-		   "%s: error while loading access control file(%s:%d)"
-		   " - Database name is empty or too long.",
+		   "%s: error while loading access control file(%s:%d)" " - Database name is empty or too long.",
 		   shm_appl->broker_name, filename, line);
 	  goto error;
 	}
@@ -217,8 +196,7 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
       if (dbuser == NULL || strlen (dbuser) > (ACL_MAX_DBUSER_LENGTH - 1))
 	{
 	  sprintf (admin_err_msg,
-		   "%s: error while loading access control file(%s:%d)"
-		   " - Database user is empty or too long.",
+		   "%s: error while loading access control file(%s:%d)" " - Database user is empty or too long.",
 		   shm_appl->broker_name, filename, line);
 	  goto error;
 	}
@@ -227,15 +205,12 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
       if (ip_file == NULL)
 	{
 	  sprintf (admin_err_msg,
-		   "%s: error while loading access control file(%s:%d)"
-		   " - IP list file paths are empty.",
+		   "%s: error while loading access control file(%s:%d)" " - IP list file paths are empty.",
 		   shm_appl->broker_name, filename, line);
 	  goto error;
 	}
 
-      access_info = access_control_find_access_info (new_access_info,
-						     num_access_list, dbname,
-						     dbuser);
+      access_info = access_control_find_access_info (new_access_info, num_access_list, dbname, dbuser);
       if (access_info == NULL)
 	{
 	  access_info = &new_access_info[num_access_list];
@@ -260,16 +235,14 @@ access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
 	  if (strlen (token) > BROKER_PATH_MAX - 1)
 	    {
 	      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
-			"%s: error while loading access control file(%s)"
-			" - a IP file path(%s) is too long",
+			"%s: error while loading access control file(%s)" " - a IP file path(%s) is too long",
 			shm_appl->broker_name, filename, token);
 	      goto error;
 	    }
 
 	  strncpy (path_buf, token, BROKER_PATH_MAX);
 	  access_control_repath_file (path_buf);
-	  if (access_control_read_ip_info (&(access_info->ip_info),
-					   path_buf, admin_err_msg) < 0)
+	  if (access_control_read_ip_info (&(access_info->ip_info), path_buf, admin_err_msg) < 0)
 	    {
 	      goto error;
 	    }
@@ -328,8 +301,7 @@ access_control_repath_file (char *path)
 }
 
 static int
-access_control_read_ip_info (IP_INFO * ip_info, char *filename,
-			     char *admin_err_msg)
+access_control_read_ip_info (IP_INFO * ip_info, char *filename, char *admin_err_msg)
 {
   char buf[LINE_MAX];
   char *save;
@@ -354,8 +326,7 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
       ln++;
       if (buf[LINE_MAX - 2] != 0 && buf[LINE_MAX - 2] != '\n')
 	{
-	  sprintf (admin_err_msg, "Error while loading ip info file(%s)"
-		   " - %d line is too long", filename, ln);
+	  sprintf (admin_err_msg, "Error while loading ip info file(%s)" " - %d line is too long", filename, ln);
 	  goto error;
 	}
 
@@ -373,9 +344,7 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
 
       if (ip_info->num_list >= ACL_MAX_IP_COUNT)
 	{
-	  sprintf (admin_err_msg,
-		   "Error while loading ip info file(%s) line(%d)"
-		   " - max ip count(%d) exceeded.",
+	  sprintf (admin_err_msg, "Error while loading ip info file(%s) line(%d)" " - max ip count(%d) exceeded.",
 		   filename, ln, ACL_MAX_IP_COUNT);
 	  goto error;
 	}
@@ -387,9 +356,7 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
 	{
 	  if (token == NULL)
 	    {
-	      sprintf (admin_err_msg,
-		       "Error while loading ip info file(%s) line(%d)",
-		       filename, ln);
+	      sprintf (admin_err_msg, "Error while loading ip info file(%s) line(%d)", filename, ln);
 	      goto error;
 	    }
 
@@ -405,22 +372,17 @@ access_control_read_ip_info (IP_INFO * ip_info, char *filename,
 
 	      if (result != 0 || adr > 255 || adr < 0)
 		{
-		  sprintf (admin_err_msg,
-			   "Error while loading ip info file(%s) line(%d)",
-			   filename, ln);
+		  sprintf (admin_err_msg, "Error while loading ip info file(%s) line(%d)", filename, ln);
 		  goto error;
 		}
 
-	      ip_info->address_list[address_index + 1 + i] =
-		(unsigned char) adr;
+	      ip_info->address_list[address_index + 1 + i] = (unsigned char) adr;
 	    }
 
 	  token = strtok_r (NULL, ".", &save);
 	  if (i == 3 && token != NULL)
 	    {
-	      sprintf (admin_err_msg,
-		       "Error while loading ip info file(%s) line(%d)",
-		       filename, ln);
+	      sprintf (admin_err_msg, "Error while loading ip info file(%s) line(%d)", filename, ln);
 	      goto error;
 	    }
 	}
@@ -438,9 +400,7 @@ error:
 }
 
 int
-access_control_check_right (T_SHM_APPL_SERVER * shm_as_p,
-			    char *dbname, char *dbuser,
-			    unsigned char *address)
+access_control_check_right (T_SHM_APPL_SERVER * shm_as_p, char *dbname, char *dbuser, unsigned char *address)
 {
   if (access_info_changed != shm_as_p->acl_chn)
     {
@@ -462,22 +422,18 @@ access_control_check_right (T_SHM_APPL_SERVER * shm_as_p,
 #endif
     }
 
-  return (access_control_check_right_internal
-	  (shm_as_p, dbname, dbuser, address));
+  return (access_control_check_right_internal (shm_as_p, dbname, dbuser, address));
 }
 
 static int
-access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p,
-				     char *dbname, char *dbuser,
-				     unsigned char *address)
+access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p, char *dbname, char *dbuser, unsigned char *address)
 {
   int i;
   char *address_ptr;
   int ret_val = -1;
   bool local_ip_flag = false;
 
-  if (address[0] == 127 && address[1] == 0 &&
-      address[2] == 0 && address[3] == 1)
+  if (address[0] == 127 && address[1] == 0 && address[2] == 0 && address[3] == 1)
     {
       local_ip_flag = true;
     }
@@ -491,22 +447,18 @@ access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p,
   for (i = 0; i < num_access_info; i++)
     {
       if ((strcmp (access_info[i].dbname, "*") == 0
-	   || strncasecmp (access_info[i].dbname, dbname,
-			   ACL_MAX_DBNAME_LENGTH) == 0)
+	   || strncasecmp (access_info[i].dbname, dbname, ACL_MAX_DBNAME_LENGTH) == 0)
 	  && (strcmp (access_info[i].dbuser, "*") == 0
-	      || strncasecmp (access_info[i].dbuser, dbuser,
-			      ACL_MAX_DBUSER_LENGTH) == 0))
+	      || strncasecmp (access_info[i].dbuser, dbuser, ACL_MAX_DBUSER_LENGTH) == 0))
 	{
-	  if (access_control_check_ip
-	      (shm_as_p, &access_info[i].ip_info, address, i) == 0)
+	  if (access_control_check_ip (shm_as_p, &access_info[i].ip_info, address, i) == 0)
 	    {
 	      ret_val = 0;
 	      break;
 	    }
 
 	  if (local_ip_flag == true
-	      && access_control_check_ip (shm_as_p, &access_info[i].ip_info,
-					  shm_as_p->local_ip_addr, i) == 0)
+	      && access_control_check_ip (shm_as_p, &access_info[i].ip_info, shm_as_p->local_ip_addr, i) == 0)
 	    {
 	      break;
 	    }
@@ -527,8 +479,7 @@ access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p,
 }
 
 static int
-access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, IP_INFO * ip_info,
-			 unsigned char *address, int info_index)
+access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, IP_INFO * ip_info, unsigned char *address, int info_index)
 {
   int i;
 
@@ -543,9 +494,10 @@ access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, IP_INFO * ip_info,
 	  record_ip_access_time (shm_as_p, info_index, i);
 	  return 0;
 	}
-      else if (memcmp ((void *) &ip_info->address_list[address_index + 1],
-		       (void *) address,
-		       ip_info->address_list[address_index]) == 0)
+      else
+	if (memcmp
+	    ((void *) &ip_info->address_list[address_index + 1], (void *) address,
+	     ip_info->address_list[address_index]) == 0)
 	{
 	  record_ip_access_time (shm_as_p, info_index, i);
 	  return 0;
@@ -556,8 +508,7 @@ access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, IP_INFO * ip_info,
 }
 
 static int
-record_ip_access_time (T_SHM_APPL_SERVER * shm_as_p, int info_index,
-		       int list_index)
+record_ip_access_time (T_SHM_APPL_SERVER * shm_as_p, int info_index, int list_index)
 {
 #if defined (WINDOWS)
   char acl_sem_name[BROKER_NAME_LEN];
@@ -572,8 +523,7 @@ record_ip_access_time (T_SHM_APPL_SERVER * shm_as_p, int info_index,
 #else
   uw_sem_wait (&shm_as_p->acl_sem);
 #endif
-  shm_as_p->access_info[info_index].ip_info.last_access_time[list_index] =
-    time (NULL);
+  shm_as_p->access_info[info_index].ip_info.last_access_time[list_index] = time (NULL);
 #if defined (WINDOWS)
   uw_sem_post (acl_sem_name);
 #else

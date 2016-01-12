@@ -90,8 +90,7 @@ static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
 static DB_HOST_STATUS *db_find_host_status (char *hostname);
 
 static void install_static_methods (void);
-static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose,
-			       int quit_on_error);
+static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error);
 #if !defined(WINDOWS)
 void sigfpe_handler (int sig);
 #endif
@@ -138,12 +137,10 @@ install_static_methods (void)
  */
 
 int
-db_init (const char *program, int print_version,
-	 const char *dbname, const char *db_path, const char *vol_path,
-	 const char *log_path, const char *lob_path, const char *host_name,
-	 const bool overwrite, const char *comments,
-	 const char *addmore_vols_file, int npages, int desired_pagesize,
-	 int log_npages, int desired_log_page_size, const char *lang_charset)
+db_init (const char *program, int print_version, const char *dbname, const char *db_path, const char *vol_path,
+	 const char *log_path, const char *lob_path, const char *host_name, const bool overwrite, const char *comments,
+	 const char *addmore_vols_file, int npages, int desired_pagesize, int log_npages, int desired_log_page_size,
+	 const char *lang_charset)
 {
 #if defined (CUBRID_DEBUG)
   int value;
@@ -160,8 +157,7 @@ db_init (const char *program, int print_version,
 #if defined (CUBRID_DEBUG)
   if (addmore_vols_file == NULL)
     {
-      /* Added for debugging of multivols using old test programs/scripts
-         What to do with volumes. */
+      /* Added for debugging of multivols using old test programs/scripts What to do with volumes. */
       env_value = envvar_get ("BOSR_SPLIT_INIT_VOLUME");
       if (env_value != NULL)
 	{
@@ -179,16 +175,11 @@ db_init (const char *program, int print_version,
 
 	  db_npages = npages / 4;
 
-	  if (tmpnam (more_vol_info_temp_file) != NULL
-	      && (more_vols_fp =
-		  fopen (more_vol_info_temp_file, "w")) != NULL)
+	  if (tmpnam (more_vol_info_temp_file) != NULL && (more_vols_fp = fopen (more_vol_info_temp_file, "w")) != NULL)
 	    {
-	      fprintf (more_vols_fp, "%s %s %s %d", "PURPOSE", "DATA",
-		       "NPAGES", db_npages);
-	      fprintf (more_vols_fp, "%s %s %s %d", "PURPOSE", "INDEX",
-		       "NPAGES", db_npages);
-	      fprintf (more_vols_fp, "%s %s %s %d", "PURPOSE", "TEMP",
-		       "NPAGES", db_npages);
+	      fprintf (more_vols_fp, "%s %s %s %d", "PURPOSE", "DATA", "NPAGES", db_npages);
+	      fprintf (more_vols_fp, "%s %s %s %d", "PURPOSE", "INDEX", "NPAGES", db_npages);
+	      fprintf (more_vols_fp, "%s %s %s %d", "PURPOSE", "TEMP", "NPAGES", db_npages);
 	      fclose (more_vols_fp);
 
 	      if ((db_npages * 4) != npages)
@@ -200,8 +191,7 @@ db_init (const char *program, int print_version,
 		  npages = db_npages;
 		}
 
-	      addmore_vols_file = more_vol_info_file =
-		more_vol_info_temp_file;
+	      addmore_vols_file = more_vol_info_file = more_vol_info_temp_file;
 	    }
 	}
     }
@@ -256,12 +246,9 @@ db_init (const char *program, int print_version,
   db_path_info.db_host = (char *) host_name;
   db_path_info.db_comments = (char *) comments;
 
-  error = boot_initialize_client (&client_credential, &db_path_info,
-				  (bool) overwrite, addmore_vols_file,
-				  npages, (PGLENGTH) desired_pagesize,
-				  log_npages,
-				  (PGLENGTH) desired_log_page_size,
-				  lang_charset);
+  error =
+    boot_initialize_client (&client_credential, &db_path_info, (bool) overwrite, addmore_vols_file, npages,
+			    (PGLENGTH) desired_pagesize, log_npages, (PGLENGTH) desired_log_page_size, lang_charset);
 
   if (more_vol_info_file != NULL)
     {
@@ -308,8 +295,7 @@ db_init (const char *program, int print_version,
  *
  */
 int
-db_add_volume (const char *ext_path, const char *ext_name,
-	       const char *ext_comments, const int ext_npages,
+db_add_volume (const char *ext_path, const char *ext_name, const char *ext_comments, const int ext_npages,
 	       const DB_VOLPURPOSE ext_purpose)
 {
   DBDEF_VOL_EXT_INFO ext_info;
@@ -348,8 +334,7 @@ db_add_volume_ex (DBDEF_VOL_EXT_INFO * ext_info)
 
   if (Au_dba_user != NULL && !au_is_dba_group_member (Au_user))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1,
-	      "db_add_volume");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "db_add_volume");
       return er_errid ();
     }
 
@@ -381,8 +366,7 @@ db_del_volume_ex (VOLID volid, bool clear_cached_files)
 
   if (Au_dba_user != NULL && !au_is_dba_group_member (Au_user))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1,
-	      "db_del_volume");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "db_del_volume");
       return er_errid ();
     }
 
@@ -521,8 +505,7 @@ db_get_client_type (void)
 void
 db_set_client_type (int client_type)
 {
-  if (client_type > DB_CLIENT_TYPE_MAX
-      || client_type < DB_CLIENT_TYPE_DEFAULT)
+  if (client_type > DB_CLIENT_TYPE_MAX || client_type < DB_CLIENT_TYPE_DEFAULT)
     {
       db_Client_type = DB_CLIENT_TYPE_DEFAULT;
     }
@@ -656,14 +639,12 @@ db_add_host_status (char *hostname, int status)
   DB_HOST_STATUS *host_status;
   int idx;
 
-  assert (db_Host_status_list.last_host_idx + 1 <
-	  (int) DIM (db_Host_status_list.hostlist));
+  assert (db_Host_status_list.last_host_idx + 1 < (int) DIM (db_Host_status_list.hostlist));
 
   idx = ++db_Host_status_list.last_host_idx;
   host_status = &db_Host_status_list.hostlist[idx];
 
-  strncpy (host_status->hostname, hostname,
-	   sizeof (host_status->hostname) - 1);
+  strncpy (host_status->hostname, hostname, sizeof (host_status->hostname) - 1);
   host_status->status |= status;
 
   return host_status;
@@ -722,8 +703,7 @@ db_set_connected_host_status (char *host_connected)
     }
   else
     {
-      db_Host_status_list.connected_host_status =
-	db_add_host_status (host_connected, DB_HS_NORMAL);
+      db_Host_status_list.connected_host_status = db_add_host_status (host_connected, DB_HS_NORMAL);
     }
 
   return;
@@ -778,8 +758,7 @@ db_need_ignore_repl_delay (void)
 {
   if (db_Host_status_list.connected_host_status != NULL)
     {
-      return ((db_Host_status_list.connected_host_status->
-	       status & DB_HS_HA_DELAYED) != 0);
+      return ((db_Host_status_list.connected_host_status->status & DB_HS_HA_DELAYED) != 0);
     }
 
   return false;
@@ -808,8 +787,7 @@ db_does_connected_host_have_status (int status)
  *   status(in): status that a caller is looking for
  */
 int
-db_get_host_list_with_given_status (char **hostlist, int list_size,
-				    int status)
+db_get_host_list_with_given_status (char **hostlist, int list_size, int status)
 {
   int i, num_hosts = 0;
 
@@ -870,10 +848,8 @@ sigfpe_handler (int sig)
     {
       (*prev_sigfpe_handler) (sig);
     }
-  /* If using reliable signals, the previous handler is this routine
-   * because it's been reestablished.  In that case, don't change
-   * the value of the user's handler.
-   */
+  /* If using reliable signals, the previous handler is this routine because it's been reestablished.  In that case,
+   * don't change the value of the user's handler. */
   prev_sig = os_set_signal_handler (SIGFPE, sigfpe_handler);
   if (prev_sig != sigfpe_handler)
     {
@@ -911,17 +887,15 @@ db_restart (const char *program, int print_version, const char *volume)
   if (program == NULL || volume == NULL)
     {
       error = ER_OBJ_INVALID_ARGUMENTS;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
     }
   else
     {
       strncpy (db_Program_name, program, PATH_MAX);
       db_Database_name[0] = '\0';
 
-      /* authorization will need to access the database and call some db_
-         functions so assume connection will be ok until after boot_restart_client
-         returns */
+      /* authorization will need to access the database and call some db_ functions so assume connection will be ok
+       * until after boot_restart_client returns */
       db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
       client_credential.client_type = (BOOT_CLIENT_TYPE) db_Client_type;
@@ -950,12 +924,10 @@ db_restart (const char *program, int print_version, const char *volume)
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS))
 	  if (!jsp_jvm_is_loaded ())
 	    {
-	      prev_sigfpe_handler =
-		os_set_signal_handler (SIGFPE, sigfpe_handler);
+	      prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 	    }
 #else /* SA_MODE && (LINUX||X86_SOLARIS) */
-	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE,
-						       sigfpe_handler);
+	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
 	}
@@ -978,9 +950,8 @@ db_restart (const char *program, int print_version, const char *volume)
  *                         use db_set_preferred_hosts instead
  */
 int
-db_restart_ex (const char *program, const char *db_name, const char *db_user,
-	       const char *db_password, const char *preferred_hosts,
-	       int client_type)
+db_restart_ex (const char *program, const char *db_name, const char *db_user, const char *db_password,
+	       const char *preferred_hosts, int client_type)
 {
   int retval;
 
@@ -992,8 +963,7 @@ db_restart_ex (const char *program, const char *db_name, const char *db_user,
 
   db_set_client_type (client_type);
 #if !defined(CS_MODE)
-  /* if we're in SERVER_MODE, this is the only place where we can initialize
-     the sessions state module */
+  /* if we're in SERVER_MODE, this is the only place where we can initialize the sessions state module */
   switch (client_type)
     {
     case DB_CLIENT_TYPE_ADMIN_CSQL:
@@ -1004,11 +974,8 @@ db_restart_ex (const char *program, const char *db_name, const char *db_user,
       break;
     }
 #endif
-  /* For backward compatibility.
-   * Do not use the parameter, preferred_hosts.
-   * A caller is supposed to use db_set_preferred_hosts
-   * before db_restart_ex is called.
-   */
+  /* For backward compatibility. Do not use the parameter, preferred_hosts. A caller is supposed to use
+   * db_set_preferred_hosts before db_restart_ex is called. */
   if (preferred_hosts != NULL)
     {
       db_set_preferred_hosts (preferred_hosts);
@@ -1063,7 +1030,7 @@ db_ping_server (int client_val, int *server_val)
 int
 db_disable_modification (void)
 {
-  /*CHECK_CONNECT_ERROR (); */
+  /* CHECK_CONNECT_ERROR (); */
   db_Disable_modifications++;
   return NO_ERROR;
 }
@@ -1077,7 +1044,7 @@ db_disable_modification (void)
 int
 db_enable_modification (void)
 {
-  /*CHECK_CONNECT_ERROR (); */
+  /* CHECK_CONNECT_ERROR (); */
   db_Disable_modifications--;
   return NO_ERROR;
 }
@@ -1156,7 +1123,7 @@ db_commit_transaction (void)
   int retval;
 
   CHECK_CONNECT_ERROR ();
-  /*CHECK_MODIFICATION_ERROR (); */
+  /* CHECK_MODIFICATION_ERROR (); */
 
   /* API does not support RETAIN LOCK */
   retval = tran_commit (false);
@@ -1179,7 +1146,7 @@ db_abort_transaction (void)
   int error;
 
   CHECK_CONNECT_ERROR ();
-  /*CHECK_MODIFICATION_ERROR (); */
+  /* CHECK_MODIFICATION_ERROR (); */
 
   error = tran_abort ();
 
@@ -1307,8 +1274,7 @@ db_abort_to_savepoint (const char *savepoint_name)
  * size(in) : size of the user information to be set
  */
 int
-db_set_global_transaction_info (int global_transaction_id, void *info,
-				int size)
+db_set_global_transaction_info (int global_transaction_id, void *info, int size)
 {
   int retval;
 
@@ -1317,8 +1283,7 @@ db_set_global_transaction_info (int global_transaction_id, void *info,
 
   if (global_transaction_id <= 0 || info == NULL || size <= 0)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -1342,8 +1307,7 @@ db_set_global_transaction_info (int global_transaction_id, void *info,
  *
  */
 int
-db_get_global_transaction_info (int global_transaction_id, void *buffer,
-				int size)
+db_get_global_transaction_info (int global_transaction_id, void *buffer, int size)
 {
   int retval;
 
@@ -1352,8 +1316,7 @@ db_get_global_transaction_info (int global_transaction_id, void *buffer,
 
   if (global_transaction_id <= 0 || buffer == NULL || size <= 0)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -1431,8 +1394,7 @@ db_2pc_prepared_transactions (int gtrids[], int size)
 
   if (gtrids == NULL || size <= 0)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -1611,8 +1573,7 @@ db_get_tran_settings (int *lock_wait, DB_TRAN_ISOLATION * tran_isolation)
 
   CHECK_CONNECT_VOID ();
   /* API does not support ASYNC WORKSPACE */
-  tran_get_tran_settings (&lock_timeout_in_msecs, tran_isolation,
-			  &dummy /* async_ws */ );
+  tran_get_tran_settings (&lock_timeout_in_msecs, tran_isolation, &dummy /* async_ws */ );
   if (lock_timeout_in_msecs > 0)
     {
       *lock_wait = lock_timeout_in_msecs / 1000;
@@ -1796,8 +1757,7 @@ db_drop_member (DB_OBJECT * user, DB_OBJECT * member)
  *
  */
 int
-db_set_password (DB_OBJECT * user, const char *old_passwd,
-		 const char *new_passwd)
+db_set_password (DB_OBJECT * user, const char *old_passwd, const char *new_passwd)
 {
   int retval;
 
@@ -1910,8 +1870,7 @@ db_check_authorization (MOP op, DB_AUTH auth)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (op);
 
-  /* should try to get a write lock on the class if the authorization
-     type is AU_ALTER or AU_INDEX ? */
+  /* should try to get a write lock on the class if the authorization type is AU_ALTER or AU_INDEX ? */
 
   retval = (au_fetch_class (op, &class_, AU_FETCH_READ, auth));
 
@@ -1935,8 +1894,7 @@ db_check_authorization_and_grant_option (MOP op, DB_AUTH auth)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (op);
 
-  retval = (au_fetch_class (op, &class_, AU_FETCH_READ,
-			    (DB_AUTH) (auth | (auth << AU_GRANT_SHIFT))));
+  retval = (au_fetch_class (op, &class_, AU_FETCH_READ, (DB_AUTH) (auth | (auth << AU_GRANT_SHIFT))));
 
   return (retval);
 }
@@ -1973,9 +1931,8 @@ db_get_user_name (void)
 
   CHECK_CONNECT_NULL ();
 
-  /* Kludge, twiddle the constness of this thing.  It probably
-     doesn't need to be const anyway, its just a copy of the
-     attribute value. */
+  /* Kludge, twiddle the constness of this thing.  It probably doesn't need to be const anyway, its just a copy of the
+   * attribute value. */
   name = au_user_name ();
 
   return ((char *) name);
@@ -2012,8 +1969,7 @@ db_get_user_and_host_name (void)
   if (!user)
     {
       db_string_free (username);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) len);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len);
       return 0;
     }
 
@@ -2163,17 +2119,14 @@ db_totalpgs (const char *volume_label)
  *                    is set to the total number of pages for all volumes.
  */
 int
-db_purpose_totalpgs_freepgs (int volid,
-			     DB_VOLPURPOSE * vol_purpose,
-			     int *vol_ntotal_pages, int *vol_nfree_pages)
+db_purpose_totalpgs_freepgs (int volid, DB_VOLPURPOSE * vol_purpose, int *vol_ntotal_pages, int *vol_nfree_pages)
 {
   int retval;
   VOL_SPACE_INFO space_info;
 
   CHECK_CONNECT_ZERO ();
 
-  retval =
-    (int) disk_get_purpose_and_space_info (volid, vol_purpose, &space_info);
+  retval = (int) disk_get_purpose_and_space_info (volid, vol_purpose, &space_info);
 
   if (vol_ntotal_pages)
     {
@@ -2288,8 +2241,7 @@ db_error_init (const char *logfile)
 db_error_log_handler_t
 db_register_error_log_handler (db_error_log_handler_t f)
 {
-  return (db_error_log_handler_t) er_register_log_handler ((er_log_handler_t)
-							   f);
+  return (db_error_log_handler_t) er_register_log_handler ((er_log_handler_t) f);
 }
 
 /*
@@ -2320,8 +2272,7 @@ db_register_error_log_handler (db_error_log_handler_t f)
  */
 
 int
-db_fetch_array (DB_OBJECT ** objects, DB_FETCH_MODE purpose,
-		int quit_on_error)
+db_fetch_array (DB_OBJECT ** objects, DB_FETCH_MODE purpose, int quit_on_error)
 {
   int error = NO_ERROR;
   int count = 0;
@@ -2340,8 +2291,7 @@ db_fetch_array (DB_OBJECT ** objects, DB_FETCH_MODE purpose,
       ;
     }
 
-  obj = locator_fetch_set (count, objects, purpose, DB_FETCH_READ,
-			   quit_on_error);
+  obj = locator_fetch_set (count, objects, purpose, DB_FETCH_READ, quit_on_error);
   if (obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -2373,8 +2323,7 @@ db_fetch_list (DB_OBJLIST * objects, DB_FETCH_MODE purpose, int quit_on_error)
       object_array = (DB_OBJECT **) malloc (sizeof (DB_OBJECT *) * (len + 1));
       if (object_array != NULL)
 	{
-	  for (object_list = objects, i = 0; object_list != NULL;
-	       object_list = object_list->next, i++)
+	  for (object_list = objects, i = 0; object_list != NULL; object_list = object_list->next, i++)
 	    {
 	      object_array[i] = object_list->op;
 	    }
@@ -2434,8 +2383,7 @@ fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error)
       if (mops == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, buf_size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	  return error;
 	}
       cnt = 0;
@@ -2445,8 +2393,7 @@ fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error)
 	  error = set_get_element (set, i, &value);
 	  if (error == NO_ERROR)
 	    {
-	      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT
-		  && DB_GET_OBJECT (&value) != NULL)
+	      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && DB_GET_OBJECT (&value) != NULL)
 		{
 		  mops[cnt] = DB_GET_OBJECT (&value);
 		  cnt++;
@@ -2457,10 +2404,7 @@ fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error)
       mops[cnt] = NULL;
       if (error == NO_ERROR && cnt)
 	{
-	  obj
-	    =
-	    locator_fetch_set (cnt, mops, purpose, DB_FETCH_READ,
-			       quit_on_error);
+	  obj = locator_fetch_set (cnt, mops, purpose, DB_FETCH_READ, quit_on_error);
 	  if (obj == NULL)
 	    {
 	      error = er_errid ();
@@ -2519,8 +2463,7 @@ db_fetch_seq (DB_SEQ * seq, DB_FETCH_MODE purpose, int quit_on_error)
  * quit_on_error(in) : non-zero if operation quits after first error
  */
 int
-db_fetch_composition (DB_OBJECT * object, DB_FETCH_MODE purpose,
-		      int max_level, int quit_on_error)
+db_fetch_composition (DB_OBJECT * object, DB_FETCH_MODE purpose, int max_level, int quit_on_error)
 {
   int error = NO_ERROR;
   MOBJ obj = NULL;
@@ -2540,11 +2483,8 @@ db_fetch_composition (DB_OBJECT * object, DB_FETCH_MODE purpose,
     }
   else
     {
-      /* we don't do proxies, but probably should. This protects
-       * locator_fetch from virtual db_objects
-       */
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      /* we don't do proxies, but probably should. This protects locator_fetch from virtual db_objects */
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
     }
   if (obj == NULL)
     {
@@ -2807,12 +2747,10 @@ db_set_system_parameters (const char *data)
   /* validate changes */
   rc = sysprm_validate_change_parameters (data, true, &assignments);
   /* If a server parameter is changed, user must belong to DBA group */
-  if (rc == PRM_ERR_NOT_FOR_CLIENT && Au_dba_user != NULL
-      && !au_is_dba_group_member (Au_user))
+  if (rc == PRM_ERR_NOT_FOR_CLIENT && Au_dba_user != NULL && !au_is_dba_group_member (Au_user))
     {
       /* user is not authorized to do the changes */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1,
-	      "db_set_system_parameters");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "db_set_system_parameters");
       error = ER_AU_DBA_ONLY;
       goto cleanup;
     }
@@ -2926,7 +2864,7 @@ db_get_system_parameters (char *data, int len)
 char *
 db_get_host_connected (void)
 {
-  /*CHECK_CONNECT_NULL (); */
+  /* CHECK_CONNECT_NULL (); */
 
 #if defined(CS_MODE)
   return boot_get_host_connected ();
@@ -2935,7 +2873,7 @@ db_get_host_connected (void)
 #endif
 }
 
- /*
+ /* 
   * db_get_ha_server_state() - get the connected server's HA state
   * return : number defined in HA_SERVER_STATE
   * buffer(out) : buffer where the string of the HA state to be stored.
@@ -3013,10 +2951,7 @@ db_find_or_create_session (const char *db_user, const char *program_name)
 
   server_session_key = db_get_server_session_key ();
   /* server_session_key is in/out parameter, it is replaced new key */
-  err =
-    csession_find_or_create_session (&sess_id, &row_count,
-				     server_session_key, db_user, host_name,
-				     program_name);
+  err = csession_find_or_create_session (&sess_id, &row_count, server_session_key, db_user, host_name, program_name);
   if (err != NO_ERROR)
     {
       db_set_session_id (DB_EMPTY_SESSION);

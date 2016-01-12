@@ -26,18 +26,15 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
  * OF SUCH DAMAGE. 
  *
- */
-
+ */  
+  
 #pragma once
-
-class CSRColumns : 
-	public CSchemaRowsetImpl< CSRColumns, CCOLUMNSRow, CCUBRIDSession>
+class CSRColumns:public CSchemaRowsetImpl < CSRColumns, CCOLUMNSRow, CCUBRIDSession > 
 {
-public:
-	~CSRColumns();
+public:~CSRColumns ();
+  SR_PROPSET_MAP (CSRColumns)  HRESULT Execute (LONG * pcRowsAffected, ULONG cRestrictions,
+						    const VARIANT * rgRestrictions);
+  DBSTATUS GetDBStatus (CSimpleRow *, ATLCOLUMNINFO * pInfo);
+};
 
-	SR_PROPSET_MAP(CSRColumns)
 
-	HRESULT Execute(LONG* pcRowsAffected, ULONG cRestrictions, const VARIANT *rgRestrictions);
-	DBSTATUS GetDBStatus(CSimpleRow*, ATLCOLUMNINFO* pInfo);
-};

@@ -52,8 +52,7 @@
 #define TXT_CONV_ITEM_GROW_COUNT 128
 
 #define LOC_CURRENT_COLL_TAIL(ld) (&(ld->collations[ld->coll_cnt].tail_coll))
-const char *ldml_ref_day_names[] =
-  { "sun", "mon", "tue", "wed", "thu", "fri", "sat" };
+const char *ldml_ref_day_names[] = { "sun", "mon", "tue", "wed", "thu", "fri", "sat" };
 
 /* this must map to 'Am_Pm_name' from string_opfunc.c */
 const char *ldml_ref_am_pm_names[] = { "am", "pm", "Am", "Pm", "AM", "PM",
@@ -125,12 +124,9 @@ static int start_collation_rule (void *data, const char **attr);
 static int start_collation_cubrid_rule (void *data, const char **attr);
 static int start_collation_cubrid_rule_set_wr (void *data, const char **attr);
 static int end_collation_cubrid_rule_set (void *data, const char *el_name);
-static int end_collation_cubrid_rule_set_cp_ch (void *data,
-						const char *el_name);
-static int end_collation_cubrid_rule_set_ech_ecp (void *data,
-						  const char *el_name);
-static int end_collation_cubrid_rule_set_w_wr (void *data,
-					       const char *el_name);
+static int end_collation_cubrid_rule_set_cp_ch (void *data, const char *el_name);
+static int end_collation_cubrid_rule_set_ech_ecp (void *data, const char *el_name);
+static int end_collation_cubrid_rule_set_w_wr (void *data, const char *el_name);
 static int handle_data_collation_rule (void *data, const char *s, int len);
 static int end_collation_rule (void *data, const char *el_name);
 static int start_collation_x (void *data, const char **attr);
@@ -163,22 +159,17 @@ static void locale_alloc_collation_id (COLL_TAILORING * coll_tail);
 static int locale_check_collation_id (const COLL_TAILORING * coll_tail);
 static void locale_destroy_collation (LOCALE_COLLATION * lc);
 
-static void print_debug_start_el (void *data, const char **attrs,
-				  const char *msg, const int status);
-static void print_debug_end_el (void *data, const char *msg,
-				const int status);
-static void print_debug_data_content (void *data, const char *msg,
-				      const int status);
+static void print_debug_start_el (void *data, const char **attrs, const char *msg, const int status);
+static void print_debug_end_el (void *data, const char *msg, const int status);
+static void print_debug_data_content (void *data, const char *msg, const int status);
 static int load_console_conv_data (LOCALE_DATA * ld, bool is_verbose);
 
 static int locale_save_to_C_file (LOCALE_FILE lf, LOCALE_DATA * ld);
 static int locale_save_calendar_to_C_file (FILE * fp, LOCALE_DATA * ld);
 static int locale_save_alphabets_to_C_file (FILE * fp, LOCALE_DATA * ld);
-static int locale_save_one_alphabet_to_C_file (FILE * fp, ALPHABET_DATA * a,
-					       bool save_w_identier_name,
+static int locale_save_one_alphabet_to_C_file (FILE * fp, ALPHABET_DATA * a, bool save_w_identier_name,
 					       const char *alpha_suffix);
-static int locale_save_collation_data_to_C_file (FILE * fp,
-						 LOCALE_COLLATION * lc);
+static int locale_save_collation_data_to_C_file (FILE * fp, LOCALE_COLLATION * lc);
 static int locale_save_console_conv_to_C_file (FILE * fp, LOCALE_DATA * ld);
 static int locale_save_normalization_to_C_file (FILE * fp, LOCALE_DATA * ld);
 
@@ -187,17 +178,12 @@ static void locale_destroy_collation_data (const COLL_DATA * cd);
 static void locale_destroy_alphabet_tailoring (const ALPHABET_TAILORING * cd);
 static void locale_destroy_console_conversion (const TEXT_CONVERSION * tc);
 static int str_pop_token (char *str_p, char **token_p, char **next_p);
-static int dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
-				 int lower_bound, int upper_bound);
+static int dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings, int lower_bound, int upper_bound);
 
-static void dump_collation_key (COLL_DATA * coll, const unsigned int key,
-				bool print_weight, bool print_key);
-static void dump_collation_contr (COLL_DATA * coll,
-				  const COLL_CONTRACTION * contr,
-				  bool print_weight, bool print_contr);
-static void dump_collation_codepoint (COLL_DATA * coll,
-				      const unsigned int cp,
-				      bool print_weight, bool print_cp);
+static void dump_collation_key (COLL_DATA * coll, const unsigned int key, bool print_weight, bool print_key);
+static void dump_collation_contr (COLL_DATA * coll, const COLL_CONTRACTION * contr, bool print_weight,
+				  bool print_contr);
+static void dump_collation_codepoint (COLL_DATA * coll, const unsigned int cp, bool print_weight, bool print_cp);
 static void dump_locale_normalization (UNICODE_NORMALIZATION * norm);
 static void dump_unicode_mapping (UNICODE_MAPPING * um, const int mode);
 static int dump_console_conversion (TEXT_CONVERSION * tc);
@@ -205,27 +191,18 @@ static int dump_console_conversion (TEXT_CONVERSION * tc);
 static int comp_func_coll_uca_exp_fo (const void *arg1, const void *arg2);
 static int comp_func_coll_uca_exp (const void *arg1, const void *arg2);
 
-static int comp_func_coll_uca_simple_weights_fo (const void *arg1,
-						 const void *arg2);
-static int comp_func_coll_uca_simple_weights (const void *arg1,
-					      const void *arg2);
+static int comp_func_coll_uca_simple_weights_fo (const void *arg1, const void *arg2);
+static int comp_func_coll_uca_simple_weights (const void *arg1, const void *arg2);
 static int comp_func_parse_order_index (const void *arg1, const void *arg2);
 static void locale_make_calendar_parse_order (LOCALE_DATA * ld);
-static int locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE
-					     lsd_type, const char *lsd_key,
-					     const void *data,
-					     LDML_CONTEXT * ldml_context,
-					     LOC_SHARED_DATA ** found_entry);
+static int locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type, const char *lsd_key, const void *data,
+					     LDML_CONTEXT * ldml_context, LOC_SHARED_DATA ** found_entry);
 static int locale_compute_coll_checksum (COLL_DATA * cd);
 static int locale_alphabet_data_size (ALPHABET_DATA * a);
 static int locale_alphabet_data_to_buf (ALPHABET_DATA * a, char *buf);
 static int locale_compute_locale_checksum (LOCALE_DATA * ld);
-static int common_collation_end_rule (void *data, LOCALE_DATA * ld,
-				      const int rule_id,
-				      TAILOR_RULE * t_rule);
-static int common_collation_start_rule (void *data, const char **attr,
-					LOCALE_DATA * ld,
-					TAILOR_RULE * t_rule);
+static int common_collation_end_rule (void *data, LOCALE_DATA * ld, const int rule_id, TAILOR_RULE * t_rule);
+static int common_collation_start_rule (void *data, const char **attr, LOCALE_DATA * ld, TAILOR_RULE * t_rule);
 
 #define PRINT_DEBUG_START(d, a, m, s)				      \
    do {								      \
@@ -358,111 +335,91 @@ static char cmp_token_name_size = 0;
  * full name is the "path" - the names of all parent elements down to
  *			     the element
  */
-XML_ELEMENT_DEF ldml_elem_ldml =
-  { "ldml", 1, (ELEM_START_FUNC) (&start_element_ok),
+XML_ELEMENT_DEF ldml_elem_ldml = { "ldml", 1, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_dates =
-  { "ldml dates", 2, (ELEM_START_FUNC) (&start_element_ok),
+XML_ELEMENT_DEF ldml_elem_dates = { "ldml dates", 2, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
-XML_ELEMENT_DEF ldml_elem_calendars =
-  { "ldml dates calendars", 3, (ELEM_START_FUNC) (&start_element_ok),
+XML_ELEMENT_DEF ldml_elem_calendars = { "ldml dates calendars", 3, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
-XML_ELEMENT_DEF ldml_elem_calendar =
-  { "ldml dates calendars calendar", 4, (ELEM_START_FUNC) (&start_calendar),
+XML_ELEMENT_DEF ldml_elem_calendar = { "ldml dates calendars calendar", 4, (ELEM_START_FUNC) (&start_calendar),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_dateFormatCUBRID =
-  { "ldml dates calendars calendar dateFormatCUBRID", 5,
+XML_ELEMENT_DEF ldml_elem_dateFormatCUBRID = { "ldml dates calendars calendar dateFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_dateFormatCUBRID), (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_timeFormatCUBRID =
-  { "ldml dates calendars calendar timeFormatCUBRID", 5,
+XML_ELEMENT_DEF ldml_timeFormatCUBRID = { "ldml dates calendars calendar timeFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timeFormatCUBRID), (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_datetimeFormatCUBRID =
-  { "ldml dates calendars calendar datetimeFormatCUBRID", 5,
+XML_ELEMENT_DEF ldml_datetimeFormatCUBRID = { "ldml dates calendars calendar datetimeFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_datetimeFormatCUBRID), (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_timestampFormatCUBRID =
-  { "ldml dates calendars calendar timestampFormatCUBRID", 5,
+XML_ELEMENT_DEF ldml_timestampFormatCUBRID = { "ldml dates calendars calendar timestampFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timestampFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_timetzFormatCUBRID =
-  { "ldml dates calendars calendar timetzFormatCUBRID", 5,
+XML_ELEMENT_DEF ldml_timetzFormatCUBRID = { "ldml dates calendars calendar timetzFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timetzFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_datetimetzFormatCUBRID =
-  { "ldml dates calendars calendar datetimetzFormatCUBRID", 5,
+XML_ELEMENT_DEF ldml_datetimetzFormatCUBRID = { "ldml dates calendars calendar datetimetzFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_datetimetzFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_timestamptzFormatCUBRID =
-  { "ldml dates calendars calendar timestamptzFormatCUBRID", 5,
+XML_ELEMENT_DEF ldml_timestamptzFormatCUBRID = { "ldml dates calendars calendar timestamptzFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timestamptzFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_months =
-  { "ldml dates calendars calendar months", 5,
+XML_ELEMENT_DEF ldml_elem_months = { "ldml dates calendars calendar months", 5,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
-    NULL
+  NULL
 };
-XML_ELEMENT_DEF ldml_elem_monthContext =
-  { "ldml dates calendars calendar months monthContext", 6,
+XML_ELEMENT_DEF ldml_elem_monthContext = { "ldml dates calendars calendar months monthContext", 6,
   (ELEM_START_FUNC) (&start_calendar_name_context),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
-XML_ELEMENT_DEF ldml_elem_monthWidth =
-  { "ldml dates calendars calendar months monthContext monthWidth", 7,
+XML_ELEMENT_DEF ldml_elem_monthWidth = { "ldml dates calendars calendar months monthContext monthWidth", 7,
   (ELEM_START_FUNC) (&start_month_day_Width),
   (ELEM_END_FUNC) (&end_month_day_Width), NULL
 };
-XML_ELEMENT_DEF ldml_elem_month =
-  { "ldml dates calendars calendar months monthContext monthWidth month", 8,
+XML_ELEMENT_DEF ldml_elem_month = { "ldml dates calendars calendar months monthContext monthWidth month", 8,
   (ELEM_START_FUNC) (&start_month), (ELEM_END_FUNC) (&end_month),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
 XML_ELEMENT_DEF ldml_elem_days = { "ldml dates calendars calendar days", 5,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
-    NULL
+  NULL
 };
-XML_ELEMENT_DEF ldml_elem_dayContext =
-  { "ldml dates calendars calendar days dayContext", 6,
+XML_ELEMENT_DEF ldml_elem_dayContext = { "ldml dates calendars calendar days dayContext", 6,
   (ELEM_START_FUNC) (&start_calendar_name_context),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
-XML_ELEMENT_DEF ldml_elem_dayWidth =
-  { "ldml dates calendars calendar days dayContext dayWidth", 7,
+XML_ELEMENT_DEF ldml_elem_dayWidth = { "ldml dates calendars calendar days dayContext dayWidth", 7,
   (ELEM_START_FUNC) (&start_month_day_Width),
   (ELEM_END_FUNC) (&end_month_day_Width), NULL
 };
-XML_ELEMENT_DEF ldml_elem_day =
-  { "ldml dates calendars calendar days dayContext dayWidth day", 8,
+XML_ELEMENT_DEF ldml_elem_day = { "ldml dates calendars calendar days dayContext dayWidth day", 8,
   (ELEM_START_FUNC) (&start_day), (ELEM_END_FUNC) (&end_day),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_dayPeriods =
-  { "ldml dates calendars calendar dayPeriods", 5,
+XML_ELEMENT_DEF ldml_elem_dayPeriods = { "ldml dates calendars calendar dayPeriods", 5,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
-    NULL
+  NULL
 };
-XML_ELEMENT_DEF ldml_elem_dayPeriodContext =
-  { "ldml dates calendars calendar dayPeriods dayPeriodContext", 6,
+XML_ELEMENT_DEF ldml_elem_dayPeriodContext = { "ldml dates calendars calendar dayPeriods dayPeriodContext", 6,
   (ELEM_START_FUNC) (&start_calendar_name_context),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
@@ -470,7 +427,7 @@ XML_ELEMENT_DEF ldml_elem_dayPeriodWidth = {
   "ldml dates calendars calendar dayPeriods dayPeriodContext dayPeriodWidth",
   7,
   (ELEM_START_FUNC) (&start_dayPeriodWidth),
-    (ELEM_END_FUNC) (&end_element_ok),
+  (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
 XML_ELEMENT_DEF ldml_elem_dayPeriod = {
@@ -480,151 +437,123 @@ XML_ELEMENT_DEF ldml_elem_dayPeriod = {
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_numbers =
-  { "ldml numbers", 2, (ELEM_START_FUNC) (&start_element_ok),
+XML_ELEMENT_DEF ldml_elem_numbers = { "ldml numbers", 2, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
-XML_ELEMENT_DEF ldml_elem_numbers_symbols =
-  { "ldml numbers symbols", 3, (ELEM_START_FUNC) (&start_numbers_symbols),
+XML_ELEMENT_DEF ldml_elem_numbers_symbols = { "ldml numbers symbols", 3, (ELEM_START_FUNC) (&start_numbers_symbols),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
-XML_ELEMENT_DEF ldml_elem_symbol_decimal =
-  { "ldml numbers symbols decimal", 4, (ELEM_START_FUNC) (&start_element_ok),
+XML_ELEMENT_DEF ldml_elem_symbol_decimal = { "ldml numbers symbols decimal", 4, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_number_symbol), (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_symbol_group =
-  { "ldml numbers symbols group", 4, (ELEM_START_FUNC) (&start_element_ok),
+XML_ELEMENT_DEF ldml_elem_symbol_group = { "ldml numbers symbols group", 4, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_number_symbol), (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_currencies =
-  { "ldml numbers currencies", 3, (ELEM_START_FUNC) (&start_element_ok),
+XML_ELEMENT_DEF ldml_elem_currencies = { "ldml numbers currencies", 3, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
-XML_ELEMENT_DEF ldml_elem_currency =
-  { "ldml numbers currencies currency", 4,
-(ELEM_START_FUNC) (&start_currency),
+XML_ELEMENT_DEF ldml_elem_currency = { "ldml numbers currencies currency", 4,
+  (ELEM_START_FUNC) (&start_currency),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collations =
-  { "ldml collations", 2, (ELEM_START_FUNC) (&start_collations),
+XML_ELEMENT_DEF ldml_elem_collations = { "ldml collations", 2, (ELEM_START_FUNC) (&start_collations),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
-XML_ELEMENT_DEF ldml_elem_collation =
-  { "ldml collations collation", 3, (ELEM_START_FUNC) (&start_one_collation),
+XML_ELEMENT_DEF ldml_elem_collation = { "ldml collations collation", 3, (ELEM_START_FUNC) (&start_one_collation),
   (ELEM_END_FUNC) (&end_one_collation), NULL
 };
-XML_ELEMENT_DEF ldml_elem_collation_rules =
-  { "ldml collations collation rules", 4,
+XML_ELEMENT_DEF ldml_elem_collation_rules = { "ldml collations collation rules", 4,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
-    NULL
+  NULL
 };
-XML_ELEMENT_DEF ldml_elem_collation_settings =
-  { "ldml collations collation settings", 4,
+XML_ELEMENT_DEF ldml_elem_collation_settings = { "ldml collations collation settings", 4,
   (ELEM_START_FUNC) (&start_collation_settings),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
-XML_ELEMENT_DEF ldml_elem_collation_reset =
-  { "ldml collations collation rules reset", 5,
+XML_ELEMENT_DEF ldml_elem_collation_reset = { "ldml collations collation rules reset", 5,
   (ELEM_START_FUNC) (&start_collation_reset),
   (ELEM_END_FUNC) (&end_collation_reset), (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_p =
-  { "ldml collations collation rules p", 5,
+XML_ELEMENT_DEF ldml_elem_collation_p = { "ldml collations collation rules p", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
-XML_ELEMENT_DEF ldml_elem_collation_s =
-  { "ldml collations collation rules s", 5,
+XML_ELEMENT_DEF ldml_elem_collation_s = { "ldml collations collation rules s", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
-XML_ELEMENT_DEF ldml_elem_collation_t =
-  { "ldml collations collation rules t", 5,
+XML_ELEMENT_DEF ldml_elem_collation_t = { "ldml collations collation rules t", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
-XML_ELEMENT_DEF ldml_elem_collation_i =
-  { "ldml collations collation rules i", 5,
+XML_ELEMENT_DEF ldml_elem_collation_i = { "ldml collations collation rules i", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
-XML_ELEMENT_DEF ldml_elem_collation_pc =
-  { "ldml collations collation rules pc", 5,
+XML_ELEMENT_DEF ldml_elem_collation_pc = { "ldml collations collation rules pc", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
-XML_ELEMENT_DEF ldml_elem_collation_sc =
-  { "ldml collations collation rules sc", 5,
+XML_ELEMENT_DEF ldml_elem_collation_sc = { "ldml collations collation rules sc", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
-XML_ELEMENT_DEF ldml_elem_collation_tc =
-  { "ldml collations collation rules tc", 5,
+XML_ELEMENT_DEF ldml_elem_collation_tc = { "ldml collations collation rules tc", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
-XML_ELEMENT_DEF ldml_elem_collation_ic =
-  { "ldml collations collation rules ic", 5,
+XML_ELEMENT_DEF ldml_elem_collation_ic = { "ldml collations collation rules ic", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_x =
-  { "ldml collations collation rules x", 5,
+XML_ELEMENT_DEF ldml_elem_collation_x = { "ldml collations collation rules x", 5,
   (ELEM_START_FUNC) (&start_collation_x), (ELEM_END_FUNC) (&end_collation_x),
   NULL
 };
-XML_ELEMENT_DEF ldml_elem_collation_x_p =
-  { "ldml collations collation rules x p", 6,
+XML_ELEMENT_DEF ldml_elem_collation_x_p = { "ldml collations collation rules x p", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_x_s =
-  { "ldml collations collation rules x s", 6,
+XML_ELEMENT_DEF ldml_elem_collation_x_s = { "ldml collations collation rules x s", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_x_t =
-  { "ldml collations collation rules x t", 6,
+XML_ELEMENT_DEF ldml_elem_collation_x_t = { "ldml collations collation rules x t", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_x_i =
-  { "ldml collations collation rules x i", 6,
+XML_ELEMENT_DEF ldml_elem_collation_x_i = { "ldml collations collation rules x i", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_x_extend =
-  { "ldml collations collation rules x extend", 6,
+XML_ELEMENT_DEF ldml_elem_collation_x_extend = { "ldml collations collation rules x extend", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_extend), (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_x_context =
-  { "ldml collations collation rules x context", 6,
+XML_ELEMENT_DEF ldml_elem_collation_x_context = { "ldml collations collation rules x context", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_context), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_first_variable =
-  { "ldml collations collation rules reset first_variable", 6,
+XML_ELEMENT_DEF ldml_elem_collation_reset_first_variable = { "ldml collations collation rules reset first_variable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
-XML_ELEMENT_DEF ldml_elem_collation_reset_last_variable =
-  { "ldml collations collation rules reset last_variable", 6,
+XML_ELEMENT_DEF ldml_elem_collation_reset_last_variable = { "ldml collations collation rules reset last_variable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
@@ -668,13 +597,11 @@ XML_ELEMENT_DEF ldml_elem_collation_reset_last_non_ignorable =
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
-XML_ELEMENT_DEF ldml_elem_collation_reset_first_trailing =
-  { "ldml collations collation rules reset first_trailing", 6,
+XML_ELEMENT_DEF ldml_elem_collation_reset_first_trailing = { "ldml collations collation rules reset first_trailing", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
-XML_ELEMENT_DEF ldml_elem_collation_reset_last_trailing =
-  { "ldml collations collation rules reset last_trailing", 6,
+XML_ELEMENT_DEF ldml_elem_collation_reset_last_trailing = { "ldml collations collation rules reset last_trailing", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
@@ -683,76 +610,63 @@ XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules = {
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set =
-  { "ldml collations collation cubridrules set", 5,
+XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set = { "ldml collations collation cubridrules set", 5,
   (ELEM_START_FUNC) (&start_collation_cubrid_rule),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set), NULL
 };
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ch =
-  { "ldml collations collation cubridrules set ch", 6,
+XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ch = { "ldml collations collation cubridrules set ch", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_sch =
-  { "ldml collations collation cubridrules set sch", 6,
+XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_sch = { "ldml collations collation cubridrules set sch", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ech =
-  { "ldml collations collation cubridrules set ech", 6,
+XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ech = { "ldml collations collation cubridrules set ech", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_ech_ecp),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_cp =
-  { "ldml collations collation cubridrules set cp", 6,
+XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_cp = { "ldml collations collation cubridrules set cp", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_scp =
-  { "ldml collations collation cubridrules set scp", 6,
+XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_scp = { "ldml collations collation cubridrules set scp", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ecp =
-  { "ldml collations collation cubridrules set ecp", 6,
+XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ecp = { "ldml collations collation cubridrules set ecp", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_ech_ecp),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_w =
-  { "ldml collations collation cubridrules set w", 6,
+XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_w = { "ldml collations collation cubridrules set w", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_w_wr),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_wr =
-  { "ldml collations collation cubridrules set wr", 6,
+XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_wr = { "ldml collations collation cubridrules set wr", 6,
   (ELEM_START_FUNC) (&start_collation_cubrid_rule_set_wr),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_w_wr),
   (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_alphabets =
-  { "ldml alphabets", 2, (ELEM_START_FUNC) (&start_element_ok),
+XML_ELEMENT_DEF ldml_elem_alphabets = { "ldml alphabets", 2, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
-XML_ELEMENT_DEF ldml_elem_include_collation =
-  { "ldml collations include", 3,
-(ELEM_START_FUNC) (&start_include_collation),
+XML_ELEMENT_DEF ldml_elem_include_collation = { "ldml collations include", 3,
+  (ELEM_START_FUNC) (&start_include_collation),
   (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
-XML_ELEMENT_DEF ldml_elem_alphabet =
-  { "ldml alphabets alphabet", 3, (ELEM_START_FUNC) (&start_one_alphabet),
+XML_ELEMENT_DEF ldml_elem_alphabet = { "ldml alphabets alphabet", 3, (ELEM_START_FUNC) (&start_one_alphabet),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
-XML_ELEMENT_DEF ldml_elem_alphabet_upper =
-  { "ldml alphabets alphabet u", 4,
-(ELEM_START_FUNC) (&start_upper_case_rule),
+XML_ELEMENT_DEF ldml_elem_alphabet_upper = { "ldml alphabets alphabet u", 4,
+  (ELEM_START_FUNC) (&start_upper_case_rule),
   (ELEM_END_FUNC) (&end_case_rule), NULL
 };
 XML_ELEMENT_DEF ldml_elem_alphabet_upper_src =
@@ -763,9 +677,8 @@ XML_ELEMENT_DEF ldml_elem_alphabet_upper_dest =
   { "ldml alphabets alphabet u d", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
 };
-XML_ELEMENT_DEF ldml_elem_alphabet_lower =
-  { "ldml alphabets alphabet l", 4,
-(ELEM_START_FUNC) (&start_lower_case_rule),
+XML_ELEMENT_DEF ldml_elem_alphabet_lower = { "ldml alphabets alphabet l", 4,
+  (ELEM_START_FUNC) (&start_lower_case_rule),
   (ELEM_END_FUNC) (&end_case_rule), NULL
 };
 XML_ELEMENT_DEF ldml_elem_alphabet_lower_src =
@@ -777,8 +690,7 @@ XML_ELEMENT_DEF ldml_elem_alphabet_lower_dest =
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_unicodefile =
-  { "ldml unicodefile", 2, (ELEM_START_FUNC) (&start_unicode_file),
+XML_ELEMENT_DEF ldml_elem_unicodefile = { "ldml unicodefile", 2, (ELEM_START_FUNC) (&start_unicode_file),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
@@ -1383,8 +1295,7 @@ end_month (void *data, const char *el_name)
 
       if (ld->data_buf_count < LOC_DATA_MONTH_ABBR_SIZE)
 	{
-	  strcpy (ld->month_names_abbreviated[ld->curr_period],
-		  ld->data_buffer);
+	  strcpy (ld->month_names_abbreviated[ld->curr_period], ld->data_buffer);
 	}
       else
 	{
@@ -1495,8 +1406,7 @@ end_day (void *data, const char *el_name)
       assert (ld->data_buf_count < LOC_DATA_DAY_ABBR_SIZE);
       if (ld->data_buf_count < LOC_DATA_DAY_ABBR_SIZE)
 	{
-	  strcpy (ld->day_names_abbreviated[ld->curr_period],
-		  ld->data_buffer);
+	  strcpy (ld->day_names_abbreviated[ld->curr_period], ld->data_buffer);
 	}
       else
 	{
@@ -1689,9 +1599,7 @@ end_number_symbol (void *data, const char *el_name)
   ld = XML_USER_DATA (pd);
 
   /* number symbol is exactly one character (ASCII compatible) */
-  if (ld->data_buf_count == 1
-      && (*(ld->data_buffer) >= ' '
-	  && (unsigned char) *(ld->data_buffer) < 0x80))
+  if (ld->data_buf_count == 1 && (*(ld->data_buffer) >= ' ' && (unsigned char) *(ld->data_buffer) < 0x80))
     {
       if (strcmp (el_name, "decimal") == 0)
 	{
@@ -1741,31 +1649,24 @@ start_currency (void *data, const char **attr)
       /* Type attribute found, store it. */
       if (strlen (att_val) != LOC_DATA_CURRENCY_ISO_CODE_LEN)
 	{
-	  PRINT_DEBUG_START (data, attr,
-			     "Currency ISO code invalid, "
-			     "it must be 3 chars long.", -1);
+	  PRINT_DEBUG_START (data, attr, "Currency ISO code invalid, " "it must be 3 chars long.", -1);
 	  return -1;
 	}
       if (ld->default_currency_code != DB_CURRENCY_NULL)
 	{
-	  PRINT_DEBUG_START (data, attr, "Currency ISO code already set.",
-			     -1);
+	  PRINT_DEBUG_START (data, attr, "Currency ISO code already set.", -1);
 	  return -1;
 	}
-      if (!intl_is_currency_symbol (att_val, &(ld->default_currency_code),
-				    &currency_size, CURRENCY_CHECK_MODE_ISO))
+      if (!intl_is_currency_symbol (att_val, &(ld->default_currency_code), &currency_size, CURRENCY_CHECK_MODE_ISO))
 	{
-	  PRINT_DEBUG_START (data, attr, "Currency ISO code not supported",
-			     -1);
+	  PRINT_DEBUG_START (data, attr, "Currency ISO code not supported", -1);
 	  return -1;
 	}
     }
   else
     {
       /* If <currency> does not have a type attribute, parsing fails. */
-      PRINT_DEBUG_START (data, attr,
-			 "Currency tag does not have an ISO code type "
-			 "attribute.", -1);
+      PRINT_DEBUG_START (data, attr, "Currency tag does not have an ISO code type " "attribute.", -1);
       return -1;
     }
 
@@ -1820,10 +1721,8 @@ start_collations (void *data, const char **attr)
       if (*t_end == '\0' || char_isspace ((int) *t_end))
 	{
 	  /* token ended, check locale name */
-	  if ((t_end - t_start == 3 && memcmp (t_start, "all", 3) == 0)
-	      || (t_end - t_start == 1 && *t_start == '*')
-	      || (t_end - t_start == check_loc_len
-		  && memcmp (ld->locale_name, t_start, t_end - t_start) == 0))
+	  if ((t_end - t_start == 3 && memcmp (t_start, "all", 3) == 0) || (t_end - t_start == 1 && *t_start == '*')
+	      || (t_end - t_start == check_loc_len && memcmp (ld->locale_name, t_start, t_end - t_start) == 0))
 	    {
 	      locale_found = true;
 	      break;
@@ -1898,10 +1797,8 @@ start_one_collation (void *data, const char **attr)
   locale_coll->tail_coll.uca_opt.sett_strength = TAILOR_QUATERNARY;
   locale_coll->tail_coll.uca_opt.sett_caseFirst = 1;
 
-  locale_coll->tail_coll.ldml_context.ldml_file =
-    strdup (ld->ldml_context.ldml_file);
-  locale_coll->tail_coll.ldml_context.line_no =
-    XML_GetCurrentLineNumber (pd->xml_parser);
+  locale_coll->tail_coll.ldml_context.ldml_file = strdup (ld->ldml_context.ldml_file);
+  locale_coll->tail_coll.ldml_context.line_no = XML_GetCurrentLineNumber (pd->xml_parser);
 
   PRINT_DEBUG_START (data, attr, "", 0);
   return 0;
@@ -1960,16 +1857,12 @@ start_collation_settings (void *data, const char **attr)
       assert (att_val != NULL);
       curr_coll_tail->coll_id = atoi (att_val);
 
-      if (curr_coll_tail->coll_id < LANG_MAX_BUILTIN_COLLATIONS
-	  || curr_coll_tail->coll_id >= LANG_MAX_COLLATIONS)
+      if (curr_coll_tail->coll_id < LANG_MAX_BUILTIN_COLLATIONS || curr_coll_tail->coll_id >= LANG_MAX_COLLATIONS)
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "File %s, line: %lu : "
-		    "Invalid collation numeric identifier : %d"
-		    " for collation '%s'. Valid range is from %d to %d",
-		    ld->ldml_context.ldml_file,
-		    XML_GetCurrentLineNumber (pd->xml_parser),
-		    curr_coll_tail->coll_id, curr_coll_tail->coll_name,
+		    "File %s, line: %lu : " "Invalid collation numeric identifier : %d"
+		    " for collation '%s'. Valid range is from %d to %d", ld->ldml_context.ldml_file,
+		    XML_GetCurrentLineNumber (pd->xml_parser), curr_coll_tail->coll_id, curr_coll_tail->coll_name,
 		    LANG_MAX_BUILTIN_COLLATIONS, LANG_MAX_COLLATIONS - 1);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  return -1;
@@ -1985,35 +1878,28 @@ start_collation_settings (void *data, const char **attr)
 	{
 	  coll_strength = TAILOR_PRIMARY;
 	}
-      else if ((strcasecmp (att_val, "secondary") == 0)
-	       || (strcmp (att_val, "2") == 0))
+      else if ((strcasecmp (att_val, "secondary") == 0) || (strcmp (att_val, "2") == 0))
 	{
 	  coll_strength = TAILOR_SECONDARY;
 	}
-      else if ((strcasecmp (att_val, "tertiary") == 0)
-	       || (strcmp (att_val, "3") == 0))
+      else if ((strcasecmp (att_val, "tertiary") == 0) || (strcmp (att_val, "3") == 0))
 	{
 	  coll_strength = TAILOR_TERTIARY;
 	}
-      else if ((strcasecmp (att_val, "quaternary") == 0)
-	       || (strcmp (att_val, "4") == 0))
+      else if ((strcasecmp (att_val, "quaternary") == 0) || (strcmp (att_val, "4") == 0))
 	{
 	  coll_strength = TAILOR_QUATERNARY;
 	}
-      else if ((strcasecmp (att_val, "identical") == 0)
-	       || (strcmp (att_val, "5") == 0))
+      else if ((strcasecmp (att_val, "identical") == 0) || (strcmp (att_val, "5") == 0))
 	{
 	  coll_strength = TAILOR_IDENTITY;
 	}
       else
 	{
 	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "File %s, line: %lu : "
-		    "Invalid collation strength : '%s'"
-		    " for collation '%s'",
-		    ld->ldml_context.ldml_file,
-		    XML_GetCurrentLineNumber (pd->xml_parser),
-		    att_val, curr_coll_tail->coll_name);
+		    "File %s, line: %lu : " "Invalid collation strength : '%s'" " for collation '%s'",
+		    ld->ldml_context.ldml_file, XML_GetCurrentLineNumber (pd->xml_parser), att_val,
+		    curr_coll_tail->coll_name);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  return -1;
 	}
@@ -2326,8 +2212,7 @@ start_collation_cubrid_rule_set_wr (void *data, const char **attr)
       if (strlen (att_val) > MAX_STRLEN_FOR_COLLATION_ELEMENT)
 	{
 	  err_status = ER_LOC_GEN;
-	  LOG_LOCALE_ERROR ("Data buffer too big in <wr> attribute STEP.",
-			    ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Data buffer too big in <wr> attribute STEP.", ER_LOC_GEN, true);
 	  goto exit;
 	}
       strcpy (ct_rule->step, att_val);
@@ -2369,8 +2254,7 @@ end_collation_cubrid_rule_set (void *data, const char *el_name)
     {
       char msg[ERR_MSG_SIZE];
 
-      snprintf (msg, sizeof (msg) - 1, " * SET Rule no. %d, tag name :%s *",
-		(rule_id + 1), el_name);
+      snprintf (msg, sizeof (msg) - 1, " * SET Rule no. %d, tag name :%s *", (rule_id + 1), el_name);
       PRINT_DEBUG_END (data, msg, 0);
     }
 
@@ -2408,17 +2292,14 @@ end_collation_cubrid_rule_set_cp_ch (void *data, const char *el_name)
   if (ld->data_buf_count > LOC_DATA_BUFF_SIZE)
     {
       err_status = ER_LOC_GEN;
-      LOG_LOCALE_ERROR ("Data buffer too large in codepoint starting label.",
-			ER_LOC_GEN, true);
+      LOG_LOCALE_ERROR ("Data buffer too large in codepoint starting label.", ER_LOC_GEN, true);
       goto exit;
     }
 
-  memcpy (ct_rule->start_cp_buf,
-	  ld->data_buffer, ld->data_buf_count * sizeof (char));
+  memcpy (ct_rule->start_cp_buf, ld->data_buffer, ld->data_buf_count * sizeof (char));
   ct_rule->start_cp_buf[ld->data_buf_count] = '\0';
 
-  memcpy (ct_rule->end_cp_buf,
-	  ld->data_buffer, ld->data_buf_count * sizeof (char));
+  memcpy (ct_rule->end_cp_buf, ld->data_buffer, ld->data_buf_count * sizeof (char));
   ct_rule->end_cp_buf[ld->data_buf_count] = '\0';
 
   if (strcmp (el_name, "ch") == 0 || strcmp (el_name, "sch") == 0)
@@ -2436,8 +2317,7 @@ end_collation_cubrid_rule_set_cp_ch (void *data, const char *el_name)
     {
       char msg[ERR_MSG_SIZE];
 
-      snprintf (msg, sizeof (msg) - 1, " * SET Rule no. %d, tag name :%s *",
-		(rule_id + 1), el_name);
+      snprintf (msg, sizeof (msg) - 1, " * SET Rule no. %d, tag name :%s *", (rule_id + 1), el_name);
       PRINT_DEBUG_END (data, msg, 0);
     }
 
@@ -2474,15 +2354,13 @@ end_collation_cubrid_rule_set_ech_ecp (void *data, const char *el_name)
   if (ld->data_buf_count > LOC_DATA_BUFF_SIZE)
     {
       err_status = ER_LOC_GEN;
-      LOG_LOCALE_ERROR ("Data buffer too large in codepoint end label.",
-			ER_LOC_GEN, true);
+      LOG_LOCALE_ERROR ("Data buffer too large in codepoint end label.", ER_LOC_GEN, true);
       goto exit;
     }
   rule_id = curr_coll_tail->cub_count_rules;
   ct_rule = &(curr_coll_tail->cub_rules[rule_id]);
 
-  memcpy (ct_rule->end_cp_buf,
-	  ld->data_buffer, ld->data_buf_count * sizeof (char));
+  memcpy (ct_rule->end_cp_buf, ld->data_buffer, ld->data_buf_count * sizeof (char));
   ct_rule->end_cp_buf[ld->data_buf_count] = '\0';
 
   if (strcmp (el_name, "ech") == 0)
@@ -2498,8 +2376,7 @@ end_collation_cubrid_rule_set_ech_ecp (void *data, const char *el_name)
     {
       char msg[ERR_MSG_SIZE];
 
-      snprintf (msg, sizeof (msg) - 1, "* SET Rule no. %d, tag name :%s *",
-		(rule_id + 1), el_name);
+      snprintf (msg, sizeof (msg) - 1, "* SET Rule no. %d, tag name :%s *", (rule_id + 1), el_name);
       PRINT_DEBUG_END (data, msg, 0);
     }
 
@@ -2538,21 +2415,18 @@ end_collation_cubrid_rule_set_w_wr (void *data, const char *el_name)
   if (ld->data_buf_count > LOC_DATA_BUFF_SIZE)
     {
       err_status = ER_LOC_GEN;
-      LOG_LOCALE_ERROR ("Data buffer too large in weight label.",
-			ER_LOC_GEN, true);
+      LOG_LOCALE_ERROR ("Data buffer too large in weight label.", ER_LOC_GEN, true);
       goto exit;
     }
 
-  memcpy (ct_rule->start_weight,
-	  ld->data_buffer, ld->data_buf_count * sizeof (char));
+  memcpy (ct_rule->start_weight, ld->data_buffer, ld->data_buf_count * sizeof (char));
   ct_rule->start_weight[ld->data_buf_count] = '\0';
 
   if (pd->verbose)
     {
       char msg[ERR_MSG_SIZE];
 
-      snprintf (msg, sizeof (msg) - 1, "* SET Rule no. %d, tag name :%s *",
-		(rule_id + 1), el_name);
+      snprintf (msg, sizeof (msg) - 1, "* SET Rule no. %d, tag name :%s *", (rule_id + 1), el_name);
       PRINT_DEBUG_END (data, msg, 0);
     }
 
@@ -2780,10 +2654,8 @@ end_collation_x (void *data, const char *el_name)
     {
       char msg[ERR_MSG_SIZE];
 
-      snprintf (msg, sizeof (msg) - 1,
-		" * X_Rule %d, L :%d, Dir:%d, PosType:%d, Mc:%d *",
-		rule_id, t_rule->level, t_rule->direction,
-		t_rule->r_pos_type, t_rule->multiple_chars);
+      snprintf (msg, sizeof (msg) - 1, " * X_Rule %d, L :%d, Dir:%d, PosType:%d, Mc:%d *", rule_id, t_rule->level,
+		t_rule->direction, t_rule->r_pos_type, t_rule->multiple_chars);
       PRINT_DEBUG_END (data, msg, 0);
     }
 
@@ -2818,8 +2690,7 @@ end_collation_x_rule (void *data, const char *el_name)
 
   assert (strlen (ld->data_buffer) == ld->data_buf_count);
 
-  t_rule->t_buf = realloc (t_rule->t_buf,
-			   t_rule->t_buf_size + ld->data_buf_count);
+  t_rule->t_buf = realloc (t_rule->t_buf, t_rule->t_buf_size + ld->data_buf_count);
   if (t_rule->t_buf == NULL)
     {
       pd->xml_error = XML_CUB_OUT_OF_MEMORY;
@@ -2828,8 +2699,7 @@ end_collation_x_rule (void *data, const char *el_name)
     }
 
   /* copy partial data to rule tailoring buffer (character to be modified) */
-  memcpy (t_rule->t_buf + t_rule->t_buf_size, ld->data_buffer,
-	  ld->data_buf_count);
+  memcpy (t_rule->t_buf + t_rule->t_buf_size, ld->data_buffer, ld->data_buf_count);
   t_rule->t_buf_size += ld->data_buf_count;
 
   if (strcmp (el_name, "p") == 0)
@@ -2895,8 +2765,7 @@ end_collation_x_extend (void *data, const char *el_name)
   assert (t_rule->r_buf != NULL);
   assert (ld->data_buf_count > 0);
 
-  t_rule->r_buf = realloc (t_rule->r_buf,
-			   t_rule->r_buf_size + ld->data_buf_count);
+  t_rule->r_buf = realloc (t_rule->r_buf, t_rule->r_buf_size + ld->data_buf_count);
 
   if (t_rule->r_buf == NULL)
     {
@@ -2905,8 +2774,7 @@ end_collation_x_extend (void *data, const char *el_name)
       return -1;
     }
 
-  memcpy (t_rule->r_buf + t_rule->r_buf_size, ld->data_buffer,
-	  ld->data_buf_count);
+  memcpy (t_rule->r_buf + t_rule->r_buf_size, ld->data_buffer, ld->data_buf_count);
 
   t_rule->r_buf_size += ld->data_buf_count;
 
@@ -3106,8 +2974,7 @@ start_one_alphabet (void *data, const char **attr)
 
   ld = XML_USER_DATA (pd);
 
-  if (ld->alpha_tailoring.alphabet_mode != 0
-      || ld->alpha_tailoring.count_rules != 0
+  if (ld->alpha_tailoring.alphabet_mode != 0 || ld->alpha_tailoring.count_rules != 0
       || ld->alpha_tailoring.sett_max_letters != -1)
     {
       PRINT_DEBUG_START (data, attr, "Only one alphabet is allowed", -1);
@@ -3135,17 +3002,14 @@ start_one_alphabet (void *data, const char **attr)
 	}
       else
 	{
-	  PRINT_DEBUG_START (data, attr,
-			     "Invalid value for CUBRIDAlphabetMode."
-			     "Expected ASCII or UNICODEDATAFILE", -1);
+	  PRINT_DEBUG_START (data, attr, "Invalid value for CUBRIDAlphabetMode." "Expected ASCII or UNICODEDATAFILE",
+			     -1);
 	  return -1;
 	}
     }
 
-  ld->alpha_tailoring.ldml_context.ldml_file =
-    strdup (ld->ldml_context.ldml_file);
-  ld->alpha_tailoring.ldml_context.line_no =
-    XML_GetCurrentLineNumber (pd->xml_parser);
+  ld->alpha_tailoring.ldml_context.ldml_file = strdup (ld->ldml_context.ldml_file);
+  ld->alpha_tailoring.ldml_context.line_no = XML_GetCurrentLineNumber (pd->xml_parser);
 
   PRINT_DEBUG_START (data, attr, "", 0);
   return 0;
@@ -3214,15 +3078,12 @@ end_case_rule (void *data, const char *el_name)
     {
       char msg[64];
       unsigned char *dummy = NULL;
-      unsigned int cp_src =
-	intl_utf8_to_cp ((unsigned char *) tf_rule->src, tf_rule->src_size,
-			 &dummy);
-      unsigned int cp_dest =
-	intl_utf8_to_cp ((unsigned char *) tf_rule->dest, tf_rule->dest_size,
-			 &dummy);
+      unsigned int cp_src = intl_utf8_to_cp ((unsigned char *) tf_rule->src, tf_rule->src_size,
+					     &dummy);
+      unsigned int cp_dest = intl_utf8_to_cp ((unsigned char *) tf_rule->dest, tf_rule->dest_size,
+					      &dummy);
 
-      sprintf (msg, " * Case Rule %d, Src :%0X, Dest:%0X *",
-	       rule_id, cp_src, cp_dest);
+      sprintf (msg, " * Case Rule %d, Src :%0X, Dest:%0X *", rule_id, cp_src, cp_dest);
       PRINT_DEBUG_END (data, msg, 0);
     }
   else
@@ -3375,12 +3236,10 @@ start_consoleconversion (void *data, const char **attr)
 
   ld = XML_USER_DATA (pd);
 
-  if (*(ld->txt_conv_prm.nl_lang_str) != '\0'
-      || *(ld->txt_conv_prm.conv_file) != '\0'
+  if (*(ld->txt_conv_prm.nl_lang_str) != '\0' || *(ld->txt_conv_prm.conv_file) != '\0'
       || *(ld->txt_conv_prm.win_codepages) != '\0')
     {
-      PRINT_DEBUG_START (data, attr, "Only one console conversion is allowed",
-			 -1);
+      PRINT_DEBUG_START (data, attr, "Only one console conversion is allowed", -1);
       return -1;
     }
 
@@ -3406,8 +3265,7 @@ start_consoleconversion (void *data, const char **attr)
 	}
       else
 	{
-	  PRINT_DEBUG_START (data, attr, "Invalid value for type."
-			     "Expecting ISO88591 or ISO or EUC", -1);
+	  PRINT_DEBUG_START (data, attr, "Invalid value for type." "Expecting ISO88591 or ISO or EUC", -1);
 	  return -1;
 	}
     }
@@ -3417,8 +3275,7 @@ start_consoleconversion (void *data, const char **attr)
     {
       assert (att_val != NULL);
 
-      if (strlen (att_val) > (int) sizeof (ld->txt_conv_prm.win_codepages)
-	  - 1)
+      if (strlen (att_val) > (int) sizeof (ld->txt_conv_prm.win_codepages) - 1)
 	{
 	  PRINT_DEBUG_START (data, attr, "Invalid attribute value", -1);
 	  return -1;
@@ -3551,8 +3408,7 @@ new_locale_collation (LOCALE_DATA * ld)
   assert (ld != NULL);
 
   /* check number of rules, increase array if necessary */
-  ld->collations = realloc (ld->collations, sizeof (LOCALE_COLLATION) *
-			    (ld->coll_cnt + 1));
+  ld->collations = realloc (ld->collations, sizeof (LOCALE_COLLATION) * (ld->coll_cnt + 1));
 
   if (ld->collations == NULL)
     {
@@ -3588,9 +3444,8 @@ new_collation_rule (LOCALE_DATA * ld)
   if (curr_coll_tail->count_rules + 1 >= curr_coll_tail->max_rules)
     {
       curr_coll_tail->rules =
-	realloc (curr_coll_tail->rules, sizeof (TAILOR_RULE) *
-		 (curr_coll_tail->max_rules +
-		  LOC_DATA_TAILOR_RULES_COUNT_GROW));
+	realloc (curr_coll_tail->rules,
+		 sizeof (TAILOR_RULE) * (curr_coll_tail->max_rules + LOC_DATA_TAILOR_RULES_COUNT_GROW));
 
       if (curr_coll_tail->rules == NULL)
 	{
@@ -3624,9 +3479,8 @@ new_transform_rule (LOCALE_DATA * ld)
   if (ld->alpha_tailoring.count_rules + 1 >= ld->alpha_tailoring.max_rules)
     {
       ld->alpha_tailoring.rules =
-	realloc (ld->alpha_tailoring.rules, sizeof (TRANSFORM_RULE) *
-		 (ld->alpha_tailoring.max_rules +
-		  LOC_DATA_TAILOR_RULES_COUNT_GROW));
+	realloc (ld->alpha_tailoring.rules,
+		 sizeof (TRANSFORM_RULE) * (ld->alpha_tailoring.max_rules + LOC_DATA_TAILOR_RULES_COUNT_GROW));
 
       if (ld->alpha_tailoring.rules == NULL)
 	{
@@ -3662,9 +3516,8 @@ new_collation_cubrid_rule (LOCALE_DATA * ld)
   if (curr_coll_tail->cub_count_rules + 1 >= curr_coll_tail->cub_max_rules)
     {
       curr_coll_tail->cub_rules =
-	realloc (curr_coll_tail->cub_rules, sizeof (CUBRID_TAILOR_RULE) *
-		 (curr_coll_tail->max_rules +
-		  LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW));
+	realloc (curr_coll_tail->cub_rules,
+		 sizeof (CUBRID_TAILOR_RULE) * (curr_coll_tail->max_rules + LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW));
 
       if (curr_coll_tail->cub_rules == NULL)
 	{
@@ -3690,8 +3543,7 @@ new_collation_cubrid_rule (LOCALE_DATA * ld)
  * status(in): status returned from start function
  */
 static void
-print_debug_start_el (void *data, const char **attrs, const char *msg,
-		      const int status)
+print_debug_start_el (void *data, const char **attrs, const char *msg, const int status)
 {
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   const char **curr_att;
@@ -3921,14 +3773,12 @@ locale_check_collation_id (const COLL_TAILORING * coll_tail)
   char err_msg[ERR_MSG_SIZE];
   static int taken_collations[LANG_MAX_COLLATIONS] = { 0 };
 
-  assert (coll_tail->coll_id >= LANG_MAX_BUILTIN_COLLATIONS
-	  && coll_tail->coll_id < LANG_MAX_COLLATIONS);
+  assert (coll_tail->coll_id >= LANG_MAX_BUILTIN_COLLATIONS && coll_tail->coll_id < LANG_MAX_COLLATIONS);
 
   if (taken_collations[coll_tail->coll_id] != 0)
     {
       snprintf (err_msg, sizeof (err_msg) - 1,
-		"Invalid collation numeric identifier : %d"
-		" for collation '%s'. Id is already taken.",
+		"Invalid collation numeric identifier : %d" " for collation '%s'. Id is already taken.",
 		coll_tail->coll_id, coll_tail->coll_name);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
       return ER_LOC_GEN;
@@ -3986,22 +3836,19 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
       return status;
     }
 
-  strncpy (conv_file_name, ld->txt_conv_prm.conv_file,
-	   sizeof (conv_file_name) - 1);
+  strncpy (conv_file_name, ld->txt_conv_prm.conv_file, sizeof (conv_file_name) - 1);
   conv_file_name[sizeof (conv_file_name) - 1] = '\0';
 
   fp = fopen_ex (conv_file_name, "rt");
   if (fp == NULL)
     {
-      envvar_codepagedir_file (conv_file_name, sizeof (conv_file_name),
-			       ld->txt_conv_prm.conv_file);
+      envvar_codepagedir_file (conv_file_name, sizeof (conv_file_name), ld->txt_conv_prm.conv_file);
       fp = fopen_ex (conv_file_name, "rt");
     }
 
   if (fp == NULL)
     {
-      snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s",
-		ld->txt_conv_prm.conv_file);
+      snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", ld->txt_conv_prm.conv_file);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
       status = ER_LOC_GEN;
       goto error;
@@ -4034,13 +3881,10 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
       str_to_uint32 (&cp_text, &end_p, s, 16);
 
       /* skip codepoints values above 0xFFFF */
-      if (cp_text > 0xffff
-	  || (cp_text > 0xff &&
-	      ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_1BYTE))
+      if (cp_text > 0xffff || (cp_text > 0xff && ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_1BYTE))
 	{
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Codepoint value too big"
-		    " in file :%s at line %d", ld->txt_conv_prm.conv_file,
-		    line_count);
+	  snprintf (err_msg, sizeof (err_msg) - 1, "Codepoint value too big" " in file :%s at line %d",
+		    ld->txt_conv_prm.conv_file, line_count);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  status = ER_LOC_GEN;
 	  goto error;
@@ -4077,20 +3921,18 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
       str_to_uint32 (&cp_unicode, &end_p, s, 16);
 
       /* first codepoints which maps the same character are not included */
-      if (((ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_1BYTE
-	    && cp_text < 0x80)
-	   || ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_2BYTE)
-	  && (cp_text == cp_unicode && min_values.text_cp == 0xffff
-	      && min_values.unicode_cp == 0xffff))
+      if (((ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_1BYTE && cp_text < 0x80)
+	   || ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_2BYTE) && (cp_text == cp_unicode
+									 && min_values.text_cp == 0xffff
+									 && min_values.unicode_cp == 0xffff))
 	{
 	  continue;
 	}
 
       if (cp_unicode > 0xffff)
 	{
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Codepoint value too big"
-		    " in file :%s at line %d", ld->txt_conv_prm.conv_file,
-		    line_count);
+	  snprintf (err_msg, sizeof (err_msg) - 1, "Codepoint value too big" " in file :%s at line %d",
+		    ld->txt_conv_prm.conv_file, line_count);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  status = ER_LOC_GEN;
 	  goto error;
@@ -4099,9 +3941,8 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
       if (txt_conv_count_items >= txt_conv_max_items)
 	{
 	  txt_conv_array =
-	    (TXT_CONV_ITEM *) realloc (txt_conv_array, sizeof (TXT_CONV_ITEM)
-				       * (txt_conv_max_items +
-					  TXT_CONV_ITEM_GROW_COUNT));
+	    (TXT_CONV_ITEM *) realloc (txt_conv_array,
+				       sizeof (TXT_CONV_ITEM) * (txt_conv_max_items + TXT_CONV_ITEM_GROW_COUNT));
 
 	  if (txt_conv_array == NULL)
 	    {
@@ -4148,18 +3989,16 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
     }
 
   ld->txt_conv.text_to_utf8 =
-    (CONV_CP_TO_BYTES *) malloc (sizeof (CONV_CP_TO_BYTES)
-				 * (ld->txt_conv.text_last_cp -
-				    ld->txt_conv.text_first_cp + 1));
-  memset (ld->txt_conv.text_to_utf8, 0, sizeof (CONV_CP_TO_BYTES)
-	  * (ld->txt_conv.text_last_cp - ld->txt_conv.text_first_cp + 1));
+    (CONV_CP_TO_BYTES *) malloc (sizeof (CONV_CP_TO_BYTES) *
+				 (ld->txt_conv.text_last_cp - ld->txt_conv.text_first_cp + 1));
+  memset (ld->txt_conv.text_to_utf8, 0,
+	  sizeof (CONV_CP_TO_BYTES) * (ld->txt_conv.text_last_cp - ld->txt_conv.text_first_cp + 1));
 
   ld->txt_conv.utf8_to_text =
-    (CONV_CP_TO_BYTES *) malloc (sizeof (CONV_CP_TO_BYTES)
-				 * (ld->txt_conv.utf8_last_cp -
-				    ld->txt_conv.utf8_first_cp + 1));
-  memset (ld->txt_conv.utf8_to_text, 0, sizeof (CONV_CP_TO_BYTES)
-	  * (ld->txt_conv.utf8_last_cp - ld->txt_conv.utf8_first_cp + 1));
+    (CONV_CP_TO_BYTES *) malloc (sizeof (CONV_CP_TO_BYTES) *
+				 (ld->txt_conv.utf8_last_cp - ld->txt_conv.utf8_first_cp + 1));
+  memset (ld->txt_conv.utf8_to_text, 0,
+	  sizeof (CONV_CP_TO_BYTES) * (ld->txt_conv.utf8_last_cp - ld->txt_conv.utf8_first_cp + 1));
 
   if (ld->txt_conv.text_to_utf8 == NULL || ld->txt_conv.utf8_to_text == NULL)
     {
@@ -4168,15 +4007,13 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
       goto error;
     }
 
-  for (i = 0; i < ld->txt_conv.text_last_cp - ld->txt_conv.text_first_cp + 1;
-       i++)
+  for (i = 0; i < ld->txt_conv.text_last_cp - ld->txt_conv.text_first_cp + 1; i++)
     {
       ld->txt_conv.text_to_utf8[i].size = 1;
       *(ld->txt_conv.text_to_utf8[i].bytes) = '?';
     }
 
-  for (i = 0; i < ld->txt_conv.utf8_last_cp - ld->txt_conv.utf8_first_cp + 1;
-       i++)
+  for (i = 0; i < ld->txt_conv.utf8_last_cp - ld->txt_conv.utf8_first_cp + 1; i++)
     {
       ld->txt_conv.utf8_to_text[i].size = 1;
       *(ld->txt_conv.utf8_to_text[i].bytes) = '?';
@@ -4190,19 +4027,14 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
       cp_text = txt_conv_array[i].text_cp;
       cp_unicode = txt_conv_array[i].unicode_cp;
 
-      assert (cp_text >= ld->txt_conv.text_first_cp
-	      && cp_text <= ld->txt_conv.text_last_cp);
+      assert (cp_text >= ld->txt_conv.text_first_cp && cp_text <= ld->txt_conv.text_last_cp);
 
-      assert (cp_unicode >= ld->txt_conv.utf8_first_cp
-	      && cp_unicode <= ld->txt_conv.utf8_last_cp);
+      assert (cp_unicode >= ld->txt_conv.utf8_first_cp && cp_unicode <= ld->txt_conv.utf8_last_cp);
 
-      text_to_utf8_item =
-	&(ld->txt_conv.text_to_utf8[cp_text - ld->txt_conv.text_first_cp]);
-      utf8_to_text_item =
-	&(ld->txt_conv.utf8_to_text[cp_unicode - ld->txt_conv.utf8_first_cp]);
+      text_to_utf8_item = &(ld->txt_conv.text_to_utf8[cp_text - ld->txt_conv.text_first_cp]);
+      utf8_to_text_item = &(ld->txt_conv.utf8_to_text[cp_unicode - ld->txt_conv.utf8_first_cp]);
 
-      text_to_utf8_item->size =
-	intl_cp_to_utf8 (cp_unicode, text_to_utf8_item->bytes);
+      text_to_utf8_item->size = intl_cp_to_utf8 (cp_unicode, text_to_utf8_item->bytes);
 
       if (ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_1BYTE)
 	{
@@ -4212,9 +4044,7 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
       else
 	{
 	  assert (ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_2BYTE);
-	  utf8_to_text_item->size =
-	    intl_cp_to_dbcs (cp_text, ld->txt_conv.byte_flag,
-			     utf8_to_text_item->bytes);
+	  utf8_to_text_item->size = intl_cp_to_dbcs (cp_text, ld->txt_conv.byte_flag, utf8_to_text_item->bytes);
 	}
     }
 
@@ -4312,28 +4142,23 @@ locale_make_calendar_parse_order (LOCALE_DATA * ld)
 
   cmp_token_name_array = (char *) (ld->month_names_abbreviated);
   cmp_token_name_size = LOC_DATA_MONTH_ABBR_SIZE;
-  qsort (ld->month_names_abbr_parse_order, CAL_MONTH_COUNT,
-	 sizeof (char), comp_func_parse_order_index);
+  qsort (ld->month_names_abbr_parse_order, CAL_MONTH_COUNT, sizeof (char), comp_func_parse_order_index);
 
   cmp_token_name_array = (char *) (ld->month_names_wide);
   cmp_token_name_size = LOC_DATA_MONTH_WIDE_SIZE;
-  qsort (ld->month_names_wide_parse_order, CAL_MONTH_COUNT,
-	 sizeof (char), comp_func_parse_order_index);
+  qsort (ld->month_names_wide_parse_order, CAL_MONTH_COUNT, sizeof (char), comp_func_parse_order_index);
 
   cmp_token_name_array = (char *) (ld->day_names_abbreviated);
   cmp_token_name_size = LOC_DATA_DAY_ABBR_SIZE;
-  qsort (ld->day_names_abbr_parse_order, CAL_DAY_COUNT,
-	 sizeof (char), comp_func_parse_order_index);
+  qsort (ld->day_names_abbr_parse_order, CAL_DAY_COUNT, sizeof (char), comp_func_parse_order_index);
 
   cmp_token_name_array = (char *) (ld->day_names_wide);
   cmp_token_name_size = LOC_DATA_DAY_WIDE_SIZE;
-  qsort (ld->day_names_wide_parse_order, CAL_DAY_COUNT,
-	 sizeof (char), comp_func_parse_order_index);
+  qsort (ld->day_names_wide_parse_order, CAL_DAY_COUNT, sizeof (char), comp_func_parse_order_index);
 
   cmp_token_name_array = (char *) (ld->am_pm);
   cmp_token_name_size = LOC_DATA_AM_PM_SIZE;
-  qsort (ld->am_pm_parse_order, CAL_AM_PM_COUNT,
-	 sizeof (char), comp_func_parse_order_index);
+  qsort (ld->am_pm_parse_order, CAL_AM_PM_COUNT, sizeof (char), comp_func_parse_order_index);
 }
 
 /*
@@ -4680,13 +4505,10 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
   else
     {
       char msg[ERR_MSG_SIZE];
-      const char *xml_err_text = (char *)
-	XML_ErrorString (XML_GetErrorCode (ldml_parser.xml_parser));
+      const char *xml_err_text = (char *) XML_ErrorString (XML_GetErrorCode (ldml_parser.xml_parser));
 
-      snprintf (msg, sizeof (msg) - 1, "Error parsing file %s, "
-		"line : %d, column : %d. Internal XML: %s",
-		ldml_parser.filepath, ldml_parser.xml_error_line,
-		ldml_parser.xml_error_column, xml_err_text);
+      snprintf (msg, sizeof (msg) - 1, "Error parsing file %s, " "line : %d, column : %d. Internal XML: %s",
+		ldml_parser.filepath, ldml_parser.xml_error_line, ldml_parser.xml_error_column, xml_err_text);
 
       LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
       er_status = ER_LOC_GEN;
@@ -4702,8 +4524,7 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 
   if (is_verbose)
     {
-      printf ("\n*** Processing alphabet ***\nNumber of letters  = %d\n",
-	      ld->alpha_tailoring.sett_max_letters);
+      printf ("\n*** Processing alphabet ***\nNumber of letters  = %d\n", ld->alpha_tailoring.sett_max_letters);
     }
 
   if (ld->alpha_tailoring.sett_max_letters == 0)
@@ -4723,17 +4544,13 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 
       if (ld->alphabet.a_type == ALPHABET_UNICODE)
 	{
-	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
-							"unicode", NULL,
-							ldml_context,
-							&alphabet_sh_entry);
+	  er_status =
+	    locale_check_and_set_shared_data (LOC_SHARED_ALPHABET, "unicode", NULL, ldml_context, &alphabet_sh_entry);
 	}
       else if (ld->alphabet.a_type == ALPHABET_ASCII)
 	{
-	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
-							"ascii", NULL,
-							ldml_context,
-							&alphabet_sh_entry);
+	  er_status =
+	    locale_check_and_set_shared_data (LOC_SHARED_ALPHABET, "ascii", NULL, ldml_context, &alphabet_sh_entry);
 	}
 
       if (er_status != NO_ERROR)
@@ -4746,17 +4563,13 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
       alphabet_sh_entry = NULL;
       if (ld->identif_alphabet.a_type == ALPHABET_UNICODE)
 	{
-	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
-							"unicode", NULL,
-							ldml_context,
-							&alphabet_sh_entry);
+	  er_status =
+	    locale_check_and_set_shared_data (LOC_SHARED_ALPHABET, "unicode", NULL, ldml_context, &alphabet_sh_entry);
 	}
       else if (ld->identif_alphabet.a_type == ALPHABET_ASCII)
 	{
-	  er_status = locale_check_and_set_shared_data (LOC_SHARED_ALPHABET,
-							"ascii", NULL,
-							ldml_context,
-							&alphabet_sh_entry);
+	  er_status =
+	    locale_check_and_set_shared_data (LOC_SHARED_ALPHABET, "ascii", NULL, ldml_context, &alphabet_sh_entry);
 	}
 
       if (er_status != NO_ERROR)
@@ -4764,16 +4577,12 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 	  goto exit;
 	}
 
-      ld->identif_alphabet.do_not_save =
-	(alphabet_sh_entry != NULL) ? true : false;
+      ld->identif_alphabet.do_not_save = (alphabet_sh_entry != NULL) ? true : false;
       if (ld->identif_alphabet.do_not_save == false)
 	{
-	  /* check that casing data matches the rule of
-	   * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER:
-	   * the ratio between the size in bytes of lower (or upper) case
-	   * character (or sequence of characters) and the size in bytes of
-	   * original character is less than
-	   * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER */
+	  /* check that casing data matches the rule of INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER: the ratio between the
+	   * size in bytes of lower (or upper) case character (or sequence of characters) and the size in bytes of
+	   * original character is less than INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER */
 	  unsigned int cp;
 	  ALPHABET_DATA *a = &(ld->identif_alphabet);
 	  unsigned char dummy[INTL_UTF8_MAX_CHAR_SIZE];
@@ -4781,13 +4590,10 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 	  for (cp = 0; (int) cp < a->l_count; cp++)
 	    {
 	      int case_cnt, case_size, cp_size;
-	      unsigned int *lower_cp =
-		&(a->lower_cp[cp * a->lower_multiplier]);
-	      unsigned int *upper_cp =
-		&(a->upper_cp[cp * a->upper_multiplier]);
+	      unsigned int *lower_cp = &(a->lower_cp[cp * a->lower_multiplier]);
+	      unsigned int *upper_cp = &(a->upper_cp[cp * a->upper_multiplier]);
 
-	      for (case_size = 0, case_cnt = 0;
-		   case_cnt < a->lower_multiplier && *lower_cp != 0;
+	      for (case_size = 0, case_cnt = 0; case_cnt < a->lower_multiplier && *lower_cp != 0;
 		   case_cnt++, lower_cp++)
 		{
 		  if (*lower_cp == cp)
@@ -4802,24 +4608,21 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 	      if (case_size > 0)
 		{
 		  cp_size = intl_cp_to_utf8 (cp, dummy);
-		  if (case_size
-		      > cp_size * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER)
+		  if (case_size > cp_size * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER)
 		    {
 		      char msg[ERR_MSG_SIZE];
 
-		      snprintf (msg, sizeof (msg) - 1, "Lower case "
-				"sequence for codepoint Ux%04X is too "
-				"big: %d bytes; expecting at most %d",
-				cp, case_size, cp_size
-				* INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER);
+		      snprintf (msg, sizeof (msg) - 1,
+				"Lower case " "sequence for codepoint Ux%04X is too "
+				"big: %d bytes; expecting at most %d", cp, case_size,
+				cp_size * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER);
 		      LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
 		      er_status = ER_LOC_GEN;
 		      goto exit;
 		    }
 		}
 
-	      for (case_size = 0, case_cnt = 0;
-		   case_cnt < a->upper_multiplier && *upper_cp != 0;
+	      for (case_size = 0, case_cnt = 0; case_cnt < a->upper_multiplier && *upper_cp != 0;
 		   case_cnt++, upper_cp++)
 		{
 		  if (*upper_cp == cp)
@@ -4834,16 +4637,14 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 	      if (case_size > 0)
 		{
 		  cp_size = intl_cp_to_utf8 (cp, dummy);
-		  if (case_size >
-		      cp_size * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER)
+		  if (case_size > cp_size * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER)
 		    {
 		      char msg[ERR_MSG_SIZE];
 
-		      snprintf (msg, sizeof (msg) - 1, "Upper case "
-				"sequence for codepoint Ux%04X is too "
-				"big: %d bytes; expecting at most %d",
-				cp, case_size, cp_size
-				* INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER);
+		      snprintf (msg, sizeof (msg) - 1,
+				"Upper case " "sequence for codepoint Ux%04X is too "
+				"big: %d bytes; expecting at most %d", cp, case_size,
+				cp_size * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER);
 		      LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
 		      er_status = ER_LOC_GEN;
 		      goto exit;
@@ -4858,13 +4659,9 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
       printf ("\n*** Processing Unicode normalization data ***\n");
     }
 
-  er_status =
-    locale_check_and_set_shared_data (LOC_SHARED_NORMALIZATION,
-				      "normalization", NULL, NULL,
-				      &norm_sh_entry);
+  er_status = locale_check_and_set_shared_data (LOC_SHARED_NORMALIZATION, "normalization", NULL, NULL, &norm_sh_entry);
 
-  ld->unicode_normalization.do_not_save =
-    (norm_sh_entry != NULL) ? true : false;
+  ld->unicode_normalization.do_not_save = (norm_sh_entry != NULL) ? true : false;
 
   if (norm_sh_entry == NULL)
     {
@@ -4899,33 +4696,27 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
       char shared_coll_data[COLL_SHARED_DATA_SIZE];
 
 
-      strncpy (lc->opt_coll.coll_name, lc->tail_coll.coll_name,
-	       COLL_NAME_SIZE);
+      strncpy (lc->opt_coll.coll_name, lc->tail_coll.coll_name, COLL_NAME_SIZE);
       lc->opt_coll.coll_name[COLL_NAME_SIZE - 1] = '\0';
 
       if (!lang_is_coll_name_allowed (lc->opt_coll.coll_name))
 	{
 	  char msg[ERR_MSG_SIZE];
 
-	  snprintf (msg, sizeof (msg) - 1, "Collation name %s "
-		    "not allowed. It cannot contain white-spaces "
-		    "or have same name as a built-in collation",
-		    lc->opt_coll.coll_name);
+	  snprintf (msg, sizeof (msg) - 1,
+		    "Collation name %s " "not allowed. It cannot contain white-spaces "
+		    "or have same name as a built-in collation", lc->opt_coll.coll_name);
 
 	  LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
 	  er_status = ER_LOC_GEN;
 	  goto exit;
 	}
 
-      snprintf (shared_coll_data, sizeof (shared_coll_data) - 1, "%d",
-		lc->tail_coll.coll_id);
+      snprintf (shared_coll_data, sizeof (shared_coll_data) - 1, "%d", lc->tail_coll.coll_id);
 
       er_status =
-	locale_check_and_set_shared_data (LOC_SHARED_COLLATION,
-					  lc->tail_coll.coll_name,
-					  &shared_coll_data,
-					  &(lc->tail_coll.ldml_context),
-					  &coll_sh_entry);
+	locale_check_and_set_shared_data (LOC_SHARED_COLLATION, lc->tail_coll.coll_name, &shared_coll_data,
+					  &(lc->tail_coll.ldml_context), &coll_sh_entry);
       if (er_status != NO_ERROR)
 	{
 	  goto exit;
@@ -4942,37 +4733,27 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 
 	  if (strcmp (shared_coll_data, coll_sh_data) != 0)
 	    {
-	      /* found collation with same name buf different collation shared
-	       * data (collation id) */
+	      /* found collation with same name buf different collation shared data (collation id) */
 	      char msg[ERR_MSG_SIZE + 2 * PATH_MAX];
 
-	      snprintf (msg, sizeof (msg) - 1, "File: %s, line: %d : "
-			"collation name %s (id:%d) already defined in "
-			"file: %s, line: %d with id: %s",
-			lc->tail_coll.ldml_context.ldml_file,
-			lc->tail_coll.ldml_context.line_no,
-			lc->tail_coll.coll_name, lc->tail_coll.coll_id,
-			coll_sh_entry->ldml_context.ldml_file,
-			coll_sh_entry->ldml_context.line_no, coll_sh_data);
+	      snprintf (msg, sizeof (msg) - 1,
+			"File: %s, line: %d : " "collation name %s (id:%d) already defined in "
+			"file: %s, line: %d with id: %s", lc->tail_coll.ldml_context.ldml_file,
+			lc->tail_coll.ldml_context.line_no, lc->tail_coll.coll_name, lc->tail_coll.coll_id,
+			coll_sh_entry->ldml_context.ldml_file, coll_sh_entry->ldml_context.line_no, coll_sh_data);
 
 	      LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
 	      er_status = ER_LOC_GEN;
 	      goto exit;
 	    }
-	  else if (strcmp (lc->tail_coll.ldml_context.ldml_file,
-			   coll_sh_entry->ldml_context.ldml_file) != 0
-		   || lc->tail_coll.ldml_context.line_no
-		   != coll_sh_entry->ldml_context.line_no)
+	  else if (strcmp (lc->tail_coll.ldml_context.ldml_file, coll_sh_entry->ldml_context.ldml_file) != 0
+		   || lc->tail_coll.ldml_context.line_no != coll_sh_entry->ldml_context.line_no)
 	    {
 	      /* same collation, just put an debug info */
-	      printf ("Warning : Definition of collation %s (id: %d) "
-		      "ignored in file: %s, line: %d. "
-		      "Using the definition from file: %s, line: %d.\n",
-		      lc->tail_coll.coll_name, lc->tail_coll.coll_id,
-		      lc->tail_coll.ldml_context.ldml_file,
-		      lc->tail_coll.ldml_context.line_no,
-		      coll_sh_entry->ldml_context.ldml_file,
-		      coll_sh_entry->ldml_context.line_no);
+	      printf ("Warning : Definition of collation %s (id: %d) " "ignored in file: %s, line: %d. "
+		      "Using the definition from file: %s, line: %d.\n", lc->tail_coll.coll_name, lc->tail_coll.coll_id,
+		      lc->tail_coll.ldml_context.ldml_file, lc->tail_coll.ldml_context.line_no,
+		      coll_sh_entry->ldml_context.ldml_file, coll_sh_entry->ldml_context.line_no);
 	    }
 
 	  continue;
@@ -4985,8 +4766,7 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 
       if (is_verbose)
 	{
-	  printf ("\n*** Processing collation : %s ***\n"
-		  "Number of weights  = %d\n", lc->tail_coll.coll_name,
+	  printf ("\n*** Processing collation : %s ***\n" "Number of weights  = %d\n", lc->tail_coll.coll_name,
 		  lc->tail_coll.sett_max_cp);
 	}
 
@@ -5022,8 +4802,7 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 	}
       if (is_verbose)
 	{
-	  printf ("ID : %d | Checksum : %s\n", lc->opt_coll.coll_id,
-		  lc->opt_coll.checksum);
+	  printf ("ID : %d | Checksum : %s\n", lc->opt_coll.coll_id, lc->opt_coll.checksum);
 	}
     }
 
@@ -5065,8 +4844,7 @@ exit:
  * end_index(in): index of the last working locale stored in the ld array
  */
 void
-locale_mark_duplicate_collations (LOCALE_DATA ** ld, int start_index,
-				  int end_index, bool is_verbose)
+locale_mark_duplicate_collations (LOCALE_DATA ** ld, int start_index, int end_index, bool is_verbose)
 {
 #define PRINT_DUPLICATE_SYMBOL_NAME(symbol, dupl_coll, orig_coll, do_print) \
   if (do_print)								    \
@@ -5081,12 +4859,9 @@ locale_mark_duplicate_collations (LOCALE_DATA ** ld, int start_index,
   LOCALE_COLLATION *cur_coll, *comp_coll;
   LOCALE_DATA *cur_ld, *comp_ld;
 
-  /* Search for duplicate arrays.
-   * In order to avoid errors, search must be done backwards for the cursor
-   * collation, while searching forward in the locales; the rule of
-   * determining the identifier to be stored is that the first occurence is
-   * considered as the original, and all identical arrays that follow are
-   * duplicates */
+  /* Search for duplicate arrays. In order to avoid errors, search must be done backwards for the cursor collation,
+   * while searching forward in the locales; the rule of determining the identifier to be stored is that the first
+   * occurence is considered as the original, and all identical arrays that follow are duplicates */
   for (i1 = end_index - 1; i1 >= start_index; i1--)
     {
       cur_ld = ld[i1];
@@ -5097,156 +4872,101 @@ locale_mark_duplicate_collations (LOCALE_DATA ** ld, int start_index,
 	  for (i2 = start_index; i2 <= i1; i2++)
 	    {
 	      comp_ld = ld[i2];
-	      for (j2 = 0;
-		   (i1 == i2 && j2 < j1)
-		   || (i1 > i2 && j2 < comp_ld->coll_cnt); j2++)
+	      for (j2 = 0; (i1 == i2 && j2 < j1) || (i1 > i2 && j2 < comp_ld->coll_cnt); j2++)
 		{
 		  comp_coll = &(comp_ld->collations[j2]);
 		  /* Two COLL_INFO structures are refferenced.Compare them. */
 
-		  if (cur_coll->opt_coll.w_count
-		      != comp_coll->opt_coll.w_count)
+		  if (cur_coll->opt_coll.w_count != comp_coll->opt_coll.w_count)
 		    {
 		      continue;
 		    }
 
-		  if (cur_coll->opt_coll.uca_opt.sett_expansions
-		      == comp_coll->opt_coll.uca_opt.sett_expansions)
+		  if (cur_coll->opt_coll.uca_opt.sett_expansions == comp_coll->opt_coll.uca_opt.sett_expansions)
 		    {
 		      if (!cur_coll->opt_coll.uca_opt.sett_expansions)
 			{
 			  if (*(cur_coll->coll_ref.coll_weights_ref) == '\0'
-			      && memcmp (cur_coll->opt_coll.weights,
-					 comp_coll->opt_coll.weights,
-					 sizeof (comp_coll->opt_coll.
-						 weights[0])
-					 * cur_coll->opt_coll.w_count) == 0)
+			      && memcmp (cur_coll->opt_coll.weights, comp_coll->opt_coll.weights,
+					 sizeof (comp_coll->opt_coll.weights[0]) * cur_coll->opt_coll.w_count) == 0)
 			    {
-			      sprintf (cur_coll->coll_ref.coll_weights_ref,
-				       "%s_%s", "coll_weights",
+			      sprintf (cur_coll->coll_ref.coll_weights_ref, "%s_%s", "coll_weights",
 				       comp_coll->opt_coll.coll_name);
-			      PRINT_DUPLICATE_SYMBOL_NAME ("coll_weights",
-							   cur_coll,
-							   comp_coll,
-							   is_verbose);
+			      PRINT_DUPLICATE_SYMBOL_NAME ("coll_weights", cur_coll, comp_coll, is_verbose);
 			    }
 			}
 		      else
 			{
-			  if (cur_coll->opt_coll.uca_exp_num
-			      != comp_coll->opt_coll.uca_exp_num)
+			  if (cur_coll->opt_coll.uca_exp_num != comp_coll->opt_coll.uca_exp_num)
 			    {
 			      continue;
 			    }
 
 			  if (*(cur_coll->coll_ref.coll_uca_num_ref) == '\0'
-			      && memcmp (cur_coll->opt_coll.uca_num,
-					 comp_coll->opt_coll.uca_num,
-					 sizeof (comp_coll->opt_coll.
-						 uca_num[0])
-					 * comp_coll->opt_coll.w_count) == 0)
+			      && memcmp (cur_coll->opt_coll.uca_num, comp_coll->opt_coll.uca_num,
+					 sizeof (comp_coll->opt_coll.uca_num[0]) * comp_coll->opt_coll.w_count) == 0)
 			    {
-			      sprintf (cur_coll->coll_ref.coll_uca_num_ref,
-				       "%s_%s", "coll_uca_num",
+			      sprintf (cur_coll->coll_ref.coll_uca_num_ref, "%s_%s", "coll_uca_num",
 				       comp_coll->opt_coll.coll_name);
-			      PRINT_DUPLICATE_SYMBOL_NAME ("coll_uca_num",
-							   cur_coll,
-							   comp_coll,
-							   is_verbose);
+			      PRINT_DUPLICATE_SYMBOL_NAME ("coll_uca_num", cur_coll, comp_coll, is_verbose);
 			    }
 
 			  if (*(cur_coll->coll_ref.coll_uca_w_l13_ref) == '\0'
-			      && memcmp (cur_coll->opt_coll.uca_w_l13,
-					 comp_coll->opt_coll.uca_w_l13,
-					 sizeof (UCA_L13_W)
-					 * cur_coll->opt_coll.uca_exp_num
-					 * cur_coll->opt_coll.w_count) == 0)
+			      && memcmp (cur_coll->opt_coll.uca_w_l13, comp_coll->opt_coll.uca_w_l13,
+					 sizeof (UCA_L13_W) * cur_coll->opt_coll.uca_exp_num *
+					 cur_coll->opt_coll.w_count) == 0)
 			    {
-			      sprintf (cur_coll->coll_ref.coll_uca_w_l13_ref,
-				       "%s_%s", "coll_uca_w_l13",
+			      sprintf (cur_coll->coll_ref.coll_uca_w_l13_ref, "%s_%s", "coll_uca_w_l13",
 				       comp_coll->opt_coll.coll_name);
-			      PRINT_DUPLICATE_SYMBOL_NAME ("coll_uca_w_l13",
-							   cur_coll,
-							   comp_coll,
-							   is_verbose);
+			      PRINT_DUPLICATE_SYMBOL_NAME ("coll_uca_w_l13", cur_coll, comp_coll, is_verbose);
 			    }
-			  if (cur_coll->opt_coll.uca_opt.sett_strength
-			      >= TAILOR_QUATERNARY
-			      && comp_coll->opt_coll.uca_opt.sett_strength
-			      >= TAILOR_QUATERNARY
-			      && *(cur_coll->coll_ref.coll_uca_w_l4_ref)
-			      == '\0'
-			      && memcmp (cur_coll->opt_coll.uca_w_l4,
-					 comp_coll->opt_coll.uca_w_l4,
-					 sizeof (UCA_L4_W)
-					 * cur_coll->opt_coll.uca_exp_num
-					 * cur_coll->opt_coll.w_count) == 0)
+			  if (cur_coll->opt_coll.uca_opt.sett_strength >= TAILOR_QUATERNARY
+			      && comp_coll->opt_coll.uca_opt.sett_strength >= TAILOR_QUATERNARY
+			      && *(cur_coll->coll_ref.coll_uca_w_l4_ref) == '\0'
+			      && memcmp (cur_coll->opt_coll.uca_w_l4, comp_coll->opt_coll.uca_w_l4,
+					 sizeof (UCA_L4_W) * cur_coll->opt_coll.uca_exp_num *
+					 cur_coll->opt_coll.w_count) == 0)
 			    {
-			      sprintf (cur_coll->coll_ref.coll_uca_w_l4_ref,
-				       "%s_%s", "coll_uca_w_l4",
+			      sprintf (cur_coll->coll_ref.coll_uca_w_l4_ref, "%s_%s", "coll_uca_w_l4",
 				       comp_coll->opt_coll.coll_name);
-			      PRINT_DUPLICATE_SYMBOL_NAME ("coll_uca_w_l4",
-							   cur_coll,
-							   comp_coll,
-							   is_verbose);
+			      PRINT_DUPLICATE_SYMBOL_NAME ("coll_uca_w_l4", cur_coll, comp_coll, is_verbose);
 			    }
 			}
 		    }		/* endif equal sett_expansions */
 
 		  if (*(cur_coll->coll_ref.coll_next_cp_ref) == '\0'
-		      && memcmp (cur_coll->opt_coll.next_cp,
-				 comp_coll->opt_coll.next_cp,
-				 sizeof (comp_coll->opt_coll.next_cp[0])
-				 * comp_coll->opt_coll.w_count) == 0)
+		      && memcmp (cur_coll->opt_coll.next_cp, comp_coll->opt_coll.next_cp,
+				 sizeof (comp_coll->opt_coll.next_cp[0]) * comp_coll->opt_coll.w_count) == 0)
 		    {
-		      sprintf (cur_coll->coll_ref.coll_next_cp_ref,
-			       "%s_%s", "coll_next_cp",
+		      sprintf (cur_coll->coll_ref.coll_next_cp_ref, "%s_%s", "coll_next_cp",
 			       comp_coll->opt_coll.coll_name);
-		      PRINT_DUPLICATE_SYMBOL_NAME ("coll_next_cp", cur_coll,
-						   comp_coll, is_verbose);
+		      PRINT_DUPLICATE_SYMBOL_NAME ("coll_next_cp", cur_coll, comp_coll, is_verbose);
 		    }
 
 		  /* compare contraction data */
 		  if (cur_coll->opt_coll.count_contr > 0
-		      && cur_coll->opt_coll.count_contr
-		      == comp_coll->opt_coll.count_contr)
+		      && cur_coll->opt_coll.count_contr == comp_coll->opt_coll.count_contr)
 		    {
-		      if (cur_coll->opt_coll.contr_min_size
-			  == comp_coll->opt_coll.contr_min_size
+		      if (cur_coll->opt_coll.contr_min_size == comp_coll->opt_coll.contr_min_size
 			  && *(cur_coll->coll_ref.coll_contr_list_ref) == '\0'
-			  && memcmp (cur_coll->opt_coll.contr_list,
-				     comp_coll->opt_coll.contr_list,
-				     sizeof (COLL_CONTRACTION)
-				     * comp_coll->opt_coll.count_contr) == 0)
+			  && memcmp (cur_coll->opt_coll.contr_list, comp_coll->opt_coll.contr_list,
+				     sizeof (COLL_CONTRACTION) * comp_coll->opt_coll.count_contr) == 0)
 			{
-			  sprintf (cur_coll->coll_ref.coll_contr_list_ref,
-				   "%s_%s", "coll_contr_list",
+			  sprintf (cur_coll->coll_ref.coll_contr_list_ref, "%s_%s", "coll_contr_list",
 				   comp_coll->opt_coll.coll_name);
-			  PRINT_DUPLICATE_SYMBOL_NAME ("coll_contr_list",
-						       cur_coll, comp_coll,
-						       is_verbose);
+			  PRINT_DUPLICATE_SYMBOL_NAME ("coll_contr_list", cur_coll, comp_coll, is_verbose);
 			}
 
-		      if (cur_coll->opt_coll.cp_first_contr_offset
-			  == comp_coll->opt_coll.cp_first_contr_offset
-			  && cur_coll->opt_coll.cp_first_contr_count
-			  == comp_coll->opt_coll.cp_first_contr_count
-			  && *(cur_coll->coll_ref.
-			       coll_cp_first_contr_array_ref) == '\0'
-			  && memcmp (cur_coll->opt_coll.cp_first_contr_array,
-				     comp_coll->opt_coll.cp_first_contr_array,
-				     sizeof (comp_coll->opt_coll.
-					     cp_first_contr_array[0])
-				     * comp_coll->opt_coll.w_count) == 0)
+		      if (cur_coll->opt_coll.cp_first_contr_offset == comp_coll->opt_coll.cp_first_contr_offset
+			  && cur_coll->opt_coll.cp_first_contr_count == comp_coll->opt_coll.cp_first_contr_count
+			  && *(cur_coll->coll_ref.coll_cp_first_contr_array_ref) == '\0'
+			  && memcmp (cur_coll->opt_coll.cp_first_contr_array, comp_coll->opt_coll.cp_first_contr_array,
+				     sizeof (comp_coll->opt_coll.cp_first_contr_array[0]) *
+				     comp_coll->opt_coll.w_count) == 0)
 			{
-			  sprintf (cur_coll->coll_ref.
-				   coll_cp_first_contr_array_ref, "%s_%s",
-				   "coll_cp_first_contr_array",
-				   comp_coll->opt_coll.coll_name);
-			  PRINT_DUPLICATE_SYMBOL_NAME ("coll_cp_first_"
-						       "contr_array",
-						       cur_coll, comp_coll,
-						       is_verbose);
+			  sprintf (cur_coll->coll_ref.coll_cp_first_contr_array_ref, "%s_%s",
+				   "coll_cp_first_contr_array", comp_coll->opt_coll.coll_name);
+			  PRINT_DUPLICATE_SYMBOL_NAME ("coll_cp_first_" "contr_array", cur_coll, comp_coll, is_verbose);
 			}
 		    }
 		}
@@ -5268,8 +4988,7 @@ locale_mark_duplicate_collations (LOCALE_DATA ** ld, int start_index,
  * lf(in): locale file info
  */
 int
-locale_save_all_to_C_file (LOCALE_DATA ** ld, int start_index,
-			   int end_index, LOCALE_FILE * lf)
+locale_save_all_to_C_file (LOCALE_DATA ** ld, int start_index, int end_index, LOCALE_FILE * lf)
 {
   int er_status = NO_ERROR;
   int i;
@@ -5299,8 +5018,7 @@ locale_save_all_to_C_file (LOCALE_DATA ** ld, int start_index,
  *	    - locale generation admin tool (error is generated)
  */
 int
-locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales,
-			bool is_lang_init)
+locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales, bool is_lang_init)
 {
   char locale_cfg_file[PATH_MAX];
   char line[1024];
@@ -5314,8 +5032,7 @@ locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales,
   assert (p_locale_files != NULL);
   assert (p_num_locales != NULL);
 
-  envvar_confdir_file (locale_cfg_file, sizeof (locale_cfg_file),
-		       "cubrid_locales.txt");
+  envvar_confdir_file (locale_cfg_file, sizeof (locale_cfg_file), "cubrid_locales.txt");
 
   fp = fopen_ex (locale_cfg_file, "rt");
   if (fp == NULL)
@@ -5327,8 +5044,7 @@ locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales,
 	}
       else
 	{
-	  snprintf (msg, sizeof (msg) - 1, "Cannot open file %s",
-		    locale_cfg_file);
+	  snprintf (msg, sizeof (msg) - 1, "Cannot open file %s", locale_cfg_file);
 	  LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
 	  err_status = ER_LOC_GEN;
 	  goto exit;
@@ -5361,13 +5077,11 @@ locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales,
       if (num_locales >= max_locales)
 	{
 	  max_locales *= 2;
-	  locale_files = realloc (locale_files,
-				  max_locales * sizeof (LOCALE_FILE));
+	  locale_files = realloc (locale_files, max_locales * sizeof (LOCALE_FILE));
 
 	  if (locale_files == NULL)
 	    {
-	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT,
-				true);
+	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
 	      err_status = ER_LOC_INIT;
 	      goto exit;
 	    }
@@ -5442,23 +5156,19 @@ locale_check_and_set_default_files (LOCALE_FILE * lf, bool is_lang_init)
 
   assert (lf != NULL);
 
-  if (lf->locale_name == NULL
-      || strlen (lf->locale_name) > LOC_LOCALE_STR_SIZE)
+  if (lf->locale_name == NULL || strlen (lf->locale_name) > LOC_LOCALE_STR_SIZE)
     {
       er_status = is_lang_init ? ER_LOC_INIT : ER_LOC_GEN;
-      LOG_LOCALE_ERROR ("invalid locale name in 'cubrid_locales.txt'",
-			er_status, true);
+      LOG_LOCALE_ERROR ("invalid locale name in 'cubrid_locales.txt'", er_status, true);
       goto error;
     }
 
-  if (lf->ldml_file == NULL || *(lf->ldml_file) == '\0'
-      || *(lf->ldml_file) == '*')
+  if (lf->ldml_file == NULL || *(lf->ldml_file) == '\0' || *(lf->ldml_file) == '*')
     {
       /* generate name for LDML file */
       char ldml_short_file[LOC_LOCALE_STR_SIZE + 13];
 
-      snprintf (ldml_short_file, sizeof (ldml_short_file) - 1,
-		"cubrid_%s.xml", lf->locale_name);
+      snprintf (ldml_short_file, sizeof (ldml_short_file) - 1, "cubrid_%s.xml", lf->locale_name);
       ldml_short_file[sizeof (ldml_short_file) - 1] = '\0';
 
       if (lf->ldml_file != NULL)
@@ -5478,14 +5188,12 @@ locale_check_and_set_default_files (LOCALE_FILE * lf, bool is_lang_init)
       envvar_ldmldir_file (lf->ldml_file, PATH_MAX, ldml_short_file);
     }
 
-  if (lf->lib_file == NULL || *(lf->lib_file) == '\0'
-      || *(lf->lib_file) == '*')
+  if (lf->lib_file == NULL || *(lf->lib_file) == '\0' || *(lf->lib_file) == '*')
     {
       /* generate name for locale lib file */
       char lib_short_file[PATH_MAX];
 
-      snprintf (lib_short_file, sizeof (lib_short_file) - 1,
-		"libcubrid_%s.%s", lf->locale_name, LOCLIB_FILE_EXT);
+      snprintf (lib_short_file, sizeof (lib_short_file) - 1, "libcubrid_%s.%s", lf->locale_name, LOCLIB_FILE_EXT);
       lib_short_file[sizeof (lib_short_file) - 1] = '\0';
 
       if (lf->lib_file != NULL)
@@ -5508,13 +5216,11 @@ locale_check_and_set_default_files (LOCALE_FILE * lf, bool is_lang_init)
 	{
 	  FILE *fp;
 
-	  /* check that default lib file exists, otherwise switch to the
-	   * common libray locale */
+	  /* check that default lib file exists, otherwise switch to the common libray locale */
 	  fp = fopen_ex (lf->lib_file, "rb");
 	  if (fp == NULL)
 	    {
-	      snprintf (lib_short_file, sizeof (lib_short_file) - 1,
-			"libcubrid_all_locales.%s", LOCLIB_FILE_EXT);
+	      snprintf (lib_short_file, sizeof (lib_short_file) - 1, "libcubrid_all_locales.%s", LOCLIB_FILE_EXT);
 	      lib_short_file[sizeof (lib_short_file) - 1] = '\0';
 
 	      assert (lf->lib_file != NULL);
@@ -5556,8 +5262,7 @@ error:
  * use_level_4(in):
  */
 static int
-save_contraction_to_C_file (FILE * fp, COLL_CONTRACTION * c,
-			    bool use_expansion, bool use_level_4)
+save_contraction_to_C_file (FILE * fp, COLL_CONTRACTION * c, bool use_expansion, bool use_level_4)
 {
   int res = 0;
 
@@ -5572,14 +5277,12 @@ save_contraction_to_C_file (FILE * fp, COLL_CONTRACTION * c,
     {
       assert (c->uca_num > 0 || c->uca_num <= MAX_UCA_EXP_CE);
 
-      PRINT_UNNAMED_NUM_ARRAY_TO_C_FILE (fp, "%uu", "\t\t", c->uca_num,
-					 c->uca_w_l13);
+      PRINT_UNNAMED_NUM_ARRAY_TO_C_FILE (fp, "%uu", "\t\t", c->uca_num, c->uca_w_l13);
       fprintf (fp, ",\n");
 
       if (use_level_4)
 	{
-	  PRINT_UNNAMED_NUM_ARRAY_TO_C_FILE (fp, "%u", "\t\t", c->uca_num,
-					     c->uca_w_l4);
+	  PRINT_UNNAMED_NUM_ARRAY_TO_C_FILE (fp, "%u", "\t\t", c->uca_num, c->uca_w_l4);
 	}
       else
 	{
@@ -5638,8 +5341,7 @@ locale_prepare_C_file (void)
   fclose (fp);
   return 0;
 error:
-  snprintf (err_msg, sizeof (err_msg) - 1,
-	    "Error opening file %s for rewrite.", c_file_path);
+  snprintf (err_msg, sizeof (err_msg) - 1, "Error opening file %s for rewrite.", c_file_path);
   LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
   return ER_GENERIC_ERROR;
 }
@@ -5670,52 +5372,37 @@ locale_save_to_C_file (LOCALE_FILE lf, LOCALE_DATA * ld)
     {
       goto error;
     }
-  fprintf (fp, "/*\n * %s - generated from %s \n *\n */\n", ld->locale_name,
-	   lf.ldml_file);
+  fprintf (fp, "/*\n * %s - generated from %s \n *\n */\n", ld->locale_name, lf.ldml_file);
 
-  PRINT_STRING_VAR_TO_C_FILE (fp, "locale_name", ld->locale_name,
-			      ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "locale_name", ld->locale_name, ld->locale_name);
 
   locale_save_calendar_to_C_file (fp, ld);
 
-  PRINT_VAR_TO_C_FILE (fp, "char", "number_decimal_sym",
-		       ld->number_decimal_sym, "'%c'", ld->locale_name);
-  PRINT_VAR_TO_C_FILE (fp, "char", "number_group_sym",
-		       ld->number_group_sym, "'%c'", ld->locale_name);
-  PRINT_VAR_TO_C_FILE (fp, "int", "default_currency_code",
-		       ld->default_currency_code, "%d", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "char", "number_decimal_sym", ld->number_decimal_sym, "'%c'", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "char", "number_group_sym", ld->number_group_sym, "'%c'", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "default_currency_code", ld->default_currency_code, "%d", ld->locale_name);
 
   locale_save_alphabets_to_C_file (fp, ld);
 
   /* number of collation associated with this locale */
-  PRINT_VAR_TO_C_FILE (fp, "int", "count_coll", ld->coll_cnt,
-		       "%d", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "count_coll", ld->coll_cnt, "%d", ld->locale_name);
 
   for (i = 0; i < ld->coll_cnt; i++)
     {
       char coll_suffix[ERR_MSG_SIZE];
 
-      /* Collation names are user defined: first save fixed name variables
-       * containing collations name included in the LDML:
-       * collation_1_es_ES = "utf8_es_ES";
-       * collation_2_es_ES = "utf8_es_ES_ci";
-       */
-      snprintf (coll_suffix, sizeof (coll_suffix) - 1, "%d_%s", i,
-		ld->locale_name);
-      PRINT_STRING_VAR_TO_C_FILE (fp, "collation",
-				  ld->collations[i].opt_coll.coll_name,
-				  coll_suffix);
+      /* Collation names are user defined: first save fixed name variables containing collations name included in the
+       * LDML: collation_1_es_ES = "utf8_es_ES"; collation_2_es_ES = "utf8_es_ES_ci"; */
+      snprintf (coll_suffix, sizeof (coll_suffix) - 1, "%d_%s", i, ld->locale_name);
+      PRINT_STRING_VAR_TO_C_FILE (fp, "collation", ld->collations[i].opt_coll.coll_name, coll_suffix);
 
       if (ld->collations[i].do_not_save)
 	{
 	  continue;
 	}
 
-      /* the collation data is decorated with the user defined name of the
-       * collation :
-       * coll_weights_utf8_es_ES = { .. };
-       * coll_weights_utf8_es_ES_ci = { .. };
-       */
+      /* the collation data is decorated with the user defined name of the collation : coll_weights_utf8_es_ES = { ..
+       * }; coll_weights_utf8_es_ES_ci = { .. }; */
       locale_save_collation_data_to_C_file (fp, &(ld->collations[i]));
     }
 
@@ -5723,15 +5410,13 @@ locale_save_to_C_file (LOCALE_FILE lf, LOCALE_DATA * ld)
 
   locale_save_normalization_to_C_file (fp, ld);
 
-  PRINT_STRING_VAR_TO_C_FILE (fp, "locale_checksum", ld->checksum,
-			      ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "locale_checksum", ld->checksum, ld->locale_name);
 
   fclose (fp);
   return 0;
 
 error:
-  snprintf (err_msg, sizeof (err_msg) - 1,
-	    "Error opening file %s for append.", c_file_path);
+  snprintf (err_msg, sizeof (err_msg) - 1, "Error opening file %s for append.", c_file_path);
   LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
   return ER_GENERIC_ERROR;
 }
@@ -5752,52 +5437,33 @@ locale_save_calendar_to_C_file (FILE * fp, LOCALE_DATA * ld)
   assert (fp != NULL);
 
   /* calendar format strings */
-  PRINT_STRING_VAR_TO_C_FILE (fp, "date_format", ld->dateFormat,
-			      ld->locale_name);
-  PRINT_STRING_VAR_TO_C_FILE (fp, "time_format", ld->timeFormat,
-			      ld->locale_name);
-  PRINT_STRING_VAR_TO_C_FILE (fp, "datetime_format", ld->datetimeFormat,
-			      ld->locale_name);
-  PRINT_STRING_VAR_TO_C_FILE (fp, "timestamp_format", ld->timestampFormat,
-			      ld->locale_name);
-  PRINT_STRING_VAR_TO_C_FILE (fp, "timetz_format", ld->timetzFormat,
-			      ld->locale_name);
-  PRINT_STRING_VAR_TO_C_FILE (fp, "datetimetz_format", ld->datetimetzFormat,
-			      ld->locale_name);
-  PRINT_STRING_VAR_TO_C_FILE (fp, "timestamptz_format", ld->timestamptzFormat,
-			      ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "date_format", ld->dateFormat, ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "time_format", ld->timeFormat, ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "datetime_format", ld->datetimeFormat, ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "timestamp_format", ld->timestampFormat, ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "timetz_format", ld->timetzFormat, ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "datetimetz_format", ld->datetimetzFormat, ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "timestamptz_format", ld->timestamptzFormat, ld->locale_name);
 
   /* calendar data arrays */
-  PRINT_STRING_ARRAY_TO_C_FILE (fp, "month_names_abbreviated",
-				CAL_MONTH_COUNT, ld->month_names_abbreviated,
+  PRINT_STRING_ARRAY_TO_C_FILE (fp, "month_names_abbreviated", CAL_MONTH_COUNT, ld->month_names_abbreviated,
 				ld->locale_name);
-  PRINT_STRING_ARRAY_TO_C_FILE (fp, "month_names_wide", CAL_MONTH_COUNT,
-				ld->month_names_wide, ld->locale_name);
-  PRINT_STRING_ARRAY_TO_C_FILE (fp, "day_names_abbreviated", CAL_DAY_COUNT,
-				ld->day_names_abbreviated, ld->locale_name);
-  PRINT_STRING_ARRAY_TO_C_FILE (fp, "day_names_wide", CAL_DAY_COUNT,
-				ld->day_names_wide, ld->locale_name);
-  PRINT_STRING_ARRAY_TO_C_FILE (fp, "am_pm", CAL_AM_PM_COUNT, ld->am_pm,
-				ld->locale_name);
+  PRINT_STRING_ARRAY_TO_C_FILE (fp, "month_names_wide", CAL_MONTH_COUNT, ld->month_names_wide, ld->locale_name);
+  PRINT_STRING_ARRAY_TO_C_FILE (fp, "day_names_abbreviated", CAL_DAY_COUNT, ld->day_names_abbreviated, ld->locale_name);
+  PRINT_STRING_ARRAY_TO_C_FILE (fp, "day_names_wide", CAL_DAY_COUNT, ld->day_names_wide, ld->locale_name);
+  PRINT_STRING_ARRAY_TO_C_FILE (fp, "am_pm", CAL_AM_PM_COUNT, ld->am_pm, ld->locale_name);
 
   /* calendar parse order arrays */
-  PRINT_NUM_ARRAY_TO_C_FILE (fp, "day_names_abbr_parse_order",
-			     "char", "%u", CAL_DAY_COUNT,
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "day_names_abbr_parse_order", "char", "%u", CAL_DAY_COUNT,
 			     ld->day_names_abbr_parse_order, ld->locale_name);
-  PRINT_NUM_ARRAY_TO_C_FILE (fp, "day_names_wide_parse_order",
-			     "char", "%u", CAL_DAY_COUNT,
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "day_names_wide_parse_order", "char", "%u", CAL_DAY_COUNT,
 			     ld->day_names_wide_parse_order, ld->locale_name);
-  PRINT_NUM_ARRAY_TO_C_FILE (fp, "month_names_abbr_parse_order",
-			     "char", "%u", CAL_MONTH_COUNT,
-			     ld->month_names_abbr_parse_order,
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "month_names_abbr_parse_order", "char", "%u", CAL_MONTH_COUNT,
+			     ld->month_names_abbr_parse_order, ld->locale_name);
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "month_names_wide_parse_order", "char", "%u", CAL_MONTH_COUNT,
+			     ld->month_names_wide_parse_order, ld->locale_name);
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "am_pm_parse_order", "char", "%u", CAL_AM_PM_COUNT, ld->am_pm_parse_order,
 			     ld->locale_name);
-  PRINT_NUM_ARRAY_TO_C_FILE (fp, "month_names_wide_parse_order",
-			     "char", "%u", CAL_MONTH_COUNT,
-			     ld->month_names_wide_parse_order,
-			     ld->locale_name);
-  PRINT_NUM_ARRAY_TO_C_FILE (fp, "am_pm_parse_order",
-			     "char", "%u", CAL_AM_PM_COUNT,
-			     ld->am_pm_parse_order, ld->locale_name);
 
   return 0;
 }
@@ -5815,44 +5481,30 @@ locale_save_calendar_to_C_file (FILE * fp, LOCALE_DATA * ld)
  * alpha_suffix(in): suffix to be applied to variables names
  */
 static int
-locale_save_one_alphabet_to_C_file (FILE * fp, ALPHABET_DATA * a,
-				    bool save_w_identier_name,
-				    const char *alpha_suffix)
+locale_save_one_alphabet_to_C_file (FILE * fp, ALPHABET_DATA * a, bool save_w_identier_name, const char *alpha_suffix)
 {
   assert (a != NULL);
   assert (fp != NULL);
 
   if (save_w_identier_name)
     {
-      PRINT_VAR_TO_C_FILE (fp, "int", "ident_alphabet_l_count", a->l_count,
-			   "%d", alpha_suffix);
+      PRINT_VAR_TO_C_FILE (fp, "int", "ident_alphabet_l_count", a->l_count, "%d", alpha_suffix);
 
-      PRINT_VAR_TO_C_FILE (fp, "int", "ident_alphabet_lower_multiplier",
-			   a->lower_multiplier, "%d", alpha_suffix);
-      PRINT_VAR_TO_C_FILE (fp, "int", "ident_alphabet_upper_multiplier",
-			   a->upper_multiplier, "%d", alpha_suffix);
-      PRINT_NUM_ARRAY_TO_C_FILE (fp, "ident_alphabet_lower_cp",
-				 "unsigned int", "%u", a->l_count
-				 * a->lower_multiplier, a->lower_cp,
-				 alpha_suffix);
-      PRINT_NUM_ARRAY_TO_C_FILE (fp, "ident_alphabet_upper_cp",
-				 "unsigned int", "%u", a->l_count
-				 * a->upper_multiplier, a->upper_cp,
-				 alpha_suffix);
+      PRINT_VAR_TO_C_FILE (fp, "int", "ident_alphabet_lower_multiplier", a->lower_multiplier, "%d", alpha_suffix);
+      PRINT_VAR_TO_C_FILE (fp, "int", "ident_alphabet_upper_multiplier", a->upper_multiplier, "%d", alpha_suffix);
+      PRINT_NUM_ARRAY_TO_C_FILE (fp, "ident_alphabet_lower_cp", "unsigned int", "%u", a->l_count * a->lower_multiplier,
+				 a->lower_cp, alpha_suffix);
+      PRINT_NUM_ARRAY_TO_C_FILE (fp, "ident_alphabet_upper_cp", "unsigned int", "%u", a->l_count * a->upper_multiplier,
+				 a->upper_cp, alpha_suffix);
     }
   else
     {
-      PRINT_VAR_TO_C_FILE (fp, "int", "alphabet_l_count", a->l_count, "%d",
-			   alpha_suffix);
-      PRINT_VAR_TO_C_FILE (fp, "int", "alphabet_lower_multiplier",
-			   a->lower_multiplier, "%d", alpha_suffix);
-      PRINT_VAR_TO_C_FILE (fp, "int", "alphabet_upper_multiplier",
-			   a->upper_multiplier, "%d", alpha_suffix);
-      PRINT_NUM_ARRAY_TO_C_FILE (fp, "alphabet_lower_cp", "unsigned int",
-				 "%u", a->l_count * a->lower_multiplier,
+      PRINT_VAR_TO_C_FILE (fp, "int", "alphabet_l_count", a->l_count, "%d", alpha_suffix);
+      PRINT_VAR_TO_C_FILE (fp, "int", "alphabet_lower_multiplier", a->lower_multiplier, "%d", alpha_suffix);
+      PRINT_VAR_TO_C_FILE (fp, "int", "alphabet_upper_multiplier", a->upper_multiplier, "%d", alpha_suffix);
+      PRINT_NUM_ARRAY_TO_C_FILE (fp, "alphabet_lower_cp", "unsigned int", "%u", a->l_count * a->lower_multiplier,
 				 a->lower_cp, alpha_suffix);
-      PRINT_NUM_ARRAY_TO_C_FILE (fp, "alphabet_upper_cp", "unsigned int",
-				 "%u", a->l_count * a->upper_multiplier,
+      PRINT_NUM_ARRAY_TO_C_FILE (fp, "alphabet_upper_cp", "unsigned int", "%u", a->l_count * a->upper_multiplier,
 				 a->upper_cp, alpha_suffix);
     }
 
@@ -5875,8 +5527,7 @@ locale_save_alphabets_to_C_file (FILE * fp, LOCALE_DATA * ld)
   assert (fp != NULL);
 
   /* alphabet data */
-  PRINT_VAR_TO_C_FILE (fp, "int", "alphabet_a_type", ld->alphabet.a_type,
-		       "%d", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "alphabet_a_type", ld->alphabet.a_type, "%d", ld->locale_name);
 
   if (!(ld->alphabet.do_not_save))
     {
@@ -5895,13 +5546,11 @@ locale_save_alphabets_to_C_file (FILE * fp, LOCALE_DATA * ld)
 	  alpha_suffix = (const char *) (ld->locale_name);
 	}
 
-      (void) locale_save_one_alphabet_to_C_file (fp, &(ld->alphabet), false,
-						 alpha_suffix);
+      (void) locale_save_one_alphabet_to_C_file (fp, &(ld->alphabet), false, alpha_suffix);
     }
 
   /* identifier alphabet data */
-  PRINT_VAR_TO_C_FILE (fp, "int", "ident_alphabet_a_type",
-		       ld->identif_alphabet.a_type, "%d", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "ident_alphabet_a_type", ld->identif_alphabet.a_type, "%d", ld->locale_name);
 
   if (!(ld->identif_alphabet.do_not_save))
     {
@@ -5922,9 +5571,7 @@ locale_save_alphabets_to_C_file (FILE * fp, LOCALE_DATA * ld)
 	  save_w_identif = true;
 	}
 
-      (void) locale_save_one_alphabet_to_C_file (fp, &(ld->identif_alphabet),
-						 save_w_identif,
-						 alpha_suffix);
+      (void) locale_save_one_alphabet_to_C_file (fp, &(ld->identif_alphabet), save_w_identif, alpha_suffix);
     }
 
   return 0;
@@ -5951,36 +5598,22 @@ locale_save_collation_data_to_C_file (FILE * fp, LOCALE_COLLATION * lc)
   cd = &(lc->opt_coll);
 
   /* collation constants */
-  PRINT_VAR_TO_C_FILE (fp, "int", "coll_id", cd->coll_id, "%d",
-		       cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_id", cd->coll_id, "%d", cd->coll_name);
   PRINT_STRING_VAR_TO_C_FILE (fp, "coll_name", cd->coll_name, cd->coll_name);
 
   /* OPT_COLL.UCA_OPT members */
-  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_strength",
-		       cd->uca_opt.sett_strength, "%d", cd->coll_name);
-  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_backwards",
-		       cd->uca_opt.sett_backwards ? 1 : 0, "%d",
-		       cd->coll_name);
-  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_caseLevel",
-		       cd->uca_opt.sett_caseLevel ? 1 : 0, "%d",
-		       cd->coll_name);
-  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_caseFirst",
-		       cd->uca_opt.sett_caseFirst, "%d", cd->coll_name);
-  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_expansions",
-		       cd->uca_opt.sett_expansions ? 1 : 0, "%d",
-		       cd->coll_name);
-  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_contr_policy",
-		       cd->uca_opt.sett_contr_policy, "%d", cd->coll_name);
-  PRINT_VAR_TO_C_FILE (fp, "int", "coll_match_contr",
-		       cd->uca_opt.sett_match_contr, "%d", cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_strength", cd->uca_opt.sett_strength, "%d", cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_backwards", cd->uca_opt.sett_backwards ? 1 : 0, "%d", cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_caseLevel", cd->uca_opt.sett_caseLevel ? 1 : 0, "%d", cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_caseFirst", cd->uca_opt.sett_caseFirst, "%d", cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_expansions", cd->uca_opt.sett_expansions ? 1 : 0, "%d", cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_sett_contr_policy", cd->uca_opt.sett_contr_policy, "%d", cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_match_contr", cd->uca_opt.sett_match_contr, "%d", cd->coll_name);
 
   /* other OPT_COLL members */
-  PRINT_VAR_TO_C_FILE (fp, "int", "coll_w_count", cd->w_count, "%d",
-		       cd->coll_name);
-  PRINT_VAR_TO_C_FILE (fp, "int", "coll_uca_exp_num", cd->uca_exp_num, "%d",
-		       cd->coll_name);
-  PRINT_VAR_TO_C_FILE (fp, "int", "coll_count_contr", cd->count_contr, "%d",
-		       cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_w_count", cd->w_count, "%d", cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_uca_exp_num", cd->uca_exp_num, "%d", cd->coll_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "coll_count_contr", cd->count_contr, "%d", cd->coll_name);
 
   /* OPT_COLL pointer and array members */
   if (cd->w_count > 0)
@@ -5989,15 +5622,11 @@ locale_save_collation_data_to_C_file (FILE * fp, LOCALE_COLLATION * lc)
 	{
 	  if (*(lc->coll_ref.coll_weights_ref) == '\0')
 	    {
-	      sprintf (lc->coll_ref.coll_weights_ref, "coll_weights_%s",
-		       cd->coll_name);
-	      PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_weights", "unsigned int",
-					 "%u", cd->w_count, cd->weights,
+	      sprintf (lc->coll_ref.coll_weights_ref, "coll_weights_%s", cd->coll_name);
+	      PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_weights", "unsigned int", "%u", cd->w_count, cd->weights,
 					 cd->coll_name);
 	    }
-	  PRINT_STRING_VAR_TO_C_FILE (fp, "coll_weights_ref",
-				      lc->coll_ref.coll_weights_ref,
-				      cd->coll_name);
+	  PRINT_STRING_VAR_TO_C_FILE (fp, "coll_weights_ref", lc->coll_ref.coll_weights_ref, cd->coll_name);
 	}
       else
 	{
@@ -6005,80 +5634,56 @@ locale_save_collation_data_to_C_file (FILE * fp, LOCALE_COLLATION * lc)
 
 	  if (*(lc->coll_ref.coll_uca_w_l13_ref) == '\0')
 	    {
-	      sprintf (lc->coll_ref.coll_uca_w_l13_ref, "coll_uca_w_l13_%s",
-		       cd->coll_name);
-	      PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_uca_w_l13", "unsigned int",
-					 "%u", cd->uca_exp_num * cd->w_count,
+	      sprintf (lc->coll_ref.coll_uca_w_l13_ref, "coll_uca_w_l13_%s", cd->coll_name);
+	      PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_uca_w_l13", "unsigned int", "%u", cd->uca_exp_num * cd->w_count,
 					 cd->uca_w_l13, cd->coll_name);
 	    }
-	  PRINT_STRING_VAR_TO_C_FILE (fp, "coll_uca_w_l13_ref",
-				      lc->coll_ref.coll_uca_w_l13_ref,
-				      cd->coll_name);
+	  PRINT_STRING_VAR_TO_C_FILE (fp, "coll_uca_w_l13_ref", lc->coll_ref.coll_uca_w_l13_ref, cd->coll_name);
 
 	  if (cd->uca_opt.sett_strength >= TAILOR_QUATERNARY)
 	    {
 	      if (*(lc->coll_ref.coll_uca_w_l4_ref) == '\0')
 		{
-		  sprintf (lc->coll_ref.coll_uca_w_l4_ref, "coll_uca_w_l4_%s",
-			   cd->coll_name);
-		  PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_uca_w_l4",
-					     "unsigned short", "%u",
-					     cd->uca_exp_num * cd->w_count,
+		  sprintf (lc->coll_ref.coll_uca_w_l4_ref, "coll_uca_w_l4_%s", cd->coll_name);
+		  PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_uca_w_l4", "unsigned short", "%u", cd->uca_exp_num * cd->w_count,
 					     cd->uca_w_l4, cd->coll_name);
 		}
-	      PRINT_STRING_VAR_TO_C_FILE (fp, "coll_uca_w_l4_ref",
-					  lc->coll_ref.coll_uca_w_l4_ref,
-					  cd->coll_name);
+	      PRINT_STRING_VAR_TO_C_FILE (fp, "coll_uca_w_l4_ref", lc->coll_ref.coll_uca_w_l4_ref, cd->coll_name);
 	    }
 
 	  if (*(lc->coll_ref.coll_uca_num_ref) == '\0')
 	    {
-	      sprintf (lc->coll_ref.coll_uca_num_ref, "coll_uca_num_%s",
-		       cd->coll_name);
-	      PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_uca_num", "char", "%d",
-					 cd->w_count, cd->uca_num,
-					 cd->coll_name);
+	      sprintf (lc->coll_ref.coll_uca_num_ref, "coll_uca_num_%s", cd->coll_name);
+	      PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_uca_num", "char", "%d", cd->w_count, cd->uca_num, cd->coll_name);
 	    }
-	  PRINT_STRING_VAR_TO_C_FILE (fp, "coll_uca_num_ref",
-				      lc->coll_ref.coll_uca_num_ref,
-				      cd->coll_name);
+	  PRINT_STRING_VAR_TO_C_FILE (fp, "coll_uca_num_ref", lc->coll_ref.coll_uca_num_ref, cd->coll_name);
 	}
 
       if (*(lc->coll_ref.coll_next_cp_ref) == '\0')
 	{
-	  sprintf (lc->coll_ref.coll_next_cp_ref, "coll_next_cp_%s",
-		   cd->coll_name);
-	  PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_next_cp", "unsigned int", "%u",
-				     cd->w_count, cd->next_cp, cd->coll_name);
+	  sprintf (lc->coll_ref.coll_next_cp_ref, "coll_next_cp_%s", cd->coll_name);
+	  PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_next_cp", "unsigned int", "%u", cd->w_count, cd->next_cp, cd->coll_name);
 	}
-      PRINT_STRING_VAR_TO_C_FILE (fp, "coll_next_cp_ref",
-				  lc->coll_ref.coll_next_cp_ref,
-				  cd->coll_name);
+      PRINT_STRING_VAR_TO_C_FILE (fp, "coll_next_cp_ref", lc->coll_ref.coll_next_cp_ref, cd->coll_name);
     }
 
   if (cd->count_contr > 0)
     {
-      PRINT_VAR_TO_C_FILE (fp, "int", "coll_contr_min_size",
-			   cd->contr_min_size, "%d", cd->coll_name);
-      PRINT_VAR_TO_C_FILE (fp, "unsigned int", "coll_cp_first_contr_offset",
-			   cd->cp_first_contr_offset, "%u", cd->coll_name);
-      PRINT_VAR_TO_C_FILE (fp, "unsigned int", "coll_cp_first_contr_count",
-			   cd->cp_first_contr_count, "%u", cd->coll_name);
+      PRINT_VAR_TO_C_FILE (fp, "int", "coll_contr_min_size", cd->contr_min_size, "%d", cd->coll_name);
+      PRINT_VAR_TO_C_FILE (fp, "unsigned int", "coll_cp_first_contr_offset", cd->cp_first_contr_offset, "%u",
+			   cd->coll_name);
+      PRINT_VAR_TO_C_FILE (fp, "unsigned int", "coll_cp_first_contr_count", cd->cp_first_contr_count, "%u",
+			   cd->coll_name);
 
       if (*(lc->coll_ref.coll_contr_list_ref) == '\0')
 	{
-	  sprintf (lc->coll_ref.coll_contr_list_ref, "coll_contr_list_%s",
-		   cd->coll_name);
-	  fprintf (fp, "" DLL_EXPORT_PREFIX
-		   "const COLL_CONTRACTION coll_contr_list_%s[] = {",
-		   cd->coll_name);
+	  sprintf (lc->coll_ref.coll_contr_list_ref, "coll_contr_list_%s", cd->coll_name);
+	  fprintf (fp, "" DLL_EXPORT_PREFIX "const COLL_CONTRACTION coll_contr_list_%s[] = {", cd->coll_name);
 	  for (i = 0; i < cd->count_contr; i++)
 	    {
 	      fprintf (fp, "\n");
-	      save_contraction_to_C_file (fp, &(cd->contr_list[i]),
-					  cd->uca_opt.sett_expansions,
-					  (cd->uca_opt.sett_strength >=
-					   TAILOR_QUATERNARY));
+	      save_contraction_to_C_file (fp, &(cd->contr_list[i]), cd->uca_opt.sett_expansions,
+					  (cd->uca_opt.sett_strength >= TAILOR_QUATERNARY));
 	      if (i < cd->count_contr - 1)
 		{
 		  fprintf (fp, ", ");
@@ -6086,27 +5691,20 @@ locale_save_collation_data_to_C_file (FILE * fp, LOCALE_COLLATION * lc)
 	    }
 	  fprintf (fp, "};\n");
 	}
-      PRINT_STRING_VAR_TO_C_FILE (fp, "coll_contr_list_ref",
-				  lc->coll_ref.coll_contr_list_ref,
-				  cd->coll_name);
+      PRINT_STRING_VAR_TO_C_FILE (fp, "coll_contr_list_ref", lc->coll_ref.coll_contr_list_ref, cd->coll_name);
 
       if (*(lc->coll_ref.coll_cp_first_contr_array_ref) == '\0')
 	{
-	  sprintf (lc->coll_ref.coll_cp_first_contr_array_ref,
-		   "coll_cp_first_contr_array_%s", cd->coll_name);
-	  PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_cp_first_contr_array",
-				     "int", "%d",
-				     (int) cd->cp_first_contr_count,
+	  sprintf (lc->coll_ref.coll_cp_first_contr_array_ref, "coll_cp_first_contr_array_%s", cd->coll_name);
+	  PRINT_NUM_ARRAY_TO_C_FILE (fp, "coll_cp_first_contr_array", "int", "%d", (int) cd->cp_first_contr_count,
 				     cd->cp_first_contr_array, cd->coll_name);
 	}
-      PRINT_STRING_VAR_TO_C_FILE (fp, "coll_cp_first_contr_array_ref",
-				  lc->coll_ref.coll_cp_first_contr_array_ref,
+      PRINT_STRING_VAR_TO_C_FILE (fp, "coll_cp_first_contr_array_ref", lc->coll_ref.coll_cp_first_contr_array_ref,
 				  cd->coll_name);
 
     }
 
-  PRINT_STRING_VAR_TO_C_FILE (fp, "coll_checksum", cd->checksum,
-			      cd->coll_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "coll_checksum", cd->checksum, cd->coll_name);
   return 0;
 }
 
@@ -6132,46 +5730,33 @@ locale_save_console_conv_to_C_file (FILE * fp, LOCALE_DATA * ld)
   tc = &(ld->txt_conv);
 
   /* TEXT_CONVERSION non-array members */
-  PRINT_VAR_TO_C_FILE (fp, "int", "tc_conv_type",
-		       tc->conv_type, "%d", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "int", "tc_conv_type", tc->conv_type, "%d", ld->locale_name);
 
-  if (tc->conv_type != TEXT_CONV_GENERIC_1BYTE
-      && tc->conv_type != TEXT_CONV_GENERIC_2BYTE)
+  if (tc->conv_type != TEXT_CONV_GENERIC_1BYTE && tc->conv_type != TEXT_CONV_GENERIC_2BYTE)
     {
       return 0;
     }
 
-  PRINT_NUM_ARRAY_TO_C_FILE (fp, "tc_is_lead_byte", "unsigned char",
-			     "%u", 256, tc->byte_flag, ld->locale_name);
-  PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_utf8_first_cp",
-		       tc->utf8_first_cp, "%u", ld->locale_name);
-  PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_utf8_last_cp",
-		       tc->utf8_last_cp, "%u", ld->locale_name);
-  PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_text_first_cp",
-		       tc->text_first_cp, "%u", ld->locale_name);
-  PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_text_last_cp",
-		       tc->text_last_cp, "%u", ld->locale_name);
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "tc_is_lead_byte", "unsigned char", "%u", 256, tc->byte_flag, ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_utf8_first_cp", tc->utf8_first_cp, "%u", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_utf8_last_cp", tc->utf8_last_cp, "%u", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_text_first_cp", tc->text_first_cp, "%u", ld->locale_name);
+  PRINT_VAR_TO_C_FILE (fp, "unsigned int", "tc_text_last_cp", tc->text_last_cp, "%u", ld->locale_name);
 
   assert (tc->win_codepages != NULL);
-  PRINT_STRING_VAR_TO_C_FILE (fp, "tc_win_codepages", tc->win_codepages,
-			      ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "tc_win_codepages", tc->win_codepages, ld->locale_name);
 
   assert (tc->nl_lang_str != NULL);
-  PRINT_STRING_VAR_TO_C_FILE (fp, "tc_nl_lang_str", tc->nl_lang_str,
-			      ld->locale_name);
+  PRINT_STRING_VAR_TO_C_FILE (fp, "tc_nl_lang_str", tc->nl_lang_str, ld->locale_name);
 
   assert (tc->utf8_last_cp > tc->utf8_first_cp);
   assert (tc->utf8_to_text != NULL);
 
-  fprintf (fp,
-	   "" DLL_EXPORT_PREFIX
-	   "const CONV_CP_TO_BYTES tc_utf8_to_text_%s[] = { \n",
-	   ld->locale_name);
+  fprintf (fp, "" DLL_EXPORT_PREFIX "const CONV_CP_TO_BYTES tc_utf8_to_text_%s[] = { \n", ld->locale_name);
   for (i = 0; i < (int) (tc->utf8_last_cp - tc->utf8_first_cp + 1); i++)
     {
       fprintf (fp, "{ %u, ", tc->utf8_to_text[i].size);
-      PRINT_STRING_TO_C_FILE (fp, tc->utf8_to_text[i].bytes,
-			      tc->utf8_to_text[i].size);
+      PRINT_STRING_TO_C_FILE (fp, tc->utf8_to_text[i].bytes, tc->utf8_to_text[i].size);
       fprintf (fp, "},\n");
     }
   fprintf (fp, "};\n");
@@ -6179,15 +5764,11 @@ locale_save_console_conv_to_C_file (FILE * fp, LOCALE_DATA * ld)
   assert (tc->text_last_cp > tc->text_first_cp);
   assert (tc->text_to_utf8 != NULL);
 
-  fprintf (fp,
-	   "" DLL_EXPORT_PREFIX
-	   "const CONV_CP_TO_BYTES tc_text_to_utf8_%s[] = { \n",
-	   ld->locale_name);
+  fprintf (fp, "" DLL_EXPORT_PREFIX "const CONV_CP_TO_BYTES tc_text_to_utf8_%s[] = { \n", ld->locale_name);
   for (i = 0; i < (int) (tc->text_last_cp - tc->text_first_cp + 1); i++)
     {
       fprintf (fp, "{ %u, ", tc->text_to_utf8[i].size);
-      PRINT_STRING_TO_C_FILE (fp, tc->text_to_utf8[i].bytes,
-			      tc->text_to_utf8[i].size);
+      PRINT_STRING_TO_C_FILE (fp, tc->text_to_utf8[i].bytes, tc->text_to_utf8[i].size);
       fprintf (fp, "},\n");
     }
   fprintf (fp, "};\n");
@@ -6266,8 +5847,7 @@ str_pop_token (char *str_p, char **token_p, char **next_p)
  *		    -w or -c will dump.
  */
 static int
-dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
-		      int lower_bound, int upper_bound)
+dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings, int lower_bound, int upper_bound)
 {
 #define DUMP_CP_BUF_SIZE 128
   int i, cp;
@@ -6305,8 +5885,7 @@ dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
     {
       memset (utf8_buf, 0, INTL_UTF8_MAX_CHAR_SIZE + 1);
       intl_cp_to_utf8 (cp, utf8_buf);
-      printf ("CP: Ux%04X | %-4s", cp, (cp > 0x0020 ? utf8_buf
-					: (unsigned char *) ""));
+      printf ("CP: Ux%04X | %-4s", cp, (cp > 0x0020 ? utf8_buf : (unsigned char *) ""));
       if ((dl_settings & DUMPLOCALE_IS_ALPHABET_LOWER) != 0)
 	{
 	  bool print_case = true;
@@ -6334,8 +5913,7 @@ dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
 	      snprintf (temp_cp, sizeof (temp_cp) - 1, "Ux%04X", case_buf[i]);
 	      strcat (out_cp, temp_cp);
 	    }
-	  printf (" | Lower :  CP(s): %-12s, lower char(s): %-12s",
-		  out_cp, (print_case ? out_case : ""));
+	  printf (" | Lower :  CP(s): %-12s, lower char(s): %-12s", out_cp, (print_case ? out_case : ""));
 	}
       if ((dl_settings & DUMPLOCALE_IS_ALPHABET_UPPER) != 0)
 	{
@@ -6365,8 +5943,7 @@ dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
 	      snprintf (temp_cp, sizeof (temp_cp) - 1, "Ux%04X", case_buf[i]);
 	      strcat (out_cp, temp_cp);
 	    }
-	  printf (" | Upper :  CP(s): %-12s, upper char(s): %-12s",
-		  out_cp, (print_case ? out_case : ""));
+	  printf (" | Upper :  CP(s): %-12s, upper char(s): %-12s", out_cp, (print_case ? out_case : ""));
 	}
       printf ("\n");
     }
@@ -6385,8 +5962,7 @@ dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings,
  *		    -w or -c will dump.
  */
 static int
-dump_locale_collation (COLL_DATA * coll, int dl_settings,
-		       int start_value, int end_value)
+dump_locale_collation (COLL_DATA * coll, int dl_settings, int start_value, int end_value)
 {
   unsigned int *coll_key_list = NULL;
   int coll_key_list_cnt = 0;
@@ -6405,14 +5981,13 @@ dump_locale_collation (COLL_DATA * coll, int dl_settings,
     }
   if (end_value > 0 && end_value < upper_bound)
     {
-      /* if an upper bound is specified, use the "+1" to make sure that
-       * the upper bound codepoint is included in the dump file. */
+      /* if an upper bound is specified, use the "+1" to make sure that the upper bound codepoint is included in the
+       * dump file. */
       upper_bound = end_value + 1;
     }
 
   printf ("\n");
-  printf ("* Collation: %s | id: %d | checksum: %s *\n", coll->coll_name,
-	  coll->coll_id, coll->checksum);
+  printf ("* Collation: %s | id: %d | checksum: %s *\n", coll->coll_name, coll->coll_id, coll->checksum);
   printf ("Max codepoints: %d\n", coll->w_count);
   printf ("Level: %d\n", coll->uca_opt.sett_strength);
   printf ("Expansions: %s\n", coll->uca_opt.sett_expansions ? "yes" : "no");
@@ -6431,10 +6006,9 @@ dump_locale_collation (COLL_DATA * coll, int dl_settings,
   if (upper_bound < lower_bound)
     {
       err_status = ER_LOC_GEN;
-      LOG_LOCALE_ERROR (msgcat_message (MSGCAT_CATALOG_UTILS,
-					MSGCAT_UTIL_SET_DUMPLOCALE,
-					DUMPLOCALE_MSG_INVALID_CP_RANGE),
-			ER_LOC_GEN, true);
+      LOG_LOCALE_ERROR (msgcat_message
+			(MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DUMPLOCALE, DUMPLOCALE_MSG_INVALID_CP_RANGE), ER_LOC_GEN,
+			true);
       goto exit;
     }
 
@@ -6460,8 +6034,7 @@ dump_locale_collation (COLL_DATA * coll, int dl_settings,
 	}
     }
 
-  if (coll->count_contr > 0
-      && (dl_settings & DUMPLOCALE_IS_COLLATION_CP_ORDER) != 0)
+  if (coll->count_contr > 0 && (dl_settings & DUMPLOCALE_IS_COLLATION_CP_ORDER) != 0)
     {
       printf ("\n");
       printf ("* Contraction collation info (contraction order) *\n");
@@ -6488,8 +6061,7 @@ dump_locale_collation (COLL_DATA * coll, int dl_settings,
       printf ("\n");
       printf ("* Collation info (weight order) *\n");
       coll_key_list_cnt = cp_count + coll->count_contr;
-      coll_key_list = (unsigned int *)
-	malloc (coll_key_list_cnt * sizeof (unsigned int));
+      coll_key_list = (unsigned int *) malloc (coll_key_list_cnt * sizeof (unsigned int));
       if (coll_key_list == NULL)
 	{
 	  err_status = ER_LOC_INIT;
@@ -6513,13 +6085,11 @@ dump_locale_collation (COLL_DATA * coll, int dl_settings,
       dump_coll_data = coll;
       if (use_expansions)
 	{
-	  qsort (coll_key_list, coll_key_list_cnt, sizeof (unsigned int),
-		 comp_func_coll_uca_exp_fo);
+	  qsort (coll_key_list, coll_key_list_cnt, sizeof (unsigned int), comp_func_coll_uca_exp_fo);
 	}
       else
 	{
-	  qsort (coll_key_list, coll_key_list_cnt, sizeof (unsigned int),
-		 comp_func_coll_uca_simple_weights_fo);
+	  qsort (coll_key_list, coll_key_list_cnt, sizeof (unsigned int), comp_func_coll_uca_simple_weights_fo);
 	}
 
       /* Dump ordered (weight, key id) tuples. */
@@ -6532,16 +6102,12 @@ dump_locale_collation (COLL_DATA * coll, int dl_settings,
 	      if (use_expansions)
 		{
 		  same_weights =
-		    (comp_func_coll_uca_exp (&(coll_key_list[i]),
-					     &(coll_key_list[i - 1]))
-		     == 0) ? true : false;
+		    (comp_func_coll_uca_exp (&(coll_key_list[i]), &(coll_key_list[i - 1])) == 0) ? true : false;
 		}
 	      else
 		{
 		  same_weights =
-		    (comp_func_coll_uca_simple_weights (&(coll_key_list[i]),
-							&(coll_key_list
-							  [i - 1])) ==
+		    (comp_func_coll_uca_simple_weights (&(coll_key_list[i]), &(coll_key_list[i - 1])) ==
 		     0) ? true : false;
 		}
 	    }
@@ -6594,8 +6160,7 @@ exit:
  *		    -w or -c will dump.
  */
 int
-locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
-	     int start_value, int end_value)
+locale_dump (void *data, LOCALE_FILE * lf, int dl_settings, int start_value, int end_value)
 {
   int i;
   int lower_bound = 0;
@@ -6611,8 +6176,7 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
   lld = (LANG_LOCALE_DATA *) data;
 
   printf ("*************************************************\n");
-  printf ("Locale data for: %s\nLibrary file: %s\n",
-	  lf->locale_name, lf->lib_file);
+  printf ("Locale data for: %s\nLibrary file: %s\n", lf->locale_name, lf->lib_file);
   printf ("Locale string: %s\n", lld->lang_name);
   printf ("Locale checksum: %s\n", lld->checksum);
 
@@ -6635,10 +6199,7 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
       printf ("\nAbbreviated month names, sorted for tokenizer:\n");
       for (i = 0; i < CAL_MONTH_COUNT; i++)
 	{
-	  printf ("%d. %s = month %d\n",
-		  (i + 1),
-		  lld->
-		  month_short_name[(int) (lld->month_short_parse_order[i])],
+	  printf ("%d. %s = month %d\n", (i + 1), lld->month_short_name[(int) (lld->month_short_parse_order[i])],
 		  (int) (lld->month_short_parse_order[i]) + 1);
 	}
 
@@ -6650,9 +6211,7 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
       printf ("\nWide month names, sorted for tokenizer:\n");
       for (i = 0; i < CAL_MONTH_COUNT; i++)
 	{
-	  printf ("%d. %s = month %d\n",
-		  (i + 1),
-		  lld->month_name[(int) (lld->month_parse_order[i])],
+	  printf ("%d. %s = month %d\n", (i + 1), lld->month_name[(int) (lld->month_parse_order[i])],
 		  (int) (lld->month_parse_order[i]) + 1);
 	}
 
@@ -6664,9 +6223,7 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
       printf ("\nAbbreviated weekday names, sorted for parse order:\n");
       for (i = 0; i < CAL_DAY_COUNT; i++)
 	{
-	  printf ("%d. %s = weekday %d\n",
-		  (i + 1),
-		  lld->day_short_name[(int) (lld->day_short_parse_order[i])],
+	  printf ("%d. %s = weekday %d\n", (i + 1), lld->day_short_name[(int) (lld->day_short_parse_order[i])],
 		  (int) (lld->day_short_parse_order[i]) + 1);
 	}
 
@@ -6678,9 +6235,7 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
       printf ("\nWide weekday names, sorted for tokenizer:\n");
       for (i = 0; i < CAL_DAY_COUNT; i++)
 	{
-	  printf ("%d. %s = weekday %d\n",
-		  (i + 1),
-		  lld->day_name[(int) (lld->day_parse_order[i])],
+	  printf ("%d. %s = weekday %d\n", (i + 1), lld->day_name[(int) (lld->day_parse_order[i])],
 		  (int) (lld->day_parse_order[i]) + 1);
 	}
 
@@ -6692,9 +6247,7 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
       printf ("\nDay periods, sorted for tokenizer:\n");
       for (i = 0; i < CAL_AM_PM_COUNT; i++)
 	{
-	  printf ("%d. %s = day period %d\n",
-		  (i + 1),
-		  lld->am_pm[(int) (lld->am_pm_parse_order[i])],
+	  printf ("%d. %s = day period %d\n", (i + 1), lld->am_pm[(int) (lld->am_pm_parse_order[i])],
 		  (int) (lld->am_pm_parse_order[i]) + 1);
 	}
     }
@@ -6705,8 +6258,7 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
       printf ("\n * Numbers *\n");
       printf ("Decimal separator: <%c>\n", lld->number_decimal_sym);
       printf ("Separator for digit grouping: <%c>\n", lld->number_group_sym);
-      printf ("Default currency ISO code: %s\n",
-	      intl_get_money_ISO_symbol (lld->default_currency_code));
+      printf ("Default currency ISO code: %s\n", intl_get_money_ISO_symbol (lld->default_currency_code));
     }
 
   if ((dl_settings & DUMPLOCALE_IS_ALPHABET) != 0)
@@ -6719,8 +6271,8 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
 	}
       if (end_value > 0 && end_value < upper_bound)
 	{
-	  /* if an upper bound is specified, use the "+1" to make sure that
-	   * the upper bound codepoint is included in the dump file. */
+	  /* if an upper bound is specified, use the "+1" to make sure that the upper bound codepoint is included in
+	   * the dump file. */
 	  upper_bound = end_value + 1;
 	}
     }
@@ -6728,10 +6280,9 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
   if (upper_bound < lower_bound)
     {
       err_status = ER_LOC_GEN;
-      LOG_LOCALE_ERROR (msgcat_message (MSGCAT_CATALOG_UTILS,
-					MSGCAT_UTIL_SET_DUMPLOCALE,
-					DUMPLOCALE_MSG_INVALID_CP_RANGE),
-			ER_LOC_GEN, true);
+      LOG_LOCALE_ERROR (msgcat_message
+			(MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DUMPLOCALE, DUMPLOCALE_MSG_INVALID_CP_RANGE), ER_LOC_GEN,
+			true);
       goto exit;
     }
 
@@ -6742,8 +6293,7 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
       alphabet_settings |= (dl_settings & DUMPLOCALE_IS_ALPHABET_LOWER);
       alphabet_settings |= (dl_settings & DUMPLOCALE_IS_ALPHABET_UPPER);
       printf ("\n * Alphabet data *\n");
-      dump_locale_alphabet (&(lld->alphabet), alphabet_settings, lower_bound,
-			    upper_bound);
+      dump_locale_alphabet (&(lld->alphabet), alphabet_settings, lower_bound, upper_bound);
     }
 
   /* Dump identifier alphabet data. */
@@ -6761,8 +6311,7 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings,
 
       printf ("\n");
       printf ("* Identifier alphabet data *\n");
-      dump_locale_alphabet (&(lld->ident_alphabet), alphabet_settings,
-			    lower_bound, upper_bound);
+      dump_locale_alphabet (&(lld->ident_alphabet), alphabet_settings, lower_bound, upper_bound);
     }
 
   /* Dump normalization data. */
@@ -6797,8 +6346,7 @@ exit:
  * upper_bound(in):
  */
 int
-locale_dump_lib_collations (void *lib_handle, const LOCALE_FILE * lf,
-			    int dl_settings, int start_value, int end_value)
+locale_dump_lib_collations (void *lib_handle, const LOCALE_FILE * lf, int dl_settings, int start_value, int end_value)
 {
   int err_status = NO_ERROR;
   int i, count_coll_to_load;
@@ -6809,8 +6357,7 @@ locale_dump_lib_collations (void *lib_handle, const LOCALE_FILE * lf,
   assert (lf->locale_name != NULL);
 
   /* collation data */
-  err_status =
-    lang_load_count_coll_from_lib (&count_coll_to_load, lib_handle, lf);
+  err_status = lang_load_count_coll_from_lib (&count_coll_to_load, lib_handle, lf);
   if (err_status != NO_ERROR)
     {
       goto exit;
@@ -6825,8 +6372,7 @@ locale_dump_lib_collations (void *lib_handle, const LOCALE_FILE * lf,
 
       memset (&coll, 0, sizeof (COLL_DATA));
 
-      err_status =
-	lang_load_get_coll_name_from_lib (i, &coll_name, lib_handle, lf);
+      err_status = lang_load_get_coll_name_from_lib (i, &coll_name, lib_handle, lf);
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
@@ -6841,8 +6387,7 @@ locale_dump_lib_collations (void *lib_handle, const LOCALE_FILE * lf,
 	  goto exit;
 	}
 
-      err_status =
-	dump_locale_collation (&coll, dl_settings, start_value, end_value);
+      err_status = dump_locale_collation (&coll, dl_settings, start_value, end_value);
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
@@ -6997,11 +6542,8 @@ comp_func_coll_uca_exp (const void *arg1, const void *arg2)
       str2 = (char *) utf8_buf_2;
     }
 
-  return lang_strmatch_utf8_uca_w_coll_data (coll, false,
-					     (const unsigned char *) str1,
-					     size1,
-					     (const unsigned char *) str2,
-					     size2, NULL, false, NULL);
+  return lang_strmatch_utf8_uca_w_coll_data (coll, false, (const unsigned char *) str1, size1,
+					     (const unsigned char *) str2, size2, NULL, false, NULL);
 }
 
 /*
@@ -7014,8 +6556,7 @@ comp_func_coll_uca_exp (const void *arg1, const void *arg2)
  * print_contr(in): true if contraction info should be printed
  */
 static void
-dump_collation_key (COLL_DATA * coll, const unsigned int key,
-		    bool print_weight, bool print_key)
+dump_collation_key (COLL_DATA * coll, const unsigned int key, bool print_weight, bool print_key)
 {
   if (INTL_IS_NEXT_CONTR (key))
     {
@@ -7039,8 +6580,7 @@ dump_collation_key (COLL_DATA * coll, const unsigned int key,
  * print_contr(in): true if contraction info should be printed
  */
 static void
-dump_collation_contr (COLL_DATA * coll, const COLL_CONTRACTION * contr,
-		      bool print_weight, bool print_contr)
+dump_collation_contr (COLL_DATA * coll, const COLL_CONTRACTION * contr, bool print_weight, bool print_contr)
 {
   int i;
 
@@ -7054,8 +6594,7 @@ dump_collation_contr (COLL_DATA * coll, const COLL_CONTRACTION * contr,
       bool print_utf8 = true;
       int cp_count;
 
-      intl_utf8_to_cp_list ((const unsigned char *) contr->c_buf,
-			    strlen (contr->c_buf), cp_list, sizeof (cp_list),
+      intl_utf8_to_cp_list ((const unsigned char *) contr->c_buf, strlen (contr->c_buf), cp_list, sizeof (cp_list),
 			    &cp_count);
 
       assert (cp_count == contr->cp_count);
@@ -7114,8 +6653,7 @@ dump_collation_contr (COLL_DATA * coll, const COLL_CONTRACTION * contr,
  * print_weight(in): true if weight should be printed
  */
 static void
-dump_collation_codepoint (COLL_DATA * coll, const unsigned int cp,
-			  bool print_weight, bool print_cp)
+dump_collation_codepoint (COLL_DATA * coll, const unsigned int cp, bool print_weight, bool print_cp)
 {
   assert (cp <= INTL_MAX_UNICODE_CP_ALLOWED);
 
@@ -7127,8 +6665,7 @@ dump_collation_codepoint (COLL_DATA * coll, const unsigned int cp,
 
       intl_cp_to_utf8 (cp, utf8_buf);
 
-      printf ("CP: Ux%04X | %-4s", cp, ((cp > 0x20) ? utf8_buf :
-					(unsigned char *) ""));
+      printf ("CP: Ux%04X | %-4s", cp, ((cp > 0x20) ? utf8_buf : (unsigned char *) ""));
     }
 
   if (!print_weight)
@@ -7138,8 +6675,7 @@ dump_collation_codepoint (COLL_DATA * coll, const unsigned int cp,
 
   if (coll->uca_exp_num <= 1)
     {
-      printf (" | Weight%s: %04x",
-	      ((int) cp < coll->w_count) ? "" : "(Computed)",
+      printf (" | Weight%s: %04x", ((int) cp < coll->w_count) ? "" : "(Computed)",
 	      (((int) cp < coll->w_count) ? (coll->weights[cp]) : (cp + 1)));
       return;
     }
@@ -7193,10 +6729,8 @@ dump_collation_codepoint (COLL_DATA * coll, const unsigned int cp,
  *	   collations, normalization or alphabet data
  */
 static int
-locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type,
-				  const char *lsd_key, const void *data,
-				  LDML_CONTEXT * ldml_context,
-				  LOC_SHARED_DATA ** found_entry)
+locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type, const char *lsd_key, const void *data,
+				  LDML_CONTEXT * ldml_context, LOC_SHARED_DATA ** found_entry)
 {
 #define SHARED_DATA_INCR_SIZE 32
 
@@ -7210,8 +6744,7 @@ locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type,
 
   for (i = 0; i < count_shared_data; i++)
     {
-      if (lsd_type == shared_data[i].lsd_type
-	  && strcmp (lsd_key, shared_data[i].lsd_key) == 0)
+      if (lsd_type == shared_data[i].lsd_type && strcmp (lsd_key, shared_data[i].lsd_key) == 0)
 	{
 	  *found_entry = &(shared_data[i]);
 	  goto exit;
@@ -7221,8 +6754,7 @@ locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type,
   /* set new shared data */
   if (alloced_shared_data <= count_shared_data)
     {
-      shared_data = realloc (shared_data, sizeof (LOC_SHARED_DATA)
-			     * (alloced_shared_data + SHARED_DATA_INCR_SIZE));
+      shared_data = realloc (shared_data, sizeof (LOC_SHARED_DATA) * (alloced_shared_data + SHARED_DATA_INCR_SIZE));
       if (shared_data == NULL)
 	{
 	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -7234,8 +6766,7 @@ locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type,
 
   memset (&(shared_data[count_shared_data]), 0, sizeof (LOC_SHARED_DATA));
   shared_data[count_shared_data].lsd_type = lsd_type;
-  strncpy (shared_data[count_shared_data].lsd_key, lsd_key,
-	   COLL_NAME_SIZE - 1);
+  strncpy (shared_data[count_shared_data].lsd_key, lsd_key, COLL_NAME_SIZE - 1);
   shared_data[count_shared_data].lsd_key[COLL_NAME_SIZE - 1] = '\0';
 
   if (data != NULL)
@@ -7251,16 +6782,14 @@ locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type,
 
   if (ldml_context != NULL)
     {
-      shared_data[count_shared_data].ldml_context.ldml_file =
-	strdup (ldml_context->ldml_file);
+      shared_data[count_shared_data].ldml_context.ldml_file = strdup (ldml_context->ldml_file);
       if (shared_data[count_shared_data].ldml_context.ldml_file == NULL)
 	{
 	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
 	  status = ER_LOC_GEN;
 	  goto exit;
 	}
-      shared_data[count_shared_data].ldml_context.line_no =
-	ldml_context->line_no;
+      shared_data[count_shared_data].ldml_context.line_no = ldml_context->line_no;
     }
 
   count_shared_data++;
@@ -7329,8 +6858,7 @@ start_unicode_file (void *data, const char **attr)
 
   if (strlen (ld->unicode_data_file) != 0)
     {
-      PRINT_DEBUG_START (data, attr,
-			 "Only one unicodefile tag is allowed", -1);
+      PRINT_DEBUG_START (data, attr, "Only one unicodefile tag is allowed", -1);
       return -1;
     }
 
@@ -7339,8 +6867,7 @@ start_unicode_file (void *data, const char **attr)
     {
       assert (att_val != NULL);
 
-      strncpy (ld->unicode_data_file, att_val,
-	       sizeof (ld->unicode_data_file) - 1);
+      strncpy (ld->unicode_data_file, att_val, sizeof (ld->unicode_data_file) - 1);
       ld->unicode_data_file[sizeof (ld->unicode_data_file) - 1] = '\0';
       ld->alpha_tailoring.alphabet_mode = 1;
       ld->unicode_mode = 1;
@@ -7409,29 +6936,21 @@ locale_save_normalization_to_C_file (FILE * fp, LOCALE_DATA * ld)
       goto exit;
     }
 
-  PRINT_VAR_TO_C_FILE (fp, "int", "unicode_mappings_count",
-		       norm->unicode_mappings_count, "%d",
+  PRINT_VAR_TO_C_FILE (fp, "int", "unicode_mappings_count", norm->unicode_mappings_count, "%d",
 		       UNICODE_NORMALIZATION_DECORATOR);
 
-  PRINT_NUM_ARRAY_TO_C_FILE (fp, "unicode_mapping_index", "int", "%d",
-			     MAX_UNICODE_CHARS,
-			     norm->unicode_mapping_index,
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "unicode_mapping_index", "int", "%d", MAX_UNICODE_CHARS, norm->unicode_mapping_index,
 			     UNICODE_NORMALIZATION_DECORATOR);
-  PRINT_NUM_ARRAY_TO_C_FILE (fp, "list_full_decomp", "int", "%d",
-			     MAX_UNICODE_CHARS,
-			     norm->list_full_decomp,
+  PRINT_NUM_ARRAY_TO_C_FILE (fp, "list_full_decomp", "int", "%d", MAX_UNICODE_CHARS, norm->list_full_decomp,
 			     UNICODE_NORMALIZATION_DECORATOR);
 
-  fprintf (fp, "" DLL_EXPORT_PREFIX
-	   "const UNICODE_MAPPING unicode_mappings_%s[] = {",
-	   UNICODE_NORMALIZATION_DECORATOR);
+  fprintf (fp, "" DLL_EXPORT_PREFIX "const UNICODE_MAPPING unicode_mappings_%s[] = {", UNICODE_NORMALIZATION_DECORATOR);
   for (i = 0; i < norm->unicode_mappings_count; i++)
     {
       um = &(norm->unicode_mappings[i]);
       fprintf (fp, "\t{%u, %d, ", um->cp, um->size);
       PRINT_STRING_TO_C_FILE (fp, um->buffer, um->size);
-      fprintf (fp, "}%s\n",
-	       (i < norm->unicode_mappings_count - 1) ? "," : "");
+      fprintf (fp, "}%s\n", (i < norm->unicode_mappings_count - 1) ? "," : "");
     }
   fprintf (fp, "};");
 
@@ -7458,8 +6977,7 @@ dump_locale_normalization (UNICODE_NORMALIZATION * norm)
   for (i = 0; i < norm->unicode_mappings_count; i++)
     {
       printf ("%d.\t ", i + 1);
-      dump_unicode_mapping (&(norm->unicode_mappings[i]),
-			    NORM_MAPPING_DUMP_MODE_FULL);
+      dump_unicode_mapping (&(norm->unicode_mappings[i]), NORM_MAPPING_DUMP_MODE_FULL);
       printf ("\n");
     }
 
@@ -7479,13 +6997,11 @@ dump_locale_normalization (UNICODE_NORMALIZATION * norm)
       comp_start = GET_MAPPING_OFFSET (norm->unicode_mapping_index[i]);
       comp_end = GET_MAPPING_OFFSET (norm->unicode_mapping_index[i + 1]);
 
-      printf ("(%2d) From: %d To: %d | \t", comp_end - comp_start, comp_start,
-	      comp_end);
+      printf ("(%2d) From: %d To: %d | \t", comp_end - comp_start, comp_start, comp_end);
 
       for (j = comp_start; j < comp_end; j++)
 	{
-	  dump_unicode_mapping (&(norm->unicode_mappings[j]),
-				NORM_MAPPING_DUMP_MODE_COMP);
+	  dump_unicode_mapping (&(norm->unicode_mappings[j]), NORM_MAPPING_DUMP_MODE_COMP);
 	  printf (" | ");
 	}
       printf ("\n");
@@ -7506,8 +7022,7 @@ dump_locale_normalization (UNICODE_NORMALIZATION * norm)
 
       assert (decomp_idx >= 0);
 
-      dump_unicode_mapping (&(norm->unicode_mappings[decomp_idx]),
-			    NORM_MAPPING_DUMP_MODE_DECOMP);
+      dump_unicode_mapping (&(norm->unicode_mappings[decomp_idx]), NORM_MAPPING_DUMP_MODE_DECOMP);
 
       printf ("\n");
     }
@@ -7545,8 +7060,7 @@ dump_unicode_mapping (UNICODE_MAPPING * um, const int mode)
   next = cur_str;
   while (next < um->buffer + um->size)
     {
-      cp =
-	intl_utf8_to_cp (cur_str, (const int) INTL_UTF8_MAX_CHAR_SIZE, &next);
+      cp = intl_utf8_to_cp (cur_str, (const int) INTL_UTF8_MAX_CHAR_SIZE, &next);
       printf ("%04X ", cp);
       cur_str = next;
     }
@@ -7583,25 +7097,20 @@ dump_console_conversion (TEXT_CONVERSION * tc)
     }
 
   printf ("\nType: ");
-  if (tc->conv_type == TEXT_CONV_ISO_88591_BUILTIN
-      || tc->conv_type == TEXT_CONV_ISO_88599_BUILTIN)
+  if (tc->conv_type == TEXT_CONV_ISO_88591_BUILTIN || tc->conv_type == TEXT_CONV_ISO_88599_BUILTIN)
     {
       printf ("built-in %s console to UTF-8 encoding \n",
-	      (tc->conv_type == TEXT_CONV_ISO_88591_BUILTIN) ? "ISO 8859-1"
-	      : "ISO 8859-9");
+	      (tc->conv_type == TEXT_CONV_ISO_88591_BUILTIN) ? "ISO 8859-1" : "ISO 8859-9");
     }
   else
     {
-      printf ("%s byte console to UTF-8 encoding \n",
-	      (tc->conv_type == TEXT_CONV_GENERIC_1BYTE) ? "single"
-	      : "double");
+      printf ("%s byte console to UTF-8 encoding \n", (tc->conv_type == TEXT_CONV_GENERIC_1BYTE) ? "single" : "double");
     }
 
   printf ("Windows codepages: %s\n", tc->win_codepages);
   printf ("Linux LANG charset values: %s\n", tc->nl_lang_str);
 
-  if (tc->conv_type != TEXT_CONV_GENERIC_1BYTE
-      && tc->conv_type != TEXT_CONV_GENERIC_2BYTE)
+  if (tc->conv_type != TEXT_CONV_GENERIC_1BYTE && tc->conv_type != TEXT_CONV_GENERIC_2BYTE)
     {
       goto exit;
     }
@@ -7613,8 +7122,7 @@ dump_console_conversion (TEXT_CONVERSION * tc)
       unsigned char dbcs_seq[2 + 1];
       int dbcs_size;
 
-      if (tc->conv_type == TEXT_CONV_GENERIC_2BYTE && con_cp <= 0xff
-	  && tc->byte_flag[con_cp] != 0)
+      if (tc->conv_type == TEXT_CONV_GENERIC_2BYTE && con_cp <= 0xff && tc->byte_flag[con_cp] != 0)
 	{
 	  printf ("%02X -> Undefined or leading byte\n", con_cp);
 	  continue;
@@ -7648,9 +7156,7 @@ dump_console_conversion (TEXT_CONVERSION * tc)
 
 	  if (tc->conv_type == TEXT_CONV_GENERIC_1BYTE)
 	    {
-	      err = intl_text_single_byte_to_utf8_ext (tc, dbcs_seq,
-						       dbcs_size, &cnv_utf8,
-						       &utf8_size);
+	      err = intl_text_single_byte_to_utf8_ext (tc, dbcs_seq, dbcs_size, &cnv_utf8, &utf8_size);
 	      assert (err == NO_ERROR);
 	    }
 	  else
@@ -7662,8 +7168,7 @@ dump_console_conversion (TEXT_CONVERSION * tc)
 		}
 	      else
 		{
-		  err = intl_text_dbcs_to_utf8_ext (tc, dbcs_seq, dbcs_size,
-						    &cnv_utf8, &utf8_size);
+		  err = intl_text_dbcs_to_utf8_ext (tc, dbcs_seq, dbcs_size, &cnv_utf8, &utf8_size);
 		  assert (err == NO_ERROR);
 		}
 	    }
@@ -7693,9 +7198,7 @@ dump_console_conversion (TEXT_CONVERSION * tc)
 	}
     }
 
-  if (tc->text_last_cp
-      < ((tc->conv_type == TEXT_CONV_GENERIC_1BYTE) ? (unsigned int) 0xff
-	 : (unsigned int) 0xffff))
+  if (tc->text_last_cp < ((tc->conv_type == TEXT_CONV_GENERIC_1BYTE) ? (unsigned int) 0xff : (unsigned int) 0xffff))
     {
       if (tc->conv_type == TEXT_CONV_GENERIC_1BYTE)
 	{
@@ -7708,8 +7211,7 @@ dump_console_conversion (TEXT_CONVERSION * tc)
     }
 
   printf ("\n\nUTF-8 to console conversion:\n");
-  printf ("Unicode codepoint [Unicode character] ->"
-	  " Console codepoint | Character (UTF-8 encoding)\n");
+  printf ("Unicode codepoint [Unicode character] ->" " Console codepoint | Character (UTF-8 encoding)\n");
   for (utf8_cp = 0; utf8_cp <= tc->utf8_last_cp; utf8_cp++)
     {
       if (utf8_cp > 0x20)
@@ -7731,9 +7233,7 @@ dump_console_conversion (TEXT_CONVERSION * tc)
 	{
 	  c_item = &(tc->utf8_to_text[utf8_cp - tc->utf8_first_cp]);
 
-	  con_cp =
-	    intl_dbcs_to_cp (c_item->bytes, c_item->size, tc->byte_flag,
-			     &next);
+	  con_cp = intl_dbcs_to_cp (c_item->bytes, c_item->size, tc->byte_flag, &next);
 	  assert (next - c_item->bytes == c_item->size);
 
 	  if (con_cp == 0x3f)
@@ -7748,16 +7248,12 @@ dump_console_conversion (TEXT_CONVERSION * tc)
 
 	  if (tc->conv_type == TEXT_CONV_GENERIC_1BYTE)
 	    {
-	      err = intl_text_single_byte_to_utf8_ext (tc, c_item->bytes,
-						       c_item->size,
-						       &cnv_utf8, &utf8_size);
+	      err = intl_text_single_byte_to_utf8_ext (tc, c_item->bytes, c_item->size, &cnv_utf8, &utf8_size);
 	      assert (err == NO_ERROR);
 	    }
 	  else
 	    {
-	      err = intl_text_dbcs_to_utf8_ext (tc, c_item->bytes,
-						c_item->size, &cnv_utf8,
-						&utf8_size);
+	      err = intl_text_dbcs_to_utf8_ext (tc, c_item->bytes, c_item->size, &cnv_utf8, &utf8_size);
 	      assert (err == NO_ERROR);
 	    }
 	  assert ((unsigned int) utf8_size <= sizeof (cnv_utf8_buf));
@@ -7766,13 +7262,11 @@ dump_console_conversion (TEXT_CONVERSION * tc)
 
       if (tc->conv_type == TEXT_CONV_GENERIC_1BYTE)
 	{
-	  printf ("Ux%04X [%s] -> %02X | %s\n", utf8_cp, utf8_seq, con_cp,
-		  char_to_print);
+	  printf ("Ux%04X [%s] -> %02X | %s\n", utf8_cp, utf8_seq, con_cp, char_to_print);
 	}
       else
 	{
-	  printf ("Ux%04X [%s] -> %04X | %s\n", utf8_cp, utf8_seq, con_cp,
-		  char_to_print);
+	  printf ("Ux%04X [%s] -> %04X | %s\n", utf8_cp, utf8_seq, con_cp, char_to_print);
 	}
     }
 
@@ -7829,8 +7323,7 @@ locale_compute_coll_checksum (COLL_DATA * cd)
       if (cd->uca_opt.sett_strength >= TAILOR_QUATERNARY)
 	{
 	  /* Weights L4 */
-	  input_size += cd->uca_exp_num * cd->w_count
-	    * sizeof (cd->uca_w_l4[0]);
+	  input_size += cd->uca_exp_num * cd->w_count * sizeof (cd->uca_w_l4[0]);
 	}
     }
   else
@@ -7871,8 +7364,7 @@ locale_compute_coll_checksum (COLL_DATA * cd)
 	{
 	  for (w = 0; w < cd->uca_exp_num; w++)
 	    {
-	      BUF_PUT_INT32 (buf_pos,
-			     cd->uca_w_l13[cp * cd->uca_exp_num + w]);
+	      BUF_PUT_INT32 (buf_pos, cd->uca_w_l13[cp * cd->uca_exp_num + w]);
 	    }
 	}
 
@@ -7883,8 +7375,7 @@ locale_compute_coll_checksum (COLL_DATA * cd)
 	    {
 	      for (w = 0; w < cd->uca_exp_num; w++)
 		{
-		  BUF_PUT_INT16 (buf_pos,
-				 cd->uca_w_l4[cp * cd->uca_exp_num + w]);
+		  BUF_PUT_INT16 (buf_pos, cd->uca_w_l4[cp * cd->uca_exp_num + w]);
 		}
 	    }
 	}
@@ -7927,10 +7418,9 @@ locale_compute_coll_checksum (COLL_DATA * cd)
 	  *buf_pos++ = c->size;
 	  *buf_pos++ = c->uca_num;
 
-	  buf_pos += sizeof (COLL_CONTRACTION)
-	    - (2 * sizeof (int) + MAX_UCA_EXP_CE * sizeof (int)
-	       + MAX_UCA_EXP_CE * sizeof (short) + sizeof (c->c_buf)
-	       + 3 * sizeof (char));
+	  buf_pos +=
+	    sizeof (COLL_CONTRACTION) - (2 * sizeof (int) + MAX_UCA_EXP_CE * sizeof (int) +
+					 MAX_UCA_EXP_CE * sizeof (short) + sizeof (c->c_buf) + 3 * sizeof (char));
 	}
 
       BUF_PUT_INT32 (buf_pos, cd->contr_min_size);
@@ -8066,8 +7556,7 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   input_size += locale_alphabet_data_size (&(ld->identif_alphabet));
 
   input_size += sizeof (ld->txt_conv.conv_type);
-  if (ld->txt_conv.conv_type == TEXT_CONV_GENERIC_1BYTE
-      || ld->txt_conv.conv_type == TEXT_CONV_GENERIC_2BYTE)
+  if (ld->txt_conv.conv_type == TEXT_CONV_GENERIC_1BYTE || ld->txt_conv.conv_type == TEXT_CONV_GENERIC_2BYTE)
     {
       TEXT_CONVERSION *tc = &(ld->txt_conv);
 
@@ -8080,10 +7569,8 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
       input_size += strlen (tc->nl_lang_str);
       input_size += strlen (tc->win_codepages);
 
-      input_size += (tc->utf8_last_cp - tc->utf8_first_cp + 1)
-	* sizeof (CONV_CP_TO_BYTES);
-      input_size += (tc->text_last_cp - tc->text_first_cp + 1)
-	* sizeof (CONV_CP_TO_BYTES);
+      input_size += (tc->utf8_last_cp - tc->utf8_first_cp + 1) * sizeof (CONV_CP_TO_BYTES);
+      input_size += (tc->text_last_cp - tc->text_first_cp + 1) * sizeof (CONV_CP_TO_BYTES);
     }
 
   if (!(ld->unicode_normalization.do_not_save))
@@ -8130,15 +7617,13 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   buf_pos += sizeof (ld->timestamptzFormat);
 
   /* calendar names */
-  memcpy (buf_pos, ld->month_names_abbreviated,
-	  sizeof (ld->month_names_abbreviated));
+  memcpy (buf_pos, ld->month_names_abbreviated, sizeof (ld->month_names_abbreviated));
   buf_pos += sizeof (ld->month_names_abbreviated);
 
   memcpy (buf_pos, ld->month_names_wide, sizeof (ld->month_names_wide));
   buf_pos += sizeof (ld->month_names_wide);
 
-  memcpy (buf_pos, ld->day_names_abbreviated,
-	  sizeof (ld->day_names_abbreviated));
+  memcpy (buf_pos, ld->day_names_abbreviated, sizeof (ld->day_names_abbreviated));
   buf_pos += sizeof (ld->day_names_abbreviated);
 
   memcpy (buf_pos, ld->day_names_wide, sizeof (ld->day_names_wide));
@@ -8148,28 +7633,23 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   buf_pos += sizeof (ld->am_pm);
 
   /* calendar parsing order */
-  memcpy (buf_pos, ld->day_names_abbr_parse_order,
-	  sizeof (ld->day_names_abbr_parse_order));
+  memcpy (buf_pos, ld->day_names_abbr_parse_order, sizeof (ld->day_names_abbr_parse_order));
   buf_pos += sizeof (ld->day_names_abbr_parse_order);
 
-  memcpy (buf_pos, ld->day_names_wide_parse_order,
-	  sizeof (ld->day_names_wide_parse_order));
+  memcpy (buf_pos, ld->day_names_wide_parse_order, sizeof (ld->day_names_wide_parse_order));
   buf_pos += sizeof (ld->day_names_wide_parse_order);
 
-  memcpy (buf_pos, ld->month_names_abbr_parse_order,
-	  sizeof (ld->month_names_abbr_parse_order));
+  memcpy (buf_pos, ld->month_names_abbr_parse_order, sizeof (ld->month_names_abbr_parse_order));
   buf_pos += sizeof (ld->month_names_abbr_parse_order);
 
-  memcpy (buf_pos, ld->month_names_wide_parse_order,
-	  sizeof (ld->month_names_wide_parse_order));
+  memcpy (buf_pos, ld->month_names_wide_parse_order, sizeof (ld->month_names_wide_parse_order));
   buf_pos += sizeof (ld->month_names_wide_parse_order);
 
   memcpy (buf_pos, ld->am_pm_parse_order, sizeof (ld->am_pm_parse_order));
   buf_pos += sizeof (ld->am_pm_parse_order);
 
   /* number symbols */
-  memcpy (buf_pos, &(ld->number_decimal_sym),
-	  sizeof (ld->number_decimal_sym));
+  memcpy (buf_pos, &(ld->number_decimal_sym), sizeof (ld->number_decimal_sym));
   buf_pos += sizeof (ld->number_decimal_sym);
 
   memcpy (buf_pos, &(ld->number_group_sym), sizeof (ld->number_group_sym));
@@ -8184,8 +7664,7 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   /* text conversion */
   BUF_PUT_INT32 (buf_pos, ld->txt_conv.conv_type);
 
-  if (ld->txt_conv.conv_type == TEXT_CONV_GENERIC_1BYTE
-      || ld->txt_conv.conv_type == TEXT_CONV_GENERIC_2BYTE)
+  if (ld->txt_conv.conv_type == TEXT_CONV_GENERIC_1BYTE || ld->txt_conv.conv_type == TEXT_CONV_GENERIC_2BYTE)
     {
       TEXT_CONVERSION *tc = &(ld->txt_conv);
 
@@ -8203,17 +7682,11 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
       memcpy (buf_pos, tc->win_codepages, strlen (tc->win_codepages));
       buf_pos += strlen (tc->win_codepages);
 
-      memcpy (buf_pos, tc->utf8_to_text,
-	      (tc->utf8_last_cp - tc->utf8_first_cp + 1)
-	      * sizeof (CONV_CP_TO_BYTES));
-      buf_pos += (tc->utf8_last_cp - tc->utf8_first_cp + 1)
-	* sizeof (CONV_CP_TO_BYTES);
+      memcpy (buf_pos, tc->utf8_to_text, (tc->utf8_last_cp - tc->utf8_first_cp + 1) * sizeof (CONV_CP_TO_BYTES));
+      buf_pos += (tc->utf8_last_cp - tc->utf8_first_cp + 1) * sizeof (CONV_CP_TO_BYTES);
 
-      memcpy (buf_pos, tc->text_to_utf8,
-	      (tc->text_last_cp - tc->text_first_cp + 1)
-	      * sizeof (CONV_CP_TO_BYTES));
-      buf_pos += (tc->text_last_cp - tc->text_first_cp + 1)
-	* sizeof (CONV_CP_TO_BYTES);
+      memcpy (buf_pos, tc->text_to_utf8, (tc->text_last_cp - tc->text_first_cp + 1) * sizeof (CONV_CP_TO_BYTES));
+      buf_pos += (tc->text_last_cp - tc->text_first_cp + 1) * sizeof (CONV_CP_TO_BYTES);
     }
 
   if (!(ld->unicode_normalization.do_not_save))
@@ -8238,8 +7711,7 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
 	  memcpy (buf_pos, um->buffer, sizeof (um->buffer));
 	  buf_pos += sizeof (um->buffer);
 
-	  buf_pos += sizeof (UNICODE_MAPPING)
-	    - (sizeof (um->buffer) + 2 * sizeof (int));
+	  buf_pos += sizeof (UNICODE_MAPPING) - (sizeof (um->buffer) + 2 * sizeof (int));
 	}
     }
 
@@ -8271,8 +7743,7 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
  * t_rule(in/out): collation rule
  */
 static int
-common_collation_end_rule (void *data, LOCALE_DATA * ld, const int rule_id,
-			   TAILOR_RULE * t_rule)
+common_collation_end_rule (void *data, LOCALE_DATA * ld, const int rule_id, TAILOR_RULE * t_rule)
 {
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
 
@@ -8321,11 +7792,8 @@ common_collation_end_rule (void *data, LOCALE_DATA * ld, const int rule_id,
       int xml_line_no = XML_GetCurrentLineNumber (pd->xml_parser);
       int xml_col_no = XML_GetCurrentColumnNumber (pd->xml_parser);
 
-      snprintf (msg, sizeof (msg) - 1,
-		"* Rule %d, L :%d, Dir:%d, PosType:%d, Mc:%d ;"
-		" XML: line: %d , col:%d *",
-		rule_id, t_rule->level, t_rule->direction,
-		t_rule->r_pos_type, t_rule->multiple_chars, xml_line_no,
+      snprintf (msg, sizeof (msg) - 1, "* Rule %d, L :%d, Dir:%d, PosType:%d, Mc:%d ;" " XML: line: %d , col:%d *",
+		rule_id, t_rule->level, t_rule->direction, t_rule->r_pos_type, t_rule->multiple_chars, xml_line_no,
 		xml_col_no);
       PRINT_DEBUG_END (data, msg, 0);
     }
@@ -8343,8 +7811,7 @@ common_collation_end_rule (void *data, LOCALE_DATA * ld, const int rule_id,
  * t_rule(in/out): collation rule
  */
 static int
-common_collation_start_rule (void *data, const char **attr, LOCALE_DATA * ld,
-			     TAILOR_RULE * t_rule)
+common_collation_start_rule (void *data, const char **attr, LOCALE_DATA * ld, TAILOR_RULE * t_rule)
 {
   char *ref_buf_p = NULL;
   int ref_buf_size = 0;
@@ -8411,10 +7878,8 @@ start_include_collation (void *data, const char **attr)
 
   if (xml_get_att_value (attr, "file", &att_val) != 0)
     {
-      LOG_LOCALE_ERROR ("<include> tag requires a valid FILE attribute.",
-			ER_LOC_GEN, true);
-      PRINT_DEBUG_START (data, attr, "<include> tag requires a valid "
-			 "FILE attribute.", -1);
+      LOG_LOCALE_ERROR ("<include> tag requires a valid FILE attribute.", ER_LOC_GEN, true);
+      PRINT_DEBUG_START (data, attr, "<include> tag requires a valid " "FILE attribute.", -1);
 
       return -1;
     }
@@ -8439,17 +7904,14 @@ start_include_collation (void *data, const char **attr)
       switch (pd->xml_error)
 	{
 	case XML_CUB_ERR_INCLUDE_LOOP:
-	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "Inclusion loop found for file %s.", include_file_path);
+	  snprintf (err_msg, sizeof (err_msg) - 1, "Inclusion loop found for file %s.", include_file_path);
 	  break;
 	case XML_CUB_ERR_PARSER_INIT_FAIL:
-	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "Failed to initialize subparser for file path %s.",
+	  snprintf (err_msg, sizeof (err_msg) - 1, "Failed to initialize subparser for file path %s.",
 		    include_file_path);
 	  break;
 	case XML_CUB_OUT_OF_MEMORY:
-	  snprintf (err_msg, sizeof (err_msg) - 1,
-		    "Memory exhausted when creating subparser for file %s.",
+	  snprintf (err_msg, sizeof (err_msg) - 1, "Memory exhausted when creating subparser for file %s.",
 		    include_file_path);
 	  break;
 	}
@@ -8465,9 +7927,8 @@ start_include_collation (void *data, const char **attr)
     {
       char err_msg[ERR_MSG_SIZE] = { 0 };
 
-      snprintf (err_msg, sizeof (err_msg) - 1,
-		"Included file %s does not exist or "
-		"is not accessible.", include_file_path);
+      snprintf (err_msg, sizeof (err_msg) - 1, "Included file %s does not exist or " "is not accessible.",
+		include_file_path);
       PRINT_DEBUG_START (data, attr, err_msg, -1);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 
@@ -8476,13 +7937,10 @@ start_include_collation (void *data, const char **attr)
   else if (new_pd->xml_error != XML_CUB_NO_ERROR)
     {
       char msg[ERR_MSG_SIZE] = { 0 };
-      const char *xml_err_text = (char *)
-	XML_ErrorString (XML_GetErrorCode (new_pd->xml_parser));
+      const char *xml_err_text = (char *) XML_ErrorString (XML_GetErrorCode (new_pd->xml_parser));
 
-      snprintf (msg, sizeof (msg) - 1, "Error parsing file %s, "
-		"line: %d, column: %d. Internal XML: %s",
-		new_pd->filepath, new_pd->xml_error_line,
-		new_pd->xml_error_column, xml_err_text);
+      snprintf (msg, sizeof (msg) - 1, "Error parsing file %s, " "line: %d, column: %d. Internal XML: %s",
+		new_pd->filepath, new_pd->xml_error_line, new_pd->xml_error_column, xml_err_text);
       LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
 
       return -1;

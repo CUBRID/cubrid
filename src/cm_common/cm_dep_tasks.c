@@ -118,35 +118,27 @@ static void *op_server_shm_open (int shm_key);
 static int get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname);
 static int getservershmid (char *dir, char *dbname);
 
-static int user_login_sa (nvplist * out, char *_dbmt_error, char *dbname,
-			  char *dbuser, char *dbpasswd);
+static int user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser, char *dbpasswd);
 static int uStringEqualIgnoreCase (const char *str1, const char *str2);
 static int read_file (char *filename, char **outbuf);
-static int _op_db_login (nvplist * out, nvplist * in, int ha_mode,
-			 char *_dbmt_error);
+static int _op_db_login (nvplist * out, nvplist * in, int ha_mode, char *_dbmt_error);
 static int _op_get_system_classes_info (nvplist * out, char *_dbmt_error);
-static int _op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj,
-					char *_dbmt_error);
+static int _op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj, char *_dbmt_error);
 static char *_op_get_type_name (DB_DOMAIN * domain);
-static void _op_get_attribute_info (nvplist * out, DB_ATTRIBUTE * attr,
-				    int isclass);
+static void _op_get_attribute_info (nvplist * out, DB_ATTRIBUTE * attr, int isclass);
 static char *_op_get_value_string (DB_VALUE * value);
-static void _op_get_method_info (nvplist * out, DB_METHOD * method,
-				 int isclass);
+static void _op_get_method_info (nvplist * out, DB_METHOD * method, int isclass);
 static void _op_get_method_file_info (nvplist * out, DB_METHFILE * mfile);
 static void _op_get_query_spec_info (nvplist * out, DB_QUERY_SPEC * spec);
-static void _op_get_resolution_info (nvplist * out, DB_RESOLUTION * res,
-				     int isclass);
+static void _op_get_resolution_info (nvplist * out, DB_RESOLUTION * res, int isclass);
 static void _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con);
 static void _op_get_class_info (nvplist * out, DB_OBJECT * classobj);
 static int _op_get_user_classes_info (nvplist * out, char *_dbmt_error);
 static int _op_is_classattribute (DB_ATTRIBUTE * attr, DB_OBJECT * classobj);
-static int class_info_sa (const char *dbname, const char *uid,
-			  const char *passwd, char *cli_ver_val,
-			  nvplist * out, char *_dbmt_error);
+static int class_info_sa (const char *dbname, const char *uid, const char *passwd, char *cli_ver_val, nvplist * out,
+			  char *_dbmt_error);
 static char *_op_get_set_value (DB_VALUE * val);
-static int trigger_info_sa (const char *dbname, const char *uid,
-			    const char *password, nvplist * res,
+static int trigger_info_sa (const char *dbname, const char *uid, const char *password, nvplist * res,
 			    char *_dbmt_error);
 static void op_get_trigger_information (nvplist * res, DB_OBJECT * p_trigger);
 static int revoke_all_from_user (DB_OBJECT * user);
@@ -187,10 +179,10 @@ op_server_shm_open (int shm_key, HANDLE * hOut)
     }
 
   /* Get a pointer to the file-mapped shared memory. */
-  lpvMem = MapViewOfFile (hMapObject,	/* object to map view of    */
-			  FILE_MAP_WRITE,	/* read/write access        */
-			  0,	/* high offset:   map from  */
-			  0,	/* low offset:    beginning */
+  lpvMem = MapViewOfFile (hMapObject,	/* object to map view of */
+			  FILE_MAP_WRITE,	/* read/write access */
+			  0,	/* high offset: map from */
+			  0,	/* low offset: beginning */
 			  0);	/* default: map entire file */
   if (lpvMem == NULL)
     {
@@ -246,8 +238,7 @@ _op_db_login (nvplist * out, nvplist * in, int ha_mode, char *_dbmt_error)
 
   if (ha_mode != 0)
     {
-      snprintf (dbname_at_hostname, sizeof (dbname_at_hostname),
-		"%s@127.0.0.1", db_name);
+      snprintf (dbname_at_hostname, sizeof (dbname_at_hostname), "%s@127.0.0.1", db_name);
       errcode = db_restart (DB_RESTART_SERVER_NAME, 0, dbname_at_hostname);
     }
   else
@@ -269,8 +260,7 @@ _op_db_login (nvplist * out, nvplist * in, int ha_mode, char *_dbmt_error)
 }
 
 int
-cm_get_diag_data (T_CM_DIAG_MONITOR_DB_VALUE * ret_result, char *db_name,
-		  char *mon_db)
+cm_get_diag_data (T_CM_DIAG_MONITOR_DB_VALUE * ret_result, char *db_name, char *mon_db)
 {
   int i;
   T_SHM_DIAG_INFO_SERVER *server_shm = NULL;
@@ -290,8 +280,7 @@ cm_get_diag_data (T_CM_DIAG_MONITOR_DB_VALUE * ret_result, char *db_name,
 	  server_shmid = getservershmid (vol_dir, db_name);
 	  if (server_shmid > 0)
 	    {
-	      server_shm = (T_SHM_DIAG_INFO_SERVER *)
-		OP_SERVER_SHM_OPEN (server_shmid, &shm_handle);
+	      server_shm = (T_SHM_DIAG_INFO_SERVER *) OP_SERVER_SHM_OPEN (server_shmid, &shm_handle);
 	    }
 	}
     }
@@ -302,25 +291,16 @@ cm_get_diag_data (T_CM_DIAG_MONITOR_DB_VALUE * ret_result, char *db_name,
       memset (&server_result, 0, sizeof (server_result));
       for (i = 0; i < MAX_SERVER_THREAD_COUNT && i < numthread; i++)
 	{
-	  server_result.query_open_page +=
-	    server_shm->thread[i].query_open_page;
-	  server_result.query_opened_page +=
-	    server_shm->thread[i].query_opened_page;
-	  server_result.query_slow_query +=
-	    server_shm->thread[i].query_slow_query;
-	  server_result.query_full_scan +=
-	    server_shm->thread[i].query_full_scan;
-	  server_result.conn_cli_request +=
-	    server_shm->thread[i].conn_cli_request;
-	  server_result.conn_aborted_clients +=
-	    server_shm->thread[i].conn_aborted_clients;
+	  server_result.query_open_page += server_shm->thread[i].query_open_page;
+	  server_result.query_opened_page += server_shm->thread[i].query_opened_page;
+	  server_result.query_slow_query += server_shm->thread[i].query_slow_query;
+	  server_result.query_full_scan += server_shm->thread[i].query_full_scan;
+	  server_result.conn_cli_request += server_shm->thread[i].conn_cli_request;
+	  server_result.conn_aborted_clients += server_shm->thread[i].conn_aborted_clients;
 	  server_result.conn_conn_req += server_shm->thread[i].conn_conn_req;
-	  server_result.conn_conn_reject +=
-	    server_shm->thread[i].conn_conn_reject;
-	  server_result.buffer_page_write +=
-	    server_shm->thread[i].buffer_page_write;
-	  server_result.buffer_page_read +=
-	    server_shm->thread[i].buffer_page_read;
+	  server_result.conn_conn_reject += server_shm->thread[i].conn_conn_reject;
+	  server_result.buffer_page_write += server_shm->thread[i].buffer_page_write;
+	  server_result.buffer_page_read += server_shm->thread[i].buffer_page_read;
 	  server_result.lock_deadlock += server_shm->thread[i].lock_deadlock;
 	  server_result.lock_request += server_shm->thread[i].lock_request;
 	}
@@ -438,8 +418,7 @@ cm_tsDBMTUserLogin (nvplist * in, nvplist * out, char *_dbmt_error)
 
   if (ha_mode != 0)
     {
-      snprintf (dbname_at_hostname, sizeof (dbname_at_hostname),
-		"%s@127.0.0.1", dbname);
+      snprintf (dbname_at_hostname, sizeof (dbname_at_hostname), "%s@127.0.0.1", dbname);
       errcode = db_restart (DB_RESTART_SERVER_NAME, 0, dbname_at_hostname);
     }
   else
@@ -556,8 +535,7 @@ cm_ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
 	}
       else
 	{
-	  snprintf (sql, sizeof (sql) - 1, "UPDATE STATISTICS ON \"%s\"",
-		    classname);
+	  snprintf (sql, sizeof (sql) - 1, "UPDATE STATISTICS ON \"%s\"", classname);
 	}
       if (db_execute (sql, &result, &query_error) < 0)
 	{
@@ -605,8 +583,7 @@ cm_ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error)
       char *uid = nv_get_val (in, "_DBID");
       char *passwd = nv_get_val (in, "_DBPASSWD");
       char *cli_ver_val = nv_get_val (in, "_CLIENT_VERSION");
-      return (class_info_sa
-	      (dbname, uid, passwd, cli_ver_val, out, _dbmt_error));
+      return (class_info_sa (dbname, uid, passwd, cli_ver_val, out, _dbmt_error));
     }
   else
     {
@@ -765,8 +742,7 @@ cm_ts_get_triggerinfo (nvplist * req, nvplist * res, char *_dbmt_error)
 int
 cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
 {
-  char *class_name, *attr_name, *category, *index, *not_null, *unique,
-    *defaultv, *old_attr_name, *dbname;
+  char *class_name, *attr_name, *category, *index, *not_null, *unique, *defaultv, *old_attr_name, *dbname;
   DB_OBJECT *classobj;
   DB_ATTRIBUTE *attrobj;
   int errcode, is_class, flag;
@@ -803,8 +779,7 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
 
   if (classobj == NULL)
     {
-      snprintf (_dbmt_error, PATH_MAX - 1, "class [%s] not exists.",
-		class_name);
+      snprintf (_dbmt_error, PATH_MAX - 1, "class [%s] not exists.", class_name);
       return ERR_WITH_MSG;
     }
 
@@ -817,8 +792,7 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
       is_class = 1;
     }
 
-  if ((attr_name != NULL) && (old_attr_name != NULL)
-      && (strcmp (attr_name, old_attr_name) != 0))
+  if ((attr_name != NULL) && (old_attr_name != NULL) && (strcmp (attr_name, old_attr_name) != 0))
     {
       errcode = db_rename (classobj, old_attr_name, is_class, attr_name);
       if (errcode < 0)
@@ -924,15 +898,12 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
 
       if (is_class)
 	{
-	  snprintf (buf, sizeof (buf) - 1,
-		    "ALTER \"%s\" CHANGE CLASS \"%s\" DEFAULT %s", class_name,
-		    attr_name, defaultv);
+	  snprintf (buf, sizeof (buf) - 1, "ALTER \"%s\" CHANGE CLASS \"%s\" DEFAULT %s", class_name, attr_name,
+		    defaultv);
 	}
       else
 	{
-	  snprintf (buf, sizeof (buf) - 1,
-		    "ALTER \"%s\" CHANGE \"%s\" DEFAULT %s", class_name,
-		    attr_name, defaultv);
+	  snprintf (buf, sizeof (buf) - 1, "ALTER \"%s\" CHANGE \"%s\" DEFAULT %s", class_name, attr_name, defaultv);
 	}
       lang_set_parser_use_client_charset (false);
       if (db_execute (buf, &result, &error_stats) < 0)
@@ -1395,8 +1366,7 @@ error_return:
 }
 
 static int
-user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser,
-	       char *dbpasswd)
+user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser, char *dbpasswd)
 {
   char opcode[10];
   char outfile[PATH_MAX], errfile[PATH_MAX];
@@ -1540,8 +1510,8 @@ read_file (char *filename, char **outbuf)
 }
 
 static int
-class_info_sa (const char *dbname, const char *uid, const char *passwd,
-	       char *cli_ver_val, nvplist * out, char *_dbmt_error)
+class_info_sa (const char *dbname, const char *uid, const char *passwd, char *cli_ver_val, nvplist * out,
+	       char *_dbmt_error)
 {
   char strbuf[1024];
   char outfile[PATH_MAX], errfile[PATH_MAX];
@@ -1553,8 +1523,7 @@ class_info_sa (const char *dbname, const char *uid, const char *passwd,
   char opcode[10];
   char tmpfile[100];
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_class_info.",
-	    getpid ());
+  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_class_info.", getpid ());
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
   snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
   unlink (outfile);
@@ -1570,8 +1539,7 @@ class_info_sa (const char *dbname, const char *uid, const char *passwd,
       passwd = "";
     }
 
-  snprintf (cli_ver, sizeof (cli_ver) - 1, "%d",
-	    get_client_version (cli_ver_val));
+  snprintf (cli_ver, sizeof (cli_ver) - 1, "%d", get_client_version (cli_ver_val));
   (void) envvar_bindir_file (cmd_name, PATH_MAX, "cub_jobsa" UTIL_EXE_EXT);
   snprintf (opcode, sizeof (opcode) - 1, "%d", EMS_SA_CLASS_INFO);
   argv[0] = cmd_name;
@@ -1756,8 +1724,7 @@ get_client_version (char *cli_ver_val)
 }
 
 static int
-_op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj,
-			     char *_dbmt_error)
+_op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj, char *_dbmt_error)
 {
   DB_OBJLIST *objlist, *temp;
   DB_OBJECT *obj;
@@ -1826,64 +1793,55 @@ _op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj,
     }
 
   /* class_ attributes info */
-  for (attr = db_get_class_attributes (classobj); attr != NULL;
-       attr = db_attribute_next (attr))
+  for (attr = db_get_class_attributes (classobj); attr != NULL; attr = db_attribute_next (attr))
     {
       _op_get_attribute_info (out, attr, 1);
     }
 
   /* attributes info */
-  for (attr = db_get_attributes (classobj); attr != NULL;
-       attr = db_attribute_next (attr))
+  for (attr = db_get_attributes (classobj); attr != NULL; attr = db_attribute_next (attr))
     {
       _op_get_attribute_info (out, attr, 0);
     }
 
   /* class_ methods */
-  for (method = db_get_class_methods (classobj); method != NULL;
-       method = db_method_next (method))
+  for (method = db_get_class_methods (classobj); method != NULL; method = db_method_next (method))
     {
       _op_get_method_info (out, method, 1);
     }
 
   /* methods */
-  for (method = db_get_methods (classobj); method != NULL;
-       method = db_method_next (method))
+  for (method = db_get_methods (classobj); method != NULL; method = db_method_next (method))
     {
       _op_get_method_info (out, method, 0);
     }
 
   /* method files */
-  for (mfile = db_get_method_files (classobj); mfile != NULL;
-       mfile = db_methfile_next (mfile))
+  for (mfile = db_get_method_files (classobj); mfile != NULL; mfile = db_methfile_next (mfile))
     {
       _op_get_method_file_info (out, mfile);
     }
 
   /* class_ resolutions */
-  for (res = db_get_class_resolutions (classobj); res != NULL;
-       res = db_resolution_next (res))
+  for (res = db_get_class_resolutions (classobj); res != NULL; res = db_resolution_next (res))
     {
       _op_get_resolution_info (out, res, 1);
     }
 
   /* resolutions */
-  for (res = db_get_resolutions (classobj); res != NULL;
-       res = db_resolution_next (res))
+  for (res = db_get_resolutions (classobj); res != NULL; res = db_resolution_next (res))
     {
       _op_get_resolution_info (out, res, 0);
     }
 
   /* constraints */
-  for (con = db_get_constraints (classobj); con != NULL;
-       con = db_constraint_next (con))
+  for (con = db_get_constraints (classobj); con != NULL; con = db_constraint_next (con))
     {
       _op_get_constraint_info (out, con);
     }
 
   /* query specs */
-  for (spec = db_get_query_specs (classobj); spec != NULL;
-       spec = db_query_spec_next (spec))
+  for (spec = db_get_query_specs (classobj); spec != NULL; spec = db_query_spec_next (spec))
     {
       _op_get_query_spec_info (out, spec);
     }
@@ -2001,16 +1959,13 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
       DB_OBJECT *ref_cls;
 
       ref_cls = db_get_foreign_key_ref_class (con);
-      snprintf (buf, sizeof (buf) - 1, "REFERENCES %s",
-		db_get_class_name (ref_cls));
+      snprintf (buf, sizeof (buf) - 1, "REFERENCES %s", db_get_class_name (ref_cls));
       nv_add_nvp (out, "rule", buf);
 
-      snprintf (buf, sizeof (buf) - 1, "ON DELETE %s",
-		db_get_foreign_key_action (con, DB_FK_DELETE));
+      snprintf (buf, sizeof (buf) - 1, "ON DELETE %s", db_get_foreign_key_action (con, DB_FK_DELETE));
       nv_add_nvp (out, "rule", buf);
 
-      snprintf (buf, sizeof (buf) - 1, "ON UPDATE %s",
-		db_get_foreign_key_action (con, DB_FK_UPDATE));
+      snprintf (buf, sizeof (buf) - 1, "ON UPDATE %s", db_get_foreign_key_action (con, DB_FK_UPDATE));
       nv_add_nvp (out, "rule", buf);
     }
 
@@ -2108,8 +2063,7 @@ _op_get_resolution_info (nvplist * out, DB_RESOLUTION * res, int isclass)
       nv_add_nvp (out, "open", "resolution");
     }
   nv_add_nvp (out, "name", db_resolution_name (res));
-  nv_add_nvp (out, "classname",
-	      db_get_class_name (db_resolution_class (res)));
+  nv_add_nvp (out, "classname", db_get_class_name (db_resolution_class (res)));
   nv_add_nvp (out, "alias", db_resolution_alias (res));
   if (isclass)
     {
@@ -2190,8 +2144,7 @@ _op_is_classattribute (DB_ATTRIBUTE * attr, DB_OBJECT * classobj)
 {
   DB_ATTRIBUTE *temp;
   int id = db_attribute_id (attr);
-  for (temp = db_get_class_attributes (classobj); temp != NULL;
-       temp = db_attribute_next (temp))
+  for (temp = db_get_class_attributes (classobj); temp != NULL; temp = db_attribute_next (temp))
     {
       if (id == db_attribute_id (temp))
 	{
@@ -2242,8 +2195,7 @@ _op_get_type_name (DB_DOMAIN * domain)
       int s;
       p = db_domain_precision (domain);
       s = db_domain_scale (domain);
-      snprintf (result, result_size, "%s(%d,%d)", db_get_type_name (type_id),
-		p, s);
+      snprintf (result, result_size, "%s(%d,%d)", db_get_type_name (type_id), p, s);
     }
   else if ((p = db_domain_precision (domain)) != 0)
     {
@@ -2268,8 +2220,7 @@ _op_get_type_name (DB_DOMAIN * domain)
 	      STRING_APPEND (result_p, avail_size, "%s", temp);
 	      free (temp);
 
-	      for (set_domain = db_domain_next (set_domain);
-		   set_domain != NULL;
+	      for (set_domain = db_domain_next (set_domain); set_domain != NULL;
 		   set_domain = db_domain_next (set_domain))
 		{
 		  temp = _op_get_type_name (set_domain);
@@ -2315,9 +2266,7 @@ _op_get_value_string (DB_VALUE * value)
 
   extern char *numeric_db_value_print (DB_VALUE *);
   extern int db_get_string_length (const DB_VALUE * value);
-  extern int db_bit_string (const DB_VALUE * the_db_bit,
-			    const char *bit_format, char *string,
-			    int max_size);
+  extern int db_bit_string (const DB_VALUE * the_db_bit, const char *bit_format, char *string, int max_size);
 
   result = (char *) malloc (result_size + 1);
   if (result == NULL)
@@ -2368,8 +2317,7 @@ _op_get_value_string (DB_VALUE * value)
       snprintf (result, result_size, "%f", fv);
       break;
     case DB_TYPE_NUMERIC:
-      snprintf (result, result_size, "%s",
-		numeric_db_value_print ((DB_VALUE *) value));
+      snprintf (result, result_size, "%s", numeric_db_value_print ((DB_VALUE *) value));
       break;
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
@@ -2386,13 +2334,9 @@ _op_get_value_string (DB_VALUE * value)
 	      if (return_result == NULL)
 		goto exit_on_end;
 	      if (i == 0)
-		idx +=
-		  snprintf (result + idx, result_size - idx, "%s",
-			    return_result);
+		idx += snprintf (result + idx, result_size - idx, "%s", return_result);
 	      else
-		idx +=
-		  snprintf (result + idx, result_size - idx, ",%s",
-			    return_result);
+		idx += snprintf (result + idx, result_size - idx, ",%s", return_result);
 	      free (return_result);
 	      db_value_clear (&val);
 	    }
@@ -2518,33 +2462,27 @@ _op_get_set_value (DB_VALUE * val)
       break;
 
     case DB_TYPE_UTIME:
-      snprintf (result, result_size, "%s%s%s", "timestamp '", return_result,
-		"'");
+      snprintf (result, result_size, "%s%s%s", "timestamp '", return_result, "'");
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
-      snprintf (result, result_size, "%s%s%s", "timestamptz '", return_result,
-		"'");
+      snprintf (result, result_size, "%s%s%s", "timestamptz '", return_result, "'");
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:
-      snprintf (result, result_size, "%s%s%s", "timestampltz '",
-		return_result, "'");
+      snprintf (result, result_size, "%s%s%s", "timestampltz '", return_result, "'");
       break;
 
     case DB_TYPE_DATETIME:
-      snprintf (result, result_size, "%s%s%s", "datetime '", return_result,
-		"'");
+      snprintf (result, result_size, "%s%s%s", "datetime '", return_result, "'");
       break;
 
     case DB_TYPE_DATETIMETZ:
-      snprintf (result, result_size, "%s%s%s", "datetimetz '", return_result,
-		"'");
+      snprintf (result, result_size, "%s%s%s", "datetimetz '", return_result, "'");
       break;
 
     case DB_TYPE_DATETIMELTZ:
-      snprintf (result, result_size, "%s%s%s", "datetimeltz '", return_result,
-		"'");
+      snprintf (result, result_size, "%s%s%s", "datetimeltz '", return_result, "'");
       break;
 
     case DB_TYPE_NCHAR:
@@ -2580,8 +2518,7 @@ _op_get_set_value (DB_VALUE * val)
 }
 
 static int
-trigger_info_sa (const char *dbname, const char *uid, const char *passwd,
-		 nvplist * out, char *_dbmt_error)
+trigger_info_sa (const char *dbname, const char *uid, const char *passwd, nvplist * out, char *_dbmt_error)
 {
   char strbuf[1024];
   char outfile[PATH_MAX], errfile[PATH_MAX];
@@ -2591,8 +2528,7 @@ trigger_info_sa (const char *dbname, const char *uid, const char *passwd,
   const char *argv[10];
   char tmpfile[100];
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_trigger_info.",
-	    getpid ());
+  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_trigger_info.", getpid ());
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
   snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
   unlink (outfile);
@@ -2830,9 +2766,7 @@ revoke_all_from_user (DB_OBJECT * user)
 	{
 	  continue;
 	}
-      class_obj =
-	(DB_OBJECT
-	 **) (REALLOC (class_obj, sizeof (DB_OBJECT *) * (num_class + 1)));
+      class_obj = (DB_OBJECT **) (REALLOC (class_obj, sizeof (DB_OBJECT *) * (num_class + 1)));
       if (class_obj == NULL)
 	{
 	  return ERR_MEM_ALLOC;
@@ -2935,17 +2869,14 @@ get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname)
       return -1;
     }
 
-  snprintf (db_txt, sizeof (db_txt) - 1, "%s/%s", envpath,
-	    CUBRID_DATABASE_TXT);
+  snprintf (db_txt, sizeof (db_txt) - 1, "%s/%s", envpath, CUBRID_DATABASE_TXT);
   databases_txt = fopen (db_txt, "r");
   if (databases_txt == NULL)
     {
       return -1;
     }
 
-  snprintf (scan_format, sizeof (scan_format) - 1,
-	    "%%%lus %%%lus %%*s %%*s",
-	    (unsigned long) sizeof (volname) - 1,
+  snprintf (scan_format, sizeof (scan_format) - 1, "%%%lus %%%lus %%*s %%*s", (unsigned long) sizeof (volname) - 1,
 	    (unsigned long) vol_dir_size - 1);
 
   while (fgets (cbuf, sizeof (cbuf), databases_txt))

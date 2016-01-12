@@ -142,8 +142,8 @@ cm_broker_off (const char *br_name, T_CM_ERROR * err_buf)
 }
 
 int
-cm_get_cas_info (const char *br_name, T_CM_CAS_INFO_ALL * cas_info_all,
-		 T_CM_JOB_INFO_ALL * job_info_all, T_CM_ERROR * err_buf)
+cm_get_cas_info (const char *br_name, T_CM_CAS_INFO_ALL * cas_info_all, T_CM_JOB_INFO_ALL * job_info_all,
+		 T_CM_ERROR * err_buf)
 {
   T_AS_INFO *as_info = NULL;
   T_JOB_INFO *job_info = NULL;
@@ -154,14 +154,12 @@ cm_get_cas_info (const char *br_name, T_CM_CAS_INFO_ALL * cas_info_all,
   memset (cas_info_all, 0, sizeof (T_CM_CAS_INFO_ALL));
   if (job_info_all == NULL)
     {
-      num_as_info =
-	uc_as_info (br_name, &as_info, NULL, NULL, err_buf->err_msg);
+      num_as_info = uc_as_info (br_name, &as_info, NULL, NULL, err_buf->err_msg);
     }
   else
     {
       memset (job_info_all, 0, sizeof (T_CM_JOB_INFO_ALL));
-      num_as_info =
-	uc_as_info (br_name, &as_info, &job_info, &num_job, err_buf->err_msg);
+      num_as_info = uc_as_info (br_name, &as_info, &job_info, &num_job, err_buf->err_msg);
     }
   if (num_as_info < 0)
     {
@@ -170,8 +168,7 @@ cm_get_cas_info (const char *br_name, T_CM_CAS_INFO_ALL * cas_info_all,
       goto as_info_finale;
     }
 
-  cas_info_all->as_info =
-    (T_CM_CAS_INFO *) malloc (sizeof (T_CM_CAS_INFO) * num_as_info);
+  cas_info_all->as_info = (T_CM_CAS_INFO *) malloc (sizeof (T_CM_CAS_INFO) * num_as_info);
   if (cas_info_all->as_info == NULL)
     {
       err_buf->err_code = CM_GENERAL_ERROR;
@@ -182,8 +179,7 @@ cm_get_cas_info (const char *br_name, T_CM_CAS_INFO_ALL * cas_info_all,
   memset (cas_info_all->as_info, 0, sizeof (T_CM_CAS_INFO) * num_as_info);
   if (job_info_all != NULL)
     {
-      job_info_all->job_info =
-	(T_CM_JOB_INFO *) malloc (sizeof (T_CM_JOB_INFO) * num_job);
+      job_info_all->job_info = (T_CM_JOB_INFO *) malloc (sizeof (T_CM_JOB_INFO) * num_job);
       if (job_info_all->job_info == NULL)
 	num_job = 0;
       else
@@ -207,8 +203,7 @@ as_info_finale:
 }
 
 void
-cm_cas_info_free (T_CM_CAS_INFO_ALL * cas_info_all,
-		  T_CM_JOB_INFO_ALL * job_info_all)
+cm_cas_info_free (T_CM_CAS_INFO_ALL * cas_info_all, T_CM_JOB_INFO_ALL * job_info_all)
 {
   int i;
   T_CM_CAS_INFO *as_info;
@@ -237,8 +232,7 @@ cm_cas_info_free (T_CM_CAS_INFO_ALL * cas_info_all,
 }
 
 int
-cm_get_broker_info (T_CM_BROKER_INFO_ALL * broker_info_all,
-		    T_CM_ERROR * err_buf)
+cm_get_broker_info (T_CM_BROKER_INFO_ALL * broker_info_all, T_CM_ERROR * err_buf)
 {
   T_BR_INFO *br_info;
   int num_br, i, res;
@@ -253,8 +247,7 @@ cm_get_broker_info (T_CM_BROKER_INFO_ALL * broker_info_all,
       return -1;
     }
 
-  broker_info_all->br_info =
-    (T_CM_BROKER_INFO *) malloc (sizeof (T_CM_BROKER_INFO) * num_br);
+  broker_info_all->br_info = (T_CM_BROKER_INFO *) malloc (sizeof (T_CM_BROKER_INFO) * num_br);
   if (broker_info_all->br_info == NULL)
     {
       err_buf->err_code = CM_GENERAL_ERROR;
@@ -301,8 +294,7 @@ cm_broker_info_free (T_CM_BROKER_INFO_ALL * broker_info_all)
 }
 
 int
-cm_get_broker_conf (T_CM_BROKER_CONF * dm_uc_conf, int *ret_mst_shmid,
-		    T_CM_ERROR * err_buf)
+cm_get_broker_conf (T_CM_BROKER_CONF * dm_uc_conf, int *ret_mst_shmid, T_CM_ERROR * err_buf)
 {
   T_UC_CONF uc_conf;
   int master_shm_id;
@@ -406,13 +398,13 @@ as_info_copy (T_CM_CAS_INFO * dest_info, T_AS_INFO * src_info)
 {
   switch (src_info->service_flag)
     {
-    case 1 /*SERVICE_ON */ :
+    case 1 /* SERVICE_ON */ :
       dest_info->service_flag = strdup ("ON");
       break;
-    case 0 /*SERVICE_OFF */ :
+    case 0 /* SERVICE_OFF */ :
       dest_info->service_flag = strdup ("OFF");
       break;
-    case 2 /*SERVICE_OFF_ACK */ :
+    case 2 /* SERVICE_OFF_ACK */ :
       dest_info->service_flag = strdup ("OFF_ACK");
       break;
     default:
@@ -446,8 +438,7 @@ as_info_copy (T_CM_CAS_INFO * dest_info, T_AS_INFO * src_info)
   dest_info->last_connect_time = src_info->last_connect_time;
   dest_info->num_requests_received = src_info->num_requests_received;
   dest_info->num_queries_processed = src_info->num_queries_processed;
-  dest_info->num_transactions_processed =
-    src_info->num_transactions_processed;
+  dest_info->num_transactions_processed = src_info->num_transactions_processed;
   dest_info->num_long_queries = src_info->num_long_queries;
   dest_info->num_long_transactions = src_info->num_long_transactions;
   dest_info->num_error_queries = src_info->num_error_queries;
@@ -457,9 +448,8 @@ as_info_copy (T_CM_CAS_INFO * dest_info, T_AS_INFO * src_info)
 static char *
 ip2str (unsigned char *ip, char *ip_str)
 {
-  sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip[0],
-	   (unsigned char) ip[1],
-	   (unsigned char) ip[2], (unsigned char) ip[3]);
+  sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip[0], (unsigned char) ip[1], (unsigned char) ip[2],
+	   (unsigned char) ip[3]);
   return ip_str;
 }
 
@@ -471,10 +461,8 @@ job_info_copy (T_CM_JOB_INFO * dest_info, T_JOB_INFO * src_info)
   dest_info->recv_time = src_info->recv_time;
   /* memcpy (dest_info->ip, src_info->ip, 4); */
   ip2str (src_info->ip, dest_info->ipstr);
-  strncpy (dest_info->script, src_info->script,
-	   sizeof (dest_info->script) - 1);
-  strncpy (dest_info->prgname, src_info->prgname,
-	   sizeof (dest_info->prgname) - 1);
+  strncpy (dest_info->script, src_info->script, sizeof (dest_info->script) - 1);
+  strncpy (dest_info->prgname, src_info->prgname, sizeof (dest_info->prgname) - 1);
 }
 
 static void
@@ -569,11 +557,9 @@ cm_get_broker_file (T_UNICAS_FILE_ID uc_fid, char *buf)
       if (uc_fid == unicas_file[i].fid)
 	{
 #if !defined (DO_NOT_USE_CUBRIDENV)
-	  sprintf (buf, "%s/%s/%s", getenv (CUBRID_ENV),
-		   unicas_file[i].dir_name, unicas_file[i].file_name);
+	  sprintf (buf, "%s/%s/%s", getenv (CUBRID_ENV), unicas_file[i].dir_name, unicas_file[i].file_name);
 #else
-	  sprintf (buf, "%s/%s", unicas_file[i].dir_name,
-		   unicas_file[i].file_name);
+	  sprintf (buf, "%s/%s", unicas_file[i].dir_name, unicas_file[i].file_name);
 #endif
 	  break;
 	}

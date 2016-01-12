@@ -59,40 +59,24 @@ struct list_indexer_s
 };
 
 /* array based VALUE_INDEXER implementation */
-static int ai_api_check (VALUE_INDEXER * indexer, int index,
-			 CHECK_PURPOSE pup);
+static int ai_api_check (VALUE_INDEXER * indexer, int index, CHECK_PURPOSE pup);
 static int ai_api_length (VALUE_INDEXER * indexer, int *len);
-static int ai_api_get (VALUE_INDEXER * indexer, int index,
-		       VALUE_AREA ** rva, API_VALUE ** rv);
-static int ai_api_set (VALUE_INDEXER * indexer, int index,
-		       VALUE_AREA * va, API_VALUE * dv);
-static int ai_api_map (VALUE_INDEXER * indexer,
-		       int (*mapf) (void *, int, VALUE_AREA *, API_VALUE *),
-		       void *arg);
-static int ai_api_insert (VALUE_INDEXER * indexer, int index,
-			  VALUE_AREA * va, API_VALUE * dval);
-static int ai_api_delete (VALUE_INDEXER * indexer, int index,
-			  VALUE_AREA ** rva, API_VALUE ** dbval);
-static void ai_api_destroy (VALUE_INDEXER * indexer,
-			    void (*df) (VALUE_AREA * va, API_VALUE * db));
+static int ai_api_get (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva, API_VALUE ** rv);
+static int ai_api_set (VALUE_INDEXER * indexer, int index, VALUE_AREA * va, API_VALUE * dv);
+static int ai_api_map (VALUE_INDEXER * indexer, int (*mapf) (void *, int, VALUE_AREA *, API_VALUE *), void *arg);
+static int ai_api_insert (VALUE_INDEXER * indexer, int index, VALUE_AREA * va, API_VALUE * dval);
+static int ai_api_delete (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva, API_VALUE ** dbval);
+static void ai_api_destroy (VALUE_INDEXER * indexer, void (*df) (VALUE_AREA * va, API_VALUE * db));
 
 /* linked list based VALUE_INDEXER implementation */
-static int li_api_check (VALUE_INDEXER * indexer, int index,
-			 CHECK_PURPOSE pup);
+static int li_api_check (VALUE_INDEXER * indexer, int index, CHECK_PURPOSE pup);
 static int li_api_length (VALUE_INDEXER * indexer, int *len);
-static int li_api_get (VALUE_INDEXER * indexer, int index,
-		       VALUE_AREA ** rva, API_VALUE ** rv);
-static int li_api_set (VALUE_INDEXER * indexer, int index,
-		       VALUE_AREA * va, API_VALUE * val);
-static int li_api_map (VALUE_INDEXER * indexer,
-		       int (*mapf) (void *, int, VALUE_AREA *, API_VALUE *),
-		       void *arg);
-static int li_api_insert (VALUE_INDEXER * indexer, int index,
-			  VALUE_AREA * va, API_VALUE * dval);
-static int li_api_delete (VALUE_INDEXER * indexer, int index,
-			  VALUE_AREA ** rva, API_VALUE ** dbval);
-static void li_api_destroy (VALUE_INDEXER * indexer,
-			    void (*df) (VALUE_AREA * va, API_VALUE * db));
+static int li_api_get (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva, API_VALUE ** rv);
+static int li_api_set (VALUE_INDEXER * indexer, int index, VALUE_AREA * va, API_VALUE * val);
+static int li_api_map (VALUE_INDEXER * indexer, int (*mapf) (void *, int, VALUE_AREA *, API_VALUE *), void *arg);
+static int li_api_insert (VALUE_INDEXER * indexer, int index, VALUE_AREA * va, API_VALUE * dval);
+static int li_api_delete (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva, API_VALUE ** dbval);
+static void li_api_destroy (VALUE_INDEXER * indexer, void (*df) (VALUE_AREA * va, API_VALUE * db));
 
 /* ------------------------------------------------------------------------- */
 /* array based VALUE_INDEXER implementation */
@@ -144,8 +128,7 @@ ai_api_length (VALUE_INDEXER * indexer, int *len)
  *    rv(out): API_VALUE
  */
 static int
-ai_api_get (VALUE_INDEXER * indexer, int index,
-	    VALUE_AREA ** rva, API_VALUE ** rv)
+ai_api_get (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva, API_VALUE ** rv)
 {
   ARRAY_INDEXER *ai = (ARRAY_INDEXER *) indexer;
   assert (ai != NULL);
@@ -166,8 +149,7 @@ ai_api_get (VALUE_INDEXER * indexer, int index,
  *    val(in): pointer to API_VALUE
  */
 static int
-ai_api_set (VALUE_INDEXER * indexer, int index, VALUE_AREA * va,
-	    API_VALUE * val)
+ai_api_set (VALUE_INDEXER * indexer, int index, VALUE_AREA * va, API_VALUE * val)
 {
   ARRAY_INDEXER *ai = (ARRAY_INDEXER *) indexer;
   assert (ai != NULL);
@@ -184,8 +166,7 @@ ai_api_set (VALUE_INDEXER * indexer, int index, VALUE_AREA * va,
  *    arg(in): argument of the mapf
  */
 static int
-ai_api_map (VALUE_INDEXER * indexer,
-	    int (*mapf) (void *, int, VALUE_AREA *, API_VALUE *), void *arg)
+ai_api_map (VALUE_INDEXER * indexer, int (*mapf) (void *, int, VALUE_AREA *, API_VALUE *), void *arg)
 {
   ARRAY_INDEXER *ai = (ARRAY_INDEXER *) indexer;
   int i, res;
@@ -211,8 +192,7 @@ ai_api_map (VALUE_INDEXER * indexer,
  * To insert the element to the top front of position the indexer, index -1 is used.
  */
 static int
-ai_api_insert (VALUE_INDEXER * indexer, int index, VALUE_AREA * va,
-	       API_VALUE * dval)
+ai_api_insert (VALUE_INDEXER * indexer, int index, VALUE_AREA * va, API_VALUE * dval)
 {
   return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 }
@@ -226,8 +206,7 @@ ai_api_insert (VALUE_INDEXER * indexer, int index, VALUE_AREA * va,
  *    dbval(out): pointer to API_VALUE
  */
 static int
-ai_api_delete (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva,
-	       API_VALUE ** dbval)
+ai_api_delete (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva, API_VALUE ** dbval)
 {
   return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 }
@@ -240,8 +219,7 @@ ai_api_delete (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva,
  * 
  */
 static void
-ai_api_destroy (VALUE_INDEXER * indexer,
-		void (*df) (VALUE_AREA * va, API_VALUE * db))
+ai_api_destroy (VALUE_INDEXER * indexer, void (*df) (VALUE_AREA * va, API_VALUE * db))
 {
   ARRAY_INDEXER *ai = (ARRAY_INDEXER *) indexer;
   int i;
@@ -414,8 +392,7 @@ li_getf (LIST_INDEXER * li, int index)
  *    rv(out): API_VALUE
  */
 static int
-li_api_get (VALUE_INDEXER * indexer, int index,
-	    VALUE_AREA ** rva, API_VALUE ** rv)
+li_api_get (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva, API_VALUE ** rv)
 {
   LIST_INDEXER *li = (LIST_INDEXER *) indexer;
   LIST_INDEXER_ELEM *e;
@@ -441,8 +418,7 @@ li_api_get (VALUE_INDEXER * indexer, int index,
  *    val(in): pointer to API_VALUE
  */
 static int
-li_api_set (VALUE_INDEXER * indexer, int index, VALUE_AREA * va,
-	    API_VALUE * dval)
+li_api_set (VALUE_INDEXER * indexer, int index, VALUE_AREA * va, API_VALUE * dval)
 {
   LIST_INDEXER *li = (LIST_INDEXER *) indexer;
   LIST_INDEXER_ELEM *e;
@@ -498,8 +474,7 @@ li_mapf (dlisth * h, void *arg, int *cont)
  *    arg(in): argument of the mapf
  */
 static int
-li_api_map (VALUE_INDEXER * indexer,
-	    int (*mapf) (void *, int, VALUE_AREA *, API_VALUE *), void *arg)
+li_api_map (VALUE_INDEXER * indexer, int (*mapf) (void *, int, VALUE_AREA *, API_VALUE *), void *arg)
 {
   LIST_INDEXER *li = (LIST_INDEXER *) indexer;
   struct li_mapf_arg ARG;
@@ -524,8 +499,7 @@ li_api_map (VALUE_INDEXER * indexer,
  *    dbval(out): pointer to API_VALUE
  */
 static int
-li_api_delete (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva,
-	       API_VALUE ** dbval)
+li_api_delete (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva, API_VALUE ** dbval)
 {
   LIST_INDEXER *li = (LIST_INDEXER *) indexer;
   LIST_INDEXER_ELEM *e;
@@ -584,8 +558,7 @@ li_api_delete (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva,
  * To insert the element to the top front of position the indexer, index -1 is used.
  */
 static int
-li_api_insert (VALUE_INDEXER * indexer, int index, VALUE_AREA * va,
-	       API_VALUE * dval)
+li_api_insert (VALUE_INDEXER * indexer, int index, VALUE_AREA * va, API_VALUE * dval)
 {
   LIST_INDEXER *li = (LIST_INDEXER *) indexer;
   LIST_INDEXER_ELEM *e;
@@ -627,8 +600,7 @@ li_api_insert (VALUE_INDEXER * indexer, int index, VALUE_AREA * va,
  *    df(in): element destroy function
  */
 static void
-li_api_destroy (VALUE_INDEXER * indexer,
-		void (*df) (VALUE_AREA * va, API_VALUE * db))
+li_api_destroy (VALUE_INDEXER * indexer, void (*df) (VALUE_AREA * va, API_VALUE * db))
 {
   LIST_INDEXER *li = (LIST_INDEXER *) indexer;
 

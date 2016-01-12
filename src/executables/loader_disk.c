@@ -149,11 +149,8 @@ re_check:
   size = OR_NON_MVCC_HEADER_SIZE;
   if (class_ != NULL)
     {
-      size +=
-	class_->fixed_size +
-	OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, *offset_size_ptr);
-      for (att = class_->attributes; att != NULL;
-	   att = (SM_ATTRIBUTE *) att->header.next)
+      size += class_->fixed_size + OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, *offset_size_ptr);
+      for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	{
 	  if (att->type->id == DB_TYPE_STRING)
 	    {
@@ -178,7 +175,7 @@ re_check:
 	}
     }
 
-  /*
+  /* 
    * if we couldn't make an exact estimate, return a negative number indicating
    * the minimum size to expect
    */
@@ -216,19 +213,17 @@ get_class_heap (MOP classop, SM_CLASS * class_)
   if (HFID_IS_NULL (hfid))
     {
       /* could also accomplish this by creating a single instance */
-      /*
+      /* 
        * make sure the class is fetched for update so that it will be
        * marked dirty and stored with the new heap
        */
-      if (au_fetch_class (classop, &class_, AU_FETCH_UPDATE, AU_INSERT) !=
-	  NO_ERROR)
+      if (au_fetch_class (classop, &class_, AU_FETCH_UPDATE, AU_INSERT) != NO_ERROR)
 	{
 	  hfid = NULL;
 	}
       else
 	{
-	  const bool reuse_oid =
-	    (class_->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
+	  const bool reuse_oid = (class_->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
 
 	  class_oid = ws_oid (classop);
 	  if (OID_ISTEMP (class_oid))
@@ -278,8 +273,7 @@ disk_reserve_instance (MOP classop, OID * oid)
 	}
       else
 	{
-	  if (heap_assign_address
-	      (NULL, hfid, ws_oid (classop), oid, expected) != NO_ERROR)
+	  if (heap_assign_address (NULL, hfid, ws_oid (classop), oid, expected) != NO_ERROR)
 	    {
 	      error = ER_LDR_CANT_INSERT;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -318,8 +312,7 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
 {
   int error = NO_ERROR;
 
-  if (locator_add_or_remove_index (NULL, rec, obj_oid, class_oid, true,
-				   SINGLE_ROW_INSERT, (HEAP_SCANCACHE *) NULL,
+  if (locator_add_or_remove_index (NULL, rec, obj_oid, class_oid, true, SINGLE_ROW_INSERT, (HEAP_SCANCACHE *) NULL,
 				   /* ejin: for replication... */
 				   false,	/* 7th arg -> data or schema */
 				   false, NULL,	/* 8th arg -> make repl. log or not */
@@ -357,8 +350,7 @@ disk_insert_instance (MOP classop, DESC_OBJ * obj, OID * oid)
       free_recdes (Diskrec);
       Diskrec = alloc_recdes (newsize);
       /* try one more time */
-      if (Diskrec == NULL
-	  || desc_obj_to_disk (obj, Diskrec, &has_indexes) != 0)
+      if (Diskrec == NULL || desc_obj_to_disk (obj, Diskrec, &has_indexes) != 0)
 	{
 	  error = ER_LDR_CANT_TRANSFORM;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -378,8 +370,7 @@ disk_insert_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 	  HEAP_OPERATION_CONTEXT context;
 
 	  /* set up context */
-	  heap_create_insert_context (&context, hfid, WS_OID (classop),
-				      Diskrec, NULL, false);
+	  heap_create_insert_context (&context, hfid, WS_OID (classop), Diskrec, NULL, false);
 
 	  /* oid is set here as a side effect */
 	  if (heap_insert_logical (NULL, &context) != NO_ERROR)
@@ -426,8 +417,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
       free_recdes (Diskrec);
       Diskrec = alloc_recdes (newsize);
       /* try one more time */
-      if (Diskrec == NULL
-	  || desc_obj_to_disk (obj, Diskrec, &has_indexes) != 0)
+      if (Diskrec == NULL || desc_obj_to_disk (obj, Diskrec, &has_indexes) != 0)
 	{
 	  error = ER_LDR_CANT_TRANSFORM;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -445,9 +435,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 	{
 	  HEAP_OPERATION_CONTEXT update_context;
 
-	  heap_create_update_context (&update_context, hfid, oid,
-				      WS_OID (classop), Diskrec, NULL,
-				      UPDATE_INPLACE_NONE);
+	  heap_create_update_context (&update_context, hfid, oid, WS_OID (classop), Diskrec, NULL, UPDATE_INPLACE_NONE);
 
 	  if (heap_update_logical (NULL, &update_context) != NO_ERROR)
 	    {
@@ -457,9 +445,8 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 
 	  if (update_context.is_logical_old)
 	    {
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_LOADDB,
-					       LOADDB_MSG_UPDATE_WARNING));
+	      fprintf (stdout,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UPDATE_WARNING));
 	    }
 	  else if (has_indexes)
 	    {
@@ -482,8 +469,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
  *    oid(out): oid of the destination
  */
 int
-disk_insert_instance_using_mobj (MOP classop, MOBJ classobj,
-				 MOBJ obj, OID * oid)
+disk_insert_instance_using_mobj (MOP classop, MOBJ classobj, MOBJ obj, OID * oid)
 {
   int error = NO_ERROR;
   HFID *hfid;
@@ -493,16 +479,14 @@ disk_insert_instance_using_mobj (MOP classop, MOBJ classobj,
 
   Diskrec->length = 0;
 
-  /*
+  /* 
    * tf_mem_to_disk() is used to get an estimate of the disk space requirements
    * for the object. When dealing with collections the estimate returned is
    * not always a good one, hence we need to enclose this block in a loop
    * increasing the space by increments of DB_PAGESIZE until we hit the correct
    * space requirement.
    */
-  while ((tf_status =
-	  tf_mem_to_disk (classop, classobj, obj, Diskrec,
-			  &has_indexes)) == TF_OUT_OF_SPACE)
+  while ((tf_status = tf_mem_to_disk (classop, classobj, obj, Diskrec, &has_indexes)) == TF_OUT_OF_SPACE)
     {
       /* make the record larger */
       if (newsize)
@@ -541,8 +525,7 @@ disk_insert_instance_using_mobj (MOP classop, MOBJ classobj,
 	  HEAP_OPERATION_CONTEXT context;
 
 	  /* set up context */
-	  heap_create_insert_context (&context, hfid, WS_OID (classop),
-				      Diskrec, NULL);
+	  heap_create_insert_context (&context, hfid, WS_OID (classop), Diskrec, NULL);
 
 	  /* oid is set here as a side effect */
 	  if (heap_insert_logical (NULL, &context) != NO_ERROR)
@@ -575,8 +558,7 @@ disk_insert_instance_using_mobj (MOP classop, MOBJ classobj,
  *    oid(in): oid of the destination
  */
 int
-disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
-				 MOBJ obj, OID * oid)
+disk_update_instance_using_mobj (MOP classop, MOBJ classobj, MOBJ obj, OID * oid)
 {
   int error = NO_ERROR;
   HFID *hfid;
@@ -585,16 +567,14 @@ disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
   TF_STATUS tf_status = TF_SUCCESS;
 
   Diskrec->length = 0;
-  /*
+  /* 
    * tf_mem_to_disk() is used to get an estimate of the disk space requirements
    * for the object. When dealing with collections the estimate returned is
    * not always a good one, hence we need to enclose this block in a loop
    * increasing the space by increments of DB_PAGESIZE until we hit the correct
    * space requirement.
    */
-  while ((tf_status =
-	  tf_mem_to_disk (classop, classobj, obj, Diskrec,
-			  &has_indexes)) == TF_OUT_OF_SPACE)
+  while ((tf_status = tf_mem_to_disk (classop, classobj, obj, Diskrec, &has_indexes)) == TF_OUT_OF_SPACE)
     {
       /* make the record larger */
       if (newsize)
@@ -631,9 +611,7 @@ disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
 	{
 	  HEAP_OPERATION_CONTEXT update_context;
 
-	  heap_create_update_context (&update_context, hfid, oid,
-				      WS_OID (classop), Diskerc, NULL,
-				      UPDATE_INPLACE_NONE);
+	  heap_create_update_context (&update_context, hfid, oid, WS_OID (classop), Diskerc, NULL, UPDATE_INPLACE_NONE);
 
 	  if (heap_update_logical (NULL, &update_context) != NO_ERROR)
 	    {
@@ -643,9 +621,8 @@ disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
 
 	  if (update_context.is_logical_old)
 	    {
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_LOADDB,
-					       LOADDB_MSG_UPDATE_WARNING));
+	      fprintf (stdout,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UPDATE_WARNING));
 	    }
 	  else if (has_indexes)
 	    {

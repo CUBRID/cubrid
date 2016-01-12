@@ -45,7 +45,7 @@ struct option
 {
   /* name of long option */
   const char *name;
-  /*
+  /* 
    * one of no_argument, required_argument, and optional_argument:
    * whether option takes an argument
    */
@@ -62,8 +62,7 @@ extern "C"
 #endif
 
   int getopt (int, char *const *, const char *);
-  int getopt_long (int, char *const *, const char *,
-		   const struct option *, int *);
+  int getopt_long (int, char *const *, const char *, const struct option *, int *);
 
 /* On some platforms, this is in libc, but not in a system header */
 #ifndef _OPTRESET_DECLARED

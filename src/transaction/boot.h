@@ -153,7 +153,7 @@ struct boot_server_credential
   PGLENGTH page_size;
   PGLENGTH log_page_size;
   float disk_compatibility;
-  int ha_server_state;		/*  HA_SERVER_STATE */
+  int ha_server_state;		/* HA_SERVER_STATE */
   char server_session_key[SERVER_SESSION_KEY_SIZE];
   int db_charset;
   char *db_lang;

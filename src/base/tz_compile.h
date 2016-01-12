@@ -29,9 +29,7 @@
 extern "C"
 {
 #endif
-  extern int timezone_compile_data (const char *input_folder,
-				    const TZ_GEN_TYPE tz_gen_type,
-				    char *checksum);
+  extern int timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, char *checksum);
   extern void tzc_dump_summary (const TZ_DATA * tzd);
   extern void tzc_dump_countries (const TZ_DATA * tzd);
   extern void tzc_dump_timezones (const TZ_DATA * tzd);

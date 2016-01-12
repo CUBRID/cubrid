@@ -91,11 +91,8 @@ static const char *package_string = PACKAGE_STRING;
 static const char *build_os = makestring (BUILD_OS);
 static int bit_platform = __WORDSIZE;
 
-static REL_COMPATIBILITY
-rel_get_compatible_internal (const char *base_rel_str,
-			     const char *apply_rel_str,
-			     COMPATIBILITY_CHECK_MODE check,
-			     REL_VERSION rules[]);
+static REL_COMPATIBILITY rel_get_compatible_internal (const char *base_rel_str, const char *apply_rel_str,
+						      COMPATIBILITY_CHECK_MODE check, REL_VERSION rules[]);
 
 /*
  * Disk (database image) Version Compatibility
@@ -111,27 +108,19 @@ rel_copy_version_string (char *buf, size_t len)
 {
 #if defined (NDEBUG)
 #if defined (CUBRID_OWFS)
-  snprintf (buf, len,
-	    "%s (%s) (%dbit owfs release build for %s) (%s %s)",
-	    rel_name (), rel_build_number (), rel_bit_platform (),
-	    rel_build_os (), __DATE__, __TIME__);
+  snprintf (buf, len, "%s (%s) (%dbit owfs release build for %s) (%s %s)", rel_name (), rel_build_number (),
+	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
 #else /* CUBRID_OWFS */
-  snprintf (buf, len,
-	    "%s (%s) (%dbit release build for %s) (%s %s)",
-	    rel_name (), rel_build_number (), rel_bit_platform (),
-	    rel_build_os (), __DATE__, __TIME__);
+  snprintf (buf, len, "%s (%s) (%dbit release build for %s) (%s %s)", rel_name (), rel_build_number (),
+	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
 #endif /* !CUBRID_OWFS */
 #else /* NDEBUG */
 #if defined (CUBRID_OWFS)
-  snprintf (buf, len,
-	    "%s (%s) (%dbit owfs debug build for %s) (%s %s)",
-	    rel_name (), rel_build_number (), rel_bit_platform (),
-	    rel_build_os (), __DATE__, __TIME__);
+  snprintf (buf, len, "%s (%s) (%dbit owfs debug build for %s) (%s %s)", rel_name (), rel_build_number (),
+	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
 #else /* CUBRID_OWFS */
-  snprintf (buf, len,
-	    "%s (%s) (%dbit debug build for %s) (%s %s)",
-	    rel_name (), rel_build_number (), rel_bit_platform (),
-	    rel_build_os (), __DATE__, __TIME__);
+  snprintf (buf, len, "%s (%s) (%dbit debug build for %s) (%s %s)", rel_name (), rel_build_number (),
+	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
 #endif /* !CUBRID_OWFS */
 #endif /* !NDEBUG */
 }
@@ -197,8 +186,7 @@ rel_copyright_header (void)
   const char *name;
 
   lang_init ();
-  name = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL,
-			 MSGCAT_GENERAL_COPYRIGHT_HEADER);
+  name = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL, MSGCAT_GENERAL_COPYRIGHT_HEADER);
   return (name) ? name : copyright_header;
 }
 
@@ -212,8 +200,7 @@ rel_copyright_body (void)
   const char *name;
 
   lang_init ();
-  name = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL,
-			 MSGCAT_GENERAL_COPYRIGHT_BODY);
+  name = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL, MSGCAT_GENERAL_COPYRIGHT_BODY);
   return (name) ? name : copyright_body;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -295,16 +282,14 @@ rel_get_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups)
   else
     {
       compat = REL_NOT_COMPATIBLE;
-      for (rule = &disk_compatibility_rules[0];
-	   rule->base.major != 0 && compat == REL_NOT_COMPATIBLE; rule++)
+      for (rule = &disk_compatibility_rules[0]; rule->base.major != 0 && compat == REL_NOT_COMPATIBLE; rule++)
 	{
 	  float base_level, apply_level;
 
 	  base_level = rule->base.major + (rule->base.minor / 10.0);
 	  apply_level = rule->apply.major + (rule->apply.minor / 10.0);
 
-	  if (base_level == db_level
-	      && apply_level == disk_compatibility_level)
+	  if (base_level == db_level && apply_level == disk_compatibility_level)
 	    {
 	      compat = rule->compatibility;
 	      func = rule->fix_function;
@@ -343,7 +328,7 @@ rel_compare (const char *rel_a, const char *rel_b)
   int a, b, retval = 0;
   char *a_temp, *b_temp, *end_p;
 
-  /*
+  /* 
    * If we get a NULL for one of the values (and we shouldn't), guess that
    * the versions are the same.
    */
@@ -353,12 +338,12 @@ rel_compare (const char *rel_a, const char *rel_b)
     }
   else
     {
-      /*
+      /* 
        * Compare strings
        */
       a_temp = (char *) rel_a;
       b_temp = (char *) rel_b;
-      /*
+      /* 
        * The following loop terminates if we determine that one string
        * is greater than the other, or we reach the end of one of the
        * strings.
@@ -377,7 +362,7 @@ rel_compare (const char *rel_a, const char *rel_b)
 	    {
 	      retval = 1;
 	    }
-	  /*
+	  /* 
 	   * This skips over the '.'.
 	   * This means that "?..?" will parse out to "?.?".
 	   */
@@ -389,8 +374,7 @@ rel_compare (const char *rel_a, const char *rel_b)
 	    {
 	      b_temp++;
 	    }
-	  if (*a_temp && *b_temp
-	      && char_isalpha (*a_temp) && char_isalpha (*b_temp))
+	  if (*a_temp && *b_temp && char_isalpha (*a_temp) && char_isalpha (*b_temp))
 	    {
 	      if (*a_temp != *b_temp)
 		retval = -1;
@@ -401,7 +385,7 @@ rel_compare (const char *rel_a, const char *rel_b)
 
       if (!retval)
 	{
-	  /*
+	  /* 
 	   * Both strings are the same up to this point.  If the rest is zeros,
 	   * they're still equal.
 	   */
@@ -452,9 +436,8 @@ rel_is_log_compatible (const char *writer_rel_str, const char *reader_rel_str)
 {
   REL_COMPATIBILITY compat;
 
-  compat = rel_get_compatible_internal (writer_rel_str, reader_rel_str,
-					CHECK_LOG_COMPATIBILITY,
-					log_incompatible_versions);
+  compat =
+    rel_get_compatible_internal (writer_rel_str, reader_rel_str, CHECK_LOG_COMPATIBILITY, log_incompatible_versions);
   if (compat == REL_NOT_COMPATIBLE)
     {
       return false;
@@ -493,11 +476,9 @@ static REL_VERSION net_incompatible_versions[] = {
  *   server_rel_str(in): server's release string
  */
 REL_COMPATIBILITY
-rel_get_net_compatible (const char *client_rel_str,
-			const char *server_rel_str)
+rel_get_net_compatible (const char *client_rel_str, const char *server_rel_str)
 {
-  return rel_get_compatible_internal (server_rel_str, client_rel_str,
-				      CHECK_NET_PROTOCOL_COMPATIBILITY,
+  return rel_get_compatible_internal (server_rel_str, client_rel_str, CHECK_NET_PROTOCOL_COMPATIBILITY,
 				      net_incompatible_versions);
 }
 
@@ -510,9 +491,7 @@ rel_get_net_compatible (const char *client_rel_str,
  *   rules(in): rules to determine forward/backward compatibility
  */
 static REL_COMPATIBILITY
-rel_get_compatible_internal (const char *base_rel_str,
-			     const char *apply_rel_str,
-			     COMPATIBILITY_CHECK_MODE check,
+rel_get_compatible_internal (const char *base_rel_str, const char *apply_rel_str, COMPATIBILITY_CHECK_MODE check,
 			     REL_VERSION versions[])
 {
   REL_VERSION *version, *base_version, *apply_version;
@@ -586,8 +565,7 @@ rel_get_compatible_internal (const char *base_rel_str,
   apply_patch = (unsigned short) val;
   str_to_int32 (&val, &str_b, base, 10);
   base_patch = (unsigned short) val;
-  if (apply_major == base_major
-      && apply_minor == base_minor && apply_patch == base_patch)
+  if (apply_major == base_major && apply_minor == base_minor && apply_patch == base_patch)
     {
       return REL_FULLY_COMPATIBLE;
     }
@@ -596,20 +574,17 @@ rel_get_compatible_internal (const char *base_rel_str,
   apply_version = NULL;
   for (version = &versions[0]; version->major != 0; version++)
     {
-      if (base_major >= version->major
-	  && base_minor >= version->minor && base_patch >= version->patch)
+      if (base_major >= version->major && base_minor >= version->minor && base_patch >= version->patch)
 	{
 	  base_version = version;
 	}
-      if (apply_major >= version->major
-	  && apply_minor >= version->minor && apply_patch >= version->patch)
+      if (apply_major >= version->major && apply_minor >= version->minor && apply_patch >= version->patch)
 	{
 	  apply_version = version;
 	}
     }
 
-  if (base_version == NULL || apply_version == NULL
-      || base_version != apply_version)
+  if (base_version == NULL || apply_version == NULL || base_version != apply_version)
     {
       return REL_NOT_COMPATIBLE;
     }

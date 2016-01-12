@@ -98,11 +98,9 @@ static KEYWORD_RECORD *csql_Keyword_list;
 #endif /* !WINDOWS */
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-int (*csql_text_utf8_to_console) (const char *, const int, char **,
-				  int *) = NULL;
+int (*csql_text_utf8_to_console) (const char *, const int, char **, int *) = NULL;
 
-int (*csql_text_console_to_utf8) (const char *, const int, char **,
-				  int *) = NULL;
+int (*csql_text_console_to_utf8) (const char *, const int, char **, int *) = NULL;
 
 int csql_Row_count;
 int csql_Num_failures;
@@ -180,16 +178,14 @@ static bool csql_Query_trace = false;
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
 static char *csql_keyword_generator (const char *text, int state);
-static char **csql_cmd_completion_handler (const char *text, int start,
-					   int end);
+static char **csql_cmd_completion_handler (const char *text, int start, int end);
 static void init_readline ();
 #endif /* ! WINDOWS */
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 static void free_csql_column_width_info_list ();
 static int initialize_csql_column_width_info_list ();
-static int get_column_name_argument (char **column_name,
-				     char **val_str, char *argument);
+static int get_column_name_argument (char **column_name, char **val_str, char *argument);
 static void csql_pipe_handler (int sig_no);
 static void display_buffer (void);
 static void csql_execute_rcfile (CSQL_ARGUMENT * csql_arg);
@@ -208,8 +204,7 @@ static void csql_print_buffer (void);
 static void csql_change_working_directory (const char *dirname);
 static void csql_exit_session (int error);
 
-static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
-				    const void *stream, int line_no);
+static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, int line_no);
 
 static int csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
 static void csql_set_trace (const char *arg_str);
@@ -231,9 +226,8 @@ csql_keyword_generator (const char *text, int state)
 {
   static int list_index, len;
 
-  /* If this is a new word to complete, initialize now.  This
-     includes saving the length of TEXT for efficiency, and
-     initializing the index variable to 0. */
+  /* If this is a new word to complete, initialize now.  This includes saving the length of TEXT for efficiency, and
+   * initializing the index variable to 0. */
   if (!state)
     {
       list_index = 0;
@@ -248,12 +242,10 @@ csql_keyword_generator (const char *text, int state)
       return ((char *) NULL);
     }
 
-  /* Return the next name which partially matches
-     from the keyword list. */
+  /* Return the next name which partially matches from the keyword list. */
   while (list_index < csql_Keyword_num)
     {
-      if (strncasecmp ((csql_Keyword_list + list_index)->keyword, text, len)
-	  == 0)
+      if (strncasecmp ((csql_Keyword_list + list_index)->keyword, text, len) == 0)
 	{
 	  char *ret_str = strdup ((csql_Keyword_list + list_index)->keyword);
 	  list_index++;
@@ -341,8 +333,7 @@ initialize_csql_column_width_info_list ()
 {
   int i;
 
-  csql_column_width_info_list = malloc (sizeof (CSQL_COLUMN_WIDTH_INFO)
-					* COLUMN_WIDTH_INFO_LIST_INIT_SIZE);
+  csql_column_width_info_list = malloc (sizeof (CSQL_COLUMN_WIDTH_INFO) * COLUMN_WIDTH_INFO_LIST_INIT_SIZE);
   if (csql_column_width_info_list == NULL)
     {
       csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
@@ -509,14 +500,12 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   if (csql_arg->command)
     {
       /* command input */
-      csql_exit_session (csql_execute_statements
-			 (csql_arg, STRING_INPUT, csql_arg->command, -1));
+      csql_exit_session (csql_execute_statements (csql_arg, STRING_INPUT, csql_arg->command, -1));
     }
 
   if (!csql_Is_interactive && !csql_arg->single_line_execution)
     {
-      csql_exit_session (csql_execute_statements
-			 (csql_arg, FILE_INPUT, csql_Input_fp, -1));
+      csql_exit_session (csql_execute_statements (csql_arg, FILE_INPUT, csql_Input_fp, -1));
     }
 
   /* Start interactive conversation or single line execution */
@@ -537,12 +526,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
     }
 
   /* display product title */
-  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n\t%s\n\n",
-	    csql_get_message (CSQL_INITIAL_CSQL_TITLE));
+  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n\t%s\n\n", csql_get_message (CSQL_INITIAL_CSQL_TITLE));
   csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
 
-  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n%s\n\n",
-	    csql_get_message (CSQL_INITIAL_HELP_MSG));
+  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n%s\n\n", csql_get_message (CSQL_INITIAL_HELP_MSG));
   csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
 
 #if !defined(WINDOWS)
@@ -576,8 +563,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	{
 #if defined(WINDOWS)
 	  fputs (csql_Prompt, csql_Output_fp);	/* display prompt */
-	  line_read =
-	    fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
+	  line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
 #else
 	  if ((line_read = readline (csql_Prompt)) != NULL)
 	    {
@@ -589,22 +575,17 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
 	      line_read_alloced = line_read;
 
-	      /* readline assure whole line user typed is located in
-	       * returned buffer
-	       * (but it doesn't contain '\n' in it)
-	       */
+	      /* readline assure whole line user typed is located in returned buffer (but it doesn't contain '\n' in
+	       * it) */
 	      read_whole_line = true;
 	    }
 #endif /* WINDOWS */
 	}
       else
 	{
-	  /* If input line exeeds LINE_BUFFER_SIZE, line_buf couldn't contain '\n'
-	   * character in it.
-	   * So, read_whole_line will be remained as false.
-	   */
-	  line_read =
-	    fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
+	  /* If input line exeeds LINE_BUFFER_SIZE, line_buf couldn't contain '\n' character in it. So, read_whole_line 
+	   * will be remained as false. */
+	  line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
 	}
 
       fflush (csql_Output_fp);
@@ -638,10 +619,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      int utf8_line_buf_size = sizeof (utf8_line_buf);
 
 	      utf8_line_read = (char *) utf8_line_buf;
-	      if ((*csql_text_console_to_utf8) (line_read, line_length,
-						&utf8_line_read,
-						&utf8_line_buf_size)
-		  != NO_ERROR)
+	      if ((*csql_text_console_to_utf8) (line_read, line_length, &utf8_line_read, &utf8_line_buf_size) !=
+		  NO_ERROR)
 		{
 		  goto error_continue;
 		}
@@ -708,8 +687,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	{
 	  bool csql_execute = false;
 
-	  if (csql_edit_contents_append (line_read, read_whole_line) !=
-	      CSQL_SUCCESS)
+	  if (csql_edit_contents_append (line_read, read_whole_line) != CSQL_SUCCESS)
 	    {
 	      goto error_continue;
 	    }
@@ -723,22 +701,15 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  else
 	    {
 	      csql_walk_statement (line_read);
-	      /* because we don't want to execute session commands
-	       * in string block or comment block or identifier block
-	       */
+	      /* because we don't want to execute session commands in string block or comment block or identifier block */
 	      is_in_block = csql_is_statement_in_block ();
 
 	      if (csql_arg->single_line_execution
-		  /* read_whole_line == false means that
-		   * fgets couldn't read whole line (exceeds buffer size)
-		   * so we should concat next line before execute it.
-		   */
+		  /* read_whole_line == false means that fgets couldn't read whole line (exceeds buffer size) so we
+		   * should concat next line before execute it. */
 		  && read_whole_line == true && csql_is_statement_complete ())
 		{
-		  /* if eof is not reached,
-		   * execute it only on single line execution mode with
-		   * complete statement
-		   */
+		  /* if eof is not reached, execute it only on single line execution mode with complete statement */
 		  csql_execute = true;
 		}
 	    }
@@ -839,16 +810,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
   if (argument_len > 0)
     {
       argument_end = argument + argument_len - 1;
-      for (; argument_end != argument
-	   && iswspace ((wint_t) (*argument_end)); --argument_end)
+      for (; argument_end != argument && iswspace ((wint_t) (*argument_end)); --argument_end)
 	{
 	  *argument_end = '\0';
 	}
     }
 
-  /* Now, `sess_cmd' points to null-terminated session command name and
-   * `argument' points to remaining argument (it may be '\0' if not given).
-   */
+  /* Now, `sess_cmd' points to null-terminated session command name and `argument' points to remaining argument (it may 
+   * be '\0' if not given). */
 
   if (*sess_cmd == '\0' && csql_arg->single_line_execution == false)
     {
@@ -967,9 +936,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
 
       fprintf (csql_Output_fp, "AUTOCOMMIT IS %s\n",
-	       (csql_arg->auto_commit
-		&& prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT) ? "ON" :
-		"OFF"));
+	       (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT) ? "ON" : "OFF"));
       break;
 
     case S_CMD_CHECKPOINT:
@@ -987,8 +954,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  fprintf (csql_Output_fp, "Checkpointing is only allowed for"
-		   " the csql started with --sysadm\n");
+	  fprintf (csql_Output_fp, "Checkpointing is only allowed for" " the csql started with --sysadm\n");
 	}
       break;
 
@@ -999,8 +965,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  fprintf (csql_Output_fp, "Killing transaction is only allowed"
-		   " for the csql started with --sysadm\n");
+	  fprintf (csql_Output_fp, "Killing transaction is only allowed" " for the csql started with --sysadm\n");
 	}
       break;
 
@@ -1012,9 +977,9 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  db_shutdown ();
 	}
       er_init ("./csql.err", ER_NEVER_EXIT);
-      if (db_restart_ex (UTIL_CSQL_NAME, csql_arg->db_name,
-			 csql_arg->user_name, csql_arg->passwd,
-			 NULL, db_get_client_type ()) != NO_ERROR)
+      if (db_restart_ex
+	  (UTIL_CSQL_NAME, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL,
+	   db_get_client_type ()) != NO_ERROR)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  csql_display_csql_err (0, 0);
@@ -1045,17 +1010,17 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       if (*argument == '\0')
 	{
 	  fprintf (csql_Output_fp, "\n\t%s\n\n",
-		   (cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd :
-		   (cmd_no == S_CMD_EDIT_CMD) ? csql_Editor_cmd :
-		   (cmd_no == S_CMD_PRINT_CMD) ? csql_Print_cmd :
-		   csql_Pager_cmd);
+		   (cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd : (cmd_no ==
+								   S_CMD_EDIT_CMD) ? csql_Editor_cmd : (cmd_no ==
+													S_CMD_PRINT_CMD)
+		   ? csql_Print_cmd : csql_Pager_cmd);
 	}
       else
 	{
-	  strncpy ((cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd :
-		   (cmd_no == S_CMD_EDIT_CMD) ? csql_Editor_cmd :
-		   (cmd_no == S_CMD_PRINT_CMD) ? csql_Print_cmd :
-		   csql_Pager_cmd, argument, PATH_MAX - 1);
+	  strncpy ((cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd : (cmd_no ==
+								   S_CMD_EDIT_CMD) ? csql_Editor_cmd : (cmd_no ==
+													S_CMD_PRINT_CMD)
+		   ? csql_Print_cmd : csql_Pager_cmd, argument, PATH_MAX - 1);
 	}
       break;
 
@@ -1070,8 +1035,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
     case S_CMD_SCHEMA:
       csql_help_schema ((argument[0] == '\0') ? NULL : argument);
-      if (csql_arg->auto_commit
-	  && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
+      if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
 	{
 	  if (db_commit_transaction () < 0)
 	    {
@@ -1087,8 +1051,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
     case S_CMD_TRIGGER:
       csql_help_trigger ((argument[0] == '\0') ? NULL : argument);
-      if (csql_arg->auto_commit
-	  && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
+      if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
 	{
 	  if (db_commit_transaction () < 0)
 	    {
@@ -1103,8 +1066,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_INFO:
-      csql_help_info ((argument[0] == '\0') ? NULL : argument,
-		      csql_arg->auto_commit
+      csql_help_info ((argument[0] == '\0') ? NULL : argument, csql_arg->auto_commit
 		      && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT));
       break;
 
@@ -1135,8 +1097,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  fprintf (csql_Output_fp, "ECHO IS %s\n",
-		   (csql_Is_echo_on ? "ON" : "OFF"));
+	  fprintf (csql_Output_fp, "ECHO IS %s\n", (csql_Is_echo_on ? "ON" : "OFF"));
 	}
       break;
 
@@ -1162,8 +1123,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  fprintf (csql_Output_fp, "TIME IS %s\n",
-		   (csql_Is_time_on ? "ON" : "OFF"));
+	  fprintf (csql_Output_fp, "TIME IS %s\n", (csql_Is_time_on ? "ON" : "OFF"));
 	}
       break;
 
@@ -1184,8 +1144,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  fprintf (csql_Output_fp, "LINE_OUTPUT IS %s\n",
-		   (csql_arg->line_output ? "ON" : "OFF"));
+	  fprintf (csql_Output_fp, "LINE_OUTPUT IS %s\n", (csql_arg->line_output ? "ON" : "OFF"));
 	}
       break;
 
@@ -1210,9 +1169,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		    continue;
 		  }
 
-		fprintf (csql_Output_fp,
-			 "COLUMN-WIDTH %s : %d\n",
-			 csql_column_width_info_list[i].name,
+		fprintf (csql_Output_fp, "COLUMN-WIDTH %s : %d\n", csql_column_width_info_list[i].name,
 			 csql_column_width_info_list[i].width);
 	      }
 	  }
@@ -1220,8 +1177,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  {
 	    char *val_str = NULL;
 
-	    result =
-	      get_column_name_argument (&column_name, &val_str, argument);
+	    result = get_column_name_argument (&column_name, &val_str, argument);
 	    if (result == CSQL_FAILURE)
 	      {
 		fprintf (csql_Error_fp, "ERROR: Column name is too long.\n");
@@ -1231,8 +1187,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    if (val_str == NULL)
 	      {
 		width = csql_get_column_width (column_name);
-		fprintf (csql_Output_fp, "COLUMN-WIDTH %s : %d\n",
-			 column_name, width);
+		fprintf (csql_Output_fp, "COLUMN-WIDTH %s : %d\n", column_name, width);
 	      }
 	    else
 	      {
@@ -1240,13 +1195,11 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		result = parse_int (&width, val_str, 10);
 		if (result != 0 || width < 0)
 		  {
-		    fprintf (csql_Error_fp, "ERROR: Invalid argument(%s).\n",
-			     val_str);
+		    fprintf (csql_Error_fp, "ERROR: Invalid argument(%s).\n", val_str);
 		    break;
 		  }
 
-		if (csql_set_column_width_info (column_name, width) !=
-		    CSQL_SUCCESS)
+		if (csql_set_column_width_info (column_name, width) != CSQL_SUCCESS)
 		  {
 		    return DO_CMD_FAILURE;
 		  }
@@ -1267,16 +1220,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
 	    if (result != 0 || string_width < 0)
 	      {
-		fprintf (csql_Error_fp,
-			 "ERROR: Invalid string-width(%s).\n", argument);
+		fprintf (csql_Error_fp, "ERROR: Invalid string-width(%s).\n", argument);
 	      }
 
 	    csql_arg->string_width = string_width;
 	  }
 	else
 	  {
-	    fprintf (csql_Output_fp,
-		     "STRING-WIDTH : %d\n", csql_arg->string_width);
+	    fprintf (csql_Output_fp, "STRING-WIDTH : %d\n", csql_arg->string_width);
 	  }
       }
       break;
@@ -1294,8 +1245,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		{
 		  if (er_errid () == ER_AU_DBA_ONLY)
 		    {
-		      fprintf (csql_Output_fp,
-			       "Histogram is allowed only for DBA\n");
+		      fprintf (csql_Output_fp, "Histogram is allowed only for DBA\n");
 		    }
 		  else
 		    {
@@ -1310,15 +1260,13 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    }
 	  else
 	    {
-	      fprintf (csql_Output_fp, ".hist IS %s\n",
-		       (csql_Is_histo_on == HISTO_OFF ? "OFF" : "ON"));
+	      fprintf (csql_Output_fp, ".hist IS %s\n", (csql_Is_histo_on == HISTO_OFF ? "OFF" : "ON"));
 	    }
 	}
       else
 	{
 	  fprintf (csql_Output_fp,
-		   "Histogram is possible when the csql started with "
-		   "`communication_histogram=yes'\n");
+		   "Histogram is possible when the csql started with " "`communication_histogram=yes'\n");
 	}
       break;
 
@@ -1336,8 +1284,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  fprintf (csql_Output_fp, "Histogram on execution statistics "
-		   "is only allowed for the csql started "
+	  fprintf (csql_Output_fp,
+		   "Histogram on execution statistics " "is only allowed for the csql started "
 		   "with `communication_histogram=yes'\n");
 	}
       break;
@@ -1357,8 +1305,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  fprintf (csql_Output_fp, "Histogram on execution statistics "
-		   "is only allowed for the csql started "
+	  fprintf (csql_Output_fp,
+		   "Histogram on execution statistics " "is only allowed for the csql started "
 		   "with `communication_histogram=yes'\n");
 	}
       break;
@@ -1379,8 +1327,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  fprintf (csql_Output_fp, "Histogram on execution statistics "
-		   "is only allowed for the csql started "
+	  fprintf (csql_Output_fp,
+		   "Histogram on execution statistics " "is only allowed for the csql started "
 		   "with `communication_histogram=yes'\n");
 	}
       break;
@@ -1398,17 +1346,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		  hist = history_get (history_base + i - 1);
 		  if (hist != NULL)
 		    {
-		      if (csql_edit_contents_append (hist->line, true) !=
-			  CSQL_SUCCESS)
+		      if (csql_edit_contents_append (hist->line, true) != CSQL_SUCCESS)
 			{
 			  return DO_CMD_FAILURE;
 			}
 		    }
 		  else
 		    {
-		      fprintf (csql_Error_fp,
-			       "ERROR: Invalid history number(%s).\n",
-			       argument);
+		      fprintf (csql_Error_fp, "ERROR: Invalid history number(%s).\n", argument);
 		    }
 		}
 	      else
@@ -1418,15 +1363,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    }
 	  else
 	    {
-	      fprintf (csql_Error_fp,
-		       "ERROR: HISTORYRead {history_number}\n");
+	      fprintf (csql_Error_fp, "ERROR: HISTORYRead {history_number}\n");
 	    }
 	}
 #else
       if (csql_Is_interactive)
 	{
-	  fprintf (csql_Error_fp, "ERROR: Windows do not support HISTORYList"
-		   " and HISTORYRead session commands in csql.\n");
+	  fprintf (csql_Error_fp,
+		   "ERROR: Windows do not support HISTORYList" " and HISTORYRead session commands in csql.\n");
 	}
 #endif /* !WINDOWS */
       break;
@@ -1443,8 +1387,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	      ;
 	    }
 
-	  for (i = 0, hist_entry = current_history (); hist_entry;
-	       hist_entry = previous_history (), i++)
+	  for (i = 0, hist_entry = current_history (); hist_entry; hist_entry = previous_history (), i++)
 	    {
 	      fprintf (csql_Output_fp, "----< %d >----\n", i + 1);
 	      fprintf (csql_Output_fp, "%s\n\n", hist_entry->line);
@@ -1453,8 +1396,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 #else
       if (csql_Is_interactive)
 	{
-	  fprintf (csql_Error_fp, "ERROR: Windows do not support HISTORYList"
-		   " and HISTORYRead session commands in csql.\n");
+	  fprintf (csql_Error_fp,
+		   "ERROR: Windows do not support HISTORYList" " and HISTORYRead session commands in csql.\n");
 	}
 #endif /* !WINDOWS */
       break;
@@ -1489,7 +1432,7 @@ csql_read_file (const char *file_name)
 
   if (p == NULL || p[0] == '\0')
     {
-      /*
+      /* 
        * No filename given; use the last one we were given.  If we've
        * never received one before we have a genuine error.
        */
@@ -1526,7 +1469,7 @@ csql_read_file (const char *file_name)
       goto error;
     }
 
-  /*
+  /* 
    * We've successfully read the file, so remember its name for
    * subsequent reads.
    */
@@ -1570,7 +1513,7 @@ csql_write_file (const char *file_name, int append_flag)
 
   if (p == NULL || p[0] == '\0')
     {
-      /*
+      /* 
        * No filename given; use the last one we were given.  If we've
        * never received one before we have a genuine error.
        */
@@ -1605,7 +1548,7 @@ csql_write_file (const char *file_name, int append_flag)
       goto error;
     }
 
-  /*
+  /* 
    * We've successfully opened the file, so remember its name for
    * subsequent writes.
    */
@@ -1676,7 +1619,7 @@ csql_print_buffer (void)
     {
       goto error;
     }
-  /*
+  /* 
    * Parenthesize the print command and supply its input through stdin,
    * just in case it's a pipe or something odd.
    */
@@ -1781,8 +1724,7 @@ display_error (DB_SESSION * session, int stmt_start_line_no)
  *   buffer.
  */
 static int
-csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
-			 const void *stream, int line_no)
+csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, int line_no)
 {
   char *stmts = NULL;		/* statements string */
   int num_stmts = 0;		/* # of stmts executed */
@@ -1835,7 +1777,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	}
     }
 
-  /*
+  /* 
    * Make sure that there weren't any syntax errors; if there were, the
    * entire concept of "compile next statement" doesn't make sense, and
    * you run the risk of getting stuck in an infinite loop in the
@@ -1890,12 +1832,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 
       if (stmt_id < 0)
 	{
-	  /*
+	  /* 
 	   * Transaction should be aborted if an error occurs during
 	   * compilation on auto commit mode.
 	   */
-	  if (csql_arg->auto_commit
-	      && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
+	  if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
 	    {
 	      do_abort_transaction = true;
 	    }
@@ -1903,14 +1844,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	  /* compilation error */
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  /* Do not continue if there are no statments in the buffer */
-	  if (csql_arg->continue_on_error
-	      && (db_error_code () != ER_IT_EMPTY_STATEMENT))
+	  if (csql_arg->continue_on_error && (db_error_code () != ER_IT_EMPTY_STATEMENT))
 	    {
 	      display_error (session, 0);
-	      /* do_abort_transaction() should be called after display_error()
-	       * because in some cases it deallocates the parser containing
-	       * the error message
-	       */
+	      /* do_abort_transaction() should be called after display_error() because in some cases it deallocates the 
+	       * parser containing the error message */
 	      if (do_abort_transaction)
 		{
 		  db_abort_transaction ();
@@ -1960,8 +1898,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
       if (db_error < 0)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
-	  if (csql_arg->auto_commit
-	      && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT)
+	  if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT)
 	      && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	    {
 	      do_abort_transaction = true;
@@ -1992,8 +1929,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	  {
 	    const char *msg_p;
 
-	    csql_results (csql_arg, result, attr_spec, stmt_start_line_no,
-			  stmt_type);
+	    csql_results (csql_arg, result, attr_spec, stmt_start_line_no, stmt_type);
 
 #if defined(CS_MODE)
 	    if (prm_query_mode_sync)
@@ -2004,11 +1940,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	    csql_Row_count = db_error;
 #endif /* CS_MODE */
 
-	    msg_p = ((csql_Row_count > 1)
-		     ? csql_get_message (CSQL_ROWS)
-		     : csql_get_message (CSQL_ROW));
-	    snprintf (stmt_msg, LINE_BUFFER_SIZE, msg_p, csql_Row_count,
-		      "selected");
+	    msg_p = ((csql_Row_count > 1) ? csql_get_message (CSQL_ROWS) : csql_get_message (CSQL_ROW));
+	    snprintf (stmt_msg, LINE_BUFFER_SIZE, msg_p, csql_Row_count, "selected");
 	    break;
 	  }
 
@@ -2016,8 +1949,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	case CUBRID_STMT_EVALUATE:
 	  if (result != NULL)
 	    {
-	      csql_results (csql_arg, result, db_get_query_type_ptr (result),
-			    stmt_start_line_no, stmt_type);
+	      csql_results (csql_arg, result, db_get_query_type_ptr (result), stmt_start_line_no, stmt_type);
 	    }
 	  break;
 
@@ -2028,8 +1960,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	case CUBRID_STMT_GET_STATS:
 	  if (result != NULL)
 	    {
-	      csql_results (csql_arg, result, db_get_query_type_ptr (result),
-			    stmt_start_line_no, stmt_type);
+	      csql_results (csql_arg, result, db_get_query_type_ptr (result), stmt_start_line_no, stmt_type);
 	    }
 	  break;
 
@@ -2040,11 +1971,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	  {
 	    const char *msg_p;
 
-	    msg_p = ((db_error > 1)
-		     ? csql_get_message (CSQL_ROWS)
-		     : csql_get_message (CSQL_ROW));
-	    snprintf (stmt_msg, LINE_BUFFER_SIZE, msg_p, db_error,
-		      "affected");
+	    msg_p = ((db_error > 1) ? csql_get_message (CSQL_ROWS) : csql_get_message (CSQL_ROW));
+	    snprintf (stmt_msg, LINE_BUFFER_SIZE, msg_p, db_error, "affected");
 	    break;
 	  }
 
@@ -2052,9 +1980,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	  {
 	    const char *msg_p;
 
-	    msg_p = ((db_error > 1)
-		     ? csql_get_message (CSQL_TRANSACTIONS)
-		     : csql_get_message (CSQL_TRANSACTION));
+	    msg_p = ((db_error > 1) ? csql_get_message (CSQL_TRANSACTIONS) : csql_get_message (CSQL_TRANSACTION));
 	    snprintf (stmt_msg, LINE_BUFFER_SIZE, msg_p, db_error, "killed");
 	    break;
 	  }
@@ -2072,7 +1998,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	}
       else
 	{
-	  /*
+	  /* 
 	   * Even though there are no results, a query may have been
 	   * run implicitly by the statement.  If so, we need to end the
 	   * query on the server.
@@ -2087,14 +2013,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	  tsc_getticks (&end_tick);
 	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
 
-	  sprintf (time, " (%ld.%06ld sec) ",
-		   elapsed_time.tv_sec, elapsed_time.tv_usec);
+	  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
 	  strncat (stmt_msg, time, sizeof (time));
 	}
 
-      if (csql_arg->auto_commit
-	  && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT)
-	  && stmt_type != CUBRID_STMT_COMMIT_WORK
+      if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT) && stmt_type != CUBRID_STMT_COMMIT_WORK
 	  && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	{
 	  db_error = db_commit_transaction ();
@@ -2118,8 +2041,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	    }
 	  else
 	    {
-	      strncat (stmt_msg, csql_get_message (CSQL_STAT_COMMITTED_TEXT),
-		       LINE_BUFFER_SIZE - 1);
+	      strncat (stmt_msg, csql_get_message (CSQL_STAT_COMMITTED_TEXT), LINE_BUFFER_SIZE - 1);
 	    }
 	}
 
@@ -2131,8 +2053,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
       db_drop_statement (session, stmt_id);
     }
 
-  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN,
-	    csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
+  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
 
@@ -2155,8 +2076,7 @@ error:
     }
 
   /* Finish... */
-  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN,
-	    csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
+  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
 
@@ -2212,10 +2132,10 @@ csql_print_database (void)
       sin.sin_family = AF_INET;
       sin.sin_addr.s_addr = inet_addr (host_name);
 
-      res = getnameinfo ((struct sockaddr *) &sin, sizeof (sin),
-			 converted_host_name, sizeof (converted_host_name),
-			 NULL, 0, NI_NAMEREQD);
-      /*
+      res =
+	getnameinfo ((struct sockaddr *) &sin, sizeof (sin), converted_host_name, sizeof (converted_host_name), NULL, 0,
+		     NI_NAMEREQD);
+      /* 
        * if it fails to resolves hostname,
        * it will use db_get_host_connected()'s result.
        */
@@ -2235,7 +2155,7 @@ csql_print_database (void)
 	}
       converted_host_name[MAXHOSTNAMELEN] = '\0';
 
-      /*
+      /* 
        * if there is hostname or ip address in db_name,
        * it will only use db_name except for hostname or ip address.
        */
@@ -2247,14 +2167,12 @@ csql_print_database (void)
 
       if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
 	{
-	  fprintf (csql_Output_fp, "\n\t%s@%s\n\n", db_name,
-		   converted_host_name);
+	  fprintf (csql_Output_fp, "\n\t%s@%s\n\n", db_name, converted_host_name);
 	}
       else
 	{
 	  db_get_ha_server_state (ha_state, 16);
-	  fprintf (csql_Output_fp, "\n\t%s@%s [%s]\n\n", db_name,
-		   converted_host_name, ha_state);
+	  fprintf (csql_Output_fp, "\n\t%s@%s [%s]\n\n", db_name, converted_host_name, ha_state);
 	}
 
       db_ws_free ((char *) db_name);
@@ -2282,8 +2200,7 @@ csql_set_sys_param (const char *arg_str)
   if (arg_str == NULL)
     return;
 
-  if (strncmp (arg_str, "cost", 4) == 0
-      && sscanf (arg_str, "cost %127s %127s", plantype, val) == 2)
+  if (strncmp (arg_str, "cost", 4) == 0 && sscanf (arg_str, "cost %127s %127s", plantype, val) == 2)
     {
       if (qo_plan_set_cost_fn (plantype, val[0]))
 	{
@@ -2294,8 +2211,7 @@ csql_set_sys_param (const char *arg_str)
 	  snprintf (ans, 128, "error: unknown cost parameter %s", plantype);
 	}
     }
-  else if (strncmp (arg_str, "level", 5) == 0
-	   && sscanf (arg_str, "level %d", &level) == 1)
+  else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level %d", &level) == 1)
     {
       qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
       snprintf (ans, 128, "level %d", level);
@@ -2331,8 +2247,7 @@ csql_get_sys_param (const char *arg_str)
   if (arg_str == NULL)
     return;
 
-  if (strncmp (arg_str, "cost", 4) == 0
-      && sscanf (arg_str, "cost %127s", plantype) == 1)
+  if (strncmp (arg_str, "cost", 4) == 0 && sscanf (arg_str, "cost %127s", plantype) == 1)
     {
       cost = qo_plan_get_cost_fn (plantype);
       if (cost == 'u')
@@ -2344,8 +2259,7 @@ csql_get_sys_param (const char *arg_str)
 	  snprintf (ans, len, "cost %s: %c", arg_str, (char) cost);
 	}
     }
-  else if (strncmp (arg_str, "level", 5) == 0
-	   && sscanf (arg_str, "level") == 0)
+  else if (strncmp (arg_str, "level", 5) == 0 && sscanf (arg_str, "level") == 0)
     {
       qo_get_optimization_param (&level, QO_PARAM_LEVEL);
       snprintf (ans, len, "level %d", level);
@@ -2507,14 +2421,12 @@ csql_exit_session (int error)
 
   if (!db_commit_is_needed ())
     {
-      /* when select statements exist only in session,
-         marks end of transaction to flush audit records
-         for those statements */
+      /* when select statements exist only in session, marks end of transaction to flush audit records for those
+       * statements */
       db_abort_transaction ();
     }
 
-  if (csql_Is_interactive && !prm_commit_on_shutdown
-      && db_commit_is_needed () && !feof (csql_Input_fp))
+  if (csql_Is_interactive && !prm_commit_on_shutdown && db_commit_is_needed () && !feof (csql_Input_fp))
     {
       FILE *tf;
 
@@ -2536,8 +2448,7 @@ csql_exit_session (int error)
 	      break;
 	    }
 
-	  fprintf (tf,
-		   csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_RETRY_TEXT));
+	  fprintf (tf, csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_RETRY_TEXT));
 	  fflush (tf);
 	}
 
@@ -2621,8 +2532,7 @@ csql_exit_cleanup ()
       csql_Output_fp = NULL;
     }
 
-  if (csql_Error_fp != NULL && csql_Error_fp != oldout
-      && csql_Error_fp != stdout && csql_Error_fp != stderr)
+  if (csql_Error_fp != NULL && csql_Error_fp != oldout && csql_Error_fp != stdout && csql_Error_fp != stderr)
     {
       (void) fclose (csql_Error_fp);
       csql_Error_fp = NULL;
@@ -2644,14 +2554,11 @@ csql_exit_cleanup ()
       db_shutdown ();
     }
 
-  /* Note that this closes a global resource, the "kernel" message catalog.
-   * This is ok for the Unix implementation as the entire process is about
-   * to exit.  For the Windows implementation, it happens to be ok since
-   * the test driver application that calls csql() won't use this catalog.
-   * If this ever changes however, we'll probably have to maintain some sort
-   * of internal reference counter on this catalog so that it won't be freed
-   * until all the nested users close it.
-   */
+  /* Note that this closes a global resource, the "kernel" message catalog. This is ok for the Unix implementation as
+   * the entire process is about to exit.  For the Windows implementation, it happens to be ok since the test driver
+   * application that calls csql() won't use this catalog. If this ever changes however, we'll probably have to
+   * maintain some sort of internal reference counter on this catalog so that it won't be freed until all the nested
+   * users close it. */
   lang_final ();
 }
 
@@ -2687,8 +2594,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   int avail_size;
   char *p = NULL;
 
-  /* Establish a globaly accessible longjmp environment so we can terminate
-   * on severe errors without calling exit(). */
+  /* Establish a globaly accessible longjmp environment so we can terminate on severe errors without calling exit(). */
   csql_exit_init ();
 
   if (setjmp (csql_Exit_env))
@@ -2707,13 +2613,11 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   /* set up prompt and message fields. */
   if (csql_arg->sysadm)
     {
-      strncpy (csql_Prompt, csql_get_message (CSQL_SYSADM_PROMPT),
-	       sizeof (csql_Prompt));
+      strncpy (csql_Prompt, csql_get_message (CSQL_SYSADM_PROMPT), sizeof (csql_Prompt));
     }
   else
     {
-      strncpy (csql_Prompt, csql_get_message (CSQL_PROMPT),
-	       sizeof (csql_Prompt));
+      strncpy (csql_Prompt, csql_get_message (CSQL_PROMPT), sizeof (csql_Prompt));
     }
   avail_size = sizeof (csql_Prompt) - strlen (csql_Prompt) - 1;
   if (avail_size > 0)
@@ -2722,9 +2626,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     }
   strncpy (csql_Name, csql_get_message (CSQL_NAME), sizeof (csql_Name));
 
-  /* as we must use db_open_file_name() to open the input file,
-   * it is necessary to be opening csql_Input_fp at this point
-   */
+  /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
+   * point */
   if (csql_arg->in_file_name != NULL)
     {
 #if defined(WINDOWS)
@@ -2741,7 +2644,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 #if defined(WINDOWS)
       {
 	char tmpchar;		/* open breaks in DLL'S */
-	/*
+	/* 
 	 * Unless an operation is done on this stream before the DLL
 	 * is entered the file descriptor will be invalid.  This is a bug in
 	 * MSVC compiler and/or libc.
@@ -2766,7 +2669,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     }
   er_set_print_property (ER_PRINT_TO_CONSOLE);
 
-  /*
+  /* 
    * login and restart database
    */
   if (csql_arg->sysadm)
@@ -2787,16 +2690,11 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       client_type = DB_CLIENT_TYPE_CSQL;
     }
 
-  if (db_restart_ex (argv0, csql_arg->db_name,
-		     csql_arg->user_name, csql_arg->passwd,
-		     NULL, client_type) != NO_ERROR)
+  if (db_restart_ex (argv0, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL, client_type) != NO_ERROR)
     {
-      if (!csql_Is_interactive || csql_arg->passwd != NULL ||
-	  db_error_code () != ER_AU_INVALID_PASSWORD)
+      if (!csql_Is_interactive || csql_arg->passwd != NULL || db_error_code () != ER_AU_INVALID_PASSWORD)
 	{
-	  /* not INTERACTIVE mode, or password is given already, or
-	   * the error code is not password related
-	   */
+	  /* not INTERACTIVE mode, or password is given already, or the error code is not password related */
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  goto error;
 	}
@@ -2813,9 +2711,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 	}
 
       /* try again */
-      if (db_restart_ex (argv0, csql_arg->db_name,
-			 csql_arg->user_name, csql_arg->passwd,
-			 NULL, client_type) != NO_ERROR)
+      if (db_restart_ex (argv0, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL, client_type) !=
+	  NO_ERROR)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  goto error;
@@ -2832,8 +2729,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       au_disable ();
     }
 
-  /* allow environmental setting of the "-s" command line flag
-   * to enable automated testing */
+  /* allow environmental setting of the "-s" command line flag to enable automated testing */
   if (prm_get_bool_value (PRM_ID_CSQL_SINGLE_LINE_MODE))
     {
       csql_arg->single_line_execution = true;
@@ -2916,8 +2812,7 @@ error:
 const char *
 csql_get_message (int message_index)
 {
-  return (msgcat_message (MSGCAT_CATALOG_CSQL,
-			  MSGCAT_CSQL_SET_CSQL, message_index));
+  return (msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, message_index));
 }
 
 /*
@@ -2951,9 +2846,8 @@ csql_set_column_width_info (const char *column_name, int column_width)
 
   if (csql_column_width_info_list_index >= csql_column_width_info_list_size)
     {
-      temp_list = realloc (csql_column_width_info_list,
-			   sizeof (CSQL_COLUMN_WIDTH_INFO)
-			   * (csql_column_width_info_list_size * 2));
+      temp_list =
+	realloc (csql_column_width_info_list, sizeof (CSQL_COLUMN_WIDTH_INFO) * (csql_column_width_info_list_size * 2));
       if (temp_list == NULL)
 	{
 	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
@@ -2963,8 +2857,7 @@ csql_set_column_width_info (const char *column_name, int column_width)
 
       csql_column_width_info_list_size *= 2;
       csql_column_width_info_list = temp_list;
-      for (i = csql_column_width_info_list_index;
-	   i < csql_column_width_info_list_size; i++)
+      for (i = csql_column_width_info_list_index; i < csql_column_width_info_list_size; i++)
 	{
 	  csql_column_width_info_list[i].name = NULL;
 	  csql_column_width_info_list[i].width = 0;
@@ -3111,13 +3004,11 @@ csql_set_trace (const char *arg_str)
 
 	      if (strncmp (p, "text", 4) == 0)
 		{
-		  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT,
-					 QUERY_TRACE_TEXT);
+		  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_TEXT);
 		}
 	      else if (strncmp (p, "json", 4) == 0)
 		{
-		  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT,
-					 QUERY_TRACE_JSON);
+		  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_JSON);
 		}
 	    }
 	}
@@ -3130,8 +3021,7 @@ csql_set_trace (const char *arg_str)
 
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true)
     {
-      if (prm_get_integer_value (PRM_ID_QUERY_TRACE_FORMAT)
-	  == QUERY_TRACE_JSON)
+      if (prm_get_integer_value (PRM_ID_QUERY_TRACE_FORMAT) == QUERY_TRACE_JSON)
 	{
 	  snprintf (line, 128, "trace on json");
 	}

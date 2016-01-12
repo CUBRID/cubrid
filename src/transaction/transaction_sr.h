@@ -34,10 +34,8 @@
 
 extern void tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
-extern TRAN_STATE tran_server_unilaterally_abort (THREAD_ENTRY * thread_p,
-						  int tran_index);
+extern TRAN_STATE tran_server_unilaterally_abort (THREAD_ENTRY * thread_p, int tran_index);
 #endif
-extern int xtran_get_local_transaction_id (THREAD_ENTRY * thread_p,
-					   DB_VALUE * trid);
+extern int xtran_get_local_transaction_id (THREAD_ENTRY * thread_p, DB_VALUE * trid);
 
 #endif /* _TRANSACTION_SR_H_ */

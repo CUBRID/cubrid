@@ -60,8 +60,7 @@ utility_csql_usage (void)
       utility_load_print_error (stderr);
       return;
     }
-  utility_load_symbol (util_sa_library, (DSO_HANDLE *) (&csql_get_message),
-		       "csql_get_message");
+  utility_load_symbol (util_sa_library, (DSO_HANDLE *) (&csql_get_message), "csql_get_message");
   if (csql_get_message == NULL)
     {
       utility_load_print_error (stderr);
@@ -93,8 +92,7 @@ utility_csql_print (int message_num, ...)
       utility_load_print_error (stderr);
       return;
     }
-  utility_load_symbol (util_sa_library, &symbol,
-		       UTILITY_GENERIC_MSG_FUNC_NAME);
+  utility_load_symbol (util_sa_library, &symbol, UTILITY_GENERIC_MSG_FUNC_NAME);
   if (symbol == NULL)
     {
       utility_load_print_error (stderr);
@@ -164,8 +162,7 @@ main (int argc, char *argv[])
       int option_index = 0;
       int option_key;
 
-      option_key = getopt_long (argc, argv, option_string,
-				csql_option, &option_index);
+      option_key = getopt_long (argc, argv, option_string, csql_option, &option_index);
       if (option_key == -1)
 	{
 	  break;
@@ -285,8 +282,7 @@ main (int argc, char *argv[])
 	  break;
 
 	case VERSION_S:
-	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME,
-			      PRODUCT_STRING);
+	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME, PRODUCT_STRING);
 	  goto exit_on_end;
 
 	default:
@@ -309,16 +305,13 @@ main (int argc, char *argv[])
       goto print_usage;
     }
 
-  if ((csql_arg.command == NULL && csql_arg.in_file_name == NULL)
-      || csql_arg.line_output == true)
+  if ((csql_arg.command == NULL && csql_arg.in_file_name == NULL) || csql_arg.line_output == true)
     {
       csql_arg.skip_column_names = false;
       csql_arg.plain_output = false;
     }
 
-  if (csql_arg.sysadm
-      && (csql_arg.user_name == NULL
-	  || strcasecmp (csql_arg.user_name, "DBA")))
+  if (csql_arg.sysadm && (csql_arg.user_name == NULL || strcasecmp (csql_arg.user_name, "DBA")))
     {
       /* sysadm is allowed only to DBA */
       goto print_usage;

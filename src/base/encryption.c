@@ -69,8 +69,7 @@ static gcry_cipher_hd_t cipher_Hd;
 void
 crypt_seed (const char *key)
 {
-  char default_key[] =
-    { 10, 7, 1, 9, 12, 2, 11, 2, 12, 19, 1, 12, 9, 7, 11, 15 };
+  char default_key[] = { 10, 7, 1, 9, 12, 2, 11, 2, 12, 19, 1, 12, 9, 7, 11, 15 };
 
   /* use default key if none supplied */
   if (key == NULL)
@@ -88,8 +87,7 @@ crypt_seed (const char *key)
   gcry_error_t err;
 
   gcry_check_version (NULL);
-  err =
-    gcry_cipher_open (&cipher_Hd, GCRY_CIPHER_DES, GCRY_CIPHER_MODE_ECB, 0);
+  err = gcry_cipher_open (&cipher_Hd, GCRY_CIPHER_DES, GCRY_CIPHER_MODE_ECB, 0);
   assert (err == 0);
   err = gcry_cipher_setkey (cipher_Hd, key, 8);	/* 56 bits from 8 bytes */
   assert (err == 0);
@@ -119,12 +117,10 @@ crypt_encrypt_printable (const char *line, char *crypt, int maxlen)
   BYTE pbBuffer[2048];
 
   /* Get handle to user default provider. */
-  if (CryptAcquireContext (&hProv, NULL, MS_ENHANCED_PROV,
-			   PROV_RSA_FULL, CRYPT_VERIFYCONTEXT))
+  if (CryptAcquireContext (&hProv, NULL, MS_ENHANCED_PROV, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT))
     {
-      /* Import PlainText  Key */
-      if (!CryptImportKey (hProv, des_Keyblob, sizeof (des_Keyblob),
-			   0, CRYPT_EXPORTABLE, &hKey))
+      /* Import PlainText Key */
+      if (!CryptImportKey (hProv, des_Keyblob, sizeof (des_Keyblob), 0, CRYPT_EXPORTABLE, &hKey))
 	{
 	  return -1;
 	}

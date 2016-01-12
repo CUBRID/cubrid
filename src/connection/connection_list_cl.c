@@ -43,30 +43,16 @@
 #include "system_parameter.h"
 #include "connection_list_cl.h"
 
-static CSS_QUEUE_ENTRY *css_make_queue_entry (unsigned int key, char *buffer,
-					      int size,
-					      CSS_QUEUE_ENTRY * next, int rc,
-					      int transid,
-					      int invalidate_snapshot,
-					      int db_error);
+static CSS_QUEUE_ENTRY *css_make_queue_entry (unsigned int key, char *buffer, int size, CSS_QUEUE_ENTRY * next, int rc,
+					      int transid, int invalidate_snapshot, int db_error);
 static void css_free_queue_entry (CSS_QUEUE_ENTRY * entry_p);
-static int css_add_entry_to_header (CSS_QUEUE_ENTRY ** anchor,
-				    unsigned short request_id, char *buffer,
-				    int buffer_size, int rc, int transid,
-				    int invalidate_snapshot, int db_error);
-static bool css_is_request_aborted (CSS_CONN_ENTRY * conn,
-				    unsigned short request_id);
-static void css_queue_data_packet (CSS_CONN_ENTRY * conn,
-				   unsigned short request_id,
-				   NET_HEADER * header);
-static void css_queue_error_packet (CSS_CONN_ENTRY * conn,
-				    unsigned short request_id,
-				    NET_HEADER * header);
-static void css_queue_command_packet (CSS_CONN_ENTRY * conn,
-				      unsigned short request_id,
-				      NET_HEADER * header, int size);
-static void css_process_abort_packet (CSS_CONN_ENTRY * conn,
-				      unsigned short request_id);
+static int css_add_entry_to_header (CSS_QUEUE_ENTRY ** anchor, unsigned short request_id, char *buffer, int buffer_size,
+				    int rc, int transid, int invalidate_snapshot, int db_error);
+static bool css_is_request_aborted (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header);
+static void css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header);
+static void css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header, int size);
+static void css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned short request_id);
 
 /*
  * css_make_queue_entry() -
@@ -81,8 +67,7 @@ static void css_process_abort_packet (CSS_CONN_ENTRY * conn,
  *   db_error(in):
  */
 static CSS_QUEUE_ENTRY *
-css_make_queue_entry (unsigned int key, char *buffer, int size,
-		      CSS_QUEUE_ENTRY * next, int rc, int transid,
+css_make_queue_entry (unsigned int key, char *buffer, int size, CSS_QUEUE_ENTRY * next, int rc, int transid,
 		      int invalidate_snapshot, int db_error)
 {
   CSS_QUEUE_ENTRY *entry_p;
@@ -160,15 +145,13 @@ css_find_queue_entry (CSS_QUEUE_ENTRY * header, unsigned int key)
  * Note: this will add an entry to the end of the header
  */
 static int
-css_add_entry_to_header (CSS_QUEUE_ENTRY ** anchor, unsigned short request_id,
-			 char *buffer, int buffer_size, int rc,
+css_add_entry_to_header (CSS_QUEUE_ENTRY ** anchor, unsigned short request_id, char *buffer, int buffer_size, int rc,
 			 int transid, int invalidate_snapshot, int db_error)
 {
   CSS_QUEUE_ENTRY *enrty_p, *new_entry_p;
 
-  new_entry_p = css_make_queue_entry (request_id, buffer, buffer_size, NULL,
-				      rc, transid, invalidate_snapshot,
-				      db_error);
+  new_entry_p =
+    css_make_queue_entry (request_id, buffer, buffer_size, NULL, rc, transid, invalidate_snapshot, db_error);
   if (new_entry_p == NULL)
     {
       return CANT_ALLOC_BUFFER;
@@ -235,8 +218,7 @@ css_queue_remove_header (CSS_QUEUE_ENTRY ** anchor)
  *   request_id(in):
  */
 void
-css_queue_remove_header_entry (CSS_QUEUE_ENTRY ** anchor,
-			       unsigned short request_id)
+css_queue_remove_header_entry (CSS_QUEUE_ENTRY ** anchor, unsigned short request_id)
 {
   CSS_QUEUE_ENTRY *entry_p, *prev_p;
 
@@ -277,8 +259,7 @@ css_queue_remove_header_entry (CSS_QUEUE_ENTRY ** anchor,
  *   entry(in):
  */
 void
-css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor,
-				   CSS_QUEUE_ENTRY * entry)
+css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor, CSS_QUEUE_ENTRY * entry)
 {
   CSS_QUEUE_ENTRY *entry_p, *prev_p;
 
@@ -330,15 +311,13 @@ css_is_request_aborted (CSS_CONN_ENTRY * conn, unsigned short request_id)
 }
 
 static int
-css_queue_packet (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY ** queue_p,
-		  unsigned short request_id, char *buffer, int size, int rc)
+css_queue_packet (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY ** queue_p, unsigned short request_id, char *buffer, int size,
+		  int rc)
 {
   if (!css_is_request_aborted (conn, request_id))
     {
-      return css_add_entry_to_header (queue_p, request_id, buffer, size,
-				      rc, conn->transaction_id,
-				      conn->invalidate_snapshot,
-				      conn->db_error);
+      return css_add_entry_to_header (queue_p, request_id, buffer, size, rc, conn->transaction_id,
+				      conn->invalidate_snapshot, conn->db_error);
     }
 
   return NO_ERRORS;
@@ -357,21 +336,19 @@ css_queue_packet (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY ** queue_p,
  *       save the buffer until data is returned from the client.
  */
 int
-css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id,
-			    int size, char *buffer)
+css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int size, char *buffer)
 {
   if (buffer)
     {
-      return css_queue_packet (conn, &conn->buffer_queue, request_id, buffer,
-			       size, 0);
+      return css_queue_packet (conn, &conn->buffer_queue, request_id, buffer, size, 0);
     }
 
   return NO_ERRORS;
 }
 
 static bool
-css_recv_and_queue_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
-			   char *buffer, int size, CSS_QUEUE_ENTRY ** queue_p)
+css_recv_and_queue_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buffer, int size,
+			   CSS_QUEUE_ENTRY ** queue_p)
 {
   int rc;
 
@@ -380,8 +357,7 @@ css_recv_and_queue_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
     {
       if (!css_is_request_aborted (conn, request_id))
 	{
-	  css_add_entry_to_header (queue_p, request_id, buffer, size,
-				   rc, conn->transaction_id,
+	  css_add_entry_to_header (queue_p, request_id, buffer, size, rc, conn->transaction_id,
 				   conn->invalidate_snapshot, conn->db_error);
 	  return true;
 	}
@@ -403,12 +379,9 @@ css_recv_and_queue_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
  *       request id. Save it for future processing.
  */
 void
-css_queue_unexpected_data_packet (CSS_CONN_ENTRY * conn,
-				  unsigned short request_id, char *buffer,
-				  int size, int rc)
+css_queue_unexpected_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buffer, int size, int rc)
 {
-  (void) css_queue_packet (conn, &conn->data_queue, request_id, buffer,
-			   size, rc);
+  (void) css_queue_packet (conn, &conn->data_queue, request_id, buffer, size, rc);
 }
 
 /*
@@ -421,8 +394,7 @@ css_queue_unexpected_data_packet (CSS_CONN_ENTRY * conn,
  * Note: The data packet will then be queued.
  */
 static void
-css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
-		       NET_HEADER * header)
+css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header)
 {
   char *buffer;
   int size;
@@ -432,8 +404,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 
   if (buffer != NULL)
     {
-      if (css_recv_and_queue_packet (conn, request_id, buffer, size,
-				     &conn->data_queue) == false)
+      if (css_recv_and_queue_packet (conn, request_id, buffer, size, &conn->data_queue) == false)
 	{
 	  free_and_init (buffer);
 	}
@@ -441,8 +412,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
   else
     {
       css_read_remaining_bytes (conn->fd, sizeof (int) + size);
-      css_queue_unexpected_data_packet (conn, request_id, NULL, 0,
-					CANT_ALLOC_BUFFER);
+      css_queue_unexpected_data_packet (conn, request_id, NULL, 0, CANT_ALLOC_BUFFER);
     }
 }
 
@@ -459,12 +429,9 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
  *       request id. Save it for future processing.
  */
 void
-css_queue_unexpected_error_packet (CSS_CONN_ENTRY * conn,
-				   unsigned short request_id, char *buffer,
-				   int size, int rc)
+css_queue_unexpected_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buffer, int size, int rc)
 {
-  (void) css_queue_packet (conn, &conn->error_queue, request_id, buffer,
-			   size, rc);
+  (void) css_queue_packet (conn, &conn->error_queue, request_id, buffer, size, rc);
 }
 
 /*
@@ -478,8 +445,7 @@ css_queue_unexpected_error_packet (CSS_CONN_ENTRY * conn,
  * Note: The data packet will then be queued.
  */
 static void
-css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
-			NET_HEADER * header)
+css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header)
 {
   char *buffer;
   int size;
@@ -489,8 +455,7 @@ css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 
   if (buffer != NULL)
     {
-      if (css_recv_and_queue_packet (conn, request_id, buffer, size,
-				     &conn->error_queue) == false)
+      if (css_recv_and_queue_packet (conn, request_id, buffer, size, &conn->error_queue) == false)
 	{
 	  free_and_init (buffer);
 	}
@@ -498,8 +463,7 @@ css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
   else
     {
       css_read_remaining_bytes (conn->fd, sizeof (int) + size);
-      css_queue_unexpected_error_packet (conn, request_id, NULL, 0,
-					 CANT_ALLOC_BUFFER);
+      css_queue_unexpected_error_packet (conn, request_id, NULL, 0, CANT_ALLOC_BUFFER);
     }
 }
 
@@ -515,8 +479,7 @@ css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
  *       Save it for future processing.
  */
 static void
-css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
-			  NET_HEADER * header, int size)
+css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header, int size)
 {
   NET_HEADER *temp;
 
@@ -527,9 +490,7 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
       if (temp != NULL)
 	{
 	  memcpy ((char *) temp, (char *) header, sizeof (NET_HEADER));
-	  css_add_entry_to_header (&conn->request_queue,
-				   request_id, (char *) temp, size, 0,
-				   conn->transaction_id,
+	  css_add_entry_to_header (&conn->request_queue, request_id, (char *) temp, size, 0, conn->transaction_id,
 				   conn->invalidate_snapshot, conn->db_error);
 	}
     }
@@ -550,8 +511,7 @@ css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
   if (css_find_queue_entry (conn->abort_queue, request_id) == NULL)
     {
-      css_add_entry_to_header (&conn->abort_queue, request_id, NULL, 0, 0,
-			       conn->transaction_id,
+      css_add_entry_to_header (&conn->abort_queue, request_id, NULL, 0, 0, conn->transaction_id,
 			       conn->invalidate_snapshot, conn->db_error);
     }
 }
@@ -585,16 +545,13 @@ css_process_close_packet (CSS_CONN_ENTRY * conn)
  *       encountered when not expected.
  */
 void
-css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn,
-			     unsigned short request_id, NET_HEADER * header,
-			     int size)
+css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header, int size)
 {
   unsigned short flags = 0;
 
   conn->transaction_id = ntohl (header->transaction_id);
   flags = ntohs (header->flags);
-  conn->invalidate_snapshot =
-    flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
   conn->db_error = (int) ntohl (header->db_error);
 
   switch (type)

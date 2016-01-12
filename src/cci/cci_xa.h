@@ -72,10 +72,8 @@ typedef struct xid_t XID;
  ************************************************************************/
 
 extern int cci_xa_prepare (int con_id, XID * xid, T_CCI_ERROR * err_buf);
-extern int cci_xa_recover (int con_id, XID * xid, int num_xid,
-			   T_CCI_ERROR * err_buf);
-extern int cci_xa_end_tran (int con_id, XID * xid, char type,
-			    T_CCI_ERROR * err_buf);
+extern int cci_xa_recover (int con_id, XID * xid, int num_xid, T_CCI_ERROR * err_buf);
+extern int cci_xa_end_tran (int con_id, XID * xid, char type, T_CCI_ERROR * err_buf);
 
 /************************************************************************
  * EXPORTED VARIABLES							*

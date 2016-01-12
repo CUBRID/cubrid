@@ -53,40 +53,28 @@ typedef enum
   XML_INS_POS_BEFORE
 } XML_INS_POS;
 
-static XML_ELEMENT *xml_init_schema_tree (XML_ELEMENT_DEF ** element_array,
-					  const int count);
+static XML_ELEMENT *xml_init_schema_tree (XML_ELEMENT_DEF ** element_array, const int count);
 static void xml_destroy_schema_tree (XML_ELEMENT * pt);
-static XML_ELEMENT *xml_clone_node (XML_ELEMENT * schema_src,
-				    XML_ELEMENT * parent,
-				    XML_ELEMENT * prev, bool * has_error);
+static XML_ELEMENT *xml_clone_node (XML_ELEMENT * schema_src, XML_ELEMENT * parent, XML_ELEMENT * prev,
+				    bool * has_error);
 static bool xml_copy_schema_tree (XML_ELEMENT * src, XML_ELEMENT ** dest);
 
 static XML_ELEMENT *create_xml_node (XML_ELEMENT_DEF * new_elem);
-static int add_xml_element (XML_ELEMENT * xml_node,
-			    XML_ELEMENT_DEF * new_elem_def);
+static int add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def);
 
-static XML_ELEMENT *select_xml_branch_node (XML_ELEMENT * xml_node,
-					    const char *sel_name);
-static XML_ELEMENT *select_xml_node_for_ins (XML_ELEMENT * xml_node,
-					     const char *sel_name,
-					     XML_INS_POS * insert_pos);
-static char *get_elem_path_token_at (const XML_ELEMENT_DEF * el_def,
-				     const int level, char *short_name);
+static XML_ELEMENT *select_xml_branch_node (XML_ELEMENT * xml_node, const char *sel_name);
+static XML_ELEMENT *select_xml_node_for_ins (XML_ELEMENT * xml_node, const char *sel_name, XML_INS_POS * insert_pos);
+static char *get_elem_path_token_at (const XML_ELEMENT_DEF * el_def, const int level, char *short_name);
 static const char *get_short_elem_name (const XML_ELEMENT_DEF * el_def);
 
 static int check_xml_elem_name (XML_ELEMENT * el, const char *check_el_name);
 
-static void XMLCALL xml_header_validation_utf8 (void *userData,
-						const XML_Char * version,
-						const XML_Char * encoding,
+static void XMLCALL xml_header_validation_utf8 (void *userData, const XML_Char * version, const XML_Char * encoding,
 						int standalone);
-static void XMLCALL xml_elem_start (void *data, const char *parsed_el_name,
-				    const char **attr);
+static void XMLCALL xml_elem_start (void *data, const char *parsed_el_name, const char **attr);
 static void XMLCALL xml_elem_end (void *data, const char *parsed_el_name);
-static void XMLCALL xml_data_handler (void *data, const XML_Char * s,
-				      int len);
-static XML_Parser xml_init_parser_common (void *data, const char *xml_file,
-					  const char *encoding);
+static void XMLCALL xml_data_handler (void *data, const XML_Char * s, int len);
+static XML_Parser xml_init_parser_common (void *data, const char *xml_file, const char *encoding);
 static int xml_parse (void *data, FILE * fp, bool * is_finished);
 static bool xml_check_include_loop (XML_PARSER_DATA * pd, char *new_file);
 
@@ -122,8 +110,7 @@ xml_init_schema_tree (XML_ELEMENT_DEF ** element_array, const int count)
 
   for (i = 0; i < count; i++)
     {
-      if (add_xml_element (xml_parse_tree, element_array[i]) !=
-	  XML_CUB_NO_ERROR)
+      if (add_xml_element (xml_parse_tree, element_array[i]) != XML_CUB_NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -169,8 +156,7 @@ xml_destroy_schema_tree (XML_ELEMENT * pt)
  *
  */
 static XML_ELEMENT *
-xml_clone_node (XML_ELEMENT * schema_src, XML_ELEMENT * parent,
-		XML_ELEMENT * prev, bool * has_error)
+xml_clone_node (XML_ELEMENT * schema_src, XML_ELEMENT * parent, XML_ELEMENT * prev, bool * has_error)
 {
   XML_ELEMENT *xml_parse_tree = NULL;
 
@@ -195,16 +181,13 @@ xml_clone_node (XML_ELEMENT * schema_src, XML_ELEMENT * parent,
   xml_parse_tree->prev = prev;
   xml_parse_tree->parent = parent;
 
-  xml_parse_tree->child = xml_clone_node (schema_src->child,
-					  xml_parse_tree, NULL, has_error);
+  xml_parse_tree->child = xml_clone_node (schema_src->child, xml_parse_tree, NULL, has_error);
 
   if (*has_error)
     {
       goto exit;
     }
-  xml_parse_tree->next = xml_clone_node (schema_src->next,
-					 xml_parse_tree->parent,
-					 xml_parse_tree, has_error);
+  xml_parse_tree->next = xml_clone_node (schema_src->next, xml_parse_tree->parent, xml_parse_tree, has_error);
   if (*has_error)
     {
       goto exit;
@@ -293,8 +276,7 @@ add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def)
       XML_ELEMENT *xml_new_node = NULL;
       XML_INS_POS insert_pos = XML_INS_POS_UNDEF;
 
-      xml_node = select_xml_node_for_ins (xml_node, new_elem_short_name,
-					  &insert_pos);
+      xml_node = select_xml_node_for_ins (xml_node, new_elem_short_name, &insert_pos);
 
       assert (xml_node != NULL);
 
@@ -305,8 +287,7 @@ add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def)
 	  return XML_CUB_OUT_OF_MEMORY;
 	}
 
-      assert (insert_pos == XML_INS_POS_AFTER ||
-	      insert_pos == XML_INS_POS_BEFORE);
+      assert (insert_pos == XML_INS_POS_AFTER || insert_pos == XML_INS_POS_BEFORE);
 
       xml_new_node->short_name = new_elem_short_name;
       xml_new_node->parent = xml_node->parent;
@@ -375,8 +356,7 @@ add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def)
     {
       int el_order = 0;
 
-      if (get_elem_path_token_at (new_elem_def, xml_node->def->depth,
-				  new_elem_branch_name) == NULL)
+      if (get_elem_path_token_at (new_elem_def, xml_node->def->depth, new_elem_branch_name) == NULL)
 	{
 	  return XML_CUB_SCHEMA_BROKEN;
 	}
@@ -404,8 +384,7 @@ add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def)
   while (xml_node->def->depth < new_elem_def->depth)
     {
       /* select branch at this level */
-      if (get_elem_path_token_at (new_elem_def, xml_node->def->depth,
-				  new_elem_branch_name) == NULL)
+      if (get_elem_path_token_at (new_elem_def, xml_node->def->depth, new_elem_branch_name) == NULL)
 	{
 	  return XML_CUB_SCHEMA_BROKEN;
 	}
@@ -485,8 +464,7 @@ select_xml_branch_node (XML_ELEMENT * xml_node, const char *sel_name)
  *   insert_pos(out): where to insert
  */
 static XML_ELEMENT *
-select_xml_node_for_ins (XML_ELEMENT * xml_node, const char *sel_name,
-			 XML_INS_POS * insert_pos)
+select_xml_node_for_ins (XML_ELEMENT * xml_node, const char *sel_name, XML_INS_POS * insert_pos)
 {
   assert (xml_node != NULL);
 
@@ -536,8 +514,7 @@ select_xml_node_for_ins (XML_ELEMENT * xml_node, const char *sel_name,
  *   short_name(out): short name
  */
 static char *
-get_elem_path_token_at (const XML_ELEMENT_DEF * el_def, const int level,
-			char *short_name)
+get_elem_path_token_at (const XML_ELEMENT_DEF * el_def, const int level, char *short_name)
 {
   int l = 1;
   const char *tok_start = NULL;
@@ -635,8 +612,7 @@ check_xml_elem_name (XML_ELEMENT * el, const char *check_el_name)
  *   standalone(in):
  */
 static void XMLCALL
-xml_header_validation_utf8 (void *userData, const XML_Char * version,
-			    const XML_Char * encoding, int standalone)
+xml_header_validation_utf8 (void *userData, const XML_Char * version, const XML_Char * encoding, int standalone)
 {
   if (encoding == NULL || strcmp ((char *) encoding, "UTF-8"))
     {
@@ -896,8 +872,7 @@ xml_data_handler (void *data, const XML_Char * s, int len)
  *   encoding(in): encoding charset
  */
 static XML_Parser
-xml_init_parser_common (void *data, const char *xml_file,
-			const char *encoding)
+xml_init_parser_common (void *data, const char *xml_file, const char *encoding)
 {
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   XML_Parser p = NULL;
@@ -961,8 +936,8 @@ xml_init_parser_common (void *data, const char *xml_file,
  *   count(in): number of elements in schema definition
  */
 XML_Parser
-xml_init_parser (void *data, const char *xml_file, const char *encoding,
-		 XML_ELEMENT_DEF ** element_array, const int count)
+xml_init_parser (void *data, const char *xml_file, const char *encoding, XML_ELEMENT_DEF ** element_array,
+		 const int count)
 {
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   XML_Parser p = NULL;
@@ -1174,8 +1149,7 @@ xml_parse (void *data, FILE * fp, bool * is_finished)
  *   att_value(in):
  */
 int
-xml_check_att_value (const char **attrs, const char *att_name,
-		     const char *att_value)
+xml_check_att_value (const char **attrs, const char *att_name, const char *att_value)
 {
   const char **curr_att = attrs;
 
@@ -1185,8 +1159,7 @@ xml_check_att_value (const char **attrs, const char *att_name,
 
   for (; *curr_att != NULL; curr_att++, curr_att++)
     {
-      if (strcmp (curr_att[0], att_name) == 0 &&
-	  strcmp (curr_att[1], att_value) == 0)
+      if (strcmp (curr_att[0], att_name) == 0 && strcmp (curr_att[1], att_value) == 0)
 	{
 	  return 0;
 	}
@@ -1204,8 +1177,7 @@ xml_check_att_value (const char **attrs, const char *att_name,
  *   p_att_value(in/out): (returned attribute value)
  */
 int
-xml_get_att_value (const char **attrs, const char *att_name,
-		   char **p_att_value)
+xml_get_att_value (const char **attrs, const char *att_name, char **p_att_value)
 {
   const char **curr_att = attrs;
 

@@ -44,8 +44,7 @@ struct t_log_info
   char *logstr;
 };
 
-static int log_top (FILE * fp, char *filename, long start_offset,
-		    long end_offset);
+static int log_top (FILE * fp, char *filename, long start_offset, long end_offset);
 static int info_delete (T_LOG_INFO * info);
 static void print_result (void);
 static int info_add (T_LOG_INFO * info, char *start_date, char *end_date);
@@ -171,8 +170,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 	  if (linebuf[0] != '\n')
 	    {
 	      sprintf (fileinfo_str, "%s:%d\n", filename, lineno);
-	      t_string_add (str_buf, fileinfo_str,
-			    (int) strlen (fileinfo_str));
+	      t_string_add (str_buf, fileinfo_str, (int) strlen (fileinfo_str));
 	      is_first = 0;
 	    }
 	}
@@ -238,8 +236,7 @@ print_result (void)
   for (i--; i >= 0; i--)
     {
 #if 0
-      fprintf (fp_t,
-	       "-----------------------------------------------------\n");
+      fprintf (fp_t, "-----------------------------------------------------\n");
 #endif
       fprintf (fp_t, "%s\n", temp[i].logstr);
       FREE_MEM (temp[i].logstr);
@@ -295,8 +292,7 @@ info_delete (T_LOG_INFO * info)
   child = 2;
   while (child <= info_arr_size)
     {
-      if ((child < info_arr_size)
-	  && (info_arr[child].runtime > info_arr[child + 1].runtime))
+      if ((child < info_arr_size) && (info_arr[child].runtime > info_arr[child + 1].runtime))
 	child++;
       if (temp.runtime < info_arr[child].runtime)
 	break;

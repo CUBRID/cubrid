@@ -71,41 +71,25 @@ static struct timeb base_client_timeb = { 0, 0, 0, 0 };
 static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
 static DB_SESSION *initialize_session (DB_SESSION * session);
-static int db_execute_and_keep_statement_local (DB_SESSION * session,
-						int stmt_ndx,
-						DB_QUERY_RESULT ** result);
+static int db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result);
 static DB_OBJLIST *db_get_all_chosen_classes (int (*p) (MOBJ o));
 static int is_vclass_object (MOBJ class_);
 static char *get_reasonable_predicate (DB_ATTRIBUTE * att);
-static void update_execution_values (PARSER_CONTEXT * parser, int result,
-				     CUBRID_STMT_TYPE statement_type);
-static void copy_execution_values (EXECUTION_STATE_VALUES * source,
-				   EXECUTION_STATE_VALUES * destination);
-static int values_list_to_values_array (PARSER_CONTEXT * parser,
-					PT_NODE * values_list,
-					DB_VALUE_ARRAY * values_array);
-static int set_prepare_info_into_list (DB_PREPARE_INFO * prepare_info,
-				       PT_NODE * statement);
-static PT_NODE *char_array_to_name_list (PARSER_CONTEXT * parser,
-					 char **names, int length);
-static int do_process_prepare_statement (DB_SESSION * session,
-					 PT_NODE * statement);
-static int do_get_prepared_statement_info (DB_SESSION * session,
-					   int stmt_idx);
-static int do_set_user_host_variables (DB_SESSION * session,
-				       PT_NODE * using_list);
+static void update_execution_values (PARSER_CONTEXT * parser, int result, CUBRID_STMT_TYPE statement_type);
+static void copy_execution_values (EXECUTION_STATE_VALUES * source, EXECUTION_STATE_VALUES * destination);
+static int values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list, DB_VALUE_ARRAY * values_array);
+static int set_prepare_info_into_list (DB_PREPARE_INFO * prepare_info, PT_NODE * statement);
+static PT_NODE *char_array_to_name_list (PARSER_CONTEXT * parser, char **names, int length);
+static int do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement);
+static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx);
+static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list);
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
-static int do_recompile_and_execute_prepared_statement (DB_SESSION * session,
-							PT_NODE * statement,
-							DB_QUERY_RESULT **
-							result);
-static int do_process_deallocate_prepare (DB_SESSION * session,
-					  PT_NODE * statement);
+static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
+							DB_QUERY_RESULT ** result);
+static int do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement);
 static bool is_allowed_as_prepared_statement (PT_NODE * node);
 static bool is_allowed_as_prepared_statement_with_hv (PT_NODE * node);
-static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser,
-					   PT_NODE * statement,
-					   int xasl_flag);
+static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag);
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -164,8 +148,7 @@ db_open_local (void)
   session = (DB_SESSION *) malloc (sizeof (DB_SESSION));
   if (session == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (DB_SESSION));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_SESSION));
       return NULL;
     }
 
@@ -222,8 +205,7 @@ db_open_buffer_local (const char *buffer)
 
   if (session)
     {
-      session->statements =
-	parser_parse_string_with_escapes (session->parser, buffer, false);
+      session->statements = parser_parse_string_with_escapes (session->parser, buffer, false);
       if (session->statements)
 	{
 	  return initialize_session (session);
@@ -331,13 +313,10 @@ db_parse_one_statement (DB_SESSION * session)
 	}
     }
 
-  if (parse_one_statement (1) == 0
-      && !pt_has_error (session->parser)
-      && session->parser->stack_top > 0
+  if (parse_one_statement (1) == 0 && !pt_has_error (session->parser) && session->parser->stack_top > 0
       && session->parser->node_stack != NULL)
     {
-      session->parser->statements =
-	(PT_NODE **) parser_alloc (session->parser, 2 * sizeof (PT_NODE *));
+      session->parser->statements = (PT_NODE **) parser_alloc (session->parser, 2 * sizeof (PT_NODE *));
       if (session->parser->statements == NULL)
 	{
 	  return -1;
@@ -471,17 +450,12 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser)
 	}
       else
 	{
-	  db_datetime_encode (&datetime, c_time_struct->tm_mon + 1,
-			      c_time_struct->tm_mday,
-			      c_time_struct->tm_year + 1900,
-			      c_time_struct->tm_hour,
-			      c_time_struct->tm_min,
-			      c_time_struct->tm_sec,
-			      curr_server_timeb.millitm);
+	  db_datetime_encode (&datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday,
+			      c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,
+			      c_time_struct->tm_sec, curr_server_timeb.millitm);
 
 	  DB_MAKE_DATETIME (&parser->sys_datetime, &datetime);
-	  DB_MAKE_TIMESTAMP (&parser->sys_epochtime,
-			     (DB_TIMESTAMP) curr_server_timeb.time);
+	  DB_MAKE_TIMESTAMP (&parser->sys_epochtime, (DB_TIMESTAMP) curr_server_timeb.time);
 	}
     }
 }
@@ -550,31 +524,26 @@ db_compile_statement_local (DB_SESSION * session)
       return 0;
     }
 
-  /* allocate memory for session->type_list and session->stage
-     if not allocated */
+  /* allocate memory for session->type_list and session->stage if not allocated */
   if (session->type_list == NULL)
     {
-      size_t size = session->dimension * sizeof (DB_QUERY_TYPE *)
-	+ session->dimension * sizeof (char);
+      size_t size = session->dimension * sizeof (DB_QUERY_TYPE *) + session->dimension * sizeof (char);
       void *p = malloc (size);
       if (p == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       (void) memset (p, 0, size);
       session->type_list = (DB_QUERY_TYPE **) p;
-      session->stage =
-	(char *) p + session->dimension * sizeof (DB_QUERY_TYPE *);
+      session->stage = (char *) p + session->dimension * sizeof (DB_QUERY_TYPE *);
     }
 
-  /*
+  /* 
    * Compilation Stage
    */
 
-  /* the statements in this session have been parsed without error
-     and it is time to compile the next statement */
+  /* the statements in this session have been parsed without error and it is time to compile the next statement */
   parser = session->parser;
   stmt_ndx = session->stmt_ndx++;
   statement = session->statements[stmt_ndx];
@@ -603,8 +572,8 @@ db_compile_statement_local (DB_SESSION * session)
     }
   if (cmd_type == CUBRID_STMT_EXECUTE_PREPARE)
     {
-      /* we don't actually have the statement which will be executed
-         and we need to get some information about it from the server */
+      /* we don't actually have the statement which will be executed and we need to get some information about it from
+       * the server */
       int err = do_get_prepared_statement_info (session, stmt_ndx);
       if (err != NO_ERROR)
 	{
@@ -637,31 +606,22 @@ db_compile_statement_local (DB_SESSION * session)
   /* get type list describing the output columns titles of the given query */
   if (cmd_type == CUBRID_STMT_SELECT)
     {
-      /* for a select-type query of the form:
-         SELECT * FROM class c
-         we store into type_list the nice column headers:
-         c.attr1    attr2    c.attr3
-         before they get fully resolved by mq_translate(). */
+      /* for a select-type query of the form: SELECT * FROM class c we store into type_list the nice column headers:
+       * c.attr1 attr2 c.attr3 before they get fully resolved by mq_translate(). */
       if (!qtype)
 	{
 	  qtype = pt_get_titles (parser, statement);
-	  /* to prevent a memory leak,
-	     register the query type list to session */
+	  /* to prevent a memory leak, register the query type list to session */
 	  session->type_list[stmt_ndx] = qtype;
 	}
       if (qtype)
 	{
-	  /* NOTE, this is here on purpose. If something is busting
-	     because it tries to continue corresponding this type
-	     information and the list file columns after having jacked
-	     with the list file, by for example adding a hidden OID
-	     column, fix the something else.
-	     This needs to give the results as user views the
-	     query, ie related to the original text. It may guess
-	     wrong about attribute/column updatability.
-	     Thats what they asked for. */
-	  qtype = pt_fillin_type_size (parser, statement, qtype, DB_NO_OIDS,
-				       false, false);
+	  /* NOTE, this is here on purpose. If something is busting because it tries to continue corresponding this
+	   * type information and the list file columns after having jacked with the list file, by for example adding a 
+	   * hidden OID column, fix the something else. This needs to give the results as user views the query, ie
+	   * related to the original text. It may guess wrong about attribute/column updatability. Thats what they
+	   * asked for. */
+	  qtype = pt_fillin_type_size (parser, statement, qtype, DB_NO_OIDS, false, false);
 	}
     }
 
@@ -704,20 +664,17 @@ db_compile_statement_local (DB_SESSION * session)
   session->stage[stmt_ndx] = StatementCompiledStage;
 
 
-  /*
+  /* 
    * Preparation Stage
    */
 
   statement->xasl_id = NULL;	/* bullet proofing */
 
-  /* New interface of do_prepare_statement()/do_execute_statment() is used
-     only when the XASL cache is enabled. If it is disabled, old interface
-     of do_statement() will be used instead. do_statement() makes a XASL
-     everytime rather than using XASL cache. Also, it can be executed in
-     the server without touching the XASL cache by calling
-     prepare_and_execute_query(). */
-  if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
-      && statement->cannot_prepare == 0)
+  /* New interface of do_prepare_statement()/do_execute_statment() is used only when the XASL cache is enabled. If it
+   * is disabled, old interface of do_statement() will be used instead. do_statement() makes a XASL everytime rather
+   * than using XASL cache. Also, it can be executed in the server without touching the XASL cache by calling
+   * prepare_and_execute_query(). */
+  if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0 && statement->cannot_prepare == 0)
     {
 
       /* now, prepare the statement by calling do_prepare_statement() */
@@ -725,10 +682,8 @@ db_compile_statement_local (DB_SESSION * session)
 #if 0
       if (err == ER_QPROC_INVALID_XASLNODE)
 	{
-	  /* There is a kind of problem in the XASL cache.
-	     It is possible when the cache entry was deleted by the other.
-	     In this case, retry to prepare once more (generate and stored
-	     the XASL again). */
+	  /* There is a kind of problem in the XASL cache. It is possible when the cache entry was deleted by the
+	   * other. In this case, retry to prepare once more (generate and stored the XASL again). */
 	  statement->xasl_id = NULL;
 	  er_clear ();
 	  /* execute the statement by calling do_statement() */
@@ -739,8 +694,7 @@ db_compile_statement_local (DB_SESSION * session)
 	{
 	  if (pt_has_error (parser))
 	    {
-	      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC,
-						 statement);
+	      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
 	      return er_errid ();
 	    }
 	  return err;
@@ -811,22 +765,15 @@ db_session_is_last_statement (DB_SESSION * session)
  * cache_time(in) :
  */
 int
-db_set_client_cache_time (DB_SESSION * session, int stmt_ndx,
-			  CACHE_TIME * cache_time)
+db_set_client_cache_time (DB_SESSION * session, int stmt_ndx, CACHE_TIME * cache_time)
 {
   PT_NODE *statement;
   int result = NO_ERROR;
 
-  if (!session
-      || !session->parser
-      || session->dimension == 0
-      || !session->statements
-      || stmt_ndx < 1
-      || stmt_ndx > session->dimension
-      || !(statement = session->statements[stmt_ndx - 1]))
+  if (!session || !session->parser || session->dimension == 0 || !session->statements || stmt_ndx < 1
+      || stmt_ndx > session->dimension || !(statement = session->statements[stmt_ndx - 1]))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       result = er_errid ();
     }
   else
@@ -854,26 +801,17 @@ db_get_jdbccachehint (DB_SESSION * session, int stmt_ndx, int *life_time)
   PT_NODE *statement;
 
   /* obvious error checking - invalid parameter */
-  if (!session
-      || !session->parser
-      || session->dimension == 0
-      || !session->statements
-      || stmt_ndx < 1
-      || stmt_ndx > session->dimension
-      || !(statement = session->statements[stmt_ndx - 1]))
+  if (!session || !session->parser || session->dimension == 0 || !session->statements || stmt_ndx < 1
+      || stmt_ndx > session->dimension || !(statement = session->statements[stmt_ndx - 1]))
     {
       return false;
     }
 
   if (statement->info.query.q.select.hint & PT_HINT_JDBC_CACHE)
     {
-      if (life_time != NULL &&
-	  statement->info.query.q.select.jdbc_life_time->info.name.original !=
-	  NULL)
+      if (life_time != NULL && statement->info.query.q.select.jdbc_life_time->info.name.original != NULL)
 	{
-	  *life_time =
-	    atoi (statement->info.query.q.select.jdbc_life_time->info.name.
-		  original);
+	  *life_time = atoi (statement->info.query.q.select.jdbc_life_time->info.name.original);
 	}
       return true;
     }
@@ -889,19 +827,13 @@ db_get_jdbccachehint (DB_SESSION * session, int stmt_ndx, int *life_time)
  * life_time(out) :
  */
 bool
-db_get_cacheinfo (DB_SESSION * session, int stmt_ndx,
-		  bool * use_plan_cache, bool * use_query_cache)
+db_get_cacheinfo (DB_SESSION * session, int stmt_ndx, bool * use_plan_cache, bool * use_query_cache)
 {
   PT_NODE *statement;
 
   /* obvious error checking - invalid parameter */
-  if (!session
-      || !session->parser
-      || session->dimension == 0
-      || !session->statements
-      || stmt_ndx < 1
-      || stmt_ndx > session->dimension
-      || !(statement = session->statements[stmt_ndx - 1]))
+  if (!session || !session->parser || session->dimension == 0 || !session->statements || stmt_ndx < 1
+      || stmt_ndx > session->dimension || !(statement = session->statements[stmt_ndx - 1]))
     {
       return false;
     }
@@ -1074,8 +1006,7 @@ db_session_set_holdable (DB_SESSION * session, bool holdable)
  * recompile (in) :
  */
 void
-db_session_set_xasl_cache_pinned (DB_SESSION * session, bool is_pinned,
-				  bool recompile)
+db_session_set_xasl_cache_pinned (DB_SESSION * session, bool is_pinned, bool recompile)
 {
   if (session == NULL || session->parser == NULL)
     {
@@ -1093,8 +1024,7 @@ db_session_set_xasl_cache_pinned (DB_SESSION * session, bool is_pinned,
  * return_generated_keys (in) :
  */
 void
-db_session_set_return_generated_keys (DB_SESSION * session,
-				      bool return_generated_keys)
+db_session_set_return_generated_keys (DB_SESSION * session, bool return_generated_keys)
 {
   if (session == NULL || session->parser == NULL)
     {
@@ -1132,8 +1062,7 @@ db_get_line_col_of_1st_error (DB_SESSION * session, DB_QUERY_ERROR * linecol)
 
       errors = pt_get_errors (session->parser);
       if (linecol)
-	pt_get_next_error (errors, &stmt_no, &linecol->err_lineno,
-			   &linecol->err_posno, &msg);
+	pt_get_next_error (errors, &stmt_no, &linecol->err_lineno, &linecol->err_posno, &msg);
       return 1;
     }
 }
@@ -1151,15 +1080,10 @@ db_number_of_input_markers (DB_SESSION * session, int stmt)
   PT_NODE *statement;
   int result = 0;
 
-  if (!session
-      || !(parser = session->parser)
-      || !session->statements
-      || stmt < 1
-      || stmt > session->dimension
+  if (!session || !(parser = session->parser) || !session->statements || stmt < 1 || stmt > session->dimension
       || !(statement = session->statements[stmt - 1]))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       result = er_errid ();
     }
   else
@@ -1183,21 +1107,15 @@ db_number_of_output_markers (DB_SESSION * session, int stmt)
   PT_NODE *statement;
   int result = 0;
 
-  if (!session
-      || !(parser = session->parser)
-      || !session->statements
-      || stmt < 1
-      || stmt > session->dimension
+  if (!session || !(parser = session->parser) || !session->statements || stmt < 1 || stmt > session->dimension
       || !(statement = session->statements[stmt - 1]))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       result = er_errid ();
     }
   else
     {
-      (void) parser_walk_tree (parser, statement, pt_count_output_markers,
-			       &result, NULL, NULL);
+      (void) parser_walk_tree (parser, statement, pt_count_output_markers, &result, NULL, NULL);
     }
 
   return result;
@@ -1217,16 +1135,10 @@ db_get_input_markers (DB_SESSION * session, int stmt)
   DB_MARKER *result = NULL;
   PT_HOST_VARS *hv;
 
-  if (!session
-      || !(parser = session->parser)
-      || !session->statements
-      || stmt < 1
-      || stmt > session->dimension
-      || !(statement = session->statements[stmt - 1])
-      || pt_has_error (parser))
+  if (!session || !(parser = session->parser) || !session->statements || stmt < 1 || stmt > session->dimension
+      || !(statement = session->statements[stmt - 1]) || pt_has_error (parser))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       result = NULL;
     }
   else
@@ -1253,16 +1165,10 @@ db_get_output_markers (DB_SESSION * session, int stmt)
   DB_MARKER *result = NULL;
   PT_HOST_VARS *hv;
 
-  if (!session
-      || !(parser = session->parser)
-      || !session->statements
-      || stmt < 1
-      || stmt > session->dimension
-      || !(statement = session->statements[stmt - 1])
-      || pt_has_error (parser))
+  if (!session || !(parser = session->parser) || !session->statements || stmt < 1 || stmt > session->dimension
+      || !(statement = session->statements[stmt - 1]) || pt_has_error (parser))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       result = NULL;
     }
   else
@@ -1406,8 +1312,7 @@ db_get_query_type_list (DB_SESSION * session, int stmt_ndx)
   statement = session->statements[--stmt_ndx];
   if (stmt_ndx < 0 || stmt_ndx >= session->dimension || !statement)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-	      ER_OBJ_INVALID_ARGUMENTS, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return NULL;
     }
   /* check if the statement is compiled and prepared */
@@ -1492,15 +1397,10 @@ db_get_start_line (DB_SESSION * session, int stmt)
   PARSER_CONTEXT *parser;
   PT_NODE *statement;
 
-  if (!session
-      || !(parser = session->parser)
-      || !session->statements
-      || stmt < 1
-      || stmt > session->dimension
+  if (!session || !(parser = session->parser) || !session->statements || stmt < 1 || stmt > session->dimension
       || !(statement = session->statements[stmt - 1]))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       retval = er_errid ();
     }
   else
@@ -1524,15 +1424,10 @@ db_get_statement_type (DB_SESSION * session, int stmt)
   PARSER_CONTEXT *parser;
   PT_NODE *statement;
 
-  if (!session
-      || !(parser = session->parser)
-      || !session->statements
-      || stmt < 1
-      || stmt > session->dimension
+  if (!session || !(parser = session->parser) || !session->statements || stmt < 1 || stmt > session->dimension
       || !(statement = session->statements[stmt - 1]))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       retval = er_errid ();
     }
   else
@@ -1655,8 +1550,7 @@ db_get_session_mode (DB_SESSION * session)
 {
   if (!session || !session->parser)
     {
-      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION,
-	      0);
+      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION, 0);
       return ER_IT_INVALID_SESSION;
     }
   else
@@ -1675,8 +1569,7 @@ db_set_session_mode_sync (DB_SESSION * session)
 {
   if (!session || !session->parser)
     {
-      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION,
-	      0);
+      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION, 0);
       return ER_IT_INVALID_SESSION;
     }
 
@@ -1695,8 +1588,7 @@ db_set_session_mode_async (DB_SESSION * session)
 {
   if (!session || !session->parser)
     {
-      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION,
-	      0);
+      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION, 0);
       return ER_IT_INVALID_SESSION;
     }
 
@@ -1722,8 +1614,7 @@ db_set_session_mode_async (DB_SESSION * session)
  * result(out): query results descriptor
  */
 static int
-db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
-				     DB_QUERY_RESULT ** result)
+db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
 {
   PARSER_CONTEXT *parser;
   PT_NODE *statement;
@@ -1754,17 +1645,14 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
     }
   /* invalid parameter */
   stmt_ndx--;
-  if (stmt_ndx < 0 || stmt_ndx >= session->dimension
-      || !session->statements[stmt_ndx])
+  if (stmt_ndx < 0 || stmt_ndx >= session->dimension || !session->statements[stmt_ndx])
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-	      ER_OBJ_INVALID_ARGUMENTS, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return er_errid ();
     }
 
   /* valid host variable was not set before */
-  if (session->parser->host_var_count > 0
-      && session->parser->set_host_var == 0)
+  if (session->parser->host_var_count > 0 && session->parser->set_host_var == 0)
     {
       if (pt_has_error (session->parser))
 	{
@@ -1774,24 +1662,21 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	}
       else
 	{
-	  /* parsed statement has some host variable parameters
-	     (input marker '?'), but no host variable (DB_VALUE array) was set
-	     by db_push_values() API */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UCI_TOO_FEW_HOST_VARS,
-		  0);
+	  /* parsed statement has some host variable parameters (input marker '?'), but no host variable (DB_VALUE
+	   * array) was set by db_push_values() API */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UCI_TOO_FEW_HOST_VARS, 0);
 	}
       return er_errid ();
     }
 
   /* if the parser already has something wrong - semantic error */
-  if (session->stage[stmt_ndx] < StatementExecutedStage
-      && pt_has_error (session->parser))
+  if (session->stage[stmt_ndx] < StatementExecutedStage && pt_has_error (session->parser))
     {
       pt_report_to_ersys (session->parser, PT_SEMANTIC);
       return er_errid ();
     }
 
-  /*
+  /* 
    * Execution Stage
    */
   er_clear ();
@@ -1822,16 +1707,11 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 
   /* get sys_date, sys_time, sys_timestamp, sys_datetime values from the server */
   server_info_bits = 0;		/* init */
-  if (statement->si_datetime
-      || (statement->node_type == PT_CREATE_ENTITY
-	  || statement->node_type == PT_ALTER))
+  if (statement->si_datetime || (statement->node_type == PT_CREATE_ENTITY || statement->node_type == PT_ALTER))
     {
-      /* Some create and alter statement require the server timestamp
-       * even though it does not explicitly refer timestamp-related pseudocolumns.
-       * For instance,
-       *   create table foo (a timestamp default systimestamp);
-       *   create view v_foo as select * from foo;
-       */
+      /* Some create and alter statement require the server timestamp even though it does not explicitly refer
+       * timestamp-related pseudocolumns. For instance, create table foo (a timestamp default systimestamp); create
+       * view v_foo as select * from foo; */
       db_calculate_current_server_time (parser);
 
       if (base_server_timeb.time == 0)
@@ -1873,8 +1753,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
       bool do_recompile = false;
       if (statement->info.execute.stmt_type == CUBRID_STMT_SELECT)
 	{
-	  if (!statement->xasl_id || XASL_ID_IS_NULL (statement->xasl_id)
-	      || statement->info.execute.recompile)
+	  if (!statement->xasl_id || XASL_ID_IS_NULL (statement->xasl_id) || statement->info.execute.recompile)
 	    {
 	      do_recompile = true;
 	    }
@@ -1886,9 +1765,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 
       if (do_recompile)
 	{
-	  return
-	    do_recompile_and_execute_prepared_statement (session, statement,
-							 result);
+	  return do_recompile_and_execute_prepared_statement (session, statement, result);
 	}
     }
   else if (statement->node_type == PT_DEALLOCATE_PREPARE)
@@ -1899,18 +1776,14 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
       return err;
     }
 
-  /* New interface of do_prepare_statement()/do_execute_statment() is used
-     only when the XASL cache is enabled. If it is disabled, old interface
-     of do_statement() will be used instead. do_statement() makes a XASL
-     everytime rather than using XASL cache. Also, it can be executed in
-     the server without touching the XASL cache by calling
-     prepare_and_execute_query(). */
+  /* New interface of do_prepare_statement()/do_execute_statment() is used only when the XASL cache is enabled. If it
+   * is disabled, old interface of do_statement() will be used instead. do_statement() makes a XASL everytime rather
+   * than using XASL cache. Also, it can be executed in the server without touching the XASL cache by calling
+   * prepare_and_execute_query(). */
   do_Trigger_involved = false;
 
   pt_null_etc (statement);
-  if (statement->xasl_id == NULL
-      && ((cls_status = pt_has_modified_class (parser, statement))
-	  != DB_CLASS_NOT_MODIFIED))
+  if (statement->xasl_id == NULL && ((cls_status = pt_has_modified_class (parser, statement)) != DB_CLASS_NOT_MODIFIED))
     {
       if (cls_status == DB_CLASS_MODIFIED)
 	{
@@ -1924,13 +1797,11 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	  err = er_errid ();
 	}
     }
-  else if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
-	   && statement->cannot_prepare == 0)
+  else if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0 && statement->cannot_prepare == 0)
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
-      if (err == ER_QPROC_INVALID_XASLNODE
-	  && session->stage[stmt_ndx] == StatementPreparedStage)
+      if (err == ER_QPROC_INVALID_XASLNODE && session->stage[stmt_ndx] == StatementPreparedStage)
 	{
 	  /* The cache entry was deleted before 'execute' */
 	  if (statement->xasl_id)
@@ -1974,9 +1845,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	}
       if (parser->host_var_count > 0 || parser->auto_param_count > 0)
 	{
-	  /* In this case, pt_bind_values_to_hostvars() will change
-	     PT_HOST_VAR node. Must duplicate the statement and execute with
-	     the new one and free the copied one before returning */
+	  /* In this case, pt_bind_values_to_hostvars() will change PT_HOST_VAR node. Must duplicate the statement and
+	   * execute with the new one and free the copied one before returning */
 	  statement = parser_copy_tree_list (parser, statement);
 	  statement = mq_reset_ids_in_statement (parser, statement);
 
@@ -1985,19 +1855,16 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 
 	  if (!(statement = pt_bind_values_to_hostvars (parser, statement))
 	      || !(statement = pt_resolve_names (parser, statement, &sc_info))
-	      || !(statement = pt_semantic_type (parser, statement,
-						 &sc_info)))
+	      || !(statement = pt_semantic_type (parser, statement, &sc_info)))
 	    {
 	      /* something wrong */
 	      if (er_errid () == NO_ERROR)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_DO_UNKNOWN_HOSTVAR_TYPE, 0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DO_UNKNOWN_HOSTVAR_TYPE, 0);
 		}
 	      if (pt_has_error (parser))
 		{
-		  pt_report_to_ersys_with_statement (parser, PT_SYNTAX,
-						     statement);
+		  pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
 		  pt_reset_error (parser);
 		}
 	      if (statement != session->statements[stmt_ndx])
@@ -2016,8 +1883,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   if (err < 0)
     {
       /* Do not override original error id with */
-      if (er_errid () == NO_ERROR
-	  && pt_has_error (parser) && err != ER_QPROC_INVALID_XASLNODE)
+      if (er_errid () == NO_ERROR && pt_has_error (parser) && err != ER_QPROC_INVALID_XASLNODE)
 	{
 	  pt_report_to_ersys_with_statement (parser, PT_EXECUTION, statement);
 	  err = er_errid ();
@@ -2050,16 +1916,14 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	    {
 	    case CUBRID_STMT_SELECT:
 	    case CUBRID_STMT_EXECUTE_PREPARE:
-	      /* Check whether pt_new_query_result_descriptor() fails.
-	         Similar tests are required for CUBRID_STMT_INSERT and
-	         CUBRID_STMT_CALL cases. */
+	      /* Check whether pt_new_query_result_descriptor() fails. Similar tests are required for
+	       * CUBRID_STMT_INSERT and CUBRID_STMT_CALL cases. */
 	      qres = pt_new_query_result_descriptor (parser, statement);
 	      if (qres)
 		{
 		  /* get number of rows as result */
 		  err = db_query_tuple_count (qres);
-		  qres->query_type =
-		    db_cp_query_type (session->type_list[stmt_ndx], false);
+		  qres->query_type = db_cp_query_type (session->type_list[stmt_ndx], false);
 		  qres->res.s.stmt_id = stmt_ndx;
 		}
 	      else
@@ -2081,18 +1945,15 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	    case CUBRID_STMT_CALL:
 	    case CUBRID_STMT_INSERT:
 	    case CUBRID_STMT_GET_STATS:
-	      /* csql (in csql.c) may throw away any non-null *result,
-	         but we create a DB_QUERY_RESULT structure anyway for other
-	         callers of db_execute that use the *result like esql_cli.c  */
+	      /* csql (in csql.c) may throw away any non-null *result, but we create a DB_QUERY_RESULT structure anyway 
+	       * for other callers of db_execute that use the *result like esql_cli.c */
 	      if (pt_is_server_insert_with_generated_keys (parser, statement))
 		{
 		  qres = pt_new_query_result_descriptor (parser, statement);
 		  if (qres)
 		    {
 		      /* get number of rows as result */
-		      qres->query_type =
-			db_cp_query_type (session->type_list[stmt_ndx],
-					  false);
+		      qres->query_type = db_cp_query_type (session->type_list[stmt_ndx], false);
 		      qres->res.s.stmt_id = stmt_ndx;
 		    }
 		  else
@@ -2104,8 +1965,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		}
 
 	      if (stmt_type == CUBRID_STMT_INSERT
-		  && (statement->info.insert.server_allowed ==
-		      SERVER_INSERT_IS_ALLOWED))
+		  && (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED))
 		{
 		  val = db_value_create ();
 		  if (val == NULL)
@@ -2130,17 +1990,13 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		      /* get number of rows as result */
 		      int row_count = err;
 		      err = db_query_tuple_count (qres);
-		      /* We have a special case for REPLACE INTO:
-		         pt_node_etc (statement) holds only the inserted row
-		         but we might have done a delete before.
-		         For this case, if err>row_count we will not change
-		         the row count */
+		      /* We have a special case for REPLACE INTO: pt_node_etc (statement) holds only the inserted row
+		       * but we might have done a delete before. For this case, if err>row_count we will not change the 
+		       * row count */
 		      if (stmt_type == CUBRID_STMT_INSERT)
 			{
-			  if ((DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_OBJECT
-			       && DB_IS_NULL (val))
-			      || (statement->info.insert.do_replace
-				  && row_count > err))
+			  if ((DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_OBJECT && DB_IS_NULL (val))
+			      || (statement->info.insert.do_replace && row_count > err))
 			    {
 			      err = row_count;
 			    }
@@ -2158,9 +2014,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		}
 	      else
 		{
-		  /* avoid changing err. it should have been
-		     meaningfully set. if err = 0, uci_static will set
-		     SQLCA to SQL_NOTFOUND! */
+		  /* avoid changing err. it should have been meaningfully set. if err = 0, uci_static will set SQLCA to 
+		   * SQL_NOTFOUND! */
 		}
 	      break;
 
@@ -2173,10 +2028,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
       *result = qres;
     }				/* if (result) */
 
-  /* Do not override original error id with  */
+  /* Do not override original error id with */
   /* last error checking */
-  if (er_errid () == NO_ERROR
-      && pt_has_error (parser) && err != ER_QPROC_INVALID_XASLNODE)
+  if (er_errid () == NO_ERROR && pt_has_error (parser) && err != ER_QPROC_INVALID_XASLNODE)
     {
       pt_report_to_ersys_with_statement (parser, PT_EXECUTION, statement);
       err = er_errid ();
@@ -2205,15 +2059,13 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 }
 
 static void
-update_execution_values (PARSER_CONTEXT * parser, int result,
-			 CUBRID_STMT_TYPE statement_type)
+update_execution_values (PARSER_CONTEXT * parser, int result, CUBRID_STMT_TYPE statement_type)
 {
   if (result < 0)
     {
       parser->execution_values.row_count = -1;
     }
-  else if (statement_type == CUBRID_STMT_UPDATE
-	   || statement_type == CUBRID_STMT_INSERT
+  else if (statement_type == CUBRID_STMT_UPDATE || statement_type == CUBRID_STMT_INSERT
 	   || statement_type == CUBRID_STMT_DELETE)
     {
       parser->execution_values.row_count = result;
@@ -2226,16 +2078,14 @@ update_execution_values (PARSER_CONTEXT * parser, int result,
 }
 
 static void
-copy_execution_values (EXECUTION_STATE_VALUES * source,
-		       EXECUTION_STATE_VALUES * destination)
+copy_execution_values (EXECUTION_STATE_VALUES * source, EXECUTION_STATE_VALUES * destination)
 {
   assert (destination != NULL && source != NULL);
   destination->row_count = source->row_count;
 }
 
 static int
-values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list,
-			     DB_VALUE_ARRAY * values_array)
+values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list, DB_VALUE_ARRAY * values_array)
 {
   DB_VALUE_ARRAY values;
   PT_NODE *current_value = values_list;
@@ -2245,12 +2095,10 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list,
   values.size = 0;
   values.vals = NULL;
 
-  if (parser == NULL || values_array == NULL || values_array->size != 0
-      || values_array->vals != NULL)
+  if (parser == NULL || values_array == NULL || values_array->size != 0 || values_array->vals != NULL)
     {
       assert (false);
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       err = er_errid ();
       goto error_exit;
     }
@@ -2268,8 +2116,7 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list,
   values.vals = malloc (values.size * sizeof (DB_VALUE));
   if (values.vals == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      values.size * sizeof (DB_VALUE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, values.size * sizeof (DB_VALUE));
       err = er_errid ();
       goto error_exit;
     }
@@ -2278,11 +2125,9 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list,
     {
       db_make_null (&values.vals[i]);
     }
-  for (current_value = values_list, i = 0;
-       current_value != NULL; current_value = current_value->next, ++i)
+  for (current_value = values_list, i = 0; current_value != NULL; current_value = current_value->next, ++i)
     {
-      if (current_value->node_type == PT_EXPR
-	  && current_value->info.expr.op == PT_EVALUATE_VARIABLE)
+      if (current_value->node_type == PT_EXPR && current_value->info.expr.op == PT_EVALUATE_VARIABLE)
 	{
 	  /* this is a session variable */
 	  DB_VALUE val;
@@ -2308,8 +2153,7 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list,
 	  db_val = pt_value_to_db (parser, current_value);
 	  if (db_val == NULL)
 	    {
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		      ER_OBJ_INVALID_ARGUMENTS, 0);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
 	      err = er_errid ();
 	      goto error_exit;
 	    }
@@ -2336,8 +2180,7 @@ error_exit:
 }
 
 static int
-set_prepare_info_into_list (DB_PREPARE_INFO * prepare_info,
-			    PT_NODE * statement)
+set_prepare_info_into_list (DB_PREPARE_INFO * prepare_info, PT_NODE * statement)
 {
   int length = 0;
   PT_NODE *name = NULL;
@@ -2365,8 +2208,7 @@ set_prepare_info_into_list (DB_PREPARE_INFO * prepare_info,
   prepare_info->into_list = (char **) malloc (length * sizeof (char *));
   if (prepare_info->into_list == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      length * sizeof (char *));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length * sizeof (char *));
       goto error;
     }
   name = statement->info.query.into_list;
@@ -2381,17 +2223,14 @@ set_prepare_info_into_list (DB_PREPARE_INFO * prepare_info,
 	    }
 	  else
 	    {
-	      char *into_name =
-		(char *) malloc (strlen (name->info.name.original) + 1);
+	      char *into_name = (char *) malloc (strlen (name->info.name.original) + 1);
 	      if (into_name == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  (size_t) (strlen (name->info.name.original) + 1));
 		  goto error;
 		}
-	      memcpy (into_name, name->info.name.original,
-		      strlen (name->info.name.original));
+	      memcpy (into_name, name->info.name.original, strlen (name->info.name.original));
 	      into_name[strlen (name->info.name.original)] = 0;
 	      prepare_info->into_list[length] = into_name;
 	    }
@@ -2455,9 +2294,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   PT_NODE *prepared_stmt = NULL;
   int include_oids = 0;
   const char *const name = statement->info.prepare.name->info.name.original;
-  const char *const statement_literal =
-    (char *) statement->info.prepare.statement->info.value.data_value.str->
-    bytes;
+  const char *const statement_literal = (char *) statement->info.prepare.statement->info.value.data_value.str->bytes;
   int err = NO_ERROR;
   char *stmt_info = NULL;
   int info_len = 0;
@@ -2498,17 +2335,14 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
 
   if (!is_allowed_as_prepared_statement (prepared_stmt))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_IT_IS_DISALLOWED_AS_PREPARED, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_IS_DISALLOWED_AS_PREPARED, 0);
       err = ER_FAILED;
       goto cleanup;
     }
 
-  if (prepared_session->parser->host_var_count > 0
-      && !is_allowed_as_prepared_statement_with_hv (prepared_stmt))
+  if (prepared_session->parser->host_var_count > 0 && !is_allowed_as_prepared_statement_with_hv (prepared_stmt))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_CANNOT_PREPARE_WITH_HOST_VAR, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_PREPARE_WITH_HOST_VAR, 1,
 	      pt_show_node_type (prepared_session->statements[0]));
       err = ER_FAILED;
       goto cleanup;
@@ -2522,11 +2356,9 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   prepare_info.stmt_type = pt_node_to_cmd_type (prepared_stmt);
   /* set host variables */
   prepare_info.host_variables.size =
-    prepared_session->parser->host_var_count
-    + prepared_session->parser->auto_param_count;
+    prepared_session->parser->host_var_count + prepared_session->parser->auto_param_count;
   prepare_info.host_variables.vals = prepared_session->parser->host_variables;
-  prepare_info.host_var_expected_domains =
-    prepared_session->parser->host_var_expected_domains;
+  prepare_info.host_var_expected_domains = prepared_session->parser->host_var_expected_domains;
   /* set autoparam count */
   prepare_info.auto_param_count = prepared_session->parser->auto_param_count;
   /* set recompile */
@@ -2550,8 +2382,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
     }
   info_len = err;
 
-  err = csession_create_prepared_statement (name, prepared_stmt->alias_print,
-					    stmt_info, info_len);
+  err = csession_create_prepared_statement (name, prepared_stmt->alias_print, stmt_info, info_len);
 
 cleanup:
   if (err < 0 && name != NULL)
@@ -2609,9 +2440,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
   db_init_prepare_info (&prepare_info);
 
   name = statement->info.execute.name->info.name.original;
-  err =
-    csession_get_prepared_statement (name, &xasl_id, &stmt_info,
-				     &xasl_header);
+  err = csession_get_prepared_statement (name, &xasl_id, &stmt_info, &xasl_header);
   if (err != NO_ERROR)
     {
       return err;
@@ -2631,14 +2460,12 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
   session->type_list[stmt_idx] = prepare_info.columns;
 
   statement->info.execute.into_list =
-    char_array_to_name_list (session->parser, prepare_info.into_list,
-			     prepare_info.into_count);
+    char_array_to_name_list (session->parser, prepare_info.into_list, prepare_info.into_count);
 
   statement->info.execute.stmt_type = prepare_info.stmt_type;
 
   /* set query */
-  statement->info.execute.query =
-    pt_make_string_value (parser, prepare_info.statement);
+  statement->info.execute.query = pt_make_string_value (parser, prepare_info.statement);
   if (statement->info.execute.query == NULL)
     {
       PT_INTERNAL_ERROR (parser, "allocate new node");
@@ -2649,8 +2476,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
   XASL_ID_COPY (&statement->info.execute.xasl_id, &xasl_id);
 
   /* restore host variables used by this statement */
-  for (i = 0, hv = parser->host_variables;
-       i < parser->host_var_count + parser->auto_param_count; i++, hv++)
+  for (i = 0, hv = parser->host_variables; i < parser->host_var_count + parser->auto_param_count; i++, hv++)
     {
       pr_clear_value (hv);
     }
@@ -2671,11 +2497,9 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
   parser->auto_param_count = prepare_info.auto_param_count;
   parser->host_variables = prepare_info.host_variables.vals;
   parser->host_var_expected_domains = prepare_info.host_var_expected_domains;
-  parser->host_var_count =
-    prepare_info.host_variables.size - prepare_info.auto_param_count;
+  parser->host_var_count = prepare_info.host_variables.size - prepare_info.auto_param_count;
 
-  err = do_set_user_host_variables (session,
-				    statement->info.execute.using_list);
+  err = do_set_user_host_variables (session, statement->info.execute.using_list);
   if (err != NO_ERROR)
     {
       goto cleanup;
@@ -2685,21 +2509,16 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
   parser->auto_param_count = 0;
   parser->set_host_var = 1;
 
-  /* Multi range optimization check:
-   * if host-variables were used (not auto-parameterized), the orderby_num ()
-   * limit may change and invalidate or validate multi range optimization.
-   * Check if query needs to be recompiled.
-   */
+  /* Multi range optimization check: if host-variables were used (not auto-parameterized), the orderby_num () limit may 
+   * change and invalidate or validate multi range optimization. Check if query needs to be recompiled. */
   if (!XASL_ID_IS_NULL (&xasl_id)	/* xasl_id should not be null */
       && !statement->info.execute.recompile	/* recompile is already planned */
       && (prepare_info.host_variables.size > prepare_info.auto_param_count))
     {
       /* query has to be multi range opt candidate */
-      if (xasl_header.xasl_flag & (MRO_CANDIDATE | MRO_IS_USED
-				   | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED))
+      if (xasl_header.xasl_flag & (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED))
 	{
-	  if (db_check_limit_need_recompile (parser, statement,
-					     xasl_header.xasl_flag))
+	  if (db_check_limit_need_recompile (parser, statement, xasl_header.xasl_flag))
 	    {
 	      /* need recompile, set XASL_ID to NULL */
 	      XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
@@ -2752,18 +2571,16 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
     {
       hv = &host_vars[i];
       hv_dom = expected_domains[i];
-      if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN
-	  || hv_dom->type->id == DB_TYPE_ENUMERATION)
+      if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN || hv_dom->type->id == DB_TYPE_ENUMERATION)
 	{
 	  /* skip casting enum and unknown type values */
 	  continue;
 	}
-      if (tp_value_cast_preserve_domain (hv, hv, hv_dom, false, true) !=
-	  DOMAIN_COMPATIBLE)
+      if (tp_value_cast_preserve_domain (hv, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	{
 	  d = pt_type_enum_to_db_domain (TP_DOMAIN_TYPE (hv_dom));
-	  PT_ERRORmf2 (session->parser, NULL, MSGCAT_SET_PARSER_SEMANTIC,
-		       MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var", d);
+	  PT_ERRORmf2 (session->parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
+		       d);
 	  tp_domain_free (d);
 	  pt_report_to_ersys (session->parser, PT_EXECUTION);
 	  pt_reset_error (session->parser);
@@ -2791,8 +2608,7 @@ do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
   values_array.size = 0;
   values_array.vals = NULL;
 
-  if (values_list_to_values_array (session->parser, using_list, &values_array)
-      != NO_ERROR)
+  if (values_list_to_values_array (session->parser, using_list, &values_array) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -2801,8 +2617,7 @@ do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
   if (session->parser->host_var_count != values_array.size)
     {
       err = ER_IT_INCORRECT_HOSTVAR_COUNT;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, values_array.size,
-	      session->parser->host_var_count);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, values_array.size, session->parser->host_var_count);
     }
   else
     {
@@ -2830,8 +2645,7 @@ do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
  *	 without doing a full statement recompile.
  */
 static bool
-db_check_limit_need_recompile (PARSER_CONTEXT * parent_parser,
-			       PT_NODE * statement, int xasl_flag)
+db_check_limit_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * statement, int xasl_flag)
 {
   DB_SESSION *session = NULL;
   PT_NODE *query = NULL, *limit = NULL, *orderby_for = NULL;
@@ -2855,9 +2669,7 @@ db_check_limit_need_recompile (PARSER_CONTEXT * parent_parser,
   assert (statement->info.execute.query->node_type == PT_VALUE);
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
-  session =
-    db_open_buffer_local ((char *) statement->info.execute.query->info.value.
-			  data_value.str->bytes);
+  session = db_open_buffer_local ((char *) statement->info.execute.query->info.value.data_value.str->bytes);
   if (session == NULL)
     {
       /* error opening session */
@@ -2880,14 +2692,12 @@ db_check_limit_need_recompile (PARSER_CONTEXT * parent_parser,
   save_host_var_expected_domains = session->parser->host_var_expected_domains;
 
   session->parser->host_variables = parent_parser->host_variables;
-  session->parser->host_var_expected_domains =
-    parent_parser->host_var_expected_domains;
+  session->parser->host_var_expected_domains = parent_parser->host_var_expected_domains;
   session->parser->host_var_count = parent_parser->host_var_count;
   session->parser->auto_param_count = parent_parser->auto_param_count;
   session->parser->set_host_var = 1;
 
-  if (pt_recompile_for_limit_optimizations (session->parser, query,
-					    xasl_flag))
+  if (pt_recompile_for_limit_optimizations (session->parser, query, xasl_flag))
     {
       /* need recompile */
       do_recompile = true;
@@ -2918,9 +2728,7 @@ exit:
  * result (out)   : execution result
  */
 static int
-do_recompile_and_execute_prepared_statement (DB_SESSION * session,
-					     PT_NODE * statement,
-					     DB_QUERY_RESULT ** result)
+do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement, DB_QUERY_RESULT ** result)
 {
   int err = NO_ERROR;
   int idx = 0;
@@ -2928,9 +2736,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session,
   assert (statement->info.execute.query->node_type == PT_VALUE);
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
-  new_session =
-    db_open_buffer_local ((char *) statement->info.execute.query->info.value.
-			  data_value.str->bytes);
+  new_session = db_open_buffer_local ((char *) statement->info.execute.query->info.value.data_value.str->bytes);
   if (new_session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -2952,15 +2758,12 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session,
 
   if (statement->info.execute.recompile)
     {
-      new_session->statements[0]->recompile =
-	statement->info.execute.recompile;
+      new_session->statements[0]->recompile = statement->info.execute.recompile;
     }
 
   /* set host variable values in new session */
   assert (session->parser->set_host_var == 1);
-  err =
-    do_set_user_host_variables (new_session,
-				statement->info.execute.using_list);
+  err = do_set_user_host_variables (new_session, statement->info.execute.using_list);
   if (err != NO_ERROR)
     {
       return err;
@@ -3100,8 +2903,7 @@ db_has_modified_class (DB_SESSION * session, int stmt_id)
  * result(out): query results descriptor
  */
 int
-db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx,
-			       DB_QUERY_RESULT ** result)
+db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
 {
   int err;
 
@@ -3134,16 +2936,14 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx,
  *    not be executed again.
  */
 int
-db_execute_statement_local (DB_SESSION * session, int stmt_ndx,
-			    DB_QUERY_RESULT ** result)
+db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
 {
   int err;
   PT_NODE *statement;
 
   if (session == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -3152,8 +2952,7 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx,
   statement = session->statements[stmt_ndx - 1];
   if (statement != NULL)
     {
-      /* free XASL_ID allocated by query_prepare()
-         before freeing the statement */
+      /* free XASL_ID allocated by query_prepare() before freeing the statement */
       pt_free_statement_xasl_id (statement);
       parser_free_tree (session->parser, statement);
       session->statements[stmt_ndx - 1] = NULL;
@@ -3176,8 +2975,7 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx,
  *	 execution. Otherwise, db_execute_statement_local should be used.
  */
 int
-db_execute_statement (DB_SESSION * session, int stmt_ndx,
-		      DB_QUERY_RESULT ** result)
+db_execute_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
 {
   int err;
 
@@ -3206,11 +3004,8 @@ db_execute_statement (DB_SESSION * session, int stmt_ndx,
  * stmt_no (out)	 : Compiled statement number.
  */
 int
-db_open_buffer_and_compile_first_statement (const char *CSQL_query,
-					    DB_QUERY_ERROR * query_error,
-					    int include_oid,
-					    DB_SESSION ** session,
-					    int *stmt_no)
+db_open_buffer_and_compile_first_statement (const char *CSQL_query, DB_QUERY_ERROR * query_error, int include_oid,
+					    DB_SESSION ** session, int *stmt_no)
 {
   int error = NO_ERROR;
   DB_SESSION_ERROR *errs;
@@ -3270,19 +3065,12 @@ db_open_buffer_and_compile_first_statement (const char *CSQL_query,
  *	 targeted for internal execution calls only!.
  */
 int
-db_compile_and_execute_local (const char *CSQL_query, void *result,
-			      DB_QUERY_ERROR * query_error)
+db_compile_and_execute_local (const char *CSQL_query, void *result, DB_QUERY_ERROR * query_error)
 {
-  /* Default local compile & execute statements will use:
-   * - No oids for include OID mode.
-   * - True for execution, not compile only.
-   * - Synchronous execution.
-   * - This is called during other statement execution, so false for new
-   *   statements.
-   */
-  return db_compile_and_execute_queries_internal (CSQL_query, result,
-						  query_error, DB_NO_OIDS, 1,
-						  SYNC_EXEC, false);
+  /* Default local compile & execute statements will use: - No oids for include OID mode. - True for execution, not
+   * compile only. - Synchronous execution. - This is called during other statement execution, so false for new
+   * statements. */
+  return db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 1, SYNC_EXEC, false);
 }
 
 /*
@@ -3306,12 +3094,8 @@ db_compile_and_execute_local (const char *CSQL_query, void *result,
  *	 must be invalidated.
  */
 int
-db_compile_and_execute_queries_internal (const char *CSQL_query,
-					 void *result,
-					 DB_QUERY_ERROR * query_error,
-					 int include_oid, int execute,
-					 QUERY_EXEC_MODE exec_mode,
-					 bool is_new_statement)
+db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, DB_QUERY_ERROR * query_error,
+					 int include_oid, int execute, QUERY_EXEC_MODE exec_mode, bool is_new_statement)
 {
   int error;			/* return code from funcs */
   int stmt_no;			/* compiled stmt number */
@@ -3324,10 +3108,7 @@ db_compile_and_execute_queries_internal (const char *CSQL_query,
     }
 
   /* Open buffer and compile first statement */
-  error =
-    db_open_buffer_and_compile_first_statement (CSQL_query, query_error,
-						include_oid, &session,
-						&stmt_no);
+  error = db_open_buffer_and_compile_first_statement (CSQL_query, query_error, include_oid, &session, &stmt_no);
   if (session == NULL)
     {
       /* In case of error, the session is freed */
@@ -3338,7 +3119,7 @@ db_compile_and_execute_queries_internal (const char *CSQL_query,
   /* Pass exec_mode (used for Streaming (asynchronous) queries */
   db_set_sync_flag (session, exec_mode);
 #else
-  /*
+  /* 
    * In standalone mode, only synchronous queries are supported because there
    * is no thread support in the standalone case.
    */
@@ -3347,22 +3128,17 @@ db_compile_and_execute_queries_internal (const char *CSQL_query,
 
   if (execute)
     {
-      /* Execute query and compile next one as long as there are statements
-       * left.
-       */
+      /* Execute query and compile next one as long as there are statements left. */
       while (stmt_no > 0)
 	{
 	  /* Execute current query */
-	  error =
-	    db_execute_statement_local (session, stmt_no,
-					(DB_QUERY_RESULT **) result);
+	  error = db_execute_statement_local (session, stmt_no, (DB_QUERY_RESULT **) result);
 	  if (error < 0)
 	    {
 	      break;
 	    }
-	  /* Need to compile and execute next query. Make sure that current
-	   * MVCC Snapshot is invalidated for READ COMMITTED isolation.
-	   */
+	  /* Need to compile and execute next query. Make sure that current MVCC Snapshot is invalidated for READ
+	   * COMMITTED isolation. */
 	  if (is_new_statement)
 	    {
 	      db_invalidate_mvcc_snapshot_after_statement ();
@@ -3407,8 +3183,7 @@ db_set_system_generated_statement (DB_SESSION * session)
 
   if (session == NULL || session->parser == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -3522,8 +3297,7 @@ db_close_session_local (DB_SESSION * session)
     {
       DB_VALUE *hv;
 
-      for (i = 0, hv = parser->host_variables;
-	   i < parser->host_var_count + parser->auto_param_count; i++, hv++)
+      for (i = 0, hv = parser->host_variables; i < parser->host_var_count + parser->auto_param_count; i++, hv++)
 	{
 	  db_value_clear (hv);
 	}
@@ -3580,15 +3354,13 @@ db_get_all_chosen_classes (int (*p) (MOBJ o))
       /* make sure we have a user */
       last = NULL;
       lmops = locator_get_all_class_mops (DB_FETCH_READ, p);
-      /* probably should make sure
-       * we push here because the list could be long */
+      /* probably should make sure we push here because the list could be long */
       if (lmops != NULL)
 	{
 	  for (i = 0; i < lmops->num; i++)
 	    {
 	      /* is it necessary to have this check ? */
-	      if (!WS_IS_DELETED (lmops->mops[i])
-		  && lmops->mops[i] != sm_Root_class_mop)
+	      if (!WS_IS_DELETED (lmops->mops[i]) && lmops->mops[i] != sm_Root_class_mop)
 		{
 		  /* should have a ext_ append function */
 		  new_ = ml_ext_alloc_link ();
@@ -3734,9 +3506,7 @@ get_reasonable_predicate (DB_ATTRIBUTE * att)
   static char predicate[300];
   const char *att_name, *cond;
 
-  if (!att
-      || db_attribute_is_shared (att)
-      || !(att_name = db_attribute_name (att)))
+  if (!att || db_attribute_is_shared (att) || !(att_name = db_attribute_name (att)))
     {
       return NULL;
     }
@@ -3826,8 +3596,7 @@ db_validate (DB_OBJECT * vc)
 
   if (!vc)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       retval = er_errid ();
     }
   else
@@ -3845,8 +3614,7 @@ db_validate (DB_OBJECT * vc)
       else
 	{
 
-	  for (specs = db_get_query_specs (vc);
-	       specs; specs = db_query_spec_next (specs))
+	  for (specs = db_get_query_specs (vc); specs; specs = db_query_spec_next (specs))
 	    {
 	      s = db_query_spec_string (specs);
 	      if (s)
@@ -3883,9 +3651,7 @@ db_validate (DB_OBJECT * vc)
 		  newbuf = (char *) malloc (limit * sizeof (char));
 		  if (newbuf == NULL)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      limit * sizeof (char));
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, limit * sizeof (char));
 		      break;	/* ran out of memory */
 		    }
 
@@ -3990,16 +3756,10 @@ db_get_parameters (DB_SESSION * session, int statement_id)
   DB_PARAMETER *result = NULL;
   DB_NODE *statement;
 
-  if (!session
-      || !session->parser
-      || !session->statements
-      || statement_id < 1
-      || statement_id > session->dimension
-      || !(statement = session->statements[statement_id - 1])
-      || pt_has_error (session->parser))
+  if (!session || !session->parser || !session->statements || statement_id < 1 || statement_id > session->dimension
+      || !(statement = session->statements[statement_id - 1]) || pt_has_error (session->parser))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       result = NULL;
     }
   else
@@ -4092,8 +3852,7 @@ db_query_produce_updatable_result (DB_SESSION * session, int stmt_ndx)
   statement = session->statements[--stmt_ndx];
   if (stmt_ndx < 0 || stmt_ndx >= session->dimension || !statement)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-	      ER_OBJ_INVALID_ARGUMENTS, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return er_errid ();
     }
   /* check if the statement is compiled and prepared */
@@ -4144,8 +3903,7 @@ db_is_query_async_executable (DB_SESSION * session, int stmt_ndx)
   statement = session->statements[--stmt_ndx];
   if (stmt_ndx < 0 || stmt_ndx >= session->dimension || !statement)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-	      ER_OBJ_INVALID_ARGUMENTS, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return false;
     }
   /* check if the statement is compiled and prepared */
@@ -4160,9 +3918,9 @@ db_is_query_async_executable (DB_SESSION * session, int stmt_ndx)
       return false;
     }
 
-  sync = ((pt_statement_have_methods (session->parser, statement)
-	   || (statement->node_type == PT_SELECT
-	       && statement->is_click_counter)) ? true : false);
+  sync =
+    ((pt_statement_have_methods (session->parser, statement)
+      || (statement->node_type == PT_SELECT && statement->is_click_counter)) ? true : false);
 
   return !sync;
 #endif
@@ -4192,12 +3950,10 @@ db_invalidate_mvcc_snapshot_after_statement (void)
       return;
     }
 
-  /* set value of tm_Tran_invalidate_snapshot to 1 in order to invalidate
-   * the snapshot next time when we go to server.
-   */
+  /* set value of tm_Tran_invalidate_snapshot to 1 in order to invalidate the snapshot next time when we go to server. */
 
   tm_Tran_invalidate_snapshot = 1;
-  
+
   /* Increment snapshot version in work space */
   ws_increment_mvcc_snapshot_version ();
 }
@@ -4209,8 +3965,7 @@ db_invalidate_mvcc_snapshot_after_statement (void)
  * read_Fetch_Instance_Version(in): read fetch instance version to set
  */
 void
-db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE
-				    read_Fetch_Instance_Version)
+db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Version)
 {
   tm_Tran_read_fetch_instance_version = read_Fetch_Instance_Version;
 }

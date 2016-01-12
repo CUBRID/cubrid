@@ -142,7 +142,7 @@ permute_args (nonopt_start, nonopt_end, opt_end, nargv)
   int cstart, cyclelen, i, j, ncycle, nnonopts, nopts, pos;
   char *swap;
 
-  /*
+  /* 
    * compute lengths of blocks and number and size of cycles
    */
   nnonopts = nonopt_end - nonopt_start;
@@ -188,7 +188,7 @@ getopt_internal (nargc, nargv, options)
 
   optarg = NULL;
 
-  /*
+  /* 
    * XXX Some programs (like rsyncd) expect to be able to
    * XXX re-initialize optind to 0 and have getopt_long(3)
    * XXX properly function again.  Work around this braindamage.
@@ -213,7 +213,7 @@ start:
 	    }
 	  else if (nonopt_start != -1)
 	    {
-	      /*
+	      /* 
 	       * If we skipped non-options, set optind
 	       * to the first of them.
 	       */
@@ -227,7 +227,7 @@ start:
 	  place = EMSG;
 	  if (IN_ORDER)
 	    {
-	      /*
+	      /* 
 	       * GNU extension: 
 	       * return non-option as argument to option 1
 	       */
@@ -236,7 +236,7 @@ start:
 	    }
 	  if (!PERMUTE)
 	    {
-	      /*
+	      /* 
 	       * if no permutation wanted, stop parsing
 	       * at first non-option
 	       */
@@ -263,8 +263,7 @@ start:
 	  return -2;
 	}
     }
-  if ((optchar = (int) *place++) == (int) ':' ||
-      (oli = strchr (options + (IGNORE_FIRST ? 1 : 0), optchar)) == NULL)
+  if ((optchar = (int) *place++) == (int) ':' || (oli = strchr (options + (IGNORE_FIRST ? 1 : 0), optchar)) == NULL)
     {
       /* option letter unknown or ':' */
       if (!*place)
@@ -291,7 +290,7 @@ start:
 	}
       else			/* white space */
 	place = nargv[optind];
-      /*
+      /* 
        * Handle -W arg the same as --arg (which causes getopt to
        * stop parsing).
        */
@@ -349,7 +348,7 @@ getopt (nargc, nargv, options)
   if ((retval = getopt_internal (nargc, nargv, options)) == -2)
     {
       ++optind;
-      /*
+      /* 
        * We found an option (--), so if we skipped non-options,
        * we have to permute.
        */
@@ -400,7 +399,7 @@ getopt_long (nargc, nargv, options, long_options, idx)
 
       if (*current_argv == '\0')
 	{			/* found "--" */
-	  /*
+	  /* 
 	   * We found an option (--), so if we skipped
 	   * non-options, we have to permute.
 	   */
@@ -450,7 +449,7 @@ getopt_long (nargc, nargv, options, long_options, idx)
 	    {
 	      if (PRINT_ERROR)
 		xwarnx (noarg, (int) current_argv_len, current_argv);
-	      /*
+	      /* 
 	       * XXX: GNU sets optopt to val regardless of
 	       * flag
 	       */
@@ -461,30 +460,28 @@ getopt_long (nargc, nargv, options, long_options, idx)
 	      /* XXX: GNU returns '?' if options[0] != ':' */
 	      return BADARG;
 	    }
-	  if (long_options[match].has_arg == required_argument ||
-	      long_options[match].has_arg == optional_argument)
+	  if (long_options[match].has_arg == required_argument || long_options[match].has_arg == optional_argument)
 	    {
 	      if (has_equal)
 		optarg = has_equal;
 	      else if (long_options[match].has_arg == required_argument)
 		{
-		  /*
+		  /* 
 		   * optional argument doesn't use
 		   * next nargv
 		   */
 		  optarg = nargv[optind++];
 		}
 	    }
-	  if ((long_options[match].has_arg == required_argument)
-	      && (optarg == NULL))
+	  if ((long_options[match].has_arg == required_argument) && (optarg == NULL))
 	    {
-	      /*
+	      /* 
 	       * Missing argument; leading ':'
 	       * indicates no error should be generated
 	       */
 	      if (PRINT_ERROR)
 		xwarnx (recargstring, current_argv);
-	      /*
+	      /* 
 	       * XXX: GNU sets optopt to val regardless
 	       * of flag
 	       */

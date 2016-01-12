@@ -60,8 +60,7 @@ struct qdump_xasl_check_node
 
 static bool qdump_print_xasl_type (XASL_NODE * xasl);
 static bool qdump_print_db_value_array (DB_VALUE ** array, int cnt);
-static bool qdump_print_column (const char *title_p, int col_count,
-				int *column_p);
+static bool qdump_print_column (const char *title_p, int col_count, int *column_p);
 static bool qdump_print_list_merge_info (QFILE_LIST_MERGE_INFO * ptr);
 static bool qdump_print_merge_list_proc_node (MERGELIST_PROC_NODE * ptr);
 static bool qdump_print_update_proc_node (UPDATE_PROC_NODE * ptr);
@@ -110,14 +109,9 @@ static const char *qdump_bool_operator_string (BOOL_OP bool_op);
 static bool qdump_print_lhs_predicate (PRED_EXPR * pred_p);
 #if defined(CUBRID_DEBUG)
 static QDUMP_XASL_CHECK_NODE *qdump_find_check_node_for (XASL_NODE * xasl,
-							 QDUMP_XASL_CHECK_NODE
-							 *
-							 chk_nodes
-							 [HASH_NUMBER]);
-static void qdump_check_node (XASL_NODE * xasl,
-			      QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER]);
-static int qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE *
-					chk_nodes[HASH_NUMBER]);
+							 QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER]);
+static void qdump_check_node (XASL_NODE * xasl, QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER]);
+static int qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER]);
 #endif /* CUBRID_DEBUG */
 
 /*
@@ -239,21 +233,15 @@ qdump_print_list_merge_info (QFILE_LIST_MERGE_INFO * merge_info_p)
   fprintf (foutput, "[join type:%d]", merge_info_p->join_type);
   fprintf (foutput, "[single fetch:%d]\n", merge_info_p->single_fetch);
 
-  qdump_print_column ("outer column position", merge_info_p->ls_column_cnt,
-		      merge_info_p->ls_outer_column);
-  qdump_print_column ("outer column is unique", merge_info_p->ls_column_cnt,
-		      merge_info_p->ls_outer_unique);
-  qdump_print_column ("inner column position", merge_info_p->ls_column_cnt,
-		      merge_info_p->ls_inner_column);
-  qdump_print_column ("inner column is unique", merge_info_p->ls_column_cnt,
-		      merge_info_p->ls_inner_unique);
+  qdump_print_column ("outer column position", merge_info_p->ls_column_cnt, merge_info_p->ls_outer_column);
+  qdump_print_column ("outer column is unique", merge_info_p->ls_column_cnt, merge_info_p->ls_outer_unique);
+  qdump_print_column ("inner column position", merge_info_p->ls_column_cnt, merge_info_p->ls_inner_column);
+  qdump_print_column ("inner column is unique", merge_info_p->ls_column_cnt, merge_info_p->ls_inner_unique);
 
   fprintf (foutput, "\n[output column count:%d]", merge_info_p->ls_pos_cnt);
 
-  qdump_print_column ("output columns", merge_info_p->ls_pos_cnt,
-		      merge_info_p->ls_pos_list);
-  qdump_print_column ("outer/inner indicators", merge_info_p->ls_pos_cnt,
-		      merge_info_p->ls_outer_inner_list);
+  qdump_print_column ("output columns", merge_info_p->ls_pos_cnt, merge_info_p->ls_pos_list);
+  qdump_print_column ("outer/inner indicators", merge_info_p->ls_pos_cnt, merge_info_p->ls_outer_inner_list);
 
   return true;
 }
@@ -313,8 +301,7 @@ qdump_print_attribute (const char *action_p, int attr_count, int *attr_ids_p)
 
   for (i = 0; i < attr_count; i++)
     {
-      fprintf (foutput, "%d%c", attr_ids_p[i],
-	       i == attr_count - 1 ? ']' : ',');
+      fprintf (foutput, "%d%c", attr_ids_p[i], i == attr_count - 1 ? ']' : ',');
     }
 
   return true;
@@ -365,8 +352,7 @@ qdump_print_delete_proc_node (DELETE_PROC_NODE * node_p)
 {
   int i, j;
   int hfid_count = 0;
-  /* actual number of HFID's is no_classes + number of subclasses for each
-   * class */
+  /* actual number of HFID's is no_classes + number of subclasses for each class */
 
 
   for (i = 0; i < node_p->no_classes; ++i)
@@ -400,9 +386,7 @@ qdump_print_delete_proc_node (DELETE_PROC_NODE * node_p)
 static bool
 qdump_print_insert_proc_node (INSERT_PROC_NODE * node_p)
 {
-  fprintf (foutput, "class oid[%d %d %d]",
-	   node_p->class_oid.pageid, node_p->class_oid.slotid,
-	   node_p->class_oid.volid);
+  fprintf (foutput, "class oid[%d %d %d]", node_p->class_oid.pageid, node_p->class_oid.slotid, node_p->class_oid.volid);
 
   qdump_print_hfid (node_p->class_hfid);
   qdump_print_attribute ("insert", node_p->no_vals, node_p->att_id);
@@ -590,8 +574,7 @@ qdump_print_key_info (KEY_INFO * key_info_p)
   fprintf (foutput, "key ranges:");
   for (i = 0; i < key_info_p->key_cnt; i++)
     {
-      fprintf (foutput, "<%s>",
-	       qdump_key_range_string (key_info_p->key_ranges[i].range));
+      fprintf (foutput, "<%s>", qdump_key_range_string (key_info_p->key_ranges[i].range));
 
       fprintf (foutput, "[");
       if (!qdump_print_value (key_info_p->key_ranges[i].key1))
@@ -679,14 +662,12 @@ qdump_print_index_id (INDX_ID id)
   if (id.type == T_BTID)
     {
       fprintf (foutput, "<type: Btree>");
-      fprintf (foutput, "(%d;%d)", id.i.btid.vfid.fileid,
-	       id.i.btid.vfid.volid);
+      fprintf (foutput, "(%d;%d)", id.i.btid.vfid.fileid, id.i.btid.vfid.volid);
     }
   else
     {
       fprintf (foutput, "<type: Extendible Hashing>");
-      fprintf (foutput, "<%d;%d;%d>", id.i.ehid.vfid.volid,
-	       id.i.ehid.vfid.fileid, id.i.ehid.pageid);
+      fprintf (foutput, "<%d;%d;%d>", id.i.ehid.vfid.volid, id.i.ehid.vfid.fileid, id.i.ehid.pageid);
     }
 
   return true;
@@ -700,8 +681,7 @@ qdump_print_index_id (INDX_ID id)
 static bool
 qdump_print_btid (BTID id)
 {
-  fprintf (foutput, "<Btree:(%d;%d;%d)>", id.vfid.fileid,
-	   id.vfid.volid, id.root_pageid);
+  fprintf (foutput, "<Btree:(%d;%d;%d)>", id.vfid.fileid, id.vfid.volid, id.root_pageid);
   return true;
 }
 
@@ -714,9 +694,7 @@ static bool
 qdump_print_class (CLS_SPEC_TYPE * class_p)
 {
   qdump_print_hfid (class_p->hfid);
-  fprintf (foutput, "oid[%d %d %d]",
-	   class_p->cls_oid.pageid, class_p->cls_oid.slotid,
-	   class_p->cls_oid.volid);
+  fprintf (foutput, "oid[%d %d %d]", class_p->cls_oid.pageid, class_p->cls_oid.slotid, class_p->cls_oid.volid);
   fprintf (foutput, "\n	regu_list_key:");
   qdump_print_regu_variable_list (class_p->cls_regu_list_key);
   fprintf (foutput, "\n	regu_list_pred:");
@@ -879,8 +857,7 @@ qdump_print_domain_list (int cnt, TP_DOMAIN ** domains_p)
 
   for (i = 0; i < cnt; i++)
     {
-      fprintf (foutput, "%s; ",
-	       qdump_data_type_string (TP_DOMAIN_TYPE (domains_p[i])));
+      fprintf (foutput, "%s; ", qdump_data_type_string (TP_DOMAIN_TYPE (domains_p[i])));
     }
 
   return true;
@@ -973,9 +950,7 @@ qdump_print_value_list (VAL_LIST * value_list_p)
   while (dbval_list != NULL)
     {
       fprintf (foutput, "addr:%p|", dbval_list->val);
-      fprintf (foutput, "type:%s",
-	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
-				       (dbval_list->val)));
+      fprintf (foutput, "type:%s", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (dbval_list->val)));
       fprintf (foutput, "|value:");
 
       if (!qdump_print_db_value (dbval_list->val))
@@ -1429,8 +1404,7 @@ qdump_print_function_value (REGU_VARIABLE * regu_var_p)
     }
 
   fprintf (foutput, "[TYPE_FUNC]");
-  fprintf (foutput, "[%s]",
-	   qdump_function_type_string (regu_var_p->value.funcp->ftype));
+  fprintf (foutput, "[%s]", qdump_function_type_string (regu_var_p->value.funcp->ftype));
   fprintf (foutput, "operand-->");
   qdump_print_regu_variable_list (regu_var_p->value.funcp->operand);
 
@@ -1506,8 +1480,7 @@ qdump_print_value_type_addr (REGU_VARIABLE * regu_var_p)
 static bool
 qdump_print_oid (OID * oid_p)
 {
-  fprintf (foutput, "[OID:%d,%d,%d]",
-	   oid_p->pageid, oid_p->slotid, oid_p->volid);
+  fprintf (foutput, "[OID:%d,%d,%d]", oid_p->pageid, oid_p->slotid, oid_p->volid);
   return true;
 }
 
@@ -1519,8 +1492,7 @@ qdump_print_comp_eval_term (EVAL_TERM * term_p)
   fprintf (foutput, "[TYPE:%s]", qdump_data_type_string (et_comp_p->type));
 
   qdump_print_value (et_comp_p->lhs);
-  fprintf (foutput, " %s ",
-	   qdump_relation_operator_string (et_comp_p->rel_op));
+  fprintf (foutput, " %s ", qdump_relation_operator_string (et_comp_p->rel_op));
 
   if (et_comp_p->rhs != NULL)
     {
@@ -1535,12 +1507,10 @@ qdump_print_alsm_eval_term (EVAL_TERM * term_p)
 {
   ALSM_EVAL_TERM *et_alsm_p = &term_p->et.et_alsm;
 
-  fprintf (foutput, "[ITEM TYPE:%s]",
-	   qdump_data_type_string (et_alsm_p->item_type));
+  fprintf (foutput, "[ITEM TYPE:%s]", qdump_data_type_string (et_alsm_p->item_type));
 
   qdump_print_value (et_alsm_p->elem);
-  fprintf (foutput, " %s ",
-	   qdump_relation_operator_string (et_alsm_p->rel_op));
+  fprintf (foutput, " %s ", qdump_relation_operator_string (et_alsm_p->rel_op));
 
   switch (et_alsm_p->eq_flag)
     {
@@ -1591,9 +1561,9 @@ qdump_print_rlike_eval_term (EVAL_TERM * term_p)
 
   fprintf (foutput, "SOURCE");
   qdump_print_value (et_rlike_p->src);
-  fprintf (foutput, (et_rlike_p->case_sensitive->value.dbval.data.i ?
-		     "PATTERN (CASE SENSITIVE):" :
-		     "PATTERN (CASE INSENSITIVE):"));
+  fprintf (foutput,
+	   (et_rlike_p->case_sensitive->value.dbval.data.
+	    i ? "PATTERN (CASE SENSITIVE):" : "PATTERN (CASE INSENSITIVE):"));
 
   if (!qdump_print_value (et_rlike_p->pattern))
     {
@@ -1700,8 +1670,7 @@ qdump_print_lhs_predicate (PRED_EXPR * pred_p)
       return false;
     }
 
-  fprintf (foutput, " %s ",
-	   qdump_bool_operator_string (pred_p->pe.pred.bool_op));
+  fprintf (foutput, " %s ", qdump_bool_operator_string (pred_p->pe.pred.bool_op));
 
   return true;
 }
@@ -1732,8 +1701,7 @@ qdump_print_predicate (PRED_EXPR * pred_p)
       parn_cnt = 1;
 
       /* Traverse right-linear chains of AND/OR terms */
-      for (pred_p = pred_p->pe.pred.rhs; pred_p->type == T_PRED;
-	   pred_p = pred_p->pe.pred.rhs)
+      for (pred_p = pred_p->pe.pred.rhs; pred_p->type == T_PRED; pred_p = pred_p->pe.pred.rhs)
 	{
 	  if (qdump_print_lhs_predicate (pred_p) == false)
 	    {
@@ -1846,8 +1814,7 @@ qdump_arith_operator_string (OPERATOR_TYPE opcode)
 static bool
 qdump_print_arith_expression (ARITH_TYPE * arith_p)
 {
-  fprintf (foutput, "[%s]",
-	   qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (arith_p->value)));
+  fprintf (foutput, "[%s]", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (arith_p->value)));
 
   if (arith_p->opcode == T_UNMINUS
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -1875,7 +1842,7 @@ qdump_print_arith_expression (ARITH_TYPE * arith_p)
     }
   else
     {
-      /*binary op */
+      /* binary op */
 
       fprintf (foutput, "(");
       if (!qdump_print_value (arith_p->leftptr))
@@ -1907,9 +1874,7 @@ qdump_print_arith_expression (ARITH_TYPE * arith_p)
 static bool
 qdump_print_aggregate_expression (AGGREGATE_TYPE * aggptr)
 {
-  fprintf (foutput, "[%s]",
-	   qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
-				   (aggptr->accumulator.value)));
+  fprintf (foutput, "[%s]", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (aggptr->accumulator.value)));
 
   fprintf (foutput, "%s(", qdump_function_type_string (aggptr->function));
 
@@ -2002,16 +1967,14 @@ qdump_check_xasl_tree (XASL_NODE * xasl_p)
  *   chk_nodes(in):
  */
 static QDUMP_XASL_CHECK_NODE *
-qdump_find_check_node_for (XASL_NODE * xasl_p,
-			   QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER])
+qdump_find_check_node_for (XASL_NODE * xasl_p, QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER])
 {
   UINTPTR access_node_hash;
   QDUMP_XASL_CHECK_NODE *check_node_p;
 
   access_node_hash = (UINTPTR) xasl_p % HASH_NUMBER;
 
-  for (check_node_p = chk_nodes[access_node_hash]; check_node_p;
-       check_node_p = check_node_p->next)
+  for (check_node_p = chk_nodes[access_node_hash]; check_node_p; check_node_p = check_node_p->next)
     {
       if (check_node_p->xasl_addr == (UINTPTR) xasl_p)
 	{
@@ -2022,8 +1985,7 @@ qdump_find_check_node_for (XASL_NODE * xasl_p,
   if (!check_node_p)
     {
       /* forward reference */
-      check_node_p =
-	(QDUMP_XASL_CHECK_NODE *) malloc (sizeof (QDUMP_XASL_CHECK_NODE));
+      check_node_p = (QDUMP_XASL_CHECK_NODE *) malloc (sizeof (QDUMP_XASL_CHECK_NODE));
       if (check_node_p == NULL)
 	{
 	  return NULL;
@@ -2046,8 +2008,7 @@ qdump_find_check_node_for (XASL_NODE * xasl_p,
  *   chk_nodes(in):
  */
 static void
-qdump_check_node (XASL_NODE * xasl_p,
-		  QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER])
+qdump_check_node (XASL_NODE * xasl_p, QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER])
 {
   UINTPTR addr_hash;
   QDUMP_XASL_CHECK_NODE *check_node_p, *check_node1_p;
@@ -2074,7 +2035,7 @@ qdump_check_node (XASL_NODE * xasl_p,
 
   check_node_p->reachable = 1;
 
-  /*
+  /* 
    * Mark the node its access spec references.  You may need to create
    * it if it is a forward reference.
    */
@@ -2082,9 +2043,7 @@ qdump_check_node (XASL_NODE * xasl_p,
     {
       if (spec_p->type == TARGET_LIST)
 	{
-	  check_node1_p =
-	    qdump_find_check_node_for (ACCESS_SPEC_XASL_NODE (spec_p),
-				       chk_nodes);
+	  check_node1_p = qdump_find_check_node_for (ACCESS_SPEC_XASL_NODE (spec_p), chk_nodes);
 	  /* mark as referenced */
 	  if (check_node1_p)
 	    {
@@ -2099,15 +2058,13 @@ qdump_check_node (XASL_NODE * xasl_p,
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      check_node1_p =
-	qdump_find_check_node_for (xasl_p->proc.union_.left, chk_nodes);
+      check_node1_p = qdump_find_check_node_for (xasl_p->proc.union_.left, chk_nodes);
       if (check_node1_p)
 	{
 	  check_node1_p->referenced = 1;
 	}
 
-      check_node1_p =
-	qdump_find_check_node_for (xasl_p->proc.union_.right, chk_nodes);
+      check_node1_p = qdump_find_check_node_for (xasl_p->proc.union_.right, chk_nodes);
       if (check_node1_p)
 	{
 	  check_node1_p->referenced = 1;
@@ -2115,17 +2072,13 @@ qdump_check_node (XASL_NODE * xasl_p,
       break;
 
     case MERGELIST_PROC:
-      check_node1_p =
-	qdump_find_check_node_for (xasl_p->proc.mergelist.inner_xasl,
-				   chk_nodes);
+      check_node1_p = qdump_find_check_node_for (xasl_p->proc.mergelist.inner_xasl, chk_nodes);
       if (check_node1_p)
 	{
 	  check_node1_p->referenced = 1;
 	}
 
-      check_node1_p =
-	qdump_find_check_node_for (xasl_p->proc.mergelist.inner_xasl,
-				   chk_nodes);
+      check_node1_p = qdump_find_check_node_for (xasl_p->proc.mergelist.inner_xasl, chk_nodes);
       if (check_node1_p)
 	{
 	  check_node1_p->referenced = 1;
@@ -2161,20 +2114,17 @@ qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER])
 
   for (i = 0; i < HASH_NUMBER; i++)
     {
-      for (check_node_p = chk_nodes[i]; check_node_p;
-	   check_node_p = check_node_p->next)
+      for (check_node_p = chk_nodes[i]; check_node_p; check_node_p = check_node_p->next)
 	{
 	  /* any buildlist procs that are referenced must be reachable */
 	  if (check_node_p->referenced && !check_node_p->reachable)
 	    {
 	      if (!error)
 		{
-		  fprintf (stdout,
-			   "\nSYSTEM ERROR--INCONSISTENT XASL TREE\n\n");
+		  fprintf (stdout, "\nSYSTEM ERROR--INCONSISTENT XASL TREE\n\n");
 		}
 
-	      fprintf (stdout,
-		       "Referenced node [%lld] is not reachable in the tree\n",
+	      fprintf (stdout, "Referenced node [%lld] is not reachable in the tree\n",
 		       (long long) check_node_p->xasl_addr);
 	      error = 1;
 	    }
@@ -2207,8 +2157,7 @@ qdump_print_fetch_node (XASL_NODE * xasl_p)
   FETCH_PROC_NODE *node_p = &xasl_p->proc.fetch;
 
   fprintf (foutput, "-->fetch  <addr:%p><type:", node_p->arg);
-  fprintf (foutput, "%s",
-	   qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (node_p->arg)));
+  fprintf (foutput, "%s", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (node_p->arg)));
   fprintf (foutput, ">\n fetch_res (%d)\n", (int) node_p->fetch_res);
 
   if (node_p->set_pred)
@@ -2234,8 +2183,7 @@ qdump_print_build_list_node (XASL_NODE * xasl_p)
   if (xasl_p->outptr_list != NULL)
     {
       fprintf (foutput, "-->output columns:");
-      qdump_print_db_value_array (node_p->output_columns,
-				  xasl_p->outptr_list->valptr_cnt);
+      qdump_print_db_value_array (node_p->output_columns, xasl_p->outptr_list->valptr_cnt);
       fprintf (foutput, "\n");
     }
 
@@ -2277,9 +2225,7 @@ qdump_print_build_list_node (XASL_NODE * xasl_p)
     {
       fprintf (foutput, "-->grbynum val:");
       fprintf (foutput, "<addr:%p|", node_p->g_grbynum_val);
-      fprintf (foutput, "type:%s",
-	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
-				       (node_p->g_grbynum_val)));
+      fprintf (foutput, "type:%s", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (node_p->g_grbynum_val)));
       fprintf (foutput, "|value:");
       qdump_print_db_value (node_p->g_grbynum_val);
       fprintf (foutput, ">\n");
@@ -2339,9 +2285,7 @@ qdump_print_build_value_node (XASL_NODE * xasl_p)
     {
       fprintf (foutput, "-->grbynum val:");
       fprintf (foutput, "<addr:%p|", node_p->grbynum_val);
-      fprintf (foutput, "type:%s",
-	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
-				       (node_p->grbynum_val)));
+      fprintf (foutput, "type:%s", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (node_p->grbynum_val)));
       fprintf (foutput, "|value:");
       qdump_print_db_value (node_p->grbynum_val);
       fprintf (foutput, ">\n");
@@ -2491,8 +2435,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
       if (XASL_IS_FLAGED (xasl_p, XASL_LINK_TO_REGU_VARIABLE))
 	{
 	  XASL_CLEAR_FLAG (xasl_p, XASL_LINK_TO_REGU_VARIABLE);
-	  fprintf (foutput, "%sXASL_LINK_TO_REGU_VARIABLE",
-		   (nflag ? "|" : ""));
+	  fprintf (foutput, "%sXASL_LINK_TO_REGU_VARIABLE", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
@@ -2551,9 +2494,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
     {
       fprintf (foutput, "-->ordbynum val:");
       fprintf (foutput, "<addr:%p|", xasl_p->ordbynum_val);
-      fprintf (foutput, "type:%s",
-	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
-				       (xasl_p->ordbynum_val)));
+      fprintf (foutput, "type:%s", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (xasl_p->ordbynum_val)));
       fprintf (foutput, "|value:");
       qdump_print_db_value (xasl_p->ordbynum_val);
       fprintf (foutput, ">\n");
@@ -2573,8 +2514,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
       fprintf (foutput, "-->orderby limit:");
       qdump_print_value (xasl_p->orderby_limit);
       fprintf (foutput, " (optimization %s)",
-	       prm_get_bool_value (PRM_ID_USE_ORDERBY_SORT_LIMIT) ? "enabled"
-	       : "disabled");
+	       prm_get_bool_value (PRM_ID_USE_ORDERBY_SORT_LIMIT) ? "enabled" : "disabled");
       fprintf (foutput, "\n");
     }
 
@@ -2585,8 +2525,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
       if (single_tuple_p)
 	{
 	  fprintf (foutput, "[value list]:");
-	  for (value_list = single_tuple_p->valp, i = 0;
-	       i < single_tuple_p->val_cnt;
+	  for (value_list = single_tuple_p->valp, i = 0; i < single_tuple_p->val_cnt;
 	       value_list = value_list->next, i++)
 	    {
 	      qdump_print_db_value (value_list->val);
@@ -2676,9 +2615,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
     {
       fprintf (foutput, "-->instnum val:");
       fprintf (foutput, "<addr:%p|", xasl_p->instnum_val);
-      fprintf (foutput, "type:%s",
-	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
-				       (xasl_p->instnum_val)));
+      fprintf (foutput, "type:%s", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (xasl_p->instnum_val)));
       fprintf (foutput, "|value:");
       qdump_print_db_value (xasl_p->instnum_val);
       fprintf (foutput, ">\n");
@@ -2688,9 +2625,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
     {
       fprintf (foutput, "-->old instnum val:");
       fprintf (foutput, "<addr:%p|", xasl_p->save_instnum_val);
-      fprintf (foutput, "type:%s",
-	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
-				       (xasl_p->save_instnum_val)));
+      fprintf (foutput, "type:%s", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (xasl_p->save_instnum_val)));
       fprintf (foutput, "|value:");
       qdump_print_db_value (xasl_p->save_instnum_val);
       fprintf (foutput, ">\n");
@@ -2711,9 +2646,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
     {
       fprintf (foutput, "-->level val:");
       fprintf (foutput, "<addr:%p|", xasl_p->level_val);
-      fprintf (foutput, "type:%s",
-	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
-				       (xasl_p->level_val)));
+      fprintf (foutput, "type:%s", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (xasl_p->level_val)));
       fprintf (foutput, "|value:");
       qdump_print_db_value (xasl_p->level_val);
       fprintf (foutput, ">\n");
@@ -2730,9 +2663,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
     {
       fprintf (foutput, "-->isleaf val:");
       fprintf (foutput, "<addr:%p|", xasl_p->isleaf_val);
-      fprintf (foutput, "type:%s",
-	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
-				       (xasl_p->isleaf_val)));
+      fprintf (foutput, "type:%s", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (xasl_p->isleaf_val)));
       fprintf (foutput, "|value:");
       qdump_print_db_value (xasl_p->isleaf_val);
       fprintf (foutput, ">\n");
@@ -2749,9 +2680,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
     {
       fprintf (foutput, "-->iscycle val:");
       fprintf (foutput, "<addr:%p|", xasl_p->iscycle_val);
-      fprintf (foutput, "type:%s",
-	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
-				       (xasl_p->iscycle_val)));
+      fprintf (foutput, "type:%s", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (xasl_p->iscycle_val)));
       fprintf (foutput, "|value:");
       qdump_print_db_value (xasl_p->iscycle_val);
       fprintf (foutput, ">\n");
@@ -2829,15 +2758,13 @@ qdump_print_xasl (XASL_NODE * xasl_p)
       if (xasl_p->proc.merge.update_xasl)
 	{
 	  fprintf (foutput, "\n---->update:");
-	  qdump_print_update_proc_node (&xasl_p->proc.merge.update_xasl->
-					proc.update);
+	  qdump_print_update_proc_node (&xasl_p->proc.merge.update_xasl->proc.update);
 	  fprintf (foutput, "\n");
 	}
       if (xasl_p->proc.merge.insert_xasl)
 	{
 	  fprintf (foutput, "\n---->insert:");
-	  qdump_print_insert_proc_node (&xasl_p->proc.merge.insert_xasl->
-					proc.insert);
+	  qdump_print_insert_proc_node (&xasl_p->proc.merge.insert_xasl->proc.insert);
 	  fprintf (foutput, "\n");
 	}
       break;
@@ -2864,19 +2791,16 @@ qdump_print_xasl (XASL_NODE * xasl_p)
   fprintf (foutput, "creator OID:");
   qdump_print_oid (&xasl_p->creator_oid);
 
-  fprintf (foutput, "\nclass/serial OID, #pages list:%d ",
-	   xasl_p->n_oid_list);
+  fprintf (foutput, "\nclass/serial OID, #pages list:%d ", xasl_p->n_oid_list);
   for (i = 0; i < xasl_p->n_oid_list; ++i)
     {
       qdump_print_oid (&xasl_p->class_oid_list[i]);
-      fprintf (foutput, "/%s ",
-	       LOCK_TO_LOCKMODE_STRING (xasl_p->class_locks[i]));
+      fprintf (foutput, "/%s ", LOCK_TO_LOCKMODE_STRING (xasl_p->class_locks[i]));
       fprintf (foutput, "/%d ", xasl_p->tcard_list[i]);
     }
 
   fprintf (foutput, "\ndbval_cnt:%d", xasl_p->dbval_cnt);
-  fprintf (foutput, "\nquery_alias:%s\n",
-	   xasl_p->query_alias ? xasl_p->query_alias : "(NULL)");
+  fprintf (foutput, "\nquery_alias:%s\n", xasl_p->query_alias ? xasl_p->query_alias : "(NULL)");
   fprintf (foutput, "<end of xasl structure %p>\n", xasl_p);
   fflush (foutput);
 
@@ -2985,15 +2909,13 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	    }
 	  else if (spec->access == INDEX)
 	    {
-	      if (heap_get_indexinfo_of_btid (NULL, &(cls_node->cls_oid),
-					      &spec->indexptr->indx_id.i.
-					      btid, NULL, NULL, NULL, NULL,
-					      &index_name, NULL) == NO_ERROR)
+	      if (heap_get_indexinfo_of_btid
+		  (NULL, &(cls_node->cls_oid), &spec->indexptr->indx_id.i.btid, NULL, NULL, NULL, NULL, &index_name,
+		   NULL) == NO_ERROR)
 		{
 		  if (class_name != NULL && index_name != NULL)
 		    {
-		      sprintf (spec_name, "index (%s.%s)", class_name,
-			       index_name);
+		      sprintf (spec_name, "index (%s.%s)", class_name, index_name);
 		    }
 		  else
 		    {
@@ -3090,13 +3012,9 @@ qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
     case INSERT_PROC:
     case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
-      json_object_set_new (proc, "time",
-			   json_integer (TO_MSEC
-					 (xasl_p->xasl_stats.elapsed_time)));
-      json_object_set_new (proc, "fetch",
-			   json_integer (xasl_p->xasl_stats.fetches));
-      json_object_set_new (proc, "ioread",
-			   json_integer (xasl_p->xasl_stats.ioreads));
+      json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
+      json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
+      json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
       break;
 
     case UNION_PROC:
@@ -3169,8 +3087,7 @@ qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
     {
       groupby = json_object ();
 
-      json_object_set_new (groupby, "time",
-			   json_integer (TO_MSEC (gstats->groupby_time)));
+      json_object_set_new (groupby, "time", json_integer (TO_MSEC (gstats->groupby_time)));
 
       if (gstats->groupby_hash == HS_ACCEPT_ALL)
 	{
@@ -3188,10 +3105,8 @@ qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
       if (gstats->groupby_sort)
 	{
 	  json_object_set_new (groupby, "sort", json_true ());
-	  json_object_set_new (groupby, "page",
-			       json_integer (gstats->groupby_pages));
-	  json_object_set_new (groupby, "ioread",
-			       json_integer (gstats->groupby_ioreads));
+	  json_object_set_new (groupby, "page", json_integer (gstats->groupby_pages));
+	  json_object_set_new (groupby, "ioread", json_integer (gstats->groupby_ioreads));
 	}
       else
 	{
@@ -3203,21 +3118,17 @@ qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
     }
 
   ostats = &xasl_p->orderby_stats;
-  if (ostats->orderby_filesort || ostats->orderby_topnsort
-      || XASL_IS_FLAGED (xasl_p, XASL_SKIP_ORDERBY_LIST))
+  if (ostats->orderby_filesort || ostats->orderby_topnsort || XASL_IS_FLAGED (xasl_p, XASL_SKIP_ORDERBY_LIST))
     {
       orderby = json_object ();
 
-      json_object_set_new (orderby, "time",
-			   json_integer (TO_MSEC (ostats->orderby_time)));
+      json_object_set_new (orderby, "time", json_integer (TO_MSEC (ostats->orderby_time)));
 
       if (ostats->orderby_filesort)
 	{
 	  json_object_set_new (orderby, "sort", json_true ());
-	  json_object_set_new (orderby, "page",
-			       json_integer (ostats->orderby_pages));
-	  json_object_set_new (orderby, "ioread",
-			       json_integer (ostats->orderby_ioreads));
+	  json_object_set_new (orderby, "page", json_integer (ostats->orderby_pages));
+	  json_object_set_new (orderby, "ioread", json_integer (ostats->orderby_ioreads));
 	}
       else if (ostats->orderby_topnsort)
 	{
@@ -3260,8 +3171,7 @@ qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
  *   spec_list_p(in):
  */
 static void
-qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p,
-				    int indent)
+qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, int indent)
 {
   TARGET_TYPE type;
   char *class_name = NULL, *index_name = NULL;
@@ -3305,15 +3215,13 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p,
 	    }
 	  else if (spec->access == INDEX)
 	    {
-	      if (heap_get_indexinfo_of_btid (NULL, &(cls_node->cls_oid),
-					      &spec->indexptr->indx_id.
-					      i.btid, NULL, NULL, NULL, NULL,
-					      &index_name, NULL) == NO_ERROR)
+	      if (heap_get_indexinfo_of_btid
+		  (NULL, &(cls_node->cls_oid), &spec->indexptr->indx_id.i.btid, NULL, NULL, NULL, NULL, &index_name,
+		   NULL) == NO_ERROR)
 		{
 		  if (class_name != NULL && index_name != NULL)
 		    {
-		      fprintf (fp, "(index: %s.%s), ", class_name,
-			       index_name);
+		      fprintf (fp, "(index: %s.%s), ", class_name, index_name);
 		    }
 		  else
 		    {
@@ -3381,10 +3289,8 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
     case DELETE_PROC:
     case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
-      fprintf (fp, "%s (time: %d, fetch: %lld, ioread: %lld)\n",
-	       qdump_xasl_type_string (xasl_p),
-	       TO_MSEC (xasl_p->xasl_stats.elapsed_time),
-	       (long long int) xasl_p->xasl_stats.fetches,
+      fprintf (fp, "%s (time: %d, fetch: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
+	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
 	       (long long int) xasl_p->xasl_stats.ioreads);
       indent += 2;
       break;
@@ -3450,8 +3356,7 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
 
       if (gstats->groupby_sort)
 	{
-	  fprintf (fp, ", sort: true, page: %lld, ioread: %lld",
-		   (long long int) gstats->groupby_pages,
+	  fprintf (fp, ", sort: true, page: %lld, ioread: %lld", (long long int) gstats->groupby_pages,
 		   (long long int) gstats->groupby_ioreads);
 	}
       else
@@ -3463,8 +3368,7 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
     }
 
   ostats = &xasl_p->orderby_stats;
-  if (ostats->orderby_filesort || ostats->orderby_topnsort
-      || XASL_IS_FLAGED (xasl_p, XASL_SKIP_ORDERBY_LIST))
+  if (ostats->orderby_filesort || ostats->orderby_topnsort || XASL_IS_FLAGED (xasl_p, XASL_SKIP_ORDERBY_LIST))
     {
       fprintf (fp, "%*c", indent, ' ');
       fprintf (fp, "ORDERBY (time: %d", TO_MSEC (ostats->orderby_time));
@@ -3472,8 +3376,7 @@ qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
       if (ostats->orderby_filesort)
 	{
 	  fprintf (fp, ", sort: true");
-	  fprintf (fp, ", page: %lld, ioread: %lld",
-		   (long long int) ostats->orderby_pages,
+	  fprintf (fp, ", page: %lld, ioread: %lld", (long long int) ostats->orderby_pages,
 		   (long long int) ostats->orderby_ioreads);
 	}
       else if (ostats->orderby_topnsort)

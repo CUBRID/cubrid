@@ -81,14 +81,12 @@ bh_down_heap (BINARY_HEAP * heap, int index)
   int right = BH_RIGHT (index);
   int largest = index;
 
-  if (left <= heap->element_count - 1
-      && BH_CMP (heap, left, largest) == BH_GT)
+  if (left <= heap->element_count - 1 && BH_CMP (heap, left, largest) == BH_GT)
     {
       largest = left;
     }
 
-  if (right <= heap->element_count - 1
-      && BH_CMP (heap, right, largest) == BH_GT)
+  if (right <= heap->element_count - 1 && BH_CMP (heap, right, largest) == BH_GT)
     {
       largest = right;
     }
@@ -112,8 +110,7 @@ bh_down_heap (BINARY_HEAP * heap, int index)
  *    heap, callers can use the comparison function to inverse the comparison
  */
 BINARY_HEAP *
-bh_create (THREAD_ENTRY * thread_p, int max_capacity,
-	   bh_key_comparator cmp_func, BH_CMP_ARG cmp_arg)
+bh_create (THREAD_ENTRY * thread_p, int max_capacity, bh_key_comparator cmp_func, BH_CMP_ARG cmp_arg)
 {
   BINARY_HEAP *heap = NULL;
 
@@ -123,8 +120,7 @@ bh_create (THREAD_ENTRY * thread_p, int max_capacity,
       return NULL;
     }
 
-  heap->members =
-    (BH_ELEM *) db_private_alloc (thread_p, max_capacity * sizeof (BH_ELEM));
+  heap->members = (BH_ELEM *) db_private_alloc (thread_p, max_capacity * sizeof (BH_ELEM));
   if (heap->members == NULL)
     {
       db_private_free (thread_p, heap);
@@ -175,8 +171,7 @@ bh_add (BINARY_HEAP * heap, BH_ELEM elem)
 
   if (heap->element_count >= heap->max_capacity)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BINARY_HEAP_OUT_OF_RANGE,
-	      0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BINARY_HEAP_OUT_OF_RANGE, 0);
       return ER_BINARY_HEAP_OUT_OF_RANGE;
     }
   heap->members[heap->element_count] = elem;
@@ -206,8 +201,7 @@ bh_insert (BINARY_HEAP * heap, BH_ELEM elem)
 
   if (heap->element_count >= heap->max_capacity)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BINARY_HEAP_OUT_OF_RANGE,
-	      0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BINARY_HEAP_OUT_OF_RANGE, 0);
       return ER_BINARY_HEAP_OUT_OF_RANGE;
     }
 

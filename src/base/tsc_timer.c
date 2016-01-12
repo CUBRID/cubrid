@@ -96,15 +96,13 @@ tsc_getticks (TSC_TICKS * tck)
  *   start_tick(in): start time
  */
 void
-tsc_elapsed_time_usec (TSCTIMEVAL * tv, TSC_TICKS end_tick,
-		       TSC_TICKS start_tick)
+tsc_elapsed_time_usec (TSCTIMEVAL * tv, TSC_TICKS end_tick, TSC_TICKS start_tick)
 {
   if (power_Savings == 0)
     {
       TSC_UINT64 diff_tsc;
 
-      /* Sometimes the time goes backwards in the MULTI-CORE processor world.
-         But it is a negligible level. */
+      /* Sometimes the time goes backwards in the MULTI-CORE processor world. But it is a negligible level. */
       if (end_tick.tc < start_tick.tc)
 	{
 	  tv->tv_sec = 0;
@@ -113,8 +111,7 @@ tsc_elapsed_time_usec (TSCTIMEVAL * tv, TSC_TICKS end_tick,
 	}
 
       CHECK_CPU_FREQ (cpu_Clock_rate);
-      diff_tsc =
-	(TSC_UINT64) elapsed ((ticks) end_tick.tc, (ticks) start_tick.tc);
+      diff_tsc = (TSC_UINT64) elapsed ((ticks) end_tick.tc, (ticks) start_tick.tc);
       CALCULATE_ELAPSED_TIME_USEC (tv, diff_tsc, cpu_Clock_rate);
     }
   else
@@ -176,8 +173,7 @@ tsc_end_time_usec (TSCTIMEVAL * tv, TSC_TICKS start_tick)
 	}
 
       CHECK_CPU_FREQ (cpu_Clock_rate);
-      diff_tsc =
-	(TSC_UINT64) elapsed ((ticks) end_tick.tc, (ticks) start_tick.tc);
+      diff_tsc = (TSC_UINT64) elapsed ((ticks) end_tick.tc, (ticks) start_tick.tc);
       CALCULATE_ELAPSED_TIME_USEC (tv, diff_tsc, cpu_Clock_rate);
     }
   else
@@ -194,14 +190,14 @@ static void
 check_power_savings (void)
 {
 #if defined (WINDOWS)
-  /*
+  /* 
    * Note: Windows's QueryPerformanceFrequency always returns 
    *       the stable CPU or mainboard clock rate.
    */
   power_Savings = 0;
 
 #elif defined (LINUX)
-  /*
+  /* 
    * Note: 'power_saving value == zero' means that the CPU clock rate is fixed.
    */
   int fd_mc, fd_smt;
@@ -244,7 +240,7 @@ check_power_savings (void)
   power_Savings = 1;
 
 #else
-  /*
+  /* 
    * Note: We assume that the unknown OS performs the power-saving policy.
    */
   power_Savings = 1;

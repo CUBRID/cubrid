@@ -168,10 +168,8 @@ extern bool sp_is_pair_token (SP_TOKEN start_token, SP_TOKEN end_token);
 extern bool sp_is_exist_pair_token (SP_TOKEN token);
 extern SP_PARSER_HINT *sp_create_parser_hint (void);
 extern void sp_free_parser_hint (SP_PARSER_HINT * hint_p);
-extern const char *sp_get_hint_type (const char *sql,
-				     SP_HINT_TYPE * hint_type);
-extern const char *sp_get_hint_arg (const char *sql, SP_PARSER_HINT * hint_p,
-				    int *error);
+extern const char *sp_get_hint_type (const char *sql, SP_HINT_TYPE * hint_type);
+extern const char *sp_get_hint_arg (const char *sql, SP_PARSER_HINT * hint_p, int *error);
 extern const char *sp_check_end_of_hint (const char *sql, int *error);
 
 #endif

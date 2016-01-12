@@ -57,14 +57,10 @@ pthread_mutex_t es_lock = PTHREAD_MUTEX_INITIALIZER;
 static es_list_head_t es_fslist = { &es_fslist, &es_fslist };
 static bool es_owfs_initialized = false;
 
-static const char *es_get_token (const char *base_path, char *token,
-				 size_t maxlen);
-static int es_parse_owfs_path (const char *base_path, char *mds_ip,
-			       char *svc_code, char *owner_name,
-			       char *file_name);
+static const char *es_get_token (const char *base_path, char *token, size_t maxlen);
+static int es_parse_owfs_path (const char *base_path, char *mds_ip, char *svc_code, char *owner_name, char *file_name);
 static ES_OWFS_FSH *es_new_fsh (const char *mds_ip, const char *svc_code);
-static void es_make_unique_name (char *owner_name, char *metaname,
-				 char *file_name);
+static void es_make_unique_name (char *owner_name, char *metaname, char *file_name);
 static ES_OWFS_FSH *es_open_owfs (const char *mds_ip, const char *svc_code);
 
 
@@ -137,8 +133,7 @@ es_get_token (const char *base_path, char *token, size_t maxlen)
  * 	 <owfs_uri> ::= owfs:<owfs_path>
  */
 static int
-es_parse_owfs_path (const char *base_path, char *mds_ip, char *svc_code,
-		    char *owner_name, char *file_name)
+es_parse_owfs_path (const char *base_path, char *mds_ip, char *svc_code, char *owner_name, char *file_name)
 {
   /* must start with '//' */
   if (!(base_path[0] == '/' && base_path[1] == '/'))
@@ -202,8 +197,7 @@ es_make_unique_name (char *owner_name, char *metaname, char *file_name)
   base = (unsigned int) (unum >> 45);
 
   /* make a file name & an owner name */
-  snprintf (file_name, NAME_MAX, "%s.%020llu_%04d", metaname, unum,
-	    r % 10000);
+  snprintf (file_name, NAME_MAX, "%s.%020llu_%04d", metaname, unum, r % 10000);
   hashval = es_name_hash_func (ES_OWFS_HASH, file_name);
   snprintf (owner_name, NAME_MAX, "ces_%010u_%06d", base, hashval);
 }
@@ -220,16 +214,14 @@ es_new_fsh (const char *mds_ip, const char *svc_code)
   es_fsh = (ES_OWFS_FSH *) malloc (sizeof (ES_OWFS_FSH));
   if (!es_fsh)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (ES_OWFS_FSH));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (ES_OWFS_FSH));
       return NULL;
     }
 
   ret = owfs_open_fs ((char *) mds_ip, (char *) svc_code, &es_fsh->fsh);
   if (ret < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       free (es_fsh);
       return NULL;
     }
@@ -256,7 +248,7 @@ es_open_owfs (const char *mds_ip, const char *svc_code)
   ES_OWFS_FSH *fsh;
 
   rv = pthread_mutex_lock (&es_lock);
-  /*
+  /* 
    * initialize owfs if it is first time
    */
   if (!es_owfs_initialized)
@@ -271,15 +263,14 @@ es_open_owfs (const char *mds_ip, const char *svc_code)
       if (ret < 0)
 	{
 	  /* failed to init owfs */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-		  owfs_perror (ret));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
 	  pthread_mutex_unlock (&es_lock);
 	  return NULL;
 	}
       es_owfs_initialized = true;
     }
 
-  /*
+  /* 
    * find open fs in the cache
    */
   ES_LIST_FOR_EACH (lh, &es_fslist)
@@ -292,7 +283,7 @@ es_open_owfs (const char *mds_ip, const char *svc_code)
       }
   }
 
-  /*
+  /* 
    * open new fs
    */
   fsh = es_new_fsh (mds_ip, svc_code);
@@ -320,14 +311,13 @@ es_owfs_init (const char *base_path)
 
   assert (base_path != NULL);
 
-  /*
+  /* 
    * get MDS IP and SVC CODE
    */
   /* must start with '//' */
   if (!(base_path[0] == '/' && base_path[1] == '/'))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1,
-	      base_path);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, base_path);
       return ER_ES_INVALID_PATH;
     }
   base_path++;
@@ -340,8 +330,7 @@ es_owfs_init (const char *base_path)
     }
   if (base_path == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1,
-	      base_path);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, base_path);
       return ER_ES_INVALID_PATH;
     }
 
@@ -411,8 +400,7 @@ retry:
   if (ret < 0)
     {
       /* failed to create an owner */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
@@ -426,8 +414,7 @@ retry:
 	  goto retry;
 	}
       /* failed to create a file */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
   ret = owfs_close_file (fh);
@@ -435,14 +422,12 @@ retry:
   if (ret < 0)
     {
       /* failed to create a file */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
   /* make path */
-  snprintf (new_path, PATH_MAX, "//%s/%s/%s/%s", fsh->mds_ip, fsh->svc_code,
-	    owner_name, file_name);
+  snprintf (new_path, PATH_MAX, "//%s/%s/%s/%s", fsh->mds_ip, fsh->svc_code, owner_name, file_name);
   return NO_ERROR;
 }
 
@@ -453,19 +438,16 @@ retry:
  * path(in): file path
  */
 ssize_t
-es_owfs_write_file (const char *path, const void *buf, size_t count,
-		    off_t offset)
+es_owfs_write_file (const char *path, const void *buf, size_t count, off_t offset)
 {
-  char mds_ip[MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN],
-    owner_name[NAME_MAX], file_name[NAME_MAX];
+  char mds_ip[MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN], owner_name[NAME_MAX], file_name[NAME_MAX];
   ES_OWFS_FSH *fsh;
   owner_handle oh;
   owfs_file_stat ostat;
   size_t total = 0, append_size;
   int ret;
 
-  if (es_parse_owfs_path (path, mds_ip, svc_code, owner_name, file_name)
-      != NO_ERROR)
+  if (es_parse_owfs_path (path, mds_ip, svc_code, owner_name, file_name) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, path);
       return ER_ES_INVALID_PATH;
@@ -481,8 +463,7 @@ es_owfs_write_file (const char *path, const void *buf, size_t count,
   if (ret < 0)
     {
       /* failed to stat a file */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
@@ -492,8 +473,7 @@ es_owfs_write_file (const char *path, const void *buf, size_t count,
     {
       owfs_close_owner (oh);
       /* failed to stat a file */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
@@ -501,8 +481,7 @@ es_owfs_write_file (const char *path, const void *buf, size_t count,
     {
       owfs_close_owner (oh);
       /* invalid operation */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      "offset error");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "offset error");
       return ER_ES_GENERAL;
     }
 
@@ -511,8 +490,7 @@ es_owfs_write_file (const char *path, const void *buf, size_t count,
     {
       append_size = MIN (count - total, ES_OWFS_MAX_APPEND_SIZE);
     retry:
-      ret =
-	owfs_append_file (oh, file_name, (char *) buf + total, append_size);
+      ret = owfs_append_file (oh, file_name, (char *) buf + total, append_size);
       if (ret == -OWFS_ELOCK)
 	{
 	  goto retry;
@@ -521,8 +499,7 @@ es_owfs_write_file (const char *path, const void *buf, size_t count,
 	{
 	  owfs_close_owner (oh);
 	  /* failed to write data */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-		  owfs_perror (ret));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
 	  return ER_ES_GENERAL;
 	}
       total += append_size;
@@ -541,15 +518,13 @@ es_owfs_write_file (const char *path, const void *buf, size_t count,
 ssize_t
 es_owfs_read_file (const char *path, void *buf, size_t count, off_t offset)
 {
-  char mds_ip[MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN],
-    owner_name[NAME_MAX], file_name[NAME_MAX];
+  char mds_ip[MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN], owner_name[NAME_MAX], file_name[NAME_MAX];
   ES_OWFS_FSH *fsh;
   owner_handle oh;
   file_handle fh;
   int ret;
 
-  if (es_parse_owfs_path (path, mds_ip, svc_code, owner_name, file_name)
-      != NO_ERROR)
+  if (es_parse_owfs_path (path, mds_ip, svc_code, owner_name, file_name) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, path);
       return ER_ES_INVALID_PATH;
@@ -565,8 +540,7 @@ es_owfs_read_file (const char *path, void *buf, size_t count, off_t offset)
   if (ret < 0)
     {
       /* failed to stat a file */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
@@ -578,14 +552,12 @@ es_owfs_read_file (const char *path, void *buf, size_t count, off_t offset)
       /* failed to open a file */
       if (ret == -OWFS_ENOENT)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_FILE_NOT_FOUND, 1,
-		  path);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_FILE_NOT_FOUND, 1, path);
 	  return ER_ES_FILE_NOT_FOUND;
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-		  owfs_perror (ret));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
 	  return ER_ES_GENERAL;
 	}
     }
@@ -596,8 +568,7 @@ es_owfs_read_file (const char *path, void *buf, size_t count, off_t offset)
       owfs_close_file (fh);
       owfs_close_owner (oh);
       /* failed to seek */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
 
     }
@@ -607,8 +578,7 @@ es_owfs_read_file (const char *path, void *buf, size_t count, off_t offset)
   owfs_close_owner (oh);
   if (ret < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
 
     }
@@ -624,14 +594,12 @@ es_owfs_read_file (const char *path, void *buf, size_t count, off_t offset)
 int
 es_owfs_delete_file (const char *path)
 {
-  char mds_ip[MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN],
-    owner_name[NAME_MAX], file_name[NAME_MAX];
+  char mds_ip[MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN], owner_name[NAME_MAX], file_name[NAME_MAX];
   ES_OWFS_FSH *fsh;
   owner_handle oh;
   int ret;
 
-  if (es_parse_owfs_path (path, mds_ip, svc_code, owner_name, file_name)
-      != NO_ERROR)
+  if (es_parse_owfs_path (path, mds_ip, svc_code, owner_name, file_name) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, path);
       return ER_ES_INVALID_PATH;
@@ -647,8 +615,7 @@ es_owfs_delete_file (const char *path)
   if (ret < 0)
     {
       /* failed to stat a file */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
@@ -661,8 +628,7 @@ es_owfs_delete_file (const char *path)
     }
   else if (ret < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
   return NO_ERROR;
@@ -678,19 +644,16 @@ es_owfs_delete_file (const char *path)
 int
 es_owfs_copy_file (const char *src_path, char *metaname, char *new_path)
 {
-  char src_mds_ip[MAXHOSTNAMELEN], src_svc_code[MAXSVCCODELEN],
-    src_owner_name[NAME_MAX], src_file_name[NAME_MAX];
+  char src_mds_ip[MAXHOSTNAMELEN], src_svc_code[MAXSVCCODELEN], src_owner_name[NAME_MAX], src_file_name[NAME_MAX];
   char new_owner_name[NAME_MAX], new_file_name[NAME_MAX];
   ES_OWFS_FSH *src_fsh, *dest_fsh;
   owner_handle src_oh, dest_oh;
   owfs_op_handle oph;
   int ret;
 
-  if (es_parse_owfs_path (src_path, src_mds_ip, src_svc_code,
-			  src_owner_name, src_file_name) != NO_ERROR)
+  if (es_parse_owfs_path (src_path, src_mds_ip, src_svc_code, src_owner_name, src_file_name) != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1,
-	      src_path);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, src_path);
       return ER_ES_INVALID_PATH;
     }
   src_fsh = es_open_owfs (src_mds_ip, src_svc_code);
@@ -703,8 +666,7 @@ es_owfs_copy_file (const char *src_path, char *metaname, char *new_path)
   if (ret < 0)
     {
       /* failed to stat a file */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
@@ -733,14 +695,12 @@ retry:
     {
       /* failed to create an owner */
       owfs_close_owner (src_oh);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
   /* open handles for a copy operation */
-  ret = owfs_open_copy_operation (src_oh, src_file_name,
-				  dest_oh, new_file_name, OWFS_CREAT, &oph);
+  ret = owfs_open_copy_operation (src_oh, src_file_name, dest_oh, new_file_name, OWFS_CREAT, &oph);
   if (ret < 0)
     {
       owfs_close_owner (dest_oh);
@@ -750,8 +710,7 @@ retry:
 	}
       /* failed to create a file */
       owfs_close_owner (src_oh);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
@@ -761,8 +720,7 @@ retry:
       owfs_release_copy_operation (oph);
       owfs_close_owner (dest_oh);
       owfs_close_owner (src_oh);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
@@ -772,15 +730,13 @@ retry:
   if (ret < 0)
     {
       /* failed to create a file */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
 
   /* make path */
-  snprintf (new_path, PATH_MAX, "//%s/%s/%s/%s", dest_fsh->mds_ip,
-	    dest_fsh->svc_code, new_owner_name, new_file_name);
+  snprintf (new_path, PATH_MAX, "//%s/%s/%s/%s", dest_fsh->mds_ip, dest_fsh->svc_code, new_owner_name, new_file_name);
   return NO_ERROR;
 }
 
@@ -793,22 +749,18 @@ retry:
  * new_path(out): new file path
  */
 int
-es_owfs_rename_file (const char *src_path, const char *metaname,
-		     char *new_path)
+es_owfs_rename_file (const char *src_path, const char *metaname, char *new_path)
 {
-  char src_mds_ip[MAXHOSTNAMELEN], src_svc_code[MAXSVCCODELEN],
-    src_owner_name[NAME_MAX], src_file_name[NAME_MAX],
+  char src_mds_ip[MAXHOSTNAMELEN], src_svc_code[MAXSVCCODELEN], src_owner_name[NAME_MAX], src_file_name[NAME_MAX],
     tgt_file_name[NAME_MAX];
   char *s;
   ES_OWFS_FSH *src_fsh;
   owner_handle src_oh;
   int ret;
 
-  if (es_parse_owfs_path (src_path, src_mds_ip, src_svc_code,
-			  src_owner_name, src_file_name) != NO_ERROR)
+  if (es_parse_owfs_path (src_path, src_mds_ip, src_svc_code, src_owner_name, src_file_name) != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1,
-	      src_path);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, src_path);
       return ER_ES_INVALID_PATH;
     }
   src_fsh = es_open_owfs (src_mds_ip, src_svc_code);
@@ -821,8 +773,7 @@ es_owfs_rename_file (const char *src_path, const char *metaname,
   if (ret < 0)
     {
       /* failed to stat a file */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
@@ -840,14 +791,12 @@ es_owfs_rename_file (const char *src_path, const char *metaname,
   if (ret < 0)
     {
       /* failed to rename a file */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
   /* make a path */
-  snprintf (new_path, PATH_MAX, "//%s/%s/%s/%s", src_fsh->mds_ip,
-	    src_fsh->svc_code, src_owner_name, tgt_file_name);
+  snprintf (new_path, PATH_MAX, "//%s/%s/%s/%s", src_fsh->mds_ip, src_fsh->svc_code, src_owner_name, tgt_file_name);
   return NO_ERROR;
 }
 
@@ -861,15 +810,13 @@ es_owfs_rename_file (const char *src_path, const char *metaname,
 off_t
 es_owfs_get_file_size (const char *path)
 {
-  char mds_ip[MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN],
-    owner_name[NAME_MAX], file_name[NAME_MAX];
+  char mds_ip[MAXHOSTNAMELEN], svc_code[MAXSVCCODELEN], owner_name[NAME_MAX], file_name[NAME_MAX];
   ES_OWFS_FSH *fsh;
   owner_handle oh;
   owfs_file_stat ostat;
   int ret;
 
-  if (es_parse_owfs_path (path, mds_ip, svc_code, owner_name, file_name)
-      != NO_ERROR)
+  if (es_parse_owfs_path (path, mds_ip, svc_code, owner_name, file_name) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, path);
       return ER_ES_INVALID_PATH;
@@ -885,8 +832,7 @@ es_owfs_get_file_size (const char *path)
   if (ret < 0)
     {
       /* failed to stat a file */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
@@ -896,8 +842,7 @@ es_owfs_get_file_size (const char *path)
   if (ret < 0)
     {
       /* failed to stat a file */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      owfs_perror (ret));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", owfs_perror (ret));
       return ER_ES_GENERAL;
     }
 
@@ -914,73 +859,62 @@ es_owfs_get_file_size (const char *path)
 int
 es_owfs_init (const char *base_path)
 {
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	  "not owfs build");
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not owfs build");
   return ER_ES_GENERAL;
 }
 
 void
 es_owfs_final (void)
 {
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	  "not owfs build");
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not owfs build");
 }
 
 int
 es_owfs_create_file (char *new_path)
 {
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	  "not owfs build");
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not owfs build");
   return ER_ES_GENERAL;
 }
 
 ssize_t
-es_owfs_write_file (const char *path, const void *buf, size_t count,
-		    off_t offset)
+es_owfs_write_file (const char *path, const void *buf, size_t count, off_t offset)
 {
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	  "not owfs build");
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not owfs build");
   return ER_ES_GENERAL;
 }
 
 ssize_t
 es_owfs_read_file (const char *path, void *buf, size_t count, off_t offset)
 {
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	  "not owfs build");
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not owfs build");
   return ER_ES_GENERAL;
 }
 
 int
 es_owfs_delete_file (const char *path)
 {
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	  "not owfs build");
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not owfs build");
   return ER_ES_GENERAL;
 }
 
 int
 es_owfs_copy_file (const char *src_path, char *metaname, char *new_path)
 {
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	  "not owfs build");
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not owfs build");
   return ER_ES_GENERAL;
 }
 
 int
-es_owfs_rename_file (const char *src_path, const char *metaname,
-		     char *new_path)
+es_owfs_rename_file (const char *src_path, const char *metaname, char *new_path)
 {
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	  "not owfs build");
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not owfs build");
   return ER_ES_GENERAL;
 }
 
 off_t
 es_owfs_get_file_size (const char *path)
 {
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	  "not built with OwFS");
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not built with OwFS");
   return ER_ES_GENERAL;
 }
 

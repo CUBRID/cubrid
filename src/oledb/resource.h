@@ -26,8 +26,8 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
  * OF SUCH DAMAGE. 
  *
- */
-
+ */  
+  
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
 // Used by CUBRIDProvider.rc
@@ -267,7 +267,7 @@
 #define IDS_DBPROP_INDEX_UNIQUE         332
 #define IDS_DBPROP_TBL_TEMPTABLE        333
 #define IDS_DBPROP_CURRENTCATALOG       333
-
+  
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
@@ -276,7 +276,7 @@
 #define _APS_NEXT_COMMAND_VALUE         32768
 #define _APS_NEXT_CONTROL_VALUE         201
 #define _APS_NEXT_SYMED_VALUE           325
-#endif /* 
+#endif	/* 
  */
-#endif /* 
+#endif	/* 
  */

@@ -27,7 +27,6 @@
 
 #ident "$Id$"
 
-extern int read_er_html (char *er_file, int uw_er_code, int os_er_code,
-			 char **er_msg);
+extern int read_er_html (char *er_file, int uw_er_code, int os_er_code, char **er_msg);
 
 #endif /* _BROKER_ER_HTML_H_ */

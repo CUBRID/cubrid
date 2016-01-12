@@ -152,8 +152,7 @@ typedef struct t_srv_handle T_SRV_HANDLE;
 struct t_srv_handle
 {
   int id;
-  void *session;		/* query : DB_SESSION*
-				   schema : schema info table pointer */
+  void *session;		/* query : DB_SESSION* schema : schema info table pointer */
 #if defined(CAS_FOR_ORACLE)
   bool has_out_result;
 #endif
@@ -167,8 +166,7 @@ struct t_srv_handle
   bool is_no_data;
   bool send_metadata_before_execute;
 #else				/* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-  void *cur_result;		/* query : &(q_result[cur_result])
-				   schema info : &(session[cursor_pos]) */
+  void *cur_result;		/* query : &(q_result[cur_result]) schema info : &(session[cursor_pos]) */
 #endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
   char *sql_stmt;
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -205,8 +203,7 @@ struct t_srv_handle
 #endif				/* CAS_FOR_MYSQL */
 };
 
-extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle,
-			      unsigned int seq_num);
+extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num);
 extern void hm_srv_handle_free (int h_id);
 extern void hm_srv_handle_free_all (bool free_holdable);
 extern void hm_srv_handle_qresult_end_all (bool end_holdable);

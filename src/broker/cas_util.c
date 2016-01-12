@@ -47,9 +47,8 @@ ut_uchar2ipstr (unsigned char *ip_addr)
 
   assert (ip_addr != NULL);
 
-  sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0],
-	   (unsigned char) ip_addr[1],
-	   (unsigned char) ip_addr[2], (unsigned char) ip_addr[3]);
+  sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0], (unsigned char) ip_addr[1], (unsigned char) ip_addr[2],
+	   (unsigned char) ip_addr[3]);
   return (ip_str);
 }
 
@@ -62,9 +61,7 @@ ut_trim (char *str)
   if (str == NULL)
     return (str);
 
-  for (s = str;
-       *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r');
-       s++)
+  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'); s++)
     ;
   if (*s == '\0')
     {
@@ -102,13 +99,11 @@ ut_tolower (char *str)
 }
 
 void
-ut_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec,
-		 int *res_msec)
+ut_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec, int *res_msec)
 {
   int sec, msec;
 
-  assert (start != NULL && end != NULL && res_sec != NULL
-	  && res_msec != NULL);
+  assert (start != NULL && end != NULL && res_sec != NULL && res_msec != NULL);
 
   sec = end->tv_sec - start->tv_sec;
   msec = (end->tv_usec / 1000) - (start->tv_usec / 1000);
@@ -122,8 +117,7 @@ ut_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec,
 }
 
 int
-ut_check_timeout (struct timeval *start_time, struct timeval *end_time,
-		  int timeout_msec, int *res_sec, int *res_msec)
+ut_check_timeout (struct timeval *start_time, struct timeval *end_time, int timeout_msec, int *res_sec, int *res_msec)
 {
   struct timeval cur_time;
   int diff_msec;

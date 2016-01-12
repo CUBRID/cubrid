@@ -37,8 +37,7 @@ log_time_make (char *str, T_LOG_TIME * ltm)
 {
   int hour, min, sec, msec;
 
-  if (sscanf (str, "%*d%*c%*d%*c%d%*c%d%*c%d%*c%d", &hour, &min, &sec, &msec)
-      < 4)
+  if (sscanf (str, "%*d%*c%*d%*c%d%*c%d%*c%d%*c%d", &hour, &min, &sec, &msec) < 4)
     {
       fprintf (stderr, "time format error[%s]\n", str);
       return -1;

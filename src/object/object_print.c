@@ -137,20 +137,12 @@ static int help_Max_set_elements = 20;
 
 
 
-static PARSER_VARCHAR *describe_set (const PARSER_CONTEXT * parser,
-				     PARSER_VARCHAR * buffer,
-				     const DB_SET * set);
-static PARSER_VARCHAR *describe_midxkey (const PARSER_CONTEXT * parser,
-					 PARSER_VARCHAR * buffer,
+static PARSER_VARCHAR *describe_set (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_SET * set);
+static PARSER_VARCHAR *describe_midxkey (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 					 const DB_MIDXKEY * midxkey);
-static PARSER_VARCHAR *describe_double (const PARSER_CONTEXT * parser,
-					PARSER_VARCHAR * buffer,
-					const double value);
-static PARSER_VARCHAR *describe_float (const PARSER_CONTEXT * parser,
-				       PARSER_VARCHAR * buffer,
-				       const float value);
-static PARSER_VARCHAR *describe_bit_string (const PARSER_CONTEXT * parser,
-					    PARSER_VARCHAR * buffer,
+static PARSER_VARCHAR *describe_double (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const double value);
+static PARSER_VARCHAR *describe_float (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const float value);
+static PARSER_VARCHAR *describe_bit_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 					    const DB_VALUE * value);
 
 #if !defined(SERVER_MODE)
@@ -159,70 +151,34 @@ static char *obj_print_copy_string (const char *source);
 static const char **obj_print_convert_strlist (STRLIST * str_list);
 static const char *obj_print_trigger_condition_time (TR_TRIGGER * trigger);
 static const char *obj_print_trigger_action_time (TR_TRIGGER * trigger);
-static PARSER_VARCHAR *obj_print_describe_domain (PARSER_CONTEXT * parser,
-						  PARSER_VARCHAR * buffer,
-						  TP_DOMAIN * domain,
-						  OBJ_PRINT_TYPE prt_type,
-						  bool force_print_collation);
-static PARSER_VARCHAR *obj_print_identifier (PARSER_CONTEXT * parser,
-					     PARSER_VARCHAR * buffer,
-					     const char *identifier,
+static PARSER_VARCHAR *obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_DOMAIN * domain,
+						  OBJ_PRINT_TYPE prt_type, bool force_print_collation);
+static PARSER_VARCHAR *obj_print_identifier (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const char *identifier,
 					     OBJ_PRINT_TYPE prt_type);
-static char *obj_print_describe_attribute (MOP class_p,
-					   PARSER_CONTEXT * parser,
-					   SM_ATTRIBUTE * attribute_p,
-					   bool is_inherited,
-					   OBJ_PRINT_TYPE prt_type,
-					   bool force_print_collation);
-static char *obj_print_describe_partition_parts (PARSER_CONTEXT * parser,
-						 SM_PARTITION * parts,
+static char *obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE * attribute_p,
+					   bool is_inherited, OBJ_PRINT_TYPE prt_type, bool force_print_collation);
+static char *obj_print_describe_partition_parts (PARSER_CONTEXT * parser, SM_PARTITION * parts,
 						 OBJ_PRINT_TYPE prt_type);
-static char *obj_print_describe_partition_info (PARSER_CONTEXT * parser,
-						SM_PARTITION * partinfo);
-static char *obj_print_describe_constraint (PARSER_CONTEXT * parser,
-					    SM_CLASS * class_p,
-					    SM_CLASS_CONSTRAINT *
-					    constraint_p,
-					    OBJ_PRINT_TYPE prt_type);
-static PARSER_VARCHAR *obj_print_describe_argument (PARSER_CONTEXT * parser,
-						    PARSER_VARCHAR * buffer,
-						    SM_METHOD_ARGUMENT *
-						    argument_p,
-						    OBJ_PRINT_TYPE prt_type);
-static PARSER_VARCHAR *obj_print_describe_signature (PARSER_CONTEXT * parser,
-						     PARSER_VARCHAR * buffer,
-						     SM_METHOD_SIGNATURE *
-						     signature_p,
-						     OBJ_PRINT_TYPE prt_type);
-static PARSER_VARCHAR *obj_print_describe_method (PARSER_CONTEXT * parser,
-						  MOP op, SM_METHOD * method,
+static char *obj_print_describe_partition_info (PARSER_CONTEXT * parser, SM_PARTITION * partinfo);
+static char *obj_print_describe_constraint (PARSER_CONTEXT * parser, SM_CLASS * class_p,
+					    SM_CLASS_CONSTRAINT * constraint_p, OBJ_PRINT_TYPE prt_type);
+static PARSER_VARCHAR *obj_print_describe_argument (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
+						    SM_METHOD_ARGUMENT * argument_p, OBJ_PRINT_TYPE prt_type);
+static PARSER_VARCHAR *obj_print_describe_signature (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
+						     SM_METHOD_SIGNATURE * signature_p, OBJ_PRINT_TYPE prt_type);
+static PARSER_VARCHAR *obj_print_describe_method (PARSER_CONTEXT * parser, MOP op, SM_METHOD * method,
 						  OBJ_PRINT_TYPE prt_type);
-static PARSER_VARCHAR *obj_print_describe_resolution (PARSER_CONTEXT * parser,
-						      SM_RESOLUTION *
-						      resolution_p,
-						      OBJ_PRINT_TYPE
-						      prt_type);
-static PARSER_VARCHAR *obj_print_describe_method_file (PARSER_CONTEXT *
-						       parser, MOP class_p,
-						       SM_METHOD_FILE *
-						       file_p);
-static PARSER_VARCHAR *obj_print_describe_class_trigger (PARSER_CONTEXT *
-							 parser,
-							 TR_TRIGGER *
-							 trigger);
-static void obj_print_describe_trigger_list (PARSER_CONTEXT * parser,
-					     TR_TRIGLIST * triggers,
-					     STRLIST ** strings);
-static const char **obj_print_describe_class_triggers (PARSER_CONTEXT *
-						       parser,
-						       SM_CLASS * class_p,
-						       MOP class_mop);
+static PARSER_VARCHAR *obj_print_describe_resolution (PARSER_CONTEXT * parser, SM_RESOLUTION * resolution_p,
+						      OBJ_PRINT_TYPE prt_type);
+static PARSER_VARCHAR *obj_print_describe_method_file (PARSER_CONTEXT * parser, MOP class_p, SM_METHOD_FILE * file_p);
+static PARSER_VARCHAR *obj_print_describe_class_trigger (PARSER_CONTEXT * parser, TR_TRIGGER * trigger);
+static void obj_print_describe_trigger_list (PARSER_CONTEXT * parser, TR_TRIGLIST * triggers, STRLIST ** strings);
+static const char **obj_print_describe_class_triggers (PARSER_CONTEXT * parser, SM_CLASS * class_p, MOP class_mop);
 static CLASS_HELP *obj_print_make_class_help (void);
 static TRIGGER_HELP *obj_print_make_trigger_help (void);
 static OBJ_HELP *obj_print_make_obj_help (void);
 static char **obj_print_read_section (FILE * fp);
-static COMMAND_HELP *obj_print_load_help_file (FILE * fp,
-					       const char *keyword);
+static COMMAND_HELP *obj_print_load_help_file (FILE * fp, const char *keyword);
 static char *obj_print_next_token (char *ptr, char *buf);
 
 
@@ -310,8 +266,7 @@ obj_print_convert_strlist (STRLIST * str_list)
       array = (const char **) malloc (sizeof (char *) * (count + 1));
       if (array != NULL)
 	{
-	  for (i = count - 1, l = str_list, next = NULL; i >= 0;
-	       i--, l = next)
+	  for (i = count - 1, l = str_list, next = NULL; i >= 0; i--, l = next)
 	    {
 	      next = l->next;
 	      array[i] = l->string;
@@ -388,8 +343,7 @@ obj_print_trigger_action_time (TR_TRIGGER * trigger)
  *
  */
 static PARSER_VARCHAR *
-obj_print_identifier (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-		      const char *identifier, OBJ_PRINT_TYPE prt_type)
+obj_print_identifier (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const char *identifier, OBJ_PRINT_TYPE prt_type)
 {
   if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
     {
@@ -420,9 +374,8 @@ obj_print_identifier (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  */
 
 static PARSER_VARCHAR *
-obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-			   TP_DOMAIN * domain, OBJ_PRINT_TYPE prt_type,
-			   bool force_print_collation)
+obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, TP_DOMAIN * domain,
+			   OBJ_PRINT_TYPE prt_type, bool force_print_collation)
 {
   TP_DOMAIN *temp_domain;
   char temp_buffer[27];
@@ -438,8 +391,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
   /* filter first, usually not necessary but this is visible */
   sm_filter_domain (domain, NULL);
 
-  for (temp_domain = domain; temp_domain != NULL;
-       temp_domain = temp_domain->next)
+  for (temp_domain = domain; temp_domain != NULL; temp_domain = temp_domain->next)
     {
       has_collation = 0;
       switch (TP_DOMAIN_TYPE (temp_domain))
@@ -479,15 +431,11 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	case DB_TYPE_OBJECT:
 	  if (temp_domain->class_mop != NULL)
 	    {
-	      buffer =
-		obj_print_identifier (parser, buffer,
-				      sm_get_ch_name (temp_domain->class_mop),
-				      prt_type);
+	      buffer = obj_print_identifier (parser, buffer, sm_get_ch_name (temp_domain->class_mop), prt_type);
 	    }
 	  else
 	    {
-	      buffer =
-		pt_append_nulstring (parser, buffer, temp_domain->type->name);
+	      buffer = pt_append_nulstring (parser, buffer, temp_domain->type->name);
 	    }
 	  break;
 
@@ -524,8 +472,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  strcpy (temp_buffer, temp_domain->type->name);
 	  ustr_upper (temp_buffer);
 	  buffer = pt_append_nulstring (parser, buffer, temp_buffer);
-	  sprintf (temp_buffer_numeric, "(%d,%d)",
-		   temp_domain->precision, temp_domain->scale);
+	  sprintf (temp_buffer_numeric, "(%d,%d)", temp_domain->precision, temp_domain->scale);
 	  buffer = pt_append_nulstring (parser, buffer, temp_buffer_numeric);
 	  break;
 
@@ -538,24 +485,17 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  buffer = pt_append_nulstring (parser, buffer, " OF ");
 	  if (temp_domain->setdomain != NULL)
 	    {
-	      if (temp_domain->setdomain->next != NULL
-		  && prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
+	      if (temp_domain->setdomain->next != NULL && prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
 		{
 		  buffer = pt_append_nulstring (parser, buffer, "(");
 		  buffer =
-		    obj_print_describe_domain (parser, buffer,
-					       temp_domain->setdomain,
-					       prt_type,
-					       force_print_collation);
+		    obj_print_describe_domain (parser, buffer, temp_domain->setdomain, prt_type, force_print_collation);
 		  buffer = pt_append_nulstring (parser, buffer, ")");
 		}
 	      else
 		{
 		  buffer =
-		    obj_print_describe_domain (parser, buffer,
-					       temp_domain->setdomain,
-					       prt_type,
-					       force_print_collation);
+		    obj_print_describe_domain (parser, buffer, temp_domain->setdomain, prt_type, force_print_collation);
 		}
 	    }
 	  break;
@@ -574,11 +514,8 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 		}
 	      buffer = pt_append_nulstring (parser, buffer, "'");
 	      buffer =
-		pt_append_bytes (parser, buffer,
-				 DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM
-							  (temp_domain, idx)),
-				 DB_GET_ENUM_ELEM_STRING_SIZE
-				 (&DOM_GET_ENUM_ELEM (temp_domain, idx)));
+		pt_append_bytes (parser, buffer, DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (temp_domain, idx)),
+				 DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM (temp_domain, idx)));
 	      buffer = pt_append_nulstring (parser, buffer, "'");
 	    }
 	  buffer = pt_append_nulstring (parser, buffer, ")");
@@ -587,15 +524,10 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  break;
 	}
 
-      if (has_collation
-	  && (force_print_collation
-	      || temp_domain->collation_id != LANG_SYS_COLLATION))
+      if (has_collation && (force_print_collation || temp_domain->collation_id != LANG_SYS_COLLATION))
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " COLLATE ");
-	  buffer =
-	    pt_append_nulstring (parser, buffer,
-				 lang_get_collation_name
-				 (temp_domain->collation_id));
+	  buffer = pt_append_nulstring (parser, buffer, lang_get_collation_name (temp_domain->collation_id));
 	}
       if (temp_domain->next != NULL)
 	{
@@ -619,11 +551,8 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  */
 
 static char *
-obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
-			      SM_ATTRIBUTE * attribute_p,
-			      bool is_inherited,
-			      OBJ_PRINT_TYPE prt_type,
-			      bool force_print_collation)
+obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE * attribute_p, bool is_inherited,
+			      OBJ_PRINT_TYPE prt_type, bool force_print_collation)
 {
   char *start;
   PARSER_VARCHAR *buffer;
@@ -642,26 +571,21 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
     }
   else
     {				/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
-      buffer =
-	obj_print_identifier (parser, buffer, attribute_p->header.name,
-			      prt_type);
+      buffer = obj_print_identifier (parser, buffer, attribute_p->header.name, prt_type);
       buffer = pt_append_nulstring (parser, buffer, " ");
     }
 
   start = (char *) pt_get_varchar_bytes (buffer);
   /* could filter here but do in describe_domain */
 
-  buffer =
-    obj_print_describe_domain (parser, buffer, attribute_p->domain, prt_type,
-			       force_print_collation);
+  buffer = obj_print_describe_domain (parser, buffer, attribute_p->domain, prt_type, force_print_collation);
 
   if (attribute_p->header.name_space == ID_SHARED_ATTRIBUTE)
     {
       buffer = pt_append_nulstring (parser, buffer, " SHARED ");
       if (!DB_IS_NULL (&attribute_p->default_value.value))
 	{
-	  buffer = describe_value (parser, buffer,
-				   &attribute_p->default_value.value);
+	  buffer = describe_value (parser, buffer, &attribute_p->default_value.value);
 	}
     }
   else if (attribute_p->header.name_space == ID_ATTRIBUTE)
@@ -683,31 +607,26 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
 	      DB_MAKE_NULL (&min_val);
 	      DB_MAKE_NULL (&inc_val);
 
-	      if (db_get (attribute_p->auto_increment, "min_val",
-			  &min_val) != NO_ERROR)
+	      if (db_get (attribute_p->auto_increment, "min_val", &min_val) != NO_ERROR)
 		{
 		  return NULL;
 		}
 
-	      if (db_get (attribute_p->auto_increment, "increment_val",
-			  &inc_val) != NO_ERROR)
+	      if (db_get (attribute_p->auto_increment, "increment_val", &inc_val) != NO_ERROR)
 		{
 		  pr_clear_value (&min_val);
 		  return NULL;
 		}
 
-	      offset = snprintf (buf, DB_MAX_NUMERIC_PRECISION + 3, "(%s, ",
-				 numeric_db_value_print (&min_val));
-	      snprintf (buf + offset, DB_MAX_NUMERIC_PRECISION + 1, "%s)",
-			numeric_db_value_print (&inc_val));
+	      offset = snprintf (buf, DB_MAX_NUMERIC_PRECISION + 3, "(%s, ", numeric_db_value_print (&min_val));
+	      snprintf (buf + offset, DB_MAX_NUMERIC_PRECISION + 1, "%s)", numeric_db_value_print (&inc_val));
 	      buffer = pt_append_nulstring (parser, buffer, buf);
 
 	      pr_clear_value (&min_val);
 	      pr_clear_value (&inc_val);
 	    }
 	}
-      if (!DB_IS_NULL (&attribute_p->default_value.value)
-	  || attribute_p->default_value.default_expr != DB_DEFAULT_NONE)
+      if (!DB_IS_NULL (&attribute_p->default_value.value) || attribute_p->default_value.default_expr != DB_DEFAULT_NONE)
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " DEFAULT ");
 
@@ -741,16 +660,13 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
 	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_USER");
 	      break;
 	    case DB_DEFAULT_CURRENTDATETIME:
-	      buffer =
-		pt_append_nulstring (parser, buffer, "CURRENT_DATETIME");
+	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_DATETIME");
 	      break;
 	    case DB_DEFAULT_CURRENTTIMESTAMP:
-	      buffer =
-		pt_append_nulstring (parser, buffer, "CURRENT_TIMESTAMP");
+	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_TIMESTAMP");
 	      break;
 	    default:
-	      buffer = describe_value (parser, buffer,
-				       &attribute_p->default_value.value);
+	      buffer = describe_value (parser, buffer, &attribute_p->default_value.value);
 	      break;
 	    }
 	}
@@ -760,8 +676,7 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
       if (!DB_IS_NULL (&attribute_p->default_value.value))
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " VALUE ");
-	  buffer = describe_value (parser, buffer,
-				   &attribute_p->default_value.value);
+	  buffer = describe_value (parser, buffer, &attribute_p->default_value.value);
 	}
     }
 
@@ -772,25 +687,19 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
   if (attribute_p->class_mop != NULL && attribute_p->class_mop != class_p)
     {
       buffer = pt_append_nulstring (parser, buffer, " /* from ");
-      buffer =
-	obj_print_identifier (parser, buffer,
-			      sm_get_ch_name (attribute_p->class_mop),
-			      prt_type);
+      buffer = obj_print_identifier (parser, buffer, sm_get_ch_name (attribute_p->class_mop), prt_type);
       buffer = pt_append_nulstring (parser, buffer, " */");
     }
 
   if (attribute_p->comment != NULL && attribute_p->comment[0] != '\0')
     {
       buffer = pt_append_nulstring (parser, buffer, " ");
-      buffer =
-	pt_append_nulstring (parser, buffer,
-			     describe_comment (parser, attribute_p->comment));
+      buffer = pt_append_nulstring (parser, buffer, describe_comment (parser, attribute_p->comment));
     }
 
   /* let the higher level display routine do this */
-  /*
-     buffer = pt_append_nulstring(parser,buffer,"\n");
-   */
+  /* 
+   * buffer = pt_append_nulstring(parser,buffer,"\n"); */
   return ((char *) pt_get_varchar_bytes (buffer));
 }
 
@@ -804,9 +713,7 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
  */
 
 static char *
-obj_print_describe_partition_parts (PARSER_CONTEXT * parser,
-				    SM_PARTITION * parts,
-				    OBJ_PRINT_TYPE prt_type)
+obj_print_describe_partition_parts (PARSER_CONTEXT * parser, SM_PARTITION * parts, OBJ_PRINT_TYPE prt_type)
 {
   DB_VALUE ele;
   PARSER_VARCHAR *buffer;
@@ -865,9 +772,7 @@ obj_print_describe_partition_parts (PARSER_CONTEXT * parser,
   if (parts->comment != NULL && parts->comment[0] != '\0')
     {
       buffer = pt_append_nulstring (parser, buffer, " ");
-      buffer = pt_append_nulstring (parser, buffer,
-				    describe_comment (parser,
-						      parts->comment));
+      buffer = pt_append_nulstring (parser, buffer, describe_comment (parser, parts->comment));
     }
 
   pr_clear_value (&ele);
@@ -884,8 +789,7 @@ obj_print_describe_partition_parts (PARSER_CONTEXT * parser,
  */
 
 static char *
-obj_print_describe_partition_info (PARSER_CONTEXT * parser,
-				   SM_PARTITION * partinfo)
+obj_print_describe_partition_info (PARSER_CONTEXT * parser, SM_PARTITION * partinfo)
 {
   DB_VALUE ele;
   PARSER_VARCHAR *buffer;
@@ -954,9 +858,7 @@ obj_print_describe_partition_info (PARSER_CONTEXT * parser,
  */
 
 static char *
-obj_print_describe_constraint (PARSER_CONTEXT * parser,
-			       SM_CLASS * class_p,
-			       SM_CLASS_CONSTRAINT * constraint_p,
+obj_print_describe_constraint (PARSER_CONTEXT * parser, SM_CLASS * class_p, SM_CLASS_CONSTRAINT * constraint_p,
 			       OBJ_PRINT_TYPE prt_type)
 {
   PARSER_VARCHAR *buffer;
@@ -1002,8 +904,7 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 
       buffer = pt_append_nulstring (parser, buffer, constraint_p->name);
       buffer = pt_append_nulstring (parser, buffer, " ON ");
-      buffer =
-	pt_append_nulstring (parser, buffer, sm_ch_name ((MOBJ) class_p));
+      buffer = pt_append_nulstring (parser, buffer, sm_ch_name ((MOBJ) class_p));
       buffer = pt_append_nulstring (parser, buffer, " (");
 
       asc_desc = NULL;		/* init */
@@ -1019,30 +920,22 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 	case SM_CONSTRAINT_INDEX:
 	case SM_CONSTRAINT_REVERSE_INDEX:
 	  buffer = pt_append_nulstring (parser, buffer, " INDEX ");
-	  buffer =
-	    obj_print_identifier (parser, buffer, constraint_p->name,
-				  prt_type);
+	  buffer = obj_print_identifier (parser, buffer, constraint_p->name, prt_type);
 	  break;
 	case SM_CONSTRAINT_UNIQUE:
 	case SM_CONSTRAINT_REVERSE_UNIQUE:
 	  buffer = pt_append_nulstring (parser, buffer, " CONSTRAINT ");
-	  buffer =
-	    obj_print_identifier (parser, buffer, constraint_p->name,
-				  prt_type);
+	  buffer = obj_print_identifier (parser, buffer, constraint_p->name, prt_type);
 	  buffer = pt_append_nulstring (parser, buffer, " UNIQUE KEY ");
 	  break;
 	case SM_CONSTRAINT_PRIMARY_KEY:
 	  buffer = pt_append_nulstring (parser, buffer, " CONSTRAINT ");
-	  buffer =
-	    obj_print_identifier (parser, buffer, constraint_p->name,
-				  prt_type);
+	  buffer = obj_print_identifier (parser, buffer, constraint_p->name, prt_type);
 	  buffer = pt_append_nulstring (parser, buffer, " PRIMARY KEY ");
 	  break;
 	case SM_CONSTRAINT_FOREIGN_KEY:
 	  buffer = pt_append_nulstring (parser, buffer, " CONSTRAINT ");
-	  buffer =
-	    obj_print_identifier (parser, buffer, constraint_p->name,
-				  prt_type);
+	  buffer = obj_print_identifier (parser, buffer, constraint_p->name, prt_type);
 	  buffer = pt_append_nulstring (parser, buffer, " FOREIGN KEY ");
 	  break;
 	default:
@@ -1056,12 +949,9 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 
   prefix_length = constraint_p->attrs_prefix_length;
 
-  /* If the index is a function index, then the corresponding expression
-   * is printed at the right position in the attribute list. Since the 
-   * expression is not part of the attribute list, when searching through that
-   * list we must check if the position of the expression is reached and then
-   * print it.
-   */
+  /* If the index is a function index, then the corresponding expression is printed at the right position in the
+   * attribute list. Since the expression is not part of the attribute list, when searching through that list we must
+   * check if the position of the expression is reached and then print it. */
   k = 0;
   if (constraint_p->func_index_info)
     {
@@ -1069,24 +959,20 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
     }
   else
     {
-      for (attribute_p = constraint_p->attributes; *attribute_p;
-	   attribute_p++)
+      for (attribute_p = constraint_p->attributes; *attribute_p; attribute_p++)
 	{
 	  n_attrs++;
 	}
     }
   for (attribute_p = constraint_p->attributes; k < n_attrs; attribute_p++)
     {
-      if (constraint_p->func_index_info
-	  && k == constraint_p->func_index_info->col_id)
+      if (constraint_p->func_index_info && k == constraint_p->func_index_info->col_id)
 	{
 	  if (k > 0)
 	    {
 	      buffer = pt_append_nulstring (parser, buffer, ", ");
 	    }
-	  buffer =
-	    pt_append_nulstring (parser, buffer,
-				 constraint_p->func_index_info->expr_str);
+	  buffer = pt_append_nulstring (parser, buffer, constraint_p->func_index_info->expr_str);
 	  if (constraint_p->func_index_info->fi_domain->is_desc)
 	    {
 	      buffer = pt_append_nulstring (parser, buffer, " DESC");
@@ -1101,9 +987,7 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 	{
 	  buffer = pt_append_nulstring (parser, buffer, ", ");
 	}
-      buffer =
-	obj_print_identifier (parser, buffer, (*attribute_p)->header.name,
-			      prt_type);
+      buffer = obj_print_identifier (parser, buffer, (*attribute_p)->header.name, prt_type);
 
       if (prefix_length)
 	{
@@ -1128,53 +1012,42 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
     }
   buffer = pt_append_nulstring (parser, buffer, ")");
 
-  if (constraint_p->filter_predicate &&
-      constraint_p->filter_predicate->pred_string)
+  if (constraint_p->filter_predicate && constraint_p->filter_predicate->pred_string)
     {
       buffer = pt_append_nulstring (parser, buffer, " WHERE ");
-      buffer =
-	pt_append_nulstring (parser, buffer,
-			     constraint_p->filter_predicate->pred_string);
+      buffer = pt_append_nulstring (parser, buffer, constraint_p->filter_predicate->pred_string);
     }
 
-  if (constraint_p->type == SM_CONSTRAINT_FOREIGN_KEY
-      && constraint_p->fk_info)
+  if (constraint_p->type == SM_CONSTRAINT_FOREIGN_KEY && constraint_p->fk_info)
     {
       MOP ref_clsop;
       SM_CLASS *ref_cls;
       SM_CLASS_CONSTRAINT *c;
 
       ref_clsop = ws_mop (&(constraint_p->fk_info->ref_class_oid), NULL);
-      if (au_fetch_class_force (ref_clsop, &ref_cls, AU_FETCH_READ) !=
-	  NO_ERROR)
+      if (au_fetch_class_force (ref_clsop, &ref_cls, AU_FETCH_READ) != NO_ERROR)
 	{
 	  return NULL;
 	}
 
       buffer = pt_append_nulstring (parser, buffer, " REFERENCES ");
-      buffer = obj_print_identifier (parser, buffer,
-				     sm_ch_name ((MOBJ) ref_cls), prt_type);
+      buffer = obj_print_identifier (parser, buffer, sm_ch_name ((MOBJ) ref_cls), prt_type);
 
       if (prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
 	{
 	  for (c = ref_cls->constraints; c; c = c->next)
 	    {
-	      if (c->type == SM_CONSTRAINT_PRIMARY_KEY
-		  && c->attributes != NULL)
+	      if (c->type == SM_CONSTRAINT_PRIMARY_KEY && c->attributes != NULL)
 		{
 		  buffer = pt_append_nulstring (parser, buffer, " (");
 		  for (k = 0; k < n_attrs; k++)
 		    {
 		      if (c->attributes[k] != NULL)
 			{
-			  buffer =
-			    obj_print_identifier (parser, buffer,
-						  c->attributes[k]->header.
-						  name, prt_type);
+			  buffer = obj_print_identifier (parser, buffer, c->attributes[k]->header.name, prt_type);
 			  if (k != (n_attrs - 1))
 			    {
-			      buffer =
-				pt_append_nulstring (parser, buffer, ", ");
+			      buffer = pt_append_nulstring (parser, buffer, ", ");
 			    }
 			}
 		    }
@@ -1187,27 +1060,24 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 	}
 
       buffer = pt_append_nulstring (parser, buffer, " ON DELETE ");
-      buffer = pt_append_nulstring (parser, buffer,
-				    classobj_describe_foreign_key_action
-				    (constraint_p->fk_info->delete_action));
+      buffer =
+	pt_append_nulstring (parser, buffer,
+			     classobj_describe_foreign_key_action (constraint_p->fk_info->delete_action));
 
       if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
 	{
 	  buffer = pt_append_nulstring (parser, buffer, ",");
 	}
       buffer = pt_append_nulstring (parser, buffer, " ON UPDATE ");
-      buffer = pt_append_nulstring (parser, buffer,
-				    classobj_describe_foreign_key_action
-				    (constraint_p->fk_info->update_action));
+      buffer =
+	pt_append_nulstring (parser, buffer,
+			     classobj_describe_foreign_key_action (constraint_p->fk_info->update_action));
     }
 
   if (constraint_p->comment != NULL && constraint_p->comment[0] != '\0')
     {
       buffer = pt_append_nulstring (parser, buffer, " ");
-      buffer =
-	pt_append_nulstring (parser, buffer,
-			     describe_comment (parser,
-					       constraint_p->comment));
+      buffer = pt_append_nulstring (parser, buffer, describe_comment (parser, constraint_p->comment));
     }
 
   return ((char *) pt_get_varchar_bytes (buffer));
@@ -1224,24 +1094,19 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
  */
 
 static PARSER_VARCHAR *
-obj_print_describe_argument (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-			     SM_METHOD_ARGUMENT * argument_p,
+obj_print_describe_argument (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, SM_METHOD_ARGUMENT * argument_p,
 			     OBJ_PRINT_TYPE prt_type)
 {
   if (argument_p != NULL)
     {
       if (argument_p->domain != NULL)
 	{
-	  /* method and its arguments do not inherit collation from class,
-	   * collation printing is not enforced */
-	  buffer =
-	    obj_print_describe_domain (parser, buffer, argument_p->domain,
-				       prt_type, false);
+	  /* method and its arguments do not inherit collation from class, collation printing is not enforced */
+	  buffer = obj_print_describe_domain (parser, buffer, argument_p->domain, prt_type, false);
 	}
       else if (argument_p->type)
 	{
-	  buffer =
-	    pt_append_nulstring (parser, buffer, argument_p->type->name);
+	  buffer = pt_append_nulstring (parser, buffer, argument_p->type->name);
 	}
       else
 	{
@@ -1262,9 +1127,7 @@ obj_print_describe_argument (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  */
 
 static PARSER_VARCHAR *
-obj_print_describe_signature (PARSER_CONTEXT * parser,
-			      PARSER_VARCHAR * buffer,
-			      SM_METHOD_SIGNATURE * signature_p,
+obj_print_describe_signature (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, SM_METHOD_SIGNATURE * signature_p,
 			      OBJ_PRINT_TYPE prt_type)
 {
   SM_METHOD_ARGUMENT *argument_p;
@@ -1277,14 +1140,10 @@ obj_print_describe_signature (PARSER_CONTEXT * parser,
 
   for (i = 1; i <= signature_p->num_args; i++)
     {
-      for (argument_p = signature_p->args;
-	   argument_p != NULL && argument_p->index != i;
-	   argument_p = argument_p->next);
+      for (argument_p = signature_p->args; argument_p != NULL && argument_p->index != i; argument_p = argument_p->next);
       if (argument_p != NULL)
 	{
-	  buffer =
-	    obj_print_describe_argument (parser, buffer, argument_p,
-					 prt_type);
+	  buffer = obj_print_describe_argument (parser, buffer, argument_p, prt_type);
 	}
       else
 	{
@@ -1310,14 +1169,12 @@ obj_print_describe_signature (PARSER_CONTEXT * parser,
  */
 
 static PARSER_VARCHAR *
-obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
-			   SM_METHOD * method_p, OBJ_PRINT_TYPE prt_type)
+obj_print_describe_method (PARSER_CONTEXT * parser, MOP op, SM_METHOD * method_p, OBJ_PRINT_TYPE prt_type)
 {
   PARSER_VARCHAR *buffer;
   SM_METHOD_SIGNATURE *signature_p;
 
-  /* assume for the moment that there can only be one signature, simplifies
-     the output */
+  /* assume for the moment that there can only be one signature, simplifies the output */
 
   buffer = NULL;
 
@@ -1325,8 +1182,7 @@ obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
     {
       return buffer;
     }
-  buffer =
-    obj_print_identifier (parser, buffer, method_p->header.name, prt_type);
+  buffer = obj_print_identifier (parser, buffer, method_p->header.name, prt_type);
   signature_p = method_p->signatures;
   if (signature_p == NULL)
     {
@@ -1335,26 +1191,18 @@ obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
   else
     {
       buffer = pt_append_nulstring (parser, buffer, "(");
-      buffer =
-	obj_print_describe_signature (parser, buffer, signature_p, prt_type);
+      buffer = obj_print_describe_signature (parser, buffer, signature_p, prt_type);
       buffer = pt_append_nulstring (parser, buffer, ") ");
 
       if (signature_p->value != NULL)
 	{
-	  /* make this look more like the actual definition instead
-	     strcpy(line, "returns ");
-	     line += strlen(line);
-	   */
-	  buffer =
-	    obj_print_describe_argument (parser, buffer, signature_p->value,
-					 prt_type);
+	  /* make this look more like the actual definition instead strcpy(line, "returns "); line += strlen(line); */
+	  buffer = obj_print_describe_argument (parser, buffer, signature_p->value, prt_type);
 	}
       if (signature_p->function_name != NULL)
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " FUNCTION ");
-	  buffer =
-	    obj_print_identifier (parser, buffer, signature_p->function_name,
-				  prt_type);
+	  buffer = obj_print_identifier (parser, buffer, signature_p->function_name, prt_type);
 	}
     }
   /* add the inheritance source */
@@ -1362,9 +1210,7 @@ obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
     {
 
       buffer = pt_append_nulstring (parser, buffer, "(from ");
-      buffer =
-	obj_print_identifier (parser, buffer,
-			      sm_get_ch_name (method_p->class_mop), prt_type);
+      buffer = obj_print_identifier (parser, buffer, sm_get_ch_name (method_p->class_mop), prt_type);
       buffer = pt_append_nulstring (parser, buffer, ")");
     }
 
@@ -1381,9 +1227,7 @@ obj_print_describe_method (PARSER_CONTEXT * parser, MOP op,
  */
 
 static PARSER_VARCHAR *
-obj_print_describe_resolution (PARSER_CONTEXT * parser,
-			       SM_RESOLUTION * resolution_p,
-			       OBJ_PRINT_TYPE prt_type)
+obj_print_describe_resolution (PARSER_CONTEXT * parser, SM_RESOLUTION * resolution_p, OBJ_PRINT_TYPE prt_type)
 {
   PARSER_VARCHAR *buffer;
   buffer = NULL;
@@ -1402,20 +1246,14 @@ obj_print_describe_resolution (PARSER_CONTEXT * parser,
 	    }
 	}
 
-      buffer =
-	obj_print_identifier (parser, buffer, resolution_p->name, prt_type);
+      buffer = obj_print_identifier (parser, buffer, resolution_p->name, prt_type);
       buffer = pt_append_nulstring (parser, buffer, " of ");
-      buffer =
-	obj_print_identifier (parser, buffer,
-			      sm_get_ch_name (resolution_p->class_mop),
-			      prt_type);
+      buffer = obj_print_identifier (parser, buffer, sm_get_ch_name (resolution_p->class_mop), prt_type);
 
       if (resolution_p->alias != NULL)
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " as ");
-	  buffer =
-	    obj_print_identifier (parser, buffer, resolution_p->alias,
-				  prt_type);
+	  buffer = obj_print_identifier (parser, buffer, resolution_p->alias, prt_type);
 	}
     }
   return buffer;
@@ -1430,8 +1268,7 @@ obj_print_describe_resolution (PARSER_CONTEXT * parser,
  */
 
 static PARSER_VARCHAR *
-obj_print_describe_method_file (PARSER_CONTEXT * parser, MOP class_p,
-				SM_METHOD_FILE * file_p)
+obj_print_describe_method_file (PARSER_CONTEXT * parser, MOP class_p, SM_METHOD_FILE * file_p)
 {
   PARSER_VARCHAR *fbuffer = NULL;
   if (file_p != NULL)
@@ -1440,8 +1277,7 @@ obj_print_describe_method_file (PARSER_CONTEXT * parser, MOP class_p,
       if (file_p->class_mop != NULL && file_p->class_mop != class_p)
 	{
 	  pt_append_nulstring (parser, fbuffer, " (from ");
-	  pt_append_nulstring (parser, fbuffer,
-			       sm_get_ch_name (file_p->class_mop));
+	  pt_append_nulstring (parser, fbuffer, sm_get_ch_name (file_p->class_mop));
 	  pt_append_nulstring (parser, fbuffer, ")");
 	}
     }
@@ -1459,19 +1295,15 @@ obj_print_describe_method_file (PARSER_CONTEXT * parser, MOP class_p,
  */
 
 static PARSER_VARCHAR *
-obj_print_describe_class_trigger (PARSER_CONTEXT * parser,
-				  TR_TRIGGER * trigger)
+obj_print_describe_class_trigger (PARSER_CONTEXT * parser, TR_TRIGGER * trigger)
 {
   PARSER_VARCHAR *buffer = NULL;
 
   buffer = pt_append_nulstring (parser, buffer, trigger->name);
   buffer = pt_append_nulstring (parser, buffer, " : ");
-  buffer =
-    pt_append_nulstring (parser, buffer,
-			 obj_print_trigger_condition_time (trigger));
+  buffer = pt_append_nulstring (parser, buffer, obj_print_trigger_condition_time (trigger));
   buffer = pt_append_nulstring (parser, buffer, " ");
-  buffer =
-    pt_append_nulstring (parser, buffer, tr_event_as_string (trigger->event));
+  buffer = pt_append_nulstring (parser, buffer, tr_event_as_string (trigger->event));
   buffer = pt_append_nulstring (parser, buffer, " ");
 
   if (trigger->attribute != NULL)
@@ -1483,9 +1315,7 @@ obj_print_describe_class_trigger (PARSER_CONTEXT * parser,
   if (trigger->comment != NULL && trigger->comment[0] != '\0')
     {
       buffer = pt_append_nulstring (parser, buffer, " ");
-      buffer =
-	pt_append_nulstring (parser, buffer,
-			     describe_comment (parser, trigger->comment));
+      buffer = pt_append_nulstring (parser, buffer, describe_comment (parser, trigger->comment));
     }
 
   return buffer;
@@ -1504,8 +1334,7 @@ obj_print_describe_class_trigger (PARSER_CONTEXT * parser,
  */
 
 static void
-obj_print_describe_trigger_list (PARSER_CONTEXT * parser,
-				 TR_TRIGLIST * triggers, STRLIST ** strings)
+obj_print_describe_trigger_list (PARSER_CONTEXT * parser, TR_TRIGLIST * triggers, STRLIST ** strings)
 {
   TR_TRIGLIST *t;
   STRLIST *new_p;
@@ -1515,7 +1344,7 @@ obj_print_describe_trigger_list (PARSER_CONTEXT * parser,
     {
       buffer = obj_print_describe_class_trigger (parser, t->trigger);
 
-      /*
+      /* 
        * this used to be add_strlist, but since it is not used in any other
        * place, or ever will be, I unrolled it here.
        */
@@ -1524,8 +1353,7 @@ obj_print_describe_trigger_list (PARSER_CONTEXT * parser,
 	{
 	  new_p->next = *strings;
 	  *strings = new_p;
-	  new_p->string =
-	    obj_print_copy_string ((char *) pt_get_varchar_bytes (buffer));
+	  new_p->string = obj_print_copy_string ((char *) pt_get_varchar_bytes (buffer));
 	}
     }
 }
@@ -1539,8 +1367,7 @@ obj_print_describe_trigger_list (PARSER_CONTEXT * parser,
  */
 
 static const char **
-obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
-				   SM_CLASS * class_p, MOP class_mop)
+obj_print_describe_class_triggers (PARSER_CONTEXT * parser, SM_CLASS * class_p, MOP class_mop)
 {
   SM_ATTRIBUTE *attribute_p;
   STRLIST *strings;
@@ -1555,21 +1382,18 @@ obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
     {
       for (i = 0; i < cache->array_length; i++)
 	{
-	  obj_print_describe_trigger_list (parser, cache->triggers[i],
-					   &strings);
+	  obj_print_describe_trigger_list (parser, cache->triggers[i], &strings);
 	}
     }
 
-  for (attribute_p = class_p->ordered_attributes; attribute_p != NULL;
-       attribute_p = attribute_p->order_link)
+  for (attribute_p = class_p->ordered_attributes; attribute_p != NULL; attribute_p = attribute_p->order_link)
     {
       cache = attribute_p->triggers;
       if (cache != NULL && !tr_validate_schema_cache (cache, class_mop))
 	{
 	  for (i = 0; i < cache->array_length; i++)
 	    {
-	      obj_print_describe_trigger_list (parser, cache->triggers[i],
-					       &strings);
+	      obj_print_describe_trigger_list (parser, cache->triggers[i], &strings);
 	    }
 	}
     }
@@ -1582,8 +1406,7 @@ obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
 	{
 	  for (i = 0; i < cache->array_length; i++)
 	    {
-	      obj_print_describe_trigger_list (parser, cache->triggers[i],
-					       &strings);
+	      obj_print_describe_trigger_list (parser, cache->triggers[i], &strings);
 	    }
 	}
     }
@@ -1610,8 +1433,7 @@ obj_print_make_class_help (void)
   new_p = (CLASS_HELP *) malloc (sizeof (CLASS_HELP));
   if (new_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CLASS_HELP));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CLASS_HELP));
       return NULL;
     }
   new_p->name = NULL;
@@ -1692,8 +1514,7 @@ obj_print_help_free_class (CLASS_HELP * info)
  *   class_op(in):
  */
 PARSER_VARCHAR *
-obj_print_describe_class (const PARSER_CONTEXT * parser,
-			  CLASS_HELP * class_schema, DB_OBJECT * class_op)
+obj_print_describe_class (const PARSER_CONTEXT * parser, CLASS_HELP * class_schema, DB_OBJECT * class_op)
 {
   PARSER_VARCHAR *buffer;
   char **line_ptr;
@@ -1724,8 +1545,7 @@ obj_print_describe_class (const PARSER_CONTEXT * parser,
     {
       buffer = pt_append_nulstring (parser, buffer, " CLASS ATTRIBUTE (");
 
-      for (line_ptr = class_schema->class_attributes; *line_ptr != NULL;
-	   line_ptr++)
+      for (line_ptr = class_schema->class_attributes; *line_ptr != NULL; line_ptr++)
 	{
 	  if (line_ptr != class_schema->class_attributes)
 	    {
@@ -1743,8 +1563,7 @@ obj_print_describe_class (const PARSER_CONTEXT * parser,
       buffer = pt_append_nulstring (parser, buffer, " (");
       if (class_schema->attributes != NULL)
 	{
-	  for (line_ptr = class_schema->attributes; *line_ptr != NULL;
-	       line_ptr++)
+	  for (line_ptr = class_schema->attributes; *line_ptr != NULL; line_ptr++)
 	    {
 	      if (line_ptr != class_schema->attributes)
 		{
@@ -1755,11 +1574,9 @@ obj_print_describe_class (const PARSER_CONTEXT * parser,
 	}
       if (class_schema->constraints != NULL)
 	{
-	  for (line_ptr = class_schema->constraints; *line_ptr != NULL;
-	       line_ptr++)
+	  for (line_ptr = class_schema->constraints; *line_ptr != NULL; line_ptr++)
 	    {
-	      if (line_ptr != class_schema->constraints
-		  || class_schema->attributes != NULL)
+	      if (line_ptr != class_schema->constraints || class_schema->attributes != NULL)
 		{
 		  buffer = pt_append_nulstring (parser, buffer, ", ");
 		}
@@ -1791,14 +1608,13 @@ obj_print_describe_class (const PARSER_CONTEXT * parser,
       buffer = pt_append_nulstring (parser, buffer, class_schema->collation);
     }
 
-  /* methods and class_methods  */
+  /* methods and class_methods */
   if (class_schema->methods != NULL || class_schema->class_methods != NULL)
     {
       buffer = pt_append_nulstring (parser, buffer, " METHOD ");
       if (class_schema->methods != NULL)
 	{
-	  for (line_ptr = class_schema->methods; *line_ptr != NULL;
-	       line_ptr++)
+	  for (line_ptr = class_schema->methods; *line_ptr != NULL; line_ptr++)
 	    {
 	      if (line_ptr != class_schema->methods)
 		{
@@ -1809,11 +1625,9 @@ obj_print_describe_class (const PARSER_CONTEXT * parser,
 	}
       if (class_schema->class_methods != NULL)
 	{
-	  for (line_ptr = class_schema->class_methods; *line_ptr != NULL;
-	       line_ptr++)
+	  for (line_ptr = class_schema->class_methods; *line_ptr != NULL; line_ptr++)
 	    {
-	      if (line_ptr != class_schema->class_methods
-		  || class_schema->methods != NULL)
+	      if (line_ptr != class_schema->class_methods || class_schema->methods != NULL)
 		{
 		  buffer = pt_append_nulstring (parser, buffer, ", ");
 		}
@@ -1829,8 +1643,7 @@ obj_print_describe_class (const PARSER_CONTEXT * parser,
       char tmp[PATH_MAX + 2];
 
       buffer = pt_append_nulstring (parser, buffer, " FILE ");
-      for (line_ptr = class_schema->method_files; *line_ptr != NULL;
-	   line_ptr++)
+      for (line_ptr = class_schema->method_files; *line_ptr != NULL; line_ptr++)
 	{
 	  if (line_ptr != class_schema->method_files)
 	    {
@@ -1845,8 +1658,7 @@ obj_print_describe_class (const PARSER_CONTEXT * parser,
   if (class_schema->resolutions != NULL)
     {
       buffer = pt_append_nulstring (parser, buffer, " INHERIT ");
-      for (line_ptr = class_schema->resolutions; *line_ptr != NULL;
-	   line_ptr++)
+      for (line_ptr = class_schema->resolutions; *line_ptr != NULL; line_ptr++)
 	{
 	  if (line_ptr != class_schema->resolutions)
 	    {
@@ -1958,12 +1770,10 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
       if (class_->comment != NULL && class_->comment[0] != '\0')
 	{
 	  has_comment = true;
-	  max_name_size = SM_MAX_IDENTIFIER_LENGTH
-	    + SM_MAX_CLASS_COMMENT_LENGTH + 50;
+	  max_name_size = SM_MAX_IDENTIFIER_LENGTH + SM_MAX_CLASS_COMMENT_LENGTH + 50;
 	}
 
-      force_print_att_coll = (class_->collation_id != LANG_SYS_COLLATION)
-	? true : false;
+      force_print_att_coll = (class_->collation_id != LANG_SYS_COLLATION) ? true : false;
       /* make sure all the information is up to date */
       if (sm_clean_class (op, class_) != NO_ERROR)
 	{
@@ -1978,7 +1788,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
       if (prt_type == OBJ_PRINT_CSQL_SCHEMA_COMMAND)
 	{
-	  /*
+	  /* 
 	   * For the case of "print schema",
 	   * info->name is set to:
 	   *   exact class name
@@ -1991,32 +1801,24 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	    {
 	      if (has_comment)
 		{
-		  snprintf (name_buf, max_name_size,
-			    "%-20s %s",
-			    (char *) sm_ch_name ((MOBJ) class_),
+		  snprintf (name_buf, max_name_size, "%-20s %s", (char *) sm_ch_name ((MOBJ) class_),
 			    describe_comment (parser, class_->comment));
 		}
 	      else
 		{
-		  snprintf (name_buf, max_name_size,
-			    "%s", (char *) sm_ch_name ((MOBJ) class_));
+		  snprintf (name_buf, max_name_size, "%s", (char *) sm_ch_name ((MOBJ) class_));
 		}
 	    }
 	  else
 	    {
 	      if (has_comment)
 		{
-		  snprintf (name_buf, max_name_size,
-			    "%-20s COLLATE %s %s",
-			    sm_ch_name ((MOBJ) class_),
-			    lang_get_collation_name (class_->collation_id),
-			    describe_comment (parser, class_->comment));
+		  snprintf (name_buf, max_name_size, "%-20s COLLATE %s %s", sm_ch_name ((MOBJ) class_),
+			    lang_get_collation_name (class_->collation_id), describe_comment (parser, class_->comment));
 		}
 	      else
 		{
-		  snprintf (name_buf, max_name_size,
-			    "%-20s COLLATE %s",
-			    sm_ch_name ((MOBJ) class_),
+		  snprintf (name_buf, max_name_size, "%-20s COLLATE %s", sm_ch_name ((MOBJ) class_),
 			    lang_get_collation_name (class_->collation_id));
 		}
 	    }
@@ -2024,12 +1826,11 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	}
       else
 	{
-	  /*
+	  /* 
 	   * For the case prt_type == OBJ_PRINT_SHOW_CREATE_TABLE
 	   * info->name is set to the exact class name
 	   */
-	  snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2, "[%s]",
-		    sm_ch_name ((MOBJ) class_));
+	  snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2, "[%s]", sm_ch_name ((MOBJ) class_));
 	  info->name = obj_print_copy_string (name_buf);
 	}
 
@@ -2038,26 +1839,19 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	default:
 	  info->class_type =
 	    obj_print_copy_string (msgcat_message
-				   (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP,
-				    MSGCAT_HELP_META_CLASS_HEADER));
+				   (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_META_CLASS_HEADER));
 	  break;
 	case SM_CLASS_CT:
 	  info->class_type =
-	    obj_print_copy_string (msgcat_message
-				   (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP,
-				    MSGCAT_HELP_CLASS_HEADER));
+	    obj_print_copy_string (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_HEADER));
 	  break;
 	case SM_VCLASS_CT:
 	  info->class_type =
-	    obj_print_copy_string (msgcat_message (MSGCAT_CATALOG_CUBRID,
-						   MSGCAT_SET_HELP,
-						   MSGCAT_HELP_VCLASS_HEADER));
+	    obj_print_copy_string (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_VCLASS_HEADER));
 	  break;
 	}
 
-      info->collation =
-	obj_print_copy_string (lang_get_collation_name
-			       (class_->collation_id));
+      info->collation = obj_print_copy_string (lang_get_collation_name (class_->collation_id));
       if (info->collation == NULL)
 	{
 	  goto error_exit;
@@ -2065,7 +1859,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
       if (has_comment && prt_type != OBJ_PRINT_CSQL_SCHEMA_COMMAND)
 	{
-	  /*
+	  /* 
 	   * For the case except "print schema",
 	   * comment is copied to info->comment anyway
 	   */
@@ -2083,13 +1877,11 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	  strs = (char **) malloc (buf_size);
 	  if (strs == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      goto error_exit;
 	    }
 	  i = 0;
-	  for (super = class_->inheritance; super != NULL;
-	       super = super->next)
+	  for (super = class_->inheritance; super != NULL; super = super->next)
 	    {
 	      /* kludge for const vs. non-const warnings */
 	      kludge = sm_get_ch_name (super->op);
@@ -2105,8 +1897,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		}
 	      else
 		{		/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
-		  snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2, "[%s]",
-			    kludge);
+		  snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2, "[%s]", kludge);
 		  strs[i] = obj_print_copy_string (name_buf);
 		}
 	      i++;
@@ -2122,8 +1913,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	  strs = (char **) malloc (buf_size);
 	  if (strs == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      goto error_exit;
 	    }
 	  i = 0;
@@ -2143,8 +1933,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		}
 	      else
 		{		/* prt_type == OBJ_PRINT_SHOW_CREATE_TABLE */
-		  snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2, "[%s]",
-			    kludge);
+		  snprintf (name_buf, SM_MAX_IDENTIFIER_LENGTH + 2, "[%s]", kludge);
 		  strs[i] = obj_print_copy_string (name_buf);
 		}
 
@@ -2164,8 +1953,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	    {
 	      count = 0;
 	      /* find the number own by itself */
-	      for (a = class_->ordered_attributes; a != NULL;
-		   a = a->order_link)
+	      for (a = class_->ordered_attributes; a != NULL; a = a->order_link)
 		{
 		  if (a->class_mop == op)
 		    {
@@ -2180,22 +1968,17 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	      strs = (char **) malloc (buf_size);
 	      if (strs == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  goto error_exit;
 		}
 
 	      i = 0;
-	      for (a = class_->ordered_attributes; a != NULL;
-		   a = a->order_link)
+	      for (a = class_->ordered_attributes; a != NULL; a = a->order_link)
 		{
-		  if (include_inherited
-		      || (!include_inherited && a->class_mop == op))
+		  if (include_inherited || (!include_inherited && a->class_mop == op))
 		    {
 		      description =
-			obj_print_describe_attribute (op, parser, a,
-						      (a->class_mop != op),
-						      prt_type,
+			obj_print_describe_attribute (op, parser, a, (a->class_mop != op), prt_type,
 						      force_print_att_coll);
 		      if (description == NULL)
 			{
@@ -2220,8 +2003,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	    {
 	      count = 0;
 	      /* find the number own by itself */
-	      for (a = class_->class_attributes; a != NULL;
-		   a = (SM_ATTRIBUTE *) a->header.next)
+	      for (a = class_->class_attributes; a != NULL; a = (SM_ATTRIBUTE *) a->header.next)
 		{
 		  if (a->class_mop == op)
 		    {
@@ -2236,22 +2018,17 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	      strs = (char **) malloc (buf_size);
 	      if (strs == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  goto error_exit;
 		}
 
 	      i = 0;
-	      for (a = class_->class_attributes; a != NULL;
-		   a = (SM_ATTRIBUTE *) a->header.next)
+	      for (a = class_->class_attributes; a != NULL; a = (SM_ATTRIBUTE *) a->header.next)
 		{
-		  if (include_inherited
-		      || (!include_inherited && a->class_mop == op))
+		  if (include_inherited || (!include_inherited && a->class_mop == op))
 		    {
 		      description =
-			obj_print_describe_attribute (op, parser, a,
-						      (a->class_mop != op),
-						      prt_type,
+			obj_print_describe_attribute (op, parser, a, (a->class_mop != op), prt_type,
 						      force_print_att_coll);
 		      if (description == NULL)
 			{
@@ -2276,8 +2053,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	    {
 	      count = 0;
 	      /* find the number own by itself */
-	      for (m = class_->methods; m != NULL;
-		   m = (SM_METHOD *) m->header.next)
+	      for (m = class_->methods; m != NULL; m = (SM_METHOD *) m->header.next)
 		{
 		  if (m->class_mop == op)
 		    {
@@ -2292,22 +2068,16 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	      strs = (char **) malloc (buf_size);
 	      if (strs == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  goto error_exit;
 		}
 	      i = 0;
-	      for (m = class_->methods; m != NULL;
-		   m = (SM_METHOD *) m->header.next)
+	      for (m = class_->methods; m != NULL; m = (SM_METHOD *) m->header.next)
 		{
-		  if (include_inherited
-		      || (!include_inherited && m->class_mop == op))
+		  if (include_inherited || (!include_inherited && m->class_mop == op))
 		    {
-		      buffer =
-			obj_print_describe_method (parser, op, m, prt_type);
-		      strs[i] =
-			obj_print_copy_string ((char *)
-					       pt_get_varchar_bytes (buffer));
+		      buffer = obj_print_describe_method (parser, op, m, prt_type);
+		      strs[i] = obj_print_copy_string ((char *) pt_get_varchar_bytes (buffer));
 		      i++;
 		    }
 		}
@@ -2326,8 +2096,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	    {
 	      count = 0;
 	      /* find the number own by itself */
-	      for (m = class_->class_methods; m != NULL;
-		   m = (SM_METHOD *) m->header.next)
+	      for (m = class_->class_methods; m != NULL; m = (SM_METHOD *) m->header.next)
 		{
 		  if (m->class_mop == op)
 		    {
@@ -2342,22 +2111,16 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	      strs = (char **) malloc (buf_size);
 	      if (strs == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  goto error_exit;
 		}
 	      i = 0;
-	      for (m = class_->class_methods; m != NULL;
-		   m = (SM_METHOD *) m->header.next)
+	      for (m = class_->class_methods; m != NULL; m = (SM_METHOD *) m->header.next)
 		{
-		  if (include_inherited
-		      || (!include_inherited && m->class_mop == op))
+		  if (include_inherited || (!include_inherited && m->class_mop == op))
 		    {
-		      buffer =
-			obj_print_describe_method (parser, op, m, prt_type);
-		      strs[i] =
-			obj_print_copy_string ((char *)
-					       pt_get_varchar_bytes (buffer));
+		      buffer = obj_print_describe_method (parser, op, m, prt_type);
+		      strs[i] = obj_print_copy_string ((char *) pt_get_varchar_bytes (buffer));
 		      i++;
 		    }
 		}
@@ -2373,8 +2136,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	  strs = (char **) malloc (buf_size);
 	  if (strs == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      goto error_exit;
 	    }
 	  i = 0;
@@ -2382,9 +2144,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	  for (r = class_->resolutions; r != NULL; r = r->next)
 	    {
 	      buffer = obj_print_describe_resolution (parser, r, prt_type);
-	      strs[i] =
-		obj_print_copy_string ((char *)
-				       pt_get_varchar_bytes (buffer));
+	      strs[i] = obj_print_copy_string ((char *) pt_get_varchar_bytes (buffer));
 	      i++;
 	    }
 	  strs[i] = NULL;
@@ -2416,20 +2176,16 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	      strs = (char **) malloc (buf_size);
 	      if (strs == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  goto error_exit;
 		}
 	      i = 0;
 	      for (f = class_->method_files; f != NULL; f = f->next)
 		{
-		  if (include_inherited
-		      || (!include_inherited && f->class_mop == op))
+		  if (include_inherited || (!include_inherited && f->class_mop == op))
 		    {
 		      buffer = obj_print_describe_method_file (parser, op, f);
-		      strs[i] =
-			obj_print_copy_string ((char *)
-					       pt_get_varchar_bytes (buffer));
+		      strs[i] = obj_print_copy_string ((char *) pt_get_varchar_bytes (buffer));
 		      i++;
 		    }
 
@@ -2446,8 +2202,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	  strs = (char **) malloc (buf_size);
 	  if (strs == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      goto error_exit;
 	    }
 	  i = 0;
@@ -2461,10 +2216,9 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	}
 
       /* these are a bit more complicated */
-      info->triggers =
-	(char **) obj_print_describe_class_triggers (parser, class_, op);
+      info->triggers = (char **) obj_print_describe_class_triggers (parser, class_, op);
 
-      /*
+      /* 
        *  Process multi-column class constraints (Unique and Indexes).
        *  Single column constraints (NOT NULL) are displayed along with
        *  the attributes.
@@ -2479,16 +2233,11 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	    {
 	      if (SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
 		{
-		  /* Csql schema command will print all constraints, which
-		   * include the constraints belong to the table itself and
-		   * belong to the parent table.
-		   * But show create table will only print the constraints
-		   * which belong to the table itself.
-		   */
+		  /* Csql schema command will print all constraints, which include the constraints belong to the table
+		   * itself and belong to the parent table. But show create table will only print the constraints which 
+		   * belong to the table itself. */
 		  if (include_inherited
-		      || (!include_inherited
-			  && c->attributes[0] != NULL
-			  && c->attributes[0]->class_mop == op))
+		      || (!include_inherited && c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
 		    {
 		      count++;
 		    }
@@ -2501,8 +2250,7 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 	      strs = (char **) malloc (buf_size);
 	      if (strs == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		  goto error_exit;
 		}
 
@@ -2512,14 +2260,9 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		  if (SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
 		    {
 		      if (include_inherited
-			  || (!include_inherited
-			      && c->attributes[0] != NULL
-			      && c->attributes[0]->class_mop == op))
+			  || (!include_inherited && c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
 			{
-			  description = obj_print_describe_constraint (parser,
-								       class_,
-								       c,
-								       prt_type);
+			  description = obj_print_describe_constraint (parser, class_, c, prt_type);
 			  strs[i] = obj_print_copy_string (description);
 			  if (strs[i] == NULL)
 			    {
@@ -2542,44 +2285,32 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 
 	  count = 0;
 
-	  /* Show create table will not print the sub partition for hash 
-	   * partition table.
-	   */
+	  /* Show create table will not print the sub partition for hash partition table. */
 	  if (prt_type == OBJ_PRINT_SHOW_CREATE_TABLE)
 	    {
-	      is_print_partition = (class_->partition->partition_type
-				    != PT_PARTITION_HASH);
+	      is_print_partition = (class_->partition->partition_type != PT_PARTITION_HASH);
 	    }
 
 	  if (is_print_partition)
 	    {
 	      for (user = class_->users; user != NULL; user = user->next)
 		{
-		  if (au_fetch_class (user->op, &subclass, AU_FETCH_READ,
-				      AU_SELECT) != NO_ERROR)
+		  if (au_fetch_class (user->op, &subclass, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
 		    {
 		      goto error_exit;
 		    }
 
 		  if (subclass->partition)
 		    {
-		      description =
-			obj_print_describe_partition_parts (parser,
-							    subclass->
-							    partition,
-							    prt_type);
+		      description = obj_print_describe_partition_parts (parser, subclass->partition, prt_type);
 
-		      /* Temporarily store it into STRLIST, later we will
-		       * copy it into a fixed length array of which the
-		       * size should be determined by the counter of this
-		       * iteration.
-		       */
+		      /* Temporarily store it into STRLIST, later we will copy it into a fixed length array of which
+		       * the size should be determined by the counter of this iteration. */
 		      buf_size = sizeof (STRLIST);
 		      tmp_str = (STRLIST *) malloc (buf_size);
 		      if (tmp_str == NULL)
 			{
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				  ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 			  goto error_exit;
 			}
 
@@ -2606,23 +2337,19 @@ obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type)
 		}
 	    }
 
-	  /* Allocate a fixed array to store the strings involving
-	   * class-partition, sub-partitions and a NULL to indicate
-	   * the end position.
-	   */
+	  /* Allocate a fixed array to store the strings involving class-partition, sub-partitions and a NULL to
+	   * indicate the end position. */
 	  buf_size = sizeof (char *) * (count + 2);
 	  strs = (char **) malloc (buf_size);
 	  if (strs == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      goto error_exit;
 	    }
 
 	  memset (strs, 0, buf_size);
 
-	  description =
-	    obj_print_describe_partition_info (parser, class_->partition);
+	  description = obj_print_describe_partition_info (parser, class_->partition);
 	  strs[0] = obj_print_copy_string (description);
 
 	  /* Copy all from the list into the array and release the list */
@@ -2684,7 +2411,7 @@ obj_print_help_class_name (const char *name)
   CLASS_HELP *help = NULL;
   DB_OBJECT *class_;
 
-  /* look up class in all schema's  */
+  /* look up class in all schema's */
   class_ = sm_find_class (name);
 
   if (class_ != NULL)
@@ -2749,19 +2476,14 @@ help_free_trigger (TRIGGER_HELP * help)
 	  free_and_init (help->comment);
 	}
 
-      /* these were returned by the trigger manager and must be freed
-         with db_string_free() */
+      /* these were returned by the trigger manager and must be freed with db_string_free() */
       STRFREE_W (help->condition);
       STRFREE_W (help->action);
 
-      /* These are constansts used by the trigger type to string
-         translation functions above.  They don't need to be freed.
-
-         event
-         status
-         condition_time
-         action_time
-       */
+      /* These are constansts used by the trigger type to string translation functions above.  They don't need to be
+       * freed.
+       * 
+       * event status condition_time action_time */
 
       free_and_init (help);
     }
@@ -2788,8 +2510,7 @@ help_trigger (DB_OBJECT * trobj)
       return NULL;
     }
 
-  /* even though we have the trigger, use these to get the
-     expressions translated into a simple string */
+  /* even though we have the trigger, use these to get the expressions translated into a simple string */
   if (db_trigger_condition (trobj, &condition) != NO_ERROR)
     {
       goto exit_on_error;
@@ -2844,12 +2565,10 @@ help_trigger (DB_OBJECT * trobj)
 	  help->class_name = obj_print_copy_string ("*** deleted class ***");
 	}
 
-      /* format the full event specification so csql can display it
-         without being dependent on syntax */
+      /* format the full event specification so csql can display it without being dependent on syntax */
       if (help->attribute != NULL)
 	{
-	  sprintf (buffer, "%s ON %s(%s)", help->event, help->class_name,
-		   help->attribute);
+	  sprintf (buffer, "%s ON %s(%s)", help->event, help->class_name, help->attribute);
 	}
       else
 	{
@@ -2859,8 +2578,7 @@ help_trigger (DB_OBJECT * trobj)
     }
   else
     {
-      /* just make a copy of this so csql can simply use it without
-         thinking */
+      /* just make a copy of this so csql can simply use it without thinking */
       help->full_event = obj_print_copy_string ((char *) help->event);
     }
 
@@ -2940,8 +2658,7 @@ help_trigger_names (char ***names_ptr)
 	  if (names == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	    }
 	  else
 	    {
@@ -2996,8 +2713,7 @@ help_print_trigger (const char *name, FILE * fpp)
 	  fprintf (fpp, "Priority  : %s\n", help->priority);
 	}
 
-      fprintf (fpp, "Event     : %s %s\n", help->condition_time,
-	       help->full_event);
+      fprintf (fpp, "Event     : %s %s\n", help->condition_time, help->full_event);
 
       if (help->condition != NULL)
 	{
@@ -3006,8 +2722,7 @@ help_print_trigger (const char *name, FILE * fpp)
 
       if (help->condition_time != help->action_time)
 	{
-	  fprintf (fpp, "Action    : %s %s\n", help->action_time,
-		   help->action);
+	  fprintf (fpp, "Action    : %s %s\n", help->action_time, help->action);
 	}
       else
 	{
@@ -3118,13 +2833,11 @@ help_obj (MOP op)
     }
   else
     {
-      error = au_fetch_instance (op, &obj, AU_FETCH_READ,
-				 TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
+      error = au_fetch_instance (op, &obj, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
       if (error == NO_ERROR)
 	{
 	  pin = ws_pin (op, 1);
-	  error = au_fetch_class (ws_class_mop (op), &class_, AU_FETCH_READ,
-				  AU_SELECT);
+	  error = au_fetch_class (ws_class_mop (op), &class_, AU_FETCH_READ, AU_SELECT);
 	  if (error == NO_ERROR)
 	    {
 
@@ -3133,19 +2846,14 @@ help_obj (MOP op)
 		{
 		  goto error_exit;
 		}
-	      info->classname =
-		obj_print_copy_string ((char *) sm_ch_name ((MOBJ) class_));
+	      info->classname = obj_print_copy_string ((char *) sm_ch_name ((MOBJ) class_));
 
 	      DB_MAKE_OBJECT (&value, op);
-	      buffer =
-		pt_append_varchar (parser, buffer,
-				   describe_data (parser, buffer, &value));
+	      buffer = pt_append_varchar (parser, buffer, describe_data (parser, buffer, &value));
 	      db_value_clear (&value);
 	      DB_MAKE_NULL (&value);
 
-	      info->oid =
-		obj_print_copy_string ((char *)
-				       pt_get_varchar_bytes (buffer));
+	      info->oid = obj_print_copy_string ((char *) pt_get_varchar_bytes (buffer));
 
 	      if (class_->ordered_attributes != NULL)
 		{
@@ -3154,41 +2862,31 @@ help_obj (MOP op)
 		  strs = (char **) malloc (buf_size);
 		  if (strs == NULL)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 		      goto error_exit;
 		    }
 		  i = 0;
-		  for (attribute_p = class_->ordered_attributes;
-		       attribute_p != NULL;
+		  for (attribute_p = class_->ordered_attributes; attribute_p != NULL;
 		       attribute_p = attribute_p->order_link)
 		    {
-		      sprintf (temp_buffer, "%20s = ",
-			       attribute_p->header.name);
-		      /*
+		      sprintf (temp_buffer, "%20s = ", attribute_p->header.name);
+		      /* 
 		       * We're starting a new line here, so we don't
 		       * want to append to the old buffer; pass NULL
 		       * to pt_append_nulstring so that we start a new
 		       * string.
 		       */
-		      buffer =
-			pt_append_nulstring (parser, NULL, temp_buffer);
-		      if (attribute_p->header.name_space ==
-			  ID_SHARED_ATTRIBUTE)
+		      buffer = pt_append_nulstring (parser, NULL, temp_buffer);
+		      if (attribute_p->header.name_space == ID_SHARED_ATTRIBUTE)
 			{
-			  buffer =
-			    describe_value (parser, buffer,
-					    &attribute_p->default_value.
-					    value);
+			  buffer = describe_value (parser, buffer, &attribute_p->default_value.value);
 			}
 		      else
 			{
 			  db_get (op, attribute_p->header.name, &value);
 			  buffer = describe_value (parser, buffer, &value);
 			}
-		      strs[i] =
-			obj_print_copy_string ((char *)
-					       pt_get_varchar_bytes (buffer));
+		      strs[i] = obj_print_copy_string ((char *) pt_get_varchar_bytes (buffer));
 		      i++;
 		    }
 		  strs[i] = NULL;
@@ -3245,24 +2943,18 @@ help_fprint_obj (FILE * fp, MOP obj)
     {
       if (locator_is_root (obj))
 	{
-	  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_HELP,
-				       MSGCAT_HELP_ROOTCLASS_TITLE));
+	  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_ROOTCLASS_TITLE));
 	}
       else
 	{
 	  cinfo = obj_print_help_class (obj, OBJ_PRINT_CSQL_SCHEMA_COMMAND);
 	  if (cinfo != NULL)
 	    {
-	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_HELP,
-					   MSGCAT_HELP_CLASS_TITLE),
+	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_TITLE),
 		       cinfo->class_type, cinfo->name);
 	      if (cinfo->supers != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_HELP,
-					       MSGCAT_HELP_SUPER_CLASSES));
+		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_SUPER_CLASSES));
 		  for (i = 0; cinfo->supers[i] != NULL; i++)
 		    {
 		      fprintf (fp, "  %s\n", cinfo->supers[i]);
@@ -3270,9 +2962,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 		}
 	      if (cinfo->subs != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_HELP,
-					       MSGCAT_HELP_SUB_CLASSES));
+		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_SUB_CLASSES));
 		  for (i = 0; cinfo->subs[i] != NULL; i++)
 		    {
 		      fprintf (fp, "  %s\n", cinfo->subs[i]);
@@ -3280,9 +2970,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 		}
 	      if (cinfo->attributes != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_HELP,
-					       MSGCAT_HELP_ATTRIBUTES));
+		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_ATTRIBUTES));
 		  for (i = 0; cinfo->attributes[i] != NULL; i++)
 		    {
 		      fprintf (fp, "  %s\n", cinfo->attributes[i]);
@@ -3290,9 +2978,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 		}
 	      if (cinfo->methods != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_HELP,
-					       MSGCAT_HELP_METHODS));
+		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_METHODS));
 		  for (i = 0; cinfo->methods[i] != NULL; i++)
 		    {
 		      fprintf (fp, "  %s\n", cinfo->methods[i]);
@@ -3300,9 +2986,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 		}
 	      if (cinfo->class_attributes != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_HELP,
-					       MSGCAT_HELP_CLASS_ATTRIBUTES));
+		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_ATTRIBUTES));
 		  for (i = 0; cinfo->class_attributes[i] != NULL; i++)
 		    {
 		      fprintf (fp, "  %s\n", cinfo->class_attributes[i]);
@@ -3310,9 +2994,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 		}
 	      if (cinfo->class_methods != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_HELP,
-					       MSGCAT_HELP_CLASS_METHODS));
+		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_METHODS));
 		  for (i = 0; cinfo->class_methods[i] != NULL; i++)
 		    {
 		      fprintf (fp, "  %s\n", cinfo->class_methods[i]);
@@ -3320,9 +3002,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 		}
 	      if (cinfo->resolutions != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_HELP,
-					       MSGCAT_HELP_RESOLUTIONS));
+		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_RESOLUTIONS));
 		  for (i = 0; cinfo->resolutions[i] != NULL; i++)
 		    {
 		      fprintf (fp, "  %s\n", cinfo->resolutions[i]);
@@ -3330,9 +3010,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 		}
 	      if (cinfo->method_files != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_HELP,
-					       MSGCAT_HELP_METHOD_FILES));
+		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_METHOD_FILES));
 		  for (i = 0; cinfo->method_files[i] != NULL; i++)
 		    {
 		      fprintf (fp, "  %s\n", cinfo->method_files[i]);
@@ -3340,9 +3018,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 		}
 	      if (cinfo->query_spec != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					       MSGCAT_SET_HELP,
-					       MSGCAT_HELP_QUERY_SPEC));
+		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_QUERY_SPEC));
 		  for (i = 0; cinfo->query_spec[i] != NULL; i++)
 		    {
 		      fprintf (fp, "  %s\n", cinfo->query_spec[i]);
@@ -3350,9 +3026,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 		}
 	      if (cinfo->triggers != NULL)
 		{
-		  /* fprintf(fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-		     MSGCAT_SET_HELP,
-		     MSGCAT_HELP_TRIGGERS)); */
+		  /* fprintf(fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_TRIGGERS)); */
 		  fprintf (fp, "Triggers:\n");
 		  for (i = 0; cinfo->triggers[i] != NULL; i++)
 		    {
@@ -3387,8 +3061,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 		{
 		  if (tinfo->attribute != NULL)
 		    {
-		      fprintf (fp, "%s ON %s ", tinfo->attribute,
-			       tinfo->class_name);
+		      fprintf (fp, "%s ON %s ", tinfo->attribute, tinfo->class_name);
 		    }
 		  else
 		    {
@@ -3428,9 +3101,7 @@ help_fprint_obj (FILE * fp, MOP obj)
 	  oinfo = help_obj (obj);
 	  if (oinfo != NULL)
 	    {
-	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_HELP,
-					   MSGCAT_HELP_OBJECT_TITLE),
+	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_OBJECT_TITLE),
 		       oinfo->classname);
 	      if (oinfo->attributes != NULL)
 		{
@@ -3484,8 +3155,7 @@ help_class_names (const char *qualifier)
       /* if this guy does not exist, it has no classes */
       if (!requested_owner)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_AU_INVALID_USER, 1, qualifier);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1, qualifier);
 	  return NULL;
 	}
     }
@@ -3493,9 +3163,7 @@ help_class_names (const char *qualifier)
   names = NULL;
   mops = db_fetch_all_classes (DB_FETCH_READ);
 
-  /* vector fetch as many as possible
-     (void)db_fetch_list(mops, DB_FETCH_READ, 0);
-   */
+  /* vector fetch as many as possible (void)db_fetch_list(mops, DB_FETCH_READ, 0); */
 
   count = ws_list_length ((DB_LIST *) mops);
   outcount = 0;
@@ -3507,24 +3175,20 @@ help_class_names (const char *qualifier)
 	  for (i = 0, m = mops; i < count; i++, m = m->next)
 	    {
 	      owner = db_get_owner (m->op);
-	      if (!requested_owner
-		  || ws_is_same_object (requested_owner, owner))
+	      if (!requested_owner || ws_is_same_object (requested_owner, owner))
 		{
 		  cname = db_get_class_name (m->op);
 		  buffer[0] = '\0';
-		  if (!requested_owner
-		      && db_get (owner, "name", &owner_name) >= 0)
+		  if (!requested_owner && db_get (owner, "name", &owner_name) >= 0)
 		    {
 		      tmp = DB_GET_STRING (&owner_name);
 		      if (tmp)
 			{
-			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s",
-				    tmp, cname);
+			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s", tmp, cname);
 			}
 		      else
 			{
-			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s",
-				    "unknown_user", cname);
+			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s", "unknown_user", cname);
 			}
 		      db_value_clear (&owner_name);
 		    }
@@ -3695,27 +3359,22 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
     {
       if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 	{
-	  sprintf (oidbuffer, "%ld.%ld.%ld",
-		   (DB_C_LONG) WS_OID (obj)->volid,
-		   (DB_C_LONG) WS_OID (obj)->pageid,
+	  sprintf (oidbuffer, "%ld.%ld.%ld", (DB_C_LONG) WS_OID (obj)->volid, (DB_C_LONG) WS_OID (obj)->pageid,
 		   (DB_C_LONG) WS_OID (obj)->slotid);
 
-	  required =
-	    strlen (oidbuffer) + strlen (sm_ch_name ((MOBJ) class_)) + 2;
+	  required = strlen (oidbuffer) + strlen (sm_ch_name ((MOBJ) class_)) + 2;
 	  if (locator_is_class (obj, DB_FETCH_READ) > 0)
 	    {
 	      required++;
 	      if (maxlen >= required)
 		{
-		  sprintf (buffer, "*%s:%s", sm_ch_name ((MOBJ) class_),
-			   oidbuffer);
+		  sprintf (buffer, "*%s:%s", sm_ch_name ((MOBJ) class_), oidbuffer);
 		  total = required;
 		}
 	    }
 	  else if (maxlen >= required)
 	    {
-	      sprintf (buffer, "%s:%s", sm_ch_name ((MOBJ) class_),
-		       oidbuffer);
+	      sprintf (buffer, "%s:%s", sm_ch_name ((MOBJ) class_), oidbuffer);
 	      total = required;
 	    }
 	}
@@ -3742,8 +3401,7 @@ help_fprint_all_classes (FILE * fp)
 
   if (au_check_user () == NO_ERROR)
     {
-      lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ,
-				    NULL);
+      lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ, NULL);
       if (lmops != NULL)
 	{
 	  for (i = 0; i < lmops->num; i++)
@@ -3991,8 +3649,7 @@ help_print_info (const char *command, FILE * fpp)
  *   set(in) :
  */
 static PARSER_VARCHAR *
-describe_set (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-	      const DB_SET * set)
+describe_set (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_SET * set)
 {
   DB_VALUE value;
   int size, end, i;
@@ -4040,8 +3697,7 @@ describe_set (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *   midxkey(in) :
  */
 static PARSER_VARCHAR *
-describe_midxkey (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-		  const DB_MIDXKEY * midxkey)
+describe_midxkey (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_MIDXKEY * midxkey)
 {
   DB_VALUE value;
   int size, end, i;
@@ -4065,8 +3721,7 @@ describe_midxkey (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
   prev_i_ptr = NULL;
   for (i = 0; i < end; i++)
     {
-      pr_midxkey_get_element_nocopy (midxkey, i, &value, &prev_i_index,
-				     &prev_i_ptr);
+      pr_midxkey_get_element_nocopy (midxkey, i, &value, &prev_i_index, &prev_i_ptr);
 
       buffer = describe_value (parser, buffer, &value);
 
@@ -4093,8 +3748,7 @@ describe_midxkey (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *   value(in) :
  */
 static PARSER_VARCHAR *
-describe_double (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-		 const double value)
+describe_double (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const double value)
 {
   char tbuf[24];
 
@@ -4121,8 +3775,7 @@ describe_double (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *   value(in) :
  */
 static PARSER_VARCHAR *
-describe_float (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-		const float value)
+describe_float (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const float value)
 {
   char tbuf[24];
 
@@ -4148,21 +3801,18 @@ describe_float (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *   value(in) :
  */
 PARSER_VARCHAR *
-describe_money (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-		const DB_MONETARY * value)
+describe_money (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_MONETARY * value)
 {
   char cbuf[LDBL_MAX_10_EXP + 20 + 1];
   /* 20 == floating fudge factor, 1 == currency symbol */
 
   assert (parser != NULL && value != NULL);
 
-  sprintf (cbuf, "%s%.2f", intl_get_money_esc_ISO_symbol (value->type),
-	   value->amount);
+  sprintf (cbuf, "%s%.2f", intl_get_money_esc_ISO_symbol (value->type), value->amount);
 
   if (strstr (cbuf, "Inf"))
     {
-      sprintf (cbuf, "%s%.2f", intl_get_money_esc_ISO_symbol (value->type),
-	       (value->amount > 0 ? DBL_MAX : -DBL_MAX));
+      sprintf (cbuf, "%s%.2f", intl_get_money_esc_ISO_symbol (value->type), (value->amount > 0 ? DBL_MAX : -DBL_MAX));
     }
 
   buffer = pt_append_nulstring (parser, buffer, cbuf);
@@ -4178,8 +3828,7 @@ describe_money (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *   value(in) : a DB_VALUE of type DB_TYPE_BIT or DB_TYPE_VARBIT
  */
 static PARSER_VARCHAR *
-describe_bit_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-		     const DB_VALUE * value)
+describe_bit_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_VALUE * value)
 {
   unsigned char *bstring;
   int nibble_length, nibbles, count;
@@ -4195,8 +3844,7 @@ describe_bit_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 
   nibble_length = ((db_get_string_length (value) + 3) / 4);
 
-  for (nibbles = 0, count = 0; nibbles < nibble_length - 1;
-       count++, nibbles += 2)
+  for (nibbles = 0, count = 0; nibbles < nibble_length - 1; count++, nibbles += 2)
     {
       sprintf (tbuf, "%02x", bstring[count]);
       tbuf[2] = '\0';
@@ -4230,8 +3878,7 @@ describe_bit_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *   value(in) :
  */
 PARSER_VARCHAR *
-describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-	       const DB_VALUE * value)
+describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_VALUE * value)
 {
   OID *oid;
 #if !defined(SERVER_MODE)
@@ -4290,9 +3937,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  buffer = pt_append_nulstring (parser, buffer,
-					numeric_db_value_print ((DB_VALUE *)
-								value));
+	  buffer = pt_append_nulstring (parser, buffer, numeric_db_value_print ((DB_VALUE *) value));
 	  break;
 
 	case DB_TYPE_BIT:
@@ -4304,26 +3949,19 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
-	  /* Copy string into buf providing for any embedded quotes.
-	   * Strings may have embedded NULL characters and embedded
-	   * quotes.  None of the supported multibyte character codesets
-	   * have a conflict between a quote character and the second byte
-	   * of the multibyte character.
-	   */
+	  /* Copy string into buf providing for any embedded quotes. Strings may have embedded NULL characters and
+	   * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
+	   * character and the second byte of the multibyte character. */
 	  src = db_get_string (value);
 	  end = src + db_get_string_size (value);
 	  while (src < end)
 	    {
-	      /* Find the position of the next quote or the end of the string,
-	       * whichever comes first.  This loop is done in place of
-	       * strchr in case the string has an embedded NULL.
-	       */
+	      /* Find the position of the next quote or the end of the string, whichever comes first.  This loop is
+	       * done in place of strchr in case the string has an embedded NULL. */
 	      for (pos = src; pos && pos < end && (*pos) != '\''; pos++)
 		;
 
-	      /* If pos < end, then a quote was found.  If so, copy the partial
-	       * buffer and duplicate the quote
-	       */
+	      /* If pos < end, then a quote was found.  If so, copy the partial buffer and duplicate the quote */
 	      if (pos < end)
 		{
 		  length = CAST_STRLEN (pos - src + 1);
@@ -4333,9 +3971,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	      /* If not, copy the remaining part of the buffer */
 	      else
 		{
-		  buffer =
-		    pt_append_bytes (parser, buffer, src,
-				     CAST_STRLEN (end - src));
+		  buffer = pt_append_bytes (parser, buffer, src, CAST_STRLEN (end - src));
 		}
 
 	      /* advance src to just beyond the point where we left off */
@@ -4368,10 +4004,8 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  sprintf (line, "%d", (int) oid->slotid);
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
-	  /* If we are on the server, fall thru to the oid case
-	   * The value is probably nonsense, but that is safe to do.
-	   * This case should simply not occur.
-	   */
+	  /* If we are on the server, fall thru to the oid case The value is probably nonsense, but that is safe to do.
+	   * This case should simply not occur. */
 #endif
 
 	case DB_TYPE_OID:
@@ -4443,7 +4077,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	    }
 	  break;
 
-	  /*
+	  /* 
 	   * This constant is necessary to fake out the db_?_to_string()
 	   * routines that are expecting a buffer length.  Since we assume
 	   * that our buffer is big enough in this code, just pass something
@@ -4452,13 +4086,11 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 #define TOO_BIG_TO_MATTER       1024
 
 	case DB_TYPE_TIME:
-	  (void) db_time_to_string (line, TOO_BIG_TO_MATTER,
-				    db_get_time (value));
+	  (void) db_time_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
 	case DB_TYPE_TIMELTZ:
-	  (void) db_timeltz_to_string (line, TOO_BIG_TO_MATTER,
-				       db_get_time (value));
+	  (void) db_timeltz_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
 
@@ -4467,20 +4099,17 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	    DB_TIMETZ *time_tz;
 
 	    time_tz = DB_GET_TIMETZ (value);
-	    (void) db_timetz_to_string (line, TOO_BIG_TO_MATTER,
-					&time_tz->time, &time_tz->tz_id);
+	    (void) db_timetz_to_string (line, TOO_BIG_TO_MATTER, &time_tz->time, &time_tz->tz_id);
 	    buffer = pt_append_nulstring (parser, buffer, line);
 	  }
 	  break;
 
 	case DB_TYPE_UTIME:
-	  (void) db_utime_to_string (line, TOO_BIG_TO_MATTER,
-				     DB_GET_UTIME (value));
+	  (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, DB_GET_UTIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
 	case DB_TYPE_TIMESTAMPLTZ:
-	  (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER,
-					    DB_GET_UTIME (value));
+	  (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, DB_GET_UTIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
 
@@ -4489,21 +4118,17 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	    DB_TIMESTAMPTZ *ts_tz;
 
 	    ts_tz = DB_GET_TIMESTAMPTZ (value);
-	    (void) db_timestamptz_to_string (line, TOO_BIG_TO_MATTER,
-					     &(ts_tz->timestamp),
-					     &(ts_tz->tz_id));
+	    (void) db_timestamptz_to_string (line, TOO_BIG_TO_MATTER, &(ts_tz->timestamp), &(ts_tz->tz_id));
 	    buffer = pt_append_nulstring (parser, buffer, line);
 	  }
 	  break;
 
 	case DB_TYPE_DATETIME:
-	  (void) db_datetime_to_string (line, TOO_BIG_TO_MATTER,
-					DB_GET_DATETIME (value));
+	  (void) db_datetime_to_string (line, TOO_BIG_TO_MATTER, DB_GET_DATETIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
 	case DB_TYPE_DATETIMELTZ:
-	  (void) db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER,
-					   DB_GET_DATETIME (value));
+	  (void) db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER, DB_GET_DATETIME (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
 
@@ -4512,16 +4137,13 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	    DB_DATETIMETZ *dt_tz;
 
 	    dt_tz = DB_GET_DATETIMETZ (value);
-	    (void) db_datetimetz_to_string (line, TOO_BIG_TO_MATTER,
-					    &(dt_tz->datetime),
-					    &(dt_tz->tz_id));
+	    (void) db_datetimetz_to_string (line, TOO_BIG_TO_MATTER, &(dt_tz->datetime), &(dt_tz->tz_id));
 	    buffer = pt_append_nulstring (parser, buffer, line);
 	  }
 	  break;
 
 	case DB_TYPE_DATE:
-	  (void) db_date_to_string (line, TOO_BIG_TO_MATTER,
-				    db_get_date (value));
+	  (void) db_date_to_string (line, TOO_BIG_TO_MATTER, db_get_date (value));
 	  buffer = pt_append_nulstring (parser, buffer, line);
 	  break;
 
@@ -4538,9 +4160,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	case DB_TYPE_VARIABLE:
 	case DB_TYPE_SUB:
 	case DB_TYPE_DB_VALUE:
-	  /* make sure line is NULL terminated, may not be necessary
-	     line[0] = '\0';
-	   */
+	  /* make sure line is NULL terminated, may not be necessary line[0] = '\0'; */
 	  break;
 
 	default:
@@ -4565,8 +4185,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *    (assuming one exists )
  */
 PARSER_VARCHAR *
-describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-		const DB_VALUE * value)
+describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_VALUE * value)
 {
   INTL_CODESET codeset = INTL_CODESET_NONE;
   char str_int[30];
@@ -4587,9 +4206,7 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  codeset = DB_GET_STRING_CODESET (value);
 	  if (codeset != LANG_SYS_CODESET)
 	    {
-	      buffer =
-		pt_append_nulstring (parser, buffer,
-				     lang_charset_introducer (codeset));
+	      buffer = pt_append_nulstring (parser, buffer, lang_charset_introducer (codeset));
 	    }
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  buffer = describe_data (parser, buffer, value);
@@ -4597,8 +4214,7 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  break;
 
 	case DB_TYPE_ENUMERATION:
-	  if (DB_GET_ENUM_STRING (value) == NULL
-	      && DB_GET_ENUM_SHORT (value) != 0)
+	  if (DB_GET_ENUM_STRING (value) == NULL && DB_GET_ENUM_SHORT (value) != 0)
 	    {
 #if defined(SERVER_MODE)
 	      /* to print enum index as int */
@@ -4615,16 +4231,12 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 		}
 	      else
 		{
-		  /* describe value should not be called on an enumeration
-		   * which is not fully constructed
-		   */
+		  /* describe value should not be called on an enumeration which is not fully constructed */
 		  assert (false);
 		  buffer = pt_append_nulstring (parser, buffer, "''");
 		}
 #else /* CS_MODE */
-	      /* describe value should not be called on an enumeration
-	       * which is not fully constructed
-	       */
+	      /* describe value should not be called on an enumeration which is not fully constructed */
 	      assert (false);
 	      buffer = pt_append_nulstring (parser, buffer, "''");
 #endif
@@ -4638,18 +4250,13 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 		  codeset = DB_GET_ENUM_CODESET (value);
 		  if (codeset != LANG_SYS_CODESET)
 		    {
-		      buffer =
-			pt_append_nulstring (parser, buffer,
-					     lang_charset_introducer
-					     (codeset));
+		      buffer = pt_append_nulstring (parser, buffer, lang_charset_introducer (codeset));
 		    }
 		  buffer = describe_value (parser, buffer, &varchar_val);
 		}
 	      else
 		{
-		  /* tp_enumeration_to_varchar only fails if the enum
-		   * string is null which we already checked
-		   */
+		  /* tp_enumeration_to_varchar only fails if the enum string is null which we already checked */
 		  assert (false);
 		}
 	    }
@@ -4767,8 +4374,8 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
  *   max_token_length(in) :
  */
 PARSER_VARCHAR *
-describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-		 const char *str, size_t str_length, int max_token_length)
+describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const char *str, size_t str_length,
+		 int max_token_length)
 {
   const char *src, *end, *pos;
   int token_length, length;
@@ -4788,8 +4395,7 @@ describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
     }
   for (pos = src; pos < end; pos++, token_length++)
     {
-      /* Process the case (*pos == '\'') first.
-       * Don't break the string in the middle of internal quotes('') */
+      /* Process the case (*pos == '\'') first. Don't break the string in the middle of internal quotes('') */
       if (*pos == '\'')
 	{			/* put '\'' */
 	  length = CAST_STRLEN (pos - src + 1);
@@ -4838,8 +4444,7 @@ help_fprint_value (FILE * fp, const DB_VALUE * value)
     }
 
   buffer = describe_value (parser, NULL, value);
-  fprintf (fp, "%.*s", (int) pt_get_varchar_length (buffer),
-	   pt_get_varchar_bytes (buffer));
+  fprintf (fp, "%.*s", (int) pt_get_varchar_length (buffer), pt_get_varchar_bytes (buffer));
   parser_free_parser (parser);
 }
 

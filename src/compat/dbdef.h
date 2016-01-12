@@ -30,8 +30,8 @@
 
 #include "cubrid_api.h"
 
-#define TRAN_ASYNC_WS_BIT                        0x10	/*        1  0000 */
-#define TRAN_ISO_LVL_BITS                        0x0F	/*        0  1111 */
+#define TRAN_ASYNC_WS_BIT                        0x10	/* 1 0000 */
+#define TRAN_ISO_LVL_BITS                        0x0F	/* 0 1111 */
 
 #define DB_AUTH_ALL \
   ((DB_AUTH) (DB_AUTH_SELECT | DB_AUTH_INSERT | DB_AUTH_UPDATE | DB_AUTH_DELETE | \
@@ -85,10 +85,7 @@ typedef enum
 
   DISK_TEMPVOL_TEMP_PURPOSE = 4,	/* internal use only */
   DISK_UNKNOWN_PURPOSE = 5,	/* internal use only: Does not mean anything */
-  DISK_EITHER_TEMP_PURPOSE = 6	/* internal use only:
-				 * Either pervol_temp or tempvol_tmp.. Used
-				 * only to select a volume
-				 */
+  DISK_EITHER_TEMP_PURPOSE = 6	/* internal use only: Either pervol_temp or tempvol_tmp.. Used only to select a volume */
 } DB_VOLPURPOSE;
 
 
@@ -96,13 +93,13 @@ typedef enum
 typedef enum
 {
 
-  DB_SUBSET = -3,		/* strict subset for set types.         */
-  DB_UNK = -2,			/* unknown                              */
-  DB_LT = -1,			/* canonical less than                 */
-  DB_EQ = 0,			/* equal                                */
-  DB_GT = 1,			/* canonical greater than,             */
+  DB_SUBSET = -3,		/* strict subset for set types.  */
+  DB_UNK = -2,			/* unknown */
+  DB_LT = -1,			/* canonical less than */
+  DB_EQ = 0,			/* equal */
+  DB_GT = 1,			/* canonical greater than, */
   DB_NE = 2,			/* not equal because types incomparable */
-  DB_SUPERSET = 3		/* strict superset for set types.       */
+  DB_SUPERSET = 3		/* strict superset for set types.  */
 } DB_VALUE_COMPARE_RESULT;
 
 /* Object fetch and locking constants.  These are used to specify
@@ -110,53 +107,23 @@ typedef enum
    lock functions. */
 typedef enum
 {
-  DB_FETCH_READ = 0,		/* Read an object (class or instance)   */
+  DB_FETCH_READ = 0,		/* Read an object (class or instance) */
   DB_FETCH_WRITE = 1,		/* Update an object (class or instance) */
-  DB_FETCH_DIRTY = 2,		/* Does not care about the state
-				 * of the object (class or instance). Get
-				 * it even if it is obsolete or if it
-				 * becomes obsolete.
-				 * INTERNAL USE ONLY
-				 */
-  DB_FETCH_CLREAD_INSTREAD = 3,	/* Read the class and read an instance of
-				 * class.
-				 * This is to access an instance in shared
-				 * mode
-				 * Note class must be given
-				 * INTERNAL USE ONLY
-				 */
-  DB_FETCH_CLREAD_INSTWRITE = 4,	/* Read the class and update an instance
-					 * of the class.
-					 * Note class must be given
-					 * This is for creation of instances
-					 * INTERNAL USE ONLY
-					 */
-  DB_FETCH_QUERY_READ = 5,	/* Read the class and query (read) all
-				 * instances of the class.
-				 * Note class must be given
-				 * This is for SQL select
-				 * INTERNAL USE ONLY
-				 */
-  DB_FETCH_QUERY_WRITE = 6,	/* Read the class and query (read) all
-				 * instances of the class and update some
-				 * of those instances.
-				 * Note class must be given
-				 * This is for Query update (SQL update)
-				 * or Query delete (SQL delete)
-				 * INTERNAL USE ONLY
-				 */
-  DB_FETCH_SCAN = 7,		/* Read the class for scan purpose
-				 * The lock of the lock should be kept
-				 * since the actual access happens later.
-				 * This is for loading an index.
-				 * INTERNAL USE ONLY
-				 */
-  DB_FETCH_EXCLUSIVE_SCAN = 8	/* Read the class for exclusive scan purpose
-				 * The lock of the lock should be kept
-				 * since the actual access happens later.
-				 * This is for loading an index.
-				 * INTERNAL USE ONLY
-				 */
+  DB_FETCH_DIRTY = 2,		/* Does not care about the state of the object (class or instance). Get it even if it
+				 * is obsolete or if it becomes obsolete. INTERNAL USE ONLY */
+  DB_FETCH_CLREAD_INSTREAD = 3,	/* Read the class and read an instance of class. This is to access an instance in
+				 * shared mode Note class must be given INTERNAL USE ONLY */
+  DB_FETCH_CLREAD_INSTWRITE = 4,	/* Read the class and update an instance of the class. Note class must be given
+					 * This is for creation of instances INTERNAL USE ONLY */
+  DB_FETCH_QUERY_READ = 5,	/* Read the class and query (read) all instances of the class. Note class must be given
+				 * This is for SQL select INTERNAL USE ONLY */
+  DB_FETCH_QUERY_WRITE = 6,	/* Read the class and query (read) all instances of the class and update some of those
+				 * instances. Note class must be given This is for Query update (SQL update) or Query
+				 * delete (SQL delete) INTERNAL USE ONLY */
+  DB_FETCH_SCAN = 7,		/* Read the class for scan purpose The lock of the lock should be kept since the actual 
+				 * access happens later. This is for loading an index. INTERNAL USE ONLY */
+  DB_FETCH_EXCLUSIVE_SCAN = 8	/* Read the class for exclusive scan purpose The lock of the lock should be kept since
+				 * the actual access happens later. This is for loading an index. INTERNAL USE ONLY */
 } DB_FETCH_MODE;
 
 /* Authorization type identifier constants.  The numeric values of these
@@ -438,21 +405,18 @@ typedef unsigned int SESSION_ID;
 typedef struct dbdef_vol_ext_info DBDEF_VOL_EXT_INFO;
 struct dbdef_vol_ext_info
 {
-  char *path;			/* Directory where the volume extension is created.
-				 *  If NULL, is given, it defaults to the system parameter. */
-  const char *name;		/* Name of the volume extension
-				 * If NULL, system generates one like "db".ext"volid" where
-				 * "db" is the database name and "volid" is the volume
-				 * identifier to be assigned to the volume extension. */
+  char *path;			/* Directory where the volume extension is created.  If NULL, is given, it defaults to
+				 * the system parameter. */
+  const char *name;		/* Name of the volume extension If NULL, system generates one like "db".ext"volid"
+				 * where "db" is the database name and "volid" is the volume identifier to be assigned
+				 * to the volume extension. */
   const char *comments;		/* Comments which are included in the volume extension header. */
   int max_npages;		/* Maximum pages of this volume */
   int extend_npages;		/* Number of pages to extend - used for generic volume only */
   int max_writesize_in_sec;	/* the amount of volume written per second */
-  DB_VOLPURPOSE purpose;	/* The purpose of the volume extension. One of the following:
-				 * - DISK_PERMVOL_DATA_PURPOSE,
-				 * - DISK_PERMVOL_INDEX_PURPOSE,
-				 * - DISK_PERMVOL_GENERIC_PURPOSE,
-				 * - DISK_PERMVOL_TEMP_PURPOSE, */
+  DB_VOLPURPOSE purpose;	/* The purpose of the volume extension. One of the following: -
+				 * DISK_PERMVOL_DATA_PURPOSE, - DISK_PERMVOL_INDEX_PURPOSE, -
+				 * DISK_PERMVOL_GENERIC_PURPOSE, - DISK_PERMVOL_TEMP_PURPOSE, */
   bool overwrite;
 };
 

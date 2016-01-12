@@ -257,7 +257,7 @@ def prepareCodeReviewFile (output, files, crfile, patchfile):
         if verbose: print 'changing mode...', files[i][1]
         os.chmod (files[i][1], 0644)
         if verbose: print 'indenting...', files[i][1]
-        os.system ('indent ' + files[i][1])
+        os.system ('indent -l120 -lc120 ' + files[i][1])
       if len (dirname) >= 0:
         shutil.copy (files[i][1], new_path)
         svn_file_path = svn_output_base + '/' + files[i][1]

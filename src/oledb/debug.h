@@ -26,12 +26,10 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
  * OF SUCH DAMAGE. 
  *
- */
-
+ */  
+  
 #pragma once
-
-T_CCI_A_TYPE GetCASTypeA(DBTYPE type);
-T_CCI_U_TYPE GetCASTypeU(DBTYPE type);
-DBTYPE GetOledbTypeFromName(LPOLESTR wszName);
-
-void show_error(char *msg, int code, T_CCI_ERROR *error);
+  T_CCI_A_TYPE GetCASTypeA (DBTYPE type);
+T_CCI_U_TYPE GetCASTypeU (DBTYPE type);
+DBTYPE GetOledbTypeFromName (LPOLESTR wszName);
+void show_error (char *msg, int code, T_CCI_ERROR * error);

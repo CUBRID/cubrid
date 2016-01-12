@@ -69,11 +69,9 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   T_SRV_HANDLE *srv_handle;
 
 #if !defined(LIBCAS_FOR_JSP)
-  if (cas_shard_flag == OFF &&
-      current_handle_count >= shm_appl->max_prepared_stmt_count)
+  if (cas_shard_flag == OFF && current_handle_count >= shm_appl->max_prepared_stmt_count)
     {
-      return ERROR_INFO_SET (CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED,
-			     CAS_ERROR_INDICATOR);
+      return ERROR_INFO_SET (CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED, CAS_ERROR_INDICATOR);
     }
 #endif /* !LIBCAS_FOR_JSP */
 
@@ -90,17 +88,14 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   if (new_handle_id == 0)
     {
       new_max_srv_handle = max_srv_handle + SRV_HANDLE_ALLOC_SIZE;
-      new_srv_handle_table = (T_SRV_HANDLE **)
-	REALLOC (srv_handle_table,
-		 sizeof (T_SRV_HANDLE *) * new_max_srv_handle);
+      new_srv_handle_table = (T_SRV_HANDLE **) REALLOC (srv_handle_table, sizeof (T_SRV_HANDLE *) * new_max_srv_handle);
       if (new_srv_handle_table == NULL)
 	{
 	  return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
 	}
 
       new_handle_id = max_srv_handle + 1;
-      memset (new_srv_handle_table + max_srv_handle,
-	      0, sizeof (T_SRV_HANDLE *) * SRV_HANDLE_ALLOC_SIZE);
+      memset (new_srv_handle_table + max_srv_handle, 0, sizeof (T_SRV_HANDLE *) * SRV_HANDLE_ALLOC_SIZE);
       max_srv_handle = new_max_srv_handle;
       srv_handle_table = new_srv_handle_table;
     }
@@ -279,14 +274,10 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 	  continue;
 	}
 
-      if (srv_handle->schema_type < 0
-	  || srv_handle->schema_type == CCI_SCH_CLASS
-	  || srv_handle->schema_type == CCI_SCH_VCLASS
-	  || srv_handle->schema_type == CCI_SCH_ATTRIBUTE
-	  || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE
-	  || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
-	  || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS
-	  || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY)
+      if (srv_handle->schema_type < 0 || srv_handle->schema_type == CCI_SCH_CLASS
+	  || srv_handle->schema_type == CCI_SCH_VCLASS || srv_handle->schema_type == CCI_SCH_ATTRIBUTE
+	  || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
+	  || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY)
 	{
 	  hm_qresult_end (srv_handle, FALSE);
 	}
@@ -363,8 +354,7 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 
 	  if (q_result[i].column_info)
 	    {
-	      db_query_format_free ((DB_QUERY_TYPE *) q_result[i].
-				    column_info);
+	      db_query_format_free ((DB_QUERY_TYPE *) q_result[i].column_info);
 	    }
 
 	  q_result[i].column_info = NULL;
@@ -427,22 +417,16 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
   FREE_MEM (srv_handle->sql_stmt);
   ux_prepare_call_info_free (srv_handle->prepare_call_info);
 
-  if (srv_handle->schema_type < 0
-      || srv_handle->schema_type == CCI_SCH_CLASS
-      || srv_handle->schema_type == CCI_SCH_VCLASS
-      || srv_handle->schema_type == CCI_SCH_ATTRIBUTE
-      || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE
-      || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
-      || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS
-      || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY)
+  if (srv_handle->schema_type < 0 || srv_handle->schema_type == CCI_SCH_CLASS
+      || srv_handle->schema_type == CCI_SCH_VCLASS || srv_handle->schema_type == CCI_SCH_ATTRIBUTE
+      || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
+      || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY)
     {
       hm_qresult_end (srv_handle, TRUE);
       hm_session_free (srv_handle);
     }
-  else if (srv_handle->schema_type == CCI_SCH_CLASS_PRIVILEGE
-	   || srv_handle->schema_type == CCI_SCH_ATTR_PRIVILEGE
-	   || srv_handle->schema_type == CCI_SCH_SUPERCLASS
-	   || srv_handle->schema_type == CCI_SCH_SUBCLASS)
+  else if (srv_handle->schema_type == CCI_SCH_CLASS_PRIVILEGE || srv_handle->schema_type == CCI_SCH_ATTR_PRIVILEGE
+	   || srv_handle->schema_type == CCI_SCH_SUPERCLASS || srv_handle->schema_type == CCI_SCH_SUBCLASS)
     {
       FREE_MEM (srv_handle->session);
       srv_handle->cur_result = NULL;
@@ -455,8 +439,7 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 	}
       srv_handle->cur_result = NULL;
     }
-  else if (srv_handle->schema_type == CCI_SCH_IMPORTED_KEYS
-	   || srv_handle->schema_type == CCI_SCH_EXPORTED_KEYS
+  else if (srv_handle->schema_type == CCI_SCH_IMPORTED_KEYS || srv_handle->schema_type == CCI_SCH_EXPORTED_KEYS
 	   || srv_handle->schema_type == CCI_SCH_CROSS_REFERENCE)
     {
       T_FK_INFO_RESULT *fk_res = (T_FK_INFO_RESULT *) srv_handle->session;

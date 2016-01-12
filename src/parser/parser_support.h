@@ -111,9 +111,7 @@ typedef struct key_range
 {
   struct regu_variable_node *key1;	/* pointer to first key value */
   struct regu_variable_node *key2;	/* pointer to second key value */
-  RANGE range;			/* range spec; GE_LE, GT_LE, GE_LT,
-				   GT_LT, GE_INF, GT_INF, INF_LT,
-				   INF_LE, INF_INF */
+  RANGE range;			/* range spec; GE_LE, GT_LE, GE_LT, GT_LT, GE_INF, GT_INF, INF_LT, INF_LE, INF_INF */
 } KEY_RANGE;			/* key range structure */
 
 typedef struct key_info
@@ -139,10 +137,8 @@ typedef struct indx_info
   int orderby_skip;		/* order by skip information */
   int groupby_skip;		/* group by skip information */
   int use_iss;			/* flag set if using index skip scan */
-  int func_idx_col_id;		/* function expression column position, if
-				 * the index is a function index */
-  KEY_RANGE iss_range;		/* placeholder range used for ISS; must be
-				   created on the broker */
+  int func_idx_col_id;		/* function expression column position, if the index is a function index */
+  KEY_RANGE iss_range;		/* placeholder range used for ISS; must be created on the broker */
   int ils_prefix_len;		/* index loose scan prefix length */
 } INDX_INFO;			/* index information structure */
 

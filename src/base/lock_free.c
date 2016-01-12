@@ -92,8 +92,7 @@ lf_callback_vpid_compare (void *vpid_1, void *vpid_2)
   VPID *lvpid_1 = (VPID *) vpid_1;
   VPID *lvpid_2 = (VPID *) vpid_2;
 
-  return !((lvpid_1->pageid == lvpid_2->pageid)
-	   && (lvpid_1->volid == lvpid_2->volid));
+  return !((lvpid_1->pageid == lvpid_2->pageid) && (lvpid_1->volid == lvpid_2->volid));
 }
 
 /*
@@ -126,21 +125,17 @@ lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads)
   assert (sys != NULL);
 
   sys->entry_count = LF_BITMAP_COUNT_ALIGN (max_threads);
-  error =
-    lf_bitmap_init (&sys->lf_bitmap, LF_BITMAP_ONE_CHUNK, sys->entry_count,
-		    LF_BITMAP_FULL_USAGE_RATIO);
+  error = lf_bitmap_init (&sys->lf_bitmap, LF_BITMAP_ONE_CHUNK, sys->entry_count, LF_BITMAP_FULL_USAGE_RATIO);
   if (error != NO_ERROR)
     {
       return error;
     }
 
   /* initialize entry array */
-  sys->entries =
-    (LF_TRAN_ENTRY *) malloc (sizeof (LF_TRAN_ENTRY) * sys->entry_count);
+  sys->entries = (LF_TRAN_ENTRY *) malloc (sizeof (LF_TRAN_ENTRY) * sys->entry_count);
   if (sys->entries == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (LF_TRAN_ENTRY) * sys->entry_count);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LF_TRAN_ENTRY) * sys->entry_count);
 
       sys->entry_count = 0;
       lf_bitmap_destroy (&sys->lf_bitmap);
@@ -358,16 +353,14 @@ lf_tran_start (LF_TRAN_ENTRY * entry, bool incr)
     {
       entry->transaction_id = ATOMIC_INC_64 (&sys->global_transaction_id, 1);
 
-      if (entry->transaction_id
-	  % entry->tran_system->mati_refresh_interval == 0)
+      if (entry->transaction_id % entry->tran_system->mati_refresh_interval == 0)
 	{
 	  return lf_tran_compute_minimum_transaction_id (entry->tran_system);
 	}
     }
   else
     {
-      entry->transaction_id =
-	VOLATILE_ACCESS (sys->global_transaction_id, UINT64);
+      entry->transaction_id = VOLATILE_ACCESS (sys->global_transaction_id, UINT64);
     }
 
   /* all ok */
@@ -558,8 +551,7 @@ lf_freelist_alloc_block (LF_FREELIST * freelist)
       if (new_entry == NULL)
 	{
 	  /* we use a decoy size since we don't know it */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) 1);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 1);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -598,9 +590,8 @@ lf_freelist_alloc_block (LF_FREELIST * freelist)
  *   block_size(in): number of entries allocated in a block
  */
 int
-lf_freelist_init (LF_FREELIST * freelist,
-		  int initial_blocks, int block_size,
-		  LF_ENTRY_DESCRIPTOR * edesc, LF_TRAN_SYSTEM * tran_system)
+lf_freelist_init (LF_FREELIST * freelist, int initial_blocks, int block_size, LF_ENTRY_DESCRIPTOR * edesc,
+		  LF_TRAN_SYSTEM * tran_system)
 {
   int i;
 
@@ -768,10 +759,9 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	}
       else
 	{
-	  /* NOTE: as you can see, more than one thread can start allocating
-	     a new freelist_entry block at the same time; this behavior is
-	     acceptable given that the freelist has a _low_ enough value of
-	     block_size; it sure beats synchronizing the operations */
+	  /* NOTE: as you can see, more than one thread can start allocating a new freelist_entry block at the same
+	   * time; this behavior is acceptable given that the freelist has a _low_ enough value of block_size; it sure
+	   * beats synchronizing the operations */
 	  if (lf_freelist_alloc_block (freelist) != NO_ERROR)
 	    {
 	      /* end local transaction */
@@ -800,8 +790,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
  *   entry(in): entry to retire
  */
 int
-lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist,
-		    void *entry)
+lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *entry)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   UINT64 *tran_id;
@@ -891,20 +880,18 @@ lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
     }
 
   /* walk private list and unlink old entries */
-  for (list = tran_entry->retired_list; list != NULL;
-       list = OF_GET_PTR_DEREF (list, edesc->of_local_next))
+  for (list = tran_entry->retired_list; list != NULL; list = OF_GET_PTR_DEREF (list, edesc->of_local_next))
     {
 
       if (aval_first == NULL)
 	{
-	  UINT64 *del_id =
-	    (UINT64 *) OF_GET_PTR (list, edesc->of_del_tran_id);
+	  UINT64 *del_id = (UINT64 *) OF_GET_PTR (list, edesc->of_del_tran_id);
 	  assert (del_id != NULL);
 
 	  if (*del_id < min_tran_id)
 	    {
-	      /* found first reusable entry - since list is ordered by descending
-	         transaction id, entries that follow are also reusable */
+	      /* found first reusable entry - since list is ordered by descending transaction id, entries that follow
+	       * are also reusable */
 	      aval_first = list;
 	      aval_last = list;
 
@@ -982,8 +969,7 @@ lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
  *   entry(out): found entry or NULL
  */
 int
-lf_io_list_find (void **list_p, void *key, LF_ENTRY_DESCRIPTOR * edesc,
-		 void **entry)
+lf_io_list_find (void **list_p, void *key, LF_ENTRY_DESCRIPTOR * edesc, void **entry)
 {
   pthread_mutex_t *entry_mutex;
   void **curr_p;
@@ -1008,8 +994,7 @@ lf_io_list_find (void **list_p, void *key, LF_ENTRY_DESCRIPTOR * edesc,
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
-	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
+	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
 	    }
 
@@ -1038,8 +1023,7 @@ lf_io_list_find (void **list_p, void *key, LF_ENTRY_DESCRIPTOR * edesc,
  * NOTE: key is extracted from new_entry
  */
 int
-lf_io_list_find_or_insert (void **list_p, void *new_entry,
-			   LF_ENTRY_DESCRIPTOR * edesc, void **entry)
+lf_io_list_find_or_insert (void **list_p, void *new_entry, LF_ENTRY_DESCRIPTOR * edesc, void **entry)
 {
   pthread_mutex_t *entry_mutex;
   void **curr_p;
@@ -1072,8 +1056,7 @@ restart_search:
 	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 		{
 		  /* entry has a mutex protecting it's members; lock it */
-		  entry_mutex =
-		    (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
+		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 		  rv = pthread_mutex_lock (entry_mutex);
 		}
 
@@ -1092,8 +1075,7 @@ restart_search:
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
-	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
+	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
 	    }
 
@@ -1103,9 +1085,7 @@ restart_search:
 	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 		{
 		  /* link failed, unlock mutex */
-		  entry_mutex =
-		    (pthread_mutex_t *) OF_GET_PTR ((*entry),
-						    edesc->of_mutex);
+		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 		  pthread_mutex_unlock (entry_mutex);
 		}
 
@@ -1133,8 +1113,8 @@ restart_search:
  *   entry(out): entry (if found) or NULL
  */
 int
-lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key,
-	      int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc, void **entry)
+lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
+	      void **entry)
 {
   pthread_mutex_t *entry_mutex;
   void **curr_p;
@@ -1167,8 +1147,7 @@ restart_search:
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
-	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
+	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
 
 	      /* mutex has been locked, no need to keep transaction */
@@ -1180,15 +1159,12 @@ restart_search:
 
 	      if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		{
-		  /* while waiting for lock, somebody else deleted the
-		     entry; restart the search */
+		  /* while waiting for lock, somebody else deleted the entry; restart the search */
 		  pthread_mutex_unlock (entry_mutex);
 
-		  if (behavior_flags
-		      && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
+		  if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		    {
-		      *behavior_flags =
-			(*behavior_flags) | LF_LIST_BR_RESTARTED;
+		      *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		      MEMORY_BARRIER ();
 		      return lf_tran_end (tran);
 		    }
@@ -1227,9 +1203,8 @@ restart_search:
  * is found, it will add the entry in the hash table and return it in "entry".
  */
 int
-lf_list_find_or_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key,
-			int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
-			LF_FREELIST * freelist, void **entry)
+lf_list_find_or_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
+			LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry)
 {
   pthread_mutex_t *entry_mutex;
   void **curr_p;
@@ -1267,8 +1242,7 @@ restart_search:
 		  /* save this for further (local) use */
 		  tran->temp_entry = *entry;
 
-		  /* this operation may fail as well, so don't keep the entry
-		     around */
+		  /* this operation may fail as well, so don't keep the entry around */
 		  (*entry) = NULL;
 		}
 
@@ -1276,8 +1250,7 @@ restart_search:
 	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 		{
 		  /* entry has a mutex protecting it's members; lock it */
-		  entry_mutex =
-		    (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
+		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 		  rv = pthread_mutex_lock (entry_mutex);
 
 		  /* mutex has been locked, no need to keep transaction alive */
@@ -1289,15 +1262,12 @@ restart_search:
 
 		  if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		    {
-		      /* while waiting for lock, somebody else deleted the
-		         entry; restart the search */
+		      /* while waiting for lock, somebody else deleted the entry; restart the search */
 		      pthread_mutex_unlock (entry_mutex);
 
-		      if (behavior_flags
-			  && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
+		      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 			{
-			  *behavior_flags =
-			    (*behavior_flags) | LF_LIST_BR_RESTARTED;
+			  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 			  MEMORY_BARRIER ();
 			  return lf_tran_end (tran);
 			}
@@ -1308,8 +1278,7 @@ restart_search:
 		    }
 		}
 
-	      assert (edesc->
-		      f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0);
+	      assert (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0);
 	      (*entry) = curr;
 	      return NO_ERROR;
 	    }
@@ -1339,9 +1308,7 @@ restart_search:
 	      assert ((*entry) != NULL);
 
 	      /* set it's key */
-	      if (edesc->f_key_copy (key,
-				     OF_GET_PTR (*entry,
-						 edesc->of_key)) != NO_ERROR)
+	      if (edesc->f_key_copy (key, OF_GET_PTR (*entry, edesc->of_key)) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -1350,8 +1317,7 @@ restart_search:
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
-	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
+	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
 	    }
 
@@ -1361,15 +1327,12 @@ restart_search:
 	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 		{
 		  /* link failed, unlock mutex */
-		  entry_mutex =
-		    (pthread_mutex_t *) OF_GET_PTR ((*entry),
-						    edesc->of_mutex);
+		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 		  pthread_mutex_unlock (entry_mutex);
 		}
 
 	      /* someone added before us, restart process */
-	      if (behavior_flags
-		  && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
+	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		{
 		  if (*entry != NULL)
 		    {
@@ -1425,8 +1388,7 @@ restart_search:
  * NOTE: The default use case would be for f_duplicate to increment the key.
  */
 int
-lf_list_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key,
-		int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
+lf_list_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
 		LF_FREELIST * freelist, void **entry, int *inserted_count)
 {
   pthread_mutex_t *entry_mutex;
@@ -1485,16 +1447,14 @@ restart_search:
 
 		  if (*behavior_flags & LF_LIST_BF_RETURN_ON_DUPLICATE)
 		    {
-		      *behavior_flags =
-			(*behavior_flags) | LF_LIST_BR_DUPLICATE;
+		      *behavior_flags = (*behavior_flags) | LF_LIST_BR_DUPLICATE;
 		      MEMORY_BARRIER ();
 		      return lf_tran_end (tran);
 		    }
 		}
 
 	      /* retry insert */
-	      if (behavior_flags
-		  && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
+	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		{
 		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		  MEMORY_BARRIER ();
@@ -1514,8 +1474,7 @@ restart_search:
 	{
 	  /* end of bucket, we must insert */
 	  /* set entry's key */
-	  if (edesc->f_key_copy (key, OF_GET_PTR (*entry, edesc->of_key)) !=
-	      NO_ERROR)
+	  if (edesc->f_key_copy (key, OF_GET_PTR (*entry, edesc->of_key)) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -1523,8 +1482,7 @@ restart_search:
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
-	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
+	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
 	    }
 
@@ -1534,15 +1492,12 @@ restart_search:
 	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 		{
 		  /* link failed, unlock mutex */
-		  entry_mutex =
-		    (pthread_mutex_t *) OF_GET_PTR ((*entry),
-						    edesc->of_mutex);
+		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 		  pthread_mutex_unlock (entry_mutex);
 		}
 
 	      /* someone added or deleted before us, restart process */
-	      if (behavior_flags
-		  && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
+	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		{
 		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		  MEMORY_BARRIER ();
@@ -1587,8 +1542,7 @@ restart_search:
  *   success(out): 1 if entry was deleted, 0 otherwise
  */
 int
-lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key,
-		int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
+lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
 		LF_FREELIST * freelist, int *success)
 {
   pthread_mutex_t *entry_mutex;
@@ -1627,13 +1581,11 @@ restart_search:
 	  next_p = (void **) OF_GET_REF (curr, edesc->of_next);
 	  next = ADDR_STRIP_MARK (*((void *volatile *) next_p));
 
-	  /* set mark on next pointer; this way, if anyone else is trying to
-	     delete the next entry, it will fail */
+	  /* set mark on next pointer; this way, if anyone else is trying to delete the next entry, it will fail */
 	  if (!ATOMIC_CAS_ADDR (next_p, next, ADDR_WITH_MARK (next)))
 	    {
 	      /* joke's on us, this time; somebody else marked it before */
-	      if (behavior_flags
-		  && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
+	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		{
 		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		  assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
@@ -1649,12 +1601,10 @@ restart_search:
 	  /* lock mutex if necessary */
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE)
 	    {
-	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
+	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
 
-	      /* since we set the mark, nobody else can delete it, so we have
-	         nothing else to check */
+	      /* since we set the mark, nobody else can delete it, so we have nothing else to check */
 	    }
 
 	  /* unlink */
@@ -1663,8 +1613,7 @@ restart_search:
 	      /* unlink failed; first step is to remove lock (if applicable) */
 	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE)
 		{
-		  entry_mutex =
-		    (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
+		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 		  pthread_mutex_unlock (entry_mutex);
 		}
 
@@ -1675,8 +1624,7 @@ restart_search:
 		  return ER_FAILED;
 		}
 
-	      if (behavior_flags
-		  && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
+	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		{
 		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		  assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
@@ -1692,8 +1640,7 @@ restart_search:
 	  /* unlock mutex if necessary */
 	  if (edesc->mutex_flags & LF_EM_FLAG_UNLOCK_AFTER_DELETE)
 	    {
-	      entry_mutex =
-		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
+	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      pthread_mutex_unlock (entry_mutex);
 	    }
 
@@ -1750,8 +1697,7 @@ restart_search:
  *   edesc(in): entry descriptor
  */
 int
-lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist,
-	      unsigned int hash_size, LF_ENTRY_DESCRIPTOR * edesc)
+lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned int hash_size, LF_ENTRY_DESCRIPTOR * edesc)
 {
   assert (table != NULL && freelist != NULL && edesc != NULL);
   assert (hash_size > 1);
@@ -1771,8 +1717,7 @@ lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist,
   table->buckets = (void **) malloc (sizeof (void *) * hash_size);
   if (table->buckets == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (void *) * hash_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (void *) * hash_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   else
@@ -1786,8 +1731,7 @@ lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist,
   if (table->backbuffer == NULL)
     {
       free (table->buckets);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (void *) * hash_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (void *) * hash_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   else
@@ -1867,8 +1811,7 @@ lf_hash_destroy (LF_HASH_TABLE * table)
  *   entry(out): existing or NULL otherwise
  */
 int
-lf_hash_find (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key,
-	      void **entry)
+lf_hash_find (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   unsigned int hash_value;
@@ -1888,9 +1831,7 @@ restart:
     }
 
   bflags = LF_LIST_BF_RETURN_ON_RESTART;
-  rc =
-    lf_list_find (tran, &table->buckets[hash_value], key, &bflags, edesc,
-		  entry);
+  rc = lf_list_find (tran, &table->buckets[hash_value], key, &bflags, edesc, entry);
   if ((rc == NO_ERROR) && (bflags & LF_LIST_BR_RESTARTED))
     {
       goto restart;
@@ -1911,8 +1852,7 @@ restart:
  *
  */
 int
-lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table,
-			void *key, void **entry)
+lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   unsigned int hash_value;
@@ -1932,9 +1872,7 @@ restart:
     }
 
   bflags = LF_LIST_BF_RETURN_ON_RESTART;
-  rc =
-    lf_list_find_or_insert (tran, &table->buckets[hash_value], key, &bflags,
-			    edesc, table->freelist, entry);
+  rc = lf_list_find_or_insert (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, entry);
   if ((rc == NO_ERROR) && (bflags & LF_LIST_BR_RESTARTED))
     {
       goto restart;
@@ -1955,8 +1893,7 @@ restart:
  *
  */
 int
-lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key,
-		void **entry)
+lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   unsigned int hash_value;
@@ -1969,8 +1906,7 @@ lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key,
 
   while (inserted_count == 0)
     {
-      /* if duplicate is found then key may have been modified, so rehashing
-         is necessary */
+      /* if duplicate is found then key may have been modified, so rehashing is necessary */
       hash_value = edesc->f_hash (key, table->hash_size);
       if (hash_value >= table->hash_size)
 	{
@@ -1979,9 +1915,8 @@ lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key,
 	}
 
       bflags = LF_LIST_BF_RETURN_ON_DUPLICATE | LF_LIST_BF_RETURN_ON_RESTART;
-      if (lf_list_insert (tran, &table->buckets[hash_value], key, &bflags,
-			  edesc, table->freelist, entry,
-			  &inserted_count) != NO_ERROR)
+      if (lf_list_insert
+	  (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, entry, &inserted_count) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -1999,8 +1934,7 @@ lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key,
  *   key(in): key to seek
  */
 int
-lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key,
-		int *success)
+lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   unsigned int hash_value;
@@ -2023,8 +1957,7 @@ restart:
     }
 
   bflags = LF_LIST_BF_RETURN_ON_RESTART;
-  rc = lf_list_delete (tran, &table->buckets[hash_value], key, &bflags, edesc,
-		       table->freelist, success);
+  rc = lf_list_delete (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, success);
   if ((rc == NO_ERROR) && (bflags & LF_LIST_BR_RESTARTED))
     {
       goto restart;
@@ -2077,10 +2010,8 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
       table->buckets[i] = NULL;
     }
 
-  /* retire all entries from old buckets; note that threads currently operating
-   * on the entries will not be disturbed since the actual deletion is
-   * performed when the entries are no longer handled by active transactions
-   */
+  /* retire all entries from old buckets; note that threads currently operating on the entries will not be disturbed
+   * since the actual deletion is performed when the entries are no longer handled by active transactions */
   for (i = 0; i < (int) table->hash_size; i++)
     {
       do
@@ -2101,19 +2032,15 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 	  while (!ATOMIC_CAS_ADDR (next_p, next, ADDR_WITH_MARK (next)));
 
 	  /* wait for mutex */
-	  if ((edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
-	      || (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE))
+	  if ((edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND) || (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE))
 	    {
-	      mutex_p =
-		(pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
+	      mutex_p = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 
 	      rv = pthread_mutex_lock (mutex_p);
 	      pthread_mutex_unlock (mutex_p);
 
-	      /* there should be only one mutex lock-unlock per entry per
-	       * access via bucket array, so locking/unlocking once while the
-	       * entry is inaccessible should be enough to guarantee nobody
-	       * will be using it afterwards */
+	      /* there should be only one mutex lock-unlock per entry per access via bucket array, so locking/unlocking 
+	       * once while the entry is inaccessible should be enough to guarantee nobody will be using it afterwards */
 	    }
 
 	  /* save and advance */
@@ -2145,11 +2072,9 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 	}
       MEMORY_BARRIER ();
 
-      for (curr = ret_head; curr != NULL;
-	   curr = OF_GET_PTR_DEREF (curr, edesc->of_local_next))
+      for (curr = ret_head; curr != NULL; curr = OF_GET_PTR_DEREF (curr, edesc->of_local_next))
 	{
-	  UINT64 *del_id =
-	    (UINT64 *) OF_GET_PTR (curr, edesc->of_del_tran_id);
+	  UINT64 *del_id = (UINT64 *) OF_GET_PTR (curr, edesc->of_del_tran_id);
 	  *del_id = tran->transaction_id;
 	}
 
@@ -2179,8 +2104,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
  *   returns: void
  */
 void
-lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator,
-			 LF_TRAN_ENTRY * tran_entry, LF_HASH_TABLE * table)
+lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator, LF_TRAN_ENTRY * tran_entry, LF_HASH_TABLE * table)
 {
   assert (iterator != NULL && table != NULL);
 
@@ -2256,9 +2180,7 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 	  it->bucket_index++;
 	  if (it->bucket_index < (int) it->hash_table->hash_size)
 	    {
-	      it->curr =
-		VOLATILE_ACCESS (it->hash_table->buckets[it->bucket_index],
-				 void *);
+	      it->curr = VOLATILE_ACCESS (it->hash_table->buckets[it->bucket_index], void *);
 	      it->curr = ADDR_STRIP_MARK (it->curr);
 	    }
 	  else
@@ -2343,13 +2265,10 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   assert (data != NULL);
 
   /* Loop until a free entry for produce is found or queue is full. */
-  /* Since this may be done under concurrency with no locks, a produce cursor
-   * and an entry state for the cursor are used to synchronize producing data.
-   * After reading the produce cursor, since there is no lock to protect it,
-   * other producer may race to use it for its own produced data.
-   * The producer can gain an entry only if it successfully changes the state
-   * from READY_FOR_PRODUCE to RESERVED_FOR_PRODUCE (using compare & swap).
-   */
+  /* Since this may be done under concurrency with no locks, a produce cursor and an entry state for the cursor are
+   * used to synchronize producing data. After reading the produce cursor, since there is no lock to protect it, other
+   * producer may race to use it for its own produced data. The producer can gain an entry only if it successfully
+   * changes the state from READY_FOR_PRODUCE to RESERVED_FOR_PRODUCE (using compare & swap). */
   while (true)
     {
       if (LOCK_FREE_CIRCULAR_QUEUE_IS_FULL (queue))
@@ -2363,53 +2282,39 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
       /* Compute entry's index in circular queue */
       entry_index = (int) produce_cursor % queue->capacity;
 
-      if (ATOMIC_CAS_32 (&queue->entry_state[entry_index], READY_FOR_PRODUCE,
-			 RESERVED_FOR_PRODUCE))
+      if (ATOMIC_CAS_32 (&queue->entry_state[entry_index], READY_FOR_PRODUCE, RESERVED_FOR_PRODUCE))
 	{
-	  /* Entry was successfully allocated for producing data, break the
-	   * loop now.
-	   */
+	  /* Entry was successfully allocated for producing data, break the loop now. */
 	  break;
 	}
       /* Produce must be tried again with a different cursor */
       if (queue->entry_state[entry_index] == RESERVED_FOR_PRODUCE)
 	{
-	  /* The entry was already reserved by another producer, but the
-	   * produce cursor may be the same. Try to increment the cursor to
-	   * avoid being spin-locked on same cursor value. The increment will
-	   * fail if the cursor was already incremented.
-	   */
-	  (void) ATOMIC_CAS_64 (&queue->produce_cursor, produce_cursor,
-				produce_cursor + 1);
+	  /* The entry was already reserved by another producer, but the produce cursor may be the same. Try to
+	   * increment the cursor to avoid being spin-locked on same cursor value. The increment will fail if the
+	   * cursor was already incremented. */
+	  (void) ATOMIC_CAS_64 (&queue->produce_cursor, produce_cursor, produce_cursor + 1);
 	}
       else if (queue->entry_state[entry_index] == RESERVED_FOR_CONSUME)
 	{
-	  /* Consumer incremented the consumer cursor but didn't change the
-	   * state to READY_FOR_PRODUCE. In this case, the list is considered
-	   * full, and producer must fail.
-	   */
+	  /* Consumer incremented the consumer cursor but didn't change the state to READY_FOR_PRODUCE. In this case,
+	   * the list is considered full, and producer must fail. */
 	  return false;
 	}
-      /* For all other states, the producer which used current cursor
-       * already incremented it.
-       */
+      /* For all other states, the producer which used current cursor already incremented it. */
       /* Try again */
     }
 
   /* Successfully allocated entry for new data */
 
   /* Copy produced data to allocated entry */
-  memcpy (queue->data + (entry_index * queue->data_size), data,
-	  queue->data_size);
-  /* Set entry as readable. Since other should no longer race for this entry
-   * after it was allocated, we don't need an atomic CAS operation.
-   */
+  memcpy (queue->data + (entry_index * queue->data_size), data, queue->data_size);
+  /* Set entry as readable. Since other should no longer race for this entry after it was allocated, we don't need an
+   * atomic CAS operation. */
   assert (queue->entry_state[entry_index] == RESERVED_FOR_PRODUCE);
 
-  /* Try to increment produce cursor. If this thread was preempted after
-   * allocating entry and before increment, it may have been already
-   * incremented.
-   */
+  /* Try to increment produce cursor. If this thread was preempted after allocating entry and before increment, it may
+   * have been already incremented. */
   ATOMIC_CAS_64 (&queue->produce_cursor, produce_cursor, produce_cursor + 1);
   queue->entry_state[entry_index] = READY_FOR_CONSUME;
 
@@ -2431,13 +2336,10 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   INT64 consume_cursor;
 
   /* Loop until an entry can be consumed or until queue is empty */
-  /* Since there may be more than one consumer and no locks is used, a consume
-   * cursor and entry states are used to synchronize all consumers. If several
-   * threads race to consume same entry, only the one that successfully
-   * changes state from READY_FOR_CONSUME to RESERVED_FOR_CONSUME can consume
-   * the entry.
-   * Others will have to retry with a different entry.
-   */
+  /* Since there may be more than one consumer and no locks is used, a consume cursor and entry states are used to
+   * synchronize all consumers. If several threads race to consume same entry, only the one that successfully changes
+   * state from READY_FOR_CONSUME to RESERVED_FOR_CONSUME can consume the entry. Others will have to retry with a
+   * different entry. */
   while (true)
     {
       if (LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (queue))
@@ -2452,11 +2354,8 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
       /* Compute entry's index in circular queue */
       entry_index = (int) consume_cursor % queue->capacity;
 
-      /* Try to set entry state from READY_FOR_CONSUME to
-       * RESERVED_FOR_CONSUME.
-       */
-      if (ATOMIC_CAS_32 (&queue->entry_state[entry_index], READY_FOR_CONSUME,
-			 RESERVED_FOR_CONSUME))
+      /* Try to set entry state from READY_FOR_CONSUME to RESERVED_FOR_CONSUME. */
+      if (ATOMIC_CAS_32 (&queue->entry_state[entry_index], READY_FOR_CONSUME, RESERVED_FOR_CONSUME))
 	{
 	  /* Entry was successfully reserved for consume. Break loop. */
 	  break;
@@ -2465,42 +2364,30 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
       /* Consume must be tried again with a different cursor */
       if (queue->entry_state[entry_index] == RESERVED_FOR_CONSUME)
 	{
-	  /* The entry was already reserved by another consumer, but the
-	   * consume cursor may be the same. Try to increment the cursor to
-	   * avoid being spin-locked on same cursor value. The increment will
-	   * fail if the cursor was already incremented.
-	   */
-	  ATOMIC_CAS_64 (&queue->consume_cursor, consume_cursor,
-			 consume_cursor + 1);
+	  /* The entry was already reserved by another consumer, but the consume cursor may be the same. Try to
+	   * increment the cursor to avoid being spin-locked on same cursor value. The increment will fail if the
+	   * cursor was already incremented. */
+	  ATOMIC_CAS_64 (&queue->consume_cursor, consume_cursor, consume_cursor + 1);
 	}
       else if (queue->entry_state[entry_index] == RESERVED_FOR_PRODUCE)
 	{
-	  /* Producer didn't finish yet, consider that list is empty and there
-	   * is nothing to consume.
-	   */
+	  /* Producer didn't finish yet, consider that list is empty and there is nothing to consume. */
 	  return false;
 	}
-      /* For all other states, the producer which used current cursor
-       * already incremented it.
-       */
+      /* For all other states, the producer which used current cursor already incremented it. */
       /* Try again */
     }
 
   /* Successfully reserved entry to consume */
 
-  /* Consume the data found in entry. If data argument is NULL, just remove
-   * the entry.
-   */
+  /* Consume the data found in entry. If data argument is NULL, just remove the entry. */
   if (data != NULL)
     {
-      memcpy (data, queue->data + (entry_index * queue->data_size),
-	      queue->data_size);
+      memcpy (data, queue->data + (entry_index * queue->data_size), queue->data_size);
     }
 
-  /* Try to increment consume cursor. If this thread was preempted after
-   * reserving the entry and before incrementing the cursor, another consumer
-   * may have already incremented it.
-   */
+  /* Try to increment consume cursor. If this thread was preempted after reserving the entry and before incrementing
+   * the cursor, another consumer may have already incremented it. */
   ATOMIC_CAS_64 (&queue->consume_cursor, consume_cursor, consume_cursor + 1);
 
   /* Change state to READY_TO_PRODUCE */
@@ -2529,8 +2416,7 @@ lf_circular_queue_async_peek (LOCK_FREE_CIRCULAR_QUEUE * queue)
       return NULL;
     }
   /* Return pointer to first entry in queue. */
-  return (queue->data +
-	  queue->data_size * (queue->consume_cursor % queue->capacity));
+  return (queue->data + queue->data_size * (queue->consume_cursor % queue->capacity));
 }
 
 /*
@@ -2545,8 +2431,7 @@ lf_circular_queue_async_peek (LOCK_FREE_CIRCULAR_QUEUE * queue)
  * NOTE: This function cannot work if there is concurrent access on queue.
  */
 bool
-lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue,
-				    void *data)
+lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 {
   int index;
 
@@ -2561,9 +2446,8 @@ lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue,
   /* Push data before consume_cursor and decrement cursor. */
   if (queue->consume_cursor == 0)
     {
-      /* Increase cursors with one generation to avoid negative values. It is
-       * safe to do it, since this is asynchronous access.
-       */
+      /* Increase cursors with one generation to avoid negative values. It is safe to do it, since this is asynchronous 
+       * access. */
       queue->consume_cursor += queue->capacity;
       queue->produce_cursor += queue->capacity;
     }
@@ -2591,12 +2475,10 @@ lf_circular_queue_create (INT32 capacity, int data_size)
   /* Allocate queue */
   LOCK_FREE_CIRCULAR_QUEUE *queue;
 
-  queue =
-    (LOCK_FREE_CIRCULAR_QUEUE *) malloc (sizeof (LOCK_FREE_CIRCULAR_QUEUE));
+  queue = (LOCK_FREE_CIRCULAR_QUEUE *) malloc (sizeof (LOCK_FREE_CIRCULAR_QUEUE));
   if (queue == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (LOCK_FREE_CIRCULAR_QUEUE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOCK_FREE_CIRCULAR_QUEUE));
       return NULL;
     }
 
@@ -2605,8 +2487,7 @@ lf_circular_queue_create (INT32 capacity, int data_size)
   if (queue->data == NULL)
     {
       free (queue);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) capacity * data_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) capacity * data_size);
       return NULL;
     }
 
@@ -2616,8 +2497,7 @@ lf_circular_queue_create (INT32 capacity, int data_size)
     {
       free (queue->data);
       free (queue);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      capacity * sizeof (INT32));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, capacity * sizeof (INT32));
       return NULL;
     }
 
@@ -2676,8 +2556,7 @@ lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue)
  *   usage_threshold(in): the usage threshold for this bitmap
  */
 int
-lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt,
-		float usage_threshold)
+lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt, float usage_threshold)
 {
   size_t bitfield_size;
   int chunk_count;
@@ -2705,21 +2584,18 @@ lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt,
   if (bitmap->bitfield == NULL)
     {
       bitmap->entry_count = 0;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      bitfield_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bitfield_size);
       return ER_FAILED;
     }
 
   memset (bitmap->bitfield, 0, bitfield_size);
 
-  /* pad out the rest bits with 1, It will simplify the code in
-   * lf_bitmap_get_entry() */
+  /* pad out the rest bits with 1, It will simplify the code in lf_bitmap_get_entry() */
   if (entries_cnt % LF_BITFIELD_WORD_SIZE != 0)
     {
       chunk = 0;
       mask = 1;
-      for (i = entries_cnt % LF_BITFIELD_WORD_SIZE, mask <<= i;
-	   i < LF_BITFIELD_WORD_SIZE; i++, mask <<= 1)
+      for (i = entries_cnt % LF_BITFIELD_WORD_SIZE, mask <<= i; i < LF_BITFIELD_WORD_SIZE; i++, mask <<= 1)
 	{
 	  chunk |= mask;
 	}
@@ -2833,8 +2709,7 @@ restart:			/* wait-free process */
       goto restart;
     }
 
-  assert ((chunk_idx * LF_BITFIELD_WORD_SIZE + slot_idx) <
-	  bitmap->entry_count);
+  assert ((chunk_idx * LF_BITFIELD_WORD_SIZE + slot_idx) < bitmap->entry_count);
   do
     {
       chunk = VOLATILE_ACCESS (bitmap->bitfield[chunk_idx], unsigned int);
@@ -2891,8 +2766,7 @@ lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx)
       if (!(curr & inverse_mask))
 	{
 	  /* free unused memory or double free */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LF_BITMAP_INVALID_FREE,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LF_BITMAP_INVALID_FREE, 0);
 	  assert (false);
 	  return ER_LF_BITMAP_INVALID_FREE;
 	}

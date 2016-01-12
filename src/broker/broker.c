@@ -235,15 +235,12 @@ static int init_proxy_env (void);
 #endif /* !WINDOWS */
 static int broker_init_shm (void);
 
-static void cas_monitor_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
-				int as_index, int *busy_uts);
-static void psize_check_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
-				int as_index);
+static void cas_monitor_worker (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index, int *busy_uts);
+static void psize_check_worker (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index);
 
 static void proxy_check_worker (int br_index, T_PROXY_INFO * proxy_info_p);
 
-static void proxy_monitor_worker (T_PROXY_INFO * proxy_info_p, int br_index,
-				  int proxy_index);
+static void proxy_monitor_worker (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index);
 
 static THREAD_FUNC receiver_thr_f (void *arg);
 static THREAD_FUNC dispatch_thr_f (void *arg);
@@ -261,60 +258,40 @@ static int read_nbytes_from_client (SOCKET sock_fd, char *buf, int size);
 
 #if defined(WIN_FW)
 static THREAD_FUNC service_thr_f (void *arg);
-static int process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
-				SOCKET srv_sock_fd);
-static int read_from_cas_client (SOCKET sock_fd, char *buf, int size,
-				 int as_index, int cas_pid);
+static int process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd, SOCKET srv_sock_fd);
+static int read_from_cas_client (SOCKET sock_fd, char *buf, int size, int as_index, int cas_pid);
 #endif
 
 static int write_to_client (SOCKET sock_fd, char *buf, int size);
-static int write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size,
-					 int timeout_sec);
+static int write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_sec);
 static int read_from_client (SOCKET sock_fd, char *buf, int size);
-static int read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size,
-					  int timeout_sec);
-static int run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
-			    int as_index);
-static int stop_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
-			     int as_index);
-static void restart_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
-				 int as_index);
+static int read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_sec);
+static int run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index);
+static int stop_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index);
+static void restart_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index);
 
-static int run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index,
-			     int proxy_index);
-static int stop_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index,
-			      int proxy_index);
-static void restart_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index,
-				  int proxy_index);
+static int run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index);
+static int stop_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index);
+static void restart_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index);
 static SOCKET connect_srv (char *br_name, int as_index);
 static int find_idle_cas (void);
 static int find_drop_as_index (void);
 static int find_add_as_index (void);
 static bool broker_add_new_cas (void);
 
-static void check_cas_log (char *br_name, T_APPL_SERVER_INFO * as_info_p,
-			   int as_index);
+static void check_cas_log (char *br_name, T_APPL_SERVER_INFO * as_info_p, int as_index);
 static void check_proxy_log (char *br_name, T_PROXY_INFO * proxy_info_p);
 static void check_proxy_access_log (T_PROXY_INFO * proxy_info_p);
 
-static void
-get_as_sql_log_filename (char *log_filename, int len, char *broker_name,
-			 T_APPL_SERVER_INFO * as_info_p, int as_index);
-static void get_as_slow_log_filename (char *log_filename, int len,
-				      char *broker_name,
-				      T_APPL_SERVER_INFO * as_info_p,
+static void get_as_sql_log_filename (char *log_filename, int len, char *broker_name, T_APPL_SERVER_INFO * as_info_p,
+				     int as_index);
+static void get_as_slow_log_filename (char *log_filename, int len, char *broker_name, T_APPL_SERVER_INFO * as_info_p,
 				      int as_index);
 
-static CSS_CONN_ENTRY *connect_to_master_for_server_monitor (const char
-							     *db_name,
-							     const char
-							     *db_host);
-static int get_server_state_from_master (CSS_CONN_ENTRY * conn,
-					 const char *db_name);
+static CSS_CONN_ENTRY *connect_to_master_for_server_monitor (const char *db_name, const char *db_host);
+static int get_server_state_from_master (CSS_CONN_ENTRY * conn, const char *db_name);
 
-static int insert_db_server_check_list (T_DB_SERVER * list_p,
-					int check_list_cnt,
-					const char *db_name,
+static int insert_db_server_check_list (T_DB_SERVER * list_p, int check_list_cnt, const char *db_name,
 					const char *db_host);
 
 #if defined(WINDOWS)
@@ -389,8 +366,7 @@ broker_add_new_cas (void)
       return false;
     }
 
-  pid = run_appl_server (&(shm_appl->as_info[add_as_index]), br_index,
-			 add_as_index);
+  pid = run_appl_server (&(shm_appl->as_info[add_as_index]), br_index, add_as_index);
   if (pid <= 0)
     {
       return false;
@@ -404,8 +380,7 @@ broker_add_new_cas (void)
   shm_appl->as_info[add_as_index].service_flag = SERVICE_ON;
   shm_appl->as_info[add_as_index].reset_flag = FALSE;
 
-  memset (&shm_appl->as_info[add_as_index].cas_clt_ip[0], 0x0,
-	  sizeof (shm_appl->as_info[add_as_index].cas_clt_ip));
+  memset (&shm_appl->as_info[add_as_index].cas_clt_ip[0], 0x0, sizeof (shm_appl->as_info[add_as_index].cas_clt_ip));
   shm_appl->as_info[add_as_index].cas_clt_port = 0;
   shm_appl->as_info[add_as_index].driver_version[0] = '\0';
 
@@ -428,8 +403,7 @@ broker_drop_one_cas_by_time_to_kill (void)
   wait_job_cnt = shm_appl->job_queue[0].id + hold_job;
   wait_job_cnt -= (cur_appl_server_num - num_busy_uts);
 
-  if (cur_appl_server_num <= shm_br->br_info[br_index].appl_server_min_num
-      || wait_job_cnt > 0)
+  if (cur_appl_server_num <= shm_br->br_info[br_index].appl_server_min_num || wait_job_cnt > 0)
     {
       return false;
     }
@@ -451,11 +425,9 @@ broker_drop_one_cas_by_time_to_kill (void)
     {
       /* do nothing */
     }
-  else if (drop_as_info->cur_keep_con == KEEP_CON_AUTO
-	   && drop_as_info->uts_status == UTS_STATUS_BUSY
+  else if (drop_as_info->cur_keep_con == KEEP_CON_AUTO && drop_as_info->uts_status == UTS_STATUS_BUSY
 	   && drop_as_info->con_status == CON_STATUS_OUT_TRAN
-	   && time (NULL) - drop_as_info->last_access_time >
-	   shm_br->br_info[br_index].time_to_kill)
+	   && time (NULL) - drop_as_info->last_access_time > shm_br->br_info[br_index].time_to_kill)
     {
       drop_as_info->con_status = CON_STATUS_CLOSE;
     }
@@ -542,8 +514,7 @@ main (int argc, char *argv[])
     }
 #endif /* WINDOWS */
 
-  if (br_shard_flag == OFF
-      && uw_acl_make (shm_br->br_info[br_index].acl_file) < 0)
+  if (br_shard_flag == OFF && uw_acl_make (shm_br->br_info[br_index].acl_file) < 0)
     {
       goto error1;
     }
@@ -580,8 +551,7 @@ main (int argc, char *argv[])
 	}
 
       /* initialize session request queue. queue size is 1 */
-      session_request_q =
-	(T_MAX_HEAP_NODE *) malloc (sizeof (T_MAX_HEAP_NODE) * num_thr);
+      session_request_q = (T_MAX_HEAP_NODE *) malloc (sizeof (T_MAX_HEAP_NODE) * num_thr);
       if (session_request_q == NULL)
 	{
 	  UW_SET_ERROR_CODE (UW_ER_NO_MORE_MEMORY, 0);
@@ -700,41 +670,28 @@ shard_broker_process (void)
 	}
 
       /* ADD UTS */
-      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
-	   proxy_index++)
+      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy; proxy_index++)
 	{
 	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
 
-	  for (shard_index = 0;
-	       shard_index < proxy_info_p->num_shard_conn; shard_index++)
+	  for (shard_index = 0; shard_index < proxy_info_p->num_shard_conn; shard_index++)
 	    {
-	      shard_info_p =
-		shard_shm_find_shard_info (proxy_info_p, shard_index);
+	      shard_info_p = shard_shm_find_shard_info (proxy_info_p, shard_index);
 
-	      if ((shard_info_p->waiter_count > 0) &&
-		  (shard_info_p->num_appl_server <
-		   shard_info_p->max_appl_server))
+	      if ((shard_info_p->waiter_count > 0) && (shard_info_p->num_appl_server < shard_info_p->max_appl_server))
 		{
-		  for (i = shard_info_p->min_appl_server;
-		       i < shard_info_p->max_appl_server; i++)
+		  for (i = shard_info_p->min_appl_server; i < shard_info_p->max_appl_server; i++)
 		    {
-		      as_info_p =
-			&(shm_appl->
-			  as_info[i + shard_info_p->as_info_index_base]);
+		      as_info_p = &(shm_appl->as_info[i + shard_info_p->as_info_index_base]);
 		      if (as_info_p->service_flag == SERVICE_OFF)
 			{
 			  int pid;
 
 			  as_info_p->uts_status = UTS_STATUS_START;
-			  as_info_p->cur_sql_log_mode =
-			    shm_appl->sql_log_mode;
-			  as_info_p->cur_slow_log_mode =
-			    shm_appl->slow_log_mode;
+			  as_info_p->cur_sql_log_mode = shm_appl->sql_log_mode;
+			  as_info_p->cur_slow_log_mode = shm_appl->slow_log_mode;
 
-			  pid = run_appl_server (as_info_p, br_index,
-						 i +
-						 shard_info_p->
-						 as_info_index_base);
+			  pid = run_appl_server (as_info_p, br_index, i + shard_info_p->as_info_index_base);
 			  if (pid > 0)
 			    {
 			      as_info_p->pid = pid;
@@ -790,8 +747,7 @@ send_error_to_driver (int sock, int error, char *driver_info)
     }
   else
     {
-      if (driver_version == CAS_PROTO_MAKE_VER (PROTOCOL_V2)
-	  || cas_di_understand_renewed_error_code (driver_info))
+      if (driver_version == CAS_PROTO_MAKE_VER (PROTOCOL_V2) || cas_di_understand_renewed_error_code (driver_info))
 	{
 	  write_val = htonl (error);
 	}
@@ -843,23 +799,19 @@ receiver_thr_f (void *arg)
 
 #if defined(LINUX)
   timeout = 5;
-  setsockopt (sock_fd, IPPROTO_TCP, TCP_DEFER_ACCEPT, (char *) &timeout,
-	      sizeof (timeout));
+  setsockopt (sock_fd, IPPROTO_TCP, TCP_DEFER_ACCEPT, (char *) &timeout, sizeof (timeout));
 #endif /* LINUX */
 
   while (process_flag)
     {
       clt_sock_addr_len = sizeof (clt_sock_addr);
-      clt_sock_fd =
-	accept (sock_fd, (struct sockaddr *) &clt_sock_addr,
-		&clt_sock_addr_len);
+      clt_sock_fd = accept (sock_fd, (struct sockaddr *) &clt_sock_addr, &clt_sock_addr_len);
       if (IS_INVALID_SOCKET (clt_sock_fd))
 	{
 	  continue;
 	}
 
-      if (shm_br->br_info[br_index].monitor_hang_flag
-	  && shm_br->br_info[br_index].reject_client_flag)
+      if (shm_br->br_info[br_index].monitor_hang_flag && shm_br->br_info[br_index].reject_client_flag)
 	{
 	  shm_br->br_info[br_index].reject_client_count++;
 	  CLOSE_SOCKET (clt_sock_fd);
@@ -874,16 +826,13 @@ receiver_thr_f (void *arg)
 	}
 #endif
 
-      setsockopt (clt_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
-		  sizeof (one));
+      setsockopt (clt_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
       ut_set_keepalive (clt_sock_fd);
 
       cas_client_type = CAS_CLIENT_NONE;
 
       /* read header */
-      read_len = read_nbytes_from_client (clt_sock_fd,
-					  cas_req_header,
-					  SRV_CON_CLIENT_INFO_SIZE);
+      read_len = read_nbytes_from_client (clt_sock_fd, cas_req_header, SRV_CON_CLIENT_INFO_SIZE);
       if (read_len < 0)
 	{
 	  CLOSE_SOCKET (clt_sock_fd);
@@ -898,7 +847,7 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 
-      /*
+      /* 
        * Query cancel message (size in bytes)
        *
        * - For client version 8.4.0 patch 1 or below:
@@ -909,8 +858,7 @@ receiver_thr_f (void *arg)
        *
        *   CLIENT_PORT can be 0 if the client failed to get its local port.
        */
-      if (strncmp (cas_req_header, "QC", 2) == 0
-	  || strncmp (cas_req_header, "CANCEL", 6) == 0
+      if (strncmp (cas_req_header, "QC", 2) == 0 || strncmp (cas_req_header, "CANCEL", 6) == 0
 	  || strncmp (cas_req_header, "X1", 2) == 0)
 	{
 	  int ret_code = 0;
@@ -937,18 +885,14 @@ receiver_thr_f (void *arg)
 	  if (shm_br->br_info[br_index].shard_flag == OFF)
 	    {
 
-	      for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num;
-		   i++)
+	      for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
 		{
-		  if (shm_appl->as_info[i].service_flag == SERVICE_ON
-		      && shm_appl->as_info[i].pid == pid
+		  if (shm_appl->as_info[i].service_flag == SERVICE_ON && shm_appl->as_info[i].pid == pid
 		      && shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY)
 		    {
-		      if (cas_req_header[0] == 'Q'
-			  && client_port > 0
+		      if (cas_req_header[0] == 'Q' && client_port > 0
 			  && shm_appl->as_info[i].cas_clt_port != client_port
-			  && memcmp (&shm_appl->as_info[i].cas_clt_ip,
-				     &clt_sock_addr.sin_addr, 4) != 0)
+			  && memcmp (&shm_appl->as_info[i].cas_clt_ip, &clt_sock_addr.sin_addr, 4) != 0)
 			{
 			  continue;
 			}
@@ -982,13 +926,10 @@ receiver_thr_f (void *arg)
 	}
 
       cas_client_type = cas_req_header[SRV_CON_MSG_IDX_CLIENT_TYPE];
-      if (strncmp (cas_req_header, SRV_CON_CLIENT_MAGIC_STR,
-		   SRV_CON_CLIENT_MAGIC_LEN) != 0
-	  || cas_client_type < CAS_CLIENT_TYPE_MIN
-	  || cas_client_type > CAS_CLIENT_TYPE_MAX)
+      if (strncmp (cas_req_header, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN) != 0
+	  || cas_client_type < CAS_CLIENT_TYPE_MIN || cas_client_type > CAS_CLIENT_TYPE_MAX)
 	{
-	  send_error_to_driver (clt_sock_fd, CAS_ER_COMMUNICATION,
-				cas_req_header);
+	  send_error_to_driver (clt_sock_fd, CAS_ER_COMMUNICATION, cas_req_header);
 	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
 	}
@@ -1003,8 +944,7 @@ receiver_thr_f (void *arg)
 	{
 	  /* Build version; major, minor, and patch */
 	  client_version =
-	    CAS_MAKE_VER (cas_req_header[SRV_CON_MSG_IDX_MAJOR_VER],
-			  cas_req_header[SRV_CON_MSG_IDX_MINOR_VER],
+	    CAS_MAKE_VER (cas_req_header[SRV_CON_MSG_IDX_MAJOR_VER], cas_req_header[SRV_CON_MSG_IDX_MINOR_VER],
 			  cas_req_header[SRV_CON_MSG_IDX_PATCH_VER]);
 	}
 
@@ -1027,8 +967,7 @@ receiver_thr_f (void *arg)
 
 	  if (uw_acl_check (ip_addr) < 0)
 	    {
-	      send_error_to_driver (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT,
-				    cas_req_header);
+	      send_error_to_driver (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT, cas_req_header);
 	      CLOSE_SOCKET (clt_sock_fd);
 	      continue;
 	    }
@@ -1036,8 +975,7 @@ receiver_thr_f (void *arg)
 
       if (job_queue[0].id == job_queue_size)
 	{
-	  send_error_to_driver (clt_sock_fd, CAS_ER_FREE_SERVER,
-				cas_req_header);
+	  send_error_to_driver (clt_sock_fd, CAS_ER_FREE_SERVER, cas_req_header);
 	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
 	}
@@ -1120,8 +1058,7 @@ shard_dispatch_thr_f (void *arg)
 
 #if defined(WINDOWS)
       memcpy (&ip_addr, cur_job.ip_addr, 4);
-      proxy_port = broker_find_available_proxy (shm_proxy_p,
-						ip_addr, cur_job.clt_version);
+      proxy_port = broker_find_available_proxy (shm_proxy_p, ip_addr, cur_job.clt_version);
 
       CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, proxy_port);
       CLOSE_SOCKET (cur_job.clt_sock_fd);
@@ -1130,22 +1067,16 @@ shard_dispatch_thr_f (void *arg)
       if (proxy_fd != INVALID_SOCKET)
 	{
 	  memcpy (&ip_addr, cur_job.ip_addr, 4);
-	  ret_val = send_fd (proxy_fd, cur_job.clt_sock_fd, ip_addr,
-			     cur_job.driver_info);
+	  ret_val = send_fd (proxy_fd, cur_job.clt_sock_fd, ip_addr, cur_job.driver_info);
 	  if (ret_val > 0)
 	    {
 	      ret_val =
-		read_from_client_with_timeout (proxy_fd,
-					       (char *) &proxy_status,
-					       sizeof (int),
-					       SOCKET_TIMEOUT_SEC);
+		read_from_client_with_timeout (proxy_fd, (char *) &proxy_status, sizeof (int), SOCKET_TIMEOUT_SEC);
 	      if (ret_val < 0)
 		{
 		  broker_delete_proxy_conn_by_fd (proxy_fd);
 		  CLOSE_SOCKET (proxy_fd);
-		  send_error_to_driver (cur_job.clt_sock_fd,
-					CAS_ER_FREE_SERVER,
-					cur_job.driver_info);
+		  send_error_to_driver (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER, cur_job.driver_info);
 		}
 	    }
 	  else
@@ -1153,14 +1084,12 @@ shard_dispatch_thr_f (void *arg)
 	      broker_delete_proxy_conn_by_fd (proxy_fd);
 	      CLOSE_SOCKET (proxy_fd);
 
-	      send_error_to_driver (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER,
-				    cur_job.driver_info);
+	      send_error_to_driver (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER, cur_job.driver_info);
 	    }
 	}
       else
 	{
-	  send_error_to_driver (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER,
-				cur_job.driver_info);
+	  send_error_to_driver (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER, cur_job.driver_info);
 	}
 
       CLOSE_SOCKET (cur_job.clt_sock_fd);
@@ -1254,15 +1183,13 @@ dispatch_thr_f (void *arg)
       shm_appl->as_info[as_index].num_connect_requests++;
 #if !defined(WIN_FW)
       shm_appl->as_info[as_index].clt_version = cur_job.clt_version;
-      memcpy (shm_appl->as_info[as_index].driver_info, cur_job.driver_info,
-	      SRV_CON_CLIENT_INFO_SIZE);
+      memcpy (shm_appl->as_info[as_index].driver_info, cur_job.driver_info, SRV_CON_CLIENT_INFO_SIZE);
       shm_appl->as_info[as_index].cas_client_type = cur_job.cas_client_type;
       memcpy (shm_appl->as_info[as_index].cas_clt_ip, cur_job.ip_addr, 4);
       shm_appl->as_info[as_index].cas_clt_port = cur_job.port;
 #if defined(WINDOWS)
       shm_appl->as_info[as_index].uts_status = UTS_STATUS_BUSY_WAIT;
-      CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd,
-			   shm_appl->as_info[as_index].as_port);
+      CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, shm_appl->as_info[as_index].as_port);
       CLOSE_SOCKET (cur_job.clt_sock_fd);
       shm_appl->as_info[as_index].num_request++;
       shm_appl->as_info[as_index].last_access_time = time (NULL);
@@ -1279,44 +1206,32 @@ dispatch_thr_f (void *arg)
 
 	  con_status = htonl (shm_appl->as_info[as_index].con_status);
 
-	  ret_val =
-	    write_to_client_with_timeout (srv_sock_fd,
-					  (char *) &con_status,
-					  sizeof (int), SOCKET_TIMEOUT_SEC);
+	  ret_val = write_to_client_with_timeout (srv_sock_fd, (char *) &con_status, sizeof (int), SOCKET_TIMEOUT_SEC);
 	  if (ret_val != sizeof (int))
 	    {
 	      CLOSE_SOCKET (srv_sock_fd);
 	      goto retry;
 	    }
 
-	  ret_val =
-	    read_from_client_with_timeout (srv_sock_fd,
-					   (char *) &con_status,
-					   sizeof (int), SOCKET_TIMEOUT_SEC);
-	  if (ret_val != sizeof (int)
-	      || ntohl (con_status) != CON_STATUS_IN_TRAN)
+	  ret_val = read_from_client_with_timeout (srv_sock_fd, (char *) &con_status, sizeof (int), SOCKET_TIMEOUT_SEC);
+	  if (ret_val != sizeof (int) || ntohl (con_status) != CON_STATUS_IN_TRAN)
 	    {
 	      CLOSE_SOCKET (srv_sock_fd);
 	      goto retry;
 	    }
 
 	  memcpy (&ip_addr, cur_job.ip_addr, 4);
-	  ret_val = send_fd (srv_sock_fd, cur_job.clt_sock_fd, ip_addr,
-			     cur_job.driver_info);
+	  ret_val = send_fd (srv_sock_fd, cur_job.clt_sock_fd, ip_addr, cur_job.driver_info);
 	  if (ret_val > 0)
 	    {
 	      ret_val =
-		read_from_client_with_timeout (srv_sock_fd,
-					       (char *) &uts_status,
-					       sizeof (int),
-					       SOCKET_TIMEOUT_SEC);
+		read_from_client_with_timeout (srv_sock_fd, (char *) &uts_status, sizeof (int), SOCKET_TIMEOUT_SEC);
 	    }
 	  CLOSE_SOCKET (srv_sock_fd);
 
 	  if (ret_val < 0)
 	    {
-	      send_error_to_driver (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER,
-				    cur_job.driver_info);
+	      send_error_to_driver (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER, cur_job.driver_info);
 	    }
 	  else
 	    {
@@ -1368,12 +1283,9 @@ service_thr_f (void *arg)
       clt_sock_fd = cur_job.clt_sock_fd;
       memcpy (&ip_addr, cur_job.ip_addr, 4);
 
-      shm_appl->as_info[self_index].clt_major_version =
-	cur_job.clt_major_version;
-      shm_appl->as_info[self_index].clt_minor_version =
-	cur_job.clt_minor_version;
-      shm_appl->as_info[self_index].clt_patch_version =
-	cur_job.clt_patch_version;
+      shm_appl->as_info[self_index].clt_major_version = cur_job.clt_major_version;
+      shm_appl->as_info[self_index].clt_minor_version = cur_job.clt_minor_version;
+      shm_appl->as_info[self_index].clt_patch_version = cur_job.clt_patch_version;
       shm_appl->as_info[self_index].cas_client_type = cur_job.cas_client_type;
       shm_appl->as_info[self_index].close_flag = 0;
       cas_pid = shm_appl->as_info[self_index].pid;
@@ -1381,8 +1293,7 @@ service_thr_f (void *arg)
       srv_sock_fd = connect_srv (shm_br->br_info[br_index].name, self_index);
       if (IS_INVALID_SOCKET (srv_sock_fd))
 	{
-	  send_error_to_driver (clt_sock_fd, CAS_ER_FREE_SERVER,
-				cur_job.driver_info);
+	  send_error_to_driver (clt_sock_fd, CAS_ER_FREE_SERVER, cur_job.driver_info);
 	  shm_appl->as_info[self_index].uts_status = UTS_STATUS_IDLE;
 	  CLOSE_SOCKET (cur_job.clt_sock_fd);
 	  continue;
@@ -1395,8 +1306,7 @@ service_thr_f (void *arg)
 	  shm_appl->as_info[self_index].transaction_start_time = (time_t) 0;
 	}
 
-      process_cas_request (cas_pid, self_index, clt_sock_fd, srv_sock_fd,
-			   cur_job.clt_major_version);
+      process_cas_request (cas_pid, self_index, clt_sock_fd, srv_sock_fd, cur_job.clt_major_version);
 
       CLOSE_SOCKET (clt_sock_fd);
       CLOSE_SOCKET (srv_sock_fd);
@@ -1420,8 +1330,7 @@ init_env (void)
       UW_SET_ERROR_CODE (UW_ER_CANT_CREATE_SOCKET, errno);
       return (-1);
     }
-  if ((setsockopt (sock_fd, SOL_SOCKET, SO_REUSEADDR, (char *) &one,
-		   sizeof (one))) < 0)
+  if ((setsockopt (sock_fd, SOL_SOCKET, SO_REUSEADDR, (char *) &one, sizeof (one))) < 0)
     {
       UW_SET_ERROR_CODE (UW_ER_CANT_CREATE_SOCKET, errno);
       return (-1);
@@ -1461,8 +1370,7 @@ read_from_client (SOCKET sock_fd, char *buf, int size)
 }
 
 static int
-read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size,
-			       int timeout_sec)
+read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_sec)
 {
   int read_len;
 #ifdef ASYNC_MODE
@@ -1487,9 +1395,7 @@ read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size,
   FD_ZERO (&read_mask);
   FD_SET (sock_fd, (fd_set *) & read_mask);
   maxfd = (int) sock_fd + 1;
-  nfound =
-    select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0,
-	    timeout_ptr);
+  nfound = select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0, timeout_ptr);
   if (nfound < 0)
     {
       return -1;
@@ -1519,8 +1425,7 @@ write_to_client (SOCKET sock_fd, char *buf, int size)
 }
 
 static int
-write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size,
-			      int timeout_sec)
+write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_sec)
 {
   int write_len;
 #ifdef ASYNC_MODE
@@ -1548,9 +1453,7 @@ write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size,
   FD_ZERO (&write_mask);
   FD_SET (sock_fd, (fd_set *) & write_mask);
   maxfd = (int) sock_fd + 1;
-  nfound =
-    select (maxfd, (SELECT_MASK *) 0, &write_mask, (SELECT_MASK *) 0,
-	    timeout_ptr);
+  nfound = select (maxfd, (SELECT_MASK *) 0, &write_mask, (SELECT_MASK *) 0, timeout_ptr);
   if (nfound < 0)
     {
       return -1;
@@ -1623,8 +1526,7 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
     {
       char path[BROKER_PATH_MAX];
 
-      ut_get_as_port_name (path, shm_br->br_info[br_index].name, as_index,
-			   BROKER_PATH_MAX);
+      ut_get_as_port_name (path, shm_br->br_info[br_index].name, as_index, BROKER_PATH_MAX);
       unlink (path);
     }
 
@@ -1640,13 +1542,11 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
 #endif
       strcpy (appl_name, shm_appl->appl_server_name);
 
-      sprintf (appl_server_shm_key_env_str, "%s=%d",
-	       APPL_SERVER_SHM_KEY_STR, shm_br->br_info[br_index].
-	       appl_server_shm_id);
+      sprintf (appl_server_shm_key_env_str, "%s=%d", APPL_SERVER_SHM_KEY_STR,
+	       shm_br->br_info[br_index].appl_server_shm_id);
       putenv (appl_server_shm_key_env_str);
 
-      snprintf (as_id_env_str, sizeof (as_id_env_str),
-		"%s=%d", AS_ID_ENV_STR, as_index);
+      snprintf (as_id_env_str, sizeof (as_id_env_str), "%s=%d", AS_ID_ENV_STR, as_index);
       putenv (as_id_env_str);
 
       if (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS_ORACLE)
@@ -1657,16 +1557,12 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
 	{
 	  if (br_shard_flag == ON)
 	    {
-	      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d_%d_%d",
-			shm_br->br_info[br_index].name, appl_name,
-			as_info_p->proxy_id + 1, as_info_p->shard_id,
-			as_info_p->shard_cas_id + 1);
+	      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d_%d_%d", shm_br->br_info[br_index].name, appl_name,
+			as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
 	    }
 	  else
 	    {
-	      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d",
-			shm_br->br_info[br_index].name, appl_name,
-			as_index + 1);
+	      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d", shm_br->br_info[br_index].name, appl_name, as_index + 1);
 	    }
 	}
 
@@ -1715,13 +1611,11 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
 static int
 stop_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
 {
-  ut_kill_as_process (as_info_p->pid, shm_br->br_info[br_index].name,
-		      as_index, br_shard_flag);
+  ut_kill_as_process (as_info_p->pid, shm_br->br_info[br_index].name, as_index, br_shard_flag);
 
 #if defined(WINDOWS)
-  /* [CUBRIDSUS-2068] make the broker sleep for 0.1 sec
-     when stopping the cas in order to  prevent communication
-     error occurred on windows. */
+  /* [CUBRIDSUS-2068] make the broker sleep for 0.1 sec when stopping the cas in order to prevent communication error
+   * occurred on windows. */
   SLEEP_MILISEC (0, 100);
 #endif
 
@@ -1742,18 +1636,15 @@ stop_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
  * Note: inactivate and activate CAS
  */
 static void
-restart_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
-		     int as_index)
+restart_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
 {
   int new_pid;
 
 #if defined(WINDOWS)
-  ut_kill_as_process (as_info_p->pid, shm_br->br_info[br_index].name,
-		      as_info_p->as_id, br_shard_flag);
+  ut_kill_as_process (as_info_p->pid, shm_br->br_info[br_index].name, as_info_p->as_id, br_shard_flag);
 
-  /* [CUBRIDSUS-2068] make the broker sleep for 0.1 sec
-     when stopping the cas in order to  prevent communication
-     error occurred on windows. */
+  /* [CUBRIDSUS-2068] make the broker sleep for 0.1 sec when stopping the cas in order to prevent communication error
+   * occurred on windows. */
 
   SLEEP_MILISEC (0, 100);
 
@@ -1772,8 +1663,7 @@ restart_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
       FILE *fp;
       int old_pid;
 
-      ut_get_as_pid_name (pid_file_name, shm_br->br_info[br_index].name,
-			  as_index, BROKER_PATH_MAX);
+      ut_get_as_pid_name (pid_file_name, shm_br->br_info[br_index].name, as_index, BROKER_PATH_MAX);
 
       fp = fopen (pid_file_name, "r");
       if (fp)
@@ -1798,8 +1688,7 @@ restart_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index,
     {
       if (as_info_p->pid > 0)
 	{
-	  ut_kill_as_process (as_info_p->pid, shm_br->br_info[br_index].name,
-			      as_index, br_shard_flag);
+	  ut_kill_as_process (as_info_p->pid, shm_br->br_info[br_index].name, as_index, br_shard_flag);
 	}
 
       new_pid = run_appl_server (as_info_p, br_index, as_index);
@@ -1815,9 +1704,7 @@ read_nbytes_from_client (SOCKET sock_fd, char *buf, int size)
 
   while (total_read_size < size)
     {
-      read_len = read_from_client (sock_fd,
-				   buf + total_read_size,
-				   size - total_read_size);
+      read_len = read_from_client (sock_fd, buf + total_read_size, size - total_read_size);
       if (read_len <= 0)
 	{
 	  total_read_size = -1;
@@ -1851,8 +1738,7 @@ retry:
 
   memset (&sock_addr, 0, sizeof (struct sockaddr_in));
   sock_addr.sin_family = AF_INET;
-  sock_addr.sin_port =
-    htons ((unsigned short) shm_appl->as_info[as_index].as_port);
+  sock_addr.sin_port = htons ((unsigned short) shm_appl->as_info[as_index].as_port);
   memcpy (&sock_addr.sin_addr, shm_br->my_ip_addr, 4);
   sock_addr_len = sizeof (struct sockaddr_in);
 #else
@@ -1863,27 +1749,20 @@ retry:
   memset (&sock_addr, 0, sizeof (struct sockaddr_un));
   sock_addr.sun_family = AF_UNIX;
 
-  ut_get_as_port_name (sock_addr.sun_path, br_name, as_index,
-		       sizeof (sock_addr.sun_path));
+  ut_get_as_port_name (sock_addr.sun_path, br_name, as_index, sizeof (sock_addr.sun_path));
 
-  sock_addr_len =
-    strlen (sock_addr.sun_path) + sizeof (sock_addr.sun_family) + 1;
+  sock_addr_len = strlen (sock_addr.sun_path) + sizeof (sock_addr.sun_family) + 1;
 #endif
 
-  if (connect (srv_sock_fd, (struct sockaddr *) &sock_addr, sock_addr_len) <
-      0)
+  if (connect (srv_sock_fd, (struct sockaddr *) &sock_addr, sock_addr_len) < 0)
     {
       if (retry_count < 1)
 	{
 	  int new_pid;
 
-	  ut_kill_as_process (shm_appl->as_info[as_index].pid,
-			      shm_br->br_info[br_index].name, as_index,
-			      br_shard_flag);
+	  ut_kill_as_process (shm_appl->as_info[as_index].pid, shm_br->br_info[br_index].name, as_index, br_shard_flag);
 
-	  new_pid =
-	    run_appl_server (&(shm_appl->as_info[as_index]), br_index,
-			     as_index);
+	  new_pid = run_appl_server (&(shm_appl->as_info[as_index]), br_index, as_index);
 	  shm_appl->as_info[as_index].pid = new_pid;
 	  retry_count++;
 	  CLOSE_SOCKET (srv_sock_fd);
@@ -1893,8 +1772,7 @@ retry:
       return INVALID_SOCKET;
     }
 
-  setsockopt (srv_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
-	      sizeof (one));
+  setsockopt (srv_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
 
   return srv_sock_fd;
 }
@@ -1910,8 +1788,7 @@ retry:
  * Note: monitoring CAS
  */
 static void
-cas_monitor_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
-		    int as_index, int *busy_uts)
+cas_monitor_worker (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index, int *busy_uts)
 {
   int new_pid;
   int restart_flag = OFF;
@@ -1944,8 +1821,7 @@ cas_monitor_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
   if (shm_appl->use_pdh_flag == TRUE)
     {
       if ((as_info_p->pid == as_info_p->pdh_pid)
-	  && (as_info_p->pdh_workset >
-	      shm_br->br_info[br_index].appl_server_hard_limit))
+	  && (as_info_p->pdh_workset > shm_br->br_info[br_index].appl_server_hard_limit))
 	{
 	  as_info_p->uts_status = UTS_STATUS_RESTART;
 	}
@@ -1962,9 +1838,8 @@ cas_monitor_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
   /* check cas process status and restart it */
 
   if (br_shard_flag == ON
-      && (as_info_p->uts_status == UTS_STATUS_BUSY ||
-	  as_info_p->uts_status == UTS_STATUS_IDLE ||
-	  as_info_p->uts_status == UTS_STATUS_START))
+      && (as_info_p->uts_status == UTS_STATUS_BUSY || as_info_p->uts_status == UTS_STATUS_IDLE
+	  || as_info_p->uts_status == UTS_STATUS_START))
     {
       restart_flag = ON;
     }
@@ -2006,10 +1881,8 @@ cas_monitor_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
     }
   else if (br_shard_flag == ON && as_info_p->uts_status == UTS_STATUS_STOP)
     {
-      proxy_info_p =
-	shard_shm_find_proxy_info (shm_proxy_p, as_info_p->proxy_id);
-      shard_info_p =
-	shard_shm_find_shard_info (proxy_info_p, as_info_p->shard_id);
+      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, as_info_p->proxy_id);
+      shard_info_p = shard_shm_find_shard_info (proxy_info_p, as_info_p->shard_id);
       assert (shard_info_p != NULL);
 
       (shm_br->br_info[br_index].appl_server_num)--;
@@ -2042,8 +1915,7 @@ cas_monitor_thr_f (void *ar)
       tmp_num_busy_uts = 0;
       for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
 	{
-	  cas_monitor_worker (&(shm_appl->as_info[i]), br_index,
-			      i, &tmp_num_busy_uts);
+	  cas_monitor_worker (&(shm_appl->as_info[i]), br_index, i, &tmp_num_busy_uts);
 	}
 
       num_busy_uts = tmp_num_busy_uts;
@@ -2057,8 +1929,7 @@ cas_monitor_thr_f (void *ar)
 }
 
 static CSS_CONN_ENTRY *
-connect_to_master_for_server_monitor (const char *db_name,
-				      const char *db_host)
+connect_to_master_for_server_monitor (const char *db_name, const char *db_host)
 {
   int port_id;
   unsigned short rid;
@@ -2092,18 +1963,14 @@ get_server_state_from_master (CSS_CONN_ENTRY * conn, const char *db_name)
       return SERVER_STATE_DEAD;
     }
 
-  error =
-    css_send_request (conn, GET_SERVER_STATE, &request_id, db_name,
-		      strlen (db_name) + 1);
+  error = css_send_request (conn, GET_SERVER_STATE, &request_id, db_name, strlen (db_name) + 1);
   if (error != NO_ERRORS)
     {
       return SERVER_STATE_DEAD;
     }
 
   /* timeout : 5000 milliseconds */
-  error =
-    css_receive_data (conn, request_id, (char **) &buffer, &buffer_size,
-		      5000);
+  error = css_receive_data (conn, request_id, (char **) &buffer, &buffer_size, 5000);
   if (error == NO_ERRORS)
     {
       if (buffer_size == sizeof (int))
@@ -2124,16 +1991,13 @@ get_server_state_from_master (CSS_CONN_ENTRY * conn, const char *db_name)
 }
 
 static int
-insert_db_server_check_list (T_DB_SERVER * list_p,
-			     int check_list_cnt, const char *db_name,
-			     const char *db_host)
+insert_db_server_check_list (T_DB_SERVER * list_p, int check_list_cnt, const char *db_name, const char *db_host)
 {
   int i;
 
   for (i = 0; i < check_list_cnt && i < UNUSABLE_DATABASE_MAX; i++)
     {
-      if (strcmp (db_name, list_p[i].database_name) == 0
-	  && strcmp (db_host, list_p[i].database_host) == 0)
+      if (strcmp (db_name, list_p[i].database_name) == 0 && strcmp (db_host, list_p[i].database_host) == 0)
 	{
 	  return check_list_cnt;
 	}
@@ -2171,12 +2035,10 @@ server_monitor_thr_f (void *arg)
   while (process_flag)
     {
       if (!shm_appl->monitor_server_flag || br_shard_flag == ON
-	  || shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS
-	  || check_list == NULL)
+	  || shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS || check_list == NULL)
 	{
 	  shm_appl->unusable_databases_seq = 0;
-	  memset (shm_appl->unusable_databases_cnt, 0,
-		  sizeof (shm_appl->unusable_databases_cnt));
+	  memset (shm_appl->unusable_databases_cnt, 0, sizeof (shm_appl->unusable_databases_cnt));
 	  SLEEP_MILISEC (MONITOR_SERVER_INTERVAL, 0);
 	  continue;
 	}
@@ -2187,14 +2049,10 @@ server_monitor_thr_f (void *arg)
 
       for (i = 0; i < shm_appl->unusable_databases_cnt[u_index]; i++)
 	{
-	  unusable_db_name =
-	    shm_appl->unusable_databases[u_index][i].database_name;
-	  unusable_db_host =
-	    shm_appl->unusable_databases[u_index][i].database_host;
+	  unusable_db_name = shm_appl->unusable_databases[u_index][i].database_name;
+	  unusable_db_host = shm_appl->unusable_databases[u_index][i].database_host;
 
-	  check_list_cnt =
-	    insert_db_server_check_list (check_list, check_list_cnt,
-					 unusable_db_name, unusable_db_host);
+	  check_list_cnt = insert_db_server_check_list (check_list, check_list_cnt, unusable_db_name, unusable_db_host);
 	}
 
       for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
@@ -2202,21 +2060,17 @@ server_monitor_thr_f (void *arg)
 	  as_info_p = &(shm_appl->as_info[i]);
 	  if (as_info_p->uts_status == UTS_STATUS_BUSY)
 	    {
-	      strncpy (busy_cas_db_name, as_info_p->database_name,
-		       SRV_CON_DBNAME_SIZE - 1);
+	      strncpy (busy_cas_db_name, as_info_p->database_name, SRV_CON_DBNAME_SIZE - 1);
 
 	      if (busy_cas_db_name[0] != '\0')
 		{
-		  preferred_hosts =
-		    util_split_string (shm_appl->preferred_hosts, ":");
+		  preferred_hosts = util_split_string (shm_appl->preferred_hosts, ":");
 		  if (preferred_hosts != NULL)
 		    {
 		      for (j = 0; preferred_hosts[j] != NULL; j++)
 			{
 			  check_list_cnt =
-			    insert_db_server_check_list (check_list,
-							 check_list_cnt,
-							 busy_cas_db_name,
+			    insert_db_server_check_list (check_list, check_list_cnt, busy_cas_db_name,
 							 preferred_hosts[j]);
 			}
 
@@ -2236,10 +2090,7 @@ server_monitor_thr_f (void *arg)
 		  for (j = 0; j < db_info_p->num_hosts; j++)
 		    {
 		      check_list_cnt =
-			insert_db_server_check_list (check_list,
-						     check_list_cnt,
-						     busy_cas_db_name,
-						     db_info_p->hosts[j]);
+			insert_db_server_check_list (check_list, check_list_cnt, busy_cas_db_name, db_info_p->hosts[j]);
 		    }
 
 		  cfg_free_directory (db_info_p);
@@ -2250,12 +2101,8 @@ server_monitor_thr_f (void *arg)
       /* 2. check server state */
       for (i = 0; i < check_list_cnt; i++)
 	{
-	  conn =
-	    connect_to_master_for_server_monitor (check_list[i].database_name,
-						  check_list[i].
-						  database_host);
-	  check_list[i].state =
-	    get_server_state_from_master (conn, check_list[i].database_name);
+	  conn = connect_to_master_for_server_monitor (check_list[i].database_name, check_list[i].database_host);
+	  check_list[i].state = get_server_state_from_master (conn, check_list[i].database_name);
 
 	  if (conn != NULL)
 	    {
@@ -2270,14 +2117,11 @@ server_monitor_thr_f (void *arg)
 
       for (i = 0; i < check_list_cnt; i++)
 	{
-	  if (check_list[i].state < SERVER_STATE_REGISTERED
-	      && check_list[i].state != SERVER_STATE_UNKNOWN)
+	  if (check_list[i].state < SERVER_STATE_REGISTERED && check_list[i].state != SERVER_STATE_UNKNOWN)
 	    {
-	      strncpy (shm_appl->unusable_databases[u_index][cnt].
-		       database_name, check_list[i].database_name,
+	      strncpy (shm_appl->unusable_databases[u_index][cnt].database_name, check_list[i].database_name,
 		       SRV_CON_DBNAME_SIZE - 1);
-	      strncpy (shm_appl->unusable_databases[u_index][cnt].
-		       database_host, check_list[i].database_host,
+	      strncpy (shm_appl->unusable_databases[u_index][cnt].database_host, check_list[i].database_host,
 		       MAXHOSTNAMELEN - 1);
 	      cnt++;
 	    }
@@ -2317,8 +2161,7 @@ hang_check_thr_f (void *ar)
   cur_hang_count = 0;
   cur_index = 0;
   avg_hang_count = 0.0;
-  collect_count_interval =
-    br_info_p->monitor_hang_interval / NUM_COLLECT_COUNT_PER_INTVL;
+  collect_count_interval = br_info_p->monitor_hang_interval / NUM_COLLECT_COUNT_PER_INTVL;
 
   while (process_flag)
     {
@@ -2329,13 +2172,11 @@ hang_check_thr_f (void *ar)
 	    {
 	      as_info_p = &(shm_appl->as_info[i]);
 
-	      if ((as_info_p->service_flag != SERVICE_ON)
-		  || as_info_p->claimed_alive_time == 0)
+	      if ((as_info_p->service_flag != SERVICE_ON) || as_info_p->claimed_alive_time == 0)
 		{
 		  continue;
 		}
-	      if ((br_info_p->hang_timeout <
-		   cur_time - as_info_p->claimed_alive_time))
+	      if ((br_info_p->hang_timeout < cur_time - as_info_p->claimed_alive_time))
 		{
 		  cur_hang_count++;
 		}
@@ -2343,20 +2184,16 @@ hang_check_thr_f (void *ar)
 	}
       else
 	{
-	  for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
-	       proxy_index++)
+	  for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy; proxy_index++)
 	    {
-	      proxy_info_p =
-		shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+	      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
 
-	      if ((proxy_info_p->service_flag != SERVICE_ON)
-		  || (proxy_info_p->claimed_alive_time == 0))
+	      if ((proxy_info_p->service_flag != SERVICE_ON) || (proxy_info_p->claimed_alive_time == 0))
 		{
 		  continue;
 		}
 
-	      if ((br_info_p->hang_timeout <
-		   cur_time - proxy_info_p->claimed_alive_time))
+	      if ((br_info_p->hang_timeout < cur_time - proxy_info_p->claimed_alive_time))
 		{
 		  cur_hang_count++;
 		}
@@ -2365,18 +2202,16 @@ hang_check_thr_f (void *ar)
 
       hang_count[cur_index] = cur_hang_count;
 
-      avg_hang_count =
-	ut_get_avg_from_array (hang_count, NUM_COLLECT_COUNT_PER_INTVL);
+      avg_hang_count = ut_get_avg_from_array (hang_count, NUM_COLLECT_COUNT_PER_INTVL);
 
       if (br_shard_flag == OFF)
 	{
 	  br_info_p->reject_client_flag =
-	    (avg_hang_count >=
-	     (float) br_info_p->appl_server_num * HANG_COUNT_THRESHOLD_RATIO);
+	    (avg_hang_count >= (float) br_info_p->appl_server_num * HANG_COUNT_THRESHOLD_RATIO);
 	}
       else
 	{
-	  /*
+	  /* 
 	   * reject_client_flag for shard broker
 	   * does not depend on the current number of proxies.
 	   * If one proxy hangs for the last 1 min, then
@@ -2408,8 +2243,7 @@ hang_check_thr_f (void *ar)
  * Note: check cas psize and cas log
  */
 static void
-psize_check_worker (T_APPL_SERVER_INFO * as_info_p, int br_index,
-		    int as_index)
+psize_check_worker (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
 {
 #if defined(WINDOWS)
   int pid;
@@ -2475,8 +2309,8 @@ check_proxy_log (char *br_name, T_PROXY_INFO * proxy_info_p)
 
   if (proxy_info_p->cur_proxy_log_mode != PROXY_LOG_MODE_NONE)
     {
-      snprintf (log_filepath, sizeof (log_filepath), "%s/%s_%d.log",
-		shm_appl->proxy_log_dir, br_name, proxy_info_p->proxy_id + 1);
+      snprintf (log_filepath, sizeof (log_filepath), "%s/%s_%d.log", shm_appl->proxy_log_dir, br_name,
+		proxy_info_p->proxy_id + 1);
 
       if (access (log_filepath, F_OK) < 0)
 	{
@@ -2580,8 +2414,7 @@ psize_check_thr_f (void *ar)
     {
       pdh_collect ();
 
-      if (pdh_get_value (shm_br->br_info[br_index].pid,
-			 &workset_size, &pct_cpu, &br_num_thr) < 0)
+      if (pdh_get_value (shm_br->br_info[br_index].pid, &workset_size, &pct_cpu, &br_num_thr) < 0)
 	{
 	  shm_br->br_info[br_index].pdh_pct_cpu = 0;
 	}
@@ -2599,11 +2432,9 @@ psize_check_thr_f (void *ar)
 
       if (br_shard_flag == ON)
 	{
-	  for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
-	       proxy_index++)
+	  for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy; proxy_index++)
 	    {
-	      proxy_info_p =
-		shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+	      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
 
 	      proxy_check_worker (br_index, proxy_info_p);
 	    }
@@ -2631,11 +2462,9 @@ psize_check_thr_f (void *ar)
     {
       if (br_shard_flag == ON)
 	{
-	  for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
-	       proxy_index++)
+	  for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy; proxy_index++)
 	    {
-	      proxy_info_p =
-		shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+	      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
 
 	      proxy_check_worker (br_index, proxy_info_p);
 	    }
@@ -2673,8 +2502,7 @@ check_cas_log (char *br_name, T_APPL_SERVER_INFO * as_info_p, int as_index)
 
   if (as_info_p->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      get_as_sql_log_filename (log_filename, BROKER_PATH_MAX, br_name,
-			       as_info_p, as_index);
+      get_as_sql_log_filename (log_filename, BROKER_PATH_MAX, br_name, as_info_p, as_index);
 
       if (access (log_filename, F_OK) < 0)
 	{
@@ -2690,8 +2518,7 @@ check_cas_log (char *br_name, T_APPL_SERVER_INFO * as_info_p, int as_index)
 
   if (as_info_p->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
     {
-      get_as_slow_log_filename (log_filename, BROKER_PATH_MAX, br_name,
-				as_info_p, as_index);
+      get_as_slow_log_filename (log_filename, BROKER_PATH_MAX, br_name, as_info_p, as_index);
 
       if (access (log_filename, F_OK) < 0)
 	{
@@ -2708,8 +2535,7 @@ check_cas_log (char *br_name, T_APPL_SERVER_INFO * as_info_p, int as_index)
 
 #ifdef WIN_FW
 static int
-process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
-		     SOCKET srv_sock_fd)
+process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd, SOCKET srv_sock_fd)
 {
   char read_buf[1024];
   int msg_size;
@@ -2720,9 +2546,7 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
   msg_size = SRV_CON_DB_INFO_SIZE;
   while (msg_size > 0)
     {
-      read_len =
-	read_from_cas_client (clt_sock_fd, read_buf, msg_size, as_index,
-			      cas_pid);
+      read_len = read_from_cas_client (clt_sock_fd, read_buf, msg_size, as_index, cas_pid);
       if (read_len <= 0)
 	{
 	  return -1;
@@ -2739,10 +2563,7 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
   msg_size = ntohl (msg_size);
   while (msg_size > 0)
     {
-      read_len =
-	recv (srv_sock_fd, read_buf,
-	      (msg_size >
-	       sizeof (read_buf) ? sizeof (read_buf) : msg_size), 0);
+      read_len = recv (srv_sock_fd, read_buf, (msg_size > sizeof (read_buf) ? sizeof (read_buf) : msg_size), 0);
       if (read_len <= 0)
 	{
 	  return -1;
@@ -2760,9 +2581,7 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
       tmp_p = (char *) &msg_size;
       while (tmp_int > 0)
 	{
-	  read_len =
-	    read_from_cas_client (clt_sock_fd, tmp_p, tmp_int, as_index,
-				  cas_pid);
+	  read_len = read_from_cas_client (clt_sock_fd, tmp_p, tmp_int, as_index, cas_pid);
 	  if (read_len <= 0)
 	    {
 	      return -1;
@@ -2779,10 +2598,8 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
       while (msg_size > 0)
 	{
 	  read_len =
-	    read_from_cas_client (clt_sock_fd, read_buf,
-				  (msg_size >
-				   sizeof (read_buf) ? sizeof (read_buf) :
-				   msg_size), as_index, cas_pid);
+	    read_from_cas_client (clt_sock_fd, read_buf, (msg_size > sizeof (read_buf) ? sizeof (read_buf) : msg_size),
+				  as_index, cas_pid);
 	  if (read_len <= 0)
 	    {
 	      return -1;
@@ -2806,10 +2623,7 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
       msg_size = ntohl (msg_size);
       while (msg_size > 0)
 	{
-	  read_len =
-	    recv (srv_sock_fd, read_buf,
-		  (msg_size >
-		   sizeof (read_buf) ? sizeof (read_buf) : msg_size), 0);
+	  read_len = recv (srv_sock_fd, read_buf, (msg_size > sizeof (read_buf) ? sizeof (read_buf) : msg_size), 0);
 	  if (read_len <= 0)
 	    {
 	      return -1;
@@ -2821,8 +2635,7 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
 	  msg_size -= read_len;
 	}
 
-      if (shm_appl->as_info[as_index].close_flag
-	  || shm_appl->as_info[as_index].pid != cas_pid)
+      if (shm_appl->as_info[as_index].close_flag || shm_appl->as_info[as_index].pid != cas_pid)
 	{
 	  break;
 	}
@@ -2832,8 +2645,7 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
 }
 
 static int
-read_from_cas_client (SOCKET sock_fd, char *buf, int size, int as_index,
-		      int cas_pid)
+read_from_cas_client (SOCKET sock_fd, char *buf, int size, int as_index, int cas_pid)
 {
   int read_len;
 #ifdef ASYNC_MODE
@@ -2849,12 +2661,10 @@ retry:
   FD_ZERO (&read_mask);
   FD_SET (sock_fd, (fd_set *) & read_mask);
   maxfd = sock_fd + 1;
-  nfound = select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0,
-		   &timeout);
+  nfound = select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0, &timeout);
   if (nfound < 1)
     {
-      if (shm_appl->as_info[as_index].close_flag
-	  || shm_appl->as_info[as_index].pid != cas_pid)
+      if (shm_appl->as_info[as_index].close_flag || shm_appl->as_info[as_index].pid != cas_pid)
 	{
 	  return -1;
 	}
@@ -2909,12 +2719,9 @@ find_idle_cas (void)
 	  wait_cas_id = -1;
 	  break;
 	}
-      if (shm_br->br_info[br_index].appl_server_num ==
-	  shm_br->br_info[br_index].appl_server_max_num
-	  && shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY
-	  && shm_appl->as_info[i].cur_keep_con == KEEP_CON_AUTO
-	  && shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN
-	  && shm_appl->as_info[i].num_holdable_results < 1
+      if (shm_br->br_info[br_index].appl_server_num == shm_br->br_info[br_index].appl_server_max_num
+	  && shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY && shm_appl->as_info[i].cur_keep_con == KEEP_CON_AUTO
+	  && shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN && shm_appl->as_info[i].num_holdable_results < 1
 	  && shm_appl->as_info[i].cas_change_mode == CAS_CHANGE_MODE_AUTO)
 	{
 	  time_t wait_time = cur_time - shm_appl->as_info[i].last_access_time;
@@ -2928,27 +2735,22 @@ find_idle_cas (void)
 
   if (wait_cas_id >= 0)
     {
-      CON_STATUS_LOCK (&(shm_appl->as_info[wait_cas_id]),
-		       CON_STATUS_LOCK_BROKER);
+      CON_STATUS_LOCK (&(shm_appl->as_info[wait_cas_id]), CON_STATUS_LOCK_BROKER);
       if (shm_appl->as_info[wait_cas_id].con_status == CON_STATUS_OUT_TRAN
 	  && shm_appl->as_info[wait_cas_id].num_holdable_results < 1
-	  && shm_appl->as_info[wait_cas_id].cas_change_mode ==
-	  CAS_CHANGE_MODE_AUTO)
+	  && shm_appl->as_info[wait_cas_id].cas_change_mode == CAS_CHANGE_MODE_AUTO)
 	{
 	  idle_cas_id = wait_cas_id;
-	  shm_appl->as_info[wait_cas_id].con_status =
-	    CON_STATUS_CLOSE_AND_CONNECT;
+	  shm_appl->as_info[wait_cas_id].con_status = CON_STATUS_CLOSE_AND_CONNECT;
 	}
-      CON_STATUS_UNLOCK (&(shm_appl->as_info[wait_cas_id]),
-			 CON_STATUS_LOCK_BROKER);
+      CON_STATUS_UNLOCK (&(shm_appl->as_info[wait_cas_id]), CON_STATUS_LOCK_BROKER);
     }
 
 #if defined(WINDOWS)
   if (idle_cas_id >= 0)
     {
       HANDLE h_proc;
-      h_proc =
-	OpenProcess (SYNCHRONIZE, FALSE, shm_appl->as_info[idle_cas_id].pid);
+      h_proc = OpenProcess (SYNCHRONIZE, FALSE, shm_appl->as_info[idle_cas_id].pid);
       if (h_proc == NULL)
 	{
 	  shm_appl->as_info[i].uts_status = UTS_STATUS_RESTART;
@@ -2983,8 +2785,7 @@ find_drop_as_index (void)
   if (IS_NOT_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
     {
       drop_as_index = shm_br->br_info[br_index].appl_server_num - 1;
-      wait_time =
-	time (NULL) - shm_appl->as_info[drop_as_index].last_access_time;
+      wait_time = time (NULL) - shm_appl->as_info[drop_as_index].last_access_time;
       if (shm_appl->as_info[drop_as_index].uts_status == UTS_STATUS_IDLE
 	  && wait_time > shm_br->br_info[br_index].time_to_kill)
 	{
@@ -3020,13 +2821,10 @@ find_drop_as_index (void)
 	    }
 	}
 
-      if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY
-	  && shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN
+      if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY && shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN
 	  && shm_appl->as_info[i].num_holdable_results < 1
-	  && shm_appl->as_info[i].cas_change_mode == CAS_CHANGE_MODE_AUTO
-	  && wait_time > max_wait_time
-	  && wait_time > shm_br->br_info[br_index].time_to_kill
-	  && exist_idle_cas == 0)
+	  && shm_appl->as_info[i].cas_change_mode == CAS_CHANGE_MODE_AUTO && wait_time > max_wait_time
+	  && wait_time > shm_br->br_info[br_index].time_to_kill && exist_idle_cas == 0)
 	{
 	  max_wait_time = wait_time;
 	  drop_as_index = i;
@@ -3046,8 +2844,7 @@ find_add_as_index ()
   pthread_mutex_lock (&broker_shm_mutex);
   for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
     {
-      if (shm_appl->as_info[i].service_flag == SERVICE_OFF_ACK
-	  && current_dropping_as_index != i)
+      if (shm_appl->as_info[i].service_flag == SERVICE_OFF_ACK && current_dropping_as_index != i)
 	{
 	  pthread_mutex_unlock (&broker_shm_mutex);
 	  return i;
@@ -3074,17 +2871,13 @@ init_proxy_env ()
 
   memset (&shard_sock_addr, 0, sizeof (shard_sock_addr));
   shard_sock_addr.sun_family = AF_UNIX;
-  strncpy (shard_sock_addr.sun_path, shm_appl->port_name,
-	   sizeof (shard_sock_addr.sun_path) - 1);
+  strncpy (shard_sock_addr.sun_path, shm_appl->port_name, sizeof (shard_sock_addr.sun_path) - 1);
 
 #ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
-  len = sizeof (shard_sock_addr.sun_len) +
-    sizeof (shard_sock_addr.sun_family) +
-    strlen (shard_sock_addr.sun_path) + 1;
+  len = sizeof (shard_sock_addr.sun_len) + sizeof (shard_sock_addr.sun_family) + strlen (shard_sock_addr.sun_path) + 1;
   shard_sock_addr.sun_len = len;
 #else /* vanilla 4.3BSD */
-  len = strlen (shard_sock_addr.sun_path) +
-    sizeof (shard_sock_addr.sun_family) + 1;
+  len = strlen (shard_sock_addr.sun_path) + sizeof (shard_sock_addr.sun_family) + 1;
 #endif
 
   /* bind the name to the descriptor */
@@ -3119,11 +2912,9 @@ broker_init_shm (void)
       goto return_error;
     }
   parse_int (&master_shm_key, p, 10);
-  SHARD_ERR ("<BROKER> MASTER_SHM_KEY_ENV_STR:[%d:%x]\n", master_shm_key,
-	     master_shm_key);
+  SHARD_ERR ("<BROKER> MASTER_SHM_KEY_ENV_STR:[%d:%x]\n", master_shm_key, master_shm_key);
 
-  shm_br =
-    (T_SHM_BROKER *) uw_shm_open (master_shm_key, SHM_BROKER, SHM_MODE_ADMIN);
+  shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_key, SHM_BROKER, SHM_MODE_ADMIN);
   if (shm_br == NULL)
     {
       UW_SET_ERROR_CODE (UW_ER_SHM_OPEN, 0);
@@ -3152,12 +2943,9 @@ broker_init_shm (void)
   br_info_p = &shm_br->br_info[i];
 
   as_shm_key = br_info_p->appl_server_shm_id;
-  SHARD_ERR ("<BROKER> APPL_SERVER_SHM_KEY_STR:[%d:%x]\n", as_shm_key,
-	     as_shm_key);
+  SHARD_ERR ("<BROKER> APPL_SERVER_SHM_KEY_STR:[%d:%x]\n", as_shm_key, as_shm_key);
 
-  shm_appl =
-    (T_SHM_APPL_SERVER *) uw_shm_open (as_shm_key,
-				       SHM_APPL_SERVER, SHM_MODE_ADMIN);
+  shm_appl = (T_SHM_APPL_SERVER *) uw_shm_open (as_shm_key, SHM_APPL_SERVER, SHM_MODE_ADMIN);
   if (shm_appl == NULL)
     {
       UW_SET_ERROR_CODE (UW_ER_SHM_OPEN, 0);
@@ -3168,8 +2956,7 @@ broker_init_shm (void)
     {
       proxy_shm_id = br_info_p->proxy_shm_id;
 
-      shm_proxy_p =
-	(T_SHM_PROXY *) uw_shm_open (proxy_shm_id, SHM_PROXY, SHM_MODE_ADMIN);
+      shm_proxy_p = (T_SHM_PROXY *) uw_shm_open (proxy_shm_id, SHM_PROXY, SHM_MODE_ADMIN);
       if (shm_proxy_p == NULL)
 	{
 	  UW_SET_ERROR_CODE (UW_ER_SHM_OPEN, 0);
@@ -3191,8 +2978,7 @@ return_error:
 }
 
 static void
-proxy_monitor_worker (T_PROXY_INFO * proxy_info_p, int br_index,
-		      int proxy_index)
+proxy_monitor_worker (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
 {
   int new_pid;
 #if defined(WINDOWS)
@@ -3253,8 +3039,7 @@ proxy_monitor_thr_f (void *arg)
   while (process_flag)
     {
       tmp_num_busy_uts = 0;
-      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
-	   proxy_index++)
+      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy; proxy_index++)
 	{
 	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
 
@@ -3308,9 +3093,7 @@ proxy_listener_thr_f (void *arg)
       if (FD_ISSET (proxy_sock_fd, &rset))
 	{
 	  proxy_sock_addr_len = sizeof (proxy_sock_addr);
-	  client_fd =
-	    accept (proxy_sock_fd, (struct sockaddr *) &proxy_sock_addr,
-		    &proxy_sock_addr_len);
+	  client_fd = accept (proxy_sock_fd, (struct sockaddr *) &proxy_sock_addr, &proxy_sock_addr_len);
 
 	  ret = broker_add_proxy_conn (client_fd);
 	  if (ret < 0)
@@ -3320,12 +3103,9 @@ proxy_listener_thr_f (void *arg)
 	    }
 	}
 
-      while ((client_fd =
-	      broker_get_readable_proxy_conn (&rset)) != INVALID_SOCKET)
+      while ((client_fd = broker_get_readable_proxy_conn (&rset)) != INVALID_SOCKET)
 	{
-	  ret =
-	    read_from_client (client_fd, ((char *) &proxy_id),
-			      sizeof (proxy_id));
+	  ret = read_from_client (client_fd, ((char *) &proxy_id), sizeof (proxy_id));
 	  if (ret < 0)
 	    {
 	      broker_delete_proxy_conn_by_fd (client_fd);
@@ -3408,17 +3188,16 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
 	}
 #endif
 
-      snprintf (proxy_shm_id_env_str, sizeof (proxy_shm_id_env_str), "%s=%d",
-		PROXY_SHM_KEY_STR, shm_br->br_info[br_index].proxy_shm_id);
+      snprintf (proxy_shm_id_env_str, sizeof (proxy_shm_id_env_str), "%s=%d", PROXY_SHM_KEY_STR,
+		shm_br->br_info[br_index].proxy_shm_id);
       putenv (proxy_shm_id_env_str);
 
-      snprintf (proxy_id_env_str, sizeof (proxy_id_env_str), "%s=%d",
-		PROXY_ID_ENV_STR, proxy_index);
+      snprintf (proxy_id_env_str, sizeof (proxy_id_env_str), "%s=%d", PROXY_ID_ENV_STR, proxy_index);
       putenv (proxy_id_env_str);
 
 #if !defined(WINDOWS)
-      snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d",
-		shm_appl->broker_name, proxy_exe_name, proxy_index + 1);
+      snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
+		proxy_index + 1);
 #endif /* !WINDOWS */
 
 #if defined(WINDOWS)
@@ -3450,13 +3229,11 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
 static int
 stop_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
 {
-  ut_kill_proxy_process (proxy_info_p->pid, shm_br->br_info[br_index].name,
-			 proxy_index);
+  ut_kill_proxy_process (proxy_info_p->pid, shm_br->br_info[br_index].name, proxy_index);
 
 #if defined(WINDOWS)
-  /* [CUBRIDSUS-2068] make the broker sleep for 0.1 sec
-     when stopping the cas in order to  prevent communication
-     error occurred on windows. */
+  /* [CUBRIDSUS-2068] make the broker sleep for 0.1 sec when stopping the cas in order to prevent communication error
+   * occurred on windows. */
   SLEEP_MILISEC (0, 100);
 #else /* WINDOWS */
 
@@ -3480,8 +3257,7 @@ stop_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
  * it's only use in SHARD.
  */
 static void
-restart_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index,
-		      int proxy_index)
+restart_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
 {
   int new_pid;
 
@@ -3493,8 +3269,7 @@ restart_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index,
 }
 
 static void
-get_as_sql_log_filename (char *log_filename, int len, char *broker_name,
-			 T_APPL_SERVER_INFO * as_info_p, int as_index)
+get_as_sql_log_filename (char *log_filename, int len, char *broker_name, T_APPL_SERVER_INFO * as_info_p, int as_index)
 {
   char dirname[BROKER_PATH_MAX];
 
@@ -3502,20 +3277,17 @@ get_as_sql_log_filename (char *log_filename, int len, char *broker_name,
 
   if (br_shard_flag == ON)
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d_%d_%d.sql.log",
-		dirname, broker_name, as_info_p->proxy_id + 1,
+      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d_%d_%d.sql.log", dirname, broker_name, as_info_p->proxy_id + 1,
 		as_info_p->shard_id, as_info_p->shard_cas_id + 1);
     }
   else
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d.sql.log", dirname,
-		broker_name, as_index + 1);
+      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d.sql.log", dirname, broker_name, as_index + 1);
     }
 }
 
 static void
-get_as_slow_log_filename (char *log_filename, int len, char *broker_name,
-			  T_APPL_SERVER_INFO * as_info_p, int as_index)
+get_as_slow_log_filename (char *log_filename, int len, char *broker_name, T_APPL_SERVER_INFO * as_info_p, int as_index)
 {
   char dirname[BROKER_PATH_MAX];
 
@@ -3523,13 +3295,11 @@ get_as_slow_log_filename (char *log_filename, int len, char *broker_name,
 
   if (br_shard_flag == ON)
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d_%d_%d.slow.log",
-		dirname, broker_name, as_info_p->proxy_id + 1,
+      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d_%d_%d.slow.log", dirname, broker_name, as_info_p->proxy_id + 1,
 		as_info_p->shard_id, as_info_p->shard_cas_id + 1);
     }
   else
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d.slow.log", dirname,
-		broker_name, as_index + 1);
+      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d.slow.log", dirname, broker_name, as_index + 1);
     }
 }

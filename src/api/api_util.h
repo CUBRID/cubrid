@@ -88,9 +88,7 @@ typedef int (*ht_keyf) (void *elem, void **rk);
 /* element destroy function */
 typedef void (*ht_destroyf) (void *elem);
 
-extern int hash_new (int bucket_sz,
-		     ht_hashf hashf,
-		     ht_keyf keyf, ht_comparef comparef, hash_table ** ht);
+extern int hash_new (int bucket_sz, ht_hashf hashf, ht_keyf keyf, ht_comparef comparef, hash_table ** ht);
 extern void hash_destroy (hash_table * ht, ht_destroyf dtor);
 extern int hash_lookup (hash_table * ht, void *key, void **elem);
 extern int hash_insert (hash_table * ht, void *elem);
@@ -113,8 +111,7 @@ extern int hash_delete (hash_table * ht, void *key, void **elem);
 #define API_CALLOC(n,s) api_calloc((n),(s),__FILE__,__LINE__)
 #define API_MALLOC(s) api_malloc((s),__FILE__,__LINE__)
 #define API_FREE(p) api_free((p), __FILE__, __LINE__)
-extern void *api_calloc (size_t nmemb, size_t size, const char *file,
-			 int line);
+extern void *api_calloc (size_t nmemb, size_t size, const char *file, int line);
 extern void *api_malloc (size_t size, const char *file, int line);
 extern void api_free (void *ptr, const char *file, int line);
 extern int api_check_memory (FILE * fp);

@@ -73,8 +73,7 @@ es_init (const char *uri)
   if (es_initialized_type == ES_OWFS)
     {
 #if defined(WINDOWS)
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      "not supported");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
       ret = es_owfs_init (ES_POSIX_PATH_POS (uri));
@@ -85,7 +84,7 @@ es_init (const char *uri)
       ret = es_posix_init (ES_POSIX_PATH_POS (uri));
       if (ret == ER_ES_GENERAL)
 	{
-	  /*
+	  /* 
 	   * If es_posix_init() failed (eg.failed to open base dir), 
 	   * ignore the error in order to start server normally. 
 	   */
@@ -114,8 +113,7 @@ es_final (void)
   if (es_initialized_type == ES_OWFS)
     {
 #if defined(WINDOWS)
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      "not supported");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
 #else /* WINDOWS */
       es_owfs_final ();
 #endif /* !WINDOWS */
@@ -143,15 +141,12 @@ es_create_file (char *out_uri)
   if (es_initialized_type == ES_OWFS)
     {
 #if defined(WINDOWS)
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      "not supported");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
       strncpy (out_uri, ES_OWFS_PATH_PREFIX, sizeof (ES_OWFS_PATH_PREFIX));
       ret = es_owfs_create_file (ES_OWFS_PATH_POS (out_uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_create_file: es_owfs_create_file() -> %s: %d\n",
-		    out_uri, ret);
+      er_log_debug (ARG_FILE_LINE, "es_create_file: es_owfs_create_file() -> %s: %d\n", out_uri, ret);
 #endif /* !WINDOWS */
     }
   else if (es_initialized_type == ES_POSIX)
@@ -159,15 +154,11 @@ es_create_file (char *out_uri)
       strncpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
 #if defined (CS_MODE)
       ret = es_posix_create_file (ES_POSIX_PATH_POS (out_uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_create_file: es_posix_create_file() -> %s: %d\n",
-		    out_uri, ret);
+      er_log_debug (ARG_FILE_LINE, "es_create_file: es_posix_create_file() -> %s: %d\n", out_uri, ret);
 #else /* CS_MODE */
       ret = xes_posix_create_file (ES_POSIX_PATH_POS (out_uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_create_file: xes_posix_create_file() -> %s: %d\n",
-		    out_uri, ret);
-#endif /* SERVER_MODE  || SA_MODE */
+      er_log_debug (ARG_FILE_LINE, "es_create_file: xes_posix_create_file() -> %s: %d\n", out_uri, ret);
+#endif /* SERVER_MODE || SA_MODE */
     }
   else
     {
@@ -208,30 +199,25 @@ es_write_file (const char *uri, const void *buf, size_t count, off_t offset)
   if (es_type == ES_OWFS)
     {
 #if defined(WINDOWS)
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      "not supported");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
       ret = es_owfs_write_file (ES_OWFS_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_write_file: es_owfs_write_file(%s,"
-		    " count %d, offset %ld) -> %d\n",
-		    uri, count, offset, ret);
+      er_log_debug (ARG_FILE_LINE, "es_write_file: es_owfs_write_file(%s," " count %d, offset %ld) -> %d\n", uri, count,
+		    offset, ret);
 #endif /* !WINDOWS */
     }
   else if (es_type == ES_POSIX)
     {
 #if defined (CS_MODE)
       ret = es_posix_write_file (ES_POSIX_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_write_file: es_posix_write_file(%s"
-		    " count %d, offset %ld) -> %d\n",
-		    uri, count, offset, ret);
+      er_log_debug (ARG_FILE_LINE, "es_write_file: es_posix_write_file(%s" " count %d, offset %ld) -> %d\n", uri, count,
+		    offset, ret);
 #else /* CS_MODE */
-      ret =
-	xes_posix_write_file (ES_POSIX_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_write_file: xes_posix_write_file(%s"
-		    " count %d, offset %ld) -> %d\n",
-		    uri, count, offset, ret);
-#endif /* SERVER_MODE  || SA_MODE */
+      ret = xes_posix_write_file (ES_POSIX_PATH_POS (uri), buf, count, offset);
+      er_log_debug (ARG_FILE_LINE, "es_write_file: xes_posix_write_file(%s" " count %d, offset %ld) -> %d\n", uri,
+		    count, offset, ret);
+#endif /* SERVER_MODE || SA_MODE */
     }
   else
     {
@@ -272,36 +258,31 @@ es_read_file (const char *uri, void *buf, size_t count, off_t offset)
   if (es_type == ES_OWFS)
     {
 #if defined(WINDOWS)
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      "not supported");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
       ret = es_owfs_read_file (ES_OWFS_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_read_file: (es_owfs_read_file(%s,"
-		    " count %d, offset %ld) -> %d\n",
-		    uri, count, offset, ret);
+      er_log_debug (ARG_FILE_LINE, "es_read_file: (es_owfs_read_file(%s," " count %d, offset %ld) -> %d\n", uri, count,
+		    offset, ret);
 #endif /* !WINDOWS */
     }
   else if (es_type == ES_POSIX)
     {
 #if defined (CS_MODE)
       ret = es_posix_read_file (ES_POSIX_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_read_file: es_posix_read_file(%s,"
-		    " count %d, offset %ld) -> %d\n",
-		    uri, count, offset, ret);
+      er_log_debug (ARG_FILE_LINE, "es_read_file: es_posix_read_file(%s," " count %d, offset %ld) -> %d\n", uri, count,
+		    offset, ret);
 #else /* CS_MODE */
       ret = xes_posix_read_file (ES_POSIX_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_read_file: xes_posix_read_file(%s,"
-		    " count %d, offset %ld) -> %d\n",
-		    uri, count, offset, ret);
-#endif /* SERVER_MODE  || SA_MODE */
+      er_log_debug (ARG_FILE_LINE, "es_read_file: xes_posix_read_file(%s," " count %d, offset %ld) -> %d\n", uri, count,
+		    offset, ret);
+#endif /* SERVER_MODE || SA_MODE */
     }
   else if (es_type == ES_LOCAL)
     {
       ret = es_local_read_file (ES_LOCAL_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_read_file: es_local_read_file(%s,"
-		    " count %d, offset %ld) -> %d\n",
-		    uri, count, offset, ret);
+      er_log_debug (ARG_FILE_LINE, "es_read_file: es_local_read_file(%s," " count %d, offset %ld) -> %d\n", uri, count,
+		    offset, ret);
     }
   else
     {
@@ -336,29 +317,22 @@ es_delete_file (const char *uri)
   if (es_type == ES_OWFS)
     {
 #if defined(WINDOWS)
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      "not supported");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
       ret = es_owfs_delete_file (ES_OWFS_PATH_POS (uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_delete_file: es_owfs_delete_file(%s) -> %d\n",
-		    uri, ret);
+      er_log_debug (ARG_FILE_LINE, "es_delete_file: es_owfs_delete_file(%s) -> %d\n", uri, ret);
 #endif /* !WINDOWS */
     }
   else if (es_type == ES_POSIX)
     {
 #if defined (CS_MODE)
       ret = es_posix_delete_file (ES_POSIX_PATH_POS (uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_delete_file: es_posix_delete_file(%s) -> %d\n",
-		    uri, ret);
+      er_log_debug (ARG_FILE_LINE, "es_delete_file: es_posix_delete_file(%s) -> %d\n", uri, ret);
 #else /* CS_MODE */
       ret = xes_posix_delete_file (ES_POSIX_PATH_POS (uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_delete_file: xes_posix_delete_file(%s) -> %d\n",
-		    uri, ret);
-#endif /* SERVER_MODE  || SA_MODE */
+      er_log_debug (ARG_FILE_LINE, "es_delete_file: xes_posix_delete_file(%s) -> %d\n", uri, ret);
+#endif /* SERVER_MODE || SA_MODE */
     }
   else
     {
@@ -397,8 +371,7 @@ es_copy_file (const char *in_uri, const char *metaname, char *out_uri)
   if (es_type != es_initialized_type)
     {
       /* copy file operation is allowed only between same types */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_COPY_TO_DIFFERENT_TYPE,
-	      2, es_get_type_string (es_type),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_COPY_TO_DIFFERENT_TYPE, 2, es_get_type_string (es_type),
 	      es_get_type_string (es_initialized_type));
       return ER_ES_COPY_TO_DIFFERENT_TYPE;
     }
@@ -406,39 +379,28 @@ es_copy_file (const char *in_uri, const char *metaname, char *out_uri)
   if (es_type == ES_OWFS)
     {
 #if defined(WINDOWS)
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      "not supported");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
       strncpy (out_uri, ES_OWFS_PATH_PREFIX, sizeof (ES_OWFS_PATH_PREFIX));
-      ret = es_owfs_copy_file (ES_OWFS_PATH_POS (in_uri), metaname,
-			       ES_OWFS_PATH_POS (out_uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_copy_file: es_owfs_copy_file(%s) -> %s: %d\n",
-		    in_uri, out_uri, ret);
+      ret = es_owfs_copy_file (ES_OWFS_PATH_POS (in_uri), metaname, ES_OWFS_PATH_POS (out_uri));
+      er_log_debug (ARG_FILE_LINE, "es_copy_file: es_owfs_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #endif /* !WINDOWS */
     }
   else if (es_type == ES_POSIX)
     {
       strncpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
 #if defined (CS_MODE)
-      ret = es_posix_copy_file (ES_POSIX_PATH_POS (in_uri), metaname,
-				ES_POSIX_PATH_POS (out_uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_copy_file: es_posix_copy_file(%s) -> %s: %d\n",
-		    in_uri, out_uri, ret);
+      ret = es_posix_copy_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
+      er_log_debug (ARG_FILE_LINE, "es_copy_file: es_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #else /* CS_MODE */
-      ret = xes_posix_copy_file (ES_POSIX_PATH_POS (in_uri), metaname,
-				 ES_POSIX_PATH_POS (out_uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n",
-		    in_uri, out_uri, ret);
-#endif /* SERVER_MODE  || SA_MODE */
+      ret = xes_posix_copy_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
+      er_log_debug (ARG_FILE_LINE, "es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
+#endif /* SERVER_MODE || SA_MODE */
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1,
-	      in_uri);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, in_uri);
       return ER_ES_INVALID_PATH;
     }
 
@@ -473,8 +435,7 @@ es_rename_file (const char *in_uri, const char *metaname, char *out_uri)
   if (es_type != es_initialized_type)
     {
       /* copy file operation is allowed only between same types */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_COPY_TO_DIFFERENT_TYPE,
-	      2, es_get_type_string (es_type),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_COPY_TO_DIFFERENT_TYPE, 2, es_get_type_string (es_type),
 	      es_get_type_string (es_initialized_type));
       return ER_ES_COPY_TO_DIFFERENT_TYPE;
     }
@@ -482,39 +443,28 @@ es_rename_file (const char *in_uri, const char *metaname, char *out_uri)
   if (es_type == ES_OWFS)
     {
 #if defined(WINDOWS)
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      "not supported");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
       strncpy (out_uri, ES_OWFS_PATH_PREFIX, sizeof (ES_OWFS_PATH_PREFIX));
-      ret = es_owfs_rename_file (ES_OWFS_PATH_POS (in_uri), metaname,
-				 ES_OWFS_PATH_POS (out_uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_copy_file: es_owfs_copy_file(%s) -> %s: %d\n",
-		    in_uri, out_uri, ret);
+      ret = es_owfs_rename_file (ES_OWFS_PATH_POS (in_uri), metaname, ES_OWFS_PATH_POS (out_uri));
+      er_log_debug (ARG_FILE_LINE, "es_copy_file: es_owfs_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #endif /* !WINDOWS */
     }
   else if (es_type == ES_POSIX)
     {
       strncpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
 #if defined (CS_MODE)
-      ret = es_posix_rename_file (ES_POSIX_PATH_POS (in_uri), metaname,
-				  ES_POSIX_PATH_POS (out_uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_copy_file: es_posix_copy_file(%s) -> %s: %d\n",
-		    in_uri, out_uri, ret);
+      ret = es_posix_rename_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
+      er_log_debug (ARG_FILE_LINE, "es_copy_file: es_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #else /* CS_MODE */
-      ret = xes_posix_rename_file (ES_POSIX_PATH_POS (in_uri), metaname,
-				   ES_POSIX_PATH_POS (out_uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n",
-		    in_uri, out_uri, ret);
-#endif /* SERVER_MODE  || SA_MODE */
+      ret = xes_posix_rename_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
+      er_log_debug (ARG_FILE_LINE, "es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
+#endif /* SERVER_MODE || SA_MODE */
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1,
-	      in_uri);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, in_uri);
       return ER_ES_INVALID_PATH;
     }
 
@@ -545,36 +495,27 @@ es_get_file_size (const char *uri)
   if (es_type == ES_OWFS)
     {
 #if defined(WINDOWS)
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS",
-	      "not supported");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "OwFS", "not supported");
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
       ret = es_owfs_get_file_size (ES_OWFS_PATH_POS (uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_copy_file: es_owfs_get_file_size(%s) -> %d\n",
-		    uri, ret);
+      er_log_debug (ARG_FILE_LINE, "es_copy_file: es_owfs_get_file_size(%s) -> %d\n", uri, ret);
 #endif /* !WINDOWS */
     }
   else if (es_type == ES_POSIX)
     {
 #if defined (CS_MODE)
       ret = es_posix_get_file_size (ES_POSIX_PATH_POS (uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_copy_file: es_posix_get_file_size(%s) -> %d\n",
-		    uri, ret);
+      er_log_debug (ARG_FILE_LINE, "es_copy_file: es_posix_get_file_size(%s) -> %d\n", uri, ret);
 #else /* CS_MODE */
       ret = xes_posix_get_file_size (ES_POSIX_PATH_POS (uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_copy_file: xes_posix_get_file_size(%s) -> %d\n",
-		    uri, ret);
-#endif /* SERVER_MODE  || SA_MODE */
+      er_log_debug (ARG_FILE_LINE, "es_copy_file: xes_posix_get_file_size(%s) -> %d\n", uri, ret);
+#endif /* SERVER_MODE || SA_MODE */
     }
   else if (es_type == ES_LOCAL)
     {
       ret = es_local_get_file_size (ES_LOCAL_PATH_POS (uri));
-      er_log_debug (ARG_FILE_LINE,
-		    "es_copy_file: es_local_get_file_size(%s) -> %d\n",
-		    uri, ret);
+      er_log_debug (ARG_FILE_LINE, "es_copy_file: es_local_get_file_size(%s) -> %d\n", uri, ret);
     }
   else
     {
@@ -618,7 +559,7 @@ es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const char *uri)
   (INT_ALIGNMENT +	/* Aligning buffer start */	      \
    OR_INT_SIZE +	/* String length */		      \
    ES_MAX_URI_LEN +	/* URI string */	  	      \
-   INT_ALIGNMENT)	/* Alignment of packed string */
+   INT_ALIGNMENT)		/* Alignment of packed string */
 
   LOG_DATA_ADDR addr;
   int length;
@@ -641,9 +582,7 @@ es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const char *uri)
   /* Pack string */
   (void) or_pack_string (data, uri);
 
-  /* This is not actually ever undone, but vacuum will process undo data of
-   * log entry.
-   */
+  /* This is not actually ever undone, but vacuum will process undo data of log entry. */
   log_append_undo_data (thread_p, RVES_NOTIFY_VACUUM, &addr, length, data);
 }
 #endif /* SERVER_MODE */

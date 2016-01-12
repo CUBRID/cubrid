@@ -45,18 +45,15 @@ static void *ini_dblalloc (void *ptr, int size);
 static unsigned int ini_table_hash (char *key);
 static INI_TABLE *ini_table_new (int size);
 static void ini_table_free (INI_TABLE * vd);
-static const char *ini_table_get (INI_TABLE * ini, char *key, const char *def,
-				  int *lineno);
+static const char *ini_table_get (INI_TABLE * ini, char *key, const char *def, int *lineno);
 static int ini_table_set (INI_TABLE * vd, char *key, char *val, int lineno);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void ini_table_unset (INI_TABLE * ini, char *key);
 #endif /* ENABLE_UNUSED_FUNCTION */
 static char *ini_str_lower (const char *s);
 static char *ini_str_trim (char *s);
-static INI_LINE_STATUS ini_parse_line (char *input_line, char *section,
-				       char *key, char *value);
-static const char *ini_get_internal (INI_TABLE * ini, const char *key,
-				     const char *def, int *lineno);
+static INI_LINE_STATUS ini_parse_line (char *input_line, char *section, char *key, char *value);
+static const char *ini_get_internal (INI_TABLE * ini, const char *key, const char *def, int *lineno);
 
 /*
  * ini_dblalloc() - Doubles the allocated size associated to a pointer
@@ -316,17 +313,11 @@ ini_table_set (INI_TABLE * ini, char *key, char *val, int lineno)
     {
 
       /* Reached maximum size: reallocate INI_TABLE */
-      ini->val =
-	(char **) ini_dblalloc (ini->val, ini->size * sizeof (char *));
-      ini->key =
-	(char **) ini_dblalloc (ini->key, ini->size * sizeof (char *));
-      ini->lineno =
-	(int *) ini_dblalloc (ini->lineno, ini->size * sizeof (int));
-      ini->hash =
-	(unsigned int *) ini_dblalloc (ini->hash,
-				       ini->size * sizeof (unsigned int));
-      if ((ini->val == NULL) || (ini->key == NULL) || (ini->lineno == NULL)
-	  || (ini->hash == NULL))
+      ini->val = (char **) ini_dblalloc (ini->val, ini->size * sizeof (char *));
+      ini->key = (char **) ini_dblalloc (ini->key, ini->size * sizeof (char *));
+      ini->lineno = (int *) ini_dblalloc (ini->lineno, ini->size * sizeof (int));
+      ini->hash = (unsigned int *) ini_dblalloc (ini->hash, ini->size * sizeof (unsigned int));
+      if ((ini->val == NULL) || (ini->key == NULL) || (ini->lineno == NULL) || (ini->hash == NULL))
 	{
 	  /* Cannot grow INI_TABLE */
 	  return -1;
@@ -528,15 +519,14 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
       strcpy (section, ini_str_lower (section));
       status = LINE_SECTION;
     }
-  else if (sscanf (line, "%[^=] = \"%[^\"]\"", key, value) == 2
-	   || sscanf (line, "%[^=] = '%[^\']'", key, value) == 2
+  else if (sscanf (line, "%[^=] = \"%[^\"]\"", key, value) == 2 || sscanf (line, "%[^=] = '%[^\']'", key, value) == 2
 	   || sscanf (line, "%[^=] = %[^;#]", key, value) == 2)
     {
       /* Usual key=value, with or without comments */
       strcpy (key, ini_str_trim (key));
       strcpy (key, ini_str_lower (key));
       strcpy (value, ini_str_trim (value));
-      /*
+      /* 
        * sscanf cannot handle '' or "" as empty values
        * this is done here
        */
@@ -546,10 +536,9 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
 	}
       status = LINE_VALUE;
     }
-  else if (sscanf (line, "%[^=] = %[;#]", key, value) == 2
-	   || sscanf (line, "%[^=] %[=]", key, value) == 2)
+  else if (sscanf (line, "%[^=] = %[;#]", key, value) == 2 || sscanf (line, "%[^=] %[=]", key, value) == 2)
     {
-      /*
+      /* 
        * Special cases:
        * key=
        * key=;
@@ -619,9 +608,7 @@ ini_parser_load (const char *ininame)
       /* Safety check against buffer overflows */
       if (line[len] != '\n' && len >= INI_BUFSIZ - 2)
 	{
-	  fprintf (stderr,
-		   "ini_parser: input line too long in %s (%d)\n",
-		   ininame, lineno);
+	  fprintf (stderr, "ini_parser: input line too long in %s (%d)\n", ininame, lineno);
 	  ini_table_free (ini);
 	  fclose (in);
 	  return NULL;
@@ -659,8 +646,7 @@ ini_parser_load (const char *ininame)
 	  break;
 
 	case LINE_ERROR:
-	  fprintf (stderr, "ini_parser: syntax error in %s (%d):\n",
-		   ininame, lineno);
+	  fprintf (stderr, "ini_parser: syntax error in %s (%d):\n", ininame, lineno);
 	  fprintf (stderr, "-> %s\n", line);
 	  errs++;
 	  break;
@@ -846,8 +832,7 @@ ini_seccmp (const char *key1, const char *key2)
  *       do not free or modify returned pointer
  */
 static const char *
-ini_get_internal (INI_TABLE * ini, const char *key, const char *def,
-		  int *lineno)
+ini_get_internal (INI_TABLE * ini, const char *key, const char *def, int *lineno)
 {
   char *lc_key;
   const char *sval;
@@ -876,8 +861,7 @@ ini_get_internal (INI_TABLE * ini, const char *key, const char *def,
  *       do not free or modify returned pointer
  */
 const char *
-ini_getstr (INI_TABLE * ini, const char *sec, const char *key,
-	    const char *def, int *lineno)
+ini_getstr (INI_TABLE * ini, const char *sec, const char *key, const char *def, int *lineno)
 {
   char sec_key[INI_BUFSIZ + 1];
 
@@ -897,8 +881,7 @@ ini_getstr (INI_TABLE * ini, const char *sec, const char *key,
  * Note:
  */
 int
-ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def,
-	    int *lineno)
+ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def, int *lineno)
 {
   const char *str;
   int val;
@@ -925,8 +908,7 @@ ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def,
  * Note:
  */
 int
-ini_getuint (INI_TABLE * ini, const char *sec, const char *key, int def,
-	     int *lineno)
+ini_getuint (INI_TABLE * ini, const char *sec, const char *key, int def, int *lineno)
 {
   int result;
 
@@ -954,8 +936,7 @@ ini_getuint (INI_TABLE * ini, const char *sec, const char *key, int def,
  * Note:
  */
 int
-ini_getuint_min (INI_TABLE * ini, const char *sec, const char *key, int def,
-		 int min, int *lineno)
+ini_getuint_min (INI_TABLE * ini, const char *sec, const char *key, int def, int min, int *lineno)
 {
   int result;
 
@@ -983,8 +964,7 @@ ini_getuint_min (INI_TABLE * ini, const char *sec, const char *key, int def,
  * Note:
  */
 int
-ini_getuint_max (INI_TABLE * ini, const char *sec, const char *key, int def,
-		 int max, int *lineno)
+ini_getuint_max (INI_TABLE * ini, const char *sec, const char *key, int def, int max, int *lineno)
 {
   int result;
 
@@ -1009,8 +989,7 @@ ini_getuint_max (INI_TABLE * ini, const char *sec, const char *key, int def,
  * Note: the conversion may overflow. see strtol().
  */
 int
-ini_gethex (INI_TABLE * ini, const char *sec, const char *key, int def,
-	    int *lineno)
+ini_gethex (INI_TABLE * ini, const char *sec, const char *key, int def, int *lineno)
 {
   const char *str;
   int val;
@@ -1037,8 +1016,7 @@ ini_gethex (INI_TABLE * ini, const char *sec, const char *key, int def,
  * Note: the conversion may overflow. see strtod().
  */
 float
-ini_getfloat (INI_TABLE * ini, const char *sec, const char *key, float def,
-	      int *lineno)
+ini_getfloat (INI_TABLE * ini, const char *sec, const char *key, float def, int *lineno)
 {
   const char *str;
 

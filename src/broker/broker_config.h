@@ -247,7 +247,7 @@ struct t_broker_info
   char trigger_action_flag;	/* enable or disable trigger action */
 
   char shard_flag;
-  /*from here, these are used only in shard */
+  /* from here, these are used only in shard */
   int proxy_shm_id;
 
   char proxy_log_mode;
@@ -274,16 +274,13 @@ struct t_broker_info
 
   char ignore_shard_hint;
   int proxy_timeout;
-  /*to here, these are used only in shard */
+  /* to here, these are used only in shard */
 };
 
-extern int broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
-			       int *num_broker, int *br_shm_id,
-			       char *admin_log_file, char admin_flag,
-			       bool * acl_flag, char *acl_file,
+extern int broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
+			       char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file,
 			       char *admin_err_msg);
-extern void broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
-				int num_broker, int br_shm_id);
+extern void broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, int br_shm_id);
 
 extern int conf_get_value_table_on_off (const char *value);
 extern int conf_get_value_sql_log_mode (const char *value);

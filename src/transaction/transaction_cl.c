@@ -69,15 +69,12 @@ int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
 bool tm_Tran_check_interrupt = false;
 int tm_Tran_ID = -1;
 int tm_Tran_invalidate_snapshot = 1;
-LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not
-					 * lock twice.
-					 */
+LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not lock twice. */
 
 /* read fetch version for current command of transaction
  * must be set before each transaction command.
  */
-LC_FETCH_VERSION_TYPE
-  tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
+LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
 
 
 /* Timeout(milli seconds) for queries.
@@ -120,17 +117,14 @@ static void tran_free_list_upto_savepoint (const char *savept_name);
  *       database connect flag can be turned off. i.e., db_Connect_status=0
  */
 void
-tran_cache_tran_settings (int tran_index, int lock_timeout,
-			  TRAN_ISOLATION tran_isolation)
+tran_cache_tran_settings (int tran_index, int lock_timeout, TRAN_ISOLATION tran_isolation)
 {
   tm_Tran_index = tran_index;
   tm_Tran_wait_msecs = lock_timeout;
   tm_Tran_isolation = tran_isolation;
 
-  /* This is a dirty, but quick, method by which we can flag that
-   * the database connection has been terminated. This flag is used by
-   * the C API calls to determine if a database connection exists.
-   */
+  /* This is a dirty, but quick, method by which we can flag that the database connection has been terminated. This
+   * flag is used by the C API calls to determine if a database connection exists. */
   if (tm_Tran_index == NULL_TRAN_INDEX)
     {
       db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
@@ -150,8 +144,7 @@ tran_cache_tran_settings (int tran_index, int lock_timeout,
  * Note: Retrieve transaction settings.
  */
 void
-tran_get_tran_settings (int *lock_wait_in_msecs,
-			TRAN_ISOLATION * tran_isolation, bool * async_ws)
+tran_get_tran_settings (int *lock_wait_in_msecs, TRAN_ISOLATION * tran_isolation, bool * async_ws)
 {
   *lock_wait_in_msecs = TM_TRAN_WAIT_MSECS ();
   /* lock timeout in milliseconds */ ;
@@ -207,8 +200,7 @@ tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
 
   if (!IS_VALID_ISOLATION_LEVEL (isolation))
     {
-      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_MVCC_LOG_INVALID_ISOLATION_LEVEL, 0);
+      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_LOG_INVALID_ISOLATION_LEVEL, 0);
       return ER_MVCC_LOG_INVALID_ISOLATION_LEVEL;
     }
 
@@ -259,8 +251,7 @@ tran_commit (bool retain_lock)
   TRAN_STATE state;
   int error_code = NO_ERROR;
 
-  /* check deferred trigger activities, these may prevent the transaction
-     from being committed. */
+  /* check deferred trigger activities, these may prevent the transaction from being committed. */
   error_code = tr_check_commit_triggers (TR_TIME_BEFORE);
   if (error_code != NO_ERROR)
     {
@@ -310,8 +301,7 @@ tran_commit (bool retain_lock)
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_commit: Unable to commit. Transaction was aborted\n");
+      er_log_debug (ARG_FILE_LINE, "tm_commit: Unable to commit. Transaction was aborted\n");
 #endif /* CUBRID_DEBUG */
       break;
 
@@ -335,9 +325,7 @@ tran_commit (bool retain_lock)
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_commit: Unknown commit state = %s at client\n",
-		    log_state_string (state));
+      er_log_debug (ARG_FILE_LINE, "tm_commit: Unknown commit state = %s at client\n", log_state_string (state));
 #endif /* CUBRID_DEBUG */
       break;
     }
@@ -386,7 +374,7 @@ tran_abort (void)
   TRAN_STATE state;
   int error_cod = NO_ERROR;
 
-  /*
+  /* 
    * inform the trigger manager of the event, triggers can't prevent a
    * rollback, might not want to do this if we're being unilaterally
    * aborted ?
@@ -443,8 +431,7 @@ tran_abort (void)
       assert (er_errid () != NO_ERROR);
       error_cod = er_errid ();
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "tm_abort: Unknown abort state = %s\n",
-		    log_state_string (state));
+      er_log_debug (ARG_FILE_LINE, "tm_abort: Unknown abort state = %s\n", log_state_string (state));
 #endif /* CUBRID_DEBUG */
       break;
     }
@@ -491,8 +478,7 @@ tran_unilaterally_abort (void)
     }
   pid = getpid ();
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	  ER_LK_UNILATERALLY_ABORTED, 4, tm_Tran_index, user_name, host, pid);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4, tm_Tran_index, user_name, host, pid);
 
   error_code = tran_abort ();
 
@@ -525,8 +511,7 @@ tran_abort_only_client (bool is_server_down)
     {
       if (is_server_down)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED, 0);
 	  return ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED;
 	}
 
@@ -547,8 +532,7 @@ tran_abort_only_client (bool is_server_down)
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED, 0);
       return ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED;
     }
 
@@ -687,8 +671,7 @@ tran_2pc_prepare (void)
   if (error_code != NO_ERROR)
     {
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_2pc_prepare: Unable to prepare. Flush failed\n");
+      er_log_debug (ARG_FILE_LINE, "tm_2pc_prepare: Unable to prepare. Flush failed\n");
 #endif /* CUBRID_DEBUG */
       goto end;
     }
@@ -698,13 +681,11 @@ tran_2pc_prepare (void)
   switch (state)
     {
     case TRAN_ACTIVE:
-      /* The preparation to commit failed probably due to inproper state;
-         Transaction is still active */
+      /* The preparation to commit failed probably due to inproper state; Transaction is still active */
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_2pc_prepare: Unable to prepare. Transaction is still active\n");
+      er_log_debug (ARG_FILE_LINE, "tm_2pc_prepare: Unable to prepare. Transaction is still active\n");
 #endif /* CUBRID_DEBUG */
       break;
 
@@ -719,14 +700,13 @@ tran_2pc_prepare (void)
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_2pc_prepare: Unable to prepare. Transaction was aborted\n");
+      er_log_debug (ARG_FILE_LINE, "tm_2pc_prepare: Unable to prepare. Transaction was aborted\n");
 #endif /* CUBRID_DEBUG */
       break;
 
     case TRAN_UNACTIVE_COMMITTED:
-      /* The transaction was committed. There is not a need for 2PC prepare.
-         This could happend for read only transactions. */
+      /* The transaction was committed. There is not a need for 2PC prepare. This could happend for read only
+       * transactions. */
       error_code = NO_ERROR;
       break;
 
@@ -751,9 +731,7 @@ tran_2pc_prepare (void)
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_2pc_prepare: Unexpected prepare. state = %s\n",
-		    log_state_string (state));
+      er_log_debug (ARG_FILE_LINE, "tm_2pc_prepare: Unexpected prepare. state = %s\n", log_state_string (state));
 #endif /* CUBRID_DEBUG */
       break;
     }				/* switch (state) */
@@ -847,8 +825,7 @@ tran_2pc_prepare_global_tran (int gtrid)
   if (error_code != NO_ERROR)
     {
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_2pc_prepare: Unable to prepare to commit. \nFlush failed\n");
+      er_log_debug (ARG_FILE_LINE, "tm_2pc_prepare: Unable to prepare to commit. \nFlush failed\n");
 #endif /* CUBRID_DEBUG */
       return error_code;
     }
@@ -858,14 +835,12 @@ tran_2pc_prepare_global_tran (int gtrid)
   switch (state)
     {
     case TRAN_ACTIVE:
-      /* The preperation to commit failed probabely due to the given global
-       * transaction identifier; Transaction is still active
-       */
+      /* The preperation to commit failed probabely due to the given global transaction identifier; Transaction is
+       * still active */
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_2pc_prepare: Unable to prepare to commit.\n %s",
+      er_log_debug (ARG_FILE_LINE, "tm_2pc_prepare: Unable to prepare to commit.\n %s",
 		    "Transaction is still active\n");
 #endif /* CUBRID_DEBUG */
       break;
@@ -881,14 +856,12 @@ tran_2pc_prepare_global_tran (int gtrid)
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_2pc_prepare: Unable to prepare to commit.\n %s",
-		    "Transaction was aborted\n");
+      er_log_debug (ARG_FILE_LINE, "tm_2pc_prepare: Unable to prepare to commit.\n %s", "Transaction was aborted\n");
 #endif /* CUBRID_DEBUG */
       break;
 
     case TRAN_UNACTIVE_COMMITTED:
-      /*
+      /* 
        * The transaction was committed. There is not a need for 2PC prepare.
        * This could happen for read only transactions
        */
@@ -916,8 +889,7 @@ tran_2pc_prepare_global_tran (int gtrid)
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "tm_2pc_prepare: Unexpected prepare to commit state = %s\n",
+      er_log_debug (ARG_FILE_LINE, "tm_2pc_prepare: Unexpected prepare to commit state = %s\n",
 		    log_state_string (state));
 #endif /* CUBRID_DEBUG */
       break;
@@ -1010,15 +982,11 @@ tran_free_list_upto_savepoint (const char *savept_name)
 	}
     }
 
-  /* not 'found' is not necessarily an error.  We may be rolling back to a
-   * system-defined savepoint rather than a user-defined savepoint.  In that
-   * case, the name would not appear on the user savepoint list and the list
-   * should be preserved.  We should be able to guarantee that any rollback
-   * to a system-defined savepoint will affect only the latest atomic command
-   * and not overlap any user-defined savepoint.  That is, system invoked
-   * partial rollbacks should never rollback farther than the last
-   * user-defined savepoint.
-   */
+  /* not 'found' is not necessarily an error.  We may be rolling back to a system-defined savepoint rather than a
+   * user-defined savepoint.  In that case, the name would not appear on the user savepoint list and the list should be 
+   * preserved.  We should be able to guarantee that any rollback to a system-defined savepoint will affect only the
+   * latest atomic command and not overlap any user-defined savepoint.  That is, system invoked partial rollbacks
+   * should never rollback farther than the last user-defined savepoint. */
   if (found == true)
     {
       for (sp = user_savepoint_list; sp;)
@@ -1076,8 +1044,7 @@ tran_system_savepoint (const char *savept_name)
  *              transaction can have.
  */
 int
-tran_savepoint_internal (const char *savept_name,
-			 SAVEPOINT_TYPE savepoint_type)
+tran_savepoint_internal (const char *savept_name, SAVEPOINT_TYPE savepoint_type)
 {
   LOG_LSA savept_lsa;
   int error_code = NO_ERROR;
@@ -1089,8 +1056,7 @@ tran_savepoint_internal (const char *savept_name,
       if (error_code != NO_ERROR)
 	{
 #if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE,
-			"tran_savepoint: Unable to start a top operation\n Flush failed.\nerrmsg = %s",
+	  er_log_debug (ARG_FILE_LINE, "tran_savepoint: Unable to start a top operation\n Flush failed.\nerrmsg = %s",
 			er_msg ());
 #endif /* CUBRID_DEBUG */
 	  return error_code;
@@ -1128,8 +1094,7 @@ tran_savepoint_internal (const char *savept_name,
 int
 tran_abort_upto_system_savepoint (const char *savepoint_name)
 {
-  return tran_internal_abort_upto_savepoint (savepoint_name,
-					     SYSTEM_SAVEPOINT, false);
+  return tran_internal_abort_upto_savepoint (savepoint_name, SYSTEM_SAVEPOINT, false);
 }
 
 /*
@@ -1145,8 +1110,7 @@ tran_abort_upto_user_savepoint (const char *savepoint_name)
   /* delete client's local copy of savepoint names back to here */
   tran_free_list_upto_savepoint (savepoint_name);
 
-  return tran_internal_abort_upto_savepoint (savepoint_name,
-					     USER_SAVEPOINT, false);
+  return tran_internal_abort_upto_savepoint (savepoint_name, USER_SAVEPOINT, false);
 }
 
 /*
@@ -1182,8 +1146,7 @@ tran_abort_upto_user_savepoint (const char *savepoint_name)
  *              that need to be accessed in the future.
  */
 int
-tran_internal_abort_upto_savepoint (const char *savepoint_name,
-				    SAVEPOINT_TYPE savepoint_type,
+tran_internal_abort_upto_savepoint (const char *savepoint_name, SAVEPOINT_TYPE savepoint_type,
 				    bool client_decache_all_but_norealclasses)
 {
   int error_code = NO_ERROR;
@@ -1193,7 +1156,7 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name,
   /* tell the schema manager to flush any transaction caches */
   sm_transaction_boundary ();
 
-  /*
+  /* 
    * We need to start all over since we do not know what set of objects are
    * going to be rolled back.. Thuis, we need to remove any kind of hints
    * cached in the workspace.
@@ -1220,21 +1183,19 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name,
     {
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
-      if (savepoint_type == SYSTEM_SAVEPOINT && state == TRAN_UNACTIVE_UNKNOWN
-	  && error_code != NO_ERROR && !tran_has_updated ())
+      if (savepoint_type == SYSTEM_SAVEPOINT && state == TRAN_UNACTIVE_UNKNOWN && error_code != NO_ERROR
+	  && !tran_has_updated ())
 	{
-	  /*
+	  /* 
 	   * maybe transaction has been unilaterally aborted by the system
 	   * and ER_LK_UNILATERALLY_ABORTED was overwritten by a consecutive error.
 	   */
 	  (void) tran_unilaterally_abort ();
 	}
 #if defined(CUBRID_DEBUG)
-      if (error_code != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED &&
-	  error_code != ER_NET_SERVER_CRASHED)
+      if (error_code != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error_code != ER_NET_SERVER_CRASHED)
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"tm_abort_upto_savepoint: oper failed with state = %s %s",
+	  er_log_debug (ARG_FILE_LINE, "tm_abort_upto_savepoint: oper failed with state = %s %s",
 			log_state_string (state), " at client.\n");
 	}
 #endif /* CUBRID_DEBUG */

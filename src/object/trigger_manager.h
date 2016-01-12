@@ -84,7 +84,7 @@ typedef struct tr_trigger
   char *temp_refname;
   int class_attribute;
 
-  /*
+  /* 
    * copy of the "cache coherency number" from the instance, used
    * to detect when the object gets modified and the trigger cache
    * needs to be re-evaluated
@@ -254,42 +254,29 @@ extern bool tr_set_execution_state (bool new_state);
 
 /* Trigger creation */
 
-extern DB_OBJECT *tr_create_trigger (const char *name,
-				     DB_TRIGGER_STATUS status,
-				     double priority, DB_TRIGGER_EVENT event,
-				     DB_OBJECT * class_,
-				     const char *attribute,
-				     DB_TRIGGER_TIME cond_time,
-				     const char *cond_source,
-				     DB_TRIGGER_TIME action_time,
-				     DB_TRIGGER_ACTION action_type,
-				     const char *action_source,
-				     const char *comment);
+extern DB_OBJECT *tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority,
+				     DB_TRIGGER_EVENT event, DB_OBJECT * class_, const char *attribute,
+				     DB_TRIGGER_TIME cond_time, const char *cond_source, DB_TRIGGER_TIME action_time,
+				     DB_TRIGGER_ACTION action_type, const char *action_source, const char *comment);
 
 /* Trigger location */
 
 extern int tr_find_all_triggers (DB_OBJLIST ** list);
 extern DB_OBJECT *tr_find_trigger (const char *name);
-extern int tr_find_event_triggers (DB_TRIGGER_EVENT event,
-				   DB_OBJECT * class_, const char *attribute,
-				   bool active, DB_OBJLIST ** list);
+extern int tr_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_, const char *attribute, bool active,
+				   DB_OBJLIST ** list);
 
 /* Check access rights */
-extern int tr_check_authorization (DB_OBJECT * trigger_object,
-				   int alter_flag);
+extern int tr_check_authorization (DB_OBJECT * trigger_object, int alter_flag);
 
 /* Trigger modification */
 
 extern int tr_drop_trigger (DB_OBJECT * obj, bool call_from_api);
-extern int tr_rename_trigger (DB_OBJECT * trigger_object,
-			      const char *name, bool call_from_api);
+extern int tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_api);
 
-extern int tr_set_status (DB_OBJECT * trigger_object,
-			  DB_TRIGGER_STATUS status, bool call_from_api);
-extern int tr_set_priority (DB_OBJECT * trigger_object, double priority,
-			    bool call_from_api);
-extern int tr_set_comment (DB_OBJECT * trigger_object, const char *comment,
-			   bool call_from_api);
+extern int tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_from_api);
+extern int tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api);
+extern int tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_api);
 
 /* Parameters */
 extern int tr_get_depth (void);
@@ -299,22 +286,16 @@ extern int tr_set_trace (bool trace);
 
 /* Signaling */
 
-extern int tr_prepare_statement (TR_STATE ** state_p,
-				 DB_TRIGGER_EVENT event,
-				 DB_OBJECT * class_, int attcount,
+extern int tr_prepare_statement (TR_STATE ** state_p, DB_TRIGGER_EVENT event, DB_OBJECT * class_, int attcount,
 				 const char **attnames);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int tr_prepare (TR_STATE ** state_p, TR_TRIGLIST * triggers);
 #endif
-extern int tr_prepare_class (TR_STATE ** state_p,
-			     TR_SCHEMA_CACHE * cache, MOP class_Mop,
-			     DB_TRIGGER_EVENT event);
+extern int tr_prepare_class (TR_STATE ** state_p, TR_SCHEMA_CACHE * cache, MOP class_Mop, DB_TRIGGER_EVENT event);
 
-extern int tr_before_object (TR_STATE * state, DB_OBJECT * current,
-			     DB_OBJECT * temp);
+extern int tr_before_object (TR_STATE * state, DB_OBJECT * current, DB_OBJECT * temp);
 extern int tr_before (TR_STATE * state);
-extern int tr_after_object (TR_STATE * state, DB_OBJECT * current,
-			    DB_OBJECT * temp);
+extern int tr_after_object (TR_STATE * state, DB_OBJECT * current, DB_OBJECT * temp);
 extern int tr_after (TR_STATE * state);
 
 extern void tr_abort (TR_STATE * state);
@@ -335,62 +316,44 @@ extern int tr_abort_to_savepoint (void *savepoint_id);
 
 /* Deferred activity control */
 
-extern int tr_execute_deferred_activities (DB_OBJECT * trigger_object,
-					   DB_OBJECT * target);
-extern int tr_drop_deferred_activities (DB_OBJECT * trigger_object,
-					DB_OBJECT * target);
+extern int tr_execute_deferred_activities (DB_OBJECT * trigger_object, DB_OBJECT * target);
+extern int tr_drop_deferred_activities (DB_OBJECT * trigger_object, DB_OBJECT * target);
 
 /* Trigger object accessors */
 
 extern int tr_trigger_name (DB_OBJECT * trigger_object, char **name);
-extern int tr_trigger_status (DB_OBJECT * trigger_object,
-			      DB_TRIGGER_STATUS * status);
+extern int tr_trigger_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS * status);
 extern int tr_trigger_priority (DB_OBJECT * trigger_object, double *priority);
-extern int tr_trigger_event (DB_OBJECT * trigger_object,
-			     DB_TRIGGER_EVENT * event);
+extern int tr_trigger_event (DB_OBJECT * trigger_object, DB_TRIGGER_EVENT * event);
 extern int tr_trigger_class (DB_OBJECT * trigger_object, DB_OBJECT ** class_);
-extern int tr_trigger_attribute (DB_OBJECT * trigger_object,
-				 char **attribute);
-extern int tr_trigger_condition (DB_OBJECT * trigger_object,
-				 char **condition);
-extern int tr_trigger_condition_time (DB_OBJECT * trigger_object,
-				      DB_TRIGGER_TIME * tr_time);
+extern int tr_trigger_attribute (DB_OBJECT * trigger_object, char **attribute);
+extern int tr_trigger_condition (DB_OBJECT * trigger_object, char **condition);
+extern int tr_trigger_condition_time (DB_OBJECT * trigger_object, DB_TRIGGER_TIME * tr_time);
 extern int tr_trigger_action (DB_OBJECT * trigger_object, char **action);
-extern int tr_trigger_action_time (DB_OBJECT * trigger_object,
-				   DB_TRIGGER_TIME * tr_time);
-extern int tr_trigger_action_type (DB_OBJECT * trigger_object,
-				   DB_TRIGGER_ACTION * type);
+extern int tr_trigger_action_time (DB_OBJECT * trigger_object, DB_TRIGGER_TIME * tr_time);
+extern int tr_trigger_action_type (DB_OBJECT * trigger_object, DB_TRIGGER_ACTION * type);
 extern int tr_trigger_comment (DB_OBJECT * trigger_objet, char **comment);
 extern int tr_is_trigger (DB_OBJECT * trigger_object, int *status);
 
 /* Special schema functions */
 
-extern TR_SCHEMA_CACHE *tr_make_schema_cache (TR_CACHE_TYPE type,
-					      DB_OBJLIST * objects);
-extern TR_SCHEMA_CACHE *tr_copy_schema_cache (TR_SCHEMA_CACHE * cache,
-					      MOP filter_class);
-extern int tr_merge_schema_cache (TR_SCHEMA_CACHE * destination,
-				  TR_SCHEMA_CACHE * source);
+extern TR_SCHEMA_CACHE *tr_make_schema_cache (TR_CACHE_TYPE type, DB_OBJLIST * objects);
+extern TR_SCHEMA_CACHE *tr_copy_schema_cache (TR_SCHEMA_CACHE * cache, MOP filter_class);
+extern int tr_merge_schema_cache (TR_SCHEMA_CACHE * destination, TR_SCHEMA_CACHE * source);
 extern int tr_empty_schema_cache (TR_SCHEMA_CACHE * cache);
 extern void tr_free_schema_cache (TR_SCHEMA_CACHE * cache);
 
 extern int tr_get_cache_objects (TR_SCHEMA_CACHE * cache, DB_OBJLIST ** list);
 extern int tr_validate_schema_cache (TR_SCHEMA_CACHE * cache, MOP class_mop);
 
-extern int tr_active_schema_cache (MOP class_mop,
-				   TR_SCHEMA_CACHE * cache,
-				   DB_TRIGGER_EVENT event_type,
+extern int tr_active_schema_cache (MOP class_mop, TR_SCHEMA_CACHE * cache, DB_TRIGGER_EVENT event_type,
 				   bool * has_event_type_triggers);
-extern int tr_delete_schema_cache (TR_SCHEMA_CACHE * cache,
-				   DB_OBJECT * class_object);
+extern int tr_delete_schema_cache (TR_SCHEMA_CACHE * cache, DB_OBJECT * class_object);
 
-extern int tr_add_cache_trigger (TR_SCHEMA_CACHE * cache,
-				 DB_OBJECT * trigger_object);
-extern int tr_drop_cache_trigger (TR_SCHEMA_CACHE * cache,
-				  DB_OBJECT * trigger_object);
+extern int tr_add_cache_trigger (TR_SCHEMA_CACHE * cache, DB_OBJECT * trigger_object);
+extern int tr_drop_cache_trigger (TR_SCHEMA_CACHE * cache, DB_OBJECT * trigger_object);
 
-extern int tr_delete_triggers_for_class (TR_SCHEMA_CACHE ** cache,
-					 DB_OBJECT * class_object);
+extern int tr_delete_triggers_for_class (TR_SCHEMA_CACHE ** cache, DB_OBJECT * class_object);
 
 
 /* Shouldn't be external any more ? */

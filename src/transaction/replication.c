@@ -42,8 +42,7 @@
 static const int REPL_LOG_INFO_ALLOC_SIZE = 100;
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
-static int repl_log_info_alloc (LOG_TDES * tdes, int arr_size,
-				bool need_realloc);
+static int repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc);
 #endif /* SERVER_MODE || SA_MODE */
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
@@ -89,9 +88,7 @@ repl_data_insert_log_dump (FILE * fp, int length, void *data)
 void
 repl_data_udpate_log_dump (FILE * fp, int length, void *data)
 {
-  /* currently same logic as insert case, but I can't gaurantee it's true
-   * after this...
-   */
+  /* currently same logic as insert case, but I can't gaurantee it's true after this... */
   repl_data_insert_log_dump (fp, length, data);
 }
 
@@ -108,9 +105,7 @@ repl_data_udpate_log_dump (FILE * fp, int length, void *data)
 void
 repl_data_delete_log_dump (FILE * fp, int length, void *data)
 {
-  /* currently same logic as insert case, but I can't gaurantee it's true
-   * after this...
-   */
+  /* currently same logic as insert case, but I can't gaurantee it's true after this... */
   repl_data_insert_log_dump (fp, length, data);
 }
 
@@ -172,8 +167,7 @@ repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc)
       if (tdes->repl_records == NULL)
 	{
 	  error = ER_REPL_ERROR;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1,
-		  "can't allocate memory");
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't allocate memory");
 	  return error;
 	}
       tdes->num_repl_records = arr_size;
@@ -182,13 +176,11 @@ repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc)
   else
     {
       i = tdes->num_repl_records + arr_size;
-      tdes->repl_records = (LOG_REPL_RECORD *)
-	realloc (tdes->repl_records, i * DB_SIZEOF (LOG_REPL_RECORD));
+      tdes->repl_records = (LOG_REPL_RECORD *) realloc (tdes->repl_records, i * DB_SIZEOF (LOG_REPL_RECORD));
       if (tdes->repl_records == NULL)
 	{
 	  error = ER_REPL_ERROR;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1,
-		  "can't allocate memory");
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't allocate memory");
 	  return error;
 	}
       k = tdes->num_repl_records;
@@ -253,14 +245,11 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
   for (i = tdes->cur_repl_record - 1; i >= 0; i--)
     {
       repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[i];
-      if (OID_EQ (&repl_rec->inst_oid, inst_oid)
-	  && !LSA_ISNULL (&tdes->repl_update_lsa))
+      if (OID_EQ (&repl_rec->inst_oid, inst_oid) && !LSA_ISNULL (&tdes->repl_update_lsa))
 	{
-	  assert (repl_rec->rcvindex == RVREPL_DATA_UPDATE
-		  || repl_rec->rcvindex == RVREPL_DATA_UPDATE_START
+	  assert (repl_rec->rcvindex == RVREPL_DATA_UPDATE || repl_rec->rcvindex == RVREPL_DATA_UPDATE_START
 		  || repl_rec->rcvindex == RVREPL_DATA_UPDATE_END);
-	  if (repl_rec->rcvindex == RVREPL_DATA_UPDATE
-	      || repl_rec->rcvindex == RVREPL_DATA_UPDATE_START
+	  if (repl_rec->rcvindex == RVREPL_DATA_UPDATE || repl_rec->rcvindex == RVREPL_DATA_UPDATE_START
 	      || repl_rec->rcvindex == RVREPL_DATA_UPDATE_END)
 	    {
 	      LSA_COPY (&repl_rec->lsa, &tdes->repl_update_lsa);
@@ -295,10 +284,8 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
 int
-repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
-		 const OID * inst_oid, LOG_RECTYPE log_type,
-		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue,
-		 REPL_INFO_TYPE repl_info, bool is_update_inplace)
+repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
+		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info, bool is_update_inplace)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -326,15 +313,13 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 
   /* check the replication log array status, if we need to alloc? */
   if (REPL_LOG_IS_NOT_EXISTS (tran_index)
-      && ((error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE,
-					false)) != NO_ERROR))
+      && ((error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE, false)) != NO_ERROR))
     {
       return error;
     }
   /* the replication log array is full? re-alloc? */
   else if (REPL_LOG_IS_FULL (tran_index)
-	   && (error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE,
-					    true)) != NO_ERROR)
+	   && (error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE, true)) != NO_ERROR)
     {
       return error;
     }
@@ -372,8 +357,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 	  if (error == NO_ERROR)
 	    {
 	      error = ER_REPL_ERROR;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1,
-		      "can't get class_name");
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't get class_name");
 	    }
 	  return error;
 	}
@@ -384,8 +368,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
       if (ptr == NULL)
 	{
 	  error = ER_REPL_ERROR;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1,
-		  "can't allocate memory");
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't allocate memory");
 	  free_and_init (class_name);
 	  return error;
 	}
@@ -422,7 +405,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 	}
       else
 	{
-	  /*
+	  /* 
 	   * for the update case, this function is called before the heap
 	   * file update, so we don't need to LSA for update log here.
 	   */
@@ -438,7 +421,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 	}
       break;
     case RVREPL_DATA_DELETE:
-      /*
+      /* 
        * for the delete case, we don't need to find out the target
        * LSA. Delete is operation is possible without "After Image"
        */
@@ -456,9 +439,8 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
     }
   tdes->cur_repl_record++;
 
-  /* if flush marking is started, mark "must_flush" at current log
-   * except the log conflicts with previous logs due to same instance update
-   */
+  /* if flush marking is started, mark "must_flush" at current log except the log conflicts with previous logs due to
+   * same instance update */
   if (tdes->fl_mark_repl_recidx != -1)
     {
       LOG_REPL_RECORD *recsp = tdes->repl_records;
@@ -466,8 +448,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid,
 
       for (i = 0; i < tdes->fl_mark_repl_recidx; i++)
 	{
-	  if (recsp[i].must_flush == LOG_REPL_COMMIT_NEED_FLUSH
-	      && OID_EQ (&recsp[i].inst_oid, &repl_rec->inst_oid))
+	  if (recsp[i].must_flush == LOG_REPL_COMMIT_NEED_FLUSH && OID_EQ (&recsp[i].inst_oid, &repl_rec->inst_oid))
 	    {
 	      break;
 	    }
@@ -517,15 +498,13 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
 
   /* check the replication log array status, if we need to alloc? */
   if (REPL_LOG_IS_NOT_EXISTS (tran_index)
-      && ((error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE,
-					false)) != NO_ERROR))
+      && ((error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE, false)) != NO_ERROR))
     {
       return error;
     }
   /* the replication log array is full? re-alloc? */
   else if (REPL_LOG_IS_FULL (tran_index)
-	   && (error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE,
-					    true)) != NO_ERROR)
+	   && (error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE, true)) != NO_ERROR)
     {
       return error;
     }
@@ -538,15 +517,14 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
 
   /* make the common info for the schema replication */
   repl_rec->length = OR_INT_SIZE	/* REPL_INFO_SCHEMA.statement_type */
-    + or_packed_string_length (repl_info->name, &strlen1)
-    + or_packed_string_length (repl_info->stmt_text, &strlen2)
-    + or_packed_string_length (repl_info->db_user, &strlen3)
-    + or_packed_string_length (repl_info->sys_prm_context, &strlen4);
+    + or_packed_string_length (repl_info->name, &strlen1) + or_packed_string_length (repl_info->stmt_text,
+										     &strlen2) +
+    or_packed_string_length (repl_info->db_user, &strlen3) + or_packed_string_length (repl_info->sys_prm_context,
+										      &strlen4);
   if ((repl_rec->repl_data = (char *) malloc (repl_rec->length)) == NULL)
     {
       error = ER_REPL_ERROR;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1,
-	      "can't allocate memory");
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't allocate memory");
       return error;
     }
   ptr = repl_rec->repl_data;
@@ -556,18 +534,15 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
   ptr = or_pack_string_with_length (ptr, repl_info->db_user, strlen3);
   ptr = or_pack_string_with_length (ptr, repl_info->sys_prm_context, strlen4);
 
-  er_log_debug (ARG_FILE_LINE, "repl_log_insert_statement:"
-		" repl_info_sbr { type %d, name %s, stmt_txt %s, user %s, "
-		"sys_prm_context %s }\n",
-		repl_info->statement_type, repl_info->name,
-		repl_info->stmt_text, repl_info->db_user,
-		repl_info->sys_prm_context);
+  er_log_debug (ARG_FILE_LINE,
+		"repl_log_insert_statement:" " repl_info_sbr { type %d, name %s, stmt_txt %s, user %s, "
+		"sys_prm_context %s }\n", repl_info->statement_type, repl_info->name, repl_info->stmt_text,
+		repl_info->db_user, repl_info->sys_prm_context);
   LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);
 
-  if (tdes->fl_mark_repl_recidx != -1
-      && tdes->cur_repl_record >= tdes->fl_mark_repl_recidx)
+  if (tdes->fl_mark_repl_recidx != -1 && tdes->cur_repl_record >= tdes->fl_mark_repl_recidx)
     {
-      /*
+      /* 
        * statement replication does not check log conflicts, so
        * use repl_start_flush_mark with caution.
        */
@@ -595,8 +570,7 @@ repl_start_flush_mark (THREAD_ENTRY * thread_p)
 
   if (tdes == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_UNKNOWN_TRANINDEX, 1,
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1,
 	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
       return;
     }
@@ -626,8 +600,7 @@ repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo)
 
   if (tdes == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_UNKNOWN_TRANINDEX, 1,
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1,
 	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
       return;
     }
@@ -701,19 +674,15 @@ repl_debug_info ()
 	{
 	  fprintf (stdout, "   RECORD # %d\n", rnum);
 	  repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[rnum];
-	  fprintf (stdout, "      type: %s\n",
-		   log_to_string (repl_rec->repl_type));
-	  fprintf (stdout, "      OID: %d - %d - %d\n",
-		   repl_rec->inst_oid.volid,
-		   repl_rec->inst_oid.pageid, repl_rec->inst_oid.slotid);
+	  fprintf (stdout, "      type: %s\n", log_to_string (repl_rec->repl_type));
+	  fprintf (stdout, "      OID: %d - %d - %d\n", repl_rec->inst_oid.volid, repl_rec->inst_oid.pageid,
+		   repl_rec->inst_oid.slotid);
 	  ptr = or_unpack_string_nocopy (repl_rec->repl_data, &class_name);
 	  ptr = or_unpack_mem_value (ptr, &key);
 	  fprintf (stdout, "      class_name: %s\n", class_name);
-	  fprintf (stdout, "      LSA: %lld | %d\n", repl_rec->lsa.pageid,
-		   repl_rec->lsa.offset);
+	  fprintf (stdout, "      LSA: %lld | %d\n", repl_rec->lsa.pageid, repl_rec->lsa.offset);
 	  db_value_print (&key);
-	  fprintf (stdout,
-		   "\n----------------------------------------------\n");
+	  fprintf (stdout, "\n----------------------------------------------\n");
 	  pr_clear_value (&key);
 	}
     }

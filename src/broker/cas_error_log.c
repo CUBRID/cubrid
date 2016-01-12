@@ -51,8 +51,7 @@
 #include "broker_filename.h"
 #include "broker_util.h"
 
-static char *make_error_log_filename (char *filename_buf, size_t buf_size,
-				      const char *br_name);
+static char *make_error_log_filename (char *filename_buf, size_t buf_size, const char *br_name);
 static void cas_error_log_backup (void);
 static void cas_log_write_internal (const char *fmt, ...);
 
@@ -63,8 +62,7 @@ static long saved_error_log_fpos = 0;
 static int eid = 0;
 
 static char *
-make_error_log_filename (char *filename_buf,
-			 size_t buf_size, const char *br_name)
+make_error_log_filename (char *filename_buf, size_t buf_size, const char *br_name)
 {
   char dirname[BROKER_PATH_MAX];
 
@@ -74,14 +72,12 @@ make_error_log_filename (char *filename_buf,
 
   if (cas_shard_flag == ON)
     {
-      snprintf (filename_buf, buf_size, "%s%s_CAS_%d_%d_%d.err", dirname,
-		br_name, shm_proxy_id + 1, shm_shard_id,
+      snprintf (filename_buf, buf_size, "%s%s_CAS_%d_%d_%d.err", dirname, br_name, shm_proxy_id + 1, shm_shard_id,
 		shm_shard_cas_id + 1);
     }
   else
     {
-      snprintf (filename_buf, buf_size, "%s%s_CAS_%d.err", dirname, br_name,
-		shm_as_index + 1);
+      snprintf (filename_buf, buf_size, "%s%s_CAS_%d.err", dirname, br_name, shm_as_index + 1);
     }
   return filename_buf;
 }
@@ -180,9 +176,8 @@ cas_error_log_write (int dbms_errno, const char *dbms_errmsg)
     {
       eid = 0;
     }
-  cas_log_write_internal
-    (" DBMS ERROR [ERR_CODE : %d, ERR_MSG : %s] EID = %d",
-     dbms_errno, (dbms_errmsg != NULL) ? dbms_errmsg : "-", ++eid);
+  cas_log_write_internal (" DBMS ERROR [ERR_CODE : %d, ERR_MSG : %s] EID = %d", dbms_errno,
+			  (dbms_errmsg != NULL) ? dbms_errmsg : "-", ++eid);
   fputc ('\n', error_log_fp);
 
   saved_error_log_fpos = ftell (error_log_fp);

@@ -38,32 +38,25 @@ static inline const char *left_trim (const char *str);
 static int sp_init_sp_value (SP_VALUE * value_p);
 static void sp_free_sp_value (SP_VALUE * value_p);
 static int sp_make_sp_value (SP_VALUE * value_p, const char *pos, int length);
-static int sp_make_string_sp_value (SP_VALUE * value_p, const char *pos,
-				    int length);
-static int sp_make_int_sp_value_from_string (SP_VALUE * value_p, char *pos,
-					     int length);
+static int sp_make_string_sp_value (SP_VALUE * value_p, const char *pos, int length);
+static int sp_make_int_sp_value_from_string (SP_VALUE * value_p, char *pos, int length);
 
 
 static void sp_init_praser_hint_list (SP_PARSER_HINT_LIST * list);
-static void sp_append_parser_hint_to_ctx (SP_PARSER_CTX * parser_p,
-					  SP_PARSER_HINT * hint_p);
+static void sp_append_parser_hint_to_ctx (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p);
 static int sp_parse_sql_internal (SP_PARSER_CTX * parser_p);
 
 static void sp_free_parser_hint_from_ctx (SP_PARSER_CTX * parser_p);
 static int sp_process_token (SP_PARSER_CTX * parser_p, SP_TOKEN token_type);
-static int sp_get_bind_type_and_value (SP_PARSER_CTX * parser_p,
-				       SP_PARSER_HINT * hint_p);
+static int sp_get_bind_type_and_value (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p);
 #if defined(WINDOWS)
 static void sp_copy_cursor_to_prv (SP_PARSER_CTX * parser_p);
 #else /* WINDOWS */
 static inline void sp_copy_cursor_to_prv (SP_PARSER_CTX * parser_p);
 #endif /* !WINDOWS */
-static int sp_get_string_bind_value (SP_PARSER_CTX * parser_p,
-				     SP_PARSER_HINT * hint_p);
-static int sp_get_int_bind_value (SP_PARSER_CTX * parser_p,
-				  SP_PARSER_HINT * hint_p);
-static int sp_is_valid_hint (SP_PARSER_CTX * parser_p,
-			     SP_PARSER_HINT * hint_p);
+static int sp_get_string_bind_value (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p);
+static int sp_get_int_bind_value (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p);
+static int sp_is_valid_hint (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p);
 static bool sp_is_start_token (SP_TOKEN token);
 
 
@@ -73,9 +66,8 @@ sp_create_parser (const char *sql_stmt)
   SP_PARSER_CTX *parser_p = (SP_PARSER_CTX *) malloc (sizeof (SP_PARSER_CTX));
   if (parser_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Not enough virtual memory. failed to malloc parser context. "
-		 "(size:%d). \n", sizeof (SP_PARSER_CTX));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. failed to malloc parser context. " "(size:%d). \n",
+		 sizeof (SP_PARSER_CTX));
       return NULL;
     }
 
@@ -83,9 +75,8 @@ sp_create_parser (const char *sql_stmt)
   if (parser_p->sql_stmt == NULL)
     {
       free (parser_p);
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Not enough virtual memory. failed to strdup sql statement. "
-		 "(sql_stmt:[%s]).", sql_stmt);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. failed to strdup sql statement. " "(sql_stmt:[%s]).",
+		 sql_stmt);
       return NULL;
     }
   parser_p->is_select = false;
@@ -115,8 +106,7 @@ sp_parse_sql (SP_PARSER_CTX * parser_p)
 
   if (parser_p->cursor.token != TT_NONE)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unexpected token type. "
-		 "(token_type:%d).", parser_p->cursor.token);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unexpected token type. " "(token_type:%d).", parser_p->cursor.token);
       return ER_SP_INVALID_SYNTAX;
     }
 
@@ -309,8 +299,7 @@ sp_make_string_sp_value (SP_VALUE * value_p, const char *pos, int length)
 
   if (length > SP_VALUE_INIT_SIZE)
     {
-      value_p->string.value_ex =
-	(char *) malloc (sizeof (char) * (length + 1));
+      value_p->string.value_ex = (char *) malloc (sizeof (char) * (length + 1));
       if (value_p->string.value_ex == NULL)
 	{
 	  return ER_SP_OUT_OF_MEMORY;
@@ -350,9 +339,8 @@ sp_create_parser_hint (void)
   hint_p = (SP_PARSER_HINT *) malloc (sizeof (SP_PARSER_HINT));
   if (hint_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Not enough virtual memory. failed to malloc parser hint. "
-		 "(size:%d).", sizeof (SP_PARSER_HINT));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. failed to malloc parser hint. " "(size:%d).",
+		 sizeof (SP_PARSER_HINT));
 
       return NULL;
     }
@@ -360,17 +348,14 @@ sp_create_parser_hint (void)
   error = sp_init_sp_value (&hint_p->arg);
   if (error != NO_ERROR)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to initialize parser argument. "
-		 "(error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize parser argument. " "(error:%d).", error);
       goto PARSER_ERROR;
     }
 
   error = sp_init_sp_value (&hint_p->value);
   if (error != NO_ERROR)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize parser value. "
-		 "(error:%d). \n", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize parser value. " "(error:%d). \n", error);
 
       goto PARSER_ERROR;
     }
@@ -400,8 +385,7 @@ sp_init_praser_hint_list (SP_PARSER_HINT_LIST * list)
 }
 
 static void
-sp_append_parser_hint_to_ctx (SP_PARSER_CTX * parser_p,
-			      SP_PARSER_HINT * hint_p)
+sp_append_parser_hint_to_ctx (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p)
 {
   SP_BIND_TYPE type = hint_p->bind_type;
 
@@ -447,8 +431,7 @@ sp_parse_sql_internal (SP_PARSER_CTX * parser_p)
 
   while (*parser_p->cursor.pos)
     {
-      parser_p->cursor.pos =
-	sp_get_token_type (parser_p->cursor.pos, &token_type);
+      parser_p->cursor.pos = sp_get_token_type (parser_p->cursor.pos, &token_type);
       if (token_type == TT_NONE)
 	{
 	  continue;
@@ -480,8 +463,7 @@ sp_parse_sql_internal (SP_PARSER_CTX * parser_p)
 	}
     }
 
-  if (parser_p->cursor.token == TT_CSQL_COMMENT
-      || parser_p->cursor.token == TT_CPP_COMMENT)
+  if (parser_p->cursor.token == TT_CSQL_COMMENT || parser_p->cursor.token == TT_CPP_COMMENT)
     {
       parser_p->cursor.token = TT_NONE;
     }
@@ -570,8 +552,7 @@ sp_get_token_type (const char *sql, SP_TOKEN * token)
     case '\t':
     case '\v':
       *token = TT_WHITESPACE;
-      if (tolower (*p) == 'i' && tolower (*(p + 1)) == 'n'
-	  && (isspace (*(p + 2)) || *(p + 2) == '('))
+      if (tolower (*p) == 'i' && tolower (*(p + 1)) == 'n' && (isspace (*(p + 2)) || *(p + 2) == '('))
 	{
 	  p += 3;
 	  *token = TT_IN_OP;
@@ -695,8 +676,7 @@ sp_process_token (SP_PARSER_CTX * parser_p, SP_TOKEN token_type)
       parser_p->bind_count++;
       break;
     case TT_HINT:
-      parser_p->cursor.pos =
-	sp_get_hint_type (parser_p->cursor.pos, &hint_type);
+      parser_p->cursor.pos = sp_get_hint_type (parser_p->cursor.pos, &hint_type);
       if (hint_type == HT_NONE)
 	{
 	  return NO_ERROR;
@@ -711,15 +691,13 @@ sp_process_token (SP_PARSER_CTX * parser_p, SP_TOKEN token_type)
 	}
       hint_p->hint_type = hint_type;
 
-      parser_p->cursor.pos =
-	sp_get_hint_arg (parser_p->cursor.pos, hint_p, &error);
+      parser_p->cursor.pos = sp_get_hint_arg (parser_p->cursor.pos, hint_p, &error);
       if (error != NO_ERROR)
 	{
 	  goto PARSER_ERROR;
 	}
 
-      parser_p->cursor.pos =
-	sp_check_end_of_hint (parser_p->cursor.pos, &error);
+      parser_p->cursor.pos = sp_check_end_of_hint (parser_p->cursor.pos, &error);
       if (error != NO_ERROR)
 	{
 	  goto PARSER_ERROR;
@@ -829,8 +807,7 @@ sp_get_string_bind_value (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p)
       parser_p->cursor.pos++;
     }
 
-  return sp_make_string_sp_value (&hint_p->value, p + 1,
-				  parser_p->cursor.pos - p - 1);
+  return sp_make_string_sp_value (&hint_p->value, p + 1, parser_p->cursor.pos - p - 1);
 }
 
 static int
@@ -844,8 +821,7 @@ sp_get_int_bind_value (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p)
     }
 
   parser_p->cursor.pos = s;
-  return sp_make_int_sp_value_from_string (&hint_p->value, p,
-					   parser_p->cursor.pos - p);
+  return sp_make_int_sp_value_from_string (&hint_p->value, p, parser_p->cursor.pos - p);
 }
 
 static int
@@ -853,8 +829,7 @@ sp_is_valid_hint (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p)
 {
   if (parser_p->is_select)
     {
-      if (hint_p->hint_type == HT_KEY && parser_p->operator != TT_ASSIGN_OP
-	  && parser_p->operator != TT_IN_OP)
+      if (hint_p->hint_type == HT_KEY && parser_p->operator != TT_ASSIGN_OP && parser_p->operator != TT_IN_OP)
 	{
 	  return ER_SP_INVALID_SYNTAX;
 	}

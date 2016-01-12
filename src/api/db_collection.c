@@ -35,16 +35,11 @@ struct collection_s_
 };
 
 static int col_api_length (API_COLLECTION * col, int *len);
-static int col_api_insert (API_COLLECTION * col, long pos, CI_TYPE type,
-			   void *ptr, size_t size);
-static int col_api_update (API_COLLECTION * col, long pos, CI_TYPE type,
-			   void *ptr, size_t size);
+static int col_api_insert (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr, size_t size);
+static int col_api_update (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr, size_t size);
 static int col_api_delete (API_COLLECTION * col, long pos);
-static int col_api_get_elem_domain_info (API_COLLECTION * col, long pos,
-					 CI_TYPE * type, int *precision,
-					 int *scale);
-static int col_api_get_elem (API_COLLECTION * col, long pos, CI_TYPE type,
-			     void *addr, size_t len, size_t * outlen,
+static int col_api_get_elem_domain_info (API_COLLECTION * col, long pos, CI_TYPE * type, int *precision, int *scale);
+static int col_api_get_elem (API_COLLECTION * col, long pos, CI_TYPE type, void *addr, size_t len, size_t * outlen,
 			     bool * isnull);
 static void col_dtorf (VALUE_AREA * va, API_VALUE * val);
 static void col_api_destroy (API_COLLECTION * col);
@@ -80,8 +75,7 @@ col_api_length (API_COLLECTION * col, int *len)
  *    size():
  */
 static int
-col_api_insert (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr,
-		size_t size)
+col_api_insert (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr, size_t size)
 {
   COLLECTION_ *co;
   DB_VALUE *val;
@@ -104,9 +98,7 @@ col_api_insert (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr,
   if (res != NO_ERROR)
     return res;
 
-  res =
-    co->indexer->ifs->insert (co->indexer, (int) pos, NULL,
-			      (API_VALUE *) val);
+  res = co->indexer->ifs->insert (co->indexer, (int) pos, NULL, (API_VALUE *) val);
   if (res != NO_ERROR)
     (void) db_value_free (val);
 
@@ -123,8 +115,7 @@ col_api_insert (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr,
  *    size():
  */
 static int
-col_api_update (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr,
-		size_t size)
+col_api_update (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr, size_t size)
 {
   COLLECTION_ *co = (COLLECTION_ *) col;
   int res;
@@ -132,13 +123,10 @@ col_api_update (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr,
   DB_VALUE *val;
 
   assert (co != NULL);
-  res =
-    co->indexer->ifs->check (co->indexer, (int) pos,
-			     CHECK_FOR_GET | CHECK_FOR_SET);
+  res = co->indexer->ifs->check (co->indexer, (int) pos, CHECK_FOR_GET | CHECK_FOR_SET);
   if (res != NO_ERROR)
     return res;
-  res =
-    co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) & val);
+  res = co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) & val);
   if (res != NO_ERROR)
     return res;
   res = coerce_value_to_db_value (type, ptr, size, val, true);
@@ -165,9 +153,7 @@ col_api_delete (API_COLLECTION * col, long pos)
   res = co->indexer->ifs->check (co->indexer, (int) pos, CHECK_FOR_DELETE);
   if (res != NO_ERROR)
     return res;
-  res =
-    co->indexer->ifs->delete (co->indexer, (int) pos, &va,
-			      (API_VALUE **) & val);
+  res = co->indexer->ifs->delete (co->indexer, (int) pos, &va, (API_VALUE **) & val);
   if (res != NO_ERROR)
     return res;
   assert (va == NULL);
@@ -184,8 +170,7 @@ col_api_delete (API_COLLECTION * col, long pos)
  *    type():
  */
 static int
-col_api_get_elem_domain_info (API_COLLECTION * col, long pos,
-			      CI_TYPE * type, int *precision, int *scale)
+col_api_get_elem_domain_info (API_COLLECTION * col, long pos, CI_TYPE * type, int *precision, int *scale)
 {
   COLLECTION_ *co = (COLLECTION_ *) col;
   int res;
@@ -198,8 +183,7 @@ col_api_get_elem_domain_info (API_COLLECTION * col, long pos,
     {
       return res;
     }
-  res =
-    co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) & val);
+  res = co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) & val);
   if (res != NO_ERROR)
     {
       return res;
@@ -229,8 +213,7 @@ col_api_get_elem_domain_info (API_COLLECTION * col, long pos,
  *    isnull():
  */
 static int
-col_api_get_elem (API_COLLECTION * col, long pos, CI_TYPE type,
-		  void *addr, size_t len, size_t * outlen, bool * isnull)
+col_api_get_elem (API_COLLECTION * col, long pos, CI_TYPE type, void *addr, size_t len, size_t * outlen, bool * isnull)
 {
   COLLECTION_ *co = (COLLECTION_ *) col;
   int res;
@@ -241,14 +224,11 @@ col_api_get_elem (API_COLLECTION * col, long pos, CI_TYPE type,
   res = co->indexer->ifs->check (co->indexer, (int) pos, CHECK_FOR_GET);
   if (res != NO_ERROR)
     return res;
-  res =
-    co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) & val);
+  res = co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) & val);
   if (res != NO_ERROR)
     return res;
   assert (val != NULL);
-  res =
-    coerce_db_value_to_value (val, co->col.conn, type, addr, len, outlen,
-			      isnull);
+  res = coerce_db_value_to_value (val, co->col.conn, type, addr, len, outlen, isnull);
   return res;
 }
 
@@ -351,9 +331,7 @@ fill_collection (COLLECTION_ * co, DB_SET * set)
 	  db_value_free (val);
 	  return ER_INTERFACE_GENERIC;
 	}
-      res =
-	co->indexer->ifs->insert (co->indexer, li_idx, NULL,
-				  (API_VALUE *) val);
+      res = co->indexer->ifs->insert (co->indexer, li_idx, NULL, (API_VALUE *) val);
       if (res != NO_ERROR)
 	{
 	  db_value_free (val);
@@ -373,9 +351,7 @@ fill_collection (COLLECTION_ * co, DB_SET * set)
  *    rc():
  */
 int
-api_collection_create_from_db_value (BIND_HANDLE conn,
-				     const DB_VALUE * val,
-				     API_COLLECTION ** rc)
+api_collection_create_from_db_value (BIND_HANDLE conn, const DB_VALUE * val, API_COLLECTION ** rc)
 {
   DB_TYPE dt;
   COLLECTION_ *co;

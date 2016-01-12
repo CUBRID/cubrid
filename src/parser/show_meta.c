@@ -66,10 +66,8 @@ static int init_db_attribute_list (SHOWSTMT_METADATA * md);
 static void free_db_attribute_list (SHOWSTMT_METADATA * md);
 
 /* check functions */
-static PT_NODE *pt_check_access_status (PARSER_CONTEXT * parser,
-					PT_NODE * node);
-static PT_NODE *pt_check_table_in_show_heap (PARSER_CONTEXT * parser,
-					     PT_NODE * node);
+static PT_NODE *pt_check_access_status (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /* meta functions */
@@ -775,10 +773,8 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
   assert (derived_table != NULL);
 
   show_type = derived_table->info.showstmt.show_type;
-  assert (show_type == SHOWSTMT_HEAP_HEADER
-	  || show_type == SHOWSTMT_ALL_HEAP_HEADER
-	  || show_type == SHOWSTMT_HEAP_CAPACITY
-	  || show_type == SHOWSTMT_ALL_HEAP_CAPACITY);
+  assert (show_type == SHOWSTMT_HEAP_HEADER || show_type == SHOWSTMT_ALL_HEAP_HEADER
+	  || show_type == SHOWSTMT_HEAP_CAPACITY || show_type == SHOWSTMT_ALL_HEAP_CAPACITY);
 
   show_args_node = derived_table->info.showstmt.show_args;
   assert (show_args_node != NULL);
@@ -786,14 +782,12 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
   assert (show_args_node->node_type == PT_VALUE);
   assert (show_args_node->type_enum == PT_TYPE_CHAR);
 
-  table_name =
-    (const char *) show_args_node->info.value.data_value.str->bytes;
+  table_name = (const char *) show_args_node->info.value.data_value.str->bytes;
 
   cls = sm_find_class (table_name);
   if (cls == NULL)
     {
-      PT_ERRORmf (parser, show_args_node, MSGCAT_SET_ERROR,
-		  -(ER_LC_UNKNOWN_CLASSNAME), table_name);
+      PT_ERRORmf (parser, show_args_node, MSGCAT_SET_ERROR, -(ER_LC_UNKNOWN_CLASSNAME), table_name);
       return node;
     }
 
@@ -804,8 +798,7 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       if (sm_get_class_type (sm_class) != SM_CLASS_CT)
 	{
-	  PT_ERRORm (parser, show_args_node, MSGCAT_SET_ERROR,
-		     -(ER_OBJ_NOT_A_CLASS));
+	  PT_ERRORm (parser, show_args_node, MSGCAT_SET_ERROR, -(ER_OBJ_NOT_A_CLASS));
 	  return node;
 	}
     }
@@ -855,9 +848,7 @@ init_db_attribute_list (SHOWSTMT_METADATA * md)
 	}
       domain = tp_domain_cache (domain);
 
-      att =
-	classobj_make_attribute (md->cols[i].name, domain->type,
-				 ID_ATTRIBUTE);
+      att = classobj_make_attribute (md->cols[i].name, domain->type, ID_ATTRIBUTE);
       if (att == NULL)
 	{
 	  goto on_error;
@@ -940,23 +931,17 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_ACCESS_STATUS] = metadata_of_access_status ();
   show_Metas[SHOWSTMT_ACTIVE_LOG_HEADER] = metadata_of_active_log_header ();
   show_Metas[SHOWSTMT_ARCHIVE_LOG_HEADER] = metadata_of_archive_log_header ();
-  show_Metas[SHOWSTMT_SLOTTED_PAGE_HEADER] =
-    metadata_of_slotted_page_header ();
+  show_Metas[SHOWSTMT_SLOTTED_PAGE_HEADER] = metadata_of_slotted_page_header ();
   show_Metas[SHOWSTMT_SLOTTED_PAGE_SLOTS] = metadata_of_slotted_page_slots ();
   show_Metas[SHOWSTMT_HEAP_HEADER] = metadata_of_heap_header (SHOW_ONLY);
   show_Metas[SHOWSTMT_ALL_HEAP_HEADER] = metadata_of_heap_header (SHOW_ALL);
   show_Metas[SHOWSTMT_HEAP_CAPACITY] = metadata_of_heap_capacity (SHOW_ONLY);
-  show_Metas[SHOWSTMT_ALL_HEAP_CAPACITY] =
-    metadata_of_heap_capacity (SHOW_ALL);
+  show_Metas[SHOWSTMT_ALL_HEAP_CAPACITY] = metadata_of_heap_capacity (SHOW_ALL);
   show_Metas[SHOWSTMT_INDEX_HEADER] = metadata_of_index_header (SHOW_ONLY);
-  show_Metas[SHOWSTMT_INDEX_CAPACITY] =
-    metadata_of_index_capacity (SHOW_ONLY);
-  show_Metas[SHOWSTMT_ALL_INDEXES_HEADER] =
-    metadata_of_index_header (SHOW_ALL);
-  show_Metas[SHOWSTMT_ALL_INDEXES_CAPACITY] =
-    metadata_of_index_capacity (SHOW_ALL);
-  show_Metas[SHOWSTMT_GLOBAL_CRITICAL_SECTIONS] =
-    metadata_of_global_critical_sections ();
+  show_Metas[SHOWSTMT_INDEX_CAPACITY] = metadata_of_index_capacity (SHOW_ONLY);
+  show_Metas[SHOWSTMT_ALL_INDEXES_HEADER] = metadata_of_index_header (SHOW_ALL);
+  show_Metas[SHOWSTMT_ALL_INDEXES_CAPACITY] = metadata_of_index_capacity (SHOW_ALL);
+  show_Metas[SHOWSTMT_GLOBAL_CRITICAL_SECTIONS] = metadata_of_global_critical_sections ();
   show_Metas[SHOWSTMT_JOB_QUEUES] = metadata_of_job_queues ();
   show_Metas[SHOWSTMT_TIMEZONES] = metadata_of_timezones ();
   show_Metas[SHOWSTMT_FULL_TIMEZONES] = metadata_of_full_timezones ();
@@ -1013,8 +998,7 @@ pt_check_access_status (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (!au_is_dba_group_member (Au_user))
     {
-      PT_ERRORmf (parser, NULL, MSGCAT_SET_ERROR,
-		  -(ER_AU_DBA_ONLY), "show access status");
+      PT_ERRORmf (parser, NULL, MSGCAT_SET_ERROR, -(ER_AU_DBA_ONLY), "show access status");
       return node;
     }
 
@@ -1035,8 +1019,7 @@ pt_check_access_status (PARSER_CONTEXT * parser, PT_NODE * node)
   db_make_oid (&oid_val, &classop->oid_info.oid);
   arg = pt_dbval_to_value (parser, &oid_val);
 
-  derived_table->info.showstmt.show_args =
-    parser_append_node (arg, derived_table->info.showstmt.show_args);
+  derived_table->info.showstmt.show_args = parser_append_node (arg, derived_table->info.showstmt.show_args);
 
   return node;
 }
@@ -1077,27 +1060,22 @@ pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node)
   assert (derived_table != NULL);
 
   show_type = derived_table->info.showstmt.show_type;
-  assert (show_type == SHOWSTMT_INDEX_HEADER
-	  || show_type == SHOWSTMT_INDEX_CAPACITY
-	  || show_type == SHOWSTMT_ALL_INDEXES_HEADER
-	  || show_type == SHOWSTMT_ALL_INDEXES_CAPACITY);
+  assert (show_type == SHOWSTMT_INDEX_HEADER || show_type == SHOWSTMT_INDEX_CAPACITY
+	  || show_type == SHOWSTMT_ALL_INDEXES_HEADER || show_type == SHOWSTMT_ALL_INDEXES_CAPACITY);
 
   show_args_node = derived_table->info.showstmt.show_args;
   assert (show_args_node != NULL);
 
   assert (show_args_node->node_type == PT_VALUE);
   assert (show_args_node->type_enum == PT_TYPE_CHAR);
-  assert (show_args_node->info.value.data_value.str->length <
-	  DB_MAX_IDENTIFIER_LENGTH);
+  assert (show_args_node->info.value.data_value.str->length < DB_MAX_IDENTIFIER_LENGTH);
 
   /* check table name */
-  table_name =
-    (const char *) show_args_node->info.value.data_value.str->bytes;
+  table_name = (const char *) show_args_node->info.value.data_value.str->bytes;
   cls = sm_find_class (table_name);
   if (cls == NULL)
     {
-      PT_ERRORmf (parser, show_args_node, MSGCAT_SET_ERROR,
-		  -(ER_LC_UNKNOWN_CLASSNAME), table_name);
+      PT_ERRORmf (parser, show_args_node, MSGCAT_SET_ERROR, -(ER_LC_UNKNOWN_CLASSNAME), table_name);
       return node;
     }
 
@@ -1108,32 +1086,26 @@ pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       if (sm_get_class_type (sm_class) != SM_CLASS_CT)
 	{
-	  PT_ERRORm (parser, show_args_node, MSGCAT_SET_ERROR,
-		     -(ER_OBJ_NOT_A_CLASS));
+	  PT_ERRORm (parser, show_args_node, MSGCAT_SET_ERROR, -(ER_OBJ_NOT_A_CLASS));
 	  return node;
 	}
     }
 
   /* check index name */
-  if (show_type == SHOWSTMT_INDEX_HEADER
-      || show_type == SHOWSTMT_INDEX_CAPACITY)
+  if (show_type == SHOWSTMT_INDEX_HEADER || show_type == SHOWSTMT_INDEX_CAPACITY)
     {
       show_args_node = show_args_node->next;
       assert (show_args_node != NULL);
       assert (show_args_node->node_type == PT_VALUE);
       assert (show_args_node->type_enum == PT_TYPE_CHAR);
-      assert (show_args_node->info.value.data_value.str->length <
-	      DB_MAX_IDENTIFIER_LENGTH);
+      assert (show_args_node->info.value.data_value.str->length < DB_MAX_IDENTIFIER_LENGTH);
 
-      index_name =
-	(const char *) show_args_node->info.value.data_value.str->bytes;
+      index_name = (const char *) show_args_node->info.value.data_value.str->bytes;
       sm_all_constraints = sm_class_constraints (cls);
-      sm_constraint =
-	classobj_find_constraint_by_name (sm_all_constraints, index_name);
+      sm_constraint = classobj_find_constraint_by_name (sm_all_constraints, index_name);
       if (sm_all_constraints == NULL || sm_constraint == NULL)
 	{
-	  PT_ERRORmf (parser, show_args_node, MSGCAT_SET_ERROR,
-		      -(ER_SM_NO_INDEX), index_name);
+	  PT_ERRORmf (parser, show_args_node, MSGCAT_SET_ERROR, -(ER_SM_NO_INDEX), index_name);
 	  return node;
 	}
     }

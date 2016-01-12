@@ -92,8 +92,7 @@ static const int DEFAULT_CHECK_INTERVAL = 1;
    ||((func_code) == CAS_FC_END_SESSION)  \
    ||((func_code) == CAS_FC_CAS_CHANGE_MODE))
 
-static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf,
-				  T_REQ_INFO * req_info);
+static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
@@ -110,19 +109,14 @@ static void query_cancel (int signo);
 
 static int cas_init_shm (void);
 static int cas_register_to_proxy (SOCKET proxy_sock_fd);
-static int net_read_process (SOCKET proxy_sock_fd,
-			     MSG_HEADER * client_msg_header,
-			     T_REQ_INFO * req_info);
+static int net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info);
 static int get_graceful_down_timeout (void);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 static void set_db_parameter (void);
 #endif /* !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) */
 
-static int net_read_int_keep_con_auto (SOCKET clt_sock_fd,
-				       MSG_HEADER * client_msg_header,
-				       T_REQ_INFO * req_info);
-static int net_read_header_keep_con_on (SOCKET clt_sock_fd,
-					MSG_HEADER * client_msg_header);
+static int net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info);
+static int net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header);
 static void set_db_connection_info (void);
 static void clear_db_connection_info (void);
 static bool need_database_reconnect (void);
@@ -371,8 +365,7 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
       /* always create new session for old drivers */
       char key[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
-      cas_log_write_and_end (0, false,
-			     "session id (old protocol) for connection 0");
+      cas_log_write_and_end (0, false, "session id (old protocol) for connection 0");
       db_set_server_session_key (key);
       db_set_session_id (DB_EMPTY_SESSION);
     }
@@ -380,8 +373,7 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
 #endif
 
 static void
-cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol,
-				  SOCKET client_sock_fd, char *cas_info)
+cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info)
 {
   char msgbuf[CAS_CONNECTION_REPLY_SIZE + 8];
   char *p = msgbuf;
@@ -551,8 +543,7 @@ conn_retry:
 	{
 	  SLEEP_SEC (1);
 	}
-      while (as_info->uts_status == UTS_STATUS_RESTART
-	     || as_info->uts_status == UTS_STATUS_STOP);
+      while (as_info->uts_status == UTS_STATUS_RESTART || as_info->uts_status == UTS_STATUS_STOP);
     }
   is_first = false;
 
@@ -573,11 +564,9 @@ conn_retry:
   gettimeofday (&cas_start_time, NULL);
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s",
-	    shm_appl->shard_conn_info[shm_shard_id].db_name);
+  snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s", shm_appl->shard_conn_info[shm_shard_id].db_name);
 #else
-  snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s@%s",
-	    shm_appl->shard_conn_info[shm_shard_id].db_name,
+  snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH, "%s@%s", shm_appl->shard_conn_info[shm_shard_id].db_name,
 	    shm_appl->shard_conn_info[shm_shard_id].db_host);
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
@@ -597,8 +586,7 @@ conn_retry:
 
     if (cas_db_user[0] != '\0')
       {
-	err_code =
-	  ux_database_connect (cas_db_name, cas_db_user, cas_db_passwd, NULL);
+	err_code = ux_database_connect (cas_db_name, cas_db_user, cas_db_passwd, NULL);
 	if (err_code < 0)
 	  {
 	    clear_db_connection_info ();
@@ -610,8 +598,7 @@ conn_retry:
 	ux_set_default_setting ();
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-	cas_log_write_and_end (0, false, "connect db %s user %s", cas_db_name,
-			       cas_db_user);
+	cas_log_write_and_end (0, false, "connect db %s user %s", cas_db_name, cas_db_user);
       }
 
     as_info->uts_status = UTS_STATUS_IDLE;
@@ -633,8 +620,7 @@ conn_retry:
 
     net_timeout_set (-1);
 
-    setsockopt (proxy_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
-		sizeof (one));
+    setsockopt (proxy_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
 
     error = cas_register_to_proxy (proxy_sock_fd);
     if (error)
@@ -653,8 +639,7 @@ conn_retry:
 
     as_info->cur_sql_log2 = shm_appl->sql_log2;
     sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, false);
-    setsockopt (proxy_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
-		sizeof (one));
+    setsockopt (proxy_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
 
     if (IS_INVALID_SOCKET (proxy_sock_fd))
       {
@@ -662,9 +647,7 @@ conn_retry:
       }
 
     as_info->auto_commit_mode = FALSE;
-    cas_log_write_and_end (0, false, "DEFAULT isolation_level %d, "
-			   "lock_timeout %d",
-			   cas_default_isolation_level,
+    cas_log_write_and_end (0, false, "DEFAULT isolation_level %d, " "lock_timeout %d", cas_default_isolation_level,
 			   cas_default_lock_timeout);
 
     if (shm_appl->statement_pooling)
@@ -713,8 +696,7 @@ conn_retry:
 	    as_info->last_access_time = time (NULL);
 
 	    if (as_info->con_status == CON_STATUS_OUT_TRAN
-		&& hm_srv_handle_get_current_count () >=
-		shm_appl->max_prepared_stmt_count)
+		&& hm_srv_handle_get_current_count () >= shm_appl->max_prepared_stmt_count)
 	      {
 		fn_ret = FN_CLOSE_CONN;
 	      }
@@ -883,8 +865,7 @@ cas_main (void)
     {
       cas_log_write_and_end (0, true,
 			     "CONFIGURATION WARNING - the APPL_SERVER_MAX_SIZE(%dM) is greater than the APPL_SERVER_MAX_SIZE_HARD_LIMIT(%dM)",
-			     shm_appl->appl_server_max_size / ONE_K,
-			     shm_appl->appl_server_hard_limit / ONE_K);
+			     shm_appl->appl_server_max_size / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
     }
 
   stripped_column_name = shm_appl->stripped_column_name;
@@ -910,8 +891,7 @@ cas_main (void)
 	  }
 
 	req_info.client_version = as_info->clt_version;
-	memcpy (req_info.driver_info, as_info->driver_info,
-		SRV_CON_CLIENT_INFO_SIZE);
+	memcpy (req_info.driver_info, as_info->driver_info, SRV_CON_CLIENT_INFO_SIZE);
 
 	set_cas_info_size ();
 
@@ -936,32 +916,27 @@ cas_main (void)
 
 	if (net_read_int (br_sock_fd, &con_status) < 0)
 	  {
-	    cas_log_write_and_end (0, false,
-				   "HANDSHAKE ERROR net_read_int(con_status)");
+	    cas_log_write_and_end (0, false, "HANDSHAKE ERROR net_read_int(con_status)");
 	    CLOSE_SOCKET (br_sock_fd);
 	    goto finish_cas;
 	  }
 	if (net_write_int (br_sock_fd, as_info->con_status) < 0)
 	  {
-	    cas_log_write_and_end (0, false,
-				   "HANDSHAKE ERROR net_write_int(con_status)");
+	    cas_log_write_and_end (0, false, "HANDSHAKE ERROR net_write_int(con_status)");
 	    CLOSE_SOCKET (br_sock_fd);
 	    goto finish_cas;
 	  }
 
-	client_sock_fd =
-	  recv_fd (br_sock_fd, &client_ip_addr, do_not_use_driver_info);
+	client_sock_fd = recv_fd (br_sock_fd, &client_ip_addr, do_not_use_driver_info);
 	if (client_sock_fd == -1)
 	  {
-	    cas_log_write_and_end (0, false, "HANDSHAKE ERROR recv_fd %d",
-				   client_sock_fd);
+	    cas_log_write_and_end (0, false, "HANDSHAKE ERROR recv_fd %d", client_sock_fd);
 	    CLOSE_SOCKET (br_sock_fd);
 	    goto finish_cas;
 	  }
 	if (net_write_int (br_sock_fd, as_info->uts_status) < 0)
 	  {
-	    cas_log_write_and_end (0, false,
-				   "HANDSHAKE ERROR net_write_int(uts_status)");
+	    cas_log_write_and_end (0, false, "HANDSHAKE ERROR net_write_int(uts_status)");
 	    CLOSE_SOCKET (br_sock_fd);
 	    CLOSE_SOCKET (client_sock_fd);
 	    goto finish_cas;
@@ -976,8 +951,7 @@ cas_main (void)
 	cas_log_open (broker_name);
 	cas_slow_log_open (broker_name);
 	as_info->cur_sql_log2 = shm_appl->sql_log2;
-	sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2,
-		       false);
+	sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, false);
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 	cas_error_log_open (broker_name);
 #else
@@ -985,19 +959,15 @@ cas_main (void)
 	  {
 	    set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
 
-	    as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id,
-			       shm_shard_cas_id, shm_as_index,
-			       cas_shard_flag);
+	    as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id, shm_shard_cas_id, shm_as_index, cas_shard_flag);
 	    er_final (ER_ALL_FINAL);
 	    as_info->cas_err_log_reset = 0;
 	  }
 #endif
 
-	ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str),
-			    (unsigned char *) (&client_ip_addr));
+	ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str), (unsigned char *) (&client_ip_addr));
 	cas_log_write_and_end (0, false, "CLIENT IP %s", client_ip_str);
-	setsockopt (client_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
-		    sizeof (one));
+	setsockopt (client_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
 	ut_set_keepalive (client_sock_fd);
 
 	unset_hang_check_time ();
@@ -1018,8 +988,7 @@ cas_main (void)
 	  }
 #endif
 	req_info.client_version = as_info->clt_version;
-	memcpy (req_info.driver_info, as_info->driver_info,
-		SRV_CON_CLIENT_INFO_SIZE);
+	memcpy (req_info.driver_info, as_info->driver_info, SRV_CON_CLIENT_INFO_SIZE);
 	cas_client_type = as_info->cas_client_type;
 
 	if (req_info.client_version < CAS_MAKE_VER (8, 2, 0))
@@ -1038,10 +1007,8 @@ cas_main (void)
 	if (net_read_stream (client_sock_fd, read_buf, db_info_size) < 0)
 	  {
 	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
-	    net_write_error (client_sock_fd, req_info.client_version,
-			     req_info.driver_info,
-			     cas_info, cas_info_size, CAS_ERROR_INDICATOR,
-			     CAS_ER_COMMUNICATION, NULL);
+	    net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info, cas_info_size,
+			     CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
 	  }
 	else
 	  {
@@ -1058,8 +1025,7 @@ cas_main (void)
 	    /* Send response to broker health checker */
 	    if (strcmp (db_name, HEALTH_CHECK_DUMMY_DB) == 0)
 	      {
-		cas_log_write_and_end (0, false,
-				       "Incoming health check request from client.");
+		cas_log_write_and_end (0, false, "Incoming health check request from client.");
 
 		net_write_int (client_sock_fd, 0);
 		cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
@@ -1094,55 +1060,41 @@ cas_main (void)
 	      }
 	    else
 	      {
-		/* even drivers do not send session id (under RB-8.4.0)
-		 * the cas_set_session_id() should be called
-		 */
+		/* even drivers do not send session id (under RB-8.4.0) the cas_set_session_id() should be called */
 		db_sessionid = NULL;
 	      }
 	    as_info->driver_version[0] = '\0';
-	    if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info.client_version,
-						     PROTOCOL_V5))
+	    if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info.client_version, PROTOCOL_V5))
 	      {
 		assert (url != NULL);
 
 		len = *(url + strlen (url) + 1);
 		if (len > 0 && len < SRV_CON_VER_STR_MAX_SIZE)
 		  {
-		    memcpy (as_info->driver_version, url + strlen (url) + 2,
-			    (int) len);
+		    memcpy (as_info->driver_version, url + strlen (url) + 2, (int) len);
 		    as_info->driver_version[len] = '\0';
 		  }
 		else
 		  {
-		    snprintf (as_info->driver_version,
-			      SRV_CON_VER_STR_MAX_SIZE, "PROTOCOL V%d",
-			      (int) (CAS_PROTO_VER_MASK & req_info.
-				     client_version));
+		    snprintf (as_info->driver_version, SRV_CON_VER_STR_MAX_SIZE, "PROTOCOL V%d",
+			      (int) (CAS_PROTO_VER_MASK & req_info.client_version));
 		  }
 	      }
-	    else
-	      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
-		  (req_info.client_version, PROTOCOL_V1))
+	    else if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info.client_version, PROTOCOL_V1))
 	      {
 		char *ver;
 
-		CAS_PROTO_TO_VER_STR (&ver,
-				      (int) (CAS_PROTO_VER_MASK & req_info.
-					     client_version));
+		CAS_PROTO_TO_VER_STR (&ver, (int) (CAS_PROTO_VER_MASK & req_info.client_version));
 
-		strncpy (as_info->driver_version, ver,
-			 SRV_CON_VER_STR_MAX_SIZE);
+		strncpy (as_info->driver_version, ver, SRV_CON_VER_STR_MAX_SIZE);
 	      }
 	    else
 	      {
-		snprintf (as_info->driver_version,
-			  SRV_CON_VER_STR_MAX_SIZE, "%d.%d.%d",
-			  CAS_VER_TO_MAJOR (req_info.client_version),
-			  CAS_VER_TO_MINOR (req_info.client_version),
+		snprintf (as_info->driver_version, SRV_CON_VER_STR_MAX_SIZE, "%d.%d.%d",
+			  CAS_VER_TO_MAJOR (req_info.client_version), CAS_VER_TO_MINOR (req_info.client_version),
 			  CAS_VER_TO_PATCH (req_info.client_version));
 	      }
-	    cas_log_write_and_end (0, false, "CLIENT VERSION %s",
-				   as_info->driver_version);
+	    cas_log_write_and_end (0, false, "CLIENT VERSION %s", as_info->driver_version);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	    cas_set_session_id (req_info.client_version, db_sessionid);
 	    if (db_get_session_id () != DB_EMPTY_SESSION)
@@ -1157,9 +1109,7 @@ cas_main (void)
 
 	    set_hang_check_time ();
 
-	    cas_log_debug (ARG_FILE_LINE,
-			   "db_name %s db_user %s url %s "
-			   "session id %s", db_name, db_user, url,
+	    cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s url %s " "session id %s", db_name, db_user, url,
 			   db_sessionid);
 	    if (as_info->reset_flag == TRUE)
 	      {
@@ -1174,34 +1124,25 @@ cas_main (void)
 
 	    if (shm_appl->access_control)
 	      {
-		if (access_control_check_right
-		    (shm_appl, db_name, db_user, ip_addr) < 0)
+		if (access_control_check_right (shm_appl, db_name, db_user, ip_addr) < 0)
 		  {
 		    char err_msg[1024];
 
 		    as_info->num_connect_rejected++;
 
-		    sprintf (err_msg,
-			     "Authorization error.(Address is rejected)");
+		    sprintf (err_msg, "Authorization error.(Address is rejected)");
 
 		    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
-		    net_write_error (client_sock_fd, req_info.client_version,
-				     req_info.driver_info,
-				     cas_info, cas_info_size,
-				     DBMS_ERROR_INDICATOR,
-				     CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg);
+		    net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info,
+				     cas_info_size, DBMS_ERROR_INDICATOR, CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg);
 
 		    set_hang_check_time ();
 
-		    cas_log_write_and_end (0, false,
-					   "connect db %s user %s url %s - rejected",
-					   db_name, db_user, url);
+		    cas_log_write_and_end (0, false, "connect db %s user %s url %s - rejected", db_name, db_user, url);
 
 		    if (shm_appl->access_log == ON)
 		      {
-			cas_access_log (&cas_start_time, shm_as_index,
-					client_ip_addr, db_name, db_user,
-					ACL_REJECTED);
+			cas_access_log (&cas_start_time, shm_as_index, client_ip_addr, db_name, db_user, ACL_REJECTED);
 		      }
 
 		    unset_hang_check_time ();
@@ -1212,32 +1153,25 @@ cas_main (void)
 		  }
 	      }
 
-	    err_code =
-	      ux_database_connect (db_name, db_user, db_passwd, &db_err_msg);
+	    err_code = ux_database_connect (db_name, db_user, db_passwd, &db_err_msg);
 
 	    if (err_code < 0)
 	      {
 		char msg_buf[LINE_MAX];
 
 		cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
-		net_write_error (client_sock_fd, req_info.client_version,
-				 req_info.driver_info,
-				 cas_info, cas_info_size,
-				 err_info.err_indicator,
-				 err_info.err_number, db_err_msg);
+		net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info, cas_info_size,
+				 err_info.err_indicator, err_info.err_number, db_err_msg);
 
 		if (db_err_msg == NULL)
 		  {
-		    snprintf (msg_buf, LINE_MAX,
-			      "connect db %s user %s url %s, error:%d.",
-			      db_name, db_user, url, err_info.err_number);
+		    snprintf (msg_buf, LINE_MAX, "connect db %s user %s url %s, error:%d.", db_name, db_user, url,
+			      err_info.err_number);
 		  }
 		else
 		  {
-		    snprintf (msg_buf, LINE_MAX,
-			      "connect db %s user %s url %s, error:%d, %s",
-			      db_name, db_user, url, err_info.err_number,
-			      db_err_msg);
+		    snprintf (msg_buf, LINE_MAX, "connect db %s user %s url %s, error:%d, %s", db_name, db_user, url,
+			      err_info.err_number, db_err_msg);
 		  }
 
 		cas_log_write_and_end (0, false, msg_buf);
@@ -1258,20 +1192,15 @@ cas_main (void)
 
 	    if (shm_appl->access_log == ON)
 	      {
-		ACCESS_LOG_TYPE type =
-		  (is_new_connection) ? NEW_CONNECTION : CLIENT_CHANGED;
+		ACCESS_LOG_TYPE type = (is_new_connection) ? NEW_CONNECTION : CLIENT_CHANGED;
 
-		cas_access_log (&cas_start_time, shm_as_index,
-				client_ip_addr, db_name, db_user, type);
+		cas_access_log (&cas_start_time, shm_as_index, client_ip_addr, db_name, db_user, type);
 	      }
 
-	    cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s"
-				   " session id %u", as_info->database_name,
-				   as_info->database_host, db_user, url,
-				   session_id);
+	    cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s" " session id %u", as_info->database_name,
+				   as_info->database_host, db_user, url, session_id);
 #else
-	    cas_log_write_and_end (0, false, "connect db %s user %s url %s",
-				   db_name, db_user, url);
+	    cas_log_write_and_end (0, false, "connect db %s user %s url %s", db_name, db_user, url);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -1279,10 +1208,8 @@ cas_main (void)
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 	    as_info->auto_commit_mode = FALSE;
-	    cas_log_write_and_end (0, false, "DEFAULT isolation_level %d, "
-				   "lock_timeout %d",
-				   cas_default_isolation_level,
-				   cas_default_lock_timeout);
+	    cas_log_write_and_end (0, false, "DEFAULT isolation_level %d, " "lock_timeout %d",
+				   cas_default_isolation_level, cas_default_lock_timeout);
 
 	    as_info->cur_keep_con = shm_appl->keep_connection;
 	    cas_bi_set_statement_pooling (shm_appl->statement_pooling);
@@ -1297,11 +1224,9 @@ cas_main (void)
 	    cas_bi_set_cci_pconnect (shm_appl->cci_pconnect);
 
 	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
-	    cas_send_connect_reply_to_driver (req_info.client_version,
-					      client_sock_fd, cas_info);
+	    cas_send_connect_reply_to_driver (req_info.client_version, client_sock_fd, cas_info);
 
-	    as_info->cci_default_autocommit =
-	      shm_appl->cci_default_autocommit;
+	    as_info->cci_default_autocommit = shm_appl->cci_default_autocommit;
 	    req_info.need_rollback = TRUE;
 
 	    gettimeofday (&tran_start_time, NULL);
@@ -1322,8 +1247,7 @@ cas_main (void)
 #if !defined(WINDOWS)
 		signal (SIGUSR1, query_cancel);
 #endif /* !WINDOWS */
-		fn_ret = process_request (client_sock_fd, &net_buf,
-					  &req_info);
+		fn_ret = process_request (client_sock_fd, &net_buf, &req_info);
 #ifndef LIBCAS_FOR_JSP
 		is_first_request = false;
 #endif /* !LIBCAS_FOR_JSP */
@@ -1409,10 +1333,7 @@ cas_main (void)
 	    cas_final ();
 	    return 0;
 	  }
-	else
-	  if (!
-	      (as_info->cur_keep_con == KEEP_CON_AUTO
-	       && as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT))
+	else if (!(as_info->cur_keep_con == KEEP_CON_AUTO && as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT))
 	  {
 	    if (restart_is_needed ())
 	      {
@@ -1445,8 +1366,7 @@ libcas_main (SOCKET jsp_sock_fd)
   memset (&req_info, 0, sizeof (req_info));
 
   req_info.client_version = CAS_PROTO_CURRENT_VER;
-  req_info.driver_info[DRIVER_INFO_FUNCTION_FLAG] =
-    BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
+  req_info.driver_info[DRIVER_INFO_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
   client_sock_fd = jsp_sock_fd;
 
   net_buf_init (&net_buf, cas_get_client_version ());
@@ -1459,8 +1379,7 @@ libcas_main (SOCKET jsp_sock_fd)
 
   while (1)
     {
-      if (process_request (client_sock_fd, &net_buf,
-			   &req_info) != FN_KEEP_CONN)
+      if (process_request (client_sock_fd, &net_buf, &req_info) != FN_KEEP_CONN)
 	{
 	  break;
 	}
@@ -1504,8 +1423,7 @@ void
 set_hang_check_time (void)
 {
 #if !defined(LIBCAS_FOR_JSP)
-  if (cas_shard_flag == OFF
-      && as_info != NULL && shm_appl != NULL && shm_appl->monitor_hang_flag)
+  if (cas_shard_flag == OFF && as_info != NULL && shm_appl != NULL && shm_appl->monitor_hang_flag)
     {
       as_info->claimed_alive_time = time (NULL);
     }
@@ -1522,8 +1440,7 @@ void
 unset_hang_check_time (void)
 {
 #if !defined(LIBCAS_FOR_JSP)
-  if (cas_shard_flag == OFF
-      && as_info != NULL && shm_appl != NULL && shm_appl->monitor_hang_flag)
+  if (cas_shard_flag == OFF && as_info != NULL && shm_appl != NULL && shm_appl->monitor_hang_flag)
     {
       as_info->claimed_alive_time = (time_t) 0;
     }
@@ -1542,8 +1459,7 @@ check_server_alive (const char *db_name, const char *db_host)
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #if !defined(LIBCAS_FOR_JSP)
-  if (cas_shard_flag == OFF && as_info != NULL && shm_appl != NULL
-      && shm_appl->monitor_server_flag)
+  if (cas_shard_flag == OFF && as_info != NULL && shm_appl != NULL && shm_appl->monitor_server_flag)
     {
       /* if db_name is NULL, use the CAS shared memory */
       if (db_name == NULL)
@@ -1561,13 +1477,10 @@ check_server_alive (const char *db_name, const char *db_host)
 
       for (i = 0; i < shm_appl->unusable_databases_cnt[u_index]; i++)
 	{
-	  unusable_db_name =
-	    shm_appl->unusable_databases[u_index][i].database_name;
-	  unusable_db_host =
-	    shm_appl->unusable_databases[u_index][i].database_host;
+	  unusable_db_name = shm_appl->unusable_databases[u_index][i].database_name;
+	  unusable_db_host = shm_appl->unusable_databases[u_index][i].database_host;
 
-	  if (strcmp (unusable_db_name, check_db_name) == 0
-	      && strcmp (unusable_db_host, check_db_host) == 0)
+	  if (strcmp (unusable_db_name, check_db_name) == 0 && strcmp (unusable_db_host, check_db_host) == 0)
 	    {
 	      return false;
 	    }
@@ -1632,58 +1545,43 @@ cas_free (bool from_sighandler)
 #if defined(WINDOWS)
   if (shm_appl->use_pdh_flag)
     {
-      if ((as_info->pid == as_info->pdh_pid)
-	  && (as_info->pdh_workset > shm_appl->appl_server_max_size))
+      if ((as_info->pid == as_info->pdh_pid) && (as_info->pdh_workset > shm_appl->appl_server_max_size))
 	{
-	  cas_log_write_and_end (0, true,
-				 "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
-				 as_info->pdh_workset / ONE_K,
-				 shm_appl->appl_server_max_size / ONE_K);
+	  cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
+				 as_info->pdh_workset / ONE_K, shm_appl->appl_server_max_size / ONE_K);
 	}
 
-      if ((as_info->pid == as_info->pdh_pid)
-	  && (as_info->pdh_workset > shm_appl->appl_server_hard_limit))
+      if ((as_info->pid == as_info->pdh_pid) && (as_info->pdh_workset > shm_appl->appl_server_hard_limit))
 	{
-	  cas_log_write_and_end (0, true,
-				 "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
-				 as_info->pdh_workset / ONE_K,
-				 shm_appl->appl_server_hard_limit / ONE_K);
+	  cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
+				 as_info->pdh_workset / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
 	}
     }
   else
     {
       if (cas_req_count > 500)
 	{
-	  cas_log_write_and_end (0, true,
-				 "CAS REQUEST COUNT (%d) HAS EXCEEDED MAX LIMIT (%d)",
-				 cas_req_count, 500);
+	  cas_log_write_and_end (0, true, "CAS REQUEST COUNT (%d) HAS EXCEEDED MAX LIMIT (%d)", cas_req_count, 500);
 	}
     }
 #else /* WINDOWS */
 #if defined(AIX)
-  /* In linux, getsize() returns VSM(55M). but in AIX, getsize() returns
-   * vritual meory size for data(900K). so, the size of cub_cas process exceeds
-   * 'psize_at_start * 2' very easily. the linux's rule to restart cub_cas
-   * is not suit for AIX. In AIX, we use 20M as max_process_size. */
-  max_process_size = (shm_appl->appl_server_max_size > 0) ?
-    shm_appl->appl_server_max_size : 20 * ONE_K;
+  /* In linux, getsize() returns VSM(55M). but in AIX, getsize() returns vritual meory size for data(900K). so, the
+   * size of cub_cas process exceeds 'psize_at_start * 2' very easily. the linux's rule to restart cub_cas is not suit
+   * for AIX. In AIX, we use 20M as max_process_size. */
+  max_process_size = (shm_appl->appl_server_max_size > 0) ? shm_appl->appl_server_max_size : 20 * ONE_K;
 #else
-  max_process_size = (shm_appl->appl_server_max_size > 0) ?
-    shm_appl->appl_server_max_size : (psize_at_start * 2);
+  max_process_size = (shm_appl->appl_server_max_size > 0) ? shm_appl->appl_server_max_size : (psize_at_start * 2);
 #endif
   if (as_info->psize > max_process_size)
     {
-      cas_log_write_and_end (0, true,
-			     "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
-			     as_info->psize / ONE_K,
+      cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)", as_info->psize / ONE_K,
 			     max_process_size / ONE_K);
     }
 
   if (as_info->psize > shm_appl->appl_server_hard_limit)
     {
-      cas_log_write_and_end (0, true,
-			     "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
-			     as_info->psize / ONE_K,
+      cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)", as_info->psize / ONE_K,
 			     shm_appl->appl_server_hard_limit / ONE_K);
     }
 #endif /* !WINDOWS */
@@ -1763,10 +1661,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       if (err_code < 0)
 	{
 	  const char *cas_log_msg = NULL;
-	  net_write_error (sock_fd, req_info->client_version,
-			   req_info->driver_info,
-			   cas_msg_header.info_ptr, cas_info_size,
-			   CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
+	  net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr,
+			   cas_info_size, CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
 	  fn_ret = FN_CLOSE_CONN;
 
 	  if (is_net_timed_out ())
@@ -1809,16 +1705,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
 	      set_db_connection_info ();
 
-	      err_code = ux_database_connect (cas_db_name, cas_db_user,
-					      cas_db_passwd, NULL);
+	      err_code = ux_database_connect (cas_db_name, cas_db_user, cas_db_passwd, NULL);
 	      if (err_code < 0)
 		{
 		  clear_db_connection_info ();
-		  net_write_error (sock_fd, req_info->client_version,
-				   req_info->driver_info,
-				   cas_msg_header.info_ptr, cas_info_size,
-				   err_info.err_indicator,
-				   err_info.err_number, err_info.err_string);
+		  net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr,
+				   cas_info_size, err_info.err_indicator, err_info.err_number, err_info.err_string);
 		  return FN_CLOSE_CONN;
 		}
 
@@ -1826,8 +1718,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	      ux_set_default_setting ();
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-	      cas_log_write_and_end (0, false, "connect db %s user %s",
-				     cas_db_name, cas_db_user);
+	      cas_log_write_and_end (0, false, "connect db %s user %s", cas_db_name, cas_db_user);
 	    }
 	}
     }
@@ -1838,17 +1729,13 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       unset_hang_check_time ();
       if (as_info->cur_keep_con == KEEP_CON_AUTO)
 	{
-	  err_code = net_read_int_keep_con_auto (sock_fd,
-						 &client_msg_header,
-						 req_info);
+	  err_code = net_read_int_keep_con_auto (sock_fd, &client_msg_header, req_info);
 	}
       else
 	{
-	  err_code =
-	    net_read_header_keep_con_on (sock_fd, &client_msg_header);
+	  err_code = net_read_header_keep_con_on (sock_fd, &client_msg_header);
 
-	  if (as_info->cur_keep_con == KEEP_CON_ON
-	      && as_info->con_status == CON_STATUS_OUT_TRAN)
+	  if (as_info->cur_keep_con == KEEP_CON_ON && as_info->con_status == CON_STATUS_OUT_TRAN)
 	    {
 	      as_info->con_status = CON_STATUS_IN_TRAN;
 	      as_info->transaction_start_time = time (0);
@@ -1910,11 +1797,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #ifndef LIBCAS_FOR_JSP
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #if !defined(WINDOWS)
-  /* Before start to execute a new request,
-   * try to reset a previous interrupt request we might have.
-   * The interrupt request arrived too late to interrupt the previous request
-   * and still remains.
-   */
+  /* Before start to execute a new request, try to reset a previous interrupt request we might have. The interrupt
+   * request arrived too late to interrupt the previous request and still remains. */
   db_set_interrupt (0);
 #endif /* !WINDOWS */
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL) */
@@ -1943,35 +1827,24 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   read_msg = (char *) MALLOC (*(client_msg_header.msg_body_size_ptr));
   if (read_msg == NULL)
     {
-      net_write_error (sock_fd, req_info->client_version,
-		       req_info->driver_info,
-		       cas_msg_header.info_ptr, cas_info_size,
+      net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, CAS_ER_NO_MORE_MEMORY, NULL);
       return FN_CLOSE_CONN;
     }
-  if (net_read_stream (sock_fd, read_msg,
-		       *(client_msg_header.msg_body_size_ptr)) < 0)
+  if (net_read_stream (sock_fd, read_msg, *(client_msg_header.msg_body_size_ptr)) < 0)
     {
       FREE_MEM (read_msg);
-      net_write_error (sock_fd, req_info->client_version,
-		       req_info->driver_info,
-		       cas_msg_header.info_ptr, cas_info_size,
+      net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
-      cas_log_write_and_end (0, true,
-			     "COMMUNICATION ERROR net_read_stream()");
+      cas_log_write_and_end (0, true, "COMMUNICATION ERROR net_read_stream()");
       return FN_CLOSE_CONN;
     }
 
-  argc =
-    net_decode_str (read_msg,
-		    *(client_msg_header.msg_body_size_ptr),
-		    &func_code, &argv);
+  argc = net_decode_str (read_msg, *(client_msg_header.msg_body_size_ptr), &func_code, &argv);
   if (argc < 0)
     {
       FREE_MEM (read_msg);
-      net_write_error (sock_fd, req_info->client_version,
-		       req_info->driver_info,
-		       cas_msg_header.info_ptr, cas_info_size,
+      net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       return FN_CLOSE_CONN;
     }
@@ -1980,9 +1853,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       FREE_MEM (argv);
       FREE_MEM (read_msg);
-      net_write_error (sock_fd, req_info->client_version,
-		       req_info->driver_info,
-		       cas_msg_header.info_ptr, cas_info_size,
+      net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       return FN_CLOSE_CONN;
     }
@@ -2010,9 +1881,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       if (is_first_request == true)
 	{
-	  /* If this request is the first request after connection established,
-	   * con_status should be CON_STATUS_OUT_TRAN.  
-	   */
+	  /* If this request is the first request after connection established, con_status should be
+	   * CON_STATUS_OUT_TRAN. */
 	  con_status_to_restore = CON_STATUS_OUT_TRAN;
 	}
       else if (con_status_before_check_cas != -1)
@@ -2043,25 +1913,16 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #ifndef LIBCAS_FOR_JSP
   if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
     {
-      assert (prev_cas_info[CAS_INFO_STATUS] ==
-	      client_msg_header.info_ptr[CAS_INFO_STATUS]);
+      assert (prev_cas_info[CAS_INFO_STATUS] == client_msg_header.info_ptr[CAS_INFO_STATUS]);
 #if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas <-> JDBC info */
-      if (prev_cas_info[CAS_INFO_STATUS] !=
-	  client_msg_header.info_ptr[CAS_INFO_STATUS])
+      if (prev_cas_info[CAS_INFO_STATUS] != client_msg_header.info_ptr[CAS_INFO_STATUS])
 	{
 	  cas_log_debug (ARG_FILE_LINE,
-			 "[%d][PREV : %d, RECV : %d], "
-			 "[preffunc : %d, recvfunc : %d], [REQ: %d, REQ: %d], "
-			 "[JID : %d] \n", func_code - 1,
-			 prev_cas_info[CAS_INFO_STATUS],
-			 client_msg_header.
-			 info_ptr[CAS_INFO_STATUS],
-			 prev_cas_info[CAS_INFO_RESERVED_1],
-			 client_msg_header.
-			 info_ptr[CAS_INFO_RESERVED_1],
-			 prev_cas_info[CAS_INFO_RESERVED_2],
-			 client_msg_header.
-			 info_ptr[CAS_INFO_RESERVED_2],
+			 "[%d][PREV : %d, RECV : %d], " "[preffunc : %d, recvfunc : %d], [REQ: %d, REQ: %d], "
+			 "[JID : %d] \n", func_code - 1, prev_cas_info[CAS_INFO_STATUS],
+			 client_msg_header.info_ptr[CAS_INFO_STATUS], prev_cas_info[CAS_INFO_RESERVED_1],
+			 client_msg_header.info_ptr[CAS_INFO_RESERVED_1], prev_cas_info[CAS_INFO_RESERVED_2],
+			 client_msg_header.info_ptr[CAS_INFO_RESERVED_2],
 			 client_msg_header.info_ptr[CAS_INFO_RESERVED_3]);
 	}
 #endif /* end for debug */
@@ -2083,8 +1944,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   /* for driver less than 10.0 */
-  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
-      (req_info->client_version, PROTOCOL_V7))
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V7))
     {
       ux_set_utype_for_timetz (CCI_U_TYPE_TIME);
       ux_set_utype_for_datetimetz (CCI_U_TYPE_DATETIME);
@@ -2110,8 +1970,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   /* for driver less than 10.0 */
-  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
-      (req_info->client_version, PROTOCOL_V7))
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V7))
     {
       ux_set_utype_for_timetz (CCI_U_TYPE_TIMETZ);
       ux_set_utype_for_datetimetz (CCI_U_TYPE_DATETIMETZ);
@@ -2123,8 +1982,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif
 
 #ifndef LIBCAS_FOR_JSP
-  cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d",
-		 server_func_name[func_code - 1], err_info.err_number);
+  cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d", server_func_name[func_code - 1],
+		 err_info.err_number);
 
   if (con_status_to_restore != -1)
     {
@@ -2134,10 +1993,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 #endif /* !LIBCAS_FOR_JSP */
 
-  if (cas_shard_flag == ON
-      && (func_code == CAS_FC_PREPARE || func_code == CAS_FC_CHECK_CAS)
-      && (client_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG]
-	  & CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN))
+  if (cas_shard_flag == ON && (func_code == CAS_FC_PREPARE || func_code == CAS_FC_CHECK_CAS)
+      && (client_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] & CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN))
     {
       /* for shard dummy prepare */
       /* for connection check */
@@ -2145,10 +2002,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 
 #ifndef LIBCAS_FOR_JSP
-  if (fn_ret == FN_KEEP_CONN && net_buf->err_code == 0
-      && as_info->con_status == CON_STATUS_IN_TRAN
-      && req_info->need_auto_commit != TRAN_NOT_AUTOCOMMIT
-      && err_info.err_number != CAS_ER_STMT_POOLING)
+  if (fn_ret == FN_KEEP_CONN && net_buf->err_code == 0 && as_info->con_status == CON_STATUS_IN_TRAN
+      && req_info->need_auto_commit != TRAN_NOT_AUTOCOMMIT && err_info.err_number != CAS_ER_STMT_POOLING)
     {
       /* no communication error and auto commit is needed */
       err_code = ux_auto_commit (net_buf, req_info);
@@ -2178,8 +2033,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	    {
 	      sql_log2_end (false);
 	      as_info->cur_sql_log2 = shm_appl->sql_log2;
-	      sql_log2_init (broker_name, shm_as_index,
-			     as_info->cur_sql_log2, true);
+	      sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, true);
 	    }
 	}
       as_info->num_transactions_processed %= MAX_DIAG_DATA_VALUE;
@@ -2218,9 +2072,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (net_buf->err_code)
     {
-      net_write_error (sock_fd, req_info->client_version,
-		       req_info->driver_info,
-		       cas_msg_header.info_ptr, cas_info_size,
+      net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, net_buf->err_code, NULL);
       fn_ret = FN_CLOSE_CONN;
       goto exit_on_end;
@@ -2229,55 +2081,42 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (cas_send_result_flag && net_buf->data != NULL)
     {
 #ifndef LIBCAS_FOR_JSP
-      cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &=
-	~CAS_INFO_FLAG_MASK_AUTOCOMMIT;
+      cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_AUTOCOMMIT;
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=
 	(as_info->cci_default_autocommit & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
 
       if (cas_shard_flag == ON)
 	{
-	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &=
-	    ~CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN;
+	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN;
 	}
 #if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas<->jdbc info */
       cas_msg_header.info_ptr[CAS_INFO_RESERVED_1] = func_code - 1;
-      cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] =
-	as_info->num_requests_received % 128;
-      prev_cas_info[CAS_INFO_STATUS] =
-	cas_msg_header.info_ptr[CAS_INFO_STATUS];
-      prev_cas_info[CAS_INFO_RESERVED_1] =
-	cas_msg_header.info_ptr[CAS_INFO_RESERVED_1];
-      prev_cas_info[CAS_INFO_RESERVED_2] =
-	cas_msg_header.info_ptr[CAS_INFO_RESERVED_2];
+      cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] = as_info->num_requests_received % 128;
+      prev_cas_info[CAS_INFO_STATUS] = cas_msg_header.info_ptr[CAS_INFO_STATUS];
+      prev_cas_info[CAS_INFO_RESERVED_1] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_1];
+      prev_cas_info[CAS_INFO_RESERVED_2] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_2];
 #endif /* end for debug */
 
 #endif /* !LIBCAS_FOR_JSP */
 
       *(cas_msg_header.msg_body_size_ptr) = htonl (net_buf->data_size);
-      memcpy (net_buf->data, cas_msg_header.msg_body_size_ptr,
-	      NET_BUF_HEADER_MSG_SIZE);
+      memcpy (net_buf->data, cas_msg_header.msg_body_size_ptr, NET_BUF_HEADER_MSG_SIZE);
 
       if (cas_info_size > 0)
 	{
-	  memcpy (net_buf->data + NET_BUF_HEADER_MSG_SIZE,
-		  cas_msg_header.info_ptr, cas_info_size);
+	  memcpy (net_buf->data + NET_BUF_HEADER_MSG_SIZE, cas_msg_header.info_ptr, cas_info_size);
 	}
 
       assert (NET_BUF_CURR_SIZE (net_buf) <= net_buf->alloc_size);
-      if (net_write_stream (sock_fd, net_buf->data,
-			    NET_BUF_CURR_SIZE (net_buf)) < 0)
+      if (net_write_stream (sock_fd, net_buf->data, NET_BUF_CURR_SIZE (net_buf)) < 0)
 	{
-	  cas_log_write_and_end (0, true,
-				 "COMMUNICATION ERROR net_write_stream()");
+	  cas_log_write_and_end (0, true, "COMMUNICATION ERROR net_write_stream()");
 	}
     }
 
-  if (cas_shard_flag == OFF
-      && cas_send_result_flag && net_buf->post_send_file != NULL)
+  if (cas_shard_flag == OFF && cas_send_result_flag && net_buf->post_send_file != NULL)
     {
-      err_code = net_write_from_file (sock_fd,
-				      net_buf->post_file_size,
-				      net_buf->post_send_file);
+      err_code = net_write_from_file (sock_fd, net_buf->post_file_size, net_buf->post_send_file);
       unlink (net_buf->post_send_file);
       if (err_code < 0)
 	{
@@ -2288,13 +2127,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
 #ifndef LIBCAS_FOR_JSP
   if (as_info->reset_flag
-      && ((as_info->con_status != CON_STATUS_IN_TRAN
-	   && as_info->num_holdable_results < 1
-	   && as_info->cas_change_mode == CAS_CHANGE_MODE_AUTO)
-	  || (cas_get_db_connect_status () == -1)))
+      &&
+      ((as_info->con_status != CON_STATUS_IN_TRAN && as_info->num_holdable_results < 1
+	&& as_info->cas_change_mode == CAS_CHANGE_MODE_AUTO) || (cas_get_db_connect_status () == -1)))
     {
-      cas_log_debug (ARG_FILE_LINE,
-		     "process_request: reset_flag && !CON_STATUS_IN_TRAN");
+      cas_log_debug (ARG_FILE_LINE, "process_request: reset_flag && !CON_STATUS_IN_TRAN");
       fn_ret = FN_KEEP_SESS;
       goto exit_on_end;
     }
@@ -2302,9 +2139,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
 exit_on_end:
 #ifndef LIBCAS_FOR_JSP
-  if (cas_shard_flag == ON
-      && as_info->con_status != CON_STATUS_IN_TRAN
-      && as_info->uts_status == UTS_STATUS_BUSY)
+  if (cas_shard_flag == ON && as_info->con_status != CON_STATUS_IN_TRAN && as_info->uts_status == UTS_STATUS_BUSY)
     {
       as_info->uts_status = UTS_STATUS_IDLE;
     }
@@ -2334,8 +2169,7 @@ cas_init ()
   set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
 
   as_pid_file_create (broker_name, as_info->as_id);
-  as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id,
-		     shm_shard_cas_id, shm_as_index, cas_shard_flag);
+  as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id, shm_shard_cas_id, shm_as_index, cas_shard_flag);
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   if (cas_shard_flag == OFF)
@@ -2348,8 +2182,7 @@ cas_init ()
 }
 
 static int
-net_read_process (SOCKET proxy_sock_fd,
-		  MSG_HEADER * client_msg_header, T_REQ_INFO * req_info)
+net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info)
 {
   int ret_value = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
@@ -2400,24 +2233,19 @@ net_read_process (SOCKET proxy_sock_fd,
 	  remained_timeout -= DEFAULT_CHECK_INTERVAL;
 	}
 
-      /*
-         net_read_header error case.
-         case 1 : disconnect with proxy_sock_fd
-         case 2 : CON_STATUS_IN_TRAN && session_timeout
-         case 3 : reset_flag is TRUE
-       */
+      /* 
+       * net_read_header error case. case 1 : disconnect with proxy_sock_fd case 2 : CON_STATUS_IN_TRAN &&
+       * session_timeout case 3 : reset_flag is TRUE */
       if (net_read_header (proxy_sock_fd, client_msg_header) < 0)
 	{
 	  /* if in-transaction state, return network error */
-	  if (as_info->con_status == CON_STATUS_IN_TRAN
-	      || !is_net_timed_out ())
+	  if (as_info->con_status == CON_STATUS_IN_TRAN || !is_net_timed_out ())
 	    {
 	      ret_value = -1;
 	      break;
 	    }
 	  /* if out-of-transaction state, check whether restart is needed */
-	  if (as_info->con_status == CON_STATUS_OUT_TRAN
-	      && is_net_timed_out ())
+	  if (as_info->con_status == CON_STATUS_OUT_TRAN && is_net_timed_out ())
 	    {
 	      if (as_info->reset_flag == TRUE)
 		{
@@ -2427,8 +2255,7 @@ net_read_process (SOCKET proxy_sock_fd,
 
 	      if (restart_is_needed ())
 		{
-		  cas_log_debug (ARG_FILE_LINE, "net_read_process: "
-				 "restart_is_needed()");
+		  cas_log_debug (ARG_FILE_LINE, "net_read_process: " "restart_is_needed()");
 		  ret_value = -1;
 		  break;
 		}
@@ -2493,10 +2320,8 @@ net_read_process (SOCKET proxy_sock_fd,
 
 	  /* This is a real client protocol version */
 	  req_info->client_version = as_info->clt_version;
-	  memcpy (req_info->driver_info, as_info->driver_info,
-		  SRV_CON_CLIENT_INFO_SIZE);
-	  cas_log_write_and_end (0, false, "CLIENT VERSION %s",
-				 as_info->driver_version);
+	  memcpy (req_info->driver_info, as_info->driver_info, SRV_CON_CLIENT_INFO_SIZE);
+	  cas_log_write_and_end (0, false, "CLIENT VERSION %s", as_info->driver_version);
 	}
     }
 
@@ -2506,9 +2331,7 @@ net_read_process (SOCKET proxy_sock_fd,
 }
 
 static int
-net_read_int_keep_con_auto (SOCKET clt_sock_fd,
-			    MSG_HEADER * client_msg_header,
-			    T_REQ_INFO * req_info)
+net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info)
 {
   int ret_value = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
@@ -2542,14 +2365,12 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 	  cas_slow_log_reset (broker_name);
 	}
 
-      if (as_info->con_status != CON_STATUS_IN_TRAN
-	  && as_info->reset_flag == TRUE)
+      if (as_info->con_status != CON_STATUS_IN_TRAN && as_info->reset_flag == TRUE)
 	{
 	  return -1;
 	}
 
-      if (as_info->con_status == CON_STATUS_CLOSE
-	  || as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
+      if (as_info->con_status == CON_STATUS_CLOSE || as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
 	{
 	  break;
 	}
@@ -2563,21 +2384,17 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
       if (net_read_header (clt_sock_fd, client_msg_header) < 0)
 	{
 	  /* if in-transaction state, return network error */
-	  if (as_info->con_status == CON_STATUS_IN_TRAN
-	      || !is_net_timed_out ())
+	  if (as_info->con_status == CON_STATUS_IN_TRAN || !is_net_timed_out ())
 	    {
 	      ret_value = -1;
 	      break;
 	    }
 	  /* if out-of-transaction state, check whether restart is needed */
-	  if (as_info->con_status == CON_STATUS_OUT_TRAN
-	      && is_net_timed_out ())
+	  if (as_info->con_status == CON_STATUS_OUT_TRAN && is_net_timed_out ())
 	    {
 	      if (restart_is_needed ())
 		{
-		  cas_log_debug (ARG_FILE_LINE,
-				 "net_read_int_keep_con_auto: "
-				 "restart_is_needed()");
+		  cas_log_debug (ARG_FILE_LINE, "net_read_int_keep_con_auto: " "restart_is_needed()");
 		  ret_value = -1;
 		  break;
 		}
@@ -2621,8 +2438,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
       gettimeofday (&tran_start_time, NULL);
     }
 
-  if (as_info->con_status == CON_STATUS_CLOSE
-      || as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
+  if (as_info->con_status == CON_STATUS_CLOSE || as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
     {
       ret_value = -1;
     }
@@ -2642,8 +2458,7 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
 }
 
 static int
-net_read_header_keep_con_on (SOCKET clt_sock_fd,
-			     MSG_HEADER * client_msg_header)
+net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header)
 {
   int ret_value = 0;
   int timeout = 0, remained_timeout = 0;
@@ -2669,15 +2484,13 @@ net_read_header_keep_con_on (SOCKET clt_sock_fd,
       if (net_read_header (clt_sock_fd, client_msg_header) < 0)
 	{
 	  /* if in-transaction state, return network error */
-	  if (as_info->con_status == CON_STATUS_IN_TRAN
-	      || !is_net_timed_out ())
+	  if (as_info->con_status == CON_STATUS_IN_TRAN || !is_net_timed_out ())
 	    {
 	      ret_value = -1;
 	      break;
 	    }
 	  /* if out-of-transaction state, check whether restart is needed */
-	  if (as_info->con_status == CON_STATUS_OUT_TRAN
-	      && is_net_timed_out ())
+	  if (as_info->con_status == CON_STATUS_OUT_TRAN && is_net_timed_out ())
 	    {
 	      if (as_info->reset_flag == TRUE)
 		{
@@ -2707,13 +2520,10 @@ set_db_connection_info (void)
 {
   if (as_info->fixed_shard_user)
     {
-      strncpy (as_info->database_user,
-	       shm_appl->shard_conn_info[shm_shard_id].db_user,
-	       SRV_CON_DBUSER_SIZE - 1);
+      strncpy (as_info->database_user, shm_appl->shard_conn_info[shm_shard_id].db_user, SRV_CON_DBUSER_SIZE - 1);
       as_info->database_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
 
-      strncpy (as_info->database_passwd,
-	       shm_appl->shard_conn_info[shm_shard_id].db_password,
+      strncpy (as_info->database_passwd, shm_appl->shard_conn_info[shm_shard_id].db_password,
 	       SRV_CON_DBPASSWD_SIZE - 1);
       as_info->database_passwd[SRV_CON_DBUSER_SIZE - 1] = '\0';
     }
@@ -2721,12 +2531,10 @@ set_db_connection_info (void)
   strncpy (cas_db_user, as_info->database_user, SRV_CON_DBUSER_SIZE - 1);
   cas_db_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
 
-  strncpy (cas_db_passwd, as_info->database_passwd,
-	   SRV_CON_DBPASSWD_SIZE - 1);
+  strncpy (cas_db_passwd, as_info->database_passwd, SRV_CON_DBPASSWD_SIZE - 1);
   cas_db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
 
-  cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s", cas_db_name,
-		 cas_db_user);
+  cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s", cas_db_name, cas_db_user);
 }
 
 static void
@@ -2787,19 +2595,16 @@ set_cas_info_size (void)
 int
 restart_is_needed (void)
 {
-  if (as_info->num_holdable_results > 0
-      || as_info->cas_change_mode == CAS_CHANGE_MODE_KEEP)
+  if (as_info->num_holdable_results > 0 || as_info->cas_change_mode == CAS_CHANGE_MODE_KEEP)
     {
-      /* we do not want to restart the CAS when there are open
-         holdable results or cas_change_mode is CAS_CHANGE_MODE_KEEP */
+      /* we do not want to restart the CAS when there are open holdable results or cas_change_mode is
+       * CAS_CHANGE_MODE_KEEP */
       return 0;
     }
 #if defined(WINDOWS)
   if (shm_appl->use_pdh_flag == TRUE)
     {
-      if ((as_info->pid ==
-	   as_info->pdh_pid)
-	  && (as_info->pdh_workset > shm_appl->appl_server_max_size))
+      if ((as_info->pid == as_info->pdh_pid) && (as_info->pdh_workset > shm_appl->appl_server_max_size))
 	{
 	  return 1;
 	}
@@ -2819,15 +2624,12 @@ restart_is_needed (void)
   int max_process_size;
 
 #if defined(AIX)
-  /* In linux, getsize() returns VSM(55M). but in AIX, getsize() returns
-   * vritual meory size for data(900K). so, the size of cub_cas process exceeds
-   * 'psize_at_start * 2' very easily. the linux's rule to restart cub_cas
-   * is not suit for AIX. In AIX, we use 20M as max_process_size. */
-  max_process_size = (shm_appl->appl_server_max_size > 0) ?
-    shm_appl->appl_server_max_size : 20 * ONE_K;
+  /* In linux, getsize() returns VSM(55M). but in AIX, getsize() returns vritual meory size for data(900K). so, the
+   * size of cub_cas process exceeds 'psize_at_start * 2' very easily. the linux's rule to restart cub_cas is not suit
+   * for AIX. In AIX, we use 20M as max_process_size. */
+  max_process_size = (shm_appl->appl_server_max_size > 0) ? shm_appl->appl_server_max_size : 20 * ONE_K;
 #else
-  max_process_size = (shm_appl->appl_server_max_size > 0) ?
-    shm_appl->appl_server_max_size : (psize_at_start * 2);
+  max_process_size = (shm_appl->appl_server_max_size > 0) ? shm_appl->appl_server_max_size : (psize_at_start * 2);
 #endif
 
   if (as_info->psize > max_process_size)
@@ -2853,17 +2655,11 @@ CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
 
   GetLocalTime (&SystemTime);
 
-  sprintf (DumpFile, "%d-%d-%d %d_%d_%d.dmp",
-	   SystemTime.wYear,
-	   SystemTime.wMonth,
-	   SystemTime.wDay,
-	   SystemTime.wHour, SystemTime.wMinute, SystemTime.wSecond);
+  sprintf (DumpFile, "%d-%d-%d %d_%d_%d.dmp", SystemTime.wYear, SystemTime.wMonth, SystemTime.wDay, SystemTime.wHour,
+	   SystemTime.wMinute, SystemTime.wSecond);
   envvar_bindir_file (DumpPath, MAX_PATH, DumpFile);
 
-  FileHandle = CreateFile (DumpPath,
-			   GENERIC_WRITE,
-			   FILE_SHARE_WRITE,
-			   NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  FileHandle = CreateFile (DumpPath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
   if (FileHandle != INVALID_HANDLE_VALUE)
     {
@@ -2874,12 +2670,9 @@ CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
       MiniDumpExceptionInfo.ExceptionPointers = pException;
       MiniDumpExceptionInfo.ClientPointers = FALSE;
 
-      Success = MiniDumpWriteDump (GetCurrentProcess (),
-				   GetCurrentProcessId (),
-				   FileHandle,
-				   MiniDumpNormal,
-				   (pException) ?
-				   &MiniDumpExceptionInfo : NULL, NULL, NULL);
+      Success =
+	MiniDumpWriteDump (GetCurrentProcess (), GetCurrentProcessId (), FileHandle, MiniDumpNormal,
+			   (pException) ? &MiniDumpExceptionInfo : NULL, NULL, NULL);
     }
 
   CloseHandle (FileHandle);
@@ -2944,11 +2737,8 @@ cas_init_shm (void)
     }
 
   parse_int (&as_shm_key, p, 10);
-  SHARD_ERR ("<CAS> APPL_SERVER_SHM_KEY_STR:[%d:%x]\n", as_shm_key,
-	     as_shm_key);
-  shm_appl =
-    (T_SHM_APPL_SERVER *) uw_shm_open (as_shm_key, SHM_APPL_SERVER,
-				       SHM_MODE_ADMIN);
+  SHARD_ERR ("<CAS> APPL_SERVER_SHM_KEY_STR:[%d:%x]\n", as_shm_key, as_shm_key);
+  shm_appl = (T_SHM_APPL_SERVER *) uw_shm_open (as_shm_key, SHM_APPL_SERVER, SHM_MODE_ADMIN);
 
   if (shm_appl == NULL)
     {
@@ -3040,18 +2830,14 @@ set_db_parameter (void)
     {
       ux_set_lock_timeout (lock_timeout);
 
-      cas_log_write_and_end (0, false,
-			     "set_db_parameter lock_timeout %d",
-			     lock_timeout);
+      cas_log_write_and_end (0, false, "set_db_parameter lock_timeout %d", lock_timeout);
     }
 
   if (cur_isolation_level != isolation_level)
     {
       ux_set_isolation_level (isolation_level, NULL);
 
-      cas_log_write_and_end (0, false,
-			     "set_db_parameter isolation_level %d",
-			     isolation_level);
+      cas_log_write_and_end (0, false, "set_db_parameter isolation_level %d", isolation_level);
     }
 }
 #endif /* !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) */

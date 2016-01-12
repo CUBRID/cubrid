@@ -32,8 +32,7 @@
 #include "connection_less.h"
 
 static unsigned short css_make_entry_id (CSS_MAP_ENTRY * anchor);
-static CSS_MAP_ENTRY *css_get_queued_entry (char *host,
-					    CSS_MAP_ENTRY * anchor);
+static CSS_MAP_ENTRY *css_get_queued_entry (char *host, CSS_MAP_ENTRY * anchor);
 
 /*
  * css_make_eid() - create an eid which is a combination of the entry id and
@@ -118,8 +117,7 @@ css_make_entry_id (CSS_MAP_ENTRY * anchor)
  *   anchor(out): map entry anchor
  */
 CSS_MAP_ENTRY *
-css_queue_connection (CSS_CONN_ENTRY * conn, const char *host,
-		      CSS_MAP_ENTRY ** anchor)
+css_queue_connection (CSS_CONN_ENTRY * conn, const char *host, CSS_MAP_ENTRY ** anchor)
 {
   CSS_MAP_ENTRY *map_entry_p;
 
@@ -185,13 +183,11 @@ css_get_queued_entry (char *host, CSS_MAP_ENTRY * anchor)
  *   anchor(in/out): map entry anchor
  */
 void
-css_remove_queued_connection_by_entry (CSS_MAP_ENTRY * entry,
-				       CSS_MAP_ENTRY ** anchor)
+css_remove_queued_connection_by_entry (CSS_MAP_ENTRY * entry, CSS_MAP_ENTRY ** anchor)
 {
   CSS_MAP_ENTRY *map_entry_p, *prev_map_entry_p;
 
-  for (map_entry_p = *anchor, prev_map_entry_p = NULL;
-       map_entry_p;
+  for (map_entry_p = *anchor, prev_map_entry_p = NULL; map_entry_p;
        prev_map_entry_p = map_entry_p, map_entry_p = map_entry_p->next)
     {
       if (entry == map_entry_p)
@@ -276,8 +272,7 @@ css_return_entry_from_conn (CSS_CONN_ENTRY * conn, CSS_MAP_ENTRY * anchor)
  *       This is for use by servers ONLY (note lack of host name).
  */
 unsigned int
-css_return_eid_from_conn (CSS_CONN_ENTRY * conn, CSS_MAP_ENTRY ** anchor,
-			  unsigned short rid)
+css_return_eid_from_conn (CSS_CONN_ENTRY * conn, CSS_MAP_ENTRY ** anchor, unsigned short rid)
 {
   CSS_MAP_ENTRY *map_entry_p;
 

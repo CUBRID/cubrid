@@ -49,38 +49,26 @@
     }                                      \
   } while(0)
 
-static int conn_end_tran (BH_INTERFACE * bh_interface,
-			  CI_CONN_STRUCTURE * pconn, bool commit);
-static int stmt_release_children (BH_INTERFACE * bh_interface,
-				  CI_STMT_STRUCTURE * pstmt,
-				  bool resultset_only);
-static int stmt_bind_pmeta_handle (BH_INTERFACE * bh_interface,
-				   CI_STMT_STRUCTURE * pstmt,
+static int conn_end_tran (BH_INTERFACE * bh_interface, CI_CONN_STRUCTURE * pconn, bool commit);
+static int stmt_release_children (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, bool resultset_only);
+static int stmt_bind_pmeta_handle (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt,
 				   CI_PARAM_META_STRUCTURE ** outmeta);
 static int api_rmeta_get_count (API_RESULTSET_META * impl, int *count);
-static int api_rmeta_get_info (API_RESULTSET_META * impl, int index,
-			       CI_RMETA_INFO_TYPE type, void *arg,
-			       size_t size);
-static int api_rs_get_resultset_metadata (API_RESULTSET * res,
-					  API_RESULTSET_META ** rimpl);
-static int api_rs_fetch (API_RESULTSET * res, int offset,
-			 CI_FETCH_POSITION pos);
+static int api_rmeta_get_info (API_RESULTSET_META * impl, int index, CI_RMETA_INFO_TYPE type, void *arg, size_t size);
+static int api_rs_get_resultset_metadata (API_RESULTSET * res, API_RESULTSET_META ** rimpl);
+static int api_rs_fetch (API_RESULTSET * res, int offset, CI_FETCH_POSITION pos);
 static int api_rs_fetch_tell (API_RESULTSET * res, int *offset);
 static int api_rs_clear_updates (API_RESULTSET * res);
 static int api_rs_delete_row (API_RESULTSET * res);
-static int api_rs_get_value (API_RESULTSET * res, int index, CI_TYPE type,
-			     void *addr, size_t len, size_t * outlen,
+static int api_rs_get_value (API_RESULTSET * res, int index, CI_TYPE type, void *addr, size_t len, size_t * outlen,
 			     bool * is_null);
-static int api_rs_get_value_by_name (API_RESULTSET * res, const char *name,
-				     CI_TYPE type, void *addr, size_t len,
+static int api_rs_get_value_by_name (API_RESULTSET * res, const char *name, CI_TYPE type, void *addr, size_t len,
 				     size_t * outlen, bool * isnull);
-static int api_rs_update_value (API_RESULTSET * res, int index,
-				CI_TYPE type, void *addr, size_t len);
+static int api_rs_update_value (API_RESULTSET * res, int index, CI_TYPE type, void *addr, size_t len);
 static int api_rs_apply_row (API_RESULTSET * res);
 static void api_rs_destroy (API_RESULTSET * res);
 static int get_col_count (DB_QUERY_TYPE * query_type);
-static int create_resultset_value_table (int num_col, BIND_HANDLE conn,
-					 CI_RESULTSET_STRUCTURE * prs,
+static int create_resultset_value_table (int num_col, BIND_HANDLE conn, CI_RESULTSET_STRUCTURE * prs,
 					 VALUE_BIND_TABLE ** value_table);
 static void conn_destroyf (BH_BIND * ptr);
 static void stmt_destroyf (BH_BIND * ptr);
@@ -94,78 +82,42 @@ static int init_resultset_structure (CI_RESULTSET_STRUCTURE * prs);
 static int init_rmeta_structure (CI_RESULTSET_META_STRUCTURE * prmeta);
 static int init_pmeta_structure (CI_PARAM_META_STRUCTURE * ppmeta);
 static int init_batch_rs_structure (CI_BATCH_RESULT_STRUCTURE * pbrs);
-static int
-stmt_exec_immediate_internal (BH_INTERFACE * bh_interface,
-			      CI_STMT_STRUCTURE * pstmt, char *sql,
-			      size_t len, CI_RESULTSET * rs, int *r);
-static int
-stmt_prepare_internal (BH_INTERFACE * bh_interface,
-		       CI_STMT_STRUCTURE * pstmt, const char *sql,
-		       size_t len);
-static int
-stmt_get_parameter_internal (BH_INTERFACE * bh_interface,
-			     CI_STMT_STRUCTURE * pstmt, int index,
-			     CI_TYPE type, void *addr, size_t len,
-			     size_t * outlen, bool * isnull);
-static int
-stmt_set_parameter_internal (BH_INTERFACE * bh_interface,
-			     CI_STMT_STRUCTURE * pstmt, int index,
-			     CI_TYPE type, void *val, size_t size);
-static int
-stmt_reset_session_and_parse (CI_STMT_STRUCTURE * pstmt, const char *sql,
-			      size_t len);
-static int
-stmt_exec_internal (BH_INTERFACE * bh_interface,
-		    CI_STMT_STRUCTURE * pstmt, CI_RESULTSET * rs, int *r);
-static int
-stmt_get_resultset_metadata_internal (BH_INTERFACE * bh_interface,
-				      CI_STMT_STRUCTURE * pstmt,
-				      CI_RESULTSET_METADATA * r);
+static int stmt_exec_immediate_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, char *sql, size_t len,
+					 CI_RESULTSET * rs, int *r);
+static int stmt_prepare_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, const char *sql, size_t len);
+static int stmt_get_parameter_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, int index, CI_TYPE type,
+					void *addr, size_t len, size_t * outlen, bool * isnull);
+static int stmt_set_parameter_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, int index, CI_TYPE type,
+					void *val, size_t size);
+static int stmt_reset_session_and_parse (CI_STMT_STRUCTURE * pstmt, const char *sql, size_t len);
+static int stmt_exec_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, CI_RESULTSET * rs, int *r);
+static int stmt_get_resultset_metadata_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt,
+						 CI_RESULTSET_METADATA * r);
 static API_RESULTSET_META_IFS *get_query_rmeta_ifs (void);
 static API_RESULTSET_IFS *get_query_rs_ifs (void);
-static int
-stmt_bind_resultset_meta_handle (BH_INTERFACE * bh_interface,
-				 CI_STMT_STRUCTURE * pstmt, int stmt_idx,
-				 CI_RESULTSET_META_STRUCTURE ** outmeta);
-static int
-res_fetch_internal (BH_INTERFACE * bh_interface,
-		    CI_RESULTSET_STRUCTURE * prs, int offset,
-		    CI_FETCH_POSITION pos);
-static int
-res_delete_row_internal (BH_INTERFACE * bh_interface,
-			 CI_RESULTSET_STRUCTURE * prs);
+static int stmt_bind_resultset_meta_handle (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, int stmt_idx,
+					    CI_RESULTSET_META_STRUCTURE ** outmeta);
+static int res_fetch_internal (BH_INTERFACE * bh_interface, CI_RESULTSET_STRUCTURE * prs, int offset,
+			       CI_FETCH_POSITION pos);
+static int res_delete_row_internal (BH_INTERFACE * bh_interface, CI_RESULTSET_STRUCTURE * prs);
 static int rs_get_index_by_name (void *impl, const char *name, int *ri);
 static int rs_get_db_value (void *impl, int index, DB_VALUE * val);
 static int rs_set_db_value (void *impl, int index, DB_VALUE * val);
 static int rs_init_domain (void *impl, int index, DB_VALUE * val);
-static int
-pmeta_get_info_internal (BH_INTERFACE * bh_interface,
-			 CI_PARAM_META_STRUCTURE * ppmeta, int index,
-			 CI_PMETA_INFO_TYPE type, void *arg, size_t size);
-static int
-stmt_add_batch_param (CI_STMT_STRUCTURE * pstmt, DB_VALUE * val, int num_val);
-static int
-stmt_exec_prepared_batch_internal (BH_INTERFACE * bh_interface,
-				   CI_STMT_STRUCTURE * pstmt,
-				   CI_BATCH_RESULT * br);
-static int
-stmt_exec_batch_query_internal (BH_INTERFACE * bh_interface,
-				CI_STMT_STRUCTURE * pstmt,
-				CI_BATCH_RESULT * br);
-static int
-conn_restart_client (CI_CONN_STRUCTURE * pconn, const char *program,
-		     int print_version, const char *volume, short port);
-static int get_connection_opool (COMMON_API_STRUCTURE * pst,
-				 API_OBJECT_RESULTSET_POOL ** opool);
-static int
-stmt_batch_alloc_and_bind_new_result (BH_INTERFACE * bh_interface,
-				      CI_STMT_STRUCTURE * pstmt,
-				      CI_BATCH_RESULT_STRUCTURE **
-				      out_pbrs, CI_BATCH_RESULT * outhbr);
-static int stmt_batch_result_free (BH_INTERFACE * bh_interface,
-				   CI_STMT_STRUCTURE * pstmt);
-static int stmt_add_batch_string (CI_STMT_STRUCTURE * pstmt, const char *sql,
-				  size_t len);
+static int pmeta_get_info_internal (BH_INTERFACE * bh_interface, CI_PARAM_META_STRUCTURE * ppmeta, int index,
+				    CI_PMETA_INFO_TYPE type, void *arg, size_t size);
+static int stmt_add_batch_param (CI_STMT_STRUCTURE * pstmt, DB_VALUE * val, int num_val);
+static int stmt_exec_prepared_batch_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt,
+					      CI_BATCH_RESULT * br);
+static int stmt_exec_batch_query_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt,
+					   CI_BATCH_RESULT * br);
+static int conn_restart_client (CI_CONN_STRUCTURE * pconn, const char *program, int print_version, const char *volume,
+				short port);
+static int get_connection_opool (COMMON_API_STRUCTURE * pst, API_OBJECT_RESULTSET_POOL ** opool);
+static int stmt_batch_alloc_and_bind_new_result (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt,
+						 CI_BATCH_RESULT_STRUCTURE ** out_pbrs, CI_BATCH_RESULT * outhbr);
+static int stmt_batch_result_free (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt);
+static int stmt_add_batch_string (CI_STMT_STRUCTURE * pstmt, const char *sql, size_t len);
 static int stmt_make_error_info (CI_STMT_STRUCTURE * pstmt, int statement_id);
 static int stmt_remove_error_info (CI_STMT_STRUCTURE * pstmt);
 
@@ -322,8 +274,7 @@ stmt_destroyf (BH_BIND * ptr)
 	{
 	  bool is_prepared_batch;
 	  CI_BATCH_DATA *batch_data, *tmp;
-	  is_prepared_batch =
-	    (pstmt->stmt_status & CI_STMT_STATUS_PREPARED) ? true : false;
+	  is_prepared_batch = (pstmt->stmt_status & CI_STMT_STATUS_PREPARED) ? true : false;
 
 	  batch_data = pstmt->batch_data;
 	  for (i = 0; i < pstmt->batch_count && batch_data; i++)
@@ -335,8 +286,7 @@ stmt_destroyf (BH_BIND * ptr)
 		      DB_VALUE *val;
 		      param_count = pstmt->session->parser->host_var_count;
 
-		      for (i = 0, val = batch_data->data.val; i < param_count;
-			   i++, val++)
+		      for (i = 0, val = batch_data->data.val; i < param_count; i++, val++)
 			{
 			  pr_clear_value (val);
 			}
@@ -405,8 +355,7 @@ rs_destroyf (BH_BIND * ptr)
 	}
 
       bh_interface = prs->bh_interface;
-      bh_interface->bind_get_parent (bh_interface, (BH_BIND *) prs,
-				     (BH_BIND **) & pstmt);
+      bh_interface->bind_get_parent (bh_interface, (BH_BIND *) prs, (BH_BIND **) & pstmt);
       if (pstmt != NULL)
 	{
 	  int retval;
@@ -420,23 +369,16 @@ rs_destroyf (BH_BIND * ptr)
 	      pstmt->rs_info[stmt_index].rs = NULL;
 	    }
 
-	  if ((prsmeta != NULL)
-	      && !(pstmt->stmt_status | CI_STMT_STATUS_PREPARED))
+	  if ((prsmeta != NULL) && !(pstmt->stmt_status | CI_STMT_STATUS_PREPARED))
 	    {
-	      retval = bh_interface->bind_to_handle (bh_interface,
-						     (BH_BIND *) prsmeta,
-						     ((BIND_HANDLE *)
-						      & hrsmeta));
+	      retval = bh_interface->bind_to_handle (bh_interface, (BH_BIND *) prsmeta, ((BIND_HANDLE *) & hrsmeta));
 	      if (retval == NO_ERROR)
 		{
-		  retval = bh_interface->destroy_handle (bh_interface,
-							 (BIND_HANDLE)
-							 hrsmeta);
+		  retval = bh_interface->destroy_handle (bh_interface, (BIND_HANDLE) hrsmeta);
 		  pstmt->rs_info[stmt_index].rsmeta = NULL;
 		}
 	    }
-	  if (pstmt->pconn->opt.autocommit
-	      && pstmt->pconn->need_defered_commit)
+	  if (pstmt->pconn->opt.autocommit && pstmt->pconn->need_defered_commit)
 	    {
 	      int i, rs_count;
 
@@ -571,11 +513,8 @@ init_stmt_structure (CI_STMT_STRUCTURE * pstmt)
   assert (pstmt);
 
   memset (pstmt, '\0', sizeof (CI_STMT_STRUCTURE));
-  /* This will set every option to zero(false)
-   * pstmt->opt.hold_cursors_over_commit = 0;
-   * pstmt->opt.updatable_result = 0;
-   * pstmt->opt.get_generated_key = 0;
-   */
+  /* This will set every option to zero(false) pstmt->opt.hold_cursors_over_commit = 0; pstmt->opt.updatable_result =
+   * 0; pstmt->opt.get_generated_key = 0; */
 
   pstmt->bind.dtor = stmt_destroyf;
   pstmt->handle_type = HANDLE_TYPE_STATEMENT;
@@ -660,8 +599,7 @@ init_batch_rs_structure (CI_BATCH_RESULT_STRUCTURE * pbrs)
  *    rimpl():
  */
 static int
-api_rs_get_resultset_metadata (API_RESULTSET * res,
-			       API_RESULTSET_META ** rimpl)
+api_rs_get_resultset_metadata (API_RESULTSET * res, API_RESULTSET_META ** rimpl)
 {
   CI_RESULTSET_STRUCTURE *prs;
   CI_RESULTSET_META_STRUCTURE *prsmeta;
@@ -681,9 +619,7 @@ api_rs_get_resultset_metadata (API_RESULTSET * res,
       bh_interface = prs->bh_interface;
 
       /* 2. find prsmeta from pstmt structure's rs_info */
-      retval =
-	bh_interface->bind_get_parent (bh_interface, (BH_BIND *) prs,
-				       (BH_BIND **) & pstmt);
+      retval = bh_interface->bind_get_parent (bh_interface, (BH_BIND *) prs, (BH_BIND **) & pstmt);
 
       if (retval != NO_ERROR)
 	{
@@ -701,11 +637,8 @@ api_rs_get_resultset_metadata (API_RESULTSET * res,
 
       if (prsmeta == NULL)
 	{
-	  /* 3. there is no prsmeta structure,
-	   * so now we will make this and return */
-	  retval = stmt_bind_resultset_meta_handle (bh_interface,
-						    pstmt, stmt_idx,
-						    &prsmeta);
+	  /* 3. there is no prsmeta structure, so now we will make this and return */
+	  retval = stmt_bind_resultset_meta_handle (bh_interface, pstmt, stmt_idx, &prsmeta);
 	  if (retval != NO_ERROR)
 	    {
 	      return retval;
@@ -803,9 +736,7 @@ api_rs_clear_updates (API_RESULTSET * res)
       ER_SET_AND_RETURN (ER_INTERFACE_ROW_IS_DELETED);
     }
 
-  retval =
-    prs->bh_interface->bind_get_parent (prs->bh_interface, (BH_BIND *) prs,
-					(BH_BIND **) & pstmt);
+  retval = prs->bh_interface->bind_get_parent (prs->bh_interface, (BH_BIND *) prs, (BH_BIND **) & pstmt);
 
   if (retval != NO_ERROR)
     {
@@ -850,9 +781,7 @@ api_rs_delete_row (API_RESULTSET * res)
       ER_SET_AND_RETURN (ER_INTERFACE_ROW_IS_DELETED);
     }
 
-  retval =
-    prs->bh_interface->bind_get_parent (prs->bh_interface, (BH_BIND *) prs,
-					(BH_BIND **) & pstmt);
+  retval = prs->bh_interface->bind_get_parent (prs->bh_interface, (BH_BIND *) prs, (BH_BIND **) & pstmt);
 
   if (retval != NO_ERROR)
     {
@@ -886,8 +815,7 @@ api_rs_delete_row (API_RESULTSET * res)
  *    is_null():
  */
 static int
-api_rs_get_value (API_RESULTSET * res, int index, CI_TYPE type,
-		  void *addr, size_t len, size_t * outlen, bool * is_null)
+api_rs_get_value (API_RESULTSET * res, int index, CI_TYPE type, void *addr, size_t len, size_t * outlen, bool * is_null)
 {
   int retval;
   CI_RESULTSET_STRUCTURE *prs;
@@ -904,9 +832,7 @@ api_rs_get_value (API_RESULTSET * res, int index, CI_TYPE type,
       ER_SET_AND_RETURN (ER_INTERFACE_ROW_IS_DELETED);
     }
 
-  retval =
-    prs->value_table->ifs->get_value (prs->value_table, index, type, addr,
-				      len, outlen, is_null);
+  retval = prs->value_table->ifs->get_value (prs->value_table, index, type, addr, len, outlen, is_null);
 
   return retval;
 }
@@ -923,9 +849,8 @@ api_rs_get_value (API_RESULTSET * res, int index, CI_TYPE type,
  *    isnull():
  */
 static int
-api_rs_get_value_by_name (API_RESULTSET * res, const char *name,
-			  CI_TYPE type, void *addr, size_t len,
-			  size_t * outlen, bool * isnull)
+api_rs_get_value_by_name (API_RESULTSET * res, const char *name, CI_TYPE type, void *addr, size_t len, size_t * outlen,
+			  bool * isnull)
 {
   int retval;
   CI_RESULTSET_STRUCTURE *prs;
@@ -940,9 +865,7 @@ api_rs_get_value_by_name (API_RESULTSET * res, const char *name,
       ER_SET_AND_RETURN (ER_INTERFACE_ROW_IS_DELETED);
     }
 
-  retval =
-    prs->value_table->ifs->get_value_by_name (prs->value_table, name, type,
-					      addr, len, outlen, isnull);
+  retval = prs->value_table->ifs->get_value_by_name (prs->value_table, name, type, addr, len, outlen, isnull);
   return retval;
 }
 
@@ -956,8 +879,7 @@ api_rs_get_value_by_name (API_RESULTSET * res, const char *name,
  *    len():
  */
 static int
-api_rs_update_value (API_RESULTSET * res, int index,
-		     CI_TYPE type, void *addr, size_t len)
+api_rs_update_value (API_RESULTSET * res, int index, CI_TYPE type, void *addr, size_t len)
 {
   int retval;
   CI_RESULTSET_STRUCTURE *prs;
@@ -972,9 +894,7 @@ api_rs_update_value (API_RESULTSET * res, int index,
       ER_SET_AND_RETURN (ER_INTERFACE_ROW_IS_DELETED);
     }
 
-  retval =
-    prs->bh_interface->bind_get_parent (prs->bh_interface, (BH_BIND *) prs,
-					(BH_BIND **) & pstmt);
+  retval = prs->bh_interface->bind_get_parent (prs->bh_interface, (BH_BIND *) prs, (BH_BIND **) & pstmt);
 
   if (retval != NO_ERROR)
     {
@@ -989,9 +909,7 @@ api_rs_update_value (API_RESULTSET * res, int index,
   /* convert to zero based index */
   index--;
 
-  retval =
-    prs->value_table->ifs->set_value (prs->value_table, index, type, addr,
-				      len);
+  retval = prs->value_table->ifs->set_value (prs->value_table, index, type, addr, len);
 
   if (retval == NO_ERROR)
     {
@@ -1027,9 +945,7 @@ api_rs_apply_row (API_RESULTSET * res)
       return NO_ERROR;
     }
 
-  retval =
-    prs->bh_interface->bind_get_parent (prs->bh_interface, (BH_BIND *) prs,
-					(BH_BIND **) & pstmt);
+  retval = prs->bh_interface->bind_get_parent (prs->bh_interface, (BH_BIND *) prs, (BH_BIND **) & pstmt);
 
   if (retval != NO_ERROR)
     {
@@ -1087,8 +1003,7 @@ api_rmeta_get_count (API_RESULTSET_META * impl, int *count)
  *    size():
  */
 static int
-api_rmeta_get_info (API_RESULTSET_META * impl, int index,
-		    CI_RMETA_INFO_TYPE type, void *arg, size_t size)
+api_rmeta_get_info (API_RESULTSET_META * impl, int index, CI_RMETA_INFO_TYPE type, void *arg, size_t size)
 {
   CI_RESULTSET_META_STRUCTURE *prsmeta;
   DB_QUERY_TYPE *query_type;
@@ -1233,8 +1148,7 @@ api_rmeta_get_info (API_RESULTSET_META * impl, int index,
 	data = (int *) arg;
 	if (query_type->src_domain && query_type->src_domain->class_mop)
 	  {
-	    retval = au_fetch_class (query_type->src_domain->class_mop,
-				     &class, AU_FETCH_READ, AU_SELECT);
+	    retval = au_fetch_class (query_type->src_domain->class_mop, &class, AU_FETCH_READ, AU_SELECT);
 	    if (retval == NO_ERROR)
 	      {
 		att = classobj_find_attribute (class, query_type->name, 0);
@@ -1260,8 +1174,7 @@ api_rmeta_get_info (API_RESULTSET_META * impl, int index,
 	data = (int *) arg;
 	if (query_type->src_domain && query_type->src_domain->class_mop)
 	  {
-	    retval = au_fetch_class (query_type->src_domain->class_mop,
-				     &class, AU_FETCH_READ, AU_SELECT);
+	    retval = au_fetch_class (query_type->src_domain->class_mop, &class, AU_FETCH_READ, AU_SELECT);
 	    if (retval == NO_ERROR)
 	      {
 		att = classobj_find_attribute (class, query_type->name, 0);
@@ -1287,9 +1200,7 @@ api_rmeta_get_info (API_RESULTSET_META * impl, int index,
 	data = (int *) arg;
 
 	bh_interface = prsmeta->bh_interface;
-	retval = bh_interface->bind_get_parent (bh_interface,
-						(BH_BIND *) prsmeta,
-						(BH_BIND **) & pstmt);
+	retval = bh_interface->bind_get_parent (bh_interface, (BH_BIND *) prsmeta, (BH_BIND **) & pstmt);
 	if (retval != NO_ERROR)
 	  {
 	    *data = 0;
@@ -1307,8 +1218,8 @@ api_rmeta_get_info (API_RESULTSET_META * impl, int index,
 }
 
 static int
-stmt_exec_one_statement (BH_INTERFACE * bh_interface, int stmt_idx,
-			 CI_STMT_STRUCTURE * pstmt, CI_RESULTSET * rs, int *r)
+stmt_exec_one_statement (BH_INTERFACE * bh_interface, int stmt_idx, CI_STMT_STRUCTURE * pstmt, CI_RESULTSET * rs,
+			 int *r)
 {
   CI_RESULTSET hresult;
   CI_RESULTSET_STRUCTURE *rs_ptr;
@@ -1318,8 +1229,7 @@ stmt_exec_one_statement (BH_INTERFACE * bh_interface, int stmt_idx,
   int retval;
   CI_CONNECTION conn;
 
-  bh_interface->bind_to_handle (bh_interface, (BH_BIND *) pstmt->pconn,
-				&conn);
+  bh_interface->bind_to_handle (bh_interface, (BH_BIND *) pstmt->pconn, &conn);
 
   statement_id = db_compile_statement_local (session);
   if (statement_id < 0)
@@ -1331,8 +1241,7 @@ stmt_exec_one_statement (BH_INTERFACE * bh_interface, int stmt_idx,
 
       stmt_make_error_info (pstmt, statement_id);
 
-      if (pstmt->opt.exec_continue_on_error
-	  && statement_id != ER_IT_EMPTY_STATEMENT)
+      if (pstmt->opt.exec_continue_on_error && statement_id != ER_IT_EMPTY_STATEMENT)
 	{
 	  pstmt->rs_info[stmt_idx].metainfo.affected_row = -1;
 
@@ -1344,13 +1253,11 @@ stmt_exec_one_statement (BH_INTERFACE * bh_interface, int stmt_idx,
 	}
     }
 #if defined(CS_MODE)
-  session->parser->exec_mode =
-    (pstmt->opt.async_query) ? ASYNC_EXEC : SYNC_EXEC;
+  session->parser->exec_mode = (pstmt->opt.async_query) ? ASYNC_EXEC : SYNC_EXEC;
 #else
   session->parser->exec_mode = SYNC_EXEC;
 #endif
-  pstmt->rs_info[stmt_idx].metainfo.sql_type =
-    db_get_statement_type (session, stmt_idx + 1);
+  pstmt->rs_info[stmt_idx].metainfo.sql_type = db_get_statement_type (session, stmt_idx + 1);
   if (HAS_RESULT (pstmt->rs_info[stmt_idx].metainfo.sql_type))
     {
       pstmt->rs_info[stmt_idx].metainfo.has_result = true;
@@ -1364,16 +1271,14 @@ stmt_exec_one_statement (BH_INTERFACE * bh_interface, int stmt_idx,
       pstmt->pconn->need_immediate_commit = true;
     }
 
-  retval =
-    db_execute_and_keep_statement (session, statement_id, &db_q_result);
+  retval = db_execute_and_keep_statement (session, statement_id, &db_q_result);
   if (retval >= 0)
     {
       affected_row = retval;
 
       if (pstmt->rs_info[stmt_idx].metainfo.has_result == true)
 	{
-	  rs_ptr = (CI_RESULTSET_STRUCTURE *)
-	    malloc (sizeof (CI_RESULTSET_STRUCTURE));
+	  rs_ptr = (CI_RESULTSET_STRUCTURE *) malloc (sizeof (CI_RESULTSET_STRUCTURE));
 
 	  if (rs_ptr == NULL)
 	    {
@@ -1384,20 +1289,8 @@ stmt_exec_one_statement (BH_INTERFACE * bh_interface, int stmt_idx,
 	  rs_ptr->result = db_q_result;
 	  rs_ptr->stmt_idx = stmt_idx;
 	  rs_ptr->bh_interface = bh_interface;
-	  retval = create_resultset_value_table (db_q_result->col_cnt,
-						 (BIND_HANDLE) conn,
-						 rs_ptr,
-						 &(rs_ptr->value_table));
-
-	  if (retval != NO_ERROR)
-	    {
-	      free (rs_ptr);
-	      ER_SET_AND_RETURN (retval);
-	    }
-
 	  retval =
-	    bh_interface->alloc_handle (bh_interface, (BH_BIND *) rs_ptr,
-					&hresult);
+	    create_resultset_value_table (db_q_result->col_cnt, (BIND_HANDLE) conn, rs_ptr, &(rs_ptr->value_table));
 
 	  if (retval != NO_ERROR)
 	    {
@@ -1405,9 +1298,15 @@ stmt_exec_one_statement (BH_INTERFACE * bh_interface, int stmt_idx,
 	      ER_SET_AND_RETURN (retval);
 	    }
 
-	  retval = bh_interface->bind_graft (bh_interface,
-					     (BH_BIND *) rs_ptr,
-					     (BH_BIND *) pstmt);
+	  retval = bh_interface->alloc_handle (bh_interface, (BH_BIND *) rs_ptr, &hresult);
+
+	  if (retval != NO_ERROR)
+	    {
+	      free (rs_ptr);
+	      ER_SET_AND_RETURN (retval);
+	    }
+
+	  retval = bh_interface->bind_graft (bh_interface, (BH_BIND *) rs_ptr, (BH_BIND *) pstmt);
 
 	  if (retval != NO_ERROR)
 	    {
@@ -1459,9 +1358,8 @@ stmt_exec_one_statement (BH_INTERFACE * bh_interface, int stmt_idx,
  *    r():
  */
 static int
-stmt_exec_immediate_internal (BH_INTERFACE * bh_interface,
-			      CI_STMT_STRUCTURE * pstmt, char *sql,
-			      size_t len, CI_RESULTSET * rs, int *r)
+stmt_exec_immediate_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, char *sql, size_t len,
+			      CI_RESULTSET * rs, int *r)
 {
   DB_SESSION *session;
   int retval, i;
@@ -1486,11 +1384,9 @@ stmt_exec_immediate_internal (BH_INTERFACE * bh_interface,
 
   session = pstmt->session;
 
-  pstmt->rs_info = (STMT_RESULT_INFO *)
-    malloc (sizeof (STMT_RESULT_INFO) * session->dimension);
+  pstmt->rs_info = (STMT_RESULT_INFO *) malloc (sizeof (STMT_RESULT_INFO) * session->dimension);
 
-  memset (pstmt->rs_info, '\0',
-	  sizeof (STMT_RESULT_INFO) * session->dimension);
+  memset (pstmt->rs_info, '\0', sizeof (STMT_RESULT_INFO) * session->dimension);
 
   if (!pstmt->rs_info)
     {
@@ -1505,9 +1401,7 @@ stmt_exec_immediate_internal (BH_INTERFACE * bh_interface,
     {
       for (i = 0; i < session->dimension; i++)
 	{
-	  retval =
-	    stmt_exec_one_statement (bh_interface, i, pstmt,
-				     &current_rs, &current_r);
+	  retval = stmt_exec_one_statement (bh_interface, i, pstmt, &current_rs, &current_r);
 
 	  if (i == 0)
 	    {
@@ -1546,8 +1440,7 @@ stmt_exec_immediate_internal (BH_INTERFACE * bh_interface,
  *    len():
  */
 static int
-stmt_prepare_internal (BH_INTERFACE * bh_interface,
-		       CI_STMT_STRUCTURE * pstmt, const char *sql, size_t len)
+stmt_prepare_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, const char *sql, size_t len)
 {
   int retval, i, host_var_count;
   DB_SESSION *session;
@@ -1565,8 +1458,7 @@ stmt_prepare_internal (BH_INTERFACE * bh_interface,
 
   pstmt->current_rs_idx = 0;
 
-  pstmt->rs_info = (STMT_RESULT_INFO *)
-    malloc (sizeof (STMT_RESULT_INFO) * session->dimension);
+  pstmt->rs_info = (STMT_RESULT_INFO *) malloc (sizeof (STMT_RESULT_INFO) * session->dimension);
 
   if (!pstmt->rs_info)
     {
@@ -1589,10 +1481,8 @@ stmt_prepare_internal (BH_INTERFACE * bh_interface,
 	      return statement_id;
 	    }
 
-	  pstmt->rs_info[i].metainfo.sql_type =
-	    db_get_statement_type (session, i + 1);
-	  pstmt->rs_info[i].metainfo.has_result =
-	    (HAS_RESULT (pstmt->rs_info[i].metainfo.sql_type)) ? true : false;
+	  pstmt->rs_info[i].metainfo.sql_type = db_get_statement_type (session, i + 1);
+	  pstmt->rs_info[i].metainfo.has_result = (HAS_RESULT (pstmt->rs_info[i].metainfo.sql_type)) ? true : false;
 	}
 
       host_var_count = pstmt->session->parser->host_var_count;
@@ -1617,10 +1507,8 @@ stmt_prepare_internal (BH_INTERFACE * bh_interface,
 
       if (host_var_count != 0)
 	{
-	  pstmt->param_val =
-	    (DB_VALUE *) malloc (sizeof (DB_VALUE) * host_var_count);
-	  pstmt->param_value_is_set =
-	    (bool *) malloc (sizeof (bool) * host_var_count);
+	  pstmt->param_val = (DB_VALUE *) malloc (sizeof (DB_VALUE) * host_var_count);
+	  pstmt->param_value_is_set = (bool *) malloc (sizeof (bool) * host_var_count);
 
 	  if (!(pstmt->param_val) || !(pstmt->param_value_is_set))
 	    {
@@ -1628,8 +1516,7 @@ stmt_prepare_internal (BH_INTERFACE * bh_interface,
 	    }
 
 	  memset (pstmt->param_val, '\0', sizeof (pstmt->param_val));
-	  memset (pstmt->param_value_is_set, '\0',
-		  sizeof (pstmt->param_value_is_set));
+	  memset (pstmt->param_value_is_set, '\0', sizeof (pstmt->param_value_is_set));
 	}
     }
 
@@ -1649,10 +1536,8 @@ stmt_prepare_internal (BH_INTERFACE * bh_interface,
  *    isnull():
  */
 static int
-stmt_get_parameter_internal (BH_INTERFACE * bh_interface,
-			     CI_STMT_STRUCTURE * pstmt, int index,
-			     CI_TYPE type, void *addr, size_t len,
-			     size_t * outlen, bool * isnull)
+stmt_get_parameter_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, int index, CI_TYPE type,
+			     void *addr, size_t len, size_t * outlen, bool * isnull)
 {
   int retval;
   DB_VALUE *dbval;
@@ -1667,8 +1552,7 @@ stmt_get_parameter_internal (BH_INTERFACE * bh_interface,
       ER_SET_AND_RETURN (ER_INTERFACE_NOT_PREPARED);
     }
 
-  if ((pstmt->stmt_status & CI_STMT_STATUS_PREPARED)
-      && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
+  if ((pstmt->stmt_status & CI_STMT_STATUS_PREPARED) && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
     {
       /* read db values from session->parser->host_variables */
       dbval = pstmt->session->parser->host_variables;
@@ -1676,8 +1560,7 @@ stmt_get_parameter_internal (BH_INTERFACE * bh_interface,
   else
     {
       /* read db values from stmt's val_table if (is_set == true) */
-      if ((pstmt->param_value_is_set == NULL)
-	  || (pstmt->param_value_is_set[index - 1] == false))
+      if ((pstmt->param_value_is_set == NULL) || (pstmt->param_value_is_set[index - 1] == false))
 	{
 	  ER_SET_AND_RETURN (ER_INTERFACE_PARAM_IS_NOT_SET);
 	}
@@ -1686,9 +1569,7 @@ stmt_get_parameter_internal (BH_INTERFACE * bh_interface,
 
   dbval += (index - 1);
 
-  retval =
-    coerce_db_value_to_value (dbval, (UINT64) 0, type, addr, len,
-			      outlen, isnull);
+  retval = coerce_db_value_to_value (dbval, (UINT64) 0, type, addr, len, outlen, isnull);
 
   return retval;
 }
@@ -1704,9 +1585,8 @@ stmt_get_parameter_internal (BH_INTERFACE * bh_interface,
  *    size():
  */
 static int
-stmt_set_parameter_internal (BH_INTERFACE * bh_interface,
-			     CI_STMT_STRUCTURE * pstmt, int index,
-			     CI_TYPE type, void *val, size_t size)
+stmt_set_parameter_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, int index, CI_TYPE type, void *val,
+			     size_t size)
 {
   int retval, i;
   DB_VALUE *dbval;
@@ -1738,8 +1618,7 @@ stmt_set_parameter_internal (BH_INTERFACE * bh_interface,
  *    len():
  */
 static int
-stmt_reset_session_and_parse (CI_STMT_STRUCTURE * pstmt,
-			      const char *sql, size_t len)
+stmt_reset_session_and_parse (CI_STMT_STRUCTURE * pstmt, const char *sql, size_t len)
 {
   DB_SESSION *session;
   DB_SESSION_ERROR *pterror = NULL;
@@ -1766,8 +1645,7 @@ stmt_reset_session_and_parse (CI_STMT_STRUCTURE * pstmt,
 
   session = pstmt->session;
 
-  session->include_oid =
-    (pstmt->opt.updatable_result) ? DB_ROW_OIDS : DB_NO_OIDS;
+  session->include_oid = (pstmt->opt.updatable_result) ? DB_ROW_OIDS : DB_NO_OIDS;
   session->statements = parser_parse_binary (session->parser, sql, len);
   pterror = pt_get_errors (session->parser);
 
@@ -1848,8 +1726,7 @@ stmt_reset_session_and_parse (CI_STMT_STRUCTURE * pstmt,
  *    r():
  */
 static int
-stmt_exec_internal (BH_INTERFACE * bh_interface,
-		    CI_STMT_STRUCTURE * pstmt, CI_RESULTSET * rs, int *r)
+stmt_exec_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, CI_RESULTSET * rs, int *r)
 {
   DB_SESSION *session;
   int retval, i, affected_row, j;
@@ -1871,11 +1748,9 @@ stmt_exec_internal (BH_INTERFACE * bh_interface,
 	}
     }
 
-  db_push_values (session, pstmt->session->parser->host_var_count,
-		  pstmt->param_val);
+  db_push_values (session, pstmt->session->parser->host_var_count, pstmt->param_val);
 
-  bh_interface->bind_to_handle (bh_interface, (BH_BIND *) pstmt->pconn,
-				&conn);
+  bh_interface->bind_to_handle (bh_interface, (BH_BIND *) pstmt->pconn, &conn);
 
   for (i = 0; i < session->dimension; i++)
     {
@@ -1891,8 +1766,7 @@ stmt_exec_internal (BH_INTERFACE * bh_interface,
 
 	  if (pstmt->rs_info[i].metainfo.has_result == true)
 	    {
-	      rs_ptr = (CI_RESULTSET_STRUCTURE *)
-		malloc (sizeof (CI_RESULTSET_STRUCTURE));
+	      rs_ptr = (CI_RESULTSET_STRUCTURE *) malloc (sizeof (CI_RESULTSET_STRUCTURE));
 	      if (rs_ptr == NULL)
 		{
 		  ER_SET_AND_RETURN (ER_INTERFACE_NO_MORE_MEMORY);
@@ -1903,9 +1777,7 @@ stmt_exec_internal (BH_INTERFACE * bh_interface,
 	      rs_ptr->stmt_idx = i;
 	      rs_ptr->bh_interface = bh_interface;
 	      retval =
-		create_resultset_value_table (db_q_result->col_cnt,
-					      (BIND_HANDLE) conn,
-					      rs_ptr, &(rs_ptr->value_table));
+		create_resultset_value_table (db_q_result->col_cnt, (BIND_HANDLE) conn, rs_ptr, &(rs_ptr->value_table));
 
 	      if (retval != NO_ERROR)
 		{
@@ -1913,16 +1785,11 @@ stmt_exec_internal (BH_INTERFACE * bh_interface,
 		  ER_SET_AND_RETURN (retval);
 		}
 
-	      retval = bh_interface->bind_get_first_child (bh_interface,
-							   (BH_BIND *)
-							   pstmt,
-							   (BH_BIND **)
-							   & pnext);
+	      retval = bh_interface->bind_get_first_child (bh_interface, (BH_BIND *) pstmt, (BH_BIND **) & pnext);
 
 	      while (pnext != NULL)
 		{
-		  if ((pnext->handle_type == HANDLE_TYPE_RMETA)
-		      && (pnext->stmt_idx == i))
+		  if ((pnext->handle_type == HANDLE_TYPE_RMETA) && (pnext->stmt_idx == i))
 		    {
 		      rs_ptr->prsmeta = pnext;
 		      break;
@@ -1931,16 +1798,11 @@ stmt_exec_internal (BH_INTERFACE * bh_interface,
 		    {
 		      BH_BIND *tmp;
 		      tmp = (BH_BIND *) pnext;
-		      retval =
-			bh_interface->
-			bind_get_next_sibling (bh_interface, tmp,
-					       (BH_BIND **) & pnext);
+		      retval = bh_interface->bind_get_next_sibling (bh_interface, tmp, (BH_BIND **) & pnext);
 		    }
 		}
 
-	      retval =
-		bh_interface->alloc_handle (bh_interface,
-					    (BH_BIND *) rs_ptr, &hresult);
+	      retval = bh_interface->alloc_handle (bh_interface, (BH_BIND *) rs_ptr, &hresult);
 
 	      if (retval != NO_ERROR)
 		{
@@ -1948,9 +1810,7 @@ stmt_exec_internal (BH_INTERFACE * bh_interface,
 		  ER_SET_AND_RETURN (retval);
 		}
 
-	      retval = bh_interface->bind_graft (bh_interface,
-						 (BH_BIND *) rs_ptr,
-						 (BH_BIND *) pstmt);
+	      retval = bh_interface->bind_graft (bh_interface, (BH_BIND *) rs_ptr, (BH_BIND *) pstmt);
 
 	      if (retval != NO_ERROR)
 		{
@@ -2007,9 +1867,7 @@ stmt_exec_internal (BH_INTERFACE * bh_interface,
  *    r():
  */
 static int
-stmt_get_resultset_metadata_internal (BH_INTERFACE * bh_interface,
-				      CI_STMT_STRUCTURE * pstmt,
-				      CI_RESULTSET_METADATA * r)
+stmt_get_resultset_metadata_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, CI_RESULTSET_METADATA * r)
 {
   int retval;
   CI_RESULTSET_META_STRUCTURE *prmeta;
@@ -2029,10 +1887,7 @@ stmt_get_resultset_metadata_internal (BH_INTERFACE * bh_interface,
   if (stmt_rs_info->rsmeta == NULL)
     {
       /* make rsmeta handle & structure */
-      retval = stmt_bind_resultset_meta_handle (bh_interface,
-						pstmt,
-						pstmt->current_rs_idx,
-						&prmeta);
+      retval = stmt_bind_resultset_meta_handle (bh_interface, pstmt, pstmt->current_rs_idx, &prmeta);
       if (retval != NO_ERROR)
 	{
 	  ER_SET_AND_RETURN (retval);
@@ -2043,8 +1898,7 @@ stmt_get_resultset_metadata_internal (BH_INTERFACE * bh_interface,
       prmeta = stmt_rs_info->rsmeta;
     }
 
-  retval = bh_interface->bind_to_handle (bh_interface, (BH_BIND *) prmeta,
-					 (BIND_HANDLE *) r);
+  retval = bh_interface->bind_to_handle (bh_interface, (BH_BIND *) prmeta, (BIND_HANDLE *) r);
 
   if (retval != NO_ERROR)
     {
@@ -2083,17 +1937,14 @@ get_query_rs_ifs (void)
  *    outmeta():
  */
 static int
-stmt_bind_resultset_meta_handle (BH_INTERFACE * bh_interface,
-				 CI_STMT_STRUCTURE * pstmt,
-				 int stmt_idx,
+stmt_bind_resultset_meta_handle (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, int stmt_idx,
 				 CI_RESULTSET_META_STRUCTURE ** outmeta)
 {
   int retval;
   CI_RESULTSET_META_STRUCTURE *prsmeta;
   CI_RESULTSET_METADATA hrmeta;
 
-  prsmeta = (CI_RESULTSET_META_STRUCTURE *) malloc
-    (sizeof (CI_RESULTSET_META_STRUCTURE));
+  prsmeta = (CI_RESULTSET_META_STRUCTURE *) malloc (sizeof (CI_RESULTSET_META_STRUCTURE));
 
   if (prsmeta == NULL)
     {
@@ -2106,9 +1957,7 @@ stmt_bind_resultset_meta_handle (BH_INTERFACE * bh_interface,
   prsmeta->col_count = get_col_count (prsmeta->query_type);
   prsmeta->bh_interface = bh_interface;
 
-  retval = bh_interface->alloc_handle (bh_interface,
-				       (BH_BIND *) prsmeta,
-				       (BIND_HANDLE *) & hrmeta);
+  retval = bh_interface->alloc_handle (bh_interface, (BH_BIND *) prsmeta, (BIND_HANDLE *) & hrmeta);
 
   if (retval != NO_ERROR)
     {
@@ -2116,8 +1965,7 @@ stmt_bind_resultset_meta_handle (BH_INTERFACE * bh_interface,
       ER_SET_AND_RETURN (retval);
     }
 
-  retval = bh_interface->bind_graft (bh_interface,
-				     (BH_BIND *) prsmeta, (BH_BIND *) pstmt);
+  retval = bh_interface->bind_graft (bh_interface, (BH_BIND *) prsmeta, (BH_BIND *) pstmt);
 
   if (retval != NO_ERROR)
     {
@@ -2147,9 +1995,7 @@ stmt_bind_resultset_meta_handle (BH_INTERFACE * bh_interface,
  *    pos():
  */
 static int
-res_fetch_internal (BH_INTERFACE * bh_interface,
-		    CI_RESULTSET_STRUCTURE * prs, int offset,
-		    CI_FETCH_POSITION pos)
+res_fetch_internal (BH_INTERFACE * bh_interface, CI_RESULTSET_STRUCTURE * prs, int offset, CI_FETCH_POSITION pos)
 {
   int retval;
   DB_QUERY_RESULT *query_result;
@@ -2181,8 +2027,7 @@ res_fetch_internal (BH_INTERFACE * bh_interface,
  *    prs():
  */
 static int
-res_delete_row_internal (BH_INTERFACE * bh_interface,
-			 CI_RESULTSET_STRUCTURE * prs)
+res_delete_row_internal (BH_INTERFACE * bh_interface, CI_RESULTSET_STRUCTURE * prs)
 {
   int retval;
   DB_VALUE tpl_oid;
@@ -2198,8 +2043,7 @@ res_delete_row_internal (BH_INTERFACE * bh_interface,
       return er_errid ();
     }
 
-  if ((tpl_oid.domain.general_info.is_null)
-      || (tpl_oid.domain.general_info.type != DB_TYPE_OBJECT))
+  if ((tpl_oid.domain.general_info.is_null) || (tpl_oid.domain.general_info.type != DB_TYPE_OBJECT))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_GENERIC);
     }
@@ -2330,8 +2174,7 @@ rs_set_db_value (void *impl, int index, DB_VALUE * val)
       return er_errid ();
     }
 
-  if ((tpl_oid.domain.general_info.is_null)
-      || (tpl_oid.domain.general_info.type != DB_TYPE_OBJECT))
+  if ((tpl_oid.domain.general_info.is_null) || (tpl_oid.domain.general_info.type != DB_TYPE_OBJECT))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_GENERIC);
     }
@@ -2369,9 +2212,7 @@ rs_set_db_value (void *impl, int index, DB_VALUE * val)
       ER_SET_AND_RETURN (ER_INTERFACE_NO_AVAILABLE_INFORMATION);
     }
 
-  retval = do_check_partitioned_class (db_get_class (obj),
-				       CHECK_PARTITION_NONE,
-				       (char *) att_name);
+  retval = do_check_partitioned_class (db_get_class (obj), CHECK_PARTITION_NONE, (char *) att_name);
 
   if (retval != NO_ERROR)
     {
@@ -2453,18 +2294,11 @@ rs_init_domain (void *impl, int index, DB_VALUE * val)
  *    value_table():
  */
 static int
-create_resultset_value_table (int num_col, BIND_HANDLE conn,
-			      CI_RESULTSET_STRUCTURE * prs,
+create_resultset_value_table (int num_col, BIND_HANDLE conn, CI_RESULTSET_STRUCTURE * prs,
 			      VALUE_BIND_TABLE ** value_table)
 {
-  return create_db_value_bind_table (num_col,
-				     (void *) prs,
-				     0,
-				     (BIND_HANDLE) conn,
-				     rs_get_index_by_name,
-				     rs_get_db_value,
-				     rs_set_db_value,
-				     rs_init_domain, &(prs->value_table));
+  return create_db_value_bind_table (num_col, (void *) prs, 0, (BIND_HANDLE) conn, rs_get_index_by_name,
+				     rs_get_db_value, rs_set_db_value, rs_init_domain, &(prs->value_table));
 }
 
 /*
@@ -2478,10 +2312,8 @@ create_resultset_value_table (int num_col, BIND_HANDLE conn,
  *    size():
  */
 static int
-pmeta_get_info_internal (BH_INTERFACE * bh_interface,
-			 CI_PARAM_META_STRUCTURE * ppmeta,
-			 int index, CI_PMETA_INFO_TYPE type,
-			 void *arg, size_t size)
+pmeta_get_info_internal (BH_INTERFACE * bh_interface, CI_PARAM_META_STRUCTURE * ppmeta, int index,
+			 CI_PMETA_INFO_TYPE type, void *arg, size_t size)
 {
   DB_MARKER *marker = NULL;
   assert (ppmeta && arg);
@@ -2544,9 +2376,8 @@ pmeta_get_info_internal (BH_INTERFACE * bh_interface,
 	  }
 	if (marker->expected_domain)
 	  {
-	    *val = (type == CI_PMETA_INFO_PRECISION) ?
-	      marker->expected_domain->precision :
-	      marker->expected_domain->scale;
+	    *val =
+	      (type == CI_PMETA_INFO_PRECISION) ? marker->expected_domain->precision : marker->expected_domain->scale;
 	  }
 	else
 	  {
@@ -2599,8 +2430,7 @@ stmt_add_batch_param (CI_STMT_STRUCTURE * pstmt, DB_VALUE * val, int num_val)
       ER_SET_AND_RETURN (ER_INTERFACE_NO_MORE_MEMORY);
     }
 
-  for (i = 0, src_val = pstmt->param_val, dest_val =
-       batch_data->data.val; i < num_val; i++, src_val++, dest_val++)
+  for (i = 0, src_val = pstmt->param_val, dest_val = batch_data->data.val; i < num_val; i++, src_val++, dest_val++)
     {
       pr_clone_value (src_val, dest_val);
     }
@@ -2632,9 +2462,7 @@ stmt_add_batch_param (CI_STMT_STRUCTURE * pstmt, DB_VALUE * val, int num_val)
  *    br():
  */
 static int
-stmt_exec_prepared_batch_internal (BH_INTERFACE * bh_interface,
-				   CI_STMT_STRUCTURE * pstmt,
-				   CI_BATCH_RESULT * br)
+stmt_exec_prepared_batch_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, CI_BATCH_RESULT * br)
 {
   DB_SESSION *session;
   int i, retval;
@@ -2650,23 +2478,20 @@ stmt_exec_prepared_batch_internal (BH_INTERFACE * bh_interface,
   if (retval != NO_ERROR)
     return retval;
 
-  retval =
-    stmt_batch_alloc_and_bind_new_result (bh_interface, pstmt, &pbrs, br);
+  retval = stmt_batch_alloc_and_bind_new_result (bh_interface, pstmt, &pbrs, br);
 
   if (retval != NO_ERROR)
     return retval;
 
   session = pstmt->session;
 
-  has_result =
-    (HAS_RESULT (db_get_statement_type (session, 1))) ? true : false;
+  has_result = (HAS_RESULT (db_get_statement_type (session, 1))) ? true : false;
 
   for (i = 0; i < pstmt->batch_count; i++)
     {
       DB_QUERY_RESULT *db_q_result;
 
-      db_push_values (session, pstmt->session->parser->host_var_count,
-		      batch_data->data.val);
+      db_push_values (session, pstmt->session->parser->host_var_count, batch_data->data.val);
 
       retval = db_execute_and_keep_statement (session, 1, &db_q_result);
       if (retval >= 0)
@@ -2709,9 +2534,7 @@ stmt_exec_prepared_batch_internal (BH_INTERFACE * bh_interface,
  *    br():
  */
 static int
-stmt_exec_batch_query_internal (BH_INTERFACE * bh_interface,
-				CI_STMT_STRUCTURE * pstmt,
-				CI_BATCH_RESULT * br)
+stmt_exec_batch_query_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, CI_BATCH_RESULT * br)
 {
   DB_SESSION *session;
   int i, retval;
@@ -2726,8 +2549,7 @@ stmt_exec_batch_query_internal (BH_INTERFACE * bh_interface,
   if (retval != NO_ERROR)
     return retval;
 
-  retval =
-    stmt_batch_alloc_and_bind_new_result (bh_interface, pstmt, &pbrs, br);
+  retval = stmt_batch_alloc_and_bind_new_result (bh_interface, pstmt, &pbrs, br);
 
   if (retval != NO_ERROR)
     return retval;
@@ -2760,8 +2582,7 @@ stmt_exec_batch_query_internal (BH_INTERFACE * bh_interface,
       query_string = batch_data->data.query_string;
       length = batch_data->query_length;
 
-      session->statements =
-	parser_parse_binary (session->parser, query_string, length);
+      session->statements = parser_parse_binary (session->parser, query_string, length);
       pterror = pt_get_errors (session->parser);
 
       if (pterror != NULL)
@@ -2809,14 +2630,12 @@ stmt_exec_batch_query_internal (BH_INTERFACE * bh_interface,
 	}
 
 #if defined(CS_MODE)
-      session->parser->exec_mode =
-	(pstmt->opt.async_query) ? ASYNC_EXEC : SYNC_EXEC;
+      session->parser->exec_mode = (pstmt->opt.async_query) ? ASYNC_EXEC : SYNC_EXEC;
 #else
       session->parser->exec_mode = SYNC_EXEC;
 #endif
 
-      retval =
-	db_execute_statement_local (session, statement_id, &db_q_result);
+      retval = db_execute_statement_local (session, statement_id, &db_q_result);
 
       if (retval >= 0)
 	{
@@ -2861,9 +2680,7 @@ stmt_exec_batch_query_internal (BH_INTERFACE * bh_interface,
  *    port():
  */
 static int
-conn_restart_client (CI_CONN_STRUCTURE * pconn,
-		     const char *program, int print_version,
-		     const char *volume, short port)
+conn_restart_client (CI_CONN_STRUCTURE * pconn, const char *program, int print_version, const char *volume, short port)
 {
   int error = NO_ERROR;
   char port_string[8];
@@ -2905,8 +2722,7 @@ conn_restart_client (CI_CONN_STRUCTURE * pconn,
 #if defined(SA_MODE) && defined(LINUX)
       if (!jsp_jvm_is_loaded ())
 	{
-	  prev_sigfpe_handler =
-	    os_set_signal_handler (SIGFPE, sigfpe_handler);
+	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 	}
 #else /* SA_MODE && (LINUX||X86_SOLARIS) */
       prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
@@ -2925,8 +2741,7 @@ conn_restart_client (CI_CONN_STRUCTURE * pconn,
  *    commit():
  */
 static int
-conn_end_tran (BH_INTERFACE * bh_interface,
-	       CI_CONN_STRUCTURE * pconn, bool commit)
+conn_end_tran (BH_INTERFACE * bh_interface, CI_CONN_STRUCTURE * pconn, bool commit)
 {
   int retval, i;
   CI_STMT_STRUCTURE *pstmt, *pnextstmt;
@@ -2942,10 +2757,7 @@ conn_end_tran (BH_INTERFACE * bh_interface,
 
   if (retval == NO_ERROR)
     {
-      retval =
-	bh_interface->bind_get_first_child (bh_interface,
-					    (BH_BIND *) pconn,
-					    (BH_BIND **) & pstmt);
+      retval = bh_interface->bind_get_first_child (bh_interface, (BH_BIND *) pconn, (BH_BIND **) & pstmt);
 
       while (pstmt != NULL)
 	{
@@ -2960,10 +2772,7 @@ conn_end_tran (BH_INTERFACE * bh_interface,
 		}
 	    }
 
-	  retval =
-	    bh_interface->bind_get_next_sibling (bh_interface,
-						 (BH_BIND *) pstmt,
-						 (BH_BIND **) & pnextstmt);
+	  retval = bh_interface->bind_get_next_sibling (bh_interface, (BH_BIND *) pstmt, (BH_BIND **) & pnextstmt);
 	  pstmt = pnextstmt;
 	}
 
@@ -2985,8 +2794,7 @@ conn_end_tran (BH_INTERFACE * bh_interface,
  *    result_set_only():
  */
 static int
-stmt_release_children (BH_INTERFACE * bh_interface,
-		       CI_STMT_STRUCTURE * pstmt, bool result_set_only)
+stmt_release_children (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, bool result_set_only)
 {
   CI_RESULTSET_STRUCTURE *resptr;
   BIND_HANDLE rs_handle;
@@ -2999,17 +2807,13 @@ stmt_release_children (BH_INTERFACE * bh_interface,
       bool continue_work = false;
       CI_RESULTSET_STRUCTURE *nextresptr;
 
-      bh_interface->bind_get_first_child (bh_interface,
-					  (BH_BIND *) pstmt,
-					  (BH_BIND **) & resptr);
+      bh_interface->bind_get_first_child (bh_interface, (BH_BIND *) pstmt, (BH_BIND **) & resptr);
       if (resptr == NULL)
 	break;
 
       if (result_set_only == false)
 	{
-	  retval =
-	    bh_interface->bind_to_handle (bh_interface,
-					  (BH_BIND *) resptr, &rs_handle);
+	  retval = bh_interface->bind_to_handle (bh_interface, (BH_BIND *) resptr, &rs_handle);
 	  if (retval != NO_ERROR)
 	    {
 	      assert (1);
@@ -3029,18 +2833,14 @@ stmt_release_children (BH_INTERFACE * bh_interface,
 	{
 	  do
 	    {
-	      if (resptr->handle_type == HANDLE_TYPE_RESULTSET
-		  || resptr->handle_type == HANDLE_TYPE_RMETA)
+	      if (resptr->handle_type == HANDLE_TYPE_RESULTSET || resptr->handle_type == HANDLE_TYPE_RMETA)
 		{
-		  retval = bh_interface->bind_to_handle (bh_interface,
-							 (BH_BIND *) resptr,
-							 &rs_handle);
+		  retval = bh_interface->bind_to_handle (bh_interface, (BH_BIND *) resptr, &rs_handle);
 		  if (retval != NO_ERROR)
 		    {
 		      ER_SET_AND_RETURN (retval);
 		    }
-		  retval =
-		    bh_interface->destroy_handle (bh_interface, rs_handle);
+		  retval = bh_interface->destroy_handle (bh_interface, rs_handle);
 		  if (retval != NO_ERROR)
 		    {
 		      ER_SET_AND_RETURN (retval);
@@ -3050,12 +2850,8 @@ stmt_release_children (BH_INTERFACE * bh_interface,
 		}
 	      else
 		{
-		  retval = bh_interface->bind_get_next_sibling (bh_interface,
-								(BH_BIND *)
-								resptr,
-								(BH_BIND
-								 **)
-								(&nextresptr));
+		  retval =
+		    bh_interface->bind_get_next_sibling (bh_interface, (BH_BIND *) resptr, (BH_BIND **) (&nextresptr));
 		  resptr = nextresptr;
 		}
 	    }
@@ -3078,9 +2874,7 @@ stmt_release_children (BH_INTERFACE * bh_interface,
  *    outmeta():
  */
 static int
-stmt_bind_pmeta_handle (BH_INTERFACE * bh_interface,
-			CI_STMT_STRUCTURE * pstmt,
-			CI_PARAM_META_STRUCTURE ** outmeta)
+stmt_bind_pmeta_handle (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt, CI_PARAM_META_STRUCTURE ** outmeta)
 {
   int retval, param_count;
   CI_PARAM_META_STRUCTURE *ppmeta;
@@ -3088,8 +2882,7 @@ stmt_bind_pmeta_handle (BH_INTERFACE * bh_interface,
 
   assert (pstmt && outmeta);
 
-  ppmeta =
-    (CI_PARAM_META_STRUCTURE *) malloc (sizeof (CI_PARAM_META_STRUCTURE));
+  ppmeta = (CI_PARAM_META_STRUCTURE *) malloc (sizeof (CI_PARAM_META_STRUCTURE));
 
   if (ppmeta == NULL)
     {
@@ -3119,9 +2912,7 @@ stmt_bind_pmeta_handle (BH_INTERFACE * bh_interface,
       memset (ppmeta->is_out_param, '\0', sizeof (ppmeta->is_out_param));
     }
 
-  retval =
-    bh_interface->alloc_handle (bh_interface, (BH_BIND *) ppmeta,
-				(BIND_HANDLE *) & hpmeta);
+  retval = bh_interface->alloc_handle (bh_interface, (BH_BIND *) ppmeta, (BIND_HANDLE *) & hpmeta);
 
   if (retval != NO_ERROR)
     {
@@ -3129,9 +2920,7 @@ stmt_bind_pmeta_handle (BH_INTERFACE * bh_interface,
       ER_SET_AND_RETURN (retval);
     }
 
-  retval =
-    bh_interface->bind_graft (bh_interface, (BH_BIND *) ppmeta,
-			      (BH_BIND *) pstmt);
+  retval = bh_interface->bind_graft (bh_interface, (BH_BIND *) ppmeta, (BH_BIND *) pstmt);
 
   ppmeta->param_count = param_count;
   ppmeta->bh_interface = bh_interface;
@@ -3154,16 +2943,13 @@ stmt_bind_pmeta_handle (BH_INTERFACE * bh_interface,
  *    pstmt():
  */
 static int
-stmt_batch_result_free (BH_INTERFACE * bh_interface,
-			CI_STMT_STRUCTURE * pstmt)
+stmt_batch_result_free (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt)
 {
   int retval;
   CI_BATCH_RESULT_STRUCTURE *pbrs, *tmp;
   CI_BATCH_RESULT hbrs;
 
-  retval =
-    bh_interface->bind_get_first_child (bh_interface, (BH_BIND *) pstmt,
-					(BH_BIND **) & pbrs);
+  retval = bh_interface->bind_get_first_child (bh_interface, (BH_BIND *) pstmt, (BH_BIND **) & pbrs);
 
   while ((pbrs != NULL) && (retval == NO_ERROR))
     {
@@ -3174,17 +2960,12 @@ stmt_batch_result_free (BH_INTERFACE * bh_interface,
 
       tmp = pbrs;
       pbrs = NULL;
-      retval =
-	bh_interface->bind_get_next_sibling (bh_interface,
-					     (BH_BIND *) tmp,
-					     (BH_BIND **) & pbrs);
+      retval = bh_interface->bind_get_next_sibling (bh_interface, (BH_BIND *) tmp, (BH_BIND **) & pbrs);
     }
 
   if (pbrs != NULL)
     {
-      retval =
-	bh_interface->bind_to_handle (bh_interface, (BH_BIND *) pbrs,
-				      (BIND_HANDLE *) & hbrs);
+      retval = bh_interface->bind_to_handle (bh_interface, (BH_BIND *) pbrs, (BIND_HANDLE *) & hbrs);
       if (retval != NO_ERROR)
 	{
 	  ER_SET_AND_RETURN (retval);
@@ -3209,17 +2990,14 @@ stmt_batch_result_free (BH_INTERFACE * bh_interface,
  *    outhbr():
  */
 static int
-stmt_batch_alloc_and_bind_new_result (BH_INTERFACE * bh_interface,
-				      CI_STMT_STRUCTURE * pstmt,
-				      CI_BATCH_RESULT_STRUCTURE **
-				      out_pbrs, CI_BATCH_RESULT * outhbr)
+stmt_batch_alloc_and_bind_new_result (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE * pstmt,
+				      CI_BATCH_RESULT_STRUCTURE ** out_pbrs, CI_BATCH_RESULT * outhbr)
 {
   int retval;
   CI_BATCH_RESULT_STRUCTURE *pbrs;
   CI_BATCH_RESULT hbr;
 
-  pbrs =
-    (CI_BATCH_RESULT_STRUCTURE *) malloc (sizeof (CI_BATCH_RESULT_STRUCTURE));
+  pbrs = (CI_BATCH_RESULT_STRUCTURE *) malloc (sizeof (CI_BATCH_RESULT_STRUCTURE));
 
   if (pbrs == NULL)
     {
@@ -3230,9 +3008,7 @@ stmt_batch_alloc_and_bind_new_result (BH_INTERFACE * bh_interface,
 
   pbrs->rs_count = pstmt->batch_count;
 
-  pbrs->rs_info =
-    (CI_BATCH_RESULT_INFO *) malloc (sizeof (CI_BATCH_RESULT_INFO)
-				     * pstmt->batch_count);
+  pbrs->rs_info = (CI_BATCH_RESULT_INFO *) malloc (sizeof (CI_BATCH_RESULT_INFO) * pstmt->batch_count);
 
   if (pbrs->rs_info == NULL)
     {
@@ -3247,9 +3023,7 @@ stmt_batch_alloc_and_bind_new_result (BH_INTERFACE * bh_interface,
       ER_SET_AND_RETURN (retval);
     }
 
-  retval =
-    bh_interface->bind_graft (bh_interface, (BH_BIND *) pbrs,
-			      (BH_BIND *) pstmt);
+  retval = bh_interface->bind_graft (bh_interface, (BH_BIND *) pbrs, (BH_BIND *) pstmt);
 
   if (retval != NO_ERROR)
     {
@@ -3258,8 +3032,7 @@ stmt_batch_alloc_and_bind_new_result (BH_INTERFACE * bh_interface,
       ER_SET_AND_RETURN (retval);
     }
 
-  memset (pbrs->rs_info, '\0',
-	  sizeof (CI_BATCH_RESULT_INFO) * pstmt->batch_count);
+  memset (pbrs->rs_info, '\0', sizeof (CI_BATCH_RESULT_INFO) * pstmt->batch_count);
 
   if (out_pbrs)
     *out_pbrs = pbrs;
@@ -3277,8 +3050,7 @@ stmt_batch_alloc_and_bind_new_result (BH_INTERFACE * bh_interface,
  *    opool():
  */
 static int
-get_connection_opool (COMMON_API_STRUCTURE * pst,
-		      API_OBJECT_RESULTSET_POOL ** opool)
+get_connection_opool (COMMON_API_STRUCTURE * pst, API_OBJECT_RESULTSET_POOL ** opool)
 {
   CI_CONN_STRUCTURE *pconn;
   pconn = (CI_CONN_STRUCTURE *) pst;
@@ -3346,9 +3118,7 @@ ci_create_connection_impl (CI_CONNECTION * conn)
     }
 
   /* make object pool */
-  retval =
-    api_object_resultset_pool_create (hd_ctx, (BIND_HANDLE) * conn,
-				      &(ptr->opool));
+  retval = api_object_resultset_pool_create (hd_ctx, (BIND_HANDLE) * conn, &(ptr->opool));
   if (retval != NO_ERROR)
     {
       ER_SET_AND_RETURN (retval);
@@ -3372,9 +3142,7 @@ ci_create_connection_impl (CI_CONNECTION * conn)
  *    password():
  */
 static int
-ci_conn_connect_impl (COMMON_API_STRUCTURE * pst, const char *host,
-		      unsigned short port,
-		      const char *databasename,
+ci_conn_connect_impl (COMMON_API_STRUCTURE * pst, const char *host, unsigned short port, const char *databasename,
 		      const char *user_name, const char *password)
 {
   int retval;
@@ -3394,15 +3162,11 @@ ci_conn_connect_impl (COMMON_API_STRUCTURE * pst, const char *host,
     {
       memset (dbname_host, '\0', 1024);
       sprintf (dbname_host, "%s@%s", databasename, host);
-      retval =
-	conn_restart_client (pconn, API_PROGRAM_NAME, false,
-			     dbname_host, port);
+      retval = conn_restart_client (pconn, API_PROGRAM_NAME, false, dbname_host, port);
     }
   else
     {
-      retval =
-	conn_restart_client (pconn, API_PROGRAM_NAME, false,
-			     databasename, port);
+      retval = conn_restart_client (pconn, API_PROGRAM_NAME, false, databasename, port);
     }
 
   if (retval != NO_ERROR)
@@ -3442,8 +3206,7 @@ ci_conn_close_impl (COMMON_API_STRUCTURE * pst)
  *    stmt():
  */
 static int
-ci_conn_create_statement_impl (COMMON_API_STRUCTURE * pst,
-			       CI_STATEMENT * stmt)
+ci_conn_create_statement_impl (COMMON_API_STRUCTURE * pst, CI_STATEMENT * stmt)
 {
   CI_CONN_STRUCTURE *pconn;
   CI_STMT_STRUCTURE *pstmt;
@@ -3468,9 +3231,7 @@ ci_conn_create_statement_impl (COMMON_API_STRUCTURE * pst,
       ER_SET_AND_RETURN (retval);
     }
 
-  retval =
-    bh_interface->bind_graft (bh_interface, (BH_BIND *) pstmt,
-			      (BH_BIND *) pconn);
+  retval = bh_interface->bind_graft (bh_interface, (BH_BIND *) pstmt, (BH_BIND *) pconn);
 
   if (retval != NO_ERROR)
     {
@@ -3491,8 +3252,7 @@ ci_conn_create_statement_impl (COMMON_API_STRUCTURE * pst,
  *    size():
  */
 static int
-ci_conn_set_option_impl (COMMON_API_STRUCTURE * pst,
-			 CI_CONNECTION_OPTION option, void *arg, size_t size)
+ci_conn_set_option_impl (COMMON_API_STRUCTURE * pst, CI_CONNECTION_OPTION option, void *arg, size_t size)
 {
   int retval;
   int wait_msecs, autocommit, isol_lv;
@@ -3518,9 +3278,7 @@ ci_conn_set_option_impl (COMMON_API_STRUCTURE * pst,
 	  ER_SET_AND_RETURN (ER_INTERFACE_INVALID_ARGUMENT);
 	}
       memcpy (&isol_lv, arg, sizeof (int));
-      retval =
-	tran_reset_isolation ((DB_TRAN_ISOLATION) isol_lv,
-			      TM_TRAN_ASYNC_WS ());
+      retval = tran_reset_isolation ((DB_TRAN_ISOLATION) isol_lv, TM_TRAN_ASYNC_WS ());
       if (retval == NO_ERROR)
 	{
 	  pconn->opt.isolation = isol_lv;
@@ -3552,8 +3310,7 @@ ci_conn_set_option_impl (COMMON_API_STRUCTURE * pst,
  *    size():
  */
 static int
-ci_conn_get_option_impl (COMMON_API_STRUCTURE * pst,
-			 CI_CONNECTION_OPTION option, void *arg, size_t size)
+ci_conn_get_option_impl (COMMON_API_STRUCTURE * pst, CI_CONNECTION_OPTION option, void *arg, size_t size)
 {
   int wait_msecs;
   int intval;
@@ -3659,8 +3416,7 @@ ci_conn_rollback_impl (COMMON_API_STRUCTURE * pst)
  *    size():
  */
 static int
-ci_conn_get_error_impl (COMMON_API_STRUCTURE * pst, int *err,
-			char *msg, size_t size)
+ci_conn_get_error_impl (COMMON_API_STRUCTURE * pst, int *err, char *msg, size_t size)
 {
   assert (msg && err);
   *err = api_get_errid ();
@@ -3677,8 +3433,7 @@ ci_conn_get_error_impl (COMMON_API_STRUCTURE * pst, int *err,
  *    len():
  */
 static int
-ci_stmt_add_batch_query_impl (COMMON_API_STRUCTURE * pst,
-			      const char *sql, size_t len)
+ci_stmt_add_batch_query_impl (COMMON_API_STRUCTURE * pst, const char *sql, size_t len)
 {
   int retval;
   CI_STMT_STRUCTURE *pstmt;
@@ -3690,8 +3445,7 @@ ci_stmt_add_batch_query_impl (COMMON_API_STRUCTURE * pst,
       ER_SET_AND_RETURN (ER_INTERFACE_IS_PREPARED_STATEMENT);
     }
 
-  if (!(pstmt->stmt_status & CI_STMT_STATUS_BATCH_ADDED)
-      && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
+  if (!(pstmt->stmt_status & CI_STMT_STATUS_BATCH_ADDED) && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_IS_NOT_BATCH_STATEMENT);
     }
@@ -3774,8 +3528,7 @@ ci_stmt_add_batch_impl (COMMON_API_STRUCTURE * pst)
       ER_SET_AND_RETURN (ER_INTERFACE_IS_NOT_PREPARED_STATEMENT);
     }
 
-  if (!(pstmt->stmt_status & CI_STMT_STATUS_BATCH_ADDED)
-      && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
+  if (!(pstmt->stmt_status & CI_STMT_STATUS_BATCH_ADDED) && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_IS_NOT_BATCH_STATEMENT);
     }
@@ -3820,16 +3573,14 @@ ci_stmt_clear_batch_impl (COMMON_API_STRUCTURE * pst)
 
   pstmt = (CI_STMT_STRUCTURE *) pst;
 
-  if ((!(pstmt->stmt_status & CI_STMT_STATUS_BATCH_ADDED) &&
-       (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED)))
+  if ((!(pstmt->stmt_status & CI_STMT_STATUS_BATCH_ADDED) && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED)))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_CANNOT_CLEAR_BATCH);
     }
 
   param_count = pstmt->session->parser->host_var_count;
 
-  is_prepared_batch =
-    (pstmt->stmt_status & CI_STMT_STATUS_PREPARED) ? true : false;
+  is_prepared_batch = (pstmt->stmt_status & CI_STMT_STATUS_PREPARED) ? true : false;
 
   batch_data = pstmt->batch_data;
 
@@ -3861,9 +3612,7 @@ ci_stmt_clear_batch_impl (COMMON_API_STRUCTURE * pst)
  *    r():
  */
 static int
-ci_stmt_execute_immediate_impl (COMMON_API_STRUCTURE * pst,
-				char *sql, size_t len,
-				CI_RESULTSET * rs, int *r)
+ci_stmt_execute_immediate_impl (COMMON_API_STRUCTURE * pst, char *sql, size_t len, CI_RESULTSET * rs, int *r)
 {
   int retval;
   CI_STMT_STRUCTURE *pstmt;
@@ -3904,8 +3653,7 @@ ci_stmt_execute_immediate_impl (COMMON_API_STRUCTURE * pst,
       pstmt->pconn->need_defered_commit = false;
     }
 
-  retval = stmt_exec_immediate_internal (bh_interface, pstmt, sql, len,
-					 rs, r);
+  retval = stmt_exec_immediate_internal (bh_interface, pstmt, sql, len, rs, r);
 
   pstmt->stmt_status |= CI_STMT_STATUS_EXECUTED;
 
@@ -4057,8 +3805,7 @@ ci_stmt_execute_batch_impl (COMMON_API_STRUCTURE * pst, CI_BATCH_RESULT * br)
  *    size():
  */
 static int
-ci_stmt_get_option_impl (COMMON_API_STRUCTURE * pst,
-			 CI_STATEMENT_OPTION option, void *arg, size_t size)
+ci_stmt_get_option_impl (COMMON_API_STRUCTURE * pst, CI_STATEMENT_OPTION option, void *arg, size_t size)
 {
   CI_STMT_STRUCTURE *pstmt;
   int *data;
@@ -4108,8 +3855,7 @@ ci_stmt_get_option_impl (COMMON_API_STRUCTURE * pst,
  *    size():
  */
 static int
-ci_stmt_set_option_impl (COMMON_API_STRUCTURE * pst,
-			 CI_STATEMENT_OPTION option, void *arg, size_t size)
+ci_stmt_set_option_impl (COMMON_API_STRUCTURE * pst, CI_STATEMENT_OPTION option, void *arg, size_t size)
 {
   CI_STMT_STRUCTURE *pstmt;
   int data;
@@ -4169,8 +3915,7 @@ ci_stmt_prepare_impl (COMMON_API_STRUCTURE * pst, const char *sql, size_t len)
 
   bh_interface = pstmt->pconn->bh_interface;
 
-  if (!(pstmt->stmt_status & CI_STMT_STATUS_PREPARED)
-      && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
+  if (!(pstmt->stmt_status & CI_STMT_STATUS_PREPARED) && (pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
     {
       /* executed with exec_immediate before */
       ER_SET_AND_RETURN (ER_INTERFACE_NOT_SUPPORTED_OPERATION);
@@ -4239,9 +3984,7 @@ ci_stmt_register_out_parameter_impl (COMMON_API_STRUCTURE * pst, int index)
 
   if (pstmt->param_value_is_set[index - 1] == false)
     {
-      retval =
-	stmt_set_parameter_internal (bh_interface, pstmt, index,
-				     CI_TYPE_NULL, NULL, 0);
+      retval = stmt_set_parameter_internal (bh_interface, pstmt, index, CI_TYPE_NULL, NULL, 0);
       if (retval != NO_ERROR)
 	{
 	  return retval;
@@ -4260,8 +4003,7 @@ ci_stmt_register_out_parameter_impl (COMMON_API_STRUCTURE * pst, int index)
  *    r():
  */
 static int
-ci_stmt_get_resultset_metadata_impl (COMMON_API_STRUCTURE * pst,
-				     CI_RESULTSET_METADATA * r)
+ci_stmt_get_resultset_metadata_impl (COMMON_API_STRUCTURE * pst, CI_RESULTSET_METADATA * r)
 {
   int retval;
   CI_STMT_STRUCTURE *pstmt;
@@ -4270,8 +4012,7 @@ ci_stmt_get_resultset_metadata_impl (COMMON_API_STRUCTURE * pst,
   pstmt = (CI_STMT_STRUCTURE *) pst;
   bh_interface = pstmt->pconn->bh_interface;
 
-  if (!(pstmt->stmt_status & CI_STMT_STATUS_PREPARED)
-      && !(pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
+  if (!(pstmt->stmt_status & CI_STMT_STATUS_PREPARED) && !(pstmt->stmt_status & CI_STMT_STATUS_EXECUTED))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_NOT_PREPARED);
     }
@@ -4293,8 +4034,7 @@ ci_stmt_get_resultset_metadata_impl (COMMON_API_STRUCTURE * pst,
  *    r():
  */
 static int
-ci_stmt_get_parameter_metadata_impl (COMMON_API_STRUCTURE * pst,
-				     CI_PARAMETER_METADATA * r)
+ci_stmt_get_parameter_metadata_impl (COMMON_API_STRUCTURE * pst, CI_PARAMETER_METADATA * r)
 {
   int retval;
   CI_STMT_STRUCTURE *pstmt;
@@ -4317,9 +4057,7 @@ ci_stmt_get_parameter_metadata_impl (COMMON_API_STRUCTURE * pst,
 	}
     }
 
-  retval = bh_interface->bind_to_handle (bh_interface,
-					 (BH_BIND *) pstmt->ppmeta,
-					 (BIND_HANDLE *) r);
+  retval = bh_interface->bind_to_handle (bh_interface, (BH_BIND *) pstmt->ppmeta, (BIND_HANDLE *) r);
 
   if (retval != NO_ERROR)
     {
@@ -4341,9 +4079,8 @@ ci_stmt_get_parameter_metadata_impl (COMMON_API_STRUCTURE * pst,
  *    isnull():
  */
 static int
-ci_stmt_get_parameter_impl (COMMON_API_STRUCTURE * pst, int index,
-			    CI_TYPE type, void *addr,
-			    size_t len, size_t * outlen, bool * isnull)
+ci_stmt_get_parameter_impl (COMMON_API_STRUCTURE * pst, int index, CI_TYPE type, void *addr, size_t len,
+			    size_t * outlen, bool * isnull)
 {
   int retval;
   CI_STMT_STRUCTURE *pstmt;
@@ -4357,9 +4094,7 @@ ci_stmt_get_parameter_impl (COMMON_API_STRUCTURE * pst, int index,
       ER_SET_AND_RETURN (ER_INTERFACE_NOT_PREPARED);
     }
 
-  retval =
-    stmt_get_parameter_internal (bh_interface, pstmt, index, type, addr,
-				 len, outlen, isnull);
+  retval = stmt_get_parameter_internal (bh_interface, pstmt, index, type, addr, len, outlen, isnull);
 
   return retval;
 }
@@ -4374,8 +4109,7 @@ ci_stmt_get_parameter_impl (COMMON_API_STRUCTURE * pst, int index,
  *    size():
  */
 static int
-ci_stmt_set_parameter_impl (COMMON_API_STRUCTURE * pst,
-			    int index, CI_TYPE type, void *val, size_t size)
+ci_stmt_set_parameter_impl (COMMON_API_STRUCTURE * pst, int index, CI_TYPE type, void *val, size_t size)
 {
   int retval;
   CI_STMT_STRUCTURE *pstmt;
@@ -4389,8 +4123,7 @@ ci_stmt_set_parameter_impl (COMMON_API_STRUCTURE * pst,
       ER_SET_AND_RETURN (ER_INTERFACE_NOT_PREPARED);
     }
 
-  retval =
-    stmt_set_parameter_internal (bh_interface, pstmt, index, type, val, size);
+  retval = stmt_set_parameter_internal (bh_interface, pstmt, index, type, val, size);
 
   return retval;
 }
@@ -4428,9 +4161,7 @@ ci_stmt_get_resultset_impl (COMMON_API_STRUCTURE * pst, CI_RESULTSET * res)
       ER_SET_AND_RETURN (ER_INTERFACE_RESULTSET_CLOSED);
     }
 
-  retval =
-    bh_interface->bind_to_handle (bh_interface, (BH_BIND *) prs,
-				  (BIND_HANDLE *) res);
+  retval = bh_interface->bind_to_handle (bh_interface, (BH_BIND *) prs, (BIND_HANDLE *) res);
 
   if (retval != NO_ERROR)
     {
@@ -4505,8 +4236,7 @@ ci_stmt_next_result_impl (COMMON_API_STRUCTURE * pst, bool * exist_result)
 
   if (pstmt->opt.lazy_exec == true)
     {
-      if (pstmt->pconn->opt.autocommit == true
-	  && pstmt->pconn->need_defered_commit == true)
+      if (pstmt->pconn->opt.autocommit == true && pstmt->pconn->need_defered_commit == true)
 	{
 	  retval = conn_end_tran (bh_interface, pstmt->pconn, true);
 
@@ -4517,16 +4247,13 @@ ci_stmt_next_result_impl (COMMON_API_STRUCTURE * pst, bool * exist_result)
 	  pstmt->pconn->need_defered_commit = false;
 	}
 
-      retval =
-	stmt_exec_one_statement (bh_interface, pstmt->current_rs_idx,
-				 pstmt, &rs, &affected_row);
+      retval = stmt_exec_one_statement (bh_interface, pstmt->current_rs_idx, pstmt, &rs, &affected_row);
       if (retval != NO_ERROR)
 	{
 	  return retval;
 	}
 
-      if (pstmt->pconn->opt.autocommit == true
-	  && pstmt->pconn->need_immediate_commit == true)
+      if (pstmt->pconn->opt.autocommit == true && pstmt->pconn->need_immediate_commit == true)
 	{
 	  retval = conn_end_tran (bh_interface, pstmt->pconn, true);
 
@@ -4568,8 +4295,7 @@ ci_batch_res_query_count_impl (COMMON_API_STRUCTURE * pst, int *count)
  *    nr():
  */
 static int
-ci_batch_res_get_result_impl (COMMON_API_STRUCTURE * pst,
-			      int index, int *ret, int *nr)
+ci_batch_res_get_result_impl (COMMON_API_STRUCTURE * pst, int index, int *ret, int *nr)
 {
   CI_BATCH_RESULT_STRUCTURE *pbrs;
 
@@ -4597,8 +4323,7 @@ ci_batch_res_get_result_impl (COMMON_API_STRUCTURE * pst,
  *    buf_size():
  */
 static int
-ci_batch_res_get_error_impl (COMMON_API_STRUCTURE * pst, int index,
-			     int *err_code, char *err_msg, size_t buf_size)
+ci_batch_res_get_error_impl (COMMON_API_STRUCTURE * pst, int index, int *err_code, char *err_msg, size_t buf_size)
 {
   CI_BATCH_RESULT_STRUCTURE *pbrs;
 
@@ -4647,8 +4372,7 @@ ci_pmeta_get_count_impl (COMMON_API_STRUCTURE * pst, int *count)
  *    size():
  */
 static int
-ci_pmeta_get_info_impl (COMMON_API_STRUCTURE * pst, int index,
-			CI_PMETA_INFO_TYPE type, void *arg, size_t size)
+ci_pmeta_get_info_impl (COMMON_API_STRUCTURE * pst, int index, CI_PMETA_INFO_TYPE type, void *arg, size_t size)
 {
   int retval;
   CI_PARAM_META_STRUCTURE *ppmeta;
@@ -4656,8 +4380,7 @@ ci_pmeta_get_info_impl (COMMON_API_STRUCTURE * pst, int index,
 
 
 
-  retval = pmeta_get_info_internal (ppmeta->bh_interface, ppmeta, index,
-				    type, arg, size);
+  retval = pmeta_get_info_internal (ppmeta->bh_interface, ppmeta, index, type, arg, size);
 
   return retval;
 }
@@ -4673,9 +4396,7 @@ ci_pmeta_get_info_impl (COMMON_API_STRUCTURE * pst, int index,
  *    size():
  */
 static int
-ci_stmt_get_first_error_impl (COMMON_API_STRUCTURE * pst,
-			      int *line, int *col, int *errcode,
-			      char *err_msg, size_t size)
+ci_stmt_get_first_error_impl (COMMON_API_STRUCTURE * pst, int *line, int *col, int *errcode, char *err_msg, size_t size)
 {
   CI_STMT_STRUCTURE *pstmt;
 
@@ -4720,9 +4441,7 @@ ci_stmt_get_first_error_impl (COMMON_API_STRUCTURE * pst,
  *    size():
  */
 static int
-ci_stmt_get_next_error_impl (COMMON_API_STRUCTURE * pst, int *line,
-			     int *col, int *errcode, char *err_msg,
-			     size_t size)
+ci_stmt_get_next_error_impl (COMMON_API_STRUCTURE * pst, int *line, int *col, int *errcode, char *err_msg, size_t size)
 {
   int i;
   CI_STMT_STRUCTURE *pstmt;
@@ -4773,8 +4492,7 @@ ci_stmt_get_next_error_impl (COMMON_API_STRUCTURE * pst, int *line,
  *    type(out):
  */
 static int
-ci_stmt_get_query_type_impl (COMMON_API_STRUCTURE * pst,
-			     CUBRID_STMT_TYPE * type)
+ci_stmt_get_query_type_impl (COMMON_API_STRUCTURE * pst, CUBRID_STMT_TYPE * type)
 {
   CI_STMT_STRUCTURE *pstmt;
 
@@ -4785,8 +4503,7 @@ ci_stmt_get_query_type_impl (COMMON_API_STRUCTURE * pst,
       ER_SET_AND_RETURN (ER_INTERFACE_IS_BATCH_STATEMENT);
     }
 
-  if (!(pstmt->stmt_status & CI_STMT_STATUS_EXECUTED)
-      && !(pstmt->stmt_status & CI_STMT_STATUS_PREPARED))
+  if (!(pstmt->stmt_status & CI_STMT_STATUS_EXECUTED) && !(pstmt->stmt_status & CI_STMT_STATUS_PREPARED))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_NOT_EXECUTED);
     }
@@ -4817,8 +4534,7 @@ ci_stmt_get_start_line_impl (COMMON_API_STRUCTURE * pst, int *line)
       ER_SET_AND_RETURN (ER_INTERFACE_IS_BATCH_STATEMENT);
     }
 
-  if (!(pstmt->stmt_status & CI_STMT_STATUS_EXECUTED)
-      && !(pstmt->stmt_status & CI_STMT_STATUS_PREPARED))
+  if (!(pstmt->stmt_status & CI_STMT_STATUS_EXECUTED) && !(pstmt->stmt_status & CI_STMT_STATUS_PREPARED))
     {
       ER_SET_AND_RETURN (ER_INTERFACE_NOT_EXECUTED);
     }

@@ -64,8 +64,7 @@ struct t_shard_cqueue
 };
 
 extern int shard_queue_enqueue (T_SHARD_QUEUE * q, void *v);
-extern int shard_queue_ordered_enqueue (T_SHARD_QUEUE * q, void *v,
-					SHARD_COMP_FN comp_fn);
+extern int shard_queue_ordered_enqueue (T_SHARD_QUEUE * q, void *v, SHARD_COMP_FN comp_fn);
 extern void *shard_queue_dequeue (T_SHARD_QUEUE * q);
 extern void *shard_queue_peek_value (T_SHARD_QUEUE * q);
 #if 0				/* not implemented yet */

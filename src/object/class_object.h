@@ -164,222 +164,107 @@
 	((filter) == NULL ? 0 : (filter)->pred_stream_size)
 
 typedef void (*METHOD_FUNCTION) ();
-typedef void (*METHOD_FUNC_ARG4) (DB_OBJECT *, DB_VALUE *,
-				  DB_VALUE *, DB_VALUE *, DB_VALUE *,
+typedef void (*METHOD_FUNC_ARG4) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG5) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG6) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
 				  DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG5) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				  DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				  DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG6) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				  DB_VALUE *, DB_VALUE *, DB_VALUE *,
+typedef void (*METHOD_FUNC_ARG7) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
 				  DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG7) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				  DB_VALUE *, DB_VALUE *, DB_VALUE *,
+typedef void (*METHOD_FUNC_ARG8) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
 				  DB_VALUE *, DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG8) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				  DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				  DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				  DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG9) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				  DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				  DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				  DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG10) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG11) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
+typedef void (*METHOD_FUNC_ARG9) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				  DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG10) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG11) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG12) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG13) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
 				   DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG12) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
+typedef void (*METHOD_FUNC_ARG14) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
 				   DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG13) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
+typedef void (*METHOD_FUNC_ARG15) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
 				   DB_VALUE *, DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG14) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
+typedef void (*METHOD_FUNC_ARG16) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG17) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG18) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG19) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG20) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
 				   DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG15) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
+typedef void (*METHOD_FUNC_ARG21) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
 				   DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG16) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
+typedef void (*METHOD_FUNC_ARG22) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
 				   DB_VALUE *, DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG17) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
+typedef void (*METHOD_FUNC_ARG23) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG24) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG25) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG26) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG27) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
 				   DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG18) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
+typedef void (*METHOD_FUNC_ARG28) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
 				   DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG19) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
+typedef void (*METHOD_FUNC_ARG29) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
 				   DB_VALUE *, DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG20) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG21) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG22) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG23) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG24) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG25) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG26) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG27) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG28) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG29) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG30) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG31) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG32) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *);
-typedef void (*METHOD_FUNC_ARG33) (DB_OBJECT *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE *, DB_VALUE *,
-				   DB_VALUE *, DB_VALUE_LIST *);
+typedef void (*METHOD_FUNC_ARG30) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG31) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG32) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
+typedef void (*METHOD_FUNC_ARG33) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *,
+				   DB_VALUE_LIST *);
 
 typedef struct tp_domain SM_DOMAIN;
 
@@ -418,14 +303,13 @@ typedef enum
   SM_ATTFLAG_UNIQUE = 2,	/* attribute has UNIQUE constraint 0x02 */
   SM_ATTFLAG_NON_NULL = 4,	/* attribute has NON_NULL constraint 0x04 */
   SM_ATTFLAG_VID = 8,		/* attribute is part of virtual object id 0x08 */
-  SM_ATTFLAG_NEW = 16,		/* is a new attribute  0x10 */
+  SM_ATTFLAG_NEW = 16,		/* is a new attribute 0x10 */
   SM_ATTFLAG_REVERSE_INDEX = 32,	/* attribute has a reverse index 0x20 */
   SM_ATTFLAG_REVERSE_UNIQUE = 64,	/* attribute has a reverse unique 0x40 */
   SM_ATTFLAG_PRIMARY_KEY = 128,	/* attribute has a primary key 0x80 */
   SM_ATTFLAG_AUTO_INCREMENT = 256,	/* auto increment attribute 0x0100 */
   SM_ATTFLAG_FOREIGN_KEY = 512,	/* attribute has a primary key 0x200 */
-  SM_ATTFLAG_PARTITION_KEY = 1024	/* attribute is the partitioning key for
-					   the class 0x400 */
+  SM_ATTFLAG_PARTITION_KEY = 1024	/* attribute is the partitioning key for the class 0x400 */
 } SM_ATTRIBUTE_FLAG;
 
 /* attribute constraint types */
@@ -550,7 +434,7 @@ struct sm_component
 
   struct sm_component *next;	/* can be used with list_ routines */
   const char *name;		/* can be used with name_ routines */
-  SM_NAME_SPACE name_space;	/* identifier tag                  */
+  SM_NAME_SPACE name_space;	/* identifier tag */
 
 };
 
@@ -559,8 +443,7 @@ struct sm_default_value
 {
   DB_VALUE original_value;	/* initial default value; */
   DB_VALUE value;		/* current default/shared/class value */
-  DB_DEFAULT_EXPR_TYPE default_expr;	/* identifier for the default
-					 * expression */
+  DB_DEFAULT_EXPR_TYPE default_expr;	/* identifier for the default expression */
 };
 
 typedef struct sm_attribute SM_ATTRIBUTE;
@@ -919,9 +802,7 @@ struct sm_class
 
   unsigned triggers_validated:1;	/* set when trigger cache is validated */
   unsigned has_active_triggers:1;	/* set if trigger processing is required */
-  unsigned dont_decache_constraints_or_flush:1;	/* prevent decaching class
-						 * constraint and flushing.
-						 */
+  unsigned dont_decache_constraints_or_flush:1;	/* prevent decaching class constraint and flushing. */
   unsigned recache_constraints:1;	/* class constraints need recache. */
 };
 
@@ -960,8 +841,7 @@ struct sm_template
 
   void *triggers;		/* flattened trigger cache */
 
-  DB_ATTRIBUTE *partition_parent_atts;	/* partition parent class attributes
-					   (if creating partition child class) */
+  DB_ATTRIBUTE *partition_parent_atts;	/* partition parent class attributes (if creating partition child class) */
   SM_PARTITION *partition;
 };
 
@@ -1117,166 +997,101 @@ extern void classobj_free_threaded_array (DB_LIST * array, LFREEER clear);
 
 /* Property lists */
 extern DB_SEQ *classobj_make_prop (void);
-extern int classobj_copy_props (DB_SEQ * properties, MOP filter_class,
-				DB_SEQ ** new_);
+extern int classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ ** new_);
 extern void classobj_free_prop (DB_SEQ * properties);
-extern int classobj_get_prop (DB_SEQ * properties, const char *name,
-			      DB_VALUE * pvalue);
-extern int classobj_put_prop (DB_SEQ * properties, const char *name,
-			      DB_VALUE * pvalue);
+extern int classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
+extern int classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
 extern int classobj_drop_prop (DB_SEQ * properties, const char *name);
-extern int classobj_put_index (DB_SEQ ** properties,
-			       SM_CONSTRAINT_TYPE type,
-			       const char *constraint_name,
-			       SM_ATTRIBUTE ** atts,
-			       const int *asc_desc,
-			       const BTID * id,
-			       SM_PREDICATE_INFO * filter_index_info,
-			       SM_FOREIGN_KEY_INFO * fk_info,
-			       char *shared_cons_name,
-			       SM_FUNCTION_INFO * func_index_info,
-			       const char *comment);
-extern int classobj_put_index_id (DB_SEQ ** properties,
-				  SM_CONSTRAINT_TYPE type,
-				  const char *constraint_name,
-				  SM_ATTRIBUTE ** atts,
-				  const int *asc_desc,
-				  const int *attrs_prefix_length,
-				  const BTID * id,
-				  SM_PREDICATE_INFO * filter_index_info,
-				  SM_FOREIGN_KEY_INFO * fk_info,
-				  char *shared_cons_name,
-				  SM_FUNCTION_INFO * func_index_info,
-				  const char *comment);
-extern int classobj_find_prop_constraint (DB_SEQ * properties,
-					  const char *prop_name,
-					  const char *cnstr_name,
+extern int classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
+			       SM_ATTRIBUTE ** atts, const int *asc_desc, const BTID * id,
+			       SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
+			       char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment);
+extern int classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
+				  SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attrs_prefix_length,
+				  const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
+				  char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment);
+extern int classobj_find_prop_constraint (DB_SEQ * properties, const char *prop_name, const char *cnstr_name,
 					  DB_VALUE * cnstr_val);
 
 #if defined (ENABLE_RENAME_CONSTRAINT)
-extern int classobj_rename_constraint (DB_SEQ * properties,
-				       const char *prop_name,
-				       const char *old_name,
+extern int classobj_rename_constraint (DB_SEQ * properties, const char *prop_name, const char *old_name,
 				       const char *new_name);
 #endif
 
-extern int classobj_change_constraint_comment (DB_SEQ * properties,
-					       const char *prop_type,
-					       const char *index_name,
+extern int classobj_change_constraint_comment (DB_SEQ * properties, const char *prop_type, const char *index_name,
 					       const char *comment);
 
-extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints,
-					   SM_CONSTRAINT_TYPE type,
-					   BTID * id);
-extern bool classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT *
-						  constraints);
+extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type, BTID * id);
+extern bool classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT * constraints);
 extern bool classobj_has_unique_constraint (SM_CONSTRAINT * constraints);
 extern bool classobj_has_function_constraint (SM_CONSTRAINT * constraints);
-extern int classobj_decompose_property_oid (const char *buffer, int *volid,
-					    int *fileid, int *pageid);
-extern int classobj_btid_from_property_value (DB_VALUE * value, BTID * btid,
-					      char **shared_cons_name);
+extern int classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, int *pageid);
+extern int classobj_btid_from_property_value (DB_VALUE * value, BTID * btid, char **shared_cons_name);
 extern int classobj_oid_from_property_value (DB_VALUE * value, OID * oid);
 
 /* Constraints */
 extern bool classobj_cache_constraints (SM_CLASS * class_);
 
-extern int classobj_make_class_constraints (DB_SET * props,
-					    SM_ATTRIBUTE * attributes,
-					    SM_CLASS_CONSTRAINT ** con_ptr);
+extern int classobj_make_class_constraints (DB_SET * props, SM_ATTRIBUTE * attributes, SM_CLASS_CONSTRAINT ** con_ptr);
 extern void classobj_free_foreign_key_ref (SM_FOREIGN_KEY_INFO * fk_info);
-extern void classobj_free_class_constraints (SM_CLASS_CONSTRAINT *
-					     constraints);
+extern void classobj_free_class_constraints (SM_CLASS_CONSTRAINT * constraints);
 extern void classobj_decache_class_constraints (SM_CLASS * class_);
 extern int classobj_cache_class_constraints (SM_CLASS * class_);
-extern void classobj_free_function_index_ref (SM_FUNCTION_INFO *
-					      func_index_info);
+extern void classobj_free_function_index_ref (SM_FUNCTION_INFO * func_index_info);
 
-extern SM_CLASS_CONSTRAINT
-  * classobj_find_class_constraint (SM_CLASS_CONSTRAINT * constraints,
-				    SM_CONSTRAINT_TYPE type,
-				    const char *name);
-extern SM_CLASS_CONSTRAINT
-  * classobj_find_class_constraint_by_btid (SM_CLASS_CONSTRAINT * constraints,
-					    SM_CONSTRAINT_TYPE type,
-					    BTID btid);
+extern SM_CLASS_CONSTRAINT *classobj_find_class_constraint (SM_CLASS_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type,
+							    const char *name);
+extern SM_CLASS_CONSTRAINT *classobj_find_class_constraint_by_btid (SM_CLASS_CONSTRAINT * constraints,
+								    SM_CONSTRAINT_TYPE type, BTID btid);
 
-extern SM_CLASS_CONSTRAINT *classobj_find_class_index (SM_CLASS * class_,
-						       const char *name);
-extern SM_CLASS_CONSTRAINT
-  * classobj_find_constraint_by_name (SM_CLASS_CONSTRAINT * cons_list,
-				      const char *name);
-extern SM_CLASS_CONSTRAINT
-  * classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
-				       DB_CONSTRAINT_TYPE new_cons,
-				       const char **att_names,
-				       const int *asc_desc);
-extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT
-							   * cons,
-							   CLASS_STATS *
-							   stats);
-extern void classobj_remove_class_constraint_node (SM_CLASS_CONSTRAINT **
-						   constraints,
-						   SM_CLASS_CONSTRAINT *
-						   node);
+extern SM_CLASS_CONSTRAINT *classobj_find_class_index (SM_CLASS * class_, const char *name);
+extern SM_CLASS_CONSTRAINT *classobj_find_constraint_by_name (SM_CLASS_CONSTRAINT * cons_list, const char *name);
+extern SM_CLASS_CONSTRAINT *classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
+							       DB_CONSTRAINT_TYPE new_cons, const char **att_names,
+							       const int *asc_desc);
+extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, CLASS_STATS * stats);
+extern void classobj_remove_class_constraint_node (SM_CLASS_CONSTRAINT ** constraints, SM_CLASS_CONSTRAINT * node);
 
-extern int classobj_populate_class_properties (DB_SET ** properties,
-					       SM_CLASS_CONSTRAINT *
-					       constraints,
+extern int classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * constraints,
 					       SM_CONSTRAINT_TYPE type);
 
 extern bool classobj_class_has_indexes (SM_CLASS * class_);
 
 /* Attribute */
-extern SM_ATTRIBUTE *classobj_make_attribute (const char *name,
-					      PR_TYPE * type,
-					      SM_NAME_SPACE name_space);
-extern SM_ATTRIBUTE *classobj_copy_attribute (SM_ATTRIBUTE * src,
-					      const char *alias);
-extern int classobj_copy_attlist (SM_ATTRIBUTE * attlist, MOP filter_class,
-				  int ordered, SM_ATTRIBUTE ** copy_ptr);
+extern SM_ATTRIBUTE *classobj_make_attribute (const char *name, PR_TYPE * type, SM_NAME_SPACE name_space);
+extern SM_ATTRIBUTE *classobj_copy_attribute (SM_ATTRIBUTE * src, const char *alias);
+extern int classobj_copy_attlist (SM_ATTRIBUTE * attlist, MOP filter_class, int ordered, SM_ATTRIBUTE ** copy_ptr);
 
 extern void classobj_free_attribute (SM_ATTRIBUTE * att);
 
 /* Method argument */
 extern SM_METHOD_ARGUMENT *classobj_make_method_arg (int index);
-extern SM_METHOD_ARGUMENT *classobj_find_method_arg (SM_METHOD_ARGUMENT **
-						     arglist, int index,
-						     int create);
+extern SM_METHOD_ARGUMENT *classobj_find_method_arg (SM_METHOD_ARGUMENT ** arglist, int index, int create);
 
 /* Method signature */
 extern SM_METHOD_SIGNATURE *classobj_make_method_signature (const char *name);
 extern void classobj_free_method_signature (SM_METHOD_SIGNATURE * sig);
 
 /* Method */
-extern SM_METHOD *classobj_make_method (const char *name,
-					SM_NAME_SPACE name_space);
+extern SM_METHOD *classobj_make_method (const char *name, SM_NAME_SPACE name_space);
 extern SM_METHOD *classobj_copy_method (SM_METHOD * src, const char *alias);
 extern void classobj_free_method (SM_METHOD * method);
 
 /* Conflict resolution */
-extern SM_RESOLUTION *classobj_make_resolution (MOP class_mop,
-						const char *name,
-						const char *alias,
+extern SM_RESOLUTION *classobj_make_resolution (MOP class_mop, const char *name, const char *alias,
 						SM_NAME_SPACE name_space);
-extern int classobj_copy_reslist (SM_RESOLUTION * src, SM_NAME_SPACE resspace,
-				  SM_RESOLUTION ** copy_ptr);
+extern int classobj_copy_reslist (SM_RESOLUTION * src, SM_NAME_SPACE resspace, SM_RESOLUTION ** copy_ptr);
 extern void classobj_free_resolution (SM_RESOLUTION * res);
-extern SM_RESOLUTION *classobj_find_resolution (SM_RESOLUTION * reslist,
-						MOP class_mop,
-						const char *name,
+extern SM_RESOLUTION *classobj_find_resolution (SM_RESOLUTION * reslist, MOP class_mop, const char *name,
 						SM_NAME_SPACE name_space);
 
 /* Method file */
 extern SM_METHOD_FILE *classobj_make_method_file (const char *name);
-extern int classobj_copy_methfiles (SM_METHOD_FILE * files, MOP filter_class,
-				    SM_METHOD_FILE ** copy_ptr);
+extern int classobj_copy_methfiles (SM_METHOD_FILE * files, MOP filter_class, SM_METHOD_FILE ** copy_ptr);
 extern void classobj_free_method_file (SM_METHOD_FILE * file);
 
 /* Representation attribute */
-extern SM_REPR_ATTRIBUTE *classobj_make_repattribute (int attid,
-						      DB_TYPE typeid_,
-						      TP_DOMAIN * domain);
+extern SM_REPR_ATTRIBUTE *classobj_make_repattribute (int attid, DB_TYPE typeid_, TP_DOMAIN * domain);
 
 /* Representation */
 extern SM_REPRESENTATION *classobj_make_representation (void);
@@ -1288,14 +1103,11 @@ extern SM_QUERY_SPEC *classobj_copy_query_spec_list (SM_QUERY_SPEC *);
 extern void classobj_free_query_spec (SM_QUERY_SPEC *);
 
 /* Editing template */
-extern SM_TEMPLATE *classobj_make_template (const char *name, MOP op,
-					    SM_CLASS * class_);
-extern SM_TEMPLATE *classobj_make_template_like (const char *name,
-						 SM_CLASS * class_);
+extern SM_TEMPLATE *classobj_make_template (const char *name, MOP op, SM_CLASS * class_);
+extern SM_TEMPLATE *classobj_make_template_like (const char *name, SM_CLASS * class_);
 extern void classobj_free_template (SM_TEMPLATE * template_ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
-extern int classobj_add_template_reference (SM_TEMPLATE * template_ptr,
-					    MOP obj);
+extern int classobj_add_template_reference (SM_TEMPLATE * template_ptr, MOP obj);
 #endif
 
 /* Class */
@@ -1303,49 +1115,33 @@ extern SM_CLASS *classobj_make_class (const char *name);
 extern void classobj_free_class (SM_CLASS * class_);
 extern int classobj_class_size (SM_CLASS * class_);
 
-extern int classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat,
-				      int saverep);
+extern int classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat, int saverep);
 
-extern SM_REPRESENTATION *classobj_find_representation (SM_CLASS * class_,
-							int id);
+extern SM_REPRESENTATION *classobj_find_representation (SM_CLASS * class_, int id);
 
 extern void classobj_fixup_loaded_class (SM_CLASS * class_);
 
-extern SM_COMPONENT *classobj_filter_components (SM_COMPONENT ** complist,
-						 SM_NAME_SPACE name_space);
+extern SM_COMPONENT *classobj_filter_components (SM_COMPONENT ** complist, SM_NAME_SPACE name_space);
 
 extern int classobj_annotate_method_files (SM_CLASS * class_, MOP classmop);
 
-extern SM_ATTRIBUTE *classobj_find_attribute (SM_CLASS * class_,
-					      const char *name,
-					      int class_attribute);
+extern SM_ATTRIBUTE *classobj_find_attribute (SM_CLASS * class_, const char *name, int class_attribute);
 
-extern SM_ATTRIBUTE *classobj_find_attribute_id (SM_CLASS * class_, int id,
-						 int class_attribute);
+extern SM_ATTRIBUTE *classobj_find_attribute_id (SM_CLASS * class_, int id, int class_attribute);
 
-extern SM_ATTRIBUTE *classobj_find_attribute_list (SM_ATTRIBUTE * attlist,
-						   const char *name, int id);
+extern SM_ATTRIBUTE *classobj_find_attribute_list (SM_ATTRIBUTE * attlist, const char *name, int id);
 
-extern SM_METHOD *classobj_find_method (SM_CLASS * class_, const char *name,
-					int class_method);
+extern SM_METHOD *classobj_find_method (SM_CLASS * class_, const char *name, int class_method);
 
-extern SM_COMPONENT *classobj_find_component (SM_CLASS * class_,
-					      const char *name,
-					      int class_component);
+extern SM_COMPONENT *classobj_find_component (SM_CLASS * class_, const char *name, int class_component);
 
-extern SM_COMPONENT *classobj_complist_search (SM_COMPONENT * list,
-					       const char *name);
+extern SM_COMPONENT *classobj_complist_search (SM_COMPONENT * list, const char *name);
 
-extern const char **classobj_point_at_att_names (SM_CLASS_CONSTRAINT *
-						 constraint, int *count_ref);
+extern const char **classobj_point_at_att_names (SM_CLASS_CONSTRAINT * constraint, int *count_ref);
 /* Descriptors */
-extern SM_DESCRIPTOR *classobj_make_descriptor (MOP class_mop,
-						SM_CLASS * classobj,
-						SM_COMPONENT * comp,
+extern SM_DESCRIPTOR *classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * comp,
 						int write_access);
-extern SM_DESCRIPTOR_LIST *classobj_make_desclist (MOP class_mop,
-						   SM_CLASS * classobj,
-						   SM_COMPONENT * comp,
+extern SM_DESCRIPTOR_LIST *classobj_make_desclist (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * comp,
 						   int write_access);
 
 extern void classobj_free_desclist (SM_DESCRIPTOR_LIST * dl);
@@ -1356,36 +1152,24 @@ extern void classobj_free_descriptor (SM_DESCRIPTOR * desc);
 extern void classobj_print (SM_CLASS * class_);
 #endif
 /* primary key */
-extern SM_CLASS_CONSTRAINT *classobj_find_class_primary_key (SM_CLASS *
-							     class_);
+extern SM_CLASS_CONSTRAINT *classobj_find_class_primary_key (SM_CLASS * class_);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int classobj_count_class_foreign_key (SM_CLASS * class_);
 extern int classobj_count_cons_attributes (SM_CLASS_CONSTRAINT * cons);
 #endif
 
-extern SM_CLASS_CONSTRAINT
-  * classobj_find_cons_primary_key (SM_CLASS_CONSTRAINT * cons_list);
+extern SM_CLASS_CONSTRAINT *classobj_find_cons_primary_key (SM_CLASS_CONSTRAINT * cons_list);
 
-extern const char *classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE
-							constraint);
-extern char *classobj_describe_foreign_key_action (SM_FOREIGN_KEY_ACTION
-						   action);
-extern bool classobj_is_pk_referred (MOP clsop,
-				     SM_FOREIGN_KEY_INFO * fk_info,
-				     bool include_self_ref, char **fk_name);
-extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
-				       char **out_shared_cons_name,
-				       const char *class_name,
-				       DB_CONSTRAINT_TYPE constraint_type,
-				       const char *constraint_name,
-				       const char **att_names,
-				       const int *asc_desc,
-				       SM_PREDICATE_INFO * filter_index,
-				       SM_FUNCTION_INFO * func_index_info);
+extern const char *classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE constraint);
+extern char *classobj_describe_foreign_key_action (SM_FOREIGN_KEY_ACTION action);
+extern bool classobj_is_pk_referred (MOP clsop, SM_FOREIGN_KEY_INFO * fk_info, bool include_self_ref, char **fk_name);
+extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared_cons_name,
+				       const char *class_name, DB_CONSTRAINT_TYPE constraint_type,
+				       const char *constraint_name, const char **att_names, const int *asc_desc,
+				       SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * func_index_info);
 extern void classobj_initialize_attributes (SM_ATTRIBUTE * attributes);
 extern void classobj_initialize_methods (SM_METHOD * methods);
 extern SM_PARTITION *classobj_make_partition_info (void);
 extern void classobj_free_partition_info (SM_PARTITION * partition_info);
-extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION *
-						   partition_info);
+extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info);
 #endif /* _CLASS_OBJECT_H_ */

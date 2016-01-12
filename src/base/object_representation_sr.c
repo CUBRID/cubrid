@@ -73,46 +73,30 @@ struct or_btree_property
   int length;
 };
 
-static int or_get_hierarchy_helper (THREAD_ENTRY * thread_p,
-				    OID * source_class, OID * class_,
-				    BTID * btid, OID ** class_oids,
-				    HFID ** hfids, int *num_classes,
-				    int *max_classes,
+static int or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * class_, BTID * btid,
+				    OID ** class_oids, HFID ** hfids, int *num_classes, int *max_classes,
 				    int *partition_local_index);
 static TP_DOMAIN *or_get_domain_internal (char *ptr);
 static TP_DOMAIN *or_get_domain_and_cache (char *ptr);
 static void or_get_att_index (char *ptr, BTID * btid);
 static int or_get_default_value (OR_ATTRIBUTE * attr, char *ptr, int length);
-static int or_get_current_default_value (OR_ATTRIBUTE * attr, char *ptr,
-					 int length);
-static int or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name,
-				  DB_VALUE * pvalue);
-static void or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq,
-					  OR_INDEX * index);
-static void or_install_btids_foreign_key_ref (DB_SEQ * fk_container,
-					      OR_INDEX * index);
-static void or_install_btids_prefix_length (DB_SEQ * prefix_seq,
-					    OR_INDEX * index, int num_attrs);
+static int or_get_current_default_value (OR_ATTRIBUTE * attr, char *ptr, int length);
+static int or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
+static void or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq, OR_INDEX * index);
+static void or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index);
+static void or_install_btids_prefix_length (DB_SEQ * prefix_seq, OR_INDEX * index, int num_attrs);
 static int or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index);
-static void or_install_btids_class (OR_CLASSREP * rep, BTID * id,
-				    DB_SEQ * constraint_seq, int seq_size,
+static void or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, int seq_size,
 				    BTREE_TYPE type, const char *cons_name);
-static int or_install_btids_attribute (OR_CLASSREP * rep, int att_id,
-				       BTID * id);
-static void or_install_btids_constraint (OR_CLASSREP * rep,
-					 DB_SEQ * constraint_seq,
-					 BTREE_TYPE type,
+static int or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id);
+static void or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_TYPE type,
 					 const char *cons_name);
-static void or_install_btids_function_info (DB_SEQ * fi_seq,
-					    OR_INDEX * index);
+static void or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index);
 static void or_install_btids (OR_CLASSREP * rep, DB_SEQ * props);
-static OR_CLASSREP *or_get_current_representation (RECDES * record,
-						   int do_indexes);
-static OR_CLASSREP *or_get_old_representation (RECDES * record, int repid,
-					       int do_indexes);
+static OR_CLASSREP *or_get_current_representation (RECDES * record, int do_indexes);
+static OR_CLASSREP *or_get_old_representation (RECDES * record, int repid, int do_indexes);
 static const char *or_find_diskattr (RECDES * record, int attr_id);
-static const char *or_get_attr_string (RECDES * record, int attr_id,
-				       int attr_index);
+static const char *or_get_attr_string (RECDES * record, int attr_id, int attr_index);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -127,9 +111,7 @@ orc_class_rep_dir (RECDES * record, OID * rep_dir_p)
 {
   char *ptr;
 
-  ptr = (char *) record->data +
-    OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) +
-    ORC_REP_DIR_OFFSET;
+  ptr = (char *) record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) + ORC_REP_DIR_OFFSET;
 
   OR_GET_OID (ptr, rep_dir_p);
 }
@@ -151,8 +133,7 @@ orc_class_hfid_from_record (RECDES * record, HFID * hfid)
 {
   char *ptr;
 
-  ptr = record->data +
-    OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
   hfid->vfid.fileid = OR_GET_INT (ptr + ORC_HFID_FILEID_OFFSET);
   hfid->vfid.volid = OR_GET_INT (ptr + ORC_HFID_VOLID_OFFSET);
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
@@ -173,9 +154,7 @@ orc_class_is_system_class (RECDES * record)
   int flags;
   assert (record != NULL && record->data != NULL);
 
-  ptr = record->data +
-    OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) +
-    ORC_CLASS_FLAGS;
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) + ORC_CLASS_FLAGS;
   flags = OR_GET_INT (ptr);
 
   return ((flags & SM_CLASSFLAG_SYSTEM) != 0);
@@ -214,8 +193,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
   rep = (DISK_REPR *) malloc (sizeof (DISK_REPR));
   if (rep == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (DISK_REPR));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DISK_REPR));
       goto error;
     }
 
@@ -249,9 +227,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
       rep->fixed = (DISK_ATTR *) malloc (sizeof (DISK_ATTR) * rep->n_fixed);
       if (rep->fixed == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  sizeof (DISK_ATTR) * rep->n_fixed);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DISK_ATTR) * rep->n_fixed);
 	  goto error;
 	}
       memset (rep->fixed, 0x0, sizeof (DISK_ATTR) * rep->n_fixed);
@@ -259,12 +235,10 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
   if (rep->n_variable)
     {
-      rep->variable =
-	(DISK_ATTR *) malloc (sizeof (DISK_ATTR) * rep->n_variable);
+      rep->variable = (DISK_ATTR *) malloc (sizeof (DISK_ATTR) * rep->n_variable);
       if (rep->variable == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (DISK_ATTR) * rep->n_variable);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DISK_ATTR) * rep->n_variable);
 	  goto error;
 	}
       memset (rep->variable, 0x0, sizeof (DISK_ATTR) * rep->n_variable);
@@ -308,18 +282,14 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
       n_btstats = att->n_btstats = or_att->n_btids;
       if (n_btstats > 0)
 	{
-	  att->bt_stats =
-	    (BTREE_STATS *) malloc (sizeof (BTREE_STATS) * n_btstats);
+	  att->bt_stats = (BTREE_STATS *) malloc (sizeof (BTREE_STATS) * n_btstats);
 	  if (att->bt_stats == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (BTREE_STATS) * n_btstats);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (BTREE_STATS) * n_btstats);
 	      goto error;
 	    }
 
-	  for (j = 0, bt_statsp = att->bt_stats; j < n_btstats;
-	       j++, bt_statsp++)
+	  for (j = 0, bt_statsp = att->bt_stats; j < n_btstats; j++, bt_statsp++)
 	    {
 	      bt_statsp->btid = or_att->btids[j];
 
@@ -331,10 +301,8 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      for (k = 0; k < or_rep->n_indexes; k++)
 		{
 		  or_idx = &or_rep->indexes[k];
-		  if (or_idx &&
-		      BTID_IS_EQUAL (&or_idx->btid, &bt_statsp->btid) &&
-		      or_idx->func_index_info &&
-		      or_idx->func_index_info->col_id == 0)
+		  if (or_idx && BTID_IS_EQUAL (&or_idx->btid, &bt_statsp->btid) && or_idx->func_index_info
+		      && or_idx->func_index_info->col_id == 0)
 		    {
 		      bt_statsp->has_function = 1;
 		      break;
@@ -358,16 +326,12 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
 	      if (VPID_ISNULL (&root_vpid))
 		{
-		  /* after create the catalog record of the class, and
-		   * before create the catalog record of the constraints for the class
-		   *
-		   * currently, does not know BTID
-		   */
+		  /* after create the catalog record of the class, and before create the catalog record of the
+		   * constraints for the class currently, does not know BTID */
 		  continue;
 		}
 
-	      root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE,
-				PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	      if (root == NULL)
 		{
 		  goto error;
@@ -384,9 +348,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
 	      /* construct BTID_INT structure */
 	      btid_int.sys_btid = &bt_statsp->btid;
-	      if (btree_glean_root_header_info (thread_p,
-						root_header,
-						&btid_int) != NO_ERROR)
+	      if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
 		{
 		  pgbuf_unfix_and_init (thread_p, root);
 		  goto error;
@@ -397,8 +359,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      bt_statsp->key_type = btid_int.key_type;
 	      if (TP_DOMAIN_TYPE (bt_statsp->key_type) == DB_TYPE_MIDXKEY)
 		{
-		  bt_statsp->pkeys_size =
-		    tp_domain_size (bt_statsp->key_type->setdomain);
+		  bt_statsp->pkeys_size = tp_domain_size (bt_statsp->key_type->setdomain);
 		}
 	      else
 		{
@@ -411,13 +372,11 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		  bt_statsp->pkeys_size = BTREE_STATS_PKEYS_NUM;
 		}
 
-	      bt_statsp->pkeys =
-		(int *) malloc (bt_statsp->pkeys_size * sizeof (int));
+	      bt_statsp->pkeys = (int *) malloc (bt_statsp->pkeys_size * sizeof (int));
 	      if (bt_statsp->pkeys == NULL)
 		{
 		  bt_statsp->pkeys_size = 0;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  bt_statsp->pkeys_size * sizeof (int));
 		  goto error;
 		}
@@ -537,8 +496,7 @@ orc_class_info_from_record (RECDES * record)
   class_info_p = (CLS_INFO *) malloc (sizeof (CLS_INFO));
   if (class_info_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (CLS_INFO));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CLS_INFO));
       return NULL;
     }
 
@@ -581,8 +539,7 @@ orc_free_class_info (CLS_INFO * info)
  *       array is not large enough, it is reallocated using realloc.
  */
 int
-orc_subclasses_from_record (RECDES * record, int *array_size,
-			    OID ** array_ptr)
+orc_subclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr)
 {
   int error = NO_ERROR;
   OID *array;
@@ -594,9 +551,7 @@ orc_subclasses_from_record (RECDES * record, int *array_size,
 
   if (!OR_VAR_IS_NULL (record->data, ORC_SUBCLASSES_INDEX))
     {
-      subset =
-	(char *) (record->data) + OR_VAR_OFFSET (record->data,
-						 ORC_SUBCLASSES_INDEX);
+      subset = (char *) (record->data) + OR_VAR_OFFSET (record->data, ORC_SUBCLASSES_INDEX);
       nsubs = OR_SET_ELEMENT_COUNT (subset);
     }
 
@@ -616,7 +571,7 @@ orc_subclasses_from_record (RECDES * record, int *array_size,
 	}
       insert = i;
 
-      /*
+      /* 
        * check for array extension.
        * Add one in the comparison since a NULL_OID is set at the end of the
        * array
@@ -635,8 +590,7 @@ orc_subclasses_from_record (RECDES * record, int *array_size,
 
 	  if (array == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, newsize * sizeof (OID));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, newsize * sizeof (OID));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
@@ -648,10 +602,8 @@ orc_subclasses_from_record (RECDES * record, int *array_size,
 	  max = newsize;
 	}
 
-      /* Advance past the set header, the domain size, and the "object" domain.
-       * Note that this assumes we are not using a bound bit array even though
-       * this is a fixed width homogeneous set.  Probably not a good assumption.
-       */
+      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using 
+       * a bound bit array even though this is a fixed width homogeneous set.  Probably not a good assumption. */
       ptr = subset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
       assert (array != NULL);
@@ -689,8 +641,7 @@ orc_subclasses_from_record (RECDES * record, int *array_size,
  *       array is not large enough, it is reallocated using realloc.
  */
 int
-orc_superclasses_from_record (RECDES * record, int *array_size,
-			      OID ** array_ptr)
+orc_superclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr)
 {
   int error = NO_ERROR;
   OID *oid_array = NULL;
@@ -709,14 +660,11 @@ orc_superclasses_from_record (RECDES * record, int *array_size,
       return NO_ERROR;
     }
 
-  superset =
-    (char *) (record->data) + OR_VAR_OFFSET (record->data,
-					     ORC_SUPERCLASSES_INDEX);
+  superset = (char *) (record->data) + OR_VAR_OFFSET (record->data, ORC_SUPERCLASSES_INDEX);
   nsupers = OR_SET_ELEMENT_COUNT (superset);
   if (nsupers <= 0)
     {
-      /* This is probably an error but there's no point in reporting it here.
-       * We just assume that there are no supers */
+      /* This is probably an error but there's no point in reporting it here. We just assume that there are no supers */
       assert (false);
       return NO_ERROR;
     }
@@ -725,15 +673,12 @@ orc_superclasses_from_record (RECDES * record, int *array_size,
 
   if (oid_array == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      nsupers * sizeof (OID));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nsupers * sizeof (OID));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  /* Advance past the set header, the domain size, and the "object" domain.
-   * Note that this assumes we are not using a bound bit array even though
-   * this is a fixed width homogeneous set.  Probably not a good assumption.
-   */
+  /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using a
+   * bound bit array even though this is a fixed width homogeneous set.  Probably not a good assumption. */
   ptr = superset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
   /* add the new OIDs */
@@ -764,9 +709,7 @@ or_class_rep_dir (RECDES * record, OID * rep_dir_p)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = (char *) record->data +
-    OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) +
-    ORC_REP_DIR_OFFSET;
+  ptr = (char *) record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) + ORC_REP_DIR_OFFSET;
 
   OR_GET_OID (ptr, rep_dir_p);
 }
@@ -790,8 +733,7 @@ or_class_hfid (RECDES * record, HFID * hfid)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = record->data +
-    OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
   hfid->vfid.fileid = OR_GET_INT (ptr + ORC_HFID_FILEID_OFFSET);
   hfid->vfid.volid = OR_GET_INT (ptr + ORC_HFID_VOLID_OFFSET);
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
@@ -812,8 +754,7 @@ or_class_statistics (RECDES * record, OID * oid)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = record->data +
-    OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
 
   /* this doesn't exist yet, return NULL */
   OID_SET_NULL (oid);
@@ -846,9 +787,7 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
   nsubs = 0;
   if (!OR_VAR_IS_NULL (record->data, ORC_SUBCLASSES_INDEX))
     {
-      subset =
-	(char *) (record->data) + OR_VAR_OFFSET (record->data,
-						 ORC_SUBCLASSES_INDEX);
+      subset = (char *) (record->data) + OR_VAR_OFFSET (record->data, ORC_SUBCLASSES_INDEX);
       nsubs = OR_SET_ELEMENT_COUNT (subset);
     }
 
@@ -868,7 +807,7 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
 	}
       insert = i;
 
-      /*
+      /* 
        * check for array extension.
        * Add one in the comparison since a NULL_OID is set at the end of the
        * array
@@ -889,8 +828,7 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
 
 	  if (array == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
@@ -901,10 +839,8 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
 	  max = newsize;
 	}
 
-      /* Advance past the set header, the domain size, and the "object" domain.
-       * Note that this assumes we are not using a bound bit array even though
-       * this is a fixed width homogeneous set.  Probably not a good assumption.
-       */
+      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using 
+       * a bound bit array even though this is a fixed width homogeneous set.  Probably not a good assumption. */
       ptr = subset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
       if (array != NULL)
@@ -950,10 +886,8 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
  *       that it might have.
  */
 static int
-or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
-			 OID * class_, BTID * btid, OID ** class_oids,
-			 HFID ** hfids, int *num_classes, int *max_classes,
-			 int *partition_local_index)
+or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * class_, BTID * btid, OID ** class_oids,
+			 HFID ** hfids, int *num_classes, int *max_classes, int *partition_local_index)
 {
   char *ptr;
   char *subset = NULL;
@@ -989,9 +923,8 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
 
   if (!found)
     {
-      /* check if we are dealing with a partition class in which the unique
-       * constraint stands as a local index and each partition has it's own btree
-       */
+      /* check if we are dealing with a partition class in which the unique constraint stands as a local index and each 
+       * partition has it's own btree */
       if (or_rep->has_partition_info > 0 && partition_local_index != NULL)
 	{
 	  *partition_local_index = 1;
@@ -1002,7 +935,7 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
 	}
     }
 
-  /*
+  /* 
    *  For each subclass, recurse ...
    *  Unfortunately, this information is not available in the OR_CLASSREP
    *  structure, so we'll digress into the RECDES structure for it.  It
@@ -1012,26 +945,22 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
   nsubs = 0;
   if (!OR_VAR_IS_NULL (record.data, ORC_SUBCLASSES_INDEX))
     {
-      subset = (char *) (record.data) +
-	OR_VAR_OFFSET (record.data, ORC_SUBCLASSES_INDEX);
+      subset = (char *) (record.data) + OR_VAR_OFFSET (record.data, ORC_SUBCLASSES_INDEX);
       nsubs = OR_SET_ELEMENT_COUNT (subset);
     }
 
   if (nsubs)
     {
-      /* Advance past the set header, the domain size, and the "object" domain.
-       * Note that this assumes we are not using a bound bit array even though
-       * this is a fixed width homogeneous set.  Probably not a good assumption.
-       */
+      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using 
+       * a bound bit array even though this is a fixed width homogeneous set.  Probably not a good assumption. */
       ptr = subset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
       for (i = 0; i < nsubs; i++)
 	{
 	  OR_GET_OID (ptr, &sub_class);
-	  if (or_get_hierarchy_helper (thread_p, source_class, &sub_class,
-				       btid, class_oids, hfids, num_classes,
-				       max_classes, partition_local_index)
-	      != NO_ERROR)
+	  if (or_get_hierarchy_helper
+	      (thread_p, source_class, &sub_class, btid, class_oids, hfids, num_classes, max_classes,
+	       partition_local_index) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -1074,8 +1003,7 @@ end:
 
       if (*class_oids == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, newsize * sizeof (OID));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, newsize * sizeof (OID));
 	  goto error;
 	}
 
@@ -1090,8 +1018,7 @@ end:
 
       if (*hfids == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, newsize * sizeof (HFID));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, newsize * sizeof (HFID));
 	  goto error;
 	}
 
@@ -1156,9 +1083,8 @@ error:
  *       index well.
  */
 int
-or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
-			 BTID * btid, OID ** class_oids, HFID ** hfids,
-			 int *num_classes, int *partition_local_index)
+or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid, BTID * btid, OID ** class_oids,
+			 HFID ** hfids, int *num_classes, int *partition_local_index)
 {
   int n_attributes, n_fixed, n_variable, i;
   int id, found, max_classes;
@@ -1180,8 +1106,7 @@ or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
 
   assert (OR_GET_OFFSET_SIZE (start) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data,
-					    ORC_CLASS_VAR_ATT_COUNT);
+  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
 
   n_fixed = OR_GET_INT (ptr + ORC_FIXED_COUNT_OFFSET);
   n_variable = OR_GET_INT (ptr + ORC_VARIABLE_COUNT_OFFSET);
@@ -1193,8 +1118,8 @@ or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
   /* loop over each attribute in the class record to find our attribute */
   for (i = 0, found = 0; i < n_attributes && !found; i++)
     {
-      /* diskatt will now be pointing at the offset table for this attribute.
-         this is logically the "start" of this nested object. */
+      /* diskatt will now be pointing at the offset table for this attribute. this is logically the "start" of this
+       * nested object. */
 
       diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 
@@ -1210,24 +1135,19 @@ or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
 	}
     }
 
-  /* diskatt now points to the attribute that we are interested in.
-     Get the attribute name. */
+  /* diskatt now points to the attribute that we are interested in. Get the attribute name. */
   if (diskatt == NULL)
     {
       goto error;
     }
 
-  attr_name = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
-						      ORC_ATT_NAME_INDEX));
+  attr_name = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_NAME_INDEX));
 
-  if (!found
+  if (!found || (OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_NAME_INDEX) == 0)
       ||
-      (OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_NAME_INDEX) == 0)
-      ||
-      (or_get_hierarchy_helper (thread_p, &source_class, &source_class,
-				btid, class_oids, hfids, num_classes,
-				&max_classes, partition_local_index)
-       != NO_ERROR))
+      (or_get_hierarchy_helper
+       (thread_p, &source_class, &source_class, btid, class_oids, hfids, num_classes, &max_classes,
+	partition_local_index) != NO_ERROR))
     {
       goto error;
     }
@@ -1272,8 +1192,7 @@ or_get_domain_internal (char *ptr)
       /* find the start of the domain in the set */
       dstart = ptr + OR_SET_ELEMENT_OFFSET (ptr, i);
 
-      /* dstart points to the offset table for this substructure,
-         get the position of the first fixed attribute. */
+      /* dstart points to the offset table for this substructure, get the position of the first fixed attribute. */
       fixed = dstart + OR_VAR_TABLE_SIZE (ORC_DOMAIN_VAR_ATT_COUNT);
 
       typeid_ = (DB_TYPE) OR_GET_INT (fixed + ORC_DOMAIN_TYPE_OFFSET);
@@ -1308,34 +1227,28 @@ or_get_domain_internal (char *ptr)
 	  assert (new_->collation_id == LANG_COLL_ISO_BINARY);
 	  new_->codeset = INTL_CODESET_ISO88591;
 	}
-      new_->collation_id = OR_GET_INT (fixed +
-				       ORC_DOMAIN_COLLATION_ID_OFFSET);
+      new_->collation_id = OR_GET_INT (fixed + ORC_DOMAIN_COLLATION_ID_OFFSET);
 
       OR_GET_OID (fixed + ORC_DOMAIN_CLASS_OFFSET, &new_->class_oid);
       /* can't swizzle the pointer on the server */
       new_->class_mop = NULL;
 
-      if (OR_VAR_TABLE_ELEMENT_LENGTH (dstart, ORC_DOMAIN_SETDOMAIN_INDEX) ==
-	  0)
+      if (OR_VAR_TABLE_ELEMENT_LENGTH (dstart, ORC_DOMAIN_SETDOMAIN_INDEX) == 0)
 	{
 	  new_->setdomain = NULL;
 	}
       else
 	{
-	  offset =
-	    OR_VAR_TABLE_ELEMENT_OFFSET (dstart, ORC_DOMAIN_SETDOMAIN_INDEX);
+	  offset = OR_VAR_TABLE_ELEMENT_OFFSET (dstart, ORC_DOMAIN_SETDOMAIN_INDEX);
 	  new_->setdomain = or_get_domain_internal (dstart + offset);
 	}
 
       DOM_SET_ENUM (new_, NULL, 0);
-      if (OR_VAR_TABLE_ELEMENT_LENGTH (dstart, ORC_DOMAIN_ENUMERATION_INDEX)
-	  != 0)
+      if (OR_VAR_TABLE_ELEMENT_LENGTH (dstart, ORC_DOMAIN_ENUMERATION_INDEX) != 0)
 	{
 	  OR_BUF buf;
 
-	  offset =
-	    OR_VAR_TABLE_ELEMENT_OFFSET (dstart,
-					 ORC_DOMAIN_ENUMERATION_INDEX);
+	  offset = OR_VAR_TABLE_ELEMENT_OFFSET (dstart, ORC_DOMAIN_ENUMERATION_INDEX);
 
 	  or_init (&buf, dstart + offset, 0);
 
@@ -1525,8 +1438,7 @@ or_get_current_default_value (OR_ATTRIBUTE * attr, char *ptr, int length)
  *       operations faster.
  */
 static int
-or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name,
-		       DB_VALUE * pvalue)
+or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
 {
   int error;
   int found, max, i;
@@ -1544,8 +1456,7 @@ or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name,
 	  error = set_get_element_nocopy (properties, i, &value);
 	  if (error == NO_ERROR)
 	    {
-	      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING
-		  || DB_GET_STRING (&value) == NULL)
+	      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || DB_GET_STRING (&value) == NULL)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		}
@@ -1560,9 +1471,7 @@ or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name,
 			}
 		      else
 			{
-			  error =
-			    set_get_element_nocopy (properties, i + 1,
-						    pvalue);
+			  error = set_get_element_nocopy (properties, i + 1, pvalue);
 			  if (error == NO_ERROR)
 			    found = i + 1;
 			}
@@ -1588,8 +1497,7 @@ or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name,
  *   index(in):
  */
 static void
-or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq,
-			      OR_INDEX * index)
+or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq, OR_INDEX * index)
 {
   DB_VALUE val;
   int args;
@@ -1610,8 +1518,7 @@ or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq,
   index->fk->next = NULL;
   index->fk->fkname = strdup (fkname);
 
-  args = classobj_decompose_property_oid (DB_PULL_STRING (&val),
-					  &pageid, &slotid, &volid);
+  args = classobj_decompose_property_oid (DB_PULL_STRING (&val), &pageid, &slotid, &volid);
   if (args != 3)
     {
       return;
@@ -1626,8 +1533,7 @@ or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq,
       return;
     }
 
-  args = classobj_decompose_property_oid (DB_GET_STRING (&val),
-					  &volid, &fileid, &pageid);
+  args = classobj_decompose_property_oid (DB_GET_STRING (&val), &volid, &fileid, &pageid);
 
   if (args != 3)
     {
@@ -1687,8 +1593,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  return;
 	}
 
-      args = classobj_decompose_property_oid (DB_PULL_STRING (&val),
-					      &pageid, &slotid, &volid);
+      args = classobj_decompose_property_oid (DB_PULL_STRING (&val), &pageid, &slotid, &volid);
 
       if (args != 3)
 	{
@@ -1706,8 +1611,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  return;
 	}
 
-      args = classobj_decompose_property_oid (DB_PULL_STRING (&val),
-					      &volid, &fileid, &pageid);
+      args = classobj_decompose_property_oid (DB_PULL_STRING (&val), &volid, &fileid, &pageid);
 
       if (args != 3)
 	{
@@ -1770,8 +1674,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
  *   num_attrs(in): key attribute count
  */
 static void
-or_install_btids_prefix_length (DB_SEQ * prefix_seq, OR_INDEX * index,
-				int num_attrs)
+or_install_btids_prefix_length (DB_SEQ * prefix_seq, OR_INDEX * index, int num_attrs)
 {
   DB_VALUE val;
   int i;
@@ -1780,8 +1683,7 @@ or_install_btids_prefix_length (DB_SEQ * prefix_seq, OR_INDEX * index,
   index->attrs_prefix_length = (int *) malloc (sizeof (int) * num_attrs);
   if (index->attrs_prefix_length == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (int) * num_attrs);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * num_attrs);
       return;
     }
 
@@ -1827,7 +1729,7 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
       return NO_ERROR;
 
     case DB_TYPE_STRING:
-      /*continue */
+      /* continue */
       break;
 
     default:
@@ -1849,7 +1751,7 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
       return NO_ERROR;
 
     case DB_TYPE_CHAR:
-      /*continue */
+      /* continue */
       break;
 
     default:
@@ -1864,8 +1766,7 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
   if (filter_predicate == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (OR_PREDICATE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_PREDICATE));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -1880,13 +1781,11 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
 
   buffer = DB_GET_STRING (&val2);
   buffer_len = DB_GET_STRING_SIZE (&val2);
-  filter_predicate->pred_stream =
-    (char *) malloc (buffer_len * sizeof (char));
+  filter_predicate->pred_stream = (char *) malloc (buffer_len * sizeof (char));
   if (filter_predicate->pred_stream == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, buffer_len * sizeof (char));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_len * sizeof (char));
       goto err;
     }
 
@@ -1942,8 +1841,8 @@ err:
  *       }
  */
 static void
-or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
-			int seq_size, BTREE_TYPE type, const char *cons_name)
+or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, int seq_size, BTREE_TYPE type,
+			const char *cons_name)
 {
   DB_VALUE att_val;
   int i, j, e;
@@ -1965,16 +1864,14 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
   index->atts = (OR_ATTRIBUTE **) malloc (sizeof (OR_ATTRIBUTE *) * att_cnt);
   if (index->atts == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (OR_ATTRIBUTE *) * att_cnt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_ATTRIBUTE *) * att_cnt);
       return;
     }
 
   index->asc_desc = (int *) malloc (sizeof (int) * att_cnt);
   if (index->asc_desc == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (int) * att_cnt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * att_cnt);
       return;
     }
 
@@ -1987,7 +1884,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
   index->filter_predicate = NULL;
   index->func_index_info = NULL;
 
-  /*
+  /* 
    * For each attribute ID in the set,
    *   Extract the attribute ID,
    *   Find the matching attribute and insert the pointer into the array.
@@ -2007,8 +1904,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 
 	  att_id = DB_GET_INTEGER (&att_val);
 
-	  for (j = 0, att = rep->attributes, ptr = NULL;
-	       j < rep->n_attributes && ptr == NULL; j++, att++)
+	  for (j = 0, att = rep->attributes, ptr = NULL; j < rep->n_attributes && ptr == NULL; j++, att++)
 	    {
 	      if (att->id == att_id)
 		{
@@ -2030,29 +1926,24 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 
   if (type == BTREE_FOREIGN_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val)
-	  == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val) == NO_ERROR)
 	{
-	  or_install_btids_foreign_key (cons_name,
-					DB_PULL_SEQUENCE (&att_val), index);
+	  or_install_btids_foreign_key (cons_name, DB_PULL_SEQUENCE (&att_val), index);
 	}
     }
   else if (type == BTREE_PRIMARY_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val)
-	  == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
-	      or_install_btids_foreign_key_ref (DB_GET_SEQUENCE (&att_val),
-						index);
+	      or_install_btids_foreign_key_ref (DB_GET_SEQUENCE (&att_val), index);
 	    }
 	}
     }
   else
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val)
-	  == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
@@ -2063,9 +1954,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 		{
 		  if (DB_VALUE_TYPE (&val) == DB_TYPE_INTEGER)
 		    {
-		      or_install_btids_prefix_length (DB_GET_SEQUENCE
-						      (&att_val), index,
-						      att_cnt);
+		      or_install_btids_prefix_length (DB_GET_SEQUENCE (&att_val), index, att_cnt);
 		    }
 		  else if (DB_VALUE_TYPE (&val) == DB_TYPE_SEQUENCE)
 		    {
@@ -2078,36 +1967,30 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 		      while (true)
 			{
 			  flag = 0;
-			  if (set_get_element_nocopy (child_seq, 0, &avalue)
-			      != NO_ERROR)
+			  if (set_get_element_nocopy (child_seq, 0, &avalue) != NO_ERROR)
 			    {
 			      goto next_child;
 			    }
 
-			  if (DB_IS_NULL (&avalue) ||
-			      DB_VALUE_TYPE (&avalue) != DB_TYPE_STRING)
+			  if (DB_IS_NULL (&avalue) || DB_VALUE_TYPE (&avalue) != DB_TYPE_STRING)
 			    {
 			      goto next_child;
 			    }
 
-			  if (strcmp (DB_PULL_STRING (&avalue),
-				      SM_FILTER_INDEX_ID) == 0)
+			  if (strcmp (DB_PULL_STRING (&avalue), SM_FILTER_INDEX_ID) == 0)
 			    {
 			      flag = 0x01;
 			    }
-			  else if (strcmp (DB_PULL_STRING (&avalue),
-					   SM_FUNCTION_INDEX_ID) == 0)
+			  else if (strcmp (DB_PULL_STRING (&avalue), SM_FUNCTION_INDEX_ID) == 0)
 			    {
 			      flag = 0x02;
 			    }
-			  else if (strcmp (DB_PULL_STRING (&avalue),
-					   SM_PREFIX_INDEX_ID) == 0)
+			  else if (strcmp (DB_PULL_STRING (&avalue), SM_PREFIX_INDEX_ID) == 0)
 			    {
 			      flag = 0x03;
 			    }
 
-			  if (set_get_element_nocopy (child_seq, 1, &avalue)
-			      != NO_ERROR)
+			  if (set_get_element_nocopy (child_seq, 1, &avalue) != NO_ERROR)
 			    {
 			      goto next_child;
 			    }
@@ -2120,20 +2003,15 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 			  switch (flag)
 			    {
 			    case 0x01:
-			      or_install_btids_filter_pred (DB_GET_SEQUENCE
-							    (&avalue), index);
+			      or_install_btids_filter_pred (DB_GET_SEQUENCE (&avalue), index);
 			      break;
 
 			    case 0x02:
-			      or_install_btids_function_info (DB_GET_SEQUENCE
-							      (&avalue),
-							      index);
+			      or_install_btids_function_info (DB_GET_SEQUENCE (&avalue), index);
 			      break;
 
 			    case 0x03:
-			      or_install_btids_prefix_length (DB_GET_SEQUENCE
-							      (&avalue),
-							      index, att_cnt);
+			      or_install_btids_prefix_length (DB_GET_SEQUENCE (&avalue), index, att_cnt);
 			      break;
 
 			    default:
@@ -2147,8 +2025,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 			      break;
 			    }
 
-			  if (set_get_element_nocopy (seq, j, &val) !=
-			      NO_ERROR)
+			  if (set_get_element_nocopy (seq, j, &val) != NO_ERROR)
 			    {
 			      continue;
 			    }
@@ -2163,14 +2040,11 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq,
 
 		      if (index->func_index_info)
 			{
-			  /* function index and prefix length not
-			     allowed, yet */
-			  index->attrs_prefix_length =
-			    (int *) malloc (sizeof (int) * att_cnt);
+			  /* function index and prefix length not allowed, yet */
+			  index->attrs_prefix_length = (int *) malloc (sizeof (int) * att_cnt);
 			  if (index->attrs_prefix_length == NULL)
 			    {
-			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 				      sizeof (int) * att_cnt);
 			      return;
 			    }
@@ -2212,9 +2086,8 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   OR_ATTRIBUTE *ptr = NULL;
   int size;
 
-  /*  Find the attribute with the matching attribute ID */
-  for (i = 0, att = rep->attributes;
-       i < rep->n_attributes && ptr == NULL; i++, att++)
+  /* Find the attribute with the matching attribute ID */
+  for (i = 0, att = rep->attributes; i < rep->n_attributes && ptr == NULL; i++, att++)
     {
       if (att->id == att_id)
 	{
@@ -2233,8 +2106,7 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
 	}
       else
 	{
-	  /* we've already got one, continue to use the local pack until that
-	     runs out and then start mallocing. */
+	  /* we've already got one, continue to use the local pack until that runs out and then start mallocing. */
 	  if (ptr->n_btids >= ptr->max_btids)
 	    {
 	      if (ptr->btids == ptr->btid_pack)
@@ -2244,18 +2116,15 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
 		  ptr->btids = (BTID *) malloc (sizeof (BTID) * size);
 		  if (ptr->btids != NULL)
 		    {
-		      memcpy (ptr->btids, ptr->btid_pack,
-			      (sizeof (BTID) * ptr->n_btids));
+		      memcpy (ptr->btids, ptr->btid_pack, (sizeof (BTID) * ptr->n_btids));
 		    }
 		  ptr->max_btids = size;
 		}
 	      else
 		{
-		  /* we already have an externally allocated array, make it
-		     bigger */
+		  /* we already have an externally allocated array, make it bigger */
 		  size = ptr->n_btids + OR_ATT_BTID_PREALLOC;
-		  ptr->btids =
-		    (BTID *) realloc (ptr->btids, size * sizeof (BTID));
+		  ptr->btids = (BTID *) realloc (ptr->btids, size * sizeof (BTID));
 		  ptr->max_btids = size;
 		}
 	    }
@@ -2290,8 +2159,7 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
  *       {btid, [attribute_ID, asc_desc]+ {fk_info}, comment}
  */
 static void
-or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq,
-			     BTREE_TYPE type, const char *cons_name)
+or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_TYPE type, const char *cons_name)
 {
   int att_id;
   int i, seq_size, args;
@@ -2299,8 +2167,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq,
   BTID id;
   DB_VALUE id_val, att_val;
 
-  /*  Extract the first element of the sequence which is the
-     encoded B-tree ID */
+  /* Extract the first element of the sequence which is the encoded B-tree ID */
   /* { btid, [attrID, asc_desc]+, {fk_info} or {key prefix length}, comment} */
   seq_size = set_size (constraint_seq);
 
@@ -2309,21 +2176,19 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq,
       return;
     }
 
-  if (DB_VALUE_TYPE (&id_val) != DB_TYPE_STRING
-      || DB_GET_STRING (&id_val) == NULL)
+  if (DB_VALUE_TYPE (&id_val) != DB_TYPE_STRING || DB_GET_STRING (&id_val) == NULL)
     {
       return;
     }
 
-  args = classobj_decompose_property_oid (DB_PULL_STRING (&id_val),
-					  &volid, &fileid, &pageid);
+  args = classobj_decompose_property_oid (DB_PULL_STRING (&id_val), &volid, &fileid, &pageid);
 
   if (args != 3)
     {
       return;
     }
 
-  /*
+  /* 
    *  Assign the B-tree ID.
    *  For the first attribute name in the constraint,
    *    cache the constraint in the attribute.
@@ -2340,13 +2205,12 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq,
       (void) or_install_btids_attribute (rep, att_id, &id);
     }
 
-  /*
+  /* 
    *  Assign the B-tree ID to the class.
    *  Cache the constraint in the class with pointer to the attributes.
    *  This is just a different way to store the BTID's.
    */
-  or_install_btids_class (rep, &id, constraint_seq, seq_size, type,
-			  cons_name);
+  or_install_btids_class (rep, &id, constraint_seq, seq_size, type, cons_name);
 }
 
 /*
@@ -2372,7 +2236,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
   int i;
   int n_btids;
 
-  /*
+  /* 
    *  The first thing to do is to determine how many unique and index
    *  BTIDs we have.  We need this up front so that we can allocate
    *  the OR_INDEX structure in the class (rep).
@@ -2380,8 +2244,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
   n_btids = 0;
   for (i = 0; i < SM_PROPERTY_NUM_INDEX_FAMILY; i++)
     {
-      if (props != NULL
-	  && or_cl_get_prop_nocopy (props, property_vars[i].name, &vals[i]))
+      if (props != NULL && or_cl_get_prop_nocopy (props, property_vars[i].name, &vals[i]))
 	{
 	  if (DB_VALUE_TYPE (&vals[i]) == DB_TYPE_SEQUENCE)
 	    {
@@ -2403,8 +2266,8 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
       rep->indexes = (OR_INDEX *) malloc (sizeof (OR_INDEX) * n_btids);
     }
 
-  /* Now extract the unique and index BTIDs from the property list and
-     install them into the class and attribute structures. */
+  /* Now extract the unique and index BTIDs from the property list and install them into the class and attribute
+   * structures. */
   for (i = 0; i < SM_PROPERTY_NUM_INDEX_FAMILY; i++)
     {
       if (property_vars[i].seq)
@@ -2415,26 +2278,21 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 	  const char *cons_name = NULL;
 	  int error = NO_ERROR;
 
-	  for (j = 0; j < property_vars[i].length && error == NO_ERROR;
-	       j += 2)
+	  for (j = 0; j < property_vars[i].length && error == NO_ERROR; j += 2)
 	    {
-	      error = set_get_element_nocopy (property_vars[i].seq, j,
-					      &cons_name_val);
+	      error = set_get_element_nocopy (property_vars[i].seq, j, &cons_name_val);
 	      if (error == NO_ERROR)
 		{
 		  cons_name = DB_PULL_STRING (&cons_name_val);
 		}
 
-	      error = set_get_element_nocopy (property_vars[i].seq, j + 1,
-					      &ids_val);
+	      error = set_get_element_nocopy (property_vars[i].seq, j + 1, &ids_val);
 	      if (error == NO_ERROR && cons_name != NULL)
 		{
 		  if (DB_VALUE_TYPE (&ids_val) == DB_TYPE_SEQUENCE)
 		    {
 		      ids_seq = DB_PULL_SEQUENCE (&ids_val);
-		      or_install_btids_constraint (rep, ids_seq,
-						   property_vars[i].type,
-						   cons_name);
+		      or_install_btids_constraint (rep, ids_seq, property_vars[i].type, cons_name);
 		    }
 		}
 	    }
@@ -2474,8 +2332,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
   rep = (OR_CLASSREP *) malloc (sizeof (OR_CLASSREP));
   if (rep == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (OR_CLASSREP));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_CLASSREP));
       return NULL;
     }
 
@@ -2483,8 +2340,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
   assert (OR_GET_OFFSET_SIZE (start) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data,
-					    ORC_CLASS_VAR_ATT_COUNT);
+  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
 
   rep->id = or_rep_id (record);
   rep->fixed_length = OR_GET_INT (ptr + ORC_FIXED_LENGTH_OFFSET);
@@ -2505,36 +2361,33 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
   if (rep->n_attributes)
     {
-      rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) *
-						 rep->n_attributes);
+      rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
       if (rep->attributes == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 	  goto error_cleanup;
 	}
     }
 
   if (rep->n_shared_attrs)
     {
-      rep->shared_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) *
-						   rep->n_shared_attrs);
+      rep->shared_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
       if (rep->shared_attrs == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
 	  goto error_cleanup;
 	}
     }
 
   if (rep->n_class_attrs)
     {
-      rep->class_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) *
-						  rep->n_class_attrs);
+      rep->class_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
       if (rep->class_attrs == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
 	  goto error_cleanup;
 	}
     }
@@ -2543,37 +2396,27 @@ or_get_current_representation (RECDES * record, int do_indexes)
   /* find the beginning of the "set_of(attribute)" attribute inside the class */
   attset = start + OR_VAR_OFFSET (start, ORC_ATTRIBUTES_INDEX);
 
-  /* calculate the offset to the first fixed width attribute in instances
-     of this class. */
+  /* calculate the offset to the first fixed width attribute in instances of this class. */
   start_offset = offset = 0;
 
   for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
     {
-      /* diskatt will now be pointing at the offset table for this attribute.
-         this is logically the "start" of this nested object. */
+      /* diskatt will now be pointing at the offset table for this attribute. this is logically the "start" of this
+       * nested object. */
       diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 
       /* find out where the original default value is kept */
-      valptr = (diskatt +
-		OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
-					     ORC_ATT_ORIGINAL_VALUE_INDEX));
+      valptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_ORIGINAL_VALUE_INDEX));
 
-      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt,
-					    ORC_ATT_ORIGINAL_VALUE_INDEX);
+      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_ORIGINAL_VALUE_INDEX);
 
-      valptr2 = (diskatt +
-		 OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
-					      ORC_ATT_CURRENT_VALUE_INDEX));
+      valptr2 = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
 
-      vallen2 = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt,
-					     ORC_ATT_CURRENT_VALUE_INDEX);
+      vallen2 = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
 
-      valptr1 = (diskatt +
-		 OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
-					      ORC_ATT_PROPERTIES_INDEX));
+      valptr1 = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_PROPERTIES_INDEX));
 
-      vallen1 = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt,
-					     ORC_ATT_PROPERTIES_INDEX);
+      vallen1 = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_PROPERTIES_INDEX);
 
       or_init (&buf, valptr1, vallen1);
 
@@ -2613,13 +2456,13 @@ or_get_current_representation (RECDES * record, int do_indexes)
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 
-      /* We won't know if there are any B-tree ID's for unique constraints
-         until we read the class property list later on */
+      /* We won't know if there are any B-tree ID's for unique constraints until we read the class property list later
+       * on */
       att->n_btids = 0;
       att->btids = NULL;
 
-      /* Extract the full domain for this attribute, think about caching here
-         it will add some time that may not be necessary. */
+      /* Extract the full domain for this attribute, think about caching here it will add some time that may not be
+       * necessary. */
       if (OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_DOMAIN_INDEX) == 0)
 	{
 	  /* shouldn't happen, fake one up from the type ! */
@@ -2627,9 +2470,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	}
       else
 	{
-	  dptr = (diskatt
-		  + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
-						 ORC_ATT_DOMAIN_INDEX));
+	  dptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_DOMAIN_INDEX));
 	  att->domain = or_get_domain_and_cache (dptr);
 	}
 
@@ -2669,16 +2510,12 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	{
 	  db_make_null (&val);
 	  db_make_null (&def_expr);
-	  or_get_value (&buf, &val,
-			tp_domain_resolve_default (DB_TYPE_SEQUENCE),
-			vallen1, true);
+	  or_get_value (&buf, &val, tp_domain_resolve_default (DB_TYPE_SEQUENCE), vallen1, true);
 	  att_props = DB_GET_SEQUENCE (&val);
-	  if (att_props != NULL &&
-	      classobj_get_prop (att_props, "default_expr", &def_expr) > 0)
+	  if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &def_expr) > 0)
 	    {
 	      att->default_value.default_expr = DB_GET_INT (&def_expr);
-	      att->current_default_value.default_expr = DB_GET_INT
-		(&def_expr);
+	      att->current_default_value.default_expr = DB_GET_INT (&def_expr);
 	    }
 
 	  pr_clear_value (&def_expr);
@@ -2686,23 +2523,19 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	}
     }
 
-  /* find the beginning of the "set_of(shared attributes)" attribute
-     inside the class */
+  /* find the beginning of the "set_of(shared attributes)" attribute inside the class */
   attset = start + OR_VAR_OFFSET (start, ORC_SHARED_ATTRS_INDEX);
 
   for (i = 0, att = rep->shared_attrs; i < rep->n_shared_attrs; i++, att++)
     {
-      /* diskatt will now be pointing at the offset table for this attribute.
-         this is logically the "start" of this nested object. */
+      /* diskatt will now be pointing at the offset table for this attribute. this is logically the "start" of this
+       * nested object. */
       diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 
       /* find out where the current default value is kept */
-      valptr = (diskatt +
-		OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
-					     ORC_ATT_CURRENT_VALUE_INDEX));
+      valptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
 
-      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt,
-					    ORC_ATT_CURRENT_VALUE_INDEX);
+      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
 
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
@@ -2737,8 +2570,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->n_btids = 0;
       att->btids = NULL;
 
-      /* Extract the full domain for this attribute, think about caching here
-         it will add some time that may not be necessary. */
+      /* Extract the full domain for this attribute, think about caching here it will add some time that may not be
+       * necessary. */
       if (OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_DOMAIN_INDEX) == 0)
 	{
 	  /* shouldn't happen, fake one up from the type ! */
@@ -2746,9 +2579,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	}
       else
 	{
-	  dptr =
-	    diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
-						   ORC_ATT_DOMAIN_INDEX);
+	  dptr = diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_DOMAIN_INDEX);
 	  att->domain = or_get_domain_and_cache (dptr);
 	}
 
@@ -2765,39 +2596,31 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
 	  if (att->default_value.val_length > 0)
 	    {
-	      att->current_default_value.value =
-		malloc (att->default_value.val_length);
+	      att->current_default_value.value = malloc (att->default_value.val_length);
 	      if (att->current_default_value.value == NULL)
 		{
 		  goto error_cleanup;
 		}
 
-	      memcpy (att->current_default_value.value,
-		      att->default_value.value,
-		      att->default_value.val_length);
-	      att->current_default_value.val_length =
-		att->default_value.val_length;
+	      memcpy (att->current_default_value.value, att->default_value.value, att->default_value.val_length);
+	      att->current_default_value.val_length = att->default_value.val_length;
 	    }
 	}
     }
 
-  /* find the beginning of the "set_of(class_attrs)" attribute
-     inside the class */
+  /* find the beginning of the "set_of(class_attrs)" attribute inside the class */
   attset = start + OR_VAR_OFFSET (start, ORC_CLASS_ATTRS_INDEX);
 
   for (i = 0, att = rep->class_attrs; i < rep->n_class_attrs; i++, att++)
     {
-      /* diskatt will now be pointing at the offset table for this attribute.
-         this is logically the "start" of this nested object. */
+      /* diskatt will now be pointing at the offset table for this attribute. this is logically the "start" of this
+       * nested object. */
       diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 
       /* find out where the current default value is kept */
-      valptr = (diskatt +
-		OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
-					     ORC_ATT_CURRENT_VALUE_INDEX));
+      valptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
 
-      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt,
-					    ORC_ATT_CURRENT_VALUE_INDEX);
+      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
 
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
@@ -2825,8 +2648,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->n_btids = 0;
       att->btids = NULL;
 
-      /* Extract the full domain for this attribute, think about caching here
-         it will add some time that may not be necessary. */
+      /* Extract the full domain for this attribute, think about caching here it will add some time that may not be
+       * necessary. */
       if (OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_DOMAIN_INDEX) == 0)
 	{
 	  /* shouldn't happen, fake one up from the type ! */
@@ -2834,9 +2657,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	}
       else
 	{
-	  dptr =
-	    diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
-						   ORC_ATT_DOMAIN_INDEX);
+	  dptr = diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_DOMAIN_INDEX);
 	  att->domain = or_get_domain_and_cache (dptr);
 	}
 
@@ -2852,18 +2673,14 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	    }
 	  if (att->default_value.val_length > 0)
 	    {
-	      att->current_default_value.value =
-		malloc (att->default_value.val_length);
+	      att->current_default_value.value = malloc (att->default_value.val_length);
 	      if (att->current_default_value.value == NULL)
 		{
 		  goto error_cleanup;
 		}
 
-	      memcpy (att->current_default_value.value,
-		      att->default_value.value,
-		      att->default_value.val_length);
-	      att->current_default_value.val_length =
-		att->default_value.val_length;
+	      memcpy (att->current_default_value.value, att->default_value.value, att->default_value.val_length);
+	      att->current_default_value.val_length = att->default_value.val_length;
 	    }
 	}
     }
@@ -2876,8 +2693,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       if (!OR_VAR_IS_NULL (record->data, ORC_PROPERTIES_INDEX))
 	{
-	  propptr = record->data + OR_VAR_OFFSET (record->data,
-						  ORC_PROPERTIES_INDEX);
+	  propptr = record->data + OR_VAR_OFFSET (record->data, ORC_PROPERTIES_INDEX);
 	  (void) or_unpack_setref (propptr, &props);
 	  or_install_btids (rep, props);
 	  db_set_free (props);
@@ -2957,11 +2773,8 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       return or_get_current_representation (record, do_indexes);
     }
 
-  /* find the beginning of the "set_of(representation)" attribute inside
-   * the class.
-   * If this attribute is NULL, we're missing the representations, its an
-   * error.
-   */
+  /* find the beginning of the "set_of(representation)" attribute inside the class. If this attribute is NULL, we're
+   * missing the representations, its an error. */
   if (OR_VAR_IS_NULL (record->data, ORC_REPRESENTATIONS_INDEX))
     {
       return NULL;
@@ -2969,23 +2782,19 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  repset = (record->data +
-	    OR_VAR_OFFSET (record->data, ORC_REPRESENTATIONS_INDEX));
+  repset = (record->data + OR_VAR_OFFSET (record->data, ORC_REPRESENTATIONS_INDEX));
 
-  /* repset now points to the beginning of a complex set representation,
-     find out how many elements are in the set. */
+  /* repset now points to the beginning of a complex set representation, find out how many elements are in the set. */
   rep_count = OR_SET_ELEMENT_COUNT (repset);
 
-  /* locate the beginning of the representation in this set whose id matches
-     the given repid. */
+  /* locate the beginning of the representation in this set whose id matches the given repid. */
   disk_rep = NULL;
   for (i = 0; i < rep_count; i++)
     {
       /* set disk_rep to the beginning of the i'th set element */
       disk_rep = repset + OR_SET_ELEMENT_OFFSET (repset, i);
 
-      /* move ptr up to the beginning of the fixed width attributes in this
-         object */
+      /* move ptr up to the beginning of the fixed width attributes in this object */
       fixed = disk_rep + OR_VAR_TABLE_SIZE (ORC_REP_VAR_ATT_COUNT);
 
       /* extract the id of this representation */
@@ -3003,8 +2812,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
 
   if (disk_rep == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_UNKNOWN_REPRID, 1,
-	      repid);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_UNKNOWN_REPRID, 1, repid);
       return NULL;
     }
 
@@ -3020,8 +2828,8 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
   rep->class_attrs = NULL;
   rep->indexes = NULL;
 
-  /* at this point, disk_rep points to the beginning of the representation
-     object and "fixed" points at the first fixed width attribute. */
+  /* at this point, disk_rep points to the beginning of the representation object and "fixed" points at the first fixed 
+   * width attribute. */
 
   n_fixed = OR_GET_INT (fixed + ORC_REP_FIXED_COUNT_OFFSET);
   n_variable = OR_GET_INT (fixed + ORC_REP_VARIABLE_COUNT_OFFSET);
@@ -3038,27 +2846,20 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       return rep;
     }
 
-  rep->attributes =
-    (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+  rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
   if (rep->attributes == NULL)
     {
       free_and_init (rep);
       return NULL;
     }
 
-  /* Calculate the beginning of the set_of(rep_attribute) in the representation
-   * object. Assume that the start of the disk_rep points directly at the the
-   * substructure's variable offset table (which it does) and use
-   * OR_VAR_TABLE_ELEMENT_OFFSET.
-   */
-  attset =
-    disk_rep + OR_VAR_TABLE_ELEMENT_OFFSET (disk_rep,
-					    ORC_REP_ATTRIBUTES_INDEX);
+  /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of the
+   * disk_rep points directly at the the substructure's variable offset table (which it does) and use
+   * OR_VAR_TABLE_ELEMENT_OFFSET. */
+  attset = disk_rep + OR_VAR_TABLE_ELEMENT_OFFSET (disk_rep, ORC_REP_ATTRIBUTES_INDEX);
 
-  /* Calculate the offset to the first fixed width attribute in instances
-   * of this class.  Save the start of this region so we can calculate the
-   * total fixed witdh size.
-   */
+  /* Calculate the offset to the first fixed width attribute in instances of this class.  Save the start of this region 
+   * so we can calculate the total fixed witdh size. */
   start = offset = 0;
 
   /* build up the attribute descriptions */
@@ -3067,8 +2868,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       /* set repatt to the beginning of the rep_attribute object in the set */
       repatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 
-      /* set fixed to the beginning of the fixed width attributes for this
-         object */
+      /* set fixed to the beginning of the fixed width attributes for this object */
       fixed = repatt + OR_VAR_TABLE_SIZE (ORC_REPATT_VAR_ATT_COUNT);
 
       att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
@@ -3081,8 +2881,8 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       att->current_default_value.value = NULL;
       att->current_default_value.default_expr = DB_DEFAULT_NONE;
 
-      /* We won't know if there are any B-tree ID's for unique constraints
-         until we read the class property list later on */
+      /* We won't know if there are any B-tree ID's for unique constraints until we read the class property list later
+       * on */
       att->n_btids = 0;
       att->btids = NULL;
 
@@ -3090,8 +2890,8 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       OID_SET_NULL (&(att->classoid));
       BTID_SET_NULL (&(att->index));
 
-      /* Extract the full domain for this attribute, think about caching here
-         it will add some time that may not be necessary. */
+      /* Extract the full domain for this attribute, think about caching here it will add some time that may not be
+       * necessary. */
       if (OR_VAR_TABLE_ELEMENT_LENGTH (repatt, ORC_REPATT_DOMAIN_INDEX) == 0)
 	{
 	  /* shouldn't happen, fake one up from the type ! */
@@ -3099,9 +2899,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
 	}
       else
 	{
-	  dptr =
-	    repatt + OR_VAR_TABLE_ELEMENT_OFFSET (repatt,
-						  ORC_REPATT_DOMAIN_INDEX);
+	  dptr = repatt + OR_VAR_TABLE_ELEMENT_OFFSET (repatt, ORC_REPATT_DOMAIN_INDEX);
 	  att->domain = or_get_domain_and_cache (dptr);
 	}
 
@@ -3118,10 +2916,8 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
 	}
     }
 
-  /* Offset at this point contains the total fixed size of the
-   * representation plus the starting offset, remove the starting offset
-   * to get the length of just the fixed width attributes.
-   */
+  /* Offset at this point contains the total fixed size of the representation plus the starting offset, remove the
+   * starting offset to get the length of just the fixed width attributes. */
   /* must align up to a word boundar ! */
   rep->fixed_length = DB_ATT_ALIGN (offset - start);
 
@@ -3133,8 +2929,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
 
       if (!OR_VAR_IS_NULL (record->data, ORC_PROPERTIES_INDEX))
 	{
-	  propptr = record->data + OR_VAR_OFFSET (record->data,
-						  ORC_PROPERTIES_INDEX);
+	  propptr = record->data + OR_VAR_OFFSET (record->data, ORC_PROPERTIES_INDEX);
 	  (void) or_unpack_setref (propptr, &props);
 	  or_install_btids (rep, props);
 	  db_set_free (props);
@@ -3185,14 +2980,12 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 
   if (!OR_VAR_IS_NULL (record->data, ORC_REPRESENTATIONS_INDEX))
     {
-      repset = (record->data +
-		OR_VAR_OFFSET (record->data, ORC_REPRESENTATIONS_INDEX));
+      repset = (record->data + OR_VAR_OFFSET (record->data, ORC_REPRESENTATIONS_INDEX));
       old_rep_count = OR_SET_ELEMENT_COUNT (repset);
     }
 
   /* add one for current representation */
-  rep_arr =
-    (OR_CLASSREP **) malloc (sizeof (OR_CLASSREP *) * (old_rep_count + 1));
+  rep_arr = (OR_CLASSREP **) malloc (sizeof (OR_CLASSREP *) * (old_rep_count + 1));
   if (rep_arr == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -3215,8 +3008,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
       rep_arr[i + 1] = (OR_CLASSREP *) malloc (sizeof (OR_CLASSREP));
       if (rep_arr[i + 1] == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (OR_CLASSREP));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_CLASSREP));
 	  goto error;
 	}
       rep = rep_arr[i + 1];
@@ -3224,8 +3016,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
       /* set disk_rep to the beginning of the i'th set element */
       disk_rep = repset + OR_SET_ELEMENT_OFFSET (repset, i);
 
-      /* move ptr up to the beginning of the fixed width attributes in this
-         object */
+      /* move ptr up to the beginning of the fixed width attributes in this object */
       fixed = disk_rep + OR_VAR_TABLE_SIZE (ORC_REP_VAR_ATT_COUNT);
 
       /* extract the id of this representation */
@@ -3252,28 +3043,21 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  continue;
 	}
 
-      rep->attributes =
-	(OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+      rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
       if (rep->attributes == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (sizeof (OR_ATTRIBUTE) * rep->n_attributes));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (sizeof (OR_ATTRIBUTE) * rep->n_attributes));
 	  goto error;
 	}
 
-      /* Calculate the beginning of the set_of(rep_attribute) in the representation
-       * object. Assume that the start of the disk_rep points directly at the the
-       * substructure's variable offset table (which it does) and use
-       * OR_VAR_TABLE_ELEMENT_OFFSET.
-       */
-      attset =
-	disk_rep + OR_VAR_TABLE_ELEMENT_OFFSET (disk_rep,
-						ORC_REP_ATTRIBUTES_INDEX);
+      /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of
+       * the disk_rep points directly at the the substructure's variable offset table (which it does) and use
+       * OR_VAR_TABLE_ELEMENT_OFFSET. */
+      attset = disk_rep + OR_VAR_TABLE_ELEMENT_OFFSET (disk_rep, ORC_REP_ATTRIBUTES_INDEX);
 
-      /* Calculate the offset to the first fixed width attribute in instances
-       * of this class.  Save the start of this region so we can calculate the
-       * total fixed width size.
-       */
+      /* Calculate the offset to the first fixed width attribute in instances of this class.  Save the start of this
+       * region so we can calculate the total fixed width size. */
       start = offset = 0;
 
       /* build up the attribute descriptions */
@@ -3282,8 +3066,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  /* set repatt to the beginning of the rep_attribute object in the set */
 	  repatt = attset + OR_SET_ELEMENT_OFFSET (attset, j);
 
-	  /* set fixed to the beginning of the fixed width attributes for this
-	     object */
+	  /* set fixed to the beginning of the fixed width attributes for this object */
 	  fixed = repatt + OR_VAR_TABLE_SIZE (ORC_REPATT_VAR_ATT_COUNT);
 
 	  att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
@@ -3296,8 +3079,8 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  att->current_default_value.value = NULL;
 	  att->current_default_value.default_expr = DB_DEFAULT_NONE;
 
-	  /* We won't know if there are any B-tree ID's for unique constraints
-	     until we read the class property list later on */
+	  /* We won't know if there are any B-tree ID's for unique constraints until we read the class property list
+	   * later on */
 	  att->n_btids = 0;
 	  att->btids = NULL;
 
@@ -3305,19 +3088,16 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  OID_SET_NULL (&(att->classoid));
 	  BTID_SET_NULL (&(att->index));
 
-	  /* Extract the full domain for this attribute, think about caching here
-	     it will add some time that may not be necessary. */
-	  if (OR_VAR_TABLE_ELEMENT_LENGTH (repatt,
-					   ORC_REPATT_DOMAIN_INDEX) == 0)
+	  /* Extract the full domain for this attribute, think about caching here it will add some time that may not be 
+	   * necessary. */
+	  if (OR_VAR_TABLE_ELEMENT_LENGTH (repatt, ORC_REPATT_DOMAIN_INDEX) == 0)
 	    {
 	      /* shouldn't happen, fake one up from the type ! */
 	      att->domain = tp_domain_resolve_default (att->type);
 	    }
 	  else
 	    {
-	      dptr =
-		repatt + OR_VAR_TABLE_ELEMENT_OFFSET (repatt,
-						      ORC_REPATT_DOMAIN_INDEX);
+	      dptr = repatt + OR_VAR_TABLE_ELEMENT_OFFSET (repatt, ORC_REPATT_DOMAIN_INDEX);
 	      att->domain = or_get_domain_and_cache (dptr);
 	    }
 
@@ -3334,10 +3114,8 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	    }
 	}
 
-      /* Offset at this point contains the total fixed size of the
-       * representation plus the starting offset, remove the starting offset
-       * to get the length of just the fixed width attributes.
-       */
+      /* Offset at this point contains the total fixed size of the representation plus the starting offset, remove the
+       * starting offset to get the length of just the fixed width attributes. */
       /* must align up to a word boundar ! */
       rep->fixed_length = DB_ATT_ALIGN (offset - start);
 
@@ -3349,8 +3127,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 
 	  if (!OR_VAR_IS_NULL (record->data, ORC_PROPERTIES_INDEX))
 	    {
-	      propptr = record->data + OR_VAR_OFFSET (record->data,
-						      ORC_PROPERTIES_INDEX);
+	      propptr = record->data + OR_VAR_OFFSET (record->data, ORC_PROPERTIES_INDEX);
 	      (void) or_unpack_setref (propptr, &props);
 	      or_install_btids (rep, props);
 	      db_set_free (props);
@@ -3476,8 +3253,7 @@ or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record)
 {
   REPR_ID id;
 
-  /* eventually could be smarter about trying to reuse the existing
-     structure. */
+  /* eventually could be smarter about trying to reuse the existing structure. */
   if (rep->needs_indexes)
     {
       id = rep->id;
@@ -3503,8 +3279,7 @@ or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record)
  * has_partition_info will have the value zero.
  */
 int
-or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info,
-			     REPR_ID * repr_id, int *has_partition_info)
+or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, REPR_ID * repr_id, int *has_partition_info)
 {
   int error = NO_ERROR;
   char *partition_ptr = NULL, *ptr = NULL;
@@ -3524,8 +3299,7 @@ or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info,
       return NO_ERROR;
     }
 
-  partition_ptr = (char *) (record->data) +
-    OR_VAR_OFFSET (record->data, ORC_PARTITION_INDEX);
+  partition_ptr = (char *) (record->data) + OR_VAR_OFFSET (record->data, ORC_PARTITION_INDEX);
 
   partition_ptr += OR_SET_ELEMENT_OFFSET (partition_ptr, 0);
 
@@ -3534,13 +3308,9 @@ or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info,
 
   partition_info->partition_type = OR_GET_INT (ptr);
 
-  or_init (&buf, partition_ptr +
-	   OR_VAR_TABLE_ELEMENT_OFFSET (partition_ptr,
-					ORC_PARTITION_VALUES_INDEX),
-	   OR_VAR_TABLE_ELEMENT_LENGTH (partition_ptr,
-					ORC_PARTITION_VALUES_INDEX));
-  if (or_get_value (&buf, &val, NULL,
-		    CAST_BUFLEN (buf.endptr - buf.ptr), true) != NO_ERROR)
+  or_init (&buf, partition_ptr + OR_VAR_TABLE_ELEMENT_OFFSET (partition_ptr, ORC_PARTITION_VALUES_INDEX),
+	   OR_VAR_TABLE_ELEMENT_LENGTH (partition_ptr, ORC_PARTITION_VALUES_INDEX));
+  if (or_get_value (&buf, &val, NULL, CAST_BUFLEN (buf.endptr - buf.ptr), true) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -3589,8 +3359,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
       return NULL;
     }
 
-  subset = (char *) (record->data) +
-    OR_VAR_OFFSET (record->data, ORC_PROPERTIES_INDEX);
+  subset = (char *) (record->data) + OR_VAR_OFFSET (record->data, ORC_PROPERTIES_INDEX);
 
   or_unpack_setref (subset, &setref);
   if (setref == NULL)
@@ -3614,12 +3383,9 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  goto error_exit;
 	}
 
-      if (strcmp (prop_name, SM_PROPERTY_PRIMARY_KEY) != 0 &&
-	  strcmp (prop_name, SM_PROPERTY_UNIQUE) != 0 &&
-	  strcmp (prop_name, SM_PROPERTY_REVERSE_UNIQUE) != 0 &&
-	  strcmp (prop_name, SM_PROPERTY_INDEX) != 0 &&
-	  strcmp (prop_name, SM_PROPERTY_REVERSE_INDEX) != 0 &&
-	  strcmp (prop_name, SM_PROPERTY_FOREIGN_KEY) != 0)
+      if (strcmp (prop_name, SM_PROPERTY_PRIMARY_KEY) != 0 && strcmp (prop_name, SM_PROPERTY_UNIQUE) != 0
+	  && strcmp (prop_name, SM_PROPERTY_REVERSE_UNIQUE) != 0 && strcmp (prop_name, SM_PROPERTY_INDEX) != 0
+	  && strcmp (prop_name, SM_PROPERTY_REVERSE_INDEX) != 0 && strcmp (prop_name, SM_PROPERTY_FOREIGN_KEY) != 0)
 	{
 	  continue;
 	}
@@ -3630,22 +3396,15 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  goto error_exit;
 	}
 
-      /* this sequence is an alternating pair of constraint
-       * name & info sequence, as by:
-       *
-       * {
-       *    name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, comment},
-       *    name, { BTID, [att_name, asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, comment},
-       *    ...
-       * }
-       */
+      /* this sequence is an alternating pair of constraint name & info sequence, as by: { name, { BTID, [att_name,
+       * asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, comment}, name, { BTID, [att_name, asc_dsc],
+       * {fk_info | pk_info | prefix_length}, filter_predicate, comment}, ... } */
       props = DB_PULL_SEQUENCE (&value);
       len = set_size (props);
       for (j = 0; j < len; j += 2)
 	{
 	  /* get the name */
-	  if (set_get_element_nocopy (props, j, &uvalue) ||
-	      DB_VALUE_TYPE (&uvalue) != DB_TYPE_STRING)
+	  if (set_get_element_nocopy (props, j, &uvalue) || DB_VALUE_TYPE (&uvalue) != DB_TYPE_STRING)
 	    {
 	      goto error_exit;
 	    }
@@ -3669,8 +3428,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  info = DB_PULL_SEQUENCE (&uvalue);
 	  info_len = set_size (info);
 
-	  if (set_get_element_nocopy (info, info_len - 1, &cvalue) ||
-	      DB_IS_NULL (&cvalue))
+	  if (set_get_element_nocopy (info, info_len - 1, &cvalue) || DB_IS_NULL (&cvalue))
 	    {
 	      /* if not exists, set comment to null */
 	      comment = NULL;
@@ -3728,8 +3486,7 @@ or_free_classrep (OR_CLASSREP * rep)
     {
       if (rep->attributes != NULL)
 	{
-	  for (i = 0, att = rep->attributes; i < rep->n_attributes;
-	       i++, att++)
+	  for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
 	    {
 	      if (att->default_value.value != NULL)
 		{
@@ -3751,8 +3508,7 @@ or_free_classrep (OR_CLASSREP * rep)
 
       if (rep->shared_attrs != NULL)
 	{
-	  for (i = 0, att = rep->shared_attrs;
-	       i < rep->n_shared_attrs; i++, att++)
+	  for (i = 0, att = rep->shared_attrs; i < rep->n_shared_attrs; i++, att++)
 	    {
 	      if (att->default_value.value != NULL)
 		{
@@ -3774,8 +3530,7 @@ or_free_classrep (OR_CLASSREP * rep)
 
       if (rep->class_attrs != NULL)
 	{
-	  for (i = 0, att = rep->class_attrs; i < rep->n_class_attrs;
-	       i++, att++)
+	  for (i = 0, att = rep->class_attrs; i < rep->n_class_attrs; i++, att++)
 	    {
 	      if (att->default_value.value != NULL)
 		{
@@ -3889,20 +3644,18 @@ or_find_diskattr (RECDES * record, int attr_id)
 
   assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
-  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data,
-					    ORC_CLASS_VAR_ATT_COUNT);
+  ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
 
   n_fixed = OR_GET_INT (ptr + ORC_FIXED_COUNT_OFFSET);
   n_variable = OR_GET_INT (ptr + ORC_VARIABLE_COUNT_OFFSET);
   n_shared = OR_GET_INT (ptr + ORC_SHARED_COUNT_OFFSET);
   n_class = OR_GET_INT (ptr + ORC_CLASS_ATTR_COUNT_OFFSET);
 
-  for (type_attr = 0, found = false;
-       type_attr < 3 && found == false; type_attr++)
+  for (type_attr = 0, found = false; type_attr < 3 && found == false; type_attr++)
     {
       if (type_attr == 0)
 	{
-	  /*
+	  /* 
 	   * INSTANCE ATTRIBUTES
 	   *
 	   * find the start of the "set_of(attribute)" fix/variable attribute
@@ -3913,7 +3666,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 	}
       else if (type_attr == 1)
 	{
-	  /*
+	  /* 
 	   * SHARED ATTRIBUTES
 	   *
 	   * find the start of the "set_of(shared attributes)" attribute
@@ -3924,7 +3677,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 	}
       else
 	{
-	  /*
+	  /* 
 	   * CLASS ATTRIBUTES
 	   *
 	   * find the start of the "set_of(class attributes)" attribute
@@ -3936,7 +3689,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 
       for (i = 0, found = false; i < n_attrs && found == false; i++)
 	{
-	  /*
+	  /* 
 	   * diskatt will now be pointing at the offset table for this attribute.
 	   * this is logically the "start" of this nested object.
 	   *
@@ -3977,14 +3730,14 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index)
   diskatt = (char *) or_find_diskattr (record, attr_id);
   if (diskatt != NULL)
     {
-      /*
+      /* 
        * diskatt now points to the attribute that we are interested in.
        * Get the attribute name.
        */
       offset = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index);
       attr = diskatt + offset;
 
-      /*
+      /* 
        * Get boundary of the attribute, that is, the offset of next attribute.
        * Regardless the next attribute exists or not,
        * the "offset_next" is always retrievable.
@@ -3992,7 +3745,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index)
        */
       offset_next = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index + 1);
 
-      /*
+      /* 
        * kludge kludge kludge
        * This is now an encoded "varchar" string, we need to skip over the
        * length before returning it.  Note that this also depends on the
@@ -4091,7 +3844,7 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       return;
 
     case DB_TYPE_STRING:
-      /*continue */
+      /* continue */
       break;
 
     default:
@@ -4111,7 +3864,7 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       return;
 
     case DB_TYPE_CHAR:
-      /*continue */
+      /* continue */
       break;
 
     default:
@@ -4123,8 +3876,7 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
   fi_info = (OR_FUNCTION_INDEX *) malloc (sizeof (OR_FUNCTION_INDEX));
   if (fi_info == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (OR_FUNCTION_INDEX));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_FUNCTION_INDEX));
       goto error;
     }
 
@@ -4141,8 +3893,7 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
   fi_info->expr_stream = (char *) malloc (fi_info->expr_stream_size);
   if (fi_info->expr_stream == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      fi_info->expr_stream_size * sizeof (char));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, fi_info->expr_stream_size * sizeof (char));
       goto error;
     }
   memcpy (fi_info->expr_stream, buffer, fi_info->expr_stream_size);

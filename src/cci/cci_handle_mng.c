@@ -102,11 +102,10 @@ static unsigned int num_conn_pool = 0;
  * PRIVATE FUNCTION PROTOTYPES						*
  ************************************************************************/
 
-static int compare_conn_info (unsigned char *ip_addr, int port, char *dbname,
-			      char *dbuser, char *dbpasswd,
+static int compare_conn_info (unsigned char *ip_addr, int port, char *dbname, char *dbuser, char *dbpasswd,
 			      T_CON_HANDLE * con_handle);
-static int init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
-			    char *db_name, char *db_user, char *db_passwd);
+static int init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port, char *db_name, char *db_user,
+			    char *db_passwd);
 static int new_con_handle_id (void);
 static int new_req_handle_id (T_CON_HANDLE * con_handle);
 static void con_handle_content_free (T_CON_HANDLE * con_handle);
@@ -114,10 +113,8 @@ static void ipstr2uchar (char *ip_str, unsigned char *ip_addr);
 static int is_ip_str (char *ip_str);
 
 static int hm_find_host_status_index (unsigned char *ip_addr, int port);
-static void hm_set_host_status_by_addr (unsigned char *ip_addr, int port,
-					bool is_reachable);
-static THREAD_RET_T THREAD_CALLING_CONVENTION hm_thread_health_checker (void
-									*arg);
+static void hm_set_host_status_by_addr (unsigned char *ip_addr, int port, bool is_reachable);
+static THREAD_RET_T THREAD_CALLING_CONVENTION hm_thread_health_checker (void *arg);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -138,14 +135,12 @@ static int con_handle_current_index;
  * IMPLEMENTATION OF PUBLIC FUNCTIONS	 				*
  ************************************************************************/
 static int
-compare_conn_info (unsigned char *ip_addr, int port, char *dbname,
-		   char *dbuser, char *dbpasswd, T_CON_HANDLE * con_handle)
+compare_conn_info (unsigned char *ip_addr, int port, char *dbname, char *dbuser, char *dbpasswd,
+		   T_CON_HANDLE * con_handle)
 {
-  if (memcmp (ip_addr, con_handle->ip_addr, 4) != 0 ||
-      port != con_handle->port ||
-      strcmp (dbname, con_handle->db_name) != 0 ||
-      strcmp (dbuser, con_handle->db_user) != 0 ||
-      strcmp (dbpasswd, con_handle->db_passwd) != 0)
+  if (memcmp (ip_addr, con_handle->ip_addr, 4) != 0 || port != con_handle->port
+      || strcmp (dbname, con_handle->db_name) != 0 || strcmp (dbuser, con_handle->db_user) != 0
+      || strcmp (dbpasswd, con_handle->db_passwd) != 0)
     {
       return 0;
     }
@@ -154,16 +149,14 @@ compare_conn_info (unsigned char *ip_addr, int port, char *dbname,
 }
 
 T_CON_HANDLE *
-hm_get_con_from_pool (unsigned char *ip_addr, int port, char *dbname,
-		      char *dbuser, char *dbpasswd)
+hm_get_con_from_pool (unsigned char *ip_addr, int port, char *dbname, char *dbuser, char *dbpasswd)
 {
   int con = -1;
   unsigned int i;
 
   for (i = 0; i < num_conn_pool; i++)
     {
-      if (compare_conn_info (ip_addr, port, dbname, dbuser, dbpasswd,
-			     con_handle_table[conn_pool[i] - 1]))
+      if (compare_conn_info (ip_addr, port, dbname, dbuser, dbpasswd, con_handle_table[conn_pool[i] - 1]))
 	{
 	  con = conn_pool[i];
 	  conn_pool[i] = conn_pool[--num_conn_pool];
@@ -221,8 +214,7 @@ hm_con_handle_table_init ()
 }
 
 T_CON_HANDLE *
-hm_con_handle_alloc (char *ip_str, int port, char *db_name, char *db_user,
-		     char *db_passwd)
+hm_con_handle_alloc (char *ip_str, int port, char *db_name, char *db_user, char *db_passwd)
 {
   int handle_id;
   int error = 0;
@@ -239,8 +231,7 @@ hm_con_handle_alloc (char *ip_str, int port, char *db_name, char *db_user,
     {
       goto error_end;
     }
-  error = init_con_handle (con_handle, ip_str, port, db_name, db_user,
-			   db_passwd);
+  error = init_con_handle (con_handle, ip_str, port, db_name, db_user, db_passwd);
   if (error < 0)
     {
       goto error_end;
@@ -279,8 +270,7 @@ hm_con_handle_free (T_CON_HANDLE * con_handle)
 }
 
 static int
-hm_pool_add_node_to_list (T_REQ_HANDLE ** head, T_REQ_HANDLE ** tail,
-			  T_REQ_HANDLE * target)
+hm_pool_add_node_to_list (T_REQ_HANDLE ** head, T_REQ_HANDLE ** tail, T_REQ_HANDLE * target)
 {
   target->next = NULL;
   target->prev = *tail;
@@ -298,8 +288,7 @@ hm_pool_add_node_to_list (T_REQ_HANDLE ** head, T_REQ_HANDLE ** tail,
 }
 
 static int
-hm_pool_drop_node_from_list (T_REQ_HANDLE ** head, T_REQ_HANDLE ** tail,
-			     T_REQ_HANDLE * target)
+hm_pool_drop_node_from_list (T_REQ_HANDLE ** head, T_REQ_HANDLE ** tail, T_REQ_HANDLE * target)
 {
   T_REQ_HANDLE *prev_target, *next_target;
 
@@ -334,8 +323,7 @@ hm_pool_drop_node_from_list (T_REQ_HANDLE ** head, T_REQ_HANDLE ** tail,
 }
 
 static int
-hm_pool_move_node_from_use_to_lru (T_CON_HANDLE * connection,
-				   int statement_id)
+hm_pool_move_node_from_use_to_lru (T_CON_HANDLE * connection, int statement_id)
 {
   T_REQ_HANDLE *target;
 
@@ -349,20 +337,17 @@ hm_pool_move_node_from_use_to_lru (T_CON_HANDLE * connection,
     }
 
   /* cut from use */
-  hm_pool_drop_node_from_list (&connection->pool_use_head,
-			       &connection->pool_use_tail, target);
+  hm_pool_drop_node_from_list (&connection->pool_use_head, &connection->pool_use_tail, target);
 
   /* add to lru */
-  hm_pool_add_node_to_list (&connection->pool_lru_head,
-			    &connection->pool_lru_tail, target);
+  hm_pool_add_node_to_list (&connection->pool_lru_head, &connection->pool_lru_tail, target);
   connection->open_prepared_statement_count++;
 
   return CCI_ER_NO_ERROR;
 }
 
 static int
-hm_pool_move_node_from_lru_to_use (T_CON_HANDLE * connection,
-				   int statement_id)
+hm_pool_move_node_from_lru_to_use (T_CON_HANDLE * connection, int statement_id)
 {
   T_REQ_HANDLE *target;
 
@@ -376,13 +361,11 @@ hm_pool_move_node_from_lru_to_use (T_CON_HANDLE * connection,
     }
 
   /* cut from lru */
-  hm_pool_drop_node_from_list (&connection->pool_lru_head,
-			       &connection->pool_lru_tail, target);
+  hm_pool_drop_node_from_list (&connection->pool_lru_head, &connection->pool_lru_tail, target);
   connection->open_prepared_statement_count--;
 
   /* add to use */
-  hm_pool_add_node_to_list (&connection->pool_use_head,
-			    &connection->pool_use_tail, target);
+  hm_pool_add_node_to_list (&connection->pool_use_head, &connection->pool_use_tail, target);
 
   return CCI_ER_NO_ERROR;
 }
@@ -398,8 +381,7 @@ hm_pool_victimize_last_node_from_lru (T_CON_HANDLE * connection)
     }
 
   victim = connection->pool_lru_head;
-  hm_pool_drop_node_from_list (&connection->pool_lru_head,
-			       &connection->pool_lru_tail, victim);
+  hm_pool_drop_node_from_list (&connection->pool_lru_head, &connection->pool_lru_tail, victim);
 
   connection->open_prepared_statement_count--;
 
@@ -436,15 +418,13 @@ hm_pool_add_statement_to_use (T_CON_HANDLE * connection, int statement_id)
   statement = connection->req_handle_table[statement_id - 1];
   assert (statement != NULL);
 
-  hm_pool_add_node_to_list (&connection->pool_use_head,
-			    &connection->pool_use_tail, statement);
+  hm_pool_add_node_to_list (&connection->pool_use_head, &connection->pool_use_tail, statement);
 
   return CCI_ER_NO_ERROR;
 }
 
 int
-hm_req_handle_alloc (T_CON_HANDLE * con_handle,
-		     T_REQ_HANDLE ** ret_req_handle)
+hm_req_handle_alloc (T_CON_HANDLE * con_handle, T_REQ_HANDLE ** ret_req_handle)
 {
   int req_handle_id;
   T_REQ_HANDLE *req_handle = NULL;
@@ -479,8 +459,7 @@ hm_req_handle_alloc (T_CON_HANDLE * con_handle,
 }
 
 int
-hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
-		    T_REQ_HANDLE * statement)
+hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id, T_REQ_HANDLE * statement)
 {
   char *key;
   int *data;
@@ -494,8 +473,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
   data = cci_mht_get (con->stmt_pool, sql);
   if (data != NULL)
     {
-      hm_pool_drop_node_from_list (&con->pool_use_head, &con->pool_use_tail,
-				   statement);
+      hm_pool_drop_node_from_list (&con->pool_use_head, &con->pool_use_tail, statement);
       return CCI_ER_REQ_HANDLE;
     }
 
@@ -507,12 +485,9 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
 	  return CCI_ER_REQ_HANDLE;
 	}
 
-      if (victim->handle_type == HANDLE_PREPARE
-	  || victim->handle_type == HANDLE_SCHEMA_INFO)
+      if (victim->handle_type == HANDLE_PREPARE || victim->handle_type == HANDLE_SCHEMA_INFO)
 	{
-	  /* because the statement will be terminated by restarting cas
-	   * all errors of qe_close_req_handle() are ignored
-	   */
+	  /* because the statement will be terminated by restarting cas all errors of qe_close_req_handle() are ignored */
 	  qe_close_req_handle (victim, con);
 	}
       cci_mht_rem (con->stmt_pool, victim->sql_text, true, true);
@@ -594,8 +569,7 @@ hm_get_connection_by_resolved_id (int resolved_id, T_CON_HANDLE ** connection)
 }
 
 static T_CCI_ERROR_CODE
-hm_get_connection_internal (int mapped_id, T_CON_HANDLE ** connection,
-			    bool force)
+hm_get_connection_internal (int mapped_id, T_CON_HANDLE ** connection, bool force)
 {
   T_CCI_ERROR_CODE error;
   int connection_id;
@@ -638,8 +612,7 @@ hm_get_connection (int mapped_id, T_CON_HANDLE ** connection)
 }
 
 T_CCI_ERROR_CODE
-hm_get_statement (int mapped_id, T_CON_HANDLE ** connection,
-		  T_REQ_HANDLE ** statement)
+hm_get_statement (int mapped_id, T_CON_HANDLE ** connection, T_REQ_HANDLE ** statement)
 {
   int connection_id;
   int statement_id;
@@ -692,9 +665,7 @@ hm_get_statement (int mapped_id, T_CON_HANDLE ** connection,
 }
 
 static T_CCI_ERROR_CODE
-hm_release_connection_internal (int mapped_id,
-				T_CON_HANDLE ** connection,
-				bool delete_handle)
+hm_release_connection_internal (int mapped_id, T_CON_HANDLE ** connection, bool delete_handle)
 {
   T_CCI_ERROR_CODE error;
 
@@ -726,8 +697,7 @@ hm_delete_connection (int mapped_id, T_CON_HANDLE ** connection)
 }
 
 T_CCI_ERROR_CODE
-hm_release_statement (int mapped_id, T_CON_HANDLE ** connection,
-		      T_REQ_HANDLE ** statement)
+hm_release_statement (int mapped_id, T_CON_HANDLE ** connection, T_REQ_HANDLE ** statement)
 {
   T_CCI_ERROR_CODE error;
 
@@ -818,8 +788,7 @@ hm_req_handle_close_all_resultsets (T_CON_HANDLE * con_handle)
 	  continue;
 	}
 
-      if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0
-	  && !req_handle->is_from_current_transaction)
+      if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0 && !req_handle->is_from_current_transaction)
 	{
 	  continue;
 	}
@@ -860,8 +829,7 @@ hm_req_handle_fetch_buf_free (T_REQ_HANDLE * req_handle)
 
   if (req_handle->tuple_value)
     {
-      fetched_tuple = req_handle->fetched_tuple_end -
-	req_handle->fetched_tuple_begin + 1;
+      fetched_tuple = req_handle->fetched_tuple_end - req_handle->fetched_tuple_begin + 1;
       for (i = 0; i < fetched_tuple; i++)
 	{
 #if defined(WINDOWS)
@@ -958,11 +926,9 @@ req_handle_col_info_free (T_REQ_HANDLE * req_handle)
 void
 req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
 {
-  /*
-     For reusing invalidated req handle,
-     sql_text and prepare flag of req handle are needed.
-     So, they must not be freed.
-   */
+  /* 
+   * For reusing invalidated req handle, sql_text and prepare flag of req handle are needed. So, they must not be
+   * freed. */
 
   req_close_query_result (req_handle);
   req_handle_col_info_free (req_handle);
@@ -1014,8 +980,7 @@ hm_find_host_status_index (unsigned char *ip_addr, int port)
 
   for (i = 0; i < host_status_count; i++)
     {
-      if (memcmp (host_status[i].host.ip_addr, ip_addr, 4) == 0
-	  && host_status[i].host.port == port)
+      if (memcmp (host_status[i].host.ip_addr, ip_addr, 4) == 0 && host_status[i].host.port == port)
 	{
 	  index = i;
 	  break;
@@ -1090,8 +1055,7 @@ hm_get_con_handle_holdable (T_CON_HANDLE * con_handle)
     {
       broker = hm_get_broker_version (con_handle);
 
-      if (hm_broker_support_holdable_result (con_handle)
-	  || broker == CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+      if (hm_broker_support_holdable_result (con_handle) || broker == CAS_PROTO_MAKE_VER (PROTOCOL_V2))
 	{
 	  return true;
 	}
@@ -1101,8 +1065,7 @@ hm_get_con_handle_holdable (T_CON_HANDLE * con_handle)
 }
 
 int
-hm_get_req_handle_holdable (T_CON_HANDLE * con_handle,
-			    T_REQ_HANDLE * req_handle)
+hm_get_req_handle_holdable (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle)
 {
   T_BROKER_VERSION broker;
 
@@ -1112,8 +1075,7 @@ hm_get_req_handle_holdable (T_CON_HANDLE * con_handle,
     {
       broker = hm_get_broker_version (con_handle);
 
-      if (hm_broker_support_holdable_result (con_handle)
-	  || broker == CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+      if (hm_broker_support_holdable_result (con_handle) || broker == CAS_PROTO_MAKE_VER (PROTOCOL_V2))
 	{
 	  return true;
 	}
@@ -1127,12 +1089,9 @@ hm_get_broker_version (T_CON_HANDLE * con_handle)
 {
   T_BROKER_VERSION version = 0;
 
-  if (con_handle->broker_info[BROKER_INFO_PROTO_VERSION]
-      & CAS_PROTO_INDICATOR)
+  if (con_handle->broker_info[BROKER_INFO_PROTO_VERSION] & CAS_PROTO_INDICATOR)
     {
-      version =
-	CAS_PROTO_UNPACK_NET_VER (con_handle->
-				  broker_info[BROKER_INFO_PROTO_VERSION]);
+      version = CAS_PROTO_UNPACK_NET_VER (con_handle->broker_info[BROKER_INFO_PROTO_VERSION]);
     }
   else
     {
@@ -1160,8 +1119,7 @@ hm_broker_understand_renewed_error_code (T_CON_HANDLE * con_handle)
 }
 
 bool
-hm_broker_understand_the_protocol (T_BROKER_VERSION broker_version,
-				   int require)
+hm_broker_understand_the_protocol (T_BROKER_VERSION broker_version, int require)
 {
   if (broker_version >= CAS_PROTO_MAKE_VER (require))
     {
@@ -1191,8 +1149,7 @@ hm_broker_support_holdable_result (T_CON_HANDLE * con_handle)
 {
   char f = con_handle->broker_info[BROKER_INFO_FUNCTION_FLAG];
 
-  return (f & BROKER_SUPPORT_HOLDABLE_RESULT)
-    == BROKER_SUPPORT_HOLDABLE_RESULT;
+  return (f & BROKER_SUPPORT_HOLDABLE_RESULT) == BROKER_SUPPORT_HOLDABLE_RESULT;
 }
 
 bool
@@ -1200,8 +1157,7 @@ hm_broker_reconnect_when_server_down (T_CON_HANDLE * con_handle)
 {
   char f = con_handle->broker_info[BROKER_INFO_FUNCTION_FLAG];
 
-  return (f & BROKER_RECONNECT_WHEN_SERVER_DOWN) ==
-    BROKER_RECONNECT_WHEN_SERVER_DOWN;
+  return (f & BROKER_RECONNECT_WHEN_SERVER_DOWN) == BROKER_RECONNECT_WHEN_SERVER_DOWN;
 }
 
 void
@@ -1241,9 +1197,7 @@ hm_create_health_check_th (void)
   rv = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
   rv = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
 #endif /* WINDOWS */
-  rv =
-    pthread_create (&health_check_th, &thread_attr, hm_thread_health_checker,
-		    (void *) NULL);
+  rv = pthread_create (&health_check_th, &thread_attr, hm_thread_health_checker, (void *) NULL);
 }
 
 /************************************************************************
@@ -1273,8 +1227,7 @@ hm_make_empty_session (T_CCI_SESSION_ID * id)
 }
 
 static int
-init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
-		 char *db_name, char *db_user, char *db_passwd)
+init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port, char *db_name, char *db_user, char *db_passwd)
 {
   unsigned char ip_addr[4];
 
@@ -1297,10 +1250,8 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   ALLOC_COPY (con_handle->db_name, db_name);
   ALLOC_COPY (con_handle->db_user, db_user);
   ALLOC_COPY (con_handle->db_passwd, db_passwd);
-  snprintf (con_handle->url, SRV_CON_URL_SIZE,
-	    "cci:cubrid:%d.%d.%d.%d:%d:%s:%s:********:",
-	    ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3], port,
-	    (db_name ? db_name : ""), (db_user ? db_user : ""));
+  snprintf (con_handle->url, SRV_CON_URL_SIZE, "cci:cubrid:%d.%d.%d.%d:%d:%s:%s:********:", ip_addr[0], ip_addr[1],
+	    ip_addr[2], ip_addr[3], port, (db_name ? db_name : ""), (db_user ? db_user : ""));
   con_handle->sock_fd = -1;
   con_handle->isolation_level = TRAN_UNKNOWN_ISOLATION;
   con_handle->lock_timeout = CCI_LOCK_TIMEOUT_DEFAULT;
@@ -1311,8 +1262,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   hm_make_empty_session (&con_handle->session_id);
 
   con_handle->max_req_handle = REQ_HANDLE_ALLOC_SIZE;
-  con_handle->req_handle_table = (T_REQ_HANDLE **)
-    MALLOC (sizeof (T_REQ_HANDLE *) * con_handle->max_req_handle);
+  con_handle->req_handle_table = (T_REQ_HANDLE **) MALLOC (sizeof (T_REQ_HANDLE *) * con_handle->max_req_handle);
   if (con_handle->req_handle_table == NULL)
     {
       FREE_MEM (con_handle->db_name);
@@ -1322,8 +1272,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
       return CCI_ER_NO_MORE_MEMORY;
     }
 
-  con_handle->stmt_pool = cci_mht_create (0, 1000, cci_mht_5strhash,
-					  cci_mht_strcasecmpeq);
+  con_handle->stmt_pool = cci_mht_create (0, 1000, cci_mht_5strhash, cci_mht_strcasecmpeq);
   if (con_handle->stmt_pool == NULL)
     {
       FREE_MEM (con_handle->db_name);
@@ -1333,8 +1282,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
       return CCI_ER_NO_MORE_MEMORY;
     }
 
-  memset (con_handle->req_handle_table,
-	  0, sizeof (T_REQ_HANDLE *) * con_handle->max_req_handle);
+  memset (con_handle->req_handle_table, 0, sizeof (T_REQ_HANDLE *) * con_handle->max_req_handle);
   con_handle->req_handle_count = 0;
   con_handle->open_prepared_statement_count = 0;
   memset (con_handle->broker_info, 0, BROKER_INFO_SIZE);
@@ -1344,8 +1292,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->cas_info[CAS_INFO_RESERVED_2] = CAS_INFO_RESERVED_DEFAULT;
   con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG] = CAS_INFO_RESERVED_DEFAULT;
 
-  memset (con_handle->alter_hosts, 0,
-	  sizeof (T_ALTER_HOST) * ALTER_HOST_MAX_SIZE);
+  memset (con_handle->alter_hosts, 0, sizeof (T_ALTER_HOST) * ALTER_HOST_MAX_SIZE);
   con_handle->load_balance = false;
   con_handle->force_failback = false;
   con_handle->alter_host_count = 0;
@@ -1367,11 +1314,8 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->log_trace_api = false;
   con_handle->log_trace_network = false;
 
-  con_handle->deferred_max_close_handle_count =
-    DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
-  con_handle->deferred_close_handle_list =
-    (int *) MALLOC (sizeof (int) *
-		    con_handle->deferred_max_close_handle_count);
+  con_handle->deferred_max_close_handle_count = DEFERRED_CLOSE_HANDLE_ALLOC_SIZE;
+  con_handle->deferred_close_handle_list = (int *) MALLOC (sizeof (int) * con_handle->deferred_max_close_handle_count);
   con_handle->deferred_close_handle_count = 0;
 
   con_handle->is_holdable = 1;
@@ -1390,8 +1334,7 @@ new_con_handle_id ()
 
   for (i = 0; i < MAX_CON_HANDLE; i++)
     {
-      con_handle_current_index =
-	(con_handle_current_index + 1) % MAX_CON_HANDLE;
+      con_handle_current_index = (con_handle_current_index + 1) % MAX_CON_HANDLE;
 
       if (con_handle_table[con_handle_current_index] == NULL)
 	{
@@ -1419,9 +1362,8 @@ new_req_handle_id (T_CON_HANDLE * con_handle)
     }
 
   new_max_req_handle = con_handle->max_req_handle + REQ_HANDLE_ALLOC_SIZE;
-  new_req_handle_table = (T_REQ_HANDLE **)
-    REALLOC (con_handle->req_handle_table,
-	     sizeof (T_REQ_HANDLE *) * new_max_req_handle);
+  new_req_handle_table =
+    (T_REQ_HANDLE **) REALLOC (con_handle->req_handle_table, sizeof (T_REQ_HANDLE *) * new_max_req_handle);
   if (new_req_handle_table == NULL)
     {
       return CCI_ER_NO_MORE_MEMORY;
@@ -1429,8 +1371,7 @@ new_req_handle_id (T_CON_HANDLE * con_handle)
 
   handle_id = con_handle->max_req_handle + 1;
 
-  memset (new_req_handle_table + con_handle->max_req_handle, 0,
-	  REQ_HANDLE_ALLOC_SIZE * sizeof (T_REQ_HANDLE *));
+  memset (new_req_handle_table + con_handle->max_req_handle, 0, REQ_HANDLE_ALLOC_SIZE * sizeof (T_REQ_HANDLE *));
 
   con_handle->max_req_handle = new_max_req_handle;
   con_handle->req_handle_table = new_req_handle_table;
@@ -1495,8 +1436,7 @@ is_ip_str (char *ip_str)
 }
 
 static void
-hm_set_host_status_by_addr (unsigned char *ip_addr, int port,
-			    bool is_reachable)
+hm_set_host_status_by_addr (unsigned char *ip_addr, int port, bool is_reachable)
 {
   int i;
 
@@ -1531,8 +1471,7 @@ hm_thread_health_checker (void *arg)
 	{
 	  ip_addr = host_status[i].host.ip_addr;
 	  port = host_status[i].host.port;
-	  if (!host_status[i].is_reachable && net_check_broker_alive
-	      (ip_addr, port, BROKER_HEALTH_CHECK_TIMEOUT))
+	  if (!host_status[i].is_reachable && net_check_broker_alive (ip_addr, port, BROKER_HEALTH_CHECK_TIMEOUT))
 	    {
 	      hm_set_host_status_by_addr (ip_addr, port, true);
 	    }

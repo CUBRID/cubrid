@@ -95,7 +95,7 @@ t_lob_get_size (char *pack_bytes)
   INT64 size;
   INT64 temp;
 
-  memcpy (&temp, pack_bytes + 4, sizeof(INT64));
+  memcpy (&temp, pack_bytes + 4, sizeof (INT64));
   size = ntohi64 (temp);
   return size;
 }
@@ -104,7 +104,7 @@ void
 t_lob_set_size (T_LOB * lob, INT64 new_size)
 {
   new_size = htoni64 (new_size);
-  memcpy (lob->handle + 4, &new_size, sizeof(INT64));
+  memcpy (lob->handle + 4, &new_size, sizeof (INT64));
 }
 
 /************************************************************************

@@ -152,20 +152,15 @@ static VOLUME_UNDO_INFO *vol_undo_info;
 
 static int fix_all_volume_header (const char *db_path);
 static int fix_volume_header (const char *vol_path);
-static int undo_fix_volume_header (const char *vol_path, char *undo_page,
-				   int size);
+static int undo_fix_volume_header (const char *vol_path, char *undo_page, int size);
 static char *make_volume_header_undo_page (const char *vol_path, int size);
 static void free_volume_header_undo_list (void);
 
 static int get_active_log_vol_path (const char *db_path, char *logvol_path);
-static int check_and_fix_compat_level (const char *db_name,
-				       const char *vol_path);
+static int check_and_fix_compat_level (const char *db_name, const char *vol_path);
 static int get_db_path (const char *db_name, char *db_full_path);
-static int fix_codeset_in_active_log (const char *db_path,
-				      INTL_CODESET codeset);
-extern int catcls_get_db_collation (THREAD_ENTRY * thread_p,
-				    LANG_COLL_COMPAT ** db_collations,
-				    int *coll_cnt);
+static int fix_codeset_in_active_log (const char *db_path, INTL_CODESET codeset);
+extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
 
 static int
 get_active_log_vol_path (const char *db_path, char *logvol_path)
@@ -260,15 +255,13 @@ check_and_fix_compat_level (const char *db_name, const char *db_path)
 
   if (hdr->db_compatibility != V9_1_LEVEL)
     {
-      printf ("Cannot migrate this database: "
-	      "%s is not CUBRID 9.1 database.\n", db_name);
+      printf ("Cannot migrate this database: " "%s is not CUBRID 9.1 database.\n", db_name);
       return ER_FAILED;
     }
 
   if (hdr->is_shutdown == false)
     {
-      printf ("This database (%s) was not normally terminated.\n"
-	      "Please start and shutdown with CUBRID 9.1 ,"
+      printf ("This database (%s) was not normally terminated.\n" "Please start and shutdown with CUBRID 9.1 ,"
 	      "and retry migration.\n", db_name);
       return ER_FAILED;
     }
@@ -277,8 +270,7 @@ check_and_fix_compat_level (const char *db_name, const char *db_path)
   hdr->db_charset = INTL_CODESET_NONE;
 
   rewind (fp);
-  FWRITE_AND_CHECK (log_io_page, sizeof (char), hdr->db_logpagesize, fp,
-		    vol_path);
+  FWRITE_AND_CHECK (log_io_page, sizeof (char), hdr->db_logpagesize, fp, vol_path);
   FFLUSH_AND_CHECK (fp, vol_path);
   FCLOSE_AND_CHECK (fp, vol_path);
 
@@ -439,8 +431,7 @@ main (int argc, char *argv[])
   if (rel_disk_compatible () != V9_2_LEVEL)
     {
       /* invalid cubrid library */
-      printf ("CUBRID library version is invalid.\n"
-	      "Please upgrade to CUBRID 9.2 and retry migrate.\n");
+      printf ("CUBRID library version is invalid.\n" "Please upgrade to CUBRID 9.2 and retry migrate.\n");
       return EXIT_FAILURE;
     }
 
@@ -491,8 +482,7 @@ main (int argc, char *argv[])
     }
   db_started = true;
 
-  if (catcls_get_db_collation (NULL, &db_collations, &db_coll_cnt)
-      != NO_ERROR)
+  if (catcls_get_db_collation (NULL, &db_collations, &db_coll_cnt) != NO_ERROR)
     {
       if (db_collations != NULL)
 	{
@@ -515,18 +505,15 @@ main (int argc, char *argv[])
 
       if (lc->coll.coll_id != ref_c->coll_id)
 	{
-	  printf ("Collation '%s' with id %d from database %s "
-		  "was not loaded by migration process\n", ref_c->coll_name,
-		  ref_c->coll_id, db_name);
+	  printf ("Collation '%s' with id %d from database %s " "was not loaded by migration process\n",
+		  ref_c->coll_name, ref_c->coll_id, db_name);
 	  goto error_undo_vol_header;
 	}
 
       if (strcmp (lc->coll.coll_name, ref_c->coll_name))
 	{
-	  printf ("Names of collation with id %d do not match : "
-		  "the collation loaded by migration process is '%s'; "
-		  "the collation in database %s, is '%s'\n",
-		  ref_c->coll_id, lc->coll.coll_name, db_name,
+	  printf ("Names of collation with id %d do not match : " "the collation loaded by migration process is '%s'; "
+		  "the collation in database %s, is '%s'\n", ref_c->coll_id, lc->coll.coll_name, db_name,
 		  ref_c->coll_name);
 	  goto error_undo_vol_header;
 	}
@@ -535,27 +522,21 @@ main (int argc, char *argv[])
 	{
 	  printf ("Codesets of collation '%s' with id %d do not match : "
 		  "the collation loaded by migration process has codeset %d; "
-		  "the collation in database %s has codeset %d\n",
-		  ref_c->coll_name, ref_c->coll_id, lc->codeset, db_name,
-		  ref_c->codeset);
+		  "the collation in database %s has codeset %d\n", ref_c->coll_name, ref_c->coll_id, lc->codeset,
+		  db_name, ref_c->codeset);
 	  goto error_undo_vol_header;
 	}
 
-      /* The 'COLL_CONTRACTION' struct exported in locales lib was reorganized
-       * to optimize memory; as a side-effect, collations having contractions
-       * have altered checksum, but their properties are the same */
+      /* The 'COLL_CONTRACTION' struct exported in locales lib was reorganized to optimize memory; as a side-effect,
+       * collations having contractions have altered checksum, but their properties are the same */
 
-      /* collations with contractions are ignored, there is no acceptable
-       * solution to check them;
-       * we just assume that user does not change their properties */
-      if (lc->coll.count_contr == 0
-	  && strcasecmp (lc->coll.checksum, ref_c->checksum))
+      /* collations with contractions are ignored, there is no acceptable solution to check them; we just assume that
+       * user does not change their properties */
+      if (lc->coll.count_contr == 0 && strcasecmp (lc->coll.checksum, ref_c->checksum))
 	{
-	  printf ("Collation '%s' with id %d has changed : "
-		  "the collation loaded by migration process has checksum "
-		  "'%s'; the collation from database %s has checksum '%s'\n",
-		  ref_c->coll_name, ref_c->coll_id, lc->coll.checksum,
-		  db_name, ref_c->checksum);
+	  printf ("Collation '%s' with id %d has changed : " "the collation loaded by migration process has checksum "
+		  "'%s'; the collation from database %s has checksum '%s'\n", ref_c->coll_name, ref_c->coll_id,
+		  lc->coll.checksum, db_name, ref_c->checksum);
 	  goto error_undo_vol_header;
 	}
     }
@@ -572,9 +553,7 @@ main (int argc, char *argv[])
 
   if (file_update_used_pages_of_vol_header (NULL) == DISK_ERROR)
     {
-      printf
-	("Could not update the statistics of the used pages of a volume: %s.\n",
-	 db_error_string (3));
+      printf ("Could not update the statistics of the used pages of a volume: %s.\n", db_error_string (3));
       goto error_undo_vol_header;
     }
 
@@ -593,8 +572,7 @@ main (int argc, char *argv[])
     }
   else
     {
-      printf ("\nCould not get the codeset from db_root: %s",
-	      db_error_string (3));
+      printf ("\nCould not get the codeset from db_root: %s", db_error_string (3));
       goto error_undo_vol_header;
     }
 
@@ -620,8 +598,7 @@ error_undo_vol_header:
       printf ("rollback volume header: %s\n", p->filename);
       fflush (stdout);
 
-      if (undo_fix_volume_header (p->filename, p->page,
-				  p->page_size) != NO_ERROR)
+      if (undo_fix_volume_header (p->filename, p->page, p->page_size) != NO_ERROR)
 	{
 	  printf ("recovering volume header fails.\n");
 	  break;
@@ -655,8 +632,7 @@ fix_all_volume_header (const char *db_path)
 
   vol_undo_count = 0;
   vol_undo_list_length = UNDO_LIST_SIZE;
-  vol_undo_info = (VOLUME_UNDO_INFO *) calloc (vol_undo_list_length,
-					       sizeof (VOLUME_UNDO_INFO));
+  vol_undo_info = (VOLUME_UNDO_INFO *) calloc (vol_undo_list_length, sizeof (VOLUME_UNDO_INFO));
 
   if (vol_undo_info == NULL)
     {
@@ -748,13 +724,12 @@ fix_volume_header (const char *vol_path)
   LSA_COPY (&r92_header->chkpt_lsa, &r91_header->chkpt_lsa);
   HFID_COPY (&r92_header->boot_hfid, &r91_header->boot_hfid);
   r92_header->offset_to_vol_fullname = r91_header->offset_to_vol_fullname;
-  r92_header->offset_to_next_vol_fullname =
-    r91_header->offset_to_next_vol_fullname;
+  r92_header->offset_to_next_vol_fullname = r91_header->offset_to_next_vol_fullname;
   r92_header->offset_to_vol_remarks = r91_header->offset_to_vol_remarks;
 
-  var_field_length = r91_header->offset_to_vol_remarks +
-    (int) strlen ((char *) (r91_header->var_fields +
-			    r91_header->offset_to_vol_remarks));
+  var_field_length =
+    r91_header->offset_to_vol_remarks +
+    (int) strlen ((char *) (r91_header->var_fields + r91_header->offset_to_vol_remarks));
 
   memcpy (r92_header->var_fields, r91_header->var_fields, var_field_length);
 
@@ -762,8 +737,7 @@ fix_volume_header (const char *vol_path)
   r92_header->used_data_npages = r92_header->used_index_npages = 0;
 
   rewind (fp);
-  FWRITE_AND_CHECK (r92_aligned_buf, sizeof (char), r92_header->iopagesize,
-		    fp, vol_path);
+  FWRITE_AND_CHECK (r92_aligned_buf, sizeof (char), r92_header->iopagesize, fp, vol_path);
   FFLUSH_AND_CHECK (fp, vol_path);
   FCLOSE_AND_CHECK (fp, vol_path);
 
@@ -781,16 +755,13 @@ make_volume_header_undo_page (const char *vol_path, int size)
 
   if (vol_undo_count == vol_undo_list_length)
     {
-      new_undo_info =
-	(VOLUME_UNDO_INFO *) calloc (2 * vol_undo_list_length,
-				     sizeof (VOLUME_UNDO_INFO));
+      new_undo_info = (VOLUME_UNDO_INFO *) calloc (2 * vol_undo_list_length, sizeof (VOLUME_UNDO_INFO));
       if (new_undo_info == NULL)
 	{
 	  return NULL;
 	}
 
-      memcpy (new_undo_info, vol_undo_info,
-	      vol_undo_list_length * sizeof (VOLUME_UNDO_INFO));
+      memcpy (new_undo_info, vol_undo_info, vol_undo_list_length * sizeof (VOLUME_UNDO_INFO));
       free (vol_undo_info);
       vol_undo_info = new_undo_info;
 

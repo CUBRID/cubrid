@@ -49,11 +49,9 @@ struct t_max_heap_node
   char driver_info[SRV_CON_CLIENT_INFO_SIZE];
 };
 
-int max_heap_insert (T_MAX_HEAP_NODE * max_heap, int max_heap_size,
-		     T_MAX_HEAP_NODE * item);
+int max_heap_insert (T_MAX_HEAP_NODE * max_heap, int max_heap_size, T_MAX_HEAP_NODE * item);
 int max_heap_delete (T_MAX_HEAP_NODE * max_heap, T_MAX_HEAP_NODE * ret);
-int max_heap_change_priority (T_MAX_HEAP_NODE * max_heap, int id,
-			      int new_priority);
+int max_heap_change_priority (T_MAX_HEAP_NODE * max_heap, int id, int new_priority);
 void max_heap_incr_priority (T_MAX_HEAP_NODE * max_heap);
 
 #endif /* _BROKER_MAX_HEAP_H_ */

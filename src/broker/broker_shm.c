@@ -67,19 +67,12 @@ static int get_host_ip (unsigned char *ip_addr);
 T_LIST *shm_id_list_header = NULL;
 #endif
 
-static void broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl,
-				    T_APPL_SERVER_INFO * as_info_p,
+static void broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p,
 				    T_BROKER_INFO * br_info_p, int as_index);
-static void
-shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p,
-			       T_SHM_PROXY * shm_proxy_p);
+static void shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p, T_SHM_PROXY * shm_proxy_p);
 
-static void get_access_log_file_name (char *access_log_file,
-				      char *access_log_path,
-				      char *broker_name, int len);
-static void get_error_log_file_name (char *access_log_file,
-				     char *error_log_path, char *broker_name,
-				     int len);
+static void get_access_log_file_name (char *access_log_file, char *access_log_path, char *broker_name, int len);
+static void get_error_log_file_name (char *access_log_file, char *error_log_path, char *broker_name, int len);
 
 static const char *get_appl_server_name (int appl_server_type);
 
@@ -127,9 +120,9 @@ uw_shm_open (int shm_key, int which_shm, T_SHM_MODE shm_mode)
     }
 
   /* Get a pointer to the file-mapped shared memory. */
-  lpvMem = MapViewOfFile (hMapObject,	/* object to map view of    */
-			  dwAccessRight, 0,	/* high offset:   map from  */
-			  0,	/* low offset:    beginning */
+  lpvMem = MapViewOfFile (hMapObject,	/* object to map view of */
+			  dwAccessRight, 0,	/* high offset: map from */
+			  0,	/* low offset: beginning */
 			  0);	/* default: map entire file */
 
   if (lpvMem == NULL)
@@ -138,8 +131,7 @@ uw_shm_open (int shm_key, int which_shm, T_SHM_MODE shm_mode)
       return NULL;
     }
 
-  link_list_add (&shm_id_list_header,
-		 (void *) lpvMem, (void *) hMapObject, shm_info_assign_func);
+  link_list_add (&shm_id_list_header, (void *) lpvMem, (void *) hMapObject, shm_info_assign_func);
 
   return lpvMem;
 }
@@ -162,8 +154,7 @@ uw_shm_open (int shm_key, int which_shm, T_SHM_MODE shm_mode)
       UW_SET_ERROR_CODE (UW_ER_SHM_OPEN, errno);
       return NULL;
     }
-  p =
-    shmat (mid, (char *) 0, ((shm_mode == SHM_MODE_ADMIN) ? 0 : SHM_RDONLY));
+  p = shmat (mid, (char *) 0, ((shm_mode == SHM_MODE_ADMIN) ? 0 : SHM_RDONLY));
   if (p == (void *) -1)
     {
       UW_SET_ERROR_CODE (UW_ER_SHM_OPEN, errno);
@@ -228,15 +219,12 @@ uw_shm_create (int shm_key, int size, int which_shm)
   SECURITY_ATTRIBUTES sa;
 
   /* Create a well-known SID for the Everyone group. */
-  if (!AllocateAndInitializeSid (&SIDAuthWorld, 1, SECURITY_WORLD_RID,
-				 0, 0, 0, 0, 0, 0, 0, &pEveryoneSID))
+  if (!AllocateAndInitializeSid (&SIDAuthWorld, 1, SECURITY_WORLD_RID, 0, 0, 0, 0, 0, 0, 0, &pEveryoneSID))
     {
       goto error_exit;
     }
 
-  /*Initialize an EXPLICIT_ACCESS structure for an ACE.
-   * The ACE will allow Everyone read access to the shared memory.
-   */
+  /* Initialize an EXPLICIT_ACCESS structure for an ACE. The ACE will allow Everyone read access to the shared memory. */
   memset (ea, '\0', 2 * sizeof (EXPLICIT_ACCESS));
   ea[0].grfAccessPermissions = GENERIC_READ;
   ea[0].grfAccessMode = SET_ACCESS;
@@ -246,18 +234,14 @@ uw_shm_create (int shm_key, int size, int which_shm)
   ea[0].Trustee.ptstrName = (LPTSTR) pEveryoneSID;
 
   /* Create a SID for the BUILTIN\Administrators group. */
-  if (!AllocateAndInitializeSid (&SIDAuthNT, 2,
-				 SECURITY_BUILTIN_DOMAIN_RID,
-				 DOMAIN_ALIAS_RID_ADMINS,
-				 0, 0, 0, 0, 0, 0, &pAdminSID))
+  if (!AllocateAndInitializeSid
+      (&SIDAuthNT, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &pAdminSID))
     {
       goto error_exit;
     }
 
-  /* Initialize an EXPLICIT_ACCESS structure for an ACE.
-   * The ACE will allow the Administrators group full access to
-   * the shared memory
-   */
+  /* Initialize an EXPLICIT_ACCESS structure for an ACE. The ACE will allow the Administrators group full access to the 
+   * shared memory */
   ea[1].grfAccessPermissions = GENERIC_ALL;
   ea[1].grfAccessMode = SET_ACCESS;
   ea[1].grfInheritance = NO_INHERITANCE;
@@ -273,8 +257,7 @@ uw_shm_create (int shm_key, int size, int which_shm)
     }
 
   /* Initialize a security descriptor. */
-  pSD = (PSECURITY_DESCRIPTOR) LocalAlloc (LPTR,
-					   SECURITY_DESCRIPTOR_MIN_LENGTH);
+  pSD = (PSECURITY_DESCRIPTOR) LocalAlloc (LPTR, SECURITY_DESCRIPTOR_MIN_LENGTH);
 
   if (NULL == pSD)
     {
@@ -299,8 +282,7 @@ uw_shm_create (int shm_key, int size, int which_shm)
 
   shm_name = shm_id_to_name (shm_key);
 
-  hMapObject = CreateFileMapping (INVALID_HANDLE_VALUE,
-				  &sa, PAGE_READWRITE, 0, size, shm_name);
+  hMapObject = CreateFileMapping (INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE, 0, size, shm_name);
 
   if (hMapObject == NULL)
     {
@@ -321,8 +303,7 @@ uw_shm_create (int shm_key, int size, int which_shm)
       goto error_exit;
     }
 
-  link_list_add (&shm_id_list_header,
-		 (void *) lpvMem, (void *) hMapObject, shm_info_assign_func);
+  link_list_add (&shm_id_list_header, (void *) lpvMem, (void *) hMapObject, shm_info_assign_func);
 
   return lpvMem;
 
@@ -433,8 +414,7 @@ uw_shm_destroy (int shm_key)
 }
 
 T_SHM_BROKER *
-broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info,
-				  int br_num, int acl_flag, char *acl_file)
+broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag, char *acl_file)
 {
   int i, shm_size;
   T_SHM_BROKER *shm_br = NULL;
@@ -447,8 +427,7 @@ broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info,
 
   shm_size = sizeof (T_SHM_BROKER) + (br_num - 1) * sizeof (T_BROKER_INFO);
 
-  shm_br =
-    (T_SHM_BROKER *) uw_shm_create (master_shm_id, shm_size, SHM_BROKER);
+  shm_br = (T_SHM_BROKER *) uw_shm_create (master_shm_id, shm_size, SHM_BROKER);
 
   if (shm_br == NULL)
     {
@@ -470,8 +449,7 @@ broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info,
 
   if (acl_file != NULL)
     {
-      strncpy (shm_br->access_control_file, acl_file,
-	       sizeof (shm_br->access_control_file) - 1);
+      strncpy (shm_br->access_control_file, acl_file, sizeof (shm_br->access_control_file) - 1);
     }
 
   for (i = 0; i < br_num; i++)
@@ -480,12 +458,10 @@ broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info,
 
       if (br_info[i].shard_flag == OFF)
 	{
-	  get_access_log_file_name (shm_br->br_info[i].access_log_file,
-				    br_info[i].access_log_file,
-				    br_info[i].name, CONF_LOG_FILE_LEN);
+	  get_access_log_file_name (shm_br->br_info[i].access_log_file, br_info[i].access_log_file, br_info[i].name,
+				    CONF_LOG_FILE_LEN);
 	}
-      get_error_log_file_name (shm_br->br_info[i].error_log_file,
-			       br_info[i].error_log_file, br_info[i].name,
+      get_error_log_file_name (shm_br->br_info[i].error_log_file, br_info[i].error_log_file, br_info[i].name,
 			       CONF_LOG_FILE_LEN);
     }
 
@@ -493,8 +469,7 @@ broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info,
 }
 
 T_SHM_APPL_SERVER *
-broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
-			      T_SHM_PROXY * shm_proxy_p)
+broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p)
 {
   int as_index;
   T_SHM_APPL_SERVER *shm_as_p = NULL;
@@ -506,9 +481,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
   short proxy_id, shard_id, shard_cas_id;
 
   shm_as_p =
-    (T_SHM_APPL_SERVER *) uw_shm_create (br_info_p->appl_server_shm_id,
-					 sizeof (T_SHM_APPL_SERVER),
-					 SHM_APPL_SERVER);
+    (T_SHM_APPL_SERVER *) uw_shm_create (br_info_p->appl_server_shm_id, sizeof (T_SHM_APPL_SERVER), SHM_APPL_SERVER);
 
   if (shm_as_p == NULL)
     {
@@ -522,8 +495,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
 
   shm_as_p->monitor_hang_flag = br_info_p->monitor_hang_flag;
   shm_as_p->monitor_server_flag = br_info_p->monitor_server_flag;
-  memset (shm_as_p->unusable_databases_cnt, 0,
-	  sizeof (shm_as_p->unusable_databases_cnt));
+  memset (shm_as_p->unusable_databases_cnt, 0, sizeof (shm_as_p->unusable_databases_cnt));
 
   strcpy (shm_as_p->log_dir, br_info_p->log_dir);
   strcpy (shm_as_p->slow_log_dir, br_info_p->slow_log_dir);
@@ -563,8 +535,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
   shm_as_p->connect_order = br_info_p->connect_order;
   shm_as_p->replica_only_flag = br_info_p->replica_only_flag;
 
-  shm_as_p->max_num_delayed_hosts_lookup =
-    br_info_p->max_num_delayed_hosts_lookup;
+  shm_as_p->max_num_delayed_hosts_lookup = br_info_p->max_num_delayed_hosts_lookup;
 
   shm_as_p->trigger_action_flag = br_info_p->trigger_action_flag;
 
@@ -573,10 +544,8 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
   strcpy (shm_as_p->preferred_hosts, br_info_p->preferred_hosts);
   strcpy (shm_as_p->error_log_file, br_info_p->error_log_file);
   strcpy (shm_as_p->access_log_file, br_info_p->access_log_file);
-  strcpy (shm_as_p->appl_server_name,
-	  get_appl_server_name (br_info_p->appl_server));
-  ut_get_broker_port_name (shm_as_p->port_name, br_info_p->name,
-			   SHM_PROXY_NAME_MAX);
+  strcpy (shm_as_p->appl_server_name, get_appl_server_name (br_info_p->appl_server));
+  ut_get_broker_port_name (shm_as_p->port_name, br_info_p->name, SHM_PROXY_NAME_MAX);
   strcpy (shm_as_p->db_connection_file, br_info_p->db_connection_file);
 
   for (as_index = 0; as_index < br_info_p->appl_server_max_num; as_index++)
@@ -593,8 +562,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
       return shm_as_p;
     }
 
-  strncpy (shm_as_p->proxy_log_dir, br_info_p->proxy_log_dir,
-	   sizeof (shm_as_p->proxy_log_dir) - 1);
+  strncpy (shm_as_p->proxy_log_dir, br_info_p->proxy_log_dir, sizeof (shm_as_p->proxy_log_dir) - 1);
 
   shm_as_p->proxy_log_max_size = br_info_p->proxy_log_max_size;
 
@@ -609,15 +577,11 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
 	  shard_info_p = &proxy_info_p->shard_info[shard_id];
 	  shard_conn_info_p = &shm_as_p->shard_conn_info[shard_id];
 
-	  proxy_info_p->fixed_shard_user =
-	    (shard_conn_info_p->db_user[0] != '\0') ? true : false;
+	  proxy_info_p->fixed_shard_user = (shard_conn_info_p->db_user[0] != '\0') ? true : false;
 
-	  for (shard_cas_id = 0; shard_cas_id < shard_info_p->max_appl_server;
-	       shard_cas_id++)
+	  for (shard_cas_id = 0; shard_cas_id < shard_info_p->max_appl_server; shard_cas_id++)
 	    {
-	      as_info_p =
-		&(shm_as_p->
-		  as_info[shard_cas_id + shard_info_p->as_info_index_base]);
+	      as_info_p = &(shm_as_p->as_info[shard_cas_id + shard_info_p->as_info_index_base]);
 
 	      as_info_p->proxy_id = proxy_id;
 	      as_info_p->shard_id = shard_id;
@@ -625,10 +589,8 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
 	      as_info_p->fixed_shard_user = proxy_info_p->fixed_shard_user;
 	      if (proxy_info_p->fixed_shard_user == true)
 		{
-		  strcpy (as_info_p->database_user,
-			  shard_conn_info_p->db_user);
-		  strcpy (as_info_p->database_passwd,
-			  shard_conn_info_p->db_password);
+		  strcpy (as_info_p->database_user, shard_conn_info_p->db_user);
+		  strcpy (as_info_p->database_passwd, shard_conn_info_p->db_password);
 		}
 
 	      if (shard_cas_id < shard_info_p->min_appl_server)
@@ -640,8 +602,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
 		  as_info_p->advance_activate_flag = 0;
 		}
 
-	      as_info_p->proxy_conn_wait_timeout =
-		br_info_p->proxy_conn_wait_timeout;
+	      as_info_p->proxy_conn_wait_timeout = br_info_p->proxy_conn_wait_timeout;
 	      as_info_p->force_reconnect = false;
 	    }
 	}
@@ -651,9 +612,8 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
 }
 
 static void
-broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl,
-			T_APPL_SERVER_INFO * as_info_p,
-			T_BROKER_INFO * br_info_p, int as_index)
+broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p, T_BROKER_INFO * br_info_p,
+			int as_index)
 {
   as_info_p->service_flag = SERVICE_OFF;
   as_info_p->last_access_time = time (NULL);
@@ -690,8 +650,7 @@ broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl,
 }
 
 static void
-shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p,
-			       T_SHM_PROXY * shm_proxy_p)
+shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p, T_SHM_PROXY * shm_proxy_p)
 {
   T_SHARD_CONN_INFO *shard_conn_info_p;
   T_SHM_SHARD_CONN *shm_conn_p = NULL;
@@ -711,14 +670,10 @@ shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p,
       conn_p = &shm_conn_p->shard_conn[i];
       shard_conn_info_p = &shm_as_p->shard_conn_info[i];
 
-      strncpy (shard_conn_info_p->db_user, user_p->db_user,
-	       sizeof (shard_conn_info_p->db_user) - 1);
-      strncpy (shard_conn_info_p->db_name, conn_p->db_name,
-	       sizeof (shard_conn_info_p->db_name) - 1);
-      strncpy (shard_conn_info_p->db_host, conn_p->db_conn_info,
-	       sizeof (shard_conn_info_p->db_host) - 1);
-      strncpy (shard_conn_info_p->db_password, user_p->db_password,
-	       sizeof (shard_conn_info_p->db_password) - 1);
+      strncpy (shard_conn_info_p->db_user, user_p->db_user, sizeof (shard_conn_info_p->db_user) - 1);
+      strncpy (shard_conn_info_p->db_name, conn_p->db_name, sizeof (shard_conn_info_p->db_name) - 1);
+      strncpy (shard_conn_info_p->db_host, conn_p->db_conn_info, sizeof (shard_conn_info_p->db_host) - 1);
+      strncpy (shard_conn_info_p->db_password, user_p->db_password, sizeof (shard_conn_info_p->db_password) - 1);
     }
 }
 
@@ -820,17 +775,12 @@ bs_last_error_msg (LPTSTR lpszFunction)
   DWORD dw;
 
   dw = GetLastError ();
-  FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-		 FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dw,
-		 MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT),
-		 (LPTSTR) & lpMsgBuf, 0, NULL);
+  FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dw,
+		 MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR) & lpMsgBuf, 0, NULL);
   lpDisplayBuf =
     (LPVOID) LocalAlloc (LMEM_ZEROINIT,
-			 (lstrlen ((LPCTSTR) lpMsgBuf) +
-			  lstrlen ((LPCTSTR) lpszFunction) +
-			  40) * sizeof (TCHAR));
-  sprintf ((LPTSTR) lpDisplayBuf, "%s failed with error %d: %s", lpszFunction,
-	   dw, lpMsgBuf);
+			 (lstrlen ((LPCTSTR) lpMsgBuf) + lstrlen ((LPCTSTR) lpszFunction) + 40) * sizeof (TCHAR));
+  sprintf ((LPTSTR) lpDisplayBuf, "%s failed with error %d: %s", lpszFunction, dw, lpMsgBuf);
   MessageBox (NULL, (LPCTSTR) lpDisplayBuf, TEXT ("Error"), MB_OK);
   LocalFree (lpMsgBuf);
   LocalFree (lpDisplayBuf);
@@ -971,16 +921,13 @@ uw_sem_destroy (sem_t * sem)
 #endif
 
 static void
-get_access_log_file_name (char *access_log_file, char *access_log_path,
-			  char *broker_name, int len)
+get_access_log_file_name (char *access_log_file, char *access_log_path, char *broker_name, int len)
 {
-  snprintf (access_log_file, len,
-	    "%s/%s.access", access_log_path, broker_name);
+  snprintf (access_log_file, len, "%s/%s.access", access_log_path, broker_name);
 }
 
 static void
-get_error_log_file_name (char *access_log_file, char *error_log_path,
-			 char *broker_name, int len)
+get_error_log_file_name (char *access_log_file, char *error_log_path, char *broker_name, int len)
 {
   snprintf (access_log_file, len, "%s/%s.err", error_log_path, broker_name);
 }

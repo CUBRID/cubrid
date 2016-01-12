@@ -168,68 +168,45 @@ static int uca_comp_func_coll_key (const void *arg1, const void *arg2);
 static UCA_COLL_CE_LIST *get_ce_list_from_coll_key (const UCA_COLL_KEY * key);
 static int create_opt_weights (LOCALE_COLLATION * lc);
 static int optimize_coll_contractions (LOCALE_COLLATION * lc);
-static int set_next_value_for_coll_key (LOCALE_COLLATION * lc,
-					const UCA_COLL_KEY * coll_key,
+static int set_next_value_for_coll_key (LOCALE_COLLATION * lc, const UCA_COLL_KEY * coll_key,
 					const UCA_COLL_KEY * next_key);
-static int add_opt_coll_contraction (LOCALE_COLLATION * lc,
-				     const UCA_COLL_KEY * contr_key,
-				     const unsigned int wv,
+static int add_opt_coll_contraction (LOCALE_COLLATION * lc, const UCA_COLL_KEY * contr_key, const unsigned int wv,
 				     bool use_expansions);
-static int compare_ce_list (UCA_COLL_CE_LIST * ce_list1,
-			    UCA_COLL_CE_LIST * ce_list2,
-			    UCA_OPTIONS * uca_opt);
-static UCA_COLL_KEY *get_key_with_ce_sublist (UCA_COLL_CE_LIST * uca_item,
-					      const int lvl);
-static void make_coll_key (UCA_COLL_KEY * key, UCA_COLL_KEY_TYPE type,
-			   const int key_id);
-static int find_contr_id (const unsigned int *cp_array, const int cp_count,
-			  UCA_STORAGE * st);
-static int find_exp_id (const unsigned int *cp_array, const int cp_count,
-			UCA_STORAGE * st);
-static int apply_tailoring_rule (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
-				 UCA_COLL_KEY * key, UCA_COLL_KEY * ref_key,
+static int compare_ce_list (UCA_COLL_CE_LIST * ce_list1, UCA_COLL_CE_LIST * ce_list2, UCA_OPTIONS * uca_opt);
+static UCA_COLL_KEY *get_key_with_ce_sublist (UCA_COLL_CE_LIST * uca_item, const int lvl);
+static void make_coll_key (UCA_COLL_KEY * key, UCA_COLL_KEY_TYPE type, const int key_id);
+static int find_contr_id (const unsigned int *cp_array, const int cp_count, UCA_STORAGE * st);
+static int find_exp_id (const unsigned int *cp_array, const int cp_count, UCA_STORAGE * st);
+static int apply_tailoring_rule (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key, UCA_COLL_KEY * key, UCA_COLL_KEY * ref_key,
 				 T_LEVEL lvl);
-static int apply_tailoring_rule_identity (UCA_COLL_KEY * key,
-					  UCA_COLL_KEY * ref_key);
-static int apply_tailoring_rule_w_dir (TAILOR_DIR dir,
-				       UCA_COLL_KEY * anchor_key,
-				       UCA_COLL_KEY * key,
+static int apply_tailoring_rule_identity (UCA_COLL_KEY * key, UCA_COLL_KEY * ref_key);
+static int apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key, UCA_COLL_KEY * key,
 				       UCA_COLL_KEY * ref_key, T_LEVEL lvl);
 static int apply_tailoring_rules (LOCALE_COLLATION * lc);
 static int compute_weights_per_level_stats (void);
 #if 0
 static int compact_weight_values (const int level, const UCA_W max_weight);
-static void build_weight_remap_filter (const UCA_W * w_ocurr,
-				       const int max_weight,
-				       UCA_W * w_filter);
+static void build_weight_remap_filter (const UCA_W * w_ocurr, const int max_weight, UCA_W * w_filter);
 #endif
 static int add_key_to_weight_stats_list (const UCA_COLL_KEY * key, UCA_W wv);
-static int remove_key_from_weight_stats_list (const UCA_COLL_KEY * key,
-					      UCA_W wv);
-static int change_key_weight_list (const UCA_COLL_KEY * key,
-				   UCA_W w_from, UCA_W w_to);
+static int remove_key_from_weight_stats_list (const UCA_COLL_KEY * key, UCA_W wv);
+static int change_key_weight_list (const UCA_COLL_KEY * key, UCA_W w_from, UCA_W w_to);
 static int string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui);
 static int apply_absolute_tailoring_rules (LOCALE_COLLATION * lc);
 static UCA_CONTRACTION *new_contraction (UCA_STORAGE * storage);
-static int add_uca_contr_or_exp (LOCALE_COLLATION * lc, UCA_STORAGE * storage,
-				 const unsigned int *cp_array,
-				 const int cp_count,
-				 const UCA_COLL_KEY_TYPE seq_type);
-static int read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type,
-			     UCA_CP * cp);
+static int add_uca_contr_or_exp (LOCALE_COLLATION * lc, UCA_STORAGE * storage, const unsigned int *cp_array,
+				 const int cp_count, const UCA_COLL_KEY_TYPE seq_type);
+static int read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp);
 
 static int comp_func_coll_contr_bin (const void *arg1, const void *arg2);
 
 static int create_opt_ce_w_exp (LOCALE_COLLATION * lc);
 
-static int uca_comp_func_coll_list_exp_fo (const void *arg1,
-					   const void *arg2);
+static int uca_comp_func_coll_list_exp_fo (const void *arg1, const void *arg2);
 static int uca_comp_func_coll_list_exp (const void *arg1, const void *arg2);
 
-static void build_compressed_uca_w_l13 (const UCA_COLL_CE_LIST * ce_list,
-					UCA_L13_W * uca_w_l13);
-static void build_uca_w_l4 (const UCA_COLL_CE_LIST * ce_list,
-			    UCA_L4_W * uca_w_l4);
+static void build_compressed_uca_w_l13 (const UCA_COLL_CE_LIST * ce_list, UCA_L13_W * uca_w_l13);
+static void build_uca_w_l4 (const UCA_COLL_CE_LIST * ce_list, UCA_L4_W * uca_w_l4);
 /*
  * load_ducet - Read the DUCET file (standardised and availabe at Unicode.org)
  *		into the ducet array; parse it and load all the information in
@@ -260,8 +237,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 
   assert (file_path != NULL);
 
-  if (strcmp (file_path, ducet.prev_file_path) == 0 &&
-      sett_contr_policy == ducet.prev_contr_policy)
+  if (strcmp (file_path, ducet.prev_file_path) == 0 && sett_contr_policy == ducet.prev_contr_policy)
     {
       /* already loaded */
       return NO_ERROR;
@@ -269,9 +245,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 
   uca_free_data ();
 
-  temp_ducet =
-    (UCA_COLL_CE_LIST *) malloc ((MAX_UCA_CODEPOINT + 1) *
-				 sizeof (UCA_COLL_CE_LIST));
+  temp_ducet = (UCA_COLL_CE_LIST *) malloc ((MAX_UCA_CODEPOINT + 1) * sizeof (UCA_COLL_CE_LIST));
   if (temp_ducet == NULL)
     {
       err_status = ER_LOC_GEN;
@@ -299,16 +273,13 @@ load_ducet (const char *file_path, const int sett_contr_policy)
   if (f == NULL)
     {
       err_status = ER_LOC_GEN;
-      snprintf (err_msg,
-		sizeof (err_msg) - 1, "Cannot open file %s", file_path);
+      snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", file_path);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
       goto exit;
     }
 
-  assert (RULE_POS_LAST_TRAIL <
-	  sizeof (logical_pos_cp) / sizeof (logical_pos_cp[0]));
-  for (i = 0; i < (int) (sizeof (logical_pos_cp) /
-			 sizeof (logical_pos_cp[0])); i++)
+  assert (RULE_POS_LAST_TRAIL < sizeof (logical_pos_cp) / sizeof (logical_pos_cp[0]));
+  for (i = 0; i < (int) (sizeof (logical_pos_cp) / sizeof (logical_pos_cp[0])); i++)
     {
       logical_pos_cp[i] = -1;
     }
@@ -358,33 +329,25 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 	  /* Drop chars after ';' until '[' reached */
 	  *weight++ = '\0';
 	  for (; *weight == ' '; weight++);
-	  /* At this point, we have the unicode representation stored in str
-	   * and weight items stored in the weight string var
-	   */
+	  /* At this point, we have the unicode representation stored in str and weight items stored in the weight
+	   * string var */
 	}
       else
 	{
-	  /* If the "if" tests above pass, but the line does not contain ';'
-	   *  then the line is not valid, so skip it
-	   */
+	  /* If the "if" tests above pass, but the line does not contain ';' then the line is not valid, so skip it */
 	  continue;
 	}
 
-      /* Count number of chars in Uncode item e.g.
-       * codenum will be greater that 1 if contraction found.
-       */
+      /* Count number of chars in Uncode item e.g. codenum will be greater that 1 if contraction found. */
       codenum = 1;
       cp_int_list[cp_list_count++] = cp;
       str_to_int32 (&val, &s, str, 16);
-      codenum += string_to_int_array (s, &(cp_int_list[1]),
-				      LOC_MAX_UCA_CHARS_SEQ - 1, " \t");
+      codenum += string_to_int_array (s, &(cp_int_list[1]), LOC_MAX_UCA_CHARS_SEQ - 1, " \t");
 
       if (codenum > LOC_MAX_UCA_CHARS_SEQ)
 	{
-	  /* If the number of codepoints found in the input string is greater
-	   * than LOC_MAX_UCA_CHARS_SEQ, only the first LOC_MAX_UCA_CHARS_SEQ
-	   * are used, and no error is thrown.
-	   */
+	  /* If the number of codepoints found in the input string is greater than LOC_MAX_UCA_CHARS_SEQ, only the
+	   * first LOC_MAX_UCA_CHARS_SEQ are used, and no error is thrown. */
 	  codenum = LOC_MAX_UCA_CHARS_SEQ;
 	}
 
@@ -457,9 +420,8 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 
 	  is_variable = ((*s) == '*') ? true : false;
 
-	  /* Now, in weights[...] we have the collation elements stored as strings
-	   * We decompose the N collation elements into 4 weight values
-	   * and store them into uca[code].weight[1..4][1..N] */
+	  /* Now, in weights[...] we have the collation elements stored as strings We decompose the N collation
+	   * elements into 4 weight values and store them into uca[code].weight[1..4][1..N] */
 	  while (*s)
 	    {
 	      char *endptr;
@@ -524,8 +486,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 	    }
 	}
 
-      if (is_ignorable[0] == 0 && is_ignorable[1] == 0 &&
-	  is_ignorable[2] == 0)
+      if (is_ignorable[0] == 0 && is_ignorable[1] == 0 && is_ignorable[2] == 0)
 	{
 	  logical_pos_cp[RULE_POS_LAST_NON_IGN] = cp;
 	  if (logical_pos_cp[RULE_POS_FIRST_NON_IGN] == -1)
@@ -549,12 +510,9 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 	  continue;
 	}
 
-      /*
-         3400;<CJK Ideograph Extension A, First>
-         4DB5;<CJK Ideograph Extension A, Last>
-         4E00;<CJK Ideograph, First>
-         9FA5;<CJK Ideograph, Last>
-       */
+      /* 
+       * 3400;<CJK Ideograph Extension A, First> 4DB5;<CJK Ideograph Extension A, Last> 4E00;<CJK Ideograph, First>
+       * 9FA5;<CJK Ideograph, Last> */
 
       if (cp >= 0x3400 && cp <= 0x4DB5)
 	{
@@ -615,9 +573,7 @@ init_uca_instance (LOCALE_COLLATION * lc)
 
   assert (lc != NULL);
 
-  uca_cp =
-    (UCA_COLL_CE_LIST *) malloc ((MAX_UCA_CODEPOINT + 1) *
-				 sizeof (UCA_COLL_CE_LIST));
+  uca_cp = (UCA_COLL_CE_LIST *) malloc ((MAX_UCA_CODEPOINT + 1) * sizeof (UCA_COLL_CE_LIST));
   if (uca_cp == NULL)
     {
       err_status = ER_LOC_GEN;
@@ -628,17 +584,14 @@ init_uca_instance (LOCALE_COLLATION * lc)
 
   curr_uca.coll_cp = uca_cp;
 
-  envvar_localedatadir_file (ducet_file_path, sizeof (ducet_file_path),
-			     DUCET_FILE);
-  err_status = load_ducet (ducet_file_path,
-			   lc->tail_coll.uca_opt.sett_contr_policy);
+  envvar_localedatadir_file (ducet_file_path, sizeof (ducet_file_path), DUCET_FILE);
+  err_status = load_ducet (ducet_file_path, lc->tail_coll.uca_opt.sett_contr_policy);
 
   if (err_status != NO_ERROR)
     {
       goto exit;
     }
-  memcpy (uca_cp, ducet.coll_cp, (MAX_UCA_CODEPOINT + 1) *
-	  sizeof (UCA_COLL_CE_LIST));
+  memcpy (uca_cp, ducet.coll_cp, (MAX_UCA_CODEPOINT + 1) * sizeof (UCA_COLL_CE_LIST));
 
   /* copy contractions */
   for (i = 0; i < ducet.count_contr; i++)
@@ -652,8 +605,7 @@ init_uca_instance (LOCALE_COLLATION * lc)
 	  if (ducet_contr->cp_list[j] >= lc->tail_coll.sett_max_cp)
 	    {
 	      err_status = ER_LOC_GEN;
-	      LOG_LOCALE_ERROR ("Codepoint in DUCET contraction exceeds "
-				"maximum allowed codepoint", ER_LOC_GEN,
+	      LOG_LOCALE_ERROR ("Codepoint in DUCET contraction exceeds " "maximum allowed codepoint", ER_LOC_GEN,
 				true);
 	      goto exit;
 	    }
@@ -668,16 +620,13 @@ init_uca_instance (LOCALE_COLLATION * lc)
 	}
 
       uca_contr->cp_count = ducet_contr->cp_count;
-      memcpy (uca_contr->cp_list, ducet_contr->cp_list,
-	      ducet_contr->cp_count * sizeof (UCA_CP));
-      memcpy (&(uca_contr->ce), &(ducet_contr->ce),
-	      sizeof (UCA_COLL_CE_LIST));
+      memcpy (uca_contr->cp_list, ducet_contr->cp_list, ducet_contr->cp_count * sizeof (UCA_CP));
+      memcpy (&(uca_contr->ce), &(ducet_contr->ce), sizeof (UCA_COLL_CE_LIST));
     }
 
   for (i = 0; i < MAX_WEIGHT_LEVELS; i++)
     {
-      w_occurences[i] = (UCA_W *)
-	malloc ((MAX_UCA_WEIGHT + 1) * sizeof (UCA_W));
+      w_occurences[i] = (UCA_W *) malloc ((MAX_UCA_WEIGHT + 1) * sizeof (UCA_W));
 
       if (w_occurences[i] == NULL)
 	{
@@ -689,16 +638,14 @@ init_uca_instance (LOCALE_COLLATION * lc)
       memset (w_occurences[i], 0, (MAX_UCA_WEIGHT + 1) * sizeof (UCA_W));
     }
 
-  weight_key_list = (UCA_WEIGHT_KEY_LIST *)
-    malloc ((MAX_UCA_WEIGHT + 1) * sizeof (UCA_WEIGHT_KEY_LIST));
+  weight_key_list = (UCA_WEIGHT_KEY_LIST *) malloc ((MAX_UCA_WEIGHT + 1) * sizeof (UCA_WEIGHT_KEY_LIST));
   if (weight_key_list == NULL)
     {
       err_status = ER_LOC_GEN;
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
       goto exit;
     }
-  memset (weight_key_list, 0, (MAX_UCA_WEIGHT + 1) *
-	  sizeof (UCA_WEIGHT_KEY_LIST));
+  memset (weight_key_list, 0, (MAX_UCA_WEIGHT + 1) * sizeof (UCA_WEIGHT_KEY_LIST));
 
 exit:
   return err_status;
@@ -777,8 +724,7 @@ destroy_uca_instance (void)
  * uca_opt(in) : sorting options
  */
 static int
-compare_ce_list (UCA_COLL_CE_LIST * ce_list1, UCA_COLL_CE_LIST * ce_list2,
-		 UCA_OPTIONS * uca_opt)
+compare_ce_list (UCA_COLL_CE_LIST * ce_list1, UCA_COLL_CE_LIST * ce_list2, UCA_OPTIONS * uca_opt)
 {
   int result, i, weight_level;
   int numCodepoints = 0;
@@ -812,27 +758,22 @@ compare_ce_list (UCA_COLL_CE_LIST * ce_list1, UCA_COLL_CE_LIST * ce_list2,
       numCodepoints = MIN (numCodepoints, 1);
     }
 
-  for (weight_level = 0; (weight_level < MAX_WEIGHT_LEVELS) && (result == 0);
-       weight_level++)
+  for (weight_level = 0; (weight_level < MAX_WEIGHT_LEVELS) && (result == 0); weight_level++)
     {
-      if (weight_level + 1 > (int) (uca_opt->sett_strength) &&
-	  ((uca_opt->sett_caseFirst + (uca_opt->sett_caseLevel ? 1 : 0) == 0)
-	   ||
-	   ((uca_opt->sett_caseFirst + (uca_opt->sett_caseLevel ? 1 : 0) > 0)
-	    && weight_level != 2)))
+      if (weight_level + 1 > (int) (uca_opt->sett_strength)
+	  && ((uca_opt->sett_caseFirst + (uca_opt->sett_caseLevel ? 1 : 0) == 0)
+	      || ((uca_opt->sett_caseFirst + (uca_opt->sett_caseLevel ? 1 : 0) > 0) && weight_level != 2)))
 	{
 	  continue;
 	}
 
       for (i = 0; (i < numCodepoints) && (result == 0); i++)
 	{
-	  if (GET_UCA_WEIGHT (ce_list1, i, weight_level) <
-	      GET_UCA_WEIGHT (ce_list2, i, weight_level))
+	  if (GET_UCA_WEIGHT (ce_list1, i, weight_level) < GET_UCA_WEIGHT (ce_list2, i, weight_level))
 	    {
 	      result = -1;
 	    }
-	  else if (GET_UCA_WEIGHT (ce_list1, i, weight_level) >
-		   GET_UCA_WEIGHT (ce_list2, i, weight_level))
+	  else if (GET_UCA_WEIGHT (ce_list1, i, weight_level) > GET_UCA_WEIGHT (ce_list2, i, weight_level))
 	    {
 	      result = 1;
 	    }
@@ -882,8 +823,7 @@ uca_process_collation (LOCALE_COLLATION * lc, bool is_verbose)
   if (is_verbose)
     {
       printf ("DUCET file has %d contractions\n", ducet.count_contr);
-      printf ("Applying %d CUBRID tailoring rules\n",
-	      lc->tail_coll.cub_count_rules);
+      printf ("Applying %d CUBRID tailoring rules\n", lc->tail_coll.cub_count_rules);
     }
 
   uca_tailoring_options = &(lc->tail_coll.uca_opt);
@@ -953,8 +893,7 @@ uca_process_collation (LOCALE_COLLATION * lc, bool is_verbose)
 	}
     }
 
-  memcpy (&(lc->opt_coll.uca_opt), &(lc->tail_coll.uca_opt),
-	  sizeof (UCA_OPTIONS));
+  memcpy (&(lc->opt_coll.uca_opt), &(lc->tail_coll.uca_opt), sizeof (UCA_OPTIONS));
 exit:
   destroy_uca_instance ();
   uca_tailoring_options = NULL;
@@ -1012,9 +951,7 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	  if (anchor_cp >= lc->tail_coll.sett_max_cp)
 	    {
 	      err_status = ER_LOC_GEN;
-	      snprintf (er_msg, sizeof (er_msg) - 1,
-			"Invalid anchor in rule :%d. Codepoint value too big",
-			i);
+	      snprintf (er_msg, sizeof (er_msg) - 1, "Invalid anchor in rule :%d. Codepoint value too big", i);
 	      LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 	      goto exit;
 	    }
@@ -1029,14 +966,12 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	  ptr_uchar = (unsigned char *) t_rule->anchor_buf;
 
 	  cp_found =
-	    intl_utf8_to_cp_list (ptr_uchar, buf_size, anchor_cp_list,
-				  LOC_MAX_UCA_CHARS_SEQ, &anchor_cp_count);
+	    intl_utf8_to_cp_list (ptr_uchar, buf_size, anchor_cp_list, LOC_MAX_UCA_CHARS_SEQ, &anchor_cp_count);
 
 	  if (cp_found <= 0 || cp_found > anchor_cp_count)
 	    {
 	      err_status = ER_LOC_GEN;
-	      snprintf (er_msg, sizeof (er_msg) - 1,
-			"Invalid anchor in rule :%d", i);
+	      snprintf (er_msg, sizeof (er_msg) - 1, "Invalid anchor in rule :%d", i);
 	      LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 	      goto exit;
 	    }
@@ -1051,16 +986,13 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	      assert (anchor_cp_count > 1);
 
 	      /* contraction or expansion */
-	      if ((lc->tail_coll.
-		   uca_opt.sett_contr_policy & CONTR_TAILORING_USE) !=
-		  CONTR_TAILORING_USE
+	      if ((lc->tail_coll.uca_opt.sett_contr_policy & CONTR_TAILORING_USE) != CONTR_TAILORING_USE
 		  && !lc->tail_coll.uca_opt.sett_expansions)
 		{
 		  continue;
 		}
 
-	      contr_id = find_contr_id (anchor_cp_list, anchor_cp_count,
-					&curr_uca);
+	      contr_id = find_contr_id (anchor_cp_list, anchor_cp_count, &curr_uca);
 
 	      if (contr_id != -1)
 		{
@@ -1078,23 +1010,18 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 		      continue;
 		    }
 
-		  exp_id = find_exp_id (anchor_cp_list, anchor_cp_count,
-					&curr_uca);
+		  exp_id = find_exp_id (anchor_cp_list, anchor_cp_count, &curr_uca);
 
 		  if (exp_id == -1)
 		    {
-		      exp_id =
-			add_uca_contr_or_exp (lc, &curr_uca, anchor_cp_list,
-					      anchor_cp_count,
-					      COLL_KEY_TYPE_EXP);
+		      exp_id = add_uca_contr_or_exp (lc, &curr_uca, anchor_cp_list, anchor_cp_count, COLL_KEY_TYPE_EXP);
 		    }
 
 		  if (exp_id == -1)
 		    {
 		      err_status = ER_LOC_GEN;
-		      snprintf (er_msg, sizeof (er_msg) - 1,
-				"Invalid anchor in rule :%d."
-				"Cannot create expansion", i);
+		      snprintf (er_msg, sizeof (er_msg) - 1, "Invalid anchor in rule :%d." "Cannot create expansion",
+				i);
 		      LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 		      goto exit;
 		    }
@@ -1107,15 +1034,12 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	  /* reference key */
 	  buf_size = t_rule->r_buf_size;
 	  ptr_uchar = (unsigned char *) t_rule->r_buf;
-	  cp_found = intl_utf8_to_cp_list (ptr_uchar, buf_size, ref_cp_list,
-					   LOC_MAX_UCA_CHARS_SEQ,
-					   &ref_cp_count);
+	  cp_found = intl_utf8_to_cp_list (ptr_uchar, buf_size, ref_cp_list, LOC_MAX_UCA_CHARS_SEQ, &ref_cp_count);
 
 	  if (cp_found <= 0 || cp_found > ref_cp_count)
 	    {
 	      err_status = ER_LOC_GEN;
-	      snprintf (er_msg, sizeof (er_msg) - 1,
-			"Invalid reference in rule :%d", i);
+	      snprintf (er_msg, sizeof (er_msg) - 1, "Invalid reference in rule :%d", i);
 	      LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 	      goto exit;
 	    }
@@ -1125,9 +1049,8 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	      if ((int) (*ref_cp_list) >= lc->tail_coll.sett_max_cp)
 		{
 		  err_status = ER_LOC_GEN;
-		  snprintf (er_msg, sizeof (er_msg) - 1,
-			    "Invalid reference in rule :%d."
-			    " Codepoint value too big", i);
+		  snprintf (er_msg, sizeof (er_msg) - 1, "Invalid reference in rule :%d." " Codepoint value too big",
+			    i);
 		  LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 		  goto exit;
 		}
@@ -1140,9 +1063,7 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	      assert (ref_cp_count > 1);
 
 	      /* contraction or expansion */
-	      if ((lc->tail_coll.
-		   uca_opt.sett_contr_policy & CONTR_TAILORING_USE) !=
-		  CONTR_TAILORING_USE
+	      if ((lc->tail_coll.uca_opt.sett_contr_policy & CONTR_TAILORING_USE) != CONTR_TAILORING_USE
 		  && !lc->tail_coll.uca_opt.sett_expansions)
 		{
 		  continue;
@@ -1169,18 +1090,14 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 		  exp_id = find_exp_id (ref_cp_list, ref_cp_count, &curr_uca);
 		  if (exp_id == -1)
 		    {
-		      exp_id =
-			add_uca_contr_or_exp (lc, &curr_uca, ref_cp_list,
-					      ref_cp_count,
-					      COLL_KEY_TYPE_EXP);
+		      exp_id = add_uca_contr_or_exp (lc, &curr_uca, ref_cp_list, ref_cp_count, COLL_KEY_TYPE_EXP);
 		    }
 
 		  if (exp_id == -1)
 		    {
 		      err_status = ER_LOC_GEN;
-		      snprintf (er_msg, sizeof (er_msg) - 1,
-				"Invalid reference in rule: %d"
-				"Cannot create expansion", i);
+		      snprintf (er_msg, sizeof (er_msg) - 1, "Invalid reference in rule: %d" "Cannot create expansion",
+				i);
 		      LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 		      goto exit;
 		    }
@@ -1203,17 +1120,15 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	  while (tailor_next < tailor_end)
 	    {
 	      unsigned int tailor_cp = intl_utf8_to_cp (tailor_curr,
-							tailor_end -
-							tailor_curr,
+							tailor_end - tailor_curr,
 							&tailor_next);
 
 	      assert (lc->tail_coll.sett_max_cp >= 0);
 	      if (tailor_cp >= (unsigned int) lc->tail_coll.sett_max_cp)
 		{
 		  err_status = ER_LOC_GEN;
-		  snprintf (er_msg, sizeof (er_msg) - 1,
-			    "Invalid tailoring in rule :%d."
-			    "Codepoint : %4X too big", i, tailor_cp);
+		  snprintf (er_msg, sizeof (er_msg) - 1, "Invalid tailoring in rule :%d." "Codepoint : %4X too big", i,
+			    tailor_cp);
 		  LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 		  goto exit;
 		}
@@ -1221,14 +1136,11 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	      assert (tailor_cp > 0);
 	      make_coll_key (&tailor_key, COLL_KEY_TYPE_CP, tailor_cp);
 
-	      err_status =
-		apply_tailoring_rule (t_rule->direction, &anchor_key,
-				      &tailor_key, &ref_key, t_rule->level);
+	      err_status = apply_tailoring_rule (t_rule->direction, &anchor_key, &tailor_key, &ref_key, t_rule->level);
 	      if (err_status != NO_ERROR)
 		{
 		  err_status = ER_LOC_GEN;
-		  snprintf (er_msg, sizeof (er_msg) - 1,
-			    "Cannot apply :%d", i);
+		  snprintf (er_msg, sizeof (er_msg) - 1, "Cannot apply :%d", i);
 		  LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 		  goto exit;
 		}
@@ -1246,15 +1158,13 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	  buf_size = t_rule->t_buf_size;
 	  ptr_uchar = (unsigned char *) t_rule->t_buf;
 	  cp_found =
-	    intl_utf8_to_cp_list (ptr_uchar, buf_size, tailor_cp_list,
-				  LOC_MAX_UCA_CHARS_SEQ, &tailor_cp_count);
+	    intl_utf8_to_cp_list (ptr_uchar, buf_size, tailor_cp_list, LOC_MAX_UCA_CHARS_SEQ, &tailor_cp_count);
 
 	  if (cp_found <= 0 || cp_found > tailor_cp_count)
 	    {
 	      err_status = ER_LOC_GEN;
 	      snprintf (er_msg, sizeof (er_msg) - 1,
-			"Invalid tailoring in rule :%d."
-			"Invalid number of codepoints: %d", i, cp_found);
+			"Invalid tailoring in rule :%d." "Invalid number of codepoints: %d", i, cp_found);
 	      LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 	      goto exit;
 	    }
@@ -1262,29 +1172,22 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	  if (tailor_cp_count > 1)
 	    {
 	      /* contraction */
-	      if ((lc->tail_coll.
-		   uca_opt.sett_contr_policy & CONTR_TAILORING_USE) !=
-		  CONTR_TAILORING_USE)
+	      if ((lc->tail_coll.uca_opt.sett_contr_policy & CONTR_TAILORING_USE) != CONTR_TAILORING_USE)
 		{
 		  continue;
 		}
 
-	      contr_id = find_contr_id (tailor_cp_list, tailor_cp_count,
-					&curr_uca);
+	      contr_id = find_contr_id (tailor_cp_list, tailor_cp_count, &curr_uca);
 
 	      if (contr_id == -1)
 		{
-		  contr_id =
-		    add_uca_contr_or_exp (lc, &curr_uca, tailor_cp_list,
-					  tailor_cp_count,
-					  COLL_KEY_TYPE_CONTR);
+		  contr_id = add_uca_contr_or_exp (lc, &curr_uca, tailor_cp_list, tailor_cp_count, COLL_KEY_TYPE_CONTR);
 		}
 
 	      if (contr_id == -1)
 		{
 		  err_status = ER_LOC_GEN;
-		  snprintf (er_msg, sizeof (er_msg) - 1,
-			    "Rule :%d. Cannot create contraction.", i);
+		  snprintf (er_msg, sizeof (er_msg) - 1, "Rule :%d. Cannot create contraction.", i);
 		  LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 		  goto exit;
 		}
@@ -1296,9 +1199,8 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	      if ((int) (*tailor_cp_list) >= lc->tail_coll.sett_max_cp)
 		{
 		  err_status = ER_LOC_GEN;
-		  snprintf (er_msg, sizeof (er_msg) - 1,
-			    "Invalid tailoring in rule :%d."
-			    " Codepoint value too big", i);
+		  snprintf (er_msg, sizeof (er_msg) - 1, "Invalid tailoring in rule :%d." " Codepoint value too big",
+			    i);
 		  LOG_LOCALE_ERROR (er_msg, ER_LOC_GEN, true);
 		  goto exit;
 		}
@@ -1307,9 +1209,7 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 	      make_coll_key (&tailor_key, COLL_KEY_TYPE_CP, *tailor_cp_list);
 	    }
 
-	  err_status = apply_tailoring_rule (t_rule->direction, &anchor_key,
-					     &tailor_key, &ref_key,
-					     t_rule->level);
+	  err_status = apply_tailoring_rule (t_rule->direction, &anchor_key, &tailor_key, &ref_key, t_rule->level);
 	  if (err_status != NO_ERROR)
 	    {
 	      snprintf (er_msg, sizeof (er_msg) - 1, "Rule :%d", i);
@@ -1343,8 +1243,7 @@ compute_weights_per_level_stats (void)
     {
       for (depth = 0; depth < uca_cp[cp].num; depth++)
 	{
-	  for (weight_level = 0;
-	       weight_level < MAX_WEIGHT_LEVELS; weight_level++)
+	  for (weight_level = 0; weight_level < MAX_WEIGHT_LEVELS; weight_level++)
 	    {
 	      UCA_W w = GET_UCA_WEIGHT (&(uca_cp[cp]), depth, weight_level);
 	      w_occurences[weight_level][w]++;
@@ -1358,8 +1257,7 @@ compute_weights_per_level_stats (void)
 
       for (depth = 0; depth < contr->ce.num; depth++)
 	{
-	  for (weight_level = 0;
-	       weight_level < MAX_WEIGHT_LEVELS; weight_level++)
+	  for (weight_level = 0; weight_level < MAX_WEIGHT_LEVELS; weight_level++)
 	    {
 	      UCA_W w = GET_UCA_WEIGHT (&(contr->ce), depth, weight_level);
 	      w_occurences[weight_level][w]++;
@@ -1385,8 +1283,7 @@ compute_weights_per_level_stats (void)
   if (max_weight_val[1] > 0x1ff || max_weight_val[2] > 0x7f + 1)
     {
       err_status = ER_LOC_GEN;
-      LOG_LOCALE_ERROR ("Cannot store weights. Max weight values exceeded",
-			ER_LOC_GEN, true);
+      LOG_LOCALE_ERROR ("Cannot store weights. Max weight values exceeded", ER_LOC_GEN, true);
       goto exit;
     }
 
@@ -1481,8 +1378,7 @@ exit:
  *
  */
 static void
-build_weight_remap_filter (const UCA_W * w_ocurr, const int max_weight,
-			   UCA_W * w_filter)
+build_weight_remap_filter (const UCA_W * w_ocurr, const int max_weight, UCA_W * w_filter)
 {
   int w;
   int last_used_w;
@@ -1525,9 +1421,7 @@ build_key_list_groups (LOCALE_COLLATION * lc)
 	}
       else
 	{
-	  weight_key_list[wv].key_list =
-	    (UCA_COLL_KEY *) malloc (w_occurences[0][wv] *
-				     sizeof (UCA_COLL_KEY));
+	  weight_key_list[wv].key_list = (UCA_COLL_KEY *) malloc (w_occurences[0][wv] * sizeof (UCA_COLL_KEY));
 
 	  if (weight_key_list[wv].key_list == NULL)
 	    {
@@ -1541,20 +1435,16 @@ build_key_list_groups (LOCALE_COLLATION * lc)
   for (cp = 0; cp < lc->tail_coll.sett_max_cp; cp++)
     {
       wv = GET_UCA_WEIGHT (&(curr_uca.coll_cp[cp]), 0, 0);
-      weight_key_list[wv].key_list[weight_key_list[wv].list_count].val.cp =
-	cp;
-      weight_key_list[wv].key_list[weight_key_list[wv].list_count].type =
-	COLL_KEY_TYPE_CP;
+      weight_key_list[wv].key_list[weight_key_list[wv].list_count].val.cp = cp;
+      weight_key_list[wv].key_list[weight_key_list[wv].list_count].type = COLL_KEY_TYPE_CP;
       weight_key_list[wv].list_count++;
     }
 
   for (i = 0; i < curr_uca.count_contr; i++)
     {
       wv = GET_UCA_WEIGHT (&(curr_uca.coll_contr[i].ce), 0, 0);
-      weight_key_list[wv].key_list[weight_key_list[wv].list_count].val.
-	contr_id = i;
-      weight_key_list[wv].key_list[weight_key_list[wv].list_count].type =
-	COLL_KEY_TYPE_CONTR;
+      weight_key_list[wv].key_list[weight_key_list[wv].list_count].val.contr_id = i;
+      weight_key_list[wv].key_list[weight_key_list[wv].list_count].type = COLL_KEY_TYPE_CONTR;
       weight_key_list[wv].list_count++;
     }
 
@@ -1599,9 +1489,8 @@ sort_one_coll_key_list (LOCALE_COLLATION * lc, int weight_index)
       return;
     }
 
-  qsort (weight_key_list[weight_index].key_list,
-	 weight_key_list[weight_index].list_count,
-	 sizeof (UCA_COLL_KEY), uca_comp_func_coll_key_fo);
+  qsort (weight_key_list[weight_index].key_list, weight_key_list[weight_index].list_count, sizeof (UCA_COLL_KEY),
+	 uca_comp_func_coll_key_fo);
 }
 
 /*
@@ -1740,11 +1629,9 @@ create_opt_weights (LOCALE_COLLATION * lc)
 
   weight_index = 0;
 
-  assert (lc->tail_coll.sett_max_cp <= MAX_UCA_CODEPOINT + 1 &&
-	  lc->tail_coll.sett_max_cp > 0);
+  assert (lc->tail_coll.sett_max_cp <= MAX_UCA_CODEPOINT + 1 && lc->tail_coll.sett_max_cp > 0);
 
-  equal_key_list = (UCA_COLL_KEY *) malloc ((MAX_UCA_CODEPOINT + 1) *
-					    sizeof (UCA_COLL_KEY));
+  equal_key_list = (UCA_COLL_KEY *) malloc ((MAX_UCA_CODEPOINT + 1) * sizeof (UCA_COLL_KEY));
   if (equal_key_list == NULL)
     {
       err_status = ER_LOC_GEN;
@@ -1752,8 +1639,7 @@ create_opt_weights (LOCALE_COLLATION * lc)
       goto exit;
     }
 
-  lc->opt_coll.weights =
-    (unsigned int *) malloc ((MAX_UCA_CODEPOINT + 1) * sizeof (unsigned int));
+  lc->opt_coll.weights = (unsigned int *) malloc ((MAX_UCA_CODEPOINT + 1) * sizeof (unsigned int));
   if (lc->opt_coll.weights == NULL)
     {
       err_status = ER_LOC_GEN;
@@ -1761,8 +1647,7 @@ create_opt_weights (LOCALE_COLLATION * lc)
       goto exit;
     }
 
-  lc->opt_coll.next_cp =
-    (unsigned int *) malloc ((MAX_UCA_CODEPOINT + 1) * sizeof (unsigned int));
+  lc->opt_coll.next_cp = (unsigned int *) malloc ((MAX_UCA_CODEPOINT + 1) * sizeof (unsigned int));
   if (lc->opt_coll.next_cp == NULL)
     {
       err_status = ER_LOC_GEN;
@@ -1770,11 +1655,9 @@ create_opt_weights (LOCALE_COLLATION * lc)
       goto exit;
     }
 
-  memset (lc->opt_coll.weights, 0xff, (MAX_UCA_CODEPOINT + 1) *
-	  sizeof (unsigned int));
+  memset (lc->opt_coll.weights, 0xff, (MAX_UCA_CODEPOINT + 1) * sizeof (unsigned int));
 
-  memset (lc->opt_coll.next_cp, 0xff, (MAX_UCA_CODEPOINT + 1) *
-	  sizeof (unsigned int));
+  memset (lc->opt_coll.next_cp, 0xff, (MAX_UCA_CODEPOINT + 1) * sizeof (unsigned int));
 
   /* weights */
   current_weight = 0;
@@ -1782,26 +1665,20 @@ create_opt_weights (LOCALE_COLLATION * lc)
     {
       UCA_W key_cursor;
 
-      for (key_cursor = 0;
-	   key_cursor < weight_key_list[weight_index].list_count;
-	   key_cursor++)
+      for (key_cursor = 0; key_cursor < weight_key_list[weight_index].list_count; key_cursor++)
 	{
 	  UCA_COLL_CE_LIST *curr_ce_list = NULL;
-	  UCA_COLL_KEY *curr_key =
-	    &(weight_key_list[weight_index].key_list[key_cursor]);
+	  UCA_COLL_KEY *curr_key = &(weight_key_list[weight_index].key_list[key_cursor]);
 
 	  curr_ce_list = get_ce_list_from_coll_key (curr_key);
 	  if (curr_ce_list == NULL)
 	    {
 	      err_status = ER_LOC_GEN;
-	      LOG_LOCALE_ERROR ("Invalid collation element for key",
-				ER_LOC_GEN, true);
+	      LOG_LOCALE_ERROR ("Invalid collation element for key", ER_LOC_GEN, true);
 	      goto exit;
 	    }
 
-	  if ((prev_key != NULL) &&
-	      (compare_ce_list (prev_ce_list, curr_ce_list,
-				&(lc->tail_coll.uca_opt)) != 0))
+	  if ((prev_key != NULL) && (compare_ce_list (prev_ce_list, curr_ce_list, &(lc->tail_coll.uca_opt)) != 0))
 	    {
 	      /* keys compare differently */
 	      current_weight++;
@@ -1809,17 +1686,14 @@ create_opt_weights (LOCALE_COLLATION * lc)
 
 	  if (curr_key->type == COLL_KEY_TYPE_CP)
 	    {
-	      assert (curr_key->val.cp >= 0 &&
-		      curr_key->val.cp < lc->tail_coll.sett_max_cp);
+	      assert (curr_key->val.cp >= 0 && curr_key->val.cp < lc->tail_coll.sett_max_cp);
 	      lc->opt_coll.weights[curr_key->val.cp] = current_weight;
 	    }
 	  else
 	    {
 	      assert (curr_key->type == COLL_KEY_TYPE_CONTR);
 
-	      err_status =
-		add_opt_coll_contraction (lc, curr_key, current_weight,
-					  false);
+	      err_status = add_opt_coll_contraction (lc, curr_key, current_weight, false);
 	      if (err_status != NO_ERROR)
 		{
 		  goto exit;
@@ -1837,40 +1711,32 @@ create_opt_weights (LOCALE_COLLATION * lc)
     {
       UCA_W key_cursor;
 
-      for (key_cursor = 0;
-	   key_cursor < weight_key_list[weight_index].list_count;
-	   key_cursor++)
+      for (key_cursor = 0; key_cursor < weight_key_list[weight_index].list_count; key_cursor++)
 	{
 	  UCA_COLL_CE_LIST *curr_ce_list = NULL;
-	  UCA_COLL_KEY *curr_key =
-	    &(weight_key_list[weight_index].key_list[key_cursor]);
+	  UCA_COLL_KEY *curr_key = &(weight_key_list[weight_index].key_list[key_cursor]);
 
 	  curr_ce_list = get_ce_list_from_coll_key (curr_key);
 	  if (curr_ce_list == NULL)
 	    {
 	      err_status = ER_LOC_GEN;
-	      LOG_LOCALE_ERROR ("Invalid collation element for key",
-				ER_LOC_GEN, true);
+	      LOG_LOCALE_ERROR ("Invalid collation element for key", ER_LOC_GEN, true);
 	      goto exit;
 	    }
 
-	  if ((prev_key != NULL) &&
-	      (compare_ce_list (prev_ce_list, curr_ce_list,
-				&(lc->tail_coll.uca_opt)) != 0))
+	  if ((prev_key != NULL) && (compare_ce_list (prev_ce_list, curr_ce_list, &(lc->tail_coll.uca_opt)) != 0))
 	    {
 	      /* keys compare differently */
 	      /* set next key for all previous equal keys */
 	      for (i = 0; i < equal_key_count; i++)
 		{
-		  set_next_value_for_coll_key (lc, &(equal_key_list[i]),
-					       curr_key);
+		  set_next_value_for_coll_key (lc, &(equal_key_list[i]), curr_key);
 		}
 
 	      equal_key_count = 0;
 	    }
 
-	  memcpy (&(equal_key_list[equal_key_count++]), curr_key,
-		  sizeof (UCA_COLL_KEY));
+	  memcpy (&(equal_key_list[equal_key_count++]), curr_key, sizeof (UCA_COLL_KEY));
 
 	  prev_key = curr_key;
 	  prev_ce_list = curr_ce_list;
@@ -1878,8 +1744,7 @@ create_opt_weights (LOCALE_COLLATION * lc)
     }
 
   /* set 'next' for remaining collation key to max codepoint */
-  make_coll_key (&max_cp_key, COLL_KEY_TYPE_CP,
-		 lc->tail_coll.sett_max_cp - 1);
+  make_coll_key (&max_cp_key, COLL_KEY_TYPE_CP, lc->tail_coll.sett_max_cp - 1);
 
   for (i = 0; i < equal_key_count; i++)
     {
@@ -1890,13 +1755,10 @@ create_opt_weights (LOCALE_COLLATION * lc)
 
   for (i = 0; i < lc->opt_coll.w_count; i++)
     {
-      if (lc->opt_coll.weights[i] == 0xffffffff
-	  || lc->opt_coll.next_cp[i] == 0xffffffff)
+      if (lc->opt_coll.weights[i] == 0xffffffff || lc->opt_coll.next_cp[i] == 0xffffffff)
 	{
 	  err_status = ER_LOC_GEN;
-	  LOG_LOCALE_ERROR ("Internal error. Generated "
-			    "weight value or next CP value is invalid",
-			    ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Internal error. Generated " "weight value or next CP value is invalid", ER_LOC_GEN, true);
 	  goto exit;
 	}
     }
@@ -1936,9 +1798,7 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
   assert (lc != NULL);
   assert (lc->opt_coll.count_contr > 0);
 
-  initial_coll_tag =
-    (UCA_COLL_CONTR_ID *) malloc (lc->opt_coll.count_contr *
-				  sizeof (UCA_COLL_CONTR_ID));
+  initial_coll_tag = (UCA_COLL_CONTR_ID *) malloc (lc->opt_coll.count_contr * sizeof (UCA_COLL_CONTR_ID));
   if (initial_coll_tag == NULL)
     {
       err_status = ER_LOC_GEN;
@@ -1948,14 +1808,12 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
 
   for (i = 0; i < lc->opt_coll.count_contr; i++)
     {
-      memcpy (&(initial_coll_tag[i].contr_ref),
-	      &(lc->opt_coll.contr_list[i]), sizeof (COLL_CONTRACTION));
+      memcpy (&(initial_coll_tag[i].contr_ref), &(lc->opt_coll.contr_list[i]), sizeof (COLL_CONTRACTION));
       initial_coll_tag[i].pos_id = i;
     }
 
   /* sort contractions (binary order) */
-  qsort (initial_coll_tag, lc->opt_coll.count_contr,
-	 sizeof (UCA_COLL_CONTR_ID), comp_func_coll_contr_bin);
+  qsort (initial_coll_tag, lc->opt_coll.count_contr, sizeof (UCA_COLL_CONTR_ID), comp_func_coll_contr_bin);
 
   /* adjust 'next' contractions values for all codepoints */
   for (cp = 0; cp < lc->opt_coll.w_count; cp++)
@@ -1987,9 +1845,7 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
       if (!found)
 	{
 	  err_status = ER_LOC_GEN;
-	  LOG_LOCALE_ERROR ("Internal error. Cannot adjust "
-			    "contraction id after optimization",
-			    ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Internal error. Cannot adjust " "contraction id after optimization", ER_LOC_GEN, true);
 	  goto exit;
 	}
 
@@ -2028,9 +1884,7 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
       if (!found)
 	{
 	  err_status = ER_LOC_GEN;
-	  LOG_LOCALE_ERROR ("Internal error. Cannot adjust "
-			    "contraction id after optimization",
-			    ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Internal error. Cannot adjust " "contraction id after optimization", ER_LOC_GEN, true);
 	  goto exit;
 	}
 
@@ -2042,13 +1896,11 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
   /* overwrite contractions in sorted order */
   for (i = 0; i < lc->opt_coll.count_contr; i++)
     {
-      memcpy (&(lc->opt_coll.contr_list[i]), &(initial_coll_tag[i].contr_ref),
-	      sizeof (COLL_CONTRACTION));
+      memcpy (&(lc->opt_coll.contr_list[i]), &(initial_coll_tag[i].contr_ref), sizeof (COLL_CONTRACTION));
     }
 
   /* first contraction index array */
-  lc->opt_coll.cp_first_contr_array =
-    (int *) malloc (lc->opt_coll.w_count * sizeof (int));
+  lc->opt_coll.cp_first_contr_array = (int *) malloc (lc->opt_coll.w_count * sizeof (int));
   if (lc->opt_coll.cp_first_contr_array == NULL)
     {
       err_status = ER_LOC_GEN;
@@ -2061,13 +1913,11 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
       lc->opt_coll.cp_first_contr_array[cp] = -1;
     }
 
-  lc->opt_coll.contr_min_size = (lc->opt_coll.count_contr > 0)
-    ? LOC_MAX_UCA_CHARS_SEQ * INTL_UTF8_MAX_CHAR_SIZE : 0;
+  lc->opt_coll.contr_min_size = (lc->opt_coll.count_contr > 0) ? LOC_MAX_UCA_CHARS_SEQ * INTL_UTF8_MAX_CHAR_SIZE : 0;
 
   for (i = 0; i < lc->opt_coll.count_contr; i++)
     {
-      unsigned char *c_buf =
-	(unsigned char *) lc->opt_coll.contr_list[i].c_buf;
+      unsigned char *c_buf = (unsigned char *) lc->opt_coll.contr_list[i].c_buf;
       unsigned char *dummy;
       int c_buf_size = strlen ((char *) c_buf);
       unsigned int cp;
@@ -2075,14 +1925,12 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
       assert (c_buf_size < LOC_MAX_UCA_CHARS_SEQ * INTL_UTF8_MAX_CHAR_SIZE);
       lc->opt_coll.contr_list[i].size = (unsigned char) c_buf_size;
 
-      lc->opt_coll.contr_min_size =
-	MIN (lc->opt_coll.contr_min_size, c_buf_size);
+      lc->opt_coll.contr_min_size = MIN (lc->opt_coll.contr_min_size, c_buf_size);
 
       /* get first code-point */
       cp = intl_utf8_to_cp (c_buf, c_buf_size, &dummy);
 
-      if (cp < (unsigned int) lc->opt_coll.w_count &&
-	  lc->opt_coll.cp_first_contr_array[cp] == -1)
+      if (cp < (unsigned int) lc->opt_coll.w_count && lc->opt_coll.cp_first_contr_array[cp] == -1)
 	{
 	  lc->opt_coll.cp_first_contr_array[cp] = i;
 	}
@@ -2105,8 +1953,7 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
     {
       if (lc->opt_coll.cp_first_contr_array[cp] != -1)
 	{
-	  lc->opt_coll.cp_first_contr_count =
-	    cp - lc->opt_coll.cp_first_contr_offset + 1;
+	  lc->opt_coll.cp_first_contr_count = cp - lc->opt_coll.cp_first_contr_offset + 1;
 	  break;
 	}
     }
@@ -2118,9 +1965,7 @@ optimize_coll_contractions (LOCALE_COLLATION * lc)
       for (i = 0; i < (int) lc->opt_coll.cp_first_contr_count; i++)
 	{
 	  lc->opt_coll.cp_first_contr_array[i] =
-	    lc->opt_coll.cp_first_contr_array[i +
-					      lc->opt_coll.
-					      cp_first_contr_offset];
+	    lc->opt_coll.cp_first_contr_array[i + lc->opt_coll.cp_first_contr_offset];
 	}
     }
 
@@ -2143,9 +1988,7 @@ exit:
  * next_key(in) : next key value to set
  */
 static int
-set_next_value_for_coll_key (LOCALE_COLLATION * lc,
-			     const UCA_COLL_KEY * coll_key,
-			     const UCA_COLL_KEY * next_key)
+set_next_value_for_coll_key (LOCALE_COLLATION * lc, const UCA_COLL_KEY * coll_key, const UCA_COLL_KEY * next_key)
 {
   /* set next key for all previous equal keys */
   if (next_key->type == COLL_KEY_TYPE_CP)
@@ -2158,8 +2001,7 @@ set_next_value_for_coll_key (LOCALE_COLLATION * lc,
 	{
 	  assert (coll_key->type == COLL_KEY_TYPE_CONTR);
 	  assert (coll_key->val.contr_id < lc->opt_coll.count_contr);
-	  lc->opt_coll.contr_list[coll_key->val.contr_id].next =
-	    next_key->val.cp;
+	  lc->opt_coll.contr_list[coll_key->val.contr_id].next = next_key->val.cp;
 	}
     }
   else
@@ -2169,16 +2011,14 @@ set_next_value_for_coll_key (LOCALE_COLLATION * lc,
 
       if (coll_key->type == COLL_KEY_TYPE_CP)
 	{
-	  lc->opt_coll.next_cp[coll_key->val.cp] =
-	    next_key->val.contr_id | INTL_MASK_CONTR;
+	  lc->opt_coll.next_cp[coll_key->val.cp] = next_key->val.contr_id | INTL_MASK_CONTR;
 	}
       else
 	{
 	  assert (coll_key->type == COLL_KEY_TYPE_CONTR);
 	  assert (coll_key->val.contr_id < lc->opt_coll.count_contr);
 
-	  lc->opt_coll.contr_list[coll_key->val.contr_id].next =
-	    next_key->val.contr_id | INTL_MASK_CONTR;
+	  lc->opt_coll.contr_list[coll_key->val.contr_id].next = next_key->val.contr_id | INTL_MASK_CONTR;
 	}
     }
 
@@ -2195,9 +2035,8 @@ set_next_value_for_coll_key (LOCALE_COLLATION * lc,
  * use_expansions(in) :
  */
 static int
-add_opt_coll_contraction (LOCALE_COLLATION * lc,
-			  const UCA_COLL_KEY * contr_key,
-			  const unsigned int wv, bool use_expansions)
+add_opt_coll_contraction (LOCALE_COLLATION * lc, const UCA_COLL_KEY * contr_key, const unsigned int wv,
+			  bool use_expansions)
 {
   COLL_CONTRACTION *opt_contr = NULL;
   UCA_CONTRACTION *uca_contr;
@@ -2212,9 +2051,7 @@ add_opt_coll_contraction (LOCALE_COLLATION * lc,
   uca_contr = &(curr_uca.coll_contr[contr_key->val.contr_id]);
 
   lc->opt_coll.contr_list =
-    (COLL_CONTRACTION *) realloc (lc->opt_coll.contr_list,
-				  (lc->opt_coll.count_contr +
-				   1) * sizeof (COLL_CONTRACTION));
+    (COLL_CONTRACTION *) realloc (lc->opt_coll.contr_list, (lc->opt_coll.count_contr + 1) * sizeof (COLL_CONTRACTION));
 
   if (lc->opt_coll.contr_list == NULL)
     {
@@ -2321,8 +2158,8 @@ uca_free_data (void)
  *	  If the rule is a "before" rule, checks if it can be applied.
  */
 static int
-apply_tailoring_rule (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
-		      UCA_COLL_KEY * key, UCA_COLL_KEY * ref_key, T_LEVEL lvl)
+apply_tailoring_rule (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key, UCA_COLL_KEY * key, UCA_COLL_KEY * ref_key,
+		      T_LEVEL lvl)
 {
   if (lvl == TAILOR_IDENTITY)
     {
@@ -2356,8 +2193,7 @@ apply_tailoring_rule_identity (UCA_COLL_KEY * key, UCA_COLL_KEY * ref_key)
   if (ce_list_key == NULL || ce_list_ref_key == NULL)
     {
       err_status = ER_LOC_GEN;
-      LOG_LOCALE_ERROR ("Cannot apply identity rule. Collation key not found",
-			ER_LOC_GEN, true);
+      LOG_LOCALE_ERROR ("Cannot apply identity rule. Collation key not found", ER_LOC_GEN, true);
       goto exit;
     }
 
@@ -2367,9 +2203,7 @@ apply_tailoring_rule_identity (UCA_COLL_KEY * key, UCA_COLL_KEY * ref_key)
   current_weight = GET_UCA_WEIGHT (ce_list_key, 0, 0);
   if (current_weight != GET_UCA_WEIGHT (ce_list_ref_key, 0, 0))
     {
-      err_status =
-	change_key_weight_list (key, current_weight,
-				GET_UCA_WEIGHT (ce_list_ref_key, 0, 0));
+      err_status = change_key_weight_list (key, current_weight, GET_UCA_WEIGHT (ce_list_ref_key, 0, 0));
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
@@ -2400,8 +2234,7 @@ exit:
  *	  Collisions are avoided.
  */
 static int
-apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
-			    UCA_COLL_KEY * key, UCA_COLL_KEY * ref_key,
+apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key, UCA_COLL_KEY * key, UCA_COLL_KEY * ref_key,
 			    T_LEVEL lvl)
 {
   int i, j;
@@ -2420,12 +2253,10 @@ apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
   ce_list_ref_key = get_ce_list_from_coll_key (ref_key);
   ce_list_anchor_key = get_ce_list_from_coll_key (anchor_key);
 
-  if (ce_list_key == NULL || ce_list_ref_key == NULL
-      || ce_list_anchor_key == NULL)
+  if (ce_list_key == NULL || ce_list_ref_key == NULL || ce_list_anchor_key == NULL)
     {
       err_status = ER_LOC_GEN;
-      LOG_LOCALE_ERROR ("Cannot apply identity rule. Collation key not found",
-			ER_LOC_GEN, true);
+      LOG_LOCALE_ERROR ("Cannot apply identity rule. Collation key not found", ER_LOC_GEN, true);
       goto exit;
     }
 
@@ -2443,8 +2274,7 @@ apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
     {
       for (i = 0; i < (int) (new_ce.num); i++)
 	{
-	  SET_UCA_WEIGHT (&(new_ce), i, j,
-			  GET_UCA_WEIGHT (ce_list_ref_key, i, j));
+	  SET_UCA_WEIGHT (&(new_ce), i, j, GET_UCA_WEIGHT (ce_list_ref_key, i, j));
 	}
     }
 
@@ -2455,9 +2285,7 @@ apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
       if (new_ce.num > MAX_UCA_EXP_CE)
 	{
 	  err_status = ER_LOC_GEN;
-	  LOG_LOCALE_ERROR ("Error when applying after-rule. "
-			    "Collation element list overflow.",
-			    ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Error when applying after-rule. " "Collation element list overflow.", ER_LOC_GEN, true);
 	  goto exit;
 	}
 
@@ -2495,8 +2323,7 @@ apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
 	    {
 	      int ce_index = (int) (new_ce.num);
 
-	      while (ce_index > 0
-		     && GET_UCA_WEIGHT (&new_ce, ce_index - 1, lvl - 1) == 0)
+	      while (ce_index > 0 && GET_UCA_WEIGHT (&new_ce, ce_index - 1, lvl - 1) == 0)
 		{
 		  ce_index--;
 		}
@@ -2504,8 +2331,7 @@ apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
 	      if (ce_index <= 0)
 		{
 		  err_status = ER_LOC_GEN;
-		  LOG_LOCALE_ERROR ("Applying before-rule. Collation element"
-				    " list underflow.", ER_LOC_GEN, true);
+		  LOG_LOCALE_ERROR ("Applying before-rule. Collation element" " list underflow.", ER_LOC_GEN, true);
 		  goto exit;
 		}
 	      SET_UCA_WEIGHT (&new_ce, ce_index - 1, lvl - 1, MAX_UCA_WEIGHT);
@@ -2514,19 +2340,16 @@ apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
 
       if (get_key_with_ce_sublist (&new_ce, lvl) != NULL)
 	{
-	  /* If a collision occurs, go further into the collation element
-	   * list */
+	  /* If a collision occurs, go further into the collation element list */
 
 	  if (dir == TAILOR_AFTER)
 	    {
 	      /* AFTER */
 	      if (!overflow)
 		{
-		  UCA_W w_val =
-		    GET_UCA_WEIGHT (&new_ce, new_ce.num - 1, lvl - 1);
+		  UCA_W w_val = GET_UCA_WEIGHT (&new_ce, new_ce.num - 1, lvl - 1);
 		  /* Revert weight increase */
-		  SET_UCA_WEIGHT (&new_ce, new_ce.num - 1, lvl - 1,
-				  w_val - 1);
+		  SET_UCA_WEIGHT (&new_ce, new_ce.num - 1, lvl - 1, w_val - 1);
 		}
 	      /* Add a new collation element. */
 	      new_ce.num++;
@@ -2539,8 +2362,7 @@ apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
 	      /* Add a new collation element. */
 	      new_ce.num++;
 	      /* Maximize the weight on the new collation element. */
-	      SET_UCA_WEIGHT (&new_ce, new_ce.num - 1, lvl - 1,
-			      MAX_UCA_WEIGHT);
+	      SET_UCA_WEIGHT (&new_ce, new_ce.num - 1, lvl - 1, MAX_UCA_WEIGHT);
 	    }
 	}
       else
@@ -2552,8 +2374,7 @@ apply_tailoring_rule_w_dir (TAILOR_DIR dir, UCA_COLL_KEY * anchor_key,
   current_weight = GET_UCA_WEIGHT (ce_list_key, 0, 0);
   if (GET_UCA_WEIGHT (&new_ce, 0, 0) != current_weight)
     {
-      err_status = change_key_weight_list (key, current_weight,
-					   GET_UCA_WEIGHT (&new_ce, 0, 0));
+      err_status = change_key_weight_list (key, current_weight, GET_UCA_WEIGHT (&new_ce, 0, 0));
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
@@ -2607,8 +2428,7 @@ get_key_with_ce_sublist (UCA_COLL_CE_LIST * uca_item, const int lvl)
 	{
 	  for (ce_index = 0; ce_index < uca_item->num; ce_index++)
 	    {
-	      if (GET_UCA_WEIGHT (ce_list, ce_index, level_index) !=
-		  GET_UCA_WEIGHT (uca_item, ce_index, level_index))
+	      if (GET_UCA_WEIGHT (ce_list, ce_index, level_index) != GET_UCA_WEIGHT (uca_item, ce_index, level_index))
 		{
 		  found = false;
 		  break;
@@ -2668,8 +2488,7 @@ make_coll_key (UCA_COLL_KEY * key, UCA_COLL_KEY_TYPE type, const int key_id)
  * st(in) : storage to check
  */
 static int
-find_contr_id (const unsigned int *cp_array, const int cp_count,
-	       UCA_STORAGE * st)
+find_contr_id (const unsigned int *cp_array, const int cp_count, UCA_STORAGE * st)
 {
   bool found;
   int i;
@@ -2725,8 +2544,7 @@ find_contr_id (const unsigned int *cp_array, const int cp_count,
  * st(in) : storage to check
  */
 static int
-find_exp_id (const unsigned int *cp_array, const int cp_count,
-	     UCA_STORAGE * st)
+find_exp_id (const unsigned int *cp_array, const int cp_count, UCA_STORAGE * st)
 {
   bool found;
   int i;
@@ -2807,8 +2625,8 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
 
       switch (state)
 	{
-	case 0:		/* read a '[' (first char from the standard string representation
-				 * of a collation element) */
+	case 0:		/* read a '[' (first char from the standard string representation * of a collation
+				 * element) */
 	  c = str[0];
 	  if (c != '[')
 	    {
@@ -2844,8 +2662,8 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
 	    }
 	  weight_index++;
 	  break;
-	case 2:		/* Read a dot '.' = the weight separator inside the
-				 * string representation of a collation element */
+	case 2:		/* Read a dot '.' = the weight separator inside the * string representation of a
+				 * collation element */
 	  c = str[0];
 	  if (c != '.')
 	    {
@@ -2855,8 +2673,8 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
 	  str++;
 	  state = 1;
 	  break;
-	case 3:		/* Read a ']' (last char from the standard string representation
-				 * of a collation element)*/
+	case 3:		/* Read a ']' (last char from the standard string representation * of a collation
+				 * element) */
 	  c = str[0];
 	  if (c != ']')
 	    {
@@ -2882,21 +2700,16 @@ string_to_coll_ce_list (char *s, UCA_COLL_CE_LIST * ui)
       switch (state)
 	{
 	case 0:
-	  LOG_LOCALE_ERROR ("Invalid collation element list. '[' expected.",
-			    ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Invalid collation element list. '[' expected.", ER_LOC_GEN, true);
 	  break;
 	case 1:
-	  LOG_LOCALE_ERROR ("Invalid collation element list."
-			    "Weight out of 0x0000 - 0xFFFF range.",
-			    ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Invalid collation element list." "Weight out of 0x0000 - 0xFFFF range.", ER_LOC_GEN, true);
 	  break;
 	case 2:
-	  LOG_LOCALE_ERROR ("Invalid collation element list. '.' expected.",
-			    ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Invalid collation element list. '.' expected.", ER_LOC_GEN, true);
 	  break;
 	case 3:
-	  LOG_LOCALE_ERROR ("Invalid collation element list. ']' expected.",
-			    ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Invalid collation element list. ']' expected.", ER_LOC_GEN, true);
 	  break;
 	}
       err_status = ER_LOC_GEN;
@@ -2929,8 +2742,7 @@ apply_absolute_tailoring_rules (LOCALE_COLLATION * lc)
   CUBRID_TAILOR_RULE *ct_rule;
   UCA_COLL_CE_LIST *uca_cp = curr_uca.coll_cp;
 
-  for (rule_index = 0; rule_index < lc->tail_coll.cub_count_rules;
-       rule_index++)
+  for (rule_index = 0; rule_index < lc->tail_coll.cub_count_rules; rule_index++)
     {
       ct_rule = &(lc->tail_coll.cub_rules[rule_index]);
       if (strlen (ct_rule->step) == 0)
@@ -2940,42 +2752,35 @@ apply_absolute_tailoring_rules (LOCALE_COLLATION * lc)
       if (string_to_coll_ce_list (ct_rule->step, &step) != 0)
 	{
 	  err_status = ER_LOC_GEN;
-	  LOG_LOCALE_ERROR ("Invalid collation element list for range step.",
-			    ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Invalid collation element list for range step.", ER_LOC_GEN, true);
 	  goto exit;
 	}
       if (string_to_coll_ce_list (ct_rule->start_weight, &weight) != 0)
 	{
 	  err_status = ER_LOC_GEN;
-	  LOG_LOCALE_ERROR
-	    ("Invalid collation element list for starting weight.",
-	     ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Invalid collation element list for starting weight.", ER_LOC_GEN, true);
 	  goto exit;
 	}
 
       /* Parse the char buffers for start and end codepoint */
-      if (read_cp_from_tag ((unsigned char *) (ct_rule->start_cp_buf),
-			    ct_rule->start_cp_buf_type,
-			    &start_cp) != NO_ERROR)
+      if (read_cp_from_tag ((unsigned char *) (ct_rule->start_cp_buf), ct_rule->start_cp_buf_type, &start_cp) !=
+	  NO_ERROR)
 	{
 	  goto exit;
 	}
-      if (read_cp_from_tag ((unsigned char *) (ct_rule->end_cp_buf),
-			    ct_rule->end_cp_buf_type, &end_cp) != NO_ERROR)
+      if (read_cp_from_tag ((unsigned char *) (ct_rule->end_cp_buf), ct_rule->end_cp_buf_type, &end_cp) != NO_ERROR)
 	{
 	  goto exit;
 	}
 
-      /* Validate starting weight, step and the number of codepoints in the
-       * range to be tailored, so that there are no overflows above
-       * MAX_WEIGHT (0xFFFF). */
+      /* Validate starting weight, step and the number of codepoints in the range to be tailored, so that there are no
+       * overflows above MAX_WEIGHT (0xFFFF). */
       is_overflow = false;
       for (weight_index = 0; weight_index < MAX_WEIGHT_LEVELS; weight_index++)
 	{
 	  for (ce_index = 0; ce_index < step.num; ce_index++)
 	    {
-	      if (GET_UCA_WEIGHT (&step, ce_index, weight_index) *
-		  (end_cp - start_cp) > MAX_UCA_WEIGHT)
+	      if (GET_UCA_WEIGHT (&step, ce_index, weight_index) * (end_cp - start_cp) > MAX_UCA_WEIGHT)
 		{
 		  is_overflow = true;
 		  break;
@@ -2990,8 +2795,7 @@ apply_absolute_tailoring_rules (LOCALE_COLLATION * lc)
       if (is_overflow)
 	{
 	  err_status = ER_LOC_GEN;
-	  LOG_LOCALE_ERROR ("Weight range overflow"
-			    "Weight or step too big.", ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Weight range overflow" "Weight or step too big.", ER_LOC_GEN, true);
 	  goto exit;
 	}
 
@@ -3000,28 +2804,22 @@ apply_absolute_tailoring_rules (LOCALE_COLLATION * lc)
 
       for (cp_index = start_cp; cp_index <= end_cp; cp_index++)
 	{
-	  memcpy (&uca_cp[cp_index], &weight_offset,
-		  sizeof (UCA_COLL_CE_LIST));
-	  for (weight_index = 0; weight_index < MAX_WEIGHT_LEVELS;
-	       weight_index++)
+	  memcpy (&uca_cp[cp_index], &weight_offset, sizeof (UCA_COLL_CE_LIST));
+	  for (weight_index = 0; weight_index < MAX_WEIGHT_LEVELS; weight_index++)
 	    {
 	      for (ce_index = 0; ce_index < weight_offset.num; ce_index++)
 		{
 		  SET_UCA_WEIGHT (&weight_offset, ce_index, weight_index,
-				  GET_UCA_WEIGHT (&step, ce_index,
-						  weight_index));
+				  GET_UCA_WEIGHT (&step, ce_index, weight_index));
 		}
 	    }
 	  /* Remove any collation elements with all weight values zero. */
 	  is_ce_empty = true;
 	  while (is_ce_empty)
 	    {
-	      for (weight_index = 0;
-		   weight_index < MAX_WEIGHT_LEVELS; weight_index++)
+	      for (weight_index = 0; weight_index < MAX_WEIGHT_LEVELS; weight_index++)
 		{
-		  if (GET_UCA_WEIGHT (&(uca_cp[cp_index]),
-				      uca_cp[cp_index].num - 1, weight_index)
-		      != 0)
+		  if (GET_UCA_WEIGHT (&(uca_cp[cp_index]), uca_cp[cp_index].num - 1, weight_index) != 0)
 		    {
 		      is_ce_empty = false;
 		    }
@@ -3058,17 +2856,15 @@ add_key_to_weight_stats_list (const UCA_COLL_KEY * key, UCA_W wv)
 
   assert (key != NULL);
 
-  if ((weight_key_list[wv].key_list = (UCA_COLL_KEY *)
-       realloc (weight_key_list[wv].key_list,
-		(weight_key_list[wv].list_count + 1) *
-		sizeof (UCA_COLL_KEY))) == NULL)
+  if ((weight_key_list[wv].key_list =
+       (UCA_COLL_KEY *) realloc (weight_key_list[wv].key_list,
+				 (weight_key_list[wv].list_count + 1) * sizeof (UCA_COLL_KEY))) == NULL)
     {
       err_status = ER_LOC_GEN;
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
       goto exit;
     }
-  memcpy (&(weight_key_list[wv].key_list[weight_key_list[wv].list_count]),
-	  key, sizeof (UCA_COLL_KEY));
+  memcpy (&(weight_key_list[wv].key_list[weight_key_list[wv].list_count]), key, sizeof (UCA_COLL_KEY));
   weight_key_list[wv].list_count++;
 
 exit:
@@ -3096,12 +2892,10 @@ remove_key_from_weight_stats_list (const UCA_COLL_KEY * key, UCA_W wv)
     }
   else if (weight_key_list[wv].list_count == 1)
     {
-      if (memcmp (&(weight_key_list[wv].key_list[0]), key,
-		  sizeof (UCA_COLL_KEY)) == 0)
+      if (memcmp (&(weight_key_list[wv].key_list[0]), key, sizeof (UCA_COLL_KEY)) == 0)
 	{
 	  weight_key_list[wv].list_count = 0;
-	  memset (&(weight_key_list[wv].key_list[0]), 0,
-		  sizeof (UCA_COLL_KEY));
+	  memset (&(weight_key_list[wv].key_list[0]), 0, sizeof (UCA_COLL_KEY));
 	  goto exit;
 	}
     }
@@ -3111,8 +2905,7 @@ remove_key_from_weight_stats_list (const UCA_COLL_KEY * key, UCA_W wv)
   found_at = -1;
   for (i = 0; i < weight_key_list[wv].list_count; i++)
     {
-      if (memcmp (&(weight_key_list[wv].key_list[i]), key,
-		  sizeof (UCA_COLL_KEY)) == 0)
+      if (memcmp (&(weight_key_list[wv].key_list[i]), key, sizeof (UCA_COLL_KEY)) == 0)
 	{
 	  found_at = i;
 	  break;
@@ -3123,8 +2916,7 @@ remove_key_from_weight_stats_list (const UCA_COLL_KEY * key, UCA_W wv)
 
   for (i = found_at; i < weight_key_list[wv].list_count - 1; i++)
     {
-      memcpy (&(weight_key_list[wv].key_list[i]),
-	      &(weight_key_list[wv].key_list[i + 1]), sizeof (UCA_COLL_KEY));
+      memcpy (&(weight_key_list[wv].key_list[i]), &(weight_key_list[wv].key_list[i + 1]), sizeof (UCA_COLL_KEY));
     }
 
   weight_key_list[wv].list_count--;
@@ -3185,8 +2977,7 @@ new_contraction (UCA_STORAGE * storage)
   if (storage->count_contr >= storage->max_contr)
     {
       storage->coll_contr =
-	realloc (storage->coll_contr, sizeof (UCA_CONTRACTION) *
-		 (storage->max_contr + UCA_CONTR_EXP_CNT_GROW));
+	realloc (storage->coll_contr, sizeof (UCA_CONTRACTION) * (storage->max_contr + UCA_CONTR_EXP_CNT_GROW));
 
       if (storage->coll_contr == NULL)
 	{
@@ -3223,8 +3014,7 @@ new_expansion (UCA_STORAGE * storage)
   if (storage->count_exp >= storage->max_exp)
     {
       storage->coll_exp =
-	realloc (storage->coll_exp, sizeof (UCA_EXPANSION) *
-		 (storage->max_exp + UCA_CONTR_EXP_CNT_GROW));
+	realloc (storage->coll_exp, sizeof (UCA_EXPANSION) * (storage->max_exp + UCA_CONTR_EXP_CNT_GROW));
 
       if (storage->coll_exp == NULL)
 	{
@@ -3255,8 +3045,7 @@ new_expansion (UCA_STORAGE * storage)
  *
  */
 static int
-add_uca_contr_or_exp (LOCALE_COLLATION * lc, UCA_STORAGE * storage,
-		      const unsigned int *cp_array, const int cp_count,
+add_uca_contr_or_exp (LOCALE_COLLATION * lc, UCA_STORAGE * storage, const unsigned int *cp_array, const int cp_count,
 		      const UCA_COLL_KEY_TYPE seq_type)
 {
   UCA_CHR_SEQ *uca_seq = NULL;
@@ -3289,8 +3078,7 @@ add_uca_contr_or_exp (LOCALE_COLLATION * lc, UCA_STORAGE * storage,
     {
       if ((int) cp_array[i] >= lc->tail_coll.sett_max_cp)
 	{
-	  LOG_LOCALE_ERROR ("Codepoint value in sequence exceeds "
-			    "maximum allowed codepoint", ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Codepoint value in sequence exceeds " "maximum allowed codepoint", ER_LOC_GEN, true);
 	  return -1;
 	}
 
@@ -3319,8 +3107,7 @@ add_uca_contr_or_exp (LOCALE_COLLATION * lc, UCA_STORAGE * storage,
 
       if (ce_count + cp_ce_list->num >= MAX_UCA_EXP_CE)
 	{
-	  LOG_LOCALE_ERROR ("Cannot create contraction."
-			    "Too many collation elements", ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Cannot create contraction." "Too many collation elements", ER_LOC_GEN, true);
 	  return -1;
 	}
 
@@ -3329,8 +3116,7 @@ add_uca_contr_or_exp (LOCALE_COLLATION * lc, UCA_STORAGE * storage,
 	{
 	  for (lev = 0; lev < MAX_WEIGHT_LEVELS; lev++)
 	    {
-	      SET_UCA_WEIGHT (&(uca_seq->ce), ce_index + ce_count, lev,
-			      GET_UCA_WEIGHT (cp_ce_list, ce_index, lev));
+	      SET_UCA_WEIGHT (&(uca_seq->ce), ce_index + ce_count, lev, GET_UCA_WEIGHT (cp_ce_list, ce_index, lev));
 	    }
 	}
 
@@ -3351,9 +3137,7 @@ add_uca_contr_or_exp (LOCALE_COLLATION * lc, UCA_STORAGE * storage,
 
   /* contraction key to statistics */
   make_coll_key (&contr_key, COLL_KEY_TYPE_CONTR, storage->count_contr - 1);
-  if (add_key_to_weight_stats_list (&contr_key,
-				    GET_UCA_WEIGHT (&(uca_seq->ce), 0, 0))
-      != NO_ERROR)
+  if (add_key_to_weight_stats_list (&contr_key, GET_UCA_WEIGHT (&(uca_seq->ce), 0, 0)) != NO_ERROR)
     {
       return -1;
     }
@@ -3398,10 +3182,7 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
       if (intl_count_utf8_chars (dummy, strlen ((char *) dummy)) > 1)
 	{
 	  err_status = ER_LOC_GEN;
-	  snprintf (err_msg,
-		    sizeof (err_msg) - 1,
-		    "Multiple chars found in codepoint tag."
-		    "Tag content: %s", buffer);
+	  snprintf (err_msg, sizeof (err_msg) - 1, "Multiple chars found in codepoint tag." "Tag content: %s", buffer);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  goto exit;
 	}
@@ -3412,10 +3193,8 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
       if (temp_cp > 0xFFFF || temp_cp < 0)
 	{
 	  err_status = ER_LOC_GEN;
-	  snprintf (err_msg,
-		    sizeof (err_msg) - 1,
-		    "Codepoint found in tag was out of range."
-		    "Tag content: %s", buffer);
+	  snprintf (err_msg, sizeof (err_msg) - 1, "Codepoint found in tag was out of range." "Tag content: %s",
+		    buffer);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  goto exit;
 	}
@@ -3428,10 +3207,8 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
       if (result != 0 || temp_cp > 0xFFFF || temp_cp < 0)
 	{
 	  err_status = ER_LOC_GEN;
-	  snprintf (err_msg,
-		    sizeof (err_msg) - 1,
-		    "Codepoint found in tag was out of range."
-		    "Tag content: %s", buffer);
+	  snprintf (err_msg, sizeof (err_msg) - 1, "Codepoint found in tag was out of range." "Tag content: %s",
+		    buffer);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  goto exit;
 	}
@@ -3439,10 +3216,8 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
 	{
 	  /* If tag content does not start with a hex number. */
 	  err_status = ER_LOC_GEN;
-	  snprintf (err_msg,
-		    sizeof (err_msg) - 1,
-		    "No valid codepoint could be found in tag."
-		    "Tag content: %s", buffer);
+	  snprintf (err_msg, sizeof (err_msg) - 1, "No valid codepoint could be found in tag." "Tag content: %s",
+		    buffer);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  goto exit;
 	}
@@ -3450,10 +3225,8 @@ read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
 	{
 	  /* If tag content looks like "1234ZZZZ". */
 	  err_status = ER_LOC_GEN;
-	  snprintf (err_msg,
-		    sizeof (err_msg) - 1,
-		    "Encountered codepoint tag with invalid content."
-		    "Tag content: %s", buffer);
+	  snprintf (err_msg, sizeof (err_msg) - 1, "Encountered codepoint tag with invalid content." "Tag content: %s",
+		    buffer);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  goto exit;
 	}
@@ -3505,16 +3278,12 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
   unsigned int *coll_key_list = NULL;
   int coll_key_list_cnt = 0;
   bool use_level_4;
-  UCA_OPTIONS uca_exp_next_opt =
-    { TAILOR_PRIMARY, false, false, 0, true, CONTR_IGNORE, true,
+  UCA_OPTIONS uca_exp_next_opt = { TAILOR_PRIMARY, false, false, 0, true, CONTR_IGNORE, true,
     MATCH_CONTR_BOUND_FORBID
   };
   UCA_OPTIONS *saved_uca_opt = NULL;
 
-  coll_key_list =
-    (unsigned int *)
-    malloc ((curr_uca.count_contr +
-	     lc->tail_coll.sett_max_cp) * sizeof (unsigned int));
+  coll_key_list = (unsigned int *) malloc ((curr_uca.count_contr + lc->tail_coll.sett_max_cp) * sizeof (unsigned int));
   if (coll_key_list == NULL)
     {
       err_status = ER_LOC_GEN;
@@ -3530,13 +3299,10 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
       max_num = MAX (max_num, ce_list->num);
     }
 
-  use_level_4 =
-    (lc->tail_coll.uca_opt.sett_strength >= TAILOR_QUATERNARY) ? true : false;
+  use_level_4 = (lc->tail_coll.uca_opt.sett_strength >= TAILOR_QUATERNARY) ? true : false;
 
-  uca_w_array_size_l13 =
-    lc->tail_coll.sett_max_cp * max_num * sizeof (UCA_L13_W);
-  uca_w_array_size_l4 =
-    lc->tail_coll.sett_max_cp * max_num * sizeof (UCA_L4_W);
+  uca_w_array_size_l13 = lc->tail_coll.sett_max_cp * max_num * sizeof (UCA_L13_W);
+  uca_w_array_size_l4 = lc->tail_coll.sett_max_cp * max_num * sizeof (UCA_L4_W);
   uca_w_l13 = (UCA_L13_W *) malloc (uca_w_array_size_l13);
   uca_exp_num = (char *) malloc (lc->tail_coll.sett_max_cp);
 
@@ -3564,9 +3330,7 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
       memset (uca_w_l4, 0, uca_w_array_size_l4);
     }
 
-  lc->opt_coll.next_cp =
-    (unsigned int *) malloc (lc->tail_coll.sett_max_cp *
-			     sizeof (unsigned int));
+  lc->opt_coll.next_cp = (unsigned int *) malloc (lc->tail_coll.sett_max_cp * sizeof (unsigned int));
   if (lc->opt_coll.next_cp == NULL)
     {
       err_status = ER_LOC_GEN;
@@ -3574,8 +3338,7 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
       goto exit;
     }
 
-  memset (lc->opt_coll.next_cp, 0xff, lc->tail_coll.sett_max_cp
-	  * sizeof (unsigned int));
+  memset (lc->opt_coll.next_cp, 0xff, lc->tail_coll.sett_max_cp * sizeof (unsigned int));
 
   lc->opt_coll.uca_w_l13 = uca_w_l13;
   lc->opt_coll.uca_w_l4 = uca_w_l4;
@@ -3617,8 +3380,7 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
 	}
     }
 
-  qsort (coll_key_list, coll_key_list_cnt, sizeof (unsigned int),
-	 uca_comp_func_coll_list_exp_fo);
+  qsort (coll_key_list, coll_key_list_cnt, sizeof (unsigned int), uca_comp_func_coll_list_exp_fo);
 
   saved_uca_opt = uca_tailoring_options;
   uca_tailoring_options = &uca_exp_next_opt;
@@ -3634,16 +3396,14 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
 
       if (INTL_IS_NEXT_CONTR (curr_pos))
 	{
-	  make_coll_key (&curr_key, COLL_KEY_TYPE_CONTR,
-			 INTL_GET_NEXT_CONTR_ID (curr_pos));
+	  make_coll_key (&curr_key, COLL_KEY_TYPE_CONTR, INTL_GET_NEXT_CONTR_ID (curr_pos));
 	}
       else
 	{
 	  make_coll_key (&curr_key, COLL_KEY_TYPE_CP, curr_pos);
 	}
 
-      /* 'next' item is the first element which has weight level 1 greater
-       * then current item */
+      /* 'next' item is the first element which has weight level 1 greater then current item */
       for (j = i + 1; j < coll_key_list_cnt; j++)
 	{
 	  next_pos = coll_key_list[j];
@@ -3656,8 +3416,7 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
 
       if (INTL_IS_NEXT_CONTR (next_pos))
 	{
-	  make_coll_key (&next_key, COLL_KEY_TYPE_CONTR,
-			 INTL_GET_NEXT_CONTR_ID (next_pos));
+	  make_coll_key (&next_key, COLL_KEY_TYPE_CONTR, INTL_GET_NEXT_CONTR_ID (next_pos));
 	}
       else
 	{
@@ -3675,8 +3434,7 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
     unsigned int curr_pos = coll_key_list[coll_key_list_cnt - 1];
     if (INTL_IS_NEXT_CONTR (curr_pos))
       {
-	make_coll_key (&curr_key, COLL_KEY_TYPE_CONTR,
-		       INTL_GET_NEXT_CONTR_ID (curr_pos));
+	make_coll_key (&curr_key, COLL_KEY_TYPE_CONTR, INTL_GET_NEXT_CONTR_ID (curr_pos));
       }
     else
       {
@@ -3748,8 +3506,7 @@ uca_comp_func_coll_list_exp (const void *arg1, const void *arg2)
 
   if (INTL_IS_NEXT_CONTR (pos1))
     {
-      make_coll_key (&pos1_key, COLL_KEY_TYPE_CONTR,
-		     INTL_GET_NEXT_CONTR_ID (pos1));
+      make_coll_key (&pos1_key, COLL_KEY_TYPE_CONTR, INTL_GET_NEXT_CONTR_ID (pos1));
     }
   else
     {
@@ -3758,8 +3515,7 @@ uca_comp_func_coll_list_exp (const void *arg1, const void *arg2)
 
   if (INTL_IS_NEXT_CONTR (pos2))
     {
-      make_coll_key (&pos2_key, COLL_KEY_TYPE_CONTR,
-		     INTL_GET_NEXT_CONTR_ID (pos2));
+      make_coll_key (&pos2_key, COLL_KEY_TYPE_CONTR, INTL_GET_NEXT_CONTR_ID (pos2));
     }
   else
     {
@@ -3783,8 +3539,7 @@ uca_comp_func_coll_list_exp (const void *arg1, const void *arg2)
  *
  */
 static void
-build_compressed_uca_w_l13 (const UCA_COLL_CE_LIST * ce_list,
-			    UCA_L13_W * uca_w_l13)
+build_compressed_uca_w_l13 (const UCA_COLL_CE_LIST * ce_list, UCA_L13_W * uca_w_l13)
 {
   int i;
 

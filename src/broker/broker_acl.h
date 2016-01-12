@@ -29,15 +29,10 @@
 
 #include "broker_shm.h"
 
-extern int access_control_set_shm (T_SHM_APPL_SERVER * shm_as_cp,
-				   T_BROKER_INFO * br_info_p,
-				   T_SHM_BROKER * shm_br,
+extern int access_control_set_shm (T_SHM_APPL_SERVER * shm_as_cp, T_BROKER_INFO * br_info_p, T_SHM_BROKER * shm_br,
 				   char *admin_err_msg);
-extern int access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl,
-					    char *filename,
-					    char *admin_err_msg);
-extern int access_control_check_right (T_SHM_APPL_SERVER * shm_as_p,
-				       char *dbname, char *dbuser,
+extern int access_control_read_config_file (T_SHM_APPL_SERVER * shm_appl, char *filename, char *admin_err_msg);
+extern int access_control_check_right (T_SHM_APPL_SERVER * shm_as_p, char *dbname, char *dbuser,
 				       unsigned char *address);
 
 #endif /* _BROKER_ACL_H_ */

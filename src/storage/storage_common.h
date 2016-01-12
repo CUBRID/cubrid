@@ -98,8 +98,7 @@ struct log_lsa
 {
   INT64 pageid:48;		/* Log page identifier : 6 bytes length */
   INT64 offset:16;		/* Offset in page : 2 bytes length */
-  /* The offset field is defined as 16bit-INT64 type (not short),
-   * because of alignment in windows */
+  /* The offset field is defined as 16bit-INT64 type (not short), because of alignment in windows */
 };
 
 #define LSA_COPY(lsa_ptr1, lsa_ptr2) *(lsa_ptr1) = *(lsa_ptr2)
@@ -175,21 +174,21 @@ typedef char *PAGE_PTR;		/* Pointer to a page */
 /* TODO - PAGE_TYPE is used for debugging */
 typedef enum
 {
-  PAGE_UNKNOWN = 0,		/* used for initialized page            */
-  PAGE_FTAB,			/* file allocset table page             */
-  PAGE_HEAP,			/* heap page                            */
-  PAGE_VOLHEADER,		/* volume header page                   */
-  PAGE_VOLBITMAP,		/* volume bitmap page                   */
-  PAGE_XASL,			/* xasl stream page                     */
-  PAGE_QRESULT,			/* query result page                    */
-  PAGE_EHASH,			/* ehash bucket/dir page                */
-  PAGE_LARGEOBJ,		/* large object/dir page                */
-  PAGE_OVERFLOW,		/* overflow page (with ovf_keyval)      */
-  PAGE_AREA,			/* area page                            */
-  PAGE_CATALOG,			/* catalog page                         */
-  PAGE_BTREE,			/* b+tree index page (with ovf_OIDs)    */
-  PAGE_LOG,			/* NONE - log page (unused)             */
-  PAGE_DROPPED_FILES,		/* Dropped files page.                  */
+  PAGE_UNKNOWN = 0,		/* used for initialized page */
+  PAGE_FTAB,			/* file allocset table page */
+  PAGE_HEAP,			/* heap page */
+  PAGE_VOLHEADER,		/* volume header page */
+  PAGE_VOLBITMAP,		/* volume bitmap page */
+  PAGE_XASL,			/* xasl stream page */
+  PAGE_QRESULT,			/* query result page */
+  PAGE_EHASH,			/* ehash bucket/dir page */
+  PAGE_LARGEOBJ,		/* large object/dir page */
+  PAGE_OVERFLOW,		/* overflow page (with ovf_keyval) */
+  PAGE_AREA,			/* area page */
+  PAGE_CATALOG,			/* catalog page */
+  PAGE_BTREE,			/* b+tree index page (with ovf_OIDs) */
+  PAGE_LOG,			/* NONE - log page (unused) */
+  PAGE_DROPPED_FILES,		/* Dropped files page.  */
   PAGE_LAST = PAGE_DROPPED_FILES
 } PAGE_TYPE;
 
@@ -301,12 +300,9 @@ struct ehid
 typedef struct recdes RECDES;	/* RECORD DESCRIPTOR */
 struct recdes
 {
-  int area_size;		/* Length of the allocated area. It includes
-				   only the data field. The value is negative
-				   if data is inside buffer. For example,
-				   peeking in a slotted page. */
-  int length;			/* Length of the data. Does not include the
-				   length and type fields */
+  int area_size;		/* Length of the allocated area. It includes only the data field. The value is negative
+				 * if data is inside buffer. For example, peeking in a slotted page. */
+  int length;			/* Length of the data. Does not include the length and type fields */
   INT16 type;			/* Type of record */
   char *data;			/* The data */
 };
@@ -438,7 +434,7 @@ struct lorecdes
 
 /* Types and defines of transaction management */
 
-typedef int TRANID;		/* Transaction identifier      */
+typedef int TRANID;		/* Transaction identifier */
 
 #define NULL_TRANID     (-1)
 #define NULL_TRAN_INDEX (-1)
@@ -481,8 +477,7 @@ typedef int TRANID;		/* Transaction identifier      */
 
 typedef enum
 {
-  /* Don't change the initialization since they reflect the elements of
-     lock_Conv and lock_Comp */
+  /* Don't change the initialization since they reflect the elements of lock_Conv and lock_Comp */
   NA_LOCK = 0,			/* N/A lock */
   INCON_NON_TWO_PHASE_LOCK = 1,	/* Incompatible 2 phase lock. */
   NULL_LOCK = 2,		/* NULL LOCK */
@@ -536,25 +531,14 @@ typedef enum
 /* BTREE_SEARCH - Result for b-tree key or OID search. */
 typedef enum
 {
-  BTREE_KEY_FOUND,		/* Found key (one visible or dirty version).
-				 */
-  BTREE_KEY_NOTFOUND,		/* Key was not found (or no usable version
-				 * found in key).
-				 */
+  BTREE_KEY_FOUND,		/* Found key (one visible or dirty version). */
+  BTREE_KEY_NOTFOUND,		/* Key was not found (or no usable version found in key). */
   BTREE_ERROR_OCCURRED,		/* Error while searching key/OID. */
-  BTREE_ACTIVE_KEY_FOUND,	/* Found key but the version inserter/deleter
-				 * did not commit/abort.
-				 */
-  BTREE_KEY_SMALLER,		/* Key was not found and it is smaller than
-				 * all the keys it was compared to.
-				 */
-  BTREE_KEY_BIGGER,		/* Key was not found and it is bigger than
-				 * all the keys it was compared to.
-				 */
-  BTREE_KEY_BETWEEN		/* Key was not found and it's value is between
-				 * the smallest and the biggest keys it was
-				 * compared to.
-				 */
+  BTREE_ACTIVE_KEY_FOUND,	/* Found key but the version inserter/deleter did not commit/abort. */
+  BTREE_KEY_SMALLER,		/* Key was not found and it is smaller than all the keys it was compared to. */
+  BTREE_KEY_BIGGER,		/* Key was not found and it is bigger than all the keys it was compared to. */
+  BTREE_KEY_BETWEEN		/* Key was not found and it's value is between the smallest and the biggest keys it was
+				 * compared to. */
 } BTREE_SEARCH;
 
 /* TYPEDEFS FOR BACKUP/RESTORE */
@@ -564,15 +548,12 @@ typedef struct bo_restart_arg BO_RESTART_ARG;
 struct bo_restart_arg
 {
   bool printtoc;		/* True to show backup's table of contents */
-  time_t stopat;		/* the recovery stop time if restarting from
-				   backup */
-  const char *backuppath;	/* Pathname override for location of backup
-				   volumes */
+  time_t stopat;		/* the recovery stop time if restarting from backup */
+  const char *backuppath;	/* Pathname override for location of backup volumes */
   int level;			/* The backup level to use */
   const char *verbose_file;	/* restoredb verbose msg file */
-  bool newvolpath;		/* true: restore the database and log
-				   volumes to the path specified in the
-				   database-loc-file */
+  bool newvolpath;		/* true: restore the database and log volumes to the path specified in the
+				 * database-loc-file */
   bool restore_upto_bktime;
 
   bool restore_slave;		/* restore slave */
@@ -640,14 +621,9 @@ typedef enum
 
 typedef enum
 {
-  S_SELECT,			/* By default MVCC requires no locks for
-				 * select operations.
-				 */
-  S_SELECT_WITH_LOCK,		/* Read operation that doesn't plan to modify
-				 * the object, but has to know the exact fate
-				 * of last version. Can be used for foreign
-				 * key and unique constraint checks.
-				 */
+  S_SELECT,			/* By default MVCC requires no locks for select operations. */
+  S_SELECT_WITH_LOCK,		/* Read operation that doesn't plan to modify the object, but has to know the exact
+				 * fate of last version. Can be used for foreign key and unique constraint checks. */
   S_DELETE,			/* Delete object operation. */
   S_UPDATE			/* Update object operation. */
 } SCAN_OPERATION_TYPE;
@@ -733,12 +709,9 @@ typedef enum
 typedef enum
 {
   LOG_ERROR_IF_DELETED,		/* set error when locking deleted objects */
-  LOG_WARNING_IF_DELETED	/* set warning when locking deleted objects 
-				 * - the case when it is expected and accepted
-				 *   to find a deleted object; for example when
-				 *   er_clear() is used afterwards if
-				 *   ER_HEAP_UNKNOWN_OBJECT is set in er_errid
-				 */
+  LOG_WARNING_IF_DELETED	/* set warning when locking deleted objects - the case when it is expected and
+				 * accepted to find a deleted object; for example when er_clear() is used afterwards if 
+				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
 
 extern INT16 db_page_size (void);

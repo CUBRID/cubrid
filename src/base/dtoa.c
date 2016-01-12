@@ -47,8 +47,8 @@ _DEFUN (quorem, (b, S), _Jv_Bigint * b _AND _Jv_Bigint * S)
 
   n = S->_wds;
 #ifdef DEBUG
-  /*debug */ if (b->_wds > n)
-    /*debug */ Bug ("oversize b in quorem");
+  /* debug */ if (b->_wds > n)
+    /* debug */ Bug ("oversize b in quorem");
 #endif
   if (b->_wds < n)
     return 0;
@@ -58,8 +58,8 @@ _DEFUN (quorem, (b, S), _Jv_Bigint * b _AND _Jv_Bigint * S)
   bxe = bx + n;
   q = *bxe / (*sxe + 1);	/* ensure q <= true quotient */
 #ifdef DEBUG
-  /*debug */ if (q > 9)
-    /*debug */ Bug ("oversized quotient in quorem");
+  /* debug */ if (q > 9)
+    /* debug */ Bug ("oversized quotient in quorem");
 #endif
   if (q)
     {
@@ -197,55 +197,33 @@ print (_Jv_Bigint * b)
 
 
 char *
-_DEFUN (_dtoa_r,
-	(ptr, _d, mode, ndigits, decpt, sign, rve, float_type),
-	struct _Jv_reent *ptr _AND
-	double _d _AND
-	int mode _AND
-	int ndigits _AND
-	int *decpt _AND int *sign _AND char **rve _AND int float_type)
+_DEFUN (_dtoa_r, (ptr, _d, mode, ndigits, decpt, sign, rve, float_type),
+	struct _Jv_reent *ptr _AND double _d _AND int mode _AND int ndigits _AND int *decpt _AND int *sign _AND char
+	**rve _AND int float_type)
 {
-  /*
-     float_type == 0 for double precision, 1 for float.
+  /* 
+   * float_type == 0 for double precision, 1 for float.
+   * 
+   * Arguments ndigits, decpt, sign are similar to those of ecvt and fcvt; trailing zeros are suppressed from the
+   * returned string.  If not null, *rve is set to point to the end of the return value.  If d is +-Infinity or NaN,
+   * then *decpt is set to 9999.
+   * 
+   * mode: 0 ==> shortest string that yields d when read in and rounded to nearest. 1 ==> like 0, but with Steele &
+   * White stopping rule; e.g. with IEEE P754 arithmetic , mode 0 gives 1e23 whereas mode 1 gives 9.999999999999999e22.
+   * 2 ==> max(1,ndigits) significant digits.  This gives a return value similar to that of ecvt, except that trailing
+   * zeros are suppressed. 3 ==> through ndigits past the decimal point.  This gives a return value similar to that from 
+   * fcvt, except that trailing zeros are suppressed, and ndigits can be negative. 4-9 should give the same return
+   * values as 2-3, i.e., 4 <= mode <= 9 ==> same return as mode 2 + (mode & 1).  These modes are mainly for debugging;
+   * often they run slower but sometimes faster than modes 2-3. 4,5,8,9 ==> left-to-right digit generation. 6-9 ==>
+   * don't try fast floating-point estimate (if applicable).
+   * 
+   * > 16 ==> Floating-point arg is treated as single precision.
+   * 
+   * Values of mode other than 0-9 are treated as mode 0.
+   * 
+   * Sufficient space is allocated to the return value to hold the suppressed trailing zeros. */
 
-     Arguments ndigits, decpt, sign are similar to those
-     of ecvt and fcvt; trailing zeros are suppressed from
-     the returned string.  If not null, *rve is set to point
-     to the end of the return value.  If d is +-Infinity or NaN,
-     then *decpt is set to 9999.
-
-     mode:
-     0 ==> shortest string that yields d when read in
-     and rounded to nearest.
-     1 ==> like 0, but with Steele & White stopping rule;
-     e.g. with IEEE P754 arithmetic , mode 0 gives
-     1e23 whereas mode 1 gives 9.999999999999999e22.
-     2 ==> max(1,ndigits) significant digits.  This gives a
-     return value similar to that of ecvt, except
-     that trailing zeros are suppressed.
-     3 ==> through ndigits past the decimal point.  This
-     gives a return value similar to that from fcvt,
-     except that trailing zeros are suppressed, and
-     ndigits can be negative.
-     4-9 should give the same return values as 2-3, i.e.,
-     4 <= mode <= 9 ==> same return as mode
-     2 + (mode & 1).  These modes are mainly for
-     debugging; often they run slower but sometimes
-     faster than modes 2-3.
-     4,5,8,9 ==> left-to-right digit generation.
-     6-9 ==> don't try fast floating-point estimate
-     (if applicable).
-
-     > 16 ==> Floating-point arg is treated as single precision.
-
-     Values of mode other than 0-9 are treated as mode 0.
-
-     Sufficient space is allocated to the return value
-     to hold the suppressed trailing zeros.
-   */
-
-  int bbits, b2, b5, be, dig, i, ieps, ilim0, j, j1, k, k0,
-    k_check, leftright, m2, m5, s2, s5, try_quick;
+  int bbits, b2, b5, be, dig, i, ieps, ilim0, j, j1, k, k0, k_check, leftright, m2, m5, s2, s5, try_quick;
   int ilim = 0, ilim1 = 0, spec_case = 0;
   union double_union d, d2, eps;
   long L;
@@ -328,27 +306,14 @@ _DEFUN (_dtoa_r,
 	d2.d /= 1 << j;
 #endif
 
-      /* log(x) ~=~ log(1.5) + (x-1.5)/1.5
-       * log10(x)        =  log(x) / log(10)
-       *                ~=~ log(1.5)/log(10) + (x-1.5)/(1.5*log(10))
-       * log10(d) = (i-Bias)*log(2)/log(10) + log10(d2)
-       *
-       * This suggests computing an approximation k to log10(d) by
-       *
-       * k = (i - Bias)*0.301029995663981
-       *        + ( (d2-1.5)*0.289529654602168 + 0.176091259055681 );
-       *
-       * We want k to be too large rather than too small.
-       * The error in the first-order Taylor series approximation
-       * is in our favor, so we just round up the constant enough
-       * to compensate for any error in the multiplication of
-       * (i - Bias) by 0.301029995663981; since |i - Bias| <= 1077,
-       * and 1077 * 0.30103 * 2^-52 ~=~ 7.2e-14,
-       * adding 1e-13 to the constant term more than suffices.
-       * Hence we adjust the constant term to 0.1760912590558.
-       * (We could get a more accurate k by invoking log10,
-       *  but this is probably not worthwhile.)
-       */
+      /* log(x) ~=~ log(1.5) + (x-1.5)/1.5 log10(x) = log(x) / log(10) ~=~ log(1.5)/log(10) + (x-1.5)/(1.5*log(10))
+       * log10(d) = (i-Bias)*log(2)/log(10) + log10(d2) This suggests computing an approximation k to log10(d) by k = 
+       * (i - Bias)*0.301029995663981 + ( (d2-1.5)*0.289529654602168 + 0.176091259055681 ); We want k to be too large
+       * rather than too small. The error in the first-order Taylor series approximation is in our favor, so we just
+       * round up the constant enough to compensate for any error in the multiplication of (i - Bias) by
+       * 0.301029995663981; since |i - Bias| <= 1077, and 1077 * 0.30103 * 2^-52 ~=~ 7.2e-14, adding 1e-13 to the
+       * constant term more than suffices. Hence we adjust the constant term to 0.1760912590558. (We could get a more
+       * accurate k by invoking log10, but this is probably not worthwhile.) */
 
       i -= Bias;
 #ifdef IBM
@@ -363,17 +328,14 @@ _DEFUN (_dtoa_r,
       /* d is denormalized */
 
       i = bbits + be + (Bias + (P - 1) - 1);
-      x = i > 32 ? word0 (d) << (64 - i) | word1 (d) >> (i - 32)
-	: word1 (d) << (32 - i);
+      x = i > 32 ? word0 (d) << (64 - i) | word1 (d) >> (i - 32) : word1 (d) << (32 - i);
       d2.d = x;
       word0 (d2) -= 31 * Exp_msk1;	/* adjust exponent */
       i -= (Bias + (P - 1) - 1) + 1;
       denorm = 1;
     }
 #endif
-  ds =
-    (d2.d - 1.5) * 0.289529654602168 + 0.1760912590558 +
-    i * 0.301029995663981;
+  ds = (d2.d - 1.5) * 0.289529654602168 + 0.1760912590558 + i * 0.301029995663981;
   k = (int) ds;
   if (ds < 0. && ds != k)
     k--;			/* want k = floor(ds) */
@@ -443,8 +405,7 @@ _DEFUN (_dtoa_r,
 	i = 1;
     }
   j = sizeof (unsigned long);
-  for (ptr->_result_k = 0;
-       (int) (sizeof (_Jv_Bigint) - sizeof (unsigned long)) + j <= i; j <<= 1)
+  for (ptr->_result_k = 0; (int) (sizeof (_Jv_Bigint) - sizeof (unsigned long)) + j <= i; j <<= 1)
     ptr->_result_k++;
   ptr->_result = Balloc (ptr, ptr->_result_k);
   s = s0 = (char *) ptr->_result;
@@ -511,9 +472,7 @@ _DEFUN (_dtoa_r,
 #ifndef No_leftright
       if (leftright)
 	{
-	  /* Use Steele & White method of only
-	   * generating digits needed.
-	   */
+	  /* Use Steele & White method of only generating digits needed. */
 	  eps.d = 0.5 / tens[ilim - 1] - eps.d;
 	  for (i = 0;;)
 	    {
@@ -697,13 +656,9 @@ _DEFUN (_dtoa_r,
 	spec_case = 0;
     }
 
-  /* Arrange for convenient computation of quotients:
-   * shift left if necessary so divisor has 4 leading 0 bits.
-   *
-   * Perhaps we should just compute leading 28 bits of S once
-   * and for all and pass them and a shift to quorem, so it
-   * can do shifts and ors to compute the numerator for q.
-   */
+  /* Arrange for convenient computation of quotients: shift left if necessary so divisor has 4 leading 0 bits. Perhaps 
+   * we should just compute leading 28 bits of S once and for all and pass them and a shift to quorem, so it can do
+   * shifts and ors to compute the numerator for q. */
 
 #ifdef Pack_32
   if ((i = ((s5 ? 32 - hi0bits (S->_x[S->_wds - 1]) : 1) + s2) & 0x1f))
@@ -764,9 +719,7 @@ _DEFUN (_dtoa_r,
       if (float_type)
 	mhi = lshift (ptr, mhi, 29);
 
-      /* Compute mlo -- check for special case
-       * that d is a normalized power of 2.
-       */
+      /* Compute mlo -- check for special case that d is a normalized power of 2. */
 
       mlo = mhi;
       if (spec_case)
@@ -779,9 +732,7 @@ _DEFUN (_dtoa_r,
       for (i = 1;; i++)
 	{
 	  dig = quorem (b, S) + '0';
-	  /* Do we yet have the shortest decimal string
-	   * that will round to d?
-	   */
+	  /* Do we yet have the shortest decimal string that will round to d? */
 	  j = cmp (b, mlo);
 	  delta = diff (ptr, S, mhi);
 	  j1 = delta->_sign ? 1 : cmp (b, delta);
@@ -897,13 +848,9 @@ free_Bigints (struct _Jv_Bigint *p)
 }
 
 _VOID
-_DEFUN (_dtoa,
-	(_d, mode, ndigits, decpt, sign, rve, buf, float_type),
-	double _d _AND
-	int mode _AND
-	int ndigits _AND
-	int *decpt _AND
-	int *sign _AND char **rve _AND char *buf _AND int float_type)
+_DEFUN (_dtoa, (_d, mode, ndigits, decpt, sign, rve, buf, float_type),
+	double _d _AND int mode _AND int ndigits _AND int *decpt _AND int *sign _AND char **rve _AND char *buf _AND int
+	float_type)
 {
   struct _Jv_reent reent;
   char *p;

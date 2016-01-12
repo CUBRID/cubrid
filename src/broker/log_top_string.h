@@ -40,8 +40,7 @@ struct t_string
 T_STRING *t_string_make (int init_size);
 void t_string_clear (T_STRING * t_str);
 int t_string_add (T_STRING * t_str, char *str, int str_len);
-int t_bind_string_add (T_STRING * t_str, char *str, int str_len,
-		       int bind_len);
+int t_bind_string_add (T_STRING * t_str, char *str, int str_len, int bind_len);
 void t_string_free (T_STRING * t_str);
 char *t_string_str (T_STRING * t_str);
 int t_string_len (T_STRING * t_str);

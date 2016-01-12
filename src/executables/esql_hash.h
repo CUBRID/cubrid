@@ -43,8 +43,7 @@ struct hash_tab_s
   int (*get_symbol_count) (HASH_TAB * tbl);
 };
 
-extern HASH_TAB *es_ht_make_table (unsigned maxsym, HT_HASH_FN hash,
-				   HT_CMP_FN cmp);
+extern HASH_TAB *es_ht_make_table (unsigned maxsym, HT_HASH_FN hash, HT_CMP_FN cmp);
 extern void *es_ht_alloc_new_symbol (int size);
 extern void es_ht_free_symbol (void *sym);
 

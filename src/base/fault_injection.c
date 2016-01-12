@@ -34,19 +34,12 @@
 
 #if !defined(NDEBUG)
 
-static int fi_handler_exit (THREAD_ENTRY * thread_p, void *arg,
-			    const char *caller_file, const int caller_line);
-static int fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg,
-				   const char *caller_file,
-				   const int caller_line);
-static int fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg,
-				   const char *caller_file,
-				   const int caller_line);
-static int fi_handler_hang (THREAD_ENTRY * thread_p, void *arg,
-			    const char *caller_file, const int caller_line);
+static int fi_handler_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
+static int fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
+static int fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
+static int fi_handler_hang (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 
-static FI_TEST_ITEM *fi_code_item (THREAD_ENTRY * thread_p,
-				   FI_TEST_CODE code);
+static FI_TEST_ITEM *fi_code_item (THREAD_ENTRY * thread_p, FI_TEST_CODE code);
 
 /******************************************************************************
  *
@@ -114,12 +107,10 @@ fi_thread_init (THREAD_ENTRY * thread_p)
 
   if (thread_p->fi_test_array == NULL)
     {
-      thread_p->fi_test_array =
-	(FI_TEST_ITEM *) malloc (sizeof (fi_Test_array));
+      thread_p->fi_test_array = (FI_TEST_ITEM *) malloc (sizeof (fi_Test_array));
       if (thread_p->fi_test_array == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (fi_Test_array));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (fi_Test_array));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -231,8 +222,7 @@ fi_set (THREAD_ENTRY * thread_p, FI_TEST_CODE code, int state)
   FI_TEST_ITEM *item = NULL;
 
 
-  if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS,
-					   (int) code) == false)
+  if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS, (int) code) == false)
     {
       return NO_ERROR;
     }
@@ -265,8 +255,7 @@ fi_set_force (THREAD_ENTRY * thread_p, FI_TEST_CODE code, int state)
 {
   FI_TEST_ITEM *item = NULL;
 
-  if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS,
-					   (int) code) == false)
+  if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS, (int) code) == false)
     {
       return NO_ERROR;
     }
@@ -309,13 +298,12 @@ fi_reset (THREAD_ENTRY * thread_p, FI_TEST_CODE code)
  *   state(in):
  */
 int
-fi_test (THREAD_ENTRY * thread_p, FI_TEST_CODE code, void *arg, int state,
-	 const char *caller_file, const int caller_line)
+fi_test (THREAD_ENTRY * thread_p, FI_TEST_CODE code, void *arg, int state, const char *caller_file,
+	 const int caller_line)
 {
   FI_TEST_ITEM *item = NULL;
 
-  if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS,
-					   (int) code) == false)
+  if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS, (int) code) == false)
     {
       return NO_ERROR;
     }
@@ -347,8 +335,7 @@ fi_state (THREAD_ENTRY * thread_p, FI_TEST_CODE code)
 {
   FI_TEST_ITEM *item = NULL;
 
-  if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS,
-					   (int) code) == false)
+  if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS, (int) code) == false)
     {
       return FI_INIT_STATE;
     }
@@ -369,8 +356,7 @@ fi_state (THREAD_ENTRY * thread_p, FI_TEST_CODE code)
 bool
 fi_test_on (FI_TEST_CODE code)
 {
-  return sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS,
-					      (int) code);
+  return sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS, (int) code);
 }
 
 
@@ -382,8 +368,7 @@ fi_test_on (FI_TEST_CODE code)
  *   arg(in):
  */
 static int
-fi_handler_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_file,
-		 const int caller_line)
+fi_handler_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line)
 {
   exit (0);
 
@@ -398,8 +383,7 @@ fi_handler_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_file,
  *   arg(in):
  */
 static int
-fi_handler_hang (THREAD_ENTRY * thread_p, void *arg, const char *caller_file,
-		 const int caller_line)
+fi_handler_hang (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line)
 {
   while (true)
     {
@@ -410,8 +394,7 @@ fi_handler_hang (THREAD_ENTRY * thread_p, void *arg, const char *caller_file,
 }
 
 static int
-fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg,
-			const char *caller_file, const int caller_line)
+fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line)
 {
   static bool init = false;
   int r;
@@ -443,11 +426,10 @@ fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg,
 #endif
   if ((r % mod_factor) == 0)
     {
-      er_set (ER_NOTIFICATION_SEVERITY, caller_file, caller_line,
-	      ER_FAILED_ASSERTION, 1, "fault injection: random exit");
+      er_set (ER_NOTIFICATION_SEVERITY, caller_file, caller_line, ER_FAILED_ASSERTION, 1,
+	      "fault injection: random exit");
 
-      if (prm_get_bool_value
-	  (PRM_ID_FAULT_INJECTION_ACTION_PREFER_ABORT_TO_EXIT))
+      if (prm_get_bool_value (PRM_ID_FAULT_INJECTION_ACTION_PREFER_ABORT_TO_EXIT))
 	{
 	  abort ();
 	}
@@ -461,8 +443,7 @@ fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg,
 }
 
 static int
-fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg,
-			const char *caller_file, const int caller_line)
+fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line)
 {
   static bool init = false;
   int r;
@@ -486,8 +467,8 @@ fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg,
 
   if ((r % mod_factor) == 0)
     {
-      er_set (ER_NOTIFICATION_SEVERITY, caller_file, caller_line,
-	      ER_FAILED_ASSERTION, 1, "fault injection: random fail");
+      er_set (ER_NOTIFICATION_SEVERITY, caller_file, caller_line, ER_FAILED_ASSERTION, 1,
+	      "fault injection: random fail");
 
       return ER_FAILED;
     }

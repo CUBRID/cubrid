@@ -64,13 +64,11 @@ main (int argc, char *argv[])
 
   if (argc < 4)
     {
-      printf ("%s <broker-name> [<cas-number>] <conf-name> <conf-value>\n",
-	      argv[0]);
+      printf ("%s <broker-name> [<cas-number>] <conf-name> <conf-value>\n", argv[0]);
       exit (0);
     }
 
-  if (broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL,
-			  0, NULL, NULL, NULL) < 0)
+  if (broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL, 0, NULL, NULL, NULL) < 0)
     {
       printf ("config file error\n");
       exit (0);
@@ -103,8 +101,7 @@ main (int argc, char *argv[])
 
   admin_err_msg[0] = '\0';
 
-  if (admin_conf_change (master_shm_id,
-			 br_name, conf_name, conf_value, as_number) < 0)
+  if (admin_conf_change (master_shm_id, br_name, conf_name, conf_value, as_number) < 0)
     {
       printf ("%s\n", admin_err_msg);
       exit (0);

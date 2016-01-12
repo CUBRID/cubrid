@@ -124,10 +124,8 @@ static void col_initialize (void);
 static DB_VALUE *new_block (long n);
 static DB_VALUE *realloc_block (DB_VALUE * in_block, long n);
 
-static void col_merge_run (COL * col, DB_VALUE ** runs, long run1start,
-			   long run1stop, long run2start, long run2stop);
-static void col_merge_runs (COL * col, DB_VALUE ** runs, long runsize,
-			    long top);
+static void col_merge_run (COL * col, DB_VALUE ** runs, long run1start, long run1stop, long run2start, long run2stop);
+static void col_merge_runs (COL * col, DB_VALUE ** runs, long runsize, long top);
 static int col_successive_merge (COL * col, long top);
 static long col_move_nulls (COL * col);
 
@@ -136,8 +134,7 @@ static void col_null_values (COL * col, long bottomvalue, long topvalue);
 static int col_expand_blocks (COL * col, long blockindex, long blockoffset);
 
 static long non_null_index (COL * col, long lower, long upper);
-static long col_bsearch (COL * col, long lower, long upper, long *found,
-			 DB_VALUE * val, int do_coerce);
+static long col_bsearch (COL * col, long lower, long upper, long *found, DB_VALUE * val, int do_coerce);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int col_is_all_null (COL * col);
 #endif
@@ -147,14 +144,13 @@ static void free_set_reference (DB_COLLECTION * ref);
 static void merge_set_references (COL * set, DB_COLLECTION * ref);
 #endif
 
-static int set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
-		   DB_COLLECTION ** result, DB_DOMAIN * domain, SETOBJ_OP op);
+static int set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2, DB_COLLECTION ** result,
+		   DB_DOMAIN * domain, SETOBJ_OP op);
 
 static SET_ITERATOR *make_iterator (void);
 static void free_iterator (SET_ITERATOR * it);
 
-static int assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest,
-			     bool implicit_coercion);
+static int assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest, bool implicit_coercion);
 static int check_set_object (DB_VALUE * var, int *removed_ptr);
 
 
@@ -171,8 +167,7 @@ set_area_init (void)
 
   if (Set_Ref_Area == NULL)
     {
-      Set_Ref_Area = area_create ("Set references",
-				  sizeof (DB_COLLECTION), SET_AREA_COUNT);
+      Set_Ref_Area = area_create ("Set references", sizeof (DB_COLLECTION), SET_AREA_COUNT);
       if (Set_Ref_Area == NULL)
 	{
 	  goto error;
@@ -181,8 +176,7 @@ set_area_init (void)
 
   if (Set_Obj_Area == NULL)
     {
-      Set_Obj_Area = area_create ("Set objects",
-				  sizeof (COL), SET_AREA_COUNT);
+      Set_Obj_Area = area_create ("Set objects", sizeof (COL), SET_AREA_COUNT);
       if (Set_Obj_Area == NULL)
 	{
 	  goto error;
@@ -265,8 +259,7 @@ realloc_block (DB_VALUE * in_block, long n)
   if (in_block)
     {
       block = BLOCK_START (in_block);
-      block =
-	(COL_BLOCK *) db_private_realloc (NULL, block, COLBLOCKSIZE (n));
+      block = (COL_BLOCK *) db_private_realloc (NULL, block, COLBLOCKSIZE (n));
     }
   else
     {
@@ -346,8 +339,7 @@ col_value_compare (DB_VALUE * a, DB_VALUE * b)
  */
 
 static void
-col_merge_run (COL * col, DB_VALUE ** runs,
-	       long run1start, long run1stop, long run2start, long run2stop)
+col_merge_run (COL * col, DB_VALUE ** runs, long run1start, long run1stop, long run2start, long run2stop)
 {
   DB_VALUE block1[COL_BLOCK_SIZE], block2[COL_BLOCK_SIZE];
   DB_VALUE *thisblock, *secondblock;
@@ -376,8 +368,7 @@ col_merge_run (COL * col, DB_VALUE ** runs,
 	{
 	  smallest = run1start++;
 	}
-      else if (col_value_compare (INDEX (col, run1start),
-				  INDEX (col, run2start)) <= 0)
+      else if (col_value_compare (INDEX (col, run1start), INDEX (col, run2start)) <= 0)
 	{
 	  smallest = run1start++;
 	}
@@ -390,8 +381,7 @@ col_merge_run (COL * col, DB_VALUE ** runs,
       /* if we have emptied a block, add it to our free runs space */
       if (BLOCK (smallest + 1) != BLOCK (smallest))
 	{
-	  /* we have just finished emptying a block. add it
-	   * to the available runs blocks */
+	  /* we have just finished emptying a block. add it to the available runs blocks */
 	  runs[freeblocksindex++] = col->array[BLOCK (smallest)];
 	}
 
@@ -409,8 +399,7 @@ col_merge_run (COL * col, DB_VALUE ** runs,
 
 	  if (secondblockfull)
 	    {
-	      memcpy (runs[runsindex++], thisblock,
-		      COL_BLOCK_SIZE * sizeof (DB_VALUE));
+	      memcpy (runs[runsindex++], thisblock, COL_BLOCK_SIZE * sizeof (DB_VALUE));
 	    }
 	  /* from now on, the second block is always full */
 	  secondblockfull = 1;
@@ -431,8 +420,7 @@ col_merge_run (COL * col, DB_VALUE ** runs,
     {
       /* if the second block is full, copy it */
       secondblock = (thisblock == block1) ? block2 : block1;
-      memcpy (runs[runsindex++], secondblock,
-	      COL_BLOCK_SIZE * sizeof (DB_VALUE));
+      memcpy (runs[runsindex++], secondblock, COL_BLOCK_SIZE * sizeof (DB_VALUE));
     }
   if (tempindex > 0)
     {
@@ -479,17 +467,14 @@ col_merge_runs (COL * col, DB_VALUE ** runs, long runsize, long top)
 	{
 	  in2stop = top;
 	}
-      col_merge_run (col, &runs[BLOCK (in1start)],
-		     in1start, in1stop, in2start, in2stop);
+      col_merge_run (col, &runs[BLOCK (in1start)], in1start, in1stop, in2start, in2stop);
       /* last block merged */
       topblock = BLOCK (in2stop);
       in1start = in2stop + 1;
       in1stop = in1start + (COL_BLOCK_SIZE * runsize) - 1;
     }
 
-  /* Last, reset the block array of the collection from the temporary
-   * runs array.
-   */
+  /* Last, reset the block array of the collection from the temporary runs array. */
 
   /* This handles case 1 above, by not copying over the unmerged run */
   inblock = 0;
@@ -565,10 +550,8 @@ col_move_nulls (COL * col)
 	{
 	  bottom++;
 	}
-      /* here we must satisfy the loop exit condition, or
-       * bottom indexes a NULL, and top does not.
-       * If that is the case, we switch bottom and top values.
-       */
+      /* here we must satisfy the loop exit condition, or bottom indexes a NULL, and top does not. If that is the case, 
+       * we switch bottom and top values. */
       if (bottom < top)
 	{
 	  temp = *INDEX (col, top);
@@ -616,15 +599,11 @@ col_sort (COL * col)
   /* first sort each contigous block */
   for (i = 0; i < topblock; i++)
     {
-      qsort (col->array[i], COL_BLOCK_SIZE, sizeof (DB_VALUE),
-	     (SORT_CMP_FUNC) col_value_compare);
+      qsort (col->array[i], COL_BLOCK_SIZE, sizeof (DB_VALUE), (SORT_CMP_FUNC) col_value_compare);
     }
-  qsort (col->array[topblock], OFFSET (top) + 1, sizeof (DB_VALUE),
-	 (SORT_CMP_FUNC) col_value_compare);
+  qsort (col->array[topblock], OFFSET (top) + 1, sizeof (DB_VALUE), (SORT_CMP_FUNC) col_value_compare);
 
-  /* now each block is a sorted run. We can sort the rest be
-   * successively merging runs until we have one run left
-   */
+  /* now each block is a sorted run. We can sort the rest be successively merging runs until we have one run left */
   error = col_successive_merge (col, top);
 
   if (debug_level > 1)
@@ -660,15 +639,11 @@ col_expand_array (COL * col, long blockindex)
 
   if (col->array)
     {
-      col->array = db_private_realloc (NULL, col->array,
-				       EXPAND (blockindex) *
-				       sizeof (DB_VALUE *));
+      col->array = db_private_realloc (NULL, col->array, EXPAND (blockindex) * sizeof (DB_VALUE *));
     }
   else
     {
-      col->array = db_private_alloc (NULL,
-				     EXPAND (blockindex) *
-				     sizeof (DB_VALUE *));
+      col->array = db_private_alloc (NULL, EXPAND (blockindex) * sizeof (DB_VALUE *));
     }
   if (!col->array)
     {
@@ -729,10 +704,8 @@ col_expand_blocks (COL * col, long blockindex, long blockoffset)
 
   if (blockindex > col->topblock)
     {
-      /* If the old top block was less than a full block,
-       * allocate a full block for it. Note its unfilled
-       * db_values will still be initialized below.
-       */
+      /* If the old top block was less than a full block, allocate a full block for it. Note its unfilled db_values
+       * will still be initialized below. */
       if (col->topblockcount < BLOCKING_LESS1 && col->topblock >= 0)
 	{
 	  block = realloc_block (col->array[col->topblock], BLOCKING_LESS1);
@@ -742,10 +715,8 @@ col_expand_blocks (COL * col, long blockindex, long blockoffset)
 	      return er_errid ();
 	    }
 	  col->array[col->topblock] = block;
-	  /* The next statment is just maintaining the invariant that
-	   * topblockcount is the size of the top block. Immediately below,
-	   * we will reset both topblock and topblockcount.
-	   */
+	  /* The next statment is just maintaining the invariant that topblockcount is the size of the top block.
+	   * Immediately below, we will reset both topblock and topblockcount. */
 	  col->topblockcount = BLOCKING_LESS1;
 	}
 
@@ -871,10 +842,8 @@ col_new (long size, int settype)
       col->sorted = 1;		/* start off assuming sort */
       col->may_have_temporary_oids = 0;
 
-      /* Pre-allocate arrays when size is available, this is particularly
-       * important for sequences.  When pre-allocating sets & multisets, must
-       * set the size back down as the elements do not logically exist yet
-       */
+      /* Pre-allocate arrays when size is available, this is particularly important for sequences.  When pre-allocating 
+       * sets & multisets, must set the size back down as the elements do not logically exist yet */
       err = col_expand (col, size - 1);
       if (err)
 	{
@@ -901,9 +870,7 @@ col_new (long size, int settype)
 	      col->domain = &tp_Vobj_domain;
 	      break;
 	    default:
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_SET_INVALID_DOMAIN, 1,
-		      pr_type_name ((DB_TYPE) settype));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SET_INVALID_DOMAIN, 1, pr_type_name ((DB_TYPE) settype));
 	      setobj_free (col);
 	      col = NULL;
 	      break;
@@ -957,7 +924,7 @@ non_null_index (COL * col, long lower, long upper)
 	}
       else if (!DB_IS_NULL (&col->array[midblock][BLOCKING_LESS1]))
 	{
-	  /* highest entry in mid is non-NULL,  look to the high side */
+	  /* highest entry in mid is non-NULL, look to the high side */
 	  lowblock = midblock + 1;
 	}
       else
@@ -966,14 +933,10 @@ non_null_index (COL * col, long lower, long upper)
 	  lowblock = highblock = midblock;
 	}
     }
-  /* here lowblock should point to a block containing one of the
-   * end points of the non-NULL to NULL transitions. If the first
-   * value is NULL, the non-null index is one less than the index
-   * of that value. (could be -1).
-   */
+  /* here lowblock should point to a block containing one of the end points of the non-NULL to NULL transitions. If the 
+   * first value is NULL, the non-null index is one less than the index of that value. (could be -1). */
   offset = 0;
-  while (offset < COL_BLOCK_SIZE
-	 && !DB_IS_NULL (&col->array[lowblock][offset]))
+  while (offset < COL_BLOCK_SIZE && !DB_IS_NULL (&col->array[lowblock][offset]))
     {
       offset++;
     }
@@ -1005,8 +968,7 @@ non_null_index (COL * col, long lower, long upper)
  */
 
 static long
-col_bsearch (COL * col, long lower, long upper, long *found,
-	     DB_VALUE * val, int do_coerce)
+col_bsearch (COL * col, long lower, long upper, long *found, DB_VALUE * val, int do_coerce)
 {
   long lowblock, highblock, midblock, offset, midoffset, compare;
 
@@ -1026,27 +988,20 @@ col_bsearch (COL * col, long lower, long upper, long *found,
 	  /* value is left of/lower than the middle block */
 	  highblock = midblock - 1;
 	}
-      else if (tp_value_compare (val,
-				 &col->array[midblock][BLOCKING_LESS1],
-				 do_coerce, 1) > 0)
+      else if (tp_value_compare (val, &col->array[midblock][BLOCKING_LESS1], do_coerce, 1) > 0)
 	{
 	  /* value is right of/higher than middle block */
 	  lowblock = midblock + 1;
 	}
       else
 	{
-	  /* value's position falls on midblock, or first on the next block
-	   * or we have a whole string of equal values in midblock that
-	   * are equal to val, so it does not really much matter which
-	   * we pick */
+	  /* value's position falls on midblock, or first on the next block or we have a whole string of equal values
+	   * in midblock that are equal to val, so it does not really much matter which we pick */
 	  lowblock = highblock = midblock;
 	}
     }
-  /* here lowblock should point to a block containing the largest
-   * value less than the passed in value.
-   * Determine the offset of an equal or the first greater value.
-   * of that value. (could be -1).
-   */
+  /* here lowblock should point to a block containing the largest value less than the passed in value. Determine the
+   * offset of an equal or the first greater value. of that value. (could be -1). */
   offset = 0;
   compare = 1;
   if (lowblock == BLOCK (upper))
@@ -1060,9 +1015,7 @@ col_bsearch (COL * col, long lower, long upper, long *found,
 
   while (offset <= midoffset && compare > 0)
     {
-      compare = tp_value_compare (val,
-				  &col->array[lowblock][offset], do_coerce,
-				  1);
+      compare = tp_value_compare (val, &col->array[lowblock][offset], do_coerce, 1);
       if (compare > 0)
 	{
 	  offset++;		/* have not found position yet */
@@ -1095,8 +1048,7 @@ col_has_null (COL * col)
     }
 
   /* in ordered collections, NULL's are at the end */
-  if (col->sorted
-      && (col->coltype == DB_TYPE_SET || col->coltype == DB_TYPE_MULTISET))
+  if (col->sorted && (col->coltype == DB_TYPE_SET || col->coltype == DB_TYPE_MULTISET))
     {
       return DB_IS_NULL (INDEX (col, col->size - 1));
     }
@@ -1131,7 +1083,7 @@ col_is_all_null (COL * col)
 {
   long i;
 
-  /*
+  /* 
    *  The collection pointer should be verified before this function is
    *  called.  But, just in case it isn't well say that a NULL collection
    *  or a collection of size o is all NULL's.
@@ -1141,12 +1093,11 @@ col_is_all_null (COL * col)
       return 1;
     }
 
-  /*
+  /* 
    *  In ordered collections, NULL's are at the end.  So if the first
    *  element is NULL, all of them must be.
    */
-  if (col->sorted
-      && (col->coltype == DB_TYPE_SET || col->coltype == DB_TYPE_MULTISET))
+  if (col->sorted && (col->coltype == DB_TYPE_SET || col->coltype == DB_TYPE_MULTISET))
     {
       return DB_IS_NULL (INDEX (col, 0));
     }
@@ -1200,7 +1151,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	{
 	  /* append to end */
 	  /* ANSI puts NULLs at end of set collections for comparison */
-	  /*
+	  /* 
 	   * since NULL is not equal to NULL, the insertion index
 	   * returned for sequences might as well be at the end where
 	   * its checp to insert.
@@ -1209,7 +1160,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	}
       else
 	{
-	  /*
+	  /* 
 	   * hack, if the collection contains temporary OIDs, we're forced to
 	   * use a linear search as the numeric OID can change without warning.
 	   * Unfortunate but not very easy to perform effeciently without segmenting
@@ -1219,21 +1170,19 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	   *
 	   */
 #if !defined(SERVER_MODE)
-	  if (col->sorted && col->coltype != DB_TYPE_SEQUENCE
-	      && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
+	  if (col->sorted && col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	    {
 
 	      DB_OBJECT *obj = DB_GET_OBJECT (val);
 	      if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 		{
-		  /* we're inserting a temp OID, must force the collection
-		   * to become unsorted */
+		  /* we're inserting a temp OID, must force the collection to become unsorted */
 		  col->sorted = 0;
 		}
 	    }
 #endif
 
-	  /*
+	  /* 
 	   * Unsorted sets were introduced to deal with temporary/permanent
 	   * oids on the client, but are now also used as an optimization for
 	   * multisets, which are now sorted only on demand. Sorting them
@@ -1247,7 +1196,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	      insertindex = non_null_index (col, 0, col->lastinsert);
 	      if (insertindex < 0)
 		{
-		  /*
+		  /* 
 		   * all set values were NULL. Will not find val.
 		   * insert at beginning.
 		   */
@@ -1255,63 +1204,45 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 		}
 	      else
 		{
-		  /* determine which side of last insertion index to
-		   * search from. */
-		  compare = tp_value_compare (val,
-					      INDEX (col, insertindex),
-					      do_coerce, 1);
+		  /* determine which side of last insertion index to search from. */
+		  compare = tp_value_compare (val, INDEX (col, insertindex), do_coerce, 1);
 		  if (compare == DB_UNK)
 		    {
 		      insertindex = ER_GENERIC_ERROR;
 		    }
 		  else if (compare > 0)
 		    {
-		      rightindex =
-			non_null_index (col, insertindex, col->size - 1);
+		      rightindex = non_null_index (col, insertindex, col->size - 1);
 		      if (rightindex == insertindex)
 			{
-			  /* the insertion point is after all non-null values
-			   * the value is NOT found.
-			   * just return the next index
-			   */
+			  /* the insertion point is after all non-null values the value is NOT found. just return the
+			   * next index */
 			  insertindex++;
 			}
 		      else
 			{
-			  insertindex =
-			    col_bsearch (col, insertindex, rightindex, found,
-					 val, do_coerce);
+			  insertindex = col_bsearch (col, insertindex, rightindex, found, val, do_coerce);
 			}
 		    }
 		  else if (compare < 0)
 		    {
-		      /* value falls before current insert index. Look for
-		       * it on the left (between 0 and index).
-		       */
-		      insertindex = col_bsearch (col, 0, insertindex,
-						 found, val, do_coerce);
+		      /* value falls before current insert index. Look for it on the left (between 0 and index). */
+		      insertindex = col_bsearch (col, 0, insertindex, found, val, do_coerce);
 		    }
 		  else
 		    {
-		      /* compare must == 0, we are done lookin,
-		       * and we found the value */
+		      /* compare must == 0, we are done lookin, and we found the value */
 		      *found = 1;
 		      if (col->coltype == DB_TYPE_MULTISET)
 			{
-			  /* may find a long sequence of equal values.
-			   * for efficient insertsion/deletion, choose the
-			   * last in such a sequence.
-			   * This is done by a binary search for the left
-			   * most larger (unequal) value.
-			   * */
-			  rightindex =
-			    non_null_index (col, insertindex, col->size - 1);
+			  /* may find a long sequence of equal values. for efficient insertsion/deletion, choose the
+			   * last in such a sequence. This is done by a binary search for the left most larger
+			   * (unequal) value. */
+			  rightindex = non_null_index (col, insertindex, col->size - 1);
 			  while (insertindex < rightindex - 1)
 			    {
 			      temp = (insertindex + rightindex) / 2;
-			      compare =
-				tp_value_compare (val, INDEX (col, temp),
-						  do_coerce, 1);
+			      compare = tp_value_compare (val, INDEX (col, temp), do_coerce, 1);
 			      if (compare == 0)
 				{
 				  insertindex = temp;
@@ -1331,8 +1262,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	      /* sequence of unordered values. Must do sequential search */
 	      while (insertindex < col->size)
 		{
-		  if (tp_value_compare
-		      (val, INDEX (col, insertindex), do_coerce, 1) == 0)
+		  if (tp_value_compare (val, INDEX (col, insertindex), do_coerce, 1) == 0)
 		    {
 		      *found = 1;
 		      break;
@@ -1384,11 +1314,8 @@ col_put (COL * col, long colindex, DB_VALUE * val)
       blockindex = BLOCK (colindex);
       offset = OFFSET (colindex);
 
-      /* check for temporary OIDs, isn't this where we should
-       * be clearing the sorted flag too ?
-       */
-      if (col->coltype != DB_TYPE_SEQUENCE
-	  && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
+      /* check for temporary OIDs, isn't this where we should be clearing the sorted flag too ? */
+      if (col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	{
 	  DB_OBJECT *obj = DB_GET_OBJECT (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
@@ -1397,10 +1324,8 @@ col_put (COL * col, long colindex, DB_VALUE * val)
 	    }
 	}
 
-      /* If this should be cloned, the caller should do it.
-       * This primitive just allows the assignment to the
-       * right location in the collection
-       */
+      /* If this should be cloned, the caller should do it. This primitive just allows the assignment to the right
+       * location in the collection */
       col->array[blockindex][offset] = *val;
     }
 
@@ -1425,17 +1350,13 @@ col_initialize (void)
   debug_level = 1;
 #endif
 
-  /* Calculate the largest collect_block offset that will fit in
-   * the workspace "quick" size. */
+  /* Calculate the largest collect_block offset that will fit in the workspace "quick" size. */
 #define WS_MAX_QUICK_SIZE       1024
 
-  collection_quick_offset = 1 +
-    (WS_MAX_QUICK_SIZE - (sizeof (struct collect_block))) / sizeof (DB_VALUE);
+  collection_quick_offset = 1 + (WS_MAX_QUICK_SIZE - (sizeof (struct collect_block))) / sizeof (DB_VALUE);
 
-  /* make sure that collection quick offset is smaller than
-   * COL_BLOCK_SIZE. Otherwise, it will disable the more
-   * efficient block handling.
-   */
+  /* make sure that collection quick offset is smaller than COL_BLOCK_SIZE. Otherwise, it will disable the more
+   * efficient block handling. */
   if (collection_quick_offset >= COL_BLOCK_SIZE)
     {
       collection_quick_offset = COL_BLOCK_SIZE / 2;
@@ -1496,9 +1417,8 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
       topblock = col->topblock;
       topblockcount = col->topblockcount;
 
-      /* Before shifting, decrement topblock down to our fill pointer,
-       * there is no need to move pre-allocated NULL values around
-       */
+      /* Before shifting, decrement topblock down to our fill pointer, there is no need to move pre-allocated NULL
+       * values around */
       fillblock = BLOCK (col->size - 1);
       if (fillblock < topblock)
 	{
@@ -1508,16 +1428,11 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
 
       if (topblock > blockindex)
 	{
-	  /* for all the blocks greater than the insertion block,
-	   * we must move all the db_values UP one space.
-	   */
+	  /* for all the blocks greater than the insertion block, we must move all the db_values UP one space. */
 	  while (topblock > blockindex)
 	    {
-	      memmove (&col->array[topblock][1],
-		       &col->array[topblock][0],
-		       topblockcount * sizeof (DB_VALUE));
-	      col->array[topblock][0] =
-		col->array[topblock - 1][BLOCKING_LESS1];
+	      memmove (&col->array[topblock][1], &col->array[topblock][0], topblockcount * sizeof (DB_VALUE));
+	      col->array[topblock][0] = col->array[topblock - 1][BLOCKING_LESS1];
 	      topblock--;
 	      topblockcount = BLOCKING_LESS1;
 	    }
@@ -1530,16 +1445,12 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
       /* shift the values from this block up one. */
       while (topoffset > offset)
 	{
-	  col->array[blockindex][topoffset] =
-	    col->array[blockindex][topoffset - 1];
+	  col->array[blockindex][topoffset] = col->array[blockindex][topoffset - 1];
 	  topoffset--;
 	}
 
-      /* check for temporary OIDs, isn't this where we should
-       * be clearing the sorted flag too ?
-       */
-      if (col->coltype != DB_TYPE_SEQUENCE
-	  && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
+      /* check for temporary OIDs, isn't this where we should be clearing the sorted flag too ? */
+      if (col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	{
 	  DB_OBJECT *obj = DB_GET_OBJECT (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
@@ -1548,10 +1459,8 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
 	    }
 	}
 
-      /* If this should be cloned, the caller should do it.
-       * This primitive just allows the assignment to the
-       * right location in the collection
-       */
+      /* If this should be cloned, the caller should do it. This primitive just allows the assignment to the right
+       * location in the collection */
       col->array[blockindex][offset] = *val;
       PRIM_SET_NULL (val);
       col->lastinsert = colindex;
@@ -1609,13 +1518,10 @@ col_delete (COL * col, long colindex)
 
   if (fillblock > blockindex)
     {
-      /* for all the blocks greater than the insertion block,
-       * we must move all the db_values DOWN one space.
-       */
+      /* for all the blocks greater than the insertion block, we must move all the db_values DOWN one space. */
       while (blockindex < fillblock)
 	{
-	  col->array[blockindex][BLOCKING_LESS1] =
-	    col->array[blockindex + 1][0];
+	  col->array[blockindex][BLOCKING_LESS1] = col->array[blockindex + 1][0];
 	  blockindex++;
 	  if (blockindex < topblock)
 	    {
@@ -1625,20 +1531,16 @@ col_delete (COL * col, long colindex)
 	    {
 	      topblockcount = col->topblockcount;
 	    }
-	  memmove (&col->array[blockindex][0],
-		   &col->array[blockindex][1],
-		   topblockcount * sizeof (DB_VALUE));
+	  memmove (&col->array[blockindex][0], &col->array[blockindex][1], topblockcount * sizeof (DB_VALUE));
 	}
     }
 
-  /* Now that we're finished shifting the DB_VALUES down by one, we need
-     to NULL the un-used DB_VALUE at the end so that we know that it's
-     available for use later (i.e. we don't want to run pr_clear_value()
-     on it later because it may contain pointers to data which was copied
-     to other DB_VALUEs during the shift operations).
-
-     Also, just in case the DB_VALUE pointed to an object, set the
-     object pointer to NULL so that the GC doesn't get confused. - JB */
+  /* Now that we're finished shifting the DB_VALUES down by one, we need to NULL the un-used DB_VALUE at the end so
+   * that we know that it's available for use later (i.e. we don't want to run pr_clear_value() on it later because it
+   * may contain pointers to data which was copied to other DB_VALUEs during the shift operations).
+   * 
+   * Also, just in case the DB_VALUE pointed to an object, set the object pointer to NULL so that the GC doesn't get
+   * confused. - JB */
   PRIM_SET_NULL (INDEX (col, (col->size - 1)));
   INDEX (col, (col->size - 1))->data.op = NULL;
 
@@ -1714,13 +1616,9 @@ col_add (COL * col, DB_VALUE * val)
 
       if (i < col->size - COL_BLOCK_SIZE)
 	{
-	  /* heuristic to avoid quadratic set creation.
-	   * if we are moving more than a block, its likely
-	   * we are entering quadratic behavior. Simply insert
-	   * at the end, and mark the set unsorted.
-	   * It will be sorted later on demand if need be,
-	   * and this sort will be logarithmic instead of
-	   * quadratic. */
+	  /* heuristic to avoid quadratic set creation. if we are moving more than a block, its likely we are entering
+	   * quadratic behavior. Simply insert at the end, and mark the set unsorted. It will be sorted later on demand 
+	   * if need be, and this sort will be logarithmic instead of quadratic. */
 	  i = col->size;
 	  col->sorted = 0;
 	}
@@ -1728,13 +1626,9 @@ col_add (COL * col, DB_VALUE * val)
 
       break;
     case DB_TYPE_MULTISET:
-      /* if the collection is not sorted, put the new one at the
-       * cheapest position, the end.
-       */
+      /* if the collection is not sorted, put the new one at the cheapest position, the end. */
       found = 0;
-      /* note that do_coerce is NOT on for multisets, important
-       * to preserve order in random heterogenous multisets.
-       */
+      /* note that do_coerce is NOT on for multisets, important to preserve order in random heterogenous multisets. */
 
       if (col->sorted)
 	{
@@ -1758,14 +1652,9 @@ col_add (COL * col, DB_VALUE * val)
 
       if (i < col->size - COL_BLOCK_SIZE)
 	{
-	  /* heuristic to avoid quadratic multiset creation.
-	   * if we are moving more than a block, its likely
-	   * we are entering quadratic behavior. Simply insert
-	   * at the end, and mark the multiset unsorted.
-	   * It will be sorted later on demand if need be,
-	   * and this sort will be logarithmic instead of
-	   * quadratic.
-	   */
+	  /* heuristic to avoid quadratic multiset creation. if we are moving more than a block, its likely we are
+	   * entering quadratic behavior. Simply insert at the end, and mark the multiset unsorted. It will be sorted
+	   * later on demand if need be, and this sort will be logarithmic instead of quadratic. */
 	  i = col->size;
 	  col->sorted = 0;
 	}
@@ -1847,11 +1736,8 @@ col_drop_nulls (COL * col)
       return error;
     }
 
-  /*  In ordered collections, NULLs are at the end.  So delete until we
-   *  find one that isn't NULL.
-   */
-  if (col->sorted && (col->coltype == DB_TYPE_SET
-		      || col->coltype == DB_TYPE_MULTISET))
+  /* In ordered collections, NULLs are at the end.  So delete until we find one that isn't NULL. */
+  if (col->sorted && (col->coltype == DB_TYPE_SET || col->coltype == DB_TYPE_MULTISET))
     {
       for (i = col->size - 1; i >= 0; i--)
 	{
@@ -1866,8 +1752,7 @@ col_drop_nulls (COL * col)
 	}
     }
 
-  /*  Unsorted collections must be scanned entirely.
-   */
+  /* Unsorted collections must be scanned entirely. */
   else
     {
       for (i = col->size - 1; i >= 0; i--)
@@ -1909,9 +1794,8 @@ col_permanent_oids (COL * col)
 	}
       else
 	{
-	  /* Whip through the elements building a lockset for any temporary
-	   * objects. If none are found, there's nothing to do.
-	   */
+	  /* Whip through the elements building a lockset for any temporary objects. If none are found, there's nothing 
+	   * to do. */
 	  tcount = 0;
 
 	  for (i = 0; i < col->size && !error; i++)
@@ -1936,11 +1820,9 @@ col_permanent_oids (COL * col)
 			}
 		    }
 		}
-	      else if (DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_SET
-		       || DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_MULTISET)
+	      else if (DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_SET || DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_MULTISET)
 		{
-		  /* recurse and make sure any nested set is also
-		   * assigned permanent oids and sorted */
+		  /* recurse and make sure any nested set is also assigned permanent oids and sorted */
 		  set_optimize (DB_GET_SET (val));
 		}
 	    }
@@ -1991,28 +1873,23 @@ setvobj_compare (COL * set1, COL * set2, int do_coercion, int total_order)
 {
   int cmp = DB_UNK;
 
-  if ((set1->size == 3) && (set2->size == 3)
-      && (set1->coltype == DB_TYPE_SEQUENCE || set1->coltype == DB_TYPE_VOBJ)
+  if ((set1->size == 3) && (set2->size == 3) && (set1->coltype == DB_TYPE_SEQUENCE || set1->coltype == DB_TYPE_VOBJ)
       && (set2->coltype == DB_TYPE_SEQUENCE || set2->coltype == DB_TYPE_VOBJ))
     {
       cmp = DB_EQ;
       if (DB_VALUE_DOMAIN_TYPE (&set1->array[0][2]) != DB_TYPE_OID)
 	{
-	  cmp = tp_value_compare (&set1->array[0][1], &set2->array[0][1],
-				  do_coercion, 1);
+	  cmp = tp_value_compare (&set1->array[0][1], &set2->array[0][1], do_coercion, 1);
 	}
       if (cmp == DB_EQ)
 	{
-	  cmp = tp_value_compare (&set1->array[0][2], &set2->array[0][2],
-				  do_coercion, total_order);
+	  cmp = tp_value_compare (&set1->array[0][2], &set2->array[0][2], do_coercion, total_order);
 	}
       else
 	{
 	  if (cmp == DB_UNK)
 	    {
-	      /* one of set1->array[0][1] or set2->array[0][2]
-	       * must be NULL.
-	       */
+	      /* one of set1->array[0][1] or set2->array[0][2] must be NULL. */
 	      cmp = DB_IS_NULL (&set1->array[0][1]) ? DB_LT : DB_GT;
 	    }
 	}
@@ -2104,10 +1981,8 @@ free_set_reference (DB_COLLECTION * ref)
 {
   DB_COLLECTION *r;
 
-  /* if refcount has become so large that the int goes negative,
-   * don't bother to free it, there is probably something wrong
-   * in the application anyway
-   */
+  /* if refcount has become so large that the int goes negative, don't bother to free it, there is probably something
+   * wrong in the application anyway */
   if (ref == NULL)
     {
       return;
@@ -2129,9 +2004,7 @@ free_set_reference (DB_COLLECTION * ref)
 
   if (r == ref)
     {
-      /* we're the only one in the list, and this is an unconnected
-       * set, free the set object too
-       */
+      /* we're the only one in the list, and this is an unconnected set, free the set object too */
       if (ref->set)
 	{
 	  /* always NULL the reference cache in the set */
@@ -2317,8 +2190,7 @@ set_get_setobj (DB_COLLECTION * ref, COL ** setptr, int for_write)
 	char *mem;
 	if (set == NULL && ref->owner != NULL)
 	  {
-	    error = obj_locate_attribute (ref->owner, ref->attribute,
-					  for_write, &mem, NULL);
+	    error = obj_locate_attribute (ref->owner, ref->attribute, for_write, &mem, NULL);
 	    if (error == NO_ERROR && mem != NULL)
 	      {
 		/* this should be a PRIM level accessor */
@@ -2431,8 +2303,7 @@ set_disconnect (DB_COLLECTION * ref)
  */
 
 DB_COLLECTION *
-set_change_owner (DB_COLLECTION * ref, MOP owner, int attid,
-		  TP_DOMAIN * domain)
+set_change_owner (DB_COLLECTION * ref, MOP owner, int attid, TP_DOMAIN * domain)
 {
   DB_COLLECTION *new_ = NULL;
 #if !defined(SERVER_MODE)
@@ -2447,17 +2318,15 @@ set_change_owner (DB_COLLECTION * ref, MOP owner, int attid,
 
   if (ref == NULL || current == NULL)
     {
-      /* this indicates an unbound set reference with no owner,
-         shouldn't happen, probably should have better error here */
+      /* this indicates an unbound set reference with no owner, shouldn't happen, probably should have better error
+       * here */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
     }
   else
     {
       pin = ws_pin (ref->owner, 1);
 
-      if (ref->owner == NULL
-	  || (ws_is_same_object (ref->owner, owner)
-	      && ref->attribute == attid))
+      if (ref->owner == NULL || (ws_is_same_object (ref->owner, owner) && ref->attribute == attid))
 	{
 	  new_ = ref;
 	}
@@ -2798,12 +2667,9 @@ set_add_element (DB_COLLECTION * set, DB_VALUE * value)
 	      class_mop = ws_class_mop (set->owner);
 	      assert (ws_get_lock (set->owner) == X_LOCK
 		      || (class_mop != NULL
-			  && (ws_get_lock (class_mop) == X_LOCK
-			      || ws_get_lock (class_mop) == SCH_M_LOCK)));
+			  && (ws_get_lock (class_mop) == X_LOCK || ws_get_lock (class_mop) == SCH_M_LOCK)));
 #endif
-	      /* the caller should have holden a lock already
-	       * we need write lock here
-	       */
+	      /* the caller should have holden a lock already we need write lock here */
 	      error = obj_lock (set->owner, 1);
 	      if (error == NO_ERROR)
 		{
@@ -2881,12 +2747,9 @@ set_put_element (DB_COLLECTION * set, int index, DB_VALUE * value)
 	  class_mop = ws_class_mop (set->owner);
 	  assert (ws_get_lock (set->owner) == X_LOCK
 		  || (class_mop != NULL
-		      && (ws_get_lock (class_mop) == X_LOCK
-			  || ws_get_lock (class_mop) == SCH_M_LOCK)));
+		      && (ws_get_lock (class_mop) == X_LOCK || ws_get_lock (class_mop) == SCH_M_LOCK)));
 #endif
-	  /* the caller should have holden a lock already
-	   * we need write lock here
-	   */
+	  /* the caller should have holden a lock already we need write lock here */
 	  error = obj_lock (set->owner, 1);
 	  if (error == NO_ERROR)
 	    {
@@ -2946,12 +2809,9 @@ set_insert_element (DB_COLLECTION * set, int index, DB_VALUE * value)
 	  class_mop = ws_class_mop (set->owner);
 	  assert (ws_get_lock (set->owner) == X_LOCK
 		  || (class_mop != NULL
-		      && (ws_get_lock (class_mop) == X_LOCK
-			  || ws_get_lock (class_mop) == SCH_M_LOCK)));
+		      && (ws_get_lock (class_mop) == X_LOCK || ws_get_lock (class_mop) == SCH_M_LOCK)));
 #endif
-	  /* the caller should have holden a lock already
-	   * we need write lock here
-	   */
+	  /* the caller should have holden a lock already we need write lock here */
 	  error = obj_lock (set->owner, 1);
 	  if (error == NO_ERROR)
 	    {
@@ -3009,12 +2869,9 @@ set_drop_element (DB_COLLECTION * set, DB_VALUE * value, bool match_nulls)
 	  class_mop = ws_class_mop (set->owner);
 	  assert (ws_get_lock (set->owner) == X_LOCK
 		  || (class_mop != NULL
-		      && (ws_get_lock (class_mop) == X_LOCK
-			  || ws_get_lock (class_mop) == SCH_M_LOCK)));
+		      && (ws_get_lock (class_mop) == X_LOCK || ws_get_lock (class_mop) == SCH_M_LOCK)));
 #endif
-	  /* the caller should have holden a lock already
-	   * we need write lock here
-	   */
+	  /* the caller should have holden a lock already we need write lock here */
 	  error = obj_lock (set->owner, 1);
 	  if (error == NO_ERROR)
 	    {
@@ -3072,12 +2929,9 @@ set_drop_seq_element (DB_COLLECTION * set, int index)
 	  class_mop = ws_class_mop (set->owner);
 	  assert (ws_get_lock (set->owner) == X_LOCK
 		  || (class_mop != NULL
-		      && (ws_get_lock (class_mop) == X_LOCK
-			  || ws_get_lock (class_mop) == SCH_M_LOCK)));
+		      && (ws_get_lock (class_mop) == X_LOCK || ws_get_lock (class_mop) == SCH_M_LOCK)));
 #endif
-	  /* the caller should have holden a lock already
-	   * we need write lock here
-	   */
+	  /* the caller should have holden a lock already we need write lock here */
 	  error = obj_lock (set->owner, 1);
 	  if (error == NO_ERROR)
 	    {
@@ -3382,8 +3236,7 @@ set_ismember (DB_COLLECTION * set, DB_VALUE * value)
  */
 
 int
-set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op,
-	    int do_coercion)
+set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op, int do_coercion)
 {
   COL *obj;
   int issome = -1;
@@ -3508,8 +3361,7 @@ set_get_domain (DB_COLLECTION * set)
  */
 
 int
-set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2,
-		   int do_coercion, int total_order)
+set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order)
 {
   COL *obj1, *obj2;
   int status = DB_UNK;
@@ -3539,8 +3391,7 @@ set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2,
 	  pin2 = ws_pin (set2->owner, 1);
 #endif
 
-	  status =
-	    setobj_compare_order (obj1, obj2, do_coercion, total_order);
+	  status = setobj_compare_order (obj1, obj2, do_coercion, total_order);
 
 #if !defined(SERVER_MODE)
 	  (void) ws_pin (set2->owner, pin2);
@@ -3617,8 +3468,7 @@ set_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion)
  */
 
 int
-set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2,
-		 int do_coercion, int total_order)
+set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order)
 {
   COL *obj1, *obj2;
   int status = DB_UNK;
@@ -3647,8 +3497,7 @@ set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2,
 #if !defined(SERVER_MODE)
 	  pin2 = ws_pin (set2->owner, 1);
 #endif
-	  status =
-	    setobj_compare_order (obj1, obj2, do_coercion, total_order);
+	  status = setobj_compare_order (obj1, obj2, do_coercion, total_order);
 
 #if !defined(SERVER_MODE)
 	  (void) ws_pin (set2->owner, pin2);
@@ -3672,8 +3521,7 @@ set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2,
  */
 
 int
-vobj_compare (DB_COLLECTION * set1, DB_COLLECTION * set2,
-	      int do_coercion, int total_order)
+vobj_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order)
 {
   COL *obj1, *obj2;
   int status = DB_UNK;
@@ -3948,8 +3796,8 @@ set_filter (DB_COLLECTION * set)
  */
 
 static int
-set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
-	DB_COLLECTION ** result, DB_DOMAIN * domain, SETOBJ_OP op)
+set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2, DB_COLLECTION ** result, DB_DOMAIN * domain,
+	SETOBJ_OP op)
 {
   COL *col1, *col2;
   int error = NO_ERROR;
@@ -3988,13 +3836,10 @@ set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
       goto error_exit;
     }
 
-  /* if the result type is a set type, we must have both arguments
-   * coerced to a set type so we can count on ascending value order
-   */
-  if (col1->coltype != DB_TYPE_SET
-      && col1->coltype != DB_TYPE_MULTISET
-      && (TP_DOMAIN_TYPE (domain) == DB_TYPE_SET
-	  || TP_DOMAIN_TYPE (domain) == DB_TYPE_MULTISET))
+  /* if the result type is a set type, we must have both arguments coerced to a set type so we can count on ascending
+   * value order */
+  if (col1->coltype != DB_TYPE_SET && col1->coltype != DB_TYPE_MULTISET
+      && (TP_DOMAIN_TYPE (domain) == DB_TYPE_SET || TP_DOMAIN_TYPE (domain) == DB_TYPE_MULTISET))
     {
       col1 = setobj_coerce (col1, domain, IMPLICIT);
       if (!col1)
@@ -4005,17 +3850,12 @@ set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
 	}
     }
 
-  if (col2->coltype != DB_TYPE_SET
-      && col2->coltype != DB_TYPE_MULTISET
-      && (TP_DOMAIN_TYPE (domain) == DB_TYPE_SET
-	  || TP_DOMAIN_TYPE (domain) == DB_TYPE_MULTISET))
+  if (col2->coltype != DB_TYPE_SET && col2->coltype != DB_TYPE_MULTISET
+      && (TP_DOMAIN_TYPE (domain) == DB_TYPE_SET || TP_DOMAIN_TYPE (domain) == DB_TYPE_MULTISET))
     {
-      /* we have a slightly weaker test for differences second argument
-       * than complete domain compatibility. It is sufficient to
-       * coerce it to a multiset.
-       */
-      col2 = setobj_coerce (col2, op == setobj_difference
-			    ? &tp_Multiset_domain : domain, IMPLICIT);
+      /* we have a slightly weaker test for differences second argument than complete domain compatibility. It is
+       * sufficient to coerce it to a multiset. */
+      col2 = setobj_coerce (col2, op == setobj_difference ? &tp_Multiset_domain : domain, IMPLICIT);
       if (!col2)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -4023,9 +3863,7 @@ set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
 	  goto error_exit;
 	}
     }
-  /* At this point, we know we have two sorted collections.
-   * and a result of the correct domain.
-   */
+  /* At this point, we know we have two sorted collections. and a result of the correct domain. */
 
   error = (*op) (col1, col2, (*result)->set);
 
@@ -4035,9 +3873,7 @@ error_exit:
   (void) ws_pin (collection2->owner, pin2);
 #endif
 
-  /* check to see if we had to coerce (copy) the input argumanets.
-   * If so, free them.
-   */
+  /* check to see if we had to coerce (copy) the input argumanets. If so, free them. */
   if (col1 != collection1->set)
     {
       setobj_free (col1);
@@ -4073,9 +3909,7 @@ error_exit:
  */
 
 int
-set_difference (DB_COLLECTION * collection1,
-		DB_COLLECTION * collection2,
-		DB_COLLECTION ** result, DB_DOMAIN * domain)
+set_difference (DB_COLLECTION * collection1, DB_COLLECTION * collection2, DB_COLLECTION ** result, DB_DOMAIN * domain)
 {
   return set_op (collection1, collection2, result, domain, setobj_difference);
 }
@@ -4098,9 +3932,7 @@ set_difference (DB_COLLECTION * collection1,
  */
 
 int
-set_union (DB_COLLECTION * collection1,
-	   DB_COLLECTION * collection2,
-	   DB_COLLECTION ** result, DB_DOMAIN * domain)
+set_union (DB_COLLECTION * collection1, DB_COLLECTION * collection2, DB_COLLECTION ** result, DB_DOMAIN * domain)
 {
   return set_op (collection1, collection2, result, domain, setobj_union);
 }
@@ -4123,12 +3955,9 @@ set_union (DB_COLLECTION * collection1,
  */
 
 int
-set_intersection (DB_COLLECTION * collection1,
-		  DB_COLLECTION * collection2,
-		  DB_COLLECTION ** result, DB_DOMAIN * domain)
+set_intersection (DB_COLLECTION * collection1, DB_COLLECTION * collection2, DB_COLLECTION ** result, DB_DOMAIN * domain)
 {
-  return set_op (collection1, collection2, result, domain,
-		 setobj_intersection);
+  return set_op (collection1, collection2, result, domain, setobj_intersection);
 }
 
 /*
@@ -4235,16 +4064,12 @@ set_optimize (DB_COLLECTION * ref)
 
   error = NO_ERROR;
 
-  /* If the set is decached, then its too late, it will already have
-   * been flushed.  If its in the workspace, then we only need to do something
-   * if this is an unsorted set or multiset.
-   */
+  /* If the set is decached, then its too late, it will already have been flushed.  If its in the workspace, then we
+   * only need to do something if this is an unsorted set or multiset. */
   if (ref && ref->set != NULL && !ref->set->sorted)
     {
 
-      /* Might want to avoid marking the object dirty if there's nothing
-       * we can do with the set.
-       */
+      /* Might want to avoid marking the object dirty if there's nothing we can do with the set. */
       error = set_get_setobj (ref, &col, 1);
       if (error != NO_ERROR)
 	{
@@ -4330,10 +4155,8 @@ set_iterate (DB_COLLECTION * set)
   SET_ITERATOR *it;
   int error = NO_ERROR;
 
-  /* pain in the ass, can't iterate on attached objects yet until we figure
-     out how to pin them reliably, and more importantly, how to release
-     the pin !
-   */
+  /* pain in the ass, can't iterate on attached objects yet until we figure out how to pin them reliably, and more
+   * importantly, how to release the pin ! */
   if (set == NULL || set->owner != NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -4697,9 +4520,8 @@ setobj_find_temporary_oids (SETOBJ * col, LC_OIDSET * oidset)
 	    }
 	  else if (TP_IS_SET_TYPE (type))
 	    {
-	      /* its a nested set, recurse, since we must already be pinned
-	       * don't have to worry about pinning the nested set.
-	       */
+	      /* its a nested set, recurse, since we must already be pinned don't have to worry about pinning the
+	       * nested set. */
 	      ref = DB_GET_SET (val);
 	      if (ref && ref->set != NULL)
 		{
@@ -4712,9 +4534,7 @@ setobj_find_temporary_oids (SETOBJ * col, LC_OIDSET * oidset)
 	    }
 	}
 
-      /* if we made it through a traversal and didn't encounter any temporary
-       * oids, then we can turn this flag off.
-       */
+      /* if we made it through a traversal and didn't encounter any temporary oids, then we can turn this flag off. */
       if (tempoids == 0)
 	{
 	  col->may_have_temporary_oids = 0;
@@ -4762,23 +4582,17 @@ setobj_check_domain (COL * col, TP_DOMAIN * domain)
   status = DOMAIN_COMPATIBLE;
 
   /* if any of these conditions are true, the domains are compatible */
-  /* -bk, I don't understand the above comment. Presumably "false" is
-   * meant, since the code will return compatible if any of the tests
-   * is false. However, that appears to be broken as well, since
-   * a NULL domain by no means guarantees compatibility.
-   * Perhaps this should start with setobj_get_domain?
-   * Anyway, I'm not so sure of this to change the logic now,
-   * and am leaving the test as I found it.
-   */
-  if (col->domain != NULL && col->domain != domain
-      && !tp_domain_compatible (col->domain, domain))
+  /* -bk, I don't understand the above comment. Presumably "false" is meant, since the code will return compatible if
+   * any of the tests is false. However, that appears to be broken as well, since a NULL domain by no means guarantees
+   * compatibility. Perhaps this should start with setobj_get_domain? Anyway, I'm not so sure of this to change the
+   * logic now, and am leaving the test as I found it. */
+  if (col->domain != NULL && col->domain != domain && !tp_domain_compatible (col->domain, domain))
     {
 
       /* couldn't do it simply, have to look at each element */
       for (i = 0; i < col->size && status == DOMAIN_COMPATIBLE; i++)
 	{
-	  status = tp_domain_check (domain->setdomain, INDEX (col, i),
-				    TP_EXACT_MATCH);
+	  status = tp_domain_check (domain->setdomain, INDEX (col, i), TP_EXACT_MATCH);
 	}
     }
 
@@ -4801,9 +4615,8 @@ setobj_get_domain (COL * set)
     {
       return set->domain;
     }
-  /* Set without an owner and without a domain, this isn't
-   * supposed to happen any more.  Slam in one of the built-in domains.
-   */
+  /* Set without an owner and without a domain, this isn't supposed to happen any more.  Slam in one of the built-in
+   * domains. */
   switch (set->coltype)
     {
     case DB_TYPE_SET:
@@ -4820,8 +4633,7 @@ setobj_get_domain (COL * set)
       break;
     default:
       /* what is it? must be a structure error */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SET_INVALID_DOMAIN,
-	      1, "NULL set domain");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SET_INVALID_DOMAIN, 1, "NULL set domain");
       break;
     }
 
@@ -4860,10 +4672,8 @@ swizzle_value (DB_VALUE * val, int input)
     {
       return;
     }
-  /* We always convert incoming "NULL oid" references into a NULL value.
-   * This makes set elements consistent with OIDs assigned to attribute
-   * values and is very important for proper comparison of VOBJ sets.
-   */
+  /* We always convert incoming "NULL oid" references into a NULL value. This makes set elements consistent with OIDs
+   * assigned to attribute values and is very important for proper comparison of VOBJ sets. */
   oid = db_get_oid (val);
   if (oid == NULL)
     {
@@ -4877,19 +4687,15 @@ swizzle_value (DB_VALUE * val, int input)
   else
     {
 #if !defined(SERVER_MODE)
-      /* If we're on the client, and this is a value being extracted,
-       * convert it to a DB_OBJECT* reference.
-       * We could do this on input too in order to get better type
-       * checking.  Since this only happens in the internal functions
-       * for building VOBJ sequences and those sequences have the wildcard
-       * domain, we don't really need to swizzle the OIDs or do type checking.
-       */
+      /* If we're on the client, and this is a value being extracted, convert it to a DB_OBJECT* reference. We could do 
+       * this on input too in order to get better type checking.  Since this only happens in the internal functions for 
+       * building VOBJ sequences and those sequences have the wildcard domain, we don't really need to swizzle the OIDs 
+       * or do type checking. */
       if (!db_on_server && !input)
 	{
 	  DB_OBJECT *mop;
 	  mop = ws_mop (oid, NULL);
-	  db_value_domain_init (val, DB_TYPE_OBJECT,
-				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	  db_value_domain_init (val, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  DB_MAKE_OBJECT (val, mop);
 	}
 #endif /* !SERVER_MODE */
@@ -4914,22 +4720,17 @@ swizzle_value (DB_VALUE * val, int input)
  */
 
 static int
-assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest,
-		  bool implicit_coercion)
+assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest, bool implicit_coercion)
 {
   int error = NO_ERROR, is_ref = 0;
   TP_DOMAIN_STATUS status;
   TP_DOMAIN *domain;
   DB_VALUE temp;
 
-  /* On the client, always swizzle incoming OID's so we can properly check
-   * their domains.  On the server, we'll have to trust it until
-   * tp_domain_check understands how to do domain verification using
-   * just OIDs.
-   * Do this into a temp buffer so we can leave the input value constant.
-   * This will only change for OID-OBJECT conversion which
-   * don't have to be freed.
-   */
+  /* On the client, always swizzle incoming OID's so we can properly check their domains.  On the server, we'll have to 
+   * trust it until tp_domain_check understands how to do domain verification using just OIDs. Do this into a temp
+   * buffer so we can leave the input value constant. This will only change for OID-OBJECT conversion which don't have
+   * to be freed. */
   temp = *src;
   swizzle_value (&temp, 1);
 
@@ -4941,8 +4742,7 @@ assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest,
     }
   if (is_ref > 0)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-	      ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
       return ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED;
     }
 #endif
@@ -4956,12 +4756,9 @@ assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest,
     }
   else
     {
-      /* Request an exact match so we know if there is any coercion to be
-       * performed.
-       * This is especially important for set elements since we use "setval" to
-       * assign the value and this doesn't have enough information to perform
-       * deferred coercion if that's what we need.
-       */
+      /* Request an exact match so we know if there is any coercion to be performed. This is especially important for
+       * set elements since we use "setval" to assign the value and this doesn't have enough information to perform
+       * deferred coercion if that's what we need. */
       status = tp_domain_check (domain->setdomain, &temp, TP_EXACT_MATCH);
       if (status == DOMAIN_COMPATIBLE)
 	{
@@ -4970,8 +4767,7 @@ assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest,
       else
 	{
 	  /* try coercion */
-	  status = tp_value_cast (&temp, dest, domain->setdomain,
-				  implicit_coercion);
+	  status = tp_value_cast (&temp, dest, domain->setdomain, implicit_coercion);
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
 	      /* handle all non-compatible states as a domain failure */
@@ -5029,9 +4825,7 @@ check_set_object (DB_VALUE * var, int *removed_ptr)
     {
       if (mop->is_vid)
 	{
-	  error = au_fetch_instance (mop, NULL, AU_FETCH_READ,
-				     TM_TRAN_READ_FETCH_VERSION (),
-				     AU_SELECT);
+	  error = au_fetch_instance (mop, NULL, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
 	  if (error != NO_ERROR)
 	    {
 	      WS_SET_DELETED (mop);
@@ -5090,9 +4884,8 @@ setobj_filter (COL * col, int filter, int *cardptr)
 
   card = 0;
 
-  /*  We need to loop backwards here since we may be deleting values
-   *  and everything after that value will be shift down one index
-   */
+  /* We need to loop backwards here since we may be deleting values and everything after that value will be shift down
+   * one index */
   for (i = col->size - 1; i >= 0; i--)
     {
       var = INDEX (col, i);
@@ -5343,8 +5136,7 @@ setobj_compare (COL * set1, COL * set2, int do_coercion)
 	}
       else
 	{
-	  /* next, guarantee sorted preconditions.
-	   */
+	  /* next, guarantee sorted preconditions. */
 	  if (!set1->sorted)
 	    {
 	      error = setobj_sort (set1);
@@ -5364,14 +5156,10 @@ setobj_compare (COL * set1, COL * set2, int do_coercion)
 	      set2_could_be_subset = 1;
 	      index1 = 0;
 	      index2 = 0;
-	      while (index1 < set1->size
-		     && index2 < set2->size
-		     && (set1_could_be_subset || set2_could_be_subset)
+	      while (index1 < set1->size && index2 < set2->size && (set1_could_be_subset || set2_could_be_subset)
 		     && status == DB_EQ)
 		{
-		  rc = tp_value_compare (INDEX (set1, index1),
-					 INDEX (set2, index2),
-					 do_coercion, 0);
+		  rc = tp_value_compare (INDEX (set1, index1), INDEX (set2, index2), do_coercion, 0);
 		  switch (rc)
 		    {
 		    case DB_EQ:	/* element appears in both sets */
@@ -5386,8 +5174,7 @@ setobj_compare (COL * set1, COL * set2, int do_coercion)
 		      index2++;
 		      set2_could_be_subset = 0;
 		      break;
-		    case DB_UNK:	/* a NULL encountered
-					 *  (also unexpected results) */
+		    case DB_UNK:	/* a NULL encountered (also unexpected results) */
 		    default:
 		      status = DB_UNK;
 		      break;
@@ -5443,8 +5230,7 @@ setobj_compare (COL * set1, COL * set2, int do_coercion)
  */
 
 int
-setobj_compare_order (COL * set1, COL * set2,
-		      int do_coercion, int total_order)
+setobj_compare_order (COL * set1, COL * set2, int do_coercion, int total_order)
 {
   int i, rc;
   int error = NO_ERROR;
@@ -5472,8 +5258,7 @@ setobj_compare_order (COL * set1, COL * set2,
       return DB_EQ;
     }
 
-  /* guarantee sorted preconditions.
-   */
+  /* guarantee sorted preconditions. */
   if (!set1->sorted)
     {
       error = setobj_sort (set1);
@@ -5491,8 +5276,7 @@ setobj_compare_order (COL * set1, COL * set2,
   /* same size, compare elements until order is determined */
   for (i = 0; i < set1->size; i++)
     {
-      rc = tp_value_compare (INDEX (set1, i),
-			     INDEX (set2, i), do_coercion, total_order);
+      rc = tp_value_compare (INDEX (set1, i), INDEX (set2, i), do_coercion, total_order);
       if (rc != DB_EQ)
 	{
 	  return rc;
@@ -5556,17 +5340,11 @@ setobj_difference (COL * set1, COL * set2, COL * result)
 	      index1++;		/* SHOULD be in result */
 	      error = setobj_add_element (result, val1);
 	      break;
-	    case DB_UNK:	/* a NULL encountered
-				 * (also unexpected results) */
-	    default:		/* NULL's are not equal to nulls.
-				 * so {NULL} - {NULL} is = {NULL}
-				 * ie, the first value result SHOULD
-				 * be added to the result.
-				 */
-	      /* At least one of these must be a collection with an
-	       * embedded NULL, we need to increment to the next
-	       * pair of values, but must check again to see
-	       * which index to increase for total ordering. */
+	    case DB_UNK:	/* a NULL encountered (also unexpected results) */
+	    default:		/* NULL's are not equal to nulls. so {NULL} - {NULL} is = {NULL} ie, the first value
+				 * result SHOULD be added to the result. */
+	      /* At least one of these must be a collection with an embedded NULL, we need to increment to the next
+	       * pair of values, but must check again to see which index to increase for total ordering. */
 	      rc = tp_value_compare (val1, val2, 1, 1);
 	      if (rc == DB_GT)
 		{
@@ -5640,8 +5418,7 @@ setobj_union (COL * set1, COL * set2, COL * result)
       /* compare elements in ascending order */
       index1 = 0;
       index2 = 0;
-      while (index1 < set1->size && index2 < set2->size
-	     && !(error < NO_ERROR))
+      while (index1 < set1->size && index2 < set2->size && !(error < NO_ERROR))
 	{
 	  val1 = INDEX (set1, index1);
 	  val2 = INDEX (set2, index2);
@@ -5661,13 +5438,9 @@ setobj_union (COL * set1, COL * set2, COL * result)
 
 	      switch (rc)
 		{
-		case DB_UNK:	/* a NULL encountered
-				 * (also unexpected results) */
-		default:	/* NULL's are not equal to nulls.
-				 * so {NULL} + {NULL} is = {NULL, NULL}
-				 * even with sets.
-				 * ie. both should be added to the result.
-				 */
+		case DB_UNK:	/* a NULL encountered (also unexpected results) */
+		default:	/* NULL's are not equal to nulls. so {NULL} + {NULL} is = {NULL, NULL} even with sets.
+				 * ie. both should be added to the result. */
 		case DB_EQ:	/* element appears in both sets */
 		  index1++;	/* both should be in result */
 		  index2++;
@@ -5739,10 +5512,8 @@ setobj_intersection (COL * set1, COL * set2, COL * result)
       if (DB_IS_NULL (val1) || DB_IS_NULL (val2))
 	{
 	  /* NULL never equals NULL, so {NULL} * {NULL} = {} */
-	  /* NULLs are at the end, so once we have hit one
-	   * from either collection, we will never get another
-	   * equality match, and can bail out.
-	   */
+	  /* NULLs are at the end, so once we have hit one from either collection, we will never get another equality
+	   * match, and can bail out. */
 	  break;
 	}
       else
@@ -5762,17 +5533,11 @@ setobj_intersection (COL * set1, COL * set2, COL * result)
 	    case DB_LT:	/* element of first set not in second */
 	      index1++;		/* should NOT be in result */
 	      break;
-	    case DB_UNK:	/* a NULL encountered
-				 * (also unexpected results) */
-	    default:		/* NULL's are not equal to nulls.
-				 * so {NULL} * {NULL} is = {}
-				 * ie, the value should NOT
-				 * be added to the result.
-				 */
-	      /* At least one of these must be a collection with an
-	       * embedded NULL, we need to increment to the next
-	       * pair of values, but must check again to see
-	       * which side to increase for total ordering. */
+	    case DB_UNK:	/* a NULL encountered (also unexpected results) */
+	    default:		/* NULL's are not equal to nulls. so {NULL} * {NULL} is = {} ie, the value should NOT
+				 * be added to the result. */
+	      /* At least one of these must be a collection with an embedded NULL, we need to increment to the next
+	       * pair of values, but must check again to see which side to increase for total ordering. */
 	      rc = tp_value_compare (val1, val2, 1, 1);
 	      if (rc == DB_GT)
 		{
@@ -5912,8 +5677,7 @@ setobj_convert_oids_to_objects (COL * col)
 	  if (!(error < 0))
 	    {
 	      pr_clear_value (var);
-	      db_value_domain_init (var, DB_TYPE_OBJECT,
-				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	      db_value_domain_init (var, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	      DB_MAKE_OBJECT (var, mop);
 	    }
 	  break;
@@ -6034,9 +5798,7 @@ setobj_add_element (COL * col, DB_VALUE * value)
     {
       pr_clear_value (&temp);
 
-      /* to keep the interface consistent, attempting to add a
-       * duplicate value will not be considered an error
-       */
+      /* to keep the interface consistent, attempting to add a duplicate value will not be considered an error */
       if (error == SET_DUPLICATE_VALUE)
 	{
 	  error = NO_ERROR;
@@ -6069,8 +5831,7 @@ setobj_put_element (COL * col, int index, DB_VALUE * value)
   if (index < 0)
     {
       error = ER_SET_INVALID_INDEX;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SET_INVALID_INDEX,
-	      1, index);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SET_INVALID_INDEX, 1, index);
       return error;
     }
 
@@ -6118,8 +5879,7 @@ setobj_insert_element (COL * col, int index, DB_VALUE * value)
   if (index < 0)
     {
       error = ER_SET_INVALID_INDEX;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SET_INVALID_INDEX,
-	      1, index);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SET_INVALID_INDEX, 1, index);
       return error;
     }
 
@@ -6159,9 +5919,8 @@ setobj_drop_element (COL * col, DB_VALUE * value, bool match_nulls)
   CHECKNULL (col);
   CHECKNULL (value);
 
-  /*  Minor enhancement: if the value is NULL and we aren't matching NULLs,
-   *  col_drop() won't drop anything, so don't call it.
-   */
+  /* Minor enhancement: if the value is NULL and we aren't matching NULLs, col_drop() won't drop anything, so don't
+   * call it. */
 
   if (DB_IS_NULL (value))
     {
@@ -6250,8 +6009,7 @@ setobj_find_seq_element (COL * col, DB_VALUE * value, int index)
       if (found == -1)
 	{
 	  result = ER_SEQ_ELEMENT_NOT_FOUND;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		  ER_SEQ_ELEMENT_NOT_FOUND, 0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SEQ_ELEMENT_NOT_FOUND, 0);
 	}
       else
 	{
@@ -6290,9 +6048,7 @@ setobj_coerce (COL * col, TP_DOMAIN * domain, bool implicit_coercion)
     {
       return NULL;
     }
-  /* first copy the values over in the order they appear,
-   * coercing domains as we go.
-   */
+  /* first copy the values over in the order they appear, coercing domains as we go. */
   for (i = 0; i < col->size && new_ != NULL; i++)
     {
       val = INDEX (col, i);
@@ -6308,23 +6064,15 @@ setobj_coerce (COL * col, TP_DOMAIN * domain, bool implicit_coercion)
 	  new_ = NULL;
 	}
     }
-  /* next, if we are coercing to a set, sort the set.
-   * This is done in two steps, because sorting each element
-   * as its inserted is quadratic, but sorting in place is
-   * N*log2 N.
-   */
+  /* next, if we are coercing to a set, sort the set. This is done in two steps, because sorting each element as its
+   * inserted is quadratic, but sorting in place is N*log2 N. */
   if (new_ == NULL)
     {
       return NULL;
     }
-  /* if the destination is a set, and the source is
-   * not a set or is not sorted, then "new" must get sorted.
-   */
-  if ((new_->coltype == DB_TYPE_SET
-       || new_->coltype == DB_TYPE_MULTISET)
-      && (!col->sorted
-	  || (col->coltype != DB_TYPE_SET
-	      && col->coltype != DB_TYPE_MULTISET)))
+  /* if the destination is a set, and the source is not a set or is not sorted, then "new" must get sorted. */
+  if ((new_->coltype == DB_TYPE_SET || new_->coltype == DB_TYPE_MULTISET)
+      && (!col->sorted || (col->coltype != DB_TYPE_SET && col->coltype != DB_TYPE_MULTISET)))
     {
       new_->sorted = 0;
       setobj_sort (new_);
@@ -6333,14 +6081,12 @@ setobj_coerce (COL * col, TP_DOMAIN * domain, bool implicit_coercion)
   if (new_->coltype == DB_TYPE_SET)
     {
       /* make a pass to remove duplicates */
-      /* going backwards helps reduce quadratic behavior
-       * when deleting lots of identical values */
+      /* going backwards helps reduce quadratic behavior when deleting lots of identical values */
       i = new_->size - 1;
       while (i > 0)
 	{
 	  val = INDEX (new_, i);
-	  if (!DB_IS_NULL (val)
-	      && col_value_compare (val, INDEX (new_, i - 1)) == 0)
+	  if (!DB_IS_NULL (val) && col_value_compare (val, INDEX (new_, i - 1)) == 0)
 	    {
 	      col_delete (new_, i);
 	    }
@@ -6465,10 +6211,7 @@ setobj_put_value (COL * col, int index, DB_VALUE * value)
       error = col_put (col, index, value);
     }
 
-  /* if the value was added successfully,
-   * make sure caller does not inadvertantly clear or use this
-   * value container
-   */
+  /* if the value was added successfully, make sure caller does not inadvertantly clear or use this value container */
   if (error == NO_ERROR)
     {
       PRIM_SET_NULL (value);
@@ -6569,13 +6312,11 @@ setobj_build_domain_from_col (COL * col, TP_DOMAIN ** set_domain)
       for (i = 0; i < col->size; i++)
 	{
 	  DB_VALUE *curr_value = INDEX (col, i);
-	  /* force copy of component set domains: domains are chained by next
-	   * in the set domain, so cached/primary domain should not be
-	   * included in this chain; component domain is not cached - it
-	   * should be freed when collection domain is freed */
-	  TP_DOMAIN *curr_domain =
-	    tp_domain_copy (tp_domain_resolve_value (curr_value, NULL),
-			    false);
+	  /* force copy of component set domains: domains are chained by next in the set domain, so cached/primary
+	   * domain should not be included in this chain; component domain is not cached - it should be freed when
+	   * collection domain is freed */
+	  TP_DOMAIN *curr_domain = tp_domain_copy (tp_domain_resolve_value (curr_value, NULL),
+						   false);
 
 	  error_status = tp_domain_add (set_domain, curr_domain);
 	  if (error_status != NO_ERROR)

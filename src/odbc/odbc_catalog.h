@@ -31,47 +31,24 @@
 #ifndef	__ODBC_CATALOG_HEADER	/* to avoid multiple inclusion */
 #define	__ODBC_CATALOG_HEADER
 
-PUBLIC RETCODE odbc_tables (ODBC_STATEMENT * stmt,
-			    char *catalog_name,
-			    char *schema_name,
-			    char *table_name, char *table_type);
-PUBLIC RETCODE odbc_columns (ODBC_STATEMENT * stmt,
-			     char *catalog_name,
-			     char *schema_name,
-			     char *table_name, char *column_name);
-PUBLIC RETCODE odbc_statistics (ODBC_STATEMENT * stmt,
-				char *catalog_name,
-				char *schema_name,
-				char *table_name,
-				unsigned short unique,
-				unsigned short reversed);
-PUBLIC RETCODE odbc_special_columns (ODBC_STATEMENT * stmt,
-				     short identifier_type,
-				     char *catalog_name,
-				     char *schema_name,
-				     char *table_name,
-				     short scope, short nullable);
+PUBLIC RETCODE odbc_tables (ODBC_STATEMENT * stmt, char *catalog_name, char *schema_name, char *table_name,
+			    char *table_type);
+PUBLIC RETCODE odbc_columns (ODBC_STATEMENT * stmt, char *catalog_name, char *schema_name, char *table_name,
+			     char *column_name);
+PUBLIC RETCODE odbc_statistics (ODBC_STATEMENT * stmt, char *catalog_name, char *schema_name, char *table_name,
+				unsigned short unique, unsigned short reversed);
+PUBLIC RETCODE odbc_special_columns (ODBC_STATEMENT * stmt, short identifier_type, char *catalog_name,
+				     char *schema_name, char *table_name, short scope, short nullable);
 
-PUBLIC RETCODE odbc_primary_keys (ODBC_STATEMENT * stmt,
-				  char *catalog_name,
-				  char *schema_name, char *table_name);
-PUBLIC RETCODE odbc_foreign_keys (ODBC_STATEMENT * stmt,
-				  char *pk_table_name, char *fk_table_name);
-PUBLIC RETCODE odbc_table_privileges (ODBC_STATEMENT * stmt,
-				      char *catalog_name,
-				      char *schema_name, char *table_name);
-PUBLIC RETCODE odbc_procedures (ODBC_STATEMENT * stmt,
-				char *catalog_name,
-				char *schema_name, char *proc_name);
-PUBLIC RETCODE odbc_procedure_columns (ODBC_STATEMENT * stmt,
-				       char *catalog_name,
-				       char *schema_name,
-				       char *proc_name, char *column_name);
+PUBLIC RETCODE odbc_primary_keys (ODBC_STATEMENT * stmt, char *catalog_name, char *schema_name, char *table_name);
+PUBLIC RETCODE odbc_foreign_keys (ODBC_STATEMENT * stmt, char *pk_table_name, char *fk_table_name);
+PUBLIC RETCODE odbc_table_privileges (ODBC_STATEMENT * stmt, char *catalog_name, char *schema_name, char *table_name);
+PUBLIC RETCODE odbc_procedures (ODBC_STATEMENT * stmt, char *catalog_name, char *schema_name, char *proc_name);
+PUBLIC RETCODE odbc_procedure_columns (ODBC_STATEMENT * stmt, char *catalog_name, char *schema_name, char *proc_name,
+				       char *column_name);
 
 PUBLIC RETCODE odbc_get_type_info (ODBC_STATEMENT * stmt, short data_type);
-PUBLIC RETCODE odbc_get_catalog_data (ODBC_STATEMENT * stmt,
-				      short col_index,
-				      VALUE_CONTAINER * c_value);
+PUBLIC RETCODE odbc_get_catalog_data (ODBC_STATEMENT * stmt, short col_index, VALUE_CONTAINER * c_value);
 PUBLIC void free_catalog_result (ST_LIST * result, RESULT_TYPE type);
 
 #endif /* ! __ODBC_CATALOG_HEADER */

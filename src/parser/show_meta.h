@@ -61,8 +61,7 @@ struct showstmt_named_arg
   bool optional;		/* whether or not omit */
 };
 
-typedef PT_NODE *(*SHOW_SEMANTIC_CHECK_FUNC) (PARSER_CONTEXT * parser,
-					      PT_NODE * node);
+typedef PT_NODE *(*SHOW_SEMANTIC_CHECK_FUNC) (PARSER_CONTEXT * parser, PT_NODE * node);
 
 typedef struct showstmt_metadata SHOWSTMT_METADATA;
 struct showstmt_metadata
@@ -75,15 +74,13 @@ struct showstmt_metadata
   int num_orderby;		/* size of orderby array */
   const SHOWSTMT_NAMED_ARG *args;	/* argument rule */
   int arg_size;			/* size of args array */
-  SHOW_SEMANTIC_CHECK_FUNC semantic_check_func;	/* semantic check function
-						   pointer */
+  SHOW_SEMANTIC_CHECK_FUNC semantic_check_func;	/* semantic check function pointer */
   DB_ATTRIBUTE *showstmt_attrs;	/* the attribute list */
 };
 
 extern int showstmt_metadata_init (void);
 extern void showstmt_metadata_final (void);
-extern const SHOWSTMT_METADATA *showstmt_get_metadata (SHOWSTMT_TYPE
-						       show_type);
+extern const SHOWSTMT_METADATA *showstmt_get_metadata (SHOWSTMT_TYPE show_type);
 extern DB_ATTRIBUTE *showstmt_get_attributes (SHOWSTMT_TYPE show_type);
 #endif
 

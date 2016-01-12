@@ -60,8 +60,7 @@ static int cur_os_errno = 0;
  *	 previous error condition.
  */
 void
-uw_set_error_code (const char *file_name, int line_no, int error_code,
-		   int os_errno)
+uw_set_error_code (const char *file_name, int line_no, int error_code, int os_errno)
 {
   cur_error_code = error_code;
   cur_os_errno = os_errno;
@@ -128,8 +127,7 @@ uw_get_error_message (int error_code, int os_error_code)
       return (err_msg_buf);
     }
   get_error_msg (error_code, err_msg);
-  snprintf (err_msg_buf, sizeof (err_msg_buf) - 1,
-	    "%s (OS error code = %d, %s)", err_msg, os_error_code, p);
+  snprintf (err_msg_buf, sizeof (err_msg_buf) - 1, "%s (OS error code = %d, %s)", err_msg, os_error_code, p);
   return (err_msg_buf);
 }
 

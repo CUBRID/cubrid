@@ -174,8 +174,7 @@ db_namelist_sort (DB_NAMELIST * names)
   for (name = names, next = NULL; name != NULL; name = next)
     {
       next = name->next;
-      for (sort = sorted, prev = NULL, found = NULL;
-	   sort != NULL && found == NULL; sort = sort->next)
+      for (sort = sorted, prev = NULL, found = NULL; sort != NULL && found == NULL; sort = sort->next)
 	{
 	  if (strcmp (name->name, sort->name) < 0)
 	    {
@@ -263,8 +262,7 @@ db_get_attribute_names (MOP obj)
 
   if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
-      for (att = class_->attributes; att != NULL;
-	   att = (SM_ATTRIBUTE *) att->header.next)
+      for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	if (nlist_append (&names, att->header.name, NULL, NULL))
 	  {
 	    goto memory_error;
@@ -302,8 +300,7 @@ db_get_shared_attribute_names (MOP obj)
 
   if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
-      for (att = class_->shared;
-	   att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+      for (att = class_->shared; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	if (nlist_append (&names, att->header.name, NULL, NULL))
 	  {
 	    goto memory_error;
@@ -339,8 +336,7 @@ db_get_class_attribute_names (MOP obj)
 
   if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
-      for (att = class_->class_attributes; att != NULL;
-	   att = (SM_ATTRIBUTE *) att->header.next)
+      for (att = class_->class_attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	if (nlist_append (&names, att->header.name, NULL, NULL))
 	  {
 	    goto memory_error;
@@ -375,8 +371,7 @@ db_get_ordered_attribute_names (MOP obj)
 
   if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
-      for (att = class_->ordered_attributes; att != NULL;
-	   att = att->order_link)
+      for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
 	if (nlist_append (&names, att->header.name, NULL, NULL))
 	  {
 	    goto memory_error;
@@ -408,8 +403,7 @@ db_get_method_names (MOP obj)
 
   if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
-      for (meth = class_->methods;
-	   meth != NULL; meth = (SM_METHOD *) meth->header.next)
+      for (meth = class_->methods; meth != NULL; meth = (SM_METHOD *) meth->header.next)
 	if (nlist_append (&names, meth->header.name, NULL, NULL))
 	  {
 	    goto memory_error;
@@ -442,8 +436,7 @@ db_get_class_method_names (MOP obj)
 
   if (au_fetch_class (obj, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
-      for (meth = class_->class_methods;
-	   meth != NULL; meth = (SM_METHOD *) meth->header.next)
+      for (meth = class_->class_methods; meth != NULL; meth = (SM_METHOD *) meth->header.next)
 	if (nlist_append (&names, meth->header.name, NULL, NULL))
 	  {
 	    goto memory_error;
@@ -715,8 +708,7 @@ db_is_indexed (MOP classmop, const char *attname)
   CHECK_CONNECT_FALSE ();
   CHECK_2ARGS_ZERO (classmop, attname);
 
-  retval =
-    ((sm_get_index (classmop, attname, &btid) == NO_ERROR) ? true : false);
+  retval = ((sm_get_index (classmop, attname, &btid) == NO_ERROR) ? true : false);
 
   return (retval);
 }

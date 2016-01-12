@@ -183,18 +183,12 @@ typedef struct
 /* DB_DATE conversion 'format' enumeration */
 enum
 {
-  DATE_FORMAT_FULL_TEXT,	/* standard US text format.
-				   "September 15, 2008" */
-  DATE_FORMAT_ABREV_TEXT,	/* abbreviated US text format.
-				   "Sept. 15, 2008" */
-  DATE_FORMAT_FULL_TEXT_W_DAY,	/* standard US format with day name.
-				   "Thursday, March 20, 2008" */
-  DATE_FORMAT_ABREV_TEXT_W_DAY,	/* abbreviated US format with day name.
-				   "Thu, Mar 20, 2008" */
-  DATE_FORMAT_FULL_EURO_TEXT,	/* standard European text format.
-				   "10. June 2008" */
-  DATE_FORMAT_ABREV_EURO_TEXT,	/* abbreviated European format
-				   "15. Sep 1990" */
+  DATE_FORMAT_FULL_TEXT,	/* standard US text format. "September 15, 2008" */
+  DATE_FORMAT_ABREV_TEXT,	/* abbreviated US text format. "Sept. 15, 2008" */
+  DATE_FORMAT_FULL_TEXT_W_DAY,	/* standard US format with day name. "Thursday, March 20, 2008" */
+  DATE_FORMAT_ABREV_TEXT_W_DAY,	/* abbreviated US format with day name. "Thu, Mar 20, 2008" */
+  DATE_FORMAT_FULL_EURO_TEXT,	/* standard European text format. "10. June 2008" */
+  DATE_FORMAT_ABREV_EURO_TEXT,	/* abbreviated European format "15. Sep 1990" */
   DATE_FORMAT_YYMMDD,		/* YY/MM/DD format "08/06/10" */
   DATE_FORMAT_MMDDYY,		/* MM/DD/YY format "06/10/08" */
   DATE_FORMAT_DDMMYY,		/* DD/MM/YY format "10/06/08" */
@@ -218,10 +212,8 @@ enum
 
 typedef struct
 {
-  char begin_notation;		/* what character to use to denote begin of set
-				   '\0' for no character */
-  char end_notation;		/* what character to use to denote end of set
-				   '\0' for no character */
+  char begin_notation;		/* what character to use to denote begin of set '\0' for no character */
+  char end_notation;		/* what character to use to denote end of set '\0' for no character */
   int max_entries;		/* max no. of entries to display, (-1 for all) */
 } DB_TYPE_SET_PROFILE;
 
@@ -236,8 +228,7 @@ static DB_TYPE_SET_PROFILE default_set_profile = {
 
 typedef struct
 {
-  char string_delimiter;	/* the character to use for a string delimiter ('\0'
-				   for none). */
+  char string_delimiter;	/* the character to use for a string delimiter ('\0' for none). */
 } DB_TYPE_STRING_PROFILE;
 
 static DB_TYPE_STRING_PROFILE default_string_profile = {
@@ -272,31 +263,23 @@ static const char *month_of_year_names[] = {
 
 static void add_commas (char *string);
 static void strip_trailing_zeros (char *numeric_string);
-static char *double_to_string (double double_value, int field_width,
-			       int precision, const bool leading_sign,
-			       const char *leading_str,
-			       const char *trailing_str,
-			       bool leading_zeros, bool trailing_zeros,
-			       bool commas, char conversion);
+static char *double_to_string (double double_value, int field_width, int precision, const bool leading_sign,
+			       const char *leading_str, const char *trailing_str, bool leading_zeros,
+			       bool trailing_zeros, bool commas, char conversion);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static char *time_as_string (DB_TIME * time_value, const char *conversion);
 #endif
 static char *date_as_string (DB_DATE * date_value, int format);
-static char *bigint_to_string (DB_BIGINT int_value, int field_width,
-			       bool leading_zeros, bool leading_symbol,
+static char *bigint_to_string (DB_BIGINT int_value, int field_width, bool leading_zeros, bool leading_symbol,
 			       bool commas, char conversion);
 static char *object_to_string (DB_OBJECT * object, int format);
 static char *numeric_to_string (DB_VALUE * value, bool commas);
-static char *bit_to_string (DB_VALUE * value, char string_delimiter,
-			    bool plain_string);
-static char *set_to_string (DB_VALUE * value, char begin_notation,
-			    char end_notation, int max_entries,
+static char *bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string);
+static char *set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max_entries,
 			    bool plain_string);
 static char *duplicate_string (const char *string);
-static char *string_to_string (const char *string_value,
-			       char string_delimiter, char string_introducer,
-			       int length, int *result_length,
-			       bool plain_string);
+static char *string_to_string (const char *string_value, char string_delimiter, char string_introducer, int length,
+			       int *result_length, bool plain_string);
 static int get_object_print_format (void);
 
 /*
@@ -317,7 +300,7 @@ add_commas (char *string)
   num_of_digits = last_digit = num_of_commas = 0;
   string_len = strlen (string);
 
-  /*
+  /* 
    * First count the digits before the decimal place
    */
   for (i = 0; i < string_len; i++)
@@ -340,13 +323,13 @@ add_commas (char *string)
 	}
     }
 
-  /*
+  /* 
    * If no digits, exit
    */
   if (!num_of_digits)
     return;
 
-  /*
+  /* 
    * Calculate the number of commas we are going to insert
    */
   num_of_commas = num_of_digits / 3;
@@ -355,7 +338,7 @@ add_commas (char *string)
       num_of_commas--;
     }
 
-  /*
+  /* 
    * Add them if necessary
    */
   if (num_of_commas)
@@ -413,7 +396,7 @@ strip_trailing_zeros (char *numeric_string)
       return;
     }
 
-  /*
+  /* 
    * First check to see if this is even necessary
    */
   if ((prefix = strchr (numeric_string, '.')) == NULL)
@@ -421,7 +404,7 @@ strip_trailing_zeros (char *numeric_string)
       return;
     }
 
-  /*
+  /* 
    * Now count the number of trailing zeros
    */
 
@@ -482,11 +465,8 @@ strip_trailing_zeros (char *numeric_string)
  *   conversion(in): conversion format character, scientific or decimal
  */
 static char *
-double_to_string (double double_value, int field_width,
-		  int precision, const bool leading_sign,
-		  const char *leading_str, const char *trailing_str,
-		  bool leading_zeros, bool trailing_zeros,
-		  bool commas, char conversion)
+double_to_string (double double_value, int field_width, int precision, const bool leading_sign, const char *leading_str,
+		  const char *trailing_str, bool leading_zeros, bool trailing_zeros, bool commas, char conversion)
 {
   char numeric_conversion_string[1024];
   char precision_string[16];
@@ -505,8 +485,7 @@ double_to_string (double double_value, int field_width,
       precision = 0;
     }
 
-  snprintf (precision_string, sizeof (precision_string) - 1, ".%u",
-	    (int) precision);
+  snprintf (precision_string, sizeof (precision_string) - 1, ".%u", (int) precision);
 
   i = 0;
 
@@ -544,8 +523,7 @@ double_to_string (double double_value, int field_width,
       overall_fieldwidth += 4;
     }
 
-  if (!sprintf ((char *) numeric_conversion_string, (char *) format_string,
-		(int) field_width, double_value))
+  if (!sprintf ((char *) numeric_conversion_string, (char *) format_string, (int) field_width, double_value))
     {
       return (NULL);
     }
@@ -556,15 +534,13 @@ double_to_string (double double_value, int field_width,
       int leading_size = (leading_str != NULL) ? strlen (leading_str) : 0;
       int trailing_size = (trailing_str != NULL) ? strlen (trailing_str) : 0;
 
-      if ((size_t) (leading_size + actual_fieldwidth + 1) >
-	  sizeof (numeric_conversion_string))
+      if ((size_t) (leading_size + actual_fieldwidth + 1) > sizeof (numeric_conversion_string))
 	{
 	  return NULL;
 	}
       if (leading_size > 0)
 	{
-	  memmove (numeric_conversion_string + leading_size,
-		   numeric_conversion_string, actual_fieldwidth);
+	  memmove (numeric_conversion_string + leading_size, numeric_conversion_string, actual_fieldwidth);
 	  memcpy (numeric_conversion_string, leading_str, leading_size);
 
 	  numeric_conversion_string[actual_fieldwidth + leading_size] = '\0';
@@ -572,11 +548,9 @@ double_to_string (double double_value, int field_width,
 	}
 #if defined(HPUX)
       /* workaround for HP's broken printf */
-      if (strstr (numeric_conversion_string, "+.+") ||
-	  strstr (numeric_conversion_string, "++"))
+      if (strstr (numeric_conversion_string, "+.+") || strstr (numeric_conversion_string, "++"))
 	sprintf (numeric_conversion_string, "Inf");
-      if (strstr (numeric_conversion_string, "-.-") ||
-	  strstr (numeric_conversion_string, "--"))
+      if (strstr (numeric_conversion_string, "-.-") || strstr (numeric_conversion_string, "--"))
 	sprintf (numeric_conversion_string, "-Inf");
 #endif
 
@@ -586,26 +560,22 @@ double_to_string (double double_value, int field_width,
 	  actual_fieldwidth = strlen (numeric_conversion_string);
 	}
 
-      if ((size_t) (trailing_size + actual_fieldwidth + 1) >
-	  sizeof (numeric_conversion_string))
+      if ((size_t) (trailing_size + actual_fieldwidth + 1) > sizeof (numeric_conversion_string))
 	{
 	  return NULL;
 	}
 
       if (trailing_size > 0)
 	{
-	  memcpy (numeric_conversion_string + actual_fieldwidth, trailing_str,
-		  trailing_size);
+	  memcpy (numeric_conversion_string + actual_fieldwidth, trailing_str, trailing_size);
 	  numeric_conversion_string[actual_fieldwidth + trailing_size] = '\0';
 	  actual_fieldwidth += trailing_size;
 	}
 
       if (field_width == 0)
 	{
-	  if ((return_string = (char *) malloc (actual_fieldwidth +
-						COMMAS_OFFSET (commas,
-							       actual_fieldwidth)
-						+ 1)) == NULL)
+	  if ((return_string =
+	       (char *) malloc (actual_fieldwidth + COMMAS_OFFSET (commas, actual_fieldwidth) + 1)) == NULL)
 	    {
 	      return (NULL);
 	    }
@@ -613,26 +583,21 @@ double_to_string (double double_value, int field_width,
 	}
       else
 	{
-	  if ((return_string = (char *) malloc (overall_fieldwidth +
-						COMMAS_OFFSET (commas,
-							       actual_fieldwidth)
-						+ 1)) == NULL)
+	  if ((return_string =
+	       (char *) malloc (overall_fieldwidth + COMMAS_OFFSET (commas, actual_fieldwidth) + 1)) == NULL)
 	    {
 	      return (NULL);
 	    }
 	  if (actual_fieldwidth <= overall_fieldwidth)
 	    {
-	      return_string =
-		strcpy (return_string, numeric_conversion_string);
+	      return_string = strcpy (return_string, numeric_conversion_string);
 	    }
 	  else
 	    {
-	      return_string[overall_fieldwidth] =
-		numeric_conversion_string[actual_fieldwidth];
+	      return_string[overall_fieldwidth] = numeric_conversion_string[actual_fieldwidth];
 	      while (overall_fieldwidth)
 		{
-		  return_string[--overall_fieldwidth] =
-		    numeric_conversion_string[--actual_fieldwidth];
+		  return_string[--overall_fieldwidth] = numeric_conversion_string[--actual_fieldwidth];
 		}
 	    }
 	}
@@ -661,8 +626,7 @@ time_as_string (DB_TIME * time_value, const char *conversion)
       return NULL;
     }
 
-  if (!db_strftime (temp_string, (int) TIME_STRING_MAX, conversion,
-		    (DB_DATE *) NULL, time_value))
+  if (!db_strftime (temp_string, (int) TIME_STRING_MAX, conversion, (DB_DATE *) NULL, time_value))
     {
       return (NULL);
     }
@@ -697,14 +661,12 @@ date_as_string (DB_DATE * date_value, int format)
       }
       break;
     case DATE_FORMAT_FULL_TEXT:
-      (void) sprintf (temp_buffer, "%s %d, %04d",
-		      month_of_year_names[month - 1], day, year);
+      (void) sprintf (temp_buffer, "%s %d, %04d", month_of_year_names[month - 1], day, year);
       break;
     case DATE_FORMAT_ABREV_TEXT:
       {
 	char month_name[DATE_ABREV_NAME_LENGTH + 1];
-	(void) strncpy (month_name, month_of_year_names[month - 1],
-			DATE_ABREV_NAME_LENGTH);
+	(void) strncpy (month_name, month_of_year_names[month - 1], DATE_ABREV_NAME_LENGTH);
 	month_name[DATE_ABREV_NAME_LENGTH] = '\0';
 	(void) sprintf (temp_buffer, "%s %d, %04d", month_name, day, year);
       }
@@ -716,9 +678,8 @@ date_as_string (DB_DATE * date_value, int format)
 	  {
 	    return (NULL);
 	  }
-	(void) sprintf (temp_buffer, "%s, %s %d, %04d",
-			day_of_week_names[dayofweek],
-			month_of_year_names[month - 1], day, year);
+	(void) sprintf (temp_buffer, "%s, %s %d, %04d", day_of_week_names[dayofweek], month_of_year_names[month - 1],
+			day, year);
       }
       break;
     case DATE_FORMAT_ABREV_TEXT_W_DAY:
@@ -731,45 +692,37 @@ date_as_string (DB_DATE * date_value, int format)
 	  {
 	    return (NULL);
 	  }
-	(void) strncpy (day_name,
-			day_of_week_names[dayofweek], DATE_ABREV_NAME_LENGTH);
+	(void) strncpy (day_name, day_of_week_names[dayofweek], DATE_ABREV_NAME_LENGTH);
 	day_name[DATE_ABREV_NAME_LENGTH] = '\0';
-	(void) strncpy (month_name, month_of_year_names[month - 1],
-			DATE_ABREV_NAME_LENGTH);
+	(void) strncpy (month_name, month_of_year_names[month - 1], DATE_ABREV_NAME_LENGTH);
 	month_name[DATE_ABREV_NAME_LENGTH] = '\0';
-	(void) sprintf (temp_buffer, "%s, %s %d, %04d", day_name, month_name,
-			day, year);
+	(void) sprintf (temp_buffer, "%s, %s %d, %04d", day_name, month_name, day, year);
       }
       break;
     case DATE_FORMAT_FULL_EURO_TEXT:
-      (void) sprintf (temp_buffer, "%d. %s %04d",
-		      day, month_of_year_names[month - 1], year);
+      (void) sprintf (temp_buffer, "%d. %s %04d", day, month_of_year_names[month - 1], year);
       break;
     case DATE_FORMAT_ABREV_EURO_TEXT:
       {
 	char month_name[DATE_ABREV_NAME_LENGTH + 1];
-	(void) strncpy (month_name, month_of_year_names[month - 1],
-			DATE_ABREV_NAME_LENGTH);
+	(void) strncpy (month_name, month_of_year_names[month - 1], DATE_ABREV_NAME_LENGTH);
 	month_name[DATE_ABREV_NAME_LENGTH] = '\0';
 	(void) sprintf (temp_buffer, "%d. %s %04d", day, month_name, year);
       }
       break;
     case DATE_FORMAT_YYMMDD:
       {
-	(void) sprintf (temp_buffer, "%02d/%02d/%02d",
-			year % 100, month, day);
+	(void) sprintf (temp_buffer, "%02d/%02d/%02d", year % 100, month, day);
       }
       break;
     case DATE_FORMAT_MMDDYY:
       {
-	(void) sprintf (temp_buffer, "%02d/%02d/%02d", month, day,
-			year % 100);
+	(void) sprintf (temp_buffer, "%02d/%02d/%02d", month, day, year % 100);
       }
       break;
     case DATE_FORMAT_DDMMYY:
       {
-	(void) sprintf (temp_buffer, "%02d/%02d/%02d", day, month,
-			year % 100);
+	(void) sprintf (temp_buffer, "%02d/%02d/%02d", day, month, year % 100);
       }
       break;
     default:
@@ -791,8 +744,8 @@ date_as_string (DB_DATE * date_value, int format)
  *   conversion(in): conversion format charactern
  */
 static char *
-bigint_to_string (DB_BIGINT int_value, int field_width, bool leading_zeros,
-		  bool leading_symbol, bool commas, char conversion)
+bigint_to_string (DB_BIGINT int_value, int field_width, bool leading_zeros, bool leading_symbol, bool commas,
+		  char conversion)
 {
   char numeric_conversion_string[1024];
   char format_string[10];
@@ -854,8 +807,7 @@ bigint_to_string (DB_BIGINT int_value, int field_width, bool leading_zeros,
   format_string[i++] = conversion;
   format_string[i++] = (char) 0;
 
-  if (!sprintf (numeric_conversion_string, (char *) format_string,
-		(int) field_width, int_value))
+  if (!sprintf (numeric_conversion_string, (char *) format_string, (int) field_width, int_value))
     {
       return (NULL);
     }
@@ -867,39 +819,29 @@ bigint_to_string (DB_BIGINT int_value, int field_width, bool leading_zeros,
       if (field_width == 0)
 	{
 	  if ((return_string =
-	       (char *) malloc (actual_fieldwidth +
-				COMMAS_OFFSET (commas,
-					       actual_fieldwidth) + 1)) ==
-	      NULL)
+	       (char *) malloc (actual_fieldwidth + COMMAS_OFFSET (commas, actual_fieldwidth) + 1)) == NULL)
 	    {
 	      return (NULL);
 	    }
-	  (void) strcpy (return_string,
-			 (const char *) &numeric_conversion_string[0]);
+	  (void) strcpy (return_string, (const char *) &numeric_conversion_string[0]);
 	}
       else
 	{
 	  if ((return_string =
-	       (char *) malloc (overall_fieldwidth +
-				COMMAS_OFFSET (commas,
-					       actual_fieldwidth) + 1)) ==
-	      NULL)
+	       (char *) malloc (overall_fieldwidth + COMMAS_OFFSET (commas, actual_fieldwidth) + 1)) == NULL)
 	    {
 	      return (NULL);
 	    }
 	  if (actual_fieldwidth <= overall_fieldwidth)
 	    {
-	      return_string =
-		strcpy (return_string, numeric_conversion_string);
+	      return_string = strcpy (return_string, numeric_conversion_string);
 	    }
 	  else
 	    {
-	      return_string[overall_fieldwidth] =
-		numeric_conversion_string[actual_fieldwidth];
+	      return_string[overall_fieldwidth] = numeric_conversion_string[actual_fieldwidth];
 	      while (overall_fieldwidth)
 		{
-		  return_string[--overall_fieldwidth] =
-		    numeric_conversion_string[--actual_fieldwidth];
+		  return_string[--overall_fieldwidth] = numeric_conversion_string[--actual_fieldwidth];
 		}
 	    }
 	}
@@ -963,7 +905,7 @@ numeric_to_string (DB_VALUE * value, bool commas)
   int comma_length;
   int max_length;
 
-  /*
+  /* 
    * Allocate string length based on precision plus the commas plus a
    * character for each of the sign, decimal point, and NULL terminator.
    */
@@ -999,7 +941,7 @@ bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
   char *return_string;
   int max_length;
 
-  /*
+  /* 
    * Allocate string length based on precision plus the the leading
    * introducer plus quotes, and NULL terminator.  Precision / 4 (rounded up)
    * represents the number of bytes needed to represent the bit string in
@@ -1018,9 +960,7 @@ bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
       return (NULL);		/* Should never get here */
     }
 
-  return_string = string_to_string (temp_string, string_delimiter,
-				    'X', strlen (temp_string), NULL,
-				    plain_string);
+  return_string = string_to_string (temp_string, string_delimiter, 'X', strlen (temp_string), NULL, plain_string);
   free_and_init (temp_string);
 
   return (return_string);
@@ -1036,8 +976,7 @@ bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
  *   plain_string(in): refine string for plain output
  */
 static char *
-set_to_string (DB_VALUE * value, char begin_notation, char end_notation,
-	       int max_entries, bool plain_string)
+set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max_entries, bool plain_string)
 {
   int cardinality, total_string_length, i;
   char **string_array;
@@ -1052,13 +991,11 @@ set_to_string (DB_VALUE * value, char begin_notation, char end_notation,
       return (NULL);
     }
 
-  /* pre-fetch any objects in the set, this will prevent multiple
-     server calls during set rendering */
+  /* pre-fetch any objects in the set, this will prevent multiple server calls during set rendering */
   db_fetch_set (set, DB_FETCH_READ, 0);
 
-  /* formerly we filtered out deleted elements here, now just use
-     db_set_size to get the current size, including NULL & deleted
-     elements */
+  /* formerly we filtered out deleted elements here, now just use db_set_size to get the current size, including NULL & 
+   * deleted elements */
   cardinality = db_set_size (set);
 
   if (cardinality < 0)
@@ -1102,8 +1039,7 @@ set_to_string (DB_VALUE * value, char begin_notation, char end_notation,
 	{
 	  goto finalize;
 	}
-      string_array[i] =
-	csql_db_value_as_string (&element, NULL, plain_string);
+      string_array[i] = csql_db_value_as_string (&element, NULL, plain_string);
       db_value_clear (&element);
       if (string_array[i] == NULL)
 	{
@@ -1194,8 +1130,7 @@ duplicate_string (const char *string)
  *   note: replace newline and tab with escaped string
  */
 char *
-csql_string_to_plain_string (const char *string_value, int length,
-			     int *result_length)
+csql_string_to_plain_string (const char *string_value, int length, int *result_length)
 {
   char *return_string;
   char *ptr;
@@ -1256,9 +1191,8 @@ csql_string_to_plain_string (const char *string_value, int length,
     }
   *ptr = '\0';
 
-  if (csql_text_utf8_to_console != NULL &&
-      (*csql_text_utf8_to_console) (return_string, strlen (return_string),
-				    &con_buf_ptr, &con_buf_size) == NO_ERROR)
+  if (csql_text_utf8_to_console != NULL
+      && (*csql_text_utf8_to_console) (return_string, strlen (return_string), &con_buf_ptr, &con_buf_size) == NO_ERROR)
     {
       if (con_buf_ptr != NULL)
 	{
@@ -1287,9 +1221,7 @@ csql_string_to_plain_string (const char *string_value, int length,
  *   plain_string(in): refine string for plain output
  */
 static char *
-string_to_string (const char *string_value,
-		  char string_delimiter,
-		  char string_introducer, int length,
+string_to_string (const char *string_value, char string_delimiter, char string_introducer, int length,
 		  int *result_length, bool plain_string)
 {
   char *return_string;
@@ -1299,8 +1231,7 @@ string_to_string (const char *string_value,
 
   if (plain_string == true)
     {
-      return csql_string_to_plain_string (string_value, length,
-					  result_length);
+      return csql_string_to_plain_string (string_value, length, result_length);
     }
 
   if (string_delimiter == '\0')
@@ -1329,9 +1260,8 @@ string_to_string (const char *string_value,
   ptr = ptr + length + 1;
   *ptr = 0;
 
-  if (csql_text_utf8_to_console != NULL &&
-      (*csql_text_utf8_to_console) (return_string, strlen (return_string),
-				    &con_buf_ptr, &con_buf_size) == NO_ERROR)
+  if (csql_text_utf8_to_console != NULL
+      && (*csql_text_utf8_to_console) (return_string, strlen (return_string), &con_buf_ptr, &con_buf_size) == NO_ERROR)
     {
       if (con_buf_ptr != NULL)
 	{
@@ -1369,66 +1299,51 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_BIGINT:
-      result = bigint_to_string (DB_GET_BIGINT (value),
-				 default_bigint_profile.fieldwidth,
-				 default_bigint_profile.leadingzeros,
-				 default_bigint_profile.leadingsymbol,
-				 default_bigint_profile.commas,
-				 default_bigint_profile.format);
+      result =
+	bigint_to_string (DB_GET_BIGINT (value), default_bigint_profile.fieldwidth, default_bigint_profile.leadingzeros,
+			  default_bigint_profile.leadingsymbol, default_bigint_profile.commas,
+			  default_bigint_profile.format);
       if (result)
 	{
 	  len = strlen (result);
 	}
       break;
     case DB_TYPE_INTEGER:
-      result = bigint_to_string (DB_GET_INTEGER (value),
-				 default_int_profile.fieldwidth,
-				 default_int_profile.leadingzeros,
-				 default_int_profile.leadingsymbol,
-				 default_int_profile.commas,
-				 default_int_profile.format);
+      result =
+	bigint_to_string (DB_GET_INTEGER (value), default_int_profile.fieldwidth, default_int_profile.leadingzeros,
+			  default_int_profile.leadingsymbol, default_int_profile.commas, default_int_profile.format);
       if (result)
 	{
 	  len = strlen (result);
 	}
       break;
     case DB_TYPE_SHORT:
-      result = bigint_to_string (SHORT_TO_INT (DB_GET_SHORT (value)),
-				 default_short_profile.fieldwidth,
-				 default_short_profile.leadingzeros,
-				 default_short_profile.leadingsymbol,
-				 default_short_profile.commas,
-				 default_short_profile.format);
+      result =
+	bigint_to_string (SHORT_TO_INT (DB_GET_SHORT (value)), default_short_profile.fieldwidth,
+			  default_short_profile.leadingzeros, default_short_profile.leadingsymbol,
+			  default_short_profile.commas, default_short_profile.format);
       if (result)
 	{
 	  len = strlen (result);
 	}
       break;
     case DB_TYPE_FLOAT:
-      result = double_to_string ((double) DB_GET_FLOAT (value),
-				 default_float_profile.fieldwidth,
-				 default_float_profile.precision,
-				 default_float_profile.leadingsign,
-				 NULL, NULL,
-				 default_float_profile.leadingzeros,
-				 default_float_profile.trailingzeros,
-				 default_float_profile.commas,
-				 default_float_profile.format);
+      result =
+	double_to_string ((double) DB_GET_FLOAT (value), default_float_profile.fieldwidth,
+			  default_float_profile.precision, default_float_profile.leadingsign, NULL, NULL,
+			  default_float_profile.leadingzeros, default_float_profile.trailingzeros,
+			  default_float_profile.commas, default_float_profile.format);
       if (result)
 	{
 	  len = strlen (result);
 	}
       break;
     case DB_TYPE_DOUBLE:
-      result = double_to_string (DB_GET_DOUBLE (value),
-				 default_double_profile.fieldwidth,
-				 default_double_profile.precision,
-				 default_double_profile.leadingsign,
-				 NULL, NULL,
-				 default_double_profile.leadingzeros,
-				 default_double_profile.trailingzeros,
-				 default_double_profile.commas,
-				 default_double_profile.format);
+      result =
+	double_to_string (DB_GET_DOUBLE (value), default_double_profile.fieldwidth, default_double_profile.precision,
+			  default_double_profile.leadingsign, NULL, NULL, default_double_profile.leadingzeros,
+			  default_double_profile.trailingzeros, default_double_profile.commas,
+			  default_double_profile.format);
       if (result)
 	{
 	  len = strlen (result);
@@ -1451,13 +1366,10 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 
 	str = db_get_char (value, &dummy);
 	bytes_size = db_get_string_size (value);
-	if (bytes_size > 0
-	    && DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8)
+	if (bytes_size > 0 && DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
-	      unicode_string_need_decompose (str, bytes_size, &decomp_size,
-					     lang_get_generic_unicode_norm
-					     ());
+	      unicode_string_need_decompose (str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
 	  }
 
 	if (need_decomp)
@@ -1465,9 +1377,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	    decomposed = (char *) malloc (decomp_size * sizeof (char));
 	    if (decomposed != NULL)
 	      {
-		unicode_decompose_string (str, bytes_size, decomposed,
-					  &decomp_size,
-					  lang_get_generic_unicode_norm ());
+		unicode_decompose_string (str, bytes_size, decomposed, &decomp_size, lang_get_generic_unicode_norm ());
 
 		str = decomposed;
 		bytes_size = decomp_size;
@@ -1478,9 +1388,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	      }
 	  }
 
-	result = string_to_string (str,
-				   default_string_profile.string_delimiter,
-				   '\0', bytes_size, &len, plain_string);
+	result = string_to_string (str, default_string_profile.string_delimiter, '\0', bytes_size, &len, plain_string);
 
 	if (decomposed != NULL)
 	  {
@@ -1499,13 +1407,10 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 
 	str = db_get_char (value, &dummy);
 	bytes_size = db_get_string_size (value);
-	if (bytes_size > 0
-	    && DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8)
+	if (bytes_size > 0 && DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
-	      unicode_string_need_decompose (str, bytes_size, &decomp_size,
-					     lang_get_generic_unicode_norm
-					     ());
+	      unicode_string_need_decompose (str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
 	  }
 
 	if (need_decomp)
@@ -1513,9 +1418,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	    decomposed = (char *) malloc (decomp_size * sizeof (char));
 	    if (decomposed != NULL)
 	      {
-		unicode_decompose_string (str, bytes_size, decomposed,
-					  &decomp_size,
-					  lang_get_generic_unicode_norm ());
+		unicode_decompose_string (str, bytes_size, decomposed, &decomp_size, lang_get_generic_unicode_norm ());
 
 		str = decomposed;
 		bytes_size = decomp_size;
@@ -1526,9 +1429,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	      }
 	  }
 
-	result = string_to_string (str,
-				   default_string_profile.string_delimiter,
-				   'N', bytes_size, &len, plain_string);
+	result = string_to_string (str, default_string_profile.string_delimiter, 'N', bytes_size, &len, plain_string);
 
 	if (decomposed != NULL)
 	  {
@@ -1538,17 +1439,14 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       break;
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
-      result =
-	bit_to_string (value, default_string_profile.string_delimiter,
-		       plain_string);
+      result = bit_to_string (value, default_string_profile.string_delimiter, plain_string);
       if (result)
 	{
 	  len = strlen (result);
 	}
       break;
     case DB_TYPE_OBJECT:
-      result = object_to_string (DB_GET_OBJECT (value),
-				 get_object_print_format ());
+      result = object_to_string (DB_GET_OBJECT (value), get_object_print_format ());
       if (result == NULL)
 	{
 	  result = duplicate_string ("NULL");
@@ -1559,8 +1457,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	}
       break;
     case DB_TYPE_VOBJ:
-      result = object_to_string (DB_GET_OBJECT (value),
-				 get_object_print_format ());
+      result = object_to_string (DB_GET_OBJECT (value), get_object_print_format ());
       if (result == NULL)
 	{
 	  result = duplicate_string ("NULL");
@@ -1573,9 +1470,9 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      result = set_to_string (value, default_set_profile.begin_notation,
-			      default_set_profile.end_notation,
-			      default_set_profile.max_entries, plain_string);
+      result =
+	set_to_string (value, default_set_profile.begin_notation, default_set_profile.end_notation,
+		       default_set_profile.max_entries, plain_string);
       if (result)
 	{
 	  len = strlen (result);
@@ -1598,8 +1495,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char buf[TIMETZ_BUF_SIZE];
 	DB_TIMETZ *time_tz = DB_GET_TIMETZ (value);
-	if (db_timetz_to_string (buf, sizeof (buf), &(time_tz->time),
-				 &time_tz->tz_id))
+	if (db_timetz_to_string (buf, sizeof (buf), &(time_tz->time), &time_tz->tz_id))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1643,16 +1539,16 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	      }
 	  }
 
-	result = (DB_GET_MONETARY (value) == NULL) ? NULL :
-	  double_to_string ((DB_GET_MONETARY (value))->amount,
-			    default_monetary_profile.fieldwidth,
-			    default_monetary_profile.decimalplaces,
-			    default_monetary_profile.leadingsign,
-			    leading_str, trailing_str,
-			    default_monetary_profile.leadingzeros,
-			    default_monetary_profile.trailingzeros,
-			    default_monetary_profile.commas,
-			    DOUBLE_FORMAT_DECIMAL);
+	result =
+	  (DB_GET_MONETARY (value) == NULL) ? NULL : double_to_string ((DB_GET_MONETARY (value))->amount,
+								       default_monetary_profile.fieldwidth,
+								       default_monetary_profile.decimalplaces,
+								       default_monetary_profile.leadingsign,
+								       leading_str, trailing_str,
+								       default_monetary_profile.leadingzeros,
+								       default_monetary_profile.trailingzeros,
+								       default_monetary_profile.commas,
+								       DOUBLE_FORMAT_DECIMAL);
 
 	if (result)
 	  {
@@ -1662,8 +1558,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       break;
     case DB_TYPE_DATE:
       /* default format for all locales */
-      result = date_as_string (DB_GET_DATE (value),
-			       default_date_profile.format);
+      result = date_as_string (DB_GET_DATE (value), default_date_profile.format);
       if (result)
 	{
 	  len = strlen (result);
@@ -1687,8 +1582,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char buf[TIMESTAMPTZ_BUF_SIZE];
 	DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (value);
-	if (db_timestamptz_to_string (buf, sizeof (buf), &(ts_tz->timestamp),
-				      &(ts_tz->tz_id)))
+	if (db_timestamptz_to_string (buf, sizeof (buf), &(ts_tz->timestamp), &(ts_tz->tz_id)))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1703,8 +1597,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char buf[TIMESTAMPTZ_BUF_SIZE];
 
-	if (db_timestampltz_to_string (buf, sizeof (buf),
-				       DB_GET_UTIME (value)))
+	if (db_timestampltz_to_string (buf, sizeof (buf), DB_GET_UTIME (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1718,8 +1611,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
     case DB_TYPE_DATETIME:
       {
 	char buf[DATETIME_BUF_SIZE];
-	if (db_datetime_to_string (buf, sizeof (buf),
-				   DB_GET_DATETIME (value)))
+	if (db_datetime_to_string (buf, sizeof (buf), DB_GET_DATETIME (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1734,8 +1626,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char buf[DATETIMETZ_BUF_SIZE];
 	DB_DATETIMETZ *dt_tz = DB_GET_DATETIMETZ (value);
-	if (db_datetimetz_to_string (buf, sizeof (buf), &(dt_tz->datetime),
-				     &(dt_tz->tz_id)))
+	if (db_datetimetz_to_string (buf, sizeof (buf), &(dt_tz->datetime), &(dt_tz->tz_id)))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1750,8 +1641,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char buf[DATETIMETZ_BUF_SIZE];
 
-	if (db_datetimeltz_to_string (buf, sizeof (buf),
-				      DB_GET_DATETIME (value)))
+	if (db_datetimeltz_to_string (buf, sizeof (buf), DB_GET_DATETIME (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1794,8 +1684,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	const char *str;
 	char *decomposed = NULL;
 
-	if (db_get_enum_short (value) == 0
-	    && db_get_enum_string (value) == NULL)
+	if (db_get_enum_short (value) == 0 && db_get_enum_string (value) == NULL)
 	  {
 	    /* ENUM special error value */
 	    str = "";
@@ -1806,13 +1695,10 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	    str = db_get_enum_string (value);
 	    bytes_size = db_get_enum_string_size (value);
 	  }
-	if (bytes_size > 0
-	    && db_get_enum_codeset (value) == INTL_CODESET_UTF8)
+	if (bytes_size > 0 && db_get_enum_codeset (value) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
-	      unicode_string_need_decompose (str, bytes_size, &decomp_size,
-					     lang_get_generic_unicode_norm
-					     ());
+	      unicode_string_need_decompose (str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
 	  }
 
 	if (need_decomp)
@@ -1820,9 +1706,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	    decomposed = (char *) malloc (decomp_size * sizeof (char));
 	    if (decomposed != NULL)
 	      {
-		unicode_decompose_string (str, bytes_size, decomposed,
-					  &decomp_size,
-					  lang_get_generic_unicode_norm ());
+		unicode_decompose_string (str, bytes_size, decomposed, &decomp_size, lang_get_generic_unicode_norm ());
 
 		str = decomposed;
 		bytes_size = decomp_size;
@@ -1833,9 +1717,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	      }
 	  }
 
-	result = string_to_string (str,
-				   default_string_profile.string_delimiter,
-				   '\0', bytes_size, &len, plain_string);
+	result = string_to_string (str, default_string_profile.string_delimiter, '\0', bytes_size, &len, plain_string);
 	if (decomposed != NULL)
 	  {
 	    free_and_init (decomposed);
@@ -1847,8 +1729,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char temp_buffer[256];
 
-	(void) sprintf (temp_buffer, "<%s>",
-			db_get_type_name (DB_VALUE_TYPE (value)));
+	(void) sprintf (temp_buffer, "<%s>", db_get_type_name (DB_VALUE_TYPE (value)));
 	result = duplicate_string (temp_buffer);
 	if (result)
 	  {
@@ -1867,6 +1748,5 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 static int
 get_object_print_format (void)
 {
-  return prm_get_bool_value (PRM_ID_OBJECT_PRINT_FORMAT_OID) ?
-    OBJECT_FORMAT_OID : OBJECT_FORMAT_CLASSNAME;
+  return prm_get_bool_value (PRM_ID_OBJECT_PRINT_FORMAT_OID) ? OBJECT_FORMAT_OID : OBJECT_FORMAT_CLASSNAME;
 }

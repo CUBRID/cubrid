@@ -57,7 +57,7 @@ typedef struct obj_tempassign
   struct obj_template *obj;	/* if new object assignment */
   DB_VALUE *variable;		/* if non-object assignment */
 
-  /*
+  /* 
    * cache of attribute definition, must be verified as part
    * of the outer template validation
    */
@@ -83,14 +83,14 @@ typedef struct obj_template
 {
 
   /* edited object, NULL if insert template */
-  /*
+  /* 
    * garbage collector tickets are not required for the object & base_object
    * fields as the entire object template area is registered for scanning by
    * area_create().
    */
   MOP object;
 
-  /* class cache, always set, matches the "object" field  */
+  /* class cache, always set, matches the "object" field */
   MOP classobj;
   SM_CLASS *class_;
 
@@ -124,30 +124,30 @@ typedef struct obj_template
   /* for detection of cycles in template hierarchy */
   unsigned traversed:1;
 
-  /*
+  /* 
    * set if this is being used for the "old" temporary object in
    * trigger processing
    */
   unsigned is_old_template:1;
 
-  /*
+  /* 
    * Set if we're updating class attributes rather than instance attributes.
    * This happens when the object and the class are the same.
    */
   unsigned is_class_update:1;
 
-  /*
+  /* 
    * Set if we're doing bulk updates to disable unique checking from
    * templates.
    */
   unsigned check_uniques:1;
 
-  /*
+  /* 
    * Set if need to check SERIALIZABLE conflicts   
    */
   unsigned check_serializable_conflict:1;
 
-  /*
+  /* 
    * Set if we ever make an assignment for an attribute that has the
    * UNIQUE constraint.  Speeds up a common test.
    */
@@ -159,31 +159,29 @@ typedef struct obj_template
   /* Set if we should free the template after it is applied */
   unsigned discard_on_finish:1;
 
-  /*
+  /* 
    * true if we ever make an assignment for an attribute that has the
    * FOREIGN KEY constraint.  Speeds up a common test.
    */
   unsigned fkeys_were_modified:1;
 
-  /* Set if we want to flush the object to the server regardless of
-   * updating the PRIMARY KEY/UNIQUE constraint.
-   */
+  /* Set if we want to flush the object to the server regardless of updating the PRIMARY KEY/UNIQUE constraint. */
   unsigned force_flush:1;
 
-  /*
+  /* 
    * true if we want to regard NULL values in NOT NULL AUTO_INCREMENT
    * attributes as errors (i.e. when executing UPDATE or ON DUPLICATE KEY 
    * UPDATE statements).
    */
   unsigned force_check_not_null:1;
 
-  /*
+  /* 
    * Set if we ever make an assignment for an attribute that has the
    * function key constraint.
    */
   unsigned function_key_modified:1;
 
-  /*
+  /* 
    * Set if at least one autoincrement column has been populated
    */
   unsigned is_autoincrement_set:1;
@@ -216,38 +214,28 @@ extern OBJ_TEMPLATE *obt_def_object (MOP class_);
 extern OBJ_TEMPLATE *obt_edit_object (MOP object);
 extern int obt_quit (OBJ_TEMPLATE * template_ptr);
 
-extern int obt_set (OBJ_TEMPLATE * template_ptr, const char *attname,
-		    DB_VALUE * value);
-extern int obt_set_obt (OBJ_TEMPLATE * template_ptr, const char *attname,
-			OBJ_TEMPLATE * value);
+extern int obt_set (OBJ_TEMPLATE * template_ptr, const char *attname, DB_VALUE * value);
+extern int obt_set_obt (OBJ_TEMPLATE * template_ptr, const char *attname, OBJ_TEMPLATE * value);
 
 extern void obt_set_label (OBJ_TEMPLATE * template_ptr, DB_VALUE * label);
 extern void obt_disable_unique_checking (OBJ_TEMPLATE * template_ptr);
-extern void obt_disable_serializable_conflict_checking (OBJ_TEMPLATE
-							* template_ptr);
+extern void obt_disable_serializable_conflict_checking (OBJ_TEMPLATE * template_ptr);
 extern bool obt_enable_unique_checking (bool new_state);
 extern void obt_set_force_flush (OBJ_TEMPLATE * template_ptr);
 extern void obt_reset_force_flush (OBJ_TEMPLATE * template_ptr);
 extern int obt_update (OBJ_TEMPLATE * template_ptr, MOP * newobj);
-extern int obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
-		       int base_assignment, DB_VALUE * value,
+extern int obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att, int base_assignment, DB_VALUE * value,
 		       SM_VALIDATION * valid);
 
 /* UTILITY FUNCTIONS */
 
-extern DB_VALUE *obt_check_assignment (SM_ATTRIBUTE * att,
-				       DB_VALUE * proposed_value,
-				       SM_VALIDATION * valid,
+extern DB_VALUE *obt_check_assignment (SM_ATTRIBUTE * att, DB_VALUE * proposed_value, SM_VALIDATION * valid,
 				       unsigned force_check_not_null);
-extern int obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
-				int check_non_null);
+extern int obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj, int check_non_null);
 extern int obt_area_init (void);
 extern void obt_area_final (void);
-extern int obt_find_attribute (OBJ_TEMPLATE * template_ptr,
-			       int use_base_class, const char *name,
-			       SM_ATTRIBUTE ** attp);
-extern int obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc,
-			 DB_VALUE * value);
+extern int obt_find_attribute (OBJ_TEMPLATE * template_ptr, int use_base_class, const char *name, SM_ATTRIBUTE ** attp);
+extern int obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc, DB_VALUE * value);
 extern int obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr);
 extern int obt_populate_known_arguments (OBJ_TEMPLATE * template_ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)

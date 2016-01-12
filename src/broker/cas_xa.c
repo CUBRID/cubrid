@@ -52,8 +52,7 @@ static int compare_xid (XID * xid1, XID * xid2);
 static bool xa_prepare_flag = false;
 
 int
-fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
-	       T_REQ_INFO * req_info)
+fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
 #ifdef CAS_SUPPORT_XA
   XID xid;
@@ -74,8 +73,7 @@ fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       return 0;
     }
 
-  err_code =
-    db_set_global_transaction_info (gtrid, (void *) &xid, sizeof (XID));
+  err_code = db_set_global_transaction_info (gtrid, (void *) &xid, sizeof (XID));
   if (err_code < 0)
     {
       ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -104,8 +102,7 @@ fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 }
 
 int
-fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
-	       T_REQ_INFO * req_info)
+fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
 #ifdef CAS_SUPPORT_XA
   int count;
@@ -125,9 +122,7 @@ fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   for (i = 0; i < count; i++)
     {
-      err_code =
-	db_get_global_transaction_info (gtrids[i], (void *) &xid,
-					sizeof (XID));
+      err_code = db_get_global_transaction_info (gtrids[i], (void *) &xid, sizeof (XID));
       if (err_code < 0)
 	{
 	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -146,8 +141,7 @@ fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 }
 
 int
-fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
-		T_REQ_INFO * req_info)
+fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
 #ifdef CAS_SUPPORT_XA
   int tran_type;
@@ -179,9 +173,7 @@ fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   for (gtrid = -1, i = 0; i < count; i++)
     {
-      err_code =
-	db_get_global_transaction_info (gtrids[i], (void *) &tmp_xid,
-					sizeof (XID));
+      err_code = db_get_global_transaction_info (gtrids[i], (void *) &tmp_xid, sizeof (XID));
       if (err_code < 0)
 	{
 	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -274,8 +266,7 @@ compare_xid (XID * xid1, XID * xid2)
     return -1;
   if (xid1->bqual_length != xid2->bqual_length)
     return -1;
-  return (memcmp
-	  (xid1->data, xid2->data, xid1->gtrid_length + xid1->bqual_length));
+  return (memcmp (xid1->data, xid2->data, xid1->gtrid_length + xid1->bqual_length));
 }
 #endif /* CAS_SUPPORT_XA */
 

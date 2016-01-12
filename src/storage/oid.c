@@ -397,8 +397,7 @@ oid_get_rep_read_tran_oid (void)
 int
 oid_is_system_class (const OID * class_oid, bool * is_system_class_p)
 {
-  assert (is_system_class_p != NULL && class_oid != NULL
-	  && !OID_ISNULL (class_oid));
+  assert (is_system_class_p != NULL && class_oid != NULL && !OID_ISNULL (class_oid));
 
   *is_system_class_p = oid_is_cached_class_oid (class_oid);
   return NO_ERROR;

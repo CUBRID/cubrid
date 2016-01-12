@@ -44,13 +44,9 @@ struct vacomm_buffer
   int action;			/* client action */
 };
 
-extern int method_send_error_to_server (unsigned int rc,
-					char *host, char *server_name);
+extern int method_send_error_to_server (unsigned int rc, char *host, char *server_name);
 
-extern int method_invoke_for_server (unsigned int rc,
-				     char *host,
-				     char *server_name,
-				     QFILE_LIST_ID * list_id,
+extern int method_invoke_for_server (unsigned int rc, char *host, char *server_name, QFILE_LIST_ID * list_id,
 				     METHOD_SIG_LIST * method_sig_list);
 
 #endif /* _QUERY_METHOD_H_ */

@@ -72,8 +72,7 @@ static int cfg_ensure_directory_write (void);
 static FILE *cfg_open_directory_file (bool write_flag);
 
 static char **cfg_copy_hosts (const char **host_array, int *num_hosts);
-static const char *cfg_pop_host (const char *host_list, char *buffer,
-				 int *length);
+static const char *cfg_pop_host (const char *host_list, char *buffer, int *length);
 static bool cfg_host_exists (char *host_list, char *hostname, int num_items);
 
 /* PARSING UTILITIES */
@@ -284,11 +283,9 @@ cfg_maycreate_get_directory_filename (char *buffer)
   if ((file_p = fopen (buffer, "a+")) == NULL)
     {
 #if !defined(CS_MODE)
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CFG_NO_WRITE_ACCESS, 1, buffer);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_NO_WRITE_ACCESS, 1, buffer);
 #else /* !CS_MODE */
-      er_set_with_oserror (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-			   ER_CFG_NO_WRITE_ACCESS, 1, buffer);
+      er_set_with_oserror (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_CFG_NO_WRITE_ACCESS, 1, buffer);
 #endif /* !CS_MODE */
       return NULL;
     }
@@ -315,8 +312,7 @@ cfg_ensure_directory_write (void)
   file_p = fopen (filename, "a+");
   if (file_p == NULL)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CFG_NO_WRITE_ACCESS, 1, filename);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_NO_WRITE_ACCESS, 1, filename);
     }
   else
     {
@@ -357,8 +353,7 @@ cfg_open_directory_file (bool write_flag)
     {
       if (write_flag)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_CFG_NO_WRITE_ACCESS, 1, filename);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_NO_WRITE_ACCESS, 1, filename);
 	}
       else
 	{
@@ -368,8 +363,7 @@ cfg_open_directory_file (bool write_flag)
 	  file_p = fopen (filename, "r+");
 	  if (file_p == NULL)
 	    {
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				   ER_CFG_NO_WRITE_ACCESS, 1, filename);
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_NO_WRITE_ACCESS, 1, filename);
 	    }
 #else /* !CS_MODE */
 	  file_p = NULL;
@@ -410,8 +404,7 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
   databases = last = NULL;
 
 #if defined(SERVER_MODE)
-  if (prm_get_integer_value (PRM_ID_HA_MODE)
-      && prm_get_string_value (PRM_ID_HA_NODE_LIST))
+  if (prm_get_integer_value (PRM_ID_HA_MODE) && prm_get_string_value (PRM_ID_HA_NODE_LIST))
     {
       str = strchr (prm_get_string_value (PRM_ID_HA_NODE_LIST), '@');
       ha_node_list = (str) ? str + 1 : NULL;
@@ -436,8 +429,7 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 			  cfg_free_directory (databases);
 			}
 		      *info_p = NULL;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_INFO));
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_INFO));
 		      return ER_OUT_OF_VIRTUAL_MEMORY;
 		    }
 		  db->next = NULL;
@@ -446,13 +438,11 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 		  str = cfg_pop_token (str, &primary_host);
 		  if (ha_node_list)
 		    {
-		      db->hosts = cfg_get_hosts (ha_node_list, &db->num_hosts,
-						 false);
+		      db->hosts = cfg_get_hosts (ha_node_list, &db->num_hosts, false);
 		    }
 		  else
 		    {
-		      db->hosts = cfg_get_hosts (primary_host, &db->num_hosts,
-						 false);
+		      db->hosts = cfg_get_hosts (primary_host, &db->num_hosts, false);
 		    }
 		  if (primary_host != NULL)
 		    {
@@ -471,15 +461,10 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 		      last->next = db;
 		    }
 		  last = db;
-		  if (db->name == NULL
-		      || db->pathname == NULL
-		      || db->hosts == NULL || db->logpath == NULL
-		      /* skip to check above to support backward compatibility
-		         || db->lobpath == NULL */ )
+		  if (db->name == NULL || db->pathname == NULL || db->hosts == NULL || db->logpath == NULL
+		      /* skip to check above to support backward compatibility || db->lobpath == NULL */ )
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_CFG_INVALID_DATABASES, 1,
-			      DATABASES_FILENAME);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_INVALID_DATABASES, 1, DATABASES_FILENAME);
 		      if (databases != NULL)
 			{
 			  cfg_free_directory (databases);
@@ -531,8 +516,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
       if (line == NULL)
 	{
 	  *info_p = NULL;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (stat_buffer.st_size + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (stat_buffer.st_size + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       read (vdes, line, stat_buffer.st_size);
@@ -551,8 +535,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 		  *info_p = NULL;
 		  free_and_init (line);
 
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_INFO));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_INFO));
 		  return ER_OUT_OF_VIRTUAL_MEMORY;
 		}
 
@@ -577,15 +560,11 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 		  last->next = db;
 		}
 	      last = db;
-	      if (db->name == NULL
-		  || db->pathname == NULL
-		  || db->hosts == NULL || db->logpath == NULL
-		  /* skip to check above to support backward compatibility
-		     || db->lobpath == NULL */ )
+	      if (db->name == NULL || db->pathname == NULL || db->hosts == NULL || db->logpath == NULL
+		  /* skip to check above to support backward compatibility || db->lobpath == NULL */ )
 
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_CFG_INVALID_DATABASES, 1, DATABASES_FILENAME);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_INVALID_DATABASES, 1, DATABASES_FILENAME);
 		  if (databases != NULL)
 		    {
 		      cfg_free_directory (databases);
@@ -639,20 +618,16 @@ cfg_write_directory (const DB_INFO * databases)
       sigprocmask (SIG_SETMASK, &new_mask, &old_mask);
 #endif /* !WINDOWS */
 
-      fprintf (file_p,
-	       "#db-name\tvol-path\t\tdb-host\t\tlog-path\t\tlob-base-path\n");
-      for (db_info_p = databases; db_info_p != NULL;
-	   db_info_p = db_info_p->next)
+      fprintf (file_p, "#db-name\tvol-path\t\tdb-host\t\tlog-path\t\tlob-base-path\n");
+      for (db_info_p = databases; db_info_p != NULL; db_info_p = db_info_p->next)
 	{
 	  bool t = (strlen (db_info_p->name) < 8);
 #if defined(WINDOWS)
 	  char short_path[256];
 	  GetShortPathName (db_info_p->pathname, short_path, 256);
-	  fprintf (file_p, "%s%s\t%s\t", db_info_p->name, (t ? "\t" : ""),
-		   short_path);
+	  fprintf (file_p, "%s%s\t%s\t", db_info_p->name, (t ? "\t" : ""), short_path);
 #else /* WINDOWS */
-	  fprintf (file_p, "%s%s\t%s\t", db_info_p->name, (t ? "\t" : ""),
-		   db_info_p->pathname);
+	  fprintf (file_p, "%s%s\t%s\t", db_info_p->name, (t ? "\t" : ""), db_info_p->pathname);
 #endif /* WINDOWS */
 
 	  if (db_info_p->hosts != NULL && *(db_info_p->hosts) != NULL)
@@ -734,16 +709,13 @@ cfg_write_directory_ex (int vdes, const DB_INFO * databases)
 #endif /* !WINDOWS */
 
   lseek (vdes, 0L, SEEK_SET);
-  n =
-    sprintf (line,
-	     "#db-name\tvol-path\t\tdb-host\t\tlog-path\t\tlob-base-path\n");
+  n = sprintf (line, "#db-name\tvol-path\t\tdb-host\t\tlog-path\t\tlob-base-path\n");
   write (vdes, line, n);
   for (db_info_p = databases; db_info_p != NULL; db_info_p = db_info_p->next)
     {
       bool t = (strlen (db_info_p->name) < 8);
       s = line;
-      s += sprintf (s, "%s%s\t%s\t", db_info_p->name,
-		    (t ? "\t" : ""), db_info_p->pathname);
+      s += sprintf (s, "%s%s\t%s\t", db_info_p->name, (t ? "\t" : ""), db_info_p->pathname);
 
       if (db_info_p->hosts != NULL && *(db_info_p->hosts) != NULL)
 	{
@@ -788,8 +760,7 @@ cfg_free_directory (DB_INFO * databases)
 {
   DB_INFO *db_info_p, *next_info_p;
 
-  for (db_info_p = databases, next_info_p = NULL; db_info_p != NULL;
-       db_info_p = next_info_p)
+  for (db_info_p = databases, next_info_p = NULL; db_info_p != NULL; db_info_p = next_info_p)
     {
 
       next_info_p = db_info_p->next;
@@ -873,8 +844,7 @@ cfg_dump_directory (const DB_INFO * databases)
  *    host(in): server host name
  */
 void
-cfg_update_db (DB_INFO * db_info_p, const char *path, const char *logpath,
-	       const char *lobpath, const char *host)
+cfg_update_db (DB_INFO * db_info_p, const char *path, const char *logpath, const char *lobpath, const char *host)
 {
   char **ptr_p;
 
@@ -931,8 +901,7 @@ cfg_update_db (DB_INFO * db_info_p, const char *path, const char *logpath,
  *    hosts(in):
  */
 DB_INFO *
-cfg_new_db (const char *name, const char *path,
-	    const char *logpath, const char *lobpath, const char **hosts)
+cfg_new_db (const char *name, const char *path, const char *logpath, const char *lobpath, const char **hosts)
 {
   DB_INFO *db_info_p;
 
@@ -955,7 +924,7 @@ cfg_new_db (const char *name, const char *path,
       path = cfg_os_working_directory ();
     }
 
-  /*
+  /* 
    * if NULL hosts is passed in, then create a new host list, with the
    * local host as the primary.
    */
@@ -1035,8 +1004,7 @@ cfg_find_db_list (DB_INFO * db_info_list_p, const char *name)
   DB_INFO *db_info_p, *found_info_p;
 
   found_info_p = NULL;
-  for (db_info_p = db_info_list_p; db_info_p != NULL && found_info_p == NULL;
-       db_info_p = db_info_p->next)
+  for (db_info_p = db_info_list_p; db_info_p != NULL && found_info_p == NULL; db_info_p = db_info_p->next)
     {
       if (strcmp (db_info_p->name, name) == 0)
 	{
@@ -1058,8 +1026,8 @@ cfg_find_db_list (DB_INFO * db_info_list_p, const char *name)
  *    host(in): server host name
  */
 DB_INFO *
-cfg_add_db (DB_INFO ** dir, const char *name, const char *path,
-	    const char *logpath, const char *lobpath, const char *host)
+cfg_add_db (DB_INFO ** dir, const char *name, const char *path, const char *logpath, const char *lobpath,
+	    const char *host)
 {
   DB_INFO *db_info_p;
   int num_hosts = 0;
@@ -1102,11 +1070,9 @@ cfg_find_db (const char *db_name)
       if (dir_info_p == NULL)
 	{
 #if !defined(CS_MODE)
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_FIND_DATABASE, 2,
-		  db_name, DATABASES_FILENAME);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_FIND_DATABASE, 2, db_name, DATABASES_FILENAME);
 #else /* !CS_MODE */
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_CFG_FIND_DATABASE, 2,
-		  db_name, DATABASES_FILENAME);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_CFG_FIND_DATABASE, 2, db_name, DATABASES_FILENAME);
 #endif /* !CS_MODE */
 	}
       else
@@ -1115,11 +1081,9 @@ cfg_find_db (const char *db_name)
 	  if (db_info_p == NULL)
 	    {
 #if !defined(CS_MODE)
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_FIND_DATABASE,
-		      2, db_name, DATABASES_FILENAME);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_FIND_DATABASE, 2, db_name, DATABASES_FILENAME);
 #else /* !CS_MODE */
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		      ER_CFG_FIND_DATABASE, 2, db_name, DATABASES_FILENAME);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_CFG_FIND_DATABASE, 2, db_name, DATABASES_FILENAME);
 #endif /* !CS_MODE */
 	    }
 	  else
@@ -1127,15 +1091,13 @@ cfg_find_db (const char *db_name)
 	      if (db_info_p->hosts != NULL)
 		{
 		  db_info_p =
-		    cfg_new_db (db_info_p->name, db_info_p->pathname,
-				db_info_p->logpath, db_info_p->lobpath,
+		    cfg_new_db (db_info_p->name, db_info_p->pathname, db_info_p->logpath, db_info_p->lobpath,
 				(const char **) db_info_p->hosts);
 		}
 	      else
 		{
 		  db_info_p =
-		    cfg_new_db (db_info_p->name, db_info_p->pathname,
-				db_info_p->logpath, db_info_p->lobpath, NULL);
+		    cfg_new_db (db_info_p->name, db_info_p->pathname, db_info_p->logpath, db_info_p->lobpath, NULL);
 		}
 	    }
 	  cfg_free_directory (dir_info_p);
@@ -1144,11 +1106,9 @@ cfg_find_db (const char *db_name)
   else
     {
 #if !defined(CS_MODE)
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_READ_DATABASES, 1,
-	      DATABASES_FILENAME);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_READ_DATABASES, 1, DATABASES_FILENAME);
 #else /* !CS_MODE */
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_CFG_READ_DATABASES, 1,
-	      DATABASES_FILENAME);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_CFG_READ_DATABASES, 1, DATABASES_FILENAME);
 #endif /* !CS_MODE */
     }
   return (db_info_p);
@@ -1166,8 +1126,8 @@ cfg_delete_db (DB_INFO ** dir_info_p, const char *name)
   DB_INFO *db_info_p, *prev_info_p, *found_info_p;
   int success = false;
 
-  for (db_info_p = *dir_info_p, found_info_p = NULL, prev_info_p = NULL;
-       db_info_p != NULL && found_info_p == NULL; db_info_p = db_info_p->next)
+  for (db_info_p = *dir_info_p, found_info_p = NULL, prev_info_p = NULL; db_info_p != NULL && found_info_p == NULL;
+       db_info_p = db_info_p->next)
     {
       if (strcmp (db_info_p->name, name) == 0)
 	{
@@ -1216,7 +1176,7 @@ cfg_get_hosts (const char *prim_host, int *count, bool include_local_host)
 
   *count = 0;
 
-  /*
+  /* 
    * get a clean host list, i.e., null fields and duplicate hosts removed.
    * prim_host will be prepended to the list, and the local host will
    * will be appended if include_local_host is true.
@@ -1294,8 +1254,7 @@ cfg_pop_host (const char *host_list, char *buffer, int *length)
 
   /* Ignore initial spaces/field separators in list */
 
-  while (((char_isspace (*host))
-	  || (*host == CFG_HOST_SEPARATOR)) && (*host != '\0'))
+  while (((char_isspace (*host)) || (*host == CFG_HOST_SEPARATOR)) && (*host != '\0'))
     {
       ++host;
     }
@@ -1305,20 +1264,18 @@ cfg_pop_host (const char *host_list, char *buffer, int *length)
   start = host;
   current_host_length = 0;
 
-  while ((*host != CFG_HOST_SEPARATOR)
-	 && (!char_isspace (*host)) && (*host != '\0'))
+  while ((*host != CFG_HOST_SEPARATOR) && (!char_isspace (*host)) && (*host != '\0'))
     {
       host++;
       current_host_length++;
     }
 
-  /*
+  /* 
    * Increment count if we have a valid hostname, and we have reached,
    * a field separator, a space or end of line.
    * Copy host into buffer supplied.
    */
-  if (((*host == CFG_HOST_SEPARATOR) || (char_isspace (*host))
-       || (*host == '\0')) && (current_host_length != 0))
+  if (((*host == CFG_HOST_SEPARATOR) || (char_isspace (*host)) || (*host == '\0')) && (current_host_length != 0))
     {
       /* Note buffer is empty if length of host is greater than MAXHOSTNAMELEN) */
       if ((buffer != NULL) && (current_host_length <= MAXHOSTNAMELEN))
@@ -1374,8 +1331,7 @@ cfg_host_exists (char *host_list, char *hostname, int num_items)
 	{
 	  len = next_sep - current_host;
 
-	  if (len == hostname_len
-	      && strncmp (current_host, hostname, len) == 0)
+	  if (len == hostname_len && strncmp (current_host, hostname, len) == 0)
 	    {
 	      return true;
 	    }
@@ -1420,16 +1376,14 @@ cfg_copy_hosts (const char **host_array, int *num_hosts)
   buffer = (char *) malloc (buffer_size);
   if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      buffer_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_size);
       return NULL;
     }
 
   new_array = (char **) calloc (num + 1, sizeof (char **));
   if (new_array == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      ((num + 1) * sizeof (char **)));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, ((num + 1) * sizeof (char **)));
       free_and_init (buffer);
       return NULL;
     }
@@ -1464,8 +1418,7 @@ cfg_copy_hosts (const char **host_array, int *num_hosts)
  *           included in the list.
  */
 char *
-cfg_create_host_list (const char *primary_host_name, bool include_local_host,
-		      int *count)
+cfg_create_host_list (const char *primary_host_name, bool include_local_host, int *count)
 {
   int host_list_length, host_length, host_count;
   const char *str_ptr;
@@ -1497,14 +1450,12 @@ cfg_create_host_list (const char *primary_host_name, bool include_local_host,
     }
 
   /* get the hosts list from parameters */
-  if (prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != NULL
-      && *prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != '\0')
+  if (prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != NULL && *prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != '\0')
     {
-      host_list_length +=
-	strlen (prm_get_string_value (PRM_ID_CFG_DB_HOSTS)) + 1;
+      host_list_length += strlen (prm_get_string_value (PRM_ID_CFG_DB_HOSTS)) + 1;
     }
 
-  /*
+  /* 
    * concatenate host lists with separator
    * count the number of hosts in the list
    * ignore null and space
@@ -1542,8 +1493,7 @@ cfg_create_host_list (const char *primary_host_name, bool include_local_host,
 	}
     }
   /* append the hosts from the parameter to the list */
-  if (prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != NULL
-      && *prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != '\0')
+  if (prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != NULL && *prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != '\0')
     {
       str_ptr = prm_get_string_value (PRM_ID_CFG_DB_HOSTS);
       while (*str_ptr != '\0')

@@ -52,23 +52,15 @@ struct list_tag
 };
 
 
-extern int link_list_add (T_LIST **, void *, void *,
-			  int (*)(T_LIST *, void *, void *));
-extern T_LIST *link_list_find (T_LIST *, void *, void *,
-			       int (*)(void *, void *), int (*)(void *,
-								void *));
-extern int link_list_node_delete2 (T_LIST **, void *, void *,
-				   int (*)(void *, void *), int (*)(void *,
-								    void *),
+extern int link_list_add (T_LIST **, void *, void *, int (*)(T_LIST *, void *, void *));
+extern T_LIST *link_list_find (T_LIST *, void *, void *, int (*)(void *, void *), int (*)(void *, void *));
+extern int link_list_node_delete2 (T_LIST **, void *, void *, int (*)(void *, void *), int (*)(void *, void *),
 				   void (*)(T_LIST *));
 extern int link_list_delete (T_LIST **, void (*)(T_LIST *));
-extern int link_list_node_delete (T_LIST **, void *, int (*)(void *, void *),
-				  void (*)(T_LIST *));
+extern int link_list_node_delete (T_LIST **, void *, int (*)(void *, void *), void (*)(T_LIST *));
 
-extern int link_list_default_assign_func (T_LIST * node, void *key,
-					  void *value);
+extern int link_list_default_assign_func (T_LIST * node, void *key, void *value);
 extern int link_list_default_compare_func (void *key, void *value);
-extern void *link_list_traverse (T_LIST * head,
-				 void *(*traverse_func) (T_LIST *, void *));
+extern void *link_list_traverse (T_LIST * head, void *(*traverse_func) (T_LIST *, void *));
 
 #endif /* _BROKER_LIST_H_ */

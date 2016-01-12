@@ -152,8 +152,7 @@ db_create_vclass (const char *name)
       if (type != NULL || pt_is_reserved_word (name))
 	{
 	  error = ER_SM_CLASS_WITH_PRIM_NAME;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_SM_CLASS_WITH_PRIM_NAME, 1, name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, name);
 	}
       else
 	{
@@ -165,8 +164,7 @@ db_create_vclass (const char *name)
 	    }
 	  else
 	    {
-	      if (locator_reserve_class_name (def->name, &class_oid)
-		  != LC_CLASSNAME_RESERVED)
+	      if (locator_reserve_class_name (def->name, &class_oid) != LC_CLASSNAME_RESERVED)
 		{
 		  assert_release (false);
 		  smt_quit (def);
@@ -298,8 +296,8 @@ db_instance_equal (DB_OBJECT * obj1, DB_OBJECT * obj2)
     }
   if (is_class)
     {
-      /* We have already checked obj1 pointer vs obj2 pointer. The classes
-         cannot be equal if they are not the same MOP. */
+      /* We have already checked obj1 pointer vs obj2 pointer. The classes cannot be equal if they are not the same
+       * MOP. */
       return 0;
     }
   is_class = locator_is_class (obj2, DB_FETCH_READ);
@@ -309,8 +307,8 @@ db_instance_equal (DB_OBJECT * obj1, DB_OBJECT * obj2)
     }
   if (is_class)
     {
-      /* We have already checked obj1 pointer vs obj2 pointer. The classes
-         cannot be equal if they are not the same MOP. */
+      /* We have already checked obj1 pointer vs obj2 pointer. The classes cannot be equal if they are not the same
+       * MOP. */
       return 0;
     }
 
@@ -427,9 +425,7 @@ db_is_updatable_attribute (DB_OBJECT * obj, const char *attr_name)
 	    }
 	  if (class_obj && real_class_obj)
 	    {
-	      retval =
-		mq_is_updatable_attribute (class_obj, attr_name,
-					   real_class_obj) ? 1 : 0;
+	      retval = mq_is_updatable_attribute (class_obj, attr_name, real_class_obj) ? 1 : 0;
 	      return (retval);
 	    }
 	  else
@@ -556,8 +552,7 @@ db_drop_query_spec (DB_OBJECT * vclass, const int query_no)
  * query_no(in) :
  */
 int
-db_change_query_spec (DB_OBJECT * vclass,
-		      const char *new_query, const int query_no)
+db_change_query_spec (DB_OBJECT * vclass, const char *new_query, const int query_no)
 {
 
   int error = NO_ERROR;

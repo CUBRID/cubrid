@@ -61,8 +61,7 @@ qproc_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
 	  db_value_clear (s_id->val_list->valp->val);
 	  if (fetch_copy_dbval
-	      (thread_p, &set_id->operand->value, s_id->vd, NULL, NULL, NULL,
-	       s_id->val_list->valp->val) != NO_ERROR)
+	      (thread_p, &set_id->operand->value, s_id->vd, NULL, NULL, NULL, s_id->val_list->valp->val) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -79,8 +78,7 @@ qproc_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
 	  db_value_clear (s_id->val_list->valp->val);
 	  if (fetch_copy_dbval
-	      (thread_p, &set_id->operand->value, s_id->vd, NULL, NULL, NULL,
-	       s_id->val_list->valp->val) != NO_ERROR)
+	      (thread_p, &set_id->operand->value, s_id->vd, NULL, NULL, NULL, s_id->val_list->valp->val) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -92,8 +90,7 @@ qproc_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_CRSPOS,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_CRSPOS, 0);
 	  return S_ERROR;
 	}
     }
@@ -121,8 +118,7 @@ qproc_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  set_id->cur_index = 0;
 
 	  db_value_clear (s_id->val_list->valp->val);
-	  if (db_set_get (setp, set_id->cur_index,
-			  s_id->val_list->valp->val) != NO_ERROR)
+	  if (db_set_get (setp, set_id->cur_index, s_id->val_list->valp->val) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -137,8 +133,7 @@ qproc_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	    }
 
 	  db_value_clear (s_id->val_list->valp->val);
-	  if (db_set_get (setp, set_id->cur_index,
-			  s_id->val_list->valp->val) != NO_ERROR)
+	  if (db_set_get (setp, set_id->cur_index, s_id->val_list->valp->val) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -150,8 +145,7 @@ qproc_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_CRSPOS,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_CRSPOS, 0);
 	  return S_ERROR;
 	}
     }				/* else */

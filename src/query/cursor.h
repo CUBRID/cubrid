@@ -77,40 +77,30 @@ struct cursor_id
   DB_FETCH_MODE prefetch_lock_mode;
   int current_tuple_value_index;	/* Current tplvalue index within current_tuple_p */
   char *current_tuple_value_p;	/* Current tplvalue pointer within current_tuple_p */
-  bool is_updatable;		/* Cursor updatable ?   */
+  bool is_updatable;		/* Cursor updatable ? */
   bool is_oid_included;		/* Cursor has first hidden oid col. */
-  bool is_copy_tuple_value;	/* get tplvalue: true  = copy(default),
-				 *               false = peek */
+  bool is_copy_tuple_value;	/* get tplvalue: true = copy(default), false = peek */
 };
 
-extern int cursor_copy_list_id (QFILE_LIST_ID * dest_list_id,
-				const QFILE_LIST_ID * src_list_id);
+extern int cursor_copy_list_id (QFILE_LIST_ID * dest_list_id, const QFILE_LIST_ID * src_list_id);
 extern void cursor_free_list_id (QFILE_LIST_ID * list_id, bool self);
 extern int cursor_copy_vobj_to_dbvalue (OR_BUF * buf, DB_VALUE * db_value);
-extern int cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id,
-					   VPID * vpid,
-					   int position, int offset);
+extern int cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id, VPID * vpid, int position, int offset);
 #if defined (WINDOWS) || defined (CUBRID_DEBUG)
 extern void cursor_print_list (QUERY_ID query_id, QFILE_LIST_ID * list_id);
 #endif
-extern bool cursor_open (CURSOR_ID * cursor_id, QFILE_LIST_ID * list_id,
-			 bool updatable, bool oid_included);
+extern bool cursor_open (CURSOR_ID * cursor_id, QFILE_LIST_ID * list_id, bool updatable, bool oid_included);
 extern int cursor_next_tuple (CURSOR_ID * cursor_id);
-extern int cursor_get_tuple_value_list (CURSOR_ID * cursor_id,
-					int size, DB_VALUE * value_list);
+extern int cursor_get_tuple_value_list (CURSOR_ID * cursor_id, int size, DB_VALUE * value_list);
 extern void cursor_close (CURSOR_ID * cursor_id);
-extern DB_FETCH_MODE cursor_set_prefetch_lock_mode (CURSOR_ID * cursor_id,
-						    DB_FETCH_MODE mode);
+extern DB_FETCH_MODE cursor_set_prefetch_lock_mode (CURSOR_ID * cursor_id, DB_FETCH_MODE mode);
 extern bool cursor_set_copy_tuple_value (CURSOR_ID * cursor_id, bool copy);
-extern int cursor_set_oid_columns (CURSOR_ID * cursor_id,
-				   int *oid_col_no, int oid_col_no_cnt);
+extern int cursor_set_oid_columns (CURSOR_ID * cursor_id, int *oid_col_no, int oid_col_no_cnt);
 extern void cursor_free (CURSOR_ID * cursor_id);
-extern int cursor_get_current_oid (CURSOR_ID * cursor_id,
-				   DB_VALUE * crs_value);
+extern int cursor_get_current_oid (CURSOR_ID * cursor_id, DB_VALUE * crs_value);
 extern int cursor_prev_tuple (CURSOR_ID * cursor_id);
 extern int cursor_first_tuple (CURSOR_ID * cursor_id);
 extern int cursor_last_tuple (CURSOR_ID * cursor_id);
-extern int cursor_get_tuple_value (CURSOR_ID * result,
-				   int index, DB_VALUE * value);
+extern int cursor_get_tuple_value (CURSOR_ID * result, int index, DB_VALUE * value);
 
 #endif /* _CURSOR_H_ */

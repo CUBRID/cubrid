@@ -936,10 +936,8 @@ static UTIL_MAP ua_Utility_Map[] = {
 };
 
 static const char *util_get_library_name (int utility_index);
-static int util_get_function_name (const char **function_name,
-				   const char *utility_name);
-static int util_get_utility_index (int *utility_index,
-				   const char *utility_name);
+static int util_get_function_name (const char **function_name, const char *utility_name);
+static int util_get_utility_index (int *utility_index, const char *utility_name);
 static void print_admin_usage (const char *argv0);
 static void print_admin_version (const char *argv0);
 
@@ -965,8 +963,7 @@ print_admin_usage (const char *argv0)
       utility_load_print_error (stderr);
       return;
     }
-  utility_load_symbol (util_sa_library, &symbol,
-		       UTILITY_ADMIN_USAGE_FUNC_NAME);
+  utility_load_symbol (util_sa_library, &symbol, UTILITY_ADMIN_USAGE_FUNC_NAME);
   if (symbol == NULL)
     {
       utility_load_print_error (stderr);
@@ -999,8 +996,7 @@ print_admin_version (const char *argv0)
       utility_load_print_error (stderr);
       return;
     }
-  utility_load_symbol (util_sa_library, &symbol,
-		       UTILITY_ADMIN_VERSION_FUNC_NAME);
+  utility_load_symbol (util_sa_library, &symbol, UTILITY_ADMIN_VERSION_FUNC_NAME);
   if (symbol == NULL)
     {
       utility_load_print_error (stderr);
@@ -1034,14 +1030,12 @@ main (int argc, char *argv[])
       return EXIT_SUCCESS;
     }
 
-  if (argc < 2
-      || util_get_utility_index (&utility_index, argv[1]) != NO_ERROR)
+  if (argc < 2 || util_get_utility_index (&utility_index, argv[1]) != NO_ERROR)
     {
       goto print_usage;
     }
 
-  if (util_parse_argument (&ua_Utility_Map[utility_index], argc - 1, &argv[1])
-      != NO_ERROR)
+  if (util_parse_argument (&ua_Utility_Map[utility_index], argc - 1, &argv[1]) != NO_ERROR)
     {
       is_valid_arg = false;
       argc = 2;
@@ -1058,14 +1052,12 @@ main (int argc, char *argv[])
 	  goto print_usage;
 	}
 
-      status =
-	utility_load_symbol (library_handle, &symbol_handle, symbol_name);
+      status = utility_load_symbol (library_handle, &symbol_handle, symbol_name);
       if (status == NO_ERROR)
 	{
 	  UTIL_FUNCTION_ARG util_func_arg;
 	  util_func_arg.arg_map = ua_Utility_Map[utility_index].arg_map;
-	  util_func_arg.command_name =
-	    ua_Utility_Map[utility_index].utility_name;
+	  util_func_arg.command_name = ua_Utility_Map[utility_index].utility_name;
 	  util_func_arg.argv0 = argv[0];
 	  util_func_arg.argv = argv;
 	  util_func_arg.valid_arg = is_valid_arg;
@@ -1115,13 +1107,11 @@ util_get_library_name (int utility_index)
 	for (i = 0; arg_map[i].arg_ch; i++)
 	  {
 	    int key = arg_map[i].arg_ch;
-	    if ((key == 'C' || key == LOAD_CS_MODE_S)
-		&& arg_map[i].arg_value.p != NULL)
+	    if ((key == 'C' || key == LOAD_CS_MODE_S) && arg_map[i].arg_value.p != NULL)
 	      {
 		return LIB_UTIL_CS_NAME;
 	      }
-	    if ((key == 'S' || key == LOAD_SA_MODE_S)
-		&& arg_map[i].arg_value.p != NULL)
+	    if ((key == 'S' || key == LOAD_SA_MODE_S) && arg_map[i].arg_value.p != NULL)
 	      {
 		return LIB_UTIL_SA_NAME;
 	      }

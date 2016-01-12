@@ -128,8 +128,7 @@ extern "C"
   typedef struct
   {
     T_CCI_U_TYPE u_type;	/* primary type (without any collection flags) */
-    int size;			/* bind_param : value size
-				   bind_param_array : a_type of value */
+    int size;			/* bind_param : value size bind_param_array : a_type of value */
     void *value;
     int *null_ind;
     char flag;
@@ -276,37 +275,22 @@ extern "C"
  ************************************************************************/
 
   extern void hm_con_handle_table_init (void);
-  extern T_CON_HANDLE *hm_con_handle_alloc (char *ip_str, int port,
-					    char *db_name, char *db_user,
-					    char *db_passwd);
-  extern int hm_req_handle_alloc (T_CON_HANDLE * connection,
-				  T_REQ_HANDLE ** statement);
-  extern void hm_req_handle_free (T_CON_HANDLE * con_handle,
-				  T_REQ_HANDLE * req_handle);
+  extern T_CON_HANDLE *hm_con_handle_alloc (char *ip_str, int port, char *db_name, char *db_user, char *db_passwd);
+  extern int hm_req_handle_alloc (T_CON_HANDLE * connection, T_REQ_HANDLE ** statement);
+  extern void hm_req_handle_free (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle);
   extern void hm_req_handle_free_all (T_CON_HANDLE * con_handle);
   extern void hm_req_handle_free_all_unholdable (T_CON_HANDLE * con_handle);
   extern void hm_req_handle_close_all_resultsets (T_CON_HANDLE * con_handle);
-  extern void hm_req_handle_close_all_unholdable_resultsets (T_CON_HANDLE *
-							     con_handle);
+  extern void hm_req_handle_close_all_unholdable_resultsets (T_CON_HANDLE * con_handle);
   extern int hm_con_handle_free (T_CON_HANDLE * connection);
 
-  extern T_CCI_ERROR_CODE hm_get_connection_by_resolved_id (int resolved_id,
-							    T_CON_HANDLE **
-							    connection);
-  extern T_CCI_ERROR_CODE hm_get_connection_force (int mapped_id,
-						   T_CON_HANDLE **
-						   connection);
-  extern T_CCI_ERROR_CODE hm_get_connection (int connection_id,
-					     T_CON_HANDLE ** connection);
-  extern T_CCI_ERROR_CODE hm_get_statement (int statement_id,
-					    T_CON_HANDLE ** connection,
-					    T_REQ_HANDLE ** statement);
-  extern T_CCI_ERROR_CODE hm_release_connection (int connection_id,
-						 T_CON_HANDLE ** connection);
-  extern T_CCI_ERROR_CODE hm_delete_connection (int connection_id,
-						T_CON_HANDLE ** connection);
-  extern T_CCI_ERROR_CODE hm_release_statement (int statement_id,
-						T_CON_HANDLE ** connection,
+  extern T_CCI_ERROR_CODE hm_get_connection_by_resolved_id (int resolved_id, T_CON_HANDLE ** connection);
+  extern T_CCI_ERROR_CODE hm_get_connection_force (int mapped_id, T_CON_HANDLE ** connection);
+  extern T_CCI_ERROR_CODE hm_get_connection (int connection_id, T_CON_HANDLE ** connection);
+  extern T_CCI_ERROR_CODE hm_get_statement (int statement_id, T_CON_HANDLE ** connection, T_REQ_HANDLE ** statement);
+  extern T_CCI_ERROR_CODE hm_release_connection (int connection_id, T_CON_HANDLE ** connection);
+  extern T_CCI_ERROR_CODE hm_delete_connection (int connection_id, T_CON_HANDLE ** connection);
+  extern T_CCI_ERROR_CODE hm_release_statement (int statement_id, T_CON_HANDLE ** connection,
 						T_REQ_HANDLE ** statement);
   extern void hm_req_handle_fetch_buf_free (T_REQ_HANDLE * req_handle);
   extern int hm_conv_value_buf_alloc (T_VALUE_BUF * val_buf, int size);
@@ -318,46 +302,34 @@ extern "C"
   extern int req_close_query_result (T_REQ_HANDLE * req_handle);
   extern void hm_invalidate_all_req_handle (T_CON_HANDLE * con_handle);
   extern int hm_ip_str_to_addr (char *ip_str, unsigned char *ip_addr);
-  extern T_CON_HANDLE *hm_get_con_from_pool (unsigned char *ip_addr, int port,
-					     char *dbname, char *dbuser,
+  extern T_CON_HANDLE *hm_get_con_from_pool (unsigned char *ip_addr, int port, char *dbname, char *dbuser,
 					     char *dbpasswd);
   extern int hm_put_con_to_pool (int con);
 
   extern T_BROKER_VERSION hm_get_broker_version (T_CON_HANDLE * con_handle);
-  extern bool hm_broker_understand_renewed_error_code (T_CON_HANDLE *
-						       con_handle);
-  extern bool hm_broker_understand_the_protocol (T_BROKER_VERSION
-						 broker_version, int require);
-  extern bool hm_broker_match_the_protocol (T_BROKER_VERSION broker_version,
-					    int require);
+  extern bool hm_broker_understand_renewed_error_code (T_CON_HANDLE * con_handle);
+  extern bool hm_broker_understand_the_protocol (T_BROKER_VERSION broker_version, int require);
+  extern bool hm_broker_match_the_protocol (T_BROKER_VERSION broker_version, int require);
 
   extern bool hm_broker_support_holdable_result (T_CON_HANDLE * con_handle);
-  extern bool hm_broker_reconnect_when_server_down (T_CON_HANDLE *
-						    con_handle);
+  extern bool hm_broker_reconnect_when_server_down (T_CON_HANDLE * con_handle);
 
-  extern void hm_set_con_handle_holdable (T_CON_HANDLE * con_handle,
-					  int holdable);
+  extern void hm_set_con_handle_holdable (T_CON_HANDLE * con_handle, int holdable);
   extern int hm_get_con_handle_holdable (T_CON_HANDLE * con_handle);
-  extern int hm_get_req_handle_holdable (T_CON_HANDLE * con_handle,
-					 T_REQ_HANDLE * req_handle);
+  extern int hm_get_req_handle_holdable (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle);
 
-  extern int hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id,
-				 T_REQ_HANDLE * req);
-  extern int hm_req_get_from_pool (T_CON_HANDLE * con, T_REQ_HANDLE ** req,
-				   char *sql);
+  extern int hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id, T_REQ_HANDLE * req);
+  extern int hm_req_get_from_pool (T_CON_HANDLE * con, T_REQ_HANDLE ** req, char *sql);
 
-  extern int cci_conn_set_properties (T_CON_HANDLE * handle,
-				      char *properties);
+  extern int cci_conn_set_properties (T_CON_HANDLE * handle, char *properties);
 
-  extern void hm_set_host_status (T_CON_HANDLE * con_handle, int host_id,
-				  bool is_reachable);
+  extern void hm_set_host_status (T_CON_HANDLE * con_handle, int host_id, bool is_reachable);
   extern bool hm_is_host_reachable (T_CON_HANDLE * con_handle, int host_id);
   extern void hm_check_rc_time (T_CON_HANDLE * con_handle);
   extern void hm_create_health_check_th (void);
 
   extern int hm_pool_restore_used_statements (T_CON_HANDLE * connection);
-  extern int hm_pool_add_statement_to_use (T_CON_HANDLE * connection,
-					   int statement_id);
+  extern int hm_pool_add_statement_to_use (T_CON_HANDLE * connection, int statement_id);
 
   extern bool hm_is_empty_session (T_CCI_SESSION_ID * id);
   extern void hm_make_empty_session (T_CCI_SESSION_ID * id);

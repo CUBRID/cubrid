@@ -47,13 +47,11 @@ es_get_type (const char *uri)
     {
       return ES_OWFS;
     }
-  else if (!strncmp (uri, ES_POSIX_PATH_PREFIX,
-		     sizeof (ES_POSIX_PATH_PREFIX) - 1))
+  else if (!strncmp (uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX) - 1))
     {
       return ES_POSIX;
     }
-  else if (!strncmp (uri, ES_LOCAL_PATH_PREFIX,
-		     sizeof (ES_LOCAL_PATH_PREFIX) - 1))
+  else if (!strncmp (uri, ES_LOCAL_PATH_PREFIX, sizeof (ES_LOCAL_PATH_PREFIX) - 1))
     {
       return ES_LOCAL;
     }

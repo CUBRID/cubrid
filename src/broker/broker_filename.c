@@ -126,8 +126,7 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	{
 	  if (repath)
 	    {
-	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s",
-			get_cubrid_home (), value);
+	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s", get_cubrid_home (), value);
 	    }
 	  else
 	    {
@@ -138,13 +137,11 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	{
 	  if (repath)
 	    {
-	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s/",
-			get_cubrid_home (), value);
+	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s/", get_cubrid_home (), value);
 	    }
 	  else
 	    {
-	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/",
-			value);
+	      snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/", value);
 	    }
 	}
       break;
@@ -153,8 +150,7 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
       if (repath)
 	{
-	  envvar_confdir_file (cubrid_file[fid].file_name, BROKER_PATH_MAX,
-			       value);
+	  envvar_confdir_file (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
 	}
       else
 	{
@@ -167,8 +163,7 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
     default:
       if (repath)
 	{
-	  snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s",
-		    get_cubrid_home (), value);
+	  snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s/%s", get_cubrid_home (), value);
 	}
       else
 	{

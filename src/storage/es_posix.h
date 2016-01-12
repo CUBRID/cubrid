@@ -42,20 +42,15 @@ extern void es_posix_final (void);
 
 #if defined (SA_MODE) || defined (SERVER_MODE)
 extern int xes_posix_create_file (char *new_path);
-extern ssize_t xes_posix_write_file (const char *path, const void *buf,
-				     size_t count, off_t offset);
-extern ssize_t xes_posix_read_file (const char *path, void *buf, size_t count,
-				    off_t offset);
+extern ssize_t xes_posix_write_file (const char *path, const void *buf, size_t count, off_t offset);
+extern ssize_t xes_posix_read_file (const char *path, void *buf, size_t count, off_t offset);
 extern int xes_posix_delete_file (const char *path);
-extern int xes_posix_copy_file (const char *src_path, char *metaname,
-				char *new_path);
-extern int xes_posix_rename_file (const char *src_path, const char *metaname,
-				  char *new_path);
+extern int xes_posix_copy_file (const char *src_path, char *metaname, char *new_path);
+extern int xes_posix_rename_file (const char *src_path, const char *metaname, char *new_path);
 extern off_t xes_posix_get_file_size (const char *path);
 #endif /* SA_MODE || SERVER_MODE */
 
-extern int es_local_read_file (const char *path, void *buf, size_t count,
-			       off_t offset);
+extern int es_local_read_file (const char *path, void *buf, size_t count, off_t offset);
 extern off_t es_local_get_file_size (const char *path);
 
 #endif /* _ES_POSIX_H_ */

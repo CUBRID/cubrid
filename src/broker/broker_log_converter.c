@@ -41,8 +41,7 @@
 #include "broker_log_util.h"
 
 static int get_args (int argc, char *argv[]);
-static int open_file (char *infilename, char *outfilename, FILE ** infp,
-		      FILE ** outfp);
+static int open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp);
 static int log_converter (FILE * infp, FILE * outfp);
 static void close_file (FILE * infp, FILE * outfp);
 static int log_bind_value (char *str, int bind_len, int lineno, FILE * outfp);
@@ -124,8 +123,7 @@ log_converter (FILE * infp, FILE * outfp)
 	  msg_p = get_msg_start_ptr (linebuf);
 	  if (strncmp (msg_p, "execute", 7) == 0)
 	    {
-	      msg_p =
-		ut_get_execute_type (msg_p, &prepare_flag, &execute_flag);
+	      msg_p = ut_get_execute_type (msg_p, &prepare_flag, &execute_flag);
 	      if (msg_p == NULL)
 		{
 		  in_execute = 0;
@@ -388,22 +386,18 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
   else if (strcmp (p, "BLOB") == 0)
     {
       type = CCI_U_TYPE_NULL;
-      fprintf (stderr,
-	       "%s\nBLOB type is not implemented. Replaced with NULL\n",
-	       value_p);
+      fprintf (stderr, "%s\nBLOB type is not implemented. Replaced with NULL\n", value_p);
       value_p = (char *) "";
       bind_len = 0;
-      /*type = CCI_U_TYPE_BLOB; */
+      /* type = CCI_U_TYPE_BLOB; */
     }
   else if (strcmp (p, "CLOB") == 0)
     {
       type = CCI_U_TYPE_NULL;
-      fprintf (stderr,
-	       "%s\nCLOB type is not implemented. Replaced with NULL\n",
-	       value_p);
+      fprintf (stderr, "%s\nCLOB type is not implemented. Replaced with NULL\n", value_p);
       value_p = (char *) "";
       bind_len = 0;
-      /*type = CCI_U_TYPE_CLOB; */
+      /* type = CCI_U_TYPE_CLOB; */
     }
   else if (strcmp (p, "ENUM") == 0)
     {
@@ -458,9 +452,7 @@ get_args (int argc, char *argv[])
 
 usage:
   fprintf (stderr,
-	   "usage : %s [OPTION] infile outfile\n"
-	   "\n"
-	   "valid options:\n"
+	   "usage : %s [OPTION] infile outfile\n" "\n" "valid options:\n"
 	   "  -i   add a unique id to each query as a comment.\n", argv[0]);
   return -1;
 }

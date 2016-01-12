@@ -58,8 +58,7 @@ db_gadget_create (const char *class_name, const char *attribute_names[])
 
   if (class_name == NULL || (class_ = db_find_class (class_name)) == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LC_UNKNOWN_CLASSNAME, 1, class_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, class_name);
       goto error;
     }
 
@@ -98,8 +97,7 @@ db_gadget_create (const char *class_name, const char *attribute_names[])
 	}
     }
 
-  gadget->attrs = (ATTR_VAL *) malloc ((gadget->num_attrs + 1) *
-				       sizeof (ATTR_VAL));
+  gadget->attrs = (ATTR_VAL *) malloc ((gadget->num_attrs + 1) * sizeof (ATTR_VAL));
   if (gadget->num_attrs > 0 && gadget->attrs == NULL)
     {
       goto error;
@@ -122,8 +120,7 @@ db_gadget_create (const char *class_name, const char *attribute_names[])
       for (i = 0; attribute; i++, attribute = db_attribute_next (attribute))
 	{
 	  if (db_get_attribute_descriptor
-	      (class_, db_attribute_name (attribute), false, true,
-	       &gadget->attrs[i].attr_desc))
+	      (class_, db_attribute_name (attribute), false, true, &gadget->attrs[i].attr_desc))
 	    {
 	      goto error;
 	    }
@@ -131,17 +128,14 @@ db_gadget_create (const char *class_name, const char *attribute_names[])
     }
   else
     {
-      for (i = 0, att_name = attribute_names; i < gadget->num_attrs;
-	   i++, att_name++)
+      for (i = 0, att_name = attribute_names; i < gadget->num_attrs; i++, att_name++)
 	{
 	  if (gadget_attr_index (gadget, *att_name) != NOT_FOUND)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OBJ_DUPLICATE_ASSIGNMENT, 1, *att_name);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DUPLICATE_ASSIGNMENT, 1, *att_name);
 	      goto error;
 	    }
-	  if (db_get_attribute_descriptor
-	      (class_, *att_name, false, true, &gadget->attrs[i].attr_desc))
+	  if (db_get_attribute_descriptor (class_, *att_name, false, true, &gadget->attrs[i].attr_desc))
 	    {
 	      goto error;
 	    }
@@ -208,8 +202,7 @@ db_gadget_destroy (DB_GADGET * gadget)
  * dbval(in): array containing values for unbound attributes
  */
 int
-db_gadget_bind (DB_GADGET * gadget,
-		const char *attribute_name, DB_VALUE * dbval)
+db_gadget_bind (DB_GADGET * gadget, const char *attribute_name, DB_VALUE * dbval)
 {
   int i = 0;
 
@@ -219,11 +212,10 @@ db_gadget_bind (DB_GADGET * gadget,
       return ER_GADGET_INVALID;
     }
 
-  if (attribute_name == NULL
-      || (i = gadget_attr_index (gadget, attribute_name)) == NOT_FOUND)
+  if (attribute_name == NULL || (i = gadget_attr_index (gadget, attribute_name)) == NOT_FOUND)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_UNKNOWN_ATTRIBUTE,
-	      2, attribute_name, db_get_class_name (gadget->class_));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_UNKNOWN_ATTRIBUTE, 2, attribute_name,
+	      db_get_class_name (gadget->class_));
       return ER_SM_UNKNOWN_ATTRIBUTE;
     }
 
@@ -243,13 +235,11 @@ db_gadget_bind (DB_GADGET * gadget,
   gadget->attrs[i].value = (DB_VALUE *) malloc (sizeof (DB_VALUE));
   if (gadget->attrs[i].value == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (DB_VALUE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  return tp_value_coerce (dbval, gadget->attrs[i].value,
-			  db_attdesc_domain (gadget->attrs[i].attr_desc));
+  return tp_value_coerce (dbval, gadget->attrs[i].value, db_attdesc_domain (gadget->attrs[i].attr_desc));
 }
 
 /*
@@ -303,13 +293,11 @@ db_gadget_exec (DB_GADGET * gadget, int num_dbvals, DB_VALUE dbvals[])
 		  num_vals++;
 		}
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GADGET_ATTRS_VALS_NE,
-		  2, gadget->num_attrs, num_vals);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GADGET_ATTRS_VALS_NE, 2, gadget->num_attrs, num_vals);
 	  goto error;
 	}
 
-      if (dbt_dput_internal (otemplate, gadget->attrs[i].attr_desc, value) !=
-	  NO_ERROR)
+      if (dbt_dput_internal (otemplate, gadget->attrs[i].attr_desc, value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -345,9 +333,8 @@ gadget_attr_index (DB_GADGET * gadget, const char *attr_name)
 
   for (i = 0; i < gadget->num_attrs; i++)
     {
-      if (gadget->attrs[i].attr_desc &&
-	  pt_str_compare (attr_name, gadget->attrs[i].attr_desc->name,
-			  CASE_INSENSITIVE) == 0)
+      if (gadget->attrs[i].attr_desc
+	  && pt_str_compare (attr_name, gadget->attrs[i].attr_desc->name, CASE_INSENSITIVE) == 0)
 	{
 	  return i;
 	}

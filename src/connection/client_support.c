@@ -57,8 +57,7 @@ CSS_MAP_ENTRY *css_Client_anchor;
 static void css_internal_server_shutdown (void);
 static void css_handle_pipe_shutdown (int sig);
 static void css_set_pipe_signal (void);
-static int css_test_for_server_errors (CSS_MAP_ENTRY * entry,
-				       unsigned int eid);
+static int css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid);
 
 /*
  * css_internal_server_shutdown() -
@@ -96,8 +95,7 @@ css_handle_pipe_shutdown (int sig)
   else
     {
       /* Avoid an infinite loop by checking if the previous handle is myself */
-      if (css_Previous_sigpipe_handler != NULL &&
-	  css_Previous_sigpipe_handler != css_handle_pipe_shutdown)
+      if (css_Previous_sigpipe_handler != NULL && css_Previous_sigpipe_handler != css_handle_pipe_shutdown)
 	{
 	  (*css_Previous_sigpipe_handler) (sig);
 	}
@@ -116,10 +114,8 @@ static void
 css_set_pipe_signal (void)
 {
 #if !defined(WINDOWS)
-  css_Previous_sigpipe_handler = os_set_signal_handler (SIGPIPE,
-							css_handle_pipe_shutdown);
-  if ((css_Previous_sigpipe_handler == SIG_IGN)
-      || (css_Previous_sigpipe_handler == SIG_ERR)
+  css_Previous_sigpipe_handler = os_set_signal_handler (SIGPIPE, css_handle_pipe_shutdown);
+  if ((css_Previous_sigpipe_handler == SIG_IGN) || (css_Previous_sigpipe_handler == SIG_ERR)
       || (css_Previous_sigpipe_handler == SIG_DFL)
 #if !defined(LINUX)
       || (css_Previous_sigpipe_handler == SIG_HOLD)
@@ -153,16 +149,14 @@ css_client_init (int sockid, const char *server_name, const char *host_name)
 
   css_Service_id = sockid;
   css_set_pipe_signal ();
-  conn = css_connect_to_cubrid_server ((char *) host_name,
-				       (char *) server_name);
+  conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name);
   if (conn != NULL)
     {
       css_queue_connection (conn, (char *) host_name, &css_Client_anchor);
     }
   else
     {
-      /* At here, er_errid () can be NO_ERROR
-       */
+      /* At here, er_errid () can be NO_ERROR */
       error = er_errid ();
     }
 
@@ -180,8 +174,7 @@ css_client_init (int sockid, const char *server_name, const char *host_name)
  *   arg_buffer_size(in): The size of arg_buffer.
  */
 unsigned int
-css_send_request_to_server (char *host, int request, char *arg_buffer,
-			    int arg_buffer_size)
+css_send_request_to_server (char *host, int request, char *arg_buffer, int arg_buffer_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -191,8 +184,7 @@ css_send_request_to_server (char *host, int request, char *arg_buffer,
     {
       entry->conn->transaction_id = tm_Tran_index;
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      css_Errno = css_send_request (entry->conn, (int) request, &rid,
-				    arg_buffer, (int) arg_buffer_size);
+      css_Errno = css_send_request (entry->conn, (int) request, &rid, arg_buffer, (int) arg_buffer_size);
       if (css_Errno != NO_ERRORS)
 	{
 	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
@@ -225,10 +217,8 @@ css_send_request_to_server (char *host, int request, char *arg_buffer,
  *       also enroll a data buffer to be filled with returned data.
  */
 unsigned int
-css_send_request_to_server_with_buffer (char *host, int request,
-					char *arg_buffer, int arg_buffer_size,
-					char *data_buffer,
-					int data_buffer_size)
+css_send_request_to_server_with_buffer (char *host, int request, char *arg_buffer, int arg_buffer_size,
+					char *data_buffer, int data_buffer_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -238,12 +228,9 @@ css_send_request_to_server_with_buffer (char *host, int request,
     {
       entry->conn->transaction_id = tm_Tran_index;
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      css_Errno = css_send_request_with_data_buffer (entry->conn, request,
-						     &rid,
-						     arg_buffer,
-						     arg_buffer_size,
-						     data_buffer,
-						     data_buffer_size);
+      css_Errno =
+	css_send_request_with_data_buffer (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
+					   data_buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
 	  tm_Tran_invalidate_snapshot = 0;
@@ -277,10 +264,8 @@ css_send_request_to_server_with_buffer (char *host, int request,
  *       also enroll a data buffer to be filled with returned data.
  */
 unsigned int
-css_send_req_to_server (char *host, int request,
-			char *arg_buffer, int arg_buffer_size,
-			char *data_buffer, int data_buffer_size,
-			char *reply_buffer, int reply_size)
+css_send_req_to_server (char *host, int request, char *arg_buffer, int arg_buffer_size, char *data_buffer,
+			int data_buffer_size, char *reply_buffer, int reply_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -290,10 +275,9 @@ css_send_req_to_server (char *host, int request,
     {
       entry->conn->transaction_id = tm_Tran_index;
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      css_Errno = css_send_req_with_2_buffers (entry->conn, request, &rid,
-					       arg_buffer, arg_buffer_size,
-					       data_buffer, data_buffer_size,
-					       reply_buffer, reply_size);
+      css_Errno =
+	css_send_req_with_2_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
+				     data_buffer_size, reply_buffer, reply_size);
       if (css_Errno == NO_ERRORS)
 	{
 	  tm_Tran_invalidate_snapshot = 0;
@@ -329,11 +313,8 @@ css_send_req_to_server (char *host, int request,
  *       also enroll a data buffer to be filled with returned data.
  */
 unsigned int
-css_send_req_to_server_with_large_data (char *host, int request,
-					char *arg_buffer, int arg_buffer_size,
-					char *data_buffer,
-					INT64 data_buffer_size,
-					char *reply_buffer, int reply_size)
+css_send_req_to_server_with_large_data (char *host, int request, char *arg_buffer, int arg_buffer_size,
+					char *data_buffer, INT64 data_buffer_size, char *reply_buffer, int reply_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -343,11 +324,9 @@ css_send_req_to_server_with_large_data (char *host, int request,
     {
       entry->conn->transaction_id = tm_Tran_index;
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      css_Errno = css_send_req_with_large_buffer (entry->conn, request, &rid,
-						  arg_buffer, arg_buffer_size,
-						  data_buffer,
-						  data_buffer_size,
-						  reply_buffer, reply_size);
+      css_Errno =
+	css_send_req_with_large_buffer (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
+					data_buffer_size, reply_buffer, reply_size);
       if (css_Errno == NO_ERRORS)
 	{
 	  tm_Tran_invalidate_snapshot = 0;
@@ -385,11 +364,9 @@ css_send_req_to_server_with_large_data (char *host, int request,
  *       returned data.
  */
 unsigned int
-css_send_req_to_server_2_data (char *host, int request,
-			       char *arg_buffer, int arg_buffer_size,
-			       char *data1_buffer, int data1_buffer_size,
-			       char *data2_buffer, int data2_buffer_size,
-			       char *reply_buffer, int reply_size)
+css_send_req_to_server_2_data (char *host, int request, char *arg_buffer, int arg_buffer_size, char *data1_buffer,
+			       int data1_buffer_size, char *data2_buffer, int data2_buffer_size, char *reply_buffer,
+			       int reply_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -399,13 +376,9 @@ css_send_req_to_server_2_data (char *host, int request,
     {
       entry->conn->transaction_id = tm_Tran_index;
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      css_Errno = css_send_req_with_3_buffers (entry->conn, request, &rid,
-					       arg_buffer, arg_buffer_size,
-					       data1_buffer,
-					       data1_buffer_size,
-					       data2_buffer,
-					       data2_buffer_size,
-					       reply_buffer, reply_size);
+      css_Errno =
+	css_send_req_with_3_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data1_buffer,
+				     data1_buffer_size, data2_buffer, data2_buffer_size, reply_buffer, reply_size);
       if (css_Errno == NO_ERRORS)
 	{
 	  tm_Tran_invalidate_snapshot = 0;
@@ -432,8 +405,7 @@ css_send_req_to_server_2_data (char *host, int request,
  *   arg_buffer_size(in):
  */
 unsigned int
-css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer,
-				 int arg_buffer_size)
+css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer, int arg_buffer_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -443,8 +415,7 @@ css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer,
     {
       entry->conn->transaction_id = tm_Tran_index;
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      css_Errno = css_send_request_no_reply (entry->conn, request, &rid,
-					     arg_buffer, arg_buffer_size);
+      css_Errno = css_send_request_no_reply (entry->conn, request, &rid, arg_buffer, arg_buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
 	  tm_Tran_invalidate_snapshot = 0;
@@ -471,8 +442,7 @@ css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer,
  *   buffer_size: size of data buffer
  */
 int
-css_queue_receive_data_buffer (unsigned int eid, char *buffer,
-			       int buffer_size)
+css_queue_receive_data_buffer (unsigned int eid, char *buffer, int buffer_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -484,8 +454,7 @@ css_queue_receive_data_buffer (unsigned int eid, char *buffer,
       if (entry != NULL)
 	{
 	  rid = CSS_RID_FROM_EID (eid);
-	  rc = css_queue_user_data_buffer (entry->conn, rid, buffer_size,
-					   buffer);
+	  rc = css_queue_user_data_buffer (entry->conn, rid, buffer_size, buffer);
 	}
     }
 
@@ -508,8 +477,7 @@ css_queue_receive_data_buffer (unsigned int eid, char *buffer,
  *   buffer_size(in): size of data buffer
  */
 unsigned int
-css_send_error_to_server (char *host, unsigned int eid,
-			  char *buffer, int buffer_size)
+css_send_error_to_server (char *host, unsigned int eid, char *buffer, int buffer_size)
 {
   CSS_MAP_ENTRY *entry;
 
@@ -521,8 +489,7 @@ css_send_error_to_server (char *host, unsigned int eid,
       entry->conn->transaction_id = tm_Tran_index;
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       entry->conn->db_error = er_errid ();
-      css_Errno = css_send_error (entry->conn, CSS_RID_FROM_EID (eid),
-				  buffer, buffer_size);
+      css_Errno = css_send_error (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
 	  tm_Tran_invalidate_snapshot = 0;
@@ -549,8 +516,7 @@ css_send_error_to_server (char *host, unsigned int eid,
  *   buffer_size(in): size of data buffer
  */
 unsigned int
-css_send_data_to_server (char *host, unsigned int eid,
-			 char *buffer, int buffer_size)
+css_send_data_to_server (char *host, unsigned int eid, char *buffer, int buffer_size)
 {
   CSS_MAP_ENTRY *entry;
 
@@ -559,8 +525,7 @@ css_send_data_to_server (char *host, unsigned int eid,
     {
       entry->conn->transaction_id = tm_Tran_index;
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      css_Errno = css_send_data (entry->conn, CSS_RID_FROM_EID (eid),
-				 buffer, buffer_size);
+      css_Errno = css_send_data (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
 	  tm_Tran_invalidate_snapshot = 0;
@@ -589,8 +554,7 @@ css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid)
   char *error_buffer;
   int error_size, rc, errid = NO_ERROR;
 
-  if (css_return_queued_error (entry->conn, CSS_RID_FROM_EID (eid),
-			       &error_buffer, &error_size, &rc))
+  if (css_return_queued_error (entry->conn, CSS_RID_FROM_EID (eid), &error_buffer, &error_size, &rc))
     {
       errid = er_set_area_error ((void *) error_buffer);
       free_and_init (error_buffer);
@@ -620,8 +584,7 @@ css_receive_data_from_server (unsigned int eid, char **buffer, int *size)
  *   timeout(in) : timeout in milli-second
  */
 unsigned int
-css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
-					   int *size, int timeout)
+css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer, int *size, int timeout)
 {
   CSS_MAP_ENTRY *entry;
   int rid;
@@ -659,23 +622,21 @@ css_receive_error_from_server (unsigned int eid, char **buffer, int *size)
   entry = css_return_entry_from_eid (eid, css_Client_anchor);
   if (entry != NULL)
     {
-      css_Errno = css_receive_error (entry->conn, CSS_RID_FROM_EID (eid),
-				     buffer, size);
+      css_Errno = css_receive_error (entry->conn, CSS_RID_FROM_EID (eid), buffer, size);
       if (css_Errno == NO_ERRORS)
 	{
 	  return 0;
 	}
       else
 	{
-	  /*
+	  /* 
 	   * Normally, we disconnect upon any type of receive error.  However,
 	   * in the case of allocation errors, we want to continue and
 	   * propagate the error.
 	   */
 	  if (css_Errno != CANT_ALLOC_BUFFER)
 	    {
-	      css_remove_queued_connection_by_entry (entry,
-						     &css_Client_anchor);
+	      css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
 	    }
 	  return css_Errno;
 	}
@@ -701,15 +662,14 @@ css_terminate (bool server_error)
 	  css_Client_anchor->conn->status = CONN_CLOSING;
 	}
       css_send_close_request (css_Client_anchor->conn);
-      css_remove_queued_connection_by_entry (css_Client_anchor,
-					     &css_Client_anchor);
+      css_remove_queued_connection_by_entry (css_Client_anchor, &css_Client_anchor);
     }
 
 #if defined(WINDOWS)
   css_windows_shutdown ();
 #endif /* WINDOWS */
 
-  /*
+  /* 
    * If there was a previous signal handler. restore it at this point.
    */
 #if !defined(WINDOWS)

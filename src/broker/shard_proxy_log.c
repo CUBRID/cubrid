@@ -32,13 +32,9 @@
 
 #define PROXY_LOG_BUFFER_SIZE 	(8192)
 
-static char *make_proxy_log_filename (char *filepath_buf,
-				      size_t buf_size, const char *br_name,
-				      int proxy_index);
+static char *make_proxy_log_filename (char *filepath_buf, size_t buf_size, const char *br_name, int proxy_index);
 static void proxy_log_backup (void);
-static void proxy_log_write_internal (int level, char *svc_code,
-				      bool do_flush, const char *fmt,
-				      va_list ap);
+static void proxy_log_write_internal (int level, char *svc_code, bool do_flush, const char *fmt, va_list ap);
 static void proxy_log_reset (void);
 static void proxy_access_log_backup (void);
 static void proxy_access_log_end (void);
@@ -69,9 +65,7 @@ static const char *proxy_log_level_str[] = {
 };
 
 static char *
-make_proxy_log_filename (char *filepath_buf,
-			 size_t buf_size, const char *br_name,
-			 int proxy_index)
+make_proxy_log_filename (char *filepath_buf, size_t buf_size, const char *br_name, int proxy_index)
 {
   char dirname[BROKER_PATH_MAX];
 
@@ -79,8 +73,7 @@ make_proxy_log_filename (char *filepath_buf,
 
   strcpy (dirname, shm_as_p->proxy_log_dir);
 
-  snprintf (filepath_buf, buf_size, "%s/%s_%d.log", dirname, br_name,
-	    proxy_index + 1);
+  snprintf (filepath_buf, buf_size, "%s/%s_%d.log", dirname, br_name, proxy_index + 1);
   return filepath_buf;
 }
 
@@ -96,8 +89,7 @@ proxy_log_open (char *br_name, int proxy_index)
     {
       if (br_name != NULL)
 	{
-	  make_proxy_log_filename (log_filepath, BROKER_PATH_MAX, br_name,
-				   proxy_id);
+	  make_proxy_log_filename (log_filepath, BROKER_PATH_MAX, br_name, proxy_id);
 	}
 
       /* note: in "a+" mode, output is always appended */
@@ -176,8 +168,7 @@ proxy_log_end (void)
 }
 
 static void
-proxy_log_write_internal (int level, char *svc_code, bool do_flush,
-			  const char *fmt, va_list ap)
+proxy_log_write_internal (int level, char *svc_code, bool do_flush, const char *fmt, va_list ap)
 {
   char buf[PROXY_LOG_BUFFER_SIZE], *p;
   int write_len, remain, n;
@@ -197,9 +188,7 @@ proxy_log_write_internal (int level, char *svc_code, bool do_flush,
 	}
       else
 	{
-	  n =
-	    snprintf (p, remain, " [%s][%s] ", proxy_log_level_str[level],
-		      svc_code);
+	  n = snprintf (p, remain, " [%s][%s] ", proxy_log_level_str[level], svc_code);
 	}
 
       if (n < 0)
@@ -280,8 +269,7 @@ proxy_log_get_level (void)
 }
 
 int
-proxy_access_log (struct timeval *start_time, int client_ip_addr,
-		  const char *dbname, const char *dbuser, bool accepted)
+proxy_access_log (struct timeval *start_time, int client_ip_addr, const char *dbname, const char *dbuser, bool accepted)
 {
   char *access_log_file;
   char *script = NULL;
@@ -352,14 +340,11 @@ proxy_access_log (struct timeval *start_time, int client_ip_addr,
 
   fprintf (access_log_fp,
 	   "%s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
-	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %s %s %s\n",
-	   clt_ip, clt_appl, script,
-	   (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
-	   (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
-	   ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
-	   ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour,
-	   ct2.tm_min, ct2.tm_sec, (int) getpid (), err_str, -1, dbname,
-	   dbuser, ((accepted) ? "" : " : rejected"));
+	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %s %s %s\n", clt_ip, clt_appl, script, (int) start_time->tv_sec,
+	   (int) (start_time->tv_usec / 1000), (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000), ct1.tm_year,
+	   ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min, ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday,
+	   ct2.tm_hour, ct2.tm_min, ct2.tm_sec, (int) getpid (), err_str, -1, dbname, dbuser,
+	   ((accepted) ? "" : " : rejected"));
   fflush (access_log_fp);
 
   return (end_time.tv_sec - start_time->tv_sec);

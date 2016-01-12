@@ -107,8 +107,7 @@ proxy_shm_initialize (void)
     }
   parse_int (&proxy_shm_id, p, 10);
 
-  shm_proxy_p =
-    (T_SHM_PROXY *) uw_shm_open (proxy_shm_id, SHM_PROXY, SHM_MODE_ADMIN);
+  shm_proxy_p = (T_SHM_PROXY *) uw_shm_open (proxy_shm_id, SHM_PROXY, SHM_MODE_ADMIN);
   if (shm_proxy_p == NULL)
     {
       SHARD_ERR ("Failed to get shm proxy.");
@@ -122,13 +121,10 @@ proxy_shm_initialize (void)
       goto return_error;
     }
 
-  shm_as_p =
-    (T_SHM_APPL_SERVER *) uw_shm_open (proxy_info_p->appl_server_shm_id,
-				       SHM_APPL_SERVER, SHM_MODE_ADMIN);
+  shm_as_p = (T_SHM_APPL_SERVER *) uw_shm_open (proxy_info_p->appl_server_shm_id, SHM_APPL_SERVER, SHM_MODE_ADMIN);
   if (shm_as_p == NULL)
     {
-      SHARD_ERR ("Failed to open shared memory. "
-		 "(SHM_APPL_SERVER, shm_key:%d).", appl_server_shm_id);
+      SHARD_ERR ("Failed to open shared memory. " "(SHM_APPL_SERVER, shm_key:%d).", appl_server_shm_id);
       goto return_error;
     }
 
@@ -181,8 +177,7 @@ main (int argc, char *argv[])
   error = register_fn_get_shard_key ();
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to register shard hashing function.");
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to register shard hashing function.");
       return error;
     }
 
@@ -205,16 +200,14 @@ main (int argc, char *argv[])
   error = shard_stmt_initialize (proxy_info_p->max_prepared_stmt_count);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to initialize proxy statement pool.");
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize proxy statement pool.");
       return error;
     }
 
   error = proxy_handler_initialize ();
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to initialize proxy context handler.");
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize proxy context handler.");
       return error;
     }
 
@@ -222,7 +215,7 @@ main (int argc, char *argv[])
   proxy_Keep_running = true;
   while (proxy_Keep_running == true)
     {
-      /*
+      /* 
        * Since every operation in proxy main is non-blocking
        * (which is not the case in cas main),
        * proxy_set_hang_check_time is placed at the beginning and

@@ -87,8 +87,7 @@ static DB_VALUE *get_value (DB_TYPE token_type);
 void
 display_error_line (int adjust)
 {
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
 	   loader_yylineno + adjust);
 }
 
@@ -125,18 +124,15 @@ parse_error (DB_TYPE token_type, const char *token)
 {
   display_error_line (0);
 
-  /*
+  /* 
    * Note, this is always called after a successful call
    * to ldr_add_attribute() via get_value().  At this point
    * the current value counter has been incremented to the
    * next value so we have to use ldr_prev_att_name() to
    * get the name of the attribute we're having problems with.
    */
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_PARSE_ERROR), token,
-	   db_get_type_name (token_type), ldr_prev_att_name (),
-	   ldr_class_name ());
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_PARSE_ERROR), token,
+	   db_get_type_name (token_type), ldr_prev_att_name (), ldr_class_name ());
 
   ldr_invalid_object ();
 }
@@ -159,34 +155,23 @@ domain_error (DB_TYPE token_type)
   display_error_line (0);
   domain = ldr_att_domain ();
   if (domain == NULL)
-    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				     MSGCAT_UTIL_SET_LOADDB,
-				     LOADDB_MSG_MISSING_DOMAIN),
+    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_MISSING_DOMAIN),
 	     ldr_att_name (), ldr_class_name ());
   else
     {
       if (pr_is_set_type (TP_DOMAIN_TYPE (domain)))
 	{
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_LOADDB,
-					   LOADDB_MSG_SET_DOMAIN_ERROR),
-		   ldr_att_name (), ldr_class_name (),
-		   db_get_type_name (token_type));
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SET_DOMAIN_ERROR),
+		   ldr_att_name (), ldr_class_name (), db_get_type_name (token_type));
 	}
       else
 	{
 	  if (token_type == DB_TYPE_SET)
-	    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					     MSGCAT_UTIL_SET_LOADDB,
-					     LOADDB_MSG_UNEXPECTED_SET),
-		     ldr_att_name (), ldr_class_name (),
-		     ldr_att_domain_name ());
+	    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNEXPECTED_SET),
+		     ldr_att_name (), ldr_class_name (), ldr_att_domain_name ());
 	  else
-	    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					     MSGCAT_UTIL_SET_LOADDB,
-					     LOADDB_MSG_UNEXPECTED_TYPE),
-		     ldr_att_name (), ldr_class_name (),
-		     ldr_att_domain_name (), db_get_type_name (token_type));
+	    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNEXPECTED_TYPE),
+		     ldr_att_name (), ldr_class_name (), ldr_att_domain_name (), db_get_type_name (token_type));
 	}
     }
   ldr_invalid_object ();
@@ -203,9 +188,7 @@ static void
 invalid_class_error (const char *name)
 {
   display_error_line (0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_UNKNOWN_ATT_CLASS), name,
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNKNOWN_ATT_CLASS), name,
 	   ldr_att_name (), ldr_class_name ());
   ldr_invalid_class ();
 }
@@ -220,9 +203,7 @@ static void
 unknown_class_error (const char *name)
 {
   display_error_line (0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_UNKNOWN_CLASS), name);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNKNOWN_CLASS), name);
   ldr_invalid_class ();
 }
 
@@ -236,9 +217,7 @@ static void
 invalid_class_id_error (int id)
 {
   display_error_line (0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_UNKNOWN_CLASS_ID), id,
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNKNOWN_CLASS_ID), id,
 	   ldr_att_name (), ldr_class_name ());
   ldr_invalid_class ();
 }
@@ -254,9 +233,7 @@ static void
 unauthorized_class_error (const char *name)
 {
   display_error_line (0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_UNAUTHORIZED_CLASS), name);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNAUTHORIZED_CLASS), name);
   ldr_invalid_class ();
 }
 
@@ -294,8 +271,7 @@ act_finish (int parse_error)
 
   if (parse_error)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_STOPPED));
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_STOPPED));
     }
 }
 
@@ -808,8 +784,7 @@ act_time (char *token, int ttype)
 		}
 	      break;
 	    case 4:
-	      args =
-		sscanf (token, "%d:%d:%d %7s", &hour, &minute, &second, half);
+	      args = sscanf (token, "%d:%d:%d %7s", &hour, &minute, &second, half);
 	      if (args != 4)
 		parse_error (DB_TYPE_TIME, token);
 	      else
@@ -855,16 +830,14 @@ act_datetime (char *token)
 	}
       else
 	{
-	  args = sscanf (token, "%d/%d/%d %d:%d:%d.%d", &month, &day, &year,
-			 &hour, &minute, &second, &millisecond);
+	  args = sscanf (token, "%d/%d/%d %d:%d:%d.%d", &month, &day, &year, &hour, &minute, &second, &millisecond);
 	  if (args != 7)
 	    {
 	      parse_error (DB_TYPE_DATETIME, token);
 	    }
 	  else
 	    {
-	      db_datetime_encode (&datetime, month, day, year, hour,
-				  minute, second, millisecond);
+	      db_datetime_encode (&datetime, month, day, year, hour, minute, second, millisecond);
 	      db_make_datetime (value, &datetime);
 	    }
 	}
@@ -893,13 +866,11 @@ act_string (char *token, int size, DB_TYPE dtype)
     {
       if (dtype == DB_TYPE_CHAR)
 	{
-	  DB_MAKE_VARCHAR (&temp, TP_FLOATING_PRECISION_VALUE, token, size,
-			   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  DB_MAKE_VARCHAR (&temp, TP_FLOATING_PRECISION_VALUE, token, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	}
       else
 	{
-	  DB_MAKE_VARNCHAR (&temp, TP_FLOATING_PRECISION_VALUE, token, size,
-			    LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  DB_MAKE_VARNCHAR (&temp, TP_FLOATING_PRECISION_VALUE, token, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	}
 
       domain_ptr = tp_domain_resolve_value (value, &domain);
@@ -909,14 +880,12 @@ act_string (char *token, int size, DB_TYPE dtype)
 	  return;
 	}
 
-      if (tp_value_cast (&temp, value, domain_ptr,
-			 false) != DOMAIN_COMPATIBLE)
+      if (tp_value_cast (&temp, value, domain_ptr, false) != DOMAIN_COMPATIBLE)
 	{
 	  domain_type = TP_DOMAIN_TYPE (domain_ptr);
 	  if (TP_IS_DATE_OR_TIME_TYPE (domain_type))
 	    {
-	      printf ("Illegal date/time literal - %s. Resetting to NULL\n",
-		      token);
+	      printf ("Illegal date/time literal - %s. Resetting to NULL\n", token);
 	      db_value_domain_init (value, domain_type, 0, 0);
 	    }
 	  else
@@ -971,8 +940,7 @@ act_system (const char *token, ACT_SYSOBJ_TYPE type)
       strncpy (name, token, len);
       name[len] = '\0';
 
-      /* we don't handle user or class object references yet,
-         convert to unauthorized class error for now */
+      /* we don't handle user or class object references yet, convert to unauthorized class error for now */
       if (type == SYS_USER)
 	{
 	  unauthorized_class_error ("db_user");
@@ -1006,25 +974,18 @@ act_bstring (char *token, int type)
 	  /* The source size is the number of binary digits to convert */
 	  int src_size = strlen (token);
 
-	  /* The destination size is the number of bytes needed to
-	   * represent the source.
-	   */
+	  /* The destination size is the number of bytes needed to represent the source. */
 	  int dest_size = (src_size + 7) / 8;
 
-	  /* Allocate the destination buffer.  After converting, check
-	   * that all of the source digits got converted
-	   */
+	  /* Allocate the destination buffer.  After converting, check that all of the source digits got converted */
 	  char *bstring = db_private_alloc (NULL, dest_size + 1);
-	  if (bstring == NULL
-	      || qstr_bit_to_bin (bstring, dest_size, token,
-				  src_size) != src_size)
+	  if (bstring == NULL || qstr_bit_to_bin (bstring, dest_size, token, src_size) != src_size)
 	    {
 	      parse_error (DB_TYPE_BIT, token);
 	    }
 
 	  /* Coerce to the proper domain */
-	  DB_MAKE_VARBIT (&temp, TP_FLOATING_PRECISION_VALUE, bstring,
-			  src_size);
+	  DB_MAKE_VARBIT (&temp, TP_FLOATING_PRECISION_VALUE, bstring, src_size);
 	  temp.need_clear = true;
 
 	  domain_ptr = tp_domain_resolve_value (value, &domain);
@@ -1034,8 +995,7 @@ act_bstring (char *token, int type)
 	      return;
 	    }
 
-	  if (tp_value_cast (&temp, value, domain_ptr,
-			     false) != DOMAIN_COMPATIBLE)
+	  if (tp_value_cast (&temp, value, domain_ptr, false) != DOMAIN_COMPATIBLE)
 	    {
 	      parse_error (TP_DOMAIN_TYPE (domain_ptr), token);
 	    }
@@ -1045,24 +1005,18 @@ act_bstring (char *token, int type)
 	  /* The source size is the number of hex digits to convert */
 	  int src_size = strlen (token);
 
-	  /* The destination size is the number of bytes needed to
-	   * represent the source.
-	   */
+	  /* The destination size is the number of bytes needed to represent the source. */
 	  int dest_size = (src_size + 1) / 2;
 
-	  /* Allocate the destination buffer.  After converting, check
-	   * that all of the source digits got converted
-	   */
+	  /* Allocate the destination buffer.  After converting, check that all of the source digits got converted */
 	  char *bstring = db_private_alloc (NULL, dest_size + 1);
-	  if (qstr_hex_to_bin (bstring, dest_size, token, src_size) !=
-	      src_size)
+	  if (qstr_hex_to_bin (bstring, dest_size, token, src_size) != src_size)
 	    {
 	      parse_error (DB_TYPE_BIT, token);
 	    }
 
 	  /* Coerce to the proper domain */
-	  DB_MAKE_VARBIT (&temp, TP_FLOATING_PRECISION_VALUE, bstring,
-			  src_size * 4);
+	  DB_MAKE_VARBIT (&temp, TP_FLOATING_PRECISION_VALUE, bstring, src_size * 4);
 	  temp.need_clear = true;
 
 	  domain_ptr = tp_domain_resolve_value (value, &domain);
@@ -1072,8 +1026,7 @@ act_bstring (char *token, int type)
 	      return;
 	    }
 
-	  if (tp_value_cast (&temp, value, domain_ptr,
-			     false) != DOMAIN_COMPATIBLE)
+	  if (tp_value_cast (&temp, value, domain_ptr, false) != DOMAIN_COMPATIBLE)
 	    {
 	      parse_error (TP_DOMAIN_TYPE (domain_ptr), token);
 	    }

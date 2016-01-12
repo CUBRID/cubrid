@@ -304,23 +304,15 @@ extern "C"
     CMP_FUNC cmp_func;
     const char *name;
     CCI_HENTRY_PTR *table;	/* The hash table (entries) */
-    CCI_HENTRY_PTR act_head;	/* Head of active double link list
-				 * entries. Used to perform quick
-				 * mappings of hash table.
-				 */
-    CCI_HENTRY_PTR act_tail;	/* Tail of active double link list
-				 * entries. Used to perform quick
-				 * mappings of hash table.
-				 */
-    CCI_HENTRY_PTR prealloc_entries;	/* Free entries allocated for
-					 * locality reasons
-					 */
+    CCI_HENTRY_PTR act_head;	/* Head of active double link list entries. Used to perform quick mappings of hash
+				 * table. */
+    CCI_HENTRY_PTR act_tail;	/* Tail of active double link list entries. Used to perform quick mappings of hash
+				 * table. */
+    CCI_HENTRY_PTR prealloc_entries;	/* Free entries allocated for locality reasons */
     unsigned int size;		/* Better if prime number */
     unsigned int rehash_at;	/* Rehash at this num of entries */
     unsigned int nentries;	/* Actual number of entries */
-    unsigned int nprealloc_entries;	/* Number of preallocated entries
-					 * for future insertions
-					 */
+    unsigned int nprealloc_entries;	/* Number of preallocated entries for future insertions */
     unsigned int ncollisions;	/* Number of collisions in HT */
   };
 
@@ -332,13 +324,9 @@ extern "C"
   extern unsigned int cci_mht_5strhash (void *key, unsigned int ht_size);
   extern int cci_mht_strcasecmpeq (void *key1, void *key2);
 
-  extern CCI_MHT_TABLE *cci_mht_create (char *name, int est_size,
-					HASH_FUNC hash_func,
-					CMP_FUNC cmp_func);
-  extern void cci_mht_destroy (CCI_MHT_TABLE * ht, bool free_key,
-			       bool free_data);
-  extern void *cci_mht_rem (CCI_MHT_TABLE * ht, void *key, bool free_key,
-			    bool free_data);
+  extern CCI_MHT_TABLE *cci_mht_create (char *name, int est_size, HASH_FUNC hash_func, CMP_FUNC cmp_func);
+  extern void cci_mht_destroy (CCI_MHT_TABLE * ht, bool free_key, bool free_data);
+  extern void *cci_mht_rem (CCI_MHT_TABLE * ht, void *key, bool free_key, bool free_data);
   extern void *cci_mht_get (CCI_MHT_TABLE * ht, void *key);
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern void *cci_mht_put (CCI_MHT_TABLE * ht, void *key, void *data);

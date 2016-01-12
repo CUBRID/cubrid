@@ -763,9 +763,7 @@ test_freelist (LF_ENTRY_DESCRIPTOR * edesc, int nthreads)
   /* multithreaded test */
   for (i = 0; i < nthreads; i++)
     {
-      if (pthread_create
-	  (&threads[i], NULL, test_freelist_proc,
-	   (void *) &freelist) != NO_ERROR)
+      if (pthread_create (&threads[i], NULL, test_freelist_proc, (void *) &freelist) != NO_ERROR)
 	{
 	  return fail ("thread create");
 	}
@@ -801,8 +799,7 @@ test_freelist (LF_ENTRY_DESCRIPTOR * edesc, int nthreads)
       }
     for (i = 0; i < ts.entry_count; i++)
       {
-	for (e = (XENTRY *) ts.entries[i].retired_list; e != NULL;
-	     e = e->stack)
+	for (e = (XENTRY *) ts.entries[i].retired_list; e != NULL; e = e->stack)
 	  {
 	    retired++;
 	  }
@@ -810,15 +807,13 @@ test_freelist (LF_ENTRY_DESCRIPTOR * edesc, int nthreads)
 
     if ((_t - active - retired) != 0)
       {
-	sprintf (msg, "leak problem (lost %d entries)",
-		 _t - active + retired);
+	sprintf (msg, "leak problem (lost %d entries)", _t - active + retired);
 	return fail (msg);
       }
 
     if ((active != _a) || (retired != _r))
       {
-	sprintf (msg, "counting problem (%d != %d) or (%d != %d)",
-		 active, _a, retired, _r);
+	sprintf (msg, "counting problem (%d != %d) or (%d != %d)", active, _a, retired, _r);
 	return fail (msg);
       }
   }
@@ -833,8 +828,7 @@ test_freelist (LF_ENTRY_DESCRIPTOR * edesc, int nthreads)
 }
 
 static int
-test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads,
-		 void *(*proc) (void *))
+test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void *))
 {
 #define MAX_THREADS	  1024
 #define HASH_SIZE	  113
@@ -848,11 +842,9 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads,
 
   del_op_count = 0;
 
-  sprintf (msg, "hash (lf=%s, ld=%s, ud=%s, %d threads)",
-	   (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND ? "y" : "n"),
+  sprintf (msg, "hash (lf=%s, ld=%s, ud=%s, %d threads)", (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND ? "y" : "n"),
 	   (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE ? "y" : "n"),
-	   (edesc->mutex_flags & LF_EM_FLAG_UNLOCK_AFTER_DELETE ? "y" : "n"),
-	   nthreads);
+	   (edesc->mutex_flags & LF_EM_FLAG_UNLOCK_AFTER_DELETE ? "y" : "n"), nthreads);
   begin (msg);
 
   /* initialization */
@@ -879,8 +871,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads,
   /* multithreaded test */
   for (i = 0; i < nthreads; i++)
     {
-      if (pthread_create (&threads[i], NULL, proc, (void *) &hash) !=
-	  NO_ERROR)
+      if (pthread_create (&threads[i], NULL, proc, (void *) &hash) != NO_ERROR)
 	{
 	  return fail ("thread create");
 	}
@@ -898,8 +889,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads,
     }
 
   /* count operations */
-  if (edesc->mutex_flags ==
-      (LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_UNLOCK_AFTER_DELETE))
+  if (edesc->mutex_flags == (LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_UNLOCK_AFTER_DELETE))
     {
       XENTRY *e;
       int nondel_op_count = 0;
@@ -917,8 +907,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads,
 	  /* we're counting delete ops */
 	  if (nondel_op_count + del_op_count != nthreads * 1000000)
 	    {
-	      sprintf (msg, "op count fail (%d + %d != %d)", nondel_op_count,
-		       del_op_count, nthreads * 1000000);
+	      sprintf (msg, "op count fail (%d + %d != %d)", nondel_op_count, del_op_count, nthreads * 1000000);
 	      return fail (msg);
 	    }
 	}
@@ -955,22 +944,18 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads,
 
     if (freelist.available_cnt != acount)
       {
-	sprintf (msg, "counting fail (available %d != %d)",
-		 freelist.available_cnt, acount);
+	sprintf (msg, "counting fail (available %d != %d)", freelist.available_cnt, acount);
 	return fail (msg);
       }
     if (freelist.retired_cnt != rcount)
       {
-	sprintf (msg, "counting fail (retired %d != %d)",
-		 freelist.retired_cnt, rcount);
+	sprintf (msg, "counting fail (retired %d != %d)", freelist.retired_cnt, rcount);
 	return fail (msg);
       }
 
-    if (ecount + freelist.available_cnt + freelist.retired_cnt !=
-	freelist.alloc_cnt)
+    if (ecount + freelist.available_cnt + freelist.retired_cnt != freelist.alloc_cnt)
       {
-	sprintf (msg, "leak check fail (%d + %d + %d != %d)", ecount,
-		 freelist.available_cnt, freelist.retired_cnt,
+	sprintf (msg, "leak check fail (%d + %d + %d != %d)", ecount, freelist.available_cnt, freelist.retired_cnt,
 		 freelist.alloc_cnt);
 	return fail (msg);
       }
@@ -1052,16 +1037,14 @@ test_hash_iterator ()
     int sum = 0;
 
     lf_hash_create_iterator (&it, te, &hash);
-    for (curr = lf_hash_iterate (&it); curr != NULL;
-	 curr = lf_hash_iterate (&it))
+    for (curr = lf_hash_iterate (&it); curr != NULL; curr = lf_hash_iterate (&it))
       {
 	sum += ((XENTRY *) curr)->data;
       }
 
     if (sum != ((HASH_POPULATION - 1) * HASH_POPULATION) / 2)
       {
-	sprintf (msg, "counting error (%d != %d)", sum,
-		 (HASH_POPULATION - 1) * HASH_POPULATION / 2);
+	sprintf (msg, "counting error (%d != %d)", sum, (HASH_POPULATION - 1) * HASH_POPULATION / 2);
 	return fail (msg);
       }
   }
@@ -1097,13 +1080,7 @@ main (int argc, char **argv)
 
   /* circular queue */
   /* temporarily disabled */
-  /*for (i = 1; i <= 64; i *= 2)
-     {
-     if (test_circular_queue (i) != NO_ERROR)
-     {
-     goto fail;
-     }
-     } */
+  /* for (i = 1; i <= 64; i *= 2) { if (test_circular_queue (i) != NO_ERROR) { goto fail; } } */
 
   /* freelist */
   for (i = 1; i <= 64; i *= 2)
@@ -1134,9 +1111,7 @@ main (int argc, char **argv)
     }
 
   /* hash table - entry mutex, no lock between find and delete */
-  xentry_desc.mutex_flags =
-    LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_LOCK_ON_DELETE |
-    LF_EM_FLAG_UNLOCK_AFTER_DELETE;
+  xentry_desc.mutex_flags = LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_LOCK_ON_DELETE | LF_EM_FLAG_UNLOCK_AFTER_DELETE;
   for (i = 1; i <= 64; i *= 2)
     {
       if (test_hash_table (&xentry_desc, i, test_hash_proc_2) != NO_ERROR)
@@ -1151,8 +1126,7 @@ main (int argc, char **argv)
     }
 
   /* hash table - entry mutex, hold lock between find and delete */
-  xentry_desc.mutex_flags =
-    LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_UNLOCK_AFTER_DELETE;
+  xentry_desc.mutex_flags = LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_UNLOCK_AFTER_DELETE;
   for (i = 1; i <= 64; i *= 2)
     {
       if (test_hash_table (&xentry_desc, i, test_hash_proc_3) != NO_ERROR)

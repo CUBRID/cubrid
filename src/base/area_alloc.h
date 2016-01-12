@@ -73,14 +73,12 @@ struct area
   AREA *next;
 
   char *name;
-  size_t element_size;		/* the element size, including
-				 * prefix */
+  size_t element_size;		/* the element size, including prefix */
   size_t alloc_count;
   size_t block_size;
 
   AREA_BLOCKSET_LIST *blockset_list;	/* the blockset list */
-  AREA_BLOCK *hint_block;	/* the hint block which may
-				 * include free slot */
+  AREA_BLOCK *hint_block;	/* the hint block which may include free slot */
   pthread_mutex_t area_mutex;	/* only used for insert new block */
 
   /* for dumping */
@@ -96,8 +94,7 @@ extern void area_init (void);
 extern void area_final (void);
 
 /* area definition */
-extern AREA *area_create (const char *name, size_t element_size,
-			  size_t alloc_count);
+extern AREA *area_create (const char *name, size_t element_size, size_t alloc_count);
 extern void area_destroy (AREA * area);
 
 /* allocation functions */

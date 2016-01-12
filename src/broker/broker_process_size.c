@@ -93,15 +93,11 @@ static char *skip_token (char *p);
         (cntvalue_pid == NULL || cntvalue_workset == NULL ||            \
          cntvalue_pct_cpu == NULL || cntvalue_num_thr == NULL)
 
-typedef PDH_STATUS (__stdcall * PDHOpenQuery) (LPCSTR, DWORD_PTR,
-					       PDH_HQUERY *);
+typedef PDH_STATUS (__stdcall * PDHOpenQuery) (LPCSTR, DWORD_PTR, PDH_HQUERY *);
 typedef PDH_STATUS (__stdcall * PDHCloseQuery) (PDH_HQUERY);
-typedef PDH_STATUS (__stdcall * PDHAddCounter) (PDH_HQUERY, LPCSTR, DWORD_PTR,
-						PDH_HCOUNTER *);
+typedef PDH_STATUS (__stdcall * PDHAddCounter) (PDH_HQUERY, LPCSTR, DWORD_PTR, PDH_HCOUNTER *);
 typedef PDH_STATUS (__stdcall * PDHCollectQueryData) (PDH_HQUERY);
-typedef PDH_STATUS (__stdcall * PDHGetFormattedCounterArray) (PDH_HCOUNTER,
-							      DWORD, LPDWORD,
-							      LPDWORD,
+typedef PDH_STATUS (__stdcall * PDHGetFormattedCounterArray) (PDH_HCOUNTER, DWORD, LPDWORD, LPDWORD,
 							      PPDH_FMT_COUNTERVALUE_ITEM_A);
 PDHOpenQuery fp_PdhOpenQuery;
 PDHCloseQuery fp_PdhCloseQuery;
@@ -410,30 +406,26 @@ pdh_init ()
       return -1;
     }
 
-  fp_PdhAddCounter =
-    (PDHAddCounter) GetProcAddress (h_module, "PdhAddCounterA");
+  fp_PdhAddCounter = (PDHAddCounter) GetProcAddress (h_module, "PdhAddCounterA");
   if (fp_PdhAddCounter == NULL)
     {
       return -1;
     }
 
-  fp_PdhCollectQueryData =
-    (PDHCollectQueryData) GetProcAddress (h_module, "PdhCollectQueryData");
+  fp_PdhCollectQueryData = (PDHCollectQueryData) GetProcAddress (h_module, "PdhCollectQueryData");
   if (fp_PdhCollectQueryData == NULL)
     {
       return -1;
     }
 
   fp_PdhGetFormattedCounterArray =
-    (PDHGetFormattedCounterArray) GetProcAddress (h_module,
-						  "PdhGetFormattedCounterArrayA");
+    (PDHGetFormattedCounterArray) GetProcAddress (h_module, "PdhGetFormattedCounterArrayA");
   if (fp_PdhGetFormattedCounterArray == NULL)
     {
       return -1;
     }
 
-  fp_PdhCloseQuery =
-    (PDHCloseQuery) GetProcAddress (h_module, "PdhCloseQuery");
+  fp_PdhCloseQuery = (PDHCloseQuery) GetProcAddress (h_module, "PdhCloseQuery");
   if (fp_PdhCloseQuery == NULL)
     {
       return -1;
@@ -446,32 +438,28 @@ pdh_init ()
     }
 
   strcpy (path_buffer, "\\Process(*)\\ID Process");
-  pdh_status =
-    (*fp_PdhAddCounter) (pdh_h_query, path_buffer, 0, &counter_pid);
+  pdh_status = (*fp_PdhAddCounter) (pdh_h_query, path_buffer, 0, &counter_pid);
   if (pdh_status != ERROR_SUCCESS)
     {
       return -1;
     }
 
   strcpy (path_buffer, "\\Process(*)\\Working Set");
-  pdh_status =
-    (*fp_PdhAddCounter) (pdh_h_query, path_buffer, 0, &counter_workset);
+  pdh_status = (*fp_PdhAddCounter) (pdh_h_query, path_buffer, 0, &counter_workset);
   if (pdh_status != ERROR_SUCCESS)
     {
       return -1;
     }
 
   strcpy (path_buffer, "\\Process(*)\\% Processor Time");
-  pdh_status =
-    (*fp_PdhAddCounter) (pdh_h_query, path_buffer, 0, &counter_pct_cpu);
+  pdh_status = (*fp_PdhAddCounter) (pdh_h_query, path_buffer, 0, &counter_pct_cpu);
   if (pdh_status != ERROR_SUCCESS)
     {
       return -1;
     }
 
   strcpy (path_buffer, "\\Process(*)\\Thread Count");
-  pdh_status =
-    (*fp_PdhAddCounter) (pdh_h_query, path_buffer, 0, &counter_num_thr);
+  pdh_status = (*fp_PdhAddCounter) (pdh_h_query, path_buffer, 0, &counter_num_thr);
   if (pdh_status != ERROR_SUCCESS)
     {
       return -1;
@@ -484,14 +472,10 @@ pdh_init ()
     {
       return -1;
     }
-  memset (cntvalue_pid, 0,
-	  sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value);
-  memset (cntvalue_workset, 0,
-	  sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value);
-  memset (cntvalue_pct_cpu, 0,
-	  sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value);
-  memset (cntvalue_num_thr, 0,
-	  sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value);
+  memset (cntvalue_pid, 0, sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value);
+  memset (cntvalue_workset, 0, sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value);
+  memset (cntvalue_pct_cpu, 0, sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value);
+  memset (cntvalue_num_thr, 0, sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value);
 
   return 0;
 }
@@ -520,10 +504,7 @@ pdh_collect ()
 	}
       in_size = sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value;
 
-      pdh_status =
-	(*fp_PdhGetFormattedCounterArray) (counter_pid, PDH_FMT_LONG,
-					   &in_size, &pdh_num_proc,
-					   cntvalue_pid);
+      pdh_status = (*fp_PdhGetFormattedCounterArray) (counter_pid, PDH_FMT_LONG, &in_size, &pdh_num_proc, cntvalue_pid);
       if (pdh_status != ERROR_SUCCESS)
 	{
 	  if (pdh_status == PDH_MORE_DATA)
@@ -538,25 +519,19 @@ pdh_collect ()
 	  continue;
 	}
       pdh_status =
-	(*fp_PdhGetFormattedCounterArray) (counter_workset, PDH_FMT_LARGE,
-					   &in_size, &pdh_num_proc,
-					   cntvalue_workset);
+	(*fp_PdhGetFormattedCounterArray) (counter_workset, PDH_FMT_LARGE, &in_size, &pdh_num_proc, cntvalue_workset);
       if (pdh_status != ERROR_SUCCESS)
 	{
 	  continue;
 	}
       pdh_status =
-	(*fp_PdhGetFormattedCounterArray) (counter_pct_cpu, PDH_FMT_DOUBLE,
-					   &in_size, &pdh_num_proc,
-					   cntvalue_pct_cpu);
+	(*fp_PdhGetFormattedCounterArray) (counter_pct_cpu, PDH_FMT_DOUBLE, &in_size, &pdh_num_proc, cntvalue_pct_cpu);
       if (pdh_status != ERROR_SUCCESS)
 	{
 	  continue;
 	}
       pdh_status =
-	(*fp_PdhGetFormattedCounterArray) (counter_num_thr, PDH_FMT_LONG,
-					   &in_size, &pdh_num_proc,
-					   cntvalue_num_thr);
+	(*fp_PdhGetFormattedCounterArray) (counter_num_thr, PDH_FMT_LONG, &in_size, &pdh_num_proc, cntvalue_num_thr);
       if (pdh_status != ERROR_SUCCESS)
 	{
 	  continue;

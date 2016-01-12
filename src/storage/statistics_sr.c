@@ -62,28 +62,19 @@ struct partition_stats_acumulator
   double height;		/* the height of the B+tree */
   double keys;			/* number of keys */
   int pkeys_size;		/* pkeys array size */
-  double *pkeys;		/* partial keys info
-				   for example: index (a, b, ..., x)
-				   pkeys[0]          -> # of {a}
-				   pkeys[1]          -> # of {a, b}
-				   ...
-				   pkeys[pkeys_size-1] -> # of {a, b, ..., x}
-				 */
+  double *pkeys;		/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] -> 
+				 * # of {a, b} ... pkeys[pkeys_size-1] -> # of {a, b, ..., x} */
 };
 
 #if defined(ENABLE_UNUSED_FUNCTION)
-static int stats_compare_data (DB_DATA * data1, DB_DATA * data2,
-			       DB_TYPE type);
+static int stats_compare_data (DB_DATA * data1, DB_DATA * data2, DB_TYPE type);
 static int stats_compare_date (DB_DATE * date1, DB_DATE * date2);
 static int stats_compare_time (DB_TIME * time1, DB_TIME * time2);
 static int stats_compare_utime (DB_UTIME * utime1, DB_UTIME * utime2);
-static int stats_compare_datetime (DB_DATETIME * datetime1_p,
-				   DB_DATETIME * datetime2_p);
+static int stats_compare_datetime (DB_DATETIME * datetime1_p, DB_DATETIME * datetime2_p);
 static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
 #endif
-static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
-						OID * class_oid,
-						OID * partitions, int count,
+static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_oid, OID * partitions, int count,
 						bool with_fullscan);
 
 /*
@@ -115,8 +106,7 @@ static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
  *       for the last class representation.
  */
 int
-xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
-			  bool with_fullscan)
+xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_fullscan)
 {
   CLS_INFO *cls_info_p = NULL;
   REPR_ID repr_id;
@@ -144,8 +134,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
   class_name = heap_get_class_name (thread_p, class_id_p);
   if (class_name == NULL)
     {
-      /* something wrong. give up.
-       */
+      /* something wrong. give up. */
       assert (error_code == NO_ERROR);
 #if !defined(NDEBUG)
       if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
@@ -158,19 +147,16 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
     }
 
   /* before go further, we should get the lock to disable updating schema */
-  lk_grant_code = lock_object (thread_p, class_id_p, oid_Root_class_oid,
-			       SCH_S_LOCK, LK_COND_LOCK);
+  lk_grant_code = lock_object (thread_p, class_id_p, oid_Root_class_oid, SCH_S_LOCK, LK_COND_LOCK);
   if (lk_grant_code != LK_GRANTED)
     {
       error_code = ER_UPDATE_STAT_CANNOT_GET_LOCK;
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, error_code, 1,
-	      class_name ? class_name : "*UNKNOWN-CLASS*");
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, error_code, 1, class_name ? class_name : "*UNKNOWN-CLASS*");
 
       goto error;
     }
 
-  if (catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid)
-      != NO_ERROR)
+  if (catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid) != NO_ERROR)
     {
       goto error;
     }
@@ -178,50 +164,39 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
   catalog_access_info.class_oid = class_id_p;
   catalog_access_info.dir_oid = &dir_oid;
   catalog_access_info.class_name = class_name;
-  error_code = catalog_start_access_with_dir_oid (thread_p,
-						  &catalog_access_info,
-						  S_LOCK);
+  error_code = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, S_LOCK);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  cls_info_p = catalog_get_class_info (thread_p, class_id_p,
-				       &catalog_access_info);
+  cls_info_p = catalog_get_class_info (thread_p, class_id_p, &catalog_access_info);
   if (cls_info_p == NULL)
     {
       goto error;
     }
 
-  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					  NO_ERROR);
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, NO_ERROR);
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	  ER_LOG_STARTED_TO_UPDATE_STATISTICS, 4,
-	  class_name ? class_name : "*UNKNOWN-CLASS*",
-	  class_id_p->volid, class_id_p->pageid, class_id_p->slotid);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_STARTED_TO_UPDATE_STATISTICS, 4,
+	  class_name ? class_name : "*UNKNOWN-CLASS*", class_id_p->volid, class_id_p->pageid, class_id_p->slotid);
 
   /* if class information was not obtained */
-  if (cls_info_p->ci_hfid.vfid.fileid < 0
-      || cls_info_p->ci_hfid.vfid.volid < 0)
+  if (cls_info_p->ci_hfid.vfid.fileid < 0 || cls_info_p->ci_hfid.vfid.volid < 0)
     {
-      /* The class does not have a heap file (i.e. it has no instances);
-         so no statistics can be obtained for this class;
-         just set to 0 and return. */
+      /* The class does not have a heap file (i.e. it has no instances); so no statistics can be obtained for this
+       * class; just set to 0 and return. */
 
       cls_info_p->ci_tot_pages = 0;
       cls_info_p->ci_tot_objects = 0;
 
-      error_code = catalog_start_access_with_dir_oid (thread_p,
-						      &catalog_access_info,
-						      X_LOCK);
+      error_code = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, X_LOCK);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p,
-					   &catalog_access_info);
+      error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p, &catalog_access_info);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -230,8 +205,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
       goto end;
     }
 
-  error_code = partition_get_partition_oids (thread_p, class_id_p,
-					     &partitions, &count);
+  error_code = partition_get_partition_oids (thread_p, class_id_p, &partitions, &count);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -243,10 +217,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
       assert (partitions != NULL);
       catalog_free_class_info (cls_info_p);
       cls_info_p = NULL;
-      error_code = stats_update_partitioned_statistics (thread_p,
-							class_id_p,
-							partitions, count,
-							with_fullscan);
+      error_code = stats_update_partitioned_statistics (thread_p, class_id_p, partitions, count, with_fullscan);
       db_private_free (thread_p, partitions);
       if (error_code != NO_ERROR)
 	{
@@ -256,28 +227,23 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
       goto end;
     }
 
-  error_code = catalog_start_access_with_dir_oid (thread_p,
-						  &catalog_access_info,
-						  S_LOCK);
+  error_code = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, S_LOCK);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  if (catalog_get_last_representation_id (thread_p, class_id_p, &repr_id) !=
-      NO_ERROR)
+  if (catalog_get_last_representation_id (thread_p, class_id_p, &repr_id) != NO_ERROR)
     {
       goto error;
     }
 
-  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id,
-					    &catalog_access_info);
+  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id, &catalog_access_info);
   if (disk_repr_p == NULL)
     {
       goto error;
     }
-  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					  NO_ERROR);
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, NO_ERROR);
 
   npages = estimated_nobjs = 0;
 
@@ -285,8 +251,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
   npages = file_get_numpages (thread_p, &(cls_info_p->ci_hfid.vfid));
   cls_info_p->ci_tot_pages = MAX (npages, 0);
 
-  estimated_nobjs = heap_estimate_num_objects (thread_p,
-					       &(cls_info_p->ci_hfid));
+  estimated_nobjs = heap_estimate_num_objects (thread_p, &(cls_info_p->ci_hfid));
   if (estimated_nobjs == -1)
     {
       /* cannot get estimates from the heap, use old info */
@@ -310,15 +275,13 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  disk_attr_p = disk_repr_p->variable + (i - disk_repr_p->n_fixed);
 	}
 
-      for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
-	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
+      for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
 	  assert_release (!BTID_IS_NULL (&btree_stats_p->btid));
 	  assert_release (btree_stats_p->pkeys_size > 0);
 	  assert_release (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 
-	  if (btree_get_stats (thread_p, btree_stats_p,
-			       with_fullscan) != NO_ERROR)
+	  if (btree_get_stats (thread_p, btree_stats_p, with_fullscan) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -327,21 +290,17 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 	}			/* for (j = 0; ...) */
     }				/* for (i = 0; ...) */
 
-  error_code = catalog_start_access_with_dir_oid (thread_p,
-						  &catalog_access_info,
-						  X_LOCK);
+  error_code = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, X_LOCK);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  /* replace the current disk representation structure/information in the
-     catalog with the newly computed statistics */
+  /* replace the current disk representation structure/information in the catalog with the newly computed statistics */
   assert (!OID_ISNULL (&(cls_info_p->ci_rep_dir)));
-  error_code = catalog_add_representation (thread_p, class_id_p,
-					   repr_id, disk_repr_p,
-					   &(cls_info_p->ci_rep_dir),
-					   &catalog_access_info);
+  error_code =
+    catalog_add_representation (thread_p, class_id_p, repr_id, disk_repr_p, &(cls_info_p->ci_rep_dir),
+				&catalog_access_info);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -349,8 +308,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   cls_info_p->ci_time_stamp = stats_get_time_stamp ();
 
-  error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p,
-				       &catalog_access_info);
+  error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p, &catalog_access_info);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -358,11 +316,9 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p,
 
 end:
 
-  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					  error_code);
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error_code);
 
-  lock_unlock_object (thread_p, class_id_p, oid_Root_class_oid, SCH_S_LOCK,
-		      false);
+  lock_unlock_object (thread_p, class_id_p, oid_Root_class_oid, SCH_S_LOCK, false);
 
   if (disk_repr_p)
     {
@@ -374,10 +330,8 @@ end:
       catalog_free_class_info (cls_info_p);
     }
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	  ER_LOG_FINISHED_TO_UPDATE_STATISTICS, 5,
-	  class_name ? class_name : "*UNKNOWN-CLASS*",
-	  class_id_p->volid, class_id_p->pageid, class_id_p->slotid,
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FINISHED_TO_UPDATE_STATISTICS, 5,
+	  class_name ? class_name : "*UNKNOWN-CLASS*", class_id_p->volid, class_id_p->pageid, class_id_p->slotid,
 	  error_code);
 
   if (class_name)
@@ -434,18 +388,15 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
       return DISK_ERROR;
     }
 
-  /* Find every single class
-   */
+  /* Find every single class */
 
-  if (boot_find_root_heap (&root_hfid) != NO_ERROR
-      || HFID_IS_NULL (&root_hfid))
+  if (boot_find_root_heap (&root_hfid) != NO_ERROR || HFID_IS_NULL (&root_hfid))
     {
       goto exit_on_error;
     }
 
-  if (heap_scancache_start (thread_p, &scan_cache, &root_hfid,
-			    oid_Root_class_oid, false, false,
-			    mvcc_snapshot) != NO_ERROR)
+  if (heap_scancache_start (thread_p, &scan_cache, &root_hfid, oid_Root_class_oid, false, false, mvcc_snapshot) !=
+      NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -455,8 +406,7 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
   class_oid.slotid = NULL_SLOTID;
 
   recdes.data = NULL;
-  while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid,
-		    &recdes, &scan_cache, COPY) == S_SUCCESS)
+  while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &recdes, &scan_cache, COPY) == S_SUCCESS)
     {
 #if !defined(NDEBUG)
       classname = or_class_name (&recdes);
@@ -465,8 +415,7 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
 #endif
 
       error = xstats_update_statistics (thread_p, &class_oid, with_fullscan);
-      if (error == ER_UPDATE_STAT_CANNOT_GET_LOCK
-	  || error == ER_SP_UNKNOWN_SLOTID)
+      if (error == ER_UPDATE_STAT_CANNOT_GET_LOCK || error == ER_SP_UNKNOWN_SLOTID)
 	{
 	  /* continue with other classes */
 	  er_clear ();
@@ -508,8 +457,7 @@ exit_on_error:
  *       but stored into a buffer area to be transmitted to the client side.
  */
 char *
-xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
-				   unsigned int time_stamp, int *length_p)
+xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, unsigned int time_stamp, int *length_p)
 {
   CLS_INFO *cls_info_p;
   REPR_ID repr_id;
@@ -537,18 +485,15 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   *length_p = -1;
 
-  /* the lock on class to avoid changes of representation from rollbacked 
-   * UPDATE statistics */
-  lk_grant_code = lock_object (thread_p, class_id_p, oid_Root_class_oid,
-			       SCH_S_LOCK, LK_UNCOND_LOCK);
+  /* the lock on class to avoid changes of representation from rollbacked UPDATE statistics */
+  lk_grant_code = lock_object (thread_p, class_id_p, oid_Root_class_oid, SCH_S_LOCK, LK_UNCOND_LOCK);
   if (lk_grant_code != LK_GRANTED)
     {
       char *class_name = NULL;
 
       class_name = heap_get_class_name (thread_p, class_id_p);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_UPDATE_STAT_CANNOT_GET_LOCK, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UPDATE_STAT_CANNOT_GET_LOCK, 1,
 	      class_name ? class_name : "*UNKNOWN-CLASS*");
 
       if (class_name != NULL)
@@ -558,22 +503,19 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
       goto exit_on_error;
     }
 
-  if (catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid)
-      != NO_ERROR)
+  if (catalog_get_dir_oid_from_cache (thread_p, class_id_p, &dir_oid) != NO_ERROR)
     {
       goto exit_on_error;
     }
 
   catalog_access_info.class_oid = class_id_p;
   catalog_access_info.dir_oid = &dir_oid;
-  if (catalog_start_access_with_dir_oid
-      (thread_p, &catalog_access_info, S_LOCK) != NO_ERROR)
+  if (catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, S_LOCK) != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  cls_info_p = catalog_get_class_info (thread_p, class_id_p,
-				       &catalog_access_info);
+  cls_info_p = catalog_get_class_info (thread_p, class_id_p, &catalog_access_info);
   if (cls_info_p == NULL)
     {
       goto exit_on_error;
@@ -585,24 +527,20 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
       goto exit_on_error;
     }
 
-  if (catalog_get_last_representation_id (thread_p, class_id_p, &repr_id) !=
-      NO_ERROR)
+  if (catalog_get_last_representation_id (thread_p, class_id_p, &repr_id) != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id,
-					    &catalog_access_info);
+  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id, &catalog_access_info);
   if (disk_repr_p == NULL)
     {
       goto exit_on_error;
     }
 
-  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					  NO_ERROR);
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, NO_ERROR);
 
-  lock_unlock_object (thread_p, class_id_p, oid_Root_class_oid, SCH_S_LOCK,
-		      false);
+  lock_unlock_object (thread_p, class_id_p, oid_Root_class_oid, SCH_S_LOCK, false);
 
   n_attrs = disk_repr_p->n_fixed + disk_repr_p->n_variable;
 
@@ -619,11 +557,9 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	}
 
       tot_n_btstats += disk_attr_p->n_btstats;
-      for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
-	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
+      for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
-	  tot_key_info_size +=
-	    or_packed_domain_size (btree_stats_p->key_type, 0);
+	  tot_key_info_size += or_packed_domain_size (btree_stats_p->key_type, 0);
 	  assert (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 	  tot_key_info_size += (btree_stats_p->pkeys_size * OR_INT_SIZE);	/* pkeys[] */
 	}
@@ -643,8 +579,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	    + OR_INT_SIZE	/* pages of BTREE_STATS */
 	    + OR_INT_SIZE	/* height of BTREE_STATS */
 	    + OR_INT_SIZE	/* keys of BTREE_STATS */
-	    + OR_INT_SIZE	/* does the BTREE_STATS correspond to a
-				 * function index */
+	    + OR_INT_SIZE	/* does the BTREE_STATS correspond to a function index */
 	   ) * tot_n_btstats);	/* total number of indexes */
 
   size += tot_key_info_size;	/* key_type, pkeys[] of BTREE_STATS */
@@ -668,9 +603,8 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   if (HFID_IS_NULL (&cls_info_p->ci_hfid))
     {
-      /* The class does not have a heap file (i.e. it has no instances);
-       * so no statistics can be obtained for this class
-       */
+      /* The class does not have a heap file (i.e. it has no instances); so no statistics can be obtained for this
+       * class */
       OR_PUT_INT (buf_p, cls_info_p->ci_tot_objects);	/* #objects */
       buf_p += OR_INT_SIZE;
 
@@ -679,11 +613,9 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
     }
   else
     {
-      /* use estimates from the heap since it is likely that its estimates
-       * are more accurate than the ones gathered at update statistics time
-       */
-      estimated_nobjs = heap_estimate_num_objects (thread_p,
-						   &(cls_info_p->ci_hfid));
+      /* use estimates from the heap since it is likely that its estimates are more accurate than the ones gathered at
+       * update statistics time */
+      estimated_nobjs = heap_estimate_num_objects (thread_p, &(cls_info_p->ci_hfid));
       if (estimated_nobjs < 0)
 	{
 	  /* cannot get estimates from the heap, use ones from the catalog */
@@ -736,8 +668,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
       OR_PUT_INT (buf_p, disk_attr_p->n_btstats);
       buf_p += OR_INT_SIZE;
 
-      for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
-	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
+      for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
 	  /* collect maximum unique keys info */
 	  if (xbtree_get_unique_pk (thread_p, &btree_stats_p->btid))
@@ -753,16 +684,13 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  btree_stats_p->pages = MAX (1, btree_stats_p->pages);
 	  btree_stats_p->height = MAX (1, btree_stats_p->height);
 
-	  /* If the btree file has currently more pages than when we gathered
-	     statistics, assume that all growth happen at the leaf level. If
-	     the btree is smaller, we use the gathered statistics since the
-	     btree may have an external file (unknown at this level) to keep
-	     overflow keys. */
+	  /* If the btree file has currently more pages than when we gathered statistics, assume that all growth happen 
+	   * at the leaf level. If the btree is smaller, we use the gathered statistics since the btree may have an
+	   * external file (unknown at this level) to keep overflow keys. */
 	  npages = file_get_numpages (thread_p, &btree_stats_p->btid.vfid);
 	  if (npages > btree_stats_p->pages)
 	    {
-	      OR_PUT_INT (buf_p, (btree_stats_p->leafs +
-				  (npages - btree_stats_p->pages)));
+	      OR_PUT_INT (buf_p, (btree_stats_p->leafs + (npages - btree_stats_p->pages)));
 	      buf_p += OR_INT_SIZE;
 
 	      OR_PUT_INT (buf_p, npages);
@@ -783,23 +711,17 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  OR_PUT_INT (buf_p, btree_stats_p->has_function);
 	  buf_p += OR_INT_SIZE;
 
-	  /* check and handle with estimation,
-	   * since pkeys[] is not gathered before update stats
-	   */
+	  /* check and handle with estimation, since pkeys[] is not gathered before update stats */
 	  if (estimated_nobjs > 0)
 	    {
 	      /* is non-empty index */
 	      btree_stats_p->keys = MAX (btree_stats_p->keys, 1);
 
-	      /* If the estimated objects from heap manager is greater than
-	       * the estimate when the statistics were gathered, assume that
-	       * the difference is in distinct keys.
-	       */
-	      if (cls_info_p->ci_tot_objects > 0
-		  && estimated_nobjs > cls_info_p->ci_tot_objects)
+	      /* If the estimated objects from heap manager is greater than the estimate when the statistics were
+	       * gathered, assume that the difference is in distinct keys. */
+	      if (cls_info_p->ci_tot_objects > 0 && estimated_nobjs > cls_info_p->ci_tot_objects)
 		{
-		  btree_stats_p->keys +=
-		    (estimated_nobjs - cls_info_p->ci_tot_objects);
+		  btree_stats_p->keys += (estimated_nobjs - cls_info_p->ci_tot_objects);
 		}
 	    }
 
@@ -827,9 +749,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  assert (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 	  for (k = 0; k < btree_stats_p->pkeys_size; k++)
 	    {
-	      /* check and handle with estimation,
-	       * since pkeys[] is not gathered before update stats
-	       */
+	      /* check and handle with estimation, since pkeys[] is not gathered before update stats */
 	      if (estimated_nobjs > 0)
 		{
 		  /* is non-empty index */
@@ -869,8 +789,7 @@ exit_on_error:
 
   if (catalog_access_info.access_started)
     {
-      (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					      ER_FAILED);
+      (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, ER_FAILED);
     }
 
   if (disk_repr_p)
@@ -1020,29 +939,23 @@ stats_compare_data (DB_DATA * data1_p, DB_DATA * data2_p, DB_TYPE type)
   switch (type)
     {
     case DB_TYPE_INTEGER:
-      status = ((data1_p->i < data2_p->i)
-		? DB_LT : ((data1_p->i > data2_p->i) ? DB_GT : DB_EQ));
+      status = ((data1_p->i < data2_p->i) ? DB_LT : ((data1_p->i > data2_p->i) ? DB_GT : DB_EQ));
       break;
 
     case DB_TYPE_BIGINT:
-      status = ((data1_p->bigint < data2_p->bigint)
-		? DB_LT : ((data1_p->bigint > data2_p->bigint) ? DB_GT :
-			   DB_EQ));
+      status = ((data1_p->bigint < data2_p->bigint) ? DB_LT : ((data1_p->bigint > data2_p->bigint) ? DB_GT : DB_EQ));
       break;
 
     case DB_TYPE_SHORT:
-      status = ((data1_p->sh < data2_p->sh)
-		? DB_LT : ((data1_p->sh > data2_p->sh) ? DB_GT : DB_EQ));
+      status = ((data1_p->sh < data2_p->sh) ? DB_LT : ((data1_p->sh > data2_p->sh) ? DB_GT : DB_EQ));
       break;
 
     case DB_TYPE_FLOAT:
-      status = ((data1_p->f < data2_p->f)
-		? DB_LT : ((data1_p->f > data2_p->f) ? DB_GT : DB_EQ));
+      status = ((data1_p->f < data2_p->f) ? DB_LT : ((data1_p->f > data2_p->f) ? DB_GT : DB_EQ));
       break;
 
     case DB_TYPE_DOUBLE:
-      status = ((data1_p->d < data2_p->d)
-		? DB_LT : ((data1_p->d > data2_p->d) ? DB_GT : DB_EQ));
+      status = ((data1_p->d < data2_p->d) ? DB_LT : ((data1_p->d > data2_p->d) ? DB_GT : DB_EQ));
       break;
 
     case DB_TYPE_DATE:
@@ -1055,8 +968,7 @@ stats_compare_data (DB_DATA * data1_p, DB_DATA * data2_p, DB_TYPE type)
       break;
 
     case DB_TYPE_TIMETZ:
-      status = stats_compare_time (&data1_p->timetz.time,
-				   &data2_p->timetz.time);
+      status = stats_compare_time (&data1_p->timetz.time, &data2_p->timetz.time);
       break;
 
     case DB_TYPE_UTIME:
@@ -1065,19 +977,16 @@ stats_compare_data (DB_DATA * data1_p, DB_DATA * data2_p, DB_TYPE type)
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
-      status = stats_compare_utime (&data1_p->timestamptz.timestamp,
-				    &data2_p->timestamptz.timestamp);
+      status = stats_compare_utime (&data1_p->timestamptz.timestamp, &data2_p->timestamptz.timestamp);
       break;
 
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMELTZ:
-      status = stats_compare_datetime (&data1_p->datetime,
-				       &data2_p->datetime);
+      status = stats_compare_datetime (&data1_p->datetime, &data2_p->datetime);
       break;
 
     case DB_TYPE_DATETIMETZ:
-      status = stats_compare_datetime (&data1_p->datetimetz.datetime,
-				       &data2_p->datetimetz.datetime);
+      status = stats_compare_datetime (&data1_p->datetimetz.datetime, &data2_p->datetimetz.datetime);
       break;
 
     case DB_TYPE_MONETARY:
@@ -1127,8 +1036,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
   fprintf (fpp, "****************\n");
   tloc = (time_t) class_stats->time_stamp;
   fprintf (fpp, " Timestamp: %s", ctime (&tloc));
-  fprintf (fpp, " Total Pages in Class Heap: %d\n",
-	   class_stats->heap_num_pages);
+  fprintf (fpp, " Total Pages in Class Heap: %d\n", class_stats->heap_num_pages);
   fprintf (fpp, " Total Objects: %d\n", class_stats->heap_num_objects);
   fprintf (fpp, " Number of attributes: %d\n", class_stats->n_attrs);
 
@@ -1285,8 +1193,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
       for (j = 0; j < class_stats->attr_stats[i].n_btstats; j++)
 	{
 	  BTREE_STATS *bt_statsp = &class_stats->attr_stats[i].bt_stats[j];
-	  fprintf (fpp, "        BTID: { %d , %d }\n",
-		   bt_statsp->btid.vfid.volid, bt_statsp->btid.vfid.fileid);
+	  fprintf (fpp, "        BTID: { %d , %d }\n", bt_statsp->btid.vfid.volid, bt_statsp->btid.vfid.fileid);
 	  fprintf (fpp, "        Cardinality: %d (", bt_statsp->keys);
 
 	  prefix = "";
@@ -1298,9 +1205,8 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	    }
 
 	  fprintf (fpp, ") ,");
-	  fprintf (fpp, " Total Pages: %d , Leaf Pages: %d ,"
-		   " Height: %d\n",
-		   bt_statsp->pages, bt_statsp->leafs, bt_statsp->height);
+	  fprintf (fpp, " Total Pages: %d , Leaf Pages: %d ," " Height: %d\n", bt_statsp->pages, bt_statsp->leafs,
+		   bt_statsp->height);
 	}
       fprintf (fpp, "\n");
     }
@@ -1332,9 +1238,8 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
  * will be used in the query.
  */
 static int
-stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
-				     OID * class_id_p, OID * partitions,
-				     int partitions_count, bool with_fullscan)
+stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, OID * partitions, int partitions_count,
+				     bool with_fullscan)
 {
   int i, j, k, btree_iter, m;
   int error = NO_ERROR;
@@ -1351,8 +1256,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
   OR_CLASSREP *subcls_rep = NULL;
   int cls_idx_cache = 0, subcls_idx_cache = 0;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
-  CATALOG_ACCESS_INFO part_catalog_access_info =
-    CATALOG_ACCESS_INFO_INITIALIZER;
+  CATALOG_ACCESS_INFO part_catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
   OID dir_oid;
   OID part_dir_oid;
 
@@ -1362,8 +1266,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
   for (i = 0; i < partitions_count; i++)
     {
-      error =
-	xstats_update_statistics (thread_p, &partitions[i], with_fullscan);
+      error = xstats_update_statistics (thread_p, &partitions[i], with_fullscan);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
@@ -1378,15 +1281,13 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
   catalog_access_info.class_oid = class_id_p;
   catalog_access_info.dir_oid = &dir_oid;
-  error = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info,
-					     S_LOCK);
+  error = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, S_LOCK);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
-  cls_info_p = catalog_get_class_info (thread_p, class_id_p,
-				       &catalog_access_info);
+  cls_info_p = catalog_get_class_info (thread_p, class_id_p, &catalog_access_info);
   if (cls_info_p == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -1402,16 +1303,14 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
   cls_info_p->ci_tot_pages = 0;
   cls_info_p->ci_tot_objects = 0;
 
-  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id,
-					    &catalog_access_info);
+  disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id, &catalog_access_info);
   if (disk_repr_p == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       goto cleanup;
     }
 
-  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					  NO_ERROR);
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, NO_ERROR);
 
   /* partitions_count number of btree_stats we will need to use */
   n_btrees = 0;
@@ -1426,8 +1325,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  disk_attr_p = disk_repr_p->variable + (i - disk_repr_p->n_fixed);
 	}
 
-      for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
-	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
+      for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
 	  n_btrees++;
 	}
@@ -1440,22 +1338,14 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
       goto cleanup;
     }
 
-  mean =
-    (PARTITION_STATS_ACUMULATOR *) db_private_alloc (thread_p,
-						     n_btrees *
-						     sizeof
-						     (PARTITION_STATS_ACUMULATOR));
+  mean = (PARTITION_STATS_ACUMULATOR *) db_private_alloc (thread_p, n_btrees * sizeof (PARTITION_STATS_ACUMULATOR));
   if (mean == NULL)
     {
       error = ER_FAILED;
       goto cleanup;
     }
 
-  stddev =
-    (PARTITION_STATS_ACUMULATOR *) db_private_alloc (thread_p,
-						     n_btrees *
-						     sizeof
-						     (PARTITION_STATS_ACUMULATOR));
+  stddev = (PARTITION_STATS_ACUMULATOR *) db_private_alloc (thread_p, n_btrees * sizeof (PARTITION_STATS_ACUMULATOR));
   if (stddev == NULL)
     {
       error = ER_FAILED;
@@ -1478,50 +1368,37 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  disk_attr_p = disk_repr_p->variable + (i - disk_repr_p->n_fixed);
 	}
 
-      for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
-	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
+      for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
 	  mean[btree_iter].pkeys_size = btree_stats_p->pkeys_size;
 	  mean[btree_iter].pkeys =
-	    (double *) db_private_alloc (thread_p,
-					 mean[btree_iter].pkeys_size *
-					 sizeof (double));
+	    (double *) db_private_alloc (thread_p, mean[btree_iter].pkeys_size * sizeof (double));
 	  if (mean[btree_iter].pkeys == NULL)
 	    {
 	      error = ER_FAILED;
 	      goto cleanup;
 	    }
-	  memset (mean[btree_iter].pkeys, 0,
-		  mean[btree_iter].pkeys_size * sizeof (double));
+	  memset (mean[btree_iter].pkeys, 0, mean[btree_iter].pkeys_size * sizeof (double));
 
 	  stddev[btree_iter].pkeys_size = btree_stats_p->pkeys_size;
 	  stddev[btree_iter].pkeys =
-	    (double *) db_private_alloc (thread_p,
-					 mean[btree_iter].pkeys_size *
-					 sizeof (double));
+	    (double *) db_private_alloc (thread_p, mean[btree_iter].pkeys_size * sizeof (double));
 	  if (stddev[btree_iter].pkeys == NULL)
 	    {
 	      error = ER_FAILED;
 	      goto cleanup;
 	    }
-	  memset (stddev[btree_iter].pkeys, 0,
-		  mean[btree_iter].pkeys_size * sizeof (double));
+	  memset (stddev[btree_iter].pkeys, 0, mean[btree_iter].pkeys_size * sizeof (double));
 	  btree_iter++;
 	}
     }
 
-  /* Compute class statistics:
-   * For each btree compute the mean, standard deviation and coefficient of
-   * variation. The global statistics for each btree will be the
-   * mean * (1 + cv). We do this so that the optimizer will pick the tree with
-   * the lowest dispersion.
-   * Since partitions and partitioned class have the same indexes but not
-   * stored in the same order, we will use class representations to match
-   * inherited indexes from partitions to the indexes in the partitioned class
-   * class.
-   */
-  cls_rep = heap_classrepr_get (thread_p, class_id_p, NULL,
-				NULL_REPRID, &cls_idx_cache);
+  /* Compute class statistics: For each btree compute the mean, standard deviation and coefficient of variation. The
+   * global statistics for each btree will be the mean * (1 + cv). We do this so that the optimizer will pick the tree
+   * with the lowest dispersion. Since partitions and partitioned class have the same indexes but not stored in the
+   * same order, we will use class representations to match inherited indexes from partitions to the indexes in the
+   * partitioned class class. */
+  cls_rep = heap_classrepr_get (thread_p, class_id_p, NULL, NULL_REPRID, &cls_idx_cache);
   if (cls_rep == NULL)
     {
       error = ER_FAILED;
@@ -1547,8 +1424,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  subcls_rep = NULL;
 	}
 
-      if (catalog_get_dir_oid_from_cache
-	  (thread_p, &partitions[i], &part_dir_oid) != NO_ERROR)
+      if (catalog_get_dir_oid_from_cache (thread_p, &partitions[i], &part_dir_oid) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
@@ -1557,17 +1433,14 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
       part_catalog_access_info.class_oid = &partitions[i];
       part_catalog_access_info.dir_oid = &part_dir_oid;
-      if (catalog_start_access_with_dir_oid (thread_p,
-					     &part_catalog_access_info,
-					     S_LOCK) != NO_ERROR)
+      if (catalog_start_access_with_dir_oid (thread_p, &part_catalog_access_info, S_LOCK) != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
 	}
 
       /* load new subclass */
-      subcls_info = catalog_get_class_info (thread_p, &partitions[i],
-					    &part_catalog_access_info);
+      subcls_info = catalog_get_class_info (thread_p, &partitions[i], &part_catalog_access_info);
       if (subcls_info == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
@@ -1577,41 +1450,33 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
       cls_info_p->ci_tot_objects += subcls_info->ci_tot_objects;
 
       /* get disk repr for subclass */
-      error = catalog_get_last_representation_id (thread_p, &partitions[i],
-						  &subcls_repr_id);
+      error = catalog_get_last_representation_id (thread_p, &partitions[i], &subcls_repr_id);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
 	}
 
-      subcls_disk_rep = catalog_get_representation (thread_p, &partitions[i],
-						    subcls_repr_id,
-						    &part_catalog_access_info);
+      subcls_disk_rep =
+	catalog_get_representation (thread_p, &partitions[i], subcls_repr_id, &part_catalog_access_info);
       if (subcls_disk_rep == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
 	}
 
-      (void) catalog_end_access_with_dir_oid (thread_p,
-					      &part_catalog_access_info,
-					      NO_ERROR);
+      (void) catalog_end_access_with_dir_oid (thread_p, &part_catalog_access_info, NO_ERROR);
 
-      subcls_rep =
-	heap_classrepr_get (thread_p, &partitions[i], NULL,
-			    NULL_REPRID, &subcls_idx_cache);
+      subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL, NULL_REPRID, &subcls_idx_cache);
       if (subcls_rep == NULL)
 	{
 	  error = ER_FAILED;
 	  goto cleanup;
 	}
 
-      /* add partition information to the accumulators and also update
-       * min/max values for partitioned class disk representation
-       */
+      /* add partition information to the accumulators and also update min/max values for partitioned class disk
+       * representation */
       btree_iter = 0;
-      for (j = 0; j < subcls_disk_rep->n_fixed + subcls_disk_rep->n_variable;
-	   j++)
+      for (j = 0; j < subcls_disk_rep->n_fixed + subcls_disk_rep->n_variable; j++)
 	{
 	  if (j < subcls_disk_rep->n_fixed)
 	    {
@@ -1620,15 +1485,12 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	    }
 	  else
 	    {
-	      subcls_attr_p =
-		subcls_disk_rep->variable + (j - subcls_disk_rep->n_fixed);
-	      disk_attr_p =
-		disk_repr_p->variable + (j - disk_repr_p->n_fixed);
+	      subcls_attr_p = subcls_disk_rep->variable + (j - subcls_disk_rep->n_fixed);
+	      disk_attr_p = disk_repr_p->variable + (j - disk_repr_p->n_fixed);
 	    }
 
 	  /* check for partitions schema changes are not yet finished */
-	  if (subcls_attr_p->id != disk_attr_p->id
-	      || subcls_attr_p->n_btstats != disk_attr_p->n_btstats)
+	  if (subcls_attr_p->id != disk_attr_p->id || subcls_attr_p->n_btstats != disk_attr_p->n_btstats)
 	    {
 	      error = NO_ERROR;
 	      goto cleanup;
@@ -1637,13 +1499,11 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  assert_release (subcls_attr_p->id == disk_attr_p->id);
 	  assert_release (subcls_attr_p->n_btstats == disk_attr_p->n_btstats);
 
-	  for (k = 0, btree_stats_p = disk_attr_p->bt_stats;
-	       k < disk_attr_p->n_btstats; k++, btree_stats_p++)
+	  for (k = 0, btree_stats_p = disk_attr_p->bt_stats; k < disk_attr_p->n_btstats; k++, btree_stats_p++)
 	    {
-	      const BTREE_STATS *subcls_stats =
-		stats_find_inherited_index_stats (cls_rep, subcls_rep,
-						  subcls_attr_p,
-						  &btree_stats_p->btid);
+	      const BTREE_STATS *subcls_stats = stats_find_inherited_index_stats (cls_rep, subcls_rep,
+										  subcls_attr_p,
+										  &btree_stats_p->btid);
 	      if (subcls_stats == NULL)
 		{
 		  error = ER_FAILED;
@@ -1704,8 +1564,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  subcls_rep = NULL;
 	}
 
-      if (catalog_get_dir_oid_from_cache
-	  (thread_p, &partitions[i], &part_dir_oid) != NO_ERROR)
+      if (catalog_get_dir_oid_from_cache (thread_p, &partitions[i], &part_dir_oid) != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
@@ -1713,36 +1572,29 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
       part_catalog_access_info.class_oid = &partitions[i];
       part_catalog_access_info.dir_oid = &part_dir_oid;
-      if (catalog_start_access_with_dir_oid (thread_p,
-					     &part_catalog_access_info,
-					     S_LOCK) != NO_ERROR)
+      if (catalog_start_access_with_dir_oid (thread_p, &part_catalog_access_info, S_LOCK) != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
 	}
 
       /* get disk repr for subclass */
-      error = catalog_get_last_representation_id (thread_p, &partitions[i],
-						  &subcls_repr_id);
+      error = catalog_get_last_representation_id (thread_p, &partitions[i], &subcls_repr_id);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
 	}
 
-      subcls_disk_rep = catalog_get_representation (thread_p, &partitions[i],
-						    subcls_repr_id,
-						    &part_catalog_access_info);
+      subcls_disk_rep =
+	catalog_get_representation (thread_p, &partitions[i], subcls_repr_id, &part_catalog_access_info);
       if (subcls_disk_rep == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
 	}
-      (void) catalog_end_access_with_dir_oid (thread_p,
-					      &part_catalog_access_info,
-					      NO_ERROR);
+      (void) catalog_end_access_with_dir_oid (thread_p, &part_catalog_access_info, NO_ERROR);
 
-      subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL,
-				       NULL_REPRID, &subcls_idx_cache);
+      subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL, NULL_REPRID, &subcls_idx_cache);
       if (subcls_rep == NULL)
 	{
 	  error = ER_FAILED;
@@ -1751,8 +1603,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
       /* add partition information to the accumulators */
       btree_iter = 0;
-      for (j = 0; j < subcls_disk_rep->n_fixed + subcls_disk_rep->n_variable;
-	   j++)
+      for (j = 0; j < subcls_disk_rep->n_fixed + subcls_disk_rep->n_variable; j++)
 	{
 	  if (j < subcls_disk_rep->n_fixed)
 	    {
@@ -1761,15 +1612,12 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	    }
 	  else
 	    {
-	      subcls_attr_p =
-		subcls_disk_rep->variable + (j - subcls_disk_rep->n_fixed);
-	      disk_attr_p =
-		disk_repr_p->variable + (j - disk_repr_p->n_fixed);
+	      subcls_attr_p = subcls_disk_rep->variable + (j - subcls_disk_rep->n_fixed);
+	      disk_attr_p = disk_repr_p->variable + (j - disk_repr_p->n_fixed);
 	    }
 
 	  /* check for partitions schema changes are not yet finished */
-	  if (subcls_attr_p->id != disk_attr_p->id
-	      || subcls_attr_p->n_btstats != disk_attr_p->n_btstats)
+	  if (subcls_attr_p->id != disk_attr_p->id || subcls_attr_p->n_btstats != disk_attr_p->n_btstats)
 	    {
 	      assert (false);	/* is impossible */
 	      error = NO_ERROR;
@@ -1779,37 +1627,29 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  assert_release (subcls_attr_p->id == disk_attr_p->id);
 	  assert_release (subcls_attr_p->n_btstats == disk_attr_p->n_btstats);
 
-	  for (k = 0, btree_stats_p = disk_attr_p->bt_stats;
-	       k < disk_attr_p->n_btstats; k++, btree_stats_p++)
+	  for (k = 0, btree_stats_p = disk_attr_p->bt_stats; k < disk_attr_p->n_btstats; k++, btree_stats_p++)
 	    {
-	      const BTREE_STATS *subcls_stats =
-		stats_find_inherited_index_stats (cls_rep, subcls_rep,
-						  subcls_attr_p,
-						  &btree_stats_p->btid);
+	      const BTREE_STATS *subcls_stats = stats_find_inherited_index_stats (cls_rep, subcls_rep,
+										  subcls_attr_p,
+										  &btree_stats_p->btid);
 	      if (subcls_stats == NULL)
 		{
 		  error = ER_FAILED;
 		  goto cleanup;
 		}
 
-	      stddev[btree_iter].leafs +=
-		SQUARE (btree_stats_p->leafs - mean[btree_iter].leafs);
+	      stddev[btree_iter].leafs += SQUARE (btree_stats_p->leafs - mean[btree_iter].leafs);
 
-	      stddev[btree_iter].pages +=
-		SQUARE (subcls_stats->pages - mean[btree_iter].pages);
+	      stddev[btree_iter].pages += SQUARE (subcls_stats->pages - mean[btree_iter].pages);
 
-	      stddev[btree_iter].height +=
-		SQUARE (subcls_stats->height - mean[btree_iter].height);
+	      stddev[btree_iter].height += SQUARE (subcls_stats->height - mean[btree_iter].height);
 
-	      stddev[btree_iter].keys +=
-		SQUARE (subcls_stats->keys - mean[btree_iter].keys);
+	      stddev[btree_iter].keys += SQUARE (subcls_stats->keys - mean[btree_iter].keys);
 
 	      assert (subcls_stats->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 	      for (m = 0; m < subcls_stats->pkeys_size; m++)
 		{
-		  stddev[btree_iter].pkeys[m] +=
-		    SQUARE (subcls_stats->pkeys[m] -
-			    mean[btree_iter].pkeys[m]);
+		  stddev[btree_iter].pkeys[m] += SQUARE (subcls_stats->pkeys[m] - mean[btree_iter].pkeys[m]);
 		}
 
 	      btree_iter++;
@@ -1819,23 +1659,18 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
   for (btree_iter = 0; btree_iter < n_btrees; btree_iter++)
     {
-      stddev[btree_iter].leafs =
-	sqrt (stddev[btree_iter].leafs / partitions_count);
+      stddev[btree_iter].leafs = sqrt (stddev[btree_iter].leafs / partitions_count);
 
-      stddev[btree_iter].pages =
-	sqrt (stddev[btree_iter].pages / partitions_count);
+      stddev[btree_iter].pages = sqrt (stddev[btree_iter].pages / partitions_count);
 
-      stddev[btree_iter].height =
-	sqrt (stddev[btree_iter].height / partitions_count);
+      stddev[btree_iter].height = sqrt (stddev[btree_iter].height / partitions_count);
 
-      stddev[btree_iter].keys =
-	sqrt (stddev[btree_iter].keys / partitions_count);
+      stddev[btree_iter].keys = sqrt (stddev[btree_iter].keys / partitions_count);
 
       assert (mean[btree_iter].pkeys_size <= BTREE_STATS_PKEYS_NUM);
       for (m = 0; m < mean[btree_iter].pkeys_size; m++)
 	{
-	  stddev[btree_iter].pkeys[m] =
-	    sqrt (stddev[btree_iter].pkeys[m] / partitions_count);
+	  stddev[btree_iter].pkeys[m] = sqrt (stddev[btree_iter].pkeys[m] / partitions_count);
 	}
     }
 
@@ -1852,35 +1687,27 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	  disk_attr_p = disk_repr_p->variable + (i - disk_repr_p->n_fixed);
 	}
 
-      for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
-	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
+      for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
 	  if (mean[btree_iter].leafs != 0)
 	    {
 	      btree_stats_p->leafs =
-		(int) (mean[btree_iter].leafs *
-		       (1 +
-			stddev[btree_iter].leafs / mean[btree_iter].leafs));
+		(int) (mean[btree_iter].leafs * (1 + stddev[btree_iter].leafs / mean[btree_iter].leafs));
 	    }
 	  if (mean[btree_iter].pages != 0)
 	    {
 	      btree_stats_p->pages =
-		(int) (mean[btree_iter].pages *
-		       (1 +
-			stddev[btree_iter].pages / mean[btree_iter].pages));
+		(int) (mean[btree_iter].pages * (1 + stddev[btree_iter].pages / mean[btree_iter].pages));
 	    }
 	  if (mean[btree_iter].height != 0)
 	    {
 	      btree_stats_p->height =
-		(int) (mean[btree_iter].height *
-		       (1 +
-			stddev[btree_iter].height / mean[btree_iter].height));
+		(int) (mean[btree_iter].height * (1 + stddev[btree_iter].height / mean[btree_iter].height));
 	    }
 	  if (mean[btree_iter].keys != 0)
 	    {
 	      btree_stats_p->keys =
-		(int) (mean[btree_iter].keys *
-		       (1 + stddev[btree_iter].keys / mean[btree_iter].keys));
+		(int) (mean[btree_iter].keys * (1 + stddev[btree_iter].keys / mean[btree_iter].keys));
 	    }
 
 	  assert (mean[btree_iter].pkeys_size <= BTREE_STATS_PKEYS_NUM);
@@ -1889,31 +1716,24 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 	      if (mean[btree_iter].pkeys[m] != 0)
 		{
 		  btree_stats_p->pkeys[m] =
-		    (int) (mean[btree_iter].pkeys[m] * (1 +
-							stddev[btree_iter].
-							pkeys[m] /
-							mean[btree_iter].
-							pkeys[m]));
+		    (int) (mean[btree_iter].pkeys[m] * (1 + stddev[btree_iter].pkeys[m] / mean[btree_iter].pkeys[m]));
 		}
 	    }
 	  btree_iter++;
 	}
     }
 
-  error = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info,
-					     X_LOCK);
+  error = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, X_LOCK);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
 
-  /* replace the current disk representation structure/information in the
-     catalog with the newly computed statistics */
+  /* replace the current disk representation structure/information in the catalog with the newly computed statistics */
   assert (!OID_ISNULL (&(cls_info_p->ci_rep_dir)));
-  error = catalog_add_representation (thread_p, class_id_p,
-				      repr_id, disk_repr_p,
-				      &(cls_info_p->ci_rep_dir),
-				      &catalog_access_info);
+  error =
+    catalog_add_representation (thread_p, class_id_p, repr_id, disk_repr_p, &(cls_info_p->ci_rep_dir),
+				&catalog_access_info);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -1921,14 +1741,11 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p,
 
   cls_info_p->ci_time_stamp = stats_get_time_stamp ();
 
-  error = catalog_add_class_info (thread_p, class_id_p, cls_info_p,
-				  &catalog_access_info);
+  error = catalog_add_class_info (thread_p, class_id_p, cls_info_p, &catalog_access_info);
 
 cleanup:
-  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info,
-					  error);
-  (void) catalog_end_access_with_dir_oid (thread_p,
-					  &part_catalog_access_info, error);
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error);
+  (void) catalog_end_access_with_dir_oid (thread_p, &part_catalog_access_info, error);
 
   if (cls_rep != NULL)
     {
@@ -1992,9 +1809,8 @@ cleanup:
  * cls_btid (in)   : BTID of the index in the superclass
  */
 const BTREE_STATS *
-stats_find_inherited_index_stats (OR_CLASSREP * cls_rep,
-				  OR_CLASSREP * subcls_rep,
-				  DISK_ATTR * subcls_attr, BTID * cls_btid)
+stats_find_inherited_index_stats (OR_CLASSREP * cls_rep, OR_CLASSREP * subcls_rep, DISK_ATTR * subcls_attr,
+				  BTID * cls_btid)
 {
   int i;
   const char *cls_btname = NULL;
@@ -2035,8 +1851,7 @@ stats_find_inherited_index_stats (OR_CLASSREP * cls_rep,
       return NULL;
     }
 
-  for (i = 0, btstats = subcls_attr->bt_stats; i < subcls_attr->n_btstats;
-       i++, btstats++)
+  for (i = 0, btstats = subcls_attr->bt_stats; i < subcls_attr->n_btstats; i++, btstats++)
     {
       if (BTID_IS_EQUAL (subcls_btid, &btstats->btid))
 	{

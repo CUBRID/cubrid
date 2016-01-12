@@ -53,33 +53,20 @@ struct value_area_s_
   bool val_read;
 };
 
-static int
-value_to_db_value (CI_TYPE type, void *addr, size_t len,
-		   DB_VALUE * val, bool domain_initialized);
-static int db_value_to_value (BIND_HANDLE conn,
-			      const DB_VALUE * val, CI_TYPE type,
-			      void *addr, size_t len, size_t * outlen,
-			      bool * isnull);
-static int vbt_lazy_init_db_value (VALUE_BIND_TABLE_ * vbt, int index,
-				   CHECK_PURPOSE pup, VALUE_AREA ** rva,
-				   DB_VALUE ** rv);
-static int vbt_api_get_value (VALUE_BIND_TABLE * tbl, int index,
-			      CI_TYPE type, void *addr, size_t len,
+static int value_to_db_value (CI_TYPE type, void *addr, size_t len, DB_VALUE * val, bool domain_initialized);
+static int db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val, CI_TYPE type, void *addr, size_t len,
 			      size_t * outlen, bool * isnull);
-static int vbt_api_set_value (VALUE_BIND_TABLE * tbl, int index,
-			      CI_TYPE type, void *addr, size_t len);
-static int vbt_api_get_value_by_name (VALUE_BIND_TABLE * tbl,
-				      const char *name, CI_TYPE type,
-				      void *addr, size_t len, size_t * outlen,
-				      bool * isnull);
-static int vbt_api_set_value_by_name (VALUE_BIND_TABLE * tbl,
-				      const char *name, CI_TYPE type,
-				      void *addr, size_t len);
-static int vbt_apply_updatesf_map (void *arg, int index, VALUE_AREA * va,
-				   API_VALUE * val);
+static int vbt_lazy_init_db_value (VALUE_BIND_TABLE_ * vbt, int index, CHECK_PURPOSE pup, VALUE_AREA ** rva,
+				   DB_VALUE ** rv);
+static int vbt_api_get_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type, void *addr, size_t len, size_t * outlen,
+			      bool * isnull);
+static int vbt_api_set_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type, void *addr, size_t len);
+static int vbt_api_get_value_by_name (VALUE_BIND_TABLE * tbl, const char *name, CI_TYPE type, void *addr, size_t len,
+				      size_t * outlen, bool * isnull);
+static int vbt_api_set_value_by_name (VALUE_BIND_TABLE * tbl, const char *name, CI_TYPE type, void *addr, size_t len);
+static int vbt_apply_updatesf_map (void *arg, int index, VALUE_AREA * va, API_VALUE * val);
 static int vbt_api_apply_updates (VALUE_BIND_TABLE * tbl);
-static int vbt_resetf_map (void *arg, int index, VALUE_AREA * va,
-			   API_VALUE * val);
+static int vbt_resetf_map (void *arg, int index, VALUE_AREA * va, API_VALUE * val);
 static int vbt_api_reset (VALUE_BIND_TABLE * tbl);
 static void vbt_dtor (VALUE_AREA * v, API_VALUE * aval);
 static void vbt_api_destroy (VALUE_BIND_TABLE * table);
@@ -94,8 +81,7 @@ static void vbt_api_destroy (VALUE_BIND_TABLE * table);
  *    domain_initalized():
  */
 static int
-value_to_db_value (CI_TYPE type, void *addr, size_t len,
-		   DB_VALUE * dbval, bool domain_initalized)
+value_to_db_value (CI_TYPE type, void *addr, size_t len, DB_VALUE * dbval, bool domain_initalized)
 {
   DB_VALUE val_s;
   DB_VALUE *val = &val_s;
@@ -251,8 +237,7 @@ value_to_db_value (CI_TYPE type, void *addr, size_t len,
 	    (void) db_value_clear (&d);
 	    break;
 	  }
-	res = db_timestamp_encode_ses (db_get_date (&d), db_get_time (&t),
-				       &ts, NULL);
+	res = db_timestamp_encode_ses (db_get_date (&d), db_get_time (&t), &ts, NULL);
 	if (res == NO_ERROR)
 	  res = db_value_put (val, DB_TYPE_C_TIMESTAMP, &ts, sizeof (ts));
 	(void) db_value_clear (&d);
@@ -269,9 +254,9 @@ value_to_db_value (CI_TYPE type, void *addr, size_t len,
 	  return ER_INTERFACE_INVALID_ARGUMENT;
 
 	xtime = (CI_TIME *) addr;
-	res = db_datetime_encode (&dt, xtime->month, xtime->day, xtime->year,
-				  xtime->hour, xtime->minute, xtime->second,
-				  xtime->millisecond);
+	res =
+	  db_datetime_encode (&dt, xtime->month, xtime->day, xtime->year, xtime->hour, xtime->minute, xtime->second,
+			      xtime->millisecond);
 	if (res == NO_ERROR)
 	  res = db_value_put (val, DB_TYPE_C_DATETIME, &dt, sizeof (dt));
 	break;
@@ -302,8 +287,7 @@ value_to_db_value (CI_TYPE type, void *addr, size_t len,
 	obj = db_object (&oid);
 	if (obj == NULL || obj->lock == NULL_LOCK)
 	  return ER_INTERFACE_GENERIC;	/* no such object */
-	res =
-	  db_value_put (val, DB_TYPE_C_OBJECT, &obj, sizeof (DB_OBJECT **));
+	res = db_value_put (val, DB_TYPE_C_OBJECT, &obj, sizeof (DB_OBJECT **));
 #else
 	res = db_make_oid (val, &oid);
 #endif
@@ -324,8 +308,7 @@ value_to_db_value (CI_TYPE type, void *addr, size_t len,
       }
     default:
       {
-	api_er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		    ER_INTERFACE_INVALID_ARGUMENT, 0);
+	api_er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_INVALID_ARGUMENT, 0);
 	return ER_INTERFACE_INVALID_ARGUMENT;
       }
     }
@@ -355,8 +338,7 @@ res_return:
  *    is_null():
  */
 static int
-db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
-		   CI_TYPE type, void *addr, size_t len, size_t * out_len,
+db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val, CI_TYPE type, void *addr, size_t len, size_t * out_len,
 		   bool * is_null)
 {
   DB_TYPE dbtype;
@@ -384,8 +366,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	if (len < sizeof (int))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
 
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_INT, addr, buflen,
-			    &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_INT, addr, buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_SHORT:
@@ -393,8 +374,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	if (len < sizeof (short))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
 
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_SHORT, addr, buflen,
-			    &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_SHORT, addr, buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_FLOAT:
@@ -402,8 +382,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	if (len < sizeof (float))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
 
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_FLOAT, addr, buflen,
-			    &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_FLOAT, addr, buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_DOUBLE:
@@ -411,44 +390,37 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	if (len < sizeof (double))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
 
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_DOUBLE, addr, buflen,
-			    &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_DOUBLE, addr, buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_CHAR:
       {
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr, buflen,
-			    &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr, buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_VARCHAR:
       {
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_VARCHAR, addr, buflen,
-			    &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_VARCHAR, addr, buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_NCHAR:
       {
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_NCHAR, addr, buflen,
-			    &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_NCHAR, addr, buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_VARNCHAR:
       {
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_VARNCHAR, addr,
-			    buflen, &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_VARNCHAR, addr, buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_BIT:
       {
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_BIT, addr, buflen,
-			    &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_BIT, addr, buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_VARBIT:
       {
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_VARBIT, addr, buflen,
-			    &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_VARBIT, addr, buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_TIME:
@@ -460,8 +432,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	if (len < sizeof (*xtime))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
 
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_TIME, &t, sizeof (t),
-			    &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_TIME, &t, sizeof (t), &xflen, &outlen);
 	if (res != NO_ERROR)
 	  return ER_INTERFACE_GENERIC;
 
@@ -481,8 +452,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	if (len < sizeof (*xtime))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
 
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_DATE, &d, sizeof (d),
-			    &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_DATE, &d, sizeof (d), &xflen, &outlen);
 	if (res != NO_ERROR)
 	  return ER_INTERFACE_GENERIC;
 
@@ -504,8 +474,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	if (len < sizeof (*xtime))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
 
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_TIMESTAMP, &ts,
-			    sizeof (ts), &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_TIMESTAMP, &ts, sizeof (ts), &xflen, &outlen);
 	if (res != NO_ERROR)
 	  return ER_INTERFACE_GENERIC;
 
@@ -527,22 +496,18 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	if (len < sizeof (double))
 	  return ER_INTERFACE_INVALID_ARGUMENT;
 
-	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_MONETARY, addr,
-			    buflen, &xflen, &outlen);
+	res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_MONETARY, addr, buflen, &xflen, &outlen);
 	break;
       }
     case CI_TYPE_NUMERIC:
       {
-	if (dbtype == DB_TYPE_INTEGER || dbtype == DB_TYPE_SHORT
-	    || dbtype == DB_TYPE_BIGINT || dbtype == DB_TYPE_FLOAT
-	    || dbtype == DB_TYPE_DOUBLE || dbtype == DB_TYPE_MONETARY
-	    || dbtype == DB_TYPE_NUMERIC)
+	if (dbtype == DB_TYPE_INTEGER || dbtype == DB_TYPE_SHORT || dbtype == DB_TYPE_BIGINT || dbtype == DB_TYPE_FLOAT
+	    || dbtype == DB_TYPE_DOUBLE || dbtype == DB_TYPE_MONETARY || dbtype == DB_TYPE_NUMERIC)
 	  {
-	    res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr,
-				buflen, &xflen, &outlen);
+	    res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr, buflen, &xflen, &outlen);
 	  }
-	else if (dbtype == DB_TYPE_CHAR || dbtype == DB_TYPE_VARCHAR
-		 || dbtype == DB_TYPE_NCHAR || dbtype == DB_TYPE_VARNCHAR)
+	else if (dbtype == DB_TYPE_CHAR || dbtype == DB_TYPE_VARCHAR || dbtype == DB_TYPE_NCHAR
+		 || dbtype == DB_TYPE_VARNCHAR)
 	  {
 	    DB_VALUE nval;
 	    char *nstr;
@@ -558,8 +523,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
 	    if (res != NO_ERROR)
 	      return ER_INTERFACE_GENERIC;
 
-	    res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr,
-				buflen, &xflen, &outlen);
+	    res = db_value_get ((DB_VALUE *) val, DB_TYPE_C_CHAR, addr, buflen, &xflen, &outlen);
 	  }
 	else
 	  {
@@ -655,8 +619,7 @@ db_value_to_value (BIND_HANDLE conn, const DB_VALUE * val,
  *    rv():
  */
 static int
-vbt_lazy_init_db_value (VALUE_BIND_TABLE_ * vbt, int index, CHECK_PURPOSE pup,
-			VALUE_AREA ** rva, DB_VALUE ** rv)
+vbt_lazy_init_db_value (VALUE_BIND_TABLE_ * vbt, int index, CHECK_PURPOSE pup, VALUE_AREA ** rva, DB_VALUE ** rv)
 {
   int res;
   VALUE_AREA_ *va;
@@ -670,8 +633,7 @@ vbt_lazy_init_db_value (VALUE_BIND_TABLE_ * vbt, int index, CHECK_PURPOSE pup,
   if (res != NO_ERROR)
     return res;
 
-  res = vbt->indexer->ifs->get (vbt->indexer, index, (VALUE_AREA **) (&va),
-				(API_VALUE **) (&val));
+  res = vbt->indexer->ifs->get (vbt->indexer, index, (VALUE_AREA **) (&va), (API_VALUE **) (&val));
   if (res != NO_ERROR)
     return res;
 
@@ -693,9 +655,7 @@ vbt_lazy_init_db_value (VALUE_BIND_TABLE_ * vbt, int index, CHECK_PURPOSE pup,
 	  (void) db_value_free (val);
 	  return ER_INTERFACE_NO_MORE_MEMORY;
 	}
-      res =
-	vbt->indexer->ifs->set (vbt->indexer, index, (VALUE_AREA *) va,
-				(API_VALUE *) val);
+      res = vbt->indexer->ifs->set (vbt->indexer, index, (VALUE_AREA *) va, (API_VALUE *) val);
       if (res != NO_ERROR)
 	{
 	  (void) db_value_free (val);
@@ -720,8 +680,8 @@ vbt_lazy_init_db_value (VALUE_BIND_TABLE_ * vbt, int index, CHECK_PURPOSE pup,
  *    isnull():
  */
 static int
-vbt_api_get_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type,
-		   void *addr, size_t len, size_t * outlen, bool * isnull)
+vbt_api_get_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type, void *addr, size_t len, size_t * outlen,
+		   bool * isnull)
 {
   VALUE_BIND_TABLE_ *vbt;
   VALUE_AREA_ *va;
@@ -734,9 +694,7 @@ vbt_api_get_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type,
 
   vbt = (VALUE_BIND_TABLE_ *) tbl;
 
-  res =
-    vbt_lazy_init_db_value (vbt, index, CHECK_FOR_GET, (VALUE_AREA **) & va,
-			    &val);
+  res = vbt_lazy_init_db_value (vbt, index, CHECK_FOR_GET, (VALUE_AREA **) & va, &val);
   if (res != NO_ERROR)
     return res;
   assert (val != NULL);
@@ -748,8 +706,7 @@ vbt_api_get_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type,
 	return res;
       va->val_read = true;
     }
-  return db_value_to_value (vbt->conn_handle, val, type,
-			    addr, len, outlen, isnull);
+  return db_value_to_value (vbt->conn_handle, val, type, addr, len, outlen, isnull);
 }
 
 /*
@@ -762,8 +719,7 @@ vbt_api_get_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type,
  *    len():
  */
 static int
-vbt_api_set_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type,
-		   void *addr, size_t len)
+vbt_api_set_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type, void *addr, size_t len)
 {
   VALUE_BIND_TABLE_ *vbt;
   VALUE_AREA_ *va;
@@ -773,9 +729,7 @@ vbt_api_set_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type,
   assert (tbl != NULL);
   vbt = (VALUE_BIND_TABLE_ *) tbl;
 
-  res =
-    vbt_lazy_init_db_value (vbt, index, CHECK_FOR_SET, (VALUE_AREA **) & va,
-			    &val);
+  res = vbt_lazy_init_db_value (vbt, index, CHECK_FOR_SET, (VALUE_AREA **) & va, &val);
   if (res != NO_ERROR)
     return res;
 
@@ -812,8 +766,7 @@ vbt_api_set_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type,
  *    isnull():
  */
 static int
-vbt_api_get_value_by_name (VALUE_BIND_TABLE * tbl, const char *name,
-			   CI_TYPE type, void *addr, size_t len,
+vbt_api_get_value_by_name (VALUE_BIND_TABLE * tbl, const char *name, CI_TYPE type, void *addr, size_t len,
 			   size_t * outlen, bool * isnull)
 {
   VALUE_BIND_TABLE_ *vbt;
@@ -837,8 +790,7 @@ vbt_api_get_value_by_name (VALUE_BIND_TABLE * tbl, const char *name,
  *    len():
  */
 static int
-vbt_api_set_value_by_name (VALUE_BIND_TABLE * tbl, const char *name,
-			   CI_TYPE type, void *addr, size_t len)
+vbt_api_set_value_by_name (VALUE_BIND_TABLE * tbl, const char *name, CI_TYPE type, void *addr, size_t len)
 {
   VALUE_BIND_TABLE_ *vbt;
   int idx;
@@ -861,8 +813,7 @@ vbt_api_set_value_by_name (VALUE_BIND_TABLE * tbl, const char *name,
  *    aval():
  */
 static int
-vbt_apply_updatesf_map (void *arg, int index, VALUE_AREA * v,
-			API_VALUE * aval)
+vbt_apply_updatesf_map (void *arg, int index, VALUE_AREA * v, API_VALUE * aval)
 {
   VALUE_BIND_TABLE_ *vbt;
   VALUE_AREA_ *va;
@@ -1202,8 +1153,7 @@ oid2xoid (OID * oid, BIND_HANDLE conn, CI_OID * xoid)
  *    domain_initialized():
  */
 extern int
-coerce_value_to_db_value (CI_TYPE type, void *addr, size_t len,
-			  DB_VALUE * dbval, bool domain_initialized)
+coerce_value_to_db_value (CI_TYPE type, void *addr, size_t len, DB_VALUE * dbval, bool domain_initialized)
 {
   if (dbval == NULL || (type != CI_TYPE_NULL && (addr == NULL || len <= 0)))
     {
@@ -1225,12 +1175,10 @@ coerce_value_to_db_value (CI_TYPE type, void *addr, size_t len,
  *    isnull():
  */
 extern int
-coerce_db_value_to_value (const DB_VALUE * dbval,
-			  BIND_HANDLE conn, CI_TYPE type, void *addr,
-			  size_t len, size_t * outlen, bool * isnull)
+coerce_db_value_to_value (const DB_VALUE * dbval, BIND_HANDLE conn, CI_TYPE type, void *addr, size_t len,
+			  size_t * outlen, bool * isnull)
 {
-  if (dbval == NULL || addr == NULL || len <= 0 || outlen == NULL
-      || isnull == NULL)
+  if (dbval == NULL || addr == NULL || len <= 0 || outlen == NULL || isnull == NULL)
     {
       return ER_INTERFACE_INVALID_ARGUMENT;
     }
@@ -1256,20 +1204,10 @@ coerce_db_value_to_value (const DB_VALUE * dbval,
  *    rtable():
  */
 int
-create_db_value_bind_table (int nvalue, void *impl, int auto_apply,
-			    BIND_HANDLE conn_handle,
-			    int (*get_index_by_name) (void *,
-						      const char
-						      *, int *),
-			    int (*get_db_value) (void *,
-						 int,
-						 DB_VALUE *),
-			    int (*set_db_value) (void *,
-						 int,
-						 DB_VALUE *),
-			    int (*init_domain) (void *,
-						int,
-						DB_VALUE *),
+create_db_value_bind_table (int nvalue, void *impl, int auto_apply, BIND_HANDLE conn_handle,
+			    int (*get_index_by_name) (void *, const char *, int *), int (*get_db_value) (void *, int,
+													 DB_VALUE *),
+			    int (*set_db_value) (void *, int, DB_VALUE *), int (*init_domain) (void *, int, DB_VALUE *),
 			    VALUE_BIND_TABLE ** rtable)
 {
   VALUE_BIND_TABLE_ *vbt;

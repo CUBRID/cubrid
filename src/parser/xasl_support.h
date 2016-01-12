@@ -83,12 +83,10 @@ extern int regu_dbval_init (DB_VALUE * ptr);
 extern char *regu_string_alloc (int length);
 extern char *regu_string_db_alloc (int length);
 extern char *regu_string_ws_alloc (int length);
-extern int regu_cp_listid (QFILE_LIST_ID * dst_list_id,
-			   QFILE_LIST_ID * src_list_id);
+extern int regu_cp_listid (QFILE_LIST_ID * dst_list_id, QFILE_LIST_ID * src_list_id);
 #endif
 extern char *regu_strdup (const char *srptr, char *(*alloc) (int));
-extern int regu_strcmp (const char *name1, const char *name2,
-			int (*function_strcmp) (const char *, const char *));
+extern int regu_strcmp (const char *name1, const char *name2, int (*function_strcmp) (const char *, const char *));
 extern int regu_dbval_type_init (DB_VALUE * ptr, DB_TYPE type);
 extern QPROC_DB_VALUE_LIST regu_dbvallist_alloc (void);
 extern ARITH_TYPE *regu_arith_alloc (void);

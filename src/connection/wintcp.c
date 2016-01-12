@@ -106,15 +106,14 @@ css_windows_startup (void)
     {
       /* don't use WSAGetLastError since it has not been initialized. */
       css_Wsa_error = CSS_ER_WINSOCK_STARTUP;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_STARTUP, 1,
-	      err);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_STARTUP, 1, err);
       return -1;
     }
 
   max_socket_fds = wsaData.iMaxSockets;
 
 #if 0
-  /*
+  /* 
    * Establish a blocking "hook" function to prevent Windows messages
    * from being dispatched when we block on reads.
    */
@@ -123,8 +122,7 @@ css_windows_startup (void)
     {
       /* couldn't set up our hook */
       css_Wsa_error = CSS_ER_WINSOCK_BLOCKING_HOOK;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_CSS_WINSOCK_STARTUP, 1, WSAGetLastError ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_STARTUP, 1, WSAGetLastError ());
       (void) WSACleanup ();
       return -1;
     }
@@ -171,9 +169,7 @@ css_tcp_client_open (const char *host_name, int port)
   fd = css_tcp_client_open_with_retry (host_name, port, true);
   if (IS_INVALID_SOCKET (fd))
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 1,
-			   host_name);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 1, host_name);
     }
   return fd;
 }
@@ -186,8 +182,7 @@ css_tcp_client_open (const char *host_name, int port)
  *   willretry(in):
  */
 SOCKET
-css_tcp_client_open_with_retry (const char *host_name, int port,
-				bool will_retry)
+css_tcp_client_open_with_retry (const char *host_name, int port, bool will_retry)
 {
   int bool_value;
   SOCKET s;
@@ -207,8 +202,7 @@ css_tcp_client_open_with_retry (const char *host_name, int port,
       dest_host = gethostbyname (host_name);
       if (dest_host == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME,
-		  1, WSAGetLastError ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());
 	  return INVALID_SOCKET;
 	}
       remote_ip = *((unsigned int *) (dest_host->h_addr));
@@ -229,8 +223,7 @@ css_tcp_client_open_with_retry (const char *host_name, int port,
       s = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
       if (IS_INVALID_SOCKET (s))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ERR_CSS_WINTCP_CANNOT_CREATE_STREAM, 1, WSAGetLastError ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_WINTCP_CANNOT_CREATE_STREAM, 1, WSAGetLastError ());
 	  return INVALID_SOCKET;
 	}
 
@@ -238,15 +231,14 @@ css_tcp_client_open_with_retry (const char *host_name, int port,
       addr.sin_port = htons (port);
       addr.sin_addr.s_addr = remote_ip;
 
-      /*
+      /* 
        * The master deliberately tries to connect to itself once to
        * prevent multiple masters from running.  In the "good" case,
        * the connect will fail.  Printing the message when that happens
        * makes starting the master on NT disturbing because the users sees
        * what they think is a bad message so don't print anything here.
        */
-      if (connect (s, (struct sockaddr *) &addr, sizeof (addr)) !=
-	  SOCKET_ERROR)
+      if (connect (s, (struct sockaddr *) &addr, sizeof (addr)) != SOCKET_ERROR)
 	{
 	  success = 1;
 	}
@@ -262,7 +254,7 @@ css_tcp_client_open_with_retry (const char *host_name, int port,
 	    }
 	  else
 	    {
-	      /*
+	      /* 
 	       * See tcp.c for Unix platforms for more information.
 	       * retry the connection a few times in case the server is
 	       * overloaded at the moment.
@@ -283,13 +275,11 @@ css_tcp_client_open_with_retry (const char *host_name, int port,
   /* ask for the "keep alive" option, ignore errors */
   if (prm_get_bool_value (PRM_ID_TCP_KEEPALIVE))
     {
-      (void) setsockopt (s, SOL_SOCKET, SO_KEEPALIVE,
-			 (const char *) &bool_value, sizeof (int));
+      (void) setsockopt (s, SOL_SOCKET, SO_KEEPALIVE, (const char *) &bool_value, sizeof (int));
     }
 
   /* ask for NODELAY, this one is rather important */
-  (void) setsockopt (s, IPPROTO_TCP, TCP_NODELAY,
-		     (const char *) &bool_value, sizeof (int));
+  (void) setsockopt (s, IPPROTO_TCP, TCP_NODELAY, (const char *) &bool_value, sizeof (int));
 
   return s;
 }
@@ -340,9 +330,8 @@ css_fd_down (SOCKET fd)
   int error_code = 0;
   int error_size = sizeof (int);
 
-  if (getsockopt (fd, SOL_SOCKET, SO_ERROR,
-		  (char *) &error_code, &error_size) == SOCKET_ERROR
-      || error_code != 0 || css_fd_error (fd) <= 0)
+  if (getsockopt (fd, SOL_SOCKET, SO_ERROR, (char *) &error_code, &error_size) == SOCKET_ERROR || error_code != 0
+      || css_fd_error (fd) <= 0)
     {
       return 1;
     }
@@ -415,8 +404,7 @@ css_gethostid (void)
   if (gethostname (hostname, MAXHOSTNAMELEN) == SOCKET_ERROR)
     {
       css_Wsa_error = CSS_ER_WINSOCK_HOSTNAME;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());
     }
   else
     {
@@ -435,8 +423,7 @@ css_gethostid (void)
 	  else
 	    {
 	      css_Wsa_error = CSS_ER_WINSOCK_HOSTID;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTID,
-		      1, WSAGetLastError ());
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTID, 1, WSAGetLastError ());
 	    }
 	}
     }
@@ -541,7 +528,7 @@ css_tcp_master_open (int port, SOCKET * sockfd)
   int retry_count = 0;
   int bool_value;
 
-  /*
+  /* 
    * We have to create a socket ourselves and bind our well-known
    * address to it.
    */
@@ -564,7 +551,7 @@ css_tcp_master_open (int port, SOCKET * sockfd)
       return ERR_CSS_WINTCP_PORT_ERROR;
     }
 
-  /*
+  /* 
    * Create the socket and Bind our local address so that any
    * client may send to us.
    */
@@ -573,26 +560,22 @@ retry:
   sock = socket (AF_INET, SOCK_STREAM, 0);
   if (IS_INVALID_SOCKET (sock))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ERR_CSS_WINTCP_CANNOT_CREATE_STREAM, 1, WSAGetLastError ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_WINTCP_CANNOT_CREATE_STREAM, 1, WSAGetLastError ());
       *sockfd = sock;
       return ERR_CSS_WINTCP_CANNOT_CREATE_STREAM;
     }
 
-  /*
+  /* 
    * Allow the new master to rebind the CUBRID port even if there are
    * clients with open connections from previous masters.
    */
   bool_value = 0;
-  setsockopt (sock, SOL_SOCKET, SO_REUSEADDR,
-	      (const char *) &bool_value, sizeof (int));
+  setsockopt (sock, SOL_SOCKET, SO_REUSEADDR, (const char *) &bool_value, sizeof (int));
 
   bool_value = 1;
-  setsockopt (sock, IPPROTO_TCP, TCP_NODELAY,
-	      (const char *) &bool_value, sizeof (int));
+  setsockopt (sock, IPPROTO_TCP, TCP_NODELAY, (const char *) &bool_value, sizeof (int));
 
-  if (bind (sock, (struct sockaddr *) &tcp_srv_addr,
-	    sizeof (tcp_srv_addr)) == SOCKET_ERROR)
+  if (bind (sock, (struct sockaddr *) &tcp_srv_addr, sizeof (tcp_srv_addr)) == SOCKET_ERROR)
     {
       if (WSAGetLastError () == WSAEADDRINUSE && retry_count <= 5)
 	{
@@ -602,14 +585,13 @@ retry:
 	  goto retry;
 	}
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ERR_CSS_WINTCP_BIND_ABORT, 1, WSAGetLastError ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_WINTCP_BIND_ABORT, 1, WSAGetLastError ());
       css_shutdown_socket (sock);
       *sockfd = sock;
       return ERR_CSS_WINTCP_BIND_ABORT;
     }
 
-  /*
+  /* 
    * And set the listen parameter, telling the system that we're
    * ready to accept incoming connection requests.
    */
@@ -644,8 +626,7 @@ css_accept (SOCKET sockfd)
 	      continue;
 	    }
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ERR_CSS_WINTCP_ACCEPT_ERROR, 1, error);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_WINTCP_ACCEPT_ERROR, 1, error);
 	  return INVALID_SOCKET;
 	}
 
@@ -692,22 +673,19 @@ css_open_server_connection_socket (void)
   fd = socket (AF_INET, SOCK_STREAM, 0);
   if (IS_INVALID_SOCKET (fd))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ERR_CSS_WINTCP_CANNOT_CREATE_STREAM, 1, WSAGetLastError ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_WINTCP_CANNOT_CREATE_STREAM, 1, WSAGetLastError ());
       return -1;
     }
 
   bool_value = 1;
-  setsockopt (fd, IPPROTO_TCP, TCP_NODELAY,
-	      (const char *) &bool_value, sizeof (int));
+  setsockopt (fd, IPPROTO_TCP, TCP_NODELAY, (const char *) &bool_value, sizeof (int));
 
   if (prm_get_bool_value (PRM_ID_TCP_KEEPALIVE))
     {
-      setsockopt (fd, SOL_SOCKET, SO_KEEPALIVE,
-		  (const char *) &bool_value, sizeof (int));
+      setsockopt (fd, SOL_SOCKET, SO_KEEPALIVE, (const char *) &bool_value, sizeof (int));
     }
 
-  /*
+  /* 
    * Set up an address asking for "any" (the local ?) IP addres
    * and set the port to zero to it will be automatically assigned.
    */
@@ -718,21 +696,19 @@ css_open_server_connection_socket (void)
 
 
   /* Bind the socket */
-  if (bind (fd, (struct sockaddr *) &tcp_srv_addr, sizeof (tcp_srv_addr))
-      == SOCKET_ERROR)
+  if (bind (fd, (struct sockaddr *) &tcp_srv_addr, sizeof (tcp_srv_addr)) == SOCKET_ERROR)
     {
       goto error;
     }
 
   /* Determine which port_id the system has assigned. */
   get_length = sizeof (tcp_srv_addr);
-  if (getsockname (fd, (struct sockaddr *) &tcp_srv_addr, &get_length)
-      == SOCKET_ERROR)
+  if (getsockname (fd, (struct sockaddr *) &tcp_srv_addr, &get_length) == SOCKET_ERROR)
     {
       goto error;
     }
 
-  /*
+  /* 
    * Set it up to listen for incoming connections.  Note that under Winsock
    * (NetManage version at least), the backlog parameter is silently limited
    * to 5, regardless of what is requested.
@@ -747,8 +723,7 @@ css_open_server_connection_socket (void)
   return (int) ntohs (tcp_srv_addr.sin_port);
 
 error:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	  ERR_CSS_WINTCP_BIND_ABORT, 1, WSAGetLastError ());
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_WINTCP_BIND_ABORT, 1, WSAGetLastError ());
   css_shutdown_socket (fd);
   return -1;
 }
@@ -842,7 +817,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 {
   unsigned int in_addr;
 
-  /*
+  /* 
    * First try to convert to the host name as a dotted-decimal number.
    * Only if that fails do we call gethostbyname.
    */

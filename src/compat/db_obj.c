@@ -74,9 +74,7 @@ db_create (DB_OBJECT * obj)
   CHECK_1ARG_NULL (obj);
   CHECK_MODIFICATION_NULL ();
 
-  error = do_check_partitioned_class (obj,
-				      CHECK_PARTITION_SUBS |
-				      CHECK_PARTITION_PARENT, NULL);
+  error = do_check_partitioned_class (obj, CHECK_PARTITION_SUBS | CHECK_PARTITION_PARENT, NULL);
   if (!error)
     {
       retval = db_create_internal (obj);
@@ -122,11 +120,9 @@ db_create_by_name (const char *name)
   CHECK_1ARG_NULL (name);
   CHECK_MODIFICATION_NULL ();
 
-  if (do_is_partitioned_subclass (&is_partitioned, name, NULL)
-      || is_partitioned)
+  if (do_is_partitioned_subclass (&is_partitioned, name, NULL) || is_partitioned)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_NOT_ALLOWED_ACCESS_TO_PARTITION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_ALLOWED_ACCESS_TO_PARTITION, 0);
       goto end_api;
     }
 
@@ -296,8 +292,7 @@ db_get_shared (DB_OBJECT * object, const char *attname, DB_VALUE * value)
  *    foo.bar.baz	three level indirection through object attributes
  */
 int
-db_get_expression (DB_OBJECT * object, const char *expression,
-		   DB_VALUE * value)
+db_get_expression (DB_OBJECT * object, const char *expression, DB_VALUE * value)
 {
   int retval;
 
@@ -327,8 +322,7 @@ db_put (DB_OBJECT * obj, const char *name, DB_VALUE * value)
   CHECK_2ARGS_ERROR (obj, name);
   CHECK_MODIFICATION_ERROR ();
 
-  error = do_check_partitioned_class (db_get_class (obj),
-				      CHECK_PARTITION_NONE, (char *) name);
+  error = do_check_partitioned_class (db_get_class (obj), CHECK_PARTITION_NONE, (char *) name);
   if (!error)
     {
       error = db_put_internal (obj, name, value);
@@ -419,8 +413,7 @@ db_send (MOP obj, const char *name, DB_VALUE * returnval, ...)
  *    a return value, this argument can be ignored.
  */
 int
-db_send_arglist (MOP obj, const char *name,
-		 DB_VALUE * returnval, DB_VALUE_LIST * args)
+db_send_arglist (MOP obj, const char *name, DB_VALUE * returnval, DB_VALUE_LIST * args)
 {
   int retval;
 
@@ -447,8 +440,7 @@ db_send_arglist (MOP obj, const char *name,
  *    a return value, this argument can be ignored.
  */
 int
-db_send_argarray (MOP obj, const char *name,
-		  DB_VALUE * returnval, DB_VALUE ** args)
+db_send_argarray (MOP obj, const char *name, DB_VALUE * returnval, DB_VALUE ** args)
 {
   int retval;
 
@@ -480,9 +472,7 @@ dbt_create_object (MOP classobj)
   CHECK_1ARG_NULL (classobj);
   CHECK_MODIFICATION_NULL ();
 
-  if (!do_check_partitioned_class (classobj,
-				   CHECK_PARTITION_PARENT |
-				   CHECK_PARTITION_SUBS, NULL))
+  if (!do_check_partitioned_class (classobj, CHECK_PARTITION_PARENT | CHECK_PARTITION_SUBS, NULL))
     {
       def = dbt_create_object_internal (classobj);
     }
@@ -624,8 +614,8 @@ dbt_finish_object_and_decache_when_failure (DB_OTMPL * def)
 void
 dbt_abort_object (DB_OTMPL * def)
 {
-  /* always allow this to be freed, will this be a problem if the
-     transaction has been aborted or the connection is down ? */
+  /* always allow this to be freed, will this be a problem if the transaction has been aborted or the connection is
+   * down ? */
   if (def != NULL)
     {
       obt_quit (def);
@@ -649,8 +639,7 @@ dbt_put (DB_OTMPL * def, const char *name, DB_VALUE * value)
   CHECK_2ARGS_ERROR (def, name);
   CHECK_MODIFICATION_ERROR ();
 
-  error = do_check_partitioned_class (def->classobj,
-				      CHECK_PARTITION_NONE, (char *) name);
+  error = do_check_partitioned_class (def->classobj, CHECK_PARTITION_NONE, (char *) name);
   if (!error)
     {
       error = dbt_put_internal (def, name, value);
@@ -687,8 +676,7 @@ dbt_put_internal (DB_OTMPL * def, const char *name, DB_VALUE * value)
 
   if ((value != NULL) && (DB_VALUE_TYPE (value) == DB_TYPE_POINTER))
     {
-      error =
-	obt_set_obt (def, name, (OBJ_TEMPLATE *) DB_GET_POINTER (value));
+      error = obt_set_obt (def, name, (OBJ_TEMPLATE *) DB_GET_POINTER (value));
     }
   else
     {
@@ -726,13 +714,11 @@ dbt_set_label (DB_OTMPL * def, DB_VALUE * label)
   CHECK_CONNECT_ERROR ();
   CHECK_MODIFICATION_ERROR ();
 
-  if (def != NULL && label != NULL &&
-      (DB_VALUE_DOMAIN_TYPE (label) == DB_TYPE_OBJECT))
+  if (def != NULL && label != NULL && (DB_VALUE_DOMAIN_TYPE (label) == DB_TYPE_OBJECT))
     {
       if (sm_is_reuse_oid_class (def->classobj))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
 	  return ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED;
 	}
       obt_set_label (def, label);
@@ -773,19 +759,15 @@ dbt_set_label (DB_OTMPL * def, DB_VALUE * label)
  *    is NOT returned.
  */
 int
-db_get_attribute_descriptor (DB_OBJECT * obj,
-			     const char *attname,
-			     int class_attribute,
-			     int for_update, DB_ATTDESC ** descriptor)
+db_get_attribute_descriptor (DB_OBJECT * obj, const char *attname, int class_attribute, int for_update,
+			     DB_ATTDESC ** descriptor)
 {
   int retval;
 
   CHECK_CONNECT_ERROR ();
   CHECK_3ARGS_ERROR (obj, attname, descriptor);
 
-  retval =
-    sm_get_attribute_descriptor (obj, attname, class_attribute, for_update,
-				 descriptor);
+  retval = sm_get_attribute_descriptor (obj, attname, class_attribute, for_update, descriptor);
 
   return (retval);
 }
@@ -871,9 +853,7 @@ db_free_attribute_descriptor (DB_ATTDESC * descriptor)
  * note :The method descriptor must be freed with db_free_method_descriptor.
  */
 int
-db_get_method_descriptor (DB_OBJECT * obj,
-			  const char *methname,
-			  int class_method, DB_METHDESC ** descriptor)
+db_get_method_descriptor (DB_OBJECT * obj, const char *methname, int class_method, DB_METHDESC ** descriptor)
 {
   int retval;
 
@@ -931,8 +911,7 @@ db_dput (DB_OBJECT * obj, DB_ATTDESC * attribute, DB_VALUE * value)
   CHECK_CONNECT_ERROR ();
   CHECK_MODIFICATION_ERROR ();
 
-  error = do_check_partitioned_class (db_get_class (obj),
-				      CHECK_PARTITION_NONE, attribute->name);
+  error = do_check_partitioned_class (db_get_class (obj), CHECK_PARTITION_NONE, attribute->name);
   if (!error)
     {
       error = db_dput_internal (obj, attribute, value);
@@ -977,8 +956,7 @@ dbt_dput (DB_OTMPL * def, DB_ATTDESC * attribute, DB_VALUE * value)
   CHECK_CONNECT_ERROR ();
   CHECK_MODIFICATION_ERROR ();
 
-  error = do_check_partitioned_class (def->classobj,
-				      CHECK_PARTITION_NONE, attribute->name);
+  error = do_check_partitioned_class (def->classobj, CHECK_PARTITION_NONE, attribute->name);
   if (!error)
     {
       error = dbt_dput_internal (def, attribute, value);
@@ -1040,9 +1018,7 @@ db_dsend (DB_OBJECT * obj, DB_METHDESC * method, DB_VALUE * returnval, ...)
  * atgs(in) : argument list
  */
 int
-db_dsend_arglist (DB_OBJECT * obj,
-		  DB_METHDESC * method,
-		  DB_VALUE * returnval, DB_VALUE_LIST * args)
+db_dsend_arglist (DB_OBJECT * obj, DB_METHDESC * method, DB_VALUE * returnval, DB_VALUE_LIST * args)
 {
   int retval;
 
@@ -1062,9 +1038,7 @@ db_dsend_arglist (DB_OBJECT * obj,
  * atgs(in) : argument list
  */
 int
-db_dsend_argarray (DB_OBJECT * obj,
-		   DB_METHDESC * method,
-		   DB_VALUE * returnval, DB_VALUE ** args)
+db_dsend_argarray (DB_OBJECT * obj, DB_METHDESC * method, DB_VALUE * returnval, DB_VALUE ** args)
 {
   int retval;
 
@@ -1089,9 +1063,7 @@ db_dsend_argarray (DB_OBJECT * obj,
  * atgs(in) : argument list
  */
 int
-db_dsend_quick (DB_OBJECT * obj,
-		DB_METHDESC * method,
-		DB_VALUE * returnval, int nargs, DB_VALUE ** args)
+db_dsend_quick (DB_OBJECT * obj, DB_METHDESC * method, DB_VALUE * returnval, int nargs, DB_VALUE ** args)
 {
   int retval;
 
@@ -1139,8 +1111,7 @@ db_find_unique (MOP classmop, const char *attname, DB_VALUE * value)
  * value(in): value to look for
  */
 DB_OBJECT *
-db_find_unique_write_mode (MOP classmop,
-			   const char *attname, DB_VALUE * value)
+db_find_unique_write_mode (MOP classmop, const char *attname, DB_VALUE * value)
 {
   DB_OBJECT *retval;
 
@@ -1163,9 +1134,7 @@ db_find_unique_write_mode (MOP classmop,
  * purpose(in): Fetch purpose  DB_FETCH_READ or DB_FETCH_WRITE
  */
 DB_OBJECT *
-db_find_primary_key (MOP classmop,
-		     const DB_VALUE ** values,
-		     int size, DB_FETCH_MODE purpose)
+db_find_primary_key (MOP classmop, const DB_VALUE ** values, int size, DB_FETCH_MODE purpose)
 {
   DB_OBJECT *retval;
 
@@ -1173,14 +1142,11 @@ db_find_primary_key (MOP classmop,
   CHECK_2ARGS_NULL (classmop, values);
   if (size == 0)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return NULL;
     }
 
-  retval = obj_find_primary_key (classmop, values, size,
-				 purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE
-				 : AU_FETCH_READ);
+  retval = obj_find_primary_key (classmop, values, size, purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE : AU_FETCH_READ);
 
   return (retval);
 }
@@ -1199,10 +1165,7 @@ db_find_primary_key (MOP classmop,
  *
  */
 DB_OBJECT *
-db_find_multi_unique (MOP classmop,
-		      int size,
-		      char *attr_names[],
-		      DB_VALUE * values[], DB_FETCH_MODE purpose)
+db_find_multi_unique (MOP classmop, int size, char *attr_names[], DB_VALUE * values[], DB_FETCH_MODE purpose)
 {
   DB_OBJECT *retval = NULL;
 
@@ -1211,15 +1174,13 @@ db_find_multi_unique (MOP classmop,
 
   if (size < 1)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return NULL;
     }
 
-  retval = obj_find_multi_attr (classmop, size, (const char **) attr_names,
-				(const DB_VALUE **) values,
-				purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE
-				: AU_FETCH_READ);
+  retval =
+    obj_find_multi_attr (classmop, size, (const char **) attr_names, (const DB_VALUE **) values,
+			 purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE : AU_FETCH_READ);
 
   return retval;
 }
@@ -1235,18 +1196,15 @@ db_find_multi_unique (MOP classmop,
  * purpose(in): Fetch purpose   DB_FETCH_READ or DB_FETCH_WRITE
  */
 DB_OBJECT *
-db_dfind_unique (MOP classmop,
-		 DB_ATTDESC * attdesc,
-		 DB_VALUE * value, DB_FETCH_MODE purpose)
+db_dfind_unique (MOP classmop, DB_ATTDESC * attdesc, DB_VALUE * value, DB_FETCH_MODE purpose)
 {
   DB_OBJECT *retval;
 
   CHECK_CONNECT_NULL ();
   CHECK_3ARGS_NULL (classmop, attdesc, value);
 
-  retval = (obj_desc_find_unique (classmop, attdesc, value,
-				  purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE
-				  : AU_FETCH_READ));
+  retval =
+    (obj_desc_find_unique (classmop, attdesc, value, purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE : AU_FETCH_READ));
 
   return (retval);
 }
@@ -1263,10 +1221,7 @@ db_dfind_unique (MOP classmop,
  * purpose(in): Fetch purpose  DB_FETCH_READ or DB_FETCH_WRITE
  */
 DB_OBJECT *
-db_dfind_multi_unique (MOP classmop,
-		       int size,
-		       DB_ATTDESC * attdesc[],
-		       DB_VALUE * values[], DB_FETCH_MODE purpose)
+db_dfind_multi_unique (MOP classmop, int size, DB_ATTDESC * attdesc[], DB_VALUE * values[], DB_FETCH_MODE purpose)
 {
   DB_OBJECT *retval = NULL;
 
@@ -1275,15 +1230,13 @@ db_dfind_multi_unique (MOP classmop,
 
   if (size < 1)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return NULL;
     }
 
-  retval = obj_find_multi_desc (classmop, size, (const DB_ATTDESC **) attdesc,
-				(const DB_VALUE **) values,
-				purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE
-				: AU_FETCH_READ);
+  retval =
+    obj_find_multi_desc (classmop, size, (const DB_ATTDESC **) attdesc, (const DB_VALUE **) values,
+			 purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE : AU_FETCH_READ);
 
   return retval;
 }
@@ -1343,17 +1296,10 @@ db_fprint (FILE * fp, DB_OBJECT * obj)
  * action_type(in): action type
  * action_source(in): action source (simple text if type is TR_ACT_PRINT)
  */
-DB_OBJECT *db_create_trigger
-  (const char *name,
-   DB_TRIGGER_STATUS status,
-   double priority,
-   DB_TRIGGER_EVENT event,
-   DB_OBJECT * class_,
-   const char *attr,
-   DB_TRIGGER_TIME cond_time,
-   const char *cond_source,
-   DB_TRIGGER_TIME action_time,
-   DB_TRIGGER_ACTION action_type, const char *action_source)
+DB_OBJECT *
+db_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, DB_TRIGGER_EVENT event,
+		   DB_OBJECT * class_, const char *attr, DB_TRIGGER_TIME cond_time, const char *cond_source,
+		   DB_TRIGGER_TIME action_time, DB_TRIGGER_ACTION action_type, const char *action_source)
 {
   DB_OBJECT *retval;
 
@@ -1361,9 +1307,10 @@ DB_OBJECT *db_create_trigger
   CHECK_MODIFICATION_NULL ();
 
   /* check for invalid arguments */
-  retval = (tr_create_trigger (name, status, priority, event, class_, attr,
-			       cond_time, cond_source, action_time,
-			       action_type, action_source, NULL));
+  retval =
+    (tr_create_trigger
+     (name, status, priority, event, class_, attr, cond_time, cond_source, action_time, action_type, action_source,
+      NULL));
 
   return (retval);
 }
@@ -1472,9 +1419,7 @@ db_find_all_triggers (DB_OBJLIST ** list)
  * note : The returned object list must be freed by db_objlist_free.
  */
 int
-db_find_event_triggers (DB_TRIGGER_EVENT event,
-			DB_OBJECT * class_, const char *attr,
-			DB_OBJLIST ** list)
+db_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_, const char *attr, DB_OBJLIST ** list)
 {
   int retval;
 
@@ -1840,13 +1785,11 @@ db_trigger_comment (DB_OBJECT * trobj, char **comment)
  *                          encoded object
  */
 int
-db_encode_object (DB_OBJECT * object, char *string,
-		  int allocated_length, int *actual_length)
+db_encode_object (DB_OBJECT * object, char *string, int allocated_length, int *actual_length)
 {
   int result = NO_ERROR;
 
-  result =
-    vid_encode_object (object, string, allocated_length, actual_length);
+  result = vid_encode_object (object, string, allocated_length, actual_length);
   return result;
 }
 
@@ -1884,20 +1827,17 @@ db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value)
 
   if (serial_name == NULL || serial_name[0] == 0 || serial_value == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER,
-	      0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
       return ER_QPROC_INVALID_PARAMETER;
     }
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
-				     serial_name);
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name);
   if (serial_mop == NULL)
     {
       result = ER_QPROC_SERIAL_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
       return result;
     }
 
@@ -1908,8 +1848,7 @@ db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value)
       return result;
     }
 
-  result = serial_get_current_value (serial_value, &serial_obj_id,
-				     cached_num);
+  result = serial_get_current_value (serial_value, &serial_obj_id, cached_num);
   if (result != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
@@ -1937,31 +1876,26 @@ db_get_serial_next_value (const char *serial_name, DB_VALUE * serial_value)
  * serial_value(out):
  */
 int
-db_get_serial_next_value_ex (const char *serial_name, DB_VALUE * serial_value,
-			     int num_alloc)
+db_get_serial_next_value_ex (const char *serial_name, DB_VALUE * serial_value, int num_alloc)
 {
   int result = NO_ERROR;
   MOP serial_class_mop, serial_mop;
   DB_IDENTIFIER serial_obj_id;
   int cached_num;
 
-  if (serial_name == NULL || serial_name[0] == 0 || serial_value == NULL
-      || num_alloc <= 0)
+  if (serial_name == NULL || serial_name[0] == 0 || serial_value == NULL || num_alloc <= 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER,
-	      0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
       return ER_QPROC_INVALID_PARAMETER;
     }
 
   serial_class_mop = sm_find_class (CT_CLASS_NAME);
 
-  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
-				     serial_name);
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, serial_name);
   if (serial_mop == NULL)
     {
       result = ER_QPROC_SERIAL_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
       return result;
     }
 
@@ -1972,8 +1906,7 @@ db_get_serial_next_value_ex (const char *serial_name, DB_VALUE * serial_value,
       return result;
     }
 
-  result = serial_get_next_value (serial_value, &serial_obj_id,
-				  cached_num, num_alloc, GENERATE_SERIAL);
+  result = serial_get_next_value (serial_value, &serial_obj_id, cached_num, num_alloc, GENERATE_SERIAL);
   if (result != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);

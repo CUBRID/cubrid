@@ -173,13 +173,10 @@ extern ECHO_FN echo_fn;
 
 extern const char *VARCHAR_ARRAY_NAME;
 extern const char *VARCHAR_LENGTH_NAME;
-extern SYMTAB *pp_Symbol_table;	/* The table for C identifiers.         */
-extern SYMTAB *pp_Struct_table;	/* The table for struct definitions     */
+extern SYMTAB *pp_Symbol_table;	/* The table for C identifiers.  */
+extern SYMTAB *pp_Struct_table;	/* The table for struct definitions */
 
-extern CURSOR *pp_new_cursor (char *name,
-			      char *static_stmt,
-			      int stmtLength,
-			      STMT * dynamic_stmt, HOST_LOD * host_refs);
+extern CURSOR *pp_new_cursor (char *name, char *static_stmt, int stmtLength, STMT * dynamic_stmt, HOST_LOD * host_refs);
 extern void pp_free_cursor (CURSOR * cursor);
 extern CURSOR *pp_lookup_cursor (char *name);
 extern void pp_cursor_init (void);
@@ -210,8 +207,7 @@ extern void pp_push_spec_scope (void);
 extern void pp_pop_spec_scope (void);
 extern void pp_disallow_storage_classes (void);
 extern void pp_add_cursor_to_scope (CURSOR * cursor);
-extern void pp_add_whenever_to_scope (WHEN_CONDITION cond,
-				      WHEN_ACTION action, char *name);
+extern void pp_add_whenever_to_scope (WHEN_CONDITION cond, WHEN_ACTION action, char *name);
 extern void pp_print_decls (SYMBOL * sym_chain, int preechoed);
 extern void pp_print_specs (LINK * link);
 extern void pp_suppress_echo (int);
@@ -226,8 +222,7 @@ extern HOST_REF *pp_add_host_ref (HOST_VAR *, HOST_VAR *, bool, int *);
 extern void pp_free_host_ref (HOST_REF * ref);
 extern HOST_LOD *pp_copy_host_refs (void);
 extern HOST_LOD *pp_detach_host_refs (void);
-extern HOST_REF *pp_check_type (HOST_REF * ref, BITSET typeset,
-				const char *msg);
+extern HOST_REF *pp_check_type (HOST_REF * ref, BITSET typeset, const char *msg);
 extern void pp_check_host_var_list (void);
 extern HOST_VAR *pp_ptr_deref (HOST_VAR * var, int style);
 extern HOST_VAR *pp_struct_deref (HOST_VAR * var, char *field, int indirect);
@@ -239,8 +234,7 @@ extern HOST_LOD *pp_new_host_lod (void);
 extern void pp_free_host_lod (HOST_LOD * lod);
 extern void pp_clear_host_lod (HOST_LOD * lod);
 extern char *pp_switch_to_descriptor (void);
-extern void pp_translate_string (varstring * vstr,
-				 const char *str, int in_string);
+extern void pp_translate_string (varstring * vstr, const char *str, int in_string);
 extern unsigned int pp_generic_case_hash (void *p);
 extern unsigned int pp_generic_hash (void *p);
 extern int pp_generic_case_cmp (void *p1, void *p2);
@@ -286,8 +280,7 @@ extern void pp_discard_link (LINK * p);
 extern STRUCTDEF *pp_new_structdef (const char *tag);
 extern void pp_discard_structdef (STRUCTDEF * sdef);
 extern void pp_discard_structdef_chain (STRUCTDEF * sdef);
-extern STRUCTDEF *pp_new_pseudo_def (SPECIFIER_NOUN type,
-				     const char *subscript);
+extern STRUCTDEF *pp_new_pseudo_def (SPECIFIER_NOUN type, const char *subscript);
 extern void pp_add_declarator (SYMBOL * sym, int type);
 extern LINK *pp_clone_type (LINK * tchain, LINK ** endp);
 extern SYMBOL *pp_clone_symbol (SYMBOL * sym);
@@ -300,9 +293,7 @@ extern SYMBOL *pp_findsym (SYMTAB * symtab, unsigned char *name);
 extern void pp_symbol_init (void);
 extern void pp_symbol_finish (void);
 extern void pp_symbol_stats (FILE * fp);
-extern void pp_init_whenever_scope (WHENEVER_SCOPE * scope,
-				    WHENEVER_SCOPE * old_scope);
-extern void pp_finish_whenever_scope (WHENEVER_SCOPE * scope,
-				      WHENEVER_SCOPE * new_scope);
+extern void pp_init_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * old_scope);
+extern void pp_finish_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * new_scope);
 
 #endif /* _ESQL_MISC_H_ */

@@ -73,8 +73,7 @@
 #include "xserver_interface.h"
 #endif
 
-static const DB_ELO elo_Initializer =
-  { -1LL, {{NULL_PAGEID, 0}, {NULL_FILEID, 0}}, NULL, NULL, ELO_NULL,
+static const DB_ELO elo_Initializer = { -1LL, {{NULL_PAGEID, 0}, {NULL_FILEID, 0}}, NULL, NULL, ELO_NULL,
 ES_NONE
 };
 
@@ -104,19 +103,15 @@ static void meta_destroy_internal (ELO_META * meta);
 static int meta_destroy (ELO_META * meta);
 static ELO_META_ITEM *meta_item_get (ELO_META * meta, const char *key);
 static int meta_check_value (const char *val, bool permit_zero_len);
-static ELO_META_ITEM *meta_item_create (const char *key, int key_len,
-					const char *value, int value_len);
+static ELO_META_ITEM *meta_item_create (const char *key, int key_len, const char *value, int value_len);
 static const char *meta_get (ELO_META * meta, const char *key);
 static int meta_set (ELO_META * meta, const char *key, const char *val);
 static char *meta_to_string (ELO_META * meta);
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-static LOB_LOCATOR_STATE find_lob_locator (const char *locator,
-					   char *real_locator);
+static LOB_LOCATOR_STATE find_lob_locator (const char *locator, char *real_locator);
 static int add_lob_locator (const char *locator, LOB_LOCATOR_STATE state);
-static int change_state_of_locator (const char *locator,
-				    const char *new_locator,
-				    LOB_LOCATOR_STATE state);
+static int change_state_of_locator (const char *locator, const char *new_locator, LOB_LOCATOR_STATE state);
 static int drop_lob_locator (const char *locator);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -164,9 +159,8 @@ meta_create (const char *s)
 	  /* make a new item. key should have positive length */
 	  if (key_ep - key_sp > 0 && val_ep - val_sp >= 0)
 	    {
-	      ELO_META_ITEM *item =
-		meta_item_create (key_sp, key_ep - key_sp, val_sp,
-				  val_ep - val_sp);
+	      ELO_META_ITEM *item = meta_item_create (key_sp, key_ep - key_sp, val_sp,
+						      val_ep - val_sp);
 	      if (item == NULL)
 		{
 		  goto error;
@@ -310,8 +304,7 @@ meta_check_value (const char *val, bool permit_zero_len)
  * value_len(in): value length
  */
 static ELO_META_ITEM *
-meta_item_create (const char *key, int key_len, const char *value,
-		  int value_len)
+meta_item_create (const char *key, int key_len, const char *value, int value_len)
 {
   ELO_META_ITEM *item;
   char *k, *v;
@@ -380,8 +373,7 @@ meta_set (ELO_META * meta, const char *key, const char *val)
   assert (meta != NULL);
   assert (key != NULL);
 
-  if (meta_check_value (key, false) != NO_ERROR ||
-      meta_check_value (val, true) != NO_ERROR)
+  if (meta_check_value (key, false) != NO_ERROR || meta_check_value (val, true) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -402,8 +394,7 @@ meta_set (ELO_META * meta, const char *key, const char *val)
     }
 
   /* create new item */
-  item =
-    meta_item_create (key, strlen (key), val, val == NULL ? 0 : strlen (val));
+  item = meta_item_create (key, strlen (key), val, val == NULL ? 0 : strlen (val));
   if (item == NULL)
     {
       return ER_FAILED;
@@ -519,8 +510,7 @@ add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
  * state(in):
  */
 static int
-change_state_of_locator (const char *locator, const char *new_locator,
-			 LOB_LOCATOR_STATE state)
+change_state_of_locator (const char *locator, const char *new_locator, LOB_LOCATOR_STATE state)
 {
 #if defined(CS_MODE)
   return log_change_state_of_locator (locator, new_locator, state);
@@ -592,8 +582,7 @@ elo_create (DB_ELO * elo, DB_ELO_TYPE type)
     }
   else				/* ELO_LO */
     {
-      er_set (ER_ERROR_SEVERITY,
-	      ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
       return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
     }
 }
@@ -752,8 +741,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		    ret = er_errid ();
 		    goto error_return;
 		  }
-		ret = change_state_of_locator (elo->locator, locator,
-					       LOB_PERMANENT_CREATED);
+		ret = change_state_of_locator (elo->locator, locator, LOB_PERMANENT_CREATED);
 		if (ret != NO_ERROR)
 		  {
 		    goto error_return;
@@ -832,8 +820,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
   else if (elo->type == ELO_LO)
     {
       /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY,
-	      ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
       return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
     }
 
@@ -884,8 +871,7 @@ elo_delete (DB_ELO * elo, bool force_delete)
 
 	    case LOB_PERMANENT_CREATED:
 	    case LOB_PERMANENT_DELETED:
-	      ret = change_state_of_locator (elo->locator, NULL,
-					     LOB_PERMANENT_DELETED);
+	      ret = change_state_of_locator (elo->locator, NULL, LOB_PERMANENT_DELETED);
 	      break;
 
 	    case LOB_TRANSIENT_DELETED:
@@ -911,8 +897,7 @@ elo_delete (DB_ELO * elo, bool force_delete)
   else if (elo->type == ELO_LO)
     {
       /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY,
-	      ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
       return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
     }
 
@@ -954,8 +939,7 @@ elo_size (DB_ELO * elo)
   else if (elo->type == ELO_LO)
     {
       /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY,
-	      ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
       return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
     }
 
@@ -990,8 +974,7 @@ elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count)
   else if (elo->type == ELO_LO)
     {
       /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY,
-	      ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
       return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
     }
 
@@ -1036,8 +1019,7 @@ elo_write (DB_ELO * elo, off_t pos, const void *buf, size_t count)
   else if (elo->type == ELO_LO)
     {
       /* BLOB/CLOB interface of LO style is not implemented yet */
-      er_set (ER_ERROR_SEVERITY,
-	      ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
       return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
     }
 
@@ -1069,8 +1051,7 @@ elo_get_meta (const DB_ELO * elo, const char *key, char *buf, int bufsz)
   meta = meta_create (elo->meta_data);
   if (meta == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
       return ER_ELO_CANT_CREATE_LARGE_OBJECT;
     }
 
@@ -1081,8 +1062,7 @@ elo_get_meta (const DB_ELO * elo, const char *key, char *buf, int bufsz)
 
       if (len + 1 > bufsz)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_BUFFER_TOO_SMALL,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_BUFFER_TOO_SMALL, 0);
 	  return ER_OBJ_BUFFER_TOO_SMALL;
 	}
 
@@ -1117,8 +1097,7 @@ elo_set_meta (DB_ELO * elo, const char *key, const char *val)
   meta = meta_create (elo->meta_data);
   if (meta == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
       return ER_ELO_CANT_CREATE_LARGE_OBJECT;
     }
 
@@ -1127,8 +1106,7 @@ elo_set_meta (DB_ELO * elo, const char *key, const char *val)
     {
       (void) meta_destroy (meta);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
       return ER_ELO_CANT_CREATE_LARGE_OBJECT;
     }
 
@@ -1137,8 +1115,7 @@ elo_set_meta (DB_ELO * elo, const char *key, const char *val)
     {
       (void) meta_destroy (meta);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ELO_CANT_CREATE_LARGE_OBJECT, 0);
       return ER_ELO_CANT_CREATE_LARGE_OBJECT;
     }
 

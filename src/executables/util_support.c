@@ -38,11 +38,8 @@
 #include "utility.h"
 #include "porting.h"
 
-static int
-util_parse_string_table (UTIL_MAP * util_map, int index, int count,
-			 char **argv);
-static int util_put_option_value (UTIL_MAP * util_map, int arg_ch,
-				  const char *option_arg);
+static int util_parse_string_table (UTIL_MAP * util_map, int index, int count, char **argv);
+static int util_put_option_value (UTIL_MAP * util_map, int arg_ch, const char *option_arg);
 
 /*
  * utility_make_getopt_optstring - makes optstring for getopt_long()
@@ -96,9 +93,8 @@ utility_load_library (DSO_HANDLE * handle, const char *path)
     }
 
   /* initialize library */
-  if (utility_load_symbol (*handle, (DSO_HANDLE *) (&init_fn),
-			   UTILITY_INIT_FUNC_NAME) == NO_ERROR &&
-      (*init_fn) () == NO_ERROR)
+  if (utility_load_symbol (*handle, (DSO_HANDLE *) (&init_fn), UTILITY_INIT_FUNC_NAME) == NO_ERROR
+      && (*init_fn) () == NO_ERROR)
     {
       return NO_ERROR;
     }
@@ -117,8 +113,7 @@ utility_load_library (DSO_HANDLE * handle, const char *path)
  * NOTE:
  */
 int
-utility_load_symbol (DSO_HANDLE library_handle, DSO_HANDLE * symbol_handle,
-		     const char *symbol_name)
+utility_load_symbol (DSO_HANDLE library_handle, DSO_HANDLE * symbol_handle, const char *symbol_name)
 {
 #if defined(WINDOWS)
   (*symbol_handle) = GetProcAddress ((HMODULE) library_handle, symbol_name);
@@ -150,10 +145,8 @@ utility_load_print_error (FILE * fp)
     }
 
 #if defined(WINDOWS)
-  FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-		 FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError (),
-		 MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT),
-		 (LPTSTR) (&error), 0, NULL);
+  FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
+		 GetLastError (), MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR) (&error), 0, NULL);
   fprintf (fp, "%s\n", error);
   LocalFree (error);
 #else /* !WINDOWS */
@@ -203,8 +196,7 @@ util_parse_argument (UTIL_MAP * util_map, int argc, char **argv)
   while (status == NO_ERROR)
     {
       option_index = 0;
-      option_value =
-	getopt_long (argc, argv, option_string, option, &option_index);
+      option_value = getopt_long (argc, argv, option_string, option, &option_index);
       if (option_value == -1)
 	{
 	  break;
@@ -217,8 +209,7 @@ util_parse_argument (UTIL_MAP * util_map, int argc, char **argv)
       status = util_put_option_value (util_map, option_value, optarg);
       if (status != NO_ERROR)
 	{
-	  fprintf (stderr, "invalid '--%s' option value: %s\n",
-		   util_get_option_name (option, option_value), optarg);
+	  fprintf (stderr, "invalid '--%s' option value: %s\n", util_get_option_name (option, option_value), optarg);
 	  return ER_FAILED;
 	}
     }
@@ -235,8 +226,7 @@ util_parse_argument (UTIL_MAP * util_map, int argc, char **argv)
  * NOTE: An allocated memory may be leaked by the strdup.
  */
 static int
-util_put_option_value (UTIL_MAP * util_map, int arg_ch,
-		       const char *option_arg)
+util_put_option_value (UTIL_MAP * util_map, int arg_ch, const char *option_arg)
 {
   int i;
   UTIL_ARG_MAP *arg_map = util_map->arg_map;
@@ -304,8 +294,7 @@ util_put_option_value (UTIL_MAP * util_map, int arg_ch,
  * NOTE: An allocated memory may be leaked by the malloc and the strdup.
  */
 static int
-util_parse_string_table (UTIL_MAP * util_map, int index, int count,
-			 char **argv)
+util_parse_string_table (UTIL_MAP * util_map, int index, int count, char **argv)
 {
   int i;
   int need_args_num;
@@ -335,17 +324,14 @@ util_parse_string_table (UTIL_MAP * util_map, int index, int count,
   for (i = 0; index < count; index++, i++)
     {
       string_table[i] = argv[index];
-      /*fprintf (stdout, "%s\n", (*string_table)[i]); */
+      /* fprintf (stdout, "%s\n", (*string_table)[i]); */
     }
   string_table_arg->arg_value.p = string_table;
   string_table_arg->value_info.num_strings = num_string_args;
-  if (need_args_num < num_string_args
-      && (util_map->utility_index != COMPACTDB
-	  && util_map->utility_index != CHECKDB))
+  if (need_args_num < num_string_args && (util_map->utility_index != COMPACTDB && util_map->utility_index != CHECKDB))
     {
       fprintf (stderr, "'%s' argument is not needed.\n",
-	       string_table[need_args_num] == NULL ?
-	       "" : string_table[need_args_num]);
+	       string_table[need_args_num] == NULL ? "" : string_table[need_args_num]);
       return ER_FAILED;
     }
   return NO_ERROR;

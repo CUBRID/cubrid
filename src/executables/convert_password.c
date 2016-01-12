@@ -32,13 +32,10 @@ int p[256], s[256], q[256];
 
 static int rand8 (int i);
 static void shuffle (int *a, int size, int rstream);
-static int crypt_decode_caps_old (const char *crypt, unsigned char *decrypt,
-				  int maxlen);
-static int crypt_unscramble_old (unsigned char *line, int len,
-				 unsigned char *decrypt, int maxlen);
+static int crypt_decode_caps_old (const char *crypt, unsigned char *decrypt, int maxlen);
+static int crypt_unscramble_old (unsigned char *line, int len, unsigned char *decrypt, int maxlen);
 static int io_relseek_old (const char *pass, int has_prefix, char *dest);
-static int crypt_decrypt_printable_old (const char *crypt, char *decrypt,
-					int maxlen);
+static int crypt_decrypt_printable_old (const char *crypt, char *decrypt, int maxlen);
 static void crypt_seed_old (const char *key);
 
 int
@@ -139,7 +136,7 @@ io_relseek_old (const char *pass, int has_prefix, char *dest)
   else
     {
       crypt_seed_old (PASSWORD_ENCRYPTION_OLD_KEY);
-      /*
+      /* 
        * Make sure the destination buffer is larger than actually required,
        * the decryption stuff is sensitive about this. Basically for the
        * scrambled strings, the destination buffer has to be the actual
@@ -147,8 +144,7 @@ io_relseek_old (const char *pass, int has_prefix, char *dest)
        */
       if (has_prefix)
 	{
-	  len =
-	    crypt_decrypt_printable_old (pass + 1, buf, AU_MAX_PASSWORD_BUF);
+	  len = crypt_decrypt_printable_old (pass + 1, buf, AU_MAX_PASSWORD_BUF);
 	}
       else
 	{
@@ -251,9 +247,7 @@ crypt_decrypt_printable_old (const char *crypt, char *decrypt, int maxlen)
       else
 	{
 	  memcpy (work, decrypt, total);
-	  total =
-	    crypt_unscramble_old (work, total, (unsigned char *) decrypt,
-				  maxlen);
+	  total = crypt_unscramble_old (work, total, (unsigned char *) decrypt, maxlen);
 	  free (work);
 	}
       if (total != -1)
@@ -303,8 +297,7 @@ crypt_decode_caps_old (const char *crypt, unsigned char *decrypt, int maxlen)
 }
 
 static int
-crypt_unscramble_old (unsigned char *line, int len,
-		      unsigned char *decrypt, int maxlen)
+crypt_unscramble_old (unsigned char *line, int len, unsigned char *decrypt, int maxlen)
 {
   int total, pad, psn, bitchar, data, mask, dest;
 
@@ -334,8 +327,7 @@ crypt_unscramble_old (unsigned char *line, int len,
 		  data = line[1 + psn + bitchar];
 
 		  for (dest = 0; dest < 8; dest++)
-		    decrypt[psn + dest] |=
-		      (((data >> dest) << bitchar) & mask);
+		    decrypt[psn + dest] |= (((data >> dest) << bitchar) & mask);
 		}
 	      psn += 8;
 	    }

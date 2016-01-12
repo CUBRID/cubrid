@@ -66,38 +66,32 @@
  *    returned.
  */
 DB_OBJECT *
-db_find_class_of_index (const char *const index_name,
-			const DB_CONSTRAINT_TYPE index_type)
+db_find_class_of_index (const char *const index_name, const DB_CONSTRAINT_TYPE index_type)
 {
   DB_OBJLIST *clslist = NULL;
   SM_CLASS *smcls = NULL;
   DB_OBJECT *retval = NULL;
   int found = 0;
-  const SM_CONSTRAINT_TYPE smtype =
-    SM_MAP_DB_INDEX_CONSTRAINT_TO_SM_CONSTRAINT (index_type);
+  const SM_CONSTRAINT_TYPE smtype = SM_MAP_DB_INDEX_CONSTRAINT_TO_SM_CONSTRAINT (index_type);
 
   CHECK_CONNECT_NULL ();
   CHECK_1ARG_NULL (index_name);
 
   if (!DB_IS_CONSTRAINT_INDEX_FAMILY (index_type))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       goto end;
     }
 
-  for (found = 0, clslist = db_fetch_all_classes (DB_FETCH_READ);
-       clslist != NULL; clslist = clslist->next)
+  for (found = 0, clslist = db_fetch_all_classes (DB_FETCH_READ); clslist != NULL; clslist = clslist->next)
     {
-      if (au_fetch_class (clslist->op, &smcls, AU_FETCH_READ, AU_SELECT) !=
-	  NO_ERROR)
+      if (au_fetch_class (clslist->op, &smcls, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
 	{
 	  retval = NULL;
 	  goto end;
 	}
 
-      if (classobj_find_class_constraint
-	  (smcls->constraints, smtype, index_name))
+      if (classobj_find_class_constraint (smcls->constraints, smtype, index_name))
 	{
 	  retval = clslist->op;
 	  found++;
@@ -110,14 +104,12 @@ db_find_class_of_index (const char *const index_name,
     }
   if (found == 0)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_NO_INDEX, 1,
-	      index_name);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_NO_INDEX, 1, index_name);
       retval = NULL;
     }
   else if (found > 1)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_INDEX_AMBIGUOUS, 1,
-	      index_name);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_INDEX_AMBIGUOUS, 1, index_name);
       retval = NULL;
     }
 
@@ -185,9 +177,8 @@ db_fetch_all_objects (DB_OBJECT * op, DB_FETCH_MODE purpose)
   CHECK_CONNECT_NULL ();
   CHECK_1ARG_NULL (op);
 
-  purpose = ((purpose == DB_FETCH_READ) ? DB_FETCH_QUERY_READ
-	     : ((purpose ==
-		 DB_FETCH_WRITE) ? DB_FETCH_QUERY_WRITE : purpose));
+  purpose =
+    ((purpose == DB_FETCH_READ) ? DB_FETCH_QUERY_READ : ((purpose == DB_FETCH_WRITE) ? DB_FETCH_QUERY_WRITE : purpose));
 
   /* This always allocates an external mop list ! */
   retval = sm_fetch_all_objects (op, purpose);
@@ -545,21 +536,17 @@ db_is_deleted (DB_OBJECT * obj)
       return 1;
     }
 
-  /* If we have obtained any lock except X_LOCK, that means it is real.
-   * However deleted bit is off and to hold X_LOCK does not guarantee it exists,
-   * wever deleted bit is off and to hold X_LOCK does not guarantee it exists,
-   * for instance, trigger action do server-side delete and trigger does not
-   * know it. Therefore we need to check it if we hold X_LOCK on the object.
-   */
+  /* If we have obtained any lock except X_LOCK, that means it is real. However deleted bit is off and to hold X_LOCK
+   * does not guarantee it exists, wever deleted bit is off and to hold X_LOCK does not guarantee it exists, for
+   * instance, trigger action do server-side delete and trigger does not know it. Therefore we need to check it if we
+   * hold X_LOCK on the object. */
   if (NULL_LOCK < obj->lock && obj->lock < X_LOCK)
     {
       return 0;
     }
 
-  /* couldn't figure it out from the MOP hints, we'll have to try fetching it,
-   * note that we're acquiring a read lock here, this may be bad if
-   * we really intend to update the object.
-   */
+  /* couldn't figure it out from the MOP hints, we'll have to try fetching it, note that we're acquiring a read lock
+   * here, this may be bad if we really intend to update the object. */
   error = obj_lock (obj, 0);
 
   if (!error)
@@ -567,9 +554,8 @@ db_is_deleted (DB_OBJECT * obj)
       return 0;
     }
 
-  /* if this is the deleted object error, then its deleted, the test
-   * for the MOP deleted flag should be unnecessary but be safe.
-   */
+  /* if this is the deleted object error, then its deleted, the test for the MOP deleted flag should be unnecessary but 
+   * be safe. */
   if (error == ER_HEAP_UNKNOWN_OBJECT || WS_IS_DELETED (obj))
     {
       return 1;
@@ -652,8 +638,7 @@ db_get_superclasses (DB_OBJECT * obj)
       supers = class_->inheritance;
       if (supers == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS,
-		  0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
 	}
     }
 
@@ -682,8 +667,7 @@ db_get_subclasses (DB_OBJECT * obj)
       subs = class_->users;
       if (subs == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS,
-		  0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
 	}
     }
 
@@ -719,8 +703,7 @@ db_class_has_instance (DB_OBJECT * classobj)
     }
   else
     {
-      return heap_has_instance (sm_get_ch_heap (classobj), WS_OID (classobj),
-				1);
+      return heap_has_instance (sm_get_ch_heap (classobj), WS_OID (classobj), 1);
     }
 
   return 0;
@@ -762,8 +745,7 @@ db_type_from_string (const char *name)
   if (name != NULL)
     {
       type = pr_find_type (name);
-      if ((type == NULL)
-	  && (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED))
+      if ((type == NULL) && (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED))
 	{
 	  domain = pt_string_to_db_domain (name, NULL);
 	  if (domain)
@@ -817,8 +799,7 @@ db_get_attribute (DB_OBJECT * obj, const char *name)
       att = classobj_find_attribute (class_, name, 0);
       if (att == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		  ER_OBJ_INVALID_ATTRIBUTE, 1, name);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ATTRIBUTE, 1, name);
 	}
     }
 
@@ -876,8 +857,7 @@ db_get_shared_attribute (DB_OBJECT * obj, const char *name)
       att = classobj_find_attribute (class_, name, 0);
       if (att == NULL || att->header.name_space != ID_SHARED_ATTRIBUTE)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		  ER_OBJ_INVALID_ATTRIBUTE, 1, name);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ATTRIBUTE, 1, name);
 	}
     }
 
@@ -906,8 +886,7 @@ db_get_class_attribute (DB_OBJECT * obj, const char *name)
       att = classobj_find_attribute (class_, name, 1);
       if (att == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		  ER_OBJ_INVALID_ATTRIBUTE, 1, name);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ATTRIBUTE, 1, name);
 	}
     }
 
@@ -939,8 +918,7 @@ db_get_attributes (DB_OBJECT * obj)
       atts = class_->ordered_attributes;
       if (atts == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS,
-		  0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
 	}
     }
 
@@ -969,8 +947,7 @@ db_get_class_attributes (DB_OBJECT * obj)
       atts = class_->class_attributes;
       if (atts == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS,
-		  0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
 	}
     }
 
@@ -1003,8 +980,7 @@ db_get_ordered_attributes (DB_OBJECT * obj)
       atts = class_->ordered_attributes;
       if (atts == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS,
-		  0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
 	}
     }
 
@@ -1254,11 +1230,9 @@ db_attribute_is_unique (DB_ATTRIBUTE * attribute)
     {
       SM_CONSTRAINT *con;
 
-      for (con = attribute->constraints;
-	   con != NULL && !status; con = con->next)
+      for (con = attribute->constraints; con != NULL && !status; con = con->next)
 	{
-	  if (con->type == SM_CONSTRAINT_UNIQUE
-	      || con->type == SM_CONSTRAINT_PRIMARY_KEY)
+	  if (con->type == SM_CONSTRAINT_UNIQUE || con->type == SM_CONSTRAINT_PRIMARY_KEY)
 	    {
 	      status = 1;
 	    }
@@ -1283,8 +1257,7 @@ db_attribute_is_primary_key (DB_ATTRIBUTE * attribute)
     {
       SM_CONSTRAINT *con;
 
-      for (con = attribute->constraints;
-	   con != NULL && !status; con = con->next)
+      for (con = attribute->constraints; con != NULL && !status; con = con->next)
 	{
 	  if (con->type == SM_CONSTRAINT_PRIMARY_KEY)
 	    {
@@ -1311,8 +1284,7 @@ db_attribute_is_foreign_key (DB_ATTRIBUTE * attribute)
     {
       SM_CONSTRAINT *con;
 
-      for (con = attribute->constraints;
-	   con != NULL && !status; con = con->next)
+      for (con = attribute->constraints; con != NULL && !status; con = con->next)
 	{
 	  if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	    {
@@ -1358,8 +1330,7 @@ db_attribute_is_reverse_unique (DB_ATTRIBUTE * attribute)
     {
       SM_CONSTRAINT *con;
 
-      for (con = attribute->constraints;
-	   con != NULL && !status; con = con->next)
+      for (con = attribute->constraints; con != NULL && !status; con = con->next)
 	{
 	  if (con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
 	    {
@@ -1406,8 +1377,7 @@ db_attribute_is_indexed (DB_ATTRIBUTE * attribute)
     {
       SM_CONSTRAINT *con;
 
-      for (con = attribute->constraints;
-	   con != NULL && !status; con = con->next)
+      for (con = attribute->constraints; con != NULL && !status; con = con->next)
 	{
 	  if (SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
 	    {
@@ -1434,8 +1404,7 @@ db_attribute_is_reverse_indexed (DB_ATTRIBUTE * attribute)
     {
       SM_CONSTRAINT *con;
 
-      for (con = attribute->constraints;
-	   con != NULL && !status; con = con->next)
+      for (con = attribute->constraints; con != NULL && !status; con = con->next)
 	{
 	  if (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (con->type))
 	    {
@@ -1493,8 +1462,7 @@ db_get_method (DB_OBJECT * obj, const char *name)
       method = classobj_find_method (class_, name, 0);
       if (method == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_METHOD,
-		  1, name);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_METHOD, 1, name);
 	}
     }
 
@@ -1524,8 +1492,7 @@ db_get_class_method (DB_OBJECT * obj, const char *name)
       method = classobj_find_method (class_, name, 1);
       if (method == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_METHOD,
-		  1, name);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_METHOD, 1, name);
 	}
     }
 
@@ -1554,8 +1521,7 @@ db_get_methods (DB_OBJECT * obj)
       methods = class_->methods;
       if (methods == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS,
-		  0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
 	}
     }
 
@@ -1584,8 +1550,7 @@ db_get_class_methods (DB_OBJECT * obj)
       methods = class_->class_methods;
       if (methods == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS,
-		  0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
 	}
     }
 
@@ -1639,8 +1604,7 @@ db_method_function (DB_METHOD * method)
 {
   const char *function = NULL;
 
-  if (method != NULL && method->signatures != NULL &&
-      method->signatures->function_name != NULL)
+  if (method != NULL && method->signatures != NULL && method->signatures->function_name != NULL)
     {
       function = method->signatures->function_name;
     }
@@ -1680,8 +1644,7 @@ db_method_return_domain (DB_METHOD * method)
 {
   DB_DOMAIN *domain = NULL;
 
-  if (method != NULL && method->signatures != NULL &&
-      method->signatures->value != NULL)
+  if (method != NULL && method->signatures != NULL && method->signatures->value != NULL)
     {
       domain = method->signatures->value->domain;
       sm_filter_domain (domain, NULL);
@@ -1707,12 +1670,9 @@ db_method_arg_domain (DB_METHOD * method, int arg)
   DB_DOMAIN *domain = NULL;
   DB_METHARG *marg;
 
-  if (method != NULL && method->signatures != NULL &&
-      arg <= method->signatures->num_args)
+  if (method != NULL && method->signatures != NULL && arg <= method->signatures->num_args)
     {
-      /* argument zero is return value.
-       * Note that this behavior eliminates the need for
-       * db_method_return_value() */
+      /* argument zero is return value. Note that this behavior eliminates the need for db_method_return_value() */
       if (arg == 0)
 	{
 	  if (method->signatures->value != NULL)
@@ -1723,8 +1683,7 @@ db_method_arg_domain (DB_METHOD * method, int arg)
 	}
       else
 	{
-	  for (marg = method->signatures->args;
-	       marg != NULL && domain == NULL; marg = marg->next)
+	  for (marg = method->signatures->args; marg != NULL && domain == NULL; marg = marg->next)
 	    {
 	      if (marg->index == arg)
 		{
@@ -1788,8 +1747,7 @@ db_get_resolutions (DB_OBJECT * obj)
 
       if (res == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS,
-		  0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
 	}
     }
 
@@ -1959,8 +1917,7 @@ db_get_constraints (DB_OBJECT * obj)
       constraints = class_->constraints;
       if (constraints == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS,
-		  0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
 	}
     }
 
@@ -2188,15 +2145,11 @@ db_get_foreign_key_action (DB_CONSTRAINT * constraint, DB_FK_ACTION_TYPE type)
     {
       if (type == DB_FK_DELETE)
 	{
-	  act =
-	    classobj_describe_foreign_key_action (constraint->fk_info->
-						  delete_action);
+	  act = classobj_describe_foreign_key_action (constraint->fk_info->delete_action);
 	}
       else if (type == DB_FK_UPDATE)
 	{
-	  act =
-	    classobj_describe_foreign_key_action (constraint->fk_info->
-						  update_action);
+	  act = classobj_describe_foreign_key_action (constraint->fk_info->update_action);
 	}
     }
   return act;
@@ -2228,8 +2181,7 @@ db_get_method_files (DB_OBJECT * obj)
       files = class_->method_files;
       if (files == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS,
-		  0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
 	}
     }
 
@@ -2295,8 +2247,7 @@ db_get_loader_commands (DB_OBJECT * obj)
       commands = class_->loader_commands;
       if (commands == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS,
-		  0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
 	}
     }
 
@@ -2354,8 +2305,7 @@ db_objlist_object (DB_OBJLIST * link)
  * npages(out): number of pages in this classmop
  */
 int
-db_get_class_num_objs_and_pages (DB_OBJECT * classmop, int approximation,
-				 int *nobjs, int *npages)
+db_get_class_num_objs_and_pages (DB_OBJECT * classmop, int approximation, int *nobjs, int *npages)
 {
   HFID *hfid;
   int error;
@@ -2378,8 +2328,7 @@ db_get_class_num_objs_and_pages (DB_OBJECT * classmop, int approximation,
       return NO_ERROR;
     }
 
-  error =
-    heap_get_class_num_objects_pages (hfid, approximation, nobjs, npages);
+  error = heap_get_class_num_objects_pages (hfid, approximation, nobjs, npages);
 
   return error;
 }
@@ -2410,9 +2359,7 @@ db_get_class_privilege (DB_OBJECT * mop, unsigned int *auth)
  * height(out):
  */
 int
-db_get_btree_statistics (DB_CONSTRAINT * cons,
-			 int *num_leaf_pages,
-			 int *num_total_pages, int *num_keys, int *height)
+db_get_btree_statistics (DB_CONSTRAINT * cons, int *num_leaf_pages, int *num_total_pages, int *num_keys, int *height)
 {
   BTID *btid;
   BTREE_STATS stat;
@@ -2422,8 +2369,7 @@ db_get_btree_statistics (DB_CONSTRAINT * cons,
   ctype = db_constraint_type (cons);
   if (!DB_IS_CONSTRAINT_INDEX_FAMILY (ctype))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -2498,8 +2444,7 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
 	  goto error;
 	}
 
-      class_schema =
-	obj_print_help_class (class_op, OBJ_PRINT_SHOW_CREATE_TABLE);
+      class_schema = obj_print_help_class (class_op, OBJ_PRINT_SHOW_CREATE_TABLE);
       if (class_schema == NULL)
 	{
 	  goto error;

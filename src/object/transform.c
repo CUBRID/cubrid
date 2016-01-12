@@ -64,8 +64,7 @@ static META_ATTRIBUTE domain_atts[] = {
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
 
-META_CLASS tf_Metaclass_domain =
-  { META_DOMAIN_NAME, {META_PAGE_DOMAIN, 0, META_VOLUME}, 0, 0, 0,
+META_CLASS tf_Metaclass_domain = { META_DOMAIN_NAME, {META_PAGE_DOMAIN, 0, META_VOLUME}, 0, 0, 0,
 &domain_atts[0]
 };
 
@@ -89,8 +88,7 @@ static META_ATTRIBUTE att_atts[] = {
   {"comment", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
-META_CLASS tf_Metaclass_attribute =
-  { META_ATTRIBUTE_NAME, {META_PAGE_ATTRIBUTE, 0, META_VOLUME}, 0, 0, 0,
+META_CLASS tf_Metaclass_attribute = { META_ATTRIBUTE_NAME, {META_PAGE_ATTRIBUTE, 0, META_VOLUME}, 0, 0, 0,
 &att_atts[0]
 };
 
@@ -101,8 +99,7 @@ static META_ATTRIBUTE metharg_atts[] = {
   {"domain", DB_TYPE_SET, 1, META_DOMAIN_NAME, 1, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
-META_CLASS tf_Metaclass_metharg =
-  { META_METHARG_NAME, {META_PAGE_METHARG, 0, META_VOLUME}, 0, 0, 0,
+META_CLASS tf_Metaclass_metharg = { META_METHARG_NAME, {META_PAGE_METHARG, 0, META_VOLUME}, 0, 0, 0,
 &metharg_atts[0]
 };
 
@@ -115,8 +112,7 @@ static META_ATTRIBUTE methsig_atts[] = {
   {"arguments", DB_TYPE_SET, 1, META_METHARG_NAME, 1, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
-META_CLASS tf_Metaclass_methsig =
-  { META_METHSIG_NAME, {META_PAGE_METHSIG, 0, META_VOLUME}, 0, 0, 0,
+META_CLASS tf_Metaclass_methsig = { META_METHSIG_NAME, {META_PAGE_METHSIG, 0, META_VOLUME}, 0, 0, 0,
 &methsig_atts[0]
 };
 
@@ -129,8 +125,7 @@ static META_ATTRIBUTE meth_atts[] = {
   {"properties", DB_TYPE_SET, 0, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
-META_CLASS tf_Metaclass_method =
-  { META_METHOD_NAME, {META_PAGE_METHOD, 0, META_VOLUME}, 0, 0, 0,
+META_CLASS tf_Metaclass_method = { META_METHOD_NAME, {META_PAGE_METHOD, 0, META_VOLUME}, 0, 0, 0,
 &meth_atts[0]
 };
 
@@ -141,8 +136,7 @@ static META_ATTRIBUTE methfile_atts[] = {
   {"properties", DB_TYPE_SET, 0, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
-META_CLASS tf_Metaclass_methfile =
-  { META_METHFILE_NAME, {META_PAGE_METHFILE, 0, META_VOLUME}, 0, 0, 0,
+META_CLASS tf_Metaclass_methfile = { META_METHFILE_NAME, {META_PAGE_METHFILE, 0, META_VOLUME}, 0, 0, 0,
 &methfile_atts[0]
 };
 
@@ -154,8 +148,7 @@ static META_ATTRIBUTE res_atts[] = {
   {"alias", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
-META_CLASS tf_Metaclass_resolution =
-  { META_RESOLUTION_NAME, {META_PAGE_RESOLUTION, 0, META_VOLUME}, 0, 0, 0,
+META_CLASS tf_Metaclass_resolution = { META_RESOLUTION_NAME, {META_PAGE_RESOLUTION, 0, META_VOLUME}, 0, 0, 0,
 &res_atts[0]
 };
 
@@ -166,8 +159,7 @@ static META_ATTRIBUTE repatt_atts[] = {
   {"domain", DB_TYPE_SET, 1, META_DOMAIN_NAME, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
-META_CLASS tf_Metaclass_repattribute =
-  { META_REPATTRIBUTE_NAME, {META_PAGE_REPATTRIBUTE, 0, META_VOLUME}, 0, 0, 0,
+META_CLASS tf_Metaclass_repattribute = { META_REPATTRIBUTE_NAME, {META_PAGE_REPATTRIBUTE, 0, META_VOLUME}, 0, 0, 0,
 &repatt_atts[0]
 };
 
@@ -181,8 +173,7 @@ static META_ATTRIBUTE rep_atts[] = {
   {"properties", DB_TYPE_SET, 0, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
-META_CLASS tf_Metaclass_representation =
-  { META_REPRESENTATION_NAME, {META_PAGE_REPRESENTATION, 0, META_VOLUME}, 0,
+META_CLASS tf_Metaclass_representation = { META_REPRESENTATION_NAME, {META_PAGE_REPRESENTATION, 0, META_VOLUME}, 0,
 0, 0, &rep_atts[0]
 };
 
@@ -226,8 +217,7 @@ static META_ATTRIBUTE class_atts[] = {
   {"partition", DB_TYPE_SET, 1, META_PARTITION_NAME, 1, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
-META_CLASS tf_Metaclass_class =
-  { META_CLASS_NAME, {META_PAGE_CLASS, 0, META_VOLUME}, 0, 0, 0,
+META_CLASS tf_Metaclass_class = { META_CLASS_NAME, {META_PAGE_CLASS, 0, META_VOLUME}, 0, 0, 0,
 &class_atts[0]
 };
 
@@ -236,8 +226,7 @@ static META_ATTRIBUTE query_spec_atts[] = {
   {"specification", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
-META_CLASS tf_Metaclass_query_spec =
-  { META_QUERY_SPEC_NAME, {META_PAGE_QUERY_SPEC, 0, META_VOLUME}, 0, 0, 0,
+META_CLASS tf_Metaclass_query_spec = { META_QUERY_SPEC_NAME, {META_PAGE_QUERY_SPEC, 0, META_VOLUME}, 0, 0, 0,
 &query_spec_atts[0]
 };
 
@@ -251,8 +240,7 @@ static META_ATTRIBUTE partition_atts[] = {
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
 
-META_CLASS tf_Metaclass_partition =
-  { META_PARTITION_NAME, {META_PAGE_PARTITION, 0, META_VOLUME}, 0, 0, 0,
+META_CLASS tf_Metaclass_partition = { META_PARTITION_NAME, {META_PAGE_PARTITION, 0, META_VOLUME}, 0, 0, 0,
 &partition_atts[0]
 };
 
@@ -264,8 +252,7 @@ static META_ATTRIBUTE root_atts[] = {
   {"name", DB_TYPE_STRING, 0, NULL, 0, 0, NULL},
   {NULL, (DB_TYPE) 0, 0, NULL, 0, 0, NULL}
 };
-META_CLASS tf_Metaclass_root =
-  { "rootclass", {META_PAGE_ROOT, 0, META_VOLUME}, 0, 0, 0, &root_atts[0] };
+META_CLASS tf_Metaclass_root = { "rootclass", {META_PAGE_ROOT, 0, META_VOLUME}, 0, 0, 0, &root_atts[0] };
 
 /*
  * Meta_classes
@@ -582,16 +569,15 @@ tf_compile_meta_classes ()
 	    }
 	  else if (class_->mc_n_variable)
 	    {
-	      /*
+	      /* 
 	       * can't have fixed width attributes AFTER variable width
 	       * attributes
 	       */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_TF_INVALID_METACLASS, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_METACLASS, 0);
 	    }
 	  else
 	    {
-	      /*
+	      /* 
 	       * need a domain for size calculations, since we don't use
 	       * any parameterized types this isn't necessary but we still must
 	       * have it to call tp_domain_isk_size().
@@ -614,7 +600,7 @@ tf_compile_meta_classes ()
 int
 tf_install_meta_classes ()
 {
-  /*
+  /* 
    * no longer making catalog entries, eventually build the meta-class object
    * here
    */

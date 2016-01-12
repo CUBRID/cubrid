@@ -48,7 +48,7 @@ master_util_config_startup (const char *db_name, int *port_id)
     }
   *port_id = prm_get_master_port_id ();
 
-  /*
+  /* 
    * Must give either port_id or service_name
    * if port == 0, nothing special use port number of service
    *    port < 0, bind a local reserved port

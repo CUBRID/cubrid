@@ -164,8 +164,7 @@ dlisth_map (dlisth * h, dlist_map_func func, void *arg)
  *    rht(out): hash table 
  */
 int
-hash_new (int bucket_sz, ht_hashf hashf, ht_keyf keyf,
-	  ht_comparef comparef, hash_table ** rht)
+hash_new (int bucket_sz, ht_hashf hashf, ht_keyf keyf, ht_comparef comparef, hash_table ** rht)
 {
   int sz, i;
   hash_table *ht;
@@ -468,8 +467,7 @@ api_check_memory (FILE * fp)
   API_LOCK (&mutex);
   if (malloc_count != free_count)
     {
-      fprintf (fp, "malloc/free count mismatch (%d/%d)\n", malloc_count,
-	       free_count);
+      fprintf (fp, "malloc/free count mismatch (%d/%d)\n", malloc_count, free_count);
       res++;
     }
   if (!dlisth_is_empty (&malloc_list))

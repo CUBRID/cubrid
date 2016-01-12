@@ -153,20 +153,13 @@ static const char *csql_Isolation_level_string[] = {
 
 static jmp_buf csql_Jmp_buf;
 
-static const char *csql_cmd_string (CUBRID_STMT_TYPE stmt_type,
-				    const char *default_string);
+static const char *csql_cmd_string (CUBRID_STMT_TYPE stmt_type, const char *default_string);
 static void display_empty_result (int stmt_type, int line_no);
-static char **get_current_result (int **len,
-				  const CUR_RESULT_INFO * result_info,
-				  bool plain_output);
-static int write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
-				    const CUR_RESULT_INFO * result_info);
+static char **get_current_result (int **len, const CUR_RESULT_INFO * result_info, bool plain_output);
+static int write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RESULT_INFO * result_info);
 static char *uncontrol_strdup (const char *from);
 static char *uncontrol_strndup (const char *from, int length);
-static int calculate_width (int column_width,
-			    int string_width,
-			    int origin_width,
-			    DB_TYPE attr_type, bool is_null);
+static int calculate_width (int column_width, int string_width, int origin_width, DB_TYPE attr_type, bool is_null);
 static bool is_string_type (DB_TYPE type);
 static bool is_nstring_type (DB_TYPE type);
 static bool is_bit_type (DB_TYPE type);
@@ -185,8 +178,7 @@ static bool is_type_that_has_suffix (DB_TYPE type);
  * Note: If `result' is NULL, no results is assumed.
  */
 void
-csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
-	      DB_QUERY_TYPE * attr_spec, int line_no,
+csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY_TYPE * attr_spec, int line_no,
 	      CUBRID_STMT_TYPE stmt_type)
 {
   int i;
@@ -202,8 +194,7 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
   /* trivial case - no results */
-  if (result == NULL
-      || (err = db_query_first_tuple (result)) == DB_CURSOR_END)
+  if (result == NULL || (err = db_query_first_tuple (result)) == DB_CURSOR_END)
     {
       if (csql_arg->plain_output == false)
 	{
@@ -273,11 +264,8 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
 	      int attr_name_console_length = -1;
 
 	      /* try to convert attribute name from utf-8 to console */
-	      if ((*csql_text_utf8_to_console) (temp,
-						strlen (temp),
-						&attr_name_console_encoded,
-						&attr_name_console_length)
-		  == NO_ERROR)
+	      if ((*csql_text_utf8_to_console)
+		  (temp, strlen (temp), &attr_name_console_encoded, &attr_name_console_length) == NO_ERROR)
 		{
 		  if (attr_name_console_encoded != NULL)
 		    {
@@ -304,59 +292,46 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
       switch (attr_types[i])
 	{
 	case DB_TYPE_SHORT:
-	  attr_lengths[i] =
-	    MAX (MAX_SHORT_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  attr_lengths[i] = MAX (MAX_SHORT_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_INTEGER:
-	  attr_lengths[i] =
-	    MAX (MAX_INTEGER_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  attr_lengths[i] = MAX (MAX_INTEGER_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_BIGINT:
-	  attr_lengths[i] =
-	    MAX (MAX_BIGINT_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  attr_lengths[i] = MAX (MAX_BIGINT_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_FLOAT:
-	  attr_lengths[i] =
-	    MAX (MAX_FLOAT_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  attr_lengths[i] = MAX (MAX_FLOAT_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  attr_lengths[i] =
-	    MAX (MAX_DOUBLE_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  attr_lengths[i] = MAX (MAX_DOUBLE_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_TIME:
-	  attr_lengths[i] =
-	    -MAX (MAX_TIME_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  attr_lengths[i] = -MAX (MAX_TIME_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_TIMETZ:
 	case DB_TYPE_TIMELTZ:
-	  attr_lengths[i] =
-	    -MAX (MAX_TIMETZ_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  attr_lengths[i] = -MAX (MAX_TIMETZ_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_UTIME:
-	  attr_lengths[i] =
-	    -MAX (MAX_UTIME_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  attr_lengths[i] = -MAX (MAX_UTIME_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_TIMESTAMPTZ:
 	case DB_TYPE_TIMESTAMPLTZ:
-	  attr_lengths[i] =
-	    -MAX (MAX_TIMESTAMPTZ_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  attr_lengths[i] = -MAX (MAX_TIMESTAMPTZ_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_DATETIME:
-	  attr_lengths[i] =
-	    -MAX (MAX_DATETIME_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  attr_lengths[i] = -MAX (MAX_DATETIME_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_DATETIMETZ:
 	case DB_TYPE_DATETIMELTZ:
-	  attr_lengths[i] =
-	    -MAX (MAX_DATETIMETZ_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  attr_lengths[i] = -MAX (MAX_DATETIMETZ_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_DATE:
-	  attr_lengths[i] =
-	    -MAX (MAX_DATE_DISPLAY_LENGTH, attr_name_lengths[i]);
+	  attr_lengths[i] = -MAX (MAX_DATE_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_MONETARY:
-	  attr_lengths[i] = MAX (MAX_MONETARY_DISPLAY_LENGTH,
-				 attr_name_lengths[i]);
+	  attr_lengths[i] = MAX (MAX_MONETARY_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	default:
 	  attr_lengths[i] = -MAX_DEFAULT_DISPLAY_LENGTH;
@@ -382,8 +357,7 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
    */
   read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
   db_set_read_fetch_instance_version (LC_FETCH_CURRENT_VERSION);
-  if (write_results_to_stream (csql_arg, csql_Output_fp, &result_info) ==
-      CSQL_FAILURE)
+  if (write_results_to_stream (csql_arg, csql_Output_fp, &result_info) == CSQL_FAILURE)
     {
       if (csql_Error_code == CSQL_ERR_SQL_ERROR)
 	{
@@ -494,8 +468,7 @@ display_empty_result (int stmt_type, int line_no)
   FILE *pf;			/* pipe stream to pager */
 
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN,
-	    msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL,
-			    CSQL_RESULT_STMT_TITLE_FORMAT),
+	    msgcat_message (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_RESULT_STMT_TITLE_FORMAT),
 	    csql_cmd_string ((CUBRID_STMT_TYPE) stmt_type, ""), line_no);
 
   pf = csql_popen (csql_Pager_cmd, csql_Output_fp);
@@ -503,10 +476,8 @@ display_empty_result (int stmt_type, int line_no)
   csql_fputs ("\n=== ", pf);
   csql_fputs_console_conv (csql_Scratch_text, pf);
   csql_fputs (" ===\n\n", pf);
-  csql_fputs_console_conv (msgcat_message (MSGCAT_CATALOG_CSQL,
-					   MSGCAT_CSQL_SET_CSQL,
-					   CSQL_STAT_NONSCR_EMPTY_RESULT_TEXT),
-			   pf);
+  csql_fputs_console_conv (msgcat_message
+			   (MSGCAT_CATALOG_CSQL, MSGCAT_CSQL_SET_CSQL, CSQL_STAT_NONSCR_EMPTY_RESULT_TEXT), pf);
   csql_fputs ("\n", pf);
 
   csql_pclose (pf, csql_Output_fp);
@@ -525,8 +496,7 @@ display_empty_result (int stmt_type, int line_no)
  *   Caller should be responsible for free the return array and its elements.
  */
 static char **
-get_current_result (int **lengths, const CUR_RESULT_INFO * result_info,
-		    bool plain_output)
+get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool plain_output)
 {
   int i;
   char **val = NULL;		/* temporary array for values */
@@ -567,24 +537,23 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info,
 
       value_type = DB_VALUE_TYPE (&db_value);
 
-      /*
+      /* 
        * This assert is intended to validate that the server returned the
        * expected types for the query results. See the note in
        * pt_print_value () regarding XASL caching.
        */
-      /*
+      /* 
        * TODO fix this assert if it fails in valid cases. Perhaps it should
        *      allow DB_TYPE_POINTER? What about DB_TYPE_ERROR?
        */
-      /*
+      /* 
        * TODO add a similar check to the ux_* and/or cci_* and/or the server
        *      functions so that the results' types returned through sockets in
        *      CS_MODE are validated.
        */
       assert (value_type == DB_TYPE_NULL
 	      /* UNKNOWN, maybe host variable */
-	      || result_info->attr_types[i] == DB_TYPE_NULL
-	      || result_info->attr_types[i] == DB_TYPE_VARIABLE
+	      || result_info->attr_types[i] == DB_TYPE_NULL || result_info->attr_types[i] == DB_TYPE_VARIABLE
 	      || value_type == result_info->attr_types[i]);
 
       switch (value_type)
@@ -606,8 +575,7 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info,
 	      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
 	      goto error;
 	    }
-	  sprintf (val[i], "pointer value (%p)",
-		   (void *) DB_GET_POINTER (&db_value));
+	  sprintf (val[i], "pointer value (%p)", (void *) DB_GET_POINTER (&db_value));
 	  break;
 
 	case DB_TYPE_ERROR:	/* error type */
@@ -621,7 +589,7 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info,
 	  break;
 
 	default:		/* other types */
-	  /*
+	  /* 
 	   * If we are printing the isolation level, we need to
 	   * interpret it for the user, not just return a meaningless number.
 	   *
@@ -647,12 +615,9 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info,
 		  async_ws = false;
 		}
 
-	      sprintf (val[i], "%s%s",
-		       csql_Isolation_level_string[iso_lvl],
-		       (async_ws ? ", ASYNC WORKSPACE" : ""));
+	      sprintf (val[i], "%s%s", csql_Isolation_level_string[iso_lvl], (async_ws ? ", ASYNC WORKSPACE" : ""));
 	    }
-	  else if ((stmt_type == CUBRID_STMT_GET_TIMEOUT)
-		   && (DB_GET_FLOAT (&db_value) == -1.0))
+	  else if ((stmt_type == CUBRID_STMT_GET_TIMEOUT) && (DB_GET_FLOAT (&db_value) == -1.0))
 	    {
 	      val[i] = (char *) malloc (9);
 	      if (val[i] == NULL)
@@ -666,8 +631,7 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info,
 	    {
 	      char *temp;
 
-	      temp =
-		csql_db_value_as_string (&db_value, &len[i], plain_output);
+	      temp = csql_db_value_as_string (&db_value, &len[i], plain_output);
 	      if (temp == NULL)
 		{
 		  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
@@ -733,10 +697,9 @@ static void (*csql_pipe_save) (int sig);
  *       the error
  */
 static int
-write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
-			 const CUR_RESULT_INFO * result_info)
+write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RESULT_INFO * result_info)
 {
-  /*
+  /* 
    * These are volatile to avoid dangerous interaction with the longjmp
    * handler for SIGPIPE problems.  The typedef is necessary so that we
    * can tell the compiler that the top POINTER is volatile, not the
@@ -770,7 +733,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
   len = NULL;
   error = FALSE;
 
-  /*
+  /* 
    * Do this *before* the setjmp to avoid the possibility of the value
    * being clobbered by a longjmp.  Even if some internal thing longjmps
    * to the end of the next block we still need to be able to close the
@@ -787,8 +750,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
       if (csql_arg->plain_output == false)
 	{
 	  csql_fputs ("\n=== ", pf);
-	  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN,
-		    csql_get_message (CSQL_RESULT_STMT_TITLE_FORMAT),
+	  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_RESULT_STMT_TITLE_FORMAT),
 		    csql_cmd_string (stmt_type, "UNKNOWN"), line_no);
 	  csql_fputs (csql_Scratch_text, pf);
 	  csql_fputs (" ===\n\n", pf);
@@ -801,8 +763,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 	  goto done;
 	}
 
-      if (csql_arg->skip_column_names == true
-	  || csql_arg->line_output == true)
+      if (csql_arg->skip_column_names == true || csql_arg->line_output == true)
 	{
 	  ;
 	}
@@ -810,9 +771,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 	{
 	  for (i = 0; i < num_attrs; i++)
 	    {
-	      refined_attr_name =
-		csql_string_to_plain_string (attr_names[i],
-					     strlen (attr_names[i]), NULL);
+	      refined_attr_name = csql_string_to_plain_string (attr_names[i], strlen (attr_names[i]), NULL);
 	      if (refined_attr_name != NULL)
 		{
 		  fprintf (pf, "%s", refined_attr_name);
@@ -838,8 +797,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 	  for (n = i = 0; i < num_attrs; i++)
 	    {
 	      fprintf (pf, "  %*s", (int) (attr_lengths[i]), attr_names[i]);
-	      n += 2 + ((attr_lengths[i] > 0) ? attr_lengths[i] :
-			-attr_lengths[i]);
+	      n += 2 + ((attr_lengths[i] > 0) ? attr_lengths[i] : -attr_lengths[i]);
 	    }
 	  putc ('\n', pf);
 	  for (; n > 0; n--)
@@ -866,8 +824,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 	      free_and_init (len);
 	    }
 
-	  val =
-	    get_current_result (&len, result_info, csql_arg->plain_output);
+	  val = get_current_result (&len, result_info, csql_arg->plain_output);
 	  if (val == NULL)
 	    {
 	      csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -881,8 +838,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 	      for (i = 0; i < num_attrs; i++)
 		{
 		  fprintf (pf, "%*c", (int) ((i == 0) ? 1 : 8), ' ');
-		  fprintf (pf, "%*s: %s\n", (int) (-max_attr_name_length),
-			   attr_names[i], val[i]);
+		  fprintf (pf, "%*s: %s\n", (int) (-max_attr_name_length), attr_names[i], val[i]);
 		}
 	      /* fflush(pf); */
 	    }
@@ -910,15 +866,11 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 		    }
 
 		  column_width = csql_get_column_width (attr_names[i]);
-		  value_width =
-		    calculate_width (column_width,
-				     csql_string_width,
-				     len[i], attr_types[i], is_null);
+		  value_width = calculate_width (column_width, csql_string_width, len[i], attr_types[i], is_null);
 
-		  padding_size = (attr_lengths[i] > 0) ?
-		    MAX (attr_lengths[i] -
-			 (value_width), 0)
-		    : MIN (attr_lengths[i] + (value_width), 0);
+		  padding_size =
+		    (attr_lengths[i] > 0) ? MAX (attr_lengths[i] - (value_width),
+						 0) : MIN (attr_lengths[i] + (value_width), 0);
 
 		  fprintf (pf, "  ");
 		  if (padding_size > 0)
@@ -928,8 +880,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp,
 		    }
 
 		  value = val[i];
-		  if (is_type_that_has_suffix (attr_types[i])
-		      && is_null == false)
+		  if (is_type_that_has_suffix (attr_types[i]) && is_null == false)
 		    {
 		      value[value_width - 1] = '\'';
 		    }
@@ -966,7 +917,7 @@ done:
 
   if (pf)
     {
-      /*
+      /* 
        * Don't care for a sig pipe error when closing pipe.
        *
        * NOTE if I restore to previous signal handler which could be the
@@ -1011,8 +962,7 @@ done:
  *   is_null(in): check null
  */
 int
-calculate_width (int column_width, int string_width,
-		 int origin_width, DB_TYPE attr_type, bool is_null)
+calculate_width (int column_width, int string_width, int origin_width, DB_TYPE attr_type, bool is_null)
 {
   int result = 0;
 
@@ -1147,8 +1097,7 @@ is_bit_type (DB_TYPE type)
 static bool
 is_cuttable_type_by_string_width (DB_TYPE type)
 {
-  return (is_string_type (type) || is_nstring_type (type)
-	  || is_bit_type (type));
+  return (is_string_type (type) || is_nstring_type (type) || is_bit_type (type));
 }
 
 /*
@@ -1159,8 +1108,7 @@ is_cuttable_type_by_string_width (DB_TYPE type)
 static bool
 is_type_that_has_suffix (DB_TYPE type)
 {
-  return (is_string_type (type) || is_nstring_type (type)
-	  || is_bit_type (type));
+  return (is_string_type (type) || is_nstring_type (type) || is_bit_type (type));
 }
 
 /*

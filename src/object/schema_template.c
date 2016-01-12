@@ -56,117 +56,64 @@
     a = ws_copy_string(b); \
   } while(0)
 
-static int find_method (SM_TEMPLATE * template_, const char *name,
-			int class_method, SM_METHOD ** methodp);
-static SM_COMPONENT *find_component (SM_TEMPLATE * template_,
-				     const char *name, int class_stuff);
-static int find_any (SM_TEMPLATE * template_, const char *name,
-		     int class_stuff, SM_COMPONENT ** thing);
-static int find_signature (SM_TEMPLATE * template_, const char *name,
-			   int class_method, const char *signame,
+static int find_method (SM_TEMPLATE * template_, const char *name, int class_method, SM_METHOD ** methodp);
+static SM_COMPONENT *find_component (SM_TEMPLATE * template_, const char *name, int class_stuff);
+static int find_any (SM_TEMPLATE * template_, const char *name, int class_stuff, SM_COMPONENT ** thing);
+static int find_signature (SM_TEMPLATE * template_, const char *name, int class_method, const char *signame,
 			   SM_METHOD ** methodp, SM_METHOD_SIGNATURE ** sigp);
-static int find_argument (SM_TEMPLATE * template_, const char *name,
-			  int class_method, const char *signame, int index,
-			  int create, SM_METHOD ** methodp,
-			  SM_METHOD_SIGNATURE ** sigp,
-			  SM_METHOD_ARGUMENT ** argp);
-static int check_namespace (SM_TEMPLATE * temp, const char *name,
-			    const bool class_namespace);
-static SM_RESOLUTION *find_alias (SM_RESOLUTION * reslist, const char *name,
-				  SM_NAME_SPACE name_space);
+static int find_argument (SM_TEMPLATE * template_, const char *name, int class_method, const char *signame, int index,
+			  int create, SM_METHOD ** methodp, SM_METHOD_SIGNATURE ** sigp, SM_METHOD_ARGUMENT ** argp);
+static int check_namespace (SM_TEMPLATE * temp, const char *name, const bool class_namespace);
+static SM_RESOLUTION *find_alias (SM_RESOLUTION * reslist, const char *name, SM_NAME_SPACE name_space);
 static int resolve_class_domain (SM_TEMPLATE * tmp, DB_DOMAIN * domain);
-static int get_domain_internal (SM_TEMPLATE * tmp,
-				const char *domain_string,
-				DB_DOMAIN ** domainp, int check_internal);
-static int get_domain (SM_TEMPLATE * tmp, const char *domain_string,
-		       DB_DOMAIN ** domain);
-static int check_domain_class_type (SM_TEMPLATE * template_,
-				    DB_OBJECT * domain_classobj);
+static int get_domain_internal (SM_TEMPLATE * tmp, const char *domain_string, DB_DOMAIN ** domainp, int check_internal);
+static int get_domain (SM_TEMPLATE * tmp, const char *domain_string, DB_DOMAIN ** domain);
+static int check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj);
 static SM_TEMPLATE *def_class_internal (const char *name, int class_type);
-static int smt_add_constraint_to_property (SM_TEMPLATE * template_,
-					   SM_CONSTRAINT_TYPE type,
-					   const char *constraint_name,
-					   SM_ATTRIBUTE ** atts,
-					   const int *asc_desc,
-					   SM_FOREIGN_KEY_INFO * fk_info,
-					   char *shared_cons_name,
-					   SM_PREDICATE_INFO *
-					   filter_index,
-					   SM_FUNCTION_INFO * function_index,
+static int smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type,
+					   const char *constraint_name, SM_ATTRIBUTE ** atts, const int *asc_desc,
+					   SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name,
+					   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index,
 					   const char *comment);
-static int smt_drop_constraint_from_property (SM_TEMPLATE * template_,
-					      const char *constraint_name,
+static int smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constraint_name,
 					      SM_ATTRIBUTE_FLAG constraint);
-static int smt_check_foreign_key (SM_TEMPLATE * template_,
-				  const char *constraint_name,
-				  SM_ATTRIBUTE ** atts, int n_atts,
-				  SM_FOREIGN_KEY_INFO * fk_info);
-static int check_alias_delete (SM_TEMPLATE * template_, const char *name,
-			       SM_NAME_SPACE name_space, int error);
-static int check_resolution_name (MOP classmop, const char *name,
-				  int class_name);
-static int check_local_definition (SM_TEMPLATE * template_,
-				   const char *name, const char *alias,
+static int smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_ATTRIBUTE ** atts,
+				  int n_atts, SM_FOREIGN_KEY_INFO * fk_info);
+static int check_alias_delete (SM_TEMPLATE * template_, const char *name, SM_NAME_SPACE name_space, int error);
+static int check_resolution_name (MOP classmop, const char *name, int class_name);
+static int check_local_definition (SM_TEMPLATE * template_, const char *name, const char *alias,
 				   SM_NAME_SPACE name_space);
-static int add_resolution (SM_TEMPLATE * template_, MOP super_class,
-			   const char *name, const char *alias,
+static int add_resolution (SM_TEMPLATE * template_, MOP super_class, const char *name, const char *alias,
 			   SM_NAME_SPACE name_space);
-static int delete_resolution (SM_TEMPLATE * template_, MOP super_class,
-			      const char *name, SM_NAME_SPACE name_space);
-static int smt_add_attribute_to_list (SM_ATTRIBUTE ** att_list,
-				      SM_ATTRIBUTE * att,
-				      const bool add_first,
+static int delete_resolution (SM_TEMPLATE * template_, MOP super_class, const char *name, SM_NAME_SPACE name_space);
+static int smt_add_attribute_to_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att, const bool add_first,
 				      const char *add_after_attribute);
-static int smt_check_index_exist (SM_TEMPLATE * template_,
-				  char **out_shared_cons_name,
-				  DB_CONSTRAINT_TYPE constraint_type,
-				  const char *constraint_name,
-				  const char **att_names,
-				  const int *asc_desc);
-static int smt_change_attribute (SM_TEMPLATE * template_,
-				 const char *name,
-				 const char *new_name,
-				 const char *new_domain_string,
-				 DB_DOMAIN * new_domain,
-				 const SM_NAME_SPACE name_space,
-				 const bool change_first,
-				 const char *change_after_attribute,
+static int smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name,
+				  DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
+				  const char **att_names, const int *asc_desc);
+static int smt_change_attribute (SM_TEMPLATE * template_, const char *name, const char *new_name,
+				 const char *new_domain_string, DB_DOMAIN * new_domain, const SM_NAME_SPACE name_space,
+				 const bool change_first, const char *change_after_attribute,
 				 SM_ATTRIBUTE ** found_att);
-static int smt_change_attribute_pos_in_list (SM_ATTRIBUTE ** att_list,
-					     SM_ATTRIBUTE * att,
-					     const bool change_first,
-					     const char
-					     *change_after_attribute);
-static int smt_change_attribute_default (SM_ATTRIBUTE * att,
-					 DB_VALUE * proposed_value);
-static int smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att,
-						     DB_DOMAIN * new_domain);
+static int smt_change_attribute_pos_in_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att, const bool change_first,
+					     const char *change_after_attribute);
+static int smt_change_attribute_default (SM_ATTRIBUTE * att, DB_VALUE * proposed_value);
+static int smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att, DB_DOMAIN * new_domain);
 
 
 #if defined (ENABLE_RENAME_CONSTRAINT)
-static int rename_constraint (SM_TEMPLATE * ctemplate,
-			      SM_CLASS_CONSTRAINT * sm_cons,
-			      const char *old_name, const char *new_name,
-			      SM_CONSTRAINT_FAMILY element_type);
+static int rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons, const char *old_name,
+			      const char *new_name, SM_CONSTRAINT_FAMILY element_type);
 
-static int rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate,
-						 const char *old_name,
-						 const char *new_name,
-						 SM_CONSTRAINT_FAMILY
-						 element_type);
+static int rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate, const char *old_name, const char *new_name,
+						 SM_CONSTRAINT_FAMILY element_type);
 #endif
 
-static int change_constraint_comment (SM_TEMPLATE * ctemplate,
-				      const char *index_name,
-				      const char *comment);
+static int change_constraint_comment (SM_TEMPLATE * ctemplate, const char *index_name, const char *comment);
 
-static int change_constraints_comment_partitioned_class (MOP obj,
-							 const char
-							 *index_name,
-							 const char *comment);
+static int change_constraints_comment_partitioned_class (MOP obj, const char *index_name, const char *comment);
 
-static MOP smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate,
-					 const char *constraint_name);
+static MOP smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate, const char *constraint_name);
 
 /* TEMPLATE SEARCH FUNCTIONS */
 /*
@@ -187,8 +134,7 @@ static MOP smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate,
  */
 
 int
-smt_find_attribute (SM_TEMPLATE * template_, const char *name,
-		    int class_attribute, SM_ATTRIBUTE ** attp)
+smt_find_attribute (SM_TEMPLATE * template_, const char *name, int class_attribute, SM_ATTRIBUTE ** attp)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE *att;
@@ -202,16 +148,11 @@ smt_find_attribute (SM_TEMPLATE * template_, const char *name,
     {
       if (class_attribute)
 	{
-	  att =
-	    (SM_ATTRIBUTE *)
-	    SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_attributes,
-					    name);
+	  att = (SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_attributes, name);
 	}
       else
 	{
-	  att =
-	    (SM_ATTRIBUTE *)
-	    SM_FIND_NAME_IN_COMPONENT_LIST (template_->attributes, name);
+	  att = (SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->attributes, name);
 	}
 
       if (att != NULL)
@@ -226,10 +167,8 @@ smt_find_attribute (SM_TEMPLATE * template_, const char *name,
 	    }
 	  else
 	    {
-	      /* check for mistaken references to inherited attributes and
-	         give a better message */
-	      att = classobj_find_attribute (template_->current, name,
-					     class_attribute);
+	      /* check for mistaken references to inherited attributes and give a better message */
+	      att = classobj_find_attribute (template_->current, name, class_attribute);
 	      if (att == NULL)
 		{
 		  /* wasn't inherited, give the ususal message */
@@ -237,8 +176,7 @@ smt_find_attribute (SM_TEMPLATE * template_, const char *name,
 		}
 	      else
 		{
-		  ERROR2 (error, ER_SM_INHERITED_ATTRIBUTE, name,
-			  sm_get_ch_name (att->class_mop));
+		  ERROR2 (error, ER_SM_INHERITED_ATTRIBUTE, name, sm_get_ch_name (att->class_mop));
 		}
 	    }
 	}
@@ -258,8 +196,7 @@ smt_find_attribute (SM_TEMPLATE * template_, const char *name,
  */
 
 static int
-find_method (SM_TEMPLATE * template_, const char *name,
-	     int class_method, SM_METHOD ** methodp)
+find_method (SM_TEMPLATE * template_, const char *name, int class_method, SM_METHOD ** methodp)
 {
   int error = NO_ERROR;
   SM_METHOD *method;
@@ -273,15 +210,11 @@ find_method (SM_TEMPLATE * template_, const char *name,
     {
       if (class_method)
 	{
-	  method =
-	    (SM_METHOD *)
-	    SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_methods, name);
+	  method = (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_methods, name);
 	}
       else
 	{
-	  method =
-	    (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->methods,
-							  name);
+	  method = (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->methods, name);
 	}
 
       if (method != NULL)
@@ -296,10 +229,8 @@ find_method (SM_TEMPLATE * template_, const char *name,
 	    }
 	  else
 	    {
-	      /* check for mistaken references to inherited methods and
-	         give a better message */
-	      method = classobj_find_method (template_->current, name,
-					     class_method);
+	      /* check for mistaken references to inherited methods and give a better message */
+	      method = classobj_find_method (template_->current, name, class_method);
 	      if (method == NULL)
 		{
 		  /* wasn't inherited, give the ususal message */
@@ -308,8 +239,7 @@ find_method (SM_TEMPLATE * template_, const char *name,
 	      else
 		{
 		  /* inherited, indicate the source class */
-		  ERROR2 (error, ER_SM_INHERITED_METHOD, name,
-			  sm_get_ch_name (method->class_mop));
+		  ERROR2 (error, ER_SM_INHERITED_METHOD, name, sm_get_ch_name (method->class_mop));
 		}
 	    }
 	}
@@ -342,15 +272,11 @@ find_component (SM_TEMPLATE * template_, const char *name, int class_stuff)
   /* check attributes */
   if (class_stuff)
     {
-      att =
-	(SM_ATTRIBUTE *)
-	SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_attributes, name);
+      att = (SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_attributes, name);
     }
   else
     {
-      att =
-	(SM_ATTRIBUTE *)
-	SM_FIND_NAME_IN_COMPONENT_LIST (template_->attributes, name);
+      att = (SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->attributes, name);
     }
 
   if (att != NULL)
@@ -362,15 +288,11 @@ find_component (SM_TEMPLATE * template_, const char *name, int class_stuff)
       /* couldn't find an attribute, look at the methods */
       if (class_stuff)
 	{
-	  method =
-	    (SM_METHOD *)
-	    SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_methods, name);
+	  method = (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_methods, name);
 	}
       else
 	{
-	  method =
-	    (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->methods,
-							  name);
+	  method = (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->methods, name);
 	}
 
       if (method != NULL)
@@ -395,8 +317,7 @@ find_component (SM_TEMPLATE * template_, const char *name, int class_stuff)
  */
 
 static int
-find_any (SM_TEMPLATE * template_, const char *name, int class_stuff,
-	  SM_COMPONENT ** thing)
+find_any (SM_TEMPLATE * template_, const char *name, int class_stuff, SM_COMPONENT ** thing)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE *att;
@@ -425,29 +346,24 @@ find_any (SM_TEMPLATE * template_, const char *name, int class_stuff,
 	  else
 	    {
 	      /* check inherited attributes for better message */
-	      att = classobj_find_attribute (template_->current, name,
-					     class_stuff);
+	      att = classobj_find_attribute (template_->current, name, class_stuff);
 	      if (att != NULL)
 		{
 		  /* inherited, indicate the source class */
-		  ERROR2 (error, ER_SM_INHERITED_ATTRIBUTE, name,
-			  sm_get_ch_name (att->class_mop));
+		  ERROR2 (error, ER_SM_INHERITED_ATTRIBUTE, name, sm_get_ch_name (att->class_mop));
 		}
 	      else
 		{
 		  /* check inherited methods */
-		  method = classobj_find_method (template_->current, name,
-						 class_stuff);
+		  method = classobj_find_method (template_->current, name, class_stuff);
 		  if (method != NULL)
 		    {
 		      /* inherited, indicate the source class */
-		      ERROR2 (error, ER_SM_INHERITED_METHOD, name,
-			      sm_get_ch_name (method->class_mop));
+		      ERROR2 (error, ER_SM_INHERITED_METHOD, name, sm_get_ch_name (method->class_mop));
 		    }
 		  else
 		    {
-		      /* couldn't find any mistaken references to inherited things,
-		         give the usual message */
+		      /* couldn't find any mistaken references to inherited things, give the usual message */
 		      ERROR1 (error, ER_SM_ATTMETH_NOT_FOUND, name);
 		    }
 		}
@@ -485,9 +401,8 @@ find_any (SM_TEMPLATE * template_, const char *name, int class_stuff,
  */
 
 static int
-find_signature (SM_TEMPLATE * template_, const char *name,
-		int class_method, const char *signame,
-		SM_METHOD ** methodp, SM_METHOD_SIGNATURE ** sigp)
+find_signature (SM_TEMPLATE * template_, const char *name, int class_method, const char *signame, SM_METHOD ** methodp,
+		SM_METHOD_SIGNATURE ** sigp)
 {
   int error = NO_ERROR;
   SM_METHOD *method;
@@ -496,9 +411,8 @@ find_signature (SM_TEMPLATE * template_, const char *name,
   error = find_method (template_, name, class_method, &method);
   if (error == NO_ERROR)
     {
-      /* punt, can only have one signature so first one wins need to do
-       * a "real" search here if we ever support multiple signatures
-       */
+      /* punt, can only have one signature so first one wins need to do a "real" search here if we ever support
+       * multiple signatures */
       sig = method->signatures;
 
       if (sig == NULL)
@@ -533,17 +447,14 @@ find_signature (SM_TEMPLATE * template_, const char *name,
  */
 
 static int
-find_argument (SM_TEMPLATE * template_, const char *name,
-	       int class_method, const char *signame, int index,
-	       int create, SM_METHOD ** methodp, SM_METHOD_SIGNATURE ** sigp,
-	       SM_METHOD_ARGUMENT ** argp)
+find_argument (SM_TEMPLATE * template_, const char *name, int class_method, const char *signame, int index, int create,
+	       SM_METHOD ** methodp, SM_METHOD_SIGNATURE ** sigp, SM_METHOD_ARGUMENT ** argp)
 {
   int error = NO_ERROR;
   SM_METHOD_SIGNATURE *sig;
   SM_METHOD_ARGUMENT *arg;
 
-  error = find_signature (template_, name, class_method, signame, methodp,
-			  &sig);
+  error = find_signature (template_, name, class_method, signame, methodp, &sig);
   if (error == NO_ERROR)
     {
       if (index)
@@ -600,20 +511,17 @@ find_argument (SM_TEMPLATE * template_, const char *name,
  */
 
 static int
-check_namespace (SM_TEMPLATE * temp, const char *name,
-		 const bool class_namespace)
+check_namespace (SM_TEMPLATE * temp, const char *name, const bool class_namespace)
 {
   int error = NO_ERROR;
 
   if (class_namespace)
     {
-      if (SM_FIND_NAME_IN_COMPONENT_LIST (temp->class_attributes, name) !=
-	  NULL)
+      if (SM_FIND_NAME_IN_COMPONENT_LIST (temp->class_attributes, name) != NULL)
 	{
 	  ERROR1 (error, ER_SM_NAME_RESERVED_BY_ATT, name);
 	}
-      else if (SM_FIND_NAME_IN_COMPONENT_LIST (temp->class_methods, name) !=
-	       NULL)
+      else if (SM_FIND_NAME_IN_COMPONENT_LIST (temp->class_methods, name) != NULL)
 	{
 	  ERROR1 (error, ER_SM_NAME_RESERVED_BY_METHOD, name);
 	}
@@ -643,16 +551,13 @@ check_namespace (SM_TEMPLATE * temp, const char *name,
  */
 
 static SM_RESOLUTION *
-find_alias (SM_RESOLUTION * reslist, const char *name,
-	    SM_NAME_SPACE name_space)
+find_alias (SM_RESOLUTION * reslist, const char *name, SM_NAME_SPACE name_space)
 {
   SM_RESOLUTION *res, *found;
 
-  for (res = reslist, found = NULL; res != NULL && found == NULL;
-       res = res->next)
+  for (res = reslist, found = NULL; res != NULL && found == NULL; res = res->next)
     {
-      if (name_space == res->name_space
-	  && res->alias != NULL && (SM_COMPARE_NAMES (res->alias, name) == 0))
+      if (name_space == res->name_space && res->alias != NULL && (SM_COMPARE_NAMES (res->alias, name) == 0))
 	{
 	  found = res;
 	}
@@ -697,8 +602,7 @@ resolve_class_domain (SM_TEMPLATE * tmp, DB_DOMAIN * domain)
 	  if (domain->self_ref)
 	    {
 	      domain->type = tp_Type_null;
-	      /* kludge, store the template as the "class" for this
-	         special domain */
+	      /* kludge, store the template as the "class" for this special domain */
 	      domain->class_mop = (MOP) tmp;
 	    }
 	  break;
@@ -712,9 +616,7 @@ resolve_class_domain (SM_TEMPLATE * tmp, DB_DOMAIN * domain)
 }
 
 static int
-get_domain_internal (SM_TEMPLATE * tmp,
-		     const char *domain_string,
-		     DB_DOMAIN ** domainp, int check_internal)
+get_domain_internal (SM_TEMPLATE * tmp, const char *domain_string, DB_DOMAIN ** domainp, int check_internal)
 {
   int error = NO_ERROR;
   DB_DOMAIN *domain = (DB_DOMAIN *) 0;
@@ -744,8 +646,7 @@ get_domain_internal (SM_TEMPLATE * tmp,
 		  type = pr_find_type (domain_string);
 		  if (type)
 		    {
-		      domain =
-			tp_domain_construct (type->id, NULL, 0, 0, NULL);
+		      domain = tp_domain_construct (type->id, NULL, 0, 0, NULL);
 		    }
 		}
 	    }
@@ -799,13 +700,10 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
   /* If its a class, the domain can only be "object" or another class */
   if (template_->class_type == SM_CLASS_CT)
     {
-      if (domain_classobj != NULL
-	  && !(error = au_fetch_class_force (domain_classobj, &class_,
-					     AU_FETCH_READ))
+      if (domain_classobj != NULL && !(error = au_fetch_class_force (domain_classobj, &class_, AU_FETCH_READ))
 	  && template_->class_type != class_->class_type)
 	{
-	  ERROR1 (error, ER_SM_INCOMPATIBLE_DOMAIN_CLASS_TYPE,
-		  sm_ch_name ((MOBJ) class_));
+	  ERROR1 (error, ER_SM_INCOMPATIBLE_DOMAIN_CLASS_TYPE, sm_ch_name ((MOBJ) class_));
 	}
     }
 
@@ -836,8 +734,7 @@ def_class_internal (const char *name, int class_type)
       type = pr_find_type (name);
       if (type != NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_SM_CLASS_WITH_PRIM_NAME, 1, name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, name);
 	}
       else
 	{
@@ -900,15 +797,12 @@ smt_edit_class_mop (MOP op, DB_AUTH db_auth_type)
     }
   else
     {
-      if (au_fetch_class (op, &class_, AU_FETCH_WRITE, db_auth_type) ==
-	  NO_ERROR)
+      if (au_fetch_class (op, &class_, AU_FETCH_WRITE, db_auth_type) == NO_ERROR)
 	{
-	  /* cleanup the class and flush out the run-time information prior to
-	     editing */
+	  /* cleanup the class and flush out the run-time information prior to editing */
 	  if (sm_clean_class (op, class_) == NO_ERROR)
 	    {
-	      template_ =
-		classobj_make_template (sm_get_ch_name (op), op, class_);
+	      template_ = classobj_make_template (sm_get_ch_name (op), op, class_);
 	    }
 	}
     }
@@ -1003,8 +897,7 @@ smt_copy_class_mop (const char *name, MOP op, SM_CLASS ** class_)
  */
 
 SM_TEMPLATE *
-smt_copy_class (const char *new_name, const char *existing_name,
-		SM_CLASS ** class_)
+smt_copy_class (const char *new_name, const char *existing_name, SM_CLASS ** class_)
 {
   SM_TEMPLATE *template_ = NULL;
 
@@ -1058,26 +951,17 @@ smt_quit (SM_TEMPLATE * template_)
  *                            list after the attribute with the given name
  */
 int
-smt_add_attribute_w_dflt_w_order (DB_CTMPL * def,
-				  const char *name,
-				  const char *domain_string,
-				  DB_DOMAIN * domain,
-				  DB_VALUE * default_value,
-				  const SM_NAME_SPACE name_space,
-				  const bool add_first,
-				  const char *add_after_attribute,
-				  DB_DEFAULT_EXPR_TYPE default_expr)
+smt_add_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *domain_string, DB_DOMAIN * domain,
+				  DB_VALUE * default_value, const SM_NAME_SPACE name_space, const bool add_first,
+				  const char *add_after_attribute, DB_DEFAULT_EXPR_TYPE default_expr)
 {
   int error = NO_ERROR;
 
-  error = smt_add_attribute_any (def, name, domain_string, domain, name_space,
-				 add_first, add_after_attribute);
+  error = smt_add_attribute_any (def, name, domain_string, domain, name_space, add_first, add_after_attribute);
   if (error == NO_ERROR && default_value != NULL)
     {
-      error = smt_set_attribute_default (def, name,
-					 (name_space ==
-					  ID_CLASS_ATTRIBUTE ? 1 : 0),
-					 default_value, default_expr);
+      error =
+	smt_set_attribute_default (def, name, (name_space == ID_CLASS_ATTRIBUTE ? 1 : 0), default_value, default_expr);
     }
 
   return error;
@@ -1094,17 +978,11 @@ smt_add_attribute_w_dflt_w_order (DB_CTMPL * def,
  *   name_space(in): attribute name_space (class, instance, or shared)
  */
 int
-smt_add_attribute_w_dflt (DB_CTMPL * def,
-			  const char *name,
-			  const char *domain_string,
-			  DB_DOMAIN * domain,
-			  DB_VALUE * default_value,
-			  const SM_NAME_SPACE name_space,
-			  DB_DEFAULT_EXPR_TYPE default_expr)
+smt_add_attribute_w_dflt (DB_CTMPL * def, const char *name, const char *domain_string, DB_DOMAIN * domain,
+			  DB_VALUE * default_value, const SM_NAME_SPACE name_space, DB_DEFAULT_EXPR_TYPE default_expr)
 {
-  return smt_add_attribute_w_dflt_w_order (def, name, domain_string, domain,
-					   default_value, name_space, false,
-					   NULL, default_expr);
+  return smt_add_attribute_w_dflt_w_order (def, name, domain_string, domain, default_value, name_space, false, NULL,
+					   default_expr);
 }
 
 /*
@@ -1127,10 +1005,8 @@ smt_add_attribute_w_dflt (DB_CTMPL * def,
  */
 
 int
-smt_add_attribute_any (SM_TEMPLATE * template_, const char *name,
-		       const char *domain_string, DB_DOMAIN * domain,
-		       const SM_NAME_SPACE name_space, const bool add_first,
-		       const char *add_after_attribute)
+smt_add_attribute_any (SM_TEMPLATE * template_, const char *name, const char *domain_string, DB_DOMAIN * domain,
+		       const SM_NAME_SPACE name_space, const bool add_first, const char *add_after_attribute)
 {
   int error_code = NO_ERROR;
   SM_ATTRIBUTE *att = NULL;
@@ -1173,8 +1049,7 @@ smt_add_attribute_any (SM_TEMPLATE * template_, const char *name,
 
   if (add_after_attribute != NULL)
     {
-      sm_downcase_name (add_after_attribute, add_after_attribute_real_name,
-			SM_MAX_IDENTIFIER_LENGTH);
+      sm_downcase_name (add_after_attribute, add_after_attribute_real_name, SM_MAX_IDENTIFIER_LENGTH);
       add_after_attribute = add_after_attribute_real_name;
     }
 
@@ -1213,16 +1088,14 @@ smt_add_attribute_any (SM_TEMPLATE * template_, const char *name,
       goto error_exit;
     }
 
-  /* Flag this attribute as new so that we can initialize
-     the original_value properly.  Make sure this isn't saved
-     on disk ! */
+  /* Flag this attribute as new so that we can initialize the original_value properly.  Make sure this isn't saved on
+   * disk ! */
   att->flags |= SM_ATTFLAG_NEW;
   att->class_mop = template_->op;
   att->domain = domain;
   att->auto_increment = NULL;
 
-  error_code = smt_add_attribute_to_list (att_list, att, add_first,
-					  add_after_attribute);
+  error_code = smt_add_attribute_to_list (att_list, att, add_first, add_after_attribute);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -1251,8 +1124,7 @@ error_exit:
  */
 
 static int
-smt_add_attribute_to_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att,
-			   const bool add_first,
+smt_add_attribute_to_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att, const bool add_first,
 			   const char *add_after_attribute)
 {
   int error_code = NO_ERROR;
@@ -1274,19 +1146,16 @@ smt_add_attribute_to_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att,
       goto end;
     }
 
-  for (crt_att = *att_list; crt_att != NULL;
-       crt_att = (SM_ATTRIBUTE *) crt_att->header.next)
+  for (crt_att = *att_list; crt_att != NULL; crt_att = (SM_ATTRIBUTE *) crt_att->header.next)
     {
-      if (intl_identifier_casecmp (crt_att->header.name, add_after_attribute)
-	  == 0)
+      if (intl_identifier_casecmp (crt_att->header.name, add_after_attribute) == 0)
 	{
 	  break;
 	}
     }
   if (crt_att == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_COLNAME, 1,
-	      add_after_attribute);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_COLNAME, 1, add_after_attribute);
       error_code = ER_QPROC_INVALID_COLNAME;
       goto error_exit;
     }
@@ -1313,12 +1182,9 @@ error_exit:
  *      and remove this function.
  */
 int
-smt_add_attribute (SM_TEMPLATE * template_,
-		   const char *name,
-		   const char *domain_string, DB_DOMAIN * domain)
+smt_add_attribute (SM_TEMPLATE * template_, const char *name, const char *domain_string, DB_DOMAIN * domain)
 {
-  return (smt_add_attribute_any (template_, name, domain_string, domain,
-				 ID_ATTRIBUTE, false, NULL));
+  return (smt_add_attribute_any (template_, name, domain_string, domain, ID_ATTRIBUTE, false, NULL));
 }
 
 /*
@@ -1333,10 +1199,8 @@ smt_add_attribute (SM_TEMPLATE * template_,
  */
 
 int
-smt_add_set_attribute_domain (SM_TEMPLATE * template_,
-			      const char *name,
-			      int class_attribute,
-			      const char *domain_string, DB_DOMAIN * domain)
+smt_add_set_attribute_domain (SM_TEMPLATE * template_, const char *name, int class_attribute, const char *domain_string,
+			      DB_DOMAIN * domain)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE *att;
@@ -1363,10 +1227,8 @@ smt_add_set_attribute_domain (SM_TEMPLATE * template_,
 	    }
 	  else
 	    {
-	      /*  We need to make sure that we don't update a cached domain
-	       *  since we may not be the only one pointing to it.  If the
-	       *  domain is cached, make a copy of it, update it, then cache it.
-	       */
+	      /* We need to make sure that we don't update a cached domain since we may not be the only one pointing to 
+	       * it.  If the domain is cached, make a copy of it, update it, then cache it. */
 	      if (att->domain->is_cached)
 		{
 		  newdomain = tp_domain_copy (att->domain, false);
@@ -1412,11 +1274,8 @@ smt_add_set_attribute_domain (SM_TEMPLATE * template_,
  */
 
 int
-smt_delete_set_attribute_domain (SM_TEMPLATE * template_,
-				 const char *name,
-				 int class_attribute,
-				 const char *domain_string,
-				 DB_DOMAIN * domain)
+smt_delete_set_attribute_domain (SM_TEMPLATE * template_, const char *name, int class_attribute,
+				 const char *domain_string, DB_DOMAIN * domain)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE *att;
@@ -1424,8 +1283,7 @@ smt_delete_set_attribute_domain (SM_TEMPLATE * template_,
   error = smt_find_attribute (template_, name, class_attribute, &att);
   if (error == NO_ERROR)
     {
-      if ((att->domain == NULL)
-	  || !pr_is_set_type (TP_DOMAIN_TYPE (att->domain)))
+      if ((att->domain == NULL) || !pr_is_set_type (TP_DOMAIN_TYPE (att->domain)))
 	{
 	  ERROR1 (error, ER_SM_DOMAIN_NOT_A_SET, name);
 	}
@@ -1435,11 +1293,9 @@ smt_delete_set_attribute_domain (SM_TEMPLATE * template_,
 	  if (error == NO_ERROR)
 	    {
 	      assert (domain != NULL);
-	      if (domain == NULL
-		  || !tp_domain_drop (&att->domain->setdomain, domain))
+	      if (domain == NULL || !tp_domain_drop (&att->domain->setdomain, domain))
 		{
-		  ERROR2 (error, ER_SM_DOMAIN_NOT_FOUND, name,
-			  (domain_string ? domain_string : "unknown"));
+		  ERROR2 (error, ER_SM_DOMAIN_NOT_FOUND, name, (domain_string ? domain_string : "unknown"));
 		}
 	    }
 	}
@@ -1463,8 +1319,7 @@ smt_delete_set_attribute_domain (SM_TEMPLATE * template_,
  */
 
 int
-smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
-			   int class_attribute, DB_VALUE * proposed_value,
+smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_attribute, DB_VALUE * proposed_value,
 			   DB_DEFAULT_EXPR_TYPE default_expr)
 {
   int error = NO_ERROR;
@@ -1479,14 +1334,13 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
   error = smt_find_attribute (template_, name, class_attribute, &att);
   if (error == NO_ERROR)
     {
-      if ((att->type->id == DB_TYPE_BLOB || att->type->id == DB_TYPE_CLOB) &&
-	  proposed_value && !DB_IS_NULL (proposed_value))
+      if ((att->type->id == DB_TYPE_BLOB || att->type->id == DB_TYPE_CLOB) && proposed_value
+	  && !DB_IS_NULL (proposed_value))
 	{
 	  ERROR1 (error, ER_SM_DEFAULT_NOT_ALLOWED, att->type->name);
 	  return error;
 	}
-      else if (proposed_value && DB_IS_NULL (proposed_value)
-	       && default_expr == DB_DEFAULT_NONE
+      else if (proposed_value && DB_IS_NULL (proposed_value) && default_expr == DB_DEFAULT_NONE
 	       && (att->flags & SM_ATTFLAG_PRIMARY_KEY))
 	{
 	  ERROR1 (error, ER_CANNOT_HAVE_PK_DEFAULT_NULL, name);
@@ -1515,15 +1369,12 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
 	}
       else
 	{
-	  /* check a subset of the integrity constraints, we can't check for
-	     NOT NULL or unique here */
+	  /* check a subset of the integrity constraints, we can't check for NOT NULL or unique here */
 
-	  if (value != NULL &&
-	      tp_check_value_size (att->domain, value) != DOMAIN_COMPATIBLE)
+	  if (value != NULL && tp_check_value_size (att->domain, value) != DOMAIN_COMPATIBLE)
 	    {
 	      /* need an error message that isn't specific to "string" types */
-	      ERROR2 (error, ER_OBJ_STRING_OVERFLOW, att->header.name,
-		      att->domain->precision);
+	      ERROR2 (error, ER_OBJ_STRING_OVERFLOW, att->header.name, att->domain->precision);
 	    }
 	  else
 	    {
@@ -1531,19 +1382,14 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
 	      pr_clone_value (value, &att->default_value.value);
 	      att->default_value.default_expr = default_expr;
 
-	      /* if there wasn't an previous original value, take this one.
-	       * This can only happen for new templates OR if this is a new
-	       * attribute that was added during this template OR if this is
-	       * the first time setting a default value to the attribute.
-	       * This should be handled by using candidates in the template
-	       * and storing an extra bit field in the candidate structure.
-	       * See the comment above sm_attribute for more information
-	       * about "original_value".
-	       */
+	      /* if there wasn't an previous original value, take this one. This can only happen for new templates OR
+	       * if this is a new attribute that was added during this template OR if this is the first time setting a
+	       * default value to the attribute. This should be handled by using candidates in the template and storing 
+	       * an extra bit field in the candidate structure. See the comment above sm_attribute for more information
+	       * about "original_value". */
 	      if (att->flags & SM_ATTFLAG_NEW)
 		{
-		  smt_set_attribute_orig_default_value (att, value,
-							default_expr);
+		  smt_set_attribute_orig_default_value (att, value, default_expr);
 		}
 	    }
 	}
@@ -1576,9 +1422,7 @@ end:
  *	   default value is stored as att->original_value.
  */
 static void
-smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att,
-				      DB_VALUE * new_orig_value,
-				      DB_DEFAULT_EXPR_TYPE default_expr)
+smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value, DB_DEFAULT_EXPR_TYPE default_expr)
 {
   assert (att != NULL);
   assert (new_orig_value != NULL);
@@ -1598,9 +1442,7 @@ smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att,
  */
 
 static int
-smt_drop_constraint_from_property (SM_TEMPLATE * template_,
-				   const char *constraint_name,
-				   SM_ATTRIBUTE_FLAG constraint)
+smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constraint_name, SM_ATTRIBUTE_FLAG constraint)
 {
   int error = NO_ERROR;
   DB_VALUE oldval, newval;
@@ -1657,16 +1499,10 @@ smt_drop_constraint_from_property (SM_TEMPLATE * template_,
  */
 
 static int
-smt_add_constraint_to_property (SM_TEMPLATE * template_,
-				SM_CONSTRAINT_TYPE type,
-				const char *constraint_name,
-				SM_ATTRIBUTE ** atts,
-				const int *asc_desc,
-				SM_FOREIGN_KEY_INFO * fk_info,
-				char *shared_cons_name,
-				SM_PREDICATE_INFO * filter_index,
-				SM_FUNCTION_INFO * function_index,
-				const char *comment)
+smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type, const char *constraint_name,
+				SM_ATTRIBUTE ** atts, const int *asc_desc, SM_FOREIGN_KEY_INFO * fk_info,
+				char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
+				SM_FUNCTION_INFO * function_index, const char *comment)
 {
   int error = NO_ERROR;
   DB_VALUE cnstr_val;
@@ -1674,11 +1510,10 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_,
 
   DB_MAKE_NULL (&cnstr_val);
 
-  /*
+  /* 
    *  Check if the constraint already exists
    */
-  if (classobj_find_prop_constraint (template_->properties, constraint,
-				     constraint_name, &cnstr_val))
+  if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
     {
       ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
     }
@@ -1686,8 +1521,7 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_,
   if (error == NO_ERROR)
     {
       if (classobj_put_index
-	  (&(template_->properties), type, constraint_name, atts, asc_desc,
-	   NULL, filter_index, fk_info,
+	  (&(template_->properties), type, constraint_name, atts, asc_desc, NULL, filter_index, fk_info,
 	   shared_cons_name, function_index, comment) == ER_FAILED)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -1710,10 +1544,8 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_,
  *   fk_info(in/out):
  */
 static int
-smt_check_foreign_key (SM_TEMPLATE * template_,
-		       const char *constraint_name,
-		       SM_ATTRIBUTE ** atts,
-		       int n_atts, SM_FOREIGN_KEY_INFO * fk_info)
+smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_ATTRIBUTE ** atts, int n_atts,
+		       SM_FOREIGN_KEY_INFO * fk_info)
 {
   int error = NO_ERROR;
   MOP ref_clsop = NULL;
@@ -1724,12 +1556,9 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
   bool found;
   const char *tmp, *ref_cls_name = NULL;
 
-  if (template_->op == NULL
-      && intl_identifier_casecmp (template_->name, fk_info->ref_class) == 0)
+  if (template_->op == NULL && intl_identifier_casecmp (template_->name, fk_info->ref_class) == 0)
     {
-      error =
-	classobj_make_class_constraints (template_->properties,
-					 template_->attributes, &temp_cons);
+      error = classobj_make_class_constraints (template_->properties, template_->attributes, &temp_cons);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -1797,8 +1626,7 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
 
       if (n_ref_atts != n_atts)
 	{
-	  ERROR2 (error, ER_FK_NOT_MATCH_KEY_COUNT, constraint_name,
-		  pk->name);
+	  ERROR2 (error, ER_FK_NOT_MATCH_KEY_COUNT, constraint_name, pk->name);
 	  goto err;
 	}
     }
@@ -1813,9 +1641,7 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
 	    {
 	      if (template_->op == NULL && temp_cons)
 		{
-		  error =
-		    smt_find_attribute (template_, fk_info->ref_attrs[j],
-					false, &ref_attr);
+		  error = smt_find_attribute (template_, fk_info->ref_attrs[j], false, &ref_attr);
 		  if (error != NO_ERROR)
 		    {
 		      goto err;
@@ -1823,13 +1649,10 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
 		}
 	      else
 		{
-		  ref_attr = classobj_find_attribute (ref_cls,
-						      fk_info->ref_attrs[j],
-						      0);
+		  ref_attr = classobj_find_attribute (ref_cls, fk_info->ref_attrs[j], 0);
 		  if (ref_attr == NULL)
 		    {
-		      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND,
-			      fk_info->ref_attrs[j]);
+		      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, fk_info->ref_attrs[j]);
 		      goto err;
 		    }
 		}
@@ -1843,18 +1666,15 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
 
 	  if (!found)
 	    {
-	      ERROR2 (error, ER_FK_NOT_HAVE_PK_MEMBER, constraint_name,
-		      pk->attributes[i]->header.name);
+	      ERROR2 (error, ER_FK_NOT_HAVE_PK_MEMBER, constraint_name, pk->attributes[i]->header.name);
 	      goto err;
 	    }
 
 	  if (ref_attr->type->id != atts[j]->type->id
 	      || (TP_TYPE_HAS_COLLATION (ref_attr->type->id)
-		  && TP_DOMAIN_COLLATION (ref_attr->domain)
-		  != TP_DOMAIN_COLLATION (atts[j]->domain)))
+		  && TP_DOMAIN_COLLATION (ref_attr->domain) != TP_DOMAIN_COLLATION (atts[j]->domain)))
 	    {
-	      ERROR2 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK,
-		      atts[j]->header.name, ref_attr->header.name);
+	      ERROR2 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK, atts[j]->header.name, ref_attr->header.name);
 	      goto err;
 	    }
 
@@ -1874,11 +1694,9 @@ smt_check_foreign_key (SM_TEMPLATE * template_,
 	{
 	  if (pk->attributes[i]->type->id != atts[i]->type->id
 	      || (TP_TYPE_HAS_COLLATION (atts[i]->type->id)
-		  && TP_DOMAIN_COLLATION (pk->attributes[i]->domain)
-		  != TP_DOMAIN_COLLATION (atts[i]->domain)))
+		  && TP_DOMAIN_COLLATION (pk->attributes[i]->domain) != TP_DOMAIN_COLLATION (atts[i]->domain)))
 	    {
-	      ERROR2 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK,
-		      atts[i]->header.name, pk->attributes[i]->header.name);
+	      ERROR2 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK, atts[i]->header.name, pk->attributes[i]->header.name);
 	      goto err;
 	    }
 	}
@@ -1906,8 +1724,7 @@ err:
  */
 
 int
-smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names,
-		     const char *constraint_name, int class_attribute,
+smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names, const char *constraint_name, int class_attribute,
 		     SM_ATTRIBUTE_FLAG constraint)
 {
   int error = NO_ERROR;
@@ -1916,8 +1733,7 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names,
   int n_atts;
   MOP owner;
 
-  if (!(SM_IS_ATTFLAG_UNIQUE_FAMILY_OR_FOREIGN_KEY (constraint)
-	|| constraint == SM_ATTFLAG_NON_NULL))
+  if (!(SM_IS_ATTFLAG_UNIQUE_FAMILY_OR_FOREIGN_KEY (constraint) || constraint == SM_ATTFLAG_NON_NULL))
     {
       ERROR0 (error, ER_SM_INVALID_ARGUMENTS);
       return error;
@@ -1928,9 +1744,7 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names,
       char *fk_name = NULL;
 
       pk = classobj_find_cons_primary_key (template_->current->constraints);
-      if (pk->fk_info
-	  && classobj_is_pk_referred (template_->op, pk->fk_info, true,
-				      &fk_name))
+      if (pk->fk_info && classobj_is_pk_referred (template_->op, pk->fk_info, true, &fk_name))
 	{
 	  ERROR2 (error, ER_FK_CANT_DROP_PK_REFERRED, pk->name, fk_name);
 	  return error;
@@ -1965,20 +1779,17 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names,
   if (owner != template_->op && template_->partition == NULL)
     {
       /* it is inherited. */
-      ERROR2 (error, ER_SM_INHERITED, constraint_name,
-	      sm_get_ch_name (owner));
+      ERROR2 (error, ER_SM_INHERITED, constraint_name, sm_get_ch_name (owner));
       return error;
     }
 
-  error = smt_drop_constraint_from_property (template_, constraint_name,
-					     constraint);
+  error = smt_drop_constraint_from_property (template_, constraint_name, constraint);
 
   if (error == NO_ERROR)
     {
       if (constraint == SM_ATTFLAG_PRIMARY_KEY)
 	{
-	  for (pk_attr = template_->attributes; pk_attr != NULL;
-	       pk_attr = (SM_ATTRIBUTE *) pk_attr->header.next)
+	  for (pk_attr = template_->attributes; pk_attr != NULL; pk_attr = (SM_ATTRIBUTE *) pk_attr->header.next)
 	    {
 	      if (pk_attr->flags & SM_ATTFLAG_PRIMARY_KEY)
 		{
@@ -1989,8 +1800,7 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names,
 	}
       else if (constraint == SM_ATTFLAG_NON_NULL)
 	{
-	  error = smt_find_attribute (template_, att_names[0],
-				      class_attribute, &not_null_attr[0]);
+	  error = smt_find_attribute (template_, att_names[0], class_attribute, &not_null_attr[0]);
 
 	  if (error == NO_ERROR)
 	    {
@@ -2020,11 +1830,8 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names,
  *   asc_desc(in): asc/desc info list
  */
 static int
-smt_check_index_exist (SM_TEMPLATE * template_,
-		       char **out_shared_cons_name,
-		       DB_CONSTRAINT_TYPE constraint_type,
-		       const char *constraint_name,
-		       const char **att_names, const int *asc_desc)
+smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
+		       const char *constraint_name, const char **att_names, const int *asc_desc)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -2038,8 +1845,7 @@ smt_check_index_exist (SM_TEMPLATE * template_,
 
   if (template_->op != NULL)
     {
-      error = au_fetch_class (template_->op, &class_, AU_FETCH_READ,
-			      AU_INDEX);
+      error = au_fetch_class (template_->op, &class_, AU_FETCH_READ, AU_INDEX);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -2049,9 +1855,7 @@ smt_check_index_exist (SM_TEMPLATE * template_,
     }
   else
     {
-      error = classobj_make_class_constraints (template_->properties,
-					       template_->attributes,
-					       &check_cons);
+      error = classobj_make_class_constraints (template_->properties, template_->attributes, &check_cons);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -2060,10 +1864,9 @@ smt_check_index_exist (SM_TEMPLATE * template_,
       temp_cons = check_cons;
     }
 
-  error = classobj_check_index_exist (check_cons, out_shared_cons_name,
-				      template_->name, constraint_type,
-				      constraint_name, att_names, asc_desc,
-				      NULL, NULL);
+  error =
+    classobj_check_index_exist (check_cons, out_shared_cons_name, template_->name, constraint_type, constraint_name,
+				att_names, asc_desc, NULL, NULL);
 
   if (temp_cons != NULL)
     {
@@ -2087,13 +1890,9 @@ smt_check_index_exist (SM_TEMPLATE * template_,
  */
 
 int
-smt_add_constraint (SM_TEMPLATE * template_,
-		    DB_CONSTRAINT_TYPE constraint_type,
-		    const char *constraint_name, const char **att_names,
-		    const int *asc_desc, int class_attribute,
-		    SM_FOREIGN_KEY_INFO * fk_info,
-		    SM_PREDICATE_INFO * filter_index,
-		    SM_FUNCTION_INFO * function_index, const char *comment)
+smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
+		    const char **att_names, const int *asc_desc, int class_attribute, SM_FOREIGN_KEY_INFO * fk_info,
+		    SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, const char *comment)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE **atts = NULL;
@@ -2104,9 +1903,7 @@ smt_add_constraint (SM_TEMPLATE * template_,
 
   assert (template_ != NULL);
 
-  error = smt_check_index_exist (template_, &shared_cons_name,
-				 constraint_type, constraint_name, att_names,
-				 asc_desc);
+  error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names, asc_desc);
   if (error != NO_ERROR)
     {
       goto error_return;
@@ -2129,22 +1926,17 @@ smt_add_constraint (SM_TEMPLATE * template_,
       goto error_return;
     }
 
-  /* if primary key shares index with other constraint, it is neccessary to check
-   * whether the attributs do not have null value. e.g. primary key shares index with
-   * unique constraint. Because unique constraint allows null value, we can not just use
-   * the index simply. 
-   * template_->op == NULL, it means this is a create statement, the class has not yet 
-   * existed. Obviously, there is no data in the class at that time! So we skip to test
-   * NULL value for primary key.
-   */
-  if (constraint_type == DB_CONSTRAINT_PRIMARY_KEY
-      && shared_cons_name != NULL && template_->op != NULL)
+  /* if primary key shares index with other constraint, it is neccessary to check whether the attributs do not have
+   * null value. e.g. primary key shares index with unique constraint. Because unique constraint allows null value, we
+   * can not just use the index simply. template_->op == NULL, it means this is a create statement, the class has not
+   * yet existed. Obviously, there is no data in the class at that time! So we skip to test NULL value for primary
+   * key. */
+  if (constraint_type == DB_CONSTRAINT_PRIMARY_KEY && shared_cons_name != NULL && template_->op != NULL)
     {
       for (i = 0; att_names[i] != NULL; i++)
 	{
 	  assert (att_names[i] != NULL);
-	  error =
-	    do_check_rows_for_null (template_->op, att_names[i], &has_nulls);
+	  error = do_check_rows_for_null (template_->op, att_names[i], &has_nulls);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_return;
@@ -2153,8 +1945,7 @@ smt_add_constraint (SM_TEMPLATE * template_,
 	  if (has_nulls)
 	    {
 	      error = ER_SM_ATTR_NOT_NULL;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		      att_names[i]);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, att_names[i]);
 	      goto error_return;
 	    }
 	}
@@ -2164,8 +1955,7 @@ smt_add_constraint (SM_TEMPLATE * template_,
   atts = (SM_ATTRIBUTE **) malloc (atts_size);
   if (atts == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) atts_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) atts_size);
 
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error_return;
@@ -2173,8 +1963,7 @@ smt_add_constraint (SM_TEMPLATE * template_,
 
   for (i = 0; i < n_atts && error == NO_ERROR; i++)
     {
-      error = smt_find_attribute (template_, att_names[i],
-				  class_attribute, &atts[i]);
+      error = smt_find_attribute (template_, att_names[i], class_attribute, &atts[i]);
       if (error == NO_ERROR && SM_IS_ATTFLAG_INDEX_FAMILY (constraint))
 	{
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
@@ -2183,8 +1972,7 @@ smt_add_constraint (SM_TEMPLATE * template_,
 	    {
 	      if (strstr (constraint_name, TEXT_CONSTRAINT_PREFIX))
 		{
-		  ERROR1 (error, ER_REGU_NOT_IMPLEMENTED,
-			  rel_major_release_string ());
+		  ERROR1 (error, ER_REGU_NOT_IMPLEMENTED, rel_major_release_string ());
 		}
 	    }
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -2198,11 +1986,9 @@ smt_add_constraint (SM_TEMPLATE * template_,
       for (j = i + 1; j < n_atts; j++)
 	{
 	  /* can not check attr-id, because is not yet assigned */
-	  if (intl_identifier_casecmp (atts[i]->header.name,
-				       atts[j]->header.name) == 0)
+	  if (intl_identifier_casecmp (atts[i]->header.name, atts[j]->header.name) == 0)
 	    {
-	      ERROR1 (error, ER_SM_INDEX_ATTR_DUPLICATED,
-		      atts[i]->header.name);
+	      ERROR1 (error, ER_SM_INDEX_ATTR_DUPLICATED, atts[i]->header.name);
 	    }
 	}
     }
@@ -2212,13 +1998,13 @@ smt_add_constraint (SM_TEMPLATE * template_,
       goto error_return;
     }
 
-  /*
+  /* 
    *  Process constraint
    */
 
   if (SM_IS_ATTFLAG_UNIQUE_FAMILY (constraint))
     {
-      /*
+      /* 
        *  Check for possible errors
        *
        *    - We do not allow UNIQUE constraints on any attribute of
@@ -2233,8 +2019,7 @@ smt_add_constraint (SM_TEMPLATE * template_,
 
       for (i = 0; i < n_atts && error == NO_ERROR; i++)
 	{
-	  if (atts[i]->header.name_space == ID_SHARED_ATTRIBUTE ||
-	      class_attribute)
+	  if (atts[i]->header.name_space == ID_SHARED_ATTRIBUTE || class_attribute)
 	    {
 	      ERROR1 (error, ER_SM_INDEX_ON_SHARED, att_names[i]);
 	    }
@@ -2242,30 +2027,25 @@ smt_add_constraint (SM_TEMPLATE * template_,
 	    {
 	      if (!tp_valid_indextype (atts[i]->type->id))
 		{
-		  ERROR2 (error, ER_SM_INVALID_UNIQUE_TYPE,
-			  atts[i]->type->name,
+		  ERROR2 (error, ER_SM_INVALID_UNIQUE_TYPE, atts[i]->type->name,
 			  SM_GET_CONSTRAINT_STRING (constraint_type));
 		}
 	    }
 	}
 
-      /*
+      /* 
        * No errors were found, drop or add the unique constraint
        */
       if (error == NO_ERROR)
 	{
-	  /*
+	  /* 
 	   *  Add the unique constraint.  The drop case was taken care
 	   *  of at the beginning of this function.
 	   */
-	  error = smt_add_constraint_to_property (template_,
-						  SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT
-						  (constraint),
-						  constraint_name, atts,
-						  asc_desc, NULL,
-						  shared_cons_name,
-						  filter_index,
-						  function_index, comment);
+	  error =
+	    smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint), constraint_name,
+					    atts, asc_desc, NULL, shared_cons_name, filter_index, function_index,
+					    comment);
 
 	  if (error == NO_ERROR && constraint == SM_ATTFLAG_PRIMARY_KEY)
 	    {
@@ -2292,24 +2072,18 @@ smt_add_constraint (SM_TEMPLATE * template_,
 	    }
 	}
 
-      error = smt_check_foreign_key (template_, constraint_name,
-				     atts, n_atts, fk_info);
+      error = smt_check_foreign_key (template_, constraint_name, atts, n_atts, fk_info);
       if (error == NO_ERROR)
 	{
 	  error =
-	    smt_add_constraint_to_property (template_,
-					    SM_CONSTRAINT_FOREIGN_KEY,
-					    constraint_name, atts,
-					    asc_desc, fk_info,
-					    shared_cons_name,
-					    filter_index, function_index,
-					    comment);
+	    smt_add_constraint_to_property (template_, SM_CONSTRAINT_FOREIGN_KEY, constraint_name, atts, asc_desc,
+					    fk_info, shared_cons_name, filter_index, function_index, comment);
 	}
     }
   else if (constraint == SM_ATTFLAG_NON_NULL)
     {
 
-      /*
+      /* 
        *  We do not support NOT NULL constraints for;
        *    - normal (not class and shared) attributes of virtual classes
        *    - multiple attributes
@@ -2319,18 +2093,15 @@ smt_add_constraint (SM_TEMPLATE * template_,
 	{
 	  ERROR0 (error, ER_SM_NOT_NULL_WRONG_NUM_ATTS);
 	}
-      else if (template_->class_type != SM_CLASS_CT
-	       && atts[0]->header.name_space == ID_ATTRIBUTE)
+      else if (template_->class_type != SM_CLASS_CT && atts[0]->header.name_space == ID_ATTRIBUTE)
 	{
 	  ERROR0 (error, ER_SM_NOT_NULL_ON_VCLASS);
 	}
-      else if (class_attribute
-	       && DB_IS_NULL (&(atts[0]->default_value.value)))
+      else if (class_attribute && DB_IS_NULL (&(atts[0]->default_value.value)))
 	{
 	  ERROR0 (error, ER_SM_INVALID_CONSTRAINT);
 	}
-      else if (atts[0]->type->id == DB_TYPE_BLOB ||
-	       atts[0]->type->id == DB_TYPE_CLOB)
+      else if (atts[0]->type->id == DB_TYPE_BLOB || atts[0]->type->id == DB_TYPE_CLOB)
 	{
 	  ERROR1 (error, ER_SM_NOT_NULL_NOT_ALLOWED, atts[0]->type->name);
 	}
@@ -2387,8 +2158,7 @@ error_return:
  */
 
 int
-smt_add_method_any (SM_TEMPLATE * template_, const char *name,
-		    const char *function, SM_NAME_SPACE name_space)
+smt_add_method_any (SM_TEMPLATE * template_, const char *name, const char *function, SM_NAME_SPACE name_space)
 {
   int error = NO_ERROR;
   SM_METHOD *method;
@@ -2496,15 +2266,13 @@ smt_add_method_any (SM_TEMPLATE * template_, const char *name,
  */
 
 int
-smt_add_method (SM_TEMPLATE * template_, const char *name,
-		const char *function)
+smt_add_method (SM_TEMPLATE * template_, const char *name, const char *function)
 {
   return (smt_add_method_any (template_, name, function, ID_METHOD));
 }
 
 int
-smt_add_class_method (SM_TEMPLATE * template_, const char *name,
-		      const char *function)
+smt_add_class_method (SM_TEMPLATE * template_, const char *name, const char *function)
 {
   return (smt_add_method_any (template_, name, function, ID_CLASS_METHOD));
 }
@@ -2524,9 +2292,7 @@ smt_add_class_method (SM_TEMPLATE * template_, const char *name,
  */
 
 int
-smt_change_method_implementation (SM_TEMPLATE * template_,
-				  const char *name,
-				  int class_method, const char *function)
+smt_change_method_implementation (SM_TEMPLATE * template_, const char *name, int class_method, const char *function)
 {
   int error = NO_ERROR;
   SM_METHOD *method;
@@ -2534,15 +2300,11 @@ smt_change_method_implementation (SM_TEMPLATE * template_,
 
   if (class_method)
     {
-      method =
-	(SM_METHOD *)
-	SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_methods, name);
+      method = (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_methods, name);
     }
   else
     {
-      method =
-	(SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->methods,
-						      name);
+      method = (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->methods, name);
     }
 
   if (method == NULL)
@@ -2572,10 +2334,8 @@ smt_change_method_implementation (SM_TEMPLATE * template_,
 		}
 	      ws_free_string (current);
 
-	      /* If this method has been called, we need to invalidate it
-	       * so that dynamic linking will be invoked to get the new
-	       * resolution.  Remember to do both the "real" one and the cache.
-	       */
+	      /* If this method has been called, we need to invalidate it so that dynamic linking will be invoked to
+	       * get the new resolution.  Remember to do both the "real" one and the cache. */
 	      method->function = NULL;
 	      method->signatures->function = NULL;
 	    }
@@ -2601,20 +2361,15 @@ smt_change_method_implementation (SM_TEMPLATE * template_,
  */
 
 int
-smt_assign_argument_domain (SM_TEMPLATE * template_,
-			    const char *name,
-			    int class_method,
-			    const char *implementation,
-			    int index, const char *domain_string,
-			    DB_DOMAIN * domain)
+smt_assign_argument_domain (SM_TEMPLATE * template_, const char *name, int class_method, const char *implementation,
+			    int index, const char *domain_string, DB_DOMAIN * domain)
 {
   int error = NO_ERROR;
   SM_METHOD *method;
   SM_METHOD_SIGNATURE *sig;
   SM_METHOD_ARGUMENT *arg;
 
-  error = find_argument (template_, name, class_method, implementation,
-			 index, true, &method, &sig, &arg);
+  error = find_argument (template_, name, class_method, implementation, index, true, &method, &sig, &arg);
   if (error == NO_ERROR)
     {
       if ((domain_string == NULL) && (domain == NULL))
@@ -2656,12 +2411,8 @@ smt_assign_argument_domain (SM_TEMPLATE * template_,
  */
 
 int
-smt_add_set_argument_domain (SM_TEMPLATE * template_,
-			     const char *name,
-			     int class_method,
-			     const char *implementation,
-			     int index,
-			     const char *domain_string, DB_DOMAIN * domain)
+smt_add_set_argument_domain (SM_TEMPLATE * template_, const char *name, int class_method, const char *implementation,
+			     int index, const char *domain_string, DB_DOMAIN * domain)
 {
   int error = NO_ERROR;
   SM_METHOD *method;
@@ -2673,13 +2424,10 @@ smt_add_set_argument_domain (SM_TEMPLATE * template_,
     {
       if (domain != NULL)
 	{
-	  error = find_argument (template_, name, class_method,
-				 implementation, index,
-				 false, &method, &sig, &arg);
+	  error = find_argument (template_, name, class_method, implementation, index, false, &method, &sig, &arg);
 	  if (error == NO_ERROR)
 	    {
-	      if (arg->domain == NULL
-		  || !pr_is_set_type (TP_DOMAIN_TYPE (arg->domain)))
+	      if (arg->domain == NULL || !pr_is_set_type (TP_DOMAIN_TYPE (arg->domain)))
 		{
 		  ERROR2 (error, ER_SM_ARG_DOMAIN_NOT_A_SET, name, index);
 		}
@@ -2691,8 +2439,7 @@ smt_add_set_argument_domain (SM_TEMPLATE * template_,
 	}
       else
 	{
-	  ERROR2 (error, ER_SM_DOMAIN_NOT_FOUND, name,
-		  (domain_string ? domain_string : "unknown"));
+	  ERROR2 (error, ER_SM_DOMAIN_NOT_FOUND, name, (domain_string ? domain_string : "unknown"));
 	}
     }
   return (error);
@@ -2713,8 +2460,7 @@ smt_add_set_argument_domain (SM_TEMPLATE * template_,
  */
 
 int
-smt_rename_any (SM_TEMPLATE * template_, const char *name,
-		const bool class_namespace, const char *new_name)
+smt_rename_any (SM_TEMPLATE * template_, const char *name, const bool class_namespace, const char *new_name)
 {
   int error = NO_ERROR;
   SM_COMPONENT *comp;
@@ -2734,28 +2480,24 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
       error = find_any (template_, name, class_namespace, &comp);
       if (error == NO_ERROR)
 	{
-	  if (comp->name_space == ID_ATTRIBUTE ||
-	      comp->name_space == ID_SHARED_ATTRIBUTE ||
-	      comp->name_space == ID_CLASS_ATTRIBUTE)
+	  if (comp->name_space == ID_ATTRIBUTE || comp->name_space == ID_SHARED_ATTRIBUTE
+	      || comp->name_space == ID_CLASS_ATTRIBUTE)
 	    {
 	      SM_ATTRIBUTE *att;
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
-	      error = smt_find_attribute (template_, comp->name,
-					  (comp->name_space ==
-					   ID_CLASS_ATTRIBUTE ? 1 : 0), &att);
+	      error =
+		smt_find_attribute (template_, comp->name, (comp->name_space == ID_CLASS_ATTRIBUTE ? 1 : 0), &att);
 	      if (error == NO_ERROR)
 		{
 		  if (sm_has_text_domain (att, 0))
 		    {
 		      /* prevent to rename attribute */
-		      ERROR1 (error, ER_REGU_NOT_IMPLEMENTED,
-			      rel_major_release_string ());
+		      ERROR1 (error, ER_REGU_NOT_IMPLEMENTED, rel_major_release_string ());
 		    }
 		}
 #else /* ENABLE_UNUSED_FUNCTION */
-	      error = smt_find_attribute (template_, comp->name,
-					  (comp->name_space ==
-					   ID_CLASS_ATTRIBUTE ? 1 : 0), &att);
+	      error =
+		smt_find_attribute (template_, comp->name, (comp->name_space == ID_CLASS_ATTRIBUTE ? 1 : 0), &att);
 #endif /* ENABLE_UNUSED_FUNCTION */
 	      if (error != NO_ERROR)
 		{
@@ -2792,8 +2534,7 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
  */
 
 static int
-rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons,
-		   const char *old_name, const char *new_name,
+rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons, const char *old_name, const char *new_name,
 		   SM_CONSTRAINT_FAMILY element_type)
 {
   int error = NO_ERROR;
@@ -2844,8 +2585,7 @@ rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons,
 
   ctype = db_constraint_type (sm_constraint);
 
-  norm_new_name =
-    sm_produce_constraint_name (ctemplate->name, ctype, NULL, NULL, new_name);
+  norm_new_name = sm_produce_constraint_name (ctemplate->name, ctype, NULL, NULL, new_name);
   if (norm_new_name == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -2864,8 +2604,7 @@ rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons,
 
   property_type = classobj_map_constraint_to_property (sm_constraint->type);
 
-  error = classobj_rename_constraint (ctemplate->properties,
-				      property_type, old_name, norm_new_name);
+  error = classobj_rename_constraint (ctemplate->properties, property_type, old_name, norm_new_name);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -2877,19 +2616,14 @@ rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons,
       ref_clsop = ws_mop (&(sm_constraint->fk_info->ref_class_oid), NULL);
       if (ctemplate->op == ref_clsop)
 	{
-	  /* Class references to itself.
-	   * The below rename FK ref in properties of this class.
-	   */
-	  error = classobj_rename_foreign_key_ref (&(ctemplate->properties),
-						   btid, old_name, new_name);
+	  /* Class references to itself. The below rename FK ref in properties of this class. */
+	  error = classobj_rename_foreign_key_ref (&(ctemplate->properties), btid, old_name, new_name);
 	}
       else
 	{
-	  /* Class references to another one (owner class).
-	   * The below rename FK ref in owner class and update the owner class.
-	   */
-	  error =
-	    sm_rename_foreign_key_ref (ref_clsop, btid, old_name, new_name);
+	  /* Class references to another one (owner class). The below rename FK ref in owner class and update the owner 
+	   * class. */
+	  error = sm_rename_foreign_key_ref (ref_clsop, btid, old_name, new_name);
 	}
 
       if (error != NO_ERROR)
@@ -2919,9 +2653,7 @@ error_exit:
  *   element_type(in): type of constraint
  */
 static int
-rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate,
-				      const char *old_name,
-				      const char *new_name,
+rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate, const char *old_name, const char *new_name,
 				      SM_CONSTRAINT_FAMILY element_type)
 {
   int error = NO_ERROR;
@@ -2932,8 +2664,7 @@ rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate,
 
   assert (ctemplate != NULL);
 
-  error = sm_partitioned_class_type (ctemplate->op, &is_partition, NULL,
-				     &sub_partitions);
+  error = sm_partitioned_class_type (ctemplate->op, &is_partition, NULL, &sub_partitions);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -2969,9 +2700,7 @@ rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate,
 	}
 
       /* make a list of constraints that is included in the partitioned class. */
-      error = classobj_make_class_constraints (sub_ctemplate->properties,
-					       sub_ctemplate->attributes,
-					       &sm_cons);
+      error = classobj_make_class_constraints (sub_ctemplate->properties, sub_ctemplate->attributes, &sm_cons);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -2984,8 +2713,7 @@ rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate,
 	  goto error_exit;
 	}
 
-      error = rename_constraint (sub_ctemplate, sm_cons, old_name, new_name,
-				 element_type);
+      error = rename_constraint (sub_ctemplate, sm_cons, old_name, new_name, element_type);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -3001,8 +2729,7 @@ rename_constraints_partitioned_class (SM_TEMPLATE * ctemplate,
       error = sm_update_class (sub_ctemplate, NULL);
       if (error != NO_ERROR)
 	{
-	  /* Even though sm_update() did not return NO_ERROR,
-	   * sub_ctemplate is already freed */
+	  /* Even though sm_update() did not return NO_ERROR, sub_ctemplate is already freed */
 	  sub_ctemplate = NULL;
 	  goto error_exit;
 	}
@@ -3039,8 +2766,7 @@ error_exit:
  */
 
 int
-smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
-		       const char *new_name,
+smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name, const char *new_name,
 		       SM_CONSTRAINT_FAMILY element_type)
 {
   int error = NO_ERROR;
@@ -3066,8 +2792,7 @@ smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
       return error;
     }
 
-  error = classobj_make_class_constraints (ctemplate->properties,
-					   ctemplate->attributes, &sm_cons);
+  error = classobj_make_class_constraints (ctemplate->properties, ctemplate->attributes, &sm_cons);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -3088,9 +2813,7 @@ smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
       goto error_exit;
     }
 
-  error =
-    sm_is_global_only_constraint (ctemplate->op, sm_constraint, &is_global,
-				  ctemplate);
+  error = sm_is_global_only_constraint (ctemplate->op, sm_constraint, &is_global, ctemplate);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -3099,16 +2822,14 @@ smt_rename_constraint (SM_TEMPLATE * ctemplate, const char *old_name,
   /* The global constraint is not included in the partitioned class. */
   if (is_global == 0)
     {
-      error = rename_constraints_partitioned_class (ctemplate, old_name,
-						    new_name, element_type);
+      error = rename_constraints_partitioned_class (ctemplate, old_name, new_name, element_type);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
 	}
     }
 
-  error = rename_constraint (ctemplate, sm_cons, old_name, new_name,
-			     element_type);
+  error = rename_constraint (ctemplate, sm_cons, old_name, new_name, element_type);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -3136,8 +2857,7 @@ error_exit:
  *   comment(in): new comment of constraint
  */
 static int
-change_constraint_comment (SM_TEMPLATE * ctemplate,
-			   const char *index_name, const char *comment)
+change_constraint_comment (SM_TEMPLATE * ctemplate, const char *index_name, const char *comment)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *sm_constraint = NULL;
@@ -3146,8 +2866,7 @@ change_constraint_comment (SM_TEMPLATE * ctemplate,
   const char *property_type = NULL;
   char *norm_new_name = NULL;
 
-  error = classobj_make_class_constraints (ctemplate->properties,
-					   ctemplate->attributes, &sm_cons);
+  error = classobj_make_class_constraints (ctemplate->properties, ctemplate->attributes, &sm_cons);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -3169,9 +2888,7 @@ change_constraint_comment (SM_TEMPLATE * ctemplate,
 
   property_type = classobj_map_constraint_to_property (sm_constraint->type);
 
-  error =
-    classobj_change_constraint_comment (ctemplate->properties,
-					property_type, index_name, comment);
+  error = classobj_change_constraint_comment (ctemplate->properties, property_type, index_name, comment);
 
 end:
   if (sm_cons)
@@ -3193,17 +2910,14 @@ error_exit:
  *   comment(in): the comment of constraint
  */
 static int
-change_constraints_comment_partitioned_class (MOP obj,
-					      const char *index_name,
-					      const char *comment)
+change_constraints_comment_partitioned_class (MOP obj, const char *index_name, const char *comment)
 {
   int error = NO_ERROR;
   int i, is_partition = 0;
   MOP *sub_partitions = NULL;
   SM_TEMPLATE *ctemplate = NULL;
 
-  error = sm_partitioned_class_type (obj, &is_partition, NULL,
-				     &sub_partitions);
+  error = sm_partitioned_class_type (obj, &is_partition, NULL, &sub_partitions);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -3247,8 +2961,7 @@ change_constraints_comment_partitioned_class (MOP obj,
       error = sm_update_class (ctemplate, NULL);
       if (error != NO_ERROR)
 	{
-	  /* Even though sm_update() did not return NO_ERROR,
-	   * ctemplate is already freed */
+	  /* Even though sm_update() did not return NO_ERROR, ctemplate is already freed */
 	  ctemplate = NULL;
 	  goto error_exit;
 	}
@@ -3279,16 +2992,13 @@ error_exit:
  *   comment(in): new comment of constraint
  */
 int
-smt_change_constraint_comment (SM_TEMPLATE * ctemplate,
-			       const char *index_name, const char *comment)
+smt_change_constraint_comment (SM_TEMPLATE * ctemplate, const char *index_name, const char *comment)
 {
   int error = NO_ERROR;
 
   assert (ctemplate != NULL);
 
-  error =
-    change_constraints_comment_partitioned_class (ctemplate->op,
-						  index_name, comment);
+  error = change_constraints_comment_partitioned_class (ctemplate->op, index_name, comment);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -3327,8 +3037,7 @@ error_exit:
  */
 
 static int
-check_alias_delete (SM_TEMPLATE * template_, const char *name,
-		    SM_NAME_SPACE name_space, int error)
+check_alias_delete (SM_TEMPLATE * template_, const char *name, SM_NAME_SPACE name_space, int error)
 {
   SM_RESOLUTION **reslist, *res;
 
@@ -3368,8 +3077,7 @@ check_alias_delete (SM_TEMPLATE * template_, const char *name,
  */
 
 int
-smt_delete_any (SM_TEMPLATE * template_, const char *name,
-		SM_NAME_SPACE name_space)
+smt_delete_any (SM_TEMPLATE * template_, const char *name, SM_NAME_SPACE name_space)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE *att;
@@ -3474,8 +3182,7 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
 	      WS_LIST_REMOVE (&template_->methods, method);
 	      classobj_free_method (method);
 	    }
-	  else if (thing->name_space == ID_ATTRIBUTE ||
-		   thing->name_space == ID_SHARED_ATTRIBUTE)
+	  else if (thing->name_space == ID_ATTRIBUTE || thing->name_space == ID_SHARED_ATTRIBUTE)
 	    {
 	      att = (SM_ATTRIBUTE *) thing;
 	      if (att->flags & SM_ATTFLAG_PRIMARY_KEY)
@@ -3586,8 +3293,7 @@ smt_add_super (SM_TEMPLATE * template_, MOP super_class)
 	    }
 	  else if (!is_class)
 	    {
-	      ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS,
-		      db_get_class_name (super_class), template_->name);
+	      ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS, db_get_class_name (super_class), template_->name);
 	    }
 	}
       if (error == NO_ERROR)
@@ -3603,8 +3309,7 @@ smt_add_super (SM_TEMPLATE * template_, MOP super_class)
 		}
 	      if (!is_vclass)
 		{
-		  ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS,
-			  db_get_class_name (super_class), template_->name);
+		  ERROR2 (error, ER_SM_INCOMPATIBLE_SUPER_CLASS, db_get_class_name (super_class), template_->name);
 		}
 	    }
 	  if (error == NO_ERROR)
@@ -3662,8 +3367,7 @@ smt_delete_super_connect (SM_TEMPLATE * template_, MOP super_class)
   else
     {
       /* connect all of the super supers and install its resolutions */
-      if ((error = au_fetch_class (super_class, &class_, AU_FETCH_WRITE,
-				   AU_SELECT)) == NO_ERROR)
+      if ((error = au_fetch_class (super_class, &class_, AU_FETCH_WRITE, AU_SELECT)) == NO_ERROR)
 	{
 	  /* add super supers */
 	  for (s = class_->inheritance; s != NULL && !error; s = s->next)
@@ -3671,8 +3375,8 @@ smt_delete_super_connect (SM_TEMPLATE * template_, MOP super_class)
 	      error = ml_append (&template_->inheritance, s->op, NULL);
 	    }
 
-	  /* It is unclear what the semantics of inheriting resolutions are
-	     force the user to respecify resolutions for conflicts on super supers */
+	  /* It is unclear what the semantics of inheriting resolutions are force the user to respecify resolutions for 
+	   * conflicts on super supers */
 	}
     }
 
@@ -3745,8 +3449,7 @@ smt_drop_method_file (SM_TEMPLATE * template_, const char *name)
   int error = NO_ERROR;
   SM_METHOD_FILE *file, *prev, *found;
 
-  for (file = template_->method_files, prev = NULL, found = NULL;
-       file != NULL && found == NULL; file = file->next)
+  for (file = template_->method_files, prev = NULL, found = NULL; file != NULL && found == NULL; file = file->next)
     {
       if (strcmp (file->name, name) == 0)
 	{
@@ -3788,14 +3491,12 @@ smt_drop_method_file (SM_TEMPLATE * template_, const char *name)
  */
 
 int
-smt_rename_method_file (SM_TEMPLATE * template_, const char *old_name,
-			const char *new_name)
+smt_rename_method_file (SM_TEMPLATE * template_, const char *old_name, const char *new_name)
 {
   int error = NO_ERROR;
   SM_METHOD_FILE *file, *prev, *found;
 
-  for (file = template_->method_files, prev = NULL, found = NULL;
-       file != NULL && found == NULL; file = file->next)
+  for (file = template_->method_files, prev = NULL, found = NULL; file != NULL && found == NULL; file = file->next)
     {
       if (strcmp (file->name, old_name) == 0)
 	{
@@ -3864,8 +3565,7 @@ check_resolution_name (MOP classmop, const char *name, int class_name)
   SM_COMPONENT *thing;
 
   thing = NULL;
-  if (au_fetch_class (classmop, &class_, AU_FETCH_READ, AU_SELECT) ==
-      NO_ERROR)
+  if (au_fetch_class (classmop, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
     {
       thing = classobj_find_component (class_, name, class_name);
     }
@@ -3890,9 +3590,7 @@ check_resolution_name (MOP classmop, const char *name, int class_name)
  */
 
 static int
-check_local_definition (SM_TEMPLATE * template_,
-			const char *name, const char *alias,
-			SM_NAME_SPACE name_space)
+check_local_definition (SM_TEMPLATE * template_, const char *name, const char *alias, SM_NAME_SPACE name_space)
 {
   int error = NO_ERROR;
   SM_COMPONENT *comp;
@@ -3916,8 +3614,8 @@ check_local_definition (SM_TEMPLATE * template_,
       comp = find_component (template_, alias, class_stuff);
       if (comp != NULL)
 	{
-	  /* Can't use "alias" as an alias for inherited component "name", there
-	     is already a locally defined component with that name */
+	  /* Can't use "alias" as an alias for inherited component "name", there is already a locally defined component 
+	   * with that name */
 	  ERROR2 (error, ER_SM_ALIAS_COMPONENT_EXISTS, alias, name);
 	}
     }
@@ -3936,8 +3634,7 @@ check_local_definition (SM_TEMPLATE * template_,
  */
 
 static int
-add_resolution (SM_TEMPLATE * template_, MOP super_class,
-		const char *name, const char *alias, SM_NAME_SPACE name_space)
+add_resolution (SM_TEMPLATE * template_, MOP super_class, const char *name, const char *alias, SM_NAME_SPACE name_space)
 {
   int error = NO_ERROR;
   SM_RESOLUTION **reslist, *res, *chosen, *prev_alias;
@@ -3950,10 +3647,8 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
       return error;
     }
 
-  /* hack, if the alias name is the same as the component name, get rid
-     of it.  The system won't allow aliases that have the same name
-     as an inherited component (i.e. you can't shadow with an alias).
-   */
+  /* hack, if the alias name is the same as the component name, get rid of it.  The system won't allow aliases that
+   * have the same name as an inherited component (i.e. you can't shadow with an alias). */
   if (alias != NULL && SM_COMPARE_NAMES (name, alias) == 0)
     {
       alias = NULL;
@@ -3980,8 +3675,7 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 	{
 
 	  /* make sure the super class actually has a component with this name */
-	  if (!check_resolution_name (super_class, name,
-				      (name_space == ID_CLASS) ? 1 : 0))
+	  if (!check_resolution_name (super_class, name, (name_space == ID_CLASS) ? 1 : 0))
 	    {
 	      /* need "attribute or method" not found */
 	      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, name);
@@ -3997,10 +3691,8 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 		  reslist = &template_->class_resolutions;
 		}
 
-	      /* look for an explicit resolution from a this or a different class,
-	         place this in "chosen".
-	         also look for an already existing alias on this component
-	       */
+	      /* look for an explicit resolution from a this or a different class, place this in "chosen". also look
+	       * for an already existing alias on this component */
 	      chosen = NULL;
 	      prev_alias = NULL;
 	      for (res = *reslist; res != NULL; res = res->next)
@@ -4023,8 +3715,7 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 		  /* we're trying to set up an alias */
 		  if (chosen != NULL && chosen->class_mop == super_class)
 		    {
-		      /* a resolution on this class previously existed without an alias,
-		         give it the specified alias */
+		      /* a resolution on this class previously existed without an alias, give it the specified alias */
 		      chosen->alias = ws_copy_string (alias);
 		      if (chosen->alias == NULL)
 			{
@@ -4034,8 +3725,8 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 		    }
 		  else if (prev_alias != NULL)
 		    {
-		      /* a resolution on this class previously existed with an alias,
-		         replace the old alias with the new one */
+		      /* a resolution on this class previously existed with an alias, replace the old alias with the
+		       * new one */
 		      db_ws_free ((char *) prev_alias->alias);
 		      prev_alias->alias = ws_copy_string (alias);
 		      if (prev_alias->alias == NULL)
@@ -4047,8 +3738,7 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 		  else
 		    {
 		      SM_RESOLUTION *res;
-		      res = classobj_make_resolution (super_class, name,
-						      alias, name_space);
+		      res = classobj_make_resolution (super_class, name, alias, name_space);
 		      if (res == NULL)
 			{
 			  assert (er_errid () != NO_ERROR);
@@ -4066,8 +3756,7 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
 		      if (prev_alias == NULL)
 			{
 			  SM_RESOLUTION *res;
-			  res = classobj_make_resolution (super_class, name,
-							  alias, name_space);
+			  res = classobj_make_resolution (super_class, name, alias, name_space);
 			  if (res == NULL)
 			    {
 			      assert (er_errid () != NO_ERROR);
@@ -4113,8 +3802,7 @@ add_resolution (SM_TEMPLATE * template_, MOP super_class,
  */
 
 static int
-delete_resolution (SM_TEMPLATE * template_, MOP super_class,
-		   const char *name, SM_NAME_SPACE name_space)
+delete_resolution (SM_TEMPLATE * template_, MOP super_class, const char *name, SM_NAME_SPACE name_space)
 {
   int error = NO_ERROR;
   SM_RESOLUTION **reslist, *res;
@@ -4154,15 +3842,13 @@ delete_resolution (SM_TEMPLATE * template_, MOP super_class,
  */
 
 int
-smt_add_resolution (SM_TEMPLATE * template_, MOP super_class,
-		    const char *name, const char *alias)
+smt_add_resolution (SM_TEMPLATE * template_, MOP super_class, const char *name, const char *alias)
 {
   return (add_resolution (template_, super_class, name, alias, ID_INSTANCE));
 }
 
 int
-smt_add_class_resolution (SM_TEMPLATE * template_, MOP super_class,
-			  const char *name, const char *alias)
+smt_add_class_resolution (SM_TEMPLATE * template_, MOP super_class, const char *name, const char *alias)
 {
   return (add_resolution (template_, super_class, name, alias, ID_CLASS));
 }
@@ -4180,15 +3866,13 @@ smt_add_class_resolution (SM_TEMPLATE * template_, MOP super_class,
  */
 
 int
-smt_delete_resolution (SM_TEMPLATE * template_, MOP super_class,
-		       const char *name)
+smt_delete_resolution (SM_TEMPLATE * template_, MOP super_class, const char *name)
 {
   return delete_resolution (template_, super_class, name, ID_INSTANCE);
 }
 
 int
-smt_delete_class_resolution (SM_TEMPLATE * template_, MOP super_class,
-			     const char *name)
+smt_delete_class_resolution (SM_TEMPLATE * template_, MOP super_class, const char *name)
 {
   return delete_resolution (template_, super_class, name, ID_CLASS);
 }
@@ -4265,8 +3949,7 @@ smt_drop_query_spec (SM_TEMPLATE * def, const int index)
   int i;
   char indexname[20];
 
-  for (file = def->query_spec, prev = NULL, found = NULL, i = 1;
-       file != NULL && found == NULL; file = file->next, i++)
+  for (file = def->query_spec, prev = NULL, found = NULL, i = 1; file != NULL && found == NULL; file = file->next, i++)
     {
       if (index == i)
 	{
@@ -4357,8 +4040,7 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
   int i;
   char indexname[20];
 
-  for (file = def->query_spec, prev = NULL, found = NULL, i = 1;
-       file != NULL && found == NULL; file = file->next, i++)
+  for (file = def->query_spec, prev = NULL, found = NULL, i = 1; file != NULL && found == NULL; file = file->next, i++)
     {
       if (index == i)
 	{
@@ -4422,35 +4104,28 @@ smt_downcase_all_class_info (void)
   int c;
   char name_buf[SM_MAX_IDENTIFIER_LENGTH];
 
-  lmops =
-    locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_WRITE, NULL);
+  lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_WRITE, NULL);
   if (lmops != NULL)
     {
 
       for (c = 0; c < lmops->num; c++)
 	{
-	  class_ =
-	    (SM_CLASS *) locator_fetch_class (lmops->mops[c], DB_FETCH_WRITE);
+	  class_ = (SM_CLASS *) locator_fetch_class (lmops->mops[c], DB_FETCH_WRITE);
 
 	  if (class_ == NULL)
 	    {
 	      return;
 	    }
 
-	  FOR_ATTRIBUTES (class_->attributes, a)
-	    DOWNCASE_NAME (a->header.name, name_buf);
+	  FOR_ATTRIBUTES (class_->attributes, a) DOWNCASE_NAME (a->header.name, name_buf);
 
-	  FOR_ATTRIBUTES (class_->shared, a)
-	    DOWNCASE_NAME (a->header.name, name_buf);
+	  FOR_ATTRIBUTES (class_->shared, a) DOWNCASE_NAME (a->header.name, name_buf);
 
-	  FOR_ATTRIBUTES (class_->class_attributes, a)
-	    DOWNCASE_NAME (a->header.name, name_buf);
+	  FOR_ATTRIBUTES (class_->class_attributes, a) DOWNCASE_NAME (a->header.name, name_buf);
 
-	  FOR_METHODS (class_->methods, m)
-	    DOWNCASE_NAME (m->header.name, name_buf);
+	  FOR_METHODS (class_->methods, m) DOWNCASE_NAME (m->header.name, name_buf);
 
-	  FOR_METHODS (class_->class_methods, m)
-	    DOWNCASE_NAME (m->header.name, name_buf);
+	  FOR_METHODS (class_->class_methods, m) DOWNCASE_NAME (m->header.name, name_buf);
 
 	  for (r = class_->resolutions; r != NULL; r = r->next)
 	    {
@@ -4493,14 +4168,9 @@ smt_downcase_all_class_info (void)
  *   found_att(out) : the new attribute if successfully changed
  */
 static int
-smt_change_attribute (SM_TEMPLATE * template_, const char *name,
-		      const char *new_name,
-		      const char *new_domain_string,
-		      DB_DOMAIN * new_domain,
-		      const SM_NAME_SPACE name_space,
-		      const bool change_first,
-		      const char *change_after_attribute,
-		      SM_ATTRIBUTE ** found_att)
+smt_change_attribute (SM_TEMPLATE * template_, const char *name, const char *new_name, const char *new_domain_string,
+		      DB_DOMAIN * new_domain, const SM_NAME_SPACE name_space, const bool change_first,
+		      const char *change_after_attribute, SM_ATTRIBUTE ** found_att)
 {
   int error_code = NO_ERROR;
   SM_ATTRIBUTE *att = NULL;
@@ -4544,17 +4214,13 @@ smt_change_attribute (SM_TEMPLATE * template_, const char *name,
 
   if (change_after_attribute != NULL)
     {
-      sm_downcase_name (change_after_attribute,
-			change_after_attribute_real_name,
-			SM_MAX_IDENTIFIER_LENGTH);
+      sm_downcase_name (change_after_attribute, change_after_attribute_real_name, SM_MAX_IDENTIFIER_LENGTH);
       change_after_attribute = change_after_attribute_real_name;
     }
 
   if (new_name != NULL)
     {
-      error_code = check_namespace (template_, new_name,
-				    (name_space ==
-				     ID_CLASS_ATTRIBUTE) ? true : false);
+      error_code = check_namespace (template_, new_name, (name_space == ID_CLASS_ATTRIBUTE) ? true : false);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -4582,9 +4248,7 @@ smt_change_attribute (SM_TEMPLATE * template_, const char *name,
 	}
     }
 
-  error_code = smt_find_attribute (template_, name,
-				   (name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0,
-				   &att);
+  error_code = smt_find_attribute (template_, name, (name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0, &att);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -4614,9 +4278,7 @@ smt_change_attribute (SM_TEMPLATE * template_, const char *name,
   /* change name */
   if (new_name != NULL)
     {
-      error_code = check_namespace (template_, new_name,
-				    (name_space ==
-				     ID_CLASS_ATTRIBUTE) ? true : false);
+      error_code = check_namespace (template_, new_name, (name_space == ID_CLASS_ATTRIBUTE) ? true : false);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -4634,9 +4296,7 @@ smt_change_attribute (SM_TEMPLATE * template_, const char *name,
   /* change order */
   if (change_first || change_after_attribute != NULL)
     {
-      error_code =
-	smt_change_attribute_pos_in_list (att_list, att, change_first,
-					  change_after_attribute);
+      error_code = smt_change_attribute_pos_in_list (att_list, att, change_first, change_after_attribute);
     }
   return error_code;
 
@@ -4663,17 +4323,11 @@ error_exit:
  *   found_att(out) : the new attribute if successfully changed
  */
 int
-smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
-				     const char *name,
-				     const char *new_name,
-				     const char *new_domain_string,
-				     DB_DOMAIN * new_domain,
-				     const SM_NAME_SPACE name_space,
-				     DB_VALUE * new_default_value,
-				     DB_DEFAULT_EXPR_TYPE new_def_expr,
-				     const bool change_first,
-				     const char *change_after_attribute,
-				     SM_ATTRIBUTE ** found_att)
+smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *new_name,
+				     const char *new_domain_string, DB_DOMAIN * new_domain,
+				     const SM_NAME_SPACE name_space, DB_VALUE * new_default_value,
+				     DB_DEFAULT_EXPR_TYPE new_def_expr, const bool change_first,
+				     const char *change_after_attribute, SM_ATTRIBUTE ** found_att)
 {
   int error = NO_ERROR;
   DB_VALUE *orig_value = NULL;
@@ -4681,9 +4335,9 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
   TP_DOMAIN_STATUS status;
 
   *found_att = NULL;
-  error = smt_change_attribute (def, name, new_name, new_domain_string,
-				new_domain, name_space, change_first,
-				change_after_attribute, found_att);
+  error =
+    smt_change_attribute (def, name, new_name, new_domain_string, new_domain, name_space, change_first,
+			  change_after_attribute, found_att);
   if (error != NO_ERROR)
     {
       return error;
@@ -4699,10 +4353,8 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
     {
       assert (((*found_att)->flags & SM_ATTFLAG_NEW) == 0);
       error =
-	smt_set_attribute_default (def,
-				   ((new_name != NULL) ? new_name : name),
-				   name_space == (ID_CLASS_ATTRIBUTE) ? 1 : 0,
-				   new_default_value, new_def_expr);
+	smt_set_attribute_default (def, ((new_name != NULL) ? new_name : name),
+				   name_space == (ID_CLASS_ATTRIBUTE) ? 1 : 0, new_default_value, new_def_expr);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4721,8 +4373,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
   orig_value = &((*found_att)->default_value.original_value);
   if (DB_IS_NULL (orig_value))
     {
-      /* the attribute has not set a default original value, so need to
-       * continue*/
+      /* the attribute has not set a default original value, so need to continue */
       assert (error == NO_ERROR);
       return error;
     }
@@ -4732,8 +4383,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
 
   if (status == DOMAIN_COMPATIBLE)
     {
-      /* the attribute's current default original value has the same domain,
-       * no need to change it*/
+      /* the attribute's current default original value has the same domain, no need to change it */
       assert (error == NO_ERROR);
       return error;
     }
@@ -4743,8 +4393,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
   status = db_value_coerce (orig_value, new_orig_value, (*found_att)->domain);
   if (status == DOMAIN_COMPATIBLE)
     {
-      smt_set_attribute_orig_default_value (*found_att, new_orig_value,
-					    new_def_expr);
+      smt_set_attribute_orig_default_value (*found_att, new_orig_value, new_def_expr);
     }
   else
     {
@@ -4768,16 +4417,14 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
  */
 
 static int
-smt_change_attribute_pos_in_list (SM_ATTRIBUTE ** att_list,
-				  SM_ATTRIBUTE * att, const bool change_first,
+smt_change_attribute_pos_in_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att, const bool change_first,
 				  const char *change_after_attribute)
 {
   int error_code = NO_ERROR;
   SM_ATTRIBUTE *crt_att = NULL;
 
   /* we must change the position : either to first or after another element */
-  assert ((change_first && change_after_attribute == NULL) ||
-	  (!change_first && change_after_attribute != NULL));
+  assert ((change_first && change_after_attribute == NULL) || (!change_first && change_after_attribute != NULL));
 
   assert (att != NULL);
   assert (att_list != NULL);
@@ -4790,8 +4437,7 @@ smt_change_attribute_pos_in_list (SM_ATTRIBUTE ** att_list,
     }
 
   att->header.next = NULL;
-  error_code = smt_add_attribute_to_list (att_list, att, change_first,
-					  change_after_attribute);
+  error_code = smt_add_attribute_to_list (att_list, att, change_first, change_after_attribute);
   /* error code already set */
   return error_code;
 }
@@ -4806,8 +4452,7 @@ smt_change_attribute_pos_in_list (SM_ATTRIBUTE ** att_list,
  */
 
 static int
-smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att,
-					  DB_DOMAIN * new_domain)
+smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att, DB_DOMAIN * new_domain)
 {
   int error = NO_ERROR;
   TP_DOMAIN_STATUS status;
@@ -4827,8 +4472,7 @@ smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att,
 
   if (status == DOMAIN_COMPATIBLE)
     {
-      /* the attribute's current value has the same domain,
-       * no need to change it*/
+      /* the attribute's current value has the same domain, no need to change it */
       assert (error == NO_ERROR);
       return error;
     }
@@ -4865,8 +4509,7 @@ smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att,
  *         class of ctemplate.
  */
 static MOP
-smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate,
-			      const char *constraint_name)
+smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate, const char *constraint_name)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *super_cons = NULL;
@@ -4887,9 +4530,7 @@ smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate,
 	  return NULL;
 	}
 
-      error = classobj_make_class_constraints (class_->properties,
-					       class_->attributes,
-					       &super_cons);
+      error = classobj_make_class_constraints (class_->properties, class_->attributes, &super_cons);
       if (error != NO_ERROR)
 	{
 	  return NULL;
@@ -4897,8 +4538,7 @@ smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate,
 
       for (cons = super_cons; cons != NULL; cons = cons->next)
 	{
-	  if (constraint_name != NULL && cons->name != NULL
-	      && SM_COMPARE_NAMES (constraint_name, cons->name) == 0)
+	  if (constraint_name != NULL && cons->name != NULL && SM_COMPARE_NAMES (constraint_name, cons->name) == 0)
 	    {
 	      classobj_free_class_constraints (super_cons);
 	      super_cons = NULL;

@@ -64,27 +64,22 @@ struct t_work_msg
 #endif
 
 static int log_top_query (int argc, char *argv[], int arg_start);
-static int log_top (FILE * fp, char *filename, long start_offset,
-		    long end_offset);
+static int log_top (FILE * fp, char *filename, long start_offset, long end_offset);
 static int log_execute (T_QUERY_INFO * qi, char *linebuf, char **query_p);
 static int get_args (int argc, char *argv[]);
 #if defined(WINDOWS)
 static int get_file_count (int argc, char *argv[], int arg_start);
-static int get_file_list (char *list[], int size, int argc, char *argv[],
-			  int arg_start);
+static int get_file_list (char *list[], int size, int argc, char *argv[], int arg_start);
 static char **alloc_file_list (int size);
 static void free_file_list (char **list, int size);
 #endif
 #ifdef MT_MODE
 static void *thr_main (void *arg);
 #endif
-static int read_multi_line_sql (FILE * fp, T_STRING * t_str, char **linebuf,
-				int *lineno, T_STRING * sql_buf,
+static int read_multi_line_sql (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno, T_STRING * sql_buf,
 				T_STRING * cas_log_buf);
-static int read_execute_end_msg (char *msg_p, int *res_code,
-				 int *runtime_msec);
-static int read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf,
-			    int *lineno, T_STRING * cas_log_buf);
+static int read_execute_end_msg (char *msg_p, int *res_code, int *runtime_msec);
+static int read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno, T_STRING * cas_log_buf);
 static int search_offset (FILE * fp, char *string, long *offset, bool start);
 static char *organize_query_string (const char *sql);
 
@@ -228,14 +223,12 @@ get_file_list (char *list[], int size, int argc, char *argv[], int arg_start)
       do
 	{
 	  /* skip directory */
-	  if (index < size
-	      && !(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+	  if (index < size && !(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
 	    {
 	      assert (list[index] != NULL);
 	      if (slash_pos != NULL)
 		{
-		  snprintf (list[index], MAX_PATH, "%s%s", prefix,
-			    find_data.cFileName);
+		  snprintf (list[index], MAX_PATH, "%s%s", prefix, find_data.cFileName);
 		}
 	      else
 		{
@@ -320,14 +313,12 @@ get_file_offset (char *filename, long *start_offset, long *end_offset)
       return -1;
     }
 
-  if (from_date[0] == '\0' ||
-      search_offset (fp, from_date, start_offset, true) < 0)
+  if (from_date[0] == '\0' || search_offset (fp, from_date, start_offset, true) < 0)
     {
       *start_offset = -1;
     }
 
-  if (to_date[0] == '\0' ||
-      search_offset (fp, to_date, end_offset, false) < 0)
+  if (to_date[0] == '\0' || search_offset (fp, to_date, end_offset, false) < 0)
     {
       *end_offset = -1;
     }
@@ -567,16 +558,14 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 	}
 
       msg_p = get_msg_start_ptr (linebuf);
-      if (strncmp (msg_p, "execute", 7) == 0
-	  || strncmp (msg_p, "execute_all", 11) == 0
-	  || strncmp (msg_p, "execute_call", 12) == 0
-	  || strncmp (msg_p, "execute_batch", 13) == 0)
+      if (strncmp (msg_p, "execute", 7) == 0 || strncmp (msg_p, "execute_all", 11) == 0
+	  || strncmp (msg_p, "execute_call", 12) == 0 || strncmp (msg_p, "execute_batch", 13) == 0)
 	{
 	  int qi_idx;
 	  char *query_p;
 	  int end_block_flag = 0;
 
-	  /*
+	  /* 
 	   * execute log format:
 	   * <execute_cmd> srv_h_id <handle_id> <query_string>
 	   * bind <bind_index> : <TYPE> <VALUE>
@@ -599,13 +588,11 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 	  t_string_add (sql_buf, query_p, strlen (query_p));
 	  t_string_add (cas_log_buf, linebuf, strlen (linebuf));
 
-	  if (read_multi_line_sql (fp, linebuf_tstr, &linebuf, &lineno,
-				   sql_buf, cas_log_buf) < 0)
+	  if (read_multi_line_sql (fp, linebuf_tstr, &linebuf, &lineno, sql_buf, cas_log_buf) < 0)
 	    {
 	      break;
 	    }
-	  if (read_bind_value (fp, linebuf_tstr, &linebuf, &lineno,
-			       cas_log_buf) < 0)
+	  if (read_bind_value (fp, linebuf_tstr, &linebuf, &lineno, cas_log_buf) < 0)
 	    {
 	      break;
 	    }
@@ -634,8 +621,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 		  if (strncmp (msg_p, "***", 3) == 0)
 		    {
 		      end_block_flag = 1;
-		      if (ut_get_line (fp, linebuf_tstr, &linebuf, &lineno) <=
-			  0)
+		      if (ut_get_line (fp, linebuf_tstr, &linebuf, &lineno) <= 0)
 			{
 			  /* ut_get_line error, just break; */
 			  break;
@@ -650,14 +636,10 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 	      continue;
 	    }
 
-	  query_info_buf[qi_idx].sql =
-	    (char *) REALLOC (query_info_buf[qi_idx].sql,
-			      t_string_len (sql_buf) + 1);
+	  query_info_buf[qi_idx].sql = (char *) REALLOC (query_info_buf[qi_idx].sql, t_string_len (sql_buf) + 1);
 
-	  strcpy (query_info_buf[qi_idx].sql,
-		  ut_trim (t_string_str (sql_buf)));
-	  query_info_buf[qi_idx].organized_sql = organize_query_string
-	    (query_info_buf[qi_idx].sql);
+	  strcpy (query_info_buf[qi_idx].sql, ut_trim (t_string_str (sql_buf)));
+	  query_info_buf[qi_idx].organized_sql = organize_query_string (query_info_buf[qi_idx].sql);
 
 	  msg_p = get_msg_start_ptr (linebuf);
 	  GET_CUR_DATE_STR (cur_date, linebuf);
@@ -668,9 +650,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 	    {
 	      if (qi_idx >= mode_max_handle_lower_bound)
 		{
-		  if (query_info_add
-		      (&query_info_buf[qi_idx], qi_idx + 1, 0, filename,
-		       lineno, cur_date) < 0)
+		  if (query_info_add (&query_info_buf[qi_idx], qi_idx + 1, 0, filename, lineno, cur_date) < 0)
 		    {
 		      goto log_top_err;
 		    }
@@ -687,11 +667,9 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 		}
 
 	      query_info_buf[qi_idx].cas_log =
-		(char *) REALLOC (query_info_buf[qi_idx].cas_log,
-				  t_string_len (cas_log_buf) + 1);
+		(char *) REALLOC (query_info_buf[qi_idx].cas_log, t_string_len (cas_log_buf) + 1);
 
-	      memcpy (query_info_buf[qi_idx].cas_log,
-		      t_string_str (cas_log_buf), t_string_len (cas_log_buf));
+	      memcpy (query_info_buf[qi_idx].cas_log, t_string_str (cas_log_buf), t_string_len (cas_log_buf));
 
 	      query_info_buf[qi_idx].cas_log_len = t_string_len (cas_log_buf);
 
@@ -699,8 +677,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 	      /* read execute info & if fail add to query_info_arr_ne */
 	      if (read_execute_end_msg (msg_p, &execute_res, &runtime) < 0)
 		{
-		  if (query_info_add_ne (&query_info_buf[qi_idx], cur_date) <
-		      0)
+		  if (query_info_add_ne (&query_info_buf[qi_idx], cur_date) < 0)
 		    {
 		      goto log_top_err;
 		    }
@@ -710,9 +687,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 		}
 
 	      /* add to query_info_arr */
-	      if (query_info_add
-		  (&query_info_buf[qi_idx], runtime, execute_res, filename,
-		   lineno, cur_date) < 0)
+	      if (query_info_add (&query_info_buf[qi_idx], runtime, execute_res, filename, lineno, cur_date) < 0)
 		{
 		  goto log_top_err;
 		}
@@ -807,8 +782,7 @@ get_args (int argc, char *argv[])
     return optind;
 
 getargs_err:
-  fprintf (stderr, "%s [-t] [-F <from date>] [-T <to date>] <log_file> ...\n",
-	   argv[0]);
+  fprintf (stderr, "%s [-t] [-F <from date>] [-T <to date>] <log_file> ...\n", argv[0]);
   return -1;
 date_format_err:
   fprintf (stderr, "invalid date. valid date format is yy-mm-dd hh:mm:ss.\n");
@@ -816,8 +790,8 @@ date_format_err:
 }
 
 static int
-read_multi_line_sql (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno,
-		     T_STRING * sql_buf, T_STRING * cas_log_buf)
+read_multi_line_sql (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno, T_STRING * sql_buf,
+		     T_STRING * cas_log_buf)
 {
   while (1)
     {
@@ -845,8 +819,7 @@ read_multi_line_sql (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno,
 }
 
 static int
-read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno,
-		 T_STRING * cas_log_buf)
+read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno, T_STRING * cas_log_buf)
 {
   char *msg_p;
   char is_bind_value;
@@ -1150,13 +1123,11 @@ organize_query_string (const char *sql)
 		  token = SQL_TOKEN_NONE;
 		}
 	    }
-	  else if ((token == SQL_TOKEN_SQL_COMMENT
-		    || token == SQL_TOKEN_CPP_COMMENT) && *q == '\n')
+	  else if ((token == SQL_TOKEN_SQL_COMMENT || token == SQL_TOKEN_CPP_COMMENT) && *q == '\n')
 	    {
 	      token = SQL_TOKEN_NONE;
 	    }
-	  else if (token == SQL_TOKEN_C_COMMENT && *q == '*'
-		   && *(q + 1) == '/')
+	  else if (token == SQL_TOKEN_C_COMMENT && *q == '*' && *(q + 1) == '/')
 	    {
 	      token = SQL_TOKEN_NONE;
 	      token_len = 2;

@@ -42,32 +42,31 @@ namespace cci
   class _MutexAutolock
   {
   public:
-    explicit _MutexAutolock(_Mutex *mutex) :
-      mutex(mutex), is_unlocked(true)
+    explicit _MutexAutolock (_Mutex * mutex):mutex (mutex), is_unlocked (true)
     {
-      mutex->lock();
+      mutex->lock ();
     }
 
-    virtual ~_MutexAutolock()
+    virtual ~ _MutexAutolock ()
     {
-      unlock();
+      unlock ();
     }
 
-    void unlock()
+    void unlock ()
     {
       if (is_unlocked)
-        {
-          is_unlocked = false;
-          mutex->unlock();
-        }
+	{
+	  is_unlocked = false;
+	  mutex->unlock ();
+	}
     }
 
   private:
-    _Mutex *mutex;
+    _Mutex * mutex;
     bool is_unlocked;
 
-    _MutexAutolock(const _MutexAutolock &);
-    void operator=(const _MutexAutolock &);
+    _MutexAutolock (const _MutexAutolock &);
+    void operator= (const _MutexAutolock &);
   };
 }
 

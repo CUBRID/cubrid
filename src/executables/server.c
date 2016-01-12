@@ -61,8 +61,7 @@
 #endif
 
 #if defined(WINDOWS)
-LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException,
-			    char *db_name);
+LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name);
 #else /* WINDOWS */
 static void register_fatal_signal_handler (int signo);
 static void crash_handler (int signo, siginfo_t * siginfo, void *dummyp);
@@ -147,17 +146,11 @@ CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name)
 
   GetLocalTime (&SystemTime);
 
-  sprintf (DumpFile, "%d-%d-%d %d_%d_%d.dmp",
-	   SystemTime.wYear,
-	   SystemTime.wMonth,
-	   SystemTime.wDay,
-	   SystemTime.wHour, SystemTime.wMinute, SystemTime.wSecond);
+  sprintf (DumpFile, "%d-%d-%d %d_%d_%d.dmp", SystemTime.wYear, SystemTime.wMonth, SystemTime.wDay, SystemTime.wHour,
+	   SystemTime.wMinute, SystemTime.wSecond);
   envvar_bindir_file (DumpPath, MAX_PATH, DumpFile);
 
-  FileHandle = CreateFile (DumpPath,
-			   GENERIC_WRITE,
-			   FILE_SHARE_WRITE,
-			   NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  FileHandle = CreateFile (DumpPath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
   if (FileHandle != INVALID_HANDLE_VALUE)
     {
@@ -168,12 +161,9 @@ CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name)
       MiniDumpExceptionInfo.ExceptionPointers = pException;
       MiniDumpExceptionInfo.ClientPointers = FALSE;
 
-      Success = MiniDumpWriteDump (GetCurrentProcess (),
-				   GetCurrentProcessId (),
-				   FileHandle,
-				   MiniDumpNormal,
-				   (pException) ? &MiniDumpExceptionInfo :
-				   NULL, NULL, NULL);
+      Success =
+	MiniDumpWriteDump (GetCurrentProcess (), GetCurrentProcessId (), FileHandle, MiniDumpNormal,
+			   (pException) ? &MiniDumpExceptionInfo : NULL, NULL, NULL);
     }
 
   CloseHandle (FileHandle);
@@ -231,8 +221,7 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
       return;
     }
 
-  if (!BO_IS_SERVER_RESTARTED ()
-      || !prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
+  if (!BO_IS_SERVER_RESTARTED () || !prm_get_bool_value (PRM_ID_AUTO_RESTART_SERVER))
     {
       return;
     }
@@ -266,8 +255,7 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
 
       if (prm_get_string_value (PRM_ID_ER_LOG_FILE) != NULL)
 	{
-	  snprintf (err_log, PATH_MAX, "%s.%d",
-		    prm_get_string_value (PRM_ID_ER_LOG_FILE), ppid);
+	  snprintf (err_log, PATH_MAX, "%s.%d", prm_get_string_value (PRM_ID_ER_LOG_FILE), ppid);
 	  rename (prm_get_string_value (PRM_ID_ER_LOG_FILE), err_log);
 	}
 
@@ -366,8 +354,7 @@ main (int argc, char **argv)
 	return 1;
       }
 
-    fprintf (stdout, "\nThis may take a long time depending on the amount "
-	     "of recovery works to do.\n");
+    fprintf (stdout, "\nThis may take a long time depending on the amount " "of recovery works to do.\n");
 
     /* save executable path */
     binary_name = basename (argv[0]);

@@ -63,8 +63,7 @@
 #define B_TRUE	1
 #define B_FALSE 0
 
-static int str_eval_like (const unsigned char *tar, const unsigned char *expr,
-			  unsigned char escape);
+static int str_eval_like (const unsigned char *tar, const unsigned char *expr, unsigned char escape);
 static int is_korean (unsigned char ch);
 #if 0
 static void str_tolower (char *str);
@@ -90,9 +89,8 @@ str_like (char *src, char *pattern, char esc_char)
   ut_tolower (low_src);
   ut_tolower (low_pattern);
 
-  result = str_eval_like ((const unsigned char *) low_src,
-			  (const unsigned char *) low_pattern,
-			  (unsigned char) esc_char);
+  result =
+    str_eval_like ((const unsigned char *) low_src, (const unsigned char *) low_pattern, (unsigned char) esc_char);
 
   FREE_MEM (low_src);
   FREE_MEM (low_pattern);
@@ -102,8 +100,7 @@ str_like (char *src, char *pattern, char esc_char)
 
 
 static int
-str_eval_like (const unsigned char *tar,
-	       const unsigned char *expr, unsigned char escape)
+str_eval_like (const unsigned char *tar, const unsigned char *expr, unsigned char escape)
 {
   const int IN_CHECK = 0;
   const int IN_PERCENT = 1;
@@ -132,9 +129,7 @@ str_eval_like (const unsigned char *tar,
 		}
 	      else if (*tar
 		       && ((!is_korean (*tar) && *tar == *expr)
-			   || (is_korean (*tar)
-			       && *tar == *expr
-			       && *(tar + 1) == *(expr + 1))))
+			   || (is_korean (*tar) && *tar == *expr && *(tar + 1) == *(expr + 1))))
 		{
 		  if (is_korean (*tar))
 		    {
@@ -228,10 +223,8 @@ str_eval_like (const unsigned char *tar,
 		  expr++;
 		}
 	    }
-	  else if ((*expr == '_')
-		   || (!is_korean (*tar) && *tar == *expr)
-		   || (is_korean (*tar) &&
-		       *tar == *expr && *(tar + 1) == *(expr + 1)))
+	  else if ((*expr == '_') || (!is_korean (*tar) && *tar == *expr)
+		   || (is_korean (*tar) && *tar == *expr && *(tar + 1) == *(expr + 1)))
 	    {
 	      if (is_korean (*tar))
 		{
@@ -418,10 +411,8 @@ str_eval_like (const unsigned char *tar,
 		  expr++;
 		}
 	    }
-	  else if ((*expr == '_')
-		   || (!is_korean (*tar) && *tar == *expr)
-		   || (is_korean (*tar) &&
-		       *tar == *expr && *(tar + 1) == *(expr + 1)))
+	  else if ((*expr == '_') || (!is_korean (*tar) && *tar == *expr)
+		   || (is_korean (*tar) && *tar == *expr && *(tar + 1) == *(expr + 1)))
 	    {
 	      if (is_korean (*tar))
 		{

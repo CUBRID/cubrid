@@ -402,10 +402,7 @@ struct t_client_info
   time_t req_time;		/* current request receive from client time */
   time_t res_time;		/* current response receive from cas time */
 
-  /* TODO : MORE STATISTICS INFOMATION per Client
-   *  INT64 num_queries_processed;
-   *  INT64 num_error_queries;
-   */
+  /* TODO : MORE STATISTICS INFOMATION per Client INT64 num_queries_processed; INT64 num_error_queries; */
   int isolation_level;
   int lock_timeout;
 };
@@ -597,14 +594,14 @@ struct t_shm_appl_server
   unsigned char local_ip_addr[4];
 
   /* from br_info */
-  /*from here, these are used only in shard */
+  /* from here, these are used only in shard */
   char source_env[CONF_LOG_FILE_LEN];
   char error_log_file[CONF_LOG_FILE_LEN];
   char proxy_log_dir[CONF_LOG_FILE_LEN];
   char port_name[SHM_APPL_SERVER_NAME_MAX];
   int proxy_log_max_size;
   int access_log_max_size;
-  /*to here, these are used only in shard */
+  /* to here, these are used only in shard */
 
 #ifdef USE_MUTEX
   int lock;
@@ -690,11 +687,8 @@ int uw_sem_wait (sem_t * sem_t);
 int uw_sem_post (sem_t * sem_t);
 int uw_sem_destroy (sem_t * sem_t);
 #endif
-T_SHM_BROKER *broker_shm_initialize_shm_broker (int master_shm_id,
-						T_BROKER_INFO * br_info,
-						int br_num, int acl_flag,
+T_SHM_BROKER *broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag,
 						char *acl_file);
-T_SHM_APPL_SERVER *broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p,
-						 T_SHM_PROXY * shm_proxy_p);
+T_SHM_APPL_SERVER *broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p);
 
 #endif /* _BROKER_SHM_H_ */

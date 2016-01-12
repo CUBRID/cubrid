@@ -47,20 +47,16 @@ bool vid_inhibit_null_check = false;
 
 static int vid_build_non_upd_object (MOP mop, DB_VALUE * seq);
 
-static int vid_make_vid (OID * view_id, OID * proxy_id, DB_VALUE * val,
-			 DB_VALUE * vobj);
+static int vid_make_vid (OID * view_id, OID * proxy_id, DB_VALUE * val, DB_VALUE * vobj);
 static int vid_db_value_size (DB_VALUE * dbval);
 static char *vid_pack_db_value (char *lbuf, DB_VALUE * dbval);
-static int vid_pack_vobj (char *buf, OID * view, OID * proxy,
-			  DB_VALUE * keys, int *vobj_size, int buflen);
+static int vid_pack_vobj (char *buf, OID * view, OID * proxy, DB_VALUE * keys, int *vobj_size, int buflen);
 
 static int vid_get_class_object (MOP class_p, SM_CLASS ** class_object_p);
 static int vid_is_new_oobj (MOP mop);
 #if defined(ENABLE_UNUSED_FUNCTION)
-static int vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p,
-					  DB_VALUE * source_value,
-					  DB_VALUE * destination_value,
-					  int *has_object);
+static int vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p, DB_VALUE * source_value,
+					  DB_VALUE * destination_value, int *has_object);
 #endif
 
 /*
@@ -81,8 +77,7 @@ vid_get_class_object (MOP class_p, SM_CLASS ** class_object_p)
       return ER_GENERIC_ERROR;
     }
 
-  if (ws_find (class_p, (MOBJ *) class_object_p) == WS_FIND_MOP_DELETED
-      || !(*class_object_p))
+  if (ws_find (class_p, (MOBJ *) class_object_p) == WS_FIND_MOP_DELETED || !(*class_object_p))
     {
       const OID *oid = NULL;
 
@@ -95,9 +90,8 @@ vid_get_class_object (MOP class_p, SM_CLASS ** class_object_p)
 	  oid = &class_p->oid_info.oid;
 	}
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HEAP_UNKNOWN_CLASS_OF_INSTANCE, 3,
-	      oid->volid, oid->pageid, oid->slotid);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_CLASS_OF_INSTANCE, 3, oid->volid, oid->pageid,
+	      oid->slotid);
       return ER_HEAP_UNKNOWN_CLASS_OF_INSTANCE;
     }
   return NO_ERROR;
@@ -117,9 +111,7 @@ vid_is_new_oobj (MOP mop)
   SM_CLASS *class_p;
   int return_code = 0;
 
-  return_code = (mop && mop->is_vid
-		 && ws_find (ws_class_mop (mop),
-			     (MOBJ *) (&class_p)) != WS_FIND_MOP_DELETED
+  return_code = (mop && mop->is_vid && ws_find (ws_class_mop (mop), (MOBJ *) (&class_p)) != WS_FIND_MOP_DELETED
 		 && (mop->oid_info.vid_info->flags & VID_NEW));
 
   return return_code;
@@ -137,8 +129,7 @@ int
 vid_is_new_pobj (MOP mop)
 {
   int return_code = 0;
-  return_code = (mop && mop->is_vid
-		 && (mop->oid_info.vid_info->flags & VID_NEW));
+  return_code = (mop && mop->is_vid && (mop->oid_info.vid_info->flags & VID_NEW));
 
   return return_code;
 }
@@ -152,8 +143,7 @@ vid_is_new_pobj (MOP mop)
  *    vobj(in): DB_VALUE pointer for vobj
  */
 int
-vid_make_vobj (const OID * view_oid,
-	       const OID * class_oid, const DB_VALUE * keys, DB_VALUE * vobj)
+vid_make_vobj (const OID * view_oid, const OID * class_oid, const DB_VALUE * keys, DB_VALUE * vobj)
 {
   int error;
   DB_VALUE oid_value;
@@ -207,8 +197,7 @@ vid_make_vobj (const OID * view_oid,
  *      Locks are handled by the underlying database.
  */
 MOBJ
-vid_fetch_instance (MOP mop, DB_FETCH_MODE purpose,
-		    LC_FETCH_VERSION_TYPE read_fetch_version_type)
+vid_fetch_instance (MOP mop, DB_FETCH_MODE purpose, LC_FETCH_VERSION_TYPE read_fetch_version_type)
 {
   MOBJ inst;
   MOP class_mop, base_mop;
@@ -253,16 +242,14 @@ vid_fetch_instance (MOP mop, DB_FETCH_MODE purpose,
 	      fetch_mode = AU_FETCH_READ;
 	      fetch_version_type = read_fetch_version_type;
 	    }
-	  if (au_fetch_instance_force (base_mop, &inst, fetch_mode,
-				       fetch_version_type) != NO_ERROR)
+	  if (au_fetch_instance_force (base_mop, &inst, fetch_mode, fetch_version_type) != NO_ERROR)
 	    {
 	      inst = (MOBJ) 0;
 	    }
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_VID_LOST_NON_UPDATABLE_OBJECT, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VID_LOST_NON_UPDATABLE_OBJECT, 0);
 	}
     }
   if ((purpose == DB_FETCH_WRITE) && (inst))
@@ -288,9 +275,8 @@ vid_fetch_instance (MOP mop, DB_FETCH_MODE purpose,
  *      from DB_TYPE_OBJECT to DB_TYPE_STRING.
  */
 static int
-vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p,
-			       DB_VALUE * source_value,
-			       DB_VALUE * destination_value, int *has_object)
+vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p, DB_VALUE * source_value, DB_VALUE * destination_value,
+			       int *has_object)
 {
   int error = NO_ERROR;
   VID_INFO *ref_vid_info;
@@ -309,8 +295,7 @@ vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p,
     {
     case DB_TYPE_OBJECT:
       {
-	db_value_domain_init (destination_value, DB_TYPE_STRING,
-			      DB_DEFAULT_PRECISION, 0);
+	db_value_domain_init (destination_value, DB_TYPE_STRING, DB_DEFAULT_PRECISION, 0);
 	temp_object = DB_GET_OBJECT (source_value);
 	if (temp_object != NULL)
 	  {
@@ -349,8 +334,7 @@ vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p,
 		return error;
 	      }
 	    (void) db_seq_get (set, 2, &setval);
-	    ref_mop =
-	      ws_vmop (proxy_class_mop, VID_UPDATABLE | VID_BASE, &setval);
+	    ref_mop = ws_vmop (proxy_class_mop, VID_UPDATABLE | VID_BASE, &setval);
 	    if (ref_mop)
 	      {
 		db_make_object (destination_value, ref_mop);
@@ -374,9 +358,7 @@ vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p,
 		continue;
 	      }
 
-	    error =
-	      vid_convert_object_attr_value (attribute_p, &set_value,
-					     &new_set_value, has_object);
+	    error = vid_convert_object_attr_value (attribute_p, &set_value, &new_set_value, has_object);
 	    if (error == NO_ERROR)
 	      {
 		error = db_set_add (new_set, &new_set_value);
@@ -398,9 +380,7 @@ vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p,
 	      {
 		continue;
 	      }
-	    error = vid_convert_object_attr_value (attribute_p, &set_value,
-						   &new_set_value,
-						   has_object);
+	    error = vid_convert_object_attr_value (attribute_p, &set_value, &new_set_value, has_object);
 	    if (error == NO_ERROR)
 	      {
 		error = db_seq_put (new_set, set_index, &new_set_value);
@@ -438,7 +418,7 @@ vid_upd_instance (MOP mop)
 
   if (vid_is_new_oobj (mop))
     {
-      /*
+      /* 
        * don't fetch new (embryonic) OO instances because they
        * are not there yet. we are buffering OO inserts.
        */
@@ -446,8 +426,7 @@ vid_upd_instance (MOP mop)
     }
   else
     {
-      object =
-	vid_fetch_instance (mop, DB_FETCH_WRITE, LC_FETCH_MVCC_VERSION);
+      object = vid_fetch_instance (mop, DB_FETCH_WRITE, LC_FETCH_MVCC_VERSION);
       /* The base instance is marked dirty by vid_fetch_instance */
     }
   return object;
@@ -471,8 +450,7 @@ vid_flush_all_instances (MOP class_mop, bool decache)
 {
   int rc;
 
-  if (ws_map_class
-      (class_mop, vid_flush_instance, (void *) &decache) == WS_MAP_SUCCESS)
+  if (ws_map_class (class_mop, vid_flush_instance, (void *) &decache) == WS_MAP_SUCCESS)
     {
       rc = NO_ERROR;
     }
@@ -520,17 +498,15 @@ vid_flush_and_rehash (MOP mop)
     }
   else if (isvid && isbase && !isnew_oo)
     {
-      /*
+      /* 
        * rehash relational proxy mop into its new ws hashtable address.
        * we must not rehash a new OO proxy mop because vid_flush_instance
        * rehashes a new OO proxy mop (please see vid_store_oid_instance).
        */
       return_code = vid_get_class_object (WS_CLASS_MOP (mop), &class_p);
-      if (return_code == NO_ERROR
-	  && !ws_rehash_vmop (mop, (MOBJ) class_p, NULL))
+      if (return_code == NO_ERROR && !ws_rehash_vmop (mop, (MOBJ) class_p, NULL))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_WS_REHASH_VMOP_ERROR, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_REHASH_VMOP_ERROR, 0);
 	  return_code = ER_WS_REHASH_VMOP_ERROR;
 	}
     }
@@ -598,13 +574,12 @@ vid_allflush (void)
   bool return_code;
   int isvirt;
 
-  /*
+  /* 
    * traverse the resident class list and
    * for each proxy/vclass that has dirty instances
    * call vid_flush_all to flush those dirty instances
    */
-  for (cl = ws_Resident_classes, return_code = NO_ERROR;
-       cl != NULL && return_code == NO_ERROR; cl = cl->next)
+  for (cl = ws_Resident_classes, return_code = NO_ERROR; cl != NULL && return_code == NO_ERROR; cl = cl->next)
     {
       if (ws_has_dirty_objects (cl->op, &isvirt) && isvirt)
 	{
@@ -630,10 +605,9 @@ vid_allflush (void)
  *      to point to the base instance MOP.
  */
 MOP
-vid_add_virtual_instance (MOBJ instance, MOP vclass_mop,
-			  MOP bclass_mop, SM_CLASS * bclass)
+vid_add_virtual_instance (MOBJ instance, MOP vclass_mop, MOP bclass_mop, SM_CLASS * bclass)
 {
-  MOP bmop;			/* Mop of newly created base instance    */
+  MOP bmop;			/* Mop of newly created base instance */
   MOP vmop = NULL;		/* Mop of newly created virtual instance */
 
   if (!instance || !vclass_mop || !bclass_mop || !bclass)
@@ -667,9 +641,9 @@ vid_add_virtual_instance (MOBJ instance, MOP vclass_mop,
 MOP
 vid_build_virtual_mop (MOP bmop, MOP vclass_mop)
 {
-  MOP vmop = NULL;		/* Mop of newly created virtual instance  */
-  DB_VALUE key;			/* The key for the mop                    */
-  int vclass_updatable;		/* Whether the vclass is updatable        */
+  MOP vmop = NULL;		/* Mop of newly created virtual instance */
+  DB_VALUE key;			/* The key for the mop */
+  int vclass_updatable;		/* Whether the vclass is updatable */
 
   if (!bmop || !vclass_mop)
     {
@@ -679,8 +653,7 @@ vid_build_virtual_mop (MOP bmop, MOP vclass_mop)
 
   vclass_updatable = mq_is_updatable (vclass_mop);
   db_make_object (&key, bmop);
-  vmop = ws_vmop (vclass_mop,
-		  VID_NEW | vclass_updatable ? VID_UPDATABLE : 0, &key);
+  vmop = ws_vmop (vclass_mop, VID_NEW | vclass_updatable ? VID_UPDATABLE : 0, &key);
   if (!vmop)
     {
       return NULL;
@@ -810,8 +783,7 @@ vid_base_instance (MOP mop)
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_SM_OBJECT_NOT_UPDATABLE, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_OBJECT_NOT_UPDATABLE, 0);
       return (DB_OBJECT *) 0;
     }
 }
@@ -843,8 +815,7 @@ vid_att_in_obj_id (SM_ATTRIBUTE * attribute_p)
  *    id_no(in): Attribute position in object_id
  */
 int
-vid_set_att_obj_id (const char *class_name, SM_ATTRIBUTE * attribute_p,
-		    int id_no)
+vid_set_att_obj_id (const char *class_name, SM_ATTRIBUTE * attribute_p, int id_no)
 {
   int error = NO_ERROR;
   DB_VALUE value;
@@ -859,8 +830,7 @@ vid_set_att_obj_id (const char *class_name, SM_ATTRIBUTE * attribute_p,
 	}
     }
 
-  if (classobj_get_prop
-      (attribute_p->properties, SM_PROPERTY_VID_KEY, &value) > 0)
+  if (classobj_get_prop (attribute_p->properties, SM_PROPERTY_VID_KEY, &value) > 0)
     {
       error = ER_SM_OBJECT_ID_ALREADY_SET;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, class_name);
@@ -975,10 +945,8 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
       return false;
     }
 
-  for (att1 = class1->attributes, att2 = class2->attributes;
-       att1 != NULL && att2 != NULL;
-       att1 = (SM_ATTRIBUTE *) att1->header.next,
-       att2 = (SM_ATTRIBUTE *) att2->header.next)
+  for (att1 = class1->attributes, att2 = class2->attributes; att1 != NULL && att2 != NULL;
+       att1 = (SM_ATTRIBUTE *) att1->header.next, att2 = (SM_ATTRIBUTE *) att2->header.next)
     {
       if (att1->type != att2->type)
 	{
@@ -988,10 +956,8 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
       mem2 = inst2 + att2->offset;
       if (pr_is_set_type (att1->type->id))
 	{
-	  db_value_domain_init (&val1, att1->type->id, DB_DEFAULT_PRECISION,
-				DB_DEFAULT_SCALE);
-	  db_value_domain_init (&val2, att1->type->id, DB_DEFAULT_PRECISION,
-				DB_DEFAULT_SCALE);
+	  db_value_domain_init (&val1, att1->type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	  db_value_domain_init (&val2, att1->type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  PRIM_GETMEM (att1->type, att1->domain, mem1, &val1);
 	  PRIM_GETMEM (att2->type, att2->domain, mem2, &val2);
 	  set1 = DB_GET_SET (&val1);
@@ -1012,10 +978,8 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
 	}
       else if (att1->type == tp_Type_object)
 	{
-	  db_value_domain_init (&val1, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION,
-				DB_DEFAULT_SCALE);
-	  db_value_domain_init (&val2, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION,
-				DB_DEFAULT_SCALE);
+	  db_value_domain_init (&val1, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	  db_value_domain_init (&val2, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  PRIM_GETMEM (att1->type, att1->domain, mem1, &val1);
 	  PRIM_GETMEM (att2->type, att2->domain, mem2, &val2);
 	  attobj1 = DB_GET_OBJECT (&val1);
@@ -1037,13 +1001,11 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
 	}
       else
 	{
-	  db_value_domain_init (&val1, att1->type->id,
-				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	  db_value_domain_init (&val2, att2->type->id,
-				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	  db_value_domain_init (&val1, att1->type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	  db_value_domain_init (&val2, att2->type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  PRIM_GETMEM (att1->type, att1->domain, mem1, &val1);
 	  PRIM_GETMEM (att2->type, att2->domain, mem2, &val2);
-	  /*
+	  /* 
 	   * Unlike most calls to this function, don't perform coercion
 	   * here so that an exact match can be performed.  Note, this
 	   * formerly called pr_value_equal which did kind of "halfway"
@@ -1158,26 +1120,23 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
       /* check to see if anyone has this mop pinned */
       if (mop->pinned)
 	{
-	  /*
+	  /* 
 	   * this is a logical error, we can't free the object since
 	   * someone has it pinned.  It will leak.
 	   */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_PIN_VIOLATION, 0);
-	  er_log_debug (ARG_FILE_LINE,
-			"** SYSTEM ERROR ** crs_vobj_to_vmop() is overwriting a pinned object");
+	  er_log_debug (ARG_FILE_LINE, "** SYSTEM ERROR ** crs_vobj_to_vmop() is overwriting a pinned object");
 	}
 #endif /* CUBRID_DEBUG */
       if (!mop->pinned)
 	{
-	  obj_free_memory ((SM_CLASS *) ws_class_mop (mop)->object,
-			   (MOBJ) mop->object);
+	  obj_free_memory ((SM_CLASS *) ws_class_mop (mop)->object, (MOBJ) mop->object);
 	}
     }
 
   mop->object = inst;
   col = DB_GET_SET (seq);
-  for (attribute_p = class_p->attributes; attribute_p != NULL;
-       attribute_p = (SM_ATTRIBUTE *) attribute_p->header.next)
+  for (attribute_p = class_p->attributes; attribute_p != NULL; attribute_p = (SM_ATTRIBUTE *) attribute_p->header.next)
     {
       error = db_seq_get (col, attribute_p->order, &val);
 
@@ -1192,8 +1151,7 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
 	    error = vid_vobj_to_object (&val, &vmop);
 	    if (!(error < 0))
 	      {
-		db_value_domain_init (&val, DB_TYPE_OBJECT,
-				      DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+		db_value_domain_init (&val, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 		db_make_object (&val, vmop);
 	      }
 	  }
@@ -1220,7 +1178,7 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
       mop->object = NULL;
       return error;
     }
-  /*
+  /* 
    * lock it to avoid getting a Workspace pin violation
    * later in vid_fetch_instance.
    */
@@ -1345,8 +1303,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
   /* put together a query to get all instances of class_p */
   class_type = sm_get_class_type (class_p);
   class_name = db_get_class_name (class_mop);
-  snprintf (query, sizeof (query) - 1, "SELECT %s FROM %s",
-	    class_name, class_name);
+  snprintf (query, sizeof (query) - 1, "SELECT %s FROM %s", class_name, class_name);
 
   /* run the query */
   error = db_compile_and_execute_local (query, &qres, &query_error);
@@ -1375,8 +1332,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
       /* get instance mop */
       if (error == DB_CURSOR_SUCCESS)
 	{
-	  error = db_query_get_tuple_value_by_name
-	    (qres, (char *) class_name, &value);
+	  error = db_query_get_tuple_value_by_name (qres, (char *) class_name, &value);
 	}
 
       /* allocate objlist node */
@@ -1401,7 +1357,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
     {
     case DB_FETCH_QUERY_WRITE:
     case DB_FETCH_CLREAD_INSTWRITE:
-      /*
+      /* 
        * we're forced to revert these back to DB_FETCH_WRITE because the
        * proxy locking code downstream recognizes only DB_FETCH_WRITE when
        * requesting xlocks, all other purpose values are treated as slock
@@ -1414,8 +1370,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
     }
 
   /* if XLOCKs were requested, get them now */
-  if (purpose == DB_FETCH_WRITE
-      && db_fetch_list (objlst, purpose, 0) != NO_ERROR)
+  if (purpose == DB_FETCH_WRITE && db_fetch_list (objlst, purpose, 0) != NO_ERROR)
     {
       ml_ext_free (objlst);
       return NULL;
@@ -1446,13 +1401,10 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
   MOBJ inst;
 
   /* make sure we have a good input argument */
-  if (!vobj || !mop
-      || DB_VALUE_TYPE (vobj) != DB_TYPE_VOBJ
-      || (seq = DB_GET_SEQUENCE (vobj)) == NULL
+  if (!vobj || !mop || DB_VALUE_TYPE (vobj) != DB_TYPE_VOBJ || (seq = DB_GET_SEQUENCE (vobj)) == NULL
       || (size = db_set_size (seq)) != 3)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_DL_ESYS, 1, "virtual object inconsistent");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DL_ESYS, 1, "virtual object inconsistent");
       return ER_DL_ESYS;
     }
 
@@ -1461,7 +1413,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 
   *mop = NULL;
 
-  /*
+  /* 
    * get vobjs components into: {vclass,bclass,keys}.
    * a proxy instance will have a null vclass.
    * a virtual class instance may have a null bclass.
@@ -1481,14 +1433,13 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	  else if (elem_value.domain.general_info.type == DB_TYPE_OBJECT)
 	    {
 	      vclass = db_get_object (&elem_value);
-	      /*
+	      /* 
 	       * we need to guarantee that if this vclass
 	       * exists and it's not yet in the workspace, we must fetch
 	       * it in. Otherwise, db_decode_object() can fail.
 	       */
 	      if (vclass && vclass->object == NULL
-		  && au_fetch_instance_force (vclass, &inst, AU_FETCH_READ,
-					      TM_TRAN_READ_FETCH_VERSION ()))
+		  && au_fetch_instance_force (vclass, &inst, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION ()))
 		{
 		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
@@ -1496,8 +1447,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	    }
 	  else
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_DL_ESYS, 1, "view class inconsistent");
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DL_ESYS, 1, "view class inconsistent");
 	      return ER_DL_ESYS;
 	    }
 	  break;
@@ -1511,8 +1461,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	    {
 	      bclass = db_get_object (&elem_value);
 	      if (bclass && bclass->object == NULL
-		  && au_fetch_instance_force (bclass, &inst, AU_FETCH_READ,
-					      TM_TRAN_READ_FETCH_VERSION ()))
+		  && au_fetch_instance_force (bclass, &inst, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION ()))
 		{
 		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
@@ -1520,8 +1469,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	    }
 	  else
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_DL_ESYS, 1, "base class inconsistent");
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DL_ESYS, 1, "base class inconsistent");
 	      return ER_DL_ESYS;
 	    }
 	  break;
@@ -1539,7 +1487,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
     }
   if (keys.domain.general_info.is_null == 0)
     {
-      /*
+      /* 
        * does it have a class/proxy component specified?
        * This would mean a real, updatable object.
        */
@@ -1551,7 +1499,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	}
       else if (keys.domain.general_info.type == DB_TYPE_OBJECT)
 	{
-	  /*
+	  /* 
 	   * The vclass refers to a class, but we left
 	   * the class oid feild empty in the vobj.
 	   */
@@ -1571,7 +1519,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
       /* does it have a vclass component? */
       if (!vclass)
 	{
-	  /*
+	  /* 
 	   * with no view, then the result is the object
 	   * we just calculated.
 	   */
@@ -1591,7 +1539,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	    {
 	      if (keys.domain.general_info.type == DB_TYPE_SEQUENCE)
 		{
-		  /*
+		  /* 
 		   * The vclass refers to a non-updatable view result.
 		   * look it up or install it in the workspace.
 		   */
@@ -1610,8 +1558,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	{
 	  if (error == NO_ERROR)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_DL_ESYS, 1, "vobject error");
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DL_ESYS, 1, "vobject error");
 	      error = ER_DL_ESYS;
 	    }
 	}
@@ -1692,8 +1639,7 @@ vid_object_to_vobj (const DB_OBJECT * obj, DB_VALUE * vobj)
 
   if (!obj)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_DL_ESYS, 1, "null virtual object");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DL_ESYS, 1, "null virtual object");
       return ER_DL_ESYS;
     }
 
@@ -1761,8 +1707,7 @@ vid_make_vid (OID * view_id, OID * proxy_id, DB_VALUE * val, DB_VALUE * vobj)
     }
   else
     {
-      db_value_domain_init (&tval, DB_TYPE_OID,
-			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      db_value_domain_init (&tval, DB_TYPE_OID, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       OID_SET_NULL (&tval.data.oid);
     }
 
@@ -1777,8 +1722,7 @@ vid_make_vid (OID * view_id, OID * proxy_id, DB_VALUE * val, DB_VALUE * vobj)
     }
   else
     {
-      db_value_domain_init (&tval, DB_TYPE_OID,
-			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      db_value_domain_init (&tval, DB_TYPE_OID, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       OID_SET_NULL (&tval.data.oid);
     }
 
@@ -1810,7 +1754,7 @@ vid_db_value_size (DB_VALUE * dbval)
 
   val_size = pr_data_writeval_disk_size (dbval);
 
-  /*
+  /* 
    * some OR_PUT functions assume data to be copied is always properly aligned,
    * so we oblige here at the cost of maybe some extra space
    */
@@ -1872,8 +1816,7 @@ vid_pack_db_value (char *lbuf, DB_VALUE * dbval)
  *    buflen(in):
  */
 static int
-vid_pack_vobj (char *buf, OID * view, OID * proxy,
-	       DB_VALUE * keys, int *vobj_size, int buflen)
+vid_pack_vobj (char *buf, OID * view, OID * proxy, DB_VALUE * keys, int *vobj_size, int buflen)
 {
   DB_VALUE vobj;
 
@@ -1886,7 +1829,7 @@ vid_pack_vobj (char *buf, OID * view, OID * proxy,
 
   if (buf)
     {
-      /*
+      /* 
        * vobj_size contains alignment bytes.  When we encode this vobj during
        * packing, we need to have known values in the alignment bytes else
        * we can not reconstruct this vobj.  Since we don't know the number of
@@ -1896,8 +1839,7 @@ vid_pack_vobj (char *buf, OID * view, OID * proxy,
        */
       if (buflen <= *vobj_size)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OBJ_CANT_ENCODE_VOBJ, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_ENCODE_VOBJ, 0);
 	  return ER_FAILED;
 	}
       (void) memset (buf, 0, *vobj_size);
@@ -1918,8 +1860,7 @@ vid_pack_vobj (char *buf, OID * view, OID * proxy,
  *    actual_length(in):
  */
 int
-vid_encode_object (DB_OBJECT * object, char *string,
-		   int allocated_length, int *actual_length)
+vid_encode_object (DB_OBJECT * object, char *string, int allocated_length, int *actual_length)
 {
   DB_OBJECT *class_;
   OID *temp_oid;
@@ -1927,8 +1868,7 @@ vid_encode_object (DB_OBJECT * object, char *string,
 
   if (object == NULL || (class_ = db_get_class (object)) == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_HEAP_UNKNOWN_OBJECT, 3, 0, 0, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, 0, 0, 0);
       return (ER_HEAP_UNKNOWN_OBJECT);
     }
 
@@ -1938,7 +1878,7 @@ vid_encode_object (DB_OBJECT * object, char *string,
       return ER_OBJ_BUFFER_TOO_SMALL;
     }
 
-  /*
+  /* 
    * classify the object into one of:
    *  - instance of a class
    *  - instance of a proxy
@@ -1969,7 +1909,7 @@ vid_encode_object (DB_OBJECT * object, char *string,
   if (is_class)
     {
       /* if the specified string length is less than */
-      /* MIN_STRING_OID_LENGTH, we return this actual length          */
+      /* MIN_STRING_OID_LENGTH, we return this actual length */
       if (er_errid () == ER_OBJ_BUFFER_TOO_SMALL)
 	{
 	  *actual_length = MIN_STRING_OID_LENGTH;
@@ -1989,8 +1929,7 @@ vid_encode_object (DB_OBJECT * object, char *string,
 	    {
 	      if (er_errid () == NO_ERROR)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OBJ_CANT_ASSIGN_OID, 0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_ASSIGN_OID, 0);
 		}
 	      return er_errid ();
 	    }
@@ -2016,8 +1955,7 @@ vid_encode_object (DB_OBJECT * object, char *string,
 	real_object = db_real_instance (object);
 	if (!real_object || real_object == object)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		    ER_OBJ_VOBJ_MAPS_INVALID_OBJ, 0);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_VOBJ_MAPS_INVALID_OBJ, 0);
 	    return (ER_OBJ_VOBJ_MAPS_INVALID_OBJ);
 	  }
 	/* get {view,proxy,keys} of this vclass instance */
@@ -2030,13 +1968,13 @@ vid_encode_object (DB_OBJECT * object, char *string,
 	  }
 	else if (is_class > 0)
 	  {
-	    /*
+	    /* 
 	     * it's an instance of a vclass of a class
 	     * represented in vobj form as {view,NULL,keys}
 	     */
 	    string[0] = DB_INSTANCE_OF_A_VCLASS_OF_A_CLASS;
 	    proxy = NULL;
-	    /*
+	    /* 
 	     * since we're doing the reverse of crs_cp_vobj_to_dbvalue,
 	     * we form keys as a DB_TYPE_OBJECT db_value containing real_obj.
 	     * by forming keys this way, we let crs_cp_vobj_to_dbvalue yield
@@ -2048,13 +1986,12 @@ vid_encode_object (DB_OBJECT * object, char *string,
 	  }
 	else
 	  {
-	    /*
+	    /* 
 	     * a vclass of a vclass should have been resolved into
 	     * a vclass of a class or a proxy during compilation,
 	     * therefore it's considered an error at run-time.
 	     */
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		    ER_OBJ_CANT_RESOLVE_VOBJ_TO_OBJ, 0);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_RESOLVE_VOBJ_TO_OBJ, 0);
 	    return (ER_OBJ_CANT_RESOLVE_VOBJ_TO_OBJ);
 	  }
       }
@@ -2065,24 +2002,21 @@ vid_encode_object (DB_OBJECT * object, char *string,
 	proxy = NULL;
 	keys = &obj_key;
 
-	/*
+	/* 
 	 * object has values only.  it doesn't have any keys. so we form
 	 * object's values into a sequence of values to become vobj's keys
 	 */
 	seq = db_seq_create (NULL, NULL, 0);
 	db_make_sequence (keys, seq);
-	/*
+	/* 
 	 * there may be a safe way to speed this up by getting
 	 * the values directly and bypassing authorization checks
 	 */
-	for (attrs = db_get_attributes (object), i = 0;
-	     attrs; attrs = db_attribute_next (attrs), i++)
+	for (attrs = db_get_attributes (object), i = 0; attrs; attrs = db_attribute_next (attrs), i++)
 	  {
-	    if (db_get (object, db_attribute_name (attrs), &val) < 0
-		|| db_seq_put (seq, i, &val) < 0)
+	    if (db_get (object, db_attribute_name (attrs), &val) < 0 || db_seq_put (seq, i, &val) < 0)
 	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			ER_OBJ_CANT_ENCODE_NONUPD_OBJ, 0);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_ENCODE_NONUPD_OBJ, 0);
 		return (ER_OBJ_CANT_ENCODE_NONUPD_OBJ);
 	      }
 	  }
@@ -2091,8 +2025,7 @@ vid_encode_object (DB_OBJECT * object, char *string,
 
     /* pack {view,proxy,keys} in listfile form into vobj_buf */
     /* pass vobj_buf's allocated length here to avoid a memory overrun */
-    if (vid_pack_vobj (vobj_buf, view, proxy, keys, &vobj_len,
-		       MAX_STRING_OID_LENGTH) != NO_ERROR)
+    if (vid_pack_vobj (vobj_buf, view, proxy, keys, &vobj_len, MAX_STRING_OID_LENGTH) != NO_ERROR)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_CANT_ENCODE_VOBJ, 0);
 	return (ER_OBJ_CANT_ENCODE_VOBJ);
@@ -2107,8 +2040,7 @@ vid_encode_object (DB_OBJECT * object, char *string,
       }
     /* stuff vobj_len+vobj into str */
     or_encode (&string[1], (const char *) &vobj_len, OR_INT_SIZE);
-    or_encode (&string[1 + ENCODED_LEN (OR_INT_SIZE)],
-	       (const char *) vobj_buf, vobj_len);
+    or_encode (&string[1 + ENCODED_LEN (OR_INT_SIZE)], (const char *) vobj_buf, vobj_len);
     return NO_ERROR;
   }
 }
@@ -2131,8 +2063,7 @@ vid_decode_object (const char *string, DB_OBJECT ** object)
   /* make sure we got reasonable arguments */
   if (object == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OBJ_NULL_ADDR_OUTPUT_OBJ, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NULL_ADDR_OUTPUT_OBJ, 0);
       return (ER_OBJ_NULL_ADDR_OUTPUT_OBJ);
     }
 
@@ -2146,8 +2077,7 @@ vid_decode_object (const char *string, DB_OBJECT ** object)
   len = strlen (string);
   if (len >= MAX_STRING_OID_LENGTH && (bufp = (char *) malloc (len)) == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -2171,8 +2101,7 @@ vid_decode_object (const char *string, DB_OBJECT ** object)
       if (cursor_copy_vobj_to_dbvalue (&buf, &val) != NO_ERROR)
 	{
 	  *object = NULL;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OBJ_INTERNAL_ERROR_IN_DECODING, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INTERNAL_ERROR_IN_DECODING, 0);
 	  rc = ER_OBJ_INTERNAL_ERROR_IN_DECODING;
 	}
       else

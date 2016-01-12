@@ -63,8 +63,7 @@ enum net_req_act
   IN_TRANSACTION = 0x0008,
   OUT_TRANSACTION = 0x0010,
 };
-typedef void (*net_server_func) (THREAD_ENTRY * thrd, unsigned int rid,
-				 char *request, int reqlen);
+typedef void (*net_server_func) (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 struct net_request
 {
   int action_attribute;
@@ -85,8 +84,7 @@ static void net_server_histo_add_entry (int request, int data_sent);
 #endif /* CUBRID_DEBUG */
 
 static void net_server_init (void);
-static int net_server_request (THREAD_ENTRY * thread_p, unsigned int rid,
-			       int request, int size, char *buffer);
+static int net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int size, char *buffer);
 static int net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg);
 
 
@@ -180,14 +178,12 @@ net_server_init (void)
   req_p->name = "NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE";
 
   req_p = &net_Requests[NET_SERVER_BO_COMPACT_DB];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | CHECK_AUTHORIZATION
-			     | IN_TRANSACTION);
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | CHECK_AUTHORIZATION | IN_TRANSACTION);
   req_p->processing_function = sboot_compact_db;
   req_p->name = "NET_SERVER_BO_COMPACT_DB";
 
   req_p = &net_Requests[NET_SERVER_BO_HEAP_COMPACT];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | CHECK_AUTHORIZATION
-			     | IN_TRANSACTION);
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | CHECK_AUTHORIZATION | IN_TRANSACTION);
   req_p->processing_function = sboot_heap_compact;
   req_p->name = "NET_SERVER_BO_HEAP_COMPACT";
 
@@ -211,8 +207,7 @@ net_server_init (void)
 
   /* transaction */
   req_p = &net_Requests[NET_SERVER_TM_SERVER_COMMIT];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO
-			     | OUT_TRANSACTION);
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | OUT_TRANSACTION);
   req_p->processing_function = stran_server_commit;
   req_p->name = "NET_SERVER_TM_SERVER_COMMIT";
 
@@ -334,8 +329,7 @@ net_server_init (void)
   req_p->name = "NET_SERVER_LC_DOESEXIST";
 
   req_p = &net_Requests[NET_SERVER_LC_FORCE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO
-			     | IN_TRANSACTION);
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
   req_p->processing_function = slocator_force;
   req_p->name = "NET_SERVER_LC_FORCE";
 
@@ -426,8 +420,7 @@ net_server_init (void)
   req_p->name = "NET_SERVER_HEAP_HAS_INSTANCE";
 
   req_p = &net_Requests[NET_SERVER_HEAP_RECLAIM_ADDRESSES];
-  req_p->action_attribute = (CHECK_AUTHORIZATION | CHECK_DB_MODIFICATION
-			     | IN_TRANSACTION);
+  req_p->action_attribute = (CHECK_AUTHORIZATION | CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = shf_heap_reclaim_addresses;
   req_p->name = "NET_SERVER_HEAP_RECLAIM_ADDRESSES";
 
@@ -909,8 +902,7 @@ net_server_init (void)
   req_p->name = "NET_SERVER_FIND_MULTI_UNIQUES";
 
   req_p = &net_Requests[NET_SERVER_LC_FORCE_REPL_UPDATE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO
-			     | IN_TRANSACTION);
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
   req_p->processing_function = slocator_force_repl_update;
   req_p->name = "NET_SERVER_LC_FORCE_REPL_UPDATE";
 
@@ -939,8 +931,7 @@ net_server_init (void)
   req_p->name = "NET_SERVER_LOCK_RR";
 
   req_p = &net_Requests[NET_SERVER_LC_REPL_FORCE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO
-			     | IN_TRANSACTION);
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
   req_p->processing_function = slocator_repl_force;
   req_p->name = "NET_SERVER_LC_REPL_FORCE";
 
@@ -982,20 +973,16 @@ net_server_histo_print (void)
   float avg_response_time, avg_client_time;
 
   fprintf (stdout, "\nHistogram of client requests:\n");
-  fprintf (stdout, "%-31s %6s  %10s %10s , %10s \n",
-	   "Name", "Rcount", "Sent size", "Recv size", "Server time");
+  fprintf (stdout, "%-31s %6s  %10s %10s , %10s \n", "Name", "Rcount", "Sent size", "Recv size", "Server time");
 
   for (i = 0; i < DIM (net_Requests); i++)
     {
       if (net_Requests[i].request_count)
 	{
 	  found = 1;
-	  server_time = ((float) net_Requests[i].elapsed_time / 1000000 /
-			 (float) (net_Requests[i].request_count));
-	  fprintf (stdout, "%-29s %6d X %10d+%10d b, %10.6f s\n",
-		   net_Requests[i].name, net_Requests[i].request_count,
-		   net_Requests[i].total_size_sent,
-		   net_Requests[i].total_size_received, server_time);
+	  server_time = ((float) net_Requests[i].elapsed_time / 1000000 / (float) (net_Requests[i].request_count));
+	  fprintf (stdout, "%-29s %6d X %10d+%10d b, %10.6f s\n", net_Requests[i].name, net_Requests[i].request_count,
+		   net_Requests[i].total_size_sent, net_Requests[i].total_size_received, server_time);
 	  total_requests += net_Requests[i].request_count;
 	  total_size_sent += net_Requests[i].total_size_sent;
 	  total_size_received += net_Requests[i].total_size_received;
@@ -1009,18 +996,14 @@ net_server_histo_print (void)
     }
   else
     {
-      fprintf (stdout,
-	       "-------------------------------------------------------------"
-	       "--------------\n");
-      fprintf (stdout,
-	       "Totals:                       %6d X %10d+%10d b  "
-	       "%10.6f s\n", total_requests, total_size_sent,
-	       total_size_received, total_server_time);
+      fprintf (stdout, "-------------------------------------------------------------" "--------------\n");
+      fprintf (stdout, "Totals:                       %6d X %10d+%10d b  " "%10.6f s\n", total_requests,
+	       total_size_sent, total_size_received, total_server_time);
       avg_response_time = total_server_time / total_requests;
       avg_client_time = 0.0;
-      fprintf (stdout, "\n Average server response time = %6.6f secs \n"
-	       " Average time between client requests = %6.6f secs \n",
-	       avg_response_time, avg_client_time);
+      fprintf (stdout,
+	       "\n Average server response time = %6.6f secs \n"
+	       " Average time between client requests = %6.6f secs \n", avg_response_time, avg_client_time);
     }
 }
 
@@ -1050,8 +1033,7 @@ net_server_histo_add_entry (int request, int data_sent)
  *   buffer(in): argument buffer
  */
 static int
-net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
-		    int size, char *buffer)
+net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int size, char *buffer)
 {
   net_server_func func;
   int status = CSS_NO_ERRORS;
@@ -1086,11 +1068,9 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
       goto end;
     }
 
-  if (request <= NET_SERVER_REQUEST_START
-      || request >= NET_SERVER_REQUEST_END)
+  if (request <= NET_SERVER_REQUEST_START || request >= NET_SERVER_REQUEST_END)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NET_UNKNOWN_SERVER_REQ,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NET_UNKNOWN_SERVER_REQ, 0);
       return_error_to_client (thread_p, rid);
       goto end;
     }
@@ -1126,9 +1106,8 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
 	  CHECK_MODIFICATION_NO_RETURN (thread_p, error_code);
 	  if (error_code != NO_ERROR)
 	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "net_server_request(): CHECK_DB_MODIFICATION error"
-			    " request %s\n", net_Requests[request].name);
+	      er_log_debug (ARG_FILE_LINE, "net_server_request(): CHECK_DB_MODIFICATION error" " request %s\n",
+			    net_Requests[request].name);
 	      return_error_to_client (thread_p, rid);
 	      css_send_abort_to_client (conn, rid);
 	      goto end;
@@ -1139,9 +1118,8 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
     {
       if (!logtb_am_i_dba_client (thread_p))
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"net_server_request(): CHECK_AUTHORIZATION error"
-			" request %s\n", net_Requests[request].name);
+	  er_log_debug (ARG_FILE_LINE, "net_server_request(): CHECK_AUTHORIZATION error" " request %s\n",
+			net_Requests[request].name);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "");
 	  return_error_to_client (thread_p, rid);
 	  css_send_abort_to_client (conn, rid);
@@ -1151,8 +1129,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
 #if defined (DIAG_DEVEL)
   if (net_Requests[request].action_attribute & SET_DIAGNOSTICS_INFO)
     {
-      SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CLI_REQUEST, 1,
-		      DIAG_VAL_SETTYPE_INC, NULL);
+      SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CLI_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
       gettimeofday (&diag_start_time, NULL);
     }
 #endif /* DIAG_DEVEL */
@@ -1197,14 +1174,10 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
     {
       gettimeofday (&diag_end_time, NULL);
       DIFF_TIMEVAL (diag_start_time, diag_end_time, diag_elapsed_time);
-      if (request == NET_SERVER_QM_QUERY_EXECUTE
-	  || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE
-	  || request == NET_SERVER_QM_QUERY_EXECUTE_ASYNC
-	  || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC)
+      if (request == NET_SERVER_QM_QUERY_EXECUTE || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE
+	  || request == NET_SERVER_QM_QUERY_EXECUTE_ASYNC || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC)
 	{
-	  SET_DIAG_VALUE_SLOW_QUERY (diag_executediag, diag_start_time,
-				     diag_end_time, 1,
-				     DIAG_VAL_SETTYPE_INC, NULL);
+	  SET_DIAG_VALUE_SLOW_QUERY (diag_executediag, diag_start_time, diag_end_time, 1, DIAG_VAL_SETTYPE_INC, NULL);
 	}
     }
 #endif /* DIAG_DEVEL */
@@ -1275,20 +1248,15 @@ loop:
 	  thread_sleep (50);	/* 50 msec */
 	  tran_index = conn_p->transaction_id;
 	}
-      if (!logtb_is_interrupted_tran (thread_p, false, &continue_check,
-				      tran_index))
+      if (!logtb_is_interrupted_tran (thread_p, false, &continue_check, tran_index))
 	{
 	  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
 	}
 
-      /* never try to wake non TRAN_ACTIVE state trans.
-       * note that non-TRAN_ACTIVE trans will not be interrupted.
-       */
-      if (logtb_is_interrupted_tran (thread_p, false, &continue_check,
-				     tran_index))
+      /* never try to wake non TRAN_ACTIVE state trans. note that non-TRAN_ACTIVE trans will not be interrupted. */
+      if (logtb_is_interrupted_tran (thread_p, false, &continue_check, tran_index))
 	{
-	  suspended_p =
-	    thread_find_entry_by_tran_index_except_me (tran_index);
+	  suspended_p = thread_find_entry_by_tran_index_except_me (tran_index);
 	  if (suspended_p != NULL)
 	    {
 	      int r;
@@ -1308,9 +1276,7 @@ loop:
 		case THREAD_LOCK_SUSPENDED:
 		case THREAD_PGBUF_SUSPENDED:
 		case THREAD_JOB_QUEUE_SUSPENDED:
-		  /* never try to wake thread up while the thread is waiting
-		   * for a critical section or a lock.
-		   */
+		  /* never try to wake thread up while the thread is waiting for a critical section or a lock. */
 		  wakeup_now = false;
 		  break;
 		case THREAD_CSS_QUEUE_SUSPENDED:
@@ -1346,9 +1312,7 @@ loop:
 
 	      if (wakeup_now == true)
 		{
-		  r =
-		    thread_wakeup_already_had_mutex (suspended_p,
-						     THREAD_RESUME_DUE_TO_INTERRUPT);
+		  r = thread_wakeup_already_had_mutex (suspended_p, THREAD_RESUME_DUE_TO_INTERRUPT);
 		}
 	      r = thread_unlock_entry (suspended_p);
 
@@ -1360,14 +1324,11 @@ loop:
 	}
     }
 
-  while ((thrd_cnt = thread_has_threads (thread_p, tran_index, client_id))
-	 >= prev_thrd_cnt && thrd_cnt > 0)
+  while ((thrd_cnt = thread_has_threads (thread_p, tran_index, client_id)) >= prev_thrd_cnt && thrd_cnt > 0)
     {
-      /* Some threads may wait for data from the m-driver.
-       * It's possible from the fact that css_server_thread() is responsible
-       * for receiving every data from which is sent by a client and all
-       * m-drivers. We must have chance to receive data from them.
-       */
+      /* Some threads may wait for data from the m-driver. It's possible from the fact that css_server_thread() is
+       * responsible for receiving every data from which is sent by a client and all m-drivers. We must have chance to
+       * receive data from them. */
       thread_sleep (50);	/* 50 msec */
     }
 
@@ -1411,7 +1372,7 @@ net_server_start (const char *server_name)
     }
 #endif /* WINDOWS */
 
-  /* open the system message catalog, before prm_ ?  */
+  /* open the system message catalog, before prm_ ? */
   if (msgcat_init () != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize message catalog\n");
@@ -1442,8 +1403,7 @@ net_server_start (const char *server_name)
       goto end;
     }
 
-  if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE),
-	       prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
+  if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
       status = -1;
@@ -1456,8 +1416,7 @@ net_server_start (const char *server_name)
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
-  if (boot_restart_server (NULL, true, server_name, false, true,
-			   NULL) != NO_ERROR)
+  if (boot_restart_server (NULL, true, server_name, false, true, NULL) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -1467,8 +1426,7 @@ net_server_start (const char *server_name)
       packed_name = css_pack_server_name (server_name, &name_length);
       css_init_job_queue ();
 
-      r = css_init (packed_name, name_length,
-		    prm_get_integer_value (PRM_ID_TCP_PORT_ID));
+      r = css_init (packed_name, name_length, prm_get_integer_value (PRM_ID_TCP_PORT_ID));
       free_and_init (packed_name);
 
       if (r < 0)

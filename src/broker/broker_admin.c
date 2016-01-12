@@ -63,9 +63,8 @@ admin_log_write (const char *log_file, const char *msg)
       ts = time (NULL);
       memset (&ct, 0x0, sizeof (struct tm));
       localtime_r (&ts, &ct);
-      fprintf (fp, "%d/%02d/%02d %02d:%02d:%02d %s\n",
-	       ct.tm_year + 1900, ct.tm_mon + 1, ct.tm_mday,
-	       ct.tm_hour, ct.tm_min, ct.tm_sec, msg);
+      fprintf (fp, "%d/%02d/%02d %02d:%02d:%02d %s\n", ct.tm_year + 1900, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour,
+	       ct.tm_min, ct.tm_sec, msg);
       fclose (fp);
     }
   else
@@ -94,8 +93,7 @@ main (int argc, char **argv)
   /* change the working directory to $CUBRID */
   ut_cd_root_dir ();
 
-  err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id,
-			    admin_log_file, 0, &acl_flag, acl_file, NULL);
+  err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id, admin_log_file, 0, &acl_flag, acl_file, NULL);
   if (err < 0)
     {
       util_log_write_errstr ("broker config read error.\n");
@@ -140,14 +138,11 @@ main (int argc, char **argv)
 	}
 #endif
 
-      shm_br =
-	(T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER,
-				      SHM_MODE_MONITOR);
+      shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_MONITOR);
 
       if (shm_br == NULL && uw_get_error_code () != UW_ER_SHM_OPEN_MAGIC)
 	{
-	  if (admin_start_cmd (br_info, num_broker, master_shm_id,
-			       acl_flag, acl_file) < 0)
+	  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file) < 0)
 	    {
 	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	      return -1;
@@ -159,8 +154,7 @@ main (int argc, char **argv)
 	}
       else
 	{
-	  PRINT_AND_LOG_ERR_MSG ("Error: CUBRID Broker is already running "
-				 "with shared memory key '%x'.\n",
+	  PRINT_AND_LOG_ERR_MSG ("Error: CUBRID Broker is already running " "with shared memory key '%x'.\n",
 				 master_shm_id);
 	  uw_shm_detach (shm_br);
 	}
@@ -199,8 +193,7 @@ main (int argc, char **argv)
     {
       if (argc < 4)
 	{
-	  PRINT_AND_LOG_ERR_MSG
-	    ("%s restart <broker-name> <appl_server_index>\n", argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s restart <broker-name> <appl_server_index>\n", argv[0]);
 	  return -1;
 	}
       if (admin_restart_cmd (master_shm_id, argv[2], atoi (argv[3])) < 0)
@@ -305,8 +298,7 @@ main (int argc, char **argv)
 
       if (argc < 3)
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <broker-name>\n",
-				 argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <broker-name>\n", argv[0]);
 	  return -1;
 	}
 
@@ -325,8 +317,7 @@ main (int argc, char **argv)
 	}
       else
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <broker-name>\n",
-				 argv[0]);
+	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <broker-name>\n", argv[0]);
 	  return -1;
 	}
       if (err_code < 0)

@@ -100,8 +100,7 @@ static const int css_Maximum_server_count = 50;
 #endif /* !WINDOWS */
 
 static void css_sockopt (SOCKET sd);
-static int css_sockaddr (const char *host, int port, struct sockaddr *saddr,
-			 socklen_t * slen);
+static int css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * slen);
 static int css_fd_error (SOCKET fd);
 
 char *
@@ -118,8 +117,7 @@ css_get_master_domain_path (void)
 	{
 	  cubrid_tmp = "/tmp";
 	}
-      snprintf (path, PATH_MAX, "%s/%s%d", cubrid_tmp, envvar_prefix (),
-		prm_get_master_port_id ());
+      snprintf (path, PATH_MAX, "%s/%s%d", cubrid_tmp, envvar_prefix (), prm_get_master_port_id ());
       need_init = false;
     }
 
@@ -140,8 +138,7 @@ css_tcp_client_open (const char *host, int port)
   fd = css_tcp_client_open_with_retry (host, port, true);
   if (IS_INVALID_SOCKET (fd))
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 1, host);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER, 1, host);
     }
   return fd;
 }
@@ -153,28 +150,22 @@ css_sockopt (SOCKET sd)
 
   if (prm_get_integer_value (PRM_ID_TCP_RCVBUF_SIZE) > 0)
     {
-      setsockopt (sd, SOL_SOCKET, SO_RCVBUF,
-		  (int *) prm_get_value (PRM_ID_TCP_RCVBUF_SIZE),
-		  sizeof (int));
+      setsockopt (sd, SOL_SOCKET, SO_RCVBUF, (int *) prm_get_value (PRM_ID_TCP_RCVBUF_SIZE), sizeof (int));
     }
 
   if (prm_get_integer_value (PRM_ID_TCP_SNDBUF_SIZE) > 0)
     {
-      setsockopt (sd, SOL_SOCKET, SO_SNDBUF,
-		  (int *) prm_get_value (PRM_ID_TCP_SNDBUF_SIZE),
-		  sizeof (int));
+      setsockopt (sd, SOL_SOCKET, SO_SNDBUF, (int *) prm_get_value (PRM_ID_TCP_SNDBUF_SIZE), sizeof (int));
     }
 
   if (prm_get_bool_value (PRM_ID_TCP_NODELAY))
     {
-      setsockopt (sd, IPPROTO_TCP, TCP_NODELAY,
-		  (const char *) &bool_value, sizeof (bool_value));
+      setsockopt (sd, IPPROTO_TCP, TCP_NODELAY, (const char *) &bool_value, sizeof (bool_value));
     }
 
   if (prm_get_bool_value (PRM_ID_TCP_KEEPALIVE))
     {
-      setsockopt (sd, SOL_SOCKET, SO_KEEPALIVE,
-		  (const char *) &bool_value, sizeof (bool_value));
+      setsockopt (sd, SOL_SOCKET, SO_KEEPALIVE, (const char *) &bool_value, sizeof (bool_value));
     }
 }
 
@@ -189,7 +180,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 {
   in_addr_t in_addr;
 
-  /*
+  /* 
    * First try to convert to the host name as a dotted-decimal number.
    * Only if that fails do we call gethostbyname.
    */
@@ -207,8 +198,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0
-	  || hp == NULL)
+      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
 	  return INVALID_SOCKET;
 	}
@@ -262,29 +252,27 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
  *   slen(out):
  */
 static int
-css_sockaddr (const char *host, int port, struct sockaddr *saddr,
-	      socklen_t * slen)
+css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * slen)
 {
   struct sockaddr_in tcp_saddr;
   struct sockaddr_un unix_saddr;
   in_addr_t in_addr;
 
-  /*
+  /* 
    * Construct address for TCP socket
    */
   memset ((void *) &tcp_saddr, 0, sizeof (tcp_saddr));
   tcp_saddr.sin_family = AF_INET;
   tcp_saddr.sin_port = htons (port);
 
-  /*
+  /* 
    * First try to convert to the host name as a dotten-decimal number.
    * Only if that fails do we call gethostbyname.
    */
   in_addr = inet_addr (host);
   if (in_addr != INADDR_NONE)
     {
-      memcpy ((void *) &tcp_saddr.sin_addr, (void *) &in_addr,
-	      sizeof (in_addr));
+      memcpy ((void *) &tcp_saddr.sin_addr, (void *) &in_addr, sizeof (in_addr));
     }
   else
     {
@@ -294,15 +282,12 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 ||
-	  hp == NULL)
+      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
 	}
-      memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr,
-	      hent.h_length);
+      memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
 # elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
       struct hostent hent;
       int herr;
@@ -310,24 +295,20 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
 
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
 	}
-      memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr,
-	      hent.h_length);
+      memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
 # elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       struct hostent hent;
       struct hostent_data ht_data;
 
       if (gethostbyname_r (host, &hent, &ht_data) == -1)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
 	}
-      memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr,
-	      hent.h_length);
+      memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
 # else
 #   error "HAVE_GETHOSTBYNAME_R"
 # endif
@@ -340,17 +321,15 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
 	}
-      memcpy ((void *) &tcp_saddr.sin_addr, (void *) hp->h_addr,
-	      hp->h_length);
+      memcpy ((void *) &tcp_saddr.sin_addr, (void *) hp->h_addr, hp->h_length);
       pthread_mutex_unlock (&gethostbyname_lock);
 #endif /* !HAVE_GETHOSTBYNAME_R */
     }
 
-  /*
+  /* 
    * Compare with the TCP address with localhost.
    * If it is, use Unix domain socket rather than TCP for the performance
    */
@@ -359,8 +338,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
     {
       memset ((void *) &unix_saddr, 0, sizeof (unix_saddr));
       unix_saddr.sun_family = AF_UNIX;
-      strncpy (unix_saddr.sun_path, css_get_master_domain_path (),
-	       sizeof (unix_saddr.sun_path) - 1);
+      strncpy (unix_saddr.sun_path, css_get_master_domain_path (), sizeof (unix_saddr.sun_path) - 1);
       *slen = sizeof (unix_saddr);
       memcpy ((void *) saddr, (void *) &unix_saddr, *slen);
     }
@@ -408,8 +386,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
       sd = socket (saddr->sa_family, SOCK_STREAM, 0);
       if (IS_INVALID_SOCKET (sd))
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_CANNOT_CREATE_SOCKET, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CANNOT_CREATE_SOCKET, 0);
 	  return INVALID_SOCKET;
 	}
       else
@@ -417,7 +394,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 	  css_sockopt (sd);
 	}
 
-      /*
+      /* 
        * If we get an ECONNREFUSED from the connect, we close the socket, and
        * retry again. This is needed since the backlog parameter of the SUN
        * machine is too small (See man page of listen...see BUG section).
@@ -444,7 +421,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 	    }
 	  else
 	    {
-	      /*
+	      /* 
 	       * Wait a little bit to change the load of the server.
 	       * Don't wait for more than 1/2 min or the timeout period
 	       */
@@ -453,7 +430,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 		  sleep_nsecs = 30;
 		}
 
-	      /*
+	      /* 
 	       * Sleep only when we have not timed out. That is, when nsecs is
 	       * negative.
 	       */
@@ -474,7 +451,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 	  will_retry = false;	/* Don't retry */
 	}
 
-      /*
+      /* 
        * According to the Sun man page of connect & listen. When a connect
        * was forcefully rejected. The calling program must close the
        * socket descriptor, before another connect is retried.
@@ -500,8 +477,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
   if (success < 0)
     {
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_retry:"
-		    "connection failed with retries %d errno %d\n",
+      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_retry:" "connection failed with retries %d errno %d\n",
 		    num_retries, errno);
 #endif /* CUBRID_DEBUG */
       return INVALID_SOCKET;
@@ -543,8 +519,7 @@ css_tcp_client_open_with_timeout (const char *host, int port, int timeout)
   sd = socket (saddr->sa_family, SOCK_STREAM, 0);
   if (sd < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_CANNOT_CREATE_SOCKET, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CANNOT_CREATE_SOCKET, 0);
       return INVALID_SOCKET;
     }
   else
@@ -569,8 +544,7 @@ again_eintr:
     {
       close (sd);
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
-		    "connect failed with errno %d", errno);
+      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:" "connect failed with errno %d", errno);
 #endif /* CUBRID_DEBUG */
       return INVALID_SOCKET;
     }
@@ -588,8 +562,7 @@ retry_poll:
 	}
 
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
-		    "poll failed errno %d", errno);
+      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:" "poll failed errno %d", errno);
 #endif /* CUBRID_DEBUG */
       close (sd);
       return INVALID_SOCKET;
@@ -600,8 +573,7 @@ retry_poll:
       errno = ETIMEDOUT;
       close (sd);
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
-		    "poll failed with timeout %d", timeout);
+      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:" "poll failed with timeout %d", timeout);
 #endif /* CUBRID_DEBUG */
       return INVALID_SOCKET;
     }
@@ -611,8 +583,7 @@ retry_poll:
   if (getsockopt (sd, SOL_SOCKET, SO_ERROR, (void *) &n, &slen) < 0)
     {
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
-		    "getsockopt failed errno %d", errno);
+      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:" "getsockopt failed errno %d", errno);
 #endif /* CUBRID_DEBUG */
       close (sd);
       return INVALID_SOCKET;
@@ -620,8 +591,7 @@ retry_poll:
   if (n != 0)
     {
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:"
-		    "connection failed errno %d", n);
+      er_log_debug (ARG_FILE_LINE, "css_tcp_client_open_with_timeout:" "connection failed errno %d", n);
 #endif /* CUBRID_DEBUG */
       close (sd);
       return INVALID_SOCKET;
@@ -646,7 +616,7 @@ css_tcp_master_open (int port, SOCKET * sockfd)
   int reuseaddr_flag = 1;
   struct stat unix_socket_stat;
 
-  /*
+  /* 
    * We have to create a socket ourselves and bind our well-known address to it.
    */
 
@@ -665,16 +635,15 @@ css_tcp_master_open (int port, SOCKET * sockfd)
     }
 
   unix_srv_addr.sun_family = AF_UNIX;
-  strncpy (unix_srv_addr.sun_path, css_get_master_domain_path (),
-	   sizeof (unix_srv_addr.sun_path) - 1);
+  strncpy (unix_srv_addr.sun_path, css_get_master_domain_path (), sizeof (unix_srv_addr.sun_path) - 1);
 
-  /*
+  /* 
    * Create the socket and Bind our local address so that any
    * client may send to us.
    */
 
 retry:
-  /*
+  /* 
    * Allow the new master to rebind the CUBRID port even if there are
    * clients with open connections from previous masters.
    */
@@ -682,22 +651,18 @@ retry:
   sockfd[0] = socket (AF_INET, SOCK_STREAM, 0);
   if (IS_INVALID_SOCKET (sockfd[0]))
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_CANNOT_CREATE_STREAM, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CANNOT_CREATE_STREAM, 0);
       return ERR_CSS_TCP_CANNOT_CREATE_STREAM;
     }
 
-  if (setsockopt (sockfd[0], SOL_SOCKET, SO_REUSEADDR,
-		  (char *) &reuseaddr_flag, sizeof (reuseaddr_flag)) < 0)
+  if (setsockopt (sockfd[0], SOL_SOCKET, SO_REUSEADDR, (char *) &reuseaddr_flag, sizeof (reuseaddr_flag)) < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_BIND_ABORT, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_BIND_ABORT, 0);
       css_shutdown_socket (sockfd[0]);
       return ERR_CSS_TCP_BIND_ABORT;
     }
 
-  if (bind (sockfd[0], (struct sockaddr *) &tcp_srv_addr,
-	    sizeof (tcp_srv_addr)) < 0)
+  if (bind (sockfd[0], (struct sockaddr *) &tcp_srv_addr, sizeof (tcp_srv_addr)) < 0)
     {
       if (errno == EADDRINUSE && retry_count <= 5)
 	{
@@ -706,25 +671,23 @@ retry:
 	  (void) sleep (1);
 	  goto retry;
 	}
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_BIND_ABORT, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_BIND_ABORT, 0);
       css_shutdown_socket (sockfd[0]);
       return ERR_CSS_TCP_BIND_ABORT;
     }
 
-  /*
+  /* 
    * And set the listen parameter, telling the system that we're
    * ready to accept incoming connection requests.
    */
   if (listen (sockfd[0], css_Maximum_server_count) != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_ACCEPT_ERROR, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_ACCEPT_ERROR, 0);
       css_shutdown_socket (sockfd[0]);
       return ERR_CSS_TCP_ACCEPT_ERROR;
     }
 
-  /*
+  /* 
    * Since the master now forks /M drivers, make sure we do a close
    * on exec on the socket.
    */
@@ -739,8 +702,7 @@ retry:
       if (stat (css_get_master_domain_path (), &unix_socket_stat) == -1)
 	{
 	  /* stat() failed */
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST, 1,
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST, 1,
 			       css_get_master_domain_path ());
 	  css_shutdown_socket (sockfd[0]);
 	  return ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST;
@@ -748,8 +710,7 @@ retry:
       if (!S_ISSOCK (unix_socket_stat.st_mode))
 	{
 	  /* not socket file */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST, 1,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST, 1,
 		  css_get_master_domain_path ());
 	  css_shutdown_socket (sockfd[0]);
 	  return ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST;
@@ -757,8 +718,7 @@ retry:
       if (unlink (css_get_master_domain_path ()) == -1)
 	{
 	  /* unlink() failed */
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST, 1,
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST, 1,
 			       css_get_master_domain_path ());
 	  css_shutdown_socket (sockfd[0]);
 	  return ERR_CSS_UNIX_DOMAIN_SOCKET_FILE_EXIST;
@@ -770,24 +730,20 @@ retry2:
   sockfd[1] = socket (AF_UNIX, SOCK_STREAM, 0);
   if (IS_INVALID_SOCKET (sockfd[1]))
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_CANNOT_CREATE_STREAM, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_CANNOT_CREATE_STREAM, 0);
       css_shutdown_socket (sockfd[0]);
       return ERR_CSS_TCP_CANNOT_CREATE_STREAM;
     }
 
-  if (setsockopt (sockfd[1], SOL_SOCKET, SO_REUSEADDR,
-		  (char *) &reuseaddr_flag, sizeof (reuseaddr_flag)) < 0)
+  if (setsockopt (sockfd[1], SOL_SOCKET, SO_REUSEADDR, (char *) &reuseaddr_flag, sizeof (reuseaddr_flag)) < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_BIND_ABORT, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_BIND_ABORT, 0);
       css_shutdown_socket (sockfd[0]);
       css_shutdown_socket (sockfd[1]);
       return ERR_CSS_TCP_BIND_ABORT;
     }
 
-  if (bind (sockfd[1], (struct sockaddr *) &unix_srv_addr,
-	    sizeof (unix_srv_addr)) < 0)
+  if (bind (sockfd[1], (struct sockaddr *) &unix_srv_addr, sizeof (unix_srv_addr)) < 0)
     {
       if (errno == EADDRINUSE && retry_count <= 5)
 	{
@@ -796,8 +752,7 @@ retry2:
 	  (void) sleep (1);
 	  goto retry2;
 	}
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_BIND_ABORT, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_BIND_ABORT, 0);
       css_shutdown_socket (sockfd[0]);
       css_shutdown_socket (sockfd[1]);
       return ERR_CSS_TCP_BIND_ABORT;
@@ -805,8 +760,7 @@ retry2:
 
   if (listen (sockfd[1], css_Maximum_server_count) != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_ACCEPT_ERROR, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_ACCEPT_ERROR, 0);
       css_shutdown_socket (sockfd[0]);
       css_shutdown_socket (sockfd[1]);
       return ERR_CSS_TCP_ACCEPT_ERROR;
@@ -847,8 +801,7 @@ css_master_accept (SOCKET sockfd)
 	      continue;
 	    }
 
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_ACCEPT_ERROR, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_ACCEPT_ERROR, 0);
 	  return INVALID_SOCKET;
 	}
 
@@ -857,8 +810,7 @@ css_master_accept (SOCKET sockfd)
 
   if (sa.sa_family == AF_INET)
     {
-      setsockopt (sockfd, IPPROTO_TCP, TCP_NODELAY, (char *) &boolean,
-		  sizeof (boolean));
+      setsockopt (sockfd, IPPROTO_TCP, TCP_NODELAY, (char *) &boolean, sizeof (boolean));
     }
 
   return new_sockfd;
@@ -883,8 +835,7 @@ css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd)
   *sockfd = socket (AF_UNIX, SOCK_STREAM, 0);
   if (IS_INVALID_SOCKET (*sockfd))
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_DATAGRAM_SOCKET, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_DATAGRAM_SOCKET, 0);
       return false;
     }
 
@@ -895,12 +846,11 @@ css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd)
 
   if (bind (*sockfd, (struct sockaddr *) &serv_addr, servlen) < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_DATAGRAM_BIND, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_DATAGRAM_BIND, 0);
       return false;
     }
 
-  /*
+  /* 
    * some operating system does not set the permission for unix domain socket.
    * so a server can't connect to master which is initiated by other user.
    */
@@ -910,8 +860,7 @@ css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd)
 
   if (listen (*sockfd, 5) != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_ACCEPT_ERROR, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_ACCEPT_ERROR, 0);
       return false;
     }
 
@@ -944,16 +893,14 @@ css_tcp_listen_server_datagram (SOCKET sockfd, SOCKET * newfd)
 	      continue;
 	    }
 
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_DATAGRAM_ACCEPT, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_DATAGRAM_ACCEPT, 0);
 	  return false;
 	}
 
       break;
     }
 
-  setsockopt (sockfd, IPPROTO_TCP, TCP_NODELAY, (char *) &boolean,
-	      sizeof (boolean));
+  setsockopt (sockfd, IPPROTO_TCP, TCP_NODELAY, (char *) &boolean, sizeof (boolean));
 
   return true;
 }
@@ -980,7 +927,7 @@ css_tcp_master_datagram (char *path_name, SOCKET * sockfd)
 
   do
     {
-      /*
+      /* 
        * If we get an ECONNREFUSED from the connect, we close the socket, and
        * retry again. This is needed since the backlog parameter of the SUN
        * machine is too small (See man page of listen...see BUG section).
@@ -989,8 +936,7 @@ css_tcp_master_datagram (char *path_name, SOCKET * sockfd)
       *sockfd = socket (AF_UNIX, SOCK_STREAM, 0);
       if (IS_INVALID_SOCKET (*sockfd))
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_DATAGRAM_SOCKET, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_DATAGRAM_SOCKET, 0);
 	  return false;
 	}
 
@@ -1033,12 +979,9 @@ css_tcp_master_datagram (char *path_name, SOCKET * sockfd)
 
   if (success < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_DATAGRAM_CONNECT, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_DATAGRAM_CONNECT, 0);
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "Failed with number of retries = %d during connection\n",
-		    num_retries);
+      er_log_debug (ARG_FILE_LINE, "Failed with number of retries = %d during connection\n", num_retries);
 #endif /* CUBRID_DEBUG */
       return false;
     }
@@ -1046,8 +989,7 @@ css_tcp_master_datagram (char *path_name, SOCKET * sockfd)
   if (num_retries > 0)
     {
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "Connected after number of retries = %d\n", num_retries);
+      er_log_debug (ARG_FILE_LINE, "Connected after number of retries = %d\n", num_retries);
 #endif /* CUBRID_DEBUG */
     }
 
@@ -1084,8 +1026,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
   msg.msg_accrights = (caddr_t) & new_fd;	/* address of descriptor */
   msg.msg_accrightslen = sizeof (new_fd);	/* receive 1 descriptor */
 #else /* not LINUX and not AIX */
-  if (cmptr == NULL
-      && (cmptr = (struct cmsghdr *) malloc (CONTROLLEN)) == NULL)
+  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CONTROLLEN)) == NULL)
     {
       return INVALID_SOCKET;
     }
@@ -1097,8 +1038,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
   if (rc < 0)
     {
       TPRINTF ("recvmsg failed for fd = %d\n", rc);
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_RECVMSG, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
       return INVALID_SOCKET;
     }
 
@@ -1141,8 +1081,7 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
   if (send (server_fd, (char *) &request, sizeof (int), 0) < 0)
     {
       /* Master->Server link down. remove old link, and try again. */
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_PASSING_FD, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_PASSING_FD, 0);
       return false;
     }
   req_id = htons (rid);
@@ -1158,8 +1097,7 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
   msg.msg_accrights = (caddr_t) & client_fd;
   msg.msg_accrightslen = sizeof (client_fd);
 #else /* LINUX || AIX */
-  if (cmptr == NULL
-      && (cmptr = (struct cmsghdr *) malloc (CONTROLLEN)) == NULL)
+  if (cmptr == NULL && (cmptr = (struct cmsghdr *) malloc (CONTROLLEN)) == NULL)
     {
       return false;
     }
@@ -1173,8 +1111,7 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
 
   if (sendmsg (server_fd, &msg, 0) < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_TCP_PASSING_FD, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_PASSING_FD, 0);
       return false;
     }
 
@@ -1202,8 +1139,7 @@ css_shutdown_socket (SOCKET fd)
 	      goto again_eintr;
 	    }
 #if defined(CUBRID_DEBUG)
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_GENERIC_ERROR, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 #endif /* CUBRID_DEBUG */
 	}
     }
@@ -1311,8 +1247,7 @@ css_fd_down (SOCKET fd)
   socklen_t error_size = sizeof (socklen_t);
   int rc = 0;
 
-  if (getsockopt (fd, SOL_SOCKET, SO_ERROR, (char *) &error_code,
-		  &error_size) >= 0)
+  if (getsockopt (fd, SOL_SOCKET, SO_ERROR, (char *) &error_code, &error_size) >= 0)
     {
       if (error_code > 0 || css_fd_error (fd) <= 0)
 	{
@@ -1347,7 +1282,7 @@ in_cksum (u_short * addr, int len)
   int sum = 0;
   u_short answer = 0;
 
-  /*
+  /* 
    * Our algorithm is simple, using a 32 bit accumulator (sum), we add
    * sequential 16 bit words to it, and at the end, fold back all the
    * carry bits from the top 16 bits into the lower 16 bits.
@@ -1421,12 +1356,10 @@ css_ping (SOCKET sd, struct sockaddr_in *sa_send, int timeout)
       icmp->icmp_cksum = 0;
       icmp->icmp_cksum = in_cksum ((u_short *) icmp, plen);
       /* send it */
-      n = sendto (sd, sendbuf, plen, 0, (struct sockaddr *) sa_send,
-		  sizeof (struct sockaddr));
+      n = sendto (sd, sendbuf, plen, 0, (struct sockaddr *) sa_send, sizeof (struct sockaddr));
       if (n < 0 && errno != EINPROGRESS)
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"css_ping: can't send ICMP packet to %s errno %d\n",
+	  er_log_debug (ARG_FILE_LINE, "css_ping: can't send ICMP packet to %s errno %d\n",
 			inet_ntoa (sa_send->sin_addr), errno);
 	  close (sd);
 	  return errno;
@@ -1440,8 +1373,7 @@ css_ping (SOCKET sd, struct sockaddr_in *sa_send, int timeout)
       n = select (sd + 1, &fds, NULL, NULL, &tv);
       if (n < 0 && errno != EINTR)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_ping: select() errno %d\n",
-			errno);
+	  er_log_debug (ARG_FILE_LINE, "css_ping: select() errno %d\n", errno);
 	  close (sd);
 	  return errno;
 	}
@@ -1449,20 +1381,18 @@ css_ping (SOCKET sd, struct sockaddr_in *sa_send, int timeout)
 	{
 	  /* something is available to read */
 	  slen = sizeof (sa_recv);
-	  n = recvfrom (sd, recvbuf, sizeof (recvbuf), 0,
-			(struct sockaddr *) &sa_recv, &slen);
+	  n = recvfrom (sd, recvbuf, sizeof (recvbuf), 0, (struct sockaddr *) &sa_recv, &slen);
 	  ip = (struct ip *) recvbuf;
 	  hlen = (ip->ip_hl) << 2;
 	  icmp = (struct icmp *) (recvbuf + hlen);
-	  /*
+	  /* 
 	   * We did received somthing, but is it what we were expecting?
 	   * Is is ICMP_ECHO_REPLY packet with the proper PID value?
 	   */
-	  if ((n - hlen >= 8) && icmp->icmp_type == ICMP_ECHOREPLY &&
-	      (ntohs (icmp->icmp_id) == pid) &&
-	      (sa_send->sin_addr.s_addr == sa_recv.sin_addr.s_addr))
+	  if ((n - hlen >= 8) && icmp->icmp_type == ICMP_ECHOREPLY && (ntohs (icmp->icmp_id) == pid)
+	      && (sa_send->sin_addr.s_addr == sa_recv.sin_addr.s_addr))
 	    {
-	      /*er_log_debug (ARG_FILE_LINE, "css_ping: success\n"); */
+	      /* er_log_debug (ARG_FILE_LINE, "css_ping: success\n"); */
 	      close (sd);
 	      return 0;
 	    }
@@ -1501,9 +1431,7 @@ css_peer_alive (SOCKET sd, int timeout)
   slen = sizeof (saddr);
   if (getpeername (sd, (struct sockaddr *) &saddr, &slen) < 0)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "css_peer_alive: returning errno %d from getpeername()\n",
-		    errno);
+      er_log_debug (ARG_FILE_LINE, "css_peer_alive: returning errno %d from getpeername()\n", errno);
       return false;
     }
 
@@ -1523,9 +1451,7 @@ css_peer_alive (SOCKET sd, int timeout)
   /* failed to make a ICMP socket; try to connect to the port ECHO */
   if ((nsd = socket (AF_INET, SOCK_STREAM, 0)) < 0)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "css_peer_alive: errno %d from socket(SOCK_STREAM)\n",
-		    errno);
+      er_log_debug (ARG_FILE_LINE, "css_peer_alive: errno %d from socket(SOCK_STREAM)\n", errno);
       return false;
     }
 
@@ -1535,7 +1461,7 @@ css_peer_alive (SOCKET sd, int timeout)
   saddr.sin_port = htons (7);	/* port ECHO */
   n = connect (nsd, (struct sockaddr *) &saddr, slen);
 
-  /*
+  /* 
    * Connection will be established or refused immediately.
    * Either way it means that the peer host is alive.
    */
@@ -1553,13 +1479,11 @@ css_peer_alive (SOCKET sd, int timeout)
     case EAFNOSUPPORT:		/* address family not supported */
     case EADDRNOTAVAIL:	/* address is not available on the remote machine */
     case EINVAL:		/* on some linux, connecting to the loopback */
-      er_log_debug (ARG_FILE_LINE,
-		    "css_peer_alive: errno %d from connect()\n", errno);
+      er_log_debug (ARG_FILE_LINE, "css_peer_alive: errno %d from connect()\n", errno);
       close (nsd);
       return false;
     default:			/* otherwise, connection failed */
-      er_log_debug (ARG_FILE_LINE,
-		    "css_peer_alive: errno %d from connect()\n", errno);
+      er_log_debug (ARG_FILE_LINE, "css_peer_alive: errno %d from connect()\n", errno);
       close (nsd);
       return false;
     }
@@ -1575,8 +1499,7 @@ retry_poll:
 	{
 	  goto retry_poll;
 	}
-      er_log_debug (ARG_FILE_LINE, "css_peer_alive: errno %d from poll()\n",
-		    errno);
+      er_log_debug (ARG_FILE_LINE, "css_peer_alive: errno %d from poll()\n", errno);
       close (nsd);
       return false;
     }
@@ -1591,8 +1514,7 @@ retry_poll:
   size = sizeof (n);
   if (getsockopt (nsd, SOL_SOCKET, SO_ERROR, (void *) &n, &size) < 0)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "css_peer_alive: getsockopt() return error %d\n", errno);
+      er_log_debug (ARG_FILE_LINE, "css_peer_alive: getsockopt() return error %d\n", errno);
       close (nsd);
       return false;
     }
@@ -1603,8 +1525,7 @@ retry_poll:
       return true;
     }
 
-  er_log_debug (ARG_FILE_LINE, "css_peer_alive: errno %d from connect()\n",
-		n);
+  er_log_debug (ARG_FILE_LINE, "css_peer_alive: errno %d from connect()\n", n);
   close (nsd);
   return false;
 }

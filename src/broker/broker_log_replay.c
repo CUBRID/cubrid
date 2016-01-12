@@ -106,46 +106,34 @@ struct t_sql_result
 };
 
 static int log_replay (char *infilename, char *outfilename);
-static char *get_next_log_line (FILE * infp, T_STRING * linebuf_tstr,
-				const off_t last_offset, int *lineno);
+static char *get_next_log_line (FILE * infp, T_STRING * linebuf_tstr, const off_t last_offset, int *lineno);
 
 static char *get_query_stmt_from_plan (int req);
-static int log_prepare (FILE * cci_err, FILE * pass_sql, int con,
-			char *sql_log, T_SQL_INFO * sql_info,
+static int log_prepare (FILE * cci_err, FILE * pass_sql, int con, char *sql_log, T_SQL_INFO * sql_info,
 			T_SUMMARY_INFO * summary);
 static int get_cci_type (char *p);
-static int log_bind_value (int req, T_STRING * linebuf, char *sql_log,
-			   char *output_result, int remain_bind_buf);
-static int log_execute (int con_h, int req, char *sql_log,
-			double *execute_time);
+static int log_bind_value (int req, T_STRING * linebuf, char *sql_log, char *output_result, int remain_bind_buf);
+static int log_execute (int con_h, int req, char *sql_log, double *execute_time);
 
 static void get_sql_time_info (char *sql_log, T_SQL_INFO * info);
 static void update_diff_time_statistics (double diff_time);
 
 static int print_temp_result (char *sql_log, T_SQL_INFO * info);
-static void update_summary_info (T_SUMMARY_INFO * summary,
-				 T_SQL_INFO * sql_info);
+static void update_summary_info (T_SUMMARY_INFO * summary, T_SQL_INFO * sql_info);
 static void print_summary_info (T_SUMMARY_INFO * summary);
-static void print_result (FILE * outfp, double max_diff_time,
-			  double min_diff_time, int tmp_line_len_max);
+static void print_result (FILE * outfp, double max_diff_time, double min_diff_time, int tmp_line_len_max);
 
-static char *make_sql_info (char *info_buf, char *start_p, int diff_time,
-			    int buf_size);
+static char *make_sql_info (char *info_buf, char *start_p, int diff_time, int buf_size);
 static int result_sort_func (const void *arg1, const void *arg2);
-static READ_RESULT get_temp_file_line (char *read_buf,
-				       unsigned int read_buf_size,
-				       int *diff_time, char **endp);
-static int print_result_without_sort (FILE * outfp, int print_diff_time_lower,
-				      int read_buf_max);
-static int print_result_with_sort (FILE * outfp, int print_diff_time_lower,
-				   int num_query, int read_buf_max);
+static READ_RESULT get_temp_file_line (char *read_buf, unsigned int read_buf_size, int *diff_time, char **endp);
+static int print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf_max);
+static int print_result_with_sort (FILE * outfp, int print_diff_time_lower, int num_query, int read_buf_max);
 
 static int get_args (int argc, char *argv[]);
 
-static int open_file (char *infilename, char *outfilename, FILE ** infp,
-		      FILE ** outfp, FILE ** cci_errfp, FILE ** skip_sqlfp);
-static void close_file (FILE * infp, FILE * outfp, FILE * cci_errfp,
-			FILE * skip_sqlfp);
+static int open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp, FILE ** cci_errfp,
+		      FILE ** skip_sqlfp);
+static void close_file (FILE * infp, FILE * outfp, FILE * cci_errfp, FILE * skip_sqlfp);
 
 static char *host = NULL;
 static int broker_port = INVALID_PORT_NUM;
@@ -205,8 +193,7 @@ log_replay (char *infilename, char *outfilename)
 
   memset (&summary, 0, sizeof (T_SUMMARY_INFO));
 
-  snprintf (conn_url, sizeof (conn_url), "cci:cubrid:%s:%u:%s:::",
-	    host, broker_port, dbname);
+  snprintf (conn_url, sizeof (conn_url), "cci:cubrid:%s:%u:%s:::", host, broker_port, dbname);
   con_h = cci_connect_with_url (conn_url, dbuser, dbpasswd);
   if (con_h < 0)
     {
@@ -221,8 +208,7 @@ log_replay (char *infilename, char *outfilename)
       goto end;
     }
 
-  if (open_file
-      (infilename, outfilename, &infp, &outfp, &cci_errfp, &skip_sqlfp) < 0)
+  if (open_file (infilename, outfilename, &infp, &outfp, &cci_errfp, &skip_sqlfp) < 0)
     {
       result = ER_FAILED;
       goto end;
@@ -270,9 +256,7 @@ log_replay (char *infilename, char *outfilename)
 
       memset (&sql_info, '\0', sizeof (T_SQL_INFO));
 
-      req =
-	log_prepare (cci_errfp, skip_sqlfp, con_h, msg_p, &sql_info,
-		     &summary);
+      req = log_prepare (cci_errfp, skip_sqlfp, con_h, msg_p, &sql_info, &summary);
       if (req < 0)
 	{
 	  free_and_init (sql_info.sql);
@@ -282,8 +266,7 @@ log_replay (char *infilename, char *outfilename)
 
       while (1)
 	{
-	  linebuf =
-	    get_next_log_line (infp, linebuf_tstr, last_offset, &lineno);
+	  linebuf = get_next_log_line (infp, linebuf_tstr, last_offset, &lineno);
 	  if (linebuf == NULL)
 	    {
 	      break;
@@ -303,9 +286,7 @@ log_replay (char *infilename, char *outfilename)
 		  remain_bind_buf = sizeof (bind_str_buf);
 		}
 
-	      bind_str_offset =
-		log_bind_value (req, linebuf_tstr, msg_p, sql_info.bind_str,
-				remain_bind_buf);
+	      bind_str_offset = log_bind_value (req, linebuf_tstr, msg_p, sql_info.bind_str, remain_bind_buf);
 	      if (bind_str_offset < 0)
 		{
 		  fprintf (stderr, "log bind error [line:%d]\n", lineno);
@@ -322,8 +303,7 @@ log_replay (char *infilename, char *outfilename)
 		  fprintf (cci_errfp, "cci execute error\n");
 		  if (sql_info.rewrite_sql)
 		    {
-		      fprintf (cci_errfp, "rewrite sql[%s]\n",
-			       sql_info.rewrite_sql);
+		      fprintf (cci_errfp, "rewrite sql[%s]\n", sql_info.rewrite_sql);
 		    }
 		  fprintf (cci_errfp, "sql[%s]\n", sql_info.sql);
 		  if (sql_info.bind_str)
@@ -383,14 +363,12 @@ log_replay (char *infilename, char *outfilename)
 
   print_summary_info (&summary);
 
-  print_result (outfp, summary.max_diff_time, summary.min_diff_time,
-		temp_line_len_max + 1);
+  print_result (outfp, summary.max_diff_time, summary.min_diff_time, temp_line_len_max + 1);
 
   gettimeofday (&end, NULL);
   program_run_time = ut_diff_time (&begin, &end);
 
-  fprintf (stdout, "\n%s: %f sec\n", "cubrid_replay run time",
-	   program_run_time);
+  fprintf (stdout, "\n%s: %f sec\n", "cubrid_replay run time", program_run_time);
 
 end:
   cci_disconnect (con_h, &err_buf);
@@ -415,8 +393,7 @@ end:
  *   lineno(in/out):
  */
 static char *
-get_next_log_line (FILE * infp, T_STRING * linebuf_tstr,
-		   const off_t last_offset, int *lineno)
+get_next_log_line (FILE * infp, T_STRING * linebuf_tstr, const off_t last_offset, int *lineno)
 {
   char *linebuf;
   off_t cur_offset;
@@ -555,8 +532,7 @@ error:
  *   summary(out):
  */
 static int
-log_prepare (FILE * cci_errfp, FILE * pass_sql, int con, char *sql_log,
-	     T_SQL_INFO * sql_info, T_SUMMARY_INFO * summary)
+log_prepare (FILE * cci_errfp, FILE * pass_sql, int con, char *sql_log, T_SQL_INFO * sql_info, T_SUMMARY_INFO * summary)
 {
   int req, exec_h_id;
   int prepare_flag, execute_flag;
@@ -597,8 +573,7 @@ log_prepare (FILE * cci_errfp, FILE * pass_sql, int con, char *sql_log,
 
   (void) cci_get_result_info (req, &cmd_type, NULL);
 
-  if (rewrite_query_flag == 1
-      && (cmd_type == CUBRID_STMT_UPDATE || cmd_type == CUBRID_STMT_DELETE))
+  if (rewrite_query_flag == 1 && (cmd_type == CUBRID_STMT_UPDATE || cmd_type == CUBRID_STMT_DELETE))
     {
       rewrite_query = get_query_stmt_from_plan (req);
       if (rewrite_query == NULL)
@@ -770,8 +745,7 @@ get_cci_type (char *p)
  *   remain_bind_buf(in):
  */
 static int
-log_bind_value (int req, T_STRING * linebuf, char *sql_log,
-		char *output_result, int remain_bind_buf)
+log_bind_value (int req, T_STRING * linebuf, char *sql_log, char *output_result, int remain_bind_buf)
 {
   char *p, *q, *r;
   char *value_p;
@@ -849,10 +823,7 @@ log_bind_value (int req, T_STRING * linebuf, char *sql_log,
       memset ((char *) &vptr, 0x00, sizeof (T_CCI_BIT));
       vptr.size = bind_len;
       vptr.buf = (char *) value_p;
-      res =
-	cci_bind_param (req, bind_idx,
-			CCI_A_TYPE_BIT, (void *) &(vptr),
-			(T_CCI_U_TYPE) type, CCI_BIND_PTR);
+      res = cci_bind_param (req, bind_idx, CCI_A_TYPE_BIT, (void *) &(vptr), (T_CCI_U_TYPE) type, CCI_BIND_PTR);
     }
   else
     {
@@ -866,15 +837,11 @@ log_bind_value (int req, T_STRING * linebuf, char *sql_log,
 
   if (bind_len > 0)
     {
-      offset =
-	snprintf (output_result, remain_bind_buf, "%d: '%s',END", bind_idx,
-		  value_p);
+      offset = snprintf (output_result, remain_bind_buf, "%d: '%s',END", bind_idx, value_p);
     }
   else
     {
-      offset =
-	snprintf (output_result, remain_bind_buf, "%d: %s,END", bind_idx,
-		  value_p);
+      offset = snprintf (output_result, remain_bind_buf, "%d: %s,END", bind_idx, value_p);
     }
 
   return offset;
@@ -971,7 +938,7 @@ get_sql_time_info (char *sql_log, T_SQL_INFO * info)
 static void
 update_diff_time_statistics (double diff_time)
 {
-  /*
+  /* 
    * we save count of query witch have specific diff time
    * to use when order with diff time
    */
@@ -1014,10 +981,9 @@ print_temp_result (char *sql_log, T_SQL_INFO * info)
   char *rewrite_sql = info->rewrite_sql;
   char *bind_str = info->bind_str;
 
-  line_len += fprintf (br_tmpfp, "%d %d %d %s",
-		       (int) (info->diff_time * 1000),
-		       (int) (info->exec_time * 1000),
-		       (int) (info->sql_log_time * 1000), info->sql);
+  line_len +=
+    fprintf (br_tmpfp, "%d %d %d %s", (int) (info->diff_time * 1000), (int) (info->exec_time * 1000),
+	     (int) (info->sql_log_time * 1000), info->sql);
 
   if (rewrite_sql != NULL)
     {
@@ -1054,7 +1020,7 @@ update_summary_info (T_SUMMARY_INFO * summary, T_SQL_INFO * sql_info)
     }
 
   summary->max_diff_time = MAX (summary->max_diff_time, sql_info->diff_time);
-  /* min_diff_time is used for knowing lower bound of diff time  when order result */
+  /* min_diff_time is used for knowing lower bound of diff time when order result */
   summary->min_diff_time = MIN (summary->min_diff_time, sql_info->diff_time);
 
   return;
@@ -1076,21 +1042,14 @@ print_summary_info (T_SUMMARY_INFO * summary)
       avg_diff_time = summary->sum_diff_time / summary->num_exec_query;
     }
 
-  fprintf (stdout,
-	   "------------------- Result Summary --------------------------\n");
-  fprintf (stdout, "* %-40s : %d\n", "Total queries",
-	   summary->num_total_query);
-  fprintf (stdout, "* %-40s : %d\n", "Skipped queries (see skip.sql)",
-	   summary->num_skip_query);
-  fprintf (stdout, "* %-40s : %d\n", "Failed queries (see replay.err)",
-	   summary->num_err_query);
-  snprintf (msg_buf, sizeof (msg_buf), "Slow queries (time diff > %.3f secs)",
-	    print_result_diff_time_lower);
+  fprintf (stdout, "------------------- Result Summary --------------------------\n");
+  fprintf (stdout, "* %-40s : %d\n", "Total queries", summary->num_total_query);
+  fprintf (stdout, "* %-40s : %d\n", "Skipped queries (see skip.sql)", summary->num_skip_query);
+  fprintf (stdout, "* %-40s : %d\n", "Failed queries (see replay.err)", summary->num_err_query);
+  snprintf (msg_buf, sizeof (msg_buf), "Slow queries (time diff > %.3f secs)", print_result_diff_time_lower);
   fprintf (stdout, "* %-40s : %d\n", msg_buf, summary->num_diff_time_query);
-  fprintf (stdout, "* %-40s : %.3f\n", "Max execution time diff",
-	   summary->max_diff_time);
-  fprintf (stdout, "* %-40s : %.3f\n", "Avg execution time diff",
-	   avg_diff_time);
+  fprintf (stdout, "* %-40s : %.3f\n", "Max execution time diff", summary->max_diff_time);
+  fprintf (stdout, "* %-40s : %.3f\n", "Avg execution time diff", avg_diff_time);
 
   return;
 }
@@ -1135,17 +1094,13 @@ make_sql_info (char *sql_info, char *start_p, int diff_time, int buf_size)
       bind_str = p;
     }
 
-  offset = snprintf (sql_info, buf_size,
-		     "EXEC TIME (REPLAY / SQL_LOG / DIFF): %.3f / %.3f / %.3f\n"
-		     "SQL: %s\n",
-		     ((double) exec_time) / 1000,
-		     ((double) sql_log_time) / 1000,
-		     ((double) diff_time) / 1000, sql);
+  offset =
+    snprintf (sql_info, buf_size, "EXEC TIME (REPLAY / SQL_LOG / DIFF): %.3f / %.3f / %.3f\n" "SQL: %s\n",
+	      ((double) exec_time) / 1000, ((double) sql_log_time) / 1000, ((double) diff_time) / 1000, sql);
 
   if (rewrite_sql && (buf_size - offset) > 0)
     {
-      offset += snprintf (sql_info + offset, (buf_size - offset),
-			  "REWRITE SQL: %s\n", rewrite_sql);
+      offset += snprintf (sql_info + offset, (buf_size - offset), "REWRITE SQL: %s\n", rewrite_sql);
     }
 
   if (bind_str == NULL)
@@ -1159,8 +1114,7 @@ make_sql_info (char *sql_info, char *start_p, int diff_time, int buf_size)
       if (p)
 	{
 	  *p = '\0';
-	  offset += snprintf (sql_info + offset, (buf_size - offset),
-			      "BIND %s\n", bind_str);
+	  offset += snprintf (sql_info + offset, (buf_size - offset), "BIND %s\n", bind_str);
 	  p += 4;
 	  bind_str = p;
 	}
@@ -1200,8 +1154,7 @@ result_sort_func (const void *arg1, const void *arg2)
  *   endp(out):
  */
 static READ_RESULT
-get_temp_file_line (char *read_buf, unsigned int read_buf_size,
-		    int *diff_time, char **endp)
+get_temp_file_line (char *read_buf, unsigned int read_buf_size, int *diff_time, char **endp)
 {
   char *p;
   int res;
@@ -1240,8 +1193,7 @@ get_temp_file_line (char *read_buf, unsigned int read_buf_size,
  *   read_buf_max(in): size of read buffer
  */
 static int
-print_result_without_sort (FILE * outfp, int print_diff_time_lower,
-			   int read_buf_max)
+print_result_without_sort (FILE * outfp, int print_diff_time_lower, int read_buf_max)
 {
   int diff_time;
   int res = 0;
@@ -1293,8 +1245,7 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower,
 	  return ER_FAILED;
 	}
 
-      make_sql_info (result.sql_info, endp + 1, diff_time,
-		     read_buf_max + SQL_INFO_TITLE_LEN);
+      make_sql_info (result.sql_info, endp + 1, diff_time, read_buf_max + SQL_INFO_TITLE_LEN);
 
       fprintf (outfp, "%s\n", result.sql_info);
       free_and_init (result.sql_info);
@@ -1320,8 +1271,7 @@ print_result_without_sort (FILE * outfp, int print_diff_time_lower,
  *   read_buf_max(in): size of read buffer
  */
 static int
-print_result_with_sort (FILE * outfp, int print_diff_time_lower,
-			int num_query, int read_buf_max)
+print_result_with_sort (FILE * outfp, int print_diff_time_lower, int num_query, int read_buf_max)
 {
   int diff_time;
   int i = 0;
@@ -1374,8 +1324,7 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower,
 
       if (diff_time >= print_diff_time_lower)
 	{
-	  result[i].sql_info =
-	    (char *) malloc (read_buf_max + SQL_INFO_TITLE_LEN);
+	  result[i].sql_info = (char *) malloc (read_buf_max + SQL_INFO_TITLE_LEN);
 	  if (result[i].sql_info == NULL)
 	    {
 	      fprintf (stderr, "memory allocation failed\n");
@@ -1383,13 +1332,12 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower,
 	    }
 
 	  result[i].diff_time = diff_time;
-	  make_sql_info (result[i].sql_info, endp + 1, diff_time,
-			 read_buf_max + SQL_INFO_TITLE_LEN);
+	  make_sql_info (result[i].sql_info, endp + 1, diff_time, read_buf_max + SQL_INFO_TITLE_LEN);
 	  i++;
 	}
       else
 	{
-	  /*
+	  /* 
 	   * if sql's diff time is shorter than diff_time_lower,
 	   * write in next temp file. it will be read next time.
 	   */
@@ -1444,8 +1392,7 @@ error:
  *   temp_line_len_max(in): line max of temp file result.
  */
 static void
-print_result (FILE * outfp, double max_diff_time, double min_diff_time,
-	      int temp_line_len_max)
+print_result (FILE * outfp, double max_diff_time, double min_diff_time, int temp_line_len_max)
 {
   int i, num_sort = 0;
   int max_diff_in_msec = (int) (max_diff_time * 1000) + 1;
@@ -1459,13 +1406,11 @@ print_result (FILE * outfp, double max_diff_time, double min_diff_time,
       num_sort += num_slower_queries[i];
       if (num_sort > SORT_BUF_MAX)
 	{
-	  if (print_result_with_sort (outfp, i + 1,
-				      num_sort - num_slower_queries[i],
-				      temp_line_len_max) < 0)
+	  if (print_result_with_sort (outfp, i + 1, num_sort - num_slower_queries[i], temp_line_len_max) < 0)
 	    {
 	      return;
 	    }
-	  /*
+	  /* 
 	   * we don't sort last diff time query to avoid ordering size excess SORT_BUF_SIZE
 	   * in genaral, many sql have same diff time. so, this help decrease needless sorting
 	   */
@@ -1483,9 +1428,7 @@ print_result (FILE * outfp, double max_diff_time, double min_diff_time,
       num_sort += num_faster_queries[(-i)];
       if (num_sort > SORT_BUF_MAX)
 	{
-	  if (print_result_with_sort (outfp, i + 1,
-				      num_sort - num_faster_queries[(-i)],
-				      temp_line_len_max) < 0)
+	  if (print_result_with_sort (outfp, i + 1, num_sort - num_faster_queries[(-i)], temp_line_len_max) < 0)
 	    {
 	      return;
 	    }
@@ -1501,8 +1444,7 @@ print_result (FILE * outfp, double max_diff_time, double min_diff_time,
 
   if (num_sort > 0)
     {
-      print_result_with_sort (outfp, min_diff_in_msec, num_sort,
-			      temp_line_len_max);
+      print_result_with_sort (outfp, min_diff_in_msec, num_sort, temp_line_len_max);
     }
 
   return;
@@ -1594,16 +1536,12 @@ get_args (int argc, char *argv[])
 
 usage:
   fprintf (stderr,
-	   "usage : %s -I broker_host -P broker_port -d database_name infile outfile [OPTION] \n"
-	   "\n"
-	   "valid options:\n"
-	   "  -u   user name\n"
-	   "  -p   user password\n"
+	   "usage : %s -I broker_host -P broker_port -d database_name infile outfile [OPTION] \n" "\n"
+	   "valid options:\n" "  -u   user name\n" "  -p   user password\n"
 	   "  -h   break time between query execute; default: %.3f(sec)\n"
 	   "  -r   enable to rewrite update/delete query to select query\n"
 	   "  -D   minimum value of time difference make print result; default: %.3f(sec)\n"
-	   "  -F   datetime when start to replay sql_log\n"
-	   "  -T   datetime when end to replay sql_log\n", argv[0],
+	   "  -F   datetime when start to replay sql_log\n" "  -T   datetime when end to replay sql_log\n", argv[0],
 	   DEFAULT_BREAK_TIME, DEFAULT_DIFF_TIME_LOWER);
 
   return ER_FAILED;
@@ -1623,8 +1561,7 @@ date_format_err:
  *   skip_sqlfp(out):
  */
 static int
-open_file (char *infilename, char *outfilename, FILE ** infp,
-	   FILE ** outfp, FILE ** cci_errfp, FILE ** skip_sqlfp)
+open_file (char *infilename, char *outfilename, FILE ** infp, FILE ** outfp, FILE ** cci_errfp, FILE ** skip_sqlfp)
 {
   *infp = fopen (infilename, "r");
   if (*infp == NULL)

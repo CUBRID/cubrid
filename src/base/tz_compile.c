@@ -168,8 +168,7 @@ struct tz_raw_ds_rule
   short from_year;
   short to_year;		/* TZ_MAX_YEAR if column value is "max" e.g. up to now */
   char type[TZ_RULE_TYPE_MAX_SIZE];	/* always '-'; kept for possible future extensions */
-  unsigned char in_month;	/* month when the daylight saving event occurs
-				 * valid values : 0 - 11 */
+  unsigned char in_month;	/* month when the daylight saving event occurs valid values : 0 - 11 */
   TZ_DS_CHANGE_ON change_on;	/* day of month, fixed or relative */
   int at_time;			/* time when DS event occurs */
   TZ_TIME_TYPE at_time_type;	/* type for at_time: local, absolute etc. */
@@ -225,8 +224,7 @@ struct offset_rule_interval
 };
 
 #define TZ_CAL_ABBREV_SIZE 4
-static const char MONTH_NAMES_ABBREV[TZ_MON_COUNT][TZ_CAL_ABBREV_SIZE] =
-  { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+static const char MONTH_NAMES_ABBREV[TZ_MON_COUNT][TZ_CAL_ABBREV_SIZE] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 };
 static const char DAY_NAMES_ABBREV[TZ_WEEK_DAY_COUNT][TZ_CAL_ABBREV_SIZE] =
@@ -274,8 +272,7 @@ static const char *tzc_err_messages[] = {
   /* TZC_ERR_INVALID_PACKAGE */
   "Invalid timezone package! File %s not found in folder %s.",
   /* TZC_ERR_BAD_TZ_LINK */
-  "Invalid link definition (s1: %s, s2: %s). "
-    "Format error or invalid data encountered.",
+  "Invalid link definition (s1: %s, s2: %s). " "Format error or invalid data encountered.",
   /* TZC_ERR_OUT_OF_MEMORY */
   "Memory exhausted when allocating %d items of type '%s'.",
   /* TZC_ERR_INVALID_VALUE */
@@ -384,60 +381,40 @@ extern const TZ_COUNTRY tz_countries[];
   } while (0)
 
 static int tzc_check_new_package_validity (const char *input_folder);
-static int tzc_load_countries (TZ_RAW_DATA * tzd_raw,
-			       const char *input_folder);
-static int tzc_load_zone_names (TZ_RAW_DATA * tzd_raw,
-				const char *input_folder);
-static int tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index,
-			       const char *input_folder);
-static int tzc_load_backward_zones (TZ_RAW_DATA * tzd_raw,
-				    const char *input_folder);
-static int tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw,
-			       const char *input_folder);
-static int tzc_get_zone (const TZ_RAW_DATA * tzd_raw, const char *zone_name,
-			 TZ_RAW_ZONE_INFO ** zone);
-static int tzc_add_zone (const char *zone, const char *coord,
-			 const char *code, const char *comments,
+static int tzc_load_countries (TZ_RAW_DATA * tzd_raw, const char *input_folder);
+static int tzc_load_zone_names (TZ_RAW_DATA * tzd_raw, const char *input_folder);
+static int tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index, const char *input_folder);
+static int tzc_load_backward_zones (TZ_RAW_DATA * tzd_raw, const char *input_folder);
+static int tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder);
+static int tzc_get_zone (const TZ_RAW_DATA * tzd_raw, const char *zone_name, TZ_RAW_ZONE_INFO ** zone);
+static int tzc_add_zone (const char *zone, const char *coord, const char *code, const char *comments,
 			 TZ_RAW_DATA * tzd_raw, TZ_RAW_ZONE_INFO ** new_zone);
-static int tzc_add_link (TZ_RAW_DATA * tzd_raw, const char *zone,
-			 const char *alias);
+static int tzc_add_link (TZ_RAW_DATA * tzd_raw, const char *zone, const char *alias);
 static int tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text);
-static int tzc_add_leap_sec (TZ_RAW_DATA * tzd_raw, int year, int month,
-			     int day, unsigned char hour, unsigned char min,
-			     unsigned char sec, bool corr_minus,
-			     bool leap_is_rolling);
-static int tzc_read_time_type (const char *str, const char **next,
-			       TZ_TIME_TYPE * time_type);
+static int tzc_add_leap_sec (TZ_RAW_DATA * tzd_raw, int year, int month, int day, unsigned char hour, unsigned char min,
+			     unsigned char sec, bool corr_minus, bool leap_is_rolling);
+static int tzc_read_time_type (const char *str, const char **next, TZ_TIME_TYPE * time_type);
 static int tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text);
 static int tzc_parse_ds_change_on (TZ_RAW_DS_RULE * dest, const char *str);
-static bool tzc_is_valid_date (const int day, const int month,
-			       const int year_start, const int year_end);
-static int tzc_get_ds_ruleset_by_name (const TZ_DS_RULESET * ds_rulesets,
-				       int ds_ruleset_count,
-				       const char *ruleset);
+static bool tzc_is_valid_date (const int day, const int month, const int year_start, const int year_end);
+static int tzc_get_ds_ruleset_by_name (const TZ_DS_RULESET * ds_rulesets, int ds_ruleset_count, const char *ruleset);
 
 static void tzc_free_raw_data (TZ_RAW_DATA * tzd_raw);
 
 static int tzc_check_links_raw_data (TZ_RAW_DATA * tzd_raw);
 static void tzc_sort_raw_data (TZ_RAW_DATA * tzd_raw);
 static void tzc_index_raw_data (TZ_RAW_DATA * tzd_raw);
-static int tzc_index_raw_data_w_static (TZ_RAW_DATA * tzd_raw,
-					const TZ_GEN_TYPE mode);
-static int tzc_index_raw_subdata (TZ_RAW_DATA * tzd_raw,
-				  const TZ_GEN_TYPE mode);
+static int tzc_index_raw_data_w_static (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode);
+static int tzc_index_raw_subdata (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode);
 static int compare_ints (const void *a, const void *b);
 
 static int tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd);
 static int tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd);
 
-static int str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule,
-				     char *str);
-static int str_month_to_int (const char *month, int *month_num,
-			     const char **str_next);
-static int str_day_to_int (const char *str_in, int *day_num,
-			   const char **str_next);
-static int str_read_day_var (const char *str, const int month, int *type,
-			     int *day, int *bound, const char **str_next);
+static int str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str);
+static int str_month_to_int (const char *month, int *month_num, const char **str_next);
+static int str_day_to_int (const char *str_in, int *day_num, const char **str_next);
+static int str_read_day_var (const char *str, const int month, int *type, int *day, int *bound, const char **str_next);
 
 static int comp_func_raw_countries (const void *arg1, const void *arg2);
 static int comp_func_raw_zones (const void *arg1, const void *arg2);
@@ -452,77 +429,55 @@ static void print_seconds_as_time_hms_var (int seconds);
 
 static int tzc_export_timezone_C_file (const TZ_DATA * tzd);
 
-static int tzc_load_raw_data (TZ_RAW_DATA * tzd_raw,
-			      const char *input_folder);
-static int tzc_import_old_data (TZ_RAW_DATA * tzd_raw,
-				const TZ_GEN_TYPE mode);
+static int tzc_load_raw_data (TZ_RAW_DATA * tzd_raw, const char *input_folder);
+static int tzc_import_old_data (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode);
 static int tzc_del_unused_raw_data (TZ_RAW_DATA * tzd_raw);
 static int tzc_index_data (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode);
 static void tzc_free_tz_data (TZ_DATA * tzd, bool full);
 
-static void tzc_build_filepath (char *path, size_t size,
-				const char *dir, const char *filename);
+static void tzc_build_filepath (char *path, size_t size, const char *dir, const char *filename);
 static void trim_comments_whitespaces (char *str);
 
-static int tzc_get_timezone_aliases (const TZ_DATA * tzd, const int zone_id,
-				     int **aliases, int *alias_count);
-static void tzc_dump_one_offset_rule (const TZ_DATA * tzd,
-				      const TZ_OFFSET_RULE * offset_rule);
+static int tzc_get_timezone_aliases (const TZ_DATA * tzd, const int zone_id, int **aliases, int *alias_count);
+static void tzc_dump_one_offset_rule (const TZ_DATA * tzd, const TZ_OFFSET_RULE * offset_rule);
 static void tzc_dump_ds_ruleset (const TZ_DATA * tzd, const int ruleset_id);
 
-static void tzc_log_error (const TZ_RAW_CONTEXT * context, const int code,
-			   const char *msg1, const char *msg2);
+static void tzc_log_error (const TZ_RAW_CONTEXT * context, const int code, const char *msg1, const char *msg2);
 
 static void tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd);
 
-static int tzc_find_timezone_names (const TZ_DATA * tzd,
-				    const char *timezone_name);
-static int tzc_find_country_names (const TZ_COUNTRY * countries,
-				   const int country_count,
-				   const char *country_name);
-static bool comp_ds_rules (const TZ_DS_RULE * rule1,
-			   const TZ_DS_RULE * rule2);
-static bool comp_offset_rules (const TZ_OFFSET_RULE * rule1,
-			       const TZ_OFFSET_RULE * rule2);
-static int copy_offset_rule (TZ_OFFSET_RULE * dst, const TZ_DATA * tzd,
-			     const int index);
-static int init_ds_ruleset (TZ_DS_RULESET * dst_ruleset, const TZ_DATA * tzd,
-			    const int index, const int start);
-static int copy_ds_rule (TZ_DS_RULE * dst, const TZ_DATA * tzd,
-			 const int index);
-static int tz_data_partial_clone (char **timezone_names,
-				  TZ_TIMEZONE * timezones, TZ_NAME * names,
-				  const TZ_DATA * tzd);
+static int tzc_find_timezone_names (const TZ_DATA * tzd, const char *timezone_name);
+static int tzc_find_country_names (const TZ_COUNTRY * countries, const int country_count, const char *country_name);
+static bool comp_ds_rules (const TZ_DS_RULE * rule1, const TZ_DS_RULE * rule2);
+static bool comp_offset_rules (const TZ_OFFSET_RULE * rule1, const TZ_OFFSET_RULE * rule2);
+static int copy_offset_rule (TZ_OFFSET_RULE * dst, const TZ_DATA * tzd, const int index);
+static int init_ds_ruleset (TZ_DS_RULESET * dst_ruleset, const TZ_DATA * tzd, const int index, const int start);
+static int copy_ds_rule (TZ_DS_RULE * dst, const TZ_DATA * tzd, const int index);
+static int tz_data_partial_clone (char **timezone_names, TZ_TIMEZONE * timezones, TZ_NAME * names, const TZ_DATA * tzd);
 static int init_tz_name (TZ_NAME * dst, TZ_NAME * src);
 static int tzc_extend (TZ_DATA * tzd, bool * write_checksum);
 static int tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type);
-static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule,
-					 const int year);
+static int get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year);
 
 #if defined(WINDOWS)
 static int comp_func_tz_windows_zones (const void *arg1, const void *arg2);
 static int xml_start_mapZone (void *data, const char **attr);
 
-static int tzc_load_windows_iana_map (TZ_DATA * tz_data,
-				      const char *input_folder);
+static int tzc_load_windows_iana_map (TZ_DATA * tz_data, const char *input_folder);
 
-XML_ELEMENT_DEF windows_zones_elem_supplementalData =
-  { "supplementalData", 1, NULL,
+XML_ELEMENT_DEF windows_zones_elem_supplementalData = { "supplementalData", 1, NULL,
   NULL, NULL
 };
 
-XML_ELEMENT_DEF windows_zones_elem_windowsZones =
-  { "supplementalData windowsZones", 2, NULL,
+XML_ELEMENT_DEF windows_zones_elem_windowsZones = { "supplementalData windowsZones", 2, NULL,
   NULL, NULL
 };
 
-XML_ELEMENT_DEF windows_zones_elem_mapTimezones =
-  { "supplementalData windowsZones mapTimezones", 3, NULL,
+XML_ELEMENT_DEF windows_zones_elem_mapTimezones = { "supplementalData windowsZones mapTimezones", 3, NULL,
   NULL, NULL
 };
 
-XML_ELEMENT_DEF windows_zones_elem_mapZone =
-  { "supplementalData windowsZones mapTimezones mapZone", 4,
+XML_ELEMENT_DEF windows_zones_elem_mapZone = { "supplementalData windowsZones mapTimezones mapZone", 4,
   (ELEM_START_FUNC) & xml_start_mapZone,
   NULL, NULL
 };
@@ -545,8 +500,7 @@ XML_ELEMENT_DEF *windows_zones_elements[] = {
  * filename(in): file name part of the output full file path
  */
 static void
-tzc_build_filepath (char *path, size_t size, const char *dir,
-		    const char *filename)
+tzc_build_filepath (char *path, size_t size, const char *dir, const char *filename)
 {
   assert (path != NULL && size > 0);
   assert (dir != NULL);
@@ -612,15 +566,13 @@ tzc_check_new_package_validity (const char *input_folder)
 
   for (i = 0; i < tz_file_count && err_status == NO_ERROR; i++)
     {
-      tzc_build_filepath (temp_path, sizeof (temp_path), input_folder,
-			  tz_files[i].name);
+      tzc_build_filepath (temp_path, sizeof (temp_path), input_folder, tz_files[i].name);
 
       fp = fopen_ex (temp_path, "rb");
       if (fp == NULL)
 	{
 	  err_status = TZC_ERR_INVALID_PACKAGE;
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_PACKAGE,
-			      tz_files[i].name, input_folder);
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_PACKAGE, tz_files[i].name, input_folder);
 	  goto exit;
 	}
       else
@@ -642,8 +594,7 @@ exit:
  * tz_gen_type(in): control flag (type of TZ build/gen to perform)
  */
 int
-timezone_compile_data (const char *input_folder,
-		       const TZ_GEN_TYPE tz_gen_type, char *checksum)
+timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, char *checksum)
 {
   int err_status = NO_ERROR;
   TZ_RAW_DATA tzd_raw;
@@ -984,8 +935,7 @@ tzc_del_unused_raw_data (TZ_RAW_DATA * tzd_raw)
 	  if (i < tzd_raw->ruleset_count - 1)
 	    {
 	      free (tzd_raw->ds_rulesets[i].rules);
-	      memcpy (&(tzd_raw->ds_rulesets[i]),
-		      &(tzd_raw->ds_rulesets[tzd_raw->ruleset_count - 1]),
+	      memcpy (&(tzd_raw->ds_rulesets[i]), &(tzd_raw->ds_rulesets[tzd_raw->ruleset_count - 1]),
 		      sizeof (TZ_RAW_DS_RULESET));
 	    }
 	  /* decrease count; tzd_raw->rulesets will be realloc'ed below */
@@ -1000,17 +950,14 @@ tzc_del_unused_raw_data (TZ_RAW_DATA * tzd_raw)
   assert (tzd_raw->ruleset_count > 0);
 
   /* realloc rulesets, in case some rulesets were removed above */
-  ruleset = (TZ_RAW_DS_RULESET *)
-    realloc (tzd_raw->ds_rulesets,
-	     tzd_raw->ruleset_count * sizeof (TZ_RAW_DS_RULESET));
+  ruleset = (TZ_RAW_DS_RULESET *) realloc (tzd_raw->ds_rulesets, tzd_raw->ruleset_count * sizeof (TZ_RAW_DS_RULESET));
   if (ruleset == NULL)
     {
       char err_msg[TZC_ERR_MSG_MAX_SIZE];
 
       sprintf (err_msg, "%d", tzd_raw->ruleset_count);
       err_status = TZC_ERR_OUT_OF_MEMORY;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg,
-			  "TZ_RAW_DS_RULESET");
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_RAW_DS_RULESET");
       goto exit;
     }
   tzd_raw->ds_rulesets = ruleset;
@@ -1037,10 +984,8 @@ tzc_index_data (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
     }
   else
     {
-      snprintf (err_msg, sizeof (err_msg) - 1,
-		"UPDATE OPTION NOT IMPLEMENTED!");
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_COMPILE_ERROR, 1,
-	      err_msg);
+      snprintf (err_msg, sizeof (err_msg) - 1, "UPDATE OPTION NOT IMPLEMENTED!");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_COMPILE_ERROR, 1, err_msg);
       err_status = ER_TZ_COMPILE_ERROR;
       goto exit;
     }
@@ -1082,19 +1027,17 @@ tzc_load_countries (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 	  file_index = i;
 	}
     }
-  /* the list of files is hardcoded above, so if a file with TZ_COUNTRY flag
-   * is not found in tz_files, code fixes are needed */
+  /* the list of files is hardcoded above, so if a file with TZ_COUNTRY flag is not found in tz_files, code fixes are
+   * needed */
   assert (file_index != -1);
 
-  tzc_build_filepath (country_filepath, sizeof (country_filepath),
-		      input_folder, tz_files[file_index].name);
+  tzc_build_filepath (country_filepath, sizeof (country_filepath), input_folder, tz_files[file_index].name);
   fp = fopen_ex (country_filepath, "rt");
   if (fp == NULL)
     {
       /* file not found or not accessible */
       err_status = TZC_ERR_FILE_NOT_ACCESSIBLE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_FILE_NOT_ACCESSIBLE,
-			  country_filepath, "read");
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_FILE_NOT_ACCESSIBLE, country_filepath, "read");
       goto exit;
     }
 
@@ -1120,22 +1063,19 @@ tzc_load_countries (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 	{
 	  /* data formatting error on line <line_count> */
 	  err_status = TZC_ERR_INVALID_COUNTRY;
-	  TZC_LOG_ERROR_1ARG (TZC_CONTEXT (tzd_raw),
-			      TZC_ERR_INVALID_COUNTRY, str);
+	  TZC_LOG_ERROR_1ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_COUNTRY, str);
 	  goto exit;
 	}
 
-      temp_tz_country = (TZ_RAW_COUNTRY *)
-	realloc (tzd_raw->countries,
-		 (tzd_raw->country_count + 1) * sizeof (TZ_RAW_COUNTRY));
+      temp_tz_country =
+	(TZ_RAW_COUNTRY *) realloc (tzd_raw->countries, (tzd_raw->country_count + 1) * sizeof (TZ_RAW_COUNTRY));
       if (temp_tz_country == NULL)
 	{
 	  char err_msg[TZC_ERR_MSG_MAX_SIZE];
 
 	  sprintf (err_msg, "%d", tzd_raw->country_count + 1);
 	  err_status = TZC_ERR_OUT_OF_MEMORY;
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY,
-			      err_msg, "TZ_RAW_COUNTRY");
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_RAW_COUNTRY");
 	  goto exit;
 	}
       tzd_raw->countries = temp_tz_country;
@@ -1146,8 +1086,7 @@ tzc_load_countries (TZ_RAW_DATA * tzd_raw, const char *input_folder)
       memset (temp_tz_country, 0, sizeof (temp_tz_country[0]));
       /* store parsed data */
       memcpy (temp_tz_country->code, str, TZ_COUNTRY_CODE_LEN);
-      strncpy (temp_tz_country->full_name, str_country_name + 1,
-	       TZ_COUNTRY_NAME_SIZE);
+      strncpy (temp_tz_country->full_name, str_country_name + 1, TZ_COUNTRY_NAME_SIZE);
       temp_tz_country->id = -1;
     }
 
@@ -1190,19 +1129,17 @@ tzc_load_zone_names (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 	  file_index = i;
 	}
     }
-  /* the list of files is hardcoded above, so if a file with TZ_COUNTRY flag
-   * is not found in tz_files, code fixes are needed */
+  /* the list of files is hardcoded above, so if a file with TZ_COUNTRY flag is not found in tz_files, code fixes are
+   * needed */
   assert (file_index != -1);
 
-  tzc_build_filepath (zone_filepath, sizeof (zone_filepath), input_folder,
-		      tz_files[file_index].name);
+  tzc_build_filepath (zone_filepath, sizeof (zone_filepath), input_folder, tz_files[file_index].name);
   fp = fopen_ex (zone_filepath, "rt");
   if (fp == NULL)
     {
       /* file not found or not accessible */
       err_status = TZC_ERR_FILE_NOT_ACCESSIBLE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_FILE_NOT_ACCESSIBLE,
-			  zone_filepath, "read");
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_FILE_NOT_ACCESSIBLE, zone_filepath, "read");
       goto exit;
     }
 
@@ -1230,27 +1167,21 @@ tzc_load_zone_names (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 
       assert (col_code != NULL && col_coord != NULL && col_tz_name != NULL);
 
-      if (col_code == NULL || strlen (col_code) != 2
-	  || IS_EMPTY_STR (col_coord) || IS_EMPTY_STR (col_tz_name))
+      if (col_code == NULL || strlen (col_code) != 2 || IS_EMPTY_STR (col_coord) || IS_EMPTY_STR (col_tz_name))
 	{
 	  /* data formatting error on line <line_count> */
 	  char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
 
-	  sprintf (temp_msg,
-		   "code: %s, coordinates: %s, name: %s, comments: %s",
-		   col_code == NULL ? "null" : col_code,
-		   col_coord == NULL ? "null" : col_coord,
-		   col_tz_name == NULL ? "null" : col_tz_name,
+	  sprintf (temp_msg, "code: %s, coordinates: %s, name: %s, comments: %s", col_code == NULL ? "null" : col_code,
+		   col_coord == NULL ? "null" : col_coord, col_tz_name == NULL ? "null" : col_tz_name,
 		   col_comments == NULL ? "null/empty" : col_comments);
 	  err_status = TZC_ERR_INVALID_ZONE;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_ZONE,
-			      str, temp_msg);
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_ZONE, str, temp_msg);
 	  goto exit;
 	}
 
       /* new zone found, expand data structure and store it */
-      err_status = tzc_add_zone (col_tz_name, col_code, col_coord,
-				 col_comments, tzd_raw, &temp_zone_info);
+      err_status = tzc_add_zone (col_tz_name, col_code, col_coord, col_comments, tzd_raw, &temp_zone_info);
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
@@ -1278,8 +1209,7 @@ exit:
  *	 needs the data structures and loaded data created by tz_load_zones()
  */
 static int
-tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index,
-		    const char *input_folder)
+tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index, const char *input_folder)
 {
   int err_status = NO_ERROR;
   char filepath[PATH_MAX] = { 0 };
@@ -1297,15 +1227,13 @@ tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index,
   assert (file_index > 0 && file_index < tz_file_count);
   assert (tz_files[file_index].type == TZF_RULES);
 
-  tzc_build_filepath (filepath, sizeof (filepath), input_folder,
-		      tz_files[file_index].name);
+  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_files[file_index].name);
   fp = fopen_ex (filepath, "rt");
   if (fp == NULL)
     {
       /* file not found or not accessible */
       err_status = TZC_ERR_FILE_NOT_ACCESSIBLE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_FILE_NOT_ACCESSIBLE,
-			  filepath, "read");
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_FILE_NOT_ACCESSIBLE, filepath, "read");
       goto exit;
     }
 
@@ -1351,8 +1279,7 @@ tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index,
 	    {
 	      /* error, empty or misformed line */
 	      err_status = TZC_ERR_BAD_TZ_LINK;
-	      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_BAD_TZ_LINK,
-				  zone_name, alias);
+	      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_BAD_TZ_LINK, zone_name, alias);
 	      goto exit;
 	    }
 
@@ -1369,19 +1296,15 @@ tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index,
 	  if (IS_EMPTY_STR (next_token))
 	    {
 	      err_status = TZC_ERR_INVALID_VALUE;
-	      TZC_LOG_ERROR_1ARG (TZC_CONTEXT (tzd_raw),
-				  TZC_ERR_INVALID_VALUE, "timezone name");
+	      TZC_LOG_ERROR_1ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "timezone name");
 	      goto exit;
 	    }
 	  err_status = tzc_get_zone (tzd_raw, next_token, &last_zone);
 	  if (err_status != NO_ERROR)
 	    {
-	      /* some timezones (such as WET, CET, MET, EET) are not listed in
-	       * the zone file, but are included in the rule files
-	       * (ex.: europe file) in zone rules; they need to be added to
-	       * the list of zones */
-	      err_status = tzc_add_zone (next_token, NULL, NULL, NULL,
-					 tzd_raw, &last_zone);
+	      /* some timezones (such as WET, CET, MET, EET) are not listed in the zone file, but are included in the
+	       * rule files (ex.: europe file) in zone rules; they need to be added to the list of zones */
+	      err_status = tzc_add_zone (next_token, NULL, NULL, NULL, tzd_raw, &last_zone);
 	      if (err_status != NO_ERROR)
 		{
 		  goto exit;
@@ -1391,14 +1314,11 @@ tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index,
 	    {
 	      /* zones should have already been fully loaded */
 	      err_status = TZC_ERR_ADD_ZONE;
-	      TZC_LOG_ERROR_1ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_ADD_ZONE,
-				  next_token);
+	      TZC_LOG_ERROR_1ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_ADD_ZONE, next_token);
 	      goto exit;
 	    }
 
-	  err_status =
-	    tzc_add_offset_rule (last_zone,
-				 next_token + strlen (next_token) + 1);
+	  err_status = tzc_add_offset_rule (last_zone, next_token + strlen (next_token) + 1);
 	  if (err_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -1407,8 +1327,7 @@ tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index,
 	}
       else if (strcmp (entry_type_str, "Rule") == 0)
 	{
-	  err_status =
-	    tzc_add_ds_rule (tzd_raw, str + strlen (entry_type_str) + 1);
+	  err_status = tzc_add_ds_rule (tzd_raw, str + strlen (entry_type_str) + 1);
 	  if (err_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -1416,8 +1335,7 @@ tzc_load_rule_file (TZ_RAW_DATA * tzd_raw, const int file_index,
 	}
       else
 	{
-	  /* non-empty line, which is not a comment, nor a valid
-	   * zone/rule/link definition */
+	  /* non-empty line, which is not a comment, nor a valid zone/rule/link definition */
 	  assert (false);
 	}
       /* reset line buffer */
@@ -1469,15 +1387,13 @@ tzc_load_backward_zones (TZ_RAW_DATA * tzd_raw, const char *input_folder)
     }
   assert (file_index != -1);
 
-  tzc_build_filepath (filepath, sizeof (filepath), input_folder,
-		      tz_files[file_index].name);
+  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_files[file_index].name);
   fp = fopen_ex (filepath, "rt");
   if (fp == NULL)
     {
       /* file not found or not accessible */
       err_status = TZC_ERR_FILE_NOT_ACCESSIBLE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_FILE_NOT_ACCESSIBLE,
-			  filepath, "read");
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_FILE_NOT_ACCESSIBLE, filepath, "read");
       goto exit;
     }
 
@@ -1504,8 +1420,7 @@ tzc_load_backward_zones (TZ_RAW_DATA * tzd_raw, const char *input_folder)
       if (IS_EMPTY_STR (zone_name))
 	{
 	  err_status = TZC_ERR_BAD_TZ_LINK;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_BAD_TZ_LINK,
-			      zone_name, "<alias not parsed yet>");
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_BAD_TZ_LINK, zone_name, "<alias not parsed yet>");
 	  goto exit;
 	}
       next_token = zone_name + strlen (zone_name) + 1;
@@ -1517,8 +1432,7 @@ tzc_load_backward_zones (TZ_RAW_DATA * tzd_raw, const char *input_folder)
       if (IS_EMPTY_STR (alias))
 	{
 	  err_status = TZC_ERR_BAD_TZ_LINK;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_BAD_TZ_LINK,
-			      zone_name, alias);
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_BAD_TZ_LINK, zone_name, alias);
 	  goto exit;
 	}
       err_status = tzc_add_link (tzd_raw, zone_name, alias);
@@ -1577,15 +1491,13 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
     }
   assert (file_index != -1);
 
-  tzc_build_filepath (filepath, sizeof (filepath), input_folder,
-		      tz_files[file_index].name);
+  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_files[file_index].name);
   fp = fopen_ex (filepath, "rt");
   if (fp == NULL)
     {
       /* file not found or not accessible */
       err_status = TZC_ERR_FILE_NOT_ACCESSIBLE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_FILE_NOT_ACCESSIBLE,
-			  filepath, "read");
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_FILE_NOT_ACCESSIBLE, filepath, "read");
       goto exit;
     }
 
@@ -1608,53 +1520,46 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
       assert (entry_type_str != NULL && strcmp (entry_type_str, "Leap") == 0);
 
       next_token = strtok (NULL, "\t");
-      if (tz_str_read_number (next_token, true, false, &leap_year,
-			      &str_next) != NO_ERROR)
+      if (tz_str_read_number (next_token, true, false, &leap_year, &str_next) != NO_ERROR)
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE,
-			      "year", next_token == NULL ? "" : next_token);
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "year",
+			      next_token == NULL ? "" : next_token);
 	  goto exit;
 	}
 
       next_token = strtok (NULL, "\t");
-      if (str_month_to_int (next_token, &leap_month_num, &str_next)
-	  != NO_ERROR)
+      if (str_month_to_int (next_token, &leap_month_num, &str_next) != NO_ERROR)
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE,
-			      "month", next_token == NULL ? "" : next_token);
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "month",
+			      next_token == NULL ? "" : next_token);
 	  goto exit;
 	}
 
       next_token = strtok (NULL, "\t");
-      if (tz_str_read_number (next_token, true, false, &leap_day_num,
-			      &str_next) != NO_ERROR)
+      if (tz_str_read_number (next_token, true, false, &leap_day_num, &str_next) != NO_ERROR)
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE,
-			      "day", next_token == NULL ? "" : next_token);
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "day",
+			      next_token == NULL ? "" : next_token);
 	  goto exit;
 	}
 
       next_token = strtok (NULL, "\t");
-      if (tz_str_read_time (next_token, false, true, &leap_time_h,
-			    &leap_time_m, &leap_time_s, &str_next)
-	  != NO_ERROR)
+      if (tz_str_read_time (next_token, false, true, &leap_time_h, &leap_time_m, &leap_time_s, &str_next) != NO_ERROR)
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE,
-			      "time", next_token == NULL ? "" : next_token);
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "time",
+			      next_token == NULL ? "" : next_token);
 	  goto exit;
 	}
 
       next_token = strtok (NULL, "\t");
-      if (strlen (next_token) != 1
-	  || ((*next_token != '+') && (*next_token != '-')))
+      if (strlen (next_token) != 1 || ((*next_token != '+') && (*next_token != '-')))
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE,
-			      "correction",
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "correction",
 			      next_token == NULL ? "" : next_token);
 	  goto exit;
 	}
@@ -1664,12 +1569,10 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 	}
 
       next_token = strtok (NULL, "\t");
-      if (strlen (next_token) != 1
-	  || ((*next_token != 'R') && (*next_token != 'S')))
+      if (strlen (next_token) != 1 || ((*next_token != 'R') && (*next_token != 'S')))
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE,
-			      "leap second type",
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "leap second type",
 			      next_token == NULL ? "" : next_token);
 	  goto exit;
 	}
@@ -1678,13 +1581,12 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 	  leap_is_rolling = true;
 	}
 
-      if (tzc_add_leap_sec (tzd_raw, leap_year, leap_month_num, leap_day_num,
-			    leap_time_h, leap_time_m, leap_time_s,
-			    leap_corr_minus, leap_is_rolling) != NO_ERROR)
+      if (tzc_add_leap_sec
+	  (tzd_raw, leap_year, leap_month_num, leap_day_num, leap_time_h, leap_time_m, leap_time_s, leap_corr_minus,
+	   leap_is_rolling) != NO_ERROR)
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE,
-			      "leap second data", "line");
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "leap second data", "line");
 	  goto exit;
 	}
     }
@@ -1718,9 +1620,7 @@ tzc_add_link (TZ_RAW_DATA * tzd_raw, const char *zone, const char *alias)
   /* add link to the link list */
   assert (tzd_raw->link_count >= 0);
 
-  temp_link = (TZ_RAW_LINK *)
-    realloc (tzd_raw->links,
-	     (tzd_raw->link_count + 1) * sizeof (TZ_RAW_LINK));
+  temp_link = (TZ_RAW_LINK *) realloc (tzd_raw->links, (tzd_raw->link_count + 1) * sizeof (TZ_RAW_LINK));
 
   if (temp_link == NULL)
     {
@@ -1728,8 +1628,7 @@ tzc_add_link (TZ_RAW_DATA * tzd_raw, const char *zone, const char *alias)
 
       sprintf (err_msg, "%d", tzd_raw->link_count + 1);
       err_status = TZC_ERR_OUT_OF_MEMORY;
-      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY,
-			  err_msg, "TZ_RAW_LINK");
+      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_RAW_LINK");
       goto exit;
     }
 
@@ -1755,9 +1654,8 @@ exit:
  * tzd_raw(in/out): timezone data structure where to store the new link
  */
 static int
-tzc_add_leap_sec (TZ_RAW_DATA * tzd_raw, int year, int month, int day,
-		  unsigned char hour, unsigned char min, unsigned char sec,
-		  bool corr_minus, bool leap_is_rolling)
+tzc_add_leap_sec (TZ_RAW_DATA * tzd_raw, int year, int month, int day, unsigned char hour, unsigned char min,
+		  unsigned char sec, bool corr_minus, bool leap_is_rolling)
 {
   TZ_LEAP_SEC *temp_leap_sec;
   int err_status = NO_ERROR;
@@ -1767,9 +1665,7 @@ tzc_add_leap_sec (TZ_RAW_DATA * tzd_raw, int year, int month, int day,
   /* add leap second to the leap second list */
   assert (tzd_raw->leap_sec_count >= 0);
 
-  temp_leap_sec = (TZ_LEAP_SEC *)
-    realloc (tzd_raw->leap_sec,
-	     (tzd_raw->leap_sec_count + 1) * sizeof (TZ_LEAP_SEC));
+  temp_leap_sec = (TZ_LEAP_SEC *) realloc (tzd_raw->leap_sec, (tzd_raw->leap_sec_count + 1) * sizeof (TZ_LEAP_SEC));
 
   if (temp_leap_sec == NULL)
     {
@@ -1777,8 +1673,7 @@ tzc_add_leap_sec (TZ_RAW_DATA * tzd_raw, int year, int month, int day,
 
       sprintf (err_msg, "%d", tzd_raw->leap_sec_count + 1);
       err_status = TZC_ERR_OUT_OF_MEMORY;
-      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY,
-			  err_msg, "TZ_RAW_LEAP_SEC");
+      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_RAW_LEAP_SEC");
       goto exit;
     }
 
@@ -1797,8 +1692,7 @@ tzc_add_leap_sec (TZ_RAW_DATA * tzd_raw, int year, int month, int day,
       char err_msg[TZC_ERR_MSG_MAX_SIZE];
       sprintf (err_msg, "%d", tzd_raw->leap_sec_count + 1);
       err_status = TZC_ERR_INVALID_TIME;
-      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_TIME,
-			  err_msg, "TZ_RAW_LEAP_SEC");
+      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_TIME, err_msg, "TZ_RAW_LEAP_SEC");
       goto exit;
     }
   temp_leap_sec->corr_negative = (unsigned char) (corr_minus ? 1 : 0);
@@ -1820,8 +1714,7 @@ exit:
  * new_zone(out): pointer to the newly added timezone
  */
 static int
-tzc_add_zone (const char *zone, const char *code, const char *coord,
-	      const char *comments, TZ_RAW_DATA * tzd_raw,
+tzc_add_zone (const char *zone, const char *code, const char *coord, const char *comments, TZ_RAW_DATA * tzd_raw,
 	      TZ_RAW_ZONE_INFO ** new_zone)
 {
   TZ_RAW_ZONE_INFO *temp_zone_info = NULL;
@@ -1832,9 +1725,7 @@ tzc_add_zone (const char *zone, const char *code, const char *coord,
 
   *new_zone = NULL;
 
-  temp_zone_info = (TZ_RAW_ZONE_INFO *)
-    realloc (tzd_raw->zones,
-	     (tzd_raw->zone_count + 1) * sizeof (TZ_RAW_ZONE_INFO));
+  temp_zone_info = (TZ_RAW_ZONE_INFO *) realloc (tzd_raw->zones, (tzd_raw->zone_count + 1) * sizeof (TZ_RAW_ZONE_INFO));
 
   if (temp_zone_info == NULL)
     {
@@ -1842,8 +1733,7 @@ tzc_add_zone (const char *zone, const char *code, const char *coord,
 
       sprintf (err_msg, "%d", tzd_raw->zone_count + 1);
       err_status = TZC_ERR_OUT_OF_MEMORY;
-      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY,
-			  err_msg, "TZ_RAW_ZONE_INFO");
+      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_RAW_ZONE_INFO");
       goto exit;
     }
   tzd_raw->zones = temp_zone_info;
@@ -1899,8 +1789,7 @@ exit:
  * zone (out): reference to the timezone found
  */
 static int
-tzc_get_zone (const TZ_RAW_DATA * tzd_raw, const char *zone_name,
-	      TZ_RAW_ZONE_INFO ** zone)
+tzc_get_zone (const TZ_RAW_DATA * tzd_raw, const char *zone_name, TZ_RAW_ZONE_INFO ** zone)
 {
   int i;
   int err_status = NO_ERROR;
@@ -1949,8 +1838,7 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
       goto exit;
     }
 
-  /* some offset rules have the GMTOFF column '0' instead of a valid time
-   * value in the format hh:mm */
+  /* some offset rules have the GMTOFF column '0' instead of a valid time value in the format hh:mm */
   if (strcmp (gmt_off, "0") == 0)
     {
       is_numeric_gmt_off = true;
@@ -1959,8 +1847,7 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
   else if (strchr (gmt_off, ':') == NULL)
     {
       /* string might not be a GMT offset rule; check if it's a number */
-      err_status = tz_str_read_number (gmt_off, true, true, &gmt_off_num,
-				       &str_dummy);
+      err_status = tz_str_read_number (gmt_off, true, true, &gmt_off_num, &str_dummy);
       if (err_status != NO_ERROR)
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
@@ -1974,28 +1861,22 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
   if (IS_EMPTY_STR (rules) || IS_EMPTY_STR (format))
     {
       err_status = TZC_ERR_INVALID_VALUE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_VALUE,
-			  "ruleset name or format",
-			  IS_EMPTY_STR (rules) ? (IS_EMPTY_STR (format) ?
-						  "" : format) : rules);
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_VALUE, "ruleset name or format",
+			  IS_EMPTY_STR (rules) ? (IS_EMPTY_STR (format) ? "" : format) : rules);
       goto exit;
     }
   until = strtok (NULL, "\t");
 
-  if (zone->offset_rule_count != 0 &&
-      zone->offset_rules[zone->offset_rule_count - 1].until_flag
-      == UNTIL_INFINITE)
+  if (zone->offset_rule_count != 0 && zone->offset_rules[zone->offset_rule_count - 1].until_flag == UNTIL_INFINITE)
     {
-      /* last existing rule still applies, no new rules are allowed after
-       * this one */
+      /* last existing rule still applies, no new rules are allowed after this one */
       err_status = TZC_ERR_ZONE_RULE_UNORDERED;
       TZC_LOG_ERROR_1ARG (NULL, TZC_ERR_ZONE_RULE_UNORDERED, rule_text);
       goto exit;
     }
 
-  temp_rule = (TZ_RAW_OFFSET_RULE *)
-    realloc (zone->offset_rules,
-	     (zone->offset_rule_count + 1) * sizeof (TZ_RAW_OFFSET_RULE));
+  temp_rule =
+    (TZ_RAW_OFFSET_RULE *) realloc (zone->offset_rules, (zone->offset_rule_count + 1) * sizeof (TZ_RAW_OFFSET_RULE));
 
   if (temp_rule == NULL)
     {
@@ -2003,8 +1884,7 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
 
       sprintf (err_msg, "%d", zone->offset_rule_count + 1);
       err_status = TZC_ERR_OUT_OF_MEMORY;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY,
-			  err_msg, "TZ_RAW_OFFSET_RULE");
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_RAW_OFFSET_RULE");
       goto exit;
     }
 
@@ -2019,12 +1899,10 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
     }
   else
     {
-      err_status =
-	tz_str_to_seconds (gmt_off, &(temp_rule->gmt_off), &str_dummy, false);
+      err_status = tz_str_to_seconds (gmt_off, &(temp_rule->gmt_off), &str_dummy, false);
       if (err_status != NO_ERROR)
 	{
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_TIME,
-			      gmt_off, "tz offset rule");
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_TIME, gmt_off, "tz offset rule");
 	  goto exit;
 	}
     }
@@ -2048,8 +1926,7 @@ exit:
  * rule_text(in): string to parse as a daylight saving rule
  */
 static int
-tzc_read_time_type (const char *str, const char **next,
-		    TZ_TIME_TYPE * time_type)
+tzc_read_time_type (const char *str, const char **next, TZ_TIME_TYPE * time_type)
 {
   assert (time_type != NULL);
   assert (next != NULL);
@@ -2057,8 +1934,7 @@ tzc_read_time_type (const char *str, const char **next,
   switch (*str)
     {
     case 's':
-      /* local standard time (different from wall clock time when
-       * observing daylight saving time) */
+      /* local standard time (different from wall clock time when observing daylight saving time) */
       *time_type = TZ_TIME_TYPE_LOCAL_STD;
       break;
     case 'g':
@@ -2069,8 +1945,7 @@ tzc_read_time_type (const char *str, const char **next,
       break;
     case 'w':
     case '\0':
-      /* wall clock time (including daylight savings, if any).
-       * This is the default, if no suffix is used. */
+      /* wall clock time (including daylight savings, if any). This is the default, if no suffix is used. */
       *time_type = TZ_TIME_TYPE_LOCAL_WALL;
       break;
     default:
@@ -2115,28 +1990,20 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
   col_letters = strtok (NULL, " \t");
 
   /* all tokens above must be at least one character long */
-  if (IS_EMPTY_STR (col_name) || IS_EMPTY_STR (col_from)
-      || IS_EMPTY_STR (col_to) || IS_EMPTY_STR (col_type)
-      || IS_EMPTY_STR (col_in) || IS_EMPTY_STR (col_on)
-      || IS_EMPTY_STR (col_at) || IS_EMPTY_STR (col_save)
+  if (IS_EMPTY_STR (col_name) || IS_EMPTY_STR (col_from) || IS_EMPTY_STR (col_to) || IS_EMPTY_STR (col_type)
+      || IS_EMPTY_STR (col_in) || IS_EMPTY_STR (col_on) || IS_EMPTY_STR (col_at) || IS_EMPTY_STR (col_save)
       || IS_EMPTY_STR (col_letters))
     {
       char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
 
-      sprintf (temp_msg, "NAME: '%s', FROM: '%s', TO: '%s', TYPE: '%s', "
-	       "IN: '%s', ON: '%s', AT: '%s', SAVE: '%s', LETTER/S: '%s'",
-	       col_name == NULL ? "" : col_name,
-	       col_from == NULL ? "" : col_from,
-	       col_to == NULL ? "" : col_to,
-	       col_type == NULL ? "" : col_type,
-	       col_in == NULL ? "" : col_in,
-	       col_on == NULL ? "" : col_on,
-	       col_at == NULL ? "" : col_at,
-	       col_save == NULL ? "" : col_save,
-	       col_letters == NULL ? "" : col_letters);
+      sprintf (temp_msg,
+	       "NAME: '%s', FROM: '%s', TO: '%s', TYPE: '%s', "
+	       "IN: '%s', ON: '%s', AT: '%s', SAVE: '%s', LETTER/S: '%s'", col_name == NULL ? "" : col_name,
+	       col_from == NULL ? "" : col_from, col_to == NULL ? "" : col_to, col_type == NULL ? "" : col_type,
+	       col_in == NULL ? "" : col_in, col_on == NULL ? "" : col_on, col_at == NULL ? "" : col_at,
+	       col_save == NULL ? "" : col_save, col_letters == NULL ? "" : col_letters);
       err_status = TZC_ERR_INVALID_DS_RULE;
-      TZC_LOG_ERROR_1ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_DS_RULE,
-			  temp_msg);
+      TZC_LOG_ERROR_1ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_DS_RULE, temp_msg);
       goto exit;
     }
 
@@ -2163,9 +2030,8 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
   if (ds_ruleset == NULL)
     {
       /* no rule set with the designated name was found; create one */
-      ds_ruleset = (TZ_RAW_DS_RULESET *)
-	realloc (tzd_raw->ds_rulesets,
-		 (tzd_raw->ruleset_count + 1) * sizeof (TZ_RAW_DS_RULESET));
+      ds_ruleset =
+	(TZ_RAW_DS_RULESET *) realloc (tzd_raw->ds_rulesets, (tzd_raw->ruleset_count + 1) * sizeof (TZ_RAW_DS_RULESET));
 
       if (ds_ruleset == NULL)
 	{
@@ -2173,8 +2039,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
 
 	  sprintf (err_msg, "%d", tzd_raw->ruleset_count + 1);
 	  err_status = TZC_ERR_OUT_OF_MEMORY;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY,
-			      err_msg, "TZ_RAW_DS_RULESET");
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_RAW_DS_RULESET");
 	  goto exit;
 	}
 
@@ -2187,9 +2052,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
     }
 
   /* add the daylight saving rule to the rule set (found or created) */
-  ds_rule = (TZ_RAW_DS_RULE *)
-    realloc (ds_ruleset->rules,
-	     (ds_ruleset->rule_count + 1) * sizeof (TZ_RAW_DS_RULE));
+  ds_rule = (TZ_RAW_DS_RULE *) realloc (ds_ruleset->rules, (ds_ruleset->rule_count + 1) * sizeof (TZ_RAW_DS_RULE));
 
   if (ds_rule == NULL)
     {
@@ -2197,8 +2060,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
 
       sprintf (err_msg, "%d", ds_ruleset->rule_count + 1);
       err_status = TZC_ERR_OUT_OF_MEMORY;
-      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY,
-			  err_msg, "TZ_RAW_DS_RULE");
+      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_RAW_DS_RULE");
       goto exit;
     }
 
@@ -2210,12 +2072,10 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
   /* process and save data into the new TZ_RULE item */
   val_read = 0;
   /* process and store "FROM" year */
-  if (tz_str_read_number (col_from, true, false, &val_read, &str_cursor)
-      != NO_ERROR)
+  if (tz_str_read_number (col_from, true, false, &val_read, &str_cursor) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
-      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE,
-			  "year", col_from);
+      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE, "year", col_from);
       goto exit;
     }
   ds_rule->from_year = (short) val_read;
@@ -2229,12 +2089,10 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
     {
       ds_rule->to_year = TZ_MAX_YEAR;
     }
-  else if (tz_str_read_number (col_to, true, false, &val_read, &str_cursor)
-	   != NO_ERROR)
+  else if (tz_str_read_number (col_to, true, false, &val_read, &str_cursor) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
-      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE,
-			  "year", col_to);
+      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE, "year", col_to);
       goto exit;
     }
   else
@@ -2249,8 +2107,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
   if (str_month_to_int (col_in, &val_read, &str_cursor) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
-      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE,
-			  "month", col_in);
+      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE, "month", col_in);
       goto exit;
     }
   if (val_read < TZ_MON_JAN || val_read > TZ_MON_DEC)
@@ -2259,8 +2116,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
 
       sprintf (temp_msg, "found value: %d", val_read);
       err_status = TZC_ERR_INVALID_VALUE;
-      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE,
-			  "month value", temp_msg);
+      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "month value", temp_msg);
       goto exit;
     }
   ds_rule->in_month = (unsigned char) val_read;
@@ -2276,44 +2132,36 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
     {
       val_read = 0;
     }
-  else if (tz_str_to_seconds (col_at, &val_read, &str_cursor, false) !=
-	   NO_ERROR)
+  else if (tz_str_to_seconds (col_at, &val_read, &str_cursor, false) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
-      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE,
-			  "AT column", col_at);
+      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE, "AT column", col_at);
       goto exit;
     }
   ds_rule->at_time = val_read;
 
-  err_status = tzc_read_time_type (str_cursor, &str_cursor,
-				   &(ds_rule->at_time_type));
+  err_status = tzc_read_time_type (str_cursor, &str_cursor, &(ds_rule->at_time_type));
   if (err_status != NO_ERROR)
     {
       return err_status;
     }
 
-  /* In a daylight saving rule, the "Save" column is either 0 or 1 hour, given
-   * as a one char string ("0" or "1"), or an amount of time specified
-   * as hh:mm. So first check if col_save == "<one_char>" */
+  /* In a daylight saving rule, the "Save" column is either 0 or 1 hour, given as a one char string ("0" or "1"), or an 
+   * amount of time specified as hh:mm. So first check if col_save == "<one_char>" */
   if (strlen (col_save) == 1)
     {
-      if (tz_str_read_number (col_save, true, false, &val_read, &str_cursor)
-	  != NO_ERROR)
+      if (tz_str_read_number (col_save, true, false, &val_read, &str_cursor) != NO_ERROR)
 	{
 	  err_status = TZC_ERR_CANT_READ_VALUE;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE,
-			      "SAVE column", col_save);
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE, "SAVE column", col_save);
 	  goto exit;
 	}
       val_read *= 3600;
     }
-  else if (tz_str_to_seconds (col_save, &val_read, &str_cursor, false)
-	   != NO_ERROR)
+  else if (tz_str_to_seconds (col_save, &val_read, &str_cursor, false) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
-      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE,
-			  "SAVE column", col_save);
+      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE, "SAVE column", col_save);
       goto exit;
     }
   ds_rule->save_time = val_read;
@@ -2347,16 +2195,14 @@ tzc_parse_ds_change_on (TZ_RAW_DS_RULE * dest, const char *str)
 
   str_cursor = str;
 
-  err_status = str_read_day_var (str, dest->in_month, &type, &day_num, &bound,
-				 &str_cursor);
+  err_status = str_read_day_var (str, dest->in_month, &type, &day_num, &bound, &str_cursor);
   if (err_status != NO_ERROR)
     {
       goto exit;
     }
 
-  /* need to validate the day found; check if it is a valid value,
-   * according to the year(s) and month already read into the input
-   * TZ_RAW_DS_RULE dest parameter */
+  /* need to validate the day found; check if it is a valid value, according to the year(s) and month already read into 
+   * the input TZ_RAW_DS_RULE dest parameter */
   if (type == TZ_DS_TYPE_FIXED)
     {
       int upper_year;
@@ -2367,24 +2213,19 @@ tzc_parse_ds_change_on (TZ_RAW_DS_RULE * dest, const char *str)
 
 	  sprintf (temp_msg, "found value: %d", day_num);
 	  err_status = TZC_ERR_DS_INVALID_DATE;
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE,
-			      "day of month", temp_msg);
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE, "day of month", temp_msg);
 	  goto exit;
 	}
 
-      upper_year = (dest->to_year == TZ_MAX_YEAR)
-	? dest->from_year : dest->to_year;
+      upper_year = (dest->to_year == TZ_MAX_YEAR) ? dest->from_year : dest->to_year;
 
-      if (!tzc_is_valid_date (day_num, dest->in_month, dest->from_year,
-			      upper_year + 1))
+      if (!tzc_is_valid_date (day_num, dest->in_month, dest->from_year, upper_year + 1))
 	{
 	  char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
 
-	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", day_num,
-		   dest->in_month, dest->from_year);
+	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", day_num, dest->in_month, dest->from_year);
 	  err_status = TZC_ERR_DS_INVALID_DATE;
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE,
-			      "day of month", temp_msg);
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE, "day of month", temp_msg);
 	  goto exit;
 	}
 
@@ -2424,14 +2265,12 @@ exit:
  * year_end(in): ending year for the range
 */
 static bool
-tzc_is_valid_date (const int day, const int month, const int year_start,
-		   const int year_end)
+tzc_is_valid_date (const int day, const int month, const int year_start, const int year_end)
 {
   int year;
 
-  if (day < 0 || day > 30
-      || month < TZ_MON_JAN || month > TZ_MON_DEC
-      || year_start < 0 || year_end <= year_start || year_end > TZ_MAX_YEAR)
+  if (day < 0 || day > 30 || month < TZ_MON_JAN || month > TZ_MON_DEC || year_start < 0 || year_end <= year_start
+      || year_end > TZ_MAX_YEAR)
     {
       return false;
     }
@@ -2546,8 +2385,7 @@ tzc_check_links_raw_data (TZ_RAW_DATA * tzd_raw)
       tz_link = &(tzd_raw->links[i]);
       tz_name_index = -1;
       tz_alias_index = -1;
-      for (j = 0; j < tzd_raw->zone_count &&
-	   (tz_name_index == -1 || tz_alias_index == -1); j++)
+      for (j = 0; j < tzd_raw->zone_count && (tz_name_index == -1 || tz_alias_index == -1); j++)
 	{
 	  tz_zone = &(tzd_raw->zones[j]);
 	  if (strcmp (tz_zone->full_name, tz_link->name) == 0)
@@ -2564,33 +2402,28 @@ tzc_check_links_raw_data (TZ_RAW_DATA * tzd_raw)
 
       if (tz_name_index != -1 && tz_alias_index != -1)
 	{
-	  /* Both zone name and alias from this 'Link' rule are timezones;
-	   * Check which one does not have any attached rules and mark it as
-	   * sharing the other one's rules */
+	  /* Both zone name and alias from this 'Link' rule are timezones; Check which one does not have any attached
+	   * rules and mark it as sharing the other one's rules */
 	  bool remove_link = false;
 	  tz_zone = &(tzd_raw->zones[tz_name_index]);
 	  if (tz_zone->offset_rule_count > 0)
 	    {
 	      assert (tzd_raw->zones[tz_alias_index].offset_rule_count == 0);
-	      strcpy (tzd_raw->zones[tz_alias_index].clone_of,
-		      tz_zone->full_name);
+	      strcpy (tzd_raw->zones[tz_alias_index].clone_of, tz_zone->full_name);
 	      remove_link = true;
 	    }
 	  else if (tzd_raw->zones[tz_alias_index].offset_rule_count > 0)
 	    {
 	      assert (tz_zone->offset_rule_count == 0);
-	      strcpy (tz_zone->clone_of,
-		      tzd_raw->zones[tz_alias_index].full_name);
+	      strcpy (tz_zone->clone_of, tzd_raw->zones[tz_alias_index].full_name);
 	      remove_link = true;
 	    }
 	  else
 	    {
-	      /* fatal error; can't have two fully defined timezones with a
-	       * 'Link' rule defined between them */
+	      /* fatal error; can't have two fully defined timezones with a 'Link' rule defined between them */
 	      assert (false);
 	      err_status = TZC_ERR_LINKING_TRUE_ZONES;
-	      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_LINKING_TRUE_ZONES,
-				  tz_link->name, tz_link->alias);
+	      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_LINKING_TRUE_ZONES, tz_link->name, tz_link->alias);
 	      goto exit;
 	    }
 	  if (remove_link)
@@ -2598,25 +2431,19 @@ tzc_check_links_raw_data (TZ_RAW_DATA * tzd_raw)
 	      if (i < tzd_raw->link_count - 1)
 		{
 		  tz_link = &(tzd_raw->links[i]);
-		  strcpy (tz_link->alias,
-			  tzd_raw->links[tzd_raw->link_count - 1].alias);
-		  strcpy (tz_link->name,
-			  tzd_raw->links[tzd_raw->link_count - 1].name);
+		  strcpy (tz_link->alias, tzd_raw->links[tzd_raw->link_count - 1].alias);
+		  strcpy (tz_link->name, tzd_raw->links[tzd_raw->link_count - 1].name);
 		}
 	      if (tzd_raw->link_count > 1)
 		{
-		  tz_link = (TZ_RAW_LINK *)
-		    realloc (tzd_raw->links,
-			     (tzd_raw->link_count - 1)
-			     * sizeof (TZ_RAW_LINK));
+		  tz_link = (TZ_RAW_LINK *) realloc (tzd_raw->links, (tzd_raw->link_count - 1) * sizeof (TZ_RAW_LINK));
 		  if (tz_link == NULL)
 		    {
 		      char err_msg[TZC_ERR_MSG_MAX_SIZE];
 
 		      sprintf (err_msg, "%d", tzd_raw->link_count - 1);
 		      err_status = TZC_ERR_OUT_OF_MEMORY;
-		      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY,
-					  err_msg, "TZ_RAW_LINK");
+		      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_RAW_LINK");
 		      goto exit;
 		    }
 		  tzd_raw->links = tz_link;
@@ -2628,8 +2455,8 @@ tzc_check_links_raw_data (TZ_RAW_DATA * tzd_raw)
 		  tzd_raw->links = NULL;
 		}
 	      tzd_raw->link_count--;
-	      /* the element at index i changed, i needs to be decreased so
-	       * the next loop will analyze the new link at index i */
+	      /* the element at index i changed, i needs to be decreased so the next loop will analyze the new link at
+	       * index i */
 	      if (i > 0)
 		{
 		  i--;
@@ -2663,35 +2490,29 @@ tzc_sort_raw_data (TZ_RAW_DATA * tzd_raw)
   TZ_RAW_DS_RULESET *rs = NULL;
 
   /* sort countries by name */
-  qsort (tzd_raw->countries, tzd_raw->country_count,
-	 sizeof (TZ_RAW_COUNTRY), comp_func_raw_countries);
+  qsort (tzd_raw->countries, tzd_raw->country_count, sizeof (TZ_RAW_COUNTRY), comp_func_raw_countries);
 
   /* sort zones by name */
-  qsort (tzd_raw->zones, tzd_raw->zone_count,
-	 sizeof (TZ_RAW_ZONE_INFO), comp_func_raw_zones);
+  qsort (tzd_raw->zones, tzd_raw->zone_count, sizeof (TZ_RAW_ZONE_INFO), comp_func_raw_zones);
 
   /* sort zone aliases by name (aliases = links & backward links) */
-  qsort (tzd_raw->links, tzd_raw->link_count,
-	 sizeof (TZ_RAW_LINK), comp_func_raw_links);
+  qsort (tzd_raw->links, tzd_raw->link_count, sizeof (TZ_RAW_LINK), comp_func_raw_links);
 
   /* sort offset rules by date */
   for (i = 0; i < tzd_raw->zone_count; i++)
     {
-      qsort (tzd_raw->zones[i].offset_rules,
-	     tzd_raw->zones[i].offset_rule_count,
-	     sizeof (TZ_RAW_OFFSET_RULE), comp_func_raw_offset_rules);
+      qsort (tzd_raw->zones[i].offset_rules, tzd_raw->zones[i].offset_rule_count, sizeof (TZ_RAW_OFFSET_RULE),
+	     comp_func_raw_offset_rules);
     }
 
   /* sort DS rulesets by name */
-  qsort (tzd_raw->ds_rulesets, tzd_raw->ruleset_count,
-	 sizeof (TZ_RAW_DS_RULESET), comp_func_raw_ds_rulesets);
+  qsort (tzd_raw->ds_rulesets, tzd_raw->ruleset_count, sizeof (TZ_RAW_DS_RULESET), comp_func_raw_ds_rulesets);
 
   /* sort DS rules (in each set) by starting year */
   for (i = 0; i < tzd_raw->ruleset_count; i++)
     {
       rs = &(tzd_raw->ds_rulesets[i]);
-      qsort (rs->rules, rs->rule_count, sizeof (TZ_RAW_DS_RULE),
-	     comp_func_raw_ds_rules);
+      qsort (rs->rules, rs->rule_count, sizeof (TZ_RAW_DS_RULE), comp_func_raw_ds_rules);
     }
 }
 
@@ -2818,8 +2639,7 @@ tzc_index_raw_subdata (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
 	    {
 	      continue;
 	    }
-	  if (strcmp (tzd_raw->zones[i].code,
-		      tzd_raw->countries[j].code) == 0)
+	  if (strcmp (tzd_raw->zones[i].code, tzd_raw->countries[j].code) == 0)
 	    {
 	      found_id = tzd_raw->countries[j].id;
 	      break;
@@ -2856,8 +2676,7 @@ tzc_index_raw_subdata (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
       assert (alias != NULL);
 
       /* put the found alias into the corresponding TZ_RAW_ZONE_INFO */
-      temp_aliases = (char **)
-	realloc (zone->aliases, (zone->alias_count + 1) * sizeof (char *));
+      temp_aliases = (char **) realloc (zone->aliases, (zone->alias_count + 1) * sizeof (char *));
 
       if (temp_aliases == NULL)
 	{
@@ -2908,8 +2727,8 @@ tzc_index_raw_subdata (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
 
   if (mode == TZ_GEN_TYPE_UPDATE)
     {
-      /* TODO: if a zone is renamed, create/update an alias for it, to
-       * keep the old name found in the predefined TIMEZONE array */
+      /* TODO: if a zone is renamed, create/update an alias for it, to keep the old name found in the predefined
+       * TIMEZONE array */
       assert (false);
     }
   else
@@ -2947,8 +2766,7 @@ compare_ints (const void *a, const void *b)
  * Return: error or no error
  */
 static int
-tzc_check_ds_ruleset (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_rule_set,
-		      int *ds_changes_cnt)
+tzc_check_ds_ruleset (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_rule_set, int *ds_changes_cnt)
 {
 #define ABS(i) ((i) >= 0 ? (i) : -(i))
 #define MAX_DS_CHANGES_YEAR 1000
@@ -2997,8 +2815,7 @@ tzc_check_ds_ruleset (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_rule_set,
       for (i = 0; i < ds_rule_set->count; i++)
 	{
 	  TZ_DS_RULE *ds_rule;
-	  int ds_change_julian_date, first_day_year_julian,
-	    last_day_year_julian;
+	  int ds_change_julian_date, first_day_year_julian, last_day_year_julian;
 
 	  ds_rule = &(tzd->ds_rules[i + ds_rule_set->index_start]);
 
@@ -3018,16 +2835,13 @@ tzc_check_ds_ruleset (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_rule_set,
 	      continue;
 	    }
 
-	  if (tz_get_ds_change_julian_date_diff (0, ds_rule, year,
-						 &ds_change_julian_date, NULL)
-	      != NO_ERROR)
+	  if (tz_get_ds_change_julian_date_diff (0, ds_rule, year, &ds_change_julian_date, NULL) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
 
 	  assert (*ds_changes_cnt < MAX_DS_CHANGES_YEAR);
-	  all_ds_changes_julian_date[(*ds_changes_cnt)++] =
-	    ds_change_julian_date;
+	  all_ds_changes_julian_date[(*ds_changes_cnt)++] = ds_change_julian_date;
 
 	  first_day_year_julian = julian_encode (1, 1, year);
 	  last_day_year_julian = julian_encode (31, 12, year);
@@ -3035,21 +2849,18 @@ tzc_check_ds_ruleset (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_rule_set,
 	  if (ABS (ds_change_julian_date - first_day_year_julian) <= 1
 	      || ABS (ds_change_julian_date - last_day_year_julian) <= 1)
 	    {
-	      printf ("DS ruleset: %s, Year: %d, Change on : %s \n",
-		      ds_rule_set->ruleset_name, year,
+	      printf ("DS ruleset: %s, Year: %d, Change on : %s \n", ds_rule_set->ruleset_name, year,
 		      MONTH_NAMES_ABBREV[ds_rule->in_month]);
 	    }
 	}
 
       if (count > 2)
 	{
-	  printf ("DS ruleset: %s, Year: %d, found %d matching rules\n",
-		  ds_rule_set->ruleset_name, year, count);
+	  printf ("DS ruleset: %s, Year: %d, found %d matching rules\n", ds_rule_set->ruleset_name, year, count);
 	}
     }
 
-  qsort (all_ds_changes_julian_date, *ds_changes_cnt, sizeof (int),
-	 compare_ints);
+  qsort (all_ds_changes_julian_date, *ds_changes_cnt, sizeof (int), compare_ints);
   last_ds_change_julian_date = all_ds_changes_julian_date[0];
   for (i = 1; i < *ds_changes_cnt; i++)
     {
@@ -3062,18 +2873,15 @@ tzc_check_ds_ruleset (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_rule_set,
 
       if (date_diff < 30)
 	{
-	  julian_decode (last_ds_change_julian_date, &month1, &day1, &year1,
-			 NULL);
-	  julian_decode (all_ds_changes_julian_date[i], &month2, &day2,
-			 &year2, NULL);
-	  printf ("DS ruleset: %s, DS change after %d days, Date1: %d-%d-%d,"
-		  "Date1: %d-%d-%d\n", ds_rule_set->ruleset_name, date_diff,
-		  day1, month1, year1, day2, month2, year2);
+	  julian_decode (last_ds_change_julian_date, &month1, &day1, &year1, NULL);
+	  julian_decode (all_ds_changes_julian_date[i], &month2, &day2, &year2, NULL);
+	  printf ("DS ruleset: %s, DS change after %d days, Date1: %d-%d-%d," "Date1: %d-%d-%d\n",
+		  ds_rule_set->ruleset_name, date_diff, day1, month1, year1, day2, month2, year2);
 	}
     }
 
-  printf ("Ruleset %s , total changes : %d (%d - %d)\n",
-	  ds_rule_set->ruleset_name, *ds_changes_cnt, start_year, end_year);
+  printf ("Ruleset %s , total changes : %d (%d - %d)\n", ds_rule_set->ruleset_name, *ds_changes_cnt, start_year,
+	  end_year);
   return NO_ERROR;
 #undef ABS
 }
@@ -3097,8 +2905,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
   /* countries */
   assert (tzd->countries == NULL);
-  tzd->countries = (TZ_COUNTRY *)
-    malloc (tzd_raw->country_count * sizeof (tzd->countries[0]));
+  tzd->countries = (TZ_COUNTRY *) malloc (tzd_raw->country_count * sizeof (tzd->countries[0]));
   if (tzd->countries == NULL)
     {
       char err_msg[TZC_ERR_MSG_MAX_SIZE];
@@ -3133,20 +2940,17 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
   tzd->names = NULL;
   tzd->timezone_count = tzd_raw->zone_count;
 
-  tzd->timezones = (TZ_TIMEZONE *)
-    malloc (tzd->timezone_count * sizeof (tzd->timezones[0]));
+  tzd->timezones = (TZ_TIMEZONE *) malloc (tzd->timezone_count * sizeof (tzd->timezones[0]));
   if (tzd->timezones == NULL)
     {
       char err_msg[TZC_ERR_MSG_MAX_SIZE];
 
       sprintf (err_msg, "%d", tzd->timezone_count);
       err_status = TZC_ERR_OUT_OF_MEMORY;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY,
-			  err_msg, "TZ_TIMEZONE");
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_TIMEZONE");
       goto exit;
     }
-  memset (tzd->timezones, 0,
-	  tzd->timezone_count * sizeof (tzd->timezones[0]));
+  memset (tzd->timezones, 0, tzd->timezone_count * sizeof (tzd->timezones[0]));
 
   /* count total number of offset rules */
   for (i = 0; i < tzd_raw->zone_count; i++)
@@ -3154,22 +2958,19 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
       tzd->offset_rule_count += tzd_raw->zones[i].offset_rule_count;
     }
 
-  tzd->offset_rules = (TZ_OFFSET_RULE *)
-    malloc (tzd->offset_rule_count * sizeof (tzd->offset_rules[0]));
+  tzd->offset_rules = (TZ_OFFSET_RULE *) malloc (tzd->offset_rule_count * sizeof (tzd->offset_rules[0]));
   if (tzd->offset_rules == NULL)
     {
       char err_msg[TZC_ERR_MSG_MAX_SIZE];
 
       sprintf (err_msg, "%d", tzd->offset_rule_count);
       err_status = TZC_ERR_OUT_OF_MEMORY;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY,
-			  err_msg, "TZ_OFFSET_RULE");
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_OFFSET_RULE");
       goto exit;
     }
   offset_rule_id = 0;
 
-  memset (tzd->offset_rules, 0,
-	  tzd->offset_rule_count * sizeof (tzd->offset_rules[0]));
+  memset (tzd->offset_rules, 0, tzd->offset_rule_count * sizeof (tzd->offset_rules[0]));
 
   for (i = 0; i < tzd_raw->zone_count; i++)
     {
@@ -3193,8 +2994,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	  else
 	    {
 	      err_status = TZC_ERR_INVALID_ZONE;
-	      TZC_LOG_ERROR_1ARG (TZC_CONTEXT (tzd_raw),
-				  TZC_ERR_INVALID_ZONE, "Empty zone");
+	      TZC_LOG_ERROR_1ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_ZONE, "Empty zone");
 	      goto exit;
 	    }
 	}
@@ -3213,8 +3013,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
 		  sprintf (err_msg, "%d", strlen (raw_offrule->format));
 		  err_status = TZC_ERR_OUT_OF_MEMORY;
-		  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw),
-				      TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
+		  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
 		  goto exit;
 		}
 	      offrule->std_format = NULL;
@@ -3239,8 +3038,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
 		  sprintf (err_msg, "%d", strlen (raw_offrule->format));
 		  err_status = TZC_ERR_OUT_OF_MEMORY;
-		  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw),
-				      TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
+		  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
 		  goto exit;
 		}
 
@@ -3253,9 +3051,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
 		      sprintf (err_msg, "%d", strlen (save_format));
 		      err_status = TZC_ERR_OUT_OF_MEMORY;
-		      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw),
-					  TZC_ERR_OUT_OF_MEMORY, err_msg,
-					  "char");
+		      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
 		      goto exit;
 		    }
 		}
@@ -3279,22 +3075,18 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
 	  /* seek ds ruleset metadata using string identifier raw-offrule->rules */
 	  offrule->ds_ruleset =
-	    tzc_get_ds_ruleset_by_name (tzd->ds_rulesets,
-					tzd->ds_ruleset_count,
-					raw_offrule->ds_ruleset_name);
+	    tzc_get_ds_ruleset_by_name (tzd->ds_rulesets, tzd->ds_ruleset_count, raw_offrule->ds_ruleset_name);
 	  if (offrule->ds_ruleset == -1)
 	    {
 	      const char *dummy = NULL;
-	      /* raw_offrule->rules is not an identifier of a ruleset;
-	       * check if it is '-' or time offset */
+	      /* raw_offrule->rules is not an identifier of a ruleset; check if it is '-' or time offset */
 	      offrule->ds_type = DS_TYPE_FIXED;
 	      if (strcmp (raw_offrule->ds_ruleset_name, "-") == 0)
 		{
 		  offrule->ds_ruleset = 0;
 		}
-	      else if (tz_str_to_seconds (raw_offrule->ds_ruleset_name,
-					  &(offrule->ds_ruleset),
-					  &dummy, false) != NO_ERROR)
+	      else if (tz_str_to_seconds (raw_offrule->ds_ruleset_name, &(offrule->ds_ruleset), &dummy, false) !=
+		       NO_ERROR)
 		{
 		  err_status = TZC_ERR_INVALID_TIME;
 		  goto exit;
@@ -3308,8 +3100,8 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	}
     }
 
-  /* check cloned zones and properly set their offset rule references;
-   * NOTE: this can be done only after exporting all zones and offset rules */
+  /* check cloned zones and properly set their offset rule references; NOTE: this can be done only after exporting all
+   * zones and offset rules */
   for (i = 0; i < tzd_raw->zone_count; i++)
     {
       TZ_TIMEZONE *tz_zone_clone = &(tzd->timezones[tzd_raw->zones[i].id]);
@@ -3322,17 +3114,14 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	}
 
       tz_zone_original = &(tzd->timezones[tz_raw_zone->clone_of_id]);
-      tz_zone_clone->gmt_off_rule_start =
-	tz_zone_original->gmt_off_rule_start;
-      tz_zone_clone->gmt_off_rule_count =
-	tz_zone_original->gmt_off_rule_count;
+      tz_zone_clone->gmt_off_rule_start = tz_zone_original->gmt_off_rule_start;
+      tz_zone_clone->gmt_off_rule_count = tz_zone_original->gmt_off_rule_count;
     }
 
   /* put aliases & timezone names into sorted arrays */
 
   /* build timezone_names */
-  tzd->timezone_names = (char **)
-    malloc (tzd->timezone_count * sizeof (tzd->timezone_names[0]));
+  tzd->timezone_names = (char **) malloc (tzd->timezone_count * sizeof (tzd->timezone_names[0]));
   if (tzd->timezone_names == NULL)
     {
       char err_msg[TZC_ERR_MSG_MAX_SIZE];
@@ -3342,8 +3131,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
       TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg, "char *");
       goto exit;
     }
-  memset (tzd->timezone_names, 0,
-	  tzd->timezone_count * sizeof (tzd->timezone_names[0]));
+  memset (tzd->timezone_names, 0, tzd->timezone_count * sizeof (tzd->timezone_names[0]));
   for (i = 0; i < tzd_raw->zone_count; i++)
     {
       int zone_id = tzd_raw->zones[i].id;
@@ -3355,8 +3143,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
 	  sprintf (err_msg, "%d", strlen (tzd_raw->zones[i].full_name));
 	  err_status = TZC_ERR_OUT_OF_MEMORY;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY,
-			      err_msg, "char");
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
 	  goto exit;
 	}
     }
@@ -3418,8 +3205,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
 	      sprintf (err_msg, "%d", strlen (tz_raw_zone->aliases[j]));
 	      err_status = TZC_ERR_OUT_OF_MEMORY;
-	      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg,
-				  "char");
+	      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
 	      goto exit;
 	    }
 	  offset_rule_id++;
@@ -3434,8 +3220,7 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
     for (i = 0; i < tzd->ds_ruleset_count; i++)
       {
 	int ds_changes = 0;
-	(void) tzc_check_ds_ruleset (tzd, &(tzd->ds_rulesets[i]),
-				     &ds_changes);
+	(void) tzc_check_ds_ruleset (tzd, &(tzd->ds_rulesets[i]), &ds_changes);
 
 	if (ds_changes > max_ds_changes)
 	  {
@@ -3443,14 +3228,12 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	  }
 	total_ds_changes += ds_changes;
       }
-    printf ("Total DS changes: %d; maximum changes in a ruleset :%d\n",
-	    total_ds_changes, max_ds_changes);
+    printf ("Total DS changes: %d; maximum changes in a ruleset :%d\n", total_ds_changes, max_ds_changes);
   }
 
   /* build leap second list */
   tzd->ds_leap_sec_count = tzd_raw->leap_sec_count;
-  tzd->ds_leap_sec = (TZ_LEAP_SEC *)
-    malloc (tzd->ds_leap_sec_count * sizeof (tzd->ds_leap_sec[0]));
+  tzd->ds_leap_sec = (TZ_LEAP_SEC *) malloc (tzd->ds_leap_sec_count * sizeof (tzd->ds_leap_sec[0]));
 
   if (tzd->ds_leap_sec == NULL)
     {
@@ -3458,12 +3241,10 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
       sprintf (err_msg, "%d", tzd->ds_leap_sec_count);
       err_status = TZC_ERR_OUT_OF_MEMORY;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg,
-			  "TZ_DS_LEAP_SEC *");
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_DS_LEAP_SEC *");
       goto exit;
     }
-  memcpy (tzd->ds_leap_sec, tzd_raw->leap_sec,
-	  tzd_raw->leap_sec_count * sizeof (TZ_LEAP_SEC));
+  memcpy (tzd->ds_leap_sec, tzd_raw->leap_sec, tzd_raw->leap_sec_count * sizeof (TZ_LEAP_SEC));
 exit:
   return err_status;
 }
@@ -3496,8 +3277,7 @@ tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
       tzd->ds_rule_count += tzd_raw->ds_rulesets[i].rule_count;
     }
 
-  tzd->ds_rules = (TZ_DS_RULE *)
-    malloc (tzd->ds_rule_count * sizeof (TZ_DS_RULE));
+  tzd->ds_rules = (TZ_DS_RULE *) malloc (tzd->ds_rule_count * sizeof (TZ_DS_RULE));
   if (tzd->ds_rules == NULL)
     {
       char err_msg[TZC_ERR_MSG_MAX_SIZE];
@@ -3510,22 +3290,19 @@ tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
   /* alloc ruleset array */
   tzd->ds_ruleset_count = tzd_raw->ruleset_count;
-  tzd->ds_rulesets = (TZ_DS_RULESET *)
-    malloc (tzd->ds_ruleset_count * sizeof (TZ_DS_RULESET));
+  tzd->ds_rulesets = (TZ_DS_RULESET *) malloc (tzd->ds_ruleset_count * sizeof (TZ_DS_RULESET));
   if (tzd->ds_rulesets == NULL)
     {
       char err_msg[TZC_ERR_MSG_MAX_SIZE];
 
       sprintf (err_msg, "%d", tzd->ds_ruleset_count);
       err_status = TZC_ERR_OUT_OF_MEMORY;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY,
-			  err_msg, "TZ_DS_RULESET");
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_DS_RULESET");
       goto exit;
     }
 
   memset (tzd->ds_rules, 0, tzd->ds_rule_count * sizeof (tzd->ds_rules[0]));
-  memset (tzd->ds_rulesets, 0,
-	  tzd->ds_ruleset_count * sizeof (tzd->ds_rulesets[0]));
+  memset (tzd->ds_rulesets, 0, tzd->ds_ruleset_count * sizeof (tzd->ds_rulesets[0]));
 
   for (i = 0; i < tzd->ds_ruleset_count; i++)
     {
@@ -3543,8 +3320,7 @@ tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
 	  sprintf (err_msg, "%d", strlen (tzd_raw->ds_rulesets[i].name));
 	  err_status = TZC_ERR_OUT_OF_MEMORY;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw),
-			      TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
 	  goto exit;
 	}
 
@@ -3555,8 +3331,7 @@ tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
 	  rule->at_time = rule_raw->at_time;
 	  rule->at_time_type = rule_raw->at_time_type;
-	  memcpy (&(rule->change_on), &(rule_raw->change_on),
-		  sizeof (TZ_DS_CHANGE_ON));
+	  memcpy (&(rule->change_on), &(rule_raw->change_on), sizeof (TZ_DS_CHANGE_ON));
 	  rule->from_year = rule_raw->from_year;
 	  rule->in_month = rule_raw->in_month;
 	  rule->letter_abbrev = strdup (rule_raw->letter_abbrev);
@@ -3566,18 +3341,14 @@ tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
 	      sprintf (err_msg, "%d", strlen (rule_raw->letter_abbrev));
 	      err_status = TZC_ERR_OUT_OF_MEMORY;
-	      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw),
-				  TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
+	      TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
 	      goto exit;
 	    }
 	  if (has_default_abbrev == true && rule_raw->save_time == 0)
 	    {
-	      /* common single letter abbreviation having daylight save time zero 
-	       * (common standard time) */
+	      /* common single letter abbreviation having daylight save time zero (common standard time) */
 	      if (strlen (rule->letter_abbrev) > 1
-		  || (prev_letter_abbrev != NULL
-		      && strcmp (rule->letter_abbrev,
-				 prev_letter_abbrev) != 0))
+		  || (prev_letter_abbrev != NULL && strcmp (rule->letter_abbrev, prev_letter_abbrev) != 0))
 		{
 		  has_default_abbrev = false;
 		}
@@ -3615,8 +3386,7 @@ tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
 	  sprintf (err_msg, "%d", strlen (prev_letter_abbrev));
 	  err_status = TZC_ERR_OUT_OF_MEMORY;
-	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw),
-			      TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
+	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_OUT_OF_MEMORY, err_msg, "char");
 	  goto exit;
 	}
       ruleset->to_year_max = to_year_max;
@@ -3658,12 +3428,11 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
     }
 
   str_cursor = strtok (str, " ");
-  if (tz_str_read_number (str_cursor, true, false, &val_read, &str_next)
-      != NO_ERROR && val_read > 0 && val_read < TZ_MAX_YEAR)
+  if (tz_str_read_number (str_cursor, true, false, &val_read, &str_next) != NO_ERROR && val_read > 0
+      && val_read < TZ_MAX_YEAR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_CANT_READ_VALUE,
-			  "UNTIL (year)", str_cursor);
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_CANT_READ_VALUE, "UNTIL (year)", str_cursor);
       goto exit;
     }
   else
@@ -3689,8 +3458,7 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
   if (str_month_to_int (str_cursor, &val_read, &str_next) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_CANT_READ_VALUE,
-			  "UNTIL month", str_cursor);
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_CANT_READ_VALUE, "UNTIL month", str_cursor);
       goto exit;
     }
   if (val_read < TZ_MON_JAN || val_read > TZ_MON_DEC)
@@ -3699,8 +3467,7 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
 
       sprintf (temp_msg, "%d", val_read);
       err_status = TZC_ERR_INVALID_VALUE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_VALUE,
-			  "UNTIL month value", temp_msg);
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_VALUE, "UNTIL month value", temp_msg);
       goto exit;
     }
   offset_rule->until_mon = (unsigned char) val_read;
@@ -3714,49 +3481,39 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
       goto exit;
     }
 
-  /* Some offset rules have the column UNTIL='1992 Sep lastSat 23:00' or
-   * '2012 Apr Sun>=1 4:00', instead of a fixed date/time value. This is a
-   * special case, and needs to be transformed into a fixed date. */
-  err_status = str_read_day_var (str_cursor, offset_rule->until_mon, &type,
-				 &day, &bound, &str_next);
+  /* Some offset rules have the column UNTIL='1992 Sep lastSat 23:00' or '2012 Apr Sun>=1 4:00', instead of a fixed
+   * date/time value. This is a special case, and needs to be transformed into a fixed date. */
+  err_status = str_read_day_var (str_cursor, offset_rule->until_mon, &type, &day, &bound, &str_next);
   if (err_status != NO_ERROR)
     {
       goto exit;
     }
   if (type == TZ_DS_TYPE_FIXED)
     {
-      if (!tzc_is_valid_date (day, offset_rule->until_mon,
-			      offset_rule->until_year,
-			      offset_rule->until_year + 1))
+      if (!tzc_is_valid_date (day, offset_rule->until_mon, offset_rule->until_year, offset_rule->until_year + 1))
 	{
 	  char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
 
-	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", day,
-		   offset_rule->until_mon, offset_rule->until_year);
+	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", day, offset_rule->until_mon, offset_rule->until_year);
 	  err_status = TZC_ERR_DS_INVALID_DATE;
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE,
-			      "day of month (UNTIL)", temp_msg);
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE, "day of month (UNTIL)", temp_msg);
 	  goto exit;
 	}
     }
   else if (type == TZ_DS_TYPE_VAR_GREATER)
     {
-      int month_day =
-	tz_get_first_weekday_around_date (offset_rule->until_year,
-					  offset_rule->until_mon, day, bound,
-					  false);
+      int month_day = tz_get_first_weekday_around_date (offset_rule->until_year,
+							offset_rule->until_mon, day, bound,
+							false);
 
-      if (!tzc_is_valid_date (month_day, offset_rule->until_mon,
-			      offset_rule->until_year,
-			      offset_rule->until_year + 1))
+      if (!tzc_is_valid_date (month_day, offset_rule->until_mon, offset_rule->until_year, offset_rule->until_year + 1))
 	{
 	  char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
 
-	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", month_day,
-		   offset_rule->until_mon, offset_rule->until_year);
+	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", month_day, offset_rule->until_mon,
+		   offset_rule->until_year);
 	  err_status = TZC_ERR_DS_INVALID_DATE;
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE,
-			      "day of month (UNTIL)", temp_msg);
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE, "day of month (UNTIL)", temp_msg);
 	  goto exit;
 	}
 
@@ -3772,8 +3529,7 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
 
 	  if (offset_rule->until_mon == TZ_MON_FEB)
 	    {
-	      max_days_in_month =
-		(IS_LEAP_YEAR (offset_rule->until_year) ? 29 : 28);
+	      max_days_in_month = (IS_LEAP_YEAR (offset_rule->until_year) ? 29 : 28);
 	    }
 	  else
 	    {
@@ -3783,22 +3539,16 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
 	  bound = max_days_in_month - 1;
 	}
 
-      month_day =
-	tz_get_first_weekday_around_date (offset_rule->until_year,
-					  offset_rule->until_mon, day, bound,
-					  true);
+      month_day = tz_get_first_weekday_around_date (offset_rule->until_year, offset_rule->until_mon, day, bound, true);
 
-      if (!tzc_is_valid_date (month_day, offset_rule->until_mon,
-			      offset_rule->until_year,
-			      offset_rule->until_year + 1))
+      if (!tzc_is_valid_date (month_day, offset_rule->until_mon, offset_rule->until_year, offset_rule->until_year + 1))
 	{
 	  char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
 
-	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", month_day,
-		   offset_rule->until_mon, offset_rule->until_year);
+	  sprintf (temp_msg, "Day: %d, Month: %d, Year: %d", month_day, offset_rule->until_mon,
+		   offset_rule->until_year);
 	  err_status = TZC_ERR_DS_INVALID_DATE;
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE,
-			      "day of month (UNTIL)", temp_msg);
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE, "day of month (UNTIL)", temp_msg);
 	  goto exit;
 	}
 
@@ -3808,8 +3558,7 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
     {
       assert (false);
       err_status = TZC_ERR_DS_INVALID_DATE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE,
-			  "value for UNTIL", str);
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_DS_INVALID_DATE, "value for UNTIL", str);
       goto exit;
     }
   offset_rule->until_day = (unsigned char) day;
@@ -3823,21 +3572,18 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
       goto exit;
     }
 
-  if (tz_str_read_time (str_cursor, false, false, &hour, &min, &sec,
-			&str_next) != NO_ERROR)
+  if (tz_str_read_time (str_cursor, false, false, &hour, &min, &sec, &str_next) != NO_ERROR)
     {
       char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
 
       sprintf (temp_msg, "[hour: %d, min: %d, sec: %d]", hour, min, sec);
       err_status = TZC_ERR_INVALID_TIME;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_TIME,
-			  temp_msg, "UNTIL column");
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_TIME, temp_msg, "UNTIL column");
       goto exit;
     }
 
   str_cursor = str_next;
-  err_status = tzc_read_time_type (str_cursor, &str_cursor,
-				   &(offset_rule->until_time_type));
+  err_status = tzc_read_time_type (str_cursor, &str_cursor, &(offset_rule->until_time_type));
   if (err_status != NO_ERROR)
     {
       return err_status;
@@ -3883,8 +3629,7 @@ str_month_to_int (const char *str_in, int *month_num, const char **str_next)
 
   for (i = 0; i < TZ_MON_COUNT; i++)
     {
-      if (strncasecmp (MONTH_NAMES_ABBREV[i], str,
-		       sizeof (MONTH_NAMES_ABBREV[0]) - 1) == 0)
+      if (strncasecmp (MONTH_NAMES_ABBREV[i], str, sizeof (MONTH_NAMES_ABBREV[0]) - 1) == 0)
 	{
 	  break;
 	}
@@ -3936,16 +3681,14 @@ str_day_to_int (const char *str_in, int *day_num, const char **str_next)
 
   for (i = 0; i < TZ_WEEK_DAY_COUNT; i++)
     {
-      if (strncasecmp (DAY_NAMES_ABBREV[i], str,
-		       sizeof (DAY_NAMES_ABBREV[0]) - 1) == 0)
+      if (strncasecmp (DAY_NAMES_ABBREV[i], str, sizeof (DAY_NAMES_ABBREV[0]) - 1) == 0)
 	{
 	  break;
 	}
     }
   if (i >= TZ_WEEK_DAY_COUNT)
     {
-      /* month abbreviation not valid, or an error occured; set day_num to -1
-       * and exit with -1 */
+      /* month abbreviation not valid, or an error occured; set day_num to -1 and exit with -1 */
       *day_num = -1;
       err_status = TZC_ERR_INVALID_VALUE;
       goto exit;
@@ -3976,15 +3719,13 @@ exit:
  * str_next(out): pointer to the remaining string after parsing the day rule
  */
 static int
-str_read_day_var (const char *str, const int month, int *type, int *day,
-		  int *bound, const char **str_next)
+str_read_day_var (const char *str, const int month, int *type, int *day, int *bound, const char **str_next)
 {
   int err_status = NO_ERROR;
   int day_num;
   char str_last[5] = "last";
   const char *str_cursor;
-  const int days_of_month[] =
-    { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  const int days_of_month[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
 
   assert (str != NULL);
 
@@ -4017,8 +3758,7 @@ str_read_day_var (const char *str, const int month, int *type, int *day,
       if (str_day_to_int (str_cursor, &day_num, str_next) != NO_ERROR)
 	{
 	  err_status = TZC_ERR_CANT_READ_VALUE;
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_CANT_READ_VALUE,
-			      "day string", str_cursor);
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_CANT_READ_VALUE, "day string", str_cursor);
 	  goto exit;
 	}
       if (day_num < TZ_WEEK_DAY_SUN || day_num > TZ_WEEK_DAY_SAT)
@@ -4027,8 +3767,7 @@ str_read_day_var (const char *str, const int month, int *type, int *day,
 
 	  sprintf (temp_msg, "%d", day_num);
 	  err_status = TZC_ERR_INVALID_VALUE;
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_VALUE,
-			      "day string value", temp_msg);
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_VALUE, "day string value", temp_msg);
 	  goto exit;
 	}
       *type = TZ_DS_TYPE_VAR_SMALLER;
@@ -4039,14 +3778,12 @@ str_read_day_var (const char *str, const int month, int *type, int *day,
       goto exit;
     }
 
-  /* string was not a number, nor "last<Weekday>"; therefore it must be 
-   * something like Sun>=3 */
+  /* string was not a number, nor "last<Weekday>"; therefore it must be something like Sun>=3 */
   str_cursor = str;
   if (str_day_to_int (str_cursor, &day_num, &str_cursor) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_CANT_READ_VALUE,
-			  "day string", str_cursor);
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_CANT_READ_VALUE, "day string", str_cursor);
       goto exit;
     }
   assert (*(str_cursor + 1) == '=');
@@ -4068,12 +3805,10 @@ str_read_day_var (const char *str, const int month, int *type, int *day,
   str_cursor += 2;		/* skip the '>=' operator */
 
   *day = day_num;
-  if (tz_str_read_number (str_cursor, true, false, &day_num, &str_cursor)
-      != NO_ERROR)
+  if (tz_str_read_number (str_cursor, true, false, &day_num, &str_cursor) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
-      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_CANT_READ_VALUE,
-			  "day string", str_cursor);
+      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_CANT_READ_VALUE, "day string", str_cursor);
       goto exit;
     }
   *bound = day_num - 1;
@@ -4142,8 +3877,7 @@ comp_func_raw_zones (const void *arg1, const void *arg2)
   zone1 = (TZ_RAW_ZONE_INFO *) arg1;
   zone2 = (TZ_RAW_ZONE_INFO *) arg2;
 
-  assert (!IS_EMPTY_STR (zone1->full_name)
-	  && !IS_EMPTY_STR (zone2->full_name));
+  assert (!IS_EMPTY_STR (zone1->full_name) && !IS_EMPTY_STR (zone2->full_name));
 
   if (zone1->id == -1 && zone2->id == -1)
     {
@@ -4220,21 +3954,17 @@ comp_func_raw_offset_rules (const void *arg1, const void *arg2)
       return -1;
     }
 
-  r1_until =
-    julian_encode (rule1->until_mon, rule1->until_day, rule1->until_year);
-  r2_until =
-    julian_encode (rule2->until_mon, rule2->until_day, rule2->until_year);
+  r1_until = julian_encode (rule1->until_mon, rule1->until_day, rule1->until_year);
+  r2_until = julian_encode (rule2->until_mon, rule2->until_day, rule2->until_year);
 
   if (r1_until == r2_until)
     {
-      /* both dates are equal; compare time (reuse r1_until and r2_until 
-       * we should not have two offset changes in the same date */
+      /* both dates are equal; compare time (reuse r1_until and r2_until we should not have two offset changes in the
+       * same date */
       assert (false);
 
-      r1_until =
-	(rule1->until_hour * 60 + rule1->until_min) * 60 + rule1->until_sec;
-      r2_until =
-	(rule2->until_hour * 60 + rule2->until_min) * 60 + rule2->until_sec;
+      r1_until = (rule1->until_hour * 60 + rule1->until_min) * 60 + rule1->until_sec;
+      r2_until = (rule2->until_hour * 60 + rule2->until_min) * 60 + rule2->until_sec;
     }
 
   if (r1_until < r2_until)
@@ -4294,17 +4024,12 @@ get_day_of_week_for_raw_rule (const TZ_RAW_DS_RULE * rule, const int year)
   else
     {
       int ds_rule_weekday, day_month_bound;
-      bool before = (rule->change_on.type
-		     == TZ_DS_TYPE_VAR_SMALLER) ? true : false;
+      bool before = (rule->change_on.type == TZ_DS_TYPE_VAR_SMALLER) ? true : false;
 
       ds_rule_weekday = rule->change_on.day_of_week;
       day_month_bound = rule->change_on.day_of_month;
 
-      ds_rule_day = tz_get_first_weekday_around_date (year,
-						      ds_rule_month,
-						      ds_rule_weekday,
-						      day_month_bound,
-						      before);
+      ds_rule_day = tz_get_first_weekday_around_date (year, ds_rule_month, ds_rule_weekday, day_month_bound, before);
     }
 
   return ds_rule_day;
@@ -4414,8 +4139,7 @@ tzc_export_timezone_C_file (const TZ_DATA * tzd)
   FILE *fp;
 
   envvar_cubrid_dir (tz_cub_path, sizeof (tz_cub_path));
-  tzc_build_filepath (tz_C_filepath, sizeof (tz_C_filepath), tz_cub_path,
-		      PATH_PARTIAL_TIMEZONES_FILE);
+  tzc_build_filepath (tz_C_filepath, sizeof (tz_C_filepath), tz_cub_path, PATH_PARTIAL_TIMEZONES_FILE);
 
   fp = fopen_ex (tz_C_filepath, "wt");
   if (fp == NULL)
@@ -4432,68 +4156,50 @@ tzc_export_timezone_C_file (const TZ_DATA * tzd)
   fprintf (fp, "#include \"timezone_lib_common.h\"\n\n");
 
   /* countries */
-  fprintf (fp, "%s const int tz_country_count = %d;\n", SHLIB_EXPORT_PREFIX,
-	   tzd->country_count);
-  fprintf (fp, "%s const TZ_COUNTRY tz_countries[] = {\n",
-	   SHLIB_EXPORT_PREFIX);
+  fprintf (fp, "%s const int tz_country_count = %d;\n", SHLIB_EXPORT_PREFIX, tzd->country_count);
+  fprintf (fp, "%s const TZ_COUNTRY tz_countries[] = {\n", SHLIB_EXPORT_PREFIX);
   for (i = 0; i < tzd->country_count; i++)
     {
-      fprintf (fp, "\t{\"%s\", \"%s\"}%s\n",
-	       tzd->countries[i].code,
-	       tzd->countries[i].full_name,
+      fprintf (fp, "\t{\"%s\", \"%s\"}%s\n", tzd->countries[i].code, tzd->countries[i].full_name,
 	       (i == tzd->country_count - 1) ? "" : ",");
     }
   fprintf (fp, "};\n\n");
 
   /* timezone names */
-  fprintf (fp, "%s const char *tz_timezone_names[] = {\n",
-	   SHLIB_EXPORT_PREFIX);
+  fprintf (fp, "%s const char *tz_timezone_names[] = {\n", SHLIB_EXPORT_PREFIX);
   for (i = 0; i < tzd->timezone_count; i++)
     {
-      fprintf (fp, "\t\"%s\"%s\n", tzd->timezone_names[i],
-	       (i == tzd->timezone_count - 1 ? "" : ","));
+      fprintf (fp, "\t\"%s\"%s\n", tzd->timezone_names[i], (i == tzd->timezone_count - 1 ? "" : ","));
     }
   fprintf (fp, "};\n\n");
 
   /* timezones */
-  fprintf (fp, "%s const int timezone_count = %d;\n", SHLIB_EXPORT_PREFIX,
-	   tzd->timezone_count);
+  fprintf (fp, "%s const int timezone_count = %d;\n", SHLIB_EXPORT_PREFIX, tzd->timezone_count);
   fprintf (fp, "%s const TZ_TIMEZONE timezones[] = {\n", SHLIB_EXPORT_PREFIX);
   for (i = 0; i < tzd->timezone_count; i++)
     {
-      fprintf (fp, "\t{%d, %d, %d, %d}%s\n", tzd->timezones[i].zone_id,
-	       tzd->timezones[i].country_id,
-	       tzd->timezones[i].gmt_off_rule_start,
-	       tzd->timezones[i].gmt_off_rule_count,
+      fprintf (fp, "\t{%d, %d, %d, %d}%s\n", tzd->timezones[i].zone_id, tzd->timezones[i].country_id,
+	       tzd->timezones[i].gmt_off_rule_start, tzd->timezones[i].gmt_off_rule_count,
 	       (i == tzd->timezone_count - 1) ? "" : ",");
     }
   fprintf (fp, "};\n\n");
 
-  /* NOTE: timezone names are not exported into the shared library, but
-   * into a separate C file, to be included into CUBRID */
+  /* NOTE: timezone names are not exported into the shared library, but into a separate C file, to be included into
+   * CUBRID */
 
   /* offset rule array */
-  fprintf (fp, "%s const int offset_rule_count = %d;\n", SHLIB_EXPORT_PREFIX,
-	   tzd->offset_rule_count);
-  fprintf (fp, "%s const TZ_OFFSET_RULE offset_rules[] = {\n",
-	   SHLIB_EXPORT_PREFIX);
+  fprintf (fp, "%s const int offset_rule_count = %d;\n", SHLIB_EXPORT_PREFIX, tzd->offset_rule_count);
+  fprintf (fp, "%s const TZ_OFFSET_RULE offset_rules[] = {\n", SHLIB_EXPORT_PREFIX);
   for (i = 0; i < tzd->offset_rule_count; i++)
     {
       int julian_date;
       offrule = &(tzd->offset_rules[i]);
 
-      julian_date = julian_encode (1 + offrule->until_mon,
-				   1 + offrule->until_day,
-				   offrule->until_year);
+      julian_date = julian_encode (1 + offrule->until_mon, 1 + offrule->until_day, offrule->until_year);
 
-      fprintf (fp,
-	       "\t{%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, ",
-	       offrule->gmt_off, offrule->ds_ruleset,
-	       offrule->until_year, offrule->until_mon,
-	       offrule->until_day, offrule->until_hour,
-	       offrule->until_min, offrule->until_sec,
-	       offrule->until_time_type,
-	       offrule->until_flag, offrule->ds_type, julian_date);
+      fprintf (fp, "\t{%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, ", offrule->gmt_off, offrule->ds_ruleset,
+	       offrule->until_year, offrule->until_mon, offrule->until_day, offrule->until_hour, offrule->until_min,
+	       offrule->until_sec, offrule->until_time_type, offrule->until_flag, offrule->ds_type, julian_date);
 
       if (offrule->std_format == NULL)
 	{
@@ -4530,77 +4236,59 @@ tzc_export_timezone_C_file (const TZ_DATA * tzd)
   fprintf (fp, "};\n\n");
 
   /* tz names (timezone names and aliases) */
-  fprintf (fp, "%s const int tz_name_count = %d;\n", SHLIB_EXPORT_PREFIX,
-	   tzd->name_count);
+  fprintf (fp, "%s const int tz_name_count = %d;\n", SHLIB_EXPORT_PREFIX, tzd->name_count);
   fprintf (fp, "%s const TZ_NAME tz_names[] = {\n", SHLIB_EXPORT_PREFIX);
   for (i = 0; i < tzd->name_count; i++)
     {
-      fprintf (fp, "\t{%d, \"%s\", %d}%s\n", tzd->names[i].zone_id,
-	       tzd->names[i].name, tzd->names[i].is_alias,
+      fprintf (fp, "\t{%d, \"%s\", %d}%s\n", tzd->names[i].zone_id, tzd->names[i].name, tzd->names[i].is_alias,
 	       (i == tzd->name_count - 1) ? "" : ",");
     }
   fprintf (fp, "};\n\n");
 
   /* daylight saving rulesets */
-  fprintf (fp, "%s const int ds_ruleset_count = %d;\n", SHLIB_EXPORT_PREFIX,
-	   tzd->ds_ruleset_count);
-  fprintf (fp, "%s const TZ_DS_RULESET ds_rulesets[] = {\n",
-	   SHLIB_EXPORT_PREFIX);
+  fprintf (fp, "%s const int ds_ruleset_count = %d;\n", SHLIB_EXPORT_PREFIX, tzd->ds_ruleset_count);
+  fprintf (fp, "%s const TZ_DS_RULESET ds_rulesets[] = {\n", SHLIB_EXPORT_PREFIX);
   for (i = 0; i < tzd->ds_ruleset_count; i++)
     {
-      fprintf (fp, "\t{%d, %d, \"%s\", %d, \"%s\"}%s\n",
-	       tzd->ds_rulesets[i].index_start, tzd->ds_rulesets[i].count,
-	       tzd->ds_rulesets[i].ruleset_name,
-	       tzd->ds_rulesets[i].to_year_max,
-	       tzd->ds_rulesets[i].default_abrev,
+      fprintf (fp, "\t{%d, %d, \"%s\", %d, \"%s\"}%s\n", tzd->ds_rulesets[i].index_start, tzd->ds_rulesets[i].count,
+	       tzd->ds_rulesets[i].ruleset_name, tzd->ds_rulesets[i].to_year_max, tzd->ds_rulesets[i].default_abrev,
 	       (i == tzd->ds_ruleset_count - 1) ? "" : ",");
     }
   fprintf (fp, "};\n\n");
 
   /* daylight saving rules */
-  fprintf (fp, "%s const int ds_rule_count = %d;\n", SHLIB_EXPORT_PREFIX,
-	   tzd->ds_rule_count);
+  fprintf (fp, "%s const int ds_rule_count = %d;\n", SHLIB_EXPORT_PREFIX, tzd->ds_rule_count);
   fprintf (fp, "%s const TZ_DS_RULE ds_rules[] = {\n", SHLIB_EXPORT_PREFIX);
   for (i = 0; i < tzd->ds_rule_count; i++)
     {
       rule = &(tzd->ds_rules[i]);
-      fprintf (fp, "\t{%d, %d, %d, {%d, %d, %d}, %d, %d, %d, \"%s\"}%s\n",
-	       rule->from_year, rule->to_year, rule->in_month,
-	       rule->change_on.type, rule->change_on.day_of_month,
-	       rule->change_on.day_of_week, rule->at_time, rule->at_time_type,
-	       rule->save_time, rule->letter_abbrev,
+      fprintf (fp, "\t{%d, %d, %d, {%d, %d, %d}, %d, %d, %d, \"%s\"}%s\n", rule->from_year, rule->to_year,
+	       rule->in_month, rule->change_on.type, rule->change_on.day_of_month, rule->change_on.day_of_week,
+	       rule->at_time, rule->at_time_type, rule->save_time, rule->letter_abbrev,
 	       (i == tzd->ds_rule_count - 1) ? "" : ",");
     }
   fprintf (fp, "};\n\n");
 
   /* leap seconds */
-  fprintf (fp, "%s const int ds_leap_sec_count = %d;\n", SHLIB_EXPORT_PREFIX,
-	   tzd->ds_leap_sec_count);
-  fprintf (fp, "%s const TZ_LEAP_SEC ds_leap_sec[] = {\n",
-	   SHLIB_EXPORT_PREFIX);
+  fprintf (fp, "%s const int ds_leap_sec_count = %d;\n", SHLIB_EXPORT_PREFIX, tzd->ds_leap_sec_count);
+  fprintf (fp, "%s const TZ_LEAP_SEC ds_leap_sec[] = {\n", SHLIB_EXPORT_PREFIX);
   for (i = 0; i < tzd->ds_leap_sec_count; i++)
     {
       leap_sec = &(tzd->ds_leap_sec[i]);
-      fprintf (fp, "\t{%d, %d, %d, %d, %d}%s\n",
-	       leap_sec->year, leap_sec->month, leap_sec->day,
-	       leap_sec->corr_negative, leap_sec->is_rolling,
-	       (i == tzd->ds_leap_sec_count - 1) ? "" : ",");
+      fprintf (fp, "\t{%d, %d, %d, %d, %d}%s\n", leap_sec->year, leap_sec->month, leap_sec->day,
+	       leap_sec->corr_negative, leap_sec->is_rolling, (i == tzd->ds_leap_sec_count - 1) ? "" : ",");
     }
   fprintf (fp, "};\n\n");
 
 #if defined(WINDOWS)
   /* windows iana map */
-  fprintf (fp, "%s const int windows_iana_map_count = %d;\n",
-	   SHLIB_EXPORT_PREFIX, tzd->windows_iana_map_count);
-  fprintf (fp, "%s const TZ_WINDOWS_IANA_MAP windows_iana_map[] = {\n",
-	   SHLIB_EXPORT_PREFIX);
+  fprintf (fp, "%s const int windows_iana_map_count = %d;\n", SHLIB_EXPORT_PREFIX, tzd->windows_iana_map_count);
+  fprintf (fp, "%s const TZ_WINDOWS_IANA_MAP windows_iana_map[] = {\n", SHLIB_EXPORT_PREFIX);
 
   for (i = 0; i < tzd->windows_iana_map_count; i++)
     {
-      fprintf (fp, "\t{\"%s\", \"%s\", %d}%s\n",
-	       tzd->windows_iana_map[i].windows_zone,
-	       tzd->windows_iana_map[i].territory,
-	       tzd->windows_iana_map[i].iana_zone_id,
+      fprintf (fp, "\t{\"%s\", \"%s\", %d}%s\n", tzd->windows_iana_map[i].windows_zone,
+	       tzd->windows_iana_map[i].territory, tzd->windows_iana_map[i].iana_zone_id,
 	       (i == tzd->windows_iana_map_count - 1) ? "" : ",");
     }
   fprintf (fp, "};\n\n");
@@ -4625,8 +4313,7 @@ exit:
  * ruleset(in): ruleset name to search for
  */
 static int
-tzc_get_ds_ruleset_by_name (const TZ_DS_RULESET * ds_rulesets,
-			    int ds_ruleset_count, const char *ruleset)
+tzc_get_ds_ruleset_by_name (const TZ_DS_RULESET * ds_rulesets, int ds_ruleset_count, const char *ruleset)
 {
   int ruleset_id = -1;
   int index_bot, index_top;
@@ -4665,8 +4352,7 @@ tzc_get_ds_ruleset_by_name (const TZ_DS_RULESET * ds_rulesets,
  * alias_count(out): number of aliases for the given timezone
  */
 static int
-tzc_get_timezone_aliases (const TZ_DATA * tzd, const int zone_id,
-			  int **aliases, int *alias_count)
+tzc_get_timezone_aliases (const TZ_DATA * tzd, const int zone_id, int **aliases, int *alias_count)
 {
   int i, err_status = NO_ERROR;
   int *temp_array = NULL;
@@ -4681,16 +4367,14 @@ tzc_get_timezone_aliases (const TZ_DATA * tzd, const int zone_id,
       if (zone_id == tzd->names[i].zone_id && tzd->names[i].is_alias == 1)
 	{
 	  /* name/alias found for the given timezone ID */
-	  temp_array = (int *)
-	    realloc (*aliases, ((*alias_count) + 1) * sizeof (int));
+	  temp_array = (int *) realloc (*aliases, ((*alias_count) + 1) * sizeof (int));
 	  if (temp_array == NULL)
 	    {
 	      char err_msg[TZC_ERR_MSG_MAX_SIZE];
 
 	      sprintf (err_msg, "%d", (*alias_count) + 1);
 	      err_status = TZC_ERR_OUT_OF_MEMORY;
-	      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY,
-				  err_msg, "int");
+	      TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg, "int");
 	      goto exit;
 	    }
 	  *aliases = temp_array;
@@ -4709,8 +4393,7 @@ exit:
  * offset_rule(in): the offset rule to dump
  */
 static void
-tzc_dump_one_offset_rule (const TZ_DATA * tzd,
-			  const TZ_OFFSET_RULE * offset_rule)
+tzc_dump_one_offset_rule (const TZ_DATA * tzd, const TZ_OFFSET_RULE * offset_rule)
 {
   /* print GMTOFF column */
   print_seconds_as_time_hms_var (offset_rule->gmt_off);
@@ -4720,8 +4403,7 @@ tzc_dump_one_offset_rule (const TZ_DATA * tzd,
   /* print RULES column */
   if (offset_rule->ds_type == DS_TYPE_RULESET_ID)
     {
-      assert (offset_rule->ds_ruleset >= 0
-	      && offset_rule->ds_ruleset < tzd->ds_ruleset_count);
+      assert (offset_rule->ds_ruleset >= 0 && offset_rule->ds_ruleset < tzd->ds_ruleset_count);
       printf ("%s", tzd->ds_rulesets[offset_rule->ds_ruleset].ruleset_name);
     }
   else
@@ -4739,8 +4421,7 @@ tzc_dump_one_offset_rule (const TZ_DATA * tzd,
   /* print FORMAT column */
   if (offset_rule->var_format != NULL)
     {
-      assert (offset_rule->std_format == NULL
-	      && offset_rule->save_format == NULL);
+      assert (offset_rule->std_format == NULL && offset_rule->save_format == NULL);
       printf ("\t%s", offset_rule->var_format);
     }
   else
@@ -4768,8 +4449,7 @@ tzc_dump_one_offset_rule (const TZ_DATA * tzd,
     }
   printf ("\t");
 
-  if (offset_rule->until_hour + offset_rule->until_min
-      + offset_rule->until_sec > 0)
+  if (offset_rule->until_hour + offset_rule->until_min + offset_rule->until_sec > 0)
     {
       printf ("\t%02d:%02d", offset_rule->until_hour, offset_rule->until_min);
       if (offset_rule->until_sec > 0)
@@ -4820,8 +4500,7 @@ tzc_dump_ds_ruleset (const TZ_DATA * tzd, const int ruleset_id)
 	  assert (rule->to_year > rule->from_year);
 	  printf ("%d\t", rule->to_year);
 	}
-      /* NOTE: TYPE column is '-' for all rules at this time, so we just
-       * print a '-' */
+      /* NOTE: TYPE column is '-' for all rules at this time, so we just print a '-' */
       printf ("-\t");
 
       /* print IN column */
@@ -4835,12 +4514,10 @@ tzc_dump_ds_ruleset (const TZ_DATA * tzd, const int ruleset_id)
 	  printf ("%d", rule->change_on.day_of_month + 1);
 	  break;
 	case TZ_DS_TYPE_VAR_GREATER:
-	  printf ("%s>=%d", DAY_NAMES_ABBREV[rule->change_on.day_of_week],
-		  rule->change_on.day_of_month + 1);
+	  printf ("%s>=%d", DAY_NAMES_ABBREV[rule->change_on.day_of_week], rule->change_on.day_of_month + 1);
 	  break;
 	case TZ_DS_TYPE_VAR_SMALLER:
-	  printf ("%s<=%d", DAY_NAMES_ABBREV[rule->change_on.day_of_week],
-		  rule->change_on.day_of_month + 1);
+	  printf ("%s<=%d", DAY_NAMES_ABBREV[rule->change_on.day_of_week], rule->change_on.day_of_month + 1);
 	  break;
 	default:
 	  assert (false);
@@ -4874,8 +4551,7 @@ tzc_dump_summary (const TZ_DATA * tzd)
   printf ("\n Summary");
   printf ("\n No. of countries:    %d", tzd->country_count);
   printf ("\n No. of timezones:    %d", tzd->timezone_count);
-  printf ("\n No. of aliases:      %d",
-	  tzd->name_count - tzd->timezone_count);
+  printf ("\n No. of aliases:      %d", tzd->name_count - tzd->timezone_count);
   printf ("\n No. of offset rules: %d", tzd->offset_rule_count);
   printf ("\n No. of daylight saving rulesets: %d", tzd->ds_ruleset_count);
   printf ("\n No. of daylight saving rules:    %d", tzd->ds_rule_count);
@@ -4896,8 +4572,7 @@ tzc_dump_countries (const TZ_DATA * tzd)
 
   for (i = 0; i < tzd->country_count; i++)
     {
-      printf ("%s     %s\n", tzd->countries[i].code,
-	      tzd->countries[i].full_name);
+      printf ("%s     %s\n", tzd->countries[i].code, tzd->countries[i].full_name);
     }
 }
 
@@ -4943,8 +4618,7 @@ tzc_dump_one_timezone (const TZ_DATA * tzd, const int zone_id)
 
   printf (" Zone name: %s\n", tzd->timezone_names[zone_id]);
 
-  err_status = tzc_get_timezone_aliases (tzd, zone_id,
-					 &zone_aliases, &alias_count);
+  err_status = tzc_get_timezone_aliases (tzd, zone_id, &zone_aliases, &alias_count);
 
   if (err_status != NO_ERROR)
     {
@@ -4977,8 +4651,7 @@ tzc_dump_one_timezone (const TZ_DATA * tzd, const int zone_id)
   start_index = zone->gmt_off_rule_start;
 
   /* dump offset rules, and also build the list of DS rulesets to be dumped */
-  printf ("\n Offset rule index: %d, count: %d", zone->gmt_off_rule_start,
-	  zone->gmt_off_rule_count);
+  printf ("\n Offset rule index: %d, count: %d", zone->gmt_off_rule_start, zone->gmt_off_rule_count);
   if (zone->gmt_off_rule_count > 0)
     {
       printf ("\n Offset rules: \n");
@@ -5006,10 +4679,8 @@ tzc_dump_one_timezone (const TZ_DATA * tzd, const int zone_id)
 
       if (!found)
 	{
-	  temp_int_array = (int *)
-	    realloc (ds_rulesets_used,
-		     (count_ds_rulesets_used + 1)
-		     * sizeof (ds_rulesets_used[0]));
+	  temp_int_array =
+	    (int *) realloc (ds_rulesets_used, (count_ds_rulesets_used + 1) * sizeof (ds_rulesets_used[0]));
 	  if (temp_int_array == NULL)
 	    {
 	      printf ("\nOUT OF MEMORY!\n");
@@ -5021,8 +4692,7 @@ tzc_dump_one_timezone (const TZ_DATA * tzd, const int zone_id)
 	}
     }
 
-  printf ("\n Found %d daylight saving ruleset(s) used by offset rules\n",
-	  count_ds_rulesets_used);
+  printf ("\n Found %d daylight saving ruleset(s) used by offset rules\n", count_ds_rulesets_used);
   for (i = 0; i < count_ds_rulesets_used; i++)
     {
       tzc_dump_ds_ruleset (tzd, ds_rulesets_used[i]);
@@ -5057,10 +4727,8 @@ tzc_dump_leap_sec (const TZ_DATA * tzd)
   for (i = 0; i < tzd->ds_leap_sec_count; i++)
     {
       leap_sec = &(tzd->ds_leap_sec[i]);
-      printf ("Leap\t%d\t%s\t%d\t%d:%d:%d\t%s\t%s\n", leap_sec->year,
-	      MONTH_NAMES_ABBREV[leap_sec->month], leap_sec->day,
-	      23, 59, 60, (leap_sec->corr_negative ? "-" : "+"),
-	      (leap_sec->is_rolling ? "R" : "S"));
+      printf ("Leap\t%d\t%s\t%d\t%d:%d:%d\t%s\t%s\n", leap_sec->year, MONTH_NAMES_ABBREV[leap_sec->month],
+	      leap_sec->day, 23, 59, 60, (leap_sec->corr_negative ? "-" : "+"), (leap_sec->is_rolling ? "R" : "S"));
     }
 }
 
@@ -5073,8 +4741,7 @@ tzc_dump_leap_sec (const TZ_DATA * tzd)
  * msg2(in): second string replacement for error message
  */
 static void
-tzc_log_error (const TZ_RAW_CONTEXT * context, const int code,
-	       const char *msg1, const char *msg2)
+tzc_log_error (const TZ_RAW_CONTEXT * context, const int code, const char *msg1, const char *msg2)
 {
   char err_msg[TZC_ERR_MSG_MAX_SIZE];
   char err_msg_temp[TZC_ERR_MSG_MAX_SIZE];
@@ -5083,18 +4750,15 @@ tzc_log_error (const TZ_RAW_CONTEXT * context, const int code,
   *err_msg = '\0';
   *err_msg_temp = '\0';
 
-  if (context != NULL && !IS_EMPTY_STR (context->current_file)
-      && context->current_line != -1)
+  if (context != NULL && !IS_EMPTY_STR (context->current_file) && context->current_line != -1)
     {
-      snprintf (err_msg_temp, sizeof (err_msg_temp),
-		" (file %s, line %d)", context->current_file,
+      snprintf (err_msg_temp, sizeof (err_msg_temp), " (file %s, line %d)", context->current_file,
 		context->current_line);
     }
   strcat (err_msg, err_msg_temp);
 
   *err_msg_temp = '\0';
-  snprintf (err_msg_temp, sizeof (err_msg_temp), tzc_err_messages[-code],
-	    msg1, msg2);
+  snprintf (err_msg_temp, sizeof (err_msg_temp), tzc_err_messages[-code], msg1, msg2);
   strcat (err_msg, err_msg_temp);
   strcat (err_msg, "\n");
 
@@ -5281,9 +4945,7 @@ comp_func_tz_windows_zones (const void *arg1, const void *arg2)
   map1 = (TZ_WINDOWS_IANA_MAP *) arg1;
   map2 = (TZ_WINDOWS_IANA_MAP *) arg2;
 
-  assert (!IS_EMPTY_STR (map1->windows_zone)
-	  && !IS_EMPTY_STR (map2->windows_zone)
-	  && !IS_EMPTY_STR (map1->territory)
+  assert (!IS_EMPTY_STR (map1->windows_zone) && !IS_EMPTY_STR (map2->windows_zone) && !IS_EMPTY_STR (map1->territory)
 	  && !IS_EMPTY_STR (map2->territory));
 
   ret = strcmp (map1->windows_zone, map2->windows_zone);
@@ -5320,48 +4982,39 @@ xml_start_mapZone (void *data, const char **attr)
   assert (data != NULL);
   tz = XML_USER_DATA (pd);
 
-  if (xml_get_att_value (attr, "other", &windows_zone) == 0 &&
-      xml_get_att_value (attr, "territory", &territory) == 0 &&
-      xml_get_att_value (attr, "type", &iana_zone) == 0)
+  if (xml_get_att_value (attr, "other", &windows_zone) == 0 && xml_get_att_value (attr, "territory", &territory) == 0
+      && xml_get_att_value (attr, "type", &iana_zone) == 0)
     {
       assert (windows_zone != NULL && territory != NULL && iana_zone != NULL);
 
-      if (tz->windows_iana_map != NULL &&
-	  strcmp (windows_zone,
-		  tz->windows_iana_map[tz->windows_iana_map_count -
-				       1].windows_zone) == 0)
+      if (tz->windows_iana_map != NULL
+	  && strcmp (windows_zone, tz->windows_iana_map[tz->windows_iana_map_count - 1].windows_zone) == 0)
 	{
 	  return 0;
 	}
 
-      temp = (TZ_WINDOWS_IANA_MAP *)
-	realloc (tz->windows_iana_map,
-		 (tz->windows_iana_map_count +
-		  1) * sizeof (TZ_WINDOWS_IANA_MAP));
+      temp =
+	(TZ_WINDOWS_IANA_MAP *) realloc (tz->windows_iana_map,
+					 (tz->windows_iana_map_count + 1) * sizeof (TZ_WINDOWS_IANA_MAP));
       if (temp == NULL)
 	{
 	  char err_msg[TZC_ERR_MSG_MAX_SIZE];
 	  sprintf (err_msg, "%d", tz->windows_iana_map_count + 1);
-	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY,
-			      err_msg, "TZ_WINDOWS_IANA_MAP");
+	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_OUT_OF_MEMORY, err_msg, "TZ_WINDOWS_IANA_MAP");
 	  return -1;
 	}
 
       len_windows_zone = strlen (windows_zone);
       len_territory = strlen (territory);
-      if (len_windows_zone > TZ_WINDOWS_ZONE_NAME_SIZE ||
-	  len_territory > TZ_COUNTRY_CODE_SIZE)
+      if (len_windows_zone > TZ_WINDOWS_ZONE_NAME_SIZE || len_territory > TZ_COUNTRY_CODE_SIZE)
 	{
-	  TZC_LOG_ERROR_1ARG (NULL, TZC_ERR_INVALID_VALUE,
-			      "TZ_WINDOWS_IANA_MAP");
+	  TZC_LOG_ERROR_1ARG (NULL, TZC_ERR_INVALID_VALUE, "TZ_WINDOWS_IANA_MAP");
 	  return -1;
 	}
 
-      memmove (temp[tz->windows_iana_map_count].windows_zone, windows_zone,
-	       len_windows_zone);
+      memmove (temp[tz->windows_iana_map_count].windows_zone, windows_zone, len_windows_zone);
       temp[tz->windows_iana_map_count].windows_zone[len_windows_zone] = '\0';
-      memmove (temp[tz->windows_iana_map_count].territory, territory,
-	       len_territory);
+      memmove (temp[tz->windows_iana_map_count].territory, territory, len_territory);
       temp[tz->windows_iana_map_count].territory[len_territory] = '\0';
 
       for (i = 0; i < tz->name_count; i++)
@@ -5410,18 +5063,15 @@ tzc_load_windows_iana_map (TZ_DATA * tz_data, const char *input_folder)
     }
 
   assert (i < tz_file_count);
-  tzc_build_filepath (filepath, sizeof (filepath), input_folder,
-		      tz_files[i].name);
+  tzc_build_filepath (filepath, sizeof (filepath), input_folder, tz_files[i].name);
 
   tz_data->windows_iana_map_count = 0;
   tz_data->windows_iana_map = NULL;
   windows_zones_parser.ud = tz_data;
 
   windows_zones_parser.xml_parser =
-    xml_init_parser (&windows_zones_parser, filepath, "UTF-8",
-		     windows_zones_elements,
-		     sizeof (windows_zones_elements) /
-		     sizeof (XML_ELEMENT_DEF *));
+    xml_init_parser (&windows_zones_parser, filepath, "UTF-8", windows_zones_elements,
+		     sizeof (windows_zones_elements) / sizeof (XML_ELEMENT_DEF *));
 
   if (windows_zones_parser.xml_parser == NULL)
     {
@@ -5431,8 +5081,8 @@ tzc_load_windows_iana_map (TZ_DATA * tz_data, const char *input_folder)
 
   xml_parser_exec (&windows_zones_parser);
   /* sort windows zone names */
-  qsort (tz_data->windows_iana_map, tz_data->windows_iana_map_count,
-	 sizeof (TZ_WINDOWS_IANA_MAP), comp_func_tz_windows_zones);
+  qsort (tz_data->windows_iana_map, tz_data->windows_iana_map_count, sizeof (TZ_WINDOWS_IANA_MAP),
+	 comp_func_tz_windows_zones);
 
 exit:
   xml_destroy_parser (&windows_zones_parser);
@@ -5486,8 +5136,7 @@ tzc_find_timezone_names (const TZ_DATA * tzd, const char *timezone_name)
  * country_name (in) : name of the country to search for
  */
 static int
-tzc_find_country_names (const TZ_COUNTRY * countries, const int country_count,
-			const char *country_name)
+tzc_find_country_names (const TZ_COUNTRY * countries, const int country_count, const char *country_name)
 {
   int index_bot, index_top;
   int cmp_res;
@@ -5527,13 +5176,9 @@ tzc_find_country_names (const TZ_COUNTRY * countries, const int country_count,
 static bool
 comp_ds_rules (const TZ_DS_RULE * rule1, const TZ_DS_RULE * rule2)
 {
-  if (rule1->at_time != rule2->at_time
-      || rule1->change_on.day_of_month != rule2->change_on.day_of_month
-      || rule1->change_on.day_of_week != rule2->change_on.day_of_week
-      || rule1->change_on.type != rule2->change_on.type
-      || rule1->from_year != rule2->from_year
-      || rule1->to_year != rule2->to_year
-      || rule1->in_month != rule2->in_month
+  if (rule1->at_time != rule2->at_time || rule1->change_on.day_of_month != rule2->change_on.day_of_month
+      || rule1->change_on.day_of_week != rule2->change_on.day_of_week || rule1->change_on.type != rule2->change_on.type
+      || rule1->from_year != rule2->from_year || rule1->to_year != rule2->to_year || rule1->in_month != rule2->in_month
       || rule1->save_time != rule2->save_time)
     {
       return false;
@@ -5551,13 +5196,9 @@ comp_ds_rules (const TZ_DS_RULE * rule1, const TZ_DS_RULE * rule2)
 static bool
 comp_offset_rules (const TZ_OFFSET_RULE * rule1, const TZ_OFFSET_RULE * rule2)
 {
-  if (rule1->gmt_off != rule2->gmt_off
-      || rule1->until_sec != rule2->until_sec
-      || rule1->until_min != rule2->until_min
-      || rule1->until_hour != rule2->until_hour
-      || rule1->until_day != rule2->until_day
-      || rule1->until_mon != rule2->until_mon
-      || rule1->until_year != rule2->until_year)
+  if (rule1->gmt_off != rule2->gmt_off || rule1->until_sec != rule2->until_sec || rule1->until_min != rule2->until_min
+      || rule1->until_hour != rule2->until_hour || rule1->until_day != rule2->until_day
+      || rule1->until_mon != rule2->until_mon || rule1->until_year != rule2->until_year)
     {
       return false;
     }
@@ -5620,14 +5261,12 @@ exit:
  * start(in): start of the ds ruleset
  */
 static int
-init_ds_ruleset (TZ_DS_RULESET * dst_ruleset, const TZ_DATA * tzd,
-		 const int index, const int start)
+init_ds_ruleset (TZ_DS_RULESET * dst_ruleset, const TZ_DATA * tzd, const int index, const int start)
 {
   int err_status = NO_ERROR;
 
   dst_ruleset->count = tzd->ds_rulesets[index].count;
-  DUPLICATE_STR (dst_ruleset->ruleset_name,
-		 tzd->ds_rulesets[index].ruleset_name);
+  DUPLICATE_STR (dst_ruleset->ruleset_name, tzd->ds_rulesets[index].ruleset_name);
   dst_ruleset->index_start = start;
 
 exit:
@@ -5673,8 +5312,7 @@ exit:
  * tzd(in): timezone data
  */
 static int
-tz_data_partial_clone (char **timezone_names, TZ_TIMEZONE * timezones,
-		       TZ_NAME * names, const TZ_DATA * tzd)
+tz_data_partial_clone (char **timezone_names, TZ_TIMEZONE * timezones, TZ_NAME * names, const TZ_DATA * tzd)
 {
   int i, err_status = NO_ERROR;
 
@@ -5683,8 +5321,7 @@ tz_data_partial_clone (char **timezone_names, TZ_TIMEZONE * timezones,
       DUPLICATE_STR (timezone_names[i], tzd->timezone_names[i]);
     }
 
-  memcpy (timezones, tzd->timezones,
-	  tzd->timezone_count * sizeof (TZ_TIMEZONE));
+  memcpy (timezones, tzd->timezones, tzd->timezone_count * sizeof (TZ_TIMEZONE));
 
   memcpy (names, tzd->names, tzd->name_count * sizeof (TZ_NAME));
   for (i = 0; i < tzd->name_count; i++)
@@ -5775,8 +5412,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
   int cnt;
   char timezone_library_path[PATH_MAX] = { 0 };
 
-  /* First load the data structures from the old library and
-   * after that do the update */
+  /* First load the data structures from the old library and after that do the update */
 
   envvar_libdir_file (timezone_library_path, PATH_MAX, LIB_TZ_NAME);
 
@@ -5804,9 +5440,8 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
   /* Count the number of new added countries */
   for (i = 0; i < tzd->country_count; i++)
     {
-      int country_id =
-	tzc_find_country_names (old_tzd.countries, old_tzd.country_count,
-				tzd->countries[i].full_name);
+      int country_id = tzc_find_country_names (old_tzd.countries, old_tzd.country_count,
+					       tzd->countries[i].full_name);
 
       if (country_id == -1)
 	{
@@ -5815,65 +5450,53 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
     }
   all_country_count += old_tzd.country_count;
 
-  all_countries =
-    (TZ_COUNTRY *) calloc (all_country_count, sizeof (TZ_COUNTRY));
+  all_countries = (TZ_COUNTRY *) calloc (all_country_count, sizeof (TZ_COUNTRY));
   if (all_countries == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
-	      all_country_count * sizeof (TZ_COUNTRY));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1, all_country_count * sizeof (TZ_COUNTRY));
       goto exit;
     }
 
-  all_timezone_names =
-    (char **) calloc (all_timezones_count, sizeof (char *));
+  all_timezone_names = (char **) calloc (all_timezones_count, sizeof (char *));
   if (all_timezone_names == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
-	      all_timezones_count * sizeof (char *));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1, all_timezones_count * sizeof (char *));
       goto exit;
     }
 
-  all_timezones =
-    (TZ_TIMEZONE *) calloc (all_timezones_count, sizeof (TZ_TIMEZONE));
+  all_timezones = (TZ_TIMEZONE *) calloc (all_timezones_count, sizeof (TZ_TIMEZONE));
   if (all_timezones == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
-	      all_timezones_count * sizeof (TZ_TIMEZONE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1, all_timezones_count * sizeof (TZ_TIMEZONE));
       goto exit;
     }
 
-  all_names =
-    (TZ_NAME *) calloc (all_timezones_and_aliases_count, sizeof (TZ_NAME));
+  all_names = (TZ_NAME *) calloc (all_timezones_and_aliases_count, sizeof (TZ_NAME));
   if (all_names == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
-	      all_timezones_and_aliases_count * sizeof (TZ_NAME));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1, all_timezones_and_aliases_count * sizeof (TZ_NAME));
       goto exit;
     }
 
-  old_tzd_offset_rule_map = (OFFSET_RULE_INTERVAL *)
-    calloc (old_tzd.timezone_count, sizeof (OFFSET_RULE_INTERVAL));
+  old_tzd_offset_rule_map = (OFFSET_RULE_INTERVAL *) calloc (old_tzd.timezone_count, sizeof (OFFSET_RULE_INTERVAL));
 
   if (old_tzd_offset_rule_map == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
-	      old_tzd.timezone_count * sizeof (OFFSET_RULE_INTERVAL));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1, old_tzd.timezone_count * sizeof (OFFSET_RULE_INTERVAL));
       goto exit;
     }
 
-  tzd_offset_rule_map = (OFFSET_RULE_INTERVAL *)
-    calloc (tzd->timezone_count, sizeof (OFFSET_RULE_INTERVAL));
+  tzd_offset_rule_map = (OFFSET_RULE_INTERVAL *) calloc (tzd->timezone_count, sizeof (OFFSET_RULE_INTERVAL));
 
   if (tzd_offset_rule_map == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
-	      tzd->timezone_count * sizeof (OFFSET_RULE_INTERVAL));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1, tzd->timezone_count * sizeof (OFFSET_RULE_INTERVAL));
       goto exit;
     }
 
@@ -5882,13 +5505,11 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
   if (mark_ruleset == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
-	      old_tzd.ds_ruleset_count * sizeof (char));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1, old_tzd.ds_ruleset_count * sizeof (char));
       goto exit;
     }
 
-  err_status = tz_data_partial_clone (all_timezone_names, all_timezones,
-				      all_names, &old_tzd);
+  err_status = tz_data_partial_clone (all_timezone_names, all_timezones, all_names, &old_tzd);
   if (err_status != NO_ERROR)
     {
       goto exit;
@@ -5898,8 +5519,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
   i = 0, j = 0, k = 0;
   while (i < old_tzd.country_count && j < tzd->country_count)
     {
-      comp_res =
-	strcmp (old_tzd.countries[i].full_name, tzd->countries[j].full_name);
+      comp_res = strcmp (old_tzd.countries[i].full_name, tzd->countries[j].full_name);
 
       if (comp_res == 0)
 	{
@@ -5953,8 +5573,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 	    }
 	  if (names[i].is_alias == 0)
 	    {
-	      DUPLICATE_STR (all_timezone_names[start_timezones],
-			     names[i].name);
+	      DUPLICATE_STR (all_timezone_names[start_timezones], names[i].name);
 	      all_timezones[start_timezones] = timezones[names[i].zone_id];
 	      all_timezones[start_timezones].zone_id = start_timezones;
 	      all_names[start_names].zone_id = start_timezones;
@@ -5998,17 +5617,12 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
       if (zone_id == -1)
 	{
-	  /* Go back and search for duplicate intervals in the
-	   * old timezone library */
+	  /* Go back and search for duplicate intervals in the old timezone library */
 	  for (j = i - 1; j >= 0; j--)
 	    {
-	      temp_zone_id =
-		tzc_find_timezone_names (tzd, all_timezone_names[j]);
-	      if (temp_zone_id == -1
-		  && all_timezones[i].gmt_off_rule_start
-		  == all_timezones[j].gmt_off_rule_start
-		  && all_timezones[i].gmt_off_rule_count
-		  == all_timezones[j].gmt_off_rule_count)
+	      temp_zone_id = tzc_find_timezone_names (tzd, all_timezone_names[j]);
+	      if (temp_zone_id == -1 && all_timezones[i].gmt_off_rule_start == all_timezones[j].gmt_off_rule_start
+		  && all_timezones[i].gmt_off_rule_count == all_timezones[j].gmt_off_rule_count)
 		{
 		  found_duplicate = true;
 		  break;
@@ -6022,18 +5636,14 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 	}
       else
 	{
-	  /* Go back and search for duplicate intervals in the
-	   * tzd timezone library */
+	  /* Go back and search for duplicate intervals in the tzd timezone library */
 	  for (j = i - 1; j >= 0; j--)
 	    {
-	      temp_zone_id =
-		tzc_find_timezone_names (tzd, all_timezone_names[j]);
+	      temp_zone_id = tzc_find_timezone_names (tzd, all_timezone_names[j]);
 
 	      if (temp_zone_id != -1
-		  && timezones[zone_id].gmt_off_rule_start
-		  == timezones[temp_zone_id].gmt_off_rule_start
-		  && timezones[zone_id].gmt_off_rule_count
-		  == timezones[temp_zone_id].gmt_off_rule_count)
+		  && timezones[zone_id].gmt_off_rule_start == timezones[temp_zone_id].gmt_off_rule_start
+		  && timezones[zone_id].gmt_off_rule_count == timezones[temp_zone_id].gmt_off_rule_count)
 		{
 		  found_duplicate = true;
 		  break;
@@ -6048,24 +5658,19 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 	}
     }
 
-  all_offset_rules =
-    (TZ_OFFSET_RULE *) calloc (all_offset_rule_count,
-			       sizeof (TZ_OFFSET_RULE));
+  all_offset_rules = (TZ_OFFSET_RULE *) calloc (all_offset_rule_count, sizeof (TZ_OFFSET_RULE));
   if (all_offset_rules == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
-	      all_offset_rule_count * sizeof (TZ_OFFSET_RULE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1, all_offset_rule_count * sizeof (TZ_OFFSET_RULE));
       goto exit;
     }
 
   gmt_off_rule_start = 0;
 
-  /* Add the new offset rules, fix the old ones and do a check for
-   * backward compatibility */
+  /* Add the new offset rules, fix the old ones and do a check for backward compatibility */
 
-  /* Use the old_tzd_offset_rule_map and the tzd_offset_rule_map arrays to 
-   * filter out duplicate offset rule intervals. 
+  /* Use the old_tzd_offset_rule_map and the tzd_offset_rule_map arrays to filter out duplicate offset rule intervals. 
    * For each timezone we check if its offset rule interval was
    * previously found. If it was, we use the mapped start of the interval
    * in the new timezone library. If not, we map the old start of the interval
@@ -6083,16 +5688,15 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 	{
 	  if (old_tzd.timezones[i].country_id != -1)
 	    {
-	      country_name =
-		old_tzd.countries[old_tzd.timezones[i].country_id].full_name;
+	      country_name = old_tzd.countries[old_tzd.timezones[i].country_id].full_name;
 	    }
 	  start = old_tzd.timezones[i].gmt_off_rule_start;
 	  cnt = old_tzd.timezones[i].gmt_off_rule_count;
 
 	  for (j = 0; j < old_tzd_map_count; j++)
 	    {
-	      if (old_tzd_offset_rule_map[j].originial_offset_rule_start ==
-		  start && old_tzd_offset_rule_map[j].len == cnt)
+	      if (old_tzd_offset_rule_map[j].originial_offset_rule_start == start
+		  && old_tzd_offset_rule_map[j].len == cnt)
 		{
 		  find_idx = j;
 		  break;
@@ -6101,35 +5705,29 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
 	  if (find_idx == -1)
 	    {
-	      old_tzd_offset_rule_map[old_tzd_map_count].
-		originial_offset_rule_start = start;
+	      old_tzd_offset_rule_map[old_tzd_map_count].originial_offset_rule_start = start;
 	      old_tzd_offset_rule_map[old_tzd_map_count].len = cnt;
-	      old_tzd_offset_rule_map[old_tzd_map_count++].
-		final_offset_rule_start = gmt_off_rule_start;
+	      old_tzd_offset_rule_map[old_tzd_map_count++].final_offset_rule_start = gmt_off_rule_start;
 	      gmt_off_rule_start += cnt;
 	    }
 	  else
 	    {
-	      all_timezones[i].gmt_off_rule_start =
-		old_tzd_offset_rule_map[find_idx].final_offset_rule_start;
+	      all_timezones[i].gmt_off_rule_start = old_tzd_offset_rule_map[find_idx].final_offset_rule_start;
 	    }
 	}
       else
 	{
 	  if (tzd->timezones[zone_id].country_id != -1)
 	    {
-	      country_name =
-		tzd->countries[tzd->timezones[zone_id].country_id].full_name;
+	      country_name = tzd->countries[tzd->timezones[zone_id].country_id].full_name;
 	    }
-	  all_timezones[i].gmt_off_rule_count =
-	    timezones[zone_id].gmt_off_rule_count;
+	  all_timezones[i].gmt_off_rule_count = timezones[zone_id].gmt_off_rule_count;
 	  start = timezones[zone_id].gmt_off_rule_start;
 	  cnt = timezones[zone_id].gmt_off_rule_count;
 
 	  for (j = 0; j < tzd_map_count; j++)
 	    {
-	      if (tzd_offset_rule_map[j].originial_offset_rule_start == start
-		  && tzd_offset_rule_map[j].len == cnt)
+	      if (tzd_offset_rule_map[j].originial_offset_rule_start == start && tzd_offset_rule_map[j].len == cnt)
 		{
 		  find_idx = j;
 		  break;
@@ -6138,23 +5736,19 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
 	  if (find_idx == -1)
 	    {
-	      tzd_offset_rule_map[tzd_map_count].originial_offset_rule_start =
-		start;
+	      tzd_offset_rule_map[tzd_map_count].originial_offset_rule_start = start;
 	      tzd_offset_rule_map[tzd_map_count].len = cnt;
-	      tzd_offset_rule_map[tzd_map_count++].final_offset_rule_start =
-		gmt_off_rule_start;
+	      tzd_offset_rule_map[tzd_map_count++].final_offset_rule_start = gmt_off_rule_start;
 	      gmt_off_rule_start += cnt;
 	    }
 	  else
 	    {
-	      all_timezones[i].gmt_off_rule_start =
-		tzd_offset_rule_map[find_idx].final_offset_rule_start;
+	      all_timezones[i].gmt_off_rule_start = tzd_offset_rule_map[find_idx].final_offset_rule_start;
 	    }
 
 	  if (i < old_tzd.timezone_count)
 	    {
-	      if (old_tzd.timezones[i].gmt_off_rule_count
-		  != timezones[zone_id].gmt_off_rule_count)
+	      if (old_tzd.timezones[i].gmt_off_rule_count != timezones[zone_id].gmt_off_rule_count)
 		{
 		  is_compat = false;
 		}
@@ -6162,16 +5756,11 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 		{
 		  start_gmt_old = old_tzd.timezones[i].gmt_off_rule_start;
 		  start_gmt_new = tzd->timezones[zone_id].gmt_off_rule_start;
-		  for (j = start_gmt_old;
-		       j <
-		       start_gmt_old +
-		       old_tzd.timezones[i].gmt_off_rule_count; j++)
+		  for (j = start_gmt_old; j < start_gmt_old + old_tzd.timezones[i].gmt_off_rule_count; j++)
 		    {
-		      int tzd_offset_rule_index = start_gmt_new + j
-			- start_gmt_old;
+		      int tzd_offset_rule_index = start_gmt_new + j - start_gmt_old;
 
-		      if (old_tzd.offset_rules[j].ds_type !=
-			  tzd->offset_rules[tzd_offset_rule_index].ds_type)
+		      if (old_tzd.offset_rules[j].ds_type != tzd->offset_rules[tzd_offset_rule_index].ds_type)
 			{
 			  is_compat = false;
 			  break;
@@ -6180,23 +5769,15 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 		      if (old_tzd.offset_rules[j].ds_type != DS_TYPE_FIXED)
 			{
 			  if (strcmp
-			      (old_tzd.
-			       ds_rulesets[old_tzd.offset_rules[j].
-					   ds_ruleset].ruleset_name,
-			       tzd->ds_rulesets[tzd->
-						offset_rules
-						[tzd_offset_rule_index].
-						ds_ruleset].ruleset_name) !=
-			      0)
+			      (old_tzd.ds_rulesets[old_tzd.offset_rules[j].ds_ruleset].ruleset_name,
+			       tzd->ds_rulesets[tzd->offset_rules[tzd_offset_rule_index].ds_ruleset].ruleset_name) != 0)
 			    {
 			      is_compat = false;
 			      break;
 			    }
 			}
 
-		      if (comp_offset_rules
-			  (&old_tzd.offset_rules[j],
-			   &tzd->offset_rules[tzd_offset_rule_index]) ==
+		      if (comp_offset_rules (&old_tzd.offset_rules[j], &tzd->offset_rules[tzd_offset_rule_index]) ==
 			  false)
 			{
 			  is_compat = false;
@@ -6210,9 +5791,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
       /* Fix the country ids in the new timezone vector */
       if (country_name != NULL)
 	{
-	  country_id =
-	    tzc_find_country_names (all_countries, all_country_count,
-				    country_name);
+	  country_id = tzc_find_country_names (all_countries, all_country_count, country_name);
 	}
       else
 	{
@@ -6227,26 +5806,21 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 	      int offset_rule_index = start + j - prev_gmt_off_rule_start;
 	      if (zone_id == -1)
 		{
-		  err_status =
-		    copy_offset_rule (&all_offset_rules[j], &old_tzd,
-				      offset_rule_index);
+		  err_status = copy_offset_rule (&all_offset_rules[j], &old_tzd, offset_rule_index);
 
 		  if (err_status != NO_ERROR)
 		    {
 		      goto exit;
 		    }
 
-		  if (old_tzd.offset_rules[offset_rule_index].ds_type
-		      != DS_TYPE_FIXED)
+		  if (old_tzd.offset_rules[offset_rule_index].ds_type != DS_TYPE_FIXED)
 		    {
-		      mark_ruleset[old_tzd.offset_rules[offset_rule_index].
-				   ds_ruleset] = 1;
+		      mark_ruleset[old_tzd.offset_rules[offset_rule_index].ds_ruleset] = 1;
 		    }
 		}
 	      else
 		{
-		  err_status = copy_offset_rule (&all_offset_rules[j], tzd,
-						 offset_rule_index);
+		  err_status = copy_offset_rule (&all_offset_rules[j], tzd, offset_rule_index);
 		  if (err_status != NO_ERROR)
 		    {
 		      goto exit;
@@ -6258,10 +5832,8 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
   for (i = 0; i < old_tzd.ds_ruleset_count; i++)
     {
-      ruleset_id = tzc_get_ds_ruleset_by_name (tzd->ds_rulesets,
-					       tzd->ds_ruleset_count,
-					       old_tzd.ds_rulesets[i].
-					       ruleset_name);
+      ruleset_id =
+	tzc_get_ds_ruleset_by_name (tzd->ds_rulesets, tzd->ds_ruleset_count, old_tzd.ds_rulesets[i].ruleset_name);
       if (ruleset_id == -1 && mark_ruleset[i] == 1)
 	{
 	  all_ds_ruleset_count++;
@@ -6271,42 +5843,34 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
   all_ds_ruleset_count += tzd->ds_ruleset_count;
   all_ds_rule_count += tzd->ds_rule_count;
 
-  all_ds_rulesets =
-    (TZ_DS_RULESET *) calloc (all_ds_ruleset_count, sizeof (TZ_DS_RULESET));
+  all_ds_rulesets = (TZ_DS_RULESET *) calloc (all_ds_ruleset_count, sizeof (TZ_DS_RULESET));
   if (all_ds_rulesets == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
-	      all_ds_ruleset_count * sizeof (TZ_DS_RULESET));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1, all_ds_ruleset_count * sizeof (TZ_DS_RULESET));
       goto exit;
     }
 
-  all_ds_rules =
-    (TZ_DS_RULE *) calloc (all_ds_rule_count, sizeof (TZ_DS_RULE));
+  all_ds_rules = (TZ_DS_RULE *) calloc (all_ds_rule_count, sizeof (TZ_DS_RULE));
   if (all_ds_rules == NULL)
     {
       err_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1,
-	      all_ds_rule_count * sizeof (TZ_DS_RULE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 1, all_ds_rule_count * sizeof (TZ_DS_RULE));
       goto exit;
     }
 
-  /* Do a merge between old timezone library ds_rulesets and
-   * current timezone library */
+  /* Do a merge between old timezone library ds_rulesets and current timezone library */
 
   i = 0, j = 0, k = 0;
   while (i < old_tzd.ds_ruleset_count && j < tzd->ds_ruleset_count)
     {
       prev_start_ds_rule = start_ds_rule;
       tzd_or_old_tzd = NULL;
-      comp_res =
-	strcmp (old_tzd.ds_rulesets[i].ruleset_name,
-		tzd->ds_rulesets[j].ruleset_name);
+      comp_res = strcmp (old_tzd.ds_rulesets[i].ruleset_name, tzd->ds_rulesets[j].ruleset_name);
       if (comp_res == 0)
 	{
 	  start_ds_rule += tzd->ds_rulesets[j].count;
-	  err_status = init_ds_ruleset (&all_ds_rulesets[k], tzd, j,
-					prev_start_ds_rule);
+	  err_status = init_ds_ruleset (&all_ds_rulesets[k], tzd, j, prev_start_ds_rule);
 	  if (err_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -6325,8 +5889,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 	  if (mark_ruleset[i] == 1)
 	    {
 	      start_ds_rule += old_tzd.ds_rulesets[i].count;
-	      err_status = init_ds_ruleset (&all_ds_rulesets[k], &old_tzd, i,
-					    prev_start_ds_rule);
+	      err_status = init_ds_ruleset (&all_ds_rulesets[k], &old_tzd, i, prev_start_ds_rule);
 	      if (err_status != NO_ERROR)
 		{
 		  goto exit;
@@ -6339,8 +5902,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
       /* This is a new ruleset, we will set its index start later */
       else
 	{
-	  err_status = init_ds_ruleset (&all_ds_rulesets[k], tzd, j,
-					-tzd->ds_rulesets[j].index_start);
+	  err_status = init_ds_ruleset (&all_ds_rulesets[k], tzd, j, -tzd->ds_rulesets[j].index_start);
 	  if (err_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -6352,37 +5914,27 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 	  k++;
 	}
 
-      /* Now copy the daylight saving rules also and do backward 
-       * compatibility checking */
+      /* Now copy the daylight saving rules also and do backward compatibility checking */
       if (tzd_or_old_tzd != NULL)
 	{
-	  if (comp_res == 0
-	      && old_tzd.ds_rulesets[i - 1].count ==
-	      tzd->ds_rulesets[j - 1].count)
+	  if (comp_res == 0 && old_tzd.ds_rulesets[i - 1].count == tzd->ds_rulesets[j - 1].count)
 	    {
 	      start_ds_ruleset_old = old_tzd.ds_rulesets[i - 1].index_start;
 	      start_ds_ruleset_new = tzd->ds_rulesets[j - 1].index_start;
 	    }
 	  for (l = prev_start_ds_rule; l < start_ds_rule; l++)
 	    {
-	      err_status = copy_ds_rule (&all_ds_rules[l], tzd_or_old_tzd,
-					 start + l - prev_start_ds_rule);
+	      err_status = copy_ds_rule (&all_ds_rules[l], tzd_or_old_tzd, start + l - prev_start_ds_rule);
 	      if (err_status != NO_ERROR)
 		{
 		  goto exit;
 		}
 
 	      /* Do backward compatibility checking */
-	      if (comp_res == 0
-		  && old_tzd.ds_rulesets[i - 1].count ==
-		  tzd->ds_rulesets[j - 1].count)
+	      if (comp_res == 0 && old_tzd.ds_rulesets[i - 1].count == tzd->ds_rulesets[j - 1].count)
 		{
-		  old_ds_rule =
-		    &old_tzd.ds_rules[start_ds_ruleset_old + l -
-				      prev_start_ds_rule];
-		  new_ds_rule =
-		    &tzd->ds_rules[start_ds_ruleset_new + l -
-				   prev_start_ds_rule];
+		  old_ds_rule = &old_tzd.ds_rules[start_ds_ruleset_old + l - prev_start_ds_rule];
+		  new_ds_rule = &tzd->ds_rules[start_ds_ruleset_new + l - prev_start_ds_rule];
 		  if (comp_ds_rules (old_ds_rule, new_ds_rule) == false)
 		    {
 		      is_compat = false;
@@ -6400,8 +5952,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
       if (mark_ruleset[i] == 1)
 	{
 	  start_ds_rule += old_tzd.ds_rulesets[i].count;
-	  err_status = init_ds_ruleset (&all_ds_rulesets[k], &old_tzd, i,
-					prev_start_ds_rule);
+	  err_status = init_ds_ruleset (&all_ds_rulesets[k], &old_tzd, i, prev_start_ds_rule);
 	  if (err_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -6412,8 +5963,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
       for (l = prev_start_ds_rule; l < start_ds_rule; l++)
 	{
-	  err_status = copy_ds_rule (&all_ds_rules[l], &old_tzd,
-				     start + l - prev_start_ds_rule);
+	  err_status = copy_ds_rule (&all_ds_rules[l], &old_tzd, start + l - prev_start_ds_rule);
 	  if (err_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -6424,8 +5974,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
   while (j < tzd->ds_ruleset_count)
     {
-      err_status = init_ds_ruleset (&all_ds_rulesets[k], tzd, j,
-				    -tzd->ds_rulesets[j].index_start);
+      err_status = init_ds_ruleset (&all_ds_rulesets[k], tzd, j, -tzd->ds_rulesets[j].index_start);
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
@@ -6434,8 +5983,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
       k++;
     }
 
-  /* Now copy the new daylight saving rules that were added
-   * in the current timezone library */
+  /* Now copy the new daylight saving rules that were added in the current timezone library */
   assert (k == all_ds_ruleset_count);
   for (i = 0; i < all_ds_ruleset_count; i++)
     {
@@ -6449,8 +5997,7 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 	  /* Now copy the new daylight saving rules to the end */
 	  for (j = prev_start_ds_rule; j < start_ds_rule; j++)
 	    {
-	      err_status = copy_ds_rule (&all_ds_rules[j], tzd,
-					 start + j - prev_start_ds_rule);
+	      err_status = copy_ds_rule (&all_ds_rules[j], tzd, start + j - prev_start_ds_rule);
 	      if (err_status != NO_ERROR)
 		{
 		  goto exit;
@@ -6474,22 +6021,16 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 	}
 
       for (j = all_timezones[i].gmt_off_rule_start;
-	   j <
-	   all_timezones[i].gmt_off_rule_start +
-	   all_timezones[i].gmt_off_rule_count; j++)
+	   j < all_timezones[i].gmt_off_rule_start + all_timezones[i].gmt_off_rule_count; j++)
 	{
-	  int offset_rule_index = start + j
-	    - all_timezones[i].gmt_off_rule_start;
+	  int offset_rule_index = start + j - all_timezones[i].gmt_off_rule_start;
 	  if (zone_id == -1)
 	    {
-	      int old_tzd_ds_ruleset = old_tzd.
-		offset_rules[offset_rule_index].ds_ruleset;
+	      int old_tzd_ds_ruleset = old_tzd.offset_rules[offset_rule_index].ds_ruleset;
 
-	      if (old_tzd.offset_rules[offset_rule_index].ds_type
-		  != DS_TYPE_FIXED)
+	      if (old_tzd.offset_rules[offset_rule_index].ds_type != DS_TYPE_FIXED)
 		{
-		  ruleset_name =
-		    old_tzd.ds_rulesets[old_tzd_ds_ruleset].ruleset_name;
+		  ruleset_name = old_tzd.ds_rulesets[old_tzd_ds_ruleset].ruleset_name;
 		}
 	      else
 		{
@@ -6498,14 +6039,11 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 	    }
 	  else
 	    {
-	      int tzd_ds_ruleset = tzd->
-		offset_rules[offset_rule_index].ds_ruleset;
+	      int tzd_ds_ruleset = tzd->offset_rules[offset_rule_index].ds_ruleset;
 
-	      if (tzd->offset_rules[offset_rule_index].ds_type !=
-		  DS_TYPE_FIXED)
+	      if (tzd->offset_rules[offset_rule_index].ds_type != DS_TYPE_FIXED)
 		{
-		  ruleset_name =
-		    tzd->ds_rulesets[tzd_ds_ruleset].ruleset_name;
+		  ruleset_name = tzd->ds_rulesets[tzd_ds_ruleset].ruleset_name;
 		}
 	      else
 		{
@@ -6514,20 +6052,16 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 	    }
 	  if (ruleset_name != NULL)
 	    {
-	      ruleset_id = tzc_get_ds_ruleset_by_name (all_ds_rulesets,
-						       all_ds_ruleset_count,
-						       ruleset_name);
+	      ruleset_id = tzc_get_ds_ruleset_by_name (all_ds_rulesets, all_ds_ruleset_count, ruleset_name);
 	      all_offset_rules[j].ds_ruleset = ruleset_id;
 	    }
 	}
     }
 
-  qsort (all_names, all_timezones_and_aliases_count,
-	 sizeof (TZ_NAME), comp_func_tz_names);
+  qsort (all_names, all_timezones_and_aliases_count, sizeof (TZ_NAME), comp_func_tz_names);
 
 exit:
-  /* Free all data structures except for the windows zone map data structure 
-   * and the leap seconds array */
+  /* Free all data structures except for the windows zone map data structure and the leap seconds array */
 
   tzc_free_tz_data (tzd, false);
   if (mark_ruleset != NULL)
@@ -6690,8 +6224,7 @@ tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
     {
       memcpy (buf, tzd->countries[i].code, sizeof (tzd->countries[i].code));
       buf += sizeof (tzd->countries[i].code);
-      memcpy (buf, tzd->countries[i].full_name,
-	      sizeof (tzd->countries[i].full_name));
+      memcpy (buf, tzd->countries[i].full_name, sizeof (tzd->countries[i].full_name));
       buf += sizeof (tzd->countries[i].full_name);
     }
 
@@ -6714,20 +6247,15 @@ tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
       BUF_PUT_INT32 (buf, tzd->offset_rules[i].gmt_off);
       BUF_PUT_INT32 (buf, tzd->offset_rules[i].ds_ruleset);
       BUF_PUT_INT16 (buf, tzd->offset_rules[i].until_year);
-      memcpy (buf, &tzd->offset_rules[i].until_mon,
-	      sizeof (tzd->offset_rules[i].until_mon));
+      memcpy (buf, &tzd->offset_rules[i].until_mon, sizeof (tzd->offset_rules[i].until_mon));
       buf += sizeof (tzd->offset_rules[i].until_mon);
-      memcpy (buf, &tzd->offset_rules[i].until_day,
-	      sizeof (tzd->offset_rules[i].until_day));
+      memcpy (buf, &tzd->offset_rules[i].until_day, sizeof (tzd->offset_rules[i].until_day));
       buf += sizeof (tzd->offset_rules[i].until_day);
-      memcpy (buf, &tzd->offset_rules[i].until_hour,
-	      sizeof (tzd->offset_rules[i].until_hour));
+      memcpy (buf, &tzd->offset_rules[i].until_hour, sizeof (tzd->offset_rules[i].until_hour));
       buf += sizeof (tzd->offset_rules[i].until_hour);
-      memcpy (buf, &tzd->offset_rules[i].until_min,
-	      sizeof (tzd->offset_rules[i].until_min));
+      memcpy (buf, &tzd->offset_rules[i].until_min, sizeof (tzd->offset_rules[i].until_min));
       buf += sizeof (tzd->offset_rules[i].until_min);
-      memcpy (buf, &tzd->offset_rules[i].until_sec,
-	      sizeof (tzd->offset_rules[i].until_sec));
+      memcpy (buf, &tzd->offset_rules[i].until_sec, sizeof (tzd->offset_rules[i].until_sec));
       buf += sizeof (tzd->offset_rules[i].until_sec);
       BUF_PUT_INT32 (buf, tzd->offset_rules[i].until_time_type);
       BUF_PUT_INT32 (buf, tzd->offset_rules[i].until_flag);
@@ -6735,20 +6263,17 @@ tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
       BUF_PUT_INT32 (buf, tzd->offset_rules[i].julian_date);
       if (tzd->offset_rules[i].std_format != NULL)
 	{
-	  memcpy (buf, tzd->offset_rules[i].std_format,
-		  strlen (tzd->offset_rules[i].std_format));
+	  memcpy (buf, tzd->offset_rules[i].std_format, strlen (tzd->offset_rules[i].std_format));
 	  buf += strlen (tzd->offset_rules[i].std_format);
 	}
       if (tzd->offset_rules[i].save_format != NULL)
 	{
-	  memcpy (buf, tzd->offset_rules[i].save_format,
-		  strlen (tzd->offset_rules[i].save_format));
+	  memcpy (buf, tzd->offset_rules[i].save_format, strlen (tzd->offset_rules[i].save_format));
 	  buf += strlen (tzd->offset_rules[i].save_format);
 	}
       if (tzd->offset_rules[i].var_format != NULL)
 	{
-	  memcpy (buf, tzd->offset_rules[i].var_format,
-		  strlen (tzd->offset_rules[i].var_format));
+	  memcpy (buf, tzd->offset_rules[i].var_format, strlen (tzd->offset_rules[i].var_format));
 	  buf += strlen (tzd->offset_rules[i].var_format);
 	}
     }
@@ -6766,8 +6291,7 @@ tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
     {
       BUF_PUT_INT32 (buf, tzd->ds_rulesets[i].count);
       BUF_PUT_INT32 (buf, tzd->ds_rulesets[i].index_start);
-      memcpy (buf, tzd->ds_rulesets[i].ruleset_name,
-	      strlen (tzd->ds_rulesets[i].ruleset_name));
+      memcpy (buf, tzd->ds_rulesets[i].ruleset_name, strlen (tzd->ds_rulesets[i].ruleset_name));
       buf += strlen (tzd->ds_rulesets[i].ruleset_name);
     }
 
@@ -6775,40 +6299,32 @@ tzc_compute_timezone_checksum (TZ_DATA * tzd, TZ_GEN_TYPE type)
     {
       BUF_PUT_INT16 (buf, tzd->ds_rules[i].from_year);
       BUF_PUT_INT16 (buf, tzd->ds_rules[i].to_year);
-      memcpy (buf, &tzd->ds_rules[i].in_month,
-	      sizeof (tzd->ds_rules[i].in_month));
+      memcpy (buf, &tzd->ds_rules[i].in_month, sizeof (tzd->ds_rules[i].in_month));
       buf += sizeof (tzd->ds_rules[i].in_month);
       BUF_PUT_INT32 (buf, tzd->ds_rules[i].change_on.type);
-      memcpy (buf, &tzd->ds_rules[i].change_on.day_of_month,
-	      sizeof (tzd->ds_rules[i].change_on.day_of_month));
+      memcpy (buf, &tzd->ds_rules[i].change_on.day_of_month, sizeof (tzd->ds_rules[i].change_on.day_of_month));
       buf += sizeof (tzd->ds_rules[i].change_on.day_of_month);
-      memcpy (buf, &tzd->ds_rules[i].change_on.day_of_week,
-	      sizeof (tzd->ds_rules[i].change_on.day_of_week));
+      memcpy (buf, &tzd->ds_rules[i].change_on.day_of_week, sizeof (tzd->ds_rules[i].change_on.day_of_week));
       buf += sizeof (tzd->ds_rules[i].change_on.day_of_week);
       BUF_PUT_INT32 (buf, tzd->ds_rules[i].at_time);
       BUF_PUT_INT32 (buf, tzd->ds_rules[i].at_time_type);
       BUF_PUT_INT32 (buf, tzd->ds_rules[i].save_time);
       if (tzd->ds_rules[i].letter_abbrev != NULL)
 	{
-	  memcpy (buf, tzd->ds_rules[i].letter_abbrev,
-		  strlen (tzd->ds_rules[i].letter_abbrev));
+	  memcpy (buf, tzd->ds_rules[i].letter_abbrev, strlen (tzd->ds_rules[i].letter_abbrev));
 	  buf += strlen (tzd->ds_rules[i].letter_abbrev);
 	}
     }
 
   for (i = 0; i < tzd->ds_leap_sec_count; i++)
     {
-      memcpy (buf, &tzd->ds_leap_sec[i].corr_negative,
-	      sizeof (tzd->ds_leap_sec[i].corr_negative));
+      memcpy (buf, &tzd->ds_leap_sec[i].corr_negative, sizeof (tzd->ds_leap_sec[i].corr_negative));
       buf += sizeof (tzd->ds_leap_sec[i].corr_negative);
-      memcpy (buf, &tzd->ds_leap_sec[i].day,
-	      sizeof (tzd->ds_leap_sec[i].day));
+      memcpy (buf, &tzd->ds_leap_sec[i].day, sizeof (tzd->ds_leap_sec[i].day));
       buf += sizeof (tzd->ds_leap_sec[i].day);
-      memcpy (buf, &tzd->ds_leap_sec[i].is_rolling,
-	      sizeof (tzd->ds_leap_sec[i].is_rolling));
+      memcpy (buf, &tzd->ds_leap_sec[i].is_rolling, sizeof (tzd->ds_leap_sec[i].is_rolling));
       buf += sizeof (tzd->ds_leap_sec[i].is_rolling);
-      memcpy (buf, &tzd->ds_leap_sec[i].month,
-	      sizeof (tzd->ds_leap_sec[i].month));
+      memcpy (buf, &tzd->ds_leap_sec[i].month, sizeof (tzd->ds_leap_sec[i].month));
       BUF_PUT_INT16 (buf, tzd->ds_leap_sec[i].year);
     }
 

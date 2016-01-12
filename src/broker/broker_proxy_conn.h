@@ -73,9 +73,7 @@ extern void broker_destroy_proxy_conn (void);
 #endif /* !WINDOWS */
 
 #if defined(WINDOWS)
-extern int broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p,
-					int ip_addr,
-					T_BROKER_VERSION clt_version);
+extern int broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p, int ip_addr, T_BROKER_VERSION clt_version);
 #else /* WINDOWS */
 extern SOCKET broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p);
 #endif /* !WINDOWS */

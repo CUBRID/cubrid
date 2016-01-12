@@ -141,15 +141,13 @@ db_elo_size (DB_ELO * elo)
  * count(in):
  */
 int
-db_elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count,
-	     DB_BIGINT * read_bytes)
+db_elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT * read_bytes)
 {
   INT64 ret;
 
   if (elo == NULL || pos < 0 || buf == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -175,15 +173,13 @@ db_elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count,
  * count(in):
  */
 int
-db_elo_write (DB_ELO * elo, off_t pos, void *buf, size_t count,
-	      DB_BIGINT * written_bytes)
+db_elo_write (DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT * written_bytes)
 {
   INT64 ret;
 
   if (elo == NULL || pos < 0 || buf == NULL || count == 0)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 

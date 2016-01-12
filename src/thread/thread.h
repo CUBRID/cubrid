@@ -283,8 +283,7 @@ struct thread_entry
   int index;			/* thread entry index */
   THREAD_TYPE type;		/* thread type */
   pthread_t tid;		/* thread id */
-  pthread_t emulate_tid;	/* emulated thread id; applies to non-worker
-				 * threads, when works on behalf of a worker
+  pthread_t emulate_tid;	/* emulated thread id; applies to non-worker threads, when works on behalf of a worker
 				 * thread */
   int client_id;		/* client id whom this thread is responding */
   int tran_index;		/* tran index to which this thread belongs */
@@ -311,9 +310,8 @@ struct thread_entry
   unsigned int rand_seed;	/* seed for rand_r() */
   struct drand48_data rand_buf;	/* seed for lrand48_r(), drand48_r() */
 
-  char qp_num_buf[81];		/* buffer which contains number as
-				   string form;
-				   used in the qp/numeric_db_value_print() */
+  char qp_num_buf[81];		/* buffer which contains number as string form; used in the qp/numeric_db_value_print() 
+				 */
 
   int resume_status;		/* resume status */
   int request_latch_mode;	/* for page latch support */
@@ -321,12 +319,9 @@ struct thread_entry
   bool victim_request_fail;
   bool interrupted;		/* is this request/transaction interrupted ? */
   bool shutdown;		/* is server going down? */
-  bool check_interrupt;		/* check_interrupt == false, during
-				   fl_alloc* function call. */
-  bool check_page_validation;	/* check_page_validation == false, during
-				   btree_handle_prev_leaf_after_locking()
-				   or btree_handle_curr_leaf_after_locking()
-				   function call. */
+  bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
+  bool check_page_validation;	/* check_page_validation == false, during btree_handle_prev_leaf_after_locking() or
+				 * btree_handle_curr_leaf_after_locking() function call. */
   bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
   struct thread_entry *next_wait_thrd;
 
@@ -413,40 +408,26 @@ extern int thread_lock_entry (THREAD_ENTRY * entry);
 extern int thread_lock_entry_with_tran_index (int tran_index);
 #endif
 extern int thread_unlock_entry (THREAD_ENTRY * p);
-extern int thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * p,
-						   int suspended_reason);
-extern int thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * p,
-							   struct timespec *t,
-							   int
-							   suspended_reason);
+extern int thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * p, int suspended_reason);
+extern int thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * p, struct timespec *t, int suspended_reason);
 #if defined (ENABLE_UNUSED_FUNCTION)
-extern int thread_suspend_wakeup_and_unlock_entry_with_tran_index (int
-								   tran_index,
-								   int
-								   suspended_reason);
+extern int thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index, int suspended_reason);
 #endif
 extern int thread_wakeup (THREAD_ENTRY * p, int resume_reason);
-extern int thread_check_suspend_reason_and_wakeup (THREAD_ENTRY * thread_p,
-						   int resume_reason,
-						   int suspend_reason);
+extern int thread_check_suspend_reason_and_wakeup (THREAD_ENTRY * thread_p, int resume_reason, int suspend_reason);
 
-extern int thread_wakeup_already_had_mutex (THREAD_ENTRY * p,
-					    int resume_reason);
+extern int thread_wakeup_already_had_mutex (THREAD_ENTRY * p, int resume_reason);
 extern int thread_wakeup_with_tran_index (int tran_index, int resume_reason);
 
 extern ADJ_ARRAY *css_get_cnv_adj_buffer (int idx);
 extern void css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer);
 extern int thread_is_manager_initialized (void);
-extern void thread_waiting_for_function (THREAD_ENTRY * thread_p,
-					 CSS_THREAD_FN func,
-					 CSS_THREAD_ARG arg);
+extern void thread_waiting_for_function (THREAD_ENTRY * thread_p, CSS_THREAD_FN func, CSS_THREAD_ARG arg);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void thread_exit (int exit_code);
 #endif
 extern void thread_sleep (double);
-extern void thread_get_info_threads (int *num_total_threads,
-				     int *num_worker_threads,
-				     int *num_free_threads,
+extern void thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *num_free_threads,
 				     int *num_suspended_threads);
 extern int thread_num_worker_threads (void);
 extern int thread_num_total_threads (void);
@@ -456,24 +437,20 @@ extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
 extern void thread_set_comm_request_id (unsigned int rid);
 #endif
 extern THREAD_ENTRY *thread_find_entry_by_tran_index (int tran_index);
-extern THREAD_ENTRY *thread_find_entry_by_tran_index_except_me (int
-								tran_index);
+extern THREAD_ENTRY *thread_find_entry_by_tran_index_except_me (int tran_index);
 extern int thread_get_current_entry_index (void);
 extern unsigned int thread_get_current_session_id (void);
 extern int thread_get_current_tran_index (void);
-extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p,
-					   int tran_index);
+extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern void thread_wakeup_session_control_thread (void);
 extern void thread_wakeup_check_ha_delay_info_thread (void);
 #endif
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
-extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index,
-			       int client_id);
+extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
-extern bool thread_set_check_page_validation (THREAD_ENTRY * thread_p,
-					      bool flag);
+extern bool thread_set_check_page_validation (THREAD_ENTRY * thread_p, bool flag);
 extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);
 extern void thread_wakeup_page_flush_thread (void);
@@ -496,29 +473,22 @@ extern THREAD_ENTRY *thread_find_entry_by_tid (pthread_t thrd_id);
 extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
 
 
-extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p,
-					    pthread_mutex_t * mutexp,
-					    int timeout, struct timespec *to,
-					    int suspended_reason);
+extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p, pthread_mutex_t * mutexp, int timeout,
+					    struct timespec *to, int suspended_reason);
 extern void thread_print_entry_info (THREAD_ENTRY * p);
 extern void thread_dump_threads (void);
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
 extern bool thread_get_check_page_validation (THREAD_ENTRY * thread_p);
 
-extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p,
-				    int kill_tran_index, char *kill_user,
-				    char *kill_host, int kill_pid);
-extern int xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p,
-					   int tran_id,
-					   bool is_dba_group_member,
+extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
+				    int kill_pid);
+extern int xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, bool is_dba_group_member,
 					   bool interrupt_only);
 
 extern HL_HEAPID css_get_private_heap (THREAD_ENTRY * thread_p);
-extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p,
-				       HL_HEAPID heap_id);
+extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
 
-extern void thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid,
-			     int tran_index, int net_request_index);
+extern void thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index, int net_request_index);
 
 extern bool thread_rc_track_need_to_trace (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_enter (THREAD_ENTRY * thread_p);
@@ -527,15 +497,12 @@ extern int thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_amount_pgbuf_temp (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_amount_qlist (THREAD_ENTRY * thread_p);
 extern void thread_rc_track_dump_all (THREAD_ENTRY * thread_p, FILE * outfp);
-extern void thread_rc_track_meter (THREAD_ENTRY * thread_p,
-				   const char *file_name,
-				   const int line_no, int amount, void *ptr,
-				   int rc_idx, int mgr_idx);
+extern void thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_name, const int line_no, int amount,
+				   void *ptr, int rc_idx, int mgr_idx);
 extern bool thread_get_sort_stats_active (THREAD_ENTRY * thread_p);
 extern bool thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag);
 
-extern LF_TRAN_ENTRY *thread_get_tran_entry (THREAD_ENTRY * thread_p,
-					     int entry_idx);
+extern LF_TRAN_ENTRY *thread_get_tran_entry (THREAD_ENTRY * thread_p, int entry_idx);
 
 extern void thread_trace_on (THREAD_ENTRY * thread_p);
 extern void thread_set_trace_format (THREAD_ENTRY * thread_p, int format);
@@ -550,9 +517,7 @@ extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
 extern INT64 thread_get_log_clock_msec (void);
 
-extern int thread_start_scan (THREAD_ENTRY * thread_p, int type,
-			      DB_VALUE ** arg_values, int arg_cnt,
-			      void **ctx);
+extern int thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ctx);
 
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);

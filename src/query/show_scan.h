@@ -32,21 +32,14 @@
 typedef struct showstmt_array_context SHOWSTMT_ARRAY_CONTEXT;
 struct showstmt_array_context
 {
-  DB_VALUE **tuples;		/* tuples, each tuple is composed by
-				   DB_VALUE arrays */
+  DB_VALUE **tuples;		/* tuples, each tuple is composed by DB_VALUE arrays */
   int num_cols;			/* columns count */
   int num_used;			/* used tuples count */
   int num_total;		/* total allocated tuples count */
 };
 
-extern SHOWSTMT_ARRAY_CONTEXT *showstmt_alloc_array_context (THREAD_ENTRY *
-							     thread_p,
-							     int num_capacity,
-							     int num_cols);
-extern void showstmt_free_array_context (THREAD_ENTRY * thread_p,
-					 SHOWSTMT_ARRAY_CONTEXT * ctx);
-extern DB_VALUE *showstmt_alloc_tuple_in_context (THREAD_ENTRY * thread_p,
-						  SHOWSTMT_ARRAY_CONTEXT *
-						  ctx);
+extern SHOWSTMT_ARRAY_CONTEXT *showstmt_alloc_array_context (THREAD_ENTRY * thread_p, int num_capacity, int num_cols);
+extern void showstmt_free_array_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx);
+extern DB_VALUE *showstmt_alloc_tuple_in_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx);
 
 #endif /* _SHOW_SCAN_H_ */

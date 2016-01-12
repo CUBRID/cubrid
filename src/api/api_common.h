@@ -126,8 +126,7 @@ struct api_resultset_meta_s
 struct api_resultset_meta_ifs_s
 {
   int (*get_count) (API_RESULTSET_META * rm, int *count);
-  int (*get_info) (API_RESULTSET_META * rm, int index,
-		   CI_RMETA_INFO_TYPE type, void *arg, size_t size);
+  int (*get_info) (API_RESULTSET_META * rm, int index, CI_RMETA_INFO_TYPE type, void *arg, size_t size);
 };
 
 #define COMMON_RESULTSET_HEADER \
@@ -150,19 +149,16 @@ struct api_resultset_s
  */
 struct api_resultset_ifs_s
 {
-  int (*get_resultset_metadata) (API_RESULTSET * res,
-				 API_RESULTSET_META ** rimpl);
+  int (*get_resultset_metadata) (API_RESULTSET * res, API_RESULTSET_META ** rimpl);
   int (*fetch) (API_RESULTSET * res, int offset, CI_FETCH_POSITION pos);
   int (*tell) (API_RESULTSET * res, int *offset);
   int (*clear_updates) (API_RESULTSET * res);
   int (*delete_row) (API_RESULTSET * res);
-  int (*get_value) (API_RESULTSET * res, int index, CI_TYPE type,
-		    void *addr, size_t len, size_t * outlen, bool * is_null);
-  int (*get_value_by_name) (API_RESULTSET * res, const char *name,
-			    CI_TYPE type, void *addr, size_t len,
+  int (*get_value) (API_RESULTSET * res, int index, CI_TYPE type, void *addr, size_t len, size_t * outlen,
+		    bool * is_null);
+  int (*get_value_by_name) (API_RESULTSET * res, const char *name, CI_TYPE type, void *addr, size_t len,
 			    size_t * outlen, bool * isnull);
-  int (*update_value) (API_RESULTSET * res, int index,
-		       CI_TYPE type, void *addr, size_t len);
+  int (*update_value) (API_RESULTSET * res, int index, CI_TYPE type, void *addr, size_t len);
   int (*apply_update) (API_RESULTSET * res);
   void (*destroy) (API_RESULTSET * res);
 };
@@ -173,40 +169,25 @@ struct api_resultset_ifs_s
  */
 struct api_object_resultset_pool_s
 {
-  int (*get_object_resultset) (API_OBJECT_RESULTSET_POOL * pool,
-			       CI_OID * oid, API_RESULTSET ** rres);
+  int (*get_object_resultset) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * oid, API_RESULTSET ** rres);
   int (*oid_delete) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * oid);
-  int (*oid_get_classname) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * oid,
-			    char *name, size_t size);
+  int (*oid_get_classname) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * oid, char *name, size_t size);
   void (*destroy) (API_OBJECT_RESULTSET_POOL * pool);
-  int (*glo_create) (API_OBJECT_RESULTSET_POOL * pool, CI_CONNECTION conn,
-		     const char *file_path, const char *init_file_path,
-		     CI_OID * glo);
-  int (*glo_get_path_name) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
-			    char *buf, size_t bufsz, bool full_path);
+  int (*glo_create) (API_OBJECT_RESULTSET_POOL * pool, CI_CONNECTION conn, const char *file_path,
+		     const char *init_file_path, CI_OID * glo);
+  int (*glo_get_path_name) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo, char *buf, size_t bufsz, bool full_path);
   int (*glo_do_compaction) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo);
-  int (*glo_insert) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
-		     const char *buf, size_t bufsz);
-  int (*glo_delete) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
-		     size_t sz, size_t * ndeleted);
-  int (*glo_read) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
-		   char *buf, size_t bufsz, size_t * nread);
-  int (*glo_write) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
-		    const char *buf, size_t sz);
-  int (*glo_truncate) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
-		       size_t * ndeleted);
-  int (*glo_seek) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
-		   long offset, int whence);
-  int (*glo_tell) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
-		   long *offset);
-  int (*glo_like_search) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
-			  const char *str, size_t strsz, bool * found);
-  int (*glo_reg_search) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
-			 const char *str, size_t strsz, bool * found);
-  int (*glo_bin_search) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo,
-			 const char *str, size_t strsz, bool * found);
-  int (*glo_copy) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * to,
-		   CI_OID * from);
+  int (*glo_insert) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo, const char *buf, size_t bufsz);
+  int (*glo_delete) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo, size_t sz, size_t * ndeleted);
+  int (*glo_read) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo, char *buf, size_t bufsz, size_t * nread);
+  int (*glo_write) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo, const char *buf, size_t sz);
+  int (*glo_truncate) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo, size_t * ndeleted);
+  int (*glo_seek) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo, long offset, int whence);
+  int (*glo_tell) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo, long *offset);
+  int (*glo_like_search) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo, const char *str, size_t strsz, bool * found);
+  int (*glo_reg_search) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo, const char *str, size_t strsz, bool * found);
+  int (*glo_bin_search) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * glo, const char *str, size_t strsz, bool * found);
+  int (*glo_copy) (API_OBJECT_RESULTSET_POOL * pool, CI_OID * to, CI_OID * from);
 };
 
 /*
@@ -238,19 +219,12 @@ struct value_indexer_ifs_s
 {
   int (*check) (VALUE_INDEXER * indexer, int index, CHECK_PURPOSE pup);
   int (*length) (VALUE_INDEXER * indexer, int *len);
-  int (*get) (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva,
-	      API_VALUE ** rv);
-  int (*set) (VALUE_INDEXER * indexer, int index, VALUE_AREA * va,
-	      API_VALUE * val);
-  int (*map) (VALUE_INDEXER * indexer,
-	      int (*mapf) (void *, int, VALUE_AREA *, API_VALUE *),
-	      void *arg);
-  int (*insert) (VALUE_INDEXER * indexer, int index, VALUE_AREA * va,
-		 API_VALUE * dval);
-  int (*delete) (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva,
-		 API_VALUE ** rval);
-  void (*destroy) (VALUE_INDEXER * indexer,
-		   void (*df) (VALUE_AREA * va, API_VALUE * db));
+  int (*get) (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva, API_VALUE ** rv);
+  int (*set) (VALUE_INDEXER * indexer, int index, VALUE_AREA * va, API_VALUE * val);
+  int (*map) (VALUE_INDEXER * indexer, int (*mapf) (void *, int, VALUE_AREA *, API_VALUE *), void *arg);
+  int (*insert) (VALUE_INDEXER * indexer, int index, VALUE_AREA * va, API_VALUE * dval);
+  int (*delete) (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva, API_VALUE ** rval);
+  void (*destroy) (VALUE_INDEXER * indexer, void (*df) (VALUE_AREA * va, API_VALUE * db));
 };
 
 /*
@@ -267,15 +241,12 @@ struct value_bind_table_s
  */
 struct value_bind_table_ifs_s
 {
-  int (*get_value) (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type,
-		    void *addr, size_t len, size_t * outlen, bool * isnull);
-  int (*set_value) (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type,
-		    void *addr, size_t len);
-  int (*get_value_by_name) (VALUE_BIND_TABLE * tbl, const char *name,
-			    CI_TYPE type, void *addr, size_t len,
+  int (*get_value) (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type, void *addr, size_t len, size_t * outlen,
+		    bool * isnull);
+  int (*set_value) (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type, void *addr, size_t len);
+  int (*get_value_by_name) (VALUE_BIND_TABLE * tbl, const char *name, CI_TYPE type, void *addr, size_t len,
 			    size_t * outlen, bool * isnull);
-  int (*set_value_by_name) (VALUE_BIND_TABLE * tbl, const char *name,
-			    CI_TYPE type, void *addr, size_t len);
+  int (*set_value_by_name) (VALUE_BIND_TABLE * tbl, const char *name, CI_TYPE type, void *addr, size_t len);
   int (*apply_updates) (VALUE_BIND_TABLE * tbl);
   int (*reset) (VALUE_BIND_TABLE * tbl);
   void (*destroy) (VALUE_BIND_TABLE * tbl);
@@ -297,15 +268,12 @@ struct api_collection_s
 struct api_collection_ifs_s
 {
   int (*length) (API_COLLECTION * col, int *len);
-  int (*insert) (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr,
-		 size_t size);
-  int (*update) (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr,
-		 size_t size);
+  int (*insert) (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr, size_t size);
+  int (*update) (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr, size_t size);
   int (*delete) (API_COLLECTION * col, long pos);
-  int (*get_elem_domain_info) (API_COLLECTION * col, long pos,
-			       CI_TYPE * type, int *precision, int *scale);
-  int (*get_elem) (API_COLLECTION * col, long pos, CI_TYPE type,
-		   void *addr, size_t len, size_t * outlen, bool * isnull);
+  int (*get_elem_domain_info) (API_COLLECTION * col, long pos, CI_TYPE * type, int *precision, int *scale);
+  int (*get_elem) (API_COLLECTION * col, long pos, CI_TYPE type, void *addr, size_t len, size_t * outlen,
+		   bool * isnull);
   void (*destroy) (API_COLLECTION * col);
 };
 
@@ -320,70 +288,45 @@ struct cubrid_api_function_table_s
 {
   int (*create_connection) (CI_CONNECTION * conn);
   int (*err_set) (int err_code);
-  int (*conn_connect) (COMMON_API_STRUCTURE * conn, const char *host,
-		       unsigned short port, const char *databasename,
+  int (*conn_connect) (COMMON_API_STRUCTURE * conn, const char *host, unsigned short port, const char *databasename,
 		       const char *user_name, const char *password);
   int (*conn_close) (COMMON_API_STRUCTURE * conn);
-  int (*conn_create_statement) (COMMON_API_STRUCTURE * conn,
-				CI_STATEMENT * stmt);
-  int (*conn_set_option) (COMMON_API_STRUCTURE * conn,
-			  CI_CONNECTION_OPTION option, void *arg,
-			  size_t size);
-  int (*conn_get_option) (COMMON_API_STRUCTURE * conn,
-			  CI_CONNECTION_OPTION option, void *arg,
-			  size_t size);
+  int (*conn_create_statement) (COMMON_API_STRUCTURE * conn, CI_STATEMENT * stmt);
+  int (*conn_set_option) (COMMON_API_STRUCTURE * conn, CI_CONNECTION_OPTION option, void *arg, size_t size);
+  int (*conn_get_option) (COMMON_API_STRUCTURE * conn, CI_CONNECTION_OPTION option, void *arg, size_t size);
   int (*conn_commit) (COMMON_API_STRUCTURE * conn);
   int (*conn_rollback) (COMMON_API_STRUCTURE * conn);
-  int (*conn_get_error) (COMMON_API_STRUCTURE * conn, int *err,
-			 char *msg, size_t size);
-  int (*stmt_add_batch_query) (COMMON_API_STRUCTURE * stmt, const char *sql,
-			       size_t len);
+  int (*conn_get_error) (COMMON_API_STRUCTURE * conn, int *err, char *msg, size_t size);
+  int (*stmt_add_batch_query) (COMMON_API_STRUCTURE * stmt, const char *sql, size_t len);
   int (*stmt_add_batch) (COMMON_API_STRUCTURE * stmt);
   int (*stmt_clear_batch) (COMMON_API_STRUCTURE * stmt);
-  int (*stmt_execute_immediate) (COMMON_API_STRUCTURE * stmt, char *sql,
-				 size_t len, CI_RESULTSET * rs, int *r);
-  int (*stmt_execute) (COMMON_API_STRUCTURE * stmt, CI_RESULTSET * rs,
-		       int *r);
-  int (*stmt_execute_batch) (COMMON_API_STRUCTURE * stmt,
-			     CI_BATCH_RESULT * br);
-  int (*stmt_get_option) (COMMON_API_STRUCTURE * stmt,
-			  CI_STATEMENT_OPTION option, void *arg, size_t size);
-  int (*stmt_set_option) (COMMON_API_STRUCTURE * stmt,
-			  CI_STATEMENT_OPTION option, void *arg, size_t size);
-  int (*stmt_prepare) (COMMON_API_STRUCTURE * stmt, const char *sql,
-		       size_t len);
+  int (*stmt_execute_immediate) (COMMON_API_STRUCTURE * stmt, char *sql, size_t len, CI_RESULTSET * rs, int *r);
+  int (*stmt_execute) (COMMON_API_STRUCTURE * stmt, CI_RESULTSET * rs, int *r);
+  int (*stmt_execute_batch) (COMMON_API_STRUCTURE * stmt, CI_BATCH_RESULT * br);
+  int (*stmt_get_option) (COMMON_API_STRUCTURE * stmt, CI_STATEMENT_OPTION option, void *arg, size_t size);
+  int (*stmt_set_option) (COMMON_API_STRUCTURE * stmt, CI_STATEMENT_OPTION option, void *arg, size_t size);
+  int (*stmt_prepare) (COMMON_API_STRUCTURE * stmt, const char *sql, size_t len);
   int (*stmt_register_out_parameter) (COMMON_API_STRUCTURE * stmt, int index);
-  int (*stmt_get_resultset_metadata) (COMMON_API_STRUCTURE * stmt,
-				      CI_RESULTSET_METADATA * r);
-  int (*stmt_get_parameter_metadata) (COMMON_API_STRUCTURE * stmt,
-				      CI_PARAMETER_METADATA * r);
-  int (*stmt_get_parameter) (COMMON_API_STRUCTURE * stmt, int index,
-			     CI_TYPE type, void *addr, size_t len,
+  int (*stmt_get_resultset_metadata) (COMMON_API_STRUCTURE * stmt, CI_RESULTSET_METADATA * r);
+  int (*stmt_get_parameter_metadata) (COMMON_API_STRUCTURE * stmt, CI_PARAMETER_METADATA * r);
+  int (*stmt_get_parameter) (COMMON_API_STRUCTURE * stmt, int index, CI_TYPE type, void *addr, size_t len,
 			     size_t * outlen, bool * isnull);
-  int (*stmt_set_parameter) (COMMON_API_STRUCTURE * stmt, int index,
-			     CI_TYPE type, void *val, size_t size);
+  int (*stmt_set_parameter) (COMMON_API_STRUCTURE * stmt, int index, CI_TYPE type, void *val, size_t size);
   int (*stmt_get_resultset) (COMMON_API_STRUCTURE * stmt, CI_RESULTSET * res);
   int (*stmt_affected_rows) (COMMON_API_STRUCTURE * stmt, int *out);
-  int (*stmt_get_query_type) (COMMON_API_STRUCTURE * stmt,
-			      CUBRID_STMT_TYPE * type);
+  int (*stmt_get_query_type) (COMMON_API_STRUCTURE * stmt, CUBRID_STMT_TYPE * type);
   int (*stmt_get_start_line) (COMMON_API_STRUCTURE * stmt, int *line);
   int (*stmt_next_result) (COMMON_API_STRUCTURE * stmt, bool * exist_result);
-  int (*stmt_get_first_error) (COMMON_API_STRUCTURE * stmt, int *line,
-			       int *col, int *errcode, char *err_msg,
+  int (*stmt_get_first_error) (COMMON_API_STRUCTURE * stmt, int *line, int *col, int *errcode, char *err_msg,
 			       size_t size);
-  int (*stmt_get_next_error) (COMMON_API_STRUCTURE * stmt, int *line,
-			      int *col, int *errcode, char *err_msg,
+  int (*stmt_get_next_error) (COMMON_API_STRUCTURE * stmt, int *line, int *col, int *errcode, char *err_msg,
 			      size_t size);
   int (*batch_res_query_count) (COMMON_API_STRUCTURE * pst, int *count);
-  int (*batch_res_get_result) (COMMON_API_STRUCTURE * pst, int index,
-			       int *ret, int *nr);
-  int (*batch_res_get_error) (COMMON_API_STRUCTURE * pst, int index,
-			      int *err_code, char *err_msg, size_t size);
+  int (*batch_res_get_result) (COMMON_API_STRUCTURE * pst, int index, int *ret, int *nr);
+  int (*batch_res_get_error) (COMMON_API_STRUCTURE * pst, int index, int *err_code, char *err_msg, size_t size);
   int (*pmeta_get_count) (COMMON_API_STRUCTURE * pst, int *count);
-  int (*pmeta_get_info) (COMMON_API_STRUCTURE * pst, int index,
-			 CI_PMETA_INFO_TYPE type, void *arg, size_t size);
-  int (*get_connection_opool) (COMMON_API_STRUCTURE * pst,
-			       API_OBJECT_RESULTSET_POOL ** rpool);
+  int (*pmeta_get_info) (COMMON_API_STRUCTURE * pst, int index, CI_PMETA_INFO_TYPE type, void *arg, size_t size);
+  int (*get_connection_opool) (COMMON_API_STRUCTURE * pst, API_OBJECT_RESULTSET_POOL ** rpool);
   int (*collection_new) (CI_CONNECTION conn, CI_COLLECTION * coll);
 };
 

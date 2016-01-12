@@ -54,8 +54,7 @@ struct base64_chunk
 /*
  *   Helper table for encoding
  */
-const char *base64_map = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-  "abcdefghijklmnopqrstuvwxyz" "0123456789+/";
+const char *base64_map = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz" "0123456789+/";
 
 /*
  *  Helper table for decoding.
@@ -63,11 +62,10 @@ const char *base64_map = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
  *  -1 means  invalid character
  *   positive values mean valid character
  */
-const char from_base64_table[] =
-  { -1, -1, -1, -1, -1, -1, -1, -1, -1, -2, -2, -2, -2, -2, -1, -1, -1, -1,
+const char from_base64_table[] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -2, -2, -2, -2, -2, -1, -1, -1, -1,
   -1,
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  /*  !"#$%&'()*+,-./ */
+  /* !"#$%&'()*+,-./ */
   -2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
   /* 0123456789:;<=>? */
   52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1,
@@ -77,7 +75,7 @@ const char from_base64_table[] =
   15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1,
   /* `abcdefghijklmno */
   -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-  /* pqrstuvwxyz{|}~  */
+  /* pqrstuvwxyz{|}~ */
   41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -2, -1, -1, -1, -1, -1,
@@ -91,15 +89,11 @@ const char from_base64_table[] =
 static bool char_is_invalid (unsigned char ch);
 static bool char_is_padding (unsigned char ch);
 static int get_base64_encode_len (int src_len);
-static int base64_encode_local (const unsigned char *src,
-				int src_len, unsigned char *dest);
-static int base64_remove_space (const unsigned char *src, int src_len,
-				unsigned char *dest, int *dst_len);
-static int base64_partition_into_chunk (const unsigned char *src, int src_len,
-					int *chunk_num, int *dst_len,
+static int base64_encode_local (const unsigned char *src, int src_len, unsigned char *dest);
+static int base64_remove_space (const unsigned char *src, int src_len, unsigned char *dest, int *dst_len);
+static int base64_partition_into_chunk (const unsigned char *src, int src_len, int *chunk_num, int *dst_len,
 					BASE64_CHUNK *** pppchunk);
-static int base64_decode_chunk (unsigned char *dest, int chunk_num,
-				BASE64_CHUNK ** ppchunk);
+static int base64_decode_chunk (unsigned char *dest, int chunk_num, BASE64_CHUNK ** ppchunk);
 static void free_base64_chunk (BASE64_CHUNK ** ppchunk, int chunk_num);
 
 /*
@@ -156,8 +150,7 @@ find_base64 (unsigned char ch)
  *   pppchunk(in/out):      array pointer of chunks to store encoded bytes
  */
 static int
-base64_partition_into_chunk (const unsigned char *src, int src_len,
-			     int *chunk_num_out, int *dst_len_out,
+base64_partition_into_chunk (const unsigned char *src, int src_len, int *chunk_num_out, int *dst_len_out,
 			     BASE64_CHUNK *** pppchunk)
 {
   int err = NO_ERROR;
@@ -167,10 +160,7 @@ base64_partition_into_chunk (const unsigned char *src, int src_len,
   BASE64_CHUNK *chk = NULL;
   BASE64_CHUNK **ppchunk = NULL;
 
-  assert (src != NULL
-	  && src_len > 0
-	  && chunk_num_out != NULL
-	  && dst_len_out != NULL && pppchunk != NULL);
+  assert (src != NULL && src_len > 0 && chunk_num_out != NULL && dst_len_out != NULL && pppchunk != NULL);
 
   *chunk_num_out = 0;
   *dst_len_out = 0;
@@ -185,9 +175,7 @@ base64_partition_into_chunk (const unsigned char *src, int src_len,
 
   /* chunk array pointer to accommodate maximum chunk_num base64 chunks */
   chunk_num = src_len / 4;
-  ppchunk = (BASE64_CHUNK **) db_private_alloc (NULL,
-						chunk_num *
-						sizeof (BASE64_CHUNK *));
+  ppchunk = (BASE64_CHUNK **) db_private_alloc (NULL, chunk_num * sizeof (BASE64_CHUNK *));
 
   if (ppchunk == NULL)
     {
@@ -207,9 +195,8 @@ base64_partition_into_chunk (const unsigned char *src, int src_len,
       d4 = src[i + 3];
 
       /* check all invalid conditions */
-      if (char_is_invalid (d1) || char_is_invalid (d2) || char_is_invalid (d3)
-	  || char_is_invalid (d4) || char_is_padding (d1)
-	  || char_is_padding (d2))
+      if (char_is_invalid (d1) || char_is_invalid (d2) || char_is_invalid (d3) || char_is_invalid (d4)
+	  || char_is_padding (d1) || char_is_padding (d2))
 	{
 	  err = BASE64_INVALID_INPUT;
 	  goto end;
@@ -250,8 +237,7 @@ base64_partition_into_chunk (const unsigned char *src, int src_len,
 	    }
 	  else			/* tail chunk that has padding */
 	    {
-	      /* how many decoded bytes to add in this chunk, e.g,
-	       *  from_base64(YWE=)='aa',from_base64(YW==)='a'  */
+	      /* how many decoded bytes to add in this chunk, e.g, from_base64(YWE=)='aa',from_base64(YW==)='a' */
 	      dst_len += char_is_padding (d3) ? 1 : 2;
 	      tail_chunk_flag = true;
 	    }
@@ -305,8 +291,7 @@ end:
  *         differ from size in case of space characters.
  */
 static int
-base64_remove_space (const unsigned char *src, int size, unsigned char *dest,
-		     int *dst_len)
+base64_remove_space (const unsigned char *src, int size, unsigned char *dest, int *dst_len)
 {
   int i;
   unsigned char *q;
@@ -350,8 +335,7 @@ base64_remove_space (const unsigned char *src, int size, unsigned char *dest,
  *         decoded bytes depending on padding.
  */
 static int
-base64_decode_chunk (unsigned char *dest, int chunk_num,
-		     BASE64_CHUNK ** ppchunk)
+base64_decode_chunk (unsigned char *dest, int chunk_num, BASE64_CHUNK ** ppchunk)
 {
   int i, d, copy_num;
   char decode_bytes[3];
@@ -401,8 +385,7 @@ base64_decode_chunk (unsigned char *dest, int chunk_num,
  *
  */
 int
-base64_decode (const unsigned char *src, int src_len, unsigned char **dest,
-	       int *dest_len)
+base64_decode (const unsigned char *src, int src_len, unsigned char **dest, int *dest_len)
 {
   int error_status = NO_ERROR;
   int len_no_space, real_dest_len, chunk_num = 0;
@@ -428,19 +411,16 @@ base64_decode (const unsigned char *src, int src_len, unsigned char **dest,
   /* remove space characters */
   base64_remove_space (src, src_len, str_no_space, &len_no_space);
 
-  /* '   ' has spaces. after space removal, it is empty string */
+  /* ' ' has spaces. after space removal, it is empty string */
   if (len_no_space == 0)
     {
       error_status = BASE64_EMPTY_INPUT;
       goto buf_clean;
     }
 
-  /* Partition encoded bytes with no space characters into multiple
-     chunks for decoding, stop when there is a middle chunk ending
-     in padding(s), which is considered as invalid input */
-  error_status = base64_partition_into_chunk (str_no_space, len_no_space,
-					      &chunk_num, &real_dest_len,
-					      &ppchunk);
+  /* Partition encoded bytes with no space characters into multiple chunks for decoding, stop when there is a middle
+   * chunk ending in padding(s), which is considered as invalid input */
+  error_status = base64_partition_into_chunk (str_no_space, len_no_space, &chunk_num, &real_dest_len, &ppchunk);
 
   if (error_status != NO_ERROR)
     {
@@ -520,8 +500,7 @@ get_base64_encode_len (int src_len)
  *
  */
 int
-base64_encode (const unsigned char *src, int src_len, unsigned char **dest,
-	       int *dest_len)
+base64_encode (const unsigned char *src, int src_len, unsigned char **dest, int *dest_len)
 {
   int encode_len;
   int error_status;
@@ -575,8 +554,7 @@ end:
  *        memory space for dest
  */
 static int
-base64_encode_local (const unsigned char *src, int src_len,
-		     unsigned char *dest)
+base64_encode_local (const unsigned char *src, int src_len, unsigned char *dest)
 {
   const unsigned char *p;
   unsigned int d;
@@ -598,9 +576,7 @@ base64_encode_local (const unsigned char *src, int src_len,
 	  line_break_count = 0;
 	}
 
-      /* move forward the source string every three bytes and
-       * translate it into four 6-bit bytes
-       */
+      /* move forward the source string every three bytes and translate it into four 6-bit bytes */
       d = (p[i++] << 16);	/* the most significant(3rd) bytes */
       fill = 2;			/* assuming 2 paddings needed */
 

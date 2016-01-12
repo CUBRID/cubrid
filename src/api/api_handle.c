@@ -147,37 +147,27 @@ static int bri_alloc_root (int *rrid, BH_ROOT ** root);
 static int bri_access_root (int rrid, BH_ROOT ** root);
 
 /* BH_INTERFACE implementation */
-static int fe_alloc_handle (BH_INTERFACE * bhifs, BH_BIND * bind,
-			    BIND_HANDLE * bh);
+static int fe_alloc_handle (BH_INTERFACE * bhifs, BH_BIND * bind, BIND_HANDLE * bh);
 static int fe_destroy_handle_worker (bh_context_fe * fe, BHIFS_NODE * node);
 static int fe_destroy_handle (BH_INTERFACE * bhifs, BIND_HANDLE bh);
 static int fe_lookup (BH_INTERFACE * bhifs, BIND_HANDLE bh, BH_BIND ** bind);
-static int fe_bind_to_handle (BH_INTERFACE * bhifs, BH_BIND * bind,
-			      BIND_HANDLE * bh);
-static int fe_bind_get_parent (BH_INTERFACE * bhifs, BH_BIND * bind,
-			       BH_BIND ** pbind);
+static int fe_bind_to_handle (BH_INTERFACE * bhifs, BH_BIND * bind, BIND_HANDLE * bh);
+static int fe_bind_get_parent (BH_INTERFACE * bhifs, BH_BIND * bind, BH_BIND ** pbind);
 static int fe_bind_prune (BH_INTERFACE * bhifs, BH_BIND * bind);
-static int fe_bind_graft (BH_INTERFACE * bhifs, BH_BIND * bind,
-			  BH_BIND * pbind);
-static int fe_bind_get_first_child (BH_INTERFACE * bhifs, BH_BIND * bind,
-				    BH_BIND ** pchild);
-static int fe_bind_get_next_sibling (BH_INTERFACE * bhifs, BH_BIND * bind,
-				     BH_BIND ** psibling);
-static int fe_bind_map_worker (bh_context_fe * fe, BHIFS_NODE * node,
-			       bh_mapf mf, void *arg);
-static int fe_bind_map (BH_INTERFACE * bhifs, BH_BIND * bind, bh_mapf mf,
-			void *arg);
+static int fe_bind_graft (BH_INTERFACE * bhifs, BH_BIND * bind, BH_BIND * pbind);
+static int fe_bind_get_first_child (BH_INTERFACE * bhifs, BH_BIND * bind, BH_BIND ** pchild);
+static int fe_bind_get_next_sibling (BH_INTERFACE * bhifs, BH_BIND * bind, BH_BIND ** psibling);
+static int fe_bind_map_worker (bh_context_fe * fe, BHIFS_NODE * node, bh_mapf mf, void *arg);
+static int fe_bind_map (BH_INTERFACE * bhifs, BH_BIND * bind, bh_mapf mf, void *arg);
 static void fe_destroy (BH_INTERFACE * bhifs);
 /* static hash based bh_context_be implementaiton */
 static int sh_comparef (void *key1, void *key2, int *rc);
 static int sh_hashf (void *key, unsigned int *rv);
 static int sh_keyf (void *elem, void **rk);
 static void sh_destroy (bh_context_be * be);
-static int sh_lookup (bh_context_be * be, BIND_HANDLE handle,
-		      BHIFS_NODE ** node);
+static int sh_lookup (bh_context_be * be, BIND_HANDLE handle, BHIFS_NODE ** node);
 static int sh_insert (bh_context_be * be, BHIFS_NODE * const node);
-static int sh_delete (bh_context_be * be, BIND_HANDLE handle,
-		      BHIFS_NODE ** node);
+static int sh_delete (bh_context_be * be, BIND_HANDLE handle, BHIFS_NODE ** node);
 static int be_create_static_hash (bh_context_be ** be, int bucket_sz);
 
 /* static variables */
@@ -315,9 +305,7 @@ fe_alloc_handle (BH_INTERFACE * bhifs, BH_BIND * bind, BIND_HANDLE * bh)
   assert (bh != NULL);
 
   fe = (bh_context_fe *) bhifs;
-  if ((res =
-       fe->handle_provider->next_handle (fe->handle_provider,
-					 &handle)) != NO_ERROR)
+  if ((res = fe->handle_provider->next_handle (fe->handle_provider, &handle)) != NO_ERROR)
     return res;
 
   if ((node = API_MALLOC (sizeof (*node))) == NULL)
@@ -523,8 +511,7 @@ fe_bind_graft (BH_INTERFACE * bhifs, BH_BIND * bind, BH_BIND * pbind)
  *    pchild(out): child BH_BIND
  */
 static int
-fe_bind_get_first_child (BH_INTERFACE * bhifs, BH_BIND * bind,
-			 BH_BIND ** pchild)
+fe_bind_get_first_child (BH_INTERFACE * bhifs, BH_BIND * bind, BH_BIND ** pchild)
 {
   BHIFS_NODE *node, *child;
 
@@ -553,8 +540,7 @@ fe_bind_get_first_child (BH_INTERFACE * bhifs, BH_BIND * bind,
  *    psibling(out): next sibling 
  */
 static int
-fe_bind_get_next_sibling (BH_INTERFACE * bhifs, BH_BIND * bind,
-			  BH_BIND ** psibling)
+fe_bind_get_next_sibling (BH_INTERFACE * bhifs, BH_BIND * bind, BH_BIND ** psibling)
 {
   BHIFS_NODE *node, *sibling;
 
@@ -584,8 +570,7 @@ fe_bind_get_next_sibling (BH_INTERFACE * bhifs, BH_BIND * bind,
  *    arg(in): argument of the map function
  */
 static int
-fe_bind_map_worker (bh_context_fe * fe, BHIFS_NODE * node, bh_mapf mf,
-		    void *arg)
+fe_bind_map_worker (bh_context_fe * fe, BHIFS_NODE * node, bh_mapf mf, void *arg)
 {
   dlisth *h;
 
@@ -616,8 +601,7 @@ fe_bind_map (BH_INTERFACE * bhifs, BH_BIND * bind, bh_mapf mf, void *arg)
   assert (mf != NULL);
   assert (bind->bptr != NULL);
 
-  return fe_bind_map_worker ((bh_context_fe *) bhifs,
-			     (BHIFS_NODE *) bind->bptr, mf, arg);
+  return fe_bind_map_worker ((bh_context_fe *) bhifs, (BHIFS_NODE *) bind->bptr, mf, arg);
 }
 
 /*
@@ -981,8 +965,7 @@ bh_root_unlock (int rrid)
  *    bhifs(out): BH_INTERFACE created
  */
 int
-create_handle_context (bh_provider * prov, BH_ROOT_TYPE rt,
-		       BH_INTERFACE ** bhifs)
+create_handle_context (bh_provider * prov, BH_ROOT_TYPE rt, BH_INTERFACE ** bhifs)
 {
   bh_context_fe *fe;
   bh_context_be *be;

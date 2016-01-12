@@ -252,8 +252,7 @@ extern void lf_destroy_transaction_systems (void);
 /*
  * Lock free stack
  */
-extern int lf_stack_push (void **top, void *entry,
-			  LF_ENTRY_DESCRIPTOR * edesc);
+extern int lf_stack_push (void **top, void *entry, LF_ENTRY_DESCRIPTOR * edesc);
 extern void *lf_stack_pop (void **top, LF_ENTRY_DESCRIPTOR * edesc);
 
 /*
@@ -283,28 +282,20 @@ struct lf_freelist
 #define LF_FREELIST_INITIALIZER \
   { NULL, 0, 0, 0, 0, NULL, NULL }
 
-extern int lf_freelist_init (LF_FREELIST * freelist,
-			     int initial_blocks, int block_size,
-			     LF_ENTRY_DESCRIPTOR * edesc,
+extern int lf_freelist_init (LF_FREELIST * freelist, int initial_blocks, int block_size, LF_ENTRY_DESCRIPTOR * edesc,
 			     LF_TRAN_SYSTEM * tran_system);
 extern void lf_freelist_destroy (LF_FREELIST * freelist);
 
-extern void *lf_freelist_claim (LF_TRAN_ENTRY * tran_entry,
-				LF_FREELIST * freelist);
-extern int lf_freelist_retire (LF_TRAN_ENTRY * tran_entry,
-			       LF_FREELIST * freelist, void *entry);
-extern int lf_freelist_transport (LF_TRAN_ENTRY * tran_entry,
-				  LF_FREELIST * freelist);
+extern void *lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
+extern int lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *entry);
+extern int lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
 
 /*
  * Lock free insert-only list based dictionary
  * NOTE: This list does not use a LF_TRAN_SYSTEM nor a LF_FREELIST.
  */
-extern int lf_io_list_find (void **list_p, void *key,
-			    LF_ENTRY_DESCRIPTOR * edesc, void **entry);
-extern int lf_io_list_find_or_insert (void **list_p, void *new_entry,
-				      LF_ENTRY_DESCRIPTOR * edesc,
-				      void **entry);
+extern int lf_io_list_find (void **list_p, void *key, LF_ENTRY_DESCRIPTOR * edesc, void **entry);
+extern int lf_io_list_find_or_insert (void **list_p, void *new_entry, LF_ENTRY_DESCRIPTOR * edesc, void **entry);
 
 /*
  * Lock free linked list based dictionary
@@ -319,20 +310,14 @@ extern int lf_io_list_find_or_insert (void **list_p, void *new_entry,
 #define LF_LIST_BR_RESTARTED		  0x10
 #define LF_LIST_BR_DUPLICATE		  0x20
 
-extern int lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key,
-			 int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
-			 void **entry);
-extern int lf_list_find_or_insert (LF_TRAN_ENTRY * tran, void **list_p,
-				   void *key, int *behavior_flags,
-				   LF_ENTRY_DESCRIPTOR * edesc,
-				   LF_FREELIST * freelist, void **entry);
-extern int lf_list_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key,
-			   int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
-			   LF_FREELIST * freelist, void **entry,
-			   int *inserted_count);
-extern int lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key,
-			   int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
-			   LF_FREELIST * freelist, int *success);
+extern int lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
+			 LF_ENTRY_DESCRIPTOR * edesc, void **entry);
+extern int lf_list_find_or_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
+				   LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry);
+extern int lf_list_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
+			   LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int *inserted_count);
+extern int lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
+			   LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, int *success);
 
 /*
  * Lock free hash table
@@ -362,19 +347,14 @@ struct lf_hash_table
 #define LF_HASH_TABLE_INITIALIZER \
   { NULL, NULL, PTHREAD_MUTEX_INITIALIZER, 0, NULL, NULL }
 
-extern int lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist,
-			 unsigned int hash_size, LF_ENTRY_DESCRIPTOR * edesc);
+extern int lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned int hash_size,
+			 LF_ENTRY_DESCRIPTOR * edesc);
 extern void lf_hash_destroy (LF_HASH_TABLE * table);
 
-extern int lf_hash_find (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table,
-			 void *key, void **entry);
-extern int lf_hash_find_or_insert (LF_TRAN_ENTRY * tran,
-				   LF_HASH_TABLE * table, void *key,
-				   void **entry);
-extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table,
-			   void *key, void **entry);
-extern int lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table,
-			   void *key, int *success);
+extern int lf_hash_find (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry);
+extern int lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry);
+extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry);
+extern int lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
 extern int lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table);
 
 /*
@@ -396,8 +376,7 @@ struct lf_hash_table_iterator
   LF_TRAN_ENTRY *tran_entry;
 };
 
-extern void lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator,
-				     LF_TRAN_ENTRY * tran_entry,
+extern void lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator, LF_TRAN_ENTRY * tran_entry,
 				     LF_HASH_TABLE * table);
 extern void *lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it);
 
@@ -422,10 +401,8 @@ struct lock_free_circular_queue
   char *data;
   INT32 *entry_state;
   int data_size;
-  /* Use INT64 for cursors domain to make sure domain is never consumed.
-   * Otherwise it will break the LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY and
-   * LOCK_FREE_CIRCULAR_QUEUE_IS_FULL checks.
-   */
+  /* Use INT64 for cursors domain to make sure domain is never consumed. Otherwise it will break the
+   * LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY and LOCK_FREE_CIRCULAR_QUEUE_IS_FULL checks. */
   INT64 consume_cursor;
   INT64 produce_cursor;
   INT64 capacity;
@@ -453,20 +430,15 @@ struct lock_free_circular_queue
 #define LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE(queue) \
   (queue->produce_cursor - queue->consume_cursor)
 
-extern bool lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue,
-				       void *data);
-extern bool lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue,
-				       void *data);
+extern bool lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
+extern bool lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
 extern void *lf_circular_queue_async_peek (LOCK_FREE_CIRCULAR_QUEUE * queue);
-extern bool lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE *
-						queue, void *data);
-extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (INT32 capacity,
-							   int data_size);
+extern bool lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
+extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (INT32 capacity, int data_size);
 extern void lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue);
 
 /* lock free bitmap */
-extern int lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style,
-			   int entries_cnt, float usage_threshold);
+extern int lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt, float usage_threshold);
 extern void lf_bitmap_destroy (LF_BITMAP * bitmap);
 extern int lf_bitmap_get_entry (LF_BITMAP * bitmap);
 extern int lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx);

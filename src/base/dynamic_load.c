@@ -161,14 +161,10 @@ struct dynamic_loader
     pid_t (*fork_function_p) ();	/* forking function to use (fork or vfork) */
   struct
   {
-    int daemon_fd;		/* The file descriptor of the pipe used to
-				   communicate with the daemon.
-				   -1 for unspawned daemon,
-				   -2 for broken daemon,
-				   greater than 0 for operating daemon. */
+    int daemon_fd;		/* The file descriptor of the pipe used to communicate with the daemon. -1 for
+				 * unspawned daemon, -2 for broken daemon, greater than 0 for operating daemon. */
 
-    char daemon_name[PATH_MAX];	/* The name of the process to be exec'ed
-				   as the daemon to scavenge tmpfiles. */
+    char daemon_name[PATH_MAX];	/* The name of the process to be exec'ed as the daemon to scavenge tmpfiles. */
   } daemon;
 
 #if defined (SOLARIS) || defined(HPUX) || defined(LINUX) || defined(AIX)
@@ -182,11 +178,9 @@ struct dynamic_loader
 
   struct
   {
-    const char *cmd;		/* The pathname of the ld command to be
-				   used to link the object files. */
+    const char *cmd;		/* The pathname of the ld command to be used to link the object files. */
 
-    caddr_t *ptr;		/* pointers to chunks VALLOC'ed to hold the text
-				   and data loaded int num; */
+    caddr_t *ptr;		/* pointers to chunks VALLOC'ed to hold the text and data loaded int num; */
     int num;
   } loader;
 
@@ -253,22 +247,18 @@ static void dl_set_pipe_handler (void);
 static void dl_set_new_image_file (DYNAMIC_LOADER *, const char *);
 static int dl_set_new_load_points (DYNAMIC_LOADER * this_, const caddr_t);
 static int dl_load_object_image (caddr_t, const char *);
-static const char **dl_parse_extra_options (int *num_options,
-					    char *option_string);
+static const char **dl_parse_extra_options (int *num_options, char *option_string);
 static void dl_decipher_waitval (int waitval);
 #ifdef DEBUG
-static char *dl_get_temporary_name (const char *dir, const char *prefix,
-				    int lineno);
+static char *dl_get_temporary_name (const char *dir, const char *prefix, int lineno);
 static int dl_open_pipe (int *fd, int lineno);
 #endif /* DEBUG */
 #endif /* !(SOLARIS) && !(HPUX) && !(LINUX) && !(AIX) */
 
 #if (defined(sun) || defined(sparc)) && !defined(SOLARIS)
 static size_t dl_get_image_file_size (const char *);
-static int dl_link_file (DYNAMIC_LOADER *, const char *, caddr_t,
-			 const char **);
-static int dl_load_objects (DYNAMIC_LOADER *, size_t *, const char **,
-			    const char **, const size_t,
+static int dl_link_file (DYNAMIC_LOADER *, const char *, caddr_t, const char **);
+static int dl_load_objects (DYNAMIC_LOADER *, size_t *, const char **, const char **, const size_t,
 			    enum dl_estimate_mode);
 #elif defined(HPUX) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
 static int dl_load_objects (DYNAMIC_LOADER *, const char **);
@@ -323,8 +313,7 @@ dl_open_object_file (const char *filename, int mode, int lineno)
 
   if (dl_Debug)
     {
-      fprintf (stderr, "%s[%d]: attempting to open %s...",
-	       __FILE__, lineno, filename);
+      fprintf (stderr, "%s[%d]: attempting to open %s...", __FILE__, lineno, filename);
     }
 
   fd = open (filename, mode, 0111);
@@ -365,9 +354,8 @@ static void
 dl_decipher_waitval (int waitval)
 {
 #ifdef __GNUG__
-  /* Because of some idiocy in the GNU header files, we have to
-     recreate some stupid overriding #define before WIFEXITED and
-     friends will work.  Who thinks of this stuff?  */
+  /* Because of some idiocy in the GNU header files, we have to recreate some stupid overriding #define before
+   * WIFEXITED and friends will work.  Who thinks of this stuff? */
 #define wait WaitStatus
 #endif /* __GNUG__ */
 
@@ -375,8 +363,7 @@ dl_decipher_waitval (int waitval)
     {
       if (WEXITSTATUS (waitval))
 	{
-	  DL_SET_ERROR_WITH_CODE_ONE_ARG (ER_DL_LDEXIT,
-					  WEXITSTATUS (waitval));
+	  DL_SET_ERROR_WITH_CODE_ONE_ARG (ER_DL_LDEXIT, WEXITSTATUS (waitval));
 	}
       else
 	{
@@ -385,7 +372,7 @@ dl_decipher_waitval (int waitval)
     }
   else if (WIFSIGNALED (waitval))
     {
-      /*
+      /* 
        * Child terminated by signal.
        */
       DL_SET_ERROR_WITH_CODE_ONE_ARG (ER_DL_LDTERM, WTERMSIG (waitval));
@@ -394,8 +381,7 @@ dl_decipher_waitval (int waitval)
     {
       if (dl_Debug)
 	{
-	  fprintf (stderr, "dynamic loader: unknown wait status = 0x%x\n",
-		   waitval);
+	  fprintf (stderr, "dynamic loader: unknown wait status = 0x%x\n", waitval);
 	}
       DL_SET_ERROR_WITH_CODE_ONE_ARG (ER_DL_LDWAIT, waitval);
     }
@@ -502,8 +488,7 @@ dl_validate_file_entry (FILE_ENTRY * this_, const char *filename)
 	    }
 	  else
 #endif /* _AIX */
-	  if (read (fd, (char *) &hdr, sizeof (hdr)) == sizeof (hdr)
-		&& !N_BADMAG (hdr))
+	  if (read (fd, (char *) &hdr, sizeof (hdr)) == sizeof (hdr) && !N_BADMAG (hdr))
 	    {
 	      this_->archive = false;
 #if defined(sun) || defined(sparc)
@@ -526,8 +511,7 @@ dl_validate_file_entry (FILE_ENTRY * this_, const char *filename)
 #if defined(_AIX) && defined(gcc)
 		  this_->archive = false;
 #else
-		  DL_SET_ERROR_WITH_CODE_ONE_ARG (ER_DL_BADHDR,
-						  this_->filename);
+		  DL_SET_ERROR_WITH_CODE_ONE_ARG (ER_DL_BADHDR, this_->filename);
 #endif /* _AIX && gcc */
 		}
 	    }
@@ -563,8 +547,7 @@ dl_initiate_dynamic_loader (DYNAMIC_LOADER * this_, const char *original)
 
   if (dl_Debug)
     {
-      fprintf (stderr, "%s[%d]: dynamic loader being built\n",
-	       __FILE__, __LINE__);
+      fprintf (stderr, "%s[%d]: dynamic loader being built\n", __FILE__, __LINE__);
     }
 
   this_->virgin = true;
@@ -601,8 +584,7 @@ dl_initiate_dynamic_loader (DYNAMIC_LOADER * this_, const char *original)
   this_->daemon.daemon_fd = DAEMON_NOT_SPAWNED;
 
 #if defined (SOLARIS) || defined(HPUX) || defined(LINUX) || defined(AIX)
-  this_->handler.handles =
-    (void **) malloc (HANDLES_PER_EXTENT * sizeof (void *));
+  this_->handler.handles = (void **) malloc (HANDLES_PER_EXTENT * sizeof (void *));
   if (this_->handler.handles == NULL)
     {
       DL_SET_ERROR_SYSTEM_MSG ();
@@ -623,7 +605,7 @@ dl_initiate_dynamic_loader (DYNAMIC_LOADER * this_, const char *original)
   this_->image_file = original;
 
 #if !defined (SOLARIS) && !defined(HPUX) && !defined(LINUX) && !defined(AIX)
-  this_->loader.cmd = DEFAULT_LD_NAME;	/*use the default name. */
+  this_->loader.cmd = DEFAULT_LD_NAME;	/* use the default name. */
 #endif /* !(SOLARIS) && !(HPUX) && !(LINUX) && !(AIX) */
 
   if (dl_Errno == NO_ERROR)
@@ -671,8 +653,7 @@ dl_destroy_dynamic_loader (DYNAMIC_LOADER * this_)
       for (i = 0, tbl_size = this_->loader.num; i < tbl_size; ++i)
 	{
 #if (defined(sun) || defined(sparc) ) && !defined(SOLARIS)
-	  free (this_->loader.ptr[i]);	/* Use free because the storage was
-					   allocated by VALLOC */
+	  free (this_->loader.ptr[i]);	/* Use free because the storage was allocated by VALLOC */
 #endif /* ((sun) || (sparc)) && !(SOLARIS) */
 	}
       free_and_init (this_->loader.ptr);
@@ -684,8 +665,7 @@ dl_destroy_dynamic_loader (DYNAMIC_LOADER * this_)
       (void) unlink (this_->image_file);
     }
 
-  free ((char *) this_->image_file);	/* Don't use free_and_init(),
-					   image_file came from exec_path */
+  free ((char *) this_->image_file);	/* Don't use free_and_init(), image_file came from exec_path */
 #endif /* !SOLARIS && !HPUX && !LINUX && !AIX */
 
   if (this_->daemon.daemon_fd >= 0)
@@ -695,8 +675,7 @@ dl_destroy_dynamic_loader (DYNAMIC_LOADER * this_)
 
   if (dl_Debug)
     {
-      fprintf (stderr, "%s[%d]: dynamic loader torn down\n",
-	       __FILE__, __LINE__);
+      fprintf (stderr, "%s[%d]: dynamic loader torn down\n", __FILE__, __LINE__);
     }
 }
 
@@ -733,8 +712,7 @@ dl_validate_candidates (DYNAMIC_LOADER * this_, const char **filenames)
       return NO_ERROR;
     }
 
-  this_->candidates.entries =
-    (FILE_ENTRY *) malloc (this_->candidates.num * sizeof (FILE_ENTRY));
+  this_->candidates.entries = (FILE_ENTRY *) malloc (this_->candidates.num * sizeof (FILE_ENTRY));
   if (this_->candidates.entries == NULL)
     {
       DL_SET_ERROR_SYSTEM_MSG ();
@@ -748,14 +726,12 @@ dl_validate_candidates (DYNAMIC_LOADER * this_, const char **filenames)
 
   for (i = 0; i < this_->candidates.num; ++i)
     {
-      if (dl_validate_file_entry
-	  (&this_->candidates.entries[i], filenames[i]))
+      if (dl_validate_file_entry (&this_->candidates.entries[i], filenames[i]))
 	{
 	  /* Perform individual validation on each.  Give up if any fail. */
 	  if (dl_Debug)
 	    {
-	      fprintf (stderr, "dl_validate_file_entry failed on %s\n",
-		       filenames[i]);
+	      fprintf (stderr, "dl_validate_file_entry failed on %s\n", filenames[i]);
 	    }
 
 	  goto cleanup;
@@ -788,8 +764,7 @@ dl_validate_candidates (DYNAMIC_LOADER * this_, const char **filenames)
 
 	  for (j = 0; j < i; ++j)
 	    {
-	      /* make sure that it hasn't already
-	         appeared in the current list of candidates */
+	      /* make sure that it hasn't already appeared in the current list of candidates */
 	      if (strcmp (this_->candidates.entries[j].filename, path) == 0)
 		{
 		  this_->candidates.entries[i].duplicate = true;
@@ -810,8 +785,7 @@ cleanup:
 
   if (dl_Debug)
     {
-      fprintf (stderr, "Number needed to load (nneed) = %d\n",
-	       this_->num_need_load);
+      fprintf (stderr, "Number needed to load (nneed) = %d\n", this_->num_need_load);
     }
 
   if (dl_Errno == NO_ERROR)
@@ -843,8 +817,7 @@ dl_get_image_file_size (const char *filename)
     }
   else
     {
-      if (read (fd, (char *) &hdr, sizeof (hdr)) != sizeof (hdr)
-	  || N_BADMAG (hdr))
+      if (read (fd, (char *) &hdr, sizeof (hdr)) != sizeof (hdr) || N_BADMAG (hdr))
 	{
 	  DL_SET_ERROR_WITH_CODE_ONE_ARG (ER_DL_BADHDR, filename);
 	}
@@ -920,8 +893,8 @@ dl_parse_extra_options (int *num_options, char *option_string)
   int i = 0, opt_cnt = 0;
 
 
-  for (option = (const char *) strtok_r (option_string, " \t", &save);
-       option; option = (const char *) strtok_r ((char *) NULL, " \t", &save))
+  for (option = (const char *) strtok_r (option_string, " \t", &save); option;
+       option = (const char *) strtok_r ((char *) NULL, " \t", &save))
     {
       const char **new_vec = NULL;
 
@@ -968,8 +941,7 @@ dl_parse_extra_options (int *num_options, char *option_string)
  */
 #if defined(sun) || defined(sparc)
 static int
-dl_link_file (DYNAMIC_LOADER * this_, const char *tmp_file,
-	      caddr_t load_point, const char **libs)
+dl_link_file (DYNAMIC_LOADER * this_, const char *tmp_file, caddr_t load_point, const char **libs)
 #endif				/* (sun) || (sparc) */
 {
   int num_libs = 0;
@@ -1000,8 +972,7 @@ dl_link_file (DYNAMIC_LOADER * this_, const char *tmp_file,
     }
 
 #if (defined(sun) || defined(sparc)) && !defined(SOLARIS)
-  /* ld -N -A <image_file> -T <load_point> -o <tmp_file>
-     <...obj_files...> <...libs...> */
+  /* ld -N -A <image_file> -T <load_point> -o <tmp_file> <...obj_files...> <...libs...> */
   argc = 8 + this_->candidates.num + num_libs + num_options;
 #endif /* ((sun) || (sparc)) && !(SOLARIS) */
 
@@ -1027,8 +998,7 @@ dl_link_file (DYNAMIC_LOADER * this_, const char *tmp_file,
 #endif /* ((sun) || (sparc)) && !(SOLARIS) */
   for (i = 0; i < this_->candidates.num; ++i)
     {
-      if (this_->candidates.entries[i].valid
-	  && !this_->candidates.entries[i].duplicate)
+      if (this_->candidates.entries[i].valid && !this_->candidates.entries[i].duplicate)
 	{
 	  *argvp++ = this_->candidates.entries[i].filename;
 	}
@@ -1163,13 +1133,11 @@ dl_open_pipe (int *fd, int lineno)
     {
       if (result == -1)
 	{
-	  fprintf (stderr, "%s[%d]: pipe creation failed\n",
-		   __FILE__, lineno);
+	  fprintf (stderr, "%s[%d]: pipe creation failed\n", __FILE__, lineno);
 	}
       else
 	{
-	  fprintf (stderr, "%s[%d]: pipe created on fds %d and %d\n",
-		   __FILE__, lineno, fd[0], fd[1]);
+	  fprintf (stderr, "%s[%d]: pipe created on fds %d and %d\n", __FILE__, lineno, fd[0], fd[1]);
 	}
     }
   return result;
@@ -1213,8 +1181,8 @@ dl_spawn_daemon (DYNAMIC_LOADER * this_)
 
   if (dl_Debug)
     {
-      fprintf (stderr, "%s[%d]: spawning %s on fds %d and %d\n",
-	       __FILE__, __LINE__, this_->daemon.daemon_name, fd[0], fd[1]);
+      fprintf (stderr, "%s[%d]: spawning %s on fds %d and %d\n", __FILE__, __LINE__, this_->daemon.daemon_name, fd[0],
+	       fd[1]);
       fflush (stderr);
     }
 
@@ -1224,8 +1192,7 @@ dl_spawn_daemon (DYNAMIC_LOADER * this_)
       /* This is the parent process. */
       if (daemon_pid == -1)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DL_DAEMON_MISSING,
-		  0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DL_DAEMON_MISSING, 0);
 	  CLOSE (fd[0]);
 	  CLOSE (fd[1]);
 	  this_->daemon.daemon_fd = DAEMON_NOT_AVAILABLE;
@@ -1273,13 +1240,11 @@ dl_notify_daemon (DYNAMIC_LOADER * this_)
 
   if (this_->daemon.daemon_fd >= 0)
     {
-      if (write (this_->daemon.daemon_fd, this_->image_file, num_chars)
-	  != num_chars)
+      if (write (this_->daemon.daemon_fd, this_->image_file, num_chars) != num_chars)
 	{
 	  if (dl_Debug)
 	    {
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		      ER_DL_DAEMON_DISAPPEARED, 0);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DL_DAEMON_DISAPPEARED, 0);
 	    }
 	  this_->daemon.daemon_fd = DAEMON_NOT_AVAILABLE;
 	}
@@ -1322,9 +1287,7 @@ dl_set_new_load_points (DYNAMIC_LOADER * this_, const caddr_t load_point)
 
   if (this_->loader.ptr)
     {
-      new_load_points = (caddr_t *) realloc (this_->loader.ptr,
-					     (this_->loader.num +
-					      1) * sizeof (caddr_t));
+      new_load_points = (caddr_t *) realloc (this_->loader.ptr, (this_->loader.num + 1) * sizeof (caddr_t));
     }
   else
     {
@@ -1403,8 +1366,7 @@ dl_is_valid_image_file (DYNAMIC_LOADER * this_)
  *      if mode == DL_ABSOLUTE, estimated_size is used as the estimate.
  */
 static int
-dl_load_objects (DYNAMIC_LOADER * this_, size_t * actual,
-		 const char **obj_files, const char **libs,
+dl_load_objects (DYNAMIC_LOADER * this_, size_t * actual, const char **obj_files, const char **libs,
 		 const size_t estimate, enum dl_estimate_mode mode)
 {
   size_t estimated_size = 0;
@@ -1416,8 +1378,7 @@ dl_load_objects (DYNAMIC_LOADER * this_, size_t * actual,
 
   dl_Errno = NO_ERROR;
 
-  if (dl_validate_candidates (this_, obj_files)
-      || (this_->num_need_load == 0))
+  if (dl_validate_candidates (this_, obj_files) || (this_->num_need_load == 0))
     goto cleanup;
 
   tmp_file = TEMPNAM (NULL, "dynld");
@@ -1431,8 +1392,7 @@ dl_load_objects (DYNAMIC_LOADER * this_, size_t * actual,
     {
       for (i = 0; i < this_->candidates.num; ++i)
 	{
-	  if (this_->candidates.entries[i].valid
-	      && !this_->candidates.entries[i].duplicate)
+	  if (this_->candidates.entries[i].valid && !this_->candidates.entries[i].duplicate)
 	    {
 	      estimated_size += this_->candidates.entries[i].size;
 	    }
@@ -1450,8 +1410,7 @@ dl_load_objects (DYNAMIC_LOADER * this_, size_t * actual,
 
   for (first_time = true;; first_time = false)
     {
-      /* allocate > link > check estimated size >
-         free the space and try again. */
+      /* allocate > link > check estimated size > free the space and try again. */
       load_point = VALLOC (estimated_size);
       if (load_point == NULL)
 	{
@@ -1461,9 +1420,7 @@ dl_load_objects (DYNAMIC_LOADER * this_, size_t * actual,
 
       if (load_point != old_load_point)
 	{
-	  if (dl_link_file (tmp_file,
-			    load_point,
-			    libs == NULL ? dl_Default_libs : libs))
+	  if (dl_link_file (tmp_file, load_point, libs == NULL ? dl_Default_libs : libs))
 	    goto cleanup;
 	  actual_size = dl_get_image_file_size (tmp_file);
 	  if (actual_size == -1)
@@ -1495,7 +1452,8 @@ dl_load_objects (DYNAMIC_LOADER * this_, size_t * actual,
   if (dl_load_object_image (load_point, tmp_file))
     goto cleanup;
 
-  if (mprotect (load_point, actual_size, PROT_READ | PROT_WRITE | PROT_EXEC) == -1)	/* Add all permissions to this new chunk of memory */
+  if (mprotect (load_point, actual_size, PROT_READ | PROT_WRITE | PROT_EXEC) == -1)	/* Add all permissions to this
+											 * new chunk of memory */
     {
       DL_SET_ERROR_SYSTEM_MSG ();
       goto cleanup;
@@ -1526,16 +1484,13 @@ cleanup:
 	  int rc;
 	  int max_retry = 0;
 
-	  while (((rc = unlink (tmp_file)) != 0)
-		 && (max_retry < MAX_UNLINK_RETRY))
+	  while (((rc = unlink (tmp_file)) != 0) && (max_retry < MAX_UNLINK_RETRY))
 	    {
 	      if (rc < 0)
 		{
 		  if (dl_Debug)
 		    {
-		      fprintf (stderr,
-			       "%s[%d]: retrying unlink: errno = %d\n",
-			       __FILE__, __LINE__, errno);
+		      fprintf (stderr, "%s[%d]: retrying unlink: errno = %d\n", __FILE__, __LINE__, errno);
 		    }
 		  max_retry++;
 		  (void) sleep (3);
@@ -1547,17 +1502,15 @@ cleanup:
 	    {
 	      if (max_retry < MAX_UNLINK_RETRY)
 		{
-		  fprintf (stderr, "%s[%d]: successful unlink: %s\n",
-			   __FILE__, __LINE__, tmp_file);
+		  fprintf (stderr, "%s[%d]: successful unlink: %s\n", __FILE__, __LINE__, tmp_file);
 		}
 	      else
 		{
-		  fprintf (stderr, "%s[%d]: hit retry max for unlink: %s\n",
-			   __FILE__, __LINE__, tmp_file);
+		  fprintf (stderr, "%s[%d]: hit retry max for unlink: %s\n", __FILE__, __LINE__, tmp_file);
 		}
 	    }
 
-	  /*
+	  /* 
 	   * Don't use free_and_init on tmp_file; it came to us via tempnam().
 	   */
 	  free ((char *) tmp_file);
@@ -1586,8 +1539,7 @@ dl_load_objects (DYNAMIC_LOADER * this_, const char **obj_files)
 
   dl_Errno = NO_ERROR;
 
-  if (dl_validate_candidates (this_, obj_files)
-      || (this_->num_need_load == 0))
+  if (dl_validate_candidates (this_, obj_files) || (this_->num_need_load == 0))
     {
       /* validation failed or All of the candidates were already loaded */
       goto cleanup;
@@ -1599,8 +1551,7 @@ dl_load_objects (DYNAMIC_LOADER * this_, const char **obj_files)
 	{
 	  if (dl_Debug)
 	    {
-	      fprintf (stderr, "Opening file: %s as handle: %d\n",
-		       obj_files[i], this_->handler.top);
+	      fprintf (stderr, "Opening file: %s as handle: %d\n", obj_files[i], this_->handler.top);
 	    }
 
 	  /* first see if we need to extend the handle array */
@@ -1612,20 +1563,17 @@ dl_load_objects (DYNAMIC_LOADER * this_, const char **obj_files)
 	      new_handles_num = this_->handler.num + HANDLES_PER_EXTENT;
 	      if (dl_Debug)
 		{
-		  fprintf (stderr, "Extending handle arrary to %d handles\n",
-			   new_handles_num);
+		  fprintf (stderr, "Extending handle arrary to %d handles\n", new_handles_num);
 		}
-	      new_handles =
-		(void **) malloc (new_handles_num * sizeof (void *));
+	      new_handles = (void **) malloc (new_handles_num * sizeof (void *));
 	      if (new_handles == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DL_LOAD_ERR,
-			  1, "Memory allocation failed for handle extension");
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DL_LOAD_ERR, 1,
+			  "Memory allocation failed for handle extension");
 		  dl_Errno = ER_FAILED;
 		  goto cleanup;
 		}
-	      memcpy (new_handles, this_->handler.handles,
-		      (this_->handler.num * sizeof (void *)));
+	      memcpy (new_handles, this_->handler.handles, (this_->handler.num * sizeof (void *)));
 	      free_and_init (this_->handler.handles);
 	      this_->handler.handles = new_handles;
 	      this_->handler.num = new_handles_num;
@@ -1633,19 +1581,15 @@ dl_load_objects (DYNAMIC_LOADER * this_, const char **obj_files)
 
 #if defined(HPUX)
 	  this_->handler.handles[this_->handler.top] =
-	    (void *) shl_load (obj_files[i], BIND_IMMEDIATE | BIND_NONFATAL,
-			       0);
+	    (void *) shl_load (obj_files[i], BIND_IMMEDIATE | BIND_NONFATAL, 0);
 #else /* HPUX */
-	  this_->handler.handles[this_->handler.top] =
-	    dlopen (obj_files[i], RTLD_LAZY);
+	  this_->handler.handles[this_->handler.top] = dlopen (obj_files[i], RTLD_LAZY);
 #endif /* HPUX */
 	  if (this_->handler.handles[this_->handler.top] == NULL)
 	    {
 #if defined(HPUX)
 	      char dl_msg[1024];
-	      sprintf (dl_msg,
-		       "Error shl_load'ing file: %s, with error code: %d",
-		       obj_files[i], errno);
+	      sprintf (dl_msg, "Error shl_load'ing file: %s, with error code: %d", obj_files[i], errno);
 	      if (dl_Debug)
 		{
 		  fprintf (stderr, "%s\n", dl_msg);
@@ -1655,13 +1599,10 @@ dl_load_objects (DYNAMIC_LOADER * this_, const char **obj_files)
 	      dl_msg = dlerror ();
 	      if (dl_Debug)
 		{
-		  fprintf (stderr,
-			   "Error opening file: %s, with error \"%s\"\n",
-			   obj_files[i], dl_msg);
+		  fprintf (stderr, "Error opening file: %s, with error \"%s\"\n", obj_files[i], dl_msg);
 		}
 #endif /* HPUX */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DL_LOAD_ERR,
-		      1, dl_msg);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DL_LOAD_ERR, 1, dl_msg);
 	      dl_Errno = ER_FAILED;
 	      goto cleanup;
 	    }
@@ -1669,9 +1610,7 @@ dl_load_objects (DYNAMIC_LOADER * this_, const char **obj_files)
 	    {
 	      if (dl_Debug)
 		{
-		  fprintf (stderr,
-			   "dl_open for handle: %d succeeded, value = %p\n",
-			   this_->handler.top,
+		  fprintf (stderr, "dl_open for handle: %d succeeded, value = %p\n", this_->handler.top,
 			   this_->handler.handles[this_->handler.top]);
 		}
 	      this_->handler.top++;
@@ -1679,8 +1618,8 @@ dl_load_objects (DYNAMIC_LOADER * this_, const char **obj_files)
 	}
     }
 
-  dl_record_files (this_);	/* Record the names of the files that we have loaded,
-				   so that we don't ever load them again. */
+  dl_record_files (this_);	/* Record the names of the files that we have loaded, so that we don't ever load them
+				 * again. */
 
 cleanup:
 
@@ -1736,17 +1675,13 @@ dl_resolve_symbol (DYNAMIC_LOADER * this_, struct nlist *syms)
 	{
 	  if (dl_Debug)
 	    {
-	      fprintf (stderr,
-		       "resolving symbols with handle: %d, value = %p\n",
-		       j, this_->handler.handles[j]);
+	      fprintf (stderr, "resolving symbols with handle: %d, value = %p\n", j, this_->handler.handles[j]);
 	    }
 #if defined(HPUX)
-	  if (shl_findsym
-	      ((shl_t *) & this_->handler.handles[j], syms[i].n_name,
-	       TYPE_PROCEDURE, &resolution) == NO_ERROR)
+	  if (shl_findsym ((shl_t *) & this_->handler.handles[j], syms[i].n_name, TYPE_PROCEDURE, &resolution) ==
+	      NO_ERROR)
 #else /* HPUX */
-	  if ((resolution =
-	       dlsym (this_->handler.handles[j], syms[i].n_name)))
+	  if ((resolution = dlsym (this_->handler.handles[j], syms[i].n_name)))
 #endif
 	    {
 	      num_resolutions++;
@@ -1755,25 +1690,20 @@ dl_resolve_symbol (DYNAMIC_LOADER * this_, struct nlist *syms)
 	    }
 	  else if (dl_Debug)
 	    {
-	      fprintf (stderr,
-		       "Error resolving: %s, from handle: %d: Error code %d\n",
-		       syms[i].n_name, j, errno);
+	      fprintf (stderr, "Error resolving: %s, from handle: %d: Error code %d\n", syms[i].n_name, j, errno);
 	    }
 
 	}
 
       if (dl_Debug)
 	{
-	  fprintf (stderr,
-		   "Number of resolutions found for symbol: %s is: %d\n",
-		   syms[i].n_name, num_resolutions);
+	  fprintf (stderr, "Number of resolutions found for symbol: %s is: %d\n", syms[i].n_name, num_resolutions);
 	}
 
       if (num_resolutions > 1)
 	{
 	  /* set an error and return */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DL_MULTIPLY_DEFINED,
-		  1, syms[i].n_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DL_MULTIPLY_DEFINED, 1, syms[i].n_name);
 	  syms[i].n_type = SYMS_NTYPE_NULL;
 	  return -1;
 	}
@@ -1883,8 +1813,7 @@ int
 dl_load_object_module (const char **obj_files, const char **msgp)
 #else /* (HPUX) || (SOLARIS) || (LINUX) || (AIX) */
 int
-dl_load_object_module (const char **obj_files, const char **msgp,
-		       const char **libs)
+dl_load_object_module (const char **obj_files, const char **msgp, const char **libs)
 #endif				/* (HPUX) || (SOLARIS) || (LINUX) || (AIX) */
 {
   dl_Errno = NO_ERROR;
@@ -1959,12 +1888,8 @@ int
 dl_load_object_with_estimate (const char **obj_files, const char **msgp)
 #elif (defined(sun) || defined(sparc)) && !defined(SOLARIS)
 int
-dl_load_object_with_estimate (size_t * actual_size,
-			      const char **obj_files,
-			      const char **msgp,
-			      const char **libs,
-			      const size_t estimated_size,
-			      enum dl_estimate_mode mode)
+dl_load_object_with_estimate (size_t * actual_size, const char **obj_files, const char **msgp, const char **libs,
+			      const size_t estimated_size, enum dl_estimate_mode mode)
 #endif				/* (HPUX) || (SOLARIS) || (LINUX) || (AIX) */
 {
   dl_Errno = NO_ERROR;
@@ -1988,8 +1913,7 @@ dl_load_object_with_estimate (size_t * actual_size,
 #if defined(HPUX) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
   return dl_load_objects (dl_Loader, obj_files);
 #else /* HPUX || SOLARIS || LINUX || AIX */
-  return dl_load_objects (dl_Loader, obj_files, libs, estimated_size,
-			  actual_size, mode);
+  return dl_load_objects (dl_Loader, obj_files, libs, estimated_size, actual_size, mode);
 #endif /* HPUX || SOLARIS || LINUX || AIX */
 }
 #endif /* ENABLE_UNUSED_FUNCTION */

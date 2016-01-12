@@ -256,15 +256,15 @@ enum net_server_request
 
   NET_SERVER_TZ_GET_CHECKSUM,
 
-  /* Followings are not grouped because they are appended after the above.
-     It is necessary to rearrange with changing network compatibility. */
+  /* Followings are not grouped because they are appended after the above. It is necessary to rearrange with changing
+   * network compatibility. */
 
-  /*
+  /* 
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
    */
   NET_SERVER_REQUEST_END,
-  /*
+  /* 
    * This request number must be preserved.
    */
   NET_SERVER_PING_WITH_HANDSHAKE = 999,

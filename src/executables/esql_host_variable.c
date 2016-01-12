@@ -55,12 +55,10 @@ struct builtin_type_s
 };
 
 static BUILTIN_TYPE builtin_types[] = {
-  /* These are esql-specific types that the preprocessor needs to
-     know about to do its job. */
+  /* These are esql-specific types that the preprocessor needs to know about to do its job. */
   {
    "CUBRIDDA", NULL, C_TYPE_SQLDA, true},
-  /* These are SQL/X types that programmers need to use, and so the
-     preprocessor also needs to know about them. */
+  /* These are SQL/X types that programmers need to use, and so the preprocessor also needs to know about them. */
   {
    "DB_VALUE", NULL, C_TYPE_DB_VALUE, false},
   {
@@ -175,7 +173,7 @@ pp_clear_host_refs (void)
     {
       HOST_LOD *chain, *next;
 
-      /*
+      /* 
        * Run down the chain of allocated HOST_LOD structures, clearing
        * them as we go but leaving the 'next' fields intact.  When we
        * reach the end, just tack the chain on the the free list, point
@@ -275,8 +273,7 @@ pp_free_host_var (HOST_VAR * var)
  *    components in the order in which they were declared.
  */
 HOST_REF *
-pp_add_host_ref (HOST_VAR * var, HOST_VAR * indicator,
-		 bool structs_allowed, int *n_refs)
+pp_add_host_ref (HOST_VAR * var, HOST_VAR * indicator, bool structs_allowed, int *n_refs)
 {
   HOST_REF *ref;
   C_TYPE uci_type;
@@ -291,11 +288,9 @@ pp_add_host_ref (HOST_VAR * var, HOST_VAR * indicator,
       goto bad_news;
     }
 
-  if (indicator != NULL
-      && (!(IS_INT (indicator->type) && !IS_LONG (indicator->type))))
+  if (indicator != NULL && (!(IS_INT (indicator->type) && !IS_LONG (indicator->type))))
     {
-      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_MUST_BE_SHORT),
-		     vs_str (&indicator->expr));
+      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_MUST_BE_SHORT), vs_str (&indicator->expr));
       goto bad_news;
     }
 
@@ -309,8 +304,7 @@ pp_add_host_ref (HOST_VAR * var, HOST_VAR * indicator,
     {
       if (indicator)
 	{
-	  esql_yyverror (pp_get_msg
-			 (EX_HOSTVAR_SET, MSG_INDICATOR_NOT_ALLOWED));
+	  esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_INDICATOR_NOT_ALLOWED));
 	  goto bad_news;
 	}
 
@@ -330,15 +324,12 @@ pp_add_host_ref (HOST_VAR * var, HOST_VAR * indicator,
 
   if (pp_host_refs->n_refs >= pp_host_refs->max_refs)
     {
-      HOST_REF *new_refs =
-	pp_malloc ((pp_host_refs->max_refs + 4) * sizeof (HOST_REF));
+      HOST_REF *new_refs = pp_malloc ((pp_host_refs->max_refs + 4) * sizeof (HOST_REF));
       memset (new_refs, 0, (pp_host_refs->max_refs + 4) * sizeof (HOST_REF));
       if (pp_host_refs->real_refs != NULL)
 	{
-	  memcpy ((char *) new_refs,
-		  (char *) pp_host_refs->real_refs,
-		  (size_t) sizeof (HOST_REF) *
-		  (size_t) pp_host_refs->max_refs);
+	  memcpy ((char *) new_refs, (char *) pp_host_refs->real_refs,
+		  (size_t) sizeof (HOST_REF) * (size_t) pp_host_refs->max_refs);
 	  free_and_init (pp_host_refs->real_refs);
 	}
       pp_host_refs->max_refs += 4;
@@ -410,8 +401,7 @@ pp_add_struct_field_refs (HOST_VAR * var, int *n_refs)
     {
       HOST_VAR *var;
 
-      /* Make a new host ref from this field, and then add it as a host
-         variable. */
+      /* Make a new host ref from this field, and then add it as a host variable. */
       var = pp_new_host_var (NULL, field);
       vs_prepend (&var->expr, ").");
       vs_prepend (&var->expr, prefix);
@@ -438,7 +428,7 @@ pp_add_struct_field_refs (HOST_VAR * var, int *n_refs)
       result = NULL;
     }
 
-  /*
+  /* 
    * We want to free the incoming host var regardless of whether there
    * were errors or not.  If there were errors, it is obviously
    * unneeded.  If there were no errors, it is still unneeded because
@@ -446,7 +436,7 @@ pp_add_struct_field_refs (HOST_VAR * var, int *n_refs)
    */
   pp_free_host_var (var);
 
-  /*
+  /* 
    * This choice of return value is kind of arbitrary: the important
    * thing is to return some non-NULL pointer so that upper levels
    * won't be deceived into believing that an error occurred.
@@ -580,15 +570,14 @@ pp_check_type (HOST_REF * ref, BITSET typeset, const char *msg)
     }
   else
     {
-      /*
+      /* 
        * Copy the silly message; it's probably also coming straight out
        * of the message catalog stuff, and it will get clobbered by our
        * intervening call to pp_get_msg().
        */
       char *msg_copy;
       msg_copy = pp_strdup (msg);
-      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_NOT_VALID),
-		     pp_expr (ref->var), msg_copy);
+      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_NOT_VALID), pp_expr (ref->var), msg_copy);
       free_and_init (msg_copy);
       return NULL;
     }
@@ -614,8 +603,7 @@ pp_check_host_var_list (void)
       if (pp_get_type (&pp_host_refs->refs[i]) >= NUM_C_VARIABLE_TYPES)
 	{
 	  esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_TYPE_NOT_ACCEPTABLE),
-			 pp_type_str (pp_host_refs->refs[i].var->type),
-			 pp_get_expr (&pp_host_refs->refs[i]));
+			 pp_type_str (pp_host_refs->refs[i].var->type), pp_get_expr (&pp_host_refs->refs[i]));
 	}
     }
 }
@@ -678,7 +666,7 @@ pp_get_precision (HOST_REF * ref)
 	  break;
 
 	case C_TYPE_CHAR_POINTER:
-	  /*
+	  /* 
 	   * In this case, this means that we will determine the precision
 	   * at runtime by calling strlen().  We could probably emit the
 	   * strlen() code here, but it's less expensive in terms of code
@@ -692,14 +680,12 @@ pp_get_precision (HOST_REF * ref)
 	  break;
 
 	case C_TYPE_VARCHAR:
-	  vs_sprintf (ref->precision_buf, "sizeof((%s).%s)-1",
-		      pp_get_expr (ref), VARCHAR_ARRAY_NAME);
+	  vs_sprintf (ref->precision_buf, "sizeof((%s).%s)-1", pp_get_expr (ref), VARCHAR_ARRAY_NAME);
 	  break;
 
 	case C_TYPE_VARBIT:
 	case C_TYPE_BIT:
-	  vs_sprintf (ref->precision_buf, "(%s).%s",
-		      pp_get_expr (ref), VARCHAR_LENGTH_NAME);
+	  vs_sprintf (ref->precision_buf, "(%s).%s", pp_get_expr (ref), VARCHAR_LENGTH_NAME);
 	  break;
 
 	case C_TYPE_STRING_CONST:
@@ -708,8 +694,7 @@ pp_get_precision (HOST_REF * ref)
 
 	default:
 	  {
-	    esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_UNKNOWN_HV_TYPE),
-			   pp_type_str (ref->var->type));
+	    esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_UNKNOWN_HV_TYPE), pp_type_str (ref->var->type));
 	    vs_strcpy (ref->precision_buf, "0");
 	  }
 	  break;
@@ -794,8 +779,7 @@ pp_get_input_size (HOST_REF * ref)
 	case C_TYPE_VARCHAR:
 	case C_TYPE_VARBIT:
 	case C_TYPE_BIT:
-	  vs_sprintf (ref->input_size_buf, "(%s).%s", pp_get_expr (ref),
-		      VARCHAR_LENGTH_NAME);
+	  vs_sprintf (ref->input_size_buf, "(%s).%s", pp_get_expr (ref), VARCHAR_LENGTH_NAME);
 	  break;
 
 	case C_TYPE_CHAR_POINTER:
@@ -804,8 +788,7 @@ pp_get_input_size (HOST_REF * ref)
 
 	default:
 	  {
-	    esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_UNKNOWN_HV_TYPE),
-			   pp_type_str (ref->var->type));
+	    esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_UNKNOWN_HV_TYPE), pp_type_str (ref->var->type));
 	    size_str = "0";
 	  }
 	  break;
@@ -840,19 +823,16 @@ pp_get_output_size (HOST_REF * ref)
       if (ref->output_size_buf == NULL)
 	{
 	  ref->output_size_buf = vs_new (NULL);
-	  vs_sprintf (ref->output_size_buf, "strlen(%s)+1",
-		      pp_get_expr (ref));
+	  vs_sprintf (ref->output_size_buf, "strlen(%s)+1", pp_get_expr (ref));
 	}
       size_str = vs_str (ref->output_size_buf);
     }
-  else if (ref->uci_type == C_TYPE_VARCHAR
-	   || ref->uci_type == C_TYPE_VARBIT || ref->uci_type == C_TYPE_BIT)
+  else if (ref->uci_type == C_TYPE_VARCHAR || ref->uci_type == C_TYPE_VARBIT || ref->uci_type == C_TYPE_BIT)
     {
       if (ref->output_size_buf == NULL)
 	{
 	  ref->output_size_buf = vs_new (NULL);
-	  vs_sprintf (ref->output_size_buf, "sizeof(%s.%s)",
-		      pp_get_expr (ref), VARCHAR_ARRAY_NAME);
+	  vs_sprintf (ref->output_size_buf, "sizeof(%s.%s)", pp_get_expr (ref), VARCHAR_ARRAY_NAME);
 	}
       size_str = vs_str (ref->output_size_buf);
     }
@@ -1033,8 +1013,7 @@ pp_check (HOST_VAR * var, bool structs_allowed)
 	    }
 	  else
 	    {
-	      return type->decl.s.is_long ? C_TYPE_LONG :
-		type->decl.s.is_short ? C_TYPE_SHORT : C_TYPE_INTEGER;
+	      return type->decl.s.is_long ? C_TYPE_LONG : type->decl.s.is_short ? C_TYPE_SHORT : C_TYPE_INTEGER;
 	    }
 
 	case N_FLOAT:
@@ -1096,8 +1075,7 @@ pp_check (HOST_VAR * var, bool structs_allowed)
 	}
     }
 
-  esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_TYPE_NOT_ACCEPTABLE),
-		 pp_type_str (type), vs_str (&var->expr));
+  esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_TYPE_NOT_ACCEPTABLE), pp_type_str (type), vs_str (&var->expr));
   return BAD_C_TYPE;
 }
 
@@ -1115,8 +1093,7 @@ pp_check_builtin_type (LINK * type, bool mode)
 
   for (i = 0; i < DIM (builtin_types); ++i)
     {
-      if (pp_the_same_type (type, builtin_types[i].sym->type, 1)
-	  && mode == builtin_types[i].mode)
+      if (pp_the_same_type (type, builtin_types[i].sym->type, 1) && mode == builtin_types[i].mode)
 	{
 	  return builtin_types[i].c_type;
 	}
@@ -1163,8 +1140,7 @@ pp_addr_expr (HOST_VAR * var)
       vs_clear (&var->addr_expr);
       if (IS_PSEUDO_TYPE (var->type))
 	{
-	  vs_sprintf (&var->addr_expr, "(%s).%s", pp_expr (var),
-		      VARCHAR_ARRAY_NAME);
+	  vs_sprintf (&var->addr_expr, "(%s).%s", pp_expr (var), VARCHAR_ARRAY_NAME);
 	}
       else
 	{
@@ -1195,8 +1171,7 @@ pp_ptr_deref (HOST_VAR * var, int style)
 
   if (!IS_PTR_TYPE (var->type))
     {
-      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_DEREF_NOT_ALLOWED),
-		     vs_str (&var->expr), style ? "[]" : "*");
+      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_DEREF_NOT_ALLOWED), vs_str (&var->expr), style ? "[]" : "*");
       return NULL;
     }
 
@@ -1230,8 +1205,7 @@ pp_struct_deref (HOST_VAR * var, char *field, int indirect)
       LINK *base_type;
       if (!IS_PTR_TYPE (var->type))
 	{
-	  esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_NOT_POINTER),
-			 vs_str (&var->expr));
+	  esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_NOT_POINTER), vs_str (&var->expr));
 	  return NULL;
 	}
       base_type = var->type->next;
@@ -1241,17 +1215,15 @@ pp_struct_deref (HOST_VAR * var, char *field, int indirect)
 
   if (!IS_STRUCT (var->type) && !IS_PSEUDO_TYPE (var->type))
     {
-      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET,
-				 indirect ? MSG_NOT_POINTER_TO_STRUCT :
-				 MSG_NOT_STRUCT), vs_str (&var->expr));
+      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, indirect ? MSG_NOT_POINTER_TO_STRUCT : MSG_NOT_STRUCT),
+		     vs_str (&var->expr));
       return NULL;
     }
 
   field_def = pp_find_field (var->type->decl.s.val.v_struct, field);
   if (field_def == NULL)
     {
-      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_NO_FIELD),
-		     var->type->decl.s.val.v_struct->type_string, field);
+      esql_yyverror (pp_get_msg (EX_HOSTVAR_SET, MSG_NO_FIELD), var->type->decl.s.val.v_struct->type_string, field);
       return NULL;
     }
 
@@ -1373,8 +1345,7 @@ pp_hv_init (void)
   pp_add_spec_to_decl (pp_current_type_spec (), string_dummy);
   pp_discard_link (pp_current_type_spec ());
 
-  /* This assumes that DB_INDICATOR is tyepdef'ed to short.  Change
-     this code when that assumption becomes invalid. */
+  /* This assumes that DB_INDICATOR is tyepdef'ed to short.  Change this code when that assumption becomes invalid. */
   db_indicator = pp_new_symbol ("DB_INDICATOR", 0);
   pp_reset_current_type_spec ();
   pp_add_storage_class (TYPEDEF_);
@@ -1505,7 +1476,7 @@ pp_clear_host_lod (HOST_LOD * lod)
       return;
     }
 
-  /*
+  /* 
    * *DON'T* free the character string pointed to by desc.  It is
    * assumed to point to the same string that some host_ref in
    * real_refs points to.
@@ -1533,8 +1504,7 @@ pp_switch_to_descriptor (void)
   assert (pp_host_refs->n_refs == 1);
   assert (pp_host_refs->refs != NULL);
 
-  if (pp_host_refs == NULL
-      || pp_host_refs->n_refs != 1 || pp_host_refs->refs == NULL)
+  if (pp_host_refs == NULL || pp_host_refs->n_refs != 1 || pp_host_refs->refs == NULL)
     {
       return NULL;
     }

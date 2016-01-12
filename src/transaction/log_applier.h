@@ -47,23 +47,15 @@ typedef enum
 } REPL_FILTER_TYPE;
 
 #if defined (CS_MODE)
-int
-la_log_page_check (const char *database_name, const char *log_path,
-		   INT64 page_num, bool check_applied_info,
-		   bool check_copied_info, bool check_replica_info,
-		   bool verbose, LOG_LSA * copied_eof_lsa,
-		   LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa);
-int la_apply_log_file (const char *database_name, const char *log_path,
-		       const int max_mem_size);
-void la_print_log_header (const char *database_name, struct log_header *hdr,
-			  bool verbose);
-void la_print_log_arv_header (const char *database_name,
-			      struct log_arv_header *hdr, bool verbose);
-void la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa,
-			  float process_rate);
+int la_log_page_check (const char *database_name, const char *log_path, INT64 page_num, bool check_applied_info,
+		       bool check_copied_info, bool check_replica_info, bool verbose, LOG_LSA * copied_eof_lsa,
+		       LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa);
+int la_apply_log_file (const char *database_name, const char *log_path, const int max_mem_size);
+void la_print_log_header (const char *database_name, struct log_header *hdr, bool verbose);
+void la_print_log_arv_header (const char *database_name, struct log_arv_header *hdr, bool verbose);
+void la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa, float process_rate);
 
-extern int lp_prefetch_log_file (const char *database_name,
-				 const char *log_path);
+extern int lp_prefetch_log_file (const char *database_name, const char *log_path);
 extern bool la_force_shutdown (void);
 #endif /* CS_MODE */
 

@@ -109,8 +109,7 @@ net_init_env (char *port_name)
     {
       return INVALID_SOCKET;
     }
-  if ((setsockopt (sock_fd, SOL_SOCKET, SO_REUSEADDR, (char *) &one,
-		   sizeof (one))) < 0)
+  if ((setsockopt (sock_fd, SOL_SOCKET, SO_REUSEADDR, (char *) &one, sizeof (one))) < 0)
     {
       CLOSE_SOCKET (sock_fd);
       return INVALID_SOCKET;
@@ -128,8 +127,7 @@ net_init_env (char *port_name)
   memset (&sock_addr, 0, sizeof (struct sockaddr_un));
   sock_addr.sun_family = AF_UNIX;
   snprintf (sock_addr.sun_path, sizeof (sock_addr.sun_path), "%s", port_name);
-  sock_addr_len =
-    strlen (sock_addr.sun_path) + sizeof (sock_addr.sun_family) + 1;
+  sock_addr_len = strlen (sock_addr.sun_path) + sizeof (sock_addr.sun_family) + 1;
 #endif /* WINDOWS */
 
   if (bind (sock_fd, (struct sockaddr *) &sock_addr, sock_addr_len) < 0)
@@ -139,8 +137,7 @@ net_init_env (char *port_name)
     }
 
 #if defined(WINDOWS)
-  if (getsockname (sock_fd, (struct sockaddr *) &sock_addr, &sock_addr_len) <
-      0)
+  if (getsockname (sock_fd, (struct sockaddr *) &sock_addr, &sock_addr_len) < 0)
     {
       CLOSE_SOCKET (sock_fd);
       return INVALID_SOCKET;
@@ -191,8 +188,7 @@ net_connect_proxy (void)
     {
       return (INVALID_SOCKET);
     }
-  if ((setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, (char *) &one,
-		   sizeof (one))) < 0)
+  if ((setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, (char *) &one, sizeof (one))) < 0)
     {
       return (INVALID_SOCKET);
     }
@@ -217,8 +213,7 @@ net_connect_proxy (void)
   struct sockaddr_un shard_sock_addr;
   char port_name[BROKER_PATH_MAX];
 
-  ut_get_proxy_port_name (port_name, shm_appl->broker_name,
-			  as_info->proxy_id, BROKER_PATH_MAX);
+  ut_get_proxy_port_name (port_name, shm_appl->broker_name, as_info->proxy_id, BROKER_PATH_MAX);
 
   if (port_name == NULL)
     {
@@ -232,16 +227,12 @@ net_connect_proxy (void)
 
   memset (&shard_sock_addr, 0, sizeof (shard_sock_addr));
   shard_sock_addr.sun_family = AF_UNIX;
-  strncpy (shard_sock_addr.sun_path, port_name,
-	   sizeof (shard_sock_addr.sun_path) - 1);
+  strncpy (shard_sock_addr.sun_path, port_name, sizeof (shard_sock_addr.sun_path) - 1);
 #ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
-  len = sizeof (shard_sock_addr.sun_len) +
-    sizeof (shard_sock_addr.sun_family) +
-    strlen (shard_sock_addr.sun_path) + 1;
+  len = sizeof (shard_sock_addr.sun_len) + sizeof (shard_sock_addr.sun_family) + strlen (shard_sock_addr.sun_path) + 1;
   shard_sock_addr.sun_len = len;
 #else /* vanilla 4.3BSD */
-  len = strlen (shard_sock_addr.sun_path) +
-    sizeof (shard_sock_addr.sun_family) + 1;
+  len = strlen (shard_sock_addr.sun_path) + sizeof (shard_sock_addr.sun_family) + 1;
 #endif
 #endif /* !WINDOWS */
 
@@ -270,9 +261,7 @@ net_connect_client (SOCKET srv_sock_fd)
   struct sockaddr_in clt_sock_addr;
 
   clt_sock_addr_len = sizeof (clt_sock_addr);
-  clt_sock_fd =
-    accept (srv_sock_fd, (struct sockaddr *) &clt_sock_addr,
-	    &clt_sock_addr_len);
+  clt_sock_fd = accept (srv_sock_fd, (struct sockaddr *) &clt_sock_addr, &clt_sock_addr_len);
 
   if (IS_INVALID_SOCKET (clt_sock_fd))
     return INVALID_SOCKET;
@@ -368,10 +357,8 @@ init_msg_header (MSG_HEADER * header)
   header->info_ptr[CAS_INFO_RESERVED_2] = CAS_INFO_RESERVED_DEFAULT;
   header->info_ptr[CAS_INFO_ADDITIONAL_FLAG] = CAS_INFO_RESERVED_DEFAULT;
 
-  /* BROKER_RECONNECT_DOWN_SERVER does not supported.
-   * so CAS_INFO_FLAG_MASK_NEW_SESSION_ID flag must be disabled. */
-  header->info_ptr[CAS_INFO_ADDITIONAL_FLAG]
-    &= ~CAS_INFO_FLAG_MASK_NEW_SESSION_ID;
+  /* BROKER_RECONNECT_DOWN_SERVER does not supported. so CAS_INFO_FLAG_MASK_NEW_SESSION_ID flag must be disabled. */
+  header->info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_NEW_SESSION_ID;
 }
 
 
@@ -461,8 +448,7 @@ net_read_to_file (SOCKET sock_fd, int file_size, char *filename)
 
   while (file_size > 0)
     {
-      read_len = read_buffer (sock_fd, read_buf,
-			      (int) MIN (SSIZEOF (read_buf), file_size));
+      read_len = read_buffer (sock_fd, read_buf, (int) MIN (SSIZEOF (read_buf), file_size));
       if (read_len <= 0 || read_len > MIN (SSIZEOF (read_buf), file_size))
 	{
 	  return ERROR_INFO_SET (CAS_ER_COMMUNICATION, CAS_ERROR_INDICATOR);
@@ -502,8 +488,7 @@ net_write_from_file (SOCKET sock_fd, int file_size, char *filename)
 
   while (file_size > 0)
     {
-      read_len = read (in_fd, read_buf,
-		       (int) MIN (file_size, SSIZEOF (read_buf)));
+      read_len = read (in_fd, read_buf, (int) MIN (file_size, SSIZEOF (read_buf)));
       if (read_len < 0)
 	{
 	  close (in_fd);
@@ -583,8 +568,7 @@ retry_poll:
     }
   else
     {
-      if (cas_shard_flag == OFF
-	  && !IS_INVALID_SOCKET (new_req_sock_fd) && (po[1].revents & POLLIN))
+      if (cas_shard_flag == OFF && !IS_INVALID_SOCKET (new_req_sock_fd) && (po[1].revents & POLLIN))
 	{
 	  /* CHANGE CLIENT */
 	  return -1;
@@ -712,8 +696,8 @@ unset_net_timeout_flag (void)
 }
 
 void
-net_write_error (int sock, int version, char *driver_info, char *cas_info,
-		 int cas_info_size, int indicator, int code, char *msg)
+net_write_error (int sock, int version, char *driver_info, char *cas_info, int cas_info_size, int indicator, int code,
+		 char *msg)
 {
   size_t len = NET_SIZE_INT;
   size_t err_msg_len = 0;
@@ -743,12 +727,10 @@ net_write_error (int sock, int version, char *driver_info, char *cas_info,
       net_write_int (sock, indicator);
     }
 
-  if (!DOES_CLIENT_MATCH_THE_PROTOCOL (version, PROTOCOL_V2)
-      && !cas_di_understand_renewed_error_code (driver_info)
+  if (!DOES_CLIENT_MATCH_THE_PROTOCOL (version, PROTOCOL_V2) && !cas_di_understand_renewed_error_code (driver_info)
       && code != NO_ERROR)
     {
-      if (indicator == CAS_ERROR_INDICATOR
-	  || code == CAS_ER_NOT_AUTHORIZED_CLIENT)
+      if (indicator == CAS_ERROR_INDICATOR || code == CAS_ER_NOT_AUTHORIZED_CLIENT)
 	{
 	  code = CAS_CONV_ERROR_TO_OLD (code);
 	}

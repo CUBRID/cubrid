@@ -61,8 +61,7 @@ typedef struct pr_type
   void (*initval) (DB_VALUE * value, int precision, int scale);
   int (*setmem) (void *memptr, struct tp_domain * domain, DB_VALUE * value);
   /* zero to avoid copying if possible */
-  int (*getmem) (void *memptr, struct tp_domain * domain,
-		 DB_VALUE * value, bool copy);
+  int (*getmem) (void *memptr, struct tp_domain * domain, DB_VALUE * value, bool copy);
   /* set DB_VALUE from DB_VALUE */
   int (*setval) (DB_VALUE * dest, const DB_VALUE * src, bool copy);
   /* return memory size */
@@ -70,17 +69,14 @@ typedef struct pr_type
   /* return DB_VALUE size */
   int (*data_lengthval) (DB_VALUE * value, int disk);
   /* write disk rep from memory */
-  void (*data_writemem) (OR_BUF * buf, void *memptr,
-			 struct tp_domain * domain);
+  void (*data_writemem) (OR_BUF * buf, void *memptr, struct tp_domain * domain);
   /* read disk rep to memory */
-  void (*data_readmem) (OR_BUF * buf, void *memptr, struct tp_domain * domain,
-			int size);
+  void (*data_readmem) (OR_BUF * buf, void *memptr, struct tp_domain * domain, int size);
   /* write disk rep from DB_VALUE */
   int (*data_writeval) (OR_BUF * buf, DB_VALUE * value);
   /* read disk rep to DB_VALUE */
-  int (*data_readval) (OR_BUF * buf, DB_VALUE * value,
-		       struct tp_domain * domain, int size, bool copy,
-		       char *copy_buf, int copy_buf_len);
+  int (*data_readval) (OR_BUF * buf, DB_VALUE * value, struct tp_domain * domain, int size, bool copy, char *copy_buf,
+		       int copy_buf_len);
   /* btree memory size */
   int (*index_lengthmem) (void *memptr, struct tp_domain * domain);
   /* return DB_VALUE size */
@@ -88,23 +84,18 @@ typedef struct pr_type
   /* write btree rep from DB_VALUE */
   int (*index_writeval) (OR_BUF * buf, DB_VALUE * value);
   /* read btree rep to DB_VALUE */
-  int (*index_readval) (OR_BUF * buf, DB_VALUE * value,
-			struct tp_domain * domain, int size, bool copy,
-			char *copy_buf, int copy_buf_len);
+  int (*index_readval) (OR_BUF * buf, DB_VALUE * value, struct tp_domain * domain, int size, bool copy, char *copy_buf,
+			int copy_buf_len);
   /* btree value compare */
-  int (*index_cmpdisk) (void *memptr1, void *memptr2,
-			struct tp_domain * domain,
-			int do_coercion, int total_order, int *start_colp);
+  int (*index_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion, int total_order,
+			int *start_colp);
   /* free memory for swap or GC */
   void (*freemem) (void *memptr);
   /* memory value compare */
-  int (*data_cmpdisk) (void *memptr1, void *memptr2,
-		       struct tp_domain * domain,
-		       int do_coercion, int total_order, int *start_colp);
+  int (*data_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion, int total_order,
+		       int *start_colp);
   /* db value compare */
-  int (*cmpval) (DB_VALUE * value, DB_VALUE * value2,
-		 int do_coercion, int total_order, int *start_colp,
-		 int collation);
+  int (*cmpval) (DB_VALUE * value, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation);
 } PR_TYPE, *PRIM;
 
 
@@ -320,31 +311,21 @@ extern int pr_free_ext_value (DB_VALUE * value);
 
 /* Special transformation functions */
 
-extern int pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2,
-			       int do_coercion, int total_order,
-			       int num_index_term,
-			       int *start_colp,
-			       int *result_size1, int *result_size2,
-			       int *diff_column, bool * dom_is_desc,
-			       bool * next_dom_is_desc);
+extern int pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order,
+			       int num_index_term, int *start_colp, int *result_size1, int *result_size2,
+			       int *diff_column, bool * dom_is_desc, bool * next_dom_is_desc);
 extern int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain);
-extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey,
-					  int index, DB_VALUE * value,
-					  int *prev_indexp, char **prev_ptrp);
-extern int pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
-				    int num_dbvals,
+extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, int *prev_indexp,
+					  char **prev_ptrp);
+extern int pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
 				    TP_DOMAIN * dbvals_domain_list);
 extern int pr_midxkey_init_boundbits (char *bufptr, int n_atts);
 extern int pr_index_writeval_disk_size (DB_VALUE * value);
 extern int pr_data_writeval_disk_size (DB_VALUE * value);
 extern void pr_data_writeval (OR_BUF * buf, DB_VALUE * value);
-extern int pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
-				     const DB_VALUE * db_midxkey2,
-				     DB_VALUE * db_result);
-extern int pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey,
-					  int index);
-extern int pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix,
-				  DB_VALUE * postfix, int n_prefix);
+extern int pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midxkey2, DB_VALUE * db_result);
+extern int pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index);
+extern int pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix, int n_prefix);
 extern int pr_midxkey_remove_prefix (DB_VALUE * key, int prefix);
 extern int pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2);
 

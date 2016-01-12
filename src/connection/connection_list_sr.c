@@ -359,8 +359,7 @@ css_traverse_list (CSS_LIST * list, int (*func) (void *, void *), void *arg)
 
 	default:
 	  /* function returns invalid value */
-	  CSS_CHECK_RETURN_ERROR (ER_CSS_INVALID_RETURN_VALUE,
-				  ER_CSS_INVALID_RETURN_VALUE);
+	  CSS_CHECK_RETURN_ERROR (ER_CSS_INVALID_RETURN_VALUE, ER_CSS_INVALID_RETURN_VALUE);
 	}
     }
 

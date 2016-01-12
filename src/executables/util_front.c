@@ -424,10 +424,8 @@ main (int argc, char **argv)
 
 	      admin_argv[argc_index++] = (char *) UTIL_CUBRID;
 	      admin_argv[argc_index++] = (char *) ua_Util_table[i].util_name;
-	      memcpy (&admin_argv[argc_index], &argv[1],
-		      (argc - 1) * sizeof (char *));
-	      if (convert_argv (argc, &admin_argv[argc_index],
-				ua_Util_table[i].match_table) != NO_ERROR)
+	      memcpy (&admin_argv[argc_index], &argv[1], (argc - 1) * sizeof (char *));
+	      if (convert_argv (argc, &admin_argv[argc_index], ua_Util_table[i].match_table) != NO_ERROR)
 		{
 		  goto failure;
 		}

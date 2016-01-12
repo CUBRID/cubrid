@@ -147,7 +147,7 @@ struct _nls_cat_hdr
 struct _nls_set_hdr
 {
   int32_t __setno;		/* set number: 0 < x <= NL_SETMAX */
-  int32_t __nmsgs;		/* number of messages in the set  */
+  int32_t __nmsgs;		/* number of messages in the set */
   int32_t __index;		/* index of first msg_hdr in msg_hdr table */
 };
 
@@ -309,8 +309,7 @@ warning (const char *cptr, const char *msg)
 {
   if (lineno)
     {
-      fprintf (stderr, "%s: %s on line %ld, %s\n",
-	       progname, msg, lineno, curfile);
+      fprintf (stderr, "%s: %s on line %ld, %s\n", progname, msg, lineno, curfile);
       fprintf (stderr, "%s\n", curline);
       if (cptr)
 	{
@@ -644,12 +643,12 @@ MCParse (int fd)
 	}
       else
 	{
-	  /*
+	  /* 
 	   * First check for (and eat) empty lines....
 	   */
 	  if (!*cptr)
 	    continue;
-	  /*
+	  /* 
 	   * We have a digit? Start of a message. Else,
 	   * syntax error.
 	   */
@@ -672,7 +671,7 @@ MCParse (int fd)
 	      warning (cptr, "neither blank line nor start of a message id");
 	      continue;
 	    }
-	  /*
+	  /* 
 	   * If no set directive specified, all messages
 	   * shall be in default message set NL_SETD.
 	   */
@@ -681,7 +680,7 @@ MCParse (int fd)
 	      setid = NL_SETD;
 	      MCAddSet (setid);
 	    }
-	  /*
+	  /* 
 	   * If we have a message ID, but no message,
 	   * then this means "delete this message id
 	   * from the catalog".
@@ -743,13 +742,9 @@ MCReadCat (int fd)
   cat_hdr.__nsets = ntohl (cat_hdr.__nsets);
   cat_hdr.__msg_hdr_offset = ntohl (cat_hdr.__msg_hdr_offset);
   cat_hdr.__msg_txt_offset = ntohl (cat_hdr.__msg_txt_offset);
-  if ((cat_hdr.__mem < 0)
-      || (cat_hdr.__msg_hdr_offset < 0)
-      || (cat_hdr.__msg_txt_offset < 0)
-      || (cat_hdr.__mem <
-	  (cat_hdr.__nsets * (int) sizeof (struct _nls_set_hdr)))
-      || (cat_hdr.__mem < cat_hdr.__msg_hdr_offset)
-      || (cat_hdr.__mem < cat_hdr.__msg_txt_offset))
+  if ((cat_hdr.__mem < 0) || (cat_hdr.__msg_hdr_offset < 0) || (cat_hdr.__msg_txt_offset < 0)
+      || (cat_hdr.__mem < (cat_hdr.__nsets * (int) sizeof (struct _nls_set_hdr)))
+      || (cat_hdr.__mem < cat_hdr.__msg_hdr_offset) || (cat_hdr.__mem < cat_hdr.__msg_txt_offset))
     {
 #if defined(WINDOWS)
       error (CORRUPT);
@@ -775,8 +770,7 @@ MCReadCat (int fd)
     }
 
   set_hdr = (struct _nls_set_hdr *) msgcat;
-  msg_hdr = (struct _nls_msg_hdr *) ((char *) msgcat +
-				     cat_hdr.__msg_hdr_offset);
+  msg_hdr = (struct _nls_msg_hdr *) ((char *) msgcat + cat_hdr.__msg_hdr_offset);
   strings = (char *) msgcat + cat_hdr.__msg_txt_offset;
 
   setno = 0;
@@ -818,14 +812,11 @@ MCReadCat (int fd)
 #if defined(WINDOWS)
 	      error (CORRUPT);
 #else
-	      errx (1, "%s: bad message number (%d)",
-		    CORRUPT, msg_hdr->__msgno);
+	      errx (1, "%s: bad message number (%d)", CORRUPT, msg_hdr->__msgno);
 #endif
 
 	    }
-	  if ((msg_hdr->__offset < 0) ||
-	      ((strings + msg_hdr->__offset) >
-	       ((char *) msgcat + cat_hdr.__mem)))
+	  if ((msg_hdr->__offset < 0) || ((strings + msg_hdr->__offset) > ((char *) msgcat + cat_hdr.__mem)))
 	    {
 #if defined(WINDOWS)
 	      error (CORRUPT);
@@ -868,8 +859,7 @@ MCWriteCat (int fd)
   int msg_index;
   int msg_offset;
 
-  /* determine number of sets, number of messages, and size of the
-   * string pool */
+  /* determine number of sets, number of messages, and size of the string pool */
   nsets = 0;
   nmsgs = 0;
   string_size = 0;
@@ -878,8 +868,7 @@ MCWriteCat (int fd)
     {
       nsets++;
 
-      for (msg = set->msghead.lh_first; msg != NULL;
-	   msg = msg->entries.le_next)
+      for (msg = set->msghead.lh_first; msg != NULL; msg = msg->entries.le_next)
 	{
 	  nmsgs++;
 	  string_size += strlen (msg->str) + 1;
@@ -892,11 +881,10 @@ MCWriteCat (int fd)
   printf ("string pool size: %d\n", string_size);
 #endif
 
-  /* determine size and then allocate buffer for constructing external
-   * message catalog representation */
-  msgcat_size = sizeof (struct _nls_cat_hdr)
-    + (nsets * sizeof (struct _nls_set_hdr))
-    + (nmsgs * sizeof (struct _nls_msg_hdr)) + string_size;
+  /* determine size and then allocate buffer for constructing external message catalog representation */
+  msgcat_size =
+    sizeof (struct _nls_cat_hdr) + (nsets * sizeof (struct _nls_set_hdr)) + (nmsgs * sizeof (struct _nls_msg_hdr)) +
+    string_size;
 
   msgcat = xmalloc (msgcat_size);
   if (msgcat == NULL)
@@ -911,19 +899,14 @@ MCWriteCat (int fd)
   cat_hdr->__nsets = htonl (nsets);
   cat_hdr->__mem = htonl (msgcat_size - sizeof (struct _nls_cat_hdr));
   cat_hdr->__msg_hdr_offset = htonl (nsets * sizeof (struct _nls_set_hdr));
-  cat_hdr->__msg_txt_offset =
-    htonl (nsets * sizeof (struct _nls_set_hdr) +
-	   nmsgs * sizeof (struct _nls_msg_hdr));
+  cat_hdr->__msg_txt_offset = htonl (nsets * sizeof (struct _nls_set_hdr) + nmsgs * sizeof (struct _nls_msg_hdr));
 
   /* compute offsets for set & msg header tables and string pool */
-  set_hdr = (struct _nls_set_hdr *) ((char *) msgcat +
-				     sizeof (struct _nls_cat_hdr));
-  msg_hdr = (struct _nls_msg_hdr *) ((char *) msgcat +
-				     sizeof (struct _nls_cat_hdr) +
-				     nsets * sizeof (struct _nls_set_hdr));
-  strings = (char *) msgcat +
-    sizeof (struct _nls_cat_hdr) +
-    nsets * sizeof (struct _nls_set_hdr) +
+  set_hdr = (struct _nls_set_hdr *) ((char *) msgcat + sizeof (struct _nls_cat_hdr));
+  msg_hdr =
+    (struct _nls_msg_hdr *) ((char *) msgcat + sizeof (struct _nls_cat_hdr) + nsets * sizeof (struct _nls_set_hdr));
+  strings =
+    (char *) msgcat + sizeof (struct _nls_cat_hdr) + nsets * sizeof (struct _nls_set_hdr) +
     nmsgs * sizeof (struct _nls_msg_hdr);
 
   msg_index = 0;
@@ -932,8 +915,7 @@ MCWriteCat (int fd)
     {
 
       nmsgs = 0;
-      for (msg = set->msghead.lh_first; msg != NULL;
-	   msg = msg->entries.le_next)
+      for (msg = set->msghead.lh_first; msg != NULL; msg = msg->entries.le_next)
 	{
 	  int msg_len = strlen (msg->str) + 1;
 

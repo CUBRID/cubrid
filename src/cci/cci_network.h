@@ -81,25 +81,19 @@ typedef struct
  * EXPORTED FUNCTION PROTOTYPES						*
  ************************************************************************/
 
-extern int net_connect_srv (T_CON_HANDLE * con_handle, int host_id,
-			    T_CCI_ERROR * err_buf, int login_timeout);
+extern int net_connect_srv (T_CON_HANDLE * con_handle, int host_id, T_CCI_ERROR * err_buf, int login_timeout);
 extern int net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size);
-extern int net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *size,
-			 T_CCI_ERROR * err_buf);
-extern int net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg,
-				 int *msg_size, T_CCI_ERROR * err_buf,
+extern int net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *size, T_CCI_ERROR * err_buf);
+extern int net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size, T_CCI_ERROR * err_buf,
 				 int timeout);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int net_send_file (SOCKET sock_fd, char *filename, int filesize);
-extern int net_recv_file (SOCKET sock_fd, int port, int file_size,
-			  int out_fd);
+extern int net_recv_file (SOCKET sock_fd, int port, int file_size, int out_fd);
 #endif
 extern int net_cancel_request (T_CON_HANDLE * con_handle);
 extern int net_check_cas_request (T_CON_HANDLE * con_handle);
-extern bool net_peer_alive (unsigned char *ip_addr, int port,
-			    int timeout_msec);
-extern bool net_check_broker_alive (unsigned char *ip_addr, int port,
-				    int timeout_msec);
+extern bool net_peer_alive (unsigned char *ip_addr, int port, int timeout_msec);
+extern bool net_check_broker_alive (unsigned char *ip_addr, int port, int timeout_msec);
 /************************************************************************
  * EXPORTED VARIABLES							*
  ************************************************************************/

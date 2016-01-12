@@ -49,6 +49,5 @@ void
 cm_set_error (T_CM_ERROR * err_buf, int err_code)
 {
   err_buf->err_code = err_code;
-  snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1,
-	    ER (err_buf->err_code));
+  snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1, ER (err_buf->err_code));
 }

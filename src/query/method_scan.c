@@ -64,21 +64,16 @@ int method_Num_method_jsp_calls = 0;
 
 static int method_open_value_array_scan (METHOD_SCAN_BUFFER * scan_buf);
 static int method_close_value_array_scan (METHOD_SCAN_BUFFER * scan_buf);
-static SCAN_CODE method_scan_next_value_array (METHOD_SCAN_BUFFER * scan_buf,
-					       VAL_LIST * val_list);
-static int method_invoke (THREAD_ENTRY * thread_p,
-			  METHOD_SCAN_BUFFER * scan_buf);
-static SCAN_CODE method_receive_results (THREAD_ENTRY * thread_p,
-					 METHOD_SCAN_BUFFER * scan_buf);
+static SCAN_CODE method_scan_next_value_array (METHOD_SCAN_BUFFER * scan_buf, VAL_LIST * val_list);
+static int method_invoke (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buf);
+static SCAN_CODE method_receive_results (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buf);
 
 #ifndef SERVER_MODE
 static void method_clear_scan_buffer (METHOD_SCAN_BUFFER * scan_buf);
 #else
 static VACOMM_BUFFER *method_initialize_vacomm_buffer (void);
 static void method_free_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer);
-static SCAN_CODE method_receive_value (THREAD_ENTRY * thread_p,
-				       DB_VALUE * dbval,
-				       VACOMM_BUFFER * vacomm_buffer);
+static SCAN_CODE method_receive_value (THREAD_ENTRY * thread_p, DB_VALUE * dbval, VACOMM_BUFFER * vacomm_buffer);
 #endif /* SERVER_MODE */
 
 /*
@@ -98,9 +93,7 @@ method_open_value_array_scan (METHOD_SCAN_BUFFER * scan_buffer_p)
       num_methods = MAX_XS_SCANBUF_DBVALS;	/* for safe-guard */
     }
 
-  scan_buffer_p->dbval_list =
-    (QPROC_DB_VALUE_LIST) malloc (sizeof (scan_buffer_p->dbval_list[0]) *
-				  num_methods);
+  scan_buffer_p->dbval_list = (QPROC_DB_VALUE_LIST) malloc (sizeof (scan_buffer_p->dbval_list[0]) * num_methods);
 
   if (scan_buffer_p->dbval_list == NULL)
     {
@@ -142,8 +135,7 @@ method_close_value_array_scan (METHOD_SCAN_BUFFER * scan_buffer_p)
  *   val_list(in)       :
  */
 static SCAN_CODE
-method_scan_next_value_array (METHOD_SCAN_BUFFER * scan_buffer_p,
-			      VAL_LIST * value_list_p)
+method_scan_next_value_array (METHOD_SCAN_BUFFER * scan_buffer_p, VAL_LIST * value_list_p)
 {
   SCAN_CODE scan_result = S_SUCCESS;
   QPROC_DB_VALUE_LIST dbval_list;
@@ -170,8 +162,7 @@ method_scan_next_value_array (METHOD_SCAN_BUFFER * scan_buffer_p,
  *   method_sig_list(in): Method signature list
  */
 int
-method_open_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p,
-		  QFILE_LIST_ID * list_id_p,
+method_open_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p, QFILE_LIST_ID * list_id_p,
 		  METHOD_SIG_LIST * method_sig_list_p)
 {
   int error;
@@ -204,23 +195,18 @@ method_open_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p,
  *   scan_buf(in)       : Value array buffer
  */
 int
-method_close_scan (THREAD_ENTRY * thread_p,
-		   METHOD_SCAN_BUFFER * scan_buffer_p)
+method_close_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p)
 {
 #ifdef SERVER_MODE
   VACOMM_BUFFER *vacomm_buffer_p;
 
-  /*
-     If the method scan is being closed before the client is done,
-     the status could be zero (1st buffer not received) or
-     METHOD_SUCCESS (last buffer not received).
-   */
+  /* 
+   * If the method scan is being closed before the client is done, the status could be zero (1st buffer not received)
+   * or METHOD_SUCCESS (last buffer not received). */
 
   vacomm_buffer_p = scan_buffer_p->vacomm_buffer;
 
-  if ((vacomm_buffer_p)
-      && ((vacomm_buffer_p->status == 0)
-	  || (vacomm_buffer_p->status == METHOD_SUCCESS)))
+  if ((vacomm_buffer_p) && ((vacomm_buffer_p->status == 0) || (vacomm_buffer_p->status == METHOD_SUCCESS)))
     {
       vacomm_buffer_p->action = VACOMM_BUFFER_ABORT;
 
@@ -244,8 +230,7 @@ method_close_scan (THREAD_ENTRY * thread_p,
  *   val_list(in)       :
  */
 SCAN_CODE
-method_scan_next (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p,
-		  VAL_LIST * value_list_p)
+method_scan_next (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p, VAL_LIST * value_list_p)
 {
   SCAN_CODE scan_result;
 
@@ -253,10 +238,8 @@ method_scan_next (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p,
 
   if (scan_result == S_SUCCESS)
     {
-      value_list_p->val_cnt =
-	scan_buffer_p->s.method_ctl.method_sig_list->no_methods;
-      scan_result =
-	method_scan_next_value_array (scan_buffer_p, value_list_p);
+      value_list_p->val_cnt = scan_buffer_p->s.method_ctl.method_sig_list->no_methods;
+      scan_result = method_scan_next_value_array (scan_buffer_p, value_list_p);
     }
 
   return scan_result;
@@ -264,14 +247,12 @@ method_scan_next (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p,
 
 #ifdef SERVER_MODE
 static int
-method_invoke_from_server (THREAD_ENTRY * thread_p,
-			   METHOD_SCAN_BUFFER * scan_buffer_p)
+method_invoke_from_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p)
 {
   METHOD_INFO *method_ctl_p;
 
   method_ctl_p = &scan_buffer_p->s.method_ctl;
-  return xs_send_method_call_info_to_client (thread_p, method_ctl_p->list_id,
-					     method_ctl_p->method_sig_list);
+  return xs_send_method_call_info_to_client (thread_p, method_ctl_p->list_id, method_ctl_p->method_sig_list);
 }
 #else
 static int
@@ -309,7 +290,7 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
     {
       return ER_FAILED;
     }
-  /*
+  /* 
    * Make sure that these containers get initialized with meaningful
    * bits.  It's possible to wind up in method_clear_scan_buffer() without ever
    * having actually received any method results, and if that happens
@@ -321,8 +302,7 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
       DB_MAKE_NULL (&scan_buffer_p->vallist[i]);
     }
 
-  scan_buffer_p->valptrs =
-    (DB_VALUE **) malloc (sizeof (DB_VALUE *) * (val_cnt + 1));
+  scan_buffer_p->valptrs = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * (val_cnt + 1));
 
   if (scan_buffer_p->valptrs == NULL)
     {
@@ -330,8 +310,7 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
       return ER_FAILED;
     }
 
-  scan_buffer_p->oid_cols =
-    (int *) malloc (sizeof (int) * method_sig_list->no_methods);
+  scan_buffer_p->oid_cols = (int *) malloc (sizeof (int) * method_sig_list->no_methods);
 
   if (scan_buffer_p->oid_cols == NULL)
     {
@@ -346,20 +325,16 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
       meth_sig = meth_sig->next;
     }
 
-  if (!cursor_open (&scan_buffer_p->crs_id, method_ctl_p->list_id,
-		    false, false))
+  if (!cursor_open (&scan_buffer_p->crs_id, method_ctl_p->list_id, false, false))
     {
       method_clear_scan_buffer (scan_buffer_p);
       return ER_FAILED;
     }
 
   /* tfile_vfid pointer as query id for method scan */
-  scan_buffer_p->crs_id.query_id =
-    (QUERY_ID) method_ctl_p->list_id->tfile_vfid;
+  scan_buffer_p->crs_id.query_id = (QUERY_ID) method_ctl_p->list_id->tfile_vfid;
 
-  cursor_set_oid_columns (&scan_buffer_p->crs_id,
-			  scan_buffer_p->oid_cols,
-			  method_sig_list->no_methods);
+  cursor_set_oid_columns (&scan_buffer_p->crs_id, scan_buffer_p->oid_cols, method_sig_list->no_methods);
 
   return NO_ERROR;
 }
@@ -382,8 +357,7 @@ method_invoke (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p)
 
 #ifdef SERVER_MODE
 static SCAN_CODE
-method_receive_results_for_server (THREAD_ENTRY * thread_p,
-				   METHOD_SCAN_BUFFER * scan_buffer_p)
+method_receive_results_for_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p)
 {
   QPROC_DB_VALUE_LIST dbval_list;
   int meth_no, i;
@@ -408,8 +382,7 @@ method_receive_results_for_server (THREAD_ENTRY * thread_p,
       else
 	{
 	  DB_MAKE_NULL (dbval_p);
-	  result = method_receive_value (thread_p, dbval_p,
-					 scan_buffer_p->vacomm_buffer);
+	  result = method_receive_value (thread_p, dbval_p, scan_buffer_p->vacomm_buffer);
 	}
 
       if (result != S_SUCCESS)
@@ -466,19 +439,15 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
       DB_VALUE *ptr;
       int i;
 
-      /* Since we may be calling this in a loop, we need to clear out the
-       * vallist to avoid leaking old pointers.
-       */
-      for (i = 0, ptr = scan_buffer_p->vallist;
-	   ptr && i < scan_buffer_p->val_cnt; i++, ptr++)
+      /* Since we may be calling this in a loop, we need to clear out the vallist to avoid leaking old pointers. */
+      for (i = 0, ptr = scan_buffer_p->vallist; ptr && i < scan_buffer_p->val_cnt; i++, ptr++)
 	{
 	  pr_clear_value (ptr);
 	}
 
-      if (cursor_get_tuple_value_list (&scan_buffer_p->crs_id,
-				       scan_buffer_p->s.method_ctl.list_id->
-				       type_list.type_cnt,
-				       scan_buffer_p->vallist) != NO_ERROR)
+      if (cursor_get_tuple_value_list
+	  (&scan_buffer_p->crs_id, scan_buffer_p->s.method_ctl.list_id->type_list.type_cnt,
+	   scan_buffer_p->vallist) != NO_ERROR)
 	{
 	  method_clear_scan_buffer (scan_buffer_p);
 	  ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
@@ -503,19 +472,14 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 
 	  if (meth_sig->class_name != NULL)
 	    {
-	      /* Don't call the method if the object is NULL or it has been
-	       * deleted.  A method call on a NULL object is NULL.
-	       */
+	      /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is 
+	       * NULL. */
 	      if (!DB_IS_NULL (scan_buffer_p->valptrs[0]))
 		{
-		  error =
-		    db_is_any_class (DB_GET_OBJECT
-				     (scan_buffer_p->valptrs[0]));
+		  error = db_is_any_class (DB_GET_OBJECT (scan_buffer_p->valptrs[0]));
 		  if (error == 0)
 		    {
-		      error =
-			db_is_instance (DB_GET_OBJECT
-					(scan_buffer_p->valptrs[0]));
+		      error = db_is_instance (DB_GET_OBJECT (scan_buffer_p->valptrs[0]));
 		    }
 		}
 	      if (error == ER_HEAP_UNKNOWN_OBJECT)
@@ -524,16 +488,13 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 		}
 	      else if (error > 0)
 		{
-		  /* methods must run with authorization turned on and database
-		   * modifications turned off.
-		   */
+		  /* methods must run with authorization turned on and database modifications turned off. */
 		  turn_on_auth = 0;
 		  AU_ENABLE (turn_on_auth);
 		  db_disable_modification ();
 		  ++method_Num_method_jsp_calls;
 		  error =
-		    obj_send_array (DB_GET_OBJECT (scan_buffer_p->valptrs[0]),
-				    meth_sig->method_name, &val,
+		    obj_send_array (DB_GET_OBJECT (scan_buffer_p->valptrs[0]), meth_sig->method_name, &val,
 				    &scan_buffer_p->valptrs[1]);
 		  --method_Num_method_jsp_calls;
 		  db_enable_modification ();
@@ -547,9 +508,8 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	      AU_ENABLE (turn_on_auth);
 	      db_disable_modification ();
 	      ++method_Num_method_jsp_calls;
-	      error = jsp_call_from_server (&val, scan_buffer_p->valptrs,
-					    meth_sig->method_name,
-					    meth_sig->no_method_args);
+	      error =
+		jsp_call_from_server (&val, scan_buffer_p->valptrs, meth_sig->method_name, meth_sig->no_method_args);
 	      --method_Num_method_jsp_calls;
 	      db_enable_modification ();
 	      AU_DISABLE (turn_on_auth);
@@ -566,8 +526,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	    {
 	      if (er_errid () == NO_ERROR)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-			  1);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1);
 		}
 	      method_clear_scan_buffer (scan_buffer_p);
 	      ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
@@ -625,8 +584,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
  *   scan_buf(in)       : Value array buffer
  */
 static SCAN_CODE
-method_receive_results (THREAD_ENTRY * thread_p,
-			METHOD_SCAN_BUFFER * scan_buffer_p)
+method_receive_results (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p)
 {
 #if defined(SERVER_MODE)
   return method_receive_results_for_server (thread_p, scan_buffer_p);
@@ -694,8 +652,7 @@ method_initialize_vacomm_buffer (void)
   vacomm_buffer = (VACOMM_BUFFER *) malloc (sizeof (VACOMM_BUFFER));
   if (vacomm_buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (VACOMM_BUFFER));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (VACOMM_BUFFER));
       return NULL;
     }
 
@@ -725,8 +682,7 @@ method_initialize_vacomm_buffer (void)
  * because the error has been set by the comm interface.
  */
 static SCAN_CODE
-method_receive_value (THREAD_ENTRY * thread_p, DB_VALUE * dbval_p,
-		      VACOMM_BUFFER * vacomm_buffer_p)
+method_receive_value (THREAD_ENTRY * thread_p, DB_VALUE * dbval_p, VACOMM_BUFFER * vacomm_buffer_p)
 {
   int error;
   char *p;
@@ -740,40 +696,26 @@ method_receive_value (THREAD_ENTRY * thread_p, DB_VALUE * dbval_p,
 
       vacomm_buffer_p->status = METHOD_ERROR;
 
-      error = xs_receive_data_from_client (thread_p, &vacomm_buffer_p->area,
-					   &vacomm_buffer_p->size);
+      error = xs_receive_data_from_client (thread_p, &vacomm_buffer_p->area, &vacomm_buffer_p->size);
       if (error == NO_ERROR)
 	{
-	  vacomm_buffer_p->buffer =
-	    vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_SIZE;
-	  p =
-	    or_unpack_int (vacomm_buffer_p->area +
-			   VACOMM_BUFFER_HEADER_LENGTH_OFFSET,
-			   &vacomm_buffer_p->length);
-	  p =
-	    or_unpack_int (vacomm_buffer_p->area +
-			   VACOMM_BUFFER_HEADER_STATUS_OFFSET,
-			   &vacomm_buffer_p->status);
+	  vacomm_buffer_p->buffer = vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_SIZE;
+	  p = or_unpack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_LENGTH_OFFSET, &vacomm_buffer_p->length);
+	  p = or_unpack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_STATUS_OFFSET, &vacomm_buffer_p->status);
 
 	  if (vacomm_buffer_p->status == METHOD_ERROR)
 	    {
-	      p = or_unpack_int (vacomm_buffer_p->area +
-				 VACOMM_BUFFER_HEADER_ERROR_OFFSET,
-				 &vacomm_buffer_p->error);
+	      p = or_unpack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_ERROR_OFFSET, &vacomm_buffer_p->error);
 	    }
 	  else
 	    {
-	      p = or_unpack_int (vacomm_buffer_p->area +
-				 VACOMM_BUFFER_HEADER_NO_VALS_OFFSET,
-				 &vacomm_buffer_p->no_vals);
+	      p =
+		or_unpack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET, &vacomm_buffer_p->no_vals);
 	    }
 
 	  if (vacomm_buffer_p->status == METHOD_SUCCESS)
 	    {
-	      error =
-		xs_send_action_to_client (thread_p,
-					  (VACOMM_BUFFER_CLIENT_ACTION)
-					  vacomm_buffer_p->action);
+	      error = xs_send_action_to_client (thread_p, (VACOMM_BUFFER_CLIENT_ACTION) vacomm_buffer_p->action);
 	      if (error != NO_ERROR)
 		{
 		  return S_ERROR;
@@ -782,8 +724,7 @@ method_receive_value (THREAD_ENTRY * thread_p, DB_VALUE * dbval_p,
 	}
       else
 	{
-	  xs_send_action_to_client (thread_p, (VACOMM_BUFFER_CLIENT_ACTION)
-				    vacomm_buffer_p->action);
+	  xs_send_action_to_client (thread_p, (VACOMM_BUFFER_CLIENT_ACTION) vacomm_buffer_p->action);
 	  return S_ERROR;
 	}
     }
@@ -795,8 +736,7 @@ method_receive_value (THREAD_ENTRY * thread_p, DB_VALUE * dbval_p,
 
   if (vacomm_buffer_p->no_vals > 0)
     {
-      p = or_unpack_db_value (vacomm_buffer_p->buffer +
-			      vacomm_buffer_p->cur_pos, dbval_p);
+      p = or_unpack_db_value (vacomm_buffer_p->buffer + vacomm_buffer_p->cur_pos, dbval_p);
       vacomm_buffer_p->cur_pos += OR_VALUE_ALIGNED_SIZE (dbval_p);
       vacomm_buffer_p->no_vals--;
     }

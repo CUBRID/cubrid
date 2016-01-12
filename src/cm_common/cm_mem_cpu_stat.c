@@ -51,22 +51,14 @@
 #include <sys/procfs.h>
 #endif
 
-typedef void *(*EXTRACT_FUNC) (FILE * fp, const char *arg1,
-			       T_CM_ERROR * arg2);
-static void *extract_db_stat (FILE * fp, const char *tdbname,
-			      T_CM_ERROR * err_buf);
-static void *extract_host_partition_stat (FILE * fp, const char *arg1,
-					  T_CM_ERROR * err_buf);
-static void assign_db_stat (T_CM_DB_PROC_STAT * db_stat, char *db_name,
-			    T_CM_PROC_STAT * stat);
-static void *extract_db_exec_stat (FILE * fp, const char *dbname,
-				   T_CM_ERROR * err_buf);
-static void *cm_get_command_result (const char *argv[], EXTRACT_FUNC func,
-				    const char *func_arg1,
+typedef void *(*EXTRACT_FUNC) (FILE * fp, const char *arg1, T_CM_ERROR * arg2);
+static void *extract_db_stat (FILE * fp, const char *tdbname, T_CM_ERROR * err_buf);
+static void *extract_host_partition_stat (FILE * fp, const char *arg1, T_CM_ERROR * err_buf);
+static void assign_db_stat (T_CM_DB_PROC_STAT * db_stat, char *db_name, T_CM_PROC_STAT * stat);
+static void *extract_db_exec_stat (FILE * fp, const char *dbname, T_CM_ERROR * err_buf);
+static void *cm_get_command_result (const char *argv[], EXTRACT_FUNC func, const char *func_arg1,
 				    T_CM_ERROR * func_arg2);
-static T_CM_BROKER_PROC_STAT *broker_stat_alloc_init (const char *bname,
-						      int num_as, int br_pid,
-						      int *as_pids,
+static T_CM_BROKER_PROC_STAT *broker_stat_alloc_init (const char *bname, int num_as, int br_pid, int *as_pids,
 						      T_CM_ERROR * err_buf);
 
 #if !defined(WINDOWS)
@@ -80,8 +72,7 @@ static char *strcpy_limit (char *dest, const char *src, int buf_len);
 
 static void cm_db_proc_stat_free (T_CM_DB_PROC_STAT * stat);
 int
-cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat,
-		     T_CM_ERROR * err_buf)
+cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat, T_CM_ERROR * err_buf)
 {
   T_CM_DB_PROC_STAT *p = NULL;
   char cub_path[PATH_MAX];
@@ -103,8 +94,7 @@ cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat,
       return -1;
     }
 
-  p = (T_CM_DB_PROC_STAT *) cm_get_command_result (argv, extract_db_stat,
-						   db_name, err_buf);
+  p = (T_CM_DB_PROC_STAT *) cm_get_command_result (argv, extract_db_stat, db_name, err_buf);
   if (p != NULL)
     {
       *stat = *p;
@@ -136,9 +126,7 @@ cm_get_db_proc_stat_all (T_CM_ERROR * err_buf)
   (void) envvar_bindir_file (cub_path, PATH_MAX, UTIL_CUBRID);
 
   cm_err_buf_reset (err_buf);
-  return (T_CM_DB_PROC_STAT_ALL *) cm_get_command_result (argv,
-							  extract_db_stat,
-							  NULL, err_buf);
+  return (T_CM_DB_PROC_STAT_ALL *) cm_get_command_result (argv, extract_db_stat, NULL, err_buf);
 }
 
 void
@@ -168,15 +156,12 @@ get_as_pids (int num_as, T_CM_CAS_INFO_ALL * cas_info_all)
 }
 
 static T_CM_BROKER_PROC_STAT *
-broker_stat_alloc_init (const char *bname, int num_as, int br_pid,
-			int *as_pids, T_CM_ERROR * err_buf)
+broker_stat_alloc_init (const char *bname, int num_as, int br_pid, int *as_pids, T_CM_ERROR * err_buf)
 {
   int i, nitem = 0;
   T_CM_BROKER_PROC_STAT *bp;
 
-  bp =
-    malloc (sizeof (T_CM_BROKER_PROC_STAT) +
-	    (num_as - 1) * sizeof (T_CM_PROC_STAT));
+  bp = malloc (sizeof (T_CM_BROKER_PROC_STAT) + (num_as - 1) * sizeof (T_CM_PROC_STAT));
   if (bp == NULL)
     {
       cm_set_error (err_buf, CM_OUT_OF_MEMORY);
@@ -186,8 +171,7 @@ broker_stat_alloc_init (const char *bname, int num_as, int br_pid,
   if (cm_get_proc_stat (&bp->br_stat, br_pid) != 0)
     {
       err_buf->err_code = CM_BROKER_STAT_NOT_FOUND;
-      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1,
-		ER (err_buf->err_code), bname);
+      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1, ER (err_buf->err_code), bname);
       FREE_MEM (bp);
       return NULL;
     }
@@ -250,8 +234,7 @@ cm_get_broker_proc_stat (const char *bname, T_CM_ERROR * err_buf)
   if (br_pid == 0)
     {
       err_buf->err_code = CM_BROKER_STAT_NOT_FOUND;
-      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1,
-		ER (err_buf->err_code), bname);
+      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1, ER (err_buf->err_code), bname);
       goto finale;
     }
 
@@ -305,9 +288,7 @@ cm_get_broker_proc_stat_all (T_CM_ERROR * err_buf)
     }
 
   all_stat = calloc (1, sizeof (T_CM_BROKER_PROC_STAT_ALL));
-  p =
-    (T_CM_BROKER_PROC_STAT **) calloc (broker_info_all.num_info,
-				       sizeof (T_CM_BROKER_PROC_STAT *));
+  p = (T_CM_BROKER_PROC_STAT **) calloc (broker_info_all.num_info, sizeof (T_CM_BROKER_PROC_STAT *));
 
   if (all_stat == NULL || p == NULL)
     {
@@ -329,9 +310,7 @@ cm_get_broker_proc_stat_all (T_CM_ERROR * err_buf)
       if (strcmp (broker_info_all.br_info[i].status, "OFF") == 0)
 	continue;
 
-      if (cm_get_cas_info
-	  (broker_info_all.br_info[i].name, &cas_info_all, &job_info_all,
-	   err_buf) < 0)
+      if (cm_get_cas_info (broker_info_all.br_info[i].name, &cas_info_all, &job_info_all, err_buf) < 0)
 	{
 	  goto finale;
 	}
@@ -343,8 +322,7 @@ cm_get_broker_proc_stat_all (T_CM_ERROR * err_buf)
 	}
 
       if ((all_stat->br_stats[nitem] =
-	   broker_stat_alloc_init (broker_info_all.br_info[i].name, num_as,
-				   br_pid, as_pids, err_buf)))
+	   broker_stat_alloc_init (broker_info_all.br_info[i].name, num_as, br_pid, as_pids, err_buf)))
 	{
 	  nitem++;
 	}
@@ -388,9 +366,7 @@ cm_broker_proc_stat_all_free (T_CM_BROKER_PROC_STAT_ALL * stat)
 #if defined(WINDOWS)
 
 typedef BOOL (WINAPI * GET_SYSTEM_TIMES) (LPFILETIME, LPFILETIME, LPFILETIME);
-typedef NTSTATUS (WINAPI *
-		  NT_QUERY_SYSTEM_INFORMATION) (SYSTEM_INFORMATION_CLASS,
-						PVOID, ULONG, PULONG);
+typedef NTSTATUS (WINAPI * NT_QUERY_SYSTEM_INFORMATION) (SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
 
 /*
  * 0 - init_state.
@@ -400,8 +376,7 @@ typedef NTSTATUS (WINAPI *
  */
 static volatile int s_symbol_loaded = 0;
 static volatile GET_SYSTEM_TIMES s_pfnGetSystemTimes = NULL;
-static volatile NT_QUERY_SYSTEM_INFORMATION s_pfnNtQuerySystemInformation =
-  NULL;
+static volatile NT_QUERY_SYSTEM_INFORMATION s_pfnNtQuerySystemInformation = NULL;
 
 static int
 get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
@@ -409,7 +384,7 @@ get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
   /* this logic allow multi thread init multiple times */
   if (s_symbol_loaded == 0)
     {
-      /*
+      /* 
        * kernel32.dll and ntdll.dll is essential DLL about user process.
        * when a process started, that means kernel32.dll and ntdll.dll
        * already load in process memory space.
@@ -418,13 +393,12 @@ get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
        * not cause kernel32.dll or ntdll.dll unload from current process.
        */
 
-      /*
+      /* 
        * first try find function GetSystemTimes(). Windows OS suport this
        * function since Windows XP SP1, Vista, Server 2003 or Server 2008.
        */
       HMODULE module = LoadLibraryA ("kernel32.dll");
-      s_pfnGetSystemTimes =
-	(GET_SYSTEM_TIMES) GetProcAddress (module, "GetSystemTimes");
+      s_pfnGetSystemTimes = (GET_SYSTEM_TIMES) GetProcAddress (module, "GetSystemTimes");
       FreeLibrary (module);
 
       if (s_pfnGetSystemTimes != NULL)
@@ -433,13 +407,13 @@ get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
 	}
       else
 	{
-	  /*
+	  /* 
 	   * OS may be is Windows 2000 or Windows XP. (does not support Windows 9x/NT)
 	   * try find function NtQuerySystemInformation()
 	   */
 	  module = LoadLibraryA ("ntdll.dll");
-	  s_pfnNtQuerySystemInformation = (NT_QUERY_SYSTEM_INFORMATION)
-	    GetProcAddress (module, "NtQuerySystemInformation");
+	  s_pfnNtQuerySystemInformation =
+	    (NT_QUERY_SYSTEM_INFORMATION) GetProcAddress (module, "NtQuerySystemInformation");
 	  FreeLibrary (module);
 
 	  if (s_pfnNtQuerySystemInformation == NULL)
@@ -467,8 +441,7 @@ get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
       li.HighPart = idle_time.dwHighDateTime;
       li.LowPart = idle_time.dwLowDateTime;
 
-      /* In win32 system, lk includes "System Idle Process" time,
-       * so we should exclude it */
+      /* In win32 system, lk includes "System Idle Process" time, so we should exclude it */
       *kernel = lk.QuadPart - li.QuadPart;
       *user = lu.QuadPart;
       *idle = li.QuadPart;
@@ -480,11 +453,9 @@ get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
       SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION sppi;
       ULONG len;
 
-      s_pfnNtQuerySystemInformation (SystemProcessorPerformanceInformation,
-				     &sppi, sizeof (sppi), &len);
+      s_pfnNtQuerySystemInformation (SystemProcessorPerformanceInformation, &sppi, sizeof (sppi), &len);
 
-      /* In win32 system, sppi.KernelTime includes "System Idle Process"
-       * time, so we should exclude it */
+      /* In win32 system, sppi.KernelTime includes "System Idle Process" time, so we should exclude it */
       *kernel = sppi.KernelTime.QuadPart - sppi.IdleTime.QuadPart;
       *user = sppi.UserTime.QuadPart;
       *idle = sppi.IdleTime.QuadPart;
@@ -518,8 +489,7 @@ SetPrivilege (HANDLE hToken, LPCTSTR lpszPrivilege, BOOL bEnablePrivilege)
       tp.Privileges[0].Attributes = 0;
     }
 
-  if (!AdjustTokenPrivileges (hToken, FALSE, &tp,
-			      sizeof (TOKEN_PRIVILEGES), NULL, NULL))
+  if (!AdjustTokenPrivileges (hToken, FALSE, &tp, sizeof (TOKEN_PRIVILEGES), NULL, NULL))
     {
       return FALSE;
     }
@@ -543,9 +513,7 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
   int ret = 0;
 
   stat->pid = pid;
-  if (!OpenThreadToken (GetCurrentThread (),
-			(TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY), FALSE,
-			&hToken))
+  if (!OpenThreadToken (GetCurrentThread (), (TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY), FALSE, &hToken))
     {
       if (GetLastError () == ERROR_NO_TOKEN)
 	{
@@ -554,9 +522,7 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
 	      return -1;
 	    }
 
-	  if (!OpenThreadToken (GetCurrentThread (),
-				(TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY),
-				FALSE, &hToken))
+	  if (!OpenThreadToken (GetCurrentThread (), (TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY), FALSE, &hToken))
 	    {
 	      return -1;
 	    }
@@ -655,8 +621,7 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
   stat->mem_physical_total = ((__int64) pi.PhysicalTotal) * pi.PageSize;
   stat->mem_physical_free = ((__int64) pi.PhysicalAvailable) * pi.PageSize;
   stat->mem_swap_total = ((__int64) pi.CommitLimit) * pi.PageSize;
-  stat->mem_swap_free =
-    ((__int64) (pi.CommitLimit - pi.CommitTotal)) * pi.PageSize;
+  stat->mem_swap_free = ((__int64) (pi.CommitLimit - pi.CommitTotal)) * pi.PageSize;
 
   return 0;
 }
@@ -684,8 +649,7 @@ cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf)
   buf[len - 1] = 0;
   i = 0;
 
-  for (token = strtok (buf, ";"); token != NULL && i < 32;
-       token = strtok (NULL, ";"))
+  for (token = strtok (buf, ";"); token != NULL && i < 32; token = strtok (NULL, ";"))
     {
       if (GetDriveTypeA (token) == DRIVE_FIXED)
 	{
@@ -720,8 +684,7 @@ cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf)
       res->partitions[i].avail = free_size[i];
       res->partitions[i].size = total_size[i];
       res->partitions[i].used = total_size[i] - free_size[i];
-      strcpy_limit (res->partitions[i].name, names[i],
-		    sizeof (res->partitions[i].name));
+      strcpy_limit (res->partitions[i].name, names[i], sizeof (res->partitions[i].name));
     }
 
   return res;
@@ -758,12 +721,8 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
     }
   close (fd);
 
-  stat->cpu_user =
-    (uint64_t) ((proc_stat.pr_utime.tv_sec +
-		 proc_stat.pr_utime.tv_nsec * 10e-9) * ticks_per_sec);
-  stat->cpu_kernel =
-    (uint64_t) ((proc_stat.pr_stime.tv_sec +
-		 proc_stat.pr_stime.tv_nsec * 10e-9) * ticks_per_sec);
+  stat->cpu_user = (uint64_t) ((proc_stat.pr_utime.tv_sec + proc_stat.pr_utime.tv_nsec * 10e-9) * ticks_per_sec);
+  stat->cpu_kernel = (uint64_t) ((proc_stat.pr_stime.tv_sec + proc_stat.pr_stime.tv_nsec * 10e-9) * ticks_per_sec);
 
   snprintf (file_name, PATH_MAX, "/proc/%d/psinfo", pid);
 
@@ -798,8 +757,7 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
       cm_set_error (err_buf, CM_ERR_NULL_POINTER);
       return -1;
     }
-  if (perfstat_cpu_total (NULL, &cpu_stat, sizeof (perfstat_cpu_total_t), 1)
-      == -1)
+  if (perfstat_cpu_total (NULL, &cpu_stat, sizeof (perfstat_cpu_total_t), 1) == -1)
     {
       cm_set_error (err_buf, CM_GENERAL_ERROR);
       return -1;
@@ -809,8 +767,7 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
   stat->cpu_idle = cpu_stat.idle;
   stat->cpu_iowait = cpu_stat.wait;
 
-  if (perfstat_memory_total
-      (NULL, &mem_info, sizeof (perfstat_memory_total_t), 1) == -1)
+  if (perfstat_memory_total (NULL, &mem_info, sizeof (perfstat_memory_total_t), 1) == -1)
     {
       cm_set_error (err_buf, CM_GENERAL_ERROR);
       return -1;
@@ -855,8 +812,7 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
       return -1;
     }
 
-  fscanf (cpufp, "%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%llu%llu",
-	  &stat->cpu_user, &stat->cpu_kernel);
+  fscanf (cpufp, "%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%llu%llu", &stat->cpu_user, &stat->cpu_kernel);
   fscanf (memfp, "%lu%lu", &vmem_pages, &rmem_pages);	/* 'size' and 'resident' in stat file */
   stat->mem_virtual = vmem_pages * get_pagesize ();
   stat->mem_physical = rmem_pages * get_pagesize ();
@@ -893,16 +849,15 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
   if (cpufp == NULL)
     {
       err_buf->err_code = CM_FILE_OPEN_FAILED;
-      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1,
-		ER (err_buf->err_code), stat_file, strerror (errno));
+      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1, ER (err_buf->err_code), stat_file, strerror (errno));
       return -1;
     }
   memfp = fopen (meminfo_file, "r");
   if (memfp == NULL)
     {
       err_buf->err_code = CM_FILE_OPEN_FAILED;
-      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1,
-		ER (err_buf->err_code), meminfo_file, strerror (errno));
+      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1, ER (err_buf->err_code), meminfo_file,
+		strerror (errno));
       fclose (cpufp);
       return -1;
     }
@@ -912,8 +867,8 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
       sscanf (linebuf, "%49s", prefix);
       if (!strcmp (prefix, "cpu"))
 	{
-	  sscanf (linebuf, "%*s%llu%llu%llu%llu%llu", &stat->cpu_user, &nice,
-		  &stat->cpu_kernel, &stat->cpu_idle, &stat->cpu_iowait);
+	  sscanf (linebuf, "%*s%llu%llu%llu%llu%llu", &stat->cpu_user, &nice, &stat->cpu_kernel, &stat->cpu_idle,
+		  &stat->cpu_iowait);
 	  stat->cpu_user += nice;
 	  n_cpuitem++;
 	  break;
@@ -974,8 +929,7 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
 
 error_handle:
   err_buf->err_code = CM_GENERAL_ERROR;
-  snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1, "%s",
-	    "read host info error");
+  snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1, "%s", "read host info error");
   fclose (cpufp);
   fclose (memfp);
   return -1;
@@ -993,10 +947,7 @@ cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf)
   };
 
   cm_err_buf_reset (err_buf);
-  return (T_CM_DISK_PARTITION_STAT_ALL *) cm_get_command_result (argv,
-								 extract_host_partition_stat,
-								 NULL,
-								 err_buf);
+  return (T_CM_DISK_PARTITION_STAT_ALL *) cm_get_command_result (argv, extract_host_partition_stat, NULL, err_buf);
 }
 
 
@@ -1004,8 +955,7 @@ cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf)
 #endif // WINDOWS
 
 int
-cm_get_db_exec_stat (const char *db_name,
-		     T_CM_DB_EXEC_STAT * exec_stat, T_CM_ERROR * err_buf)
+cm_get_db_exec_stat (const char *db_name, T_CM_DB_EXEC_STAT * exec_stat, T_CM_ERROR * err_buf)
 {
   T_CM_DB_EXEC_STAT *p = NULL;
   char *root_env = NULL;
@@ -1026,9 +976,7 @@ cm_get_db_exec_stat (const char *db_name,
     }
 
   (void) envvar_bindir_file (exec_path, PATH_MAX, UTIL_CUBRID);
-  p = (T_CM_DB_EXEC_STAT *) cm_get_command_result (argv,
-						   extract_db_exec_stat,
-						   db_name, err_buf);
+  p = (T_CM_DB_EXEC_STAT *) cm_get_command_result (argv, extract_db_exec_stat, db_name, err_buf);
   if (p != NULL)
     {
       *exec_stat = *p;
@@ -1039,8 +987,7 @@ cm_get_db_exec_stat (const char *db_name,
 }
 
 static void *
-extract_host_partition_stat (FILE * fp, const char *arg1,
-			     T_CM_ERROR * err_buf)
+extract_host_partition_stat (FILE * fp, const char *arg1, T_CM_ERROR * err_buf)
 {
   char linebuf[LINE_MAX];
   char type[512];
@@ -1049,12 +996,8 @@ extract_host_partition_stat (FILE * fp, const char *arg1,
   T_CM_DISK_PARTITION_STAT *p = NULL;
   T_CM_DISK_PARTITION_STAT_ALL *stat = NULL;
 
-  stat =
-    (T_CM_DISK_PARTITION_STAT_ALL *)
-    malloc (sizeof (T_CM_DISK_PARTITION_STAT_ALL));
-  p =
-    (T_CM_DISK_PARTITION_STAT *) malloc (nalloc *
-					 sizeof (T_CM_DISK_PARTITION_STAT));
+  stat = (T_CM_DISK_PARTITION_STAT_ALL *) malloc (sizeof (T_CM_DISK_PARTITION_STAT_ALL));
+  p = (T_CM_DISK_PARTITION_STAT *) malloc (nalloc * sizeof (T_CM_DISK_PARTITION_STAT));
   if (stat == NULL || p == NULL)
     {
       cm_set_error (err_buf, CM_OUT_OF_MEMORY);
@@ -1073,15 +1016,12 @@ extract_host_partition_stat (FILE * fp, const char *arg1,
       if (nitem >= nalloc)
 	{
 	  nalloc *= 2;
-	  stat->partitions =
-	    realloc (stat->partitions,
-		     nalloc * sizeof (T_CM_DISK_PARTITION_STAT));
+	  stat->partitions = realloc (stat->partitions, nalloc * sizeof (T_CM_DISK_PARTITION_STAT));
 	}
       if (stat->partitions)
 	{
 	  p = stat->partitions + nitem;
-	  sscanf (linebuf, "%255s%*s%llu%llu%llu", p->name, &p->size,
-		  &p->used, &p->avail);
+	  sscanf (linebuf, "%255s%*s%llu%llu%llu", p->name, &p->size, &p->used, &p->avail);
 	  nitem++;
 	}
       else
@@ -1413,8 +1353,7 @@ get_statdump_member_ptr (T_CM_DB_EXEC_STAT * stat, const char *prop_name)
     {
       if (strcmp (statdump_offset[i].prop_name, prop_name) == 0)
 	{
-	  return (unsigned int *) ((char *) stat +
-				   statdump_offset[i].prop_offset);
+	  return (unsigned int *) ((char *) stat + statdump_offset[i].prop_offset);
 	}
     }
   return NULL;
@@ -1459,8 +1398,7 @@ cm_host_disk_partition_stat_free (T_CM_DISK_PARTITION_STAT_ALL * stat)
 }
 
 static void *
-cm_get_command_result (const char *argv[], EXTRACT_FUNC func,
-		       const char *func_arg1, T_CM_ERROR * err_buf)
+cm_get_command_result (const char *argv[], EXTRACT_FUNC func, const char *func_arg1, T_CM_ERROR * err_buf)
 {
   void *retval;
   FILE *fp = NULL;
@@ -1477,8 +1415,7 @@ cm_get_command_result (const char *argv[], EXTRACT_FUNC func,
   if (run_child (argv, 1, NULL, outputfile, errfile, NULL) < 0)
     {
       err_buf->err_code = CM_ERR_SYSTEM_CALL;
-      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1,
-		ER (err_buf->err_code), argv[0]);
+      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1, ER (err_buf->err_code), argv[0]);
       return NULL;
     }
 
@@ -1486,8 +1423,7 @@ cm_get_command_result (const char *argv[], EXTRACT_FUNC func,
   if (fp == NULL)
     {
       err_buf->err_code = CM_FILE_OPEN_FAILED;
-      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1,
-		ER (err_buf->err_code), outputfile, strerror (errno));
+      snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1, ER (err_buf->err_code), outputfile, strerror (errno));
       unlink (outputfile);
       return NULL;
     }
@@ -1525,8 +1461,7 @@ extract_db_stat (FILE * fp, const char *tdbname, T_CM_ERROR * err_buf)
   else
     {
       T_CM_DB_PROC_STAT *p = NULL;
-      all_stat =
-	(T_CM_DB_PROC_STAT_ALL *) malloc (sizeof (T_CM_DB_PROC_STAT_ALL));
+      all_stat = (T_CM_DB_PROC_STAT_ALL *) malloc (sizeof (T_CM_DB_PROC_STAT_ALL));
       p = (T_CM_DB_PROC_STAT *) malloc (nalloc * sizeof (T_CM_DB_PROC_STAT));
 
       if (all_stat == NULL || p == NULL)
@@ -1548,13 +1483,9 @@ extract_db_stat (FILE * fp, const char *tdbname, T_CM_ERROR * err_buf)
       if (linebuf[0] == '@')
 	continue;
 
-      tok_num =
-	sscanf (linebuf, "%511s %511s %*s %*s %*s %20s", cmd_name, db_name,
-		pid_t);
+      tok_num = sscanf (linebuf, "%511s %511s %*s %*s %*s %20s", cmd_name, db_name, pid_t);
 
-      if (tok_num != 3 ||
-	  (strcmp (cmd_name, "Server") != 0 &&
-	   strcmp (cmd_name, "HA-Server") != 0))
+      if (tok_num != 3 || (strcmp (cmd_name, "Server") != 0 && strcmp (cmd_name, "HA-Server") != 0))
 	continue;
 
       /* remove the ")" at the end of the pid. */
@@ -1581,10 +1512,7 @@ extract_db_stat (FILE * fp, const char *tdbname, T_CM_ERROR * err_buf)
 	  if (nitem >= nalloc)
 	    {
 	      nalloc *= 2;
-	      if (!
-		  (all_stat->db_stats =
-		   realloc (all_stat->db_stats,
-			    nalloc * sizeof (T_CM_DB_PROC_STAT))))
+	      if (!(all_stat->db_stats = realloc (all_stat->db_stats, nalloc * sizeof (T_CM_DB_PROC_STAT))))
 		{
 		  cm_set_error (err_buf, CM_OUT_OF_MEMORY);
 		  return NULL;
@@ -1609,15 +1537,13 @@ extract_db_stat (FILE * fp, const char *tdbname, T_CM_ERROR * err_buf)
 
 not_found:
   err_buf->err_code = CM_DB_STAT_NOT_FOUND;
-  snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1,
-	    ER (err_buf->err_code), tdbname);
+  snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1, ER (err_buf->err_code), tdbname);
   cm_db_proc_stat_free (db_stat);
   return NULL;
 }
 
 static void
-assign_db_stat (T_CM_DB_PROC_STAT * db_stat, char *db_name,
-		T_CM_PROC_STAT * stat)
+assign_db_stat (T_CM_DB_PROC_STAT * db_stat, char *db_name, T_CM_PROC_STAT * stat)
 {
   strcpy_limit (db_stat->name, db_name, sizeof (db_stat->name));
   db_stat->stat = *stat;

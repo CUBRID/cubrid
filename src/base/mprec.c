@@ -119,12 +119,7 @@ _DEFUN (Balloc, (ptr, k), struct _reent * ptr _AND int k)
   if (_REENT_MP_FREELIST (ptr) == NULL)
     {
       /* Allocate a list of pointers to the mprec objects */
-      _REENT_MP_FREELIST (ptr) = (struct _Bigint **) mprec_calloc (ptr,
-								   sizeof
-								   (struct
-								    _Bigint
-								    *),
-								   new_k);
+      _REENT_MP_FREELIST (ptr) = (struct _Bigint **) mprec_calloc (ptr, sizeof (struct _Bigint *), new_k);
       if (_REENT_MP_FREELIST (ptr) == NULL)
 	{
 	  return NULL;
@@ -134,12 +129,8 @@ _DEFUN (Balloc, (ptr, k), struct _reent * ptr _AND int k)
   else if (new_k > ptr->_max_k)
     {
       struct _Bigint **new_list = (struct _Bigint **) realloc (ptr->_freelist,
-							       new_k *
-							       sizeof (struct
-								       _Bigint
-								       *));
-      memset (&new_list[ptr->_max_k], 0,
-	      (new_k - ptr->_max_k) * sizeof (struct _Bigint *));
+							       new_k * sizeof (struct _Bigint *));
+      memset (&new_list[ptr->_max_k], 0, (new_k - ptr->_max_k) * sizeof (struct _Bigint *));
       ptr->_freelist = new_list;
       ptr->_max_k = new_k;
 
@@ -155,10 +146,7 @@ _DEFUN (Balloc, (ptr, k), struct _reent * ptr _AND int k)
     {
       x = 1 << k;
       /* Allocate an mprec Bigint and stick in in the freelist */
-      rv = (_Bigint *) mprec_calloc (ptr,
-				     1,
-				     sizeof (_Bigint) +
-				     (x - 1) * sizeof (rv->_x));
+      rv = (_Bigint *) mprec_calloc (ptr, 1, sizeof (_Bigint) + (x - 1) * sizeof (rv->_x));
       if (rv == NULL)
 	return NULL;
       rv->_k = k;
@@ -180,8 +168,7 @@ _DEFUN (Bfree, (ptr, v), struct _reent *ptr _AND _Bigint * v)
 }
 
 _Bigint *
-_DEFUN (multadd, (ptr, b, m, a),
-	struct _reent *ptr _AND _Bigint * b _AND int m _AND int a)
+_DEFUN (multadd, (ptr, b, m, a), struct _reent *ptr _AND _Bigint * b _AND int m _AND int a)
 {
   int i, wds;
   __ULong *x, y;
@@ -225,9 +212,7 @@ _DEFUN (multadd, (ptr, b, m, a),
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 _Bigint *
-_DEFUN (s2b, (ptr, s, nd0, nd, y9),
-	struct _reent * ptr _AND
-	_CONST char *s _AND int nd0 _AND int nd _AND __ULong y9)
+_DEFUN (s2b, (ptr, s, nd0, nd, y9), struct _reent * ptr _AND _CONST char *s _AND int nd0 _AND int nd _AND __ULong y9)
 {
   _Bigint *b;
   int i, k;
@@ -358,8 +343,7 @@ _DEFUN (i2b, (ptr, i), struct _reent * ptr _AND int i)
 }
 
 _Bigint *
-_DEFUN (mult, (ptr, a, b),
-	struct _reent * ptr _AND _Bigint * a _AND _Bigint * b)
+_DEFUN (mult, (ptr, a, b), struct _reent * ptr _AND _Bigint * a _AND _Bigint * b)
 {
   _Bigint *c;
   int k, wa, wb, wc;
@@ -451,8 +435,7 @@ _DEFUN (mult, (ptr, a, b),
 }
 
 _Bigint *
-_DEFUN (pow5mult,
-	(ptr, b, k), struct _reent * ptr _AND _Bigint * b _AND int k)
+_DEFUN (pow5mult, (ptr, b, k), struct _reent * ptr _AND _Bigint * b _AND int k)
 {
   _Bigint *b1, *p5, *p51;
   int i;
@@ -581,8 +564,7 @@ _DEFUN (cmp, (a, b), _Bigint * a _AND _Bigint * b)
 }
 
 _Bigint *
-_DEFUN (diff, (ptr, a, b), struct _reent * ptr _AND
-	_Bigint * a _AND _Bigint * b)
+_DEFUN (diff, (ptr, a, b), struct _reent * ptr _AND _Bigint * a _AND _Bigint * b)
 {
   _Bigint *c;
   int i, wa, wb;
@@ -789,9 +771,7 @@ ret_d:
 
 #endif /* ENABLE_UNUSED_FUNCTION */
 _Bigint *
-_DEFUN (d2b,
-	(ptr, _d, e, bits),
-	struct _reent * ptr _AND double _d _AND int *e _AND int *bits)
+_DEFUN (d2b, (ptr, _d, e, bits), struct _reent * ptr _AND double _d _AND int *e _AND int *bits)
 {
   union double_union d;
   _Bigint *b;

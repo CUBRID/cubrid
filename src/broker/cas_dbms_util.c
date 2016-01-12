@@ -53,8 +53,7 @@ cfg_free_dbinfo_all (DB_INFO * databases)
 {
   DB_INFO *db_info_p, *next_info_p;
 
-  for (db_info_p = databases, next_info_p = NULL; db_info_p != NULL;
-       db_info_p = next_info_p)
+  for (db_info_p = databases, next_info_p = NULL; db_info_p != NULL; db_info_p = next_info_p)
     {
       next_info_p = db_info_p->next;
 
@@ -91,13 +90,11 @@ cfg_get_dbinfo (char *alias, char *dbinfo)
     {
       if (IS_ABS_PATH (shm_appl->db_connection_file))
 	{
-	  strncpy (filename, shm_appl->db_connection_file,
-		   BROKER_PATH_MAX - 1);
+	  strncpy (filename, shm_appl->db_connection_file, BROKER_PATH_MAX - 1);
 	}
       else
 	{
-	  envvar_confdir_file (filename, BROKER_PATH_MAX,
-			       shm_appl->db_connection_file);
+	  envvar_confdir_file (filename, BROKER_PATH_MAX, shm_appl->db_connection_file);
 	}
     }
 
@@ -161,8 +158,7 @@ cfg_read_dbinfo (DB_INFO ** db_info_p)
 	}
       else
 	{
-	  envvar_confdir_file (filename, BROKER_PATH_MAX,
-			       shm_appl->db_connection_file);
+	  envvar_confdir_file (filename, BROKER_PATH_MAX, shm_appl->db_connection_file);
 	}
     }
 
@@ -186,8 +182,7 @@ cfg_read_dbinfo (DB_INFO ** db_info_p)
 		}
 	      *db_info_p = NULL;
 	      fclose (file);
-	      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				     CAS_ERROR_INDICATOR);
+	      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
 	    }
 	  db->next = NULL;
 	  str = cfg_pop_token (str, &db->alias);
@@ -239,8 +234,7 @@ cfg_find_db_list (DB_INFO * db_info_list_p, const char *name)
   DB_INFO *db_info_p, *found_info_p;
 
   found_info_p = NULL;
-  for (db_info_p = db_info_list_p; db_info_p != NULL && found_info_p == NULL;
-       db_info_p = db_info_p->next)
+  for (db_info_p = db_info_list_p; db_info_p != NULL && found_info_p == NULL; db_info_p = db_info_p->next)
     {
       if (strcmp (db_info_p->alias, name) == 0)
 	{

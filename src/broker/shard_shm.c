@@ -49,14 +49,10 @@
 #define LINE_70		"========================================" \
 			"========================================"
 
-static void shard_shm_set_shm_proxy (T_SHM_PROXY * shm_proxy_p,
-				     T_BROKER_INFO * br_info_p);
+static void shard_shm_set_shm_proxy (T_SHM_PROXY * shm_proxy_p, T_BROKER_INFO * br_info_p);
 
-static void shard_shm_init_key_stat (T_SHM_SHARD_KEY_STAT * key_stat_p,
-				     T_SHARD_KEY * shard_key);
-static void shard_shm_init_shard_stat (T_SHM_SHARD_CONN_STAT *
-				       shard_stat_p,
-				       T_SHARD_CONN * shard_conn);
+static void shard_shm_init_key_stat (T_SHM_SHARD_KEY_STAT * key_stat_p, T_SHARD_KEY * shard_key);
+static void shard_shm_init_shard_stat (T_SHM_SHARD_CONN_STAT * shard_stat_p, T_SHARD_CONN * shard_conn);
 #if defined(LINUX)
 static int shard_shm_get_max_context (int max_client);
 #else /* LINUX */
@@ -90,8 +86,7 @@ shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
 #endif /* WINDOWS */
 
   env = make_env (br_info_p->source_env, &env_num);
-  strncpy (shm_as_p->appl_server_name,
-	   get_appl_server_name (br_info_p->appl_server, env, env_num),
+  strncpy (shm_as_p->appl_server_name, get_appl_server_name (br_info_p->appl_server, env, env_num),
 	   APPL_SERVER_NAME_MAX_SIZE);
   shm_as_p->appl_server_name[APPL_SERVER_NAME_MAX_SIZE - 1] = '\0';
 
@@ -123,12 +118,9 @@ shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
   shm_as_p->jdbc_cache_life_time = br_info_p->jdbc_cache_life_time;
 
   strcpy (shm_as_p->preferred_hosts, br_info_p->preferred_hosts);
-  strncpy (shm_as_p->source_env, br_info_p->source_env,
-	   sizeof (shm_as_p->source_env) - 1);
-  strncpy (shm_as_p->error_log_file, br_info_p->error_log_file,
-	   sizeof (shm_as_p->error_log_file) - 1);
-  strncpy (shm_as_p->proxy_log_dir, br_info_p->proxy_log_dir,
-	   sizeof (shm_as_p->proxy_log_dir) - 1);
+  strncpy (shm_as_p->source_env, br_info_p->source_env, sizeof (shm_as_p->source_env) - 1);
+  strncpy (shm_as_p->error_log_file, br_info_p->error_log_file, sizeof (shm_as_p->error_log_file) - 1);
+  strncpy (shm_as_p->proxy_log_dir, br_info_p->proxy_log_dir, sizeof (shm_as_p->proxy_log_dir) - 1);
 
   shm_as_p->proxy_log_max_size = br_info_p->proxy_log_max_size;
 
@@ -137,8 +129,7 @@ shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
 }
 
 void
-shard_shm_set_as_info (T_APPL_SERVER_INFO * as_info_p,
-		       T_BROKER_INFO * br_info_p)
+shard_shm_set_as_info (T_APPL_SERVER_INFO * as_info_p, T_BROKER_INFO * br_info_p)
 {
   /* SHARD TODO : will delete, duplicated code shard_as_activate() */
 #if 0
@@ -148,8 +139,7 @@ shard_shm_set_as_info (T_APPL_SERVER_INFO * as_info_p,
 #endif /* !WINDOWS */
 
   get_cubrid_file (FID_SOCK_DIR, dirname);
-  snprintf (port_name, sizeof (port_name) - 1, "%s/%s.%d", dirname,
-	    br_info_p->name, as_index);
+  snprintf (port_name, sizeof (port_name) - 1, "%s/%s.%d", dirname, br_info_p->name, as_index);
 
 #if !defined(WINDOWS)
   unlink (port_name);
@@ -219,9 +209,7 @@ shard_shm_as_initialize (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p)
   T_APPL_SERVER_INFO *as_info_p = NULL;
 
   shm_size = sizeof (T_SHM_APPL_SERVER);
-  shm_as_p =
-    (T_SHM_APPL_SERVER *) uw_shm_create (br_info_p->appl_server_shm_id,
-					 shm_size, SHM_APPL_SERVER);
+  shm_as_p = (T_SHM_APPL_SERVER *) uw_shm_create (br_info_p->appl_server_shm_id, shm_size, SHM_APPL_SERVER);
 
   if (shm_as_p == NULL)
     {
@@ -257,21 +245,16 @@ shard_shm_set_shm_proxy (T_SHM_PROXY * shm_proxy_p, T_BROKER_INFO * br_info_p)
       shm_proxy_p->max_client = 1;
     }
 #if defined(LINUX)
-  shm_proxy_p->max_context =
-    shard_shm_get_max_context (br_info_p->max_client / br_info_p->num_proxy);
+  shm_proxy_p->max_context = shard_shm_get_max_context (br_info_p->max_client / br_info_p->num_proxy);
 #else /* LINUX */
-  shm_proxy_p->max_context =
-    shard_shm_get_max_context (br_info_p->appl_server_max_num /
-			       br_info_p->num_proxy);
+  shm_proxy_p->max_context = shard_shm_get_max_context (br_info_p->appl_server_max_num / br_info_p->num_proxy);
 #endif /* !LINUX */
 
   /* SHARD SHARD_KEY_ID */
   shm_proxy_p->shard_key_modular = br_info_p->shard_key_modular;
-  strncpy (shm_proxy_p->shard_key_library_name,
-	   br_info_p->shard_key_library_name,
+  strncpy (shm_proxy_p->shard_key_library_name, br_info_p->shard_key_library_name,
 	   sizeof (br_info_p->shard_key_library_name));
-  strncpy (shm_proxy_p->shard_key_function_name,
-	   br_info_p->shard_key_function_name,
+  strncpy (shm_proxy_p->shard_key_function_name, br_info_p->shard_key_function_name,
 	   sizeof (br_info_p->shard_key_function_name));
 
   return;
@@ -304,19 +287,14 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
   T_SHARD_CONN *conn_p;
 
 #if defined(LINUX)
-  max_context =
-    shard_shm_get_max_context (br_info_p->max_client / br_info_p->num_proxy);
+  max_context = shard_shm_get_max_context (br_info_p->max_client / br_info_p->num_proxy);
 #else /* LINUX */
-  max_context =
-    shard_shm_get_max_context (br_info_p->appl_server_max_num /
-			       br_info_p->num_proxy);
+  max_context = shard_shm_get_max_context (br_info_p->appl_server_max_num / br_info_p->num_proxy);
 #endif /* !LINUX */
 
   shm_proxy_size = sizeof (T_SHM_PROXY);
 
-  shm_proxy_p =
-    (T_SHM_PROXY *) uw_shm_create (br_info_p->proxy_shm_id, shm_proxy_size,
-				   SHM_PROXY);
+  shm_proxy_p = (T_SHM_PROXY *) uw_shm_create (br_info_p->proxy_shm_id, shm_proxy_size, SHM_PROXY);
   if (shm_proxy_p == NULL)
     {
       return NULL;
@@ -348,34 +326,28 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
       goto init_shm_proxy_error;
     }
 
-  appl_server_min_num =
-    (br_info_p->appl_server_min_num / num_proxy / num_shard);
+  appl_server_min_num = (br_info_p->appl_server_min_num / num_proxy / num_shard);
   if (appl_server_min_num < 1)
     {
-      fprintf (stderr, "shorted MIN_NUM_APPL_SERVER. "
-	       "it need %d at least\n", num_proxy * num_shard);
+      fprintf (stderr, "shorted MIN_NUM_APPL_SERVER. " "it need %d at least\n", num_proxy * num_shard);
       goto init_shm_proxy_error;
     }
 
-  appl_server_max_num =
-    (br_info_p->appl_server_max_num / num_proxy / num_shard);
+  appl_server_max_num = (br_info_p->appl_server_max_num / num_proxy / num_shard);
   if (appl_server_max_num < 1)
     {
-      fprintf (stderr, "shorted MAX_NUM_APPL_SERVER. "
-	       "it need %d at least\n", num_proxy * num_shard);
+      fprintf (stderr, "shorted MAX_NUM_APPL_SERVER. " "it need %d at least\n", num_proxy * num_shard);
       goto init_shm_proxy_error;
     }
 
-  br_info_p->appl_server_min_num =
-    appl_server_min_num * num_proxy * num_shard;
-  br_info_p->appl_server_max_num =
-    appl_server_max_num * num_proxy * num_shard;
+  br_info_p->appl_server_min_num = appl_server_min_num * num_proxy * num_shard;
+  br_info_p->appl_server_max_num = appl_server_max_num * num_proxy * num_shard;
   br_info_p->appl_server_num = br_info_p->appl_server_min_num;
 
 
   for (i = 0; i < num_proxy; i++)
     {
-      /*
+      /* 
        * SHARD TODO : what to do when min_num_proxy is different
        *              from max_num_proxy ?
        */
@@ -390,8 +362,7 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
       proxy_info_p->max_client = shm_proxy_p->max_client;
       proxy_info_p->cur_client = 0;
       proxy_info_p->max_context = shm_proxy_p->max_context;
-      proxy_info_p->max_prepared_stmt_count =
-	br_info_p->proxy_max_prepared_stmt_count;
+      proxy_info_p->max_prepared_stmt_count = br_info_p->proxy_max_prepared_stmt_count;
       proxy_info_p->ignore_shard_hint = br_info_p->ignore_shard_hint;
       proxy_info_p->wait_timeout = br_info_p->proxy_timeout;
       proxy_info_p->proxy_log_reset = 0;
@@ -407,17 +378,13 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
       for (j = 0; j < num_key; j++)
 	{
 	  key_stat_p = &proxy_info_p->key_stat[j];
-	  shard_shm_init_key_stat (key_stat_p,
-				   &(shm_proxy_p->shm_shard_key.
-				     shard_key[j]));
+	  shard_shm_init_key_stat (key_stat_p, &(shm_proxy_p->shm_shard_key.shard_key[j]));
 	}
 
       for (j = 0; j < num_shard; j++)
 	{
 	  shard_stat_p = &proxy_info_p->shard_stat[j];
-	  shard_shm_init_shard_stat (shard_stat_p,
-				     &(shm_proxy_p->shm_shard_conn.
-				       shard_conn[j]));
+	  shard_shm_init_shard_stat (shard_stat_p, &(shm_proxy_p->shm_shard_conn.shard_conn[j]));
 	}
 
       for (j = 0; j < max_context; j++)
@@ -437,8 +404,7 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
 	  shard_info_p->max_appl_server = appl_server_max_num;
 	  shard_info_p->num_appl_server = shard_info_p->min_appl_server;
 
-	  shard_info_p->as_info_index_base =
-	    ((i * num_shard + j) * appl_server_max_num);
+	  shard_info_p->as_info_index_base = ((i * num_shard + j) * appl_server_max_num);
 	}
     }
 
@@ -534,27 +500,17 @@ shard_shm_dump_shard_appl_server (FILE * fp, T_APPL_SERVER_INFO * as_info_p)
   char last_access_time[128];
   char last_connect_time[128];
 
-  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "NUM_REQUEST",
-	   as_info_p->num_request);
+  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "NUM_REQUEST", as_info_p->num_request);
   fprintf (fp, BLANK_9 "%-30s = %-30d \n", "PID", as_info_p->pid);
-  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "SERVICE_FLAG",
-	   as_info_p->service_flag);
-  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "RESET_FLAG",
-	   as_info_p->reset_flag);
-  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "UTS_STATUS",
-	   as_info_p->uts_status);
-  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "CAS_CLIENT_TYPE",
-	   as_info_p->cas_client_type);
-  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "SERVICE_READY_FLAG",
-	   as_info_p->service_ready_flag);
-  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "CON_STATUS",
-	   as_info_p->con_status);
-  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "CUR_KEEP_CON",
-	   as_info_p->cur_keep_con);
-  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "CUR_SQL_LOG_MODE",
-	   as_info_p->cur_sql_log_mode);
-  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "CUR_STATEMENT_POOLING",
-	   as_info_p->cur_statement_pooling);
+  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "SERVICE_FLAG", as_info_p->service_flag);
+  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "RESET_FLAG", as_info_p->reset_flag);
+  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "UTS_STATUS", as_info_p->uts_status);
+  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "CAS_CLIENT_TYPE", as_info_p->cas_client_type);
+  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "SERVICE_READY_FLAG", as_info_p->service_ready_flag);
+  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "CON_STATUS", as_info_p->con_status);
+  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "CUR_KEEP_CON", as_info_p->cur_keep_con);
+  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "CUR_SQL_LOG_MODE", as_info_p->cur_sql_log_mode);
+  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "CUR_STATEMENT_POOLING", as_info_p->cur_statement_pooling);
   if (as_info_p->last_access_time)
     {
       at_tm_p = localtime (&as_info_p->last_access_time);
@@ -562,33 +518,21 @@ shard_shm_dump_shard_appl_server (FILE * fp, T_APPL_SERVER_INFO * as_info_p)
 	{
 	  return;
 	}
-      sprintf (last_access_time, "%d/%02d/%02d %02d:%02d:%02d",
-	       at_tm_p->tm_year + 1900, at_tm_p->tm_mon + 1,
-	       at_tm_p->tm_mday, at_tm_p->tm_hour, at_tm_p->tm_min,
-	       at_tm_p->tm_sec);
-      fprintf (fp, BLANK_9 "%-30s = %-30s \n", "LAST_ACCESS_TIME",
-	       last_access_time);
+      sprintf (last_access_time, "%d/%02d/%02d %02d:%02d:%02d", at_tm_p->tm_year + 1900, at_tm_p->tm_mon + 1,
+	       at_tm_p->tm_mday, at_tm_p->tm_hour, at_tm_p->tm_min, at_tm_p->tm_sec);
+      fprintf (fp, BLANK_9 "%-30s = %-30s \n", "LAST_ACCESS_TIME", last_access_time);
     }
-  fprintf (fp, BLANK_9 "%-30s = %-30lld \n", "NUM_REQUESTS_RECEIVED",
-	   (long long int) as_info_p->num_requests_received);
+  fprintf (fp, BLANK_9 "%-30s = %-30lld \n", "NUM_REQUESTS_RECEIVED", (long long int) as_info_p->num_requests_received);
   fprintf (fp, BLANK_9 "%-30s = %-30lld \n", "NUM_TRANSACTIONS_PROCESSED",
 	   (long long int) as_info_p->num_transactions_processed);
-  fprintf (fp, BLANK_9 "%-30s = %-30lld \n", "NUM_QUERIES_PROCESSED",
-	   (long long int) as_info_p->num_queries_processed);
-  fprintf (fp, BLANK_9 "%-30s = %-30lld \n", "NUM_LONG_QUERIES",
-	   (long long int) as_info_p->num_long_queries);
-  fprintf (fp, BLANK_9 "%-30s = %-30lld \n", "NUM_LONG_TRANSACTIONS",
-	   (long long int) as_info_p->num_long_transactions);
-  fprintf (fp, BLANK_9 "%-30s = %-30lld \n", "NUM_ERROR_QUERIES",
-	   (long long int) as_info_p->num_error_queries);
-  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "AUTO_COMMIT_MODE",
-	   as_info_p->auto_commit_mode);
-  fprintf (fp, BLANK_9 "%-30s = %-30s \n", "DATABASE_NAME",
-	   as_info_p->database_name);
-  fprintf (fp, BLANK_9 "%-30s = %-30s \n", "DATABASE_HOST",
-	   as_info_p->database_host);
-  fprintf (fp, BLANK_9 "%-30s = %-30s \n", "DATABASE_USER",
-	   as_info_p->database_user);
+  fprintf (fp, BLANK_9 "%-30s = %-30lld \n", "NUM_QUERIES_PROCESSED", (long long int) as_info_p->num_queries_processed);
+  fprintf (fp, BLANK_9 "%-30s = %-30lld \n", "NUM_LONG_QUERIES", (long long int) as_info_p->num_long_queries);
+  fprintf (fp, BLANK_9 "%-30s = %-30lld \n", "NUM_LONG_TRANSACTIONS", (long long int) as_info_p->num_long_transactions);
+  fprintf (fp, BLANK_9 "%-30s = %-30lld \n", "NUM_ERROR_QUERIES", (long long int) as_info_p->num_error_queries);
+  fprintf (fp, BLANK_9 "%-30s = %-30d \n", "AUTO_COMMIT_MODE", as_info_p->auto_commit_mode);
+  fprintf (fp, BLANK_9 "%-30s = %-30s \n", "DATABASE_NAME", as_info_p->database_name);
+  fprintf (fp, BLANK_9 "%-30s = %-30s \n", "DATABASE_HOST", as_info_p->database_host);
+  fprintf (fp, BLANK_9 "%-30s = %-30s \n", "DATABASE_USER", as_info_p->database_user);
   if (as_info_p->last_connect_time)
     {
       ct_tm_p = localtime (&as_info_p->last_connect_time);
@@ -596,43 +540,32 @@ shard_shm_dump_shard_appl_server (FILE * fp, T_APPL_SERVER_INFO * as_info_p)
 	{
 	  return;
 	}
-      sprintf (last_connect_time, "%d/%02d/%02d %02d:%02d:%02d",
-	       ct_tm_p->tm_year + 1900, ct_tm_p->tm_mon + 1,
-	       ct_tm_p->tm_mday, ct_tm_p->tm_hour, ct_tm_p->tm_min,
-	       ct_tm_p->tm_sec);
-      fprintf (fp, BLANK_9 "%-30s = %-30s \n", "LAST_CONNECT_TIME",
-	       last_connect_time);
+      sprintf (last_connect_time, "%d/%02d/%02d %02d:%02d:%02d", ct_tm_p->tm_year + 1900, ct_tm_p->tm_mon + 1,
+	       ct_tm_p->tm_mday, ct_tm_p->tm_hour, ct_tm_p->tm_min, ct_tm_p->tm_sec);
+      fprintf (fp, BLANK_9 "%-30s = %-30s \n", "LAST_CONNECT_TIME", last_connect_time);
     }
 }
 
 static void
-shard_shm_dump_shard (FILE * fp, T_SHARD_INFO * shard_info_p,
-		      T_SHM_APPL_SERVER * shm_as_p)
+shard_shm_dump_shard (FILE * fp, T_SHARD_INFO * shard_info_p, T_SHM_APPL_SERVER * shm_as_p)
 {
   int i = 0;
 
   assert (shard_info_p);
   assert (shm_as_p);
 
-  fprintf (fp, BLANK_6 "%-30s = %-30d \n", "SHARD_ID",
-	   shard_info_p->shard_id);
-  fprintf (fp, BLANK_6 "%-30s = %-30d \n", "MIN_APPL_SERVER",
-	   shard_info_p->min_appl_server);
-  fprintf (fp, BLANK_6 "%-30s = %-30d \n", "MAX_APPL_SERVER",
-	   shard_info_p->max_appl_server);
-  fprintf (fp, BLANK_6 "%-30s = %-30d \n", "NUM_APPL_SERVER",
-	   shard_info_p->num_appl_server);
-  fprintf (fp, BLANK_6 "%-30s = %-30llu \n", "WAITER_COUNT",
-	   (long long unsigned int) shard_info_p->waiter_count);
+  fprintf (fp, BLANK_6 "%-30s = %-30d \n", "SHARD_ID", shard_info_p->shard_id);
+  fprintf (fp, BLANK_6 "%-30s = %-30d \n", "MIN_APPL_SERVER", shard_info_p->min_appl_server);
+  fprintf (fp, BLANK_6 "%-30s = %-30d \n", "MAX_APPL_SERVER", shard_info_p->max_appl_server);
+  fprintf (fp, BLANK_6 "%-30s = %-30d \n", "NUM_APPL_SERVER", shard_info_p->num_appl_server);
+  fprintf (fp, BLANK_6 "%-30s = %-30llu \n", "WAITER_COUNT", (long long unsigned int) shard_info_p->waiter_count);
 
   for (i = 0; i < shard_info_p->max_appl_server; i++)
     {
       fprintf (fp, "\n");
       fprintf (fp, BLANK_9 "<CAS %d>\n", i);
       fprintf (fp, BLANK_9 "%s\n", LINE_70);
-      shard_shm_dump_shard_appl_server (fp, &(shm_as_p->as_info[i +
-								shard_info_p->
-								as_info_index_base]));
+      shard_shm_dump_shard_appl_server (fp, &(shm_as_p->as_info[i + shard_info_p->as_info_index_base]));
     }
 
   return;
@@ -647,24 +580,17 @@ shard_shm_dump_proxy_info (FILE * fp, T_PROXY_INFO * proxy_info_p)
 
   assert (proxy_info_p);
 
-  shm_as_p =
-    (T_SHM_APPL_SERVER *) uw_shm_open (proxy_info_p->appl_server_shm_id,
-				       SHM_APPL_SERVER, SHM_MODE_MONITOR);
+  shm_as_p = (T_SHM_APPL_SERVER *) uw_shm_open (proxy_info_p->appl_server_shm_id, SHM_APPL_SERVER, SHM_MODE_MONITOR);
 
-  fprintf (fp, BLANK_3 "%-30s = %-30d \n", "PROXY_ID",
-	   proxy_info_p->proxy_id);
+  fprintf (fp, BLANK_3 "%-30s = %-30d \n", "PROXY_ID", proxy_info_p->proxy_id);
   fprintf (fp, BLANK_3 "%-30s = %-30d \n", "PID", proxy_info_p->pid);
   fprintf (fp, BLANK_3 "%-30s = %-30d \n", "STATUS", proxy_info_p->status);
 
-  fprintf (fp, BLANK_3 "%-30s = %-30s \n", "PORT_NAME",
-	   proxy_info_p->port_name);
-  fprintf (fp, BLANK_3 "%-30s = %-30d \n", "MAX_SHARD",
-	   proxy_info_p->max_shard);
-  fprintf (fp, BLANK_3 "%-30s = %-30s \n", "ACCESS_LOG_FILE",
-	   proxy_info_p->access_log_file);
+  fprintf (fp, BLANK_3 "%-30s = %-30s \n", "PORT_NAME", proxy_info_p->port_name);
+  fprintf (fp, BLANK_3 "%-30s = %-30d \n", "MAX_SHARD", proxy_info_p->max_shard);
+  fprintf (fp, BLANK_3 "%-30s = %-30s \n", "ACCESS_LOG_FILE", proxy_info_p->access_log_file);
 
-  for (shard_index = 0; shard_index < proxy_info_p->num_shard_conn;
-       shard_index++)
+  for (shard_index = 0; shard_index < proxy_info_p->num_shard_conn; shard_index++)
     {
       shard_info_p = shard_shm_find_shard_info (proxy_info_p, shard_index);
 
@@ -697,12 +623,9 @@ shard_shm_dump_proxy (FILE * fp, T_SHM_PROXY * shm_proxy_p)
   fprintf (fp, "%-30s = %-30d \n", "MAX_CLIENT", shm_proxy_p->max_client);
   fprintf (fp, "%-30s = %-30d \n", "MAX_CONTEXT", shm_proxy_p->max_context);
 
-  fprintf (fp, "%-30s = %-30d \n", "SHARD_KEY_MODULE",
-	   shm_proxy_p->shard_key_modular);
-  fprintf (fp, "%-30s = %-30s \n", "SHARD_KEY_LIBRARY_NAME",
-	   shm_proxy_p->shard_key_library_name);
-  fprintf (fp, "%-30s = %-30s \n", "SHARD_KEY_FUNCTION_NAME",
-	   shm_proxy_p->shard_key_function_name);
+  fprintf (fp, "%-30s = %-30d \n", "SHARD_KEY_MODULE", shm_proxy_p->shard_key_modular);
+  fprintf (fp, "%-30s = %-30s \n", "SHARD_KEY_LIBRARY_NAME", shm_proxy_p->shard_key_library_name);
+  fprintf (fp, "%-30s = %-30s \n", "SHARD_KEY_FUNCTION_NAME", shm_proxy_p->shard_key_function_name);
 
   for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy; proxy_index++)
     {
@@ -732,8 +655,7 @@ shard_shm_dump_appl_server (FILE * fp, int shmid)
 {
   T_SHM_PROXY *shm_proxy_p = NULL;
 
-  shm_proxy_p =
-    (T_SHM_PROXY *) uw_shm_open (shmid, SHM_PROXY, SHM_MODE_MONITOR);
+  shm_proxy_p = (T_SHM_PROXY *) uw_shm_open (shmid, SHM_PROXY, SHM_MODE_MONITOR);
 
   if (shm_proxy_p == NULL)
     {
@@ -749,8 +671,7 @@ shard_shm_dump_appl_server (FILE * fp, int shmid)
 }
 
 T_APPL_SERVER_INFO *
-shard_shm_get_as_info (T_PROXY_INFO * proxy_info_p,
-		       T_SHM_APPL_SERVER * shm_as_p, int shard_id, int as_id)
+shard_shm_get_as_info (T_PROXY_INFO * proxy_info_p, T_SHM_APPL_SERVER * shm_as_p, int shard_id, int as_id)
 {
   T_SHARD_INFO *shard_info_p = NULL;
   T_APPL_SERVER_INFO *as_info_p = NULL;
@@ -761,18 +682,15 @@ shard_shm_get_as_info (T_PROXY_INFO * proxy_info_p,
 
   if (shard_info_p != NULL)
     {
-      as_info_p =
-	&shm_as_p->as_info[shard_info_p->as_info_index_base + as_id];
+      as_info_p = &shm_as_p->as_info[shard_info_p->as_info_index_base + as_id];
     }
 
   return as_info_p;
 }
 
 bool
-shard_shm_set_as_client_info (T_PROXY_INFO * proxy_info_p,
-			      T_SHM_APPL_SERVER * shm_as_p, int shard_id,
-			      int as_id, unsigned int ip_addr,
-			      char *driver_info, char *driver_version)
+shard_shm_set_as_client_info (T_PROXY_INFO * proxy_info_p, T_SHM_APPL_SERVER * shm_as_p, int shard_id, int as_id,
+			      unsigned int ip_addr, char *driver_info, char *driver_version)
 {
   T_APPL_SERVER_INFO *as_info_p = NULL;
 
@@ -782,8 +700,7 @@ shard_shm_set_as_client_info (T_PROXY_INFO * proxy_info_p,
       return false;
     }
 
-  memcpy (&as_info_p->cas_clt_ip[0], &ip_addr,
-	  sizeof (as_info_p->cas_clt_ip));
+  memcpy (&as_info_p->cas_clt_ip[0], &ip_addr, sizeof (as_info_p->cas_clt_ip));
   if (driver_info)
     {
       as_info_p->clt_version = CAS_MAKE_PROTO_VER (driver_info);
@@ -796,8 +713,7 @@ shard_shm_set_as_client_info (T_PROXY_INFO * proxy_info_p,
     }
   if (driver_version)
     {
-      memcpy (as_info_p->driver_version, driver_version,
-	      SRV_CON_VER_STR_MAX_SIZE);
+      memcpy (as_info_p->driver_version, driver_version, SRV_CON_VER_STR_MAX_SIZE);
     }
   else
     {
@@ -808,10 +724,8 @@ shard_shm_set_as_client_info (T_PROXY_INFO * proxy_info_p,
 }
 
 bool
-shard_shm_set_as_client_info_with_db_param (T_PROXY_INFO * proxy_info_p,
-					    T_SHM_APPL_SERVER * shm_as_p,
-					    int shard_id, int as_id,
-					    T_CLIENT_INFO * client_info_p)
+shard_shm_set_as_client_info_with_db_param (T_PROXY_INFO * proxy_info_p, T_SHM_APPL_SERVER * shm_as_p, int shard_id,
+					    int as_id, T_CLIENT_INFO * client_info_p)
 {
   T_APPL_SERVER_INFO *as_info_p = NULL;
 
@@ -821,22 +735,18 @@ shard_shm_set_as_client_info_with_db_param (T_PROXY_INFO * proxy_info_p,
       return false;
     }
 
-  memcpy (&as_info_p->cas_clt_ip[0], &client_info_p->client_ip,
-	  sizeof (as_info_p->cas_clt_ip));
+  memcpy (&as_info_p->cas_clt_ip[0], &client_info_p->client_ip, sizeof (as_info_p->cas_clt_ip));
   if (client_info_p->driver_info)
     {
-      as_info_p->clt_version =
-	CAS_MAKE_PROTO_VER (client_info_p->driver_info);
-      memcpy (as_info_p->driver_info, client_info_p->driver_info,
-	      SRV_CON_CLIENT_INFO_SIZE);
+      as_info_p->clt_version = CAS_MAKE_PROTO_VER (client_info_p->driver_info);
+      memcpy (as_info_p->driver_info, client_info_p->driver_info, SRV_CON_CLIENT_INFO_SIZE);
     }
   else
     {
       as_info_p->clt_version = 0;
       memset (as_info_p->driver_info, 0, SRV_CON_CLIENT_INFO_SIZE);
     }
-  memcpy (as_info_p->driver_version, client_info_p->driver_version,
-	  SRV_CON_VER_STR_MAX_SIZE);
+  memcpy (as_info_p->driver_version, client_info_p->driver_version, SRV_CON_VER_STR_MAX_SIZE);
 
   as_info_p->isolation_level = client_info_p->isolation_level;
   as_info_p->lock_timeout = client_info_p->lock_timeout;
@@ -873,8 +783,7 @@ shard_shm_init_client_info_request (T_CLIENT_INFO * client_info_p)
 }
 
 void
-shard_shm_set_client_info_request (T_CLIENT_INFO * client_info_p,
-				   int func_code)
+shard_shm_set_client_info_request (T_CLIENT_INFO * client_info_p, int func_code)
 {
   assert (client_info_p);
 
@@ -892,8 +801,7 @@ shard_shm_set_client_info_response (T_CLIENT_INFO * client_info_p)
 }
 
 static void
-shard_shm_init_key_stat (T_SHM_SHARD_KEY_STAT * key_stat_p,
-			 T_SHARD_KEY * shard_key)
+shard_shm_init_key_stat (T_SHM_SHARD_KEY_STAT * key_stat_p, T_SHARD_KEY * shard_key)
 {
   int i;
   assert (key_stat_p);
@@ -912,8 +820,7 @@ shard_shm_init_key_stat (T_SHM_SHARD_KEY_STAT * key_stat_p,
 }
 
 static void
-shard_shm_init_shard_stat (T_SHM_SHARD_CONN_STAT * shard_stat_p,
-			   T_SHARD_CONN * shard_conn)
+shard_shm_init_shard_stat (T_SHM_SHARD_CONN_STAT * shard_stat_p, T_SHARD_CONN * shard_conn)
 {
   assert (shard_stat_p);
   assert (shard_conn);
@@ -947,14 +854,12 @@ shard_shm_get_max_context (int max_num_appl_server)
       max_num_appl_server = 1;
     }
 
-  /*
+  /* 
    * In case, max_num_appl_server < max_num_shard,
    * shard's max_num_appl_server might be tuned.
    * so, we need to reserve enough RESERVED_FD.
    */
-  max_context =
-    (MAX_FD - PROXY_RESERVED_FD -
-     max_num_appl_server /* proxy/cas connection */ );
+  max_context = (MAX_FD - PROXY_RESERVED_FD - max_num_appl_server /* proxy/cas connection */ );
 
   return max_context;
 }

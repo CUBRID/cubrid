@@ -61,8 +61,7 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
       log_zip->log_data = (unsigned char *) malloc (buf_size);
       if (log_zip->log_data == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) buf_size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) buf_size);
 	}
       log_zip->buf_size = buf_size;
     }
@@ -77,15 +76,13 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
   /* save original data length */
   memcpy (log_zip->log_data, &length, sizeof (LOG_ZIP_SIZE_T));
 
-  rc = lzo1x_1_compress ((lzo_bytep) data,
-			 (lzo_uint) length,
-			 log_zip->log_data + sizeof (LOG_ZIP_SIZE_T),
-			 &zip_len, log_zip->wrkmem);
+  rc =
+    lzo1x_1_compress ((lzo_bytep) data, (lzo_uint) length, log_zip->log_data + sizeof (LOG_ZIP_SIZE_T), &zip_len,
+		      log_zip->wrkmem);
   if (rc == LZO_E_OK)
     {
       log_zip->data_length = zip_len + sizeof (LOG_ZIP_SIZE_T);
-      /* if the compressed data length >= orginal length,
-       * then it means that compression failed */
+      /* if the compressed data length >= orginal length, then it means that compression failed */
       if (log_zip->data_length < length)
 	{
 	  return true;
@@ -131,8 +128,7 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
       log_unzip->log_data = (unsigned char *) malloc (buf_size);
       if (log_unzip->log_data == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) buf_size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) buf_size);
 	}
       log_unzip->buf_size = buf_size;
     }
@@ -144,15 +140,14 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
       return false;
     }
 
-  rc = lzo1x_decompress_safe ((lzo_bytep) data + sizeof (LOG_ZIP_SIZE_T),
-			      (lzo_uint) length, log_unzip->log_data,
-			      &unzip_len, NULL);
+  rc =
+    lzo1x_decompress_safe ((lzo_bytep) data + sizeof (LOG_ZIP_SIZE_T), (lzo_uint) length, log_unzip->log_data,
+			   &unzip_len, NULL);
 
   if (rc == LZO_E_OK)
     {
       log_unzip->data_length = unzip_len;
-      /* if the uncompressed data length != original length,
-       * then it means that uncompression failed */
+      /* if the uncompressed data length != original length, then it means that uncompression failed */
       if (unzip_len == (lzo_uint) org_len)
 	{
 	  return true;
@@ -170,8 +165,7 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
  *   redo_data(in/out) redo log data; set as side effect
  */
 bool
-log_diff (LOG_ZIP_SIZE_T undo_length, const void *undo_data,
-	  LOG_ZIP_SIZE_T redo_length, void *redo_data)
+log_diff (LOG_ZIP_SIZE_T undo_length, const void *undo_data, LOG_ZIP_SIZE_T redo_length, void *redo_data)
 {
   LOG_ZIP_SIZE_T i, size;
   unsigned char *p, *q;
@@ -210,8 +204,7 @@ log_zip_alloc (LOG_ZIP_SIZE_T size, bool is_zip)
   log_zip = (LOG_ZIP *) malloc (sizeof (LOG_ZIP));
   if (log_zip == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (LOG_ZIP));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_ZIP));
 
       return NULL;
     }
@@ -221,8 +214,7 @@ log_zip_alloc (LOG_ZIP_SIZE_T size, bool is_zip)
   if (log_zip->log_data == NULL)
     {
       free_and_init (log_zip);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) buf_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) buf_size);
       return NULL;
     }
   log_zip->buf_size = buf_size;
@@ -235,8 +227,7 @@ log_zip_alloc (LOG_ZIP_SIZE_T size, bool is_zip)
 	{
 	  free_and_init (log_zip->log_data);
 	  free_and_init (log_zip);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) LZO1X_1_MEM_COMPRESS);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
 	  return NULL;
 	}
     }

@@ -198,26 +198,26 @@ typedef enum
 /* extension of PAGE_TYPE (storage_common.h) - keep value compatibility */
 typedef enum
 {
-  PERF_PAGE_UNKNOWN = 0,	/* used for initialized page            */
-  PERF_PAGE_FTAB,		/* file allocset table page             */
-  PERF_PAGE_HEAP,		/* heap page                            */
-  PERF_PAGE_VOLHEADER,		/* volume header page                   */
-  PERF_PAGE_VOLBITMAP,		/* volume bitmap page                   */
-  PERF_PAGE_XASL,		/* xasl stream page                     */
-  PERF_PAGE_QRESULT,		/* query result page                    */
-  PERF_PAGE_EHASH,		/* ehash bucket/dir page                */
-  PERF_PAGE_LARGEOBJ,		/* large object/dir page                */
-  PERF_PAGE_OVERFLOW,		/* overflow page (with ovf_keyval)      */
-  PERF_PAGE_AREA,		/* area page                            */
-  PERF_PAGE_CATALOG,		/* catalog page                         */
-  PERF_PAGE_BTREE_GENERIC,	/* b+tree index (uninitialized)         */
-  PERF_PAGE_LOG,		/* NONE - log page (unused)             */
-  PERF_PAGE_DROPPED_FILES,	/* Dropped files page.                  */
+  PERF_PAGE_UNKNOWN = 0,	/* used for initialized page */
+  PERF_PAGE_FTAB,		/* file allocset table page */
+  PERF_PAGE_HEAP,		/* heap page */
+  PERF_PAGE_VOLHEADER,		/* volume header page */
+  PERF_PAGE_VOLBITMAP,		/* volume bitmap page */
+  PERF_PAGE_XASL,		/* xasl stream page */
+  PERF_PAGE_QRESULT,		/* query result page */
+  PERF_PAGE_EHASH,		/* ehash bucket/dir page */
+  PERF_PAGE_LARGEOBJ,		/* large object/dir page */
+  PERF_PAGE_OVERFLOW,		/* overflow page (with ovf_keyval) */
+  PERF_PAGE_AREA,		/* area page */
+  PERF_PAGE_CATALOG,		/* catalog page */
+  PERF_PAGE_BTREE_GENERIC,	/* b+tree index (uninitialized) */
+  PERF_PAGE_LOG,		/* NONE - log page (unused) */
+  PERF_PAGE_DROPPED_FILES,	/* Dropped files page.  */
 #if defined(PERF_ENABLE_DETAILED_BTREE_PAGE_STAT)
-  PERF_PAGE_BTREE_ROOT,		/* b+tree root index page               */
-  PERF_PAGE_BTREE_OVF,		/* b+tree overflow index page           */
-  PERF_PAGE_BTREE_LEAF,		/* b+tree leaf index page               */
-  PERF_PAGE_BTREE_NONLEAF,	/* b+tree nonleaf index page            */
+  PERF_PAGE_BTREE_ROOT,		/* b+tree root index page */
+  PERF_PAGE_BTREE_OVF,		/* b+tree overflow index page */
+  PERF_PAGE_BTREE_LEAF,		/* b+tree leaf index page */
+  PERF_PAGE_BTREE_NONLEAF,	/* b+tree nonleaf index page */
 #endif /* PERF_ENABLE_DETAILED_BTREE_PAGE_STAT */
   PERF_PAGE_CNT
 } PERF_PAGE_TYPE;
@@ -401,9 +401,8 @@ struct mnt_server_exec_stats
   UINT64 lk_num_re_requested_on_objects;
   UINT64 lk_num_waited_on_pages;
   UINT64 lk_num_waited_on_objects;
-  UINT64 lk_num_waited_time_on_objects;	/* include this to avoid client-server
-					 * compat issue even if extended stats
-					 * are disabled */
+  UINT64 lk_num_waited_time_on_objects;	/* include this to avoid client-server compat issue even if extended stats are
+					 * disabled */
 
   /* Execution statistics for transactions */
   UINT64 tran_num_commits;
@@ -596,25 +595,20 @@ struct mnt_server_exec_stats
   UINT64 pb_hit_ratio;
   /* ((log_num_fetches - log_num_fetch_ioreads) x 100 / log_num_fetches) x 100 */
   UINT64 log_hit_ratio;
-  /* ((fetches of vacuum - fetches of vacuum not found in PB) x 100 /
-   * fetches of vacuum) x 100 */
+  /* ((fetches of vacuum - fetches of vacuum not found in PB) x 100 / fetches of vacuum) x 100 */
   UINT64 vacuum_data_hit_ratio;
-  /* (100 x Number of unfix with of dirty pages of vacuum / total num of unfixes
-   * from vacuum) x 100 */
+  /* (100 x Number of unfix with of dirty pages of vacuum / total num of unfixes from vacuum) x 100 */
   UINT64 pb_vacuum_efficiency;
   /* (100 x Number of unfix from vacuum / total num of unfix) x 100 */
   UINT64 pb_vacuum_fetch_ratio;
-  /* total time to acquire page lock (stored as 10 usec unit,
-   * displayed as miliseconds) */
+  /* total time to acquire page lock (stored as 10 usec unit, displayed as miliseconds) */
   UINT64 pb_page_lock_acquire_time_10usec;
-  /* total time to acquire page hold (stored as 10 usec unit,
-   * displayed as miliseconds) */
+  /* total time to acquire page hold (stored as 10 usec unit, displayed as miliseconds) */
   UINT64 pb_page_hold_acquire_time_10usec;
-  /* total time to acquire page fix (stored as 10 usec unit,
-   * displayed as miliseconds) */
+  /* total time to acquire page fix (stored as 10 usec unit, displayed as miliseconds) */
   UINT64 pb_page_fix_acquire_time_10usec;
-  /* ratio of time required to allocate a buffer for a page :
-   * (100 x (fix_time - lock_time - hold_time) / fix_time) x 100 */
+  /* ratio of time required to allocate a buffer for a page : (100 x (fix_time - lock_time - hold_time) / fix_time) x
+   * 100 */
   UINT64 pb_page_allocate_time_ratio;
   /* total successful promotions */
   UINT64 pb_page_promote_success;
@@ -624,8 +618,7 @@ struct mnt_server_exec_stats
   UINT64 pb_page_promote_total_time_10usec;
 
   /* array counters : do not include in MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS */
-  /* change MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS
-   * and MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS */
+  /* change MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS and MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS */
   UINT64 pbx_fix_counters[PERF_PAGE_FIX_COUNTERS];
   UINT64 pbx_promote_counters[PERF_PAGE_PROMOTE_COUNTERS];
   UINT64 pbx_promote_time_counters[PERF_PAGE_PROMOTE_COUNTERS];
@@ -641,8 +634,7 @@ struct mnt_server_exec_stats
   UINT64 log_oldest_mvcc_time_counters[PERF_MODULE_CNT];
   UINT64 log_oldest_mvcc_retry_counters[PERF_MODULE_CNT];
 
-  /* This must be kept as last member. Otherwise the
-   * MNT_SERVER_EXEC_STATS_SIZEOF macro must be modified */
+  /* This must be kept as last member. Otherwise the MNT_SERVER_EXEC_STATS_SIZEOF macro must be modified */
   bool enable_local_stat;	/* used for local stats */
 };
 
@@ -707,20 +699,14 @@ struct mnt_server_exec_stats
 #define MNT_SERVER_OLDEST_MVCC_RETRY_CNT_STAT_POSITION \
   (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 13)
 
-extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
-				   FILE * stream, const char *substr);
+extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream, const char *substr);
 
-extern void mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS *
-					     stats, char *buffer,
-					     int buf_size,
+extern void mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats, char *buffer, int buf_size,
 					     const char *substr);
 
-extern void mnt_get_current_times (time_t * cpu_usr_time,
-				   time_t * cpu_sys_time,
-				   time_t * elapsed_time);
+extern void mnt_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
 
-extern int mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
-				MNT_SERVER_EXEC_STATS * new_stats,
+extern int mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff, MNT_SERVER_EXEC_STATS * new_stats,
 				MNT_SERVER_EXEC_STATS * old_stats);
 
 #if defined(CS_MODE) || defined(SA_MODE)
@@ -743,8 +729,7 @@ extern int mnt_start_stats (bool for_all_trans);
 extern int mnt_stop_stats (void);
 extern void mnt_reset_stats (void);
 extern void mnt_print_stats (FILE * stream);
-extern void mnt_print_global_stats (FILE * stream, bool cumulative,
-				    const char *substr);
+extern void mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr);
 extern MNT_SERVER_EXEC_STATS *mnt_get_stats (void);
 extern MNT_SERVER_EXEC_STATS *mnt_get_global_stats (void);
 extern int mnt_get_global_diff_stats (MNT_SERVER_EXEC_STATS * diff_stats);
@@ -778,8 +763,7 @@ enum t_diag_value_settype
   DIAG_VAL_SETTYPE_SET
 };
 
-typedef int (*T_DO_FUNC) (int value, T_DIAG_VALUE_SETTYPE settype,
-			  char *err_buf);
+typedef int (*T_DO_FUNC) (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
 
 typedef struct t_diag_object_table T_DIAG_OBJECT_TABLE;
 struct t_diag_object_table
@@ -831,11 +815,9 @@ struct t_diag_object_table
 extern int diag_long_query_time;
 extern bool diag_executediag;
 
-extern bool init_diag_mgr (const char *server_name, int num_thread,
-			   char *err_buf);
+extern bool init_diag_mgr (const char *server_name, int num_thread, char *err_buf);
 extern void close_diag_mgr (void);
-extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value,
-			    T_DIAG_VALUE_SETTYPE settype, char *err_buf);
+extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
 #endif /* SERVER_MODE */
 #endif /* DIAG_DEVEL */
 
@@ -1419,8 +1401,7 @@ extern void mnt_x_pb_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_iowrites (THREAD_ENTRY * thread_p, int num_pages);
 extern void mnt_x_pb_victims (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_replacements (THREAD_ENTRY * thread_p);
-extern void mnt_x_pb_num_hash_anchor_waits (THREAD_ENTRY * thread_p,
-					    UINT64 time_amount);
+extern void mnt_x_pb_num_hash_anchor_waits (THREAD_ENTRY * thread_p, UINT64 time_amount);
 extern void mnt_x_log_fetches (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_fetch_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_ioreads (THREAD_ENTRY * thread_p);
@@ -1439,8 +1420,7 @@ extern void mnt_x_lk_re_requested_on_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_re_requested_on_objects (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_waited_on_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_waited_on_objects (THREAD_ENTRY * thread_p);
-extern void mnt_x_lk_waited_time_on_objects (THREAD_ENTRY * thread_p,
-					     int lock_mode, UINT64 amount);
+extern void mnt_x_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
 extern void mnt_x_tran_commits (THREAD_ENTRY * thread_p);
 extern void mnt_x_tran_rollbacks (THREAD_ENTRY * thread_p);
 extern void mnt_x_tran_savepoints (THREAD_ENTRY * thread_p);
@@ -1469,25 +1449,21 @@ extern void mnt_x_qm_methscans (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_nljoins (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_mjoins (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_objfetches (THREAD_ENTRY * thread_p);
-extern void mnt_x_qm_holdable_cursor (THREAD_ENTRY * thread_p,
-				      int num_cursors);
+extern void mnt_x_qm_holdable_cursor (THREAD_ENTRY * thread_p, int num_cursors);
 extern void mnt_x_sort_io_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_sort_data_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_net_requests (THREAD_ENTRY * thread_p);
 
-extern void mnt_x_prior_lsa_list_size (THREAD_ENTRY * thread_p,
-				       unsigned int list_size);
+extern void mnt_x_prior_lsa_list_size (THREAD_ENTRY * thread_p, unsigned int list_size);
 extern void mnt_x_prior_lsa_list_maxed (THREAD_ENTRY * thread_p);
 extern void mnt_x_prior_lsa_list_removed (THREAD_ENTRY * thread_p);
 
-extern void mnt_x_hf_stats_bestspace_entries (THREAD_ENTRY * thread_p,
-					      unsigned int num_entries);
+extern void mnt_x_hf_stats_bestspace_entries (THREAD_ENTRY * thread_p, unsigned int num_entries);
 extern void mnt_x_hf_stats_bestspace_maxed (THREAD_ENTRY * thread_p);
 
-extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
-			    unsigned int num_log_pages, unsigned int tokens);
-extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p,
-					 const char *stat_name);
+extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages, unsigned int num_log_pages,
+			    unsigned int tokens);
+extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name);
 extern void mnt_x_ha_repl_delay (THREAD_ENTRY * thread_p, int delay);
 
 extern UINT64 mnt_get_pb_fetches (THREAD_ENTRY * thread_p);
@@ -1502,54 +1478,35 @@ extern void mnt_x_pc_miss (THREAD_ENTRY * thread_p);
 extern void mnt_x_pc_full (THREAD_ENTRY * thread_p);
 extern void mnt_x_pc_delete (THREAD_ENTRY * thread_p);
 extern void mnt_x_pc_invalid_xasl_id (THREAD_ENTRY * thread_p);
-extern void mnt_x_pc_query_string_hash_entries (THREAD_ENTRY * thread_p,
-						unsigned int num_entries);
-extern void mnt_x_pc_xasl_id_hash_entries (THREAD_ENTRY * thread_p,
-					   unsigned int num_entries);
-extern void mnt_x_pc_class_oid_hash_entries (THREAD_ENTRY * thread_p,
-					     unsigned int num_entries);
+extern void mnt_x_pc_query_string_hash_entries (THREAD_ENTRY * thread_p, unsigned int num_entries);
+extern void mnt_x_pc_xasl_id_hash_entries (THREAD_ENTRY * thread_p, unsigned int num_entries);
+extern void mnt_x_pc_class_oid_hash_entries (THREAD_ENTRY * thread_p, unsigned int num_entries);
 
 extern void mnt_x_heap_stats_sync_bestspace (THREAD_ENTRY * thread_p);
 
-extern void mnt_x_vac_log_vacuumed_pages (THREAD_ENTRY * thread_p,
-					  unsigned int num_entries);
-extern void mnt_x_vac_log_to_vacuum_pages (THREAD_ENTRY * thread_p,
-					   unsigned int num_entries);
+extern void mnt_x_vac_log_vacuumed_pages (THREAD_ENTRY * thread_p, unsigned int num_entries);
+extern void mnt_x_vac_log_to_vacuum_pages (THREAD_ENTRY * thread_p, unsigned int num_entries);
 extern void mnt_x_vac_prefetch_log_requests_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_vac_prefetch_log_hits_pages (THREAD_ENTRY * thread_p);
-extern void mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type,
-			   int page_found_mode, int latch_mode,
-			   int cond_type);
-extern void mnt_x_pbx_promote (THREAD_ENTRY * thread_p, int page_type,
-			       int promote_cond, int holder_latch,
-			       int success, UINT64 amount);
-extern void mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type,
-			     int buf_dirty, int dirtied_by_holder,
+extern void mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode, int cond_type);
+extern void mnt_x_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int holder_latch, int success,
+			       UINT64 amount);
+extern void mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirtied_by_holder,
 			     int holder_latch);
-extern void mnt_x_pbx_lock_acquire_time (THREAD_ENTRY * thread_p,
-					 int page_type, int page_found_mode,
-					 int latch_mode, int cond_type,
+extern void mnt_x_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					 int cond_type, UINT64 amount);
+extern void mnt_x_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
 					 UINT64 amount);
-extern void mnt_x_pbx_hold_acquire_time (THREAD_ENTRY * thread_p,
-					 int page_type, int page_found_mode,
-					 int latch_mode, UINT64 amount);
-extern void mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p,
-					int page_type, int page_found_mode,
-					int latch_mode, int cond_type,
-					UINT64 amount);
+extern void mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
+					int cond_type, UINT64 amount);
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-extern void mnt_x_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot,
-				 int rec_type, int visibility);
+extern void mnt_x_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-extern void mnt_x_snapshot_acquire_time (THREAD_ENTRY * thread_p,
-					 UINT64 amount);
-extern void mnt_x_snapshot_retry_counters (THREAD_ENTRY * thread_p,
-					   UINT64 amount);
+extern void mnt_x_snapshot_acquire_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_snapshot_retry_counters (THREAD_ENTRY * thread_p, UINT64 amount);
 extern void mnt_x_tran_complete_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_oldest_mvcc_acquire_time (THREAD_ENTRY * thread_p,
-					    UINT64 amount);
-extern void mnt_x_oldest_mvcc_retry_counters (THREAD_ENTRY * thread_p,
-					      UINT64 amount);
+extern void mnt_x_oldest_mvcc_acquire_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_oldest_mvcc_retry_counters (THREAD_ENTRY * thread_p, UINT64 amount);
 
 
 
@@ -1583,98 +1540,57 @@ extern void mnt_x_heap_insid_vacuums (THREAD_ENTRY * thread_p);
 extern void mnt_x_heap_remove_vacuums (THREAD_ENTRY * thread_p);
 extern void mnt_x_heap_next_ver_vacuums (THREAD_ENTRY * thread_p);
 
-extern void mnt_x_heap_insert_prepare_time (THREAD_ENTRY * thread_p,
-					    UINT64 amount);
-extern void mnt_x_heap_insert_execute_time (THREAD_ENTRY * thread_p,
-					    UINT64 amount);
-extern void mnt_x_heap_insert_log_time (THREAD_ENTRY * thread_p,
-					UINT64 amount);
-extern void mnt_x_heap_delete_prepare_time (THREAD_ENTRY * thread_p,
-					    UINT64 amount);
-extern void mnt_x_heap_delete_execute_time (THREAD_ENTRY * thread_p,
-					    UINT64 amount);
-extern void mnt_x_heap_delete_log_time (THREAD_ENTRY * thread_p,
-					UINT64 amount);
-extern void mnt_x_heap_update_prepare_time (THREAD_ENTRY * thread_p,
-					    UINT64 amount);
-extern void mnt_x_heap_update_execute_time (THREAD_ENTRY * thread_p,
-					    UINT64 amount);
-extern void mnt_x_heap_update_log_time (THREAD_ENTRY * thread_p,
-					UINT64 amount);
-extern void mnt_x_heap_vacuum_prepare_time (THREAD_ENTRY * thread_p,
-					    UINT64 amount);
-extern void mnt_x_heap_vacuum_execute_time (THREAD_ENTRY * thread_p,
-					    UINT64 amount);
-extern void mnt_x_heap_vacuum_log_time (THREAD_ENTRY * thread_p,
-					UINT64 amount);
+extern void mnt_x_heap_insert_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_heap_insert_execute_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_heap_insert_log_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_heap_delete_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_heap_delete_execute_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_heap_delete_log_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_heap_update_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_heap_update_execute_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_heap_update_log_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_heap_vacuum_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_heap_vacuum_execute_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_heap_vacuum_log_time (THREAD_ENTRY * thread_p, UINT64 amount);
 
-extern void mnt_x_bt_find_unique_time (THREAD_ENTRY * thread_p,
-				       UINT64 amount);
-extern void mnt_x_bt_range_search_time (THREAD_ENTRY * thread_p,
-					UINT64 amount);
+extern void mnt_x_bt_find_unique_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_range_search_time (THREAD_ENTRY * thread_p, UINT64 amount);
 extern void mnt_x_bt_insert_time (THREAD_ENTRY * thread_p, UINT64 amount);
 extern void mnt_x_bt_delete_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_mvcc_delete_time (THREAD_ENTRY * thread_p,
-				       UINT64 amount);
-extern void mnt_x_bt_mark_delete_time (THREAD_ENTRY * thread_p,
-				       UINT64 amount);
+extern void mnt_x_bt_mvcc_delete_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_mark_delete_time (THREAD_ENTRY * thread_p, UINT64 amount);
 extern void mnt_x_bt_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_undo_insert_time (THREAD_ENTRY * thread_p,
-				       UINT64 amount);
-extern void mnt_x_bt_undo_delete_time (THREAD_ENTRY * thread_p,
-				       UINT64 amount);
-extern void mnt_x_bt_undo_mvcc_delete_time (THREAD_ENTRY * thread_p,
-					    UINT64 amount);
-extern void mnt_x_bt_undo_update_sk_time (THREAD_ENTRY * thread_p,
-					  UINT64 amount);
+extern void mnt_x_bt_undo_insert_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_undo_delete_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_undo_mvcc_delete_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_undo_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount);
 extern void mnt_x_bt_vacuum_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_vacuum_insid_time (THREAD_ENTRY * thread_p,
-					UINT64 amount);
-extern void mnt_x_bt_vacuum_update_sk_time (THREAD_ENTRY * thread_p,
-					    UINT64 amount);
+extern void mnt_x_bt_vacuum_insid_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_vacuum_update_sk_time (THREAD_ENTRY * thread_p, UINT64 amount);
 
 extern void mnt_x_bt_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_bt_find_unique_traverse_time (THREAD_ENTRY * thread_p,
-						UINT64 amount);
-extern void mnt_x_bt_range_search_traverse_time (THREAD_ENTRY * thread_p,
-						 UINT64 amount);
-extern void mnt_x_bt_insert_traverse_time (THREAD_ENTRY * thread_p,
-					   UINT64 amount);
-extern void mnt_x_bt_delete_traverse_time (THREAD_ENTRY * thread_p,
-					   UINT64 amount);
-extern void mnt_x_bt_mvcc_delete_traverse_time (THREAD_ENTRY * thread_p,
-						UINT64 amount);
-extern void mnt_x_bt_mark_delete_traverse_time (THREAD_ENTRY * thread_p,
-						UINT64 amount);
-extern void mnt_x_bt_update_sk_traverse_time (THREAD_ENTRY * thread_p,
-					      UINT64 amount);
-extern void mnt_x_bt_undo_insert_traverse_time (THREAD_ENTRY * thread_p,
-						UINT64 amount);
-extern void mnt_x_bt_undo_delete_traverse_time (THREAD_ENTRY * thread_p,
-						UINT64 amount);
-extern void mnt_x_bt_undo_mvcc_delete_traverse_time (THREAD_ENTRY * thread_p,
-						     UINT64 amount);
-extern void mnt_x_bt_undo_update_sk_traverse_time (THREAD_ENTRY * thread_p,
-						   UINT64 amount);
-extern void mnt_x_bt_vacuum_traverse_time (THREAD_ENTRY * thread_p,
-					   UINT64 amount);
-extern void mnt_x_bt_vacuum_insid_traverse_time (THREAD_ENTRY * thread_p,
-						 UINT64 amount);
-extern void mnt_x_bt_vacuum_update_sk_traverse_time (THREAD_ENTRY * thread_p,
-						     UINT64 amount);
+extern void mnt_x_bt_find_unique_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_range_search_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_insert_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_mvcc_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_mark_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_update_sk_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_undo_insert_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_undo_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_undo_mvcc_delete_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_undo_update_sk_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_vacuum_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_vacuum_insid_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_vacuum_update_sk_traverse_time (THREAD_ENTRY * thread_p, UINT64 amount);
 
-extern void mnt_x_bt_fix_ovf_oids_time (THREAD_ENTRY * thread_p,
-					UINT64 amount);
-extern void mnt_x_bt_unique_rlocks_time (THREAD_ENTRY * thread_p,
-					 UINT64 amount);
-extern void mnt_x_bt_unique_wlocks_time (THREAD_ENTRY * thread_p,
-					 UINT64 amount);
+extern void mnt_x_bt_fix_ovf_oids_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_unique_rlocks_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_bt_unique_wlocks_time (THREAD_ENTRY * thread_p, UINT64 amount);
 
 extern void mnt_x_vac_master_time (THREAD_ENTRY * thread_p, UINT64 amount);
-extern void mnt_x_vac_worker_process_log_time (THREAD_ENTRY * thread_p,
-					       UINT64 amount);
-extern void mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p,
-					   UINT64 amount);
+extern void mnt_x_vac_worker_process_log_time (THREAD_ENTRY * thread_p, UINT64 amount);
+extern void mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p, UINT64 amount);
 
 #else /* SERVER_MODE || SA_MODE */
 

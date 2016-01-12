@@ -60,7 +60,7 @@ enum vid_info_flag
 typedef union vid_oid VID_OID;
 union vid_oid
 {
-  VID_INFO *vid_info;		/* Matches OID slot and volume                  */
+  VID_INFO *vid_info;		/* Matches OID slot and volume */
   OID oid;			/* physical oid */
 };
 
@@ -118,42 +118,28 @@ struct db_object
 
   VID_OID oid_info;		/* local copy of the OID or VID pointer */
   struct db_object *class_mop;	/* pointer to class mop */
-  /* Do not ever set this to NULL without
-   * removing object from class link.
-   */
+  /* Do not ever set this to NULL without removing object from class link. */
   void *object;			/* pointer to attribute values */
 
   struct db_object *class_link;	/* link for class instances list */
-  /* Careful whenever looping through object
-   * using class_link to save it and
-   * advance using this saved class link if
-   * the current mop can be removed from class.
-   */
+  /* Careful whenever looping through object using class_link to save it and advance using this saved class link if the 
+   * current mop can be removed from class. */
   struct db_object *dirty_link;	/* link for dirty list */
   struct db_object *hash_link;	/* link for workspace hash table */
-  /* Careful whenever looping through objects
-   * using hash_link to save it and advance
-   * using this saved hash link if the current
-   * mop can be removed or relocated in hash
-   * table.
-   */
+  /* Careful whenever looping through objects using hash_link to save it and advance using this saved hash link if the
+   * current mop can be removed or relocated in hash table. */
   struct db_object *commit_link;	/* link for obj to be reset at commit/abort */
-  struct db_object *mvcc_link;	/* Used by MVCC to link mops for different
-				 * object versions.
-				 */
+  struct db_object *mvcc_link;	/* Used by MVCC to link mops for different object versions. */
   WS_VALUE_LIST *label_value_list;	/* label value list */
   void *version;		/* versioning information */
   LOCK lock;			/* object lock */
-  int mvcc_snapshot_version;	/* The snapshot version at the time mop object
-				 * is fetched and cached. Used only when MVCC
-				 * is enabled.
-				 */
+  int mvcc_snapshot_version;	/* The snapshot version at the time mop object is fetched and cached. Used only when
+				 * MVCC is enabled. */
 
-  unsigned char pruning_type;	/* no pruning, prune as partitioned class,
-				 * prune as partition */
+  unsigned char pruning_type;	/* no pruning, prune as partitioned class, prune as partition */
   unsigned char composition_fetch;	/* set the left-most bit if this MOP */
-  /* has been composition fetched and  */
-  /* set the prune level into the      */
+  /* has been composition fetched and */
+  /* set the prune level into the */
   /* right-most 7 bits */
 
   unsigned dirty:1;		/* dirty flag */
@@ -164,15 +150,12 @@ struct db_object
   unsigned is_vid:1;		/* set if oid is vid */
   unsigned is_set:1;		/* temporary kludge for disconnected sets */
   unsigned is_temp:1;		/* set if template MOP (for triggers) */
-  unsigned released:1;		/* set by code that knows that an instance can be released, used currently by the loader only */
+  unsigned released:1;		/* set by code that knows that an instance can be released, used currently by the
+				 * loader only */
   unsigned decached:1;		/* set if mop is decached by calling ws_decache function */
-  unsigned permanent_mvcc_link:1;	/* is set to true when new MVCC version is
-					 * committed. Updates done by current
-					 * transaction may be reverted, therefore
-					 * the mvcc link is not permanent. On
-					 * rollback, mvcc link is removed. On
-					 * commit mvcc link is made permanent.
-					 */
+  unsigned permanent_mvcc_link:1;	/* is set to true when new MVCC version is committed. Updates done by current
+					 * transaction may be reverted, therefore the mvcc link is not permanent. On
+					 * rollback, mvcc link is removed. On commit mvcc link is made permanent. */
 };
 
 
@@ -550,21 +533,18 @@ extern void ws_area_final (void);
 /* MOP allocation functions */
 extern MOP ws_mop (OID * oid, MOP class_mop);
 extern MOP ws_mop_if_exists (OID * oid);
-extern MOP ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop,
-				bool updated_by_me);
+extern MOP ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop, bool updated_by_me);
 extern MOP ws_vmop (MOP class_mop, int flags, DB_VALUE * keys);
 extern bool ws_rehash_vmop (MOP mop, MOBJ class_obj, DB_VALUE * newkey);
 extern MOP ws_new_mop (OID * oid, MOP class_mop);
 extern void ws_update_oid (MOP mop, OID * newoid);
-extern int ws_update_oid_and_class (MOP mop, OID * new_oid,
-				    OID * new_class_oid);
+extern int ws_update_oid_and_class (MOP mop, OID * new_oid, OID * new_class_oid);
 extern DB_VALUE *ws_keys (MOP vid, unsigned int *flags);
 
 /* Reference mops */
 
 /* so we don't have to include or.h in wspace.c, might have to anyway */
-extern MOP ws_find_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj,
-				  WS_REFCOLLECTOR collector);
+extern MOP ws_find_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj, WS_REFCOLLECTOR collector);
 extern void ws_set_reference_mop_owner (MOP refmop, MOP owner, int attid);
 
 /* Set mops */
@@ -608,8 +588,7 @@ extern void ws_vid_clear (void);
 
 /* Class name cache */
 extern MOP ws_find_class (const char *name);
-extern void ws_add_classname (MOBJ classobj, MOP classmop,
-			      const char *cl_name);
+extern void ws_add_classname (MOBJ classobj, MOP classmop, const char *cl_name);
 extern void ws_drop_classname (MOBJ classobj);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void ws_reset_classname_cache (void);
@@ -617,8 +596,7 @@ extern void ws_reset_classname_cache (void);
 
 /* MOP accessor functions */
 extern OID *ws_identifier (MOP mop);
-extern OID *ws_identifier_with_check (MOP mop,
-				      const bool check_non_referable);
+extern OID *ws_identifier_with_check (MOP mop, const bool check_non_referable);
 extern OID *ws_oid (MOP mop);
 extern MOP ws_class_mop (MOP mop);
 extern int ws_chn (MOBJ obj);
@@ -724,18 +702,12 @@ extern DB_LIST *ws_list_nconc (DB_LIST * list1, DB_LIST * list2);
  */
 typedef DB_C_INT (*NLSEARCHER) (const void *, const void *);
 
-extern DB_NAMELIST *nlist_find (DB_NAMELIST * list, const char *name,
-				NLSEARCHER fcn);
-extern DB_NAMELIST *nlist_remove (DB_NAMELIST ** list, const char *name,
-				  NLSEARCHER fcn);
-extern int nlist_add (DB_NAMELIST ** list, const char *name,
-		      NLSEARCHER fcn, int *added);
-extern int nlist_append (DB_NAMELIST ** list, const char *name,
-			 NLSEARCHER fcn, int *added);
-extern int nlist_find_or_append (DB_NAMELIST ** list, const char *name,
-				 NLSEARCHER fcn, int *position);
-extern DB_NAMELIST *nlist_filter (DB_NAMELIST ** root, const char *name,
-				  NLSEARCHER fcn);
+extern DB_NAMELIST *nlist_find (DB_NAMELIST * list, const char *name, NLSEARCHER fcn);
+extern DB_NAMELIST *nlist_remove (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn);
+extern int nlist_add (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn, int *added);
+extern int nlist_append (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn, int *added);
+extern int nlist_find_or_append (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn, int *position);
+extern DB_NAMELIST *nlist_filter (DB_NAMELIST ** root, const char *name, NLSEARCHER fcn);
 extern DB_NAMELIST *nlist_copy (DB_NAMELIST * list);
 extern void nlist_free (DB_NAMELIST * list);
 
@@ -779,19 +751,15 @@ extern void ws_unhide_new_old_trigger_obj (MOP op);
 
 extern bool ws_need_flush (void);
 
-extern int ws_set_ignore_error_list_for_mflush (int error_count,
-						int *error_list);
+extern int ws_set_ignore_error_list_for_mflush (int error_count, int *error_list);
 
-extern int ws_add_to_repl_obj_list (OID * class_oid, DB_VALUE * key,
-				    RECDES * recdes, int operation,
-				    bool has_index);
+extern int ws_add_to_repl_obj_list (OID * class_oid, DB_VALUE * key, RECDES * recdes, int operation, bool has_index);
 extern void ws_init_repl_objs (void);
 extern void ws_clear_all_repl_objs (void);
 extern void ws_free_repl_obj (WS_REPL_OBJ * obj);
 extern WS_REPL_OBJ *ws_get_repl_obj_from_list (void);
 
-extern void ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj,
-					       char *content_ptr);
+extern void ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr);
 
 extern WS_REPL_FLUSH_ERR *ws_get_repl_error_from_error_link (void);
 extern void ws_clear_all_repl_errors_of_error_link (void);

@@ -71,35 +71,26 @@ struct object_resultset_pool_s
 
 /* result set meta api */
 static int rm_api_get_count (API_RESULTSET_META * impl, int *count);
-static int rm_api_get_info (API_RESULTSET_META * impl, int index,
-			    CI_RMETA_INFO_TYPE type, void *arg, size_t size);
+static int rm_api_get_info (API_RESULTSET_META * impl, int index, CI_RMETA_INFO_TYPE type, void *arg, size_t size);
 static void or_rm_bind_destroyf (BH_BIND * bind);
-static int
-or_rm_bind_create (OBJECT_RESULTSET * or, OBJECT_RM_BIND ** rrm_bind);
+static int or_rm_bind_create (OBJECT_RESULTSET * or, OBJECT_RM_BIND ** rrm_bind);
 static void or_rm_bind_destroy (OBJECT_RM_BIND * rm_bind);
 
 /* result set api */
-static int res_api_get_resultset_metadata (API_RESULTSET * impl,
-					   API_RESULTSET_META ** rimpl);
-static int res_api_fetch (API_RESULTSET * impl, int offset,
-			  CI_FETCH_POSITION pos);
+static int res_api_get_resultset_metadata (API_RESULTSET * impl, API_RESULTSET_META ** rimpl);
+static int res_api_fetch (API_RESULTSET * impl, int offset, CI_FETCH_POSITION pos);
 static int res_api_tell (API_RESULTSET * impl, int *offset);
 static int res_api_clear_updates (API_RESULTSET * impl);
 static int res_api_delete_row (API_RESULTSET * impl);
-static int res_api_get_value (API_RESULTSET * impl, int index,
-			      CI_TYPE type, void *addr, size_t len,
-			      size_t * outlen, bool * is_null);
-static int res_api_get_value_by_name (API_RESULTSET * impl,
-				      const char *name, CI_TYPE type,
-				      void *addr, size_t len,
+static int res_api_get_value (API_RESULTSET * impl, int index, CI_TYPE type, void *addr, size_t len, size_t * outlen,
+			      bool * is_null);
+static int res_api_get_value_by_name (API_RESULTSET * impl, const char *name, CI_TYPE type, void *addr, size_t len,
 				      size_t * outlen, bool * isnull);
-static int res_api_update_value (API_RESULTSET * impl, int index,
-				 CI_TYPE type, void *addr, size_t len);
+static int res_api_update_value (API_RESULTSET * impl, int index, CI_TYPE type, void *addr, size_t len);
 static int res_api_apply_update (API_RESULTSET * impl);
 static void res_api_destroy (API_RESULTSET * impl);
 static void or_res_bind_destroyf (BH_BIND * bind);
-static int or_res_bind_create (OBJECT_RESULTSET * or,
-			       OBJECT_RES_BIND ** rres_bind);
+static int or_res_bind_create (OBJECT_RESULTSET * or, OBJECT_RES_BIND ** rres_bind);
 static void or_res_bind_destroy (OBJECT_RES_BIND * res_bind);
 
 /* value bind table interface */
@@ -109,20 +100,15 @@ static int vt_api_set_db_value (void *impl, int index, DB_VALUE * dbval);
 static int vt_api_init_domain (void *impl, int index, DB_VALUE * value);
 /* object resultset */
 static void or_destroy (OBJECT_RESULTSET * or);
-static int or_create (OID * oid, BIND_HANDLE conn, BH_INTERFACE * bh_ifs,
-		      OBJECT_RESULTSET ** ror);
+static int or_create (OID * oid, BIND_HANDLE conn, BH_INTERFACE * bh_ifs, OBJECT_RESULTSET ** ror);
 
 /* object result set pool */
 static int orp_ht_comparef (void *key1, void *key2, int *r);
 static int orp_ht_hashf (void *key, unsigned int *rv);
 static int orp_ht_keyf (void *elem, void **rk);
-static int orp_api_get_object_resultset (API_OBJECT_RESULTSET_POOL *
-					 pool, CI_OID * oid,
-					 API_RESULTSET ** rref);
+static int orp_api_get_object_resultset (API_OBJECT_RESULTSET_POOL * pool, CI_OID * oid, API_RESULTSET ** rref);
 static int orp_oid_delete (API_OBJECT_RESULTSET_POOL * pool, CI_OID * oid);
-static int
-orp_oid_get_classname (API_OBJECT_RESULTSET_POOL * pool, CI_OID * xoid,
-		       char *name, size_t size);
+static int orp_oid_get_classname (API_OBJECT_RESULTSET_POOL * pool, CI_OID * xoid, char *name, size_t size);
 static void orp_api_destroy (API_OBJECT_RESULTSET_POOL * pool);
 
 
@@ -154,8 +140,7 @@ rm_api_get_count (API_RESULTSET_META * impl, int *count)
  *    size():
  */
 static int
-rm_api_get_info (API_RESULTSET_META * impl, int index,
-		 CI_RMETA_INFO_TYPE type, void *arg, size_t size)
+rm_api_get_info (API_RESULTSET_META * impl, int index, CI_RMETA_INFO_TYPE type, void *arg, size_t size)
 {
   OBJECT_RESULTSET *or;
   DB_ATTRIBUTE *attr;
@@ -377,8 +362,7 @@ or_rm_bind_destroy (OBJECT_RM_BIND * rm_bind)
  *    rimpl():
  */
 static int
-res_api_get_resultset_metadata (API_RESULTSET * impl,
-				API_RESULTSET_META ** rimpl)
+res_api_get_resultset_metadata (API_RESULTSET * impl, API_RESULTSET_META ** rimpl)
 {
   OBJECT_RESULTSET *or;
   assert (impl != NULL);
@@ -489,8 +473,8 @@ res_api_delete_row (API_RESULTSET * impl)
  *    is_null():
  */
 static int
-res_api_get_value (API_RESULTSET * impl, int index, CI_TYPE type,
-		   void *addr, size_t len, size_t * outlen, bool * is_null)
+res_api_get_value (API_RESULTSET * impl, int index, CI_TYPE type, void *addr, size_t len, size_t * outlen,
+		   bool * is_null)
 {
   OBJECT_RESULTSET *or;
   int res;
@@ -505,8 +489,7 @@ res_api_get_value (API_RESULTSET * impl, int index, CI_TYPE type,
     return ER_INTERFACE_INVALID_ARGUMENT;
   if (or->deleted)
     return ER_INTERFACE_GENERIC;	/* value table deleted */
-  res =
-    or->vt->ifs->get_value (or->vt, index, type, addr, len, outlen, is_null);
+  res = or->vt->ifs->get_value (or->vt, index, type, addr, len, outlen, is_null);
   return res;
 }
 
@@ -522,8 +505,7 @@ res_api_get_value (API_RESULTSET * impl, int index, CI_TYPE type,
  *    isnull():
  */
 static int
-res_api_get_value_by_name (API_RESULTSET * impl, const char *name,
-			   CI_TYPE type, void *addr, size_t len,
+res_api_get_value_by_name (API_RESULTSET * impl, const char *name, CI_TYPE type, void *addr, size_t len,
 			   size_t * outlen, bool * isnull)
 {
   OBJECT_RESULTSET *or;
@@ -535,9 +517,7 @@ res_api_get_value_by_name (API_RESULTSET * impl, const char *name,
     return ER_INTERFACE_INVALID_ARGUMENT;
   if (or->deleted)
     return ER_INTERFACE_GENERIC;	/* value table deleted */
-  res =
-    or->vt->ifs->get_value_by_name (or->vt, name, type, addr, len, outlen,
-				    isnull);
+  res = or->vt->ifs->get_value_by_name (or->vt, name, type, addr, len, outlen, isnull);
   return res;
 }
 
@@ -551,8 +531,7 @@ res_api_get_value_by_name (API_RESULTSET * impl, const char *name,
  *    len():
  */
 static int
-res_api_update_value (API_RESULTSET * impl, int index,
-		      CI_TYPE type, void *addr, size_t len)
+res_api_update_value (API_RESULTSET * impl, int index, CI_TYPE type, void *addr, size_t len)
 {
   OBJECT_RESULTSET *or;
   int res;
@@ -787,8 +766,7 @@ or_destroy (OBJECT_RESULTSET * or)
   assert (or != NULL);
   assert (or->res_bind != NULL);
   assert (or->rm_bind != NULL);
-  res =
-    or->bh_ifs->bind_to_handle (or->bh_ifs, (BH_BIND *) or->res_bind, &res_h);
+  res = or->bh_ifs->bind_to_handle (or->bh_ifs, (BH_BIND *) or->res_bind, &res_h);
   assert (res == NO_ERROR);
   res = or->bh_ifs->destroy_handle (or->bh_ifs, res_h);
   assert (res == NO_ERROR);
@@ -814,8 +792,7 @@ or_destroy (OBJECT_RESULTSET * or)
  *    ror():
  */
 static int
-or_create (OID * oid, BIND_HANDLE conn, BH_INTERFACE * bh_ifs,
-	   OBJECT_RESULTSET ** ror)
+or_create (OID * oid, BIND_HANDLE conn, BH_INTERFACE * bh_ifs, OBJECT_RESULTSET ** ror)
 {
   OBJECT_RESULTSET *or;
   int res = NO_ERROR;
@@ -862,9 +839,7 @@ or_create (OID * oid, BIND_HANDLE conn, BH_INTERFACE * bh_ifs,
       API_FREE (or);
       return res;
     }
-  res =
-    bh_ifs->bind_graft (bh_ifs, (BH_BIND *) or->rm_bind,
-			(BH_BIND *) or->res_bind);
+  res = bh_ifs->bind_graft (bh_ifs, (BH_BIND *) or->rm_bind, (BH_BIND *) or->res_bind);
   if (res != NO_ERROR)
     {
       bh_ifs->destroy_handle (bh_ifs, res_h);
@@ -922,11 +897,9 @@ or_create (OID * oid, BIND_HANDLE conn, BH_INTERFACE * bh_ifs,
 	  i++;
 	}
       or->conn = conn;
-      res = create_db_value_bind_table (i, or, 0, conn,
-					vt_api_get_index_by_name,
-					vt_api_get_db_value,
-					vt_api_set_db_value,
-					vt_api_init_domain, &or->vt);
+      res =
+	create_db_value_bind_table (i, or, 0, conn, vt_api_get_index_by_name, vt_api_get_db_value, vt_api_set_db_value,
+				    vt_api_init_domain, &or->vt);
       if (res != NO_ERROR)
 	{
 	  or_destroy (or);
@@ -999,8 +972,7 @@ orp_ht_keyf (void *elem, void **rk)
  *    rref():
  */
 static int
-orp_api_get_object_resultset (API_OBJECT_RESULTSET_POOL * pool,
-			      CI_OID * xoid, API_RESULTSET ** rref)
+orp_api_get_object_resultset (API_OBJECT_RESULTSET_POOL * pool, CI_OID * xoid, API_RESULTSET ** rref)
 {
   OBJECT_RESULTSET_POOL *p;
   void *r;
@@ -1074,8 +1046,7 @@ orp_oid_delete (API_OBJECT_RESULTSET_POOL * pool, CI_OID * xoid)
  *    size():
  */
 static int
-orp_oid_get_classname (API_OBJECT_RESULTSET_POOL * pool, CI_OID * xoid,
-		       char *name, size_t size)
+orp_oid_get_classname (API_OBJECT_RESULTSET_POOL * pool, CI_OID * xoid, char *name, size_t size)
 {
   OBJECT_RESULTSET_POOL *p;
   OID oid;
@@ -1186,8 +1157,7 @@ apif_last_pos (DB_OBJECT * obj, int *pos)
  *    rpool():
  */
 int
-api_object_resultset_pool_create (BH_INTERFACE * ifs, BIND_HANDLE conn,
-				  API_OBJECT_RESULTSET_POOL ** rpool)
+api_object_resultset_pool_create (BH_INTERFACE * ifs, BIND_HANDLE conn, API_OBJECT_RESULTSET_POOL ** rpool)
 {
   OBJECT_RESULTSET_POOL *pool;
   hash_table *ht;

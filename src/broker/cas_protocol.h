@@ -198,10 +198,8 @@ extern "C"
     CAS_FC_GET_SHARD_INFO = 43,
     CAS_FC_CAS_CHANGE_MODE = 44,
 
-    /* Whenever you want to introduce a new function code,
-     * you must add a corresponding function entry to server_fn_table
-     * of both CUBRID and (MySQL, Oracle).
-     */
+    /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
+     * server_fn_table of both CUBRID and (MySQL, Oracle). */
     CAS_FC_MAX,
 
     /* function code list of protocol version V2 - 9.0.0.xxxx */
@@ -350,9 +348,7 @@ extern "C"
   extern void cas_bi_set_renewed_error_code (const bool renewed_error_code);
   extern bool cas_bi_get_renewed_error_code (void);
   extern bool cas_di_understand_renewed_error_code (const char *driver_info);
-  extern void cas_bi_make_broker_info (char *broker_info, char dbms_type,
-				       char statement_pooling,
-				       char cci_pconnect);
+  extern void cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooling, char cci_pconnect);
 #ifdef __cplusplus
 }
 #endif

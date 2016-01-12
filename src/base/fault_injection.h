@@ -84,9 +84,7 @@ typedef enum
 #define FI_INIT_STATE 0
 
 
-typedef int (*FI_HANDLER_FUNC) (THREAD_ENTRY * thread_p, void *arg,
-				const char *caller_file,
-				const int caller_line);
+typedef int (*FI_HANDLER_FUNC) (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 
 typedef struct fi_test_item FI_TEST_ITEM;
 struct fi_test_item
@@ -99,11 +97,9 @@ struct fi_test_item
 extern int fi_thread_init (THREAD_ENTRY * thread_p);
 extern int fi_thread_final (THREAD_ENTRY * thread_p);
 extern int fi_set (THREAD_ENTRY * thread_p, FI_TEST_CODE code, int state);
-extern int fi_set_force (THREAD_ENTRY * thread_p, FI_TEST_CODE code,
-			 int state);
+extern int fi_set_force (THREAD_ENTRY * thread_p, FI_TEST_CODE code, int state);
 extern void fi_reset (THREAD_ENTRY * thread_p, FI_TEST_CODE code);
-extern int fi_test (THREAD_ENTRY * thread_p, FI_TEST_CODE code, void *arg,
-		    int state, const char *caller_file,
+extern int fi_test (THREAD_ENTRY * thread_p, FI_TEST_CODE code, void *arg, int state, const char *caller_file,
 		    const int caller_line);
 extern int fi_state (THREAD_ENTRY * thread_p, FI_TEST_CODE code);
 extern bool fi_test_on (FI_TEST_CODE code);

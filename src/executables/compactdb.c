@@ -59,8 +59,7 @@ static RECDES *Diskrec = NULL;
 
 static int compactdb_start (bool verbose_flag);
 static void process_class (DB_OBJECT * class_, bool verbose_flag);
-static void process_object (DESC_OBJ * desc_obj, OID * obj_oid,
-			    bool verbose_flag);
+static void process_object (DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag);
 static int process_set (DB_SET * set);
 static int process_value (DB_VALUE * value);
 static DB_OBJECT *is_class (OID * obj_oid, OID * class_oid);
@@ -85,8 +84,7 @@ compact_usage (const char *argv0)
 
   exec_name = basename ((char *) argv0);
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-  printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			  MSGCAT_UTIL_SET_COMPACTDB, 60), exec_name);
+  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, 60), exec_name);
 }
 
 /*
@@ -104,12 +102,10 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   bool verbose_flag = 0;
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   verbose_flag = utility_get_option_bool_value (arg_map, COMPACT_VERBOSE_S);
 
-  if (database_name == NULL || database_name[0] == '\0'
-      || utility_get_option_string_table_size (arg_map) != 1)
+  if (database_name == NULL || database_name[0] == '\0' || utility_get_option_string_table_size (arg_map) != 1)
     {
       compact_usage (arg->argv0);
       return ER_GENERIC_ERROR;
@@ -119,8 +115,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  if ((error = db_login ("DBA", NULL))
-      || (error = db_restart (arg->argv0, TRUE, database_name)))
+  if ((error = db_login ("DBA", NULL)) || (error = db_restart (arg->argv0, TRUE, database_name)))
     {
       PRINT_AND_LOG_ERR_MSG ("%s: %s.\n\n", exec_name, db_error_string (3));
       status = error;
@@ -156,14 +151,13 @@ compactdb_start (bool verbose_flag)
   int status = 0;
   bool reclaim_mvcc_next_versions = false;
 
-  /*
+  /* 
    * Build class name table
    */
 
   if (prm_get_integer_value (PRM_ID_COMPACTDB_PAGE_RECLAIM_ONLY) != 2)
     {
-      class_table = locator_get_all_mops (sm_Root_class_mop,
-					  DB_FETCH_QUERY_READ, NULL);
+      class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ, NULL);
       if (class_table == NULL)
 	{
 	  return 1;		/* error */
@@ -181,19 +175,16 @@ compactdb_start (bool verbose_flag)
 
   if (verbose_flag)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMPACTDB,
-			      COMPACTDB_MSG_PASS1));
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS1));
     }
 
-  /*
+  /* 
    * Dump the object definitions
    */
   disk_init ();
   for (i = 0; i < class_table->num; i++)
     {
-      if (!WS_IS_DELETED (class_table->mops[i])
-	  && class_table->mops[i] != sm_Root_class_mop)
+      if (!WS_IS_DELETED (class_table->mops[i]) && class_table->mops[i] != sm_Root_class_mop)
 	{
 	  process_class (class_table->mops[i], verbose_flag);
 	}
@@ -204,12 +195,10 @@ compactdb_start (bool verbose_flag)
 
   if (failed_objects != 0)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMPACTDB,
-			      COMPACTDB_MSG_FAILED),
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_FAILED),
 	      total_objects - failed_objects, total_objects);
       status = 1;
-      /*
+      /* 
        * TODO Processing should not continue in this case as we cannot be sure
        * that all references to deleted objects have been set to NULL. Most of
        * the code in the offline compactdb should be modified to check for
@@ -220,9 +209,8 @@ compactdb_start (bool verbose_flag)
     {
       if (verbose_flag)
 	{
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-				  MSGCAT_UTIL_SET_COMPACTDB,
-				  COMPACTDB_MSG_PROCESSED), total_objects);
+	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PROCESSED),
+		  total_objects);
 	}
 
       /* We can also reclaim REC_MVCC_NEXT_VERSIONS now. */
@@ -233,9 +221,7 @@ phase2:
   if (verbose_flag)
     {
       printf ("\n");
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMPACTDB,
-			      COMPACTDB_MSG_PASS2));
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS2));
     }
 
   for (i = 0; i < class_table->num; i++)
@@ -248,9 +234,8 @@ phase2:
 
       if (verbose_flag)
 	{
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-				  MSGCAT_UTIL_SET_COMPACTDB,
-				  COMPACTDB_MSG_CLASS), sm_ch_name (object));
+	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CLASS),
+		  sm_ch_name (object));
 	}
       hfid = sm_ch_heap (object);
       if (hfid->vfid.fileid == NULL_FILEID)
@@ -271,7 +256,7 @@ phase3:
   file_tracker_compress (NULL);
   db_commit_transaction ();
 
-  /*
+  /* 
    * Cleanup
    */
   locator_free_list_mops (class_table);
@@ -298,9 +283,9 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
   LOCK lock = S_LOCK;		/* Lock to acquire for the above purpose */
   int nobjects, nfetched;
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
-  LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area        */
+  LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
   RECDES recdes;		/* Record descriptor */
-  DESC_OBJ *desc_obj;		/* The object described by obj       */
+  DESC_OBJ *desc_obj;		/* The object described by obj */
 
   class_objects = 0;
 
@@ -315,17 +300,13 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
 
   if (verbose_flag)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMPACTDB,
-			      COMPACTDB_MSG_CLASS),
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CLASS),
 	      sm_ch_name ((MOBJ) class_ptr));
     }
 
 #if defined(CUBRID_DEBUG)
-  printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			  MSGCAT_UTIL_SET_COMPACTDB,
-			  COMPACTDB_MSG_OID),
-	  class_oid->volid, class_oid->pageid, class_oid->slotid);
+  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_OID), class_oid->volid,
+	  class_oid->pageid, class_oid->slotid);
 #endif
 
   /* Find the heap where the instances are stored */
@@ -333,9 +314,7 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
   if (hfid->vfid.fileid == NULL_FILEID)
     {
       if (verbose_flag)
-	printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-				MSGCAT_UTIL_SET_COMPACTDB,
-				COMPACTDB_MSG_INSTANCES), 0);
+	printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INSTANCES), 0);
       return;
     }
 
@@ -344,9 +323,7 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
   if (locator_flush_all_instances (class_, DONT_DECACHE) != NO_ERROR)
     {
       if (verbose_flag)
-	printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-				MSGCAT_UTIL_SET_COMPACTDB,
-				COMPACTDB_MSG_INSTANCES), 0);
+	printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INSTANCES), 0);
       return;
     }
 
@@ -358,9 +335,8 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
   desc_obj = make_desc_obj (class_ptr);
   while (nobjects != nfetched)
     {
-      if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION,
-			     class_oid, &nobjects, &nfetched, &last_oid,
-			     &fetch_area) == NO_ERROR)
+      if (locator_fetch_all
+	  (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area) == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
 	    {
@@ -372,8 +348,7 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
 		  class_objects++;
 		  total_objects++;
 		  LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
-		  if (desc_disk_to_obj (class_, class_ptr, &recdes,
-					desc_obj) == NO_ERROR)
+		  if (desc_disk_to_obj (class_, class_ptr, &recdes, desc_obj) == NO_ERROR)
 		    {
 		      process_object (desc_obj, &obj->oid, verbose_flag);
 		    }
@@ -395,7 +370,7 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
     }
   desc_free (desc_obj);
 
-  /*
+  /* 
    * Now that the class has been processed, we can reclaim space in the catalog
    * and the schema.
    * Might be able to ignore failed objects here if we're sure that's
@@ -411,9 +386,7 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
   /* else, should have some sort of warning message ? */
 
   if (verbose_flag)
-    printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			    MSGCAT_UTIL_SET_COMPACTDB,
-			    COMPACTDB_MSG_INSTANCES), class_objects);
+    printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INSTANCES), class_objects);
 
 }
 
@@ -439,10 +412,8 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag)
   class_oid = ws_oid (desc_obj->classop);
 
 #if defined(CUBRID_DEBUG)
-  printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			  MSGCAT_UTIL_SET_COMPACTDB,
-			  COMPACTDB_MSG_OID),
-	  obj_oid->volid, obj_oid->pageid, obj_oid->slotid);
+  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_OID), obj_oid->volid,
+	  obj_oid->pageid, obj_oid->slotid);
 #endif
 
   attribute = class_ptr->attributes;
@@ -456,9 +427,7 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag)
   if ((desc_obj->updated_flag) || (update_flag))
     {
       if (verbose_flag)
-	printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-				MSGCAT_UTIL_SET_COMPACTDB,
-				COMPACTDB_MSG_UPDATING));
+	printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UPDATING));
       disk_update_instance (desc_obj->classop, desc_obj, obj_oid);
     }
 }
@@ -501,18 +470,13 @@ process_value (DB_VALUE * value)
 	heap_scancache_quick_start (&scan_cache);
 	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (NULL);
 	scan_code =
-	  heap_mvcc_get_visible (NULL, ref_oid, NULL, NULL, NULL, S_SELECT,
-				 PEEK, NULL_CHN, &updated_oid,
+	  heap_mvcc_get_visible (NULL, ref_oid, NULL, NULL, NULL, S_SELECT, PEEK, NULL_CHN, &updated_oid,
 				 LOG_ERROR_IF_DELETED);
 	heap_scancache_end (NULL, &scan_cache);
 
 #if defined(CUBRID_DEBUG)
-	printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-				MSGCAT_UTIL_SET_COMPACTDB,
-				COMPACTDB_MSG_REFOID),
-		ref_oid->volid, ref_oid->pageid, ref_oid->slotid,
-		ref_class_oid.volid, ref_class_oid.pageid,
-		ref_class_oid.slotid);
+	printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_REFOID), ref_oid->volid,
+		ref_oid->pageid, ref_oid->slotid, ref_class_oid.volid, ref_class_oid.pageid, ref_class_oid.slotid);
 #endif
 
 	if (scan_code != S_SUCCESS)
@@ -632,9 +596,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 	  /* try one more time */
 	  if (desc_obj_to_disk (obj, Diskrec, &has_indexes))
 	    {
-	      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-				      MSGCAT_UTIL_SET_COMPACTDB,
-				      COMPACTDB_MSG_CANT_TRANSFORM));
+	      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CANT_TRANSFORM));
 	      return (0);
 	    }
 	}
@@ -643,9 +605,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
   hfid = sm_ch_heap ((MOBJ) (obj->class_));
   if (HFID_IS_NULL (hfid))
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMPACTDB,
-			      COMPACTDB_MSG_NO_HEAP));
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_NO_HEAP));
       return (0);
     }
 
@@ -654,14 +614,11 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
       update_indexes (WS_OID (classop), oid, Diskrec);
     }
 
-  heap_create_update_context (&update_context, hfid, oid, WS_OID (classop),
-			      Diskrec, NULL, UPDATE_INPLACE_CURRENT_MVCCID,
-			      false);
+  heap_create_update_context (&update_context, hfid, oid, WS_OID (classop), Diskrec, NULL,
+			      UPDATE_INPLACE_CURRENT_MVCCID, false);
   if (heap_update_logical (NULL, &update_context) != NO_ERROR)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMPACTDB,
-			      COMPACTDB_MSG_CANT_UPDATE));
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CANT_UPDATE));
       return (0);
     }
 
@@ -738,15 +695,14 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
 
   if (old_object)
     {
-      /*
+      /* 
        * 4th arg -> give up setting updated attr info
        * for replication..
        * 9rd arg -> data or schema, 10th arg -> max repl. log or not
        */
-      success = locator_update_index (NULL, rec, &oldrec, NULL, 0,
-				      obj_oid, obj_oid, class_oid,
-				      SINGLE_ROW_UPDATE,
-				      (HEAP_SCANCACHE *) NULL, NULL);
+      success =
+	locator_update_index (NULL, rec, &oldrec, NULL, 0, obj_oid, obj_oid, class_oid, SINGLE_ROW_UPDATE,
+			      (HEAP_SCANCACHE *) NULL, NULL);
     }
   else
     {

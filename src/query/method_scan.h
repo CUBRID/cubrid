@@ -40,7 +40,7 @@
 
 typedef struct vacomm_buffer VACOMM_BUFFER;
 struct vacomm_buffer
-{				/*   */
+{				/* */
   int length;			/* trans length */
   int status;			/* trans status */
   int error;			/* client error */
@@ -73,23 +73,18 @@ struct method_scan_buffer
 #ifdef SERVER_MODE
   VACOMM_BUFFER *vacomm_buffer;
 #else				/* SERVER_MODE */
-  /* These are needed for calling      */
-  /* methods in standalone mode        */
-  DB_VALUE *vallist;		/* values from the input list file   */
-  DB_VALUE **valptrs;		/* ptrs to the above values          */
-  int *oid_cols;		/* OID columns in list file          */
-  CURSOR_ID crs_id;		/* cursor id                         */
-  int val_cnt;			/* number of values in vallist       */
+  /* These are needed for calling */
+  /* methods in standalone mode */
+  DB_VALUE *vallist;		/* values from the input list file */
+  DB_VALUE **valptrs;		/* ptrs to the above values */
+  int *oid_cols;		/* OID columns in list file */
+  CURSOR_ID crs_id;		/* cursor id */
+  int val_cnt;			/* number of values in vallist */
 #endif				/* SERVER_MODE */
 };
 
-extern int method_open_scan (THREAD_ENTRY * thread_p,
-			     METHOD_SCAN_BUFFER * scan_buf,
-			     QFILE_LIST_ID * list_id,
+extern int method_open_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buf, QFILE_LIST_ID * list_id,
 			     METHOD_SIG_LIST * method_sig_list);
-extern int method_close_scan (THREAD_ENTRY * thread_p,
-			      METHOD_SCAN_BUFFER * scan_buf);
-extern SCAN_CODE method_scan_next (THREAD_ENTRY * thread_p,
-				   METHOD_SCAN_BUFFER * scan_buf,
-				   VAL_LIST * val_list);
+extern int method_close_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buf);
+extern SCAN_CODE method_scan_next (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buf, VAL_LIST * val_list);
 #endif /* _METHOD_SCAN_H_ */

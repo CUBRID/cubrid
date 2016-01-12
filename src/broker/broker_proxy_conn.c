@@ -75,8 +75,7 @@ broker_set_proxy_fds (fd_set * fds)
   pthread_mutex_lock (&proxy_conn_mutex);
   for (ent_p = broker_Proxy_conn.proxy_conn_ent; ent_p; ent_p = ent_p->next)
     {
-      if (ent_p->fd != INVALID_SOCKET
-	  && ent_p->status == PROXY_CONN_CONNECTED)
+      if (ent_p->fd != INVALID_SOCKET && ent_p->status == PROXY_CONN_CONNECTED)
 	{
 	  FD_SET (ent_p->fd, fds);
 	}
@@ -206,8 +205,7 @@ broker_delete_proxy_conn_by_fd (SOCKET fd)
   T_PROXY_CONN_ENT *ent_p, *prev_ent_p;
 
   pthread_mutex_lock (&proxy_conn_mutex);
-  for (prev_ent_p = ent_p = broker_Proxy_conn.proxy_conn_ent;
-       ent_p; prev_ent_p = ent_p, ent_p = ent_p->next)
+  for (prev_ent_p = ent_p = broker_Proxy_conn.proxy_conn_ent; ent_p; prev_ent_p = ent_p, ent_p = ent_p->next)
     {
       if (ent_p->fd == fd)
 	{
@@ -249,8 +247,7 @@ broker_delete_proxy_conn_by_proxy_id (int proxy_id)
     }
 
   pthread_mutex_lock (&proxy_conn_mutex);
-  for (prev_ent_p = ent_p = broker_Proxy_conn.proxy_conn_ent;
-       ent_p; prev_ent_p = ent_p, ent_p = ent_p->next)
+  for (prev_ent_p = ent_p = broker_Proxy_conn.proxy_conn_ent; ent_p; prev_ent_p = ent_p, ent_p = ent_p->next)
     {
       if (ent_p->proxy_id == proxy_id)
 	{
@@ -296,8 +293,7 @@ broker_register_proxy_conn (SOCKET fd, int proxy_id)
     }
   assert (ent_p->status != PROXY_CONN_AVAILABLE);
   assert (ent_p->proxy_id == PROXY_INVALID_ID);
-  if (ent_p->status == PROXY_CONN_AVAILABLE
-      || ent_p->proxy_id != PROXY_INVALID_ID)
+  if (ent_p->status == PROXY_CONN_AVAILABLE || ent_p->proxy_id != PROXY_INVALID_ID)
     {
       pthread_mutex_unlock (&proxy_conn_mutex);
       return -1;
@@ -314,8 +310,7 @@ broker_register_proxy_conn (SOCKET fd, int proxy_id)
 
 #if defined(WINDOWS)
 int
-broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p,
-			     int ip_addr, T_BROKER_VERSION clt_version)
+broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p, int ip_addr, T_BROKER_VERSION clt_version)
 #else /* WINDOWS */
 SOCKET
 broker_find_available_proxy (T_SHM_PROXY * shm_proxy_p)

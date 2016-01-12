@@ -249,14 +249,12 @@ struct tailor_rule
 {
   T_LEVEL level;		/* weight level : primary, .. identity */
 
-  /* anchor (reference) buffer, for which the rule is defined
-   * it may contain one or two (for expansion rule) UTF-8 chars
-   * buffer is nul-terminated */
+  /* anchor (reference) buffer, for which the rule is defined it may contain one or two (for expansion rule) UTF-8
+   * chars buffer is nul-terminated */
   char anchor_buf[LOC_DATA_COLL_TWO_CHARS];
 
   /* Reference : */
-  RULE_POS_TYPE r_pos_type;	/* processing flag :
-				 * logical position or buffer value for reference */
+  RULE_POS_TYPE r_pos_type;	/* processing flag : logical position or buffer value for reference */
   char *r_buf;			/* Buffer containing UTF-8 characters of reference */
   int r_buf_size;
 
@@ -267,8 +265,8 @@ struct tailor_rule
   char *t_buf;
   int t_buf_size;
 
-  bool multiple_chars;		/* true : indicates a rule for tailoring multiple chars
-				 * false : rule for a single character */
+  bool multiple_chars;		/* true : indicates a rule for tailoring multiple chars false : rule for a single
+				 * character */
 };
 
 
@@ -281,28 +279,20 @@ struct tailor_rule
 typedef struct cubrid_tailor_rule CUBRID_TAILOR_RULE;
 struct cubrid_tailor_rule
 {
-  /* The first and last (incl.) codepoints of the
-   * codepoint range to be tailored, in text format
-   * for later validation and parsing. */
+  /* The first and last (incl.) codepoints of the codepoint range to be tailored, in text format for later validation
+   * and parsing. */
   char start_cp_buf[LOC_DATA_BUFF_SIZE];
   char end_cp_buf[LOC_DATA_BUFF_SIZE];
   CP_BUF_TYPE start_cp_buf_type;
   CP_BUF_TYPE end_cp_buf_type;
 
   char start_weight[MAX_STRLEN_FOR_COLLATION_ELEMENT];
-  /* Buffer containing the weight value to
-   * use in the rule.
-   * Buffer is NOT NULL-terminated.
-   * Example : [100.0.0.0][0.0.0.2]...etc.
-   */
+  /* Buffer containing the weight value to use in the rule. Buffer is NOT NULL-terminated. Example :
+   * [100.0.0.0][0.0.0.2]...etc. */
 
   char step[MAX_STRLEN_FOR_COLLATION_ELEMENT];
-  /* The step (per level) with which we increase the
-   * weight range.
-   * Default value is 0 for all levels,
-   * so single-codepoint and identical tailoring
-   * can be easily implemented.
-   */
+  /* The step (per level) with which we increase the weight range. Default value is 0 for all levels, so
+   * single-codepoint and identical tailoring can be easily implemented. */
 };
 
 typedef enum
@@ -374,21 +364,19 @@ struct coll_data
   int w_count;			/* # of codepoints in this collation */
 
   /* Size of uca_w = 'w_count' X 'uca_exp_num' X 'sizeof (UCA_W)' */
-  /* For each codepoint entry in uca_w only the corresponding uca_num weights
-   * are used */
+  /* For each codepoint entry in uca_w only the corresponding uca_num weights are used */
   int uca_exp_num;		/* max number of CE per codepoint */
   char *uca_num;		/* number of CE for each codepoint */
   UCA_L13_W *uca_w_l13;		/* weight array L1, L2, L3 */
   UCA_L4_W *uca_w_l4;
 
-  COLL_CONTRACTION *contr_list;	/* contactions lists; contractions are stored
-				 * in binary ascending order of UTF-8 buffer */
+  COLL_CONTRACTION *contr_list;	/* contactions lists; contractions are stored in binary ascending order of UTF-8 buffer 
+				 */
   int count_contr;
   int contr_min_size;		/* size of smallest contraction buffer (in bytes) */
 
-  /* array of first contraction index for each codepoint contains 'w_count'
-   * elements : value -1 means CP is not a contraction starter
-   * other value = index of contraction in contractions list ('contr_list') */
+  /* array of first contraction index for each codepoint contains 'w_count' elements : value -1 means CP is not a
+   * contraction starter other value = index of contraction in contractions list ('contr_list') */
   int *cp_first_contr_array;
   /* codepoint value from which 'cp_first_contr_array' can be used */
   unsigned int cp_first_contr_offset;
@@ -407,8 +395,7 @@ struct coll_tailoring
 
   UCA_OPTIONS uca_opt;
 
-  /* number of codepoints to take into account for collation
-   * -1 means unlimited (we support up to MAX_UNICODE_CHARS) */
+  /* number of codepoints to take into account for collation -1 means unlimited (we support up to MAX_UNICODE_CHARS) */
   int sett_max_cp;
 
   /* collation tailoring rules */
@@ -451,12 +438,10 @@ struct alphabet_data
   int codeset;			/* codeset of alphabet : not serialized */
   int l_count;			/* number of elements */
 
-  int lower_multiplier;		/* how many codepoints contains each lower
-				 * entry */
+  int lower_multiplier;		/* how many codepoints contains each lower entry */
   unsigned int *lower_cp;	/* lower CP */
 
-  int upper_multiplier;		/* how many codepoints contains each upper
-				 * entry */
+  int upper_multiplier;		/* how many codepoints contains each upper entry */
   unsigned int *upper_cp;	/* upper CP */
 
   bool do_not_save;		/* used by genlocale if shared alphabet */
@@ -486,13 +471,12 @@ struct transform_rule
 typedef struct alphabet_tailoring ALPHABET_TAILORING;
 struct alphabet_tailoring
 {
-  /* number of codepoints the optimization process will to take into account
-   * for casing : -1 means unlimited (we support up to MAX_UNICODE_CHARS) */
+  /* number of codepoints the optimization process will to take into account for casing : -1 means unlimited (we
+   * support up to MAX_UNICODE_CHARS) */
   int sett_max_letters;
 
-  int alphabet_mode;		/* 0 : default UnicodeData
-				 * 1 : UnicodeData with specified file
-				 * 2 : ASCII letter and casing */
+  int alphabet_mode;		/* 0 : default UnicodeData 1 : UnicodeData with specified file 2 : ASCII letter and
+				 * casing */
   /* file path for Unicode data (if 'alphabet_mode' == 1) */
   char unicode_data_file[PATH_MAX];
 
@@ -522,10 +506,8 @@ struct text_conversion
   char *win_codepages;		/* Windows codepage identifier */
   char *nl_lang_str;		/* Linux language string */
 
-  unsigned char byte_flag[256];	/* used in DBCS encoding schemes :
-				 * 0 : single byte character
-				 * 1 : leading byte for double byte char
-				 * 2 : invalid byte */
+  unsigned char byte_flag[256];	/* used in DBCS encoding schemes : 0 : single byte character 1 : leading byte for
+				 * double byte char 2 : invalid byte */
   /* UTF-8 to text */
   unsigned int utf8_first_cp;
   unsigned int utf8_last_cp;
@@ -558,8 +540,7 @@ typedef struct unicode_normalization UNICODE_NORMALIZATION;
 struct unicode_normalization
 {
   UNICODE_MAPPING *unicode_mappings;
-  int unicode_mappings_count;	/* total number of mappings, fully,
-				 * partially or not decomposed. */
+  int unicode_mappings_count;	/* total number of mappings, fully, partially or not decomposed. */
   int *unicode_mapping_index;
   int *list_full_decomp;
 
@@ -578,16 +559,13 @@ struct locale_collation
   COLL_TAILORING tail_coll;	/* collation info gathered from LDML */
   COLL_DATA opt_coll;		/* optimized collation data */
   COLL_DATA_REF coll_ref;	/* collation array export identifiers */
-  bool do_not_save;		/* set true if collation is shared and already
-				 * processed */
+  bool do_not_save;		/* set true if collation is shared and already processed */
 };
 
 typedef struct locale_data LOCALE_DATA;
 struct locale_data
 {
-  /* name of locale : used for validation;
-   * should be set by application, before
-   * LDML parsing */
+  /* name of locale : used for validation; should be set by application, before LDML parsing */
   char locale_name[LOC_LOCALE_STR_SIZE];
 
   /* calendar info : only Gregorian calendar is supported */
@@ -627,8 +605,7 @@ struct locale_data
   ALPHABET_DATA identif_alphabet;	/* data for lower / uppper for identifiers */
 
   /* unicode data file used for alphabets and normalization */
-  int unicode_mode;		/* 0 : default UnicodeData
-				 * 1 : UnicodeData with specified file */
+  int unicode_mode;		/* 0 : default UnicodeData 1 : UnicodeData with specified file */
   /* file path for Unicode data (if 'alphabet_mode' == 1) */
   char unicode_data_file[PATH_MAX];
 
@@ -640,34 +617,23 @@ struct locale_data
   TEXT_CONVERSION_PRM txt_conv_prm;
 
   /* data members used during processing : */
-  int curr_period;		/* processing index for calendar :
-				 * 0-11 : months
-				 * 0-6 : week days
-				 * 0-12 : AM, PM period names */
-  int name_type;		/* processing flag for calendar name :
-				 * 1 - abbr
-				 * 2 - wide;
-				 * 0 - uninitialized */
+  int curr_period;		/* processing index for calendar : 0-11 : months 0-6 : week days 0-12 : AM, PM period
+				 * names */
+  int name_type;		/* processing flag for calendar name : 1 - abbr 2 - wide; 0 - uninitialized */
 
   /* processing : last anchor : used when build a new collation rule */
   /* buffer is nul-terminated */
   char last_anchor_buf[LOC_DATA_COLL_TWO_CHARS];
-  RULE_POS_TYPE last_rule_pos_type;	/* processing flag :
-					 * logical position or buffer */
-  TAILOR_DIR last_rule_dir;	/* processing flag :
-				 * after, before */
-  T_LEVEL last_rule_level;	/* processing flag :
-				 * weight level : primary, .. identity
-				 * (used for validation) */
+  RULE_POS_TYPE last_rule_pos_type;	/* processing flag : logical position or buffer */
+  TAILOR_DIR last_rule_dir;	/* processing flag : after, before */
+  T_LEVEL last_rule_level;	/* processing flag : weight level : primary, .. identity (used for validation) */
 
-  /* processing : last tailoring reference : used when building collation rules
-   * pointer to a buffer : either a tailoring buffer (not nul-terminated) in a rule
-   * or an anchor buffer (last_anchor_buf) */
+  /* processing : last tailoring reference : used when building collation rules pointer to a buffer : either a
+   * tailoring buffer (not nul-terminated) in a rule or an anchor buffer (last_anchor_buf) */
   char *last_r_buf_p;
   int last_r_buf_size;
 
-  /* processing : used for intermediary (partial) content data in LDML
-   * buffer is nul-terminated */
+  /* processing : used for intermediary (partial) content data in LDML buffer is nul-terminated */
   char data_buffer[LOC_DATA_BUFF_SIZE];
   int data_buf_count;
 
@@ -685,21 +651,14 @@ extern "C"
   void locale_destroy_data (LOCALE_DATA * ld);
   void locale_destroy_alphabet_data (const ALPHABET_DATA * a);
   void locale_destroy_normalization_data (UNICODE_NORMALIZATION * norm);
-  int locale_get_cfg_locales (LOCALE_FILE ** p_locale_files,
-			      int *p_num_locales, bool is_lang_init);
-  int locale_check_and_set_default_files (LOCALE_FILE * lf,
-					  bool is_lang_init);
+  int locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales, bool is_lang_init);
+  int locale_check_and_set_default_files (LOCALE_FILE * lf, bool is_lang_init);
   int locale_prepare_C_file (void);
-  int locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld,
-			     bool is_verbose);
-  void locale_mark_duplicate_collations (LOCALE_DATA ** ld, int start_index,
-					 int end_index, bool is_verbose);
-  int locale_save_all_to_C_file (LOCALE_DATA ** ld, int start_index,
-				 int end_index, LOCALE_FILE * lf);
-  int locale_dump (void *data, LOCALE_FILE * lf,
-		   int dl_settings, int start_value, int end_value);
-  int locale_dump_lib_collations (void *lib_handle, const LOCALE_FILE * lf,
-				  int dl_settings, int start_value,
+  int locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose);
+  void locale_mark_duplicate_collations (LOCALE_DATA ** ld, int start_index, int end_index, bool is_verbose);
+  int locale_save_all_to_C_file (LOCALE_DATA ** ld, int start_index, int end_index, LOCALE_FILE * lf);
+  int locale_dump (void *data, LOCALE_FILE * lf, int dl_settings, int start_value, int end_value);
+  int locale_dump_lib_collations (void *lib_handle, const LOCALE_FILE * lf, int dl_settings, int start_value,
 				  int end_value);
   void locale_free_shared_data (void);
 

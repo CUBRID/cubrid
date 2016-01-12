@@ -80,89 +80,48 @@ struct largeobjmgr_alloc_npages
   int nth_next_free;
 };
 
-static INT64 largeobjmgr_system_op (THREAD_ENTRY * thread_p, LOID * loid,
-				    int op_mode, INT64 offset,
-				    INT64 length, char *buffer);
+static INT64 largeobjmgr_system_op (THREAD_ENTRY * thread_p, LOID * loid, int op_mode, INT64 offset, INT64 length,
+				    char *buffer);
 
 static void largeobjmgr_rv_slot_dump (FILE * fp, LARGEOBJMGR_RV_SLOT * lomrv);
-static bool largeobjmgr_slot_split_possible (THREAD_ENTRY * thread_p,
-					     PAGE_PTR page_ptr);
-static int largeobjmgr_max_append_putin (THREAD_ENTRY * thread_p,
-					 PAGE_PTR page_ptr, int length);
-static int largeobjmgr_sp_split (THREAD_ENTRY * thread_p, LOID * loid,
-				 PAGE_PTR page_ptr, INT16 slotid,
+static bool largeobjmgr_slot_split_possible (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
+static int largeobjmgr_max_append_putin (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, int length);
+static int largeobjmgr_sp_split (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr, INT16 slotid,
 				 int slsplit_offset, INT16 * new_slotid);
-static int largeobjmgr_sp_overwrite (THREAD_ENTRY * thread_p, LOID * loid,
-				     PAGE_PTR page_ptr, INT16 slotid,
-				     int spover_offset, int over_length,
-				     char *buffer);
-static int largeobjmgr_sp_takeout (THREAD_ENTRY * thread_p, LOID * loid,
-				   PAGE_PTR page_ptr, INT16 slotid,
+static int largeobjmgr_sp_overwrite (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr, INT16 slotid,
+				     int spover_offset, int over_length, char *buffer);
+static int largeobjmgr_sp_takeout (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr, INT16 slotid,
 				   int sptakeout_offset, int takeout_length);
-static int largeobjmgr_sp_append (THREAD_ENTRY * thread_p, LOID * loid,
-				  PAGE_PTR page_ptr, INT16 slotid, int length,
+static int largeobjmgr_sp_append (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr, INT16 slotid, int length,
 				  int append_length, char *buffer);
-static int largeobjmgr_sp_putin (THREAD_ENTRY * thread_p, LOID * loid,
-				 PAGE_PTR page_ptr, INT16 slotid,
-				 int spputin_offset, int putin_length,
-				 char *buffer);
-static PAGE_PTR largeobjmgr_getnewpage (THREAD_ENTRY * thread_p, LOID * loid,
-					VPID * vpid, VPID * near_vpid);
-static int largeobjmgr_allocset_pages (THREAD_ENTRY * thread_p, LOID * loid,
-				       int num_pages,
+static int largeobjmgr_sp_putin (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr, INT16 slotid,
+				 int spputin_offset, int putin_length, char *buffer);
+static PAGE_PTR largeobjmgr_getnewpage (THREAD_ENTRY * thread_p, LOID * loid, VPID * vpid, VPID * near_vpid);
+static int largeobjmgr_allocset_pages (THREAD_ENTRY * thread_p, LOID * loid, int num_pages,
 				       LARGEOBJMGR_ALLOC_NPAGES * alloc_p);
-static PAGE_PTR largeobjmgr_fetch_nxallocset_page (THREAD_ENTRY * thread_p,
-						   LARGEOBJMGR_ALLOC_NPAGES *
-						   alloc_p, VPID * vpid);
-static int largeobjmgr_deallocset_restof_free_pages (THREAD_ENTRY * thread_p,
-						     LARGEOBJMGR_ALLOC_NPAGES
-						     * alloc_p);
-static int largeobjmgr_deallocset_all_pages (THREAD_ENTRY * thread_p,
-					     LARGEOBJMGR_ALLOC_NPAGES *
-					     alloc_p);
-static int largeobjmgr_write_entry (THREAD_ENTRY * thread_p, LOID * loid,
-				    LARGEOBJMGR_DIRSTATE * ds,
-				    LARGEOBJMGR_DIRENTRY * X, int bg_woffset,
-				    int end_woffset, char *buffer);
-static int largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
-				     LARGEOBJMGR_DIRSTATE * ds,
-				     LARGEOBJMGR_DIRENTRY * dir_entry_p,
-				     int bg_doffset, int end_doffset);
-static int largeobjmgr_insert_internal (THREAD_ENTRY * thread_p,
-					LOID * loid,
-					LARGEOBJMGR_DIRSTATE * ds,
-					INT64 lo_offset, int length,
-					char *buffer);
-static int largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p,
-					 LOID * loid,
-					 LARGEOBJMGR_DIRSTATE * ds,
-					 int length, char *buffer);
-static int largeobjmgr_append_internal (THREAD_ENTRY * thread_p,
-					LOID * loid,
-					LARGEOBJMGR_DIRSTATE * ds,
-					INT64 offset, int length,
-					char *buffer);
-static INT64 largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid,
-				  int opr_mode, INT64 offset,
-				  INT64 length, char *buffer);
+static PAGE_PTR largeobjmgr_fetch_nxallocset_page (THREAD_ENTRY * thread_p, LARGEOBJMGR_ALLOC_NPAGES * alloc_p,
+						   VPID * vpid);
+static int largeobjmgr_deallocset_restof_free_pages (THREAD_ENTRY * thread_p, LARGEOBJMGR_ALLOC_NPAGES * alloc_p);
+static int largeobjmgr_deallocset_all_pages (THREAD_ENTRY * thread_p, LARGEOBJMGR_ALLOC_NPAGES * alloc_p);
+static int largeobjmgr_write_entry (THREAD_ENTRY * thread_p, LOID * loid, LARGEOBJMGR_DIRSTATE * ds,
+				    LARGEOBJMGR_DIRENTRY * X, int bg_woffset, int end_woffset, char *buffer);
+static int largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid, LARGEOBJMGR_DIRSTATE * ds,
+				     LARGEOBJMGR_DIRENTRY * dir_entry_p, int bg_doffset, int end_doffset);
+static int largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid, LARGEOBJMGR_DIRSTATE * ds,
+					INT64 lo_offset, int length, char *buffer);
+static int largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid, LARGEOBJMGR_DIRSTATE * ds, int length,
+					 char *buffer);
+static int largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid, LARGEOBJMGR_DIRSTATE * ds, INT64 offset,
+					int length, char *buffer);
+static INT64 largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode, INT64 offset, INT64 length,
+				  char *buffer);
 static int largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid);
 
-static bool largeobjmgr_initlo_newpage (THREAD_ENTRY * thread_p,
-					const VFID * vfid,
-					const FILE_TYPE file_type,
-					const VPID * vpid,
-					INT32 ignore_npages,
-					void *ignore_args);
-static bool largeobjmgr_initlo_set_noncontiguous_pages (THREAD_ENTRY *
-							thread_p,
-							const VFID * vfid,
-							const FILE_TYPE
-							file_type,
-							const VPID *
-							ignore_vpid,
-							const INT32 * nthpage,
-							INT32 npages,
-							void *ignore_args);
+static bool largeobjmgr_initlo_newpage (THREAD_ENTRY * thread_p, const VFID * vfid, const FILE_TYPE file_type,
+					const VPID * vpid, INT32 ignore_npages, void *ignore_args);
+static bool largeobjmgr_initlo_set_noncontiguous_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
+							const FILE_TYPE file_type, const VPID * ignore_vpid,
+							const INT32 * nthpage, INT32 npages, void *ignore_args);
 
 /*
  * largeobjmgr_rv_slot_dump () -
@@ -172,8 +131,7 @@ static bool largeobjmgr_initlo_set_noncontiguous_pages (THREAD_ENTRY *
 static void
 largeobjmgr_rv_slot_dump (FILE * fp, LARGEOBJMGR_RV_SLOT * lomrv)
 {
-  fprintf (fp, "Slotid = %d offset = %d length = %d\n",
-	   lomrv->slotid, lomrv->offset, lomrv->length);
+  fprintf (fp, "Slotid = %d offset = %d length = %d\n", lomrv->slotid, lomrv->offset, lomrv->length);
 }
 
 /*
@@ -186,15 +144,14 @@ largeobjmgr_rv_slot_dump (FILE * fp, LARGEOBJMGR_RV_SLOT * lomrv)
  *   new_slotid(in):
  */
 static int
-largeobjmgr_sp_split (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr,
-		      INT16 slotid, int slsplit_offset, INT16 * new_slotid)
+largeobjmgr_sp_split (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr, INT16 slotid, int slsplit_offset,
+		      INT16 * new_slotid)
 {
   LARGEOBJMGR_RV_SLOT lomrv;
   LOG_DATA_ADDR addr;
   int ret = NO_ERROR;
 
-  if (spage_split (thread_p, page_ptr, slotid, slsplit_offset, new_slotid) !=
-      SP_SUCCESS)
+  if (spage_split (thread_p, page_ptr, slotid, slsplit_offset, new_slotid) != SP_SUCCESS)
     {
       goto exit_on_error;
     }
@@ -207,8 +164,7 @@ largeobjmgr_sp_split (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr,
   addr.vfid = &loid->vfid;
   addr.pgptr = page_ptr;
   addr.offset = slotid;
-  log_append_undoredo_data (thread_p, RVLOM_SPLIT, &addr, sizeof (lomrv),
-			    sizeof (lomrv), &lomrv, &lomrv);
+  log_append_undoredo_data (thread_p, RVLOM_SPLIT, &addr, sizeof (lomrv), sizeof (lomrv), &lomrv, &lomrv);
 
   pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
 
@@ -216,8 +172,7 @@ largeobjmgr_sp_split (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr,
 
 exit_on_error:
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -242,8 +197,7 @@ largeobjmgr_slot_split_possible (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
  *   buffer(in):
  */
 static int
-largeobjmgr_sp_overwrite (THREAD_ENTRY * thread_p, LOID * loid,
-			  PAGE_PTR page_ptr, INT16 slotid, int spover_offset,
+largeobjmgr_sp_overwrite (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr, INT16 slotid, int spover_offset,
 			  int over_length, char *buffer)
 {
   RECDES recdes;
@@ -273,15 +227,13 @@ largeobjmgr_sp_overwrite (THREAD_ENTRY * thread_p, LOID * loid,
   redo_crumb[1].length = over_length;
   redo_crumb[1].data = buffer;
 
-  log_append_undoredo_crumbs (thread_p, RVLOM_OVERWRITE, &addr, 2, 2,
-			      undo_crumb, redo_crumb);
+  log_append_undoredo_crumbs (thread_p, RVLOM_OVERWRITE, &addr, 2, 2, undo_crumb, redo_crumb);
 
   rec_over.area_size = rec_over.length = over_length;
   rec_over.data = buffer;
   rec_over.type = REC_HOME;
 
-  if (spage_overwrite (thread_p, page_ptr, slotid, spover_offset, &rec_over)
-      != SP_SUCCESS)
+  if (spage_overwrite (thread_p, page_ptr, slotid, spover_offset, &rec_over) != SP_SUCCESS)
     {
       goto exit_on_error;
     }
@@ -292,8 +244,7 @@ largeobjmgr_sp_overwrite (THREAD_ENTRY * thread_p, LOID * loid,
 
 exit_on_error:
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -306,8 +257,7 @@ exit_on_error:
  *   takeout_length(in):
  */
 static int
-largeobjmgr_sp_takeout (THREAD_ENTRY * thread_p, LOID * loid,
-			PAGE_PTR page_ptr, INT16 slotid, int sptakeout_offset,
+largeobjmgr_sp_takeout (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr, INT16 slotid, int sptakeout_offset,
 			int takeout_length)
 {
   RECDES recdes;
@@ -335,11 +285,9 @@ largeobjmgr_sp_takeout (THREAD_ENTRY * thread_p, LOID * loid,
   addr.pgptr = page_ptr;
   addr.offset = slotid;
 
-  log_append_undoredo_crumbs (thread_p, RVLOM_TAKEOUT, &addr, 2, 1, crumbs,
-			      crumbs);
+  log_append_undoredo_crumbs (thread_p, RVLOM_TAKEOUT, &addr, 2, 1, crumbs, crumbs);
 
-  if (spage_take_out (thread_p, page_ptr, slotid, sptakeout_offset,
-		      takeout_length) != SP_SUCCESS)
+  if (spage_take_out (thread_p, page_ptr, slotid, sptakeout_offset, takeout_length) != SP_SUCCESS)
     {
       goto exit_on_error;
     }
@@ -350,8 +298,7 @@ largeobjmgr_sp_takeout (THREAD_ENTRY * thread_p, LOID * loid,
 
 exit_on_error:
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -362,8 +309,7 @@ exit_on_error:
  *   length(in):
  */
 static int
-largeobjmgr_max_append_putin (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr,
-			      int length)
+largeobjmgr_max_append_putin (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, int length)
 {
   int free_space;
 
@@ -387,8 +333,7 @@ largeobjmgr_max_append_putin (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr,
  *   buffer(in):
  */
 static int
-largeobjmgr_sp_append (THREAD_ENTRY * thread_p, LOID * loid,
-		       PAGE_PTR page_ptr, INT16 slotid, int length,
+largeobjmgr_sp_append (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr, INT16 slotid, int length,
 		       int append_length, char *buffer)
 {
   RECDES recdes;
@@ -405,11 +350,9 @@ largeobjmgr_sp_append (THREAD_ENTRY * thread_p, LOID * loid,
   recdes.type = REC_HOME;
 
   lomrv.slotid = slotid;
-  lomrv.offset = length;	/* Where to append    */
+  lomrv.offset = length;	/* Where to append */
   lomrv.length = append_length;	/* How much to append */
-  log_append_undoredo_data (thread_p, RVLOM_APPEND, &addr,
-			    sizeof (LARGEOBJMGR_RV_SLOT), append_length,
-			    &lomrv, buffer);
+  log_append_undoredo_data (thread_p, RVLOM_APPEND, &addr, sizeof (LARGEOBJMGR_RV_SLOT), append_length, &lomrv, buffer);
 
   if (spage_append (thread_p, page_ptr, slotid, &recdes) != SP_SUCCESS)
     {
@@ -422,8 +365,7 @@ largeobjmgr_sp_append (THREAD_ENTRY * thread_p, LOID * loid,
 
 exit_on_error:
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -437,9 +379,8 @@ exit_on_error:
  *   buffer(in):
  */
 static int
-largeobjmgr_sp_putin (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr,
-		      INT16 slotid, int spputin_offset, int putin_length,
-		      char *buffer)
+largeobjmgr_sp_putin (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr, INT16 slotid, int spputin_offset,
+		      int putin_length, char *buffer)
 {
   RECDES recdes;
   LOG_DATA_ADDR addr;
@@ -460,15 +401,13 @@ largeobjmgr_sp_putin (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr,
   addr.pgptr = page_ptr;
   addr.offset = slotid;
 
-  log_append_undoredo_crumbs (thread_p, RVLOM_PUTIN, &addr, 1, 2, crumbs,
-			      crumbs);
+  log_append_undoredo_crumbs (thread_p, RVLOM_PUTIN, &addr, 1, 2, crumbs, crumbs);
 
   recdes.area_size = recdes.length = putin_length;
   recdes.data = buffer;
   recdes.type = REC_HOME;
 
-  if (spage_put (thread_p, page_ptr, slotid, spputin_offset, &recdes) !=
-      SP_SUCCESS)
+  if (spage_put (thread_p, page_ptr, slotid, spputin_offset, &recdes) != SP_SUCCESS)
     {
       goto exit_on_error;
     }
@@ -479,8 +418,7 @@ largeobjmgr_sp_putin (THREAD_ENTRY * thread_p, LOID * loid, PAGE_PTR page_ptr,
 
 exit_on_error:
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -494,8 +432,7 @@ exit_on_error:
  *   ignore_args(in): Ignore arguments
  */
 static bool
-largeobjmgr_initlo_newpage (THREAD_ENTRY * thread_p, const VFID * vfid,
-			    const FILE_TYPE file_type, const VPID * vpid,
+largeobjmgr_initlo_newpage (THREAD_ENTRY * thread_p, const VFID * vfid, const FILE_TYPE file_type, const VPID * vpid,
 			    INT32 ignore_npages, void *ignore_args)
 {
   LOG_DATA_ADDR addr;
@@ -503,8 +440,7 @@ largeobjmgr_initlo_newpage (THREAD_ENTRY * thread_p, const VFID * vfid,
   addr.vfid = vfid;
   addr.offset = -1;
 
-  addr.pgptr = pgbuf_fix (thread_p, vpid, NEW_PAGE, PGBUF_LATCH_WRITE,
-			  PGBUF_UNCONDITIONAL_LATCH);
+  addr.pgptr = pgbuf_fix (thread_p, vpid, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (addr.pgptr == NULL)
     {
       return false;
@@ -515,10 +451,8 @@ largeobjmgr_initlo_newpage (THREAD_ENTRY * thread_p, const VFID * vfid,
   /* data pages are SLOTTED pages, so initialize them */
   spage_initialize (thread_p, addr.pgptr, ANCHORED, CHAR_ALIGNMENT, false);
 
-  /* put only a redo log for page allocation and initialization,
-   * the caller is responsible for the undo log */
-  log_append_redo_data (thread_p, RVLOM_GET_NEWPAGE, &addr, sizeof (VFID),
-			vfid);
+  /* put only a redo log for page allocation and initialization, the caller is responsible for the undo log */
+  log_append_redo_data (thread_p, RVLOM_GET_NEWPAGE, &addr, sizeof (VFID), vfid);
 
   pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
   addr.pgptr = NULL;
@@ -538,12 +472,9 @@ largeobjmgr_initlo_newpage (THREAD_ENTRY * thread_p, const VFID * vfid,
  *   ignore_args(in): Ignore arguments
  */
 static bool
-largeobjmgr_initlo_set_noncontiguous_pages (THREAD_ENTRY * thread_p,
-					    const VFID * vfid,
-					    const FILE_TYPE file_type,
-					    const VPID * ignore_vpid,
-					    const INT32 * nthpage,
-					    INT32 npages, void *ignore_args)
+largeobjmgr_initlo_set_noncontiguous_pages (THREAD_ENTRY * thread_p, const VFID * vfid, const FILE_TYPE file_type,
+					    const VPID * ignore_vpid, const INT32 * nthpage, INT32 npages,
+					    void *ignore_args)
 {
   int i, max;
   VPID nth_vpid;
@@ -556,8 +487,7 @@ largeobjmgr_initlo_set_noncontiguous_pages (THREAD_ENTRY * thread_p,
 	  return false;
 	}
 
-      if (largeobjmgr_initlo_newpage (thread_p, vfid, file_type, &nth_vpid,
-				      1, ignore_args) == false)
+      if (largeobjmgr_initlo_newpage (thread_p, vfid, file_type, &nth_vpid, 1, ignore_args) == false)
 	{
 	  return false;
 	}
@@ -575,26 +505,23 @@ largeobjmgr_initlo_set_noncontiguous_pages (THREAD_ENTRY * thread_p,
  *   near_vpid(in): Near page identifier or NULL
  */
 static PAGE_PTR
-largeobjmgr_getnewpage (THREAD_ENTRY * thread_p, LOID * loid, VPID * vpid,
-			VPID * near_vpid)
+largeobjmgr_getnewpage (THREAD_ENTRY * thread_p, LOID * loid, VPID * vpid, VPID * near_vpid)
 {
   PAGE_PTR page_ptr = NULL;
   LOG_DATA_ADDR addr;
 
   /* Allocate a new page for the file and initialize */
-  if (file_alloc_pages (thread_p, &loid->vfid, vpid, 1, near_vpid,
-			largeobjmgr_initlo_newpage, NULL) == NULL)
+  if (file_alloc_pages (thread_p, &loid->vfid, vpid, 1, near_vpid, largeobjmgr_initlo_newpage, NULL) == NULL)
     {
       return NULL;
     }
 
-  /*
+  /* 
    * NOTE: we fetch the page as old since it was initialized during the
    * allocation by largeobjmgr_initlo_newpage; we want the current
    * contents of the page.
    */
-  page_ptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-			PGBUF_UNCONDITIONAL_LATCH);
+  page_ptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
       (void) file_dealloc_page (thread_p, &loid->vfid, vpid, FILE_LONGDATA);
@@ -603,15 +530,13 @@ largeobjmgr_getnewpage (THREAD_ENTRY * thread_p, LOID * loid, VPID * vpid,
 
   (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
 
-  /* Need undo log, for cases of unexpected rollback, but only
-     if the file is not new */
+  /* Need undo log, for cases of unexpected rollback, but only if the file is not new */
   if (file_is_new_file (thread_p, &(loid->vfid)) == FILE_OLD_FILE)
     {
       addr.vfid = &loid->vfid;
       addr.pgptr = page_ptr;
       addr.offset = -1;
-      log_append_undo_data (thread_p, RVLOM_GET_NEWPAGE, &addr, sizeof (VFID),
-			    &loid->vfid);
+      log_append_undo_data (thread_p, RVLOM_GET_NEWPAGE, &addr, sizeof (VFID), &loid->vfid);
     }
 
   return page_ptr;
@@ -625,8 +550,7 @@ largeobjmgr_getnewpage (THREAD_ENTRY * thread_p, LOID * loid, VPID * vpid,
  *   new(in):
  */
 static int
-largeobjmgr_allocset_pages (THREAD_ENTRY * thread_p, LOID * loid,
-			    int num_pages, LARGEOBJMGR_ALLOC_NPAGES * alloc_p)
+largeobjmgr_allocset_pages (THREAD_ENTRY * thread_p, LOID * loid, int num_pages, LARGEOBJMGR_ALLOC_NPAGES * alloc_p)
 {
   LOG_DATA_ADDR addr;
   VPID nth_vpid;
@@ -639,35 +563,27 @@ largeobjmgr_allocset_pages (THREAD_ENTRY * thread_p, LOID * loid,
   alloc_p->tot_allocated = num_pages;
 
   /* Allocate the set of pages for the file */
-  if (file_alloc_pages_as_noncontiguous (thread_p, &loid->vfid,
-					 &alloc_p->cached_nthvpids[alloc_p->
-								   nxcache],
-					 &alloc_p->nth_first_allocated,
-					 num_pages, NULL,
-					 largeobjmgr_initlo_set_noncontiguous_pages,
-					 NULL, NULL) == NULL)
+  if (file_alloc_pages_as_noncontiguous
+      (thread_p, &loid->vfid, &alloc_p->cached_nthvpids[alloc_p->nxcache], &alloc_p->nth_first_allocated, num_pages,
+       NULL, largeobjmgr_initlo_set_noncontiguous_pages, NULL, NULL) == NULL)
     {
       goto exit_on_error;
     }
   alloc_p->nth_next_free = alloc_p->nth_first_allocated + 1;
 
 
-  /* Need undo log, for cases of unexpected rollback, but only
-     if the file is not new */
+  /* Need undo log, for cases of unexpected rollback, but only if the file is not new */
   if (file_is_new_file (thread_p, &(loid->vfid)) == FILE_OLD_FILE)
     {
       /* Need undo records for each page just allocated */
       for (i = alloc_p->nth_first_allocated; num_pages > 0; i++, num_pages--)
 	{
-	  if (file_find_nthpages (thread_p, &alloc_p->loid->vfid,
-				  &nth_vpid, i, 1) == -1)
+	  if (file_find_nthpages (thread_p, &alloc_p->loid->vfid, &nth_vpid, i, 1) == -1)
 	    {
 	      (void) largeobjmgr_deallocset_all_pages (thread_p, alloc_p);
 	      goto exit_on_error;
 	    }
-	  addr.pgptr = pgbuf_fix (thread_p, &nth_vpid, OLD_PAGE,
-				  PGBUF_LATCH_WRITE,
-				  PGBUF_UNCONDITIONAL_LATCH);
+	  addr.pgptr = pgbuf_fix (thread_p, &nth_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (addr.pgptr == NULL)
 	    {
 	      (void) largeobjmgr_deallocset_all_pages (thread_p, alloc_p);
@@ -679,8 +595,7 @@ largeobjmgr_allocset_pages (THREAD_ENTRY * thread_p, LOID * loid,
 	  /* Need undo log, for cases of unexpected rollback */
 	  addr.vfid = &alloc_p->loid->vfid;
 	  addr.offset = -1;
-	  log_append_undo_data (thread_p, RVLOM_GET_NEWPAGE, &addr,
-				sizeof (VFID), &alloc_p->loid->vfid);
+	  log_append_undo_data (thread_p, RVLOM_GET_NEWPAGE, &addr, sizeof (VFID), &alloc_p->loid->vfid);
 	  pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
 	  addr.pgptr = NULL;
 	}
@@ -690,8 +605,7 @@ largeobjmgr_allocset_pages (THREAD_ENTRY * thread_p, LOID * loid,
 
 exit_on_error:
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -701,15 +615,12 @@ exit_on_error:
  *   vpid(in):
  */
 static PAGE_PTR
-largeobjmgr_fetch_nxallocset_page (THREAD_ENTRY * thread_p,
-				   LARGEOBJMGR_ALLOC_NPAGES * alloc_p,
-				   VPID * vpid)
+largeobjmgr_fetch_nxallocset_page (THREAD_ENTRY * thread_p, LARGEOBJMGR_ALLOC_NPAGES * alloc_p, VPID * vpid)
 {
   PAGE_PTR page_ptr = NULL;
   int num;
 
-  if (alloc_p->nxcache >= LARGEOBJMGR_CACHEVPID_ARRAY_SIZE
-      && alloc_p->num_free > 0)
+  if (alloc_p->nxcache >= LARGEOBJMGR_CACHEVPID_ARRAY_SIZE && alloc_p->num_free > 0)
     {
       /* Need to find out the next set of allocated page identifiers */
       num = alloc_p->num_free;
@@ -718,9 +629,8 @@ largeobjmgr_fetch_nxallocset_page (THREAD_ENTRY * thread_p,
 	  num = LARGEOBJMGR_CACHEVPID_ARRAY_SIZE;
 	}
 
-      if (file_find_nthpages
-	  (thread_p, &alloc_p->loid->vfid, alloc_p->cached_nthvpids,
-	   alloc_p->nth_next_free, num) == -1)
+      if (file_find_nthpages (thread_p, &alloc_p->loid->vfid, alloc_p->cached_nthvpids, alloc_p->nth_next_free, num) ==
+	  -1)
 	{
 	  return NULL;
 	}
@@ -746,10 +656,8 @@ largeobjmgr_fetch_nxallocset_page (THREAD_ENTRY * thread_p,
       alloc_p->nxcache += 1;
       alloc_p->num_free -= 1;
 
-      /* fetch the new page as an old page since it has been initialized by
-         largeobjmgr_initlo_set_noncontiguous_pages */
-      page_ptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-			    PGBUF_UNCONDITIONAL_LATCH);
+      /* fetch the new page as an old page since it has been initialized by largeobjmgr_initlo_set_noncontiguous_pages */
+      page_ptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
 	  return NULL;
@@ -767,8 +675,7 @@ largeobjmgr_fetch_nxallocset_page (THREAD_ENTRY * thread_p,
  *   new(in):
  */
 static int
-largeobjmgr_deallocset_restof_free_pages (THREAD_ENTRY * thread_p,
-					  LARGEOBJMGR_ALLOC_NPAGES * alloc_p)
+largeobjmgr_deallocset_restof_free_pages (THREAD_ENTRY * thread_p, LARGEOBJMGR_ALLOC_NPAGES * alloc_p)
 {
   int num;
   int ret = NO_ERROR;
@@ -784,9 +691,8 @@ largeobjmgr_deallocset_restof_free_pages (THREAD_ENTRY * thread_p,
 	      num = LARGEOBJMGR_CACHEVPID_ARRAY_SIZE;
 	    }
 
-	  if (file_find_nthpages
-	      (thread_p, &alloc_p->loid->vfid, alloc_p->cached_nthvpids,
-	       alloc_p->nth_next_free, num) == -1)
+	  if (file_find_nthpages (thread_p, &alloc_p->loid->vfid, alloc_p->cached_nthvpids, alloc_p->nth_next_free, num)
+	      == -1)
 	    {
 	      goto exit_on_error;
 	    }
@@ -795,9 +701,8 @@ largeobjmgr_deallocset_restof_free_pages (THREAD_ENTRY * thread_p,
 	  alloc_p->nth_next_free += num;
 	}
 
-      ret = file_dealloc_page (thread_p, &alloc_p->loid->vfid,
-			       &alloc_p->cached_nthvpids[alloc_p->nxcache],
-			       FILE_LONGDATA);
+      ret =
+	file_dealloc_page (thread_p, &alloc_p->loid->vfid, &alloc_p->cached_nthvpids[alloc_p->nxcache], FILE_LONGDATA);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -811,8 +716,7 @@ largeobjmgr_deallocset_restof_free_pages (THREAD_ENTRY * thread_p,
 
 exit_on_error:
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -821,8 +725,7 @@ exit_on_error:
  *   new(in):
  */
 static int
-largeobjmgr_deallocset_all_pages (THREAD_ENTRY * thread_p,
-				  LARGEOBJMGR_ALLOC_NPAGES * alloc_p)
+largeobjmgr_deallocset_all_pages (THREAD_ENTRY * thread_p, LARGEOBJMGR_ALLOC_NPAGES * alloc_p)
 {
   alloc_p->num_free = alloc_p->tot_allocated;
   alloc_p->nth_next_free = alloc_p->nth_first_allocated;
@@ -864,9 +767,8 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid, int n)
   ds = &ds_info;
 
   fprintf (fp, "\n========= LARGE OBJECT DUMP ===========\n\n");
-  fprintf (fp, "LOID = {{%d, %d} , {%d, %d}}\n",
-	   loid->vfid.volid, loid->vfid.fileid,
-	   loid->vpid.volid, loid->vpid.pageid);
+  fprintf (fp, "LOID = {{%d, %d} , {%d, %d}}\n", loid->vfid.volid, loid->vfid.fileid, loid->vpid.volid,
+	   loid->vpid.pageid);
   fprintf (fp, "\n");
 
   if (n != 1)			/* dump LO directory */
@@ -876,8 +778,7 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid, int n)
 
   if (n == 1 || n == 2)		/* LO content dump */
     {
-      if (largeobjmgr_dir_open (thread_p, loid, 0, LARGEOBJMGR_READ_MODE, ds)
-	  == S_ERROR)
+      if (largeobjmgr_dir_open (thread_p, loid, 0, LARGEOBJMGR_READ_MODE, ds) == S_ERROR)
 	{
 	  fprintf (fp, " Error opening directory...\n");
 	  return;
@@ -898,26 +799,21 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid, int n)
 		}
 	      else
 		{
-		  fprintf (fp, "\n[ VPID: {%d, %d}\n",
-			   dir_entry_p->u.vpid.volid,
-			   dir_entry_p->u.vpid.pageid);
+		  fprintf (fp, "\n[ VPID: {%d, %d}\n", dir_entry_p->u.vpid.volid, dir_entry_p->u.vpid.pageid);
 		  fprintf (fp, "  Slotid: %d\n", dir_entry_p->slotid);
 		  fprintf (fp, "  Length: %d\n\n", dir_entry_p->length);
 
-		  page_ptr = pgbuf_fix (thread_p, &dir_entry_p->u.vpid,
-					OLD_PAGE, PGBUF_LATCH_READ,
-					PGBUF_UNCONDITIONAL_LATCH);
+		  page_ptr =
+		    pgbuf_fix (thread_p, &dir_entry_p->u.vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 		  if (page_ptr != NULL)
 		    {
-		      if (spage_get_record (page_ptr, dir_entry_p->slotid,
-					    &recdes, PEEK) != S_SUCCESS)
+		      if (spage_get_record (page_ptr, dir_entry_p->slotid, &recdes, PEEK) != S_SUCCESS)
 			{
 			  fprintf (fp, "Error Reading slot record\n");
 			}
 		      else
 			{
-			  for (k = 0, slot_char_p = (char *) recdes.data;
-			       k < recdes.length; k++, slot_char_p++)
+			  for (k = 0, slot_char_p = (char *) recdes.data; k < recdes.length; k++, slot_char_p++)
 			    {
 			      fprintf (fp, "%c", *slot_char_p);
 			    }
@@ -937,22 +833,17 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid, int n)
     }
   else if (n > 2)		/* LO slotted page dump */
     {
-      if (largeobjmgr_dir_get_vpids
-	  (thread_p, loid, &dir_vpid_list, &dir_vpid_cnt,
-	   &index_exists) == NO_ERROR)
+      if (largeobjmgr_dir_get_vpids (thread_p, loid, &dir_vpid_list, &dir_vpid_cnt, &index_exists) == NO_ERROR)
 	{
 	  page_cnt = file_get_numpages (thread_p, &loid->vfid);
 	  for (pg_pos = 0; pg_pos < page_cnt; pg_pos++)
 	    {
-	      if (file_find_nthpages (thread_p, &loid->vfid, &vpid, pg_pos, 1)
-		  == -1)
+	      if (file_find_nthpages (thread_p, &loid->vfid, &vpid, pg_pos, 1) == -1)
 		{
 		  break;
 		}
 
-	      for (k = 0;
-		   k < dir_vpid_cnt && !VPID_EQ (&vpid, &dir_vpid_list[k]);
-		   k++)
+	      for (k = 0; k < dir_vpid_cnt && !VPID_EQ (&vpid, &dir_vpid_list[k]); k++)
 		{
 		  ;
 		}
@@ -960,19 +851,15 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid, int n)
 	      if (k == dir_vpid_cnt)
 		{
 		  fprintf (fp, "\n[ Page Position: %d\n", pg_pos);
-		  fprintf (fp, "    VPID: {%d, %d}\n", vpid.volid,
-			   vpid.pageid);
+		  fprintf (fp, "    VPID: {%d, %d}\n", vpid.volid, vpid.pageid);
 
-		  page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE,
-					PGBUF_LATCH_READ,
-					PGBUF_UNCONDITIONAL_LATCH);
+		  page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 		  if (page_ptr == NULL)
 		    {
 		      break;
 		    }
 
-		  spage_dump (thread_p, fp, page_ptr,
-			      (n == 3) ? false : true);
+		  spage_dump (thread_p, fp, page_ptr, (n == 3) ? false : true);
 		  fprintf (fp, " ]\n");
 		  pgbuf_unfix_and_init (thread_p, page_ptr);
 		}
@@ -1008,10 +895,8 @@ largeobjmgr_check (THREAD_ENTRY * thread_p, LOID * loid)
  *   buffer(in): Buffer to read the data
  */
 static int
-largeobjmgr_write_entry (THREAD_ENTRY * thread_p, LOID * loid,
-			 LARGEOBJMGR_DIRSTATE * ds,
-			 LARGEOBJMGR_DIRENTRY * cur_dir_entry_p,
-			 int bg_woffset, int end_woffset, char *buffer)
+largeobjmgr_write_entry (THREAD_ENTRY * thread_p, LOID * loid, LARGEOBJMGR_DIRSTATE * ds,
+			 LARGEOBJMGR_DIRENTRY * cur_dir_entry_p, int bg_woffset, int end_woffset, char *buffer)
 {
   PAGE_PTR page_ptr = NULL;
   LARGEOBJMGR_DIRENTRY temp_dir_entry_p;
@@ -1025,11 +910,10 @@ largeobjmgr_write_entry (THREAD_ENTRY * thread_p, LOID * loid,
 
   if (LARGEOBJMGR_ISHOLE_DIRENTRY (cur_dir_entry_p))
     {
-      /* ENTRY CONTAINS A HOLE.
-         A portion of the hole will be removed with this overwrite. */
+      /* ENTRY CONTAINS A HOLE. A portion of the hole will be removed with this overwrite. */
       if (bg_woffset > 0)
 	{
-	  /*
+	  /* 
 	   * The insertion happens within the hole.
 	   * This hole is split into two pieces, the actual data is placed
 	   * within the second hole shrinking the second hole. In fact the
@@ -1044,8 +928,7 @@ largeobjmgr_write_entry (THREAD_ENTRY * thread_p, LOID * loid,
 	}
 
       /* Now insert the data by creating new slots */
-      write_length = largeobjmgr_putin_newentries (thread_p, loid, ds,
-						   write_length, buffer);
+      write_length = largeobjmgr_putin_newentries (thread_p, loid, ds, write_length, buffer);
       if (write_length < 0)
 	{
 	  ret = write_length;
@@ -1061,8 +944,7 @@ largeobjmgr_write_entry (THREAD_ENTRY * thread_p, LOID * loid,
       if (end_woffset < cur_slot_length)
 	{
 	  /* Shrink the hole */
-	  LARGEOBJMGR_SET_HOLE_DIRENTRY (&temp_dir_entry_p,
-					 cur_slot_length - end_woffset);
+	  LARGEOBJMGR_SET_HOLE_DIRENTRY (&temp_dir_entry_p, cur_slot_length - end_woffset);
 	  ret = largeobjmgr_dir_update (thread_p, ds, &temp_dir_entry_p);
 	  if (ret != NO_ERROR)
 	    {
@@ -1083,8 +965,7 @@ largeobjmgr_write_entry (THREAD_ENTRY * thread_p, LOID * loid,
     {
       /* Regular entry. Overwrite the data in this entry */
 
-      page_ptr = pgbuf_fix (thread_p, &cur_dir_entry_p->u.vpid, OLD_PAGE,
-			    PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      page_ptr = pgbuf_fix (thread_p, &cur_dir_entry_p->u.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
 	  goto exit_on_error;
@@ -1093,9 +974,8 @@ largeobjmgr_write_entry (THREAD_ENTRY * thread_p, LOID * loid,
       (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
 
       /* overwrite the area in the slot */
-      ret = largeobjmgr_sp_overwrite (thread_p, loid, page_ptr,
-				      cur_dir_entry_p->slotid, bg_woffset,
-				      write_length, buffer);
+      ret =
+	largeobjmgr_sp_overwrite (thread_p, loid, page_ptr, cur_dir_entry_p->slotid, bg_woffset, write_length, buffer);
       if (ret != NO_ERROR)
 	{
 	  pgbuf_unfix_and_init (thread_p, page_ptr);
@@ -1109,8 +989,7 @@ largeobjmgr_write_entry (THREAD_ENTRY * thread_p, LOID * loid,
 
 exit_on_error:
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -1123,10 +1002,8 @@ exit_on_error:
  *   end_doffset(in): Delete end offset
  */
 static int
-largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
-			  LARGEOBJMGR_DIRSTATE * ds,
-			  LARGEOBJMGR_DIRENTRY * dir_entry_p, int bg_doffset,
-			  int end_doffset)
+largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid, LARGEOBJMGR_DIRSTATE * ds,
+			  LARGEOBJMGR_DIRENTRY * dir_entry_p, int bg_doffset, int end_doffset)
 {
   PAGE_PTR page_ptr = NULL;
   int cur_slot_length;
@@ -1143,8 +1020,7 @@ largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
 
   if (LARGEOBJMGR_ISHOLE_DIRENTRY (dir_entry_p))
     {
-      /* ENTRY CONTAINS A HOLE.
-         A portion of the hole will be removed with this deletion. */
+      /* ENTRY CONTAINS A HOLE. A portion of the hole will be removed with this deletion. */
       if (dlength == cur_slot_length)
 	{
 	  /* Deletion is the full hole */
@@ -1157,8 +1033,7 @@ largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
       else
 	{
 	  /* Shrink the hole with the difference in length. */
-	  LARGEOBJMGR_SET_HOLE_DIRENTRY (&temp_dir_ent,
-					 cur_slot_length - dlength);
+	  LARGEOBJMGR_SET_HOLE_DIRENTRY (&temp_dir_ent, cur_slot_length - dlength);
 	  ret = largeobjmgr_dir_update (thread_p, ds, &temp_dir_ent);
 	  if (ret != NO_ERROR)
 	    {
@@ -1169,8 +1044,7 @@ largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
   else
     {
       /* Regular entry. Delete data from this entry. */
-      page_ptr = pgbuf_fix (thread_p, &dir_entry_p->u.vpid, OLD_PAGE,
-			    PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      page_ptr = pgbuf_fix (thread_p, &dir_entry_p->u.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
 	  return ER_FAILED;
@@ -1180,20 +1054,18 @@ largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
 
       if (dlength == cur_slot_length)
 	{
-	  /*
+	  /* 
 	   * Delete the slot completely.
 	   * Deallocate the page if the deleation of the slot will make it empty.
 	   */
 
 	  num_recs = spage_number_of_records (page_ptr);
 
-	  if (num_recs <= 1
-	      && !VPID_EQ (&dir_entry_p->u.vpid, &(ds->goodvpid_fordata)))
+	  if (num_recs <= 1 && !VPID_EQ (&dir_entry_p->u.vpid, &(ds->goodvpid_fordata)))
 	    {
 	      /* Page has become empty */
 	      pgbuf_unfix_and_init (thread_p, page_ptr);
-	      ret = file_dealloc_page (thread_p, &loid->vfid,
-				       &dir_entry_p->u.vpid, FILE_LONGDATA);
+	      ret = file_dealloc_page (thread_p, &loid->vfid, &dir_entry_p->u.vpid, FILE_LONGDATA);
 	      if (ret != NO_ERROR)
 		{
 		  return ret;
@@ -1203,8 +1075,7 @@ largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
 	    {
 	      /* Just remove the slot from the page */
 	      recdes.area_size = -1;
-	      if (spage_get_record (page_ptr, dir_entry_p->slotid, &recdes,
-				    PEEK) != S_SUCCESS)
+	      if (spage_get_record (page_ptr, dir_entry_p->slotid, &recdes, PEEK) != S_SUCCESS)
 		{
 		  pgbuf_unfix_and_init (thread_p, page_ptr);
 
@@ -1214,11 +1085,9 @@ largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
 	      addr.pgptr = page_ptr;
 	      addr.offset = dir_entry_p->slotid;
 
-	      log_append_undoredo_recdes (thread_p, RVLOM_DELETE, &addr,
-					  &recdes, NULL);
+	      log_append_undoredo_recdes (thread_p, RVLOM_DELETE, &addr, &recdes, NULL);
 
-	      if (spage_delete (thread_p, page_ptr, dir_entry_p->slotid) !=
-		  dir_entry_p->slotid)
+	      if (spage_delete (thread_p, page_ptr, dir_entry_p->slotid) != dir_entry_p->slotid)
 		{
 		  pgbuf_unfix_and_init (thread_p, page_ptr);
 		  return ER_FAILED;
@@ -1238,9 +1107,7 @@ largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
       else
 	{
 	  /* Delete a portion of the area within the slot */
-	  ret = largeobjmgr_sp_takeout (thread_p, loid, page_ptr,
-					dir_entry_p->slotid, bg_doffset,
-					dlength);
+	  ret = largeobjmgr_sp_takeout (thread_p, loid, page_ptr, dir_entry_p->slotid, bg_doffset, dlength);
 	  if (ret != NO_ERROR)
 	    {
 	      pgbuf_unfix_and_init (thread_p, page_ptr);
@@ -1274,8 +1141,7 @@ largeobjmgr_delete_entry (THREAD_ENTRY * thread_p, LOID * loid,
  *   buffer(in): Data to be inserted
  */
 static int
-largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
-			     LARGEOBJMGR_DIRSTATE * ds, INT64 lo_offset,
+largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid, LARGEOBJMGR_DIRSTATE * ds, INT64 lo_offset,
 			     int length, char *buffer)
 {
   LARGEOBJMGR_DIRENTRY *cur_dir_entry_p;
@@ -1295,8 +1161,7 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
   if (lo_offset == ds->lo_offset)
     {
       /* Insert at the beginning of the slot */
-      xlength = largeobjmgr_putin_newentries (thread_p, loid, ds,
-					      length, buffer);
+      xlength = largeobjmgr_putin_newentries (thread_p, loid, ds, length, buffer);
       if (xlength < 0)
 	{
 	  ret = (int) xlength;
@@ -1310,13 +1175,11 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
       cur_dir_entry_p = ds->curdir.idxptr;
 
       slot_insert_offset = (int) (lo_offset - ds->lo_offset);	/* left slot length */
-      right_slot_len = (LARGEOBJMGR_DIRENTRY_LENGTH (cur_dir_entry_p) -
-			slot_insert_offset);
+      right_slot_len = (LARGEOBJMGR_DIRENTRY_LENGTH (cur_dir_entry_p) - slot_insert_offset);
 
       if (LARGEOBJMGR_ISHOLE_DIRENTRY (cur_dir_entry_p))
 	{
-	  /* Inserting in the middle of the hole.
-	     The hole will be split into two */
+	  /* Inserting in the middle of the hole. The hole will be split into two */
 	  LARGEOBJMGR_COPY_DIRENTRY (&temp_dir_entry, cur_dir_entry_p);
 	  temp_dir_entry.u.length = slot_insert_offset;
 
@@ -1331,8 +1194,7 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
 	    }
 
 	  /* Now insert after the new hole. */
-	  xlength = largeobjmgr_putin_newentries (thread_p, loid, ds,
-						  length, buffer);
+	  xlength = largeobjmgr_putin_newentries (thread_p, loid, ds, length, buffer);
 	  if (xlength < 0)
 	    {
 	      ret = (int) xlength;
@@ -1352,8 +1214,8 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
 	{
 	  /* regular entry */
 
-	  page_ptr = pgbuf_fix (thread_p, &cur_dir_entry_p->u.vpid, OLD_PAGE,
-				PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  page_ptr =
+	    pgbuf_fix (thread_p, &cur_dir_entry_p->u.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (page_ptr == NULL)
 	    {
 	      goto exit_on_error;
@@ -1362,29 +1224,24 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
 	  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
 
 	  plength = 0;
-	  if (cur_dir_entry_p->length <=
-	      LARGEOBJMGR_MAX_DATA_SLOT_SIZE - length)
+	  if (cur_dir_entry_p->length <= LARGEOBJMGR_MAX_DATA_SLOT_SIZE - length)
 	    {
-	      plength = largeobjmgr_max_append_putin (thread_p, page_ptr,
-						      length);
+	      plength = largeobjmgr_max_append_putin (thread_p, page_ptr, length);
 	      if (plength >= length)
 		{
 		  /* We can add the desired record into the record in this slot */
-		  ret = largeobjmgr_sp_putin (thread_p, loid, page_ptr,
-					      cur_dir_entry_p->slotid,
-					      slot_insert_offset, length,
-					      buffer);
+		  ret =
+		    largeobjmgr_sp_putin (thread_p, loid, page_ptr, cur_dir_entry_p->slotid, slot_insert_offset, length,
+					  buffer);
 		  if (ret != NO_ERROR)
 		    {
 		      goto exit_on_error;
 		    }
 
 		  /* update directory entry for the new length */
-		  LARGEOBJMGR_COPY_DIRENTRY (&temp_dir_entry,
-					     cur_dir_entry_p);
+		  LARGEOBJMGR_COPY_DIRENTRY (&temp_dir_entry, cur_dir_entry_p);
 		  temp_dir_entry.length += (INT16) length;
-		  ret = largeobjmgr_dir_update (thread_p, ds,
-						&temp_dir_entry);
+		  ret = largeobjmgr_dir_update (thread_p, ds, &temp_dir_entry);
 		  if (ret != NO_ERROR)
 		    {
 		      goto exit_on_error;
@@ -1400,14 +1257,12 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
 	  else
 	    {
 
-	      if (largeobjmgr_slot_split_possible (thread_p, page_ptr) ==
-		  true)
+	      if (largeobjmgr_slot_split_possible (thread_p, page_ptr) == true)
 		{
 		  /* Split on the same page */
-		  ret = largeobjmgr_sp_split (thread_p, loid, page_ptr,
-					      cur_dir_entry_p->slotid,
-					      slot_insert_offset,
-					      &right_slot_id);
+		  ret =
+		    largeobjmgr_sp_split (thread_p, loid, page_ptr, cur_dir_entry_p->slotid, slot_insert_offset,
+					  &right_slot_id);
 		  if (ret != NO_ERROR)
 		    {
 		      goto exit_on_error;
@@ -1416,11 +1271,9 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
 		  pgbuf_unfix_and_init (thread_p, page_ptr);
 
 		  /* update current dir. entry for the new left slot length */
-		  LARGEOBJMGR_COPY_DIRENTRY (&temp_dir_entry,
-					     cur_dir_entry_p);
+		  LARGEOBJMGR_COPY_DIRENTRY (&temp_dir_entry, cur_dir_entry_p);
 		  temp_dir_entry.length = slot_insert_offset;
-		  ret = largeobjmgr_dir_update (thread_p, ds,
-						&temp_dir_entry);
+		  ret = largeobjmgr_dir_update (thread_p, ds, &temp_dir_entry);
 		  if (ret != NO_ERROR)
 		    {
 		      goto exit_on_error;
@@ -1430,8 +1283,7 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
 		      goto exit_on_error;
 		    }
 
-		  xlength = largeobjmgr_putin_newentries (thread_p, loid,
-							  ds, length, buffer);
+		  xlength = largeobjmgr_putin_newentries (thread_p, loid, ds, length, buffer);
 		  if (xlength < 0)
 		    {
 		      ret = (int) xlength;
@@ -1442,8 +1294,7 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
 		  /* insert a new directory entry for the right slot */
 		  temp_dir_entry.slotid = right_slot_id;
 		  temp_dir_entry.length = right_slot_len;
-		  ret = largeobjmgr_dir_insert (thread_p, ds,
-						&temp_dir_entry, 1);
+		  ret = largeobjmgr_dir_insert (thread_p, ds, &temp_dir_entry, 1);
 		  if (ret != NO_ERROR)
 		    {
 		      goto exit_on_error;
@@ -1451,7 +1302,7 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
 		}
 	      else
 		{
-		  /*
+		  /* 
 		   * We cannot split on the same page. The split must happen
 		   * between two pages.
 		   *
@@ -1461,15 +1312,14 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
 		   *       COPY, for performance reasons.
 		   */
 
-		  /*
+		  /* 
 		   * Move length bytes of the current slot when possible.
 		   * If we cannot move length bytes, the new data will also
 		   * be split in two.
 		   */
 
 		  recdes.area_size = -1;
-		  if (spage_get_record (page_ptr, cur_dir_entry_p->slotid,
-					&recdes, PEEK) != S_SUCCESS)
+		  if (spage_get_record (page_ptr, cur_dir_entry_p->slotid, &recdes, PEEK) != S_SUCCESS)
 		    {
 		      goto exit_on_error;
 		    }
@@ -1492,22 +1342,19 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
 		  if (xlength > 0)
 		    {
 		      memcpy ((char *) temp_area + length - xlength,
-			      (char *) recdes.data + cur_dir_entry_p->length -
-			      xlength, xlength);
-		      ret = largeobjmgr_sp_takeout (thread_p, loid, page_ptr,
-						    cur_dir_entry_p->slotid,
-						    cur_dir_entry_p->length
-						    - xlength, xlength);
+			      (char *) recdes.data + cur_dir_entry_p->length - xlength, xlength);
+		      ret =
+			largeobjmgr_sp_takeout (thread_p, loid, page_ptr, cur_dir_entry_p->slotid,
+						cur_dir_entry_p->length - xlength, xlength);
 		      if (ret != NO_ERROR)
 			{
 			  goto exit_on_error;
 			}
 
 		      /* Now add xlength bytes to the current slot */
-		      ret = largeobjmgr_sp_putin (thread_p, loid, page_ptr,
-						  cur_dir_entry_p->slotid,
-						  slot_insert_offset, xlength,
-						  buffer);
+		      ret =
+			largeobjmgr_sp_putin (thread_p, loid, page_ptr, cur_dir_entry_p->slotid, slot_insert_offset,
+					      xlength, buffer);
 		      if (ret != NO_ERROR)
 			{
 			  goto exit_on_error;
@@ -1517,15 +1364,13 @@ largeobjmgr_insert_internal (THREAD_ENTRY * thread_p, LOID * loid,
 		  pgbuf_set_dirty (thread_p, page_ptr, FREE);
 		  page_ptr = NULL;
 
-		  /* Naw, insert the right portion of the split with may be a
-		   * little bit of new data */
+		  /* Naw, insert the right portion of the split with may be a little bit of new data */
 		  if (largeobjmgr_dir_scan_next (thread_p, ds) == S_ERROR)
 		    {
 		      goto exit_on_error;
 		    }
 
-		  xlength = largeobjmgr_putin_newentries (thread_p, loid, ds,
-							  length, temp_area);
+		  xlength = largeobjmgr_putin_newentries (thread_p, loid, ds, length, temp_area);
 		  if (xlength < 0)
 		    {
 		      ret = xlength;
@@ -1554,8 +1399,7 @@ exit_on_error:
       free_and_init (temp_area);
     }
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -1571,9 +1415,7 @@ exit_on_error:
  *       corresponding new entries to the directory at the current position.
  */
 static int
-largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid,
-			      LARGEOBJMGR_DIRSTATE * ds, int length,
-			      char *buffer)
+largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid, LARGEOBJMGR_DIRSTATE * ds, int length, char *buffer)
 {
   VPID vpid;
   VPID near_vpid;
@@ -1609,8 +1451,7 @@ largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid,
     {
       /* Check the space in last data page allocated for the long object */
 
-      page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-			    PGBUF_UNCONDITIONAL_LATCH);
+      page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
 	  goto exit_on_error;
@@ -1639,18 +1480,14 @@ largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid,
 
   near_vpid = vpid;
 
-  /* compute number of directory entries needed.
-     That is, how many new entries and pages are needed. */
+  /* compute number of directory entries needed. That is, how many new entries and pages are needed. */
   ent_cnt = (xlength > 0) ? 1 : 0;
   if (length > xlength)
     {
-      ent_cnt += CEIL_PTVDIV (length - xlength,
-			      LARGEOBJMGR_MAX_DATA_SLOT_SIZE);
+      ent_cnt += CEIL_PTVDIV (length - xlength, LARGEOBJMGR_MAX_DATA_SLOT_SIZE);
     }
 
-  dir_entries = (LARGEOBJMGR_DIRENTRY *) malloc (ent_cnt *
-						 sizeof
-						 (LARGEOBJMGR_DIRENTRY));
+  dir_entries = (LARGEOBJMGR_DIRENTRY *) malloc (ent_cnt * sizeof (LARGEOBJMGR_DIRENTRY));
   if (dir_entries == NULL)
     {
       goto exit_on_error;
@@ -1681,8 +1518,7 @@ largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid,
   recdes.type = REC_HOME;
   while (buf_offset < length)
     {
-      /* Get next available page of the set that were previously allocated.
-         or allocate a new page if needed. */
+      /* Get next available page of the set that were previously allocated. or allocate a new page if needed. */
 
       recdes.data = buf_ptr;
       if (xlength > 0)
@@ -1694,24 +1530,19 @@ largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid,
       else
 	{
 	  /* Use one of the newly allocated pages */
-	  recdes.length = MIN (length - buf_offset,
-			       LARGEOBJMGR_MAX_DATA_SLOT_SIZE);
+	  recdes.length = MIN (length - buf_offset, LARGEOBJMGR_MAX_DATA_SLOT_SIZE);
 	  if (new_alloc != NULL)
 	    {
-	      page_ptr = largeobjmgr_fetch_nxallocset_page (thread_p,
-							    new_alloc, &vpid);
+	      page_ptr = largeobjmgr_fetch_nxallocset_page (thread_p, new_alloc, &vpid);
 	      if (page_ptr == NULL)
 		{
-		  (void) largeobjmgr_deallocset_all_pages (thread_p,
-							   new_alloc);
+		  (void) largeobjmgr_deallocset_all_pages (thread_p, new_alloc);
 		  goto exit_on_error;
 		}
 	    }
 	}
 
-      if (page_ptr == NULL
-	  || spage_insert (thread_p, page_ptr, &recdes,
-			   &slotid) != SP_SUCCESS)
+      if (page_ptr == NULL || spage_insert (thread_p, page_ptr, &recdes, &slotid) != SP_SUCCESS)
 	{
 	  if (new_alloc != NULL)
 	    {
@@ -1724,13 +1555,12 @@ largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid,
       addr.vfid = &loid->vfid;
       addr.pgptr = page_ptr;
       addr.offset = slotid;
-      log_append_undoredo_recdes (thread_p, RVLOM_INSERT, &addr, NULL,
-				  &recdes);
+      log_append_undoredo_recdes (thread_p, RVLOM_INSERT, &addr, NULL, &recdes);
 
       pgbuf_set_dirty (thread_p, page_ptr, FREE);
       page_ptr = NULL;
 
-      /* form next entry  */
+      /* form next entry */
       dir_entries[index].u.vpid = vpid;
       dir_entries[index].slotid = slotid;
       dir_entries[index].length = recdes.length;
@@ -1742,12 +1572,10 @@ largeobjmgr_putin_newentries (THREAD_ENTRY * thread_p, LOID * loid,
       inserted_length += recdes.length;
     }
 
-  if (index > 0
-      && !VPID_EQ (&dir_entries[index - 1].u.vpid, &(ds->goodvpid_fordata)))
+  if (index > 0 && !VPID_EQ (&dir_entries[index - 1].u.vpid, &(ds->goodvpid_fordata)))
     {
       /* reset file last page status */
-      largeobjmgr_reset_last_alloc_page (thread_p, ds,
-					 &dir_entries[index - 1].u.vpid);
+      largeobjmgr_reset_last_alloc_page (thread_p, ds, &dir_entries[index - 1].u.vpid);
     }
 
   /* insert all the created directory entries at current position */
@@ -1784,8 +1612,7 @@ exit_on_error:
       free_and_init (dir_entries);
     }
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -1801,9 +1628,8 @@ exit_on_error:
  * Note: If offset > lo_length, a hole is inserted to the end.
  */
 static int
-largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
-			     LARGEOBJMGR_DIRSTATE * ds, INT64 offset,
-			     int length, char *buffer)
+largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid, LARGEOBJMGR_DIRSTATE * ds, INT64 offset, int length,
+			     char *buffer)
 {
   LARGEOBJMGR_DIRENTRY *cur_dir_entry_p;
   LARGEOBJMGR_DIRENTRY temp_dir_entry;
@@ -1836,8 +1662,7 @@ largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
       /* Do we have any data to be appended ? */
       if (length > 0)
 	{
-	  xlength = largeobjmgr_putin_newentries (thread_p, loid, ds,
-						  length, buffer);
+	  xlength = largeobjmgr_putin_newentries (thread_p, loid, ds, length, buffer);
 	  if (xlength < 0)
 	    {
 	      ret = xlength;
@@ -1856,8 +1681,7 @@ largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
 	  hole_length = (int) (offset - ds->tot_length);
 	  if (LARGEOBJMGR_ISHOLE_DIRENTRY (cur_dir_entry_p))
 	    {
-	      /* Last entry is a hole,
-	         expand it instead of creating another one */
+	      /* Last entry is a hole, expand it instead of creating another one */
 	      LARGEOBJMGR_COPY_DIRENTRY (&temp_dir_entry, cur_dir_entry_p);
 	      temp_dir_entry.u.length += hole_length;
 
@@ -1877,8 +1701,7 @@ largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
 		      goto exit_on_error;
 		    }
 
-		  xlength = largeobjmgr_putin_newentries (thread_p, loid,
-							  ds, length, buffer);
+		  xlength = largeobjmgr_putin_newentries (thread_p, loid, ds, length, buffer);
 		  if (xlength < 0)
 		    {
 		      ret = xlength;
@@ -1908,8 +1731,7 @@ largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
 	      if (length > 0)
 		{
 		  /* more data to append */
-		  xlength = largeobjmgr_putin_newentries (thread_p, loid,
-							  ds, length, buffer);
+		  xlength = largeobjmgr_putin_newentries (thread_p, loid, ds, length, buffer);
 		  if (xlength < 0)
 		    {
 		      ret = xlength;
@@ -1925,40 +1747,33 @@ largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
 	  if (!LARGEOBJMGR_ISHOLE_DIRENTRY (cur_dir_entry_p) && length > 0
 	      && cur_dir_entry_p->length < LARGEOBJMGR_MAX_DATA_SLOT_SIZE)
 	    {
-	      page_ptr = pgbuf_fix (thread_p, &cur_dir_entry_p->u.vpid,
-				    OLD_PAGE, PGBUF_LATCH_WRITE,
-				    PGBUF_UNCONDITIONAL_LATCH);
+	      page_ptr =
+		pgbuf_fix (thread_p, &cur_dir_entry_p->u.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	      if (page_ptr == NULL)
 		{
 		  goto exit_on_error;
 		}
 
-	      (void) pgbuf_check_page_ptype (thread_p, page_ptr,
-					     PAGE_LARGEOBJ);
+	      (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
 
 	      /* Append as much as you can to the current slot entry */
-	      plength = largeobjmgr_max_append_putin (thread_p, page_ptr,
-						      cur_dir_entry_p->
-						      length);
+	      plength = largeobjmgr_max_append_putin (thread_p, page_ptr, cur_dir_entry_p->length);
 	      plength = MIN (plength, length);
 
 	      if (plength > 0)
 		{
-		  ret = largeobjmgr_sp_append (thread_p, loid, page_ptr,
-					       cur_dir_entry_p->slotid,
-					       cur_dir_entry_p->length,
-					       plength, buffer);
+		  ret =
+		    largeobjmgr_sp_append (thread_p, loid, page_ptr, cur_dir_entry_p->slotid, cur_dir_entry_p->length,
+					   plength, buffer);
 		  if (ret != NO_ERROR)
 		    {
 		      goto exit_on_error;
 		    }
 
 		  /* update directory entry for the new length */
-		  LARGEOBJMGR_COPY_DIRENTRY (&temp_dir_entry,
-					     cur_dir_entry_p);
+		  LARGEOBJMGR_COPY_DIRENTRY (&temp_dir_entry, cur_dir_entry_p);
 		  temp_dir_entry.length += plength;
-		  ret = largeobjmgr_dir_update (thread_p, ds,
-						&temp_dir_entry);
+		  ret = largeobjmgr_dir_update (thread_p, ds, &temp_dir_entry);
 		  if (ret != NO_ERROR)
 		    {
 		      goto exit_on_error;
@@ -1980,8 +1795,7 @@ largeobjmgr_append_internal (THREAD_ENTRY * thread_p, LOID * loid,
 		  goto exit_on_error;
 		}
 
-	      xlength = largeobjmgr_putin_newentries (thread_p, loid, ds,
-						      length, buffer);
+	      xlength = largeobjmgr_putin_newentries (thread_p, loid, ds, length, buffer);
 	      if (xlength < 0)
 		{
 		  ret = xlength;
@@ -2001,8 +1815,7 @@ exit_on_error:
       pgbuf_unfix_and_init (thread_p, page_ptr);
     }
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -2020,8 +1833,7 @@ exit_on_error:
  *       and LARGEOBJMGR_TRUNCATE_MODE.
  */
 static INT64
-largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
-		     INT64 offset, INT64 length, char *buffer)
+largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode, INT64 offset, INT64 length, char *buffer)
 {
   LARGEOBJMGR_DIRSTATE ds_info, *ds;
   SCAN_CODE lo_scan;
@@ -2090,7 +1902,7 @@ largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
       /* We are between the current boundaries of the lom object */
       while (processed_length < process_length && lo_scan != S_END)
 	{
-	  /*
+	  /* 
 	   * More data to process
 	   *
 	   * Point to current directory data slot X and find portion of
@@ -2132,26 +1944,22 @@ largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
 		  }
 		else
 		  {
-		    page_ptr = pgbuf_fix (thread_p, &cur_dir_entry_p->u.vpid,
-					  OLD_PAGE, PGBUF_LATCH_READ,
-					  PGBUF_UNCONDITIONAL_LATCH);
+		    page_ptr =
+		      pgbuf_fix (thread_p, &cur_dir_entry_p->u.vpid, OLD_PAGE, PGBUF_LATCH_READ,
+				 PGBUF_UNCONDITIONAL_LATCH);
 		    if (page_ptr == NULL)
 		      {
 			goto exit_on_error;
 		      }
 
-		    (void) pgbuf_check_page_ptype (thread_p, page_ptr,
-						   PAGE_LARGEOBJ);
+		    (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
 
-		    if (spage_get_record (page_ptr, cur_dir_entry_p->slotid,
-					  &recdes, PEEK) != S_SUCCESS)
+		    if (spage_get_record (page_ptr, cur_dir_entry_p->slotid, &recdes, PEEK) != S_SUCCESS)
 		      {
 			goto exit_on_error;
 		      }
 
-		    memcpy (buffer_ptr,
-			    (char *) recdes.data + process_begin_offset,
-			    cur_data_length);
+		    memcpy (buffer_ptr, (char *) recdes.data + process_begin_offset, cur_data_length);
 		    pgbuf_unfix_and_init (thread_p, page_ptr);
 		  }
 	      }
@@ -2159,11 +1967,9 @@ largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
 
 	    case LARGEOBJMGR_WRITE_MODE:
 	      {
-		cur_data_length = largeobjmgr_write_entry (thread_p, loid, ds,
-							   cur_dir_entry_p,
-							   process_begin_offset,
-							   process_end_offset,
-							   buffer_ptr);
+		cur_data_length =
+		  largeobjmgr_write_entry (thread_p, loid, ds, cur_dir_entry_p, process_begin_offset,
+					   process_end_offset, buffer_ptr);
 		if (cur_data_length < 0)
 		  {
 		    ret = cur_data_length;
@@ -2175,11 +1981,9 @@ largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
 	    case LARGEOBJMGR_DELETE_MODE:
 	    case LARGEOBJMGR_TRUNCATE_MODE:
 	      {
-		cur_data_length = largeobjmgr_delete_entry (thread_p, loid,
-							    ds,
-							    cur_dir_entry_p,
-							    process_begin_offset,
-							    process_end_offset);
+		cur_data_length =
+		  largeobjmgr_delete_entry (thread_p, loid, ds, cur_dir_entry_p, process_begin_offset,
+					    process_end_offset);
 		if (cur_data_length < 0)
 		  {
 		    ret = cur_data_length;
@@ -2191,8 +1995,7 @@ largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
 	    default:
 	      /* invalid mode specification */
 	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-			1);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1);
 		ret = ER_GENERIC_ERROR;
 		goto exit_on_error;
 	      }
@@ -2215,16 +2018,13 @@ largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
 
   if (processed_length < length)
     {
-      /* We do not have that much length to process at given offset, unless
-         we are writing/appending. */
+      /* We do not have that much length to process at given offset, unless we are writing/appending. */
       if (opr_mode == LARGEOBJMGR_WRITE_MODE)
 	{
 	  /* append data to the end */
-	  xlength = largeobjmgr_append_internal (thread_p, loid, ds,
-						 offset + processed_length,
-						 (int) (length -
-							processed_length),
-						 buffer + processed_length);
+	  xlength =
+	    largeobjmgr_append_internal (thread_p, loid, ds, offset + processed_length,
+					 (int) (length - processed_length), buffer + processed_length);
 	  if (xlength < 0)
 	    {
 	      ret = xlength;
@@ -2247,8 +2047,7 @@ exit_on_error:
       pgbuf_unfix_and_init (thread_p, page_ptr);
     }
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -2292,8 +2091,7 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
   temp_page_ptr = NULL;
 
   /* first compress data pages */
-  lo_scan = largeobjmgr_dir_open (thread_p, loid, 0,
-				  LARGEOBJMGR_COMPRESS_MODE, ds);
+  lo_scan = largeobjmgr_dir_open (thread_p, loid, 0, LARGEOBJMGR_COMPRESS_MODE, ds);
   if (lo_scan == S_ERROR)
     {
       return ER_FAILED;
@@ -2331,8 +2129,8 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 	{
 	  /* compress this entry */
 
-	  page_ptr = pgbuf_fix (thread_p, &cur_dir_entry.u.vpid, OLD_PAGE,
-				PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  page_ptr =
+	    pgbuf_fix (thread_p, &cur_dir_entry.u.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (page_ptr == NULL)
 	    {
 	      goto exit_on_error;
@@ -2340,8 +2138,7 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 
 	  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_LARGEOBJ);
 
-	  if (spage_get_record (page_ptr, cur_dir_entry.slotid, &recdes, COPY)
-	      != S_SUCCESS)
+	  if (spage_get_record (page_ptr, cur_dir_entry.slotid, &recdes, COPY) != S_SUCCESS)
 	    {
 	      goto exit_on_error;
 	    }
@@ -2349,12 +2146,10 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 	  /* enlarge the record by appending */
 
 	  nrecs = spage_number_of_records (page_ptr);
-	  append_length = ((nrecs == 1)
-			   ? largeobjmgr_max_append_putin (thread_p, page_ptr,
-							   cur_dir_entry.
-							   length)
-			   : (LARGEOBJMGR_MAX_DATA_SLOT_SIZE -
-			      cur_dir_entry.length));
+	  append_length =
+	    ((nrecs == 1) ? largeobjmgr_max_append_putin (thread_p, page_ptr,
+							  cur_dir_entry.length) : (LARGEOBJMGR_MAX_DATA_SLOT_SIZE -
+										   cur_dir_entry.length));
 	  appended_length = 0;
 	  buffer_ptr = (char *) recdes.data + cur_dir_entry.length;
 	  buffer_len = cur_dir_entry.length;
@@ -2377,67 +2172,52 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 
 	      if (LARGEOBJMGR_ISHOLE_DIRENTRY (cur_temp_dir_entry_p))
 		{
-		  /* A hole was found. We cannot compress anything to the right
-		     of the hole with the left of the hole. */
+		  /* A hole was found. We cannot compress anything to the right of the hole with the left of the hole. */
 		  break;
 		}
 
 	      data_recdes.data = (char *) rec_data;
-	      temp_page_ptr = pgbuf_fix (thread_p,
-					 &cur_temp_dir_entry_p->u.vpid,
-					 OLD_PAGE, PGBUF_LATCH_WRITE,
-					 PGBUF_UNCONDITIONAL_LATCH);
+	      temp_page_ptr =
+		pgbuf_fix (thread_p, &cur_temp_dir_entry_p->u.vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			   PGBUF_UNCONDITIONAL_LATCH);
 	      if (temp_page_ptr == NULL)
 		{
 		  goto exit_on_error;
 		}
 
-	      (void) pgbuf_check_page_ptype (thread_p, temp_page_ptr,
-					     PAGE_LARGEOBJ);
+	      (void) pgbuf_check_page_ptype (thread_p, temp_page_ptr, PAGE_LARGEOBJ);
 
-	      if (spage_get_record
-		  (temp_page_ptr, cur_temp_dir_entry_p->slotid, &data_recdes,
-		   COPY) != S_SUCCESS)
+	      if (spage_get_record (temp_page_ptr, cur_temp_dir_entry_p->slotid, &data_recdes, COPY) != S_SUCCESS)
 		{
 		  goto exit_on_error;
 		}
 
-	      curr_append_length =
-		MIN (cur_temp_dir_entry_p->length,
-		     append_length - appended_length);
+	      curr_append_length = MIN (cur_temp_dir_entry_p->length, append_length - appended_length);
 
-	      memcpy (buffer_ptr, (char *) data_recdes.data,
-		      curr_append_length);
+	      memcpy (buffer_ptr, (char *) data_recdes.data, curr_append_length);
 
 	      if (curr_append_length == cur_temp_dir_entry_p->length)
 		{
-		  /* Delete the current slot at this point since its record has
-		     been merged with previous slot. */
+		  /* Delete the current slot at this point since its record has been merged with previous slot. */
 
 		  /* first log the record content for UNDO/REDO purposes */
 		  addr.pgptr = temp_page_ptr;
 		  addr.offset = cur_temp_dir_entry_p->slotid;
-		  log_append_undoredo_recdes (thread_p, RVLOM_DELETE, &addr,
-					      &data_recdes, NULL);
+		  log_append_undoredo_recdes (thread_p, RVLOM_DELETE, &addr, &data_recdes, NULL);
 
-		  if (spage_delete
-		      (thread_p, temp_page_ptr,
-		       cur_temp_dir_entry_p->slotid) !=
+		  if (spage_delete (thread_p, temp_page_ptr, cur_temp_dir_entry_p->slotid) !=
 		      cur_temp_dir_entry_p->slotid)
 		    {
 		      goto exit_on_error;
 		    }
 
 		  if ((spage_number_of_records (temp_page_ptr) == 0)
-		      && !VPID_EQ (&cur_temp_dir_entry_p->u.vpid,
-				   &(ds->goodvpid_fordata)))
+		      && !VPID_EQ (&cur_temp_dir_entry_p->u.vpid, &(ds->goodvpid_fordata)))
 		    {
 		      /* Deallocate the page if it becomes empty */
 		      pgbuf_set_dirty (thread_p, temp_page_ptr, FREE);
 		      temp_page_ptr = NULL;
-		      ret = file_dealloc_page (thread_p, &loid->vfid,
-					       &cur_temp_dir_entry_p->u.vpid,
-					       FILE_LONGDATA);
+		      ret = file_dealloc_page (thread_p, &loid->vfid, &cur_temp_dir_entry_p->u.vpid, FILE_LONGDATA);
 		      if (ret != NO_ERROR)
 			{
 			  goto exit_on_error;
@@ -2459,9 +2239,9 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 	      else
 		{
 		  /* Update the entry. Only a portion of the record is removed */
-		  ret = largeobjmgr_sp_takeout (thread_p, loid, temp_page_ptr,
-						cur_temp_dir_entry_p->slotid,
-						0, curr_append_length);
+		  ret =
+		    largeobjmgr_sp_takeout (thread_p, loid, temp_page_ptr, cur_temp_dir_entry_p->slotid, 0,
+					    curr_append_length);
 		  if (ret != NO_ERROR)
 		    {
 		      goto exit_on_error;
@@ -2474,8 +2254,7 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 		  temp_page_ptr = NULL;
 
 		  /* update the corresponding directory entry for new length */
-		  LARGEOBJMGR_COPY_DIRENTRY (&temp_entry,
-					     cur_temp_dir_entry_p);
+		  LARGEOBJMGR_COPY_DIRENTRY (&temp_entry, cur_temp_dir_entry_p);
 		  temp_entry.length = data_recdes.length;
 		  ret = largeobjmgr_dir_update (thread_p, ds, &temp_entry);
 		  if (ret != NO_ERROR)
@@ -2503,21 +2282,17 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 	    }
 	  else
 	    {
-	      /* We would like to add this compression into a single page.
-	         That is, we do not want pieces of it. */
+	      /* We would like to add this compression into a single page. That is, we do not want pieces of it. */
 
 	      if (nrecs == 1)
 		{
 		  recdes.length = buffer_len;
 
 		  /* The update must fit into same page */
-		  ret = largeobjmgr_sp_append (thread_p, loid, page_ptr,
-					       cur_dir_entry.slotid,
-					       cur_dir_entry.length,
-					       (buffer_len -
-						cur_dir_entry.length),
-					       ((char *) recdes.data +
-						cur_dir_entry.length));
+		  ret =
+		    largeobjmgr_sp_append (thread_p, loid, page_ptr, cur_dir_entry.slotid, cur_dir_entry.length,
+					   (buffer_len - cur_dir_entry.length),
+					   ((char *) recdes.data + cur_dir_entry.length));
 		  if (ret != NO_ERROR)
 		    {
 		      goto exit_on_error;
@@ -2526,8 +2301,7 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 		  /* update the corresponding directory entry for new length */
 		  LARGEOBJMGR_COPY_DIRENTRY (&temp_dir_entry, &cur_dir_entry);
 		  temp_dir_entry.length = recdes.length;
-		  ret = largeobjmgr_dir_update (thread_p, ds,
-						&temp_dir_entry);
+		  ret = largeobjmgr_dir_update (thread_p, ds, &temp_dir_entry);
 		  if (ret != NO_ERROR)
 		    {
 		      goto exit_on_error;
@@ -2538,7 +2312,7 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 		}
 	      else
 		{
-		  /*
+		  /* 
 		   * The compression does not fit into current page.
 		   * Delete the slot from current page and store the record at
 		   * another new page.
@@ -2546,13 +2320,11 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 		  addr.pgptr = page_ptr;
 		  addr.offset = cur_dir_entry.slotid;
 
-		  log_append_undoredo_recdes (thread_p, RVLOM_DELETE, &addr,
-					      &recdes, NULL);
+		  log_append_undoredo_recdes (thread_p, RVLOM_DELETE, &addr, &recdes, NULL);
 
 		  recdes.length = buffer_len;
 
-		  if (spage_delete (thread_p, page_ptr, cur_dir_entry.slotid)
-		      != cur_dir_entry.slotid)
+		  if (spage_delete (thread_p, page_ptr, cur_dir_entry.slotid) != cur_dir_entry.slotid)
 		    {
 		      goto exit_on_error;
 		    }
@@ -2562,17 +2334,14 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 
 		  /* Now add the record into a new page */
 
-		  page_ptr = largeobjmgr_getnewpage (thread_p, loid,
-						     &temp_dir_entry.u.vpid,
-						     &cur_dir_entry.u.vpid);
+		  page_ptr = largeobjmgr_getnewpage (thread_p, loid, &temp_dir_entry.u.vpid, &cur_dir_entry.u.vpid);
 		  if (page_ptr == NULL)
 		    {
 		      goto exit_on_error;
 		    }
 
 		  /* insert the record to the page */
-		  if (spage_insert (thread_p, page_ptr, &recdes,
-				    &temp_dir_entry.slotid) != SP_SUCCESS)
+		  if (spage_insert (thread_p, page_ptr, &recdes, &temp_dir_entry.slotid) != SP_SUCCESS)
 		    {
 		      goto exit_on_error;
 		    }
@@ -2580,13 +2349,11 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 		  /* Log the insertion */
 		  addr.pgptr = page_ptr;
 		  addr.offset = temp_dir_entry.slotid;
-		  log_append_undoredo_recdes (thread_p, RVLOM_INSERT, &addr,
-					      NULL, &recdes);
+		  log_append_undoredo_recdes (thread_p, RVLOM_INSERT, &addr, NULL, &recdes);
 
 		  /* update the corresponding directory entry for new length */
 		  temp_dir_entry.length = recdes.length;
-		  ret = largeobjmgr_dir_update (thread_p, ds,
-						&temp_dir_entry);
+		  ret = largeobjmgr_dir_update (thread_p, ds, &temp_dir_entry);
 		  if (ret != NO_ERROR)
 		    {
 		      goto exit_on_error;
@@ -2636,8 +2403,7 @@ exit_on_error:
 
   largeobjmgr_dir_close (thread_p, ds);
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -2651,8 +2417,7 @@ exit_on_error:
  *   oid(in): OID of the object associated with this OID
  */
 LOID *
-xlargeobjmgr_create (THREAD_ENTRY * thread_p, LOID * loid, int length,
-		     char *buffer, int est_lo_len, OID * oid)
+xlargeobjmgr_create (THREAD_ENTRY * thread_p, LOID * loid, int length, char *buffer, int est_lo_len, OID * oid)
 {
   int est_data_pg_cnt;
   int dir_pg_cnt;
@@ -2670,47 +2435,42 @@ xlargeobjmgr_create (THREAD_ENTRY * thread_p, LOID * loid, int length,
       OID_SET_NULL (&lodes.oid);
     }
 
-  /*
+  /* 
    * First compute the number of data pages and directory pages
    * required for the given data.
    */
-  est_data_pg_cnt = ((est_lo_len <= length)
-		     ? ((length > 0)
-			? CEIL_PTVDIV (length, LARGEOBJMGR_MAX_DATA_SLOT_SIZE)
-			: 0) : CEIL_PTVDIV (est_lo_len,
-					    LARGEOBJMGR_MAX_DATA_SLOT_SIZE));
+  est_data_pg_cnt =
+    ((est_lo_len <=
+      length) ? ((length > 0) ? CEIL_PTVDIV (length, LARGEOBJMGR_MAX_DATA_SLOT_SIZE) : 0) : CEIL_PTVDIV (est_lo_len,
+													 LARGEOBJMGR_MAX_DATA_SLOT_SIZE));
 
-  largeobjmgr_init_dir_pagecnt (est_data_pg_cnt, &dir_pg_cnt,
-				&dir_ind_pg_cnt);
+  largeobjmgr_init_dir_pagecnt (est_data_pg_cnt, &dir_pg_cnt, &dir_ind_pg_cnt);
   tot_pg_cnt = dir_pg_cnt + dir_ind_pg_cnt;
 
   loid->vfid.volid = 0;
 
   /* Create a file for LO with total number of estimated pages */
-  if (file_create (thread_p, &loid->vfid, tot_pg_cnt + est_data_pg_cnt,
-		   FILE_LONGDATA, &lodes, NULL, 0) == NULL)
+  if (file_create (thread_p, &loid->vfid, tot_pg_cnt + est_data_pg_cnt, FILE_LONGDATA, &lodes, NULL, 0) == NULL)
     {
       return NULL;
     }
 
   /* Allocate the pages needed at this time */
-  if (file_alloc_pages (thread_p, &loid->vfid, &loid->vpid, tot_pg_cnt,
-			NULL, NULL, NULL) == NULL)
+  if (file_alloc_pages (thread_p, &loid->vfid, &loid->vpid, tot_pg_cnt, NULL, NULL, NULL) == NULL)
     {
       (void) file_destroy (thread_p, &loid->vfid);
       return NULL;
     }
 
   /* Create the directory for the LO */
-  if (largeobjmgr_dir_create (thread_p, loid, 0, dir_ind_pg_cnt, dir_pg_cnt,
-			      0, LARGEOBJMGR_MAX_DATA_SLOT_SIZE) != NO_ERROR)
+  if (largeobjmgr_dir_create (thread_p, loid, 0, dir_ind_pg_cnt, dir_pg_cnt, 0, LARGEOBJMGR_MAX_DATA_SLOT_SIZE) !=
+      NO_ERROR)
     {
       (void) file_destroy (thread_p, &loid->vfid);
       return NULL;
     }
 
-  if (length > 0
-      && xlargeobjmgr_append (thread_p, loid, length, buffer) != length)
+  if (length > 0 && xlargeobjmgr_append (thread_p, loid, length, buffer) != length)
     {
       (void) file_destroy (thread_p, &loid->vfid);
       return NULL;
@@ -2740,11 +2500,9 @@ xlargeobjmgr_destroy (THREAD_ENTRY * thread_p, LOID * loid)
  *   buffer(in): Buffer where data read is to be copied
  */
 int
-xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
-		   int length, char *buffer)
+xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, int length, char *buffer)
 {
-  return (int) largeobjmgr_process (thread_p, loid, LARGEOBJMGR_READ_MODE,
-				    offset, length, buffer);
+  return (int) largeobjmgr_process (thread_p, loid, LARGEOBJMGR_READ_MODE, offset, length, buffer);
 }
 
 /*
@@ -2757,8 +2515,7 @@ xlargeobjmgr_read (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
  *   buffer(in):Buffer from which data is to be copied
  */
 static INT64
-largeobjmgr_system_op (THREAD_ENTRY * thread_p, LOID * loid, int op_mode,
-		       INT64 offset, INT64 length, char *buffer)
+largeobjmgr_system_op (THREAD_ENTRY * thread_p, LOID * loid, int op_mode, INT64 offset, INT64 length, char *buffer)
 {
   INT64 ret_length;
 
@@ -2768,8 +2525,7 @@ largeobjmgr_system_op (THREAD_ENTRY * thread_p, LOID * loid, int op_mode,
     }
 
   /* Note that the comparasion need to be less than since we can add a hole. */
-  ret_length = largeobjmgr_process (thread_p, loid, op_mode, offset,
-				    length, buffer);
+  ret_length = largeobjmgr_process (thread_p, loid, op_mode, offset, length, buffer);
   if (ret_length < length)
     {
       goto exit_on_error;
@@ -2783,8 +2539,7 @@ exit_on_error:
 
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
-  return ((ret_length == NO_ERROR && (ret_length = er_errid ()) == NO_ERROR)
-	  ? ER_FAILED : ret_length);
+  return ((ret_length == NO_ERROR && (ret_length = er_errid ()) == NO_ERROR) ? ER_FAILED : ret_length);
 }
 
 /*
@@ -2797,11 +2552,9 @@ exit_on_error:
  *   buffer(in):Buffer from which data is to be copied
  */
 int
-xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
-		    int length, char *buffer)
+xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, int length, char *buffer)
 {
-  return (int) largeobjmgr_system_op (thread_p, loid, LARGEOBJMGR_WRITE_MODE,
-				      offset, length, buffer);
+  return (int) largeobjmgr_system_op (thread_p, loid, LARGEOBJMGR_WRITE_MODE, offset, length, buffer);
 }
 
 /*
@@ -2812,11 +2565,9 @@ xlargeobjmgr_write (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
  *   length(in): Length of data to be deleted
  */
 INT64
-xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
-		     INT64 length)
+xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, INT64 length)
 {
-  return largeobjmgr_system_op (thread_p, loid, LARGEOBJMGR_DELETE_MODE,
-				offset, length, NULL);
+  return largeobjmgr_system_op (thread_p, loid, LARGEOBJMGR_DELETE_MODE, offset, length, NULL);
 }
 
 /*
@@ -2828,8 +2579,7 @@ xlargeobjmgr_delete (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
 INT64
 xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset)
 {
-  return largeobjmgr_system_op (thread_p, loid, LARGEOBJMGR_TRUNCATE_MODE,
-				offset, -1, NULL);
+  return largeobjmgr_system_op (thread_p, loid, LARGEOBJMGR_TRUNCATE_MODE, offset, -1, NULL);
 }
 
 /*
@@ -2841,8 +2591,7 @@ xlargeobjmgr_truncate (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset)
  *   buffer(in): Data to be inserted
  */
 int
-xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
-		     int length, char *buffer)
+xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, int length, char *buffer)
 {
   LARGEOBJMGR_DIRSTATE ds_info, *ds;
   int inserted_length;
@@ -2861,16 +2610,14 @@ xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
     }
 
   /* locate the directory entry to point to the entry that contains offset */
-  if (largeobjmgr_dir_open (thread_p, loid, offset, LARGEOBJMGR_INSERT_MODE,
-			    ds) == S_ERROR)
+  if (largeobjmgr_dir_open (thread_p, loid, offset, LARGEOBJMGR_INSERT_MODE, ds) == S_ERROR)
     {
       goto exit_on_error;
     }
 
   if (offset >= ds->tot_length)
     {
-      inserted_length = largeobjmgr_append_internal (thread_p, loid, ds,
-						     offset, length, buffer);
+      inserted_length = largeobjmgr_append_internal (thread_p, loid, ds, offset, length, buffer);
       if (inserted_length < length)
 	{
 	  largeobjmgr_dir_close (thread_p, ds);
@@ -2879,8 +2626,7 @@ xlargeobjmgr_insert (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset,
     }
   else
     {
-      inserted_length = largeobjmgr_insert_internal (thread_p, loid, ds,
-						     offset, length, buffer);
+      inserted_length = largeobjmgr_insert_internal (thread_p, loid, ds, offset, length, buffer);
       if (inserted_length < length)
 	{
 	  largeobjmgr_dir_close (thread_p, ds);
@@ -2897,8 +2643,7 @@ exit_on_error:
 
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -2909,8 +2654,7 @@ exit_on_error:
  *   buffer(in): Data to be appended
  */
 int
-xlargeobjmgr_append (THREAD_ENTRY * thread_p, LOID * loid, int length,
-		     char *buffer)
+xlargeobjmgr_append (THREAD_ENTRY * thread_p, LOID * loid, int length, char *buffer)
 {
   LARGEOBJMGR_DIRSTATE ds_info, *ds;
   int appended_length;
@@ -2929,15 +2673,12 @@ xlargeobjmgr_append (THREAD_ENTRY * thread_p, LOID * loid, int length,
     }
 
   /* locate the directory entry to point to the last entry */
-  if (largeobjmgr_dir_open (thread_p, loid, -1, LARGEOBJMGR_APPEND_MODE, ds)
-      == S_ERROR)
+  if (largeobjmgr_dir_open (thread_p, loid, -1, LARGEOBJMGR_APPEND_MODE, ds) == S_ERROR)
     {
       goto exit_on_error;
     }
 
-  appended_length = largeobjmgr_append_internal (thread_p, loid, ds,
-						 ds->tot_length, length,
-						 buffer);
+  appended_length = largeobjmgr_append_internal (thread_p, loid, ds, ds->tot_length, length, buffer);
   if (appended_length != length)
     {
       largeobjmgr_dir_close (thread_p, ds);
@@ -2953,8 +2694,7 @@ exit_on_error:
 
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -2991,8 +2731,7 @@ exit_on_error:
 
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -3025,14 +2764,12 @@ largeobjmgr_rv_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   recdes.data = (char *) (recv->data) + sizeof (recdes.type);
   recdes.area_size = recdes.length = recv->length - sizeof (recdes.type);
 
-  sp_success = spage_insert_for_recovery (thread_p, recv->pgptr, slotid,
-					  &recdes);
+  sp_success = spage_insert_for_recovery (thread_p, recv->pgptr, slotid, &recdes);
   if (sp_success != SP_SUCCESS)
     {
       if (sp_success != SP_ERROR)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-		  0);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
 
       assert (er_errid () != NO_ERROR);
@@ -3052,8 +2789,7 @@ largeobjmgr_rv_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 int
 largeobjmgr_rv_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
-  if (spage_delete_for_recovery (thread_p, recv->pgptr, (INT16) recv->offset)
-      == NULL_SLOTID)
+  if (spage_delete_for_recovery (thread_p, recv->pgptr, (INT16) recv->offset) == NULL_SLOTID)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -3075,16 +2811,13 @@ largeobjmgr_rv_get_newpage_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   VFID *vfid;
 
-  /* NOTE: change the page and set it dirty to avoid complaints
-   *       by the recovery manager. This is safe since page is to
-   *       be deallocated.
-   */
+  /* NOTE: change the page and set it dirty to avoid complaints by the recovery manager. This is safe since page is to
+   * be deallocated. */
   *(int *) recv->pgptr = -1;
   pgbuf_set_dirty (thread_p, recv->pgptr, DONT_FREE);
 
   vfid = (VFID *) recv->data;
-  (void) file_dealloc_page (thread_p, vfid, pgbuf_get_vpid_ptr (recv->pgptr),
-			    FILE_LONGDATA);
+  (void) file_dealloc_page (thread_p, vfid, pgbuf_get_vpid_ptr (recv->pgptr), FILE_LONGDATA);
 
   return NO_ERROR;
 }
@@ -3125,8 +2858,7 @@ largeobjmgr_rv_split_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       if (sp_success != SP_ERROR)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-		  0);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
 
       assert (er_errid () != NO_ERROR);
@@ -3154,14 +2886,12 @@ largeobjmgr_rv_split_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   slotid = rcv->offset;
   lomrv = (LARGEOBJMGR_RV_SLOT *) (rcv->data);
 
-  sp_success = spage_split (thread_p, rcv->pgptr, slotid, lomrv->offset,
-			    &new_slotid);
+  sp_success = spage_split (thread_p, rcv->pgptr, slotid, lomrv->offset, &new_slotid);
   if (sp_success != SP_SUCCESS)
     {
       if (sp_success != SP_ERROR)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-		  0);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
 
       assert (er_errid () != NO_ERROR);
@@ -3172,8 +2902,7 @@ largeobjmgr_rv_split_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "largeobjmgr_rv_split_redo: WARNING record was split"
-		    " different. New_slotid = %d.. expected new_slotid = %d",
-		    new_slotid, lomrv->slotid);
+		    " different. New_slotid = %d.. expected new_slotid = %d", new_slotid, lomrv->slotid);
     }
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
@@ -3217,14 +2946,12 @@ largeobjmgr_rv_overwrite (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   recdes.data = data;
   recdes.area_size = recdes.length = rcv->length - sizeof (offset);
 
-  sp_success = spage_overwrite (thread_p, rcv->pgptr, slotid, offset,
-				&recdes);
+  sp_success = spage_overwrite (thread_p, rcv->pgptr, slotid, offset, &recdes);
   if (sp_success != SP_SUCCESS)
     {
       if (sp_success != SP_ERROR)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-		  0);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
 
       assert (er_errid () != NO_ERROR);
@@ -3280,14 +3007,12 @@ largeobjmgr_rv_putin (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   recdes.data = data;
   recdes.area_size = recdes.length = lomrv->length;
 
-  sp_success = spage_put (thread_p, rcv->pgptr, lomrv->slotid, lomrv->offset,
-			  &recdes);
+  sp_success = spage_put (thread_p, rcv->pgptr, lomrv->slotid, lomrv->offset, &recdes);
   if (sp_success != SP_SUCCESS)
     {
       if (sp_success != SP_ERROR)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-		  0);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
 
       assert (er_errid () != NO_ERROR);
@@ -3313,14 +3038,12 @@ largeobjmgr_rv_takeout (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   lomrv = (LARGEOBJMGR_RV_SLOT *) rcv->data;
 
-  sp_success = spage_take_out (thread_p, rcv->pgptr, lomrv->slotid,
-			       lomrv->offset, lomrv->length);
+  sp_success = spage_take_out (thread_p, rcv->pgptr, lomrv->slotid, lomrv->offset, lomrv->length);
   if (sp_success != SP_SUCCESS)
     {
       if (sp_success != SP_ERROR)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-		  0);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
 
       assert (er_errid () != NO_ERROR);
@@ -3386,8 +3109,7 @@ largeobjmgr_rv_append_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       if (sp_success != SP_ERROR)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-		  0);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
 
       assert (er_errid () != NO_ERROR);
@@ -3414,14 +3136,12 @@ largeobjmgr_rv_append_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   slotid = rcv->offset;
   lomrv = (LARGEOBJMGR_RV_SLOT *) rcv->data;
 
-  sp_success = spage_take_out (thread_p, rcv->pgptr, lomrv->slotid,
-			       lomrv->offset, lomrv->length);
+  sp_success = spage_take_out (thread_p, rcv->pgptr, lomrv->slotid, lomrv->offset, lomrv->length);
   if (sp_success != SP_SUCCESS)
     {
       if (sp_success != SP_ERROR)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-		  0);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	}
 
       assert (er_errid () != NO_ERROR);
@@ -3440,8 +3160,7 @@ largeobjmgr_rv_append_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   dump_data(in):
  */
 void
-largeobjmgr_rv_append_dump_undo (FILE * fp, int length_ignore,
-				 void *dump_data)
+largeobjmgr_rv_append_dump_undo (FILE * fp, int length_ignore, void *dump_data)
 {
   char *data;
   LARGEOBJMGR_RV_SLOT *lomrv;

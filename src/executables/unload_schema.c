@@ -122,51 +122,36 @@ typedef enum
 
 static void filter_system_classes (DB_OBJLIST ** class_list);
 static void filter_unrequired_classes (DB_OBJLIST ** class_list);
-static int is_dependent_class (DB_OBJECT * class_, DB_OBJLIST * unordered,
-			       DB_OBJLIST * ordered);
-static int check_domain_dependencies (DB_DOMAIN * domain,
-				      DB_OBJECT * this_class,
-				      DB_OBJLIST * unordered,
+static int is_dependent_class (DB_OBJECT * class_, DB_OBJLIST * unordered, DB_OBJLIST * ordered);
+static int check_domain_dependencies (DB_DOMAIN * domain, DB_OBJECT * this_class, DB_OBJLIST * unordered,
 				      DB_OBJLIST * ordered);
-static int has_dependencies (DB_OBJECT * class_, DB_OBJLIST * unordered,
-			     DB_OBJLIST * ordered, int conservative);
-static int order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list,
-			  int conservative);
+static int has_dependencies (DB_OBJECT * class_, DB_OBJLIST * unordered, DB_OBJLIST * ordered, int conservative);
+static int order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, int conservative);
 static void emit_cycle_warning (void);
-static void force_one_class (DB_OBJLIST ** class_list,
-			     DB_OBJLIST ** order_list);
+static void force_one_class (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list);
 static DB_OBJLIST *get_ordered_classes (MOP * class_table);
 static void emit_class_owner (FILE * fp, MOP class_);
 static int export_serial (FILE * outfp);
-static int emit_indexes (DB_OBJLIST * classes, int has_indexes,
-			 DB_OBJLIST * vclass_list_has_using_index);
+static int emit_indexes (DB_OBJLIST * classes, int has_indexes, DB_OBJLIST * vclass_list_has_using_index);
 
-static int emit_schema (DB_OBJLIST * classes, int do_auth,
-			DB_OBJLIST ** vclass_list_has_using_index,
+static int emit_schema (DB_OBJLIST * classes, int do_auth, DB_OBJLIST ** vclass_list_has_using_index,
 			EMIT_STORAGE_ORDER emit_storage_order);
 static bool has_vclass_domains (DB_OBJECT * vclass);
 static DB_OBJLIST *emit_query_specs (DB_OBJLIST * classes);
-static int emit_query_specs_has_using_index (DB_OBJLIST *
-					     vclass_list_has_using_index);
+static int emit_query_specs_has_using_index (DB_OBJLIST * vclass_list_has_using_index);
 static bool emit_superclasses (DB_OBJECT * class_, const char *class_type);
 static bool emit_resolutions (DB_OBJECT * class_, const char *class_type);
-static void emit_resolution_def (DB_RESOLUTION * resolution,
-				 RESOLUTION_QUALIFIER qualifier);
-static bool emit_instance_attributes (DB_OBJECT * class_,
-				      const char *class_type,
-				      int *has_indexes,
+static void emit_resolution_def (DB_RESOLUTION * resolution, RESOLUTION_QUALIFIER qualifier);
+static bool emit_instance_attributes (DB_OBJECT * class_, const char *class_type, int *has_indexes,
 				      EMIT_STORAGE_ORDER storage_order);
-static bool emit_class_attributes (DB_OBJECT * class_,
-				   const char *class_type);
-static bool emit_all_attributes (DB_OBJECT * class_, const char *class_type,
-				 int *has_indexes,
+static bool emit_class_attributes (DB_OBJECT * class_, const char *class_type);
+static bool emit_all_attributes (DB_OBJECT * class_, const char *class_type, int *has_indexes,
 				 EMIT_STORAGE_ORDER storage_order);
 static bool emit_class_meta (DB_OBJECT * table);
 static void emit_method_files (DB_OBJECT * class_);
 static bool emit_methods (DB_OBJECT * class_, const char *class_type);
 static int ex_contains_object_reference (DB_VALUE * value);
-static void emit_attribute_def (DB_ATTRIBUTE * attribute,
-				ATTRIBUTE_QUALIFIER qualifier);
+static void emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier);
 static void emit_unique_def (DB_OBJECT * class_);
 static void emit_reverse_unique_def (DB_OBJECT * class_);
 static void emit_index_def (DB_OBJECT * class_);
@@ -228,7 +213,7 @@ filter_system_classes (DB_OBJLIST ** class_list)
 	    {
 	      prev->next = next;
 	    }
-	  /*
+	  /* 
 	   * class_list links were allocated via ml_ext_alloc_link, so we must
 	   * free them via ml_ext_free_link.  Otherwise, we can crash.
 	   */
@@ -287,8 +272,7 @@ filter_unrequired_classes (DB_OBJLIST ** class_list)
  *    won't be in the original class list.
  */
 static int
-is_dependent_class (DB_OBJECT * class_,
-		    DB_OBJLIST * unordered, DB_OBJLIST * ordered)
+is_dependent_class (DB_OBJECT * class_, DB_OBJLIST * unordered, DB_OBJLIST * ordered)
 {
   return (!ml_find (ordered, class_) && ml_find (unordered, class_));
 }
@@ -304,9 +288,7 @@ is_dependent_class (DB_OBJECT * class_,
  *    ordered(in): ordered class list
  */
 static int
-check_domain_dependencies (DB_DOMAIN * domain,
-			   DB_OBJECT * this_class,
-			   DB_OBJLIST * unordered, DB_OBJLIST * ordered)
+check_domain_dependencies (DB_DOMAIN * domain, DB_OBJECT * this_class, DB_OBJLIST * unordered, DB_OBJLIST * ordered)
 {
   DB_DOMAIN *d, *setdomain;
   DB_OBJECT *class_;
@@ -318,8 +300,7 @@ check_domain_dependencies (DB_DOMAIN * domain,
       setdomain = db_domain_set (d);
       if (setdomain != NULL)
 	{
-	  dependencies = check_domain_dependencies (setdomain, this_class,
-						    unordered, ordered);
+	  dependencies = check_domain_dependencies (setdomain, this_class, unordered, ordered);
 	}
       else
 	{
@@ -343,9 +324,7 @@ check_domain_dependencies (DB_DOMAIN * domain,
  *                      as the domain of an attribute in this class.
  */
 static int
-has_dependencies (DB_OBJECT * mop,
-		  DB_OBJLIST * unordered, DB_OBJLIST * ordered,
-		  int conservative)
+has_dependencies (DB_OBJECT * mop, DB_OBJLIST * unordered, DB_OBJLIST * ordered, int conservative)
 {
   DB_OBJLIST *supers, *su;
   DB_ATTRIBUTE *att;
@@ -360,18 +339,16 @@ has_dependencies (DB_OBJECT * mop,
       dependencies = is_dependent_class (su->op, unordered, ordered);
     }
 
-  /*
+  /* 
    * if we're doing a conservative dependency check, look at the domains
    * of each attribute.
    */
   if (!dependencies && conservative)
     {
-      for (att = db_get_attributes (mop); att != NULL && !dependencies;
-	   att = db_attribute_next (att))
+      for (att = db_get_attributes (mop); att != NULL && !dependencies; att = db_attribute_next (att))
 	{
 	  domain = db_attribute_domain (att);
-	  dependencies = check_domain_dependencies (domain, mop, unordered,
-						    ordered);
+	  dependencies = check_domain_dependencies (domain, mop, unordered, ordered);
 	}
     }
 
@@ -401,8 +378,7 @@ has_dependencies (DB_OBJECT * mop,
  *    It can also indicate a bug in the dependency algorithm.
  */
 static int
-order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list,
-	       int conservative)
+order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, int conservative)
 {
   DB_OBJLIST *cl, *o, *next, *prev, *last;
   int add_count;
@@ -469,12 +445,9 @@ emit_cycle_warning (void)
   fprintf (output_file, "   This indicates one of the following:\n");
   fprintf (output_file, "     - bug in dependency algorithm\n");
   fprintf (output_file, "     - cycle in class hierarchy\n");
-  fprintf (output_file,
-	   "     - cycle in proxy attribute used as object ids\n");
-  fprintf (output_file,
-	   "   The next class may not be in the proper definition order.\n");
-  fprintf (output_file,
-	   "   Hand editing of the schema may be required before loading.\n");
+  fprintf (output_file, "     - cycle in proxy attribute used as object ids\n");
+  fprintf (output_file, "   The next class may not be in the proper definition order.\n");
+  fprintf (output_file, "   Hand editing of the schema may be required before loading.\n");
   fprintf (output_file, "   */\n");
 }
 
@@ -534,7 +507,7 @@ get_ordered_classes (MOP * class_table)
 
   ordered = NULL;
 
-  /*
+  /* 
    * if class_table is passed, use it to initialize the list, otherwise
    * get it from the API.
    */
@@ -549,8 +522,7 @@ get_ordered_classes (MOP * class_table)
       filter_system_classes (&classes);
       if (classes == NULL)
 	{			/* no user class */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NODATA_TOBE_UNLOADED,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NODATA_TOBE_UNLOADED, 0);
 	  return NULL;
 	}
 
@@ -579,7 +551,7 @@ get_ordered_classes (MOP * class_table)
       count = order_classes (&classes, &ordered, 1);
       if (count == 0)
 	{
-	  /*
+	  /* 
 	   * didn't find any using the conservative ordering, try the
 	   * more relaxed one.
 	   */
@@ -616,12 +588,10 @@ emit_class_owner (FILE * fp, MOP class_)
 	{
 	  if (db_get (owner, "name", &value) == NO_ERROR)
 	    {
-	      if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING &&
-		  DB_GET_STRING (&value) != NULL)
+	      if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && DB_GET_STRING (&value) != NULL)
 		{
-		  fprintf (fp,
-			   "call [change_owner]('%s', '%s') on class [db_root];\n",
-			   classname, DB_GET_STRING (&value));
+		  fprintf (fp, "call [change_owner]('%s', '%s') on class [db_root];\n", classname,
+			   DB_GET_STRING (&value));
 		}
 	      db_value_clear (&value);
 	    }
@@ -644,20 +614,13 @@ export_serial (FILE * outfp)
   DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
   DB_DOMAIN *domain;
 
-  /*
+  /* 
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
    * when changing the following query. Notice the order of the result.
    */
-  const char *query = "select [name], [owner].[name], "
-    "[current_val], "
-    "[increment_val], "
-    "[max_val], "
-    "[min_val], "
-    "[cyclic], "
-    "[started], "
-    "[cached_num], "
-    "[comment] "
-    "from [db_serial] where [class_name] is null and [att_name] is null";
+  const char *query =
+    "select [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], " "[cyclic], "
+    "[started], " "[cached_num], " "[comment] " "from [db_serial] where [class_name] is null and [att_name] is null";
 
   DB_MAKE_NULL (&diff_value);
   DB_MAKE_NULL (&answer_value);
@@ -689,8 +652,7 @@ export_serial (FILE * outfp)
 	    {
 	    case SERIAL_OWNER_NAME:
 	      {
-		if (DB_IS_NULL (&values[i])
-		    || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
 		  {
 		    db_make_string (&values[i], "PUBLIC");
 		  }
@@ -699,11 +661,9 @@ export_serial (FILE * outfp)
 
 	    case SERIAL_NAME:
 	      {
-		if (DB_IS_NULL (&values[i])
-		    || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			    ER_INVALID_SERIAL_VALUE, 0);
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
 		    error = ER_INVALID_SERIAL_VALUE;
 		    goto err;
 		  }
@@ -715,11 +675,9 @@ export_serial (FILE * outfp)
 	    case SERIAL_MAX_VAL:
 	    case SERIAL_MIN_VAL:
 	      {
-		if (DB_IS_NULL (&values[i])
-		    || DB_VALUE_TYPE (&values[i]) != DB_TYPE_NUMERIC)
+		if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_NUMERIC)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			    ER_INVALID_SERIAL_VALUE, 0);
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
 		    error = ER_INVALID_SERIAL_VALUE;
 		    goto err;
 		  }
@@ -730,11 +688,9 @@ export_serial (FILE * outfp)
 	    case SERIAL_STARTED:
 	    case SERIAL_CACHED_NUM:
 	      {
-		if (DB_IS_NULL (&values[i])
-		    || DB_VALUE_TYPE (&values[i]) != DB_TYPE_INTEGER)
+		if (DB_IS_NULL (&values[i]) || DB_VALUE_TYPE (&values[i]) != DB_TYPE_INTEGER)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			    ER_INVALID_SERIAL_VALUE, 0);
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
 		    error = ER_INVALID_SERIAL_VALUE;
 		    goto err;
 		  }
@@ -743,11 +699,9 @@ export_serial (FILE * outfp)
 
 	    case SERIAL_COMMENT:
 	      {
-		if (DB_IS_NULL (&values[i]) == false
-		    && DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
+		if (DB_IS_NULL (&values[i]) == false && DB_VALUE_TYPE (&values[i]) != DB_TYPE_STRING)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			    ER_INVALID_SERIAL_VALUE, 0);
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
 		    error = ER_INVALID_SERIAL_VALUE;
 		    goto err;
 		  }
@@ -755,8 +709,7 @@ export_serial (FILE * outfp)
 	      break;
 
 	    default:
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_INVALID_SERIAL_VALUE, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_SERIAL_VALUE, 0);
 	      error = ER_INVALID_SERIAL_VALUE;
 	      goto err;
 	    }
@@ -765,17 +718,13 @@ export_serial (FILE * outfp)
       if (DB_GET_INTEGER (&values[SERIAL_STARTED]) == 1)
 	{
 	  /* Calculate next value of serial */
-	  error = numeric_db_value_sub (&values[SERIAL_MAX_VAL],
-					&values[SERIAL_CURRENT_VAL],
-					&diff_value);
+	  error = numeric_db_value_sub (&values[SERIAL_MAX_VAL], &values[SERIAL_CURRENT_VAL], &diff_value);
 	  if (error != NO_ERROR)
 	    {
 	      goto err;
 	    }
 
-	  error =
-	    numeric_db_value_compare (&values[SERIAL_INCREMENT_VAL],
-				      &diff_value, &answer_value);
+	  error = numeric_db_value_compare (&values[SERIAL_INCREMENT_VAL], &diff_value, &answer_value);
 	  if (error != NO_ERROR)
 	    {
 	      goto err;
@@ -787,8 +736,7 @@ export_serial (FILE * outfp)
 	      if (DB_GET_INTEGER (&values[SERIAL_CYCLIC]) == 0)
 		{
 		  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_IT_DATA_OVERFLOW, 1,
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
 			  pr_type_name (TP_DOMAIN_TYPE (domain)));
 		  error = ER_IT_DATA_OVERFLOW;
 		  goto err;
@@ -800,9 +748,7 @@ export_serial (FILE * outfp)
 	  /* increment <= diff */
 	  else
 	    {
-	      error = numeric_db_value_add (&values[SERIAL_CURRENT_VAL],
-					    &values[SERIAL_INCREMENT_VAL],
-					    &answer_value);
+	      error = numeric_db_value_add (&values[SERIAL_CURRENT_VAL], &values[SERIAL_INCREMENT_VAL], &answer_value);
 	      if (error != NO_ERROR)
 		{
 		  goto err;
@@ -813,21 +759,14 @@ export_serial (FILE * outfp)
 	    }
 	}
 
-      fprintf (outfp,
-	       "call [find_user]('%s') on class [db_user] to [auser];\n",
+      fprintf (outfp, "call [find_user]('%s') on class [db_user] to [auser];\n",
 	       DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
-      fprintf (outfp, "create serial %s%s%s\n",
-	       PRINT_IDENTIFIER (DB_PULL_STRING (&values[SERIAL_NAME])));
-      fprintf (outfp, "\t start with %s\n",
-	       numeric_db_value_print (&values[SERIAL_CURRENT_VAL]));
-      fprintf (outfp, "\t increment by %s\n",
-	       numeric_db_value_print (&values[SERIAL_INCREMENT_VAL]));
-      fprintf (outfp, "\t minvalue %s\n",
-	       numeric_db_value_print (&values[SERIAL_MIN_VAL]));
-      fprintf (outfp, "\t maxvalue %s\n",
-	       numeric_db_value_print (&values[SERIAL_MAX_VAL]));
-      fprintf (outfp, "\t %scycle\n",
-	       (DB_GET_INTEGER (&values[SERIAL_CYCLIC]) == 0 ? "no" : ""));
+      fprintf (outfp, "create serial %s%s%s\n", PRINT_IDENTIFIER (DB_PULL_STRING (&values[SERIAL_NAME])));
+      fprintf (outfp, "\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL]));
+      fprintf (outfp, "\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL]));
+      fprintf (outfp, "\t minvalue %s\n", numeric_db_value_print (&values[SERIAL_MIN_VAL]));
+      fprintf (outfp, "\t maxvalue %s\n", numeric_db_value_print (&values[SERIAL_MAX_VAL]));
+      fprintf (outfp, "\t %scycle\n", (DB_GET_INTEGER (&values[SERIAL_CYCLIC]) == 0 ? "no" : ""));
       if (DB_GET_INTEGER (&values[SERIAL_CACHED_NUM]) <= 1)
 	{
 	  fprintf (outfp, "\t nocache\n");
@@ -835,8 +774,7 @@ export_serial (FILE * outfp)
 	}
       else
 	{
-	  fprintf (outfp, "\t cache %d\n",
-		   DB_GET_INTEGER (&values[SERIAL_CACHED_NUM]));
+	  fprintf (outfp, "\t cache %d\n", DB_GET_INTEGER (&values[SERIAL_CACHED_NUM]));
 
 	}
       if (DB_IS_NULL (&values[SERIAL_COMMENT]) == false)
@@ -845,10 +783,8 @@ export_serial (FILE * outfp)
 	  desc_value_fprint (outfp, &values[SERIAL_COMMENT]);
 	}
       fprintf (outfp, ";\n");
-      fprintf (outfp,
-	       "call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
-	       DB_PULL_STRING (&values[SERIAL_NAME]),
-	       DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
+      fprintf (outfp, "call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
+	       DB_PULL_STRING (&values[SERIAL_NAME]), DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
 
       db_value_clear (&diff_value);
       db_value_clear (&answer_value);
@@ -873,8 +809,7 @@ err:
  *    Always output the entire schema.
  */
 int
-extractschema (const char *exec_name, int do_auth,
-	       EMIT_STORAGE_ORDER storage_order)
+extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_order)
 {
   char output_filename[PATH_MAX * 2];
   DB_OBJLIST *classes = NULL;
@@ -887,16 +822,14 @@ extractschema (const char *exec_name, int do_auth,
       output_dirname = ".";
     }
 
-  total = strlen (output_dirname) + strlen (output_prefix)
-    + strlen (SCHEMA_SUFFIX) + 8;
+  total = strlen (output_dirname) + strlen (output_prefix) + strlen (SCHEMA_SUFFIX) + 8;
 
   if ((size_t) total > sizeof (output_filename))
     {
       return 1;
     }
 
-  snprintf (output_filename, sizeof (output_filename) - 1, "%s/%s%s",
-	    output_dirname, output_prefix, SCHEMA_SUFFIX);
+  snprintf (output_filename, sizeof (output_filename) - 1, "%s/%s%s", output_dirname, output_prefix, SCHEMA_SUFFIX);
   output_file = fopen_ex (output_filename, "w");
   if (output_file == NULL)
     {
@@ -904,7 +837,7 @@ extractschema (const char *exec_name, int do_auth,
       return errno;
     }
 
-  /*
+  /* 
    * convert the class table into an ordered class list, would be better
    * if we just built the initial list rather than using the table.
    */
@@ -917,14 +850,12 @@ extractschema (const char *exec_name, int do_auth,
 	}
       else
 	{
-	  fprintf (stderr,
-		   "%s: Unknown database error occurs "
-		   "but may not be database error.\n\n", exec_name);
+	  fprintf (stderr, "%s: Unknown database error occurs " "but may not be database error.\n\n", exec_name);
 	  goto error;
 	}
     }
 
-  /*
+  /* 
    * Schema
    */
   if (!required_class_only && do_auth)
@@ -949,8 +880,7 @@ extractschema (const char *exec_name, int do_auth,
       err_count++;
     }
 
-  has_indexes = emit_schema (classes, do_auth, &vclass_list_has_using_index,
-			     storage_order);
+  has_indexes = emit_schema (classes, do_auth, &vclass_list_has_using_index, storage_order);
   if (er_errid () != NO_ERROR)
     {
       err_count++;
@@ -966,13 +896,12 @@ extractschema (const char *exec_name, int do_auth,
   fclose (output_file);
   output_file = NULL;
 
-  /*
+  /* 
    * Trigger
    * emit the triggers last, they will have no mutual dependencies so
    * it doesn't really matter what order they're in.
    */
-  total = strlen (output_dirname) + strlen (output_prefix) +
-    strlen (TRIGGER_SUFFIX) + 8;
+  total = strlen (output_dirname) + strlen (output_prefix) + strlen (TRIGGER_SUFFIX) + 8;
 
   if ((size_t) total > sizeof (output_filename))
     {
@@ -984,8 +913,7 @@ extractschema (const char *exec_name, int do_auth,
       return 1;
     }
 
-  snprintf (output_filename, sizeof (output_filename) - 1, "%s/%s%s",
-	    output_dirname, output_prefix, TRIGGER_SUFFIX);
+  snprintf (output_filename, sizeof (output_filename) - 1, "%s/%s%s", output_dirname, output_prefix, TRIGGER_SUFFIX);
 
   output_file = fopen_ex (output_filename, "w");
   if (output_file == NULL)
@@ -1021,11 +949,10 @@ extractschema (const char *exec_name, int do_auth,
       output_file = NULL;
     }
 
-  /*
+  /* 
    * Index
    */
-  if (emit_indexes (classes, has_indexes,
-		    vclass_list_has_using_index) != NO_ERROR)
+  if (emit_indexes (classes, has_indexes, vclass_list_has_using_index) != NO_ERROR)
     {
       err_count++;
     }
@@ -1065,8 +992,7 @@ error:
  *    vclass_list_has_using_index(in):
  */
 static int
-emit_indexes (DB_OBJLIST * classes, int has_indexes,
-	      DB_OBJLIST * vclass_list_has_using_index)
+emit_indexes (DB_OBJLIST * classes, int has_indexes, DB_OBJLIST * vclass_list_has_using_index)
 {
   char output_filename[PATH_MAX * 2];
   DB_OBJLIST *cl;
@@ -1078,20 +1004,18 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes,
       output_dirname = ".";
     }
 
-  total = strlen (output_dirname) + strlen (output_prefix)
-    + strlen (INDEX_SUFFIX) + 8;
+  total = strlen (output_dirname) + strlen (output_prefix) + strlen (INDEX_SUFFIX) + 8;
 
   if ((size_t) total > sizeof (output_filename))
     {
       return 1;
     }
 
-  snprintf (output_filename, sizeof (output_filename) - 1, "%s/%s%s",
-	    output_dirname, output_prefix, INDEX_SUFFIX);
+  snprintf (output_filename, sizeof (output_filename) - 1, "%s/%s%s", output_dirname, output_prefix, INDEX_SUFFIX);
 
   if (!has_indexes)
     {
-      /*
+      /* 
        * don't have anything to emit but to avoid confusion with old
        * files that might be lying around, make sure that we delete
        * any existing index file
@@ -1147,8 +1071,7 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes,
  *    vclass_list_has_using_index():
  */
 static int
-emit_schema (DB_OBJLIST * classes, int do_auth,
-	     DB_OBJLIST ** vclass_list_has_using_index,
+emit_schema (DB_OBJLIST * classes, int do_auth, DB_OBJLIST ** vclass_list_has_using_index,
 	     EMIT_STORAGE_ORDER storage_order)
 {
   DB_OBJLIST *cl;
@@ -1158,7 +1081,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
   const char *name;
   int is_partitioned = 0;
   SM_CLASS *class_ = NULL;
-  /*
+  /* 
    * First create all the classes
    */
   for (cl = classes; cl != NULL; cl = cl->next)
@@ -1171,8 +1094,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	  continue;
 	}
 
-      fprintf (output_file, "CREATE %s %s%s%s",
-	       is_vclass ? "VCLASS" : "CLASS", PRINT_IDENTIFIER (name));
+      fprintf (output_file, "CREATE %s %s%s%s", is_vclass ? "VCLASS" : "CLASS", PRINT_IDENTIFIER (name));
 
       if (au_fetch_class_force (cl->op, &class_, AU_FETCH_READ) != NO_ERROR)
 	{
@@ -1185,8 +1107,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	    {
 	      fprintf (output_file, " WITH CHECK OPTION");
 	    }
-	  else if (sm_get_class_flag (cl->op, SM_CLASSFLAG_LOCALCHECKOPTION) >
-		   0)
+	  else if (sm_get_class_flag (cl->op, SM_CLASSFLAG_LOCALCHECKOPTION) > 0)
 	    {
 	      fprintf (output_file, " WITH LOCAL CHECK OPTION");
 	    }
@@ -1204,13 +1125,11 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	    }
 	  if (class_ != NULL)
 	    {
-	      fprintf (output_file, " COLLATE %s",
-		       lang_get_collation_name (class_->collation_id));
+	      fprintf (output_file, " COLLATE %s", lang_get_collation_name (class_->collation_id));
 	    }
 	}
 
-      if (class_ != NULL && class_->comment != NULL
-	  && class_->comment[0] != '\0')
+      if (class_ != NULL && class_->comment != NULL && class_->comment[0] != '\0')
 	{
 	  fprintf (output_file, " ");
 	  help_fprint_describe_comment (output_file, class_->comment);
@@ -1236,7 +1155,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 
   fprintf (output_file, "\n\n");
 
-  /*
+  /* 
    * Now fill out the class definitions for the non-proxy classes.
    */
   for (cl = classes; cl != NULL; cl = cl->next)
@@ -1252,8 +1171,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 
       class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
 
-      if (emit_all_attributes (cl->op, class_type, &has_indexes,
-			       storage_order))
+      if (emit_all_attributes (cl->op, class_type, &has_indexes, storage_order))
 	{
 	  found = true;
 	}
@@ -1272,7 +1190,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	  emit_partition_info (cl->op);
 	}
 
-      /*
+      /* 
        * change_owner method should be called after adding all columns.
        * If some column has auto_increment attribute, change_owner method
        * will change serial object's owner related to that attribute.
@@ -1293,13 +1211,13 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
       (void) emit_resolutions (cl->op, class_type);
     }
 
-  /*
+  /* 
    * do query specs LAST after we're sure that all potentially
    * referenced classes have their full definitions.
    */
   *vclass_list_has_using_index = emit_query_specs (classes);
 
-  /*
+  /* 
    * Dump authorizations.
    */
   if (do_auth)
@@ -1335,7 +1253,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 static bool
 has_vclass_domains (DB_OBJECT * vclass)
 {
-  /*
+  /* 
    * this doesn't seem to be enough, always return 1 so we make two full passes
    * on the query specs of all vclasses
    */
@@ -1362,7 +1280,7 @@ emit_query_specs (DB_OBJLIST * classes)
   bool change_vclass_spec;
   int i;
 
-  /*
+  /* 
    * pass 1, emit NULL spec lists for vclasses that have attribute
    * domains which are other vclasses
    */
@@ -1386,10 +1304,9 @@ emit_query_specs (DB_OBJLIST * classes)
 	}
 
       has_using_index = false;
-      for (s = specs; s && has_using_index == false;
-	   s = db_query_spec_next (s))
+      for (s = specs; s && has_using_index == false; s = db_query_spec_next (s))
 	{
-	  /*
+	  /* 
 	   * convert the query spec into one containing NULLs for
 	   * each column
 	   */
@@ -1402,9 +1319,7 @@ emit_query_specs (DB_OBJLIST * classes)
 	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	  if (query_ptr != NULL)
 	    {
-	      parser_walk_tree (parser, *query_ptr,
-				pt_has_using_index_clause,
-				&has_using_index, NULL, NULL);
+	      parser_walk_tree (parser, *query_ptr, pt_has_using_index_clause, &has_using_index, NULL, NULL);
 
 	      if (has_using_index == true)
 		{
@@ -1425,23 +1340,19 @@ emit_query_specs (DB_OBJLIST * classes)
 		  continue;
 		}
 
-	      query_ptr = parser_parse_string (parser,
-					       db_query_spec_string (s));
+	      query_ptr = parser_parse_string (parser, db_query_spec_string (s));
 	      if (query_ptr != NULL)
 		{
-		  null_spec = pt_print_query_spec_no_list (parser,
-							   *query_ptr);
+		  null_spec = pt_print_query_spec_no_list (parser, *query_ptr);
 
-		  fprintf (output_file,
-			   "ALTER VCLASS %s%s%s ADD QUERY %s ; \n",
-			   PRINT_IDENTIFIER (name), null_spec);
+		  fprintf (output_file, "ALTER VCLASS %s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (name), null_spec);
 		}
 	      parser_free_parser (parser);
 	    }
 	}
     }
 
-  /*
+  /* 
    * pass 2, emit full spec lists
    */
   for (cl = classes; cl != NULL; cl = cl->next)
@@ -1469,15 +1380,13 @@ emit_query_specs (DB_OBJLIST * classes)
 	{
 	  if (change_vclass_spec)
 	    {			/* change the existing spec lists */
-	      fprintf (output_file,
-		       "ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n",
-		       PRINT_IDENTIFIER (name), i, db_query_spec_string (s));
+	      fprintf (output_file, "ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (name), i,
+		       db_query_spec_string (s));
 	    }
 	  else
 	    {			/* emit the usual statements */
-	      fprintf (output_file,
-		       "ALTER VCLASS %s%s%s ADD QUERY %s ;\n",
-		       PRINT_IDENTIFIER (name), db_query_spec_string (s));
+	      fprintf (output_file, "ALTER VCLASS %s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (name),
+		       db_query_spec_string (s));
 	    }
 	}
     }
@@ -1505,7 +1414,7 @@ emit_query_specs_has_using_index (DB_OBJLIST * vclass_list_has_using_index)
 
   fprintf (output_file, "\n\n");
 
-  /*
+  /* 
    * pass 1, emit NULL spec lists for vclasses that have attribute
    * domains which are other vclasses
    */
@@ -1531,7 +1440,7 @@ emit_query_specs_has_using_index (DB_OBJLIST * vclass_list_has_using_index)
 
       for (s = specs; s != NULL; s = db_query_spec_next (s))
 	{
-	  /*
+	  /* 
 	   * convert the query spec into one containing NULLs for
 	   * each column
 	   */
@@ -1544,9 +1453,7 @@ emit_query_specs_has_using_index (DB_OBJLIST * vclass_list_has_using_index)
 	  if (query_ptr != NULL)
 	    {
 	      null_spec = pt_print_query_spec_no_list (parser, *query_ptr);
-	      fprintf (output_file,
-		       "ALTER VCLASS %s%s%s ADD QUERY %s ; \n",
-		       PRINT_IDENTIFIER (name), null_spec);
+	      fprintf (output_file, "ALTER VCLASS %s%s%s ADD QUERY %s ; \n", PRINT_IDENTIFIER (name), null_spec);
 	    }
 	  parser_free_parser (parser);
 	}
@@ -1572,15 +1479,13 @@ emit_query_specs_has_using_index (DB_OBJLIST * vclass_list_has_using_index)
 	{
 	  if (change_vclass_spec)
 	    {			/* change the existing spec lists */
-	      fprintf (output_file,
-		       "ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n",
-		       PRINT_IDENTIFIER (name), i, db_query_spec_string (s));
+	      fprintf (output_file, "ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n", PRINT_IDENTIFIER (name), i,
+		       db_query_spec_string (s));
 	    }
 	  else
 	    {			/* emit the usual statements */
-	      fprintf (output_file,
-		       "ALTER VCLASS %s%s%s ADD QUERY %s ;\n",
-		       PRINT_IDENTIFIER (name), db_query_spec_string (s));
+	      fprintf (output_file, "ALTER VCLASS %s%s%s ADD QUERY %s ;\n", PRINT_IDENTIFIER (name),
+		       db_query_spec_string (s));
 	    }
 	}
     }
@@ -1611,8 +1516,7 @@ emit_superclasses (DB_OBJECT * class_, const char *class_type)
 	  return (supers != NULL);
 	}
 
-      fprintf (output_file, "ALTER %s %s%s%s ADD SUPERCLASS ",
-	       class_type, PRINT_IDENTIFIER (name));
+      fprintf (output_file, "ALTER %s %s%s%s ADD SUPERCLASS ", class_type, PRINT_IDENTIFIER (name));
 
       for (s = supers; s != NULL; s = s->next)
 	{
@@ -1654,11 +1558,9 @@ emit_resolutions (DB_OBJECT * class_, const char *class_type)
   if (resolution_list != NULL)
     {
       name = db_get_class_name (class_);
-      fprintf (output_file, "ALTER %s %s%s%s INHERIT",
-	       class_type, PRINT_IDENTIFIER (name));
+      fprintf (output_file, "ALTER %s %s%s%s INHERIT", class_type, PRINT_IDENTIFIER (name));
 
-      for (; resolution_list != NULL;
-	   resolution_list = db_resolution_next (resolution_list))
+      for (; resolution_list != NULL; resolution_list = db_resolution_next (resolution_list))
 	{
 	  if (return_value == true)
 	    {
@@ -1670,12 +1572,11 @@ emit_resolutions (DB_OBJECT * class_, const char *class_type)
 	      return_value = true;
 	    }
 	  emit_resolution_def (resolution_list,
-			       (db_resolution_isclass (resolution_list) ?
-				CLASS_RESOLUTION : INSTANCE_RESOLUTION));
+			       (db_resolution_isclass (resolution_list) ? CLASS_RESOLUTION : INSTANCE_RESOLUTION));
 	}
 
       fprintf (output_file, ";\n");
-    }				/* if  */
+    }				/* if */
 
   return (return_value);
 }
@@ -1688,8 +1589,7 @@ emit_resolutions (DB_OBJECT * class_, const char *class_type)
  *    qualifier(in): the qualifier for this resolution (instance or class)
  */
 static void
-emit_resolution_def (DB_RESOLUTION * resolution,
-		     RESOLUTION_QUALIFIER qualifier)
+emit_resolution_def (DB_RESOLUTION * resolution, RESOLUTION_QUALIFIER qualifier)
 {
   const char *name, *alias, *class_name;
   DB_OBJECT *class_;
@@ -1718,14 +1618,12 @@ emit_resolution_def (DB_RESOLUTION * resolution,
     {
     case INSTANCE_RESOLUTION:
       {
-	fprintf (output_file, "       %s%s%s OF %s%s%s",
-		 PRINT_IDENTIFIER (name), PRINT_IDENTIFIER (class_name));
+	fprintf (output_file, "       %s%s%s OF %s%s%s", PRINT_IDENTIFIER (name), PRINT_IDENTIFIER (class_name));
 	break;
       }
     case CLASS_RESOLUTION:
       {
-	fprintf (output_file, "CLASS  %s%s%s OF %s%s%s",
-		 PRINT_IDENTIFIER (name), PRINT_IDENTIFIER (class_name));
+	fprintf (output_file, "CLASS  %s%s%s OF %s%s%s", PRINT_IDENTIFIER (name), PRINT_IDENTIFIER (class_name));
 	break;
       }
     }
@@ -1757,8 +1655,8 @@ emit_resolution_def (DB_RESOLUTION * resolution,
  *    have been dumped in the main class definition.
  */
 static bool
-emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
-			  int *has_indexes, EMIT_STORAGE_ORDER storage_order)
+emit_instance_attributes (DB_OBJECT * class_, const char *class_type, int *has_indexes,
+			  EMIT_STORAGE_ORDER storage_order)
 {
   DB_ATTRIBUTE *attribute_list, *first_attribute, *a;
   int unique_flag = 0;
@@ -1796,7 +1694,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 	}
     }
 
-  /*
+  /* 
    * We call this function many times, so be careful not to clobber
    * (i.e. overwrite) the has_index parameter
    */
@@ -1808,8 +1706,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 
   /* see if we have any locally defined components on either list */
   first_attribute = NULL;
-  for (a = attribute_list; a != NULL && first_attribute == NULL;
-       a = db_attribute_next (a))
+  for (a = attribute_list; a != NULL && first_attribute == NULL; a = db_attribute_next (a))
     {
       if (db_attribute_class (a) == class_)
 	{
@@ -1844,8 +1741,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 	}
       max_order++;
 
-      ordered_attributes =
-	(DB_ATTRIBUTE **) calloc (max_order * 2, sizeof (DB_ATTRIBUTE *));
+      ordered_attributes = (DB_ATTRIBUTE **) calloc (max_order * 2, sizeof (DB_ATTRIBUTE *));
       if (ordered_attributes == NULL)
 	{
 	  return false;
@@ -1888,8 +1784,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 	      if (ordered_attributes[j])
 		{
 		  option = "AFTER ";
-		  old_attribute_name =
-		    db_attribute_name (ordered_attributes[j]);
+		  old_attribute_name = db_attribute_name (ordered_attributes[j]);
 		  break;
 		}
 	    }
@@ -1900,8 +1795,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 	      old_attribute_name = "";
 	    }
 
-	  fprintf (output_file, "ALTER %s %s%s%s ADD ATTRIBUTE ",
-		   class_type, PRINT_IDENTIFIER (name));
+	  fprintf (output_file, "ALTER %s %s%s%s ADD ATTRIBUTE ", class_type, PRINT_IDENTIFIER (name));
 	  if (db_attribute_is_shared (a))
 	    {
 	      emit_attribute_def (a, SHARED_ATTRIBUTE);
@@ -1917,8 +1811,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 	    }
 	  else
 	    {
-	      fprintf (output_file, " %s%s%s;\n",
-		       PRINT_IDENTIFIER (old_attribute_name));
+	      fprintf (output_file, " %s%s%s;\n", PRINT_IDENTIFIER (old_attribute_name));
 	    }
 	}
 
@@ -1926,8 +1819,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
     }
   else
     {
-      fprintf (output_file, "ALTER %s %s%s%s ADD ATTRIBUTE\n",
-	       class_type, PRINT_IDENTIFIER (name));
+      fprintf (output_file, "ALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (name));
       for (a = first_attribute; a != NULL; a = db_attribute_next (a))
 	{
 	  if (db_attribute_class (a) == class_)
@@ -1980,8 +1872,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 		  continue;
 		}
 
-	      sr_error = db_get (a->auto_increment, "increment_val",
-				 &inc_val);
+	      sr_error = db_get (a->auto_increment, "increment_val", &inc_val);
 	      if (sr_error < 0)
 		{
 		  pr_clear_value (&sr_name);
@@ -2013,16 +1904,13 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 		{
 		  DB_VALUE diff_val, answer_val;
 
-		  sr_error = numeric_db_value_sub (&max_val, &cur_val,
-						   &diff_val);
+		  sr_error = numeric_db_value_sub (&max_val, &cur_val, &diff_val);
 		  if (sr_error != NO_ERROR)
 		    {
 		      pr_clear_value (&sr_name);
 		      continue;
 		    }
-		  sr_error = numeric_db_value_compare (&inc_val,
-						       &diff_val,
-						       &answer_val);
+		  sr_error = numeric_db_value_compare (&inc_val, &diff_val, &answer_val);
 		  if (sr_error != NO_ERROR)
 		    {
 		      pr_clear_value (&sr_name);
@@ -2035,8 +1923,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 		      continue;
 		    }
 
-		  sr_error = numeric_db_value_add (&cur_val, &inc_val,
-						   &answer_val);
+		  sr_error = numeric_db_value_add (&cur_val, &inc_val, &answer_val);
 		  if (sr_error != NO_ERROR)
 		    {
 		      pr_clear_value (&sr_name);
@@ -2053,10 +1940,8 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 		  start_with = "NULL";
 		}
 
-	      fprintf (output_file,
-		       "ALTER SERIAL %s%s%s START WITH %s;\n",
-		       PRINT_IDENTIFIER (DB_PULL_STRING (&sr_name)),
-		       start_with);
+	      fprintf (output_file, "ALTER SERIAL %s%s%s START WITH %s;\n",
+		       PRINT_IDENTIFIER (DB_PULL_STRING (&sr_name)), start_with);
 
 	      pr_clear_value (&sr_name);
 	    }
@@ -2067,8 +1952,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
   if (unique_flag)
     {
       name = db_get_class_name (class_);
-      fprintf (output_file, "\nALTER %s %s%s%s ADD ATTRIBUTE\n",
-	       class_type, PRINT_IDENTIFIER (name));
+      fprintf (output_file, "\nALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (name));
       emit_unique_def (class_);
     }
 
@@ -2096,8 +1980,7 @@ emit_class_attributes (DB_OBJECT * class_, const char *class_type)
   class_attribute_list = db_get_class_attributes (class_);
   first_class_attribute = NULL;
 
-  for (a = class_attribute_list; a != NULL && first_class_attribute == NULL;
-       a = db_attribute_next (a))
+  for (a = class_attribute_list; a != NULL && first_class_attribute == NULL; a = db_attribute_next (a))
     {
       if (db_attribute_class (a) == class_)
 	{
@@ -2108,8 +1991,7 @@ emit_class_attributes (DB_OBJECT * class_, const char *class_type)
   if (first_class_attribute != NULL)
     {
       name = db_get_class_name (class_);
-      fprintf (output_file, "ALTER %s %s%s%s ADD CLASS ATTRIBUTE \n",
-	       class_type, PRINT_IDENTIFIER (name));
+      fprintf (output_file, "ALTER %s %s%s%s ADD CLASS ATTRIBUTE \n", class_type, PRINT_IDENTIFIER (name));
 
       for (a = first_class_attribute; a != NULL; a = db_attribute_next (a))
 	{
@@ -2149,8 +2031,7 @@ emit_class_meta (DB_OBJECT * table)
 	{
 	  fprintf (output_file, ",");
 	}
-      fprintf (output_file, "%s%s%s",
-	       PRINT_IDENTIFIER (db_attribute_name (a)));
+      fprintf (output_file, "%s%s%s", PRINT_IDENTIFIER (db_attribute_name (a)));
       fprintf (output_file, "(%d)", db_attribute_type (a));
       fprintf (output_file, "(%d)", db_attribute_order (a));
       fprintf (output_file, "(%d)", a->storage_order);
@@ -2171,13 +2052,11 @@ emit_class_meta (DB_OBJECT * table)
  *    has_indexes(in):
  */
 static bool
-emit_all_attributes (DB_OBJECT * class_, const char *class_type,
-		     int *has_indexes, EMIT_STORAGE_ORDER storage_order)
+emit_all_attributes (DB_OBJECT * class_, const char *class_type, int *has_indexes, EMIT_STORAGE_ORDER storage_order)
 {
   bool istatus, cstatus;
 
-  istatus = emit_instance_attributes (class_, class_type, has_indexes,
-				      storage_order);
+  istatus = emit_instance_attributes (class_, class_type, has_indexes, storage_order);
   cstatus = emit_class_attributes (class_, class_type);
 
   return istatus || cstatus;
@@ -2249,8 +2128,7 @@ emit_methods (DB_OBJECT * class_, const char *class_type)
 
   /* see if we have any locally defined components on either list */
   first_method = first_class_method = NULL;
-  for (m = method_list; m != NULL && first_method == NULL;
-       m = db_method_next (m))
+  for (m = method_list; m != NULL && first_method == NULL; m = db_method_next (m))
     {
       if (db_method_class (m) == class_)
 	{
@@ -2258,8 +2136,7 @@ emit_methods (DB_OBJECT * class_, const char *class_type)
 	}
     }
 
-  for (m = class_method_list; m != NULL && first_class_method == NULL;
-       m = db_method_next (m))
+  for (m = class_method_list; m != NULL && first_class_method == NULL; m = db_method_next (m))
     {
       if (db_method_class (m) == class_)
 	{
@@ -2270,8 +2147,7 @@ emit_methods (DB_OBJECT * class_, const char *class_type)
   if (first_method != NULL)
     {
       name = db_get_class_name (class_);
-      fprintf (output_file, "ALTER %s %s%s%s ADD METHOD\n",
-	       class_type, PRINT_IDENTIFIER (name));
+      fprintf (output_file, "ALTER %s %s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (name));
 
       for (m = first_method; m != NULL; m = db_method_next (m))
 	{
@@ -2294,8 +2170,7 @@ emit_methods (DB_OBJECT * class_, const char *class_type)
   if (first_class_method != NULL)
     {
       name = db_get_class_name (class_);
-      fprintf (output_file, "ALTER %s %s%s%s ADD METHOD\n",
-	       class_type, PRINT_IDENTIFIER (name));
+      fprintf (output_file, "ALTER %s %s%s%s ADD METHOD\n", class_type, PRINT_IDENTIFIER (name));
 
       for (m = first_class_method; m != NULL; m = db_method_next (m))
 	{
@@ -2369,7 +2244,7 @@ ex_contains_object_reference (DB_VALUE * value)
 
 	      if (error)
 		{
-		  /*
+		  /* 
 		   * shouldn't happen, return 1 so we don't try to dump this
 		   * value
 		   */
@@ -2414,7 +2289,7 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
       }				/* case SHARED_ATTRIBUTE */
     case CLASS_ATTRIBUTE:
       {
-	/*
+	/* 
 	 * NOTE: The parser no longer recognizes a CLASS prefix for class
 	 * attributes, this will have been encoded in the surrounding
 	 * "ADD CLASS ATTRIBUTE" clause
@@ -2531,8 +2406,7 @@ emit_unique_def (DB_OBJECT * class_)
       return;
     }
 
-  for (constraint = constraint_list;
-       constraint != NULL; constraint = db_constraint_next (constraint))
+  for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
       if (db_constraint_type (constraint) != DB_CONSTRAINT_UNIQUE
 	  && db_constraint_type (constraint) != DB_CONSTRAINT_PRIMARY_KEY)
@@ -2561,15 +2435,11 @@ emit_unique_def (DB_OBJECT * class_)
 
 	  if (constraint->type == SM_CONSTRAINT_PRIMARY_KEY)
 	    {
-	      (void) fprintf (output_file,
-			      "       CONSTRAINT [%s] PRIMARY KEY(",
-			      constraint->name);
+	      (void) fprintf (output_file, "       CONSTRAINT [%s] PRIMARY KEY(", constraint->name);
 	    }
 	  else
 	    {
-	      (void) fprintf (output_file,
-			      "       CONSTRAINT [%s] UNIQUE(",
-			      constraint->name);
+	      (void) fprintf (output_file, "       CONSTRAINT [%s] UNIQUE(", constraint->name);
 	    }
 
 	  for (att = atts; *att != NULL; att++)
@@ -2616,8 +2486,7 @@ emit_reverse_unique_def (DB_OBJECT * class_)
       return;
     }
 
-  for (constraint = constraint_list;
-       constraint != NULL; constraint = db_constraint_next (constraint))
+  for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
       if (db_constraint_type (constraint) != DB_CONSTRAINT_REVERSE_UNIQUE)
 	{
@@ -2639,9 +2508,7 @@ emit_reverse_unique_def (DB_OBJECT * class_)
       if (!has_inherited_atts)
 	{
 	  name = db_get_class_name (class_);
-	  fprintf (output_file,
-		   "CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s (",
-		   PRINT_IDENTIFIER (constraint->name),
+	  fprintf (output_file, "CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s (", PRINT_IDENTIFIER (constraint->name),
 		   PRINT_IDENTIFIER (name));
 
 	  for (att = atts; *att != NULL; att++)
@@ -2686,8 +2553,7 @@ emit_index_def (DB_OBJECT * class_)
   cls_name = db_get_class_name (class_);
   if (cls_name != NULL)
     {
-      partitioned_subclass = do_is_partitioned_subclass (NULL, cls_name,
-							 NULL);
+      partitioned_subclass = do_is_partitioned_subclass (NULL, cls_name, NULL);
     }
   else
     {
@@ -2700,8 +2566,7 @@ emit_index_def (DB_OBJECT * class_)
       AU_DISABLE (au_save);
       if (do_get_partition_parent (class_, &root_op) == NO_ERROR)
 	{
-	  if (au_fetch_class (root_op, &supclass, AU_FETCH_READ, AU_SELECT)
-	      != NO_ERROR)
+	  if (au_fetch_class (root_op, &supclass, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
 	    {
 	      supclass = NULL;
 	    }
@@ -2710,18 +2575,15 @@ emit_index_def (DB_OBJECT * class_)
       AU_ENABLE (au_save);
     }
 
-  for (constraint = constraint_list;
-       constraint != NULL; constraint = db_constraint_next (constraint))
+  for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
       ctype = db_constraint_type (constraint);
-      if (ctype != DB_CONSTRAINT_INDEX
-	  && ctype != DB_CONSTRAINT_REVERSE_INDEX)
+      if (ctype != DB_CONSTRAINT_INDEX && ctype != DB_CONSTRAINT_REVERSE_INDEX)
 	{
 	  continue;
 	}
 
-      if (supclass
-	  && classobj_find_class_index (supclass, constraint->name) != NULL)
+      if (supclass && classobj_find_class_index (supclass, constraint->name) != NULL)
 	{
 	  continue;		/* same index skip */
 	}
@@ -2729,17 +2591,13 @@ emit_index_def (DB_OBJECT * class_)
       if (constraint->func_index_info)
 	{
 	  fprintf (output_file, "CREATE %sINDEX %s%s%s ON %s%s%s (",
-		   (ctype ==
-		    DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "",
-		   PRINT_FUNCTION_INDEX_NAME (constraint->name),
-		   PRINT_IDENTIFIER (cls_name));
+		   (ctype == DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "",
+		   PRINT_FUNCTION_INDEX_NAME (constraint->name), PRINT_IDENTIFIER (cls_name));
 	}
       else
 	{
 	  fprintf (output_file, "CREATE %sINDEX %s%s%s ON %s%s%s (",
-		   (ctype ==
-		    DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "",
-		   PRINT_IDENTIFIER (constraint->name),
+		   (ctype == DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "", PRINT_IDENTIFIER (constraint->name),
 		   PRINT_IDENTIFIER (cls_name));
 	}
 
@@ -2777,8 +2635,7 @@ emit_index_def (DB_OBJECT * class_)
 		    {
 		      fprintf (output_file, ", ");
 		    }
-		  fprintf (output_file,
-			   constraint->func_index_info->expr_str);
+		  fprintf (output_file, constraint->func_index_info->expr_str);
 		  if (constraint->func_index_info->fi_domain->is_desc)
 		    {
 		      fprintf (output_file, "%s", " DESC");
@@ -2821,8 +2678,7 @@ emit_index_def (DB_OBJECT * class_)
 	{
 	  if (constraint->filter_predicate->pred_string)
 	    {
-	      fprintf (output_file, ") where %s",
-		       constraint->filter_predicate->pred_string);
+	      fprintf (output_file, ") where %s", constraint->filter_predicate->pred_string);
 	    }
 	}
       else
@@ -2893,8 +2749,7 @@ emit_domain_def (DB_DOMAIN * domains)
 	    case DB_TYPE_VARBIT:
 	      precision = db_domain_precision (domain);
 	      fprintf (output_file, "(%d)",
-		       precision == TP_FLOATING_PRECISION_VALUE
-		       ? DB_MAX_STRING_LENGTH : precision);
+		       precision == TP_FLOATING_PRECISION_VALUE ? DB_MAX_STRING_LENGTH : precision);
 	      break;
 
 	    case DB_TYPE_ENUMERATION:
@@ -2914,20 +2769,16 @@ emit_domain_def (DB_DOMAIN * domains)
 		for (i = 1; i < count; i++)
 		  {
 		    elem = &DOM_GET_ENUM_ELEM (domain, i);
-		    fprintf (output_file, "'%s', ",
-			     DB_GET_ENUM_ELEM_STRING (elem));
+		    fprintf (output_file, "'%s', ", DB_GET_ENUM_ELEM_STRING (elem));
 		  }
 		elem = &DOM_GET_ENUM_ELEM (domain, count);
-		fprintf (output_file, "'%s')",
-			 DB_GET_ENUM_ELEM_STRING (elem));
+		fprintf (output_file, "'%s')", DB_GET_ENUM_ELEM_STRING (elem));
 		has_collation = 1;
 		break;
 	      }
 
 	    case DB_TYPE_NUMERIC:
-	      fprintf (output_file, "(%d,%d)",
-		       db_domain_precision (domain),
-		       db_domain_scale (domain));
+	      fprintf (output_file, "(%d,%d)", db_domain_precision (domain), db_domain_scale (domain));
 	      break;
 
 	    case DB_TYPE_SET:
@@ -2944,8 +2795,7 @@ emit_domain_def (DB_DOMAIN * domains)
 
 	  if (has_collation)
 	    {
-	      (void) fprintf (output_file, " COLLATE %s",
-			      lang_get_collation_name (domain->collation_id));
+	      (void) fprintf (output_file, " COLLATE %s", lang_get_collation_name (domain->collation_id));
 	    }
 	}
 
@@ -2985,8 +2835,7 @@ emit_autoincrement_def (DB_ATTRIBUTE * attribute)
 	  return error;
 	}
 
-      fprintf (output_file, " AUTO_INCREMENT(%s",
-	       numeric_db_value_print (&min_val));
+      fprintf (output_file, " AUTO_INCREMENT(%s", numeric_db_value_print (&min_val));
       fprintf (output_file, ", %s)", numeric_db_value_print (&inc_val));
 
       pr_clear_value (&min_val);
@@ -3033,7 +2882,7 @@ emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier)
       }				/* case CLASS_METHOD */
     }
 
-  /*
+  /* 
    * Emit argument type list
    */
   arg_count = db_method_arg_count (method);
@@ -3051,7 +2900,7 @@ emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier)
 
   fprintf (output_file, ") ");
 
-  /*
+  /* 
    * Emit method return domain
    */
   method_return_domain = db_method_return_domain (method);
@@ -3060,7 +2909,7 @@ emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier)
       emit_domain_def (db_method_return_domain (method));
     }
 
-  /*
+  /* 
    * Emit method function implementation
    */
   method_function_name = db_method_function (method);
@@ -3108,8 +2957,7 @@ emit_partition_parts (SM_PARTITION * partition_info, int partcnt)
       fprintf (output_file, ",\n ");
     }
 
-  fprintf (output_file, "PARTITION %s%s%s ",
-	   PRINT_IDENTIFIER (partition_info->pname));
+  fprintf (output_file, "PARTITION %s%s%s ", PRINT_IDENTIFIER (partition_info->pname));
 
   switch (partition_info->partition_type)
     {
@@ -3226,8 +3074,7 @@ emit_partition_info (MOP clsobj)
 	  fprintf (output_file, " ( ");
 	  for (user = class_->users; user != NULL; user = user->next)
 	    {
-	      if (au_fetch_class (user->op, &subclass, AU_FETCH_READ,
-				  AU_SELECT) == NO_ERROR)
+	      if (au_fetch_class (user->op, &subclass, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 		{
 		  if (subclass->partition)
 		    {
@@ -3276,21 +3123,17 @@ emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set)
 
       if ((err = db_get (arg, SP_ATTR_ARG_NAME, &arg_name_val)) != NO_ERROR
 	  || (err = db_get (arg, SP_ATTR_MODE, &arg_mode_val)) != NO_ERROR
-	  || (err = db_get (arg, SP_ATTR_DATA_TYPE,
-			    &arg_type_val)) != NO_ERROR
-	  || (err = db_get (arg, SP_ATTR_ARG_COMMENT,
-			    &arg_comment_val)) != NO_ERROR)
+	  || (err = db_get (arg, SP_ATTR_DATA_TYPE, &arg_type_val)) != NO_ERROR
+	  || (err = db_get (arg, SP_ATTR_ARG_COMMENT, &arg_comment_val)) != NO_ERROR)
 	{
 	  err_count++;
 	  continue;
 	}
 
-      fprintf (output_file, "%s%s%s ",
-	       PRINT_IDENTIFIER (DB_PULL_STRING (&arg_name_val)));
+      fprintf (output_file, "%s%s%s ", PRINT_IDENTIFIER (DB_PULL_STRING (&arg_name_val)));
 
       arg_mode = DB_GET_INT (&arg_mode_val);
-      fprintf (output_file, "%s ", arg_mode == SP_MODE_IN ? "IN" :
-	       arg_mode == SP_MODE_OUT ? "OUT" : "INOUT");
+      fprintf (output_file, "%s ", arg_mode == SP_MODE_IN ? "IN" : arg_mode == SP_MODE_OUT ? "OUT" : "INOUT");
 
       arg_type = DB_GET_INT (&arg_type_val);
 
@@ -3330,8 +3173,7 @@ emit_stored_procedure (void)
 {
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
-  DB_VALUE sp_name_val, sp_type_val, arg_cnt_val, args_val, rtn_type_val,
-    method_val, comment_val;
+  DB_VALUE sp_name_val, sp_type_val, arg_cnt_val, args_val, rtn_type_val, method_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
   int sp_type, rtn_type, arg_cnt, save;
   DB_SET *arg_set;
@@ -3356,8 +3198,7 @@ emit_stored_procedure (void)
 	  || (err = db_get (obj, SP_ATTR_NAME, &sp_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARGS, &args_val)) != NO_ERROR
-	  || ((err = db_get (obj, SP_ATTR_RETURN_TYPE, &rtn_type_val))
-	      != NO_ERROR)
+	  || ((err = db_get (obj, SP_ATTR_RETURN_TYPE, &rtn_type_val)) != NO_ERROR)
 	  || (err = db_get (obj, SP_ATTR_TARGET, &method_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
@@ -3367,11 +3208,9 @@ emit_stored_procedure (void)
 	}
 
       sp_type = DB_GET_INT (&sp_type_val);
-      fprintf (output_file, "\nCREATE %s",
-	       sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
+      fprintf (output_file, "\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
 
-      fprintf (output_file, " %s%s%s (",
-	       PRINT_IDENTIFIER (DB_PULL_STRING (&sp_name_val)));
+      fprintf (output_file, " %s%s%s (", PRINT_IDENTIFIER (DB_PULL_STRING (&sp_name_val)));
 
       arg_cnt = DB_GET_INT (&arg_cnt_val);
       arg_set = DB_GET_SET (&args_val);
@@ -3393,13 +3232,11 @@ emit_stored_procedure (void)
 	    }
 	  else
 	    {
-	      fprintf (output_file, "RETURN %s ",
-		       db_get_type_name ((DB_TYPE) rtn_type));
+	      fprintf (output_file, "RETURN %s ", db_get_type_name ((DB_TYPE) rtn_type));
 	    }
 	}
 
-      fprintf (output_file, "AS LANGUAGE JAVA NAME '%s'",
-	       DB_GET_STRING (&method_val));
+      fprintf (output_file, "AS LANGUAGE JAVA NAME '%s'", DB_GET_STRING (&method_val));
 
       if (!DB_IS_NULL (&comment_val))
 	{
@@ -3417,9 +3254,8 @@ emit_stored_procedure (void)
 	  continue;
 	}
 
-      fprintf (output_file,
-	       "call [change_sp_owner]('%s', '%s') on class [db_root];\n",
-	       DB_GET_STRING (&sp_name_val), DB_GET_STRING (&owner_name_val));
+      fprintf (output_file, "call [change_sp_owner]('%s', '%s') on class [db_root];\n", DB_GET_STRING (&sp_name_val),
+	       DB_GET_STRING (&owner_name_val));
 
       db_value_clear (&owner_name_val);
     }
@@ -3450,8 +3286,7 @@ emit_foreign_key (DB_OBJLIST * classes)
       constraint_list = db_get_constraints (cl->op);
       cls_name = db_get_class_name (cl->op);
 
-      for (constraint = constraint_list;
-	   constraint != NULL; constraint = db_constraint_next (constraint))
+      for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
 	{
 	  if (db_constraint_type (constraint) != DB_CONSTRAINT_FOREIGN_KEY)
 	    {
@@ -3476,8 +3311,7 @@ emit_foreign_key (DB_OBJLIST * classes)
 
 	  (void) fprintf (output_file, "ALTER CLASS [%s] ADD", cls_name);
 
-	  (void) fprintf (output_file, " CONSTRAINT [%s] FOREIGN KEY(",
-			  constraint->name);
+	  (void) fprintf (output_file, " CONSTRAINT [%s] FOREIGN KEY(", constraint->name);
 
 	  for (att = atts; *att != NULL; att++)
 	    {
@@ -3491,14 +3325,11 @@ emit_foreign_key (DB_OBJLIST * classes)
 	  (void) fprintf (output_file, ")");
 
 	  ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
-	  fprintf (output_file, " REFERENCES %s%s%s ",
-		   PRINT_IDENTIFIER (db_get_class_name (ref_clsop)));
+	  fprintf (output_file, " REFERENCES %s%s%s ", PRINT_IDENTIFIER (db_get_class_name (ref_clsop)));
 	  fprintf (output_file, "ON DELETE %s ",
-		   classobj_describe_foreign_key_action (constraint->fk_info->
-							 delete_action));
+		   classobj_describe_foreign_key_action (constraint->fk_info->delete_action));
 	  fprintf (output_file, "ON UPDATE %s ",
-		   classobj_describe_foreign_key_action (constraint->fk_info->
-							 update_action));
+		   classobj_describe_foreign_key_action (constraint->fk_info->update_action));
 
 	  if (constraint->comment != NULL && constraint->comment[0] != '\0')
 	    {

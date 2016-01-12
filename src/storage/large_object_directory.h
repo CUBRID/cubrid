@@ -104,22 +104,13 @@ typedef struct largeobjmgr_dirheader LARGEOBJMGR_DIRHEADER;
 struct largeobjmgr_dirheader
 {
   LOID loid;			/* LOM identifier */
-  INT64 tot_length;		/* Total large object length          */
-  INT64 pg_tot_length;		/* Total length of data represented by
-				 * this page
-				 */
-  int index_level;		/* Directory level:
-				 * if 0,   page is a dir page (no indices),
-				 * if > 0, page is an index page to directory
-				 * pages.
-				 */
+  INT64 tot_length;		/* Total large object length */
+  INT64 pg_tot_length;		/* Total length of data represented by this page */
+  int index_level;		/* Directory level: if 0, page is a dir page (no indices), if > 0, page is an index
+				 * page to directory pages. */
   int tot_slot_cnt;		/* Total number of slots that form LO */
-  VPID goodvpid_fordata;	/* A hint for a data page with space.
-				 * Usually the last allocated data page.
-				 */
-  int pg_act_idxcnt;		/* Active entry count represented by this
-				 * page
-				 */
+  VPID goodvpid_fordata;	/* A hint for a data page with space. Usually the last allocated data page. */
+  int pg_act_idxcnt;		/* Active entry count represented by this page */
   int pg_lastact_idx;		/* Last active entry index */
   VPID next_vpid;		/* Next directory page identifier */
 };
@@ -147,11 +138,8 @@ struct largeobjmgr_direntry
 typedef struct largeobjmgr_firstdir LARGEOBJMGR_FIRSTDIR;
 struct largeobjmgr_firstdir
 {
-  PAGE_PTR pgptr;		/* Points to first directory page.
-				 * This directory page may be an index
-				 * onto directory pages when
-				 * index_level is greater than zero
-				 */
+  PAGE_PTR pgptr;		/* Points to first directory page. This directory page may be an index onto directory
+				 * pages when index_level is greater than zero */
   int idx;			/* Index page entry index */
   LARGEOBJMGR_DIRMAP_ENTRY *idxptr;	/* Index page entry pointer */
   LARGEOBJMGR_DIRHEADER *hdr;	/* Header of first directory page */
@@ -170,17 +158,12 @@ typedef struct largeobjmgr_dirstate LARGEOBJMGR_DIRSTATE;
 struct largeobjmgr_dirstate
 {
   int opr_mode;			/* LOM operation mode */
-  int index_level;		/* if > 0, the first directory page is
-				 * an index map page which help us to
-				 * speed looking for an specific offset
-				 * onto directory pages.
-				 */
+  int index_level;		/* if > 0, the first directory page is an index map page which help us to speed looking 
+				 * for an specific offset onto directory pages. */
   SCAN_POSITION pos;		/* Directory state position */
   INT64 tot_length;		/* Current total length of large object */
   INT64 lo_offset;		/* Current large object offset */
-  VPID goodvpid_fordata;	/* A hint for a data page with space.
-				 * Usually the last allocated data page.
-				 */
+  VPID goodvpid_fordata;	/* A hint for a data page with space. Usually the last allocated data page. */
   LARGEOBJMGR_FIRSTDIR firstdir;	/* Index page */
   LARGEOBJMGR_CURDIR curdir;	/* Directory page */
 };
@@ -197,59 +180,36 @@ struct largeobjmgr_dirstate_pos
   int curdir_idx;		/* Directory page entry index */
 };				/* Directory state position structure */
 
-extern void largeobjmgr_reset_last_alloc_page (THREAD_ENTRY * thread_p,
-					       LARGEOBJMGR_DIRSTATE * ds,
-					       VPID * vpid_ptr);
+extern void largeobjmgr_reset_last_alloc_page (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds, VPID * vpid_ptr);
 #if defined (ENABLE_UNUSED_FUNCTION)
-extern int largeobjmgr_dir_get_vpids (THREAD_ENTRY * thread_p, LOID * loid,
-				      VPID ** dir_vpid_list,
-				      int *dir_vpid_cnt, bool * index_exists);
+extern int largeobjmgr_dir_get_vpids (THREAD_ENTRY * thread_p, LOID * loid, VPID ** dir_vpid_list, int *dir_vpid_cnt,
+				      bool * index_exists);
 #endif
-extern SCAN_CODE largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p,
-					    LARGEOBJMGR_DIRSTATE * ds);
-extern int largeobjmgr_dir_insert (THREAD_ENTRY * thread_p,
-				   LARGEOBJMGR_DIRSTATE * ds,
-				   LARGEOBJMGR_DIRENTRY * X_ent_ptr,
+extern SCAN_CODE largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds);
+extern int largeobjmgr_dir_insert (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds, LARGEOBJMGR_DIRENTRY * X_ent_ptr,
 				   int ins_ent_cnt);
-extern int largeobjmgr_dir_update (THREAD_ENTRY * thread_p,
-				   LARGEOBJMGR_DIRSTATE * ds,
-				   LARGEOBJMGR_DIRENTRY * X);
+extern int largeobjmgr_dir_update (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds, LARGEOBJMGR_DIRENTRY * X);
 #if defined (CUBRID_DEBUG)
-extern void largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, FILE * fp,
-				  LOID * loid);
+extern void largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid);
 extern bool largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid);
 #endif
-extern SCAN_CODE largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid,
-				       INT64 offset, int opr_mode,
+extern SCAN_CODE largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid, INT64 offset, int opr_mode,
 				       LARGEOBJMGR_DIRSTATE * ds);
-extern void largeobjmgr_dir_close (THREAD_ENTRY * thread_p,
-				   LARGEOBJMGR_DIRSTATE * ds);
-extern INT64 largeobjmgr_dir_get_lolength (THREAD_ENTRY * thread_p,
-					   LOID * loid);
-extern SCAN_CODE largeobjmgr_skip_empty_entries (THREAD_ENTRY * thread_p,
-						 LARGEOBJMGR_DIRSTATE * ds);
-extern void largeobjmgr_dir_get_pos (LARGEOBJMGR_DIRSTATE * ds,
-				     LARGEOBJMGR_DIRSTATE_POS * ds_pos);
-extern int largeobjmgr_dir_put_pos (THREAD_ENTRY * thread_p,
-				    LARGEOBJMGR_DIRSTATE * ds,
+extern void largeobjmgr_dir_close (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds);
+extern INT64 largeobjmgr_dir_get_lolength (THREAD_ENTRY * thread_p, LOID * loid);
+extern SCAN_CODE largeobjmgr_skip_empty_entries (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds);
+extern void largeobjmgr_dir_get_pos (LARGEOBJMGR_DIRSTATE * ds, LARGEOBJMGR_DIRSTATE_POS * ds_pos);
+extern int largeobjmgr_dir_put_pos (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 				    LARGEOBJMGR_DIRSTATE_POS * ds_pos);
 extern int largeobjmgr_dir_compress (THREAD_ENTRY * thread_p, LOID * loid);
-extern void largeobjmgr_init_dir_pagecnt (int data_pgcnt, int *dir_pgcnt,
-					  int *dir_ind_pgcnt);
-extern int largeobjmgr_dir_create (THREAD_ENTRY * thread_p, LOID * loid,
-				   int length, int dir_ind_pgcnt,
-				   int dir_pgcnt, int data_pgcnt,
-				   int max_data_slot_size);
+extern void largeobjmgr_init_dir_pagecnt (int data_pgcnt, int *dir_pgcnt, int *dir_ind_pgcnt);
+extern int largeobjmgr_dir_create (THREAD_ENTRY * thread_p, LOID * loid, int length, int dir_ind_pgcnt, int dir_pgcnt,
+				   int data_pgcnt, int max_data_slot_size);
 
-extern int largeobjmgr_rv_dir_rcv_state_undoredo (THREAD_ENTRY * thread_p,
-						  LOG_RCV * recv);
-extern void largeobjmgr_rv_dir_rcv_state_dump (FILE * fp, int length,
-					       void *data);
-extern int largeobjmgr_rv_dir_page_region_undoredo (THREAD_ENTRY * thread_p,
-						    LOG_RCV * recv);
-extern int largeobjmgr_rv_dir_new_page_undo (THREAD_ENTRY * thread_p,
-					     LOG_RCV * recv);
-extern int largeobjmgr_rv_dir_new_page_redo (THREAD_ENTRY * thread_p,
-					     LOG_RCV * recv);
+extern int largeobjmgr_rv_dir_rcv_state_undoredo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern void largeobjmgr_rv_dir_rcv_state_dump (FILE * fp, int length, void *data);
+extern int largeobjmgr_rv_dir_page_region_undoredo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int largeobjmgr_rv_dir_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int largeobjmgr_rv_dir_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 #endif /* _LARGE_OBJECT_DIRECTORY_H_ */

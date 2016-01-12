@@ -99,8 +99,7 @@ ci_create_connection (CI_CONNECTION * conn)
  *    password():
  */
 int
-ci_conn_connect (CI_CONNECTION conn, const char *host,
-		 unsigned short port, const char *databasename,
+ci_conn_connect (CI_CONNECTION conn, const char *host, unsigned short port, const char *databasename,
 		 const char *user_name, const char *password)
 {
   API_DECLARE;
@@ -115,9 +114,7 @@ ci_conn_connect (CI_CONNECTION conn, const char *host,
 
   API_HOUSEKEEP_BEGIN (conn, COMMON_API_STRUCTURE *, pst);
   API_CHECK_HANDLE (pst, HANDLE_TYPE_CONNECTION);
-  retval =
-    API_IMPL_TBL->conn_connect (pst, host, port, databasename, user_name,
-				password);
+  retval = API_IMPL_TBL->conn_connect (pst, host, port, databasename, user_name, password);
   API_RETURN (retval);
 }
 
@@ -181,8 +178,7 @@ ci_conn_create_statement (CI_CONNECTION conn, CI_STATEMENT * stmt)
  *    size():
  */
 int
-ci_conn_set_option (CI_CONNECTION conn, CI_CONNECTION_OPTION option,
-		    void *arg, size_t size)
+ci_conn_set_option (CI_CONNECTION conn, CI_CONNECTION_OPTION option, void *arg, size_t size)
 {
   API_DECLARE;
   int retval;
@@ -211,8 +207,7 @@ ci_conn_set_option (CI_CONNECTION conn, CI_CONNECTION_OPTION option,
  *    size():
  */
 int
-ci_conn_get_option (CI_CONNECTION conn, CI_CONNECTION_OPTION option,
-		    void *arg, size_t size)
+ci_conn_get_option (CI_CONNECTION conn, CI_CONNECTION_OPTION option, void *arg, size_t size)
 {
   API_DECLARE;
   int retval;
@@ -416,8 +411,7 @@ ci_stmt_clear_batch (CI_STATEMENT stmt)
  *    r():
  */
 int
-ci_stmt_execute_immediate (CI_STATEMENT stmt, char *sql,
-			   size_t len, CI_RESULTSET * rs, int *r)
+ci_stmt_execute_immediate (CI_STATEMENT stmt, char *sql, size_t len, CI_RESULTSET * rs, int *r)
 {
   API_DECLARE;
   int retval;
@@ -502,8 +496,7 @@ ci_stmt_execute_batch (CI_STATEMENT stmt, CI_BATCH_RESULT * br)
  *    size():
  */
 int
-ci_stmt_get_option (CI_STATEMENT stmt,
-		    CI_STATEMENT_OPTION option, void *arg, size_t size)
+ci_stmt_get_option (CI_STATEMENT stmt, CI_STATEMENT_OPTION option, void *arg, size_t size)
 {
   API_DECLARE;
   int retval;
@@ -532,8 +525,7 @@ ci_stmt_get_option (CI_STATEMENT stmt,
  *    size():
  */
 int
-ci_stmt_set_option (CI_STATEMENT stmt,
-		    CI_STATEMENT_OPTION option, void *arg, size_t size)
+ci_stmt_set_option (CI_STATEMENT stmt, CI_STATEMENT_OPTION option, void *arg, size_t size)
 {
   API_DECLARE;
   int retval;
@@ -674,8 +666,8 @@ ci_stmt_get_parameter_metadata (CI_STATEMENT stmt, CI_PARAMETER_METADATA * r)
  *    isnull():
  */
 int
-ci_stmt_get_parameter (CI_STATEMENT stmt, int index, CI_TYPE type,
-		       void *addr, size_t len, size_t * outlen, bool * isnull)
+ci_stmt_get_parameter (CI_STATEMENT stmt, int index, CI_TYPE type, void *addr, size_t len, size_t * outlen,
+		       bool * isnull)
 {
   API_DECLARE;
   int retval;
@@ -690,9 +682,7 @@ ci_stmt_get_parameter (CI_STATEMENT stmt, int index, CI_TYPE type,
   API_HOUSEKEEP_BEGIN (stmt, COMMON_API_STRUCTURE *, pst);
   API_CHECK_HANDLE (pst, HANDLE_TYPE_STATEMENT);
 
-  retval =
-    API_IMPL_TBL->stmt_get_parameter (pst, index, type, addr, len, outlen,
-				      isnull);
+  retval = API_IMPL_TBL->stmt_get_parameter (pst, index, type, addr, len, outlen, isnull);
 
   API_RETURN (retval);
 }
@@ -707,8 +697,7 @@ ci_stmt_get_parameter (CI_STATEMENT stmt, int index, CI_TYPE type,
  *    size():
  */
 int
-ci_stmt_set_parameter (CI_STATEMENT stmt,
-		       int index, CI_TYPE type, void *val, size_t size)
+ci_stmt_set_parameter (CI_STATEMENT stmt, int index, CI_TYPE type, void *val, size_t size)
 {
   API_DECLARE;
   int retval;
@@ -874,8 +863,7 @@ ci_stmt_next_result (CI_STATEMENT stmt, bool * exist_result)
  *    size():
  */
 int
-ci_stmt_get_first_error (CI_STATEMENT stmt, int *line, int *col,
-			 int *errcode, char *err_msg, size_t size)
+ci_stmt_get_first_error (CI_STATEMENT stmt, int *line, int *col, int *errcode, char *err_msg, size_t size)
 {
   API_DECLARE;
   int retval;
@@ -890,9 +878,7 @@ ci_stmt_get_first_error (CI_STATEMENT stmt, int *line, int *col,
   API_HOUSEKEEP_BEGIN (stmt, COMMON_API_STRUCTURE *, pst);
   API_CHECK_HANDLE (pst, HANDLE_TYPE_STATEMENT);
 
-  retval =
-    API_IMPL_TBL->stmt_get_first_error (pst, line, col, errcode, err_msg,
-					size);
+  retval = API_IMPL_TBL->stmt_get_first_error (pst, line, col, errcode, err_msg, size);
 
   API_RETURN (retval);
 }
@@ -908,8 +894,7 @@ ci_stmt_get_first_error (CI_STATEMENT stmt, int *line, int *col,
  *    size():
  */
 int
-ci_stmt_get_next_error (CI_STATEMENT stmt, int *line, int *col,
-			int *errcode, char *err_msg, size_t size)
+ci_stmt_get_next_error (CI_STATEMENT stmt, int *line, int *col, int *errcode, char *err_msg, size_t size)
 {
   API_DECLARE;
   int retval;
@@ -924,9 +909,7 @@ ci_stmt_get_next_error (CI_STATEMENT stmt, int *line, int *col,
   API_HOUSEKEEP_BEGIN (stmt, COMMON_API_STRUCTURE *, pst);
   API_CHECK_HANDLE (pst, HANDLE_TYPE_STATEMENT);
 
-  retval =
-    API_IMPL_TBL->stmt_get_next_error (pst, line, col, errcode, err_msg,
-				       size);
+  retval = API_IMPL_TBL->stmt_get_next_error (pst, line, col, errcode, err_msg, size);
 
   API_RETURN (retval);
 }
@@ -958,10 +941,7 @@ ci_res_get_resultset_metadata (CI_RESULTSET res, CI_RESULTSET_METADATA * r)
 
   if (retval == NO_ERROR)
     {
-      retval =
-	API_BH_INTERFACE->bind_to_handle (API_BH_INTERFACE,
-					  (BH_BIND *) prmeta,
-					  (BIND_HANDLE *) r);
+      retval = API_BH_INTERFACE->bind_to_handle (API_BH_INTERFACE, (BH_BIND *) prmeta, (BIND_HANDLE *) r);
     }
 
   API_RETURN (retval);
@@ -1068,8 +1048,7 @@ ci_res_delete_row (CI_RESULTSET res)
  *    isnull():
  */
 int
-ci_res_get_value (CI_RESULTSET res, int index, CI_TYPE type,
-		  void *addr, size_t len, size_t * outlen, bool * isnull)
+ci_res_get_value (CI_RESULTSET res, int index, CI_TYPE type, void *addr, size_t len, size_t * outlen, bool * isnull)
 {
   API_DECLARE;
   int retval;
@@ -1084,8 +1063,7 @@ ci_res_get_value (CI_RESULTSET res, int index, CI_TYPE type,
   API_HOUSEKEEP_BEGIN (res, API_RESULTSET *, pres);
   API_CHECK_HANDLE (pres, HANDLE_TYPE_RESULTSET);
 
-  retval =
-    pres->ifs->get_value (pres, index, type, addr, len, outlen, isnull);
+  retval = pres->ifs->get_value (pres, index, type, addr, len, outlen, isnull);
 
   API_RETURN (retval);
 }
@@ -1102,9 +1080,8 @@ ci_res_get_value (CI_RESULTSET res, int index, CI_TYPE type,
  *    isnull():
  */
 int
-ci_res_get_value_by_name (CI_RESULTSET res, const char *name,
-			  CI_TYPE type, void *addr, size_t len,
-			  size_t * outlen, bool * isnull)
+ci_res_get_value_by_name (CI_RESULTSET res, const char *name, CI_TYPE type, void *addr, size_t len, size_t * outlen,
+			  bool * isnull)
 {
   API_DECLARE;
   int retval;
@@ -1119,9 +1096,7 @@ ci_res_get_value_by_name (CI_RESULTSET res, const char *name,
   API_HOUSEKEEP_BEGIN (res, API_RESULTSET *, pres);
   API_CHECK_HANDLE (pres, HANDLE_TYPE_RESULTSET);
 
-  retval =
-    pres->ifs->get_value_by_name (pres, name, type, addr, len, outlen,
-				  isnull);
+  retval = pres->ifs->get_value_by_name (pres, name, type, addr, len, outlen, isnull);
 
   API_RETURN (retval);
 }
@@ -1136,8 +1111,7 @@ ci_res_get_value_by_name (CI_RESULTSET res, const char *name,
  *    len():
  */
 int
-ci_res_update_value (CI_RESULTSET res, int index, CI_TYPE type,
-		     void *addr, size_t len)
+ci_res_update_value (CI_RESULTSET res, int index, CI_TYPE type, void *addr, size_t len)
 {
   API_DECLARE;
   int retval;
@@ -1192,8 +1166,7 @@ ci_res_close (CI_RESULTSET res)
   API_HOUSEKEEP_BEGIN (res, API_RESULTSET *, pres);
   API_CHECK_HANDLE (pres, HANDLE_TYPE_RESULTSET);
 
-  retval =
-    API_BH_INTERFACE->destroy_handle (API_BH_INTERFACE, (BIND_HANDLE) res);
+  retval = API_BH_INTERFACE->destroy_handle (API_BH_INTERFACE, (BIND_HANDLE) res);
 
   API_RETURN (retval);
 }
@@ -1264,8 +1237,7 @@ ci_batch_res_get_result (CI_BATCH_RESULT br, int index, int *ret, int *nr)
  *    size():
  */
 int
-ci_batch_res_get_error (CI_BATCH_RESULT br, int index, int *err_code,
-			char *err_msg, size_t size)
+ci_batch_res_get_error (CI_BATCH_RESULT br, int index, int *err_code, char *err_msg, size_t size)
 {
   API_DECLARE;
   int retval;
@@ -1280,9 +1252,7 @@ ci_batch_res_get_error (CI_BATCH_RESULT br, int index, int *err_code,
   API_HOUSEKEEP_BEGIN (br, COMMON_API_STRUCTURE *, pst);
   API_CHECK_HANDLE (pst, HANDLE_TYPE_BATCH_RESULT);
 
-  retval =
-    API_IMPL_TBL->batch_res_get_error (pst, index - 1, err_code, err_msg,
-				       size);
+  retval = API_IMPL_TBL->batch_res_get_error (pst, index - 1, err_code, err_msg, size);
 
   API_RETURN (retval);
 }
@@ -1324,8 +1294,7 @@ ci_pmeta_get_count (CI_PARAMETER_METADATA pmeta, int *count)
  *    size():
  */
 int
-ci_pmeta_get_info (CI_PARAMETER_METADATA pmeta, int index,
-		   CI_PMETA_INFO_TYPE type, void *arg, size_t size)
+ci_pmeta_get_info (CI_PARAMETER_METADATA pmeta, int index, CI_PMETA_INFO_TYPE type, void *arg, size_t size)
 {
   API_DECLARE;
   int retval;
@@ -1382,8 +1351,7 @@ ci_rmeta_get_count (CI_RESULTSET_METADATA rmeta, int *count)
  *    size():
  */
 int
-ci_rmeta_get_info (CI_RESULTSET_METADATA rmeta, int index,
-		   CI_RMETA_INFO_TYPE type, void *arg, size_t size)
+ci_rmeta_get_info (CI_RESULTSET_METADATA rmeta, int index, CI_RMETA_INFO_TYPE type, void *arg, size_t size)
 {
   API_DECLARE;
   int retval;
@@ -1594,8 +1562,7 @@ ci_collection_length (CI_COLLECTION coll, long *length)
  *    size():
  */
 int
-ci_collection_insert (CI_COLLECTION coll, long pos,
-		      CI_TYPE type, void *ptr, size_t size)
+ci_collection_insert (CI_COLLECTION coll, long pos, CI_TYPE type, void *ptr, size_t size)
 {
   API_DECLARE;
   int res;
@@ -1627,8 +1594,7 @@ ci_collection_insert (CI_COLLECTION coll, long pos,
  *    size():
  */
 int
-ci_collection_update (CI_COLLECTION coll, long pos,
-		      CI_TYPE type, void *ptr, size_t size)
+ci_collection_update (CI_COLLECTION coll, long pos, CI_TYPE type, void *ptr, size_t size)
 {
   API_DECLARE;
   int res;
@@ -1689,9 +1655,7 @@ ci_collection_delete (CI_COLLECTION coll, long pos)
  *    scale():
  */
 int
-ci_collection_get_elem_domain_info (CI_COLLECTION coll, long pos,
-				    CI_TYPE * type, int *precision,
-				    int *scale)
+ci_collection_get_elem_domain_info (CI_COLLECTION coll, long pos, CI_TYPE * type, int *precision, int *scale)
 {
   API_DECLARE;
   int res;
@@ -1725,9 +1689,7 @@ ci_collection_get_elem_domain_info (CI_COLLECTION coll, long pos,
  *    isnull():
  */
 int
-ci_collection_get (CI_COLLECTION coll, long pos,
-		   CI_TYPE type, void *addr, size_t len,
-		   size_t * outlen, bool * isnull)
+ci_collection_get (CI_COLLECTION coll, long pos, CI_TYPE type, void *addr, size_t len, size_t * outlen, bool * isnull)
 {
   API_DECLARE;
   int res;

@@ -133,49 +133,36 @@ extern int obj_delete (MOP op);
 
 extern int obj_get (MOP op, const char *name, DB_VALUE * value);
 
-extern int obj_get_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
-			DB_VALUE * value);
+extern int obj_get_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value);
 
 extern int obj_get_shared (MOP op, const char *name, DB_VALUE * value);
-extern int obj_get_path (DB_OBJECT * object, const char *attpath,
-			 DB_VALUE * value);
+extern int obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value);
 extern int obj_set (MOP op, const char *name, DB_VALUE * value);
 
 extern int obj_set_shared (MOP op, const char *name, DB_VALUE * value);
-extern int obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem,
-			     DB_VALUE * value);
+extern int obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value);
 
 /* Attribute descriptor interface */
 extern int obj_desc_set (MOP op, SM_DESCRIPTOR * desc, DB_VALUE * value);
 extern int obj_desc_get (MOP op, SM_DESCRIPTOR * desc, DB_VALUE * value);
 
 /* Method invocation */
-extern int obj_send_va (MOP obj, const char *name, DB_VALUE * returnval,
-			va_list args);
+extern int obj_send_va (MOP obj, const char *name, DB_VALUE * returnval, va_list args);
 
-extern int obj_send_list (MOP obj, const char *name, DB_VALUE * returnval,
-			  DB_VALUE_LIST * arglist);
-extern int obj_send_array (MOP obj, const char *name,
-			   DB_VALUE * returnval, DB_VALUE ** argarray);
+extern int obj_send_list (MOP obj, const char *name, DB_VALUE * returnval, DB_VALUE_LIST * arglist);
+extern int obj_send_array (MOP obj, const char *name, DB_VALUE * returnval, DB_VALUE ** argarray);
 /* Method descriptor interface */
 
-extern int obj_desc_send_va (MOP obj, SM_DESCRIPTOR * desc,
-			     DB_VALUE * returnval, va_list args);
-extern int obj_desc_send_list (MOP obj, SM_DESCRIPTOR * desc,
-			       DB_VALUE * returnval, DB_VALUE_LIST * arglist);
-extern int obj_desc_send_array (MOP obj, SM_DESCRIPTOR * desc,
-				DB_VALUE * returnval, DB_VALUE ** argarray);
-extern int obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc,
-				      DB_VALUE * returnval, int nargs,
+extern int obj_desc_send_va (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, va_list args);
+extern int obj_desc_send_list (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, DB_VALUE_LIST * arglist);
+extern int obj_desc_send_array (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, DB_VALUE ** argarray);
+extern int obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, int nargs,
 				      DB_VALUE ** argarray);
 #if defined(ENABLE_UNUSED_FUNCTION)
-extern int obj_send_stack (MOP obj, const char *name,
-			   DB_VALUE * returnval, ...);
-extern int obj_desc_send_stack (MOP obj, SM_DESCRIPTOR * desc,
-				DB_VALUE * returnval, ...);
+extern int obj_send_stack (MOP obj, const char *name, DB_VALUE * returnval, ...);
+extern int obj_desc_send_stack (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, ...);
 /* backward compatibility, should use obj_send_list() */
-extern int obj_send (MOP obj, const char *name, DB_VALUE * returnval,
-		     DB_VALUE_LIST * arglist);
+extern int obj_send (MOP obj, const char *name, DB_VALUE * returnval, DB_VALUE_LIST * arglist);
 extern int obj_isclass (MOP obj);
 #endif
 
@@ -188,20 +175,14 @@ extern int obj_is_instance_of (MOP obj, MOP class_mop);
 extern int obj_lock (MOP op, int for_write);
 extern int obj_class_lock (MOP op, int for_write);
 extern int obj_inst_lock (MOP op, int for_write);
-extern MOP obj_find_unique (MOP op, const char *attname, DB_VALUE * value,
-			    AU_FETCHMODE fetchmode);
-extern MOP obj_find_object_by_pkey (MOP classop, DB_VALUE * key,
-				    AU_FETCHMODE fetchmode);
-extern MOP obj_repl_find_object_by_pkey (MOP classop, DB_VALUE * key,
-					 AU_FETCHMODE fetchmode);
+extern MOP obj_find_unique (MOP op, const char *attname, DB_VALUE * value, AU_FETCHMODE fetchmode);
+extern MOP obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode);
+extern MOP obj_repl_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode);
 
-extern MOP obj_desc_find_unique (MOP op, SM_DESCRIPTOR * desc,
-				 DB_VALUE * value, AU_FETCHMODE fetchmode);
+extern MOP obj_desc_find_unique (MOP op, SM_DESCRIPTOR * desc, DB_VALUE * value, AU_FETCHMODE fetchmode);
 
-extern int obj_repl_add_object (MOP classop, DB_VALUE * key_value, int type,
-				RECDES * recdes);
-extern int obj_prefetch_repl_update_or_delete_object (MOP classop,
-						      DB_VALUE * key_value);
+extern int obj_repl_add_object (MOP classop, DB_VALUE * key_value, int type, RECDES * recdes);
+extern int obj_prefetch_repl_update_or_delete_object (MOP classop, DB_VALUE * key_value);
 
 /* Internal support for specific modules */
 
@@ -209,33 +190,24 @@ extern int obj_prefetch_repl_update_or_delete_object (MOP classop,
 extern void obj_free_memory (SM_CLASS * class_, MOBJ obj);
 
 /* attribute locator for set handler */
-extern int obj_locate_attribute (MOP op, int attid, int for_write,
-				 char **memp, SM_ATTRIBUTE ** attp);
+extern int obj_locate_attribute (MOP op, int attid, int for_write, char **memp, SM_ATTRIBUTE ** attp);
 extern char *obj_alloc (SM_CLASS * class_, int bound_bit_status);
 
 
-extern MOP obj_find_primary_key (MOP op, const DB_VALUE ** values,
-				 int size, AU_FETCHMODE fetchmode);
+extern MOP obj_find_primary_key (MOP op, const DB_VALUE ** values, int size, AU_FETCHMODE fetchmode);
 /*
  * extern MOP obj_find_object_by_pkey(MOP op, SM_CLASS_CONSTRAINT *pk, const DB_VALUE *key);
  *
  */
 
-extern MOP obj_find_multi_attr (MOP op, int size,
-				const char *attr_names[],
-				const DB_VALUE * values[],
+extern MOP obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE * values[],
 				AU_FETCHMODE fetchmode);
-extern MOP obj_find_multi_desc (MOP op, int size,
-				const SM_DESCRIPTOR * desc[],
-				const DB_VALUE * values[],
+extern MOP obj_find_multi_desc (MOP op, int size, const SM_DESCRIPTOR * desc[], const DB_VALUE * values[],
 				AU_FETCHMODE fetchmode);
 
-extern int obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem,
-			  DB_VALUE * source, DB_VALUE * dest);
+extern int obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem, DB_VALUE * source, DB_VALUE * dest);
 #if defined(ENABLE_UNUSED_FUNCTION)
-extern int obj_find_unique_id (MOP op, const char *att_name,
-			       BTID * id_array, int id_array_size,
-			       int *total_ids);
+extern int obj_find_unique_id (MOP op, const char *att_name, BTID * id_array, int id_array_size, int *total_ids);
 #endif
 
 #endif /* _OBJECT_ACCESSOR_H_ */

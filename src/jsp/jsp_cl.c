@@ -120,20 +120,12 @@ static void windows_socket_shutdown (void);
 static unsigned int jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static int jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static int jsp_get_argument_count (const SP_ARGS * sp_args);
-static int jsp_add_stored_procedure_argument (MOP * mop_p,
-					      const char *sp_name,
-					      const char *arg_name, int index,
-					      int data_type, int mode,
-					      const char *arg_comment);
+static int jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
+					      int data_type, int mode, const char *arg_comment);
 static char *jsp_check_stored_procedure_name (const char *str);
-static int jsp_add_stored_procedure (const char *name,
-				     const PT_MISC_TYPE type,
-				     const PT_TYPE_ENUM ret_type,
-				     PT_NODE * param_list,
-				     const char *java_method,
-				     const char *comment);
-static int drop_stored_procedure (const char *name,
-				  PT_MISC_TYPE expected_type);
+static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM ret_type,
+				     PT_NODE * param_list, const char *java_method, const char *comment);
+static int drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type);
 static int jsp_writen (SOCKET fd, const void *vptr, int n);
 static int jsp_readn (SOCKET fd, void *vptr, int n);
 static int jsp_get_value_size (DB_VALUE * value);
@@ -176,17 +168,13 @@ extern int libcas_main (SOCKET fd);
 extern void *libcas_get_db_result_set (int h_id);
 extern void libcas_srv_handle_free (int h_id);
 
-static int jsp_send_call_request (const SOCKET sockfd,
-				  const SP_ARGS * sp_args);
-static int jsp_receive_response (const SOCKET sockfd,
-				 const SP_ARGS * sp_args);
+static int jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args);
+static int jsp_receive_response (const SOCKET sockfd, const SP_ARGS * sp_args);
 
 static SOCKET jsp_connect_server (void);
 static void jsp_close_internal_connection (const SOCKET sockfd);
 static int jsp_execute_stored_procedure (const SP_ARGS * args);
-static int jsp_do_call_stored_procedure (DB_VALUE * returnval,
-					 DB_ARG_LIST * args,
-					 const char *name);
+static int jsp_do_call_stored_procedure (DB_VALUE * returnval, DB_ARG_LIST * args, const char *name);
 
 /*
  * jsp_init - Initialize Java Stored Procedure
@@ -346,12 +334,10 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_ARG_LIST *value_list = 0, *vl, **next_value_list;
   PT_NODE *vc, *into, *method;
 
-  if (!statement
-      || !(method = statement->info.method_call.method_name)
-      || method->node_type != PT_NAME || !(proc = method->info.name.original))
+  if (!statement || !(method = statement->info.method_call.method_name) || method->node_type != PT_NAME
+      || !(proc = method->info.name.original))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return er_errid ();
     }
 
@@ -368,22 +354,17 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
       *next_value_list = (DB_ARG_LIST *) calloc (1, sizeof (DB_ARG_LIST));
       if (*next_value_list == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (DB_ARG_LIST));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_ARG_LIST));
 	  return er_errid ();
 	}
 
       (*next_value_list)->next = (DB_ARG_LIST *) 0;
 
-      /*
-         Don't clone host vars; they may actually be acting as output
-         variables (e.g., a character array that is intended to receive
-         bytes from the method), and cloning will ensure that the
-         results never make it to the expected area.  Since
-         pt_evaluate_tree() always clones its db_values we must not
-         use pt_evaluate_tree() to extract the db_value from a host
-         variable;  instead extract it ourselves.
-       */
+      /* 
+       * Don't clone host vars; they may actually be acting as output variables (e.g., a character array that is
+       * intended to receive bytes from the method), and cloning will ensure that the results never make it to the
+       * expected area.  Since pt_evaluate_tree() always clones its db_values we must not use pt_evaluate_tree() to
+       * extract the db_value from a host variable; instead extract it ourselves. */
       if (PT_IS_CONST (vc))
 	{
 	  db_value = pt_value_to_db (parser, vc);
@@ -393,8 +374,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  db_value = (DB_VALUE *) calloc (1, sizeof (DB_VALUE));
 	  if (db_value == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE));
 	      return er_errid ();
 	    }
 
@@ -449,13 +429,11 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
       statement->etc = (void *) db_value_copy (&ret_value);
       into = statement->info.method_call.to_return_var;
 
-      if (into != NULL && into->node_type == PT_NAME
-	  && (into_label = into->info.name.original) != NULL)
+      if (into != NULL && into->node_type == PT_NAME && (into_label = into->info.name.original) != NULL)
 	{
 	  /* create another DB_VALUE of the new instance for the label_table */
 	  ins_value = db_value_copy (&ret_value);
-	  error = pt_associate_label_with_value_check_reference (into_label,
-								 ins_value);
+	  error = pt_associate_label_with_value_check_reference (into_label, ins_value);
 	}
     }
 
@@ -577,8 +555,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1,
-		  name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, name);
 	  return er_errid ();
 	}
     }
@@ -590,15 +567,13 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (param_count > MAX_ARG_COUNT)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1,
-	      name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, name);
       goto error_exit;
     }
 
   comment = (char *) PT_NODE_SP_COMMENT (statement);
 
-  err = jsp_add_stored_procedure (name, type, ret_type, param_list,
-				  java_method, comment);
+  err = jsp_add_stored_procedure (name, type, ret_type, param_list, java_method, comment);
   if (err != NO_ERROR)
     {
       goto error_exit;
@@ -668,8 +643,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (!au_is_dba_group_member (Au_user))
     {
       err = ER_AU_DBA_ONLY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1,
-	      "change stored procedure owner");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, "change stored procedure owner");
       goto error;
     }
 
@@ -705,8 +679,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (real_type != jsp_map_pt_misc_to_sp_type (type))
     {
       err = ER_SP_INVALID_TYPE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2,
-	      name_str,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, name_str,
 	      real_type == SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
       goto error;
     }
@@ -826,10 +799,8 @@ jsp_get_argument_count (const SP_ARGS * sp_args)
  */
 
 static int
-jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name,
-				   const char *arg_name, int index,
-				   int data_type, int mode,
-				   const char *arg_comment)
+jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index, int data_type,
+				   int mode, const char *arg_comment)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -967,10 +938,8 @@ jsp_check_stored_procedure_name (const char *str)
  */
 
 static int
-jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
-			  const PT_TYPE_ENUM return_type,
-			  PT_NODE * param_list, const char *java_method,
-			  const char *comment)
+jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM return_type,
+			  PT_NODE * param_list, const char *java_method, const char *comment)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -1053,11 +1022,9 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
     {
       MOP mop = NULL;
 
-      if (node_p->type_enum == PT_TYPE_RESULTSET
-	  && node_p->info.sp_param.mode != PT_OUTPUT)
+      if (node_p->type_enum == PT_TYPE_RESULTSET && node_p->info.sp_param.mode != PT_OUTPUT)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_SP_CANNOT_INPUT_RESULTSET, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_INPUT_RESULTSET, 0);
 	  err = er_errid ();
 	  goto error;
 	}
@@ -1065,11 +1032,9 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type,
 
       arg_comment = (char *) PT_NODE_SP_ARG_COMMENT (node_p);
 
-      err = jsp_add_stored_procedure_argument (&mop, checked_name,
-					       name_info.original, i,
-					       node_p->type_enum,
-					       node_p->info.sp_param.mode,
-					       arg_comment);
+      err =
+	jsp_add_stored_procedure_argument (&mop, checked_name, name_info.original, i, node_p->type_enum,
+					   node_p->info.sp_param.mode, arg_comment);
       if (err != NO_ERROR)
 	{
 	  goto error;
@@ -1213,8 +1178,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
     }
   owner = DB_GET_OBJECT (&owner_val);
 
-  if (!ws_is_same_object (owner, Au_user)
-      && !au_is_dba_group_member (Au_user))
+  if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED, 0);
       err = er_errid ();
@@ -1310,21 +1274,17 @@ windows_socket_startup ()
   err = WSAStartup (wVersionRequested, &wsaData);
   if (err != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_CSS_WINSOCK_STARTUP, 1, err);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_STARTUP, 1, err);
       return (-1);
     }
 
-  /* Establish a blocking "hook" function to prevent Windows messages
-   * from being dispatched when we block on reads.
-   */
+  /* Establish a blocking "hook" function to prevent Windows messages from being dispatched when we block on reads. */
   jsp_old_hook = WSASetBlockingHook ((FARPROC) windows_blocking_hook);
   if (jsp_old_hook == NULL)
     {
       /* couldn't set up our hook */
       err = WSAGetLastError ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_CSS_WINSOCK_STARTUP, 1, err);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_STARTUP, 1, err);
       (void) WSACleanup ();
       return -1;
     }
@@ -1739,8 +1699,7 @@ jsp_pack_string_argument (char *buffer, DB_VALUE * value)
   v_size = (v != NULL) ? strlen (v) : 0;
 
   if (v_size > 0 && DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8
-      && unicode_string_need_decompose (v, v_size, &decomp_size,
-					lang_get_generic_unicode_norm ()))
+      && unicode_string_need_decompose (v, v_size, &decomp_size, lang_get_generic_unicode_norm ()))
     {
       char *decomposed;
       int alloc_size = decomp_size + 1;
@@ -1748,8 +1707,7 @@ jsp_pack_string_argument (char *buffer, DB_VALUE * value)
       decomposed = (char *) db_private_alloc (NULL, alloc_size);
       if (decomposed != NULL)
 	{
-	  unicode_decompose_string (v, v_size, decomposed, &decomp_size,
-				    lang_get_generic_unicode_norm ());
+	  unicode_decompose_string (v, v_size, decomposed, &decomp_size, lang_get_generic_unicode_norm ());
 	  /* or_pack_string requires null-terminated string */
 	  decomposed[decomp_size] = '\0';
 	  assert (decomp_size < alloc_size);
@@ -2072,7 +2030,7 @@ jsp_pack_argument (char *buffer, DB_VALUE * value)
     case DB_TYPE_DATE:
       ptr = jsp_pack_date_argument (ptr, value);
       break;
-      /*describe_data(); */
+      /* describe_data(); */
 
     case DB_TYPE_TIME:
       ptr = jsp_pack_time_argument (ptr, value);
@@ -2127,15 +2085,13 @@ jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args)
   DB_ARG_LIST *p;
   char *buffer, *ptr;
 
-  req_size = (int) sizeof (int) * 4
-    + or_packed_string_length (sp_args->name, &strlen) +
-    jsp_get_argument_size (sp_args->args);
+  req_size =
+    (int) sizeof (int) * 4 + or_packed_string_length (sp_args->name, &strlen) + jsp_get_argument_size (sp_args->args);
 
   buffer = (char *) malloc (req_size);
   if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) req_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) req_size);
       return er_errid ();
     }
 
@@ -2161,8 +2117,7 @@ jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args)
   if (nbytes != req_size)
     {
       free_and_init (buffer);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-	      nbytes);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
       return er_errid ();
     }
 
@@ -2294,9 +2249,7 @@ jsp_unpack_numeric_value (char *buffer, DB_VALUE * retval)
   char *ptr;
 
   ptr = or_unpack_string_nocopy (buffer, &val);
-  if (val == NULL || numeric_coerce_string_to_num (val, strlen (val),
-						   lang_get_client_charset (),
-						   retval) != NO_ERROR)
+  if (val == NULL || numeric_coerce_string_to_num (val, strlen (val), lang_get_client_charset (), retval) != NO_ERROR)
     {
       ptr = NULL;
     }
@@ -2327,17 +2280,14 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
 
   size_in = strlen (val);
 
-  if (intl_check_string (val, size_in, &invalid_pos,
-			 lang_get_client_charset ()) != 0)
+  if (intl_check_string (val, size_in, &invalid_pos, lang_get_client_charset ()) != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1,
-	      invalid_pos - val);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1, invalid_pos - val);
       return NULL;
     }
 
   if (lang_get_client_charset () == INTL_CODESET_UTF8
-      && unicode_string_need_compose (val, size_in, &composed_size,
-				      lang_get_generic_unicode_norm ()))
+      && unicode_string_need_compose (val, size_in, &composed_size, lang_get_generic_unicode_norm ()))
     {
       char *composed;
       bool is_composed = false;
@@ -2348,8 +2298,7 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
 	  return NULL;
 	}
 
-      unicode_compose_string (val, size_in, composed, &composed_size,
-			      &is_composed, lang_get_generic_unicode_norm ());
+      unicode_compose_string (val, size_in, composed, &composed_size, &is_composed, lang_get_generic_unicode_norm ());
       composed[composed_size] = '\0';
 
       assert (composed_size <= size_in);
@@ -2366,8 +2315,7 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
     }
 
   db_make_string (retval, val);
-  db_string_put_cs_and_collation (retval, lang_get_client_charset (),
-				  lang_get_client_collation ());
+  db_string_put_cs_and_collation (retval, lang_get_client_charset (), lang_get_client_collation ());
   retval->need_clear = true;
 
   return ptr;
@@ -2684,7 +2632,7 @@ jsp_unpack_value (char *buffer, DB_VALUE * retval)
     case DB_TYPE_DATE:
       ptr = jsp_unpack_date_value (ptr, retval);
       break;
-      /*describe_data(); */
+      /* describe_data(); */
 
     case DB_TYPE_TIME:
       ptr = jsp_unpack_time_value (ptr, retval);
@@ -2750,8 +2698,7 @@ redo:
   nbytes = jsp_readn (sockfd, (char *) &start_code, (int) sizeof (int));
   if (nbytes != (int) sizeof (int))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-	      nbytes);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
       return ER_SP_NETWORK_ERROR;
     }
 
@@ -2768,8 +2715,7 @@ redo:
   nbytes = jsp_readn (sockfd, (char *) &res_size, (int) sizeof (int));
   if (nbytes != (int) sizeof (int))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-	      nbytes);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
       return ER_SP_NETWORK_ERROR;
     }
 
@@ -2778,16 +2724,14 @@ redo:
   buffer = (char *) malloc (res_size);
   if (!buffer)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) res_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) res_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   nbytes = jsp_readn (sockfd, buffer, res_size);
   if (nbytes != res_size)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-	      nbytes);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, nbytes);
       free_and_init (buffer);
       return ER_SP_NETWORK_ERROR;
     }
@@ -2802,8 +2746,7 @@ redo:
 	  goto error;
 	}
 
-      for (arg_list_p = sp_args->args, i = 0; arg_list_p != NULL;
-	   arg_list_p = arg_list_p->next, i++)
+      for (arg_list_p = sp_args->args, i = 0; arg_list_p != NULL; arg_list_p = arg_list_p->next, i++)
 	{
 	  if (sp_args->arg_mode[i] < SP_MODE_OUT)
 	    {
@@ -2845,15 +2788,13 @@ redo:
 	  goto error;
 	}
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1,
-	      DB_GET_STRING (&error_msg));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, DB_GET_STRING (&error_msg));
       error_code = er_errid ();
       db_value_clear (&error_msg);
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-	      start_code);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, start_code);
       free_and_init (buffer);
       return ER_SP_NETWORK_ERROR;
     }
@@ -2863,8 +2804,7 @@ redo:
       ptr = or_unpack_int (ptr, &end_code);
       if (start_code != end_code)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1,
-		  end_code);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NETWORK_ERROR, 1, end_code);
 	  free_and_init (buffer);
 	  return ER_SP_NETWORK_ERROR;
 	}
@@ -2912,8 +2852,7 @@ jsp_connect_server (void)
   inaddr = inet_addr (server_host);
   if (inaddr != INADDR_NONE)
     {
-      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) &inaddr,
-	      sizeof (inaddr));
+      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) &inaddr, sizeof (inaddr));
     }
   else
     {
@@ -2922,13 +2861,11 @@ jsp_connect_server (void)
 
       if (hp == NULL)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, server_host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, server_host);
 	  return INVALID_SOCKET;
 
 	}
-      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp->h_addr,
-	      hp->h_length);
+      memcpy ((void *) &tcp_srv_addr.sin_addr, (void *) hp->h_addr, hp->h_length);
     }
 
   tcp_srv_addr.sin_port = htons (server_port);
@@ -2936,17 +2873,14 @@ jsp_connect_server (void)
   sockfd = socket (AF_INET, SOCK_STREAM, 0);
   if (IS_INVALID_SOCKET (sockfd))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1,
-	      "socket()");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "socket()");
       return INVALID_SOCKET;
     }
 
-  success = connect (sockfd, (struct sockaddr *) &tcp_srv_addr,
-		     sizeof (tcp_srv_addr));
+  success = connect (sockfd, (struct sockaddr *) &tcp_srv_addr, sizeof (tcp_srv_addr));
   if (success < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1,
-	      "connect()");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_CONNECT_JVM, 1, "connect()");
       return INVALID_SOCKET;
     }
 
@@ -2971,8 +2905,7 @@ jsp_close_internal_connection (const SOCKET sockfd)
 
   linger_buffer.l_onoff = 1;
   linger_buffer.l_linger = 0;
-  setsockopt (sockfd, SOL_SOCKET, SO_LINGER, (char *) &linger_buffer,
-	      sizeof (linger_buffer));
+  setsockopt (sockfd, SOL_SOCKET, SO_LINGER, (char *) &linger_buffer, sizeof (linger_buffer));
 #if defined(WINDOWS)
   closesocket (sockfd);
 #else /* not WINDOWS */
@@ -3011,8 +2944,7 @@ retry:
 
   if (call_cnt >= MAX_CALL_COUNT)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL,
-	      0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
       error = er_errid ();
       goto end;
     }
@@ -3057,8 +2989,7 @@ end:
  */
 
 static int
-jsp_do_call_stored_procedure (DB_VALUE * returnval,
-			      DB_ARG_LIST * args, const char *name)
+jsp_do_call_stored_procedure (DB_VALUE * returnval, DB_ARG_LIST * args, const char *name)
 {
   DB_OBJECT *mop_p, *arg_mop_p;
   SP_ARGS sp_args;
@@ -3108,8 +3039,7 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval,
   arg_cnt = jsp_get_argument_count (&sp_args);
   if (param_cnt != arg_cnt)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2,
-	      param_cnt, arg_cnt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_PARAM_COUNT, 2, param_cnt, arg_cnt);
       err = er_errid ();
       goto error;
     }
@@ -3147,11 +3077,9 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval,
       sp_args.arg_type[i] = DB_GET_INT (&arg_type);
       pr_clear_value (&temp);
 
-      if (sp_args.arg_type[i] == DB_TYPE_RESULTSET
-	  && !is_prepare_call[call_cnt])
+      if (sp_args.arg_type[i] == DB_TYPE_RESULTSET && !is_prepare_call[call_cnt])
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_SP_CANNOT_RETURN_RESULTSET, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
 	  err = er_errid ();
 	  goto error;
 	}
@@ -3167,8 +3095,7 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval,
 
   if (sp_args.return_type == DB_TYPE_RESULTSET && !is_prepare_call[call_cnt])
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET,
-	      0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
       err = er_errid ();
     }
 
@@ -3200,8 +3127,7 @@ error:
  */
 
 int
-jsp_call_from_server (DB_VALUE * returnval, DB_VALUE ** argarray,
-		      const char *name, const int arg_cnt)
+jsp_call_from_server (DB_VALUE * returnval, DB_VALUE ** argarray, const char *name, const int arg_cnt)
 {
   DB_ARG_LIST *val_list = 0, *vl, **next_val_list;
   int i;
@@ -3214,8 +3140,7 @@ jsp_call_from_server (DB_VALUE * returnval, DB_VALUE ** argarray,
       *next_val_list = (DB_ARG_LIST *) calloc (1, sizeof (DB_ARG_LIST));
       if (*next_val_list == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_ARG_LIST));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_ARG_LIST));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       (*next_val_list)->next = (DB_ARG_LIST *) 0;

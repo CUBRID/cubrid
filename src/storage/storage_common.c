@@ -45,8 +45,7 @@
 
 static PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
 static PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
-static PGLENGTH db_User_page_size =
-  IO_DEFAULT_PAGE_SIZE - RESERVED_SIZE_IN_PAGE;
+static PGLENGTH db_User_page_size = IO_DEFAULT_PAGE_SIZE - RESERVED_SIZE_IN_PAGE;
 
 static PGLENGTH find_valid_page_size (PGLENGTH page_size);
 
@@ -97,8 +96,7 @@ db_log_page_size (void)
 int
 db_set_page_size (PGLENGTH io_page_size, PGLENGTH log_page_size)
 {
-  assert (io_page_size >= IO_MIN_PAGE_SIZE
-	  && log_page_size >= IO_MIN_PAGE_SIZE);
+  assert (io_page_size >= IO_MIN_PAGE_SIZE && log_page_size >= IO_MIN_PAGE_SIZE);
 
   if (io_page_size < IO_MIN_PAGE_SIZE || log_page_size < IO_MIN_PAGE_SIZE)
     {
@@ -158,7 +156,7 @@ find_valid_page_size (PGLENGTH page_size)
     {
       if (!IS_POWER_OF_2 (power2_page_size))
 	{
-	  /*
+	  /* 
 	   * Not a power of 2 or page size is too small
 	   *
 	   * Round the number to a power of two. Find smaller number that it is
@@ -174,8 +172,7 @@ find_valid_page_size (PGLENGTH page_size)
 	      else
 		{
 		  /* Turn off some bits but the left most one */
-		  power2_page_size =
-		    power2_page_size & (power2_page_size - 1);
+		  power2_page_size = power2_page_size & (power2_page_size - 1);
 		}
 	    }
 
@@ -190,8 +187,7 @@ find_valid_page_size (PGLENGTH page_size)
 	      power2_page_size = IO_MAX_PAGE_SIZE;
 	    }
 
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DTSR_BAD_PAGESIZE, 2,
-		  page_size, power2_page_size);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DTSR_BAD_PAGESIZE, 2, page_size, power2_page_size);
 	}
     }
 
@@ -247,23 +243,18 @@ db_print_data (DB_TYPE type, DB_DATA * data, FILE * fd)
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
-      fprintf (fd, "%d Z:%X", data->timestamptz.timestamp,
-	       data->timestamptz.tz_id);
+      fprintf (fd, "%d Z:%X", data->timestamptz.timestamp, data->timestamptz.tz_id);
       break;
 
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMELTZ:
-      db_datetime_decode (&data->datetime, &month, &day, &year,
-			  &hour, &minute, &second, &millisecond);
-      fprintf (fd, "%d/%d/%d %d:%d:%d.%d",
-	       month, day, year, hour, minute, second, millisecond);
+      db_datetime_decode (&data->datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
+      fprintf (fd, "%d/%d/%d %d:%d:%d.%d", month, day, year, hour, minute, second, millisecond);
       break;
 
     case DB_TYPE_DATETIMETZ:
-      db_datetime_decode (&(data->datetimetz.datetime), &month, &day, &year,
-			  &hour, &minute, &second, &millisecond);
-      fprintf (fd, "%d/%d/%d %d:%d:%d.%d Z:%X",
-	       month, day, year, hour, minute, second, millisecond,
+      db_datetime_decode (&(data->datetimetz.datetime), &month, &day, &year, &hour, &minute, &second, &millisecond);
+      fprintf (fd, "%d/%d/%d %d:%d:%d.%d Z:%X", month, day, year, hour, minute, second, millisecond,
 	       data->datetimetz.tz_id);
       break;
 
@@ -387,8 +378,7 @@ recdes_set_data_area (RECDES * rec, char *data, int size)
 char *
 lsa_to_string (char *buf, int buf_size, LOG_LSA * lsa)
 {
-  snprintf (buf, buf_size, "(%lld|%d)", (long long int) lsa->pageid,
-	    lsa->offset);
+  snprintf (buf, buf_size, "(%lld|%d)", (long long int) lsa->pageid, lsa->offset);
   buf[buf_size - 1] = 0;
   return buf;
 }
@@ -396,8 +386,7 @@ lsa_to_string (char *buf, int buf_size, LOG_LSA * lsa)
 char *
 oid_to_string (char *buf, int buf_size, OID * oid)
 {
-  snprintf (buf, buf_size, "(%d|%d|%d)", oid->volid, oid->pageid,
-	    oid->slotid);
+  snprintf (buf, buf_size, "(%d|%d|%d)", oid->volid, oid->pageid, oid->slotid);
   buf[buf_size - 1] = 0;
   return buf;
 }
@@ -421,8 +410,7 @@ vfid_to_string (char *buf, int buf_size, VFID * vfid)
 char *
 hfid_to_string (char *buf, int buf_size, HFID * hfid)
 {
-  snprintf (buf, buf_size, "(%d|%d|%d)", hfid->vfid.volid,
-	    hfid->vfid.fileid, hfid->hpgid);
+  snprintf (buf, buf_size, "(%d|%d|%d)", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
   buf[buf_size - 1] = 0;
   return buf;
 }
@@ -430,8 +418,7 @@ hfid_to_string (char *buf, int buf_size, HFID * hfid)
 char *
 btid_to_string (char *buf, int buf_size, BTID * btid)
 {
-  snprintf (buf, buf_size, "(%d|%d|%d)", btid->vfid.volid,
-	    btid->vfid.fileid, btid->root_pageid);
+  snprintf (buf, buf_size, "(%d|%d|%d)", btid->vfid.volid, btid->vfid.fileid, btid->root_pageid);
   buf[buf_size - 1] = 0;
   return buf;
 }

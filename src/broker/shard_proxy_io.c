@@ -77,8 +77,7 @@ extern int proxy_id;
 extern T_PROXY_HANDLER proxy_Handler;
 extern T_PROXY_CONTEXT proxy_Context;
 
-typedef T_CAS_IO *(*T_FUNC_FIND_CAS) (int shard_id, int cas_id, int ctx_cid,
-				      unsigned int ctx_uid);
+typedef T_CAS_IO *(*T_FUNC_FIND_CAS) (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid);
 
 extern void proxy_term (void);
 extern bool proxy_Keep_running;
@@ -130,21 +129,16 @@ static int proxy_client_io_initialize (void);
 static void proxy_client_io_destroy (void);
 static T_CLIENT_IO *proxy_client_io_new (SOCKET fd, char *driver_info);
 
-static int proxy_cas_io_initialize (int shard_id, T_CAS_IO ** cas_io_pp,
-				    int size);
+static int proxy_cas_io_initialize (int shard_id, T_CAS_IO ** cas_io_pp, int size);
 static int proxy_shard_io_initialize (void);
 static void proxy_shard_io_destroy (void);
 static T_SHARD_IO *proxy_shard_io_find (int shard_id);
 static T_CAS_IO *proxy_cas_io_new (int shard_id, int cas_id, SOCKET fd);
 static void proxy_cas_io_free (int shard_id, int cas_id);
-static T_CAS_IO *proxy_cas_io_find_by_fd (int shard_id, int cas_id,
-					  SOCKET fd);
+static T_CAS_IO *proxy_cas_io_find_by_fd (int shard_id, int cas_id, SOCKET fd);
 
-static int proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p,
-					     int ctx_cid, int ctx_uid,
-					     int timeout);
-static void proxy_client_check_waiter_and_wakeup (T_SHARD_IO * shard_io_p,
-						  T_CAS_IO * cas_io_p);
+static int proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p, int ctx_cid, int ctx_uid, int timeout);
+static void proxy_client_check_waiter_and_wakeup (T_SHARD_IO * shard_io_p, T_CAS_IO * cas_io_p);
 
 #if defined(WINDOWS)
 static int proxy_io_inet_lsnr (int port);
@@ -161,30 +155,16 @@ static SOCKET proxy_io_cas_accept (SOCKET lsnr_fd);
 
 static void proxy_init_net_buf (T_NET_BUF * net_buf);
 
-static int proxy_io_make_ex_get_int (char *driver_info, char **buffer,
-				     int *argv);
-static void proxy_set_conn_info (int func_code, int ctx_cid, int ctx_uid,
-				 int shard_id, int cas_id);
-static T_CAS_IO *proxy_find_idle_cas_by_asc (int shard_id, int cas_id,
-					     int ctx_cid,
-					     unsigned int ctx_uid);
-static T_CAS_IO *proxy_find_idle_cas_by_desc (int shard_id, int cas_id,
-					      int ctx_cid,
-					      unsigned int ctx_uid);
-static T_CAS_IO *proxy_find_idle_cas_by_conn_info (int shard_id, int cas_id,
-						   int ctx_cid,
-						   unsigned int ctx_uid);
-static T_CAS_IO *proxy_cas_alloc_by_shard_and_cas_id (int client_id,
-						      int shard_id,
-						      int cas_id, int ctx_cid,
+static int proxy_io_make_ex_get_int (char *driver_info, char **buffer, int *argv);
+static void proxy_set_conn_info (int func_code, int ctx_cid, int ctx_uid, int shard_id, int cas_id);
+static T_CAS_IO *proxy_find_idle_cas_by_asc (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid);
+static T_CAS_IO *proxy_find_idle_cas_by_desc (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid);
+static T_CAS_IO *proxy_find_idle_cas_by_conn_info (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid);
+static T_CAS_IO *proxy_cas_alloc_by_shard_and_cas_id (int client_id, int shard_id, int cas_id, int ctx_cid,
 						      unsigned int ctx_uid);
-static T_CAS_IO *proxy_cas_alloc_anything (int client_id, int shard_id,
-					   int cas_id, int ctx_cid,
-					   unsigned int ctx_uid,
+static T_CAS_IO *proxy_cas_alloc_anything (int client_id, int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid,
 					   T_FUNC_FIND_CAS function);
-static int proxy_check_authorization (T_PROXY_CONTEXT * ctx_p,
-				      const char *db_name,
-				      const char *db_user,
+static int proxy_check_authorization (T_PROXY_CONTEXT * ctx_p, const char *db_name, const char *db_user,
 				      const char *db_passwd);
 
 #if defined(LINUX)
@@ -343,9 +323,8 @@ shard_io_set_fl (int fd, int flags)
       argp = 1;			/* 1:non-blocking, 0:blocking */
       if (ioctlsocket ((SOCKET) fd, FIONBIO, &argp) == SOCKET_ERROR)
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		     "Failed to ioctlsocket(%d, FIONBIO, %u). " "(error:%d).",
-		     fd, argp, SOCKET_ERROR);
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to ioctlsocket(%d, FIONBIO, %u). " "(error:%d).", fd, argp,
+		     SOCKET_ERROR);
 	  return -1;
 	}
     }
@@ -354,9 +333,7 @@ shard_io_set_fl (int fd, int flags)
 
   if ((val = fcntl (fd, F_GETFL, 0)) < 0)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to fcntl(%d, F_GETFL). (val:%d, errno:%d).", fd, val,
-		 errno);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to fcntl(%d, F_GETFL). (val:%d, errno:%d).", fd, val, errno);
       return -1;
     }
 
@@ -364,9 +341,7 @@ shard_io_set_fl (int fd, int flags)
 
   if (fcntl (fd, F_SETFL, val) < 0)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to fcntl(%d, F_SETFL, %d). (errno:%d).", fd, val,
-		 errno);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to fcntl(%d, F_SETFL, %d). (errno:%d).", fd, val, errno);
       return -1;
     }
 #endif
@@ -385,9 +360,8 @@ shard_io_clr_fl (int fd, int flags)
       argp = 0;			/* 1:non-blocking, 0:blocking */
       if (ioctlsocket ((SOCKET) fd, FIONBIO, &argp) == SOCKET_ERROR)
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		     "Failed to ioctlsocket(%d, FIONBIO, %u). (error:%d).",
-		     fd, argp, SOCKET_ERROR);
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to ioctlsocket(%d, FIONBIO, %u). (error:%d).", fd, argp,
+		     SOCKET_ERROR);
 	  return -1;
 	}
     }
@@ -396,9 +370,7 @@ shard_io_clr_fl (int fd, int flags)
 
   if ((val = fcntl (fd, F_GETFL, 0)) < 0)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to fcntl(%d, F_GETFL). (val:%d, errno:%d).", fd, val,
-		 errno);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to fcntl(%d, F_GETFL). (val:%d, errno:%d).", fd, val, errno);
       return -1;
     }
 
@@ -406,9 +378,7 @@ shard_io_clr_fl (int fd, int flags)
 
   if (fcntl (fd, F_SETFL, val) < 0)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to fcntl(%d, F_SETFL, %d). (errno:%d).", fd, val,
-		 errno);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to fcntl(%d, F_SETFL, %d). (errno:%d).", fd, val, errno);
       return -1;
     }
 #endif
@@ -425,9 +395,8 @@ shard_io_setsockbuf (int fd, int size)
   len = sizeof (int);
   if (getsockopt (fd, SOL_SOCKET, SO_SNDBUF, (char *) &val, &len) < 0)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to getsockopt(%d, SO_SND_BUF, %d, %d). "
-		 "(errno:%d).", fd, val, len, errno);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to getsockopt(%d, SO_SND_BUF, %d, %d). " "(errno:%d).", fd, val, len,
+		 errno);
       return -1;
     }
   if (val < size)
@@ -441,9 +410,8 @@ shard_io_setsockbuf (int fd, int size)
   len = sizeof (int);
   if (getsockopt (fd, SOL_SOCKET, SO_RCVBUF, (char *) &val, &len) < 0)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to getsockopt(%d, SO_RCV_BUF, %d, %d). "
-		 "(errno:%d).", fd, val, len, errno);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to getsockopt(%d, SO_RCV_BUF, %d, %d). " "(errno:%d).", fd, val, len,
+		 errno);
 
       return -1;
     }
@@ -532,17 +500,15 @@ proxy_unset_force_out_tran (char *msg)
 }
 
 int
-proxy_make_net_buf (T_NET_BUF * net_buf, int size,
-		    T_BROKER_VERSION client_version)
+proxy_make_net_buf (T_NET_BUF * net_buf, int size, T_BROKER_VERSION client_version)
 {
   net_buf_init (net_buf, client_version);
 
   net_buf->data = (char *) MALLOC (size);
   if (net_buf->data == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. "
-		 "Failed to alloc net buffer. "
-		 "(errno:%d, size:%d).", errno, size);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Not enough virtual memory. " "Failed to alloc net buffer. " "(errno:%d, size:%d).", errno, size);
       return -1;
     }
   net_buf->alloc_size = size;
@@ -570,16 +536,12 @@ proxy_init_net_buf (T_NET_BUF * net_buf)
   msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
 
   /* 3:cci default autocommit */
-  msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &=
-    ~CAS_INFO_FLAG_MASK_AUTOCOMMIT;
-  msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=
-    (shm_as_p->cci_default_autocommit & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
+  msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_AUTOCOMMIT;
+  msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |= (shm_as_p->cci_default_autocommit & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
 
-  msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &=
-    ~CAS_INFO_FLAG_MASK_NEW_SESSION_ID;
+  msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_NEW_SESSION_ID;
 
-  memcpy (net_buf->data + NET_BUF_HEADER_MSG_SIZE,
-	  msg_header.info_ptr, CAS_INFO_SIZE);
+  memcpy (net_buf->data + NET_BUF_HEADER_MSG_SIZE, msg_header.info_ptr, CAS_INFO_SIZE);
 
   return;
 }
@@ -597,12 +559,10 @@ proxy_io_make_ex_get_int (char *driver_info, char **buffer, int *argv)
 
   client_version = CAS_MAKE_PROTO_VER (driver_info);
 
-  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE,
-			      client_version);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE, client_version);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to make net buffer. (error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make net buffer. (error:%d).", error);
       goto error_return;
     }
 
@@ -628,8 +588,7 @@ error_return:
 
 /* error */
 int
-proxy_io_make_error_msg (char *driver_info, char **buffer, int error_ind,
-			 int error_code, const char *error_msg,
+proxy_io_make_error_msg (char *driver_info, char **buffer, int error_ind, int error_code, const char *error_msg,
 			 char is_in_tran)
 {
   int error;
@@ -641,12 +600,10 @@ proxy_io_make_error_msg (char *driver_info, char **buffer, int error_ind,
 
   client_version = CAS_MAKE_PROTO_VER (driver_info);
 
-  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE,
-			      client_version);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE, client_version);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make net buffer. "
-		 "(error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make net buffer. " "(error:%d).", error);
       goto error_return;
     }
 
@@ -666,9 +623,7 @@ proxy_io_make_error_msg (char *driver_info, char **buffer, int error_ind,
 	}
     }
 
-  error_code = proxy_convert_error_code (error_ind, error_code, driver_info,
-					 client_version,
-					 PROXY_CONV_ERR_TO_OLD);
+  error_code = proxy_convert_error_code (error_ind, error_code, driver_info, client_version, PROXY_CONV_ERR_TO_OLD);
 
   /* error code */
   net_buf_cp_int (&net_buf, error_code, NULL);
@@ -684,10 +639,8 @@ proxy_io_make_error_msg (char *driver_info, char **buffer, int error_ind,
 
   net_buf.data = NULL;
 
-  PROXY_DEBUG_LOG ("make error to send to the client. "
-		   "(error_ind:%d, error_code:%d, errro_msg:%s)",
-		   error_ind, error_code,
-		   (error_msg && error_msg[0]) ? error_msg : "-");
+  PROXY_DEBUG_LOG ("make error to send to the client. " "(error_ind:%d, error_code:%d, errro_msg:%s)", error_ind,
+		   error_code, (error_msg && error_msg[0]) ? error_msg : "-");
 
   return (net_buf.data_size + MSG_HEADER_SIZE);
 
@@ -700,8 +653,7 @@ error_return:
 int
 proxy_io_make_no_error (char *driver_info, char **buffer)
 {
-  return proxy_io_make_error_msg (driver_info, buffer, CAS_NO_ERROR,
-				  CAS_NO_ERROR, NULL, false);
+  return proxy_io_make_error_msg (driver_info, buffer, CAS_NO_ERROR, CAS_NO_ERROR, NULL, false);
 }
 
 int
@@ -729,15 +681,13 @@ proxy_io_make_set_db_parameter_ok (char *driver_info, char **buffer)
 }
 
 int
-proxy_io_make_ex_get_isolation_level (char *driver_info, char **buffer,
-				      void *argv)
+proxy_io_make_ex_get_isolation_level (char *driver_info, char **buffer, void *argv)
 {
   return proxy_io_make_ex_get_int (driver_info, buffer, argv);
 }
 
 int
-proxy_io_make_ex_get_lock_timeout (char *driver_info, char **buffer,
-				   void *argv)
+proxy_io_make_ex_get_lock_timeout (char *driver_info, char **buffer, void *argv)
 {
   return proxy_io_make_ex_get_int (driver_info, buffer, argv);
 }
@@ -755,12 +705,10 @@ proxy_io_make_end_tran_request (char *driver_info, char **buffer, bool commit)
   assert (*buffer == NULL);
 
   client_version = CAS_MAKE_PROTO_VER (driver_info);
-  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE,
-			      client_version);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE, client_version);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to make net buffer. (error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make net buffer. (error:%d).", error);
       goto error_return;
     }
 
@@ -804,8 +752,7 @@ proxy_io_make_end_tran_abort (char *driver_info, char **buffer)
 }
 
 int
-proxy_io_make_close_req_handle_ok (char *driver_info,
-				   char **buffer, bool is_in_tran)
+proxy_io_make_close_req_handle_ok (char *driver_info, char **buffer, bool is_in_tran)
 {
   int error;
   char *p;
@@ -816,12 +763,10 @@ proxy_io_make_close_req_handle_ok (char *driver_info,
   assert (*buffer == NULL);
 
   client_version = CAS_MAKE_PROTO_VER (driver_info);
-  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE,
-			      client_version);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE, client_version);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to make net buffer. (error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make net buffer. (error:%d).", error);
       goto error_return;
     }
 
@@ -864,15 +809,13 @@ proxy_io_make_close_req_handle_in_tran_ok (char **buffer)
 int
 proxy_io_make_close_req_handle_out_tran_ok (char *driver_info, char **buffer)
 {
-  return proxy_io_make_close_req_handle_ok (driver_info, buffer,
-					    false /* out_tran */ );
+  return proxy_io_make_close_req_handle_ok (driver_info, buffer, false /* out_tran */ );
 }
 
 int
 proxy_io_make_cursor_close_out_tran_ok (char *driver_info, char **buffer)
 {
-  return proxy_io_make_close_req_handle_ok (driver_info, buffer,
-					    false /* out_tran */ );
+  return proxy_io_make_close_req_handle_ok (driver_info, buffer, false /* out_tran */ );
 }
 
 int
@@ -887,12 +830,10 @@ proxy_io_make_get_db_version (char *driver_info, char **buffer)
   assert (*buffer == NULL);
 
   client_version = CAS_MAKE_PROTO_VER (driver_info);
-  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE,
-			      client_version);
+  error = proxy_make_net_buf (&net_buf, SHARD_NET_BUF_ALLOC_SIZE, client_version);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to make net buffer. (error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make net buffer. (error:%d).", error);
       goto error_return;
     }
 
@@ -951,8 +892,7 @@ proxy_io_make_client_proxy_alive (char *driver_info, char **buffer)
   error = proxy_make_net_buf (&net_buf, MSG_HEADER_SIZE, client_version);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to make net buffer. (error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make net buffer. (error:%d).", error);
       *buffer = NULL;
       return -1;
     }
@@ -1005,9 +945,7 @@ proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer)
       dbms_type = CAS_DBMS_CUBRID;
     }
 
-  cas_bi_make_broker_info (broker_info, dbms_type,
-			   shm_as_p->statement_pooling,
-			   shm_as_p->cci_pconnect);
+  cas_bi_make_broker_info (broker_info, dbms_type, shm_as_p->statement_pooling, shm_as_p->cci_pconnect);
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V4))
     {
@@ -1022,9 +960,7 @@ proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer)
       reply_size = CAS_CONNECTION_REPLY_SIZE_PRIOR_PROTOCOL_V3;
     }
 
-  *buffer =
-    (char *) malloc (PROXY_CONNECTION_REPLY_SIZE (reply_size) *
-		     sizeof (char));
+  *buffer = (char *) malloc (PROXY_CONNECTION_REPLY_SIZE (reply_size) * sizeof (char));
   if (*buffer == NULL)
     {
       return -1;
@@ -1079,12 +1015,9 @@ int
 proxy_io_make_client_acl_fail (char *driver_info, char **buffer)
 {
   char err_msg[1024];
-  snprintf (err_msg, sizeof (err_msg),
-	    "Authorization error.(Address is rejected)");
+  snprintf (err_msg, sizeof (err_msg), "Authorization error.(Address is rejected)");
 
-  return proxy_io_make_error_msg (driver_info, buffer,
-				  DBMS_ERROR_INDICATOR,
-				  CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg,
+  return proxy_io_make_error_msg (driver_info, buffer, DBMS_ERROR_INDICATOR, CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg,
 				  false);
 }
 
@@ -1105,8 +1038,7 @@ proxy_io_make_shard_info (char *driver_info, char **buffer)
   error = proxy_make_net_buf (&net_buf, MSG_HEADER_SIZE, client_version);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to make net buffer. (error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make net buffer. (error:%d).", error);
       *buffer = NULL;
       return -1;
     }
@@ -1118,8 +1050,7 @@ proxy_io_make_shard_info (char *driver_info, char **buffer)
   net_buf_cp_int (&net_buf, proxy_info_p->max_shard, NULL);
 
   /* N * shard info */
-  for (shard_index = 0; shard_index < shm_conn_p->num_shard_conn;
-       shard_index++)
+  for (shard_index = 0; shard_index < shm_conn_p->num_shard_conn; shard_index++)
     {
       shard_conn_p = &shm_conn_p->shard_conn[shard_index];
 
@@ -1158,8 +1089,7 @@ proxy_io_make_check_cas (char *driver_info, char **buffer)
   error = proxy_make_net_buf (&net_buf, MSG_HEADER_SIZE, client_version);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to make net buffer. (error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make net buffer. (error:%d).", error);
       *buffer = NULL;
       return -1;
     }
@@ -1200,11 +1130,9 @@ proxy_socket_io_clear (T_SOCKET_IO * sock_io_p)
 #if 0
   ENTER_FUNC ();
 
-  PROXY_DEBUG_LOG ("free socket io.(fd:%d,from_cas:%s,shard/cas:%d/%d).\n",
-		   sock_io_p->fd,
-		   (sock_io_p->from_cas == PROXY_EVENT_FROM_CAS) ?
-		   "cas" : "client",
-		   sock_io_p->id.shard.shard_id, sock_io_p->id.shard.cas_id);
+  PROXY_DEBUG_LOG ("free socket io.(fd:%d,from_cas:%s,shard/cas:%d/%d).\n", sock_io_p->fd,
+		   (sock_io_p->from_cas == PROXY_EVENT_FROM_CAS) ? "cas" : "client", sock_io_p->id.shard.shard_id,
+		   sock_io_p->id.shard.cas_id);
 #endif
 
   sock_io_p->fd = INVALID_SOCKET;
@@ -1258,9 +1186,8 @@ proxy_socket_io_initialize (void)
   proxy_Socket_io.ent = (T_SOCKET_IO *) malloc (size);
   if (proxy_Socket_io.ent == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. "
-		 "Failed to alloc socket entry. "
-		 "(errno:%d, size:%d).", errno, size);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Not enough virtual memory. " "Failed to alloc socket entry. " "(errno:%d, size:%d).", errno, size);
       return -1;
     }
   memset (proxy_Socket_io.ent, 0, size);
@@ -1323,15 +1250,11 @@ proxy_socket_io_print (bool print_all)
   T_SOCKET_IO *sock_io_p;
 
   PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "* SOCKET IO *");
-  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d",
-	     "max_socket", proxy_Socket_io.max_socket);
-  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d",
-	     "cur_socket", proxy_Socket_io.cur_socket);
+  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d", "max_socket", proxy_Socket_io.max_socket);
+  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d", "cur_socket", proxy_Socket_io.cur_socket);
 
-  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL,
-	     "%-7s     %-5s %-8s %-16s %-8s %-10s %-10s %-10s", "idx",
-	     "fd", "status", "ip_addr", "cas", "client_id", "shard_id",
-	     "cas_id");
+  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-7s     %-5s %-8s %-16s %-8s %-10s %-10s %-10s", "idx", "fd", "status",
+	     "ip_addr", "cas", "client_id", "shard_id", "cas_id");
   if (proxy_Socket_io.ent)
     {
       for (i = 0; i < proxy_Socket_io.max_socket; i++)
@@ -1357,11 +1280,9 @@ proxy_socket_io_print (bool print_all)
 	      from_cas = (char *) "client";
 	    }
 
-	  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL,
-		     "[%-5d]     %-5d %-8d %-16s %-8s %-10d %-10d %-10d",
-		     i, sock_io_p->fd, sock_io_p->status,
-		     inet_ntoa (*((struct in_addr *) &sock_io_p->ip_addr)),
-		     from_cas, client_id, shard_id, cas_id);
+	  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "[%-5d]     %-5d %-8d %-16s %-8s %-10d %-10d %-10d", i,
+		     sock_io_p->fd, sock_io_p->status, inet_ntoa (*((struct in_addr *) &sock_io_p->ip_addr)), from_cas,
+		     client_id, shard_id, cas_id);
 
 	}
     }
@@ -1386,17 +1307,15 @@ proxy_socket_io_add (SOCKET fd, bool from_cas)
 
   if (fd >= proxy_Socket_io.max_socket)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "socket fd exceeds max socket fd. (fd:%d, max socket fd:%d).",
-		 fd, proxy_Socket_io.max_socket);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "socket fd exceeds max socket fd. (fd:%d, max socket fd:%d).", fd,
+		 proxy_Socket_io.max_socket);
       return NULL;
     }
 
   if (proxy_Socket_io.cur_socket >= proxy_Socket_io.max_socket)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Number of socket entry exceeds max_socket. "
-		 "(current_socket:%d, max_socket:%d).",
+		 "Number of socket entry exceeds max_socket. " "(current_socket:%d, max_socket:%d).",
 		 proxy_Socket_io.cur_socket, proxy_Socket_io.max_socket);
       return NULL;
     }
@@ -1407,9 +1326,7 @@ proxy_socket_io_add (SOCKET fd, bool from_cas)
     {
       assert (false);
       proxy_Keep_running = false;
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Receive duplicated socket fd. "
-		 "(received socket:%d, status:%d)",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Receive duplicated socket fd. " "(received socket:%d, status:%d)",
 		 sock_io_p->fd, sock_io_p->status);
       return NULL;
     }
@@ -1444,8 +1361,7 @@ proxy_socket_io_add (SOCKET fd, bool from_cas)
 
   proxy_Socket_io.cur_socket++;
 
-  PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL, "New socket io created. (fd:%d).",
-	     fd);
+  PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL, "New socket io created. (fd:%d).", fd);
 #if defined(PROXY_VERBOSE_DEBUG)
   proxy_socket_io_print (false);
 #endif /* PROXY_VERBOSE_DEBUG */
@@ -1465,9 +1381,8 @@ proxy_socket_io_delete (SOCKET fd)
 
   if (fd >= proxy_Socket_io.max_socket)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "socket fd exceeds max socket fd. (fd:%d, max_socket_fd:%d).",
-		 fd, proxy_Socket_io.max_socket);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "socket fd exceeds max socket fd. (fd:%d, max_socket_fd:%d).", fd,
+		 proxy_Socket_io.max_socket);
       EXIT_FUNC ();
       return -1;
     }
@@ -1504,12 +1419,10 @@ proxy_io_set_established_by_ctx (T_PROXY_CONTEXT * ctx_p)
   T_SOCKET_IO *sock_io_p = NULL;
 
   /* find client io */
-  cli_io_p = proxy_client_io_find_by_ctx (ctx_p->client_id, ctx_p->cid,
-					  ctx_p->uid);
+  cli_io_p = proxy_client_io_find_by_ctx (ctx_p->client_id, ctx_p->cid, ctx_p->uid);
   if (cli_io_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to find client. "
-		 "(client_id:%d, context id:%d, context uid:%u).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to find client. " "(client_id:%d, context id:%d, context uid:%u).",
 		 ctx_p->client_id, ctx_p->cid, ctx_p->uid);
 
       EXIT_FUNC ();
@@ -1535,8 +1448,7 @@ proxy_socket_io_find (SOCKET fd)
 }
 
 int
-proxy_socket_set_write_event (T_SOCKET_IO * sock_io_p,
-			      T_PROXY_EVENT * event_p)
+proxy_socket_set_write_event (T_SOCKET_IO * sock_io_p, T_PROXY_EVENT * event_p)
 {
 #if defined(LINUX)
   int error;
@@ -1598,17 +1510,14 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   client_fd = lsnr_fd;
   client_ip = accept_ip_addr;
   memset (driver_info, 0, SRV_CON_CLIENT_INFO_SIZE);
-  driver_info[SRV_CON_MSG_IDX_PROTO_VERSION] =
-    CAS_PROTO_UNPACK_NET_VER (PROTOCOL_V4);
-  driver_info[SRV_CON_MSG_IDX_FUNCTION_FLAG]
-    = BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
+  driver_info[SRV_CON_MSG_IDX_PROTO_VERSION] = CAS_PROTO_UNPACK_NET_VER (PROTOCOL_V4);
+  driver_info[SRV_CON_MSG_IDX_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
 #else /* WINDOWS */
   client_fd = recv_fd (lsnr_fd, &client_ip, driver_info);
   if (client_fd < 0)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to receive socket fd. "
-		 "(lsnf_fd:%d, client_fd:%d).", lsnr_fd, client_fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to receive socket fd. " "(lsnf_fd:%d, client_fd:%d).", lsnr_fd,
+		 client_fd);
 
       /* shard_broker must be abnormal status */
       proxy_Keep_running = false;
@@ -1619,9 +1528,7 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   length = WRITESOCKET (lsnr_fd, &proxy_status, sizeof (proxy_status));
   if (length != sizeof (proxy_status))
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to send proxy status to broker. "
-		 "(lsnr_fd:%d).", lsnr_fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to send proxy status to broker. " "(lsnr_fd:%d).", lsnr_fd);
       CLOSE_SOCKET (client_fd);
       return -1;
     }
@@ -1632,8 +1539,7 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   sock_io_p = proxy_socket_io_add (client_fd, PROXY_IO_FROM_CLIENT);
   if (sock_io_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to add socket entry. (client fd:%d).", client_fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to add socket entry. (client fd:%d).", client_fd);
       CLOSE_SOCKET (client_fd);
       return -1;
     }
@@ -1642,8 +1548,7 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   if (cli_io_p == NULL)
     {
       proxy_socket_io_delete (client_fd);
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to create client entry. (client fd:%d).", client_fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to create client entry. (client fd:%d).", client_fd);
       return -1;
     }
 
@@ -1651,19 +1556,16 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   sock_io_p->id.client_id = cli_io_p->client_id;
 
   /* set shared memory T_CLIENT_INFO */
-  client_info_p =
-    shard_shm_get_client_info (proxy_info_p, cli_io_p->client_id);
+  client_info_p = shard_shm_get_client_info (proxy_info_p, cli_io_p->client_id);
   client_info_p->client_id = cli_io_p->client_id;
   client_info_p->client_ip = client_ip;
   client_info_p->connect_time = time (NULL);
-  memcpy (client_info_p->driver_info, cli_io_p->driver_info,
-	  SRV_CON_CLIENT_INFO_SIZE);
+  memcpy (client_info_p->driver_info, cli_io_p->driver_info, SRV_CON_CLIENT_INFO_SIZE);
 
 #if !defined(WINDOWS)
   /* send client_conn_ok to the client */
   event_p =
-    proxy_event_new_with_rsp (cli_io_p->driver_info, PROXY_EVENT_IO_WRITE,
-			      PROXY_EVENT_FROM_CLIENT,
+    proxy_event_new_with_rsp (cli_io_p->driver_info, PROXY_EVENT_IO_WRITE, PROXY_EVENT_FROM_CLIENT,
 			      proxy_io_make_client_conn_ok);
   if (event_p == NULL)
     {
@@ -1676,8 +1578,8 @@ proxy_socket_io_new_client (SOCKET lsnr_fd)
   error = proxy_socket_set_write_event (sock_io_p, event_p);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. "
-		 "(fd:%d). event(%s).", client_fd, proxy_str_event (event_p));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. " "(fd:%d). event(%s).", client_fd,
+		 proxy_str_event (event_p));
 
       proxy_event_free (event_p);
       event_p = NULL;
@@ -1730,9 +1632,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
   ctx_p = proxy_context_find_by_socket_client_io (sock_io_p);
   if (ctx_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to find context for this socket. (fd:%d)",
-		 sock_io_p->fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to find context for this socket. (fd:%d)", sock_io_p->fd);
       error = -1;
       goto clear_event_and_return;
     }
@@ -1748,8 +1648,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
       PROXY_DEBUG_LOG ("Incoming health check request from client.");
       /* send proxy_alive response to the client */
       event_p =
-	proxy_event_new_with_rsp (driver_info, PROXY_EVENT_IO_WRITE,
-				  PROXY_EVENT_FROM_CLIENT,
+	proxy_event_new_with_rsp (driver_info, PROXY_EVENT_IO_WRITE, PROXY_EVENT_FROM_CLIENT,
 				  proxy_io_make_client_proxy_alive);
       if (event_p == NULL)
 	{
@@ -1762,9 +1661,8 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
       error = proxy_socket_set_write_event (sock_io_p, event_p);
       if (error)
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. "
-		     "(fd:%d). event(%s).",
-		     sock_io_p->fd, proxy_str_event (event_p));
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. " "(fd:%d). event(%s).", sock_io_p->fd,
+		     proxy_str_event (event_p));
 
 	  proxy_event_free (event_p);
 	  event_p = NULL;
@@ -1802,34 +1700,27 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 	    }
 	  else
 	    {
-	      snprintf (driver_version, SRV_CON_VER_STR_MAX_SIZE,
-			"PROTOCOL V%d",
+	      snprintf (driver_version, SRV_CON_VER_STR_MAX_SIZE, "PROTOCOL V%d",
 			(int) (CAS_PROTO_VER_MASK & client_version));
 	    }
 	}
-      else
-	if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V1))
+      else if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V1))
 	{
 	  char *ver;
 
-	  CAS_PROTO_TO_VER_STR (&ver,
-				(int) (CAS_PROTO_VER_MASK & client_version));
+	  CAS_PROTO_TO_VER_STR (&ver, (int) (CAS_PROTO_VER_MASK & client_version));
 
 	  strncpy (driver_version, ver, SRV_CON_VER_STR_MAX_SIZE);
 	}
       else
 	{
-	  snprintf (driver_version, SRV_CON_VER_STR_MAX_SIZE,
-		    "%d.%d.%d", CAS_VER_TO_MAJOR (client_version),
-		    CAS_VER_TO_MINOR (client_version),
-		    CAS_VER_TO_PATCH (client_version));
+	  snprintf (driver_version, SRV_CON_VER_STR_MAX_SIZE, "%d.%d.%d", CAS_VER_TO_MAJOR (client_version),
+		    CAS_VER_TO_MINOR (client_version), CAS_VER_TO_PATCH (client_version));
 	}
-      client_info_p = shard_shm_get_client_info (proxy_info_p,
-						 sock_io_p->id.client_id);
+      client_info_p = shard_shm_get_client_info (proxy_info_p, sock_io_p->id.client_id);
       if (client_info_p)
 	{
-	  memcpy (client_info_p->driver_version, driver_version,
-		  sizeof (driver_version));
+	  memcpy (client_info_p->driver_version, driver_version, sizeof (driver_version));
 	}
     }
 
@@ -1845,28 +1736,20 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
   /* check acl */
   if (shm_as_p->access_control)
     {
-      if (access_control_check_right (shm_as_p, db_name, db_user, ip_addr) <
-	  0)
+      if (access_control_check_right (shm_as_p, db_name, db_user, ip_addr) < 0)
 	{
 	  proxy_info_p->num_connect_rejected++;
 
-	  snprintf (err_msg, sizeof (err_msg),
-		    "Authorization error.(Address is rejected)");
-	  proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR,
-					    CAS_ER_NOT_AUTHORIZED_CLIENT,
-					    err_msg);
+	  snprintf (err_msg, sizeof (err_msg), "Authorization error.(Address is rejected)");
+	  proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR, CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg);
 
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authentication failure. "
-		     "(db_name:[%s], db_user:[%s], db_passwd:[%s]).",
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authentication failure. " "(db_name:[%s], db_user:[%s], db_passwd:[%s]).",
 		     db_name, db_user, db_passwd);
 
 	  if (shm_as_p->access_log == ON)
 	    {
-	      proxy_access_log (&client_start_time,
-				sock_io_p->ip_addr,
-				(db_name) ? (const char *) db_name : "-",
-				(db_user) ? (const char *) db_user : "-",
-				true);
+	      proxy_access_log (&client_start_time, sock_io_p->ip_addr, (db_name) ? (const char *) db_name : "-",
+				(db_user) ? (const char *) db_user : "-", true);
 	    }
 
 	  goto connection_established;
@@ -1884,10 +1767,9 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 
   if (proxy_info_p->fixed_shard_user == false)
     {
-      event_p = proxy_event_new_with_rsp (driver_info,
-					  PROXY_EVENT_CLIENT_REQUEST,
-					  PROXY_EVENT_FROM_CLIENT,
-					  proxy_io_make_check_cas);
+      event_p =
+	proxy_event_new_with_rsp (driver_info, PROXY_EVENT_CLIENT_REQUEST, PROXY_EVENT_FROM_CLIENT,
+				  proxy_io_make_check_cas);
       if (event_p == NULL)
 	{
 	  proxy_socket_io_read_error (sock_io_p);
@@ -1898,12 +1780,10 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 
       proxy_event_set_context (event_p, ctx_p->cid, ctx_p->uid);
 
-      error =
-	shard_queue_enqueue (&proxy_Handler.cli_rcv_q, (void *) event_p);
+      error = shard_queue_enqueue (&proxy_Handler.cli_rcv_q, (void *) event_p);
       if (error)
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to queue client event. "
-		     "context(%s). event(%s).",
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to queue client event. " "context(%s). event(%s).",
 		     proxy_str_context (ctx_p), proxy_str_event (event_p));
 
 	  proxy_event_free (event_p);
@@ -1921,7 +1801,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 connection_established:
   if (ctx_p->error_ind != CAS_NO_ERROR)
     {
-      /*
+      /* 
        * Process error message if exists.
        * context will be freed after sending error message.
        */
@@ -1934,8 +1814,7 @@ connection_established:
     {
       /* send dbinfo_ok to the client */
       event_p =
-	proxy_event_new_with_rsp (driver_info, PROXY_EVENT_IO_WRITE,
-				  PROXY_EVENT_FROM_CLIENT,
+	proxy_event_new_with_rsp (driver_info, PROXY_EVENT_IO_WRITE, PROXY_EVENT_FROM_CLIENT,
 				  proxy_io_make_client_dbinfo_ok);
       if (event_p == NULL)
 	{
@@ -1948,9 +1827,8 @@ connection_established:
       error = proxy_socket_set_write_event (sock_io_p, event_p);
       if (error)
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. "
-		     "(fd:%d). event(%s).",
-		     sock_io_p->fd, proxy_str_event (event_p));
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. " "(fd:%d). event(%s).", sock_io_p->fd,
+		     proxy_str_event (event_p));
 
 	  proxy_event_free (event_p);
 	  event_p = NULL;
@@ -1966,9 +1844,7 @@ connection_established:
 
       if (shm_as_p->access_log == ON)
 	{
-	  proxy_access_log (&client_start_time,
-			    sock_io_p->ip_addr,
-			    (db_name) ? (const char *) db_name : "-",
+	  proxy_access_log (&client_start_time, sock_io_p->ip_addr, (db_name) ? (const char *) db_name : "-",
 			    (db_user) ? (const char *) db_user : "-", true);
 	}
     }
@@ -2006,15 +1882,13 @@ proxy_process_client_request (T_SOCKET_IO * sock_io_p)
       return -1;
     }
 
-  proxy_event_set_type_from (event_p, PROXY_EVENT_CLIENT_REQUEST,
-			     PROXY_EVENT_FROM_CLIENT);
+  proxy_event_set_type_from (event_p, PROXY_EVENT_CLIENT_REQUEST, PROXY_EVENT_FROM_CLIENT);
   proxy_event_set_context (event_p, ctx_p->cid, ctx_p->uid);
 
   error = shard_queue_enqueue (&proxy_Handler.cli_rcv_q, (void *) event_p);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to queue client event. "
-		 "context(%s). event(%s).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to queue client event. " "context(%s). event(%s).",
 		 proxy_str_context (ctx_p), proxy_str_event (event_p));
 
       proxy_event_free (event_p);
@@ -2063,12 +1937,11 @@ proxy_process_client_conn_error (T_SOCKET_IO * sock_io_p)
       return -1;
     }
 
-  event_p =
-    proxy_event_new (PROXY_EVENT_CLIENT_CONN_ERROR, PROXY_EVENT_FROM_CLIENT);
+  event_p = proxy_event_new (PROXY_EVENT_CLIENT_CONN_ERROR, PROXY_EVENT_FROM_CLIENT);
   if (event_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make new event. (%s, %s).",
-		 "PROXY_EVENT_CLIENT_CONN_ERROR", "PROXY_EVENT_FROM_CLIENT");
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make new event. (%s, %s).", "PROXY_EVENT_CLIENT_CONN_ERROR",
+		 "PROXY_EVENT_FROM_CLIENT");
 
       proxy_context_free (ctx_p);
 
@@ -2080,8 +1953,7 @@ proxy_process_client_conn_error (T_SOCKET_IO * sock_io_p)
   error = shard_queue_enqueue (&proxy_Handler.cli_rcv_q, (void *) event_p);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to queue client event. "
-		 "context(%s). event(%s).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to queue client event. " "context(%s). event(%s).",
 		 proxy_str_context (ctx_p), proxy_str_event (event_p));
 
       proxy_event_free (event_p);
@@ -2128,7 +2000,7 @@ proxy_process_client_read_error (T_SOCKET_IO * sock_io_p)
   assert (sock_io_p);
 
 #if defined(LINUX)
-  /*
+  /* 
    * If connection error event was triggered by EPOLLERR, EPOLLHUP,
    * there could be no error events.
    */
@@ -2214,9 +2086,8 @@ proxy_process_cas_register (T_SOCKET_IO * sock_io_p)
   cas_io_p = proxy_cas_io_new (shard_id, cas_id, sock_io_p->fd);
   if (cas_io_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to create CAS entry. "
-		 "(shard_id:%d, cas_id:%d, fd:%d).",
-		 shard_id, cas_id, sock_io_p->fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to create CAS entry. " "(shard_id:%d, cas_id:%d, fd:%d).", shard_id,
+		 cas_id, sock_io_p->fd);
       goto error_return;
     }
   assert (sock_io_p->from_cas == PROXY_EVENT_FROM_CAS);
@@ -2235,8 +2106,7 @@ proxy_process_cas_register (T_SOCKET_IO * sock_io_p)
   /* set cas io status */
   cas_io_p->status = CAS_IO_CONNECTED;
 
-  PROXY_DEBUG_LOG ("New CAS registered. (shard_id:%d). CAS(%s).",
-		   shard_io_p->shard_id, proxy_str_cas_io (cas_io_p));
+  PROXY_DEBUG_LOG ("New CAS registered. (shard_id:%d). CAS(%s).", shard_io_p->shard_id, proxy_str_cas_io (cas_io_p));
 
   proxy_client_check_waiter_and_wakeup (shard_io_p, cas_io_p);
 
@@ -2285,17 +2155,11 @@ proxy_process_cas_response (T_SOCKET_IO * sock_io_p)
   event_p = sock_io_p->read_event;
   sock_io_p->read_event = NULL;
 
-  cas_io_p = proxy_cas_io_find_by_fd (sock_io_p->id.shard.shard_id,
-				      sock_io_p->id.shard.cas_id,
-				      sock_io_p->fd);
+  cas_io_p = proxy_cas_io_find_by_fd (sock_io_p->id.shard.shard_id, sock_io_p->id.shard.cas_id, sock_io_p->fd);
   if (cas_io_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. "
-		 "(shard_id:%d, cas_id:%d, fd:%d). "
-		 "event(%s).",
-		 sock_io_p->id.shard.shard_id,
-		 sock_io_p->id.shard.cas_id,
-		 sock_io_p->fd, proxy_str_event (event_p));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. " "(shard_id:%d, cas_id:%d, fd:%d). " "event(%s).",
+		 sock_io_p->id.shard.shard_id, sock_io_p->id.shard.cas_id, sock_io_p->fd, proxy_str_event (event_p));
 
       proxy_event_free (event_p);
       event_p = NULL;
@@ -2309,8 +2173,8 @@ proxy_process_cas_response (T_SOCKET_IO * sock_io_p)
     {
       /* in case, cas session timeout !!! */
 
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unexpected CAS transaction status. "
-		 "(expected tran status:%d). CAS(%s). event(%s).", true,
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Unexpected CAS transaction status. " "(expected tran status:%d). CAS(%s). event(%s).", true,
 		 proxy_str_cas_io (cas_io_p), proxy_str_event (event_p));
 
       proxy_event_free (event_p);
@@ -2324,9 +2188,8 @@ proxy_process_cas_response (T_SOCKET_IO * sock_io_p)
   ctx_p = proxy_context_find (cas_io_p->ctx_cid, cas_io_p->ctx_uid);
   if (ctx_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Unable to find context. CAS(%s). event(%s).",
-		 proxy_str_cas_io (cas_io_p), proxy_str_event (event_p));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find context. CAS(%s). event(%s).", proxy_str_cas_io (cas_io_p),
+		 proxy_str_event (event_p));
 
       proxy_event_free (event_p);
       event_p = NULL;
@@ -2336,15 +2199,13 @@ proxy_process_cas_response (T_SOCKET_IO * sock_io_p)
       return -1;
     }
 
-  proxy_event_set_type_from (event_p, PROXY_EVENT_CAS_RESPONSE,
-			     PROXY_EVENT_FROM_CAS);
+  proxy_event_set_type_from (event_p, PROXY_EVENT_CAS_RESPONSE, PROXY_EVENT_FROM_CAS);
   proxy_event_set_context (event_p, ctx_p->cid, ctx_p->uid);
 
   error = shard_queue_enqueue (&proxy_Handler.cas_rcv_q, (void *) event_p);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to queue client event. "
-		 "context(%s). event(%s).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to queue client event. " "context(%s). event(%s).",
 		 proxy_str_context (ctx_p), proxy_str_event (event_p));
 
       proxy_event_free (event_p);
@@ -2391,23 +2252,18 @@ proxy_process_cas_conn_error (T_SOCKET_IO * sock_io_p)
   FD_CLR (sock_io_p->fd, &wnewset);
 #endif /* !LINUX */
 
-  cas_io_p = proxy_cas_io_find_by_fd (sock_io_p->id.shard.shard_id,
-				      sock_io_p->id.shard.cas_id,
-				      sock_io_p->fd);
+  cas_io_p = proxy_cas_io_find_by_fd (sock_io_p->id.shard.shard_id, sock_io_p->id.shard.cas_id, sock_io_p->fd);
   if (cas_io_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. "
-		 "(shard_id:%d, cas_id:%d, fd:%d). ",
-		 sock_io_p->id.shard.shard_id,
-		 sock_io_p->id.shard.cas_id, sock_io_p->fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. " "(shard_id:%d, cas_id:%d, fd:%d). ",
+		 sock_io_p->id.shard.shard_id, sock_io_p->id.shard.cas_id, sock_io_p->fd);
 
       proxy_socket_io_delete (sock_io_p->fd);
       EXIT_FUNC ();
       return -1;
     }
 
-  PROXY_DEBUG_LOG ("Detect CAS connection error. CAS(%s).",
-		   proxy_str_cas_io (cas_io_p));
+  PROXY_DEBUG_LOG ("Detect CAS connection error. CAS(%s).", proxy_str_cas_io (cas_io_p));
 
   if (cas_io_p->is_in_tran == false)
     {
@@ -2426,8 +2282,7 @@ proxy_process_cas_conn_error (T_SOCKET_IO * sock_io_p)
   ctx_p = proxy_context_find (cas_io_p->ctx_cid, cas_io_p->ctx_uid);
   if (ctx_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find context. CAS(%s).",
-		 proxy_str_cas_io (cas_io_p));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find context. CAS(%s).", proxy_str_cas_io (cas_io_p));
 
       proxy_cas_io_free (cas_io_p->shard_id, cas_io_p->cas_id);
 
@@ -2435,14 +2290,11 @@ proxy_process_cas_conn_error (T_SOCKET_IO * sock_io_p)
       return -1;
     }
 
-  event_p =
-    proxy_event_new (PROXY_EVENT_CAS_CONN_ERROR, PROXY_EVENT_FROM_CAS);
+  event_p = proxy_event_new (PROXY_EVENT_CAS_CONN_ERROR, PROXY_EVENT_FROM_CAS);
   if (event_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to make new event. (%s, %s). context(%s).",
-		 "PROXY_EVENT_CAS_CONN_ERROR", "PROXY_EVENT_FROM_CAS",
-		 proxy_str_context (ctx_p));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to make new event. (%s, %s). context(%s).", "PROXY_EVENT_CAS_CONN_ERROR",
+		 "PROXY_EVENT_FROM_CAS", proxy_str_context (ctx_p));
 
       proxy_context_free (ctx_p);
 
@@ -2454,8 +2306,7 @@ proxy_process_cas_conn_error (T_SOCKET_IO * sock_io_p)
   error = shard_queue_enqueue (&proxy_Handler.cas_rcv_q, (void *) event_p);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to queue client event. "
-		 "context(%s). event(%s).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to queue client event. " "context(%s). event(%s).",
 		 proxy_str_context (ctx_p), proxy_str_event (event_p));
       proxy_event_free (event_p);
       event_p = NULL;
@@ -2500,7 +2351,7 @@ proxy_process_cas_read_error (T_SOCKET_IO * sock_io_p)
   assert (sock_io_p);
 
 #if defined(LINUX)
-  /*
+  /* 
    * If connection error event was triggered by EPOLLERR, EPOLLHUP,
    * there could be no error events.
    */
@@ -2668,8 +2519,7 @@ proxy_socket_io_write_to_client (T_SOCKET_IO * sock_io_p)
   if (ctx_p->free_on_client_io_write && sock_io_p->write_event == NULL)
     {
       /* init shared memory T_CLIENT_INFO */
-      client_info_p =
-	shard_shm_get_client_info (proxy_info_p, sock_io_p->id.client_id);
+      client_info_p = shard_shm_get_client_info (proxy_info_p, sock_io_p->id.client_id);
       shard_shm_init_client_info (client_info_p);
 
       proxy_context_free (ctx_p);
@@ -2721,8 +2571,7 @@ read_again:
   read_buffer->offset += read_len;
 
   /* common message header */
-  if (read_buffer->length == MSG_HEADER_SIZE
-      && read_buffer->length == read_buffer->offset)
+  if (read_buffer->length == MSG_HEADER_SIZE && read_buffer->length == read_buffer->offset)
     {
       /* expand buffer to receive payload */
       total_len = get_msg_length (read_buffer->data);
@@ -2735,8 +2584,7 @@ read_again:
       error = proxy_event_realloc_buffer (sock_io_p->read_event, total_len);
       if (error)
 	{
-	  PROXY_DEBUG_LOG ("Failed to realloc event buffer. (error:%d).",
-			   error);
+	  PROXY_DEBUG_LOG ("Failed to realloc event buffer. (error:%d).", error);
 	  proxy_socket_io_read_error (sock_io_p);
 	  return -1;
 	}
@@ -2893,10 +2741,9 @@ proxy_socket_io_write (T_SOCKET_IO * sock_io_p)
 
   if (sock_io_p->status == SOCK_IO_CLOSE_WAIT)
     {
-      PROXY_DEBUG_LOG ("Unexpected socket status. (fd:%d, status:%d). \n",
-		       sock_io_p->fd, sock_io_p->status);
+      PROXY_DEBUG_LOG ("Unexpected socket status. (fd:%d, status:%d). \n", sock_io_p->fd, sock_io_p->status);
 
-      /*
+      /* 
        * free writer event when sock status is 'close wait'
        */
       if (sock_io_p->write_event)
@@ -2916,8 +2763,7 @@ proxy_socket_io_write (T_SOCKET_IO * sock_io_p)
   else if (sock_io_p->status == SOCK_IO_IDLE)
     {
       assert (false);
-      PROXY_DEBUG_LOG ("Unexpected socket status. (fd:%d, status:%d). \n",
-		       sock_io_p->fd, sock_io_p->status);
+      PROXY_DEBUG_LOG ("Unexpected socket status. (fd:%d, status:%d). \n", sock_io_p->fd, sock_io_p->status);
     }
 
   if (sock_io_p->write_event == NULL)
@@ -2928,8 +2774,7 @@ proxy_socket_io_write (T_SOCKET_IO * sock_io_p)
       FD_CLR (sock_io_p->fd, &wnewset);
 #endif /* !LINUX */
 
-      PROXY_DEBUG_LOG ("Write event couldn't be NULL. (fd:%d, status:%d). \n",
-		       sock_io_p->fd, sock_io_p->status);
+      PROXY_DEBUG_LOG ("Write event couldn't be NULL. (fd:%d, status:%d). \n", sock_io_p->fd, sock_io_p->status);
       return;
     }
 
@@ -2971,21 +2816,18 @@ proxy_socket_io_read (T_SOCKET_IO * sock_io_p)
     {
       /* this socket connection will be close */
 
-      PROXY_DEBUG_LOG ("Unexpected socket status. "
-		       "socket will be closed. "
-		       "(fd:%d, status:%d).",
-		       sock_io_p->fd, sock_io_p->status);
-      //
-      //proxy_io_buffer_clear (&sock_io_p->recv_buffer);
+      PROXY_DEBUG_LOG ("Unexpected socket status. " "socket will be closed. " "(fd:%d, status:%d).", sock_io_p->fd,
+		       sock_io_p->status);
+      // 
+      // proxy_io_buffer_clear (&sock_io_p->recv_buffer);
 
-      //assert (false);
+      // assert (false);
       return;
     }
 
   if (sock_io_p->read_event == NULL)
     {
-      sock_io_p->read_event = proxy_event_new (PROXY_EVENT_IO_READ,
-					       sock_io_p->from_cas);
+      sock_io_p->read_event = proxy_event_new (PROXY_EVENT_IO_READ, sock_io_p->from_cas);
       if (sock_io_p->read_event == NULL)
 	{
 	  assert (false);	/* __FOR_DEBUG */
@@ -3039,13 +2881,10 @@ proxy_client_io_initialize (void)
   proxy_Client_io.cur_client = 0;
   proxy_Client_io.max_context = shm_proxy_p->max_context;
 
-  error =
-    shard_cqueue_initialize (&proxy_Client_io.freeq,
-			     proxy_Client_io.max_context);
+  error = shard_cqueue_initialize (&proxy_Client_io.freeq, proxy_Client_io.max_context);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize client entries. "
-		 "(error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize client entries. " "(error:%d).", error);
       return -1;
     }
 
@@ -3054,9 +2893,8 @@ proxy_client_io_initialize (void)
   proxy_Client_io.ent = (T_CLIENT_IO *) malloc (size);
   if (proxy_Client_io.ent == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. "
-		 "Failed to alloc client entries. "
-		 "(errno:%d, size:%d).", errno, size);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Not enough virtual memory. " "Failed to alloc client entries. " "(errno:%d, size:%d).", errno, size);
       goto error_return;
     }
 
@@ -3070,14 +2908,10 @@ proxy_client_io_initialize (void)
       client_io_ent_p->ctx_cid = PROXY_INVALID_CONTEXT;
       client_io_ent_p->ctx_uid = 0;
 
-      error =
-	shard_cqueue_enqueue (&proxy_Client_io.freeq,
-			      (void *) client_io_ent_p);
+      error = shard_cqueue_enqueue (&proxy_Client_io.freeq, (void *) client_io_ent_p);
       if (error)
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		     "Failed to initialize client free queue."
-		     "(error:%d).", error);
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize client free queue." "(error:%d).", error);
 	  goto error_return;
 	}
     }
@@ -3107,16 +2941,12 @@ proxy_client_io_print (bool print_all)
   T_CLIENT_IO *cli_io_p = NULL;
 
   PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "* CLIENT IO *\n");
-  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d",
-	     "max_client", proxy_Client_io.max_client);
-  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d",
-	     "max_context", proxy_Client_io.max_context);
-  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d",
-	     "cur_client", proxy_Client_io.cur_client);
+  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d", "max_client", proxy_Client_io.max_client);
+  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d", "max_context", proxy_Client_io.max_context);
+  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d", "cur_client", proxy_Client_io.cur_client);
 
-  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL,
-	     "%-7s    %-10s %-5s %-5s %-10s %-10s", "idx", "client_id",
-	     "busy", "fd", "context_id", "uid");
+  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-7s    %-10s %-5s %-5s %-10s %-10s", "idx", "client_id", "busy", "fd",
+	     "context_id", "uid");
   if (proxy_Client_io.ent)
     {
       for (i = 0; i < proxy_Client_io.max_context; i++)
@@ -3126,11 +2956,8 @@ proxy_client_io_print (bool print_all)
 	    {
 	      continue;
 	    }
-	  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL,
-		     "[%-5d]     %-10d %-5s %-5d %-10d %-10u", i,
-		     cli_io_p->client_id,
-		     (cli_io_p->is_busy) ? "YES" : "NO", cli_io_p->fd,
-		     cli_io_p->ctx_cid, cli_io_p->ctx_uid);
+	  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "[%-5d]     %-10d %-5s %-5d %-10d %-10u", i, cli_io_p->client_id,
+		     (cli_io_p->is_busy) ? "YES" : "NO", cli_io_p->fd, cli_io_p->ctx_cid, cli_io_p->ctx_uid);
 	}
     }
 
@@ -3148,10 +2975,8 @@ proxy_str_client_io (T_CLIENT_IO * cli_io_p)
       return (char *) "-";
     }
 
-  snprintf (buffer, sizeof (buffer),
-	    "client_id:%d, is_busy:%s, fd:%d, ctx_cid:%d, ctx_uid:%u",
-	    cli_io_p->client_id, (cli_io_p->is_busy) ? "Y" : "N",
-	    cli_io_p->fd, cli_io_p->ctx_cid, cli_io_p->ctx_uid);
+  snprintf (buffer, sizeof (buffer), "client_id:%d, is_busy:%s, fd:%d, ctx_cid:%d, ctx_uid:%u", cli_io_p->client_id,
+	    (cli_io_p->is_busy) ? "Y" : "N", cli_io_p->fd, cli_io_p->ctx_cid, cli_io_p->ctx_uid);
 
   return (char *) buffer;
 }
@@ -3175,9 +3000,7 @@ proxy_client_io_new (SOCKET fd, char *driver_info)
       ctx_p = proxy_context_new ();
       if (ctx_p == NULL)
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		     "Unable to make new context. client(%s).",
-		     proxy_str_client_io (cli_io_p));
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to make new context. client(%s).", proxy_str_client_io (cli_io_p));
 
 	  proxy_client_io_free (cli_io_p);
 	  return NULL;
@@ -3189,24 +3012,19 @@ proxy_client_io_new (SOCKET fd, char *driver_info)
 
       ctx_p->client_id = cli_io_p->client_id;
 
-      PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL,
-		 "New client connected. client(%s).",
-		 proxy_str_client_io (cli_io_p));
+      PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL, "New client connected. client(%s).", proxy_str_client_io (cli_io_p));
 
       if (proxy_Client_io.cur_client > proxy_Client_io.max_client)
 	{
-	  /*
+	  /* 
 	   * Error message would be retured when processing
 	   * register(db_info) request.
 	   */
 	  char err_msg[256];
 
-	  snprintf (err_msg, sizeof (err_msg),
-		    "Proxy refused client connection. max clients exceeded");
+	  snprintf (err_msg, sizeof (err_msg), "Proxy refused client connection. max clients exceeded");
 
-	  proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR,
-					    CAS_ER_MAX_CLIENT_EXCEEDED,
-					    err_msg);
+	  proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR, CAS_ER_MAX_CLIENT_EXCEEDED, err_msg);
 	}
     }
 
@@ -3275,9 +3093,8 @@ proxy_client_io_find_by_ctx (int client_id, int ctx_cid, unsigned int ctx_uid)
 
   if (client_id < 0 || client_id >= proxy_Client_io.max_context)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid client id. (client_id;%d, max_context:%d).",
-		 client_id, proxy_Client_io.max_context);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid client id. (client_id;%d, max_context:%d).", client_id,
+		 proxy_Client_io.max_context);
       return NULL;
     }
 
@@ -3285,9 +3102,8 @@ proxy_client_io_find_by_ctx (int client_id, int ctx_cid, unsigned int ctx_uid)
 
   if (cli_io_p->ctx_cid != ctx_cid || cli_io_p->ctx_uid != ctx_uid)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find client by context. "
-		 "(context id:%d/%d, context uid:%d/%d).", cli_io_p->ctx_cid,
-		 ctx_cid, cli_io_p->ctx_uid, ctx_uid);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find client by context. " "(context id:%d/%d, context uid:%d/%d).",
+		 cli_io_p->ctx_cid, ctx_cid, cli_io_p->ctx_uid, ctx_uid);
       return NULL;
     }
 
@@ -3301,9 +3117,8 @@ proxy_client_io_find_by_fd (int client_id, SOCKET fd)
 
   if (client_id < 0 || client_id >= proxy_Client_io.max_context)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid client id. (client_id:%d, max_context:%d).",
-		 client_id, proxy_Client_io.max_context);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid client id. (client_id:%d, max_context:%d).", client_id,
+		 proxy_Client_io.max_context);
       return NULL;
     }
 
@@ -3328,16 +3143,14 @@ proxy_client_io_write (T_CLIENT_IO * cli_io_p, T_PROXY_EVENT * event_p)
   sock_io_p = proxy_socket_io_find (cli_io_p->fd);
   if (sock_io_p == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to find socket entry. (fd:%d).", cli_io_p->fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to find socket entry. (fd:%d).", cli_io_p->fd);
       return -1;
     }
 
   error = proxy_socket_set_write_event (sock_io_p, event_p);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. "
-		 "client(%s). event(%s).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. " "client(%s). event(%s).",
 		 proxy_str_client_io (cli_io_p), proxy_str_event (event_p));
       return -1;
     }
@@ -3390,16 +3203,14 @@ proxy_cas_io_write (T_CAS_IO * cas_io_p, T_PROXY_EVENT * event_p)
   if (sock_io_p == NULL)
     {
       assert (false);
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Unable to find socket entry. (fd:%d).", cas_io_p->fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find socket entry. (fd:%d).", cas_io_p->fd);
       return -1;
     }
 
   error = proxy_socket_set_write_event (sock_io_p, event_p);
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. "
-		 "CAS(%s). event(%s).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to set write buffer. " "CAS(%s). event(%s).",
 		 proxy_str_cas_io (cas_io_p), proxy_str_event (event_p));
       return -1;
     }
@@ -3418,8 +3229,7 @@ proxy_shard_io_initialize (void)
 
   proxy_Shard_io.max_shard = proxy_info_p->max_shard;
 
-  proxy_Shard_io.ent =
-    (T_SHARD_IO *) malloc (sizeof (T_SHARD_IO) * proxy_Shard_io.max_shard);
+  proxy_Shard_io.ent = (T_SHARD_IO *) malloc (sizeof (T_SHARD_IO) * proxy_Shard_io.max_shard);
   if (proxy_Shard_io.ent == NULL)
     {
       return -1;
@@ -3442,9 +3252,7 @@ proxy_shard_io_initialize (void)
 	  goto error_return;
 	}
 
-      error =
-	proxy_cas_io_initialize (shard_io_p->shard_id, &shard_io_p->ent,
-				 shard_io_p->max_num_cas);
+      error = proxy_cas_io_initialize (shard_io_p->shard_id, &shard_io_p->ent, shard_io_p->max_num_cas);
       if (error)
 	{
 	  goto error_return;
@@ -3486,26 +3294,21 @@ proxy_shard_io_print (bool print_all)
   T_CAS_IO *cas_io_p;
 
   PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "* SHARD IO *");
-  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d",
-	     "max_shard", proxy_Shard_io.max_shard);
+  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-20s = %d", "max_shard", proxy_Shard_io.max_shard);
 
-  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL,
-	     "%-7s    %-15s %-15s %-15s %-15s", "idx", "shard_id",
-	     "max_cas", "cur_cas", "in_tran");
+  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "%-7s    %-15s %-15s %-15s %-15s", "idx", "shard_id", "max_cas", "cur_cas",
+	     "in_tran");
   if (proxy_Shard_io.ent)
     {
       for (i = 0; i < proxy_Shard_io.max_shard; i++)
 	{
 	  shard_io_p = &(proxy_Shard_io.ent[i]);
 
-	  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL,
-		     "[%-5d]     %-15d %-15d %-15d %-15d", i,
-		     shard_io_p->shard_id, shard_io_p->max_num_cas,
-		     shard_io_p->cur_num_cas, shard_io_p->num_cas_in_tran);
+	  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "[%-5d]     %-15d %-15d %-15d %-15d", i, shard_io_p->shard_id,
+		     shard_io_p->max_num_cas, shard_io_p->cur_num_cas, shard_io_p->num_cas_in_tran);
 
-	  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL,
-		     "       <cas>   %-7s    %-10s %-10s %-10s %-10s",
-		     "idx", "cas_id", "shard_id", "in_tran", "fd");
+	  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "       <cas>   %-7s    %-10s %-10s %-10s %-10s", "idx", "cas_id",
+		     "shard_id", "in_tran", "fd");
 	  if (shard_io_p->ent)
 	    {
 	      for (j = 0; j < shard_io_p->max_num_cas; j++)
@@ -3516,11 +3319,8 @@ proxy_shard_io_print (bool print_all)
 		      continue;
 		    }
 
-		  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL,
-			     "               [%-5d]    %-10d %-10d %-10s %-10d",
-			     j, cas_io_p->cas_id, cas_io_p->shard_id,
-			     (cas_io_p->is_in_tran) ? "YES" : "NO",
-			     cas_io_p->fd);
+		  PROXY_LOG (PROXY_LOG_MODE_SCHEDULE_DETAIL, "               [%-5d]    %-10d %-10d %-10s %-10d", j,
+			     cas_io_p->cas_id, cas_io_p->shard_id, (cas_io_p->is_in_tran) ? "YES" : "NO", cas_io_p->fd);
 		}
 	    }
 	}
@@ -3541,12 +3341,9 @@ proxy_str_cas_io (T_CAS_IO * cas_io_p)
     }
 
   snprintf (buffer, sizeof (buffer),
-	    "cas_id:%d, shard_id:%d, is_in_tran:%s, "
-	    "status:%d, ctx_cid:%d, ctx_uid:%u, fd:%d",
-	    cas_io_p->cas_id, cas_io_p->shard_id,
-	    (cas_io_p->is_in_tran) ? "Y" : "N",
-	    cas_io_p->status, cas_io_p->ctx_cid, cas_io_p->ctx_uid,
-	    cas_io_p->fd);
+	    "cas_id:%d, shard_id:%d, is_in_tran:%s, " "status:%d, ctx_cid:%d, ctx_uid:%u, fd:%d", cas_io_p->cas_id,
+	    cas_io_p->shard_id, (cas_io_p->is_in_tran) ? "Y" : "N", cas_io_p->status, cas_io_p->ctx_cid,
+	    cas_io_p->ctx_uid, cas_io_p->fd);
 
   return (char *) buffer;
 }
@@ -3558,8 +3355,7 @@ proxy_shard_io_find (int shard_id)
 
   if (shard_id < 0 || shard_id >= proxy_Shard_io.max_shard)
     {
-      PROXY_DEBUG_LOG ("Invalid shard id. (shard_id:%d, max_shard:%d).",
-		       shard_id, proxy_Shard_io.max_shard);
+      PROXY_DEBUG_LOG ("Invalid shard id. (shard_id:%d, max_shard:%d).", shard_id, proxy_Shard_io.max_shard);
       return NULL;
     }
 
@@ -3576,18 +3372,15 @@ proxy_cas_io_new (int shard_id, int cas_id, SOCKET fd)
 
   if (shard_id < 0 || shard_id >= proxy_Shard_io.max_shard)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid shard id. (shard_id:%d, max_shard:%d).",
-		 shard_id, proxy_Shard_io.max_shard);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid shard id. (shard_id:%d, max_shard:%d).", shard_id,
+		 proxy_Shard_io.max_shard);
       return NULL;
     }
 
   shard_io_p = &(proxy_Shard_io.ent[shard_id]);
   if (cas_id < 0 || cas_id >= shard_io_p->max_num_cas)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid CAS id. (cas_id:%d, max_num_cas:%d).", cas_id,
-		 shard_io_p->max_num_cas);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid CAS id. (cas_id:%d, max_num_cas:%d).", cas_id, shard_io_p->max_num_cas);
       return NULL;
     }
 
@@ -3595,8 +3388,7 @@ proxy_cas_io_new (int shard_id, int cas_id, SOCKET fd)
 
   if (cas_io_p->fd != INVALID_SOCKET || cas_io_p->is_in_tran)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Already registered CAS. "
-		 "(fd:%d, shard_id:%d, cas_id:%d, max_num_cas:%d).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Already registered CAS. " "(fd:%d, shard_id:%d, cas_id:%d, max_num_cas:%d).",
 		 cas_io_p->fd, shard_id, cas_id, shard_io_p->max_num_cas);
       return NULL;
     }
@@ -3611,8 +3403,7 @@ proxy_cas_io_new (int shard_id, int cas_id, SOCKET fd)
 
   shard_io_p->cur_num_cas++;
 
-  PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL, "New CAS connected. CAS(%s).",
-	     proxy_str_cas_io (cas_io_p));
+  PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL, "New CAS connected. CAS(%s).", proxy_str_cas_io (cas_io_p));
 #if defined(PROXY_VERBOSE_DEBUG)
   proxy_shard_io_print (false);
 #endif /* PROXY_VERBOSE_DEBUG */
@@ -3631,8 +3422,7 @@ proxy_cas_io_free (int shard_id, int cas_id)
 
   if (shard_id < 0 || shard_id >= proxy_Shard_io.max_shard)
     {
-      PROXY_DEBUG_LOG ("Invalid shard id. (shard_id:%d, max_shard:%d).",
-		       shard_id, proxy_Shard_io.max_shard);
+      PROXY_DEBUG_LOG ("Invalid shard id. (shard_id:%d, max_shard:%d).", shard_id, proxy_Shard_io.max_shard);
       EXIT_FUNC ();
       return;
     }
@@ -3640,9 +3430,7 @@ proxy_cas_io_free (int shard_id, int cas_id)
   shard_io_p = &(proxy_Shard_io.ent[shard_id]);
   if (cas_id < 0 || cas_id >= shard_io_p->max_num_cas)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid CAS id. (cas_id:%d, max_num_cas:%d).", cas_id,
-		 shard_io_p->max_num_cas);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid CAS id. (cas_id:%d, max_num_cas:%d).", cas_id, shard_io_p->max_num_cas);
       EXIT_FUNC ();
       return;
     }
@@ -3654,16 +3442,15 @@ proxy_cas_io_free (int shard_id, int cas_id)
   if (cas_io_p->fd != INVALID_SOCKET)
     {
       cas_io_p->fd = INVALID_SOCKET;
-      shard_stmt_del_all_srv_h_id_for_shard_cas (cas_io_p->shard_id,
-						 cas_io_p->cas_id);
+      shard_stmt_del_all_srv_h_id_for_shard_cas (cas_io_p->shard_id, cas_io_p->cas_id);
     }
 
   if (cas_io_p->is_in_tran == true)
     {
       shard_io_p->num_cas_in_tran--;
 
-      PROXY_DEBUG_LOG ("shard/CAS status. (num_cas_in_tran=%d, shard_id=%d).",
-		       shard_io_p->num_cas_in_tran, shard_io_p->shard_id);
+      PROXY_DEBUG_LOG ("shard/CAS status. (num_cas_in_tran=%d, shard_id=%d).", shard_io_p->num_cas_in_tran,
+		       shard_io_p->shard_id);
 
       assert (shard_io_p->num_cas_in_tran >= 0);
       if (shard_io_p->num_cas_in_tran < 0)
@@ -3686,8 +3473,7 @@ proxy_cas_io_free (int shard_id, int cas_id)
 
 /* by context */
 void
-proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid,
-			  int unsigned ctx_uid)
+proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid, int unsigned ctx_uid)
 {
   T_SHARD_IO *shard_io_p;
   T_CAS_IO *cas_io_p;
@@ -3697,8 +3483,7 @@ proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid,
   if (shard_id < 0 || shard_id >= proxy_Shard_io.max_shard)
     {
 
-      PROXY_DEBUG_LOG ("Invalid shard id. (shard_id:%d, max_shard:%d).",
-		       shard_id, proxy_Shard_io.max_shard);
+      PROXY_DEBUG_LOG ("Invalid shard id. (shard_id:%d, max_shard:%d).", shard_id, proxy_Shard_io.max_shard);
       EXIT_FUNC ();
       return;
     }
@@ -3706,20 +3491,16 @@ proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid,
   shard_io_p = &(proxy_Shard_io.ent[shard_id]);
   if (cas_id < 0 || cas_id >= shard_io_p->max_num_cas)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid CAS id. (cas_id:%d, max_num_cas:%d).", cas_id,
-		 shard_io_p->max_num_cas);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid CAS id. (cas_id:%d, max_num_cas:%d).", cas_id, shard_io_p->max_num_cas);
       EXIT_FUNC ();
       return;
     }
 
   cas_io_p = &(shard_io_p->ent[cas_id]);
 
-  if (cas_io_p->is_in_tran == false || cas_io_p->ctx_cid != ctx_cid
-      || cas_io_p->ctx_uid != ctx_uid)
+  if (cas_io_p->is_in_tran == false || cas_io_p->ctx_cid != ctx_cid || cas_io_p->ctx_uid != ctx_uid)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. "
-		 "(context id:%d, context uid:%d). CAS(%S).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. " "(context id:%d, context uid:%d). CAS(%S).",
 		 ctx_cid, ctx_uid, proxy_str_cas_io (cas_io_p));
 
       assert (false);
@@ -3733,8 +3514,7 @@ proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid,
   if (cas_io_p->fd != INVALID_SOCKET)
     {
       cas_io_p->fd = INVALID_SOCKET;
-      shard_stmt_del_all_srv_h_id_for_shard_cas (cas_io_p->shard_id,
-						 cas_io_p->cas_id);
+      shard_stmt_del_all_srv_h_id_for_shard_cas (cas_io_p->shard_id, cas_io_p->cas_id);
     }
 
   cas_io_p->is_in_tran = false;
@@ -3750,8 +3530,8 @@ proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid,
     }
 
   shard_io_p->num_cas_in_tran--;
-  PROXY_DEBUG_LOG ("Shard/CAS status. (num_cas_in_tran=%d, shard_id=%d).",
-		   shard_io_p->num_cas_in_tran, shard_io_p->shard_id);
+  PROXY_DEBUG_LOG ("Shard/CAS status. (num_cas_in_tran=%d, shard_id=%d).", shard_io_p->num_cas_in_tran,
+		   shard_io_p->shard_id);
   assert (shard_io_p->num_cas_in_tran >= 0);
   if (shard_io_p->num_cas_in_tran < 0)
     {
@@ -3770,9 +3550,7 @@ proxy_cas_io_find_by_fd (int shard_id, int cas_id, SOCKET fd)
 
   if (shard_id < 0 || cas_id < 0 || fd == INVALID_SOCKET)
     {
-      PROXY_DEBUG_LOG
-	("Unable to find CAS entry. "
-	 "(shard:%d, cas:%d, fd:%d).", shard_id, cas_id, fd);
+      PROXY_DEBUG_LOG ("Unable to find CAS entry. " "(shard:%d, cas:%d, fd:%d).", shard_id, cas_id, fd);
       return NULL;
     }
 
@@ -3790,8 +3568,7 @@ proxy_cas_io_find_by_fd (int shard_id, int cas_id, SOCKET fd)
 }
 
 T_CAS_IO *
-proxy_cas_find_io_by_ctx (int shard_id, int cas_id, int ctx_cid,
-			  unsigned int ctx_uid)
+proxy_cas_find_io_by_ctx (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid)
 {
   /* in case, find cas explicitly */
   T_SHARD_IO *shard_io_p;
@@ -3799,26 +3576,21 @@ proxy_cas_find_io_by_ctx (int shard_id, int cas_id, int ctx_cid,
 
   if (0 > shard_id || shard_id >= proxy_Shard_io.max_shard)
     {
-      PROXY_DEBUG_LOG ("Invalid shard id. (shard_id:%d, max_shard:%d).",
-		       shard_id, proxy_Shard_io.max_shard);
+      PROXY_DEBUG_LOG ("Invalid shard id. (shard_id:%d, max_shard:%d).", shard_id, proxy_Shard_io.max_shard);
       return NULL;
     }
   shard_io_p = &(proxy_Shard_io.ent[shard_id]);
 
   if (0 > cas_id || cas_id >= shard_io_p->max_num_cas)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid CAS id. (cas_id:%d, max_num_cas:%d).", cas_id,
-		 shard_io_p->max_num_cas);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid CAS id. (cas_id:%d, max_num_cas:%d).", cas_id, shard_io_p->max_num_cas);
       return NULL;
     }
   cas_io_p = &(shard_io_p->ent[cas_id]);
 
-  if (cas_io_p->is_in_tran == false || cas_io_p->ctx_cid != ctx_cid
-      || cas_io_p->ctx_uid != ctx_uid)
+  if (cas_io_p->is_in_tran == false || cas_io_p->ctx_cid != ctx_cid || cas_io_p->ctx_uid != ctx_uid)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. "
-		 "(context id:%d, context uid:%d). CAS(%S).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. " "(context id:%d, context uid:%d). CAS(%S).",
 		 ctx_cid, ctx_uid, proxy_str_cas_io (cas_io_p));
       return NULL;
     }
@@ -3827,8 +3599,7 @@ proxy_cas_find_io_by_ctx (int shard_id, int cas_id, int ctx_cid,
 }
 
 T_CAS_IO *
-proxy_cas_alloc_by_ctx (int client_id, int shard_id, int cas_id,
-			int ctx_cid, unsigned int ctx_uid, int timeout,
+proxy_cas_alloc_by_ctx (int client_id, int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid, int timeout,
 			int func_code)
 {
   int error;
@@ -3842,8 +3613,8 @@ proxy_cas_alloc_by_ctx (int client_id, int shard_id, int cas_id,
   /* valid shard id */
   if ((shard_id < 0 && cas_id >= 0) || (shard_id >= proxy_Shard_io.max_shard))
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid shard/CAS id is requested. "
-		 "(shard_id:%d, cas_id:%d). ", shard_id, cas_id);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid shard/CAS id is requested. " "(shard_id:%d, cas_id:%d). ", shard_id,
+		 cas_id);
 
       assert (false);
 
@@ -3852,28 +3623,23 @@ proxy_cas_alloc_by_ctx (int client_id, int shard_id, int cas_id,
 
   if (shard_id >= 0 && cas_id >= 0)
     {
-      cas_io_p = proxy_cas_alloc_by_shard_and_cas_id (client_id, shard_id,
-						      cas_id, ctx_cid,
-						      ctx_uid);
+      cas_io_p = proxy_cas_alloc_by_shard_and_cas_id (client_id, shard_id, cas_id, ctx_cid, ctx_uid);
     }
   else
     {
       if (func_code == CAS_FC_CHECK_CAS)
 	{
-	  cas_io_p = proxy_cas_alloc_anything (client_id, shard_id,
-					       cas_id, ctx_cid, ctx_uid,
-					       proxy_find_idle_cas_by_desc);
+	  cas_io_p =
+	    proxy_cas_alloc_anything (client_id, shard_id, cas_id, ctx_cid, ctx_uid, proxy_find_idle_cas_by_desc);
 	}
       else
 	{
-	  cas_io_p = proxy_cas_alloc_anything (client_id, shard_id,
-					       cas_id, ctx_cid, ctx_uid,
-					       proxy_find_idle_cas_by_conn_info);
+	  cas_io_p =
+	    proxy_cas_alloc_anything (client_id, shard_id, cas_id, ctx_cid, ctx_uid, proxy_find_idle_cas_by_conn_info);
 	  if (cas_io_p == NULL)
 	    {
-	      cas_io_p = proxy_cas_alloc_anything (client_id, shard_id,
-						   cas_id, ctx_cid, ctx_uid,
-						   proxy_find_idle_cas_by_asc);
+	      cas_io_p =
+		proxy_cas_alloc_anything (client_id, shard_id, cas_id, ctx_cid, ctx_uid, proxy_find_idle_cas_by_asc);
 	    }
 	}
     }
@@ -3890,19 +3656,15 @@ proxy_cas_alloc_by_ctx (int client_id, int shard_id, int cas_id,
   if (client_info_p == NULL)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Unable to find cilent info in shared memory. "
-		 "(context id:%d, context uid:%d)", ctx_cid, ctx_uid);
+		 "Unable to find cilent info in shared memory. " "(context id:%d, context uid:%d)", ctx_cid, ctx_uid);
     }
   else
     if (shard_shm_set_as_client_info_with_db_param
-	(proxy_info_p, shm_as_p, cas_io_p->shard_id, cas_io_p->cas_id,
-	 client_info_p) == false)
+	(proxy_info_p, shm_as_p, cas_io_p->shard_id, cas_io_p->cas_id, client_info_p) == false)
     {
 
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Unable to find CAS info in shared memory. "
-		 "(shard_id:%d, cas_id:%d).", cas_io_p->shard_id,
-		 cas_io_p->cas_id);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS info in shared memory. " "(shard_id:%d, cas_id:%d).",
+		 cas_io_p->shard_id, cas_io_p->cas_id);
     }
 
   cas_io_p->is_in_tran = true;
@@ -3920,8 +3682,7 @@ set_waiter:
     }
   else
     {
-      curr_shard_id =
-	(unsigned int) (last_shard_id + 1) % proxy_Shard_io.max_shard;
+      curr_shard_id = (unsigned int) (last_shard_id + 1) % proxy_Shard_io.max_shard;
 
       last_shard_id = curr_shard_id;
     }
@@ -3930,15 +3691,12 @@ set_waiter:
   if (shard_io_p->cur_num_cas <= 0)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to allocate shard/cas. "
-		 "No available cas in this shard. "
-		 "Wait until shard has available cas. "
-		 "(cur_num_cas:%d, max_num_cas:%d)", shard_io_p->cur_num_cas,
+		 "Failed to allocate shard/cas. " "No available cas in this shard. "
+		 "Wait until shard has available cas. " "(cur_num_cas:%d, max_num_cas:%d)", shard_io_p->cur_num_cas,
 		 shard_io_p->max_num_cas);
     }
 
-  error =
-    proxy_client_add_waiter_by_shard (shard_io_p, ctx_cid, ctx_uid, timeout);
+  error = proxy_client_add_waiter_by_shard (shard_io_p, ctx_cid, ctx_uid, timeout);
   if (error)
     {
       return NULL;
@@ -3948,8 +3706,7 @@ set_waiter:
 }
 
 void
-proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
-			  unsigned int ctx_uid)
+proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid)
 {
   T_SHARD_IO *shard_io_p;
   T_CAS_IO *cas_io_p;
@@ -3958,8 +3715,7 @@ proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
 
   if (0 > shard_id || shard_id >= proxy_Shard_io.max_shard)
     {
-      PROXY_DEBUG_LOG ("Invalid shard id. (shard_id:%d, max_shard:%d).",
-		       shard_id, proxy_Shard_io.max_shard);
+      PROXY_DEBUG_LOG ("Invalid shard id. (shard_id:%d, max_shard:%d).", shard_id, proxy_Shard_io.max_shard);
       EXIT_FUNC ();
       return;
     }
@@ -3967,19 +3723,15 @@ proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
 
   if (0 > cas_id || cas_id >= shard_io_p->max_num_cas)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid CAS id. (cas_id:%d, max_num_cas:%d).", cas_id,
-		 shard_io_p->max_num_cas);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid CAS id. (cas_id:%d, max_num_cas:%d).", cas_id, shard_io_p->max_num_cas);
       EXIT_FUNC ();
       return;
     }
   cas_io_p = &(shard_io_p->ent[cas_id]);
 
-  if (cas_io_p->is_in_tran == false || cas_io_p->ctx_cid != ctx_cid
-      || cas_io_p->ctx_uid != ctx_uid)
+  if (cas_io_p->is_in_tran == false || cas_io_p->ctx_cid != ctx_cid || cas_io_p->ctx_uid != ctx_uid)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. "
-		 "(context id:%d, context uid:%d). CAS(%S).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. " "(context id:%d, context uid:%d). CAS(%S).",
 		 ctx_cid, ctx_uid, proxy_str_cas_io (cas_io_p));
 
       assert (false);
@@ -3995,8 +3747,8 @@ proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
   /* decrease number of cas in transaction */
   shard_io_p->num_cas_in_tran--;
 
-  PROXY_DEBUG_LOG ("Shard status. (num_cas_in_tran=%d, shard_id=%d).",
-		   shard_io_p->num_cas_in_tran, shard_io_p->shard_id);
+  PROXY_DEBUG_LOG ("Shard status. (num_cas_in_tran=%d, shard_id=%d).", shard_io_p->num_cas_in_tran,
+		   shard_io_p->shard_id);
 
   assert (shard_io_p->num_cas_in_tran >= 0);
   if (shard_io_p->num_cas_in_tran < 0)
@@ -4012,8 +3764,7 @@ proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
 }
 
 static int
-proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p, int ctx_cid,
-				  int ctx_uid, int timeout)
+proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p, int ctx_cid, int ctx_uid, int timeout)
 {
   int error;
   T_WAIT_CONTEXT *waiter_p;
@@ -4030,26 +3781,21 @@ proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p, int ctx_cid,
       return -1;
     }
 
-  PROXY_DEBUG_LOG ("Context(context id:%d, context uid:%u) "
-		   "is waiting on shard(shard_id:%d).",
-		   ctx_cid, ctx_uid, shard_io_p->shard_id);
+  PROXY_DEBUG_LOG ("Context(context id:%d, context uid:%u) " "is waiting on shard(shard_id:%d).", ctx_cid, ctx_uid,
+		   shard_io_p->shard_id);
 
-  error =
-    shard_queue_ordered_enqueue (&shard_io_p->waitq, (void *) waiter_p,
-				 proxy_waiter_comp_fn);
+  error = shard_queue_ordered_enqueue (&shard_io_p->waitq, (void *) waiter_p, proxy_waiter_comp_fn);
   if (error)
     {
       EXIT_FUNC ();
       return -1;
     }
 
-  shard_info_p =
-    shard_shm_find_shard_info (proxy_info_p, shard_io_p->shard_id);
+  shard_info_p = shard_shm_find_shard_info (proxy_info_p, shard_io_p->shard_id);
   if (shard_info_p != NULL)
     {
       shard_info_p->waiter_count++;
-      PROXY_DEBUG_LOG ("Add waiter by shard. (waiter_count:%d).",
-		       shard_info_p->waiter_count);
+      PROXY_DEBUG_LOG ("Add waiter by shard. (waiter_count:%d).", shard_info_p->waiter_count);
     }
 
   EXIT_FUNC ();
@@ -4057,8 +3803,7 @@ proxy_client_add_waiter_by_shard (T_SHARD_IO * shard_io_p, int ctx_cid,
 }
 
 static void
-proxy_client_check_waiter_and_wakeup (T_SHARD_IO * shard_io_p,
-				      T_CAS_IO * cas_io_p)
+proxy_client_check_waiter_and_wakeup (T_SHARD_IO * shard_io_p, T_CAS_IO * cas_io_p)
 {
   int error;
   T_WAIT_CONTEXT *waiter_p = NULL;
@@ -4072,26 +3817,19 @@ proxy_client_check_waiter_and_wakeup (T_SHARD_IO * shard_io_p,
   waiter_p = (T_WAIT_CONTEXT *) shard_queue_dequeue (&shard_io_p->waitq);
   while (waiter_p)
     {
-      PROXY_DEBUG_LOG ("Wakeup waiter by shard. (shard_id:%d, cas_id:%d).",
-		       cas_io_p->shard_id, cas_io_p->cas_id);
+      PROXY_DEBUG_LOG ("Wakeup waiter by shard. (shard_id:%d, cas_id:%d).", cas_io_p->shard_id, cas_io_p->cas_id);
 
-      shard_info_p =
-	shard_shm_find_shard_info (proxy_info_p, shard_io_p->shard_id);
+      shard_info_p = shard_shm_find_shard_info (proxy_info_p, shard_io_p->shard_id);
       if ((shard_info_p != NULL) && (shard_info_p->waiter_count > 0))
 	{
 	  shard_info_p->waiter_count--;
-	  PROXY_DEBUG_LOG ("Wakeup context by shard. (waiter_count:%d).",
-			   shard_info_p->waiter_count);
+	  PROXY_DEBUG_LOG ("Wakeup context by shard. (waiter_count:%d).", shard_info_p->waiter_count);
 	}
 
-      error =
-	proxy_wakeup_context_by_shard (waiter_p, cas_io_p->shard_id,
-				       cas_io_p->cas_id);
+      error = proxy_wakeup_context_by_shard (waiter_p, cas_io_p->shard_id, cas_io_p->cas_id);
       if (error)
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		     "Failed to wakeup context by shard. "
-		     "(error:%d, shard_id:%d, cas_id:%d).",
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to wakeup context by shard. " "(error:%d, shard_id:%d, cas_id:%d).",
 		     error, cas_io_p->shard_id, cas_io_p->cas_id);
 	  FREE_MEM (waiter_p);
 	  continue;
@@ -4122,8 +3860,7 @@ proxy_io_connect_to_broker (void)
     }
 
   /* FOR DEBUG */
-  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Connect to broker. (port_name:[%s]).",
-	     port_name);
+  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Connect to broker. (port_name:[%s]).", port_name);
 
   if ((fd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
     {
@@ -4134,13 +3871,10 @@ proxy_io_connect_to_broker (void)
   shard_sock_addr.sun_family = AF_UNIX;
   strcpy (shard_sock_addr.sun_path, port_name);
 #ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
-  len = sizeof (shard_sock_addr.sun_len) +
-    sizeof (shard_sock_addr.sun_family) +
-    strlen (shard_sock_addr.sun_path) + 1;
+  len = sizeof (shard_sock_addr.sun_len) + sizeof (shard_sock_addr.sun_family) + strlen (shard_sock_addr.sun_path) + 1;
   shard_sock_addr.sun_len = len;
 #else /* vanilla 4.3BSD */
-  len = strlen (shard_sock_addr.sun_path) +
-    sizeof (shard_sock_addr.sun_family) + 1;
+  len = strlen (shard_sock_addr.sun_path) + sizeof (shard_sock_addr.sun_family) + 1;
 #endif
 
   if (connect (fd, (struct sockaddr *) &shard_sock_addr, len) != 0)
@@ -4171,8 +3905,7 @@ proxy_io_register_to_broker (void)
   while (IS_INVALID_SOCKET (fd) && (num_retry++) < 5);
   if (IS_INVALID_SOCKET (fd))
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to connect to broker. (fd:%d).", fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to connect to broker. (fd:%d).", fd);
       return -1;
     }
 
@@ -4180,8 +3913,7 @@ proxy_io_register_to_broker (void)
   len = WRITESOCKET (fd, &tmp_proxy_id, sizeof (tmp_proxy_id));
   if (len != sizeof (tmp_proxy_id))
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to register to broker. (fd:%d).", fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to register to broker. (fd:%d).", fd);
       return -1;
     }
 
@@ -4216,16 +3948,12 @@ proxy_io_inet_lsnr (int port)
   fd = socket (AF_INET, SOCK_STREAM, 0);
   if (IS_INVALID_SOCKET (fd))
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Fail to create socket. (Error:%d).", WSAGetLastError ());
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Fail to create socket. (Error:%d).", WSAGetLastError ());
       return (-1);
     }
-  if ((setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, (char *) &one,
-		   sizeof (one))) < 0)
+  if ((setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, (char *) &one, sizeof (one))) < 0)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Fail to set socket option. (Error:%d).",
-		 WSAGetLastError ());
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Fail to set socket option. (Error:%d).", WSAGetLastError ());
       return (-1);
     }
 
@@ -4271,13 +3999,10 @@ proxy_io_unixd_lsnr (char *unixd_sock_name)
   strcpy (shard_sock_addr.sun_path, unixd_sock_name);
 
 #ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
-  len = sizeof (shard_sock_addr.sun_len) +
-    sizeof (shard_sock_addr.sun_family) +
-    strlen (shard_sock_addr.sun_path) + 1;
+  len = sizeof (shard_sock_addr.sun_len) + sizeof (shard_sock_addr.sun_family) + strlen (shard_sock_addr.sun_path) + 1;
   shard_sock_addr.sun_len = len;
 #else /* vanilla 4.3BSD */
-  len = strlen (shard_sock_addr.sun_path) +
-    sizeof (shard_sock_addr.sun_family) + 1;
+  len = strlen (shard_sock_addr.sun_path) + sizeof (shard_sock_addr.sun_family) + 1;
 #endif
 
   /* bind the name to the descriptor */
@@ -4311,22 +4036,19 @@ proxy_io_cas_lsnr (void)
 			   shm_proxy_p->num_proxy);
 
   /* FOR DEBUG */
-  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Listen CAS socket. (port number:[%d])",
-	     port);
+  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Listen CAS socket. (port number:[%d])", port);
 
   fd = proxy_io_inet_lsnr (port);
 #else /* WINDOWS */
   /* FOR DEBUG */
-  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Listen CAS socket. (port name:[%s])",
-	     proxy_info_p->port_name);
+  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Listen CAS socket. (port name:[%s])", proxy_info_p->port_name);
 
   fd = proxy_io_unixd_lsnr (proxy_info_p->port_name);
 #endif /* !WINDOWS */
 
   if (IS_INVALID_SOCKET (fd))
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to listen CAS socket. (fd:%d).", fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to listen CAS socket. (fd:%d).", fd);
       return -1;		/* FAIELD */
     }
 
@@ -4357,14 +4079,12 @@ proxy_io_client_lsnr (void)
   int port = GET_CLIENT_PORT (broker_port, proxy_info_p->proxy_id);
 
   /* FOR DEBUG */
-  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Listen Client socket. "
-	     "(port number:[%d])", port);
+  PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Listen Client socket. " "(port number:[%d])", port);
 
   fd = proxy_io_inet_lsnr (port);
   if (IS_INVALID_SOCKET (fd))
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to listen Client socket. (fd:%d).", fd);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to listen Client socket. (fd:%d).", fd);
       return -1;		/* FAIELD */
     }
 
@@ -4429,18 +4149,15 @@ proxy_io_initialize (void)
   ep_Fd = epoll_create (max_Socket);
   if (ep_Fd == INVALID_SOCKET)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to create epoll fd. (errno=%d[%s])", errno,
-		 strerror (errno));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to create epoll fd. (errno=%d[%s])", errno, strerror (errno));
       return -1;
     }
 
   ep_Event = calloc (max_Socket, sizeof (struct epoll_event));
   if (ep_Event == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Not enough virtual memory for epoll event. (error:%d[%s]).",
-		 errno, strerror (errno));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory for epoll event. (error:%d[%s]).", errno,
+		 strerror (errno));
       return -1;
     }
 
@@ -4462,9 +4179,7 @@ proxy_io_initialize (void)
   error = proxy_io_client_lsnr ();
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to initialize Client socket listener. (error:%d).",
-		 error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize Client socket listener. (error:%d).", error);
       return -1;
     }
 #else /* WINDOWS */
@@ -4472,8 +4187,7 @@ proxy_io_initialize (void)
   error = proxy_io_register_to_broker ();
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Unable to register to broker. (error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to register to broker. (error:%d).", error);
       return -1;
     }
 #endif /* !WINDOWS */
@@ -4482,17 +4196,14 @@ proxy_io_initialize (void)
   error = proxy_io_cas_lsnr ();
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to initialize CAS socket listener. (error:%d).",
-		 error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize CAS socket listener. (error:%d).", error);
       return -1;
     }
 
   error = proxy_socket_io_initialize ();
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to initialize socket entries. (error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize socket entries. (error:%d).", error);
       return error;
     }
 
@@ -4500,8 +4211,7 @@ proxy_io_initialize (void)
   error = proxy_client_io_initialize ();
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to initialize client entries. (error:%d).", error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize client entries. (error:%d).", error);
       return error;
     }
 
@@ -4509,9 +4219,7 @@ proxy_io_initialize (void)
   error = proxy_shard_io_initialize ();
   if (error)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to initialize shard/CAS entries. (error:%d).",
-		 error);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize shard/CAS entries. (error:%d).", error);
       return error;
     }
 
@@ -4629,14 +4337,12 @@ proxy_io_process (void)
     {
       if (cas_lsnr_fd == ep_Event[i].data.fd)	/* new cas */
 	{
-	  if ((ep_Event[i].events & EPOLLERR)
-	      || (ep_Event[i].events & EPOLLHUP))
+	  if ((ep_Event[i].events & EPOLLERR) || (ep_Event[i].events & EPOLLHUP))
 	    {
 	      proxy_Keep_running = false;
 	      return -1;
 	    }
-	  else if (ep_Event[i].events & EPOLLIN
-		   || ep_Event[i].events & EPOLLPRI)
+	  else if (ep_Event[i].events & EPOLLIN || ep_Event[i].events & EPOLLPRI)
 	    {
 	      cas_fd = proxy_io_cas_accept (cas_lsnr_fd);
 	      if (cas_fd >= 0)
@@ -4649,8 +4355,7 @@ proxy_io_process (void)
 		}
 	      else
 		{
-		  PROXY_LOG (PROXY_LOG_MODE_ERROR,
-			     "Accept socket failure. (fd:%d).", cas_fd);
+		  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Accept socket failure. (fd:%d).", cas_fd);
 		  return 0;	/* or -1 */
 		}
 
@@ -4658,14 +4363,12 @@ proxy_io_process (void)
 	}
       else if (broker_conn_fd == ep_Event[i].data.fd)	/* new client */
 	{
-	  if ((ep_Event[i].events & EPOLLERR)
-	      || (ep_Event[i].events & EPOLLHUP))
+	  if ((ep_Event[i].events & EPOLLERR) || (ep_Event[i].events & EPOLLHUP))
 	    {
 	      proxy_Keep_running = false;
 	      return -1;
 	    }
-	  else if (ep_Event[i].events & EPOLLIN
-		   || ep_Event[i].events & EPOLLPRI)
+	  else if (ep_Event[i].events & EPOLLIN || ep_Event[i].events & EPOLLPRI)
 	    {
 	      proxy_socket_io_new_client (broker_conn_fd);
 	    }
@@ -4682,8 +4385,7 @@ proxy_io_process (void)
 	      continue;
 	    }
 
-	  if ((ep_Event[i].events & EPOLLERR)
-	      || (ep_Event[i].events & EPOLLHUP))
+	  if ((ep_Event[i].events & EPOLLERR) || (ep_Event[i].events & EPOLLHUP))
 	    {
 	      if (ep_Event[i].events & EPOLLIN)
 		{
@@ -4724,8 +4426,7 @@ proxy_io_process (void)
 	}
       else
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Accept socket failure. (fd:%d).",
-		     cas_fd);
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Accept socket failure. (fd:%d).", cas_fd);
 	  return 0;		/* or -1 */
 	}
     }
@@ -4737,8 +4438,7 @@ proxy_io_process (void)
       client_fd = proxy_io_client_accept (client_lsnr_fd);
       if (client_fd < 0)
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Accept socket failure. (fd:%d).",
-		     client_fd);
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Accept socket failure. (fd:%d).", client_fd);
 	  return 0;		/* or -1 */
 	}
       proxy_socket_io_new_client (client_fd);
@@ -4758,13 +4458,11 @@ proxy_io_process (void)
 	{
 	  continue;
 	}
-      if (!IS_INVALID_SOCKET (sock_io_p->fd)
-	  && FD_ISSET (sock_io_p->fd, &wset))
+      if (!IS_INVALID_SOCKET (sock_io_p->fd) && FD_ISSET (sock_io_p->fd, &wset))
 	{
 	  proxy_socket_io_write (sock_io_p);
 	}
-      if (!IS_INVALID_SOCKET (sock_io_p->fd)
-	  && FD_ISSET (sock_io_p->fd, &rset))
+      if (!IS_INVALID_SOCKET (sock_io_p->fd) && FD_ISSET (sock_io_p->fd, &rset))
 	{
 	  proxy_socket_io_read (sock_io_p);
 	}
@@ -4794,8 +4492,7 @@ proxy_get_driver_info_by_ctx (T_PROXY_CONTEXT * ctx_p)
       return dummy_info;
     }
 
-  cli_io_p = proxy_client_io_find_by_ctx (ctx_p->client_id, ctx_p->cid,
-					  ctx_p->uid);
+  cli_io_p = proxy_client_io_find_by_ctx (ctx_p->client_id, ctx_p->cid, ctx_p->uid);
   if (cli_io_p == NULL)
     {
       return dummy_info;
@@ -4825,8 +4522,7 @@ proxy_get_driver_info_by_fd (T_SOCKET_IO * sock_io_p)
       return dummy_info;
     }
 
-  cli_io_p = proxy_client_io_find_by_fd (sock_io_p->id.client_id,
-					 sock_io_p->fd);
+  cli_io_p = proxy_client_io_find_by_fd (sock_io_p->id.client_id, sock_io_p->fd);
   if (cli_io_p == NULL)
     {
       return dummy_info;
@@ -4849,21 +4545,16 @@ proxy_available_cas_wait_timer (void)
   for (i = 0; i < proxy_Shard_io.max_shard; i++)
     {
       shard_io_p = &(proxy_Shard_io.ent[i]);
-      proxy_waiter_timeout (&shard_io_p->waitq,
-			    (shard_info_p !=
-			     NULL) ? &shard_info_p->waiter_count : NULL, now);
+      proxy_waiter_timeout (&shard_io_p->waitq, (shard_info_p != NULL) ? &shard_info_p->waiter_count : NULL, now);
 
-      waiter_p =
-	(T_WAIT_CONTEXT *) shard_queue_peek_value (&shard_io_p->waitq);
+      waiter_p = (T_WAIT_CONTEXT *) shard_queue_peek_value (&shard_io_p->waitq);
       if (waiter_p == NULL)
 	{
-	  shard_info_p =
-	    shard_shm_find_shard_info (proxy_info_p, shard_io_p->shard_id);
+	  shard_info_p = shard_shm_find_shard_info (proxy_info_p, shard_io_p->shard_id);
 	  if ((shard_info_p != NULL) && (shard_info_p->waiter_count > 0))
 	    {
 	      shard_info_p->waiter_count = 0;
-	      PROXY_DEBUG_LOG ("Clear shard(%d) waiter queue by timer.",
-			       shard_io_p->shard_id);
+	      PROXY_DEBUG_LOG ("Clear shard(%d) waiter queue by timer.", shard_io_p->shard_id);
 	    }
 	}
     }
@@ -4872,8 +4563,7 @@ proxy_available_cas_wait_timer (void)
 }
 
 static void
-proxy_set_conn_info (int func_code, int ctx_cid, int ctx_uid, int shard_id,
-		     int cas_id)
+proxy_set_conn_info (int func_code, int ctx_cid, int ctx_uid, int shard_id, int cas_id)
 {
   T_PROXY_CONTEXT *ctx_p = NULL;
   T_APPL_SERVER_INFO *as_info_p = NULL;
@@ -4881,8 +4571,7 @@ proxy_set_conn_info (int func_code, int ctx_cid, int ctx_uid, int shard_id,
   ctx_p = proxy_context_find (ctx_cid, ctx_uid);
   assert (ctx_p != NULL);
 
-  as_info_p =
-    shard_shm_get_as_info (proxy_info_p, shm_as_p, shard_id, cas_id);
+  as_info_p = shard_shm_get_as_info (proxy_info_p, shm_as_p, shard_id, cas_id);
   assert (as_info_p != NULL);
 
   if (func_code == CAS_FC_CHECK_CAS)
@@ -4910,15 +4599,12 @@ proxy_set_conn_info (int func_code, int ctx_cid, int ctx_uid, int shard_id,
   /* this cas will reconnect to database. */
   shard_stmt_del_all_srv_h_id_for_shard_cas (shard_id, cas_id);
 
-  strncpy (as_info_p->database_user, ctx_p->database_user,
-	   SRV_CON_DBUSER_SIZE - 1);
-  strncpy (as_info_p->database_passwd, ctx_p->database_passwd,
-	   SRV_CON_DBPASSWD_SIZE - 1);
+  strncpy (as_info_p->database_user, ctx_p->database_user, SRV_CON_DBUSER_SIZE - 1);
+  strncpy (as_info_p->database_passwd, ctx_p->database_passwd, SRV_CON_DBPASSWD_SIZE - 1);
 }
 
 static T_CAS_IO *
-proxy_cas_alloc_by_shard_and_cas_id (int client_id, int shard_id, int cas_id,
-				     int ctx_cid, unsigned int ctx_uid)
+proxy_cas_alloc_by_shard_and_cas_id (int client_id, int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid)
 {
   T_SHARD_IO *shard_io_p = NULL;
   T_CAS_IO *cas_io_p = NULL;
@@ -4929,19 +4615,16 @@ proxy_cas_alloc_by_shard_and_cas_id (int client_id, int shard_id, int cas_id,
 
   if (0 > cas_id || cas_id >= shard_io_p->max_num_cas)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find available CAS. "
-		 "(shard_id:%d, cas_id:%d, max_num_cas:%d).", shard_id,
-		 cas_id, shard_io_p->max_num_cas);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find available CAS. " "(shard_id:%d, cas_id:%d, max_num_cas:%d).",
+		 shard_id, cas_id, shard_io_p->max_num_cas);
       return NULL;
     }
   cas_io_p = &(shard_io_p->ent[cas_id]);
 
-  if ((cas_io_p->ctx_cid != PROXY_INVALID_CONTEXT
-       && cas_io_p->ctx_cid != ctx_cid)
+  if ((cas_io_p->ctx_cid != PROXY_INVALID_CONTEXT && cas_io_p->ctx_cid != ctx_cid)
       || (cas_io_p->ctx_uid != 0 && cas_io_p->ctx_uid != ctx_uid))
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid CAS status. "
-		 "(context id:%d, context uid:%d). CAS(%s). ", ctx_cid,
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid CAS status. " "(context id:%d, context uid:%d). CAS(%s). ", ctx_cid,
 		 ctx_uid, proxy_str_cas_io (cas_io_p));
 
       assert (false);
@@ -4950,9 +4633,8 @@ proxy_cas_alloc_by_shard_and_cas_id (int client_id, int shard_id, int cas_id,
 
   if (cas_io_p->status != CAS_IO_CONNECTED)
     {
-      PROXY_DEBUG_LOG
-	("Unexpected CAS status. (context id:%d, context uid:%d). "
-	 "CAS(%s). ", ctx_cid, ctx_uid, proxy_str_cas_io (cas_io_p));
+      PROXY_DEBUG_LOG ("Unexpected CAS status. (context id:%d, context uid:%d). " "CAS(%s). ", ctx_cid, ctx_uid,
+		       proxy_str_cas_io (cas_io_p));
       return NULL;
     }
 
@@ -4960,9 +4642,8 @@ proxy_cas_alloc_by_shard_and_cas_id (int client_id, int shard_id, int cas_id,
     {
       shard_io_p->num_cas_in_tran++;
 
-      PROXY_DEBUG_LOG
-	("Shard IO status. (num_cas_in_tran=%d, shard_id=%d).",
-	 shard_io_p->num_cas_in_tran, shard_io_p->shard_id);
+      PROXY_DEBUG_LOG ("Shard IO status. (num_cas_in_tran=%d, shard_id=%d).", shard_io_p->num_cas_in_tran,
+		       shard_io_p->shard_id);
 
       assert (shard_io_p->cur_num_cas >= shard_io_p->num_cas_in_tran);
       assert (cas_io_p->is_in_tran == false);
@@ -4973,8 +4654,7 @@ proxy_cas_alloc_by_shard_and_cas_id (int client_id, int shard_id, int cas_id,
 }
 
 static T_CAS_IO *
-proxy_find_idle_cas_by_asc (int shard_id, int cas_id,
-			    int ctx_cid, unsigned int ctx_uid)
+proxy_find_idle_cas_by_asc (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid)
 {
   int i = 0;
   T_CAS_IO *cas_io_p = NULL;
@@ -4998,8 +4678,7 @@ proxy_find_idle_cas_by_asc (int shard_id, int cas_id,
 }
 
 static T_CAS_IO *
-proxy_find_idle_cas_by_desc (int shard_id, int cas_id,
-			     int ctx_cid, unsigned int ctx_uid)
+proxy_find_idle_cas_by_desc (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid)
 {
   int i = 0;
   T_CAS_IO *cas_io_p = NULL;
@@ -5023,8 +4702,7 @@ proxy_find_idle_cas_by_desc (int shard_id, int cas_id,
 }
 
 static T_CAS_IO *
-proxy_find_idle_cas_by_conn_info (int shard_id, int cas_id,
-				  int ctx_cid, unsigned int ctx_uid)
+proxy_find_idle_cas_by_conn_info (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid)
 {
   int i = 0;
   T_CAS_IO *cas_io_p = NULL;
@@ -5072,8 +4750,7 @@ proxy_find_idle_cas_by_conn_info (int shard_id, int cas_id,
 }
 
 static T_CAS_IO *
-proxy_cas_alloc_anything (int client_id, int shard_id, int cas_id,
-			  int ctx_cid, unsigned int ctx_uid,
+proxy_cas_alloc_anything (int client_id, int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid,
 			  T_FUNC_FIND_CAS function)
 {
   int i = 0;
@@ -5112,9 +4789,8 @@ proxy_cas_alloc_anything (int client_id, int shard_id, int cas_id,
 
       if (i >= proxy_Shard_io.max_shard)
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL,
-		     "Unable to find avaiable shard. (index:%d, max_shard:%d).",
-		     i, proxy_Shard_io.max_shard);
+	  PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL, "Unable to find avaiable shard. (index:%d, max_shard:%d).", i,
+		     proxy_Shard_io.max_shard);
 
 	  return NULL;
 	}
@@ -5128,8 +4804,8 @@ proxy_cas_alloc_anything (int client_id, int shard_id, int cas_id,
     {
       shard_io_p->num_cas_in_tran++;
 
-      PROXY_DEBUG_LOG ("Shard status. (num_cas_in_tran=%d, shard_id=%d).",
-		       shard_io_p->num_cas_in_tran, shard_io_p->shard_id);
+      PROXY_DEBUG_LOG ("Shard status. (num_cas_in_tran=%d, shard_id=%d).", shard_io_p->num_cas_in_tran,
+		       shard_io_p->shard_id);
 
       assert (shard_io_p->cur_num_cas >= shard_io_p->num_cas_in_tran);
       assert (cas_io_p->is_in_tran == false);
@@ -5142,8 +4818,7 @@ proxy_cas_alloc_anything (int client_id, int shard_id, int cas_id,
 }
 
 static int
-proxy_check_authorization (T_PROXY_CONTEXT * ctx_p, const char *db_name,
-			   const char *db_user, const char *db_passwd)
+proxy_check_authorization (T_PROXY_CONTEXT * ctx_p, const char *db_name, const char *db_user, const char *db_passwd)
 {
   T_SHARD_USER *user_p = NULL;
   char err_msg[256];
@@ -5163,8 +4838,7 @@ proxy_check_authorization (T_PROXY_CONTEXT * ctx_p, const char *db_name,
 	  return 0;
 	}
 
-      if (strcmp (db_user, user_p->db_user)
-	  || strcmp (db_passwd, user_p->db_password))
+      if (strcmp (db_user, user_p->db_user) || strcmp (db_passwd, user_p->db_password))
 	{
 	  goto authorization_error;
 	}
@@ -5181,8 +4855,7 @@ proxy_check_authorization (T_PROXY_CONTEXT * ctx_p, const char *db_name,
 	  return 0;
 	}
 
-      if (strcasecmp (db_user, user_p->db_user)
-	  || strcmp (db_passwd, user_p->db_password))
+      if (strcasecmp (db_user, user_p->db_user) || strcmp (db_passwd, user_p->db_password))
 	{
 	  goto authorization_error;
 	}
@@ -5192,19 +4865,17 @@ proxy_check_authorization (T_PROXY_CONTEXT * ctx_p, const char *db_name,
 
 authorization_error:
   snprintf (err_msg, sizeof (err_msg), "Authorization error.");
-  proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR,
-				    CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg);
+  proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR, CAS_ER_NOT_AUTHORIZED_CLIENT, err_msg);
 
-  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authentication failure. "
-	     "(db_name:[%s], db_user:[%s], db_passwd:[%s]).",
-	     db_name, db_user, db_passwd);
+  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Authentication failure. " "(db_name:[%s], db_user:[%s], db_passwd:[%s]).", db_name,
+	     db_user, db_passwd);
 
   return -1;
 }
 
 int
-proxy_convert_error_code (int error_ind, int error_code, char *driver_info,
-			  T_BROKER_VERSION client_version, bool to_new)
+proxy_convert_error_code (int error_ind, int error_code, char *driver_info, T_BROKER_VERSION client_version,
+			  bool to_new)
 {
   if (error_code >= 0)
     {
@@ -5224,11 +4895,9 @@ proxy_convert_error_code (int error_ind, int error_code, char *driver_info,
 	}
     }
   else if (!DOES_CLIENT_MATCH_THE_PROTOCOL (client_version, PROTOCOL_V2)
-	   && !cas_di_understand_renewed_error_code (driver_info)
-	   && error_code != NO_ERROR)
+	   && !cas_di_understand_renewed_error_code (driver_info) && error_code != NO_ERROR)
     {
-      if (error_ind == CAS_ERROR_INDICATOR
-	  || error_code == CAS_ER_NOT_AUTHORIZED_CLIENT)
+      if (error_ind == CAS_ERROR_INDICATOR || error_code == CAS_ER_NOT_AUTHORIZED_CLIENT)
 	{
 	  if (to_new == PROXY_CONV_ERR_TO_NEW)
 	    {
@@ -5255,8 +4924,7 @@ proxy_get_max_socket (void)
   assert (first_shard_info_p != NULL);
 
   max_socket = proxy_info_p->max_context;
-  max_socket +=
-    (proxy_info_p->max_shard * first_shard_info_p->max_appl_server);
+  max_socket += (proxy_info_p->max_shard * first_shard_info_p->max_appl_server);
 
   return max_socket;
 }
@@ -5275,9 +4943,8 @@ proxy_add_epoll_event (int fd, unsigned int events)
   error = epoll_ctl (ep_Fd, EPOLL_CTL_ADD, fd, &ep_ev);
   if (error == -1)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to add epoll event. (fd:%d), (error=%d[%s])", fd,
-		 errno, strerror (errno));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to add epoll event. (fd:%d), (error=%d[%s])", fd, errno,
+		 strerror (errno));
       CLOSE_SOCKET (fd);
       return error;
     }
@@ -5299,9 +4966,8 @@ proxy_mod_epoll_event (int fd, unsigned int events)
   error = epoll_ctl (ep_Fd, EPOLL_CTL_MOD, fd, &ep_ev);
   if (error == -1)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to modify epoll event. (fd:%d), (error=%d[%s])", fd,
-		 errno, strerror (errno));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to modify epoll event. (fd:%d), (error=%d[%s])", fd, errno,
+		 strerror (errno));
       CLOSE_SOCKET (fd);
       return error;
     }
@@ -5324,9 +4990,8 @@ proxy_del_epoll_event (int fd)
   error = epoll_ctl (ep_Fd, EPOLL_CTL_DEL, fd, &ep_ev);
   if (error == -1)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Failed to delete epoll event. (fd:%d), (error=%d[%s])", fd,
-		 errno, strerror (errno));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to delete epoll event. (fd:%d), (error=%d[%s])", fd, errno,
+		 strerror (errno));
       CLOSE_SOCKET (fd);
       return error;
     }

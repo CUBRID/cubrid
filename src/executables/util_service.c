@@ -149,7 +149,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {ADMIN, UTIL_OPTION_ADDVOLDB, MASK_ADMIN},
 #if 0
   {ADMIN, UTIL_OPTION_DELVOLDB, MASK_ADMIN},
-#endif	/* ` */
+#endif /* ` */
   {ADMIN, UTIL_OPTION_SPACEDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_LOCKDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_KILLTRAN, MASK_ADMIN},
@@ -247,123 +247,85 @@ static void finalize_properties (void);
 static const char *get_property (int property_type);
 static int parse_arg (UTIL_SERVICE_OPTION_MAP_T * option, const char *arg);
 static int process_service (int command_type, bool process_window_service);
-static int process_server (int command_type, int argc, char **argv,
-			   bool show_usage, bool check_ha_mode,
+static int process_server (int command_type, int argc, char **argv, bool show_usage, bool check_ha_mode,
 			   bool process_window_service);
-static int process_broker (int command_type, int argc, const char **argv,
-			   bool process_window_service);
+static int process_broker (int command_type, int argc, const char **argv, bool process_window_service);
 static int process_manager (int command_type, bool process_window_service);
 static int process_heartbeat (int command_type, int argc, const char **argv);
-static int process_heartbeat_start (HA_CONF * ha_conf, int argc,
-				    const char **argv);
-static int process_heartbeat_stop (HA_CONF * ha_conf, int argc,
-				   const char **argv);
+static int process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv);
+static int process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv);
 static int process_heartbeat_deregister (int argc, const char **argv);
 static int process_heartbeat_status (int argc, const char **argv);
 static int process_heartbeat_reload (int argc, const char **argv);
-static int process_heartbeat_util (HA_CONF * ha_conf, int command_type,
-				   int argc, const char **argv);
-static int process_heartbeat_replication (HA_CONF * ha_conf, int argc,
-					  const char **argv);
+static int process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const char **argv);
+static int process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv);
 
-static int proc_execute (const char *file, const char *args[],
-			 bool wait_child, bool close_output,
-			 bool close_err, int *pid);
+static int proc_execute (const char *file, const char *args[], bool wait_child, bool close_output, bool close_err,
+			 int *pid);
 static int process_master (int command_type);
 static void print_message (FILE * output, int message_id, ...);
-static void print_result (const char *util_name, int status,
-			  int command_type);
+static void print_result (const char *util_name, int status, int command_type);
 static bool is_terminated_process (const int pid);
 static char *make_exec_abspath (char *buf, int buf_len, char *cmd);
 static const char *command_string (int command_type);
-static bool is_server_running (const char *type, const char *server_name,
-			       int pid);
+static bool is_server_running (const char *type, const char *server_name, int pid);
 static int is_broker_running (void);
-static UTIL_MANAGER_SERVER_STATUS_E is_manager_running (unsigned int
-							sleep_time);
+static UTIL_MANAGER_SERVER_STATUS_E is_manager_running (unsigned int sleep_time);
 
 #if defined(WINDOWS)
 static bool is_windows_service_running (unsigned int sleep_time);
 #endif
-static bool are_all_services_running (unsigned int sleep_time,
-				      bool check_win_service);
-static bool are_all_services_stopped (unsigned int sleep_time,
-				      bool check_win_service);
-static bool check_all_services_status (unsigned int sleep_time,
-				       UTIL_ALL_SERVICES_STATUS
-				       expected_status,
+static bool are_all_services_running (unsigned int sleep_time, bool check_win_service);
+static bool are_all_services_stopped (unsigned int sleep_time, bool check_win_service);
+static bool check_all_services_status (unsigned int sleep_time, UTIL_ALL_SERVICES_STATUS expected_status,
 				       bool check_win_service);
 
 static bool ha_make_mem_size (char *mem_size, int size, int value);
 static bool ha_is_registered (const char *args, const char *hostname);
 
 #if !defined(WINDOWS)
-static int us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
-				  const char *db_name,
-				  const char *node_name,
+static int us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				  const char *remote_host);
-static int us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name,
-				 const char *node_name,
+static int us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				 const char *remote_host);
 
-static int us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
-				   const char *db_name, const char *node_name,
-				   const char *remote_host);
-static int us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name,
-				  const char *node_name,
+static int us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name,
+				   const char *node_name, const char *remote_host);
+static int us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				  const char *remote_host);
 
-static int us_hb_prefetchlogdb_start (dynamic_array * out_ap,
-				      HA_CONF * ha_conf, const char *db_name,
-				      const char *node_name,
-				      const char *remote_host);
-static int us_hb_prefetchlogdb_stop (HA_CONF * ha_conf, const char *db_name,
-				     const char *node_name,
+static int us_hb_prefetchlogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name,
+				      const char *node_name, const char *remote_host);
+static int us_hb_prefetchlogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				     const char *remote_host);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-static int us_hb_utils_start (dynamic_array * pids, HA_CONF * ha_conf,
-			      const char *db_name, const char *node_name);
-static int us_hb_utils_stop (HA_CONF * ha_conf, const char *db_name,
-			     const char *node_name);
+static int us_hb_utils_start (dynamic_array * pids, HA_CONF * ha_conf, const char *db_name, const char *node_name);
+static int us_hb_utils_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name);
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 static int us_hb_server_start (HA_CONF * ha_conf, const char *db_name);
 static int us_hb_server_stop (HA_CONF * ha_conf, const char *db_name);
 
-static int us_hb_process_start (HA_CONF * ha_conf, const char *db_name,
-				bool check_result);
+static int us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result);
 static int us_hb_process_stop (HA_CONF * ha_conf, const char *db_name);
 
-static int us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf,
-				    const char *db_name,
-				    const char *node_name,
+static int us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				    const char *remote_host);
-static int us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf,
-				     const char *db_name,
-				     const char *node_name,
+static int us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				     const char *remote_host);
-static int us_hb_process_prefetchlogdb (int command_type, HA_CONF * ha_conf,
-					const char *db_name,
-					const char *node_name,
+static int us_hb_process_prefetchlogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 					const char *remote_host);
 #if defined (ENABLE_UNUSED_FUNCTION)
-static int us_hb_process_server (int command_type, HA_CONF * ha_conf,
-				 const char *db_name);
+static int us_hb_process_server (int command_type, HA_CONF * ha_conf, const char *db_name);
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-static int us_hb_stop_get_options (char *db_name, int db_name_size,
-				   char *host_name, int host_name_size,
-				   bool * immediate_stop, int argc,
-				   const char **argv);
-static int us_hb_status_get_options (bool * verbose, char *remote_host_name,
-				     int remote_host_name_size, int argc,
+static int us_hb_stop_get_options (char *db_name, int db_name_size, char *host_name, int host_name_size,
+				   bool * immediate_stop, int argc, const char **argv);
+static int us_hb_status_get_options (bool * verbose, char *remote_host_name, int remote_host_name_size, int argc,
 				     const char **argv);
-static int
-us_hb_util_get_options (char *db_name, int db_name_size, char *node_name,
-			int node_name_size, char *remote_host_name,
-			int remote_host_name_size, int argc,
-			const char **argv);
+static int us_hb_util_get_options (char *db_name, int db_name_size, char *node_name, int node_name_size,
+				   char *remote_host_name, int remote_host_name_size, int argc, const char **argv);
 
 
 #define US_HB_DEREG_WAIT_TIME_IN_SEC	100
@@ -442,8 +404,7 @@ print_result (const char *util_name, int status, int command_type)
       result = PRINT_RESULT_SUCCESS;
     }
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_RESULT, util_name,
-		 command_string (command_type), result);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_RESULT, util_name, command_string (command_type), result);
 }
 
 /*
@@ -485,8 +446,7 @@ process_admin (int argc, char **argv)
   memcpy (copy_argv, argv, sizeof (char *) * argc);
   copy_argv[0] = argv[0];
   copy_argv[argc] = 0;
-  status = proc_execute (UTIL_ADMIN_NAME, (const char **) copy_argv, true,
-			 false, false, NULL);
+  status = proc_execute (UTIL_ADMIN_NAME, (const char **) copy_argv, true, false, false, NULL);
   free (copy_argv);
 
   return status;
@@ -555,19 +515,17 @@ main (int argc, char *argv[])
   envval = getenv (envvar_prefix ());
   if (envval != NULL)
     {
-      fprintf (stderr, "CAUTION : "
-	       "The environment variable $%s is set to %s.\n"
-	       "          But, built-in prefix (%s) will be used.\n\n",
-	       envvar_prefix (), envval, envvar_root ());
+      fprintf (stderr,
+	       "CAUTION : " "The environment variable $%s is set to %s.\n"
+	       "          But, built-in prefix (%s) will be used.\n\n", envvar_prefix (), envval, envvar_root ());
     }
 
   envval = envvar_get ("DATABASES");
   if (envval != NULL)
     {
-      fprintf (stderr, "CAUTION : "
-	       "The environment variable $%s_%s is set to %s.\n"
-	       "          But, built-in prefix (%s) will be used.\n\n",
-	       envvar_prefix (), "DATABASES", envval,
+      fprintf (stderr,
+	       "CAUTION : " "The environment variable $%s_%s is set to %s.\n"
+	       "          But, built-in prefix (%s) will be used.\n\n", envvar_prefix (), "DATABASES", envval,
 	       envvar_vardir_file (path, PATH_MAX, ""));
     }
 #endif
@@ -598,8 +556,7 @@ main (int argc, char *argv[])
       util_type = parse_arg (us_Service_map, (char *) argv[2]);
       if (util_type == ER_GENERIC_ERROR)
 	{
-	  print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_NAME,
-			 argv[1]);
+	  print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_NAME, argv[1]);
 	  goto error;
 	}
     }
@@ -640,8 +597,7 @@ main (int argc, char *argv[])
       command_type = parse_arg (us_Command_map, (char *) argv[1]);
       if (command_type == ER_GENERIC_ERROR)
 	{
-	  print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_CMD,
-			 argv[2]);
+	  print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_CMD, argv[2]);
 	  goto error;
 	}
     }
@@ -652,8 +608,7 @@ main (int argc, char *argv[])
 
       if ((util_mask & command_mask) == 0)
 	{
-	  print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_CMD,
-			 argv[2]);
+	  print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_INVALID_CMD, argv[2]);
 	  goto error;
 	}
     }
@@ -669,14 +624,12 @@ main (int argc, char *argv[])
 
   process_window_service = true;
 
-  if ((util_type == SERVICE || util_type == BROKER || util_type == MANAGER)
-      && (argc > 3) &&
-      strcmp ((char *) argv[3], "--for-windows-service") == 0)
+  if ((util_type == SERVICE || util_type == BROKER || util_type == MANAGER) && (argc > 3)
+      && strcmp ((char *) argv[3], "--for-windows-service") == 0)
     {
       process_window_service = false;
     }
-  else if ((util_type == SERVER || util_type == BROKER)
-	   && (argc > 4)
+  else if ((util_type == SERVER || util_type == BROKER) && (argc > 4)
 	   && strcmp ((char *) argv[4], "--for-windows-service") == 0)
     {
       process_window_service = false;
@@ -693,14 +646,10 @@ main (int argc, char *argv[])
       }
       break;
     case SERVER:
-      status =
-	process_server (command_type, argc - 3, &argv[3],
-			true, true, process_window_service);
+      status = process_server (command_type, argc - 3, &argv[3], true, true, process_window_service);
       break;
     case BROKER:
-      status = process_broker (command_type, argc - 3,
-			       (const char **) &argv[3],
-			       process_window_service);
+      status = process_broker (command_type, argc - 3, (const char **) &argv[3], process_window_service);
       break;
     case MANAGER:
       status = process_manager (command_type, process_window_service);
@@ -710,8 +659,7 @@ main (int argc, char *argv[])
       /* TODO : define message catalog for heartbeat */
       return EXIT_FAILURE;
 #else
-      status =
-	process_heartbeat (command_type, argc - 3, (const char **) &argv[3]);
+      status = process_heartbeat (command_type, argc - 3, (const char **) &argv[3]);
 #endif /* !WINDOWs */
       break;
     default:
@@ -754,8 +702,7 @@ util_service_usage (int util_type)
     }
 
   exec_name = basename ((char *) Argv[0]);
-  print_message (stdout, MSGCAT_UTIL_GENERIC_CUBRID_USAGE + util_type,
-		 PRODUCT_STRING, exec_name, exec_name, exec_name);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_CUBRID_USAGE + util_type, PRODUCT_STRING, exec_name, exec_name, exec_name);
 }
 
 /*
@@ -779,8 +726,7 @@ util_service_version (const char *argv0)
 
 #if defined(WINDOWS)
 static int
-proc_execute (const char *file, const char *args[], bool wait_child,
-	      bool close_output, bool close_err, int *out_pid)
+proc_execute (const char *file, const char *args[], bool wait_child, bool close_output, bool close_err, int *out_pid)
 {
   STARTUPINFO si;
   PROCESS_INFORMATION pi;
@@ -817,8 +763,7 @@ proc_execute (const char *file, const char *args[], bool wait_child,
 	    }
 	  fixed_arg[k] = '\0';
 
-	  cmd_arg_len +=
-	    sprintf (cmd_arg + cmd_arg_len, "\"%s\" ", fixed_arg);
+	  cmd_arg_len += sprintf (cmd_arg + cmd_arg_len, "\"%s\" ", fixed_arg);
 	}
     }
 
@@ -839,8 +784,7 @@ proc_execute (const char *file, const char *args[], bool wait_child,
       si.hStdError = NULL;
     }
 
-  if (!CreateProcess (executable_path, cmd_arg, NULL, NULL, inherited_handle,
-		      0, NULL, NULL, &si, &pi))
+  if (!CreateProcess (executable_path, cmd_arg, NULL, NULL, inherited_handle, 0, NULL, NULL, &si, &pi))
     {
       return ER_FAILED;
     }
@@ -867,8 +811,7 @@ proc_execute (const char *file, const char *args[], bool wait_child,
 
 #else
 static int
-proc_execute (const char *file, const char *args[], bool wait_child,
-	      bool close_output, bool close_err, int *out_pid)
+proc_execute (const char *file, const char *args[], bool wait_child, bool close_output, bool close_err, int *out_pid)
 {
   pid_t pid, tmp;
   char executable_path[PATH_MAX];
@@ -936,7 +879,7 @@ proc_execute (const char *file, const char *args[], bool wait_child,
 	}
       else
 	{
-	  /*sleep (3); */
+	  /* sleep (3); */
 	  if (out_pid)
 	    {
 	      *out_pid = pid;
@@ -973,8 +916,7 @@ process_master (int command_type)
     {
     case START:
       {
-	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		       PRINT_MASTER_NAME, PRINT_CMD_START);
+	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_MASTER_NAME, PRINT_CMD_START);
 	if (!css_does_master_exist (master_port))
 	  {
 	    const char *args[] = { UTIL_MASTER_NAME, NULL };
@@ -986,19 +928,16 @@ process_master (int command_type)
 		  {
 		    if (pid != 0)
 		      {
-			util_log_write_errstr
-			  ("Master does not exist. Try to start it again.\n");
+			util_log_write_errstr ("Master does not exist. Try to start it again.\n");
 		      }
 
 #if !defined(WINDOWS)
 		    envvar_set ("NO_DAEMON", "true");
 #endif
-		    status = proc_execute (UTIL_MASTER_NAME, args, false,
-					   false, false, &pid);
+		    status = proc_execute (UTIL_MASTER_NAME, args, false, false, false, &pid);
 		    if (status != NO_ERROR)
 		      {
-			util_log_write_errstr
-			  ("Could not start master process.\n");
+			util_log_write_errstr ("Could not start master process.\n");
 			break;
 		      }
 		  }
@@ -1007,18 +946,13 @@ process_master (int command_type)
 		sleep (1);
 		waited_seconds++;
 
-		status = css_does_master_exist (master_port) ?
-		  NO_ERROR : ER_GENERIC_ERROR;
+		status = css_does_master_exist (master_port) ? NO_ERROR : ER_GENERIC_ERROR;
 	      }
 
 	    if (status != NO_ERROR)
 	      {
-		/* The master process failed to start or could not connected 
-		 * within 3 minutes
-		 */
-		util_log_write_errid (MSGCAT_UTIL_GENERIC_RESULT,
-				      PRINT_MASTER_NAME,
-				      command_string (command_type),
+		/* The master process failed to start or could not connected within 3 minutes */
+		util_log_write_errid (MSGCAT_UTIL_GENERIC_RESULT, PRINT_MASTER_NAME, command_string (command_type),
 				      PRINT_RESULT_FAIL);
 	      }
 
@@ -1027,34 +961,27 @@ process_master (int command_type)
 	else
 	  {
 	    status = ER_GENERIC_ERROR;
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-			   PRINT_MASTER_NAME);
-	    util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-				  PRINT_MASTER_NAME);
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_MASTER_NAME);
+	    util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_MASTER_NAME);
 	  }
       }
       break;
     case STOP:
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		     PRINT_MASTER_NAME, PRINT_CMD_STOP);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_MASTER_NAME, PRINT_CMD_STOP);
       if (css_does_master_exist (master_port))
 	{
 	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_ALL_STOP, NULL };
-	  status =
-	    proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 
-	  status =
-	    css_does_master_exist (master_port) ? ER_GENERIC_ERROR : NO_ERROR;
+	  status = css_does_master_exist (master_port) ? ER_GENERIC_ERROR : NO_ERROR;
 
 	  print_result (PRINT_MASTER_NAME, status, command_type);
 	}
       else
 	{
 	  status = ER_GENERIC_ERROR;
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			 PRINT_MASTER_NAME);
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-				PRINT_MASTER_NAME);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
 	}
       break;
     }
@@ -1079,8 +1006,7 @@ is_windows_service_running (unsigned int sleep_time)
 
   sleep (sleep_time);
 
-  make_exec_abspath (cmd, PATH_MAX,
-		     (char *) UTIL_WIN_SERVICE_CONTROLLER_NAME " " "-status");
+  make_exec_abspath (cmd, PATH_MAX, (char *) UTIL_WIN_SERVICE_CONTROLLER_NAME " " "-status");
 
   input = popen (cmd, "r");
   if (input == NULL)
@@ -1090,8 +1016,7 @@ is_windows_service_running (unsigned int sleep_time)
 
   memset (buf, '\0', sizeof (buf));
 
-  if ((fgets (buf, 32, input) == NULL)
-      || strncmp (buf, "SERVICE_RUNNING", 15) != 0)
+  if ((fgets (buf, 32, input) == NULL) || strncmp (buf, "SERVICE_RUNNING", 15) != 0)
     {
       pclose (input);
       return false;
@@ -1114,8 +1039,7 @@ is_windows_service_running (unsigned int sleep_time)
 static bool
 are_all_services_running (unsigned int sleep_time, bool check_win_service)
 {
-  return check_all_services_status (sleep_time, ALL_SERVICES_RUNNING,
-				    check_win_service);
+  return check_all_services_status (sleep_time, ALL_SERVICES_RUNNING, check_win_service);
 }
 
 /*
@@ -1130,8 +1054,7 @@ are_all_services_running (unsigned int sleep_time, bool check_win_service)
 static bool
 are_all_services_stopped (unsigned int sleep_time, bool check_win_service)
 {
-  return check_all_services_status (sleep_time, ALL_SERVICES_STOPPED,
-				    check_win_service);
+  return check_all_services_status (sleep_time, ALL_SERVICES_STOPPED, check_win_service);
 }
 
 
@@ -1146,9 +1069,7 @@ are_all_services_stopped (unsigned int sleep_time, bool check_win_service)
  * NOTE:
  */
 static bool
-check_all_services_status (unsigned int sleep_time,
-			   UTIL_ALL_SERVICES_STATUS expected_status,
-			   bool check_win_service)
+check_all_services_status (unsigned int sleep_time, UTIL_ALL_SERVICES_STATUS expected_status, bool check_win_service)
 {
   bool ret;
   int master_port;
@@ -1158,8 +1079,7 @@ check_all_services_status (unsigned int sleep_time,
 #if defined (WINDOWS)
       /* check whether CUBRIDService is running */
       ret = is_windows_service_running (sleep_time);
-      if ((expected_status == ALL_SERVICES_RUNNING && !ret)
-	  || (expected_status == ALL_SERVICES_STOPPED && ret))
+      if ((expected_status == ALL_SERVICES_RUNNING && !ret) || (expected_status == ALL_SERVICES_STOPPED && ret))
 	{
 	  return false;
 	}
@@ -1172,8 +1092,7 @@ check_all_services_status (unsigned int sleep_time,
   master_port = prm_get_master_port_id ();
   /* check whether cub_master is running */
   ret = css_does_master_exist (master_port);
-  if ((expected_status == ALL_SERVICES_RUNNING && !ret)
-      || (expected_status == ALL_SERVICES_STOPPED && ret))
+  if ((expected_status == ALL_SERVICES_RUNNING && !ret) || (expected_status == ALL_SERVICES_STOPPED && ret))
     {
       return false;
     }
@@ -1187,8 +1106,7 @@ check_all_services_status (unsigned int sleep_time,
 
       memset (buf, '\0', sizeof (buf));
 
-      strncpy (buf, us_Property_map[SERVER_START_LIST].property_value,
-	       sizeof (buf) - 1);
+      strncpy (buf, us_Property_map[SERVER_START_LIST].property_value, sizeof (buf) - 1);
 
       for (list = buf;; list = NULL)
 	{
@@ -1199,8 +1117,7 @@ check_all_services_status (unsigned int sleep_time,
 	    }
 	  /* check whether cub_server is running */
 	  ret = is_server_running (CHECK_SERVER, token, 0);
-	  if ((expected_status == ALL_SERVICES_RUNNING && !ret)
-	      || (expected_status == ALL_SERVICES_STOPPED && ret))
+	  if ((expected_status == ALL_SERVICES_RUNNING && !ret) || (expected_status == ALL_SERVICES_STOPPED && ret))
 	    {
 	      return false;
 	    }
@@ -1227,10 +1144,8 @@ check_all_services_status (unsigned int sleep_time,
       UTIL_MANAGER_SERVER_STATUS_E manager_status;
       manager_status = is_manager_running (0);
 
-      if ((expected_status == ALL_SERVICES_RUNNING
-	   && manager_status != MANAGER_SERVER_RUNNING)
-	  || (expected_status == ALL_SERVICES_STOPPED
-	      && manager_status != MANAGER_SERVER_STOPPED))
+      if ((expected_status == ALL_SERVICES_RUNNING && manager_status != MANAGER_SERVER_RUNNING)
+	  || (expected_status == ALL_SERVICES_STOPPED && manager_status != MANAGER_SERVER_STOPPED))
 	{
 	  return false;
 	}
@@ -1265,24 +1180,18 @@ process_service (int command_type, bool process_window_service)
 #if defined(WINDOWS)
 	  if (!are_all_services_running (0, process_window_service))
 	    {
-	      const char *args[] =
-		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVICE,
+	      const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVICE,
 		PRINT_CMD_START, NULL
 	      };
 
-	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, false, NULL);
-	      status =
-		are_all_services_running (0, process_window_service) ?
-		NO_ERROR : ER_GENERIC_ERROR;
+	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
+	      status = are_all_services_running (0, process_window_service) ? NO_ERROR : ER_GENERIC_ERROR;
 	      print_result (PRINT_SERVICE_NAME, status, command_type);
 	    }
 	  else
 	    {
-	      print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-			     PRINT_SERVICE_NAME);
-	      util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-				    PRINT_SERVICE_NAME);
+	      print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_SERVICE_NAME);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_SERVICE_NAME);
 	      status = ER_GENERIC_ERROR;
 	    }
 #endif
@@ -1293,40 +1202,31 @@ process_service (int command_type, bool process_window_service)
 	    {
 	      (void) process_master (command_type);
 
-	      if (strcmp (get_property (SERVICE_START_SERVER),
-			  PROPERTY_ON) == 0
+	      if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0
 		  && us_Property_map[SERVER_START_LIST].property_value != NULL
-		  && us_Property_map[SERVER_START_LIST].property_value[0] !=
-		  '\0')
+		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
 		{
-		  (void) process_server (command_type, 0, NULL, false, true,
-					 false);
+		  (void) process_server (command_type, 0, NULL, false, true, false);
 		}
-	      if (strcmp (get_property (SERVICE_START_BROKER),
-			  PROPERTY_ON) == 0)
+	      if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
 		{
 		  (void) process_broker (command_type, 0, NULL, false);
 		}
-	      if (strcmp (get_property (SERVICE_START_MANAGER),
-			  PROPERTY_ON) == 0)
+	      if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
 		{
 		  (void) process_manager (command_type, false);
 		}
-	      if (strcmp (get_property (SERVICE_START_HEARTBEAT),
-			  PROPERTY_ON) == 0)
+	      if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) == 0)
 		{
 		  (void) process_heartbeat (command_type, 0, NULL);
 		}
 
-	      status = are_all_services_running (0, process_window_service) ?
-		NO_ERROR : ER_GENERIC_ERROR;
+	      status = are_all_services_running (0, process_window_service) ? NO_ERROR : ER_GENERIC_ERROR;
 	    }
 	  else
 	    {
-	      print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-			     PRINT_SERVICE_NAME);
-	      util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-				    PRINT_SERVICE_NAME);
+	      print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_SERVICE_NAME);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_SERVICE_NAME);
 	      status = ER_GENERIC_ERROR;
 	    }
 	}
@@ -1337,24 +1237,19 @@ process_service (int command_type, bool process_window_service)
 #if defined(WINDOWS)
 	  if (is_windows_service_running (0))
 	    {
-	      const char *args[] =
-		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVICE,
+	      const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVICE,
 		PRINT_CMD_STOP, NULL
 	      };
 
-	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, false, NULL);
-	      status = are_all_services_stopped (0, process_window_service) ?
-		NO_ERROR : ER_GENERIC_ERROR;
+	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
+	      status = are_all_services_stopped (0, process_window_service) ? NO_ERROR : ER_GENERIC_ERROR;
 
 	      print_result (PRINT_SERVICE_NAME, status, command_type);
 	    }
 	  else
 	    {
-	      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			     PRINT_SERVICE_NAME);
-	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-				    PRINT_SERVICE_NAME);
+	      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_SERVICE_NAME);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_SERVICE_NAME);
 	      status = ER_GENERIC_ERROR;
 	    }
 #endif
@@ -1363,22 +1258,17 @@ process_service (int command_type, bool process_window_service)
 	{
 	  if (!are_all_services_stopped (0, process_window_service))
 	    {
-	      if (strcmp (get_property (SERVICE_START_SERVER),
-			  PROPERTY_ON) == 0
+	      if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0
 		  && us_Property_map[SERVER_START_LIST].property_value != NULL
-		  && us_Property_map[SERVER_START_LIST].property_value[0] !=
-		  '\0')
+		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
 		{
-		  (void) process_server (command_type, 0, NULL, false, true,
-					 false);
+		  (void) process_server (command_type, 0, NULL, false, true, false);
 		}
-	      if (strcmp (get_property (SERVICE_START_BROKER),
-			  PROPERTY_ON) == 0)
+	      if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
 		{
 		  (void) process_broker (command_type, 0, NULL, false);
 		}
-	      if (strcmp (get_property (SERVICE_START_MANAGER),
-			  PROPERTY_ON) == 0)
+	      if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
 		{
 		  (void) process_manager (command_type, false);
 		}
@@ -1390,15 +1280,12 @@ process_service (int command_type, bool process_window_service)
 
 	      (void) process_master (command_type);
 
-	      status = are_all_services_stopped (0, process_window_service) ?
-		NO_ERROR : ER_GENERIC_ERROR;
+	      status = are_all_services_stopped (0, process_window_service) ? NO_ERROR : ER_GENERIC_ERROR;
 	    }
 	  else
 	    {
-	      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			     PRINT_SERVICE_NAME);
-	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-				    PRINT_SERVICE_NAME);
+	      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_SERVICE_NAME);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_SERVICE_NAME);
 	      status = ER_GENERIC_ERROR;
 	    }
 	}
@@ -1408,17 +1295,14 @@ process_service (int command_type, bool process_window_service)
       status = process_service (START, process_window_service);
       break;
     case STATUS:
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		     PRINT_MASTER_NAME, PRINT_CMD_STATUS);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_MASTER_NAME, PRINT_CMD_STATUS);
       if (css_does_master_exist (prm_get_master_port_id ()))
 	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-			 PRINT_MASTER_NAME);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_MASTER_NAME);
 	}
       else
 	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			 PRINT_MASTER_NAME);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
 	}
 
       {
@@ -1455,8 +1339,7 @@ check_server (const char *type, const char *server_name)
   char buf[4096], *token, *save_ptr, *delim = (char *) " ";
   char cmd[PATH_MAX];
 
-  make_exec_abspath (cmd, PATH_MAX,
-		     (char *) UTIL_COMMDB_NAME " " COMMDB_ALL_STATUS);
+  make_exec_abspath (cmd, PATH_MAX, (char *) UTIL_COMMDB_NAME " " COMMDB_ALL_STATUS);
   input = popen (cmd, "r");
   if (input == NULL)
     {
@@ -1473,8 +1356,7 @@ check_server (const char *type, const char *server_name)
 
       if (strcmp (type, CHECK_SERVER) == 0)
 	{
-	  if (strcmp (token, CHECK_SERVER) != 0
-	      && strcmp (token, CHECK_HA_SERVER) != 0)
+	  if (strcmp (token, CHECK_SERVER) != 0 && strcmp (token, CHECK_HA_SERVER) != 0)
 	    {
 	      continue;
 	    }
@@ -1531,12 +1413,8 @@ is_server_running (const char *type, const char *server_name, int pid)
 	  sleep (1);
 
 	  /* A child process is defunct because the SIGCHLD signal ignores. */
-	  /*
-	     if (waitpid (pid, &status, WNOHANG) == -1)
-	     {
-	     perror ("waitpid");
-	     }
-	   */
+	  /* 
+	   * if (waitpid (pid, &status, WNOHANG) == -1) { perror ("waitpid"); } */
 	}
       else
 	{
@@ -1558,8 +1436,7 @@ is_server_running (const char *type, const char *server_name, int pid)
  * NOTE:
  */
 static int
-process_server (int command_type, int argc, char **argv,
-		bool show_usage, bool check_ha_mode,
+process_server (int command_type, int argc, char **argv, bool show_usage, bool check_ha_mode,
 		bool process_window_service)
 {
   char buf[4096];
@@ -1575,8 +1452,7 @@ process_server (int command_type, int argc, char **argv,
     {
       if (us_Property_map[SERVER_START_LIST].property_value != NULL)
 	{
-	  strncpy (buf, us_Property_map[SERVER_START_LIST].property_value,
-		   sizeof (buf) - 1);
+	  strncpy (buf, us_Property_map[SERVER_START_LIST].property_value, sizeof (buf) - 1);
 	}
     }
   else
@@ -1600,8 +1476,7 @@ process_server (int command_type, int argc, char **argv,
       if (process_window_service)
 	{
 #if defined(WINDOWS)
-	  const char *args[] =
-	    { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVER,
+	  const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVER,
 	    COMMAND_TYPE_START, NULL, NULL
 	  };
 
@@ -1637,22 +1512,15 @@ process_server (int command_type, int argc, char **argv,
 	      if (is_server_running (CHECK_SERVER, token, 0))
 		{
 		  status = ER_GENERIC_ERROR;
-		  print_message (stdout,
-				 MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
-				 PRINT_SERVER_NAME, token);
-		  util_log_write_errid
-		    (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
-		     PRINT_SERVER_NAME, token);
+		  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_SERVER_NAME, token);
+		  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_SERVER_NAME, token);
 		  continue;
 		}
 	      else
 		{
-		  status =
-		    proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
-				  true, false, false, NULL);
+		  status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
 
-		  if (status == NO_ERROR
-		      && !is_server_running (CHECK_SERVER, token, 0))
+		  if (status == NO_ERROR && !is_server_running (CHECK_SERVER, token, 0))
 		    {
 		      status = ER_GENERIC_ERROR;
 		    }
@@ -1679,8 +1547,7 @@ process_server (int command_type, int argc, char **argv,
 		{
 		  break;
 		}
-	      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S,
-			     PRINT_SERVER_NAME, PRINT_CMD_START, token);
+	      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_START, token);
 
 #if !defined(WINDOWS)
 	      if (check_ha_mode == true)
@@ -1688,8 +1555,7 @@ process_server (int command_type, int argc, char **argv,
 		  status = sysprm_load_and_init (token, NULL);
 		  if (status != NO_ERROR)
 		    {
-		      util_log_write_errid
-			(MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+		      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
 		      print_result (PRINT_SERVER_NAME, status, command_type);
 		      break;
 		    }
@@ -1708,23 +1574,17 @@ process_server (int command_type, int argc, char **argv,
 	      if (is_server_running (CHECK_SERVER, token, 0))
 		{
 		  status = ER_GENERIC_ERROR;
-		  print_message (stdout,
-				 MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
-				 PRINT_SERVER_NAME, token);
-		  util_log_write_errid
-		    (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
-		     PRINT_SERVER_NAME, token);
+		  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_SERVER_NAME, token);
+		  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_SERVER_NAME, token);
 		  continue;
 		}
 	      else
 		{
 		  int pid;
 		  const char *args[] = { UTIL_CUBRID_NAME, token, NULL };
-		  status = proc_execute (UTIL_CUBRID_NAME, args, false, false,
-					 false, &pid);
+		  status = proc_execute (UTIL_CUBRID_NAME, args, false, false, false, &pid);
 
-		  if (status == NO_ERROR
-		      && !is_server_running (CHECK_SERVER, token, pid))
+		  if (status == NO_ERROR && !is_server_running (CHECK_SERVER, token, pid))
 		    {
 		      status = ER_GENERIC_ERROR;
 		    }
@@ -1741,37 +1601,31 @@ process_server (int command_type, int argc, char **argv,
 	    {
 	      break;
 	    }
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S,
-			 PRINT_SERVER_NAME, PRINT_CMD_STOP, token);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_SERVER_NAME, PRINT_CMD_STOP, token);
 
 	  if (is_server_running (CHECK_SERVER, token, 0))
 	    {
 	      if (process_window_service)
 		{
 #if defined(WINDOWS)
-		  const char *args[] =
-		    { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVER,
+		  const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVER,
 		    COMMAND_TYPE_STOP, NULL, NULL
 		  };
 
 		  args[3] = token;
-		  status =
-		    proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
-				  true, false, false, NULL);
+		  status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
 #endif
 		}
 	      else
 		{
-		  const char *args[] =
-		    { UTIL_COMMDB_NAME, COMMDB_SERVER_STOP, token, NULL };
+		  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_SERVER_STOP, token, NULL };
 #if !defined(WINDOWS)
 		  if (check_ha_mode)
 		    {
 		      status = sysprm_load_and_init (token, NULL);
 		      if (status != NO_ERROR)
 			{
-			  print_result (PRINT_SERVER_NAME, status,
-					command_type);
+			  print_result (PRINT_SERVER_NAME, status, command_type);
 			  break;
 			}
 
@@ -1780,49 +1634,37 @@ process_server (int command_type, int argc, char **argv,
 			  status = ER_GENERIC_ERROR;
 			  print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE);
 			  util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE);
-			  print_result (PRINT_SERVER_NAME, status,
-					command_type);
+			  print_result (PRINT_SERVER_NAME, status, command_type);
 			  break;
 			}
 		    }
 #endif /* !WINDOWS */
-		  status = proc_execute (UTIL_COMMDB_NAME, args, true, false,
-					 false, NULL);
+		  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 		}
 	      print_result (PRINT_SERVER_NAME, status, command_type);
 	    }
 	  else
 	    {
 	      status = ER_GENERIC_ERROR;
-	      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S,
-			     PRINT_SERVER_NAME, token);
-	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S,
-				    PRINT_SERVER_NAME, token);
+	      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, token);
+	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, token);
 	    }
 	}
       break;
     case RESTART:
-      status =
-	process_server (STOP, argc, argv, show_usage, check_ha_mode,
-			process_window_service);
-      status =
-	process_server (START, argc, argv, show_usage, check_ha_mode,
-			process_window_service);
+      status = process_server (STOP, argc, argv, show_usage, check_ha_mode, process_window_service);
+      status = process_server (START, argc, argv, show_usage, check_ha_mode, process_window_service);
       break;
     case STATUS:
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		     PRINT_SERVER_NAME, PRINT_CMD_STATUS);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_SERVER_NAME, PRINT_CMD_STATUS);
       if (css_does_master_exist (master_port))
 	{
-	  const char *args[] =
-	    { UTIL_COMMDB_NAME, COMMDB_SERVER_STATUS, NULL };
-	  status =
-	    proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_SERVER_STATUS, NULL };
+	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
 	}
       else
 	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			 PRINT_MASTER_NAME);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
 	}
       break;
     case ACCESS_CONTROL:
@@ -1841,22 +1683,18 @@ process_server (int command_type, int argc, char **argv,
 
 	if (strcasecmp (argv[0], "reload") == 0)
 	  {
-	    const char *args[] =
-	      { UTIL_ADMIN_NAME, UTIL_OPTION_ACLDB, ACLDB_RELOAD, argv[1],
+	    const char *args[] = { UTIL_ADMIN_NAME, UTIL_OPTION_ACLDB, ACLDB_RELOAD, argv[1],
 	      NULL
 	    };
 
-	    status =
-	      proc_execute (UTIL_ADMIN_NAME, args, true, false, false, NULL);
+	    status = proc_execute (UTIL_ADMIN_NAME, args, true, false, false, NULL);
 	    print_result (PRINT_SERVER_NAME, status, command_type);
 	  }
 	else if (strcasecmp (argv[0], "status") == 0)
 	  {
-	    const char *args[] =
-	      { UTIL_ADMIN_NAME, UTIL_OPTION_ACLDB, argv[1], NULL };
+	    const char *args[] = { UTIL_ADMIN_NAME, UTIL_OPTION_ACLDB, argv[1], NULL };
 
-	    status =
-	      proc_execute (UTIL_ADMIN_NAME, args, true, false, false, NULL);
+	    status = proc_execute (UTIL_ADMIN_NAME, args, true, false, false, NULL);
 	  }
 	else
 	  {
@@ -1890,8 +1728,7 @@ static int
 is_broker_running (void)
 {
   const char *args[] = { UTIL_MONITOR_NAME, 0 };
-  int status =
-    proc_execute (UTIL_MONITOR_NAME, args, true, true, false, NULL);
+  int status = proc_execute (UTIL_MONITOR_NAME, args, true, true, false, NULL);
   return status;
 }
 
@@ -1905,49 +1742,38 @@ is_broker_running (void)
  *
  */
 static int
-process_broker (int command_type, int argc, const char **argv,
-		bool process_window_service)
+process_broker (int command_type, int argc, const char **argv, bool process_window_service)
 {
   int status = NO_ERROR;
 
   switch (command_type)
     {
     case START:
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		     PRINT_BROKER_NAME, PRINT_CMD_START);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_BROKER_NAME, PRINT_CMD_START);
       switch (is_broker_running ())
 	{
 	case 0:		/* no error */
 	  status = ER_GENERIC_ERROR;
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-			 PRINT_BROKER_NAME);
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-				PRINT_BROKER_NAME);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_BROKER_NAME);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_BROKER_NAME);
 	  break;
 	case 1:		/* shm_open error */
 	  if (process_window_service)
 	    {
 #if defined(WINDOWS)
-	      const char *args[] =
-		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	      const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
 		COMMAND_TYPE_START, NULL
 	      };
 
-	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
-				     true, false, false, NULL);
-	      status =
-		(is_broker_running () == 0) ? NO_ERROR : ER_GENERIC_ERROR;
+	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
+	      status = (is_broker_running () == 0) ? NO_ERROR : ER_GENERIC_ERROR;
 #endif
 	    }
 	  else
 	    {
-	      const char *args[] =
-		{ UTIL_BROKER_NAME, COMMAND_TYPE_START, NULL };
-	      status =
-		proc_execute (UTIL_BROKER_NAME, args, true, false, false,
-			      NULL);
-	      status =
-		(is_broker_running () == 0) ? NO_ERROR : ER_GENERIC_ERROR;
+	      const char *args[] = { UTIL_BROKER_NAME, COMMAND_TYPE_START, NULL };
+	      status = proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
+	      status = (is_broker_running () == 0) ? NO_ERROR : ER_GENERIC_ERROR;
 	    }
 	  print_result (PRINT_BROKER_NAME, status, command_type);
 
@@ -1960,44 +1786,33 @@ process_broker (int command_type, int argc, const char **argv,
 	}
       break;
     case STOP:
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		     PRINT_BROKER_NAME, PRINT_CMD_STOP);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_BROKER_NAME, PRINT_CMD_STOP);
       switch (is_broker_running ())
 	{
 	case 0:		/* no error */
 	  if (process_window_service)
 	    {
 #if defined(WINDOWS)
-	      const char *args[] =
-		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	      const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
 		COMMAND_TYPE_STOP, NULL
 	      };
 
-	      status =
-		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			      false, false, NULL);
-	      status =
-		(is_broker_running () == 0) ? ER_GENERIC_ERROR : NO_ERROR;
+	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
+	      status = (is_broker_running () == 0) ? ER_GENERIC_ERROR : NO_ERROR;
 #endif
 	    }
 	  else
 	    {
-	      const char *args[] =
-		{ UTIL_BROKER_NAME, COMMAND_TYPE_STOP, NULL };
-	      status =
-		proc_execute (UTIL_BROKER_NAME, args, true, false, false,
-			      NULL);
-	      status =
-		(is_broker_running () == 0) ? ER_GENERIC_ERROR : NO_ERROR;
+	      const char *args[] = { UTIL_BROKER_NAME, COMMAND_TYPE_STOP, NULL };
+	      status = proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
+	      status = (is_broker_running () == 0) ? ER_GENERIC_ERROR : NO_ERROR;
 	    }
 	  print_result (PRINT_BROKER_NAME, status, command_type);
 	  break;
 	case 1:		/* shm_open error */
 	  status = ER_GENERIC_ERROR;
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			 PRINT_BROKER_NAME);
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-				PRINT_BROKER_NAME);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_BROKER_NAME);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_BROKER_NAME);
 	  break;
 	case 2:		/* no conf file or parameter error */
 	default:		/* other error */
@@ -2018,8 +1833,7 @@ process_broker (int command_type, int argc, const char **argv,
 	int i;
 	const char **args;
 
-	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		       PRINT_BROKER_NAME, PRINT_CMD_STATUS);
+	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_BROKER_NAME, PRINT_CMD_STATUS);
 	switch (is_broker_running ())
 	  {
 	  case 0:		/* no error */
@@ -2037,16 +1851,13 @@ process_broker (int command_type, int argc, const char **argv,
 		args[i + 1] = argv[i];
 	      }
 	    args[argc + 1] = NULL;
-	    status =
-	      proc_execute (UTIL_MONITOR_NAME, args, true, false, false,
-			    NULL);
+	    status = proc_execute (UTIL_MONITOR_NAME, args, true, false, false, NULL);
 
 	    free (args);
 	    break;
 
 	  case 1:		/* shm_open error */
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			   PRINT_BROKER_NAME);
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_BROKER_NAME);
 	    break;
 
 	  case 2:		/* no conf file */
@@ -2062,20 +1873,16 @@ process_broker (int command_type, int argc, const char **argv,
 	if (process_window_service)
 	  {
 #if defined(WINDOWS)
-	    const char *args[] =
-	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	    const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
 	      COMMAND_TYPE_ON, argv[0], NULL
 	    };
 
-	    status =
-	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, false, NULL);
+	    status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
 #endif
 	  }
 	else
 	  {
-	    const char *args[] =
-	      { UTIL_BROKER_NAME, COMMAND_TYPE_ON, argv[0], NULL };
+	    const char *args[] = { UTIL_BROKER_NAME, COMMAND_TYPE_ON, argv[0], NULL };
 	    if (argc <= 0)
 	      {
 		status = ER_GENERIC_ERROR;
@@ -2083,8 +1890,7 @@ process_broker (int command_type, int argc, const char **argv,
 		util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 		break;
 	      }
-	    status =
-	      proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
+	    status = proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 	  }
       }
       break;
@@ -2093,20 +1899,16 @@ process_broker (int command_type, int argc, const char **argv,
 	if (process_window_service)
 	  {
 #if defined(WINDOWS)
-	    const char *args[] =
-	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	    const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
 	      COMMAND_TYPE_OFF, argv[0], NULL
 	    };
 
-	    status =
-	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, false, NULL);
+	    status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
 #endif
 	  }
 	else
 	  {
-	    const char *args[] =
-	      { UTIL_BROKER_NAME, COMMAND_TYPE_OFF, argv[0], NULL };
+	    const char *args[] = { UTIL_BROKER_NAME, COMMAND_TYPE_OFF, argv[0], NULL };
 	    if (argc <= 0)
 	      {
 		status = ER_GENERIC_ERROR;
@@ -2114,8 +1916,7 @@ process_broker (int command_type, int argc, const char **argv,
 		util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 		break;
 	      }
-	    status =
-	      proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
+	    status = proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 	  }
       }
       break;
@@ -2143,8 +1944,7 @@ process_broker (int command_type, int argc, const char **argv,
 	    util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_CMD);
 	    break;
 	  }
-	status =
-	  proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
+	status = proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 	print_result (PRINT_BROKER_NAME, status, command_type);
 	break;
       }
@@ -2153,20 +1953,16 @@ process_broker (int command_type, int argc, const char **argv,
 	if (process_window_service)
 	  {
 #if defined(WINDOWS)
-	    const char *args[] =
-	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	    const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
 	      COMMAND_TYPE_RESET, argv[0], NULL
 	    };
 
-	    status =
-	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
-			    false, false, NULL);
+	    status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
 #endif
 	  }
 	else
 	  {
-	    const char *args[] =
-	      { UTIL_BROKER_NAME, COMMAND_TYPE_RESET, argv[0], NULL };
+	    const char *args[] = { UTIL_BROKER_NAME, COMMAND_TYPE_RESET, argv[0], NULL };
 	    if (argc <= 0)
 	      {
 		status = ER_GENERIC_ERROR;
@@ -2174,8 +1970,7 @@ process_broker (int command_type, int argc, const char **argv,
 		util_log_write_errid (MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
 		break;
 	      }
-	    status =
-	      proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
+	    status = proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 	  }
       }
       break;
@@ -2184,8 +1979,7 @@ process_broker (int command_type, int argc, const char **argv,
       {
 	const char *args[] = { UTIL_BROKER_NAME, COMMAND_TYPE_INFO, NULL };
 
-	status =
-	  proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
+	status = proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
       }
       break;
 
@@ -2193,15 +1987,12 @@ process_broker (int command_type, int argc, const char **argv,
       {
 	int i;
 	const char **args;
-	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		       PRINT_BROKER_NAME, PRINT_CMD_GETID);
+	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_BROKER_NAME, PRINT_CMD_GETID);
 
 	if (is_broker_running ())
 	  {
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			   PRINT_BROKER_NAME);
-	    util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-				  PRINT_BROKER_NAME);
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_BROKER_NAME);
+	    util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_BROKER_NAME);
 	    status = ER_GENERIC_ERROR;
 	    break;
 	  }
@@ -2223,8 +2014,7 @@ process_broker (int command_type, int argc, const char **argv,
 	  }
 	args[argc + 2] = NULL;
 
-	status =
-	  proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
+	status = proc_execute (UTIL_BROKER_NAME, args, true, false, false, NULL);
 
 	free (args);
       }
@@ -2235,8 +2025,7 @@ process_broker (int command_type, int argc, const char **argv,
 	int i;
 	const char **args;
 
-	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		       PRINT_BROKER_NAME, PRINT_CMD_TEST);
+	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_BROKER_NAME, PRINT_CMD_TEST);
 	switch (is_broker_running ())
 	  {
 	  case 0:		/* no error */
@@ -2254,15 +2043,13 @@ process_broker (int command_type, int argc, const char **argv,
 		args[i + 1] = argv[i];
 	      }
 	    args[argc + 1] = NULL;
-	    status =
-	      proc_execute (UTIL_TESTER_NAME, args, true, false, false, NULL);
+	    status = proc_execute (UTIL_TESTER_NAME, args, true, false, false, NULL);
 
 	    free (args);
 	    break;
 
 	  case 1:		/* shm_open error */
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			   PRINT_BROKER_NAME);
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_BROKER_NAME);
 	    break;
 
 	  case 2:		/* no conf file */
@@ -2344,11 +2131,9 @@ process_manager (int command_type, bool process_window_service)
 
   cub_manager_path[0] = '\0';
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 PRINT_MANAGER_NAME, command_string (command_type));
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_MANAGER_NAME, command_string (command_type));
 
-  (void) envvar_bindir_file (cub_manager_path, PATH_MAX,
-			     UTIL_CUB_MANAGER_NAME);
+  (void) envvar_bindir_file (cub_manager_path, PATH_MAX, UTIL_CUB_MANAGER_NAME);
   if (stat (cub_manager_path, &stbuf) == -1)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED);
@@ -2372,35 +2157,26 @@ process_manager (int command_type, bool process_window_service)
 	  if (process_window_service)
 	    {
 #if defined(WINDOWS)
-	      const char *args[] =
-		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_MANAGER,
+	      const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_MANAGER,
 		COMMAND_TYPE_START, NULL
 	      };
 
-	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
-				     true, false, false, NULL);
+	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
 #endif
 	    }
 	  else
 	    {
-	      const char *args[] =
-		{ UTIL_CUB_MANAGER_NAME, COMMAND_TYPE_START, NULL };
-	      cub_manager =
-		proc_execute (UTIL_CUB_MANAGER_NAME, args, false, false,
-			      false, NULL);
+	      const char *args[] = { UTIL_CUB_MANAGER_NAME, COMMAND_TYPE_START, NULL };
+	      cub_manager = proc_execute (UTIL_CUB_MANAGER_NAME, args, false, false, false, NULL);
 	    }
 
-	  status =
-	    (is_manager_running (1) ==
-	     MANAGER_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
+	  status = (is_manager_running (1) == MANAGER_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
 	  print_result (PRINT_MANAGER_NAME, status, command_type);
 	}
       else
 	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-			 PRINT_MANAGER_NAME);
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-				PRINT_MANAGER_NAME);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_MANAGER_NAME);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_MANAGER_NAME);
 	  status = ER_GENERIC_ERROR;
 	}
       break;
@@ -2410,34 +2186,25 @@ process_manager (int command_type, bool process_window_service)
 	  if (process_window_service)
 	    {
 #if defined(WINDOWS)
-	      const char *args[] =
-		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_MANAGER,
+	      const char *args[] = { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_MANAGER,
 		COMMAND_TYPE_STOP, NULL
 	      };
 
-	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
-				     true, false, false, NULL);
+	      status = proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true, false, false, NULL);
 #endif
 	    }
 	  else
 	    {
-	      const char *args[] =
-		{ UTIL_CUB_MANAGER_NAME, COMMAND_TYPE_STOP, NULL };
-	      status =
-		proc_execute (UTIL_CUB_MANAGER_NAME, args, true, false, false,
-			      NULL);
+	      const char *args[] = { UTIL_CUB_MANAGER_NAME, COMMAND_TYPE_STOP, NULL };
+	      status = proc_execute (UTIL_CUB_MANAGER_NAME, args, true, false, false, NULL);
 	    }
-	  status =
-	    (is_manager_running (1) ==
-	     MANAGER_SERVER_STOPPED) ? NO_ERROR : ER_GENERIC_ERROR;
+	  status = (is_manager_running (1) == MANAGER_SERVER_STOPPED) ? NO_ERROR : ER_GENERIC_ERROR;
 	  print_result (PRINT_MANAGER_NAME, status, command_type);
 	}
       else
 	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			 PRINT_MANAGER_NAME);
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-				PRINT_MANAGER_NAME);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MANAGER_NAME);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MANAGER_NAME);
 	  status = ER_GENERIC_ERROR;
 	}
       break;
@@ -2446,13 +2213,11 @@ process_manager (int command_type, bool process_window_service)
 	switch (manager_status)
 	  {
 	  case MANAGER_SERVER_RUNNING:
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-			   PRINT_MANAGER_NAME);
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S, PRINT_MANAGER_NAME);
 	    break;
 	  case MANAGER_SERVER_STOPPED:
 	  default:
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			   PRINT_MANAGER_NAME);
+	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MANAGER_NAME);
 	    break;
 	  }
       }
@@ -2472,8 +2237,7 @@ ha_make_log_path (char *path, int size, char *base, char *db, char *node)
 }
 
 static bool
-ha_concat_db_and_host (char *db_host, int size, const char *db,
-		       const char *host)
+ha_concat_db_and_host (char *db_host, int size, const char *db, const char *host)
 {
   return snprintf (db_host, size, "%s@%s", db, host) >= 0;
 }
@@ -2547,8 +2311,7 @@ ha_is_registered (const char *args, const char *hostname)
       commdb_argv[5] = NULL;
     }
 
-  status =
-    proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false, false, NULL);
+  status = proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false, false, NULL);
   if (status == NO_ERROR)
     {
       return true;
@@ -2564,32 +2327,32 @@ ha_argv_to_args (char *args, int size, const char **argv, HB_PROC_TYPE type)
 
   if (type == HB_PTYPE_COPYLOGDB)
     {
-      (void) snprintf (args, size, "%s %s %s %s %s %s %s ",	/* copylogdb    */
-		       argv[0],	/* UTIL_ADMIN_NAME : cub_admin  */
-		       argv[1],	/* UTIL_COPYLOGDB  : copylogdb  */
-		       argv[2],	/* -L, --log-path=PATH          */
-		       argv[3],	/* PATH                         */
-		       argv[4],	/* -m, --mode=MODE              */
-		       argv[5],	/* MODE                         */
-		       argv[6]);	/* database-name                */
+      (void) snprintf (args, size, "%s %s %s %s %s %s %s ",	/* copylogdb */
+		       argv[0],	/* UTIL_ADMIN_NAME : cub_admin */
+		       argv[1],	/* UTIL_COPYLOGDB : copylogdb */
+		       argv[2],	/* -L, --log-path=PATH */
+		       argv[3],	/* PATH */
+		       argv[4],	/* -m, --mode=MODE */
+		       argv[5],	/* MODE */
+		       argv[6]);	/* database-name */
     }
   else if (type == HB_PTYPE_APPLYLOGDB)
     {
-      (void) snprintf (args, size, "%s %s %s %s %s %s ",	/* applylogdb   */
-		       argv[0],	/* UTIL_ADMIN_NAME : cub_admin  */
+      (void) snprintf (args, size, "%s %s %s %s %s %s ",	/* applylogdb */
+		       argv[0],	/* UTIL_ADMIN_NAME : cub_admin */
 		       argv[1],	/* UTIL_APPLYLOGDB : applylogdb */
-		       argv[2],	/* -L, --log-path=PATH          */
-		       argv[3],	/* PATH                         */
-		       argv[4],	/* --max-mem-size=SIZE          */
-		       argv[5]);	/* database-name                */
+		       argv[2],	/* -L, --log-path=PATH */
+		       argv[3],	/* PATH */
+		       argv[4],	/* --max-mem-size=SIZE */
+		       argv[5]);	/* database-name */
     }
   else if (type == HB_PTYPE_PREFETCHLOGDB)
     {
-      (void) snprintf (args, size, "%s %s %s %s %s ",	/* prefetchlogdb        */
-		       argv[0],	/* UTIL_ADMIN_NAME : cub_admin  */
-		       argv[1],	/* UTIL_PREFETCHLOGDB   : prefetchlogdb */
-		       argv[2],	/* -L, --log-path=PATH          */
-		       argv[3],	/* PATH                         */
+      (void) snprintf (args, size, "%s %s %s %s %s ",	/* prefetchlogdb */
+		       argv[0],	/* UTIL_ADMIN_NAME : cub_admin */
+		       argv[1],	/* UTIL_PREFETCHLOGDB : prefetchlogdb */
+		       argv[2],	/* -L, --log-path=PATH */
+		       argv[3],	/* PATH */
 		       argv[4]);	/* database-name */
     }
   else
@@ -2603,8 +2366,7 @@ ha_argv_to_args (char *args, int size, const char **argv, HB_PROC_TYPE type)
 
 #if !defined(WINDOWS)
 static int
-us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
-		       const char *db_name, const char *node_name,
+us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 		       const char *remote_host)
 {
   int status = NO_ERROR;
@@ -2620,8 +2382,7 @@ us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
   dbs = ha_conf->db_names;
   nc = ha_conf->node_conf;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 UTIL_COPYLOGDB, PRINT_CMD_START);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, UTIL_COPYLOGDB, PRINT_CMD_START);
 
   for (i = 0; dbs[i] != NULL; i++)
     {
@@ -2655,11 +2416,8 @@ us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
 	  num_node_found++;
 
 	  db_host[0] = log_path[0] = '\0';
-	  (void) ha_concat_db_and_host (db_host, PATH_MAX,
-					dbs[i], nc[j].node_name);
-	  (void) ha_make_log_path (log_path, PATH_MAX,
-				   nc[j].copy_log_base, dbs[i],
-				   nc[j].node_name);
+	  (void) ha_concat_db_and_host (db_host, PATH_MAX, dbs[i], nc[j].node_name);
+	  (void) ha_make_log_path (log_path, PATH_MAX, nc[j].copy_log_base, dbs[i], nc[j].node_name);
 	  if (db_host[0] != '\0' && log_path[0] != '\0')
 	    {
 	      char lw_args[HB_MAX_SZ_PROC_ARGS];
@@ -2670,8 +2428,7 @@ us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
 		NULL
 	      };
 
-	      status = ha_argv_to_args (lw_args, sizeof (lw_args), lw_argv,
-					HB_PTYPE_COPYLOGDB);
+	      status = ha_argv_to_args (lw_args, sizeof (lw_args), lw_argv, HB_PTYPE_COPYLOGDB);
 	      if (status != NO_ERROR)
 		{
 		  goto ret;
@@ -2686,9 +2443,7 @@ us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
 
 		  if (ha_mkdir (log_path, 0755))
 		    {
-		      status =
-			proc_execute (UTIL_ADMIN_NAME, lw_argv, false, false,
-				      false, &pid);
+		      status = proc_execute (UTIL_ADMIN_NAME, lw_argv, false, false, false, &pid);
 
 		      if (status != NO_ERROR)
 			{
@@ -2715,9 +2470,7 @@ us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
 		    COMMDB_HOST, remote_host,
 		    NULL,
 		  };
-		  status =
-		    proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false,
-				  false, &pid);
+		  status = proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false, false, &pid);
 		  if (status != NO_ERROR)
 		    {
 		      goto ret;
@@ -2754,8 +2507,7 @@ ret:
 }
 
 static int
-us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name,
-		      const char *node_name, const char *remote_host)
+us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name, const char *remote_host)
 {
   int status = NO_ERROR;
   int pid;
@@ -2771,8 +2523,7 @@ us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name,
   dbs = ha_conf->db_names;
   nc = ha_conf->node_conf;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 UTIL_COPYLOGDB, PRINT_CMD_STOP);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, UTIL_COPYLOGDB, PRINT_CMD_STOP);
 
   for (i = 0; dbs[i] != NULL; i++)
     {
@@ -2806,11 +2557,8 @@ us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name,
 	  num_node_found++;
 
 	  db_host[0] = log_path[0] = '\0';
-	  (void) ha_concat_db_and_host (db_host, PATH_MAX,
-					dbs[i], nc[j].node_name);
-	  (void) ha_make_log_path (log_path, PATH_MAX,
-				   nc[j].copy_log_base, dbs[i],
-				   nc[j].node_name);
+	  (void) ha_concat_db_and_host (db_host, PATH_MAX, dbs[i], nc[j].node_name);
+	  (void) ha_make_log_path (log_path, PATH_MAX, nc[j].copy_log_base, dbs[i], nc[j].node_name);
 	  if (db_host[0] != '\0' && log_path[0] != '\0')
 	    {
 	      char lw_args[HB_MAX_SZ_PROC_ARGS];
@@ -2820,19 +2568,17 @@ us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name,
 		"-m", nc[j].copy_sync_mode, db_host, NULL
 	      };
 
-	      status = ha_argv_to_args (lw_args, sizeof (lw_args), lw_argv,
-					HB_PTYPE_COPYLOGDB);
+	      status = ha_argv_to_args (lw_args, sizeof (lw_args), lw_argv, HB_PTYPE_COPYLOGDB);
 	      if (status != NO_ERROR)
 		{
 		  goto ret;
 		}
 
-	      if (remote_host != NULL
-		  || ha_is_registered (lw_args, remote_host))
+	      if (remote_host != NULL || ha_is_registered (lw_args, remote_host))
 		{
 		  const char *commdb_argv[HB_MAX_SZ_PROC_ARGS] = {
 		    UTIL_COMMDB_NAME, COMMDB_HA_DEREG_BY_ARGS, lw_args,
-		    NULL, NULL,	/* -h hostname  */
+		    NULL, NULL,	/* -h hostname */
 		    NULL
 		  };
 
@@ -2843,9 +2589,7 @@ us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name,
 		      commdb_argv[5] = NULL;
 		    }
 
-		  status =
-		    proc_execute (UTIL_COMMDB_NAME, commdb_argv, true,
-				  false, false, NULL);
+		  status = proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false, false, NULL);
 		  if (remote_host != NULL && status != NO_ERROR)
 		    {
 		      goto ret;
@@ -2895,8 +2639,7 @@ ret:
 }
 
 static int
-us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
-			const char *db_name, const char *node_name,
+us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 			const char *remote_host)
 {
   int status = NO_ERROR;
@@ -2912,8 +2655,7 @@ us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
   dbs = ha_conf->db_names;
   nc = ha_conf->node_conf;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 UTIL_APPLYLOGDB, PRINT_CMD_START);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, UTIL_APPLYLOGDB, PRINT_CMD_START);
 
   for (i = 0; dbs[i] != NULL; i++)
     {
@@ -2948,15 +2690,11 @@ us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
 	  num_node_found++;
 
 	  log_path[0] = db_host[0] = mem_size[0] = '\0';
-	  (void) ha_concat_db_and_host (db_host, PATH_MAX, dbs[i],
-					"localhost");
-	  (void) ha_make_log_path (log_path, PATH_MAX, nc[j].copy_log_base,
-				   dbs[i], nc[j].node_name);
-	  (void) ha_make_mem_size (mem_size, PATH_MAX,
-				   nc[j].apply_max_mem_size);
+	  (void) ha_concat_db_and_host (db_host, PATH_MAX, dbs[i], "localhost");
+	  (void) ha_make_log_path (log_path, PATH_MAX, nc[j].copy_log_base, dbs[i], nc[j].node_name);
+	  (void) ha_make_mem_size (mem_size, PATH_MAX, nc[j].apply_max_mem_size);
 
-	  if (log_path[0] != '\0' && db_host[0] != '\0'
-	      && mem_size[0] != '\0')
+	  if (log_path[0] != '\0' && db_host[0] != '\0' && mem_size[0] != '\0')
 	    {
 	      char la_args[HB_MAX_SZ_PROC_ARGS];
 	      const char *la_argv[] = {
@@ -2964,8 +2702,7 @@ us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
 		"-L", log_path, mem_size, db_host, NULL
 	      };
 
-	      status = ha_argv_to_args (la_args, sizeof (la_args), la_argv,
-					HB_PTYPE_APPLYLOGDB);
+	      status = ha_argv_to_args (la_args, sizeof (la_args), la_argv, HB_PTYPE_APPLYLOGDB);
 	      if (status != NO_ERROR)
 		{
 		  goto ret;
@@ -2978,9 +2715,7 @@ us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
 		      continue;
 		    }
 
-		  status =
-		    proc_execute (UTIL_ADMIN_NAME, la_argv, false, false,
-				  false, &pid);
+		  status = proc_execute (UTIL_ADMIN_NAME, la_argv, false, false, false, &pid);
 		  if (status != NO_ERROR)
 		    {
 		      goto ret;
@@ -3000,9 +2735,7 @@ us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
 		    COMMDB_HOST, remote_host,
 		    NULL,
 		  };
-		  status =
-		    proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false,
-				  false, &pid);
+		  status = proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false, false, &pid);
 		  if (status != NO_ERROR)
 		    {
 		      goto ret;
@@ -3044,8 +2777,7 @@ ret:
 }
 
 static int
-us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name,
-		       const char *node_name, const char *remote_host)
+us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name, const char *remote_host)
 {
   int status = NO_ERROR;
   int pid;
@@ -3061,8 +2793,7 @@ us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name,
   dbs = ha_conf->db_names;
   nc = ha_conf->node_conf;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 UTIL_APPLYLOGDB, PRINT_CMD_STOP);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, UTIL_APPLYLOGDB, PRINT_CMD_STOP);
 
   for (i = 0; dbs[i] != NULL; i++)
     {
@@ -3096,15 +2827,11 @@ us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name,
 	  num_node_found++;
 
 	  log_path[0] = db_host[0] = mem_size[0] = '\0';
-	  (void) ha_concat_db_and_host (db_host, PATH_MAX, dbs[i],
-					"localhost");
-	  (void) ha_make_log_path (log_path, PATH_MAX, nc[j].copy_log_base,
-				   dbs[i], nc[j].node_name);
-	  (void) ha_make_mem_size (mem_size, PATH_MAX,
-				   nc[j].apply_max_mem_size);
+	  (void) ha_concat_db_and_host (db_host, PATH_MAX, dbs[i], "localhost");
+	  (void) ha_make_log_path (log_path, PATH_MAX, nc[j].copy_log_base, dbs[i], nc[j].node_name);
+	  (void) ha_make_mem_size (mem_size, PATH_MAX, nc[j].apply_max_mem_size);
 
-	  if (log_path[0] != '\0' && db_host[0] != '\0'
-	      && mem_size[0] != '\0')
+	  if (log_path[0] != '\0' && db_host[0] != '\0' && mem_size[0] != '\0')
 	    {
 	      char la_args[HB_MAX_SZ_PROC_ARGS];
 	      const char *la_argv[] = {
@@ -3112,32 +2839,28 @@ us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name,
 		"-L", log_path, mem_size, db_host, NULL
 	      };
 
-	      status = ha_argv_to_args (la_args, sizeof (la_args), la_argv,
-					HB_PTYPE_APPLYLOGDB);
+	      status = ha_argv_to_args (la_args, sizeof (la_args), la_argv, HB_PTYPE_APPLYLOGDB);
 	      if (status != NO_ERROR)
 		{
 		  goto ret;
 		}
 
-	      if (remote_host != NULL
-		  || ha_is_registered (la_args, remote_host))
+	      if (remote_host != NULL || ha_is_registered (la_args, remote_host))
 		{
 		  const char *commdb_argv[HB_MAX_SZ_PROC_ARGS] = {
 		    UTIL_COMMDB_NAME, COMMDB_HA_DEREG_BY_ARGS, la_args,
-		    NULL, NULL,	/* -h hostname  */
+		    NULL, NULL,	/* -h hostname */
 		    NULL
 		  };
 
 		  if (remote_host != NULL)
 		    {
-		      commdb_argv[3] = COMMDB_HOST;	/* -h   */
+		      commdb_argv[3] = COMMDB_HOST;	/* -h */
 		      commdb_argv[4] = remote_host;	/* hostname */
 		      commdb_argv[5] = NULL;
 		    }
 
-		  status =
-		    proc_execute (UTIL_COMMDB_NAME, commdb_argv, true,
-				  false, false, NULL);
+		  status = proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false, false, NULL);
 		  if (remote_host != NULL && status != NO_ERROR)
 		    {
 		      goto ret;
@@ -3187,8 +2910,7 @@ ret:
 }
 
 static int
-us_hb_prefetchlogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
-			   const char *db_name, const char *node_name,
+us_hb_prefetchlogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 			   const char *remote_host)
 {
   int status = NO_ERROR;
@@ -3204,8 +2926,7 @@ us_hb_prefetchlogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
   dbs = ha_conf->db_names;
   nc = ha_conf->node_conf;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 UTIL_PREFETCHLOGDB, PRINT_CMD_START);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, UTIL_PREFETCHLOGDB, PRINT_CMD_START);
 
   for (i = 0; dbs[i] != NULL; i++)
     {
@@ -3240,10 +2961,8 @@ us_hb_prefetchlogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
 	  num_node_found++;
 
 	  log_path[0] = db_host[0] = '\0';
-	  (void) ha_concat_db_and_host (db_host, PATH_MAX, dbs[i],
-					"localhost");
-	  (void) ha_make_log_path (log_path, PATH_MAX, nc[j].copy_log_base,
-				   dbs[i], nc[j].node_name);
+	  (void) ha_concat_db_and_host (db_host, PATH_MAX, dbs[i], "localhost");
+	  (void) ha_make_log_path (log_path, PATH_MAX, nc[j].copy_log_base, dbs[i], nc[j].node_name);
 
 	  if (log_path[0] != '\0' && db_host[0] != '\0')
 	    {
@@ -3253,9 +2972,7 @@ us_hb_prefetchlogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
 		log_path, db_host, NULL
 	      };
 
-	      status =
-		ha_argv_to_args (pfl_args, sizeof (pfl_args), pfl_argv,
-				 HB_PTYPE_PREFETCHLOGDB);
+	      status = ha_argv_to_args (pfl_args, sizeof (pfl_args), pfl_argv, HB_PTYPE_PREFETCHLOGDB);
 	      if (status != NO_ERROR)
 		{
 		  goto ret;
@@ -3268,9 +2985,7 @@ us_hb_prefetchlogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
 		      continue;
 		    }
 
-		  status =
-		    proc_execute (UTIL_ADMIN_NAME, pfl_argv, false, false,
-				  false, &pid);
+		  status = proc_execute (UTIL_ADMIN_NAME, pfl_argv, false, false, false, &pid);
 		  if (status != NO_ERROR)
 		    {
 		      goto ret;
@@ -3290,9 +3005,7 @@ us_hb_prefetchlogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf,
 		    COMMDB_HOST, remote_host,
 		    NULL,
 		  };
-		  status =
-		    proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false,
-				  false, &pid);
+		  status = proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false, false, &pid);
 		  if (status != NO_ERROR)
 		    {
 		      goto ret;
@@ -3334,8 +3047,7 @@ ret:
 }
 
 static int
-us_hb_prefetchlogdb_stop (HA_CONF * ha_conf, const char *db_name,
-			  const char *node_name, const char *remote_host)
+us_hb_prefetchlogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name, const char *remote_host)
 {
   int status = NO_ERROR;
   int pid;
@@ -3351,8 +3063,7 @@ us_hb_prefetchlogdb_stop (HA_CONF * ha_conf, const char *db_name,
   dbs = ha_conf->db_names;
   nc = ha_conf->node_conf;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 UTIL_PREFETCHLOGDB, PRINT_CMD_STOP);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, UTIL_PREFETCHLOGDB, PRINT_CMD_STOP);
 
   for (i = 0; dbs[i] != NULL; i++)
     {
@@ -3386,10 +3097,8 @@ us_hb_prefetchlogdb_stop (HA_CONF * ha_conf, const char *db_name,
 	  num_node_found++;
 
 	  log_path[0] = db_host[0] = '\0';
-	  (void) ha_concat_db_and_host (db_host, PATH_MAX, dbs[i],
-					"localhost");
-	  (void) ha_make_log_path (log_path, PATH_MAX, nc[j].copy_log_base,
-				   dbs[i], nc[j].node_name);
+	  (void) ha_concat_db_and_host (db_host, PATH_MAX, dbs[i], "localhost");
+	  (void) ha_make_log_path (log_path, PATH_MAX, nc[j].copy_log_base, dbs[i], nc[j].node_name);
 
 	  if (log_path[0] != '\0' && db_host[0] != '\0')
 	    {
@@ -3399,19 +3108,16 @@ us_hb_prefetchlogdb_stop (HA_CONF * ha_conf, const char *db_name,
 		"-L", log_path, db_host, NULL
 	      };
 
-	      status =
-		ha_argv_to_args (pfl_args, sizeof (pfl_args), pfl_argv,
-				 HB_PTYPE_PREFETCHLOGDB);
+	      status = ha_argv_to_args (pfl_args, sizeof (pfl_args), pfl_argv, HB_PTYPE_PREFETCHLOGDB);
 	      if (status != NO_ERROR)
 		{
 		  goto ret;
 		}
 
-	      if (remote_host != NULL
-		  || ha_is_registered (pfl_args, remote_host))
+	      if (remote_host != NULL || ha_is_registered (pfl_args, remote_host))
 		{
 		  const char *commdb_argv[HB_MAX_SZ_PROC_ARGS] = {
-		    UTIL_COMMDB_NAME, COMMDB_HA_DEREG_BY_ARGS, pfl_args, NULL, NULL,	/* -h hostname  */
+		    UTIL_COMMDB_NAME, COMMDB_HA_DEREG_BY_ARGS, pfl_args, NULL, NULL,	/* -h hostname */
 		    NULL
 		  };
 
@@ -3422,9 +3128,7 @@ us_hb_prefetchlogdb_stop (HA_CONF * ha_conf, const char *db_name,
 		      commdb_argv[5] = NULL;
 		    }
 
-		  status =
-		    proc_execute (UTIL_COMMDB_NAME, commdb_argv, true,
-				  false, false, NULL);
+		  status = proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false, false, NULL);
 		  if (remote_host != NULL && status != NO_ERROR)
 		    {
 		      goto ret;
@@ -3475,8 +3179,7 @@ ret:
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int
-us_hb_utils_start (dynamic_array * pids, HA_CONF * ha_conf,
-		   const char *db_name, const char *node_name)
+us_hb_utils_start (dynamic_array * pids, HA_CONF * ha_conf, const char *db_name, const char *node_name)
 {
   int status = NO_ERROR;
 
@@ -3491,8 +3194,7 @@ us_hb_utils_start (dynamic_array * pids, HA_CONF * ha_conf,
 }
 
 static int
-us_hb_utils_stop (HA_CONF * ha_conf, const char *db_name,
-		  const char *node_name)
+us_hb_utils_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name)
 {
   int status = NO_ERROR;
 
@@ -3533,11 +3235,8 @@ us_hb_server_start (HA_CONF * ha_conf, const char *db_name)
 	}
       else
 	{
-	  print_message (stdout,
-			 MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
-			 PRINT_SERVER_NAME, dbs[i]);
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
-				PRINT_SERVER_NAME, dbs[i]);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_SERVER_NAME, dbs[i]);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_SERVER_NAME, dbs[i]);
 	}
     }
 
@@ -3577,10 +3276,8 @@ us_hb_server_stop (HA_CONF * ha_conf, const char *db_name)
 	}
       else
 	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S,
-			 PRINT_SERVER_NAME, dbs[i]);
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S,
-				PRINT_SERVER_NAME, dbs[i]);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, dbs[i]);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, dbs[i]);
 	}
     }
 
@@ -3595,16 +3292,14 @@ us_hb_server_stop (HA_CONF * ha_conf, const char *db_name)
 }
 
 static int
-us_hb_process_start (HA_CONF * ha_conf, const char *db_name,
-		     bool check_result)
+us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
 {
   int status = NO_ERROR;
   int i;
   int pid;
   dynamic_array *pids = NULL;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 PRINT_HA_PROCS_NAME, PRINT_CMD_START);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_START);
 
   pids = da_create (100, sizeof (int));
   if (pids == NULL)
@@ -3702,9 +3397,7 @@ us_hb_deactivate (const char *hostname, bool immediate_stop)
 
   /* wait until all processes are shutdown */
   args[opt_idx] = COMMDB_HA_DEACT_CONFIRM_STOP_ALL;
-  while ((status =
-	  proc_execute (UTIL_COMMDB_NAME, args, true, false, false,
-			NULL)) != NO_ERROR)
+  while ((status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL)) != NO_ERROR)
     {
       if (status == EXIT_FAILURE)
 	{
@@ -3723,9 +3416,7 @@ us_hb_deactivate (const char *hostname, bool immediate_stop)
 
   /* wait until no cub_server processes are running */
   args[opt_idx] = COMMDB_HA_DEACT_CONFIRM_NO_SERVER;
-  while ((status =
-	  proc_execute (UTIL_COMMDB_NAME, args, true, false, false,
-			NULL)) != NO_ERROR)
+  while ((status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL)) != NO_ERROR)
     {
       if (status == EXIT_FAILURE)
 	{
@@ -3743,8 +3434,7 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
   int status = NO_ERROR;
   int i;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 PRINT_HA_PROCS_NAME, PRINT_CMD_STOP);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_STOP);
 
   status = us_hb_copylogdb_stop (ha_conf, db_name, NULL, NULL);
   if (status != NO_ERROR)
@@ -3775,8 +3465,7 @@ ret:
 }
 
 static int
-us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf,
-			 const char *db_name, const char *node_name,
+us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 			 const char *remote_host)
 {
   int status = NO_ERROR;
@@ -3798,9 +3487,7 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf,
 	      goto ret;
 	    }
 
-	  status =
-	    us_hb_copylogdb_start (pids, ha_conf, db_name, node_name,
-				   remote_host);
+	  status = us_hb_copylogdb_start (pids, ha_conf, db_name, node_name, remote_host);
 
 	  sleep (HB_START_WAITING_TIME_IN_SECS);
 	  for (i = 0; i < da_size (pids); i++)
@@ -3808,8 +3495,7 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf,
 	      da_get (pids, i, &pid);
 	      if (is_terminated_process (pid))
 		{
-		  (void) us_hb_copylogdb_stop (ha_conf, db_name, node_name,
-					       remote_host);
+		  (void) us_hb_copylogdb_stop (ha_conf, db_name, node_name, remote_host);
 		  status = ER_GENERIC_ERROR;
 		  break;
 		}
@@ -3824,9 +3510,7 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf,
 	      goto ret;
 	    }
 
-	  status =
-	    us_hb_copylogdb_start (args, ha_conf, db_name, node_name,
-				   remote_host);
+	  status = us_hb_copylogdb_start (args, ha_conf, db_name, node_name, remote_host);
 
 	  sleep (HB_START_WAITING_TIME_IN_SECS);
 	  for (i = 0; i < da_size (args); i++)
@@ -3834,8 +3518,7 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf,
 	      da_get (args, i, arg);
 	      if (ha_is_registered (arg, remote_host) == false)
 		{
-		  (void) us_hb_copylogdb_stop (ha_conf, db_name, node_name,
-					       remote_host);
+		  (void) us_hb_copylogdb_stop (ha_conf, db_name, node_name, remote_host);
 		  status = ER_GENERIC_ERROR;
 		  break;
 		}
@@ -3845,8 +3528,7 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf,
       break;
 
     case STOP:
-      status =
-	us_hb_copylogdb_stop (ha_conf, db_name, node_name, remote_host);
+      status = us_hb_copylogdb_stop (ha_conf, db_name, node_name, remote_host);
 
       break;
 
@@ -3869,8 +3551,7 @@ ret:
 }
 
 static int
-us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf,
-			  const char *db_name, const char *node_name,
+us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 			  const char *remote_host)
 {
   int status = NO_ERROR;
@@ -3891,9 +3572,7 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf,
 	      goto ret;
 	    }
 
-	  status =
-	    us_hb_applylogdb_start (pids, ha_conf, db_name, node_name,
-				    remote_host);
+	  status = us_hb_applylogdb_start (pids, ha_conf, db_name, node_name, remote_host);
 
 	  sleep (HB_START_WAITING_TIME_IN_SECS);
 	  for (i = 0; i < da_size (pids); i++)
@@ -3901,8 +3580,7 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf,
 	      da_get (pids, i, &pid);
 	      if (is_terminated_process (pid))
 		{
-		  (void) us_hb_applylogdb_stop (ha_conf, db_name, node_name,
-						remote_host);
+		  (void) us_hb_applylogdb_stop (ha_conf, db_name, node_name, remote_host);
 		  status = ER_GENERIC_ERROR;
 		  break;
 		}
@@ -3917,9 +3595,7 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf,
 	      goto ret;
 	    }
 
-	  status =
-	    us_hb_applylogdb_start (args, ha_conf, db_name, node_name,
-				    remote_host);
+	  status = us_hb_applylogdb_start (args, ha_conf, db_name, node_name, remote_host);
 
 	  sleep (HB_START_WAITING_TIME_IN_SECS);
 	  for (i = 0; i < da_size (args); i++)
@@ -3927,8 +3603,7 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf,
 	      da_get (args, i, arg);
 	      if (ha_is_registered (arg, remote_host) == false)
 		{
-		  (void) us_hb_applylogdb_stop (ha_conf, db_name, node_name,
-						remote_host);
+		  (void) us_hb_applylogdb_stop (ha_conf, db_name, node_name, remote_host);
 		  status = ER_GENERIC_ERROR;
 		  break;
 		}
@@ -3937,8 +3612,7 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf,
       break;
 
     case STOP:
-      status =
-	us_hb_applylogdb_stop (ha_conf, db_name, node_name, remote_host);
+      status = us_hb_applylogdb_stop (ha_conf, db_name, node_name, remote_host);
       break;
 
     default:
@@ -3960,8 +3634,7 @@ ret:
 }
 
 static int
-us_hb_process_prefetchlogdb (int command_type, HA_CONF * ha_conf,
-			     const char *db_name, const char *node_name,
+us_hb_process_prefetchlogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 			     const char *remote_host)
 {
   int status = NO_ERROR;
@@ -3982,9 +3655,7 @@ us_hb_process_prefetchlogdb (int command_type, HA_CONF * ha_conf,
 	      goto ret;
 	    }
 
-	  status =
-	    us_hb_prefetchlogdb_start (pids, ha_conf, db_name, node_name,
-				       remote_host);
+	  status = us_hb_prefetchlogdb_start (pids, ha_conf, db_name, node_name, remote_host);
 
 	  sleep (HB_START_WAITING_TIME_IN_SECS);
 	  for (i = 0; i < da_size (pids); i++)
@@ -3992,8 +3663,7 @@ us_hb_process_prefetchlogdb (int command_type, HA_CONF * ha_conf,
 	      da_get (pids, i, &pid);
 	      if (is_terminated_process (pid))
 		{
-		  (void) us_hb_prefetchlogdb_stop (ha_conf, db_name,
-						   node_name, remote_host);
+		  (void) us_hb_prefetchlogdb_stop (ha_conf, db_name, node_name, remote_host);
 
 		  status = ER_GENERIC_ERROR;
 		  break;
@@ -4009,9 +3679,7 @@ us_hb_process_prefetchlogdb (int command_type, HA_CONF * ha_conf,
 	      goto ret;
 	    }
 
-	  status =
-	    us_hb_prefetchlogdb_start (args, ha_conf, db_name, node_name,
-				       remote_host);
+	  status = us_hb_prefetchlogdb_start (args, ha_conf, db_name, node_name, remote_host);
 
 	  sleep (HB_START_WAITING_TIME_IN_SECS);
 	  for (i = 0; i < da_size (args); i++)
@@ -4019,8 +3687,7 @@ us_hb_process_prefetchlogdb (int command_type, HA_CONF * ha_conf,
 	      da_get (args, i, arg);
 	      if (ha_is_registered (arg, remote_host) == false)
 		{
-		  (void) us_hb_prefetchlogdb_stop (ha_conf, db_name,
-						   node_name, remote_host);
+		  (void) us_hb_prefetchlogdb_stop (ha_conf, db_name, node_name, remote_host);
 		  status = ER_GENERIC_ERROR;
 		  break;
 		}
@@ -4029,8 +3696,7 @@ us_hb_process_prefetchlogdb (int command_type, HA_CONF * ha_conf,
       break;
 
     case STOP:
-      status =
-	us_hb_prefetchlogdb_stop (ha_conf, db_name, node_name, remote_host);
+      status = us_hb_prefetchlogdb_stop (ha_conf, db_name, node_name, remote_host);
       break;
 
     default:
@@ -4053,8 +3719,7 @@ ret:
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int
-us_hb_process_server (int command_type, HA_CONF * ha_conf,
-		      const char *db_name)
+us_hb_process_server (int command_type, HA_CONF * ha_conf, const char *db_name)
 {
   int status = NO_ERROR;
 
@@ -4093,8 +3758,7 @@ us_hb_process_server (int command_type, HA_CONF * ha_conf,
  *
  */
 static int
-us_hb_stop_get_options (char *db_name, int db_name_size,
-			char *remote_host_name, int remote_host_name_size,
+us_hb_stop_get_options (char *db_name, int db_name_size, char *remote_host_name, int remote_host_name_size,
 			bool * immediate_stop, int argc, const char **argv)
 {
   int status = NO_ERROR;
@@ -4159,10 +3823,8 @@ us_hb_stop_get_options (char *db_name, int db_name_size,
       if ((tmp_argc - optind) > 1)
 	{
 	  status = ER_GENERIC_ERROR;
-	  print_message (stderr, MSGCAT_UTIL_GENERIC_ARGS_OVER,
-			 tmp_argv[optind + 1]);
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ARGS_OVER,
-				tmp_argv[optind + 1]);
+	  print_message (stderr, MSGCAT_UTIL_GENERIC_ARGS_OVER, tmp_argv[optind + 1]);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ARGS_OVER, tmp_argv[optind + 1]);
 
 	  goto ret;
 	}
@@ -4194,8 +3856,7 @@ ret:
  *
  */
 static int
-us_hb_status_get_options (bool * verbose, char *remote_host_name,
-			  int remote_host_name_size, int argc,
+us_hb_status_get_options (bool * verbose, char *remote_host_name, int remote_host_name_size, int argc,
 			  const char **argv)
 {
   int status = NO_ERROR;
@@ -4233,8 +3894,7 @@ us_hb_status_get_options (bool * verbose, char *remote_host_name,
   utility_make_getopt_optstring (hb_status_opts, opt_str);
   while (1)
     {
-      opt =
-	getopt_long (tmp_argc, tmp_argv, opt_str, hb_status_opts, &opt_idx);
+      opt = getopt_long (tmp_argc, tmp_argv, opt_str, hb_status_opts, &opt_idx);
       if (opt == -1)
 	{
 	  break;
@@ -4288,10 +3948,8 @@ ret:
  *
  */
 static int
-us_hb_util_get_options (char *db_name, int db_name_size, char *node_name,
-			int node_name_size, char *remote_host_name,
-			int remote_host_name_size, int argc,
-			const char **argv)
+us_hb_util_get_options (char *db_name, int db_name_size, char *node_name, int node_name_size, char *remote_host_name,
+			int remote_host_name_size, int argc, const char **argv)
 {
   int status = NO_ERROR;
   int opt, opt_idx;
@@ -4356,10 +4014,8 @@ us_hb_util_get_options (char *db_name, int db_name_size, char *node_name,
       if ((tmp_argc - optind) > 2)
 	{
 	  status = ER_GENERIC_ERROR;
-	  print_message (stderr, MSGCAT_UTIL_GENERIC_ARGS_OVER,
-			 tmp_argv[tmp_argc - 1]);
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ARGS_OVER,
-				tmp_argv[tmp_argc - 1]);
+	  print_message (stderr, MSGCAT_UTIL_GENERIC_ARGS_OVER, tmp_argv[tmp_argc - 1]);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_ARGS_OVER, tmp_argv[tmp_argc - 1]);
 	  goto ret;
 	}
       else if ((tmp_argc - optind) < 2)
@@ -4400,8 +4056,7 @@ process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv)
   int master_port;
   const char *db_name = NULL;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 PRINT_HEARTBEAT_NAME, PRINT_CMD_START);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, PRINT_CMD_START);
 
   master_port = prm_get_master_port_id ();
   if (!css_does_master_exist (master_port))
@@ -4419,8 +4074,7 @@ process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv)
       const char *args[] = {
 	UTIL_COMMDB_NAME, COMMDB_HA_ACTIVATE, NULL
       };
-      status =
-	proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+      status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
     }
 
   if (status != NO_ERROR)
@@ -4484,21 +4138,18 @@ process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv)
   char remote_host_name[MAXHOSTNAMELEN] = "";
   bool immediate_stop = false;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 PRINT_HEARTBEAT_NAME, PRINT_CMD_STOP);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, PRINT_CMD_STOP);
 
   status =
-    us_hb_stop_get_options (db_name, sizeof (db_name), remote_host_name,
-			    sizeof (remote_host_name), &immediate_stop, argc,
-			    argv);
+    us_hb_stop_get_options (db_name, sizeof (db_name), remote_host_name, sizeof (remote_host_name), &immediate_stop,
+			    argc, argv);
   if (status != NO_ERROR)
     {
       goto ret;
     }
 
   /* validate options */
-  if ((db_name[0] != '\0')
-      && (remote_host_name[0] != '\0' || immediate_stop == true))
+  if ((db_name[0] != '\0') && (remote_host_name[0] != '\0' || immediate_stop == true))
     {
       status = ER_GENERIC_ERROR;
       print_message (stderr, MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
@@ -4507,8 +4158,7 @@ process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv)
     }
 
   master_port = prm_get_master_port_id ();
-  if (remote_host_name[0] != '\0'
-      || css_does_master_exist (master_port) == true)
+  if (remote_host_name[0] != '\0' || css_does_master_exist (master_port) == true)
     {
       if (db_name[0] != '\0')
 	{
@@ -4536,10 +4186,8 @@ process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv)
   else
     {
       status = ER_GENERIC_ERROR;
-      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-		     PRINT_MASTER_NAME);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			    PRINT_MASTER_NAME);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
     }
 
   if (status == NO_ERROR)
@@ -4586,8 +4234,7 @@ process_heartbeat_deregister (int argc, const char **argv)
       goto ret;
     }
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S,
-		 PRINT_HEARTBEAT_NAME, PRINT_CMD_DEREG, pid);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_HEARTBEAT_NAME, PRINT_CMD_DEREG, pid);
 
   master_port = prm_get_master_port_id ();
   if (css_does_master_exist (master_port))
@@ -4595,17 +4242,13 @@ process_heartbeat_deregister (int argc, const char **argv)
       const char *commdb_argv[] = {
 	UTIL_COMMDB_NAME, COMMDB_HA_DEREG_BY_PID, pid, NULL
       };
-      status =
-	proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false, false,
-		      NULL);
+      status = proc_execute (UTIL_COMMDB_NAME, commdb_argv, true, false, false, NULL);
     }
   else
     {
       status = ER_GENERIC_ERROR;
-      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-		     PRINT_MASTER_NAME);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			    PRINT_MASTER_NAME);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
     }
 
 ret:
@@ -4633,7 +4276,7 @@ process_heartbeat_status (int argc, const char **argv)
 
   const char *node_list_argv[] = {
     UTIL_COMMDB_NAME, COMMDB_HA_NODE_LIST,
-    NULL, NULL, NULL,		/* -v and/or -h hostname       */
+    NULL, NULL, NULL,		/* -v and/or -h hostname */
     NULL
   };
   const char *proc_list_argv[] = {
@@ -4643,23 +4286,20 @@ process_heartbeat_status (int argc, const char **argv)
   };
   const char *ping_host_list_argv[] = {
     UTIL_COMMDB_NAME, COMMDB_HA_PING_HOST_LIST,
-    NULL, NULL, NULL,		/* -v and/or -h hostname       */
+    NULL, NULL, NULL,		/* -v and/or -h hostname */
     NULL
   };
   const char *admin_info_argv[] = {
     UTIL_COMMDB_NAME, COMMDB_HA_ADMIN_INFO,
-    NULL, NULL, NULL,		/* -v and/or -h hostname       */
+    NULL, NULL, NULL,		/* -v and/or -h hostname */
     NULL
   };
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 PRINT_HEARTBEAT_NAME, PRINT_CMD_STATUS);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, PRINT_CMD_STATUS);
 
   verbose = false;
   memset (remote_host_name, 0, sizeof (remote_host_name));
-  status =
-    us_hb_status_get_options (&verbose, remote_host_name,
-			      sizeof (remote_host_name), argc, argv);
+  status = us_hb_status_get_options (&verbose, remote_host_name, sizeof (remote_host_name), argc, argv);
   if (status != NO_ERROR)
     {
       return status;
@@ -4687,8 +4327,7 @@ process_heartbeat_status (int argc, const char **argv)
       if (css_does_master_exist (master_port) == false)
 	{
 	  status = ER_GENERIC_ERROR;
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			 PRINT_MASTER_NAME);
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
 	  return status;
 	}
     }
@@ -4699,23 +4338,19 @@ process_heartbeat_status (int argc, const char **argv)
       proc_list_argv[ext_opt_offset] = COMMDB_VERBOSE_OUTPUT;
     }
 
-  status =
-    proc_execute (UTIL_COMMDB_NAME, node_list_argv, true, false, false, NULL);
+  status = proc_execute (UTIL_COMMDB_NAME, node_list_argv, true, false, false, NULL);
   if (status != NO_ERROR)
     {
       return status;
     }
 
-  status =
-    proc_execute (UTIL_COMMDB_NAME, proc_list_argv, true, false, false, NULL);
+  status = proc_execute (UTIL_COMMDB_NAME, proc_list_argv, true, false, false, NULL);
   if (status != NO_ERROR)
     {
       return status;
     }
 
-  status =
-    proc_execute (UTIL_COMMDB_NAME, ping_host_list_argv, true, false,
-		  false, NULL);
+  status = proc_execute (UTIL_COMMDB_NAME, ping_host_list_argv, true, false, false, NULL);
   if (status != NO_ERROR)
     {
       return status;
@@ -4723,9 +4358,7 @@ process_heartbeat_status (int argc, const char **argv)
 
   if (verbose == true)
     {
-      status =
-	proc_execute (UTIL_COMMDB_NAME, admin_info_argv, true, false,
-		      false, NULL);
+      status = proc_execute (UTIL_COMMDB_NAME, admin_info_argv, true, false, false, NULL);
     }
 
   return status;
@@ -4746,8 +4379,7 @@ process_heartbeat_reload (int argc, const char **argv)
   int status = NO_ERROR;
   int master_port;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 PRINT_HEARTBEAT_NAME, PRINT_CMD_RELOAD);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, PRINT_CMD_RELOAD);
 
   master_port = prm_get_master_port_id ();
   if (css_does_master_exist (master_port))
@@ -4755,16 +4387,13 @@ process_heartbeat_reload (int argc, const char **argv)
       const char *args[] = {
 	UTIL_COMMDB_NAME, COMMDB_HA_RELOAD, NULL
       };
-      status =
-	proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+      status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
     }
   else
     {
       status = ER_GENERIC_ERROR;
-      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-		     PRINT_MASTER_NAME);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			    PRINT_MASTER_NAME);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
     }
 
   print_result (PRINT_HEARTBEAT_NAME, status, RELOAD);
@@ -4783,8 +4412,7 @@ process_heartbeat_reload (int argc, const char **argv)
  *
  */
 static int
-process_heartbeat_util (HA_CONF * ha_conf, int command_type,
-			int argc, const char **argv)
+process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const char **argv)
 {
   int status = NO_ERROR;
   int sub_command_type;
@@ -4795,15 +4423,13 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type,
   char host_name[MAXHOSTNAMELEN];
   char *db_name_p, *node_name_p, *host_name_p;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 PRINT_HEARTBEAT_NAME, command_string (command_type));
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, command_string (command_type));
 
   sub_command_type = parse_arg (us_Command_map, (char *) argv[0]);
 
   db_name[0] = node_name[0] = host_name[0] = '\0';
   status =
-    us_hb_util_get_options (db_name, sizeof (db_name), node_name,
-			    sizeof (node_name), host_name, sizeof (host_name),
+    us_hb_util_get_options (db_name, sizeof (db_name), node_name, sizeof (node_name), host_name, sizeof (host_name),
 			    (argc - 1), (argv + 1));
   if (status != NO_ERROR)
     {
@@ -4833,19 +4459,13 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type,
   switch (command_type)
     {
     case SC_COPYLOGDB:
-      status =
-	us_hb_process_copylogdb (sub_command_type, ha_conf, db_name_p,
-				 node_name_p, host_name_p);
+      status = us_hb_process_copylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
       break;
     case SC_APPLYLOGDB:
-      status =
-	us_hb_process_applylogdb (sub_command_type, ha_conf, db_name_p,
-				  node_name_p, host_name_p);
+      status = us_hb_process_applylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
       break;
     case SC_PREFETCHLOGDB:
-      status =
-	us_hb_process_prefetchlogdb (sub_command_type, ha_conf, db_name_p,
-				     node_name_p, host_name_p);
+      status = us_hb_process_prefetchlogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
       break;
     }
 
@@ -4872,8 +4492,7 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
   int master_port;
   const char *node_name = NULL;
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		 PRINT_HEARTBEAT_NAME, PRINT_CMD_REPLICATION);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, PRINT_CMD_REPLICATION);
 
   if (argc < 2)
     {
@@ -4886,8 +4505,7 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
   sub_command_type = parse_arg (us_Command_map, (char *) argv[0]);
   node_name = argv[1];
 
-  if ((sub_command_type != START && sub_command_type != STOP)
-      || node_name == NULL || node_name[0] == '\0')
+  if ((sub_command_type != START && sub_command_type != STOP) || node_name == NULL || node_name[0] == '\0')
     {
       status = ER_GENERIC_ERROR;
       print_message (stdout, MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
@@ -4901,53 +4519,37 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
       const char *args[] = {
 	UTIL_COMMDB_NAME, COMMDB_HA_ACTIVATE, NULL
       };
-      status =
-	proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+      status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
       if (status == NO_ERROR)
 	{
 	  if (sub_command_type == START)
 	    {
-	      status =
-		us_hb_process_copylogdb (START, ha_conf, NULL, node_name,
-					 NULL);
+	      status = us_hb_process_copylogdb (START, ha_conf, NULL, node_name, NULL);
 	      if (status == NO_ERROR)
 		{
-		  status =
-		    us_hb_process_applylogdb (START, ha_conf,
-					      NULL, node_name, NULL);
+		  status = us_hb_process_applylogdb (START, ha_conf, NULL, node_name, NULL);
 		  if (status != NO_ERROR)
 		    {
-		      (void) us_hb_process_copylogdb (STOP, ha_conf,
-						      NULL, node_name, NULL);
+		      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL);
 		    }
-		  else
-		    if (prm_get_bool_value (PRM_ID_HA_PREFETCHLOGDB_ENABLE))
+		  else if (prm_get_bool_value (PRM_ID_HA_PREFETCHLOGDB_ENABLE))
 		    {
-		      status =
-			us_hb_process_prefetchlogdb (START, ha_conf,
-						     NULL, node_name, NULL);
+		      status = us_hb_process_prefetchlogdb (START, ha_conf, NULL, node_name, NULL);
 		      if (status != NO_ERROR)
 			{
-			  (void) us_hb_process_copylogdb (STOP, ha_conf,
-							  NULL, node_name,
-							  NULL);
-			  (void) us_hb_process_applylogdb (STOP, ha_conf,
-							   NULL, node_name,
-							   NULL);
+			  (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL);
+			  (void) us_hb_process_applylogdb (STOP, ha_conf, NULL, node_name, NULL);
 			}
 		    }
 		}
 	    }
 	  else
 	    {
-	      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL,
-					      node_name, NULL);
-	      (void) us_hb_process_applylogdb (STOP, ha_conf, NULL,
-					       node_name, NULL);
+	      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL);
+	      (void) us_hb_process_applylogdb (STOP, ha_conf, NULL, node_name, NULL);
 	      if (prm_get_bool_value (PRM_ID_HA_PREFETCHLOGDB_ENABLE))
 		{
-		  (void) us_hb_process_prefetchlogdb (STOP, ha_conf,
-						      NULL, node_name, NULL);
+		  (void) us_hb_process_prefetchlogdb (STOP, ha_conf, NULL, node_name, NULL);
 		}
 	      status = NO_ERROR;
 	    }
@@ -4956,10 +4558,8 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
   else
     {
       status = ER_GENERIC_ERROR;
-      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-		     PRINT_MASTER_NAME);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			    PRINT_MASTER_NAME);
+      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S, PRINT_MASTER_NAME);
     }
 
 ret:
@@ -5128,23 +4728,17 @@ load_properties (void)
 	    }
 	  else
 	    {
-	      error_msg =
-		utility_get_generic_message
-		(MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
+	      error_msg = utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
 	      fprintf (stderr, error_msg, "service", util);
 	      return ER_GENERIC_ERROR;
 	    }
 	}
     }
 
-  us_Property_map[SERVICE_START_SERVER].property_value =
-    strdup (server_flag ? PROPERTY_ON : PROPERTY_OFF);
-  us_Property_map[SERVICE_START_BROKER].property_value =
-    strdup (broker_flag ? PROPERTY_ON : PROPERTY_OFF);
-  us_Property_map[SERVICE_START_MANAGER].property_value =
-    strdup (manager_flag ? PROPERTY_ON : PROPERTY_OFF);
-  us_Property_map[SERVICE_START_HEARTBEAT].property_value =
-    strdup (heartbeat_flag ? PROPERTY_ON : PROPERTY_OFF);
+  us_Property_map[SERVICE_START_SERVER].property_value = strdup (server_flag ? PROPERTY_ON : PROPERTY_OFF);
+  us_Property_map[SERVICE_START_BROKER].property_value = strdup (broker_flag ? PROPERTY_ON : PROPERTY_OFF);
+  us_Property_map[SERVICE_START_MANAGER].property_value = strdup (manager_flag ? PROPERTY_ON : PROPERTY_OFF);
+  us_Property_map[SERVICE_START_HEARTBEAT].property_value = strdup (heartbeat_flag ? PROPERTY_ON : PROPERTY_OFF);
 
   /* get service::server list */
   value = prm_get_string_value (PRM_ID_SERVICE_SERVER_LIST);
@@ -5153,8 +4747,7 @@ load_properties (void)
       us_Property_map[SERVER_START_LIST].property_value = strdup (value);
       if (us_Property_map[SERVER_START_LIST].property_value == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (value) + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (value) + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }

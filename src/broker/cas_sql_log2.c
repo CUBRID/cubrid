@@ -51,8 +51,7 @@ static int saved_fd1;
 #endif
 
 void
-sql_log2_init (char *br_name, int index, int sql_log_value,
-	       bool log_reuse_flag)
+sql_log2_init (char *br_name, int index, int sql_log_value, bool log_reuse_flag)
 {
 #if !defined(WINDOWS)
   char filename[BROKER_PATH_MAX], dirname[BROKER_PATH_MAX];
@@ -64,9 +63,8 @@ sql_log2_init (char *br_name, int index, int sql_log_value,
 
   if (log_reuse_flag == false || sql_log2_file[0] == '\0')
     {
-      sprintf (sql_log2_file, "%s/%s.%d.%d.%d",
-	       get_cubrid_file (FID_SQL_LOG2_DIR, dirname, BROKER_PATH_MAX),
-	       br_name, index + 1, (int) time (NULL), log_count++);
+      sprintf (sql_log2_file, "%s/%s.%d.%d.%d", get_cubrid_file (FID_SQL_LOG2_DIR, dirname, BROKER_PATH_MAX), br_name,
+	       index + 1, (int) time (NULL), log_count++);
     }
   get_cubrid_file (FID_SQL_LOG_DIR, dirname, BROKER_PATH_MAX);
   snprintf (filename, sizeof (filename) - 1, "%s%s", dirname, sql_log2_file);
@@ -150,9 +148,8 @@ sql_log2_write (const char *fmt, ...)
       t = tv.tv_sec;
       localtime_r (&t, &lt);
       va_start (ap, fmt);
-      fprintf (sql_log2_fp, "%02d/%02d %02d:%02d:%02d.%03ld ",
-	       lt.tm_mon + 1, lt.tm_mday, lt.tm_hour,
-	       lt.tm_min, lt.tm_sec, tv.tv_usec / 1000);
+      fprintf (sql_log2_fp, "%02d/%02d %02d:%02d:%02d.%03ld ", lt.tm_mon + 1, lt.tm_mday, lt.tm_hour, lt.tm_min,
+	       lt.tm_sec, tv.tv_usec / 1000);
       vfprintf (sql_log2_fp, fmt, ap);
       fprintf (sql_log2_fp, "\n");
       fflush (sql_log2_fp);

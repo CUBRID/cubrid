@@ -65,13 +65,8 @@ struct btree_stats
   int has_function;		/* is a function index */
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
   int pkeys_size;		/* pkeys array size */
-  int *pkeys;			/* partial keys info
-				   for example: index (a, b, ..., x)
-				   pkeys[0]          -> # of {a}
-				   pkeys[1]          -> # of {a, b}
-				   ...
-				   pkeys[pkeys_size-1] -> # of {a, b, ..., x}
-				 */
+  int *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] -> 
+				 * # of {a, b} ... pkeys[pkeys_size-1] -> # of {a, b, ..., x} */
 #if 0				/* reserved for future use */
   int reserved[BTREE_STATS_RESERVED_NUM];
 #endif
@@ -91,20 +86,15 @@ struct attr_stats
 typedef struct class_stats CLASS_STATS;
 struct class_stats
 {
-  unsigned int time_stamp;	/* the time stamped when the stat info updated;
-				   used to get up-to-date stat info */
-  int heap_num_objects;		/* cardinality of the class;
-				   number of instances the class has */
+  unsigned int time_stamp;	/* the time stamped when the stat info updated; used to get up-to-date stat info */
+  int heap_num_objects;		/* cardinality of the class; number of instances the class has */
   int heap_num_pages;		/* number of pages the class occupy */
-  int n_attrs;			/* number of attributes; size of the
-				   attr_stats[] */
-  ATTR_STATS *attr_stats;	/* pointer to the array of attribute
-				   statistics */
+  int n_attrs;			/* number of attributes; size of the attr_stats[] */
+  ATTR_STATS *attr_stats;	/* pointer to the array of attribute statistics */
 };
 
 #if !defined(SERVER_MODE)
-extern CLASS_STATS *stats_get_statistics (OID * classoid,
-					  unsigned int timestamp);
+extern CLASS_STATS *stats_get_statistics (OID * classoid, unsigned int timestamp);
 extern void stats_free_statistics (CLASS_STATS * stats);
 extern void stats_dump (const char *classname, FILE * fp);
 #endif /* !SERVER_MODE */

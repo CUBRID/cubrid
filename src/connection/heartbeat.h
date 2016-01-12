@@ -140,17 +140,13 @@ extern const char *hb_process_type_string (int ptype);
 extern void hb_set_exec_path (char *exec_path);
 extern void hb_set_argv (char **argv);
 extern int css_send_heartbeat_request (CSS_CONN_ENTRY * conn, int command);
-extern int css_send_heartbeat_data (CSS_CONN_ENTRY * conn, const char *data,
-				    int size);
-extern int css_receive_heartbeat_request (CSS_CONN_ENTRY * conn,
-					  int *command);
-extern int css_receive_heartbeat_data (CSS_CONN_ENTRY * conn, char *data,
-				       int size);
+extern int css_send_heartbeat_data (CSS_CONN_ENTRY * conn, const char *data, int size);
+extern int css_receive_heartbeat_request (CSS_CONN_ENTRY * conn, int *command);
+extern int css_receive_heartbeat_data (CSS_CONN_ENTRY * conn, char *data, int size);
 extern int hb_process_master_request (void);
 extern int hb_register_to_master (CSS_CONN_ENTRY * conn, int type);
 extern int hb_deregister_from_master (void);
-extern int hb_process_init (const char *server_name, const char *log_path,
-			    HB_PROC_TYPE type);
+extern int hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE type);
 extern void hb_process_term (void);
 
 extern bool hb_Proc_shutdown;

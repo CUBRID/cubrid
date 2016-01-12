@@ -78,9 +78,7 @@ check_dbname (const char *name)
   badchar = util_check_dbname (name);
   if (badchar)
     {
-      msg =
-	msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-			MSGCAT_UTIL_GENERIC_BAD_DATABASE_NAME);
+      msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_BAD_DATABASE_NAME);
       if (msg != NULL)
 	fprintf (stderr, msg, badchar, name);
     }
@@ -175,11 +173,9 @@ filecopy (const char *fn_src, const char *fn_dst)
 static void
 usage (void)
 {
-  fprintf (stderr,
-	   "Usage: loadjava [OPTION] database-name java-class-file\n");
+  fprintf (stderr, "Usage: loadjava [OPTION] database-name java-class-file\n");
   fprintf (stderr, "Options:\n-y\t%s\n",
-	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADJAVA,
-			   LOADJAVA_ARG_FORCE_OVERWRITE_HELP));
+	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADJAVA, LOADJAVA_ARG_FORCE_OVERWRITE_HELP));
 }
 
 /*
@@ -212,8 +208,7 @@ main (int argc, char *argv[])
       int option_index = 0;
       int option_key;
 
-      option_key = getopt_long (argc, argv, "y",
-				loadjava_option, &option_index);
+      option_key = getopt_long (argc, argv, "y", loadjava_option, &option_index);
       if (option_key == -1)
 	{
 	  break;
@@ -256,9 +251,7 @@ main (int argc, char *argv[])
       goto error;
     }
 
-  if ((java_dir =
-       (char *) malloc (strlen (db->pathname) + strlen (JAVA_DIR) + 2)) ==
-      NULL)
+  if ((java_dir = (char *) malloc (strlen (db->pathname) + strlen (JAVA_DIR) + 2)) == NULL)
     {
       fprintf (stderr, "out of memory\n");
       goto error;
@@ -278,9 +271,7 @@ main (int argc, char *argv[])
     }
 
   class_file_name = &(Src_class[i + 1]);
-  if ((class_file_path =
-       (char *) malloc (strlen (java_dir) + strlen (class_file_name) + 2)) ==
-      NULL)
+  if ((class_file_path = (char *) malloc (strlen (java_dir) + strlen (class_file_name) + 2)) == NULL)
     {
       fprintf (stderr, "out of memory\n");
       goto error;

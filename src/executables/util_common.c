@@ -50,15 +50,12 @@ typedef enum
 } DATABASE_NAME;
 
 static int utility_get_option_index (UTIL_ARG_MAP * arg_map, int arg_ch);
-static int check_database_name_local (const char *name,
-				      int existing_or_new_db);
+static int check_database_name_local (const char *name, int existing_or_new_db);
 static char **util_split_ha_node (const char *str);
 static char **util_split_ha_db (const char *str);
 static char **util_split_ha_sync (const char *str);
-static int util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p,
-				   char **ha_sync_mode_p,
-				   char **ha_copy_log_base_p,
-				   int *ha_max_mem_size_p);
+static int util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p, char **ha_sync_mode_p,
+				   char **ha_copy_log_base_p, int *ha_max_mem_size_p);
 static bool util_is_replica_node (void);
 
 /*
@@ -85,8 +82,7 @@ utility_initialize ()
 const char *
 utility_get_generic_message (int message_index)
 {
-  return (msgcat_message (MSGCAT_CATALOG_UTILS,
-			  MSGCAT_UTIL_SET_GENERIC, message_index));
+  return (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, message_index));
 }
 
 /*
@@ -131,8 +127,7 @@ check_database_name_local (const char *name, int existing_or_new_db)
     {
       for (i = 0; name[i] != 0; i++)
 	{
-	  if (isspace (name[i]) || name[i] == '/' || name[i] == '\\'
-	      || !isprint (name[i])
+	  if (isspace (name[i]) || name[i] == '/' || name[i] == '\\' || !isprint (name[i])
 	      || (existing_or_new_db == NEW_DATABASE && name[i] == '@'))
 	    {
 	      status = ER_GENERIC_ERROR;
@@ -143,8 +138,7 @@ check_database_name_local (const char *name, int existing_or_new_db)
 
   if (status == ER_GENERIC_ERROR)
     {
-      const char *message =
-	utility_get_generic_message (MSGCAT_UTIL_GENERIC_BAD_DATABASE_NAME);
+      const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_BAD_DATABASE_NAME);
       if (message != NULL)
 	{
 	  PRINT_AND_LOG_ERR_MSG (message, name[i], name);
@@ -177,8 +171,7 @@ check_volume_name (const char *name)
     {
       for (i = 0; name[i] != 0; i++)
 	{
-	  if (isspace (name[i]) || name[i] == '/' || name[i] == '\\'
-	      || !isprint (name[i]))
+	  if (isspace (name[i]) || name[i] == '/' || name[i] == '\\' || !isprint (name[i]))
 	    {
 	      status = ER_GENERIC_ERROR;
 	      break;
@@ -188,8 +181,7 @@ check_volume_name (const char *name)
 
   if (status == ER_GENERIC_ERROR)
     {
-      const char *message =
-	utility_get_generic_message (MSGCAT_UTIL_GENERIC_BAD_VOLUME_NAME);
+      const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_BAD_VOLUME_NAME);
       if (message != NULL)
 	{
 	  PRINT_AND_LOG_ERR_MSG (message, name[i], name);
@@ -266,8 +258,7 @@ utility_get_option_bool_value (UTIL_ARG_MAP * arg_map, int arg_ch)
  *   arg_ch(in): the value of an argument
  */
 char *
-utility_get_option_string_value (UTIL_ARG_MAP * arg_map, int arg_ch,
-				 int index)
+utility_get_option_string_value (UTIL_ARG_MAP * arg_map, int arg_ch, int index)
 {
   int arg_index = utility_get_option_index (arg_map, arg_ch);
   if (arg_index != -1)
@@ -353,8 +344,7 @@ fopen_ex (const char *filename, const char *type)
  * utility_keyword_search
  */
 int
-utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p,
-			char **keystr_p)
+utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p, char **keystr_p)
 {
   UTIL_KEYWORD *keyp;
 
@@ -534,8 +524,7 @@ changemode_keyword (int *keyval_p, char **keystr_p)
 }
 
 static int
-util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p,
-			char **ha_sync_mode_p, char **ha_copy_log_base_p,
+util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p, char **ha_sync_mode_p, char **ha_copy_log_base_p,
 			int *ha_max_mem_size_p)
 {
   int error = NO_ERROR;
@@ -543,8 +532,7 @@ util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p,
   *(ha_db_list_p) = prm_get_string_value (PRM_ID_HA_DB_LIST);
   if (*(ha_db_list_p) == NULL || **(ha_db_list_p) == '\0')
     {
-      const char *message =
-	utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
+      const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
       fprintf (stderr, message, prm_get_name (PRM_ID_HA_DB_LIST), "");
       return ER_GENERIC_ERROR;
     }
@@ -552,8 +540,7 @@ util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p,
   *(ha_node_list_p) = prm_get_string_value (PRM_ID_HA_NODE_LIST);
   if (*(ha_node_list_p) == NULL || **(ha_node_list_p) == '\0')
     {
-      const char *message =
-	utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
+      const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
       fprintf (stderr, message, prm_get_name (PRM_ID_HA_NODE_LIST), "");
       return ER_GENERIC_ERROR;
     }
@@ -586,8 +573,7 @@ util_is_replica_node (void)
   if (ha_replica_list_p != NULL && *(ha_replica_list_p) != '\0')
     {
       ha_replica_list_pp = util_split_ha_node (ha_replica_list_p);
-      if (ha_replica_list_pp != NULL
-	  && (GETHOSTNAME (local_host_name, sizeof (local_host_name)) == 0))
+      if (ha_replica_list_pp != NULL && (GETHOSTNAME (local_host_name, sizeof (local_host_name)) == 0))
 	{
 	  for (i = 0; ha_replica_list_pp[i] != NULL; i++)
 	    {
@@ -672,8 +658,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
   bool is_replica_node;
 
   error =
-    util_get_ha_parameters (&ha_node_list_p, &ha_db_list_p, &ha_sync_mode_p,
-			    &ha_copy_log_base_p, &ha_max_mem_size);
+    util_get_ha_parameters (&ha_node_list_p, &ha_db_list_p, &ha_sync_mode_p, &ha_copy_log_base_p, &ha_max_mem_size);
   if (error != NO_ERROR)
     {
       return error;
@@ -682,8 +667,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
   ha_conf->db_names = util_split_ha_db (ha_db_list_p);
   if (ha_conf->db_names == NULL)
     {
-      const char *message =
-	utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+      const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
       fprintf (stderr, message);
 
       error = ER_GENERIC_ERROR;
@@ -693,8 +677,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
   ha_node_list_pp = util_split_ha_node (ha_node_list_p);
   if (ha_node_list_pp == NULL)
     {
-      const char *message =
-	utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+      const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
       fprintf (stderr, message);
 
       error = ER_GENERIC_ERROR;
@@ -707,19 +690,16 @@ util_make_ha_conf (HA_CONF * ha_conf)
     }
   num_ha_nodes = i;
 
-  ha_conf->node_conf =
-    (HA_NODE_CONF *) malloc (sizeof (HA_NODE_CONF) * num_ha_nodes);
+  ha_conf->node_conf = (HA_NODE_CONF *) malloc (sizeof (HA_NODE_CONF) * num_ha_nodes);
   if (ha_conf->node_conf == NULL)
     {
-      const char *message =
-	utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+      const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
       fprintf (stderr, message);
 
       error = ER_GENERIC_ERROR;
       goto ret;
     }
-  memset ((void *) ha_conf->node_conf, 0,
-	  sizeof (HA_NODE_CONF) * num_ha_nodes);
+  memset ((void *) ha_conf->node_conf, 0, sizeof (HA_NODE_CONF) * num_ha_nodes);
   ha_conf->num_node_conf = num_ha_nodes;
 
   /* set ha_sync_mode */
@@ -731,8 +711,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
 	  ha_conf->node_conf[i].copy_sync_mode = strdup ("async");
 	  if (ha_conf->node_conf[i].copy_sync_mode == NULL)
 	    {
-	      const char *message =
-		utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+	      const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
 	      fprintf (stderr, message);
 
 	      error = ER_GENERIC_ERROR;
@@ -749,8 +728,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
 	      ha_conf->node_conf[i].copy_sync_mode = strdup ("sync");
 	      if (ha_conf->node_conf[i].copy_sync_mode == NULL)
 		{
-		  const char *message =
-		    utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+		  const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
 		  fprintf (stderr, message);
 
 		  error = ER_GENERIC_ERROR;
@@ -765,8 +743,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
 	  ha_sync_mode_pp = util_split_ha_sync (ha_sync_mode_p);
 	  if (ha_sync_mode_pp == NULL)
 	    {
-	      const char *message =
-		utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+	      const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
 	      fprintf (stderr, message);
 
 	      error = ER_GENERIC_ERROR;
@@ -776,27 +753,21 @@ util_make_ha_conf (HA_CONF * ha_conf)
 	  for (i = 0; i < num_ha_nodes; i++)
 	    {
 	      mode = -1;
-	      if (ha_sync_mode_pp[i] == NULL ||
-		  copylogdb_keyword (&mode, &ha_sync_mode_pp[i]) == -1)
+	      if (ha_sync_mode_pp[i] == NULL || copylogdb_keyword (&mode, &ha_sync_mode_pp[i]) == -1)
 		{
-		  const char *message =
-		    utility_get_generic_message
-		    (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
+		  const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
 
-		  fprintf (stderr, message,
-			   prm_get_name (PRM_ID_HA_COPY_SYNC_MODE),
+		  fprintf (stderr, message, prm_get_name (PRM_ID_HA_COPY_SYNC_MODE),
 			   (ha_sync_mode_pp[i]) ? ha_sync_mode_pp[i] : "");
 
 		  error = ER_GENERIC_ERROR;
 		  goto ret;
 		}
 
-	      ha_conf->node_conf[i].copy_sync_mode =
-		strdup (ha_sync_mode_pp[i]);
+	      ha_conf->node_conf[i].copy_sync_mode = strdup (ha_sync_mode_pp[i]);
 	      if (ha_conf->node_conf[i].copy_sync_mode == NULL)
 		{
-		  const char *message =
-		    utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+		  const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
 		  fprintf (stderr, message);
 
 		  error = ER_GENERIC_ERROR;
@@ -814,11 +785,9 @@ util_make_ha_conf (HA_CONF * ha_conf)
       ha_conf->node_conf[i].copy_log_base = strdup (ha_copy_log_base_p);
       ha_conf->node_conf[i].apply_max_mem_size = ha_max_mem_size;
 
-      if (ha_conf->node_conf[i].node_name == NULL
-	  || ha_conf->node_conf[i].copy_log_base == NULL)
+      if (ha_conf->node_conf[i].node_name == NULL || ha_conf->node_conf[i].copy_log_base == NULL)
 	{
-	  const char *message =
-	    utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+	  const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
 	  fprintf (stderr, message);
 
 	  error = ER_GENERIC_ERROR;

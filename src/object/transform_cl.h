@@ -41,9 +41,7 @@ typedef int TF_STATUS;
 #define TF_ERROR 	(2)
 
 
-extern TF_STATUS tf_mem_to_disk (MOP classmop, MOBJ classobj,
-				 volatile MOBJ obj,
-				 RECDES * record, bool * index_flag);
+extern TF_STATUS tf_mem_to_disk (MOP classmop, MOBJ classobj, volatile MOBJ obj, RECDES * record, bool * index_flag);
 
 extern MOBJ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp);
 
@@ -59,13 +57,11 @@ extern void tf_dump_class_size (MOBJ classobj);
 /* new hacks for bulk temporary OID upgrading */
 extern OID *tf_need_permanent_oid (OR_BUF * buf, DB_OBJECT * obj);
 #if defined(ENABLE_UNUSED_FUNCTION)
-extern int tf_find_temporary_oids (LC_OIDSET * oidset, MOBJ classobj,
-				   MOBJ obj);
+extern int tf_find_temporary_oids (LC_OIDSET * oidset, MOBJ classobj, MOBJ obj);
 
 /* Set packing for M */
 extern int tf_set_size (DB_SET * set);
-extern int tf_pack_set (DB_SET * set, char *buffer, int buffer_size,
-			int *actual_bytes);
+extern int tf_pack_set (DB_SET * set, char *buffer, int buffer_size, int *actual_bytes);
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /* temporary integration kludge */

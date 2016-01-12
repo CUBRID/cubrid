@@ -67,7 +67,7 @@ typedef enum
   LDR_SYS_USER,
   LDR_SYS_CLASS,		/* This type is not allowed currently. */
   LDR_MONETARY,
-  LDR_BSTR,			/* Binary bit strings     */
+  LDR_BSTR,			/* Binary bit strings */
   LDR_XSTR,			/* Hexidecimal bit strings */
   LDR_BIGINT,
   LDR_DATETIME,
@@ -170,8 +170,7 @@ extern int ldr_finish (LDR_CONTEXT * context, int err);
 
 /* Action to initialize the parser context to deal with a new class */
 
-extern void ldr_act_init_context (LDR_CONTEXT * context,
-				  const char *class_name, int len);
+extern void ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len);
 extern void ldr_increment_err_total (LDR_CONTEXT * context);
 extern void ldr_increment_fails (void);
 extern void ldr_load_failed_error (void);
@@ -185,18 +184,15 @@ extern int ldr_init_class_spec (const char *class_name);
  * ldr_act is set to appropriate function depending on the context.
  */
 
-extern void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len,
-			LDR_TYPE type);
+extern void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type);
 
-extern void ldr_act_attr (LDR_CONTEXT * context, const char *str, int len,
-			  LDR_TYPE type);
+extern void ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type);
 
 /* Action to deal with attribute names and argument names */
 
 extern int ldr_act_check_missing_non_null_attrs (LDR_CONTEXT * context);
 
-extern void ldr_act_add_attr (LDR_CONTEXT * context, const char *str,
-			      int len);
+extern void ldr_act_add_attr (LDR_CONTEXT * context, const char *str, int len);
 
 /*
  * Action to finish normal instances, constructor instances, and
@@ -219,8 +215,7 @@ extern DB_OBJECT *ldr_act_get_ref_class (LDR_CONTEXT * context);
 
 /* Special action for class, shared, default attributes */
 
-extern void ldr_act_restrict_attributes (LDR_CONTEXT * context,
-					 LDR_ATTRIBUTE_TYPE type);
+extern void ldr_act_restrict_attributes (LDR_CONTEXT * context, LDR_ATTRIBUTE_TYPE type);
 
 /* Action for cleaning up and finish the parse phase */
 
@@ -233,23 +228,19 @@ extern int ldr_act_add_argument (LDR_CONTEXT * context, const char *name);
 
 /* Action to start a new instance */
 
-extern void ldr_act_start_instance (LDR_CONTEXT * context, int id,
-				    LDR_CONSTANT * cons);
+extern void ldr_act_start_instance (LDR_CONTEXT * context, int id, LDR_CONSTANT * cons);
 
 /* Statistics updating/retrieving functions */
 
-extern void ldr_stats (int *errors, int *objects, int *defaults,
-		       int *lastcommit, int *fails);
+extern void ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit, int *fails);
 extern int ldr_update_statistics (void);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void print_parser_lineno (FILE * fp);
 #endif
 /* Callback functions  */
 
-extern void ldr_register_post_commit_handler (LDR_POST_COMMIT_HANDLER handler,
-					      void *arg);
-extern void ldr_register_post_interrupt_handler (LDR_POST_INTERRUPT_HANDLER
-						 handler, void *ldr_jmp_buf);
+extern void ldr_register_post_commit_handler (LDR_POST_COMMIT_HANDLER handler, void *arg);
+extern void ldr_register_post_interrupt_handler (LDR_POST_INTERRUPT_HANDLER handler, void *ldr_jmp_buf);
 extern void ldr_interrupt_has_occurred (int type);
 
 extern void ldr_act_set_skipCurrentclass (char *classname, size_t size);

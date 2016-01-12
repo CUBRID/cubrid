@@ -1585,12 +1585,9 @@ extern int check_database_name (const char *name);
 extern int check_new_database_name (const char *name);
 extern int check_volume_name (const char *name);
 extern int utility_get_option_int_value (UTIL_ARG_MAP * arg_map, int arg_ch);
-extern bool utility_get_option_bool_value (UTIL_ARG_MAP * arg_map,
-					   int arg_ch);
-extern char *utility_get_option_string_value (UTIL_ARG_MAP * arg_map,
-					      int arg_ch, int index);
-extern INT64 utility_get_option_bigint_value (UTIL_ARG_MAP * arg_map,
-					      int arg_ch);
+extern bool utility_get_option_bool_value (UTIL_ARG_MAP * arg_map, int arg_ch);
+extern char *utility_get_option_string_value (UTIL_ARG_MAP * arg_map, int arg_ch, int index);
+extern INT64 utility_get_option_bigint_value (UTIL_ARG_MAP * arg_map, int arg_ch);
 extern int utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map);
 
 extern FILE *fopen_ex (const char *filename, const char *type);
@@ -1609,8 +1606,7 @@ extern int util_size_string_to_byte (UINT64 * size_num, const char *size_str);
 extern int util_msec_to_time_string (char *buf, size_t len, INT64 msec_num);
 extern int util_time_string_to_msec (INT64 * msec_num, char *time_str);
 extern void util_print_deprecated (const char *option);
-extern int util_get_table_list_from_file (char *fname,
-					  dynamic_array * darray);
+extern int util_get_table_list_from_file (char *fname, dynamic_array * darray);
 
 typedef struct
 {
@@ -1621,10 +1617,8 @@ typedef struct
 extern int changemode_keyword (int *keyval_p, char **keystr_p);
 extern int copylogdb_keyword (int *keyval_p, char **keystr_p);
 
-extern int utility_keyword_value (UTIL_KEYWORD * keywords,
-				  int *keyval_p, char **keystr_p);
-extern int utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p,
-				   char **keystr_p);
+extern int utility_keyword_value (UTIL_KEYWORD * keywords, int *keyval_p, char **keystr_p);
+extern int utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p, char **keystr_p);
 
 extern int utility_localtime (const time_t * ts, struct tm *result);
 

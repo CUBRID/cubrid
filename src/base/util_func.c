@@ -109,8 +109,7 @@ util_compare_filepath (const char *file1, const char *file2)
   char path1[PATH_MAX], path2[PATH_MAX];
   char *p;
 
-  if (GetLongPathName (file1, path1, sizeof (path1)) == 0
-      || GetLongPathName (file2, path2, sizeof (path2)) == 0)
+  if (GetLongPathName (file1, path1, sizeof (path1)) == 0 || GetLongPathName (file2, path2, sizeof (path2)) == 0)
     {
       return (stricmp (file1, file2));
     }
@@ -215,8 +214,7 @@ util_disarm_signal_handlers (void)
  *   sigquit_handler(in): SIGQUIT signal handler
  */
 void
-util_arm_signal_handlers (SIG_HANDLER sigint_handler,
-			  SIG_HANDLER sigquit_handler)
+util_arm_signal_handlers (SIG_HANDLER sigint_handler, SIG_HANDLER sigquit_handler)
 {
   /* first disarm any existing handlers */
   util_disarm_signal_handlers ();
@@ -418,12 +416,8 @@ util_shuffle_string_array (char **array, int count)
 
   gettimeofday (&t, NULL);
 
-  /* tv_usec returned by gettimeofday on WINDOWS
-   * is millisec * 1000 and seeding it would result in
-   * generating an even random number at first.
-   * To avoid such a pattern in generating a random number,
-   * tv_usec/1000 is used on WINDOWS.
-   */
+  /* tv_usec returned by gettimeofday on WINDOWS is millisec * 1000 and seeding it would result in generating an even
+   * random number at first. To avoid such a pattern in generating a random number, tv_usec/1000 is used on WINDOWS. */
 #if defined (WINDOWS)
   srand48_r (t.tv_usec / 1000, &buf);
 #else /* WINDOWS */
@@ -636,9 +630,7 @@ util_log_header (char *buf, size_t buf_len)
   buf_len -= len;
 
   pid = envvar_get (UTIL_PID_ENVVAR_NAME);
-  len +=
-    snprintf (p, buf_len, ".%03d (%s) ", millisec,
-	      ((pid == NULL) ? "    " : pid));
+  len += snprintf (p, buf_len, ".%03d (%s) ", millisec, ((pid == NULL) ? "    " : pid));
 
   assert (len <= UTIL_LOG_MAX_HEADER_LEN);
 

@@ -56,16 +56,14 @@ extern bool datafile_per_class;
 extern LIST_MOPS *class_table;
 extern DB_OBJECT **req_class_table;
 extern int is_req_class (DB_OBJECT * class_);
-extern int get_requested_classes (const char *input_filename,
-				  DB_OBJECT * class_list[]);
+extern int get_requested_classes (const char *input_filename, DB_OBJECT * class_list[]);
 
 extern int lo_count;
 
 #define PRINT_IDENTIFIER(s) "[", (s), "]"
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
 
-extern int extractschema (const char *exec_name, int do_auth,
-			  EMIT_STORAGE_ORDER emit_storage_order);
+extern int extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER emit_storage_order);
 extern int extractobjects (const char *exec_name);
 
 #endif /* _UNLOADDB_H_ */

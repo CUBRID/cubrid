@@ -76,44 +76,30 @@ static WHEN_DESC on_not_found = { CONTINUE, (char *) NULL };
 
 static void emit_start (int leading_brace);
 static void emit_end (void);
-static void get_quasi_string (HOST_REF * ref,
-			      const char **buf_str, const char **bufsize_str);
-static void tr_connect (HOST_REF * db_name, HOST_REF * user_name,
-			HOST_REF * passwd);
+static void get_quasi_string (HOST_REF * ref, const char **buf_str, const char **bufsize_str);
+static void tr_connect (HOST_REF * db_name, HOST_REF * user_name, HOST_REF * passwd);
 static void tr_disconnect (void);
 static void tr_commit (void);
 static void tr_rollback (void);
-static void tr_static (const char *stmt, int length, bool repeat,
-		       int num_in_vars, HOST_REF * in_vars,
-		       const char *in_desc_name, int num_out_vars,
-		       HOST_REF * out_vars, const char *out_desc_name);
-static void tr_open_cs (int cs_no, const char *stmt, int length,
-			int stmt_no, bool readonly, int num_in_vars,
+static void tr_static (const char *stmt, int length, bool repeat, int num_in_vars, HOST_REF * in_vars,
+		       const char *in_desc_name, int num_out_vars, HOST_REF * out_vars, const char *out_desc_name);
+static void tr_open_cs (int cs_no, const char *stmt, int length, int stmt_no, bool readonly, int num_in_vars,
 			HOST_REF * in_vars, const char *desc_name);
-static void tr_fetch_cs (int cs_no, int num_out_vars, HOST_REF * out_vars,
-			 const char *desc_name);
-static void tr_update_cs (int cs_no, const char *text, int length,
-			  bool repetitive,
-			  int num_in_vars, HOST_REF * in_vars);
+static void tr_fetch_cs (int cs_no, int num_out_vars, HOST_REF * out_vars, const char *desc_name);
+static void tr_update_cs (int cs_no, const char *text, int length, bool repetitive, int num_in_vars,
+			  HOST_REF * in_vars);
 static void tr_delete_cs (int cs_no);
 static void tr_close_cs (int cs_no);
 static void tr_prepare_esql (int stmt_no, HOST_REF * stmt);
 static void tr_describe (int stmt_no, const char *desc_name);
-static void tr_execute (int stmt_no, int num_in_vars, HOST_REF * in_vars,
-			const char *in_desc_name, int num_out_vars,
+static void tr_execute (int stmt_no, int num_in_vars, HOST_REF * in_vars, const char *in_desc_name, int num_out_vars,
 			HOST_REF * out_vars, const char *out_desc_name);
 static void tr_execute_immediate (HOST_REF * stmt);
-static void tr_object_describe (HOST_REF * obj, int num_attrs,
-				const char **attr_names,
-				const char *desc_name);
-static void tr_object_fetch (HOST_REF * obj, int num_attrs,
-			     const char **attr_names, int num_out_vars,
+static void tr_object_describe (HOST_REF * obj, int num_attrs, const char **attr_names, const char *desc_name);
+static void tr_object_fetch (HOST_REF * obj, int num_attrs, const char **attr_names, int num_out_vars,
 			     HOST_REF * out_vars, const char *desc_name);
-static void tr_object_update (const char *set_expr, int length,
-			      bool repetitive, int num_in_vars,
-			      HOST_REF * in_vars);
-static void tr_whenever (WHEN_CONDITION condition, WHEN_ACTION action,
-			 const char *name);
+static void tr_object_update (const char *set_expr, int length, bool repetitive, int num_in_vars, HOST_REF * in_vars);
+static void tr_whenever (WHEN_CONDITION condition, WHEN_ACTION action, const char *name);
 static void tr_set_out_stream (FILE * out_stream);
 static void tr_set_line_terminator (const char *);
 
@@ -192,8 +178,7 @@ emit_start (int leading_brace)
     {
       fprintf (FP, "{ ");
     }
-  fprintf (FP, "uci_start((void *)&%s, __FILE__, __LINE__, 0x%04x); %s",
-	   ESQL_FILE_ID_VAR_NAME, pp_uci_opt, NL);
+  fprintf (FP, "uci_start((void *)&%s, __FILE__, __LINE__, 0x%04x); %s", ESQL_FILE_ID_VAR_NAME, pp_uci_opt, NL);
   emit_line_directive ();
 }
 
@@ -218,10 +203,9 @@ emit_end (void)
  * bufsize_str(in) :
  */
 static void
-get_quasi_string (HOST_REF * ref,
-		  const char **buf_str, const char **bufsize_str)
+get_quasi_string (HOST_REF * ref, const char **buf_str, const char **bufsize_str)
 {
-  /*
+  /* 
    * Take any host variable that can legitimately act as a string
    * "constant" for input purposes, and return strings to expressions
    * that describe the start of the char buffer and the length of the
@@ -249,8 +233,7 @@ get_quasi_string (HOST_REF * ref,
 
     default:
       {
-	esql_yyverror (pp_get_msg (EX_TRANS_SET, MSG_BAD_CASE),
-		       "emit_prepare");
+	esql_yyverror (pp_get_msg (EX_TRANS_SET, MSG_BAD_CASE), "emit_prepare");
 	*buf_str = "NULL";
 	*bufsize_str = "0";
       }
@@ -276,7 +259,7 @@ tr_connect (HOST_REF * db_name, HOST_REF * user_name, HOST_REF * passwd)
 
   emit_start (1);
 
-  /*
+  /* 
    * Notice that the code we're emitting here is ignoring buffer lengths,
    * so it's not going to fare well with embedded nulls.  This probably
    * isn't much of a practical concern, since the strings we're coping
@@ -396,10 +379,8 @@ tr_rollback (void)
  * out_desc_name(in) : descriptor name if given
  */
 static void
-tr_static (const char *stmt, int length, bool repetitive,
-	   int num_in_vars, HOST_REF * in_vars,
-	   const char *in_desc_name, int num_out_vars,
-	   HOST_REF * out_vars, const char *out_desc_name)
+tr_static (const char *stmt, int length, bool repetitive, int num_in_vars, HOST_REF * in_vars, const char *in_desc_name,
+	   int num_out_vars, HOST_REF * out_vars, const char *out_desc_name)
 {
   int i;
   int counter = 0;
@@ -423,19 +404,14 @@ tr_static (const char *stmt, int length, bool repetitive,
   /* emit uci function */
   if (pp_enable_uci_trace)
     {
-      fprintf (FP,
-	       "fprintf(stderr, "
-	       "\"uci_static(%%d, \\\"%%s\\\", %%ld, %%d)\\n\", %d, \"",
+      fprintf (FP, "fprintf(stderr, " "\"uci_static(%%d, \\\"%%s\\\", %%ld, %%d)\\n\", %d, \"",
 	       (repetitive) ? REPETITIVE_SERIAL_NO : -1);
       tr_print_n_string (temp, length + counter);
-      fprintf (FP, "\", %ld, %d); %s", (long) length,
-	       (num_out_vars <= 0) ? -1 : num_out_vars, NL);
+      fprintf (FP, "\", %ld, %d); %s", (long) length, (num_out_vars <= 0) ? -1 : num_out_vars, NL);
     }
-  fprintf (FP, "  uci_static(%d, \"",
-	   (repetitive) ? REPETITIVE_SERIAL_NO : -1);
+  fprintf (FP, "  uci_static(%d, \"", (repetitive) ? REPETITIVE_SERIAL_NO : -1);
   tr_print_n_string (temp, length + counter);
-  fprintf (FP, "\", %ld, %d);%s", (long) length,
-	   (num_out_vars <= 0) ? -1 : num_out_vars, NL);
+  fprintf (FP, "\", %ld, %d);%s", (long) length, (num_out_vars <= 0) ? -1 : num_out_vars, NL);
   emit_line_directive ();
 
   if (temp != NULL)
@@ -509,8 +485,7 @@ tr_print_n_string (char *stmt, int length)
  *
  */
 static void
-tr_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
-	    bool readonly, int num_in_vars, HOST_REF * in_vars,
+tr_open_cs (int cs_no, const char *stmt, int length, int stmt_no, bool readonly, int num_in_vars, HOST_REF * in_vars,
 	    const char *desc_name)
 {
   int i;
@@ -535,10 +510,7 @@ tr_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
   /* emits uci function */
   if (pp_enable_uci_trace)
     {
-      fprintf (FP,
-	       "fprintf(stderr,"
-	       "\"uci_open_cs(%%d, \\\"%%s\\\", %%ld, %%d, %%d)\\n\", %d, ",
-	       cs_no);
+      fprintf (FP, "fprintf(stderr," "\"uci_open_cs(%%d, \\\"%%s\\\", %%ld, %%d, %%d)\\n\", %d, ", cs_no);
       if (stmt == NULL)
 	{
 	  fprintf (FP, "\"(char *)0\", ");
@@ -592,8 +564,7 @@ tr_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
  * desc_name(in) : descriptor name if given
  */
 static void
-tr_fetch_cs (int cs_no, int num_out_vars, HOST_REF * out_vars,
-	     const char *desc_name)
+tr_fetch_cs (int cs_no, int num_out_vars, HOST_REF * out_vars, const char *desc_name)
 {
   int i;
 
@@ -603,21 +574,15 @@ tr_fetch_cs (int cs_no, int num_out_vars, HOST_REF * out_vars,
     {
       if (num_out_vars > 0)
 	{
-	  fprintf (FP, "fprintf(stderr, \"uci_fetch_cs(%d, %d)\\n\"); %s",
-		   cs_no, num_out_vars, NL);
+	  fprintf (FP, "fprintf(stderr, \"uci_fetch_cs(%d, %d)\\n\"); %s", cs_no, num_out_vars, NL);
 	}
       else if (desc_name != NULL)
 	{
-	  fprintf (FP,
-		   "fprintf(stderr, "
-		   "\"uci_fetch_cs(%d, (%s)->sqldesc)\\n\"); %s",
-		   cs_no, desc_name, NL);
+	  fprintf (FP, "fprintf(stderr, " "\"uci_fetch_cs(%d, (%s)->sqldesc)\\n\"); %s", cs_no, desc_name, NL);
 	}
       else
 	{
-	  fprintf (FP,
-		   "fprintf(stderr, \"uci_fetch_cs(%%d, -1)\\n\", %d); %s",
-		   cs_no, NL);
+	  fprintf (FP, "fprintf(stderr, \"uci_fetch_cs(%%d, -1)\\n\", %d); %s", cs_no, NL);
 	}
     }
   if (num_out_vars > 0)
@@ -633,8 +598,7 @@ tr_fetch_cs (int cs_no, int num_out_vars, HOST_REF * out_vars,
   else if (desc_name != NULL)
     {
       /* descriptor is given */
-      fprintf (FP, "  uci_fetch_cs(%d, (%s)->sqldesc);%s", cs_no, desc_name,
-	       NL);
+      fprintf (FP, "  uci_fetch_cs(%d, (%s)->sqldesc);%s", cs_no, desc_name, NL);
       emit_line_directive ();
       fprintf (FP, "  uci_get_descriptor(%d, %s);%s", cs_no, desc_name, NL);
       emit_line_directive ();
@@ -666,8 +630,7 @@ tr_fetch_cs (int cs_no, int num_out_vars, HOST_REF * out_vars,
  * note : 'text' should NOT include WHERE CURRENT OF cs_name
  */
 static void
-tr_update_cs (int cs_no, const char *text, int length,
-	      bool repetitive, int num_in_vars, HOST_REF * in_vars)
+tr_update_cs (int cs_no, const char *text, int length, bool repetitive, int num_in_vars, HOST_REF * in_vars)
 {
   int i;
 
@@ -689,15 +652,12 @@ tr_update_cs (int cs_no, const char *text, int length,
   /* emit uci function */
   if (pp_enable_uci_trace)
     {
-      fprintf (FP,
-	       "fprintf(stderr, "
-	       "\"uci_static(%%d, \\\"%%s\\\", %%ld, 0)\\n\", %d, \"",
+      fprintf (FP, "fprintf(stderr, " "\"uci_static(%%d, \\\"%%s\\\", %%ld, 0)\\n\", %d, \"",
 	       (repetitive) ? REPETITIVE_SERIAL_NO : -1);
       tr_print_n_string ((char *) text, length);
       fprintf (FP, "\", %ld); %s", (long) length, NL);
     }
-  fprintf (FP, "  uci_static(%d,\"",
-	   (repetitive) ? REPETITIVE_SERIAL_NO : -1);
+  fprintf (FP, "  uci_static(%d,\"", (repetitive) ? REPETITIVE_SERIAL_NO : -1);
   tr_print_n_string ((char *) text, length);
   fprintf (FP, "\", %ld, 0);%s", (long) length, NL);
   emit_line_directive ();
@@ -719,8 +679,7 @@ tr_delete_cs (int cs_no)
   /* emit uci function */
   if (pp_enable_uci_trace)
     {
-      fprintf (FP, "fprintf(stderr, \"uci_delete_cs(%d)\\n\"); %s",
-	       cs_no, NL);
+      fprintf (FP, "fprintf(stderr, \"uci_delete_cs(%d)\\n\"); %s", cs_no, NL);
     }
   fprintf (FP, "  uci_delete_cs(%d);%s", cs_no, NL);
   emit_line_directive ();
@@ -764,7 +723,7 @@ tr_prepare_esql (int stmt_no, HOST_REF * stmt)
 
   emit_start (1);
 
-  /*
+  /* 
    * The parser should have guaranteed that only a HOST_REF that smells
    * like some sort of pseudo-string can get in here.  Other types should
    * be impossible.
@@ -774,13 +733,10 @@ tr_prepare_esql (int stmt_no, HOST_REF * stmt)
   /* emit uci function */
   if (pp_enable_uci_trace)
     {
-      fprintf (FP,
-	       "fprintf(stderr, "
-	       "\"uci_prepare(%%d, \\\"%%s\\\", %%d)\\n\", %d, %s, %s); %s",
-	       stmt_no, buf_str, bufsize_str, NL);
+      fprintf (FP, "fprintf(stderr, " "\"uci_prepare(%%d, \\\"%%s\\\", %%d)\\n\", %d, %s, %s); %s", stmt_no, buf_str,
+	       bufsize_str, NL);
     }
-  fprintf (FP, "  uci_prepare(%d, %s, %s);%s",
-	   stmt_no, buf_str, bufsize_str, NL);
+  fprintf (FP, "  uci_prepare(%d, %s, %s);%s", stmt_no, buf_str, bufsize_str, NL);
   emit_line_directive ();
 
   emit_end ();
@@ -821,8 +777,7 @@ tr_describe (int stmt_no, const char *desc_name)
  * out_desc_name(in) : name of output descriptor variable
  */
 static void
-tr_execute (int stmt_no, int num_in_vars, HOST_REF * in_vars,
-	    const char *in_desc_name, int num_out_vars,
+tr_execute (int stmt_no, int num_in_vars, HOST_REF * in_vars, const char *in_desc_name, int num_out_vars,
 	    HOST_REF * out_vars, const char *out_desc_name)
 {
   int i;
@@ -849,20 +804,15 @@ tr_execute (int stmt_no, int num_in_vars, HOST_REF * in_vars,
     {
       if (num_out_vars > 0)
 	{
-	  fprintf (FP, "fprintf(stderr, \"uci_execute(%d, %d)\\n\"); %s",
-		   stmt_no, num_out_vars, NL);
+	  fprintf (FP, "fprintf(stderr, \"uci_execute(%d, %d)\\n\"); %s", stmt_no, num_out_vars, NL);
 	}
       else if (out_desc_name != NULL)
 	{
-	  fprintf (FP,
-		   "fprintf(stderr,"
-		   " \"uci_execute(%d, (%s)->sqldesc)\\n\"); %s",
-		   stmt_no, out_desc_name, NL);
+	  fprintf (FP, "fprintf(stderr," " \"uci_execute(%d, (%s)->sqldesc)\\n\"); %s", stmt_no, out_desc_name, NL);
 	}
       else
 	{
-	  fprintf (FP, "fprintf(stderr, \"uci_execute(%d, -1)\\n\"); %s",
-		   stmt_no, NL);
+	  fprintf (FP, "fprintf(stderr, \"uci_execute(%d, -1)\\n\"); %s", stmt_no, NL);
 	}
     }
 
@@ -879,8 +829,7 @@ tr_execute (int stmt_no, int num_in_vars, HOST_REF * in_vars,
   else if (out_desc_name != NULL)
     {
       /* descriptor is given */
-      fprintf (FP, "  uci_execute(%d, (%s)->sqldesc);%s", stmt_no,
-	       out_desc_name, NL);
+      fprintf (FP, "  uci_execute(%d, (%s)->sqldesc);%s", stmt_no, out_desc_name, NL);
       emit_line_directive ();
       fprintf (FP, "  uci_get_descriptor(-1, %s);%s", out_desc_name, NL);
       emit_line_directive ();
@@ -912,13 +861,10 @@ tr_execute_immediate (HOST_REF * stmt)
   get_quasi_string (stmt, &buf_str, &bufsize_str);
   if (pp_enable_uci_trace)
     {
-      fprintf (FP,
-	       "fprintf(stderr, "
-	       "\"uci_execute_immediate(\\\"%%s\\\", %%d)\\n\", %s, %s); %s",
-	       buf_str, bufsize_str, NL);
+      fprintf (FP, "fprintf(stderr, " "\"uci_execute_immediate(\\\"%%s\\\", %%d)\\n\", %s, %s); %s", buf_str,
+	       bufsize_str, NL);
     }
-  fprintf (FP, "  uci_execute_immediate(%s, %s);%s",
-	   buf_str, bufsize_str, NL);
+  fprintf (FP, "  uci_execute_immediate(%s, %s);%s", buf_str, bufsize_str, NL);
   emit_line_directive ();
   emit_end ();
 }
@@ -936,8 +882,7 @@ tr_execute_immediate (HOST_REF * stmt)
  * note: Caller should make sure the 'obj' refers to C_TYPE_OBJECTID.
  */
 static void
-tr_object_describe (HOST_REF * obj, int num_attrs, const char **attr_names,
-		    const char *desc_name)
+tr_object_describe (HOST_REF * obj, int num_attrs, const char **attr_names, const char *desc_name)
 {
   int i;
 
@@ -960,8 +905,7 @@ tr_object_describe (HOST_REF * obj, int num_attrs, const char **attr_names,
     }
 
   emit_start (0);
-  fprintf (FP, "  uci_object_describe(%s, %d, uci_attr_names, %s);%s",
-	   pp_get_expr (obj), num_attrs, desc_name, NL);
+  fprintf (FP, "  uci_object_describe(%s, %d, uci_attr_names, %s);%s", pp_get_expr (obj), num_attrs, desc_name, NL);
   emit_line_directive ();
 
   emit_end ();
@@ -985,8 +929,8 @@ tr_object_describe (HOST_REF * obj, int num_attrs, const char **attr_names,
  * note : Caller should make sure the `obj' refers to C_TYPE_OBJECTID.
  */
 static void
-tr_object_fetch (HOST_REF * obj, int num_attrs, const char **attr_names,
-		 int num_out_vars, HOST_REF * out_vars, const char *desc_name)
+tr_object_fetch (HOST_REF * obj, int num_attrs, const char **attr_names, int num_out_vars, HOST_REF * out_vars,
+		 const char *desc_name)
 {
   int i;
 
@@ -1015,32 +959,25 @@ tr_object_fetch (HOST_REF * obj, int num_attrs, const char **attr_names,
       if (num_out_vars > 0)
 	{
 	  fprintf (FP,
-		   "fprintf(stderr, "
-		   "\"uci_object_fetch(%%s, %%d, uci_attr_names, %%d)\\n\""
-		   ", \"%s\", %d, %d); %s",
+		   "fprintf(stderr, " "\"uci_object_fetch(%%s, %%d, uci_attr_names, %%d)\\n\"" ", \"%s\", %d, %d); %s",
 		   pp_get_expr (obj), num_attrs, num_out_vars, NL);
 	}
       else if (desc_name != NULL)
 	{
 	  fprintf (FP,
-		   "fprintf(stderr, "
-		   "\"uci_object_fetch(%%s, %%d, uci_attr_names, %%s)\\n\""
-		   ", \"%s\", %d, \"(%s)->sqldesc\"); %s",
-		   pp_get_expr (obj), num_attrs, desc_name, NL);
+		   "fprintf(stderr, " "\"uci_object_fetch(%%s, %%d, uci_attr_names, %%s)\\n\""
+		   ", \"%s\", %d, \"(%s)->sqldesc\"); %s", pp_get_expr (obj), num_attrs, desc_name, NL);
 	}
       else
 	{
-	  fprintf (FP,
-		   "fprintf(stderr, "
-		   "\"uci_object_fetch(%%s, %%d, uci_attr_names, -1)\\n\""
-		   ", \"%s\", %d); %s", pp_get_expr (obj), num_attrs, NL);
+	  fprintf (FP, "fprintf(stderr, " "\"uci_object_fetch(%%s, %%d, uci_attr_names, -1)\\n\"" ", \"%s\", %d); %s",
+		   pp_get_expr (obj), num_attrs, NL);
 	}
     }
   if (num_out_vars > 0)
     {
       /* output host variables are given */
-      fprintf (FP, "  uci_object_fetch(%s, %d, uci_attr_names, %d);%s",
-	       pp_get_expr (obj), num_attrs, num_out_vars, NL);
+      fprintf (FP, "  uci_object_fetch(%s, %d, uci_attr_names, %d);%s", pp_get_expr (obj), num_attrs, num_out_vars, NL);
       emit_line_directive ();
       for (i = 0; i < num_out_vars; i++)
 	{
@@ -1050,17 +987,15 @@ tr_object_fetch (HOST_REF * obj, int num_attrs, const char **attr_names,
   else if (desc_name != NULL)
     {
       /* descriptor is given */
-      fprintf (FP,
-	       "  uci_object_fetch(%s, %d, uci_attr_names, (%s)->sqldesc);%s",
-	       pp_get_expr (obj), num_attrs, desc_name, NL);
+      fprintf (FP, "  uci_object_fetch(%s, %d, uci_attr_names, (%s)->sqldesc);%s", pp_get_expr (obj), num_attrs,
+	       desc_name, NL);
       emit_line_directive ();
       fprintf (FP, "  uci_get_descriptor(-1, %s);%s", desc_name, NL);
       emit_line_directive ();
     }
   else
     {
-      fprintf (FP, "  uci_object_fetch(%s, %d, uci_attr_names, -1);%s",
-	       pp_get_expr (obj), num_attrs, NL);
+      fprintf (FP, "  uci_object_fetch(%s, %d, uci_attr_names, -1);%s", pp_get_expr (obj), num_attrs, NL);
       emit_line_directive ();
     }
 
@@ -1081,8 +1016,7 @@ tr_object_fetch (HOST_REF * obj, int num_attrs, const char **attr_names,
  *        - 'set_expr' should NOT include 'SET' keyword itself.
  */
 static void
-tr_object_update (const char *set_expr, int length, bool repetitive,
-		  int num_in_vars, HOST_REF * in_vars)
+tr_object_update (const char *set_expr, int length, bool repetitive, int num_in_vars, HOST_REF * in_vars)
 {
   int i;
   int counter = 0;
@@ -1099,15 +1033,13 @@ tr_object_update (const char *set_expr, int length, bool repetitive,
   /* emit uci function */
   if (pp_enable_uci_trace)
     {
-      fprintf (FP,
-	       "fprintf(stderr, \"uci_static(%%d, \\\"%%s\\\", %%ld, 0)\\n\""
-	       ", %d, \"", (repetitive) ? REPETITIVE_SERIAL_NO : -1);
+      fprintf (FP, "fprintf(stderr, \"uci_static(%%d, \\\"%%s\\\", %%ld, 0)\\n\"" ", %d, \"",
+	       (repetitive) ? REPETITIVE_SERIAL_NO : -1);
       tr_print_n_string (temp, length + counter);
       fprintf (FP, "\", %ld); %s", (long) length, NL);
     }
 
-  fprintf (FP, "  uci_static(%d,\"",
-	   (repetitive) ? REPETITIVE_SERIAL_NO : -1);
+  fprintf (FP, "  uci_static(%d,\"", (repetitive) ? REPETITIVE_SERIAL_NO : -1);
   tr_print_n_string (temp, length + counter);
   fprintf (FP, "\",%ld, 0);%s", (long) length, NL);
   emit_line_directive ();
@@ -1348,8 +1280,7 @@ emit_put_db_value (HOST_REF * host)
 
     case C_TYPE_COLLECTION:
       {
-	type_str =
-	  (char *) pp_malloc (sizeof (fmt) + strlen (pp_get_expr (host)));
+	type_str = (char *) pp_malloc (sizeof (fmt) + strlen (pp_get_expr (host)));
 	sprintf (type_str, fmt, pp_get_expr (host));
 	ctype_str = "DB_TYPE_C_SET";
 	buf_str = pp_get_addr_expr (host);
@@ -1412,11 +1343,10 @@ emit_put_db_value (HOST_REF * host)
     case C_TYPE_SQLDA:
     case NUM_C_TYPES:
       {
-	/*
+	/* 
 	 * These cases should be impossible.
 	 */
-	esql_yyverror (pp_get_msg (EX_TRANS_SET, MSG_BAD_CASE),
-		       "emit_put_db_value");
+	esql_yyverror (pp_get_msg (EX_TRANS_SET, MSG_BAD_CASE), "emit_put_db_value");
 	type_str = (char *) "DB_TYPE_UNKNOWN";
 	ctype_str = "0";
 	buf_str = "NULL";
@@ -1424,9 +1354,7 @@ emit_put_db_value (HOST_REF * host)
       break;
     }
 
-  fprintf (FP, "%s, %s, %s, %s, %s, %s);%s",
-	   type_str,
-	   prec_str, scale_str, ctype_str, buf_str, bufsize_str, NL);
+  fprintf (FP, "%s, %s, %s, %s, %s, %s);%s", type_str, prec_str, scale_str, ctype_str, buf_str, bufsize_str, NL);
   emit_line_directive ();
 
   if (type == C_TYPE_COLLECTION)
@@ -1451,25 +1379,22 @@ emit_get_db_value (int cs_no, HOST_REF * host)
 
   if (ctype == C_TYPE_DB_VALUE)
     {
-      fprintf (FP, "  uci_get_db_value(%d, %s);%s",
-	       cs_no, pp_get_addr_expr (host), NL);
+      fprintf (FP, "  uci_get_db_value(%d, %s);%s", cs_no, pp_get_addr_expr (host), NL);
       emit_line_directive ();
       return;
     }
-  /*
+  /* 
    * Since the various calls to pp_get_<whatever> tend to share common
    * scratch areas, putting all of them in one giant fprintf() will
    * create havoc.  It's safer to sequence the calls through separate
    * calls to fprintf().
    */
   ctype = pp_get_type (host);
-  fprintf (FP, "  uci_get_value(%d, %s, ",
-	   cs_no, pp_get_ind_addr_expr (host));
+  fprintf (FP, "  uci_get_value(%d, %s, ", cs_no, pp_get_ind_addr_expr (host));
   fprintf (FP, "(void *)(%s), ", pp_get_addr_expr (host));
   fprintf (FP, "%s, ", c_type_to_db_type_c[ctype]);
   fprintf (FP, "(int)(%s), ", pp_get_output_size (host));
-  if (ctype == C_TYPE_VARCHAR || ctype == C_TYPE_VARNCHAR
-      || ctype == C_TYPE_VARBIT)
+  if (ctype == C_TYPE_VARCHAR || ctype == C_TYPE_VARNCHAR || ctype == C_TYPE_VARBIT)
     {
       fprintf (FP, "&%s", pp_get_input_size (host));
     }
@@ -1606,7 +1531,7 @@ escape_string (const char *in_str, int length, int *counter)
     }
 
   add_count = 0;
-  /*
+  /* 
    * Need four times the size of the input string  since this is the
    * max size the out string could be.
    */
@@ -1622,13 +1547,12 @@ escape_string (const char *in_str, int length, int *counter)
 
   while (in_str <= end)
     {
-      /*
+      /* 
        * If input char is double quote,single quote, escape char, newline
        * of form feed, precede it by an escape character in the emitted
        * string
        */
-      if ((*in_str == '"') || (*in_str == '\'')
-	  || (*in_str == '\\') || (*in_str == '\n') || (*in_str == '\f'))
+      if ((*in_str == '"') || (*in_str == '\'') || (*in_str == '\\') || (*in_str == '\n') || (*in_str == '\f'))
 	{
 
 	  *temp = '\\';
@@ -1636,7 +1560,7 @@ escape_string (const char *in_str, int length, int *counter)
 	  add_count++;
 	}
 
-      /*
+      /* 
        * If input char is the null character, then replace it with
        * escape char 000 (octal 0) in the emitted string so that
        * the 'C' compilers will not choke on an unescaped null char
@@ -1664,7 +1588,7 @@ escape_string (const char *in_str, int length, int *counter)
 	}
       else
 	{
-	  /*
+	  /* 
 	   * Emit current char.
 	   * Increment input string pointer by 1.
 	   * Increment output string pointer by 1.

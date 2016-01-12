@@ -294,10 +294,8 @@ extern int csql_Line_lwm;
 extern int csql_Row_count;
 extern int csql_Num_failures;
 
-extern int (*csql_text_utf8_to_console) (const char *, const int, char **,
-					 int *);
-extern int (*csql_text_console_to_utf8) (const char *, const int, char **,
-					 int *);
+extern int (*csql_text_utf8_to_console) (const char *, const int, char **, int *);
+extern int (*csql_text_console_to_utf8) (const char *, const int, char **, int *);
 
 extern void csql_display_msg (const char *string);
 extern void csql_exit (int exit_status);
@@ -322,13 +320,11 @@ extern void nonscr_display_error (char *buffer, int buf_length);
 
 extern int csql_get_session_cmd_no (const char *input);
 
-extern void csql_results (const CSQL_ARGUMENT * csql_arg,
-			  DB_QUERY_RESULT * result, DB_QUERY_TYPE * attr_spec,
+extern void csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY_TYPE * attr_spec,
 			  int line_no, CUBRID_STMT_TYPE stmt_type);
 
 extern char *csql_edit_contents_get (void);
-extern int csql_edit_contents_append (const char *str,
-				      bool flag_append_new_line);
+extern int csql_edit_contents_append (const char *str, bool flag_append_new_line);
 extern void csql_walk_statement (const char *str);
 extern bool csql_is_statement_complete (void);
 extern bool csql_is_statement_in_block (void);
@@ -345,14 +341,11 @@ extern void csql_help_trigger (const char *class_name);
 extern void csql_help_info (const char *command, int aucommit_flag);
 extern void csql_killtran (const char *argument);
 
-extern char *csql_db_value_as_string (DB_VALUE * value,
-				      int *length, bool plain_string);
+extern char *csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string);
 
-extern char *csql_string_to_plain_string (const char *string_value,
-					  int length, int *result_length);
+extern char *csql_string_to_plain_string (const char *string_value, int length, int *result_length);
 
-extern int csql_set_column_width_info (const char *column_name,
-				       int column_width);
+extern int csql_set_column_width_info (const char *column_name, int column_width);
 extern int csql_get_column_width (const char *column_name);
 
 #endif /* _CSQL_H_ */

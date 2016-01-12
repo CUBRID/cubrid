@@ -54,8 +54,7 @@ uRemoveCRLF (char *str)
   int i;
   if (str == NULL)
     return;
-  for (i = (int) strlen (str) - 1; (i >= 0) && (str[i] == 10 || str[i] == 13);
-       i--)
+  for (i = (int) strlen (str) - 1; (i >= 0) && (str[i] == 10 || str[i] == 13); i--)
     {
       str[i] = '\0';
     }
@@ -63,8 +62,7 @@ uRemoveCRLF (char *str)
 
 
 nvplist *
-nv_create (int defsize, const char *lom, const char *lcm, const char *dm,
-	   const char *em)
+nv_create (int defsize, const char *lom, const char *lcm, const char *dm, const char *em)
 {
   nvplist *nvpl;
 
@@ -197,8 +195,7 @@ nv_add_nvp_int64 (nvplist * ref, const char *name, int64_t value)
 }
 
 int
-nv_add_nvp_float (nvplist * ref, const char *name, float value,
-		  const char *fmt)
+nv_add_nvp_float (nvplist * ref, const char *name, float value, const char *fmt)
 {
   char strbuf[32];
   sprintf (strbuf, fmt, value);
@@ -206,8 +203,7 @@ nv_add_nvp_float (nvplist * ref, const char *name, float value,
 }
 
 int
-nv_add_nvp_time (nvplist * ref, const char *name, time_t t, const char *fmt,
-		 int type)
+nv_add_nvp_time (nvplist * ref, const char *name, time_t t, const char *fmt, int type)
 {
   char strbuf[64];
   if (t == 0)
@@ -334,8 +330,7 @@ nv_writeto (nvplist * ref, char *filename)
 
   for (i = 0; i < ref->nvplist_size; ++i)
     {
-      if (ref->nvpairs[i] == NULL
-	  || dst_buffer (ref->nvpairs[i]->name) == NULL)
+      if (ref->nvpairs[i] == NULL || dst_buffer (ref->nvpairs[i]->name) == NULL)
 	continue;
 
       fprintf (nvfile, "%s", dst_buffer (ref->nvpairs[i]->name));
@@ -435,13 +430,10 @@ nv_readfrom (nvplist * ref, char *filename)
 static int
 _nv_make_room (nvplist * ref)
 {
-  ref->nvpairs = (nvpair **) (REALLOC (ref->nvpairs,
-				       sizeof (nvpair *) *
-				       (ref->nvplist_size) * 2));
+  ref->nvpairs = (nvpair **) (REALLOC (ref->nvpairs, sizeof (nvpair *) * (ref->nvplist_size) * 2));
   if (ref->nvpairs == NULL)
     return -1;
-  memset (ref->nvpairs + ref->nvplist_size,
-	  0, sizeof (nvpair *) * (ref->nvplist_size));
+  memset (ref->nvpairs + ref->nvplist_size, 0, sizeof (nvpair *) * (ref->nvplist_size));
 
   ref->nvplist_size = ref->nvplist_size * 2;
 
@@ -459,9 +451,8 @@ _nv_search (nvplist * ref, const char *name)
 	{
 	  char *dstbuf = dst_buffer (ref->nvpairs[i]->name);
 
-	  if (((int) strlen (name) == dst_length (ref->nvpairs[i]->name)) &&
-	      (dstbuf != NULL) &&
-	      (strncmp (name, dstbuf, strlen (name)) == 0))
+	  if (((int) strlen (name) == dst_length (ref->nvpairs[i]->name)) && (dstbuf != NULL)
+	      && (strncmp (name, dstbuf, strlen (name)) == 0))
 	    {
 	      return ref->nvpairs[i];
 	    }
@@ -477,8 +468,7 @@ _nv_search (nvplist * ref, const char *name)
  * return : # of nvpair slots created if successful, -1 if error
  */
 int
-nv_init (nvplist * ref, int defsize, const char *lom, const char *lcm,
-	 const char *dm, const char *em)
+nv_init (nvplist * ref, int defsize, const char *lom, const char *lcm, const char *dm, const char *em)
 {
   if ((ref == NULL) || (defsize < 1))
     {

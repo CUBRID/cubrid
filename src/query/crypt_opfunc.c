@@ -81,10 +81,8 @@ static const char *const crypt_lib_fail_info[] = {
 };
 
 static int init_gcrypt (void);
-static char *str_to_hex (THREAD_ENTRY * thread_p, const char *src,
-			 int src_len, char **dest_p, int *dest_len_p);
-static void aes_default_gen_key (const char *key, int key_len, char *dest_key,
-				 int dest_key_len);
+static char *str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p, int *dest_len_p);
+static void aes_default_gen_key (const char *key, int key_len, char *dest_key, int dest_key_len);
 
 /*
  * init_gcrypt() -- Initialize libgcrypt
@@ -104,19 +102,18 @@ init_gcrypt (void)
 
       if (gcrypt_initialized == 1)
 	{
-	  /* It means other concurrent thread has initialized gcrypt when 
-	   * the thread blocked by pthread_mutex_lock(&gcrypt_init_mutex). */
+	  /* It means other concurrent thread has initialized gcrypt when the thread blocked by
+	   * pthread_mutex_lock(&gcrypt_init_mutex). */
 	  pthread_mutex_unlock (&gcrypt_init_mutex);
 	  return NO_ERROR;
 	}
 
-      i_gcrypt_err =
-	gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
+      i_gcrypt_err = gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
       if (i_gcrypt_err != GPG_ERR_NO_ERROR)
 	{
 	  pthread_mutex_unlock (&gcrypt_init_mutex);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED,
-		  1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
+		  crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
 	  return ER_ENCRYPTION_LIB_FAILED;
 	}
 #endif
@@ -135,8 +132,8 @@ init_gcrypt (void)
 #if defined(SERVER_MODE)
 	  pthread_mutex_unlock (&gcrypt_init_mutex);
 #endif
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED,
-		  1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
+		  crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
 	  return ER_ENCRYPTION_LIB_FAILED;
 	}
       gcrypt_initialized = (i_gcrypt_err == GCRYPT_INIT_SUCCESS) ? 1 : 0;
@@ -160,8 +157,7 @@ init_gcrypt (void)
  * Note:
  */
 static char *
-str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len,
-	    char **dest_p, int *dest_len_p)
+str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p, int *dest_len_p)
 {
   static const char hextable[] = "0123456789ABCDEF";
   int dest_len = 2 * src_len;
@@ -206,8 +202,7 @@ str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len,
  * Note:
  */
 static void
-aes_default_gen_key (const char *key, int key_len, char *dest_key,
-		     int dest_key_len)
+aes_default_gen_key (const char *key, int key_len, char *dest_key, int dest_key_len)
 {
   int i, j;
 
@@ -238,8 +233,7 @@ aes_default_gen_key (const char *key, int key_len, char *dest_key,
  * Note:
  */
 int
-crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src,
-			   int src_len, const char *key, int key_len,
+crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key, int key_len,
 			   char **dest_p, int *dest_len_p)
 {
   gcry_error_t i_gcrypt_err;
@@ -267,8 +261,7 @@ crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src,
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  i_gcrypt_err = gcry_cipher_open (&aes_ctx, GCRY_CIPHER_AES,
-				   GCRY_CIPHER_MODE_ECB, 0);
+  i_gcrypt_err = gcry_cipher_open (&aes_ctx, GCRY_CIPHER_AES, GCRY_CIPHER_MODE_ECB, 0);
   if (i_gcrypt_err != GPG_ERR_NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
@@ -284,8 +277,7 @@ crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src,
     }
   else
     {
-      padding_src_len =
-	ceil ((double) src_len / AES128_BLOCK_LEN) * AES128_BLOCK_LEN;
+      padding_src_len = ceil ((double) src_len / AES128_BLOCK_LEN) * AES128_BLOCK_LEN;
       pad = padding_src_len - src_len;
     }
 
@@ -315,13 +307,10 @@ crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src,
       goto exit_and_free;
     }
 
-  i_gcrypt_err =
-    gcry_cipher_encrypt (aes_ctx, dest, padding_src_len, padding_src,
-			 padding_src_len);
+  i_gcrypt_err = gcry_cipher_encrypt (aes_ctx, dest, padding_src_len, padding_src, padding_src_len);
   if (i_gcrypt_err != GPG_ERR_NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-	      crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
       error_status = ER_ENCRYPTION_LIB_FAILED;
       goto exit_and_free;
     }
@@ -355,8 +344,7 @@ exit_and_free:
  * Note:
  */
 int
-crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src,
-			   int src_len, const char *key, int key_len,
+crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key, int key_len,
 			   char **dest_p, int *dest_len_p)
 {
   gcry_error_t i_gcrypt_err;
@@ -390,8 +378,7 @@ crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src,
       return ER_ENCRYPTION_LIB_FAILED;
     }
 
-  i_gcrypt_err = gcry_cipher_open (&aes_ctx, GCRY_CIPHER_AES,
-				   GCRY_CIPHER_MODE_ECB, 0);
+  i_gcrypt_err = gcry_cipher_open (&aes_ctx, GCRY_CIPHER_AES, GCRY_CIPHER_MODE_ECB, 0);
   if (i_gcrypt_err != GPG_ERR_NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
@@ -420,8 +407,7 @@ crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src,
   if (i_gcrypt_err != GPG_ERR_NO_ERROR)
     {
       error_status = ER_ENCRYPTION_LIB_FAILED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
-	      crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
       goto error_and_free;
     }
 
@@ -483,8 +469,7 @@ error_and_free:
  * Note:
  */
 int
-crypt_sha_one (THREAD_ENTRY * thread_p, const char *src, int src_len,
-	       char **dest_p, int *dest_len_p)
+crypt_sha_one (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p, int *dest_len_p)
 {
   int hash_length;
   char *dest = NULL;
@@ -547,8 +532,7 @@ exit_and_free:
  * Note:
  */
 int
-crypt_sha_two (THREAD_ENTRY * thread_p, const char *src, int src_len,
-	       int need_hash_len, char **dest_p, int *dest_len_p)
+crypt_sha_two (THREAD_ENTRY * thread_p, const char *src, int src_len, int need_hash_len, char **dest_p, int *dest_len_p)
 {
   int hash_length;
   int algo;

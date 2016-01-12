@@ -109,21 +109,15 @@ extern "C"
       char sqlerrmc[512];	/* error message text */
     } sqlerrm;
     char sqlerrp[8];		/* unused */
-    long sqlerrd[6];		/* sqlerrd[2] indicates the number of objects
-				 * affected by the last command. others are
-				 * not used.
-				 */
+    long sqlerrd[6];		/* sqlerrd[2] indicates the number of objects affected by the last command. others are
+				 * not used. */
     struct
     {
       char sqlwarn0;		/* 'W' if one of sqlwarn[1-7] is 'W' */
       char sqlwarn1;		/* 'W' if output truncation */
-      char sqlwarn2;		/* 'W' if NULL in aggregate evaulation
-				 * Currently NOT SUPPORTED
-				 */
+      char sqlwarn2;		/* 'W' if NULL in aggregate evaulation Currently NOT SUPPORTED */
       char sqlwarn3;		/* 'W' if host variables are mismatches */
-      char sqlwarn4;		/* 'W' if UPDATE/DELETE without WHERE
-				 * Currently NOT SUPPORTED
-				 */
+      char sqlwarn4;		/* 'W' if UPDATE/DELETE without WHERE Currently NOT SUPPORTED */
       char sqlwarn5;		/* unused */
       char sqlwarn6;		/* unused */
       char sqlwarn7;		/* unused */
@@ -172,18 +166,15 @@ extern "C"
   extern void uci_describe (int, CUBRIDDA *);
   extern void uci_execute (int, int);
   extern void uci_execute_immediate (const char *, int);
-  extern void uci_object_describe
-    (DB_OBJECT *, int, const char **, CUBRIDDA *);
+  extern void uci_object_describe (DB_OBJECT *, int, const char **, CUBRIDDA *);
   extern void uci_object_fetch (DB_OBJECT *, int, const char **, int);
 
   extern void uci_set_num_db_values (int);
-  extern void uci_get_value (int, DB_INDICATOR *, void *,
-			     DB_TYPE_C, int, int *);
+  extern void uci_get_value (int, DB_INDICATOR *, void *, DB_TYPE_C, int, int *);
   extern void uci_get_db_value (int, DB_VALUE *);
   extern void uci_get_descriptor (int, CUBRIDDA *);
 
-  extern void uci_put_value (DB_INDICATOR *,
-			     DB_TYPE, int, int, DB_TYPE_C, void *, int);
+  extern void uci_put_value (DB_INDICATOR *, DB_TYPE, int, int, DB_TYPE_C, void *, int);
   extern void uci_put_descriptor (CUBRIDDA *);
 
 /* A static variable to identify each esql C source file at run-time. */

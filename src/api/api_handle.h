@@ -61,16 +61,12 @@ struct bh_interface_s
   int (*alloc_handle) (BH_INTERFACE * ifs, BH_BIND * bind, BIND_HANDLE * bh);
   int (*destroy_handle) (BH_INTERFACE * ifs, BIND_HANDLE bh);
   int (*lookup) (BH_INTERFACE * ifs, BIND_HANDLE bh, BH_BIND ** bind);
-  int (*bind_to_handle) (BH_INTERFACE * ifs, BH_BIND * bind,
-			 BIND_HANDLE * bh);
-  int (*bind_get_parent) (BH_INTERFACE * ifs, BH_BIND * bind,
-			  BH_BIND ** pbind);
+  int (*bind_to_handle) (BH_INTERFACE * ifs, BH_BIND * bind, BIND_HANDLE * bh);
+  int (*bind_get_parent) (BH_INTERFACE * ifs, BH_BIND * bind, BH_BIND ** pbind);
   int (*bind_prune) (BH_INTERFACE * ifs, BH_BIND * bind);
   int (*bind_graft) (BH_INTERFACE * ifs, BH_BIND * bind, BH_BIND * on_bind);
-  int (*bind_get_first_child) (BH_INTERFACE * ifs, BH_BIND * bind,
-			       BH_BIND ** pchild);
-  int (*bind_get_next_sibling) (BH_INTERFACE * ifs, BH_BIND * bind,
-				BH_BIND ** psibling);
+  int (*bind_get_first_child) (BH_INTERFACE * ifs, BH_BIND * bind, BH_BIND ** pchild);
+  int (*bind_get_next_sibling) (BH_INTERFACE * ifs, BH_BIND * bind, BH_BIND ** psibling);
   int (*bind_map) (BH_INTERFACE * ifs, BH_BIND * bind, bh_mapf mf, void *arg);
   void (*destroy) (BH_INTERFACE * ifs);
 };
@@ -97,6 +93,5 @@ extern int bh_root_release (int rid);
 extern int bh_root_lock (int rid, BH_INTERFACE ** ifs);
 extern int bh_root_unlock (int rid);
 extern int bh_get_rid (BIND_HANDLE bh, int *rid);
-extern int create_handle_context (bh_provider * prov, BH_ROOT_TYPE rt,
-				  BH_INTERFACE ** ifs);
+extern int create_handle_context (bh_provider * prov, BH_ROOT_TYPE rt, BH_INTERFACE ** ifs);
 #endif /* _API_HANDLE_H_ */

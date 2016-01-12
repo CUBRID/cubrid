@@ -592,11 +592,8 @@ struct qfile_list_id
   VPID last_vpid;		/* last real page identifier */
   PAGE_PTR last_pgptr;		/* last page pointer */
   int last_offset;		/* mark current end of last page */
-  int lasttpl_len;		/* length of the last tuple file identifier
-				 * NOTE: A tuple can be larger than one page
-				 *       therefore, this field must be int
-				 *       instead of a short value
-				 */
+  int lasttpl_len;		/* length of the last tuple file identifier NOTE: A tuple can be larger than one page
+				 * therefore, this field must be int instead of a short value */
   QUERY_ID query_id;		/* Associated Query Id */
   VFID temp_vfid;		/* temp file id; duplicated from tfile_vfid */
   struct qmgr_temp_file *tfile_vfid;	/* Create a tmp file per list */
@@ -639,12 +636,12 @@ struct qfile_list_id
 typedef struct qfile_tuple_position QFILE_TUPLE_POSITION;
 struct qfile_tuple_position
 {
-  SCAN_STATUS status;		/* Scan status                    */
-  SCAN_POSITION position;	/* Scan position                  */
-  VPID vpid;			/* Real tuple page identifier     */
-  int offset;			/* Tuple offset inside the page   */
-  QFILE_TUPLE tpl;		/* Tuple pointer inside the page  */
-  int tplno;			/* Tuple number inside the page   */
+  SCAN_STATUS status;		/* Scan status */
+  SCAN_POSITION position;	/* Scan position */
+  VPID vpid;			/* Real tuple page identifier */
+  int offset;			/* Tuple offset inside the page */
+  QFILE_TUPLE tpl;		/* Tuple pointer inside the page */
+  int tplno;			/* Tuple number inside the page */
 };
 
 #define QFILE_OUTER_LIST  0	/* outer list file indicator */
@@ -659,8 +656,7 @@ struct qfile_list_scan_id
   VPID curr_vpid;		/* current real page identifier */
   PAGE_PTR curr_pgptr;		/* current page pointer */
   QFILE_TUPLE curr_tpl;		/* current tuple pointer */
-  bool keep_page_on_finish;	/* flag; when set, does not free page when scan
-				   ends */
+  bool keep_page_on_finish;	/* flag; when set, does not free page when scan ends */
   int curr_offset;		/* current page offset */
   int curr_tplno;		/* current tuple number */
   QFILE_TUPLE_RECORD tplrec;	/* used for overflow tuple peeking */

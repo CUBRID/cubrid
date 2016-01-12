@@ -79,8 +79,8 @@ kill (int pid, int signo)
 
 #if defined(WINDOWS)
 int
-run_child (const char *const argv[], int wait_flag, const char *stdin_file,
-	   char *stdout_file, char *stderr_file, int *exit_status)
+run_child (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file, char *stderr_file,
+	   int *exit_status)
 {
   int new_pid;
   STARTUPINFO start_info;
@@ -106,13 +106,10 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file,
 
   if (stdin_file)
     {
-      hStdIn =
-	CreateFile (stdin_file, GENERIC_READ, FILE_SHARE_READ, NULL,
-		    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+      hStdIn = CreateFile (stdin_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
       if (hStdIn != INVALID_HANDLE_VALUE)
 	{
-	  SetHandleInformation (hStdIn, HANDLE_FLAG_INHERIT,
-				HANDLE_FLAG_INHERIT);
+	  SetHandleInformation (hStdIn, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
 	  start_info.dwFlags = STARTF_USESTDHANDLES;
 	  start_info.hStdInput = hStdIn;
 	  inherit_flag = TRUE;
@@ -121,12 +118,10 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file,
   if (stdout_file)
     {
       hStdOut =
-	CreateFile (stdout_file, GENERIC_WRITE, FILE_SHARE_READ, NULL,
-		    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	CreateFile (stdout_file, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
       if (hStdOut != INVALID_HANDLE_VALUE)
 	{
-	  SetHandleInformation (hStdOut, HANDLE_FLAG_INHERIT,
-				HANDLE_FLAG_INHERIT);
+	  SetHandleInformation (hStdOut, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
 	  start_info.dwFlags = STARTF_USESTDHANDLES;
 	  start_info.hStdOutput = hStdOut;
 	  inherit_flag = TRUE;
@@ -135,21 +130,19 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file,
   if (stderr_file)
     {
       hStdErr =
-	CreateFile (stderr_file, GENERIC_WRITE,
-		    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-		    NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	CreateFile (stderr_file, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+		    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
       if (hStdErr != INVALID_HANDLE_VALUE)
 	{
-	  SetHandleInformation (hStdErr, HANDLE_FLAG_INHERIT,
-				HANDLE_FLAG_INHERIT);
+	  SetHandleInformation (hStdErr, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
 	  start_info.dwFlags = STARTF_USESTDHANDLES;
 	  start_info.hStdError = hStdErr;
 	  inherit_flag = TRUE;
 	}
     }
 
-  res = CreateProcess (argv[0], cmd_arg, NULL, NULL, inherit_flag,
-		       CREATE_NO_WINDOW, NULL, NULL, &start_info, &proc_info);
+  res =
+    CreateProcess (argv[0], cmd_arg, NULL, NULL, inherit_flag, CREATE_NO_WINDOW, NULL, NULL, &start_info, &proc_info);
 
   if (hStdIn != INVALID_HANDLE_VALUE)
     {
@@ -191,8 +184,8 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file,
 }
 #else
 int
-run_child (const char *const argv[], int wait_flag, const char *stdin_file,
-	   char *stdout_file, char *stderr_file, int *exit_status)
+run_child (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file, char *stderr_file,
+	   int *exit_status)
 {
   int pid;
 
@@ -293,8 +286,7 @@ time_to_str (time_t t, const char *fmt, char *buf, int type)
   else if (type == TIME_STR_FMT_TIME)
     sprintf (buf, fmt, ltm.tm_hour, ltm.tm_min, ltm.tm_sec);
   else				/* TIME_STR_FMT_DATE_TIME */
-    sprintf (buf, fmt, ltm.tm_year + 1900, ltm.tm_mon + 1, ltm.tm_mday,
-	     ltm.tm_hour, ltm.tm_min, ltm.tm_sec);
+    sprintf (buf, fmt, ltm.tm_year + 1900, ltm.tm_mon + 1, ltm.tm_mday, ltm.tm_hour, ltm.tm_min, ltm.tm_sec);
   return buf;
 }
 
@@ -337,9 +329,7 @@ get_db_server_pid (char *dbname)
       return -1;
     }
   file_len = strlen (srv_lock_file);
-  snprintf (srv_lock_file + file_len,
-	    sizeof (srv_lock_file) - file_len - 1, "/%s%s", dbname,
-	    CUBRID_SERVER_LOCK_EXT);
+  snprintf (srv_lock_file + file_len, sizeof (srv_lock_file) - file_len - 1, "/%s%s", dbname, CUBRID_SERVER_LOCK_EXT);
   if ((fp = fopen (srv_lock_file, "r")) != NULL)
     {
       if (fscanf (fp, "%*s %d", &pid) < 1)
@@ -397,8 +387,7 @@ uIsDatabaseActive2 (T_SERVER_STATUS_RESULT * cmd_res, char *dbn)
 }
 
 #define new_servstat_result()       (T_SERVER_STATUS_RESULT*) new_cmd_result()
-static void read_server_status_output (T_SERVER_STATUS_RESULT * res,
-				       char *out_file);
+static void read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file);
 
 T_SERVER_STATUS_RESULT *
 cmd_server_status (void)
@@ -422,8 +411,7 @@ cmd_server_status (void)
     }
 #endif
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_util_001.",
-	    getpid ());
+  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_util_001.", getpid ());
   (void) envvar_tmpdir_file (out_file, PATH_MAX, tmpfile);
   (void) envvar_bindir_file (cmd_name, PATH_MAX, UTIL_CUBRID);
 
@@ -458,8 +446,7 @@ is_master_start ()
   /* Set the size of the structure before using it. */
   pe32.dwSize = sizeof (PROCESSENTRY32);
 
-  /* Retrieve information about the first process,
-     and return -1 if unsuccessful. */
+  /* Retrieve information about the first process, and return -1 if unsuccessful. */
   if (Process32First (h_proc_snap, &pe32) == 0)
     {
       retval = -1;
@@ -502,9 +489,7 @@ read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
 
   num_info = 0;
   num_alloc = 5;
-  info =
-    (T_SERVER_STATUS_INFO *) malloc (sizeof (T_SERVER_STATUS_INFO) *
-				     num_alloc);
+  info = (T_SERVER_STATUS_INFO *) malloc (sizeof (T_SERVER_STATUS_INFO) * num_alloc);
   if (info == NULL)
     {
       fclose (fp);
@@ -517,9 +502,7 @@ read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
 
       if (sscanf (str_buf, "%63s %63s", tmp_str, db_name) < 2)
 	continue;
-      if (strcmp (tmp_str, "@") == 0
-	  || (strcmp (tmp_str, "Server") != 0
-	      && strcmp (tmp_str, "HA-Server") != 0))
+      if (strcmp (tmp_str, "@") == 0 || (strcmp (tmp_str, "Server") != 0 && strcmp (tmp_str, "HA-Server") != 0))
 	continue;
 
       tmp_p = strchr (db_name, ',');
@@ -530,10 +513,7 @@ read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
       if (num_info > num_alloc)
 	{
 	  num_alloc += 5;
-	  info =
-	    (T_SERVER_STATUS_INFO *) realloc (info,
-					      sizeof (T_SERVER_STATUS_INFO) *
-					      num_alloc);
+	  info = (T_SERVER_STATUS_INFO *) realloc (info, sizeof (T_SERVER_STATUS_INFO) * num_alloc);
 	  if (info == NULL)
 	    {
 	      fclose (fp);
@@ -541,8 +521,7 @@ read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
 	    }
 	}
       strcpy (info[num_info - 1].db_name, db_name);
-      info[num_info - 1].ha_mode =
-	(strcmp (tmp_str, "HA-Server") == 0) ? 1 : 0;
+      info[num_info - 1].ha_mode = (strcmp (tmp_str, "HA-Server") == 0) ? 1 : 0;
     }
   fclose (fp);
 
@@ -560,9 +539,7 @@ ut_trim (char *str)
   if (str == NULL)
     return (str);
 
-  for (s = str;
-       *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r');
-       s++)
+  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'); s++)
     ;
   if (*s == '\0')
     {
@@ -690,8 +667,7 @@ uReadDBtxtFile (const char *dn, int idx, char *outbuf)
     {
       return ERR_GENERAL_ERROR;
     }
-  snprintf (strbuf, PATH_MAX, "%s/%s", cubrid_database_path,
-	    CUBRID_DATABASE_TXT);
+  snprintf (strbuf, PATH_MAX, "%s/%s", cubrid_database_path, CUBRID_DATABASE_TXT);
   dbf = fopen (strbuf, "r");
   if (dbf == NULL)
     return ERR_DBDIRNAME_NULL;

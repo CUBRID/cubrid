@@ -95,8 +95,7 @@
 
 #define MEM_REGION_INIT_MARK       '\0'	/* Set this to allocated areas */
 #define MEM_REGION_SCRAMBLE_MARK         '\01'	/* Set this to allocated areas */
-#define MEM_REGION_GUARD_MARK            '\02'	/* Set this as a memory guard to detect
-						 * over/under runs  */
+#define MEM_REGION_GUARD_MARK            '\02'	/* Set this as a memory guard to detect over/under runs */
 
 #if defined (CUBRID_DEBUG)
 extern void db_scramble (void *region, int size);
@@ -170,16 +169,13 @@ extern HL_HEAPID private_heap_id;
 #if !defined(NDEBUG)
 #define os_malloc(size) \
         os_malloc_debug(size, true, __FILE__, __LINE__)
-extern void *os_malloc_debug (size_t size, bool rc_track,
-			      const char *caller_file, int caller_line);
+extern void *os_malloc_debug (size_t size, bool rc_track, const char *caller_file, int caller_line);
 #define os_calloc(n, size) \
         os_calloc_debug(n, size, true, __FILE__, __LINE__)
-extern void *os_calloc_debug (size_t n, size_t size, bool rc_track,
-			      const char *caller_file, int caller_line);
+extern void *os_calloc_debug (size_t n, size_t size, bool rc_track, const char *caller_file, int caller_line);
 #define os_free(ptr) \
         os_free_debug(ptr, true, __FILE__, __LINE__)
-extern void os_free_debug (void *ptr, bool rc_track,
-			   const char *caller_file, int caller_line);
+extern void os_free_debug (void *ptr, bool rc_track, const char *caller_file, int caller_line);
 #define os_realloc(ptr, size) (realloc ((ptr), (size)))
 #else /* NDEBUG */
 #define os_malloc(size) \
@@ -218,28 +214,21 @@ extern void db_ostk_free (HL_HEAPID heap_id, void *ptr);
 #endif
 
 extern HL_HEAPID db_create_private_heap (void);
-extern void db_clear_private_heap (THREAD_ENTRY * thread_p,
-				   HL_HEAPID heap_id);
-extern HL_HEAPID db_change_private_heap (THREAD_ENTRY * thread_p,
-					 HL_HEAPID heap_id);
+extern void db_clear_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
+extern HL_HEAPID db_change_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
 extern HL_HEAPID db_replace_private_heap (THREAD_ENTRY * thread_p);
-extern void db_destroy_private_heap (THREAD_ENTRY * thread_p,
-				     HL_HEAPID heap_id);
+extern void db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
 #if !defined(NDEBUG)
 #define db_private_alloc(thrd, size) \
         db_private_alloc_debug(thrd, size, true, __FILE__, __LINE__)
-extern void *db_private_alloc_debug (void *thrd, size_t size, bool rc_track,
-				     const char *caller_file,
-				     int caller_line);
+extern void *db_private_alloc_debug (void *thrd, size_t size, bool rc_track, const char *caller_file, int caller_line);
 #define db_private_free(thrd, ptr) \
         db_private_free_debug(thrd, ptr, true, __FILE__, __LINE__)
-extern void db_private_free_debug (void *thrd, void *ptr, bool rc_track,
-				   const char *caller_file, int caller_line);
+extern void db_private_free_debug (void *thrd, void *ptr, bool rc_track, const char *caller_file, int caller_line);
 #else /* NDEBUG */
 #define db_private_alloc(thrd, size) \
         db_private_alloc_release(thrd, size, false)
-extern void *db_private_alloc_release (void *thrd, size_t size,
-				       bool rc_track);
+extern void *db_private_alloc_release (void *thrd, size_t size, bool rc_track);
 #define db_private_free(thrd, ptr) \
         db_private_free_release(thrd, ptr, false)
 extern void db_private_free_release (void *thrd, void *ptr, bool rc_track);

@@ -112,8 +112,8 @@ typedef struct tz_offset_rule TZ_OFFSET_RULE;
 struct tz_offset_rule
 {
   int gmt_off;			/* time offset from UTC, in seconds */
-  int ds_ruleset;		/* it is either an index in DS ruleset or
-				 * a fixed amount of daylight saving (in seconds) */
+  int ds_ruleset;		/* it is either an index in DS ruleset or a fixed amount of daylight saving (in
+				 * seconds) */
   unsigned short until_year;
   unsigned char until_mon;	/* 0 - 11 */
   unsigned char until_day;	/* 0 - 30 */
@@ -122,14 +122,11 @@ struct tz_offset_rule
   unsigned char until_sec;
   TZ_TIME_TYPE until_time_type;	/* type for until: standard, wall, UTC */
   TZ_UNTIL_FLAG until_flag;	/* 0 if no ending time is specified; 1 otherwise */
-  DS_TYPE ds_type;		/* 1 if ds_ruleset is a ruleset id,
-				 * 0 if it is a fixed time offset (seconds) */
-  int julian_date;		/* encoded julian date for until_year, until_mon,
-				   and until_day */
+  DS_TYPE ds_type;		/* 1 if ds_ruleset is a ruleset id, 0 if it is a fixed time offset (seconds) */
+  int julian_date;		/* encoded julian date for until_year, until_mon, and until_day */
   const char *std_format;	/* format for standard time */
   const char *save_format;	/* format for DST time (when saving time) */
-  const char *var_format;	/* format for variable time (mutually excluded
-				 * with std and save formats */
+  const char *var_format;	/* format for variable time (mutually excluded with std and save formats */
 };
 
 typedef struct tz_timezone TZ_TIMEZONE;
@@ -145,11 +142,9 @@ typedef struct tz_ds_change_on TZ_DS_CHANGE_ON;
 struct tz_ds_change_on
 {
   TZ_DS_TYPE type;
-  unsigned char day_of_month;	/* possible values: 0-27/28/29/30, 
-				 * depending on the month; or 31
-				 * if "ON" value is last<day> */
-  unsigned char day_of_week;	/* possible values: 0-6,
-				 * where 0=Sunday, 6=Saturday */
+  unsigned char day_of_month;	/* possible values: 0-27/28/29/30, depending on the month; or 31 if "ON" value is
+				 * last<day> */
+  unsigned char day_of_week;	/* possible values: 0-6, where 0=Sunday, 6=Saturday */
 };
 
 typedef struct tz_ds_rule TZ_DS_RULE;
@@ -157,8 +152,7 @@ struct tz_ds_rule
 {
   short from_year;
   short to_year;		/* -1 if column value is "max" e.g. up to now */
-  unsigned char in_month;	/* month when the daylight saving event occurs
-				 * 0 - 11 */
+  unsigned char in_month;	/* month when the daylight saving event occurs 0 - 11 */
   TZ_DS_CHANGE_ON change_on;	/* day of month, fixed or relative */
   int at_time;			/* time when DS event occurs */
   TZ_TIME_TYPE at_time_type;	/* type for at_time: standard, wall, UTC */
@@ -172,11 +166,9 @@ struct tz_ds_ruleset
   int index_start;
   int count;
   const char *ruleset_name;
-  int to_year_max;		/* maximum of all to_year numbers in the
-				 * ruleset */
-  const char *default_abrev;	/* default abbreviation for all 
-				 * the ds_rules in this ruleset that have 
-				 * daylight saving time 0 */
+  int to_year_max;		/* maximum of all to_year numbers in the ruleset */
+  const char *default_abrev;	/* default abbreviation for all the ds_rules in this ruleset that have daylight
+				 * saving time 0 */
 };
 
 typedef struct tz_name TZ_NAME;
@@ -233,7 +225,7 @@ struct tz_data
   int windows_iana_map_count;
   TZ_WINDOWS_IANA_MAP *windows_iana_map;
 #endif
-  /*
+  /* 
    * 32 digits for the md5 checksum
    */
   char checksum[32 + 1];

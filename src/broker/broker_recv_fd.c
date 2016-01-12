@@ -87,8 +87,7 @@ recv_fd (int fd, int *rid, char *driver_info)
   if (rc < (signed int) (sizeof (int)))
     {
 #ifdef _DEBUG
-      printf ("recvmsg failed. errno = %d. str=%s\n", errno,
-	      strerror (errno));
+      printf ("recvmsg failed. errno = %d. str=%s\n", errno, strerror (errno));
 #endif
       return (-1);
     }

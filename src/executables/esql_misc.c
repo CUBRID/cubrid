@@ -184,8 +184,7 @@ tr_prelude (void)
     {
       fprintf (esql_yyout, "#define _ESQLX_VARCHAR2_STYLE_\n");
     }
-  fprintf (esql_yyout, "#include \"%s\"\n",
-	   pp_include_file ? pp_include_file : default_include_file);
+  fprintf (esql_yyout, "#include \"%s\"\n", pp_include_file ? pp_include_file : default_include_file);
 }
 
 /*
@@ -265,15 +264,12 @@ grow_ptr_vec (PTR_VEC * vec)
   new_max_elems = vec->max_elems + vec->chunk_size;
   if (vec->elems == vec->inline_elems)
     {
-      new_elems =
-	(void **) pp_malloc (sizeof (vec->elems[0]) * new_max_elems);
-      memcpy ((char *) new_elems, (char *) vec->elems,
-	      sizeof (vec->elems[0]) * vec->n_elems);
+      new_elems = (void **) pp_malloc (sizeof (vec->elems[0]) * new_max_elems);
+      memcpy ((char *) new_elems, (char *) vec->elems, sizeof (vec->elems[0]) * vec->n_elems);
     }
   else
     {
-      new_elems = (void **)
-	realloc (vec->elems, sizeof (vec->elems[0]) * new_max_elems);
+      new_elems = (void **) realloc (vec->elems, sizeof (vec->elems[0]) * new_max_elems);
     }
 
   if (new_elems == NULL)
@@ -360,8 +356,7 @@ pp_malloc (int n)
   tmp = malloc (n);
   if (tmp == NULL)
     {
-      fprintf (stderr, "%s: %s\n",
-	       prog_name, pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
+      fprintf (stderr, "%s: %s\n", prog_name, pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
       exit (1);
     }
   return tmp;

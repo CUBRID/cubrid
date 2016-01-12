@@ -108,8 +108,7 @@ static unsigned int cci_mht_5str_pseudo_key (void *key, int key_size);
 static unsigned int cci_mht_calculate_htsize (unsigned int ht_size);
 static int cci_mht_rehash (CCI_MHT_TABLE * ht);
 
-static void *cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data,
-				   CCI_MHT_PUT_OPT opt);
+static void *cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT opt);
 
 /*
  * cci_mht_5str_pseudo_key() - hash string key into pseudo integer key
@@ -285,11 +284,10 @@ cci_mht_calculate_htsize (unsigned int ht_size)
  *       otherwise, FALSE.
  */
 CCI_MHT_TABLE *
-cci_mht_create (char *name, int est_size, HASH_FUNC hash_func,
-		CMP_FUNC cmp_func)
+cci_mht_create (char *name, int est_size, HASH_FUNC hash_func, CMP_FUNC cmp_func)
 {
   CCI_MHT_TABLE *ht;
-  CCI_HENTRY_PTR *hvector;	/* Entries of hash table         */
+  CCI_HENTRY_PTR *hvector;	/* Entries of hash table */
   unsigned int ht_estsize;
   unsigned int size;
 
@@ -352,10 +350,10 @@ cci_mht_create (char *name, int est_size, HASH_FUNC hash_func,
 static int
 cci_mht_rehash (CCI_MHT_TABLE * ht)
 {
-  CCI_HENTRY_PTR *new_hvector;	/* New entries of hash table       */
-  CCI_HENTRY_PTR *hvector;	/* Entries of hash table           */
+  CCI_HENTRY_PTR *new_hvector;	/* New entries of hash table */
+  CCI_HENTRY_PTR *hvector;	/* Entries of hash table */
   CCI_HENTRY_PTR hentry;	/* A hash table entry. linked list */
-  CCI_HENTRY_PTR next_hentry = NULL;	/* Next element in linked list     */
+  CCI_HENTRY_PTR next_hentry = NULL;	/* Next element in linked list */
   float rehash_factor;
   unsigned int hash;
   unsigned int est_size;
@@ -387,8 +385,7 @@ cci_mht_rehash (CCI_MHT_TABLE * ht)
   memset (new_hvector, 0x00, size);
 
   /* Now rehash the current entries onto the vector of hash entries table */
-  for (ht->ncollisions = 0, hvector = ht->table, i = 0; i < ht->size;
-       hvector++, i++)
+  for (ht->ncollisions = 0, hvector = ht->table, i = 0; i < ht->size; hvector++, i++)
     {
       /* Go over each linked list */
       for (hentry = *hvector; hentry != NULL; hentry = next_hentry)
@@ -489,7 +486,7 @@ cci_mht_rem (CCI_MHT_TABLE * ht, void *key, bool free_key, bool free_data)
 
   assert (ht != NULL && key != NULL);
 
-  /*
+  /* 
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -500,8 +497,7 @@ cci_mht_rem (CCI_MHT_TABLE * ht, void *key, bool free_key, bool free_data)
     }
 
   /* Now search the linked list.. Is there any entry with the given key ? */
-  for (hentry = ht->table[hash], prev_hentry = NULL; hentry != NULL;
-       prev_hentry = hentry, hentry = hentry->next)
+  for (hentry = ht->table[hash], prev_hentry = NULL; hentry != NULL; prev_hentry = hentry, hentry = hentry->next)
     {
       if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
 	{
@@ -582,7 +578,7 @@ cci_mht_get (CCI_MHT_TABLE * ht, void *key)
 
   assert (ht != NULL && key != NULL);
 
-  /*
+  /* 
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -621,15 +617,14 @@ cci_mht_get (CCI_MHT_TABLE * ht, void *key)
  *                                      key
  */
 static void *
-cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data,
-		      CCI_MHT_PUT_OPT opt)
+cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT opt)
 {
   unsigned int hash;
   CCI_HENTRY_PTR hentry;
 
   assert (ht != NULL && key != NULL);
 
-  /*
+  /* 
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -673,7 +668,7 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data,
 	}
     }
 
-  /*
+  /* 
    * Link the new entry to the double link list of active entries and the
    * hash itself. The previous entry should point to new one.
    */
@@ -703,7 +698,7 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data,
   ht->table[hash] = hentry;
   ht->nentries++;
 
-  /*
+  /* 
    * Rehash if almost all entries of hash table are used and there are at least
    * 5% of collisions
    */
@@ -758,7 +753,7 @@ hostname2uchar (char *host, unsigned char *ip_addr)
 {
   in_addr_t in_addr;
 
-  /*
+  /* 
    * First try to convert to the host name as a dotten-decimal number.
    * Only if that fails do we call gethostbyname.
    */
@@ -776,8 +771,7 @@ hostname2uchar (char *host, unsigned char *ip_addr)
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0
-	  || hp == NULL)
+      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
 	  return INVALID_SOCKET;
 	}

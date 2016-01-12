@@ -98,51 +98,39 @@ extern void proxy_set_con_status_in_tran (char *msg);
 extern void proxy_set_con_status_out_tran (char *msg);
 extern void proxy_set_force_out_tran (char *msg);
 extern void proxy_unset_force_out_tran (char *msg);
-extern int proxy_make_net_buf (T_NET_BUF * net_buf, int size,
-			       T_BROKER_VERSION client_version);
+extern int proxy_make_net_buf (T_NET_BUF * net_buf, int size, T_BROKER_VERSION client_version);
 
-extern int proxy_io_make_error_msg (char *driver_info,
-				    char **buffer, int error_ind,
-				    int error_code, const char *error_msg,
-				    char is_in_tran);
+extern int proxy_io_make_error_msg (char *driver_info, char **buffer, int error_ind, int error_code,
+				    const char *error_msg, char is_in_tran);
 extern int proxy_io_make_no_error (char *driver_info, char **buffer);
 extern int proxy_io_make_con_close_ok (char *driver_info, char **buffer);
 extern int proxy_io_make_end_tran_ok (char *driver_info, char **buffer);
 extern int proxy_io_make_check_cas_ok (char *driver_info, char **buffer);
-extern int proxy_io_make_set_db_parameter_ok (char *driver_info,
-					      char **buffer);
-extern int proxy_io_make_ex_get_isolation_level (char *driver_info,
-						 char **buffer, void *argv);
-extern int proxy_io_make_ex_get_lock_timeout (char *driver_info,
-					      char **buffer, void *argv);
+extern int proxy_io_make_set_db_parameter_ok (char *driver_info, char **buffer);
+extern int proxy_io_make_ex_get_isolation_level (char *driver_info, char **buffer, void *argv);
+extern int proxy_io_make_ex_get_lock_timeout (char *driver_info, char **buffer, void *argv);
 
-extern int proxy_io_make_end_tran_request (char *driver_info,
-					   char **buffer, bool commit);
+extern int proxy_io_make_end_tran_request (char *driver_info, char **buffer, bool commit);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int proxy_io_make_end_tran_commit (char **buffer);
 #endif /* ENABLE_UNUSED_FUNCTION */
 extern int proxy_io_make_end_tran_abort (char *driver_info, char **buffer);
-extern int proxy_io_make_close_req_handle_ok (char *driver_info,
-					      char **buffer, bool is_in_tran);
+extern int proxy_io_make_close_req_handle_ok (char *driver_info, char **buffer, bool is_in_tran);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int proxy_io_make_close_req_handle_in_tran_ok (char **buffer);
 #endif /* ENABLE_UNUSED_FUNCTION */
-extern int proxy_io_make_close_req_handle_out_tran_ok (char *driver_info,
-						       char **buffer);
-extern int proxy_io_make_cursor_close_out_tran_ok (char *driver_info,
-						   char **buffer);
+extern int proxy_io_make_close_req_handle_out_tran_ok (char *driver_info, char **buffer);
+extern int proxy_io_make_cursor_close_out_tran_ok (char *driver_info, char **buffer);
 
 extern int proxy_io_make_get_db_version (char *driver_info, char **buffer);
 extern int proxy_io_make_client_conn_ok (char *driver_info, char **buffer);
-extern int proxy_io_make_client_proxy_alive (char *driver_info,
-					     char **buffer);
+extern int proxy_io_make_client_proxy_alive (char *driver_info, char **buffer);
 extern int proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer);
 extern int proxy_io_make_client_acl_fail (char *driver_info, char **buffer);
 extern int proxy_io_make_shard_info (char *driver_info, char **buffer);
 extern int proxy_io_make_check_cas (char *driver_info, char **buffer);
 
-extern int proxy_socket_set_write_event (T_SOCKET_IO * sock_io_p,
-					 T_PROXY_EVENT * event_p);
+extern int proxy_socket_set_write_event (T_SOCKET_IO * sock_io_p, T_PROXY_EVENT * event_p);
 extern void proxy_io_buffer_clear (T_IO_BUFFER * io_buffer);
 extern void proxy_socket_io_print (bool print_all);
 extern void proxy_client_io_print (bool print_all);
@@ -152,25 +140,16 @@ extern void proxy_shard_io_print (bool print_all);
 extern char *proxy_str_cas_io (T_CAS_IO * cas_io_p);
 
 extern void proxy_client_io_free (T_CLIENT_IO * cli_io_p);
-extern void proxy_client_io_free_by_ctx (int client_id, int ctx_cid,
-					 int ctx_uid);
-extern T_CLIENT_IO *proxy_client_io_find_by_ctx (int client_id,
-						 int ctx_cid,
-						 unsigned int ctx_uid);
+extern void proxy_client_io_free_by_ctx (int client_id, int ctx_cid, int ctx_uid);
+extern T_CLIENT_IO *proxy_client_io_find_by_ctx (int client_id, int ctx_cid, unsigned int ctx_uid);
 extern T_CLIENT_IO *proxy_client_io_find_by_fd (int client_id, SOCKET fd);
-extern int proxy_client_io_write (T_CLIENT_IO * cli_io_p,
-				  T_PROXY_EVENT * event_p);
-extern void proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid,
-				      unsigned int ctx_uid);
-extern T_CAS_IO *proxy_cas_find_io_by_ctx (int shard_id, int cas_id,
-					   int ctx_cid, unsigned int ctx_uid);
+extern int proxy_client_io_write (T_CLIENT_IO * cli_io_p, T_PROXY_EVENT * event_p);
+extern void proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid);
+extern T_CAS_IO *proxy_cas_find_io_by_ctx (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid);
 
-extern T_CAS_IO *proxy_cas_alloc_by_ctx (int client_id, int shard_id,
-					 int cas_id, int ctx_cid,
-					 unsigned int ctx_uid, int timeout,
-					 int func_code);
-extern void proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid,
-				      unsigned int ctx_uid);
+extern T_CAS_IO *proxy_cas_alloc_by_ctx (int client_id, int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid,
+					 int timeout, int func_code);
+extern void proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid);
 extern int proxy_cas_io_write (T_CAS_IO * cas_io_p, T_PROXY_EVENT * event_p);
 
 extern int proxy_io_close_all_fd (void);
@@ -187,8 +166,6 @@ extern char *proxy_get_driver_info_by_ctx (T_PROXY_CONTEXT * ctx_p);
 extern char *proxy_get_driver_info_by_fd (T_SOCKET_IO * sock_io_p);
 
 extern void proxy_available_cas_wait_timer (void);
-extern int proxy_convert_error_code (int error_ind, int error_code,
-				     char *driver_info,
-				     T_BROKER_VERSION client_version,
+extern int proxy_convert_error_code (int error_ind, int error_code, char *driver_info, T_BROKER_VERSION client_version,
 				     bool to_new);
 #endif /* _SHARD_PROXY_IO_H_ */

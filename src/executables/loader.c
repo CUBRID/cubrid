@@ -202,20 +202,14 @@ typedef struct LDR_ATTDESC
   SM_ATTRIBUTE *att;		/* Attribute */
   LDR_SETTER setter[NUM_LDR_TYPES];	/* Setter functions indexed by type */
 
-  char *parser_str;		/* used as a holder to hold the parser
-				 * strings when parsing method arguments.
-				 */
+  char *parser_str;		/* used as a holder to hold the parser strings when parsing method arguments. */
   int parser_str_len;		/* Length of parser token string */
   int parser_buf_len;		/* Length of parser token buffer */
-  LDR_TYPE parser_type;		/* Used when parsing method arguments, to
-				 * store
-				 */
+  LDR_TYPE parser_type;		/* Used when parsing method arguments, to store */
   /* the type information. */
 
-  DB_OBJECT *ref_class;		/* Class referenced by object reference  */
-  int instance_id;		/* Instance id of instance referenced by
-				 * ref_class object ref
-				 */
+  DB_OBJECT *ref_class;		/* Class referenced by object reference */
+  int instance_id;		/* Instance id of instance referenced by ref_class object ref */
   TP_DOMAIN *collection_domain;	/* Best domain for collection */
 
 } LDR_ATTDESC;
@@ -265,68 +259,67 @@ static LDR_MOP_TEMPOID_MAPS *ldr_Mop_tempoid_maps = NULL;
 
 struct LDR_CONTEXT
 {
-  DB_OBJECT *cls;		/* Current class                      */
+  DB_OBJECT *cls;		/* Current class */
 
-  char *class_name;		/* Class name of current class        */
+  char *class_name;		/* Class name of current class */
 
-  DB_OBJECT *obj;		/* Instance of class                  */
-  MOBJ mobj;			/* Memory object of instance          */
-  int obj_pin;			/* pins returned when pinning the     */
-  int class_pin;		/* current class                      */
-  int class_type;		/* not partitioned, partitioned,
-				 * partition                          */
+  DB_OBJECT *obj;		/* Instance of class */
+  MOBJ mobj;			/* Memory object of instance */
+  int obj_pin;			/* pins returned when pinning the */
+  int class_pin;		/* current class */
+  int class_type;		/* not partitioned, partitioned, partition */
   LDR_ATTDESC *attrs;		/* array of attribute descriptors for */
-  /* the current class.                 */
-  int num_attrs;		/* Number of attributes for class     */
-  int next_attr;		/* Index of current attribute         */
+  /* the current class.  */
+  int num_attrs;		/* Number of attributes for class */
+  int next_attr;		/* Index of current attribute */
 
-  unsigned int instance_started:1;	/* Instance stared flag             */
-  bool valid;			/* State of the loader.               */
-  bool verbose;			/* Verbosity flag                     */
-  int periodic_commit;		/* instances prior to committing      */
+  unsigned int instance_started:1;	/* Instance stared flag */
+  bool valid;			/* State of the loader.  */
+  bool verbose;			/* Verbosity flag */
+  int periodic_commit;		/* instances prior to committing */
 
-  int err_count;		/* Current error count for instance   */
-  int err_total;		/* Total error counter                */
+  int err_count;		/* Current error count for instance */
+  int err_total;		/* Total error counter */
 
-  int inst_count;		/* Instance count for this class      */
-  int inst_total;		/* Total instance count               */
-  int inst_num;			/* Instance id of current instance    */
+  int inst_count;		/* Instance count for this class */
+  int inst_total;		/* Total instance count */
+  int inst_num;			/* Instance id of current instance */
 
-  int flush_total;		/* Total number of flushes performed  */
-  /* for the current class              */
-  int flush_interval;		/* The number of instances before a   */
-  /* flush is performed                 */
+  int flush_total;		/* Total number of flushes performed */
+  /* for the current class */
+  int flush_interval;		/* The number of instances before a */
+  /* flush is performed */
 
-  CLASS_TABLE *table;		/* Table of instances currently       */
-  /* accumlated for the class           */
+  CLASS_TABLE *table;		/* Table of instances currently */
+  /* accumlated for the class */
 
-  bool validation_only;		/* Syntax checking only flag          */
+  bool validation_only;		/* Syntax checking only flag */
 
-  INTL_LANG lang_id;		/* Current language                   */
+  INTL_LANG lang_id;		/* Current language */
 
-  DB_COLLECTION *collection;	/* Pointer to hang collection from    */
-  TP_DOMAIN *set_domain;	/* Set domain of current set if       */
-  /* applicable.                        */
+  DB_COLLECTION *collection;	/* Pointer to hang collection from */
+  TP_DOMAIN *set_domain;	/* Set domain of current set if */
+  /* applicable.  */
 
-  SM_METHOD *constructor;	/* Method constructor                 */
-  int arg_index;		/* Index where arguments start in     */
-  /* the attr descriptor array.         */
-  int maxarg;			/* Maximum number of arguments        */
-  SM_METHOD_ARGUMENT **args;	/* Pointer to the arguments           */
-  int arg_count;		/* argument counter                   */
+  SM_METHOD *constructor;	/* Method constructor */
+  int arg_index;		/* Index where arguments start in */
+  /* the attr descriptor array.  */
+  int maxarg;			/* Maximum number of arguments */
+  SM_METHOD_ARGUMENT **args;	/* Pointer to the arguments */
+  int arg_count;		/* argument counter */
 
   DB_OBJECT *id_class;		/* Holds class ptr when processing ids */
 
-  LDR_ATTRIBUTE_TYPE attribute_type;	/* type of attribute if class       */
-  /* attribute, shared, default         */
+  LDR_ATTRIBUTE_TYPE attribute_type;	/* type of attribute if class */
+  /* attribute, shared, default */
 
-  int status_count;		/* Count used to indicate number of   */
-  /* instances committed for internal   */
-  /* debugging use only                 */
-  int status_counter;		/* Internal debug instance counter    */
-  int commit_counter;		/* periodic commit counter            */
-  int default_count;		/* the number of instances with       */
-  /* values                             */
+  int status_count;		/* Count used to indicate number of */
+  /* instances committed for internal */
+  /* debugging use only */
+  int status_counter;		/* Internal debug instance counter */
+  int commit_counter;		/* periodic commit counter */
+  int default_count;		/* the number of instances with */
+  /* values */
   LDR_CONSTANT *cons;		/* constant list for instance line */
 };
 
@@ -489,10 +482,8 @@ static void ldr_clear_err_count (LDR_CONTEXT * context);
 static void ldr_clear_err_total (LDR_CONTEXT * context);
 static const char *ldr_class_name (LDR_CONTEXT * context);
 static const char *ldr_attr_name (LDR_CONTEXT * context);
-static int select_set_domain (LDR_CONTEXT * context, TP_DOMAIN * domain,
-			      TP_DOMAIN ** set_domain_ptr);
-static int check_object_domain (LDR_CONTEXT * context, DB_OBJECT * class_,
-				DB_OBJECT ** actual_class);
+static int select_set_domain (LDR_CONTEXT * context, TP_DOMAIN * domain, TP_DOMAIN ** set_domain_ptr);
+static int check_object_domain (LDR_CONTEXT * context, DB_OBJECT * class_, DB_OBJECT ** actual_class);
 static int check_class_domain (LDR_CONTEXT * context);
 static void idmap_init (void);
 static void idmap_final (void);
@@ -506,159 +497,87 @@ static void ldr_internal_error (LDR_CONTEXT * context);
 static void display_error_line (int adjust);
 static void display_error (int adjust);
 static void ldr_invalid_class_error (LDR_CONTEXT * context);
-static void parse_error (LDR_CONTEXT * context, DB_TYPE token_type,
-			 const char *token);
+static void parse_error (LDR_CONTEXT * context, DB_TYPE token_type, const char *token);
 static int clist_init (void);
 static void clist_final (void);
 static int is_internal_class (DB_OBJECT * class_);
-static void ldr_act_elem (LDR_CONTEXT * context, const char *str, int len,
-			  LDR_TYPE type);
-static void ldr_act_meth (LDR_CONTEXT * context, const char *str, int len,
-			  LDR_TYPE type);
-static int ldr_mismatch (LDR_CONTEXT * context, const char *str, int len,
-			 SM_ATTRIBUTE * att);
-static int ldr_ignore (LDR_CONTEXT * context, const char *str, int len,
-		       SM_ATTRIBUTE * att);
+static void ldr_act_elem (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type);
+static void ldr_act_meth (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type);
+static int ldr_mismatch (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_ignore (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
 static int ldr_generic (LDR_CONTEXT * context, DB_VALUE * value);
-static int ldr_null_elem (LDR_CONTEXT * context, const char *str, int len,
-			  DB_VALUE * val);
-static int ldr_null_db_generic (LDR_CONTEXT * context, const char *str,
-				int len, SM_ATTRIBUTE * att);
-static int ldr_class_attr_db_generic (LDR_CONTEXT * context, const char *str,
-				      int len, SM_ATTRIBUTE * att,
+static int ldr_null_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_null_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_class_attr_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att,
 				      DB_VALUE * val);
-static void ldr_act_class_attr (LDR_CONTEXT * context, const char *str,
-				int len, LDR_TYPE type);
-static int ldr_sys_user_db_generic (LDR_CONTEXT * context, const char *str,
-				    int len, SM_ATTRIBUTE * att);
-static int ldr_sys_class_db_generic (LDR_CONTEXT * context, const char *str,
-				     int len, SM_ATTRIBUTE * att);
-static int ldr_int_elem (LDR_CONTEXT * context, const char *str, int len,
-			 DB_VALUE * val);
-static int ldr_int_db_generic (LDR_CONTEXT * context, const char *str,
-			       int len, SM_ATTRIBUTE * att);
-static int ldr_int_db_bigint (LDR_CONTEXT * context, const char *str, int len,
-			      SM_ATTRIBUTE * att);
-static int ldr_int_db_int (LDR_CONTEXT * context, const char *str, int len,
-			   SM_ATTRIBUTE * att);
-static int ldr_int_db_short (LDR_CONTEXT * context, const char *str, int len,
-			     SM_ATTRIBUTE * att);
-static int ldr_str_elem (LDR_CONTEXT * context, const char *str, int len,
-			 DB_VALUE * val);
-static int ldr_str_db_char (LDR_CONTEXT * context, const char *str, int len,
-			    SM_ATTRIBUTE * att);
-static int ldr_str_db_varchar (LDR_CONTEXT * context, const char *str,
-			       int len, SM_ATTRIBUTE * att);
-static int ldr_str_db_generic (LDR_CONTEXT * context, const char *str,
-			       int len, SM_ATTRIBUTE * att);
-static int ldr_bstr_elem (LDR_CONTEXT * context, const char *str, int len,
-			  DB_VALUE * val);
-static int ldr_bstr_db_varbit (LDR_CONTEXT * context, const char *str,
-			       int len, SM_ATTRIBUTE * att);
-static int ldr_xstr_elem (LDR_CONTEXT * context, const char *str, int len,
-			  DB_VALUE * val);
-static int ldr_xstr_db_varbit (LDR_CONTEXT * context, const char *str,
-			       int len, SM_ATTRIBUTE * att);
-static int ldr_nstr_elem (LDR_CONTEXT * context, const char *str, int len,
-			  DB_VALUE * val);
-static int ldr_nstr_db_varnchar (LDR_CONTEXT * context, const char *str,
-				 int len, SM_ATTRIBUTE * att);
-static int ldr_numeric_elem (LDR_CONTEXT * context, const char *str, int len,
-			     DB_VALUE * val);
-static int ldr_numeric_db_generic (LDR_CONTEXT * context, const char *str,
-				   int len, SM_ATTRIBUTE * att);
-static int ldr_double_elem (LDR_CONTEXT * context, const char *str, int len,
-			    DB_VALUE * val);
-static int ldr_float_elem (LDR_CONTEXT * context, const char *str, int len,
-			   DB_VALUE * val);
-static int ldr_real_db_generic (LDR_CONTEXT * context, const char *str,
-				int len, SM_ATTRIBUTE * att);
-static int ldr_real_db_float (LDR_CONTEXT * context, const char *str, int len,
-			      SM_ATTRIBUTE * att);
-static int ldr_real_db_double (LDR_CONTEXT * context, const char *str,
-			       int len, SM_ATTRIBUTE * att);
-static int ldr_date_elem (LDR_CONTEXT * context, const char *str, int len,
-			  DB_VALUE * val);
-static int ldr_date_db_date (LDR_CONTEXT * context, const char *str, int len,
-			     SM_ATTRIBUTE * att);
-static int ldr_time_elem (LDR_CONTEXT * context, const char *str, int len,
-			  DB_VALUE * val);
-static int ldr_time_db_time (LDR_CONTEXT * context, const char *str, int len,
-			     SM_ATTRIBUTE * att);
-static int ldr_timetz_elem (LDR_CONTEXT * context, const char *str, int len,
-			    DB_VALUE * val);
-static int ldr_timeltz_elem (LDR_CONTEXT * context, const char *str, int len,
-			     DB_VALUE * val);
-static int ldr_timetz_db_timetz (LDR_CONTEXT * context, const char *str,
-				 int len, SM_ATTRIBUTE * att);
-static int ldr_timeltz_db_timeltz (LDR_CONTEXT * context, const char *str,
-				   int len, SM_ATTRIBUTE * att);
-static int ldr_timestamp_elem (LDR_CONTEXT * context, const char *str,
-			       int len, DB_VALUE * val);
-static int ldr_timestamp_db_timestamp (LDR_CONTEXT * context, const char *str,
-				       int len, SM_ATTRIBUTE * att);
-static int ldr_timestamptz_elem (LDR_CONTEXT * context, const char *str,
-				 int len, DB_VALUE * val);
-static int ldr_timestampltz_elem (LDR_CONTEXT * context, const char *str,
-				  int len, DB_VALUE * val);
-static int ldr_timestamptz_db_timestamptz (LDR_CONTEXT * context,
-					   const char *str, int len,
-					   SM_ATTRIBUTE * att);
-static int ldr_timestampltz_db_timestampltz (LDR_CONTEXT * context,
-					     const char *str, int len,
-					     SM_ATTRIBUTE * att);
-static int ldr_datetime_elem (LDR_CONTEXT * context, const char *str,
-			      int len, DB_VALUE * val);
-static int ldr_datetime_db_datetime (LDR_CONTEXT * context, const char *str,
-				     int len, SM_ATTRIBUTE * att);
-static int ldr_datetimetz_elem (LDR_CONTEXT * context, const char *str,
-				int len, DB_VALUE * val);
-static int ldr_datetimeltz_elem (LDR_CONTEXT * context, const char *str,
-				 int len, DB_VALUE * val);
-static int ldr_datetimetz_db_datetimetz (LDR_CONTEXT * context,
-					 const char *str, int len,
-					 SM_ATTRIBUTE * att);
-static int ldr_datetimeltz_db_datetimeltz (LDR_CONTEXT * context,
-					   const char *str, int len,
-					   SM_ATTRIBUTE * att);
+static void ldr_act_class_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type);
+static int ldr_sys_user_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_sys_class_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_int_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_int_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_int_db_bigint (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_int_db_int (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_int_db_short (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_str_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_str_db_char (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_str_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_bstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_bstr_db_varbit (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_xstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_xstr_db_varbit (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_nstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_nstr_db_varnchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_numeric_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_numeric_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_double_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_float_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_real_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_real_db_float (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_real_db_double (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_date_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_date_db_date (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_time_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_time_db_time (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_timetz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_timeltz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_timetz_db_timetz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_timeltz_db_timeltz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_timestamp_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_timestamp_db_timestamp (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_timestamptz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_timestampltz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_timestamptz_db_timestamptz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_timestampltz_db_timestampltz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_datetime_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_datetime_db_datetime (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_datetimetz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_datetimeltz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_datetimetz_db_datetimetz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_datetimeltz_db_datetimeltz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
 static void ldr_date_time_conversion_error (const char *token, DB_TYPE type);
 static int ldr_check_date_time_conversion (const char *str, LDR_TYPE type);
-static int ldr_elo_int_elem (LDR_CONTEXT * context, const char *str, int len,
-			     DB_VALUE * val);
-static int ldr_elo_int_db_elo (LDR_CONTEXT * context, const char *str,
-			       int len, SM_ATTRIBUTE * att);
-static int ldr_elo_ext_elem (LDR_CONTEXT * context, const char *str, int len,
-			     DB_VALUE * val);
-static int ldr_elo_ext_db_elo (LDR_CONTEXT * context, const char *str,
-			       int len, SM_ATTRIBUTE * att);
+static int ldr_elo_int_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_elo_int_db_elo (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_elo_ext_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_elo_ext_db_elo (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
 static int ldr_mop_tempoid_maps_init (void);
 static void ldr_mop_tempoid_maps_final (void);
 static int ldr_add_mop_tempoid_map (MOP mop, CLASS_TABLE * table, int id);
 static int ldr_assign_all_perm_oids (void);
-static int find_instance (LDR_CONTEXT * context, DB_OBJECT * class_,
-			  OID * oid, int id);
-static int ldr_class_oid_elem (LDR_CONTEXT * context, const char *str,
-			       int len, DB_VALUE * val);
-static int ldr_class_oid_db_object (LDR_CONTEXT * context, const char *str,
-				    int len, SM_ATTRIBUTE * att);
-static int ldr_oid_elem (LDR_CONTEXT * context, const char *str, int len,
-			 DB_VALUE * val);
-static int ldr_oid_db_object (LDR_CONTEXT * context, const char *str, int len,
-			      SM_ATTRIBUTE * att);
-static int ldr_monetary_elem (LDR_CONTEXT * context, const char *str, int len,
-			      DB_VALUE * val);
-static int ldr_monetary_db_monetary (LDR_CONTEXT * context, const char *str,
-				     int len, SM_ATTRIBUTE * att);
-static int ldr_collection_elem (LDR_CONTEXT * context, const char *str,
-				int len, DB_VALUE * val);
-static int ldr_collection_db_collection (LDR_CONTEXT * context,
-					 const char *str, int len,
-					 SM_ATTRIBUTE * att);
+static int find_instance (LDR_CONTEXT * context, DB_OBJECT * class_, OID * oid, int id);
+static int ldr_class_oid_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_class_oid_db_object (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_oid_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_oid_db_object (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_monetary_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_monetary_db_monetary (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
+static int ldr_collection_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_collection_db_collection (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
 static int ldr_reset_context (LDR_CONTEXT * context);
 static void ldr_flush (LDR_CONTEXT * context);
 static int check_commit (LDR_CONTEXT * context);
-static void ldr_restore_pin_and_drop_obj (LDR_CONTEXT * context,
-					  bool drop_obj);
+static void ldr_restore_pin_and_drop_obj (LDR_CONTEXT * context, bool drop_obj);
 static int ldr_finish_context (LDR_CONTEXT * context);
 static int ldr_refresh_attrs (LDR_CONTEXT * context);
 static int update_default_count (CLASS_TABLE * table, OID * oid);
@@ -672,12 +591,10 @@ static void invalid_class_id_error (LDR_CONTEXT * context, int id);
 static int ldr_init_loader (LDR_CONTEXT * context);
 static void ldr_abort (void);
 static void ldr_process_object_ref (LDR_OBJECT_REF * ref, int type);
-static int ldr_act_add_class_all_attrs (LDR_CONTEXT * context,
-					const char *class_name);
+static int ldr_act_add_class_all_attrs (LDR_CONTEXT * context, const char *class_name);
 
 /* default action */
-void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len,
-		 LDR_TYPE type) = ldr_act_attr;
+void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type) = ldr_act_attr;
 
 /*
  * ldr_increment_err_total - increment err_total count of the given context
@@ -798,8 +715,7 @@ ldr_attr_name (LDR_CONTEXT * context)
 	}
       else
 	{
-	  /* should return some kind of string representation for
-	     the current method argument */
+	  /* should return some kind of string representation for the current method argument */
 	  name = "";
 	}
     }
@@ -826,13 +742,12 @@ ldr_attr_name (LDR_CONTEXT * context)
  *    by relevant code in tp_domain_select()
  */
 static int
-select_set_domain (LDR_CONTEXT * context,
-		   TP_DOMAIN * domain, TP_DOMAIN ** set_domain_ptr)
+select_set_domain (LDR_CONTEXT * context, TP_DOMAIN * domain, TP_DOMAIN ** set_domain_ptr)
 {
   int err = NO_ERROR;
   TP_DOMAIN *best, *d;
 
-  /*
+  /* 
    * Must pick an appropriate set domain, probably we should pick
    * the most general if there are more than one possibilities.
    * In practice, this won't ever happen until we allow nested
@@ -851,8 +766,7 @@ select_set_domain (LDR_CONTEXT * context,
   if (best == NULL)
     {
       err = ER_LDR_DOMAIN_MISMATCH;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 4,
-	      ldr_attr_name (context), ldr_class_name (context),
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 4, ldr_attr_name (context), ldr_class_name (context),
 	      domain->type->name, db_get_type_name (DB_TYPE_SET));
     }
   else
@@ -882,8 +796,7 @@ select_set_domain (LDR_CONTEXT * context,
  *    we return the LDR_AMBIGUOUS_DOMAIN error.
  */
 static int
-check_object_domain (LDR_CONTEXT * context,
-		     DB_OBJECT * class_, DB_OBJECT ** actual_class)
+check_object_domain (LDR_CONTEXT * context, DB_OBJECT * class_, DB_OBJECT ** actual_class)
 {
   int err = NO_ERROR;
   TP_DOMAIN *domain, *best, *d;
@@ -892,13 +805,11 @@ check_object_domain (LDR_CONTEXT * context,
 
   if (class_ == NULL)
     {
-      /* its an object but no domain was specified, see if we can unambiguously
-         select one. */
+      /* its an object but no domain was specified, see if we can unambiguously select one. */
       if (domain == NULL)
 	{
 	  err = ER_LDR_AMBIGUOUS_DOMAIN;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2,
-		  ldr_attr_name (context), ldr_class_name (context));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, ldr_attr_name (context), ldr_class_name (context));
 	}
       else
 	{
@@ -920,8 +831,7 @@ check_object_domain (LDR_CONTEXT * context,
 	  if (class_ == NULL)
 	    {
 	      err = ER_LDR_AMBIGUOUS_DOMAIN;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2,
-		      ldr_attr_name (context), ldr_class_name (context));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, ldr_attr_name (context), ldr_class_name (context));
 	    }
 	}
     }
@@ -934,9 +844,8 @@ check_object_domain (LDR_CONTEXT * context,
 	  if (best == NULL)
 	    {
 	      err = ER_LDR_OBJECT_DOMAIN_MISMATCH;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3,
-		      ldr_attr_name (context),
-		      ldr_class_name (context), db_get_class_name (class_));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, ldr_attr_name (context), ldr_class_name (context),
+		      db_get_class_name (class_));
 	    }
 	}
     }
@@ -977,7 +886,7 @@ check_class_domain (LDR_CONTEXT * context)
 	    }
 	}
 
-      /*
+      /* 
        * could make this more specific but not worth the trouble
        * right now, can only happen in internal trigger objects
        */
@@ -1032,8 +941,7 @@ idmap_grow (int size)
     {
       newsize = size + 10;	/* some extra for growth */
       id_map_old = Id_map;
-      Id_map = (DB_OBJECT **) realloc (Id_map,
-				       (sizeof (DB_OBJECT *) * newsize));
+      Id_map = (DB_OBJECT **) realloc (Id_map, (sizeof (DB_OBJECT *) * newsize));
       if (Id_map == NULL)
 	{
 	  /* Prevent leakage if we get a memory problem. */
@@ -1129,9 +1037,9 @@ ldr_find_class (const char *classname)
   sm_downcase_name (classname, realname, SM_MAX_IDENTIFIER_LENGTH);
   ldr_Hint_classnames[0] = realname;
 
-  find = locator_lockhint_classes (1, ldr_Hint_classnames, ldr_Hint_locks,
-				   ldr_Hint_subclasses, ldr_Hint_flags, 1,
-				   NULL_LOCK);
+  find =
+    locator_lockhint_classes (1, ldr_Hint_classnames, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1,
+			      NULL_LOCK);
 
   if (find == LC_CLASSNAME_EXIST)
     {
@@ -1233,8 +1141,7 @@ ldr_clear_context (LDR_CONTEXT * context)
   context->inst_total = 0;
   context->inst_num = -1;
 
-  context->flush_interval =
-    prm_get_integer_value (PRM_ID_LOADDB_FLUSH_INTERVAL);
+  context->flush_interval = prm_get_integer_value (PRM_ID_LOADDB_FLUSH_INTERVAL);
 
   context->table = NULL;
 
@@ -1347,8 +1254,7 @@ ldr_internal_error (LDR_CONTEXT * context)
 static void
 display_error_line (int adjust)
 {
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
 	   loader_yylineno + adjust);
 }
 
@@ -1383,9 +1289,7 @@ static void
 ldr_invalid_class_error (LDR_CONTEXT * context)
 {
   display_error_line (0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_UNKNOWN_ATT_CLASS),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNKNOWN_ATT_CLASS),
 	   ldr_attr_name (context), ldr_class_name (context));
 }
 
@@ -1406,15 +1310,12 @@ parse_error (LDR_CONTEXT * context, DB_TYPE token_type, const char *token)
 {
   display_error_line (0);
 
-  /*
+  /* 
    * This is called when we experience an error when performing a string to
    * DB_TYPE conversion. Called via CHECK_PARSE_ERR() macro.
    */
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_PARSE_ERROR), token,
-	   db_get_type_name (token_type), ldr_attr_name (context),
-	   ldr_class_name (context));
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_PARSE_ERROR), token,
+	   db_get_type_name (token_type), ldr_attr_name (context), ldr_class_name (context));
 }
 
 /*
@@ -1526,8 +1427,7 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
   if (context->next_attr >= context->num_attrs)
     {
       context->valid = false;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1,
-	      context->num_attrs);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
       CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
       goto error_exit;
     }
@@ -1536,7 +1436,7 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
     {
       switch (type)
 	{
-	  /*
+	  /* 
 	   * For validation only simply parse the set elements, by switching
 	   * to the element setter
 	   */
@@ -1572,9 +1472,7 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
   else
     {
       attdesc = &context->attrs[context->next_attr];
-      CHECK_ERR (err,
-		 (*(attdesc->setter[type])) (context, str, len,
-					     attdesc->att));
+      CHECK_ERR (err, (*(attdesc->setter[type])) (context, str, len, attdesc->att));
     }
 
 error_exit:
@@ -1613,7 +1511,7 @@ ldr_act_elem (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
     {
       switch (type)
 	{
-	  /*
+	  /* 
 	   * For validation only simply parse the set elements, by switching
 	   * to the element setter
 	   */
@@ -1641,19 +1539,12 @@ ldr_act_elem (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
     }
   else
     {
-      CHECK_ERR (err,
-		 (*(elem_converter[type])) (context, str, len, &tempval));
-      if ((err =
-	   set_add_element (context->collection,
-			    &tempval)) == ER_SET_DOMAIN_CONFLICT)
+      CHECK_ERR (err, (*(elem_converter[type])) (context, str, len, &tempval));
+      if ((err = set_add_element (context->collection, &tempval)) == ER_SET_DOMAIN_CONFLICT)
 	{
 	  display_error_line (0);
-	  fprintf (stderr,
-		   msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_SET_DOMAIN_ERROR),
-		   ldr_attr_name (context), ldr_class_name (context),
-		   db_get_type_name (db_value_type (&tempval)));
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SET_DOMAIN_ERROR),
+		   ldr_attr_name (context), ldr_class_name (context), db_get_type_name (db_value_type (&tempval)));
 	  CHECK_ERR (err, ER_SET_DOMAIN_CONFLICT);
 	}
       else
@@ -1687,15 +1578,14 @@ ldr_act_meth (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 
   if ((context->next_attr) >= (context->num_attrs + context->arg_count))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_UNEXPECTED_ARGUMENT, 1,
-	      context->arg_count);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_UNEXPECTED_ARGUMENT, 1, context->arg_count);
       CHECK_ERR (err, ER_LDR_UNEXPECTED_ARGUMENT);
     }
   CHECK_VALIDATION_ONLY (context);
 
   attdesc = &context->attrs[context->next_attr];
 
-  /*
+  /* 
    * Save the parser buffer and type information, this will be
    * used later to feed to the fast setters to populate the
    * constructor generated instance
@@ -1744,13 +1634,11 @@ error_exit:
  *    att(in): attribute
  */
 static int
-ldr_mismatch (LDR_CONTEXT * context,
-	      const char *str, int len, SM_ATTRIBUTE * att)
+ldr_mismatch (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
-	  att->header.name);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, att->header.name);
   CHECK_ERR (err, ER_OBJ_DOMAIN_CONFLICT);
 error_exit:
   return err;
@@ -1765,10 +1653,9 @@ error_exit:
  *    att(in): not used
  */
 static int
-ldr_ignore (LDR_CONTEXT * context,
-	    const char *str, int len, SM_ATTRIBUTE * att)
+ldr_ignore (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
-  /*
+  /* 
    * No need to set an error here, we've already issued a message when we were
    * studying the attribute in ldr_act_add_attr().  Just return an error code
    * so that the caller will increment context->err_count, causing us to
@@ -1788,9 +1675,7 @@ ldr_generic (LDR_CONTEXT * context, DB_VALUE * value)
 {
   int err;
 
-  CHECK_ERR (err, obj_desc_set (context->obj,
-				context->attrs[context->next_attr].attdesc,
-				value));
+  CHECK_ERR (err, obj_desc_set (context->obj, context->attrs[context->next_attr].attdesc, value));
 error_exit:
   return err;
 }
@@ -1804,8 +1689,7 @@ error_exit:
  *    val(out): DB_VALUE
  */
 static int
-ldr_null_elem (LDR_CONTEXT * context,
-	       const char *str, int len, DB_VALUE * val)
+ldr_null_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   DB_MAKE_NULL (val);
   return NO_ERROR;
@@ -1820,23 +1704,20 @@ ldr_null_elem (LDR_CONTEXT * context,
  *    att(att): memory representation of attribute
  */
 static int
-ldr_null_db_generic (LDR_CONTEXT * context,
-		     const char *str, int len, SM_ATTRIBUTE * att)
+ldr_null_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err = NO_ERROR;
   char *mem;
 
   if (att->flags & SM_ATTFLAG_NON_NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL,
-	      1, att->header.name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, att->header.name);
       CHECK_ERR (err, ER_OBJ_ATTRIBUTE_CANT_BE_NULL);
     }
   else
     {
       mem = context->mobj + att->offset;
-      CHECK_ERR (err,
-		 PRIM_SETMEM (att->domain->type, att->domain, mem, NULL));
+      CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, NULL));
       if (!att->domain->type->variable_p)
 	OBJ_CLEAR_BOUND_BIT (context->mobj, att->storage_order);
     }
@@ -1858,9 +1739,7 @@ error_exit:
  *    other setters. i.e., ldr_act(). This is called by ldr_act_class_attr().
  */
 static int
-ldr_class_attr_db_generic (LDR_CONTEXT * context,
-			   const char *str,
-			   int len, SM_ATTRIBUTE * att, DB_VALUE * val)
+ldr_class_attr_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att, DB_VALUE * val)
 {
   int err = NO_ERROR;
 
@@ -1874,8 +1753,7 @@ ldr_class_attr_db_generic (LDR_CONTEXT * context,
     }
   else if (context->attribute_type == LDR_ATTRIBUTE_DEFAULT)
     {
-      CHECK_ERR (err,
-		 db_change_default (context->cls, att->header.name, val));
+      CHECK_ERR (err, db_change_default (context->cls, att->header.name, val));
     }
 
 error_exit:
@@ -1891,8 +1769,7 @@ error_exit:
  *    type():
  */
 static void
-ldr_act_class_attr (LDR_CONTEXT * context,
-		    const char *str, int len, LDR_TYPE type)
+ldr_act_class_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 {
   int err = NO_ERROR;
   DB_VALUE src_val, dest_val, *val;
@@ -1907,8 +1784,7 @@ ldr_act_class_attr (LDR_CONTEXT * context,
   if (context->next_attr >= context->num_attrs)
     {
       context->valid = false;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1,
-	      context->num_attrs);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
       CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
     }
 
@@ -1921,24 +1797,16 @@ ldr_act_class_attr (LDR_CONTEXT * context,
 		  context->attrs[context->next_attr].att->header.name);
 	  CHECK_ERR (err, ER_OBJ_DOMAIN_CONFLICT);
 	}
-      CHECK_ERR (err, ldr_collection_db_collection (context, str, len,
-						    context->attrs
-						    [context->next_attr].
-						    att));
+      CHECK_ERR (err, ldr_collection_db_collection (context, str, len, context->attrs[context->next_attr].att));
     }
   else
     {
-      CHECK_ERR (err,
-		 (*(elem_converter[type])) (context, str, len, &src_val));
+      CHECK_ERR (err, (*(elem_converter[type])) (context, str, len, &src_val));
       GET_DOMAIN (context, domain);
-      CHECK_ERR (err,
-		 db_value_domain_init (&dest_val, TP_DOMAIN_TYPE (domain),
-				       domain->precision, domain->scale));
+      CHECK_ERR (err, db_value_domain_init (&dest_val, TP_DOMAIN_TYPE (domain), domain->precision, domain->scale));
 
       val = &dest_val;
-      /* tp_value_cast does not handle DB_TYPE_OID coersions, simply use the
-       * value returned by the elem converter.
-       */
+      /* tp_value_cast does not handle DB_TYPE_OID coersions, simply use the value returned by the elem converter. */
       if (type == LDR_OID || type == LDR_CLASS_OID)
 	{
 	  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_OBJECT)
@@ -1947,8 +1815,7 @@ ldr_act_class_attr (LDR_CONTEXT * context,
 	    }
 	  else
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OBJ_DOMAIN_CONFLICT, 1,
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
 		      context->attrs[context->next_attr].att->header.name);
 	      CHECK_ERR (err, ER_OBJ_DOMAIN_CONFLICT);
 	    }
@@ -1957,13 +1824,9 @@ ldr_act_class_attr (LDR_CONTEXT * context,
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
 		  context->attrs[context->next_attr].att->header.name);
-	  CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT,
-			   context, TP_DOMAIN_TYPE (domain), str);
+	  CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, TP_DOMAIN_TYPE (domain), str);
 	}
-      CHECK_ERR (err, ldr_class_attr_db_generic (context, str, len,
-						 context->attrs
-						 [context->next_attr].att,
-						 val));
+      CHECK_ERR (err, ldr_class_attr_db_generic (context, str, len, context->attrs[context->next_attr].att, val));
     }
 
 error_exit:
@@ -1980,13 +1843,11 @@ error_exit:
  *    att():
  */
 static int
-ldr_sys_user_db_generic (LDR_CONTEXT * context,
-			 const char *str, int len, SM_ATTRIBUTE * att)
+ldr_sys_user_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   display_error_line (0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_UNAUTHORIZED_CLASS), "db_user");
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNAUTHORIZED_CLASS),
+	   "db_user");
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
   LDR_INCREMENT_ERR_COUNT (context, 1);
   return (ER_GENERIC_ERROR);
@@ -2001,13 +1862,10 @@ ldr_sys_user_db_generic (LDR_CONTEXT * context,
  *    att():
  */
 static int
-ldr_sys_class_db_generic (LDR_CONTEXT * context,
-			  const char *str, int len, SM_ATTRIBUTE * att)
+ldr_sys_class_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   display_error_line (0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_UNAUTHORIZED_CLASS),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNAUTHORIZED_CLASS),
 	   "*system class*");
   CHECK_CONTEXT_VALIDITY (context, true);
 
@@ -2043,37 +1901,31 @@ ldr_int_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
   int err = NO_ERROR;
   int result = 0;
 
-  /*
+  /* 
    * Watch out for really long digit strings that really are being
    * assigned into a DB_TYPE_NUMERIC attribute; they can hold more than a
    * standard integer can, and calling atol() on that string will lose
    * data.
    * Is there some better way to test for this condition?
    */
-  if (len < MAX_DIGITS_FOR_INT
-      || (len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
+  if (len < MAX_DIGITS_FOR_INT || (len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
     {
       val->domain = ldr_int_tmpl.domain;
       result = parse_int (&val->data.i, str, 10);
       if (result != 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-		  db_get_type_name (DB_TYPE_INTEGER));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_INTEGER,
-			   str);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_INTEGER));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_INTEGER, str);
 	}
     }
-  else if (len < MAX_DIGITS_FOR_BIGINT
-	   || (len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
+  else if (len < MAX_DIGITS_FOR_BIGINT || (len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
     {
       val->domain = ldr_bigint_tmpl.domain;
       result = parse_bigint (&val->data.bigint, str, 10);
       if (result != 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-		  db_get_type_name (DB_TYPE_BIGINT));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT,
-			   str);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BIGINT));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT, str);
 	}
     }
   else
@@ -2082,17 +1934,11 @@ ldr_int_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
       DB_BIGINT tmp_bigint;
 
       numeric_coerce_dec_str_to_num (str, num.d.buf);
-      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint)
-	  != NO_ERROR)
+      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
 	{
 
-	  CHECK_PARSE_ERR (err,
-			   db_value_domain_init (val, DB_TYPE_NUMERIC, len,
-						 0), context, DB_TYPE_BIGINT,
-			   str);
-	  CHECK_PARSE_ERR (err,
-			   db_value_put (val, DB_TYPE_C_CHAR, (char *) str,
-					 len), context, DB_TYPE_BIGINT, str);
+	  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, len, 0), context, DB_TYPE_BIGINT, str);
+	  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, len), context, DB_TYPE_BIGINT, str);
 	}
       else
 	{
@@ -2114,8 +1960,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_int_db_generic (LDR_CONTEXT * context,
-		    const char *str, int len, SM_ATTRIBUTE * att)
+ldr_int_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   DB_VALUE val;
@@ -2136,8 +1981,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_int_db_bigint (LDR_CONTEXT * context,
-		   const char *str, int len, SM_ATTRIBUTE * att)
+ldr_int_db_bigint (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   char *mem;
   int err;
@@ -2146,22 +1990,16 @@ ldr_int_db_bigint (LDR_CONTEXT * context,
 
   val.domain = ldr_bigint_tmpl.domain;
 
-  /* Let try take the fastest path here, if we know that number we are
-   * getting fits into a long, use strtol, else we need to convert it
-   * to a double and coerce it, checking for overflow.
-   * Note if integers with leading zeros are entered this can take the
-   * slower route.
-   */
-  if (len < MAX_DIGITS_FOR_BIGINT
-      || (len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
+  /* Let try take the fastest path here, if we know that number we are getting fits into a long, use strtol, else we
+   * need to convert it to a double and coerce it, checking for overflow. Note if integers with leading zeros are
+   * entered this can take the slower route. */
+  if (len < MAX_DIGITS_FOR_BIGINT || (len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
     {
       result = parse_bigint (&val.data.bigint, str, 10);
       if (result != 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-		  db_get_type_name (DB_TYPE_BIGINT));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT,
-			   str);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BIGINT));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT, str);
 	}
     }
   else
@@ -2170,13 +2008,10 @@ ldr_int_db_bigint (LDR_CONTEXT * context,
       DB_BIGINT tmp_bigint;
 
       numeric_coerce_dec_str_to_num (str, num.d.buf);
-      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) !=
-	  NO_ERROR)
+      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-		  db_get_type_name (DB_TYPE_BIGINT));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT,
-			   str);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BIGINT));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT, str);
 	}
       else
 	{
@@ -2201,8 +2036,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_int_db_int (LDR_CONTEXT * context,
-		const char *str, int len, SM_ATTRIBUTE * att)
+ldr_int_db_int (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   char *mem;
   int err;
@@ -2212,22 +2046,16 @@ ldr_int_db_int (LDR_CONTEXT * context,
 
   val.domain = ldr_int_tmpl.domain;
 
-  /* Let try take the fastest path here, if we know that number we are
-   * getting fits into a long, use strtol, else we need to convert it
-   * to a double and coerce it, checking for overflow.
-   * Note if integers with leading zeros are entered this can take the
-   * slower route.
-   */
-  if (len < MAX_DIGITS_FOR_INT
-      || (len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
+  /* Let try take the fastest path here, if we know that number we are getting fits into a long, use strtol, else we
+   * need to convert it to a double and coerce it, checking for overflow. Note if integers with leading zeros are
+   * entered this can take the slower route. */
+  if (len < MAX_DIGITS_FOR_INT || (len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
     {
       result = parse_int (&val.data.i, str, 10);
       if (result != 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-		  db_get_type_name (DB_TYPE_INTEGER));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_INTEGER,
-			   str);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_INTEGER));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_INTEGER, str);
 	}
     }
   else
@@ -2237,10 +2065,8 @@ ldr_int_db_int (LDR_CONTEXT * context,
 
       if (str_ptr == str || OR_CHECK_INT_OVERFLOW (d))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-		  db_get_type_name (DB_TYPE_INTEGER));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_INTEGER,
-			   str);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_INTEGER));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_INTEGER, str);
 	}
       else
 	{
@@ -2265,8 +2091,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_int_db_short (LDR_CONTEXT * context,
-		  const char *str, int len, SM_ATTRIBUTE * att)
+ldr_int_db_short (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   char *mem;
   int err;
@@ -2276,12 +2101,9 @@ ldr_int_db_short (LDR_CONTEXT * context,
 
   val.domain = ldr_short_tmpl.domain;
 
-  /* Let try take the fastest path here, if we know that number we are
-   * getting fits into a long, use strtol, else we need to convert it
-   * to a double and coerce it, checking for overflow.
-   * Note if integers with leading zeros are entered this can take the
-   * slower route.
-   */
+  /* Let try take the fastest path here, if we know that number we are getting fits into a long, use strtol, else we
+   * need to convert it to a double and coerce it, checking for overflow. Note if integers with leading zeros are
+   * entered this can take the slower route. */
   if (len > MAX_DIGITS_FOR_SHORT)
     {
       double d;
@@ -2289,10 +2111,8 @@ ldr_int_db_short (LDR_CONTEXT * context,
 
       if (str_ptr == str || OR_CHECK_SHORT_OVERFLOW (d))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-		  db_get_type_name (DB_TYPE_SHORT));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_SHORT,
-			   str);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_SHORT));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_SHORT, str);
 	}
       else
 	val.data.sh = ROUND (d);
@@ -2304,10 +2124,8 @@ ldr_int_db_short (LDR_CONTEXT * context,
 
       if (result != 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-		  db_get_type_name (DB_TYPE_SHORT));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_SHORT,
-			   str);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_SHORT));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_SHORT, str);
 	}
       val.data.sh = (short) i_val;
     }
@@ -2360,8 +2178,7 @@ ldr_str_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
  *    att():
  */
 static int
-ldr_str_db_char (LDR_CONTEXT * context,
-		 const char *str, int len, SM_ATTRIBUTE * att)
+ldr_str_db_char (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   char *mem;
   int precision;
@@ -2371,12 +2188,11 @@ ldr_str_db_char (LDR_CONTEXT * context,
 
   precision = att->domain->precision;
 
-  intl_char_count ((unsigned char *) str, len, att->domain->codeset,
-		   &char_count);
+  intl_char_count ((unsigned char *) str, len, att->domain->codeset, &char_count);
 
   if (char_count > precision)
     {
-      /*
+      /* 
        * May be a violation, but first we have to check for trailing pad
        * characters that might allow us to successfully truncate the
        * thing.
@@ -2385,8 +2201,7 @@ ldr_str_db_char (LDR_CONTEXT * context,
       const char *p;
       int truncate_size;
 
-      intl_char_size ((unsigned char *) str, precision, att->domain->codeset,
-		      &truncate_size);
+      intl_char_size ((unsigned char *) str, precision, att->domain->codeset, &truncate_size);
 
       for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
 	{
@@ -2400,13 +2215,11 @@ ldr_str_db_char (LDR_CONTEXT * context,
 	len = truncate_size;
       else
 	{
-	  /*
+	  /* 
 	   * It's a genuine violation; raise an error.
 	   */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-		  db_get_type_name (DB_TYPE_CHAR));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_CHAR,
-			   str);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_CHAR));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_CHAR, str);
 	}
     }
 
@@ -2433,8 +2246,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_str_db_varchar (LDR_CONTEXT * context,
-		    const char *str, int len, SM_ATTRIBUTE * att)
+ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   char *mem;
   int precision;
@@ -2443,12 +2255,11 @@ ldr_str_db_varchar (LDR_CONTEXT * context,
   int char_count = 0;
 
   precision = att->domain->precision;
-  intl_char_count ((unsigned char *) str, len, att->domain->codeset,
-		   &char_count);
+  intl_char_count ((unsigned char *) str, len, att->domain->codeset, &char_count);
 
   if (char_count > precision)
     {
-      /*
+      /* 
        * May be a violation, but first we have to check for trailing pad
        * characters that might allow us to successfully truncate the
        * thing.
@@ -2457,8 +2268,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context,
       const char *p;
       int truncate_size;
 
-      intl_char_size ((unsigned char *) str, precision, att->domain->codeset,
-		      &truncate_size);
+      intl_char_size ((unsigned char *) str, precision, att->domain->codeset, &truncate_size);
       for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
 	{
 	  if (*p != ' ')
@@ -2471,13 +2281,11 @@ ldr_str_db_varchar (LDR_CONTEXT * context,
 	len = truncate_size;
       else
 	{
-	  /*
+	  /* 
 	   * It's a genuine violation; raise an error.
 	   */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-		  db_get_type_name (DB_TYPE_VARCHAR));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_VARCHAR,
-			   str);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_VARCHAR));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_VARCHAR, str);
 	}
     }
 
@@ -2489,7 +2297,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context,
 
   mem = context->mobj + att->offset;
   CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
-  /*
+  /* 
    * No bound bit to be set for a variable length attribute.
    */
 
@@ -2506,8 +2314,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_str_db_generic (LDR_CONTEXT * context,
-		    const char *str, int len, SM_ATTRIBUTE * att)
+ldr_str_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   DB_VALUE val;
 
@@ -2524,8 +2331,7 @@ ldr_str_db_generic (LDR_CONTEXT * context,
  *    val():
  */
 static int
-ldr_bstr_elem (LDR_CONTEXT * context,
-	       const char *str, int len, DB_VALUE * val)
+ldr_bstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
   int dest_size;
@@ -2542,8 +2348,7 @@ ldr_bstr_elem (LDR_CONTEXT * context,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
 	      context->attrs[context->next_attr].att->header.name);
-      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT,
-		       str);
+      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
   DB_MAKE_VARBIT (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len);
@@ -2553,17 +2358,12 @@ ldr_bstr_elem (LDR_CONTEXT * context,
 
   if (domain == NULL)
     {
-      CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_BIT,
-						  DB_DEFAULT_PRECISION,
-						  DB_DEFAULT_SCALE),
-		       context, DB_TYPE_BIT, str);
+      CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_BIT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE), context,
+		       DB_TYPE_BIT, str);
     }
   else
     {
-      CHECK_PARSE_ERR (err, db_value_domain_init (val,
-						  TP_DOMAIN_TYPE (domain),
-						  domain->precision,
-						  domain->scale),
+      CHECK_PARSE_ERR (err, db_value_domain_init (val, TP_DOMAIN_TYPE (domain), domain->precision, domain->scale),
 		       context, DB_TYPE_BIT, str);
     }
   domain_ptr = tp_domain_resolve_value (val, &temp_domain);
@@ -2571,8 +2371,7 @@ ldr_bstr_elem (LDR_CONTEXT * context,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
 	      context->attrs[context->next_attr].att->header.name);
-      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT,
-		       str);
+      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
 error_exit:
@@ -2590,8 +2389,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_bstr_db_varbit (LDR_CONTEXT * context,
-		    const char *str, int len, SM_ATTRIBUTE * att)
+ldr_bstr_db_varbit (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   DB_VALUE val;
@@ -2613,8 +2411,7 @@ error_exit:
  *    val():
  */
 static int
-ldr_xstr_elem (LDR_CONTEXT * context,
-	       const char *str, int len, DB_VALUE * val)
+ldr_xstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
   int dest_size;
@@ -2631,10 +2428,8 @@ ldr_xstr_elem (LDR_CONTEXT * context,
 
   if (qstr_hex_to_bin (bstring, dest_size, (char *) str, len) != len)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
-	      ldr_attr_name (context));
-      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT,
-		       str);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
+      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
   DB_MAKE_VARBIT (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len * 4);
@@ -2647,15 +2442,11 @@ ldr_xstr_elem (LDR_CONTEXT * context,
 
   if (domain == NULL)
     {
-      db_value_domain_init (val, DB_TYPE_BIT, DB_DEFAULT_PRECISION,
-			    DB_DEFAULT_SCALE);
+      db_value_domain_init (val, DB_TYPE_BIT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
   else
     {
-      CHECK_PARSE_ERR (err, db_value_domain_init (val,
-						  TP_DOMAIN_TYPE (domain),
-						  domain->precision,
-						  domain->scale),
+      CHECK_PARSE_ERR (err, db_value_domain_init (val, TP_DOMAIN_TYPE (domain), domain->precision, domain->scale),
 		       context, DB_TYPE_BIT, str);
     }
   domain_ptr = tp_domain_resolve_value (val, &temp_domain);
@@ -2663,8 +2454,7 @@ ldr_xstr_elem (LDR_CONTEXT * context,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
 	      context->attrs[context->next_attr].att->header.name);
-      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT,
-		       str);
+      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
 error_exit:
@@ -2687,8 +2477,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_xstr_db_varbit (LDR_CONTEXT * context,
-		    const char *str, int len, SM_ATTRIBUTE * att)
+ldr_xstr_db_varbit (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   DB_VALUE val;
@@ -2710,12 +2499,10 @@ error_exit:
  *    val():
  */
 static int
-ldr_nstr_elem (LDR_CONTEXT * context,
-	       const char *str, int len, DB_VALUE * val)
+ldr_nstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
 
-  DB_MAKE_VARNCHAR (val, TP_FLOATING_PRECISION_VALUE, str, len,
-		    LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  DB_MAKE_VARNCHAR (val, TP_FLOATING_PRECISION_VALUE, str, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   return NO_ERROR;
 }
 
@@ -2728,8 +2515,7 @@ ldr_nstr_elem (LDR_CONTEXT * context,
  *    att():
  */
 static int
-ldr_nstr_db_varnchar (LDR_CONTEXT * context,
-		      const char *str, int len, SM_ATTRIBUTE * att)
+ldr_nstr_db_varnchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err = NO_ERROR;
   DB_VALUE val;
@@ -2761,8 +2547,7 @@ error_exit:
  *    val():
  */
 static int
-ldr_numeric_elem (LDR_CONTEXT * context,
-		  const char *str, int len, DB_VALUE * val)
+ldr_numeric_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int precision, scale;
   int err = NO_ERROR;
@@ -2770,11 +2555,8 @@ ldr_numeric_elem (LDR_CONTEXT * context,
   precision = len - 1 - (str[0] == '+' || str[0] == '-' || str[0] == '.');
   scale = len - (int) strcspn (str, ".") - 1;
 
-  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision,
-					      scale),
-		   context, DB_TYPE_NUMERIC, str);
-  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, len),
-		   context, DB_TYPE_NUMERIC, str);
+  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale), context, DB_TYPE_NUMERIC, str);
+  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, len), context, DB_TYPE_NUMERIC, str);
 
 error_exit:
   return err;
@@ -2789,8 +2571,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_numeric_db_generic (LDR_CONTEXT * context,
-			const char *str, int len, SM_ATTRIBUTE * att)
+ldr_numeric_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   DB_VALUE val;
@@ -2811,8 +2592,7 @@ error_exit:
  *    val():
  */
 static int
-ldr_double_elem (LDR_CONTEXT * context,
-		 const char *str, int len, DB_VALUE * val)
+ldr_double_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   double d;
   char *str_ptr;
@@ -2829,10 +2609,8 @@ ldr_double_elem (LDR_CONTEXT * context,
 
       GET_DOMAIN (context, domain);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-	      db_get_type_name (TP_DOMAIN_TYPE (domain)));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context,
-		       TP_DOMAIN_TYPE (domain), str);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (TP_DOMAIN_TYPE (domain)));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, TP_DOMAIN_TYPE (domain), str);
     }
   else
     val->data.d = d;
@@ -2850,8 +2628,7 @@ error_exit:
  *    val():
  */
 static int
-ldr_float_elem (LDR_CONTEXT * context,
-		const char *str, int len, DB_VALUE * val)
+ldr_float_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   double d;
   char *str_ptr;
@@ -2868,10 +2645,8 @@ ldr_float_elem (LDR_CONTEXT * context,
 
       GET_DOMAIN (context, domain);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-	      db_get_type_name (TP_DOMAIN_TYPE (domain)));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context,
-		       TP_DOMAIN_TYPE (domain), str);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (TP_DOMAIN_TYPE (domain)));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, TP_DOMAIN_TYPE (domain), str);
     }
   else
     val->data.f = (float) d;
@@ -2889,8 +2664,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_real_db_generic (LDR_CONTEXT * context,
-		     const char *str, int len, SM_ATTRIBUTE * att)
+ldr_real_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   DB_VALUE val;
@@ -2911,8 +2685,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_real_db_float (LDR_CONTEXT * context,
-		   const char *str, int len, SM_ATTRIBUTE * att)
+ldr_real_db_float (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   char *mem;
   int err;
@@ -2931,10 +2704,8 @@ ldr_real_db_float (LDR_CONTEXT * context,
 
       GET_DOMAIN (context, domain);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-	      db_get_type_name (TP_DOMAIN_TYPE (domain)));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context,
-		       TP_DOMAIN_TYPE (domain), str);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (TP_DOMAIN_TYPE (domain)));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, TP_DOMAIN_TYPE (domain), str);
     }
   else
     val.data.f = (float) d;
@@ -2956,8 +2727,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_real_db_double (LDR_CONTEXT * context,
-		    const char *str, int len, SM_ATTRIBUTE * att)
+ldr_real_db_double (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   char *mem;
   int err;
@@ -2976,10 +2746,8 @@ ldr_real_db_double (LDR_CONTEXT * context,
 
       GET_DOMAIN (context, domain);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-	      db_get_type_name (TP_DOMAIN_TYPE (domain)));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context,
-		       TP_DOMAIN_TYPE (domain), str);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (TP_DOMAIN_TYPE (domain)));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, TP_DOMAIN_TYPE (domain), str);
     }
   else
     val.data.d = d;
@@ -3009,14 +2777,12 @@ error_exit:
  *    val():
  */
 static int
-ldr_date_elem (LDR_CONTEXT * context,
-	       const char *str, int len, DB_VALUE * val)
+ldr_date_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
 
   val->domain = ldr_date_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_date (str, &val->data.date),
-		   context, DB_TYPE_DATE, str);
+  CHECK_PARSE_ERR (err, db_string_to_date (str, &val->data.date), context, DB_TYPE_DATE, str);
 
 error_exit:
   return err;
@@ -3031,8 +2797,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_date_db_date (LDR_CONTEXT * context,
-		  const char *str, int len, SM_ATTRIBUTE * att)
+ldr_date_db_date (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   char *mem;
@@ -3056,14 +2821,12 @@ error_exit:
  *    val():
  */
 static int
-ldr_time_elem (LDR_CONTEXT * context,
-	       const char *str, int len, DB_VALUE * val)
+ldr_time_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
 
   val->domain = ldr_time_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_time (str, &val->data.time),
-		   context, DB_TYPE_TIME, str);
+  CHECK_PARSE_ERR (err, db_string_to_time (str, &val->data.time), context, DB_TYPE_TIME, str);
 
 error_exit:
   return err;
@@ -3078,8 +2841,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_time_db_time (LDR_CONTEXT * context,
-		  const char *str, int len, SM_ATTRIBUTE * att)
+ldr_time_db_time (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   char *mem;
@@ -3103,16 +2865,13 @@ error_exit:
  *    val():
  */
 static int
-ldr_timetz_elem (LDR_CONTEXT * context, const char *str, int len,
-		 DB_VALUE * val)
+ldr_timetz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
   bool has_zone;
 
   val->domain = ldr_timetz_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_timetz (str, &val->data.timetz,
-					     &has_zone),
-		   context, DB_TYPE_TIMETZ, str);
+  CHECK_PARSE_ERR (err, db_string_to_timetz (str, &val->data.timetz, &has_zone), context, DB_TYPE_TIMETZ, str);
 
 error_exit:
   return err;
@@ -3127,14 +2886,12 @@ error_exit:
  *    val():
  */
 static int
-ldr_timeltz_elem (LDR_CONTEXT * context, const char *str, int len,
-		  DB_VALUE * val)
+ldr_timeltz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
 
   val->domain = ldr_timeltz_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_timeltz (str, &val->data.time),
-		   context, DB_TYPE_TIMELTZ, str);
+  CHECK_PARSE_ERR (err, db_string_to_timeltz (str, &val->data.time), context, DB_TYPE_TIMELTZ, str);
 
 error_exit:
   return err;
@@ -3149,8 +2906,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_timetz_db_timetz (LDR_CONTEXT * context, const char *str, int len,
-		      SM_ATTRIBUTE * att)
+ldr_timetz_db_timetz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   char *mem;
@@ -3174,8 +2930,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_timeltz_db_timeltz (LDR_CONTEXT * context, const char *str, int len,
-			SM_ATTRIBUTE * att)
+ldr_timeltz_db_timeltz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   char *mem;
@@ -3199,14 +2954,12 @@ error_exit:
  *    val():
  */
 static int
-ldr_timestamp_elem (LDR_CONTEXT * context,
-		    const char *str, int len, DB_VALUE * val)
+ldr_timestamp_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
 
   val->domain = ldr_timestamp_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_timestamp (str, &val->data.utime),
-		   context, DB_TYPE_TIMESTAMP, str);
+  CHECK_PARSE_ERR (err, db_string_to_timestamp (str, &val->data.utime), context, DB_TYPE_TIMESTAMP, str);
 
 error_exit:
   return err;
@@ -3221,8 +2974,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_timestamp_db_timestamp (LDR_CONTEXT * context,
-			    const char *str, int len, SM_ATTRIBUTE * att)
+ldr_timestamp_db_timestamp (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   char *mem;
@@ -3246,17 +2998,14 @@ error_exit:
  *    val():
  */
 static int
-ldr_timestamptz_elem (LDR_CONTEXT * context,
-		      const char *str, int len, DB_VALUE * val)
+ldr_timestamptz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
   bool has_zone;
 
   val->domain = ldr_timestamptz_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_timestamptz (str,
-						  &val->data.timestamptz,
-						  &has_zone),
-		   context, DB_TYPE_TIMESTAMPTZ, str);
+  CHECK_PARSE_ERR (err, db_string_to_timestamptz (str, &val->data.timestamptz, &has_zone), context, DB_TYPE_TIMESTAMPTZ,
+		   str);
   /* if no zone text, than it is assumed session timezone */
 
 error_exit:
@@ -3272,14 +3021,12 @@ error_exit:
  *    val():
  */
 static int
-ldr_timestampltz_elem (LDR_CONTEXT * context,
-		       const char *str, int len, DB_VALUE * val)
+ldr_timestampltz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
 
   val->domain = ldr_timestampltz_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_timestampltz (str, &val->data.utime),
-		   context, DB_TYPE_TIMESTAMPLTZ, str);
+  CHECK_PARSE_ERR (err, db_string_to_timestampltz (str, &val->data.utime), context, DB_TYPE_TIMESTAMPLTZ, str);
   /* if no zone text, than it is assumed session timezone */
 
 error_exit:
@@ -3295,8 +3042,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_timestamptz_db_timestamptz (LDR_CONTEXT * context,
-				const char *str, int len, SM_ATTRIBUTE * att)
+ldr_timestamptz_db_timestamptz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   char *mem;
@@ -3320,8 +3066,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_timestampltz_db_timestampltz (LDR_CONTEXT * context, const char *str,
-				  int len, SM_ATTRIBUTE * att)
+ldr_timestampltz_db_timestampltz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   char *mem;
@@ -3345,14 +3090,12 @@ error_exit:
  *    val():
  */
 static int
-ldr_datetime_elem (LDR_CONTEXT * context,
-		   const char *str, int len, DB_VALUE * val)
+ldr_datetime_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
 
   val->domain = ldr_datetime_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_datetime (str, &val->data.datetime),
-		   context, DB_TYPE_DATETIME, str);
+  CHECK_PARSE_ERR (err, db_string_to_datetime (str, &val->data.datetime), context, DB_TYPE_DATETIME, str);
 
 error_exit:
   return err;
@@ -3367,8 +3110,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_datetime_db_datetime (LDR_CONTEXT * context,
-			  const char *str, int len, SM_ATTRIBUTE * att)
+ldr_datetime_db_datetime (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   char *mem;
@@ -3392,16 +3134,14 @@ error_exit:
  *    val():
  */
 static int
-ldr_datetimetz_elem (LDR_CONTEXT * context,
-		     const char *str, int len, DB_VALUE * val)
+ldr_datetimetz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
   bool has_zone;
 
   val->domain = ldr_datetimetz_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_datetimetz (str, &val->data.datetimetz,
-						 &has_zone),
-		   context, DB_TYPE_DATETIMETZ, str);
+  CHECK_PARSE_ERR (err, db_string_to_datetimetz (str, &val->data.datetimetz, &has_zone), context, DB_TYPE_DATETIMETZ,
+		   str);
   /* if no zone text, than it is assumed session timezone */
 
 error_exit:
@@ -3417,14 +3157,12 @@ error_exit:
  *    val():
  */
 static int
-ldr_datetimeltz_elem (LDR_CONTEXT * context,
-		      const char *str, int len, DB_VALUE * val)
+ldr_datetimeltz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
 
   val->domain = ldr_datetimeltz_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_datetimeltz (str, &val->data.datetime),
-		   context, DB_TYPE_DATETIMELTZ, str);
+  CHECK_PARSE_ERR (err, db_string_to_datetimeltz (str, &val->data.datetime), context, DB_TYPE_DATETIMELTZ, str);
   /* if no zone text, than it is assumed session timezone */
 
 error_exit:
@@ -3440,8 +3178,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_datetimetz_db_datetimetz (LDR_CONTEXT * context,
-			      const char *str, int len, SM_ATTRIBUTE * att)
+ldr_datetimetz_db_datetimetz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   char *mem;
@@ -3465,8 +3202,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_datetimeltz_db_datetimeltz (LDR_CONTEXT * context,
-				const char *str, int len, SM_ATTRIBUTE * att)
+ldr_datetimeltz_db_datetimeltz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   char *mem;
@@ -3491,9 +3227,7 @@ static void
 ldr_date_time_conversion_error (const char *token, DB_TYPE type)
 {
   display_error_line (0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_CONVERSION_ERROR), token,
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CONVERSION_ERROR), token,
 	   db_get_type_name (type));
 }
 
@@ -3505,9 +3239,7 @@ void
 ldr_load_failed_error ()
 {
   display_error_line (0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_LOAD_FAIL));
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LOAD_FAIL));
 }
 
 /*
@@ -3532,7 +3264,7 @@ ldr_check_date_time_conversion (const char *str, LDR_TYPE type)
   DB_TYPE current_type = DB_TYPE_NULL;
   bool has_zone;
 
-  /*
+  /* 
    * Flag invalid date/time/timestamp strings as errors.
    * e.g., DATE '01///' should be an error, this is not detected by the lexical
    * analysis phase since DATE 'str' is valid.
@@ -3604,8 +3336,7 @@ ldr_check_date_time_conversion (const char *str, LDR_TYPE type)
  *    val():
  */
 static int
-ldr_elo_int_elem (LDR_CONTEXT * context,
-		  const char *str, int len, DB_VALUE * val)
+ldr_elo_int_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   /* not implemented. should not be called */
   assert (0);
@@ -3621,8 +3352,7 @@ ldr_elo_int_elem (LDR_CONTEXT * context,
  *    att():
  */
 static int
-ldr_elo_int_db_elo (LDR_CONTEXT * context,
-		    const char *str, int len, SM_ATTRIBUTE * att)
+ldr_elo_int_db_elo (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   /* not implemented. should not be called */
   assert (0);
@@ -3638,8 +3368,7 @@ ldr_elo_int_db_elo (LDR_CONTEXT * context,
  *    val():
  */
 static int
-ldr_elo_ext_elem (LDR_CONTEXT * context,
-		  const char *str, int len, DB_VALUE * val)
+ldr_elo_ext_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   DB_ELO elo;
   int err = NO_ERROR;
@@ -3718,8 +3447,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context,
       if (result != 0 || size < 0)
 	{
 	  err = ER_LDR_ELO_INPUT_FILE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_ELO_INPUT_FILE, 1,
-		  str);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_ELO_INPUT_FILE, 1, str);
 	  goto error_exit;
 	}
 
@@ -3784,8 +3512,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_elo_ext_db_elo (LDR_CONTEXT * context,
-		    const char *str, int len, SM_ATTRIBUTE * att)
+ldr_elo_ext_db_elo (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err = NO_ERROR;
   char *mem;
@@ -3854,9 +3581,7 @@ ldr_mop_tempoid_maps_init (void)
     }
   ldr_Mop_tempoid_maps = NULL;
 
-  if ((ldr_Mop_tempoid_maps =
-       (LDR_MOP_TEMPOID_MAPS *) malloc (sizeof (LDR_MOP_TEMPOID_MAPS))) ==
-      NULL)
+  if ((ldr_Mop_tempoid_maps = (LDR_MOP_TEMPOID_MAPS *) malloc (sizeof (LDR_MOP_TEMPOID_MAPS))) == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
       return ER_LDR_MEMORY_ERROR;
@@ -3865,8 +3590,7 @@ ldr_mop_tempoid_maps_init (void)
   presize = LDR_MOP_TEMPOID_MAPS_PRESIZE;
 
   if ((ldr_Mop_tempoid_maps->mop_tempoid_maps =
-       (LDR_MOP_TEMPOID_MAP *) malloc (presize *
-				       sizeof (LDR_MOP_TEMPOID_MAP))) == NULL)
+       (LDR_MOP_TEMPOID_MAP *) malloc (presize * sizeof (LDR_MOP_TEMPOID_MAP))) == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
       err = ER_LDR_MEMORY_ERROR;
@@ -3922,8 +3646,7 @@ ldr_add_mop_tempoid_map (MOP mop, CLASS_TABLE * table, int id)
 {
   int err = NO_ERROR;
 
-  if (ldr_Mop_tempoid_maps == NULL
-      || ldr_Mop_tempoid_maps->mop_tempoid_maps == NULL)
+  if (ldr_Mop_tempoid_maps == NULL || ldr_Mop_tempoid_maps->mop_tempoid_maps == NULL)
     {
       err = ldr_mop_tempoid_maps_init ();
       if (err != NO_ERROR)
@@ -3933,10 +3656,8 @@ ldr_add_mop_tempoid_map (MOP mop, CLASS_TABLE * table, int id)
 	}
     }
 
-  ldr_Mop_tempoid_maps->mop_tempoid_maps[ldr_Mop_tempoid_maps->index].mop =
-    mop;
-  ldr_Mop_tempoid_maps->mop_tempoid_maps[ldr_Mop_tempoid_maps->index].table =
-    table;
+  ldr_Mop_tempoid_maps->mop_tempoid_maps[ldr_Mop_tempoid_maps->index].mop = mop;
+  ldr_Mop_tempoid_maps->mop_tempoid_maps[ldr_Mop_tempoid_maps->index].table = table;
   ldr_Mop_tempoid_maps->mop_tempoid_maps[ldr_Mop_tempoid_maps->index].id = id;
   ldr_Mop_tempoid_maps->count += 1;
   ldr_Mop_tempoid_maps->index += 1;
@@ -3950,10 +3671,9 @@ ldr_add_mop_tempoid_map (MOP mop, CLASS_TABLE * table, int id)
       mop_tempoid_maps_old = ldr_Mop_tempoid_maps->mop_tempoid_maps;
 
       ldr_Mop_tempoid_maps->mop_tempoid_maps =
-	(LDR_MOP_TEMPOID_MAP *)
-	realloc (ldr_Mop_tempoid_maps->mop_tempoid_maps,
-		 sizeof (LDR_MOP_TEMPOID_MAP) * (ldr_Mop_tempoid_maps->size +
-						 LDR_MOP_TEMPOID_MAPS_PRESIZE));
+	(LDR_MOP_TEMPOID_MAP *) realloc (ldr_Mop_tempoid_maps->mop_tempoid_maps,
+					 sizeof (LDR_MOP_TEMPOID_MAP) * (ldr_Mop_tempoid_maps->size +
+									 LDR_MOP_TEMPOID_MAPS_PRESIZE));
 
       if (ldr_Mop_tempoid_maps->mop_tempoid_maps == NULL)
 	{
@@ -4007,11 +3727,9 @@ ldr_assign_all_perm_oids (void)
       while (i < ldr_Mop_tempoid_maps->count)
 	{
 	  mop_tempoid_map = &(ldr_Mop_tempoid_maps->mop_tempoid_maps[i]);
-	  if (mop_tempoid_map->mop &&
-	      OID_ISTEMP (WS_REAL_OID (mop_tempoid_map->mop)))
+	  if (mop_tempoid_map->mop && OID_ISTEMP (WS_REAL_OID (mop_tempoid_map->mop)))
 	    {
-	      if (locator_add_oidset_object
-		  (oidset, mop_tempoid_map->mop) == NULL)
+	      if (locator_add_oidset_object (oidset, mop_tempoid_map->mop) == NULL)
 		CHECK_ERR (err, er_errid ());
 	    }
 	  i += 1;
@@ -4021,18 +3739,14 @@ ldr_assign_all_perm_oids (void)
 	      locator_clear_oid_set (NULL, oidset);
 	    }
 	}
-      /* call locator_assign_oidset(). This will make a server call to get permanent
-       * oids.
-       */
+      /* call locator_assign_oidset(). This will make a server call to get permanent oids. */
       if (oidset->total_oids)
 	{
 	  CHECK_ERR (err, locator_assign_oidset (oidset, NULL));
 	}
 
-      /* At this point the mapping between mop -> permanent oid should be
-       * complete. Update the otable oids via the oid pointer obtained from
-       * the CLASS_TABLE and id.
-       */
+      /* At this point the mapping between mop -> permanent oid should be complete. Update the otable oids via the oid
+       * pointer obtained from the CLASS_TABLE and id. */
 
       if (!No_oid_hint)
 	{
@@ -4040,8 +3754,7 @@ ldr_assign_all_perm_oids (void)
 	  while (i < ldr_Mop_tempoid_maps->count)
 	    {
 	      mop_tempoid_map = &(ldr_Mop_tempoid_maps->mop_tempoid_maps[i]);
-	      CHECK_PTR (err, inst = otable_find (mop_tempoid_map->table,
-						  mop_tempoid_map->id));
+	      CHECK_PTR (err, inst = otable_find (mop_tempoid_map->table, mop_tempoid_map->id));
 	      COPY_OID (&(inst->oid), WS_REAL_OID (mop_tempoid_map->mop));
 	      mop_tempoid_map->mop = NULL;
 	      mop_tempoid_map->table = NULL;
@@ -4103,7 +3816,7 @@ find_instance (LDR_CONTEXT * context, DB_OBJECT * class_, OID * oid, int id)
 	{			/* Forward reference */
 	  if ((class_ == context->cls) && (context->inst_num == id))
 	    {
-	      /*
+	      /* 
 	       * We have a reference to the current object being processed.
 	       * Simply use the oid of the object.
 	       */
@@ -4118,34 +3831,30 @@ find_instance (LDR_CONTEXT * context, DB_OBJECT * class_, OID * oid, int id)
 	      if (is_internal_class (class_))
 		{
 		  err = ER_LDR_INTERNAL_REFERENCE;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1,
-			  db_get_class_name (class_));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, db_get_class_name (class_));
 		}
 	      else
 		{
 		  MOP mop;
 		  INST_INFO *inst;
-		  /*
+		  /* 
 		   * Create object, this will be used used when the instance
 		   * is defined in the load file.
 		   * We do not mark the MOP as released yet. This will be done
 		   * when we encounter the real instance.
 		   */
-		  CHECK_PTR (err, mop =
-			     db_create_internal (context->attrs
-						 [context->next_attr].
-						 ref_class));
+		  CHECK_PTR (err, mop = db_create_internal (context->attrs[context->next_attr].ref_class));
 		  COPY_OID (oid, WS_REAL_OID (mop));
 		  CHECK_ERR (err, otable_reserve (table, oid, id));
 		  CHECK_PTR (err, inst = otable_find (table, id));
-		  /*
+		  /* 
 		   * Mark forward references to class attributes so that we do
 		   * not cull the objects they point to after we encounter them.
 		   */
 		  if (context->attribute_type != LDR_ATTRIBUTE_ANY)
 		    otable_class_att_ref (inst);
 
-		  /*
+		  /* 
 		   * Add to the list of mops for which we need a permanent oid
 		   * for
 		   */
@@ -4167,8 +3876,7 @@ error_exit:
  *    val():
  */
 static int
-ldr_class_oid_elem (LDR_CONTEXT * context,
-		    const char *str, int len, DB_VALUE * val)
+ldr_class_oid_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = NO_ERROR;
 
@@ -4194,8 +3902,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_class_oid_db_object (LDR_CONTEXT * context,
-			 const char *str, int len, SM_ATTRIBUTE * att)
+ldr_class_oid_db_object (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err = NO_ERROR;
   DB_VALUE val;
@@ -4203,7 +3910,7 @@ ldr_class_oid_db_object (LDR_CONTEXT * context,
 
   CHECK_ERR (err, ldr_class_oid_elem (context, str, len, &val));
 
-  /*
+  /* 
    * We need to treat shared attributes in the generic way.
    * There is a problem when setting the bound bit for shared attributes.
    */
@@ -4212,8 +3919,7 @@ ldr_class_oid_db_object (LDR_CONTEXT * context,
   else
     {
       mem = context->mobj + att->offset;
-      CHECK_ERR (err,
-		 PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+      CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
       OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
     }
 
@@ -4243,12 +3949,8 @@ ldr_oid_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
       goto error_exit;
     }
 
-  CHECK_ERR (err, check_object_domain (context,
-				       context->attrs[context->next_attr].
-				       ref_class, &actual_class));
-  err =
-    find_instance (context, actual_class, &oid,
-		   context->attrs[context->next_attr].instance_id);
+  CHECK_ERR (err, check_object_domain (context, context->attrs[context->next_attr].ref_class, &actual_class));
+  err = find_instance (context, actual_class, &oid, context->attrs[context->next_attr].instance_id);
   if (err == ER_LDR_INTERNAL_REFERENCE)
     {
       DB_MAKE_NULL (val);
@@ -4257,8 +3959,7 @@ ldr_oid_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
     {
       DB_OBJECT *mop;
 
-      if ((mop = ws_mop (&oid, context->attrs[context->next_attr].ref_class))
-	  == NULL)
+      if ((mop = ws_mop (&oid, context->attrs[context->next_attr].ref_class)) == NULL)
 	{
 	  if ((err = er_errid ()) == NO_ERROR)
 	    {
@@ -4285,8 +3986,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_oid_db_object (LDR_CONTEXT * context,
-		   const char *str, int len, SM_ATTRIBUTE * att)
+ldr_oid_db_object (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err = NO_ERROR;
   DB_VALUE val;
@@ -4312,8 +4012,7 @@ error_exit:
  *    val():
  */
 static int
-ldr_monetary_elem (LDR_CONTEXT * context,
-		   const char *str, int len, DB_VALUE * val)
+ldr_monetary_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   const unsigned char *p = (const unsigned char *) str;
   const unsigned char *token = (const unsigned char *) str;
@@ -4323,10 +4022,9 @@ ldr_monetary_elem (LDR_CONTEXT * context,
   int symbol_size = 0;
   DB_CURRENCY currency_type = DB_CURRENCY_NULL;
 
-  if (len >= 2 && intl_is_currency_symbol ((const char *) p, &currency_type,
-					   &symbol_size,
-					   CURRENCY_CHECK_MODE_ESC_ISO
-					   | CURRENCY_CHECK_MODE_GRAMMAR))
+  if (len >= 2
+      && intl_is_currency_symbol ((const char *) p, &currency_type, &symbol_size,
+				  CURRENCY_CHECK_MODE_ESC_ISO | CURRENCY_CHECK_MODE_GRAMMAR))
     {
       token += symbol_size;
     }
@@ -4340,10 +4038,8 @@ ldr_monetary_elem (LDR_CONTEXT * context,
 
   if (str == str_ptr || OR_CHECK_DOUBLE_OVERFLOW (amt))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-	      db_get_type_name (DB_TYPE_MONETARY));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_MONETARY,
-		       str);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_MONETARY));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_MONETARY, str);
     }
   else
     db_make_monetary (val, currency_type, amt);
@@ -4361,8 +4057,7 @@ error_exit:
  *    att():
  */
 static int
-ldr_monetary_db_monetary (LDR_CONTEXT * context,
-			  const char *str, int len, SM_ATTRIBUTE * att)
+ldr_monetary_db_monetary (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err;
   char *mem;
@@ -4386,8 +4081,7 @@ error_exit:
  *    val():
  */
 static int
-ldr_collection_elem (LDR_CONTEXT * context,
-		     const char *str, int len, DB_VALUE * val)
+ldr_collection_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   int err = ER_LDR_NESTED_SET;
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
@@ -4405,8 +4099,7 @@ ldr_collection_elem (LDR_CONTEXT * context,
  *    att():
  */
 static int
-ldr_collection_db_collection (LDR_CONTEXT * context,
-			      const char *str, int len, SM_ATTRIBUTE * att)
+ldr_collection_db_collection (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
   int err = NO_ERROR;
   LDR_ATTDESC *attdesc;
@@ -4419,7 +4112,7 @@ ldr_collection_db_collection (LDR_CONTEXT * context,
 
   if (context->collection == NULL)
     {
-      /*
+      /* 
        * This kind of bites:  we need to avoid advancing the next_attr
        * counter until we actually hit the closing brace.  Since ldr_act_attr
        * (which has called this function) will increment the counter
@@ -4428,12 +4121,11 @@ ldr_collection_db_collection (LDR_CONTEXT * context,
        */
       context->next_attr -= 1;
 
-      /*
+      /* 
        * We've just seen the leading brace of a collection, and we need to
        * create the "holding" collection.
        */
-      context->collection = db_col_create (TP_DOMAIN_TYPE (att->domain),
-					   0, attdesc->collection_domain);
+      context->collection = db_col_create (TP_DOMAIN_TYPE (att->domain), 0, attdesc->collection_domain);
 
       if (context->collection == NULL)
 	{
@@ -4447,7 +4139,7 @@ ldr_collection_db_collection (LDR_CONTEXT * context,
     }
   else
     {
-      /*
+      /* 
        * We've seen the trailing brace that ends the collection, and it's
        * now time to assign the collection to the instance.
        */
@@ -4458,9 +4150,7 @@ ldr_collection_db_collection (LDR_CONTEXT * context,
       context->collection = NULL;
       context->set_domain = NULL;
 
-      /* We finished dealing with elements of a collection, set the
-       * action function to deal with normal attributes.
-       */
+      /* We finished dealing with elements of a collection, set the action function to deal with normal attributes. */
       if (context->attribute_type == LDR_ATTRIBUTE_ANY)
 	{
 	  ldr_act = ldr_act_attr;
@@ -4469,9 +4159,7 @@ ldr_collection_db_collection (LDR_CONTEXT * context,
       else
 	{
 	  ldr_act = ldr_act_class_attr;
-	  err = ldr_class_attr_db_generic (context, str, len,
-					   context->attrs[context->next_attr].
-					   att, &tmp);
+	  err = ldr_class_attr_db_generic (context, str, len, context->attrs[context->next_attr].att, &tmp);
 	}
     }
   return err;
@@ -4488,13 +4176,11 @@ ldr_reset_context (LDR_CONTEXT * context)
   int err = NO_ERROR;
   INST_INFO *inst = NULL;
 
-  /*
+  /* 
    * Check that we are not dealing with class attributes, use attribute_type
    * Do not create instances for class attributes.
    */
-  if (context->cls &&
-      context->attribute_type == LDR_ATTRIBUTE_ANY &&
-      context->constructor == NULL)
+  if (context->cls && context->attribute_type == LDR_ATTRIBUTE_ANY && context->constructor == NULL)
     {
 
       /* Check that this instance was not a forward reference */
@@ -4503,7 +4189,7 @@ ldr_reset_context (LDR_CONTEXT * context)
 
       if (inst && (inst->flags & INST_FLAG_RESERVED))
 	{
-	  /*
+	  /* 
 	   * This instance was already referenced and a workspace MOP created.
 	   */
 	  context->obj = ws_mop (&(inst->oid), context->cls);
@@ -4513,7 +4199,7 @@ ldr_reset_context (LDR_CONTEXT * context)
 	      display_error (0);
 	      goto error_exit;
 	    }
-	  /*
+	  /* 
 	   * If this was a forward reference from a class attribute than we
 	   * do not want to mark it as releasable.
 	   */
@@ -4535,17 +4221,15 @@ ldr_reset_context (LDR_CONTEXT * context)
 	  /* set pruning type to be performed on this object */
 	  context->obj->pruning_type = context->class_type;
 
-	  /*
+	  /* 
 	   * Mark this mop as released so that we can cull it when we
 	   * complete inserting this instance.
 	   */
 	  ws_release_instance (context->obj);
 	}
-      CHECK_ERR (err, au_fetch_instance (context->obj, &context->mobj,
-					 AU_FETCH_UPDATE,
-					 LC_FETCH_MVCC_VERSION, AU_UPDATE));
-      ws_pin_instance_and_class (context->obj, &context->obj_pin,
-				 &context->class_pin);
+      CHECK_ERR (err,
+		 au_fetch_instance (context->obj, &context->mobj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE));
+      ws_pin_instance_and_class (context->obj, &context->obj_pin, &context->class_pin);
       ws_class_has_object_dependencies (context->cls);
     }
   context->next_attr = 0;
@@ -4597,15 +4281,10 @@ check_commit (LDR_CONTEXT * context)
 	{
 	  CHECK_ERR (err, db_abort_transaction ());
 	  display_error_line (-1);
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_LOADDB,
-					   LOADDB_MSG_INTERRUPTED_ABORT));
-	  if (context->periodic_commit
-	      && Total_objects >= context->periodic_commit)
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
+	  if (context->periodic_commit && Total_objects >= context->periodic_commit)
 	    {
-	      committed_instances =
-		Total_objects - (context->periodic_commit -
-				 context->commit_counter);
+	      committed_instances = Total_objects - (context->periodic_commit - context->commit_counter);
 	    }
 	  else
 	    {
@@ -4621,9 +4300,8 @@ check_commit (LDR_CONTEXT * context)
 	      Last_committed_line = loader_yylineno - 1;
 	      committed_instances = Total_objects + 1;
 	      display_error_line (-1);
-	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_LOADDB,
-					       LOADDB_MSG_INTERRUPTED_COMMIT));
+	      fprintf (stderr,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_COMMIT));
 	    }
 	}
 
@@ -4651,9 +4329,7 @@ check_commit (LDR_CONTEXT * context)
 	  if (context->cls != NULL)
 	    {
 	      print_log_msg (context->verbose,
-			     msgcat_message (MSGCAT_CATALOG_UTILS,
-					     MSGCAT_UTIL_SET_LOADDB,
-					     LOADDB_MSG_COMMITTING));
+			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMMITTING));
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
 	      Last_committed_line = loader_yylineno - 1;
@@ -4665,11 +4341,8 @@ check_commit (LDR_CONTEXT * context)
 		  (*ldr_post_commit_handler) ((Total_objects + 1));
 		}
 
-	      /* After a commit we need to ensure that our attributes and
-	       * attribute descriptors are updated. The commit process
-	       * can pull these from under us if another client is also
-	       * updating the class.
-	       */
+	      /* After a commit we need to ensure that our attributes and attribute descriptors are updated. The commit 
+	       * process can pull these from under us if another client is also updating the class. */
 	      CHECK_ERR (err, ldr_refresh_attrs (context));
 	    }
 	}
@@ -4728,27 +4401,22 @@ ldr_act_finish_line (LDR_CONTEXT * context)
     {
       if (context->next_attr < (context->num_attrs + context->arg_count))
 	{
-	  if (context->arg_count
-	      && (context->next_attr >= context->arg_index))
+	  if (context->arg_count && (context->next_attr >= context->arg_index))
 	    {
 	      err = ER_LDR_MISSING_ARGUMENT;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2,
-		      context->arg_count,
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, context->arg_count,
 		      context->next_attr - context->arg_index);
 	    }
 	  else
 	    {
 	      err = ER_LDR_MISSING_ATTRIBUTES;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2,
-		      context->num_attrs, context->next_attr);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, context->num_attrs, context->next_attr);
 	    }
 	  LDR_INCREMENT_ERR_COUNT (context, 1);
 	}
     }
 
-  ldr_restore_pin_and_drop_obj (context, ((context->err_count != 0) ||
-					  (err != NO_ERROR)) ||
-				skip_current_instance);
+  ldr_restore_pin_and_drop_obj (context, ((context->err_count != 0) || (err != NO_ERROR)) || skip_current_instance);
   CHECK_ERR (err, err);
 
   if (context->valid && !context->err_count && !skip_current_instance)
@@ -4764,8 +4432,7 @@ ldr_act_finish_line (LDR_CONTEXT * context)
 
       if (err == NO_ERROR)
 	{
-	  if (context->flush_interval &&
-	      context->inst_count >= context->flush_interval)
+	  if (context->flush_interval && context->inst_count >= context->flush_interval)
 	    {
 	      err = ldr_assign_all_perm_oids ();
 	      if (err == NO_ERROR)
@@ -4780,9 +4447,7 @@ ldr_act_finish_line (LDR_CONTEXT * context)
 			  err = er_filter_errid (true);	/* ignore warning */
 			  if (err == NO_ERROR)
 			    {
-			      /* Flush error was ignored.
-			       * Objects in workspace must be decached
-			       * for later flush */
+			      /* Flush error was ignored. Objects in workspace must be decached for later flush */
 			      ws_decache_all_instances (context->cls);
 			    }
 			}
@@ -4828,18 +4493,16 @@ ldr_finish_context (LDR_CONTEXT * context)
     {
       if (!context->validation_only)
 	{
-	  /*
+	  /* 
 	   * Get permanent oids for the current class,
 	   * Note : we have to this even if the instance total is 0 since
 	   * we might have had forward object references, specified from
 	   * class DEFAULT, SHARED or CLASS attributes
 	   */
 	  CHECK_ERR (err, ldr_assign_all_perm_oids ());
-	  /* Need to flush the class now, for class attributes.
-	   * Class objects are flushed during a commit, if ws_intern_instances()
-	   * is called and culls object references from within a class_object
-	   * the class_object will loose these references.
-	   */
+	  /* Need to flush the class now, for class attributes. Class objects are flushed during a commit, if
+	   * ws_intern_instances() is called and culls object references from within a class_object the class_object
+	   * will loose these references. */
 	  if (context->attribute_type != LDR_ATTRIBUTE_ANY)
 	    {
 	      if (locator_flush_class (context->cls) != NO_ERROR)
@@ -4857,9 +4520,7 @@ ldr_finish_context (LDR_CONTEXT * context)
 	    }
 	  if (context->verbose)
 	    {
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_LOADDB,
-					       LOADDB_MSG_INSTANCE_COUNT),
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSTANCE_COUNT),
 		       context->inst_total);
 	    }
 	}
@@ -4873,17 +4534,14 @@ ldr_finish_context (LDR_CONTEXT * context)
     {
       if (context->inst_total)
 	{
-	  printf ("%d %s %s inserted in %d %s\n",
-		  context->inst_total, ldr_class_name (context),
-		  context->inst_total == 1 ? "instance" : "instances",
-		  context->flush_total,
+	  printf ("%d %s %s inserted in %d %s\n", context->inst_total, ldr_class_name (context),
+		  context->inst_total == 1 ? "instance" : "instances", context->flush_total,
 		  context->flush_total == 1 ? "flush" : "flushes");
 	}
 
       if (context->err_total)
 	{
-	  printf ("%d %s %s ignored because of errors\n",
-		  context->err_total, ldr_class_name (context),
+	  printf ("%d %s %s ignored because of errors\n", context->err_total, ldr_class_name (context),
 		  context->err_total == 1 ? "instance" : "instances");
 	}
     }
@@ -4924,13 +4582,10 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
     }
   if (class_name)
     {
-      if (intl_identifier_lower_string_size (class_name) >=
-	  SM_MAX_IDENTIFIER_LENGTH)
+      if (intl_identifier_lower_string_size (class_name) >= SM_MAX_IDENTIFIER_LENGTH)
 	{
 	  display_error_line (0);
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_LOADDB,
-					   LOADDB_MSG_EXCEED_MAX_LEN),
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_EXCEED_MAX_LEN),
 		   SM_MAX_IDENTIFIER_LENGTH - 1);
 	  CHECK_CONTEXT_VALIDITY (context, true);
 	  ldr_abort ();
@@ -4941,9 +4596,7 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
       if (class_mop == NULL)
 	{
 	  display_error_line (0);
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_LOADDB,
-					   LOADDB_MSG_UNKNOWN_CLASS),
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNKNOWN_CLASS),
 		   class_name);
 	  CHECK_CONTEXT_VALIDITY (context, true);
 	  ldr_abort ();
@@ -4952,7 +4605,7 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
       if (!context->validation_only)
 	{
 	  context->cls = class_mop;
-	  /*
+	  /* 
 	   * Cache the class name. This will be used if we have a periodic
 	   * commit and need to refresh the class
 	   * This is a temporary fix, we will have to cache all the class
@@ -4962,8 +4615,7 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
 	  context->class_name = (char *) malloc (len + 1);
 	  if (context->class_name == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR,
-		      0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
 	      CHECK_CONTEXT_VALIDITY (context, true);
 	      ldr_abort ();
 	      goto error_exit;
@@ -4979,8 +4631,7 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
 	      ldr_abort ();
 	      CHECK_ERR (err, err);
 	    }
-	  err = sm_partitioned_class_type (class_mop, &context->class_type,
-					   NULL, NULL);
+	  err = sm_partitioned_class_type (class_mop, &context->class_type, NULL, NULL);
 	  if (err != NO_ERROR)
 	    {
 	      CHECK_CONTEXT_VALIDITY (context, true);
@@ -4993,9 +4644,8 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
   context->valid = true;
   if (context->verbose)
     {
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_LOADDB,
-				       LOADDB_MSG_CLASS_TITLE), class_name);
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLASS_TITLE),
+	       class_name);
       fflush (stdout);
     }
 
@@ -5076,8 +4726,7 @@ ldr_act_check_missing_non_null_attrs (LDR_CONTEXT * context)
 	    {
 	      db_attdesc = context->attrs[i].attdesc;
 	      if (db_attdesc->name_space == att->header.name_space
-		  && intl_identifier_casecmp (db_attdesc->name,
-					      att->header.name) == 0)
+		  && intl_identifier_casecmp (db_attdesc->name, att->header.name) == 0)
 		{
 		  break;
 		}
@@ -5086,8 +4735,7 @@ ldr_act_check_missing_non_null_attrs (LDR_CONTEXT * context)
 	  /* not found */
 	  if (i >= context->num_attrs)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, att->header.name);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, att->header.name);
 	      CHECK_ERR (err, ER_OBJ_ATTRIBUTE_CANT_BE_NULL);
 	    }
 	}
@@ -5133,9 +4781,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
   n = context->num_attrs + context->arg_count;
 
   attrs_old = context->attrs;
-  context->attrs = (LDR_ATTDESC *) realloc (context->attrs,
-					    (n +
-					     1) * sizeof (context->attrs[0]));
+  context->attrs = (LDR_ATTDESC *) realloc (context->attrs, (n + 1) * sizeof (context->attrs[0]));
   if (context->attrs == NULL)
     {
       free_and_init (attrs_old);	/* Prevent leakage if realloc fails */
@@ -5153,7 +4799,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
   attdesc->ref_class = NULL;
   attdesc->collection_domain = NULL;
 
-  /*
+  /* 
    * Initialize the setters to something that hopefully won't crash and
    * burn if either of the following initialization calls fails.
    */
@@ -5164,51 +4810,47 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
 
   if (context->constructor)
     {
-      /*
+      /* 
        * At this point the parser has seen the CONSTRUCTOR syntax.
        * We are dealing with arguments for the constructor.
        * There is no attribute descriptor for method arguments so a check
        * to see that the number of args is within the number of args specified
        * is made and the function returns.
        */
-      if (context->constructor->signatures->num_args &&
-	  (context->arg_count >= context->constructor->signatures->num_args))
+      if (context->constructor->signatures->num_args
+	  && (context->arg_count >= context->constructor->signatures->num_args))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_LDR_UNEXPECTED_ARGUMENT, 1,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_UNEXPECTED_ARGUMENT, 1,
 		  context->constructor->signatures->num_args);
 	  CHECK_ERR (err, ER_LDR_UNEXPECTED_ARGUMENT);
 	}
       return;
     }
 
-  CHECK_ERR (err, db_get_attribute_descriptor (context->cls,
-					       attr_name,
-					       context->attribute_type ==
-					       LDR_ATTRIBUTE_CLASS, true,
-					       &attdesc->attdesc));
+  CHECK_ERR (err,
+	     db_get_attribute_descriptor (context->cls, attr_name, context->attribute_type == LDR_ATTRIBUTE_CLASS, true,
+					  &attdesc->attdesc));
   comp_ptr = (void *) (&attdesc->att);
   CHECK_ERR (err, sm_get_descriptor_component (context->cls, attdesc->attdesc, 1,	/* for update */
 					       &class_, comp_ptr));
 
   context->num_attrs += 1;
 
-  /*
+  /* 
    * When dealing with class attributes the normal setters are not used, since
    * they rely on the use of an empty instance.
    */
   if (context->attribute_type != LDR_ATTRIBUTE_ANY)
     {
       int invalid_attr = 0;
-      /*
+      /* 
        * Set elements need to be gathhers in a collection value bucket
        * We can use the existing setter for this.
        */
       if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (attdesc->att->domain)))
 	{
 	  attdesc->setter[LDR_COLLECTION] = &ldr_collection_db_collection;
-	  CHECK_ERR (err, select_set_domain (context, attdesc->att->domain,
-					     &(attdesc->collection_domain)));
+	  CHECK_ERR (err, select_set_domain (context, attdesc->att->domain, &(attdesc->collection_domain)));
 	}
       if (context->attribute_type == LDR_ATTRIBUTE_SHARED)
 	{
@@ -5222,15 +4864,14 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
 	}
       if (invalid_attr)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_LDR_INVALID_CLASS_ATTR, 2, ldr_attr_name (context),
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_INVALID_CLASS_ATTR, 2, ldr_attr_name (context),
 		  ldr_class_name (context));
 	  CHECK_ERR (err, ER_LDR_INVALID_CLASS_ATTR);
 	}
       goto error_exit;
     }
 
-  /*
+  /* 
    * Now that we know we really have an attribute descriptor and a
    * SM_ATTRIBUTE, we can go ahead and initialize our setters to
    * something that can exploit them.
@@ -5246,7 +4887,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
   attdesc->setter[LDR_DOUBLE] = &ldr_real_db_generic;
   attdesc->setter[LDR_FLOAT] = &ldr_real_db_generic;
 
-  /*
+  /* 
    * These two system object setters are setup to return an
    * appropriate error message to the user.
    */
@@ -5351,8 +4992,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
       attdesc->setter[LDR_COLLECTION] = &ldr_collection_db_collection;
-      CHECK_ERR (err, select_set_domain (context, attdesc->att->domain,
-					 &(attdesc->collection_domain)));
+      CHECK_ERR (err, select_set_domain (context, attdesc->att->domain, &(attdesc->collection_domain)));
       break;
 
     case DB_TYPE_OBJECT:
@@ -5428,11 +5068,9 @@ ldr_refresh_attrs (LDR_CONTEXT * context)
   for (i = 0; i < context->num_attrs; i += 1)
     {
       attdesc = &(context->attrs[i]);
-      CHECK_ERR (err, db_get_attribute_descriptor (context->cls,
-						   attdesc->attdesc->name,
-						   context->attribute_type ==
-						   LDR_ATTRIBUTE_CLASS,
-						   true, &db_attdesc));
+      CHECK_ERR (err,
+		 db_get_attribute_descriptor (context->cls, attdesc->attdesc->name,
+					      context->attribute_type == LDR_ATTRIBUTE_CLASS, true, &db_attdesc));
       /* Free existing descriptor */
       db_free_attribute_descriptor (attdesc->attdesc);
       attdesc->attdesc = db_attdesc;
@@ -5501,7 +5139,7 @@ update_default_instances_stats (LDR_CONTEXT * context)
 
   context->default_count = 0;
 
-  /*
+  /* 
    * note that if we run out of space, the context->valid flag will get
    * turned off, insert_default_instance needs to check this
    */
@@ -5557,8 +5195,7 @@ ldr_act_finish (LDR_CONTEXT * context, int parse_error)
 
   if (parse_error)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_STOPPED));
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_STOPPED));
     }
 }
 
@@ -5579,7 +5216,7 @@ insert_instance (LDR_CONTEXT * context)
     {
       if (context->obj)
 	{
-	  /*
+	  /* 
 	   * Note : instances without ids are not inserted in the otable as
 	   * there can not be referenced from the load file.
 	   */
@@ -5587,10 +5224,7 @@ insert_instance (LDR_CONTEXT * context)
 	    {
 	      if (No_oid_hint)
 		{
-		  CHECK_ERR (err,
-			     ldr_add_mop_tempoid_map (context->obj,
-						      context->table,
-						      context->inst_num));
+		  CHECK_ERR (err, ldr_add_mop_tempoid_map (context->obj, context->table, context->inst_num));
 		}
 	      else
 		{
@@ -5598,17 +5232,9 @@ insert_instance (LDR_CONTEXT * context)
 
 		  if (inst == NULL || !(inst->flags & INST_FLAG_RESERVED))
 		    {
-		      CHECK_ERR (err, otable_insert (context->table,
-						     WS_REAL_OID
-						     (context->obj),
-						     context->inst_num));
-		      CHECK_PTR (err, inst =
-				 otable_find (context->table,
-					      context->inst_num));
-		      CHECK_ERR (err,
-				 ldr_add_mop_tempoid_map (context->obj,
-							  context->table,
-							  context->inst_num));
+		      CHECK_ERR (err, otable_insert (context->table, WS_REAL_OID (context->obj), context->inst_num));
+		      CHECK_PTR (err, inst = otable_find (context->table, context->inst_num));
+		      CHECK_ERR (err, ldr_add_mop_tempoid_map (context->obj, context->table, context->inst_num));
 		    }
 		  else
 		    {
@@ -5641,9 +5267,8 @@ insert_instance (LDR_CONTEXT * context)
 	  context->status_counter++;
 	  if (context->status_counter >= context->status_count)
 	    {
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_LOADDB,
-					       LOADDB_MSG_INSTANCE_COUNT_EX),
+	      fprintf (stdout,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSTANCE_COUNT_EX),
 		       context->inst_total);
 	      fflush (stdout);
 	      context->status_counter = 0;
@@ -5707,54 +5332,42 @@ construct_instance (LDR_CONTEXT * context)
   SM_CLASS *class_;
   SM_COMPONENT **comp_ptr = NULL;
 
-  for (i = 0, a = context->arg_index;
-       i < context->arg_count && err == NO_ERROR && i < LDR_MAX_ARGS;
-       i++, a++)
+  for (i = 0, a = context->arg_index; i < context->arg_count && err == NO_ERROR && i < LDR_MAX_ARGS; i++, a++)
     {
-      err = (*(elem_converter[context->attrs[a].parser_type]))
-	(context, context->attrs[a].parser_str,
-	 context->attrs[a].parser_str_len, &vals[i]);
+      err =
+	(*(elem_converter[context->attrs[a].parser_type])) (context, context->attrs[a].parser_str,
+							    context->attrs[a].parser_str_len, &vals[i]);
       meth_args[i] = &(vals[i]);
     }
 
   meth_args[i] = NULL;
 
-  err = db_send_argarray (context->cls, context->constructor->header.name,
-			  &retval, meth_args);
+  err = db_send_argarray (context->cls, context->constructor->header.name, &retval, meth_args);
 
   if (!err && DB_VALUE_TYPE (&retval) == DB_TYPE_OBJECT)
     {
       obj = DB_GET_OBJECT (&retval);
       context->obj = obj;
-      err = au_fetch_instance (context->obj, &context->mobj, AU_FETCH_UPDATE,
-			       LC_FETCH_MVCC_VERSION, AU_UPDATE);
+      err = au_fetch_instance (context->obj, &context->mobj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE);
       if (err == NO_ERROR)
 	{
-	  ws_pin_instance_and_class (context->obj,
-				     &context->obj_pin, &context->class_pin);
+	  ws_pin_instance_and_class (context->obj, &context->obj_pin, &context->class_pin);
 	  ws_class_has_object_dependencies (context->cls);
 	}
 
       /* now we have to initialize the instance with the supplied values */
-      for (context->next_attr = 0;
-	   context->next_attr < context->arg_index && !err;
-	   context->next_attr++)
+      for (context->next_attr = 0; context->next_attr < context->arg_index && !err; context->next_attr++)
 	{
 	  attdesc = &context->attrs[context->next_attr];
 
 	  comp_ptr = (void *) &attdesc->att;
-	  err = sm_get_descriptor_component (context->cls,
-					     attdesc->attdesc,
-					     1, &class_, comp_ptr);
+	  err = sm_get_descriptor_component (context->cls, attdesc->attdesc, 1, &class_, comp_ptr);
 
 	  if (!err)
 	    {
-	      err = (*(attdesc->setter[attdesc->parser_type])) (context,
-								attdesc->
-								parser_str,
-								attdesc->
-								parser_str_len,
-								attdesc->att);
+	      err =
+		(*(attdesc->setter[attdesc->parser_type])) (context, attdesc->parser_str, attdesc->parser_str_len,
+							    attdesc->att);
 	    }
 	}
     }
@@ -5796,21 +5409,13 @@ insert_meth_instance (LDR_CONTEXT * context)
 	      inst = otable_find (context->table, context->inst_num);
 	      if (inst == NULL || !(inst->flags & INST_FLAG_RESERVED))
 		{
-		  CHECK_ERR (err,
-			     otable_insert (context->table,
-					    WS_OID (real_obj),
-					    context->inst_num));
-		  CHECK_PTR (err, inst =
-			     otable_find (context->table, context->inst_num));
-		  CHECK_ERR (err,
-			     ldr_add_mop_tempoid_map (real_obj,
-						      context->table,
-						      context->inst_num));
+		  CHECK_ERR (err, otable_insert (context->table, WS_OID (real_obj), context->inst_num));
+		  CHECK_PTR (err, inst = otable_find (context->table, context->inst_num));
+		  CHECK_ERR (err, ldr_add_mop_tempoid_map (real_obj, context->table, context->inst_num));
 		}
 	      else
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_LDR_FORWARD_CONSTRUCTOR, 0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_FORWARD_CONSTRUCTOR, 0);
 		  CHECK_ERR (err, ER_LDR_FORWARD_CONSTRUCTOR);
 		}
 	    }
@@ -5836,9 +5441,8 @@ insert_meth_instance (LDR_CONTEXT * context)
 	  context->status_counter++;
 	  if (context->status_counter >= context->status_count)
 	    {
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_LOADDB,
-					       LOADDB_MSG_INSTANCE_COUNT_EX),
+	      fprintf (stdout,
+		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSTANCE_COUNT_EX),
 		       context->inst_total);
 	      fflush (stdout);
 	      context->status_counter = 0;
@@ -5883,9 +5487,7 @@ ldr_act_set_constructor (LDR_CONTEXT * context, const char *name)
       meth = db_get_class_method (context->cls, name);
       if (meth == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_LDR_INVALID_CONSTRUCTOR, 2, name,
-		  ldr_class_name (context));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_INVALID_CONSTRUCTOR, 2, name, ldr_class_name (context));
 	  CHECK_ERR (err, ER_LDR_INVALID_CONSTRUCTOR);
 	}
       else
@@ -5971,8 +5573,7 @@ add_argument (LDR_CONTEXT * context)
 {
   int index;
 
-  index = add_element ((void ***) (&(context->args)), &(context->arg_count),
-		       &(context->maxarg), LDR_ARG_GROW_SIZE);
+  index = add_element ((void ***) (&(context->args)), &(context->arg_count), &(context->maxarg), LDR_ARG_GROW_SIZE);
   return index;
 }
 
@@ -6007,8 +5608,7 @@ ldr_act_add_argument (LDR_CONTEXT * context, const char *name)
     {
       if (context->constructor == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_LDR_UNEXPECTED_ARGUMENT, 1, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_UNEXPECTED_ARGUMENT, 1, 0);
 	  CHECK_ERR (err, ER_LDR_UNEXPECTED_ARGUMENT);
 	}
       else
@@ -6017,17 +5617,13 @@ ldr_act_add_argument (LDR_CONTEXT * context, const char *name)
 	  /* arg count of zero currently means "variable", not good */
 	  if (sig->num_args && (context->arg_count) >= sig->num_args)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_LDR_UNEXPECTED_ARGUMENT, 1, sig->num_args);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_UNEXPECTED_ARGUMENT, 1, sig->num_args);
 	      CHECK_ERR (err, ER_LDR_UNEXPECTED_ARGUMENT);
 	    }
 	  else
 	    {
-	      /* Locate the argument descriptor, remember to adjust for
-	         1 based argument numbering.
-	       */
-	      arg =
-		classobj_find_method_arg (&sig->args, context->arg_count, 0);
+	      /* Locate the argument descriptor, remember to adjust for 1 based argument numbering. */
+	      arg = classobj_find_method_arg (&sig->args, context->arg_count, 0);
 	      /* This is called to setup the LDR_ATTDESC structure */
 	      ldr_act_add_attr (context, name, strlen (name));
 	      index = add_argument (context);
@@ -6062,9 +5658,7 @@ static void
 invalid_class_id_error (LDR_CONTEXT * context, int id)
 {
   display_error_line (0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_LOADDB,
-				   LOADDB_MSG_UNKNOWN_CLASS_ID), id,
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNKNOWN_CLASS_ID), id,
 	   ldr_attr_name (context), ldr_class_name (context));
   CHECK_CONTEXT_VALIDITY (context, true);
 }
@@ -6185,7 +5779,7 @@ ldr_init_loader (LDR_CONTEXT * context)
   DB_TIMESTAMPTZ timestamptz;
   DB_ELO *null_elo = NULL;
 
-  /*
+  /* 
    * Definitely *don't* want to use oid preflushing in this app; it just
    * gives us some extra overhead that we don't care about.
    */
@@ -6195,17 +5789,15 @@ ldr_init_loader (LDR_CONTEXT * context)
 
   ldr_act = ldr_act_attr;
 
-  /*
+  /* 
    * Optimization to avoid calling db_value_domain_init all of the time
    * during loading; we can simply copy these templates much more cheaply.
    */
   db_make_short (&ldr_short_tmpl, 0);
   db_make_int (&ldr_int_tmpl, 0);
   db_make_bigint (&ldr_bigint_tmpl, 0);
-  db_make_char (&ldr_char_tmpl, 1, (char *) "a", 1, LANG_SYS_CODESET,
-		LANG_SYS_COLLATION);
-  db_make_varchar (&ldr_varchar_tmpl, 1, (char *) "a", 1, LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
+  db_make_char (&ldr_char_tmpl, 1, (char *) "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&ldr_varchar_tmpl, 1, (char *) "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   db_make_float (&ldr_float_tmpl, (float) 0.0);
   db_make_double (&ldr_double_tmpl, (double) 0.0);
   db_make_date (&ldr_date_tmpl, 1, 1, 1996);
@@ -6229,7 +5821,7 @@ ldr_init_loader (LDR_CONTEXT * context)
   db_make_elo (&ldr_clob_tmpl, DB_TYPE_CLOB, null_elo);
   db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
 
-  /*
+  /* 
    * Set up the conversion functions for collection elements.  These
    * don't need to be done on a per-attribute basis (well, I suppose they
    * could if we were really worried about it, but for now we let the
@@ -6265,11 +5857,8 @@ ldr_init_loader (LDR_CONTEXT * context)
   elem_converter[LDR_ELO_EXT] = &ldr_elo_ext_elem;
   elem_converter[LDR_ELO_INT] = &ldr_elo_int_elem;
 
-  /* Set up the lockhint array. Used by ldr_find_class() when locating a class.
-   */
-  ldr_Hint_locks[0] = locator_fetch_mode_to_lock (DB_FETCH_CLREAD_INSTWRITE,
-						  LC_CLASS,
-						  LC_FETCH_CURRENT_VERSION);
+  /* Set up the lockhint array. Used by ldr_find_class() when locating a class. */
+  ldr_Hint_locks[0] = locator_fetch_mode_to_lock (DB_FETCH_CLREAD_INSTWRITE, LC_CLASS, LC_FETCH_CURRENT_VERSION);
   ldr_Hint_classnames[0] = NULL;
   ldr_Hint_subclasses[0] = 0;
   ldr_Hint_flags[0] = LC_PREF_FLAG_LOCK;
@@ -6365,7 +5954,7 @@ ldr_start (int periodic_commit)
 
   ldr_clear_context (context);
 
-  /*
+  /* 
    * Initialize the mop -> temporary_oid, table used to obtain a mapping
    * between permanent OID and workspace mop, when permanent OIDs are obtained.
    */
@@ -6430,8 +6019,7 @@ ldr_final (void)
  *    ldr_jmp_buf(in): jump buffer
  */
 void
-ldr_register_post_interrupt_handler (LDR_POST_INTERRUPT_HANDLER handler,
-				     void *ldr_jmp_buf)
+ldr_register_post_interrupt_handler (LDR_POST_INTERRUPT_HANDLER handler, void *ldr_jmp_buf)
 {
   ldr_Jmp_buf = (jmp_buf *) ldr_jmp_buf;
   ldr_post_interrupt_handler = handler;
@@ -6471,8 +6059,7 @@ ldr_interrupt_has_occurred (int type)
  *    fails(out): return fail count
  */
 void
-ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit,
-	   int *fails)
+ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit, int *fails)
 {
   if (errors != NULL)
     {
@@ -6528,9 +6115,7 @@ ldr_update_statistics (void)
 		  break;
 		}
 
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_LOADDB,
-					       LOADDB_MSG_CLASS_TITLE),
+	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLASS_TITLE),
 		       class_name);
 	      fflush (stdout);
 	    }
@@ -6609,8 +6194,7 @@ ldr_is_ignore_class (const char *classname, size_t size)
     {
       for (i = 0, p = ignore_class_list; i < ignore_class_num; i++, p++)
 	{
-	  if (intl_identifier_ncasecmp (*p, classname, MAX (strlen (*p),
-							    size)) == 0)
+	  if (intl_identifier_ncasecmp (*p, classname, MAX (strlen (*p), size)) == 0)
 	    {
 	      return true;
 	    }
@@ -6630,8 +6214,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 
   if (cons != NULL && ldr_Current_context->num_attrs == 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LDB_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDB_NO_CLASS_OR_NO_ATTRIBUTE, 0);
       /* diplay the msg 1 time for each class */
       if (ldr_Current_context->valid)
 	{
@@ -6680,17 +6263,12 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	  {
 	    LDR_MONETARY_VALUE *mon = (LDR_MONETARY_VALUE *) c->val;
 	    LDR_STRING *str = (LDR_STRING *) mon->amount;
-	    /* buffer size for monetary : numeric size +
-	     *                            grammar currency symbol +
-	     *                            string terminator */
+	    /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
 	    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
 	    char *full_mon_str_p = full_mon_str;
-	    /* In Loader grammar always print symbol before value (position of
-	     * currency symbol is not localized) */
-	    char *curr_str =
-	      intl_get_money_esc_ISO_symbol (mon->currency_type);
-	    unsigned int full_mon_str_len = (strlen (str->val)
-					     + strlen (curr_str));
+	    /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
+	    char *curr_str = intl_get_money_esc_ISO_symbol (mon->currency_type);
+	    unsigned int full_mon_str_len = (strlen (str->val) + strlen (curr_str));
 
 	    if (full_mon_str_len >= sizeof (full_mon_str))
 	      {
@@ -6700,8 +6278,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	    strcpy (full_mon_str_p, curr_str);
 	    strcat (full_mon_str_p, str->val);
 
-	    (*ldr_act) (ldr_Current_context, full_mon_str_p,
-			strlen (full_mon_str_p), c->type);
+	    (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), c->type);
 	    if (full_mon_str_p != full_mon_str)
 	      {
 		free_and_init (full_mon_str_p);
@@ -6720,8 +6297,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	  {
 	    LDR_STRING *str = (LDR_STRING *) c->val;
 
-	    (*ldr_act) (ldr_Current_context, str->val, strlen (str->val),
-			c->type);
+	    (*ldr_act) (ldr_Current_context, str->val, strlen (str->val), c->type);
 	    FREE_STRING (str);
 	  }
 	  break;
@@ -6757,8 +6333,7 @@ ldr_process_object_ref (LDR_OBJECT_REF * ref, int type)
 
   if (ref->class_id && ref->class_id->val)
     {
-      ldr_act_set_ref_class_id (ldr_Current_context,
-				atoi (ref->class_id->val));
+      ldr_act_set_ref_class_id (ldr_Current_context, atoi (ref->class_id->val));
     }
   else
     {
@@ -6767,28 +6342,24 @@ ldr_process_object_ref (LDR_OBJECT_REF * ref, int type)
 
   if (ref->instance_number && ref->instance_number->val)
     {
-      ldr_act_set_instance_id (ldr_Current_context,
-			       atoi (ref->instance_number->val));
+      ldr_act_set_instance_id (ldr_Current_context, atoi (ref->instance_number->val));
     }
   else
     {
-      /*ldr_act_set_instance_id(ldr_Current_context, 0); *//* right?? */
+      /* ldr_act_set_instance_id(ldr_Current_context, 0); *//* right?? */
     }
 
   ref_class = ldr_act_get_ref_class (ldr_Current_context);
   if (ref_class != NULL)
     {
       class_name = db_get_class_name (ref_class);
-      ignore_class = ldr_is_ignore_class (class_name,
-					  ((class_name) ?
-					   strlen (class_name) : 0));
+      ignore_class = ldr_is_ignore_class (class_name, ((class_name) ? strlen (class_name) : 0));
     }
 
   if (type == LDR_OID)
     {
       (*ldr_act) (ldr_Current_context, ref->instance_number->val,
-		  ((ref->instance_number->val == NULL) ?
-		   0 : ref->instance_number->size),
+		  ((ref->instance_number->val == NULL) ? 0 : ref->instance_number->size),
 		  (ignore_class) ? LDR_NULL : LDR_OID);
     }
   else
@@ -6796,15 +6367,12 @@ ldr_process_object_ref (LDR_OBJECT_REF * ref, int type)
       /* right ?? */
       if (ref->class_name)
 	{
-	  (*ldr_act) (ldr_Current_context, ref->class_name->val,
-		      ref->class_name->size,
+	  (*ldr_act) (ldr_Current_context, ref->class_name->val, ref->class_name->size,
 		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
 	}
       else
 	{
-	  (*ldr_act) (ldr_Current_context, ref->class_id->val,
-		      ((ref->class_id->val == NULL) ?
-		       0 : ref->class_id->size),
+	  (*ldr_act) (ldr_Current_context, ref->class_id->val, ((ref->class_id->val == NULL) ? 0 : ref->class_id->size),
 		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
 	}
     }
@@ -6832,7 +6400,7 @@ ldr_init_class_spec (const char *class_name)
 {
   ldr_act_init_context (ldr_Current_context, class_name, strlen (class_name));
 
-  /*
+  /* 
    * If there is no class or not authorized,
    * Error message is printed and ER_FAILED is returned.
    */
@@ -6857,9 +6425,7 @@ ldr_act_add_class_all_attrs (LDR_CONTEXT * context, const char *class_name)
       if (class_mop == NULL)
 	{
 	  display_error_line (0);
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-					   MSGCAT_UTIL_SET_LOADDB,
-					   LOADDB_MSG_UNKNOWN_CLASS),
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNKNOWN_CLASS),
 		   class_name);
 	  err = er_filter_errid (false);
 	  goto error_exit;
@@ -6870,13 +6436,11 @@ ldr_act_add_class_all_attrs (LDR_CONTEXT * context, const char *class_name)
       class_mop = context->cls;
     }
 
-  CHECK_ERR (err,
-	     au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT));
+  CHECK_ERR (err, au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT));
 
   for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
     {
-      ldr_act_add_attr (ldr_Current_context, att->header.name,
-			strlen (att->header.name));
+      ldr_act_add_attr (ldr_Current_context, att->header.name, strlen (att->header.name));
     }
 
   return NO_ERROR;

@@ -140,26 +140,18 @@
 #define CP_ADMIN_ERR_MSG(BUF)	sprintf(BUF, "Error: %s", admin_err_msg)
 
 static void admin_log_write (const char *log_file, const char *msg);
-static int admin_common (T_BROKER_INFO * br_info, int *num_broker,
-			 int *master_shm_id, char *admin_log_file,
-			 char *err_msg, char admin_flag,
-			 bool * acl_flag, char *acl_file);
+static int admin_common (T_BROKER_INFO * br_info, int *num_broker, int *master_shm_id, char *admin_log_file,
+			 char *err_msg, char admin_flag, bool * acl_flag, char *acl_file);
 static int copy_job_info (T_JOB_INFO ** job_info, T_MAX_HEAP_NODE * job_q);
-static int conf_copy_header (T_UC_CONF * unicas_conf, int master_shm_id,
-			     char *admin_log_file, char *err_msg);
-static int conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf,
-			     int num_br, char *err_msg);
+static int conf_copy_header (T_UC_CONF * unicas_conf, int master_shm_id, char *admin_log_file, char *err_msg);
+static int conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf, int num_br, char *err_msg);
 static void conf_item_free (T_UC_CONF_ITEM * conf_item, int num);
 static char *get_broker_name (T_BR_CONF * br_conf);
 static const char *get_as_type_str (char as_type);
-static void change_conf_as_type (T_BR_CONF * br_conf, int old_as_type,
-				 int new_as_type);
-static void reset_conf_value (int num_item, T_UC_CONF_ITEM * item,
-			      const char *name);
+static void change_conf_as_type (T_BR_CONF * br_conf, int old_as_type, int new_as_type);
+static void reset_conf_value (int num_item, T_UC_CONF_ITEM * item, const char *name);
 static int get_as_type (const char *type_str);
-static int uc_changer_internal (const char *br_name, const char *name,
-				const char *value, int as_number,
-				char *err_msg);
+static int uc_changer_internal (const char *br_name, const char *name, const char *value, int as_number, char *err_msg);
 
 #define CHECK_SHARED_MEMORY(p_shm, err_msg)             \
     do {                                                \
@@ -177,8 +169,7 @@ uc_broker_shm_open (char *err_msg)
   char admin_log_file[BROKER_PATH_MAX];
   void *ret_val;
 
-  if (admin_common (br_conf, &num_broker, &master_shm_id,
-		    admin_log_file, err_msg, 0, NULL, NULL) < 0)
+  if (admin_common (br_conf, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
     {
       return NULL;
     }
@@ -196,8 +187,7 @@ uc_get_br_num_with_opened_shm (void *shm_br, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_get_br_name_with_opened_shm (void *shm_br, int br_index, char *name,
-				int buffer_size, char *err_msg)
+uc_get_br_name_with_opened_shm (void *shm_br, int br_index, char *name, int buffer_size, char *err_msg)
 {
   CHECK_SHARED_MEMORY (shm_br, err_msg);
   if (name == NULL)
@@ -207,8 +197,7 @@ uc_get_br_name_with_opened_shm (void *shm_br, int br_index, char *name,
       return -1;
     }
 
-  strncpy (name, ((T_SHM_BROKER *) shm_br)->br_info[br_index].name,
-	   buffer_size);
+  strncpy (name, ((T_SHM_BROKER *) shm_br)->br_info[br_index].name, buffer_size);
   return 1;
 }
 
@@ -224,8 +213,7 @@ uc_as_shm_open (void *shm_br, int br_index, char *err_msg)
     }
 
   ret_val =
-    uw_shm_open (((T_SHM_BROKER *) shm_br)->br_info[br_index].
-		 appl_server_shm_id, SHM_APPL_SERVER, SHM_MODE_MONITOR);
+    uw_shm_open (((T_SHM_BROKER *) shm_br)->br_info[br_index].appl_server_shm_id, SHM_APPL_SERVER, SHM_MODE_MONITOR);
   if (!ret_val && err_msg)
     strcpy (err_msg, strerror (errno));
   return ret_val;
@@ -239,13 +227,10 @@ uc_get_as_num_with_opened_shm (void *shm_br, int br_index, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_get_as_reqs_received_with_opened_shm (void *shm_as, long long array[],
-					 int array_size, char *err_msg)
+uc_get_as_reqs_received_with_opened_shm (void *shm_as, long long array[], int array_size, char *err_msg)
 {
-  /* return value -2 means that array_size is different from real as num
-   * (as add or remove ...)
-   * so coller must reset array[] info and after, recall this function
-   */
+  /* return value -2 means that array_size is different from real as num (as add or remove ...) so coller must reset
+   * array[] info and after, recall this function */
   int i;
 
   CHECK_SHARED_MEMORY (shm_as, err_msg);
@@ -257,8 +242,7 @@ uc_get_as_reqs_received_with_opened_shm (void *shm_as, long long array[],
 */
   for (i = 0; i < array_size; i++)
     {
-      array[i] =
-	((T_SHM_APPL_SERVER *) shm_as)->as_info[i].num_requests_received;
+      array[i] = ((T_SHM_APPL_SERVER *) shm_as)->as_info[i].num_requests_received;
     }
 
   return 1;
@@ -282,8 +266,7 @@ uc_get_active_session_with_opened_shm (void *shm_p, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_get_as_tran_processed_with_opened_shm (void *shm_as, long long array[],
-					  int array_size, char *err_msg)
+uc_get_as_tran_processed_with_opened_shm (void *shm_as, long long array[], int array_size, char *err_msg)
 {
   int i;
 
@@ -291,16 +274,14 @@ uc_get_as_tran_processed_with_opened_shm (void *shm_as, long long array[],
 
   for (i = 0; i < array_size; i++)
     {
-      array[i] =
-	((T_SHM_APPL_SERVER *) shm_as)->as_info[i].num_transactions_processed;
+      array[i] = ((T_SHM_APPL_SERVER *) shm_as)->as_info[i].num_transactions_processed;
     }
 
   return 1;
 }
 
 DLL_EXPORT int
-uc_get_as_query_processed_with_opened_shm (void *shm_as, long long array[],
-					   int array_size, char *err_msg)
+uc_get_as_query_processed_with_opened_shm (void *shm_as, long long array[], int array_size, char *err_msg)
 {
   int i;
 
@@ -308,8 +289,7 @@ uc_get_as_query_processed_with_opened_shm (void *shm_as, long long array[],
 
   for (i = 0; i < array_size; i++)
     {
-      array[i] =
-	((T_SHM_APPL_SERVER *) shm_as)->as_info[i].num_queries_processed;
+      array[i] = ((T_SHM_APPL_SERVER *) shm_as)->as_info[i].num_queries_processed;
     }
 
   return 1;
@@ -336,14 +316,12 @@ uc_start (char *err_msg)
   char acl_file[BROKER_PATH_MAX];
   bool acl_flag;
 
-  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file,
-		    err_msg, 1, &acl_flag, acl_file) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, &acl_flag, acl_file) < 0)
     {
       return -1;
     }
 
-  if (admin_start_cmd (br_info, num_broker,
-		       master_shm_id, acl_flag, acl_file) < 0)
+  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file) < 0)
     {
       CP_ADMIN_ERR_MSG (err_msg);
       return -1;
@@ -361,8 +339,7 @@ uc_stop (char *err_msg)
   int num_broker, master_shm_id;
   char admin_log_file[BROKER_PATH_MAX];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id,
-		    admin_log_file, err_msg, 1, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -386,8 +363,7 @@ uc_add (const char *br_name, char *err_msg)
   char admin_log_file[BROKER_PATH_MAX];
   char msg_buf[256];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id,
-		    admin_log_file, err_msg, 1, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -412,8 +388,7 @@ uc_restart (const char *br_name, int as_index, char *err_msg)
   char admin_log_file[BROKER_PATH_MAX];
   char msg_buf[256];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id,
-		    admin_log_file, err_msg, 1, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -438,8 +413,7 @@ uc_drop (const char *br_name, char *err_msg)
   char admin_log_file[256];
   char msg_buf[256];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id,
-		    admin_log_file, err_msg, 1, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -464,8 +438,7 @@ uc_on (const char *br_name, char *err_msg)
   char admin_log_file[BROKER_PATH_MAX];
   char msg_buf[256];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id,
-		    admin_log_file, err_msg, 1, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -490,8 +463,7 @@ uc_off (const char *br_name, char *err_msg)
   char admin_log_file[BROKER_PATH_MAX];
   char msg_buf[256];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id,
-		    admin_log_file, err_msg, 1, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 1, NULL, NULL) < 0)
     {
       return -1;
     }
@@ -509,8 +481,7 @@ uc_off (const char *br_name, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
-	    T_JOB_INFO ** job_info, int *num_job, char *err_msg)
+uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_info, int *num_job, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -522,14 +493,12 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
   T_AS_INFO *as_info = NULL;
   char client_ip_str[16];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id,
-		    admin_log_file, err_msg, 0, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
     {
       return -1;
     }
 
-  shm_br =
-    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
+  shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
   if (shm_br == NULL)
     {
       strcpy (err_msg, "Error: shared memory open error");
@@ -550,9 +519,7 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
       sprintf (err_msg, "Error: cannot find broker [%s]", br_name);
       goto as_info_error;
     }
-  shm_appl =
-    (T_SHM_APPL_SERVER *) uw_shm_open (appl_shm_key, SHM_APPL_SERVER,
-				       SHM_MODE_ADMIN);
+  shm_appl = (T_SHM_APPL_SERVER *) uw_shm_open (appl_shm_key, SHM_APPL_SERVER, SHM_MODE_ADMIN);
   if (shm_appl == NULL)
     {
       strcpy (err_msg, "Error: shared memory open error");
@@ -625,46 +592,30 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
 
       as_info[i].last_access_time = shm_appl->as_info[i].last_access_time;
       as_info[i].last_connect_time = shm_appl->as_info[i].last_connect_time;
-      as_info[i].num_requests_received =
-	shm_appl->as_info[i].num_requests_received;
-      as_info[i].num_queries_processed =
-	shm_appl->as_info[i].num_queries_processed;
-      as_info[i].num_transactions_processed =
-	shm_appl->as_info[i].num_transactions_processed;
+      as_info[i].num_requests_received = shm_appl->as_info[i].num_requests_received;
+      as_info[i].num_queries_processed = shm_appl->as_info[i].num_queries_processed;
+      as_info[i].num_transactions_processed = shm_appl->as_info[i].num_transactions_processed;
       as_info[i].num_long_queries = shm_appl->as_info[i].num_long_queries;
-      as_info[i].num_long_transactions =
-	shm_appl->as_info[i].num_long_transactions;
+      as_info[i].num_long_transactions = shm_appl->as_info[i].num_long_transactions;
       as_info[i].num_error_queries = shm_appl->as_info[i].num_error_queries;
       as_info[i].num_interrupts = shm_appl->as_info[i].num_interrupts;
 
-      ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str),
-			  shm_appl->as_info[i].cas_clt_ip);
-      strncpy (as_info[i].clt_ip_addr, client_ip_str,
-	       sizeof (as_info[i].clt_ip_addr) - 1);
+      ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str), shm_appl->as_info[i].cas_clt_ip);
+      strncpy (as_info[i].clt_ip_addr, client_ip_str, sizeof (as_info[i].clt_ip_addr) - 1);
 
-      strncpy (as_info[i].database_host,
-	       shm_appl->as_info[i].database_host,
-	       sizeof (as_info[i].database_host) - 1);
-      strncpy (as_info[i].database_name,
-	       shm_appl->as_info[i].database_name,
-	       sizeof (as_info[i].database_name) - 1);
+      strncpy (as_info[i].database_host, shm_appl->as_info[i].database_host, sizeof (as_info[i].database_host) - 1);
+      strncpy (as_info[i].database_name, shm_appl->as_info[i].database_name, sizeof (as_info[i].database_name) - 1);
 
-      strncpy (as_info[i].clt_appl_name,
-	       shm_appl->as_info[i].clt_appl_name,
-	       sizeof (as_info[i].clt_appl_name) - 1);
-      strncpy (as_info[i].request_file,
-	       shm_appl->as_info[i].clt_req_path_info,
-	       sizeof (as_info[i].request_file) - 1);
+      strncpy (as_info[i].clt_appl_name, shm_appl->as_info[i].clt_appl_name, sizeof (as_info[i].clt_appl_name) - 1);
+      strncpy (as_info[i].request_file, shm_appl->as_info[i].clt_req_path_info, sizeof (as_info[i].request_file) - 1);
 
-      strncpy (as_info[i].log_msg,
-	       shm_appl->as_info[i].log_msg, sizeof (as_info[i].log_msg) - 1);
+      strncpy (as_info[i].log_msg, shm_appl->as_info[i].log_msg, sizeof (as_info[i].log_msg) - 1);
     }
 
   if (job_info)
     {
       T_MAX_HEAP_NODE job_q[JOB_QUEUE_MAX_SIZE + 1];
-      memcpy (job_q, shm_appl->job_queue,
-	      sizeof (T_MAX_HEAP_NODE) * (JOB_QUEUE_MAX_SIZE + 1));
+      memcpy (job_q, shm_appl->job_queue, sizeof (T_MAX_HEAP_NODE) * (JOB_QUEUE_MAX_SIZE + 1));
       *num_job = copy_job_info (job_info, job_q);
     }
   else if (num_job)
@@ -702,14 +653,12 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
   T_BR_INFO *br_info = NULL;
   char *p;
 
-  if (admin_common (br_conf, &num_broker, &master_shm_id,
-		    admin_log_file, err_msg, 0, NULL, NULL) < 0)
+  if (admin_common (br_conf, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
     {
       return -1;
     }
 
-  shm_br =
-    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
+  shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
   if (shm_br == NULL)
     {
       strcpy (err_msg, "ERROR: shared memory open error");
@@ -728,10 +677,8 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
   memset (br_info, 0, sizeof (T_BR_INFO) * num_br);
   for (i = 0; i < num_br; i++)
     {
-      strncpy (br_info[i].name, shm_br->br_info[i].name,
-	       sizeof (br_info[i].name) - 1);
-      strcpy (br_info[i].as_type,
-	      get_as_type_str (shm_br->br_info[i].appl_server));
+      strncpy (br_info[i].name, shm_br->br_info[i].name, sizeof (br_info[i].name) - 1);
+      strcpy (br_info[i].as_type, get_as_type_str (shm_br->br_info[i].appl_server));
       br_info[i].status = SET_FLAG (shm_br->br_info[i].service_flag);
       if (shm_br->br_info[i].service_flag == ON)
 	{
@@ -739,13 +686,11 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
 	  T_PSINFO proc_info;
 #endif /* !WINDOWS */
 	  int num_req, j;
-	  INT64 num_tran, num_query, num_long_query, num_long_tran,
-	    num_error_query, num_interrupts;
+	  INT64 num_tran, num_query, num_long_query, num_long_tran, num_error_query, num_interrupts;
 	  T_SHM_APPL_SERVER *shm_appl;
 
-	  shm_appl = (T_SHM_APPL_SERVER *)
-	    uw_shm_open (shm_br->br_info[i].appl_server_shm_id,
-			 SHM_APPL_SERVER, SHM_MODE_ADMIN);
+	  shm_appl =
+	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].appl_server_shm_id, SHM_APPL_SERVER, SHM_MODE_ADMIN);
 	  if (shm_appl == NULL)
 	    {
 	      strcpy (err_msg, "ERROR: shared memory open error");
@@ -801,22 +746,18 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
 
 	  br_info[i].shm_id = shm_br->br_info[i].appl_server_shm_id;
 	  br_info[i].session_timeout = shm_br->br_info[i].session_timeout;
-	  br_info[i].auto_add_flag =
-	    SET_FLAG (shm_br->br_info[i].auto_add_appl_server);
+	  br_info[i].auto_add_flag = SET_FLAG (shm_br->br_info[i].auto_add_appl_server);
 	  br_info[i].sql_log_mode = shm_br->br_info[i].sql_log_mode;
 	  br_info[i].slow_log_mode = shm_br->br_info[i].slow_log_mode;
 	  br_info[i].access_mode = shm_br->br_info[i].access_mode;
 	  br_info[i].long_query_time = shm_br->br_info[i].long_query_time;
-	  br_info[i].long_transaction_time =
-	    shm_br->br_info[i].long_transaction_time;
-	  strncpy (br_info[i].log_dir, shm_br->br_info[i].access_log_file,
-		   sizeof (br_info[i].log_dir) - 1);
+	  br_info[i].long_transaction_time = shm_br->br_info[i].long_transaction_time;
+	  strncpy (br_info[i].log_dir, shm_br->br_info[i].access_log_file, sizeof (br_info[i].log_dir) - 1);
 	  p = strrchr (br_info[i].log_dir, '/');
 	  if (p != NULL)
 	    *p = '\0';
 	  br_info[i].as_max_size = shm_br->br_info[i].appl_server_max_size;
-	  br_info[i].as_hard_limit =
-	    shm_br->br_info[i].appl_server_hard_limit;
+	  br_info[i].as_hard_limit = shm_br->br_info[i].appl_server_hard_limit;
 	  br_info[i].log_backup_flag = shm_br->br_info[i].log_backup;
 	  br_info[i].time_to_kill = shm_br->br_info[i].time_to_kill;
 	  uw_shm_detach (shm_appl);
@@ -853,14 +794,12 @@ uc_unicas_conf (T_UC_CONF * unicas_conf, int *ret_mst_shmid, char *err_msg)
 
   memset (unicas_conf, 0, sizeof (T_UC_CONF));
 
-  if (admin_common (br_conf, &num_broker, &master_shm_id,
-		    admin_log_file, err_msg, 0, NULL, NULL) < 0)
+  if (admin_common (br_conf, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
     {
       return -1;
     }
 
-  if (conf_copy_header (unicas_conf, master_shm_id, admin_log_file, err_msg) <
-      0)
+  if (conf_copy_header (unicas_conf, master_shm_id, admin_log_file, err_msg) < 0)
     {
       return -1;
     }
@@ -886,8 +825,7 @@ uc_unicas_conf_free (T_UC_CONF * unicas_conf)
     {
       for (i = 0; i < unicas_conf->num_broker; i++)
 	{
-	  conf_item_free (unicas_conf->br_conf[i].item,
-			  unicas_conf->br_conf[i].num);
+	  conf_item_free (unicas_conf->br_conf[i].item, unicas_conf->br_conf[i].num);
 	}
       FREE_MEM (unicas_conf->br_conf);
     }
@@ -895,15 +833,13 @@ uc_unicas_conf_free (T_UC_CONF * unicas_conf)
 }
 
 DLL_EXPORT int
-uc_conf_broker_add (T_UC_CONF * unicas_conf, const char *br_name,
-		    char *err_msg)
+uc_conf_broker_add (T_UC_CONF * unicas_conf, const char *br_name, char *err_msg)
 {
   int num_br, n;
   T_UC_CONF_ITEM *conf_item;
 
   num_br = unicas_conf->num_broker + 1;
-  unicas_conf->br_conf = (T_BR_CONF *) realloc (unicas_conf->br_conf,
-						sizeof (T_BR_CONF) * num_br);
+  unicas_conf->br_conf = (T_BR_CONF *) realloc (unicas_conf->br_conf, sizeof (T_BR_CONF) * num_br);
   if (unicas_conf->br_conf == NULL)
     {
       strcpy (err_msg, strerror (errno));
@@ -912,8 +848,7 @@ uc_conf_broker_add (T_UC_CONF * unicas_conf, const char *br_name,
   memset (&(unicas_conf->br_conf[num_br - 1]), 0, sizeof (T_BR_CONF));
   unicas_conf->num_broker = num_br;
 
-  conf_item =
-    (T_UC_CONF_ITEM *) malloc (sizeof (T_UC_CONF_ITEM) * MAX_NUM_CONF);
+  conf_item = (T_UC_CONF_ITEM *) malloc (sizeof (T_UC_CONF_ITEM) * MAX_NUM_CONF);
   if (conf_item == NULL)
     {
       strcpy (err_msg, strerror (errno));
@@ -924,40 +859,28 @@ uc_conf_broker_add (T_UC_CONF * unicas_conf, const char *br_name,
   n = 0;
   SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_BROKER_NAME, br_name);
   SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_SERVICE, ON);
-  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_APPL_SERVER,
-		     get_as_type_str (APPL_SERVER_CAS));
+  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_APPL_SERVER, get_as_type_str (APPL_SERVER_CAS));
   SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_BROKER_PORT, 0, FMT_D);
-  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MIN_NUM_APPL_SERVER, 2,
-		     FMT_D);
-  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MAX_NUM_APPL_SERVER, 10,
-		     FMT_D);
+  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MIN_NUM_APPL_SERVER, 2, FMT_D);
+  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MAX_NUM_APPL_SERVER, 10, FMT_D);
   SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_AUTO_ADD_APPL_SERVER, OFF);
-  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_APPL_SERVER_SHM_ID, 0,
-		     FMT_X);
-  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_APPL_SERVER_MAX_SIZE,
-		     DEFAULT_SERVER_MAX_SIZE);
+  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_APPL_SERVER_SHM_ID, 0, FMT_X);
+  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_APPL_SERVER_MAX_SIZE, DEFAULT_SERVER_MAX_SIZE);
   SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_LOG_DIR, DEFAULT_LOG_DIR);
   SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_LOG_BACKUP, OFF);
   SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_SOURCE_ENV, "");
   SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_ACCESS_LOG, ON);
-  SET_CONF_ITEM_SQL_LOG_MODE (conf_item, n, UC_CONF_PARAM_SQL_LOG,
-			      SQL_LOG_MODE_ERROR);
-  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_LONG_QUERY_TIME,
-		     DEFAULT_LONG_QUERY_TIME);
-  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_LONG_TRANSACTION_TIME,
-		     DEFAULT_LONG_TRANSACTION_TIME);
-  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_TIME_TO_KILL,
-		     DEFAULT_TIME_TO_KILL);
+  SET_CONF_ITEM_SQL_LOG_MODE (conf_item, n, UC_CONF_PARAM_SQL_LOG, SQL_LOG_MODE_ERROR);
+  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_LONG_QUERY_TIME, DEFAULT_LONG_QUERY_TIME);
+  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_LONG_TRANSACTION_TIME, DEFAULT_LONG_TRANSACTION_TIME);
+  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_TIME_TO_KILL, DEFAULT_TIME_TO_KILL);
   SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_SESSION_TIMEOUT, 30, FMT_D);
   SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_JOB_QUEUE_SIZE, 30, FMT_D);
   SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_ACCESS_LIST, "");
-  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MAX_STRING_LENGTH, -1,
-		     FMT_D);
+  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MAX_STRING_LENGTH, -1, FMT_D);
   SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_STRIPPED_COLUMN_NAME, ON);
-  SET_CONF_ITEM_KEEP_CON (conf_item, n, UC_CONF_PARAM_KEEP_CONNECTION,
-			  KEEP_CON_DEFAULT);
-  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_SQL_LOG_MAX_SIZE,
-		     DEFAULT_SQL_LOG_MAX_SIZE);
+  SET_CONF_ITEM_KEEP_CON (conf_item, n, UC_CONF_PARAM_KEEP_CONNECTION, KEEP_CON_DEFAULT);
+  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_SQL_LOG_MAX_SIZE, DEFAULT_SQL_LOG_MAX_SIZE);
 
   unicas_conf->br_conf[num_br - 1].num = n;
   unicas_conf->br_conf[num_br - 1].item = conf_item;
@@ -965,8 +888,7 @@ uc_conf_broker_add (T_UC_CONF * unicas_conf, const char *br_name,
 }
 
 DLL_EXPORT void
-uc_change_config (T_UC_CONF * unicas_conf, const char *br_name,
-		  const char *name, const char *value)
+uc_change_config (T_UC_CONF * unicas_conf, const char *br_name, const char *name, const char *value)
 {
   T_BR_CONF *br_conf = NULL;
   int i;
@@ -989,9 +911,7 @@ uc_change_config (T_UC_CONF * unicas_conf, const char *br_name,
 	{
 	  if (strcasecmp (name, UC_CONF_PARAM_APPL_SERVER) == 0)
 	    {
-	      change_conf_as_type (br_conf,
-				   get_as_type (br_conf->item[i].value),
-				   get_as_type (value));
+	      change_conf_as_type (br_conf, get_as_type (br_conf->item[i].value), get_as_type (value));
 	    }
 	  FREE_MEM (br_conf->item[i].value);
 	  br_conf->item[i].value = strdup (value);
@@ -1001,15 +921,13 @@ uc_change_config (T_UC_CONF * unicas_conf, const char *br_name,
 }
 
 DLL_EXPORT int
-uc_changer (const char *br_name, const char *name, const char *value,
-	    char *err_msg)
+uc_changer (const char *br_name, const char *name, const char *value, char *err_msg)
 {
   return uc_changer_internal (br_name, name, value, -1, err_msg);
 }
 
 DLL_EXPORT int
-uc_cas_changer (const char *br_name, const char *name, const char *value,
-		int as_number, char *err_msg)
+uc_cas_changer (const char *br_name, const char *name, const char *value, int as_number, char *err_msg)
 {
   return uc_changer_internal (br_name, name, value, as_number, err_msg);
 }
@@ -1028,8 +946,7 @@ uc_del_cas_log (const char *br_name, int asid, char *err_msg)
 
   err_msg[0] = '\0';
 
-  if (admin_common (br_info, &num_broker, &master_shm_id,
-		    admin_log_file, err_msg, 0, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
     return -1;
 
   if (admin_del_cas_log (master_shm_id, br_name, asid) < 0)
@@ -1076,8 +993,7 @@ conf_item_free (T_UC_CONF_ITEM * conf_item, int num)
 }
 
 static int
-conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf,
-		  int num_br, char *err_msg)
+conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf, int num_br, char *err_msg)
 {
   int i, n;
   T_UC_CONF_ITEM *conf_item;
@@ -1094,8 +1010,7 @@ conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf,
   for (i = 0; i < num_br; i++)
     {
       char as_type;
-      conf_item =
-	(T_UC_CONF_ITEM *) malloc (sizeof (T_UC_CONF_ITEM) * MAX_NUM_CONF);
+      conf_item = (T_UC_CONF_ITEM *) malloc (sizeof (T_UC_CONF_ITEM) * MAX_NUM_CONF);
       if (conf_item == NULL)
 	{
 	  strcpy (err_msg, strerror (errno));
@@ -1104,67 +1019,40 @@ conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf,
       memset (conf_item, 0, sizeof (T_UC_CONF_ITEM) * MAX_NUM_CONF);
       as_type = br_conf[i].appl_server;
       n = 0;
-      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_BROKER_NAME,
-			 br_conf[i].name);
-      SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_SERVICE,
-			   br_conf[i].service_flag);
-      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_APPL_SERVER,
-			 get_as_type_str (br_conf[i].appl_server));
-      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_BROKER_PORT,
-			 br_conf[i].port, FMT_D);
-      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MIN_NUM_APPL_SERVER,
-			 br_conf[i].appl_server_min_num, FMT_D);
-      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MAX_NUM_APPL_SERVER,
-			 br_conf[i].appl_server_max_num, FMT_D);
-      SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_AUTO_ADD_APPL_SERVER,
-			   br_conf[i].auto_add_appl_server);
-      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_APPL_SERVER_SHM_ID,
-			 br_conf[i].appl_server_shm_id, FMT_X);
-      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_APPL_SERVER_MAX_SIZE,
-			 br_conf[i].appl_server_max_size / ONE_K, FMT_D);
-      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_APPL_SERVER_HARD_LIMIT,
-			 br_conf[i].appl_server_hard_limit / ONE_K, FMT_D);
-      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_LOG_DIR,
-			 br_conf[i].log_dir);
-      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_SLOW_LOG_DIR,
-			 br_conf[i].slow_log_dir);
-      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_ERROR_LOG_DIR,
-			 br_conf[i].err_log_dir);
-      SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_LOG_BACKUP,
-			   br_conf[i].log_backup);
-      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_SOURCE_ENV,
-			 br_conf[i].source_env);
-      SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_ACCESS_LOG,
-			   br_conf[i].access_log);
-      SET_CONF_ITEM_SQL_LOG_MODE (conf_item, n, UC_CONF_PARAM_SQL_LOG,
-				  br_conf[i].sql_log_mode);
-      SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_SLOW_LOG,
-			   br_conf[i].slow_log_mode);
-      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_SESSION_TIMEOUT,
-			 br_conf[i].session_timeout, FMT_D);
-      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_SQL_LOG_MAX_SIZE,
-			 br_conf[i].sql_log_max_size, FMT_D);
-      SET_CONF_ITEM_KEEP_CON (conf_item, n, UC_CONF_PARAM_KEEP_CONNECTION,
-			      br_conf[i].keep_connection);
-      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_TIME_TO_KILL,
-			 br_conf[i].time_to_kill, FMT_D);
-      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_SESSION_TIMEOUT,
-			 br_conf[i].session_timeout, FMT_D);
-      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_JOB_QUEUE_SIZE,
-			 br_conf[i].job_queue_size, FMT_D);
+      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_BROKER_NAME, br_conf[i].name);
+      SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_SERVICE, br_conf[i].service_flag);
+      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_APPL_SERVER, get_as_type_str (br_conf[i].appl_server));
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_BROKER_PORT, br_conf[i].port, FMT_D);
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MIN_NUM_APPL_SERVER, br_conf[i].appl_server_min_num, FMT_D);
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MAX_NUM_APPL_SERVER, br_conf[i].appl_server_max_num, FMT_D);
+      SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_AUTO_ADD_APPL_SERVER, br_conf[i].auto_add_appl_server);
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_APPL_SERVER_SHM_ID, br_conf[i].appl_server_shm_id, FMT_X);
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_APPL_SERVER_MAX_SIZE, br_conf[i].appl_server_max_size / ONE_K,
+			 FMT_D);
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_APPL_SERVER_HARD_LIMIT, br_conf[i].appl_server_hard_limit / ONE_K,
+			 FMT_D);
+      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_LOG_DIR, br_conf[i].log_dir);
+      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_SLOW_LOG_DIR, br_conf[i].slow_log_dir);
+      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_ERROR_LOG_DIR, br_conf[i].err_log_dir);
+      SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_LOG_BACKUP, br_conf[i].log_backup);
+      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_SOURCE_ENV, br_conf[i].source_env);
+      SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_ACCESS_LOG, br_conf[i].access_log);
+      SET_CONF_ITEM_SQL_LOG_MODE (conf_item, n, UC_CONF_PARAM_SQL_LOG, br_conf[i].sql_log_mode);
+      SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_SLOW_LOG, br_conf[i].slow_log_mode);
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_SESSION_TIMEOUT, br_conf[i].session_timeout, FMT_D);
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_SQL_LOG_MAX_SIZE, br_conf[i].sql_log_max_size, FMT_D);
+      SET_CONF_ITEM_KEEP_CON (conf_item, n, UC_CONF_PARAM_KEEP_CONNECTION, br_conf[i].keep_connection);
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_TIME_TO_KILL, br_conf[i].time_to_kill, FMT_D);
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_SESSION_TIMEOUT, br_conf[i].session_timeout, FMT_D);
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_JOB_QUEUE_SIZE, br_conf[i].job_queue_size, FMT_D);
       if (IS_APPL_SERVER_TYPE_CAS (as_type))
 	{
-	  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MAX_STRING_LENGTH,
-			     br_conf[i].max_string_length, FMT_D);
-	  SET_CONF_ITEM_ONOFF (conf_item, n,
-			       UC_CONF_PARAM_STRIPPED_COLUMN_NAME,
-			       br_conf[i].stripped_column_name);
+	  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MAX_STRING_LENGTH, br_conf[i].max_string_length, FMT_D);
+	  SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_STRIPPED_COLUMN_NAME, br_conf[i].stripped_column_name);
 	}
-      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_ACCESS_LIST,
-			 br_conf[i].acl_file);
+      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_ACCESS_LIST, br_conf[i].acl_file);
 #if 0
-      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_SQL_LOG2,
-			 br_conf[i].sql_log2, FMT_D);
+      SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_SQL_LOG2, br_conf[i].sql_log2, FMT_D);
 #endif
 
       unicas_conf->br_conf[i].num = n;
@@ -1174,8 +1062,7 @@ conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf,
 }
 
 static int
-conf_copy_header (T_UC_CONF * unicas_conf, int master_shm_id,
-		  char *admin_log_file, char *err_msg)
+conf_copy_header (T_UC_CONF * unicas_conf, int master_shm_id, char *admin_log_file, char *err_msg)
 {
   T_UC_CONF_ITEM *conf_item;
   int n;
@@ -1187,10 +1074,8 @@ conf_copy_header (T_UC_CONF * unicas_conf, int master_shm_id,
       return -1;
     }
   n = 0;
-  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MASTER_SHM_ID, master_shm_id,
-		     FMT_X);
-  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_ADMIN_LOG_FILE,
-		     admin_log_file);
+  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MASTER_SHM_ID, master_shm_id, FMT_X);
+  SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_ADMIN_LOG_FILE, admin_log_file);
 
   unicas_conf->num_header = n;
   unicas_conf->header_conf = conf_item;
@@ -1198,13 +1083,11 @@ conf_copy_header (T_UC_CONF * unicas_conf, int master_shm_id,
 }
 
 static int
-admin_common (T_BROKER_INFO * br_info, int *num_broker, int *master_shm_id,
-	      char *admin_log_file, char *err_msg, char admin_flag,
-	      bool * acl_flag, char *acl_file)
+admin_common (T_BROKER_INFO * br_info, int *num_broker, int *master_shm_id, char *admin_log_file, char *err_msg,
+	      char admin_flag, bool * acl_flag, char *acl_file)
 {
-  if (broker_config_read (NULL, br_info, num_broker, master_shm_id,
-			  admin_log_file, admin_flag, acl_flag, acl_file,
-			  err_msg) < 0)
+  if (broker_config_read
+      (NULL, br_info, num_broker, master_shm_id, admin_log_file, admin_flag, acl_flag, acl_file, err_msg) < 0)
     {
       return -1;
     }
@@ -1259,10 +1142,8 @@ copy_job_info (T_JOB_INFO ** ret_job_info, T_MAX_HEAP_NODE * job_q)
       job_info[i].priority = item.priority;
       memcpy (job_info[i].ip, item.ip_addr, 4);
       job_info[i].recv_time = item.recv_time;
-      strncpy (job_info[i].script, item.script,
-	       sizeof (job_info[i].script) - 1);
-      strncpy (job_info[i].prgname, item.prg_name,
-	       sizeof (job_info[i].prgname) - 1);
+      strncpy (job_info[i].script, item.script, sizeof (job_info[i].script) - 1);
+      strncpy (job_info[i].prgname, item.prg_name, sizeof (job_info[i].prgname) - 1);
     }
 
   *ret_job_info = job_info;
@@ -1342,23 +1223,20 @@ admin_log_write (const char *log_file, const char *msg)
       ts = time (NULL);
       memset (&ct, 0x0, sizeof (struct tm));
       localtime_r (&ts, &ct);
-      fprintf (fp, "%d/%02d/%02d %02d:%02d:%02d %s\n",
-	       ct.tm_year + 1900, ct.tm_mon + 1, ct.tm_mday,
-	       ct.tm_hour, ct.tm_min, ct.tm_sec, msg);
+      fprintf (fp, "%d/%02d/%02d %02d:%02d:%02d %s\n", ct.tm_year + 1900, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour,
+	       ct.tm_min, ct.tm_sec, msg);
       fclose (fp);
     }
 }
 
 static int
-uc_changer_internal (const char *br_name, const char *name,
-		     const char *value, int as_number, char *err_msg)
+uc_changer_internal (const char *br_name, const char *name, const char *value, int as_number, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
   char admin_log_file[BROKER_PATH_MAX];
 
-  if (admin_common (br_info, &num_broker, &master_shm_id,
-		    admin_log_file, err_msg, 0, NULL, NULL) < 0)
+  if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
     {
       return -1;
     }

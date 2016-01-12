@@ -29,25 +29,16 @@
 
 #include "connection_defs.h"
 
-extern void css_queue_unexpected_data_packet (CSS_CONN_ENTRY * conn,
-					      unsigned short request_id,
-					      char *header, int size, int rc);
-extern void css_queue_unexpected_error_packet (CSS_CONN_ENTRY * conn,
-					       unsigned short request_id,
-					       char *header, int size,
+extern void css_queue_unexpected_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, char *header, int size,
+					      int rc);
+extern void css_queue_unexpected_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, char *header, int size,
 					       int rc);
-extern void css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn,
-					 unsigned short request_id,
+extern void css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn, unsigned short request_id,
 					 NET_HEADER * header, int size);
-extern int css_queue_user_data_buffer (CSS_CONN_ENTRY * conn,
-				       unsigned short request_id, int size,
-				       char *buffer);
-extern CSS_QUEUE_ENTRY *css_find_queue_entry (CSS_QUEUE_ENTRY * header,
-					      unsigned int key);
-extern void css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor,
-					       CSS_QUEUE_ENTRY * entry);
-extern void css_queue_remove_header_entry (CSS_QUEUE_ENTRY ** anchor,
-					   unsigned short request_id);
+extern int css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int size, char *buffer);
+extern CSS_QUEUE_ENTRY *css_find_queue_entry (CSS_QUEUE_ENTRY * header, unsigned int key);
+extern void css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor, CSS_QUEUE_ENTRY * entry);
+extern void css_queue_remove_header_entry (CSS_QUEUE_ENTRY ** anchor, unsigned short request_id);
 extern void css_queue_remove_header (CSS_QUEUE_ENTRY ** anchor);
 
 #endif /* _CONNECTION_LIST_CL_H_ */

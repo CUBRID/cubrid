@@ -49,8 +49,7 @@
 /* es_posix_base_dir - */
 static char es_base_dir[PATH_MAX];
 
-static void es_get_unique_name (char *dirname1, char *dirname2,
-				const char *metaname, char *filename);
+static void es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *filename);
 static int es_make_dirs (const char *dirname1, const char *dirname2);
 static void es_rename_path (char *src, char *tgt, char *metaname);
 
@@ -63,8 +62,7 @@ static void es_rename_path (char *src, char *tgt, char *metaname);
  * filename(out): generated file name
  */
 static void
-es_get_unique_name (char *dirname1, char *dirname2, const char *metaname,
-		    char *filename)
+es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *filename)
 {
   UINT64 unum;
   int hashval;
@@ -109,13 +107,11 @@ es_make_dirs (const char *dirname1, const char *dirname2)
 
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
 retry:
-  snprintf (dirbuf, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR,
-	    dirname1, PATH_SEPARATOR, dirname2);
+  snprintf (dirbuf, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2);
   ret = mkdir (dirbuf, 0755);
   if (ret < 0 && errno == ENOENT)
     {
-      snprintf (dirbuf, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR,
-		dirname1);
+      snprintf (dirbuf, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1);
       ret = mkdir (dirbuf, 0755);
       if (ret == 0 || errno == EEXIST)
 	{
@@ -123,14 +119,12 @@ retry:
 	}
     }
 #else
-  snprintf (dirbuf, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR,
-	    dirname1);
+  snprintf (dirbuf, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1);
   ret = mkdir (dirbuf, 0755);
 #endif
   if (ret < 0 && errno != EEXIST)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_ES_GENERAL, 2, "POSIX", dirbuf);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", dirbuf);
       return ER_ES_GENERAL;
     }
   return NO_ERROR;
@@ -150,7 +144,7 @@ es_rename_path (char *src, char *tgt, char *metaname)
   char *s, *t;
 
   assert (metaname != NULL);
-  /*
+  /* 
    * src: /.../ces_000/ces_tmp.123456789
    *                  ^
    *                  s
@@ -162,14 +156,14 @@ es_rename_path (char *src, char *tgt, char *metaname)
     {
       return;
     }
-  /*
+  /* 
    * tgt: /.../ces_000/ces_tmp.123456789
    *                  ^
    *                  t
    */
   t = tgt + (s - src) + 1;
 
-  /*
+  /* 
    * tgt: /.../ces_000/ces_tmp.123456789
    *                          ^
    *                          s
@@ -204,8 +198,7 @@ es_posix_init (const char *base_path)
   if (ret != 0 || !S_ISDIR (sbuf.st_mode))
     {
       /* failed to open base dir */
-      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-			   ER_ES_GENERAL, 2, "POSIX", base_path);
+      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", base_path);
       return ER_ES_GENERAL;
     }
 
@@ -245,12 +238,11 @@ xes_posix_create_file (char *new_path)
 retry:
   es_get_unique_name (dirname1, dirname2, "ces_temp", filename);
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
-  snprintf (new_path, PATH_MAX, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR,
-	    dirname1, PATH_SEPARATOR, dirname2, PATH_SEPARATOR, filename);
+  snprintf (new_path, PATH_MAX, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2,
+	    PATH_SEPARATOR, filename);
 #else
   /* default */
-  snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR,
-	    dirname1, PATH_SEPARATOR, filename);
+  snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
 #endif
 
   er_log_debug (ARG_FILE_LINE, "xes_posix_create_file(): %s\n", new_path);
@@ -258,8 +250,7 @@ retry:
 #if defined (WINDOWS)
   fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
 #else /* WINDOWS */
-  fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL,
-	     S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
+  fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
 #endif /* !WINDOWS */
   if (fd < 0)
     {
@@ -271,11 +262,9 @@ retry:
 	      return ret;
 	    }
 #if defined (WINDOWS)
-	  fd =
-	    open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
+	  fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
 #else /* WINDOWs */
-	  fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL,
-		     S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
+	  fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
 #endif /* !WINDOWS */
 	}
     }
@@ -286,8 +275,7 @@ retry:
 	{
 	  goto retry;
 	}
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_ES_GENERAL, 2, "POSIX", new_path);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
       return ER_ES_GENERAL;
     }
   close (fd);
@@ -301,19 +289,16 @@ retry:
  * path(in): file path
  */
 ssize_t
-xes_posix_write_file (const char *path, const void *buf, size_t count,
-		      off_t offset)
+xes_posix_write_file (const char *path, const void *buf, size_t count, off_t offset)
 {
   struct stat pstat;
   int fd;
   ssize_t nbytes;
   size_t total = 0;
 
-  er_log_debug (ARG_FILE_LINE,
-		"xes_posix_write_file(%s, count %d offset %ld)\n",
-		path, count, offset);
+  er_log_debug (ARG_FILE_LINE, "xes_posix_write_file(%s, count %d offset %ld)\n", path, count, offset);
 
-  /*
+  /* 
    * TODO: This block of codes prevents partial update or writing at advanced
    * position or something like that.
    * This restriction is introduced due to OwFS's capability.
@@ -321,29 +306,25 @@ xes_posix_write_file (const char *path, const void *buf, size_t count,
    */
   if (stat (path, &pstat) < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2,
-			   "POSIX", path);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", path);
       return ER_ES_GENERAL;
     }
   if (offset != pstat.st_size)
     {
       char buf[PATH_MAX];
       snprintf (buf, PATH_MAX, "offset error %s", path);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2,
-	      "POSIX", buf);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", buf);
       return ER_ES_GENERAL;
     }
 
 #if defined (WINDOWS)
   fd = open (path, O_WRONLY | O_APPEND | O_BINARY, S_IRWXU);
 #else /* WINDOWs */
-  fd = open (path, O_WRONLY | O_APPEND,
-	     S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
+  fd = open (path, O_WRONLY | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
 #endif /* !WINDOWS */
   if (fd < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2,
-			   "POSIX", path);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", path);
       return ER_ES_GENERAL;
     }
 
@@ -351,8 +332,7 @@ xes_posix_write_file (const char *path, const void *buf, size_t count,
     {
       if (lseek (fd, offset, SEEK_SET) != offset)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_ES_GENERAL, 2, "POSIX", path);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", path);
 	  close (fd);
 	  return ER_ES_GENERAL;
 	}
@@ -367,8 +347,7 @@ xes_posix_write_file (const char *path, const void *buf, size_t count,
 	      continue;
 	    default:
 	      {
-		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				     ER_ES_GENERAL, 2, "POSIX", path);
+		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", path);
 		close (fd);
 		return ER_ES_GENERAL;
 	      }
@@ -398,9 +377,7 @@ xes_posix_read_file (const char *path, void *buf, size_t count, off_t offset)
   ssize_t nbytes;
   size_t total = 0;
 
-  er_log_debug (ARG_FILE_LINE,
-		"xes_posix_read_file(%s, count %d offset %ld)\n",
-		path, count, offset);
+  er_log_debug (ARG_FILE_LINE, "xes_posix_read_file(%s, count %d offset %ld)\n", path, count, offset);
 
 #if defined (WINDOWS)
   fd = open (path, O_RDONLY | O_BINARY);
@@ -411,14 +388,12 @@ xes_posix_read_file (const char *path, void *buf, size_t count, off_t offset)
     {
       if (errno == ENOENT)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_FILE_NOT_FOUND, 1,
-		  path);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_FILE_NOT_FOUND, 1, path);
 	  return ER_ES_FILE_NOT_FOUND;
 	}
       else
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_ES_GENERAL, 2, "POSIX", path);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", path);
 	  return ER_ES_GENERAL;
 	}
     }
@@ -427,8 +402,7 @@ xes_posix_read_file (const char *path, void *buf, size_t count, off_t offset)
     {
       if (lseek (fd, offset, SEEK_SET) != offset)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_ES_GENERAL, 2, "POSIX", path);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", path);
 	  close (fd);
 	  return ER_ES_GENERAL;
 	}
@@ -443,8 +417,7 @@ xes_posix_read_file (const char *path, void *buf, size_t count, off_t offset)
 	      continue;
 	    default:
 	      {
-		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				     ER_ES_GENERAL, 2, "POSIX", path);
+		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", path);
 		close (fd);
 		return ER_ES_GENERAL;
 	      }
@@ -481,8 +454,7 @@ xes_posix_delete_file (const char *path)
   ret = unlink (path);
   if (ret < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2,
-			   "POSIX", path);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", path);
       return ER_ES_GENERAL;
     }
 
@@ -514,8 +486,7 @@ xes_posix_copy_file (const char *src_path, char *metaname, char *new_path)
 #endif /* !WINDOWS */
   if (rd_fd < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2,
-			   "POSIX", src_path);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", src_path);
       return ER_ES_GENERAL;
     }
 
@@ -523,22 +494,19 @@ retry:
   /* create a target file */
   es_get_unique_name (dirname1, dirname2, metaname, filename);
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
-  snprintf (new_path, PATH_MAX, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR,
-	    dirname1, PATH_SEPARATOR, dirname2, PATH_SEPARATOR, filename);
+  snprintf (new_path, PATH_MAX, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2,
+	    PATH_SEPARATOR, filename);
 #else
   /* default */
-  snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR,
-	    dirname1, PATH_SEPARATOR, filename);
+  snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
 #endif
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_copy_file(%s, %s): %s\n", src_path,
-		metaname, new_path);
+  er_log_debug (ARG_FILE_LINE, "xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
 
 #if defined (WINDOWS)
   wr_fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
 #else /* WINDOWS */
-  wr_fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL,
-		S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
+  wr_fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
 #endif /* !WINDOWS */
   if (wr_fd < 0)
     {
@@ -551,11 +519,9 @@ retry:
 	      return ER_ES_GENERAL;
 	    }
 #if defined (WINDOWS)
-	  wr_fd =
-	    open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
+	  wr_fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
 #else /* WINDOWS */
-	  wr_fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL,
-			S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
+	  wr_fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
 #endif /* !WINDOWS */
 	}
     }
@@ -566,8 +532,7 @@ retry:
 	{
 	  goto retry;
 	}
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2,
-			   "POSIX", new_path);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
       close (rd_fd);
       return ER_ES_GENERAL;
     }
@@ -582,16 +547,14 @@ retry:
 	}
       else if (ret < 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_ES_GENERAL, 2, "POSIX", src_path);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", src_path);
 	  break;
 	}
 
       ret = write (wr_fd, buf, ret);
       if (ret <= 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_ES_GENERAL, 2, "POSIX", new_path);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", new_path);
 	  break;
 	}
     }
@@ -612,15 +575,13 @@ retry:
  * new_path(out): new file path
  */
 int
-xes_posix_rename_file (const char *src_path, const char *metaname,
-		       char *new_path)
+xes_posix_rename_file (const char *src_path, const char *metaname, char *new_path)
 {
   int ret;
 
   es_rename_path (src_path, new_path, metaname);
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_rename_file(%s, %s): %s\n",
-		src_path, metaname, new_path);
+  er_log_debug (ARG_FILE_LINE, "xes_posix_rename_file(%s, %s): %s\n", src_path, metaname, new_path);
 
   ret = os_rename_file (src_path, new_path);
 
@@ -645,8 +606,7 @@ xes_posix_get_file_size (const char *path)
   ret = stat (path, &pstat);
   if (ret < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2,
-			   "POSIX", path);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", path);
       return -1;
     }
 
@@ -667,9 +627,7 @@ es_local_read_file (const char *path, void *buf, size_t count, off_t offset)
   ssize_t nbytes;
   size_t total = 0;
 
-  er_log_debug (ARG_FILE_LINE,
-		"es_local_read_file(%s, count %d offset %ld)\n",
-		path, count, offset);
+  er_log_debug (ARG_FILE_LINE, "es_local_read_file(%s, count %d offset %ld)\n", path, count, offset);
 
 #if defined (WINDOWS)
   fd = open (path, O_RDONLY | O_BINARY);
@@ -678,8 +636,7 @@ es_local_read_file (const char *path, void *buf, size_t count, off_t offset)
 #endif /* !WINDOWS */
   if (fd < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2,
-			   "LOCAL", path);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOCAL", path);
       return ER_ES_GENERAL;
     }
 
@@ -687,8 +644,7 @@ es_local_read_file (const char *path, void *buf, size_t count, off_t offset)
     {
       if (lseek (fd, offset, SEEK_SET) != offset)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_ES_GENERAL, 2, "LOCAL", path);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOCAL", path);
 	  close (fd);
 	  return ER_ES_GENERAL;
 	}
@@ -703,8 +659,7 @@ es_local_read_file (const char *path, void *buf, size_t count, off_t offset)
 	      continue;
 	    default:
 	      {
-		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				     ER_ES_GENERAL, 2, "LOCAL", path);
+		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOCAL", path);
 		close (fd);
 		return ER_ES_GENERAL;
 	      }
@@ -742,8 +697,7 @@ es_local_get_file_size (const char *path)
   ret = stat (path, &pstat);
   if (ret < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2,
-			   "LOCAL", path);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOCAL", path);
       return -1;
     }
 

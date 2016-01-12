@@ -70,19 +70,13 @@
 #endif /* WINDOWS */
 #include "heartbeat.h"
 
-extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id,
-						     const char *server_name,
-						     int name_length);
+extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *server_name, int name_length);
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 
-static THREAD_RET_T THREAD_CALLING_CONVENTION hb_thread_master_reader (void
-								       *arg);
-static char *hb_pack_server_name (const char *server_name, int *name_length,
-				  const char *log_path, HB_PROC_TYPE type);
+static THREAD_RET_T THREAD_CALLING_CONVENTION hb_thread_master_reader (void *arg);
+static char *hb_pack_server_name (const char *server_name, int *name_length, const char *log_path, HB_PROC_TYPE type);
 
-static CSS_CONN_ENTRY *hb_connect_to_master (const char *server_name,
-					     const char *log_path,
-					     HB_PROC_TYPE type);
+static CSS_CONN_ENTRY *hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYPE type);
 static int hb_create_master_reader (void);
 static int hb_process_master_request_info (CSS_CONN_ENTRY * conn);
 static const char *hb_type_to_str (HB_PROC_TYPE type);
@@ -293,25 +287,21 @@ hb_make_set_hbp_register (int type)
   hbp_register = (HBP_PROC_REGISTER *) malloc (sizeof (HBP_PROC_REGISTER));
   if (NULL == hbp_register)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (HBP_PROC_REGISTER));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HBP_PROC_REGISTER));
       return (NULL);
     }
 
   memset ((void *) hbp_register, 0, sizeof (HBP_PROC_REGISTER));
   hbp_register->pid = htonl (getpid ());
   hbp_register->type = htonl (type);
-  strncpy (hbp_register->exec_path, hb_Exec_path,
-	   sizeof (hbp_register->exec_path) - 1);
+  strncpy (hbp_register->exec_path, hb_Exec_path, sizeof (hbp_register->exec_path) - 1);
 
   p = (char *) &hbp_register->args[0];
   last = (char *) (p + sizeof (hbp_register->args));
-  for (argc = 0, argv = hb_Argv; *argv && argc < HB_MAX_NUM_PROC_ARGV;
-       argc++, argv++)
+  for (argc = 0, argv = hb_Argv; *argv && argc < HB_MAX_NUM_PROC_ARGV; argc++, argv++)
     {
       p += snprintf (p, MAX ((last - p), 0), "%s ", *argv);
-      strncpy ((char *) hbp_register->argv[argc], *argv,
-	       (HB_MAX_SZ_PROC_ARGV - 1));
+      strncpy ((char *) hbp_register->argv[argc], *argv, (HB_MAX_SZ_PROC_ARGV - 1));
     }
 
   return (hbp_register);
@@ -334,8 +324,7 @@ hb_deregister_from_master (void)
       return ER_FAILED;
     }
 
-  css_error =
-    css_send_heartbeat_request (hb_Conn, SERVER_DEREGISTER_HA_PROCESS);
+  css_error = css_send_heartbeat_request (hb_Conn, SERVER_DEREGISTER_HA_PROCESS);
   if (css_error != NO_ERRORS)
     {
       return ER_FAILED;
@@ -385,9 +374,7 @@ hb_register_to_master (CSS_CONN_ENTRY * conn, int type)
 	  goto error_return;
 	}
 
-      error =
-	css_send_heartbeat_data (conn, (const char *) hbp_register,
-				 sizeof (*hbp_register));
+      error = css_send_heartbeat_data (conn, (const char *) hbp_register, sizeof (*hbp_register));
       if (error != NO_ERRORS)
 	{
 	  goto error_return;
@@ -473,9 +460,7 @@ hb_process_master_request (void)
     {
       po[0].fd = hb_Conn->fd;
       po[0].events = POLLIN;
-      r = poll (po, 1,
-		(prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-		 1000));
+      r = poll (po, 1, (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000));
 
       switch (r)
 	{
@@ -484,8 +469,7 @@ hb_process_master_request (void)
 	case -1:
 	  if (!IS_INVALID_SOCKET (hb_Conn->fd)
 #if defined(WINDOWS)
-	      && ioctlsocket (hb_Conn->fd, FIONREAD,
-			      (u_long *) & status) == SOCKET_ERROR
+	      && ioctlsocket (hb_Conn->fd, FIONREAD, (u_long *) & status) == SOCKET_ERROR
 #else /* WINDOWS */
 	      && fcntl (hb_Conn->fd, F_GETFL, status) < 0
 #endif /* WINDOWS */
@@ -523,8 +507,7 @@ hb_process_master_request (void)
  *                       pid_string   (process id)
  */
 static char *
-hb_pack_server_name (const char *server_name, int *name_length,
-		     const char *log_path, HB_PROC_TYPE type)
+hb_pack_server_name (const char *server_name, int *name_length, const char *log_path, HB_PROC_TYPE type)
 {
   char *packed_name = NULL;
   const char *env_name = NULL;
@@ -539,10 +522,8 @@ hb_pack_server_name (const char *server_name, int *name_length,
 	  return NULL;
 	}
 
-      /* here we changed the 2nd string in packed_name from
-       * rel_release_string() to rel_major_release_string()
-       * solely for the purpose of matching the name of the CUBRID driver.
-       */
+      /* here we changed the 2nd string in packed_name from rel_release_string() to rel_major_release_string() solely
+       * for the purpose of matching the name of the CUBRID driver. */
 
       snprintf (pid_string, sizeof (pid_string), "%d", getpid ());
       n_len = strlen (server_name) + 1;
@@ -555,8 +536,7 @@ hb_pack_server_name (const char *server_name, int *name_length,
       packed_name = malloc (*name_length);
       if (packed_name == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (*name_length));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (*name_length));
 	  return NULL;
 	}
 
@@ -585,11 +565,9 @@ hb_pack_server_name (const char *server_name, int *name_length,
 	  packed_name[(1 + n_len) - 1] = ':';
 	  memcpy (packed_name + 1 + n_len, log_path, l_len);
 	}
-      memcpy (packed_name + 1 + n_len + l_len, rel_major_release_string (),
-	      r_len);
+      memcpy (packed_name + 1 + n_len + l_len, rel_major_release_string (), r_len);
       memcpy (packed_name + 1 + n_len + l_len + r_len, env_name, e_len);
-      memcpy (packed_name + 1 + n_len + l_len + r_len + e_len, pid_string,
-	      p_len);
+      memcpy (packed_name + 1 + n_len + l_len + r_len + e_len, pid_string, p_len);
     }
   return (packed_name);
 }
@@ -602,22 +580,19 @@ hb_pack_server_name (const char *server_name, int *name_length,
  *   copylogdbyn(in): 
  */
 static CSS_CONN_ENTRY *
-hb_connect_to_master (const char *server_name, const char *log_path,
-		      HB_PROC_TYPE type)
+hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYPE type)
 {
   CSS_CONN_ENTRY *conn;
   int error = NO_ERROR;
   char *packed_name;
   int name_length = 0;
 
-  packed_name =
-    hb_pack_server_name (server_name, &name_length, log_path, type);
+  packed_name = hb_pack_server_name (server_name, &name_length, log_path, type);
   if (packed_name == NULL)
     {
       return NULL;
     }
-  conn = css_connect_to_master_server (prm_get_master_port_id (), packed_name,
-				       name_length);
+  conn = css_connect_to_master_server (prm_get_master_port_id (), packed_name, name_length);
   if (conn == NULL)
     {
       free_and_init (packed_name);
@@ -646,34 +621,30 @@ hb_create_master_reader (void)
   rv = pthread_attr_init (&thread_attr);
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_ATTR_INIT, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_ATTR_INIT, 0);
       return ER_CSS_PTHREAD_ATTR_INIT;
     }
 
   rv = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_ATTR_SETDETACHSTATE, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_ATTR_SETDETACHSTATE, 0);
       return ER_CSS_PTHREAD_ATTR_SETDETACHSTATE;
     }
 
 #if defined(AIX)
-  /* AIX's pthread is slightly different from other systems.
-     Its performance highly depends on the pthread's scope and it's related
-     kernel parameters. */
-  rv = pthread_attr_setscope (&thread_attr,
-			      prm_get_bool_value
-			      (PRM_ID_PTHREAD_SCOPE_PROCESS) ?
-			      PTHREAD_SCOPE_PROCESS : PTHREAD_SCOPE_SYSTEM);
+  /* AIX's pthread is slightly different from other systems. Its performance highly depends on the pthread's scope and
+   * it's related kernel parameters. */
+  rv =
+    pthread_attr_setscope (&thread_attr,
+			   prm_get_bool_value (PRM_ID_PTHREAD_SCOPE_PROCESS) ? PTHREAD_SCOPE_PROCESS :
+			   PTHREAD_SCOPE_SYSTEM);
 #else /* AIX */
   rv = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
 #endif /* AIX */
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_ATTR_SETSCOPE, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_ATTR_SETSCOPE, 0);
       return ER_CSS_PTHREAD_ATTR_SETSCOPE;
     }
 
@@ -681,26 +652,19 @@ hb_create_master_reader (void)
   rv = pthread_attr_getstacksize (&thread_attr, &ts_size);
   if (ts_size != (size_t) prm_get_bigint_value (PRM_ID_THREAD_STACKSIZE))
     {
-      rv =
-	pthread_attr_setstacksize (&thread_attr,
-				   prm_get_bigint_value
-				   (PRM_ID_THREAD_STACKSIZE));
+      rv = pthread_attr_setstacksize (&thread_attr, prm_get_bigint_value (PRM_ID_THREAD_STACKSIZE));
       if (rv != 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_CSS_PTHREAD_ATTR_SETSTACKSIZE, 0);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_ATTR_SETSTACKSIZE, 0);
 	  return ER_CSS_PTHREAD_ATTR_SETSTACKSIZE;
 	}
     }
 #endif /* _POSIX_THREAD_ATTR_STACKSIZE */
 
-  rv =
-    pthread_create (&master_reader_th, &thread_attr, hb_thread_master_reader,
-		    (void *) NULL);
+  rv = pthread_create (&master_reader_th, &thread_attr, hb_thread_master_reader, (void *) NULL);
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_CREATE, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_CREATE, 0);
       return ER_CSS_PTHREAD_CREATE;
     }
 
@@ -716,8 +680,7 @@ hb_create_master_reader (void)
 *   copylogdbyn(in):
 */
 int
-hb_process_init (const char *server_name, const char *log_path,
-		 HB_PROC_TYPE type)
+hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE type)
 {
   int error;
   static bool is_first = true;
@@ -728,8 +691,7 @@ hb_process_init (const char *server_name, const char *log_path,
       return (NO_ERROR);
     }
 
-  er_log_debug (ARG_FILE_LINE, "hb_process_init. (type:%s). \n",
-		hb_type_to_str (type));
+  er_log_debug (ARG_FILE_LINE, "hb_process_init. (type:%s). \n", hb_type_to_str (type));
 
   if (hb_Exec_path[0] == '\0' || *(hb_Argv) == 0)
     {

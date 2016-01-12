@@ -66,7 +66,7 @@ typedef int ATTR_ID;		/* attribute identifier */
 typedef struct disk_representation DISK_REPR;
 struct disk_representation
 {
-  REPR_ID id;			/* representation identifier  */
+  REPR_ID id;			/* representation identifier */
   int n_fixed;			/* number of fixed attributes */
   struct disk_attribute *fixed;	/* fixed attribute structures */
   int fixed_length;		/* total length of fixed attributes */
@@ -84,9 +84,8 @@ typedef struct disk_attribute DISK_ATTR;
 struct disk_attribute
 {
   ATTR_ID id;			/* attribute identifier */
-  int location;			/* location in disk representation
-				 * exact offset if fixed attr.
-				 * index to offset table if var attr.*/
+  int location;			/* location in disk representation exact offset if fixed attr. index to offset table if 
+				 * var attr. */
   DB_TYPE type;			/* datatype */
   int val_length;		/* default value length >= 0 */
   void *value;			/* default value */
@@ -94,8 +93,7 @@ struct disk_attribute
   int position;			/* storage position (fixed attributes only) */
   OID classoid;			/* source class object id */
   int n_btstats;		/* number of B+tree statistics information */
-  BTREE_STATS *bt_stats;	/* pointer to array of BTREE_STATS;
-				 * BTREE_STATS[n_btstats] */
+  BTREE_STATS *bt_stats;	/* pointer to array of BTREE_STATS; BTREE_STATS[n_btstats] */
 };				/* disk attribute structure */
 
 typedef struct cls_info CLS_INFO;
@@ -143,58 +141,32 @@ extern void catalog_initialize (CTID * catid);
 extern void catalog_finalize (void);
 
 /* these two routines should be called only once and by the root */
-extern CTID *catalog_create (THREAD_ENTRY * thread_p, CTID * catid,
-			     DKNPAGES exp_ncatpg, DKNPAGES exp_nindpg);
+extern CTID *catalog_create (THREAD_ENTRY * thread_p, CTID * catid, DKNPAGES exp_ncatpg, DKNPAGES exp_nindpg);
 extern int catalog_destroy (void);
 
 extern int catalog_reclaim_space (THREAD_ENTRY * thread_p);
-extern int catalog_add_representation (THREAD_ENTRY * thread_p,
-				       OID * class_id, REPR_ID repr_id,
-				       DISK_REPR * Disk_Repr,
-				       OID * rep_dir_p,
-				       CATALOG_ACCESS_INFO *
-				       catalog_access_info_p);
-extern int catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_oid_p,
-				   CLS_INFO * class_info_p,
-				   CATALOG_ACCESS_INFO *
-				   catalog_access_info_p);
-extern CLS_INFO *catalog_update_class_info (THREAD_ENTRY * thread_p,
-					    OID * class_id,
-					    CLS_INFO * cls_info,
-					    CATALOG_ACCESS_INFO *
-					    catalog_access_info_p,
-					    bool skip_logging);
-extern int catalog_drop_old_representations (THREAD_ENTRY * thread_p,
-					     OID * class_id);
-extern DISK_REPR *catalog_get_representation (THREAD_ENTRY * thread_p,
-					      OID * class_id, REPR_ID repr_id,
-					      CATALOG_ACCESS_INFO *
-					      catalog_access_info_p);
-extern CLS_INFO *catalog_get_class_info (THREAD_ENTRY * thread_p,
-					 OID * class_id,
-					 CATALOG_ACCESS_INFO *
-					 catalog_access_info_p);
-extern int catalog_get_representation_directory (THREAD_ENTRY * thread_p,
-						 OID * class_id,
-						 REPR_ID ** reprid_set,
+extern int catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id, REPR_ID repr_id, DISK_REPR * Disk_Repr,
+				       OID * rep_dir_p, CATALOG_ACCESS_INFO * catalog_access_info_p);
+extern int catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_oid_p, CLS_INFO * class_info_p,
+				   CATALOG_ACCESS_INFO * catalog_access_info_p);
+extern CLS_INFO *catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id, CLS_INFO * cls_info,
+					    CATALOG_ACCESS_INFO * catalog_access_info_p, bool skip_logging);
+extern int catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id);
+extern DISK_REPR *catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id, REPR_ID repr_id,
+					      CATALOG_ACCESS_INFO * catalog_access_info_p);
+extern CLS_INFO *catalog_get_class_info (THREAD_ENTRY * thread_p, OID * class_id,
+					 CATALOG_ACCESS_INFO * catalog_access_info_p);
+extern int catalog_get_representation_directory (THREAD_ENTRY * thread_p, OID * class_id, REPR_ID ** reprid_set,
 						 int *repr_cnt);
-extern int catalog_get_last_representation_id (THREAD_ENTRY * thread_p,
-					       OID * cls_oid,
-					       REPR_ID * repr_id);
-extern int catalog_insert (THREAD_ENTRY * thread_p, RECDES * record,
-			   OID * classoid, OID * rep_dir_p);
-extern int catalog_update (THREAD_ENTRY * thread_p, RECDES * record,
-			   OID * classoid);
+extern int catalog_get_last_representation_id (THREAD_ENTRY * thread_p, OID * cls_oid, REPR_ID * repr_id);
+extern int catalog_insert (THREAD_ENTRY * thread_p, RECDES * record, OID * classoid, OID * rep_dir_p);
+extern int catalog_update (THREAD_ENTRY * thread_p, RECDES * record, OID * classoid);
 extern int catalog_delete (THREAD_ENTRY * thread_p, OID * classoid);
 
-extern int catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid,
-				    DISK_REPR * rep, BTID * btid,
+extern int catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * rep, BTID * btid,
 				    const int key_pos, int *cardinality);
-extern int catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p,
-					    const char *class_name,
-					    const char *index_name,
-					    const int key_pos,
-					    int *cardinality);
+extern int catalog_get_cardinality_by_name (THREAD_ENTRY * thread_p, const char *class_name, const char *index_name,
+					    const int key_pos, int *cardinality);
 
 /* Checkdb consistency check routines */
 extern DISK_ISVALID catalog_check_consistency (THREAD_ENTRY * thread_p);
@@ -209,16 +181,10 @@ extern int catalog_rv_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int catalog_rv_delete_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int catalog_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int catalog_rv_update (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p,
-						    LOG_RCV * recv);
-extern int catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p,
-					   const OID * class_id_p,
-					   OID * dir_oid_p);
-extern int catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p,
-					      CATALOG_ACCESS_INFO *
-					      catalog_access_info,
+extern int catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p, OID * dir_oid_p);
+extern int catalog_start_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO * catalog_access_info,
 					      LOCK lock_mode);
-extern int catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p,
-					    CATALOG_ACCESS_INFO *
-					    catalog_access_info, int error);
+extern int catalog_end_access_with_dir_oid (THREAD_ENTRY * thread_p, CATALOG_ACCESS_INFO * catalog_access_info,
+					    int error);
 #endif /* _SYSTEM_CATALOG_H_ */

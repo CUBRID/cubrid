@@ -47,20 +47,15 @@ get_clockfreq (void)
    * Note: The implementation is derived from glibc-2.18. 
    */
 
-  /* We read the information from the /proc filesystem.  It contains at
-     least one line like
-     cpu MHz         : 497.840237
-     or also
-     cpu MHz         : 497.841
-     We search for this line and convert the number in an integer.  */
+  /* We read the information from the /proc filesystem.  It contains at least one line like cpu MHz : 497.840237 or
+   * also cpu MHz : 497.841 We search for this line and convert the number in an integer.  */
   TSC_UINT64 result = 0;
   int fd;
 
   fd = open ("/proc/cpuinfo", O_RDONLY);
   if (fd != -1)
     {
-      /* XXX AFAIK the /proc filesystem can generate "files" only up
-         to a size of 4096 bytes.  */
+      /* XXX AFAIK the /proc filesystem can generate "files" only up to a size of 4096 bytes.  */
       char buf[4096];
       ssize_t n;
 

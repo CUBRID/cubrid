@@ -32,87 +32,88 @@
 #include <time.h>
 
 
-typedef struct _db_name_{
-	unsigned int dNum;
-//	char* sName;
-	char sName[50];
-	bool  bStart;
-	struct _db_name_* next;
-} DBNAME_t, * DBNAMEPtr_t;
+typedef struct _db_name_
+{
+  unsigned int dNum;
+//      char* sName;
+  char sName[50];
+  bool bStart;
+  struct _db_name_ *next;
+} DBNAME_t, *DBNAMEPtr_t;
 
 
 
 
-class CCUBRIDManage  
+class CCUBRIDManage
 {
 private:
-	DBNAMEPtr_t pStopDBList;
-	DBNAMEPtr_t pStartDBList;
+  DBNAMEPtr_t pStopDBList;
+  DBNAMEPtr_t pStartDBList;
 
-	char sCatchResStr[5120];
+  char sCatchResStr[5120];
 
 
 
-	bool bCatchResult( char* sCmd );
-	char* sCatchResult( char* sCmd );
-	DBNAMEPtr_t pMakeList( unsigned int dNum, char* sName );
-	DBNAMEPtr_t pMakeList( DBNAMEPtr_t pParent, unsigned int dNum, char* sName );
-	char* sGetName( char* sStr );
-	bool  bCompareDB( char* sDBName, DBNAMEPtr_t pDBList );
+  bool bCatchResult (char *sCmd);
+  char *sCatchResult (char *sCmd);
+  DBNAMEPtr_t pMakeList (unsigned int dNum, char *sName);
+  DBNAMEPtr_t pMakeList (DBNAMEPtr_t pParent, unsigned int dNum, char *sName);
+  char *sGetName (char *sStr);
+  bool bCompareDB (char *sDBName, DBNAMEPtr_t pDBList);
 
-	bool bCUBRID;
-	bool bMASTER;
+  bool bCUBRID;
+  bool bMASTER;
 
-	DBNAMEPtr_t pGetDBListProcess();
-	DBNAMEPtr_t pGetDBListFile();
-	DBNAMEPtr_t pCompareDB();
+  DBNAMEPtr_t pGetDBListProcess ();
+  DBNAMEPtr_t pGetDBListFile ();
+  DBNAMEPtr_t pCompareDB ();
 
-	DBNAMEPtr_t pFileDBList;
-	DBNAMEPtr_t pExecuteDBList;
+  DBNAMEPtr_t pFileDBList;
+  DBNAMEPtr_t pExecuteDBList;
 
-	// ORDBLIST.txt를 최종적으로 검색한 최종 시간 정보와 현재의 시간 정보를 담는다.
-	time_t pPreTimeFileList;
-	time_t pCurTimeFileList;
+  // ORDBLIST.txt를 최종적으로 검색한 최종 시간 정보와 현재의 시간 정보를 담는다.
+  time_t pPreTimeFileList;
+  time_t pCurTimeFileList;
 
-	// DB Process를 최종적으로 검색한 최종 시간 정보와 현재의 시간 정보를 담는다.
-	time_t pPreTimeProcessList;
-	time_t pCurTimeProcessList;
+  // DB Process를 최종적으로 검색한 최종 시간 정보와 현재의 시간 정보를 담는다.
+  time_t pPreTimeProcessList;
+  time_t pCurTimeProcessList;
 
-	bool bCheckRefreshDBList();
-	bool bRefreshDBList();
+  bool bCheckRefreshDBList ();
+  bool bRefreshDBList ();
 
-	DBNAMEPtr_t pCheckExecuteDBList();
+  DBNAMEPtr_t pCheckExecuteDBList ();
 public:
-	CCUBRIDManage();
-	virtual ~CCUBRIDManage();
+    CCUBRIDManage ();
+    virtual ~ CCUBRIDManage ();
 
 
-	bool bStatusMaster();
-	bool bCheckMaster();
-	bool bStatusServer();
-	bool bCheckServer();
+  bool bStatusMaster ();
+  bool bCheckMaster ();
+  bool bStatusServer ();
+  bool bCheckServer ();
 
 
-	bool bStartCUBRID( char *sdbname );
-	bool bStartMaster();
+  bool bStartCUBRID (char *sdbname);
+  bool bStartMaster ();
 
-	bool bStopCUBRID( char* sdbname );
-	bool bStopMaster();
-
-
-
-	DBNAMEPtr_t pGetStartDBList();
-	DBNAMEPtr_t pGetStopDBList();
+  bool bStopCUBRID (char *sdbname);
+  bool bStopMaster ();
 
 
-	bool bInstallStatus();
+
+  DBNAMEPtr_t pGetStartDBList ();
+  DBNAMEPtr_t pGetStopDBList ();
 
 
-	bool  bDestoryDBList( DBNAMEPtr_t pDBList );
+  bool bInstallStatus ();
 
 
-	DBNAMEPtr_t pReqStopDBList();
-	DBNAMEPtr_t pReqStartDBList();
+  bool bDestoryDBList (DBNAMEPtr_t pDBList);
+
+
+  DBNAMEPtr_t pReqStopDBList ();
+  DBNAMEPtr_t pReqStartDBList ();
 
 };
 

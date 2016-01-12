@@ -96,8 +96,7 @@ db_set_create (MOP classop, const char *name)
       SM_CLASS *class_;
       SM_ATTRIBUTE *att;
 
-      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) ==
-	  NO_ERROR)
+      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 	{
 	  att = classobj_find_attribute (class_, name, 0);
 	  if (att == NULL)
@@ -163,8 +162,7 @@ db_set_create_basic (MOP classop, const char *name)
       SM_CLASS *class_;
       SM_ATTRIBUTE *att;
 
-      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) ==
-	  NO_ERROR)
+      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 	{
 	  att = classobj_find_attribute (class_, name, 0);
 	  if (att == NULL)
@@ -222,8 +220,7 @@ db_set_create_multi (MOP classop, const char *name)
       SM_CLASS *class_;
       SM_ATTRIBUTE *att;
 
-      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) ==
-	  NO_ERROR)
+      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 	{
 	  att = classobj_find_attribute (class_, name, 0);
 	  if (att == NULL)
@@ -283,8 +280,7 @@ db_seq_create (MOP classop, const char *name, int size)
       SM_CLASS *class_;
       SM_ATTRIBUTE *att;
 
-      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) ==
-	  NO_ERROR)
+      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 	{
 	  att = classobj_find_attribute (class_, name, 0);
 	  if (att == NULL)
@@ -363,7 +359,7 @@ db_set_filter (DB_SET * set)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (set);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (set->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -391,7 +387,7 @@ db_seq_filter (DB_SET * set)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (set);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (set->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -484,7 +480,7 @@ db_set_add (DB_SET * set, DB_VALUE * value)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (set);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (set->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -549,7 +545,7 @@ db_set_drop (DB_SET * set, DB_VALUE * value)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (set);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (set->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -731,8 +727,8 @@ db_seq_get (DB_SET * set, int index, DB_VALUE * value)
   CHECK_CONNECT_ERROR ();
   CHECK_2ARGS_ERROR (set, value);
 
-  /* should make sure this is a sequence, probably introduce another
-     set_ level function to do this rather than checking the type here */
+  /* should make sure this is a sequence, probably introduce another set_ level function to do this rather than
+   * checking the type here */
   retval = (set_get_element (set, index, value));
 
   return (retval);
@@ -764,7 +760,7 @@ db_seq_put (DB_SET * set, int index, DB_VALUE * value)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (set);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (set->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -805,7 +801,7 @@ db_seq_insert (DB_SET * set, int index, DB_VALUE * value)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (set);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (set->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -842,7 +838,7 @@ db_seq_drop (DB_SET * set, int index)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (set);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (set->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -1043,7 +1039,7 @@ db_col_filter (DB_COLLECTION * col)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (col);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (col->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -1076,7 +1072,7 @@ db_col_add (DB_COLLECTION * col, DB_VALUE * value)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (col);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (col->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -1103,7 +1099,7 @@ db_col_drop (DB_COLLECTION * col, DB_VALUE * value, int all)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (col);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (col->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -1131,16 +1127,14 @@ db_col_drop_element (DB_COLLECTION * col, int element_index)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (col);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (col->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
     }
 
-  /* kludge, not preventing SET or MULTISET operations, might want to define
-   * some behavior here, even thouth the resulting set order after the drop
-   * is undefined.
-   */
+  /* kludge, not preventing SET or MULTISET operations, might want to define some behavior here, even thouth the
+   * resulting set order after the drop is undefined. */
   error = set_drop_seq_element (col, element_index);
 
   return error;
@@ -1161,7 +1155,7 @@ db_col_drop_nulls (DB_COLLECTION * col)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (col);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (col->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -1271,7 +1265,7 @@ db_col_put (DB_COLLECTION * col, int element_index, DB_VALUE * value)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (col);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (col->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -1311,7 +1305,7 @@ db_col_insert (DB_COLLECTION * col, int element_index, DB_VALUE * value)
   CHECK_CONNECT_ERROR ();
   CHECK_1ARG_ERROR (col);
 
-  /*  Check if modifications are disabled only if the set is owned */
+  /* Check if modifications are disabled only if the set is owned */
   if (col->owner != NULL)
     {
       CHECK_MODIFICATION_ERROR ();
@@ -1381,8 +1375,7 @@ db_col_ismember (DB_COLLECTION * col, DB_VALUE * value)
  *   the last db_col_find() call plus one.
  */
 int
-db_col_find (DB_COLLECTION * col, DB_VALUE * value,
-	     int starting_index, int *found_index)
+db_col_find (DB_COLLECTION * col, DB_VALUE * value, int starting_index, int *found_index)
 {
   int error = NO_ERROR;
   int psn;

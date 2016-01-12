@@ -75,23 +75,12 @@ static int dbcs_get_next_w_char (PARSER_CONTEXT * parser);
 static int dbcs_convert_w_char (int input_char);
 static int dbcs_get_next_token_wchar (PARSER_CONTEXT * parser);
 static int dbcs_process_csql (PARSER_CONTEXT * parser, int converted_char);
-static int dbcs_process_double_quote_string (PARSER_CONTEXT * parser,
-					     int input_char,
-					     int converted_char);
-static int dbcs_process_double_quote_string_octal (PARSER_CONTEXT * parser,
-						   int input_char,
-						   int converted_char);
-static int dbcs_process_double_quote_string_hexa (PARSER_CONTEXT * parser,
-						  int input_char,
-						  int converted_char);
-static int dbcs_process_double_quote_string_decimal (PARSER_CONTEXT * parser,
-						     int input_char,
-						     int converted_char);
-static int dbcs_process_single_quote_string (PARSER_CONTEXT * parser,
-					     int input_char,
-					     int converted_char);
-static int dbcs_process_c_comment (PARSER_CONTEXT * parser, int input_char,
-				   int converted_char);
+static int dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char, int converted_char);
+static int dbcs_process_double_quote_string_octal (PARSER_CONTEXT * parser, int input_char, int converted_char);
+static int dbcs_process_double_quote_string_hexa (PARSER_CONTEXT * parser, int input_char, int converted_char);
+static int dbcs_process_double_quote_string_decimal (PARSER_CONTEXT * parser, int input_char, int converted_char);
+static int dbcs_process_single_quote_string (PARSER_CONTEXT * parser, int input_char, int converted_char);
+static int dbcs_process_c_comment (PARSER_CONTEXT * parser, int input_char, int converted_char);
 
 /*
  * dbcs_start_input () -
@@ -101,8 +90,8 @@ void
 dbcs_start_input (void)
 {
   dbcs_Unget_buf = DBCS_UNGET_BUF;	/* Lead ahead buffer */
-  dbcs_Input_status = CSQL_;	/* Scanning status   */
-  dbcs_Latter_flag = 0;		/* Two byte code     */
+  dbcs_Input_status = CSQL_;	/* Scanning status */
+  dbcs_Latter_flag = 0;		/* Two byte code */
 }
 
 /*
@@ -185,8 +174,7 @@ dbcs_get_next_token_wchar (PARSER_CONTEXT * parser)
 
     case SQL_COMMENT_:
     case CPP_COMMENT_:
-      /* Scanning C++ style or SQL comment. Because termination condition
-       * is the same, we have common source lines */
+      /* Scanning C++ style or SQL comment. Because termination condition is the same, we have common source lines */
       if (converted_char == '\n')
 	{
 	  DBCS_STATUS_RETURN (CSQL_, converted_char);
@@ -202,8 +190,7 @@ dbcs_get_next_token_wchar (PARSER_CONTEXT * parser)
 
     case SQS_:
       /* Scanning single quote character strings */
-      return (dbcs_process_single_quote_string (parser, input_char,
-						converted_char));
+      return (dbcs_process_single_quote_string (parser, input_char, converted_char));
 
     case SQS_TRANSPARENT_:
       /* This happenes in the latter character of contiguous back slash */
@@ -211,39 +198,32 @@ dbcs_get_next_token_wchar (PARSER_CONTEXT * parser)
 
     case DQS_:
       /* Scanning double quote character strings */
-      return (dbcs_process_double_quote_string (parser, input_char,
-						converted_char));
+      return (dbcs_process_double_quote_string (parser, input_char, converted_char));
 
     case DQS_TRANSPARENT_:
     case DQS_TRANSPARENT_2:
-      /* This happenes in the latter characters of escape sequences
-       * in double quote string */
+      /* This happenes in the latter characters of escape sequences in double quote string */
       DBCS_STATUS_RETURN (DQS_, input_char);
 
     case DQS_OCTAL_:
       /* Scanning octal escape sequence in double quote string */
-      return (dbcs_process_double_quote_string_octal (parser, input_char,
-						      converted_char));
+      return (dbcs_process_double_quote_string_octal (parser, input_char, converted_char));
 
     case DQS_HEXA_:
       /* Scanning hexadecimal escape sequence in double quote string */
-      return (dbcs_process_double_quote_string_hexa (parser, input_char,
-						     converted_char));
+      return (dbcs_process_double_quote_string_hexa (parser, input_char, converted_char));
 
     case DQS_HEXA_BEGIN_:
-      /* Scanning third character of hexadecimal escape sequence in
-       * double quote string, that is, x (\0x__) */
+      /* Scanning third character of hexadecimal escape sequence in double quote string, that is, x (\0x__) */
       DBCS_STATUS_RETURN (DQS_HEXA_, converted_char);
 
     case DQS_HEXA_BEGIN_2:
-      /* Scanning second character of hexadecimal escape sequence in
-       * double quote string, that is, 0 (\0x__) */
+      /* Scanning second character of hexadecimal escape sequence in double quote string, that is, 0 (\0x__) */
       DBCS_STATUS_RETURN (DQS_HEXA_BEGIN_, converted_char);
 
     case DQS_DECIMAL_:
       /* Scanning decimal escape sequence in double quote string */
-      return (dbcs_process_double_quote_string_decimal (parser, input_char,
-							converted_char));
+      return (dbcs_process_double_quote_string_decimal (parser, input_char, converted_char));
     }
 
   return converted_char;
@@ -259,11 +239,9 @@ dbcs_get_next_token_wchar (PARSER_CONTEXT * parser)
  *   converted_char(in):
  */
 static int
-dbcs_process_double_quote_string_hexa (PARSER_CONTEXT * parser,
-				       int input_char, int converted_char)
+dbcs_process_double_quote_string_hexa (PARSER_CONTEXT * parser, int input_char, int converted_char)
 {
-  if ((converted_char >= '0' && converted_char <= '9')
-      || (converted_char >= 'A' && converted_char <= 'F')
+  if ((converted_char >= '0' && converted_char <= '9') || (converted_char >= 'A' && converted_char <= 'F')
       || (converted_char >= 'a' && converted_char <= 'f'))
     {
       return (converted_char);	/* Within the sequence */
@@ -272,8 +250,7 @@ dbcs_process_double_quote_string_hexa (PARSER_CONTEXT * parser,
     {
       /* Sequence terminated.  Back to double quote string */
       dbcs_Input_status = DQS_;
-      return (dbcs_process_double_quote_string (parser, input_char,
-						converted_char));
+      return (dbcs_process_double_quote_string (parser, input_char, converted_char));
     }
 }
 
@@ -287,8 +264,7 @@ dbcs_process_double_quote_string_hexa (PARSER_CONTEXT * parser,
  *   converted_char(in):
  */
 static int
-dbcs_process_double_quote_string_decimal (PARSER_CONTEXT * parser,
-					  int input_char, int converted_char)
+dbcs_process_double_quote_string_decimal (PARSER_CONTEXT * parser, int input_char, int converted_char)
 {
   if (converted_char >= '0' && converted_char <= '9')
     {
@@ -298,8 +274,7 @@ dbcs_process_double_quote_string_decimal (PARSER_CONTEXT * parser,
     {
       /* Sequence terminated.  Back to double quote string */
       dbcs_Input_status = DQS_;
-      return (dbcs_process_double_quote_string (parser, input_char,
-						converted_char));
+      return (dbcs_process_double_quote_string (parser, input_char, converted_char));
     }
 }
 
@@ -313,8 +288,7 @@ dbcs_process_double_quote_string_decimal (PARSER_CONTEXT * parser,
  *   converted_char(in):
  */
 static int
-dbcs_process_double_quote_string_octal (PARSER_CONTEXT * parser,
-					int input_char, int converted_char)
+dbcs_process_double_quote_string_octal (PARSER_CONTEXT * parser, int input_char, int converted_char)
 {
   if (converted_char >= '0' && converted_char <= '7')
     {
@@ -324,8 +298,7 @@ dbcs_process_double_quote_string_octal (PARSER_CONTEXT * parser,
     {
       /* Sequence terminated.  Back to double quote string */
       dbcs_Input_status = DQS_;
-      return (dbcs_process_double_quote_string (parser, input_char,
-						converted_char));
+      return (dbcs_process_double_quote_string (parser, input_char, converted_char));
     }
 }
 
@@ -345,8 +318,7 @@ dbcs_process_double_quote_string_octal (PARSER_CONTEXT * parser,
  *   3) Error token.
  */
 static int
-dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
-				  int converted_char)
+dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char, int converted_char)
 {
   switch (converted_char)
     {
@@ -362,7 +334,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
 	switch (c1_c = dbcs_convert_w_char (c1))
 	  {
 	  case '"':
-	    /*
+	    /* 
 	     * Contiguous double quote.  Then we may scann double quote
 	     * string later still.
 	     */
@@ -370,16 +342,15 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
 	      {
 		if (input_char == '"')
 		  {
-		    /*
+		    /* 
 		     * Single byte double quote. Then, latter half character
 		     * has to be scanned next time.
 		     */
-		    DBCS_STATUS_UNGET_RETURN (DQS_TRANSPARENT_, c1,
-					      input_char);
+		    DBCS_STATUS_UNGET_RETURN (DQS_TRANSPARENT_, c1, input_char);
 		  }
 		else
 		  {
-		    /*
+		    /* 
 		     * Double byte double quote.  Main scanner does not require
 		     * escape sequence to accept this.
 		     */
@@ -392,7 +363,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
 		DBCS_STATUS_UNGET_RETURN (CSQL_, c1, converted_char);
 	      }
 	  default:
-	    /*
+	    /* 
 	     * Double quote did not appear after the double quote.  Then
 	     * terminate double quote string status and go back to SQL/X
 	     * statement status.
@@ -425,8 +396,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
 	  case '?':
 	    if (c1 == '?')
 	      {
-		DBCS_STATUS_UNGET_RETURN (DQS_TRANSPARENT_, c1,
-					  converted_char);
+		DBCS_STATUS_UNGET_RETURN (DQS_TRANSPARENT_, c1, converted_char);
 	      }
 	    else
 	      {
@@ -436,8 +406,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
 	  case '\'':
 	    if (c1 == '\'')
 	      {
-		DBCS_STATUS_UNGET_RETURN (DQS_TRANSPARENT_, c1_c,
-					  converted_char);
+		DBCS_STATUS_UNGET_RETURN (DQS_TRANSPARENT_, c1_c, converted_char);
 	      }
 	    else
 	      {
@@ -447,8 +416,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
 	  case '"':
 	    if (c1 == '"')
 	      {
-		DBCS_STATUS_UNGET_RETURN (DQS_TRANSPARENT_, c1_c,
-					  converted_char);
+		DBCS_STATUS_UNGET_RETURN (DQS_TRANSPARENT_, c1_c, converted_char);
 	      }
 	    else
 	      {
@@ -471,8 +439,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
 		case 'x':
 		  /* Begen hexadecimal representation */
 		  *dbcs_Unget_buf++ = c2;
-		  DBCS_STATUS_UNGET_RETURN (DQS_HEXA_BEGIN_2, c1,
-					    converted_char);
+		  DBCS_STATUS_UNGET_RETURN (DQS_HEXA_BEGIN_2, c1, converted_char);
 		default:
 		  /* Begin Octal representation */
 		  *dbcs_Unget_buf++ = c2;
@@ -493,8 +460,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
 	      }
 	    else
 	      {
-		DBCS_STATUS_UNGET_RETURN (DQS_TRANSPARENT_, c1,
-					  converted_char);
+		DBCS_STATUS_UNGET_RETURN (DQS_TRANSPARENT_, c1, converted_char);
 	      }
 	  }
     default:
@@ -513,8 +479,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char,
  *   converted_char(in):
  */
 static int
-dbcs_process_single_quote_string (PARSER_CONTEXT * parser, int input_char,
-				  int converted_char)
+dbcs_process_single_quote_string (PARSER_CONTEXT * parser, int input_char, int converted_char)
 {
   switch (converted_char)
     {
@@ -535,8 +500,7 @@ dbcs_process_single_quote_string (PARSER_CONTEXT * parser, int input_char,
 	      {
 		if (input_char == '\'')
 		  {
-		    DBCS_STATUS_UNGET_RETURN (SQS_TRANSPARENT_, c1,
-					      input_char);
+		    DBCS_STATUS_UNGET_RETURN (SQS_TRANSPARENT_, c1, input_char);
 		  }
 		else
 		  {
@@ -556,8 +520,7 @@ dbcs_process_single_quote_string (PARSER_CONTEXT * parser, int input_char,
 
     case '\\':
       {
-	/* In single quote string, backslash escape is used only to
-	 * delimit lengthy string with new line. */
+	/* In single quote string, backslash escape is used only to delimit lengthy string with new line. */
 	int c1;
 
 	if ((c1 = dbcs_get_next_w_char (parser)) == EOF)
@@ -590,8 +553,7 @@ dbcs_process_single_quote_string (PARSER_CONTEXT * parser, int input_char,
  *   converted_char(in):
  */
 static int
-dbcs_process_c_comment (PARSER_CONTEXT * parser, int input_char,
-			int converted_char)
+dbcs_process_c_comment (PARSER_CONTEXT * parser, int input_char, int converted_char)
 {
   switch (converted_char)
     {
@@ -606,7 +568,7 @@ dbcs_process_c_comment (PARSER_CONTEXT * parser, int input_char,
 
 	if ((c1_c = dbcs_convert_w_char (c1)) == '/')
 	  {
-	    /*
+	    /* 
 	     * Because this is the end of the C-comment, converted value is
 	     * returned so that this is recognized by the parser correctly.
 	     */
@@ -614,7 +576,7 @@ dbcs_process_c_comment (PARSER_CONTEXT * parser, int input_char,
 	    DBCS_STATUS_RETURN (CSQL_BEGIN_, converted_char);
 	  }
 
-	/*
+	/* 
 	 * Because this is a part of comment, input character is returned
 	 * without conversion.
 	 */
@@ -741,10 +703,8 @@ dbcs_get_next_w_char (PARSER_CONTEXT * parser)
 static int
 dbcs_convert_w_char (int input_char)
 {
-  if (dbcs_Input_status == DQS_ ||
-      dbcs_Input_status == DQS_TRANSPARENT_ ||
-      dbcs_Input_status == DQS_TRANSPARENT_2 ||
-      dbcs_Input_status == SQS_ || dbcs_Input_status == SQS_TRANSPARENT_)
+  if (dbcs_Input_status == DQS_ || dbcs_Input_status == DQS_TRANSPARENT_ || dbcs_Input_status == DQS_TRANSPARENT_2
+      || dbcs_Input_status == SQS_ || dbcs_Input_status == SQS_TRANSPARENT_)
     {
       return (input_char);
     }

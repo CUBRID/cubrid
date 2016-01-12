@@ -139,12 +139,10 @@ cas_bi_set_function_enable (BI_FUNCTION_CODE function_code)
   switch (function_code)
     {
     case BI_FUNC_ERROR_CODE:
-      SET_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG],
-	       BROKER_RENEWED_ERROR_CODE);
+      SET_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG], BROKER_RENEWED_ERROR_CODE);
       break;
     case BI_FUNC_SUPPORT_HOLDABLE_RESULT:
-      SET_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG],
-	       BROKER_SUPPORT_HOLDABLE_RESULT);
+      SET_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG], BROKER_SUPPORT_HOLDABLE_RESULT);
       break;
     default:
       assert (false);
@@ -158,12 +156,10 @@ cas_bi_set_function_disable (BI_FUNCTION_CODE function_code)
   switch (function_code)
     {
     case BI_FUNC_ERROR_CODE:
-      CLEAR_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG],
-		 BROKER_RENEWED_ERROR_CODE);
+      CLEAR_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG], BROKER_RENEWED_ERROR_CODE);
       break;
     case BI_FUNC_SUPPORT_HOLDABLE_RESULT:
-      CLEAR_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG],
-		 BROKER_SUPPORT_HOLDABLE_RESULT);
+      CLEAR_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG], BROKER_SUPPORT_HOLDABLE_RESULT);
       break;
     default:
       assert (false);
@@ -177,11 +173,9 @@ cas_bi_is_enabled_function (BI_FUNCTION_CODE function_code)
   switch (function_code)
     {
     case BI_FUNC_ERROR_CODE:
-      return IS_SET_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG],
-			 BROKER_RENEWED_ERROR_CODE);
+      return IS_SET_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG], BROKER_RENEWED_ERROR_CODE);
     case BI_FUNC_SUPPORT_HOLDABLE_RESULT:
-      return IS_SET_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG],
-			 BROKER_SUPPORT_HOLDABLE_RESULT);
+      return IS_SET_BIT (broker_info[BROKER_INFO_FUNCTION_FLAG], BROKER_SUPPORT_HOLDABLE_RESULT);
     default:
       return 0;
     }
@@ -209,19 +203,16 @@ cas_bi_get_renewed_error_code (void)
 bool
 cas_di_understand_renewed_error_code (const char *driver_info)
 {
-  if (!IS_SET_BIT (driver_info[SRV_CON_MSG_IDX_PROTO_VERSION],
-		   CAS_PROTO_INDICATOR))
+  if (!IS_SET_BIT (driver_info[SRV_CON_MSG_IDX_PROTO_VERSION], CAS_PROTO_INDICATOR))
     {
       return false;
     }
 
-  return IS_SET_BIT (driver_info[DRIVER_INFO_FUNCTION_FLAG],
-		     BROKER_RENEWED_ERROR_CODE);
+  return IS_SET_BIT (driver_info[DRIVER_INFO_FUNCTION_FLAG], BROKER_RENEWED_ERROR_CODE);
 }
 
 void
-cas_bi_make_broker_info (char *broker_info, char dbms_type,
-			 char statement_pooling, char cci_pconnect)
+cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooling, char cci_pconnect)
 {
   broker_info[BROKER_INFO_DBMS_TYPE] = dbms_type;
   broker_info[BROKER_INFO_KEEP_CONNECTION] = CAS_KEEP_CONNECTION_ON;
@@ -233,12 +224,10 @@ cas_bi_make_broker_info (char *broker_info, char dbms_type,
     {
       broker_info[BROKER_INFO_STATEMENT_POOLING] = CAS_STATEMENT_POOLING_OFF;
     }
-  broker_info[BROKER_INFO_CCI_PCONNECT] =
-    (cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF);
+  broker_info[BROKER_INFO_CCI_PCONNECT] = (cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF);
 
   broker_info[BROKER_INFO_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
-  broker_info[BROKER_INFO_FUNCTION_FLAG]
-    = BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
+  broker_info[BROKER_INFO_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
   broker_info[BROKER_INFO_RESERVED2] = 0;
   broker_info[BROKER_INFO_RESERVED3] = 0;
 }

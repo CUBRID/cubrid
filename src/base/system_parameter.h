@@ -76,13 +76,8 @@ enum compat_mode
   COMPAT_CUBRID,
   COMPAT_MYSQL,
   COMPAT_ORACLE
-    /*
-       COMPAT_ANSI,
-       COMPAT_DB2,
-       COMPAT_MAXDB,
-       COMPAT_MSSQL,
-       COMPAT_POSTGRESQL
-     */
+    /* 
+     * COMPAT_ANSI, COMPAT_DB2, COMPAT_MAXDB, COMPAT_MSSQL, COMPAT_POSTGRESQL */
 };
 
 typedef enum query_trace_format QUERY_TRACE_FORMAT;
@@ -299,10 +294,9 @@ enum param_id
   PRM_ID_MULTI_RANGE_OPT_LIMIT,
   PRM_ID_INTL_NUMBER_LANG,
   PRM_ID_INTL_DATE_LANG,
-  /* All the compound parameters *must* be at the end of the array so that the
-     changes they cause are not overridden by other parameters (for example in
-     sysprm_load_and_init the parameters are set to their default in the order
-     they are found in this array). */
+  /* All the compound parameters *must* be at the end of the array so that the changes they cause are not overridden by 
+   * other parameters (for example in sysprm_load_and_init the parameters are set to their default in the order they
+   * are found in this array). */
   PRM_ID_COMPAT_MODE,
   PRM_ID_DB_VOLUME_SIZE,
   PRM_ID_LOG_VOLUME_SIZE,
@@ -470,35 +464,25 @@ extern void prm_set_integer_list_value (PARAM_ID prm_id, int *value);
 extern void prm_set_bigint_value (PARAM_ID prm_id, UINT64 value);
 
 extern bool sysprm_find_err_in_integer_list (PARAM_ID prm_id, int error_code);
-extern bool sysprm_find_fi_code_in_integer_list (PARAM_ID prm_id,
-						 int fi_code);
+extern bool sysprm_find_fi_code_in_integer_list (PARAM_ID prm_id, int fi_code);
 
 extern int sysprm_load_and_init (const char *db_name, const char *conf_file);
-extern int sysprm_load_and_init_client (const char *db_name,
-					const char *conf_file);
-extern int sysprm_reload_and_init (const char *db_name,
-				   const char *conf_file);
+extern int sysprm_load_and_init_client (const char *db_name, const char *conf_file);
+extern int sysprm_reload_and_init (const char *db_name, const char *conf_file);
 extern void sysprm_final (void);
 extern void sysprm_dump_parameters (FILE * fp);
 extern void sysprm_set_er_log_file (const char *base_db_name);
 extern void sysprm_dump_server_parameters (FILE * fp);
-extern int sysprm_obtain_parameters (char *data,
-				     SYSPRM_ASSIGN_VALUE ** prm_values);
-extern int sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE *
-					    assignments);
-extern int sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE **
-					    prm_values_ptr);
-extern int sysprm_get_force_server_parameters (SYSPRM_ASSIGN_VALUE **
-					       change_values);
+extern int sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values);
+extern int sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments);
+extern int sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE ** prm_values_ptr);
+extern int sysprm_get_force_server_parameters (SYSPRM_ASSIGN_VALUE ** change_values);
 extern void sysprm_tune_client_parameters (void);
-extern void sysprm_free_session_parameters (SESSION_PARAM **
-					    session_parameters);
+extern void sysprm_free_session_parameters (SESSION_PARAM ** session_parameters);
 
 #if !defined (CS_MODE)
-extern void xsysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE *
-					      assignments);
-extern void xsysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE *
-					      prm_values);
+extern void xsysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments);
+extern void xsysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE * prm_values);
 extern SYSPRM_ASSIGN_VALUE *xsysprm_get_force_server_parameters (void);
 extern void xsysprm_dump_server_parameters (FILE * fp);
 #endif /* !CS_MODE */
@@ -511,56 +495,33 @@ extern int prm_get_master_port_id (void);
 extern bool prm_get_commit_on_shutdown (void);
 extern bool prm_get_query_mode_sync (void);
 
-extern char *sysprm_pack_session_parameters (char *ptr,
-					     SESSION_PARAM *
-					     session_parameters);
-extern int sysprm_packed_session_parameters_length (SESSION_PARAM *
-						    session_parameters,
-						    int offset);
-extern char *sysprm_unpack_session_parameters (char *ptr,
-					       SESSION_PARAM **
-					       session_parameters_ptr);
-extern char *sysprm_pack_assign_values (char *ptr,
-					const SYSPRM_ASSIGN_VALUE *
-					assign_values);
-extern int sysprm_packed_assign_values_length (const SYSPRM_ASSIGN_VALUE *
-					       assign_values, int offset);
-extern char *sysprm_unpack_assign_values (char *ptr,
-					  SYSPRM_ASSIGN_VALUE **
-					  assign_values_ptr);
-extern void sysprm_free_assign_values (SYSPRM_ASSIGN_VALUE **
-				       assign_values_ptr);
-extern void sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE *
-					    assignments,
-					    bool check, bool set_flag);
+extern char *sysprm_pack_session_parameters (char *ptr, SESSION_PARAM * session_parameters);
+extern int sysprm_packed_session_parameters_length (SESSION_PARAM * session_parameters, int offset);
+extern char *sysprm_unpack_session_parameters (char *ptr, SESSION_PARAM ** session_parameters_ptr);
+extern char *sysprm_pack_assign_values (char *ptr, const SYSPRM_ASSIGN_VALUE * assign_values);
+extern int sysprm_packed_assign_values_length (const SYSPRM_ASSIGN_VALUE * assign_values, int offset);
+extern char *sysprm_unpack_assign_values (char *ptr, SYSPRM_ASSIGN_VALUE ** assign_values_ptr);
+extern void sysprm_free_assign_values (SYSPRM_ASSIGN_VALUE ** assign_values_ptr);
+extern void sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments, bool check, bool set_flag);
 
 #if defined (SERVER_MODE)
-extern int sysprm_session_init_session_parameters (SESSION_PARAM **
-						   session_params,
-						   int
-						   *found_session_parameters);
+extern int sysprm_session_init_session_parameters (SESSION_PARAM ** session_params, int *found_session_parameters);
 #endif /* SERVER_MODE */
 
 #if defined (CS_MODE)
-extern void sysprm_update_client_session_parameters (SESSION_PARAM *
-						     session_parameters);
+extern void sysprm_update_client_session_parameters (SESSION_PARAM * session_parameters);
 #endif /* CS_MODE */
 
 #if !defined (SERVER_MODE)
 extern char *sysprm_print_parameters_for_qry_string (void);
 extern char *sysprm_print_parameters_for_ha_repl (void);
-extern SYSPRM_ERR sysprm_validate_change_parameters (const char *data,
-						     bool check,
-						     SYSPRM_ASSIGN_VALUE **
-						     assignments_ptr);
-extern SYSPRM_ERR
-sysprm_make_default_values (const char *data, char *default_val_buf,
-			    const int buf_size);
+extern SYSPRM_ERR sysprm_validate_change_parameters (const char *data, bool check,
+						     SYSPRM_ASSIGN_VALUE ** assignments_ptr);
+extern SYSPRM_ERR sysprm_make_default_values (const char *data, char *default_val_buf, const int buf_size);
 extern int sysprm_init_intl_param (void);
 #endif /* !SERVER_MODE */
 
-extern int sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values,
-				       char *buffer, int length);
+extern int sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int length);
 extern int sysprm_set_error (SYSPRM_ERR rc, const char *data);
 extern int sysprm_get_session_parameters_count (void);
 #endif /* _SYSTEM_PARAMETER_H_ */

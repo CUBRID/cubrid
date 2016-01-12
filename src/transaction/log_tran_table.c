@@ -118,9 +118,7 @@
 
 static const int LOG_MAX_NUM_CONTIGUOUS_TDES = INT_MAX / sizeof (LOG_TDES);
 static const float LOG_EXPAND_TRANTABLE_RATIO = 1.25;	/* Increase table by 25% */
-static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested
-							 * top system operations
-							 */
+static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested top system operations */
 static const char *log_Client_id_unknown_string = "(unknown)";
 static BOOT_CLIENT_CREDENTIAL log_Client_credential = {
   BOOT_CLIENT_SYSTEM_INTERNAL,	/* client_type */
@@ -136,15 +134,10 @@ static BOOT_CLIENT_CREDENTIAL log_Client_credential = {
   -1				/* process_id */
 };
 
-static int logtb_expand_trantable (THREAD_ENTRY * thread_p,
-				   int num_new_indices);
-static int logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
-				      TRAN_STATE state,
-				      const BOOT_CLIENT_CREDENTIAL *
-				      client_credential,
-				      TRAN_STATE * current_state,
-				      int wait_msecs,
-				      TRAN_ISOLATION isolation);
+static int logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices);
+static int logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
+				      const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state,
+				      int wait_msecs, TRAN_ISOLATION isolation);
 static void logtb_initialize_tdes (LOG_TDES * tdes, int tran_index);
 static LOG_ADDR_TDESAREA *logtb_allocate_tdes_area (int num_indices);
 static void logtb_initialize_trantable (TRANTABLE * trantable_p);
@@ -154,78 +147,45 @@ static void logtb_increment_number_of_assigned_tran_indices ();
 static void logtb_decrement_number_of_assigned_tran_indices ();
 static void logtb_set_number_of_total_tran_indices (int num_total_trans);
 static void logtb_set_loose_end_tdes (LOG_TDES * tdes);
-static bool logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p,
-				       LOG_TDES * tdes, bool clear,
-				       bool * continue_checking);
-static void logtb_dump_tdes_distribute_transaction (FILE * out_fp,
-						    int global_tran_id,
-						    LOG_2PC_COORDINATOR *
-						    coord);
-static void logtb_dump_top_operations (FILE * out_fp,
-				       LOG_TOPOPS_STACK * topops_p);
+static bool logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear, bool * continue_checking);
+static void logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id, LOG_2PC_COORDINATOR * coord);
+static void logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p);
 static void logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes);
-static void logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-			    const BOOT_CLIENT_CREDENTIAL * client_credential,
+static void logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CREDENTIAL * client_credential,
 			    int wait_msecs, TRAN_ISOLATION isolation);
 static int logtb_initialize_mvcctable (void);
 static void logtb_finalize_mvcctable (THREAD_ENTRY * thread_p);
-static void logtb_get_lowest_active_mvccid (UINT64 * bit_area,
-					    int bit_area_length,
-					    MVCCID bit_area_start_mvccid,
-					    MVCCID * long_tran_mvccids,
-					    unsigned int
-					    long_tran_mvccids_length,
+static void logtb_get_lowest_active_mvccid (UINT64 * bit_area, int bit_area_length, MVCCID bit_area_start_mvccid,
+					    MVCCID * long_tran_mvccids, unsigned int long_tran_mvccids_length,
 					    MVCCID * lowest_active_mvccid);
-static void logtb_get_highest_completed_mvccid (UINT64 * bit_area,
-						int bit_area_length,
-						MVCCID bit_area_start_mvccid,
-						MVCCID *
-						highest_completed_mvccid);
+static void logtb_get_highest_completed_mvccid (UINT64 * bit_area, int bit_area_length, MVCCID bit_area_start_mvccid,
+						MVCCID * highest_completed_mvccid);
 static int logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p);
 
-static void logtb_tran_free_update_stats (LOG_TRAN_UPDATE_STATS *
-					  log_upd_stats);
-static void logtb_tran_clear_update_stats (LOG_TRAN_UPDATE_STATS *
-					   log_upd_stats);
-static unsigned int logtb_tran_btid_hash_func (const void *key,
-					       const unsigned int ht_size);
+static void logtb_tran_free_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats);
+static void logtb_tran_clear_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats);
+static unsigned int logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size);
 static int logtb_tran_btid_hash_cmp_func (const void *key1, const void *key2);
-static LOG_TRAN_CLASS_COS
-  * logtb_tran_create_class_cos (THREAD_ENTRY * thread_p,
-				 const OID * class_oid);
-static LOG_TRAN_BTID_UNIQUE_STATS
-  * logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p,
-					 const BTID * btid);
-static int logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p,
-					      void *data, void *args);
-static int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY *
-						      thread_p);
-static int logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p,
-					      void *data, void *args);
-static int logtb_tran_reset_cos_func (THREAD_ENTRY * thread_p, void *data,
-				      void *args);
+static LOG_TRAN_CLASS_COS *logtb_tran_create_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid);
+static LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid);
+static int logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p, void *data, void *args);
+static int logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p);
+static int logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *args);
+static int logtb_tran_reset_cos_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p);
-static int logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p,
-						OID * class_oid);
-static GLOBAL_UNIQUE_STATS *logtb_get_global_unique_stats_entry (THREAD_ENTRY
-								 * thread_p,
-								 BTID * btid,
-								 bool
-								 load_at_creation);
+static int logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid);
+static GLOBAL_UNIQUE_STATS *logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
+								 bool load_at_creation);
 static void *logtb_global_unique_stat_alloc (void);
 static int logtb_global_unique_stat_free (void *unique_stat);
 static int logtb_global_unique_stat_init (void *unique_stat);
 static int logtb_global_unique_stat_key_copy (void *src, void *dest);
-static unsigned int logtb_global_unique_stat_key_hash (void *key,
-						       int hash_table_size);
+static unsigned int logtb_global_unique_stat_key_hash (void *key, int hash_table_size);
 static int logtb_global_unique_stat_key_compare (void *k1, void *k2);
 static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
-static int logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p,
-					 MVCC_SNAPSHOT * snapshot);
+static int logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * snapshot);
 
-static int logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p,
-					       MVCC_INFO * curr_mvcc_info,
-					       MVCCID mvcc_subid);
+static int logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
 
 /*
  * logtb_realloc_topops_stack - realloc stack of top system operations
@@ -264,8 +224,7 @@ logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms)
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       return NULL;
     }
   return tdes->topops.stack;
@@ -283,14 +242,12 @@ logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms)
 static LOG_ADDR_TDESAREA *
 logtb_allocate_tdes_area (int num_indices)
 {
-  LOG_ADDR_TDESAREA *area;	/* Contiguous area for new
-				 * transaction indices
-				 */
+  LOG_ADDR_TDESAREA *area;	/* Contiguous area for new transaction indices */
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i, tran_index;
   size_t area_size;
 
-  /*
+  /* 
    * Allocate an area for the transaction descriptors, set the address of
    * each transaction descriptor, and keep the address of the area for
    * deallocation purposes at shutdown time.
@@ -299,20 +256,17 @@ logtb_allocate_tdes_area (int num_indices)
   area = (LOG_ADDR_TDESAREA *) malloc (area_size);
   if (area == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, area_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
       return NULL;
     }
 
-  area->tdesarea = ((LOG_TDES *) ((char *) area
-				  + sizeof (LOG_ADDR_TDESAREA)));
+  area->tdesarea = ((LOG_TDES *) ((char *) area + sizeof (LOG_ADDR_TDESAREA)));
   area->next = log_Gl.trantable.area;
 
-  /*
+  /* 
    * Initialize every newly created transaction descriptor index
    */
-  for (i = 0, tran_index = NUM_TOTAL_TRAN_INDICES;
-       i < num_indices; tran_index++, i++)
+  for (i = 0, tran_index = NUM_TOTAL_TRAN_INDICES; i < num_indices; tran_index++, i++)
     {
       tdes = log_Gl.trantable.all_tdes[tran_index] = &area->tdesarea[i];
       logtb_initialize_tdes (tdes, i);
@@ -341,13 +295,12 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   MVCCTABLE *mvcc_table;
 
 #if defined(SERVER_MODE)
-  /*
+  /* 
    * When second time this function invoked during normal processing,
    * just return.
    */
   total_indices = MAX_NTRANS;
-  if (log_Gl.rcv_phase == LOG_RESTARTED
-      && total_indices <= NUM_TOTAL_TRAN_INDICES)
+  if (log_Gl.rcv_phase == LOG_RESTARTED && total_indices <= NUM_TOTAL_TRAN_INDICES)
     {
       return NO_ERROR;
     }
@@ -355,8 +308,7 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
 
   while (num_new_indices > LOG_MAX_NUM_CONTIGUOUS_TDES)
     {
-      error_code =
-	logtb_expand_trantable (thread_p, LOG_MAX_NUM_CONTIGUOUS_TDES);
+      error_code = logtb_expand_trantable (thread_p, LOG_MAX_NUM_CONTIGUOUS_TDES);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -378,17 +330,15 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   total_indices = NUM_TOTAL_TRAN_INDICES + num_new_indices;
 #endif
 
-  /*
+  /* 
    * NOTE that this realloc is OK since we are in a critical section.
    * Nobody should have pointer to transaction table
    */
   i = total_indices * sizeof (*log_Gl.trantable.all_tdes);
-  log_Gl.trantable.all_tdes =
-    (LOG_TDES **) realloc (log_Gl.trantable.all_tdes, i);
+  log_Gl.trantable.all_tdes = (LOG_TDES **) realloc (log_Gl.trantable.all_tdes, i);
   if (log_Gl.trantable.all_tdes == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) i);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) i);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -400,7 +350,7 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
       goto error;
     }
 
-  /*
+  /* 
    * Notify other modules of new number of transaction indices
    */
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -417,15 +367,12 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   if (mvcc_table->transaction_lowest_active_mvccids != NULL)
     {
       mvcc_table->transaction_lowest_active_mvccids =
-	(MVCCID *) realloc ((void *) mvcc_table->
-			    transaction_lowest_active_mvccids,
-			    total_indices * sizeof (MVCCID));
+	(MVCCID *) realloc ((void *) mvcc_table->transaction_lowest_active_mvccids, total_indices * sizeof (MVCCID));
       if (mvcc_table->transaction_lowest_active_mvccids == NULL)
 	{
 	  free_and_init (area);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, total_indices * sizeof (MVCCID));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_indices * sizeof (MVCCID));
 
 	  goto error;
 	}
@@ -462,8 +409,7 @@ error:
  *              number of expected transactions.
  */
 void
-logtb_define_trantable (THREAD_ENTRY * thread_p,
-			int num_expected_tran_indices, int num_expected_locks)
+logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, int num_expected_locks)
 {
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
@@ -475,8 +421,7 @@ logtb_define_trantable (THREAD_ENTRY * thread_p,
       logpb_finalize_pool ();
     }
 
-  (void) logtb_define_trantable_log_latch (thread_p,
-					   num_expected_tran_indices);
+  (void) logtb_define_trantable_log_latch (thread_p, num_expected_tran_indices);
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
@@ -498,14 +443,13 @@ logtb_define_trantable (THREAD_ENTRY * thread_p,
  *              other uses).
  */
 int
-logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p,
-				  int num_expected_tran_indices)
+logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran_indices)
 {
   int error_code = NO_ERROR;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  /*
+  /* 
    * for XA support: there is prepared transaction after recovery.
    *                 so, can not recreate transaction description
    *                 table after recovery.
@@ -515,8 +459,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p,
    */
   num_expected_tran_indices = MAX (num_expected_tran_indices, MAX_NTRANS);
 
-  num_expected_tran_indices = MAX (num_expected_tran_indices,
-				   LOG_SYSTEM_TRAN_INDEX + 1);
+  num_expected_tran_indices = MAX (num_expected_tran_indices, LOG_SYSTEM_TRAN_INDEX + 1);
 
   /* If there is an already defined table, free such a table */
   if (log_Gl.trantable.area != NULL)
@@ -529,14 +472,14 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p,
       logtb_initialize_trantable (&log_Gl.trantable);
     }
 
-  /*
+  /* 
    * Create an area to keep the number of desired transaction descriptors
    */
 
   error_code = logtb_expand_trantable (thread_p, num_expected_tran_indices);
   if (error_code != NO_ERROR)
     {
-      /*
+      /* 
        * Unable to create transaction table to hold the desired number
        * of indices. Probably, a lot of indices were requested.
        * try again with defaults.
@@ -547,37 +490,32 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p,
 	}
 
 #if defined(SERVER_MODE)
-      if (num_expected_tran_indices <= LOG_ESTIMATE_NACTIVE_TRANS
-	  || log_Gl.rcv_phase == LOG_RESTARTED)
+      if (num_expected_tran_indices <= LOG_ESTIMATE_NACTIVE_TRANS || log_Gl.rcv_phase == LOG_RESTARTED)
 #else /* SERVER_MODE */
       if (num_expected_tran_indices <= LOG_ESTIMATE_NACTIVE_TRANS)
 #endif /* SERVER_MODE */
 	{
 	  /* Out of memory */
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_def_trantable");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_def_trantable");
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       else
 	{
-	  error_code =
-	    logtb_define_trantable_log_latch (thread_p,
-					      LOG_ESTIMATE_NACTIVE_TRANS);
+	  error_code = logtb_define_trantable_log_latch (thread_p, LOG_ESTIMATE_NACTIVE_TRANS);
 	  return error_code;
 	}
     }
 
   logtb_set_number_of_assigned_tran_indices (1);	/* sys tran */
 
-  /*
+  /* 
    * Assign the first entry for the system transaction. System transaction
    * has an infinite timeout
    */
   error_code = logtb_initialize_system_tdes (thread_p);
   if (error_code != NO_ERROR)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_UNKNOWN_TRANINDEX, 1, LOG_SYSTEM_TRAN_INDEX);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, LOG_SYSTEM_TRAN_INDEX);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_def_trantable");
       return error_code;
     }
@@ -652,10 +590,8 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (LOG_SYSTEM_TRAN_INDEX);
   if (tdes == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_UNKNOWN_TRANINDEX, 1, LOG_SYSTEM_TRAN_INDEX);
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "log_initialize_system_tdes");
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, LOG_SYSTEM_TRAN_INDEX);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_initialize_system_tdes");
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
@@ -667,8 +603,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes->wait_msecs = TRAN_LOCK_INFINITE_WAIT;
   tdes->isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
   tdes->client_id = -1;
-  logtb_set_client_ids_all (&tdes->client, -1, NULL, NULL, NULL, NULL, NULL,
-			    -1);
+  logtb_set_client_ids_all (&tdes->client, -1, NULL, NULL, NULL, NULL, NULL, -1);
   tdes->query_timeout = 0;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->block_global_oldest_active_until_commit = false;
@@ -722,13 +657,13 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 
   if (log_Gl.trantable.area != NULL)
     {
-      /*
+      /* 
        * If any one of the transaction indices has coordinator info,
        * free this area
        */
       for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
 	{
-	  /*
+	  /* 
 	   * If there is any memory allocated in the transaction descriptor,
 	   * release it
 	   */
@@ -737,9 +672,8 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 	    {
 #if defined(SERVER_MODE)
 	      assert (tdes->tran_index == i);
-	      assert (tdes->cs_topop.cs_index == CRITICAL_SECTION_COUNT
-		      + css_get_max_conn () + NUM_MASTER_CHANNEL
-		      + tdes->tran_index);
+	      assert (tdes->cs_topop.cs_index ==
+		      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
 	      assert (tdes->cs_topop.name == css_Csect_name_tdes);
 #endif
 
@@ -776,9 +710,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 int
 logtb_get_number_assigned_tran_indices (void)
 {
-  /* Do not use TR_TABLE_CS_ENTER()/TR_TABLE_CS_EXIT(),
-   * Estimated value is sufficient for the caller
-   */
+  /* Do not use TR_TABLE_CS_ENTER()/TR_TABLE_CS_EXIT(), Estimated value is sufficient for the caller */
   return NUM_ASSIGNED_TRAN_INDICES;
 }
 
@@ -935,10 +867,8 @@ logtb_am_i_dba_client (THREAD_ENTRY * thread_p)
  *       This function must be called when a client is restarted.
  */
 int
-logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
-			 TRAN_STATE state,
-			 const BOOT_CLIENT_CREDENTIAL * client_credential,
-			 TRAN_STATE * current_state, int wait_msecs,
+logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
+			 const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state, int wait_msecs,
 			 TRAN_ISOLATION isolation)
 {
   int tran_index;		/* The allocated transaction index */
@@ -953,10 +883,8 @@ logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
   TR_TABLE_CS_ENTER (thread_p);
-  tran_index = logtb_allocate_tran_index (thread_p, trid, state,
-					  client_credential,
-					  current_state, wait_msecs,
-					  isolation);
+  tran_index =
+    logtb_allocate_tran_index (thread_p, trid, state, client_credential, current_state, wait_msecs, isolation);
   TR_TABLE_CS_EXIT (thread_p);
 
   if (tran_index != NULL_TRAN_INDEX)
@@ -985,8 +913,7 @@ logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
  *   isolation(in): Isolation level
  */
 static void
-logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-		const BOOT_CLIENT_CREDENTIAL * client_credential,
+logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CREDENTIAL * client_credential,
 		int wait_msecs, TRAN_ISOLATION isolation)
 {
 #if defined(SERVER_MODE)
@@ -997,13 +924,9 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     {
       client_credential = &log_Client_credential;
     }
-  logtb_set_client_ids_all (&tdes->client, client_credential->client_type,
-			    client_credential->client_info,
-			    client_credential->db_user,
-			    client_credential->program_name,
-			    client_credential->login_name,
-			    client_credential->host_name,
-			    client_credential->process_id);
+  logtb_set_client_ids_all (&tdes->client, client_credential->client_type, client_credential->client_info,
+			    client_credential->db_user, client_credential->program_name, client_credential->login_name,
+			    client_credential->host_name, client_credential->process_id);
 #if defined(SERVER_MODE)
   if (thread_p == NULL)
     {
@@ -1077,11 +1000,9 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  *              latch has already been acquired. (See logtb_assign_tran_index)
  */
 static int
-logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
-			   TRAN_STATE state,
-			   const BOOT_CLIENT_CREDENTIAL * client_credential,
-			   TRAN_STATE * current_state,
-			   int wait_msecs, TRAN_ISOLATION isolation)
+logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
+			   const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state, int wait_msecs,
+			   TRAN_ISOLATION isolation)
 {
   int i;
   int visited_loop_start_pos;
@@ -1105,14 +1026,12 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
       /* When normal processing, we never expand trantable */
       if (log_Gl.rcv_phase == LOG_RESTARTED && NUM_TOTAL_TRAN_INDICES > 0)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_TM_TOO_MANY_CLIENTS, 1, NUM_TOTAL_TRAN_INDICES - 1);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_TM_TOO_MANY_CLIENTS, 1, NUM_TOTAL_TRAN_INDICES - 1);
 	  return NULL_TRAN_INDEX;
 	}
 #endif /* SERVER_MODE */
 
-      i = (int) (((float) NUM_TOTAL_TRAN_INDICES * LOG_EXPAND_TRANTABLE_RATIO)
-		 + 0.5);
+      i = (int) (((float) NUM_TOTAL_TRAN_INDICES * LOG_EXPAND_TRANTABLE_RATIO) + 0.5);
       if (logtb_expand_trantable (thread_p, i) != NO_ERROR)
 	{
 	  /* Out of memory or something like that */
@@ -1120,13 +1039,12 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 	}
     }
 
-  /*
+  /* 
    * Note that we could have found the entry already and it may be stored in
    * tran_index.
    */
   for (i = log_Gl.trantable.hint_free_index, visited_loop_start_pos = 0;
-       tran_index == NULL_TRAN_INDEX && visited_loop_start_pos < 2;
-       i = (i + 1) % NUM_TOTAL_TRAN_INDICES)
+       tran_index == NULL_TRAN_INDEX && visited_loop_start_pos < 2; i = (i + 1) % NUM_TOTAL_TRAN_INDICES)
     {
       if (log_Gl.trantable.all_tdes[i]->trid == NULL_TRANID)
 	{
@@ -1140,23 +1058,20 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 
   if (tran_index != NULL_TRAN_INDEX)
     {
-      log_Gl.trantable.hint_free_index =
-	(tran_index + 1) % NUM_TOTAL_TRAN_INDICES;
+      log_Gl.trantable.hint_free_index = (tran_index + 1) % NUM_TOTAL_TRAN_INDICES;
 
       logtb_increment_number_of_assigned_tran_indices ();
 
       tdes = LOG_FIND_TDES (tran_index);
       if (tdes == NULL)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
 	  return NULL_TRAN_INDEX;
 	}
 
       tdes->tran_index = tran_index;
       logtb_clear_tdes (thread_p, tdes);
-      logtb_set_tdes (thread_p, tdes, client_credential, wait_msecs,
-		      isolation);
+      logtb_set_tdes (thread_p, tdes, client_credential, wait_msecs, isolation);
 
       if (trid == NULL_TRANID)
 	{
@@ -1211,12 +1126,10 @@ logtb_initialize_mvcctable (void)
   if (current_trans_status->bit_area == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       goto exit_on_error;
     }
-  memset ((void *) current_trans_status->bit_area, MVCC_BITAREA_BIT_ACTIVE,
-	  size);
+  memset ((void *) current_trans_status->bit_area, MVCC_BITAREA_BIT_ACTIVE, size);
   current_trans_status->bit_area_start_mvccid = MVCCID_FIRST;
   current_trans_status->bit_area_length = 0;
   size = NUM_TOTAL_TRAN_INDICES * sizeof (MVCCID);
@@ -1224,8 +1137,7 @@ logtb_initialize_mvcctable (void)
   if (current_trans_status->long_tran_mvccids == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       goto exit_on_error;
     }
   current_trans_status->long_tran_mvccids_length = 0;
@@ -1235,12 +1147,11 @@ logtb_initialize_mvcctable (void)
   if (mvcc_table->transaction_lowest_active_mvccids == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       goto exit_on_error;
     }
-  memset ((void *) mvcc_table->transaction_lowest_active_mvccids,
-	  MVCCID_NULL, NUM_TOTAL_TRAN_INDICES * sizeof (MVCCID));
+  memset ((void *) mvcc_table->transaction_lowest_active_mvccids, MVCCID_NULL,
+	  NUM_TOTAL_TRAN_INDICES * sizeof (MVCCID));
 
   size = TRANS_STATUS_HISTORY_MAX_SIZE * sizeof (MVCC_TRANS_STATUS);
   /* MVCC mvcc_table_queue */
@@ -1248,8 +1159,7 @@ logtb_initialize_mvcctable (void)
   if (mvcc_table->trans_status_history == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       goto exit_on_error;
     }
 
@@ -1269,13 +1179,11 @@ logtb_initialize_mvcctable (void)
       if (trans_status_history->bit_area == NULL)
 	{
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  goto exit_on_error;
 	}
 
-      memset ((void *) trans_status_history->bit_area,
-	      MVCC_BITAREA_BIT_ACTIVE, size);
+      memset ((void *) trans_status_history->bit_area, MVCC_BITAREA_BIT_ACTIVE, size);
       trans_status_history->bit_area_start_mvccid = MVCCID_FIRST;
       trans_status_history->bit_area_length = 0;
 
@@ -1283,8 +1191,7 @@ logtb_initialize_mvcctable (void)
       if (trans_status_history->long_tran_mvccids == NULL)
 	{
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size2);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size2);
 	  goto exit_on_error;
 	}
       trans_status_history->long_tran_mvccids_length = 0;
@@ -1446,8 +1353,7 @@ logtb_is_tran_modification_disabled (THREAD_ENTRY * thread_p)
  *              (the analysis phase).
  */
 LOG_TDES *
-logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
-				   const LOG_LSA * log_lsa)
+logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const LOG_LSA * log_lsa)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
@@ -1455,25 +1361,21 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
 
   if (LOG_IS_VACUUM_WORKER_TRANID (trid))
     {
-      /* This must be the log of a vacuum worker system operation. Use
-       * vacuum worker transaction descriptor.
-       */
+      /* This must be the log of a vacuum worker system operation. Use vacuum worker transaction descriptor. */
       worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
       /* Set worker state to recovery. */
       worker->state = VACUUM_WORKER_STATE_RECOVERY;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
 		     "VACUUM: Log entry (%lld, %d) belongs to vacuum worker "
-		     "tdes. tdes->trid=%d, tdes->tail_lsa=(%lld, %d). ",
-		     (long long int) log_lsa->pageid, (int) log_lsa->offset,
-		     worker->tdes->trid,
-		     (long long int) worker->tdes->tail_lsa.pageid,
+		     "tdes. tdes->trid=%d, tdes->tail_lsa=(%lld, %d). ", (long long int) log_lsa->pageid,
+		     (int) log_lsa->offset, worker->tdes->trid, (long long int) worker->tdes->tail_lsa.pageid,
 		     (int) worker->tdes->tail_lsa.offset);
 
       return worker->tdes;
     }
 
-  /*
+  /* 
    * If this is the first time, the transaction is seen. Assign a new
    * index to describe it and assume that the transaction was active
    * at the time of the crash, and thus it will be unilaterally aborted
@@ -1482,20 +1384,17 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
   if (tran_index == NULL_TRAN_INDEX)
     {
       /* Define the index */
-      tran_index = logtb_allocate_tran_index (thread_p, trid,
-					      TRAN_UNACTIVE_UNILATERALLY_ABORTED,
-					      NULL, NULL,
-					      TRAN_LOCK_INFINITE_WAIT,
-					      TRAN_SERIALIZABLE);
+      tran_index =
+	logtb_allocate_tran_index (thread_p, trid, TRAN_UNACTIVE_UNILATERALLY_ABORTED, NULL, NULL,
+				   TRAN_LOCK_INFINITE_WAIT, TRAN_SERIALIZABLE);
       tdes = LOG_FIND_TDES (tran_index);
       if (tran_index == NULL_TRAN_INDEX || tdes == NULL)
 	{
-	  /*
+	  /* 
 	   * Unable to assign a transaction index. The recovery process
 	   * cannot continue
 	   */
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_recovery_find_or_alloc");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_find_or_alloc");
 	  return NULL;
 	}
       else
@@ -1521,8 +1420,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
  * mvccid (in)	 : Assigned MVCCID.
  */
 void
-logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p,
-					  MVCCID mvccid)
+logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
@@ -1559,7 +1457,7 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
       MVCC_CLEAR_MVCC_INFO (&tdes->mvccinfo);
       TR_TABLE_CS_ENTER (thread_p);
 
-      /*
+      /* 
        * Free the top system operation stack since the transaction entry may
        * not be freed (i.e., left as loose end distributed transaction)
        */
@@ -1585,8 +1483,7 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 	  else
 	    {
 	      logtb_free_tran_index (thread_p, tran_index);
-	      logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN,
-					NULL, NULL, NULL, NULL, NULL, -1);
+	      logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL, NULL, NULL, NULL, -1);
 	    }
 	}
 
@@ -1624,12 +1521,10 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
   log_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   tdes = LOG_FIND_TDES (tran_index);
-  if (tran_index > NUM_TOTAL_TRAN_INDICES
-      || tdes == NULL || tdes->trid == NULL_TRANID)
+  if (tran_index > NUM_TOTAL_TRAN_INDICES || tdes == NULL || tdes->trid == NULL_TRANID)
     {
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "log_free_tran_index: Unknown index = %d."
-		    " Operation is ignored", tran_index);
+      er_log_debug (ARG_FILE_LINE, "log_free_tran_index: Unknown index = %d." " Operation is ignored", tran_index);
 #endif /* CUBRID_DEBUG */
       return;
     }
@@ -1690,8 +1585,7 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
  *              a system error happens, which in principle never happen.
  */
 void
-logtb_free_tran_index_with_undo_lsa (THREAD_ENTRY * thread_p,
-				     const LOG_LSA * undo_lsa)
+logtb_free_tran_index_with_undo_lsa (THREAD_ENTRY * thread_p, const LOG_LSA * undo_lsa)
 {
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
@@ -1705,9 +1599,7 @@ logtb_free_tran_index_with_undo_lsa (THREAD_ENTRY * thread_p,
 	  if (i != LOG_SYSTEM_TRAN_INDEX)
 	    {
 	      tdes = log_Gl.trantable.all_tdes[i];
-	      if (tdes != NULL
-		  && tdes->trid != NULL_TRANID
-		  && tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED
+	      if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED
 		  && LSA_EQ (undo_lsa, &tdes->undo_nxlsa))
 		{
 		  logtb_free_tran_index (thread_p, i);
@@ -1731,33 +1623,18 @@ logtb_free_tran_index_with_undo_lsa (THREAD_ENTRY * thread_p,
 static void
 logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
 {
-  fprintf (out_fp, "Tran_index = %2d, Trid = %d,\n"
-	   "    State = %s,\n"
-	   "    Isolation = %s,\n"
-	   "    Wait_msecs = %d, isloose_end = %d,\n"
-	   "    Head_lsa = %lld|%d, Tail_lsa = %lld|%d,"
-	   " Postpone_lsa = %lld|%d,\n"
-	   "    SaveLSA = %lld|%d, UndoNextLSA = %lld|%d,\n"
-	   "    Client_User: (Type = %d, User = %s, Program = %s, "
-	   "Login = %s, Host = %s, Pid = %d)"
-	   "\n",
-	   tdes->tran_index, tdes->trid,
-	   log_state_string (tdes->state),
-	   log_isolation_string (tdes->isolation),
-	   tdes->wait_msecs, tdes->isloose_end,
-	   (long long int) tdes->head_lsa.pageid,
-	   (int) tdes->head_lsa.offset,
-	   (long long int) tdes->tail_lsa.pageid,
-	   (int) tdes->tail_lsa.offset,
-	   (long long int) tdes->posp_nxlsa.pageid,
-	   (int) tdes->posp_nxlsa.offset,
-	   (long long int) tdes->savept_lsa.pageid,
-	   (int) tdes->savept_lsa.offset,
-	   (long long int) tdes->undo_nxlsa.pageid,
-	   (int) tdes->undo_nxlsa.offset,
-	   tdes->client.client_type, tdes->client.db_user,
-	   tdes->client.program_name, tdes->client.login_name,
-	   tdes->client.host_name, tdes->client.process_id);
+  fprintf (out_fp,
+	   "Tran_index = %2d, Trid = %d,\n" "    State = %s,\n" "    Isolation = %s,\n"
+	   "    Wait_msecs = %d, isloose_end = %d,\n" "    Head_lsa = %lld|%d, Tail_lsa = %lld|%d,"
+	   " Postpone_lsa = %lld|%d,\n" "    SaveLSA = %lld|%d, UndoNextLSA = %lld|%d,\n"
+	   "    Client_User: (Type = %d, User = %s, Program = %s, " "Login = %s, Host = %s, Pid = %d)" "\n",
+	   tdes->tran_index, tdes->trid, log_state_string (tdes->state), log_isolation_string (tdes->isolation),
+	   tdes->wait_msecs, tdes->isloose_end, (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
+	   (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset, (long long int) tdes->posp_nxlsa.pageid,
+	   (int) tdes->posp_nxlsa.offset, (long long int) tdes->savept_lsa.pageid, (int) tdes->savept_lsa.offset,
+	   (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset, tdes->client.client_type,
+	   tdes->client.db_user, tdes->client.program_name, tdes->client.login_name, tdes->client.host_name,
+	   tdes->client.process_id);
 
   if (tdes->topops.max != 0 && tdes->topops.last >= 0)
     {
@@ -1766,8 +1643,7 @@ logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
 
   if (tdes->gtrid != LOG_2PC_NULL_GTRID || tdes->coord != NULL)
     {
-      logtb_dump_tdes_distribute_transaction (out_fp, tdes->gtrid,
-					      tdes->coord);
+      logtb_dump_tdes_distribute_transaction (out_fp, tdes->gtrid, tdes->coord);
     }
 }
 
@@ -1789,10 +1665,8 @@ logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p)
   for (i = topops_p->last; i >= 0; i--)
     {
       fprintf (out_fp, " Head = %lld|%d, Posp_Head = %lld|%d\n",
-	       (long long int) topops_p->stack[i].lastparent_lsa.pageid,
-	       topops_p->stack[i].lastparent_lsa.offset,
-	       (long long int) topops_p->stack[i].posp_lsa.pageid,
-	       topops_p->stack[i].posp_lsa.offset);
+	       (long long int) topops_p->stack[i].lastparent_lsa.pageid, topops_p->stack[i].lastparent_lsa.offset,
+	       (long long int) topops_p->stack[i].posp_lsa.pageid, topops_p->stack[i].posp_lsa.offset);
     }
 }
 
@@ -1806,8 +1680,7 @@ logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p)
  * Note:
  */
 static void
-logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id,
-					LOG_2PC_COORDINATOR * coord)
+logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id, LOG_2PC_COORDINATOR * coord)
 {
   int i;
   char *particp_id;		/* Participant identifier */
@@ -1826,12 +1699,10 @@ logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id,
 
   if (coord != NULL)
     {
-      fprintf (out_fp, "    Num_participants = %d, Partids = ",
-	       coord->num_particps);
+      fprintf (out_fp, "    Num_participants = %d, Partids = ", coord->num_particps);
       for (i = 0; i < coord->num_particps; i++)
 	{
-	  particp_id = ((char *) coord->block_particps_ids +
-			i * coord->particp_id_length);
+	  particp_id = ((char *) coord->block_particps_ids + i * coord->particp_id_length);
 	  if (i == 0)
 	    {
 	      fprintf (out_fp, " %s", log_2pc_sprintf_particp (particp_id));
@@ -1938,8 +1809,7 @@ logtb_free_tran_mvcc_info (LOG_TDES * tdes)
  *   snapshot(in): The snapshot
  */
 int
-logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p,
-			      MVCC_SNAPSHOT * snapshot)
+logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * snapshot)
 {
   int size;
   assert (snapshot != NULL);
@@ -1952,8 +1822,7 @@ logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p,
       snapshot->long_tran_mvccids = malloc (size);
       if (snapshot->long_tran_mvccids == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -1965,8 +1834,7 @@ logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p,
       if (snapshot->bit_area == NULL)
 	{
 	  free_and_init (snapshot->long_tran_mvccids);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -2040,8 +1908,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
 
   save_heap_id = db_change_private_heap (thread_p, 0);
-  for (i = 0; i < tdes->num_exec_queries && i < MAX_NUM_EXEC_QUERY_HISTORY;
-       i++)
+  for (i = 0; i < tdes->num_exec_queries && i < MAX_NUM_EXEC_QUERY_HISTORY; i++)
     {
       if (tdes->bind_history[i].vals == NULL)
 	{
@@ -2134,8 +2001,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   assert (tdes->cs_topop.cs_index == -1);
   assert (tdes->cs_topop.name == NULL);
 
-  tdes->cs_topop.cs_index = CRITICAL_SECTION_COUNT
-    + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index;
+  tdes->cs_topop.cs_index = CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index;
   tdes->cs_topop.name = css_Csect_name_tdes;
 #endif
 
@@ -2193,13 +2059,10 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->log_upd_stats.unique_stats_hash = NULL;
 
   tdes->log_upd_stats.unique_stats_hash =
-    mht_create ("Tran_unique_stats", 101, logtb_tran_btid_hash_func,
-		logtb_tran_btid_hash_cmp_func);
-  tdes->log_upd_stats.classes_cos_hash =
-    mht_create ("Tran_classes_cos", 101, oid_hash, oid_compare_equals);
+    mht_create ("Tran_unique_stats", 101, logtb_tran_btid_hash_func, logtb_tran_btid_hash_cmp_func);
+  tdes->log_upd_stats.classes_cos_hash = mht_create ("Tran_classes_cos", 101, oid_hash, oid_compare_equals);
 
-  logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL,
-			    NULL, NULL, NULL, -1);
+  logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL, NULL, NULL, NULL, -1);
   tdes->block_global_oldest_active_until_commit = false;
   tdes->modified_class_list = NULL;
 }
@@ -2253,13 +2116,10 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  next_trid = LOG_SYSTEM_TRANID + 1;
 	}
 
-      /* Need to check (trid < LOG_SYSTEM_TRANID + 1) for robustness.
-       * If log_Gl.hdr.next_trid was reset to 0 (see log_rv_analysis_log_end),
-       * this prevents us from correctly generating trids.
-       */
+      /* Need to check (trid < LOG_SYSTEM_TRANID + 1) for robustness. If log_Gl.hdr.next_trid was reset to 0 (see
+       * log_rv_analysis_log_end), this prevents us from correctly generating trids. */
     }
-  while (!ATOMIC_CAS_32 (&log_Gl.hdr.next_trid, trid, next_trid)
-	 || (trid < LOG_SYSTEM_TRANID + 1));
+  while (!ATOMIC_CAS_32 (&log_Gl.hdr.next_trid, trid, next_trid) || (trid < LOG_SYSTEM_TRANID + 1));
 
   assert (LOG_SYSTEM_TRANID + 1 <= trid && trid <= DB_INT32_MAX);
 
@@ -2354,8 +2214,7 @@ logtb_find_tran_index (THREAD_ENTRY * thread_p, TRANID trid)
  *              have two open connections at the same time.
  */
 int
-logtb_find_tran_index_host_pid (THREAD_ENTRY * thread_p,
-				const char *host_name, int process_id)
+logtb_find_tran_index_host_pid (THREAD_ENTRY * thread_p, const char *host_name, int process_id)
 {
   int i;
   int tran_index = NULL_TRAN_INDEX;	/* The transaction index */
@@ -2366,9 +2225,7 @@ logtb_find_tran_index_host_pid (THREAD_ENTRY * thread_p,
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
-      if (tdes != NULL
-	  && tdes->trid != NULL_TRANID
-	  && tdes->client.process_id == process_id
+      if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->client.process_id == process_id
 	  && strcmp (tdes->client.host_name, host_name) == 0)
 	{
 	  tran_index = i;
@@ -2430,32 +2287,22 @@ logtb_find_current_tranid (THREAD_ENTRY * thread_p)
  * NOTE: Set client identifications.
  */
 void
-logtb_set_client_ids_all (LOG_CLIENTIDS * client, int client_type,
-			  const char *client_info, const char *db_user,
-			  const char *program_name, const char *login_name,
-			  const char *host_name, int process_id)
+logtb_set_client_ids_all (LOG_CLIENTIDS * client, int client_type, const char *client_info, const char *db_user,
+			  const char *program_name, const char *login_name, const char *host_name, int process_id)
 {
   client->client_type = client_type;
-  strncpy (client->client_info,
-	   (client_info) ? client_info : "", DB_MAX_IDENTIFIER_LENGTH);
+  strncpy (client->client_info, (client_info) ? client_info : "", DB_MAX_IDENTIFIER_LENGTH);
   client->client_info[DB_MAX_IDENTIFIER_LENGTH] = '\0';
-  strncpy (client->db_user,
-	   (db_user) ? db_user : log_Client_id_unknown_string,
-	   LOG_USERNAME_MAX - 1);
+  strncpy (client->db_user, (db_user) ? db_user : log_Client_id_unknown_string, LOG_USERNAME_MAX - 1);
   client->db_user[LOG_USERNAME_MAX - 1] = '\0';
-  if (program_name == NULL
-      || basename_r (program_name, client->program_name, PATH_MAX) < 0)
+  if (program_name == NULL || basename_r (program_name, client->program_name, PATH_MAX) < 0)
     {
       strncpy (client->program_name, log_Client_id_unknown_string, PATH_MAX);
     }
   client->program_name[PATH_MAX] = '\0';
-  strncpy (client->login_name,
-	   (login_name) ? login_name : log_Client_id_unknown_string,
-	   L_cuserid);
+  strncpy (client->login_name, (login_name) ? login_name : log_Client_id_unknown_string, L_cuserid);
   client->login_name[L_cuserid] = '\0';
-  strncpy (client->host_name,
-	   (host_name) ? host_name : log_Client_id_unknown_string,
-	   MAXHOSTNAMELEN);
+  strncpy (client->host_name, (host_name) ? host_name : log_Client_id_unknown_string, MAXHOSTNAMELEN);
   client->host_name[MAXHOSTNAMELEN] = '\0';
   client->process_id = process_id;
   client->is_user_active = false;
@@ -2541,8 +2388,7 @@ logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p)
       if (tdes != NULL && tdes->trid != NULL_TRANID)
 	{
 	  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE
-	      (tdes->client.host_name, boot_Host_name,
-	       tdes->client.client_type))
+	      (tdes->client.host_name, boot_Host_name, tdes->client.client_type))
 	    {
 	      count++;
 	    }
@@ -2608,8 +2454,7 @@ logtb_set_user_name (int tran_index, const char *user_name)
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes != NULL && tdes->trid != NULL_TRANID)
     {
-      strncpy (tdes->client.db_user,
-	       (user_name) ? user_name : log_Client_id_unknown_string,
+      strncpy (tdes->client.db_user, (user_name) ? user_name : log_Client_id_unknown_string,
 	       sizeof (tdes->client.db_user) - 1);
     }
   return;
@@ -2684,8 +2529,7 @@ logtb_find_client_hostname (int tran_index)
  *       The above pointers are valid until the client is unregister.
  */
 int
-logtb_find_client_name_host_pid (int tran_index, char **client_prog_name,
-				 char **client_user_name,
+logtb_find_client_name_host_pid (int tran_index, char **client_prog_name, char **client_user_name,
 				 char **client_host_name, int *client_pid)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
@@ -2751,8 +2595,7 @@ logtb_get_client_ids (int tran_index, LOG_CLIENTIDS * client_info)
  *       caller.
  */
 int
-xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
-			    int *size_p, int include_query_exec_info)
+xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_p, int include_query_exec_info)
 {
   int error_code = NO_ERROR;
   int num_clients = 0;
@@ -2769,9 +2612,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 #if defined(SERVER_MODE)
   if (include_query_exec_info)
     {
-      query_exec_info =
-	(TRAN_QUERY_EXEC_INFO *) calloc (NUM_TOTAL_TRAN_INDICES,
-					 sizeof (TRAN_QUERY_EXEC_INFO));
+      query_exec_info = (TRAN_QUERY_EXEC_INFO *) calloc (NUM_TOTAL_TRAN_INDICES, sizeof (TRAN_QUERY_EXEC_INFO));
 
       if (query_exec_info == NULL)
 	{
@@ -2783,10 +2624,8 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
     }
 #endif
 
-  /* Note, we'll be in a critical section while we gather the data but
-   * the section ends as soon as we return the data.  This means that the
-   * transaction table can change after the information is used.
-   */
+  /* Note, we'll be in a critical section while we gather the data but the section ends as soon as we return the data.
+   * This means that the transaction table can change after the information is used. */
 
   TR_TABLE_CS_ENTER_READ_MODE (thread_p);
 
@@ -2796,47 +2635,38 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
-      if (tdes == NULL
-	  || tdes->trid == NULL_TRANID
-	  || tdes->tran_index == LOG_SYSTEM_TRAN_INDEX)
+      if (tdes == NULL || tdes->trid == NULL_TRANID || tdes->tran_index == LOG_SYSTEM_TRAN_INDEX)
 	{
 	  /* The index is not assigned or is system transaction (no-client) */
 	  continue;
 	}
 
       size += 3 * OR_INT_SIZE	/* tran index + tran state + process id */
-	+ or_packed_string_length (tdes->client.db_user, NULL)
-	+ or_packed_string_length (tdes->client.program_name, NULL)
-	+ or_packed_string_length (tdes->client.login_name, NULL)
-	+ or_packed_string_length (tdes->client.host_name, NULL);
+	+ or_packed_string_length (tdes->client.db_user, NULL) + or_packed_string_length (tdes->client.program_name,
+											  NULL) +
+	or_packed_string_length (tdes->client.login_name, NULL) + or_packed_string_length (tdes->client.host_name,
+											   NULL);
 
 #if defined(SERVER_MODE)
       if (include_query_exec_info)
 	{
 	  if (tdes->query_start_time > 0)
 	    {
-	      query_exec_info[i].query_time =
-		(float) (current_msec - tdes->query_start_time) / 1000.0f;
+	      query_exec_info[i].query_time = (float) (current_msec - tdes->query_start_time) / 1000.0f;
 	    }
 
 	  if (tdes->tran_start_time > 0)
 	    {
-	      query_exec_info[i].tran_time =
-		(float) (current_msec - tdes->tran_start_time) / 1000.0f;
+	      query_exec_info[i].tran_time = (float) (current_msec - tdes->tran_start_time) / 1000.0f;
 	    }
 
-	  lock_get_lock_holder_tran_index (thread_p,
-					   &query_exec_info[i].
-					   wait_for_tran_index_string,
-					   tdes->tran_index,
+	  lock_get_lock_holder_tran_index (thread_p, &query_exec_info[i].wait_for_tran_index_string, tdes->tran_index,
 					   tdes->waiting_for_res);
 
 	  if (!XASL_ID_IS_NULL (&tdes->xasl_id))
 	    {
 	      /* retrieve query statement in the xasl_cache entry */
-	      ent =
-		qexec_check_xasl_cache_ent_by_xasl (thread_p, &tdes->xasl_id,
-						    -1, NULL, false);
+	      ent = qexec_check_xasl_cache_ent_by_xasl (thread_p, &tdes->xasl_id, -1, NULL, false);
 
 	      /* entry can be NULL, if xasl cache entry is deleted */
 	      if (ent != NULL)
@@ -2845,9 +2675,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 		    {
 		      char *sql = ent->sql_info.sql_hash_text;
 
-		      if (qmgr_get_sql_id (thread_p,
-					   &query_exec_info[i].sql_id,
-					   sql, strlen (sql)) != NO_ERROR)
+		      if (qmgr_get_sql_id (thread_p, &query_exec_info[i].sql_id, sql, strlen (sql)) != NO_ERROR)
 			{
 			  goto error;
 			}
@@ -2865,9 +2693,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 			  goto error;
 			}
 		    }
-		  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p,
-								ent, true,
-								false);
+		  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, true, false);
 		}
 
 	      /* structure copy */
@@ -2879,11 +2705,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 	    }
 
 	  size += 2 * OR_FLOAT_SIZE	/* query time + tran time */
-	    + or_packed_string_length (query_exec_info[i].
-				       wait_for_tran_index_string, NULL)
-	    + or_packed_string_length (query_exec_info[i].query_stmt, NULL)
-	    + or_packed_string_length (query_exec_info[i].sql_id, NULL)
-	    + OR_XASL_ID_SIZE;
+	    + or_packed_string_length (query_exec_info[i].wait_for_tran_index_string,
+				       NULL) + or_packed_string_length (query_exec_info[i].query_stmt,
+									NULL) +
+	    or_packed_string_length (query_exec_info[i].sql_id, NULL) + OR_XASL_ID_SIZE;
 	}
 #endif
       num_clients++;
@@ -2893,8 +2718,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
   buffer = (char *) malloc (size);
   if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -2906,9 +2730,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
-      if (tdes == NULL
-	  || tdes->trid == NULL_TRANID
-	  || tdes->tran_index == LOG_SYSTEM_TRAN_INDEX)
+      if (tdes == NULL || tdes->trid == NULL_TRANID || tdes->tran_index == LOG_SYSTEM_TRAN_INDEX)
 	{
 	  /* The index is not assigned or is system transaction (no-client) */
 	  continue;
@@ -2927,9 +2749,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 	{
 	  ptr = or_pack_float (ptr, query_exec_info[i].query_time);
 	  ptr = or_pack_float (ptr, query_exec_info[i].tran_time);
-	  ptr =
-	    or_pack_string (ptr,
-			    query_exec_info[i].wait_for_tran_index_string);
+	  ptr = or_pack_string (ptr, query_exec_info[i].wait_for_tran_index_string);
 	  ptr = or_pack_string (ptr, query_exec_info[i].query_stmt);
 	  ptr = or_pack_string (ptr, query_exec_info[i].sql_id);
 	  OR_PACK_XASL_ID (ptr, &query_exec_info[i].xasl_id);
@@ -3064,8 +2884,7 @@ xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
     {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
       return -1;
     }
 
@@ -3195,8 +3014,7 @@ logtb_find_log_records_count (int tran_index)
  *               abort), otherwise, its isolation behaviour will be undefined.
  */
 int
-xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation,
-			bool unlock_by_isolation)
+xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation, bool unlock_by_isolation)
 {
   TRAN_ISOLATION old_isolation;
   int error_code = NO_ERROR;
@@ -3217,8 +3035,7 @@ xlogtb_reset_isolation (THREAD_ENTRY * thread_p, TRAN_ISOLATION isolation,
     }
   else
     {
-      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_MVCC_LOG_INVALID_ISOLATION_LEVEL, 0);
+      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_LOG_INVALID_ISOLATION_LEVEL, 0);
       error_code = ER_MVCC_LOG_INVALID_ISOLATION_LEVEL;
     }
 
@@ -3279,8 +3096,7 @@ logtb_find_current_isolation (THREAD_ENTRY * thread_p)
 void
 xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set)
 {
-  logtb_set_tran_index_interrupt (thread_p,
-				  LOG_FIND_THREAD_TRAN_INDEX (thread_p), set);
+  logtb_set_tran_index_interrupt (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), set);
 }
 
 /*
@@ -3297,8 +3113,7 @@ xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set)
  *              so that the next caller obtains an interrupt.
  */
 bool
-logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
-				int set)
+logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
 
@@ -3339,8 +3154,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
 	  if (set == true)
 	    {
 	      pgbuf_force_to_check_for_interrupts ();
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-		      ER_INTERRUPTING, 1, tran_index);
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
 	      mnt_tran_interrupts (thread_p);
 	    }
 
@@ -3363,8 +3177,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
  * Note:
  */
 static bool
-logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-			   bool clear, bool * continue_checking)
+logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear, bool * continue_checking)
 {
   int interrupt;
   INT64 now;
@@ -3412,10 +3225,8 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     }
   else if (interrupt == false && tdes->query_timeout > 0)
     {
-      /* In order to prevent performance degradation, we use log_Clock_msec
-       * set by thread_log_clock_thread instead of calling gettimeofday here
-       * if the system supports atomic built-ins.
-       */
+      /* In order to prevent performance degradation, we use log_Clock_msec set by thread_log_clock_thread instead of
+       * calling gettimeofday here if the system supports atomic built-ins. */
 #if defined(SERVER_MODE)
       now = thread_get_log_clock_msec ();
 #else /* SERVER_MODE */
@@ -3425,8 +3236,7 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       if (tdes->query_timeout < now)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"logtb_is_interrupted_tdes: timeout %lld milliseconds "
-			"delayed (expected=%lld, now=%lld)",
+			"logtb_is_interrupted_tdes: timeout %lld milliseconds " "delayed (expected=%lld, now=%lld)",
 			now - tdes->query_timeout, tdes->query_timeout, now);
 	  interrupt = true;
 	}
@@ -3457,8 +3267,7 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  *              transaction will be partially aborted.
  */
 bool
-logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear,
-		      bool * continue_checking)
+logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
@@ -3498,8 +3307,7 @@ logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear,
  *              be interrupted.
  */
 bool
-logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear,
-			   bool * continue_checking, int tran_index)
+logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
 
@@ -3523,9 +3331,7 @@ logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear,
 void
 xlogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int set)
 {
-  logtb_set_suppress_repl_on_transaction (thread_p,
-					  LOG_FIND_THREAD_TRAN_INDEX
-					  (thread_p), set);
+  logtb_set_suppress_repl_on_transaction (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), set);
 }
 
 /*
@@ -3539,8 +3345,7 @@ xlogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int set)
  *   set(in): non-zero to set, zero to unset
  */
 bool
-logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
-					int tran_index, int set)
+logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index, int set)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
 
@@ -3631,9 +3436,7 @@ logtb_is_current_active (THREAD_ENTRY * thread_p)
 
   if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
-      /* Vacuum workers are always considered active (since they have no
-       * transactions).
-       */
+      /* Vacuum workers are always considered active (since they have no transactions). */
       return true;
     }
 
@@ -3737,9 +3540,7 @@ void
 logtb_disable_update (THREAD_ENTRY * thread_p)
 {
   db_Disable_modifications = 1;
-  er_log_debug (ARG_FILE_LINE,
-		"logtb_disable_update: db_Disable_modifications = %d\n",
-		db_Disable_modifications);
+  er_log_debug (ARG_FILE_LINE, "logtb_disable_update: db_Disable_modifications = %d\n", db_Disable_modifications);
 }
 
 /*
@@ -3752,9 +3553,7 @@ logtb_enable_update (THREAD_ENTRY * thread_p)
   if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) == false)
     {
       db_Disable_modifications = 0;
-      er_log_debug (ARG_FILE_LINE,
-		    "logtb_enable_update: db_Disable_modifications = %d\n",
-		    db_Disable_modifications);
+      er_log_debug (ARG_FILE_LINE, "logtb_enable_update: db_Disable_modifications = %d\n", db_Disable_modifications);
     }
 }
 
@@ -3781,8 +3580,7 @@ static void
 logtb_tran_free_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats)
 {
   LOG_TRAN_CLASS_COS_CHUNK *cos_chunk = NULL, *next_cos_chunk = NULL;
-  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *stats_chunk = NULL, *next_stats_chunk =
-    NULL;
+  LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *stats_chunk = NULL, *next_stats_chunk = NULL;
 
   logtb_tran_clear_update_stats (log_upd_stats);
 
@@ -3889,8 +3687,7 @@ logtb_tran_btid_hash_cmp_func (const void *key1, const void *key2)
  *		      created
  */
 static LOG_TRAN_BTID_UNIQUE_STATS *
-logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p,
-				     const BTID * btid)
+logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid)
 {
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
@@ -3915,15 +3712,13 @@ logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p,
 	{
 	  /* if the entire allocated space was exhausted then alloc a new chunk */
 	  int size =
-	    sizeof (LOG_TRAN_BTID_UNIQUE_STATS_CHUNK) +
-	    (TRAN_UNIQUE_STATS_CHUNK_SIZE -
-	     1) * sizeof (LOG_TRAN_BTID_UNIQUE_STATS);
+	    sizeof (LOG_TRAN_BTID_UNIQUE_STATS_CHUNK) + (TRAN_UNIQUE_STATS_CHUNK_SIZE -
+							 1) * sizeof (LOG_TRAN_BTID_UNIQUE_STATS);
 	  chunk = (LOG_TRAN_BTID_UNIQUE_STATS_CHUNK *) malloc (size);
 
 	  if (chunk == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	      return NULL;
 	    }
 	  if (tdes->log_upd_stats.stats_first_chunk == NULL)
@@ -3941,9 +3736,7 @@ logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p,
 
   /* get a new entry */
   unique_stats =
-    &tdes->log_upd_stats.stats_current_chunk->buffer[tdes->log_upd_stats.
-						     stats_count++ %
-						     TRAN_UNIQUE_STATS_CHUNK_SIZE];
+    &tdes->log_upd_stats.stats_current_chunk->buffer[tdes->log_upd_stats.stats_count++ % TRAN_UNIQUE_STATS_CHUNK_SIZE];
 
   BTID_COPY (&unique_stats->btid, btid);
   unique_stats->deleted = false;
@@ -3959,9 +3752,7 @@ logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p,
   unique_stats->global_stats.num_nulls = -1;
 
   /* Store the new entry in hash */
-  if (mht_put
-      (tdes->log_upd_stats.unique_stats_hash, &unique_stats->btid,
-       unique_stats) == NULL)
+  if (mht_put (tdes->log_upd_stats.unique_stats_hash, &unique_stats->btid, unique_stats) == NULL)
     {
       return NULL;
     }
@@ -3986,8 +3777,7 @@ logtb_tran_create_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid)
   if (tdes->log_upd_stats.cos_count % COS_CLASSES_CHUNK_SIZE == 0)
     {
       LOG_TRAN_CLASS_COS_CHUNK *chunk = NULL;
-      if (tdes->log_upd_stats.cos_current_chunk != NULL
-	  && tdes->log_upd_stats.cos_current_chunk->next_chunk != NULL)
+      if (tdes->log_upd_stats.cos_current_chunk != NULL && tdes->log_upd_stats.cos_current_chunk->next_chunk != NULL)
 	{
 	  /* reuse the old chunk */
 	  chunk = tdes->log_upd_stats.cos_current_chunk->next_chunk;
@@ -3995,16 +3785,12 @@ logtb_tran_create_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid)
       else
 	{
 	  /* if the entire allocated space was exhausted then alloc a new chunk */
-	  int size =
-	    sizeof (LOG_TRAN_CLASS_COS_CHUNK) + (COS_CLASSES_CHUNK_SIZE -
-						 1) *
-	    sizeof (LOG_TRAN_CLASS_COS);
+	  int size = sizeof (LOG_TRAN_CLASS_COS_CHUNK) + (COS_CLASSES_CHUNK_SIZE - 1) * sizeof (LOG_TRAN_CLASS_COS);
 	  chunk = (LOG_TRAN_CLASS_COS_CHUNK *) malloc (size);
 
 	  if (chunk == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	      return NULL;
 	    }
 	  if (tdes->log_upd_stats.cos_first_chunk == NULL)
@@ -4021,17 +3807,13 @@ logtb_tran_create_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid)
     }
 
   /* get a new entry */
-  entry =
-    &tdes->log_upd_stats.cos_current_chunk->buffer[tdes->log_upd_stats.
-						   cos_count++ %
-						   COS_CLASSES_CHUNK_SIZE];
+  entry = &tdes->log_upd_stats.cos_current_chunk->buffer[tdes->log_upd_stats.cos_count++ % COS_CLASSES_CHUNK_SIZE];
 
   /* init newly created entry */
   COPY_OID (&entry->class_oid, class_oid);
   entry->count_state = COS_NOT_LOADED;
 
-  if (mht_put (tdes->log_upd_stats.classes_cos_hash, &entry->class_oid, entry)
-      == NULL)
+  if (mht_put (tdes->log_upd_stats.classes_cos_hash, &entry->class_oid, entry) == NULL)
     {
       return NULL;
     }
@@ -4051,8 +3833,7 @@ logtb_tran_create_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid)
  *		      found an already existing one
  */
 LOG_TRAN_CLASS_COS *
-logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid,
-			   bool create)
+logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid, bool create)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   LOG_TRAN_CLASS_COS *entry = NULL;
@@ -4060,9 +3841,7 @@ logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid,
   assert (tdes != NULL && class_oid != NULL);
 
   /* search */
-  entry =
-    (LOG_TRAN_CLASS_COS *) mht_get (tdes->log_upd_stats.classes_cos_hash,
-				    class_oid);
+  entry = (LOG_TRAN_CLASS_COS *) mht_get (tdes->log_upd_stats.classes_cos_hash, class_oid);
 
   if (entry == NULL && create)
     {
@@ -4085,8 +3864,7 @@ logtb_tran_find_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid,
  *		      found an already existing one
  */
 LOG_TRAN_BTID_UNIQUE_STATS *
-logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid,
-			    bool create)
+logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool create)
 {
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
@@ -4122,12 +3900,10 @@ logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid,
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
-				     int n_keys, int n_oids, int n_nulls)
+logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys, int n_oids, int n_nulls)
 {
   /* search and create if not found */
-  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats =
-    logtb_tran_find_btid_stats (thread_p, btid, true);
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
 
   if (unique_stats == NULL)
     {
@@ -4157,16 +3933,13 @@ logtb_tran_update_btid_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
  * Note: the statistics are searched and created if they not exist.
  */
 int
-logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
-				int n_keys, int n_oids, int n_nulls,
+logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int n_keys, int n_oids, int n_nulls,
 				bool write_to_log)
 {
   int error = NO_ERROR;
 
   /* update statistics */
-  error =
-    logtb_tran_update_btid_unique_stats (thread_p, btid, n_keys, n_oids,
-					 n_nulls);
+  error = logtb_tran_update_btid_unique_stats (thread_p, btid, n_keys, n_oids, n_nulls);
   if (error != NO_ERROR)
     {
       return error;
@@ -4175,10 +3948,8 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
   if (write_to_log)
     {
       /* log statistics */
-      char undo_rec_buf[3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE +
-			MAX_ALIGNMENT];
-      char redo_rec_buf[3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE +
-			MAX_ALIGNMENT];
+      char undo_rec_buf[3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE + MAX_ALIGNMENT];
+      char redo_rec_buf[3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE + MAX_ALIGNMENT];
       RECDES undo_rec, redo_rec;
 
       undo_rec.area_size = ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
@@ -4187,14 +3958,10 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
       redo_rec.area_size = ((3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE);
       redo_rec.data = PTR_ALIGN (redo_rec_buf, MAX_ALIGNMENT);
 
-      btree_rv_mvcc_save_increments (btid, -n_keys, -n_oids, -n_nulls,
-				     &undo_rec);
-      btree_rv_mvcc_save_increments (btid, n_keys, n_oids, n_nulls,
-				     &redo_rec);
+      btree_rv_mvcc_save_increments (btid, -n_keys, -n_oids, -n_nulls, &undo_rec);
+      btree_rv_mvcc_save_increments (btid, n_keys, n_oids, n_nulls, &redo_rec);
 
-      log_append_undoredo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD,
-				 NULL, NULL, -1,
-				 undo_rec.length, redo_rec.length,
+      log_append_undoredo_data2 (thread_p, RVBT_MVCC_INCREMENTS_UPD, NULL, NULL, -1, undo_rec.length, redo_rec.length,
 				 undo_rec.data, redo_rec.data);
     }
 
@@ -4214,11 +3981,9 @@ logtb_tran_update_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
  *	 iteration.
  */
 static int
-logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p, void *data,
-				   void *args)
+logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p, void *data, void *args)
 {
-  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats =
-    (LOG_TRAN_BTID_UNIQUE_STATS *) data;
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = (LOG_TRAN_BTID_UNIQUE_STATS *) data;
   int error_code = NO_ERROR;
 
   if (unique_stats->deleted)
@@ -4228,13 +3993,9 @@ logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p, void *data,
     }
 
   error_code =
-    logtb_update_global_unique_stats_by_delta (thread_p, &unique_stats->btid,
-					       unique_stats->tran_stats.
-					       num_oids,
-					       unique_stats->tran_stats.
-					       num_nulls,
-					       unique_stats->tran_stats.
-					       num_keys, true);
+    logtb_update_global_unique_stats_by_delta (thread_p, &unique_stats->btid, unique_stats->tran_stats.num_oids,
+					       unique_stats->tran_stats.num_nulls, unique_stats->tran_stats.num_keys,
+					       true);
 
   return error_code;
 }
@@ -4262,16 +4023,13 @@ logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p)
       return ER_FAILED;
     }
 
-  /* We have to disable interrupt while reflecting unique stats.
-   * Please notice that the transaction is still in TRAN_ACTIVE state and
-   * it may be previously interrupted but user eventually issues commit.
-   * The transaction should successfully complete commit in spite of interrupt.
-   */
+  /* We have to disable interrupt while reflecting unique stats. Please notice that the transaction is still in
+   * TRAN_ACTIVE state and it may be previously interrupted but user eventually issues commit. The transaction should
+   * successfully complete commit in spite of interrupt. */
   old_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
-  error_code = mht_map_no_key (thread_p,
-			       tdes->log_upd_stats.unique_stats_hash,
-			       logtb_tran_update_delta_hash_func, thread_p);
+  error_code =
+    mht_map_no_key (thread_p, tdes->log_upd_stats.unique_stats_hash, logtb_tran_update_delta_hash_func, thread_p);
 
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
 
@@ -4293,8 +4051,7 @@ logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p)
  *	 partition are loaded.
  */
 static int
-logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data,
-				   void *args)
+logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *args)
 {
   int error_code = NO_ERROR, idx;
   PRUNING_CONTEXT context;
@@ -4310,9 +4067,7 @@ logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data,
     }
 
   /* get class representation to find partition information */
-  classrepr =
-    heap_classrepr_get (thread_p, &entry->class_oid, NULL, NULL_REPRID,
-			&classrepr_cacheindex);
+  classrepr = heap_classrepr_get (thread_p, &entry->class_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
   if (classrepr == NULL)
     {
       goto cleanup;
@@ -4324,9 +4079,7 @@ logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data,
       clear_pcontext = true;
 
       /* In case of partitioned class load statistics for each partition */
-      error_code =
-	partition_load_pruning_context (thread_p, &entry->class_oid,
-					DB_PARTITIONED_CLASS, &context);
+      error_code = partition_load_pruning_context (thread_p, &entry->class_oid, DB_PARTITIONED_CLASS, &context);
       if (error_code != NO_ERROR)
 	{
 	  goto cleanup;
@@ -4341,18 +4094,14 @@ logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data,
 	    {
 	      continue;
 	    }
-	  new_entry =
-	    logtb_tran_find_class_cos (thread_p,
-				       &context.partitions[idx].class_oid,
-				       true);
+	  new_entry = logtb_tran_find_class_cos (thread_p, &context.partitions[idx].class_oid, true);
 	  if (new_entry == NULL)
 	    {
 	      error_code = ER_FAILED;
 	      goto cleanup;
 	    }
 
-	  error_code =
-	    logtb_create_unique_stats_from_repr (thread_p, &entry->class_oid);
+	  error_code = logtb_create_unique_stats_from_repr (thread_p, &entry->class_oid);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -4362,8 +4111,7 @@ logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data,
 	}
     }
 
-  error_code =
-    logtb_create_unique_stats_from_repr (thread_p, &entry->class_oid);
+  error_code = logtb_create_unique_stats_from_repr (thread_p, &entry->class_oid);
   if (error_code != NO_ERROR)
     {
       goto cleanup;
@@ -4409,8 +4157,7 @@ logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p)
     }
 
   error_code =
-    mht_map_no_key (thread_p, tdes->log_upd_stats.classes_cos_hash,
-		    logtb_tran_load_global_stats_func, thread_p);
+    mht_map_no_key (thread_p, tdes->log_upd_stats.classes_cos_hash, logtb_tran_load_global_stats_func, thread_p);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -4437,8 +4184,7 @@ logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p)
 static int
 logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
 {
-  MVCCID lowest_active_mvccid, bit_area_start_mvccid,
-    highest_completed_mvccid, last_bit_area_start_mvccid;
+  MVCCID lowest_active_mvccid, bit_area_start_mvccid, highest_completed_mvccid, last_bit_area_start_mvccid;
   LOG_TDES *curr_tdes = NULL;
   int tran_index, error_code = NO_ERROR;
   LOG_TDES *tdes;
@@ -4473,8 +4219,7 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
 
-  p_transaction_lowest_active_mvccid =
-    LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (tran_index);
+  p_transaction_lowest_active_mvccid = LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (tran_index);
   assert (tdes != NULL && p_transaction_lowest_active_mvccid != NULL);
 
   curr_mvcc_info = &tdes->mvccinfo;
@@ -4505,8 +4250,7 @@ start_get_mvcc_table:
   trans_status = &mvcc_table->trans_status_history[index];
   trans_status_version = ATOMIC_INC_32 (&trans_status->version, 0);
 
-  bit_area_start_mvccid = ATOMIC_INC_64 (&trans_status->bit_area_start_mvccid,
-					 0LL);
+  bit_area_start_mvccid = ATOMIC_INC_64 (&trans_status->bit_area_start_mvccid, 0LL);
   bit_area_length = ATOMIC_INC_32 (&trans_status->bit_area_length, 0);
 #else
   r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
@@ -4517,21 +4261,17 @@ start_get_mvcc_table:
 
   if (bit_area_length > 0)
     {
-      memcpy (snapshot->bit_area, (void *) trans_status->bit_area,
-	      MVCC_BITAREA_BITS_TO_BYTES (bit_area_length));
+      memcpy (snapshot->bit_area, (void *) trans_status->bit_area, MVCC_BITAREA_BITS_TO_BYTES (bit_area_length));
     }
 
   if (trans_status->long_tran_mvccids_length > 0)
     {
       long_tran_mvccids_length = trans_status->long_tran_mvccids_length;
-      memcpy (snapshot->long_tran_mvccids,
-	      (void *) trans_status->long_tran_mvccids,
+      memcpy (snapshot->long_tran_mvccids, (void *) trans_status->long_tran_mvccids,
 	      long_tran_mvccids_length * sizeof (MVCCID));
     }
 
-  /* load statistics temporary disabled
-   * need to be enabled when activate count optimization 
-   */
+  /* load statistics temporary disabled need to be enabled when activate count optimization */
 #if 0
   /* load global statistics. This must take place here and no where else. */
   if (logtb_load_global_statistics_to_tran (thread_p) != NO_ERROR)
@@ -4551,53 +4291,36 @@ start_get_mvcc_table:
   pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
 
-  logtb_get_lowest_active_mvccid (snapshot->bit_area, bit_area_length,
-				  bit_area_start_mvccid,
-				  snapshot->long_tran_mvccids,
-				  long_tran_mvccids_length,
-				  &lowest_active_mvccid);
+  logtb_get_lowest_active_mvccid (snapshot->bit_area, bit_area_length, bit_area_start_mvccid,
+				  snapshot->long_tran_mvccids, long_tran_mvccids_length, &lowest_active_mvccid);
   /* set atomically the lowest active MVCC id - only once / transaction */
-  if (p_transaction_lowest_active_mvccid
-      && (*p_transaction_lowest_active_mvccid) != lowest_active_mvccid)
+  if (p_transaction_lowest_active_mvccid && (*p_transaction_lowest_active_mvccid) != lowest_active_mvccid)
     {
 #if defined(HAVE_ATOMIC_BUILTINS)
-      /* logtb_get_lowest_active_mvccid will atomically read lowest active
-       * MVCCID using read mode in this case
-       */
-      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid,
-		     lowest_active_mvccid);
-      last_bit_area_start_mvccid =
-	ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
+      /* logtb_get_lowest_active_mvccid will atomically read lowest active MVCCID using read mode in this case */
+      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, lowest_active_mvccid);
+      last_bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
       if (lowest_active_mvccid < last_bit_area_start_mvccid)
 	{
-	  /* protect against following scenario:
-	   *  - current transaction start snapshot acquisition but
-	   *  didn't set transaction_lowest_active_mvccids yet
-	   *  - many transactions commits and mvcc_table->current_trans_status.
-	   * bit_area_start_mvccid is advanced
-	   *  - vacuum starts and consider mvcc_table->current_trans_status.
-	   * bit_area_start_mvccid as threshold, since all
-	   * transaction_lowest_active_mvccids are NULL_MVCCID
-	   *  - current transaction sets its transaction_lowest_active_mvccid
-	   * (behind mvcc_table->current_trans_status.bit_area_start_mvccid)
-	   *  - vacuum can now delete rows still visible for current transaction
-	   */
+	  /* protect against following scenario: - current transaction start snapshot acquisition but didn't set
+	   * transaction_lowest_active_mvccids yet - many transactions commits and mvcc_table->current_trans_status.
+	   * bit_area_start_mvccid is advanced - vacuum starts and consider mvcc_table->current_trans_status.
+	   * bit_area_start_mvccid as threshold, since all transaction_lowest_active_mvccids are NULL_MVCCID - current
+	   * transaction sets its transaction_lowest_active_mvccid (behind
+	   * mvcc_table->current_trans_status.bit_area_start_mvccid) - vacuum can now delete rows still visible for
+	   * current transaction */
 	  goto start_get_mvcc_table;
 	}
 #else
-      /* Need to guarantee lowest active MVCCID atomicity.
-       * logtb_get_lowest_active_mvccid will read lowest active MVCCID
-       * using write mode in this case
-       */
+      /* Need to guarantee lowest active MVCCID atomicity. logtb_get_lowest_active_mvccid will read lowest active
+       * MVCCID using write mode in this case */
       r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
       *p_transaction_lowest_active_mvccid = lowest_active_mvccid;
       pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
     }
 
-  logtb_get_highest_completed_mvccid (snapshot->bit_area,
-				      bit_area_length,
-				      bit_area_start_mvccid,
+  logtb_get_highest_completed_mvccid (snapshot->bit_area, bit_area_length, bit_area_start_mvccid,
 				      &highest_completed_mvccid);
   MVCCID_FORWARD (highest_completed_mvccid);
 
@@ -4707,8 +4430,8 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
   UINT64 local_bit_start_mvccid;
   MVCCID *tran_lowest_act_mvccid = NULL;
   int i, size;
-  MVCCID *transaction_lowest_active_mvccids = NULL,
-    local_transaction_lowest_active_mvccid[MVCC_OLDEST_ACTIVE_BUFFER_LENGTH];
+  MVCCID *transaction_lowest_active_mvccids =
+    NULL, local_transaction_lowest_active_mvccid[MVCC_OLDEST_ACTIVE_BUFFER_LENGTH];
   MVCCID oldest_long_time_mvccid = MVCCID_NULL;
   MVCC_TRANS_STATUS *current_trans_status;
   int index;
@@ -4731,8 +4454,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 
   if (NUM_TOTAL_TRAN_INDICES <= MVCC_OLDEST_ACTIVE_BUFFER_LENGTH)
     {
-      transaction_lowest_active_mvccids =
-	local_transaction_lowest_active_mvccid;
+      transaction_lowest_active_mvccids = local_transaction_lowest_active_mvccid;
     }
   else
     {
@@ -4740,8 +4462,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
       transaction_lowest_active_mvccids = (MVCCID *) malloc (size);
       if (transaction_lowest_active_mvccids == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -4750,35 +4471,27 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 start_get_oldest_active:
   retry_cnt++;
 
-  /* read transactions status from current history position,
-   * prevent code rearrangement
-   */
+  /* read transactions status from current history position, prevent code rearrangement */
   index = ATOMIC_INC_32 (&mvcc_table->trans_status_history_position, 0);
   current_trans_status = &mvcc_table->trans_status_history[index];
-  current_trans_status_version =
-    ATOMIC_INC_32 (&current_trans_status->version, 0);
+  current_trans_status_version = ATOMIC_INC_32 (&current_trans_status->version, 0);
 
   /* read transaction_lowest_active_mvccids */
   current_trans_status = &mvcc_table->current_trans_status;
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
-      transaction_lowest_active_mvccids[i] =
-	ATOMIC_INC_64 (&mvcc_table->transaction_lowest_active_mvccids[i],
-		       0ULL);
+      transaction_lowest_active_mvccids[i] = ATOMIC_INC_64 (&mvcc_table->transaction_lowest_active_mvccids[i], 0ULL);
     }
   current_trans_status = &mvcc_table->trans_status_history[index];
-  local_bit_start_mvccid =
-    ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
-  local_bit_area_length =
-    ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
+  local_bit_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
+  local_bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
 #else
   current_trans_status = &mvcc_table->current_trans_status;
   /* need atomic read for lowest active mvccid */
   r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
-      transaction_lowest_active_mvccids[i] =
-	mvcc_table->transaction_lowest_active_mvccids[i];
+      transaction_lowest_active_mvccids[i] = mvcc_table->transaction_lowest_active_mvccids[i];
     }
   local_bit_start_mvccid = current_trans_status->bit_area_start_mvccid;
   local_bit_area_length = current_trans_status->bit_area_length;
@@ -4796,8 +4509,7 @@ start_get_oldest_active:
     }
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-  if (current_trans_status_version !=
-      ATOMIC_INC_32 (&current_trans_status->version, 0))
+  if (current_trans_status_version != ATOMIC_INC_32 (&current_trans_status->version, 0))
     {
       /* Transaction status overwritten, need to read again */
       goto start_get_oldest_active;
@@ -4806,11 +4518,9 @@ start_get_oldest_active:
   pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif /* HAVE_ATOMIC_BUILTINS */
 
-  logtb_get_lowest_active_mvccid (local_bit_area, local_bit_area_length,
-				  local_bit_start_mvccid, NULL, 0,
+  logtb_get_lowest_active_mvccid (local_bit_area, local_bit_area_length, local_bit_start_mvccid, NULL, 0,
 				  &lowest_active_mvccid);
-  if (oldest_long_time_mvccid != MVCCID_NULL
-      && oldest_long_time_mvccid < lowest_active_mvccid)
+  if (oldest_long_time_mvccid != MVCCID_NULL && oldest_long_time_mvccid < lowest_active_mvccid)
     {
       lowest_active_mvccid = oldest_long_time_mvccid;
     }
@@ -4824,8 +4534,7 @@ start_get_oldest_active:
 	}
     }
 
-  if (transaction_lowest_active_mvccids !=
-      local_transaction_lowest_active_mvccid)
+  if (transaction_lowest_active_mvccids != local_transaction_lowest_active_mvccid)
     {
       free (transaction_lowest_active_mvccids);
     }
@@ -4879,8 +4588,7 @@ logtb_get_new_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
   r = pthread_mutex_lock (&mvcc_table->new_mvccid_lock);
 #if !defined(NDEBUG)
   bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
-  assert (bit_area_length < MVCC_BITAREA_MAXIMUM_BITS
-	  && bit_area_length >= 0);
+  assert (bit_area_length < MVCC_BITAREA_MAXIMUM_BITS && bit_area_length >= 0);
 #endif
 #else
   r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
@@ -5023,8 +4731,7 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
-  if (tdes->tran_index == LOG_SYSTEM_TRAN_INDEX
-      || VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (tdes->tran_index == LOG_SYSTEM_TRAN_INDEX || VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
       /* System transactions do not have snapshots */
       return NULL;
@@ -5062,18 +4769,14 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   MVCCID mvccid, position, curr_mvccid;
   volatile MVCCID *p_transaction_lowest_active_mvccid = NULL;
   int tran_index, size;
-  unsigned int i, bit_pos, count, delete_dwords_count, delete_bytes_count,
-    new_bytes_count, next_history_position;
+  unsigned int i, bit_pos, count, delete_dwords_count, delete_bytes_count, new_bytes_count, next_history_position;
   UINT64 bits, mask;
   MVCCID bit_area_start_mvccid;
   UINT64 *bit_area, *end_bit_area;
-  MVCC_TRANS_STATUS *current_trans_status = NULL,
-    *next_trans_status_history = NULL;
-  int trans_status_history_last_position = TRANS_STATUS_HISTORY_MAX_SIZE - 1,
-    bit_area_length;
+  MVCC_TRANS_STATUS *current_trans_status = NULL, *next_trans_status_history = NULL;
+  int trans_status_history_last_position = TRANS_STATUS_HISTORY_MAX_SIZE - 1, bit_area_length;
   int bit_area_cleanup_threshold = MVCC_BITAREA_ELEMENT_BITS;
-  int bit_area_long_transaction_threshold =
-    MVCC_BITAREA_MAXIMUM_BITS - NUM_TOTAL_TRAN_INDICES;
+  int bit_area_long_transaction_threshold = MVCC_BITAREA_MAXIMUM_BITS - NUM_TOTAL_TRAN_INDICES;
   UINT64 *p_area = NULL;
   int r;
   TSC_TICKS start_tick, end_tick;
@@ -5093,8 +4796,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   mvccid = curr_mvcc_info->id;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  p_transaction_lowest_active_mvccid =
-    LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (tran_index);
+  p_transaction_lowest_active_mvccid = LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (tran_index);
   assert (p_transaction_lowest_active_mvccid != NULL);
 
   if (MVCCID_IS_VALID (mvccid))
@@ -5102,8 +4804,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
       current_trans_status = &log_Gl.mvcc_table.current_trans_status;
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-      bit_area_start_mvccid =
-	ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
+      bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
 #else
       /* Transaction completed - set corresponding bit to 1 */
       r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
@@ -5118,28 +4819,21 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	  /* called rarely - current transaction is a long transaction */
 	  r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
 
-	  next_history_position = (mvcc_table->trans_status_history_position
-				   + 1) & trans_status_history_last_position;
-	  next_trans_status_history =
-	    &mvcc_table->trans_status_history[next_history_position];
+	  next_history_position = (mvcc_table->trans_status_history_position + 1) & trans_status_history_last_position;
+	  next_trans_status_history = &mvcc_table->trans_status_history[next_history_position];
 
 	  ATOMIC_INC_32 (&current_trans_status->version, 1);
-	  ATOMIC_TAS_32 (&next_trans_status_history->version,
-			 current_trans_status->version);
-	  bit_area_start_mvccid =
-	    ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
+	  ATOMIC_TAS_32 (&next_trans_status_history->version, current_trans_status->version);
+	  bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
 #endif
 
 	complete_long_transactions:
 #if defined(HAVE_ATOMIC_BUILTINS)
-	  bit_area_length =
-	    ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
+	  bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
 #endif
 
 	  /* reflect accumulated statistics to B-trees */
-	  if (committed
-	      && logtb_tran_update_all_global_unique_stats (thread_p)
-	      != NO_ERROR)
+	  if (committed && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
 	    {
 	      assert (false);
 	    }
@@ -5147,17 +4841,13 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	  /* Safe guard: */
 	  assert (current_trans_status->long_tran_mvccids_length > 0);
 	  /* remove MVCCID from mvcc_table->long_tran_mvccids array */
-	  for (i = 0; i < current_trans_status->long_tran_mvccids_length - 1;
-	       i++)
+	  for (i = 0; i < current_trans_status->long_tran_mvccids_length - 1; i++)
 	    {
 	      if (current_trans_status->long_tran_mvccids[i] == mvccid)
 		{
-		  size = MVCC_BITAREA_ELEMENTS_TO_BYTES
-		    (current_trans_status->long_tran_mvccids_length - i - 1);
-		  memmove ((void *) (current_trans_status->long_tran_mvccids +
-				     i),
-			   (void *) (current_trans_status->long_tran_mvccids +
-				     i + 1), size);
+		  size = MVCC_BITAREA_ELEMENTS_TO_BYTES (current_trans_status->long_tran_mvccids_length - i - 1);
+		  memmove ((void *) (current_trans_status->long_tran_mvccids + i),
+			   (void *) (current_trans_status->long_tran_mvccids + i + 1), size);
 		  break;
 		}
 	    }
@@ -5173,16 +4863,12 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
       r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
 
       /* set version to last MVCC table in queue - need to detect snapshots */
-      next_history_position = (mvcc_table->trans_status_history_position + 1)
-	& trans_status_history_last_position;
-      next_trans_status_history =
-	&mvcc_table->trans_status_history[next_history_position];
+      next_history_position = (mvcc_table->trans_status_history_position + 1) & trans_status_history_last_position;
+      next_trans_status_history = &mvcc_table->trans_status_history[next_history_position];
 
       ATOMIC_INC_32 (&current_trans_status->version, 1);
-      ATOMIC_TAS_32 (&next_trans_status_history->version,
-		     current_trans_status->version);
-      bit_area_start_mvccid =
-	ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
+      ATOMIC_TAS_32 (&next_trans_status_history->version, current_trans_status->version);
+      bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
 #endif
 
 
@@ -5193,8 +4879,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	}
 
       /* reflect accumulated statistics to B-trees */
-      if (committed
-	  && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
+      if (committed && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
 	{
 	  assert (false);
 	}
@@ -5202,26 +4887,21 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
       /* Complete the current transaction */
       position = mvccid - bit_area_start_mvccid;
       mask = MVCC_BITAREA_MASK (position);
-      p_area = MVCC_GET_BITAREA_ELEMENT_PTR (current_trans_status->bit_area,
-					     position);
+      p_area = MVCC_GET_BITAREA_ELEMENT_PTR (current_trans_status->bit_area, position);
       (*p_area) |= mask;
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-      bit_area_length =
-	ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
+      bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
 #else
-      /* Need to guarantee lowest active MVCCID atomicity.
-       * logtb_get_lowest_active_mvccid will read lowest active MVCCID
-       * using write mode in this case.
-       */
+      /* Need to guarantee lowest active MVCCID atomicity. logtb_get_lowest_active_mvccid will read lowest active
+       * MVCCID using write mode in this case. */
       *p_transaction_lowest_active_mvccid = MVCCID_NULL;
 #endif
 
       /* check if need cleanup */
       if (bit_area_length < bit_area_cleanup_threshold)
 	{
-	  assert (current_trans_status->bit_area_length <=
-		  MVCC_BITAREA_MAXIMUM_BITS);
+	  assert (current_trans_status->bit_area_length <= MVCC_BITAREA_MAXIMUM_BITS);
 	  goto end_completed;
 	}
 
@@ -5241,8 +4921,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
        * long_tran_mvccids pointer, bit_area_start_mvccid.
        */
       bit_area = current_trans_status->bit_area;
-      end_bit_area =
-	bit_area + MVCC_BITAREA_BITS_TO_ELEMENTS (bit_area_length);
+      end_bit_area = bit_area + MVCC_BITAREA_BITS_TO_ELEMENTS (bit_area_length);
       do
 	{
 	  bit_area++;
@@ -5252,29 +4931,23 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	  bits = *(bit_area);
 #endif
 	}
-      while ((bit_area < end_bit_area)
-	     && (bits == MVCC_BITAREA_ELEMENT_ALL_COMMITTED));
+      while ((bit_area < end_bit_area) && (bits == MVCC_BITAREA_ELEMENT_ALL_COMMITTED));
 
       delete_dwords_count = (int) (bit_area - current_trans_status->bit_area);
-      delete_bytes_count =
-	MVCC_BITAREA_ELEMENTS_TO_BYTES (delete_dwords_count);
-      new_bytes_count =
-	MVCC_BITAREA_ELEMENTS_TO_BYTES ((int) (end_bit_area - bit_area));
+      delete_bytes_count = MVCC_BITAREA_ELEMENTS_TO_BYTES (delete_dwords_count);
+      new_bytes_count = MVCC_BITAREA_ELEMENTS_TO_BYTES ((int) (end_bit_area - bit_area));
 
       if (new_bytes_count > 0)
 	{
-	  memmove ((void *) current_trans_status->bit_area, (void *) bit_area,
-		   new_bytes_count);
+	  memmove ((void *) current_trans_status->bit_area, (void *) bit_area, new_bytes_count);
 	}
 
-      memset (((char *) (current_trans_status->bit_area)) + new_bytes_count,
-	      MVCC_BITAREA_BIT_ACTIVE, delete_bytes_count);
+      memset (((char *) (current_trans_status->bit_area)) + new_bytes_count, MVCC_BITAREA_BIT_ACTIVE,
+	      delete_bytes_count);
       size = MVCC_BITAREA_ELEMENTS_TO_BITS (delete_dwords_count);
 #if defined(HAVE_ATOMIC_BUILTINS)
-      bit_area_start_mvccid =
-	ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, size);
-      bit_area_length =
-	ATOMIC_INC_32 (&current_trans_status->bit_area_length, -size);
+      bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, size);
+      bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, -size);
 #else
       current_trans_status->bit_area_start_mvccid += size;
       current_trans_status->bit_area_length -= size;
@@ -5303,21 +4976,18 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 #else
 	  bits = *bit_area;
 #endif
-	  curr_mvccid = bit_area_start_mvccid
-	    + (i - 1) * MVCC_BITAREA_ELEMENT_BITS;
+	  curr_mvccid = bit_area_start_mvccid + (i - 1) * MVCC_BITAREA_ELEMENT_BITS;
 	  if (bits != MVCC_BITAREA_ELEMENT_ALL_COMMITTED)
 	    {
 	      /* expect most of the transactions already committed */
 	      mask = 1;
-	      for (bit_pos = 0; bit_pos < MVCC_BITAREA_ELEMENT_BITS;
-		   bit_pos++, curr_mvccid++)
+	      for (bit_pos = 0; bit_pos < MVCC_BITAREA_ELEMENT_BITS; bit_pos++, curr_mvccid++)
 		{
 		  if (!(bits & mask))
 		    {
 		      /* long active transaction founded */
-		      current_trans_status->long_tran_mvccids
-			[current_trans_status->
-			 long_tran_mvccids_length++] = curr_mvccid;
+		      current_trans_status->long_tran_mvccids[current_trans_status->long_tran_mvccids_length++] =
+			curr_mvccid;
 		      /* set the bit to in order to break faster */
 		      bits |= mask;
 		      if (bits == MVCC_BITAREA_ELEMENT_ALL_COMMITTED)
@@ -5331,26 +5001,20 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	  bit_area++;
 	}
 
-      delete_bytes_count =
-	MVCC_BITAREA_ELEMENTS_TO_BYTES (delete_dwords_count);
-      new_bytes_count =
-	MVCC_BITAREA_ELEMENTS_TO_BYTES
-	(MVCC_BITAREA_ELEMENTS_AFTER_FULL_CLEANUP);
+      delete_bytes_count = MVCC_BITAREA_ELEMENTS_TO_BYTES (delete_dwords_count);
+      new_bytes_count = MVCC_BITAREA_ELEMENTS_TO_BYTES (MVCC_BITAREA_ELEMENTS_AFTER_FULL_CLEANUP);
 
       if (new_bytes_count > 0)
 	{
-	  memmove ((void *) current_trans_status->bit_area, (void *) bit_area,
-		   new_bytes_count);
+	  memmove ((void *) current_trans_status->bit_area, (void *) bit_area, new_bytes_count);
 	}
-      memset (((char *) (current_trans_status->bit_area)) +
-	      new_bytes_count, MVCC_BITAREA_BIT_ACTIVE, delete_bytes_count);
+      memset (((char *) (current_trans_status->bit_area)) + new_bytes_count, MVCC_BITAREA_BIT_ACTIVE,
+	      delete_bytes_count);
       size = MVCC_BITAREA_ELEMENTS_TO_BITS (delete_dwords_count);
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-      bit_area_start_mvccid =
-	ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, size);
-      bit_area_length =
-	ATOMIC_INC_32 (&current_trans_status->bit_area_length, -size);
+      bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, size);
+      bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, -size);
 #else
       current_trans_status->bit_area_start_mvccid += size;
       current_trans_status->bit_area_length -= size;
@@ -5360,45 +5024,34 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
     end_completed:
 #if defined(HAVE_ATOMIC_BUILTINS)
-      /* need to copy the current bit area - other threads may read
-       * next_trans_status_history, but only the current thread can modify it       
-       */
+      /* need to copy the current bit area - other threads may read next_trans_status_history, but only the current
+       * thread can modify it */
       if (bit_area_length > 0)
 	{
 	  count = MVCC_BITAREA_BITS_TO_ELEMENTS (bit_area_length);
 	  for (i = 0; i < count; i++)
 	    {
-	      ATOMIC_TAS_64 (next_trans_status_history->bit_area + i,
-			     current_trans_status->bit_area[i]);
+	      ATOMIC_TAS_64 (next_trans_status_history->bit_area + i, current_trans_status->bit_area[i]);
 	    }
 	}
 
-      ATOMIC_TAS_64 (&next_trans_status_history->bit_area_start_mvccid,
-		     bit_area_start_mvccid);
-      ATOMIC_TAS_32 (&next_trans_status_history->bit_area_length,
-		     bit_area_length);
+      ATOMIC_TAS_64 (&next_trans_status_history->bit_area_start_mvccid, bit_area_start_mvccid);
+      ATOMIC_TAS_32 (&next_trans_status_history->bit_area_length, bit_area_length);
 
       count = current_trans_status->long_tran_mvccids_length;
       for (i = 0; i < count; i++)
 	{
-	  ATOMIC_TAS_64 (next_trans_status_history->long_tran_mvccids + i,
-			 current_trans_status->long_tran_mvccids[i]);
+	  ATOMIC_TAS_64 (next_trans_status_history->long_tran_mvccids + i, current_trans_status->long_tran_mvccids[i]);
 	}
-      ATOMIC_TAS_32 (&next_trans_status_history->long_tran_mvccids_length,
-		     count);
+      ATOMIC_TAS_32 (&next_trans_status_history->long_tran_mvccids_length, count);
 
       if (committed)
 	{
-	  /* be sure that transaction modifications can't be vacuumed up to
-	   * LOG_COMMIT. Otherwise, the following scenario will corrupt the
-	   * database:
-	   *  - transaction set its lowest_active_mvccid to MVCCID_NULL
-	   *  - VACUUM clean up transaction modifications
-	   *  - the system crash before LOG_COMMIT of current transaction          
-	   */
+	  /* be sure that transaction modifications can't be vacuumed up to LOG_COMMIT. Otherwise, the following
+	   * scenario will corrupt the database: - transaction set its lowest_active_mvccid to MVCCID_NULL - VACUUM
+	   * clean up transaction modifications - the system crash before LOG_COMMIT of current transaction */
 	  if ((*p_transaction_lowest_active_mvccid == MVCCID_NULL)
-	      || MVCC_ID_PRECEDES (*p_transaction_lowest_active_mvccid,
-				   mvccid))
+	      || MVCC_ID_PRECEDES (*p_transaction_lowest_active_mvccid, mvccid))
 	    {
 	      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, mvccid);
 	    }
@@ -5410,8 +5063,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	}
 
       /* prevent code rearrangement */
-      ATOMIC_TAS_32 (&mvcc_table->trans_status_history_position,
-		     next_history_position);
+      ATOMIC_TAS_32 (&mvcc_table->trans_status_history_position, next_history_position);
 #endif
 
       pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
@@ -5419,19 +5071,16 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   else
     {
 #if defined(SA_MODE)
-      if (committed
-	  && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
+      if (committed && logtb_tran_update_all_global_unique_stats (thread_p) != NO_ERROR)
 	{
 	  assert (false);
 	}
 #else	/* !SA_MODE */	       /* SERVER_MODE */
       if (committed)
 	{
-	  /* There is one unique index that can be modified with no MVCCID
-	   * being generated: db_serial primary key. This could happen in a
-	   * transaction that only does a create serial and commits. Next code
-	   * makes sure serial index statistics are reflected.
-	   */
+	  /* There is one unique index that can be modified with no MVCCID being generated: db_serial primary key. This 
+	   * could happen in a transaction that only does a create serial and commits. Next code makes sure serial
+	   * index statistics are reflected. */
 	  BTID serial_index_btid = BTID_INITIALIZER;
 	  LOG_TRAN_BTID_UNIQUE_STATS *serial_unique_stats = NULL;
 
@@ -5440,24 +5089,19 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	  assert (!BTID_IS_NULL (&serial_index_btid));
 
 	  /* Get statistics for serial unique index. */
-	  serial_unique_stats =
-	    logtb_tran_find_btid_stats (thread_p, &serial_index_btid, false);
+	  serial_unique_stats = logtb_tran_find_btid_stats (thread_p, &serial_index_btid, false);
 	  if (serial_unique_stats != NULL)
 	    {
 	      /* Reflect serial unique statistics. */
 	      if (logtb_update_global_unique_stats_by_delta
-		  (thread_p, &serial_index_btid,
-		   serial_unique_stats->tran_stats.num_oids,
-		   serial_unique_stats->tran_stats.num_nulls,
-		   serial_unique_stats->tran_stats.num_keys, true)
-		  != NO_ERROR)
+		  (thread_p, &serial_index_btid, serial_unique_stats->tran_stats.num_oids,
+		   serial_unique_stats->tran_stats.num_nulls, serial_unique_stats->tran_stats.num_keys,
+		   true) != NO_ERROR)
 		{
 		  /* No errors are permitted here. */
 		  assert (false);
 
-		  /* Fall through to do everything we would do in case of
-		   * no error.
-		   */
+		  /* Fall through to do everything we would do in case of no error. */
 		}
 	    }
 	}
@@ -5467,10 +5111,8 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
       /* atomic set transaction lowest active MVCCID */
       ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_NULL);
 #else
-      /* Need to guarantee lowest active MVCCID atomicity.
-       * logtb_get_lowest_active_mvccid will read lowest active MVCCID
-       * using write mode in this case
-       */
+      /* Need to guarantee lowest active MVCCID atomicity. logtb_get_lowest_active_mvccid will read lowest active
+       * MVCCID using write mode in this case */
       r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
       *p_transaction_lowest_active_mvccid = MVCCID_NULL;
       pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
@@ -5516,7 +5158,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 int
 logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 {
-  LOG_TDES *tdes;		/* Transaction descriptor   */
+  LOG_TDES *tdes;		/* Transaction descriptor */
   int index;			/* The returned index value */
 
   tdes = LOG_FIND_TDES (tran_index);
@@ -5558,19 +5200,15 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
       if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
 	  fprintf (stdout,
-		   "\n*** Transaction = %d (index = %d) is"
-		   " prepared to commit as gobal tran = %d\n"
-		   "    The coordinator site (maybe the client user = %s)"
-		   " needs to attach\n"
-		   "    to this transaction and either commit or abort it."
-		   " ***\n", tdes->trid, tdes->tran_index,
+		   "\n*** Transaction = %d (index = %d) is" " prepared to commit as gobal tran = %d\n"
+		   "    The coordinator site (maybe the client user = %s)" " needs to attach\n"
+		   "    to this transaction and either commit or abort it." " ***\n", tdes->trid, tdes->tran_index,
 		   tdes->gtrid, tdes->client.db_user);
 	  fflush (stdout);
 	}
 #endif
     }
-  else if (LOG_ISTRAN_2PC_IN_SECOND_PHASE (tdes)
-	   || tdes->state == TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES)
+  else if (LOG_ISTRAN_2PC_IN_SECOND_PHASE (tdes) || tdes->state == TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES)
     {
       tdes->isloose_end = true;
       log_Gl.trantable.num_coord_loose_end_indices++;
@@ -5578,17 +5216,11 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
       if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
 	  fprintf (stdout,
-		   "\n*** Transaction = %d (index = %d) needs to"
-		   " complete informing participants\n"
-		   "    about its fate = %s and collect participant"
-		   " acknowledgements.\n"
-		   "    This transaction has been disassociated from"
-		   " the client user = %s.\n"
-		   "    The transaction will be completely finished by"
-		   " the system ***\n", tdes->trid,
-		   tdes->tran_index,
-		   ((LOG_ISTRAN_COMMITTED (tdes)) ? "COMMIT" :
-		    "ABORT"), tdes->client.db_user);
+		   "\n*** Transaction = %d (index = %d) needs to" " complete informing participants\n"
+		   "    about its fate = %s and collect participant" " acknowledgements.\n"
+		   "    This transaction has been disassociated from" " the client user = %s.\n"
+		   "    The transaction will be completely finished by" " the system ***\n", tdes->trid,
+		   tdes->tran_index, ((LOG_ISTRAN_COMMITTED (tdes)) ? "COMMIT" : "ABORT"), tdes->client.db_user);
 	  fflush (stdout);
 	}
 #endif
@@ -5627,8 +5259,7 @@ logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p)
 	}
     }
 
-  r = (log_Gl.trantable.num_coord_loose_end_indices
-       + log_Gl.trantable.num_prepared_loose_end_indices);
+  r = (log_Gl.trantable.num_coord_loose_end_indices + log_Gl.trantable.num_prepared_loose_end_indices);
 
   TR_TABLE_CS_EXIT (thread_p);
 
@@ -5648,7 +5279,7 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p)
 {
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
-  LOG_LSA *max = NULL;		/* The maximum LSA value  */
+  LOG_LSA *max = NULL;		/* The maximum LSA value */
   TRANID trid;
   VACUUM_WORKER *worker = NULL;
 
@@ -5660,20 +5291,16 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p)
       if (i != LOG_SYSTEM_TRAN_INDEX)
 	{
 	  tdes = log_Gl.trantable.all_tdes[i];
-	  if (tdes != NULL
-	      && tdes->trid != NULL_TRANID
-	      && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED
-		  || tdes->state == TRAN_UNACTIVE_ABORTED)
-	      && !LSA_ISNULL (&tdes->undo_nxlsa)
-	      && (max == NULL || LSA_LT (max, &tdes->undo_nxlsa)))
+	  if (tdes != NULL && tdes->trid != NULL_TRANID
+	      && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED)
+	      && !LSA_ISNULL (&tdes->undo_nxlsa) && (max == NULL || LSA_LT (max, &tdes->undo_nxlsa)))
 	    {
 	      max = &tdes->undo_nxlsa;
 	    }
 	}
     }
   /* Check vacuum worker transactions. */
-  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID;
-       trid <= LOG_LAST_VACUUM_WORKER_TRANID; trid++)
+  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID; trid <= LOG_LAST_VACUUM_WORKER_TRANID; trid++)
     {
       worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
       if (worker->state != VACUUM_WORKER_STATE_RECOVERY)
@@ -5717,9 +5344,7 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
       if (i != LOG_SYSTEM_TRAN_INDEX)
 	{
 	  tdes = log_Gl.trantable.all_tdes[i];
-	  if (tdes != NULL
-	      && tdes->trid != NULL_TRANID
-	      && !LSA_ISNULL (&tdes->head_lsa)
+	  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->head_lsa)
 	      && (min_lsa == NULL || LSA_LT (&tdes->head_lsa, min_lsa)))
 	    {
 	      min_lsa = &tdes->head_lsa;
@@ -5753,9 +5378,7 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
  *	 snapshot.
  */
 int
-logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
-					const char **classes,
-					LC_PREFETCH_FLAGS * flags,
+logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p, const char **classes, LC_PREFETCH_FLAGS * flags,
 					int n_classes)
 {
   int idx;
@@ -5771,9 +5394,7 @@ logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
 	}
 
       /* get class OID from class name */
-      find =
-	xlocator_find_class_oid (thread_p, classes[idx], &class_oid,
-				 NULL_LOCK);
+      find = xlocator_find_class_oid (thread_p, classes[idx], &class_oid, NULL_LOCK);
       switch (find)
 	{
 	case LC_CLASSNAME_ERROR:
@@ -5788,17 +5409,14 @@ logtb_tran_prepare_count_optim_classes (THREAD_ENTRY * thread_p,
 	  else
 	    {
 	      /* search for class statistics (create if not exist). */
-	      class_cos =
-		logtb_tran_find_class_cos (thread_p, &class_oid, true);
+	      class_cos = logtb_tran_find_class_cos (thread_p, &class_oid, true);
 	      if (class_cos == NULL)
 		{
 		  /* something wrong happened. Just return error */
 		  return ER_FAILED;
 		}
 
-	      /* Mark class for unique statistics loading. The statistics will
-	       * be loaded when snapshot will be taken
-	       */
+	      /* Mark class for unique statistics loading. The statistics will be loaded when snapshot will be taken */
 	      if (class_cos->count_state != COS_LOADED)
 		{
 		  class_cos->count_state = COS_TO_LOAD;
@@ -5845,8 +5463,7 @@ logtb_tran_reset_count_optim_state (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
-  mht_map_no_key (thread_p, tdes->log_upd_stats.classes_cos_hash,
-		  logtb_tran_reset_cos_func, NULL);
+  mht_map_no_key (thread_p, tdes->log_upd_stats.classes_cos_hash, logtb_tran_reset_cos_func, NULL);
 }
 
 /*
@@ -5866,9 +5483,7 @@ logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid)
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
 
   /* get class representation to find the total number of indexes */
-  classrepr =
-    heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID,
-			&classrepr_cacheindex);
+  classrepr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
   if (classrepr == NULL)
     {
       goto exit_on_error;
@@ -5878,22 +5493,15 @@ logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid)
     {
       if (btree_is_unique_type (classrepr->indexes[idx].type))
 	{
-	  unique_stats =
-	    logtb_tran_find_btid_stats (thread_p,
-					&classrepr->indexes[idx].btid, true);
+	  unique_stats = logtb_tran_find_btid_stats (thread_p, &classrepr->indexes[idx].btid, true);
 	  if (unique_stats == NULL)
 	    {
 	      error_code = ER_FAILED;
 	      goto exit_on_error;
 	    }
 	  error_code =
-	    logtb_get_global_unique_stats (thread_p, &unique_stats->btid,
-					   &unique_stats->global_stats.
-					   num_oids,
-					   &unique_stats->global_stats.
-					   num_nulls,
-					   &unique_stats->global_stats.
-					   num_keys);
+	    logtb_get_global_unique_stats (thread_p, &unique_stats->btid, &unique_stats->global_stats.num_oids,
+					   &unique_stats->global_stats.num_nulls, &unique_stats->global_stats.num_keys);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -5916,8 +5524,7 @@ exit_on_error:
       (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
     }
 
-  return (error_code == NO_ERROR
-	  && (error_code = er_errid ()) == NO_ERROR) ? ER_FAILED : error_code;
+  return (error_code == NO_ERROR && (error_code = er_errid ()) == NO_ERROR) ? ER_FAILED : error_code;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -5933,7 +5540,7 @@ logtb_find_largest_lsa (THREAD_ENTRY * thread_p)
 {
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
-  LOG_LSA *max_lsa = NULL;	/* The largest lsa value  */
+  LOG_LSA *max_lsa = NULL;	/* The largest lsa value */
 
   TR_TABLE_CS_ENTER_READ_MODE (thread_p);
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
@@ -5941,9 +5548,7 @@ logtb_find_largest_lsa (THREAD_ENTRY * thread_p)
       if (i != LOG_SYSTEM_TRAN_INDEX)
 	{
 	  tdes = log_Gl.trantable.all_tdes[i];
-	  if (tdes != NULL
-	      && tdes->trid != NULL_TRANID
-	      && !LSA_ISNULL (&tdes->tail_lsa)
+	  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->tail_lsa)
 	      && (max_lsa == NULL || LSA_GT (&tdes->tail_lsa, max_lsa)))
 	    {
 	      max_lsa = &tdes->tail_lsa;
@@ -5967,9 +5572,7 @@ logtb_find_largest_lsa (THREAD_ENTRY * thread_p)
  * Note: Find the smallest and larger active pages.
  */
 void
-logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p,
-					      LOG_PAGEID * smallest,
-					      LOG_PAGEID * largest)
+logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p, LOG_PAGEID * smallest, LOG_PAGEID * largest)
 {
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
@@ -5983,11 +5586,9 @@ logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p,
       if (i != LOG_SYSTEM_TRAN_INDEX)
 	{
 	  tdes = log_Gl.trantable.all_tdes[i];
-	  if (tdes != NULL && tdes->trid != NULL_TRANID
-	      && !LSA_ISNULL (&tdes->head_lsa))
+	  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->head_lsa))
 	    {
-	      if (*smallest == NULL_PAGEID
-		  || tdes->head_lsa.pageid < *smallest)
+	      if (*smallest == NULL_PAGEID || tdes->head_lsa.pageid < *smallest)
 		{
 		  *smallest = tdes->head_lsa.pageid;
 		}
@@ -5995,8 +5596,7 @@ logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p,
 		{
 		  *largest = tdes->tail_lsa.pageid;
 		}
-	      if (*largest == NULL_PAGEID
-		  || tdes->posp_nxlsa.pageid > *largest)
+	      if (*largest == NULL_PAGEID || tdes->posp_nxlsa.pageid > *largest)
 		{
 		  *largest = tdes->posp_nxlsa.pageid;
 		}
@@ -6038,15 +5638,13 @@ logtb_has_deadlock_priority (int tran_index)
  *    allocated first.
  */
 int
-logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
-				     MVCC_INFO * curr_mvcc_info)
+logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
 {
   MVCCID id = MVCCID_NULL, mvcc_subid;
   MVCCTABLE *mvcc_table;
   int shifts_count = 0;
   int r;
-  MVCC_TRANS_STATUS *current_trans_status =
-    &log_Gl.mvcc_table.current_trans_status;
+  MVCC_TRANS_STATUS *current_trans_status = &log_Gl.mvcc_table.current_trans_status;
 #if !defined(NDEBUG) && defined(HAVE_ATOMIC_BUILTINS)
   int bit_area_length;
 #endif
@@ -6059,8 +5657,7 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
   r = pthread_mutex_lock (&mvcc_table->new_mvccid_lock);
 #if !defined(NDEBUG)
   bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
-  assert (bit_area_length < MVCC_BITAREA_MAXIMUM_BITS
-	  && bit_area_length >= 0);
+  assert (bit_area_length < MVCC_BITAREA_MAXIMUM_BITS && bit_area_length >= 0);
 #endif
 #else
   r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
@@ -6103,8 +5700,7 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
       curr_mvcc_info->id = id;
     }
 
-  return
-    logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
+  return logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
 }
 
 /*
@@ -6116,9 +5712,7 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p,
  * mvcc_subid (in)     : Sub-transaction MVCCID.
  */
 static int
-logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p,
-				    MVCC_INFO * curr_mvcc_info,
-				    MVCCID mvcc_subid)
+logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid)
 {
   assert (curr_mvcc_info != NULL);
   assert (MVCCID_IS_VALID (curr_mvcc_info->id));
@@ -6128,8 +5722,7 @@ logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p,
       curr_mvcc_info->sub_ids = (MVCCID *) malloc (OR_MVCCID_SIZE * 10);
       if (curr_mvcc_info->sub_ids == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (MVCCID) * 10);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MVCCID) * 10);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       curr_mvcc_info->count_sub_ids = 0;
@@ -6138,14 +5731,11 @@ logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p,
   else if (curr_mvcc_info->count_sub_ids >= curr_mvcc_info->max_sub_ids)
     {
       curr_mvcc_info->sub_ids =
-	(MVCCID *) realloc (curr_mvcc_info->sub_ids,
-			    OR_MVCCID_SIZE
-			    * (curr_mvcc_info->max_sub_ids + 10));
+	(MVCCID *) realloc (curr_mvcc_info->sub_ids, OR_MVCCID_SIZE * (curr_mvcc_info->max_sub_ids + 10));
       if (curr_mvcc_info->sub_ids == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (OR_MVCCID_SIZE
-			       * (curr_mvcc_info->max_sub_ids + 10)));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) (OR_MVCCID_SIZE * (curr_mvcc_info->max_sub_ids + 10)));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       curr_mvcc_info->max_sub_ids += 10;
@@ -6174,15 +5764,12 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   MVCCID position;
   UINT64 *bit_area = NULL, *end_bit_area;
   UINT64 bit_area_start_mvccid = MVCCID_NULL;
-  int trans_status_history_last_position = TRANS_STATUS_HISTORY_MAX_SIZE - 1,
-    bit_area_length, size;
+  int trans_status_history_last_position = TRANS_STATUS_HISTORY_MAX_SIZE - 1, bit_area_length, size;
   int bit_area_cleanup_threshold = 4 * MVCC_BITAREA_ELEMENT_BITS;
-  unsigned int count, i, next_history_position, delete_dwords_count,
-    delete_bytes_count, new_bytes_count, bit_pos;
+  unsigned int count, i, next_history_position, delete_dwords_count, delete_bytes_count, new_bytes_count, bit_pos;
   MVCC_TRANS_STATUS *current_trans_status, *next_trans_status_history = NULL;
   UINT64 bits;
-  int bit_area_long_transaction_threshold =
-    MVCC_BITAREA_MAXIMUM_BITS - NUM_TOTAL_TRAN_INDICES;
+  int bit_area_long_transaction_threshold = MVCC_BITAREA_MAXIMUM_BITS - NUM_TOTAL_TRAN_INDICES;
   MVCCID *p_area = NULL;
   UINT64 mask;
   int r;
@@ -6200,8 +5787,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   current_trans_status = &log_Gl.mvcc_table.current_trans_status;
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-  bit_area_start_mvccid =
-    ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
+  bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
 #else
   /* Transaction completed - set corresponding bit to 1 */
   r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
@@ -6215,22 +5801,17 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* called rarely - current transaction is a long transaction */
       r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
 
-      next_history_position = (mvcc_table->trans_status_history_position
-			       + 1) & trans_status_history_last_position;
-      next_trans_status_history =
-	&mvcc_table->trans_status_history[next_history_position];
+      next_history_position = (mvcc_table->trans_status_history_position + 1) & trans_status_history_last_position;
+      next_trans_status_history = &mvcc_table->trans_status_history[next_history_position];
 
       ATOMIC_INC_32 (&current_trans_status->version, 1);
-      ATOMIC_TAS_32 (&next_trans_status_history->version,
-		     current_trans_status->version);
-      bit_area_start_mvccid =
-	ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
+      ATOMIC_TAS_32 (&next_trans_status_history->version, current_trans_status->version);
+      bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
 #endif
 
     complete_long_transactions:
 #if defined(HAVE_ATOMIC_BUILTINS)
-      bit_area_length =
-	ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
+      bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
 #endif
 
       /* Safe guard: */
@@ -6240,11 +5821,9 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	{
 	  if (current_trans_status->long_tran_mvccids[i] == mvcc_sub_id)
 	    {
-	      size = MVCC_BITAREA_ELEMENTS_TO_BYTES
-		(current_trans_status->long_tran_mvccids_length - i - 1);
+	      size = MVCC_BITAREA_ELEMENTS_TO_BYTES (current_trans_status->long_tran_mvccids_length - i - 1);
 	      memmove ((void *) (current_trans_status->long_tran_mvccids + i),
-		       (void *) (current_trans_status->long_tran_mvccids + i +
-				 1), size);
+		       (void *) (current_trans_status->long_tran_mvccids + i + 1), size);
 	      break;
 	    }
 	}
@@ -6257,22 +5836,17 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 #if defined(HAVE_ATOMIC_BUILTINS)
   r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
 
-  next_history_position = (mvcc_table->trans_status_history_position
-			   + 1) & trans_status_history_last_position;
-  next_trans_status_history =
-    &mvcc_table->trans_status_history[next_history_position];
+  next_history_position = (mvcc_table->trans_status_history_position + 1) & trans_status_history_last_position;
+  next_trans_status_history = &mvcc_table->trans_status_history[next_history_position];
 
   ATOMIC_INC_32 (&current_trans_status->version, 1);
-  ATOMIC_TAS_32 (&next_trans_status_history->version,
-		 current_trans_status->version);
+  ATOMIC_TAS_32 (&next_trans_status_history->version, current_trans_status->version);
 
-  bit_area_start_mvccid =
-    ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
+  bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
 #endif
 
   /* check again whether is long transaction */
-  if (MVCC_ID_PRECEDES (mvcc_sub_id,
-			current_trans_status->bit_area_start_mvccid))
+  if (MVCC_ID_PRECEDES (mvcc_sub_id, current_trans_status->bit_area_start_mvccid))
     {
       goto complete_long_transactions;
     }
@@ -6280,8 +5854,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   /* complete the current sub transaction */
   position = mvcc_sub_id - current_trans_status->bit_area_start_mvccid;
   mask = MVCC_BITAREA_MASK (position);
-  p_area =
-    MVCC_GET_BITAREA_ELEMENT_PTR (current_trans_status->bit_area, position);
+  p_area = MVCC_GET_BITAREA_ELEMENT_PTR (current_trans_status->bit_area, position);
   (*p_area) |= mask;
 
 #if defined(HAVE_ATOMIC_BUILTINS)
@@ -6291,8 +5864,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   /* check if need cleanup */
   if (bit_area_length < bit_area_cleanup_threshold)
     {
-      assert (current_trans_status->bit_area_length <=
-	      MVCC_BITAREA_MAXIMUM_BITS);
+      assert (current_trans_status->bit_area_length <= MVCC_BITAREA_MAXIMUM_BITS);
       goto end_completed;
     }
 
@@ -6322,28 +5894,22 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       bits = *(bit_area);
 #endif
     }
-  while ((bit_area < end_bit_area)
-	 && (bits == MVCC_BITAREA_ELEMENT_ALL_COMMITTED));
+  while ((bit_area < end_bit_area) && (bits == MVCC_BITAREA_ELEMENT_ALL_COMMITTED));
 
   delete_dwords_count = (int) (bit_area - current_trans_status->bit_area);
   delete_bytes_count = MVCC_BITAREA_ELEMENTS_TO_BYTES (delete_dwords_count);
-  new_bytes_count =
-    MVCC_BITAREA_ELEMENTS_TO_BYTES ((int) (end_bit_area - bit_area));
+  new_bytes_count = MVCC_BITAREA_ELEMENTS_TO_BYTES ((int) (end_bit_area - bit_area));
 
   if (new_bytes_count > 0)
     {
-      memmove ((void *) current_trans_status->bit_area, (void *) bit_area,
-	       new_bytes_count);
+      memmove ((void *) current_trans_status->bit_area, (void *) bit_area, new_bytes_count);
     }
-  memset (((char *) (current_trans_status->bit_area)) + new_bytes_count,
-	  MVCC_BITAREA_BIT_ACTIVE, delete_bytes_count);
+  memset (((char *) (current_trans_status->bit_area)) + new_bytes_count, MVCC_BITAREA_BIT_ACTIVE, delete_bytes_count);
   size = MVCC_BITAREA_ELEMENTS_TO_BITS (delete_dwords_count);
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-  bit_area_start_mvccid =
-    ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, size);
-  bit_area_length =
-    ATOMIC_INC_32 (&current_trans_status->bit_area_length, -size);
+  bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, size);
+  bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, -size);
 #else
   current_trans_status->bit_area_start_mvccid += size;
   current_trans_status->bit_area_length -= size;
@@ -6372,21 +5938,18 @@ check_if_full_bitarea:
 #else
       bits = *bit_area;
 #endif
-      curr_mvccid = current_trans_status->bit_area_start_mvccid
-	+ (i - 1) * MVCC_BITAREA_ELEMENT_BITS;
+      curr_mvccid = current_trans_status->bit_area_start_mvccid + (i - 1) * MVCC_BITAREA_ELEMENT_BITS;
       if (bits != MVCC_BITAREA_ELEMENT_ALL_COMMITTED)
 	{
 	  /* expect most of the transactions already committed */
 	  mask = 1;
-	  for (bit_pos = 0; bit_pos < MVCC_BITAREA_ELEMENT_BITS;
-	       bit_pos++, curr_mvccid++)
+	  for (bit_pos = 0; bit_pos < MVCC_BITAREA_ELEMENT_BITS; bit_pos++, curr_mvccid++)
 	    {
 	      if (!(bits & mask))
 		{
 		  /* long active transaction founded */
-		  current_trans_status->long_tran_mvccids
-		    [current_trans_status->
-		     long_tran_mvccids_length++] = curr_mvccid;
+		  current_trans_status->long_tran_mvccids[current_trans_status->long_tran_mvccids_length++] =
+		    curr_mvccid;
 		  /* set the bit to in order to break faster */
 		  bits |= mask;
 		  if (bits == MVCC_BITAREA_ELEMENT_ALL_COMMITTED)
@@ -6401,24 +5964,19 @@ check_if_full_bitarea:
     }
 
   delete_bytes_count = MVCC_BITAREA_ELEMENTS_TO_BYTES (delete_dwords_count);
-  new_bytes_count =
-    MVCC_BITAREA_ELEMENTS_TO_BYTES (MVCC_BITAREA_ELEMENTS_AFTER_FULL_CLEANUP);
+  new_bytes_count = MVCC_BITAREA_ELEMENTS_TO_BYTES (MVCC_BITAREA_ELEMENTS_AFTER_FULL_CLEANUP);
 
   if (new_bytes_count > 0)
     {
-      memmove ((void *) current_trans_status->bit_area, (void *) bit_area,
-	       new_bytes_count);
+      memmove ((void *) current_trans_status->bit_area, (void *) bit_area, new_bytes_count);
     }
 
-  memset (((char *) (current_trans_status->bit_area)) +
-	  new_bytes_count, MVCC_BITAREA_BIT_ACTIVE, delete_bytes_count);
+  memset (((char *) (current_trans_status->bit_area)) + new_bytes_count, MVCC_BITAREA_BIT_ACTIVE, delete_bytes_count);
   size = MVCC_BITAREA_ELEMENTS_TO_BITS (delete_dwords_count);
 
 #if defined(HAVE_ATOMIC_BUILTINS)
-  bit_area_start_mvccid =
-    ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, size);
-  bit_area_length =
-    ATOMIC_INC_32 (&current_trans_status->bit_area_length, -size);
+  bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, size);
+  bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, -size);
 #else
   current_trans_status->bit_area_start_mvccid += size;
   current_trans_status->bit_area_length -= size;
@@ -6427,45 +5985,37 @@ check_if_full_bitarea:
 #endif
 
 end_completed:
-  /* need to copy the current bit area - other threads may read
-   * next_trans_status_history, but only the current thread can modify it       
-   */
+  /* need to copy the current bit area - other threads may read next_trans_status_history, but only the current thread
+   * can modify it */
 
   if (bit_area_length > 0)
     {
       count = MVCC_BITAREA_BITS_TO_ELEMENTS (bit_area_length);
       for (i = 0; i < count; i++)
 	{
-	  ATOMIC_TAS_64 (next_trans_status_history->bit_area + i,
-			 current_trans_status->bit_area[i]);
+	  ATOMIC_TAS_64 (next_trans_status_history->bit_area + i, current_trans_status->bit_area[i]);
 	}
     }
 
-  ATOMIC_TAS_64 (&next_trans_status_history->bit_area_start_mvccid,
-		 bit_area_start_mvccid);
-  ATOMIC_TAS_32 (&next_trans_status_history->bit_area_length,
-		 bit_area_length);
+  ATOMIC_TAS_64 (&next_trans_status_history->bit_area_start_mvccid, bit_area_start_mvccid);
+  ATOMIC_TAS_32 (&next_trans_status_history->bit_area_length, bit_area_length);
 
   count = current_trans_status->long_tran_mvccids_length;
   for (i = 0; i < count; i++)
     {
-      ATOMIC_TAS_64 (next_trans_status_history->long_tran_mvccids + i,
-		     current_trans_status->long_tran_mvccids[i]);
+      ATOMIC_TAS_64 (next_trans_status_history->long_tran_mvccids + i, current_trans_status->long_tran_mvccids[i]);
     }
   ATOMIC_TAS_32 (&next_trans_status_history->long_tran_mvccids_length, count);
 
   /* prevent code rearrangement */
-  ATOMIC_TAS_32 (&mvcc_table->trans_status_history_position,
-		 next_history_position);
+  ATOMIC_TAS_32 (&mvcc_table->trans_status_history_position, next_history_position);
   pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 
   curr_mvcc_info->is_sub_active = false;
 
   if (tdes->mvccinfo.snapshot.valid)
     {
-      /* adjust snapshot to reflect committed sub-transaction, since the
-       * parent transaction didn't finished yet
-       */
+      /* adjust snapshot to reflect committed sub-transaction, since the parent transaction didn't finished yet */
       MVCC_SNAPSHOT *snapshot = &tdes->mvccinfo.snapshot;
       if (mvcc_sub_id >= snapshot->highest_completed_mvccid)
 	{
@@ -6479,8 +6029,7 @@ end_completed:
 	{
 	  position = mvcc_sub_id - snapshot->bit_area_start_mvccid;
 	  mask = MVCC_BITAREA_MASK (position);
-	  p_area =
-	    MVCC_GET_BITAREA_ELEMENT_PTR (snapshot->bit_area, position);
+	  p_area = MVCC_GET_BITAREA_ELEMENT_PTR (snapshot->bit_area, position);
 	  (*p_area) |= mask;
 
 	  if (snapshot->bit_area_length <= (int) (position))
@@ -6508,8 +6057,7 @@ end_completed:
  *     the highest completed MVCCID is set to bit_area_start_mvccid - 1
  */
 void
-logtb_get_highest_completed_mvccid (UINT64 * bit_area, int bit_area_length,
-				    MVCCID bit_area_start_mvccid,
+logtb_get_highest_completed_mvccid (UINT64 * bit_area, int bit_area_length, MVCCID bit_area_start_mvccid,
 				    MVCCID * highest_completed_mvccid)
 {
   MVCC_INFO *mvccinfo = NULL;
@@ -6521,8 +6069,8 @@ logtb_get_highest_completed_mvccid (UINT64 * bit_area, int bit_area_length,
   UINT64 bits;
   int highest_bit_pos, end_position;
   int position = 0;
-  assert (bit_area != NULL && highest_completed_mvccid != NULL
-	  && bit_area_start_mvccid >= MVCCID_FIRST && bit_area_length >= 0);
+  assert (bit_area != NULL && highest_completed_mvccid != NULL && bit_area_start_mvccid >= MVCCID_FIRST
+	  && bit_area_length >= 0);
 
   if (bit_area_length == 0)
     {
@@ -6534,16 +6082,14 @@ logtb_get_highest_completed_mvccid (UINT64 * bit_area, int bit_area_length,
   /* compute highest highest_bit_pos and highest_completed_bit_area */
   highest_bit_pos = -1;
   end_position = bit_area_length - 1;
-  highest_completed_bit_area =
-    MVCC_GET_BITAREA_ELEMENT_PTR (bit_area, end_position);
+  highest_completed_bit_area = MVCC_GET_BITAREA_ELEMENT_PTR (bit_area, end_position);
   while (highest_completed_bit_area >= bit_area)
     {
       bits = *highest_completed_bit_area;
       if (bits != 0)
 	{
 	  /* find most significant bit 1 position */
-	  for (bit_pos = 0, count_bits = MVCC_BITAREA_ELEMENT_BITS / 2;
-	       count_bits > 0; count_bits >>= 1)
+	  for (bit_pos = 0, count_bits = MVCC_BITAREA_ELEMENT_BITS / 2; count_bits > 0; count_bits >>= 1)
 	    {
 	      if (bits >= (1ULL << count_bits))
 		{
@@ -6567,11 +6113,8 @@ logtb_get_highest_completed_mvccid (UINT64 * bit_area, int bit_area_length,
     }
   else
     {
-      count_bits =
-	MVCC_BITAREA_ELEMENTS_TO_BITS ((int) (highest_completed_bit_area
-					      - bit_area));
-      *highest_completed_mvccid =
-	bit_area_start_mvccid + count_bits + highest_bit_pos;
+      count_bits = MVCC_BITAREA_ELEMENTS_TO_BITS ((int) (highest_completed_bit_area - bit_area));
+      *highest_completed_mvccid = bit_area_start_mvccid + count_bits + highest_bit_pos;
     }
 }
 
@@ -6594,10 +6137,8 @@ logtb_get_highest_completed_mvccid (UINT64 * bit_area, int bit_area_length,
  *     1, the lowest active MVCCID is bit_area_start_mvccid + bit_area_length.
  */
 void
-logtb_get_lowest_active_mvccid (UINT64 * bit_area, int bit_area_length,
-				MVCCID bit_area_start_mvccid,
-				MVCCID * long_tran_mvccids,
-				unsigned int long_tran_mvccids_length,
+logtb_get_lowest_active_mvccid (UINT64 * bit_area, int bit_area_length, MVCCID bit_area_start_mvccid,
+				MVCCID * long_tran_mvccids, unsigned int long_tran_mvccids_length,
 				MVCCID * lowest_active_mvccid)
 {
   MVCC_INFO *mvccinfo = NULL;
@@ -6608,8 +6149,7 @@ logtb_get_lowest_active_mvccid (UINT64 * bit_area, int bit_area_length,
   UINT64 *lowest_active_bit_area = NULL, *end_bit_area;
   int lowest_bit_pos, end_position;
 
-  assert (bit_area != NULL && bit_area_length >= 0
-	  && lowest_active_mvccid != NULL);
+  assert (bit_area != NULL && bit_area_length >= 0 && lowest_active_mvccid != NULL);
 
   if (long_tran_mvccids != NULL && long_tran_mvccids_length > 0)
     {
@@ -6635,8 +6175,7 @@ logtb_get_lowest_active_mvccid (UINT64 * bit_area, int bit_area_length,
       if (bits != MVCC_BITAREA_ELEMENT_ALL_COMMITTED)
 	{
 	  /* find least significant bit 0 position */
-	  for (bit_pos = 0, count_bits = MVCC_BITAREA_ELEMENT_BITS / 2;
-	       count_bits > 0; count_bits >>= 1)
+	  for (bit_pos = 0, count_bits = MVCC_BITAREA_ELEMENT_BITS / 2; count_bits > 0; count_bits >>= 1)
 	    {
 	      mask = (1ULL << count_bits) - 1;
 	      if ((bits & mask) == mask)
@@ -6658,11 +6197,8 @@ logtb_get_lowest_active_mvccid (UINT64 * bit_area, int bit_area_length,
     }
   else
     {
-      count_bits =
-	MVCC_BITAREA_ELEMENTS_TO_BITS ((int) (lowest_active_bit_area
-					      - bit_area));
-      *lowest_active_mvccid =
-	bit_area_start_mvccid + count_bits + lowest_bit_pos;
+      count_bits = MVCC_BITAREA_ELEMENTS_TO_BITS ((int) (lowest_active_bit_area - bit_area));
+      *lowest_active_mvccid = bit_area_start_mvccid + count_bits + lowest_bit_pos;
     }
 }
 
@@ -6679,8 +6215,7 @@ logtb_global_unique_stat_alloc (void)
   unique_stat = (GLOBAL_UNIQUE_STATS *) malloc (sizeof (GLOBAL_UNIQUE_STATS));
   if (unique_stat == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (GLOBAL_UNIQUE_STATS));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (GLOBAL_UNIQUE_STATS));
       return NULL;
     }
 
@@ -6815,8 +6350,7 @@ int
 logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p)
 {
   int ret = NO_ERROR;
-  LF_ENTRY_DESCRIPTOR *edesc =
-    &log_Gl.unique_stats_table.unique_stats_descriptor;
+  LF_ENTRY_DESCRIPTOR *edesc = &log_Gl.unique_stats_table.unique_stats_descriptor;
 
   if (log_Gl.unique_stats_table.initialized)
     {
@@ -6827,9 +6361,7 @@ logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p)
   edesc->of_del_tran_id = offsetof (GLOBAL_UNIQUE_STATS, del_id);
   edesc->of_key = offsetof (GLOBAL_UNIQUE_STATS, btid);
   edesc->of_mutex = offsetof (GLOBAL_UNIQUE_STATS, mutex);
-  edesc->mutex_flags =
-    LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_LOCK_ON_DELETE |
-    LF_EM_FLAG_UNLOCK_AFTER_DELETE;
+  edesc->mutex_flags = LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_LOCK_ON_DELETE | LF_EM_FLAG_UNLOCK_AFTER_DELETE;
   edesc->f_alloc = logtb_global_unique_stat_alloc;
   edesc->f_free = logtb_global_unique_stat_free;
   edesc->f_init = logtb_global_unique_stat_init;
@@ -6840,9 +6372,7 @@ logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p)
   edesc->f_duplicate = NULL;
 
   /* initialize freelist */
-  ret =
-    lf_freelist_init (&log_Gl.unique_stats_table.unique_stats_freelist, 1,
-		      100, edesc, &global_unique_stats_Ts);
+  ret = lf_freelist_init (&log_Gl.unique_stats_table.unique_stats_freelist, 1, 100, edesc, &global_unique_stats_Ts);
   if (ret != NO_ERROR)
     {
       return ret;
@@ -6850,8 +6380,7 @@ logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p)
 
   /* initialize hash table */
   ret =
-    lf_hash_init (&log_Gl.unique_stats_table.unique_stats_hash,
-		  &log_Gl.unique_stats_table.unique_stats_freelist,
+    lf_hash_init (&log_Gl.unique_stats_table.unique_stats_hash, &log_Gl.unique_stats_table.unique_stats_freelist,
 		  GLOBAL_UNIQUE_STATS_HASH_SIZE, edesc);
   if (ret != NO_ERROR)
     {
@@ -6903,12 +6432,10 @@ logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p)
  *          HEADER. THIS CAN CAUSE A DEADLOCK BETWEEN THE LATCH AND THE MUTEX !!!
  */
 static GLOBAL_UNIQUE_STATS *
-logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
-				     bool load_at_creation)
+logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool load_at_creation)
 {
   int error_code = NO_ERROR;
-  LF_TRAN_ENTRY *t_entry =
-    thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
   GLOBAL_UNIQUE_STATS *stats = NULL;
   int num_oids, num_nulls, num_keys;
 
@@ -6923,9 +6450,7 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
   }
 #endif
 
-  error_code =
-    lf_hash_find (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid,
-		  (void **) &stats);
+  error_code = lf_hash_find (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid, (void **) &stats);
   if (error_code != NO_ERROR)
     {
       return NULL;
@@ -6934,18 +6459,14 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
     {
       if (load_at_creation)
 	{
-	  error_code =
-	    btree_get_unique_statistics (thread_p, btid, &num_oids,
-					 &num_nulls, &num_keys);
+	  error_code = btree_get_unique_statistics (thread_p, btid, &num_oids, &num_nulls, &num_keys);
 	  if (error_code != NO_ERROR)
 	    {
 	      return NULL;
 	    }
 	}
       error_code =
-	lf_hash_find_or_insert (t_entry,
-				&log_Gl.unique_stats_table.unique_stats_hash,
-				btid, (void **) &stats);
+	lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid, (void **) &stats);
       if (error_code != NO_ERROR || stats == NULL)
 	{
 	  return NULL;
@@ -6975,8 +6496,7 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
  *		     of keys for the given btid
  */
 int
-logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
-			       int *num_oids, int *num_nulls, int *num_keys)
+logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oids, int *num_nulls, int *num_keys)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
@@ -7011,18 +6531,15 @@ logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid,
  *   num_keys (in) : the new number of keys
  */
 int
-logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p,
-					    BTID * btid, int num_oids,
-					    int num_nulls, int num_keys)
+logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid, int num_oids, int num_nulls,
+					    int num_keys)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
-  /* Because we update the statistics with absolute values (this means that we
-   * override old values) we don't need to load from btree header old values and,
-   * therefore, we give a 'false' value to 'load_at_creation' parameter
-   */
+  /* Because we update the statistics with absolute values (this means that we override old values) we don't need to
+   * load from btree header old values and, therefore, we give a 'false' value to 'load_at_creation' parameter */
   stats = logtb_get_global_unique_stats_entry (thread_p, btid, false);
   if (stats == NULL)
     {
@@ -7032,19 +6549,15 @@ logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p,
   if (!LSA_ISNULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa))
     {
       /* Here we assume that we are at recovery stage */
-      LSA_COPY (&stats->last_log_lsa,
-		&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
+      LSA_COPY (&stats->last_log_lsa, &log_Gl.unique_stats_table.curr_rcv_rec_lsa);
     }
 
   if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "Update stats for index (%d, %d|%d) to nulls=%d, "
-		     "oids=%d, keys=%d. LSA=%lld|%d.\n",
-		     btid->root_pageid, btid->vfid.volid, btid->vfid.fileid,
-		     num_nulls, num_oids, num_keys,
-		     (long long int) stats->last_log_lsa.pageid,
-		     (int) stats->last_log_lsa.offset);
+		     "Update stats for index (%d, %d|%d) to nulls=%d, " "oids=%d, keys=%d. LSA=%lld|%d.\n",
+		     btid->root_pageid, btid->vfid.volid, btid->vfid.fileid, num_nulls, num_oids, num_keys,
+		     (long long int) stats->last_log_lsa.pageid, (int) stats->last_log_lsa.offset);
     }
 
   stats->unique_stats.num_oids = num_oids;
@@ -7069,10 +6582,8 @@ logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p,
  *   log (in) : true if we need to log the changes
  */
 int
-logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p,
-					   BTID * btid, int oid_delta,
-					   int null_delta, int key_delta,
-					   bool log)
+logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid, int oid_delta, int null_delta,
+					   int key_delta, bool log)
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
@@ -7097,15 +6608,11 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p,
   if (log)
     {
       RECDES undo_rec, redo_rec;
-      char undo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE +
-			BTREE_MAX_ALIGN], *datap = NULL;
-      char redo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE +
-			BTREE_MAX_ALIGN];
+      char undo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN], *datap = NULL;
+      char redo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN];
 
-      /* although we don't change the btree header, we still need to log here
-       * the new values of statistics so that they can be recovered at recover
-       * stage. For undo purposes we log the increments.
-       */
+      /* although we don't change the btree header, we still need to log here the new values of statistics so that they 
+       * can be recovered at recover stage. For undo purposes we log the increments. */
       undo_rec.data = NULL;
       undo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
       undo_rec.data = PTR_ALIGN (undo_rec_buf, BTREE_MAX_ALIGN);
@@ -7138,31 +6645,23 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p,
       datap += OR_INT_SIZE;
       redo_rec.length = CAST_BUFLEN (datap - redo_rec.data);
 
-      log_append_undoredo_data2 (thread_p,
-				 RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL,
-				 NULL, HEADER, undo_rec.length,
-				 redo_rec.length, undo_rec.data,
-				 redo_rec.data);
+      log_append_undoredo_data2 (thread_p, RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL, NULL, HEADER, undo_rec.length,
+				 redo_rec.length, undo_rec.data, redo_rec.data);
       LSA_COPY (&stats->last_log_lsa, &tdes->tail_lsa);
     }
   else if (!LSA_ISNULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa))
     {
       /* Here we assume that we are at recovery stage */
-      LSA_COPY (&stats->last_log_lsa,
-		&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
+      LSA_COPY (&stats->last_log_lsa, &log_Gl.unique_stats_table.curr_rcv_rec_lsa);
     }
 
   if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
     {
       _er_log_debug (ARG_FILE_LINE,
 		     "Update stats for index (%d, %d|%d) by nulls=%d, "
-		     "oids=%d, keys=%d to nulls=%d, oids=%d, keys=%d. "
-		     "LSA=%lld|%d.\n",
-		     btid->root_pageid, btid->vfid.volid, btid->vfid.fileid,
-		     null_delta, oid_delta, key_delta,
-		     num_nulls, num_oids, num_keys,
-		     (long long int) stats->last_log_lsa.pageid,
-		     (int) stats->last_log_lsa.offset);
+		     "oids=%d, keys=%d to nulls=%d, oids=%d, keys=%d. " "LSA=%lld|%d.\n", btid->root_pageid,
+		     btid->vfid.volid, btid->vfid.fileid, null_delta, oid_delta, key_delta, num_nulls, num_oids,
+		     num_keys, (long long int) stats->last_log_lsa.pageid, (int) stats->last_log_lsa.offset);
     }
 
   stats->unique_stats.num_oids = num_oids;
@@ -7185,8 +6684,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p,
 int
 logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid)
 {
-  LF_TRAN_ENTRY *t_entry =
-    thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
   int error = NO_ERROR;
 
 #if !defined(NDEBUG)
@@ -7198,9 +6696,7 @@ logtb_delete_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid)
   }
 #endif
 
-  error =
-    lf_hash_delete (t_entry, &log_Gl.unique_stats_table.unique_stats_hash,
-		    btid, NULL);
+  error = lf_hash_delete (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid, NULL);
   if (error != NO_ERROR)
     {
       return error;
@@ -7221,24 +6717,20 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
 {
   int error = NO_ERROR;
   LF_HASH_TABLE_ITERATOR it;
-  LF_TRAN_ENTRY *t_entry =
-    thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
   GLOBAL_UNIQUE_STATS *stats = NULL;
 
   if (!log_Gl.unique_stats_table.initialized)
     {
       return NO_ERROR;
     }
-  lf_hash_create_iterator (&it, t_entry,
-			   &log_Gl.unique_stats_table.unique_stats_hash);
-  for (stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it); stats != NULL;
-       stats = lf_hash_iterate (&it))
+  lf_hash_create_iterator (&it, t_entry, &log_Gl.unique_stats_table.unique_stats_hash);
+  for (stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it); stats != NULL; stats = lf_hash_iterate (&it))
     {
       /* reflect only if some changes were logged */
       if (!LSA_ISNULL (&stats->last_log_lsa))
 	{
-	  error =
-	    btree_reflect_global_unique_statistics (thread_p, stats, false);
+	  error = btree_reflect_global_unique_statistics (thread_p, stats, false);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -7262,13 +6754,11 @@ logtb_reset_bit_area_start_mvccid (void)
   MVCC_TRANS_STATUS *trans_status;
 
   trans_status = &log_Gl.mvcc_table.current_trans_status;
-  assert (trans_status->bit_area_length == 0
-	  && trans_status->bit_area[0] == 0);
+  assert (trans_status->bit_area_length == 0 && trans_status->bit_area[0] == 0);
   trans_status->bit_area_start_mvccid = log_Gl.hdr.mvcc_next_id;
 
   history_position = (log_Gl.mvcc_table).trans_status_history_position;
-  assert ((history_position >= 0)
-	  && (history_position < TRANS_STATUS_HISTORY_MAX_SIZE));
+  assert ((history_position >= 0) && (history_position < TRANS_STATUS_HISTORY_MAX_SIZE));
   trans_status = log_Gl.mvcc_table.trans_status_history + history_position;
   assert (trans_status->bit_area_length == 0);
   trans_status->bit_area_start_mvccid = log_Gl.hdr.mvcc_next_id;
@@ -7295,8 +6785,7 @@ xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name)
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
-      if (tdes != NULL && tdes->client.is_user_active
-	  && strcmp (tdes->client.db_user, user_name) == 0)
+      if (tdes != NULL && tdes->client.is_user_active && strcmp (tdes->client.db_user, user_name) == 0)
 	{
 	  existed = true;
 	  break;
@@ -7328,8 +6817,7 @@ logtb_collect_local_clients (int **local_clients_pids)
   for (i = 0, num_client = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
-      if (tdes != NULL && tdes->client.process_id > 0
-	  && tdes->client.host_name != NULL
+      if (tdes != NULL && tdes->client.process_id > 0 && tdes->client.host_name != NULL
 	  && (strcmp (tdes->client.host_name, boot_Host_name) == 0
 	      || strcmp (tdes->client.host_name, "localhost") == 0))
 	{
@@ -7353,8 +6841,7 @@ logtb_collect_local_clients (int **local_clients_pids)
  *   ptr(in/out):
  */
 int
-logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type,
-			      DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
 {
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
   int i, idx, msecs, error = NO_ERROR;
@@ -7371,8 +6858,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type,
 
   *ptr = NULL;
 
-  ctx =
-    showstmt_alloc_array_context (thread_p, NUM_TOTAL_TRAN_INDICES, num_cols);
+  ctx = showstmt_alloc_array_context (thread_p, NUM_TOTAL_TRAN_INDICES, num_cols);
   if (ctx == NULL)
     {
       error = er_errid ();
@@ -7752,8 +7238,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type,
 	{
 	  vpid_to_string (vpid_buf, sizeof (vpid_buf), &xasl_val.first_vpid);
 	  vfid_to_string (vfid_buf, sizeof (vfid_buf), &xasl_val.temp_vfid);
-	  snprintf (buf, sizeof (buf), "vpid: %s, vfid: %s", vpid_buf,
-		    vfid_buf);
+	  snprintf (buf, sizeof (buf), "vpid: %s, vfid: %s", vpid_buf, vfid_buf);
 	  error = db_make_string_copy (&vals[idx], buf);
 	  if (error != NO_ERROR)
 	    {

@@ -103,8 +103,7 @@ adj_ar_new (int element_size, int min, float growth_rate)
       adj_array->buffer = NULL;
       adj_array->max_length = 0;
       adj_array->element_size = element_size;
-      if (adj_ar_reset (adj_array, element_size, min, growth_rate) !=
-	  ADJ_NOERROR)
+      if (adj_ar_reset (adj_array, element_size, min, growth_rate) != ADJ_NOERROR)
 	{
 	  free (adj_array);
 	  adj_array = NULL;
@@ -142,8 +141,7 @@ adj_ar_free (ADJ_ARRAY * adj_array_p)
  *   growth_rate(in) : growth rate of array
  */
 int
-adj_ar_reset (ADJ_ARRAY * adj_array_p, int element_size, int min,
-	      float growth_rate)
+adj_ar_reset (ADJ_ARRAY * adj_array_p, int element_size, int min, float growth_rate)
 {
   assert (adj_array_p != NULL);
 
@@ -177,8 +175,7 @@ adj_ar_reset (ADJ_ARRAY * adj_array_p, int element_size, int min,
  *   initial_length(in)  : number of elements contained in 'initial' buffer
  */
 int
-adj_ar_initialize (ADJ_ARRAY * adj_array_p, const void *initial,
-		   int initial_length)
+adj_ar_initialize (ADJ_ARRAY * adj_array_p, const void *initial, int initial_length)
 {
   assert (adj_array_p != NULL);
 
@@ -205,14 +202,12 @@ adj_ar_initialize (ADJ_ARRAY * adj_array_p, const void *initial,
     {
       if (adj_array_p->element_size == 1)
 	{
-	  memset ((char *) adj_array_p->buffer, *((unsigned char *) initial),
-		  initial_length);
+	  memset ((char *) adj_array_p->buffer, *((unsigned char *) initial), initial_length);
 	}
       else
 	{
 	  void *p;
-	  for (p = adj_array_p->buffer; initial_length-- > 0; p
-	       = (void *) ((char *) p + adj_array_p->element_size))
+	  for (p = adj_array_p->buffer; initial_length-- > 0; p = (void *) ((char *) p + adj_array_p->element_size))
 	    {
 	      memmove (p, initial, adj_array_p->element_size);
 	      /* TODO ?? initial = (char*) initial + adj_array_p->element_size */
@@ -234,8 +229,7 @@ adj_ar_initialize (ADJ_ARRAY * adj_array_p, const void *initial,
  *   end (in): end position in the array buffer to be replaced, exclusive
  */
 int
-adj_ar_replace (ADJ_ARRAY * adj_array_p, const void *src,
-		int src_length, int start, int end)
+adj_ar_replace (ADJ_ARRAY * adj_array_p, const void *src, int src_length, int start, int end)
 {
   int new_length;
 
@@ -279,14 +273,12 @@ adj_ar_replace (ADJ_ARRAY * adj_array_p, const void *src,
       /* allocate larger buffer. */
       void *new_buffer;
       int new_max = MAX (adj_array_p->min_length,
-			 MAX ((int) (adj_array_p->max_length *
-				     adj_array_p->rate),
+			 MAX ((int) (adj_array_p->max_length * adj_array_p->rate),
 			      new_length));
 
       if (adj_array_p->buffer)
 	{
-	  new_buffer = realloc (adj_array_p->buffer,
-				new_max * adj_array_p->element_size);
+	  new_buffer = realloc (adj_array_p->buffer, new_max * adj_array_p->element_size);
 	}
       else
 	{
@@ -302,17 +294,14 @@ adj_ar_replace (ADJ_ARRAY * adj_array_p, const void *src,
     }
 
   /* Shift elements following replaced subarray. */
-  memmove ((void *) ((char *) adj_array_p->buffer +
-		     (start + src_length) * adj_array_p->element_size),
-	   (void *) ((char *) adj_array_p->buffer +
-		     end * adj_array_p->element_size),
+  memmove ((void *) ((char *) adj_array_p->buffer + (start + src_length) * adj_array_p->element_size),
+	   (void *) ((char *) adj_array_p->buffer + end * adj_array_p->element_size),
 	   (adj_array_p->cur_length - end) * adj_array_p->element_size);
 
   if (src)
     {
-      memmove ((void *) ((char *) adj_array_p->buffer +
-			 start * adj_array_p->element_size),
-	       src, src_length * adj_array_p->element_size);
+      memmove ((void *) ((char *) adj_array_p->buffer + start * adj_array_p->element_size), src,
+	       src_length * adj_array_p->element_size);
     }
   adj_array_p->cur_length = new_length;
 
@@ -343,8 +332,7 @@ adj_ar_remove (ADJ_ARRAY * adj_array_p, int start, int end)
  *   start (in) : start position in the 'adj_array_p'
  */
 int
-adj_ar_insert (ADJ_ARRAY * adj_array_p, const void *src, int src_length,
-	       int start)
+adj_ar_insert (ADJ_ARRAY * adj_array_p, const void *src, int src_length, int start)
 {
   assert (adj_array_p != NULL);
 
@@ -363,8 +351,7 @@ adj_ar_append (ADJ_ARRAY * adj_array_p, const void *src, int src_length)
 {
   assert (adj_array_p != NULL);
 
-  return adj_ar_replace (adj_array_p, src, src_length, ADJ_AR_EOA,
-			 ADJ_AR_EOA);
+  return adj_ar_replace (adj_array_p, src, src_length, ADJ_AR_EOA, ADJ_AR_EOA);
 }
 
 /*

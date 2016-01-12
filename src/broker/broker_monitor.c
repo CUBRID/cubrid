@@ -200,7 +200,7 @@ struct status_field fields[FIELD_LAST + 1] = {
   {FIELD_NUM_OF_UPDATE_QUERIES, 8, "UPDATE", FIELD_RIGHT_ALIGN},
   {FIELD_NUM_OF_DELETE_QUERIES, 8, "DELETE", FIELD_RIGHT_ALIGN},
   {FIELD_NUM_OF_OTHERS_QUERIES, 8, "OTHERS", FIELD_RIGHT_ALIGN},
-  /*
+  /* 
    * 5: width of long transaction count
    * 1: delimiter(/)
    * 4: width of long transaction time
@@ -209,7 +209,7 @@ struct status_field fields[FIELD_LAST + 1] = {
    *    10/60.0
    * */
   {FIELD_LONG_TRANSACTION, 5 + 1 + 4, "LONG-T", FIELD_RIGHT_ALIGN},
-  /*
+  /* 
    * 5: width of long query count
    * 1: delimiter(/)
    * 4: width of long query time
@@ -320,41 +320,27 @@ static void ip2str (unsigned char *ip, char *ip_str);
 static void time2str (const time_t t, char *str);
 
 static void print_monitor_header (MONITOR_TYPE mnt_type);
-static void
-set_monitor_items (BR_MONITORING_ITEM * mnt_items,
-		   T_BROKER_INFO * br_info,
-		   T_SHM_APPL_SERVER * shm_appl,
-		   T_SHM_PROXY * shm_proxy, MONITOR_TYPE mnt_type);
-static void
-print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur,
-		     BR_MONITORING_ITEM * mnt_items_old, int num_mnt_items,
-		     double elapsed_time, T_BROKER_INFO * br_info_p,
-		     T_SHM_APPL_SERVER * shm_appl, MONITOR_TYPE mnt_type);
+static void set_monitor_items (BR_MONITORING_ITEM * mnt_items, T_BROKER_INFO * br_info, T_SHM_APPL_SERVER * shm_appl,
+			       T_SHM_PROXY * shm_proxy, MONITOR_TYPE mnt_type);
+static void print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur, BR_MONITORING_ITEM * mnt_items_old,
+				 int num_mnt_items, double elapsed_time, T_BROKER_INFO * br_info_p,
+				 T_SHM_APPL_SERVER * shm_appl, MONITOR_TYPE mnt_type);
 
-static void
-appl_info_display (T_SHM_APPL_SERVER * shm_appl,
-		   T_APPL_SERVER_INFO * as_info_p, int br_index,
-		   int as_index,
-		   APPL_MONITORING_ITEM * appl_mnt_old, time_t current_time,
-		   double elapsed_time);
+static void appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index,
+			       APPL_MONITORING_ITEM * appl_mnt_old, time_t current_time, double elapsed_time);
 static int appl_monitor (char *br_vector, double elapsed_time);
-static int brief_monitor (char *br_vector, MONITOR_TYPE mnt_type,
-			  double elapsed_time);
+static int brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time);
 
 #ifdef GET_PSINFO
 static void time_format (int t, char *time_str);
 #endif
 static void print_appl_header (bool use_pdh_flag);
-static int print_title (char *buf_p, int buf_offset, FIELD_NAME name,
-			const char *new_title_p);
+static int print_title (char *buf_p, int buf_offset, FIELD_NAME name, const char *new_title_p);
 static void print_value (FIELD_NAME name, const void *value, FIELD_TYPE type);
-static int
-get_num_monitor_items (MONITOR_TYPE mnt_type, T_SHM_PROXY * shm_proxy_p);
-static const char *get_access_mode_string (T_ACCESS_MODE_VALUE mode,
-					   int replica_only_flag);
+static int get_num_monitor_items (MONITOR_TYPE mnt_type, T_SHM_PROXY * shm_proxy_p);
+static const char *get_access_mode_string (T_ACCESS_MODE_VALUE mode, int replica_only_flag);
 static const char *get_sql_log_mode_string (T_SQL_LOG_MODE_VALUE mode);
-static const char *get_status_string (T_APPL_SERVER_INFO * as_info_p,
-				      char appl_server);
+static const char *get_status_string (T_APPL_SERVER_INFO * as_info_p, char appl_server);
 static void get_cpu_usage_string (char *buf_p, float usage);
 
 
@@ -478,8 +464,7 @@ main (int argc, char **argv)
       return 3;
     }
 
-  err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL,
-			    0, NULL, NULL, NULL);
+  err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL, 0, NULL, NULL, NULL);
   if (err < 0)
     {
       return 2;
@@ -487,14 +472,11 @@ main (int argc, char **argv)
 
   ut_cd_work_dir ();
 
-  shm_br =
-    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER,
-				  SHM_MODE_MONITOR);
+  shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_MONITOR);
   if (shm_br == NULL)
     {
       /* This means we have to launch broker */
-      fprintf (stdout, "master shared memory open error[0x%x]\r\n",
-	       master_shm_id);
+      fprintf (stdout, "master shared memory open error[0x%x]\r\n", master_shm_id);
       return 1;
     }
   if (shm_br->num_broker < 1 || shm_br->num_broker > MAX_BROKER_NUM)
@@ -562,9 +544,7 @@ main (int argc, char **argv)
 	      uw_shm_detach (shm_br);
 	    }
 
-	  shm_br =
-	    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER,
-					  SHM_MODE_MONITOR);
+	  shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_MONITOR);
 	}
       else
 	{
@@ -705,8 +685,7 @@ main (int argc, char **argv)
 static void
 print_usage (void)
 {
-  printf
-    ("broker_monitor [-b] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [-f] [<expr>]\n");
+  printf ("broker_monitor [-b] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [-f] [<expr>]\n");
   printf ("\t<expr> part of broker name or SERVICE=[ON|OFF]\n");
   printf ("\t-q display job queue\n");
   printf ("\t-m display shard statistics information\n");
@@ -789,8 +768,7 @@ get_args (int argc, char *argv[], char *br_vector)
     {
       if (br_name_opt_flag == false)
 	{
-	  if (strncasecmp (argv[optind], "SERVICE=", strlen ("SERVICE=")) ==
-	      0)
+	  if (strncasecmp (argv[optind], "SERVICE=", strlen ("SERVICE=")) == 0)
 	    {
 	      char *value_p;
 	      value_p = argv[optind] + strlen ("SERVICE=");
@@ -823,8 +801,7 @@ get_args (int argc, char *argv[], char *br_vector)
       for (j = 0; j < shm_br->num_broker; j++)
 	{
 #if defined(WINDOWS)
-	  status =
-	    (strstr (shm_br->br_info[j].name, argv[optind]) != NULL) ? 0 : 1;
+	  status = (strstr (shm_br->br_info[j].name, argv[optind]) != NULL) ? 0 : 1;
 #else
 	  status = regexec (&re, shm_br->br_info[j].name, 0, NULL, 0);
 #endif
@@ -864,8 +841,7 @@ print_job_queue (T_MAX_HEAP_NODE * job_queue)
 
       if (first_flag)
 	{
-	  sprintf (outbuf, "%5s  %s%9s%13s%13s", "ID", "PRIORITY", "IP",
-		   "TIME", "REQUEST");
+	  sprintf (outbuf, "%5s  %s%9s%13s%13s", "ID", "PRIORITY", "IP", "TIME", "REQUEST");
 	  str_out ("%s", outbuf);
 	  print_newline ();
 	  first_flag = 0;
@@ -873,9 +849,7 @@ print_job_queue (T_MAX_HEAP_NODE * job_queue)
 
       ip2str (item.ip_addr, ip_str);
       time2str (item.recv_time, time_str);
-      sprintf (outbuf, "%5d%7d%17s%10s   %s:%s",
-	       item.id, item.priority, ip_str, time_str, item.script,
-	       item.prg_name);
+      sprintf (outbuf, "%5d%7d%17s%10s   %s:%s", item.id, item.priority, ip_str, time_str, item.script, item.prg_name);
       str_out ("%s", outbuf);
       print_newline ();
     }
@@ -886,9 +860,8 @@ print_job_queue (T_MAX_HEAP_NODE * job_queue)
 static void
 ip2str (unsigned char *ip, char *ip_str)
 {
-  sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip[0],
-	   (unsigned char) ip[1],
-	   (unsigned char) ip[2], (unsigned char) ip[3]);
+  sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip[0], (unsigned char) ip[1], (unsigned char) ip[2],
+	   (unsigned char) ip[3]);
 }
 
 static void
@@ -905,11 +878,8 @@ time2str (const time_t t, char *str)
 }
 
 static void
-appl_info_display (T_SHM_APPL_SERVER * shm_appl,
-		   T_APPL_SERVER_INFO * as_info_p, int br_index,
-		   int as_index,
-		   APPL_MONITORING_ITEM * appl_mnt_old, time_t current_time,
-		   double elapsed_time)
+appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index,
+		   APPL_MONITORING_ITEM * appl_mnt_old, time_t current_time, double elapsed_time)
 {
   UINT64 qps;
   UINT64 lqs;
@@ -943,14 +913,12 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
 
   if (last_access_sec > 0)
     {
-      if (as_info_p->uts_status != UTS_STATUS_BUSY
-	  || current_time - as_info_p->last_access_time < last_access_sec)
+      if (as_info_p->uts_status != UTS_STATUS_BUSY || current_time - as_info_p->last_access_time < last_access_sec)
 	{
 	  return;
 	}
 
-      if (as_info_p->uts_status == UTS_STATUS_BUSY
-	  && IS_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server)
+      if (as_info_p->uts_status == UTS_STATUS_BUSY && IS_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server)
 	  && as_info_p->con_status == CON_STATUS_OUT_TRAN)
 	{
 	  return;
@@ -963,8 +931,7 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
     {
       char as_id_str[FIELD_WIDTH_AS_ID];
 
-      snprintf (as_id_str, sizeof (as_id_str), "%d-%d-%d", proxy_id,
-		shard_id, as_id);
+      snprintf (as_id_str, sizeof (as_id_str), "%d-%d-%d", proxy_id, shard_id, as_id);
 
       print_value (FIELD_ID, as_id_str, FIELD_T_STRING);
     }
@@ -975,10 +942,8 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
   print_value (FIELD_PID, &as_info_p->pid, FIELD_T_INT);
   if (elapsed_time > 0)
     {
-      qps = (as_info_p->num_queries_processed -
-	     appl_mnt_old->num_query_processed) / elapsed_time;
-      lqs = (as_info_p->num_long_queries -
-	     appl_mnt_old->num_long_query) / elapsed_time;
+      qps = (as_info_p->num_queries_processed - appl_mnt_old->num_query_processed) / elapsed_time;
+      lqs = (as_info_p->num_long_queries - appl_mnt_old->num_long_query) / elapsed_time;
       appl_mnt_old->num_query_processed = as_info_p->num_queries_processed;
       appl_mnt_old->num_long_query = as_info_p->num_long_queries;
       appl_mnt_old->qps = qps;
@@ -1004,10 +969,7 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
   psize = getsize (as_info_p->pid);
   print_value (FIELD_PSIZE, &psize, FIELD_T_INT);
 #endif
-  print_value (FIELD_STATUS,
-	       get_status_string (as_info_p,
-				  shm_br->br_info[br_index].appl_server),
-	       FIELD_T_STRING);
+  print_value (FIELD_STATUS, get_status_string (as_info_p, shm_br->br_info[br_index].appl_server), FIELD_T_STRING);
 
 #ifdef GET_PSINFO
   get_psinfo (as_info_p->pid, &proc_info);
@@ -1027,15 +989,12 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
 
   if (full_info_flag)
     {
-      print_value (FIELD_LAST_ACCESS_TIME, &(as_info_p->last_access_time),
-		   FIELD_T_TIME);
+      print_value (FIELD_LAST_ACCESS_TIME, &(as_info_p->last_access_time), FIELD_T_TIME);
       if (as_info_p->database_name[0] != '\0')
 	{
-	  print_value (FIELD_DB_NAME, as_info_p->database_name,
-		       FIELD_T_STRING);
+	  print_value (FIELD_DB_NAME, as_info_p->database_name, FIELD_T_STRING);
 	  print_value (FIELD_HOST, as_info_p->database_host, FIELD_T_STRING);
-	  print_value (FIELD_LAST_CONNECT_TIME,
-		       &(as_info_p->last_connect_time), FIELD_T_TIME);
+	  print_value (FIELD_LAST_CONNECT_TIME, &(as_info_p->last_connect_time), FIELD_T_TIME);
 	}
       else
 	{
@@ -1044,18 +1003,13 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
 	  print_value (FIELD_LAST_CONNECT_TIME, (char *) "-", FIELD_T_STRING);
 	}
 
-      print_value (FIELD_CLIENT_IP,
-		   ut_get_ipv4_string (ip_str, sizeof (ip_str),
-				       as_info_p->cas_clt_ip),
+      print_value (FIELD_CLIENT_IP, ut_get_ipv4_string (ip_str, sizeof (ip_str), as_info_p->cas_clt_ip),
 		   FIELD_T_STRING);
-      print_value (FIELD_CLIENT_VERSION, as_info_p->driver_version,
-		   FIELD_T_STRING);
+      print_value (FIELD_CLIENT_VERSION, as_info_p->driver_version, FIELD_T_STRING);
 
       if (as_info_p->cur_sql_log_mode != shm_appl->sql_log_mode)
 	{
-	  print_value (FIELD_SQL_LOG_MODE,
-		       get_sql_log_mode_string (as_info_p->cur_sql_log_mode),
-		       FIELD_T_STRING);
+	  print_value (FIELD_SQL_LOG_MODE, get_sql_log_mode_string (as_info_p->cur_sql_log_mode), FIELD_T_STRING);
 	}
       else
 	{
@@ -1065,15 +1019,13 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl,
       tran_start_time = as_info_p->transaction_start_time;
       if (tran_start_time != (time_t) 0)
 	{
-	  print_value (FIELD_TRANSACTION_STIME, &tran_start_time,
-		       FIELD_T_TIME);
+	  print_value (FIELD_TRANSACTION_STIME, &tran_start_time, FIELD_T_TIME);
 	}
       else
 	{
 	  print_value (FIELD_TRANSACTION_STIME, (char *) "-", FIELD_T_STRING);
 	}
-      print_value (FIELD_CONNECT, &(as_info_p->num_connect_requests),
-		   FIELD_T_INT);
+      print_value (FIELD_CONNECT, &(as_info_p->num_connect_requests), FIELD_T_INT);
       print_value (FIELD_RESTART, &(as_info_p->num_restarts), FIELD_T_INT);
     }
   print_newline ();
@@ -1108,8 +1060,7 @@ appl_monitor (char *br_vector, double elapsed_time)
 	  n += shm_br->br_info[i].appl_server_max_num;
 	}
 
-      appl_mnt_olds =
-	(APPL_MONITORING_ITEM *) calloc (sizeof (APPL_MONITORING_ITEM), n);
+      appl_mnt_olds = (APPL_MONITORING_ITEM *) calloc (sizeof (APPL_MONITORING_ITEM), n);
       if (appl_mnt_olds == NULL)
 	{
 	  return -1;
@@ -1124,8 +1075,7 @@ appl_monitor (char *br_vector, double elapsed_time)
 	  continue;
 	}
 
-      if (service_filter_value != SERVICE_UNKNOWN
-	  && service_filter_value != shm_br->br_info[i].service_flag)
+      if (service_filter_value != SERVICE_UNKNOWN && service_filter_value != shm_br->br_info[i].service_flag)
 	{
 	  continue;
 	}
@@ -1135,9 +1085,7 @@ appl_monitor (char *br_vector, double elapsed_time)
       if (shm_br->br_info[i].service_flag == SERVICE_ON)
 	{
 	  shm_appl =
-	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].
-					       appl_server_shm_id,
-					       SHM_APPL_SERVER,
+	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].appl_server_shm_id, SHM_APPL_SERVER,
 					       SHM_MODE_MONITOR);
 	  if (shm_appl == NULL)
 	    {
@@ -1164,8 +1112,7 @@ appl_monitor (char *br_vector, double elapsed_time)
 		}
 	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
 		{
-		  appl_info_display (shm_appl, &(shm_appl->as_info[j]), i, j,
-				     &(appl_mnt_olds[appl_offset + j]),
+		  appl_info_display (shm_appl, &(shm_appl->as_info[j]), i, j, &(appl_mnt_olds[appl_offset + j]),
 				     current_time, elapsed_time);
 		}		/* CAS INFORMATION DISPLAY */
 
@@ -1204,8 +1151,7 @@ print_monitor_header (MONITOR_TYPE mnt_type)
 
   assert (mnt_type <= MONITOR_T_LAST);
 
-  if (tty_mode == true && (tty_print_header++ % 20 != 0)
-      && mnt_type == MONITOR_T_BROKER
+  if (tty_mode == true && (tty_print_header++ % 20 != 0) && mnt_type == MONITOR_T_BROKER
       && (monitor_flag & ~BROKER_MONITOR_FLAG_MASK) == 0)
     {
       return;
@@ -1236,28 +1182,17 @@ print_monitor_header (MONITOR_TYPE mnt_type)
     {
       char field_title_with_interval[256];
 
-      buf_offset = print_title (buf, buf_offset,
-				FIELD_APPL_SERVER_NUM_TOTAL, (char *) "AS(T");
-      buf_offset =
-	print_title (buf, buf_offset, FIELD_APPL_SERVER_NUM_CLIENT_WAIT,
-		     NULL);
-      buf_offset =
-	print_title (buf, buf_offset, FIELD_APPL_SERVER_NUM_BUSY, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_APPL_SERVER_NUM_TOTAL, (char *) "AS(T");
+      buf_offset = print_title (buf, buf_offset, FIELD_APPL_SERVER_NUM_CLIENT_WAIT, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_APPL_SERVER_NUM_BUSY, NULL);
       sprintf (field_title_with_interval, "%d%s", state_interval, "s-W");
-      buf_offset =
-	print_title (buf, buf_offset,
-		     FIELD_APPL_SERVER_NUM_CLIENT_WAIT_IN_SEC,
-		     field_title_with_interval);
+      buf_offset = print_title (buf, buf_offset, FIELD_APPL_SERVER_NUM_CLIENT_WAIT_IN_SEC, field_title_with_interval);
       sprintf (field_title_with_interval, "%d%s", state_interval, "s-B)");
-      buf_offset =
-	print_title (buf, buf_offset,
-		     FIELD_APPL_SERVER_NUM_BUSY_IN_SEC,
-		     field_title_with_interval);
+      buf_offset = print_title (buf, buf_offset, FIELD_APPL_SERVER_NUM_BUSY_IN_SEC, field_title_with_interval);
     }
   else
     {
-      buf_offset = print_title (buf, buf_offset,
-				FIELD_APPL_SERVER_NUM_TOTAL, (char *) "AS");
+      buf_offset = print_title (buf, buf_offset, FIELD_APPL_SERVER_NUM_TOTAL, (char *) "AS");
     }
 
   if (mnt_type == MONITOR_T_BROKER)
@@ -1279,23 +1214,17 @@ print_monitor_header (MONITOR_TYPE mnt_type)
   buf_offset = print_title (buf, buf_offset, FIELD_QPS, NULL);
   if (full_info_flag == false)
     {
-      buf_offset =
-	print_title (buf, buf_offset, FIELD_NUM_OF_SELECT_QUERIES, NULL);
-      buf_offset =
-	print_title (buf, buf_offset, FIELD_NUM_OF_INSERT_QUERIES, NULL);
-      buf_offset =
-	print_title (buf, buf_offset, FIELD_NUM_OF_UPDATE_QUERIES, NULL);
-      buf_offset =
-	print_title (buf, buf_offset, FIELD_NUM_OF_DELETE_QUERIES, NULL);
-      buf_offset =
-	print_title (buf, buf_offset, FIELD_NUM_OF_OTHERS_QUERIES, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUM_OF_SELECT_QUERIES, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUM_OF_INSERT_QUERIES, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUM_OF_UPDATE_QUERIES, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUM_OF_DELETE_QUERIES, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUM_OF_OTHERS_QUERIES, NULL);
     }
 
   buf_offset = print_title (buf, buf_offset, FIELD_LONG_TRANSACTION, NULL);
   buf_offset = print_title (buf, buf_offset, FIELD_LONG_QUERY, NULL);
   buf_offset = print_title (buf, buf_offset, FIELD_ERROR_QUERIES, NULL);
-  buf_offset = print_title (buf, buf_offset, FIELD_UNIQUE_ERROR_QUERIES,
-			    NULL);
+  buf_offset = print_title (buf, buf_offset, FIELD_UNIQUE_ERROR_QUERIES, NULL);
   if (full_info_flag && mnt_type == MONITOR_T_BROKER)
     {
       buf_offset = print_title (buf, buf_offset, FIELD_CANCELED, NULL);
@@ -1305,11 +1234,8 @@ print_monitor_header (MONITOR_TYPE mnt_type)
 
   if (mnt_type == MONITOR_T_BROKER)
     {
-      buf_offset =
-	print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION, NULL);
-      buf_offset =
-	print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION_REJECTED,
-		     NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION_REJECTED, NULL);
     }
   else if (mnt_type == MONITOR_T_SHARDDB)
     {
@@ -1317,17 +1243,13 @@ print_monitor_header (MONITOR_TYPE mnt_type)
     }
   else if (mnt_type == MONITOR_T_PROXY)
     {
-      buf_offset =
-	print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION, NULL);
-      buf_offset =
-	print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION_REJECTED,
-		     NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION, NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_NUMBER_OF_CONNECTION_REJECTED, NULL);
       buf_offset = print_title (buf, buf_offset, FIELD_RESTART, NULL);
 
       if (full_info_flag)
 	{
-	  buf_offset =
-	    print_title (buf, buf_offset, FIELD_STMT_POOL_RATIO, NULL);
+	  buf_offset = print_title (buf, buf_offset, FIELD_STMT_POOL_RATIO, NULL);
 	}
     }
 
@@ -1344,9 +1266,7 @@ print_monitor_header (MONITOR_TYPE mnt_type)
 }
 
 static void
-set_monitor_items (BR_MONITORING_ITEM * mnt_items,
-		   T_BROKER_INFO * br_info_p,
-		   T_SHM_APPL_SERVER * shm_appl,
+set_monitor_items (BR_MONITORING_ITEM * mnt_items, T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_appl,
 		   T_SHM_PROXY * shm_proxy, MONITOR_TYPE mnt_type)
 {
   int i, j;
@@ -1379,11 +1299,9 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
       if (full_info_flag && as_info_p->service_flag == ON)
 	{
 	  time_t cur_time = time (NULL);
-	  bool time_expired =
-	    (cur_time - as_info_p->last_access_time >= state_interval);
+	  bool time_expired = (cur_time - as_info_p->last_access_time >= state_interval);
 
-	  if (as_info_p->uts_status == UTS_STATUS_BUSY
-	      && as_info_p->con_status != CON_STATUS_OUT_TRAN)
+	  if (as_info_p->uts_status == UTS_STATUS_BUSY && as_info_p->con_status != CON_STATUS_OUT_TRAN)
 	    {
 	      if (as_info_p->log_msg[0] == '\0')
 		{
@@ -1425,12 +1343,9 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
       mnt_item_p->num_insert_query += as_info_p->num_insert_queries;
       mnt_item_p->num_update_query += as_info_p->num_update_queries;
       mnt_item_p->num_delete_query += as_info_p->num_delete_queries;
-      mnt_item_p->
-	num_others_query = (mnt_item_p->num_qx
-			    - mnt_item_p->num_select_query
-			    - mnt_item_p->num_insert_query
-			    - mnt_item_p->num_update_query
-			    - mnt_item_p->num_delete_query);
+      mnt_item_p->num_others_query =
+	(mnt_item_p->num_qx - mnt_item_p->num_select_query - mnt_item_p->num_insert_query -
+	 mnt_item_p->num_update_query - mnt_item_p->num_delete_query);
     }
 
   if (shm_appl->shard_flag == OFF)
@@ -1448,8 +1363,7 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
 
 	  mnt_item_p->num_eq += proxy_info_p->num_proxy_error_processed;
 	  mnt_item_p->num_connect += proxy_info_p->num_connect_requests;
-	  mnt_item_p->num_connect_reject +=
-	    proxy_info_p->num_connect_rejected;
+	  mnt_item_p->num_connect_reject += proxy_info_p->num_connect_rejected;
 	}
     }
   else if (mnt_type == MONITOR_T_SHARDDB)
@@ -1477,12 +1391,10 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
 
 	  mnt_items[i].num_eq += proxy_info_p->num_proxy_error_processed;
 	  mnt_items[i].num_connect += proxy_info_p->num_connect_requests;
-	  mnt_items[i].num_connect_reject +=
-	    proxy_info_p->num_connect_rejected;
+	  mnt_items[i].num_connect_reject += proxy_info_p->num_connect_rejected;
 	  mnt_items[i].num_restart += proxy_info_p->num_restarts;
 	  mnt_items[i].num_request_stmt += proxy_info_p->num_request_stmt;
-	  mnt_items[i].num_request_stmt_in_pool +=
-	    proxy_info_p->num_request_stmt_in_pool;
+	  mnt_items[i].num_request_stmt_in_pool += proxy_info_p->num_request_stmt_in_pool;
 
 	  for (j = 0; j < proxy_info_p->max_shard; j++)
 	    {
@@ -1497,10 +1409,9 @@ set_monitor_items (BR_MONITORING_ITEM * mnt_items,
 }
 
 static void
-print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur,
-		     BR_MONITORING_ITEM * mnt_items_old, int num_mnt_items,
-		     double elapsed_time, T_BROKER_INFO * br_info_p,
-		     T_SHM_APPL_SERVER * shm_appl, MONITOR_TYPE mnt_type)
+print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur, BR_MONITORING_ITEM * mnt_items_old, int num_mnt_items,
+		     double elapsed_time, T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_appl,
+		     MONITOR_TYPE mnt_type)
 {
   int i;
   BR_MONITORING_ITEM *mnt_item_cur_p = NULL;
@@ -1521,41 +1432,25 @@ print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur,
 
       if (elapsed_time > 0)
 	{
-	  mnt_item.tps =
-	    (mnt_item_cur_p->num_tx - mnt_item_old_p->num_tx) / elapsed_time;
-	  mnt_item.qps =
-	    (mnt_item_cur_p->num_qx - mnt_item_old_p->num_qx) / elapsed_time;
+	  mnt_item.tps = (mnt_item_cur_p->num_tx - mnt_item_old_p->num_tx) / elapsed_time;
+	  mnt_item.qps = (mnt_item_cur_p->num_qx - mnt_item_old_p->num_qx) / elapsed_time;
 	  mnt_item.lts = mnt_item_cur_p->num_lt - mnt_item_old_p->num_lt;
 	  mnt_item.lqs = mnt_item_cur_p->num_lq - mnt_item_old_p->num_lq;
 	  mnt_item.eqs = mnt_item_cur_p->num_eq - mnt_item_old_p->num_eq;
-	  mnt_item.eqs_ui =
-	    mnt_item_cur_p->num_eq_ui - mnt_item_old_p->num_eq_ui;
-	  mnt_item.its =
-	    mnt_item_cur_p->num_interrupts - mnt_item_old_p->num_interrupt;
-	  mnt_item.num_select_query =
-	    mnt_item_cur_p->num_select_query -
-	    mnt_item_old_p->num_select_query;
-	  mnt_item.num_insert_query =
-	    mnt_item_cur_p->num_insert_query -
-	    mnt_item_old_p->num_insert_query;
-	  mnt_item.num_update_query =
-	    mnt_item_cur_p->num_update_query -
-	    mnt_item_old_p->num_update_query;
-	  mnt_item.num_delete_query =
-	    mnt_item_cur_p->num_delete_query -
-	    mnt_item_old_p->num_delete_query;
-	  mnt_item.num_others_query =
-	    mnt_item_cur_p->num_others_query -
-	    mnt_item_old_p->num_others_query;
+	  mnt_item.eqs_ui = mnt_item_cur_p->num_eq_ui - mnt_item_old_p->num_eq_ui;
+	  mnt_item.its = mnt_item_cur_p->num_interrupts - mnt_item_old_p->num_interrupt;
+	  mnt_item.num_select_query = mnt_item_cur_p->num_select_query - mnt_item_old_p->num_select_query;
+	  mnt_item.num_insert_query = mnt_item_cur_p->num_insert_query - mnt_item_old_p->num_insert_query;
+	  mnt_item.num_update_query = mnt_item_cur_p->num_update_query - mnt_item_old_p->num_update_query;
+	  mnt_item.num_delete_query = mnt_item_cur_p->num_delete_query - mnt_item_old_p->num_delete_query;
+	  mnt_item.num_others_query = mnt_item_cur_p->num_others_query - mnt_item_old_p->num_others_query;
 
 	  if (mnt_type == MONITOR_T_PROXY)
 	    {
-	      mnt_item.num_request_stmt = (mnt_item_cur_p->num_request_stmt -
-					   mnt_item_old_p->num_request_stmt) /
-		elapsed_time;
+	      mnt_item.num_request_stmt =
+		(mnt_item_cur_p->num_request_stmt - mnt_item_old_p->num_request_stmt) / elapsed_time;
 	      mnt_item.num_request_stmt_in_pool =
-		(mnt_item_cur_p->num_request_stmt_in_pool -
-		 mnt_item_old_p->num_request_stmt_in_pool) / elapsed_time;
+		(mnt_item_cur_p->num_request_stmt_in_pool - mnt_item_old_p->num_request_stmt_in_pool) / elapsed_time;
 	    }
 
 	  mnt_item_cur_p->tps = mnt_item.tps;
@@ -1579,8 +1474,7 @@ print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur,
 #if defined(WINDOWS)
 	      if (shm_appl->use_pdh_flag == TRUE)
 		{
-		  print_value (FIELD_PSIZE,
-			       &(br_info_p->pdh_workset), FIELD_T_INT);
+		  print_value (FIELD_PSIZE, &(br_info_p->pdh_workset), FIELD_T_INT);
 		}
 #else
 	      int process_size;
@@ -1601,31 +1495,24 @@ print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur,
 	  print_value (FIELD_PROXY_ID, &proxy_id, FIELD_T_INT);
 	}
 
-      print_value (FIELD_APPL_SERVER_NUM_TOTAL,
-		   &mnt_item_cur_p->num_appl_server, FIELD_T_INT);
+      print_value (FIELD_APPL_SERVER_NUM_TOTAL, &mnt_item_cur_p->num_appl_server, FIELD_T_INT);
 
       if (full_info_flag)
 	{
 
-	  print_value (FIELD_APPL_SERVER_NUM_CLIENT_WAIT,
-		       &mnt_item_cur_p->num_client_wait, FIELD_T_INT);
-	  print_value (FIELD_APPL_SERVER_NUM_BUSY, &mnt_item_cur_p->num_busy,
-		       FIELD_T_INT);
-	  print_value (FIELD_APPL_SERVER_NUM_CLIENT_WAIT_IN_SEC,
-		       &mnt_item_cur_p->num_client_wait_nsec, FIELD_T_INT);
-	  print_value (FIELD_APPL_SERVER_NUM_BUSY_IN_SEC,
-		       &mnt_item_cur_p->num_busy_nsec, FIELD_T_INT);
+	  print_value (FIELD_APPL_SERVER_NUM_CLIENT_WAIT, &mnt_item_cur_p->num_client_wait, FIELD_T_INT);
+	  print_value (FIELD_APPL_SERVER_NUM_BUSY, &mnt_item_cur_p->num_busy, FIELD_T_INT);
+	  print_value (FIELD_APPL_SERVER_NUM_CLIENT_WAIT_IN_SEC, &mnt_item_cur_p->num_client_wait_nsec, FIELD_T_INT);
+	  print_value (FIELD_APPL_SERVER_NUM_BUSY_IN_SEC, &mnt_item_cur_p->num_busy_nsec, FIELD_T_INT);
 	}
 
       if (mnt_type == MONITOR_T_BROKER)
 	{
-	  print_value (FIELD_JOB_QUEUE_ID,
-		       &(shm_appl->job_queue[0].id), FIELD_T_INT);
+	  print_value (FIELD_JOB_QUEUE_ID, &(shm_appl->job_queue[0].id), FIELD_T_INT);
 	}
       else if (mnt_type == MONITOR_T_SHARDDB || mnt_type == MONITOR_T_PROXY)
 	{
-	  print_value (FIELD_SHARD_Q_SIZE,
-		       &mnt_item_cur_p->shard_waiter_count, FIELD_T_UINT64);
+	  print_value (FIELD_SHARD_Q_SIZE, &mnt_item_cur_p->shard_waiter_count, FIELD_T_UINT64);
 	}
 
 #ifdef GET_PSINFO
@@ -1645,78 +1532,53 @@ print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur,
 
       if (full_info_flag == false)
 	{
-	  print_value (FIELD_NUM_OF_SELECT_QUERIES,
-		       &mnt_item.num_select_query, FIELD_T_UINT64);
-	  print_value (FIELD_NUM_OF_INSERT_QUERIES,
-		       &mnt_item.num_insert_query, FIELD_T_UINT64);
-	  print_value (FIELD_NUM_OF_UPDATE_QUERIES,
-		       &mnt_item.num_update_query, FIELD_T_UINT64);
-	  print_value (FIELD_NUM_OF_DELETE_QUERIES,
-		       &mnt_item.num_delete_query, FIELD_T_UINT64);
-	  print_value (FIELD_NUM_OF_OTHERS_QUERIES,
-		       &mnt_item.num_others_query, FIELD_T_UINT64);
+	  print_value (FIELD_NUM_OF_SELECT_QUERIES, &mnt_item.num_select_query, FIELD_T_UINT64);
+	  print_value (FIELD_NUM_OF_INSERT_QUERIES, &mnt_item.num_insert_query, FIELD_T_UINT64);
+	  print_value (FIELD_NUM_OF_UPDATE_QUERIES, &mnt_item.num_update_query, FIELD_T_UINT64);
+	  print_value (FIELD_NUM_OF_DELETE_QUERIES, &mnt_item.num_delete_query, FIELD_T_UINT64);
+	  print_value (FIELD_NUM_OF_OTHERS_QUERIES, &mnt_item.num_others_query, FIELD_T_UINT64);
 	}
-      sprintf (buf, "%lu/%-.1f", mnt_item.lts,
-	       (shm_appl->long_transaction_time / 1000.0));
+      sprintf (buf, "%lu/%-.1f", mnt_item.lts, (shm_appl->long_transaction_time / 1000.0));
       print_value (FIELD_LONG_TRANSACTION, buf, FIELD_T_STRING);
-      sprintf (buf, "%lu/%-.1f", mnt_item.lqs,
-	       (shm_appl->long_query_time / 1000.0));
+      sprintf (buf, "%lu/%-.1f", mnt_item.lqs, (shm_appl->long_query_time / 1000.0));
       print_value (FIELD_LONG_QUERY, buf, FIELD_T_STRING);
       print_value (FIELD_ERROR_QUERIES, &mnt_item.eqs, FIELD_T_UINT64);
-      print_value (FIELD_UNIQUE_ERROR_QUERIES, &mnt_item.eqs_ui,
-		   FIELD_T_UINT64);
+      print_value (FIELD_UNIQUE_ERROR_QUERIES, &mnt_item.eqs_ui, FIELD_T_UINT64);
 
       if (full_info_flag && mnt_type == MONITOR_T_BROKER)
 	{
 	  print_value (FIELD_CANCELED, &mnt_item.its, FIELD_T_INT64);
-	  print_value (FIELD_ACCESS_MODE,
-		       get_access_mode_string (br_info_p->access_mode,
-					       br_info_p->
-					       replica_only_flag),
+	  print_value (FIELD_ACCESS_MODE, get_access_mode_string (br_info_p->access_mode, br_info_p->replica_only_flag),
 		       FIELD_T_STRING);
-	  print_value (FIELD_SQL_LOG,
-		       get_sql_log_mode_string (br_info_p->sql_log_mode),
-		       FIELD_T_STRING);
+	  print_value (FIELD_SQL_LOG, get_sql_log_mode_string (br_info_p->sql_log_mode), FIELD_T_STRING);
 	}
 
       if (mnt_type == MONITOR_T_BROKER)
 	{
-	  print_value (FIELD_NUMBER_OF_CONNECTION,
-		       &mnt_item_cur_p->num_connect, FIELD_T_UINT64);
-	  print_value (FIELD_NUMBER_OF_CONNECTION_REJECTED,
-		       &mnt_item_cur_p->num_connect_reject, FIELD_T_UINT64);
+	  print_value (FIELD_NUMBER_OF_CONNECTION, &mnt_item_cur_p->num_connect, FIELD_T_UINT64);
+	  print_value (FIELD_NUMBER_OF_CONNECTION_REJECTED, &mnt_item_cur_p->num_connect_reject, FIELD_T_UINT64);
 	}
       else if (mnt_type == MONITOR_T_SHARDDB)
 	{
-	  print_value (FIELD_REQUEST, &mnt_item_cur_p->num_request,
-		       FIELD_T_UINT64);
+	  print_value (FIELD_REQUEST, &mnt_item_cur_p->num_request, FIELD_T_UINT64);
 	}
       else if (mnt_type == MONITOR_T_PROXY)
 	{
-	  print_value (FIELD_NUMBER_OF_CONNECTION,
-		       &mnt_item_cur_p->num_connect, FIELD_T_UINT64);
-	  print_value (FIELD_NUMBER_OF_CONNECTION_REJECTED,
-		       &mnt_item_cur_p->num_connect_reject, FIELD_T_UINT64);
-	  print_value (FIELD_RESTART, &mnt_item_cur_p->num_restart,
-		       FIELD_T_UINT64);
+	  print_value (FIELD_NUMBER_OF_CONNECTION, &mnt_item_cur_p->num_connect, FIELD_T_UINT64);
+	  print_value (FIELD_NUMBER_OF_CONNECTION_REJECTED, &mnt_item_cur_p->num_connect_reject, FIELD_T_UINT64);
+	  print_value (FIELD_RESTART, &mnt_item_cur_p->num_restart, FIELD_T_UINT64);
 
 	  if (full_info_flag)
 	    {
 	      float stmt_pool_ratio;
-	      if (mnt_item.num_request_stmt <= 0
-		  || mnt_item.num_request_stmt_in_pool >
-		  mnt_item.num_request_stmt)
+	      if (mnt_item.num_request_stmt <= 0 || mnt_item.num_request_stmt_in_pool > mnt_item.num_request_stmt)
 		{
-		  print_value (FIELD_STMT_POOL_RATIO, (char *) "-",
-			       FIELD_T_STRING);
+		  print_value (FIELD_STMT_POOL_RATIO, (char *) "-", FIELD_T_STRING);
 		}
 	      else
 		{
-		  stmt_pool_ratio =
-		    (mnt_item.num_request_stmt_in_pool * 100) /
-		    mnt_item.num_request_stmt;
-		  print_value (FIELD_STMT_POOL_RATIO, &stmt_pool_ratio,
-			       FIELD_T_FLOAT);
+		  stmt_pool_ratio = (mnt_item.num_request_stmt_in_pool * 100) / mnt_item.num_request_stmt;
+		  print_value (FIELD_STMT_POOL_RATIO, &stmt_pool_ratio, FIELD_T_FLOAT);
 		}
 	    }
 	}
@@ -1770,9 +1632,7 @@ brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time)
 
   if (mnt_items_old[mnt_type] == NULL)
     {
-      mnt_items_old[mnt_type] =
-	(BR_MONITORING_ITEM **) calloc (sizeof (BR_MONITORING_ITEM *),
-					shm_br->num_broker);
+      mnt_items_old[mnt_type] = (BR_MONITORING_ITEM **) calloc (sizeof (BR_MONITORING_ITEM *), shm_br->num_broker);
       if (mnt_items_old[mnt_type] == NULL)
 	{
 	  return -1;
@@ -1783,9 +1643,7 @@ brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time)
     {
       max_num_mnt_items = MAX (MAX (1, MAX_PROXY_NUM), MAX_SHARD_CONN);
 
-      mnt_items_cur_p =
-	(BR_MONITORING_ITEM *) malloc (sizeof (BR_MONITORING_ITEM)
-				       * max_num_mnt_items);
+      mnt_items_cur_p = (BR_MONITORING_ITEM *) malloc (sizeof (BR_MONITORING_ITEM) * max_num_mnt_items);
       if (mnt_items_cur_p == NULL)
 	{
 	  str_out ("%s", "malloc error");
@@ -1803,8 +1661,7 @@ brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time)
 	  continue;
 	}
 
-      if (service_filter_value != SERVICE_UNKNOWN
-	  && service_filter_value != br_info_p->service_flag)
+      if (service_filter_value != SERVICE_UNKNOWN && service_filter_value != br_info_p->service_flag)
 	{
 	  continue;
 	}
@@ -1843,9 +1700,7 @@ brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time)
 	  print_monitor_header (mnt_type);
 	}
 
-      shm_appl =
-	(T_SHM_APPL_SERVER *) uw_shm_open (br_info_p->appl_server_shm_id,
-					   SHM_APPL_SERVER, SHM_MODE_MONITOR);
+      shm_appl = (T_SHM_APPL_SERVER *) uw_shm_open (br_info_p->appl_server_shm_id, SHM_APPL_SERVER, SHM_MODE_MONITOR);
       if (shm_appl == NULL)
 	{
 	  str_out ("%s", "shared memory open error");
@@ -1855,9 +1710,7 @@ brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time)
 
       if (br_info_p->shard_flag == ON)
 	{
-	  shm_proxy_p =
-	    (T_SHM_PROXY *) uw_shm_open (br_info_p->proxy_shm_id,
-					 SHM_PROXY, SHM_MODE_MONITOR);
+	  shm_proxy_p = (T_SHM_PROXY *) uw_shm_open (br_info_p->proxy_shm_id, SHM_PROXY, SHM_MODE_MONITOR);
 	  if (shm_proxy_p == NULL)
 	    {
 	      str_out ("%s", "shared memory open error");
@@ -1870,14 +1723,12 @@ brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time)
 
       assert (num_mnt_items > 0);
 
-      memset (mnt_items_cur_p, 0,
-	      sizeof (BR_MONITORING_ITEM) * num_mnt_items);
+      memset (mnt_items_cur_p, 0, sizeof (BR_MONITORING_ITEM) * num_mnt_items);
 
       if (mnt_items_old[mnt_type][br_index] == NULL)
 	{
 	  mnt_items_old[mnt_type][br_index] =
-	    (BR_MONITORING_ITEM *) calloc (sizeof (BR_MONITORING_ITEM),
-					   num_mnt_items);
+	    (BR_MONITORING_ITEM *) calloc (sizeof (BR_MONITORING_ITEM), num_mnt_items);
 	  if (mnt_items_old[mnt_type][br_index] == NULL)
 	    {
 	      str_out ("%s", "malloc error");
@@ -1888,14 +1739,11 @@ brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time)
 
       mnt_items_old_p = mnt_items_old[mnt_type][br_index];
 
-      set_monitor_items (mnt_items_cur_p, br_info_p,
-			 shm_appl, shm_proxy_p, mnt_type);
+      set_monitor_items (mnt_items_cur_p, br_info_p, shm_appl, shm_proxy_p, mnt_type);
 
-      print_monitor_items (mnt_items_cur_p, mnt_items_old_p,
-			   num_mnt_items, elapsed_time, br_info_p,
-			   shm_appl, mnt_type);
-      memcpy (mnt_items_old_p, mnt_items_cur_p,
-	      sizeof (BR_MONITORING_ITEM) * num_mnt_items);
+      print_monitor_items (mnt_items_cur_p, mnt_items_old_p, num_mnt_items, elapsed_time, br_info_p, shm_appl,
+			   mnt_type);
+      memcpy (mnt_items_old_p, mnt_items_cur_p, sizeof (BR_MONITORING_ITEM) * num_mnt_items);
 
       if (shm_appl)
 	{
@@ -1976,20 +1824,17 @@ print_appl_header (bool use_pdh_flag)
 #endif
   if (full_info_flag)
     {
-      buf_offset = print_title (buf, buf_offset, FIELD_LAST_ACCESS_TIME,
-				NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_LAST_ACCESS_TIME, NULL);
       buf_offset = print_title (buf, buf_offset, FIELD_DB_NAME, NULL);
       buf_offset = print_title (buf, buf_offset, FIELD_HOST, NULL);
-      buf_offset = print_title (buf, buf_offset, FIELD_LAST_CONNECT_TIME,
-				NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_LAST_CONNECT_TIME, NULL);
 
       buf_offset = print_title (buf, buf_offset, FIELD_CLIENT_IP, NULL);
       buf_offset = print_title (buf, buf_offset, FIELD_CLIENT_VERSION, NULL);
 
       buf_offset = print_title (buf, buf_offset, FIELD_SQL_LOG_MODE, NULL);
 
-      buf_offset = print_title (buf, buf_offset, FIELD_TRANSACTION_STIME,
-				NULL);
+      buf_offset = print_title (buf, buf_offset, FIELD_TRANSACTION_STIME, NULL);
       buf_offset = print_title (buf, buf_offset, FIELD_CONNECT, NULL);
       buf_offset = print_title (buf, buf_offset, FIELD_RESTART, NULL);
 
@@ -2030,9 +1875,7 @@ clear ()
     0, 0
   };
   DWORD size;
-  FillConsoleOutputCharacter (h_console, ' ',
-			      scr_info.dwSize.X * scr_info.dwSize.Y, pos,
-			      &size);
+  FillConsoleOutputCharacter (h_console, ' ', scr_info.dwSize.X * scr_info.dwSize.Y, pos, &size);
 }
 
 static void
@@ -2045,11 +1888,8 @@ clrtobot ()
     {
       return;
     }
-  FillConsoleOutputCharacter (h_console,
-			      ' ',
-			      (scr_buf_info.dwSize.Y -
-			       scr_buf_info.dwCursorPosition.Y) *
-			      scr_buf_info.dwSize.X,
+  FillConsoleOutputCharacter (h_console, ' ',
+			      (scr_buf_info.dwSize.Y - scr_buf_info.dwCursorPosition.Y) * scr_buf_info.dwSize.X,
 			      scr_buf_info.dwCursorPosition, &size);
 }
 
@@ -2063,10 +1903,7 @@ clrtoeol ()
     {
       return;
     }
-  FillConsoleOutputCharacter (h_console,
-			      ' ',
-			      scr_buf_info.dwSize.X -
-			      scr_buf_info.dwCursorPosition.X + 1,
+  FillConsoleOutputCharacter (h_console, ' ', scr_buf_info.dwSize.X - scr_buf_info.dwCursorPosition.X + 1,
 			      scr_buf_info.dwCursorPosition, &size);
   move (scr_buf_info.dwSize.X, scr_buf_info.dwCursorPosition.Y);
 }
@@ -2141,27 +1978,22 @@ metadata_monitor (double elapsed_time)
 
   if (shard_stat_items_old == NULL)
     {
-      shard_stat_items_old =
-	(SHARD_STAT_ITEM *) calloc (shard_stat_items_size,
-				    shm_br->num_broker);
+      shard_stat_items_old = (SHARD_STAT_ITEM *) calloc (shard_stat_items_size, shm_br->num_broker);
       if (shard_stat_items_old == NULL)
 	{
 	  goto free_and_error;
 	}
-      memset ((void *) shard_stat_items_old, 0,
-	      shard_stat_items_size * shm_br->num_broker);
+      memset ((void *) shard_stat_items_old, 0, shard_stat_items_size * shm_br->num_broker);
     }
 
   if (key_stat_items_old == NULL)
     {
-      key_stat_items_old =
-	(KEY_STAT_ITEM *) calloc (key_stat_items_size, shm_br->num_broker);
+      key_stat_items_old = (KEY_STAT_ITEM *) calloc (key_stat_items_size, shm_br->num_broker);
       if (key_stat_items_old == NULL)
 	{
 	  goto free_and_error;
 	}
-      memset ((void *) key_stat_items_old, 0,
-	      key_stat_items_size * shm_br->num_broker);
+      memset ((void *) key_stat_items_old, 0, key_stat_items_size * shm_br->num_broker);
     }
 
   for (i = 0; i < shm_br->num_broker; i++)
@@ -2181,8 +2013,7 @@ metadata_monitor (double elapsed_time)
 	  continue;
 	}
       shmid = shm_br->br_info[i].proxy_shm_id;
-      shm_proxy_p =
-	(T_SHM_PROXY *) uw_shm_open (shmid, SHM_PROXY, SHM_MODE_MONITOR);
+      shm_proxy_p = (T_SHM_PROXY *) uw_shm_open (shmid, SHM_PROXY, SHM_MODE_MONITOR);
       if (shm_proxy_p == NULL)
 	{
 	  str_out ("%s", "shared memory open error");
@@ -2195,12 +2026,8 @@ metadata_monitor (double elapsed_time)
       num_shard = shm_proxy_p->proxy_info[0].num_shard_conn;
       assert (num_shard <= SHARD_INFO_SIZE_LIMIT);
 
-      shard_stat_items_old_p =
-	(SHARD_STAT_ITEM *) (((char *) shard_stat_items_old) +
-			     (shard_stat_items_size * i));
-      key_stat_items_old_p =
-	(KEY_STAT_ITEM *) (((char *) key_stat_items_old) +
-			   (key_stat_items_size * i));
+      shard_stat_items_old_p = (SHARD_STAT_ITEM *) (((char *) shard_stat_items_old) + (shard_stat_items_size * i));
+      key_stat_items_old_p = (KEY_STAT_ITEM *) (((char *) key_stat_items_old) + (key_stat_items_size * i));
 
       shm_user_p = shard_metadata_get_user (shm_proxy_p);
       shm_key_p = shard_metadata_get_key (shm_proxy_p);
@@ -2210,12 +2037,10 @@ metadata_monitor (double elapsed_time)
       str_out ("MODULAR : %d, ", shm_br->br_info[i].shard_key_modular);
       str_out ("LIBRARY_NAME : %s, ",
 	       (shm_br->br_info[i].shard_key_library_name[0] ==
-		0) ? "NOT DEFINED" : shm_br->br_info[i].
-	       shard_key_library_name);
+		0) ? "NOT DEFINED" : shm_br->br_info[i].shard_key_library_name);
       str_out ("FUNCTION_NAME : %s ",
 	       (shm_br->br_info[i].shard_key_function_name[0] ==
-		0) ? "NOT DEFINED" : shm_br->br_info[i].
-	       shard_key_function_name);
+		0) ? "NOT DEFINED" : shm_br->br_info[i].shard_key_function_name);
       print_newline ();
 
       /* PRINT CONN INFO */
@@ -2229,8 +2054,7 @@ metadata_monitor (double elapsed_time)
 		  str_out (", ");
 		}
 	      conn_p = (T_SHARD_CONN *) (&(shm_conn_p->shard_conn[j]));
-	      str_out ("%d [%s] [%s]", conn_p->shard_id, conn_p->db_conn_info,
-		       conn_p->db_name);
+	      str_out ("%d [%s] [%s]", conn_p->shard_id, conn_p->db_conn_info, conn_p->db_name);
 	    }
 	  print_newline ();
 	}
@@ -2243,20 +2067,16 @@ metadata_monitor (double elapsed_time)
 	{
 	  free ((char *) shard_stat_items);
 	}
-      shard_stat_items =
-	(SHARD_STAT_ITEM *) malloc (sizeof (SHARD_STAT_ITEM) *
-				    shm_conn_p->num_shard_conn);
+      shard_stat_items = (SHARD_STAT_ITEM *) malloc (sizeof (SHARD_STAT_ITEM) * shm_conn_p->num_shard_conn);
       if (shard_stat_items == NULL)
 	{
 	  str_out ("%s", "malloc error");
 	  goto free_and_error;
 	}
-      memset ((char *) shard_stat_items, 0,
-	      sizeof (SHARD_STAT_ITEM) * shm_conn_p->num_shard_conn);
+      memset ((char *) shard_stat_items, 0, sizeof (SHARD_STAT_ITEM) * shm_conn_p->num_shard_conn);
 
       err_queries = 0;
-      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
-	   proxy_index++)
+      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy; proxy_index++)
 	{
 	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
 
@@ -2268,15 +2088,11 @@ metadata_monitor (double elapsed_time)
 	      str_out ("%s", "shard_stat open error");
 	      goto free_and_error;
 	    }
-	  for (j = 0; j < num_shard;
-	       shard_stat_p = shard_shm_get_shard_stat (proxy_info_p, ++j))
+	  for (j = 0; j < num_shard; shard_stat_p = shard_shm_get_shard_stat (proxy_info_p, ++j))
 	    {
-	      shard_stat_items[j].num_hint_key_queries_requested +=
-		shard_stat_p->num_hint_key_queries_requested;
-	      shard_stat_items[j].num_hint_id_queries_requested +=
-		shard_stat_p->num_hint_id_queries_requested;
-	      shard_stat_items[j].num_no_hint_queries_requested +=
-		shard_stat_p->num_no_hint_queries_requested;
+	      shard_stat_items[j].num_hint_key_queries_requested += shard_stat_p->num_hint_key_queries_requested;
+	      shard_stat_items[j].num_hint_id_queries_requested += shard_stat_p->num_hint_id_queries_requested;
+	      shard_stat_items[j].num_no_hint_queries_requested += shard_stat_p->num_no_hint_queries_requested;
 	    }
 	}			/* proxy_info loop */
 
@@ -2339,18 +2155,14 @@ metadata_monitor (double elapsed_time)
 	    }
 	  else
 	    {
-	      num_hint_key_qr =
-		shard_stat_items[j].num_hint_key_queries_requested;
-	      num_hint_id_qr =
-		shard_stat_items[j].num_hint_id_queries_requested;
-	      num_no_hint_qr =
-		shard_stat_items[j].num_no_hint_queries_requested;
+	      num_hint_key_qr = shard_stat_items[j].num_hint_key_queries_requested;
+	      num_hint_id_qr = shard_stat_items[j].num_hint_id_queries_requested;
+	      num_no_hint_qr = shard_stat_items[j].num_no_hint_queries_requested;
 	      num_all_qr = num_hint_key_qr + num_hint_id_qr + num_no_hint_qr;
 	    }
 
-	  str_out ("\t%5d %10" PRId64 " %10" PRId64 " %15" PRId64 " %15"
-		   PRId64, j, num_hint_key_qr, num_hint_id_qr, num_no_hint_qr,
-		   num_all_qr);
+	  str_out ("\t%5d %10" PRId64 " %10" PRId64 " %15" PRId64 " %15" PRId64, j, num_hint_key_qr, num_hint_id_qr,
+		   num_no_hint_qr, num_all_qr);
 
 	  print_newline ();
 	}
@@ -2388,11 +2200,9 @@ metadata_monitor (double elapsed_time)
 	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
 	  for (shard_index = 0; shard_index < num_shard; shard_index++)
 	    {
-	      shard_info_p =
-		shard_shm_find_shard_info (proxy_info_p, shard_index);
+	      shard_info_p = shard_shm_find_shard_info (proxy_info_p, shard_index);
 
-	      num_shard_q_arr[proxy_index][shard_index] =
-		shard_info_p->waiter_count;
+	      num_shard_q_arr[proxy_index][shard_index] = shard_info_p->waiter_count;
 	    }
 	}
 
@@ -2403,9 +2213,7 @@ metadata_monitor (double elapsed_time)
 
 	  for (proxy_index = 0; proxy_index < num_proxy; proxy_index++)
 	    {
-	      print_value (FIELD_SHARD_Q_SIZE,
-			   &num_shard_q_arr[proxy_index][shard_index],
-			   FIELD_T_INT);
+	      print_value (FIELD_SHARD_Q_SIZE, &num_shard_q_arr[proxy_index][shard_index], FIELD_T_INT);
 	    }
 	  print_newline ();
 	}
@@ -2418,21 +2226,17 @@ metadata_monitor (double elapsed_time)
 	    {
 	      free ((char *) key_stat_items);
 	    }
-	  key_stat_items =
-	    (KEY_STAT_ITEM *) malloc (sizeof (KEY_STAT_ITEM) *
-				      shm_key_p->num_shard_key);
+	  key_stat_items = (KEY_STAT_ITEM *) malloc (sizeof (KEY_STAT_ITEM) * shm_key_p->num_shard_key);
 	  if (key_stat_items == NULL)
 	    {
 	      str_out ("%s", "malloc error");
 	      goto free_and_error;
 	    }
-	  memset ((char *) key_stat_items, 0,
-		  sizeof (KEY_STAT_ITEM) * shm_key_p->num_shard_key);
+	  memset ((char *) key_stat_items, 0, sizeof (KEY_STAT_ITEM) * shm_key_p->num_shard_key);
 
 	  for (proxy_index = 0; proxy_index < num_proxy; proxy_index++)
 	    {
-	      proxy_info_p =
-		shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
+	      proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
 
 	      key_stat_p = shard_shm_get_key_stat (proxy_info_p, 0);
 	      if (key_stat_p == NULL)
@@ -2441,14 +2245,11 @@ metadata_monitor (double elapsed_time)
 		  goto free_and_error;
 		}
 
-	      for (j = 0;
-		   j < proxy_info_p->num_shard_key;
-		   key_stat_p = shard_shm_get_key_stat (proxy_info_p, ++j))
+	      for (j = 0; j < proxy_info_p->num_shard_key; key_stat_p = shard_shm_get_key_stat (proxy_info_p, ++j))
 		{
 		  for (k = 0; k < key_stat_p->num_key_range; k++)
 		    {
-		      key_stat_items[j].
-			num_range_queries_requested[k] +=
+		      key_stat_items[j].num_range_queries_requested[k] +=
 			key_stat_p->stat[k].num_range_queries_requested;
 		    }
 		}
@@ -2484,19 +2285,16 @@ metadata_monitor (double elapsed_time)
 		    {
 		      num_range_qr =
 			key_stat_items[j].num_range_queries_requested[k] -
-			key_stat_items_old_p[j].
-			num_range_queries_requested[k];
+			key_stat_items_old_p[j].num_range_queries_requested[k];
 
 		      num_range_qr = num_range_qr / elapsed_time;
 		    }
 		  else
 		    {
-		      num_range_qr =
-			key_stat_items[j].num_range_queries_requested[k];
+		      num_range_qr = key_stat_items[j].num_range_queries_requested[k];
 		    }
 
-		  str_out ("\t%5d ~ %5d : %10d %9" PRId64, range_p->min,
-			   range_p->max, range_p->shard_id, num_range_qr);
+		  str_out ("\t%5d ~ %5d : %10d %9" PRId64, range_p->min, range_p->max, range_p->shard_id, num_range_qr);
 		  print_newline ();
 		}
 	    }
@@ -2508,8 +2306,7 @@ metadata_monitor (double elapsed_time)
 	  for (j = 0; j < shm_user_p->num_shard_user; j++)
 	    {
 	      user_p = (T_SHARD_USER *) (&(shm_user_p->shard_user[j]));
-	      str_out ("DB Alias : %s [USER : %s]",
-		       user_p->db_name, user_p->db_user);
+	      str_out ("DB Alias : %s [USER : %s]", user_p->db_name, user_p->db_user);
 	      print_newline ();
 	    }
 	}
@@ -2525,8 +2322,7 @@ metadata_monitor (double elapsed_time)
 
       if (key_stat_items)
 	{
-	  memcpy ((void *) key_stat_items_old_p, key_stat_items,
-		  sizeof (KEY_STAT_ITEM) * shm_key_p->num_shard_key);
+	  memcpy ((void *) key_stat_items_old_p, key_stat_items, sizeof (KEY_STAT_ITEM) * shm_key_p->num_shard_key);
 	}
 
       uw_shm_detach (shm_proxy_p);
@@ -2581,9 +2377,7 @@ client_monitor (void)
 	  continue;
 	}
 
-      shm_proxy_p =
-	(T_SHM_PROXY *) uw_shm_open (shm_br->br_info[i].proxy_shm_id,
-				     SHM_PROXY, SHM_MODE_MONITOR);
+      shm_proxy_p = (T_SHM_PROXY *) uw_shm_open (shm_br->br_info[i].proxy_shm_id, SHM_PROXY, SHM_MODE_MONITOR);
       if (shm_proxy_p == NULL)
 	{
 	  str_out ("%s", "shared memory open error");
@@ -2591,13 +2385,11 @@ client_monitor (void)
 	  return -1;
 	}
 
-      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy;
-	   proxy_index++)
+      for (proxy_index = 0; proxy_index < shm_proxy_p->num_proxy; proxy_index++)
 	{
 	  proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, proxy_index);
 
-	  str_out ("%% %s(%d), MAX-CLIENT : %d, CUR-CLIENT : %d",
-		   shm_br->br_info[i].name, proxy_index,
+	  str_out ("%% %s(%d), MAX-CLIENT : %d, CUR-CLIENT : %d", shm_br->br_info[i].name, proxy_index,
 		   proxy_info_p->max_client, proxy_info_p->cur_client);
 	  print_newline ();
 	  if (full_info_flag)
@@ -2620,32 +2412,26 @@ client_monitor (void)
 	      str_out ("%s", line_buf);
 	      print_newline ();
 
-	      for (client_index = 0; client_index < proxy_info_p->max_context;
-		   client_index++)
+	      for (client_index = 0; client_index < proxy_info_p->max_context; client_index++)
 		{
-		  client_info_p =
-		    shard_shm_get_client_info (proxy_info_p, client_index);
+		  client_info_p = shard_shm_get_client_info (proxy_info_p, client_index);
 
 		  if (client_info_p->client_id == -1)
 		    {
 		      continue;
 		    }
 		  str_out ("%10d", client_info_p->client_id);
-		  ip_str =
-		    ut_uchar2ipstr ((unsigned char *) (&client_info_p->
-						       client_ip));
+		  ip_str = ut_uchar2ipstr ((unsigned char *) (&client_info_p->client_ip));
 		  str_out ("%20s", ip_str);
 		  localtime_r (&client_info_p->connect_time, &ct1);
 		  ct1.tm_year += 1900;
-		  str_out ("   %04d/%02d/%02d %02d:%02d:%02d", ct1.tm_year,
-			   ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour,
+		  str_out ("   %04d/%02d/%02d %02d:%02d:%02d", ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour,
 			   ct1.tm_min, ct1.tm_sec);
 		  if (client_info_p->req_time > 0)
 		    {
 		      localtime_r (&client_info_p->req_time, &ct1);
 		      ct1.tm_year += 1900;
-		      str_out ("   %04d/%02d/%02d %02d:%02d:%02d",
-			       ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday,
+		      str_out ("   %04d/%02d/%02d %02d:%02d:%02d", ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday,
 			       ct1.tm_hour, ct1.tm_min, ct1.tm_sec);
 		    }
 		  else
@@ -2657,8 +2443,7 @@ client_monitor (void)
 		    {
 		      localtime_r (&client_info_p->res_time, &ct1);
 		      ct1.tm_year += 1900;
-		      str_out ("   %04d/%02d/%02d %02d:%02d:%02d",
-			       ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday,
+		      str_out ("   %04d/%02d/%02d %02d:%02d:%02d", ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday,
 			       ct1.tm_hour, ct1.tm_min, ct1.tm_sec);
 		    }
 		  else
@@ -2700,15 +2485,12 @@ unusable_databases_monitor (void)
   for (i = 0; i < shm_br->num_broker; i++)
     {
       str_out ("*%c", FIELD_DELIMITER);
-      print_value (FIELD_BROKER_NAME, shm_br->br_info[i].name,
-		   FIELD_T_STRING);
+      print_value (FIELD_BROKER_NAME, shm_br->br_info[i].name, FIELD_T_STRING);
 
       if (shm_br->br_info[i].service_flag == SERVICE_ON)
 	{
 	  shm_appl =
-	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].
-					       appl_server_shm_id,
-					       SHM_APPL_SERVER,
+	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].appl_server_shm_id, SHM_APPL_SERVER,
 					       SHM_MODE_MONITOR);
 	  if (shm_appl == NULL)
 	    {
@@ -2721,14 +2503,10 @@ unusable_databases_monitor (void)
 		{
 		  u_index = shm_appl->unusable_databases_seq % 2;
 
-		  for (j = 0; j < shm_appl->unusable_databases_cnt[u_index];
-		       j++)
+		  for (j = 0; j < shm_appl->unusable_databases_cnt[u_index]; j++)
 		    {
-		      str_out ("%s@%s ",
-			       shm_appl->unusable_databases[u_index][j].
-			       database_name,
-			       shm_appl->unusable_databases[u_index][j].
-			       database_host);
+		      str_out ("%s@%s ", shm_appl->unusable_databases[u_index][j].database_name,
+			       shm_appl->unusable_databases[u_index][j].database_host);
 		    }
 		}
 	      print_newline ();
@@ -2747,8 +2525,7 @@ unusable_databases_monitor (void)
 }
 
 static int
-print_title (char *buf_p, int buf_offset, FIELD_NAME name,
-	     const char *new_title_p)
+print_title (char *buf_p, int buf_offset, FIELD_NAME name, const char *new_title_p)
 {
   struct status_field *field_p = NULL;
   const char *title_p = NULL;
@@ -2770,29 +2547,24 @@ print_title (char *buf_p, int buf_offset, FIELD_NAME name,
   switch (field_p->name)
     {
     case FIELD_BROKER_NAME:
-      buf_offset += sprintf (buf_p + buf_offset, "%c%c",
-			     FIELD_DELIMITER, FIELD_DELIMITER);
+      buf_offset += sprintf (buf_p + buf_offset, "%c%c", FIELD_DELIMITER, FIELD_DELIMITER);
       if (field_p->align == FIELD_LEFT_ALIGN)
 	{
-	  buf_offset += sprintf (buf_p + buf_offset, "%-*s",
-				 field_p->width, title_p);
+	  buf_offset += sprintf (buf_p + buf_offset, "%-*s", field_p->width, title_p);
 	}
       else
 	{
-	  buf_offset += sprintf (buf_p + buf_offset, "%*s",
-				 field_p->width, title_p);
+	  buf_offset += sprintf (buf_p + buf_offset, "%*s", field_p->width, title_p);
 	}
       break;
     default:
       if (field_p->align == FIELD_LEFT_ALIGN)
 	{
-	  buf_offset += sprintf (buf_p + buf_offset, "%-*s",
-				 field_p->width, title_p);
+	  buf_offset += sprintf (buf_p + buf_offset, "%-*s", field_p->width, title_p);
 	}
       else
 	{
-	  buf_offset += sprintf (buf_p + buf_offset, "%*s",
-				 field_p->width, title_p);
+	  buf_offset += sprintf (buf_p + buf_offset, "%*s", field_p->width, title_p);
 	}
       break;
     }
@@ -2867,9 +2639,8 @@ print_value (FIELD_NAME name, const void *value_p, FIELD_TYPE type)
     case FIELD_T_TIME:
       localtime_r ((const time_t *) value_p, &cur_tm);
       cur_tm.tm_year += 1900;
-      sprintf (time_buf, "%02d/%02d/%02d %02d:%02d:%02d", cur_tm.tm_year,
-	       cur_tm.tm_mon + 1, cur_tm.tm_mday, cur_tm.tm_hour,
-	       cur_tm.tm_min, cur_tm.tm_sec);
+      sprintf (time_buf, "%02d/%02d/%02d %02d:%02d:%02d", cur_tm.tm_year, cur_tm.tm_mon + 1, cur_tm.tm_mday,
+	       cur_tm.tm_hour, cur_tm.tm_min, cur_tm.tm_sec);
       if (field_p->align == FIELD_LEFT_ALIGN)
 	{
 	  str_out ("%-*s", field_p->width, time_buf);

@@ -196,10 +196,9 @@ log_isolation_string (TRAN_ISOLATION isolation)
  * NOTE:Dump some log information
  */
 int
-log_dump_log_info (const char *logname_info, bool also_stdout,
-		   const char *fmt, ...)
+log_dump_log_info (const char *logname_info, bool also_stdout, const char *fmt, ...)
 {
-  FILE *fp;			/* Pointer to file                   */
+  FILE *fp;			/* Pointer to file */
   va_list ap;			/* Point to each unnamed arg in turn */
   time_t log_time;
   struct tm log_tm;
@@ -218,8 +217,7 @@ log_dump_log_info (const char *logname_info, bool also_stdout,
   fp = fopen (logname_info, "a");
   if (fp == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1,
-	      logname_info);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, logname_info);
       va_end (ap);
       return ER_LOG_MOUNT_FAIL;
     }
@@ -234,8 +232,7 @@ log_dump_log_info (const char *logname_info, bool also_stdout,
     {
       gettimeofday (&tv, NULL);
       strftime (time_array, 128, "%m/%d/%y %H:%M:%S", log_tm_p);
-      snprintf (time_array_of_log_info, 255, "Time: %s.%03ld - ",
-		time_array, tv.tv_usec / 1000);
+      snprintf (time_array_of_log_info, 255, "Time: %s.%03ld - ", time_array, tv.tv_usec / 1000);
     }
 
   if (strlen (time_array_of_log_info) != TIME_SIZE_OF_DUMP_LOG_INFO)
@@ -273,8 +270,7 @@ log_does_allow_replication (void)
   int client_type;
 
   client_type = db_get_client_type ();
-  if (client_type == DB_CLIENT_TYPE_LOG_COPIER
-      || client_type == DB_CLIENT_TYPE_LOG_APPLIER)
+  if (client_type == DB_CLIENT_TYPE_LOG_COPIER || client_type == DB_CLIENT_TYPE_LOG_APPLIER)
     {
       return false;
     }
@@ -294,9 +290,7 @@ log_does_allow_replication (void)
     }
 
   ha_state = css_ha_server_state ();
-  if (ha_mode == HA_MODE_OFF
-      || (ha_state != HA_SERVER_STATE_ACTIVE
-	  && ha_state != HA_SERVER_STATE_TO_BE_STANDBY))
+  if (ha_mode == HA_MODE_OFF || (ha_state != HA_SERVER_STATE_ACTIVE && ha_state != HA_SERVER_STATE_TO_BE_STANDBY))
     {
       return false;
     }

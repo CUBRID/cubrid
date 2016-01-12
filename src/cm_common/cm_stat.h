@@ -509,55 +509,44 @@ extern "C"
     unsigned int pb_page_allocate_time_ratio;
   } T_CM_DB_EXEC_STAT;
 
-  int cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat,
-			   T_CM_ERROR * err_buf);
+  int cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat, T_CM_ERROR * err_buf);
 
   T_CM_DB_PROC_STAT_ALL *cm_get_db_proc_stat_all (T_CM_ERROR * err_buf);
   void cm_db_proc_stat_all_free (T_CM_DB_PROC_STAT_ALL * stat);
 
 
-  T_CM_BROKER_PROC_STAT *cm_get_broker_proc_stat (const char *broker_name,
-						  T_CM_ERROR * err_buf);
+  T_CM_BROKER_PROC_STAT *cm_get_broker_proc_stat (const char *broker_name, T_CM_ERROR * err_buf);
   void cm_broker_proc_stat_free (T_CM_BROKER_PROC_STAT * stat);
 
-  T_CM_BROKER_PROC_STAT_ALL *cm_get_broker_proc_stat_all (T_CM_ERROR *
-							  err_buf);
+  T_CM_BROKER_PROC_STAT_ALL *cm_get_broker_proc_stat_all (T_CM_ERROR * err_buf);
   void cm_broker_proc_stat_all_free (T_CM_BROKER_PROC_STAT_ALL * stat);
 
 
   int cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf);
 
-  T_CM_DISK_PARTITION_STAT_ALL *cm_get_host_disk_partition_stat (T_CM_ERROR *
-								 err_buf);
+  T_CM_DISK_PARTITION_STAT_ALL *cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf);
   void cm_host_disk_partition_stat_free (T_CM_DISK_PARTITION_STAT_ALL * stat);
 
   int cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid);
 
-  int cm_get_db_exec_stat (const char *db_name, T_CM_DB_EXEC_STAT * exec_stat,
-			   T_CM_ERROR * err_buf);
+  int cm_get_db_exec_stat (const char *db_name, T_CM_DB_EXEC_STAT * exec_stat, T_CM_ERROR * err_buf);
 
-  int cm_get_cas_info (const char *br_name, T_CM_CAS_INFO_ALL * cas_info_all,
-		       T_CM_JOB_INFO_ALL * job_info_all,
+  int cm_get_cas_info (const char *br_name, T_CM_CAS_INFO_ALL * cas_info_all, T_CM_JOB_INFO_ALL * job_info_all,
 		       T_CM_ERROR * err_buf);
-  void cm_cas_info_free (T_CM_CAS_INFO_ALL * cas_info_all,
-			 T_CM_JOB_INFO_ALL * job_info_all);
-  int cm_get_broker_info (T_CM_BROKER_INFO_ALL * broker_info_all,
-			  T_CM_ERROR * err_buf);
+  void cm_cas_info_free (T_CM_CAS_INFO_ALL * cas_info_all, T_CM_JOB_INFO_ALL * job_info_all);
+  int cm_get_broker_info (T_CM_BROKER_INFO_ALL * broker_info_all, T_CM_ERROR * err_buf);
   void cm_broker_info_free (T_CM_BROKER_INFO_ALL * broker_info_all);
 
   int cm_broker_env_start (T_CM_ERROR * err_buf);
   int cm_broker_env_stop (T_CM_ERROR * err_buf);
-  int cm_broker_as_restart (const char *br_name, int as_index,
-			    T_CM_ERROR * err_buf);
+  int cm_broker_as_restart (const char *br_name, int as_index, T_CM_ERROR * err_buf);
   int cm_broker_on (const char *br_name, T_CM_ERROR * err_buf);
   int cm_broker_off (const char *br_name, T_CM_ERROR * err_buf);
 
-  int cm_get_broker_conf (T_CM_BROKER_CONF * dm_uc_conf, int *ret_mst_shmid,
-			  T_CM_ERROR * err_buf);
+  int cm_get_broker_conf (T_CM_BROKER_CONF * dm_uc_conf, int *ret_mst_shmid, T_CM_ERROR * err_buf);
   void cm_broker_conf_free (T_CM_BROKER_CONF * dm_uc_conf);
   char *cm_br_conf_get_value (T_CM_BR_CONF * br_conf, const char *name);
-  T_CM_BR_CONF *cm_conf_find_broker (T_CM_BROKER_CONF * uc_conf,
-				     char *br_name);
+  T_CM_BR_CONF *cm_conf_find_broker (T_CM_BROKER_CONF * uc_conf, char *br_name);
   char *cm_get_broker_file (T_UNICAS_FILE_ID uc_fid, char *buf);
   int cm_del_cas_log (char *br_name, int as_id, T_CM_ERROR * err_buf);
   char *cm_cpu_time_str (int t, char *buf);

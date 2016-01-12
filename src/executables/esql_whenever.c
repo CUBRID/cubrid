@@ -30,12 +30,9 @@
 #include "esql_translate.h"
 
 
-static void
-free_last_referenced_name (WHENEVER_SCOPE * scope,
-			   WHENEVER_SCOPE * new_scope);
+static void free_last_referenced_name (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * new_scope);
 
-static WHENEVER_SCOPE default_whenever_scope_initializer =
-  { {{CONTINUE, NULL}, {CONTINUE, NULL}, {CONTINUE, NULL}} };
+static WHENEVER_SCOPE default_whenever_scope_initializer = { {{CONTINUE, NULL}, {CONTINUE, NULL}, {CONTINUE, NULL}} };
 
 #define LAST_REF(condition)                                             \
     ((name = scope->cond[condition].name) != NULL                       \
@@ -74,7 +71,7 @@ pp_init_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * old_scope)
     {
       old_scope = &default_whenever_scope_initializer;
     }
-  /*
+  /* 
    * note : this copies any existing pointers to names associated
    * with GOTO and CALL actions, so you can't just blindly free_and_init()
    * the pointers when the scope is exited.
@@ -100,13 +97,7 @@ pp_finish_whenever_scope (WHENEVER_SCOPE * scope, WHENEVER_SCOPE * new_scope)
       new_scope = &default_whenever_scope_initializer;
     }
 
-  esql_Translate_table.tr_whenever (SQLWARNING,
-				    new_scope->cond[SQLWARNING].action,
-				    new_scope->cond[SQLWARNING].name);
-  esql_Translate_table.tr_whenever (SQLERROR,
-				    new_scope->cond[SQLERROR].action,
-				    new_scope->cond[SQLERROR].name);
-  esql_Translate_table.tr_whenever (NOT_FOUND,
-				    new_scope->cond[NOT_FOUND].action,
-				    new_scope->cond[NOT_FOUND].name);
+  esql_Translate_table.tr_whenever (SQLWARNING, new_scope->cond[SQLWARNING].action, new_scope->cond[SQLWARNING].name);
+  esql_Translate_table.tr_whenever (SQLERROR, new_scope->cond[SQLERROR].action, new_scope->cond[SQLERROR].name);
+  esql_Translate_table.tr_whenever (NOT_FOUND, new_scope->cond[NOT_FOUND].action, new_scope->cond[NOT_FOUND].name);
 }

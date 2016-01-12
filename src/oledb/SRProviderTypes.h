@@ -26,16 +26,14 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
  * OF SUCH DAMAGE. 
  *
- */
-
+ */  
+  
 #pragma once
-
-class CSRProviderTypes : 
-	public CSchemaRowsetImpl< CSRProviderTypes, CPROVIDER_TYPERow, CCUBRIDSession>
+class CSRProviderTypes:public CSchemaRowsetImpl < CSRProviderTypes, CPROVIDER_TYPERow, CCUBRIDSession > 
 {
-public:
-	SR_PROPSET_MAP(CSRProviderTypes)
+public:SR_PROPSET_MAP (CSRProviderTypes)  HRESULT Execute (LONG * pcRowsAffected, ULONG cRestrictions,
+							 const VARIANT * rgRestrictions);
+  DBSTATUS GetDBStatus (CSimpleRow *, ATLCOLUMNINFO * pInfo);
+};
 
-	HRESULT Execute(LONG* pcRowsAffected, ULONG cRestrictions, const VARIANT *rgRestrictions);
-	DBSTATUS GetDBStatus(CSimpleRow*, ATLCOLUMNINFO* pInfo);
-};
+

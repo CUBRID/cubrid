@@ -93,7 +93,7 @@ typedef struct fh_table
   FH_PAGE_HDR *pg_hdr;		/* The page headers */
   FH_PAGE_HDR *pg_hdr_last;	/* The last page's header */
   FH_PAGE_HDR *pg_hdr_free;	/* The first free pages's header */
-  FH_PAGE_HDR *pg_hdr_alloc;	/* The page header address allocated  */
+  FH_PAGE_HDR *pg_hdr_alloc;	/* The page header address allocated */
   int size;			/* Better if prime number */
   int page_size;		/* Number of bytes per page */
   int data_size;		/* Number of bytes of data per entry */
@@ -113,8 +113,7 @@ typedef struct fh_table
 typedef void *FH_KEY;
 typedef void *FH_DATA;
 
-FH_TABLE *fh_create (const char *, int, int, int, const char *, FH_KEY_TYPE,
-		     int, HASH_FUNC, CMP_FUNC);
+FH_TABLE *fh_create (const char *, int, int, int, const char *, FH_KEY_TYPE, int, HASH_FUNC, CMP_FUNC);
 int fh_put (FH_TABLE * ht, FH_KEY key, FH_DATA data);
 int fh_get (FH_TABLE * ht, FH_KEY key, FH_DATA * data);
 void fh_destroy (FH_TABLE * ht);

@@ -118,8 +118,7 @@ t_set_element_type (T_SET * set)
 }
 
 int
-t_set_get (T_SET * set, int index, T_CCI_A_TYPE a_type, void *value,
-	   int *indicator)
+t_set_get (T_SET * set, int index, T_CCI_A_TYPE a_type, void *value, int *indicator)
 {
   char *ele_value_p;
   char u_type;
@@ -150,28 +149,22 @@ t_set_get (T_SET * set, int index, T_CCI_A_TYPE a_type, void *value,
     {
     case CCI_A_TYPE_STR:
       err_code =
-	qe_get_data_str (&(set->conv_value_buffer), (T_CCI_U_TYPE) u_type,
-			 ele_value_p, data_size, value, indicator);
+	qe_get_data_str (&(set->conv_value_buffer), (T_CCI_U_TYPE) u_type, ele_value_p, data_size, value, indicator);
       break;
     case CCI_A_TYPE_INT:
       err_code = qe_get_data_int ((T_CCI_U_TYPE) u_type, ele_value_p, value);
       break;
     case CCI_A_TYPE_BIGINT:
-      err_code =
-	qe_get_data_bigint ((T_CCI_U_TYPE) u_type, ele_value_p, value);
+      err_code = qe_get_data_bigint ((T_CCI_U_TYPE) u_type, ele_value_p, value);
       break;
     case CCI_A_TYPE_FLOAT:
-      err_code =
-	qe_get_data_float ((T_CCI_U_TYPE) u_type, ele_value_p, value);
+      err_code = qe_get_data_float ((T_CCI_U_TYPE) u_type, ele_value_p, value);
       break;
     case CCI_A_TYPE_DOUBLE:
-      err_code =
-	qe_get_data_double ((T_CCI_U_TYPE) u_type, ele_value_p, value);
+      err_code = qe_get_data_double ((T_CCI_U_TYPE) u_type, ele_value_p, value);
       break;
     case CCI_A_TYPE_BIT:
-      err_code =
-	qe_get_data_bit ((T_CCI_U_TYPE) u_type, ele_value_p, data_size,
-			 value);
+      err_code = qe_get_data_bit ((T_CCI_U_TYPE) u_type, ele_value_p, data_size, value);
       break;
     case CCI_A_TYPE_DATE:
       err_code = qe_get_data_date ((T_CCI_U_TYPE) u_type, ele_value_p, value);
@@ -438,8 +431,7 @@ t_set_to_str (T_SET * set, T_VALUE_BUF * conv_val)
 	}
 
       buf = NULL;
-      err_code =
-	t_set_get (set, i, CCI_A_TYPE_STR, (void *) &buf, &indicator);
+      err_code = t_set_get (set, i, CCI_A_TYPE_STR, (void *) &buf, &indicator);
       if (err_code < 0)
 	{
 	  net_buf_clear (&net_buf);

@@ -68,18 +68,15 @@ wsa_initialize ()
 
   /* Make sure that the version requested is >= 1.1. */
   /* The low byte is the major version and the high */
-  /* byte is the minor version.   */
-  if (LOBYTE (wVersionRequested) < 1
-      || (LOBYTE (wVersionRequested) == 1 && HIBYTE (wVersionRequested) < 1))
+  /* byte is the minor version.  */
+  if (LOBYTE (wVersionRequested) < 1 || (LOBYTE (wVersionRequested) == 1 && HIBYTE (wVersionRequested) < 1))
     {
       return -1;
     }
   /* Since we only support 1.1, set both wVersion and */
   /* wHighVersion to 1.1. */
-  /*
-     lpWsaData->wVersion = MAKEWORD( 1, 1 );
-     lpWsaData->wHighVersion = MAKEWORD( 1, 1 );
-   */
+  /* 
+   * lpWsaData->wVersion = MAKEWORD( 1, 1 ); lpWsaData->wHighVersion = MAKEWORD( 1, 1 ); */
 
   return 0;
 }

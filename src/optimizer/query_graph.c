@@ -65,14 +65,14 @@
 /* any number that won't overlap PT_MISC_TYPE */
 #define PREDICATE_TERM  -2
 
-#define RANK_DEFAULT       0	/* default              */
-#define RANK_NAME          RANK_DEFAULT	/* name  -- use default */
+#define RANK_DEFAULT       0	/* default */
+#define RANK_NAME          RANK_DEFAULT	/* name -- use default */
 #define RANK_VALUE         RANK_DEFAULT	/* value -- use default */
-#define RANK_EXPR_LIGHT    1	/* Group 1              */
-#define RANK_EXPR_MEDIUM   2	/* Group 2              */
-#define RANK_EXPR_HEAVY    3	/* Group 3              */
-#define RANK_EXPR_FUNCTION 4	/* agg function, set    */
-#define RANK_QUERY         8	/* subquery             */
+#define RANK_EXPR_LIGHT    1	/* Group 1 */
+#define RANK_EXPR_MEDIUM   2	/* Group 2 */
+#define RANK_EXPR_HEAVY    3	/* Group 3 */
+#define RANK_EXPR_FUNCTION 4	/* agg function, set */
+#define RANK_QUERY         8	/* subquery */
 
 /*  log2(sizeof(POINTER)) */
 #if __WORDSIZE == 64
@@ -160,29 +160,22 @@ static QO_PLAN *qo_optimize_helper (QO_ENV * env);
 
 static QO_NODE *qo_add_node (PT_NODE * entity, QO_ENV * env);
 
-static QO_SEGMENT *qo_insert_segment (QO_NODE * head, QO_NODE * tail,
-				      PT_NODE * node, QO_ENV * env,
+static QO_SEGMENT *qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node, QO_ENV * env,
 				      const char *expr_str);
 
-static QO_SEGMENT *qo_join_segment (QO_NODE * head, QO_NODE * tail,
-				    PT_NODE * name, QO_ENV * env);
+static QO_SEGMENT *qo_join_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * name, QO_ENV * env);
 
-static PT_NODE *qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree,
-				      void *arg, int *continue_walk);
+static PT_NODE *qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
 static QO_TERM *qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env);
 
-static void
-qo_add_dep_term (QO_NODE * derived_node, BITSET * depend_nodes,
-		 BITSET * depend_segs, QO_ENV * env);
+static void qo_add_dep_term (QO_NODE * derived_node, BITSET * depend_nodes, BITSET * depend_segs, QO_ENV * env);
 
-static QO_TERM *qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node,
-					QO_NODE * on_node);
+static QO_TERM *qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node);
 
 static void qo_analyze_term (QO_TERM * term, int term_type);
 
-static PT_NODE *set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree,
-			      void *arg, int *continue_walk);
+static PT_NODE *set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
 static void set_seg_node (PT_NODE * attr, QO_ENV * env, BITSET * bitset);
 
@@ -190,22 +183,16 @@ static QO_ENV *qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query);
 
 static bool qo_validate (QO_ENV * env);
 
-static PT_NODE *build_query_graph (PARSER_CONTEXT * parser, PT_NODE * tree,
-				   void *arg, int *continue_walk);
+static PT_NODE *build_query_graph (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
-static PT_NODE *build_query_graph_post (PARSER_CONTEXT * parser,
-					PT_NODE * tree, void *arg,
-					int *continue_walk);
+static PT_NODE *build_query_graph_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
-static PT_NODE *build_query_graph_function_index (PARSER_CONTEXT * parser,
-						  PT_NODE * tree, void *arg,
+static PT_NODE *build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						  int *continue_walk);
 
-static QO_NODE *build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
-					QO_BUILD_STATUS status);
+static QO_NODE *build_graph_for_entity (QO_ENV * env, PT_NODE * entity, QO_BUILD_STATUS status);
 
-static PT_NODE *graph_size_select (PARSER_CONTEXT * parser, PT_NODE * tree,
-				   void *arg, int *continue_walk);
+static PT_NODE *graph_size_select (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
 static void graph_size_for_entity (QO_ENV * env, PT_NODE * entity);
 
@@ -215,8 +202,7 @@ static void get_term_subqueries (QO_ENV * env, QO_TERM * term);
 
 static void get_term_rank (QO_ENV * env, QO_TERM * term);
 
-static PT_NODE *check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node,
-				    void *arg, int *continue_walk);
+static PT_NODE *check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static bool is_local_name (QO_ENV * env, PT_NODE * expr);
 
@@ -241,8 +227,7 @@ static int get_expr_fcode_rank (FUNC_TYPE fcode);
 static int get_operand_rank (PT_NODE * node);
 
 static int count_classes (PT_NODE * p);
-static QO_CLASS_INFO_ENTRY *grok_classes (QO_ENV * env, PT_NODE * dom_set,
-					  QO_CLASS_INFO_ENTRY * info);
+static QO_CLASS_INFO_ENTRY *grok_classes (QO_ENV * env, PT_NODE * dom_set, QO_CLASS_INFO_ENTRY * info);
 static int qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type);
 static void qo_estimate_statistics (MOP class_mop, CLASS_STATS *);
 
@@ -265,22 +250,14 @@ static void qo_subquery_free (QO_SUBQUERY *);
 static void qo_partition_init (QO_ENV *, QO_PARTITION *, int);
 static void qo_partition_free (QO_PARTITION *);
 static void qo_partition_dump (QO_PARTITION *, FILE *);
-static void qo_find_index_terms (QO_ENV * env, BITSET * segsp,
-				 QO_INDEX_ENTRY * index_entry);
-static void qo_find_index_seg_terms (QO_ENV * env,
-				     QO_INDEX_ENTRY * index_entry, int idx);
-static bool qo_find_index_segs (QO_ENV *, SM_CLASS_CONSTRAINT *, QO_NODE *,
-				int *, int, int *, BITSET *);
-static bool qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
-				  QO_INDEX_ENTRY * index_entry);
+static void qo_find_index_terms (QO_ENV * env, BITSET * segsp, QO_INDEX_ENTRY * index_entry);
+static void qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx);
+static bool qo_find_index_segs (QO_ENV *, SM_CLASS_CONSTRAINT *, QO_NODE *, int *, int, int *, BITSET *);
+static bool qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
 static void qo_find_node_indexes (QO_ENV *, QO_NODE *);
-static int is_equivalent_indexes (QO_INDEX_ENTRY * index1,
-				  QO_INDEX_ENTRY * index2);
-static int qo_find_matching_index (QO_INDEX_ENTRY * index_entry,
-				   QO_INDEX * class_indexes);
-static QO_INDEX_ENTRY *is_index_compatible (QO_CLASS_INFO * class_info,
-					    int n,
-					    QO_INDEX_ENTRY * index_entry);
+static int is_equivalent_indexes (QO_INDEX_ENTRY * index1, QO_INDEX_ENTRY * index2);
+static int qo_find_matching_index (QO_INDEX_ENTRY * index_entry, QO_INDEX * class_indexes);
+static QO_INDEX_ENTRY *is_index_compatible (QO_CLASS_INFO * class_info, int n, QO_INDEX_ENTRY * index_entry);
 
 static void qo_discover_sort_limit_nodes (QO_ENV * env);
 static void qo_equivalence (QO_SEGMENT *, QO_SEGMENT *);
@@ -297,28 +274,19 @@ static void qo_node_clear (QO_ENV *, int);
 static void qo_get_index_info (QO_ENV * env, QO_NODE * node);
 static void qo_free_index (QO_ENV * env, QO_INDEX *);
 static QO_INDEX *qo_alloc_index (QO_ENV * env, int);
-static void qo_free_node_index_info (QO_ENV * env,
-				     QO_NODE_INDEX * node_indexp);
+static void qo_free_node_index_info (QO_ENV * env, QO_NODE_INDEX * node_indexp);
 static void qo_free_attr_info (QO_ENV * env, QO_ATTR_INFO * info);
 static QO_ATTR_INFO *qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg);
-static QO_ATTR_INFO *qo_get_attr_info_func_index (QO_ENV * env,
-						  QO_SEGMENT * seg,
-						  const char *expr_str);
+static QO_ATTR_INFO *qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_str);
 static void qo_free_class_info (QO_ENV * env, QO_CLASS_INFO *);
 static QO_CLASS_INFO *qo_get_class_info (QO_ENV * env, QO_NODE * node);
 static QO_SEGMENT *qo_eqclass_wrt (QO_EQCLASS *, BITSET *);
 static void qo_env_dump (QO_ENV *, FILE *);
-static int qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
-				     QO_INDEX_ENTRY * index_entry);
-static bool qo_is_iss_index (QO_ENV * env, QO_NODE * nodep,
-			     QO_INDEX_ENTRY * index_entry);
-static void qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * nodep,
-					       BITSET * order_nodes,
-					       BITSET * dep_nodes);
-static bool qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node,
-				   QO_NODE * pk_node);
-static bool qo_is_non_mvcc_class_with_index (QO_CLASS_INFO_ENTRY *
-					     class_entry_p);
+static int qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
+static bool qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
+static void qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * nodep, BITSET * order_nodes, BITSET * dep_nodes);
+static bool qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node);
+static bool qo_is_non_mvcc_class_with_index (QO_CLASS_INFO_ENTRY * class_entry_p);
 
 /*
  * qo_get_optimization_param () - Return the current value of some (global)
@@ -418,7 +386,7 @@ qo_optimize_query (PARSER_CONTEXT * parser, PT_NODE * tree)
   QO_ENV *env;
   int level;
 
-  /*
+  /* 
    * Give up right away if the optimizer has been turned off in the
    * user's cubrid.conf file or somewhere else.
    */
@@ -428,9 +396,7 @@ qo_optimize_query (PARSER_CONTEXT * parser, PT_NODE * tree)
       return NULL;
     }
 
-  /* if its not a select, we're not interested, also if it is
-   * merge we give up.
-   */
+  /* if its not a select, we're not interested, also if it is merge we give up. */
   if (tree->node_type != PT_SELECT)
     {
       return NULL;
@@ -446,7 +412,7 @@ qo_optimize_query (PARSER_CONTEXT * parser, PT_NODE * tree)
   switch (setjmp (env->catch_))
     {
     case 0:
-      /*
+      /* 
        * The return here is ok; we'll take care of freeing the env
        * structure later, when qo_plan_discard is called.  In fact, if
        * we free it now, the plan pointer we're about to return will be
@@ -454,27 +420,26 @@ qo_optimize_query (PARSER_CONTEXT * parser, PT_NODE * tree)
        */
       return qo_optimize_helper (env);
     case 1:
-      /*
+      /* 
        * Out of memory during optimization.  malloc() has already done
        * an er_set().
        */
       break;
     case 2:
-      /*
+      /* 
        * Failed some optimizer assertion.  QO_ABORT() has already done
        * an er_set().
        */
       break;
     default:
-      /*
+      /* 
        * No clue.
        */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1,
-	      "false");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "false");
       break;
     }
 
-  /*
+  /* 
    * If we get here, an error of some sort occurred, and we need to
    * tear down everything and get out.
    */
@@ -509,10 +474,8 @@ qo_optimize_helper (QO_ENV * env)
   tree = QO_ENV_PT_TREE (env);
   local_env = env;
 
-  (void) parser_walk_tree (parser, tree, build_query_graph, &local_env,
-			   build_query_graph_post, &local_env);
-  (void) parser_walk_tree (parser, tree, build_query_graph_function_index,
-			   &local_env, NULL, NULL);
+  (void) parser_walk_tree (parser, tree, build_query_graph, &local_env, build_query_graph_post, &local_env);
+  (void) parser_walk_tree (parser, tree, build_query_graph_function_index, &local_env, NULL, NULL);
   (void) add_hint (env, tree);
   add_using_index (env, tree->info.query.q.select.using_index);
 
@@ -529,13 +492,13 @@ qo_optimize_helper (QO_ENV * env)
 	node = QO_ENV_NODE (env, n);
 	spec = QO_NODE_ENTITY_SPEC (node);
 
-	/*
+	/* 
 	 * Set up the dependencies; it's simplest just to assume that a
 	 * dependent table depends on everything that precedes it.
 	 */
 	if (is_dependent_table (spec))
 	  {
-	    /*
+	    /* 
 	     * Find all of the segments (i.e., attributes) referenced in
 	     * the derived table expression, and then find the set of
 	     * nodes that underly those segments.  This node can't be
@@ -573,15 +536,11 @@ qo_optimize_helper (QO_ENV * env)
 	      next = conj->next;
 	      conj->next = NULL;
 
-	      /* The conjuct could be PT_VALUE(0) if an explicit join
-	         condition was derived/transformed to the always-false
-	         search condition when type checking, expression evaluation
-	         or query rewrite transformation. We should sustained it for
-	         correct join plan. It's different from ordinary WHERE search
-	         condition. If an always-false search condition was found
-	         in WHERE clause, they did not call query optimization and
-	         return no result to the user unless the query doesn't have
-	         aggregation. */
+	      /* The conjuct could be PT_VALUE(0) if an explicit join condition was derived/transformed to the
+	       * always-false search condition when type checking, expression evaluation or query rewrite
+	       * transformation. We should sustained it for correct join plan. It's different from ordinary WHERE
+	       * search condition. If an always-false search condition was found in WHERE clause, they did not call
+	       * query optimization and return no result to the user unless the query doesn't have aggregation. */
 
 	      term = qo_add_term (conj, PREDICATE_TERM, env);
 
@@ -590,11 +549,9 @@ qo_optimize_helper (QO_ENV * env)
 		  QO_ASSERT (env, QO_ON_COND_TERM (term));
 
 		  n = QO_TERM_LOCATION (term);
-		  if (QO_NODE_LOCATION (QO_TERM_HEAD (term)) == n - 1
-		      && QO_NODE_LOCATION (QO_TERM_TAIL (term)) == n)
+		  if (QO_NODE_LOCATION (QO_TERM_HEAD (term)) == n - 1 && QO_NODE_LOCATION (QO_TERM_TAIL (term)) == n)
 		    {
-		      bitset_add (&nodeset,
-				  QO_NODE_IDX (QO_TERM_TAIL (term)));
+		      bitset_add (&nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
 		    }
 		}
 
@@ -618,15 +575,13 @@ qo_optimize_helper (QO_ENV * env)
       node = QO_ENV_NODE (env, n);
 
       /* check join-edge for explicit join */
-      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_NONE
-	  && QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_CROSS
+      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_NONE && QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_CROSS
 	  && !BITSET_MEMBER (nodeset, n))
 	{
 	  p_node = QO_ENV_NODE (env, n - 1);
 	  (void) qo_add_dummy_join_term (env, p_node, node);
-	  /* Is it safe to pass node[n-1] as head node?
-	     Yes, because the sequence of QO_NODEs corresponds to
-	     the sequence of PT_SPEC list */
+	  /* Is it safe to pass node[n-1] as head node? Yes, because the sequence of QO_NODEs corresponds to the
+	   * sequence of PT_SPEC list */
 	}
     }
 
@@ -635,43 +590,31 @@ qo_optimize_helper (QO_ENV * env)
 
   bitset_delset (&nodeset);
 
-  (void) parser_walk_tree (parser, tree->info.query.q.select.list,
-			   qo_add_final_segment, &local_env, pt_continue_walk,
+  (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_add_final_segment, &local_env, pt_continue_walk,
 			   NULL);
-  (void) parser_walk_tree (parser, tree->info.query.q.select.group_by,
-			   qo_add_final_segment, &local_env, pt_continue_walk,
-			   NULL);
-  (void) parser_walk_tree (parser, tree->info.query.q.select.having,
-			   qo_add_final_segment, &local_env, pt_continue_walk,
+  (void) parser_walk_tree (parser, tree->info.query.q.select.group_by, qo_add_final_segment, &local_env,
+			   pt_continue_walk, NULL);
+  (void) parser_walk_tree (parser, tree->info.query.q.select.having, qo_add_final_segment, &local_env, pt_continue_walk,
 			   NULL);
 
-  /* it's necessary to find segments for nodes in predicates that are evaluated
-   * after joins, in order to be available in intermediary output lists
-   */
-  if (tree->info.query.q.select.connect_by
-      && !tree->info.query.q.select.single_table_opt)
+  /* it's necessary to find segments for nodes in predicates that are evaluated after joins, in order to be available
+   * in intermediary output lists */
+  if (tree->info.query.q.select.connect_by && !tree->info.query.q.select.single_table_opt)
     {
-      (void) parser_walk_tree (parser, tree->info.query.q.select.start_with,
-			       qo_add_final_segment, &local_env,
+      (void) parser_walk_tree (parser, tree->info.query.q.select.start_with, qo_add_final_segment, &local_env,
 			       pt_continue_walk, NULL);
-      (void) parser_walk_tree (parser, tree->info.query.q.select.connect_by,
-			       qo_add_final_segment, &local_env,
+      (void) parser_walk_tree (parser, tree->info.query.q.select.connect_by, qo_add_final_segment, &local_env,
 			       pt_continue_walk, NULL);
-      (void) parser_walk_tree (parser,
-			       tree->info.query.q.select.after_cb_filter,
-			       qo_add_final_segment, &local_env,
+      (void) parser_walk_tree (parser, tree->info.query.q.select.after_cb_filter, qo_add_final_segment, &local_env,
 			       pt_continue_walk, NULL);
     }
 
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
 
-  /* Don't do these things until *after* qo_discover_edges(); that
-   * function may rearrange the QO_TERM structures that were discovered
-   * during the earlier phases, and anyone who grabs the idx of one of
-   * the terms (or even a pointer to one) will be pointing to the wrong
-   * term after they're rearranged.
-   */
+  /* Don't do these things until *after* qo_discover_edges(); that function may rearrange the QO_TERM structures that
+   * were discovered during the earlier phases, and anyone who grabs the idx of one of the terms (or even a pointer to
+   * one) will be pointing to the wrong term after they're rearranged. */
   qo_assign_eq_classes (env);
 
   get_local_subqueries (env, tree);
@@ -685,15 +628,14 @@ qo_optimize_helper (QO_ENV * env)
 
   /* need to set est_card for the select in case it is a subquery */
 
-  /*
+  /* 
    * Print out any needed post-optimization info.  Leave a way to find
    * out about environment info if we aren't able to produce a plan.
    * If this happens in the field at least we'll be able to glean some
    * info.
    */
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
-  if (plan && PLAN_DUMP_ENABLED (level) && DETAILED_DUMP (level)
-      && env->plan_dump_enabled)
+  if (plan && PLAN_DUMP_ENABLED (level) && DETAILED_DUMP (level) && env->plan_dump_enabled)
     {
       qo_env_dump (env, query_Plan_dump_fp);
     }
@@ -742,8 +684,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
       env->segs = (QO_SEGMENT *) malloc (size);
       if (env->segs == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  goto error;
 	}
     }
@@ -755,8 +696,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
       env->nodes = (QO_NODE *) malloc (size);
       if (env->nodes == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  goto error;
 	}
     }
@@ -768,8 +708,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
       env->terms = (QO_TERM *) malloc (size);
       if (env->terms == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  goto error;
 	}
     }
@@ -781,8 +720,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
       env->eqclasses = (QO_EQCLASS *) malloc (size);
       if (env->eqclasses == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  goto error;
 	}
     }
@@ -794,8 +732,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
       env->partitions = (QO_PARTITION *) malloc (size);
       if (env->partitions == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  goto error;
 	}
     }
@@ -854,11 +791,8 @@ qo_validate (QO_ENV * env)
 
   tree = QO_ENV_PT_TREE (env);
 
-  /* find out how many nodes and segments will be required for the
-   * query graph.
-   */
-  (void) parser_walk_tree (env->parser, tree, graph_size_select, &env,
-			   pt_continue_walk, NULL);
+  /* find out how many nodes and segments will be required for the query graph. */
+  (void) parser_walk_tree (env->parser, tree, graph_size_select, &env, pt_continue_walk, NULL);
 
   /* count the number of conjuncts in the ON clause */
   for (spec = tree->info.query.q.select.from; spec; spec = spec->next)
@@ -880,8 +814,7 @@ qo_validate (QO_ENV * env)
   /* count the number of conjuncts in the WHERE clause */
   for (conj = tree->info.query.q.select.where; conj; conj = conj->next)
     {
-      if (conj->node_type != PT_EXPR
-	  && conj->node_type != PT_VALUE /* is a false conjunct */ )
+      if (conj->node_type != PT_EXPR && conj->node_type != PT_VALUE /* is a false conjunct */ )
 	{
 	  env->bail_out = 1;
 	  return true;
@@ -908,14 +841,13 @@ qo_validate (QO_ENV * env)
  *   continue_walk(in):
  */
 static PT_NODE *
-graph_size_select (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
-		   int *continue_walk)
+graph_size_select (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   QO_ENV *env = (QO_ENV *) * (long *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  /*
+  /* 
    * skip nested selects, they've already been counted
    */
   if ((tree->node_type == PT_SELECT) && (tree != env->pt_tree))
@@ -966,14 +898,10 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
       env->nsegs++;
     }
 
-  /* check if the constraint is a function index info and add a segment for
-   * each function index expression
-   */
+  /* check if the constraint is a function index info and add a segment for each function index expression */
   if (entity->info.spec.flat_entity_list)
     {
-      cls =
-	sm_find_class (entity->info.spec.flat_entity_list->info.name.
-		       original);
+      cls = sm_find_class (entity->info.spec.flat_entity_list->info.name.original);
       if (cls)
 	{
 	  constraints = sm_class_constraints (cls);
@@ -994,15 +922,13 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
     }
 
   /* recurse and size the graph for path entities */
-  for (next_entity = entity->info.spec.path_entities;
-       next_entity != NULL; next_entity = next_entity->next)
+  for (next_entity = entity->info.spec.path_entities; next_entity != NULL; next_entity = next_entity->next)
     {
       (void) graph_size_for_entity (env, next_entity);
     }
 
   /* create a term for each conjunct in the entity's path_conjuncts */
-  for (conj = entity->info.spec.path_conjuncts;
-       conj != NULL; conj = conj->next)
+  for (conj = entity->info.spec.path_conjuncts; conj != NULL; conj = conj->next)
     {
       env->nterms++;
     }
@@ -1039,14 +965,13 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
  *   continue_walk(in):
  */
 static PT_NODE *
-build_query_graph (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
-		   int *continue_walk)
+build_query_graph (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   QO_ENV *env = (QO_ENV *) * (long *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  /*
+  /* 
    * skip nested selects, they've already been done and are
    * constant with respect to the current select statement
    */
@@ -1081,8 +1006,7 @@ build_query_graph (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
  *   continue_walk(in):
  */
 static PT_NODE *
-build_query_graph_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
-			int *continue_walk)
+build_query_graph_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   QO_ENV *env = (QO_ENV *) * (long *) arg;
 
@@ -1113,8 +1037,7 @@ build_query_graph_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
  *   continue_walk(in):
  */
 static PT_NODE *
-build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
-				  void *arg, int *continue_walk)
+build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   PT_NODE *entity = NULL;
   UINTPTR spec_id = 0;
@@ -1144,10 +1067,7 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
 	    }
 
 	  if (entity != NULL && entity->info.spec.entity_name
-	      &&
-	      ((cls =
-		sm_find_class (entity->info.spec.entity_name->info.
-			       name.original)) != NULL))
+	      && ((cls = sm_find_class (entity->info.spec.entity_name->info.name.original)) != NULL))
 	    {
 	      constraints = sm_class_constraints (cls);
 	      k = 0;
@@ -1155,30 +1075,20 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
 		{
 		  if (constraints->func_index_info)
 		    {
-		      char *expr_str =
-			parser_print_function_index_expr (env->parser, tree);
+		      char *expr_str = parser_print_function_index_expr (env->parser, tree);
 
 		      if (expr_str != NULL
-			  && !intl_identifier_casecmp (expr_str,
-						       constraints->
-						       func_index_info->
-						       expr_str))
+			  && !intl_identifier_casecmp (expr_str, constraints->func_index_info->expr_str))
 			{
 			  for (i = 0; i < env->nsegs; i++)
 			    {
 			      seg_fi = QO_ENV_SEG (env, i);
 			      seg_name = QO_SEG_NAME (seg_fi);
 			      if ((QO_SEG_FUNC_INDEX (seg_fi) == true)
-				  && !intl_identifier_casecmp (seg_name,
-							       constraints->
-							       func_index_info->
-							       expr_str))
+				  && !intl_identifier_casecmp (seg_name, constraints->func_index_info->expr_str))
 				{
-				  /* Also need to check whether the class alias
-				   * names are matched.*/
-				  if (!intl_identifier_casecmp
-				      (node->class_name,
-				       QO_SEG_HEAD (seg_fi)->class_name))
+				  /* Also need to check whether the class alias names are matched. */
+				  if (!intl_identifier_casecmp (node->class_name, QO_SEG_HEAD (seg_fi)->class_name))
 				    {
 				      /* segment already exists */
 				      break;
@@ -1187,21 +1097,13 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
 			    }
 			  if (i == env->nsegs)
 			    {
-			      seg = qo_insert_segment (node, NULL, tree, env,
-						       expr_str);
+			      seg = qo_insert_segment (node, NULL, tree, env, expr_str);
 			      QO_SEG_FUNC_INDEX (seg) = true;
-			      QO_SEG_NAME (seg) =
-				strdup
-				(constraints->func_index_info->expr_str);
+			      QO_SEG_NAME (seg) = strdup (constraints->func_index_info->expr_str);
 			      if (QO_SEG_NAME (seg) == NULL)
 				{
-				  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-					  ER_OUT_OF_VIRTUAL_MEMORY,
-					  1,
-					  (size_t) (strlen
-						    (constraints->
-						     func_index_info->
-						     expr_str) + 1));
+				  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+					  (size_t) (strlen (constraints->func_index_info->expr_str) + 1));
 				  *continue_walk = PT_STOP_WALK;
 				  return tree;
 				}
@@ -1231,8 +1133,7 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree,
  *   corruption.
  */
 static QO_NODE *
-build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
-			QO_BUILD_STATUS status)
+build_graph_for_entity (QO_ENV * env, PT_NODE * entity, QO_BUILD_STATUS status)
 {
   PARSER_CONTEXT *parser;
   QO_NODE *node = NULL, *next_node;
@@ -1259,7 +1160,7 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
 
   attr_list = get_referenced_attrs (entity);
 
-  /*
+  /* 
    * Find the PT_NAME corresponding to this entity spec (i.e., the
    * PT_NODE that we want backing the oid segment we're about to
    * create), if such exists.
@@ -1270,7 +1171,7 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
       ;
     }
 
-  /*
+  /* 
    * 'attr' will be non-null iff the oid "attribute" of the class
    * is explicitly used in some way, e.g., in a comparison or a projection.
    * If it is non-null, it will be created with the rest of the symbols.
@@ -1287,8 +1188,7 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
 	  return NULL;
 	}
 
-      attr->info.name.resolved =
-	entity->info.spec.flat_entity_list->info.name.original;
+      attr->info.name.resolved = entity->info.spec.flat_entity_list->info.name.original;
       attr->info.name.original = "";
       attr->info.name.spec_id = entity->info.spec.id;
       attr->info.name.meta_class = PT_OID_ATTR;
@@ -1300,16 +1200,15 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
       QO_SEG_SHARED_ATTR (seg) = false;	/* oid segments aren't shared attrs */
     }
 
-  /*
+  /* 
    * Create a segment for each symbol in the entities symbol table.
    */
   for (name = attr_list; name != NULL; name = name->next)
     {
       seg = qo_insert_segment (node, NULL, name, env, NULL);
 
-      if ((name->type_enum == PT_TYPE_SET) ||
-	  (name->type_enum == PT_TYPE_MULTISET) ||
-	  (name->type_enum == PT_TYPE_SEQUENCE))
+      if ((name->type_enum == PT_TYPE_SET) || (name->type_enum == PT_TYPE_MULTISET)
+	  || (name->type_enum == PT_TYPE_SEQUENCE))
 	{
 	  QO_SEG_SET_VALUED (seg) = true;
 	}
@@ -1339,12 +1238,9 @@ build_path:
     }
 
   /* recurse and build the graph for path entities */
-  for (next_entity = entity->info.spec.path_entities;
-       next_entity != NULL; next_entity = next_entity->next)
+  for (next_entity = entity->info.spec.path_entities; next_entity != NULL; next_entity = next_entity->next)
     {
-      next_node = build_graph_for_entity (env, next_entity,
-					  (QO_BUILD_STATUS) (QO_BUILD_ENTITY |
-							     QO_BUILD_PATH));
+      next_node = build_graph_for_entity (env, next_entity, (QO_BUILD_STATUS) (QO_BUILD_ENTITY | QO_BUILD_PATH));
 
       /* for each path entity, fix the join segment */
       QO_ASSERT (env, next_node != NULL);
@@ -1353,16 +1249,13 @@ build_path:
       QO_ASSERT (env, next_entity->info.spec.path_conjuncts != NULL);
       QO_ASSERT (env, next_entity->info.spec.path_conjuncts->next == NULL);
 
-      (void) qo_join_segment (node, next_node,
-			      next_entity->info.spec.path_conjuncts->
-			      info.expr.arg1, env);
+      (void) qo_join_segment (node, next_node, next_entity->info.spec.path_conjuncts->info.expr.arg1, env);
     }
 
   /* create a term for the entity's path_conjunct if one exists */
   if (entity->info.spec.path_conjuncts != NULL)
     {
-      (void) qo_add_term (entity->info.spec.path_conjuncts,
-			  entity->info.spec.meta_class, env);
+      (void) qo_add_term (entity->info.spec.path_conjuncts, entity->info.spec.meta_class, env);
     }
 
   return node;
@@ -1398,15 +1291,14 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 
   env->nnodes++;
 
-  /*
+  /* 
    * If derived table there will be no info.  Also if derived table
    * that is correlated to the current scope level, establish
    * dependency links to all nodes that precede it in the scope.  This
    * is overkill, but it's easier than figuring out the exact
    * information, and it's usually the same anyway.
    */
-  if (entity->info.spec.derived_table == NULL
-      && (info = qo_get_class_info (env, node)) != NULL)
+  if (entity->info.spec.derived_table == NULL && (info = qo_get_class_info (env, node)) != NULL)
     {
       QO_NODE_INFO (node) = info;
       for (i = 0, n = info->n; i < n; i++)
@@ -1415,10 +1307,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 	  QO_ASSERT (env, stats != NULL);
 	  if (entity->info.spec.meta_class == PT_META_CLASS)
 	    {
-	      /* is class OID reference spec
-	       * for example: 'class x'
-	       *   SELECT class_meth(class x, x.i) FROM x, class x
-	       */
+	      /* is class OID reference spec for example: 'class x' SELECT class_meth(class x, x.i) FROM x, class x */
 	      QO_NODE_NCARD (node) += 1;
 	      QO_NODE_TCARD (node) += 1;
 	    }
@@ -1445,15 +1334,12 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 	    case PT_UNION:
 	    case PT_DIFFERENCE:
 	    case PT_INTERSECTION:
-	      xasl =
-		(XASL_NODE *) entity->info.spec.derived_table->info.query.
-		xasl;
+	      xasl = (XASL_NODE *) entity->info.spec.derived_table->info.query.xasl;
 	      if (xasl)
 		{
 		  QO_NODE_NCARD (node) = (unsigned long) xasl->cardinality;
-		  QO_NODE_TCARD (node) = (unsigned long)
-		    ((QO_NODE_NCARD (node) *
-		      (double) xasl->projected_size) / (double) IO_PAGESIZE);
+		  QO_NODE_TCARD (node) =
+		    (unsigned long) ((QO_NODE_NCARD (node) * (double) xasl->projected_size) / (double) IO_PAGESIZE);
 		  if (QO_NODE_TCARD (node) == 0)
 		    {
 		      QO_NODE_TCARD (node) = 1;
@@ -1509,7 +1395,7 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
 
   if (pt_is_function_index_expr (env->parser, attr, false))
     {
-      /*
+      /* 
        * The node should be the same for each argument of expression =>
        * once found should be returned
        */
@@ -1517,8 +1403,7 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
       if (attr->info.expr.op == PT_FUNCTION_HOLDER)
 	{
 	  PT_NODE *func = attr->info.expr.arg1;
-	  for (aux = func->info.function.arg_list; aux != NULL;
-	       aux = aux->next)
+	  for (aux = func->info.function.arg_list; aux != NULL; aux = aux->next)
 	    {
 	      PT_NODE *save_aux = aux;
 	      aux = pt_function_index_skip_expr (aux);
@@ -1621,8 +1506,7 @@ lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity)
  *		      filter index
  */
 static QO_SEGMENT *
-qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node,
-		   QO_ENV * env, const char *expr_str)
+qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node, QO_ENV * env, const char *expr_str)
 {
   QO_SEGMENT *seg = NULL;
 
@@ -1636,19 +1520,12 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node,
   QO_SEG_HEAD (seg) = head;
   QO_SEG_TAIL (seg) = tail;
   QO_SEG_IDX (seg) = env->nsegs;
-  /* add dummy name to segment
-   * example: dummy attr from view transfrom
-   *   select count(*) from v
-   *   select count(*) from (select {v}, 1 from t) v (v, 1)
-   *
-   * here, '1' is dummy attr
-   * set empty string to avoid core crash
-   */
+  /* add dummy name to segment example: dummy attr from view transfrom select count(*) from v select count(*) from
+   * (select {v}, 1 from t) v (v, 1) here, '1' is dummy attr set empty string to avoid core crash */
   if (node)
     {
-      QO_SEG_NAME (seg) = node->info.name.original ?
-	node->info.name.original :
-	pt_append_string (QO_ENV_PARSER (env), NULL, "");
+      QO_SEG_NAME (seg) =
+	node->info.name.original ? node->info.name.original : pt_append_string (QO_ENV_PARSER (env), NULL, "");
       if (PT_IS_OID_NAME (node))
 	{
 	  /* this is an oid segment */
@@ -1657,19 +1534,16 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node,
 	}
       else if (!PT_IS_CLASSOID_NAME (node))
 	{
-	  /* Ignore CLASSOIDs.  They are generated by updates on the server
-	   * and can be treated as any other projected column.  We don't
-	   * need to know anything else about this attr since it can not
-	   * be used as an index or in any other interesting way.
-	   */
+	  /* Ignore CLASSOIDs.  They are generated by updates on the server and can be treated as any other projected
+	   * column.  We don't need to know anything else about this attr since it can not be used as an index or in
+	   * any other interesting way. */
 	  if (node->node_type == PT_NAME)
 	    {
 	      QO_SEG_INFO (seg) = qo_get_attr_info (env, seg);
 	    }
 	  else
 	    {
-	      QO_SEG_INFO (seg) = qo_get_attr_info_func_index (env, seg,
-							       expr_str);
+	      QO_SEG_INFO (seg) = qo_get_attr_info_func_index (env, seg, expr_str);
 	    }
 	}
     }
@@ -1720,13 +1594,9 @@ lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env)
   if (pt_is_function_index_expr (env->parser, name, false))
     {
       int k = -1;
-      /* we search through the segments that come from a function
-       * index. If one of these are matched by the PT_NODE, there
-       * is no need to search other segments, since they will never
-       * match
-       */
-      const char *expr_str =
-	parser_print_function_index_expr (QO_ENV_PARSER (env), name);
+      /* we search through the segments that come from a function index. If one of these are matched by the PT_NODE,
+       * there is no need to search other segments, since they will never match */
+      const char *expr_str = parser_print_function_index_expr (QO_ENV_PARSER (env), name);
 
       if (expr_str != NULL)
 	{
@@ -1737,21 +1607,12 @@ lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env)
 		  continue;
 		}
 
-	      /* match function index expression against the expression
-	       * in the given query
-	       */
-	      if (!intl_identifier_casecmp (QO_SEG_NAME (QO_ENV_SEG (env, i)),
-					    expr_str))
+	      /* match function index expression against the expression in the given query */
+	      if (!intl_identifier_casecmp (QO_SEG_NAME (QO_ENV_SEG (env, i)), expr_str))
 		{
-		  /* Also need to check whether the class alias names
-		   * are matched.*/
+		  /* Also need to check whether the class alias names are matched. */
 		  if (head != NULL
-		      &&
-		      !intl_identifier_casecmp (head->class_name,
-						QO_SEG_HEAD (QO_ENV_SEG
-							     (env,
-							      i))->
-						class_name))
+		      && !intl_identifier_casecmp (head->class_name, QO_SEG_HEAD (QO_ENV_SEG (env, i))->class_name))
 		    {
 		      found = true;
 		      k = i;
@@ -1766,8 +1627,7 @@ lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env)
   for (i = 0; (!found) && (i < env->nsegs); /* no increment step */ )
     {
       if (QO_SEG_HEAD (QO_ENV_SEG (env, i)) == head
-	  && pt_name_equal (QO_ENV_PARSER (env),
-			    QO_SEG_PT_NODE (QO_ENV_SEG (env, i)), name))
+	  && pt_name_equal (QO_ENV_PARSER (env), QO_SEG_PT_NODE (QO_ENV_SEG (env, i)), name))
 	{
 	  found = true;
 	}
@@ -1795,8 +1655,7 @@ lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env)
  *      arg2 of the dot expression.
  */
 static PT_NODE *
-qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
-		      int *continue_walk)
+qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   QO_ENV *env = (QO_ENV *) * (long *) arg;
 
@@ -1831,14 +1690,10 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
 
   QO_ASSERT (env, conjunct->next == NULL);
 
-  /* The conjuct could be PT_VALUE(0);
-     (1) if an outer join condition was derived/transformed to the
-     always-false ON condition when type checking, expression evaluation
-     or query rewrite transformation. We should sustained it for correct
-     outer join plan. It's different from ordinary WHERE condition.
-     (2) Or is an always-false WHERE condition */
-  QO_ASSERT (env, conjunct->node_type == PT_EXPR ||
-	     conjunct->node_type == PT_VALUE);
+  /* The conjuct could be PT_VALUE(0); (1) if an outer join condition was derived/transformed to the always-false ON
+   * condition when type checking, expression evaluation or query rewrite transformation. We should sustained it for
+   * correct outer join plan. It's different from ordinary WHERE condition. (2) Or is an always-false WHERE condition */
+  QO_ASSERT (env, conjunct->node_type == PT_EXPR || conjunct->node_type == PT_VALUE);
   QO_ASSERT (env, env->nterms < env->Nterms);
 
   term = QO_ENV_TERM (env, env->nterms);
@@ -1847,9 +1702,8 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
   QO_TERM_CLASS (term) = QO_TC_SARG;	/* assume sarg until proven otherwise */
   QO_TERM_JOIN_TYPE (term) = NO_JOIN;
   QO_TERM_PT_EXPR (term) = conjunct;
-  QO_TERM_LOCATION (term) = (conjunct->node_type == PT_EXPR ?
-			     conjunct->info.expr.location :
-			     conjunct->info.value.location);
+  QO_TERM_LOCATION (term) =
+    (conjunct->node_type == PT_EXPR ? conjunct->info.expr.location : conjunct->info.value.location);
   QO_TERM_SELECTIVITY (term) = 0.0;
   QO_TERM_RANK (term) = 0;
   QO_TERM_FLAG (term) = 0;	/* init */
@@ -1882,9 +1736,7 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
 	  switch (QO_NODE_PT_JOIN_TYPE (node))
 	    {
 	    case PT_JOIN_INNER:
-	      /* add always-false arg to each X, Y
-	       * example: SELECT ... FROM X inner join Y on 0 <> 0;
-	       */
+	      /* add always-false arg to each X, Y example: SELECT ... FROM X inner join Y on 0 <> 0; */
 	      bitset_add (&(QO_TERM_NODES (term)), QO_NODE_IDX (node) - 1);
 
 	      term = QO_ENV_TERM (env, env->nterms);
@@ -1946,8 +1798,7 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
  *	that derived table depends.
  */
 static void
-qo_add_dep_term (QO_NODE * derived_node,
-		 BITSET * depend_nodes, BITSET * depend_segs, QO_ENV * env)
+qo_add_dep_term (QO_NODE * derived_node, BITSET * depend_nodes, BITSET * depend_segs, QO_ENV * env)
 {
   QO_TERM *term = NULL;
   BITSET_ITERATOR bi;
@@ -1968,7 +1819,7 @@ qo_add_dep_term (QO_NODE * derived_node,
   QO_TERM_FLAG (term) = 0;
   QO_TERM_IDX (term) = env->nterms;
   QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-  /*
+  /* 
    * This is misleading if |depend_nodes| > 1, but the planner is the
    * only party relying on this information, and it understands the
    * rules of the game.
@@ -1979,7 +1830,7 @@ qo_add_dep_term (QO_NODE * derived_node,
   bitset_assign (&(QO_TERM_NODES (term)), depend_nodes);
   bitset_add (&(QO_TERM_NODES (term)), QO_NODE_IDX (derived_node));
   bitset_assign (&(QO_TERM_SEGS (term)), depend_segs);
-  /*
+  /* 
    * Add this term to env->fake_terms so that we're not tempted to sarg
    * it if a mergeable join term between these nodes is also present.
    * This is part of the fix for PR 7314.
@@ -2004,7 +1855,7 @@ qo_add_dep_term (QO_NODE * derived_node,
       QO_TERM_HEAD (term) = QO_ENV_NODE (env, ni);
       QO_TERM_TAIL (term) = QO_ENV_NODE (env, di);
       QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-      /*
+      /* 
        * Do NOT add these terms to env->fake_terms, because (unlike the
        * DEP_LINK terms) there is no restriction on how they can be
        * implemented (e.g., if there's a mergeable term available to
@@ -2076,8 +1927,7 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
     {
       QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-      bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)),
-		    &(QO_NODE_OUTER_DEP_SET (p_node)));
+      bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
       bitset_add (&(QO_NODE_OUTER_DEP_SET (on_node)), QO_NODE_IDX (p_node));
     }
 
@@ -2126,17 +1976,11 @@ qo_analyze_term (QO_TERM * term, int term_type)
       goto wrapup;
     }
 
-  /* only interesting in one predicate term; if 'term' has 'or_next', it was
-     derived from OR term */
-  /* also cases that are too complicated and unusual to consider here:
-   * (cond and/or cond) is true/false
-   * (cond and/or cond) =/!= (cond and/or cond).
-   */
-  if (pt_expr->or_next == NULL
-      && (pt_expr->info.expr.arg1 == NULL
-	  || pt_expr->info.expr.arg1->next == NULL)
-      && (pt_expr->info.expr.arg2 == NULL
-	  || pt_expr->info.expr.arg2->next == NULL))
+  /* only interesting in one predicate term; if 'term' has 'or_next', it was derived from OR term */
+  /* also cases that are too complicated and unusual to consider here: (cond and/or cond) is true/false (cond and/or
+   * cond) =/!= (cond and/or cond). */
+  if (pt_expr->or_next == NULL && (pt_expr->info.expr.arg1 == NULL || pt_expr->info.expr.arg1->next == NULL)
+      && (pt_expr->info.expr.arg2 == NULL || pt_expr->info.expr.arg2->next == NULL))
     {
       QO_TERM_SET_FLAG (term, QO_TERM_SINGLE_PRED);
 
@@ -2271,12 +2115,10 @@ qo_analyze_term (QO_TERM * term, int term_type)
     {
       i = 0;			/* idx of term->index_seg[] array; it shall be 0 or 1 */
 
-      /* There terms look like they might be candidates for implementation
-         via indexes. Make sure that they really are candidates.
-         IMPORTANT: this is not the final say, since we don't know at this
-         point whether indexes actually exist or not. We won't know that
-         until a later phase (qo_discover_indexes()). Right now we're just
-         determining whether these terms qualify structurally. */
+      /* There terms look like they might be candidates for implementation via indexes. Make sure that they really are
+       * candidates. IMPORTANT: this is not the final say, since we don't know at this point whether indexes actually
+       * exist or not. We won't know that until a later phase (qo_discover_indexes()). Right now we're just determining 
+       * whether these terms qualify structurally. */
 
       /* examine if LHS is indexable or not? */
 
@@ -2287,8 +2129,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	    {
 	      if (lhs_expr->type_enum == PT_TYPE_ENUMERATION)
 		{
-		  /* lhs is indexable only if this is an equality
-		     comparison */
+		  /* lhs is indexable only if this is an equality comparison */
 		  op_type = pt_expr->info.expr.op;
 		  switch (op_type)
 		    {
@@ -2321,13 +2162,10 @@ qo_analyze_term (QO_TERM * term, int term_type)
       if (lhs_indexable
 	  && (pt_is_function_index_expr (parser, lhs_expr, false)
 	      || (lhs_expr && lhs_expr->info.expr.op == PT_PRIOR
-		  && pt_is_function_index_expr (parser,
-						lhs_expr->info.expr.arg1,
-						false))))
+		  && pt_is_function_index_expr (parser, lhs_expr->info.expr.arg1, false))))
 	{
-	  /* we should be dealing with a function indexable expression,
-	   * so we must check if a segment has been associated with it
-	   */
+	  /* we should be dealing with a function indexable expression, so we must check if a segment has been
+	   * associated with it */
 	  n = bitset_first_member (&lhs_segs);
 	  if ((n == -1) || (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, n)) == false))
 	    {
@@ -2339,14 +2177,10 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
 	  if (op_type == PT_IS_IN || op_type == PT_EQ_SOME)
 	    {
-	      /* We have to be careful with this case because
-	         "i IN (SELECT ...)"
-	         has a special meaning: in this case the select is treated as
-	         UNBOX_AS_TABLE instead of the usual UNBOX_AS_VALUE, and we
-	         can't use an index even if we want to (because of an XASL
-	         deficiency).Because pt_is_pseudo_const() wants to believe that
-	         subqueries are pseudo-constants, we have to check for that
-	         condition outside of pt_is_pseudo_const(). */
+	      /* We have to be careful with this case because "i IN (SELECT ...)" has a special meaning: in this case
+	       * the select is treated as UNBOX_AS_TABLE instead of the usual UNBOX_AS_VALUE, and we can't use an index 
+	       * even if we want to (because of an XASL deficiency).Because pt_is_pseudo_const() wants to believe that
+	       * subqueries are pseudo-constants, we have to check for that condition outside of pt_is_pseudo_const(). */
 	      switch (rhs_expr->node_type)
 		{
 		case PT_SELECT:
@@ -2356,8 +2190,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		  lhs_indexable = 0;
 		  break;
 		case PT_NAME:
-		  if (rhs_expr->info.name.meta_class != PT_PARAMETER
-		      && pt_is_set_type (rhs_expr))
+		  if (rhs_expr->info.name.meta_class != PT_PARAMETER && pt_is_set_type (rhs_expr))
 		    {
 		      lhs_indexable = 0;
 		    }
@@ -2369,15 +2202,11 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		    }
 		  break;
 		case PT_VALUE:
-		  if (op_type == PT_EQ_SOME &&
-		      rhs_expr->info.value.db_value_is_initialized &&
-		      db_value_type_is_collection (&
-						   (rhs_expr->info.value.
-						    db_value)))
+		  if (op_type == PT_EQ_SOME && rhs_expr->info.value.db_value_is_initialized
+		      && db_value_type_is_collection (&(rhs_expr->info.value.db_value)))
 		    {
 		      /* if we have the = some{} operator check its size */
-		      DB_COLLECTION *db_collectionp =
-			db_get_collection (&(rhs_expr->info.value.db_value));
+		      DB_COLLECTION *db_collectionp = db_get_collection (&(rhs_expr->info.value.db_value));
 
 		      if (db_col_size (db_collectionp) == 0)
 			{
@@ -2397,19 +2226,14 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	    }
 	}
 
-      /* check LHS and RHS for collations that invalidate the term's use in a
-       * key range/filter; if one of the expr sides contains such a collation
-       * then the whole term is not indexable */
+      /* check LHS and RHS for collations that invalidate the term's use in a key range/filter; if one of the expr
+       * sides contains such a collation then the whole term is not indexable */
       if (lhs_indexable || rhs_indexable)
 	{
 	  int has_nis_coll = 0;
 
-	  (void) parser_walk_tree (parser, lhs_expr,
-				   pt_has_non_idx_sarg_coll_pre,
-				   &has_nis_coll, NULL, NULL);
-	  (void) parser_walk_tree (parser, rhs_expr,
-				   pt_has_non_idx_sarg_coll_pre,
-				   &has_nis_coll, NULL, NULL);
+	  (void) parser_walk_tree (parser, lhs_expr, pt_has_non_idx_sarg_coll_pre, &has_nis_coll, NULL, NULL);
+	  (void) parser_walk_tree (parser, rhs_expr, pt_has_non_idx_sarg_coll_pre, &has_nis_coll, NULL, NULL);
 
 	  if (has_nis_coll)
 	    {
@@ -2437,8 +2261,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	      /* is RHS attribute and is LHS constant value ? */
 	      if (rhs_expr->type_enum == PT_TYPE_ENUMERATION)
 		{
-		  /* lhs is indexable only if this is an equality
-		     comparison */
+		  /* lhs is indexable only if this is an equality comparison */
 		  op_type = pt_expr->info.expr.op;
 		  switch (op_type)
 		    {
@@ -2471,13 +2294,10 @@ qo_analyze_term (QO_TERM * term, int term_type)
       if (rhs_indexable
 	  && (pt_is_function_index_expr (term->env->parser, rhs_expr, false)
 	      || (rhs_expr && rhs_expr->info.expr.op == PT_PRIOR
-		  && pt_is_function_index_expr (term->env->parser,
-						rhs_expr->info.expr.arg1,
-						false))))
+		  && pt_is_function_index_expr (term->env->parser, rhs_expr->info.expr.arg1, false))))
 	{
-	  /* we should be dealing with a function indexable expression,
-	   * so we must check if a segment has been associated with it
-	   */
+	  /* we should be dealing with a function indexable expression, so we must check if a segment has been
+	   * associated with it */
 	  n = bitset_first_member (&rhs_segs);
 	  if ((n == -1) || (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, n)) == false))
 	    {
@@ -2544,12 +2364,9 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
       if (n == 2)
 	{
-	  /* i.e., it's a path term...
-	     In this case, it's imperative that we get the head and tail
-	     nodes and segs right. Fortunately, in this particular case
-	     we can rely on the compiler to produce the term in a
-	     consistent way, with the head on the lhs and the tail on
-	     the rhs. */
+	  /* i.e., it's a path term... In this case, it's imperative that we get the head and tail nodes and segs
+	   * right. Fortunately, in this particular case we can rely on the compiler to produce the term in a
+	   * consistent way, with the head on the lhs and the tail on the rhs. */
 	  head_node = QO_ENV_NODE (env, bitset_first_member (&lhs_nodes));
 	  tail_node = QO_ENV_NODE (env, bitset_first_member (&rhs_nodes));
 
@@ -2560,33 +2377,26 @@ qo_analyze_term (QO_TERM * term, int term_type)
     {
       bool inst_num = false;
 
-      (void) parser_walk_tree (parser, pt_expr, pt_check_instnum_pre,
-			       NULL, pt_check_instnum_post, &inst_num);
-      QO_TERM_CLASS (term) =
-	inst_num ? QO_TC_TOTALLY_AFTER_JOIN : QO_TC_OTHER;
+      (void) parser_walk_tree (parser, pt_expr, pt_check_instnum_pre, NULL, pt_check_instnum_post, &inst_num);
+      QO_TERM_CLASS (term) = inst_num ? QO_TC_TOTALLY_AFTER_JOIN : QO_TC_OTHER;
     }
   else if (n == 1)
     {
       QO_TERM_CLASS (term) = QO_TC_SARG;
 
       /* QO_NODE to which this sarg term belongs */
-      head_node =
-	QO_ENV_NODE (env, bitset_iterate (&(QO_TERM_NODES (term)), &iter));
+      head_node = QO_ENV_NODE (env, bitset_iterate (&(QO_TERM_NODES (term)), &iter));
     }
   else if (n == 2)
     {
       QO_TERM_CLASS (term) = QO_TC_JOIN;
 
-      /* Although it may be tempting to say that the head node is the first
-         member of the lhs_nodes and the tail node is the first member of the
-         rhs_nodes, that's not always true. For example, a term like
-         "x.a + y.b < 100"
-         can get in here, and then *both* head and tail are in lhs_nodes.
-         If you get down into the code guarded by 'merge_applies' you can
-         safely make more stringent assumptions, but not before then. */
+      /* Although it may be tempting to say that the head node is the first member of the lhs_nodes and the tail node
+       * is the first member of the rhs_nodes, that's not always true. For example, a term like "x.a + y.b < 100" can
+       * get in here, and then *both* head and tail are in lhs_nodes. If you get down into the code guarded by
+       * 'merge_applies' you can safely make more stringent assumptions, but not before then. */
 
-      head_node =
-	QO_ENV_NODE (env, bitset_iterate (&(QO_TERM_NODES (term)), &iter));
+      head_node = QO_ENV_NODE (env, bitset_iterate (&(QO_TERM_NODES (term)), &iter));
       tail_node = QO_ENV_NODE (env, bitset_next_member (&iter));
 
       if (QO_NODE_IDX (head_node) > QO_NODE_IDX (tail_node))
@@ -2607,50 +2417,38 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
   if (n == 2)
     {
-      QO_ASSERT (env, QO_TERM_CLASS (term) == QO_TC_PATH
-		 || QO_TERM_CLASS (term) == QO_TC_JOIN);
+      QO_ASSERT (env, QO_TERM_CLASS (term) == QO_TC_PATH || QO_TERM_CLASS (term) == QO_TC_JOIN);
 
-      /* This is a pretty weak test; it only looks for equality
-         comparisons. */
+      /* This is a pretty weak test; it only looks for equality comparisons. */
       merge_applies &= expr_is_mergable (pt_expr);
 
       /* check for dependent edge. do not join with it */
       if (BITSET_MEMBER (QO_NODE_DEP_SET (head_node), QO_NODE_IDX (tail_node))
-	  || BITSET_MEMBER (QO_NODE_DEP_SET (tail_node),
-			    QO_NODE_IDX (head_node)))
+	  || BITSET_MEMBER (QO_NODE_DEP_SET (tail_node), QO_NODE_IDX (head_node)))
 	{
 	  QO_TERM_CLASS (term) = QO_TC_OTHER;
 
 	  merge_applies = 0;
 	}
 
-      /* And there had better be something on both sides of the comparison
-         too. You don't want to be misled by something like
-         "x.a + y.b = 100"
-         because that's definitely not mergeable right now. Perhaps if we
-         rewrote it like
-         "x.a = 100 - y.b"
-         but that seems to be stretching things a little bit. */
-      merge_applies &= (!bitset_is_empty (&lhs_segs)
-			&& !bitset_is_empty (&rhs_segs));
+      /* And there had better be something on both sides of the comparison too. You don't want to be misled by
+       * something like "x.a + y.b = 100" because that's definitely not mergeable right now. Perhaps if we rewrote it
+       * like "x.a = 100 - y.b" but that seems to be stretching things a little bit. */
+      merge_applies &= (!bitset_is_empty (&lhs_segs) && !bitset_is_empty (&rhs_segs));
 
       if (merge_applies || QO_TERM_CLASS (term) == QO_TC_PATH)
 	{
-	  head_seg =
-	    QO_ENV_SEG (env, bitset_iterate (&(QO_TERM_SEGS (term)), &iter));
-	  for (t = bitset_iterate (&(QO_TERM_SEGS (term)), &iter); t != -1;
-	       t = bitset_next_member (&iter))
+	  head_seg = QO_ENV_SEG (env, bitset_iterate (&(QO_TERM_SEGS (term)), &iter));
+	  for (t = bitset_iterate (&(QO_TERM_SEGS (term)), &iter); t != -1; t = bitset_next_member (&iter))
 	    {
 	      tail_seg = QO_ENV_SEG (env, t);
-	      if (QO_NODE_IDX (QO_SEG_HEAD (tail_seg))
-		  != QO_NODE_IDX (QO_SEG_HEAD (head_seg)))
+	      if (QO_NODE_IDX (QO_SEG_HEAD (tail_seg)) != QO_NODE_IDX (QO_SEG_HEAD (head_seg)))
 		{
 		  break;	/* found tail */
 		}
 	    }
 
-	  /* Now make sure that the head and tail segs correspond to the
-	     proper nodes. */
+	  /* Now make sure that the head and tail segs correspond to the proper nodes. */
 	  if (QO_SEG_HEAD (head_seg) != head_node)
 	    {
 	      QO_SEGMENT *swap_seg = NULL;
@@ -2663,15 +2461,12 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  QO_ASSERT (env, QO_SEG_HEAD (head_seg) == head_node);
 	  QO_ASSERT (env, QO_SEG_HEAD (tail_seg) == tail_node);
 
-	  /* These are really only interesting for path terms, but it doesn't
-	     hurt to set them for others too. */
+	  /* These are really only interesting for path terms, but it doesn't hurt to set them for others too. */
 	  QO_TERM_SEG (term) = head_seg;
 	  QO_TERM_OID_SEG (term) = tail_seg;
 
-	  /* The term might be a merge term (i.e., it uses '=' as the
-	     operator), but the expressions might not be simple attribute
-	     references, and we mustn't try to establish equivalence classes
-	     in that case. */
+	  /* The term might be a merge term (i.e., it uses '=' as the operator), but the expressions might not be
+	   * simple attribute references, and we mustn't try to establish equivalence classes in that case. */
 	  if (qo_is_equi_join_term (term))
 	    {
 	      qo_equivalence (head_seg, tail_seg);
@@ -2679,8 +2474,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	    }
 	}
 
-      /* always true transitive equi-join term is not suitable as m-join edge.
-       */
+      /* always true transitive equi-join term is not suitable as m-join edge. */
       if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE))
 	{
 	  merge_applies = 0;
@@ -2691,14 +2485,11 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  QO_TERM_SET_FLAG (term, QO_TERM_MERGEABLE_EDGE);
 	}
 
-      /* Now make sure that the two (node) ends of the join get cached in the
-         term structure. */
+      /* Now make sure that the two (node) ends of the join get cached in the term structure. */
       QO_TERM_HEAD (term) = head_node;
       QO_TERM_TAIL (term) = tail_node;
 
-      QO_ASSERT (env,
-		 QO_NODE_IDX (QO_TERM_HEAD (term)) <
-		 QO_NODE_IDX (QO_TERM_TAIL (term)));
+      QO_ASSERT (env, QO_NODE_IDX (QO_TERM_HEAD (term)) < QO_NODE_IDX (QO_TERM_TAIL (term)));
     }
 
   if (n == 1)
@@ -2724,14 +2515,11 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  QO_ASSERT (env, QO_NODE_IDX (on_node) > 0);
 	  QO_ASSERT (env, QO_NODE_LOCATION (on_node) > 0);
 
-	  QO_ASSERT (env,
-		     QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
+	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
 	  if (QO_NODE_IDX (tail_node) == QO_NODE_IDX (on_node))
 	    {
-	      QO_ASSERT (env,
-			 QO_NODE_LOCATION (head_node) <
-			 QO_NODE_LOCATION (tail_node));
+	      QO_ASSERT (env, QO_NODE_LOCATION (head_node) < QO_NODE_LOCATION (tail_node));
 	      QO_ASSERT (env, QO_NODE_LOCATION (tail_node) > 0);
 
 	      if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_LEFT_OUTER)
@@ -2748,10 +2536,8 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		}
 
 	      /* record explicit join dependecy */
-	      bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)),
-			    &(QO_NODE_OUTER_DEP_SET (head_node)));
-	      bitset_add (&(QO_NODE_OUTER_DEP_SET (on_node)),
-			  QO_NODE_IDX (head_node));
+	      bitset_union (&(QO_NODE_OUTER_DEP_SET (on_node)), &(QO_NODE_OUTER_DEP_SET (head_node)));
+	      bitset_add (&(QO_NODE_OUTER_DEP_SET (on_node)), QO_NODE_IDX (head_node));
 	    }
 	  else
 	    {
@@ -2772,18 +2558,15 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	    {
 	      node = QO_ENV_NODE (env, i);
 
-	      if (QO_NODE_IDX (node) >= QO_NODE_IDX (head_node)
-		  && QO_NODE_IDX (node) < QO_NODE_IDX (tail_node))
+	      if (QO_NODE_IDX (node) >= QO_NODE_IDX (head_node) && QO_NODE_IDX (node) < QO_NODE_IDX (tail_node))
 		{
 		  if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_LEFT_OUTER
 		      || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER
 		      || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
 		    {
 		      /* record explicit join dependecy */
-		      bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)),
-				    &(QO_NODE_OUTER_DEP_SET (node)));
-		      bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)),
-				  QO_NODE_IDX (node));
+		      bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)), &(QO_NODE_OUTER_DEP_SET (node)));
+		      bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)), QO_NODE_IDX (node));
 		    }
 		}
 	    }
@@ -2792,9 +2575,8 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
 wrapup:
 
-  /* A negative selectivity means that the cardinality of the result depends
-     only on the cardinality of the head, not on the product of the
-     cardinalities of the head and the tail as in the usual case. */
+  /* A negative selectivity means that the cardinality of the result depends only on the cardinality of the head, not
+   * on the product of the cardinalities of the head and the tail as in the usual case. */
   switch (term_type)
     {
     case PT_PATH_INNER:
@@ -2805,8 +2587,7 @@ wrapup:
 	}
       else
 	{
-	  QO_TERM_SELECTIVITY (term) =
-	    1.0 / QO_NODE_NCARD (QO_TERM_TAIL (term));
+	  QO_TERM_SELECTIVITY (term) = 1.0 / QO_NODE_NCARD (QO_TERM_TAIL (term));
 	}
       break;
 
@@ -2821,55 +2602,43 @@ wrapup:
 
 	    t_term = QO_ENV_TERM (env, t);
 
-	    if (QO_TERM_CLASS (t_term) == QO_TC_PATH
-		&& QO_TERM_JOIN_TYPE (t_term) == JOIN_LEFT)
+	    if (QO_TERM_CLASS (t_term) == QO_TC_PATH && QO_TERM_JOIN_TYPE (t_term) == JOIN_LEFT)
 	      {
 		if (head_node == NULL)
 		  {
 		    break;
 		  }
 
-		if ((QO_NODE_IDX (QO_TERM_HEAD (t_term)) ==
-		     QO_NODE_IDX (head_node))
-		    || (QO_NODE_IDX (QO_TERM_TAIL (t_term)) ==
-			QO_NODE_IDX (head_node)))
+		if ((QO_NODE_IDX (QO_TERM_HEAD (t_term)) == QO_NODE_IDX (head_node))
+		    || (QO_NODE_IDX (QO_TERM_TAIL (t_term)) == QO_NODE_IDX (head_node)))
 		  {
-		    /* found previously generated head_nodes's path-term
-		     */
+		    /* found previously generated head_nodes's path-term */
 
 		    /* get tail node */
 		    t_node = QO_TERM_TAIL (t_term);
 
 		    /* apply ordered dependency to the tail node */
-		    bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)),
-				  &(QO_NODE_OUTER_DEP_SET (t_node)));
-		    bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)),
-				QO_NODE_IDX (t_node));
+		    bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)), &(QO_NODE_OUTER_DEP_SET (t_node)));
+		    bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)), QO_NODE_IDX (t_node));
 		  }
 	      }
 	  }
       }
       /* FALL THROUGH */
     case PT_PATH_OUTER_WEASEL:
-      /* These can't be implemented with index scans regardless because an
-         index scan won't properly implement the left-outer semantics of the
-         path... */
+      /* These can't be implemented with index scans regardless because an index scan won't properly implement the
+       * left-outer semantics of the path... */
       QO_TERM_JOIN_TYPE (term) = JOIN_LEFT;
       QO_TERM_SELECTIVITY (term) = -1.0;
       QO_TERM_CAN_USE_INDEX (term) = 0;
 
-      /* For term_type is PT_PATH_OUTER_WEASEL, order dependency is needed.
-       * i.e. it's a path term.
-       */
-      if (term_type == PT_PATH_OUTER_WEASEL && head_node != NULL
-	  && tail_node != NULL)
+      /* For term_type is PT_PATH_OUTER_WEASEL, order dependency is needed. i.e. it's a path term. */
+      if (term_type == PT_PATH_OUTER_WEASEL && head_node != NULL && tail_node != NULL)
 	{
 	  assert (QO_TERM_CLASS (term) == QO_TC_PATH);
 
-	  bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)),
-			&(QO_NODE_OUTER_DEP_SET (head_node)));
-	  bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)),
-		      QO_NODE_IDX (head_node));
+	  bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)), &(QO_NODE_OUTER_DEP_SET (head_node)));
+	  bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)), QO_NODE_IDX (head_node));
 	}
       break;
 
@@ -2904,8 +2673,7 @@ qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result)
 
   if (pt_expr == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1,
-	      "pt_expr != NULL");
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, "pt_expr != NULL");
       return;
     }
 
@@ -2916,8 +2684,7 @@ qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result)
   /* use env to get the bitset to the walk functions */
   QO_ENV_TMP_BITSET (env) = result;
 
-  (void) parser_walk_tree (env->parser, pt_expr, set_seg_expr, &env,
-			   pt_continue_walk, NULL);
+  (void) parser_walk_tree (env->parser, pt_expr, set_seg_expr, &env, pt_continue_walk, NULL);
 
   /* recover the next link */
   pt_expr->next = next;
@@ -2938,22 +2705,20 @@ qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result)
  *      each segment associated with the PT_NAME node.
  */
 static PT_NODE *
-set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
-	      int *continue_walk)
+set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   QO_ENV *env = (QO_ENV *) * (long *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  /*
+  /* 
    * Make sure we check all subqueries for embedded references.  This
    * stuff really ought to all be done in one pass.
    */
   switch (tree->node_type)
     {
     case PT_SPEC:
-      (void) parser_walk_tree (parser, tree->info.spec.derived_table,
-			       set_seg_expr, arg, pt_continue_walk, NULL);
+      (void) parser_walk_tree (parser, tree->info.spec.derived_table, set_seg_expr, arg, pt_continue_walk, NULL);
       *continue_walk = PT_LIST_WALK;
       break;
 
@@ -2968,8 +2733,7 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
       break;
 
     case PT_EXPR:
-      if (tree->info.expr.op == PT_SYS_CONNECT_BY_PATH
-	  || tree->info.expr.op == PT_CONNECT_BY_ROOT
+      if (tree->info.expr.op == PT_SYS_CONNECT_BY_PATH || tree->info.expr.op == PT_CONNECT_BY_ROOT
 	  || tree->info.expr.op == PT_PRIOR)
 	{
 	  *continue_walk = PT_STOP_WALK;
@@ -3012,7 +2776,7 @@ set_seg_node (PT_NODE * attr, QO_ENV * env, BITSET * bitset)
   /* node will be null if this attr resolves to an enclosing scope */
   if (node != NULL && (seg = lookup_seg (node, attr, env)) != NULL)
     {
-      /*
+      /* 
        * lookup_seg() really shouldn't ever fail here, but it used to
        * for shared variables, and it doesn't really hurt anyone just
        * to ignore failures here.
@@ -3032,8 +2796,7 @@ expr_is_mergable (PT_NODE * pt_expr)
 {
   if (pt_expr->or_next == NULL)
     {				/* keep out OR conjunct */
-      if (!pt_is_query (pt_expr->info.expr.arg1)
-	  && !pt_is_query (pt_expr->info.expr.arg2))
+      if (!pt_is_query (pt_expr->info.expr.arg1) && !pt_is_query (pt_expr->info.expr.arg2))
 	{
 	  if (pt_expr->info.expr.op == PT_EQ)
 	    {
@@ -3068,8 +2831,7 @@ qo_is_equi_join_term (QO_TERM * term)
   PT_NODE *pt_expr;
   PT_NODE *rhs_expr;
 
-  if (QO_TERM_IS_FLAGED (term, QO_TERM_SINGLE_PRED)
-      && QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+  if (QO_TERM_IS_FLAGED (term, QO_TERM_SINGLE_PRED) && QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
     {
       if (QO_TERM_IS_FLAGED (term, QO_TERM_RANGELIST))
 	{
@@ -3107,14 +2869,11 @@ is_dependent_table (PT_NODE * entity)
 {
   if (entity->info.spec.derived_table)
     {
-      /* this test is too pessimistic.  The argument must depend
-       * on a previous entity spec in the from list.
-       * >>>> fix me some day <<<<
-       */
+      /* this test is too pessimistic.  The argument must depend on a previous entity spec in the from list. >>>> fix
+       * me some day <<<< */
       if (entity->info.spec.derived_table_type == PT_IS_SET_EXPR ||	/* is cselect derived table of method */
 	  entity->info.spec.derived_table_type == PT_IS_CSELECT
-	  || entity->info.spec.derived_table->info.query.correlation_level ==
-	  1)
+	  || entity->info.spec.derived_table->info.query.correlation_level == 1)
 	{
 	  return true;
 	}
@@ -3140,7 +2899,7 @@ get_term_subqueries (QO_ENV * env, QO_TERM * term)
 
   if (QO_IS_FAKE_TERM (term))
     {
-      /*
+      /* 
        * This is a pseudo-term introduced to keep track of derived
        * table dependencies.  If the dependent derived table is based
        * on a subquery, we need to find that subquery and record it in
@@ -3150,14 +2909,14 @@ get_term_subqueries (QO_ENV * env, QO_TERM * term)
     }
   else
     {
-      /*
+      /* 
        * This is a normal term, and we need to find all of the
        * correlated subqueries contained within it.
        */
       pt_expr = QO_TERM_PT_EXPR (term);
     }
 
-  /*
+  /* 
    * This should only happen for dependent derived tables, either those
    * based on a set or when checking out QO_TC_DEP_JOIN terms
    * introduced for ddt's that depend on more than one thing.
@@ -3174,8 +2933,7 @@ get_term_subqueries (QO_ENV * env, QO_TERM * term)
   info.env = env;
   info.term = term;
 
-  (void) parser_walk_tree (QO_ENV_PARSER (env), pt_expr, check_subquery_pre,
-			   &info, pt_continue_walk, NULL);
+  (void) parser_walk_tree (QO_ENV_PARSER (env), pt_expr, check_subquery_pre, &info, pt_continue_walk, NULL);
 
   pt_expr->next = next;
 
@@ -3560,9 +3318,7 @@ get_operand_rank (PT_NODE * node)
 		}
 	      else
 		{
-		  rank =
-		    get_expr_fcode_rank (function->info.
-					 function.function_type);
+		  rank = get_expr_fcode_rank (function->info.function.function_type);
 		}
 	    }
 	  else
@@ -3596,8 +3352,7 @@ get_term_rank (QO_ENV * env, QO_TERM * term)
 {
   PT_NODE *pt_expr;
 
-  QO_TERM_RANK (term) =
-    bitset_cardinality (&(QO_TERM_SUBQUERIES (term))) * RANK_QUERY;
+  QO_TERM_RANK (term) = bitset_cardinality (&(QO_TERM_SUBQUERIES (term))) * RANK_QUERY;
 
   if (QO_IS_FAKE_TERM (term))
     {
@@ -3641,26 +3396,23 @@ get_term_rank (QO_ENV * env, QO_TERM * term)
  *   continue_walk(in):
  */
 static PT_NODE *
-check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
-		    int *continue_walk)
+check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   WALK_INFO *info = (WALK_INFO *) arg;
 
-  /*
+  /* 
    * Be sure to reenable walking for list tails.
    */
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (node->node_type == PT_SELECT
-      || node->node_type == PT_UNION
-      || node->node_type == PT_DIFFERENCE
+  if (node->node_type == PT_SELECT || node->node_type == PT_UNION || node->node_type == PT_DIFFERENCE
       || node->node_type == PT_INTERSECTION)
     {
       *continue_walk = PT_LIST_WALK;	/* NEVER need to look inside queries */
 
       if (node->info.query.correlation_level == 1)
 	{
-	  /*
+	  /* 
 	   * Find out the index of this subquery, and record that index
 	   * in the enclosing term's subquery bitset.  This is lame,
 	   * but I can't think of a better way to do it.  When we
@@ -3677,8 +3429,7 @@ check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	    {
 	      if (node == env->subqueries[i].node)
 		{
-		  bitset_add (&(env->subqueries[i].terms),
-			      QO_TERM_IDX (info->term));
+		  bitset_add (&(env->subqueries[i].terms), QO_TERM_IDX (info->term));
 		  bitset_add (&(QO_TERM_SUBQUERIES (info->term)), i);
 		  break;
 		}
@@ -3723,8 +3474,7 @@ is_local_name (QO_ENV * env, PT_NODE * expr)
 	{
 	  PT_NODE *arg = NULL;
 	  PT_NODE *func = expr->info.expr.arg1;
-	  for (arg = func->info.function.arg_list; arg != NULL;
-	       arg = arg->next)
+	  for (arg = func->info.function.arg_list; arg != NULL; arg = arg->next)
 	    {
 	      PT_NODE *save_arg = arg;
 	      arg = pt_function_index_skip_expr (arg);
@@ -3782,9 +3532,7 @@ is_local_name (QO_ENV * env, PT_NODE * expr)
       return false;
     }
 
-  return (pt_find_entity (env->parser,
-			  env->pt_tree->info.query.q.select.from,
-			  spec) != NULL) ? true : false;
+  return (pt_find_entity (env->parser, env->pt_tree->info.query.q.select.from, spec) != NULL) ? true : false;
 }
 
 /*
@@ -3817,7 +3565,7 @@ pt_is_pseudo_const (PT_NODE * expr)
       return (expr->info.query.correlation_level != 1) ? true : false;
 
     case PT_NAME:
-      /*
+      /* 
        * It is up to the calling context to ensure that the name is
        * actually a pseudo constant, either because it is a correlated
        * outer reference, or because it can otherwise be guaranteed to
@@ -3826,7 +3574,7 @@ pt_is_pseudo_const (PT_NODE * expr)
       return true;
 
     case PT_DOT_:
-      /*
+      /* 
        * It would be nice if we could use expressions that are
        * guaranteed to be independent of the attribute, but the current
        * XASL implementation can't guarantee that such expressions have
@@ -3857,8 +3605,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_REPEAT:
 	case PT_STRCMP:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg2)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
 	case PT_UNARY_MINUS:
 	case PT_BIT_NOT:
 	case PT_BIT_COUNT:
@@ -3871,8 +3618,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_BETWEEN_GT_LE:
 	case PT_BETWEEN_GT_LT:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg2)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
 	case PT_BETWEEN_EQ_NA:
 	case PT_BETWEEN_INF_LE:
 	case PT_BETWEEN_INF_LT:
@@ -3881,8 +3627,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_MODULUS:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg2)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
 	case PT_SCHEMA:
 	case PT_DATABASE:
 	case PT_VERSION:
@@ -3922,27 +3667,20 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_TRUNC:
 	case PT_LOG:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg2)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
 	case PT_INSTR:
 	case PT_CONV:
-	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.expr.arg2)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg3)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1) && pt_is_pseudo_const (expr->info.expr.arg2)
+		  && pt_is_pseudo_const (expr->info.expr.arg3)) ? true : false;
 	case PT_POSITION:
 	case PT_FINDINSET:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg2)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
 	case PT_SUBSTRING:
 	case PT_SUBSTRING_INDEX:
 	case PT_LOCATE:
-	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.expr.arg2)
-		  && (expr->info.expr.arg3 ?
-		      pt_is_pseudo_const (expr->info.
-					  expr.arg3) : true)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1) && pt_is_pseudo_const (expr->info.expr.arg2)
+		  && (expr->info.expr.arg3 ? pt_is_pseudo_const (expr->info.expr.arg3) : true)) ? true : false;
 	case PT_CHAR_LENGTH:
 	case PT_OCTET_LENGTH:
 	case PT_BIT_LENGTH:
@@ -3970,24 +3708,18 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_AES_DECRYPT:
 	case PT_SHA_TWO:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && (expr->info.expr.arg2 ?
-		      pt_is_pseudo_const (expr->info.
-					  expr.arg2) : true)) ? true : false;
+		  && (expr->info.expr.arg2 ? pt_is_pseudo_const (expr->info.expr.arg2) : true)) ? true : false;
 
 	case PT_LPAD:
 	case PT_RPAD:
 	case PT_REPLACE:
 	case PT_TRANSLATE:
 	case PT_INDEX_PREFIX:
-	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.expr.arg2)
-		  && (expr->info.expr.arg3 ?
-		      pt_is_pseudo_const (expr->info.
-					  expr.arg3) : true)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1) && pt_is_pseudo_const (expr->info.expr.arg2)
+		  && (expr->info.expr.arg3 ? pt_is_pseudo_const (expr->info.expr.arg3) : true)) ? true : false;
 	case PT_ADD_MONTHS:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg2)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
 	case PT_LAST_DAY:
 	case PT_UNIX_TIMESTAMP:
 	  if (expr->info.expr.arg1)
@@ -4017,8 +3749,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_TIMESTAMP:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg2)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
 	case PT_MONTHS_BETWEEN:
 	case PT_TIME_FORMAT:
 	case PT_FORMAT:
@@ -4036,8 +3767,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_WEEKF:
 	case PT_FROM_TZ:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg2)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
 	case PT_SYS_DATE:
 	case PT_CURRENT_DATE:
 	case PT_SYS_TIME:
@@ -4064,9 +3794,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_TO_TIMESTAMP_TZ:
 	case PT_TO_TIME_TZ:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && (expr->info.expr.arg2 ?
-		      pt_is_pseudo_const (expr->info.
-					  expr.arg2) : true)) ? true : false;
+		  && (expr->info.expr.arg2 ? pt_is_pseudo_const (expr->info.expr.arg2) : true)) ? true : false;
 	case PT_CURRENT_VALUE:
 	case PT_NEXT_VALUE:
 	  return true;
@@ -4075,52 +3803,41 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_CASE:
 	case PT_DECODE:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg2)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
 	case PT_NULLIF:
 	case PT_COALESCE:
 	case PT_NVL:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg2)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
 	case PT_IF:
 	  return (pt_is_pseudo_const (expr->info.expr.arg2)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg3)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg3)) ? true : false;
 	case PT_IFNULL:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg2)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
 
 	case PT_ISNULL:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_CONCAT:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && (expr->info.expr.arg2 ?
-		      pt_is_pseudo_const (expr->info.
-					  expr.arg2) : true)) ? true : false;
+		  && (expr->info.expr.arg2 ? pt_is_pseudo_const (expr->info.expr.arg2) : true)) ? true : false;
 	case PT_CONCAT_WS:
 	case PT_FIELD:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && (expr->info.expr.arg2 ?
-		      pt_is_pseudo_const (expr->info.expr.arg2) : true)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg3)) ? true : false;
+		  && (expr->info.expr.arg2 ? pt_is_pseudo_const (expr->info.expr.arg2) : true)
+		  && pt_is_pseudo_const (expr->info.expr.arg3)) ? true : false;
 	case PT_MID:
 	case PT_NVL2:
 	case PT_MAKETIME:
 	case PT_NEW_TIME:
-	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.expr.arg2)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg3)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1) && pt_is_pseudo_const (expr->info.expr.arg2)
+		  && pt_is_pseudo_const (expr->info.expr.arg3)) ? true : false;
 	case PT_EXTRACT:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_LEAST:
 	case PT_GREATEST:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
-		  && pt_is_pseudo_const (expr->info.
-					 expr.arg2)) ? true : false;
+		  && pt_is_pseudo_const (expr->info.expr.arg2)) ? true : false;
 	case PT_COERCIBILITY:
 	  /* is always folded to constant : should not reach this code */
 	  assert (false);
@@ -4135,7 +3852,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 
     case PT_FUNCTION:
       {
-	/*
+	/* 
 	 * The is the case we encounter for predicates like
 	 *
 	 *      x in (a,b,c)
@@ -4145,8 +3862,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	 */
 	PT_NODE *p;
 
-	if (expr->info.function.function_type != F_SET
-	    && expr->info.function.function_type != F_MULTISET
+	if (expr->info.function.function_type != F_SET && expr->info.function.function_type != F_MULTISET
 	    && expr->info.function.function_type != F_SEQUENCE)
 	  {
 	    return false;
@@ -4181,7 +3897,7 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
 
   n = env->nsubqueries++;
 
-  /*
+  /* 
    * Be careful here: the previously allocated QO_SUBQUERY terms
    * contain bitsets that may have self-relative internal pointers, and
    * those pointers have to be maintained in the new array.  The proper
@@ -4194,8 +3910,7 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
       tmp = (QO_SUBQUERY *) malloc (sizeof (QO_SUBQUERY) * (n + 1));
       if (tmp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (QO_SUBQUERY) * (n + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_SUBQUERY) * (n + 1));
 	  return;
 	}
     }
@@ -4240,8 +3955,7 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
  *   continue_walk(in):
  */
 static PT_NODE *
-get_local_subqueries_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
-			  int *continue_walk)
+get_local_subqueries_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   QO_ENV *env;
   BITSET segs;
@@ -4262,8 +3976,7 @@ get_local_subqueries_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  qo_expr_segs (env, node, &segs);
 	  if (bitset_is_empty (&segs))
 	    {
-	      /* reduce_equality_terms() can change a correlated subquery to
-	       * uncorrelated one */
+	      /* reduce_equality_terms() can change a correlated subquery to uncorrelated one */
 	      node->info.query.correlation_level = 0;
 	    }
 	  bitset_delset (&segs);
@@ -4288,8 +4001,7 @@ get_local_subqueries_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
  *   continue_walk(in):
  */
 static PT_NODE *
-get_local_subqueries_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
-			   int *continue_walk)
+get_local_subqueries_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   QO_ENV *env = (QO_ENV *) arg;
 
@@ -4342,16 +4054,13 @@ get_local_subqueries (QO_ENV * env, PT_NODE * node)
   select_list_ptr = tree->info.query.q.select.list;
   tree->info.query.q.select.list = NULL;
 
-  parser_walk_leaves (parser,
-		      tree,
-		      get_local_subqueries_pre, env,
-		      get_local_subqueries_post, env);
+  parser_walk_leaves (parser, tree, get_local_subqueries_pre, env, get_local_subqueries_post, env);
 
   /* restore next list pointer */
   tree->next = next_ptr;
   tree->info.query.q.select.list = select_list_ptr;
 
-  /*
+  /* 
    * Now that all of the subqueries have been discovered, make
    * *another* pass and associate each with its enclosing QO_TERM, if
    * any.
@@ -4391,9 +4100,7 @@ get_rank (QO_ENV * env)
 static PT_NODE *
 get_referenced_attrs (PT_NODE * entity)
 {
-  return (entity->info.spec.derived_table
-	  ? entity->info.spec.as_attr_list
-	  : entity->info.spec.referenced_attrs);
+  return (entity->info.spec.derived_table ? entity->info.spec.as_attr_list : entity->info.spec.referenced_attrs);
 }
 
 /*
@@ -4423,8 +4130,7 @@ add_hint_args (QO_ENV * env, PT_NODE * arg_list, PT_HINT_ENUM hint)
 	      /* found match */
 	      if (entity_spec->info.spec.id == arg->info.name.spec_id)
 		{
-		  QO_NODE_HINT (node) =
-		    (PT_HINT_ENUM) (QO_NODE_HINT (node) | hint);
+		  QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) | hint);
 		  break;
 		}
 	    }
@@ -4464,8 +4170,7 @@ add_hint (QO_ENV * env, PT_NODE * tree)
       if (tree->info.query.q.select.ordered)
 	{
 	  /* find last ordered node */
-	  for (arg = tree->info.query.q.select.ordered;
-	       arg->next; arg = arg->next)
+	  for (arg = tree->info.query.q.select.ordered; arg->next; arg = arg->next)
 	    {
 	      ;			/* nop */
 	    }
@@ -4487,8 +4192,7 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 	      spec = QO_NODE_ENTITY_SPEC (node);
 	      /* check for arg list */
 	      p_arg = NULL;
-	      for (arg = tree->info.query.q.select.ordered, j = 0;
-		   arg; arg = arg->next, j++)
+	      for (arg = tree->info.query.q.select.ordered, j = 0; arg; arg = arg->next, j++)
 		{
 		  if (spec->info.spec.id == arg->info.name.spec_id)
 		    {
@@ -4499,25 +4203,17 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 			    {
 			      p_node = QO_ENV_NODE (env, k);
 			      p_spec = QO_NODE_ENTITY_SPEC (p_node);
-			      if (p_spec->info.spec.id ==
-				  p_arg->info.name.spec_id)
+			      if (p_spec->info.spec.id == p_arg->info.name.spec_id)
 				{
-				  bitset_assign (&
-						 (QO_NODE_OUTER_DEP_SET
-						  (node)),
-						 &(QO_NODE_OUTER_DEP_SET
-						   (p_node)));
-				  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)),
-					      QO_NODE_IDX (p_node));
+				  bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
+				  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
 				  break;
 				}
 			    }
 			}
 
 #if 1				/* TEMPORARY CODE: DO NOT REMOVE ME !!! */
-		      QO_NODE_HINT (node) =
-			(PT_HINT_ENUM) (QO_NODE_HINT (node) |
-					PT_HINT_ORDERED);
+		      QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) | PT_HINT_ORDERED);
 #endif
 		      break;	/* exit loop for arg traverse */
 		    }
@@ -4528,8 +4224,7 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 	      /* not found in arg list */
 	      if (!arg)
 		{
-		  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)),
-			      last_ordered_idx);
+		  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), last_ordered_idx);
 		}
 
 	    }			/* for (i = ... ) */
@@ -4544,14 +4239,11 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 	      node = QO_ENV_NODE (env, i);
 	      if (p_node)
 		{		/* skip out the first ordered node */
-		  bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)),
-				 &(QO_NODE_OUTER_DEP_SET (p_node)));
-		  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)),
-			      QO_NODE_IDX (p_node));
+		  bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
+		  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
 		}
 #if 1				/* TEMPORARY CODE: DO NOT REMOVE ME !!! */
-	      QO_NODE_HINT (node) =
-		(PT_HINT_ENUM) (QO_NODE_HINT (node) | PT_HINT_ORDERED);
+	      QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) | PT_HINT_ORDERED);
 #endif
 
 	      p_node = node;	/* save previous node */
@@ -4570,20 +4262,17 @@ add_hint (QO_ENV * env, PT_NODE * tree)
     }
   if (hint & PT_HINT_INDEX_SS)
     {
-      add_hint_args (env, tree->info.query.q.select.index_ss,
-		     PT_HINT_INDEX_SS);
+      add_hint_args (env, tree->info.query.q.select.index_ss, PT_HINT_INDEX_SS);
     }
   if (hint & PT_HINT_INDEX_LS)
     {
-      add_hint_args (env, tree->info.query.q.select.index_ls,
-		     PT_HINT_INDEX_LS);
+      add_hint_args (env, tree->info.query.q.select.index_ls, PT_HINT_INDEX_LS);
     }
 
 
   if (hint & PT_HINT_USE_MERGE)
     {
-      add_hint_args (env, tree->info.query.q.select.use_merge,
-		     PT_HINT_USE_MERGE);
+      add_hint_args (env, tree->info.query.q.select.use_merge, PT_HINT_USE_MERGE);
     }
 }
 
@@ -4608,54 +4297,40 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 
   if (!using_index)
     {
-      /* no USING INDEX clause in the query;
-         all QO_NODE_USING_INDEX(node) will contain NULL */
+      /* no USING INDEX clause in the query; all QO_NODE_USING_INDEX(node) will contain NULL */
       goto cleanup;
     }
 
-  /* allocate memory for index ignore list; by default, the capacity of the
-     list is the number of index hints in the USING INDEX clause */
+  /* allocate memory for index ignore list; by default, the capacity of the list is the number of index hints in the
+   * USING INDEX clause */
   idx_ignore_list_capacity = 0;
   for (indexp = using_index; indexp; indexp = indexp->next)
     {
       idx_ignore_list_capacity++;
     }
 
-  idx_ignore_list = (PT_NODE **) malloc (idx_ignore_list_capacity *
-					 sizeof (PT_NODE *));
+  idx_ignore_list = (PT_NODE **) malloc (idx_ignore_list_capacity * sizeof (PT_NODE *));
   if (idx_ignore_list == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, idx_ignore_list_capacity * sizeof (PT_NODE *));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      idx_ignore_list_capacity * sizeof (PT_NODE *));
       goto cleanup;
     }
 
-  /* if an index occurs more than once and at least one occurrence has a
-     keylimit, we should ignore the occurrences without keylimit; we now
-     build an ignore list containing indexes which should not be attached to
-     the QO_NODE */
+  /* if an index occurs more than once and at least one occurrence has a keylimit, we should ignore the occurrences
+   * without keylimit; we now build an ignore list containing indexes which should not be attached to the QO_NODE */
   idx_ignore_list_size = 0;
-  for (indexp_nokl = using_index; indexp_nokl;
-       indexp_nokl = indexp_nokl->next)
+  for (indexp_nokl = using_index; indexp_nokl; indexp_nokl = indexp_nokl->next)
     {
-      if (indexp_nokl->info.name.original
-	  && indexp_nokl->info.name.resolved
-	  && !indexp_nokl->info.name.indx_key_limit)
+      if (indexp_nokl->info.name.original && indexp_nokl->info.name.resolved && !indexp_nokl->info.name.indx_key_limit)
 	{
-	  /* it's a normal index without a keylimit; search for same index
-	     with keylimit */
+	  /* it's a normal index without a keylimit; search for same index with keylimit */
 	  for (indexp = using_index; indexp; indexp = indexp->next)
 	    {
-	      if (indexp->info.name.original
-		  && indexp->info.name.resolved
-		  && indexp->info.name.indx_key_limit
+	      if (indexp->info.name.original && indexp->info.name.resolved && indexp->info.name.indx_key_limit
 		  && indexp->etc == indexp_nokl->etc
-		  && !intl_identifier_casecmp (indexp->info.name.original,
-					       indexp_nokl->info.name.
-					       original)
-		  && !intl_identifier_casecmp (indexp->info.name.resolved,
-					       indexp_nokl->info.name.
-					       resolved))
+		  && !intl_identifier_casecmp (indexp->info.name.original, indexp_nokl->info.name.original)
+		  && !intl_identifier_casecmp (indexp->info.name.resolved, indexp_nokl->info.name.resolved))
 		{
 		  /* same index found, with keylimit; add to ignore list */
 		  idx_ignore_list[idx_ignore_list_size++] = indexp_nokl;
@@ -4676,16 +4351,14 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
       for (indexp = using_index; indexp; indexp = indexp->next)
 	{
 	  /* check for USING INDEX NONE or USING INDEX class.NONE cases */
-	  if (indexp->info.name.original == NULL
-	      && indexp->info.name.resolved == NULL)
+	  if (indexp->info.name.original == NULL && indexp->info.name.resolved == NULL)
 	    {
 	      n = 0;
 	      is_none = true;
 	      break;		/* USING INDEX NONE case */
 	    }
 	  if (indexp->info.name.original == NULL
-	      && !intl_identifier_casecmp (QO_NODE_NAME (nodep),
-					   indexp->info.name.resolved)
+	      && !intl_identifier_casecmp (QO_NODE_NAME (nodep), indexp->info.name.resolved)
 	      && indexp->etc == (void *) PT_IDX_HINT_CLASS_NONE)
 	    {
 	      n = 0;		/* USING INDEX class_name.NONE,... case */
@@ -4709,25 +4382,20 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	    }
 
 	  /* check index type and count it accordingly */
-	  if (indexp->info.name.original == NULL
-	      && indexp->info.name.resolved[0] == '*')
+	  if (indexp->info.name.original == NULL && indexp->info.name.resolved[0] == '*')
 	    {
 	      n++;		/* USING INDEX ALL EXCEPT case */
 	    }
-	  if (indexp->info.name.original
-	      && !intl_identifier_casecmp (QO_NODE_NAME (nodep),
-					   indexp->info.name.resolved))
+	  if (indexp->info.name.original && !intl_identifier_casecmp (QO_NODE_NAME (nodep), indexp->info.name.resolved))
 	    {
 	      n++;
 	    }
 	}
-      /* if n == 0, it means that either no indexes in USING INDEX clause for
-         this node or USING INDEX NONE case */
+      /* if n == 0, it means that either no indexes in USING INDEX clause for this node or USING INDEX NONE case */
 
       if (n == 0 && !is_none)
 	{
-	  /* no index for this node in USING INDEX clause, however give it
-	     a chance to be assigned an index later */
+	  /* no index for this node in USING INDEX clause, however give it a chance to be assigned an index later */
 	  QO_NODE_USING_INDEX (nodep) = NULL;
 	  continue;
 	}
@@ -4745,8 +4413,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 
       if (uip == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, SIZEOF_USING_INDEX (n ? n : 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, SIZEOF_USING_INDEX (n ? n : 1));
 	  goto cleanup;
 	}
 
@@ -4763,8 +4430,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
       for (indexp = using_index; indexp; indexp = indexp->next)
 	{
 	  /* check for USING INDEX NONE case */
-	  if (indexp->info.name.original == NULL
-	      && indexp->info.name.resolved == NULL)
+	  if (indexp->info.name.original == NULL && indexp->info.name.resolved == NULL)
 	    {
 	      break;		/* USING INDEX NONE case */
 	    }
@@ -4785,16 +4451,13 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	    }
 
 	  /* attach index if necessary */
-	  if (indexp->info.name.original == NULL
-	      && indexp->info.name.resolved[0] == '*')
+	  if (indexp->info.name.original == NULL && indexp->info.name.resolved[0] == '*')
 	    {
 	      /* USING INDEX ALL EXCEPT case */
 	      QO_UI_INDEX (uip, n) = indexp->info.name.resolved;
 	      QO_UI_FORCE (uip, n++) = (int) (UINT64) (indexp->etc);
 	    }
-	  if (indexp->info.name.original
-	      && !intl_identifier_casecmp (QO_NODE_NAME (nodep),
-					   indexp->info.name.resolved))
+	  if (indexp->info.name.original && !intl_identifier_casecmp (QO_NODE_NAME (nodep), indexp->info.name.resolved))
 	    {
 	      QO_UI_INDEX (uip, n) = indexp->info.name.original;
 	      QO_UI_KEYLIMIT (uip, n) = indexp->info.name.indx_key_limit;
@@ -4828,8 +4491,7 @@ qo_alloc_index (QO_ENV * env, int n)
   indexp = (QO_INDEX *) malloc (SIZEOF_INDEX (n));
   if (indexp == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      SIZEOF_INDEX (n));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, SIZEOF_INDEX (n));
       return NULL;
     }
 
@@ -4942,8 +4604,7 @@ qo_get_class_info (QO_ENV * env, QO_NODE * node)
   info = (QO_CLASS_INFO *) malloc (SIZEOF_CLASS_INFO (n));
   if (info == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      SIZEOF_CLASS_INFO (n));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, SIZEOF_CLASS_INFO (n));
       return NULL;
     }
 
@@ -4984,7 +4645,7 @@ qo_free_class_info (QO_ENV * env, QO_CLASS_INFO * info)
       return;
     }
 
-  /*
+  /* 
    * The CLASS_STATS structures that are pointed to by the various
    * members of info[] will be automatically freed by the garbage
    * collector.  Make sure that we null out our mop pointer so that the
@@ -5082,8 +4743,7 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
 	  info->stats = (CLASS_STATS *) malloc (sizeof (CLASS_STATS));
 	  if (info->stats == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CLASS_STATS));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CLASS_STATS));
 	      return NULL;
 	    }
 
@@ -5094,9 +4754,7 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
 	}
       else if (smclass->stats->heap_num_pages == 0)
 	{
-	  if (!info->normal_class
-	      || ((hfid = sm_get_ch_heap (info->mop))
-		  && !HFID_IS_NULL (hfid)))
+	  if (!info->normal_class || ((hfid = sm_get_ch_heap (info->mop)) && !HFID_IS_NULL (hfid)))
 	    {
 	      qo_estimate_statistics (info->mop, smclass->stats);
 	    }
@@ -5117,8 +4775,7 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
  *   expr_str(in):
  */
 static QO_ATTR_INFO *
-qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
-			     const char *expr_str)
+qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_str)
 {
   QO_NODE *nodep;
   QO_CLASS_INFO_ENTRY *class_info_entryp;
@@ -5134,8 +4791,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
 
   nodep = QO_SEG_HEAD (seg);
 
-  if (QO_NODE_INFO (nodep) == NULL ||
-      !(QO_NODE_INFO (nodep)->info[0].normal_class))
+  if (QO_NODE_INFO (nodep) == NULL || !(QO_NODE_INFO (nodep)->info[0].normal_class))
     {
       /* if there's no class information or the class is not normal class */
       return NULL;
@@ -5152,8 +4808,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
   attr_infop = (QO_ATTR_INFO *) malloc (sizeof (QO_ATTR_INFO));
   if (attr_infop == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (QO_ATTR_INFO));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_ATTR_INFO));
       return NULL;
     }
 
@@ -5177,23 +4832,19 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
 	  /* the attribute statistics of the class were not set */
 	  cum_statsp->is_indexed = false;
 	  continue;
-	  /* We'll consider the segment to be indexed only if all of the
-	     attributes it represents are indexed. The current optimization
-	     strategy makes it inconvenient to try to construct "mixed"
-	     (segment and index) scans of a node that represents more than
-	     one node. */
+	  /* We'll consider the segment to be indexed only if all of the attributes it represents are indexed. The
+	   * current optimization strategy makes it inconvenient to try to construct "mixed" (segment and index) scans
+	   * of a node that represents more than one node. */
 	}
 
-      for (consp = class_info_entryp->smclass->constraints; consp;
-	   consp = consp->next)
+      for (consp = class_info_entryp->smclass->constraints; consp; consp = consp->next)
 	{
 	  /* search the attribute from the class information */
 	  attr_statsp = stats->attr_stats;
 	  n_attrs = stats->n_attrs;
 
 	  if (consp->func_index_info && consp->func_index_info->col_id == 0
-	      && !intl_identifier_casecmp (expr_str,
-					   consp->func_index_info->expr_str))
+	      && !intl_identifier_casecmp (expr_str, consp->func_index_info->expr_str))
 	    {
 	      attr_id = consp->attributes[0]->id;
 
@@ -5214,8 +4865,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
 	      bstatsp = attr_statsp->bt_stats;
 	      for (j = 0; j < attr_statsp->n_btstats; j++, bstatsp++)
 		{
-		  if (BTID_IS_EQUAL (&bstatsp->btid, &consp->index_btid) &&
-		      bstatsp->has_function == 1)
+		  if (BTID_IS_EQUAL (&bstatsp->btid, &consp->index_btid) && bstatsp->has_function == 1)
 		    {
 		      break;
 		    }
@@ -5242,15 +4892,11 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg,
 		    {
 		      free_and_init (cum_statsp->pkeys);
 		    }
-		  cum_statsp->pkeys = (int *)
-		    malloc (SIZEOF_ATTR_CUM_STATS_PKEYS
-			    (cum_statsp->pkeys_size));
+		  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		  if (cum_statsp->pkeys == NULL)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      SIZEOF_ATTR_CUM_STATS_PKEYS
-			      (cum_statsp->pkeys_size));
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		      qo_free_attr_info (env, attr_infop);
 		      return NULL;
 		    }
@@ -5303,8 +4949,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   /* QO_NODE of the given segment */
   nodep = QO_SEG_HEAD (seg);
 
-  if (QO_NODE_INFO (nodep) == NULL ||
-      !(QO_NODE_INFO (nodep)->info[0].normal_class))
+  if (QO_NODE_INFO (nodep) == NULL || !(QO_NODE_INFO (nodep)->info[0].normal_class))
     {
       /* if there's no class information or the class is not normal class */
       return NULL;
@@ -5321,8 +4966,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   attr_infop = (QO_ATTR_INFO *) malloc (sizeof (QO_ATTR_INFO));
   if (attr_infop == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (QO_ATTR_INFO));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_ATTR_INFO));
       return NULL;
     }
 
@@ -5330,9 +4974,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   cum_statsp = &attr_infop->cum_stats;
   if (is_reserved_name)
     {
-      cum_statsp->type =
-	pt_Reserved_name_table[(QO_SEG_PT_NODE (seg))->info.name.reserved_id].
-	type;
+      cum_statsp->type = pt_Reserved_name_table[(QO_SEG_PT_NODE (seg))->info.name.reserved_id].type;
       cum_statsp->valid_limits = false;
       cum_statsp->is_indexed = true;
       cum_statsp->leafs = cum_statsp->pages = cum_statsp->height = 0;
@@ -5367,22 +5009,16 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	  /* the attribute statistics of the class were not set */
 	  cum_statsp->is_indexed = false;
 	  continue;
-	  /* We'll consider the segment to be indexed only if all of the
-	     attributes it represents are indexed. The current optimization
-	     strategy makes it inconvenient to try to construct "mixed"
-	     (segment and index) scans of a node that represents more than
-	     one node. */
+	  /* We'll consider the segment to be indexed only if all of the attributes it represents are indexed. The
+	   * current optimization strategy makes it inconvenient to try to construct "mixed" (segment and index) scans
+	   * of a node that represents more than one node. */
 	}
 
-      /* The stats vector isn't kept in id order because of the effects
-         of schema updates (attribute deletion, most notably). We need
-         to search it to find the stats record we're interested in.
-         Worse, there doesn't even need to be an entry for this particular
-         attribute in the vector. If we're dealing with a class that was
-         created after the last statistics update, it won't have any
-         information associated with it, or if we're dealing with certain
-         kinds of attributes they simply won't be recorded. In these cases
-         we just make the best guess we can. */
+      /* The stats vector isn't kept in id order because of the effects of schema updates (attribute deletion, most
+       * notably). We need to search it to find the stats record we're interested in. Worse, there doesn't even need to 
+       * be an entry for this particular attribute in the vector. If we're dealing with a class that was created after
+       * the last statistics update, it won't have any information associated with it, or if we're dealing with certain
+       * kinds of attributes they simply won't be recorded. In these cases we just make the best guess we can. */
 
       /* search the attribute from the class information */
       attr_statsp = stats->attr_stats;
@@ -5417,22 +5053,18 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	    }
 	}
 
-      if (attr_statsp->n_btstats - n_func_indexes <= 0
-	  || !attr_statsp->bt_stats)
+      if (attr_statsp->n_btstats - n_func_indexes <= 0 || !attr_statsp->bt_stats)
 	{
 	  /* the attribute does not have any index */
 	  cum_statsp->is_indexed = false;
 	  continue;
-	  /* We'll consider the segment to be indexed only if all of the
-	     attributes it represents are indexed. The current optimization
-	     strategy makes it inconvenient to try to construct "mixed"
-	     (segment and index) scans of a node that represents more than
-	     one node. */
+	  /* We'll consider the segment to be indexed only if all of the attributes it represents are indexed. The
+	   * current optimization strategy makes it inconvenient to try to construct "mixed" (segment and index) scans
+	   * of a node that represents more than one node. */
 	}
 
-      /* Because we cannot know which index will be selected for this
-         attribute when there're more than one indexes on this attribute,
-         use the statistics of the MIN keys index. */
+      /* Because we cannot know which index will be selected for this attribute when there're more than one indexes on
+       * this attribute, use the statistics of the MIN keys index. */
       bt_statsp = &attr_statsp->bt_stats[0];
       for (j = 1; j < attr_statsp->n_btstats; j++)
 	{
@@ -5444,15 +5076,12 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       if (QO_NODE_ENTITY_SPEC (nodep)->info.spec.only_all == PT_ALL)
 	{
-	  /* class hierarchy spec
-	     for example: select ... from all p */
+	  /* class hierarchy spec for example: select ... from all p */
 
 	  /* check index uniqueness */
-	  for (consp = sm_class_constraints (class_info_entryp->mop);
-	       consp; consp = consp->next)
+	  for (consp = sm_class_constraints (class_info_entryp->mop); consp; consp = consp->next)
 	    {
-	      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (consp->type)
-		  && BTID_IS_EQUAL (&bt_statsp->btid, &consp->index_btid))
+	      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (consp->type) && BTID_IS_EQUAL (&bt_statsp->btid, &consp->index_btid))
 		{
 		  break;
 		}
@@ -5472,15 +5101,11 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		{
 		  free_and_init (cum_statsp->pkeys);	/* free alloced */
 		}
-	      cum_statsp->pkeys =
-		(int *)
-		malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	      cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      if (cum_statsp->pkeys == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  SIZEOF_ATTR_CUM_STATS_PKEYS
-			  (cum_statsp->pkeys_size));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		  qo_free_attr_info (env, attr_infop);
 		  return NULL;
 		}
@@ -5499,11 +5124,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
       /* keep cumulative totals of index statistics */
       cum_statsp->leafs += bt_statsp->leafs;
       cum_statsp->pages += bt_statsp->pages;
-      /* Assume that the key distributions overlap here, so that the
-         number of distinct keys in all of the attributes equal to the
-         maximum number of distinct keys in any one of the attributes.
-         This is probably not far from the truth; it is almost certainly
-         a better guess than assuming that all key ranges are distinct. */
+      /* Assume that the key distributions overlap here, so that the number of distinct keys in all of the attributes
+       * equal to the maximum number of distinct keys in any one of the attributes. This is probably not far from the
+       * truth; it is almost certainly a better guess than assuming that all key ranges are distinct. */
       cum_statsp->height = MAX (cum_statsp->height, bt_statsp->height);
       if (cum_statsp->pkeys_size == 0 ||	/* the first found */
 	  cum_statsp->keys < bt_statsp->keys)
@@ -5516,13 +5139,10 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	    {
 	      free_and_init (cum_statsp->pkeys);
 	    }
-	  cum_statsp->pkeys =
-	    (int *)
-	    malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	  if (cum_statsp->pkeys == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		      SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      qo_free_attr_info (env, attr_infop);
 	      return NULL;
@@ -5590,31 +5210,23 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
   /* pointer to QO_NODE_INDEX structure of QO_NODE */
   node_indexp = QO_NODE_INDEXES (node);
 
-  /* for each index list(linked list of QO_INDEX_ENTRY) rooted at the node
-     (all elements of QO_NODE_INDEX_ENTRY[] array) */
-  for (i = 0, ni_entryp = QO_NI_ENTRY (node_indexp, 0);
-       i < QO_NI_N (node_indexp); i++, ni_entryp++)
+  /* for each index list(linked list of QO_INDEX_ENTRY) rooted at the node (all elements of QO_NODE_INDEX_ENTRY[]
+   * array) */
+  for (i = 0, ni_entryp = QO_NI_ENTRY (node_indexp, 0); i < QO_NI_N (node_indexp); i++, ni_entryp++)
     {
       cum_statsp = &(ni_entryp)->cum_stats;
       cum_statsp->is_indexed = true;
 
-      /* The linked list of QO_INDEX_ENTRY was built by 'qo_find_node_index()'
-         function. It is the list of compatible indexes under class
-         hierarchy. */
-      /* for each index entry(QO_INDEX_ENTRY) on the list, acquire
-         the statistics and cumulate them */
-      for (j = 0, index_entryp = (ni_entryp)->head;
-	   index_entryp != NULL; j++, index_entryp = index_entryp->next)
+      /* The linked list of QO_INDEX_ENTRY was built by 'qo_find_node_index()' function. It is the list of compatible
+       * indexes under class hierarchy. */
+      /* for each index entry(QO_INDEX_ENTRY) on the list, acquire the statistics and cumulate them */
+      for (j = 0, index_entryp = (ni_entryp)->head; index_entryp != NULL; j++, index_entryp = index_entryp->next)
 	{
-	  /* The index information is associated with the first attribute of
-	     index keys in the case of multi-column index and 'seg_idx[]'
-	     array of QO_INDEX_ENTRY structure was built by
-	     'qo_find_index_seg_and_term()' function to keep the order of
-	     index key attributes. So, 'seg_idx[0]' is the right segment
-	     denoting the attribute that contains the index statistics that
-	     we want to get. If seg_idx[0] is null (-1), then the name of the
-	     first attribute is taken from index_entryp->statistics_attribute_name
-	   */
+	  /* The index information is associated with the first attribute of index keys in the case of multi-column
+	   * index and 'seg_idx[]' array of QO_INDEX_ENTRY structure was built by 'qo_find_index_seg_and_term()'
+	   * function to keep the order of index key attributes. So, 'seg_idx[0]' is the right segment denoting the
+	   * attribute that contains the index statistics that we want to get. If seg_idx[0] is null (-1), then the
+	   * name of the first attribute is taken from index_entryp->statistics_attribute_name */
 	  segp = NULL;
 	  for (k = 0; k < index_entryp->nsegs; k++)
 	    {
@@ -5666,9 +5278,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	    }
 	  else
 	    {
-	      /* function index with the function expression as the first
-	       * attribute
-	       */
+	      /* function index with the function expression as the first attribute */
 	      attr_id = index_entryp->constraints->attributes[0]->id;
 	    }
 
@@ -5698,11 +5308,9 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	  bt_statsp = attr_statsp->bt_stats;
 	  for (k = 0; k < attr_statsp->n_btstats; k++, bt_statsp++)
 	    {
-	      if (BTID_IS_EQUAL (&bt_statsp->btid,
-				 &(index_entryp->constraints->index_btid)))
+	      if (BTID_IS_EQUAL (&bt_statsp->btid, &(index_entryp->constraints->index_btid)))
 		{
-		  if (!index_entryp->is_func_index
-		      || bt_statsp->has_function == 1)
+		  if (!index_entryp->is_func_index || bt_statsp->has_function == 1)
 		    {
 		      index_entryp->key_type = bt_statsp->key_type;
 		      break;
@@ -5718,12 +5326,10 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 
 	  if (QO_NODE_ENTITY_SPEC (node)->info.spec.only_all == PT_ALL)
 	    {
-	      /* class hierarchy spec
-	         for example: select ... from all p */
+	      /* class hierarchy spec for example: select ... from all p */
 
 	      /* check index uniqueness */
-	      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY
-		  (index_entryp->constraints->type))
+	      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (index_entryp->constraints->type))
 		{
 		  /* is class hierarchy index: set unique index statistics */
 		  cum_statsp->leafs = bt_statsp->leafs;
@@ -5737,16 +5343,11 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		    {
 		      free_and_init (cum_statsp->pkeys);
 		    }
-		  cum_statsp->pkeys =
-		    (int *)
-		    malloc (SIZEOF_ATTR_CUM_STATS_PKEYS
-			    (cum_statsp->pkeys_size));
+		  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		  if (cum_statsp->pkeys == NULL)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      SIZEOF_ATTR_CUM_STATS_PKEYS
-			      (cum_statsp->pkeys_size));
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		      return;	/* give up */
 		    }
 
@@ -5764,12 +5365,9 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	  /* keep cumulative totals of index statistics */
 	  cum_statsp->leafs += bt_statsp->leafs;
 	  cum_statsp->pages += bt_statsp->pages;
-	  /* Assume that the key distributions overlap here, so that the
-	     number of distinct keys in all of the attributes equal to the
-	     maximum number of distinct keys in any one of the attributes.
-	     This is probably not far from the truth; it is almost
-	     certainly a better guess than assuming that all key ranges
-	     are distinct. */
+	  /* Assume that the key distributions overlap here, so that the number of distinct keys in all of the
+	   * attributes equal to the maximum number of distinct keys in any one of the attributes. This is probably not 
+	   * far from the truth; it is almost certainly a better guess than assuming that all key ranges are distinct. */
 	  cum_statsp->height = MAX (cum_statsp->height, bt_statsp->height);
 	  if (cum_statsp->pkeys_size == 0 ||	/* the first found */
 	      cum_statsp->keys < bt_statsp->keys)
@@ -5782,15 +5380,11 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		{
 		  free_and_init (cum_statsp->pkeys);
 		}
-	      cum_statsp->pkeys =
-		(int *)
-		malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	      cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      if (cum_statsp->pkeys == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  SIZEOF_ATTR_CUM_STATS_PKEYS
-			  (cum_statsp->pkeys_size));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		  return;	/* give up */
 		}
 
@@ -5820,10 +5414,9 @@ qo_free_node_index_info (QO_ENV * env, QO_NODE_INDEX * node_indexp)
 
   if (node_indexp)
     {
-      /* for each index list(linked list of QO_INDEX_ENTRY) rooted at the node
-         (all elements of QO_NODE_INDEX_ENTRY[] array) */
-      for (i = 0, ni_entryp = QO_NI_ENTRY (node_indexp, 0);
-	   i < QO_NI_N (node_indexp); i++, ni_entryp++)
+      /* for each index list(linked list of QO_INDEX_ENTRY) rooted at the node (all elements of QO_NODE_INDEX_ENTRY[]
+       * array) */
+      for (i = 0, ni_entryp = QO_NI_ENTRY (node_indexp, 0); i < QO_NI_N (node_indexp); i++, ni_entryp++)
 	{
 	  cum_statsp = &(ni_entryp)->cum_stats;
 	  if (cum_statsp->pkeys)
@@ -5857,12 +5450,10 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
       result = (data1->i < data2->i) ? -1 : ((data1->i > data2->i) ? 1 : 0);
       break;
     case DB_TYPE_SHORT:
-      result = ((data1->sh < data2->sh) ?
-		-1 : ((data1->sh > data2->sh) ? 1 : 0));
+      result = ((data1->sh < data2->sh) ? -1 : ((data1->sh > data2->sh) ? 1 : 0));
       break;
     case DB_TYPE_BIGINT:
-      result = ((data1->bigint < data2->bigint) ?
-		-1 : ((data1->bigint > data2->bigint) ? 1 : 0));
+      result = ((data1->bigint < data2->bigint) ? -1 : ((data1->bigint > data2->bigint) ? 1 : 0));
       break;
     case DB_TYPE_FLOAT:
       result = (data1->f < data2->f) ? -1 : ((data1->f > data2->f) ? 1 : 0);
@@ -5871,29 +5462,24 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
       result = (data1->d < data2->d) ? -1 : ((data1->d > data2->d) ? 1 : 0);
       break;
     case DB_TYPE_DATE:
-      result = ((data1->date < data2->date) ?
-		-1 : ((data1->date > data2->date) ? 1 : 0));
+      result = ((data1->date < data2->date) ? -1 : ((data1->date > data2->date) ? 1 : 0));
       break;
     case DB_TYPE_TIME:
     case DB_TYPE_TIMELTZ:
-      result = ((data1->time < data2->time) ?
-		-1 : ((data1->time > data2->time) ? 1 : 0));
+      result = ((data1->time < data2->time) ? -1 : ((data1->time > data2->time) ? 1 : 0));
       break;
     case DB_TYPE_TIMETZ:
-      result = ((data1->timetz.time < data2->timetz.time) ?
-		-1 : ((data1->timetz.time > data2->timetz.time) ? 1 : 0));
+      result = ((data1->timetz.time < data2->timetz.time) ? -1 : ((data1->timetz.time > data2->timetz.time) ? 1 : 0));
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_UTIME:
-      result = ((data1->utime < data2->utime) ?
-		-1 : ((data1->utime > data2->utime) ? 1 : 0));
+      result = ((data1->utime < data2->utime) ? -1 : ((data1->utime > data2->utime) ? 1 : 0));
       break;
     case DB_TYPE_TIMESTAMPTZ:
       result =
-	((data1->timestamptz.timestamp < data2->timestamptz.timestamp) ?
-	 -1 : ((data1->timestamptz.timestamp > data2->timestamptz.timestamp)
-	       ? 1 : 0));
+	((data1->timestamptz.timestamp <
+	  data2->timestamptz.timestamp) ? -1 : ((data1->timestamptz.timestamp > data2->timestamptz.timestamp) ? 1 : 0));
       break;
     case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_DATETIME:
@@ -5923,18 +5509,15 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
 	{
 	  result = -1;
 	}
-      else if (data1->datetimetz.datetime.date
-	       > data2->datetimetz.datetime.date)
+      else if (data1->datetimetz.datetime.date > data2->datetimetz.datetime.date)
 	{
 	  result = 1;
 	}
-      else if (data1->datetimetz.datetime.time
-	       < data2->datetimetz.datetime.time)
+      else if (data1->datetimetz.datetime.time < data2->datetimetz.datetime.time)
 	{
 	  result = -1;
 	}
-      else if (data1->datetimetz.datetime.time
-	       > data2->datetimetz.datetime.time)
+      else if (data1->datetimetz.datetime.time > data2->datetimetz.datetime.time)
 	{
 	  result = 1;
 	}
@@ -5944,8 +5527,8 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
 	}
       break;
     case DB_TYPE_MONETARY:
-      result = ((data1->money.amount < data2->money.amount) ?
-		-1 : ((data1->money.amount > data2->money.amount) ? 1 : 0));
+      result =
+	((data1->money.amount < data2->money.amount) ? -1 : ((data1->money.amount > data2->money.amount) ? 1 : 0));
       break;
     default:
       /* not numeric type */
@@ -5969,7 +5552,7 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
 static void
 qo_estimate_statistics (MOP class_mop, CLASS_STATS * statblock)
 {
-  /*
+  /* 
    * It would be nice if we could the get the actual number of pages
    * allocated for the class; at least then we could make some sort of
    * realistic guess at the upper bound of the number of objects (we
@@ -5979,9 +5562,7 @@ qo_estimate_statistics (MOP class_mop, CLASS_STATS * statblock)
    */
 
   statblock->heap_num_pages = NOMINAL_HEAP_SIZE (class_mop);
-  statblock->heap_num_objects =
-    (statblock->heap_num_pages * DB_PAGESIZE) /
-    NOMINAL_OBJECT_SIZE (class_mop);
+  statblock->heap_num_objects = (statblock->heap_num_pages * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
 
 }
 
@@ -6000,8 +5581,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env = (QO_ENV *) malloc (sizeof (QO_ENV));
   if (env == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (QO_ENV));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_ENV));
       return NULL;
     }
 
@@ -6032,10 +5612,8 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
 
   assert (query->node_type == PT_SELECT);
   if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_COLS_SCHEMA)
-      || PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_FULL_INFO_COLS_SCHEMA)
-      || query->is_system_generated_stmt
-      || ((spec = query->info.query.q.select.from) != NULL
-	  && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
+      || PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_FULL_INFO_COLS_SCHEMA) || query->is_system_generated_stmt
+      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
     {
       env->plan_dump_enabled = false;
     }
@@ -6099,7 +5677,7 @@ qo_env_free (QO_ENV * env)
     {
       int i;
 
-      /*
+      /* 
        * Be sure to use Nnodes, Nterms, and Nsegs as the loop limits in
        * the code below, because those are the sizes of the allocated
        * arrays; nnodes, nterms, and nsegs are the extents of those
@@ -6185,7 +5763,7 @@ static void
 qo_exchange (QO_TERM * t0, QO_TERM * t1)
 {
 
-  /*
+  /* 
    * 'env' attribute is the same in both, don't bother with it.
    */
   TERMCLASS_EXCHANGE (t0->term_class, t1->term_class);
@@ -6207,7 +5785,7 @@ qo_exchange (QO_TERM * t0, QO_TERM * t1)
   EQCLASSPTR_EXCHANGE (t0->eqclass, t1->eqclass);
   SEGMENTPTR_EXCHANGE (t0->nominal_seg, t1->nominal_seg);
   FLAG_EXCHANGE (t0->flag, t1->flag);
-  /*
+  /* 
    * DON'T exchange the 'idx' values!
    */
 }
@@ -6247,7 +5825,7 @@ qo_discover_edges (QO_ENV * env)
 	{
 	  if (i < --n)
 	    {
-	      /*
+	      /* 
 	       * Exchange the terms at the two boundaries.  This moves
 	       * a known non-edge up to just below the section of other
 	       * non-edge terms, and moves a term of unknown "edgeness"
@@ -6293,14 +5871,11 @@ qo_discover_edges (QO_ENV * env)
       if (QO_TERM_CLASS (term) == QO_TC_SARG)
 	{
 	  QO_ASSERT (env, bitset_cardinality (&(QO_TERM_NODES (term))) == 1);
-	  qo_node_add_sarg (QO_ENV_NODE (env,
-					 bitset_first_member (&(QO_TERM_NODES
-								(term)))),
-			    term);
+	  qo_node_add_sarg (QO_ENV_NODE (env, bitset_first_member (&(QO_TERM_NODES (term)))), term);
 	}
     }
 
-  /*
+  /* 
    * Check some invariants.  If something has gone wrong during the
    * discovery phase to violate these invariants, it will mean certain
    * death for later phases, so we need to discover it now while it's
@@ -6312,15 +5887,12 @@ qo_discover_edges (QO_ENV * env)
       QO_ASSERT (env, QO_TERM_HEAD (edge) != NULL);
       QO_ASSERT (env, QO_TERM_TAIL (edge) != NULL);
 
-      if (QO_TERM_JOIN_TYPE (edge) != JOIN_INNER
-	  && QO_TERM_CLASS (edge) != QO_TC_JOIN)
+      if (QO_TERM_JOIN_TYPE (edge) != JOIN_INNER && QO_TERM_CLASS (edge) != QO_TC_JOIN)
 	{
 	  for (j = 0; j < n; j++)
 	    {
 	      edge2 = QO_ENV_TERM (env, j);
-	      if (i != j
-		  && bitset_is_equivalent (&(QO_TERM_NODES (edge)),
-					   &(QO_TERM_NODES (edge2))))
+	      if (i != j && bitset_is_equivalent (&(QO_TERM_NODES (edge)), &(QO_TERM_NODES (edge2))))
 		{
 		  QO_TERM_JOIN_TYPE (edge2) = QO_TERM_JOIN_TYPE (edge);
 		}
@@ -6330,24 +5902,21 @@ qo_discover_edges (QO_ENV * env)
       pt_expr = QO_TERM_PT_EXPR (edge);
 
       /* check for always true transitive join term */
-      if (pt_expr
-	  && PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE))
+      if (pt_expr && PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE))
 	{
 	  BITSET_CLEAR (direct_nodes);
 
 	  for (j = 0; j < n; j++)
 	    {
 	      edge2 = QO_ENV_TERM (env, j);
-	      if (bitset_intersects
-		  (&(QO_TERM_NODES (edge2)), &(QO_TERM_NODES (edge))))
+	      if (bitset_intersects (&(QO_TERM_NODES (edge2)), &(QO_TERM_NODES (edge))))
 		{
 		  bitset_union (&direct_nodes, &(QO_TERM_NODES (edge2)));
 		}
 	    }			/* for (j = 0; ...) */
 
 	  /* check for direct connected nodes */
-	  for (t = bitset_iterate (&direct_nodes, &iter); t != -1;
-	       t = bitset_next_member (&iter))
+	  for (t = bitset_iterate (&direct_nodes, &iter); t != -1; t = bitset_next_member (&iter))
 	    {
 	      node = QO_ENV_NODE (env, t);
 	      if (!QO_NODE_SARGABLE (node))
@@ -6435,8 +6004,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  QO_ASSERT (env, QO_NODE_PT_JOIN_TYPE (on_node) != PT_JOIN_NONE);
 
 	  /* is explicit join ON cond */
-	  QO_ASSERT (env,
-		     QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
+	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
 	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
 	    {
@@ -6456,8 +6024,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	}
 
       nidx_self = -1;		/* init */
-      for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1;
-	   t = bitset_next_member (&iter))
+      for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
 	{
 	  node = QO_ENV_NODE (env, t);
 
@@ -6467,8 +6034,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 
       /* nidx_self is -1 iff term nodes is empty */
 
-      /* STEP 1: check nidx_self
-       */
+      /* STEP 1: check nidx_self */
       if (QO_TERM_CLASS (term) == QO_TC_SARG)
 	{
 	  QO_ASSERT (env, nidx_self >= 0);
@@ -6501,12 +6067,8 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  if (QO_ON_COND_TERM (term))
 	    {
 	      /* is already checked at qo_analyze_term () */
-	      QO_ASSERT (env,
-			 QO_NODE_IDX (QO_TERM_TAIL (term)) ==
-			 QO_NODE_IDX (on_node));
-	      QO_ASSERT (env,
-			 QO_NODE_IDX (QO_TERM_HEAD (term)) <
-			 QO_NODE_IDX (QO_TERM_TAIL (term)));
+	      QO_ASSERT (env, QO_NODE_IDX (QO_TERM_TAIL (term)) == QO_NODE_IDX (on_node));
+	      QO_ASSERT (env, QO_NODE_IDX (QO_TERM_HEAD (term)) < QO_NODE_IDX (QO_TERM_TAIL (term)));
 	    }
 	  else
 	    {
@@ -6556,9 +6118,9 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    }
 	}
 
-      if (!(QO_TERM_CLASS (term) == QO_TC_SARG
-	    || QO_TERM_CLASS (term) == QO_TC_JOIN
-	    || QO_TERM_CLASS (term) == QO_TC_OTHER))
+      if (!
+	  (QO_TERM_CLASS (term) == QO_TC_SARG || QO_TERM_CLASS (term) == QO_TC_JOIN
+	   || QO_TERM_CLASS (term) == QO_TC_OTHER))
 	{
 	  continue;		/* no need to classify */
 	}
@@ -6581,8 +6143,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    {
 	      node = QO_ENV_NODE (env, n);
 
-	      if (bitset_intersects (&dep_set,
-				     &(QO_NODE_OUTER_DEP_SET (node))))
+	      if (bitset_intersects (&dep_set, &(QO_NODE_OUTER_DEP_SET (node))))
 		{
 		  bitset_add (&dep_set, QO_NODE_IDX (node));
 		}
@@ -6590,8 +6151,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	}
       while (!bitset_is_equivalent (&prev_dep_set, &dep_set));
 
-      /* STEP 2: check iff term nodes are connected with ON cond
-       */
+      /* STEP 2: check iff term nodes are connected with ON cond */
       if (QO_ON_COND_TERM (term))
 	{
 	  if (!BITSET_MEMBER (dep_set, QO_NODE_IDX (on_node)))
@@ -6600,13 +6160,11 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    }
 	}
 
-      /* STEP 3: check outer-dep nodeset join type
-       */
+      /* STEP 3: check outer-dep nodeset join type */
       bitset_remove (&dep_set, nidx_self);	/* remove me */
       if (QO_ON_COND_TERM (term))
 	{
-	  QO_ASSERT (env,
-		     QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
+	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
 	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_RIGHT_OUTER)
 	    {
@@ -6614,8 +6172,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    }
 	}
 
-      for (t = bitset_iterate (&dep_set, &iter);
-	   t != -1 && !is_null_padded; t = bitset_next_member (&iter))
+      for (t = bitset_iterate (&dep_set, &iter); t != -1 && !is_null_padded; t = bitset_next_member (&iter))
 	{
 	  node = QO_ENV_NODE (env, t);
 
@@ -6632,8 +6189,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 		}
 	    }
 
-	  if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER
-	      || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
+	  if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
 	    {
 	      is_null_padded = true;
 	    }
@@ -6678,8 +6234,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
  *   index_entry(in):
  */
 static void
-qo_find_index_terms (QO_ENV * env, BITSET * segsp,
-		     QO_INDEX_ENTRY * index_entry)
+qo_find_index_terms (QO_ENV * env, BITSET * segsp, QO_INDEX_ENTRY * index_entry)
 {
   int t;
   QO_TERM *qo_termp;
@@ -6694,19 +6249,16 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp,
       /* get the pointer to QO_TERM structure */
       qo_termp = QO_ENV_TERM (env, t);
 
-      /* Fake terms (e.g., dependency links) won't have pt_expr's associated
-         with them. They can't be implemented as indexed sargs, either,
-         so don't worry about them here. */
+      /* Fake terms (e.g., dependency links) won't have pt_expr's associated with them. They can't be implemented as
+       * indexed sargs, either, so don't worry about them here. */
       if (!QO_TERM_PT_EXPR (qo_termp))
 	{
 	  continue;
 	}
-      /* 'qo_analyze_term()' function verifies that all indexable
-         terms are expression so that they have 'pt_expr' field of type
-         PT_EXPR. */
+      /* 'qo_analyze_term()' function verifies that all indexable terms are expression so that they have 'pt_expr'
+       * field of type PT_EXPR. */
 
-      /* if the segments that give rise to the term are in the given segment
-         set */
+      /* if the segments that give rise to the term are in the given segment set */
       if (bitset_intersects (&(QO_TERM_SEGS (qo_termp)), segsp))
 	{
 	  /* collect this term */
@@ -6736,29 +6288,23 @@ qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx)
       /* get the pointer to QO_TERM structure */
       qo_termp = QO_ENV_TERM (env, t);
 
-      /* ignore this term if it is not marked as indexable by
-         'qo_analyze_term()' */
+      /* ignore this term if it is not marked as indexable by 'qo_analyze_term()' */
       if (!qo_termp->can_use_index)
 	{
 	  continue;
 	}
 
-      /* Fake terms (e.g., dependency links) won't have pt_expr's associated
-         with them. They can't be implemented as indexed sargs, either,
-         so don't worry about them here. */
+      /* Fake terms (e.g., dependency links) won't have pt_expr's associated with them. They can't be implemented as
+       * indexed sargs, either, so don't worry about them here. */
       if (!QO_TERM_PT_EXPR (qo_termp))
 	{
 	  continue;
 	}
-      /* 'qo_analyze_term()' function verifies that all indexable
-         terms are expression so that they have 'pt_expr' field of type
-         PT_EXPR. */
+      /* 'qo_analyze_term()' function verifies that all indexable terms are expression so that they have 'pt_expr'
+       * field of type PT_EXPR. */
 
-      /* if the term is sarg and the given segment is involed in the
-         expression that gives rise to the term */
-      if (QO_TERM_CLASS (qo_termp) == QO_TC_SARG
-	  && BITSET_MEMBER (QO_TERM_SEGS (qo_termp),
-			    index_entry->seg_idxs[idx]))
+      /* if the term is sarg and the given segment is involed in the expression that gives rise to the term */
+      if (QO_TERM_CLASS (qo_termp) == QO_TC_SARG && BITSET_MEMBER (QO_TERM_SEGS (qo_termp), index_entry->seg_idxs[idx]))
 	{
 	  /* check for range list term; RANGE (r1, r2, ...) */
 	  if (QO_TERM_IS_FLAGED (qo_termp, QO_TERM_RANGELIST))
@@ -6802,7 +6348,7 @@ is_equivalent_indexes (QO_INDEX_ENTRY * index1, QO_INDEX_ENTRY * index2)
 {
   int i, equivalent;
 
-  /*
+  /* 
    *  If the number of segments is different, then the indexes can't
    *  be equivalent (cheap test).
    */
@@ -6811,7 +6357,7 @@ is_equivalent_indexes (QO_INDEX_ENTRY * index1, QO_INDEX_ENTRY * index2)
       return false;
     }
 
-  /*
+  /* 
    * Now compare the two indexes element by element
    */
   equivalent = true;
@@ -6843,27 +6389,25 @@ is_equivalent_indexes (QO_INDEX_ENTRY * index1, QO_INDEX_ENTRY * index2)
  *     pointer is non-NULL).
  */
 static int
-qo_find_matching_index (QO_INDEX_ENTRY * index_entry,
-			QO_INDEX * class_indexes)
+qo_find_matching_index (QO_INDEX_ENTRY * index_entry, QO_INDEX * class_indexes)
 {
   int i;
 
   for (i = 0; i < class_indexes->n; i++)
     {
-      /*
+      /* 
        *  A matching index is found if the index node is not already a member
        *  of a heirarchical compatible index list (i.e. next pointer is NULL)
        *  and if it matches the passes <index_entry>.
        */
       if (QO_INDEX_INDEX (class_indexes, i)->next == NULL
-	  && is_equivalent_indexes (index_entry,
-				    QO_INDEX_INDEX (class_indexes, i)))
+	  && is_equivalent_indexes (index_entry, QO_INDEX_INDEX (class_indexes, i)))
 	{
 	  break;
 	}
     }
 
-  /*
+  /* 
    *  If a match is found, return its index, otherwise return -1
    */
   if (i < class_indexes->n)
@@ -6893,8 +6437,7 @@ qo_find_matching_index (QO_INDEX_ENTRY * index_entry,
  *     marked as such throughout the hierarchy.
  */
 static QO_INDEX_ENTRY *
-is_index_compatible (QO_CLASS_INFO * class_info, int n,
-		     QO_INDEX_ENTRY * index_entry)
+is_index_compatible (QO_CLASS_INFO * class_info, int n, QO_INDEX_ENTRY * index_entry)
 {
   QO_CLASS_INFO_ENTRY *class_entry;
   QO_INDEX *class_indexes;
@@ -6949,10 +6492,8 @@ is_index_compatible (QO_CLASS_INFO * class_info, int n,
  *   segs(in):
  */
 static bool
-qo_find_index_segs (QO_ENV * env,
-		    SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep,
-		    int *seg_idx, int seg_idx_num, int *nseg_idxp,
-		    BITSET * segs)
+qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, int *seg_idx, int seg_idx_num,
+		    int *nseg_idxp, BITSET * segs)
 {
   QO_SEGMENT *segp;
   SM_ATTRIBUTE *attrp;
@@ -6974,22 +6515,18 @@ qo_find_index_segs (QO_ENV * env,
       if (consp->func_index_info && i == consp->func_index_info->col_id)
 	{
 	  matched = false;
-	  for (iseg = bitset_iterate (&working, &iter);
-	       iseg != -1; iseg = bitset_next_member (&iter))
+	  for (iseg = bitset_iterate (&working, &iter); iseg != -1; iseg = bitset_next_member (&iter))
 	    {
 	      segp = QO_ENV_SEG (env, iseg);
 	      if (QO_SEG_FUNC_INDEX (segp) == true
-		  && !intl_identifier_casecmp (QO_SEG_NAME (segp),
-					       consp->func_index_info->
-					       expr_str))
+		  && !intl_identifier_casecmp (QO_SEG_NAME (segp), consp->func_index_info->expr_str))
 		{
 		  bitset_add (segs, iseg);	/* add the segment to the index segment set */
 		  bitset_remove (&working, iseg);	/* remove the segment from the working set */
 		  seg_idx[*nseg_idxp] = iseg;	/* remember the order of the index segments */
 		  (*nseg_idxp)++;	/* number of index segments, 'seg_idx[]' */
-		  /* If we're handling with a multi-column index, then only
-		     equality expressions are allowed except for the last
-		     matching segment. */
+		  /* If we're handling with a multi-column index, then only equality expressions are allowed except for 
+		   * the last matching segment. */
 		  bitset_delset (&working);
 		  matched = true;
 		  count_matched_index_attributes++;
@@ -7010,25 +6547,21 @@ qo_find_index_segs (QO_ENV * env,
       attrp = consp->attributes[i];
 
       matched = false;
-      /* for each indexed segments of this node, compare the name of the
-         segment with the one of the attribute */
-      for (iseg = bitset_iterate (&working, &iter);
-	   iseg != -1; iseg = bitset_next_member (&iter))
+      /* for each indexed segments of this node, compare the name of the segment with the one of the attribute */
+      for (iseg = bitset_iterate (&working, &iter); iseg != -1; iseg = bitset_next_member (&iter))
 	{
 
 	  segp = QO_ENV_SEG (env, iseg);
 
-	  if (!intl_identifier_casecmp
-	      (QO_SEG_NAME (segp), attrp->header.name))
+	  if (!intl_identifier_casecmp (QO_SEG_NAME (segp), attrp->header.name))
 	    {
 
 	      bitset_add (segs, iseg);	/* add the segment to the index segment set */
 	      bitset_remove (&working, iseg);	/* remove the segment from the working set */
 	      seg_idx[*nseg_idxp] = iseg;	/* remember the order of the index segments */
 	      (*nseg_idxp)++;	/* number of index segments, 'seg_idx[]' */
-	      /* If we're handling with a multi-column index, then only
-	         equality expressions are allowed except for the last
-	         matching segment. */
+	      /* If we're handling with a multi-column index, then only equality expressions are allowed except for the 
+	       * last matching segment. */
 	      matched = true;
 	      count_matched_index_attributes++;
 	      break;
@@ -7047,8 +6580,7 @@ qo_find_index_segs (QO_ENV * env,
   bitset_delset (&working);
 
   return count_matched_index_attributes > 0;
-  /* this index is feasible to use if at least one attribute of index
-     is specified(matched) */
+  /* this index is feasible to use if at least one attribute of index is specified(matched) */
 }
 
 /*
@@ -7059,8 +6591,7 @@ qo_find_index_segs (QO_ENV * env,
  *   index_entry(in): The index entry
  */
 static bool
-qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
-		      QO_INDEX_ENTRY * index_entry)
+qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
 {
   int i, j, seg_idx;
   QO_SEGMENT *seg, *fi_seg = NULL;
@@ -7075,14 +6606,13 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
       return false;
     }
 
-  /*
+  /* 
    * If NO_COVERING_IDX hint is given, we do not generate a plan for
    * covering index scan.
    */
   QO_ASSERT (env, QO_ENV_PT_TREE (env)->node_type == PT_SELECT);
   if (QO_ENV_PT_TREE (env)->node_type == PT_SELECT
-      && (QO_ENV_PT_TREE (env)->info.query.q.select.hint
-	  & PT_HINT_NO_COVERING_IDX))
+      && (QO_ENV_PT_TREE (env)->info.query.q.select.hint & PT_HINT_NO_COVERING_IDX))
     {
       return false;
     }
@@ -7098,9 +6628,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
       /* We do not use covering index if there is a path expression */
       seg = QO_ENV_SEG (env, seg_idx);
       pt_node = QO_SEG_PT_NODE (seg);
-      if (pt_node->node_type == PT_DOT_
-	  || (pt_node->node_type == PT_NAME
-	      && pt_node->info.name.resolved == NULL))
+      if (pt_node->node_type == PT_DOT_ || (pt_node->node_type == PT_NAME && pt_node->info.name.resolved == NULL))
 	{
 	  return false;
 	}
@@ -7167,8 +6695,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
 	{
 	  if (index_entry->seg_idxs[j] == QO_SEG_IDX (seg))
 	    {
-	      /* if the segment created in respect to the function index info
-	       * is covered, we do not use index covering */
+	      /* if the segment created in respect to the function index info is covered, we do not use index covering */
 	      if (QO_SEG_FUNC_INDEX (seg))
 		{
 		  return false;
@@ -7194,8 +6721,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
  *   index_entry(in): index structure
  */
 static int
-qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
-			  QO_INDEX_ENTRY * index_entry)
+qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
 {
   PT_NODE *tree;
   int prefix_len = 0, i;
@@ -7227,11 +6753,9 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
     {
       return 0;			/* disable loose index scan */
     }
-  else if ((tree->info.query.q.select.hint & PT_HINT_INDEX_LS)
-	   && (QO_NODE_HINT (nodep) & PT_HINT_INDEX_LS))
+  else if ((tree->info.query.q.select.hint & PT_HINT_INDEX_LS) && (QO_NODE_HINT (nodep) & PT_HINT_INDEX_LS))
     {				/* enable loose index scan */
-      if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS
-	  || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)
+      if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)
 	  || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
 	{			/* skip scan is disabled */
 	  ;			/* go ahead */
@@ -7252,12 +6776,10 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
     }
 
   if (index_entry->cover_segments
-      && (tree->info.query.all_distinct == PT_DISTINCT
-	  || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_HAS_AGG)))
+      && (tree->info.query.all_distinct == PT_DISTINCT || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_HAS_AGG)))
     {
-      /* this is a select, index is covering all segments and it's either a
-       * DISTINCT query or GROUP BY query with DISTINCT functions
-       */
+      /* this is a select, index is covering all segments and it's either a DISTINCT query or GROUP BY query with
+       * DISTINCT functions */
 
       /* see if only a prefix of the index is used */
       for (i = index_entry->nsegs - 1; i >= 0; i--)
@@ -7283,9 +6805,8 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep,
 
   if (!pt_is_single_tuple (env->parser, env->pt_tree))
     {
-      /* if not a single tuple query, then we either have a GROUP BY clause or
-       * we don't have any kind of aggregation; in these cases, pure NULL keys
-       * qualify iff no terms are used */
+      /* if not a single tuple query, then we either have a GROUP BY clause or we don't have any kind of aggregation;
+       * in these cases, pure NULL keys qualify iff no terms are used */
       if (bitset_cardinality (&index_entry->terms) <= 0)
 	{
 	  /* no terms specified, so NULL keys can't be skipped; disable ILS */
@@ -7322,15 +6843,10 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
       return false;
     }
 
-  /* Index skip scan (ISS) candidates:
-   *  - have no range or key filter terms for the first column of the index;
-   *  - DO have range or key filter terms for at least the second column of
-   *    the index (maybe even for further columns, but we are only interested
-   *    in the second column right now);
-   *  - obviously are multi-column indexes
-   *  - not a filter index
-   *  - not with HQ
-   */
+  /* Index skip scan (ISS) candidates: - have no range or key filter terms for the first column of the index; - DO have 
+   * range or key filter terms for at least the second column of the index (maybe even for further columns, but we are
+   * only interested in the second column right now); - obviously are multi-column indexes - not a filter index - not
+   * with HQ */
 
   /* ISS has no meaning on single column indexes */
   if (!QO_ENTRY_MULTI_COL (index_entry))
@@ -7347,16 +6863,14 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
       return false;
     }
 
-  /* CONNECT BY messes with the terms, so just refuse any index skip scan
-   * in this case */
+  /* CONNECT BY messes with the terms, so just refuse any index skip scan in this case */
   if (tree->info.query.q.select.connect_by)
     {
       return false;
     }
 
   /* check hint */
-  if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS
-      || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)
+  if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)
       || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
     {
       return false;
@@ -7373,8 +6887,7 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
   /* do not allow filter ISS with function index */
   for (i = 0; i < index_entry->nsegs; i++)
     {
-      if ((index_entry->seg_idxs[i] != -1)
-	  && (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, index_entry->seg_idxs[i]))))
+      if ((index_entry->seg_idxs[i] != -1) && (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, index_entry->seg_idxs[i]))))
 	{
 	  return false;
 	}
@@ -7384,12 +6897,9 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
   first_col_present = false;
   if (index_entry->seg_idxs[0] != -1)
     {
-      /* it's not enough to have a reference to a segment in seg_idxs[], we
-       * must make sure there is an indexable term that uses it: this means
-       * either an equal term, or an "other" term that is real (i.e. it is
-       * not a full range scan term "invented" by pt_check_orderby to help
-       * with generating index covering.
-       */
+      /* it's not enough to have a reference to a segment in seg_idxs[], we must make sure there is an indexable term
+       * that uses it: this means either an equal term, or an "other" term that is real (i.e. it is not a full range
+       * scan term "invented" by pt_check_orderby to help with generating index covering. */
 
       if (bitset_cardinality (&(index_entry->seg_equal_terms[0])) > 0
 	  || bitset_cardinality (&(index_entry->seg_other_terms[0])) > 0)
@@ -7406,12 +6916,9 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
   second_col_present = false;
   if (index_entry->seg_idxs[1] != -1)
     {
-      /* it's not enough to have a reference to a segment in seg_idxs[], we
-       * must make sure there is an indexable term that uses it: this means
-       * either an equal term, or an "other" term that is real (i.e. it is
-       * not a full range scan term "invented" by pt_check_orderby to help
-       * with generating index covering.
-       */
+      /* it's not enough to have a reference to a segment in seg_idxs[], we must make sure there is an indexable term
+       * that uses it: this means either an equal term, or an "other" term that is real (i.e. it is not a full range
+       * scan term "invented" by pt_check_orderby to help with generating index covering. */
 
       if (bitset_cardinality (&(index_entry->seg_equal_terms[1])) > 0
 	  || bitset_cardinality (&(index_entry->seg_other_terms[1])) > 0)
@@ -7425,13 +6932,9 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
       return false;
     }
 
-  /* The first col is missing, and the second col is present and has terms that
-   * can be used in a range search.
-   * Go ahead and approve the index as a candidate
-   * for index skip scanning. We still have a long way ahead of us (use sta-
-   * tistics to decide whether index skip scan is the best approach) but we've
-   * made the first step.
-   */
+  /* The first col is missing, and the second col is present and has terms that can be used in a range search. Go ahead 
+   * and approve the index as a candidate for index skip scanning. We still have a long way ahead of us (use sta-
+   * tistics to decide whether index skip scan is the best approach) but we've made the first step. */
   return true;
 }
 
@@ -7483,8 +6986,8 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
       special_index_scan = true;
     }
 
-  /* for each class in the hierarchy, search the class constraint cache
-     looking for applicable indexes(UNIQUE and INDEX constraint) */
+  /* for each class in the hierarchy, search the class constraint cache looking for applicable indexes(UNIQUE and INDEX 
+   * constraint) */
   for (i = 0; i < class_infop->n; i++)
     {
 
@@ -7493,10 +6996,8 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
       if (qo_is_non_mvcc_class_with_index (class_entryp))
 	{
-	  /* Do not use index of db_serial/db_has_apply_info for scanning.
-	   * Current index scanning is optimized for MVCC, while db_serial and
-	   * db_ha_apply_info have MVCC disabled.
-	   */
+	  /* Do not use index of db_serial/db_has_apply_info for scanning. Current index scanning is optimized for
+	   * MVCC, while db_serial and db_ha_apply_info have MVCC disabled. */
 	  constraints = NULL;
 	}
       else
@@ -7505,15 +7006,13 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	  constraints = sm_class_constraints (class_entryp->mop);
 	}
 
-      /* count the number of INDEX and UNIQUE constraints contained in this
-         class */
+      /* count the number of INDEX and UNIQUE constraints contained in this class */
       n = 0;
       for (consp = constraints; consp; consp = consp->next)
 	{
 	  if (SM_IS_CONSTRAINT_INDEX_FAMILY (consp->type))
 	    {
-	      if (consp->filter_predicate != NULL
-		  && QO_NODE_USING_INDEX (nodep) == NULL)
+	      if (consp->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
 		{
 		  continue;
 		}
@@ -7521,10 +7020,8 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	    }
 	}
       /* allocate room for the constraint indexes */
-      /* we don't have apriori knowledge about which constraints will be
-         applied, so allocate room for all of them */
-      /* qo_alloc_index(env, n) will allocate QO_INDEX structure and
-         QO_INDEX_ENTRY structure array */
+      /* we don't have apriori knowledge about which constraints will be applied, so allocate room for all of them */
+      /* qo_alloc_index(env, n) will allocate QO_INDEX structure and QO_INDEX_ENTRY structure array */
       indexp = class_entryp->index = qo_alloc_index (env, n);
       if (indexp == NULL)
 	{
@@ -7542,8 +7039,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      continue;		/* neither INDEX nor UNIQUE constraint, skip */
 	    }
 
-	  if (consp->filter_predicate != NULL
-	      && QO_NODE_USING_INDEX (nodep) == NULL)
+	  if (consp->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
 	    {
 	      continue;
 	    }
@@ -7586,8 +7082,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      /* search for index in using_index clause */
 	      for (j = 0; j < QO_UI_N (uip); j++)
 		{
-		  if (!intl_identifier_casecmp
-		      (consp->name, QO_UI_INDEX (uip, j)))
+		  if (!intl_identifier_casecmp (consp->name, QO_UI_INDEX (uip, j)))
 		    {
 		      found = true;
 		      break;
@@ -7599,8 +7094,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		  /* USING INDEX ALL EXCEPT case */
 		  if (found)
 		    {
-		      /* this constraint(index) is specified in
-		         USING INDEX ALL EXCEPT clause; do not use it */
+		      /* this constraint(index) is specified in USING INDEX ALL EXCEPT clause; do not use it */
 		      continue;
 		    }
 		  if (consp->filter_predicate != NULL)
@@ -7659,9 +7153,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      seg_idx = (int *) malloc (sizeof (int) * col_num);
 	      if (seg_idx == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  sizeof (int) * col_num);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * col_num);
 		  /* cannot allocate seg_idx, use seg_idx_arr instead. */
 		  seg_idx = seg_idx_arr;
 		  col_num = NELEMENTS;
@@ -7669,20 +7161,13 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	    }
 
 	  /* find indexed segments into 'seg_idx[]' */
-	  found = qo_find_index_segs (env, consp, nodep,
-				      seg_idx, col_num, &nseg_idx,
-				      &index_segs);
-	  /* 'seg_idx[nseg_idx]' array contains index no.(idx) of the segments
-	   * which are found and applicable to this index(constraint) as
-	   * search key in the order of the index key attribute. For example,
-	   * if the index consists of attributes 'b' and 'a', and the given
-	   * segments of the node are 'a(1)', 'b(2)' and 'c(3)', then the
-	   * result of 'seg_idx[]' will be '{ 2, 1, -1 }'. The value -1 in
-	   * 'seg_idx[] array means that no segment is specified.
-	   */
-	  /* If key information is required, no index segments will be found,
-	   * but index scan has to be forced.
-	   */
+	  found = qo_find_index_segs (env, consp, nodep, seg_idx, col_num, &nseg_idx, &index_segs);
+	  /* 'seg_idx[nseg_idx]' array contains index no.(idx) of the segments which are found and applicable to this
+	   * index(constraint) as search key in the order of the index key attribute. For example, if the index
+	   * consists of attributes 'b' and 'a', and the given segments of the node are 'a(1)', 'b(2)' and 'c(3)', then 
+	   * the result of 'seg_idx[]' will be '{ 2, 1, -1 }'. The value -1 in 'seg_idx[] array means that no segment
+	   * is specified. */
+	  /* If key information is required, no index segments will be found, but index scan has to be forced. */
 	  if (found == true || special_index_scan == true)
 	    {
 	      /* if applicable index was found, add it to the node */
@@ -7706,8 +7191,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 			{
 			  free_and_init (seg_idx);
 			}
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		      return;
 		    }
 
@@ -7720,8 +7204,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 			{
 			  free_and_init (seg_idx);
 			}
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		      return;
 		    }
 		  index_entryp->seg_other_terms = (BITSET *) malloc (size);
@@ -7733,8 +7216,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 			{
 			  free_and_init (seg_idx);
 			}
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		      return;
 		    }
 		}
@@ -7746,8 +7228,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      index_entryp->constraints = consp;
 
 	      /* set key limits */
-	      index_entryp->key_limit =
-		(j == -1) ? NULL : QO_UI_KEYLIMIT (uip, j);
+	      index_entryp->key_limit = (j == -1) ? NULL : QO_UI_KEYLIMIT (uip, j);
 
 	      /* assign seg_idx[] and seg_terms[] */
 	      for (j = 0; j < index_entryp->nsegs; j++)
@@ -7762,11 +7243,9 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		}
 	      qo_find_index_terms (env, &index_segs, index_entryp);
 
-	      index_entryp->cover_segments =
-		qo_is_coverage_index (env, nodep, index_entryp);
+	      index_entryp->cover_segments = qo_is_coverage_index (env, nodep, index_entryp);
 
-	      index_entryp->is_iss_candidate =
-		qo_is_iss_index (env, nodep, index_entryp);
+	      index_entryp->is_iss_candidate = qo_is_iss_index (env, nodep, index_entryp);
 
 	      /* disable loose scan if skip scan is possible */
 	      if (index_entryp->is_iss_candidate == true)
@@ -7775,8 +7254,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		}
 	      else
 		{
-		  index_entryp->ils_prefix_len =
-		    qo_get_ils_prefix_length (env, nodep, index_entryp);
+		  index_entryp->ils_prefix_len = qo_get_ils_prefix_length (env, nodep, index_entryp);
 		}
 
 	      index_entryp->statistics_attribute_name = NULL;
@@ -7786,33 +7264,28 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		{
 		  const char *temp_name = NULL;
 
-		  if (consp->func_index_info
-		      && consp->func_index_info->col_id == 0)
+		  if (consp->func_index_info && consp->func_index_info->col_id == 0)
 		    {
 		      index_entryp->is_func_index = true;
 		    }
-		  if (!index_entryp->is_func_index &&
-		      consp->attributes && consp->attributes[0])
+		  if (!index_entryp->is_func_index && consp->attributes && consp->attributes[0])
 		    {
 		      temp_name = consp->attributes[0]->header.name;
 		      if (temp_name)
 			{
 			  int len = strlen (temp_name) + 1;
-			  index_entryp->statistics_attribute_name =
-			    (char *) malloc (sizeof (char) * len);
+			  index_entryp->statistics_attribute_name = (char *) malloc (sizeof (char) * len);
 			  if (index_entryp->statistics_attribute_name == NULL)
 			    {
 			      if (seg_idx != seg_idx_arr)
 				{
 				  free_and_init (seg_idx);
 				}
-			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 				      sizeof (char) * len);
 			      return;
 			    }
-			  strcpy (index_entryp->statistics_attribute_name,
-				  temp_name);
+			  strcpy (index_entryp->statistics_attribute_name, temp_name);
 			}
 		    }
 		}
@@ -7838,18 +7311,14 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
   indexp = class_infop->info[0].index;
 
   /* allocate room for the compatible heirarchical indexex */
-  /* We'll go ahead and allocate room for each index in the top level
-     class. This is the worst case situation and it simplifies the code
-     a bit. */
+  /* We'll go ahead and allocate room for each index in the top level class. This is the worst case situation and it
+   * simplifies the code a bit. */
   /* Malloc and Init a QO_INDEX struct with n entries. */
-  node_indexp =
-    QO_NODE_INDEXES (nodep) =
-    (QO_NODE_INDEX *) malloc (SIZEOF_NODE_INDEX (indexp->n));
+  node_indexp = QO_NODE_INDEXES (nodep) = (QO_NODE_INDEX *) malloc (SIZEOF_NODE_INDEX (indexp->n));
 
   if (node_indexp == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      SIZEOF_NODE_INDEX (indexp->n));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, SIZEOF_NODE_INDEX (indexp->n));
       return;
     }
 
@@ -7857,15 +7326,13 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
   QO_NI_N (node_indexp) = 0;
 
-  /* if we don`t have any indexes to process, we're through
-     if there is only one, then make sure that the head pointer points to it
-     if there are more than one, we also need to construct a linked list
-     of compatible indexes by recursively searching down the hierarchy */
+  /* if we don`t have any indexes to process, we're through if there is only one, then make sure that the head pointer
+   * points to it if there are more than one, we also need to construct a linked list of compatible indexes by
+   * recursively searching down the hierarchy */
   for (i = 0; i < indexp->n; i++)
     {
       index_entryp = QO_INDEX_INDEX (indexp, i);
-      /* get compatible(equivalent) index of the next class
-         'index_entryp->next' points to it */
+      /* get compatible(equivalent) index of the next class 'index_entryp->next' points to it */
       index_entryp->next = is_index_compatible (class_infop, 1, index_entryp);
 
       if ((index_entryp->next != NULL) || (class_infop->n == 1))
@@ -7913,15 +7380,11 @@ qo_discover_indexes (QO_ENV * env)
       nodep = QO_ENV_NODE (env, i);
       if (nodep->info)
 	{
-	  /* find indexed segments that belong to this node and get indexes
-	   * that apply to indexed segments.
-	   * Note that a scan for record information or page informations
-	   * should follow, there is no need to check for index (a sequential
-	   * scan is needed).
-	   */
-	  if (!PT_IS_SPEC_FLAG_SET (QO_NODE_ENTITY_SPEC (nodep),
-				    (PT_SPEC_FLAG_RECORD_INFO_SCAN
-				     | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
+	  /* find indexed segments that belong to this node and get indexes that apply to indexed segments. Note that a 
+	   * scan for record information or page informations should follow, there is no need to check for index (a
+	   * sequential scan is needed). */
+	  if (!PT_IS_SPEC_FLAG_SET
+	      (QO_NODE_ENTITY_SPEC (nodep), (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
 	    {
 	      qo_find_node_indexes (env, nodep);
 	      /* collect statistic information on discovered indexes */
@@ -7934,23 +7397,20 @@ qo_discover_indexes (QO_ENV * env)
 	}
       else
 	{
-	  /* If the 'info' of node is NULL, then this is probably a derived
-	     table. Without the info, we don't have class information to
-	     work with so we really can't do much so just skip the node. */
+	  /* If the 'info' of node is NULL, then this is probably a derived table. Without the info, we don't have
+	   * class information to work with so we really can't do much so just skip the node. */
 	  QO_NODE_INDEXES (nodep) = NULL;	/* this node will not use a index */
 	}
 
     }				/* for (n = 0; n < env->nnodes; n++) */
 
-  /* for each terms, look indexed segements and filter out the segments
-     which don't actually contain any indexes */
+  /* for each terms, look indexed segements and filter out the segments which don't actually contain any indexes */
   for (i = 0; i < env->nterms; i++)
     {
 
       termp = QO_ENV_TERM (env, i);
 
-      /* before, 'index_seg[]' has all possible indexed segments, that is
-         assigned at 'qo_analyze_term()' */
+      /* before, 'index_seg[]' has all possible indexed segments, that is assigned at 'qo_analyze_term()' */
       /* for all 'term.index_seg[]', examine if it really has index or not */
       k = 0;
       for (j = 0; j < termp->can_use_index; j++)
@@ -7960,8 +7420,7 @@ qo_discover_indexes (QO_ENV * env)
 
 	  found = false;	/* init */
 	  /* for each nodes, do traverse */
-	  for (b = bitset_iterate (&(QO_TERM_NODES (termp)), &bi);
-	       b != -1 && !found; b = bitset_next_member (&bi))
+	  for (b = bitset_iterate (&(QO_TERM_NODES (termp)), &bi); b != -1 && !found; b = bitset_next_member (&bi))
 	    {
 
 	      nodep = QO_ENV_NODE (env, b);
@@ -7970,15 +7429,13 @@ qo_discover_indexes (QO_ENV * env)
 	      node_indexp = QO_NODE_INDEXES (nodep);
 	      if (node_indexp == NULL)
 		{
-		  /* node has not any index
-		   * skip and go ahead
-		   */
+		  /* node has not any index skip and go ahead */
 		  continue;
 		}
 
 	      /* for each index list rooted at the node */
-	      for (n = 0, ni_entryp = QO_NI_ENTRY (node_indexp, 0);
-		   n < QO_NI_N (node_indexp) && !found; n++, ni_entryp++)
+	      for (n = 0, ni_entryp = QO_NI_ENTRY (node_indexp, 0); n < QO_NI_N (node_indexp) && !found;
+		   n++, ni_entryp++)
 		{
 
 		  index_entryp = (ni_entryp)->head;
@@ -7988,14 +7445,11 @@ qo_discover_indexes (QO_ENV * env)
 		    {
 		      if (QO_SEG_IDX (segp) == (index_entryp->seg_idxs[s]))
 			{
-			  /* found specified seg
-			   * stop traverse
-			   */
+			  /* found specified seg stop traverse */
 			  found = true;
 
 			  /* record term at segment structure */
-			  bitset_add (&(QO_SEG_INDEX_TERMS (segp)),
-				      QO_TERM_IDX (termp));
+			  bitset_add (&(QO_SEG_INDEX_TERMS (segp)), QO_TERM_IDX (termp));
 			  /* indexed segment in 'index_seg[]' array */
 			  termp->index_seg[k++] = termp->index_seg[j];
 			}
@@ -8046,8 +7500,7 @@ qo_discover_partitions (QO_ENV * env)
       buddy = (int *) malloc (sizeof (int) * (2 * N));
       if (buddy == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (int) * (2 * N));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * (2 * N));
 	  return;
 	}
     }
@@ -8058,7 +7511,7 @@ qo_discover_partitions (QO_ENV * env)
 
   partition = buddy + N;
 
-  /*
+  /* 
    * This code assumes that there will be no ALLOCATE failures; if
    * there are, the buddy array will be lost.
    */
@@ -8073,7 +7526,7 @@ qo_discover_partitions (QO_ENV * env)
     {
       term = QO_ENV_TERM (env, e);
 
-      /*
+      /* 
        * Identify one of the nodes in this term, and run to the top of
        * the tree in which it resides.
        */
@@ -8083,19 +7536,19 @@ qo_discover_partitions (QO_ENV * env)
 	  hi = buddy[hi];
 	}
 
-      /*
+      /* 
        * Now buddy up all of the other nodes encompassed by this term.
        */
       while ((ti = bitset_next_member (&bi)) != -1)
 	{
-	  /*
+	  /* 
 	   * Run to the top of the tree in which node[ti] resides.
 	   */
 	  while (buddy[ti] != -1)
 	    {
 	      ti = buddy[ti];
 	    }
-	  /*
+	  /* 
 	   * Join the two trees together.
 	   */
 	  if (hi != ti)
@@ -8105,7 +7558,7 @@ qo_discover_partitions (QO_ENV * env)
 	}
     }
 
-  /*
+  /* 
    * Now assign the actual partitions.
    */
   for (n = 0; n < N; ++n)
@@ -8113,14 +7566,14 @@ qo_discover_partitions (QO_ENV * env)
       if (partition[n] == -1)
 	{
 	  r = n;
-	  /*
+	  /* 
 	   * Find the root of the tree to which node[n] belongs.
 	   */
 	  while (buddy[r] != -1)
 	    {
 	      r = buddy[r];
 	    }
-	  /*
+	  /* 
 	   * If a partition hasn't already been assigned for this tree,
 	   * assign one now.
 	   */
@@ -8130,13 +7583,12 @@ qo_discover_partitions (QO_ENV * env)
 	      QO_NODE *node = QO_ENV_NODE (env, r);
 	      qo_partition_init (env, part, P);
 	      bitset_add (&(QO_PARTITION_NODES (part)), r);
-	      bitset_union (&(QO_PARTITION_DEPENDENCIES (part)),
-			    &(QO_NODE_DEP_SET (node)));
+	      bitset_union (&(QO_PARTITION_DEPENDENCIES (part)), &(QO_NODE_DEP_SET (node)));
 	      QO_NODE_PARTITION (node) = part;
 	      partition[r] = P;
 	      P++;
 	    }
-	  /*
+	  /* 
 	   * Now add node[n] to that partition.
 	   */
 	  if (n != r)
@@ -8145,14 +7597,13 @@ qo_discover_partitions (QO_ENV * env)
 	      QO_NODE *node = QO_ENV_NODE (env, n);
 	      partition[n] = partition[r];
 	      bitset_add (&(QO_PARTITION_NODES (part)), n);
-	      bitset_union (&(QO_PARTITION_DEPENDENCIES (part)),
-			    &(QO_NODE_DEP_SET (node)));
+	      bitset_union (&(QO_PARTITION_DEPENDENCIES (part)), &(QO_NODE_DEP_SET (node)));
 	      QO_NODE_PARTITION (node) = part;
 	    }
 	}
     }
 
-  /*
+  /* 
    * Now go build the edge sets that correspond to each partition,
    * i.e., the set of edges that connect the nodes in each partition.
    */
@@ -8165,19 +7616,15 @@ qo_discover_partitions (QO_ENV * env)
 	{
 	  QO_TERM *edge = QO_ENV_TERM (env, e);
 
-	  if (bitset_subset
-	      (&(QO_PARTITION_NODES (part)), &(QO_TERM_NODES (edge)))
+	  if (bitset_subset (&(QO_PARTITION_NODES (part)), &(QO_TERM_NODES (edge)))
 	      && !bitset_is_empty (&(QO_TERM_NODES (edge))))
 	    {
 	      bitset_add (&(QO_PARTITION_EDGES (part)), e);
 	    }
 	}
-      /* alloc size check
-       * 2: for signed max int. 2**30 is positive, 2**31 is negative
-       * LOG2_SIZEOF_POINTER: log2(sizeof(QO_INFO *))
-       */
-      if (bitset_cardinality (&(QO_PARTITION_NODES (part)))
-	  > _WORDSIZE - 2 - LOG2_SIZEOF_POINTER)
+      /* alloc size check 2: for signed max int. 2**30 is positive, 2**31 is negative LOG2_SIZEOF_POINTER:
+       * log2(sizeof(QO_INFO *)) */
+      if (bitset_cardinality (&(QO_PARTITION_NODES (part))) > _WORDSIZE - 2 - LOG2_SIZEOF_POINTER)
 	{
 	  if (buddy)
 	    {
@@ -8186,16 +7633,13 @@ qo_discover_partitions (QO_ENV * env)
 	  QO_ABORT (env);
 	}
 
-      /* set the starting point the join_info vector that
-       * correspond to each partition.
-       */
+      /* set the starting point the join_info vector that correspond to each partition. */
       if (p > 0)
 	{
 	  QO_PARTITION_M_OFFSET (part) = M_offset;
 	}
       join_info_size = QO_JOIN_INFO_SIZE (part);
-      if (INT_MAX - M_offset * sizeof (QO_INFO *)
-	  < join_info_size * sizeof (QO_INFO *))
+      if (INT_MAX - M_offset * sizeof (QO_INFO *) < join_info_size * sizeof (QO_INFO *))
 	{
 	  if (buddy)
 	    {
@@ -8205,11 +7649,9 @@ qo_discover_partitions (QO_ENV * env)
 	}
       M_offset += join_info_size;
 
-      /* set the relative id of nodes in the partition
-       */
+      /* set the relative id of nodes in the partition */
       rel_idx = 0;		/* init */
-      for (hi = bitset_iterate (&(QO_PARTITION_NODES (part)), &bi); hi != -1;
-	   hi = bitset_next_member (&bi))
+      for (hi = bitset_iterate (&(QO_PARTITION_NODES (part)), &bi); hi != -1; hi = bitset_next_member (&bi))
 	{
 	  QO_NODE_REL_IDX (QO_ENV_NODE (env, hi)) = rel_idx;
 	  rel_idx++;
@@ -8244,8 +7686,7 @@ qo_assign_eq_classes (QO_ENV * env)
       eq_map = (QO_EQCLASS **) malloc (sizeof (QO_EQCLASS *) * env->nsegs);
       if (eq_map == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (QO_EQCLASS *) * env->nsegs);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_EQCLASS *) * env->nsegs);
 	  return;
 	}
     }
@@ -8266,7 +7707,7 @@ qo_assign_eq_classes (QO_ENV * env)
 	}
     }
 
-  /*
+  /* 
    * Now examine each segment and see if it should be assigned to an
    * equivalence class.
    */
@@ -8282,24 +7723,22 @@ qo_assign_eq_classes (QO_ENV * env)
 	  QO_SEGMENT *root, *seg;
 	  seg = QO_ENV_SEG (env, i);
 
-	  /*
+	  /* 
 	   * Find the root of the tree in which this segment resides.
 	   */
-	  for (root = seg; QO_SEG_EQ_ROOT (root);
-	       root = QO_SEG_EQ_ROOT (root))
+	  for (root = seg; QO_SEG_EQ_ROOT (root); root = QO_SEG_EQ_ROOT (root))
 	    {
 	      ;
 	    }
-	  /*
+	  /* 
 	   * Assign a new EqClass to that root if one hasn't already
 	   * been assigned.
 	   */
 	  if (eq_map[QO_SEG_IDX (root)] == NULL)
 	    {
-	      qo_eqclass_add ((eq_map[QO_SEG_IDX (root)] =
-			       qo_eqclass_new (env)), root);
+	      qo_eqclass_add ((eq_map[QO_SEG_IDX (root)] = qo_eqclass_new (env)), root);
 	    }
-	  /*
+	  /* 
 	   * Now add the original segment to the same equivalence
 	   * class.
 	   */
@@ -8317,7 +7756,7 @@ qo_assign_eq_classes (QO_ENV * env)
       free_and_init (eq_map);
     }
 
-  /*
+  /* 
    * Now squirrel away the eqclass info for each term so that we don't
    * have to keep recomputing it when searching the plan space.  Note
    * that this not really meaningful unless all of the segments in the
@@ -8375,7 +7814,7 @@ qo_env_dump (QO_ENV * env, FILE * f)
 	  qo_seg_fprint (seg, f);
 
 	  PUT_FLAG (BITSET_MEMBER (env->final_segs, i), "f");
-	  /*
+	  /* 
 	   * Put extra flags here.
 	   */
 	  fputs (extra_info ? ")\n" : "\n", f);
@@ -8405,7 +7844,7 @@ qo_env_dump (QO_ENV * env, FILE * f)
 	}
     }
 
-  /*
+  /* 
    * Notice that we blow off printing the edge structures themselves,
    * and just print the term that gives rise to the edge.  Also notice
    * the way edges and terms are separated: we don't reset the counter
@@ -8530,8 +7969,7 @@ qo_node_add_sarg (QO_NODE * node, QO_TERM * sarg)
 
   bitset_add (&(QO_NODE_SARGS (node)), QO_TERM_IDX (sarg));
   QO_NODE_SELECTIVITY (node) *= QO_TERM_SELECTIVITY (sarg);
-  sel_limit =
-    (QO_NODE_NCARD (node) == 0) ? 0 : (1.0 / (double) QO_NODE_NCARD (node));
+  sel_limit = (QO_NODE_NCARD (node) == 0) ? 0 : (1.0 / (double) QO_NODE_NCARD (node));
   if (QO_NODE_SELECTIVITY (node) < sel_limit)
     {
       QO_NODE_SELECTIVITY (node) = sel_limit;
@@ -8579,21 +8017,16 @@ qo_node_dump (QO_NODE * node, FILE * f)
       for (i = 0; i < n; i++)
 	{
 	  name = QO_NODE_INFO (node)->info[i].name;
-	  /* check for class OID reference spec
-	   * for example: 'class x'
-	   *   SELECT class_meth(class x, x.i) FROM x, class x
-	   */
+	  /* check for class OID reference spec for example: 'class x' SELECT class_meth(class x, x.i) FROM x, class x */
 	  if (i == 0)
 	    {			/* the first entity */
-	      fprintf (f,
-		       (entity->info.spec.meta_class == PT_META_CLASS
-			? "class %s" : "%s"), (name ? name : "(anon)"));
+	      fprintf (f, (entity->info.spec.meta_class == PT_META_CLASS ? "class %s" : "%s"),
+		       (name ? name : "(anon)"));
 	    }
 	  else
 	    {
-	      fprintf (f,
-		       (entity->info.spec.meta_class == PT_META_CLASS
-			? ", class %s" : ", %s"), (name ? name : "(anon)"));
+	      fprintf (f, (entity->info.spec.meta_class == PT_META_CLASS ? ", class %s" : ", %s"),
+		       (name ? name : "(anon)"));
 	    }
 	}
       fprintf (f, "%s ", (n > 1 ? ")" : ""));	/* right paren */
@@ -8691,7 +8124,7 @@ qo_seg_free (QO_SEGMENT * seg)
 int
 qo_seg_width (QO_SEGMENT * seg)
 {
-  /*
+  /* 
    * This needs to consult the schema manager (or somebody) to
    * determine the type of the underlying attribute.  For set-valued
    * attributes, this is truly an estimate, since the size of the
@@ -8702,8 +8135,7 @@ qo_seg_width (QO_SEGMENT * seg)
   int size;
   DB_DOMAIN *domain;
 
-  domain = pt_node_to_db_domain (QO_ENV_PARSER (QO_SEG_ENV (seg)),
-				 QO_SEG_PT_NODE (seg), NULL);
+  domain = pt_node_to_db_domain (QO_ENV_PARSER (QO_SEG_ENV (seg)), QO_SEG_PT_NODE (seg), NULL);
   if (domain)
     {
       domain = tp_domain_cache (domain);
@@ -8787,8 +8219,7 @@ static void
 qo_eqclass_add (QO_EQCLASS * eqclass, QO_SEGMENT * seg)
 {
   bitset_add (&(QO_EQCLASS_SEGS (eqclass)), QO_SEG_IDX (seg));
-  bitset_add (&(QO_NODE_EQCLASSES (QO_SEG_HEAD (seg))),
-	      QO_EQCLASS_IDX (eqclass));
+  bitset_add (&(QO_NODE_EQCLASSES (QO_SEG_HEAD (seg))), QO_EQCLASS_IDX (eqclass));
   QO_SEG_EQCLASS (seg) = eqclass;
 }
 
@@ -8812,8 +8243,7 @@ qo_eqclass_dump (QO_EQCLASS * eqclass, FILE * f)
     }
   else
     {
-      for (member = bitset_iterate (&(QO_EQCLASS_SEGS (eqclass)), &bi);
-	   member != -1; member = bitset_next_member (&bi))
+      for (member = bitset_iterate (&(QO_EQCLASS_SEGS (eqclass)), &bi); member != -1; member = bitset_next_member (&bi))
 	{
 	  fputs (prefix, f);
 	  qo_seg_fprint (QO_ENV_SEG (env, member), f);
@@ -8885,8 +8315,7 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
     {
       goto abandon_stop_limit;
     }
-  if (query->info.query.all_distinct != PT_ALL
-      || query->info.query.q.select.group_by != NULL
+  if (query->info.query.all_distinct != PT_ALL || query->info.query.q.select.group_by != NULL
       || query->info.query.q.select.connect_by != NULL)
     {
       goto abandon_stop_limit;
@@ -8896,8 +8325,7 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       goto abandon_stop_limit;
     }
 
-  if (pt_get_query_limit_value (QO_ENV_PARSER (env), QO_ENV_PT_TREE (env),
-				&QO_ENV_LIMIT_VALUE (env)) != NO_ERROR)
+  if (pt_get_query_limit_value (QO_ENV_PARSER (env), QO_ENV_PT_TREE (env), &QO_ENV_LIMIT_VALUE (env)) != NO_ERROR)
     {
       /* unusable limit */
       goto abandon_stop_limit;
@@ -8909,8 +8337,7 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       goto abandon_stop_limit;
     }
 
-  if (bitset_cardinality (&QO_PARTITION_NODES (QO_ENV_PARTITION (env, 0)))
-      <= 1)
+  if (bitset_cardinality (&QO_PARTITION_NODES (QO_ENV_PARTITION (env, 0))) <= 1)
     {
       /* No need to apply this optimization on a single node */
       goto abandon_stop_limit;
@@ -8924,32 +8351,25 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
 
   env->use_sort_limit = QO_SL_INVALID;
 
-  /* Verify that we don't have terms qualified as after join. These terms will
-   * be evaluated after the SORT-LIMIT plan and might invalidate tuples the
-   * plan returned.
-   */
+  /* Verify that we don't have terms qualified as after join. These terms will be evaluated after the SORT-LIMIT plan
+   * and might invalidate tuples the plan returned. */
   for (i = 0; i < env->nterms; i++)
     {
-      if (QO_TERM_CLASS (&env->terms[i]) == QO_TC_AFTER_JOIN
-	  || QO_TERM_CLASS (&env->terms[i]) == QO_TC_OTHER)
+      if (QO_TERM_CLASS (&env->terms[i]) == QO_TC_AFTER_JOIN || QO_TERM_CLASS (&env->terms[i]) == QO_TC_OTHER)
 	{
 	  goto abandon_stop_limit;
 	}
     }
 
-  /* Start by assuming that evaluation of the limit clause depends on all
-   * nodes in the query. Since we only have one partition, we can get the
-   * bitset of nodes from there.
-   */
-  bitset_union (&env->sort_limit_nodes,
-		&QO_PARTITION_NODES (QO_ENV_PARTITION (env, 0)));
+  /* Start by assuming that evaluation of the limit clause depends on all nodes in the query. Since we only have one
+   * partition, we can get the bitset of nodes from there. */
+  bitset_union (&env->sort_limit_nodes, &QO_PARTITION_NODES (QO_ENV_PARTITION (env, 0)));
 
   select_list = pt_get_select_list (QO_ENV_PARSER (env), query);
   assert_release (select_list != NULL);
 
-  /* Only consider ORDER BY expression which is evaluable during a scan.
-   * This means any expression except analytic and aggregate functions.
-   */
+  /* Only consider ORDER BY expression which is evaluable during a scan. This means any expression except analytic and
+   * aggregate functions. */
   for (sort_col = orderby; sort_col != NULL; sort_col = sort_col->next)
     {
       if (sort_col->node_type != PT_SORT_SPEC)
@@ -8962,10 +8382,8 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
 
       pos_spec = sort_col->info.sort_spec.pos_descr.pos_no;
 
-      /* sort_col is a position specifier in select list. Have to walk the
-       * select list to find the actual node */
-      for (i = 1, col = select_list; col != NULL && i != pos_spec;
-	   col = col->next, i++);
+      /* sort_col is a position specifier in select list. Have to walk the select list to find the actual node */
+      for (i = 1, col = select_list; col != NULL && i != pos_spec; col = col->next, i++);
 
       if (col == NULL)
 	{
@@ -8975,12 +8393,9 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
 
       save_next = col->next;
       col->next = NULL;
-      if (pt_has_analytic (QO_ENV_PARSER (env), col)
-	  || pt_has_aggregate (QO_ENV_PARSER (env), col))
+      if (pt_has_analytic (QO_ENV_PARSER (env), col) || pt_has_aggregate (QO_ENV_PARSER (env), col))
 	{
-	  /* abandon search because these expressions cannot be evaluated
-	   * during SORT_LIMIT evaluation
-	   */
+	  /* abandon search because these expressions cannot be evaluated during SORT_LIMIT evaluation */
 	  col->next = save_next;
 	  goto abandon_stop_limit;
 	}
@@ -8999,15 +8414,13 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       col->next = save_next;
     }
 
-  for (i = bitset_iterate (&order_nodes, &bi); i != -1;
-       i = bitset_next_member (&bi))
+  for (i = bitset_iterate (&order_nodes, &bi); i != -1; i = bitset_next_member (&bi))
     {
       bitset_init (&dep_nodes, env);
       node = QO_ENV_NODE (env, i);
 
-      /* For each orderby node, gather nodes which are SORT_LIMIT independent
-       * on this node and remove them from sort_limit_nodes.
-       */
+      /* For each orderby node, gather nodes which are SORT_LIMIT independent on this node and remove them from
+       * sort_limit_nodes. */
       qo_discover_sort_limit_join_nodes (env, node, &order_nodes, &dep_nodes);
       bitset_difference (&env->sort_limit_nodes, &dep_nodes);
 
@@ -9016,22 +8429,18 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
 
   if (bitset_cardinality (&env->sort_limit_nodes) == env->Nnodes)
     {
-      /* There is no subset of nodes on which we can apply SORT_LIMIT so
-       * abandon this optimization
-       */
+      /* There is no subset of nodes on which we can apply SORT_LIMIT so abandon this optimization */
       goto abandon_stop_limit;
     }
 
   bitset_delset (&order_nodes);
 
-  /* In order to create a SORT-LIMIT plan, the query must have a valid limit.
-   * All other conditions for creating the plan have been met. */
+  /* In order to create a SORT-LIMIT plan, the query must have a valid limit. All other conditions for creating the
+   * plan have been met. */
   if (DB_IS_NULL (&QO_ENV_LIMIT_VALUE (env)))
     {
-      /* Cannot make a decision at this point. Go ahead with query compilation
-       * as if this optimization does not apply. The query will be recompiled
-       * once a valid limit is supplied.
-       */
+      /* Cannot make a decision at this point. Go ahead with query compilation as if this optimization does not apply.
+       * The query will be recompiled once a valid limit is supplied. */
       goto sort_limit_possible;
     }
 
@@ -9044,17 +8453,14 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
 
   if ((DB_BIGINT) limit_max_count < DB_GET_BIGINT (&QO_ENV_LIMIT_VALUE (env)))
     {
-      /* Limit too large to apply this optimization. Mark it as candidate but
-       * do not generate SORT-LIMIT plans at this time.
-       */
+      /* Limit too large to apply this optimization. Mark it as candidate but do not generate SORT-LIMIT plans at this
+       * time. */
       goto sort_limit_possible;
     }
 
   if (bitset_cardinality (&env->sort_limit_nodes) == 1)
     {
-      /* Mark this node as a sort stop candidate. We will generate a
-       * SORT-LIMIT plan over this node.
-       */
+      /* Mark this node as a sort stop candidate. We will generate a SORT-LIMIT plan over this node. */
       int n = bitset_first_member (&order_nodes);
       node = QO_ENV_NODE (env, n);
       QO_NODE_SORT_LIMIT_CANDIDATE (node) = true;
@@ -9112,8 +8518,7 @@ qo_eqclass_wrt (QO_EQCLASS * eqclass, BITSET * nodeset)
   BITSET_ITERATOR si;
   QO_SEGMENT *result = NULL;
 
-  for (member = bitset_iterate (&(QO_EQCLASS_SEGS (eqclass)), &si);
-       member != -1; member = bitset_next_member (&si))
+  for (member = bitset_iterate (&(QO_EQCLASS_SEGS (eqclass)), &si); member != -1; member = bitset_next_member (&si))
     {
       QO_SEGMENT *seg = QO_ENV_SEG (QO_EQCLASS_ENV (eqclass), member);
       if (BITSET_MEMBER (*nodeset, QO_NODE_IDX (QO_SEG_HEAD (seg))))
@@ -9143,13 +8548,12 @@ qo_eqclass_fprint_wrt (QO_EQCLASS * eqclass, BITSET * nodeset, FILE * f)
     }
   else if (bitset_is_empty (&(QO_EQCLASS_SEGS (eqclass))))
     {
-      /*
+      /* 
        * This is a phony eqclass created for a complex merge join.
        * Just fabricate some text that will let us know where it came
        * from...
        */
-      fprintf (f, "phony (term[%d])",
-	       QO_TERM_IDX (QO_EQCLASS_TERM (eqclass)));
+      fprintf (f, "phony (term[%d])", QO_TERM_IDX (QO_EQCLASS_TERM (eqclass)));
     }
   else
     {
@@ -9165,13 +8569,12 @@ qo_eqclass_fprint_wrt (QO_EQCLASS * eqclass, BITSET * nodeset, FILE * f)
 static void
 qo_term_free (QO_TERM * term)
 {
-  /*
+  /* 
    * Free the expr alloced by this term
    */
   if (QO_TERM_IS_FLAGED (term, QO_TERM_COPY_PT_EXPR))
     {
-      parser_free_tree (QO_ENV_PARSER (QO_TERM_ENV (term)),
-			QO_TERM_PT_EXPR (term));
+      parser_free_tree (QO_ENV_PARSER (QO_TERM_ENV (term)), QO_TERM_PT_EXPR (term));
     }
   bitset_delset (&(QO_TERM_NODES (term)));
   bitset_delset (&(QO_TERM_SEGS (term)));
@@ -9244,8 +8647,7 @@ qo_termset_fprint (QO_ENV * env, BITSET * terms, FILE * f)
   BITSET_ITERATOR si;
   const char *prefix = "";
 
-  for (tx = bitset_iterate (terms, &si);
-       tx != -1; tx = bitset_next_member (&si))
+  for (tx = bitset_iterate (terms, &si); tx != -1; tx = bitset_next_member (&si))
     {
       fputs (prefix, f);
       qo_term_fprint (QO_ENV_TERM (env, tx), f);
@@ -9304,9 +8706,7 @@ qo_term_dump (QO_TERM * term, FILE * f)
     case QO_TC_DUMMY_JOIN:
       if (conj)
 	{			/* may be transitive dummy join term */
-	  fprintf (f, "%s",
-		   parser_print_tree (QO_ENV_PARSER (QO_TERM_ENV (term)),
-				      conj));
+	  fprintf (f, "%s", parser_print_tree (QO_ENV_PARSER (QO_TERM_ENV (term)), conj));
 	}
       else
 	{
@@ -9350,8 +8750,7 @@ qo_term_dump (QO_TERM * term, FILE * f)
       break;
     case QO_TC_OTHER:
       {
-	if (conj
-	    && conj->node_type == PT_VALUE && conj->info.value.location == 0)
+	if (conj && conj->node_type == PT_VALUE && conj->info.value.location == 0)
 	  {
 	    /* is an always-false or always-true WHERE condition */
 	    fprintf (f, " (dummy sarg term)");
@@ -9454,8 +8853,7 @@ qo_subquery_dump (QO_ENV * env, QO_SUBQUERY * subq, FILE * f)
 
   separator = NULL;
   fputs (" {", f);
-  for (i = bitset_iterate (&(subq->segs), &bi);
-       i != -1; i = bitset_next_member (&bi))
+  for (i = bitset_iterate (&(subq->segs), &bi); i != -1; i = bitset_next_member (&bi))
     {
       if (separator)
 	{
@@ -9468,8 +8866,7 @@ qo_subquery_dump (QO_ENV * env, QO_SUBQUERY * subq, FILE * f)
 
   separator = "";
   fputs (" {", f);
-  for (i = bitset_iterate (&(subq->nodes), &bi);
-       i != -1; i = bitset_next_member (&bi))
+  for (i = bitset_iterate (&(subq->nodes), &bi); i != -1; i = bitset_next_member (&bi))
     {
       fprintf (f, "%snode[%d]", separator, i);
       separator = " ";
@@ -9477,8 +8874,7 @@ qo_subquery_dump (QO_ENV * env, QO_SUBQUERY * subq, FILE * f)
   fputs ("}", f);
 
   fputs (" (from term(s)", f);
-  for (i = bitset_iterate (&(subq->terms), &bi);
-       i != -1; i = bitset_next_member (&bi))
+  for (i = bitset_iterate (&(subq->terms), &bi); i != -1; i = bitset_next_member (&bi))
     {
       fprintf (f, " %d", i);
     }
@@ -9529,7 +8925,7 @@ qo_partition_free (QO_PARTITION * part)
   bitset_delset (&(QO_PARTITION_DEPENDENCIES (part)));
 
 #if 0
-  /*
+  /* 
    * Do *not* free the plan here; it already had its ref count bumped
    * down during combine_partitions(), and it will be (has been)
    * collected by the call to qo_plan_discard() that freed the
@@ -9591,8 +8987,7 @@ qo_seg_nodes (QO_ENV * env, BITSET * segset, BITSET * result)
   int i;
 
   BITSET_CLEAR (*result);
-  for (i = bitset_iterate (segset, &si); i != -1;
-       i = bitset_next_member (&si))
+  for (i = bitset_iterate (segset, &si); i != -1; i = bitset_next_member (&si))
     {
       bitset_add (result, QO_NODE_IDX (QO_SEG_HEAD (QO_ENV_SEG (env, i))));
     }
@@ -9610,8 +9005,7 @@ qo_is_prefix_index (QO_INDEX_ENTRY * ent)
     {
       SM_CLASS_CONSTRAINT *cons;
 
-      cons = classobj_find_class_index (ent->class_->smclass,
-					ent->constraints->name);
+      cons = classobj_find_class_index (ent->class_->smclass, ent->constraints->name);
       if (cons)
 	{
 	  if (cons->attrs_prefix_length && cons->attrs_prefix_length[0] != -1)
@@ -9668,9 +9062,7 @@ qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt)
     {
       SM_CLASS_CONSTRAINT *cons;
       SM_ATTRIBUTE **attr;
-      cons =
-	classobj_find_class_index (ent->class_->smclass,
-				   ent->constraints->name);
+      cons = classobj_find_class_index (ent->class_->smclass, ent->constraints->name);
       if (cons == NULL || cons->attributes == NULL)
 	{
 	  return;
@@ -9678,11 +9070,9 @@ qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt)
 
       for (attr = cons->attributes; *attr != NULL; attr++)
 	{
-	  if ((*attr)->domain != NULL
-	      && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE ((*attr)->domain)))
+	  if ((*attr)->domain != NULL && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE ((*attr)->domain)))
 	    {
-	      LANG_COLLATION *lang_coll =
-		lang_get_collation (TP_DOMAIN_COLLATION ((*attr)->domain));
+	      LANG_COLLATION *lang_coll = lang_get_collation (TP_DOMAIN_COLLATION ((*attr)->domain));
 
 	      assert (lang_coll != NULL);
 
@@ -9716,9 +9106,7 @@ qo_check_type_index_covering (QO_INDEX_ENTRY * ent)
     {
       SM_CLASS_CONSTRAINT *cons;
       SM_ATTRIBUTE **attr;
-      cons =
-	classobj_find_class_index (ent->class_->smclass,
-				   ent->constraints->name);
+      cons = classobj_find_class_index (ent->class_->smclass, ent->constraints->name);
       if (cons == NULL || cons->attributes == NULL)
 	{
 	  return true;
@@ -9726,9 +9114,7 @@ qo_check_type_index_covering (QO_INDEX_ENTRY * ent)
 
       for (attr = cons->attributes; *attr != NULL; attr++)
 	{
-	  if ((*attr)->domain != NULL
-	      &&
-	      TP_TYPE_NOT_SUPPORT_COVERING (TP_DOMAIN_TYPE ((*attr)->domain)))
+	  if ((*attr)->domain != NULL && TP_TYPE_NOT_SUPPORT_COVERING (TP_DOMAIN_TYPE ((*attr)->domain)))
 	    {
 	      return false;
 	    }
@@ -9758,8 +9144,7 @@ qo_check_type_index_covering (QO_INDEX_ENTRY * ent)
  *     relationship (see qo_is_pk_fk_full_join)
  */
 static void
-qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * node,
-				   BITSET * order_nodes, BITSET * dep_nodes)
+qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * node, BITSET * order_nodes, BITSET * dep_nodes)
 {
   BITSET join_nodes;
   BITSET_ITERATOR bi;
@@ -9775,15 +9160,11 @@ qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * node,
       if (BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node)))
 	{
 	  if (QO_TERM_CLASS (term) == QO_TC_JOIN
-	      && ((QO_TERM_JOIN_TYPE (term) == JOIN_LEFT
-		   && QO_TERM_HEAD (term) == node)
-		  || (QO_TERM_JOIN_TYPE (term) == JOIN_RIGHT
-		      && QO_TERM_TAIL (term) == node)))
+	      && ((QO_TERM_JOIN_TYPE (term) == JOIN_LEFT && QO_TERM_HEAD (term) == node)
+		  || (QO_TERM_JOIN_TYPE (term) == JOIN_RIGHT && QO_TERM_TAIL (term) == node)))
 	    {
-	      /* Other nodes in this term are outer joined with our node. We
-	       * can safely add them to dep_nodes if we're not ordering on
-	       * them
-	       */
+	      /* Other nodes in this term are outer joined with our node. We can safely add them to dep_nodes if we're
+	       * not ordering on them */
 	      bitset_union (dep_nodes, &QO_TERM_NODES (term));
 
 	      /* remove nodes on which we're ordering */
@@ -9805,8 +9186,7 @@ qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * node,
   bitset_difference (&join_nodes, order_nodes);
 
   /* process inner joins */
-  for (i = bitset_iterate (&join_nodes, &bi); i != -1;
-       i = bitset_next_member (&bi))
+  for (i = bitset_iterate (&join_nodes, &bi); i != -1; i = bitset_next_member (&bi))
     {
       if (qo_is_pk_fk_full_join (env, node, QO_ENV_NODE (env, i)))
 	{
@@ -9863,9 +9243,7 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 
   if (pk_idx == NULL)
     {
-      /* node either does not have a primary key or it is not referenced in
-       * any way in this statement
-       */
+      /* node either does not have a primary key or it is not referenced in any way in this statement */
       return false;
     }
 
@@ -9885,8 +9263,7 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 	  fk_idx = NULL;
 	  continue;
 	}
-      if (BTID_IS_EQUAL (&fk_idx->constraints->fk_info->ref_class_pk_btid,
-			 &pk_idx->constraints->index_btid))
+      if (BTID_IS_EQUAL (&fk_idx->constraints->fk_info->ref_class_pk_btid, &pk_idx->constraints->index_btid))
 	{
 	  /* These are the droids we're looking for */
 	  break;
@@ -9924,16 +9301,13 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 
   if (pk_idx->nsegs > fk_idx->nsegs)
     {
-      /* The number of segments from primary key should be less than those
-       * referenced in the foreign key. We can have more segments referenced
-       * from the foreign key because we don't care about other terms from
-       * the fk node */
+      /* The number of segments from primary key should be less than those referenced in the foreign key. We can have
+       * more segments referenced from the foreign key because we don't care about other terms from the fk node */
       return false;
     }
 
-  /* Verify that all terms from pk_node reference terms from fk_node.
-   * If we find a term which only references pk_node, we can abandon the
-   * search. */
+  /* Verify that all terms from pk_node reference terms from fk_node. If we find a term which only references pk_node,
+   * we can abandon the search. */
   for (i = 0; i < env->nterms; i++)
     {
       term = QO_ENV_TERM (env, i);
@@ -9951,9 +9325,7 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 
       if (!BITSET_MEMBER (pk_idx->terms, QO_TERM_IDX (term)))
 	{
-	  /* Term does not use pk_idx. This means that there is a predicate
-	   * on pk_node outside of the primary key
-	   */
+	  /* Term does not use pk_idx. This means that there is a predicate on pk_node outside of the primary key */
 	  return false;
 	}
 
@@ -9965,23 +9337,19 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 
       if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (fk_node)))
 	{
-	  /* found a term belonging to pk_node which does not reference the
-	   * fk_node. This means pk_node is not full joined with fk_node
-	   */
+	  /* found a term belonging to pk_node which does not reference the fk_node. This means pk_node is not full
+	   * joined with fk_node */
 	  return false;
 	}
 
-      if (QO_TERM_CLASS (term) != QO_TC_JOIN
-	  || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+      if (QO_TERM_CLASS (term) != QO_TC_JOIN || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 	{
 	  /* Not a join term, bail out */
 	  return false;
 	}
 
-      /* Iterate through segments and make sure we're joining same columns.
-       * E.g.: For PK(Pa, Pb) and FK (Fa, Fb), make sure the terms are not
-       * Pa = Fb or Pb = Fa
-       */
+      /* Iterate through segments and make sure we're joining same columns. E.g.: For PK(Pa, Pb) and FK (Fa, Fb), make
+       * sure the terms are not Pa = Fb or Pb = Fa */
       if (term->can_use_index != 2)
 	{
 	  return false;
@@ -9997,9 +9365,7 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 	  fk_seg = QO_TERM_INDEX_SEG (term, 1);
 	}
 
-      /* make sure pk_seg and fk_seg reference the same position in the
-       * two indexes
-       */
+      /* make sure pk_seg and fk_seg reference the same position in the two indexes */
       for (j = 0; j < pk_idx->nsegs; j++)
 	{
 	  if (pk_idx->seg_idxs[j] == QO_SEG_IDX (pk_seg))
@@ -10027,12 +9393,8 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 static bool
 qo_is_non_mvcc_class_with_index (QO_CLASS_INFO_ENTRY * class_entry_p)
 {
-  /* Index scan is currently optimized for MVCC and doesn't work properly for
-   * non-MVCC classes. Disable index scan for MVCC-disabled classes that
-   * have indexes. Index is still used to find unique object by key.
-   */
-  return oid_check_cached_class_oid (OID_CACHE_SERIAL_CLASS_ID,
-				     &class_entry_p->oid)
-    || oid_check_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID,
-				   &class_entry_p->oid);
+  /* Index scan is currently optimized for MVCC and doesn't work properly for non-MVCC classes. Disable index scan for
+   * MVCC-disabled classes that have indexes. Index is still used to find unique object by key. */
+  return oid_check_cached_class_oid (OID_CACHE_SERIAL_CLASS_ID, &class_entry_p->oid)
+    || oid_check_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID, &class_entry_p->oid);
 }

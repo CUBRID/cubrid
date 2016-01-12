@@ -54,16 +54,14 @@ static void pp_print_cursor (void *cp, void *fp);
  * host_refs(in):
  */
 CURSOR *
-pp_new_cursor (char *name, char *static_stmt, int length,
-	       STMT * dynamic_stmt, HOST_LOD * host_refs)
+pp_new_cursor (char *name, char *static_stmt, int length, STMT * dynamic_stmt, HOST_LOD * host_refs)
 {
   CURSOR *cursor;
 
   cursor = pp_lookup_cursor (name);
   if (cursor && cursor->level >= pp_nesting_level)
     {
-      esql_yyverror (pp_get_msg (EX_CURSOR_SET, MSG_REDEFINITION),
-		     cursor->name);
+      esql_yyverror (pp_get_msg (EX_CURSOR_SET, MSG_REDEFINITION), cursor->name);
       return NULL;
     }
 
@@ -74,8 +72,7 @@ pp_new_cursor (char *name, char *static_stmt, int length,
   cursor->level = pp_nesting_level;
   cursor->next = NULL;
   cursor->host_refs = host_refs;
-  cursor->static_stmt =
-    (unsigned char *) (static_stmt ? strdup (static_stmt) : NULL);
+  cursor->static_stmt = (unsigned char *) (static_stmt ? strdup (static_stmt) : NULL);
   cursor->stmtLength = length;
   cursor->dynamic_stmt = dynamic_stmt;
 
@@ -103,7 +100,7 @@ pp_free_cursor (CURSOR * cursor)
     {
       pp_free_host_lod (cursor->host_refs);
     }
-  /*
+  /* 
    * Don't free any dynamic statement associated with this cursor;
    * those statements have lifetimes that differ from the lifetimes of
    * cursors.
@@ -135,10 +132,8 @@ pp_lookup_cursor (char *name)
 void
 pp_cursor_init (void)
 {
-  pp_cursor_table =
-    es_ht_make_table (37, pp_generic_case_hash, pp_generic_case_cmp);
-  pp_stmt_table =
-    es_ht_make_table (37, pp_generic_case_hash, pp_generic_case_cmp);
+  pp_cursor_table = es_ht_make_table (37, pp_generic_case_hash, pp_generic_case_cmp);
+  pp_stmt_table = es_ht_make_table (37, pp_generic_case_hash, pp_generic_case_cmp);
 }
 
 /*
@@ -150,8 +145,7 @@ pp_cursor_finish (void)
 {
   if (pp_cursor_table)
     {
-      pp_cursor_table->free_table (pp_cursor_table,
-				   (HT_FREE_FN) pp_free_cursor);
+      pp_cursor_table->free_table (pp_cursor_table, (HT_FREE_FN) pp_free_cursor);
     }
   if (pp_stmt_table)
     {
@@ -174,8 +168,7 @@ pp_print_cursor (void *cp, void *fp)
   CURSOR *cursor = (CURSOR *) cp;
   FILE *stream = (FILE *) fp;
 
-  fprintf (stream, " * %s (cid %d, level %d):\n",
-	   cursor->name, cursor->cid, cursor->level);
+  fprintf (stream, " * %s (cid %d, level %d):\n", cursor->name, cursor->cid, cursor->level);
 
   if (cursor->static_stmt)
     {
@@ -192,8 +185,7 @@ pp_print_cursor (void *cp, void *fp)
 	}
     }
   else
-    fprintf (stream, pp_get_msg (EX_CURSOR_SET, MSG_STMT_TITLE),
-	     cursor->dynamic_stmt->name);
+    fprintf (stream, pp_get_msg (EX_CURSOR_SET, MSG_STMT_TITLE), cursor->dynamic_stmt->name);
 
   fputs (" *\n", stream);
 }

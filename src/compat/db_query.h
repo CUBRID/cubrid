@@ -73,7 +73,7 @@ typedef struct db_select_result
 typedef struct db_call_result
 {
   CURSOR_POSITION crs_pos;	/* Cursor position relative to value tuple */
-  DB_VALUE *val_ptr;		/* single value  */
+  DB_VALUE *val_ptr;		/* single value */
 } DB_CALL_RESULT;		/* call_method result structure */
 
 typedef struct db_objfetch_result
@@ -92,11 +92,11 @@ typedef struct db_get_result
 
 typedef struct db_query_tplpos
 {
-  CURSOR_POSITION crs_pos;	/* Cursor position                       */
+  CURSOR_POSITION crs_pos;	/* Cursor position */
   VPID vpid;			/* Real page identifier containing tuple */
-  int tpl_no;			/* Tuple number inside the page          */
-  int tpl_off;			/* Tuple offset inside the page          */
-} DB_QUERY_TPLPOS;		/* Tuple position structure              */
+  int tpl_no;			/* Tuple number inside the page */
+  int tpl_off;			/* Tuple offset inside the page */
+} DB_QUERY_TPLPOS;		/* Tuple position structure */
 
 typedef enum
 { T_SELECT = 1, T_CALL, T_OBJFETCH, T_GET, T_CACHE_HIT } DB_RESULT_TYPE;
@@ -149,39 +149,26 @@ struct db_prepare_info
 
 extern SM_DOMAIN *db_query_format_src_domain (DB_QUERY_TYPE * query_type);
 
-extern int db_execute_with_values (const char *CSQL_query,
-				   DB_QUERY_RESULT ** result,
-				   DB_QUERY_ERROR * query_error,
+extern int db_execute_with_values (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error,
 				   int arg_count, DB_VALUE * vals);
 
-extern int db_query_seek_tuple (DB_QUERY_RESULT * result,
-				int offset, int seek_mode);
+extern int db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode);
 
 extern DB_QUERY_TPLPOS *db_query_get_tplpos (DB_QUERY_RESULT * result);
 
-extern int db_query_set_tplpos (DB_QUERY_RESULT * result,
-				DB_QUERY_TPLPOS * tplpos);
+extern int db_query_set_tplpos (DB_QUERY_RESULT * result, DB_QUERY_TPLPOS * tplpos);
 
 extern void db_query_free_tplpos (DB_QUERY_TPLPOS * tplpos);
 
-extern int db_query_get_tuple_object (DB_QUERY_RESULT * result,
-				      int index, DB_OBJECT ** object);
+extern int db_query_get_tuple_object (DB_QUERY_RESULT * result, int index, DB_OBJECT ** object);
 
-extern int db_query_get_tuple_object_by_name (DB_QUERY_RESULT * result,
-					      char *column_name,
-					      DB_OBJECT ** object);
+extern int db_query_get_tuple_object_by_name (DB_QUERY_RESULT * result, char *column_name, DB_OBJECT ** object);
 
-extern int db_query_get_value_to_space (DB_QUERY_RESULT * result,
-					int index,
-					unsigned char *ptr,
-					int maxlength,
-					bool * truncated,
-					DB_TYPE user_type, bool * null_flag);
+extern int db_query_get_value_to_space (DB_QUERY_RESULT * result, int index, unsigned char *ptr, int maxlength,
+					bool * truncated, DB_TYPE user_type, bool * null_flag);
 
-extern int
-db_query_get_value_to_pointer (DB_QUERY_RESULT * result, int index,
-			       unsigned char **ptr, DB_TYPE user_type,
-			       bool * null_flag);
+extern int db_query_get_value_to_pointer (DB_QUERY_RESULT * result, int index, unsigned char **ptr, DB_TYPE user_type,
+					  bool * null_flag);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern DB_TYPE db_query_get_value_type (DB_QUERY_RESULT * result, int index);
@@ -192,11 +179,9 @@ extern void db_sqlx_debug_print_result (DB_QUERY_RESULT * result);
 #endif
 extern bool db_is_client_cache_reusable (DB_QUERY_RESULT * result);
 
-extern int db_query_get_cache_time (DB_QUERY_RESULT * result,
-				    CACHE_TIME * cache_time);
+extern int db_query_get_cache_time (DB_QUERY_RESULT * result, CACHE_TIME * cache_time);
 
-extern DB_QUERY_TYPE *db_cp_query_type (DB_QUERY_TYPE * query_type,
-					int copy_only_user);
+extern DB_QUERY_TYPE *db_cp_query_type (DB_QUERY_TYPE * query_type, int copy_only_user);
 
 extern DB_QUERY_TYPE *db_alloc_query_format (int cnt);
 extern void db_free_query_format (DB_QUERY_TYPE * q);
@@ -208,8 +193,7 @@ extern void db_free_domain_list (SM_DOMAIN ** domain_list, int cnt);
 #endif
 
 extern void db_free_query_result (DB_QUERY_RESULT * r);
-extern DB_QUERY_RESULT *db_alloc_query_result (DB_RESULT_TYPE r_type,
-					       int col_cnt);
+extern DB_QUERY_RESULT *db_alloc_query_result (DB_RESULT_TYPE r_type, int col_cnt);
 extern void db_init_query_result (DB_QUERY_RESULT * r, DB_RESULT_TYPE r_type);
 #if defined (CUBRID_DEBUG)
 extern void db_dump_query_result (DB_QUERY_RESULT * r);
@@ -217,30 +201,20 @@ extern void db_dump_query_result (DB_QUERY_RESULT * r);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern char **db_cp_colname_list (char **colname_list, int cnt);
 extern SM_DOMAIN **db_cp_domain_list (SM_DOMAIN ** domain_list, int cnt);
-extern DB_QUERY_TYPE *db_get_query_type (DB_TYPE * type_list, int *size_list,
-					 char **colname_list,
-					 char **attrname_list,
-					 SM_DOMAIN ** domain_list,
-					 SM_DOMAIN ** src_domain_list,
-					 int cnt, bool oid_included);
-extern int db_query_execute_immediate (const char *CSQL_query,
-				       DB_QUERY_RESULT ** result,
-				       DB_QUERY_ERROR * query_error);
-extern DB_QUERY_RESULT *db_get_objfetch_query_result (DB_VALUE * val_list,
-						      int val_cnt,
-						      int *size_list,
-						      char **colname_list,
-						      char **attrname_list);
+extern DB_QUERY_TYPE *db_get_query_type (DB_TYPE * type_list, int *size_list, char **colname_list, char **attrname_list,
+					 SM_DOMAIN ** domain_list, SM_DOMAIN ** src_domain_list, int cnt,
+					 bool oid_included);
+extern int db_query_execute_immediate (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error);
+extern DB_QUERY_RESULT *db_get_objfetch_query_result (DB_VALUE * val_list, int val_cnt, int *size_list,
+						      char **colname_list, char **attrname_list);
 extern int db_query_stmt_id (DB_QUERY_RESULT * result);
 #endif
 
 extern int db_query_end (DB_QUERY_RESULT * result);
 extern int db_query_sync_end (DB_QUERY_RESULT * result);
-extern int db_query_end_internal (DB_QUERY_RESULT * result,
-				  bool notify_server);
+extern int db_query_end_internal (DB_QUERY_RESULT * result, bool notify_server);
 
-extern void db_clear_client_query_result (int notify_server,
-					  bool end_holdable);
+extern void db_clear_client_query_result (int notify_server, bool end_holdable);
 extern void db_init_prepare_info (DB_PREPARE_INFO * info);
 extern int db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer);
 extern int db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer);

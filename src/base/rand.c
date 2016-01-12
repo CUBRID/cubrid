@@ -46,17 +46,15 @@ _dorand48 (unsigned short xseed[3])
   unsigned long accu;
   unsigned short temp[2];
 
-  accu = (unsigned long) _rand48_mult[0] * (unsigned long) xseed[0] +
-    (unsigned long) _rand48_add;
+  accu = (unsigned long) _rand48_mult[0] * (unsigned long) xseed[0] + (unsigned long) _rand48_add;
   temp[0] = (unsigned short) accu;	/* lower 16 bits */
   accu >>= sizeof (unsigned short) * 8;
-  accu += (unsigned long) _rand48_mult[0] * (unsigned long) xseed[1] +
+  accu +=
+    (unsigned long) _rand48_mult[0] * (unsigned long) xseed[1] +
     (unsigned long) _rand48_mult[1] * (unsigned long) xseed[0];
   temp[1] = (unsigned short) accu;	/* middle 16 bits */
   accu >>= sizeof (unsigned short) * 8;
-  accu +=
-    _rand48_mult[0] * xseed[2] + _rand48_mult[1] * xseed[1] +
-    _rand48_mult[2] * xseed[0];
+  accu += _rand48_mult[0] * xseed[2] + _rand48_mult[1] * xseed[1] + _rand48_mult[2] * xseed[0];
   xseed[0] = temp[0];
   xseed[1] = temp[1];
   xseed[2] = (unsigned short) accu;
@@ -84,9 +82,8 @@ srand48 (long seed)
 double
 drand48 (void)
 {
-  /* lrand48 returns a number between 0 and 2^31-1. So, we divide it by 2^31 
-   * to generate floating-point value uniformly distributed between [0.0, 1.0).
-   */
+  /* lrand48 returns a number between 0 and 2^31-1. So, we divide it by 2^31 to generate floating-point value
+   * uniformly distributed between [0.0, 1.0). */
   return (double) ((double) lrand48 () / (double) LRAND48_MAX);
 }
 
@@ -105,9 +102,7 @@ lrand48_r (struct drand48_data *buffer, long int *result)
   _dorand48 (buffer->_rand48_seed);
   if (result)
     {
-      *result =
-	((long) buffer->_rand48_seed[2] << 15) +
-	((long) buffer->_rand48_seed[1] >> 1);
+      *result = ((long) buffer->_rand48_seed[2] << 15) + ((long) buffer->_rand48_seed[1] >> 1);
     }
   return 0;
 }

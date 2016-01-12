@@ -108,62 +108,43 @@ char *obj_Method_error_msg;
 static int forge_flag_pat = 0;
 static int obj_Method_call_level = 0;
 
-static MOP obj_find_object_by_cons_and_key (MOP classop,
-					    SM_CLASS_CONSTRAINT * cons,
-					    DB_VALUE * key,
+static MOP obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons, DB_VALUE * key,
 					    AU_FETCHMODE fetchmode);
 
-static int find_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op,
-			   const char *name, int for_write);
-static int find_shared_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp,
-				  MOP op, const char *name, int for_write);
+static int find_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op, const char *name, int for_write);
+static int find_shared_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op, const char *name, int for_write);
 static int assign_null_value (MOP op, SM_ATTRIBUTE * att, char *mem);
-static int assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
-			     SETREF * setref);
+static int assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref);
 
-static int obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
-			DB_VALUE * value, SM_VALIDATION * valid);
+static int obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value, SM_VALIDATION * valid);
 
-static int get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem,
-			     DB_VALUE * source, DB_VALUE * dest);
-static int get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
-			  DB_VALUE * source, DB_VALUE * dest);
+static int get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_VALUE * dest);
+static int get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_VALUE * dest);
 
 
-static int obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_,
-			 SM_ATTRIBUTE * att, DB_VALUE * value);
-static int obj_set_temp (DB_OBJECT * obj, SM_ATTRIBUTE * att,
-			 DB_VALUE * value);
+static int obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value);
+static int obj_set_temp (DB_OBJECT * obj, SM_ATTRIBUTE * att, DB_VALUE * value);
 
 static void argstate_from_list (ARGSTATE * state, DB_VALUE_LIST * arglist);
 static void argstate_from_array (ARGSTATE * state, DB_VALUE ** argarray);
 static void argstate_from_va (ARGSTATE * state, va_list args, int nargs);
 static void cleanup_argstate (ARGSTATE * state);
-static int call_method (METHOD_FUNCTION method, MOP obj, DB_VALUE * returnval,
-			int nargs, DB_VALUE ** values,
+static int call_method (METHOD_FUNCTION method, MOP obj, DB_VALUE * returnval, int nargs, DB_VALUE ** values,
 			DB_VALUE_LIST * overow);
 static int check_args (SM_METHOD * method, ARGSTATE * state);
-static int obj_send_method_va (MOP obj, SM_CLASS * class_, SM_METHOD * method,
-			       DB_VALUE * returnval, va_list args);
+static int obj_send_method_va (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE * returnval, va_list args);
 
-static int obj_send_method_list (MOP obj, SM_CLASS * class_,
-				 SM_METHOD * method, DB_VALUE * returnval,
+static int obj_send_method_list (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE * returnval,
 				 DB_VALUE_LIST * arglist);
 
-static int obj_send_method_array (MOP obj, SM_CLASS * class_,
-				  SM_METHOD * method, DB_VALUE * returnval,
+static int obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE * returnval,
 				  DB_VALUE ** argarray);
 
-static MOP find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value,
-			AU_FETCHMODE fetchmode);
+static MOP find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fetchmode);
 static int flush_temporary_OID (MOP classop, DB_VALUE * key);
 
-static DB_VALUE *obj_make_key_value (DB_VALUE * key,
-				     const DB_VALUE * values[], int size);
-static MOP
-obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key,
-				  AU_FETCHMODE fetchmode,
-				  bool is_replication);
+static DB_VALUE *obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size);
+static MOP obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode, bool is_replication);
 
 /* ATTRIBUTE LOCATION */
 
@@ -184,8 +165,7 @@ obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key,
  *    try to merge where possible.
  */
 static int
-find_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op,
-		const char *name, int for_write)
+find_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op, const char *name, int for_write)
 {
   int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_;
@@ -235,7 +215,7 @@ find_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op,
 	    {
 	      if (att->header.name_space == ID_SHARED_ATTRIBUTE)
 		{
-		  /*
+		  /* 
 		   * sigh, we didn't know that this was going to be a shared attribute
 		   * when we checked class authorization above, we must now upgrade
 		   * the lock and check for alter access.
@@ -246,9 +226,7 @@ find_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op,
 		   */
 		  if (for_write)
 		    {
-		      error =
-			au_fetch_class (op, &class_, AU_FETCH_UPDATE,
-					AU_ALTER);
+		      error = au_fetch_class (op, &class_, AU_FETCH_UPDATE, AU_ALTER);
 		    }
 		}
 	    }
@@ -284,8 +262,7 @@ find_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op,
  */
 
 static int
-find_shared_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp,
-		       MOP op, const char *name, int for_write)
+find_shared_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op, const char *name, int for_write)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -342,8 +319,7 @@ find_shared_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp,
  */
 
 int
-obj_locate_attribute (MOP op, int attid, int for_write,
-		      char **memp, SM_ATTRIBUTE ** attp)
+obj_locate_attribute (MOP op, int attid, int for_write, char **memp, SM_ATTRIBUTE ** attp)
 {
   int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_;
@@ -383,8 +359,7 @@ obj_locate_attribute (MOP op, int attid, int for_write,
       if (error == NO_ERROR)
 	{
 	  found = NULL;
-	  for (att = class_->class_attributes; att != NULL && found == NULL;
-	       att = (SM_ATTRIBUTE *) att->header.next)
+	  for (att = class_->class_attributes; att != NULL && found == NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	    {
 	      if (att->id == attid)
 		{
@@ -400,14 +375,11 @@ obj_locate_attribute (MOP op, int attid, int for_write,
 	{
 	  if (for_write)
 	    {
-	      error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE,
-					 LC_FETCH_MVCC_VERSION, AU_UPDATE);
+	      error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE);
 	    }
 	  else
 	    {
-	      error = au_fetch_instance (op, &obj, AU_FETCH_READ,
-					 TM_TRAN_READ_FETCH_VERSION (),
-					 AU_SELECT);
+	      error = au_fetch_instance (op, &obj, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
 	    }
 
 	  if (error == NO_ERROR)
@@ -419,8 +391,7 @@ obj_locate_attribute (MOP op, int attid, int for_write,
 		}
 
 	      found = NULL;
-	      for (att = class_->attributes; att != NULL && found == NULL;
-		   att = (SM_ATTRIBUTE *) att->header.next)
+	      for (att = class_->attributes; att != NULL && found == NULL; att = (SM_ATTRIBUTE *) att->header.next)
 		{
 		  if (att->id == attid)
 		    {
@@ -435,8 +406,7 @@ obj_locate_attribute (MOP op, int attid, int for_write,
 
 	      else
 		{
-		  for (att = class_->shared; att != NULL && found == NULL;
-		       att = (SM_ATTRIBUTE *) att->header.next)
+		  for (att = class_->shared; att != NULL && found == NULL; att = (SM_ATTRIBUTE *) att->header.next)
 		    {
 		      if (att->id == attid)
 			{
@@ -449,8 +419,7 @@ obj_locate_attribute (MOP op, int attid, int for_write,
 
 		      if (for_write)
 			{
-			  error = au_fetch_class (op, &class_,
-						  AU_FETCH_UPDATE, AU_ALTER);
+			  error = au_fetch_class (op, &class_, AU_FETCH_UPDATE, AU_ALTER);
 			}
 		    }
 		}
@@ -488,7 +457,7 @@ obj_locate_attribute (MOP op, int attid, int for_write,
 static int
 assign_null_value (MOP op, SM_ATTRIBUTE * att, char *mem)
 {
-  /*
+  /* 
    * the mr_ functions are responsible for initializing/freeing the
    * value if NULL is passed in
    */
@@ -510,8 +479,7 @@ assign_null_value (MOP op, SM_ATTRIBUTE * att, char *mem)
 	{
 	  if (!att->domain->type->variable_p)
 	    {
-	      if ((ws_find (op, &object) == WS_FIND_MOP_DELETED)
-		  || object == NULL)
+	      if ((ws_find (op, &object) == WS_FIND_MOP_DELETED) || object == NULL)
 		{
 		  return ER_OBJ_INVALID_ARGUMENTS;
 		}
@@ -612,7 +580,7 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 	}
       else
 	{
-	  /*
+	  /* 
 	   * remove ownership information in the current set,
 	   * need to be able to free this !!!
 	   */
@@ -683,8 +651,7 @@ obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
 
   if (op == NULL || att == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -700,8 +667,8 @@ obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
 	}
       else
 	{
-	  if (att->domain->type == tp_Type_object && !op->is_vid
-	      && (mop = DB_GET_OBJECT (value)) && WS_MOP_IS_NULL (mop))
+	  if (att->domain->type == tp_Type_object && !op->is_vid && (mop = DB_GET_OBJECT (value))
+	      && WS_MOP_IS_NULL (mop))
 	    {
 	      error = assign_null_value (op, att, mem);
 	    }
@@ -710,12 +677,10 @@ obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
 	      /* uncomplicated assignment, use the primitive type macros */
 	      if (mem != NULL)
 		{
-		  error = PRIM_SETMEM (att->domain->type, att->domain, mem,
-				       value);
+		  error = PRIM_SETMEM (att->domain->type, att->domain, mem, value);
 		  if (!error && !att->domain->type->variable_p)
 		    {
-		      if (ws_find (op, &object) == WS_FIND_MOP_DELETED
-			  || object == NULL)
+		      if (ws_find (op, &object) == WS_FIND_MOP_DELETED || object == NULL)
 			{
 			  return ER_OBJ_INVALID_ARGUMENTS;
 			}
@@ -754,8 +719,7 @@ obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
  *    locks have been obtained.
  */
 static int
-obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
-	     DB_VALUE * value, SM_VALIDATION * valid)
+obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value, SM_VALIDATION * valid)
 {
   int error = NO_ERROR, is_class = 0;
   char *mem;
@@ -777,9 +741,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
     }
   else
     {
-      /* Check for the presence of triggers or unique constraints, use
-       * templates in those cases.
-       */
+      /* Check for the presence of triggers or unique constraints, use templates in those cases. */
 
       if (class_->triggers != NULL)
 	{
@@ -828,7 +790,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 	}
       else
 	{
-	  /*
+	  /* 
 	   * simple, single valued update without triggers,
 	   * avoid template overhead
 	   */
@@ -841,34 +803,28 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 		      ref_mop = vid_get_referenced_mop (op);
 		      if (ref_mop)
 			{
-			  /*
+			  /* 
 			   * lock the object for update, this also ensures the class
 			   * gets cached in the MOP which is important for the
 			   * following usage of ref_mop->class
 			   */
-			  if (au_fetch_instance_force
-			      (ref_mop, &ref_obj, AU_FETCH_UPDATE,
-			       LC_FETCH_MVCC_VERSION) != NO_ERROR)
+			  if (au_fetch_instance_force (ref_mop, &ref_obj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION) !=
+			      NO_ERROR)
 			    {
 			      assert (er_errid () != NO_ERROR);
 			      return er_errid ();
 			    }
 
-			  /*
+			  /* 
 			   * some attributes may not be updatable
 			   * even if the instance itself is updatable.
 			   */
-			  if (db_is_updatable_attribute
-			      (op, att->header.name))
+			  if (db_is_updatable_attribute (op, att->header.name))
 			    {
 			      /* could have att/descriptor versions of these */
-			      error = mq_update_attribute (ws_class_mop (op),
-							   att->header.name,
-							   ws_class_mop
-							   (ref_mop),
-							   value, &base_value,
-							   &base_name,
-							   DB_AUTH_UPDATE);
+			      error =
+				mq_update_attribute (ws_class_mop (op), att->header.name, ws_class_mop (ref_mop), value,
+						     &base_value, &base_name, DB_AUTH_UPDATE);
 			      if (error != NO_ERROR)
 				{
 				  return error;
@@ -877,8 +833,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 				{
 				  AU_DISABLE (save);
 				  /* could use att/descriptor interface here */
-				  error = obj_set (ref_mop, base_name,
-						   &base_value);
+				  error = obj_set (ref_mop, base_name, &base_value);
 				  AU_ENABLE (save);
 
 				  return error;
@@ -887,8 +842,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 			  else
 			    {
 			      error = ER_IT_ATTR_NOT_UPDATABLE;
-			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error,
-				      0);
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			    }
 			}
 		      else
@@ -911,8 +865,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 	  mem = NULL;
 	  if (att->header.name_space == ID_ATTRIBUTE)
 	    {
-	      if (au_fetch_instance (op, &obj, AU_FETCH_UPDATE,
-				     LC_FETCH_MVCC_VERSION, AU_UPDATE))
+	      if (au_fetch_instance (op, &obj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE))
 		{
 		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
@@ -923,7 +876,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 	      mem = (char *) (((char *) obj) + att->offset);
 	    }
 
-	  /*
+	  /* 
 	   * now that we have a memory pointer into the object, must pin it
 	   * to prevent workspace flush from destroying it
 	   */
@@ -982,8 +935,7 @@ obj_set (MOP op, const char *name, DB_VALUE * value)
   SM_ATTRIBUTE *att;
   SM_CLASS *class_;
 
-  if ((op == NULL) || (name == NULL)
-      || ((value != NULL) && (DB_VALUE_TYPE (value) > DB_TYPE_LAST)))
+  if ((op == NULL) || (name == NULL) || ((value != NULL) && (DB_VALUE_TYPE (value) > DB_TYPE_LAST)))
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
@@ -1019,16 +971,14 @@ obj_desc_set (MOP op, SM_DESCRIPTOR * desc, DB_VALUE * value)
   SM_ATTRIBUTE *att;
   SM_CLASS *class_;
 
-  if ((op == NULL) || (desc == NULL)
-      || ((value != NULL) && (DB_VALUE_TYPE (value) > DB_TYPE_LAST)))
+  if ((op == NULL) || (desc == NULL) || ((value != NULL) && (DB_VALUE_TYPE (value) > DB_TYPE_LAST)))
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
       /* map the descriptor into an actual pair of class/attribute structures */
-      if (sm_get_descriptor_component (op, desc, 1, &class_,
-				       (SM_COMPONENT **) (&att)))
+      if (sm_get_descriptor_component (op, desc, 1, &class_, (SM_COMPONENT **) (&att)))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -1067,18 +1017,15 @@ obj_set_shared (MOP op, const char *name, DB_VALUE * value)
   SM_ATTRIBUTE *att;
   DB_VALUE *actual;
 
-  /* misc arg checking, need to have optomized versions of this
-     for the interpreter */
+  /* misc arg checking, need to have optomized versions of this for the interpreter */
 
-  if ((op == NULL) || (name == NULL)
-      || ((value != NULL) && (DB_VALUE_TYPE (value) > DB_TYPE_LAST)))
+  if ((op == NULL) || (name == NULL) || ((value != NULL) && (DB_VALUE_TYPE (value) > DB_TYPE_LAST)))
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
   else
     {
-      /* since classes are implicitly pinned, don't have to worry about
-         losing the class here,  */
+      /* since classes are implicitly pinned, don't have to worry about losing the class here, */
       error = find_shared_attribute (&class_, &att, op, name, 1);
       if (error == NO_ERROR)
 	{
@@ -1122,8 +1069,7 @@ obj_set_shared (MOP op, const char *name, DB_VALUE * value)
  */
 
 static int
-get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem,
-		  DB_VALUE * source, DB_VALUE * dest)
+get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_VALUE * dest)
 {
   MOP current;
   DB_VALUE curval;
@@ -1153,28 +1099,20 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem,
       current = DB_GET_OBJECT (source);
     }
 
-  /* check for existence of the object
-   * this is expensive so only do this if enabled by a parameter.
-   */
+  /* check for existence of the object this is expensive so only do this if enabled by a parameter. */
   if (current != NULL && current->object == NULL && !WS_IS_DELETED (current))
     {
       if (WS_ISVID (current))
 	{
-	  /* Check that this operation is not coming from vid workspace
-	   * management. This context implies that the object will
-	   * not be passed directly to an application. An operation
-	   * being done may be an object flush, and it is undesirable
-	   * for a side effect of flushing to be fetching more objects,
-	   * particularly when fetching an object can cause flushing and
-	   * then infinite recursion.
-	   */
+	  /* Check that this operation is not coming from vid workspace management. This context implies that the
+	   * object will not be passed directly to an application. An operation being done may be an object flush, and
+	   * it is undesirable for a side effect of flushing to be fetching more objects, particularly when fetching an 
+	   * object can cause flushing and then infinite recursion. */
 	  if (!vid_inhibit_null_check)
 	    {
-	      rc = au_fetch_instance (current, &object, AU_FETCH_READ,
-				      TM_TRAN_READ_FETCH_VERSION (),
-				      AU_SELECT);
+	      rc = au_fetch_instance (current, &object, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
 	    }
-	  /*
+	  /* 
 	   * do NOT mark current as deleted because the fetch may
 	   * have encountered an error which needs to be returned!
 	   */
@@ -1199,7 +1137,7 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem,
       /* convert deleted MOPs to NULL values */
       DB_MAKE_NULL (dest);
 
-      /*
+      /* 
        * set the attribute value so we don't hit this condition again,
        * note that this doesn't dirty the object
        */
@@ -1255,8 +1193,7 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem,
  */
 
 static int
-get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
-	       DB_VALUE * source, DB_VALUE * dest)
+get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_VALUE * dest)
 {
   SETREF *set;
   DB_VALUE setval;
@@ -1264,8 +1201,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
 
   if (op == NULL || att == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -1280,8 +1216,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
   owner = op;
   if (mem != NULL)
     {
-      db_value_domain_init (&setval, TP_DOMAIN_TYPE (att->domain),
-			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      db_value_domain_init (&setval, TP_DOMAIN_TYPE (att->domain), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       if (PRIM_GETMEM (att->domain->type, att->domain, mem, &setval))
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -1314,7 +1249,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
 	}
     }
 
-  /*
+  /* 
    * make sure set has proper ownership tags, this shouldn't happen
    * in normal circumstances
    */
@@ -1370,16 +1305,14 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
  */
 
 int
-obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem,
-	       DB_VALUE * source, DB_VALUE * dest)
+obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem, DB_VALUE * source, DB_VALUE * dest)
 {
   int error = NO_ERROR;
   MOBJ object = NULL;
 
   if (op == NULL || att == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -1389,21 +1322,17 @@ obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem,
       source = &att->default_value.value;
     }
 
-  /* In MVCC, we must be sure that we have the last mop version before
-   * we access the object.
-   */
+  /* In MVCC, we must be sure that we have the last mop version before we access the object. */
   op = ws_mvcc_latest_version (op);
 
   if ((ws_find (op, &object) == WS_FIND_MOP_DELETED) || object == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-	      0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
   /* first check the bound bits */
-  if (!att->domain->type->variable_p && mem != NULL
-      && OBJ_GET_BOUND_BIT (object, att->storage_order) == 0)
+  if (!att->domain->type->variable_p && mem != NULL && OBJ_GET_BOUND_BIT (object, att->storage_order) == 0)
     {
       DB_MAKE_NULL (dest);
     }
@@ -1483,14 +1412,11 @@ obj_get_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value)
 		  ref_mop = vid_get_referenced_mop (op);
 		  if (ref_mop)
 		    {
-		      error = au_fetch_class_force (ref_mop, &ref_class,
-						    AU_FETCH_READ);
+		      error = au_fetch_class_force (ref_mop, &ref_class, AU_FETCH_READ);
 		      if (error == NO_ERROR)
 			{
-			  return mq_get_attribute (ws_class_mop (op),
-						   att->header.name,
-						   ws_class_mop (ref_mop),
-						   value, ref_mop);
+			  return mq_get_attribute (ws_class_mop (op), att->header.name, ws_class_mop (ref_mop), value,
+						   ref_mop);
 			}
 		      else
 			{
@@ -1516,9 +1442,7 @@ obj_get_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value)
       if (att->header.name_space == ID_ATTRIBUTE)
 	{
 	  /* fetch the instance and caluclate memory offset */
-	  if (au_fetch_instance_force (op, &obj, AU_FETCH_READ,
-				       TM_TRAN_READ_FETCH_VERSION ()) !=
-	      NO_ERROR)
+	  if (au_fetch_instance_force (op, &obj, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION ()) != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
@@ -1560,8 +1484,7 @@ obj_desc_get (MOP op, SM_DESCRIPTOR * desc, DB_VALUE * value)
   else
     {
       /* map the descriptor into an actual pair of class/attribute structures */
-      if (sm_get_descriptor_component (op, desc, 0, &class_,
-				       (SM_COMPONENT **) (&att)) != NO_ERROR)
+      if (sm_get_descriptor_component (op, desc, 0, &class_, (SM_COMPONENT **) (&att)) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -1712,8 +1635,7 @@ obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
 		}
 	      else
 		{
-		  error = obj_get (DB_GET_OBJECT (&temp_value), token,
-				   &temp_value);
+		  error = obj_get (DB_GET_OBJECT (&temp_value), token, &temp_value);
 		}
 	    }
 	}
@@ -1742,19 +1664,16 @@ obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
 		  index = atoi (token);
 		  if (temp_type == DB_TYPE_SEQUENCE)
 		    {
-		      error = db_seq_get (DB_GET_SET (&temp_value), index,
-					  &temp_value);
+		      error = db_seq_get (DB_GET_SET (&temp_value), index, &temp_value);
 		    }
 		  else
 		    {
-		      error = db_set_get (DB_GET_SET (&temp_value), index,
-					  &temp_value);
+		      error = db_set_get (DB_GET_SET (&temp_value), index, &temp_value);
 		    }
 
 		  if (error == NO_ERROR)
 		    {
-		      for (++end; nextdelim != ']' && nextdelim != '\0';
-			   nextdelim = *end++)
+		      for (++end; nextdelim != ']' && nextdelim != '\0'; nextdelim = *end++)
 			;
 		      if (nextdelim != '\0')
 			{
@@ -1806,8 +1725,7 @@ obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
  *      attribute value.
  */
 static int
-obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att,
-	      DB_VALUE * value)
+obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value)
 {
   int error = NO_ERROR;
   OBJ_TEMPLATE *temp;
@@ -1827,7 +1745,7 @@ obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att,
       assignment = temp->assignments[att->order];
       if (assignment != NULL)
 	{
-	  /*
+	  /* 
 	   * If this is a "new" object, return the assignment value, otherwise
 	   * return the saved value.
 	   */
@@ -1840,7 +1758,7 @@ obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att,
 	      src = assignment->variable;
 	    }
 
-	  /*
+	  /* 
 	   * Note that for sets, the ownership may get tagged with
 	   * a temporary object
 	   */
@@ -1849,7 +1767,7 @@ obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att,
 	}
       else
 	{
-	  /*
+	  /* 
 	   * Couldn't find it in the template, get it out of the real object.
 	   * Since we've already done some of the work, could optimize
 	   * the value fetch a bit.  Make sure we use the base object so
@@ -1862,7 +1780,7 @@ obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att,
 	    }
 	  else
 	    {
-	      /*
+	      /* 
 	       * there was no base object so we must be performing an insertion,
 	       * in this case, the value is considered to be NULL
 	       */
@@ -1912,7 +1830,7 @@ obj_set_temp (DB_OBJECT * obj, SM_ATTRIBUTE * att, DB_VALUE * value)
 	}
       else
 	{
-	  /*
+	  /* 
 	   * Treat this like a normal template assignment.  Remember,
 	   * this template may have been created on a virtual class and if
 	   * so, it is expecting attribute names on the virtual class rather
@@ -1981,8 +1899,7 @@ obj_alloc (SM_CLASS * class_, int bound_bit_status)
 	}
 
       /* clear the object */
-      for (att = class_->attributes; att != NULL;
-	   att = (SM_ATTRIBUTE *) att->header.next)
+      for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	{
 	  mem = obj + att->offset;
 	  PRIM_INITMEM (att->domain->type, mem, att->domain);
@@ -2090,8 +2007,7 @@ obj_copy (MOP op)
 	}
       if (is_class)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
 	  return NULL;
 	}
     }
@@ -2105,16 +2021,13 @@ obj_copy (MOP op)
     return NULL;
 
   /* do this so that we make really sure that op->class is set up */
-  if (au_fetch_instance (op, &src, AU_FETCH_READ,
-			 TM_TRAN_READ_FETCH_VERSION (), AU_SELECT)
-      != NO_ERROR)
+  if (au_fetch_instance (op, &src, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT) != NO_ERROR)
     return NULL;
 
   obj_template = obt_def_object (ws_class_mop (op));
   if (obj_template != NULL)
     {
-      for (att = class_->attributes; att != NULL;
-	   att = (SM_ATTRIBUTE *) att->header.next)
+      for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	{
 	  if (obj_get_att (op, class_, att, &value) != NO_ERROR)
 	    goto error;
@@ -2157,8 +2070,7 @@ obj_free_memory (SM_CLASS * class_, MOBJ obj)
   SM_ATTRIBUTE *att;
   char *mem;
 
-  for (att = class_->attributes; att != NULL;
-       att = (SM_ATTRIBUTE *) att->header.next)
+  for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       mem = ((char *) obj) + att->offset;
       PRIM_FREEMEM (att->domain->type, mem);
@@ -2218,14 +2130,13 @@ obj_delete (MOP op)
       goto error_exit;
     }
 
-  error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE,
-			     LC_FETCH_MVCC_VERSION, AU_DELETE);
+  error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_DELETE);
   if (error != NO_ERROR)
     {
       goto error_exit;
     }
 
-  /*
+  /* 
    * Note that if "op" is a VMOP, au_fetch_instance () will have returned
    * "obj" as a pointer to the BASE INSTANCE memory which is not the instance
    * associated with "op".  When this happens we need to get the base MOP so
@@ -2235,7 +2146,7 @@ obj_delete (MOP op)
   base_op = op;
   if (op->is_vid && class_->class_type == SM_VCLASS_CT)
     {
-      /*
+      /* 
        * This is a view, get the base MOP.
        * What happens here if this is a non-updatable view?
        */
@@ -2259,9 +2170,7 @@ obj_delete (MOP op)
   /* Run BEFORE triggers */
   if (base_class != NULL)
     {
-      error =
-	tr_prepare_class (&trstate, base_class->triggers, base_op,
-			  TR_EVENT_DELETE);
+      error = tr_prepare_class (&trstate, base_class->triggers, base_op, TR_EVENT_DELETE);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -2272,19 +2181,15 @@ obj_delete (MOP op)
 	  goto error_exit;
 	}
 
-      if (base_op->decached == 0
-	  && op->is_vid && class_->class_type == SM_VCLASS_CT)
+      if (base_op->decached == 0 && op->is_vid && class_->class_type == SM_VCLASS_CT)
 	{
 	  base_op = ws_mvcc_latest_version (base_op);
 	}
 
-      /* in some cases, the object has been decached in before
-       * trigger. we need fetch it again.
-       */
+      /* in some cases, the object has been decached in before trigger. we need fetch it again. */
       if (base_op->decached)
 	{
-	  error =
-	    au_fetch_class (base_op, &base_class, AU_FETCH_READ, AU_DELETE);
+	  error = au_fetch_class (base_op, &base_class, AU_FETCH_READ, AU_DELETE);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -2293,8 +2198,7 @@ obj_delete (MOP op)
     }
   else
     {
-      error = tr_prepare_class (&trstate, class_->triggers, ws_class_mop (op),
-				TR_EVENT_DELETE);
+      error = tr_prepare_class (&trstate, class_->triggers, ws_class_mop (op), TR_EVENT_DELETE);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -2310,13 +2214,10 @@ obj_delete (MOP op)
 	  op = ws_mvcc_latest_version (op);
 	}
 
-      /* in some cases, the object has been decached in before
-       * trigger. we need fetch it again.
-       */
+      /* in some cases, the object has been decached in before trigger. we need fetch it again. */
       if (op->decached)
 	{
-	  error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE,
-				     LC_FETCH_MVCC_VERSION, AU_DELETE);
+	  error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_DELETE);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -2324,7 +2225,7 @@ obj_delete (MOP op)
 	}
     }
 
-  /*
+  /* 
    * Unpin this now since the remaining operations will mark the instance as
    * deleted and it doesn't make much sense to have pinned & deleted objects.
    */
@@ -2335,7 +2236,7 @@ obj_delete (MOP op)
     }
   unpin_on_error = false;
 
-  /*
+  /* 
    * We don't need to decache the object as it will be decached when the mop
    * is GC'd in the usual way.
    */
@@ -2395,8 +2296,7 @@ argstate_from_list (ARGSTATE * state, DB_VALUE_LIST * arglist)
   DB_VALUE_LIST *arg;
   int i;
 
-  for (i = 0, arg = arglist; arg != NULL && i < OBJ_MAX_ARGS;
-       arg = arg->next, i++)
+  for (i = 0, arg = arglist; arg != NULL && i < OBJ_MAX_ARGS; arg = arg->next, i++)
     {
       state->values[i] = &(arg->val);
       state->save[i] = NULL;
@@ -2530,9 +2430,8 @@ cleanup_argstate (ARGSTATE * state)
  *
  */
 static int
-call_method (METHOD_FUNCTION method, MOP obj,
-	     DB_VALUE * returnval, int nargs,
-	     DB_VALUE ** values, DB_VALUE_LIST * overflow)
+call_method (METHOD_FUNCTION method, MOP obj, DB_VALUE * returnval, int nargs, DB_VALUE ** values,
+	     DB_VALUE_LIST * overflow)
 {
   int error = NO_ERROR;
 
@@ -2553,285 +2452,173 @@ call_method (METHOD_FUNCTION method, MOP obj,
       ((METHOD_FUNC_ARG4) (*method)) (obj, returnval, NULL, NULL, NULL, NULL);
       break;
     case 1:
-      ((METHOD_FUNC_ARG4) (*method)) (obj, returnval, values[0], NULL, NULL,
-				      NULL);
+      ((METHOD_FUNC_ARG4) (*method)) (obj, returnval, values[0], NULL, NULL, NULL);
       break;
     case 2:
-      ((METHOD_FUNC_ARG4) (*method)) (obj, returnval, values[0], values[1],
-				      NULL, NULL);
+      ((METHOD_FUNC_ARG4) (*method)) (obj, returnval, values[0], values[1], NULL, NULL);
       break;
     case 3:
-      ((METHOD_FUNC_ARG4) (*method)) (obj, returnval, values[0], values[1],
-				      values[2], NULL);
+      ((METHOD_FUNC_ARG4) (*method)) (obj, returnval, values[0], values[1], values[2], NULL);
       break;
     case 4:
-      ((METHOD_FUNC_ARG4) (*method)) (obj, returnval, values[0], values[1],
-				      values[2], values[3]);
+      ((METHOD_FUNC_ARG4) (*method)) (obj, returnval, values[0], values[1], values[2], values[3]);
       break;
     case 5:
-      ((METHOD_FUNC_ARG5) (*method)) (obj, returnval, values[0], values[1],
-				      values[2], values[3], values[4]);
+      ((METHOD_FUNC_ARG5) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4]);
       break;
     case 6:
-      ((METHOD_FUNC_ARG6) (*method)) (obj, returnval, values[0], values[1],
-				      values[2], values[3], values[4],
-				      values[5]);
+      ((METHOD_FUNC_ARG6) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5]);
       break;
     case 7:
-      ((METHOD_FUNC_ARG7) (*method)) (obj, returnval, values[0], values[1],
-				      values[2], values[3], values[4],
-				      values[5], values[6]);
+      ((METHOD_FUNC_ARG7) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				      values[6]);
       break;
     case 8:
-      ((METHOD_FUNC_ARG8) (*method)) (obj, returnval, values[0], values[1],
-				      values[2], values[3], values[4],
-				      values[5], values[6], values[7]);
+      ((METHOD_FUNC_ARG8) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				      values[6], values[7]);
       break;
     case 9:
-      ((METHOD_FUNC_ARG9) (*method)) (obj, returnval, values[0], values[1],
-				      values[2], values[3], values[4],
-				      values[5], values[6], values[7],
-				      values[8]);
+      ((METHOD_FUNC_ARG9) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				      values[6], values[7], values[8]);
       break;
     case 10:
-      ((METHOD_FUNC_ARG10) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9]);
+      ((METHOD_FUNC_ARG10) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9]);
       break;
     case 11:
-      ((METHOD_FUNC_ARG11) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10]);
+      ((METHOD_FUNC_ARG11) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10]);
       break;
     case 12:
-      ((METHOD_FUNC_ARG12) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11]);
+      ((METHOD_FUNC_ARG12) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11]);
       break;
     case 13:
-      ((METHOD_FUNC_ARG13) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12]);
+      ((METHOD_FUNC_ARG13) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12]);
       break;
     case 14:
-      ((METHOD_FUNC_ARG14) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13]);
+      ((METHOD_FUNC_ARG14) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13]);
       break;
     case 15:
-      ((METHOD_FUNC_ARG15) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14]);
+      ((METHOD_FUNC_ARG15) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14]);
       break;
     case 16:
-      ((METHOD_FUNC_ARG16) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15]);
+      ((METHOD_FUNC_ARG16) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15]);
       break;
     case 17:
-      ((METHOD_FUNC_ARG17) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16]);
+      ((METHOD_FUNC_ARG17) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16]);
       break;
     case 18:
-      ((METHOD_FUNC_ARG18) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17]);
+      ((METHOD_FUNC_ARG18) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17]);
       break;
     case 19:
-      ((METHOD_FUNC_ARG19) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18]);
+      ((METHOD_FUNC_ARG19) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18]);
       break;
     case 20:
-      ((METHOD_FUNC_ARG20) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19]);
+      ((METHOD_FUNC_ARG20) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19]);
       break;
     case 21:
-      ((METHOD_FUNC_ARG21) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19],
-				       values[20]);
+      ((METHOD_FUNC_ARG21) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20]);
       break;
     case 22:
-      ((METHOD_FUNC_ARG22) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19],
-				       values[20], values[21]);
+      ((METHOD_FUNC_ARG22) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20], values[21]);
       break;
     case 23:
-      ((METHOD_FUNC_ARG23) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19],
-				       values[20], values[21], values[22]);
+      ((METHOD_FUNC_ARG23) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20], values[21], values[22]);
       break;
     case 24:
-      ((METHOD_FUNC_ARG24) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19],
-				       values[20], values[21], values[22],
-				       values[23]);
+      ((METHOD_FUNC_ARG24) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20], values[21], values[22], values[23]);
       break;
     case 25:
-      ((METHOD_FUNC_ARG25) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19],
-				       values[20], values[21], values[22],
-				       values[23], values[24]);
+      ((METHOD_FUNC_ARG25) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20], values[21], values[22], values[23], values[24]);
       break;
     case 26:
-      ((METHOD_FUNC_ARG26) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19],
-				       values[20], values[21], values[22],
-				       values[23], values[24], values[25]);
+      ((METHOD_FUNC_ARG26) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20], values[21], values[22], values[23], values[24],
+				       values[25]);
       break;
     case 27:
-      ((METHOD_FUNC_ARG27) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19],
-				       values[20], values[21], values[22],
-				       values[23], values[24], values[25],
-				       values[26]);
+      ((METHOD_FUNC_ARG27) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20], values[21], values[22], values[23], values[24],
+				       values[25], values[26]);
       break;
     case 28:
-      ((METHOD_FUNC_ARG28) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19],
-				       values[20], values[21], values[22],
-				       values[23], values[24], values[25],
-				       values[26], values[27]);
+      ((METHOD_FUNC_ARG28) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20], values[21], values[22], values[23], values[24],
+				       values[25], values[26], values[27]);
       break;
     case 29:
-      ((METHOD_FUNC_ARG29) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19],
-				       values[20], values[21], values[22],
-				       values[23], values[24], values[25],
-				       values[26], values[27], values[28]);
+      ((METHOD_FUNC_ARG29) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20], values[21], values[22], values[23], values[24],
+				       values[25], values[26], values[27], values[28]);
       break;
     case 30:
-      ((METHOD_FUNC_ARG30) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19],
-				       values[20], values[21], values[22],
-				       values[23], values[24], values[25],
-				       values[26], values[27], values[28],
-				       values[29]);
+      ((METHOD_FUNC_ARG30) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20], values[21], values[22], values[23], values[24],
+				       values[25], values[26], values[27], values[28], values[29]);
       break;
     case 31:
-      ((METHOD_FUNC_ARG31) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19],
-				       values[20], values[21], values[22],
-				       values[23], values[24], values[25],
-				       values[26], values[27], values[28],
-				       values[29], values[30]);
+      ((METHOD_FUNC_ARG31) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20], values[21], values[22], values[23], values[24],
+				       values[25], values[26], values[27], values[28], values[29], values[30]);
       break;
     case 32:
-      ((METHOD_FUNC_ARG32) (*method)) (obj, returnval, values[0], values[1],
-				       values[2], values[3], values[4],
-				       values[5], values[6], values[7],
-				       values[8], values[9], values[10],
-				       values[11], values[12], values[13],
-				       values[14], values[15], values[16],
-				       values[17], values[18], values[19],
-				       values[20], values[21], values[22],
-				       values[23], values[24], values[25],
-				       values[26], values[27], values[28],
-				       values[29], values[30], values[31]);
+      ((METHOD_FUNC_ARG32) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20], values[21], values[22], values[23], values[24],
+				       values[25], values[26], values[27], values[28], values[29], values[30],
+				       values[31]);
       break;
     default:
-      ((METHOD_FUNC_ARG33) (*method)) (obj, returnval, values[0],
-				       values[1], values[2],
-				       values[3], values[4],
-				       values[5], values[6],
-				       values[7], values[8],
-				       values[9], values[10],
-				       values[11], values[12],
-				       values[13], values[14],
-				       values[15], values[16],
-				       values[17], values[18],
-				       values[19], values[20],
-				       values[21], values[22],
-				       values[23], values[24],
-				       values[25], values[26],
-				       values[27], values[28],
-				       values[29], values[30],
+      ((METHOD_FUNC_ARG33) (*method)) (obj, returnval, values[0], values[1], values[2], values[3], values[4], values[5],
+				       values[6], values[7], values[8], values[9], values[10], values[11], values[12],
+				       values[13], values[14], values[15], values[16], values[17], values[18],
+				       values[19], values[20], values[21], values[22], values[23], values[24],
+				       values[25], values[26], values[27], values[28], values[29], values[30],
 				       values[31], overflow);
       break;
     }
@@ -2844,8 +2631,7 @@ call_method (METHOD_FUNCTION method, MOP obj,
 	if (error >= 0)
 	  {
 	    /* it's not a system error, it's a user error */
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		    ER_OBJ_METHOD_USER_ERROR, 1, error);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_METHOD_USER_ERROR, 1, error);
 	    error = er_errid ();
 	  }
       }
@@ -2892,26 +2678,24 @@ check_args (SM_METHOD * method, ARGSTATE * state)
       for (i = 0; i < state->nargs && error == NO_ERROR; i++)
 	{
 
-	  /*
+	  /* 
 	   * find the argument matching this value, this should be an array lookup !
 	   * remember the arg index is one based
 	   */
-	  for (arg = sig->args; arg != NULL && arg->index != i + 1;
-	       arg = arg->next);
-	  /*
+	  for (arg = sig->args; arg != NULL && arg->index != i + 1; arg = arg->next);
+	  /* 
 	   * if there is no definition for a particular argument, assume it
 	   * is a "wildcard" and will match any domain
 	   */
 	  if (arg != NULL)
 	    {
-	      /*
+	      /* 
 	       * Try to use exact domain matching for method arguments !
 	       */
-	      dom = tp_domain_select (arg->domain, state->values[i], 0,
-				      TP_EXACT_MATCH);
+	      dom = tp_domain_select (arg->domain, state->values[i], 0, TP_EXACT_MATCH);
 	      if (dom == NULL)
 		{
-		  /*
+		  /* 
 		   * We don't have an exact match, so try a "near" match, i.e.,
 		   * one where we can get what we want simply by changing a
 		   * string domain (without actually copying the string).  This
@@ -2923,8 +2707,7 @@ check_args (SM_METHOD * method, ARGSTATE * state)
 		      assert (er_errid () != NO_ERROR);
 		      return er_errid ();
 		    }
-		  dom = tp_domain_select (arg->domain, state->values[i], 0,
-					  TP_STR_MATCH);
+		  dom = tp_domain_select (arg->domain, state->values[i], 0, TP_STR_MATCH);
 		  if (dom)
 		    {
 		      *value = *state->values[i];
@@ -2933,8 +2716,7 @@ check_args (SM_METHOD * method, ARGSTATE * state)
 		    }
 		  else
 		    {
-		      status = tp_value_cast (state->values[i], value,
-					      arg->domain, 0);
+		      status = tp_value_cast (state->values[i], value, arg->domain, 0);
 		    }
 
 		  if (status == DOMAIN_COMPATIBLE)
@@ -2970,10 +2752,8 @@ check_args (SM_METHOD * method, ARGSTATE * state)
 		    default:
 		      error = ER_OBJ_ARGUMENT_DOMAIN_CONFLICT;
 		      tp_domain_name (arg->domain, domain1, MAX_DOMAIN_NAME);
-		      tp_value_domain_name (state->values[i], domain2,
-					    MAX_DOMAIN_NAME);
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 4,
-			      method->header.name, arg->index, domain1,
+		      tp_value_domain_name (state->values[i], domain2, MAX_DOMAIN_NAME);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 4, method->header.name, arg->index, domain1,
 			      domain2);
 		      break;
 		    }
@@ -3009,8 +2789,7 @@ check_args (SM_METHOD * method, ARGSTATE * state)
  *    It is called by both obj_send_va() and obj_desc_send_va().
  */
 static int
-obj_send_method_va (MOP obj, SM_CLASS * class_,
-		    SM_METHOD * method, DB_VALUE * returnval, va_list args)
+obj_send_method_va (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE * returnval, va_list args)
 {
   ARGSTATE state;
   int error = NO_ERROR;
@@ -3027,21 +2806,18 @@ obj_send_method_va (MOP obj, SM_CLASS * class_,
   if (func != NULL)
     {
       sig = method->signatures;
-      /*
+      /* 
        * calculate the expected number of arguments
        * allow the case where the arg count is set but there are no
        * arg definitions, should be an error
        */
-      expected = (sig != NULL
-		  && sig->num_args) ? sig->num_args : OBJ_MAX_ARGS;
+      expected = (sig != NULL && sig->num_args) ? sig->num_args : OBJ_MAX_ARGS;
       /* get the arguments into the cannonical array */
       argstate_from_va (&state, args, expected);
       /* need to handle this gracefully someday */
       if (state.noverflow)
 	{
-	  ERROR3 (error, ER_OBJ_TOO_MANY_ARGUMENTS,
-		  method->header.name, state.nargs + state.noverflow,
-		  OBJ_MAX_ARGS);
+	  ERROR3 (error, ER_OBJ_TOO_MANY_ARGUMENTS, method->header.name, state.nargs + state.noverflow, OBJ_MAX_ARGS);
 	}
       else
 	{
@@ -3049,8 +2825,7 @@ obj_send_method_va (MOP obj, SM_CLASS * class_,
 	  if (sig != NULL && sig->args != NULL)
 	    error = check_args (method, &state);
 	  if (error == NO_ERROR)
-	    error = call_method (func, obj, returnval,
-				 state.nargs, state.values, state.overflow);
+	    error = call_method (func, obj, returnval, state.nargs, state.values, state.overflow);
 	}
 
       cleanup_argstate (&state);
@@ -3094,8 +2869,7 @@ obj_send_va (MOP obj, const char *name, DB_VALUE * returnval, va_list args)
 	    }
 	  else
 	    {
-	      error =
-		obj_send_method_va (obj, class_, method, returnval, args);
+	      error = obj_send_method_va (obj, class_, method, returnval, args);
 	    }
 	}
     }
@@ -3114,8 +2888,7 @@ obj_send_va (MOP obj, const char *name, DB_VALUE * returnval, va_list args)
  *
  */
 int
-obj_desc_send_va (MOP obj, SM_DESCRIPTOR * desc,
-		  DB_VALUE * returnval, va_list args)
+obj_desc_send_va (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, va_list args)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -3127,8 +2900,7 @@ obj_desc_send_va (MOP obj, SM_DESCRIPTOR * desc,
     }
   else
     {
-      error = sm_get_descriptor_component (obj, desc, 0, &class_,
-					   (SM_COMPONENT **) & method);
+      error = sm_get_descriptor_component (obj, desc, 0, &class_, (SM_COMPONENT **) & method);
       if (error == NO_ERROR)
 	{
 	  error = obj_send_method_va (obj, class_, method, returnval, args);
@@ -3192,7 +2964,7 @@ obj_desc_send_stack (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, ...)
   va_end (args);
   return (error);
 }
-#endif /*ENABLE_UNUSED_FUNCTION */
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * obj_send_method_list - This invokes a method where the arguments are
@@ -3208,8 +2980,7 @@ obj_desc_send_stack (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, ...)
  *    Used by both obj_send_list() and obj_desc_send_list().
  */
 static int
-obj_send_method_list (MOP obj, SM_CLASS * class_, SM_METHOD * method,
-		      DB_VALUE * returnval, DB_VALUE_LIST * arglist)
+obj_send_method_list (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE * returnval, DB_VALUE_LIST * arglist)
 {
   int error = NO_ERROR;
   ARGSTATE state;
@@ -3228,13 +2999,12 @@ obj_send_method_list (MOP obj, SM_CLASS * class_, SM_METHOD * method,
     {
       sig = method->signatures;
 
-      /*
+      /* 
        * calculate the expected number of arguments
        * allow the case where the arg count is set but there are no
        * arg definitions, should be an error
        */
-      expected = ((sig != NULL && sig->num_args)
-		  ? sig->num_args : OBJ_MAX_ARGS);
+      expected = ((sig != NULL && sig->num_args) ? sig->num_args : OBJ_MAX_ARGS);
 
       /* get the arguments into the cannonical array */
       argstate_from_list (&state, arglist);
@@ -3242,13 +3012,11 @@ obj_send_method_list (MOP obj, SM_CLASS * class_, SM_METHOD * method,
       /* need to handle this gracefully someday */
       if (state.noverflow)
 	{
-	  ERROR3 (error, ER_OBJ_TOO_MANY_ARGUMENTS,
-		  method->header.name, state.nargs + state.noverflow,
-		  OBJ_MAX_ARGS);
+	  ERROR3 (error, ER_OBJ_TOO_MANY_ARGUMENTS, method->header.name, state.nargs + state.noverflow, OBJ_MAX_ARGS);
 	}
       else
 	{
-	  /*
+	  /* 
 	   * what happens when the actual count doesn't match the expected
 	   * count and there is no domain definition ?
 	   * for now, assume the supplied args are correct
@@ -3261,8 +3029,7 @@ obj_send_method_list (MOP obj, SM_CLASS * class_, SM_METHOD * method,
 	    }
 	  if (error == NO_ERROR)
 	    {
-	      error = call_method (func, obj, returnval,
-				   state.nargs, state.values, state.overflow);
+	      error = call_method (func, obj, returnval, state.nargs, state.values, state.overflow);
 	    }
 	}
 
@@ -3282,8 +3049,7 @@ obj_send_method_list (MOP obj, SM_CLASS * class_, SM_METHOD * method,
  *
  */
 int
-obj_send_list (MOP obj, const char *name,
-	       DB_VALUE * returnval, DB_VALUE_LIST * arglist)
+obj_send_list (MOP obj, const char *name, DB_VALUE * returnval, DB_VALUE_LIST * arglist)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -3308,8 +3074,7 @@ obj_send_list (MOP obj, const char *name,
 	    }
 	  else
 	    {
-	      error = obj_send_method_list (obj, class_, method, returnval,
-					    arglist);
+	      error = obj_send_method_list (obj, class_, method, returnval, arglist);
 	    }
 	}
     }
@@ -3330,8 +3095,7 @@ obj_send_list (MOP obj, const char *name,
  *
  */
 int
-obj_send (MOP obj, const char *name, DB_VALUE * returnval,
-	  DB_VALUE_LIST * arglist)
+obj_send (MOP obj, const char *name, DB_VALUE * returnval, DB_VALUE_LIST * arglist)
 {
   return (obj_send_list (obj, name, returnval, arglist));
 }
@@ -3347,8 +3111,7 @@ obj_send (MOP obj, const char *name, DB_VALUE * returnval,
  *
  */
 int
-obj_desc_send_list (MOP obj, SM_DESCRIPTOR * desc,
-		    DB_VALUE * returnval, DB_VALUE_LIST * arglist)
+obj_desc_send_list (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, DB_VALUE_LIST * arglist)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -3360,12 +3123,10 @@ obj_desc_send_list (MOP obj, SM_DESCRIPTOR * desc,
     }
   else
     {
-      error = sm_get_descriptor_component (obj, desc, 0, &class_,
-					   (SM_COMPONENT **) (&method));
+      error = sm_get_descriptor_component (obj, desc, 0, &class_, (SM_COMPONENT **) (&method));
       if (error == NO_ERROR)
 	{
-	  error = obj_send_method_list (obj, class_, method, returnval,
-					arglist);
+	  error = obj_send_method_list (obj, class_, method, returnval, arglist);
 	}
     }
 
@@ -3387,8 +3148,7 @@ obj_desc_send_list (MOP obj, SM_DESCRIPTOR * desc,
  */
 
 static int
-obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method,
-		       DB_VALUE * returnval, DB_VALUE ** argarray)
+obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE * returnval, DB_VALUE ** argarray)
 {
   int error = NO_ERROR;
   ARGSTATE state;
@@ -3407,13 +3167,12 @@ obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method,
     {
       sig = method->signatures;
 
-      /*
+      /* 
        * calculate the expected number of arguments
        * allow the case where the arg count is set but there are no
        * arg definitions, should be an error
        */
-      expected = ((sig != NULL && sig->num_args)
-		  ? sig->num_args : OBJ_MAX_ARGS);
+      expected = ((sig != NULL && sig->num_args) ? sig->num_args : OBJ_MAX_ARGS);
 
       /* get the arguments into the cannonical array */
       argstate_from_array (&state, argarray);
@@ -3421,13 +3180,11 @@ obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method,
       /* need to handle this gracefully someday */
       if (state.noverflow)
 	{
-	  ERROR3 (error, ER_OBJ_TOO_MANY_ARGUMENTS,
-		  method->header.name, state.nargs + state.noverflow,
-		  OBJ_MAX_ARGS);
+	  ERROR3 (error, ER_OBJ_TOO_MANY_ARGUMENTS, method->header.name, state.nargs + state.noverflow, OBJ_MAX_ARGS);
 	}
       else
 	{
-	  /*
+	  /* 
 	   * what happens when the actual count doesn't match the expected
 	   * count and there is no domain definition ?
 	   * for now, assume the supplied args are correct
@@ -3440,8 +3197,7 @@ obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method,
 	    }
 	  if (error == NO_ERROR)
 	    {
-	      error = call_method (func, obj, returnval,
-				   state.nargs, state.values, state.overflow);
+	      error = call_method (func, obj, returnval, state.nargs, state.values, state.overflow);
 	    }
 	}
 
@@ -3461,8 +3217,7 @@ obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method,
  *
  */
 int
-obj_send_array (MOP obj, const char *name,
-		DB_VALUE * returnval, DB_VALUE ** argarray)
+obj_send_array (MOP obj, const char *name, DB_VALUE * returnval, DB_VALUE ** argarray)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -3487,8 +3242,7 @@ obj_send_array (MOP obj, const char *name,
 	    }
 	  else
 	    {
-	      error = obj_send_method_array (obj, class_, method, returnval,
-					     argarray);
+	      error = obj_send_method_array (obj, class_, method, returnval, argarray);
 	    }
 	}
     }
@@ -3506,8 +3260,7 @@ obj_send_array (MOP obj, const char *name,
  *
  */
 int
-obj_desc_send_array (MOP obj, SM_DESCRIPTOR * desc,
-		     DB_VALUE * returnval, DB_VALUE ** argarray)
+obj_desc_send_array (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, DB_VALUE ** argarray)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -3519,12 +3272,10 @@ obj_desc_send_array (MOP obj, SM_DESCRIPTOR * desc,
     }
   else
     {
-      error = sm_get_descriptor_component (obj, desc, 0, &class_,
-					   (SM_COMPONENT **) (&method));
+      error = sm_get_descriptor_component (obj, desc, 0, &class_, (SM_COMPONENT **) (&method));
       if (error == NO_ERROR)
 	{
-	  error = obj_send_method_array (obj, class_, method, returnval,
-					 argarray);
+	  error = obj_send_method_array (obj, class_, method, returnval, argarray);
 	}
     }
 
@@ -3549,9 +3300,7 @@ obj_desc_send_array (MOP obj, SM_DESCRIPTOR * desc,
  *    any type checking.
  */
 int
-obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc,
-			   DB_VALUE * returnval,
-			   int nargs, DB_VALUE ** argarray)
+obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, int nargs, DB_VALUE ** argarray)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -3564,8 +3313,7 @@ obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc,
     }
   else
     {
-      error = sm_get_descriptor_component (obj, desc, 0, &class_,
-					   (SM_COMPONENT **) (&method));
+      error = sm_get_descriptor_component (obj, desc, 0, &class_, (SM_COMPONENT **) (&method));
       if (error == NO_ERROR)
 	{
 	  func = method->function;
@@ -3580,13 +3328,11 @@ obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc,
 	      /* need to handle this gracefully someday */
 	      if (nargs > OBJ_MAX_ARGS)
 		{
-		  ERROR3 (error, ER_OBJ_TOO_MANY_ARGUMENTS,
-			  method->header.name, nargs, OBJ_MAX_ARGS);
+		  ERROR3 (error, ER_OBJ_TOO_MANY_ARGUMENTS, method->header.name, nargs, OBJ_MAX_ARGS);
 		}
 	      else
 		{
-		  error = call_method (func, obj, returnval, nargs, argarray,
-				       NULL);
+		  error = call_method (func, obj, returnval, nargs, argarray, NULL);
 		}
 	    }
 	}
@@ -3626,8 +3372,7 @@ obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc,
  *    object could not be found will be ER_OBJ_OBJECT_NOT_FOUND
  */
 static MOP
-find_unique (MOP classop, SM_ATTRIBUTE * att,
-	     DB_VALUE * value, AU_FETCHMODE fetchmode)
+find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fetchmode)
 {
   MOP found = NULL;
   OID unique_oid;
@@ -3641,7 +3386,7 @@ find_unique (MOP classop, SM_ATTRIBUTE * att,
       return NULL;
     }
 
-  /*
+  /* 
    * Check to see if we have any sort of index we can search, if not,
    * then return an error indicating that the indexes do not exist rather than
    * the "object not found" error.
@@ -3650,35 +3395,27 @@ find_unique (MOP classop, SM_ATTRIBUTE * att,
   BTID_SET_NULL (&btid);
 
   /* look for a unique index on this attribute */
-  r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_UNIQUE,
-				      &btid);
+  r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_UNIQUE, &btid);
   if (r == 0)
     {
       /* look for a primary key on this attribute */
-      r = classobj_get_cached_constraint (att->constraints,
-					  SM_CONSTRAINT_PRIMARY_KEY, &btid);
+      r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_PRIMARY_KEY, &btid);
       if (r == 0)
 	{
 	  /* look for a reverse unique index on this attribute */
-	  r = classobj_get_cached_constraint (att->constraints,
-					      SM_CONSTRAINT_REVERSE_UNIQUE,
-					      &btid);
+	  r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_REVERSE_UNIQUE, &btid);
 	  if (r == 0)
 	    {
 	      /* couldn't find one, check for a index */
-	      r = classobj_get_cached_constraint (att->constraints,
-						  SM_CONSTRAINT_INDEX, &btid);
+	      r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_INDEX, &btid);
 	      if (r == 0)
 		{
 		  /* couldn't find one, check for a reverse index */
-		  r = classobj_get_cached_constraint (att->constraints,
-						      SM_CONSTRAINT_REVERSE_INDEX,
-						      &btid);
+		  r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_REVERSE_INDEX, &btid);
 		  if (r == 0)
 		    {
 		      /* couldn't find anything to search in */
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OBJ_INDEX_NOT_FOUND, 0);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INDEX_NOT_FOUND, 0);
 		      return NULL;
 		    }
 		}
@@ -3689,7 +3426,7 @@ find_unique (MOP classop, SM_ATTRIBUTE * att,
   value_type = DB_VALUE_TYPE (value);
   if (value_type == DB_TYPE_NULL)
     {
-      /*
+      /* 
        * We cannot search for a "null" value, though perhaps we could with some
        * additional effort.
        */
@@ -3709,13 +3446,12 @@ find_unique (MOP classop, SM_ATTRIBUTE * att,
     }
 
   /* now search the index */
-  if (btree_find_unique (&btid, value, ws_oid (classop), &unique_oid) ==
-      BTREE_KEY_FOUND)
+  if (btree_find_unique (&btid, value, ws_oid (classop), &unique_oid) == BTREE_KEY_FOUND)
     {
       found = ws_mop (&unique_oid, NULL);
     }
 
-  /*
+  /* 
    * If we got an object, obtain an "S" lock before returning it, this
    * avoid problems peeking at objects that were created
    * by another transaction but which have not yet been committed.
@@ -3726,20 +3462,17 @@ find_unique (MOP classop, SM_ATTRIBUTE * att,
    */
   if (found != NULL)
     {
-      /* Using LC_FETCH_DIRTY_VERSION instead current version, is a quick fix.
-       * Thus, we need to avoid fetching current version without any instance
-       * or shared/exclusive class lock, since btree_find_unique does not
-       * acquire locks in all cases.
-       */
-      if (au_fetch_instance_force (found, NULL, fetchmode,
-				   LC_FETCH_DIRTY_VERSION) != NO_ERROR)
+      /* Using LC_FETCH_DIRTY_VERSION instead current version, is a quick fix. Thus, we need to avoid fetching current
+       * version without any instance or shared/exclusive class lock, since btree_find_unique does not acquire locks in 
+       * all cases. */
+      if (au_fetch_instance_force (found, NULL, fetchmode, LC_FETCH_DIRTY_VERSION) != NO_ERROR)
 	{
 	  return NULL;
 	}
     }
 
 notfound:
-  /*
+  /* 
    * since this is a common case, set this as a warning so we don't clutter
    * up the error log.
    */
@@ -3812,8 +3545,7 @@ flush_temporary_OID (MOP classop, DB_VALUE * key)
  *
  */
 MOP
-obj_desc_find_unique (MOP op, SM_DESCRIPTOR * desc,
-		      DB_VALUE * value, AU_FETCHMODE fetchmode)
+obj_desc_find_unique (MOP op, SM_DESCRIPTOR * desc, DB_VALUE * value, AU_FETCHMODE fetchmode)
 {
   SM_CLASS *class_;
   SM_ATTRIBUTE *att;
@@ -3826,8 +3558,7 @@ obj_desc_find_unique (MOP op, SM_DESCRIPTOR * desc,
   else
     {
       /* map the descriptor into an actual pair of class/attribute structures */
-      if (sm_get_descriptor_component (op, desc, 0, &class_,
-				       (SM_COMPONENT **) (&att)) == NO_ERROR)
+      if (sm_get_descriptor_component (op, desc, 0, &class_, (SM_COMPONENT **) (&att)) == NO_ERROR)
 	{
 	  obj = find_unique (op, att, value, fetchmode);
 	}
@@ -3852,8 +3583,7 @@ obj_desc_find_unique (MOP op, SM_DESCRIPTOR * desc,
  *
  */
 MOP
-obj_find_unique (MOP op, const char *attname,
-		 DB_VALUE * value, AU_FETCHMODE fetchmode)
+obj_find_unique (MOP op, const char *attname, DB_VALUE * value, AU_FETCHMODE fetchmode)
 {
   SM_CLASS *class_;
   SM_ATTRIBUTE *att;
@@ -3869,8 +3599,7 @@ obj_find_unique (MOP op, const char *attname,
       att = classobj_find_attribute (class_, attname, 0);
       if (att == NULL)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		  ER_OBJ_INVALID_ATTRIBUTE, 1, attname);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ATTRIBUTE, 1, attname);
 	}
       else
 	{
@@ -3900,8 +3629,7 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
     {
       if (DB_IS_NULL (values[0]))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
 	  return NULL;
 	}
       *key = *values[0];
@@ -3916,9 +3644,7 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
 
       for (i = 0, nullcnt = 0; i < size; i++)
 	{
-	  if (values[i] == NULL
-	      || set_put_element (mc_seq, i,
-				  (DB_VALUE *) values[i]) != NO_ERROR)
+	  if (values[i] == NULL || set_put_element (mc_seq, i, (DB_VALUE *) values[i]) != NO_ERROR)
 	    {
 	      set_free (mc_seq);
 	      return NULL;
@@ -3933,8 +3659,7 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
       if (nullcnt >= size)
 	{
 	  set_free (mc_seq);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
 	  return NULL;
 	}
 
@@ -3957,8 +3682,7 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
  *
  */
 MOP
-obj_find_multi_attr (MOP op, int size, const char *attr_names[],
-		     const DB_VALUE * values[], AU_FETCHMODE fetchmode)
+obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE * values[], AU_FETCHMODE fetchmode)
 {
   SM_CLASS *class_;
   SM_CLASS_CONSTRAINT *cons;
@@ -4001,8 +3725,7 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[],
 	    }
 
 	  i = 0;
-	  while (i < size && *attp && *namep
-		 && !SM_COMPARE_NAMES ((*attp)->header.name, *namep))
+	  while (i < size && *attp && *namep && !SM_COMPARE_NAMES ((*attp)->header.name, *namep))
 	    {
 	      attp++;
 	      namep++;
@@ -4017,8 +3740,7 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[],
 
   if (cons == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-	      ER_OBJ_INVALID_ARGUMENTS, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       goto end_find;
     }
 
@@ -4045,8 +3767,7 @@ end_find:
  *
  */
 MOP
-obj_find_multi_desc (MOP op, int size, const SM_DESCRIPTOR * desc[],
-		     const DB_VALUE * values[], AU_FETCHMODE fetchmode)
+obj_find_multi_desc (MOP op, int size, const SM_DESCRIPTOR * desc[], const DB_VALUE * values[], AU_FETCHMODE fetchmode)
 {
   SM_CLASS *class_;
   SM_CLASS_CONSTRAINT *cons;
@@ -4089,13 +3810,10 @@ obj_find_multi_desc (MOP op, int size, const SM_DESCRIPTOR * desc[],
   for (i = 0; i < size; i++)
     {
       if (desc[i] == NULL
-	  || sm_get_descriptor_component (op, (SM_DESCRIPTOR *) desc[i],
-					  0, &class_,
-					  (SM_COMPONENT **) (&desc_comp[i]))
-	  != NO_ERROR)
+	  || sm_get_descriptor_component (op, (SM_DESCRIPTOR *) desc[i], 0, &class_,
+					  (SM_COMPONENT **) (&desc_comp[i])) != NO_ERROR)
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
 	  goto end_find;
 	}
     }
@@ -4128,8 +3846,7 @@ obj_find_multi_desc (MOP op, int size, const SM_DESCRIPTOR * desc[],
 
   if (cons == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-	      ER_OBJ_INVALID_ARGUMENTS, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       goto end_find;
     }
 
@@ -4176,8 +3893,7 @@ end_find:
  *    object could not be found will be ER_OBJ_OBJECT_NOT_FOUND
  */
 static MOP
-obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons,
-				 DB_VALUE * key, AU_FETCHMODE fetchmode)
+obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons, DB_VALUE * key, AU_FETCHMODE fetchmode)
 {
   DB_TYPE value_type;
   int error;
@@ -4236,8 +3952,7 @@ obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons,
 	    }
 
 	  value_type = DB_VALUE_TYPE (&key_element);
-	  if (tp_domain_select (att[i]->domain, &key_element, 1, TP_ANY_MATCH)
-	      == NULL)
+	  if (tp_domain_select (att[i]->domain, &key_element, 1, TP_ANY_MATCH) == NULL)
 	    {
 	      pr_clear_value (&key_element);
 	      error = ER_OBJ_INVALID_ARGUMENTS;
@@ -4261,11 +3976,10 @@ obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons,
 	}
     }
 
-  if (btree_find_unique (&cons->index_btid, key,
-			 ws_oid (classop), &unique_oid) == BTREE_KEY_FOUND)
+  if (btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid) == BTREE_KEY_FOUND)
     {
       obj = ws_mop (&unique_oid, NULL);
-      /*
+      /* 
        * If we got an object, obtain an "S" lock before returning it, this
        * avoid problems peeking at objects that were created
        * by another transaction but which have not yet been committed.
@@ -4276,13 +3990,10 @@ obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons,
        */
       if (obj != NULL)
 	{
-	  /* Using LC_FETCH_DIRTY_VERSION instead current version, is a quick fix.
-	   * Thus, we need to avoid fetching current version without any instance
-	   * or shared/exclusive class lock, since btree_find_unique does not
-	   * acquire locks in all cases.
-	   */
-	  if (au_fetch_instance_force (obj, NULL, fetchmode,
-				       LC_FETCH_DIRTY_VERSION) != NO_ERROR)
+	  /* Using LC_FETCH_DIRTY_VERSION instead current version, is a quick fix. Thus, we need to avoid fetching
+	   * current version without any instance or shared/exclusive class lock, since btree_find_unique does not
+	   * acquire locks in all cases. */
+	  if (au_fetch_instance_force (obj, NULL, fetchmode, LC_FETCH_DIRTY_VERSION) != NO_ERROR)
 	    {
 	      return NULL;
 	    }
@@ -4290,7 +4001,7 @@ obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons,
     }
 
 error_return:
-  /*
+  /* 
    * since this is a common case, set this as a warning so we don't clutter
    * up the error log.
    */
@@ -4317,8 +4028,7 @@ error_return:
  *      with the PRIMARY KEY constraint
  */
 MOP
-obj_find_primary_key (MOP op, const DB_VALUE ** values,
-		      int size, AU_FETCHMODE fetchmode)
+obj_find_primary_key (MOP op, const DB_VALUE ** values, int size, AU_FETCHMODE fetchmode)
 {
   MOP obj = NULL;
   int i;
@@ -4345,8 +4055,7 @@ obj_find_primary_key (MOP op, const DB_VALUE ** values,
 
       for (i = 0; i < size; i++)
 	{
-	  if (set_put_element (mc_seq, i, (DB_VALUE *) (values[i])) !=
-	      NO_ERROR)
+	  if (set_put_element (mc_seq, i, (DB_VALUE *) (values[i])) != NO_ERROR)
 	    {
 	      goto notfound;
 	    }
@@ -4390,15 +4099,13 @@ obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
 }
 
 MOP
-obj_repl_find_object_by_pkey (MOP classop, DB_VALUE * key,
-			      AU_FETCHMODE fetchmode)
+obj_repl_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
 {
   return obj_find_object_by_pkey_internal (classop, key, fetchmode, true);
 }
 
 static MOP
-obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key,
-				  AU_FETCHMODE fetchmode, bool is_replication)
+obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode, bool is_replication)
 {
   SM_CLASS *class_;
   SM_CLASS_CONSTRAINT *cons;
@@ -4435,7 +4142,7 @@ obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key,
   value_type = DB_VALUE_TYPE (key);
   if (value_type == DB_TYPE_NULL)
     {
-      /*
+      /* 
        * We cannot search for a "null" value, though perhaps we could with some
        * additional effort.
        */
@@ -4465,20 +4172,18 @@ obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key,
 
   if (is_replication == true)
     {
-      btree_search = repl_btree_find_unique (&cons->index_btid, key,
-					     ws_oid (classop), &unique_oid);
+      btree_search = repl_btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid);
     }
   else
     {
-      btree_search = btree_find_unique (&cons->index_btid, key,
-					ws_oid (classop), &unique_oid);
+      btree_search = btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid);
     }
   if (btree_search == BTREE_KEY_FOUND)
     {
       obj = ws_mop (&unique_oid, NULL);
     }
 
-  /*
+  /* 
    * If we got an object, obtain an "S" lock before returning it, this
    * avoid problems peeking at objects that were created
    * by another transaction but which have not yet been committed.
@@ -4489,20 +4194,17 @@ obj_find_object_by_pkey_internal (MOP classop, DB_VALUE * key,
    */
   if (obj != NULL)
     {
-      /* Using LC_FETCH_DIRTY_VERSION instead current version, is a quick fix.
-       * Thus, we need to avoid fetching current version without any instance
-       * or shared/exclusive class lock, since btree_find_unique does not
-       * acquire locks in all cases.
-       */
-      if (au_fetch_instance_force (obj, NULL, fetchmode,
-				   LC_FETCH_DIRTY_VERSION) != NO_ERROR)
+      /* Using LC_FETCH_DIRTY_VERSION instead current version, is a quick fix. Thus, we need to avoid fetching current
+       * version without any instance or shared/exclusive class lock, since btree_find_unique does not acquire locks in 
+       * all cases. */
+      if (au_fetch_instance_force (obj, NULL, fetchmode, LC_FETCH_DIRTY_VERSION) != NO_ERROR)
 	{
 	  return NULL;
 	}
     }
 
 notfound:
-  /*
+  /* 
    * since this is a common case, set this as a warning so we don't clutter
    * up the error log.
    */
@@ -4524,8 +4226,7 @@ notfound:
  *    recdes(in): record to be inserted
  */
 int
-obj_repl_add_object (MOP classop, DB_VALUE * key_value, int type,
-		     RECDES * recdes)
+obj_repl_add_object (MOP classop, DB_VALUE * key_value, int type, RECDES * recdes)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -4594,8 +4295,7 @@ obj_repl_add_object (MOP classop, DB_VALUE * key_value, int type,
       return ER_OBJ_OBJECT_NOT_FOUND;
     }
 
-  error = ws_add_to_repl_obj_list (class_oid, key_value, recdes, operation,
-				   has_index);
+  error = ws_add_to_repl_obj_list (class_oid, key_value, recdes, operation, has_index);
 
   return error;
 }
@@ -4653,9 +4353,7 @@ obj_prefetch_repl_update_or_delete_object (MOP classop, DB_VALUE * key_value)
 	}
     }
 
-  error =
-    locator_prefetch_repl_update_or_delete (oid, &cons->index_btid,
-					    key_value);
+  error = locator_prefetch_repl_update_or_delete (oid, &cons->index_btid, key_value);
   return error;
 
 error_return:
@@ -4729,7 +4427,7 @@ obj_isinstance (MOP obj)
 	      is_instance = 1;
 	    }
 
-	  /*
+	  /* 
 	   * before declaring this an instance, we have to make sure it
 	   * isn't deleted
 	   */
@@ -4737,9 +4435,8 @@ obj_isinstance (MOP obj)
 	    {
 	      if (WS_ISVID (obj))
 		{
-		  if ((au_fetch_instance (obj, &object, AU_FETCH_READ,
-					  TM_TRAN_READ_FETCH_VERSION (),
-					  AU_SELECT)) == NO_ERROR)
+		  if ((au_fetch_instance (obj, &object, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT)) ==
+		      NO_ERROR)
 		    {
 		      is_instance = 1;
 		    }
@@ -4785,7 +4482,7 @@ obj_is_instance_of (MOP obj, MOP class_mop)
   int status = 0;
   MOP object_class_mop;
 
-  /*
+  /* 
    * is it possible for the obj->class field to be unset and yet still have
    * the class MOP in the workspace ?
    */
@@ -4799,9 +4496,7 @@ obj_is_instance_of (MOP obj, MOP class_mop)
       if (object_class_mop == NULL)
 	{
 	  /* must force fetch of instance to get its class */
-	  if (au_fetch_instance (obj, NULL, AU_FETCH_READ,
-				 TM_TRAN_READ_FETCH_VERSION (), AU_SELECT)
-	      != NO_ERROR)
+	  if (au_fetch_instance (obj, NULL, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT) != NO_ERROR)
 	    {
 	      status = -1;
 	    }
@@ -4839,8 +4534,7 @@ obj_lock (MOP op, int for_write)
       return NO_ERROR;
     }
 
-  class_purpose = ((for_write)
-		   ? DB_FETCH_CLREAD_INSTWRITE : DB_FETCH_CLREAD_INSTREAD);
+  class_purpose = ((for_write) ? DB_FETCH_CLREAD_INSTWRITE : DB_FETCH_CLREAD_INSTREAD);
   is_class = locator_is_class (op, class_purpose);
   if (is_class < 0)
     {
@@ -4908,14 +4602,12 @@ obj_inst_lock (MOP op, int for_write)
 
   if (for_write)
     {
-      error = au_fetch_instance (op, NULL, AU_FETCH_UPDATE,
-				 LC_FETCH_MVCC_VERSION, AU_UPDATE);
+      error = au_fetch_instance (op, NULL, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE);
     }
   else
     {
       /* get dirty version, since need to lock the object */
-      error = au_fetch_instance (op, NULL, AU_FETCH_READ,
-				 LC_FETCH_DIRTY_VERSION, AU_SELECT);
+      error = au_fetch_instance (op, NULL, AU_FETCH_READ, LC_FETCH_DIRTY_VERSION, AU_SELECT);
     }
 
   return error;
@@ -4936,8 +4628,7 @@ obj_inst_lock (MOP op, int for_write)
  *
  */
 int
-obj_find_unique_id (MOP op, const char *att_name,
-		    BTID * id_array, int id_array_size, int *total_ids)
+obj_find_unique_id (MOP op, const char *att_name, BTID * id_array, int id_array_size, int *total_ids)
 {
   SM_CLASS *class_;
   SM_ATTRIBUTE *att;

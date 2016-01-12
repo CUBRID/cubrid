@@ -46,12 +46,9 @@ struct db_gadget
   ATTR_VAL *attrs;
 };
 
-extern DB_GADGET *db_gadget_create (const char *class_name,
-				    const char *attribute_names[]);
+extern DB_GADGET *db_gadget_create (const char *class_name, const char *attribute_names[]);
 extern void db_gadget_destroy (DB_GADGET * gadget);
-extern int db_gadget_bind (DB_GADGET * gadget,
-			   const char *attribute_name, DB_VALUE * dbval);
-extern DB_OBJECT *db_gadget_exec (DB_GADGET * gadget, int num_dbvals,
-				  DB_VALUE dbvals[]);
+extern int db_gadget_bind (DB_GADGET * gadget, const char *attribute_name, DB_VALUE * dbval);
+extern DB_OBJECT *db_gadget_exec (DB_GADGET * gadget, int num_dbvals, DB_VALUE dbvals[]);
 
 #endif /* _ESQL_GADGET_H_ */

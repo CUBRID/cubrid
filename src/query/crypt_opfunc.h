@@ -30,22 +30,14 @@
 
 #include "thread.h"
 
-extern int crypt_aes_default_encrypt (THREAD_ENTRY * thread_p,
-				      const char *src, int src_len,
-				      const char *key, int key_len,
-				      char **dest_p, int *dest_len_p);
-extern int crypt_aes_default_decrypt (THREAD_ENTRY * thread_p,
-				      const char *src, int src_len,
-				      const char *key, int key_len,
-				      char **dest_p, int *dest_len_p);
-extern int crypt_sha_one (THREAD_ENTRY * thread_p, const char *src,
-			  int src_len, char **dest_p, int *dest_len_p);
-extern int crypt_sha_two (THREAD_ENTRY * thread_p, const char *src,
-			  int src_len, int need_hash_len, char **dest_p,
+extern int crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key,
+				      int key_len, char **dest_p, int *dest_len_p);
+extern int crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, const char *key,
+				      int key_len, char **dest_p, int *dest_len_p);
+extern int crypt_sha_one (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p, int *dest_len_p);
+extern int crypt_sha_two (THREAD_ENTRY * thread_p, const char *src, int src_len, int need_hash_len, char **dest_p,
 			  int *dest_len_p);
-extern int crypt_generate_random_bytes (THREAD_ENTRY * thread_p, char *dest,
-					int length);
-extern int crypt_crc32 (THREAD_ENTRY * thread_p, const char *src, int src_len,
-			int *dest);
+extern int crypt_generate_random_bytes (THREAD_ENTRY * thread_p, char *dest, int length);
+extern int crypt_crc32 (THREAD_ENTRY * thread_p, const char *src, int src_len, int *dest);
 
 #endif

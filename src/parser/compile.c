@@ -77,33 +77,19 @@ enum pt_order_by_adjustment
   PT_TIMES_TWO
 };
 
-static PT_NODE *pt_add_oid_to_select_list (PARSER_CONTEXT * parser,
-					   PT_NODE * statement,
-					   VIEW_HANDLING how);
-static PT_NODE *pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node,
-				   void *arg, int *continue_walk);
-static PT_NODE *pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node,
-				void *arg, int *continue_walk);
-static int pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
-			      PT_NODE * spec, LC_PREFETCH_FLAGS flags);
-static PT_NODE *pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
-				     void *arg, int *continue_walk);
-static PT_NODE *pt_find_lck_class_from_partition (PARSER_CONTEXT * parser,
-						  PT_NODE * node,
-						  PT_CLASS_LOCKS * locks);
-static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str,
-			    LC_PREFETCH_FLAGS flags);
+static PT_NODE *pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement, VIEW_HANDLING how);
+static PT_NODE *pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static int pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spec, LC_PREFETCH_FLAGS flags);
+static PT_NODE *pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node, PT_CLASS_LOCKS * locks);
+static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str, LC_PREFETCH_FLAGS flags);
 
 static void remove_appended_trigger_info (char *msg, int with_evaluate);
 
-static PT_NODE *pt_set_trigger_obj_pre (PARSER_CONTEXT * parser,
-					PT_NODE * node, void *arg,
-					int *continue_walk);
-static PT_NODE *pt_set_trigger_obj_post (PARSER_CONTEXT * parser,
-					 PT_NODE * node, void *arg,
-					 int *continue_walk);
-static PT_NODE *pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node,
-				  void *arg, int *continue_walk);
+static PT_NODE *pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_set_trigger_obj_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 /*
  * pt_spec_to_oid_attr () - Generate an oid attribute from a resolved spec.
@@ -115,8 +101,7 @@ static PT_NODE *pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node,
  */
 
 PT_NODE *
-pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
-		     VIEW_HANDLING how)
+pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec, VIEW_HANDLING how)
 {
   PT_NODE *node = NULL, *oid = NULL;
   PT_NODE *flat;
@@ -128,12 +113,10 @@ pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
   flat = spec->info.spec.flat_entity_list;
   range = spec->info.spec.range_var;
 
-  if (spec->info.spec.derived_table
-      && spec->info.spec.flat_entity_list && spec->info.spec.as_attr_list)
+  if (spec->info.spec.derived_table && spec->info.spec.flat_entity_list && spec->info.spec.as_attr_list)
     {
-      /* this spec should have come from a vclass that was rewritten as a
-         derived table; pull ROWOID/CLASSOID from as_attr_list
-         NOTE: see mq_rewrite_derived_table_for_update () */
+      /* this spec should have come from a vclass that was rewritten as a derived table; pull ROWOID/CLASSOID from
+       * as_attr_list NOTE: see mq_rewrite_derived_table_for_update () */
       switch (how)
 	{
 	case OID_NAME:
@@ -150,15 +133,11 @@ pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
 	}
     }
 
-  if (how == OID_NAME || how == CLASSOID_NAME
-      || how == HIDDEN_CLASSOID_NAME || !flat ||
-      (!flat->info.name.virt_object
-       || mq_is_updatable (flat->info.name.virt_object)))
+  if (how == OID_NAME || how == CLASSOID_NAME || how == HIDDEN_CLASSOID_NAME || !flat
+      || (!flat->info.name.virt_object || mq_is_updatable (flat->info.name.virt_object)))
     {
-      /* just generate an oid name, if that is what is asked for
-       * or the class is not a proxy and there is no view
-       * or the view is updatable
-       */
+      /* just generate an oid name, if that is what is asked for or the class is not a proxy and there is no view or
+       * the view is updatable */
       if (node != NULL)
 	{
 	  oid = node;
@@ -181,8 +160,7 @@ pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
 	  if (oid->data_type)
 	    {
 	      oid->data_type->type_enum = PT_TYPE_OBJECT;
-	      oid->data_type->info.data_type.entity =
-		parser_copy_tree_list (parser, flat);
+	      oid->data_type->info.data_type.entity = parser_copy_tree_list (parser, flat);
 	    }
 	  else
 	    {
@@ -191,18 +169,15 @@ pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
 
 	  if (flat)
 	    {
-	      oid->data_type->info.data_type.virt_object =
-		flat->info.name.virt_object;
-	      oid->data_type->info.data_type.virt_type_enum =
-		flat->info.name.virt_type_enum;
+	      oid->data_type->info.data_type.virt_object = flat->info.name.virt_object;
+	      oid->data_type->info.data_type.virt_type_enum = flat->info.name.virt_type_enum;
 	    }
 	}
       if (how == CLASSOID_NAME || how == HIDDEN_CLASSOID_NAME)
 	{
 	  PT_NODE *func, *tmp;
 
-	  /* make into a class_of function with the generated OID as
-	   * the argument */
+	  /* make into a class_of function with the generated OID as the argument */
 	  func = parser_new_node (parser, PT_FUNCTION);
 	  if (func)
 	    {
@@ -218,10 +193,8 @@ pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
 	  if (func->data_type)
 	    {
 	      func->data_type->type_enum = PT_TYPE_OBJECT;
-	      func->data_type->info.data_type.entity =
-		parser_copy_tree_list (parser, flat);
-	      for (tmp = func->data_type->info.data_type.entity; tmp != NULL;
-		   tmp = tmp->next)
+	      func->data_type->info.data_type.entity = parser_copy_tree_list (parser, flat);
+	      for (tmp = func->data_type->info.data_type.entity; tmp != NULL; tmp = tmp->next)
 		{
 		  tmp->info.name.meta_class = PT_META_CLASS;
 		}
@@ -234,10 +207,8 @@ pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
 
 	  if (flat)
 	    {
-	      func->data_type->info.data_type.virt_object =
-		flat->info.name.virt_object;
-	      func->data_type->info.data_type.virt_type_enum =
-		flat->info.name.virt_type_enum;
+	      func->data_type->info.data_type.virt_object = flat->info.name.virt_object;
+	      func->data_type->info.data_type.virt_type_enum = flat->info.name.virt_type_enum;
 	    }
 
 	  if (how == HIDDEN_CLASSOID_NAME)
@@ -271,8 +242,7 @@ pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
  */
 
 static PT_NODE *
-pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement,
-			   VIEW_HANDLING how)
+pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement, VIEW_HANDLING how)
 {
   PT_NODE *oid, *from;
 
@@ -285,7 +255,7 @@ pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement,
     {
       PT_NODE *p, *ord;
 
-      /*
+      /* 
        * It would be nice to make this adjustment more automatic by
        * actually counting the number of "invisible" columns and keeping a
        * running adjustment bias, but right now there doesn't seem to be a
@@ -332,24 +302,20 @@ pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    }
 	}
     }
-  else if (statement->node_type == PT_UNION
-	   || statement->node_type == PT_INTERSECTION
+  else if (statement->node_type == PT_UNION || statement->node_type == PT_INTERSECTION
 	   || statement->node_type == PT_DIFFERENCE)
     {
 
       statement->info.query.oids_included = DB_ROW_OIDS;
       statement->info.query.q.union_.arg1 =
-	pt_add_oid_to_select_list (parser,
-				   statement->info.query.q.union_.arg1, how);
+	pt_add_oid_to_select_list (parser, statement->info.query.q.union_.arg1, how);
       statement->info.query.q.union_.arg2 =
-	pt_add_oid_to_select_list (parser,
-				   statement->info.query.q.union_.arg2, how);
+	pt_add_oid_to_select_list (parser, statement->info.query.q.union_.arg2, how);
 
       if (statement->info.query.q.union_.select_list != NULL)
 	{
 	  /* after adding oid, we need to get select_list again */
-	  parser_free_tree (parser,
-			    statement->info.query.q.union_.select_list);
+	  parser_free_tree (parser, statement->info.query.q.union_.select_list);
 	  statement->info.query.q.union_.select_list = NULL;
 
 	  (void) pt_get_select_list (parser, statement);
@@ -395,8 +361,7 @@ pt_add_row_oid_name (PARSER_CONTEXT * parser, PT_NODE * statement)
  */
 
 PT_NODE *
-pt_add_row_classoid_name (PARSER_CONTEXT * parser,
-			  PT_NODE * statement, int server_op)
+pt_add_row_classoid_name (PARSER_CONTEXT * parser, PT_NODE * statement, int server_op)
 {
   if (server_op)
     {
@@ -404,8 +369,7 @@ pt_add_row_classoid_name (PARSER_CONTEXT * parser,
     }
   else
     {
-      return pt_add_oid_to_select_list (parser, statement,
-					HIDDEN_CLASSOID_NAME);
+      return pt_add_oid_to_select_list (parser, statement, HIDDEN_CLASSOID_NAME);
     }
 }
 
@@ -496,8 +460,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_MERGE:
-      if (TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ
-	  && TM_TRAN_REP_READ_LOCK () == NULL_LOCK)
+      if (TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ && TM_TRAN_REP_READ_LOCK () == NULL_LOCK)
 	{
 	  lock_rr_tran = S_LOCK;
 	}
@@ -509,12 +472,9 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      lock_rr_tran = S_LOCK;
 	    }
-	  if (statement->node_type == PT_ALTER
-	      && statement->info.alter.code == PT_ADD_ATTR_MTHD)
+	  if (statement->node_type == PT_ALTER && statement->info.alter.code == PT_ADD_ATTR_MTHD)
 	    {
-	      for (node =
-		   statement->info.alter.alter_clause.attr_mthd.attr_def_list;
-		   node; node = node->next)
+	      for (node = statement->info.alter.alter_clause.attr_mthd.attr_def_list; node; node = node->next)
 		{
 		  if (node->info.attr_def.constrain_not_null)
 		    {
@@ -534,10 +494,9 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   lcks.num_classes = 0;
 
-  /* pt_count_entities() will give us too large a count if a class is
-   * mentioned more than once, but this will not hurt us. */
-  (void) parser_walk_tree (parser, statement, pt_count_entities,
-			   &lcks.num_classes, NULL, NULL);
+  /* pt_count_entities() will give us too large a count if a class is mentioned more than once, but this will not hurt
+   * us. */
+  (void) parser_walk_tree (parser, statement, pt_count_entities, &lcks.num_classes, NULL, NULL);
 
   if (lcks.num_classes == 0)
     {
@@ -549,8 +508,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   lcks.classes = (char **) malloc ((lcks.num_classes + 1) * sizeof (char *));
   if (lcks.classes == NULL)
     {
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-		  MSGCAT_RUNTIME_OUT_OF_MEMORY,
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		  lcks.num_classes * sizeof (char *));
       goto cleanup;
     }
@@ -558,8 +516,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   lcks.only_all = (int *) malloc (lcks.num_classes * sizeof (int));
   if (lcks.only_all == NULL)
     {
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-		  MSGCAT_RUNTIME_OUT_OF_MEMORY,
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		  lcks.num_classes * sizeof (int));
       goto cleanup;
     }
@@ -567,20 +524,16 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   lcks.locks = (LOCK *) malloc (lcks.num_classes * sizeof (LOCK));
   if (lcks.locks == NULL)
     {
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-		  MSGCAT_RUNTIME_OUT_OF_MEMORY,
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		  lcks.num_classes * sizeof (DB_FETCH_MODE));
       goto cleanup;
     }
   memset (lcks.classes, 0, (lcks.num_classes + 1) * sizeof (char *));
 
-  lcks.flags =
-    (LC_PREFETCH_FLAGS *) malloc (lcks.num_classes *
-				  sizeof (LC_PREFETCH_FLAGS));
+  lcks.flags = (LC_PREFETCH_FLAGS *) malloc (lcks.num_classes * sizeof (LC_PREFETCH_FLAGS));
   if (lcks.flags == NULL)
     {
-      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-		  MSGCAT_RUNTIME_OUT_OF_MEMORY,
+      PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		  lcks.num_classes * sizeof (DB_FETCH_MODE));
       goto cleanup;
     }
@@ -589,20 +542,16 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* reset so parser_walk_tree can step through arrays */
   lcks.num_classes = 0;
 
-  (void) parser_walk_tree (parser, statement, pt_find_lck_classes, &lcks,
-			   NULL, NULL);
+  (void) parser_walk_tree (parser, statement, pt_find_lck_classes, &lcks, NULL, NULL);
 
   if (!pt_has_error (parser)
       && (find_result =
-	  locator_lockhint_classes (lcks.num_classes,
-				    (const char **) lcks.classes, lcks.locks,
-				    lcks.only_all, lcks.flags, true,
-				    lock_rr_tran)) != LC_CLASSNAME_EXIST)
+	  locator_lockhint_classes (lcks.num_classes, (const char **) lcks.classes, lcks.locks, lcks.only_all,
+				    lcks.flags, true, lock_rr_tran)) != LC_CLASSNAME_EXIST)
     {
-      if (find_result == LC_CLASSNAME_ERROR
-	  && er_errid () == ER_LK_UNILATERALLY_ABORTED)
+      if (find_result == LC_CLASSNAME_ERROR && er_errid () == ER_LK_UNILATERALLY_ABORTED)
 	{
-	  /*
+	  /* 
 	   * Transaction has been aborted, the dirty objects and cached
 	   * locks has been cleared in current client during the above
 	   * locator_lockhint_classes () process. Therefore, must return from
@@ -623,8 +572,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->num_lcks_classes = lcks.num_classes;
   lcks.classes = NULL;
 
-  (void) parser_walk_tree (parser, statement, pt_set_class_chn, NULL, NULL,
-			   NULL);
+  (void) parser_walk_tree (parser, statement, pt_set_class_chn, NULL, NULL, NULL);
 
 cleanup:
   if (lcks.classes)
@@ -657,8 +605,7 @@ cleanup:
  *   continue_walk(out):
  */
 static PT_NODE *
-pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node,
-		  void *arg, int *continue_walk)
+pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *class_;
   MOP clsmop = NULL;
@@ -666,8 +613,7 @@ pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (node->node_type == PT_SPEC)
     {
-      for (class_ = node->info.spec.flat_entity_list;
-	   class_; class_ = class_->next)
+      for (class_ = node->info.spec.flat_entity_list; class_; class_ = class_->next)
 	{
 	  clsmop = class_->info.name.db_object;
 	  if (clsmop == NULL)
@@ -690,8 +636,7 @@ pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node,
 	      PT_ERRORc (parser, class_, er_msg ());
 	    }
 
-	  class_->info.name.db_object_chn
-	    = locator_get_cache_coherency_number (clsmop);
+	  class_->info.name.db_object_chn = locator_get_cache_coherency_number (clsmop);
 	}
     }
 
@@ -707,8 +652,7 @@ pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node,
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node,
-		   void *arg, int *continue_walk)
+pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   int *cnt = (int *) arg;
 
@@ -733,8 +677,7 @@ pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node,
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node,
-		void *arg, int *continue_walk)
+pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   int *cnt = (int *) arg;
 
@@ -756,16 +699,14 @@ pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node,
  *		      locking or for count optimization)
  */
 int
-pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
-		   PT_NODE * spec, LC_PREFETCH_FLAGS flags)
+pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spec, LC_PREFETCH_FLAGS flags)
 {
   int len = 0;
 
   if (lcks->num_classes >= lcks->allocated_count)
     {
-      /* Need to allocate more space in the locks array. Do not free locks
-       * array if memory allocation fails, it will be freed by the caller
-       * of this function */
+      /* Need to allocate more space in the locks array. Do not free locks array if memory allocation fails, it will be 
+       * freed by the caller of this function */
       void *ptr = NULL;
       size_t new_size = lcks->allocated_count + 1;
 
@@ -773,8 +714,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
       ptr = realloc (lcks->classes, new_size * sizeof (char *));
       if (ptr == NULL)
 	{
-	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_OUT_OF_MEMORY,
+	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		      new_size * sizeof (char *));
 	  return ER_FAILED;
 	}
@@ -784,8 +724,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
       ptr = realloc (lcks->only_all, new_size * sizeof (int));
       if (ptr == NULL)
 	{
-	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (int));
+	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (int));
 	  return ER_FAILED;
 	}
       lcks->only_all = (int *) ptr;
@@ -794,8 +733,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
       ptr = realloc (lcks->locks, new_size * sizeof (LOCK));
       if (ptr == NULL)
 	{
-	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (LOCK));
+	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (LOCK));
 	  return ER_FAILED;
 	}
       lcks->locks = (LOCK *) ptr;
@@ -804,8 +742,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
       ptr = realloc (lcks->flags, new_size * sizeof (LC_PREFETCH_FLAGS));
       if (ptr == NULL)
 	{
-	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_OUT_OF_MEMORY,
+	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		      new_size * sizeof (LC_PREFETCH_FLAGS));
 	  return ER_FAILED;
 	}
@@ -814,20 +751,17 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
       lcks->allocated_count++;
     }
 
-  /* need to lowercase the class name so that the lock manager
-   * can find it. */
+  /* need to lowercase the class name so that the lock manager can find it. */
   len = strlen (spec->info.spec.entity_name->info.name.original);
   /* parser->lcks_classes[n] will be freed at parser_free_parser() */
   lcks->classes[lcks->num_classes] = (char *) calloc (1, len + 1);
   if (lcks->classes[lcks->num_classes] == NULL)
     {
-      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
-		  MSGCAT_RUNTIME_OUT_OF_MEMORY, len + 1);
+      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, len + 1);
       return MSGCAT_RUNTIME_OUT_OF_MEMORY;
     }
 
-  sm_downcase_name (spec->info.spec.entity_name->info.name.original,
-		    lcks->classes[lcks->num_classes], len + 1);
+  sm_downcase_name (spec->info.spec.entity_name->info.name.original, lcks->classes[lcks->num_classes], len + 1);
 
   if (spec->info.spec.only_all == PT_ONLY)
     {
@@ -840,9 +774,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
 
   if (flags & LC_PREF_FLAG_LOCK)
     {
-      lcks->locks[lcks->num_classes] =
-	locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS,
-				    LC_FETCH_CURRENT_VERSION);
+      lcks->locks[lcks->num_classes] = locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS, LC_FETCH_CURRENT_VERSION);
     }
   else
     {
@@ -865,17 +797,14 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
-		     void *arg, int *continue_walk)
+pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_CLASS_LOCKS *lcks = (PT_CLASS_LOCKS *) arg;
 
   lcks->lock_type = DB_FETCH_READ;
 
-  /* Temporary disable count optimization. To enable it just restore the
-   * condition and also remove deactivation in
-   * qexec_evaluate_aggregates_optimize
-   */
+  /* Temporary disable count optimization. To enable it just restore the condition and also remove deactivation in
+   * qexec_evaluate_aggregates_optimize */
   if (false /* node->node_type == PT_SELECT */ )
     {
       /* count optimization */
@@ -884,19 +813,14 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 
       /* Check if query is of form 'SELECT count(*) from t' */
       if (list != NULL && list->next == NULL && list->node_type == PT_FUNCTION
-	  && list->info.function.function_type == PT_COUNT_STAR
-	  && from != NULL && from->next == NULL
-	  && from->info.spec.entity_name != NULL
-	  && from->info.spec.entity_name->node_type == PT_NAME
+	  && list->info.function.function_type == PT_COUNT_STAR && from != NULL && from->next == NULL
+	  && from->info.spec.entity_name != NULL && from->info.spec.entity_name->node_type == PT_NAME
 	  && node->info.query.q.select.where == NULL)
 	{
 	  /* only add to the array, if not there already in this lock mode. */
-	  if (!pt_in_lck_array (lcks,
-				from->info.spec.entity_name->info.name.
-				original, LC_PREF_FLAG_COUNT_OPTIM))
+	  if (!pt_in_lck_array (lcks, from->info.spec.entity_name->info.name.original, LC_PREF_FLAG_COUNT_OPTIM))
 	    {
-	      if (pt_add_lock_class (parser, lcks, from,
-				     LC_PREF_FLAG_COUNT_OPTIM) != NO_ERROR)
+	      if (pt_add_lock_class (parser, lcks, from, LC_PREF_FLAG_COUNT_OPTIM) != NO_ERROR)
 		{
 		  *continue_walk = PT_STOP_WALK;
 		  return node;
@@ -913,8 +837,7 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   /* check if this is a parenthesized entity list */
-  if (!node->info.spec.entity_name
-      || (node->info.spec.entity_name->node_type != PT_NAME))
+  if (!node->info.spec.entity_name || (node->info.spec.entity_name->node_type != PT_NAME))
     {
       return node;
     }
@@ -930,11 +853,9 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
     }
   /* only add to the array, if not there already in this lock mode. */
-  if (!pt_in_lck_array (lcks, node->info.spec.entity_name->info.name.original,
-			LC_PREF_FLAG_LOCK))
+  if (!pt_in_lck_array (lcks, node->info.spec.entity_name->info.name.original, LC_PREF_FLAG_LOCK))
     {
-      if (pt_add_lock_class (parser, lcks, node, LC_PREF_FLAG_LOCK)
-	  != NO_ERROR)
+      if (pt_add_lock_class (parser, lcks, node, LC_PREF_FLAG_LOCK) != NO_ERROR)
 	{
 	  *continue_walk = PT_STOP_WALK;
 	  return node;
@@ -953,8 +874,7 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
  * locks (in)  : locks array
  */
 static PT_NODE *
-pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node,
-				  PT_CLASS_LOCKS * locks)
+pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node, PT_CLASS_LOCKS * locks)
 {
   int error = NO_ERROR;
   const char *entity_name = NULL;
@@ -966,9 +886,7 @@ pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   entity_name = node->info.spec.entity_name->info.name.original;
-  partition_name =
-    pt_partition_name (parser, entity_name,
-		       node->info.spec.partition->info.name.original);
+  partition_name = pt_partition_name (parser, entity_name, node->info.spec.partition->info.name.original);
   if (partition_name == NULL)
     {
       if (!pt_has_error (parser))
@@ -980,8 +898,7 @@ pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (!pt_in_lck_array (locks, partition_name, LC_PREF_FLAG_LOCK))
     {
-      /* Set lock on specified partition. Only add to the array if not there
-       * already in this lock mode. */
+      /* Set lock on specified partition. Only add to the array if not there already in this lock mode. */
       node->info.spec.entity_name->info.name.original = partition_name;
       error = pt_add_lock_class (parser, locks, node, LC_PREF_FLAG_LOCK);
 
@@ -1003,15 +920,12 @@ pt_find_lck_class_from_partition (PARSER_CONTEXT * parser, PT_NODE * node,
  *   str(in):
  */
 static int
-pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str,
-		 LC_PREFETCH_FLAGS flags)
+pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str, LC_PREFETCH_FLAGS flags)
 {
   int i, no_lock_idx = -1;
   LOCK chk_lock;
 
-  chk_lock =
-    locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS,
-				LC_FETCH_CURRENT_VERSION);
+  chk_lock = locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS, LC_FETCH_CURRENT_VERSION);
   for (i = 0; i < lcks->num_classes; i++)
     {
       if (intl_identifier_casecmp (str, lcks->classes[i]) == 0)
@@ -1074,26 +988,20 @@ remove_appended_trigger_info (char *msg, int with_evaluate)
       p = strstr (msg, eval_prefix);
       if (p != NULL)
 	{
-	  p =
-	    memmove (p, p + strlen (eval_prefix),
-		     strlen (p) - strlen (eval_prefix) + 1);
+	  p = memmove (p, p + strlen (eval_prefix), strlen (p) - strlen (eval_prefix) + 1);
 	}
 
       p = strstr (msg, eval_suffix);
       if (p != NULL)
 	{
-	  p =
-	    memmove (p, p + strlen (eval_suffix),
-		     strlen (p) - strlen (eval_suffix) + 1);
+	  p = memmove (p, p + strlen (eval_suffix), strlen (p) - strlen (eval_suffix) + 1);
 	}
     }
 
   p = strstr (msg, scope_str);
   if (p != NULL)
     {
-      p =
-	memmove (p, p + strlen (scope_str),
-		 strlen (p) - strlen (scope_str) + 1);
+      p = memmove (p, p + strlen (scope_str), strlen (p) - strlen (scope_str) + 1);
     }
 
   p = strstr (msg, from_on_str);
@@ -1122,10 +1030,8 @@ remove_appended_trigger_info (char *msg, int with_evaluate)
  */
 
 PT_NODE *
-pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
-			 const char *trigger_stmt,
-			 DB_OBJECT * class_op,
-			 const char *name1, const char *name2)
+pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_OBJECT * class_op, const char *name1,
+			 const char *name2)
 {
   char *stmt_str = NULL;
   const char *class_name;
@@ -1140,8 +1046,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
     return NULL;
 
   /* is this an update object statement? if so it gets more complex */
-  is_update_object = (intl_mbs_ncasecmp (trigger_stmt, "update object",
-					 strlen ("update object")) == 0);
+  is_update_object = (intl_mbs_ncasecmp (trigger_stmt, "update object", strlen ("update object")) == 0);
 
   if (is_update_object)
     {
@@ -1150,11 +1055,8 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
 	  return NULL;		/* deleted object */
 	}
 
-      /* The name that could be an argument to UPDATE OBJECT will always
-       * be the first name supplied here.
-       * Don't need to initialize a label as we'll convert the PT_PARAMETER
-       * node into a PT_TRIGGER_OID later.
-       */
+      /* The name that could be an argument to UPDATE OBJECT will always be the first name supplied here. Don't need to 
+       * initialize a label as we'll convert the PT_PARAMETER node into a PT_TRIGGER_OID later. */
       if (name1 != NULL)
 	{
 	  name1 = name2;
@@ -1202,11 +1104,8 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
     return NULL;
   statement = *statement_p;
 
-  /* If this is an update object statement, setup a spec to allow
-   * binding to the :obj parameter.  This code was copied from
-   * some other pt_ function, should consider making this a subroutine
-   * if it is generally useful.
-   */
+  /* If this is an update object statement, setup a spec to allow binding to the :obj parameter.  This code was copied
+   * from some other pt_ function, should consider making this a subroutine if it is generally useful. */
   if (is_update_object)
     {
       PT_NODE *upd, *entity, *entity_name;
@@ -1220,8 +1119,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
       entity_name = entity->info.spec.entity_name;
       entity_name->info.name.spec_id = entity->info.spec.id;
       entity_name->info.name.meta_class = PT_CLASS;
-      entity_name->info.name.original =
-	(const char *) db_get_class_name (class_op);
+      entity_name->info.name.original = (const char *) db_get_class_name (class_op);
 
       entity->info.spec.only_all = PT_ONLY;
       entity->info.spec.range_var = parser_copy_tree (parser, entity_name);
@@ -1241,48 +1139,36 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
   if (pt_has_error (parser))
     {
       err_node = pt_get_errors (parser);
-      with_evaluate =
-	strstr (trigger_stmt, "EVALUATE ( ") != NULL ? true : false;
+      with_evaluate = strstr (trigger_stmt, "EVALUATE ( ") != NULL ? true : false;
       while (err_node)
 	{
-	  remove_appended_trigger_info (err_node->info.error_msg.
-					error_message, with_evaluate);
+	  remove_appended_trigger_info (err_node->info.error_msg.error_message, with_evaluate);
 	  err_node = err_node->next;
 	}
     }
 
-  /* We need to do view translation here
-   * on the expression to be executed. */
+  /* We need to do view translation here on the expression to be executed. */
   if (statement)
     {
       statement->info.scope.stmt->info.trigger_action.expression =
-	mq_translate (parser,
-		      statement->info.scope.stmt->info.trigger_action.
-		      expression);
-      /*
+	mq_translate (parser, statement->info.scope.stmt->info.trigger_action.expression);
+      /* 
        * Trigger statement node must use the datetime information of the
        * node corresponding the action to be made.
        */
-      if (statement->info.scope.stmt &&
-	  statement->info.scope.stmt->info.trigger_action.expression)
+      if (statement->info.scope.stmt && statement->info.scope.stmt->info.trigger_action.expression)
 	{
-	  statement->si_datetime |= statement->info.scope.stmt->info.
-	    trigger_action.expression->si_datetime;
+	  statement->si_datetime |= statement->info.scope.stmt->info.trigger_action.expression->si_datetime;
 	}
     }
 
   /* split the delete statement */
-  if (statement != NULL
-      && statement->info.scope.stmt->info.trigger_action.expression != NULL
-      && statement->info.scope.stmt->info.trigger_action.expression->
-      node_type == PT_DELETE)
+  if (statement != NULL && statement->info.scope.stmt->info.trigger_action.expression != NULL
+      && statement->info.scope.stmt->info.trigger_action.expression->node_type == PT_DELETE)
     {
       PT_NODE *node = NULL, *prev = NULL;
 
-      if (pt_split_delete_stmt
-	  (parser,
-	   statement->info.scope.stmt->info.trigger_action.expression) !=
-	  NO_ERROR)
+      if (pt_split_delete_stmt (parser, statement->info.scope.stmt->info.trigger_action.expression) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -1312,22 +1198,18 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser,
  * match the spec_id's given to the correlation names in the outer scope.
  */
 static PT_NODE *
-pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node,
-			void *arg, int *continue_walk)
+pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   TRIGGER_EXEC_INFO *exec_info = (TRIGGER_EXEC_INFO *) arg;
 
 
   if (exec_info->is_update_object)
     {
-      /* Its an "update object" statement, the object target will initially be
-       * a PT_PARAMETER meta_class node. When we find one of these, convert
-       * it to be a normal PT_TRIGGER_OID node so we avoid ambiguities in name
-       * resolution and don't have to actually set a :obj label for run time
-       * evaluation. Note that since the meta_class of the node changes
-       * after the first time through here, the following clause has to be
-       * smart about recognzing this in the future with a spec_id of zero.
-       */
+      /* Its an "update object" statement, the object target will initially be a PT_PARAMETER meta_class node. When we
+       * find one of these, convert it to be a normal PT_TRIGGER_OID node so we avoid ambiguities in name resolution
+       * and don't have to actually set a :obj label for run time evaluation. Note that since the meta_class of the
+       * node changes after the first time through here, the following clause has to be smart about recognzing this in
+       * the future with a spec_id of zero. */
       switch (node->node_type)
 	{
 	case PT_SELECT:
@@ -1335,29 +1217,20 @@ pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  break;
 
 	case PT_UPDATE:
-	  /* this is the root of the update statement, the "object" field
-	   * must be set to a non-NULL value in order for do_update() to
-	   * believe that this is an update object statement. Given that,
-	   * I'm not sure if it is necessary to be setting the parameter value
-	   * in the object_parameter field as well but it doesn't seem to hurt.
-	   */
+	  /* this is the root of the update statement, the "object" field must be set to a non-NULL value in order for
+	   * do_update() to believe that this is an update object statement. Given that, I'm not sure if it is
+	   * necessary to be setting the parameter value in the object_parameter field as well but it doesn't seem to
+	   * hurt. */
 	  node->info.update.object = exec_info->object1;
 	  break;
 
 	case PT_NAME:
 	  if (node->info.name.meta_class == PT_PARAMETER)
 	    {
-	      /* it could be our :obj or :new parameter, ignore spec_id,
-	       * it could * be zero or could be resolved depending on
-	       * where we are. this shouldn't matter,
-	       * the symbolic names tell us what this is.
-	       */
-	      if ((exec_info->name1 != NULL
-		   && strcmp (node->info.name.original,
-			      exec_info->name1) == 0)
-		  || (exec_info->name2 != NULL
-		      && strcmp (node->info.name.original,
-				 exec_info->name2) == 0))
+	      /* it could be our :obj or :new parameter, ignore spec_id, it could * be zero or could be resolved
+	       * depending on where we are. this shouldn't matter, the symbolic names tell us what this is. */
+	      if ((exec_info->name1 != NULL && strcmp (node->info.name.original, exec_info->name1) == 0)
+		  || (exec_info->name2 != NULL && strcmp (node->info.name.original, exec_info->name2) == 0))
 		{
 		  /* its a parameter reference to one of our magic names */
 		  node->info.name.db_object = exec_info->object1;
@@ -1371,8 +1244,7 @@ pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  else
 	    {
 	      /* its some other non-paremter name node */
-	      if (exec_info->spec_id1
-		  && node->info.name.spec_id == exec_info->spec_id1)
+	      if (exec_info->spec_id1 && node->info.name.spec_id == exec_info->spec_id1)
 		{
 		  node->info.name.db_object = exec_info->object1;
 		  node->info.name.meta_class = PT_TRIGGER_OID;
@@ -1381,8 +1253,7 @@ pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 		      exec_info->trig_corr_path = true;
 		    }
 		}
-	      else if (exec_info->spec_id2
-		       && node->info.name.spec_id == exec_info->spec_id2)
+	      else if (exec_info->spec_id2 && node->info.name.spec_id == exec_info->spec_id2)
 		{
 		  node->info.name.db_object = exec_info->object2;
 		  node->info.name.meta_class = PT_TRIGGER_OID;
@@ -1391,11 +1262,9 @@ pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 		      exec_info->trig_corr_path = true;
 		    }
 		}
-	      else if (node->info.name.spec_id == 0
-		       && node->info.name.meta_class == PT_TRIGGER_OID)
+	      else if (node->info.name.spec_id == 0 && node->info.name.meta_class == PT_TRIGGER_OID)
 		{
-		  /* this was our former PT_PARAMETER node that we hacked into
-		   * a PT_TRIGGER_OID above. */
+		  /* this was our former PT_PARAMETER node that we hacked into a PT_TRIGGER_OID above. */
 		  node->info.name.db_object = exec_info->object1;
 		  if (exec_info->path_expr_level)
 		    {
@@ -1415,8 +1284,8 @@ pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node,
     }
   else
     {
-      /* its a "normal" update/insert/delete statement surrounded
-       * by a SCOPE___ block with one or more correlation names. */
+      /* its a "normal" update/insert/delete statement surrounded by a SCOPE___ block with one or more correlation
+       * names. */
       switch (node->node_type)
 	{
 	case PT_SELECT:
@@ -1424,8 +1293,7 @@ pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 	  break;
 
 	case PT_NAME:
-	  if (exec_info->spec_id1
-	      && node->info.name.spec_id == exec_info->spec_id1)
+	  if (exec_info->spec_id1 && node->info.name.spec_id == exec_info->spec_id1)
 	    {
 	      node->info.name.db_object = exec_info->object1;
 	      node->info.name.meta_class = PT_TRIGGER_OID;
@@ -1434,8 +1302,7 @@ pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 		  exec_info->trig_corr_path = true;
 		}
 	    }
-	  else if (exec_info->spec_id2
-		   && node->info.name.spec_id == exec_info->spec_id2)
+	  else if (exec_info->spec_id2 && node->info.name.spec_id == exec_info->spec_id2)
 	    {
 	      node->info.name.db_object = exec_info->object2;
 	      node->info.name.meta_class = PT_TRIGGER_OID;
@@ -1467,8 +1334,7 @@ pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node,
  *   walk_on(in):
  */
 static PT_NODE *
-pt_set_trigger_obj_post (PARSER_CONTEXT * parser, PT_NODE * node,
-			 void *arg, int *continue_walk)
+pt_set_trigger_obj_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *temp, *next;
   TRIGGER_EXEC_INFO *exec_info = (TRIGGER_EXEC_INFO *) arg;
@@ -1481,8 +1347,8 @@ pt_set_trigger_obj_post (PARSER_CONTEXT * parser, PT_NODE * node,
   exec_info->path_expr_level--;
   if (!exec_info->path_expr_level && exec_info->trig_corr_path)
     {
-      /* This is a path expression rooted in a trigger correlation variable
-       * We need to replace this path expression by evaluating it */
+      /* This is a path expression rooted in a trigger correlation variable We need to replace this path expression by
+       * evaluating it */
       exec_info->trig_corr_path = false;
 
       /* save the next pointer or it will be lost */
@@ -1520,8 +1386,7 @@ pt_set_trigger_obj_post (PARSER_CONTEXT * parser, PT_NODE * node,
  * as well as a parameter.
  */
 int
-pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
-		      DB_OBJECT * object1, DB_OBJECT * object2,
+pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT * object1, DB_OBJECT * object2,
 		      DB_VALUE * result)
 {
   int error = NO_ERROR;
@@ -1532,8 +1397,7 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
   int unhide1, unhide2;
   int server_info_bits;
 
-  assert (parser != NULL && trigger_stmt != NULL
-	  && trigger_stmt->node_type == PT_SCOPE);
+  assert (parser != NULL && trigger_stmt != NULL && trigger_stmt->node_type == PT_SCOPE);
 
   server_info_bits = 0;		/* init */
 
@@ -1563,21 +1427,17 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
   exec_info.object1 = object1;
   exec_info.object2 = object2;
 
-  if (trigger_stmt->info.scope.stmt != NULL
-      && trigger_stmt->info.scope.stmt->node_type == PT_TRIGGER_ACTION)
+  if (trigger_stmt->info.scope.stmt != NULL && trigger_stmt->info.scope.stmt->node_type == PT_TRIGGER_ACTION)
     {
       node = trigger_stmt->info.scope.stmt->info.trigger_action.expression;
-      if (node != NULL && node->node_type == PT_UPDATE
-	  && node->info.update.object_parameter != NULL)
+      if (node != NULL && node->node_type == PT_UPDATE && node->info.update.object_parameter != NULL)
 	{
 	  PT_NODE *temp;
 
 	  exec_info.is_update_object = true;
 
-	  /* make sure the spec we created up in pt_compile_trigger_stmt
-	   * gets updated to have the actual class of this instance, not
-	   * sure that's really necessary.
-	   */
+	  /* make sure the spec we created up in pt_compile_trigger_stmt gets updated to have the actual class of this
+	   * instance, not sure that's really necessary. */
 	  temp = node->info.update.spec->info.spec.flat_entity_list;
 	  temp->info.name.db_object = db_get_class (object1);
 
@@ -1590,8 +1450,7 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
 	  node = trigger_stmt->info.scope.from;
 	  if (node != NULL && node->info.spec.entity_name != NULL)
 	    {
-	      exec_info.spec_id2 =
-		node->info.spec.entity_name->info.name.spec_id;
+	      exec_info.spec_id2 = node->info.spec.entity_name->info.name.spec_id;
 	      exec_info.name2 = node->info.spec.range_var->info.name.original;
 	    }
 	}
@@ -1602,26 +1461,21 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
 	  /* first name, "obj" or "new" */
 	  if (node != NULL && node->info.spec.entity_name != NULL)
 	    {
-	      exec_info.spec_id1 =
-		node->info.spec.entity_name->info.name.spec_id;
+	      exec_info.spec_id1 = node->info.spec.entity_name->info.name.spec_id;
 	      exec_info.name1 = node->info.spec.range_var->info.name.original;
 	    }
 
 	  /* second name, "obj" or "old" */
-	  if (node != NULL && (node = node->next) != NULL
-	      && node->info.spec.entity_name != NULL)
+	  if (node != NULL && (node = node->next) != NULL && node->info.spec.entity_name != NULL)
 	    {
-	      exec_info.spec_id2 =
-		node->info.spec.entity_name->info.name.spec_id;
+	      exec_info.spec_id2 = node->info.spec.entity_name->info.name.spec_id;
 	      exec_info.name2 = node->info.spec.range_var->info.name.original;
 	    }
 	}
     }
 
-  /* We need to copy the trigger statement because pt_set_trigger_obj_post()
-   * may change the statement by evaluating path expressions rooted by
-   * trigger correlation variable names.
-   */
+  /* We need to copy the trigger statement because pt_set_trigger_obj_post() may change the statement by evaluating
+   * path expressions rooted by trigger correlation variable names. */
   tmp_trigger = parser_copy_tree (parser, trigger_stmt);
   if (tmp_trigger == NULL)
     {
@@ -1636,8 +1490,7 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
       return er_errid ();
     }
 
-  (void) parser_walk_tree (parser, tmp_trigger->info.scope.stmt,
-			   pt_set_trigger_obj_pre, (void *) &exec_info,
+  (void) parser_walk_tree (parser, tmp_trigger->info.scope.stmt, pt_set_trigger_obj_pre, (void *) &exec_info,
 			   pt_set_trigger_obj_post, (void *) &exec_info);
 
   unhide1 = ws_hide_new_old_trigger_obj (object1);
@@ -1653,15 +1506,13 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
       ws_unhide_new_old_trigger_obj (object2);
     }
 
-  /* Rather than cloning, simply transfer the contents of the DB_VALUE
-   * in the "etc" field to the user supplied container. Be sure to free
-   * the "etc" value when we're done, otherwise it becomes dangling
-   * the next time we evaluate this trigger expresssion. */
+  /* Rather than cloning, simply transfer the contents of the DB_VALUE in the "etc" field to the user supplied
+   * container. Be sure to free the "etc" value when we're done, otherwise it becomes dangling the next time we
+   * evaluate this trigger expresssion. */
   src = NULL;
   if (tmp_trigger->info.scope.stmt->node_type == PT_TRIGGER_ACTION)
     {
-      src = (DB_VALUE **) & (tmp_trigger->info.scope.stmt->info.
-			     trigger_action.expression->etc);
+      src = (DB_VALUE **) & (tmp_trigger->info.scope.stmt->info.trigger_action.expression->etc);
     }
   else if (tmp_trigger->info.scope.stmt->node_type == PT_EVALUATE)
     {
@@ -1674,8 +1525,7 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
     }
   else
     {
-      /* transfer the contents without cloning since we're going to
-         free the source container */
+      /* transfer the contents without cloning since we're going to free the source container */
       *result = **src;
 
       /* free this so it doesn't become garbage the next time */
@@ -1708,8 +1558,7 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt,
  *   from_list(in):
  */
 int
-pt_name_occurs_in_from_list (PARSER_CONTEXT * parser, const char *name,
-			     PT_NODE * from_list)
+pt_name_occurs_in_from_list (PARSER_CONTEXT * parser, const char *name, PT_NODE * from_list)
 {
   PT_NODE *spec;
   int i = 0;
@@ -1721,11 +1570,8 @@ pt_name_occurs_in_from_list (PARSER_CONTEXT * parser, const char *name,
 
   for (spec = from_list; spec != NULL; spec = spec->next)
     {
-      if (spec->info.spec.range_var
-	  && spec->info.spec.range_var->info.name.original
-	  && (intl_identifier_casecmp (name,
-				       spec->info.spec.range_var->info.name.
-				       original) == 0))
+      if (spec->info.spec.range_var && spec->info.spec.range_var->info.name.original
+	  && (intl_identifier_casecmp (name, spec->info.spec.range_var->info.name.original) == 0))
 	{
 	  i++;
 	}

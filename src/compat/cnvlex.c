@@ -300,9 +300,7 @@ struct yy_buffer_state
 
   int yy_eof_status;		/* whether we've seen an EOF on this buffer */
 #define EOF_NOT_SEEN 0
-  /* "pending" happens when the EOF has been seen but there's still
-   * some text process
-   */
+  /* "pending" happens when the EOF has been seen but there's still some text process */
 #define EOF_PENDING 1
 #define EOF_DONE 2
 };
@@ -750,8 +748,7 @@ static int yy_start = 0;	/* start state number */
 static int yy_did_buffer_switch_on_eof;
 
 static yy_state_type yy_get_previous_state YY_PROTO ((void));
-static yy_state_type yy_try_NUL_trans
-YY_PROTO ((yy_state_type current_state));
+static yy_state_type yy_try_NUL_trans YY_PROTO ((yy_state_type current_state));
 static int yy_get_next_buffer YY_PROTO ((void));
 static void yyunput YY_PROTO ((YY_CHAR c, YY_CHAR * buf_ptr));
 void yyrestart YY_PROTO ((FILE * input_file));
@@ -779,7 +776,7 @@ YY_DECL
   /* Preliminary "actions" */
   if (cnv_fmt__unlex && yy_current_buffer->yy_eof_status != EOF_DONE)
     {
-      /*
+      /* 
        * Push back current token so that it can be read again.
        * See cnv_fmt_unlex().
        */
@@ -824,9 +821,7 @@ YY_DECL
       /* support of yytext */
       *yy_cp = yy_hold_char;
 
-      /* yy_bp points to the position in yy_ch_buf of the start of the
-       * current run.
-       */
+      /* yy_bp points to the position in yy_ch_buf of the start of the current run. */
       yy_bp = yy_cp;
 
       yy_current_state = yy_start;
@@ -1347,22 +1342,13 @@ YY_DECL
 	  {
 	    DB_FMT_LEX_RETURN (FT_UNKNOWN);
 	  }
-	  YY_BREAK case YY_STATE_EOF (INITIAL):case
-	    YY_STATE_EOF (SC_US_ENG_NUMBER):case
-	    YY_STATE_EOF (SC_KO_KR_NUMBER):case
-	    YY_STATE_EOF (SC_US_ENG_TIME):case
-	    YY_STATE_EOF (SC_KO_KR_TIME):case
-	    YY_STATE_EOF (SC_BIT_STRING):case
-	    YY_STATE_EOF (SC_INTEGER_FORMAT):case
-	    YY_STATE_EOF (SC_TIME_FORMAT):case
-	    YY_STATE_EOF (SC_BIT_STRING_FORMAT):case
-	    YY_STATE_EOF (SC_VALIDATE_DATE_FORMAT):case
-	    YY_STATE_EOF (SC_VALIDATE_FLOAT_FORMAT):case
-	    YY_STATE_EOF (SC_VALIDATE_INTEGER_FORMAT):case
-	    YY_STATE_EOF (SC_VALIDATE_MONETARY_FORMAT):case
-	    YY_STATE_EOF (SC_VALIDATE_TIME_FORMAT):case
-	    YY_STATE_EOF (SC_VALIDATE_TIMESTAMP_FORMAT):case
-	    YY_STATE_EOF (SC_VALIDATE_BIT_STRING_FORMAT):
+	  YY_BREAK case YY_STATE_EOF (INITIAL):case YY_STATE_EOF (SC_US_ENG_NUMBER):case
+	    YY_STATE_EOF (SC_KO_KR_NUMBER):case YY_STATE_EOF (SC_US_ENG_TIME):case YY_STATE_EOF (SC_KO_KR_TIME):case
+	    YY_STATE_EOF (SC_BIT_STRING):case YY_STATE_EOF (SC_INTEGER_FORMAT):case YY_STATE_EOF (SC_TIME_FORMAT):case
+	    YY_STATE_EOF (SC_BIT_STRING_FORMAT):case YY_STATE_EOF (SC_VALIDATE_DATE_FORMAT):case
+	    YY_STATE_EOF (SC_VALIDATE_FLOAT_FORMAT):case YY_STATE_EOF (SC_VALIDATE_INTEGER_FORMAT):case
+	    YY_STATE_EOF (SC_VALIDATE_MONETARY_FORMAT):case YY_STATE_EOF (SC_VALIDATE_TIME_FORMAT):case
+	    YY_STATE_EOF (SC_VALIDATE_TIMESTAMP_FORMAT):case YY_STATE_EOF (SC_VALIDATE_BIT_STRING_FORMAT):
 	  {
 	    cnv_fmt__next = cnv_fmt__input;
 	    token->type = FT_NONE;
@@ -1379,12 +1365,9 @@ YY_DECL
 	    /* undo the effects of YY_DO_BEFORE_ACTION */
 	     *yy_cp = yy_hold_char;
 
-	    /* note that here we test for yy_c_buf_p "<=" to the position
-	     * of the first EOB in the buffer, since yy_c_buf_p will
-	     * already have been incremented past the NUL character
-	     * (since all states make transitions on EOB to the end-
-	     * of-buffer state).  Contrast this with the test in yyinput().
-	     */
+	    /* note that here we test for yy_c_buf_p "<=" to the position of the first EOB in the buffer, since
+	     * yy_c_buf_p will already have been incremented past the NUL character (since all states make transitions
+	     * on EOB to the end- of-buffer state).  Contrast this with the test in yyinput(). */
 	    if (yy_c_buf_p <= &yy_current_buffer->yy_ch_buf[yy_n_chars])
 	      /* this was really a NUL */
 	      {
@@ -1394,14 +1377,9 @@ YY_DECL
 
 		  yy_current_state = yy_get_previous_state ();
 
-		/* okay, we're now positioned to make the
-		 * NUL transition.  We couldn't have
-		 * yy_get_previous_state() go ahead and do it
-		 * for us because it doesn't know how to deal
-		 * with the possibility of jamming (and we
-		 * don't want to build jamming into it because
-		 * then it will run more slowly)
-		 */
+		/* okay, we're now positioned to make the NUL transition.  We couldn't have yy_get_previous_state() go
+		 * ahead and do it for us because it doesn't know how to deal with the possibility of jamming (and we
+		 * don't want to build jamming into it because then it will run more slowly) */
 
 		  yy_next_state = yy_try_NUL_trans (yy_current_state);
 
@@ -1432,14 +1410,9 @@ YY_DECL
 
 		    if (yywrap ())
 		      {
-			/* note: because we've taken care in
-			 * yy_get_next_buffer() to have set up yytext,
-			 * we can now set up yy_c_buf_p so that if some
-			 * total hoser (like flex itself) wants
-			 * to call the scanner after we return the
-			 * YY_NULL, it'll still work - another YY_NULL
-			 * will get returned.
-			 */
+			/* note: because we've taken care in yy_get_next_buffer() to have set up yytext, we can now set 
+			 * up yy_c_buf_p so that if some total hoser (like flex itself) wants to call the scanner after 
+			 * we return the YY_NULL, it'll still work - another YY_NULL will get returned. */
 			yy_c_buf_p = yytext + YY_MORE_ADJ;
 
 			yy_act = YY_STATE_EOF ((yy_start - 1) / 2);
@@ -1479,8 +1452,7 @@ YY_DECL
 #ifdef FLEX_DEBUG
 	  printf ("action # %d\n", yy_act);
 #endif
-	  YY_FATAL_ERROR
-	    ("fatal flex scanner internal error--no action found");
+	  YY_FATAL_ERROR ("fatal flex scanner internal error--no action found");
 	}
     }
 }
@@ -1506,8 +1478,7 @@ yy_get_next_buffer ()
   int ret_val;
 
   if (yy_c_buf_p > &yy_current_buffer->yy_ch_buf[yy_n_chars + 1])
-    YY_FATAL_ERROR
-      ("fatal flex scanner internal error--end of buffer missed");
+    YY_FATAL_ERROR ("fatal flex scanner internal error--end of buffer missed");
 
   /* try to read more data */
 
@@ -1518,9 +1489,7 @@ yy_get_next_buffer ()
     *(dest++) = *(source++);
 
   if (yy_current_buffer->yy_eof_status != EOF_NOT_SEEN)
-    /* don't do the read, it's not guaranteed to return an EOF,
-     * just force an EOF
-     */
+    /* don't do the read, it's not guaranteed to return an EOF, just force an EOF */
     yy_n_chars = 0;
 
   else
@@ -1534,8 +1503,7 @@ yy_get_next_buffer ()
 	YY_FATAL_ERROR ("fatal error - scanner input buffer overflow");
 
       /* read in more data */
-      YY_INPUT ((&yy_current_buffer->yy_ch_buf[number_to_move]),
-		yy_n_chars, num_to_read);
+      YY_INPUT ((&yy_current_buffer->yy_ch_buf[number_to_move]), yy_n_chars, num_to_read);
     }
 
   if (yy_n_chars == 0)
@@ -1560,11 +1528,9 @@ yy_get_next_buffer ()
   yy_current_buffer->yy_ch_buf[yy_n_chars] = YY_END_OF_BUFFER_CHAR;
   yy_current_buffer->yy_ch_buf[yy_n_chars + 1] = YY_END_OF_BUFFER_CHAR;
 
-  /* yytext begins at the second character in yy_ch_buf; the first
-   * character is the one which preceded it before reading in the latest
-   * buffer; it needs to be kept around in case it's a newline, so
-   * yy_get_previous_state() will have with '^' rules active
-   */
+  /* yytext begins at the second character in yy_ch_buf; the first character is the one which preceded it before
+   * reading in the latest buffer; it needs to be kept around in case it's a newline, so yy_get_previous_state() will
+   * have with '^' rules active */
 
   yytext = &yy_current_buffer->yy_ch_buf[1];
 
@@ -1664,10 +1630,8 @@ yyunput (c, yy_bp)
   if (yy_cp < yy_current_buffer->yy_ch_buf + 2)
     {				/* need to shift things up to make room */
       register int number_to_move = yy_n_chars + 2;	/* +2 for EOB chars */
-      register YY_CHAR *dest =
-	&yy_current_buffer->yy_ch_buf[yy_current_buffer->yy_buf_size + 2];
-      register YY_CHAR *source =
-	&yy_current_buffer->yy_ch_buf[number_to_move];
+      register YY_CHAR *dest = &yy_current_buffer->yy_ch_buf[yy_current_buffer->yy_buf_size + 2];
+      register YY_CHAR *source = &yy_current_buffer->yy_ch_buf[number_to_move];
 
       while (source > yy_current_buffer->yy_ch_buf)
 	*--dest = *--source;
@@ -1685,9 +1649,7 @@ yyunput (c, yy_bp)
 
   *--yy_cp = c;
 
-  /* note: the formal parameter *must* be called "yy_bp" for this
-   *       macro to now work correctly
-   */
+  /* note: the formal parameter *must* be called "yy_bp" for this macro to now work correctly */
   YY_DO_BEFORE_ACTION;		/* set up yytext again */
 }
 
@@ -1707,10 +1669,8 @@ input ()
 
   if (*yy_c_buf_p == YY_END_OF_BUFFER_CHAR)
     {
-      /* yy_c_buf_p now points to the character we want to return.
-       * If this occurs *before* the EOB characters, then it's a
-       * valid NUL; if not, then we've hit the end of the buffer.
-       */
+      /* yy_c_buf_p now points to the character we want to return. If this occurs *before* the EOB characters, then
+       * it's a valid NUL; if not, then we've hit the end of the buffer. */
       if (yy_c_buf_p < &yy_current_buffer->yy_ch_buf[yy_n_chars])
 	/* this was really a NUL */
 	*yy_c_buf_p = '\0';
@@ -1800,11 +1760,8 @@ yy_switch_to_buffer (new_buffer)
   yy_current_buffer = new_buffer;
   yy_load_buffer_state ();
 
-  /* we don't actually know whether we did this switch during
-   * EOF (yywrap()) processing, but the only time this flag
-   * is looked at is after yywrap() is called, so it's safe
-   * to go ahead and always set it.
-   */
+  /* we don't actually know whether we did this switch during EOF (yywrap()) processing, but the only time this flag is 
+   * looked at is after yywrap() is called, so it's safe to go ahead and always set it. */
   yy_did_buffer_switch_on_eof = 1;
 }
 
@@ -1844,9 +1801,7 @@ yy_create_buffer (file, size)
 
   b->yy_buf_size = size;
 
-  /* yy_ch_buf has to be 2 characters longer than the size given because
-   * we need to put in 2 end-of-buffer characters.
-   */
+  /* yy_ch_buf has to be 2 characters longer than the size given because we need to put in 2 end-of-buffer characters. */
   b->yy_ch_buf = (YY_CHAR *) malloc ((unsigned) (b->yy_buf_size + 2));
 
   if (!b->yy_ch_buf)
@@ -1889,17 +1844,13 @@ yy_init_buffer (b, file)
 {
   b->yy_input_file = file;
 
-  /* we put in the '\n' and start reading from [1] so that an
-   * initial match-at-newline will be true.
-   */
+  /* we put in the '\n' and start reading from [1] so that an initial match-at-newline will be true. */
 
   b->yy_ch_buf[0] = '\n';
   b->yy_n_chars = 1;
 
-  /* we always need two end-of-buffer characters.  The first causes
-   * a transition to the end-of-buffer state.  The second causes
-   * a jam in that state.
-   */
+  /* we always need two end-of-buffer characters.  The first causes a transition to the end-of-buffer state.  The
+   * second causes a jam in that state. */
   b->yy_ch_buf[1] = YY_END_OF_BUFFER_CHAR;
   b->yy_ch_buf[2] = YY_END_OF_BUFFER_CHAR;
 
@@ -1953,27 +1904,19 @@ cnv_fmt_next_token ()
 static int
 cnv_fmt_lex_start (FMT_LEX_MODE mode)
 {
-  return
-    mode == FL_LOCAL_NUMBER ?
-    cnv_fmt_lex_start (cnv_fmt_number_mode (intl_zone (LC_MONETARY))) :
-    mode == FL_LOCAL_TIME ?
-    cnv_fmt_lex_start (cnv_fmt_time_mode (intl_zone (LC_TIME))) :
-    mode == FL_US_ENG_NUMBER ? SC_US_ENG_NUMBER :
-    mode == FL_KO_KR_NUMBER ? SC_KO_KR_NUMBER :
-    mode == FL_US_ENG_TIME ? SC_US_ENG_TIME :
-    mode == FL_KO_KR_TIME ? SC_KO_KR_TIME :
-    mode == FL_INTEGER_FORMAT ? SC_INTEGER_FORMAT :
-    mode == FL_TIME_FORMAT ? SC_TIME_FORMAT :
-    mode == FL_BIT_STRING_FORMAT ? SC_BIT_STRING_FORMAT :
-    mode == FL_BIT_STRING ? SC_BIT_STRING :
-    mode == FL_VALIDATE_DATE_FORMAT ? SC_VALIDATE_DATE_FORMAT :
-    mode == FL_VALIDATE_FLOAT_FORMAT ? SC_VALIDATE_FLOAT_FORMAT :
-    mode == FL_VALIDATE_INTEGER_FORMAT ? SC_VALIDATE_INTEGER_FORMAT :
-    mode == FL_VALIDATE_MONETARY_FORMAT ? SC_VALIDATE_MONETARY_FORMAT :
-    mode == FL_VALIDATE_TIME_FORMAT ? SC_VALIDATE_TIME_FORMAT :
-    mode == FL_VALIDATE_TIMESTAMP_FORMAT ? SC_VALIDATE_TIMESTAMP_FORMAT :
-    mode == FL_VALIDATE_BIT_STRING_FORMAT ? SC_VALIDATE_BIT_STRING_FORMAT :
-    INITIAL;
+  return mode == FL_LOCAL_NUMBER ? cnv_fmt_lex_start (cnv_fmt_number_mode (intl_zone (LC_MONETARY))) : mode ==
+    FL_LOCAL_TIME ? cnv_fmt_lex_start (cnv_fmt_time_mode (intl_zone (LC_TIME))) : mode ==
+    FL_US_ENG_NUMBER ? SC_US_ENG_NUMBER : mode == FL_KO_KR_NUMBER ? SC_KO_KR_NUMBER : mode ==
+    FL_US_ENG_TIME ? SC_US_ENG_TIME : mode == FL_KO_KR_TIME ? SC_KO_KR_TIME : mode ==
+    FL_INTEGER_FORMAT ? SC_INTEGER_FORMAT : mode == FL_TIME_FORMAT ? SC_TIME_FORMAT : mode ==
+    FL_BIT_STRING_FORMAT ? SC_BIT_STRING_FORMAT : mode == FL_BIT_STRING ? SC_BIT_STRING : mode ==
+    FL_VALIDATE_DATE_FORMAT ? SC_VALIDATE_DATE_FORMAT : mode ==
+    FL_VALIDATE_FLOAT_FORMAT ? SC_VALIDATE_FLOAT_FORMAT : mode ==
+    FL_VALIDATE_INTEGER_FORMAT ? SC_VALIDATE_INTEGER_FORMAT : mode ==
+    FL_VALIDATE_MONETARY_FORMAT ? SC_VALIDATE_MONETARY_FORMAT : mode ==
+    FL_VALIDATE_TIME_FORMAT ? SC_VALIDATE_TIME_FORMAT : mode ==
+    FL_VALIDATE_TIMESTAMP_FORMAT ? SC_VALIDATE_TIMESTAMP_FORMAT : mode ==
+    FL_VALIDATE_BIT_STRING_FORMAT ? SC_VALIDATE_BIT_STRING_FORMAT : INITIAL;
 }
 
 

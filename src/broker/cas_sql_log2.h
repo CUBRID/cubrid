@@ -83,8 +83,7 @@
 	} while (0)
 #endif /* !WINDOWS */
 
-extern void sql_log2_init (char *br_name, int index, int sql_log2_value,
-			   bool log_reuse_flag);
+extern void sql_log2_init (char *br_name, int index, int sql_log2_value, bool log_reuse_flag);
 extern char *sql_log2_get_filename (void);
 extern void sql_log2_dup_stdout (void);
 extern void sql_log2_restore_stdout (void);

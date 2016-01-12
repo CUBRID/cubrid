@@ -27,23 +27,23 @@
 #pragma once
 #endif // _MSC_VER > 1000
 
-class CUniCASManage  
+class CUniCASManage
 {
 private:
-	bool bUNICAS;
+  bool bUNICAS;
 public:
-	CUniCASManage();
-	virtual ~CUniCASManage();
+  CUniCASManage ();
+  virtual ~ CUniCASManage ();
 
-	bool bStatusUniCAS();
-	bool bCheckUniCAS();
+  bool bStatusUniCAS ();
+  bool bCheckUniCAS ();
 
-	bool bStopUniCAS();
-	bool bStartUniCAS();
+  bool bStopUniCAS ();
+  bool bStartUniCAS ();
 
-	bool bRestartUniCAS();
+  bool bRestartUniCAS ();
 
-	bool bInstallStatus();
+  bool bInstallStatus ();
 };
 
 #endif // !defined(AFX_UNICASMANAGE_H__359FF1E2_13DD_4BE7_BADC_D9E7C0E4848A__INCLUDED_)

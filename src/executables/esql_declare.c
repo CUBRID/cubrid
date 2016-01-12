@@ -46,16 +46,16 @@ extern FILE *esql_yyout;
 
 struct spec_state
 {
-  int noun_seen;		/* 1 iff a type noun has been seen      */
-  int longs_seen;		/* # of longs seen                      */
-  int shorts_seen;		/* # of shorts seen                     */
-  int signed_seen;		/* 1 iff signed or unsigned "    "      */
-  int storage_class_seen;	/* 1 iff a storage class    "    "      */
-  int typedef_seen;		/* 1 iff typedef is in progress         */
+  int noun_seen;		/* 1 iff a type noun has been seen */
+  int longs_seen;		/* # of longs seen */
+  int shorts_seen;		/* # of shorts seen */
+  int signed_seen;		/* 1 iff signed or unsigned " " */
+  int storage_class_seen;	/* 1 iff a storage class " " */
+  int typedef_seen;		/* 1 iff typedef is in progress */
   int sc_allowed;		/* 1 iff storage class specs are allowed */
-  int volatile_seen;		/* 1 iff volatile keyword seen          */
-  int const_seen;		/* 1 iff const keyword seen             */
-  LINK *spec;			/* The specifier under construction     */
+  int volatile_seen;		/* 1 iff volatile keyword seen */
+  int const_seen;		/* 1 iff const keyword seen */
+  LINK *spec;			/* The specifier under construction */
 };
 
 struct scope
@@ -119,8 +119,7 @@ static SPEC_STATE *pp_spec_scope_base, *pp_spec_scope_limit;
 static void pp_set_class_bit (int storage_class, LINK * p);
 static LINK *pp_new_type_spec (void);
 static void pp_remove_structdefs_from_table (STRUCTDEF * struct_chain);
-static void pp_print_link (LINK * p, varstring * buf, int context,
-			   int preechoed);
+static void pp_print_link (LINK * p, varstring * buf, int context, int preechoed);
 static void pp_print_decl (SYMBOL * sym, varstring * buf, int preechoed);
 
 /*
@@ -169,8 +168,7 @@ pp_set_class_bit (int storage_class, LINK * p)
 
     default:
       {
-	esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_BAD_STORAGE_CLASS),
-		       storage_class);
+	esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_BAD_STORAGE_CLASS), storage_class);
 	exit (1);
       }
       break;
@@ -223,32 +221,26 @@ pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain)
 	  exit (1);
 	}
 
-      if (IS_PSEUDO_TYPE (clone_start)
-	  && clone_start->decl.s.val.v_struct == NULL)
+      if (IS_PSEUDO_TYPE (clone_start) && clone_start->decl.s.val.v_struct == NULL)
 	{
 	  LINK *old_etype;
 	  char tmp[32];
 
 	  old_etype = decl_chain->etype;
-	  if (old_etype == NULL
-	      || (IS_VAR_TYPE (clone_start) && IS_ARRAY (old_etype) == 0))
+	  if (old_etype == NULL || (IS_VAR_TYPE (clone_start) && IS_ARRAY (old_etype) == 0))
 	    {
-	      esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_BAD_PSEUDO_DECL),
-			     pp_type_str (clone_start));
+	      esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_BAD_PSEUDO_DECL), pp_type_str (clone_start));
 	      exit (1);
 	    }
 
-	  clone_start->decl.s.val.v_struct =
-	    pp_new_pseudo_def (clone_start->decl.s.noun,
-			       old_etype->decl.d.num_ele);
+	  clone_start->decl.s.val.v_struct = pp_new_pseudo_def (clone_start->decl.s.noun, old_etype->decl.d.num_ele);
 	  if (clone_start->decl.s.noun == N_VARCHAR)
 	    {
 	      sprintf (tmp, " = { %s, \"\" }", old_etype->decl.d.num_ele);
 	    }
 	  else
 	    {
-	      sprintf (tmp, " = { ((%s)+7)/8, \"\" }",
-		       old_etype->decl.d.num_ele);
+	      sprintf (tmp, " = { ((%s)+7)/8, \"\" }", old_etype->decl.d.num_ele);
 	    }
 	  decl_chain->args = pp_new_symbol (tmp, decl_chain->level);
 	  pp_discard_link (old_etype);
@@ -260,8 +252,7 @@ pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain)
 	  else
 	    {
 	      LINK *parent;
-	      for (parent = decl_chain->type;
-		   parent->next != old_etype; parent = parent->next)
+	      for (parent = decl_chain->type; parent->next != old_etype; parent = parent->next)
 		{
 		  ;
 		}
@@ -281,7 +272,7 @@ pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain)
 
       decl_chain->etype = clone_end;
 
-      /*
+      /* 
        * If the declaration we're looking at is really a typedef,
        * record the symbol itself within the specifier.  This will
        * make it easier to point back to the symbol from other
@@ -335,18 +326,14 @@ pp_add_symbols_to_table (SYMBOL * sym)
 
 	  if (pp_the_same_type (exists->type, new->type, 0))
 	    {
-	      if (exists->etype->decl.s.is_extern
-		  || new->etype->decl.s.is_extern)
+	      if (exists->etype->decl.s.is_extern || new->etype->decl.s.is_extern)
 		{
 		  harmless = 1;
 		  if (new->etype->decl.s.is_extern == 0)
 		    {
-		      exists->etype->decl.s.sclass =
-			new->etype->decl.s.sclass;
-		      exists->etype->decl.s.is_static =
-			new->etype->decl.s.is_static;
-		      exists->etype->decl.s.is_extern =
-			new->etype->decl.s.is_extern;
+		      exists->etype->decl.s.sclass = new->etype->decl.s.sclass;
+		      exists->etype->decl.s.is_static = new->etype->decl.s.is_static;
+		      exists->etype->decl.s.is_extern = new->etype->decl.s.is_extern;
 		    }
 		}
 	    }
@@ -430,15 +417,12 @@ pp_push_name_scope (void)
 {
   SCOPE *new_scope;
 
-  new_scope =
-    pp_current_name_scope ? (pp_current_name_scope + 1) : pp_name_scope_base;
+  new_scope = pp_current_name_scope ? (pp_current_name_scope + 1) : pp_name_scope_base;
 
   if (new_scope >= pp_name_scope_limit)
     {
       int nframes = pp_name_scope_limit - pp_name_scope_base;
-      pp_name_scope_base = (SCOPE *) realloc (pp_name_scope_base,
-					      sizeof (SCOPE) * (nframes +
-								NFRAMES));
+      pp_name_scope_base = (SCOPE *) realloc (pp_name_scope_base, sizeof (SCOPE) * (nframes + NFRAMES));
       if (pp_name_scope_base == NULL)
 	{
 	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
@@ -458,9 +442,7 @@ pp_push_name_scope (void)
   new_scope->sym_chain = NULL;
   new_scope->struct_chain = NULL;
   new_scope->cursor_chain = NULL;
-  pp_init_whenever_scope (&new_scope->whenever,
-			  pp_current_name_scope ? &pp_current_name_scope->
-			  whenever : NULL);
+  pp_init_whenever_scope (&new_scope->whenever, pp_current_name_scope ? &pp_current_name_scope->whenever : NULL);
 
   pp_current_name_scope = new_scope;
   ++pp_nesting_level;
@@ -480,8 +462,7 @@ pp_pop_name_scope (void)
 #if !defined(NDEBUG)
   if (pp_dump_scope_info)
     {
-      fprintf (esql_yyout, "\n/*\n * Exiting scope level %d\n",
-	       pp_nesting_level);
+      fprintf (esql_yyout, "\n/*\n * Exiting scope level %d\n", pp_nesting_level);
       pp_print_syms (esql_yyout);
       pp_print_cursors (esql_yyout);
       fputs (" */\n", esql_yyout);
@@ -507,16 +488,13 @@ pp_pop_name_scope (void)
   pp_remove_cursors_from_table (current->cursor_chain);
   pp_discard_cursor_chain (current->cursor_chain);
 
-  pp_finish_whenever_scope (&current->whenever,
-			    next ? &next->whenever : NULL);
+  pp_finish_whenever_scope (&current->whenever, next ? &next->whenever : NULL);
 
   pp_current_name_scope = next;
 
   --pp_nesting_level;
 
-  pp_make_typedef_names_visible (pp_current_name_scope == NULL
-				 || pp_current_name_scope->
-				 recognizing_typedef_names);
+  pp_make_typedef_names_visible (pp_current_name_scope == NULL || pp_current_name_scope->recognizing_typedef_names);
 }
 
 /*
@@ -593,15 +571,12 @@ pp_push_spec_scope (void)
 {
   SPEC_STATE *p;
 
-  p =
-    pp_current_spec_scope ? (pp_current_spec_scope + 1) : pp_spec_scope_base;
+  p = pp_current_spec_scope ? (pp_current_spec_scope + 1) : pp_spec_scope_base;
 
   if (p >= pp_spec_scope_limit)
     {
       int nframes = pp_spec_scope_limit - pp_spec_scope_base;
-      pp_spec_scope_base = (SPEC_STATE *) realloc (pp_spec_scope_base,
-						   sizeof (SPEC_STATE) *
-						   (nframes + NFRAMES));
+      pp_spec_scope_base = (SPEC_STATE *) realloc (pp_spec_scope_base, sizeof (SPEC_STATE) * (nframes + NFRAMES));
       if (pp_spec_scope_base == NULL)
 	{
 	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
@@ -639,8 +614,7 @@ void
 pp_pop_spec_scope (void)
 {
   assert (pp_current_spec_scope != NULL);
-  pp_current_spec_scope = (pp_current_spec_scope == pp_spec_scope_base
-			   ? NULL : (pp_current_spec_scope - 1));
+  pp_current_spec_scope = (pp_current_spec_scope == pp_spec_scope_base ? NULL : (pp_current_spec_scope - 1));
 
 }
 
@@ -724,7 +698,7 @@ pp_add_struct_spec (STRUCTDEF * sdef)
 
   if (sdef == NULL)
     {
-      /*
+      /* 
        * There was already some sort of error during parsing, and we've
        * wound up here in a sort of no-op mode.  Just ignore it.
        */
@@ -781,8 +755,7 @@ pp_add_type_noun (int type)
       {
 	if ((p->longs_seen > 0) || (p->shorts_seen > 0) || p->signed_seen)
 	  {
-	    esql_yyverror (pp_get_msg
-			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	p->longs_seen = 1;
@@ -815,8 +788,7 @@ pp_add_type_noun (int type)
     case FLOAT_:
       {
 	p->spec->decl.s.noun = N_FLOAT;
-	p->spec->decl.s.is_long = (p->longs_seen > 0)
-	  && p->spec->decl.s.is_long;
+	p->spec->decl.s.is_long = (p->longs_seen > 0) && p->spec->decl.s.is_long;
       }
       break;
 
@@ -824,8 +796,7 @@ pp_add_type_noun (int type)
       {
 	if ((p->longs_seen > 0) && !p->spec->decl.s.is_long)
 	  {
-	    esql_yyverror (pp_get_msg
-			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	p->longs_seen = 1;
@@ -840,21 +811,17 @@ pp_add_type_noun (int type)
       {
 	if ((p->longs_seen > 0) || (p->shorts_seen) || (p->signed_seen))
 	  {
-	    esql_yyverror (pp_get_msg
-			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
-	p->spec->decl.s.noun = (type == VARCHAR_) ? N_VARCHAR :
-	  (type == BIT_) ? N_BIT : N_VARBIT;
+	p->spec->decl.s.noun = (type == VARCHAR_) ? N_VARCHAR : (type == BIT_) ? N_BIT : N_VARBIT;
 	p->spec->decl.s.val.v_struct = NULL;
       }
       break;
 
     default:
       {
-	esql_yyverror (pp_get_msg
-		       (EX_DECL_SET, MSG_TYPE_SPEC_UNEXPECTED_CASE),
-		       "pp_add_type_spec", type);
+	esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_TYPE_SPEC_UNEXPECTED_CASE), "pp_add_type_spec", type);
 	exit (1);
       }
       break;
@@ -890,16 +857,14 @@ pp_add_type_adj (int adj)
 	}
       else
 	{
-	  esql_yyverror (pp_get_msg
-			 (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	  esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	  return;
 	}
     case SHORT_:
       {
 	if ((p->shorts_seen > 1) || (p->longs_seen > 0))
 	  {
-	    esql_yyverror (pp_get_msg
-			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	if (p->noun_seen)
@@ -911,8 +876,7 @@ pp_add_type_adj (int adj)
 		break;
 
 	      default:
-		esql_yyverror (pp_get_msg
-			       (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+		esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 		return;
 	      }
 	  }
@@ -926,8 +890,7 @@ pp_add_type_adj (int adj)
       {
 	if ((p->longs_seen > MAX_LONGS_ALLOWED) || p->shorts_seen > 0)
 	  {
-	    esql_yyverror (pp_get_msg
-			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	if (p->noun_seen)
@@ -939,8 +902,7 @@ pp_add_type_adj (int adj)
 		break;
 
 	      default:
-		esql_yyverror (pp_get_msg
-			       (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+		esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 		return;
 	      }
 	  }
@@ -955,8 +917,7 @@ pp_add_type_adj (int adj)
       {
 	if (p->signed_seen)
 	  {
-	    esql_yyverror (pp_get_msg
-			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	if (p->noun_seen)
@@ -968,8 +929,7 @@ pp_add_type_adj (int adj)
 		break;
 
 	      default:
-		esql_yyverror (pp_get_msg
-			       (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+		esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 		return;
 	      }
 	  }
@@ -982,8 +942,7 @@ pp_add_type_adj (int adj)
       {
 	if (p->volatile_seen)
 	  {
-	    esql_yyverror (pp_get_msg
-			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	p->const_seen = true;
@@ -994,8 +953,7 @@ pp_add_type_adj (int adj)
       {
 	if (p->volatile_seen)
 	  {
-	    esql_yyverror (pp_get_msg
-			   (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
+	    esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_ILLEGAL_MODIFIER_COMBO));
 	    return;
 	  }
 	p->volatile_seen = true;
@@ -1004,8 +962,7 @@ pp_add_type_adj (int adj)
 
     default:
       {
-	esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_TYPE_ADJ_UNEXPECTED_CASE),
-		       "pp_add_type_adj", adj);
+	esql_yyverror (pp_get_msg (EX_DECL_SET, MSG_TYPE_ADJ_UNEXPECTED_CASE), "pp_add_type_adj", adj);
 	exit (1);
       }
       break;
@@ -1039,7 +996,7 @@ pp_add_typedefed_spec (LINK * spec)
       return;
     }
 
-  /*
+  /* 
    * Reset any class info in the new spec; this is ok since this spec
    * will be cloned onto every declarator that it modifies, and then
    * reset before every future use.  The clones will keep any specific
@@ -1168,7 +1125,7 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
       vs_prepend (buf, TOK_SPACE);
       vs_prepend (buf, (char *) p->from_tdef->name);
 
-      /*
+      /* 
        * Now find the terminal specifier in the link chain and extract
        * any information about storage class specifiers.
        */
@@ -1239,8 +1196,7 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
 	  vs_prepend (buf, TOK_VOID TOK_SPACE);
 	  break;
 	case N_FLOAT:
-	  vs_prepend (buf, p->decl.s.is_long ? TOK_DOUBLE TOK_SPACE :
-		      TOK_FLOAT TOK_SPACE);
+	  vs_prepend (buf, p->decl.s.is_long ? TOK_DOUBLE TOK_SPACE : TOK_FLOAT TOK_SPACE);
 	  break;
 	case N_VARCHAR:
 	case N_BIT:
@@ -1255,8 +1211,7 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
 		vs_new (&fields);
 		vs_new (&tmp);
 		vs_strcpy (&fields, TOK_LB TOK_SPACE);
-		for (field = p->decl.s.val.v_struct->fields; field;
-		     field = field->next)
+		for (field = p->decl.s.val.v_struct->fields; field; field = field->next)
 		  {
 		    pp_print_decl (field, &tmp, preechoed);
 		    vs_strcat (&fields, vs_str (&tmp));
@@ -1267,12 +1222,11 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
 		vs_free (&fields);
 		vs_free (&tmp);
 	      }
-	    /*
+	    /* 
 	     * Don't print the tags that we have invented for "anonymous"
 	     * structs.  Probably ought to encapsulate this better.
 	     */
-	    if (p->decl.s.val.v_struct->tag
-		&& p->decl.s.val.v_struct->tag[0] != '$')
+	    if (p->decl.s.val.v_struct->tag && p->decl.s.val.v_struct->tag[0] != '$')
 	      {
 		vs_prepend (buf, TOK_SPACE);
 		vs_prepend (buf, (char *) p->decl.s.val.v_struct->tag);
@@ -1332,8 +1286,7 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
 		vs_prepend (buf, TOK_LP);
 		vs_append (buf, TOK_RP);
 	      }
-	    vs_sprintf (buf, "[%s]",
-			p->decl.d.num_ele ? p->decl.d.num_ele : "");
+	    vs_sprintf (buf, "[%s]", p->decl.d.num_ele ? p->decl.d.num_ele : "");
 	    pp_print_link (p->next, buf, D_ARRAY, preechoed);
 	  }
 	  break;
@@ -1342,7 +1295,7 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
 	    SYMBOL *arg;
 	    varstring tmp;
 
-	    /*
+	    /* 
 	     * If this is a complex declaration like
 	     *
 	     *      int (*f)(int);

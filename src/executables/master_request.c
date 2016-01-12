@@ -70,84 +70,45 @@
 #define HA_COPYLOGDB_FORMAT_STRING " HA-copylogdb %s (rel %s, pid %d)\n"
 #define HA_APPLYLOGDB_FORMAT_STRING " HA-applylogdb %s (rel %s, pid %d)\n"
 
-static void css_send_command_to_server (const SOCKET_QUEUE_ENTRY * sock_entry,
-					int command);
-static void css_send_message_to_server (const SOCKET_QUEUE_ENTRY * sock_entry,
-					const char *message);
+static void css_send_command_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, int command);
+static void css_send_message_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, const char *message);
 static void css_cleanup_info_connection (CSS_CONN_ENTRY * conn);
-static void css_process_start_time_info (CSS_CONN_ENTRY * conn,
-					 unsigned short request_id);
-static void css_process_shutdown_time_info (CSS_CONN_ENTRY * conn,
-					    unsigned short request_id);
-static void css_process_server_count_info (CSS_CONN_ENTRY * conn,
-					   unsigned short request_id);
-static void css_process_all_count_info (CSS_CONN_ENTRY * conn,
-					unsigned short request_id);
-static void css_process_server_list_info (CSS_CONN_ENTRY * conn,
-					  unsigned short request_id);
-static void css_process_all_list_info (CSS_CONN_ENTRY * conn,
-				       unsigned short request_id);
-static void css_process_kill_slave (CSS_CONN_ENTRY * conn,
-				    unsigned short request_id,
-				    char *server_name);
-static void css_process_kill_immediate (CSS_CONN_ENTRY * conn,
-					unsigned short request_id,
-					char *server_name);
+static void css_process_start_time_info (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_shutdown_time_info (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_server_count_info (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_all_count_info (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id, char *server_name);
+static void css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id, char *server_name);
 static void css_send_term_signal (int pid);
 static void css_process_kill_master (void);
-static void css_process_request_count_info (CSS_CONN_ENTRY * conn,
-					    unsigned short request_id);
+static void css_process_request_count_info (CSS_CONN_ENTRY * conn, unsigned short request_id);
 static void css_process_shutdown (char *time_buffer);
-static void css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn,
-					    unsigned short request_id,
-					    char *server_name);
+static void css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn, unsigned short request_id, char *server_name);
 static void css_process_get_eof (CSS_CONN_ENTRY * conn);
-static void css_process_ha_node_list_info (CSS_CONN_ENTRY * conn,
-					   unsigned short request_id,
-					   bool verbose_yn);
-static void css_process_ha_process_list_info (CSS_CONN_ENTRY * conn,
-					      unsigned short request_id,
-					      bool verbose_yn);
+static void css_process_ha_node_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id, bool verbose_yn);
+static void css_process_ha_process_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id, bool verbose_yn);
 
-static void css_process_kill_all_ha_process (CSS_CONN_ENTRY * conn,
-					     unsigned short request_id);
-static void css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
-					       unsigned short request_id,
-					       char *buf);
-static void css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
-					      unsigned short request_id,
-					      char *pid_p);
-static void css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn,
-					       unsigned short request_id,
-					       char *args);
-static void css_process_reconfig_heartbeat (CSS_CONN_ENTRY * conn,
-					    unsigned short request_id);
-static void css_process_deact_stop_all (CSS_CONN_ENTRY * conn,
-					unsigned short request_id,
-					char *deact_immediately);
-static void css_process_deact_confirm_stop_all (CSS_CONN_ENTRY * conn,
-						unsigned short request_id);
-static void css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn,
-					      unsigned short request_id);
-static void css_process_deact_confirm_no_server (CSS_CONN_ENTRY * conn,
-						 unsigned short request_id);
-static void css_process_activate_heartbeat (CSS_CONN_ENTRY * conn,
-					    unsigned short request_id);
+static void css_process_kill_all_ha_process (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buf);
+static void css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn, unsigned short request_id, char *pid_p);
+static void css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, unsigned short request_id, char *args);
+static void css_process_reconfig_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_deact_stop_all (CSS_CONN_ENTRY * conn, unsigned short request_id, char *deact_immediately);
+static void css_process_deact_confirm_stop_all (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_deact_confirm_no_server (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_activate_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_id);
 
 static void css_process_register_ha_process (CSS_CONN_ENTRY * conn);
 static void css_process_deregister_ha_process (CSS_CONN_ENTRY * conn);
 static void css_process_change_ha_mode (CSS_CONN_ENTRY * conn);
-static void css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn,
-					   unsigned short request_id);
-static void css_process_ha_admin_info (CSS_CONN_ENTRY * conn,
-				       unsigned short request_id);
-static void css_process_ha_start_util_process (CSS_CONN_ENTRY * conn,
-					       unsigned short request_id,
-					       char *args);
+static void css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_ha_admin_info (CSS_CONN_ENTRY * conn, unsigned short request_id);
+static void css_process_ha_start_util_process (CSS_CONN_ENTRY * conn, unsigned short request_id, char *args);
 
-static void css_process_server_state (CSS_CONN_ENTRY * conn,
-				      unsigned short request_id,
-				      char *server_name);
+static void css_process_server_state (CSS_CONN_ENTRY * conn, unsigned short request_id, char *server_name);
 
 /*
  * css_send_command_to_server()
@@ -156,16 +117,13 @@ static void css_process_server_state (CSS_CONN_ENTRY * conn,
  *   command(in)
  */
 static void
-css_send_command_to_server (const SOCKET_QUEUE_ENTRY * sock_entry,
-			    int command)
+css_send_command_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, int command)
 {
   int request;
 
   request = htonl (command);
-  if (sock_entry->conn_ptr &&
-      !sock_entry->info_p &&
-      !IS_MASTER_SOCKET_FD (sock_entry->conn_ptr->fd) &&
-      !IS_INVALID_SOCKET (sock_entry->conn_ptr->fd))
+  if (sock_entry->conn_ptr && !sock_entry->info_p && !IS_MASTER_SOCKET_FD (sock_entry->conn_ptr->fd)
+      && !IS_INVALID_SOCKET (sock_entry->conn_ptr->fd))
     {
       send (sock_entry->conn_ptr->fd, (char *) &request, sizeof (int), 0);
     }
@@ -178,13 +136,10 @@ css_send_command_to_server (const SOCKET_QUEUE_ENTRY * sock_entry,
  *   message(in)
  */
 static void
-css_send_message_to_server (const SOCKET_QUEUE_ENTRY * sock_entry,
-			    const char *message)
+css_send_message_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, const char *message)
 {
-  if (sock_entry->conn_ptr &&
-      !sock_entry->info_p &&
-      !IS_MASTER_SOCKET_FD (sock_entry->conn_ptr->fd) &&
-      !IS_INVALID_SOCKET (sock_entry->conn_ptr->fd))
+  if (sock_entry->conn_ptr && !sock_entry->info_p && !IS_MASTER_SOCKET_FD (sock_entry->conn_ptr->fd)
+      && !IS_INVALID_SOCKET (sock_entry->conn_ptr->fd))
     {
       send (sock_entry->conn_ptr->fd, message, MASTER_TO_SRV_MSG_SIZE, 0);
     }
@@ -226,8 +181,7 @@ css_process_start_time_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
  *   request_id(in)
  */
 static void
-css_process_shutdown_time_info (CSS_CONN_ENTRY * conn,
-				unsigned short request_id)
+css_process_shutdown_time_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
   struct timeval timeout;
   int time_left;
@@ -236,8 +190,7 @@ css_process_shutdown_time_info (CSS_CONN_ENTRY * conn,
 
   if (css_Master_timeout == NULL)
     {
-      if (css_send_data (conn, request_id, master_release,
-			 strlen (master_release) + 1) != NO_ERRORS)
+      if (css_send_data (conn, request_id, master_release, strlen (master_release) + 1) != NO_ERRORS)
 	{
 	  css_cleanup_info_connection (conn);
 	}
@@ -246,8 +199,7 @@ css_process_shutdown_time_info (CSS_CONN_ENTRY * conn,
 
   if (time ((time_t *) & timeout.tv_sec) == (time_t) - 1)
     {
-      if (css_send_data (conn, request_id, master_release,
-			 strlen (master_release) + 1) != NO_ERRORS)
+      if (css_send_data (conn, request_id, master_release, strlen (master_release) + 1) != NO_ERRORS)
 	{
 	  css_cleanup_info_connection (conn);
 	}
@@ -257,15 +209,12 @@ css_process_shutdown_time_info (CSS_CONN_ENTRY * conn,
     {
       time_left = time_left / 60;
       sprintf (time_string, "%d", time_left);
-      if (css_send_data (conn, request_id, time_string,
-			 strlen (time_string) + 1) != NO_ERRORS)
+      if (css_send_data (conn, request_id, time_string, strlen (time_string) + 1) != NO_ERRORS)
 	{
 	  css_cleanup_info_connection (conn);
 	}
     }
-  else
-    if (css_send_data (conn, request_id, master_release,
-		       strlen (master_release) + 1) != NO_ERRORS)
+  else if (css_send_data (conn, request_id, master_release, strlen (master_release) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -278,28 +227,23 @@ css_process_shutdown_time_info (CSS_CONN_ENTRY * conn,
  *   request_id(in)
  */
 static void
-css_process_server_count_info (CSS_CONN_ENTRY * conn,
-			       unsigned short request_id)
+css_process_server_count_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
   int count = 0;
   SOCKET_QUEUE_ENTRY *temp;
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name &&
-	  !IS_MASTER_CONN_NAME_DRIVER (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name
+	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name)
+	  && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
 	{
 	  count++;
 	}
     }
 
   count = htonl (count);
-  if (css_send_data (conn, request_id,
-		     (char *) &count, sizeof (int)) != NO_ERRORS)
+  if (css_send_data (conn, request_id, (char *) &count, sizeof (int)) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -319,16 +263,14 @@ css_process_all_count_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd)
-	  && temp->name)
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name)
 	{
 	  count++;
 	}
     }
 
   count = htonl (count);
-  if (css_send_data (conn, request_id,
-		     (char *) &count, sizeof (int)) != NO_ERRORS)
+  if (css_send_data (conn, request_id, (char *) &count, sizeof (int)) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -341,8 +283,7 @@ css_process_all_count_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
  *   request_id(in)
  */
 static void
-css_process_server_list_info (CSS_CONN_ENTRY * conn,
-			      unsigned short request_id)
+css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
   int bufsize = 0, required_size;
   char *buffer = NULL;
@@ -350,12 +291,9 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn,
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name != NULL &&
-	  !IS_MASTER_CONN_NAME_DRIVER (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name != NULL
+	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name)
+	  && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
 	{
 	  required_size = 0;
 
@@ -400,17 +338,13 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn,
 	  /* if HA mode server */
 	  if (IS_MASTER_CONN_NAME_HA_SERVER (temp->name))
 	    {
-	      snprintf (buffer + strlen (buffer), required_size,
-			HA_SERVER_FORMAT_STRING, temp->name + 1,
-			(temp->version_string ==
-			 NULL ? "?" : temp->version_string), temp->pid);
+	      snprintf (buffer + strlen (buffer), required_size, HA_SERVER_FORMAT_STRING, temp->name + 1,
+			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 	    }
 	  else
 	    {
-	      snprintf (buffer + strlen (buffer), required_size,
-			SERVER_FORMAT_STRING, temp->name,
-			(temp->version_string ==
-			 NULL ? "?" : temp->version_string), temp->pid);
+	      snprintf (buffer + strlen (buffer), required_size, SERVER_FORMAT_STRING, temp->name,
+			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 
 	    }
 	}
@@ -421,8 +355,7 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn,
       goto error_return;
     }
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -458,8 +391,7 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd)
-	  && temp->name != NULL)
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name != NULL)
 	{
 	  required_size = 0;
 
@@ -510,28 +442,20 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	  switch (temp->name[0])
 	    {
 	    case '#':
-	      snprintf (buffer + strlen (buffer), required_size,
-			HA_SERVER_FORMAT_STRING, temp->name + 1,
-			(temp->version_string ==
-			 NULL ? "?" : temp->version_string), temp->pid);
+	      snprintf (buffer + strlen (buffer), required_size, HA_SERVER_FORMAT_STRING, temp->name + 1,
+			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 	      break;
 	    case '$':
-	      snprintf (buffer + strlen (buffer), required_size,
-			HA_COPYLOGDB_FORMAT_STRING, temp->name + 1,
-			(temp->version_string ==
-			 NULL ? "?" : temp->version_string), temp->pid);
+	      snprintf (buffer + strlen (buffer), required_size, HA_COPYLOGDB_FORMAT_STRING, temp->name + 1,
+			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 	      break;
 	    case '%':
-	      snprintf (buffer + strlen (buffer), required_size,
-			HA_APPLYLOGDB_FORMAT_STRING, temp->name + 1,
-			(temp->version_string ==
-			 NULL ? "?" : temp->version_string), temp->pid);
+	      snprintf (buffer + strlen (buffer), required_size, HA_APPLYLOGDB_FORMAT_STRING, temp->name + 1,
+			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 	      break;
 	    default:
-	      snprintf (buffer + strlen (buffer), required_size,
-			SERVER_FORMAT_STRING, temp->name,
-			(temp->version_string ==
-			 NULL ? "?" : temp->version_string), temp->pid);
+	      snprintf (buffer + strlen (buffer), required_size, SERVER_FORMAT_STRING, temp->name,
+			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 	      break;
 	    }
 	}
@@ -542,8 +466,7 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
       goto error_return;
     }
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -572,8 +495,7 @@ error_return:
  *   server_name(in/out)
  */
 static void
-css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id,
-			char *server_name)
+css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id, char *server_name)
 {
   int timeout;
   SOCKET_QUEUE_ENTRY *temp;
@@ -592,12 +514,8 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	{
 	  if ((temp->name != NULL) && ((strcmp (temp->name, server_name) == 0)
 #if !defined(WINDOWS)
-				       ||
-				       (IS_MASTER_CONN_NAME_HA_SERVER
-					(temp->name)
-					&&
-					(strcmp (temp->name + 1, server_name)
-					 == 0))
+				       || (IS_MASTER_CONN_NAME_HA_SERVER (temp->name)
+					   && (strcmp (temp->name + 1, server_name) == 0))
 #endif
 	      ))
 	    {
@@ -611,20 +529,15 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id,
 		{
 		  memset (buffer, 0, sizeof (buffer));
 		  snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-			    msgcat_message (MSGCAT_CATALOG_UTILS,
-					    MSGCAT_UTIL_SET_MASTER,
-					    MASTER_MSG_SERVER_STATUS),
+			    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_STATUS),
 			    server_name, timeout);
 		  css_process_start_shutdown (temp, timeout * 60, buffer);
 		}
 	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-			msgcat_message (MSGCAT_CATALOG_UTILS,
-					MSGCAT_UTIL_SET_MASTER,
-					MASTER_MSG_SERVER_NOTIFIED),
+			msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_NOTIFIED),
 			server_name);
 
-	      if (css_send_data (conn, request_id, buffer,
-				 strlen (buffer) + 1) != NO_ERRORS)
+	      if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
 		{
 		  css_cleanup_info_connection (conn);
 		}
@@ -634,11 +547,9 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id,
     }
 
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_SERVER_NOT_FOUND), server_name);
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_NOT_FOUND), server_name);
 
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -657,40 +568,32 @@ css_process_kill_slave (CSS_CONN_ENTRY * conn, unsigned short request_id,
  *   server_name(in/out)
  */
 static void
-css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id,
-			    char *server_name)
+css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id, char *server_name)
 {
   SOCKET_QUEUE_ENTRY *temp;
   char buffer[512];
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if ((temp->name != NULL) && (strcmp (temp->name, server_name) == 0) &&
-	  !IS_MASTER_CONN_NAME_HA_SERVER (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+      if ((temp->name != NULL) && (strcmp (temp->name, server_name) == 0) && !IS_MASTER_CONN_NAME_HA_SERVER (temp->name)
+	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name)
+	  && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
 	{
 	  css_send_command_to_server (temp, SERVER_SHUTDOWN_IMMEDIATE);
 
-	  snprintf (buffer, 512, msgcat_message (MSGCAT_CATALOG_UTILS,
-						 MSGCAT_UTIL_SET_MASTER,
-						 MASTER_MSG_SERVER_NOTIFIED),
+	  snprintf (buffer, 512,
+		    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_NOTIFIED),
 		    server_name);
-	  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-	      NO_ERRORS)
+	  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
 	    {
 	      css_cleanup_info_connection (conn);
 	    }
 	  return;
 	}
     }
-  snprintf (buffer, 512, msgcat_message (MSGCAT_CATALOG_UTILS,
-					 MSGCAT_UTIL_SET_MASTER,
-					 MASTER_MSG_SERVER_NOT_FOUND),
+  snprintf (buffer, 512, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_NOT_FOUND),
 	    server_name);
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -745,8 +648,7 @@ css_process_kill_master (void)
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
-      MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-		     ER_HB_STOPPED, 0);
+      MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STOPPED, 0);
     }
 #endif
 
@@ -760,14 +662,12 @@ css_process_kill_master (void)
  *   request_id(in)
  */
 static void
-css_process_request_count_info (CSS_CONN_ENTRY * conn,
-				unsigned short request_id)
+css_process_request_count_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
   int count;
 
   count = htonl (css_Total_request_count);
-  if (css_send_data (conn, request_id,
-		     (char *) &count, sizeof (int)) != NO_ERRORS)
+  if (css_send_data (conn, request_id, (char *) &count, sizeof (int)) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -781,8 +681,7 @@ css_process_request_count_info (CSS_CONN_ENTRY * conn,
  *   buffer(in)
  */
 void
-css_process_start_shutdown (SOCKET_QUEUE_ENTRY * sock_entq, int timeout,
-			    char *buffer)
+css_process_start_shutdown (SOCKET_QUEUE_ENTRY * sock_entq, int timeout, char *buffer)
 {
   css_send_command_to_server (sock_entq, SERVER_START_SHUTDOWN);
 
@@ -809,21 +708,15 @@ css_process_shutdown (char *time_buffer)
 
   memset (buffer, 0, sizeof (buffer));
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_GOING_DOWN), timeout);
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_GOING_DOWN), timeout);
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      /* do not send shutdown command to master and connector, only to servers:
-       * cause connector crash
-       */
-      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name &&
-	  !IS_MASTER_CONN_NAME_DRIVER (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_SERVER (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+      /* do not send shutdown command to master and connector, only to servers: cause connector crash */
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name
+	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_SERVER (temp->name)
+	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name)
+	  && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
 	{
 	  css_process_start_shutdown (temp, timeout * 60, buffer);
 
@@ -834,8 +727,7 @@ css_process_shutdown (char *time_buffer)
 
   if (css_Master_timeout == NULL)
     {
-      css_Master_timeout =
-	(struct timeval *) malloc (sizeof (struct timeval));
+      css_Master_timeout = (struct timeval *) malloc (sizeof (struct timeval));
     }
 
   /* check again to be sure allocation was successful */
@@ -851,8 +743,7 @@ css_process_shutdown (char *time_buffer)
 	}
       css_Master_timeout->tv_sec += timeout * 60;
     }
-  MASTER_ER_SET (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		 ERR_CSS_MINFO_MESSAGE, 1, buffer);
+  MASTER_ER_SET (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_MINFO_MESSAGE, 1, buffer);
 }
 
 /*
@@ -871,16 +762,11 @@ css_process_stop_shutdown (void)
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      /* do not send shutdown command to master and connector, only to servers:
-       * cause connector crash
-       */
-      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name &&
-	  !IS_MASTER_CONN_NAME_DRIVER (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_SERVER (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) &&
-	  !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+      /* do not send shutdown command to master and connector, only to servers: cause connector crash */
+      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name
+	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_SERVER (temp->name)
+	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name)
+	  && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
 	{
 	  css_send_command_to_server (temp, SERVER_STOP_SHUTDOWN);
 	}
@@ -895,8 +781,7 @@ css_process_stop_shutdown (void)
  *   server_name(in/out)
  */
 static void
-css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn,
-				unsigned short request_id, char *server_name)
+css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn, unsigned short request_id, char *server_name)
 {
   SOCKET_QUEUE_ENTRY *temp;
   char ha_state_str[64];
@@ -910,8 +795,7 @@ css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn,
 	{
 	  css_send_command_to_server (temp, SERVER_GET_HA_MODE);
 
-	  len = css_readn (temp->conn_ptr->fd, (char *) &response,
-			   sizeof (int), -1);
+	  len = css_readn (temp->conn_ptr->fd, (char *) &response, sizeof (int), -1);
 	  if (len < 0)
 	    {
 	      return;
@@ -922,32 +806,23 @@ css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn,
 	  if (ha_state == HA_SERVER_STATE_NA)
 	    {
 	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-			msgcat_message (MSGCAT_CATALOG_UTILS,
-					MSGCAT_UTIL_SET_CHANGEMODE,
-					CHANGEMODE_MSG_NOT_HA_MODE));
+			msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_NOT_HA_MODE));
 	    }
-	  else if ((ha_state >= HA_SERVER_STATE_IDLE)
-		   && (ha_state <= HA_SERVER_STATE_DEAD))
+	  else if ((ha_state >= HA_SERVER_STATE_IDLE) && (ha_state <= HA_SERVER_STATE_DEAD))
 	    {
-	      strncpy (ha_state_str,
-		       css_ha_server_state_string (ha_state),
-		       sizeof (ha_state_str) - 1);
+	      strncpy (ha_state_str, css_ha_server_state_string (ha_state), sizeof (ha_state_str) - 1);
 	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-			msgcat_message (MSGCAT_CATALOG_UTILS,
-					MSGCAT_UTIL_SET_CHANGEMODE,
-					CHANGEMODE_MSG_SERVER_MODE),
+			msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_SERVER_MODE),
 			temp->name, ha_state_str);
 	    }
 	  else
 	    {
 	      snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-			msgcat_message (MSGCAT_CATALOG_UTILS,
-					MSGCAT_UTIL_SET_CHANGEMODE,
-					CHANGEMODE_MSG_BAD_MODE), "unknown");
+			msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
+			"unknown");
 	    }
 
-	  if (css_send_data (conn, request_id, buffer,
-			     strlen (buffer) + 1) != NO_ERRORS)
+	  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
 	    {
 	      css_cleanup_info_connection (conn);
 	    }
@@ -956,12 +831,9 @@ css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn,
     }
 
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS,
-			    MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_SERVER_NOT_FOUND), server_name);
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_SERVER_NOT_FOUND), server_name);
 
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1031,8 +903,7 @@ css_process_change_ha_mode (CSS_CONN_ENTRY * conn)
  *   request_id(in):
  */
 static void
-css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn,
-			       unsigned short request_id)
+css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
 #if !defined(WINDOWS)
   char *buffer = NULL;
@@ -1056,8 +927,7 @@ css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn,
       goto error_return;
     }
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1083,12 +953,9 @@ error_return:
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS,
-			    MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1126,8 +993,7 @@ css_process_ha_admin_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
       goto error_return;
     }
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1153,12 +1019,9 @@ error_return:
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS,
-			    MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1187,8 +1050,7 @@ css_process_get_eof (CSS_CONN_ENTRY * conn)
  *   verbose_yn(in):
  */
 static void
-css_process_ha_node_list_info (CSS_CONN_ENTRY * conn,
-			       unsigned short request_id, bool verbose_yn)
+css_process_ha_node_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id, bool verbose_yn)
 {
 #if !defined(WINDOWS)
   char *buffer = NULL;
@@ -1212,8 +1074,7 @@ css_process_ha_node_list_info (CSS_CONN_ENTRY * conn,
       goto error_return;
     }
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1239,12 +1100,9 @@ error_return:
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS,
-			    MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1260,8 +1118,7 @@ error_return:
  *   verbose_yn(in):
  */
 static void
-css_process_ha_process_list_info (CSS_CONN_ENTRY * conn,
-				  unsigned short request_id, bool verbose_yn)
+css_process_ha_process_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id, bool verbose_yn)
 {
 #if !defined(WINDOWS)
   char *buffer = NULL;
@@ -1285,8 +1142,7 @@ css_process_ha_process_list_info (CSS_CONN_ENTRY * conn,
       goto error_return;
     }
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1312,12 +1168,9 @@ error_return:
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS,
-			    MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1331,8 +1184,7 @@ error_return:
  *   request_id(in):
  */
 static void
-css_process_kill_all_ha_process (CSS_CONN_ENTRY * conn,
-				 unsigned short request_id)
+css_process_kill_all_ha_process (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
 #if !defined(WINDOWS)
   char *buffer = NULL;
@@ -1349,8 +1201,7 @@ css_process_kill_all_ha_process (CSS_CONN_ENTRY * conn,
       goto error_return;
     }
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1375,12 +1226,9 @@ error_return:
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS,
-			    MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1394,17 +1242,14 @@ error_return:
  *   request_id(in):
  */
 static void
-css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
-				   unsigned short request_id, char *buf)
+css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buf)
 {
 #if !defined(WINDOWS)
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
       if (hb_is_registered_process (conn, buf))
 	{
-	  if (css_send_data
-	      (conn, request_id, HA_REQUEST_SUCCESS,
-	       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+	  if (css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
 	    {
 	      css_cleanup_info_connection (conn);
 	    }
@@ -1412,9 +1257,7 @@ css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
 	}
     }
 
-  if (css_send_data
-      (conn, request_id, HA_REQUEST_FAILURE,
-       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1423,12 +1266,9 @@ css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS,
-			    MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1443,8 +1283,7 @@ css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
  *   pid_p(in):
  */
 static void
-css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
-				  unsigned short request_id, char *pid_p)
+css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn, unsigned short request_id, char *pid_p)
 {
 #if !defined(WINDOWS)
   pid_t pid;
@@ -1466,8 +1305,7 @@ css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
       goto error_return;
     }
 
-  if (css_send_data (conn, request_id,
-		     HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1475,8 +1313,7 @@ css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
   return;
 
 error_return:
-  if (css_send_data (conn, request_id,
-		     HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1487,12 +1324,9 @@ error_return:
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS,
-			    MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1507,8 +1341,7 @@ error_return:
  *   pid_p(in):
  */
 static void
-css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn,
-				   unsigned short request_id, char *args)
+css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, unsigned short request_id, char *args)
 {
 #if !defined(WINDOWS)
   int result;
@@ -1528,8 +1361,7 @@ css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn,
       goto error_return;
     }
 
-  if (css_send_data (conn, request_id,
-		     HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1537,8 +1369,7 @@ css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn,
   return;
 
 error_return:
-  if (css_send_data (conn, request_id,
-		     HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1549,12 +1380,9 @@ error_return:
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS,
-			    MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1570,8 +1398,7 @@ error_return:
  *   request_id(in):
  */
 static void
-css_process_reconfig_heartbeat (CSS_CONN_ENTRY * conn,
-				unsigned short request_id)
+css_process_reconfig_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
 #if !defined(WINDOWS)
   char *buffer = NULL;
@@ -1586,8 +1413,7 @@ css_process_reconfig_heartbeat (CSS_CONN_ENTRY * conn,
     {
       goto error_return;
     }
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1612,10 +1438,8 @@ error_return:
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1629,8 +1453,7 @@ error_return:
  *   request_id(in):
  */
 static void
-css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn,
-				  unsigned short request_id)
+css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
 #if !defined(WINDOWS)
   int error = NO_ERROR;
@@ -1647,8 +1470,7 @@ css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn,
   result = hb_check_request_eligibility (conn->fd);
   if (result != HB_HC_ELIGIBLE_LOCAL)
     {
-      if (css_get_peer_name (conn->fd, request_from, sizeof (request_from)) !=
-	  0)
+      if (css_get_peer_name (conn->fd, request_from, sizeof (request_from)) != 0)
 	{
 	  snprintf (request_from, sizeof (request_from), "UNKNOWN");
 	}
@@ -1656,28 +1478,19 @@ css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn,
 
   if (result == HB_HC_FAILED)
     {
-      snprintf (error_string, LINE_MAX,
-		"%s.(failed to check eligibility of request)",
-		HB_RESULT_FAILURE_STR);
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR,
-		     error_string);
+      snprintf (error_string, LINE_MAX, "%s.(failed to check eligibility of request)", HB_RESULT_FAILURE_STR);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR, error_string);
       goto error_return;
     }
   else if (result == HB_HC_UNAUTHORIZED)
     {
-      snprintf (error_string, LINE_MAX,
-		"%s.(request from unauthorized host %s)",
-		HB_RESULT_FAILURE_STR, request_from);
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR,
-		     error_string);
+      snprintf (error_string, LINE_MAX, "%s.(request from unauthorized host %s)", HB_RESULT_FAILURE_STR, request_from);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR, error_string);
       goto error_return;
     }
   else if (result == HB_HC_ELIGIBLE_REMOTE)
     {
-      hb_disable_er_log (HB_NOLOG_REMOTE_STOP, "deactivation request from %s",
-			 request_from);
+      hb_disable_er_log (HB_NOLOG_REMOTE_STOP, "deactivation request from %s", request_from);
     }
 
   error = hb_deactivate_heartbeat ();
@@ -1688,12 +1501,9 @@ css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn,
 
   if (hb_get_deactivating_server_count () > 0)
     {
-      message = msgcat_message (MSGCAT_CATALOG_UTILS,
-				MSGCAT_UTIL_SET_MASTER,
-				MASTER_MSG_FAILOVER_FINISHED);
+      message = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_FAILOVER_FINISHED);
 
-      if (css_send_data (conn, request_id, message,
-			 strlen (message) + 1) != NO_ERRORS)
+      if (css_send_data (conn, request_id, message, strlen (message) + 1) != NO_ERRORS)
 	{
 	  css_cleanup_info_connection (conn);
 	  return;
@@ -1708,9 +1518,7 @@ css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn,
 	}
     }
 
-  if (css_send_data
-      (conn, request_id, HA_REQUEST_SUCCESS,
-       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1724,9 +1532,7 @@ error_return:
       return;
     }
 
-  if (css_send_data
-      (conn, request_id, HA_REQUEST_FAILURE,
-       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1736,10 +1542,8 @@ error_return:
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1747,25 +1551,20 @@ error_return:
 }
 
 static void
-css_process_deact_confirm_no_server (CSS_CONN_ENTRY * conn,
-				     unsigned short request_id)
+css_process_deact_confirm_no_server (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
 #if !defined(WINDOWS)
   int error;
 
   if (hb_get_deactivating_server_count () == 0)
     {
-      error =
-	css_send_data (conn, request_id, HA_REQUEST_SUCCESS,
-		       HA_REQUEST_RESULT_SIZE);
+      error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
 
       hb_finish_deactivate_server_info ();
     }
   else
     {
-      error =
-	css_send_data (conn, request_id, HA_REQUEST_FAILURE,
-		       HA_REQUEST_RESULT_SIZE);
+      error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
     }
 
   if (error != NO_ERRORS)
@@ -1777,10 +1576,8 @@ css_process_deact_confirm_no_server (CSS_CONN_ENTRY * conn,
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1788,23 +1585,18 @@ css_process_deact_confirm_no_server (CSS_CONN_ENTRY * conn,
 }
 
 static void
-css_process_deact_confirm_stop_all (CSS_CONN_ENTRY * conn,
-				    unsigned short request_id)
+css_process_deact_confirm_stop_all (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
 #if !defined(WINDOWS)
   int error;
 
   if (hb_is_deactivation_ready () == true)
     {
-      error =
-	css_send_data (conn, request_id, HA_REQUEST_SUCCESS,
-		       HA_REQUEST_RESULT_SIZE);
+      error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
     }
   else
     {
-      error =
-	css_send_data (conn, request_id, HA_REQUEST_FAILURE,
-		       HA_REQUEST_RESULT_SIZE);
+      error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
     }
 
   if (error != NO_ERRORS)
@@ -1816,10 +1608,8 @@ css_process_deact_confirm_stop_all (CSS_CONN_ENTRY * conn,
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1827,9 +1617,7 @@ css_process_deact_confirm_stop_all (CSS_CONN_ENTRY * conn,
 }
 
 static void
-css_process_deact_stop_all (CSS_CONN_ENTRY * conn,
-			    unsigned short request_id,
-			    char *deact_immediately)
+css_process_deact_stop_all (CSS_CONN_ENTRY * conn, unsigned short request_id, char *deact_immediately)
 {
 #if !defined(WINDOWS)
   int result;
@@ -1845,8 +1633,7 @@ css_process_deact_stop_all (CSS_CONN_ENTRY * conn,
 
   if (result != HB_HC_ELIGIBLE_LOCAL)
     {
-      if (css_get_peer_name (conn->fd, request_from, sizeof (request_from)) !=
-	  0)
+      if (css_get_peer_name (conn->fd, request_from, sizeof (request_from)) != 0)
 	{
 	  snprintf (request_from, sizeof (request_from), "UNKNOWN");
 	}
@@ -1854,28 +1641,19 @@ css_process_deact_stop_all (CSS_CONN_ENTRY * conn,
 
   if (result == HB_HC_FAILED)
     {
-      snprintf (error_string, LINE_MAX,
-		"%s.(failed to check eligibility of request)",
-		HB_RESULT_FAILURE_STR);
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR,
-		     error_string);
+      snprintf (error_string, LINE_MAX, "%s.(failed to check eligibility of request)", HB_RESULT_FAILURE_STR);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR, error_string);
       goto error_return;
     }
   else if (result == HB_HC_UNAUTHORIZED)
     {
-      snprintf (error_string, LINE_MAX,
-		"%s.(request from unauthorized host %s)",
-		HB_RESULT_FAILURE_STR, request_from);
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		     ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR,
-		     error_string);
+      snprintf (error_string, LINE_MAX, "%s.(request from unauthorized host %s)", HB_RESULT_FAILURE_STR, request_from);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_COMMAND_EXECUTION, 2, HB_CMD_DEACTIVATE_STR, error_string);
       goto error_return;
     }
   else if (result == HB_HC_ELIGIBLE_REMOTE)
     {
-      hb_disable_er_log (HB_NOLOG_REMOTE_STOP, "deactivation request from %s",
-			 request_from);
+      hb_disable_er_log (HB_NOLOG_REMOTE_STOP, "deactivation request from %s", request_from);
     }
 
   if (hb_is_deactivation_started () == false)
@@ -1898,9 +1676,7 @@ css_process_deact_stop_all (CSS_CONN_ENTRY * conn,
 	}
     }
 
-  if (css_send_data
-      (conn, request_id, HA_REQUEST_SUCCESS,
-       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1908,9 +1684,7 @@ css_process_deact_stop_all (CSS_CONN_ENTRY * conn,
   return;
 
 error_return:
-  if (css_send_data
-      (conn, request_id, HA_REQUEST_FAILURE,
-       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1919,10 +1693,8 @@ error_return:
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1936,8 +1708,7 @@ error_return:
  *   request_id(in):
  */
 static void
-css_process_activate_heartbeat (CSS_CONN_ENTRY * conn,
-				unsigned short request_id)
+css_process_activate_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
 #if !defined(WINDOWS)
   int error = NO_ERROR;
@@ -1953,9 +1724,7 @@ css_process_activate_heartbeat (CSS_CONN_ENTRY * conn,
       goto error_return;
     }
 
-  if (css_send_data
-      (conn, request_id, HA_REQUEST_SUCCESS,
-       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1963,9 +1732,7 @@ css_process_activate_heartbeat (CSS_CONN_ENTRY * conn,
   return;
 
 error_return:
-  if (css_send_data
-      (conn, request_id, HA_REQUEST_FAILURE,
-       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1974,10 +1741,8 @@ error_return:
 #else
   char buffer[MASTER_TO_SRV_MSG_SIZE];
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -1992,8 +1757,7 @@ error_return:
  *   args(in):
  */
 static void
-css_process_ha_start_util_process (CSS_CONN_ENTRY * conn,
-				   unsigned short request_id, char *args)
+css_process_ha_start_util_process (CSS_CONN_ENTRY * conn, unsigned short request_id, char *args)
 {
 #if !defined(WINDOWS)
   int error = NO_ERROR;
@@ -2016,9 +1780,7 @@ css_process_ha_start_util_process (CSS_CONN_ENTRY * conn,
       goto error_return;
     }
 
-  if (css_send_data
-      (conn, request_id, HA_REQUEST_SUCCESS,
-       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -2026,9 +1788,7 @@ css_process_ha_start_util_process (CSS_CONN_ENTRY * conn,
   return;
 
 error_return:
-  if (css_send_data
-      (conn, request_id, HA_REQUEST_FAILURE,
-       HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
+  if (css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -2038,12 +1798,9 @@ error_return:
   char buffer[MASTER_TO_SRV_MSG_SIZE];
 
   snprintf (buffer, MASTER_TO_SRV_MSG_SIZE,
-	    msgcat_message (MSGCAT_CATALOG_UTILS,
-			    MSGCAT_UTIL_SET_MASTER,
-			    MASTER_MSG_PROCESS_ERROR));
+	    msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
 
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -2060,8 +1817,7 @@ error_return:
  *   server_name(in)
  */
 static void
-css_process_server_state (CSS_CONN_ENTRY * conn, unsigned short request_id,
-			  char *server_name)
+css_process_server_state (CSS_CONN_ENTRY * conn, unsigned short request_id, char *server_name)
 {
   int state = 0;
 #if !defined(WINDOWS)
@@ -2085,8 +1841,7 @@ css_process_server_state (CSS_CONN_ENTRY * conn, unsigned short request_id,
 
 send_to_client:
   state = htonl (state);
-  if (css_send_data (conn, request_id,
-		     (char *) &state, sizeof (int)) != NO_ERRORS)
+  if (css_send_data (conn, request_id, (char *) &state, sizeof (int)) != NO_ERRORS)
     {
       css_cleanup_info_connection (conn);
     }
@@ -2109,9 +1864,7 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
   rc = css_receive_request (conn, &request_id, &request, &buffer_size);
   if (rc == NO_ERRORS)
     {
-      if (buffer_size
-	  && css_receive_data (conn, request_id, &buffer,
-			       &buffer_size, -1) != NO_ERRORS)
+      if (buffer_size && css_receive_data (conn, request_id, &buffer, &buffer_size, -1) != NO_ERRORS)
 	{
 	  if (buffer != NULL)
 	    {
@@ -2281,16 +2034,13 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 	  css_process_get_eof (conn);
 	  break;
 	default:
-	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
-			       "receive unexpected request. (request:%d).\n",
-			       request);
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "receive unexpected request. (request:%d).\n", request);
 	  break;
 	}
     }
   else
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
-			   "receive error request. (error:%d). \n", error);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "receive error request. (error:%d). \n", error);
       hb_cleanup_conn_and_start_process (conn, rfd);
     }
 #else

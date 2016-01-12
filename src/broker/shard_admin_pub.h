@@ -33,22 +33,15 @@
 #include "environment_variable.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-extern int shard_broker_activate (int master_shm_id,
-				  T_BROKER_INFO * br_info_p,
-				  T_SHM_APPL_SERVER * shm_as_p);
+extern int shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p);
 void shard_broker_inactivate (T_BROKER_INFO * br_info_p);
 
-extern int shard_as_activate (int as_shm_id,
-			      int proxy_id, int shard_id, int as_id,
-			      T_SHM_APPL_SERVER * shm_as_p,
+extern int shard_as_activate (int as_shm_id, int proxy_id, int shard_id, int as_id, T_SHM_APPL_SERVER * shm_as_p,
 			      T_SHM_PROXY * shm_proxy_p);
-extern void shard_as_inactivate (T_BROKER_INFO * br_info_p,
-				 T_APPL_SERVER_INFO * as_info_p,
-				 int proxy_index, int shard_index,
-				 int as_index);
+extern void shard_as_inactivate (T_BROKER_INFO * br_info_p, T_APPL_SERVER_INFO * as_info_p, int proxy_index,
+				 int shard_index, int as_index);
 
-extern int shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info,
-				   T_SHM_APPL_SERVER * shm_as_p,
+extern int shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info, T_SHM_APPL_SERVER * shm_as_p,
 				   T_SHM_PROXY * shm_proxy_p);
 
 extern void shard_process_inactivate (T_BROKER_INFO * br_info_p);

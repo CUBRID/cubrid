@@ -47,16 +47,12 @@
 #include "execute_schema.h"
 
 /* Error signaling macros */
-static int drop_internal (MOP class_, const char *name,
-			  SM_NAME_SPACE name_space);
+static int drop_internal (MOP class_, const char *name, SM_NAME_SPACE name_space);
 
-static int add_method_internal (MOP class_, const char *name,
-				const char *implementation,
-				SM_NAME_SPACE name_space);
+static int add_method_internal (MOP class_, const char *name, const char *implementation, SM_NAME_SPACE name_space);
 
-static int add_arg_domain (DB_OBJECT * class_, const char *name,
-			   int class_method, int index,
-			   int initial_domain, const char *domain);
+static int add_arg_domain (DB_OBJECT * class_, const char *name, int class_method, int index, int initial_domain,
+			   const char *domain);
 /*
  * CLASS DEFINITION
  */
@@ -85,8 +81,7 @@ db_create_class (const char *name)
   if (def != NULL)
     {
       /* Reserve class name. We don't expect failures. */
-      if (locator_reserve_class_name (def->name, &class_oid)
-	  != LC_CLASSNAME_RESERVED)
+      if (locator_reserve_class_name (def->name, &class_oid) != LC_CLASSNAME_RESERVED)
 	{
 	  assert_release (false);
 	  smt_quit (def);
@@ -185,8 +180,8 @@ db_rename_class (MOP classop, const char *new_name)
  * namespace(in) : namespace identifier
  */
 int
-db_add_attribute_internal (MOP class_, const char *name, const char *domain,
-			   DB_VALUE * default_value, SM_NAME_SPACE name_space)
+db_add_attribute_internal (MOP class_, const char *name, const char *domain, DB_VALUE * default_value,
+			   SM_NAME_SPACE name_space)
 {
   int error = NO_ERROR;
   SM_TEMPLATE *def;
@@ -204,8 +199,7 @@ db_add_attribute_internal (MOP class_, const char *name, const char *domain,
     }
   else
     {
-      error = smt_add_attribute_any (def, name, domain, (DB_DOMAIN *) 0,
-				     name_space, false, NULL);
+      error = smt_add_attribute_any (def, name, domain, (DB_DOMAIN *) 0, name_space, false, NULL);
       if (error)
 	{
 	  smt_quit (def);
@@ -216,15 +210,11 @@ db_add_attribute_internal (MOP class_, const char *name, const char *domain,
 	    {
 	      if (name_space == ID_CLASS || name_space == ID_CLASS_ATTRIBUTE)
 		{
-		  error =
-		    smt_set_attribute_default (def, name, 1, default_value,
-					       DB_DEFAULT_NONE);
+		  error = smt_set_attribute_default (def, name, 1, default_value, DB_DEFAULT_NONE);
 		}
 	      else
 		{
-		  error =
-		    smt_set_attribute_default (def, name, 0, default_value,
-					       DB_DEFAULT_NONE);
+		  error = smt_set_attribute_default (def, name, 0, default_value, DB_DEFAULT_NONE);
 		}
 	    }
 	  if (error)
@@ -254,14 +244,11 @@ db_add_attribute_internal (MOP class_, const char *name, const char *domain,
  * default_value(in): optional default value
  */
 int
-db_add_attribute (MOP obj, const char *name, const char *domain,
-		  DB_VALUE * default_value)
+db_add_attribute (MOP obj, const char *name, const char *domain, DB_VALUE * default_value)
 {
   int retval = 0;
 
-  retval =
-    db_add_attribute_internal (obj, name, domain, default_value,
-			       ID_ATTRIBUTE);
+  retval = db_add_attribute_internal (obj, name, domain, default_value, ID_ATTRIBUTE);
 
   return (retval);
 }
@@ -277,14 +264,11 @@ db_add_attribute (MOP obj, const char *name, const char *domain,
  *
  */
 int
-db_add_shared_attribute (MOP obj, const char *name, const char *domain,
-			 DB_VALUE * default_value)
+db_add_shared_attribute (MOP obj, const char *name, const char *domain, DB_VALUE * default_value)
 {
   int retval;
 
-  retval =
-    (db_add_attribute_internal
-     (obj, name, domain, default_value, ID_SHARED_ATTRIBUTE));
+  retval = (db_add_attribute_internal (obj, name, domain, default_value, ID_SHARED_ATTRIBUTE));
 
   return (retval);
 }
@@ -300,14 +284,11 @@ db_add_shared_attribute (MOP obj, const char *name, const char *domain,
  *
  */
 int
-db_add_class_attribute (MOP obj, const char *name,
-			const char *domain, DB_VALUE * default_value)
+db_add_class_attribute (MOP obj, const char *name, const char *domain, DB_VALUE * default_value)
 {
   int retval;
 
-  retval =
-    (db_add_attribute_internal
-     (obj, name, domain, default_value, ID_CLASS_ATTRIBUTE));
+  retval = (db_add_attribute_internal (obj, name, domain, default_value, ID_CLASS_ATTRIBUTE));
 
   return (retval);
 }
@@ -377,8 +358,7 @@ db_drop_attribute (MOP class_, const char *name)
   CHECK_MODIFICATION_ERROR ();
   CHECK_2ARGS_ERROR (class_, name);
 
-  error = do_check_partitioned_class (class_,
-				      CHECK_PARTITION_SUBS, (char *) name);
+  error = do_check_partitioned_class (class_, CHECK_PARTITION_SUBS, (char *) name);
   if (!error)
     {
       error = db_drop_attribute_internal (class_, name);
@@ -400,12 +380,9 @@ db_drop_attribute_internal (MOP class_, const char *name)
 {
   int error = NO_ERROR;
 
-  /* kludge, since instance & shared attributes are really supposed to
-     be in the same logical namespace, we should allow shared attributes
-     to be deleted here as well.  Unfortunately, the template function
-     smt_delete_any() doesn't support this.  Instead, we try the operation
-     and if it gets an error, we try again.
-   */
+  /* kludge, since instance & shared attributes are really supposed to be in the same logical namespace, we should
+   * allow shared attributes to be deleted here as well.  Unfortunately, the template function smt_delete_any() doesn't 
+   * support this.  Instead, we try the operation and if it gets an error, we try again. */
   error = drop_internal (class_, name, ID_ATTRIBUTE);
   if (error == ER_SM_ATTRIBUTE_NOT_FOUND)
     error = drop_internal (class_, name, ID_SHARED_ATTRIBUTE);
@@ -463,9 +440,7 @@ db_drop_class_attribute (MOP class_, const char *name)
  * domain(in): domain name
  */
 int
-db_add_set_attribute_domain (MOP class_,
-			     const char *name,
-			     int class_attribute, const char *domain)
+db_add_set_attribute_domain (MOP class_, const char *name, int class_attribute, const char *domain)
 {
   int error = NO_ERROR;
   SM_TEMPLATE *def;
@@ -484,9 +459,7 @@ db_add_set_attribute_domain (MOP class_,
   else
     {
       /* should make sure this is a set attribute */
-      error =
-	smt_add_set_attribute_domain (def, name, class_attribute, domain,
-				      (DB_DOMAIN *) 0);
+      error = smt_add_set_attribute_domain (def, name, class_attribute, domain, (DB_DOMAIN *) 0);
       if (error)
 	{
 	  smt_quit (def);
@@ -536,9 +509,7 @@ db_add_element_domain (MOP class_, const char *name, const char *domain)
  *
  */
 int
-db_drop_set_attribute_domain (MOP class_,
-			      const char *name,
-			      int class_attribute, const char *domain)
+db_drop_set_attribute_domain (MOP class_, const char *name, int class_attribute, const char *domain)
 {
   int error = NO_ERROR;
   SM_TEMPLATE *def;
@@ -556,8 +527,7 @@ db_drop_set_attribute_domain (MOP class_,
     }
   else
     {
-      error = smt_delete_set_attribute_domain (def, name, class_attribute,
-					       domain, (DB_DOMAIN *) 0);
+      error = smt_delete_set_attribute_domain (def, name, class_attribute, domain, (DB_DOMAIN *) 0);
       if (error)
 	{
 	  smt_quit (def);
@@ -628,8 +598,7 @@ db_change_default (MOP class_, const char *name, DB_VALUE * value)
     }
   else
     {
-      error =
-	smt_set_attribute_default (def, name, false, value, DB_DEFAULT_NONE);
+      error = smt_set_attribute_default (def, name, false, value, DB_DEFAULT_NONE);
       if (error)
 	{
 	  smt_quit (def);
@@ -655,16 +624,14 @@ db_change_default (MOP class_, const char *name, DB_VALUE * value)
  * newname(in) : new component name
  */
 int
-db_rename (MOP class_, const char *name,
-	   int class_namespace, const char *newname)
+db_rename (MOP class_, const char *name, int class_namespace, const char *newname)
 {
   int error = NO_ERROR;
 
   CHECK_CONNECT_ERROR ();
   CHECK_MODIFICATION_ERROR ();
 
-  error = do_check_partitioned_class (class_,
-				      CHECK_PARTITION_SUBS, (char *) name);
+  error = do_check_partitioned_class (class_, CHECK_PARTITION_SUBS, (char *) name);
   if (!error)
     {
       error = db_rename_internal (class_, name, class_namespace, newname);
@@ -683,8 +650,7 @@ db_rename (MOP class_, const char *name,
  * newname(in) : new component name
  */
 int
-db_rename_internal (MOP class_, const char *name,
-		    int class_namespace, const char *newname)
+db_rename_internal (MOP class_, const char *name, int class_namespace, const char *newname)
 {
   int error = NO_ERROR;
   SM_TEMPLATE *def;
@@ -731,13 +697,11 @@ db_rename_internal (MOP class_, const char *name,
  * note : This function is obsoleted, use db_rename function
  */
 int
-db_rename_attribute (MOP class_, const char *name,
-		     int class_attribute, const char *newname)
+db_rename_attribute (MOP class_, const char *name, int class_attribute, const char *newname)
 {
   int error = NO_ERROR;
 
-  error = do_check_partitioned_class (class_,
-				      CHECK_PARTITION_SUBS, (char *) name);
+  error = do_check_partitioned_class (class_, CHECK_PARTITION_SUBS, (char *) name);
   if (!error)
     {
       error = db_rename_internal (class_, name, class_attribute, newname);
@@ -758,8 +722,7 @@ db_rename_attribute (MOP class_, const char *name,
  * note : This function is obsoleted, use db_rename function
  */
 int
-db_rename_method (MOP class_, const char *name,
-		  int class_method, const char *newname)
+db_rename_method (MOP class_, const char *name, int class_method, const char *newname)
 {
   int retval;
 
@@ -782,8 +745,7 @@ db_rename_method (MOP class_, const char *name,
  * namespace(in): attribute or class namespace identifier
  */
 static int
-add_method_internal (MOP class_, const char *name, const
-		     char *implementation, SM_NAME_SPACE name_space)
+add_method_internal (MOP class_, const char *name, const char *implementation, SM_NAME_SPACE name_space)
 {
   int error = NO_ERROR;
   SM_TEMPLATE *def;
@@ -857,8 +819,7 @@ db_add_class_method (MOP class_, const char *name, const char *implementation)
 {
   int retval;
 
-  retval =
-    add_method_internal (class_, name, implementation, ID_CLASS_METHOD);
+  retval = add_method_internal (class_, name, implementation, ID_CLASS_METHOD);
 
   return (retval);
 }
@@ -906,8 +867,7 @@ db_drop_class_method (MOP class_, const char *name)
  * newname(in) : new interface function name
  */
 int
-db_change_method_implementation (MOP class_, const char *name,
-				 int class_method, const char *newname)
+db_change_method_implementation (MOP class_, const char *name, int class_method, const char *newname)
 {
   int error = NO_ERROR;
   SM_TEMPLATE *def;
@@ -925,8 +885,7 @@ db_change_method_implementation (MOP class_, const char *name,
     }
   else
     {
-      error = smt_change_method_implementation (def, name, class_method,
-						newname);
+      error = smt_change_method_implementation (def, name, class_method, newname);
       if (error)
 	{
 	  smt_quit (def);
@@ -965,9 +924,8 @@ db_change_method_implementation (MOP class_, const char *name,
  *        method is extended.
  */
 static int
-add_arg_domain (DB_OBJECT * class_, const char *name,
-		int class_method, int index,
-		int initial_domain, const char *domain)
+add_arg_domain (DB_OBJECT * class_, const char *name, int class_method, int index, int initial_domain,
+		const char *domain)
 {
   int error = NO_ERROR;
   SM_TEMPLATE *def;
@@ -987,24 +945,17 @@ add_arg_domain (DB_OBJECT * class_, const char *name,
     {
       if (domain == NULL)
 	{
-	  error =
-	    smt_assign_argument_domain (def, name, class_method, NULL,
-					index, NULL, (DB_DOMAIN *) 0);
+	  error = smt_assign_argument_domain (def, name, class_method, NULL, index, NULL, (DB_DOMAIN *) 0);
 	}
       else
 	{
 	  if (initial_domain)
 	    {
-	      error =
-		smt_assign_argument_domain (def, name, class_method, NULL,
-					    index, domain, (DB_DOMAIN *) 0);
+	      error = smt_assign_argument_domain (def, name, class_method, NULL, index, domain, (DB_DOMAIN *) 0);
 	    }
 	  else
 	    {
-	      error =
-		smt_add_set_argument_domain (def, name, class_method,
-					     NULL, index, domain,
-					     (DB_DOMAIN *) 0);
+	      error = smt_add_set_argument_domain (def, name, class_method, NULL, index, domain, (DB_DOMAIN *) 0);
 	    }
 	}
       if (error)
@@ -1033,8 +984,7 @@ add_arg_domain (DB_OBJECT * class_, const char *name,
  * domain(in): domain descriptor string
  */
 int
-db_add_argument (DB_OBJECT * class_, const char *name,
-		 int class_method, int index, const char *domain)
+db_add_argument (DB_OBJECT * class_, const char *name, int class_method, int index, const char *domain)
 {
   int retval;
 
@@ -1052,8 +1002,7 @@ db_add_argument (DB_OBJECT * class_, const char *name,
  * domain(in) :
  */
 int
-db_set_method_arg_domain (DB_OBJECT * class_, const char *name,
-			  int index, const char *domain)
+db_set_method_arg_domain (DB_OBJECT * class_, const char *name, int index, const char *domain)
 {
   int retval;
 
@@ -1071,8 +1020,7 @@ db_set_method_arg_domain (DB_OBJECT * class_, const char *name,
  * domain(in) :
  */
 int
-db_set_class_method_arg_domain (DB_OBJECT * class_, const char *name,
-				int index, const char *domain)
+db_set_class_method_arg_domain (DB_OBJECT * class_, const char *name, int index, const char *domain)
 {
   int retval;
 
@@ -1097,8 +1045,7 @@ db_set_class_method_arg_domain (DB_OBJECT * class_, const char *name,
  *    to further specify the domains of the set elements.
  */
 int
-db_add_set_argument_domain (DB_OBJECT * class_, const char *name,
-			    int class_method, int index, const char *domain)
+db_add_set_argument_domain (DB_OBJECT * class_, const char *name, int class_method, int index, const char *domain)
 {
   int retval;
 
@@ -1504,8 +1451,7 @@ db_drop_super_connect (MOP class_, MOP super)
  *
  */
 int
-db_constrain_non_null (MOP class_, const char *name,
-		       int class_attribute, int on_or_off)
+db_constrain_non_null (MOP class_, const char *name, int class_attribute, int on_or_off)
 {
   const char *att_names[2];
   int retval;
@@ -1528,13 +1474,11 @@ db_constrain_non_null (MOP class_, const char *name,
 	  return retval;
 	}
 
-      retval = db_add_constraint (class_, DB_CONSTRAINT_NOT_NULL,
-				  NULL, att_names, class_attribute);
+      retval = db_add_constraint (class_, DB_CONSTRAINT_NOT_NULL, NULL, att_names, class_attribute);
     }
   else
     {
-      retval = db_drop_constraint (class_, DB_CONSTRAINT_NOT_NULL,
-				   NULL, att_names, class_attribute);
+      retval = db_drop_constraint (class_, DB_CONSTRAINT_NOT_NULL, NULL, att_names, class_attribute);
     }
 
   return (retval);
@@ -1558,13 +1502,11 @@ db_constrain_unique (MOP class_, const char *name, int on_or_off)
   att_names[1] = NULL;
   if (on_or_off)
     {
-      retval = db_add_constraint (class_, DB_CONSTRAINT_UNIQUE,
-				  NULL, att_names, false);
+      retval = db_add_constraint (class_, DB_CONSTRAINT_UNIQUE, NULL, att_names, false);
     }
   else
     {
-      retval = db_drop_constraint (class_, DB_CONSTRAINT_UNIQUE,
-				   NULL, att_names, false);
+      retval = db_drop_constraint (class_, DB_CONSTRAINT_UNIQUE, NULL, att_names, false);
     }
 
   return (retval);
@@ -1635,8 +1577,7 @@ db_add_resolution (MOP class_, MOP super, const char *name, const char *alias)
  * alias(in): optional alias name
  */
 int
-db_add_class_resolution (MOP class_, MOP super, const char *name,
-			 const char *alias)
+db_add_class_resolution (MOP class_, MOP super, const char *name, const char *alias)
 {
   int error = NO_ERROR;
   SM_TEMPLATE *def;
@@ -1786,8 +1727,7 @@ db_add_index (MOP classmop, const char *attname)
 
   att_names[0] = attname;
   att_names[1] = NULL;
-  retval = db_add_constraint (classmop, DB_CONSTRAINT_INDEX,
-			      NULL, att_names, false);
+  retval = db_add_constraint (classmop, DB_CONSTRAINT_INDEX, NULL, att_names, false);
 
   return (retval);
 }
@@ -1812,8 +1752,7 @@ db_drop_index (MOP classmop, const char *attname)
 
   att_names[0] = attname;
   att_names[1] = NULL;
-  retval = db_drop_constraint (classmop, DB_CONSTRAINT_INDEX,
-			       NULL, att_names, false);
+  retval = db_drop_constraint (classmop, DB_CONSTRAINT_INDEX, NULL, att_names, false);
 
   return (retval);
 }
@@ -1834,9 +1773,7 @@ db_drop_index (MOP classmop, const char *attname)
  *
  */
 int
-db_add_constraint (MOP classmop,
-		   DB_CONSTRAINT_TYPE constraint_type,
-		   const char *constraint_name,
+db_add_constraint (MOP classmop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 		   const char **att_names, int class_attributes)
 {
   int retval;
@@ -1846,8 +1783,7 @@ db_add_constraint (MOP classmop,
   CHECK_2ARGS_ERROR (classmop, att_names);
   CHECK_MODIFICATION_ERROR ();
 
-  name = sm_produce_constraint_name_mop (classmop, constraint_type,
-					 att_names, NULL, constraint_name);
+  name = sm_produce_constraint_name_mop (classmop, constraint_type, att_names, NULL, constraint_name);
   if (name == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -1855,9 +1791,8 @@ db_add_constraint (MOP classmop,
     }
   else
     {
-      retval = sm_add_constraint (classmop, constraint_type, name,
-				  att_names, NULL, NULL, class_attributes,
-				  NULL, NULL, NULL);
+      retval =
+	sm_add_constraint (classmop, constraint_type, name, att_names, NULL, NULL, class_attributes, NULL, NULL, NULL);
       free_and_init (name);
     }
 
@@ -1886,9 +1821,7 @@ db_add_constraint (MOP classmop,
  *    constraint was added. In this case, the <constraint_name> should be NULL.
  */
 int
-db_drop_constraint (MOP classmop,
-		    DB_CONSTRAINT_TYPE constraint_type,
-		    const char *constraint_name,
+db_drop_constraint (MOP classmop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 		    const char **att_names, int class_attributes)
 {
   int retval;
@@ -1898,8 +1831,7 @@ db_drop_constraint (MOP classmop,
   CHECK_1ARG_ERROR (classmop);
   CHECK_MODIFICATION_ERROR ();
 
-  name = sm_produce_constraint_name_mop (classmop, constraint_type,
-					 att_names, NULL, constraint_name);
+  name = sm_produce_constraint_name_mop (classmop, constraint_type, att_names, NULL, constraint_name);
 
   if (name == NULL)
     {
@@ -1908,9 +1840,7 @@ db_drop_constraint (MOP classmop,
     }
   else
     {
-      retval = sm_drop_constraint (classmop, constraint_type, name,
-				   att_names, class_attributes ? true : false,
-				   false);
+      retval = sm_drop_constraint (classmop, constraint_type, name, att_names, class_attributes ? true : false, false);
       free_and_init (name);
     }
 

@@ -778,8 +778,7 @@ ut_date_to_str (T_CCI_DATE * value, T_CCI_U_TYPE u_type, char *str, int size)
 {
   if (u_type == CCI_U_TYPE_DATE)
     {
-      snprintf (str, size, "%04d-%02d-%02d", value->yr, value->mon,
-		value->day);
+      snprintf (str, size, "%04d-%02d-%02d", value->yr, value->mon, value->day);
     }
   else if (u_type == CCI_U_TYPE_TIME)
     {
@@ -787,27 +786,23 @@ ut_date_to_str (T_CCI_DATE * value, T_CCI_U_TYPE u_type, char *str, int size)
     }
   else if (u_type == CCI_U_TYPE_TIMESTAMP)
     {
-      snprintf (str, size, "%04d-%02d-%02d %02d:%02d:%02d",
-		value->yr, value->mon, value->day,
-		value->hh, value->mm, value->ss);
+      snprintf (str, size, "%04d-%02d-%02d %02d:%02d:%02d", value->yr, value->mon, value->day, value->hh, value->mm,
+		value->ss);
     }
   else
     {				/* u_type == CCI_U_TYPE_DATETIME */
-      snprintf (str, size, "%04d-%02d-%02d %02d:%02d:%02d.%03d",
-		value->yr, value->mon, value->day,
-		value->hh, value->mm, value->ss, value->ms);
+      snprintf (str, size, "%04d-%02d-%02d %02d:%02d:%02d.%03d", value->yr, value->mon, value->day, value->hh,
+		value->mm, value->ss, value->ms);
     }
 }
 
 void
-ut_date_tz_to_str (T_CCI_DATE_TZ * value, T_CCI_U_TYPE u_type, char *str,
-		   int size)
+ut_date_tz_to_str (T_CCI_DATE_TZ * value, T_CCI_U_TYPE u_type, char *str, int size)
 {
   int len;
 
-  if (u_type == CCI_U_TYPE_DATETIMETZ || u_type == CCI_U_TYPE_DATETIMELTZ
-      || u_type == CCI_U_TYPE_TIMESTAMPTZ || u_type == CCI_U_TYPE_TIMESTAMPLTZ
-      || u_type == CCI_U_TYPE_TIMETZ)
+  if (u_type == CCI_U_TYPE_DATETIMETZ || u_type == CCI_U_TYPE_DATETIMELTZ || u_type == CCI_U_TYPE_TIMESTAMPTZ
+      || u_type == CCI_U_TYPE_TIMESTAMPLTZ || u_type == CCI_U_TYPE_TIMETZ)
     {
       int remain_size;
       ut_date_to_str ((T_CCI_DATE *) value, u_type, str, size);
@@ -834,10 +829,8 @@ void
 ut_lob_to_str (T_LOB * lob, char *str, int size)
 {
 #if 0
-  sprintf (str, "%s:%s",
-	   (lob->type == CCI_U_TYPE_BLOB
-	    ? "BLOB" : (lob->type == CCI_U_TYPE_CLOB
-			? "CLOB" : "????")), lob->handle + 16);
+  sprintf (str, "%s:%s", (lob->type == CCI_U_TYPE_BLOB ? "BLOB" : (lob->type == CCI_U_TYPE_CLOB ? "CLOB" : "????")),
+	   lob->handle + 16);
 #else
   strncpy (str, lob->handle + 16, size);
 #endif
@@ -888,8 +881,7 @@ ut_is_deleted_oid (T_OBJECT * oid)
 
   memset (&del_oid, 0xff, sizeof (del_oid));
 
-  if (oid->pageid == del_oid.pageid &&
-      oid->slotid == del_oid.slotid && oid->volid == del_oid.volid)
+  if (oid->pageid == del_oid.pageid && oid->slotid == del_oid.slotid && oid->volid == del_oid.volid)
     {
       return CCI_ER_DELETED_TUPLE;
     }
@@ -1102,8 +1094,7 @@ get_pm_offset (char *str, int hh)
   len = strlen (str);
 
   if ((((len > 2) && (*(str + 2) == ' ')) || (len == 2))
-      && ((((*str) == 'p') || ((*str) == 'P'))
-	  && ((*(str + 1) == 'm') || (*(str + 1) == 'M'))) && (hh < 12))
+      && ((((*str) == 'p') || ((*str) == 'P')) && ((*(str + 1) == 'm') || (*(str + 1) == 'M'))) && (hh < 12))
     {
       return 12;
     }
@@ -1126,8 +1117,7 @@ skip_ampm_chars (char *str)
   if ((len > 2 && (*(str + 2) == ' ')) || (len == 2))
     {
       if (((*str == 'a') || (*str == 'A') || (*str == 'p') || (*str == 'P'))
-	  && (((*(str + 1) == 'm') || (*(str + 1) == 'M'))
-	      && (*(str + 2) == ' ')))
+	  && (((*(str + 1) == 'm') || (*(str + 1) == 'M')) && (*(str + 2) == ' ')))
 	{
 	  str += 2;
 	  ampm_skipped_chars += 2;

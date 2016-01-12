@@ -93,8 +93,7 @@ main (void)
 {
   dynload_install_handlers ();
 
-  while (read (0, dynload_Temporary_filename,
-	       sizeof (dynload_Temporary_filename)) != 0)
+  while (read (0, dynload_Temporary_filename, sizeof (dynload_Temporary_filename)) != 0)
     {
       ;				/* it reads from PIPE until the parent is ended */
     }

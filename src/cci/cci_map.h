@@ -41,19 +41,13 @@ extern "C"
 #endif
 
 /* one time connection_id */
-  extern T_CCI_ERROR_CODE map_open_otc (T_CCI_CONN connection_id,
-					T_CCI_CONN * mapped_conn_id);
-  extern T_CCI_ERROR_CODE map_get_otc_value (T_CCI_CONN mapped_conn_id,
-					     T_CCI_CONN * connection_id,
-					     bool force);
+  extern T_CCI_ERROR_CODE map_open_otc (T_CCI_CONN connection_id, T_CCI_CONN * mapped_conn_id);
+  extern T_CCI_ERROR_CODE map_get_otc_value (T_CCI_CONN mapped_conn_id, T_CCI_CONN * connection_id, bool force);
   extern T_CCI_ERROR_CODE map_close_otc (T_CCI_CONN mapped_conn_id);
 
 /* one time statement_id */
-  extern T_CCI_ERROR_CODE map_open_ots (T_CCI_REQ statement_id,
-					T_CCI_REQ * mapped_stmt_id);
-  extern T_CCI_ERROR_CODE map_get_ots_value (T_CCI_REQ mapped_stmt_id,
-					     T_CCI_REQ * statement_id,
-					     bool force);
+  extern T_CCI_ERROR_CODE map_open_ots (T_CCI_REQ statement_id, T_CCI_REQ * mapped_stmt_id);
+  extern T_CCI_ERROR_CODE map_get_ots_value (T_CCI_REQ mapped_stmt_id, T_CCI_REQ * statement_id, bool force);
   extern T_CCI_ERROR_CODE map_close_ots (T_CCI_REQ mapped_stmt_id);
 
 #ifdef __cplusplus

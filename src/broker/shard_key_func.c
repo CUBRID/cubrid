@@ -49,28 +49,21 @@ register_fn_get_shard_key (void)
 {
   int error;
 
-  if (shm_proxy_p->shard_key_library_name[0] != '\0'
-      && shm_proxy_p->shard_key_function_name[0] != '\0')
+  if (shm_proxy_p->shard_key_library_name[0] != '\0' && shm_proxy_p->shard_key_function_name[0] != '\0')
     {
-      error =
-	load_shard_key_function (shm_proxy_p->shard_key_library_name,
-				 shm_proxy_p->shard_key_function_name);
+      error = load_shard_key_function (shm_proxy_p->shard_key_library_name, shm_proxy_p->shard_key_function_name);
       if (error < 0)
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to load "
-		     "shard hashing library. "
-		     "(library_name:[%s], function:[%s]).\n",
-		     shm_proxy_p->shard_key_library_name,
-		     shm_proxy_p->shard_key_function_name);
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		     "Failed to load " "shard hashing library. " "(library_name:[%s], function:[%s]).\n",
+		     shm_proxy_p->shard_key_library_name, shm_proxy_p->shard_key_function_name);
 	  close_shard_key_function ();
 	  return -1;
 	}
 
-      PROXY_LOG (PROXY_LOG_MODE_NOTICE, "Loading shard hashing "
-		 "library was completed. "
-		 "(library_name:[%s], function:[%s]).\n",
-		 shm_proxy_p->shard_key_library_name,
-		 shm_proxy_p->shard_key_function_name);
+      PROXY_LOG (PROXY_LOG_MODE_NOTICE,
+		 "Loading shard hashing " "library was completed. " "(library_name:[%s], function:[%s]).\n",
+		 shm_proxy_p->shard_key_library_name, shm_proxy_p->shard_key_function_name);
       return 0;
     }
 
@@ -83,24 +76,22 @@ register_fn_get_shard_key (void)
 }
 
 int
-fn_get_shard_key_default (const char *shard_key, T_SHARD_U_TYPE type,
-			  const void *value, int value_len)
+fn_get_shard_key_default (const char *shard_key, T_SHARD_U_TYPE type, const void *value, int value_len)
 {
   int modular_key;
 
   if (value == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid shard key value. "
-		 "Shard key value couldn't be NUll.");
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid shard key value. " "Shard key value couldn't be NUll.");
       return ERROR_ON_ARGUMENT;
     }
 
   modular_key = shm_proxy_p->shard_key_modular;
   if (modular_key < 0)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid modular key. "
-		 "Shard modular key value couldn't be negative integer. "
-		 "(modular_key:%d).", modular_key);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Invalid modular key. " "Shard modular key value couldn't be negative integer. " "(modular_key:%d).",
+		 modular_key);
       return ERROR_ON_MAKE_SHARD_KEY;
     }
 
@@ -124,8 +115,7 @@ fn_get_shard_key_default (const char *shard_key, T_SHARD_U_TYPE type,
     }
   else
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unexpected shard key type. "
-		 "(type:%d).", type);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unexpected shard key type. " "(type:%d).", type);
       return ERROR_ON_ARGUMENT;
     }
 }
@@ -143,22 +133,17 @@ proxy_find_shard_id_by_hint_value (SP_VALUE * value_p, const char *key_column)
   if (value_p->type == VT_INTEGER)
     {
       shard_key_val_int = value_p->integer;
-      shard_key_id =
-	(*fn_get_shard_key) (key_column, SHARD_U_TYPE_BIGINT,
-			     &shard_key_val_int, sizeof (INT64));
+      shard_key_id = (*fn_get_shard_key) (key_column, SHARD_U_TYPE_BIGINT, &shard_key_val_int, sizeof (INT64));
     }
   else if (value_p->type == VT_STRING)
     {
       shard_key_val_string = value_p->string.value;
       shard_key_val_len = value_p->string.length;
-      shard_key_id =
-	(*fn_get_shard_key) (key_column, SHARD_U_TYPE_STRING,
-			     shard_key_val_string, shard_key_val_len);
+      shard_key_id = (*fn_get_shard_key) (key_column, SHARD_U_TYPE_STRING, shard_key_val_string, shard_key_val_len);
     }
   else
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Invalid hint value type. (value_type:%d).", value_p->type);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid hint value type. (value_type:%d).", value_p->type);
     }
   return shard_key_id;
 }

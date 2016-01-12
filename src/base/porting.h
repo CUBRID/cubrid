@@ -477,9 +477,7 @@ extern "C"
 #define os_send_kill() os_send_signal(SIGKILL)
 #endif
   typedef void (*SIGNAL_HANDLER_FUNCTION) (int sig_no);
-  extern SIGNAL_HANDLER_FUNCTION os_set_signal_handler (const int sig_no,
-							SIGNAL_HANDLER_FUNCTION
-							sig_handler);
+  extern SIGNAL_HANDLER_FUNCTION os_set_signal_handler (const int sig_no, SIGNAL_HANDLER_FUNCTION sig_handler);
   extern void os_send_signal (const int sig_no);
 
 #if defined (WINDOWS)
@@ -502,8 +500,7 @@ extern "C"
 
 #if defined (WINDOWS)
   int setenv (const char *name, const char *value, int overwrite);
-  int cub_vsnprintf (char *buffer, size_t count, const char *format,
-		     va_list argptr);
+  int cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr);
 #endif
 
 #if defined (WINDOWS)
@@ -576,8 +573,7 @@ extern "C"
 
   extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
 
-  int pthread_mutex_init (pthread_mutex_t * mutex,
-			  pthread_mutexattr_t * attr);
+  int pthread_mutex_init (pthread_mutex_t * mutex, pthread_mutexattr_t * attr);
   int pthread_mutex_destroy (pthread_mutex_t * mutex);
 
   void port_win_mutex_init_and_lock (pthread_mutex_t * mutex);
@@ -585,8 +581,7 @@ extern "C"
 
   __inline int pthread_mutex_lock (pthread_mutex_t * mutex)
   {
-    if (mutex->csp == &mutex->cs
-	&& mutex->watermark == WATERMARK_MUTEX_INITIALIZED)
+    if (mutex->csp == &mutex->cs && mutex->watermark == WATERMARK_MUTEX_INITIALIZED)
       {
 	EnterCriticalSection (mutex->csp);
       }
@@ -613,8 +608,7 @@ extern "C"
 
   __inline int pthread_mutex_trylock (pthread_mutex_t * mutex)
   {
-    if (mutex->csp == &mutex->cs
-	&& mutex->watermark == WATERMARK_MUTEX_INITIALIZED)
+    if (mutex->csp == &mutex->cs && mutex->watermark == WATERMARK_MUTEX_INITIALIZED)
       {
 	if (TryEnterCriticalSection (mutex->csp))
 	  {
@@ -641,11 +635,9 @@ extern "C"
   int pthread_mutexattr_settype (pthread_mutexattr_t * attr, int type);
   int pthread_mutexattr_destroy (pthread_mutexattr_t * attr);
 
-  int pthread_cond_init (pthread_cond_t * cond,
-			 const pthread_condattr_t * attr);
+  int pthread_cond_init (pthread_cond_t * cond, const pthread_condattr_t * attr);
   int pthread_cond_wait (pthread_cond_t * cond, pthread_mutex_t * mutex);
-  int pthread_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
-			      struct timespec *ts);
+  int pthread_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex, struct timespec *ts);
   int pthread_cond_destroy (pthread_cond_t * cond);
   int pthread_cond_signal (pthread_cond_t * cond);
   int pthread_cond_broadcast (pthread_cond_t * cond);
@@ -661,8 +653,7 @@ extern "C"
 #define THREAD_CALLING_CONVENTION __stdcall
 
   int pthread_create (pthread_t * thread, const pthread_attr_t * attr,
-		      THREAD_RET_T (THREAD_CALLING_CONVENTION *
-				    start_routine) (void *), void *arg);
+		      THREAD_RET_T (THREAD_CALLING_CONVENTION * start_routine) (void *), void *arg);
   void pthread_exit (void *ptr);
   pthread_t pthread_self (void);
   int pthread_join (pthread_t thread, void **value_ptr);
@@ -742,8 +733,7 @@ extern "C"
  * We provide the following functions to support atomic operations on all
  * Windows versions.
  */
-  extern UINT64 win32_compare_exchange64 (UINT64 volatile *val_ptr,
-					  UINT64 swap_val, UINT64 cmp_val);
+  extern UINT64 win32_compare_exchange64 (UINT64 volatile *val_ptr, UINT64 swap_val, UINT64 cmp_val);
   extern UINT64 win32_exchange_add64 (UINT64 volatile *ptr, UINT64 amount);
   extern UINT64 win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val);
 
@@ -814,12 +804,9 @@ extern double strtod_win (const char *str, char **end_ptr);
 #define string_to_double(str, end_ptr) strtod((str), (end_ptr))
 #endif
 
-extern INT64 timeval_diff_in_msec (const struct timeval *end_time,
-				   const struct timeval *start_time);
-extern int timeval_add_msec (struct timeval *added_time,
-			     const struct timeval *start_time, int msec);
-extern int timeval_to_timespec (struct timespec *to,
-				const struct timeval *from);
+extern INT64 timeval_diff_in_msec (const struct timeval *end_time, const struct timeval *start_time);
+extern int timeval_add_msec (struct timeval *added_time, const struct timeval *start_time, int msec);
+extern int timeval_to_timespec (struct timespec *to, const struct timeval *from);
 
 extern FILE *port_open_memstream (char **ptr, size_t * sizeloc);
 
@@ -830,14 +817,10 @@ extern char *trim (char *str);
 extern int parse_int (int *ret_p, const char *str_p, int base);
 extern int parse_bigint (INT64 * ret_p, const char *str_p, int base);
 
-extern int str_to_int32 (int *ret_p, char **end_p, const char *str_p,
-			 int base);
-extern int str_to_uint32 (unsigned int *ret_p, char **end_p,
-			  const char *str_p, int base);
-extern int str_to_int64 (INT64 * ret_p, char **end_p, const char *str_p,
-			 int base);
-extern int str_to_uint64 (UINT64 * ret_p, char **end_p, const char *str_p,
-			  int base);
+extern int str_to_int32 (int *ret_p, char **end_p, const char *str_p, int base);
+extern int str_to_uint32 (unsigned int *ret_p, char **end_p, const char *str_p, int base);
+extern int str_to_int64 (INT64 * ret_p, char **end_p, const char *str_p, int base);
+extern int str_to_uint64 (UINT64 * ret_p, char **end_p, const char *str_p, int base);
 extern int str_to_double (double *ret_p, char **end_p, const char *str_p);
 extern int str_to_float (float *ret_p, char **end_p, const char *str_p);
 

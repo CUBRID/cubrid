@@ -110,8 +110,7 @@ static int commit_sql_logs (int conn, T_CCI_ERROR * error);
 static int execute_sql_query (int conn, char *query, T_CCI_ERROR * error);
 static int read_sql_query (FILE * fp, char **query, int length);
 
-static int read_catalog_file (int *file_id, unsigned int *sql_id, char *path,
-			      bool need_to_create);
+static int read_catalog_file (int *file_id, unsigned int *sql_id, char *path, bool need_to_create);
 static int read_ca_catalog (void);
 static int read_src_catalog (void);
 static int update_ca_catalog (void);
@@ -138,8 +137,7 @@ update_ca_catalog (void)
   fp = fopen (ca_catalog_path, "w");
   fseek (fp, 0, SEEK_SET);
 
-  fprintf (fp, CATALOG_FORMAT, ca_Info.curr_file_id,
-	   ca_Info.last_applied_sql_id);
+  fprintf (fp, CATALOG_FORMAT, ca_Info.curr_file_id, ca_Info.last_applied_sql_id);
   fclose (fp);
 
   return ER_CA_NO_ERROR;
@@ -153,9 +151,7 @@ update_ca_catalog (void)
 static int
 read_src_catalog (void)
 {
-  return read_catalog_file (&ca_Info.src_file_id,
-			    &ca_Info.src_last_inserted_sql_id,
-			    applylogdb_catalog_path, false);
+  return read_catalog_file (&ca_Info.src_file_id, &ca_Info.src_last_inserted_sql_id, applylogdb_catalog_path, false);
 }
 
 /*
@@ -166,9 +162,7 @@ read_src_catalog (void)
 static int
 read_ca_catalog (void)
 {
-  return read_catalog_file (&ca_Info.curr_file_id,
-			    &ca_Info.last_applied_sql_id, ca_catalog_path,
-			    true);
+  return read_catalog_file (&ca_Info.curr_file_id, &ca_Info.last_applied_sql_id, ca_catalog_path, true);
 }
 
 /*
@@ -181,8 +175,7 @@ read_ca_catalog (void)
  *   need_to_create(in): create if a file does not exists
  */
 static int
-read_catalog_file (int *file_id, unsigned int *sql_id, char *path,
-		   bool need_to_create)
+read_catalog_file (int *file_id, unsigned int *sql_id, char *path, bool need_to_create)
 {
   FILE *fp = NULL;
   char buf[LINE_MAX];
@@ -240,9 +233,7 @@ end_read_catalog:
 static int
 read_sql_meta_info (FILE * fp)
 {
-  /* -- datetime | sql_id | sample length | query length
-   *  "-- %19s | %u | %d | %d\n"
-   */
+  /* -- datetime | sql_id | sample length | query length "-- %19s | %u | %d | %d\n" */
   unsigned int sql_id;
   int query_length, sample_length;
 
@@ -261,9 +252,7 @@ read_sql_meta_info (FILE * fp)
     }
 
 
-  if (sscanf
-      (meta_info, "-- %*[^|]| %u | %d | %d\n", &sql_id, &sample_length,
-       &query_length) != 3)
+  if (sscanf (meta_info, "-- %*[^|]| %u | %d | %d\n", &sql_id, &sample_length, &query_length) != 3)
     {
       return ER_CA_FILE_IO;
     }
@@ -419,8 +408,7 @@ execute_sql_query (int conn, char *query, T_CCI_ERROR * error)
 
   while (req < 0 && CA_RETRY_ON_ERROR (error->err_code))
     {
-      snprintf (err_msg, LINE_MAX, "attempts to try applying "
-		"failed SQL log again - %s", error->err_msg);
+      snprintf (err_msg, LINE_MAX, "attempts to try applying " "failed SQL log again - %s", error->err_msg);
       er_log (error->err_code, query, err_msg);
 
       sleep (10);
@@ -472,8 +460,7 @@ process_sql_log_file (FILE * fp, int conn)
     {
       /* wait until more logs to be written */
       while (ca_Info.curr_file_id == ca_Info.src_file_id
-	     && ca_Info.last_applied_sql_id ==
-	     ca_Info.src_last_inserted_sql_id)
+	     && ca_Info.last_applied_sql_id == ca_Info.src_last_inserted_sql_id)
 	{
 	  if (is_committed == false && delay_commit == false)
 	    {
@@ -490,9 +477,7 @@ process_sql_log_file (FILE * fp, int conn)
 	  error = read_src_catalog ();
 	  if (error != ER_CA_NO_ERROR)
 	    {
-	      snprintf (err_msg, LINE_MAX,
-			"Failed to read applylogdb catalog: %s",
-			applylogdb_catalog_path);
+	      snprintf (err_msg, LINE_MAX, "Failed to read applylogdb catalog: %s", applylogdb_catalog_path);
 	      er_log (error, NULL, err_msg);
 
 	      return error;
@@ -510,9 +495,8 @@ process_sql_log_file (FILE * fp, int conn)
 	  else
 	    {
 	      snprintf (err_msg, LINE_MAX,
-			"Failed to read SQL meta info (last retrieved SQL ID: "
-			SQL_ID_FORMAT " in file " FILE_ID_FORMAT ")",
-			ca_Info.last_applied_sql_id, ca_Info.curr_file_id);
+			"Failed to read SQL meta info (last retrieved SQL ID: " SQL_ID_FORMAT " in file " FILE_ID_FORMAT
+			")", ca_Info.last_applied_sql_id, ca_Info.curr_file_id);
 	      er_log (error, NULL, err_msg);
 
 	      return ER_CA_FAILED;
@@ -530,10 +514,8 @@ process_sql_log_file (FILE * fp, int conn)
       if (ca_Info.meta_sql_id - ca_Info.last_applied_sql_id > 1)
 	{
 	  snprintf (err_msg, LINE_MAX,
-		    "Read unexpected SQL with ID " SQL_ID_FORMAT " in file "
-		    FILE_ID_FORMAT " (expected ID: " SQL_ID_FORMAT ")",
-		    ca_Info.meta_sql_id, ca_Info.curr_file_id,
-		    ca_Info.last_applied_sql_id + 1);
+		    "Read unexpected SQL with ID " SQL_ID_FORMAT " in file " FILE_ID_FORMAT " (expected ID: "
+		    SQL_ID_FORMAT ")", ca_Info.meta_sql_id, ca_Info.curr_file_id, ca_Info.last_applied_sql_id + 1);
 	  er_log (ER_CA_DISCREPANT_INFO, NULL, err_msg);
 
 	  return ER_CA_DISCREPANT_INFO;
@@ -561,10 +543,8 @@ process_sql_log_file (FILE * fp, int conn)
       error = read_sql_query (fp, &query, ca_Info.meta_sql_length);
       if (error != ER_CA_NO_ERROR)
 	{
-	  snprintf (err_msg, LINE_MAX,
-		    "Failed to read SQL id: " SQL_ID_FORMAT " in file "
-		    FILE_ID_FORMAT, ca_Info.meta_sql_id,
-		    ca_Info.curr_file_id);
+	  snprintf (err_msg, LINE_MAX, "Failed to read SQL id: " SQL_ID_FORMAT " in file " FILE_ID_FORMAT,
+		    ca_Info.meta_sql_id, ca_Info.curr_file_id);
 	  er_log (error, NULL, err_msg);
 
 	  return error;
@@ -580,10 +560,8 @@ process_sql_log_file (FILE * fp, int conn)
 
 	  if (CA_STOP_ON_ERROR (error, cci_error.err_code))
 	    {
-	      snprintf (err_msg, LINE_MAX, "%s will be terminated.",
-			PROG_NAME);
-	      er_log ((error == CCI_ER_DBMS) ? cci_error.err_code : error,
-		      NULL, err_msg);
+	      snprintf (err_msg, LINE_MAX, "%s will be terminated.", PROG_NAME);
+	      er_log ((error == CCI_ER_DBMS) ? cci_error.err_code : error, NULL, err_msg);
 
 	      goto process_sql_error;
 	    }
@@ -681,18 +659,16 @@ apply_sql_logs (int conn)
       return ER_CA_FAILED;
     }
 
-  /* read applylogdb's catalog info  */
+  /* read applylogdb's catalog info */
   if (read_src_catalog () != ER_CA_NO_ERROR)
     {
-      fprintf (stderr, "Read catalog file: FAILED (%s)\n",
-	       applylogdb_catalog_path);
+      fprintf (stderr, "Read catalog file: FAILED (%s)\n", applylogdb_catalog_path);
       return ER_CA_FAILED;
     }
 
   while (ca_Info.curr_file_id <= ca_Info.src_file_id)
     {
-      snprintf (sql_log_path, PATH_MAX, "%s.%d", base_log_path,
-		ca_Info.curr_file_id);
+      snprintf (sql_log_path, PATH_MAX, "%s.%d", base_log_path, ca_Info.curr_file_id);
 
       sql_log_fp = fopen (sql_log_path, "r");
       if (sql_log_fp == NULL)
@@ -723,9 +699,8 @@ apply_sql_logs (int conn)
 	{
 	  if (error == ER_CA_DISCREPANT_INFO)
 	    {
-	      snprintf (err_msg, LINE_MAX,
-			"Discrepant catalog info in either %s or %s",
-			applylogdb_catalog_path, ca_catalog_path);
+	      snprintf (err_msg, LINE_MAX, "Discrepant catalog info in either %s or %s", applylogdb_catalog_path,
+			ca_catalog_path);
 	      er_log (error, NULL, err_msg);
 	    }
 	  fclose (sql_log_fp);
@@ -737,8 +712,7 @@ apply_sql_logs (int conn)
 	{
 	  if (read_src_catalog () != ER_CA_NO_ERROR)
 	    {
-	      fprintf (stderr, "Read catalog file: FAILED (%s)\n",
-		       applylogdb_catalog_path);
+	      fprintf (stderr, "Read catalog file: FAILED (%s)\n", applylogdb_catalog_path);
 	      return ER_CA_FAILED;
 	    }
 	}
@@ -763,15 +737,12 @@ open_sample_file (void)
 
   do
     {
-      snprintf (cur_sample_file_path, PATH_MAX, "%s.%03d",
-		sample_file_path_base, ca_Info.sample_file_count);
+      snprintf (cur_sample_file_path, PATH_MAX, "%s.%03d", sample_file_path_base, ca_Info.sample_file_count);
 
       fp = fopen (cur_sample_file_path, "a");
       if (fp == NULL)
 	{
-	  snprintf (err_msg, LINE_MAX,
-		    "Failed to open or create %s. Log sampling is disabled",
-		    cur_sample_file_path);
+	  snprintf (err_msg, LINE_MAX, "Failed to open or create %s. Log sampling is disabled", cur_sample_file_path);
 	  er_log (ER_CA_FAILED, NULL, err_msg);
 
 	  ca_Info.sampling_rate = 0;
@@ -839,8 +810,7 @@ er_log (int error_code, const char *query, const char *err_msg)
   char *p, *token;
 
   cur_time = time (NULL);
-  strftime (time_buf, sizeof (time_buf), "%Y-%m-%d %H:%M:%S",
-	    localtime (&cur_time));
+  strftime (time_buf, sizeof (time_buf), "%Y-%m-%d %H:%M:%S", localtime (&cur_time));
 
   fp = fopen (err_file_path, "a");
 
@@ -890,13 +860,10 @@ print_progress (unsigned int count, int elapsed_time)
 
   curr_sql_id = count ? ca_Info.meta_sql_id : ca_Info.last_applied_sql_id;
 
-  fprintf (stdout,
-	   "SQL [" SQL_ID_FORMAT "] in file [" FILE_ID_FORMAT
-	   "] applied\n", curr_sql_id, ca_Info.curr_file_id);
+  fprintf (stdout, "SQL [" SQL_ID_FORMAT "] in file [" FILE_ID_FORMAT "] applied\n", curr_sql_id, ca_Info.curr_file_id);
   if (elapsed_time)
     {
-      fprintf (stdout, "QPS for the last %u queries: %.2f\n\n", count,
-	       (float) count / elapsed_time);
+      fprintf (stdout, "QPS for the last %u queries: %.2f\n\n", count, (float) count / elapsed_time);
     }
   return;
 }
@@ -910,11 +877,8 @@ print_progress (unsigned int count, int elapsed_time)
 static void
 print_result (int fail_count)
 {
-  fprintf (stdout, "*** File [" FILE_ID_FORMAT "] completed.\n",
-	   ca_Info.curr_file_id);
-  fprintf (stdout,
-	   "*** Total failure count for file [" FILE_ID_FORMAT "]: %d\n",
-	   ca_Info.curr_file_id, fail_count);
+  fprintf (stdout, "*** File [" FILE_ID_FORMAT "] completed.\n", ca_Info.curr_file_id);
+  fprintf (stdout, "*** Total failure count for file [" FILE_ID_FORMAT "]: %d\n", ca_Info.curr_file_id, fail_count);
   return;
 }
 
@@ -964,8 +928,7 @@ validate_args (CA_CON_INFO * con_info, char *repl_log_path)
 {
   char resolved_path[PATH_MAX];
 
-  if (con_info->db_name == NULL || con_info->hostname == NULL
-      || con_info->password == NULL || con_info->port == -1
+  if (con_info->db_name == NULL || con_info->hostname == NULL || con_info->password == NULL || con_info->port == -1
       || repl_log_path == NULL || repl_log_path[0] == '\0')
     {
       fprintf (stderr, "Some of arguments are missing.\n");
@@ -1004,19 +967,15 @@ set_file_path (CA_CON_INFO * con_info, char *repl_log_path)
 {
   assert (repl_log_path != NULL && repl_log_path[0] != '\0');
 
-  snprintf (err_file_path, PATH_MAX, "%s@%s_%s.err", con_info->db_name,
-	    con_info->hostname, PROG_NAME);
-  snprintf (ca_catalog_path, PATH_MAX, "%s@%s_%s.sql.info", con_info->db_name,
-	    con_info->hostname, PROG_NAME);
-  snprintf (base_log_path, PATH_MAX, "%s/sql_log/%s.sql.log",
-	    repl_log_path, basename (repl_log_path));
-  snprintf (applylogdb_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info",
-	    repl_log_path, con_info->db_name);
+  snprintf (err_file_path, PATH_MAX, "%s@%s_%s.err", con_info->db_name, con_info->hostname, PROG_NAME);
+  snprintf (ca_catalog_path, PATH_MAX, "%s@%s_%s.sql.info", con_info->db_name, con_info->hostname, PROG_NAME);
+  snprintf (base_log_path, PATH_MAX, "%s/sql_log/%s.sql.log", repl_log_path, basename (repl_log_path));
+  snprintf (applylogdb_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", repl_log_path, con_info->db_name);
 
   if (ca_Info.sampling_rate > 0)
     {
-      snprintf (sample_file_path_base, PATH_MAX, "%s@%s_%s.sql.sample",
-		con_info->db_name, con_info->hostname, PROG_NAME);
+      snprintf (sample_file_path_base, PATH_MAX, "%s@%s_%s.sql.sample", con_info->db_name, con_info->hostname,
+		PROG_NAME);
     }
 
   return;
@@ -1039,10 +998,8 @@ print_usage_and_exit (void)
   fprintf (stdout, "\t -L [replication log path]\n");
   fprintf (stdout, "\t -s [sampling rate] (default: 0)\n");
   fprintf (stdout, "\t -c [commit interval] (default: 5000)\n");
-  fprintf (stdout, "\t %-20s ignore \"ALTER SERIAL\" logs\n",
-	   "--ignore-serial");
-  fprintf (stdout, "\t %-20s do not delete a SQL log after applying it\n",
-	   "--retain-log");
+  fprintf (stdout, "\t %-20s ignore \"ALTER SERIAL\" logs\n", "--ignore-serial");
+  fprintf (stdout, "\t %-20s do not delete a SQL log after applying it\n", "--retain-log");
 
   exit (-1);
 }
@@ -1066,9 +1023,7 @@ main (int argc, char *argv[])
   init_ca_Info ();
   init_con_info (&con_info);
 
-  while ((opt =
-	  getopt_long (argc, argv, "h:P:d:p:L:c:s:ir", cci_applier_options,
-		       &opt_index)) != -1)
+  while ((opt = getopt_long (argc, argv, "h:P:d:p:L:c:s:ir", cci_applier_options, &opt_index)) != -1)
     {
       switch (opt)
 	{
@@ -1110,12 +1065,10 @@ main (int argc, char *argv[])
 
   /* open up a connection with target db */
   if ((conn =
-       cci_connect (con_info.hostname, con_info.port, con_info.db_name,
-		    con_info.db_user, con_info.password)) < 0)
+       cci_connect (con_info.hostname, con_info.port, con_info.db_name, con_info.db_user, con_info.password)) < 0)
     {
-      fprintf (stderr,
-	       "Failed to open up a connection with %s:%d for %s.(%d)\n",
-	       con_info.hostname, con_info.port, con_info.db_name, conn);
+      fprintf (stderr, "Failed to open up a connection with %s:%d for %s.(%d)\n", con_info.hostname, con_info.port,
+	       con_info.db_name, conn);
       return ER_CA_FAILED;
     }
 

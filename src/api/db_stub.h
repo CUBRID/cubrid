@@ -197,7 +197,7 @@ struct ci_resultset_meta_s
   COMMON_RESULTSET_META_HEADER;
   BH_INTERFACE *bh_interface;
   DB_QUERY_TYPE *query_type;
-  /* session's query_type[x]  if prepared, */
+  /* session's query_type[x] if prepared, */
   /* else resultset's result->query_type */
   int stmt_idx;
   int col_count;
@@ -222,41 +222,21 @@ extern int db_type_to_type (DB_TYPE dt, CI_TYPE * xt);
 extern int type_to_db_type (CI_TYPE xt, DB_TYPE * dt);
 extern void xoid2oid (CI_OID * xoid, OID * oid);
 extern void oid2xoid (OID * oid, BIND_HANDLE conn, CI_OID * xoid);
-extern int coerce_value_to_db_value (CI_TYPE type, void *addr, size_t len,
-				     DB_VALUE * dbval,
-				     bool domain_initialized);
-extern int coerce_db_value_to_value (const DB_VALUE * dbval, BIND_HANDLE conn,
-				     CI_TYPE type, void *addr, size_t len,
+extern int coerce_value_to_db_value (CI_TYPE type, void *addr, size_t len, DB_VALUE * dbval, bool domain_initialized);
+extern int coerce_db_value_to_value (const DB_VALUE * dbval, BIND_HANDLE conn, CI_TYPE type, void *addr, size_t len,
 				     size_t * outlen, bool * isnull);
 
-extern int create_db_value_bind_table (int nvalue, void *impl, int auto_apply,
-				       BIND_HANDLE conn_handle,
-				       int (*get_index_by_name) (void *,
-								 const char
-								 *,
-								 int *ri),
-				       int (*get_db_value) (void *,
-							    int,
-							    DB_VALUE *),
-				       int (*set_db_value) (void *,
-							    int,
-							    DB_VALUE
-							    *),
-				       int (*init_domain) (void *,
-							   int,
-							   DB_VALUE *),
-				       VALUE_BIND_TABLE ** rtable);
+extern int create_db_value_bind_table (int nvalue, void *impl, int auto_apply, BIND_HANDLE conn_handle,
+				       int (*get_index_by_name) (void *, const char *, int *ri),
+				       int (*get_db_value) (void *, int, DB_VALUE *), int (*set_db_value) (void *, int,
+													   DB_VALUE *),
+				       int (*init_domain) (void *, int, DB_VALUE *), VALUE_BIND_TABLE ** rtable);
 
 /* api_object.c */
-extern int
-  api_object_resultset_pool_create
-  (BH_INTERFACE * ifs, BIND_HANDLE conn, API_OBJECT_RESULTSET_POOL ** pool);
+extern int api_object_resultset_pool_create (BH_INTERFACE * ifs, BIND_HANDLE conn, API_OBJECT_RESULTSET_POOL ** pool);
 /* api_collection.c */
-extern int api_collection_create_from_db_value (BIND_HANDLE conn,
-						const DB_VALUE * val,
-						API_COLLECTION ** rc);
-extern int api_collection_set_to_db_value (API_COLLECTION * col,
-					   DB_VALUE * val);
+extern int api_collection_create_from_db_value (BIND_HANDLE conn, const DB_VALUE * val, API_COLLECTION ** rc);
+extern int api_collection_set_to_db_value (API_COLLECTION * col, DB_VALUE * val);
 extern int api_collection_create (BIND_HANDLE conn, API_COLLECTION ** rc);
 extern int ci_err_set (int error_code);
 

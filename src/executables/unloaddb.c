@@ -75,8 +75,7 @@ unload_usage (const char *argv0)
   const char *exec_name;
 
   exec_name = basename ((char *) argv0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_UNLOADDB, 60), exec_name);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, 60), exec_name);
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 }
 
@@ -105,29 +104,20 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       return -1;
     }
 
-  input_filename =
-    utility_get_option_string_value (arg_map, UNLOAD_INPUT_CLASS_FILE_S, 0);
-  include_references =
-    utility_get_option_bool_value (arg_map, UNLOAD_INCLUDE_REFERENCE_S);
-  required_class_only =
-    utility_get_option_bool_value (arg_map, UNLOAD_INPUT_CLASS_ONLY_S);
-  datafile_per_class =
-    utility_get_option_bool_value (arg_map, UNLOAD_DATAFILE_PER_CLASS_S);
+  input_filename = utility_get_option_string_value (arg_map, UNLOAD_INPUT_CLASS_FILE_S, 0);
+  include_references = utility_get_option_bool_value (arg_map, UNLOAD_INCLUDE_REFERENCE_S);
+  required_class_only = utility_get_option_bool_value (arg_map, UNLOAD_INPUT_CLASS_ONLY_S);
+  datafile_per_class = utility_get_option_bool_value (arg_map, UNLOAD_DATAFILE_PER_CLASS_S);
   lo_count = utility_get_option_int_value (arg_map, UNLOAD_LO_COUNT_S);
   est_size = utility_get_option_int_value (arg_map, UNLOAD_ESTIMATED_SIZE_S);
-  cached_pages =
-    utility_get_option_int_value (arg_map, UNLOAD_CACHED_PAGES_S);
-  output_dirname =
-    utility_get_option_string_value (arg_map, UNLOAD_OUTPUT_PATH_S, 0);
+  cached_pages = utility_get_option_int_value (arg_map, UNLOAD_CACHED_PAGES_S);
+  output_dirname = utility_get_option_string_value (arg_map, UNLOAD_OUTPUT_PATH_S, 0);
   do_schema = utility_get_option_bool_value (arg_map, UNLOAD_SCHEMA_ONLY_S);
   do_objects = utility_get_option_bool_value (arg_map, UNLOAD_DATA_ONLY_S);
-  output_prefix =
-    utility_get_option_string_value (arg_map, UNLOAD_OUTPUT_PREFIX_S, 0);
-  hash_filename =
-    utility_get_option_string_value (arg_map, UNLOAD_HASH_FILE_S, 0);
+  output_prefix = utility_get_option_string_value (arg_map, UNLOAD_OUTPUT_PREFIX_S, 0);
+  hash_filename = utility_get_option_string_value (arg_map, UNLOAD_HASH_FILE_S, 0);
   verbose_flag = utility_get_option_bool_value (arg_map, UNLOAD_VERBOSE_S);
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   user = utility_get_option_string_value (arg_map, UNLOAD_USER_S, 0);
   password = utility_get_option_string_value (arg_map, UNLOAD_PASSWORD_S, 0);
   if (utility_get_option_bool_value (arg_map, UNLOAD_KEEP_STORAGE_ORDER_S))
@@ -157,13 +147,12 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	    "%s_%s.err", database_name, exec_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, exec_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
-  /*
+  /* 
    * Open db
    */
   if (user == NULL || user[0] == '\0')
@@ -171,8 +160,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       user = (char *) "DBA";
     }
 
-  error = db_restart_ex (exec_name, database_name, user, password, NULL,
-			 DB_CLIENT_TYPE_ADMIN_UTILITY);
+  error = db_restart_ex (exec_name, database_name, user, password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
   if (error == NO_ERROR)
     {
       /* pass */
@@ -180,11 +168,9 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   else if (password == NULL && db_error_code () == ER_AU_INVALID_PASSWORD)
     {
       /* console input a password */
-      password = getpass (msgcat_message (MSGCAT_CATALOG_UTILS,
-					  MSGCAT_UTIL_SET_UNLOADDB,
-					  UNLOADDB_MSG_PASSWORD_PROMPT));
-      error = db_restart_ex (exec_name, database_name, user, password, NULL,
-			     DB_CLIENT_TYPE_ADMIN_UTILITY);
+      password =
+	getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_PASSWORD_PROMPT));
+      error = db_restart_ex (exec_name, database_name, user, password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s: %s\n", exec_name, db_error_string (3));
@@ -204,8 +190,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
   if (!status)
     {
-      db_set_lock_timeout (prm_get_integer_value
-			   (PRM_ID_UNLOADDB_LOCK_TIMEOUT));
+      db_set_lock_timeout (prm_get_integer_value (PRM_ID_UNLOADDB_LOCK_TIMEOUT));
     }
 
   if (!input_filename)
@@ -238,8 +223,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       goto end;
     }
 
-  req_class_table = (DB_OBJECT **) malloc (DB_SIZEOF (void *) *
-					   class_table->num);
+  req_class_table = (DB_OBJECT **) malloc (DB_SIZEOF (void *) * class_table->num);
   if (req_class_table == NULL)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
@@ -265,8 +249,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
       for (i = 0; req_class_table[i]; i++)
 	{
-	  error = au_fetch_class (req_class_table[i], NULL, AU_FETCH_READ,
-				  AU_SELECT);
+	  error = au_fetch_class (req_class_table[i], NULL, AU_FETCH_READ, AU_SELECT);
 	  if (error != NO_ERROR)
 	    {
 	      /* A required class is not granted. */
@@ -275,9 +258,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	      ws_find (req_class_table[i], &object);
 	      if (object != NULL)
 		{
-		  PRINT_AND_LOG_ERR_MSG ("%s: %s\n",
-					 sm_ch_name (object),
-					 db_error_string (3));
+		  PRINT_AND_LOG_ERR_MSG ("%s: %s\n", sm_ch_name (object), db_error_string (3));
 		}
 	      status = 1;
 	    }
@@ -317,7 +298,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  /*
+  /* 
    * Shutdown db
    */
   error = db_shutdown ();

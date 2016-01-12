@@ -76,16 +76,13 @@ char admin_err_msg[ADMIN_ERR_MSG_SIZE];
 extern char **environ;
 #endif
 
-static int shard_proxy_activate (int proxy_shm_id, int proxy_id,
-				 T_SHM_APPL_SERVER * shm_as_p,
+static int shard_proxy_activate (int proxy_shm_id, int proxy_id, T_SHM_APPL_SERVER * shm_as_p,
 				 T_SHM_PROXY * shm_proxy_p);
-static void shard_proxy_inactivate (T_BROKER_INFO * br_info_p,
-				    T_PROXY_INFO * proxy_info_p,
+static void shard_proxy_inactivate (T_BROKER_INFO * br_info_p, T_PROXY_INFO * proxy_info_p,
 				    T_SHM_APPL_SERVER * shm_as_p);
 
 int
-shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
-		       T_SHM_APPL_SERVER * shm_as_p)
+shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 {
   int pid, i, env_num;
   int broker_check_loop_count = 30;
@@ -110,9 +107,7 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 
   /* SHARD TODO : move this code to shard_shm.[ch] */
   get_cubrid_file (FID_SOCK_DIR, dirname, PATH_MAX);
-  snprintf (shm_as_p->port_name,
-	    sizeof (shm_as_p->port_name) - 1, "%s/%s.B", dirname,
-	    br_info_p->name);
+  snprintf (shm_as_p->port_name, sizeof (shm_as_p->port_name) - 1, "%s/%s.B", dirname, br_info_p->name);
 #if !defined(WINDOWS)
   unlink (shm_as_p->port_name);
 #endif /* !WINDOWS */
@@ -158,12 +153,9 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 	}
 
       sprintf (port_env_str, "%s=%d", PORT_NUMBER_ENV_STR, br_info_p->port);
-      sprintf (master_shm_key_env_str, "%s=%d", MASTER_SHM_KEY_ENV_STR,
-	       master_shm_id);
-      sprintf (appl_server_shm_key_env_str, "%s=%d", APPL_SERVER_SHM_KEY_STR,
-	       br_info_p->appl_server_shm_id);
-      sprintf (proxy_shm_key_env_str, "%s=%d", PROXY_SHM_KEY_STR,
-	       br_info_p->proxy_shm_id);
+      sprintf (master_shm_key_env_str, "%s=%d", MASTER_SHM_KEY_ENV_STR, master_shm_id);
+      sprintf (appl_server_shm_key_env_str, "%s=%d", APPL_SERVER_SHM_KEY_STR, br_info_p->appl_server_shm_id);
+      sprintf (proxy_shm_key_env_str, "%s=%d", PROXY_SHM_KEY_STR, br_info_p->proxy_shm_id);
 
       putenv (port_env_str);
       putenv (master_shm_key_env_str);
@@ -180,19 +172,16 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 	}
 
 #if defined(WINDOWS)
-      if (IS_APPL_SERVER_TYPE_CAS (br_info_p->appl_server)
-	  && br_info_p->appl_server_port < 0)
+      if (IS_APPL_SERVER_TYPE_CAS (br_info_p->appl_server) && br_info_p->appl_server_port < 0)
 	{
 	  broker_exe_name = NAME_CAS_BROKER2;
 	}
 #endif /* WINDOWS */
 
-      sprintf (appl_name_env_str, "%s=%s", APPL_NAME_ENV_STR,
-	       broker_exe_name);
+      sprintf (appl_name_env_str, "%s=%s", APPL_NAME_ENV_STR, broker_exe_name);
       putenv (appl_name_env_str);
 
-      sprintf (error_log_lock_env_file, "%s=%s.log.lock",
-	       ERROR_LOG_LOCK_FILE_ENV_STR, br_info_p->name);
+      sprintf (error_log_lock_env_file, "%s=%s.log.lock", ERROR_LOG_LOCK_FILE_ENV_STR, br_info_p->name);
       putenv (error_log_lock_env_file);
 
 #if defined(WINDOWS)
@@ -225,8 +214,7 @@ shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 	  if (br_info_p->err_code < 0)
 	    {
 	      sprintf (admin_err_msg, "%s: %s", br_info_p->name,
-		       uw_get_error_message (br_info_p->err_code,
-					     br_info_p->os_err_code));
+		       uw_get_error_message (br_info_p->err_code, br_info_p->os_err_code));
 	      err_flag = TRUE;
 	    }
 	  break;
@@ -272,28 +260,21 @@ shard_broker_inactivate (T_BROKER_INFO * br_info_p)
   if (br_info_p->pid)
     {
       SHARD_ERR ("<KILL BROKER> PID:[%d]\n", br_info_p->pid);
-      ut_kill_process (br_info_p->pid, br_info_p->name, PROXY_INVALID_ID,
-		       SHARD_INVALID_ID, CAS_INVALID_ID);
+      ut_kill_process (br_info_p->pid, br_info_p->name, PROXY_INVALID_ID, SHARD_INVALID_ID, CAS_INVALID_ID);
       SLEEP_MILISEC (1, 0);
     }
 
-  shm_as_p =
-    (T_SHM_APPL_SERVER *) uw_shm_open (br_info_p->appl_server_shm_id,
-				       SHM_APPL_SERVER, SHM_MODE_ADMIN);
+  shm_as_p = (T_SHM_APPL_SERVER *) uw_shm_open (br_info_p->appl_server_shm_id, SHM_APPL_SERVER, SHM_MODE_ADMIN);
   if (shm_as_p == NULL)
     {
-      SHARD_ERR ("failed to uw_shm_open. (shmid:%08x).\n",
-		 br_info_p->appl_server_shm_id);
+      SHARD_ERR ("failed to uw_shm_open. (shmid:%08x).\n", br_info_p->appl_server_shm_id);
       goto end;
     }
 
-  shm_proxy_p =
-    (T_SHM_PROXY *) uw_shm_open (br_info_p->proxy_shm_id, SHM_PROXY,
-				 SHM_MODE_ADMIN);
+  shm_proxy_p = (T_SHM_PROXY *) uw_shm_open (br_info_p->proxy_shm_id, SHM_PROXY, SHM_MODE_ADMIN);
   if (shm_proxy_p == NULL)
     {
-      SHARD_ERR ("failed to uw_shm_open. (shmid:%08x).\n",
-		 br_info_p->proxy_shm_id);
+      SHARD_ERR ("failed to uw_shm_open. (shmid:%08x).\n", br_info_p->proxy_shm_id);
       goto end;
     }
 
@@ -306,9 +287,8 @@ shard_broker_inactivate (T_BROKER_INFO * br_info_p)
 
   if (br_info_p->log_backup == ON)
     {
-      sprintf (cmd_buf, "%s.%02d%02d%02d.%02d%02d",
-	       br_info_p->error_log_file,
-	       ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min);
+      sprintf (cmd_buf, "%s.%02d%02d%02d.%02d%02d", br_info_p->error_log_file, ct.tm_year, ct.tm_mon + 1, ct.tm_mday,
+	       ct.tm_hour, ct.tm_min);
       rename (br_info_p->error_log_file, cmd_buf);
     }
   else
@@ -344,8 +324,7 @@ end:
 }
 
 static int
-shard_proxy_activate (int proxy_shm_id, int proxy_id,
-		      T_SHM_APPL_SERVER * shm_as_p, T_SHM_PROXY * shm_proxy_p)
+shard_proxy_activate (int proxy_shm_id, int proxy_id, T_SHM_APPL_SERVER * shm_as_p, T_SHM_PROXY * shm_proxy_p)
 {
   int pid = 0, i, env_num;
   int fd_cnt;
@@ -389,22 +368,16 @@ shard_proxy_activate (int proxy_shm_id, int proxy_id,
   if (proxy_info_p->max_context < proxy_info_p->max_client)
     {
       sprintf (admin_err_msg,
-	       "max_client %d is greater than %d [%s]\n\n"
-	       "please check your $CUBRID/conf/shard.conf\n\n"
-	       "[%%%s]\n"
-	       "%-20s = %d\n"
-	       "%-20s = %d * %d\n", proxy_info_p->max_client,
-	       proxy_info_p->max_context, shm_as_p->broker_name,
-	       shm_as_p->broker_name, "MAX_CLIENT", proxy_info_p->max_client,
-	       "MAX_NUM_APPL_SERVER", shard_info_p->max_appl_server,
-	       proxy_info_p->max_shard);
+	       "max_client %d is greater than %d [%s]\n\n" "please check your $CUBRID/conf/shard.conf\n\n" "[%%%s]\n"
+	       "%-20s = %d\n" "%-20s = %d * %d\n", proxy_info_p->max_client, proxy_info_p->max_context,
+	       shm_as_p->broker_name, shm_as_p->broker_name, "MAX_CLIENT", proxy_info_p->max_client,
+	       "MAX_NUM_APPL_SERVER", shard_info_p->max_appl_server, proxy_info_p->max_shard);
       return -1;
     }
 
   get_cubrid_file (FID_SOCK_DIR, dirname, PATH_MAX);
-  snprintf (proxy_info_p->port_name,
-	    sizeof (proxy_info_p->port_name) - 1, "%s/%s.P%d", dirname,
-	    shm_as_p->broker_name, proxy_id + 1);
+  snprintf (proxy_info_p->port_name, sizeof (proxy_info_p->port_name) - 1, "%s/%s.P%d", dirname, shm_as_p->broker_name,
+	    proxy_id + 1);
 #if !defined(WINDOWS)
   unlink (proxy_info_p->port_name);
 #endif /* !WINDOWS */
@@ -440,12 +413,10 @@ shard_proxy_activate (int proxy_shm_id, int proxy_id,
 	    }
 	}
       sprintf (port_env_str, "%s=%s", PORT_NAME_ENV_STR, shm_as_p->port_name);
-      snprintf (as_shm_id_env_str, sizeof (as_shm_id_env_str), "%s=%d",
-		APPL_SERVER_SHM_KEY_STR, proxy_info_p->appl_server_shm_id);
-      snprintf (proxy_shm_id_env_str, sizeof (proxy_shm_id_env_str), "%s=%d",
-		PROXY_SHM_KEY_STR, proxy_shm_id);
-      snprintf (proxy_id_env_str, sizeof (proxy_id_env_str), "%s=%d",
-		PROXY_ID_ENV_STR, proxy_id);
+      snprintf (as_shm_id_env_str, sizeof (as_shm_id_env_str), "%s=%d", APPL_SERVER_SHM_KEY_STR,
+		proxy_info_p->appl_server_shm_id);
+      snprintf (proxy_shm_id_env_str, sizeof (proxy_shm_id_env_str), "%s=%d", PROXY_SHM_KEY_STR, proxy_shm_id);
+      snprintf (proxy_id_env_str, sizeof (proxy_id_env_str), "%s=%d", PROXY_ID_ENV_STR, proxy_id);
 
       putenv (port_env_str);
       putenv (as_shm_id_env_str);
@@ -457,8 +428,8 @@ shard_proxy_activate (int proxy_shm_id, int proxy_id,
 #endif
 
 #if !defined(WINDOWS)
-      snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d",
-		shm_as_p->broker_name, proxy_exe_name, proxy_id + 1);
+      snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_as_p->broker_name, proxy_exe_name,
+		proxy_id + 1);
 #endif /* !WINDOWS */
 
 
@@ -484,9 +455,7 @@ shard_proxy_activate (int proxy_shm_id, int proxy_id,
 }
 
 static void
-shard_proxy_inactivate (T_BROKER_INFO * br_info_p,
-			T_PROXY_INFO * proxy_info_p,
-			T_SHM_APPL_SERVER * shm_as_p)
+shard_proxy_inactivate (T_BROKER_INFO * br_info_p, T_PROXY_INFO * proxy_info_p, T_SHM_APPL_SERVER * shm_as_p)
 {
   int shard_index, as_index;
   T_SHARD_INFO *shard_info_p;
@@ -497,29 +466,23 @@ shard_proxy_inactivate (T_BROKER_INFO * br_info_p,
   if (proxy_info_p->pid > 0)
     {
       SHARD_ERR ("<KILL PROXY> PID:[%d]\n", proxy_info_p->pid);
-      ut_kill_process (proxy_info_p->pid, br_info_p->name,
-		       proxy_info_p->proxy_id, SHARD_INVALID_ID,
-		       CAS_INVALID_ID);
+      ut_kill_process (proxy_info_p->pid, br_info_p->name, proxy_info_p->proxy_id, SHARD_INVALID_ID, CAS_INVALID_ID);
     }
   proxy_info_p->pid = 0;
   proxy_info_p->cur_client = 0;
 
   /* SHARD TODO : backup or remove access log file */
 
-  for (shard_index = 0; shard_index < proxy_info_p->num_shard_conn;
-       shard_index++)
+  for (shard_index = 0; shard_index < proxy_info_p->num_shard_conn; shard_index++)
     {
       shard_info_p = shard_shm_find_shard_info (proxy_info_p, shard_index);
 
       for (as_index = 0; as_index < shard_info_p->max_appl_server; as_index++)
 	{
-	  as_info_p =
-	    &(shm_as_p->as_info[as_index + shard_info_p->as_info_index_base]);
+	  as_info_p = &(shm_as_p->as_info[as_index + shard_info_p->as_info_index_base]);
 	  if (as_info_p->pid)
 	    {
-	      shard_as_inactivate (br_info_p, as_info_p,
-				   proxy_info_p->proxy_id,
-				   shard_info_p->shard_id, as_index);
+	      shard_as_inactivate (br_info_p, as_info_p, proxy_info_p->proxy_id, shard_info_p->shard_id, as_index);
 	    }
 	}
     }
@@ -528,12 +491,10 @@ shard_proxy_inactivate (T_BROKER_INFO * br_info_p,
 }
 
 int
-shard_as_activate (int as_shm_id, int proxy_id, int shard_id, int as_id,
-		   T_SHM_APPL_SERVER * shm_as_p, T_SHM_PROXY * shm_proxy_p)
+shard_as_activate (int as_shm_id, int proxy_id, int shard_id, int as_id, T_SHM_APPL_SERVER * shm_as_p,
+		   T_SHM_PROXY * shm_proxy_p)
 {
-  /* as_activate()
-     "shard/shard_broker_admin_pub.c" 2790
-   */
+  /* as_activate() "shard/shard_broker_admin_pub.c" 2790 */
   int pid, i, env_num;
   char **env = NULL;
   char port_env_str[PATH_MAX];
@@ -578,8 +539,7 @@ shard_as_activate (int as_shm_id, int proxy_id, int shard_id, int as_id,
   /* SHARD TODO : will delete, not used */
 #if 0
   get_cubrid_file (FID_SOCK_DIR, dirname);
-  snprintf (port_name, sizeof (port_name) - 1, "%s/%s.%d", dirname,
-	    br_info_p->name, as_id);
+  snprintf (port_name, sizeof (port_name) - 1, "%s/%s.%d", dirname, br_info_p->name, as_id);
 #if !defined(WINDOWS)
   unlink (port_name);
 #endif /* !WINDOWS */
@@ -621,27 +581,19 @@ shard_as_activate (int as_shm_id, int proxy_id, int shard_id, int as_id,
 
       strcpy (appl_name, shm_as_p->appl_server_name);
 
-      sprintf (port_env_str, "%s=%s", PORT_NAME_ENV_STR,
-	       proxy_info_p->port_name);
-      sprintf (appl_server_shm_key_env_str, "%s=%d",
-	       APPL_SERVER_SHM_KEY_STR, as_shm_id);
+      sprintf (port_env_str, "%s=%s", PORT_NAME_ENV_STR, proxy_info_p->port_name);
+      sprintf (appl_server_shm_key_env_str, "%s=%d", APPL_SERVER_SHM_KEY_STR, as_shm_id);
       sprintf (appl_name_env_str, "%s=%s", APPL_NAME_ENV_STR, appl_name);
 
-      sprintf (error_log_env_str, "%s=%s",
-	       ERROR_LOG_ENV_STR, shm_as_p->error_log_file);
+      sprintf (error_log_env_str, "%s=%s", ERROR_LOG_ENV_STR, shm_as_p->error_log_file);
 
-      sprintf (error_log_lock_env_file, "%s=%s.log.lock",
-	       ERROR_LOG_LOCK_FILE_ENV_STR, shm_as_p->broker_name);
+      sprintf (error_log_lock_env_file, "%s=%s.log.lock", ERROR_LOG_LOCK_FILE_ENV_STR, shm_as_p->broker_name);
 
-      snprintf (proxy_id_env_str, sizeof (proxy_id_env_str), "%s=%d",
-		PROXY_ID_ENV_STR, proxy_id);
-      snprintf (shard_id_env_str, sizeof (shard_id_env_str), "%s=%d",
-		SHARD_ID_ENV_STR, shard_id);
-      snprintf (shard_cas_id_env_str, sizeof (shard_cas_id_env_str), "%s=%d",
-		SHARD_CAS_ID_ENV_STR, as_id);
+      snprintf (proxy_id_env_str, sizeof (proxy_id_env_str), "%s=%d", PROXY_ID_ENV_STR, proxy_id);
+      snprintf (shard_id_env_str, sizeof (shard_id_env_str), "%s=%d", SHARD_ID_ENV_STR, shard_id);
+      snprintf (shard_cas_id_env_str, sizeof (shard_cas_id_env_str), "%s=%d", SHARD_CAS_ID_ENV_STR, as_id);
       snprintf (as_id_env_str, sizeof (as_id_env_str), "%s=%d", AS_ID_ENV_STR,
-		proxy_info_p->shard_info[shard_id].as_info_index_base +
-		as_id);
+		proxy_info_p->shard_info[shard_id].as_info_index_base + as_id);
 
       putenv (port_env_str);
       putenv (appl_server_shm_key_env_str);
@@ -655,13 +607,11 @@ shard_as_activate (int as_shm_id, int proxy_id, int shard_id, int as_id,
       putenv (as_id_env_str);
 
 #if !defined(WINDOWS)
-      snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d_%d_%d",
-		shm_as_p->broker_name, appl_name, proxy_id + 1, shard_id,
-		as_id + 1);
+      snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d_%d_%d", shm_as_p->broker_name, appl_name,
+		proxy_id + 1, shard_id, as_id + 1);
 #endif /* !WINDOWS */
 
-      SHARD_ERR ("<START AS> process_name:[%s|%s]\n", appl_name,
-		 process_name);
+      SHARD_ERR ("<START AS> process_name:[%s|%s]\n", appl_name, process_name);
 
 #if defined(WINDOWS)
       pid = run_child (appl_name);
@@ -669,8 +619,7 @@ shard_as_activate (int as_shm_id, int proxy_id, int shard_id, int as_id,
       if (execle (appl_name, process_name, NULL, environ) < 0)
 	{
 	  perror (appl_name);
-	  SHARD_ERR ("<START AS> failed. process_name:[%s|%s]\n", appl_name,
-		     process_name);
+	  SHARD_ERR ("<START AS> failed. process_name:[%s|%s]\n", appl_name, process_name);
 	}
       exit (0);
 #endif /* WINDOWS */
@@ -692,15 +641,13 @@ shard_as_activate (int as_shm_id, int proxy_id, int shard_id, int as_id,
 }
 
 void
-shard_as_inactivate (T_BROKER_INFO * br_info_p,
-		     T_APPL_SERVER_INFO * as_info_p, int proxy_index,
-		     int shard_index, int as_index)
+shard_as_inactivate (T_BROKER_INFO * br_info_p, T_APPL_SERVER_INFO * as_info_p, int proxy_index, int shard_index,
+		     int as_index)
 {
   if (as_info_p->pid > 0)
     {
       SHARD_ERR ("<KILL AS> PID:[%d]\n", as_info_p->pid);
-      ut_kill_process (as_info_p->pid, br_info_p->name, proxy_index,
-		       shard_index, as_index);
+      ut_kill_process (as_info_p->pid, br_info_p->name, proxy_index, shard_index, as_index);
     }
   as_info_p->pid = 0;
   as_info_p->last_access_time = time (0);
@@ -730,8 +677,7 @@ shard_as_inactivate (T_BROKER_INFO * br_info_p,
 }
 
 int
-shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
-			T_SHM_APPL_SERVER * shm_as_p,
+shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p,
 			T_SHM_PROXY * shm_proxy_p)
 {
   int i, j, k, error;
@@ -758,13 +704,10 @@ shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 
       proxy_info_p->cur_proxy_log_mode = br_info_p->proxy_log_mode;
 
-      error =
-	shard_proxy_activate (br_info_p->proxy_shm_id, i, shm_as_p,
-			      shm_proxy_p);
+      error = shard_proxy_activate (br_info_p->proxy_shm_id, i, shm_as_p, shm_proxy_p);
       if (error)
 	{
-	  SHARD_ERR ("<PROXY START FAILED> PROXY:[%d].\n",
-		     proxy_info_p->proxy_id);
+	  SHARD_ERR ("<PROXY START FAILED> PROXY:[%d].\n", proxy_info_p->proxy_id);
 	  goto error_return;
 	}
 
@@ -775,17 +718,14 @@ shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 	  /* SHARD TODO : min_appl_server? num_appl_server? */
 	  for (k = 0; k < shard_info_p->num_appl_server; k++)
 	    {
-	      error =
-		shard_as_activate (br_info_p->appl_server_shm_id,
-				   proxy_info_p->proxy_id /*proxy_id */ ,
-				   shard_info_p->shard_id /*shard_id */ ,
-				   k /*as_index */ ,
-				   shm_as_p, shm_proxy_p);
+	      error = shard_as_activate (br_info_p->appl_server_shm_id, proxy_info_p->proxy_id /* proxy_id */ ,
+					 shard_info_p->shard_id /* shard_id */ ,
+					 k /* as_index */ ,
+					 shm_as_p, shm_proxy_p);
 	      if (error)
 		{
-		  SHARD_ERR
-		    ("<AS START FAILED> PROXY:[%d], SHARD:[%d], AS:[%d].\n",
-		     proxy_info_p->proxy_id, shard_info_p->shard_id, k);
+		  SHARD_ERR ("<AS START FAILED> PROXY:[%d], SHARD:[%d], AS:[%d].\n", proxy_info_p->proxy_id,
+			     shard_info_p->shard_id, k);
 		  goto error_return;
 		}
 	    }
@@ -802,21 +742,14 @@ shard_process_activate (int master_shm_id, T_BROKER_INFO * br_info_p,
 
 	  for (k = 0; k < shard_info_p->num_appl_server; k++)
 	    {
-	      as_info_p =
-		&shm_as_p->as_info[k + shard_info_p->as_info_index_base];
-	      if (ut_is_appl_server_ready
-		  (as_info_p->pid, &as_info_p->service_ready_flag) == false)
+	      as_info_p = &shm_as_p->as_info[k + shard_info_p->as_info_index_base];
+	      if (ut_is_appl_server_ready (as_info_p->pid, &as_info_p->service_ready_flag) == false)
 		{
 		  sprintf (admin_err_msg,
 			   "failed to connect database. [%s]\n\n"
-			   "please check your $CUBRID/conf/shard.conf or database status.\n\n"
-			   "[%%%s]\n"
-			   "%-20s = %s\n"
-			   "%-20s = %s\n",
-			   br_info_p->name, br_info_p->name, "SHARD_DB_NAME",
-			   shm_as_p->shard_conn_info[j].db_name,
-			   "SHARD_DB_USER",
-			   shm_as_p->shard_conn_info[j].db_user);
+			   "please check your $CUBRID/conf/shard.conf or database status.\n\n" "[%%%s]\n" "%-20s = %s\n"
+			   "%-20s = %s\n", br_info_p->name, br_info_p->name, "SHARD_DB_NAME",
+			   shm_as_p->shard_conn_info[j].db_name, "SHARD_DB_USER", shm_as_p->shard_conn_info[j].db_user);
 		  goto error_return;
 		}
 	    }

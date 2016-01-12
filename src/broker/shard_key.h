@@ -102,8 +102,7 @@ extern "C"
    type 	: shard key value type
    val 		: shard key value
  */
-  typedef int (*FN_GET_SHARD_KEY) (const char *shard_key, T_SHARD_U_TYPE type,
-				   const void *val, int val_size);
+  typedef int (*FN_GET_SHARD_KEY) (const char *shard_key, T_SHARD_U_TYPE type, const void *val, int val_size);
 
 /************************************************************************
  * EXPORTED VARIABLES							*

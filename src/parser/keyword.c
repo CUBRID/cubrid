@@ -529,8 +529,7 @@ static int keyword_cmp (const void *k1, const void *k2);
 static int
 keyword_cmp (const void *k1, const void *k2)
 {
-  return strcmp (((KEYWORD_RECORD *) k1)->keyword,
-		 ((KEYWORD_RECORD *) k2)->keyword);
+  return strcmp (((KEYWORD_RECORD *) k1)->keyword, ((KEYWORD_RECORD *) k2)->keyword);
 }
 
 /*
@@ -547,9 +546,7 @@ pt_find_keyword (const char *text)
 
   if (keyword_sorted == false)
     {
-      qsort (keywords,
-	     (sizeof (keywords) / sizeof (keywords[0])),
-	     sizeof (keywords[0]), keyword_cmp);
+      qsort (keywords, (sizeof (keywords) / sizeof (keywords[0])), sizeof (keywords[0]), keyword_cmp);
       keyword_sorted = true;
     }
 
@@ -565,10 +562,9 @@ pt_find_keyword (const char *text)
 
   intl_identifier_upper (text, dummy.keyword);
 
-  result_key = (KEYWORD_RECORD *) bsearch
-    (&dummy, keywords,
-     (sizeof (keywords) / sizeof (keywords[0])),
-     sizeof (KEYWORD_RECORD), keyword_cmp);
+  result_key =
+    (KEYWORD_RECORD *) bsearch (&dummy, keywords, (sizeof (keywords) / sizeof (keywords[0])), sizeof (KEYWORD_RECORD),
+				keyword_cmp);
 
   return result_key;
 }

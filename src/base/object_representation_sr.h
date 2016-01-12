@@ -39,8 +39,7 @@ struct or_default_value
   /* could this be converted to a server side DB_VALUE ? */
   void *value;			/* default value */
   int val_length;		/* default value length */
-  DB_DEFAULT_EXPR_TYPE default_expr;	/* identifier for the pseudo-column
-					 * default expression */
+  DB_DEFAULT_EXPR_TYPE default_expr;	/* identifier for the pseudo-column default expression */
 };
 
 /*
@@ -77,7 +76,7 @@ struct or_attribute
   int n_btids;			/* Number of ID's in the btids array */
   BTID index;			/* btree id if indexed */
 
-  /* local array of btid's to use  if possible */
+  /* local array of btid's to use if possible */
   int max_btids;		/* Size of the btids array */
   BTID btid_pack[OR_ATT_BTID_PREALLOC];
 
@@ -124,9 +123,8 @@ struct or_function_index
   char *expr_stream;
   int expr_stream_size;
   int col_id;			/* the position at which the function is placed */
-  int attr_index_start;		/* the index from where the attributes involved
-				 * in a function are placed in OR_INDEX atts 
-				 * member */
+  int attr_index_start;		/* the index from where the attributes involved in a function are placed in OR_INDEX
+				 * atts member */
 };
 
 typedef struct or_index OR_INDEX;
@@ -194,26 +192,17 @@ extern void or_class_rep_dir (RECDES * record, OID * rep_dir_p);
 extern void or_class_hfid (RECDES * record, HFID * hfid);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void or_class_statistics (RECDES * record, OID * oid);
-extern int or_class_subclasses (RECDES * record,
-				int *array_size, OID ** array_ptr);
+extern int or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr);
 extern int or_classrep_needs_indexes (OR_CLASSREP * rep);
 #endif
-extern int or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record,
-				    int attrid,
-				    BTID * btid,
-				    OID ** class_oids,
-				    HFID ** hfids, int *num_heaps,
-				    int *partition_local_index);
+extern int or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid, BTID * btid,
+				    OID ** class_oids, HFID ** hfids, int *num_heaps, int *partition_local_index);
 extern OR_CLASSREP *or_get_classrep (RECDES * record, int repid);
 extern OR_CLASSREP *or_get_classrep_noindex (RECDES * record, int repid);
-extern OR_CLASSREP *or_classrep_load_indexes (OR_CLASSREP * rep,
-					      RECDES * record);
-extern int or_class_get_partition_info (RECDES * record,
-					OR_PARTITION * partition_info,
-					int *has_partition_info,
+extern OR_CLASSREP *or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record);
+extern int or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, int *has_partition_info,
 					REPR_ID * repr_id);
-const char *or_get_constraint_comment (RECDES * record,
-				       const char *constraint_name);
+const char *or_get_constraint_comment (RECDES * record, const char *constraint_name);
 extern void or_free_classrep (OR_CLASSREP * rep);
 extern const char *or_get_attrname (RECDES * record, int attrid);
 extern const char *or_get_attrcomment (RECDES * record, int attrid);
@@ -226,15 +215,11 @@ extern void orc_class_rep_dir (RECDES * record, OID * rep_dir_p);
 extern void orc_class_hfid_from_record (RECDES * record, HFID * hfid);
 #endif
 extern bool orc_class_is_system_class (RECDES * record);
-extern DISK_REPR *orc_diskrep_from_record (THREAD_ENTRY * thread_p,
-					   RECDES * record);
+extern DISK_REPR *orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record);
 extern void orc_free_diskrep (DISK_REPR * rep);
 extern CLS_INFO *orc_class_info_from_record (RECDES * record);
 extern void orc_free_class_info (CLS_INFO * info);
-extern int orc_subclasses_from_record (RECDES * record,
-				       int *array_size, OID ** array_ptr);
-extern int orc_superclasses_from_record (RECDES * record, int *array_size,
-					 OID ** array_ptr);
-extern OR_CLASSREP **or_get_all_representation (RECDES * record,
-						bool do_indexes, int *count);
+extern int orc_subclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr);
+extern int orc_superclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr);
+extern OR_CLASSREP **or_get_all_representation (RECDES * record, bool do_indexes, int *count);
 #endif /* _OBJECT_REPRESENTATION_SR_H_ */

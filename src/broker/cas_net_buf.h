@@ -104,21 +104,17 @@ struct t_net_buf
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define DB_BIGINT 	int64_t
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-extern void net_buf_init (T_NET_BUF * net_buf,
-			  T_BROKER_VERSION client_version);
+extern void net_buf_init (T_NET_BUF * net_buf, T_BROKER_VERSION client_version);
 extern void net_buf_clear (T_NET_BUF * net_buf);
 extern void net_buf_destroy (T_NET_BUF * net_buf);
 extern int net_buf_cp_post_send_file (T_NET_BUF * net_buf, int, char *str);
 extern int net_buf_cp_byte (T_NET_BUF * net_buf, char ch);
 extern int net_buf_cp_str (T_NET_BUF * net_buf, const char *buf, int size);
 extern int net_buf_cp_int (T_NET_BUF * net_buf, int value, int *begin_offset);
-extern void net_buf_overwrite_int (T_NET_BUF * net_buf, int offset,
-				   int value);
-extern int net_buf_cp_bigint (T_NET_BUF * net_buf, DB_BIGINT value,
-			      int *begin_offset);
+extern void net_buf_overwrite_int (T_NET_BUF * net_buf, int offset, int value);
+extern int net_buf_cp_bigint (T_NET_BUF * net_buf, DB_BIGINT value, int *begin_offset);
 #if defined (ENABLE_UNUSED_FUNCTION)
-extern void net_buf_overwrite_bigint (T_NET_BUF * net_buf, int offset,
-				      DB_BIGINT value);
+extern void net_buf_overwrite_bigint (T_NET_BUF * net_buf, int offset, DB_BIGINT value);
 #endif
 extern int net_buf_cp_float (T_NET_BUF * net_buf, float value);
 extern int net_buf_cp_double (T_NET_BUF * net_buf, double value);
@@ -126,9 +122,8 @@ extern int net_buf_cp_short (T_NET_BUF * net_buf, short value);
 extern int net_buf_cp_object (T_NET_BUF * net_buf, T_OBJECT * oid);
 extern int net_buf_cp_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob);
 
-extern void net_buf_error_msg_set (T_NET_BUF * net_buf, int errindicator,
-				   int errcode, char *errstr,
-				   const char *file, int line);
+extern void net_buf_error_msg_set (T_NET_BUF * net_buf, int errindicator, int errcode, char *errstr, const char *file,
+				   int line);
 
 #ifndef BYTE_ORDER_BIG_ENDIAN
 extern INT64 net_htoni64 (INT64 from);
@@ -136,8 +131,7 @@ extern float net_htonf (float from);
 extern double net_htond (double from);
 #endif
 
-extern void net_buf_column_info_set (T_NET_BUF * net_buf, char ut,
-				     short scale, int prec, char charset,
+extern void net_buf_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, char charset,
 				     const char *name);
 
 extern void net_arg_get_size (int *size, void *arg);
@@ -155,35 +149,24 @@ extern void net_arg_get_double (double *value, void *arg);
 extern void net_arg_get_str (char **value, int *size, void *arg);
 extern void net_arg_get_date (short *year, short *mon, short *day, void *arg);
 extern void net_arg_get_time (short *hh, short *mm, short *ss, void *arg);
-extern void net_arg_get_timetz (short *hh, short *mm, short *ss, char **tz,
-				int *tz_size, void *arg);
-extern void net_arg_get_timestamp (short *yr, short *mon, short *day,
-				   short *hh, short *mm, short *ss,
-				   void *arg);
-extern void net_arg_get_timestamptz (short *yr, short *mon, short *day,
-				     short *hh, short *mm, short *ss,
-				     char **tz, int *tz_size, void *arg);
-extern void net_arg_get_datetime (short *yr, short *mon, short *day,
-				  short *hh, short *mm, short *ss, short *ms,
+extern void net_arg_get_timetz (short *hh, short *mm, short *ss, char **tz, int *tz_size, void *arg);
+extern void net_arg_get_timestamp (short *yr, short *mon, short *day, short *hh, short *mm, short *ss, void *arg);
+extern void net_arg_get_timestamptz (short *yr, short *mon, short *day, short *hh, short *mm, short *ss, char **tz,
+				     int *tz_size, void *arg);
+extern void net_arg_get_datetime (short *yr, short *mon, short *day, short *hh, short *mm, short *ss, short *ms,
 				  void *arg);
-extern void net_arg_get_datetimetz (short *yr, short *mon, short *day,
-				    short *hh, short *mm, short *ss,
-				    short *ms, char **tz, int *tz_size,
-				    void *arg);
+extern void net_arg_get_datetimetz (short *yr, short *mon, short *day, short *hh, short *mm, short *ss, short *ms,
+				    char **tz, int *tz_size, void *arg);
 extern void net_arg_get_object (T_OBJECT * obj, void *arg);
 extern void net_arg_get_cache_time (void *ct, void *arg);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern void net_arg_get_dbobject (DB_OBJECT ** obj, void *arg);
-extern void net_arg_get_cci_object (int *pageid, short *slotid, short *volid,
-				    void *arg);
+extern void net_arg_get_cci_object (int *pageid, short *slotid, short *volid, void *arg);
 extern void net_arg_get_lob_handle (T_LOB_HANDLE * lob, void *arg);
 extern void net_arg_get_lob_value (DB_VALUE * db_lob, void *arg);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 extern void net_arg_put_int (void *arg, int *value);
-extern size_t net_error_append_shard_info (char *err_buf, const char *err_msg,
-					   int buf_size);
-extern int net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf,
-					    unsigned char cas_type,
-					    unsigned char charset);
+extern size_t net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size);
+extern int net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type, unsigned char charset);
 #endif /* _CAS_NET_BUF_H_ */

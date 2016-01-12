@@ -97,8 +97,7 @@ bitset_extend (BITSET * dst, int nwords)
   words = (BITSET_CARRIER *) malloc (NBYTES (nwords));
   if (words == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      NBYTES (nwords));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, NBYTES (nwords));
       return;
     }
 
@@ -493,8 +492,7 @@ bitset_next_member (BITSET_ITERATOR * si)
   nwords = si->set->nwords;
   for (m = _WORD (current); m < nwords; current = _WORDSIZE * ++m)
     {
-      for (word = si->set->setp[m] >> _BIT (current); word;
-	   current++, word >>= 1)
+      for (word = si->set->setp[m] >> _BIT (current); word; current++, word >>= 1)
 	{
 	  if (word & 0x1)
 	    {

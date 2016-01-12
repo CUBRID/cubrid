@@ -62,11 +62,8 @@ extern LOCK tm_Tran_rep_read_lock;
 extern LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version;
 extern int tm_Tran_invalidate_snapshot;
 
-extern void tran_cache_tran_settings (int tran_index, int lock_timeout,
-				      TRAN_ISOLATION tran_isolation);
-extern void tran_get_tran_settings (int *lock_timeout_in_msecs,
-				    TRAN_ISOLATION * tran_isolation,
-				    bool * async_ws);
+extern void tran_cache_tran_settings (int tran_index, int lock_timeout, TRAN_ISOLATION tran_isolation);
+extern void tran_get_tran_settings (int *lock_timeout_in_msecs, TRAN_ISOLATION * tran_isolation, bool * async_ws);
 extern int tran_reset_wait_times (int wait_in_msecs);
 extern int tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws);
 extern int tran_commit (bool retain_lock);
@@ -84,14 +81,11 @@ extern int tran_2pc_attach_global_tran (int gtrid);
 extern int tran_2pc_prepare_global_tran (int gtrid);
 extern void tran_free_savepoint_list (void);
 extern int tran_system_savepoint (const char *savept_name);
-extern int tran_savepoint_internal (const char *savept_name,
-				    SAVEPOINT_TYPE savepoint_type);
+extern int tran_savepoint_internal (const char *savept_name, SAVEPOINT_TYPE savepoint_type);
 extern int tran_abort_upto_user_savepoint (const char *savepoint_name);
 extern int tran_abort_upto_system_savepoint (const char *savepoint_name);
-extern int tran_internal_abort_upto_savepoint (const char *savepoint_name,
-					       SAVEPOINT_TYPE savepoint_type,
-					       bool
-					       client_decache_only_insts);
+extern int tran_internal_abort_upto_savepoint (const char *savepoint_name, SAVEPOINT_TYPE savepoint_type,
+					       bool client_decache_only_insts);
 extern void tran_set_query_timeout (int query_timeout);
 extern int tran_get_query_timeout (void);
 extern void tran_begin_libcas_function (void);

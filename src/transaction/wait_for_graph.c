@@ -68,7 +68,7 @@ struct wfg_node
 {
   WFG_STACK_STATUS status;
   int cycle_group_no;		/* Group no in a cycle */
-  /*
+  /* 
    * Fun to call to solve a cycle. If NULL, the transaction will be aborted.
    * Assumption a transaction can be waiting for many transaction,
    * but it can only be waiting in one place.
@@ -121,69 +121,36 @@ static int wfg_free_group_list (void);
 
 static int wfg_push_stack (WFG_STACK ** top_p, int node);
 static int wfg_pop_stack (WFG_STACK ** top_p, WFG_STACK ** bottom_p);
-static int
-wfg_internal_detect_cycle (THREAD_ENTRY * thread_p,
-			   WFG_CYCLE_CASE * cycle_case_p,
-			   WFG_CYCLE ** list_cycles_p,
-			   const int max_cycles_in_cycle_group,
-			   const int max_cycles);
-static int wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
-				      WFG_CYCLE_CASE * cycle_case_p,
-				      WFG_CYCLE ** list_cycles_p,
-				      const int max_cycles_in_group,
+static int wfg_internal_detect_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case_p,
+				      WFG_CYCLE ** list_cycles_p, const int max_cycles_in_cycle_group,
 				      const int max_cycles);
-static int wfg_add_waiters_of_tg (int *smallest_onstack, int holder_node,
-				  int tg_index);
+static int wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case_p,
+				      WFG_CYCLE ** list_cycles_p, const int max_cycles_in_group, const int max_cycles);
+static int wfg_add_waiters_of_tg (int *smallest_onstack, int holder_node, int tg_index);
 static int wfg_add_waiters_normal_wfg (int *smallest_onstack, int node_index);
-static int
-wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter,
-				    int tg_index);
-static WFG_CYCLE *wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE *
-							cycle_case_p,
-							WFG_TRANS_LIST *
-							w_tran_list_p,
-							bool add_waiter,
-							int tg_index,
-							int
-							num_tran_groups_holders);
-static int wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p,
-					WFG_CYCLE_CASE * cycle_case_p,
+static int wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter, int tg_index);
+static WFG_CYCLE *wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p, WFG_TRANS_LIST * w_tran_list_p,
+							bool add_waiter, int tg_index, int num_tran_groups_holders);
+static int wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case_p,
 					WFG_CYCLE ** list_cycles);
 
 static int wfg_dump_given_cycles (FILE * out_fp, WFG_CYCLE * list_cycles_p);
 static void wfg_dump_holder_waiter (FILE * out_fp, int node_index);
-static void wfg_dump_holder_waiter_of_tran_group (FILE * out_fp,
-						  int group_index);
+static void wfg_dump_holder_waiter_of_tran_group (FILE * out_fp, int group_index);
 
 #if defined(WFG_DEBUG)
-static int
-wfg_valid_tran_index (const int holder_index,
-		      const int holder_tran_index,
-		      const int waiter_tran_index);
-static int
-check_duplication_holders (const int holder_index,
-			   const int *holder_tran_indices,
-			   const int num_holders,
-			   const int waiter_tran_index);
-static int
-wfg_check_insert_out_edges (const int waiter_tran_index, int num_holders,
-			    const int *holder_tran_indeces);
-static int
-wfg_check_remove_out_edges (const int waiter_tran_index, int num_holders,
-			    const int *holder_tran_indeces);
+static int wfg_valid_tran_index (const int holder_index, const int holder_tran_index, const int waiter_tran_index);
+static int check_duplication_holders (const int holder_index, const int *holder_tran_indices, const int num_holders,
+				      const int waiter_tran_index);
+static int wfg_check_insert_out_edges (const int waiter_tran_index, int num_holders, const int *holder_tran_indeces);
+static int wfg_check_remove_out_edges (const int waiter_tran_index, int num_holders, const int *holder_tran_indeces);
 #endif /* WFG_DEBUG */
 
-static int
-wfg_allocate_edges (WFG_EDGE ** first_edge_p, WFG_EDGE ** last_edge_p,
-		    const int *holder_tran_indices,
-		    const int num_holders, const int waiter_tran_index);
-static int
-wfg_link_edge_holders_waiter_list (WFG_EDGE * first_edge_p,
-				   WFG_EDGE * last_edge_p,
-				   const int waiter_tran_index);
-static int
-wfg_remove_waiter_list_of_holder_edge (WFG_NODE * node_p,
-				       WFG_EDGE ** holder_p);
+static int wfg_allocate_edges (WFG_EDGE ** first_edge_p, WFG_EDGE ** last_edge_p, const int *holder_tran_indices,
+			       const int num_holders, const int waiter_tran_index);
+static int wfg_link_edge_holders_waiter_list (WFG_EDGE * first_edge_p, WFG_EDGE * last_edge_p,
+					      const int waiter_tran_index);
+static int wfg_remove_waiter_list_of_holder_edge (WFG_NODE * node_p, WFG_EDGE ** holder_p);
 
 /*
  * TODO : M2, error check
@@ -220,8 +187,7 @@ wfg_pop_stack (WFG_STACK ** top_p, WFG_STACK ** bottom_p)
     {
       return ER_FAILED;
     }
-  (*top_p)->current_holder_edge_p =
-    (*top_p)->current_holder_edge_p->next_holder_edge_p;
+  (*top_p)->current_holder_edge_p = (*top_p)->current_holder_edge_p->next_holder_edge_p;
 
   return NO_ERROR;
 }
@@ -274,8 +240,7 @@ wfg_alloc_nodes (THREAD_ENTRY * thread_p, const int num_trans)
 #if defined(WFG_DEBUG)
   if (num_trans < 0)
     {
-      er_log_debug (ARG_FILE_LINE, "wfg_alloc: num_trans = %d should NOT be"
-		    " negative. Will assume 10\n" num_trans);
+      er_log_debug (ARG_FILE_LINE, "wfg_alloc: num_trans = %d should NOT be" " negative. Will assume 10\n" num_trans);
       num_trans = 10;
     }
 #endif /* WFG_DEBUG */
@@ -285,7 +250,7 @@ wfg_alloc_nodes (THREAD_ENTRY * thread_p, const int num_trans)
       return ER_FAILED;
     }
 
-  /*
+  /* 
    * allocate new nodes
    */
   if (wfg_Nodes == NULL)
@@ -293,8 +258,7 @@ wfg_alloc_nodes (THREAD_ENTRY * thread_p, const int num_trans)
       temp_node_p = (WFG_NODE *) malloc (sizeof (WFG_NODE) * num_trans);
       if (temp_node_p == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (WFG_NODE) * num_trans);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WFG_NODE) * num_trans);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto end;
 	}
@@ -306,12 +270,10 @@ wfg_alloc_nodes (THREAD_ENTRY * thread_p, const int num_trans)
 	  error_code = NO_ERROR;
 	  goto end;
 	}
-      temp_node_p =
-	(WFG_NODE *) realloc (wfg_Nodes, sizeof (WFG_NODE) * num_trans);
+      temp_node_p = (WFG_NODE *) realloc (wfg_Nodes, sizeof (WFG_NODE) * num_trans);
       if (temp_node_p == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (WFG_NODE) * num_trans);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WFG_NODE) * num_trans);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto end;
 	}
@@ -345,21 +307,19 @@ end:
 static int
 wfg_free_group_list (void)
 {
-  WFG_TRANS_LIST *tran_list_p, *temp_p;	/* trans list pointer    */
+  WFG_TRANS_LIST *tran_list_p, *temp_p;	/* trans list pointer */
   int i;
 
   /* free transaction group list */
   for (i = 0; i < wfg_Total_tran_groups; i++)
     {
-      for (tran_list_p = wfg_Tran_group[i].holder_tran_list_p;
-	   tran_list_p != NULL;)
+      for (tran_list_p = wfg_Tran_group[i].holder_tran_list_p; tran_list_p != NULL;)
 	{			/* free holders */
 	  temp_p = tran_list_p;
 	  tran_list_p = tran_list_p->next;
 	  free_and_init (temp_p);
 	}
-      for (tran_list_p = wfg_Tran_group[i].waiter_tran_list_p;
-	   tran_list_p != NULL;)
+      for (tran_list_p = wfg_Tran_group[i].waiter_tran_list_p; tran_list_p != NULL;)
 	{			/* free waiters */
 	  temp_p = tran_list_p;
 	  tran_list_p = tran_list_p->next;
@@ -380,8 +340,8 @@ int
 wfg_free_nodes (THREAD_ENTRY * thread_p)
 {
   WFG_EDGE *edge_p;		/* pointer to a WFG edge */
-  void *temp_p;			/* temporary pointer     */
-  int i;			/* loop counter          */
+  void *temp_p;			/* temporary pointer */
+  int i;			/* loop counter */
   int error_code = NO_ERROR;
 
   if (csect_enter (thread_p, CSECT_WFG, INF_WAIT) != NO_ERROR)
@@ -415,21 +375,19 @@ wfg_free_nodes (THREAD_ENTRY * thread_p)
 
 #if defined(WFG_DEBUG)
 static int
-wfg_check_insert_out_edges (const int waiter_tran_index, int num_holders,
-			    const int *holder_tran_indeces)
+wfg_check_insert_out_edges (const int waiter_tran_index, int num_holders, const int *holder_tran_indeces)
 {
   int i;			/* loop counter */
   int error_code = NO_ERROR;
 
-  /*
+  /* 
    * Check for valid arguments
    */
   if (waiter_tran_index < 0 || waiter_tran_index > wfg_Total_nodes - 1)
     {
-      er_log_debug (ARG_FILE_LINE, "wfg_insert_out_edges: value"
-		    " waiter_tran_index = %d should be between 0 and %d\n"
-		    " ** OPERATION HAS BEEN IGNORED **\n",
-		    waiter_tran_index, wfg_Total_nodes - 1);
+      er_log_debug (ARG_FILE_LINE,
+		    "wfg_insert_out_edges: value" " waiter_tran_index = %d should be between 0 and %d\n"
+		    " ** OPERATION HAS BEEN IGNORED **\n", waiter_tran_index, wfg_Total_nodes - 1);
       error_code = ER_FAILED;
       goto end;
     }
@@ -437,8 +395,7 @@ wfg_check_insert_out_edges (const int waiter_tran_index, int num_holders,
   for (i = 0; i < num_holders; i++)
     {
       /* Verify for incorrect input */
-      error_code = wfg_valid_tran_index (i, holder_tran_indices[i],
-					 waiter_tran_index);
+      error_code = wfg_valid_tran_index (i, holder_tran_indices[i], waiter_tran_index);
       if (error_code != NO_ERROR)
 	{
 	  goto end;
@@ -475,9 +432,8 @@ end:
  *
  */
 int
-wfg_insert_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index,
-		      int num_holders, const int *holder_tran_indeces,
-		      int (*cycle_resolution_fn) (int tran_index, void *args),
+wfg_insert_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index, int num_holders,
+		      const int *holder_tran_indeces, int (*cycle_resolution_fn) (int tran_index, void *args),
 		      void *args)
 {
   WFG_EDGE *first_edge_p;	/* pointer to the first of allocated edges */
@@ -495,8 +451,7 @@ wfg_insert_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index,
     }
 
 #if defined(WFG_DEBUG)
-  error_code = wfg_check_insert_out_edges (waiter_tran_index, num_holders,
-					   holder_tran_indeces);
+  error_code = wfg_check_insert_out_edges (waiter_tran_index, num_holders, holder_tran_indeces);
   if (error_code != NO_ERROR)
     {
       goto end;
@@ -505,21 +460,18 @@ wfg_insert_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index,
 
 
   /* allocate the edges */
-  error_code = wfg_allocate_edges (&first_edge_p, &last_edge_p,
-				   holder_tran_indeces, num_holders,
-				   waiter_tran_index);
+  error_code = wfg_allocate_edges (&first_edge_p, &last_edge_p, holder_tran_indeces, num_holders, waiter_tran_index);
   if (error_code != NO_ERROR)
     {
       goto end;
     }
-  /*
+  /* 
    * Save the function to call in the case of a cycle.
    */
   wfg_Nodes[waiter_tran_index].cycle_fun = cycle_resolution_fn;
   wfg_Nodes[waiter_tran_index].args = args;
 
-  error_code = wfg_link_edge_holders_waiter_list (first_edge_p, last_edge_p,
-						  waiter_tran_index);
+  error_code = wfg_link_edge_holders_waiter_list (first_edge_p, last_edge_p, waiter_tran_index);
   if (error_code != NO_ERROR)
     {
       goto end;
@@ -544,25 +496,21 @@ end:
  *   waiter_transaction_index(IN) :
  */
 static int
-wfg_valid_tran_index (const int holder_index,
-		      const int holder_tran_index,
-		      const int waiter_tran_index)
+wfg_valid_tran_index (const int holder_index, const int holder_tran_index, const int waiter_tran_index)
 {
   if (holder_tran_index < 0 || holder_tran_index > wfg_Total_nodes - 1)
     {
-      er_log_debug (ARG_FILE_LINE, "wfg_insert_out_edges: value"
-		    " holder_tran_indices[%d] = %d should be between 0 and %d\n"
-		    " ** OPERATION HAS BEEN IGNORED **\n",
-		    holder_index, holder_tran_index, wfg_Total_nodes - 1);
+      er_log_debug (ARG_FILE_LINE,
+		    "wfg_insert_out_edges: value" " holder_tran_indices[%d] = %d should be between 0 and %d\n"
+		    " ** OPERATION HAS BEEN IGNORED **\n", holder_index, holder_tran_index, wfg_Total_nodes - 1);
 
       return ER_FAILED;
     }
   if (holder_tran_index == waiter_tran_index)
     {
-      er_log_debug (ARG_FILE_LINE, "wfg_insert_out_edges: value"
-		    " holder_tran_indices[%d] = %d is equal to waiter_tran_index = %d\n"
-		    " ** OPERATION HAS BEEN IGNORED **\n",
-		    holder_index, holder_tran_index, waiter_tran_index);
+      er_log_debug (ARG_FILE_LINE,
+		    "wfg_insert_out_edges: value" " holder_tran_indices[%d] = %d is equal to waiter_tran_index = %d\n"
+		    " ** OPERATION HAS BEEN IGNORED **\n", holder_index, holder_tran_index, waiter_tran_index);
 
       return ER_FAILED;
     }
@@ -582,9 +530,8 @@ wfg_valid_tran_index (const int holder_index,
  *
  */
 static int
-check_duplication_holders (const int holder_index,
-			   const int *holder_tran_indices,
-			   const int num_holders, const int waiter_tran_index)
+check_duplication_holders (const int holder_index, const int *holder_tran_indices, const int num_holders,
+			   const int waiter_tran_index)
 {
   WFG_EDGE *edge_p;
   int i;
@@ -595,24 +542,19 @@ check_duplication_holders (const int holder_index,
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"wfg_insert_outedges: value holder_tran_indices[%d] = %d is"
-			" duplcated with holder_tran_indices[%d] = %d\n"
-			"** OPERATION HAS BEEN IGNORED **\n",
-			holder_index, holder_tran_indices[holder_index], i,
-			holder_tran_indices[i]);
+			" duplcated with holder_tran_indices[%d] = %d\n" "** OPERATION HAS BEEN IGNORED **\n",
+			holder_index, holder_tran_indices[holder_index], i, holder_tran_indices[i]);
 	  return ER_FAILED;
 	}
     }
 
-  for (edge_p = wfg_Nodes[waiter_tran_index].first_holder_edge_p;
-       edge_p != NULL; edge_p = edge_p->next_holder_edge_p)
+  for (edge_p = wfg_Nodes[waiter_tran_index].first_holder_edge_p; edge_p != NULL; edge_p = edge_p->next_holder_edge_p)
     {
       if (holder_tran_indices[holder_index] == edge_p->holder_tran_index)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"wfg_insert_outedges: value holder_tran_indices[%d] = %d"
-			" is already a holders\n"
-			" ** OPERATION HAS BEEN IGNORED **\n",
-			holder_index, holder_tran_indices[holder_index]);
+			"wfg_insert_outedges: value holder_tran_indices[%d] = %d" " is already a holders\n"
+			" ** OPERATION HAS BEEN IGNORED **\n", holder_index, holder_tran_indices[holder_index]);
 	  return ER_FAILED;
 	}
     }
@@ -634,9 +576,8 @@ check_duplication_holders (const int holder_index,
  *
  */
 static int
-wfg_allocate_edges (WFG_EDGE ** first_edge_p, WFG_EDGE ** last_edge_p,
-		    const int *holder_tran_indices, const int num_holders,
-		    const int waiter_tran_index)
+wfg_allocate_edges (WFG_EDGE ** first_edge_p, WFG_EDGE ** last_edge_p, const int *holder_tran_indices,
+		    const int num_holders, const int waiter_tran_index)
 {
   WFG_EDGE *edge_p;
   WFG_EDGE *temp_p;
@@ -657,12 +598,11 @@ wfg_allocate_edges (WFG_EDGE ** first_edge_p, WFG_EDGE ** last_edge_p,
 	      free_and_init (temp_p);
 	    }
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (WFG_EDGE));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WFG_EDGE));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      /*
+      /* 
        * Note that we are adding the edges in the reverse order to avoid
        * manupulating several pointers.
        */
@@ -694,13 +634,12 @@ wfg_allocate_edges (WFG_EDGE ** first_edge_p, WFG_EDGE ** last_edge_p,
  *
  */
 static int
-wfg_link_edge_holders_waiter_list (WFG_EDGE * first_edge_p,
-				   WFG_EDGE * last_edge_p, const int waiter)
+wfg_link_edge_holders_waiter_list (WFG_EDGE * first_edge_p, WFG_EDGE * last_edge_p, const int waiter)
 {
   WFG_EDGE *edge_p;
   int holder;
 
-  /*
+  /* 
    * Link the list to the waiter as its holders
    */
   if (first_edge_p != NULL)
@@ -713,13 +652,12 @@ wfg_link_edge_holders_waiter_list (WFG_EDGE * first_edge_p,
 	}
       else
 	{
-	  wfg_Nodes[waiter].last_holder_edge_p->next_holder_edge_p =
-	    first_edge_p;
+	  wfg_Nodes[waiter].last_holder_edge_p->next_holder_edge_p = first_edge_p;
 	}
       wfg_Nodes[waiter].last_holder_edge_p = last_edge_p;
     }
 
-  /*
+  /* 
    * Link each edge to holders' waiter list
    */
   for (edge_p = first_edge_p; edge_p; edge_p = edge_p->next_holder_edge_p)
@@ -742,23 +680,21 @@ wfg_link_edge_holders_waiter_list (WFG_EDGE * first_edge_p,
 
 #if defined(WFG_DEBUG)
 static int
-wfg_check_remove_out_edges (const int waiter_tran_index,
-			    const int num_holders,
-			    const int *holder_tran_indices_p)
+wfg_check_remove_out_edges (const int waiter_tran_index, const int num_holders, const int *holder_tran_indices_p)
 {
   int error_code = NO_ERROR;
   int i;
-  WFG_EDGE *edge_p;		/* An edge                      */
+  WFG_EDGE *edge_p;		/* An edge */
 
-  /*
+  /* 
    * Check for valid arguments
    */
   if (waiter_tran_index < 0 || waiter_tran_index > wfg_Total_nodes - 1)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "wfg_remove_outedges: value waiter = %d should"
-		    " be between 0 and %d\n ** OPERATION HAS BEEN IGNORED **\n",
-		    waiter_tran_index, wfg_Total_nodes - 1);
+		    " be between 0 and %d\n ** OPERATION HAS BEEN IGNORED **\n", waiter_tran_index,
+		    wfg_Total_nodes - 1);
 
       error_code = ER_FAILED;
       goto end;
@@ -766,26 +702,23 @@ wfg_check_remove_out_edges (const int waiter_tran_index,
 
   for (i = 0; i < num_holders; i++)
     {
-      if (holder_tran_indices_p[i] < 0
-	  || holder_tran_indices_p[i] > wfg_Total_nodes - 1)
+      if (holder_tran_indices_p[i] < 0 || holder_tran_indices_p[i] > wfg_Total_nodes - 1)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"wfg_remove_outedges: value holder[%d] = %d"
-			" should be between 0 and %d\n ** OPERATION HAS BEEN"
-			" IGNORED **", i, htran_indices_p[i],
+			" should be between 0 and %d\n ** OPERATION HAS BEEN" " IGNORED **", i, htran_indices_p[i],
 			wfg_Total_nodes - 1);
 	  error_code = ER_FAILED;
 	  goto end;
 	}
-      for (edge_p = wfg_Nodes[waiter_tran_index].first_holder_edge_p;
-	   edge_p != NULL; edge_p = edge_p->next_holder_edge_p)
+      for (edge_p = wfg_Nodes[waiter_tran_index].first_holder_edge_p; edge_p != NULL;
+	   edge_p = edge_p->next_holder_edge_p)
 	{
 	  if (holder_tran_indices_p[i] == edge_p->holder_tran_index)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "wfg_remove_outedges:"
-			    " value holder[%d] = %d is NOT holder of waiter = %d\n"
-			    " ** THE HOLDER SKIPPED **",
-			    i, htran_indices_p[i], waiter_tran_index);
+	      er_log_debug (ARG_FILE_LINE,
+			    "wfg_remove_outedges:" " value holder[%d] = %d is NOT holder of waiter = %d\n"
+			    " ** THE HOLDER SKIPPED **", i, htran_indices_p[i], waiter_tran_index);
 	    }
 	}
     }
@@ -804,13 +737,11 @@ wfg_check_remove_out_edges (const int waiter_tran_index,
  *
  */
 static int
-wfg_remove_waiter_list_of_holder_edge (WFG_NODE * node_p,
-				       WFG_EDGE ** holder_p)
+wfg_remove_waiter_list_of_holder_edge (WFG_NODE * node_p, WFG_EDGE ** holder_p)
 {
   WFG_EDGE **waiter_p;		/* pointer to prev. waiter edge */
 
-  for (waiter_p = &(node_p->first_waiter_edge_p);
-       *waiter_p != NULL; waiter_p = &((*waiter_p)->next_waiter_edge_p))
+  for (waiter_p = &(node_p->first_waiter_edge_p); *waiter_p != NULL; waiter_p = &((*waiter_p)->next_waiter_edge_p))
     {
       if (*waiter_p == *holder_p)
 	{
@@ -821,15 +752,14 @@ wfg_remove_waiter_list_of_holder_edge (WFG_NODE * node_p,
 	      /* the last waiter of this holder edge */
 	      if (node_p->first_waiter_edge_p == NULL)
 		{
-		  /*  No more waiters */
+		  /* No more waiters */
 		  node_p->last_waiter_edge_p = NULL;
 		}
 	      else
 		{
 		  /* There are still waiters */
 		  node_p->last_waiter_edge_p =
-		    (WFG_EDGE *) ((char *) waiter_p - offsetof (WFG_EDGE,
-								next_waiter_edge_p));
+		    (WFG_EDGE *) ((char *) waiter_p - offsetof (WFG_EDGE, next_waiter_edge_p));
 		}
 	    }
 	  break;
@@ -857,11 +787,11 @@ wfg_remove_waiter_list_of_holder_edge (WFG_NODE * node_p,
  *
  */
 int
-wfg_remove_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index,
-		      const int num_holders, const int *holder_tran_indices_p)
+wfg_remove_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index, const int num_holders,
+		      const int *holder_tran_indices_p)
 {
   int i;			/* loop counter */
-  WFG_EDGE *edge_p;		/* An edge                      */
+  WFG_EDGE *edge_p;		/* An edge */
   WFG_EDGE **prev_holder_p;	/* pointer to prev. holder edge */
   int error_code = NO_ERROR;
 
@@ -871,23 +801,20 @@ wfg_remove_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index,
     }
 
 #if defined(WFG_DEBUG)
-  error_code = wfg_check_remove_out_edges (waiter_tran_index, num_holders,
-					   holder_tran_indices_p);
+  error_code = wfg_check_remove_out_edges (waiter_tran_index, num_holders, holder_tran_indices_p);
   if (error_code != NO_ERROR)
     {
       goto end;
     }
 #endif /* WFG_DEBUG */
-  for (prev_holder_p = &(wfg_Nodes[waiter_tran_index].first_holder_edge_p);
-       *prev_holder_p != NULL;)
+  for (prev_holder_p = &(wfg_Nodes[waiter_tran_index].first_holder_edge_p); *prev_holder_p != NULL;)
     {
       /* check if the edge is in the given edges */
       if (num_holders > 0 && holder_tran_indices_p != NULL)
 	{
 	  for (i = 0; i < num_holders; i++)
 	    {
-	      if (holder_tran_indices_p[i] ==
-		  (*prev_holder_p)->holder_tran_index)
+	      if (holder_tran_indices_p[i] == (*prev_holder_p)->holder_tran_index)
 		{
 		  break;
 		}
@@ -900,17 +827,14 @@ wfg_remove_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index,
 
       if (i < num_holders)
 	{
-	  /*
+	  /* 
 	   * It was found, remove previous holder from the list of waiters
 	   * and the holder list.
 	   */
 
 	  /* Remove from waiter list of the holder of edge */
 	  error_code =
-	    wfg_remove_waiter_list_of_holder_edge (&wfg_Nodes
-						   [(*prev_holder_p)->
-						    holder_tran_index],
-						   prev_holder_p);
+	    wfg_remove_waiter_list_of_holder_edge (&wfg_Nodes[(*prev_holder_p)->holder_tran_index], prev_holder_p);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto end;
@@ -937,8 +861,7 @@ wfg_remove_out_edges (THREAD_ENTRY * thread_p, const int waiter_tran_index,
   else
     {
       wfg_Nodes[waiter_tran_index].last_holder_edge_p =
-	(WFG_EDGE *) ((char *) prev_holder_p -
-		      offsetof (WFG_EDGE, next_holder_edge_p));
+	(WFG_EDGE *) ((char *) prev_holder_p - offsetof (WFG_EDGE, next_holder_edge_p));
     }
 
 end:
@@ -986,12 +909,10 @@ wfg_get_status (int *num_edges_p, int *num_waiters_p)
  *       cycles after usage. See wfg_free_cycle()
  */
 int
-wfg_detect_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case,
-		  WFG_CYCLE ** list_cycles_p)
+wfg_detect_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case, WFG_CYCLE ** list_cycles_p)
 {
   /* LIMIT the number of cycles */
-  return wfg_internal_detect_cycle (thread_p, cycle_case, list_cycles_p,
-				    WFG_PRUNE_CYCLES_IN_CYCLE_GROUP,
+  return wfg_internal_detect_cycle (thread_p, cycle_case, list_cycles_p, WFG_PRUNE_CYCLES_IN_CYCLE_GROUP,
 				    WFG_MAX_CYCLES_TO_REPORT);
 }
 
@@ -1015,11 +936,8 @@ wfg_detect_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case,
  *
  */
 static int
-wfg_internal_detect_cycle (THREAD_ENTRY * thread_p,
-			   WFG_CYCLE_CASE * cycle_case_p,
-			   WFG_CYCLE ** list_cycles_p,
-			   const int max_cycles_in_cycle_group,
-			   const int max_cycles)
+wfg_internal_detect_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case_p, WFG_CYCLE ** list_cycles_p,
+			   const int max_cycles_in_cycle_group, const int max_cycles)
 {
   WFG_CYCLE **next_cycle_p;	/* address of pointer to next cycle */
   WFG_CYCLE *ordinary_cycles_p = NULL;	/* ordinary cycles */
@@ -1030,8 +948,7 @@ wfg_internal_detect_cycle (THREAD_ENTRY * thread_p,
   *list_cycles_p = NULL;
 
   error_code =
-    wfg_detect_ordinary_cycle (thread_p, cycle_case_p, &ordinary_cycles_p,
-			       max_cycles_in_cycle_group, max_cycles);
+    wfg_detect_ordinary_cycle (thread_p, cycle_case_p, &ordinary_cycles_p, max_cycles_in_cycle_group, max_cycles);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1042,8 +959,7 @@ wfg_internal_detect_cycle (THREAD_ENTRY * thread_p,
       *list_cycles_p = ordinary_cycles_p;
     }
 
-  error_code = wfg_detect_tran_group_cycle (thread_p, &cycle_tran_group_case,
-					    &tran_group_cycles_p);
+  error_code = wfg_detect_tran_group_cycle (thread_p, &cycle_tran_group_case, &tran_group_cycles_p);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1052,8 +968,7 @@ wfg_internal_detect_cycle (THREAD_ENTRY * thread_p,
   if (tran_group_cycles_p != NULL)
     {
       /* Glue the lists */
-      for (next_cycle_p = list_cycles_p; *next_cycle_p != NULL;
-	   next_cycle_p = &((*next_cycle_p)->next))
+      for (next_cycle_p = list_cycles_p; *next_cycle_p != NULL; next_cycle_p = &((*next_cycle_p)->next))
 	{
 	  ;			/* NO-OP */
 	}
@@ -1151,14 +1066,13 @@ wfg_dump_given_cycles (FILE * out_fp, WFG_CYCLE * list_cycles_p)
 
   fprintf (out_fp, "----------------- CYCLES ------------------\n");
 
-  /*
+  /* 
    * There are deadlocks, we must select a victim for each cycle. We try
    * to break a cycle by timeing out a transaction whenever is possible.
    * In any other case, we select a victim for an unilaterally abort.
    */
 
-  for (current_cycle_p = list_cycles_p; current_cycle_p != NULL;
-       current_cycle_p = current_cycle_p->next)
+  for (current_cycle_p = list_cycles_p; current_cycle_p != NULL; current_cycle_p = current_cycle_p->next)
     {
       fprintf (out_fp, "Cycle: ");
       for (i = 0; i < current_cycle_p->num_trans; i++)
@@ -1195,8 +1109,7 @@ wfg_dump_holder_waiter (FILE * out_fp, int node_index)
 
   /* Print holders of node */
   fprintf (out_fp, "\t holders = { ");
-  for (edge_p = wfg_Nodes[node_index].first_holder_edge_p; edge_p != NULL;
-       edge_p = edge_p->next_holder_edge_p)
+  for (edge_p = wfg_Nodes[node_index].first_holder_edge_p; edge_p != NULL; edge_p = edge_p->next_holder_edge_p)
     {
       fprintf (out_fp, "%03d ", edge_p->holder_tran_index);
     }
@@ -1204,8 +1117,7 @@ wfg_dump_holder_waiter (FILE * out_fp, int node_index)
 
   /* Print waiters of node */
   fprintf (out_fp, "\t\t waiters = { ");
-  for (edge_p = wfg_Nodes[node_index].first_waiter_edge_p; edge_p != NULL;
-       edge_p = edge_p->next_waiter_edge_p)
+  for (edge_p = wfg_Nodes[node_index].first_waiter_edge_p; edge_p != NULL; edge_p = edge_p->next_waiter_edge_p)
     {
       fprintf (out_fp, "%03d ", edge_p->waiter_tran_index);
     }
@@ -1217,8 +1129,7 @@ wfg_dump_holder_waiter (FILE * out_fp, int node_index)
     }
   else
     {
-      fprintf (stdout, "\t\t last holder = %03d,",
-	       wfg_Nodes[node_index].last_holder_edge_p->holder_tran_index);
+      fprintf (stdout, "\t\t last holder = %03d,", wfg_Nodes[node_index].last_holder_edge_p->holder_tran_index);
     }
 
   if (wfg_Nodes[node_index].last_waiter_edge_p == NULL)
@@ -1227,8 +1138,7 @@ wfg_dump_holder_waiter (FILE * out_fp, int node_index)
     }
   else
     {
-      fprintf (out_fp, "\t\t last waiter = %03d\n",
-	       wfg_Nodes[node_index].last_waiter_edge_p->waiter_tran_index);
+      fprintf (out_fp, "\t\t last waiter = %03d\n", wfg_Nodes[node_index].last_waiter_edge_p->waiter_tran_index);
     }
 }
 
@@ -1250,8 +1160,8 @@ wfg_dump_holder_waiter_of_tran_group (FILE * out_fp, int group_index)
     {
       /* Print holders of TG */
       fprintf (out_fp, "\t holders = { ");
-      for (tran_list_p = wfg_Tran_group[group_index].holder_tran_list_p;
-	   tran_list_p != NULL; tran_list_p = tran_list_p->next)
+      for (tran_list_p = wfg_Tran_group[group_index].holder_tran_list_p; tran_list_p != NULL;
+	   tran_list_p = tran_list_p->next)
 	{
 	  fprintf (out_fp, "%d ", tran_list_p->tran_index);
 	}
@@ -1261,8 +1171,8 @@ wfg_dump_holder_waiter_of_tran_group (FILE * out_fp, int group_index)
 	{
 	  /* Print waiters of TG */
 	  fprintf (out_fp, "\t waiters = { ");
-	  for (tran_list_p = wfg_Tran_group[group_index].waiter_tran_list_p;
-	       tran_list_p != NULL; tran_list_p = tran_list_p->next)
+	  for (tran_list_p = wfg_Tran_group[group_index].waiter_tran_list_p; tran_list_p != NULL;
+	       tran_list_p = tran_list_p->next)
 	    {
 	      fprintf (out_fp, "%d ", tran_list_p->tran_index);
 	    }
@@ -1285,8 +1195,8 @@ wfg_dump (THREAD_ENTRY * thread_p)
   WFG_CYCLE_CASE cycle_case;
 
   fprintf (stdout, "--------------- WFG contents --------------\n");
-  fprintf (stdout, "total_nodes = %d, total_edges = %d, total_waiters = %d\n",
-	   wfg_Total_nodes, wfg_Total_edges, wfg_Total_waiters);
+  fprintf (stdout, "total_nodes = %d, total_edges = %d, total_waiters = %d\n", wfg_Total_nodes, wfg_Total_edges,
+	   wfg_Total_waiters);
 
   fprintf (stdout, "\n");
   fprintf (stdout, "---------- Ordinary WFG contents ----------\n");
@@ -1304,8 +1214,7 @@ wfg_dump (THREAD_ENTRY * thread_p)
 
       for (i = 0; i < wfg_Total_tran_groups; i++)
 	{
-	  fprintf (stdout, "TG[%d]:\t Num_holders %d, Num_waiters %d\n",
-		   i, wfg_Tran_group[i].num_holders,
+	  fprintf (stdout, "TG[%d]:\t Num_holders %d, Num_waiters %d\n", i, wfg_Tran_group[i].num_holders,
 		   wfg_Tran_group[i].num_waiters);
 
 	  wfg_dump_holder_waiter_of_tran_group (stdout, i);
@@ -1313,8 +1222,7 @@ wfg_dump (THREAD_ENTRY * thread_p)
     }
 
   /* Dump all cycles that are currently involved in the system */
-  if (wfg_internal_detect_cycle (thread_p, &cycle_case, &cycles_p, -1, -1) ==
-      NO_ERROR && cycle_case == WFG_CYCLE_YES)
+  if (wfg_internal_detect_cycle (thread_p, &cycle_case, &cycles_p, -1, -1) == NO_ERROR && cycle_case == WFG_CYCLE_YES)
     {
       fprintf (stdout, "\n");
       wfg_dump_given_cycles (stdout, cycles_p);
@@ -1355,8 +1263,7 @@ wfg_alloc_tran_group (THREAD_ENTRY * thread_p)
 
   if (temp_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, bytes);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bytes);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto end;
     }
@@ -1391,9 +1298,7 @@ end:
  *
  */
 int
-wfg_insert_holder_tran_group (THREAD_ENTRY * thread_p,
-			      const int tran_group_index,
-			      const int holder_tran_index)
+wfg_insert_holder_tran_group (THREAD_ENTRY * thread_p, const int tran_group_index, const int holder_tran_index)
 {
   WFG_TRANS_LIST *tran_list_p;	/* temp trans list node pointer */
   int error_code = NO_ERROR;
@@ -1402,8 +1307,7 @@ wfg_insert_holder_tran_group (THREAD_ENTRY * thread_p,
   tran_list_p = (WFG_TRANS_LIST *) malloc (sizeof (WFG_TRANS_LIST));
   if (tran_list_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (WFG_TRANS_LIST));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WFG_TRANS_LIST));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -1416,10 +1320,9 @@ wfg_insert_holder_tran_group (THREAD_ENTRY * thread_p,
 #if defined(WFG_DEBUG)
   if (tran_group_index < 0 || tran_group_index > wfg_Total_tran_groups - 1)
     {
-      er_log_debug (ARG_FILE_LINE, "wfg_tg_insert_holder: value tg_index = %d"
-		    " should be between 0 and %d\n"
-		    "** OPERATION HAS BEEN IGNORED **",
-		    tran_group_index, wfg_Total_tran_groups - 1);
+      er_log_debug (ARG_FILE_LINE,
+		    "wfg_tg_insert_holder: value tg_index = %d" " should be between 0 and %d\n"
+		    "** OPERATION HAS BEEN IGNORED **", tran_group_index, wfg_Total_tran_groups - 1);
       error_code = ER_FAILED;
       goto end;
     }
@@ -1427,20 +1330,18 @@ wfg_insert_holder_tran_group (THREAD_ENTRY * thread_p,
   if (holder_tran_index < 0 || holder_tran_index > wfg_Total_nodes - 1)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "wfg_tg_insert_holder: value htran_index = %d"
-		    " should be between 0 and %d\n"
-		    " ** OPERATION HAS BEEN IGNORED **",
-		    holder_tran_index, wfg_Total_nodes - 1);
+		    "wfg_tg_insert_holder: value htran_index = %d" " should be between 0 and %d\n"
+		    " ** OPERATION HAS BEEN IGNORED **", holder_tran_index, wfg_Total_nodes - 1);
       error_code = ER_FAILED;
       goto end;
     }
 
-  for (tran_list_p = wfg_Tran_group[tran_group_index].holder_tran_list_p;
-       tran_list_p != NULL; tran_list_p = tran_list_p->next)
+  for (tran_list_p = wfg_Tran_group[tran_group_index].holder_tran_list_p; tran_list_p != NULL;
+       tran_list_p = tran_list_p->next)
     if (tran_list_p->tran_index == holder_tran_index)
       {
-	er_log_debug (ARG_FILE_LINE, "wfg_tg_insert_holder: value"
-		      " htran_index = %d is already in holder list\n"
+	er_log_debug (ARG_FILE_LINE,
+		      "wfg_tg_insert_holder: value" " htran_index = %d is already in holder list\n"
 		      " ** OPERATION HAS BEEN IGNORED **", tran_index);
 	error_code = ER_FAILED;
 	goto end;
@@ -1475,9 +1376,7 @@ end:
  *
  */
 int
-wfg_remove_holder_tran_group (THREAD_ENTRY * thread_p,
-			      const int tran_group_index,
-			      const int holder_tran_index)
+wfg_remove_holder_tran_group (THREAD_ENTRY * thread_p, const int tran_group_index, const int holder_tran_index)
 {
   WFG_TRANS_LIST **tran_list_p;	/* transaction list node */
   WFG_TRANS_LIST *temp_p;
@@ -1491,10 +1390,9 @@ wfg_remove_holder_tran_group (THREAD_ENTRY * thread_p,
 #if defined(WFG_DEBUG)
   if (tran_group_index < 0 || tran_group_index > wfg_Total_tran_groups - 1)
     {
-      er_log_debug (ARG_FILE_LINE, "wfg_tg_remove_holder: value tg_index = %d"
-		    " should be between 0 and %d\n"
-		    " ** OPERATION HAS BEEN IGNORED **",
-		    tran_group_index, wfg_Total_tran_groups - 1);
+      er_log_debug (ARG_FILE_LINE,
+		    "wfg_tg_remove_holder: value tg_index = %d" " should be between 0 and %d\n"
+		    " ** OPERATION HAS BEEN IGNORED **", tran_group_index, wfg_Total_tran_groups - 1);
       error_code = ER_FAILED;
       goto end;
     }
@@ -1502,21 +1400,18 @@ wfg_remove_holder_tran_group (THREAD_ENTRY * thread_p,
   if (holder_tran_index < 0 || holder_tran_index > wfg_Total_nodes - 1)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "wfg_tg_remove_holder: value htran_index = %d"
-		    " should be between 0 and %d\n"
-		    " ** OPERATION HAS BEEN IGNORED **",
-		    holder_tran_index, wfg_Total_nodes - 1);
+		    "wfg_tg_remove_holder: value htran_index = %d" " should be between 0 and %d\n"
+		    " ** OPERATION HAS BEEN IGNORED **", holder_tran_index, wfg_Total_nodes - 1);
       error_code = ER_FAILED;
       goto end;
     }
 
-  for (temp_p = wfg_Tran_group[tran_group_index].holder_tran_list_p;
-       temp_p != NULL; temp_p = temp_p->next)
+  for (temp_p = wfg_Tran_group[tran_group_index].holder_tran_list_p; temp_p != NULL; temp_p = temp_p->next)
     {
       if (temp_p->tran_index == holder_tran_index)
 	{
-	  er_log_debug (ARG_FILE_LINE, "wfg_tg_remove_holder: value"
-			" htran_index = %d is NOT in holder list\n"
+	  er_log_debug (ARG_FILE_LINE,
+			"wfg_tg_remove_holder: value" " htran_index = %d is NOT in holder list\n"
 			" ** OPERATION HAS NO EFFECT **", holder_tran_index);
 	  error_code = ER_FAILED;
 	  goto end;
@@ -1526,8 +1421,8 @@ wfg_remove_holder_tran_group (THREAD_ENTRY * thread_p,
 
   if (wfg_Tran_group[tran_group_index].holder_tran_list_p != NULL)
     {
-      for (tran_list_p = &wfg_Tran_group[tran_group_index].holder_tran_list_p;
-	   *tran_list_p != NULL; tran_list_p = &((*tran_list_p)->next))
+      for (tran_list_p = &wfg_Tran_group[tran_group_index].holder_tran_list_p; *tran_list_p != NULL;
+	   tran_list_p = &((*tran_list_p)->next))
 	{
 	  if ((*tran_list_p)->tran_index == holder_tran_index)
 	    {
@@ -1569,12 +1464,8 @@ end:
  *
  */
 int
-wfg_insert_waiter_tran_group (THREAD_ENTRY * thread_p,
-			      const int tran_group_index,
-			      const int waiter_tran_index,
-			      int (*cycle_resolution_fn) (int tran_index,
-							  void *args),
-			      void *args)
+wfg_insert_waiter_tran_group (THREAD_ENTRY * thread_p, const int tran_group_index, const int waiter_tran_index,
+			      int (*cycle_resolution_fn) (int tran_index, void *args), void *args)
 {
   WFG_TRANS_LIST *tran_list_p;	/* temp trans list node pointer */
   int error_code = NO_ERROR;
@@ -1589,8 +1480,8 @@ wfg_insert_waiter_tran_group (THREAD_ENTRY * thread_p,
     {
       er_log_debug (ARG_FILE_LINE,
 		    "wfg_tg_insert_waiter: value tg_index = %d should"
-		    " be between 0 and %d\n ** OPERATION HAS BEEN IGNORED **",
-		    tran_group_index, wfg_Total_tran_groups - 1);
+		    " be between 0 and %d\n ** OPERATION HAS BEEN IGNORED **", tran_group_index,
+		    wfg_Total_tran_groups - 1);
       error_code = ER_FAILED;
       goto end;
     }
@@ -1598,39 +1489,34 @@ wfg_insert_waiter_tran_group (THREAD_ENTRY * thread_p,
   if (waiter_tran_index < 0 || waiter_tran_index > wfg_Total_nodes - 1)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "wfg_tg_insert_waiter: value tran_index = %d"
-		    " should be between 0 and %d\n"
-		    " ** OPERATION HAS BEEN IGNORED **",
-		    waiter_tran_index, wfg_Total_nodes - 1);
+		    "wfg_tg_insert_waiter: value tran_index = %d" " should be between 0 and %d\n"
+		    " ** OPERATION HAS BEEN IGNORED **", waiter_tran_index, wfg_Total_nodes - 1);
       error_code = ER_FAILED;
       goto end;
     }
 
-  for (tran_list_p = wfg_Tran_group[tran_group_index].waiter_tran_list_p;
-       tran_list_p != NULL; tran_list_p = tran_list_p->next)
+  for (tran_list_p = wfg_Tran_group[tran_group_index].waiter_tran_list_p; tran_list_p != NULL;
+       tran_list_p = tran_list_p->next)
     {
       if (tran_list_p->tran_index == waiter_tran_index)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"wfg_tg_insert_waiter: value tran_index = %d"
-			" is already in waiters\n"
-			" ** OPERATION HAS BEEN IGNORED **",
-			waiter_tran_index);
+			"wfg_tg_insert_waiter: value tran_index = %d" " is already in waiters\n"
+			" ** OPERATION HAS BEEN IGNORED **", waiter_tran_index);
 	  error_code = ER_FAILED;
 	  goto end;
 	}
     }
 #endif /* WFG_DEBUG */
 
-  /*
+  /* 
    * allocate a node for the waiter_tran_index and insert it to the TG's waiter
    * list
    */
   tran_list_p = (WFG_TRANS_LIST *) malloc (sizeof (WFG_TRANS_LIST));
   if (tran_list_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (WFG_TRANS_LIST));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WFG_TRANS_LIST));
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto end;
     }
@@ -1668,9 +1554,7 @@ end:
  *
  */
 int
-wfg_remove_waiter_tran_group (THREAD_ENTRY * thread_p,
-			      const int tran_group_index,
-			      const int waiter_tran_index)
+wfg_remove_waiter_tran_group (THREAD_ENTRY * thread_p, const int tran_group_index, const int waiter_tran_index)
 {
   WFG_TRANS_LIST **tran_list_p;	/* tran_index list node */
   WFG_TRANS_LIST *temp_p;
@@ -1686,8 +1570,8 @@ wfg_remove_waiter_tran_group (THREAD_ENTRY * thread_p,
     {
       er_log_debug (ARG_FILE_LINE,
 		    "wfg_tg_remove_waiter: value tg_index = %d should"
-		    " be between 0 and %d\n ** OPERATION HAS BEEN IGNORED **",
-		    tran_group_index, wfg_Total_tran_groups - 1);
+		    " be between 0 and %d\n ** OPERATION HAS BEEN IGNORED **", tran_group_index,
+		    wfg_Total_tran_groups - 1);
       error_code = ER_FAILED;
       goto end;
     }
@@ -1695,31 +1579,28 @@ wfg_remove_waiter_tran_group (THREAD_ENTRY * thread_p,
   if (waiter_tran_index < 0 || waiter_tran_index > wfg_Total_nodes - 1)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "wfg_tg_remove_waiter: value tran_index = %d"
-		    " should be between 0 and %d\n"
-		    " ** OPERATION HAS BEEN IGNORED **",
-		    waiter_tran_index, wfg_Total_nodes - 1);
+		    "wfg_tg_remove_waiter: value tran_index = %d" " should be between 0 and %d\n"
+		    " ** OPERATION HAS BEEN IGNORED **", waiter_tran_index, wfg_Total_nodes - 1);
       error_code = ER_FAILED;
       goto end;
     }
 
-  for (tran_list_p = &wfg_Tran_group[tran_group_index].waiter_tran_list_p;
-       tran_list_p != NULL; tran_list_p = &((*tran_list_p)->next))
+  for (tran_list_p = &wfg_Tran_group[tran_group_index].waiter_tran_list_p; tran_list_p != NULL;
+       tran_list_p = &((*tran_list_p)->next))
     {
       if ((*tran_list_p)->tran_index == waiter_tran_index)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"wfg_tg_remove_waiter: value tran_index = %d"
-			" is NOT in waiters\n ** OPERATION HAS NO EFFECT **",
-			waiter_tran_index);
+			" is NOT in waiters\n ** OPERATION HAS NO EFFECT **", waiter_tran_index);
 	  error_code = ER_FAILED;
 	  goto end;
 	}
     }
 #endif /* WFG_DEBUG */
 
-  for (tran_list_p = &wfg_Tran_group[tran_group_index].waiter_tran_list_p;
-       tran_list_p != NULL; tran_list_p = &((*tran_list_p)->next))
+  for (tran_list_p = &wfg_Tran_group[tran_group_index].waiter_tran_list_p; tran_list_p != NULL;
+       tran_list_p = &((*tran_list_p)->next))
     {
       if ((*tran_list_p)->tran_index == waiter_tran_index)
 	{
@@ -1766,11 +1647,8 @@ end:
  *	 to the cycles after usage. See wfg_free_cycle()
  */
 static int
-wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
-			   WFG_CYCLE_CASE * cycle_case_p,
-			   WFG_CYCLE ** list_cycles_p,
-			   const int max_cycles_in_group,
-			   const int max_cycles)
+wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case_p, WFG_CYCLE ** list_cycles_p,
+			   const int max_cycles_in_group, const int max_cycles)
 {
   int i, j;
   WFG_CYCLE **last_cycle_p;	/* ptr to addr of the last cycle */
@@ -1810,8 +1688,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
   bottom_p = (WFG_STACK *) malloc (sizeof (WFG_STACK) * wfg_Total_waiters);
   if (bottom_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (WFG_STACK) * wfg_Total_waiters);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WFG_STACK) * wfg_Total_waiters);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -1822,7 +1699,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
     {
       if (max_cycles > 0 && num_total_cycles > max_cycles)
 	{
-	  /*
+	  /* 
 	   * We have too many cycles already. It is better to return to avoid
 	   * spending too much time and space among cycle groups
 	   */
@@ -1839,7 +1716,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
       cycle_group_no++;
       num_cycles_in_group = 0;
 
-      /*
+      /* 
        * Optimization of special case. Used to avoid overhead of stack operations
        */
       if (wfg_Nodes[i].first_holder_edge_p == NULL)
@@ -1858,10 +1735,8 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 
 	new_top:		/* new top entry is pushed in stack */
 
-	  for (;
-	       top_p->current_holder_edge_p != NULL;
-	       top_p->current_holder_edge_p =
-	       top_p->current_holder_edge_p->next_holder_edge_p)
+	  for (; top_p->current_holder_edge_p != NULL;
+	       top_p->current_holder_edge_p = top_p->current_holder_edge_p->next_holder_edge_p)
 	    {
 	      htran_index = top_p->current_holder_edge_p->holder_tran_index;
 
@@ -1888,34 +1763,26 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 		  /* mark this cycle with cycle_group_no */
 		  wfg_Nodes[htran_index].cycle_group_no = cycle_group_no;
 
-		  for (stack_elem_p = top_p;
-		       stack_elem_p->wait_tran_index != htran_index;
-		       stack_elem_p--)
+		  for (stack_elem_p = top_p; stack_elem_p->wait_tran_index != htran_index; stack_elem_p--)
 		    {
-		      wfg_Nodes[stack_elem_p->wait_tran_index].
-			cycle_group_no = cycle_group_no;
+		      wfg_Nodes[stack_elem_p->wait_tran_index].cycle_group_no = cycle_group_no;
 		    }
 
 		  /* construct a cycle */
 		  cycle_p = (WFG_CYCLE *) malloc (sizeof (WFG_CYCLE));
 		  if (cycle_p == NULL)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY,
-			      1, sizeof (WFG_CYCLE));
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WFG_CYCLE));
 		      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto error;
 		    }
 
 		  cycle_p->num_trans = (int) ((top_p - stack_elem_p) + 1);
 		  cycle_p->next = NULL;
-		  cycle_p->waiters =
-		    (WFG_WAITER *) malloc (sizeof (WFG_WAITER) *
-					   cycle_p->num_trans);
+		  cycle_p->waiters = (WFG_WAITER *) malloc (sizeof (WFG_WAITER) * cycle_p->num_trans);
 		  if (cycle_p->waiters == NULL)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			      sizeof (WFG_WAITER) * cycle_p->num_trans);
 		      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 		      free_and_init (cycle_p);
@@ -1923,13 +1790,11 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 		    }
 
 		  j = 0;
-		  for (stack_elem_p = top_p, waiter_p = cycle_p->waiters;
-		       j < cycle_p->num_trans;
+		  for (stack_elem_p = top_p, waiter_p = cycle_p->waiters; j < cycle_p->num_trans;
 		       j++, stack_elem_p--, waiter_p++)
 		    {
 		      waiter_p->tran_index = stack_elem_p->wait_tran_index;
-		      waiter_p->cycle_fun =
-			wfg_Nodes[waiter_p->tran_index].cycle_fun;
+		      waiter_p->cycle_fun = wfg_Nodes[waiter_p->tran_index].cycle_fun;
 		      waiter_p->args = wfg_Nodes[waiter_p->tran_index].args;
 		    }
 
@@ -1938,8 +1803,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 
 		  num_cycles_in_group++;
 
-		  if (max_cycles > 0
-		      && num_total_cycles + num_cycles_in_group >= max_cycles)
+		  if (max_cycles > 0 && num_total_cycles + num_cycles_in_group >= max_cycles)
 		    {
 		      *cycle_case_p = WFG_CYCLE_YES_PRUNE;
 		    }
@@ -1954,7 +1818,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 		  /* already traversed */
 		  if (wfg_Nodes[htran_index].cycle_group_no == cycle_group_no)
 		    {
-		      /*
+		      /* 
 		       * need to traverse again
 		       *
 		       * We will skip on finding more cycles for
@@ -1964,11 +1828,8 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 		       */
 
 		      if ((max_cycles_in_group > 0
-			   && (num_cycles_in_group > wfg_Total_nodes
-			       || num_cycles_in_group >= max_cycles_in_group))
-			  || (max_cycles > 0
-			      && (num_total_cycles + num_cycles_in_group) >=
-			      max_cycles))
+			   && (num_cycles_in_group > wfg_Total_nodes || num_cycles_in_group >= max_cycles_in_group))
+			  || (max_cycles > 0 && (num_total_cycles + num_cycles_in_group) >= max_cycles))
 			{
 			  *cycle_case_p = WFG_CYCLE_YES_PRUNE;
 			  break;
@@ -2046,15 +1907,14 @@ wfg_add_waiters_of_tg (int *smallest_onstack, int holder_node, int tg_index)
   WFG_TRAN_GROUP *tg_tmp;
   WFG_NODE *w_node_p;
 
-  /*
+  /* 
    * If the node i is a holder of any TG,
    * add the waiters of such TG to it.
    */
   for (; tg_index < wfg_Total_tran_groups; tg_index++)
     {
       tg_tmp = &wfg_Tran_group[tg_index];
-      for (h_tran_list_p = tg_tmp->holder_tran_list_p;
-	   h_tran_list_p != NULL; h_tran_list_p = h_tran_list_p->next)
+      for (h_tran_list_p = tg_tmp->holder_tran_list_p; h_tran_list_p != NULL; h_tran_list_p = h_tran_list_p->next)
 	{
 	  if (h_tran_list_p->tran_index == holder_node)
 	    {
@@ -2065,8 +1925,7 @@ wfg_add_waiters_of_tg (int *smallest_onstack, int holder_node, int tg_index)
       if (h_tran_list_p != NULL)
 	{
 	  /* Add all waiters of the TG */
-	  for (w_tran_list_p = tg_tmp->waiter_tran_list_p;
-	       w_tran_list_p != NULL; w_tran_list_p = w_tran_list_p->next)
+	  for (w_tran_list_p = tg_tmp->waiter_tran_list_p; w_tran_list_p != NULL; w_tran_list_p = w_tran_list_p->next)
 	    {
 	      w_node_p = &wfg_Nodes[w_tran_list_p->tran_index];
 	      if (w_node_p->status == WFG_NOT_VISITED)
@@ -2100,8 +1959,7 @@ wfg_add_waiters_normal_wfg (int *smallest_onstack, int node_index)
   WFG_EDGE *edge_p;		/* loop pointer to edge */
 
   /* Add the waiters of the normal WFG */
-  for (edge_p = wfg_Nodes[node_index].first_waiter_edge_p;
-       edge_p != NULL; edge_p = edge_p->next_waiter_edge_p)
+  for (edge_p = wfg_Nodes[node_index].first_waiter_edge_p; edge_p != NULL; edge_p = edge_p->next_waiter_edge_p)
     {
       if (wfg_Nodes[edge_p->waiter_tran_index].status == WFG_NOT_VISITED)
 	{
@@ -2129,8 +1987,7 @@ wfg_add_waiters_normal_wfg (int *smallest_onstack, int node_index)
  * Note:
  */
 static int
-wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter,
-				    int tg_index)
+wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter, int tg_index)
 {
   WFG_TRANS_LIST *w_tran_list_p;	/* ptr to a trans list node in TG */
   WFG_TRANS_LIST *h_tran_list_p;	/* ptr to a trans list node in TG */
@@ -2139,7 +1996,7 @@ wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter,
   bool tg_connected, tg_all_waiting;
   int i;
 
-  /*
+  /* 
    * If all holders of connected transaction groups are waiting, then
    * we have a deadlock related to TGs. All TG holders will be part
    * of TG elementary cycles.
@@ -2159,8 +2016,7 @@ wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter,
 	{
 	  tg_connected = false;
 	}
-      for (w_tran_list_p = tg_tmp->waiter_tran_list_p;
-	   w_tran_list_p != NULL && tg_connected == false;
+      for (w_tran_list_p = tg_tmp->waiter_tran_list_p; w_tran_list_p != NULL && tg_connected == false;
 	   w_tran_list_p = w_tran_list_p->next)
 	{
 	  w_node_p = &wfg_Nodes[w_tran_list_p->tran_index];
@@ -2176,18 +2032,16 @@ wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter,
 	}
 
       tg_all_waiting = true;
-      for (h_tran_list_p = tg_tmp->holder_tran_list_p;
-	   h_tran_list_p != NULL && tg_all_waiting == true;
+      for (h_tran_list_p = tg_tmp->holder_tran_list_p; h_tran_list_p != NULL && tg_all_waiting == true;
 	   h_tran_list_p = h_tran_list_p->next)
 	{
 	  if (wfg_Nodes[h_tran_list_p->tran_index].status != WFG_OFF_STACK)
 	    {
 	      tg_all_waiting = false;
 	    }
-	  else if (w_tran_list_p != NULL
-		   && w_tran_list_p->tran_index == h_tran_list_p->tran_index)
+	  else if (w_tran_list_p != NULL && w_tran_list_p->tran_index == h_tran_list_p->tran_index)
 	    {
-	      /*
+	      /* 
 	       * The waiter is also a holder. Don't need to add
 	       * the waiter at a later point.
 	       */
@@ -2215,17 +2069,15 @@ wfg_get_all_waiting_and_add_waiter (bool * all_waiting, bool * add_waiter,
  *
  */
 static WFG_CYCLE *
-wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
-				      WFG_TRANS_LIST * w_tran_list_p,
-				      bool add_waiter, int tg_index,
-				      int num_tran_groups_holders)
+wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p, WFG_TRANS_LIST * w_tran_list_p, bool add_waiter,
+				      int tg_index, int num_tran_groups_holders)
 {
   WFG_WAITER *waiter_p;		/* Waiter transactions in the cycle */
   WFG_TRANS_LIST *h_tran_list_p;	/* ptr to a trans list node in TG */
   WFG_CYCLE *cycle_p;		/* pointer to the current cycle */
   int i;
 
-  /*
+  /* 
    * Construct the cycle all TG waiters that are part of TG cycles.
    */
 
@@ -2237,8 +2089,7 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
   cycle_p = (WFG_CYCLE *) malloc (sizeof (WFG_CYCLE));
   if (cycle_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WFG_CYCLE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WFG_CYCLE));
       return NULL;
     }
 
@@ -2251,12 +2102,10 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
     }
 
   cycle_p->next = NULL;
-  cycle_p->waiters =
-    (WFG_WAITER *) malloc (sizeof (WFG_WAITER) * cycle_p->num_trans);
+  cycle_p->waiters = (WFG_WAITER *) malloc (sizeof (WFG_WAITER) * cycle_p->num_trans);
   if (cycle_p->waiters == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (WFG_WAITER) * cycle_p->num_trans);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WFG_WAITER) * cycle_p->num_trans);
       free_and_init (cycle_p);
       return NULL;
     }
@@ -2267,8 +2116,8 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
 
   for (i = tg_index; i < wfg_Total_tran_groups; i++)
     {
-      for (h_tran_list_p = wfg_Tran_group[i].holder_tran_list_p;
-	   h_tran_list_p != NULL; h_tran_list_p = h_tran_list_p->next)
+      for (h_tran_list_p = wfg_Tran_group[i].holder_tran_list_p; h_tran_list_p != NULL;
+	   h_tran_list_p = h_tran_list_p->next)
 	{
 	  if (wfg_Nodes[h_tran_list_p->tran_index].status == WFG_OFF_STACK)
 	    {
@@ -2276,7 +2125,7 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
 	      waiter_p->cycle_fun = wfg_Nodes[waiter_p->tran_index].cycle_fun;
 	      waiter_p->args = wfg_Nodes[waiter_p->tran_index].args;
 	      cycle_p->num_trans++;
-	      /*
+	      /* 
 	       * Avoid a possible duplication,
 	       * it could be part of holder of another TG.
 	       */
@@ -2286,7 +2135,7 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
 	}
     }
 
-  /*
+  /* 
    * Add the TG waiter to the cycle. Make sure that the waiter is not
    * also a holder. That is, don't duplicate entries.
    */
@@ -2327,9 +2176,7 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
  *      elementary cycles. Instead, just return holders of TG in cycles.
  */
 static int
-wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p,
-			     WFG_CYCLE_CASE * cycle_case_p,
-			     WFG_CYCLE ** list_cycles_p)
+wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p, WFG_CYCLE_CASE * cycle_case_p, WFG_CYCLE ** list_cycles_p)
 {
   int smallest_onstack;
   int tg1_index, i;
@@ -2373,23 +2220,21 @@ wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p,
   /* Go over each transaction group */
   for (tg1_index = 0; tg1_index < wfg_Total_tran_groups; tg1_index++)
     {
-      /*
+      /* 
        * Optimization of special case. Used to avoid overhead of stack operations
        */
-      if (wfg_Tran_group[tg1_index].holder_tran_list_p == NULL
-	  || wfg_Tran_group[tg1_index].waiter_tran_list_p == NULL)
+      if (wfg_Tran_group[tg1_index].holder_tran_list_p == NULL || wfg_Tran_group[tg1_index].waiter_tran_list_p == NULL)
 	{
 	  continue;
 	}
 
-      /*
+      /* 
        * Mark status of TG waiters as WFG_ON_STACK
        */
-      for (w_tran_list_p =
-	   wfg_Tran_group[tg1_index].waiter_tran_list_p;
-	   w_tran_list_p != NULL; w_tran_list_p = w_tran_list_p->next)
+      for (w_tran_list_p = wfg_Tran_group[tg1_index].waiter_tran_list_p; w_tran_list_p != NULL;
+	   w_tran_list_p = w_tran_list_p->next)
 	{
-	  /*
+	  /* 
 	   * Skip if it has already been in another TG cycle.
 	   * Cycle or subcycle has already been listed.
 	   */
@@ -2427,16 +2272,13 @@ wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p,
 		}
 	    }
 
-	  wfg_get_all_waiting_and_add_waiter (&all_waiting, &add_waiter,
-					      tg1_index);
+	  wfg_get_all_waiting_and_add_waiter (&all_waiting, &add_waiter, tg1_index);
 
 	  if (all_waiting == true)
 	    {
-	      cycle_p = wfg_detect_tran_group_cycle_internal (cycle_case_p,
-							      w_tran_list_p,
-							      add_waiter,
-							      tg1_index,
-							      num_tran_groups_holders);
+	      cycle_p =
+		wfg_detect_tran_group_cycle_internal (cycle_case_p, w_tran_list_p, add_waiter, tg1_index,
+						      num_tran_groups_holders);
 	      if (cycle_p == NULL)
 		{
 		  goto error;
@@ -2483,8 +2325,7 @@ wfg_is_waiting (THREAD_ENTRY * thread_p, const int tran_index)
     {
       for (i = 0; i < wfg_Total_nodes; i++)
 	{
-	  for (edge_p = wfg_Nodes[i].first_waiter_edge_p; edge_p != NULL;
-	       edge_p = edge_p->next_waiter_edge_p)
+	  for (edge_p = wfg_Nodes[i].first_waiter_edge_p; edge_p != NULL; edge_p = edge_p->next_waiter_edge_p)
 	    {
 	      if (tran_index == edge_p->waiter_tran_index)
 		{
@@ -2524,8 +2365,7 @@ wfg_is_tran_group_waiting (THREAD_ENTRY * thread_p, const int tran_index)
 
   for (i = 0; i < wfg_Total_tran_groups; i++)
     {
-      for (tran_list_p = wfg_Tran_group[i].waiter_tran_list_p;
-	   tran_list_p != NULL; tran_list_p = tran_list_p->next)
+      for (tran_list_p = wfg_Tran_group[i].waiter_tran_list_p; tran_list_p != NULL; tran_list_p = tran_list_p->next)
 	{
 	  if (tran_index == tran_list_p->tran_index)
 	    {

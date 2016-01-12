@@ -1190,8 +1190,7 @@ ksc5601_mbtowc (ucs4_t * pwc, const unsigned char *s, int n)
 {
   unsigned char c1 = s[0];
 
-  if ((c1 >= 0x21 && c1 <= 0x2c)
-      || (c1 >= 0x30 && c1 <= 0x48) || (c1 >= 0x4a && c1 <= 0x7d))
+  if ((c1 >= 0x21 && c1 <= 0x2c) || (c1 >= 0x30 && c1 <= 0x48) || (c1 >= 0x4a && c1 <= 0x7d))
     {
       if (n >= 2)
 	{

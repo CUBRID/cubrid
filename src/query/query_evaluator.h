@@ -165,8 +165,7 @@ typedef enum
   /* types used by both XASL interpreter and regulator */
   TYPE_DBVAL,			/* use dbval */
   TYPE_CONSTANT,		/* use varptr */
-  TYPE_ORDERBY_NUM,		/* to be updated by orderby_num() in output
-				   list; act same as TYPE_CONSTANT */
+  TYPE_ORDERBY_NUM,		/* to be updated by orderby_num() in output list; act same as TYPE_CONSTANT */
   TYPE_INARITH,			/* use arithptr */
   TYPE_OUTARITH,		/* use arithptr */
   TYPE_ATTR_ID,			/* use attr_descr */
@@ -175,10 +174,8 @@ typedef enum
   TYPE_POSITION,		/* use pos_descr */
   TYPE_LIST_ID,			/* use srlist_id */
   TYPE_POS_VALUE,		/* use val_pos for host variable references */
-  TYPE_OID,			/* does not have corresponding field
-				   use current object identifier value */
-  TYPE_CLASSOID,		/* does not have corresponding field
-				   use current class identifier value */
+  TYPE_OID,			/* does not have corresponding field use current object identifier value */
+  TYPE_CLASSOID,		/* does not have corresponding field use current class identifier value */
   TYPE_FUNC,			/* use funcp */
   TYPE_REGUVAL_LIST,		/* use reguval_list */
   TYPE_REGU_VAR_LIST		/* use regu_variable_list for 'CUME_DIST' and 'PERCENT_RANK' */
@@ -193,12 +190,10 @@ struct regu_variable_node
 
   /* regu variable flags */
 #define REGU_VARIABLE_HIDDEN_COLUMN       0x01	/* does not go to list file */
-#define REGU_VARIABLE_FIELD_COMPARE       0x02	/* for FIELD function, marks the
-						   bottom of regu tree */
-#define REGU_VARIABLE_FIELD_NESTED        0x04	/* for FIELD function, reguvar
-						   is child in T_FIELD tree */
-#define REGU_VARIABLE_APPLY_COLLATION	  0x08	/* Apply collation from domain;
-						   flag used in context of COLLATE modifier */
+#define REGU_VARIABLE_FIELD_COMPARE       0x02	/* for FIELD function, marks the bottom of regu tree */
+#define REGU_VARIABLE_FIELD_NESTED        0x04	/* for FIELD function, reguvar is child in T_FIELD tree */
+#define REGU_VARIABLE_APPLY_COLLATION	  0x08	/* Apply collation from domain; flag used in context of COLLATE
+						 * modifier */
 #define REGU_VARIABLE_ANALYTIC_WINDOW     0x10	/* for analytic window func */
 #define REGU_VARIABLE_INFER_COLLATION	  0x20	/* infer collation for default parameter */
 #define REGU_VARIABLE_FETCH_ALL_CONST     0x40	/* is all constant */
@@ -486,13 +481,11 @@ struct arith_list_node
   REGU_VARIABLE *rightptr;	/* right operand */
   REGU_VARIABLE *thirdptr;	/* third operand */
   OPERATOR_TYPE opcode;		/* operator value */
-  MISC_OPERAND misc_operand;	/* currently used for trim qualifier
-				 * and datetime extract field specifier */
+  MISC_OPERAND misc_operand;	/* currently used for trim qualifier and datetime extract field specifier */
   PRED_EXPR *pred;		/* predicate expression */
 
   /* NOTE: The following member is only used on server internally. */
-  struct drand48_data *rand_seed;	/* seed to be used to generate
-					 * pseudo-random sequence */
+  struct drand48_data *rand_seed;	/* seed to be used to generate pseudo-random sequence */
 };
 
 typedef struct aggregate_accumulator AGGREGATE_ACCUMULATOR;
@@ -525,8 +518,7 @@ struct aggregate_percentile_info
   REGU_VARIABLE *percentile_reguvar;
 };
 
-typedef union aggregate_specific_function_info
-  AGGREGATE_SPECIFIC_FUNCTION_INFO;
+typedef union aggregate_specific_function_info AGGREGATE_SPECIFIC_FUNCTION_INFO;
 union aggregate_specific_function_info
 {
   AGGREGATE_DIST_PERCENT_INFO dist_percent;	/* CUME_DIST and PERCENT_RANK */
@@ -545,13 +537,10 @@ struct aggregate_list_node
   QFILE_LIST_ID *list_id;	/* used for distinct handling */
   int flag_agg_optimize;
   BTID btid;
-  SORT_LIST *sort_list;		/* for sorting elements before aggregation;
-				 * used by GROUP_CONCAT */
+  SORT_LIST *sort_list;		/* for sorting elements before aggregation; used by GROUP_CONCAT */
   AGGREGATE_SPECIFIC_FUNCTION_INFO info;	/* variables for specific functions */
-  AGGREGATE_ACCUMULATOR accumulator;	/* holds runtime values, only for
-					   evaluation */
-  AGGREGATE_ACCUMULATOR_DOMAIN accumulator_domain;	/* holds domain info on
-							   accumulator */
+  AGGREGATE_ACCUMULATOR accumulator;	/* holds runtime values, only for evaluation */
+  AGGREGATE_ACCUMULATOR_DOMAIN accumulator_domain;	/* holds domain info on accumulator */
 };
 
 /* aggregate evaluation hash key */
@@ -581,25 +570,19 @@ struct analytic_ntile_function_info
   int bucket_count;		/* number of required buckets */
 };
 
-typedef struct analytic_cume_percent_function_info
-  ANALYTIC_CUME_PERCENT_FUNCTION_INFO;
+typedef struct analytic_cume_percent_function_info ANALYTIC_CUME_PERCENT_FUNCTION_INFO;
 struct analytic_cume_percent_function_info
 {
-  int last_pos;			/* record the current position of the 
-				 * rows that are no larger than the current row 
-				 */
+  int last_pos;			/* record the current position of the rows that are no larger than the current row */
   double last_res;		/* record the last result */
 };
 
-typedef struct analytic_percentile_function_info
-  ANALYTIC_PERCENTILE_FUNCTION_INFO;
+typedef struct analytic_percentile_function_info ANALYTIC_PERCENTILE_FUNCTION_INFO;
 struct analytic_percentile_function_info
 {
   double cur_group_percentile;	/* current percentile value */
-  REGU_VARIABLE *percentile_reguvar;	/* percentile value of the new tuple
-					 * if this is not the same as cur_gourp_percentile,
-					 * an error is raised.
-					 */
+  REGU_VARIABLE *percentile_reguvar;	/* percentile value of the new tuple if this is not the same as
+					 * cur_gourp_percentile, an error is raised. */
 };
 
 typedef union analytic_function_info ANALYTIC_FUNCTION_INFO;
@@ -626,15 +609,11 @@ struct analytic_list_node
   int flag;			/* flags */
   int sort_prefix_size;		/* number of PARTITION BY cols in sort list */
   int sort_list_size;		/* the total size of the sort list */
-  int offset_idx;		/* index of offset value in select list (for
-				   LEAD/LAG/NTH_value functions) */
-  int default_idx;		/* index of default value in select list (for
-				   LEAD/LAG functions) */
+  int offset_idx;		/* index of offset value in select list (for LEAD/LAG/NTH_value functions) */
+  int default_idx;		/* index of default value in select list (for LEAD/LAG functions) */
   bool from_last;		/* begin at the last or first row */
   bool ignore_nulls;		/* ignore or respect NULL values */
-  bool is_const_operand;	/* is the operand a constant or a host var
-				 * for MEDIAN function
-				 */
+  bool is_const_operand;	/* is the operand a constant or a host var for MEDIAN function */
 
   /* runtime values */
   ANALYTIC_FUNCTION_INFO info;	/* custom function runtime values */
@@ -776,8 +755,7 @@ struct pred_expr
   TYPE_PRED_EXPR type;
 };
 
-typedef DB_LOGICAL (*PR_EVAL_FNC) (THREAD_ENTRY * thread_p, PRED_EXPR *,
-				   VAL_DESCR *, OID *);
+typedef DB_LOGICAL (*PR_EVAL_FNC) (THREAD_ENTRY * thread_p, PRED_EXPR *, VAL_DESCR *, OID *);
 
 /* predicates information of scan */
 typedef struct scan_pred SCAN_PRED;
@@ -815,8 +793,7 @@ struct filter_info
   int *num_vstr_ptr;		/* number pointer of variable string attrs */
   ATTR_ID *vstr_ids;		/* attribute id array of variable string */
   int btree_num_attrs;		/* number of attributes of the index key */
-  int func_idx_col_id;		/* function expression column position, if
-				 * this is a function index */
+  int func_idx_col_id;		/* function expression column position, if this is a function index */
 };
 
 /* pseudocolumns offsets in tuple (from end) */
@@ -827,41 +804,23 @@ struct filter_info
 #define	PCOL_PARENTPOS_TUPLE_OFFSET	5
 #define	PCOL_FIRST_TUPLE_OFFSET		PCOL_PARENTPOS_TUPLE_OFFSET
 
-extern DB_LOGICAL eval_limit_count_is_0 (THREAD_ENTRY * thread_p,
-					 REGU_VARIABLE * rv, VAL_DESCR * vd);
-extern DB_LOGICAL eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
-			     VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
-				   VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
-				   VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_comp2 (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
-				   VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_comp3 (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
-				   VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_alsm4 (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
-				   VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_alsm5 (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
-				   VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_like6 (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
-				   VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_rlike7 (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
-				    VAL_DESCR * vd, OID * obj_oid);
-extern PR_EVAL_FNC eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
-			     DB_TYPE * single_node_type);
-extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid,
-				    RECDES * recdes,
-				    HEAP_SCANCACHE * scan_cache,
+extern DB_LOGICAL eval_limit_count_is_0 (THREAD_ENTRY * thread_p, REGU_VARIABLE * rv, VAL_DESCR * vd);
+extern DB_LOGICAL eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_comp2 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_comp3 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_alsm4 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_alsm5 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_like6 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_rlike7 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
+extern PR_EVAL_FNC eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type);
+extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 				    FILTER_INFO * filter);
-extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
-				   FILTER_INFO * filter);
-extern DB_LOGICAL update_logical_result (THREAD_ENTRY * thread_p,
-					 DB_LOGICAL ev_res,
-					 int *qualification,
-					 FILTER_INFO * key_filter,
-					 RECDES * recdes, const OID * oid);
-extern int eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid,
-				  HFID hfid,
+extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter);
+extern DB_LOGICAL update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualification,
+					 FILTER_INFO * key_filter, RECDES * recdes, const OID * oid);
+extern int eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid, HFID hfid,
 				  REGU_VARIABLE_LIST regu_variable_list);
 
 #endif /* _QUERY_EVALUATOR_H_ */

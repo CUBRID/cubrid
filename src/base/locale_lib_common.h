@@ -44,13 +44,10 @@ typedef unsigned short int UCA_L4_W;
 typedef struct coll_contraction COLL_CONTRACTION;
 struct coll_contraction
 {
-  /* WARNING: Changing the order of the elements breaks locale library
-   * backwards compatibility :
-   *  - 'save_contraction_to_C_file' function needs to be updated
-   *  - checksum of collation with contraction changes */
+  /* WARNING: Changing the order of the elements breaks locale library backwards compatibility : -
+   * 'save_contraction_to_C_file' function needs to be updated - checksum of collation with contraction changes */
 
-  /* next sequence (codepoint or contraction which sorts after this
-   * contraction) */
+  /* next sequence (codepoint or contraction which sorts after this contraction) */
   unsigned int next;
 
   /* weight value for contraction (collation without expansions) */

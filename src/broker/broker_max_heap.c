@@ -27,8 +27,7 @@
 #include "broker_max_heap.h"
 
 int
-max_heap_insert (T_MAX_HEAP_NODE * max_heap, int max_heap_size,
-		 T_MAX_HEAP_NODE * item)
+max_heap_insert (T_MAX_HEAP_NODE * max_heap, int max_heap_size, T_MAX_HEAP_NODE * item)
 {
   int i;
 
@@ -48,8 +47,7 @@ max_heap_insert (T_MAX_HEAP_NODE * max_heap, int max_heap_size,
 }
 
 int
-max_heap_change_priority (T_MAX_HEAP_NODE * max_heap, int id,
-			  int new_priority)
+max_heap_change_priority (T_MAX_HEAP_NODE * max_heap, int id, int new_priority)
 {
   T_MAX_HEAP_NODE item;
   int i, k;
@@ -94,8 +92,7 @@ max_heap_delete (T_MAX_HEAP_NODE * max_heap, T_MAX_HEAP_NODE * ret)
 
   while (child <= max_heap[0].id)
     {
-      if ((child < max_heap[0].id)
-	  && (max_heap[child].priority < max_heap[child + 1].priority))
+      if ((child < max_heap[0].id) && (max_heap[child].priority < max_heap[child + 1].priority))
 	child++;
       if (temp.priority > max_heap[child].priority)
 	break;

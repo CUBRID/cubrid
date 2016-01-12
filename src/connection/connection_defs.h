@@ -449,8 +449,7 @@ struct css_conn_entry
   BOOT_CLIENT_TYPE client_type;
   CSS_CRITICAL_SECTION csect;
   bool stop_talk;		/* block and stop this connection */
-  bool ignore_repl_delay;	/* don't do reset_on_commit by the delay 
-				 * of replication */
+  bool ignore_repl_delay;	/* don't do reset_on_commit by the delay of replication */
   unsigned short stop_phase;
 
   char *version_string;		/* client version string */
@@ -464,20 +463,20 @@ struct css_conn_entry
   int free_wait_queue_count;
   int free_net_header_count;
 
-  CSS_LIST request_queue;	/* list of requests    */
-  CSS_LIST data_queue;		/* list of data packets    */
+  CSS_LIST request_queue;	/* list of requests */
+  CSS_LIST data_queue;		/* list of data packets */
   CSS_LIST data_wait_queue;	/* list of waiters */
-  CSS_LIST abort_queue;		/* list of aborted requests         */
+  CSS_LIST abort_queue;		/* list of aborted requests */
   CSS_LIST buffer_queue;	/* list of buffers queued for data */
-  CSS_LIST error_queue;		/* list of (server) error messages  */
+  CSS_LIST error_queue;		/* list of (server) error messages */
   struct session_state *session_p;	/* session object for current request */
 #else
   FILE *file;
-  CSS_QUEUE_ENTRY *request_queue;	/* the header for unseen requests    */
-  CSS_QUEUE_ENTRY *data_queue;	/* header for unseen data packets    */
-  CSS_QUEUE_ENTRY *abort_queue;	/* queue of aborted requests         */
+  CSS_QUEUE_ENTRY *request_queue;	/* the header for unseen requests */
+  CSS_QUEUE_ENTRY *data_queue;	/* header for unseen data packets */
+  CSS_QUEUE_ENTRY *abort_queue;	/* queue of aborted requests */
   CSS_QUEUE_ENTRY *buffer_queue;	/* header of buffers queued for data */
-  CSS_QUEUE_ENTRY *error_queue;	/* queue of (server) error messages  */
+  CSS_QUEUE_ENTRY *error_queue;	/* queue of (server) error messages */
   void *cnxn;
 #endif
   SESSION_ID session_id;

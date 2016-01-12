@@ -39,12 +39,10 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
-static int method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer,
-					    unsigned int rc,
-					    char *host, char *server_name);
+static int method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer, unsigned int rc, char *host,
+					    char *server_name);
 static void method_clear_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer);
-static int method_send_value_to_server (DB_VALUE * dbval,
-					VACOMM_BUFFER * vacomm_buffer);
+static int method_send_value_to_server (DB_VALUE * dbval, VACOMM_BUFFER * vacomm_buffer);
 static int method_send_eof_to_server (VACOMM_BUFFER * vacomm_buffer);
 
 /*
@@ -72,9 +70,7 @@ method_clear_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p)
  *   server_name(in)    :
  */
 static int
-method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p,
-				 unsigned int rc, char *host_p,
-				 char *server_name_p)
+method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p, unsigned int rc, char *host_p, char *server_name_p)
 {
   vacomm_buffer_p->rc = rc;
   vacomm_buffer_p->server_name = NULL;
@@ -84,8 +80,7 @@ method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p,
   if (vacomm_buffer_p->host == NULL)
     {
       method_clear_vacomm_buffer (vacomm_buffer_p);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) (strlen (host_p) + 1));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (host_p) + 1));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -93,8 +88,7 @@ method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p,
   if (vacomm_buffer_p->server_name == NULL)
     {
       method_clear_vacomm_buffer (vacomm_buffer_p);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) (strlen (server_name_p) + 1));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (server_name_p) + 1));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -102,8 +96,7 @@ method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p,
   if (vacomm_buffer_p->area == NULL)
     {
       method_clear_vacomm_buffer (vacomm_buffer_p);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) VACOMM_BUFFER_SIZE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) VACOMM_BUFFER_SIZE);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -128,8 +121,7 @@ method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p,
  * the value into the buffer.
  */
 static int
-method_send_value_to_server (DB_VALUE * dbval_p,
-			     VACOMM_BUFFER * vacomm_buffer_p)
+method_send_value_to_server (DB_VALUE * dbval_p, VACOMM_BUFFER * vacomm_buffer_p)
 {
   int dbval_length;
   char *new_area_p, *p;
@@ -142,20 +134,16 @@ method_send_value_to_server (DB_VALUE * dbval_p,
     {
       if (vacomm_buffer_p->cur_pos == 0)
 	{
-	  new_area_p = (char *) realloc (vacomm_buffer_p->area,
-					 dbval_length +
-					 VACOMM_BUFFER_HEADER_SIZE);
+	  new_area_p = (char *) realloc (vacomm_buffer_p->area, dbval_length + VACOMM_BUFFER_HEADER_SIZE);
 	  if (new_area_p == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		      (size_t) (dbval_length + VACOMM_BUFFER_HEADER_SIZE));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 
 	  vacomm_buffer_p->area = new_area_p;
-	  vacomm_buffer_p->buffer = (vacomm_buffer_p->area +
-				     VACOMM_BUFFER_HEADER_SIZE);
+	  vacomm_buffer_p->buffer = (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_SIZE);
 	  vacomm_buffer_p->size = dbval_length;
 	}
       else
@@ -163,26 +151,18 @@ method_send_value_to_server (DB_VALUE * dbval_p,
 	  if (vacomm_buffer_p->action == VACOMM_BUFFER_SEND)
 	    {
 	      length = vacomm_buffer_p->cur_pos + VACOMM_BUFFER_HEADER_SIZE;
-	      p = or_pack_int (vacomm_buffer_p->area +
-			       VACOMM_BUFFER_HEADER_LENGTH_OFFSET, length);
-	      p = or_pack_int (vacomm_buffer_p->area +
-			       VACOMM_BUFFER_HEADER_STATUS_OFFSET,
-			       (int) METHOD_SUCCESS);
-	      p = or_pack_int (vacomm_buffer_p->area +
-			       VACOMM_BUFFER_HEADER_NO_VALS_OFFSET,
-			       vacomm_buffer_p->no_vals);
-	      error = net_client_send_data (vacomm_buffer_p->host,
-					    vacomm_buffer_p->rc,
-					    vacomm_buffer_p->area,
-					    vacomm_buffer_p->cur_pos +
-					    VACOMM_BUFFER_HEADER_SIZE);
+	      p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_LENGTH_OFFSET, length);
+	      p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_STATUS_OFFSET, (int) METHOD_SUCCESS);
+	      p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET, vacomm_buffer_p->no_vals);
+	      error =
+		net_client_send_data (vacomm_buffer_p->host, vacomm_buffer_p->rc, vacomm_buffer_p->area,
+				      vacomm_buffer_p->cur_pos + VACOMM_BUFFER_HEADER_SIZE);
 	      if (error != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
 
-	      error = net_client_receive_action (vacomm_buffer_p->rc,
-						 &action);
+	      error = net_client_receive_action (vacomm_buffer_p->rc, &action);
 	      if (error)
 		{
 		  return ER_FAILED;
@@ -200,15 +180,13 @@ method_send_value_to_server (DB_VALUE * dbval_p,
     }
 
   ++vacomm_buffer_p->no_vals;
-  p = or_pack_db_value (vacomm_buffer_p->buffer
-			+ vacomm_buffer_p->cur_pos, dbval_p);
+  p = or_pack_db_value (vacomm_buffer_p->buffer + vacomm_buffer_p->cur_pos, dbval_p);
 
 #if !defined(NDEBUG)
   /* suppress valgrind UMW error */
   do
     {
-      char *new_pos = vacomm_buffer_p->buffer + vacomm_buffer_p->cur_pos +
-	dbval_length;
+      char *new_pos = vacomm_buffer_p->buffer + vacomm_buffer_p->cur_pos + dbval_length;
 
       if (new_pos > p)
 	{
@@ -236,18 +214,13 @@ method_send_eof_to_server (VACOMM_BUFFER * vacomm_buffer_p)
   char *p;
 
   length = vacomm_buffer_p->cur_pos + VACOMM_BUFFER_HEADER_SIZE;
-  p = or_pack_int (vacomm_buffer_p->area +
-		   VACOMM_BUFFER_HEADER_LENGTH_OFFSET, length);
-  p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_STATUS_OFFSET,
-		   (int) METHOD_EOF);
-  p =
-    or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET,
-		 vacomm_buffer_p->no_vals);
+  p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_LENGTH_OFFSET, length);
+  p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_STATUS_OFFSET, (int) METHOD_EOF);
+  p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET, vacomm_buffer_p->no_vals);
 
-  error = net_client_send_data (vacomm_buffer_p->host, vacomm_buffer_p->rc,
-				vacomm_buffer_p->area,
-				vacomm_buffer_p->cur_pos +
-				VACOMM_BUFFER_HEADER_SIZE);
+  error =
+    net_client_send_data (vacomm_buffer_p->host, vacomm_buffer_p->rc, vacomm_buffer_p->area,
+			  vacomm_buffer_p->cur_pos + VACOMM_BUFFER_HEADER_SIZE);
 
   if (error != NO_ERROR)
     {
@@ -265,17 +238,14 @@ method_send_eof_to_server (VACOMM_BUFFER * vacomm_buffer_p)
  *   server_name(in)    : server name
  */
 int
-method_send_error_to_server (unsigned int rc, char *host_p,
-			     char *server_name_p)
+method_send_error_to_server (unsigned int rc, char *host_p, char *server_name_p)
 {
   char *p;
   char area[VACOMM_BUFFER_HEADER_SIZE];
   int error;
 
-  p = or_pack_int (area + VACOMM_BUFFER_HEADER_LENGTH_OFFSET,
-		   VACOMM_BUFFER_HEADER_SIZE);
-  p = or_pack_int (area + VACOMM_BUFFER_HEADER_STATUS_OFFSET,
-		   (int) METHOD_ERROR);
+  p = or_pack_int (area + VACOMM_BUFFER_HEADER_LENGTH_OFFSET, VACOMM_BUFFER_HEADER_SIZE);
+  p = or_pack_int (area + VACOMM_BUFFER_HEADER_STATUS_OFFSET, (int) METHOD_ERROR);
   p = or_pack_int (area + VACOMM_BUFFER_HEADER_ERROR_OFFSET, er_errid ());
 
   error = net_client_send_data (host_p, rc, area, VACOMM_BUFFER_HEADER_SIZE);
@@ -298,10 +268,7 @@ method_send_error_to_server (unsigned int rc, char *host_p,
  *   method_sig_list(in): Method signatures
  */
 int
-method_invoke_for_server (unsigned int rc,
-			  char *host_p,
-			  char *server_name_p,
-			  QFILE_LIST_ID * list_id_p,
+method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QFILE_LIST_ID * list_id_p,
 			  METHOD_SIG_LIST * method_sig_list_p)
 {
   DB_VALUE *val_list_p = NULL;
@@ -324,8 +291,7 @@ method_invoke_for_server (unsigned int rc,
 
   DB_MAKE_NULL (&value);
 
-  if (method_initialize_vacomm_buffer (&vacomm_buffer, rc, host_p,
-				       server_name_p) != NO_ERROR)
+  if (method_initialize_vacomm_buffer (&vacomm_buffer, rc, host_p, server_name_p) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -347,14 +313,12 @@ method_invoke_for_server (unsigned int rc,
   val_list_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * value_count);
   if (val_list_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (DB_VALUE) * value_count);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * value_count);
       method_clear_vacomm_buffer (&vacomm_buffer);
       return ER_FAILED;
     }
 
-  for (count = 0, value_p = val_list_p; count < value_count;
-       count++, value_p++)
+  for (count = 0, value_p = val_list_p; count < value_count; count++, value_p++)
     {
       DB_MAKE_NULL (value_p);
     }
@@ -362,8 +326,7 @@ method_invoke_for_server (unsigned int rc,
   values_p = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * (value_count + 1));
   if (values_p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (DB_VALUE *) * (value_count + 1));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *) * (value_count + 1));
       method_clear_vacomm_buffer (&vacomm_buffer);
       free_and_init (val_list_p);
       return ER_FAILED;
@@ -372,8 +335,8 @@ method_invoke_for_server (unsigned int rc,
   oid_cols = (int *) malloc (sizeof (int) * method_sig_list_p->no_methods);
   if (oid_cols == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (int) * method_sig_list_p->no_methods);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (int) * method_sig_list_p->no_methods);
       method_clear_vacomm_buffer (&vacomm_buffer);
       free_and_init (val_list_p);
       free_and_init (values_p);
@@ -399,8 +362,7 @@ method_invoke_for_server (unsigned int rc,
   /* tfile_vfid pointer as query id for method scan */
   cursor_id.query_id = (QUERY_ID) list_id_p->tfile_vfid;
 
-  cursor_set_oid_columns (&cursor_id, oid_cols,
-			  method_sig_list_p->no_methods);
+  cursor_set_oid_columns (&cursor_id, oid_cols, method_sig_list_p->no_methods);
 
   while (true)
     {
@@ -410,17 +372,13 @@ method_invoke_for_server (unsigned int rc,
 	  break;
 	}
 
-      if (cursor_get_tuple_value_list (&cursor_id,
-				       list_id_p->type_list.type_cnt,
-				       val_list_p) != NO_ERROR)
+      if (cursor_get_tuple_value_list (&cursor_id, list_id_p->type_list.type_cnt, val_list_p) != NO_ERROR)
 	{
 	  cursor_result = -1;
 	  goto end;
 	}
 
-      for (method_no = 0,
-	   meth_sig_p = method_sig_list_p->method_sig;
-	   method_no < method_sig_list_p->no_methods;
+      for (method_no = 0, meth_sig_p = method_sig_list_p->method_sig; method_no < method_sig_list_p->no_methods;
 	   ++method_no, meth_sig_p = meth_sig_p->next)
 	{
 	  /* The first position # is for the object ID */
@@ -436,9 +394,8 @@ method_invoke_for_server (unsigned int rc,
 
 	  if (meth_sig_p->class_name != NULL)
 	    {
-	      /* Don't call the method if the object is NULL or it has been
-	       * deleted.  A method call on a NULL object is NULL.
-	       */
+	      /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is 
+	       * NULL. */
 	      if (!DB_IS_NULL (values_p[0]))
 		{
 		  error = db_is_any_class (DB_GET_OBJECT (values_p[0]));
@@ -453,15 +410,11 @@ method_invoke_for_server (unsigned int rc,
 		}
 	      else if (error > 0)
 		{
-		  /* methods must run with authorization turned on and database
-		   * modifications turned off.
-		   */
+		  /* methods must run with authorization turned on and database modifications turned off. */
 		  turn_on_auth = 0;
 		  AU_ENABLE (turn_on_auth);
 		  db_disable_modification ();
-		  error = obj_send_array (DB_GET_OBJECT (values_p[0]),
-					  meth_sig_p->method_name,
-					  &value, &values_p[1]);
+		  error = obj_send_array (DB_GET_OBJECT (values_p[0]), meth_sig_p->method_name, &value, &values_p[1]);
 		  db_enable_modification ();
 		  AU_DISABLE (turn_on_auth);
 		}
@@ -472,9 +425,7 @@ method_invoke_for_server (unsigned int rc,
 	      turn_on_auth = 0;
 	      AU_ENABLE (turn_on_auth);
 	      db_disable_modification ();
-	      error = jsp_call_from_server (&value, values_p,
-					    meth_sig_p->method_name,
-					    meth_sig_p->no_method_args);
+	      error = jsp_call_from_server (&value, values_p, meth_sig_p->method_name, meth_sig_p->no_method_args);
 	      db_enable_modification ();
 	      AU_DISABLE (turn_on_auth);
 	    }
@@ -489,8 +440,7 @@ method_invoke_for_server (unsigned int rc,
 	    {
 	      if (er_errid () == NO_ERROR)	/* caller has not set an error */
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR,
-			  1);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1);
 		}
 	      cursor_result = -1;
 	      goto end;
@@ -513,8 +463,7 @@ method_invoke_for_server (unsigned int rc,
 	  pr_clear_value (&value);
 	}
 
-      for (count = 0, value_p = val_list_p; count < value_count;
-	   count++, value_p++)
+      for (count = 0, value_p = val_list_p; count < value_count; count++, value_p++)
 	{
 	  pr_clear_value (value_p);
 	}
@@ -525,8 +474,7 @@ end:
   free_and_init (values_p);
 
   pr_clear_value (&value);
-  for (count = 0, value_p = val_list_p; count < value_count;
-       count++, value_p++)
+  for (count = 0, value_p = val_list_p; count < value_count; count++, value_p++)
     {
       pr_clear_value (value_p);
     }

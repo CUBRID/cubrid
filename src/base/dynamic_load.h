@@ -105,19 +105,14 @@ extern int dl_resolve_object_symbol (struct nlist *syms);
 
 #if defined(HPUX) || defined(SOLARIS) || defined(LINUX) || defined(AIX)
 #if defined (ENABLE_UNUSED_FUNCTION)
-extern int dl_load_object_with_estimate (const char **obj_files,
-					 const char **msgp);
+extern int dl_load_object_with_estimate (const char **obj_files, const char **msgp);
 #endif /* ENABLE_UNUSED_FUNCTION */
 extern int dl_load_object_module (const char **, const char **);
 #elif (defined(sun) || defined(sparc)) && !defined(SOLARIS)
-extern int dl_load_object_module (const char **, const char **,
-				  const char **);
+extern int dl_load_object_module (const char **, const char **, const char **);
 #if defined (ENABLE_UNUSED_FUNCTION)
-extern int dl_load_object_with_estimate (size_t * actual_size,
-					 const char **obj_files,
-					 const char **msgp, const char **libs,
-					 const size_t estimated_size,
-					 enum dl_estimate_mode mode);
+extern int dl_load_object_with_estimate (size_t * actual_size, const char **obj_files, const char **msgp,
+					 const char **libs, const size_t estimated_size, enum dl_estimate_mode mode);
 #endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* (defined(sun) || defined(sparc)) && !defined(SOLARIS) */
 

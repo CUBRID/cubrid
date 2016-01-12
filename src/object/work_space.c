@@ -180,8 +180,7 @@ static MOP ws_make_mop (OID * oid);
 static void ws_free_mop (MOP op);
 static void emergency_remove_dirty (MOP op);
 static void ws_unlink_from_commit_mops_list (MOP op);
-static int ws_map_dirty_internal (MAPFUNC function, void *args,
-				  bool classes_only);
+static int ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only);
 static int add_class_object (MOP class_mop, MOP obj);
 static void remove_class_object (MOP class_mop, MOP obj);
 static int mark_instance_deleted (MOP op, void *args);
@@ -193,8 +192,7 @@ static int ws_describe_mop (MOP mop, void *args);
 static void ws_flush_properties (MOP op);
 static int ws_check_hash_link (int slot);
 static void ws_insert_mop_on_hash_link (MOP mop, int slot);
-static void ws_insert_mop_on_hash_link_with_position (MOP mop, int slot,
-						      MOP prev);
+static void ws_insert_mop_on_hash_link_with_position (MOP mop, int slot, MOP prev);
 
 static MOP ws_mvcc_latest_permanent_version (MOP mop);
 static MOP ws_mvcc_latest_temporary_version (MOP mop);
@@ -220,20 +218,18 @@ ws_abort_transaction (void)
     {
       if (er_errid () != ER_OUT_OF_VIRTUAL_MEMORY)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
 	}
     }
   else
     {
-      /* might want to keep a chunk of memory in reserve here so we can free it
-         in case we need to do any small allocations during the abort process */
+      /* might want to keep a chunk of memory in reserve here so we can free it in case we need to do any small
+       * allocations during the abort process */
 
       (void) tran_unilaterally_abort ();
 
       /* couldn't get to the catalog, use hard coded strings */
-      fprintf (stdout,
-	       "CUBRID cannot allocate main memory and must halt execution.\n");
+      fprintf (stdout, "CUBRID cannot allocate main memory and must halt execution.\n");
       fprintf (stdout, "The current transaction has been aborted.\n");
       fprintf (stdout, "Data integrity has been preserved.\n");
     }
@@ -281,9 +277,7 @@ ws_make_mop (OID * oid)
       op->decached = 0;
       op->permanent_mvcc_link = 0;
       op->label_value_list = NULL;
-      /* Initialize mvcc snapshot version to be sure it doesn't match with
-       * current mvcc snapshot version.
-       */
+      /* Initialize mvcc snapshot version to be sure it doesn't match with current mvcc snapshot version. */
       op->mvcc_snapshot_version = ws_get_mvcc_snapshot_version () - 1;
 
       /* this is NULL only for the Null_object hack */
@@ -300,8 +294,7 @@ ws_make_mop (OID * oid)
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (DB_OBJECT));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_OBJECT));
 
       /* couldnt' allocate a MOP, mgc should have set an error by now */
       ws_abort_transaction ();
@@ -412,8 +405,7 @@ ws_free_temp_mop (MOP op)
  *    may ultimately provide.
  */
 static MOP
-ws_make_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj,
-		       WS_REFCOLLECTOR collector)
+ws_make_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj, WS_REFCOLLECTOR collector)
 {
   MOP op;
 
@@ -469,15 +461,13 @@ ws_make_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj,
  *
  */
 MOP
-ws_find_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj,
-		       WS_REFCOLLECTOR collector)
+ws_find_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj, WS_REFCOLLECTOR collector)
 {
   MOP m, found = NULL;
 
   for (m = ws_Reference_mops; m != NULL && found == NULL; m = m->hash_link)
     {
-      if (ws_is_same_object (WS_GET_REFMOP_OWNER (m), owner)
-	  && WS_GET_REFMOP_ID (m) == attid)
+      if (ws_is_same_object (WS_GET_REFMOP_OWNER (m), owner) && WS_GET_REFMOP_ID (m) == attid)
 	found = m;
     }
   if (found == NULL)
@@ -527,8 +517,7 @@ ws_cull_reference_mops (void *table, char *table2, long size, check_fn check)
   int count;
 
   count = 0;
-  for (mop = ws_Reference_mops, prev = NULL, next = NULL; mop != NULL;
-       mop = next)
+  for (mop = ws_Reference_mops, prev = NULL, next = NULL; mop != NULL; mop = next)
     {
       next = mop->hash_link;
       if ((*check) (mop))
@@ -555,7 +544,7 @@ ws_cull_reference_mops (void *table, char *table2, long size, check_fn check)
 	      prev->hash_link = next;
 	    }
 
-	  /*
+	  /* 
 	   * if there is no owner, this is a free standing reference and can
 	   * be freed if there is a supplied collector function, otherwise
 	   * just NULL out the back pointer in the reference object
@@ -657,14 +646,10 @@ ws_insert_mop_on_hash_link (MOP mop, int slot)
 	  return;
 	}
 
-      /* Unfortunately, we have to navigate the list when c == 0,
-       * because there can be redundancies of mops which have the same oid,
-       * in case of VID.
-       * Under 'Create table A -> rollback -> Create table B' scenario,
-       * the oid of the mop of table B can be same as that of table A.
-       * Because the newest one is located at the head of redundancies
-       * in that case, we use the first fit method.
-       */
+      /* Unfortunately, we have to navigate the list when c == 0, because there can be redundancies of mops which have
+       * the same oid, in case of VID. Under 'Create table A -> rollback -> Create table B' scenario, the oid of the
+       * mop of table B can be same as that of table A. Because the newest one is located at the head of redundancies
+       * in that case, we use the first fit method. */
     }
 
   for (p = ws_Mop_table[slot].head; p != NULL; prev = p, p = p->hash_link)
@@ -678,14 +663,10 @@ ws_insert_mop_on_hash_link (MOP mop, int slot)
 	      break;
 	    }
 
-	  /* For real objects, must first discard the duplicate object and 
-	   * remove it from class_mop.
-	   */
-	  /* TODO: This can happen in non-mvcc now. We can have a duplicate
-	   *       mop in a insert->rollback->insert, where the duplicate is
-	   *       the first inserted object. That object does not exist
-	   *       anymore and should probably be marked accordingly.
-	   */
+	  /* For real objects, must first discard the duplicate object and remove it from class_mop. */
+	  /* TODO: This can happen in non-mvcc now. We can have a duplicate mop in a insert->rollback->insert, where
+	   * the duplicate is the first inserted object. That object does not exist anymore and should probably be
+	   * marked accordingly. */
 
 	  /* Decache object */
 	  ws_decache (p);
@@ -782,8 +763,7 @@ ws_insert_mop_on_hash_link_with_position (MOP mop, int slot, MOP prev)
  * class_mop (in) : Class MOP.
  */
 MOP
-ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop,
-		     bool updated_by_me)
+ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop, bool updated_by_me)
 {
   MOP mop = NULL, new_mop = NULL, cached_mop_of_new = NULL;
   int error_code = NO_ERROR;
@@ -821,14 +801,11 @@ ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop,
 	      cached_mop_of_new->mvcc_link = NULL;
 	      cached_mop_of_new->permanent_mvcc_link = 0;
 
-	      /* ws_mop will remove the old class_mop link and link to the new one
-	       * and reset mop->decached to reuse it.
-	       */
+	      /* ws_mop will remove the old class_mop link and link to the new one and reset mop->decached to reuse it. */
 	      new_mop = ws_mop (new_oid, class_mop);
 	    }
 
-	  assert (new_mop->mvcc_link == NULL
-		  && new_mop->permanent_mvcc_link == 0);
+	  assert (new_mop->mvcc_link == NULL && new_mop->permanent_mvcc_link == 0);
 	  mop->mvcc_link = new_mop;
 
 	  new_mop->pruning_type = pruning_type;
@@ -837,9 +814,7 @@ ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop,
 	    {
 	      /* Mark mvcc link as temporary */
 	      mop->permanent_mvcc_link = 0;
-	      /* Add old object to commit list to resolve link on
-	       * commit/rollback
-	       */
+	      /* Add old object to commit list to resolve link on commit/rollback */
 	      WS_PUT_COMMIT_MOP (mop);
 	    }
 	  else
@@ -892,11 +867,8 @@ ws_mop_if_exists (OID * oid)
       c = oid_compare (oid, WS_OID (mop));
       if (c > 0)
 	{
-	  /* 'oid' is greater than the tail,
-	   * which means 'oid' does not exist in the list
-	   *
-	   * NO need to traverse the list!
-	   */
+	  /* 'oid' is greater than the tail, which means 'oid' does not exist in the list NO need to traverse the
+	   * list! */
 	  return NULL;
 	}
       else
@@ -906,8 +878,7 @@ ws_mop_if_exists (OID * oid)
 	  /* Unfortunately, we have to navigate the list when c == 0 */
 	  /* See the comment of ws_insert_mop_on_hash_link() */
 
-	  for (mop = ws_Mop_table[slot].head; mop != NULL;
-	       mop = mop->hash_link)
+	  for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
 	    {
 	      c = oid_compare (oid, WS_OID (mop));
 	      if (c == 0)
@@ -945,8 +916,7 @@ ws_mop (OID * oid, MOP class_mop)
 
   if (OID_ISNULL (oid))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CANT_INSTALL_NULL_OID,
-	      0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CANT_INSTALL_NULL_OID, 0);
       return NULL;
     }
 
@@ -965,11 +935,8 @@ ws_mop (OID * oid, MOP class_mop)
       c = oid_compare (oid, WS_OID (mop));
       if (c > 0)
 	{
-	  /* 'oid' is greater than the tail,
-	   * which means 'oid' does not exist in the list
-	   *
-	   * NO need to traverse the list!
-	   */
+	  /* 'oid' is greater than the tail, which means 'oid' does not exist in the list NO need to traverse the
+	   * list! */
 	  prev = ws_Mop_table[slot].tail;
 	}
       else
@@ -979,15 +946,14 @@ ws_mop (OID * oid, MOP class_mop)
 	  /* Unfortunately, we have to navigate the list when c == 0 */
 	  /* See the comment of ws_insert_mop_on_hash_link() */
 
-	  for (mop = ws_Mop_table[slot].head; mop != NULL;
-	       prev = mop, mop = mop->hash_link)
+	  for (mop = ws_Mop_table[slot].head; mop != NULL; prev = mop, mop = mop->hash_link)
 	    {
 	      c = oid_compare (oid, WS_OID (mop));
 	      if (c == 0)
 		{
 		  if (mop->decached)
 		    {
-		      /*
+		      /* 
 		       * If a decached instance object has a class mop,
 		       * we need to clear the information related the class mop,
 		       * such as class_mop and class_link.
@@ -997,17 +963,14 @@ ws_mop (OID * oid, MOP class_mop)
 		       * many codes based on the assumption. So we clear them here,
 		       * when reusing decached objects.
 		       */
-		      if (mop->class_mop != sm_Root_class_mop
-			  && class_mop != mop->class_mop)
+		      if (mop->class_mop != sm_Root_class_mop && class_mop != mop->class_mop)
 			{
 			  if (mop->class_mop != NULL)
 			    {
 			      remove_class_object (mop->class_mop, mop);
 			    }
 			  /* temporary disable assert */
-			  /* assert (mop->class_mop == NULL
-			   *         && mop->class_link == NULL);
-			   */
+			  /* assert (mop->class_mop == NULL && mop->class_link == NULL); */
 			  mop->class_mop = mop->class_link = NULL;
 			  if (class_mop != NULL)
 			    {
@@ -1098,7 +1061,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
   switch (keytype)
     {
     case DB_TYPE_OBJECT:
-      /*
+      /* 
        * a non-virtual object mop
        * This will occur when reading the oid keys field of a vobject
        * if it was read thru some interface that automatically
@@ -1120,10 +1083,8 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
 	  return NULL;
 	}
 
-      /* In this case, we need to set the class_mop.
-       * Or we may fail to get mop->object when fetch dirty version.
-       * See xlocator_fetch, locator_cache and locator_cache_have_object
-       */
+      /* In this case, we need to set the class_mop. Or we may fail to get mop->object when fetch dirty version. See
+       * xlocator_fetch, locator_cache and locator_cache_have_object */
       if (mop->class_mop == NULL)
 	{
 	  mop->class_mop = mq_fetch_one_real_class (class_mop);
@@ -1132,7 +1093,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
       db_make_object (keys, mop);
       break;
     case DB_TYPE_OID:
-      /*
+      /* 
        * a non-virtual object mop
        * This will occur when reading the oid keys field of a virtual object
        * if it was read through some interface that does NOT swizzle.
@@ -1165,7 +1126,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
 	      vid_info = WS_VID_INFO (mop);
 	      if (class_mop == mop->class_mop)
 		{
-		  /*
+		  /* 
 		   * NOTE, formerly called pr_value_equal. Don't coerce
 		   * with the new tp_value_equal function but that may
 		   * actually be desired here.
@@ -1190,8 +1151,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
   vid_info = WS_VID_INFO (new_mop) = (VID_INFO *) malloc (sizeof (VID_INFO));
   if (vid_info == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (VID_INFO));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (VID_INFO));
       goto abort_it;
     }
 
@@ -1256,8 +1216,7 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
   ws_find (mop, &inst);
   if (!inst)
     {
-      inst = vid_fetch_instance (mop, DB_FETCH_READ,
-				 TM_TRAN_READ_FETCH_VERSION ());
+      inst = vid_fetch_instance (mop, DB_FETCH_READ, TM_TRAN_READ_FETCH_VERSION ());
     }
   if (!inst)
     {
@@ -1269,8 +1228,7 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
 
   slot = mht_valhash (keys, ws_Mop_table_size);
 
-  for (found = ws_Mop_table[slot].head, prev = NULL;
-       found != mop && found != NULL; found = found->hash_link)
+  for (found = ws_Mop_table[slot].head, prev = NULL; found != mop && found != NULL; found = found->hash_link)
     {
       prev = found;
     }
@@ -1282,8 +1240,7 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
 
   /* get new relational key */
   no_keys = 0;
-  for (att = class_->attributes; att != NULL;
-       att = (SM_ATTRIBUTE *) att->header.next)
+  for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       if (att->flags & SM_ATTFLAG_VID)
 	{
@@ -1297,32 +1254,25 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
 
   for (key_index = 0; key_index < no_keys; ++key_index)
     {
-      for (att = class_->attributes; att != NULL;
-	   att = (SM_ATTRIBUTE *) att->header.next)
+      for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	{
-	  if ((att->flags & SM_ATTFLAG_VID)
-	      && (classobj_get_prop (att->properties, SM_PROPERTY_VID_KEY,
-				     &val)))
+	  if ((att->flags & SM_ATTFLAG_VID) && (classobj_get_prop (att->properties, SM_PROPERTY_VID_KEY, &val)))
 	    {
 	      att_seq_val = DB_GET_INTEGER (&val);
 	      if (att_seq_val == key_index)
 		{
 		  /* Sets won't work as key components */
 		  mem = inst + att->offset;
-		  db_value_domain_init (&val, att->type->id,
-					att->domain->precision,
-					att->domain->scale);
+		  db_value_domain_init (&val, att->type->id, att->domain->precision, att->domain->scale);
 		  PRIM_GETMEM (att->type, att->domain, mem, &val);
-		  if ((DB_VALUE_TYPE (value) == DB_TYPE_STRING)
-		      && (DB_GET_STRING (value) == NULL))
+		  if ((DB_VALUE_TYPE (value) == DB_TYPE_STRING) && (DB_GET_STRING (value) == NULL))
 		    {
 		      DB_MAKE_NULL (value);
 		    }
 
 		  if (no_keys > 1)
 		    {
-		      if (set_put_element (db_get_set (&new_key),
-					   key_index, &val) < 0)
+		      if (set_put_element (db_get_set (&new_key), key_index, &val) < 0)
 			{
 			  return false;
 			}
@@ -1390,8 +1340,7 @@ ws_new_mop (OID * oid, MOP class_mop)
   mop = NULL;
   if (OID_ISNULL (oid))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CANT_INSTALL_NULL_OID,
-	      0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CANT_INSTALL_NULL_OID, 0);
       return NULL;
     }
 
@@ -1450,8 +1399,7 @@ ws_update_oid_and_class (MOP mop, OID * new_oid, OID * new_class_oid)
 
   if (class_mop == NULL || !OID_EQ (WS_OID (class_mop), new_class_oid))
     {
-      /* we also need to disconnect this instance from class_mop and add it
-         to new_class_oid */
+      /* we also need to disconnect this instance from class_mop and add it to new_class_oid */
       if (class_mop != NULL)
 	{
 	  remove_class_object (class_mop, mop);
@@ -1586,14 +1534,13 @@ ws_disconnect_deleted_instances (MOP classop)
       return;
     }
 
-  for (m = classop->class_link, next = NULL;
-       m != Null_object && m != NULL; m = next)
+  for (m = classop->class_link, next = NULL; m != Null_object && m != NULL; m = next)
     {
       next = m->class_link;
 
       if (m->object != NULL)
 	{
-	  /*
+	  /* 
 	   * there should be no cached object here ! since the class is gone,
 	   * we no longer no how to free this. If this becomes a normal case,
 	   * we'll have to wait and decache the class AFTER all the instances
@@ -1653,18 +1600,16 @@ emergency_remove_dirty (MOP op)
 {
   MOP mop, prev;
 
-  /*
+  /* 
    * make sure we can get to op's class dirty list because without that
    * there is no dirty list from which we can remove op.
    */
-  if (op->dirty_link != NULL
-      && op->class_mop != NULL && op->class_mop->dirty_link != NULL)
+  if (op->dirty_link != NULL && op->class_mop != NULL && op->class_mop->dirty_link != NULL)
     {
       /* search for op in op's class' dirty list */
       prev = NULL;
 
-      for (mop = op->class_mop->dirty_link;
-	   mop != Null_object && mop != op; mop = mop->dirty_link)
+      for (mop = op->class_mop->dirty_link; mop != Null_object && mop != op; mop = mop->dirty_link)
 	{
 	  prev = mop;
 	}
@@ -1765,8 +1710,7 @@ ws_cull_mops (void)
   for (m = ws_Resident_classes; m != NULL; m = m->next)
     {
       prev = NULL;
-      for (mops = m->op->class_link; mops != NULL && mops != Null_object;
-	   mops = next)
+      for (mops = m->op->class_link; mops != NULL && mops != Null_object; mops = next)
 	{
 	  next = mops->class_link;
 	  if (!mops->released)
@@ -1805,8 +1749,7 @@ ws_cull_mops (void)
 	      if (mops->reference)
 		{
 		  /* reference mop, these aren't allowed in the MOP table */
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CORRUPTED,
-			  0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CORRUPTED, 0);
 		  ws_Stats.corruptions++;
 		  /* probably fatal to continue here */
 		  continue;
@@ -1815,8 +1758,7 @@ ws_cull_mops (void)
 	      if (mops->is_set)
 		{
 		  /* reference mop, these aren't allowed in the MOP table */
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CORRUPTED,
-			  0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CORRUPTED, 0);
 		  ws_Stats.corruptions++;
 		  continue;
 		}
@@ -1824,23 +1766,20 @@ ws_cull_mops (void)
 	      if (mops == sm_Root_class_mop)
 		{
 		  /* can't have rootclass on the garbage list */
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CORRUPTED,
-			  0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CORRUPTED, 0);
 		  ws_Stats.corruptions++;
 		  /* probably fatal to continue here */
 		}
 
 	      if (mops->class_mop == sm_Root_class_mop && mops->dirty)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_WS_GC_DIRTY_MOP, 0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_GC_DIRTY_MOP, 0);
 		  ws_Stats.dirty_list_emergencies++;
 		  emergency_remove_dirty (mops);
 		}
 	      if (mops->class_mop != sm_Root_class_mop && mops->dirty_link)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_WS_GC_DIRTY_MOP, 0);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_GC_DIRTY_MOP, 0);
 		  ws_Stats.dirty_list_emergencies++;
 		  emergency_remove_dirty (mops);
 		}
@@ -1863,9 +1802,8 @@ ws_cull_mops (void)
 
 	      assert (ws_check_hash_link (slot) == NO_ERROR);
 
-	      /* free the associated object, note for classes,
-	         this could be a fairly complex operation since all the instances
-	         are decached as well */
+	      /* free the associated object, note for classes, this could be a fairly complex operation since all the
+	       * instances are decached as well */
 	      ws_decache (mops);
 
 	      /* if this is a vmop, we need to clear the keys */
@@ -1878,7 +1816,7 @@ ws_cull_mops (void)
 		{
 		  if (mops->class_mop != sm_Root_class_mop)
 		    {
-		      /*
+		      /* 
 		       * Since we removed the GC'd MOPs from the resident
 		       * instance list before we started the hash table
 		       * map, we shouldn't see any at this point.  If
@@ -1894,7 +1832,7 @@ ws_cull_mops (void)
 		    }
 		  else
 		    {
-		      /*
+		      /* 
 		       * carefully remove the class from the resident
 		       * instance list and make sure no instances are
 		       * still going to be referencing this thing
@@ -1955,14 +1893,9 @@ ws_release_instance (MOP mop)
 void
 ws_release_user_instance (MOP mop)
 {
-  /* to keep instances of system classes, for instance, db_serial's.
-   *
-   * This prevents from dangling references to serial objects
-   * during replication.
-   * The typical scenario is to update serials, cull mops which clears
-   * the mop up, and then truncate the table which leads updating
-   * the serial mop to reset its values.
-   */
+  /* to keep instances of system classes, for instance, db_serial's. This prevents from dangling references to serial
+   * objects during replication. The typical scenario is to update serials, cull mops which clears the mop up, and then 
+   * truncate the table which leads updating the serial mop to reset its values. */
   if (db_is_system_class (mop->class_mop) > 0)
     {
       return;
@@ -2003,7 +1936,7 @@ ws_release_user_instance (MOP mop)
 void
 ws_dirty (MOP op)
 {
-  /*
+  /* 
    * don't add the root class to any dirty list. otherwise, later traversals
    * of that dirty list will loop forever.
    */
@@ -2014,7 +1947,7 @@ ws_dirty (MOP op)
     }
   op = ws_mvcc_latest_version (op);
   WS_SET_DIRTY (op);
-  /*
+  /* 
    * add_class_object makes sure each class' dirty list (even an empty one)
    * is always terminated by the magical Null_object. Therefore, this test
    * "op->dirty_link == NULL" makes sure class objects are not added to
@@ -2031,15 +1964,14 @@ ws_dirty (MOP op)
       if (er_errid () != ER_MVCC_SERIALIZABLE_CONFLICT)
 	{
 	  /* SERIOUS INTERNAL ERROR */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CLASS_NOT_CACHED,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CLASS_NOT_CACHED, 0);
 	}
 
       ws_Stats.uncached_classes++;
     }
   else
     {
-      /*
+      /* 
        * add op to op's class' dirty list only if op is not yet there.
        * The preceding "op->dirty_link == NULL" asserts that op is not
        * on any dirty list so we can simply prepend op to op's class'
@@ -2063,7 +1995,7 @@ ws_dirty (MOP op)
 void
 ws_clean (MOP op)
 {
-  /*
+  /* 
    * because pinned objects can be in a state of direct modification, we
    * can't reset the dirty bit after a workspace panic flush because this
    * would lose any changes made to the pinned object after the flush
@@ -2105,9 +2037,7 @@ ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only)
   int collected_num_dirty_mop = 0;
 
   /* traverse the resident classes to get to their dirty lists */
-  for (m = ws_Resident_classes;
-       m != NULL && status == WS_MAP_CONTINUE && (class_mop = m->op) != NULL;
-       m = m->next)
+  for (m = ws_Resident_classes; m != NULL && status == WS_MAP_CONTINUE && (class_mop = m->op) != NULL; m = m->next)
     {
 
       /* is this a dirty class? */
@@ -2133,8 +2063,7 @@ ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only)
 	}
 
       /* skip over all non-dirty objects at the start of each dirty list */
-      for (op = class_mop->dirty_link; op != Null_object && op->dirty == 0;
-	   op = next)
+      for (op = class_mop->dirty_link; op != Null_object && op->dirty == 0; op = next)
 	{
 	  next = op->dirty_link;
 	  op->dirty_link = NULL;
@@ -2148,7 +2077,7 @@ ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only)
       for (; op != Null_object && status == WS_MAP_CONTINUE; op = next)
 	{
 
-	  /*
+	  /* 
 	   * if we get here, then op must be dirty. So turn the static dirty
 	   * flag on (just in case we've been called from ws_has_updated).
 	   * ws_has_updated uses this static flag to check for the presence
@@ -2269,7 +2198,7 @@ add_class_object (MOP class_mop, MOP obj)
 
   if (class_mop == sm_Root_class_mop)
     {
-      /*
+      /* 
        * class MOP, initialize the object list, do this only if it isn't
        * already initialized, this may happen if the workspace is cleared
        * and nothing is cached.  In this case the class_link lists are still
@@ -2291,8 +2220,8 @@ add_class_object (MOP class_mop, MOP obj)
     }
   else
     {
-      /* must make sure this gets initialized, should have been done
-         already when the class was cached in the clause above */
+      /* must make sure this gets initialized, should have been done already when the class was cached in the clause
+       * above */
       if (class_mop->class_link == NULL)
 	{
 	  class_mop->class_link = Null_object;
@@ -2343,8 +2272,7 @@ remove_class_object (MOP class_mop, MOP obj)
       return;
     }
 
-  for (o = class_mop->class_link, prev = NULL;
-       o != Null_object && o != obj; o = o->class_link)
+  for (o = class_mop->class_link, prev = NULL; o != Null_object && o != obj; o = o->class_link)
     {
       if (o != obj)
 	{
@@ -2412,8 +2340,7 @@ ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args)
   if (class_op == sm_Root_class_mop)
     {
       /* rootclass, must map through dirty resident class list */
-      for (l = ws_Resident_classes; l != NULL && status == WS_MAP_CONTINUE;
-	   l = l->next)
+      for (l = ws_Resident_classes; l != NULL && status == WS_MAP_CONTINUE; l = l->next)
 	{
 	  /* should we be ignoring deleted class MOPs ? */
 	  if (l->op && l->op->dirty && function != NULL)
@@ -2425,8 +2352,7 @@ ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args)
   else if (class_op->class_mop == sm_Root_class_mop)
     {				/* normal class */
       /* skip over all non-dirty objects at the start of dirty list */
-      for (op = class_op->dirty_link, next = Null_object;
-	   op != Null_object && op->dirty == 0; op = next)
+      for (op = class_op->dirty_link, next = Null_object; op != Null_object && op->dirty == 0; op = next)
 	{
 	  next = op->dirty_link;
 	  op->dirty_link = NULL;
@@ -2514,8 +2440,7 @@ ws_map_class (MOP class_op, MAPFUNC function, void *args)
   if (class_op == sm_Root_class_mop)
     {
       /* rootclass, must map through resident class list */
-      for (l = ws_Resident_classes; l != NULL && status == WS_MAP_CONTINUE;
-	   l = l->next)
+      for (l = ws_Resident_classes; l != NULL && status == WS_MAP_CONTINUE; l = l->next)
 	{
 	  /* should we be ignoring deleted class MOPs ? */
 	  status = (*function) (l->op, args);
@@ -2526,12 +2451,10 @@ ws_map_class (MOP class_op, MAPFUNC function, void *args)
       /* normal class */
       if (class_op->class_link != NULL)
 	{
-	  for (op = class_op->class_link;
-	       op != Null_object && status == WS_MAP_CONTINUE;
-	       op = save_class_link)
+	  for (op = class_op->class_link; op != Null_object && status == WS_MAP_CONTINUE; op = save_class_link)
 	    {
 	      save_class_link = op->class_link;
-	      /*
+	      /* 
 	       * should we only call the function if the object has been
 	       * loaded ? what if it is deleted ?
 	       */
@@ -2662,7 +2585,7 @@ ws_reset_classname_cache (void)
 {
   if (Classname_cache != NULL)
     {
-      /*
+      /* 
        * don't need to map over entries because the name strings
        * are part of the class structure
        */
@@ -2724,7 +2647,7 @@ ws_init (void)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  /*
+  /* 
    * area_init() must have been called earlier.
    * These need to all be returning errors !
    */
@@ -2761,8 +2684,7 @@ ws_init (void)
 
   if (ws_Mop_table == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, allocsize);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, allocsize);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -2786,9 +2708,7 @@ ws_init (void)
   Ws_dirty = false;
 
   /* build the classname cache */
-  Classname_cache = mht_create ("Workspace class name cache",
-				256, mht_1strhash,
-				mht_compare_strings_are_equal);
+  Classname_cache = mht_create ("Workspace class name cache", 256, mht_1strhash, mht_compare_strings_are_equal);
 
   if (Classname_cache == NULL)
     {
@@ -2848,10 +2768,9 @@ ws_final (void)
   if (prm_get_bool_value (PRM_ID_WS_MEMORY_REPORT))
     {
       /* this is for debugging only */
-      fprintf (stdout,
-	       "*** Database client statistics before shutdown ***\n");
+      fprintf (stdout, "*** Database client statistics before shutdown ***\n");
       ws_dump (stdout);
-      /*
+      /* 
        * Check for dangling allocations in the workspace.
        * First decache everything, must do this before the
        * MOP tables are destroyed.
@@ -2877,8 +2796,7 @@ ws_final (void)
     {
       for (slot = 0; slot < ws_Mop_table_size; slot++)
 	{
-	  for (mop = ws_Mop_table[slot].head, next = NULL; mop != NULL;
-	       mop = next)
+	  for (mop = ws_Mop_table[slot].head, next = NULL; mop != NULL; mop = next)
 	    {
 	      next = mop->hash_link;
 	      ws_free_mop (mop);
@@ -2969,9 +2887,8 @@ ws_vid_clear (void)
     {
       for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
 	{
-	  /* Don't decache non-updatable view objects because they cannot be
-	     recreated.  Let garbage collection eventually decache them.
-	   */
+	  /* Don't decache non-updatable view objects because they cannot be recreated.  Let garbage collection
+	   * eventually decache them. */
 	  if ((WS_ISVID (mop)) && (vid_is_updatable (mop)))
 	    {
 	      ws_decache (mop);
@@ -2990,7 +2907,7 @@ ws_vid_clear (void)
 bool
 ws_has_updated (void)
 {
-  /*
+  /* 
    * We used to be able to test the global dirty list (Dirty_objects) for
    * the presence of workspace updates. Now, we have to be a bit sneaky. To
    * do the same test, we set this static dirty flag to false and let the
@@ -2999,7 +2916,7 @@ ws_has_updated (void)
    */
   Ws_dirty = false;
 
-  /*
+  /* 
    * wouldn't need to filter the whole list but this seems like
    * a reasonable time to do this
    */
@@ -3030,8 +2947,7 @@ void
 ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 {
   /* third clause applies if the sm_Root_class_mop is still being initialized */
-  if ((class_mop == sm_Root_class_mop)
-      || (mop->class_mop == sm_Root_class_mop) || (mop == class_mop))
+  if ((class_mop == sm_Root_class_mop) || (mop->class_mop == sm_Root_class_mop) || (mop == class_mop))
     {
 
       /* caching a class */
@@ -3045,7 +2961,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
       mop->object = obj;
       mop->class_mop = class_mop;
 
-      /*
+      /* 
        * must always call this when caching a class because we don't know
        * if there are any objects on disk
        */
@@ -3053,8 +2969,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 
       if (obj != (MOBJ) (&sm_Root_class))
 	{
-	  /* this initializes the class_link list and adds it to the
-	     list of resident classes */
+	  /* this initializes the class_link list and adds it to the list of resident classes */
 	  if (add_class_object (class_mop, mop))
 	    {
 	      goto abort_it;
@@ -3066,9 +2981,8 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 
       if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG))
 	{
-	  er_print_callstack (ARG_FILE_LINE, "Cache class %s mop %d|%d|%d.\n",
-			      sm_ch_name (mop->object), ws_oid (mop)->volid,
-			      ws_oid (mop)->pageid, ws_oid (mop)->slotid);
+	  er_print_callstack (ARG_FILE_LINE, "Cache class %s mop %d|%d|%d.\n", sm_ch_name (mop->object),
+			      ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid);
 	}
     }
   else
@@ -3079,15 +2993,13 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 	  if (mop->class_mop == NULL || mop->class_mop->object == NULL)
 	    {
 	      /* SERIOUS INTERNAL ERROR */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_WS_CLASS_NOT_CACHED, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CLASS_NOT_CACHED, 0);
 	      ws_Stats.uncached_classes++;
 	      goto abort_it;
 	    }
 	  else
 	    {
-	      obj_free_memory ((SM_CLASS *) mop->class_mop->object,
-			       (MOBJ) mop->object);
+	      obj_free_memory ((SM_CLASS *) mop->class_mop->object, (MOBJ) mop->object);
 	      mop->object = NULL;
 	    }
 	}
@@ -3099,8 +3011,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 	{
 	  if (mop->class_mop != NULL)
 	    {
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		      ER_WS_CHANGING_OBJECT_CLASS, 0);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_WS_CHANGING_OBJECT_CLASS, 0);
 	      if (mop->class_link != NULL)
 		{
 		  remove_class_object (mop->class_mop, mop);
@@ -3116,7 +3027,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
   return;
 
 abort_it:
-  /*
+  /* 
    * NULL the MOP since we're in an unknown state, this function
    * should be returning an error
    */
@@ -3189,15 +3100,13 @@ ws_decache (MOP mop)
 	{
 	  if (mop->class_mop == NULL || mop->class_mop->object == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_WS_CLASS_NOT_CACHED, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CLASS_NOT_CACHED, 0);
 	      ws_Stats.uncached_classes++;
 	      mop->object = NULL;
 	    }
 	  else
 	    {
-	      obj_free_memory ((SM_CLASS *) mop->class_mop->object,
-			       (MOBJ) mop->object);
+	      obj_free_memory ((SM_CLASS *) mop->class_mop->object, (MOBJ) mop->object);
 	      if (WS_IS_DELETED (mop))
 		{
 		  remove_class_object (mop->class_mop, mop);
@@ -3210,10 +3119,8 @@ ws_decache (MOP mop)
     {
       if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG))
 	{
-	  er_print_callstack (ARG_FILE_LINE, "Decache class %s "
-			      "mop %d|%d|%d.\n",
-			      sm_ch_name (mop->object), ws_oid (mop)->volid,
-			      ws_oid (mop)->pageid, ws_oid (mop)->slotid);
+	  er_print_callstack (ARG_FILE_LINE, "Decache class %s " "mop %d|%d|%d.\n", sm_ch_name (mop->object),
+			      ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid);
 	}
       /* free class object, not sure if this should be done here */
       if (mop->object != NULL && mop->object != (MOBJ) (&sm_Root_class))
@@ -3260,8 +3167,7 @@ ws_decache_all_instances (MOP mop)
     {
       if (mop->class_link != NULL)
 	{
-	  for (obj = mop->class_link; obj != Null_object;
-	       obj = save_class_link)
+	  for (obj = mop->class_link; obj != Null_object; obj = save_class_link)
 	    {
 	      save_class_link = obj->class_link;
 	      ws_decache (obj);
@@ -3437,14 +3343,11 @@ ws_get_lock (MOP mop)
 void
 ws_set_lock (MOP mop, LOCK lock)
 {
-  if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG)
-      && mop->class_mop == sm_Root_class_mop && mop != sm_Root_class_mop
-      && mop->object != NULL && lock != mop->lock)
+  if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG) && mop->class_mop == sm_Root_class_mop
+      && mop != sm_Root_class_mop && mop->object != NULL && lock != mop->lock)
     {
-      er_print_callstack (ARG_FILE_LINE, "Change class %s mop %d|%d|%d "
-			  "lock from %d to %d.\n",
-			  sm_ch_name (mop->object), ws_oid (mop)->volid,
-			  ws_oid (mop)->pageid, ws_oid (mop)->slotid,
+      er_print_callstack (ARG_FILE_LINE, "Change class %s mop %d|%d|%d " "lock from %d to %d.\n",
+			  sm_ch_name (mop->object), ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid,
 			  mop->lock, lock);
     }
   mop = ws_mvcc_latest_version (mop);
@@ -3673,8 +3576,7 @@ ws_class_has_cached_objects (MOP class_mop)
   MOP obj;
   int cached = 0;
 
-  for (obj = class_mop->class_link; obj != Null_object && !cached;
-       obj = obj->class_link)
+  for (obj = class_mop->class_link; obj != Null_object && !cached; obj = obj->class_link)
     {
       if (obj->object != NULL)
 	{
@@ -3705,11 +3607,9 @@ ws_map (MAPFUNC function, void *args)
 
   if (ws_Mop_table != NULL)
     {
-      for (slot = 0; slot < ws_Mop_table_size && status == WS_MAP_CONTINUE;
-	   slot++)
+      for (slot = 0; slot < ws_Mop_table_size && status == WS_MAP_CONTINUE; slot++)
 	{
-	  for (mop = ws_Mop_table[slot].head;
-	       mop != NULL && status == WS_MAP_CONTINUE; mop = mop->hash_link)
+	  for (mop = ws_Mop_table[slot].head; mop != NULL && status == WS_MAP_CONTINUE; mop = mop->hash_link)
 	    {
 	      status = (*(function)) (mop, args);
 	      if (status == WS_MAP_CONTINUE_ON_ERROR)
@@ -3750,17 +3650,15 @@ ws_map (MAPFUNC function, void *args)
 void
 ws_clear_hints (MOP mop, bool leave_pinned)
 {
-  /*
+  /* 
    * Don't decache non-updatable view objects because they cannot be
    * recreated.  Let garbage collection eventually decache them.
    */
-  if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG)
-      && mop->class_mop == sm_Root_class_mop && mop != sm_Root_class_mop
-      && mop->object != NULL)
+  if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG) && mop->class_mop == sm_Root_class_mop
+      && mop != sm_Root_class_mop && mop->object != NULL)
     {
-      er_print_callstack (ARG_FILE_LINE, "Clear class %s mop %d|%d|%d.\n",
-			  sm_ch_name (mop->object), ws_oid (mop)->volid,
-			  ws_oid (mop)->pageid, ws_oid (mop)->slotid);
+      er_print_callstack (ARG_FILE_LINE, "Clear class %s mop %d|%d|%d.\n", sm_ch_name (mop->object),
+			  ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid);
     }
 
   if (WS_ISVID (mop))
@@ -3810,7 +3708,7 @@ ws_clear_all_hints (bool retain_lock)
 
   au_reset_authorization_caches ();
 
-  /*
+  /* 
    * When there are two or more MVCC version of the same mop in ws_Commit_mops 
    * link, the permanent_mvcc_link can't be changed in the meanwhile doing 
    * clearing hints (ws_mvcc_latest_temporary_version depend on it), 
@@ -3889,7 +3787,7 @@ ws_abort_mops (bool only_unpinned)
       next = mop->commit_link;
       mop->commit_link = NULL;	/* remove mop from commit link (it's done) */
 
-      /*
+      /* 
        * In some cases we cannot clear up pinned stuff, because we
        * may already be looping through the object or dirty list somewhere
        * in the calling chain, and we would be removing something out
@@ -3900,7 +3798,7 @@ ws_abort_mops (bool only_unpinned)
 	  /* always remove this so we can decache things without error */
 	  mop->pinned = 0;
 
-	  /*
+	  /* 
 	   * Decache all objects in commit link. Even though they are not
 	   * marked as dirty and do not have exclusive locks, they may have
 	   * been decached (and reset) during a partial rollback. Now we are
@@ -3969,9 +3867,7 @@ ws_decache_allxlockmops_but_norealclasses (void)
       for (mop = ws_Mop_table[slot].head; mop != NULL; mop = save_hash_link)
 	{
 	  save_hash_link = mop->hash_link;
-	  if (mop->pinned == 0
-	      && (IS_WRITE_EXCLUSIVE_LOCK (ws_get_lock (mop))
-		  || WS_ISDIRTY (mop))
+	  if (mop->pinned == 0 && (IS_WRITE_EXCLUSIVE_LOCK (ws_get_lock (mop)) || WS_ISDIRTY (mop))
 	      && (mop->class_mop != sm_Root_class_mop || mop->object == NULL
 		  || ((SM_CLASS *) mop->object)->class_type == SM_CLASS_CT))
 	    {
@@ -4043,8 +3939,7 @@ ws_free_string (const char *str)
 static void
 ws_print_oid (OID * oid)
 {
-  fprintf (stdout, "%d/%d/%d",
-	   (int) oid->volid, (int) oid->pageid, (int) oid->slotid);
+  fprintf (stdout, "%d/%d/%d", (int) oid->volid, (int) oid->pageid, (int) oid->slotid);
 }
 
 #if defined (CUBRID_DEBUG)
@@ -4197,8 +4092,7 @@ ws_count_mops (void)
 void
 ws_dump (FILE * fpp)
 {
-  int mops, root, unknown, classes, cached_classes, instances,
-    cached_instances;
+  int mops, root, unknown, classes, cached_classes, instances, cached_instances;
   int count, actual, decached, weird;
   unsigned int slot;
   int classtotal, insttotal, size, isize, icount, deleted;
@@ -4206,8 +4100,7 @@ ws_dump (FILE * fpp)
   DB_OBJLIST *m;
 
   /* get mop totals */
-  mops = root = unknown = classes = cached_classes = instances =
-    cached_instances = 0;
+  mops = root = unknown = classes = cached_classes = instances = cached_instances = 0;
   weird = 0;
   for (slot = 0; slot < ws_Mop_table_size; slot++)
     {
@@ -4248,40 +4141,30 @@ ws_dump (FILE * fpp)
 	}
     }
 
-  fprintf (fpp, "%d mops in the workspace (including one rootclass mop)\n",
-	   mops);
-  fprintf (fpp, "%d class mops (%d cached, %d uncached)\n", classes,
-	   cached_classes, classes - cached_classes);
-  fprintf (fpp, "%d instance mops (%d cached, %d uncached)\n", instances,
-	   cached_instances, instances - cached_instances);
+  fprintf (fpp, "%d mops in the workspace (including one rootclass mop)\n", mops);
+  fprintf (fpp, "%d class mops (%d cached, %d uncached)\n", classes, cached_classes, classes - cached_classes);
+  fprintf (fpp, "%d instance mops (%d cached, %d uncached)\n", instances, cached_instances,
+	   instances - cached_instances);
 
   fprintf (fpp, "%d unknown mops\n", unknown);
   if (weird)
     {
       fprintf (fpp, "*** %d unknown mops with cached objects\n", weird);
     }
-  fprintf (fpp, "%d attempts to clean pinned mops\n",
-	   ws_Stats.pinned_cleanings);
+  fprintf (fpp, "%d attempts to clean pinned mops\n", ws_Stats.pinned_cleanings);
 
   /* gc stats */
-  fprintf (fpp, "%d MOPs allocated, %d freed\n",
-	   ws_Stats.mops_allocated, ws_Stats.mops_freed);
-  fprintf (fpp,
-	   "%d reference MOPs allocated, %d freed\n",
-	   ws_Stats.refmops_allocated, ws_Stats.refmops_freed);
+  fprintf (fpp, "%d MOPs allocated, %d freed\n", ws_Stats.mops_allocated, ws_Stats.mops_freed);
+  fprintf (fpp, "%d reference MOPs allocated, %d freed\n", ws_Stats.refmops_allocated, ws_Stats.refmops_freed);
 
   /* misc stats */
-  fprintf (fpp,
-	   "%d dirty list emergencies, %d uncached classes, %d corruptions\n",
-	   ws_Stats.dirty_list_emergencies, ws_Stats.uncached_classes,
-	   ws_Stats.corruptions);
-  fprintf (fpp, "%d ignored class assignments\n",
-	   ws_Stats.ignored_class_assignments);
+  fprintf (fpp, "%d dirty list emergencies, %d uncached classes, %d corruptions\n", ws_Stats.dirty_list_emergencies,
+	   ws_Stats.uncached_classes, ws_Stats.corruptions);
+  fprintf (fpp, "%d ignored class assignments\n", ws_Stats.ignored_class_assignments);
 
 
-  fprintf (fpp,
-	   "%d total set mops allocated, %d total set mops freed\n",
-	   ws_Stats.set_mops_allocated, ws_Stats.set_mops_freed);
+  fprintf (fpp, "%d total set mops allocated, %d total set mops freed\n", ws_Stats.set_mops_allocated,
+	   ws_Stats.set_mops_freed);
 
   /* dirty stats */
   count = actual = 0;
@@ -4296,8 +4179,7 @@ ws_dump (FILE * fpp)
 	    }
 	}
     }
-  fprintf (fpp, "%d dirty objects, %d clean objects in dirty list\n",
-	   actual, count - actual);
+  fprintf (fpp, "%d dirty objects, %d clean objects in dirty list\n", actual, count - actual);
 
   /* get class totals */
   fprintf (fpp, "RESIDENT INSTANCE TOTALS: \n");
@@ -4317,47 +4199,38 @@ ws_dump (FILE * fpp)
 	      size = classobj_class_size ((SM_CLASS *) mop->object);
 	      classtotal += size;
 	      icount = isize = decached = 0;
-	      for (inst = mop->class_link; inst != Null_object;
-		   inst = inst->class_link)
+	      for (inst = mop->class_link; inst != Null_object; inst = inst->class_link)
 		{
 		  icount++;
 		  if (inst->object != NULL)
 		    {
-		      isize +=
-			sm_object_size_quick ((SM_CLASS *) mop->object,
-					      (MOBJ) inst->object);
+		      isize += sm_object_size_quick ((SM_CLASS *) mop->object, (MOBJ) inst->object);
 		    }
 		  else
 		    {
 		      decached++;
 		    }
 		}
-	      fprintf (fpp,
-		       "  %-20s : %d instances, %d decached, %d bytes used\n",
-		       sm_ch_name ((MOBJ) (mop->object)), icount,
-		       decached, isize);
+	      fprintf (fpp, "  %-20s : %d instances, %d decached, %d bytes used\n", sm_ch_name ((MOBJ) (mop->object)),
+		       icount, decached, isize);
 	      insttotal += isize;
 	    }
 	}
     }
   if (deleted)
     {
-      fprintf (fpp, "*** %d deleted MOPs in the resident class list \n",
-	       deleted);
+      fprintf (fpp, "*** %d deleted MOPs in the resident class list \n", deleted);
     }
 
   /* just to make sure */
   if (count != cached_classes)
     {
-      fprintf (fpp,
-	       "*** Mops claiming to be classes %d, resident class list length %d\n",
-	       cached_classes, count);
+      fprintf (fpp, "*** Mops claiming to be classes %d, resident class list length %d\n", cached_classes, count);
     }
 
   fprintf (fpp, "Total bytes for class storage     %d\n", classtotal);
   fprintf (fpp, "Total bytes for instance storage  %d\n", insttotal);
-  fprintf (fpp, "Total bytes for object storage    %d\n",
-	   classtotal + insttotal);
+  fprintf (fpp, "Total bytes for object storage    %d\n", classtotal + insttotal);
 
   fprintf (fpp, "WORKSPACE AREAS:\n");
   area_dump (fpp);
@@ -4388,8 +4261,7 @@ ws_put_prop (MOP op, int key, DB_BIGINT value)
   /* Error if connect status is invalid */
   if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
     {
-      for (p = (WS_PROPERTY *) op->version; p != NULL && p->key != key;
-	   p = p->next);
+      for (p = (WS_PROPERTY *) op->version; p != NULL && p->key != key; p = p->next);
       if (p != NULL)
 	{
 	  p->value = value;
@@ -4397,7 +4269,7 @@ ws_put_prop (MOP op, int key, DB_BIGINT value)
 	}
       else
 	{
-	  /*
+	  /* 
 	   * for now, allocate them in the workspace to avoid shutdown
 	   * messages.  We might not be able to do this ultimately if
 	   * they are allowed to contain other object pointers.
@@ -4432,8 +4304,7 @@ ws_get_prop (MOP op, int key, DB_BIGINT * value)
   /* Error if connect status is invalid */
   if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
     {
-      for (p = (WS_PROPERTY *) op->version; p != NULL && p->key != key;
-	   p = p->next);
+      for (p = (WS_PROPERTY *) op->version; p != NULL && p->key != key; p = p->next);
       if (p == NULL)
 	{
 	  status = 0;
@@ -4464,8 +4335,7 @@ ws_rem_prop (MOP op, int key)
   int status = -1;
 
   /* currently no possible error conditions */
-  for (p = (WS_PROPERTY *) op->version, prev = NULL;
-       p != NULL && p->key != key; p = p->next)
+  for (p = (WS_PROPERTY *) op->version, prev = NULL; p != NULL && p->key != key; p = p->next)
     {
       prev = p;
     }
@@ -4517,11 +4387,9 @@ ws_flush_properties (MOP op)
 int
 ws_has_dirty_objects (MOP op, int *isvirt)
 {
-  *isvirt = (op && !WS_IS_DELETED (op) && op->object
-	     && (((SM_CLASS *) (op->object))->class_type == SM_VCLASS_CT));
+  *isvirt = (op && !WS_IS_DELETED (op) && op->object && (((SM_CLASS *) (op->object))->class_type == SM_VCLASS_CT));
 
-  return (op && !WS_IS_DELETED (op) && op->object && op->dirty_link
-	  && op->dirty_link != Null_object);
+  return (op && !WS_IS_DELETED (op) && op->object && op->dirty_link && op->dirty_link != Null_object);
 }
 
 /*
@@ -4590,8 +4458,7 @@ ws_need_flush (void)
 int
 ws_area_init (void)
 {
-  Objlist_area = area_create ("Object list links", sizeof (DB_OBJLIST),
-			      OBJLIST_AREA_COUNT);
+  Objlist_area = area_create ("Object list links", sizeof (DB_OBJLIST), OBJLIST_AREA_COUNT);
   if (Objlist_area == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -4845,9 +4712,7 @@ nlist_find (DB_NAMELIST * list, const char *name, NLSEARCHER fcn)
 
   for (el = list; el != NULL && found == NULL; el = el->next)
     {
-      if ((el->name == name)
-	  || ((el->name != NULL) && (name != NULL)
-	      && (*fcn) (el->name, name) == 0))
+      if ((el->name == name) || ((el->name != NULL) && (name != NULL) && (*fcn) (el->name, name) == 0))
 	{
 	  found = el;
 	}
@@ -4881,9 +4746,7 @@ nlist_remove (DB_NAMELIST ** root, const char *name, NLSEARCHER fcn)
 
   for (el = *root, prev = NULL; el != NULL && found == NULL; el = el->next)
     {
-      if ((el->name == name) ||
-	  ((el->name != NULL) && (name != NULL)
-	   && (*fcn) (el->name, name) == 0))
+      if ((el->name == name) || ((el->name != NULL) && (name != NULL) && (*fcn) (el->name, name) == 0))
 	{
 	  found = el;
 	}
@@ -4917,8 +4780,7 @@ nlist_remove (DB_NAMELIST ** root, const char *name, NLSEARCHER fcn)
  *    added_ptr(out): set to 1 if added
  */
 int
-nlist_add (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
-	   int *added_ptr)
+nlist_add (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn, int *added_ptr)
 {
   DB_NAMELIST *found, *new_;
   int status = 0;
@@ -4969,8 +4831,7 @@ error:
  *    added_ptr(out): set to 1 if added
  */
 int
-nlist_append (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
-	      int *added_ptr)
+nlist_append (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn, int *added_ptr)
 {
   DB_NAMELIST *el, *found, *last, *new_;
   int status = 0;
@@ -4990,9 +4851,7 @@ nlist_append (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn,
 
   for (el = *list; el != NULL && found == NULL; el = el->next)
     {
-      if ((el->name == name)
-	  || ((el->name != NULL) && (name != NULL)
-	      && (*fcn) (el->name, name) == 0))
+      if ((el->name == name) || ((el->name != NULL) && (name != NULL) && (*fcn) (el->name, name) == 0))
 	{
 	  found = el;
 	}
@@ -5053,8 +4912,7 @@ error:
  *    position(out): position of element if found or inserted
  */
 int
-nlist_find_or_append (DB_NAMELIST ** list, const char *name,
-		      NLSEARCHER fcn, int *position)
+nlist_find_or_append (DB_NAMELIST ** list, const char *name, NLSEARCHER fcn, int *position)
 {
   DB_NAMELIST *el, *found, *last, *new_;
   int psn = -1;
@@ -5069,8 +4927,7 @@ nlist_find_or_append (DB_NAMELIST ** list, const char *name,
       found = last = NULL;
       for (el = *list, psn = 0; el != NULL && found == NULL; el = el->next)
 	{
-	  if ((el->name == name) ||
-	      ((el->name != NULL) && (*fcn) (el->name, name) == 0))
+	  if ((el->name == name) || ((el->name != NULL) && (*fcn) (el->name, name) == 0))
 	    {
 	      found = el;
 	    }
@@ -5201,9 +5058,7 @@ nlist_filter (DB_NAMELIST ** root, const char *name, NLSEARCHER fcn)
   for (el = head, prev = NULL, next = NULL; el != NULL; el = next)
     {
       next = el->next;
-      if ((el->name == name)
-	  || ((el->name != NULL) && (name != NULL)
-	      && (*fcn) (el->name, name) == 0))
+      if ((el->name == name) || ((el->name != NULL) && (name != NULL) && (*fcn) (el->name, name) == 0))
 	{
 	  if (prev == NULL)
 	    {
@@ -5397,8 +5252,7 @@ ml_remove (DB_OBJLIST ** list, MOP mop)
   int deleted;
 
   deleted = 0;
-  for (l = *list, found = NULL, prev = NULL; l != NULL && found == NULL;
-       l = l->next)
+  for (l = *list, found = NULL, prev = NULL; l != NULL && found == NULL; l = l->next)
     {
       if (ws_is_same_object (l->op, mop))
 	{
@@ -5723,8 +5577,7 @@ ws_set_ignore_error_list_for_mflush (int error_count, int *error_list)
  *    mop(in):
  */
 void
-ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj,
-				   char *content_ptr)
+ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr)
 {
   WS_REPL_FLUSH_ERR *flush_err;
   char *ptr;
@@ -5732,8 +5585,7 @@ ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj,
   flush_err = (WS_REPL_FLUSH_ERR *) malloc (sizeof (WS_REPL_FLUSH_ERR));
   if (flush_err == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (WS_REPL_FLUSH_ERR));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WS_REPL_FLUSH_ERR));
       return;
     }
 
@@ -6026,8 +5878,7 @@ ws_move_label_value_list (MOP dest_mop, MOP src_mop)
     }
 
   /* update mop for each db_value from src_mop->label_value_list */
-  for (value_node = src_mop->label_value_list; value_node != NULL;
-       value_node = value_node->next)
+  for (value_node = src_mop->label_value_list; value_node != NULL; value_node = value_node->next)
     {
       if (DB_VALUE_TYPE (value_node->val) == DB_TYPE_OBJECT)
 	{
@@ -6142,8 +5993,7 @@ ws_examine_no_mop_has_cached_lock (void)
 
   for (m = ws_Resident_classes; m != NULL; m = m->next)
     {
-      for (mop = m->op->class_link; mop != NULL && mop != Null_object;
-	   mop = mop->class_link)
+      for (mop = m->op->class_link; mop != NULL && mop != Null_object; mop = mop->class_link)
 	{
 	  assert (mop->lock == NULL_LOCK);
 	}
@@ -6269,16 +6119,14 @@ ws_clear_all_repl_objs (void)
  *    return:
  */
 int
-ws_add_to_repl_obj_list (OID * class_oid, DB_VALUE * key, RECDES * recdes,
-			 int operation, bool has_index)
+ws_add_to_repl_obj_list (OID * class_oid, DB_VALUE * key, RECDES * recdes, int operation, bool has_index)
 {
   WS_REPL_OBJ *repl_obj = NULL;
 
   repl_obj = (WS_REPL_OBJ *) malloc (sizeof (WS_REPL_OBJ));
   if (repl_obj == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, sizeof (WS_REPL_OBJ));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WS_REPL_OBJ));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

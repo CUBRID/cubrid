@@ -75,10 +75,8 @@ typedef struct
  * PRIVATE FUNCTION PROTOTYPES
  */
 static int cci_url_set_althosts (T_CON_HANDLE * handle, char *data);
-static int cci_url_parse_properties (T_URL_PROPERTY props[], int len,
-				     char *properties);
-static int cci_url_set_properties (T_URL_PROPERTY props[], int len,
-				   char *name, char *value);
+static int cci_url_parse_properties (T_URL_PROPERTY props[], int len, char *properties);
+static int cci_url_set_properties (T_URL_PROPERTY props[], int len, char *name, char *value);
 static int cci_url_set_value (T_URL_PROPERTY * property, char *value);
 static int cci_url_get_int (char *str, int *value);
 static int cci_url_get_bool (char *str, bool * value);
@@ -190,8 +188,7 @@ cci_url_set_value (T_URL_PROPERTY * property, char *value)
 }
 
 static int
-cci_url_set_properties (T_URL_PROPERTY props[], int len, char *name,
-			char *value)
+cci_url_set_properties (T_URL_PROPERTY props[], int len, char *name, char *value)
 {
   int i, error = CCI_ER_NO_ERROR;
 
@@ -311,12 +308,8 @@ cci_shuffle_althosts (T_CON_HANDLE * handle)
 
   gettimeofday (&t, NULL);
 
-  /* tv_usec returned by gettimeofday on WINDOWS
-   * is millisec * 1000 and seeding it would result in
-   * generating an even random number at first.
-   * To avoid such a pattern in generating a random number,
-   * tv_usec/1000 is used on WINDOWS.
-   */
+  /* tv_usec returned by gettimeofday on WINDOWS is millisec * 1000 and seeding it would result in generating an even
+   * random number at first. To avoid such a pattern in generating a random number, tv_usec/1000 is used on WINDOWS. */
 #if defined (WINDOWS)
   srand48_r (t.tv_usec / 1000, &buf);
 #else /* WINDOWS */
@@ -371,8 +364,8 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
       goto set_properties_end;
     }
 
-  if (handle->rc_time < 0 || handle->slow_query_threshold_millis < 0
-      || handle->login_timeout < 0 || handle->query_timeout < 0)
+  if (handle->rc_time < 0 || handle->slow_query_threshold_millis < 0 || handle->login_timeout < 0
+      || handle->query_timeout < 0)
     {
       error = CCI_ER_INVALID_URL;
       goto set_properties_end;
@@ -398,8 +391,7 @@ cci_conn_set_properties (T_CON_HANDLE * handle, char *properties)
     }
 
   /* for logging */
-  if (handle->log_on_exception || handle->log_slow_queries
-      || handle->log_trace_api || handle->log_trace_network)
+  if (handle->log_on_exception || handle->log_slow_queries || handle->log_trace_api || handle->log_trace_network)
     {
       if (file == NULL)
 	{

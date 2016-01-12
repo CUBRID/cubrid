@@ -56,8 +56,7 @@ int css_Server_use_new_connection_protocol = 0;
 #endif /* WINDOWS */
 
 /* do not change first 4 bytes of css_Net_magic */
-char css_Net_magic[CSS_NET_MAGIC_SIZE] =
-  { 0x00, 0x00, 0x00, 0x01, 0x20, 0x08, 0x11, 0x22 };
+char css_Net_magic[CSS_NET_MAGIC_SIZE] = { 0x00, 0x00, 0x00, 0x01, 0x20, 0x08, 0x11, 0x22 };
 
 static bool css_Is_conn_rules_initialized = false;
 
@@ -184,8 +183,7 @@ css_get_required_conn_num_for_ha (void)
     }
 
   /* server must prepare that the prefetchlogdb util is executed. */
-  prefetcher_max_thread_count =
-    prm_get_integer_value (PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT);
+  prefetcher_max_thread_count = prm_get_integer_value (PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT);
 
   ha_node_list_p = prm_get_string_value (PRM_ID_HA_NODE_LIST);
   num_of_nodes = util_get_num_of_ha_nodes (ha_node_list_p);
@@ -220,8 +218,7 @@ css_init_conn_rules (void)
     {
       assert (css_Conn_rules[i].get_max_conn_num_fn != NULL);
 
-      css_Conn_rules[i].max_num_conn =
-	css_Conn_rules[i].get_max_conn_num_fn ();
+      css_Conn_rules[i].max_num_conn = css_Conn_rules[i].get_max_conn_num_fn ();
     }
 
   css_Is_conn_rules_initialized = true;

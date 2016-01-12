@@ -1541,8 +1541,8 @@
 #define DB_TRUE 1
 #define DB_FALSE 0
 
-#define TRAN_ASYNC_WS_BIT                        0x10	/*        1  0000 */
-#define TRAN_ISO_LVL_BITS                        0x0F	/*        0  1111 */
+#define TRAN_ASYNC_WS_BIT                        0x10	/* 1 0000 */
+#define TRAN_ISO_LVL_BITS                        0x0F	/* 0 1111 */
 
 #define DB_AUTH_ALL \
   ((DB_AUTH) (DB_AUTH_SELECT | DB_AUTH_INSERT | DB_AUTH_UPDATE | DB_AUTH_DELETE | \
@@ -1596,10 +1596,7 @@ typedef enum
 
   DISK_TEMPVOL_TEMP_PURPOSE = 4,	/* internal use only */
   DISK_UNKNOWN_PURPOSE = 5,	/* internal use only: Does not mean anything */
-  DISK_EITHER_TEMP_PURPOSE = 6	/* internal use only:
-				 * Either pervol_temp or tempvol_tmp.. Used
-				 * only to select a volume
-				 */
+  DISK_EITHER_TEMP_PURPOSE = 6	/* internal use only: Either pervol_temp or tempvol_tmp.. Used only to select a volume */
 } DB_VOLPURPOSE;
 
 
@@ -1607,13 +1604,13 @@ typedef enum
 typedef enum
 {
 
-  DB_SUBSET = -3,		/* strict subset for set types.         */
-  DB_UNK = -2,			/* unknown                              */
-  DB_LT = -1,			/* cannonical less than                 */
-  DB_EQ = 0,			/* equal                                */
-  DB_GT = 1,			/* cannonical greater than,             */
+  DB_SUBSET = -3,		/* strict subset for set types.  */
+  DB_UNK = -2,			/* unknown */
+  DB_LT = -1,			/* cannonical less than */
+  DB_EQ = 0,			/* equal */
+  DB_GT = 1,			/* cannonical greater than, */
   DB_NE = 2,			/* not equal because types incomparable */
-  DB_SUPERSET = 3		/* strict superset for set types.       */
+  DB_SUPERSET = 3		/* strict superset for set types.  */
 } DB_VALUE_COMPARE_RESULT;
 
 /* Object fetch and locking constants.  These are used to specify
@@ -1621,53 +1618,23 @@ typedef enum
    lock functions. */
 typedef enum
 {
-  DB_FETCH_READ = 0,		/* Read an object (class or instance)   */
+  DB_FETCH_READ = 0,		/* Read an object (class or instance) */
   DB_FETCH_WRITE = 1,		/* Update an object (class or instance) */
-  DB_FETCH_DIRTY = 2,		/* Does not care about the state
-				 * of the object (class or instance). Get
-				 * it even if it is obsolete or if it
-				 * becomes obsolete.
-				 * INTERNAL USE ONLY
-				 */
-  DB_FETCH_CLREAD_INSTREAD = 3,	/* Read the class and read an instance of
-				 * class.
-				 * This is to access an instance in shared
-				 * mode
-				 * Note class must be given
-				 * INTERNAL USE ONLY
-				 */
-  DB_FETCH_CLREAD_INSTWRITE = 4,	/* Read the class and update an instance
-					 * of the class.
-					 * Note class must be given
-					 * This is for creation of instances
-					 * INTERNAL USE ONLY
-					 */
-  DB_FETCH_QUERY_READ = 5,	/* Read the class and query (read) all
-				 * instances of the class.
-				 * Note class must be given
-				 * This is for SQL select
-				 * INTERNAL USE ONLY
-				 */
-  DB_FETCH_QUERY_WRITE = 6,	/* Read the class and query (read) all
-				 * instances of the class and update some
-				 * of those instances.
-				 * Note class must be given
-				 * This is for Query update (SQL update)
-				 * or Query delete (SQL delete)
-				 * INTERNAL USE ONLY
-				 */
-  DB_FETCH_SCAN = 7,		/* Read the class for scan purpose
-				 * The lock of the lock should be kept
-				 * since the actual access happens later.
-				 * This is for loading an index.
-				 * INTERNAL USE ONLY
-				 */
-  DB_FETCH_EXCLUSIVE_SCAN = 8	/* Read the class for exclusive scan purpose
-				 * The lock of the lock should be kept
-				 * since the actual access happens later.
-				 * This is for loading an index.
-				 * INTERNAL USE ONLY
-				 */
+  DB_FETCH_DIRTY = 2,		/* Does not care about the state of the object (class or instance). Get it even if it
+				 * is obsolete or if it becomes obsolete. INTERNAL USE ONLY */
+  DB_FETCH_CLREAD_INSTREAD = 3,	/* Read the class and read an instance of class. This is to access an instance in
+				 * shared mode Note class must be given INTERNAL USE ONLY */
+  DB_FETCH_CLREAD_INSTWRITE = 4,	/* Read the class and update an instance of the class. Note class must be given
+					 * This is for creation of instances INTERNAL USE ONLY */
+  DB_FETCH_QUERY_READ = 5,	/* Read the class and query (read) all instances of the class. Note class must be given
+				 * This is for SQL select INTERNAL USE ONLY */
+  DB_FETCH_QUERY_WRITE = 6,	/* Read the class and query (read) all instances of the class and update some of those
+				 * instances. Note class must be given This is for Query update (SQL update) or Query
+				 * delete (SQL delete) INTERNAL USE ONLY */
+  DB_FETCH_SCAN = 7,		/* Read the class for scan purpose The lock of the lock should be kept since the actual 
+				 * access happens later. This is for loading an index. INTERNAL USE ONLY */
+  DB_FETCH_EXCLUSIVE_SCAN = 8	/* Read the class for exclusive scan purpose The lock of the lock should be kept since
+				 * the actual access happens later. This is for loading an index. INTERNAL USE ONLY */
 } DB_FETCH_MODE;
 
 /* Authorization type identifier constants.  The numeric values of these
@@ -1781,8 +1748,7 @@ typedef enum
   CUBRID_STMT_MERGE,
   CUBRID_STMT_SET_NAMES,
   CUBRID_STMT_ALTER_STORED_PROCEDURE,
-  CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER =
-    CUBRID_STMT_ALTER_STORED_PROCEDURE,
+  CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER = CUBRID_STMT_ALTER_STORED_PROCEDURE,
   CUBRID_STMT_KILL,
 
   CUBRID_MAX_STMT_TYPE
@@ -2510,7 +2476,7 @@ typedef unsigned int SESSION_ID;
    as value type tags in the DB_VALUE structures. */
 typedef enum
 {
-  DB_TYPE_FIRST = 0,		/* first for iteration   */
+  DB_TYPE_FIRST = 0,		/* first for iteration */
   DB_TYPE_UNKNOWN = 0,
   DB_TYPE_NULL = 0,
   DB_TYPE_INTEGER = 1,
@@ -2534,12 +2500,12 @@ typedef enum
   DB_TYPE_VOBJ = 19,		/* internal use only */
   DB_TYPE_OID = 20,		/* internal use only */
   DB_TYPE_DB_VALUE = 21,	/* special for esql */
-  DB_TYPE_NUMERIC = 22,		/* SQL NUMERIC(p,s) values      */
-  DB_TYPE_BIT = 23,		/* SQL BIT(n) values            */
-  DB_TYPE_VARBIT = 24,		/* SQL BIT(n) VARYING values    */
-  DB_TYPE_CHAR = 25,		/* SQL CHAR(n) values   */
-  DB_TYPE_NCHAR = 26,		/* SQL NATIONAL CHAR(n) values  */
-  DB_TYPE_VARNCHAR = 27,	/* SQL NATIONAL CHAR(n) VARYING values  */
+  DB_TYPE_NUMERIC = 22,		/* SQL NUMERIC(p,s) values */
+  DB_TYPE_BIT = 23,		/* SQL BIT(n) values */
+  DB_TYPE_VARBIT = 24,		/* SQL BIT(n) VARYING values */
+  DB_TYPE_CHAR = 25,		/* SQL CHAR(n) values */
+  DB_TYPE_NCHAR = 26,		/* SQL NATIONAL CHAR(n) values */
+  DB_TYPE_VARNCHAR = 27,	/* SQL NATIONAL CHAR(n) VARYING values */
   DB_TYPE_RESULTSET = 28,	/* internal use only */
   DB_TYPE_MIDXKEY = 29,		/* internal use only */
   DB_TYPE_TABLE = 30,		/* internal use only */
@@ -2557,9 +2523,9 @@ typedef enum
   DB_TYPE_TIMELTZ = 41,		/* internal use only - RESERVED */
   /* end of disabled types */
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
-  DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT           */
-  DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values   */
-  DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP  */
+  DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */
+  DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
+  DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP */
 
   DB_TYPE_LAST = DB_TYPE_DATETIMELTZ
 } DB_TYPE;
@@ -2926,7 +2892,7 @@ typedef struct db_workspace_stats DB_WORKSPACE_STATS;
 struct db_workspace_stats
 {
   int obj_desc_used;		/* number of object descriptors used */
-  int obj_desc_total;		/* total # of object descriptors allocated  */
+  int obj_desc_total;		/* total # of object descriptors allocated */
 };
 
 /* This defines the C language type identifier constants.
@@ -2961,7 +2927,7 @@ typedef enum
   DB_TYPE_C_IDENTIFIER,
   DB_TYPE_C_DATETIME,
   DB_TYPE_C_BIGINT,
-  DB_TYPE_C_LAST,		/* last for iteration   */
+  DB_TYPE_C_LAST,		/* last for iteration */
   DB_TYPE_C_UTIME = DB_TYPE_C_TIMESTAMP
 } DB_TYPE_C;
 
@@ -3022,56 +2988,39 @@ extern int db_value_clear (DB_VALUE * value);
 extern int db_value_free (DB_VALUE * value);
 extern int db_value_clear_array (DB_VALUE_ARRAY * value_array);
 extern void db_value_print (const DB_VALUE * value);
-extern int db_value_coerce (const DB_VALUE * src,
-			    DB_VALUE * dest,
-			    const DB_DOMAIN * desired_domain);
+extern int db_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const DB_DOMAIN * desired_domain);
 
 extern int db_value_equal (const DB_VALUE * value1, const DB_VALUE * value2);
-extern int db_value_compare (const DB_VALUE * value1,
-			     const DB_VALUE * value2);
-extern int db_value_domain_init (DB_VALUE * value, DB_TYPE type,
-				 const int precision, const int scale);
-extern int db_value_domain_min (DB_VALUE * value, DB_TYPE type,
-				const int precision, const int scale,
-				const int codeset, const int collation_id,
-				const DB_ENUMERATION * enumeration);
-extern int db_value_domain_max (DB_VALUE * value, DB_TYPE type,
-				const int precision, const int scale,
-				const int codeset, const int collation_id,
-				const DB_ENUMERATION * enumeration);
-extern int db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
-				    const int precision, const int scale,
-				    const int codeset,
-				    const int collation_id,
-				    DB_ENUMERATION * enumeration);
-extern int db_value_domain_zero (DB_VALUE * value, const DB_TYPE type,
-				 const int precision, const int scale);
+extern int db_value_compare (const DB_VALUE * value1, const DB_VALUE * value2);
+extern int db_value_domain_init (DB_VALUE * value, DB_TYPE type, const int precision, const int scale);
+extern int db_value_domain_min (DB_VALUE * value, DB_TYPE type, const int precision, const int scale, const int codeset,
+				const int collation_id, const DB_ENUMERATION * enumeration);
+extern int db_value_domain_max (DB_VALUE * value, DB_TYPE type, const int precision, const int scale, const int codeset,
+				const int collation_id, const DB_ENUMERATION * enumeration);
+extern int db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precision, const int scale,
+				    const int codeset, const int collation_id, DB_ENUMERATION * enumeration);
+extern int db_value_domain_zero (DB_VALUE * value, const DB_TYPE type, const int precision, const int scale);
 extern int db_string_truncate (DB_VALUE * value, const int max_precision);
 extern DB_TYPE db_value_domain_type (const DB_VALUE * value);
 extern DB_TYPE db_value_type (const DB_VALUE * value);
 extern int db_value_precision (const DB_VALUE * value);
 extern int db_value_scale (const DB_VALUE * value);
 extern int db_value_put_null (DB_VALUE * value);
-extern int db_value_put (DB_VALUE * value, const DB_TYPE_C c_type,
-			 void *input, const int input_length);
+extern int db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int input_length);
 extern bool db_value_type_is_collection (const DB_VALUE * value);
 extern bool db_value_type_is_numeric (const DB_VALUE * value);
 extern bool db_value_type_is_bit (const DB_VALUE * value);
 extern bool db_value_type_is_char (const DB_VALUE * value);
 extern bool db_value_type_is_internal (const DB_VALUE * value);
 extern bool db_value_is_null (const DB_VALUE * value);
-extern int db_value_get (DB_VALUE * value,
-			 const DB_TYPE_C type,
-			 void *buf,
-			 const int buflen, int *transferlen, int *outputlen);
+extern int db_value_get (DB_VALUE * value, const DB_TYPE_C type, void *buf, const int buflen, int *transferlen,
+			 int *outputlen);
 extern int db_value_size (const DB_VALUE * value, DB_TYPE_C type, int *size);
 extern int db_value_char_size (const DB_VALUE * value, int *size);
 extern DB_CURRENCY db_value_get_monetary_currency (const DB_VALUE * value);
 extern double db_value_get_monetary_amount_as_double (const DB_VALUE * value);
-extern int db_value_put_monetary_currency (DB_VALUE * value,
-					   const DB_CURRENCY type);
-extern int db_value_put_monetary_amount_as_double (DB_VALUE * value,
-						   const double amount);
+extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);
+extern int db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount);
 
 /*
  * DB_MAKE_ value constructors.
@@ -3091,70 +3040,47 @@ extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_collection (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey);
 extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
-extern int db_make_time (DB_VALUE * value,
-			 const int hour, const int minute, const int second);
+extern int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
 extern int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value);
 extern int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value);
-extern int db_value_put_encoded_time (DB_VALUE * value,
-				      const DB_TIME * time_value);
-extern int db_make_date (DB_VALUE * value,
-			 const int month, const int day, const int year);
-extern int db_value_put_encoded_date (DB_VALUE * value,
-				      const DB_DATE * date_value);
+extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time_value);
+extern int db_make_date (DB_VALUE * value, const int month, const int day, const int year);
+extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date_value);
 extern int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval);
-extern int db_make_timestampltz (DB_VALUE * value,
-				 const DB_C_TIMESTAMP ts_val);
-extern int db_make_timestamptz (DB_VALUE * value,
-				const DB_C_TIMESTAMPTZ * ts_tz_val);
+extern int db_make_timestampltz (DB_VALUE * value, const DB_C_TIMESTAMP ts_val);
+extern int db_make_timestamptz (DB_VALUE * value, const DB_C_TIMESTAMPTZ * ts_tz_val);
 extern int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime);
-extern int db_make_datetimeltz (DB_VALUE * value,
-				const DB_DATETIME * datetime);
-extern int db_make_datetimetz (DB_VALUE * value,
-			       const DB_DATETIMETZ * datetimetz);
-extern int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type,
-			     const double amount);
+extern int db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime);
+extern int db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz);
+extern int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount);
 extern int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr);
 extern int db_make_error (DB_VALUE * value, const int errcode);
-extern int db_make_method_error (DB_VALUE * value,
-				 const int errcode, const char *errmsg);
+extern int db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg);
 extern int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
 extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
 extern int db_make_string (DB_VALUE * value, const char *str);
 extern int db_make_string_copy (DB_VALUE * value, const char *str);
-extern int db_make_numeric (DB_VALUE * value,
-			    const DB_C_NUMERIC num,
-			    const int precision, const int scale);
+extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale);
 extern int db_value_put_numeric (DB_VALUE * value, DB_C_NUMERIC num);
-extern int db_make_bit (DB_VALUE * value, const int bit_length,
-			const DB_C_BIT bit_str, const int bit_str_bit_size);
+extern int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size);
 extern int db_value_put_bit (DB_VALUE * value, DB_C_BIT str, int size);
-extern int db_make_varbit (DB_VALUE * value, const int max_bit_length,
-			   const DB_C_BIT bit_str,
+extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
 			   const int bit_str_bit_size);
 extern int db_value_put_varbit (DB_VALUE * value, DB_C_BIT str, int size);
-extern int db_make_char (DB_VALUE * value, const int char_length,
-			 const DB_C_CHAR str, const int char_str_byte_size,
+extern int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
 			 const int codeset, const int collation_id);
 extern int db_value_put_char (DB_VALUE * value, DB_C_CHAR str, int size);
-extern int db_make_varchar (DB_VALUE * value, const int max_char_length,
-			    const DB_C_CHAR str, const int char_str_byte_size,
-			    const int codeset, const int collation_id);
+extern int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
+			    const int char_str_byte_size, const int codeset, const int collation_id);
 extern int db_value_put_varchar (DB_VALUE * value, DB_C_CHAR str, int size);
-extern int db_make_nchar (DB_VALUE * value, const int nchar_length,
-			  const DB_C_NCHAR str,
-			  const int nchar_str_byte_size, const int codeset,
-			  const int collation_id);
+extern int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str, const int nchar_str_byte_size,
+			  const int codeset, const int collation_id);
 extern int db_value_put_nchar (DB_VALUE * value, DB_C_NCHAR str, int size);
-extern int db_make_varnchar (DB_VALUE * value,
-			     const int max_nchar_length,
-			     const DB_C_NCHAR str,
-			     const int nchar_str_byte_size, const int codeset,
-			     const int collation_id);
+extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
+			     const int nchar_str_byte_size, const int codeset, const int collation_id);
 extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 
-extern int db_make_enumeration (DB_VALUE * value, unsigned short index,
-				DB_C_CHAR str, int size,
-				unsigned char codeset,
+extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size, unsigned char codeset,
 				const int collation_id);
 
 extern DB_CURRENCY db_get_currency_default (void);
@@ -3199,11 +3125,8 @@ extern DB_C_CHAR db_get_method_error_msg (void);
 
 extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
 
-extern int db_string_put_cs_and_collation (DB_VALUE * value,
-					   const int codeset,
-					   const int collation_id);
-extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset,
-					 const int collation_id);
+extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
+extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 extern int db_get_string_codeset (const DB_VALUE * value);
 extern int db_get_string_collation (const DB_VALUE * value);
 extern int valcnv_convert_value_to_string (DB_VALUE * value);
@@ -3212,140 +3135,89 @@ extern int db_get_enum_codeset (const DB_VALUE * value);
 extern int db_get_enum_collation (const DB_VALUE * value);
 
 
-extern void db_date_decode (const DB_DATE * date, int *monthp,
-			    int *dayp, int *yearp);
+extern void db_date_decode (const DB_DATE * date, int *monthp, int *dayp, int *yearp);
 extern int db_date_weekday (DB_DATE * date);
 extern int db_date_to_string (char *buf, int bufsize, DB_DATE * date);
 extern bool db_string_check_explicit_date (const char *str, int str_len);
 extern int db_string_to_date (const char *buf, DB_DATE * date);
-extern int db_string_to_date_ex (const char *buf, int str_len,
-				 DB_DATE * date);
+extern int db_string_to_date_ex (const char *buf, int str_len, DB_DATE * date);
 extern int db_date_parse_date (char const *str, int str_len, DB_DATE * date);
 
 /* DB_DATETIME functions */
-extern int db_datetime_encode (DB_DATETIME * datetime, int month, int day,
-			       int year, int hour, int minute, int second,
+extern int db_datetime_encode (DB_DATETIME * datetime, int month, int day, int year, int hour, int minute, int second,
 			       int millisecond);
-extern int db_datetime_decode (const DB_DATETIME * datetime, int *month,
-			       int *day, int *year, int *hour, int *minute,
+extern int db_datetime_decode (const DB_DATETIME * datetime, int *month, int *day, int *year, int *hour, int *minute,
 			       int *second, int *millisecond);
-extern int db_datetime_to_string (char *buf, int bufsize,
-				  DB_DATETIME * datetime);
-extern int db_datetimetz_to_string (char *buf, int bufsize, DB_DATETIME * dt,
-				    const TZ_ID * tz_id);
-extern int db_datetimeltz_to_string (char *buf, int bufsize,
-				     DB_DATETIME * dt);
-extern int db_datetime_to_string2 (char *buf, int bufsize,
-				   DB_DATETIME * datetime);
+extern int db_datetime_to_string (char *buf, int bufsize, DB_DATETIME * datetime);
+extern int db_datetimetz_to_string (char *buf, int bufsize, DB_DATETIME * dt, const TZ_ID * tz_id);
+extern int db_datetimeltz_to_string (char *buf, int bufsize, DB_DATETIME * dt);
+extern int db_datetime_to_string2 (char *buf, int bufsize, DB_DATETIME * datetime);
 extern int db_string_to_datetime (const char *str, DB_DATETIME * datetime);
-extern int db_string_to_datetime_ex (const char *str, int str_len,
-				     DB_DATETIME * datetime);
-extern int db_string_to_datetimetz (const char *str, DB_DATETIMETZ * dt_tz,
-				    bool * has_zone);
-extern int db_string_to_datetimetz_ex (const char *str, int str_len,
-				       DB_DATETIMETZ * dt_tz,
-				       bool * has_zone);
+extern int db_string_to_datetime_ex (const char *str, int str_len, DB_DATETIME * datetime);
+extern int db_string_to_datetimetz (const char *str, DB_DATETIMETZ * dt_tz, bool * has_zone);
+extern int db_string_to_datetimetz_ex (const char *str, int str_len, DB_DATETIMETZ * dt_tz, bool * has_zone);
 extern int db_string_to_datetimeltz (const char *str, DB_DATETIME * datetime);
-extern int db_string_to_datetimeltz_ex (const char *str, int str_len,
-					DB_DATETIME * datetime);
-extern int db_date_parse_datetime_parts (char const *str, int str_len,
-					 DB_DATETIME * date,
-					 bool * is_explicit_time,
-					 bool * has_explicit_msec,
-					 bool * fits_as_timestamp,
-					 char const **endp);
-extern int db_date_parse_datetime (char const *str, int str_len,
-				   DB_DATETIME * datetime);
-extern int db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT i2,
-					  DB_DATETIME * result_datetime);
-extern int db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT i2,
-				   DB_DATETIME * result_datetime);
+extern int db_string_to_datetimeltz_ex (const char *str, int str_len, DB_DATETIME * datetime);
+extern int db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * date, bool * is_explicit_time,
+					 bool * has_explicit_msec, bool * fits_as_timestamp, char const **endp);
+extern int db_date_parse_datetime (char const *str, int str_len, DB_DATETIME * datetime);
+extern int db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT i2, DB_DATETIME * result_datetime);
+extern int db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT i2, DB_DATETIME * result_datetime);
 /* DB_TIMESTAMP functions */
-extern int db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date,
-				DB_TIME * timeval);
-extern int db_timestamp_encode_ses (const DB_DATE * date,
-				    const DB_TIME * timeval,
-				    DB_TIMESTAMP * utime, TZ_ID * dest_tz_id);
-extern int db_timestamp_encode_utc (const DB_DATE * date,
-				    const DB_TIME * timeval,
-				    DB_TIMESTAMP * utime);
-extern int db_timestamp_decode_ses (const DB_TIMESTAMP * utime,
-				    DB_DATE * date, DB_TIME * timeval);
-extern void db_timestamp_decode_utc (const DB_TIMESTAMP * utime,
-				     DB_DATE * date, DB_TIME * timeval);
-extern int db_timestamp_decode_w_reg (const DB_TIMESTAMP * utime,
-				      const TZ_REGION * tz_region,
-				      DB_DATE * date, DB_TIME * timeval);
-extern int db_timestamp_decode_w_tz_id (const DB_TIMESTAMP * utime,
-					const TZ_ID * tz_id,
-					DB_DATE * date, DB_TIME * timeval);
-extern int db_timestamp_to_string (char *buf, int bufsize,
-				   DB_TIMESTAMP * utime);
-extern int db_timestamptz_to_string (char *buf, int bufsize,
-				     DB_TIMESTAMP * utime,
-				     const TZ_ID * tz_id);
-extern int db_timestampltz_to_string (char *buf, int bufsize,
-				      DB_TIMESTAMP * utime);
+extern int db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval);
+extern int db_timestamp_encode_ses (const DB_DATE * date, const DB_TIME * timeval, DB_TIMESTAMP * utime,
+				    TZ_ID * dest_tz_id);
+extern int db_timestamp_encode_utc (const DB_DATE * date, const DB_TIME * timeval, DB_TIMESTAMP * utime);
+extern int db_timestamp_decode_ses (const DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval);
+extern void db_timestamp_decode_utc (const DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval);
+extern int db_timestamp_decode_w_reg (const DB_TIMESTAMP * utime, const TZ_REGION * tz_region, DB_DATE * date,
+				      DB_TIME * timeval);
+extern int db_timestamp_decode_w_tz_id (const DB_TIMESTAMP * utime, const TZ_ID * tz_id, DB_DATE * date,
+					DB_TIME * timeval);
+extern int db_timestamp_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime);
+extern int db_timestamptz_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime, const TZ_ID * tz_id);
+extern int db_timestampltz_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime);
 extern int db_string_to_timestamp (const char *buf, DB_TIMESTAMP * utime);
-extern int db_string_to_timestamp_ex (const char *buf, int buf_len,
-				      DB_TIMESTAMP * utime);
-extern int db_date_parse_timestamp (char const *str, int str_len,
-				    DB_TIMESTAMP * utime);
-extern int db_string_to_timestamptz (const char *str, DB_TIMESTAMPTZ * ts_tz,
-				     bool * has_zone);
-extern int db_string_to_timestamptz_ex (const char *str, int str_len,
-					DB_TIMESTAMPTZ * ts_tz,
-					bool * has_zone);
+extern int db_string_to_timestamp_ex (const char *buf, int buf_len, DB_TIMESTAMP * utime);
+extern int db_date_parse_timestamp (char const *str, int str_len, DB_TIMESTAMP * utime);
+extern int db_string_to_timestamptz (const char *str, DB_TIMESTAMPTZ * ts_tz, bool * has_zone);
+extern int db_string_to_timestamptz_ex (const char *str, int str_len, DB_TIMESTAMPTZ * ts_tz, bool * has_zone);
 extern int db_string_to_timestampltz (const char *str, DB_TIMESTAMP * ts);
-extern int db_string_to_timestampltz_ex (const char *str, int str_len,
-					 DB_TIMESTAMP * ts);
+extern int db_string_to_timestampltz_ex (const char *str, int str_len, DB_TIMESTAMP * ts);
 
 /* DB_TIME functions */
-extern int db_time_encode (DB_TIME * timeval,
-			   int hour, int minute, int second);
-extern void db_time_decode (DB_TIME * timeval, int *hourp,
-			    int *minutep, int *secondp);
+extern int db_time_encode (DB_TIME * timeval, int hour, int minute, int second);
+extern void db_time_decode (DB_TIME * timeval, int *hourp, int *minutep, int *secondp);
 extern int db_time_to_string (char *buf, int bufsize, DB_TIME * dbtime);
-extern int db_timetz_to_string (char *buf, int bufsize, DB_TIME * dbtime,
-				const TZ_ID * tz_id);
+extern int db_timetz_to_string (char *buf, int bufsize, DB_TIME * dbtime, const TZ_ID * tz_id);
 extern int db_timeltz_to_string (char *buf, int bufsize, DB_TIME * time);
 extern bool db_string_check_explicit_time (const char *str, int str_len);
 extern int db_string_to_time (const char *buf, DB_TIME * dbtime);
-extern int db_string_to_time_ex (const char *buf, int buf_len,
-				 DB_TIME * dbtime);
-extern int db_string_to_timetz (const char *buf, DB_TIMETZ * time_tz,
-				bool * has_zone);
-extern int db_string_to_timetz_ex (const char *buf, int buf_len,
-				   DB_TIMETZ * time_tz, bool * has_zone);
+extern int db_string_to_time_ex (const char *buf, int buf_len, DB_TIME * dbtime);
+extern int db_string_to_timetz (const char *buf, DB_TIMETZ * time_tz, bool * has_zone);
+extern int db_string_to_timetz_ex (const char *buf, int buf_len, DB_TIMETZ * time_tz, bool * has_zone);
 extern int db_string_to_timeltz (const char *buf, DB_TIME * time);
-extern int db_string_to_timeltz_ex (const char *buf, int buf_len,
-				    DB_TIME * time);
-extern int db_date_parse_time (char const *str, int str_len, DB_TIME * time,
-			       int *milisec);
+extern int db_string_to_timeltz_ex (const char *buf, int buf_len, DB_TIME * time);
+extern int db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milisec);
 
 /* Unix-like functions */
 extern time_t db_mktime (DB_DATE * date, DB_TIME * timeval);
-extern int db_strftime (char *s, int smax, const char *fmt,
-			DB_DATE * date, DB_TIME * timeval);
-extern void db_localtime (time_t * epoch_time,
-			  DB_DATE * date, DB_TIME * timeval);
+extern int db_strftime (char *s, int smax, const char *fmt, DB_DATE * date, DB_TIME * timeval);
+extern void db_localtime (time_t * epoch_time, DB_DATE * date, DB_TIME * timeval);
 extern void db_localdatetime (time_t * epoch_time, DB_DATETIME * datetime);
 
 
 /* generic calculation functions */
 extern int julian_encode (int m, int d, int y);
-extern void julian_decode (int jul, int *monthp, int *dayp,
-			   int *yearp, int *weekp);
+extern void julian_decode (int jul, int *monthp, int *dayp, int *yearp, int *weekp);
 extern int day_of_week (int jul_day);
 extern bool is_leap_year (int year);
-extern int db_tm_encode (struct tm *c_time_struct,
-			 DB_DATE * date, DB_TIME * timeval);
+extern int db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval);
 extern int db_get_day_of_year (int year, int month, int day);
 extern int db_get_day_of_week (int year, int month, int day);
 extern int db_get_week_of_year (int year, int month, int day, int mode);
 extern int db_check_time_date_format (const char *format_s);
-extern int db_add_weeks_and_days_to_date (int *day, int *month, int *year,
-					  int weeks, int day_week);
+extern int db_add_weeks_and_days_to_date (int *day, int *month, int *year, int weeks, int day_week);
 
 /* DB_ELO function */
 extern int db_create_fbo (DB_VALUE * value, DB_TYPE type);
@@ -3356,20 +3228,16 @@ extern int db_elo_copy (const DB_ELO * src, DB_ELO * dest);
 extern int db_elo_delete (DB_ELO * elo);
 
 extern int64_t db_elo_size (DB_ELO * elo);
-extern int db_elo_read (const DB_ELO * elo,
-			int64_t pos, void *buf, size_t count);
+extern int db_elo_read (const DB_ELO * elo, int64_t pos, void *buf, size_t count);
 extern int db_elo_write (DB_ELO * elo, int64_t pos, void *buf, size_t count);
 
 /* Unix-like functions */
 extern time_t db_mktime (DB_DATE * date, DB_TIME * timeval);
-extern int db_strftime (char *s, int smax, const char *fmt,
-			DB_DATE * date, DB_TIME * timeval);
-extern void db_localtime (time_t * epoch_time,
-			  DB_DATE * date, DB_TIME * timeval);
+extern int db_strftime (char *s, int smax, const char *fmt, DB_DATE * date, DB_TIME * timeval);
+extern void db_localtime (time_t * epoch_time, DB_DATE * date, DB_TIME * timeval);
 
 /* generic calculation functions */
-extern int db_tm_encode (struct tm *c_time_struct,
-			 DB_DATE * date, DB_TIME * timeval);
+extern int db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval);
 
 
 
@@ -3422,26 +3290,24 @@ struct cache_time
 
 
 extern bool db_is_client_cache_reusable (DB_QUERY_RESULT * result);
-extern int db_query_seek_tuple (DB_QUERY_RESULT * result,
-				int offset, int seek_mode);
-extern int db_query_get_cache_time (DB_QUERY_RESULT * result,
-				    CACHE_TIME * cache_time);
+extern int db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode);
+extern int db_query_get_cache_time (DB_QUERY_RESULT * result, CACHE_TIME * cache_time);
 
 
 typedef enum
 {
-  TRAN_UNKNOWN_ISOLATION = 0x00,	/*        0  0000 */
+  TRAN_UNKNOWN_ISOLATION = 0x00,	/* 0 0000 */
 
-  TRAN_READ_COMMITTED = 0x04,	/*        0  0100 */
+  TRAN_READ_COMMITTED = 0x04,	/* 0 0100 */
   TRAN_REP_CLASS_COMMIT_INSTANCE = 0x04,	/* Alias of above */
   TRAN_CURSOR_STABILITY = 0x04,	/* Alias of above */
 
-  TRAN_REPEATABLE_READ = 0x05,	/*        0  0101 */
+  TRAN_REPEATABLE_READ = 0x05,	/* 0 0101 */
   TRAN_REP_READ = 0x05,		/* Alias of above */
   TRAN_REP_CLASS_REP_INSTANCE = 0x05,	/* Alias of above */
   TRAN_DEGREE_2_9999_CONSISTENCY = 0x05,	/* Alias of above */
 
-  TRAN_SERIALIZABLE = 0x06,	/*        0  0110 */
+  TRAN_SERIALIZABLE = 0x06,	/* 0 0110 */
   TRAN_DEGREE_3_CONSISTENCY = 0x06,	/* Alias of above */
   TRAN_NO_PHANTOM_READ = 0x06,	/* Alias of above */
 
@@ -3461,16 +3327,13 @@ extern int db_auth_login (char *signed_data, int len);
 extern int db_auth_logout (void);
 
 extern int db_login (const char *name, const char *password);
-extern int db_restart (const char *program,
-		       int print_version, const char *volume);
-extern int db_restart_ex (const char *program, const char *db_name,
-			  const char *db_user, const char *db_password,
+extern int db_restart (const char *program, int print_version, const char *volume);
+extern int db_restart_ex (const char *program, const char *db_name, const char *db_user, const char *db_password,
 			  const char *preferred_hosts, int client_type);
 extern SESSION_ID db_get_session_id (void);
 extern void db_set_session_id (const SESSION_ID session_id);
 extern int db_end_session (void);
-extern int db_find_or_create_session (const char *db_user,
-				      const char *program_name);
+extern int db_find_or_create_session (const char *db_user, const char *program_name);
 extern int db_get_row_count_cache (void);
 extern void db_update_row_count_cache (const int row_count);
 extern int db_get_row_count (int *row_count);
@@ -3496,17 +3359,11 @@ extern void db_set_interrupt (int set);
 extern int db_set_suppress_repl_on_transaction (int set);
 extern int db_freepgs (const char *vlabel);
 extern int db_totalpgs (const char *vlabel);
-extern int db_purpose_totalpgs_freepgs (int volid,
-					DB_VOLPURPOSE *
-					vol_purpose,
-					int *vol_ntotal_pages,
+extern int db_purpose_totalpgs_freepgs (int volid, DB_VOLPURPOSE * vol_purpose, int *vol_ntotal_pages,
 					int *vol_nfree_pages);
 extern char *db_vol_label (int volid, char *vol_fullname);
 extern void db_warnspace (const char *vlabel);
-extern int db_add_volume (const char *ext_path,
-			  const char *ext_name,
-			  const char *ext_comments,
-			  const int ext_npages,
+extern int db_add_volume (const char *ext_path, const char *ext_name, const char *ext_comments, const int ext_npages,
 			  const DB_VOLPURPOSE ext_purpose);
 extern int db_num_volumes (void);
 extern void db_print_stats (void);
@@ -3523,8 +3380,7 @@ extern int db_error_init (const char *logfile);
 extern int db_set_lock_timeout (int seconds);
 extern int db_set_isolation (DB_TRAN_ISOLATION isolation);
 extern void db_synchronize_cache (void);
-extern void db_get_tran_settings (int *lock_wait,
-				  DB_TRAN_ISOLATION * tran_isolation);
+extern void db_get_tran_settings (int *lock_wait, DB_TRAN_ISOLATION * tran_isolation);
 
 /* Authorization */
 extern DB_OBJECT *db_get_user (void);
@@ -3537,24 +3393,18 @@ extern DB_OBJECT *db_add_user (const char *name, int *exists);
 extern int db_drop_user (DB_OBJECT * user);
 extern int db_add_member (DB_OBJECT * user, DB_OBJECT * member);
 extern int db_drop_member (DB_OBJECT * user, DB_OBJECT * member);
-extern int db_set_password (DB_OBJECT * user,
-			    const char *oldpass, const char *newpass);
+extern int db_set_password (DB_OBJECT * user, const char *oldpass, const char *newpass);
 extern int db_set_user_comment (DB_OBJECT * user, const char *comment);
-extern int db_grant (DB_OBJECT * user, DB_OBJECT * classobj,
-		     DB_AUTH auth, int grant_option);
+extern int db_grant (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth, int grant_option);
 extern int db_revoke (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth);
 extern int db_check_authorization (DB_OBJECT * op, DB_AUTH auth);
 extern int db_check_authorization_and_grant_option (MOP op, DB_AUTH auth);
 extern int db_get_class_privilege (DB_OBJECT * op, unsigned int *auth);
 
 /*  Serial value manipulation */
-extern int db_get_serial_current_value (const char *serial_name,
-					DB_VALUE * serial_value);
-extern int db_get_serial_next_value (const char *serial_name,
-				     DB_VALUE * serial_value);
-extern int db_get_serial_next_value_ex (const char *serial_name,
-					DB_VALUE * serial_value,
-					int num_alloc);
+extern int db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value);
+extern int db_get_serial_next_value (const char *serial_name, DB_VALUE * serial_value);
+extern int db_get_serial_next_value_ex (const char *serial_name, DB_VALUE * serial_value, int num_alloc);
 
 /* Instance manipulation */
 extern DB_OBJECT *db_create (DB_OBJECT * obj);
@@ -3562,57 +3412,34 @@ extern DB_OBJECT *db_create_by_name (const char *name);
 extern int db_get (DB_OBJECT * object, const char *attpath, DB_VALUE * value);
 extern int db_put (DB_OBJECT * obj, const char *name, DB_VALUE * value);
 extern int db_drop (DB_OBJECT * obj);
-extern int db_get_expression (DB_OBJECT * object,
-			      const char *expression, DB_VALUE * value);
+extern int db_get_expression (DB_OBJECT * object, const char *expression, DB_VALUE * value);
 extern void db_print (DB_OBJECT * obj);
 extern void db_fprint (FILE * fp, DB_OBJECT * obj);
-extern DB_OBJECT *db_find_unique (DB_OBJECT * classobj,
-				  const char *attname, DB_VALUE * value);
-extern DB_OBJECT *db_find_unique_write_mode (DB_OBJECT * classobj,
-					     const char *attname,
-					     DB_VALUE * value);
-extern DB_OBJECT *db_find_multi_unique (DB_OBJECT * classobj,
-					int size,
-					char *attnames[],
-					DB_VALUE * values[],
+extern DB_OBJECT *db_find_unique (DB_OBJECT * classobj, const char *attname, DB_VALUE * value);
+extern DB_OBJECT *db_find_unique_write_mode (DB_OBJECT * classobj, const char *attname, DB_VALUE * value);
+extern DB_OBJECT *db_find_multi_unique (DB_OBJECT * classobj, int size, char *attnames[], DB_VALUE * values[],
 					DB_FETCH_MODE purpose);
-extern DB_OBJECT *db_dfind_unique (DB_OBJECT * classobj,
-				   DB_ATTDESC * attdesc,
-				   DB_VALUE * value, DB_FETCH_MODE purpose);
-extern DB_OBJECT *db_dfind_multi_unique (DB_OBJECT * classobj,
-					 int size,
-					 DB_ATTDESC * attdesc[],
-					 DB_VALUE * values[],
+extern DB_OBJECT *db_dfind_unique (DB_OBJECT * classobj, DB_ATTDESC * attdesc, DB_VALUE * value, DB_FETCH_MODE purpose);
+extern DB_OBJECT *db_dfind_multi_unique (DB_OBJECT * classobj, int size, DB_ATTDESC * attdesc[], DB_VALUE * values[],
 					 DB_FETCH_MODE purpose);
-extern DB_OBJECT *db_find_primary_key (MOP classmop,
-				       const DB_VALUE ** values,
-				       int size, DB_FETCH_MODE purpose);
+extern DB_OBJECT *db_find_primary_key (MOP classmop, const DB_VALUE ** values, int size, DB_FETCH_MODE purpose);
 
-extern int db_send (DB_OBJECT * obj, const char *name,
-		    DB_VALUE * returnval, ...);
-extern int db_send_arglist (DB_OBJECT * obj, const char *name,
-			    DB_VALUE * returnval, DB_VALUE_LIST * args);
-extern int db_send_argarray (DB_OBJECT * obj, const char *name,
-			     DB_VALUE * returnval, DB_VALUE ** args);
+extern int db_send (DB_OBJECT * obj, const char *name, DB_VALUE * returnval, ...);
+extern int db_send_arglist (DB_OBJECT * obj, const char *name, DB_VALUE * returnval, DB_VALUE_LIST * args);
+extern int db_send_argarray (DB_OBJECT * obj, const char *name, DB_VALUE * returnval, DB_VALUE ** args);
 
 /* Explicit lock & fetch functions */
 extern int db_lock_read (DB_OBJECT * op);
 extern int db_lock_write (DB_OBJECT * op);
 
-extern int db_fetch_array (DB_OBJECT ** objects,
-			   DB_FETCH_MODE mode, int quit_on_error);
-extern int db_fetch_list (DB_OBJLIST * objects,
-			  DB_FETCH_MODE mode, int quit_on_error);
-extern int db_fetch_set (DB_COLLECTION * set,
-			 DB_FETCH_MODE mode, int quit_on_error);
+extern int db_fetch_array (DB_OBJECT ** objects, DB_FETCH_MODE mode, int quit_on_error);
+extern int db_fetch_list (DB_OBJLIST * objects, DB_FETCH_MODE mode, int quit_on_error);
+extern int db_fetch_set (DB_COLLECTION * set, DB_FETCH_MODE mode, int quit_on_error);
 extern int db_fetch_seq (DB_SEQ * set, DB_FETCH_MODE mode, int quit_on_error);
-extern int db_fetch_composition (DB_OBJECT * object,
-				 DB_FETCH_MODE mode,
-				 int max_level, int quit_on_error);
+extern int db_fetch_composition (DB_OBJECT * object, DB_FETCH_MODE mode, int max_level, int quit_on_error);
 
 /* Collection functions */
-extern DB_COLLECTION *db_col_create (DB_TYPE type, int size,
-				     DB_DOMAIN * domain);
+extern DB_COLLECTION *db_col_create (DB_TYPE type, int size, DB_DOMAIN * domain);
 extern DB_COLLECTION *db_col_copy (DB_COLLECTION * col);
 extern int db_col_filter (DB_COLLECTION * col);
 extern int db_col_free (DB_COLLECTION * col);
@@ -3624,20 +3451,16 @@ extern int db_col_cardinality (DB_COLLECTION * col);
 extern DB_TYPE db_col_type (DB_COLLECTION * col);
 extern DB_DOMAIN *db_col_domain (DB_COLLECTION * col);
 extern int db_col_ismember (DB_COLLECTION * col, DB_VALUE * value);
-extern int db_col_find (DB_COLLECTION * col, DB_VALUE * value,
-			int starting_index, int *found_index);
+extern int db_col_find (DB_COLLECTION * col, DB_VALUE * value, int starting_index, int *found_index);
 extern int db_col_add (DB_COLLECTION * col, DB_VALUE * value);
 extern int db_col_drop (DB_COLLECTION * col, DB_VALUE * value, int all);
 extern int db_col_drop_element (DB_COLLECTION * col, int element_index);
 
 extern int db_col_drop_nulls (DB_COLLECTION * col);
 
-extern int db_col_get (DB_COLLECTION * col,
-		       int element_index, DB_VALUE * value);
-extern int db_col_put (DB_COLLECTION * col,
-		       int element_index, DB_VALUE * value);
-extern int db_col_insert (DB_COLLECTION * col,
-			  int element_index, DB_VALUE * value);
+extern int db_col_get (DB_COLLECTION * col, int element_index, DB_VALUE * value);
+extern int db_col_put (DB_COLLECTION * col, int element_index, DB_VALUE * value);
+extern int db_col_insert (DB_COLLECTION * col, int element_index, DB_VALUE * value);
 
 extern int db_col_print (DB_COLLECTION * col);
 extern int db_col_fprint (FILE * fp, DB_COLLECTION * col);
@@ -3646,17 +3469,13 @@ extern int db_col_fprint (FILE * fp, DB_COLLECTION * col);
    These are now obsolete. Please use the generic collection functions
    "db_col*" instead */
 extern DB_COLLECTION *db_set_create (DB_OBJECT * classobj, const char *name);
-extern DB_COLLECTION *db_set_create_basic (DB_OBJECT * classobj,
-					   const char *name);
-extern DB_COLLECTION *db_set_create_multi (DB_OBJECT * classobj,
-					   const char *name);
-extern DB_COLLECTION *db_seq_create (DB_OBJECT * classobj,
-				     const char *name, int size);
+extern DB_COLLECTION *db_set_create_basic (DB_OBJECT * classobj, const char *name);
+extern DB_COLLECTION *db_set_create_multi (DB_OBJECT * classobj, const char *name);
+extern DB_COLLECTION *db_seq_create (DB_OBJECT * classobj, const char *name, int size);
 extern int db_set_free (DB_COLLECTION * set);
 extern int db_set_filter (DB_COLLECTION * set);
 extern int db_set_add (DB_COLLECTION * set, DB_VALUE * value);
-extern int db_set_get (DB_COLLECTION * set,
-		       int element_index, DB_VALUE * value);
+extern int db_set_get (DB_COLLECTION * set, int element_index, DB_VALUE * value);
 extern int db_set_drop (DB_COLLECTION * set, DB_VALUE * value);
 extern int db_set_size (DB_COLLECTION * set);
 extern int db_set_cardinality (DB_COLLECTION * set);
@@ -3665,18 +3484,14 @@ extern int db_set_isempty (DB_COLLECTION * set);
 extern int db_set_print (DB_COLLECTION * set);
 extern DB_TYPE db_set_type (DB_COLLECTION * set);
 extern DB_COLLECTION *db_set_copy (DB_COLLECTION * set);
-extern int db_seq_get (DB_COLLECTION * set,
-		       int element_index, DB_VALUE * value);
-extern int db_seq_put (DB_COLLECTION * set,
-		       int element_index, DB_VALUE * value);
-extern int db_seq_insert (DB_COLLECTION * set,
-			  int element_index, DB_VALUE * value);
+extern int db_seq_get (DB_COLLECTION * set, int element_index, DB_VALUE * value);
+extern int db_seq_put (DB_COLLECTION * set, int element_index, DB_VALUE * value);
+extern int db_seq_insert (DB_COLLECTION * set, int element_index, DB_VALUE * value);
 extern int db_seq_drop (DB_COLLECTION * set, int element_index);
 extern int db_seq_size (DB_COLLECTION * set);
 extern int db_seq_cardinality (DB_COLLECTION * set);
 extern int db_seq_print (DB_COLLECTION * set);
-extern int db_seq_find (DB_COLLECTION * set, DB_VALUE * value,
-			int element_index);
+extern int db_seq_find (DB_COLLECTION * set, DB_VALUE * value, int element_index);
 extern int db_seq_free (DB_SEQ * seq);
 extern int db_seq_filter (DB_SEQ * seq);
 extern DB_SEQ *db_seq_copy (DB_SEQ * seq);
@@ -3685,8 +3500,7 @@ extern DB_SEQ *db_seq_copy (DB_SEQ * seq);
 extern DB_OBJECT *db_create_class (const char *name);
 extern DB_OBJECT *db_create_vclass (const char *name);
 extern int db_drop_class (DB_OBJECT * classobj);
-extern int db_drop_class_ex (DB_OBJECT * classobj,
-			     bool is_cascade_constraints);
+extern int db_drop_class_ex (DB_OBJECT * classobj, bool is_cascade_constraints);
 extern int db_rename_class (DB_OBJECT * classobj, const char *new_name);
 
 extern int db_add_index (DB_OBJECT * classobj, const char *attname);
@@ -3696,78 +3510,41 @@ extern int db_add_super (DB_OBJECT * classobj, DB_OBJECT * super);
 extern int db_drop_super (DB_OBJECT * classobj, DB_OBJECT * super);
 extern int db_drop_super_connect (DB_OBJECT * classobj, DB_OBJECT * super);
 
-extern int db_rename (DB_OBJECT * classobj, const char *name,
-		      int class_namespace, const char *newname);
+extern int db_rename (DB_OBJECT * classobj, const char *name, int class_namespace, const char *newname);
 
-extern int db_add_attribute (DB_OBJECT * obj, const char *name,
-			     const char *domain, DB_VALUE * default_value);
-extern int db_add_shared_attribute (DB_OBJECT * obj,
-				    const char *name,
-				    const char *domain,
-				    DB_VALUE * default_value);
-extern int db_add_class_attribute (DB_OBJECT * obj,
-				   const char *name,
-				   const char *domain,
-				   DB_VALUE * default_value);
-extern int db_add_set_attribute_domain (DB_OBJECT * classobj,
-					const char *name,
-					int
-					class_attribute, const char *domain);
+extern int db_add_attribute (DB_OBJECT * obj, const char *name, const char *domain, DB_VALUE * default_value);
+extern int db_add_shared_attribute (DB_OBJECT * obj, const char *name, const char *domain, DB_VALUE * default_value);
+extern int db_add_class_attribute (DB_OBJECT * obj, const char *name, const char *domain, DB_VALUE * default_value);
+extern int db_add_set_attribute_domain (DB_OBJECT * classobj, const char *name, int class_attribute,
+					const char *domain);
 extern int db_drop_attribute (DB_OBJECT * classobj, const char *name);
 extern int db_drop_class_attribute (DB_OBJECT * classobj, const char *name);
-extern int db_change_default (DB_OBJECT * classobj,
-			      const char *name, DB_VALUE * value);
+extern int db_change_default (DB_OBJECT * classobj, const char *name, DB_VALUE * value);
 
-extern int db_constrain_non_null (DB_OBJECT * classobj,
-				  const char *name,
-				  int class_attribute, int on_or_off);
-extern int db_constrain_unique (DB_OBJECT * classobj,
-				const char *name, int on_or_off);
-extern int db_add_method (DB_OBJECT * classobj,
-			  const char *name, const char *implementation);
-extern int db_add_class_method (DB_OBJECT * classobj,
-				const char *name, const char *implementation);
+extern int db_constrain_non_null (DB_OBJECT * classobj, const char *name, int class_attribute, int on_or_off);
+extern int db_constrain_unique (DB_OBJECT * classobj, const char *name, int on_or_off);
+extern int db_add_method (DB_OBJECT * classobj, const char *name, const char *implementation);
+extern int db_add_class_method (DB_OBJECT * classobj, const char *name, const char *implementation);
 extern int db_drop_method (DB_OBJECT * classobj, const char *name);
 extern int db_drop_class_method (DB_OBJECT * classobj, const char *name);
-extern int db_add_argument (DB_OBJECT * classobj,
-			    const char *name,
-			    int class_method,
-			    int arg_index, const char *domain);
-extern int db_add_set_argument_domain (DB_OBJECT * classobj,
-				       const char *name,
-				       int class_method,
-				       int arg_index, const char *domain);
-extern int db_change_method_implementation (DB_OBJECT *
-					    classobj,
-					    const char *name,
-					    int
-					    class_method,
+extern int db_add_argument (DB_OBJECT * classobj, const char *name, int class_method, int arg_index,
+			    const char *domain);
+extern int db_add_set_argument_domain (DB_OBJECT * classobj, const char *name, int class_method, int arg_index,
+				       const char *domain);
+extern int db_change_method_implementation (DB_OBJECT * classobj, const char *name, int class_method,
 					    const char *newname);
-extern int db_set_loader_commands (DB_OBJECT * classobj,
-				   const char *commands);
+extern int db_set_loader_commands (DB_OBJECT * classobj, const char *commands);
 extern int db_add_method_file (DB_OBJECT * classobj, const char *name);
 extern int db_drop_method_file (DB_OBJECT * classobj, const char *name);
 extern int db_drop_method_files (DB_OBJECT * classobj);
 
-extern int db_add_resolution (DB_OBJECT * classobj,
-			      DB_OBJECT * super,
-			      const char *name, const char *alias);
-extern int db_add_class_resolution (DB_OBJECT * classobj,
-				    DB_OBJECT * super,
-				    const char *name, const char *alias);
-extern int db_drop_resolution (DB_OBJECT * classobj,
-			       DB_OBJECT * super, const char *name);
-extern int db_drop_class_resolution (DB_OBJECT * classobj,
-				     DB_OBJECT * super, const char *name);
-extern int db_add_constraint (MOP classmop,
-			      DB_CONSTRAINT_TYPE
-			      constraint_type,
-			      const char *constraint_name,
+extern int db_add_resolution (DB_OBJECT * classobj, DB_OBJECT * super, const char *name, const char *alias);
+extern int db_add_class_resolution (DB_OBJECT * classobj, DB_OBJECT * super, const char *name, const char *alias);
+extern int db_drop_resolution (DB_OBJECT * classobj, DB_OBJECT * super, const char *name);
+extern int db_drop_class_resolution (DB_OBJECT * classobj, DB_OBJECT * super, const char *name);
+extern int db_add_constraint (MOP classmop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 			      const char **att_names, int class_attributes);
-extern int db_drop_constraint (MOP classmop,
-			       DB_CONSTRAINT_TYPE
-			       constraint_type,
-			       const char *constraint_name,
+extern int db_drop_constraint (MOP classmop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 			       const char **att_names, int class_attributes);
 
 /* Browsing functions */
@@ -3779,8 +3556,7 @@ extern int db_get_client_type (void);
 extern const char *db_get_type_name (DB_TYPE type_id);
 extern DB_TYPE db_type_from_string (const char *name);
 
-extern DB_OBJECT *db_find_class_of_index (const char *index,
-					  DB_CONSTRAINT_TYPE type);
+extern DB_OBJECT *db_find_class_of_index (const char *index, DB_CONSTRAINT_TYPE type);
 extern DB_OBJECT *db_find_class (const char *name);
 extern DB_OBJECT *db_get_class (DB_OBJECT * obj);
 extern DB_OBJLIST *db_get_all_objects (DB_OBJECT * classobj);
@@ -3804,11 +3580,9 @@ extern const char *db_get_class_name (DB_OBJECT * classobj);
 extern DB_OBJLIST *db_get_superclasses (DB_OBJECT * obj);
 extern DB_OBJLIST *db_get_subclasses (DB_OBJECT * obj);
 extern DB_ATTRIBUTE *db_get_attribute (DB_OBJECT * obj, const char *name);
-extern DB_ATTRIBUTE *db_get_attribute_by_name (const char *class_name,
-					       const char *attribute_name);
+extern DB_ATTRIBUTE *db_get_attribute_by_name (const char *class_name, const char *attribute_name);
 extern DB_ATTRIBUTE *db_get_attributes (DB_OBJECT * obj);
-extern DB_ATTRIBUTE *db_get_class_attribute (DB_OBJECT * obj,
-					     const char *name);
+extern DB_ATTRIBUTE *db_get_class_attribute (DB_OBJECT * obj, const char *name);
 extern DB_ATTRIBUTE *db_get_class_attributes (DB_OBJECT * obj);
 extern DB_METHOD *db_get_method (DB_OBJECT * obj, const char *name);
 extern DB_METHOD *db_get_class_method (DB_OBJECT * obj, const char *name);
@@ -3868,58 +3642,39 @@ extern DB_OBJLIST *db_objlist_next (DB_OBJLIST * link);
 extern DB_OBJECT *db_objlist_object (DB_OBJLIST * link);
 
 
-extern int db_get_class_num_objs_and_pages (DB_OBJECT *
-					    classmop,
-					    int approximation,
-					    int *nobjs, int *npages);
-extern int db_get_btree_statistics (DB_CONSTRAINT * cons,
-				    int *num_leaf_pages,
-				    int *num_total_pages,
-				    int *num_keys, int *height);
+extern int db_get_class_num_objs_and_pages (DB_OBJECT * classmop, int approximation, int *nobjs, int *npages);
+extern int db_get_btree_statistics (DB_CONSTRAINT * cons, int *num_leaf_pages, int *num_total_pages, int *num_keys,
+				    int *height);
 
 /* Constraint Functions */
 extern DB_CONSTRAINT *db_get_constraints (DB_OBJECT * obj);
 extern DB_CONSTRAINT *db_constraint_next (DB_CONSTRAINT * constraint);
-extern DB_CONSTRAINT *db_constraint_find_primary_key (DB_CONSTRAINT *
-						      constraint);
+extern DB_CONSTRAINT *db_constraint_find_primary_key (DB_CONSTRAINT * constraint);
 extern DB_CONSTRAINT_TYPE db_constraint_type (DB_CONSTRAINT * constraint);
 extern const char *db_constraint_name (DB_CONSTRAINT * constraint);
 extern DB_ATTRIBUTE **db_constraint_attributes (DB_CONSTRAINT * constraint);
 extern const int *db_constraint_asc_desc (DB_CONSTRAINT * constraint);
 
-extern const char *db_get_foreign_key_action (DB_CONSTRAINT * constraint,
-					      DB_FK_ACTION_TYPE type);
+extern const char *db_get_foreign_key_action (DB_CONSTRAINT * constraint, DB_FK_ACTION_TYPE type);
 extern DB_OBJECT *db_get_foreign_key_ref_class (DB_CONSTRAINT * constraint);
 
 /* Trigger functions */
-extern DB_OBJECT *db_create_trigger
-  (const char *name,
-   DB_TRIGGER_STATUS status,
-   double priority,
-   DB_TRIGGER_EVENT event,
-   DB_OBJECT * class_obj,
-   const char *attr,
-   DB_TRIGGER_TIME cond_time,
-   const char *cond_source,
-   DB_TRIGGER_TIME action_time,
-   DB_TRIGGER_ACTION action_type, const char *action_source);
+extern DB_OBJECT *db_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority,
+				     DB_TRIGGER_EVENT event, DB_OBJECT * class_obj, const char *attr,
+				     DB_TRIGGER_TIME cond_time, const char *cond_source, DB_TRIGGER_TIME action_time,
+				     DB_TRIGGER_ACTION action_type, const char *action_source);
 
 extern int db_drop_trigger (DB_OBJECT * obj);
 extern int db_rename_trigger (DB_OBJECT * obj, const char *newname);
 
 extern DB_OBJECT *db_find_trigger (const char *name);
 extern int db_find_all_triggers (DB_OBJLIST ** list);
-extern int db_find_event_triggers (DB_TRIGGER_EVENT event,
-				   DB_OBJECT * class_obj,
-				   const char *attr, DB_OBJLIST ** list);
+extern int db_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_obj, const char *attr, DB_OBJLIST ** list);
 extern int db_alter_trigger_priority (DB_OBJECT * trobj, double priority);
-extern int db_alter_trigger_status (DB_OBJECT * trobj,
-				    DB_TRIGGER_STATUS status);
+extern int db_alter_trigger_status (DB_OBJECT * trobj, DB_TRIGGER_STATUS status);
 
-extern int db_execute_deferred_activities (DB_OBJECT *
-					   trigger_obj, DB_OBJECT * target);
-extern int db_drop_deferred_activities (DB_OBJECT * trigger_obj,
-					DB_OBJECT * target);
+extern int db_execute_deferred_activities (DB_OBJECT * trigger_obj, DB_OBJECT * target);
+extern int db_drop_deferred_activities (DB_OBJECT * trigger_obj, DB_OBJECT * target);
 
 extern int db_trigger_name (DB_OBJECT * trobj, char **name);
 extern int db_trigger_status (DB_OBJECT * trobj, DB_TRIGGER_STATUS * status);
@@ -3928,12 +3683,9 @@ extern int db_trigger_event (DB_OBJECT * trobj, DB_TRIGGER_EVENT * event);
 extern int db_trigger_class (DB_OBJECT * trobj, DB_OBJECT ** class_obj);
 extern int db_trigger_attribute (DB_OBJECT * trobj, char **attr);
 extern int db_trigger_condition (DB_OBJECT * trobj, char **condition);
-extern int db_trigger_condition_time (DB_OBJECT * trobj,
-				      DB_TRIGGER_TIME * tr_time);
-extern int db_trigger_action_type (DB_OBJECT * trobj,
-				   DB_TRIGGER_ACTION * type);
-extern int db_trigger_action_time (DB_OBJECT * trobj,
-				   DB_TRIGGER_TIME * tr_time);
+extern int db_trigger_condition_time (DB_OBJECT * trobj, DB_TRIGGER_TIME * tr_time);
+extern int db_trigger_action_type (DB_OBJECT * trobj, DB_TRIGGER_ACTION * type);
+extern int db_trigger_action_time (DB_OBJECT * trobj, DB_TRIGGER_TIME * tr_time);
 extern int db_trigger_action (DB_OBJECT * trobj, char **action);
 extern int db_trigger_comment (DB_OBJECT * trobj, char **comment);
 
@@ -3944,101 +3696,52 @@ extern DB_CTMPL *dbt_edit_class (DB_OBJECT * classobj);
 extern DB_OBJECT *dbt_finish_class (DB_CTMPL * def);
 extern void dbt_abort_class (DB_CTMPL * def);
 
-extern int dbt_add_attribute (DB_CTMPL * def,
-			      const char *name,
-			      const char *domain, DB_VALUE * default_value);
-extern int dbt_add_shared_attribute (DB_CTMPL * def,
-				     const char *name,
-				     const char *domain,
-				     DB_VALUE * default_value);
-extern int dbt_add_class_attribute (DB_CTMPL * def,
-				    const char *name,
-				    const char *domain,
-				    DB_VALUE * default_value);
-extern int dbt_constrain_non_null (DB_CTMPL * def,
-				   const char *name,
-				   int class_attribute, int on_or_off);
-extern int dbt_constrain_unique (DB_CTMPL * def,
-				 const char *name, int on_or_off);
-extern int dbt_add_constraint (DB_CTMPL * def,
-			       DB_CONSTRAINT_TYPE
-			       constraint_type,
-			       const char *constraint_name,
-			       const char **attnames, int class_attributes,
-			       const char *comment);
-extern int dbt_drop_constraint (DB_CTMPL * def,
-				DB_CONSTRAINT_TYPE
-				constraint_type,
-				const char *constraint_name,
+extern int dbt_add_attribute (DB_CTMPL * def, const char *name, const char *domain, DB_VALUE * default_value);
+extern int dbt_add_shared_attribute (DB_CTMPL * def, const char *name, const char *domain, DB_VALUE * default_value);
+extern int dbt_add_class_attribute (DB_CTMPL * def, const char *name, const char *domain, DB_VALUE * default_value);
+extern int dbt_constrain_non_null (DB_CTMPL * def, const char *name, int class_attribute, int on_or_off);
+extern int dbt_constrain_unique (DB_CTMPL * def, const char *name, int on_or_off);
+extern int dbt_add_constraint (DB_CTMPL * def, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
+			       const char **attnames, int class_attributes, const char *comment);
+extern int dbt_drop_constraint (DB_CTMPL * def, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 				const char **attnames, int class_attributes);
-extern int dbt_add_set_attribute_domain (DB_CTMPL * def,
-					 const char *name,
-					 int
-					 class_attribute, const char *domain);
-extern int dbt_change_domain (DB_CTMPL * def, const char *name,
-			      int class_attribute, const char *domain);
-extern int dbt_change_default (DB_CTMPL * def, const char *name,
-			       int class_attribute, DB_VALUE * value);
-extern int dbt_drop_set_attribute_domain (DB_CTMPL * def,
-					  const char *name,
-					  int
-					  class_attribute,
-					  const char *domain);
+extern int dbt_add_set_attribute_domain (DB_CTMPL * def, const char *name, int class_attribute, const char *domain);
+extern int dbt_change_domain (DB_CTMPL * def, const char *name, int class_attribute, const char *domain);
+extern int dbt_change_default (DB_CTMPL * def, const char *name, int class_attribute, DB_VALUE * value);
+extern int dbt_drop_set_attribute_domain (DB_CTMPL * def, const char *name, int class_attribute, const char *domain);
 extern int dbt_drop_attribute (DB_CTMPL * def, const char *name);
 extern int dbt_drop_shared_attribute (DB_CTMPL * def, const char *name);
 extern int dbt_drop_class_attribute (DB_CTMPL * def, const char *name);
-extern int dbt_add_method (DB_CTMPL * def, const char *name,
-			   const char *implementation);
-extern int dbt_add_class_method (DB_CTMPL * def,
-				 const char *name,
-				 const char *implementation);
-extern int dbt_add_argument (DB_CTMPL * def, const char *name,
-			     int class_method,
-			     int arg_index, const char *domain);
-extern int dbt_add_set_argument_domain (DB_CTMPL * def,
-					const char *name,
-					int class_method,
-					int arg_index, const char *domain);
-extern int dbt_change_method_implementation (DB_CTMPL * def,
-					     const char *name,
-					     int
-					     class_method,
-					     const char *newname);
+extern int dbt_add_method (DB_CTMPL * def, const char *name, const char *implementation);
+extern int dbt_add_class_method (DB_CTMPL * def, const char *name, const char *implementation);
+extern int dbt_add_argument (DB_CTMPL * def, const char *name, int class_method, int arg_index, const char *domain);
+extern int dbt_add_set_argument_domain (DB_CTMPL * def, const char *name, int class_method, int arg_index,
+					const char *domain);
+extern int dbt_change_method_implementation (DB_CTMPL * def, const char *name, int class_method, const char *newname);
 extern int dbt_drop_method (DB_CTMPL * def, const char *name);
 extern int dbt_drop_class_method (DB_CTMPL * def, const char *name);
 extern int dbt_add_super (DB_CTMPL * def, DB_OBJECT * super);
 extern int dbt_drop_super (DB_CTMPL * def, DB_OBJECT * super);
 extern int dbt_drop_super_connect (DB_CTMPL * def, DB_OBJECT * super);
-extern int dbt_rename (DB_CTMPL * def, const char *name,
-		       int class_namespace, const char *newname);
+extern int dbt_rename (DB_CTMPL * def, const char *name, int class_namespace, const char *newname);
 extern int dbt_add_method_file (DB_CTMPL * def, const char *name);
 extern int dbt_drop_method_file (DB_CTMPL * def, const char *name);
 extern int dbt_drop_method_files (DB_CTMPL * def);
-extern int dbt_rename_method_file (DB_CTMPL * def,
-				   const char *new_name,
-				   const char *old_name);
+extern int dbt_rename_method_file (DB_CTMPL * def, const char *new_name, const char *old_name);
 
 extern int dbt_set_loader_commands (DB_CTMPL * def, const char *commands);
-extern int dbt_add_resolution (DB_CTMPL * def,
-			       DB_OBJECT * super,
-			       const char *name, const char *alias);
-extern int dbt_add_class_resolution (DB_CTMPL * def,
-				     DB_OBJECT * super,
-				     const char *name, const char *alias);
-extern int dbt_drop_resolution (DB_CTMPL * def,
-				DB_OBJECT * super, const char *name);
-extern int dbt_drop_class_resolution (DB_CTMPL * def,
-				      DB_OBJECT * super, const char *name);
+extern int dbt_add_resolution (DB_CTMPL * def, DB_OBJECT * super, const char *name, const char *alias);
+extern int dbt_add_class_resolution (DB_CTMPL * def, DB_OBJECT * super, const char *name, const char *alias);
+extern int dbt_drop_resolution (DB_CTMPL * def, DB_OBJECT * super, const char *name);
+extern int dbt_drop_class_resolution (DB_CTMPL * def, DB_OBJECT * super, const char *name);
 
 extern int dbt_add_query_spec (DB_CTMPL * def, const char *query);
 extern int dbt_drop_query_spec (DB_CTMPL * def, const int query_no);
-extern int dbt_change_query_spec (DB_CTMPL * def,
-				  const char *new_query, const int query_no);
+extern int dbt_change_query_spec (DB_CTMPL * def, const char *new_query, const int query_no);
 extern int dbt_set_object_id (DB_CTMPL * def, DB_NAMELIST * id_list);
-extern int dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
-				const char **attnames, const char *ref_class,
-				const char **ref_attrs, int del_action,
-				int upd_action, const char *comment);
+extern int dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name, const char **attnames,
+				const char *ref_class, const char **ref_attrs, int del_action, int upd_action,
+				const char *comment);
 
 /* Object template functions */
 extern DB_OTMPL *dbt_create_object (DB_OBJECT * classobj);
@@ -4054,42 +3757,26 @@ extern int dbt_set_label (DB_OTMPL * def, DB_VALUE * label);
  * The descriptor interface offers an alternative to attribute & method
  * names that can be substantially faster for repetitive operations.
  */
-extern int db_get_attribute_descriptor (DB_OBJECT * obj,
-					const char *attname,
-					int
-					class_attribute,
-					int for_update,
+extern int db_get_attribute_descriptor (DB_OBJECT * obj, const char *attname, int class_attribute, int for_update,
 					DB_ATTDESC ** descriptor);
 extern void db_free_attribute_descriptor (DB_ATTDESC * descriptor);
 
-extern int db_get_method_descriptor (DB_OBJECT * obj,
-				     const char *methname,
-				     int class_method,
+extern int db_get_method_descriptor (DB_OBJECT * obj, const char *methname, int class_method,
 				     DB_METHDESC ** descriptor);
 extern void db_free_method_descriptor (DB_METHDESC * descriptor);
 
-extern int db_dget (DB_OBJECT * obj, DB_ATTDESC * attribute,
-		    DB_VALUE * value);
-extern int db_dput (DB_OBJECT * obj, DB_ATTDESC * attribute,
-		    DB_VALUE * value);
+extern int db_dget (DB_OBJECT * obj, DB_ATTDESC * attribute, DB_VALUE * value);
+extern int db_dput (DB_OBJECT * obj, DB_ATTDESC * attribute, DB_VALUE * value);
 
-extern int db_dsend (DB_OBJECT * obj, DB_METHDESC * method,
-		     DB_VALUE * returnval, ...);
+extern int db_dsend (DB_OBJECT * obj, DB_METHDESC * method, DB_VALUE * returnval, ...);
 
-extern int db_dsend_arglist (DB_OBJECT * obj,
-			     DB_METHDESC * method,
-			     DB_VALUE * returnval, DB_VALUE_LIST * args);
+extern int db_dsend_arglist (DB_OBJECT * obj, DB_METHDESC * method, DB_VALUE * returnval, DB_VALUE_LIST * args);
 
-extern int db_dsend_argarray (DB_OBJECT * obj,
-			      DB_METHDESC * method,
-			      DB_VALUE * returnval, DB_VALUE ** args);
+extern int db_dsend_argarray (DB_OBJECT * obj, DB_METHDESC * method, DB_VALUE * returnval, DB_VALUE ** args);
 
-extern int db_dsend_quick (DB_OBJECT * obj,
-			   DB_METHDESC * method,
-			   DB_VALUE * returnval, int nargs, DB_VALUE ** args);
+extern int db_dsend_quick (DB_OBJECT * obj, DB_METHDESC * method, DB_VALUE * returnval, int nargs, DB_VALUE ** args);
 
-extern int dbt_dput (DB_OTMPL * def, DB_ATTDESC * attribute,
-		     DB_VALUE * value);
+extern int dbt_dput (DB_OTMPL * def, DB_ATTDESC * attribute, DB_VALUE * value);
 
 /* SQL/M API function*/
 extern char *db_get_vclass_ldb_name (DB_OBJECT * op);
@@ -4110,12 +3797,10 @@ extern DB_OBJLIST *db_get_all_vclasses (void);
 extern DB_QUERY_SPEC *db_get_query_specs (DB_OBJECT * obj);
 extern DB_QUERY_SPEC *db_query_spec_next (DB_QUERY_SPEC * query_spec);
 extern const char *db_query_spec_string (DB_QUERY_SPEC * query_spec);
-extern int db_change_query_spec (DB_OBJECT * vclass,
-				 const char *new_query, const int query_no);
+extern int db_change_query_spec (DB_OBJECT * vclass, const char *new_query, const int query_no);
 
 extern int db_validate (DB_OBJECT * vclass);
-extern int db_validate_query_spec (DB_OBJECT * vclass,
-				   const char *query_spec);
+extern int db_validate_query_spec (DB_OBJECT * vclass, const char *query_spec);
 extern int db_is_real_instance (DB_OBJECT * obj);
 extern DB_OBJECT *db_real_instance (DB_OBJECT * obj);
 extern int db_instance_equal (DB_OBJECT * obj1, DB_OBJECT * obj2);
@@ -4125,9 +3810,7 @@ extern int db_is_updatable_attribute (DB_OBJECT * obj, const char *attr_name);
 extern int db_check_single_query (DB_SESSION * session);
 
 /* query pre-processing functions */
-extern int db_get_query_format (const char *CSQL_query,
-				DB_QUERY_TYPE ** type_list,
-				DB_QUERY_ERROR * query_error);
+extern int db_get_query_format (const char *CSQL_query, DB_QUERY_TYPE ** type_list, DB_QUERY_ERROR * query_error);
 extern DB_QUERY_TYPE *db_query_format_next (DB_QUERY_TYPE * query_type);
 extern DB_COL_TYPE db_query_format_col_type (DB_QUERY_TYPE * query_type);
 extern char *db_query_format_name (DB_QUERY_TYPE * query_type);
@@ -4141,32 +3824,23 @@ extern const char *db_query_format_class_name (DB_QUERY_TYPE * query_type);
 extern int db_query_format_is_non_null (DB_QUERY_TYPE * query_type);
 
 /* query processing functions */
-extern int db_get_query_result_format (DB_QUERY_RESULT * result,
-				       DB_QUERY_TYPE ** type_list);
+extern int db_get_query_result_format (DB_QUERY_RESULT * result, DB_QUERY_TYPE ** type_list);
 extern int db_query_next_tuple (DB_QUERY_RESULT * result);
 extern int db_query_prev_tuple (DB_QUERY_RESULT * result);
 extern int db_query_first_tuple (DB_QUERY_RESULT * result);
 extern int db_query_last_tuple (DB_QUERY_RESULT * result);
-extern int db_query_get_tuple_value_by_name (DB_QUERY_RESULT *
-					     result,
-					     char *column_name,
-					     DB_VALUE * value);
-extern int db_query_get_tuple_value (DB_QUERY_RESULT * result,
-				     int tuple_index, DB_VALUE * value);
+extern int db_query_get_tuple_value_by_name (DB_QUERY_RESULT * result, char *column_name, DB_VALUE * value);
+extern int db_query_get_tuple_value (DB_QUERY_RESULT * result, int tuple_index, DB_VALUE * value);
 
-extern int db_query_get_tuple_oid (DB_QUERY_RESULT * result,
-				   DB_VALUE * db_value);
+extern int db_query_get_tuple_oid (DB_QUERY_RESULT * result, DB_VALUE * db_value);
 
-extern int db_query_get_tuple_valuelist (DB_QUERY_RESULT *
-					 result, int size,
-					 DB_VALUE * value_list);
+extern int db_query_get_tuple_valuelist (DB_QUERY_RESULT * result, int size, DB_VALUE * value_list);
 
 extern int db_query_tuple_count (DB_QUERY_RESULT * result);
 
 extern int db_query_column_count (DB_QUERY_RESULT * result);
 
-extern int db_query_prefetch_columns (DB_QUERY_RESULT * result,
-				      int *columns, int col_count);
+extern int db_query_prefetch_columns (DB_QUERY_RESULT * result, int *columns, int col_count);
 
 extern int db_query_format_size (DB_QUERY_TYPE * query_type);
 
@@ -4188,20 +3862,13 @@ extern void db_rewind_statement (DB_SESSION * session);
 
 extern DB_SESSION_ERROR *db_get_errors (DB_SESSION * session);
 
-extern DB_SESSION_ERROR *db_get_next_error (DB_SESSION_ERROR *
-					    errors,
-					    int *linenumber,
-					    int *columnnumber);
+extern DB_SESSION_ERROR *db_get_next_error (DB_SESSION_ERROR * errors, int *linenumber, int *columnnumber);
 
 extern DB_SESSION_ERROR *db_get_warnings (DB_SESSION * session);
 
-extern DB_SESSION_ERROR *db_get_next_warning (DB_SESSION_WARNING *
-					      errors,
-					      int *linenumber,
-					      int *columnnumber);
+extern DB_SESSION_ERROR *db_get_next_warning (DB_SESSION_WARNING * errors, int *linenumber, int *columnnumber);
 
-extern DB_PARAMETER *db_get_parameters (DB_SESSION * session,
-					int statement_id);
+extern DB_PARAMETER *db_get_parameters (DB_SESSION * session, int statement_id);
 extern DB_PARAMETER *db_parameter_next (DB_PARAMETER * param);
 extern const char *db_parameter_name (DB_PARAMETER * param);
 extern int db_bind_parameter_name (const char *name, DB_VALUE * value);
@@ -4228,20 +3895,13 @@ enum
 
 extern void db_include_oid (DB_SESSION * session, int include_oid);
 
-extern int db_push_values (DB_SESSION * session, int count,
-			   DB_VALUE * in_values);
+extern int db_push_values (DB_SESSION * session, int count, DB_VALUE * in_values);
 
-extern int db_execute (const char *CSQL_query,
-		       DB_QUERY_RESULT ** result,
-		       DB_QUERY_ERROR * query_error);
+extern int db_execute (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error);
 
-extern int db_execute_async (const char *CSQL_query,
-			     DB_QUERY_RESULT ** result,
-			     DB_QUERY_ERROR * query_error);
+extern int db_execute_async (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error);
 
-extern int db_execute_oid (const char *CSQL_query,
-			   DB_QUERY_RESULT ** result,
-			   DB_QUERY_ERROR * query_error);
+extern int db_execute_oid (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error);
 
 extern int db_get_session_mode (DB_SESSION * session);
 
@@ -4251,22 +3911,14 @@ extern int db_set_session_mode_async (DB_SESSION * session);
 
 extern bool db_is_query_async_executable (DB_SESSION * session, int stmtid);
 
-extern int db_query_produce_updatable_result (DB_SESSION *
-					      session, int stmtid);
+extern int db_query_produce_updatable_result (DB_SESSION * session, int stmtid);
 
-extern int db_execute_statement (DB_SESSION * session,
-				 int stmt, DB_QUERY_RESULT ** result);
+extern int db_execute_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result);
 
-extern int db_execute_and_keep_statement (DB_SESSION * session,
-					  int stmt,
-					  DB_QUERY_RESULT ** result);
-extern DB_CLASS_MODIFICATION_STATUS db_has_modified_class (DB_SESSION *
-							   session,
-							   int stmt_id);
+extern int db_execute_and_keep_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result);
+extern DB_CLASS_MODIFICATION_STATUS db_has_modified_class (DB_SESSION * session, int stmt_id);
 
-extern int db_query_get_info (DB_QUERY_RESULT * result,
-			      int *done, int *count,
-			      int *error, char **err_string);
+extern int db_query_get_info (DB_QUERY_RESULT * result, int *done, int *count, int *error, char **err_string);
 
 extern int db_query_sync (DB_QUERY_RESULT * result, int wait);
 
@@ -4275,19 +3927,13 @@ extern int db_query_set_copy_tplvalue (DB_QUERY_RESULT * result, int copy);
 extern void db_close_session (DB_SESSION * session);
 extern void db_drop_statement (DB_SESSION * session, int stmt_id);
 
-extern int db_object_describe (DB_OBJECT * obj,
-			       int num_attrs,
-			       const char **attrs, DB_QUERY_TYPE ** col_spec);
+extern int db_object_describe (DB_OBJECT * obj, int num_attrs, const char **attrs, DB_QUERY_TYPE ** col_spec);
 
-extern int db_object_fetch (DB_OBJECT * obj, int num_attrs,
-			    const char **attrs, DB_QUERY_RESULT ** result);
+extern int db_object_fetch (DB_OBJECT * obj, int num_attrs, const char **attrs, DB_QUERY_RESULT ** result);
 
-extern int db_set_client_cache_time (DB_SESSION * session, int stmt_ndx,
-				     CACHE_TIME * cache_time);
-extern bool db_get_jdbccachehint (DB_SESSION * session, int stmt_ndx,
-				  int *life_time);
-extern bool db_get_cacheinfo (DB_SESSION * session, int stmt_ndx,
-			      bool * use_plan_cache, bool * use_query_cache);
+extern int db_set_client_cache_time (DB_SESSION * session, int stmt_ndx, CACHE_TIME * cache_time);
+extern bool db_get_jdbccachehint (DB_SESSION * session, int stmt_ndx, int *life_time);
+extern bool db_get_cacheinfo (DB_SESSION * session, int stmt_ndx, bool * use_plan_cache, bool * use_query_cache);
 
 /* These are used by csql but weren't in the 2.0 dbi.h file, added
    it for the PC.  If we don't want them here, they should go somewhere
@@ -4303,35 +3949,21 @@ extern DB_QUERY_TYPE *db_get_query_type_ptr (DB_QUERY_RESULT * result);
  * published in the CUBRID Application Program Interface Reference Guide.
  */
 
-extern int db_query_execute (const char *CSQL_query,
-			     DB_QUERY_RESULT ** result,
-			     DB_QUERY_ERROR * query_error);
+extern int db_query_execute (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error);
 
 extern int db_list_length (DB_LIST * list);
 extern DB_NAMELIST *db_namelist_copy (DB_NAMELIST * list);
 
 extern int db_drop_shared_attribute (DB_OBJECT * classobj, const char *name);
 
-extern int db_add_element_domain (DB_OBJECT * classobj,
-				  const char *name, const char *domain);
-extern int db_drop_element_domain (DB_OBJECT * classobj,
-				   const char *name, const char *domain);
-extern int db_rename_attribute (DB_OBJECT * classobj,
-				const char *name,
-				int class_attribute, const char *newname);
-extern int db_rename_method (DB_OBJECT * classobj,
-			     const char *name,
-			     int class_method, const char *newname);
-extern int db_set_argument_domain (DB_OBJECT * classobj,
-				   const char *name,
-				   int class_method,
-				   int arg_index, const char *domain);
-extern int db_set_method_arg_domain (DB_OBJECT * classobj,
-				     const char *name,
-				     int arg_index, const char *domain);
-extern int db_set_class_method_arg_domain (DB_OBJECT * classobj,
-					   const char *name,
-					   int arg_index, const char *domain);
+extern int db_add_element_domain (DB_OBJECT * classobj, const char *name, const char *domain);
+extern int db_drop_element_domain (DB_OBJECT * classobj, const char *name, const char *domain);
+extern int db_rename_attribute (DB_OBJECT * classobj, const char *name, int class_attribute, const char *newname);
+extern int db_rename_method (DB_OBJECT * classobj, const char *name, int class_method, const char *newname);
+extern int db_set_argument_domain (DB_OBJECT * classobj, const char *name, int class_method, int arg_index,
+				   const char *domain);
+extern int db_set_method_arg_domain (DB_OBJECT * classobj, const char *name, int arg_index, const char *domain);
+extern int db_set_class_method_arg_domain (DB_OBJECT * classobj, const char *name, int arg_index, const char *domain);
 extern DB_NAMELIST *db_namelist_sort (DB_NAMELIST * names);
 extern void db_namelist_remove (DB_NAMELIST ** list, const char *name);
 extern DB_OBJECT *db_objlist_get (DB_OBJLIST * list, int psn);
@@ -4355,15 +3987,13 @@ extern DB_OBJECT *db_get_attribute_class (DB_OBJECT * obj, const char *name);
 
 extern void db_force_method_reload (DB_OBJECT * obj);
 
-extern DB_ATTRIBUTE *db_get_shared_attribute (DB_OBJECT * obj,
-					      const char *name);
+extern DB_ATTRIBUTE *db_get_shared_attribute (DB_OBJECT * obj, const char *name);
 extern DB_ATTRIBUTE *db_get_ordered_attributes (DB_OBJECT * obj);
 extern DB_ATTRIBUTE *db_attribute_ordered_next (DB_ATTRIBUTE * attribute);
 
 extern int db_print_mop (DB_OBJECT * obj, char *buffer, int maxlen);
 
-extern int db_get_shared (DB_OBJECT * object,
-			  const char *attpath, DB_VALUE * value);
+extern int db_get_shared (DB_OBJECT * object, const char *attpath, DB_VALUE * value);
 
 extern DB_OBJECT *db_copy (DB_OBJECT * sourcemop);
 extern char *db_get_method_source_file (DB_OBJECT * obj, const char *name);
@@ -4379,9 +4009,7 @@ extern DB_IDENTIFIER *db_identifier (DB_OBJECT * obj);
 extern DB_OBJECT *db_object (DB_IDENTIFIER * oid);
 extern int db_chn (DB_OBJECT * obj, DB_FETCH_MODE purpose);
 
-extern int db_encode_object (DB_OBJECT * object,
-			     char *string,
-			     int allocated_length, int *actual_length);
+extern int db_encode_object (DB_OBJECT * object, char *string, int allocated_length, int *actual_length);
 extern int db_decode_object (const char *string, DB_OBJECT ** object);
 
 extern int db_set_system_parameters (const char *data);

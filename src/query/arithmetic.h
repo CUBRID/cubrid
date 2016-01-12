@@ -39,16 +39,11 @@ extern int db_sign_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_abs_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_exp_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value);
-extern int db_power_dbval (DB_VALUE * result, DB_VALUE * value1,
-			   DB_VALUE * value2);
-extern int db_mod_dbval (DB_VALUE * result, DB_VALUE * value1,
-			 DB_VALUE * value2);
-extern int db_round_dbval (DB_VALUE * result, DB_VALUE * value1,
-			   DB_VALUE * value2);
-extern int db_log_dbval (DB_VALUE * result, DB_VALUE * value1,
-			 DB_VALUE * value2);
-extern int db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1,
-			   DB_VALUE * value2);
+extern int db_power_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2);
+extern int db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2);
+extern int db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2);
+extern int db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2);
+extern int db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2);
 extern int db_random_dbval (DB_VALUE * result);
 extern int db_drandom_dbval (DB_VALUE * result);
 extern int db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value);
@@ -59,15 +54,13 @@ extern int db_cot_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_acos_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_asin_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_atan_dbval (DB_VALUE * result, DB_VALUE * value1);
-extern int db_atan2_dbval (DB_VALUE * result, DB_VALUE * value,
-			   DB_VALUE * value2);
+extern int db_atan2_dbval (DB_VALUE * result, DB_VALUE * value, DB_VALUE * value2);
 extern int db_degrees_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_radians_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_log_generic_dbval (DB_VALUE * result, DB_VALUE * value, long b);
 extern int db_typeof_dbval (DB_VALUE * result, DB_VALUE * value);
-extern int db_width_bucket (DB_VALUE * result, const DB_VALUE * value1,
-			    const DB_VALUE * value2, const DB_VALUE * value3,
-			    const DB_VALUE * value4);
+extern int db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * value2,
+			    const DB_VALUE * value3, const DB_VALUE * value4);
 /* temporarily put db_sleep here. A better choice is introduce a new file system_opfunc.c
  * But currently, there is just one such functions.
  */

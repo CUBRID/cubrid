@@ -113,8 +113,7 @@ PUBLIC int odbc_is_valid_sql_interval_type (short sql_type);
 PUBLIC short odbc_concise_to_verbose_type (short type);
 PUBLIC short odbc_verbose_to_concise_type (short type, short code);
 PUBLIC short odbc_subcode_type (short type);
-PUBLIC int odbc_type_default_info_by_name (char *type_name,
-					   ODBC_DATA_TYPE_INFO * type_info);
+PUBLIC int odbc_type_default_info_by_name (char *type_name, ODBC_DATA_TYPE_INFO * type_info);
 PUBLIC short odbc_default_c_type (short odbc_type);
 
 PUBLIC int odbc_buffer_length (short odbc_type, int precision);
@@ -130,21 +129,15 @@ PUBLIC const char *odbc_type_name (short odbc_type);
 
 PUBLIC T_CCI_U_TYPE odbc_type_to_cci_u_type (short sql_type);
 PUBLIC T_CCI_A_TYPE odbc_type_to_cci_a_type (short c_type);
-PUBLIC void *odbc_value_to_cci (void *c_value, short c_type, long c_length,
+PUBLIC void *odbc_value_to_cci (void *c_value, short c_type, long c_length, short c_precision, short c_scale);
+PUBLIC void odbc_value_to_cci2 (void *sql_value_root, int index, void *c_value, short c_type, long c_length,
 				short c_precision, short c_scale);
-PUBLIC void odbc_value_to_cci2 (void *sql_value_root, int index,
-				void *c_value, short c_type, long c_length,
-				short c_precision, short c_scale);
-PUBLIC SQLLEN cci_value_to_odbc (void *c_value, short concise_type,
-				 short precision, short scale,
-				 SQLLEN buffer_length,
-				 UNI_CCI_A_TYPE * cci_value,
-				 T_CCI_A_TYPE a_type);
+PUBLIC SQLLEN cci_value_to_odbc (void *c_value, short concise_type, short precision, short scale, SQLLEN buffer_length,
+				 UNI_CCI_A_TYPE * cci_value, T_CCI_A_TYPE a_type);
 PUBLIC VALUE_CONTAINER *create_value_container ();
 PUBLIC void clear_value_container (VALUE_CONTAINER * value);
 PUBLIC void free_value_container (VALUE_CONTAINER * value);
-PUBLIC RETCODE odbc_value_converter (VALUE_CONTAINER * target_value,
-				     VALUE_CONTAINER * src_value);
+PUBLIC RETCODE odbc_value_converter (VALUE_CONTAINER * target_value, VALUE_CONTAINER * src_value);
 
 PUBLIC short odbc_date_type_backward (short type);
 

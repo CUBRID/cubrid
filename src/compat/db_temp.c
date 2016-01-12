@@ -156,8 +156,7 @@ dbt_edit_class (MOP classobj)
  *        dbt_finish_class() or destroyed with dbt_abort_class().
  */
 DB_CTMPL *
-dbt_copy_class (const char *new_name, const char *existing_name,
-		SM_CLASS ** class_)
+dbt_copy_class (const char *new_name, const char *existing_name, SM_CLASS ** class_)
 {
   DB_CTMPL *def = NULL;
 
@@ -196,8 +195,7 @@ dbt_reserve_name (DB_CTMPL * def, const char *name)
     {
       if (reserved == LC_CLASSNAME_EXIST)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_CLASSNAME_EXIST,
-		  1, name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_CLASSNAME_EXIST, 1, name);
 	}
       else
 	{
@@ -270,9 +268,7 @@ dbt_abort_class (DB_CTMPL * def)
  * default_value(in) :
  */
 int
-dbt_add_attribute (DB_CTMPL * def,
-		   const char *name,
-		   const char *domain, DB_VALUE * default_value)
+dbt_add_attribute (DB_CTMPL * def, const char *name, const char *domain, DB_VALUE * default_value)
 {
   int error = NO_ERROR;
 
@@ -280,9 +276,7 @@ dbt_add_attribute (DB_CTMPL * def,
   CHECK_3ARGS_ERROR (def, name, domain);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0,
-				    default_value, ID_ATTRIBUTE,
-				    DB_DEFAULT_NONE);
+  error = smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0, default_value, ID_ATTRIBUTE, DB_DEFAULT_NONE);
 
   return (error);
 }
@@ -296,9 +290,7 @@ dbt_add_attribute (DB_CTMPL * def,
  * default_value(in) :
  */
 int
-dbt_add_shared_attribute (DB_CTMPL * def,
-			  const char *name,
-			  const char *domain, DB_VALUE * default_value)
+dbt_add_shared_attribute (DB_CTMPL * def, const char *name, const char *domain, DB_VALUE * default_value)
 {
   int error = NO_ERROR;
 
@@ -306,9 +298,8 @@ dbt_add_shared_attribute (DB_CTMPL * def,
   CHECK_3ARGS_ERROR (def, name, domain);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0,
-				    default_value, ID_SHARED_ATTRIBUTE,
-				    DB_DEFAULT_NONE);
+  error =
+    smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0, default_value, ID_SHARED_ATTRIBUTE, DB_DEFAULT_NONE);
 
   return (error);
 }
@@ -322,9 +313,7 @@ dbt_add_shared_attribute (DB_CTMPL * def,
  * default_value(in) :
  */
 int
-dbt_add_class_attribute (DB_CTMPL * def,
-			 const char *name,
-			 const char *domain, DB_VALUE * default_value)
+dbt_add_class_attribute (DB_CTMPL * def, const char *name, const char *domain, DB_VALUE * default_value)
 {
   int error = NO_ERROR;
 
@@ -332,9 +321,8 @@ dbt_add_class_attribute (DB_CTMPL * def,
   CHECK_3ARGS_ERROR (def, name, domain);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0,
-				    default_value, ID_CLASS_ATTRIBUTE,
-				    DB_DEFAULT_NONE);
+  error =
+    smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0, default_value, ID_CLASS_ATTRIBUTE, DB_DEFAULT_NONE);
 
   return (error);
 }
@@ -352,8 +340,7 @@ dbt_add_class_attribute (DB_CTMPL * def,
  *    and dbt_drop_constraint().
  */
 int
-dbt_constrain_non_null (DB_CTMPL * def,
-			const char *name, int class_attribute, int on_or_off)
+dbt_constrain_non_null (DB_CTMPL * def, const char *name, int class_attribute, int on_or_off)
 {
   const char *names[2];
   int error = NO_ERROR;
@@ -366,8 +353,7 @@ dbt_constrain_non_null (DB_CTMPL * def,
   names[1] = NULL;
   if (on_or_off)
     {
-      error = dbt_add_constraint (def, DB_CONSTRAINT_NOT_NULL, NULL,
-				  names, class_attribute, NULL);
+      error = dbt_add_constraint (def, DB_CONSTRAINT_NOT_NULL, NULL, names, class_attribute, NULL);
       if (error == NO_ERROR)
 	{
 	  error = do_check_fk_constraints (def, NULL);
@@ -375,8 +361,7 @@ dbt_constrain_non_null (DB_CTMPL * def,
     }
   else
     {
-      error = dbt_drop_constraint (def, DB_CONSTRAINT_NOT_NULL, NULL,
-				   names, class_attribute);
+      error = dbt_drop_constraint (def, DB_CONSTRAINT_NOT_NULL, NULL, names, class_attribute);
     }
 
   return (error);
@@ -406,13 +391,11 @@ dbt_constrain_unique (DB_CTMPL * def, const char *attname, int on_or_off)
   attnames[1] = NULL;
   if (on_or_off)
     {
-      error = dbt_add_constraint (def, DB_CONSTRAINT_UNIQUE, NULL,
-				  attnames, 0, NULL);
+      error = dbt_add_constraint (def, DB_CONSTRAINT_UNIQUE, NULL, attnames, 0, NULL);
     }
   else
     {
-      error = dbt_drop_constraint (def, DB_CONSTRAINT_UNIQUE, NULL,
-				   attnames, 0);
+      error = dbt_drop_constraint (def, DB_CONSTRAINT_UNIQUE, NULL, attnames, 0);
     }
 
   return (error);
@@ -436,11 +419,8 @@ dbt_constrain_unique (DB_CTMPL * def, const char *attname, int on_or_off)
  * comment(in): constraint comment
  */
 int
-dbt_add_constraint (DB_CTMPL * def,
-		    DB_CONSTRAINT_TYPE constraint_type,
-		    const char *constraint_name,
-		    const char **attnames, int class_attributes,
-		    const char *comment)
+dbt_add_constraint (DB_CTMPL * def, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
+		    const char **attnames, int class_attributes, const char *comment)
 {
   int error = NO_ERROR;
   char *name = NULL;
@@ -449,17 +429,14 @@ dbt_add_constraint (DB_CTMPL * def,
   CHECK_2ARGS_ERROR (def, attnames);
   CHECK_MODIFICATION_ERROR ();
 
-  if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type) &&
-      constraint_type != DB_CONSTRAINT_NOT_NULL)
+  if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type) && constraint_type != DB_CONSTRAINT_NOT_NULL)
     {
       ERROR_SET (error, ER_SM_INVALID_CONSTRAINT);
     }
 
   if (error == NO_ERROR)
     {
-      name = sm_produce_constraint_name_tmpl (def, constraint_type,
-					      attnames, NULL,
-					      constraint_name);
+      name = sm_produce_constraint_name_tmpl (def, constraint_type, attnames, NULL, constraint_name);
       if (name == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -467,9 +444,9 @@ dbt_add_constraint (DB_CTMPL * def,
 	}
       else
 	{
-	  error = smt_add_constraint (def, constraint_type, name,
-				      attnames, NULL, class_attributes, NULL,
-				      NULL, NULL, comment);
+	  error =
+	    smt_add_constraint (def, constraint_type, name, attnames, NULL, class_attributes, NULL, NULL, NULL,
+				comment);
 	  free_and_init (name);
 	}
     }
@@ -493,9 +470,7 @@ dbt_add_constraint (DB_CTMPL * def,
  *                       to class attributes.
  */
 int
-dbt_drop_constraint (DB_CTMPL * def,
-		     DB_CONSTRAINT_TYPE constraint_type,
-		     const char *constraint_name,
+dbt_drop_constraint (DB_CTMPL * def, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 		     const char **attnames, int class_attributes)
 {
   int error = NO_ERROR;
@@ -515,9 +490,7 @@ dbt_drop_constraint (DB_CTMPL * def,
 
   if (error == NO_ERROR)
     {
-      name = sm_produce_constraint_name_tmpl (def, constraint_type,
-					      attnames, NULL,
-					      constraint_name);
+      name = sm_produce_constraint_name_tmpl (def, constraint_type, attnames, NULL, constraint_name);
 
       if (name == NULL)
 	{
@@ -526,10 +499,9 @@ dbt_drop_constraint (DB_CTMPL * def,
 	}
       else
 	{
-	  /* TODO We might want to check that the dropped constraint really had
-	     the type indicated by the constraint_type parameter. */
-	  error = smt_drop_constraint (def, attnames, name, class_attributes,
-				       attflag);
+	  /* TODO We might want to check that the dropped constraint really had the type indicated by the
+	   * constraint_type parameter. */
+	  error = smt_drop_constraint (def, attnames, name, class_attributes, attflag);
 	  free_and_init (name);
 	}
     }
@@ -549,18 +521,15 @@ dbt_drop_constraint (DB_CTMPL * def,
  * upd_action(in) :
  */
 int
-dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
-		     const char **attnames, const char *ref_class,
-		     const char **ref_attrs, int del_action, int upd_action,
-		     const char *comment)
+dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name, const char **attnames, const char *ref_class,
+		     const char **ref_attrs, int del_action, int upd_action, const char *comment)
 {
   int error = NO_ERROR;
   char *name;
   SM_CLASS_CONSTRAINT *temp_cons = NULL;
   SM_FOREIGN_KEY_INFO fk_info;
 
-  name = sm_produce_constraint_name_tmpl (def, DB_CONSTRAINT_FOREIGN_KEY,
-					  attnames, NULL, constraint_name);
+  name = sm_produce_constraint_name_tmpl (def, DB_CONSTRAINT_FOREIGN_KEY, attnames, NULL, constraint_name);
 
   fk_info.ref_class = ref_class;
   fk_info.ref_attrs = ref_attrs;
@@ -575,9 +544,8 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
     }
   else
     {
-      error = smt_add_constraint (def, DB_CONSTRAINT_FOREIGN_KEY, name,
-				  attnames, NULL, 0, &fk_info, NULL, NULL,
-				  comment);
+      error =
+	smt_add_constraint (def, DB_CONSTRAINT_FOREIGN_KEY, name, attnames, NULL, 0, &fk_info, NULL, NULL, comment);
       free_and_init (name);
     }
 
@@ -598,9 +566,7 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
  * domain(in) :
  */
 int
-dbt_add_set_attribute_domain (DB_CTMPL * def,
-			      const char *name,
-			      int class_attribute, const char *domain)
+dbt_add_set_attribute_domain (DB_CTMPL * def, const char *name, int class_attribute, const char *domain)
 {
   int error = NO_ERROR;
 
@@ -608,8 +574,7 @@ dbt_add_set_attribute_domain (DB_CTMPL * def,
   CHECK_2ARGS_ERROR (def, name);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_add_set_attribute_domain (def, name, class_attribute, domain,
-					(DB_DOMAIN *) 0);
+  error = smt_add_set_attribute_domain (def, name, class_attribute, domain, (DB_DOMAIN *) 0);
 
   return (error);
 }
@@ -623,8 +588,7 @@ dbt_add_set_attribute_domain (DB_CTMPL * def,
  * domain(in) :
  */
 int
-dbt_change_domain (DB_CTMPL * def,
-		   const char *name, int class_attribute, const char *domain)
+dbt_change_domain (DB_CTMPL * def, const char *name, int class_attribute, const char *domain)
 {
   CHECK_CONNECT_ERROR ();
   CHECK_2ARGS_ERROR (def, name);
@@ -644,8 +608,7 @@ dbt_change_domain (DB_CTMPL * def,
  * value(in) :
  */
 int
-dbt_change_default (DB_CTMPL * def,
-		    const char *name, int class_attribute, DB_VALUE * value)
+dbt_change_default (DB_CTMPL * def, const char *name, int class_attribute, DB_VALUE * value)
 {
   int error = NO_ERROR;
 
@@ -653,8 +616,7 @@ dbt_change_default (DB_CTMPL * def,
   CHECK_2ARGS_ERROR (def, name);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_set_attribute_default (def, name, class_attribute, value,
-				     DB_DEFAULT_NONE);
+  error = smt_set_attribute_default (def, name, class_attribute, value, DB_DEFAULT_NONE);
 
   return (error);
 }
@@ -668,9 +630,7 @@ dbt_change_default (DB_CTMPL * def,
  * domain(in) :
  */
 int
-dbt_drop_set_attribute_domain (DB_CTMPL * def,
-			       const char *name,
-			       int class_attribute, const char *domain)
+dbt_drop_set_attribute_domain (DB_CTMPL * def, const char *name, int class_attribute, const char *domain)
 {
   int error = NO_ERROR;
 
@@ -678,8 +638,7 @@ dbt_drop_set_attribute_domain (DB_CTMPL * def,
   CHECK_2ARGS_ERROR (def, name);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_delete_set_attribute_domain (def, name, class_attribute, domain,
-					   (DB_DOMAIN *) 0);
+  error = smt_delete_set_attribute_domain (def, name, class_attribute, domain, (DB_DOMAIN *) 0);
 
   return (error);
 }
@@ -719,7 +678,7 @@ dbt_drop_attribute (DB_CTMPL * def, const char *name)
   if ((error == NO_ERROR) && (auto_increment_obj != NULL))
     {
       OID *oidp, serial_obj_id;
-      /*
+      /* 
        * check if user is creator or DBA
        */
       error = au_check_serial_authorization (auto_increment_obj);
@@ -815,8 +774,7 @@ dbt_add_method (DB_CTMPL * def, const char *name, const char *implementation)
  * implementation(in) :
  */
 int
-dbt_add_class_method (DB_CTMPL * def,
-		      const char *name, const char *implementation)
+dbt_add_class_method (DB_CTMPL * def, const char *name, const char *implementation)
 {
   int error = NO_ERROR;
 
@@ -839,9 +797,7 @@ dbt_add_class_method (DB_CTMPL * def,
  * domain(in) :
  */
 int
-dbt_add_argument (DB_CTMPL * def,
-		  const char *name,
-		  int class_method, int index, const char *domain)
+dbt_add_argument (DB_CTMPL * def, const char *name, int class_method, int index, const char *domain)
 {
   int error = NO_ERROR;
 
@@ -849,8 +805,7 @@ dbt_add_argument (DB_CTMPL * def,
   CHECK_2ARGS_ERROR (def, name);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_assign_argument_domain (def, name, class_method, NULL, index,
-				      domain, (DB_DOMAIN *) 0);
+  error = smt_assign_argument_domain (def, name, class_method, NULL, index, domain, (DB_DOMAIN *) 0);
 
   return (error);
 }
@@ -865,9 +820,7 @@ dbt_add_argument (DB_CTMPL * def,
  * domain(in) :
  */
 int
-dbt_add_set_argument_domain (DB_CTMPL * def,
-			     const char *name,
-			     int class_method, int index, const char *domain)
+dbt_add_set_argument_domain (DB_CTMPL * def, const char *name, int class_method, int index, const char *domain)
 {
   int error = NO_ERROR;
 
@@ -875,8 +828,7 @@ dbt_add_set_argument_domain (DB_CTMPL * def,
   CHECK_2ARGS_ERROR (def, name);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_add_set_argument_domain (def, name, class_method, NULL, index,
-				       domain, (DB_DOMAIN *) 0);
+  error = smt_add_set_argument_domain (def, name, class_method, NULL, index, domain, (DB_DOMAIN *) 0);
 
   return (error);
 }
@@ -890,9 +842,7 @@ dbt_add_set_argument_domain (DB_CTMPL * def,
  * newname(in) :
  */
 int
-dbt_change_method_implementation (DB_CTMPL * def,
-				  const char *name,
-				  int class_method, const char *newname)
+dbt_change_method_implementation (DB_CTMPL * def, const char *name, int class_method, const char *newname)
 {
   int error = NO_ERROR;
 
@@ -1014,8 +964,7 @@ dbt_drop_super_connect (DB_CTMPL * def, MOP super)
  * newname(in) :
  */
 int
-dbt_rename (DB_CTMPL * def,
-	    const char *name, int class_namespace, const char *newname)
+dbt_rename (DB_CTMPL * def, const char *name, int class_namespace, const char *newname)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE *att;
@@ -1027,8 +976,7 @@ dbt_rename (DB_CTMPL * def,
 
   if (!class_namespace)
     {
-      att = (SM_ATTRIBUTE *)
-	SM_FIND_NAME_IN_COMPONENT_LIST (def->attributes, name);
+      att = (SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST (def->attributes, name);
       if (att != NULL)
 	auto_increment_obj = att->auto_increment;
     }
@@ -1045,9 +993,7 @@ dbt_rename (DB_CTMPL * def,
       /* rename related auto_increment serial obj if exist */
       if ((error == NO_ERROR) && (auto_increment_obj != NULL))
 	{
-	  error =
-	    do_update_auto_increment_serial_on_rename (att->auto_increment,
-						       def->name, newname);
+	  error = do_update_auto_increment_serial_on_rename (att->auto_increment, def->name, newname);
 
 	  if (error != NO_ERROR)
 	    {
@@ -1126,8 +1072,7 @@ dbt_drop_method_files (DB_CTMPL * def)
  * new_name(in) :
  */
 int
-dbt_rename_method_file (DB_CTMPL * def, const char *old_name,
-			const char *new_name)
+dbt_rename_method_file (DB_CTMPL * def, const char *old_name, const char *new_name)
 {
   int error = NO_ERROR;
 
@@ -1169,8 +1114,7 @@ dbt_set_loader_commands (DB_CTMPL * def, const char *commands)
  * alias(in) :
  */
 int
-dbt_add_resolution (DB_CTMPL * def,
-		    MOP super, const char *name, const char *alias)
+dbt_add_resolution (DB_CTMPL * def, MOP super, const char *name, const char *alias)
 {
   int error = NO_ERROR;
 
@@ -1192,8 +1136,7 @@ dbt_add_resolution (DB_CTMPL * def,
  * alias(in) :
  */
 int
-dbt_add_class_resolution (DB_CTMPL * def,
-			  MOP super, const char *name, const char *alias)
+dbt_add_class_resolution (DB_CTMPL * def, MOP super, const char *name, const char *alias)
 {
   int error = NO_ERROR;
 
@@ -1315,8 +1258,7 @@ dbt_reset_query_spec (DB_CTMPL * def)
  * query_no(in) :
  */
 int
-dbt_change_query_spec (DB_CTMPL * def,
-		       const char *new_query, const int query_no)
+dbt_change_query_spec (DB_CTMPL * def, const char *new_query, const int query_no)
 {
   int error = NO_ERROR;
 

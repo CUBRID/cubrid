@@ -644,32 +644,21 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_COMPOUND        0x00000020	/* sets the value of several others */
 #define PRM_TEST_CHANGE     0x00000040	/* can only be changed in the test mode */
 #define PRM_FOR_HA          0x00000080	/* is for heartbeat */
-#define PRM_FOR_SESSION	    0x00000100	/* is a session parameter - all client
-					 * or client/server parameters that
-					 * can be changed on-line
-					 */
+#define PRM_FOR_SESSION	    0x00000100	/* is a session parameter - all client or client/server parameters that can be
+					 * changed on-line */
 #define PRM_FORCE_SERVER    0x00000200	/* client should get value from server */
-#define PRM_FOR_QRY_STRING  0x00000400	/* if a parameter can affect the plan
-					 * generation it should be included
-					 * in the query string
-					 */
-#define PRM_CLIENT_SESSION  0x00000800	/* mark those client/server session
-					 * parameters that should not affect
-					 * the server
-					 */
+#define PRM_FOR_QRY_STRING  0x00000400	/* if a parameter can affect the plan generation it should be included in the
+					 * query string */
+#define PRM_CLIENT_SESSION  0x00000800	/* mark those client/server session parameters that should not affect the
+					 * server */
 #define PRM_SIZE_UNIT       0x00001000	/* has size unit interface */
 #define PRM_TIME_UNIT       0x00002000	/* has time unit interface */
 #define PRM_DIFFER_UNIT     0x00004000	/* parameter unit need to be changed */
-#define PRM_FOR_HA_CONTEXT  0x00008000	/* should be replicated into HA log
-					 * applier */
+#define PRM_FOR_HA_CONTEXT  0x00008000	/* should be replicated into HA log applier */
 
-#define PRM_GET_SERVER      0x00010000	/* return the value of server parameter
-					 * from client/server parameter.
-					 * Note that this flag only can be set
-					 * if the parameter has PRM_FOR_CLIENT,
-					 * PRM_FOR_SERVER, and PRM_USER_CHANGE
-					 * flags.
-					 */
+#define PRM_GET_SERVER      0x00010000	/* return the value of server parameter from client/server parameter. Note that 
+					 * this flag only can be set if the parameter has PRM_FOR_CLIENT,
+					 * PRM_FOR_SERVER, and PRM_USER_CHANGE flags. */
 
 #define PRM_DEPRECATED      0x40000000	/* is deprecated */
 #define PRM_OBSOLETED       0x80000000	/* is obsoleted */
@@ -680,11 +669,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_SET             0x00000001	/* has been set */
 #define PRM_ALLOCATED       0x00000002	/* storage has been malloc'd */
 #define PRM_DEFAULT_USED    0x00000004	/* Default value has been used */
-#define PRM_DIFFERENT	    0x00000008	/* mark those parameters that have
-					 * values different than their default.
-					 * currently used by parameters that
-					 * should be printed to query string
-					 */
+#define PRM_DIFFERENT	    0x00000008	/* mark those parameters that have values different than their default.
+					 * currently used by parameters that should be printed to query string */
 
 /*
  * Macros to get data type
@@ -1160,11 +1146,9 @@ static unsigned int prm_pb_sync_on_nflush_flag = 0;
 
 int PRM_PB_DEBUG_PAGE_VALIDATION_LEVEL = PGBUF_DEBUG_NO_PAGE_VALIDATION;
 #if !defined(NDEBUG)
-static int prm_pb_debug_page_validation_level_default =
-  PGBUF_DEBUG_PAGE_VALIDATION_FETCH;
+static int prm_pb_debug_page_validation_level_default = PGBUF_DEBUG_PAGE_VALIDATION_FETCH;
 #else /* !NDEBUG */
-static int prm_pb_debug_page_validation_level_default =
-  PGBUF_DEBUG_NO_PAGE_VALIDATION;
+static int prm_pb_debug_page_validation_level_default = PGBUF_DEBUG_NO_PAGE_VALIDATION;
 #endif /* !NDEBUG */
 static unsigned int prm_pb_debug_page_validation_level_flag = 0;
 
@@ -1345,8 +1329,7 @@ static int prm_ha_server_state_lower = HA_SERVER_STATE_IDLE;
 static unsigned int prm_ha_server_state_flag = 0;
 
 int PRM_HA_LOG_APPLIER_STATE = HA_LOG_APPLIER_STATE_UNREGISTERED;
-static int prm_ha_log_applier_state_default =
-  HA_LOG_APPLIER_STATE_UNREGISTERED;
+static int prm_ha_log_applier_state_default = HA_LOG_APPLIER_STATE_UNREGISTERED;
 static int prm_ha_log_applier_state_upper = HA_LOG_APPLIER_STATE_ERROR;
 static int prm_ha_log_applier_state_lower = HA_LOG_APPLIER_STATE_UNREGISTERED;
 static unsigned int prm_ha_log_applier_state_flag = 0;
@@ -1382,60 +1365,43 @@ static int prm_ha_port_id_upper = USHRT_MAX;
 static int prm_ha_port_id_lower = 1;
 
 int PRM_HA_INIT_TIMER_IN_MSECS = HB_DEFAULT_INIT_TIMER_IN_MSECS;
-static int prm_ha_init_timer_im_msecs_default =
-  HB_DEFAULT_INIT_TIMER_IN_MSECS;
+static int prm_ha_init_timer_im_msecs_default = HB_DEFAULT_INIT_TIMER_IN_MSECS;
 static unsigned int prm_ha_init_timer_im_msecs_flag = 0;
 
-int PRM_HA_HEARTBEAT_INTERVAL_IN_MSECS =
-  HB_DEFAULT_HEARTBEAT_INTERVAL_IN_MSECS;
-static int prm_ha_heartbeat_interval_in_msecs_default =
-  HB_DEFAULT_HEARTBEAT_INTERVAL_IN_MSECS;
+int PRM_HA_HEARTBEAT_INTERVAL_IN_MSECS = HB_DEFAULT_HEARTBEAT_INTERVAL_IN_MSECS;
+static int prm_ha_heartbeat_interval_in_msecs_default = HB_DEFAULT_HEARTBEAT_INTERVAL_IN_MSECS;
 static unsigned int prm_ha_heartbeat_interval_in_msecs_flag = 0;
 
-int PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS =
-  HB_DEFAULT_CALC_SCORE_INTERVAL_IN_MSECS;
-static int prm_ha_calc_score_interval_in_msecs_default =
-  HB_DEFAULT_CALC_SCORE_INTERVAL_IN_MSECS;
+int PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS = HB_DEFAULT_CALC_SCORE_INTERVAL_IN_MSECS;
+static int prm_ha_calc_score_interval_in_msecs_default = HB_DEFAULT_CALC_SCORE_INTERVAL_IN_MSECS;
 static unsigned int prm_ha_calc_score_interval_in_msecs_flag = 0;
 
-int PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS =
-  HB_DEFAULT_FAILOVER_WAIT_TIME_IN_MSECS;
-static int prm_ha_failover_wait_time_in_msecs_default =
-  HB_DEFAULT_FAILOVER_WAIT_TIME_IN_MSECS;
+int PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS = HB_DEFAULT_FAILOVER_WAIT_TIME_IN_MSECS;
+static int prm_ha_failover_wait_time_in_msecs_default = HB_DEFAULT_FAILOVER_WAIT_TIME_IN_MSECS;
 static unsigned int prm_ha_failover_wait_time_in_msecs_flag = 0;
 
-int PRM_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS =
-  HB_DEFAULT_START_CONFIRM_INTERVAL_IN_MSECS;
-static int prm_ha_process_start_confirm_interval_in_msecs_default =
-  HB_DEFAULT_START_CONFIRM_INTERVAL_IN_MSECS;
+int PRM_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS = HB_DEFAULT_START_CONFIRM_INTERVAL_IN_MSECS;
+static int prm_ha_process_start_confirm_interval_in_msecs_default = HB_DEFAULT_START_CONFIRM_INTERVAL_IN_MSECS;
 static unsigned int prm_ha_process_start_confirm_interval_in_msecs_flag = 0;
 
-int PRM_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS =
-  HB_DEFAULT_DEREG_CONFIRM_INTERVAL_IN_MSECS;
-static int prm_ha_process_dereg_confirm_interval_in_msecs_default =
-  HB_DEFAULT_DEREG_CONFIRM_INTERVAL_IN_MSECS;
+int PRM_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS = HB_DEFAULT_DEREG_CONFIRM_INTERVAL_IN_MSECS;
+static int prm_ha_process_dereg_confirm_interval_in_msecs_default = HB_DEFAULT_DEREG_CONFIRM_INTERVAL_IN_MSECS;
 static unsigned int prm_ha_process_dereg_confirm_interval_in_msecs_flag = 0;
 
 int PRM_HA_MAX_PROCESS_START_CONFIRM = HB_DEFAULT_MAX_PROCESS_START_CONFIRM;
-static int prm_ha_max_process_start_confirm_default =
-  HB_DEFAULT_MAX_PROCESS_START_CONFIRM;
+static int prm_ha_max_process_start_confirm_default = HB_DEFAULT_MAX_PROCESS_START_CONFIRM;
 static unsigned int prm_ha_max_process_start_confirm_flag = 0;
 
 int PRM_HA_MAX_PROCESS_DEREG_CONFIRM = HB_DEFAULT_MAX_PROCESS_DEREG_CONFIRM;
-static int prm_ha_max_process_dereg_confirm_default =
-  HB_DEFAULT_MAX_PROCESS_DEREG_CONFIRM;
+static int prm_ha_max_process_dereg_confirm_default = HB_DEFAULT_MAX_PROCESS_DEREG_CONFIRM;
 static unsigned int prm_ha_max_process_dereg_confirm_flag = 0;
 
-int PRM_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF =
-  HB_DEFAULT_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS;
-static int prm_ha_unacceptable_proc_restart_timediff_default =
-  HB_DEFAULT_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS;
+int PRM_HA_UNACCEPTABLE_PROC_RESTART_TIMEDIFF = HB_DEFAULT_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS;
+static int prm_ha_unacceptable_proc_restart_timediff_default = HB_DEFAULT_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS;
 static unsigned int prm_ha_unacceptable_proc_restart_timediff_flag = 0;
 
-int PRM_HA_CHANGEMODE_INTERVAL_IN_MSECS =
-  HB_DEFAULT_CHANGEMODE_INTERVAL_IN_MSECS;
-static int prm_ha_changemode_interval_in_msecs_default =
-  HB_DEFAULT_CHANGEMODE_INTERVAL_IN_MSECS;
+int PRM_HA_CHANGEMODE_INTERVAL_IN_MSECS = HB_DEFAULT_CHANGEMODE_INTERVAL_IN_MSECS;
+static int prm_ha_changemode_interval_in_msecs_default = HB_DEFAULT_CHANGEMODE_INTERVAL_IN_MSECS;
 static unsigned int prm_ha_changemode_interval_in_msecs_flag = 0;
 
 int PRM_HA_MAX_HEARTBEAT_GAP = HB_DEFAULT_MAX_HEARTBEAT_GAP;
@@ -1692,7 +1658,7 @@ static unsigned int prm_session_timeout_flag = 0;
 
 int PRM_MULTI_RANGE_OPT_LIMIT = 100;
 static int prm_multi_range_opt_limit_default = 100;
-static int prm_multi_range_opt_limit_lower = 0;	/*disabled */
+static int prm_multi_range_opt_limit_lower = 0;	/* disabled */
 static int prm_multi_range_opt_limit_upper = 10000;
 static unsigned int prm_multi_range_opt_limit_flag = 0;
 
@@ -1940,8 +1906,7 @@ static int prm_vacuum_data_pages_upper = 10000;
 static unsigned int prm_vacuum_data_pages_flag = 0;
 
 int PRM_VACUUM_LOG_BLOCK_PAGES = VACUUM_LOG_BLOCK_PAGES_DEFAULT;
-static int prm_vacuum_log_block_pages_default =
-  VACUUM_LOG_BLOCK_PAGES_DEFAULT;
+static int prm_vacuum_log_block_pages_default = VACUUM_LOG_BLOCK_PAGES_DEFAULT;
 static int prm_vacuum_log_block_pages_lower = 4;
 static int prm_vacuum_log_block_pages_upper = 1024;
 static unsigned int prm_vacuum_log_block_pages_flag = 0;
@@ -1986,8 +1951,7 @@ static unsigned int prm_optimizer_enable_aggregate_optimization_flag = 0;
 
 /* buffer for 2 x maximum vacuum workers, each prefetch buffer block having
  * (PRM_VACUUM_LOG_BLOCK_PAGES + 1) */
-int PRM_VACUUM_PREFETCH_LOG_NBUFFERS =
-  2 * VACUUM_MAX_WORKER_COUNT * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
+int PRM_VACUUM_PREFETCH_LOG_NBUFFERS = 2 * VACUUM_MAX_WORKER_COUNT * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
 static int prm_vacuum_prefetch_log_nbuffers_default =
   2 * VACUUM_MAX_WORKER_COUNT * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
 static unsigned int prm_vacuum_prefetch_log_nbuffers_flag = 0;
@@ -1996,13 +1960,10 @@ static int prm_vacuum_prefetch_log_nbuffers_lower =
   (VACUUM_MAX_WORKER_COUNT + 1) * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
 
 int PRM_VACUUM_PREFETCH_LOG_MODE = VACUUM_PREFETCH_LOG_MODE_WORKERS;
-static int prm_vacuum_prefetch_log_mode_default =
-  VACUUM_PREFETCH_LOG_MODE_WORKERS;
+static int prm_vacuum_prefetch_log_mode_default = VACUUM_PREFETCH_LOG_MODE_WORKERS;
 static unsigned int prm_vacuum_prefetch_log_mode_flag = 0;
-static int prm_vacuum_prefetch_log_mode_lower =
-  VACUUM_PREFETCH_LOG_MODE_MASTER;
-static int prm_vacuum_prefetch_log_mode_upper =
-  VACUUM_PREFETCH_LOG_MODE_WORKERS;
+static int prm_vacuum_prefetch_log_mode_lower = VACUUM_PREFETCH_LOG_MODE_MASTER;
+static int prm_vacuum_prefetch_log_mode_upper = VACUUM_PREFETCH_LOG_MODE_WORKERS;
 
 bool PRM_PB_NEIGHBOR_FLUSH_NONDIRTY = false;
 static unsigned int prm_pb_neighbor_flush_nondirty_flag = 0;
@@ -2062,35 +2023,23 @@ bool PRM_LOG_UNIQUE_STATS = false;
 static bool prm_log_unique_stats_default = false;
 static unsigned int prm_log_unique_stats_flag = 0;
 
-typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *,
-			     SYSPRM_DATATYPE);
+typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
-static int prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type,
-				 void *in_val, SYSPRM_DATATYPE in_type);
-static int prm_io_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
-				 void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_io_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
 
-static int prm_size_to_log_pages (void *out_val, SYSPRM_DATATYPE out_type,
-				  void *in_val, SYSPRM_DATATYPE in_type);
-static int prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
-				  void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_size_to_log_pages (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
 
-static int prm_msec_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
-			    void *in_val, SYSPRM_DATATYPE in_type);
-static int prm_sec_to_msec (void *out_val, SYSPRM_DATATYPE out_type,
-			    void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_msec_to_sec (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_sec_to_msec (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
 
-static int prm_sec_to_min (void *out_val, SYSPRM_DATATYPE out_type,
-			   void *in_val, SYSPRM_DATATYPE in_type);
-static int prm_min_to_sec (void *out_val, SYSPRM_DATATYPE out_type,
-			   void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_sec_to_min (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_min_to_sec (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
 
-static int prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type,
-			     void *in_val, SYSPRM_DATATYPE in_type);
+static int prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type);
 #if defined(SERVER_MODE)
-static void update_session_state_from_sys_params (THREAD_ENTRY * thread_p,
-						  SESSION_PARAM *
-						  session_params);
+static void update_session_state_from_sys_params (THREAD_ENTRY * thread_p, SESSION_PARAM * session_params);
 #endif
 
 typedef struct sysprm_param SYSPRM_PARAM;
@@ -2221,8 +2170,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_SORT_BUFFER_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT |
-    PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_sr_nbuffers_flag,
    (void *) &prm_sr_nbuffers_default,
@@ -2303,8 +2251,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_BT_OID_BUFFER_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT |
-    PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_FLOAT,
    (void *) &prm_bt_oid_nbuffers_flag,
    (void *) &prm_bt_oid_nbuffers_default,
@@ -2375,8 +2322,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_LK_TIMEOUT,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_TIME_UNIT |
-    PRM_DIFFER_UNIT),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_lk_timeout_secs_flag,
    (void *) &prm_lk_timeout_secs_default,
@@ -2426,8 +2372,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_LOG_CHECKPOINT_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT |
-    PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_log_checkpoint_npages_flag,
    (void *) &prm_log_checkpoint_npages_default,
@@ -2869,8 +2814,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_MAX_FLUSH_SIZE_PER_SECOND,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT |
-    PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_max_flush_pages_per_second_flag,
    (void *) &prm_max_flush_pages_per_second_default,
@@ -2892,8 +2836,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_PB_SYNC_ON_FLUSH_SIZE,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT |
-    PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_pb_sync_on_nflush_flag,
    (void *) &prm_pb_sync_on_nflush_default,
@@ -2935,8 +2878,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_DEFAULT_WEEK_FORMAT,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION
-    | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_INTEGER,
    (void *) &prm_week_format_flag,
    (void *) &prm_week_format_default,
@@ -3018,8 +2960,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_STRING_MAX_SIZE_BYTES,
-   (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_SESSION |
-    PRM_SIZE_UNIT | PRM_FOR_HA_CONTEXT),
+   (PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_SIZE_UNIT | PRM_FOR_HA_CONTEXT),
    PRM_BIGINT,
    (void *) &prm_string_max_size_bytes_flag,
    (void *) &prm_string_max_size_bytes_default,
@@ -3030,8 +2971,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_ADD_COLUMN_UPDATE_HARD_DEFAULT,
-   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION
-    | PRM_FOR_HA_CONTEXT),
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    (void *) &prm_add_column_update_hard_default_flag,
    (void *) &prm_add_column_update_hard_default_default,
@@ -3041,8 +2981,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_RETURN_NULL_ON_FUNCTION_ERRORS,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION |
-    PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    (void *) &prm_return_null_on_function_errors_flag,
    (void *) &prm_return_null_on_function_errors_default,
@@ -3052,8 +2991,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_ALTER_TABLE_CHANGE_TYPE_STRICT,
-   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION
-    | PRM_FOR_HA_CONTEXT),
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    (void *) &prm_alter_table_change_type_strict_flag,
    (void *) &prm_alter_table_change_type_strict_default,
@@ -3156,8 +3094,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_COMPAT_NUMERIC_DIVISION_SCALE,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION
-    | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT),
    PRM_BOOLEAN,
    (void *) &prm_compat_numeric_division_scale_flag,
    (void *) &prm_compat_numeric_division_scale_default,
@@ -3335,8 +3272,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_HA_NODE_LIST,
-   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_RELOADABLE |
-    PRM_FOR_HA),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_RELOADABLE | PRM_FOR_HA),
    PRM_STRING,
    (void *) &prm_ha_node_list_flag,
    (void *) &prm_ha_node_list_default,
@@ -3620,8 +3556,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_HA_DELAY_LIMIT,
-   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_USER_CHANGE | PRM_TIME_UNIT |
-    PRM_DIFFER_UNIT),
+   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_ha_delay_limit_in_secs_flag,
    (void *) &prm_ha_delay_limit_in_secs_default,
@@ -3632,8 +3567,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
   {PRM_NAME_HA_DELAY_LIMIT_DELTA,
-   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_USER_CHANGE | PRM_TIME_UNIT |
-    PRM_DIFFER_UNIT),
+   (PRM_FOR_SERVER | PRM_FOR_HA | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
    PRM_INTEGER,
    (void *) &prm_ha_delay_limit_delta_in_secs_flag,
    (void *) &prm_ha_delay_limit_delta_in_secs_default,
@@ -3666,8 +3600,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS,
-   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT | PRM_DIFFER_UNIT |
-    PRM_RELOADABLE),
+   (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    (void *) &prm_ha_check_disk_failure_interval_in_secs_flag,
    (void *) &prm_ha_check_disk_failure_interval_in_secs_default,
@@ -4116,8 +4049,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_INTL_NUMBER_LANG,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING
-    | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
    PRM_STRING,
    (void *) &prm_intl_number_lang_flag,
    (void *) &prm_intl_number_lang_default,
@@ -4127,8 +4059,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_INTL_DATE_LANG,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING
-    | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
    PRM_STRING,
    (void *) &prm_intl_date_lang_flag,
    (void *) &prm_intl_date_lang_default,
@@ -4137,10 +4068,9 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  /* All the compound parameters *must* be at the end of the array so that the
-     changes they cause are not overridden by other parameters (for example in
-     sysprm_load_and_init the parameters are set to their default in the order
-     they are found in this array). */
+  /* All the compound parameters *must* be at the end of the array so that the changes they cause are not overridden by 
+   * other parameters (for example in sysprm_load_and_init the parameters are set to their default in the order they
+   * are found in this array). */
   {PRM_NAME_COMPAT_MODE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_COMPOUND),
    PRM_KEYWORD,
@@ -4204,8 +4134,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_CHECK_PEER_ALIVE,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION |
-    PRM_CLIENT_SESSION),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_CLIENT_SESSION),
    PRM_KEYWORD,
    (void *) &prm_check_peer_alive_flag,
    (void *) &prm_check_peer_alive_default,
@@ -4764,8 +4693,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_TIMEZONE,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE
-    | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_QRY_STRING | PRM_FOR_HA_CONTEXT),
    PRM_STRING,
    (void *) &prm_timezone_flag,
    (void *) &prm_timezone_default,
@@ -5080,9 +5008,9 @@ static KEYVAL ha_mode_words[] = {
   {"1", HA_MODE_FAIL_BACK},
   {"true", HA_MODE_FAIL_BACK},
   {"on", HA_MODE_FAIL_BACK},
-  /*{HA_MODE_FAIL_OVER_STR, HA_MODE_FAIL_OVER}, *//* unused */
+  /* {HA_MODE_FAIL_OVER_STR, HA_MODE_FAIL_OVER}, *//* unused */
   {HA_MODE_FAIL_BACK_STR, HA_MODE_FAIL_BACK},
-  /*{HA_MODE_LAZY_BACK_STR, HA_MODE_LAZY_BACK}, *//* not implemented yet */
+  /* {HA_MODE_LAZY_BACK_STR, HA_MODE_LAZY_BACK}, *//* not implemented yet */
   {HA_MODE_ROLE_CHANGE_STR, HA_MODE_ROLE_CHANGE},
   {"r", HA_MODE_REPLICA},
   {"repl", HA_MODE_REPLICA},
@@ -5138,84 +5066,73 @@ static KEYVAL ha_repl_filter_type_words[] = {
 };
 
 static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID     */
-  "no",				/* COMPAT_MYSQL      */
-  NULL,				/* COMPAT_ORACLE     */
+  NULL,				/* COMPAT_CUBRID */
+  "no",				/* COMPAT_MYSQL */
+  NULL,				/* COMPAT_ORACLE */
   PRM_NAME_ANSI_QUOTES
 };
 
-static const char
-  *compat_mode_values_PRM_ORACLE_STYLE_EMPTY_STRING[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID     */
-  NULL,				/* COMPAT_MYSQL      */
-  "yes",			/* COMPAT_ORACLE     */
+static const char *compat_mode_values_PRM_ORACLE_STYLE_EMPTY_STRING[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID */
+  NULL,				/* COMPAT_MYSQL */
+  "yes",			/* COMPAT_ORACLE */
   PRM_NAME_ORACLE_STYLE_EMPTY_STRING
 };
 
-static const char
-  *compat_mode_values_PRM_ORACLE_STYLE_OUTERJOIN[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID     */
-  NULL,				/* COMPAT_MYSQL      */
-  "yes",			/* COMPAT_ORACLE     */
+static const char *compat_mode_values_PRM_ORACLE_STYLE_OUTERJOIN[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID */
+  NULL,				/* COMPAT_MYSQL */
+  "yes",			/* COMPAT_ORACLE */
   PRM_NAME_ORACLE_STYLE_OUTERJOIN
 };
 
 static const char *compat_mode_values_PRM_PIPES_AS_CONCAT[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID     */
-  "no",				/* COMPAT_MYSQL      */
-  NULL,				/* COMPAT_ORACLE     */
+  NULL,				/* COMPAT_CUBRID */
+  "no",				/* COMPAT_MYSQL */
+  NULL,				/* COMPAT_ORACLE */
   PRM_NAME_PIPES_AS_CONCAT
 };
 
 /* Oracle's trigger correlation names are not yet supported. */
-static const char
-  *compat_mode_values_PRM_MYSQL_TRIGGER_CORRELATION_NAMES[COMPAT_ORACLE + 2] =
-{
-  NULL,				/* COMPAT_CUBRID     */
-  "yes",			/* COMPAT_MYSQL      */
-  NULL,				/* COMPAT_ORACLE     */
+static const char *compat_mode_values_PRM_MYSQL_TRIGGER_CORRELATION_NAMES[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID */
+  "yes",			/* COMPAT_MYSQL */
+  NULL,				/* COMPAT_ORACLE */
   PRM_NAME_MYSQL_TRIGGER_CORRELATION_NAMES
 };
 
-static const char
-  *compat_mode_values_PRM_REQUIRE_LIKE_ESCAPE_CHARACTER[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID     */
-  "yes",			/* COMPAT_MYSQL      */
-  NULL,				/* COMPAT_ORACLE     */
+static const char *compat_mode_values_PRM_REQUIRE_LIKE_ESCAPE_CHARACTER[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID */
+  "yes",			/* COMPAT_MYSQL */
+  NULL,				/* COMPAT_ORACLE */
   PRM_NAME_REQUIRE_LIKE_ESCAPE_CHARACTER
 };
 
-static const char
-  *compat_mode_values_PRM_NO_BACKSLASH_ESCAPES[COMPAT_ORACLE + 2] = {
-  NULL,				/* COMPAT_CUBRID     */
-  "no",				/* COMPAT_MYSQL      */
-  NULL,				/* COMPAT_ORACLE     */
+static const char *compat_mode_values_PRM_NO_BACKSLASH_ESCAPES[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID */
+  "no",				/* COMPAT_MYSQL */
+  NULL,				/* COMPAT_ORACLE */
   PRM_NAME_NO_BACKSLASH_ESCAPES
 };
 
-static const char
-  *compat_mode_values_PRM_ADD_COLUMN_UPDATE_HARD_DEFAULT[COMPAT_ORACLE + 2] =
-{
-  NULL,				/* COMPAT_CUBRID     */
-  "yes",			/* COMPAT_MYSQL      */
-  NULL,				/* COMPAT_ORACLE: leave it in cubrid
-				 * mode  for now     */
+static const char *compat_mode_values_PRM_ADD_COLUMN_UPDATE_HARD_DEFAULT[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID */
+  "yes",			/* COMPAT_MYSQL */
+  NULL,				/* COMPAT_ORACLE: leave it in cubrid mode for now */
   PRM_NAME_ADD_COLUMN_UPDATE_HARD_DEFAULT
 };
 
-static const char
-  *compat_mode_values_PRM_RETURN_NULL_ON_FUNCTION_ERRORS[COMPAT_ORACLE + 2] =
-{
-  NULL,				/* COMPAT_CUBRID     */
-  "yes",			/* COMPAT_MYSQL      */
-  NULL,				/* COMPAT_ORACLE     */
+static const char *compat_mode_values_PRM_RETURN_NULL_ON_FUNCTION_ERRORS[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID */
+  "yes",			/* COMPAT_MYSQL */
+  NULL,				/* COMPAT_ORACLE */
   PRM_NAME_RETURN_NULL_ON_FUNCTION_ERRORS
 };
 
 static const char *compat_mode_values_PRM_PLUS_AS_CONCAT[COMPAT_ORACLE + 2] = {
-  "yes",			/* COMPAT_CUBRID     */
-  "no",				/* COMPAT_MYSQL      */
-  NULL,				/* COMPAT_ORACLE     */
+  "yes",			/* COMPAT_CUBRID */
+  "no",				/* COMPAT_MYSQL */
+  NULL,				/* COMPAT_ORACLE */
   PRM_NAME_PLUS_AS_CONCAT
 };
 
@@ -5288,80 +5205,52 @@ typedef enum
 
 static void prm_the_file_has_been_loaded (const char *path);
 static int prm_print_value (const SYSPRM_PARAM * prm, char *buf, size_t len);
-static int prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
-		      PRM_PRINT_MODE print_mode,
+static int prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print_mode,
 		      PRM_PRINT_VALUE_MODE print_value_mode);
-static int sysprm_load_and_init_internal (const char *db_name,
-					  const char *conf_file, bool reload,
+static int sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload,
 					  bool check_intl_param);
 static void prm_check_environment (void);
 static int prm_check_parameters (void);
-static SYSPRM_ERR sysprm_validate_escape_char_parameters (const
-							  SYSPRM_ASSIGN_VALUE
-							  * assignment_list);
-static int prm_load_by_section (INI_TABLE * ini, const char *section,
-				bool ignore_section, bool reload,
-				const char *file, bool ha,
-				bool check_intl_param);
-static int prm_read_and_parse_ini_file (const char *prm_file_name,
-					const char *db_name,
-					const bool reload, const bool ha,
-					const bool check_intl_param);
-static void prm_report_bad_entry (const char *key, int line, int err,
-				  const char *where);
+static SYSPRM_ERR sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_list);
+static int prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, bool reload,
+				const char *file, bool ha, bool check_intl_param);
+static int prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, const bool reload,
+					const bool ha, const bool check_intl_param);
+static void prm_report_bad_entry (const char *key, int line, int err, const char *where);
 static int prm_check_range (SYSPRM_PARAM * prm, void *value);
 static int prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag);
 static int prm_set_force (SYSPRM_PARAM * prm, const char *value);
 static int prm_set_default (SYSPRM_PARAM * prm);
 static SYSPRM_PARAM *prm_find (const char *pname, const char *section);
-static const KEYVAL *prm_keyword (int val, const char *name,
-				  const KEYVAL * tbl, int dim);
+static const KEYVAL *prm_keyword (int val, const char *name, const KEYVAL * tbl, int dim);
 static void prm_tune_parameters (void);
 static int prm_compound_has_changed (SYSPRM_PARAM * prm, bool set_flag);
-static void prm_set_compound (SYSPRM_PARAM * param,
-			      const char **compound_param_values[],
-			      const int values_count, bool set_flag);
+static void prm_set_compound (SYSPRM_PARAM * param, const char **compound_param_values[], const int values_count,
+			      bool set_flag);
 static int prm_get_next_param_value (char **data, char **prm, char **value);
 static PARAM_ID sysprm_get_id (const SYSPRM_PARAM * prm);
-static int sysprm_compare_values (void *first_value, void *second_value,
-				  unsigned int val_type);
-static void sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value,
-						    SYSPRM_PARAM * prm);
+static int sysprm_compare_values (void *first_value, void *second_value, unsigned int val_type);
+static void sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value, SYSPRM_PARAM * prm);
 static SESSION_PARAM *sysprm_alloc_session_parameters (void);
-static SYSPRM_ERR sysprm_generate_new_value (SYSPRM_PARAM * prm,
-					     const char *value, bool check,
-					     bool set_default,
+static SYSPRM_ERR sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bool set_default,
 					     SYSPRM_VALUE * new_value);
-static int sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value,
-			     bool set_flag, bool duplicate);
-static void sysprm_set_system_parameter_value (SYSPRM_PARAM * prm,
-					       SYSPRM_VALUE value);
-static int sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value,
-				      char *buf, size_t len,
+static int sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool duplicate);
+static void sysprm_set_system_parameter_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value);
+static int sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_t len,
 				      PRM_PRINT_MODE print_mode);
 
 static void sysprm_update_flag_different (SYSPRM_PARAM * prm);
 static void sysprm_update_flag_allocated (SYSPRM_PARAM * prm);
 static void sysprm_update_session_prm_flag_allocated (SESSION_PARAM * prm);
 
-static void sysprm_clear_sysprm_value (SYSPRM_VALUE * value,
-				       SYSPRM_DATATYPE datatype);
-static char *sysprm_pack_sysprm_value (char *ptr, SYSPRM_VALUE value,
-				       SYSPRM_DATATYPE datatype);
-static int sysprm_packed_sysprm_value_length (SYSPRM_VALUE value,
-					      SYSPRM_DATATYPE datatype,
-					      int offset);
-static char *sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value,
-					 SYSPRM_DATATYPE datatype);
+static void sysprm_clear_sysprm_value (SYSPRM_VALUE * value, SYSPRM_DATATYPE datatype);
+static char *sysprm_pack_sysprm_value (char *ptr, SYSPRM_VALUE value, SYSPRM_DATATYPE datatype);
+static int sysprm_packed_sysprm_value_length (SYSPRM_VALUE value, SYSPRM_DATATYPE datatype, int offset);
+static char *sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value, SYSPRM_DATATYPE datatype);
 
 #if defined (SERVER_MODE)
-static SYSPRM_ERR sysprm_set_session_parameter_value (SESSION_PARAM *
-						      session_parameter,
-						      int id,
-						      SYSPRM_VALUE value);
-static SYSPRM_ERR sysprm_set_session_parameter_default (SESSION_PARAM *
-							session_parameter,
-							PARAM_ID prm_id);
+static SYSPRM_ERR sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id, SYSPRM_VALUE value);
+static SYSPRM_ERR sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter, PARAM_ID prm_id);
 #endif /* SERVER_MODE */
 
 #if defined (CS_MODE)
@@ -5417,8 +5306,7 @@ sysprm_dump_parameters (FILE * fp)
   const SYSPRM_PARAM *prm;
 
   fprintf (fp, "#\n# cubrid.conf\n#\n\n");
-  fprintf (fp,
-	   "# system parameters were loaded from the files ([@section])\n");
+  fprintf (fp, "# system parameters were loaded from the files ([@section])\n");
   for (i = 0; i < MAX_NUM_OF_PRM_FILES_LOADED; i++)
     {
       if (prm_Files_loaded[i].conf_path != NULL)
@@ -5439,8 +5327,7 @@ sysprm_dump_parameters (FILE * fp)
   for (i = 0; i < NUM_PRM; i++)
     {
       prm = &prm_Def[i];
-      if (PRM_IS_HIDDEN (prm->static_flag)
-	  || PRM_IS_OBSOLETED (prm->static_flag))
+      if (PRM_IS_HIDDEN (prm->static_flag) || PRM_IS_OBSOLETED (prm->static_flag))
 	{
 	  continue;
 	}
@@ -5494,10 +5381,8 @@ sysprm_set_er_log_file (const char *db_name)
   log_tm_p = localtime_r (&log_time, &log_tm);
   if (log_tm_p != NULL)
     {
-      snprintf (error_log_name, PATH_MAX - 1,
-		"%s%c%s_%04d%02d%02d_%02d%02d.err", ER_LOG_FILE_DIR,
-		PATH_SEPARATOR, base_db_name, log_tm_p->tm_year + 1900,
-		log_tm_p->tm_mon + 1, log_tm_p->tm_mday, log_tm_p->tm_hour,
+      snprintf (error_log_name, PATH_MAX - 1, "%s%c%s_%04d%02d%02d_%02d%02d.err", ER_LOG_FILE_DIR, PATH_SEPARATOR,
+		base_db_name, log_tm_p->tm_year + 1900, log_tm_p->tm_mon + 1, log_tm_p->tm_mday, log_tm_p->tm_hour,
 		log_tm_p->tm_min);
       prm_set (er_log_file, error_log_name, true);
     }
@@ -5514,8 +5399,7 @@ sysprm_set_er_log_file (const char *db_name)
  * Note: Parameters would be tuned and forced according to the internal rules.
  */
 static int
-sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
-			       bool reload, bool check_intl_param)
+sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload, bool check_intl_param)
 {
   char *base_db_name = NULL;
   char file_being_dealt_with[PATH_MAX];
@@ -5545,8 +5429,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 
   if (db_name == NULL)
     {
-      /* initialize message catalog at here because there could be a code path
-       * that did not call msgcat_init() before */
+      /* initialize message catalog at here because there could be a code path that did not call msgcat_init() before */
       if (msgcat_init () != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -5571,7 +5454,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
     }
 #endif /* !CS_MODE */
 
-  /*
+  /* 
    * Read installation configuration file - $CUBRID/conf/cubrid.conf
    * or use conf_file if exist
    */
@@ -5589,27 +5472,21 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
   if (conf_file != NULL)
     {
       /* use user specified config path and file */
-      strncpy (file_being_dealt_with, conf_file,
-	       sizeof (file_being_dealt_with) - 1);
+      strncpy (file_being_dealt_with, conf_file, sizeof (file_being_dealt_with) - 1);
     }
   else
     {
-      envvar_confdir_file (file_being_dealt_with, PATH_MAX,
-			   sysprm_conf_file_name);
+      envvar_confdir_file (file_being_dealt_with, PATH_MAX, sysprm_conf_file_name);
     }
 
   if (stat (file_being_dealt_with, &stat_buf) != 0)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_PARAMETERS,
-				       PRM_ERR_CANT_ACCESS),
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS, PRM_ERR_CANT_ACCESS),
 	       file_being_dealt_with, strerror (errno));
     }
   else
     {
-      r = prm_read_and_parse_ini_file (file_being_dealt_with,
-				       base_db_name, reload, HA_IGNORE,
-				       check_intl_param);
+      r = prm_read_and_parse_ini_file (file_being_dealt_with, base_db_name, reload, HA_IGNORE, check_intl_param);
     }
 
   if (r != NO_ERROR)
@@ -5627,13 +5504,11 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 	}
       else
 	{
-	  envvar_confdir_file (file_being_dealt_with, PATH_MAX,
-			       sysprm_ha_conf_file_name);
+	  envvar_confdir_file (file_being_dealt_with, PATH_MAX, sysprm_ha_conf_file_name);
 	}
       if (stat (file_being_dealt_with, &stat_buf) == 0)
 	{
-	  r = prm_read_and_parse_ini_file (file_being_dealt_with, NULL,
-					   reload, HA_READ, check_intl_param);
+	  r = prm_read_and_parse_ini_file (file_being_dealt_with, NULL, reload, HA_READ, check_intl_param);
 	}
     }
 
@@ -5642,20 +5517,17 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
       return r;
     }
 
-  /*
+  /* 
    * If a parameter is not given, set it by default
    */
   for (i = 0; i < NUM_PRM; i++)
     {
-      if (!PRM_IS_SET (*prm_Def[i].dynamic_flag)
-	  && !PRM_IS_OBSOLETED (prm_Def[i].static_flag))
+      if (!PRM_IS_SET (*prm_Def[i].dynamic_flag) && !PRM_IS_OBSOLETED (prm_Def[i].static_flag))
 	{
 	  if (prm_set_default (&prm_Def[i]) != PRM_ERR_NO_ERROR)
 	    {
-	      fprintf (stderr,
-		       msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_PARAMETERS,
-				       PRM_ERR_NO_VALUE), prm_Def[i].name);
+	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS, PRM_ERR_NO_VALUE),
+		       prm_Def[i].name);
 	      assert (0);
 	      return ER_FAILED;
 	    }
@@ -5666,7 +5538,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
   init_server_timezone_parameter ();
 #endif
 
-  /*
+  /* 
    * Perform system parameter check and tuning.
    */
   prm_check_environment ();
@@ -5678,7 +5550,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
     }
 #endif
 
-  /*
+  /* 
    * Perform forced system parameter setting.
    */
   for (i = 0; i < DIM (prm_Def); i++)
@@ -5698,8 +5570,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 
   intl_Mbs_support = prm_get_bool_value (PRM_ID_INTL_MBS_SUPPORT);
 #if !defined (SERVER_MODE)
-  intl_String_validation =
-    prm_get_bool_value (PRM_ID_INTL_CHECK_INPUT_STRING);
+  intl_String_validation = prm_get_bool_value (PRM_ID_INTL_CHECK_INPUT_STRING);
 #endif
 
   /* count the number of session parameters */
@@ -5739,12 +5610,9 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
   for (i = 0; i < NUM_PRM; i++)
     {
       int flag = prm_Def[i].static_flag;
-      if (PRM_IS_FOR_SESSION (flag)
-	  && (!PRM_IS_FOR_CLIENT (flag) || !PRM_USER_CAN_CHANGE (flag)))
+      if (PRM_IS_FOR_SESSION (flag) && (!PRM_IS_FOR_CLIENT (flag) || !PRM_USER_CAN_CHANGE (flag)))
 	{
-	  /* session parameters can only be parameters for client that are
-	   * changeable on-line
-	   */
+	  /* session parameters can only be parameters for client that are changeable on-line */
 	  assert (0);
 	}
       if (PRM_IS_FOR_SESSION (flag) && PRM_IS_HIDDEN (flag))
@@ -5752,38 +5620,27 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 	  /* hidden parameters are not allowed to use PRM_FOR_SESSION flag */
 	  assert (0);
 	}
-      if (PRM_CLIENT_SESSION_ONLY (flag)
-	  && (!PRM_IS_FOR_SERVER (flag) || !PRM_IS_FOR_SESSION (flag)))
+      if (PRM_CLIENT_SESSION_ONLY (flag) && (!PRM_IS_FOR_SERVER (flag) || !PRM_IS_FOR_SESSION (flag)))
 	{
-	  /* client session only makes sense if the parameter is for session
-	   * and for server
-	   */
+	  /* client session only makes sense if the parameter is for session and for server */
 	  assert (0);
 	}
       if (PRM_USER_CAN_CHANGE (flag) && PRM_TEST_CHANGE_ONLY (flag))
 	{
-	  /* do not set both parameters:
-	   * USER_CHANGE: the user can change parameter value on-line
-	   * TEST_CHANGE: for QA only
-	   */
+	  /* do not set both parameters: USER_CHANGE: the user can change parameter value on-line TEST_CHANGE: for QA
+	   * only */
+	  assert (0);
+	}
+      if (PRM_IS_GET_SERVER (flag) && (PRM_IS_FOR_SESSION (flag) || PRM_IS_HIDDEN (flag)))
+	{
+	  /* session and hidden parameters are not allowed to use PRM_GET_SERVER flag */
 	  assert (0);
 	}
       if (PRM_IS_GET_SERVER (flag)
-	  && (PRM_IS_FOR_SESSION (flag) || PRM_IS_HIDDEN (flag)))
+	  && (!PRM_IS_FOR_CLIENT (flag) || !PRM_IS_FOR_SERVER (flag) || !PRM_USER_CAN_CHANGE (flag)))
 	{
-	  /* session and hidden parameters are not allowed
-	   * to use PRM_GET_SERVER flag
-	   */
-	  assert (0);
-	}
-      if (PRM_IS_GET_SERVER (flag)
-	  && (!PRM_IS_FOR_CLIENT (flag) || !PRM_IS_FOR_SERVER (flag)
-	      || !PRM_USER_CAN_CHANGE (flag)))
-	{
-	  /* Note that PRM_GET_SERVER flag only can be set if the
-	   * parameter has PRM_FOR_CLIENT, PRM_FOR_SERVER, and
-	   * PRM_USER_CHANGE flags.
-	   */
+	  /* Note that PRM_GET_SERVER flag only can be set if the parameter has PRM_FOR_CLIENT, PRM_FOR_SERVER, and
+	   * PRM_USER_CHANGE flags. */
 	  assert (0);
 	}
     }
@@ -5844,9 +5701,8 @@ sysprm_reload_and_init (const char *db_name, const char *conf_file)
  *   check_intl_param(in):
  */
 static int
-prm_load_by_section (INI_TABLE * ini, const char *section,
-		     bool ignore_section, bool reload, const char *file,
-		     bool ha, bool check_intl_param)
+prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, bool reload, const char *file, bool ha,
+		     bool check_intl_param)
 {
   int i, error;
   int sec_len;
@@ -5921,8 +5777,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 
       if (PRM_IS_DEPRECATED (prm->static_flag))
 	{
-	  prm_report_bad_entry (key + sec_len, ini->lineno[i],
-				PRM_ERR_DEPRICATED, file);
+	  prm_report_bad_entry (key + sec_len, ini->lineno[i], PRM_ERR_DEPRICATED, file);
 	}
 
       if (check_intl_param)
@@ -5931,12 +5786,10 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 	      || strcasecmp (PRM_NAME_INTL_NUMBER_LANG, prm->name) == 0)
 	    {
 	      INTL_LANG dummy;
-	      if (value == NULL
-		  || lang_get_lang_id_from_name (value, &dummy) != 0)
+	      if (value == NULL || lang_get_lang_id_from_name (value, &dummy) != 0)
 		{
 		  error = PRM_ERR_BAD_VALUE;
-		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error,
-					file);
+		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
 		  return error;
 		}
 	    }
@@ -5952,8 +5805,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 	      if (lc == NULL)
 		{
 		  error = PRM_ERR_BAD_VALUE;
-		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error,
-					file);
+		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
 		  return error;
 		}
 	    }
@@ -5972,24 +5824,20 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 	  if (value != NULL)
 	    {
 	      /* offset timezone can work without timezone lib */
-	      er_status =
-		tz_str_to_region (value, strlen (value), &tz_region_system);
+	      er_status = tz_str_to_region (value, strlen (value), &tz_region_system);
 	      if (er_status != NO_ERROR)
 		{
-		  /* we may have geographic region name, make sure timezone lib
-		   * is loaded */
+		  /* we may have geographic region name, make sure timezone lib is loaded */
 		  if (tz_load () != NO_ERROR)
 		    {
 		      return PRM_ERR_BAD_VALUE;
 		    }
-		  er_status = tz_str_to_region (value, strlen (value),
-						&tz_region_system);
+		  er_status = tz_str_to_region (value, strlen (value), &tz_region_system);
 		}
 	      if (er_status != NO_ERROR)
 		{
 		  error = PRM_ERR_BAD_VALUE;
-		  prm_report_bad_entry (key + sec_len, ini->lineno[i],
-					error, file);
+		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
 		  return error;
 		}
 	      tz_set_tz_region_system (&tz_region_system);
@@ -5997,8 +5845,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 	}
 
       if ((on_server || on_client)
-	  && (strcmp (prm->name, PRM_NAME_SERVER_TIMEZONE) == 0
-	      || strcmp (prm->name, PRM_NAME_TIMEZONE) == 0))
+	  && (strcmp (prm->name, PRM_NAME_SERVER_TIMEZONE) == 0 || strcmp (prm->name, PRM_NAME_TIMEZONE) == 0))
 	{
 	  int er_status = NO_ERROR;
 
@@ -6006,24 +5853,19 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 	    {
 	      /* offset timezone can work without timezone lib */
 #if !defined(SERVER_MODE)
-	      er_status =
-		tz_str_to_region (value, strlen (value),
-				  tz_get_client_tz_region_session ());
+	      er_status = tz_str_to_region (value, strlen (value), tz_get_client_tz_region_session ());
 #else
 	      er_status = tz_str_to_region (value, strlen (value), NULL);
 #endif
 	      if (er_status != NO_ERROR)
 		{
-		  /* we may have geographic region name, make sure timezone lib
-		   * is loaded */
+		  /* we may have geographic region name, make sure timezone lib is loaded */
 		  if (tz_load () != NO_ERROR)
 		    {
 		      return PRM_ERR_BAD_VALUE;
 		    }
 #if !defined(SERVER_MODE)
-		  er_status =
-		    tz_str_to_region (value, strlen (value),
-				      tz_get_client_tz_region_session ());
+		  er_status = tz_str_to_region (value, strlen (value), tz_get_client_tz_region_session ());
 #else
 		  er_status = tz_str_to_region (value, strlen (value), NULL);
 #endif
@@ -6031,8 +5873,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 	      if (er_status != NO_ERROR)
 		{
 		  error = PRM_ERR_BAD_VALUE;
-		  prm_report_bad_entry (key + sec_len, ini->lineno[i],
-					error, file);
+		  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
 		  return error;
 		}
 	    }
@@ -6059,8 +5900,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
  *   check_intl_param(in):
  */
 static int
-prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name,
-			     const bool reload, const bool ha,
+prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, const bool reload, const bool ha,
 			     const bool check_intl_param)
 {
   INI_TABLE *ini;
@@ -6072,52 +5912,37 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name,
   ini = ini_parser_load (prm_file_name);
   if (ini == NULL)
     {
-      fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS,
-			       PRM_ERR_CANT_OPEN_INIT), prm_file_name,
-	       strerror (errno));
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS, PRM_ERR_CANT_OPEN_INIT),
+	       prm_file_name, strerror (errno));
       return PRM_ERR_FILE_ERR;
     }
 
-  error =
-    prm_load_by_section (ini, "common", true, reload, prm_file_name, ha,
-			 check_intl_param);
+  error = prm_load_by_section (ini, "common", true, reload, prm_file_name, ha, check_intl_param);
   if (error == NO_ERROR && !ha && db_name != NULL && *db_name != '\0')
     {
       snprintf (sec_name, LINE_MAX, "@%s", db_name);
-      error =
-	prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha,
-			     check_intl_param);
+      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha, check_intl_param);
     }
 
 #if defined (SA_MODE)
   if (error == NO_ERROR)
     {
-      error =
-	prm_load_by_section (ini, "standalone", true, reload, prm_file_name,
-			     ha, check_intl_param);
+      error = prm_load_by_section (ini, "standalone", true, reload, prm_file_name, ha, check_intl_param);
     }
 #endif /* SA_MODE */
 
   if (error == NO_ERROR && !ha)
     {
-      error =
-	prm_load_by_section (ini, "service", false, reload, prm_file_name,
-			     ha, check_intl_param);
+      error = prm_load_by_section (ini, "service", false, reload, prm_file_name, ha, check_intl_param);
     }
-  if (error == NO_ERROR && ha && PRM_HA_MODE != HA_MODE_OFF
-      && GETHOSTNAME (host_name, MAXHOSTNAMELEN) == 0)
+  if (error == NO_ERROR && ha && PRM_HA_MODE != HA_MODE_OFF && GETHOSTNAME (host_name, MAXHOSTNAMELEN) == 0)
     {
       snprintf (sec_name, LINE_MAX, "%%%s|*", host_name);
-      error =
-	prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha,
-			     check_intl_param);
+      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha, check_intl_param);
       if (error == NO_ERROR && getlogin_r (user_name, MAXHOSTNAMELEN) == 0)
 	{
 	  snprintf (sec_name, LINE_MAX, "%%%s|%s", host_name, user_name);
-	  error =
-	    prm_load_by_section (ini, sec_name, true, reload, prm_file_name,
-				 ha, check_intl_param);
+	  error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha, check_intl_param);
 	}
     }
 
@@ -6133,8 +5958,7 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name,
  *   return: value
  */
 static int
-prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type,
-		      void *in_val, SYSPRM_DATATYPE in_type)
+prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6193,8 +6017,7 @@ prm_size_to_io_pages (void *out_val, SYSPRM_DATATYPE out_type,
  *   return: value
  */
 static int
-prm_io_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
-		      void *in_val, SYSPRM_DATATYPE in_type)
+prm_io_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6229,8 +6052,7 @@ prm_io_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
  *   return: value
  */
 static int
-prm_size_to_log_pages (void *out_val, SYSPRM_DATATYPE out_type,
-		       void *in_val, SYSPRM_DATATYPE in_type)
+prm_size_to_log_pages (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6289,8 +6111,7 @@ prm_size_to_log_pages (void *out_val, SYSPRM_DATATYPE out_type,
  *   return: value
  */
 static int
-prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
-		       void *in_val, SYSPRM_DATATYPE in_type)
+prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_DATATYPE in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6325,8 +6146,7 @@ prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type,
  *   return: value
  */
 static int
-prm_msec_to_sec (void *out_val, unsigned int out_type,
-		 void *in_val, unsigned int in_type)
+prm_msec_to_sec (void *out_val, unsigned int out_type, void *in_val, unsigned int in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6368,8 +6188,7 @@ prm_msec_to_sec (void *out_val, unsigned int out_type,
  *   return: value
  */
 static int
-prm_sec_to_msec (void *out_val, unsigned int out_type,
-		 void *in_val, unsigned int in_type)
+prm_sec_to_msec (void *out_val, unsigned int out_type, void *in_val, unsigned int in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6397,8 +6216,7 @@ prm_sec_to_msec (void *out_val, unsigned int out_type,
  *   return: value
  */
 static int
-prm_sec_to_min (void *out_val, unsigned int out_type,
-		void *in_val, unsigned int in_type)
+prm_sec_to_min (void *out_val, unsigned int out_type, void *in_val, unsigned int in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6437,8 +6255,7 @@ prm_sec_to_min (void *out_val, unsigned int out_type,
  *   return: value
  */
 static int
-prm_min_to_sec (void *out_val, unsigned int out_type,
-		void *in_val, unsigned int in_type)
+prm_min_to_sec (void *out_val, unsigned int out_type, void *in_val, unsigned int in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6483,8 +6300,7 @@ prm_min_to_sec (void *out_val, unsigned int out_type,
  *   return: value
  */
 static int
-prm_equal_to_ori (void *out_val, unsigned int out_type,
-		  void *in_val, unsigned int in_type)
+prm_equal_to_ori (void *out_val, unsigned int out_type, void *in_val, unsigned int in_type)
 {
   if (out_val == NULL || in_val == NULL)
     {
@@ -6547,17 +6363,14 @@ prm_equal_to_ori (void *out_val, unsigned int out_type,
 static int
 prm_check_parameters (void)
 {
-  /*
+  /* 
    * ha_node_list and ha_db_list should be not null for ha_mode=yes|replica
    */
   if (PRM_HA_MODE != HA_MODE_OFF)
     {
-      if (PRM_HA_NODE_LIST == NULL || PRM_HA_NODE_LIST[0] == 0
-	  || PRM_HA_DB_LIST == NULL || PRM_HA_DB_LIST[0] == 0)
+      if (PRM_HA_NODE_LIST == NULL || PRM_HA_NODE_LIST[0] == 0 || PRM_HA_DB_LIST == NULL || PRM_HA_DB_LIST[0] == 0)
 	{
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_PARAMETERS,
-					   PRM_ERR_NO_VALUE),
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS, PRM_ERR_NO_VALUE),
 		   PRM_NAME_HA_NODE_LIST);
 	  return ER_FAILED;
 	}
@@ -6610,8 +6423,7 @@ prm_check_environment (void)
  *       Since both must not simultaneously be true.
  */
 static SYSPRM_ERR
-sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE *
-					assignment_list)
+sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_list)
 {
   SYSPRM_PARAM *prm = NULL;
   SYSPRM_ASSIGN_VALUE *assignment = NULL;
@@ -6619,8 +6431,7 @@ sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE *
   bool is_require_like_escape, is_no_backslash_escape;
 
   set_require_like_escape = set_no_backslash_escape = false;
-  for (assignment = assignment_list; assignment != NULL;
-       assignment = assignment->next)
+  for (assignment = assignment_list; assignment != NULL; assignment = assignment->next)
     {
       if (assignment->prm_id == PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER)
 	{
@@ -6678,8 +6489,7 @@ sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE *
  *	 PRM_ERR_NOT_FOR_CLIENT_NO_AUTH is returned.
  */
 SYSPRM_ERR
-sysprm_validate_change_parameters (const char *data, bool check,
-				   SYSPRM_ASSIGN_VALUE ** assignments_ptr)
+sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_VALUE ** assignments_ptr)
 {
   char buf[LINE_MAX], *p = NULL, *name = NULL, *value = NULL;
   SYSPRM_PARAM *prm = NULL;
@@ -6721,8 +6531,7 @@ sysprm_validate_change_parameters (const char *data, bool check,
 	  break;
 	}
 
-      if (!check
-	  || PRM_USER_CAN_CHANGE (prm->static_flag)
+      if (!check || PRM_USER_CAN_CHANGE (prm->static_flag)
 	  || (PRM_TEST_CHANGE_ONLY (prm->static_flag) && PRM_TEST_MODE))
 	{
 	  /* We allow changing the parameter value. */
@@ -6733,16 +6542,14 @@ sysprm_validate_change_parameters (const char *data, bool check,
 	  break;
 	}
 
-      if (strlen (value) == 7
-	  && intl_identifier_casecmp (value, PRM_VALUE_DEFAULT) == 0)
+      if (strlen (value) == 7 && intl_identifier_casecmp (value, PRM_VALUE_DEFAULT) == 0)
 	{
 	  set_default = true;
 	}
 
       if (check && !set_default)
 	{
-	  if (strcmp (prm->name, PRM_NAME_INTL_NUMBER_LANG) == 0
-	      || strcmp (prm->name, PRM_NAME_INTL_DATE_LANG) == 0)
+	  if (strcmp (prm->name, PRM_NAME_INTL_NUMBER_LANG) == 0 || strcmp (prm->name, PRM_NAME_INTL_DATE_LANG) == 0)
 	    {
 	      INTL_LANG dummy;
 
@@ -6786,26 +6593,19 @@ sysprm_validate_change_parameters (const char *data, bool check,
       assign = (SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
       if (assign == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (SYSPRM_ASSIGN_VALUE));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYSPRM_ASSIGN_VALUE));
 	  err = PRM_ERR_NO_MEM_FOR_PRM;
 	  break;
 	}
-      err =
-	sysprm_generate_new_value (prm, value, check, set_default,
-				   &assign->value);
+      err = sysprm_generate_new_value (prm, value, check, set_default, &assign->value);
       if (err != PRM_ERR_NO_ERROR)
 	{
-	  if (err == PRM_ERR_NOT_FOR_CLIENT
-	      || err == PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
+	  if (err == PRM_ERR_NOT_FOR_CLIENT || err == PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
 	    {
 	      /* update change_error */
-	      if (change_error != PRM_ERR_NOT_FOR_CLIENT
-		  || err != PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
+	      if (change_error != PRM_ERR_NOT_FOR_CLIENT || err != PRM_ERR_NOT_FOR_CLIENT_NO_AUTH)
 		{
-		  /* do not replace change_error PRM_ERR_NOT_FOR_CLIENT with
-		   * PRM_ERR_NOT_FOR_CLIENT_NO_AUTH
-		   */
+		  /* do not replace change_error PRM_ERR_NOT_FOR_CLIENT with PRM_ERR_NOT_FOR_CLIENT_NO_AUTH */
 		  change_error = err;
 		}
 	      /* do not invalidate assignments */
@@ -6864,8 +6664,7 @@ sysprm_validate_change_parameters (const char *data, bool check,
  *
  */
 SYSPRM_ERR
-sysprm_make_default_values (const char *data, char *default_val_buf,
-			    const int buf_size)
+sysprm_make_default_values (const char *data, char *default_val_buf, const int buf_size)
 {
   char buf[LINE_MAX], *p = NULL, *out_p = NULL;
   char *name = NULL, *value = NULL;
@@ -6904,32 +6703,23 @@ sysprm_make_default_values (const char *data, char *default_val_buf,
 	{
 	  n =
 	    snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_COLLATION,
-		      lang_get_collation_name (LANG_GET_BINARY_COLLATION
-					       (LANG_SYS_CODESET)));
+		      lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET)));
 	}
       else if (PRM_ID_INTL_DATE_LANG == sysprm_get_id (prm))
 	{
-	  n =
-	    snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_DATE_LANG,
-		      lang_get_Lang_name ());
+	  n = snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_DATE_LANG, lang_get_Lang_name ());
 	}
       else if (PRM_ID_INTL_NUMBER_LANG == sysprm_get_id (prm))
 	{
-	  n =
-	    snprintf (out_p, remaining_size, "%s=%s",
-		      PRM_NAME_INTL_NUMBER_LANG, lang_get_Lang_name ());
+	  n = snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_INTL_NUMBER_LANG, lang_get_Lang_name ());
 	}
       else if (PRM_ID_TIMEZONE == sysprm_get_id (prm))
 	{
-	  n =
-	    snprintf (out_p, remaining_size, "%s=%s",
-		      PRM_NAME_TIMEZONE, tz_get_system_timezone ());
+	  n = snprintf (out_p, remaining_size, "%s=%s", PRM_NAME_TIMEZONE, tz_get_system_timezone ());
 	}
       else
 	{
-	  n =
-	    prm_print (prm, out_p, remaining_size, PRM_PRINT_NAME,
-		       PRM_PRINT_DEFAULT_VAL);
+	  n = prm_print (prm, out_p, remaining_size, PRM_PRINT_NAME, PRM_PRINT_DEFAULT_VAL);
 	}
 
       out_p += n;
@@ -6958,8 +6748,7 @@ sysprm_make_default_values (const char *data, char *default_val_buf,
  *	 function.
  */
 void
-sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments,
-				bool check, bool set_flag)
+sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments, bool check, bool set_flag)
 {
   SYSPRM_PARAM *prm = NULL;
   for (; assignments != NULL; assignments = assignments->next)
@@ -6978,8 +6767,7 @@ sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments,
 #if defined (SERVER_MODE)
       if (check)
 	{
-	  if (!PRM_IS_FOR_SERVER (prm->static_flag)
-	      && !PRM_IS_FOR_SESSION (prm->static_flag))
+	  if (!PRM_IS_FOR_SERVER (prm->static_flag) && !PRM_IS_FOR_SESSION (prm->static_flag))
 	    {
 	      /* skip this assignment */
 	      continue;
@@ -7005,8 +6793,8 @@ sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments,
  *   print_mode(in): print name/id or just value of the parameter
  */
 static int
-prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
-	   PRM_PRINT_MODE print_mode, PRM_PRINT_VALUE_MODE print_value_mode)
+prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print_mode,
+	   PRM_PRINT_VALUE_MODE print_value_mode)
 {
   int n = 0;
   PARAM_ID id;
@@ -7053,9 +6841,8 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
       int val = PRM_GET_INT (prm_value);
       int left_side_len = strlen (left_side);
 
-      if (PRM_DIFFERENT_UNIT (prm->static_flag) &&
-	  !PRM_HAS_SIZE_UNIT (prm->static_flag) &&
-	  !PRM_HAS_TIME_UNIT (prm->static_flag))
+      if (PRM_DIFFERENT_UNIT (prm->static_flag) && !PRM_HAS_SIZE_UNIT (prm->static_flag)
+	  && !PRM_HAS_TIME_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, &val, &val, &error);
 	  if (error != NO_ERROR)
@@ -7072,8 +6859,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
-	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &dup_val, &val,
-						    &error);
+	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &dup_val, &val, &error);
 	      if (error != NO_ERROR)
 		{
 		  assert_release (false);
@@ -7085,9 +6871,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 	      assert_release (false);
 	    }
 
-	  (void) util_byte_to_size_string (left_side + left_side_len,
-					   PRM_DEFAULT_BUFFER_SIZE -
-					   left_side_len, dup_val);
+	  (void) util_byte_to_size_string (left_side + left_side_len, PRM_DEFAULT_BUFFER_SIZE - left_side_len, dup_val);
 	  n = snprintf (buf, len, "%s", left_side);
 	}
       else if (PRM_HAS_TIME_UNIT (prm->static_flag))
@@ -7098,8 +6882,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag) && val >= 0)
 	    {
 	      UINT64 tmp_val;
-	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &tmp_val, &val,
-						    &error);
+	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &tmp_val, &val, &error);
 	      if (error != NO_ERROR)
 		{
 		  assert_release (false);
@@ -7112,9 +6895,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 	      dup_val = (INT64) val;
 	    }
 
-	  (void) util_msec_to_time_string (left_side + left_side_len,
-					   PRM_DEFAULT_BUFFER_SIZE -
-					   left_side_len, dup_val);
+	  (void) util_msec_to_time_string (left_side + left_side_len, PRM_DEFAULT_BUFFER_SIZE - left_side_len, dup_val);
 	  n = snprintf (buf, len, "%s", left_side);
 	}
       else
@@ -7139,9 +6920,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 
       if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	{
-	  (void) util_byte_to_size_string (left_side + left_side_len,
-					   PRM_DEFAULT_BUFFER_SIZE -
-					   left_side_len, val);
+	  (void) util_byte_to_size_string (left_side + left_side_len, PRM_DEFAULT_BUFFER_SIZE - left_side_len, val);
 	  n = snprintf (buf, len, "%s", left_side);
 	}
       else
@@ -7151,16 +6930,14 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
     }
   else if (PRM_IS_BOOLEAN (prm))
     {
-      n = snprintf (buf, len, "%s%c", left_side,
-		    (PRM_GET_BOOL (prm_value) ? 'y' : 'n'));
+      n = snprintf (buf, len, "%s%c", left_side, (PRM_GET_BOOL (prm_value) ? 'y' : 'n'));
     }
   else if (PRM_IS_FLOAT (prm))
     {
       float val = PRM_GET_FLOAT (prm_value);
       int left_side_len = strlen (left_side);
 
-      if (PRM_DIFFERENT_UNIT (prm->static_flag) &&
-	  !PRM_HAS_SIZE_UNIT (prm->static_flag))
+      if (PRM_DIFFERENT_UNIT (prm->static_flag) && !PRM_HAS_SIZE_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, &val, &val, &error);
 	  if (error != NO_ERROR)
@@ -7177,8 +6954,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
-	      PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT (prm, &dup_val, &val,
-						  &error);
+	      PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT (prm, &dup_val, &val, &error);
 	      if (error != NO_ERROR)
 		{
 		  assert_release (false);
@@ -7190,9 +6966,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 	      assert_release (false);
 	    }
 
-	  (void) util_byte_to_size_string (left_side + left_side_len,
-					   PRM_DEFAULT_BUFFER_SIZE -
-					   left_side_len, dup_val);
+	  (void) util_byte_to_size_string (left_side + left_side_len, PRM_DEFAULT_BUFFER_SIZE - left_side_len, dup_val);
 	  n = snprintf (buf, len, "%s", left_side);
 	}
       else
@@ -7202,9 +6976,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
     }
   else if (PRM_IS_STRING (prm))
     {
-      n = snprintf (buf, len, "%s\"%s\"", left_side,
-		    (PRM_GET_STRING (prm_value) ?
-		     PRM_GET_STRING (prm_value) : ""));
+      n = snprintf (buf, len, "%s\"%s\"", left_side, (PRM_GET_STRING (prm_value) ? PRM_GET_STRING (prm_value) : ""));
     }
   else if (PRM_IS_KEYWORD (prm))
     {
@@ -7212,77 +6984,54 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 
       if (intl_mbs_casecmp (prm->name, PRM_NAME_ER_LOG_LEVEL) == 0)
 	{
-	  keyvalp = prm_keyword (PRM_GET_INT (prm_value),
-				 NULL, er_log_level_words,
-				 DIM (er_log_level_words));
+	  keyvalp = prm_keyword (PRM_GET_INT (prm_value), NULL, er_log_level_words, DIM (er_log_level_words));
 	}
-      else if (intl_mbs_casecmp (prm->name,
-				 PRM_NAME_LOG_ISOLATION_LEVEL) == 0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_LOG_ISOLATION_LEVEL) == 0)
 	{
-	  keyvalp = prm_keyword (PRM_GET_INT (prm_value),
-				 NULL, isolation_level_words,
-				 DIM (isolation_level_words));
+	  keyvalp = prm_keyword (PRM_GET_INT (prm_value), NULL, isolation_level_words, DIM (isolation_level_words));
 	}
-      else if (intl_mbs_casecmp (prm->name,
-				 PRM_NAME_PB_DEBUG_PAGE_VALIDATION_LEVEL) ==
-	       0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_PB_DEBUG_PAGE_VALIDATION_LEVEL) == 0)
 	{
-	  keyvalp = prm_keyword (PRM_GET_INT (prm_value),
-				 NULL,
-				 pgbuf_debug_page_validation_level_words,
-				 DIM
-				 (pgbuf_debug_page_validation_level_words));
+	  keyvalp =
+	    prm_keyword (PRM_GET_INT (prm_value), NULL, pgbuf_debug_page_validation_level_words,
+			 DIM (pgbuf_debug_page_validation_level_words));
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0
-	       || intl_mbs_casecmp (prm->name,
-				    PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY) == 0)
+	       || intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY) == 0)
 
 	{
-	  keyvalp = prm_keyword (PRM_GET_INT (prm_value),
-				 NULL, ha_mode_words, DIM (ha_mode_words));
+	  keyvalp = prm_keyword (PRM_GET_INT (prm_value), NULL, ha_mode_words, DIM (ha_mode_words));
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_SERVER_STATE) == 0)
 	{
-	  keyvalp = prm_keyword (PRM_GET_INT (prm_value),
-				 NULL, ha_server_state_words,
-				 DIM (ha_server_state_words));
+	  keyvalp = prm_keyword (PRM_GET_INT (prm_value), NULL, ha_server_state_words, DIM (ha_server_state_words));
 	}
-      else if (intl_mbs_casecmp (prm->name,
-				 PRM_NAME_HA_LOG_APPLIER_STATE) == 0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_LOG_APPLIER_STATE) == 0)
 	{
-	  keyvalp = prm_keyword (PRM_GET_INT (prm_value),
-				 NULL, ha_log_applier_state_words,
-				 DIM (ha_log_applier_state_words));
+	  keyvalp =
+	    prm_keyword (PRM_GET_INT (prm_value), NULL, ha_log_applier_state_words, DIM (ha_log_applier_state_words));
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_COMPAT_MODE) == 0)
 	{
-	  keyvalp = prm_keyword (PRM_GET_INT (prm_value),
-				 NULL, compat_words, DIM (compat_words));
+	  keyvalp = prm_keyword (PRM_GET_INT (prm_value), NULL, compat_words, DIM (compat_words));
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_CHECK_PEER_ALIVE) == 0)
 	{
-	  keyvalp = prm_keyword (PRM_GET_INT (prm_value),
-				 NULL, check_peer_alive_words,
-				 DIM (check_peer_alive_words));
+	  keyvalp = prm_keyword (PRM_GET_INT (prm_value), NULL, check_peer_alive_words, DIM (check_peer_alive_words));
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_QUERY_TRACE_FORMAT) == 0)
 	{
-	  keyvalp = prm_keyword (PRM_GET_INT (prm_value),
-				 NULL, query_trace_format_words,
-				 DIM (query_trace_format_words));
+	  keyvalp =
+	    prm_keyword (PRM_GET_INT (prm_value), NULL, query_trace_format_words, DIM (query_trace_format_words));
 	}
-      else if (intl_mbs_casecmp (prm->name, PRM_NAME_FAULT_INJECTION_TEST) ==
-	       0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_FAULT_INJECTION_TEST) == 0)
 	{
-	  keyvalp = prm_keyword (PRM_GET_INT (prm_value),
-				 NULL, fi_test_words, DIM (fi_test_words));
+	  keyvalp = prm_keyword (PRM_GET_INT (prm_value), NULL, fi_test_words, DIM (fi_test_words));
 	}
-      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) ==
-	       0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
 	{
-	  keyvalp = prm_keyword (PRM_GET_INT (prm->value),
-				 NULL, ha_repl_filter_type_words,
-				 DIM (ha_repl_filter_type_words));
+	  keyvalp =
+	    prm_keyword (PRM_GET_INT (prm->value), NULL, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
 	}
       else
 	{
@@ -7355,8 +7104,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
  * print_mode (in) : PRM_PRINT_MODE
  */
 static int
-sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
-			   size_t len, PRM_PRINT_MODE print_mode)
+sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_t len, PRM_PRINT_MODE print_mode)
 {
   int n = 0;
   int error = NO_ERROR;
@@ -7393,9 +7141,8 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
       int val = value.i;
       int left_side_len = strlen (left_side);
 
-      if (PRM_DIFFERENT_UNIT (prm->static_flag) &&
-	  !PRM_HAS_SIZE_UNIT (prm->static_flag) &&
-	  !PRM_HAS_TIME_UNIT (prm->static_flag))
+      if (PRM_DIFFERENT_UNIT (prm->static_flag) && !PRM_HAS_SIZE_UNIT (prm->static_flag)
+	  && !PRM_HAS_TIME_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, &val, &val, &error);
 	  if (error != NO_ERROR)
@@ -7412,8 +7159,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
-	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &dup_val, &val,
-						    &error);
+	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &dup_val, &val, &error);
 	      if (error != NO_ERROR)
 		{
 		  assert_release (false);
@@ -7425,9 +7171,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 	      assert_release (false);
 	    }
 
-	  (void) util_byte_to_size_string (left_side + left_side_len,
-					   PRM_DEFAULT_BUFFER_SIZE -
-					   left_side_len, dup_val);
+	  (void) util_byte_to_size_string (left_side + left_side_len, PRM_DEFAULT_BUFFER_SIZE - left_side_len, dup_val);
 	  n = snprintf (buf, len, "%s", left_side);
 	}
       else if (PRM_HAS_TIME_UNIT (prm->static_flag))
@@ -7438,8 +7182,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag) && val >= 0)
 	    {
 	      UINT64 tmp_val;
-	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &tmp_val, &val,
-						    &error);
+	      PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT (prm, &tmp_val, &val, &error);
 	      if (error != NO_ERROR)
 		{
 		  assert_release (false);
@@ -7452,9 +7195,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 	      dup_val = (INT64) val;
 	    }
 
-	  (void) util_msec_to_time_string (left_side + left_side_len,
-					   PRM_DEFAULT_BUFFER_SIZE -
-					   left_side_len, dup_val);
+	  (void) util_msec_to_time_string (left_side + left_side_len, PRM_DEFAULT_BUFFER_SIZE - left_side_len, dup_val);
 	  n = snprintf (buf, len, "%s", left_side);
 	}
       else
@@ -7479,9 +7220,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 
       if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	{
-	  (void) util_byte_to_size_string (left_side + left_side_len,
-					   PRM_DEFAULT_BUFFER_SIZE -
-					   left_side_len, val);
+	  (void) util_byte_to_size_string (left_side + left_side_len, PRM_DEFAULT_BUFFER_SIZE - left_side_len, val);
 	  n = snprintf (buf, len, "%s", left_side);
 	}
       else
@@ -7498,8 +7237,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
       float val = value.f;
       int left_side_len = strlen (left_side);
 
-      if (PRM_DIFFERENT_UNIT (prm->static_flag) &&
-	  !PRM_HAS_SIZE_UNIT (prm->static_flag))
+      if (PRM_DIFFERENT_UNIT (prm->static_flag) && !PRM_HAS_SIZE_UNIT (prm->static_flag))
 	{
 	  PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, &val, &val, &error);
 	  if (error != NO_ERROR)
@@ -7516,8 +7254,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
-	      PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT (prm, &dup_val, &val,
-						  &error);
+	      PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT (prm, &dup_val, &val, &error);
 	      if (error != NO_ERROR)
 		{
 		  assert_release (false);
@@ -7529,9 +7266,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 	      assert_release (false);
 	    }
 
-	  (void) util_byte_to_size_string (left_side + left_side_len,
-					   PRM_DEFAULT_BUFFER_SIZE -
-					   left_side_len, dup_val);
+	  (void) util_byte_to_size_string (left_side + left_side_len, PRM_DEFAULT_BUFFER_SIZE - left_side_len, dup_val);
 	  n = snprintf (buf, len, "%s", left_side);
 	}
       else
@@ -7541,8 +7276,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
     }
   else if (PRM_IS_STRING (prm))
     {
-      n = snprintf (buf, len, "%s\"%s\"", left_side,
-		    (value.str != NULL ? value.str : ""));
+      n = snprintf (buf, len, "%s\"%s\"", left_side, (value.str != NULL ? value.str : ""));
     }
   else if (PRM_IS_KEYWORD (prm))
     {
@@ -7550,68 +7284,50 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf,
 
       if (intl_mbs_casecmp (prm->name, PRM_NAME_ER_LOG_LEVEL) == 0)
 	{
-	  keyvalp = prm_keyword (value.i, NULL, er_log_level_words,
-				 DIM (er_log_level_words));
+	  keyvalp = prm_keyword (value.i, NULL, er_log_level_words, DIM (er_log_level_words));
 	}
-      else if (intl_mbs_casecmp (prm->name,
-				 PRM_NAME_LOG_ISOLATION_LEVEL) == 0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_LOG_ISOLATION_LEVEL) == 0)
 	{
-	  keyvalp = prm_keyword (value.i, NULL, isolation_level_words,
-				 DIM (isolation_level_words));
+	  keyvalp = prm_keyword (value.i, NULL, isolation_level_words, DIM (isolation_level_words));
 	}
-      else if (intl_mbs_casecmp (prm->name,
-				 PRM_NAME_PB_DEBUG_PAGE_VALIDATION_LEVEL) ==
-	       0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_PB_DEBUG_PAGE_VALIDATION_LEVEL) == 0)
 	{
-	  keyvalp = prm_keyword (value.i, NULL,
-				 pgbuf_debug_page_validation_level_words,
-				 DIM
-				 (pgbuf_debug_page_validation_level_words));
+	  keyvalp =
+	    prm_keyword (value.i, NULL, pgbuf_debug_page_validation_level_words,
+			 DIM (pgbuf_debug_page_validation_level_words));
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0
-	       || intl_mbs_casecmp (prm->name,
-				    PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY) == 0)
+	       || intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY) == 0)
 	{
-	  keyvalp = prm_keyword (value.i, NULL, ha_mode_words,
-				 DIM (ha_mode_words));
+	  keyvalp = prm_keyword (value.i, NULL, ha_mode_words, DIM (ha_mode_words));
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_SERVER_STATE) == 0)
 	{
-	  keyvalp = prm_keyword (value.i, NULL, ha_server_state_words,
-				 DIM (ha_server_state_words));
+	  keyvalp = prm_keyword (value.i, NULL, ha_server_state_words, DIM (ha_server_state_words));
 	}
-      else if (intl_mbs_casecmp (prm->name,
-				 PRM_NAME_HA_LOG_APPLIER_STATE) == 0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_LOG_APPLIER_STATE) == 0)
 	{
-	  keyvalp = prm_keyword (value.i, NULL, ha_log_applier_state_words,
-				 DIM (ha_log_applier_state_words));
+	  keyvalp = prm_keyword (value.i, NULL, ha_log_applier_state_words, DIM (ha_log_applier_state_words));
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_COMPAT_MODE) == 0)
 	{
-	  keyvalp = prm_keyword (value.i, NULL, compat_words,
-				 DIM (compat_words));
+	  keyvalp = prm_keyword (value.i, NULL, compat_words, DIM (compat_words));
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_CHECK_PEER_ALIVE) == 0)
 	{
-	  keyvalp = prm_keyword (value.i, NULL, check_peer_alive_words,
-				 DIM (check_peer_alive_words));
+	  keyvalp = prm_keyword (value.i, NULL, check_peer_alive_words, DIM (check_peer_alive_words));
 	}
       else if (intl_mbs_casecmp (prm->name, PRM_NAME_QUERY_TRACE_FORMAT) == 0)
 	{
-	  keyvalp = prm_keyword (value.i, NULL, query_trace_format_words,
-				 DIM (query_trace_format_words));
+	  keyvalp = prm_keyword (value.i, NULL, query_trace_format_words, DIM (query_trace_format_words));
 	}
-      else if (intl_mbs_casecmp (prm->name, PRM_NAME_FAULT_INJECTION_TEST) ==
-	       0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_FAULT_INJECTION_TEST) == 0)
 	{
-	  keyvalp = prm_keyword (value.i, NULL, fi_test_words,
-				 DIM (fi_test_words));
+	  keyvalp = prm_keyword (value.i, NULL, fi_test_words, DIM (fi_test_words));
 	}
-      else if (intl_mbs_casecmp (prm->name,
-				 PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
 	{
-	  keyvalp = prm_keyword (value.i, NULL, ha_repl_filter_type_words,
-				 DIM (ha_repl_filter_type_words));
+	  keyvalp = prm_keyword (value.i, NULL, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
 	}
       else
 	{
@@ -7748,15 +7464,13 @@ sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 	}
 
 #if defined (CS_MODE)
-      if (!PRM_IS_FOR_CLIENT (prm->static_flag)
-	  && !PRM_IS_FOR_SERVER (prm->static_flag))
+      if (!PRM_IS_FOR_CLIENT (prm->static_flag) && !PRM_IS_FOR_SERVER (prm->static_flag))
 	{
 	  error = PRM_ERR_CANNOT_CHANGE;
 	  break;
 	}
 
-      if ((PRM_IS_FOR_SERVER (prm->static_flag)
-	   && !PRM_IS_FOR_CLIENT (prm->static_flag))
+      if ((PRM_IS_FOR_SERVER (prm->static_flag) && !PRM_IS_FOR_CLIENT (prm->static_flag))
 	  || PRM_IS_GET_SERVER (prm->static_flag))
 	{
 	  /* have to read the value on server */
@@ -7765,13 +7479,11 @@ sysprm_obtain_parameters (char *data, SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 #endif /* CS_MODE */
 
       /* create a SYSPRM_ASSING_VALUE object to store parameter value */
-      prm_value =
-	(SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
+      prm_value = (SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
       if (prm_value == NULL)
 	{
 	  error = PRM_ERR_NO_MEM_FOR_PRM;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (SYSPRM_ASSIGN_VALUE));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYSPRM_ASSIGN_VALUE));
 	  break;
 	}
       prm_value->prm_id = sysprm_get_id (prm);
@@ -7851,8 +7563,7 @@ xsysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE * prm_values)
     {
       prm = GET_PRM (prm_values->prm_id);
 
-      if ((PRM_IS_FOR_SERVER (prm->static_flag)
-	   && !PRM_IS_FOR_CLIENT (prm->static_flag))
+      if ((PRM_IS_FOR_SERVER (prm->static_flag) && !PRM_IS_FOR_CLIENT (prm->static_flag))
 	  || PRM_IS_GET_SERVER (prm->static_flag))
 	{
 	  /* set value */
@@ -7881,13 +7592,10 @@ xsysprm_get_force_server_parameters (void)
       prm = GET_PRM (i);
       if (PRM_GET_FROM_SERVER (prm->static_flag))
 	{
-	  SYSPRM_ASSIGN_VALUE *change_val =
-	    (SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
+	  SYSPRM_ASSIGN_VALUE *change_val = (SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
 	  if (change_val == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (SYSPRM_ASSIGN_VALUE));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYSPRM_ASSIGN_VALUE));
 	      goto cleanup;
 	    }
 	  change_val->prm_id = i;
@@ -7954,8 +7662,7 @@ sysprm_get_range (const char *pname, void *min, void *max)
 	  *((int *) min) = PRM_GET_INT (prm->lower_limit);
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
-	      PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) min,
-						     (int *) min, &error);
+	      PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) min, (int *) min, &error);
 	    }
 	}
       else
@@ -7968,8 +7675,7 @@ sysprm_get_range (const char *pname, void *min, void *max)
 	  *((int *) max) = PRM_GET_INT (prm->upper_limit);
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
-	      PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) max,
-						     (int *) max, &error);
+	      PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) max, (int *) max, &error);
 	    }
 	}
       else
@@ -7984,8 +7690,7 @@ sysprm_get_range (const char *pname, void *min, void *max)
 	  *((float *) min) = PRM_GET_FLOAT (prm->lower_limit);
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
-	      PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) min,
-						 (float *) min, &error);
+	      PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) min, (float *) min, &error);
 	    }
 	}
       else
@@ -7998,8 +7703,7 @@ sysprm_get_range (const char *pname, void *min, void *max)
 	  *((float *) max) = PRM_GET_FLOAT (prm->upper_limit);
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
-	      PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) max,
-						 (float *) max, &error);
+	      PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) max, (float *) max, &error);
 	    }
 	}
       else
@@ -8014,8 +7718,7 @@ sysprm_get_range (const char *pname, void *min, void *max)
 	  *((UINT64 *) min) = PRM_GET_BIGINT (prm->lower_limit);
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
-	      PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) min,
-						   (UINT64 *) min, &error);
+	      PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) min, (UINT64 *) min, &error);
 	    }
 	}
       else
@@ -8028,8 +7731,7 @@ sysprm_get_range (const char *pname, void *min, void *max)
 	  *((UINT64 *) max) = PRM_GET_BIGINT (prm->upper_limit);
 	  if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	    {
-	      PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) max,
-						   (UINT64 *) max, &error);
+	      PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) max, (UINT64 *) max, &error);
 	    }
 	}
       else
@@ -8097,8 +7799,7 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
 	{
 	  if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	    {
-	      PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val,
-						    (UINT64 *) value, &error);
+	      PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val, (UINT64 *) value, &error);
 	    }
 	  else if (PRM_HAS_TIME_UNIT (prm->static_flag))
 	    {
@@ -8107,8 +7808,7 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
 	      if (*dup_val >= 0)
 		{
 		  UINT64 tmp_val = (UINT64) * dup_val;
-		  PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val,
-							&tmp_val, &error);
+		  PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val, &tmp_val, &error);
 		}
 	      else
 		{
@@ -8117,8 +7817,7 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
 	    }
 	  else
 	    {
-	      PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER (prm, &val, (int *) value,
-						     &error);
+	      PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER (prm, &val, (int *) value, &error);
 	    }
 	  if (error != NO_ERROR)
 	    {
@@ -8146,13 +7845,11 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
 	{
 	  if (PRM_HAS_SIZE_UNIT (prm->static_flag))
 	    {
-	      PRM_ADJUST_FOR_SET_BIGINT_TO_FLOAT (prm, &val, (UINT64 *) value,
-						  &error);
+	      PRM_ADJUST_FOR_SET_BIGINT_TO_FLOAT (prm, &val, (UINT64 *) value, &error);
 	    }
 	  else
 	    {
-	      PRM_ADJUST_FOR_SET_FLOAT_TO_FLOAT (prm, &val, (float *) value,
-						 &error);
+	      PRM_ADJUST_FOR_SET_FLOAT_TO_FLOAT (prm, &val, (float *) value, &error);
 	    }
 	  if (error != NO_ERROR)
 	    {
@@ -8184,8 +7881,7 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
 	    }
 	}
 
-      if ((prm->upper_limit && upper < val)
-	  || (prm->lower_limit && lower > val))
+      if ((prm->upper_limit && upper < val) || (prm->lower_limit && lower > val))
 	{
 	  return PRM_ERR_BAD_RANGE;
 	}
@@ -8196,8 +7892,7 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
 
       if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	{
-	  PRM_ADJUST_FOR_SET_BIGINT_TO_BIGINT (prm, &val, (UINT64 *) value,
-					       &error);
+	  PRM_ADJUST_FOR_SET_BIGINT_TO_BIGINT (prm, &val, (UINT64 *) value, &error);
 	  if (error != NO_ERROR)
 	    {
 	      return PRM_ERR_BAD_VALUE;
@@ -8234,8 +7929,8 @@ prm_check_range (SYSPRM_PARAM * prm, void *value)
  * new_value (out) : SYSPRM_VALUE converted from string
  */
 static SYSPRM_ERR
-sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
-			   bool set_default, SYSPRM_VALUE * new_value)
+sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bool set_default,
+			   SYSPRM_VALUE * new_value)
 {
   char *end = NULL;
   int error = NO_ERROR;
@@ -8265,16 +7960,12 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	{
 	  if (PRM_IS_FOR_SESSION (prm->static_flag))
 	    {
-	      /* the value in session state must also be updated. user doesn't
-	       * have to be part of DBA group.
-	       */
+	      /* the value in session state must also be updated. user doesn't have to be part of DBA group. */
 	      ret = PRM_ERR_NOT_FOR_CLIENT_NO_AUTH;
 	    }
 	  else if (PRM_IS_FOR_SERVER (prm->static_flag))
 	    {
-	      /* the value has to be changed on server too. user has to be
-	       * part of DBA group.
-	       */
+	      /* the value has to be changed on server too. user has to be part of DBA group. */
 	      ret = PRM_ERR_NOT_FOR_CLIENT;
 	    }
 	}
@@ -8297,8 +7988,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 #if defined (SERVER_MODE)
   if (check)
     {
-      if (!PRM_IS_FOR_SERVER (prm->static_flag)
-	  && !PRM_IS_FOR_SESSION (prm->static_flag))
+      if (!PRM_IS_FOR_SERVER (prm->static_flag) && !PRM_IS_FOR_SESSION (prm->static_flag))
 	{
 	  return PRM_ERR_NOT_FOR_SERVER;
 	}
@@ -8333,8 +8023,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
 	    if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	      {
-		PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val, &dup_val,
-						      &error);
+		PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val, &dup_val, &error);
 		if (error != NO_ERROR)
 		  {
 		    return PRM_ERR_BAD_VALUE;
@@ -8349,8 +8038,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	  {
 	    INT64 dup_val;
 
-	    if (util_time_string_to_msec (&dup_val, (char *) value) !=
-		NO_ERROR)
+	    if (util_time_string_to_msec (&dup_val, (char *) value) != NO_ERROR)
 	      {
 		return PRM_ERR_BAD_VALUE;
 	      }
@@ -8363,8 +8051,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	    if (PRM_DIFFERENT_UNIT (prm->static_flag) && dup_val >= 0)
 	      {
 		UINT64 tmp_val = (UINT64) dup_val;
-		PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val, &tmp_val,
-						      &error);
+		PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER (prm, &val, &tmp_val, &error);
 		if (error != NO_ERROR)
 		  {
 		    return PRM_ERR_BAD_VALUE;
@@ -8393,8 +8080,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
 	    if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	      {
-		PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER (prm, &val, &val,
-						       &error);
+		PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER (prm, &val, &val, &error);
 		if (error != NO_ERROR)
 		  {
 		    return PRM_ERR_BAD_VALUE;
@@ -8479,8 +8165,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
 	    if (PRM_DIFFERENT_UNIT (prm->static_flag))
 	      {
-		PRM_ADJUST_FOR_SET_BIGINT_TO_FLOAT (prm, &val, &dup_val,
-						    &error);
+		PRM_ADJUST_FOR_SET_BIGINT_TO_FLOAT (prm, &val, &dup_val, &error);
 		if (error != NO_ERROR)
 		  {
 		    return PRM_ERR_BAD_VALUE;
@@ -8557,9 +8242,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 		switch (sysprm_get_id (prm))
 		  {
 		  case PRM_ID_INTL_COLLATION:
-		    val =
-		      lang_get_collation_name (LANG_GET_BINARY_COLLATION
-					       (LANG_SYS_CODESET));
+		    val = lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET));
 		    break;
 		  case PRM_ID_INTL_DATE_LANG:
 		  case PRM_ID_INTL_NUMBER_LANG:
@@ -8583,9 +8266,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 		new_value->str = strdup (val);
 		if (new_value->str == NULL)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			    ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			    (size_t) (strlen (val)));
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (val)));
 		    return PRM_ERR_NO_MEM_FOR_PRM;
 		  }
 	      }
@@ -8602,9 +8283,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	    val = strdup (value);
 	    if (val == NULL)
 	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			(size_t) (strlen (value)));
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (value)));
 		return PRM_ERR_NO_MEM_FOR_PRM;
 	      }
 	  }
@@ -8617,8 +8296,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	/* convert string into an array of integers */
 	int *val = NULL;
 
-	if (set_default && sysprm_get_id (prm) !=
-	    PRM_ID_CALL_STACK_DUMP_ACTIVATION)
+	if (set_default && sysprm_get_id (prm) != PRM_ID_CALL_STACK_DUMP_ACTIVATION)
 	  {
 	    val = PRM_GET_INTEGER_LIST (prm->default_value);
 	    if (val == NULL)
@@ -8632,8 +8310,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
 		if (new_value->integer_list == NULL)
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			    ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		    return PRM_ERR_NO_MEM_FOR_PRM;
 		  }
 
@@ -8658,8 +8335,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 	    if (val == NULL)
 	      {
 		size_t size = 1024 * sizeof (int);
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		return PRM_ERR_NO_MEM_FOR_PRM;
 	      }
 
@@ -8675,11 +8351,9 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 		    *s = '\0';
 		    if (intl_mbs_casecmp ("default", p) == 0)
 		      {
-			if (sysprm_get_id (prm) ==
-			    PRM_ID_CALL_STACK_DUMP_ACTIVATION)
+			if (sysprm_get_id (prm) == PRM_ID_CALL_STACK_DUMP_ACTIVATION)
 			  {
-			    memcpy (&val[list_size + 1],
-				    call_stack_dump_error_codes,
+			    memcpy (&val[list_size + 1], call_stack_dump_error_codes,
 				    sizeof (call_stack_dump_error_codes));
 			    list_size += DIM (call_stack_dump_error_codes);
 			  }
@@ -8731,70 +8405,50 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check,
 
 	if (intl_mbs_casecmp (prm->name, PRM_NAME_ER_LOG_LEVEL) == 0)
 	  {
-	    keyvalp = prm_keyword (-1, value, er_log_level_words,
-				   DIM (er_log_level_words));
+	    keyvalp = prm_keyword (-1, value, er_log_level_words, DIM (er_log_level_words));
 	  }
-	else if (intl_mbs_casecmp (prm->name,
-				   PRM_NAME_LOG_ISOLATION_LEVEL) == 0)
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_LOG_ISOLATION_LEVEL) == 0)
 	  {
-	    keyvalp = prm_keyword (-1, value, isolation_level_words,
-				   DIM (isolation_level_words));
+	    keyvalp = prm_keyword (-1, value, isolation_level_words, DIM (isolation_level_words));
 	  }
-	else if (intl_mbs_casecmp (prm->name,
-				   PRM_NAME_PB_DEBUG_PAGE_VALIDATION_LEVEL)
-		 == 0)
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_PB_DEBUG_PAGE_VALIDATION_LEVEL) == 0)
 	  {
-	    keyvalp = prm_keyword (-1, value,
-				   pgbuf_debug_page_validation_level_words,
-				   DIM
-				   (pgbuf_debug_page_validation_level_words));
+	    keyvalp =
+	      prm_keyword (-1, value, pgbuf_debug_page_validation_level_words,
+			   DIM (pgbuf_debug_page_validation_level_words));
 	  }
 	else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE) == 0
-		 || intl_mbs_casecmp (prm->name,
-				      PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY) ==
-		 0)
+		 || intl_mbs_casecmp (prm->name, PRM_NAME_HA_MODE_FOR_SA_UTILS_ONLY) == 0)
 	  {
-	    keyvalp = prm_keyword (-1, value, ha_mode_words,
-				   DIM (ha_mode_words));
+	    keyvalp = prm_keyword (-1, value, ha_mode_words, DIM (ha_mode_words));
 	  }
 	else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_SERVER_STATE) == 0)
 	  {
-	    keyvalp = prm_keyword (-1, value, ha_server_state_words,
-				   DIM (ha_server_state_words));
+	    keyvalp = prm_keyword (-1, value, ha_server_state_words, DIM (ha_server_state_words));
 	  }
-	else if (intl_mbs_casecmp (prm->name,
-				   PRM_NAME_HA_LOG_APPLIER_STATE) == 0)
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_LOG_APPLIER_STATE) == 0)
 	  {
-	    keyvalp = prm_keyword (-1, value, ha_log_applier_state_words,
-				   DIM (ha_log_applier_state_words));
+	    keyvalp = prm_keyword (-1, value, ha_log_applier_state_words, DIM (ha_log_applier_state_words));
 	  }
 	else if (intl_mbs_casecmp (prm->name, PRM_NAME_COMPAT_MODE) == 0)
 	  {
-	    keyvalp = prm_keyword (-1, value, compat_words,
-				   DIM (compat_words));
+	    keyvalp = prm_keyword (-1, value, compat_words, DIM (compat_words));
 	  }
 	else if (intl_mbs_casecmp (prm->name, PRM_NAME_CHECK_PEER_ALIVE) == 0)
 	  {
-	    keyvalp = prm_keyword (-1, value, check_peer_alive_words,
-				   DIM (check_peer_alive_words));
+	    keyvalp = prm_keyword (-1, value, check_peer_alive_words, DIM (check_peer_alive_words));
 	  }
-	else if (intl_mbs_casecmp (prm->name,
-				   PRM_NAME_QUERY_TRACE_FORMAT) == 0)
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_QUERY_TRACE_FORMAT) == 0)
 	  {
-	    keyvalp = prm_keyword (-1, value, query_trace_format_words,
-				   DIM (query_trace_format_words));
+	    keyvalp = prm_keyword (-1, value, query_trace_format_words, DIM (query_trace_format_words));
 	  }
-	else if (intl_mbs_casecmp (prm->name,
-				   PRM_NAME_FAULT_INJECTION_TEST) == 0)
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_FAULT_INJECTION_TEST) == 0)
 	  {
-	    keyvalp = prm_keyword (-1, value, fi_test_words,
-				   DIM (fi_test_words));
+	    keyvalp = prm_keyword (-1, value, fi_test_words, DIM (fi_test_words));
 	  }
-	else if (intl_mbs_casecmp (prm->name,
-				   PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
+	else if (intl_mbs_casecmp (prm->name, PRM_NAME_HA_REPL_FILTER_TYPE) == 0)
 	  {
-	    keyvalp = prm_keyword (-1, value, ha_repl_filter_type_words,
-				   DIM (ha_repl_filter_type_words));
+	    keyvalp = prm_keyword (-1, value, ha_repl_filter_type_words, DIM (ha_repl_filter_type_words));
 	  }
 	else
 	  {
@@ -8868,8 +8522,7 @@ prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
  *		    allocation.
  */
 static int
-sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
-		  bool duplicate)
+sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool duplicate)
 {
 #if defined (SERVER_MODE)
   PARAM_ID id;
@@ -8893,8 +8546,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 	      tmp_ptr = strdup (value.str);
 	      if (tmp_ptr == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  (size_t) (strlen (value.str) + 1));
 		  return PRM_ERR_NO_MEM_FOR_PRM;
 		}
@@ -8910,15 +8562,13 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 	      tmp_ptr = (int *) malloc ((integer_list[0] + 1) * sizeof (int));
 	      if (tmp_ptr == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  (integer_list[0] + 1) * sizeof (int));
 		  return PRM_ERR_NO_MEM_FOR_PRM;
 		}
 
 	      value.integer_list = (int *) tmp_ptr;
-	      memcpy (value.integer_list, integer_list,
-		      (integer_list[0] + 1) * sizeof (int));
+	      memcpy (value.integer_list, integer_list, (integer_list[0] + 1) * sizeof (int));
 	    }
 
 	default:
@@ -8952,17 +8602,15 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
 	  session_tz_region = session_get_session_tz_region (thread_p);
 	  if (session_tz_region != NULL)
 	    {
-	      tz_str_to_region (value.str, strlen (value.str),
-				session_tz_region);
+	      tz_str_to_region (value.str, strlen (value.str), session_tz_region);
 	    }
 	}
 
       return sysprm_set_session_parameter_value (param, id, value);
     }
 
-  /* if prm is not for session or if session_parameters have not been
-   * initialized just set the system parameter stored on server
-   */
+  /* if prm is not for session or if session_parameters have not been initialized just set the system parameter stored
+   * on server */
 #endif /* SERVER_MODE */
 
   sysprm_set_system_parameter_value (prm, value);
@@ -8973,8 +8621,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
       TZ_REGION tz_region_system;
       int err_status = 0;
 
-      err_status = tz_str_to_region (value.str, strlen (value.str),
-				     &tz_region_system);
+      err_status = tz_str_to_region (value.str, strlen (value.str), &tz_region_system);
       if (err_status != NO_ERROR)
 	{
 	  return PRM_ERR_BAD_PARAM;
@@ -8986,8 +8633,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag,
   if (sysprm_get_id (prm) == PRM_ID_TIMEZONE)
     {
       int err_status = 0;
-      err_status = tz_str_to_region (value.str, strlen (value.str),
-				     tz_get_client_tz_region_session ());
+      err_status = tz_str_to_region (value.str, strlen (value.str), tz_get_client_tz_region_session ());
       if (err_status != NO_ERROR)
 	{
 	  return PRM_ERR_BAD_PARAM;
@@ -9070,8 +8716,7 @@ prm_compound_has_changed (SYSPRM_PARAM * prm, bool set_flag)
 
   if (sysprm_get_id (prm) == PRM_ID_COMPAT_MODE)
     {
-      prm_set_compound (prm, compat_mode_values, DIM (compat_mode_values),
-			set_flag);
+      prm_set_compound (prm, compat_mode_values, DIM (compat_mode_values), set_flag);
     }
   else
     {
@@ -9098,8 +8743,7 @@ prm_set_force (SYSPRM_PARAM * prm, const char *value)
   prm->force_value = strdup (value);
   if (prm->force_value == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) (strlen (value) + 1));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (value) + 1));
       return PRM_ERR_NO_MEM_FOR_PRM;
     }
 
@@ -9386,8 +9030,7 @@ prm_report_bad_entry (const char *key, int line, int err, const char *where)
 	  break;
 
 	case PRM_ERR_UNKNOWN_PARAM:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_UNKNOWN_SYSPRM, 3,
-		  key, line, where);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_UNKNOWN_SYSPRM, 3, key, line, where);
 	  fprintf (stderr, "%s\n", PARAM_MSG_FMT (err));
 	  break;
 
@@ -9470,8 +9113,7 @@ init_server_timezone_parameter (void)
 
   prm_server_timezone = prm_find (PRM_NAME_SERVER_TIMEZONE, NULL);
 
-  if (prm_server_timezone != NULL
-      && !PRM_IS_SET (*prm_server_timezone->dynamic_flag))
+  if (prm_server_timezone != NULL && !PRM_IS_SET (*prm_server_timezone->dynamic_flag))
     {
       char timezone_name[TZ_GENERIC_NAME_SIZE + 1];
       int ret;
@@ -9542,24 +9184,18 @@ prm_tune_parameters (void)
 
   /* Find the parameters that require tuning */
   max_clients_prm = prm_find (PRM_NAME_CSS_MAX_CLIENTS, NULL);
-  max_plan_cache_entries_prm =
-    prm_find (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, NULL);
+  max_plan_cache_entries_prm = prm_find (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, NULL);
 #if defined (ENABLE_UNUSED_FUNCTION)
-  max_plan_cache_clones_prm =
-    prm_find (PRM_NAME_XASL_MAX_PLAN_CACHE_CLONES, NULL);
+  max_plan_cache_clones_prm = prm_find (PRM_NAME_XASL_MAX_PLAN_CACHE_CLONES, NULL);
 #endif /* ENABLE_UNUSED_FUNCTION */
   query_cache_mode_prm = prm_find (PRM_NAME_LIST_QUERY_CACHE_MODE, NULL);
-  max_query_cache_entries_prm =
-    prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_ENTRIES, NULL);
-  query_cache_size_in_pages_prm =
-    prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES, NULL);
+  max_query_cache_entries_prm = prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_ENTRIES, NULL);
+  query_cache_size_in_pages_prm = prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES, NULL);
   test_mode_prm = prm_find (PRM_NAME_TEST_MODE, NULL);
-  tz_leap_second_support_prm =
-    prm_find (PRM_NAME_TZ_LEAP_SECOND_SUPPORT, NULL);
+  tz_leap_second_support_prm = prm_find (PRM_NAME_TZ_LEAP_SECOND_SUPPORT, NULL);
 
-  /* temporarily modifies the query result cache feature to be disabled
-   * in RB-8.2.2. because it is not verified on 64 bit environment.
-   */
+  /* temporarily modifies the query result cache feature to be disabled in RB-8.2.2. because it is not verified on 64
+   * bit environment. */
   if (query_cache_mode_prm != NULL)
     {
       prm_set (query_cache_mode_prm, "0", false);
@@ -9568,14 +9204,11 @@ prm_tune_parameters (void)
   ha_mode_prm = prm_find (PRM_NAME_HA_MODE, NULL);
   ha_server_state_prm = prm_find (PRM_NAME_HA_SERVER_STATE, NULL);
   auto_restart_server_prm = prm_find (PRM_NAME_AUTO_RESTART_SERVER, NULL);
-  log_background_archiving_prm =
-    prm_find (PRM_NAME_LOG_BACKGROUND_ARCHIVING, NULL);
+  log_background_archiving_prm = prm_find (PRM_NAME_LOG_BACKGROUND_ARCHIVING, NULL);
   ha_node_list_prm = prm_find (PRM_NAME_HA_NODE_LIST, NULL);
   max_log_archives_prm = prm_find (PRM_NAME_LOG_MAX_ARCHIVES, NULL);
-  force_remove_log_archives_prm =
-    prm_find (PRM_NAME_FORCE_REMOVE_LOG_ARCHIVES, NULL);
-  ha_prefetchlogdb_enable_prm =
-    prm_find (PRM_NAME_HA_PREFETCHLOGDB_ENABLE, NULL);
+  force_remove_log_archives_prm = prm_find (PRM_NAME_FORCE_REMOVE_LOG_ARCHIVES, NULL);
+  ha_prefetchlogdb_enable_prm = prm_find (PRM_NAME_HA_PREFETCHLOGDB_ENABLE, NULL);
 
   /* Check that max clients has been set */
   assert (max_clients_prm != NULL);
@@ -9589,10 +9222,8 @@ prm_tune_parameters (void)
     {
       if (prm_set_default (max_clients_prm) != PRM_ERR_NO_ERROR)
 	{
-	  fprintf (stderr,
-		   msgcat_message (MSGCAT_CATALOG_CUBRID,
-				   MSGCAT_SET_PARAMETERS,
-				   PRM_ERR_NO_VALUE), max_clients_prm->name);
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS, PRM_ERR_NO_VALUE),
+		   max_clients_prm->name);
 	  assert (0);
 	  return;
 	}
@@ -9600,8 +9231,7 @@ prm_tune_parameters (void)
   else
 #endif
     {
-      max_clients =
-	MIN (prm_css_max_clients_upper, css_get_max_socket_fds ());
+      max_clients = MIN (prm_css_max_clients_upper, css_get_max_socket_fds ());
       if (PRM_GET_INT (max_clients_prm->value) > max_clients)
 	{
 	  sprintf (newval, "%d", max_clients);
@@ -9619,14 +9249,13 @@ prm_tune_parameters (void)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-  if (max_plan_cache_entries_prm == NULL || max_plan_cache_clones_prm == NULL
-      || query_cache_mode_prm == NULL || max_query_cache_entries_prm == NULL)
+  if (max_plan_cache_entries_prm == NULL || max_plan_cache_clones_prm == NULL || query_cache_mode_prm == NULL
+      || max_query_cache_entries_prm == NULL)
     {
       return;
     }
 #else /* ENABLE_UNUSED_FUNCTION */
-  if (max_plan_cache_entries_prm == NULL
-      || query_cache_mode_prm == NULL || max_query_cache_entries_prm == NULL)
+  if (max_plan_cache_entries_prm == NULL || query_cache_mode_prm == NULL || max_query_cache_entries_prm == NULL)
     {
       return;
     }
@@ -9652,16 +9281,13 @@ prm_tune_parameters (void)
     {
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if 1				/* block XASL clone feature because of new heap layer */
-      if (PRM_GET_INT (max_plan_cache_clones_prm->value) >=
-	  PRM_GET_INT (max_plan_cache_entries_prm->value))
+      if (PRM_GET_INT (max_plan_cache_clones_prm->value) >= PRM_GET_INT (max_plan_cache_entries_prm->value))
 #else
-      if ((PRM_GET_INT (max_plan_cache_clones_prm->value) >=
-	   PRM_GET_INT (max_plan_cache_entries_prm->value))
+      if ((PRM_GET_INT (max_plan_cache_clones_prm->value) >= PRM_GET_INT (max_plan_cache_entries_prm->value))
 	  || (PRM_GET_INT (max_plan_cache_clones_prm->value) < 0))
 #endif
 	{
-	  sprintf (newval, "%d",
-		   PRM_GET_INT (max_plan_cache_entries_prm->value));
+	  sprintf (newval, "%d", PRM_GET_INT (max_plan_cache_entries_prm->value));
 	  (void) prm_set (max_plan_cache_clones_prm, newval, false);
 	}
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -9674,8 +9300,7 @@ prm_tune_parameters (void)
 	{
 	  if (PRM_GET_INT (max_query_cache_entries_prm->value) <= 0)
 	    {
-	      sprintf (newval, "%d",
-		       PRM_GET_INT (max_plan_cache_entries_prm->value));
+	      sprintf (newval, "%d", PRM_GET_INT (max_plan_cache_entries_prm->value));
 	      (void) prm_set (max_query_cache_entries_prm, newval, false);
 	    }
 	}
@@ -9684,8 +9309,7 @@ prm_tune_parameters (void)
   /* check HA related parameters */
   assert (ha_mode_prm != NULL);
   assert (auto_restart_server_prm != NULL);
-  if (ha_mode_prm == NULL || ha_server_state_prm == NULL
-      || auto_restart_server_prm == NULL)
+  if (ha_mode_prm == NULL || ha_server_state_prm == NULL || auto_restart_server_prm == NULL)
     {
       return;
     }
@@ -9698,12 +9322,11 @@ prm_tune_parameters (void)
   (void) prm_set_default (ha_mode_prm);
   (void) prm_set (ha_server_state_prm, HA_SERVER_STATE_ACTIVE_STR, false);
 
-  if (force_remove_log_archives_prm != NULL
-      && !PRM_GET_BOOL (force_remove_log_archives_prm->value))
+  if (force_remove_log_archives_prm != NULL && !PRM_GET_BOOL (force_remove_log_archives_prm->value))
     {
       (void) prm_set_default (max_log_archives_prm);
     }
-#else /* SA_MODE  || WINDOWS */
+#else /* SA_MODE || WINDOWS */
   if (PRM_GET_INT (ha_mode_prm->value) != HA_MODE_OFF)
     {
       if (PRM_DEFAULT_VAL_USED (*ha_server_state_prm->dynamic_flag))
@@ -9723,8 +9346,7 @@ prm_tune_parameters (void)
       sprintf (newval, "%s", HA_SERVER_STATE_ACTIVE_STR);
       prm_set (ha_server_state_prm, newval, false);
 
-      if (force_remove_log_archives_prm != NULL
-	  && !PRM_GET_BOOL (force_remove_log_archives_prm->value))
+      if (force_remove_log_archives_prm != NULL && !PRM_GET_BOOL (force_remove_log_archives_prm->value))
 	{
 	  (void) prm_set_default (max_log_archives_prm);
 	}
@@ -9733,8 +9355,7 @@ prm_tune_parameters (void)
   /* disable them temporarily */
   prm_set (ha_prefetchlogdb_enable_prm, "no", false);
 
-  if (ha_node_list_prm == NULL
-      || PRM_DEFAULT_VAL_USED (*ha_node_list_prm->dynamic_flag))
+  if (ha_node_list_prm == NULL || PRM_DEFAULT_VAL_USED (*ha_node_list_prm->dynamic_flag))
     {
       if (GETHOSTNAME (host_name, sizeof (host_name)))
 	{
@@ -9745,8 +9366,7 @@ prm_tune_parameters (void)
       prm_set (ha_node_list_prm, newval, false);
     }
 
-  call_stack_dump_activation_prm =
-    GET_PRM (PRM_ID_CALL_STACK_DUMP_ACTIVATION);
+  call_stack_dump_activation_prm = GET_PRM (PRM_ID_CALL_STACK_DUMP_ACTIVATION);
   if (!PRM_IS_SET (*call_stack_dump_activation_prm->dynamic_flag))
     {
       int dim;
@@ -9754,27 +9374,22 @@ prm_tune_parameters (void)
 
       if (PRM_IS_ALLOCATED (*call_stack_dump_activation_prm->dynamic_flag))
 	{
-	  free_and_init (PRM_GET_INTEGER_LIST
-			 (call_stack_dump_activation_prm->value));
+	  free_and_init (PRM_GET_INTEGER_LIST (call_stack_dump_activation_prm->value));
 	}
 
       dim = DIM (call_stack_dump_error_codes);
       integer_list = (int *) malloc ((dim + 1) * sizeof (int));
       if (integer_list == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (dim + 1) * sizeof (int));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (dim + 1) * sizeof (int));
 	  return;
 	}
 
       integer_list[0] = dim;
-      memcpy (&integer_list[1], call_stack_dump_error_codes,
-	      dim * sizeof (int));
-      prm_set_integer_list_value (PRM_ID_CALL_STACK_DUMP_ACTIVATION,
-				  integer_list);
+      memcpy (&integer_list[1], call_stack_dump_error_codes, dim * sizeof (int));
+      prm_set_integer_list_value (PRM_ID_CALL_STACK_DUMP_ACTIVATION, integer_list);
       PRM_SET_BIT (PRM_SET, *call_stack_dump_activation_prm->dynamic_flag);
-      PRM_CLEAR_BIT (PRM_DEFAULT_USED,
-		     *call_stack_dump_activation_prm->dynamic_flag);
+      PRM_CLEAR_BIT (PRM_DEFAULT_USED, *call_stack_dump_activation_prm->dynamic_flag);
     }
 
 #if !defined(NDEBUG)
@@ -9790,8 +9405,7 @@ prm_tune_parameters (void)
 
       if (PRM_IS_ALLOCATED (*fault_injection_ids_prm->dynamic_flag))
 	{
-	  free_and_init (PRM_GET_INTEGER_LIST
-			 (fault_injection_ids_prm->value));
+	  free_and_init (PRM_GET_INTEGER_LIST (fault_injection_ids_prm->value));
 	}
 
       for (dim = 0; fi_Groups[group_code][dim] != FI_TEST_NONE; dim++)
@@ -9802,8 +9416,7 @@ prm_tune_parameters (void)
       integer_list = (int *) malloc ((dim + 1) * sizeof (int));
       if (integer_list == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (dim + 1) * sizeof (int));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (dim + 1) * sizeof (int));
 	  return;
 	}
 
@@ -9811,8 +9424,7 @@ prm_tune_parameters (void)
       memcpy (&integer_list[1], fi_Groups[group_code], dim * sizeof (int));
       prm_set_integer_list_value (PRM_ID_FAULT_INJECTION_IDS, integer_list);
       PRM_SET_BIT (PRM_SET, *fault_injection_ids_prm->dynamic_flag);
-      PRM_CLEAR_BIT (PRM_DEFAULT_USED,
-		     *fault_injection_ids_prm->dynamic_flag);
+      PRM_CLEAR_BIT (PRM_DEFAULT_USED, *fault_injection_ids_prm->dynamic_flag);
     }
 #endif
 
@@ -9843,25 +9455,18 @@ prm_tune_parameters (void)
   char host_name[MAXHOSTNAMELEN];
 
   /* Find the parameters that require tuning */
-  max_plan_cache_entries_prm =
-    prm_find (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, NULL);
+  max_plan_cache_entries_prm = prm_find (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, NULL);
   ha_node_list_prm = prm_find (PRM_NAME_HA_NODE_LIST, NULL);
 
   ha_mode_prm = prm_find (PRM_NAME_HA_MODE, NULL);
-  ha_process_dereg_confirm_interval_in_msecs_prm =
-    prm_find (PRM_NAME_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS, NULL);
-  ha_max_process_dereg_confirm_prm =
-    prm_find (PRM_NAME_HA_MAX_PROCESS_DEREG_CONFIRM, NULL);
-  shutdown_wait_time_in_secs_prm =
-    prm_find (PRM_NAME_SHUTDOWN_WAIT_TIME_IN_SECS, NULL);
+  ha_process_dereg_confirm_interval_in_msecs_prm = prm_find (PRM_NAME_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS, NULL);
+  ha_max_process_dereg_confirm_prm = prm_find (PRM_NAME_HA_MAX_PROCESS_DEREG_CONFIRM, NULL);
+  shutdown_wait_time_in_secs_prm = prm_find (PRM_NAME_SHUTDOWN_WAIT_TIME_IN_SECS, NULL);
   ha_copy_log_timeout_prm = prm_find (PRM_NAME_HA_COPY_LOG_TIMEOUT, NULL);
-  ha_check_disk_failure_interval_prm =
-    prm_find (PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS, NULL);
-  ha_prefetchlogdb_enable_prm =
-    prm_find (PRM_NAME_HA_PREFETCHLOGDB_ENABLE, NULL);
+  ha_check_disk_failure_interval_prm = prm_find (PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS, NULL);
+  ha_prefetchlogdb_enable_prm = prm_find (PRM_NAME_HA_PREFETCHLOGDB_ENABLE, NULL);
   test_mode_prm = prm_find (PRM_NAME_TEST_MODE, NULL);
-  tz_leap_second_support_prm =
-    prm_find (PRM_NAME_TZ_LEAP_SECOND_SUPPORT, NULL);
+  tz_leap_second_support_prm = prm_find (PRM_NAME_TZ_LEAP_SECOND_SUPPORT, NULL);
 
   assert (max_plan_cache_entries_prm != NULL);
   if (max_plan_cache_entries_prm == NULL)
@@ -9886,21 +9491,17 @@ prm_tune_parameters (void)
       int ha_check_disk_failure_interval_value;
       int ha_copy_log_timeout_value;
 
-      ha_check_disk_failure_interval_value =
-	PRM_GET_INT (ha_check_disk_failure_interval_prm->value);
-      ha_copy_log_timeout_value =
-	PRM_GET_INT (ha_copy_log_timeout_prm->value);
+      ha_check_disk_failure_interval_value = PRM_GET_INT (ha_check_disk_failure_interval_prm->value);
+      ha_copy_log_timeout_value = PRM_GET_INT (ha_copy_log_timeout_prm->value);
       if (ha_copy_log_timeout_value == -1)
 	{
 	  prm_set (ha_check_disk_failure_interval_prm, "0", false);
 	}
-      else if (ha_check_disk_failure_interval_value -
-	       ha_copy_log_timeout_value <
+      else if (ha_check_disk_failure_interval_value - ha_copy_log_timeout_value <
 	       HB_MIN_DIFF_CHECK_DISK_FAILURE_INTERVAL_IN_SECS)
 	{
 	  ha_check_disk_failure_interval_value =
-	    ha_copy_log_timeout_value +
-	    HB_MIN_DIFF_CHECK_DISK_FAILURE_INTERVAL_IN_SECS;
+	    ha_copy_log_timeout_value + HB_MIN_DIFF_CHECK_DISK_FAILURE_INTERVAL_IN_SECS;
 	  sprintf (newval, "%ds", ha_check_disk_failure_interval_value);
 	  prm_set (ha_check_disk_failure_interval_prm, newval, false);
 	}
@@ -9909,8 +9510,7 @@ prm_tune_parameters (void)
   /* disable them temporarily */
   prm_set (ha_prefetchlogdb_enable_prm, "no", false);
 
-  if (ha_node_list_prm == NULL
-      || PRM_DEFAULT_VAL_USED (*ha_node_list_prm->dynamic_flag))
+  if (ha_node_list_prm == NULL || PRM_DEFAULT_VAL_USED (*ha_node_list_prm->dynamic_flag))
     {
       if (GETHOSTNAME (host_name, sizeof (host_name)))
 	{
@@ -9945,8 +9545,7 @@ sysprm_tune_client_parameters (void)
   SYSPRM_ASSIGN_VALUE *force_server_values = NULL;
 
   /* get values from server */
-  if (sysprm_get_force_server_parameters (&force_server_values) == NO_ERROR
-      && force_server_values != NULL)
+  if (sysprm_get_force_server_parameters (&force_server_values) == NO_ERROR && force_server_values != NULL)
     {
       /* update system parameters on client */
       sysprm_change_parameter_values (force_server_values, false, true);
@@ -9990,8 +9589,7 @@ prm_get_query_mode_sync (void)
  *                     array
  */
 static void
-prm_set_compound (SYSPRM_PARAM * param, const char **compound_param_values[],
-		  const int values_count, bool set_flag)
+prm_set_compound (SYSPRM_PARAM * param, const char **compound_param_values[], const int values_count, bool set_flag)
 {
   int i = 0;
   const int param_value = *(int *) param->value;
@@ -10003,10 +9601,8 @@ prm_set_compound (SYSPRM_PARAM * param, const char **compound_param_values[],
 
   for (i = 0; i < values_count; ++i)
     {
-      const char *compound_param_name =
-	compound_param_values[i][param_upper_limit + 1];
-      const char *compound_param_value =
-	compound_param_values[i][param_value];
+      const char *compound_param_name = compound_param_values[i][param_upper_limit + 1];
+      const char *compound_param_value = compound_param_values[i][param_value];
 
       assert (compound_param_name != NULL);
 
@@ -10016,8 +9612,7 @@ prm_set_compound (SYSPRM_PARAM * param, const char **compound_param_values[],
 	}
       else
 	{
-	  prm_set (prm_find (compound_param_name, NULL),
-		   compound_param_value, set_flag);
+	  prm_set (prm_find (compound_param_name, NULL), compound_param_value, set_flag);
 	}
     }
 }
@@ -10208,8 +9803,7 @@ int
 prm_get_integer_value (PARAM_ID prm_id)
 {
   assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_INTEGER (&prm_Def[prm_id])
-	  || PRM_IS_KEYWORD (&prm_Def[prm_id]));
+  assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
 
   return PRM_GET_INT (prm_get_value (prm_id));
 }
@@ -10303,8 +9897,7 @@ void
 prm_set_integer_value (PARAM_ID prm_id, int value)
 {
   assert (prm_id <= PRM_LAST_ID);
-  assert (PRM_IS_INTEGER (&prm_Def[prm_id])
-	  || PRM_IS_KEYWORD (&prm_Def[prm_id]));
+  assert (PRM_IS_INTEGER (&prm_Def[prm_id]) || PRM_IS_KEYWORD (&prm_Def[prm_id]));
 
   PRM_GET_INT (prm_Def[prm_id].value) = value;
 
@@ -10492,16 +10085,14 @@ static void
 sysprm_update_flag_different (SYSPRM_PARAM * prm)
 {
 #if defined (CS_MODE)
-  if (!PRM_IS_FOR_QRY_STRING (prm->static_flag)
-      && !PRM_IS_FOR_HA_CONTEXT (prm->static_flag))
+  if (!PRM_IS_FOR_QRY_STRING (prm->static_flag) && !PRM_IS_FOR_HA_CONTEXT (prm->static_flag))
     {
       /* nothing to do */
       return;
     }
 
   /* compare current value with default value and update PRM_DIFFERENT bit */
-  if (sysprm_compare_values (prm->value, prm->default_value, prm->datatype) !=
-      0)
+  if (sysprm_compare_values (prm->value, prm->default_value, prm->datatype) != 0)
     {
       PRM_SET_BIT (PRM_DIFFERENT, *prm->dynamic_flag);
     }
@@ -10634,8 +10225,7 @@ sysprm_alloc_session_parameters (void)
   result = (SESSION_PARAM *) malloc (size);
   if (result == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       return NULL;
     }
   memset (result, 0, size);
@@ -10679,8 +10269,7 @@ sysprm_free_session_parameters (SESSION_PARAM ** session_parameters_ptr)
  * datatype (in) : value data type.
  */
 static char *
-sysprm_pack_sysprm_value (char *ptr, SYSPRM_VALUE value,
-			  SYSPRM_DATATYPE datatype)
+sysprm_pack_sysprm_value (char *ptr, SYSPRM_VALUE value, SYSPRM_DATATYPE datatype)
 {
   if (ptr == NULL)
     {
@@ -10745,8 +10334,7 @@ sysprm_pack_sysprm_value (char *ptr, SYSPRM_VALUE value,
  *		   (required for PRM_BIGINT data type)
  */
 static int
-sysprm_packed_sysprm_value_length (SYSPRM_VALUE value,
-				   SYSPRM_DATATYPE datatype, int offset)
+sysprm_packed_sysprm_value_length (SYSPRM_VALUE value, SYSPRM_DATATYPE datatype, int offset)
 {
   switch (datatype)
     {
@@ -10789,8 +10377,7 @@ sysprm_packed_sysprm_value_length (SYSPRM_VALUE value,
  * datatype (in) : value data type.
  */
 static char *
-sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value,
-			    SYSPRM_DATATYPE datatype)
+sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value, SYSPRM_DATATYPE datatype)
 {
   assert (value != NULL);
 
@@ -10829,9 +10416,7 @@ sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value,
 	    value->str = strdup (str);
 	    if (value->str == NULL)
 	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			(size_t) (strlen (str) + 1));
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (str) + 1));
 		return NULL;
 	      }
 	  }
@@ -10855,8 +10440,7 @@ sysprm_unpack_sysprm_value (char *ptr, SYSPRM_VALUE * value,
 	    value->integer_list = (int *) malloc ((temp + 1) * OR_INT_SIZE);
 	    if (value->integer_list == NULL)
 	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			(size_t) ((temp + 1) * OR_INT_SIZE));
 		return NULL;
 	      }
@@ -10930,8 +10514,7 @@ sysprm_pack_session_parameters (char *ptr, SESSION_PARAM * session_parameters)
  * offset (in)		   : the offset to packed session parameters
  */
 int
-sysprm_packed_session_parameters_length (SESSION_PARAM * session_parameters,
-					 int offset)
+sysprm_packed_session_parameters_length (SESSION_PARAM * session_parameters, int offset)
 {
   SESSION_PARAM *prm = NULL;
   int size = 0, i = 0;
@@ -10943,8 +10526,7 @@ sysprm_packed_session_parameters_length (SESSION_PARAM * session_parameters,
       size += OR_INT_SIZE;	/* flag */
       size += OR_INT_SIZE;	/* datatype */
       size +=			/* value */
-	sysprm_packed_sysprm_value_length (session_parameters[i].value,
-					   prm->datatype, size + offset);
+	sysprm_packed_sysprm_value_length (session_parameters[i].value, prm->datatype, size + offset);
     }
 
   return size;
@@ -10960,8 +10542,7 @@ sysprm_packed_session_parameters_length (SESSION_PARAM * session_parameters,
  *				  parameters
  */
 char *
-sysprm_unpack_session_parameters (char *ptr,
-				  SESSION_PARAM ** session_parameters_ptr)
+sysprm_unpack_session_parameters (char *ptr, SESSION_PARAM ** session_parameters_ptr)
 {
   SESSION_PARAM *prm, *session_params = NULL;
   int prm_index, tmp;
@@ -10979,8 +10560,7 @@ sysprm_unpack_session_parameters (char *ptr,
   session_params = sysprm_alloc_session_parameters ();
   if (session_params == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SESSION_PARAM));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SESSION_PARAM));
       goto error;
     }
 
@@ -11024,8 +10604,7 @@ error:
  * assign_values (in) : list of sysprm_assign_values.
  */
 char *
-sysprm_pack_assign_values (char *ptr,
-			   const SYSPRM_ASSIGN_VALUE * assign_values)
+sysprm_pack_assign_values (char *ptr, const SYSPRM_ASSIGN_VALUE * assign_values)
 {
   char *old_ptr = ptr;
   int count;
@@ -11035,13 +10614,10 @@ sysprm_pack_assign_values (char *ptr,
   /* skip one int -> size of assign_values */
   ptr += OR_INT_SIZE;
 
-  for (count = 0; assign_values != NULL;
-       assign_values = assign_values->next, count++)
+  for (count = 0; assign_values != NULL; assign_values = assign_values->next, count++)
     {
       ptr = or_pack_int (ptr, assign_values->prm_id);
-      ptr =
-	sysprm_pack_sysprm_value (ptr, assign_values->value,
-				  GET_PRM_DATATYPE (assign_values->prm_id));
+      ptr = sysprm_pack_sysprm_value (ptr, assign_values->value, GET_PRM_DATATYPE (assign_values->prm_id));
     }
 
   OR_PUT_INT (old_ptr, count);
@@ -11057,8 +10633,7 @@ sysprm_pack_assign_values (char *ptr,
  * offset (in)	      : offset to pointer where assign values will be packed.
  */
 int
-sysprm_packed_assign_values_length (const SYSPRM_ASSIGN_VALUE * assign_values,
-				    int offset)
+sysprm_packed_assign_values_length (const SYSPRM_ASSIGN_VALUE * assign_values, int offset)
 {
   int size = 0;
 
@@ -11068,9 +10643,7 @@ sysprm_packed_assign_values_length (const SYSPRM_ASSIGN_VALUE * assign_values,
     {
       size += OR_INT_SIZE;	/* prm_id */
       size +=
-	sysprm_packed_sysprm_value_length (assign_values->value,
-					   GET_PRM_DATATYPE (assign_values->
-							     prm_id),
+	sysprm_packed_sysprm_value_length (assign_values->value, GET_PRM_DATATYPE (assign_values->prm_id),
 					   size + offset);
     }
 
@@ -11087,8 +10660,7 @@ sysprm_packed_assign_values_length (const SYSPRM_ASSIGN_VALUE * assign_values,
  *			     sysprm_assing_values.
  */
 char *
-sysprm_unpack_assign_values (char *ptr,
-			     SYSPRM_ASSIGN_VALUE ** assign_values_ptr)
+sysprm_unpack_assign_values (char *ptr, SYSPRM_ASSIGN_VALUE ** assign_values_ptr)
 {
   SYSPRM_ASSIGN_VALUE *assign_values = NULL, *last_assign_val = NULL;
   SYSPRM_ASSIGN_VALUE *assign_val = NULL;
@@ -11112,21 +10684,17 @@ sysprm_unpack_assign_values (char *ptr,
 
   for (i = 0; i < count; i++)
     {
-      assign_val =
-	(SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
+      assign_val = (SYSPRM_ASSIGN_VALUE *) malloc (sizeof (SYSPRM_ASSIGN_VALUE));
       if (assign_val == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (SYSPRM_ASSIGN_VALUE));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYSPRM_ASSIGN_VALUE));
 	  goto error;
 	}
 
       ptr = or_unpack_int (ptr, &tmp);
       assign_val->prm_id = tmp;
 
-      ptr = sysprm_unpack_sysprm_value (ptr, &assign_val->value,
-					GET_PRM_DATATYPE (assign_val->
-							  prm_id));
+      ptr = sysprm_unpack_sysprm_value (ptr, &assign_val->value, GET_PRM_DATATYPE (assign_val->prm_id));
       if (ptr == NULL)
 	{
 	  free_and_init (assign_val);
@@ -11172,8 +10740,7 @@ sysprm_free_assign_values (SYSPRM_ASSIGN_VALUE ** assign_values_ptr)
   while (assignment != NULL)
     {
       save_next = assignment->next;
-      sysprm_clear_sysprm_value (&assignment->value,
-				 GET_PRM_DATATYPE (assignment->prm_id));
+      sysprm_clear_sysprm_value (&assignment->value, GET_PRM_DATATYPE (assignment->prm_id));
       free_and_init (assignment);
       assignment = save_next;
     }
@@ -11208,8 +10775,7 @@ sysprm_get_id (const SYSPRM_PARAM * prm)
  *
  */
 static void
-update_session_state_from_sys_params (THREAD_ENTRY * thread_p,
-				      SESSION_PARAM * session_params)
+update_session_state_from_sys_params (THREAD_ENTRY * thread_p, SESSION_PARAM * session_params)
 {
   TZ_REGION *session_tz_region;
   int i;
@@ -11221,9 +10787,7 @@ update_session_state_from_sys_params (THREAD_ENTRY * thread_p,
 	{
 	  if (session_params[i].prm_id == PRM_ID_TIMEZONE)
 	    {
-	      tz_str_to_region (session_params[i].value.str,
-				strlen (session_params[i].value.str),
-				session_tz_region);
+	      tz_str_to_region (session_params[i].value.str, strlen (session_params[i].value.str), session_tz_region);
 	      break;
 	    }
 	}
@@ -11247,9 +10811,7 @@ update_session_state_from_sys_params (THREAD_ENTRY * thread_p,
  *	 the session parameters changed before disconnecting).
  */
 int
-sysprm_session_init_session_parameters (SESSION_PARAM **
-					session_parameters_ptr,
-					int *found_session_parameters)
+sysprm_session_init_session_parameters (SESSION_PARAM ** session_parameters_ptr, int *found_session_parameters)
 {
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   int error_code = NO_ERROR;
@@ -11278,9 +10840,7 @@ sysprm_session_init_session_parameters (SESSION_PARAM **
     }
   else
     {
-      /* use the values stored in session state and free the session
-       * parameters received from client
-       */
+      /* use the values stored in session state and free the session parameters received from client */
       sysprm_free_session_parameters (session_parameters_ptr);
       *session_parameters_ptr = session_params;
       *found_session_parameters = 1;
@@ -11298,8 +10858,7 @@ sysprm_session_init_session_parameters (SESSION_PARAM **
  * value (in)		   : new value
  */
 static SYSPRM_ERR
-sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id,
-				    SYSPRM_VALUE value)
+sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id, SYSPRM_VALUE value)
 {
   char *end = NULL;
   SYSPRM_PARAM *prm = &prm_Def[id];
@@ -11361,8 +10920,7 @@ sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id,
  * prm_id(in)		  : parameter id
  */
 static SYSPRM_ERR
-sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter,
-				      PARAM_ID prm_id)
+sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter, PARAM_ID prm_id)
 {
   SYSPRM_PARAM *prm = &prm_Def[prm_id];
 
@@ -11398,8 +10956,7 @@ sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter,
 	    free_and_init (session_parameter->value.integer_list);
 	    PRM_CLEAR_BIT (PRM_ALLOCATED, session_parameter->flag);
 	  }
-	session_parameter->value.integer_list =
-	  PRM_GET_INTEGER_LIST (prm->default_value);
+	session_parameter->value.integer_list = PRM_GET_INTEGER_LIST (prm->default_value);
 	break;
       }
     }
@@ -11418,8 +10975,7 @@ sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter,
  *		       compared have the same datatype)
  */
 static int
-sysprm_compare_values (void *first_value, void *second_value,
-		       unsigned int val_type)
+sysprm_compare_values (void *first_value, void *second_value, unsigned int val_type)
 {
   switch (val_type)
     {
@@ -11510,8 +11066,7 @@ sysprm_compare_values (void *first_value, void *second_value,
  * prm (in)	  : system parameter.
  */
 static void
-sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value,
-					SYSPRM_PARAM * prm)
+sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value, SYSPRM_PARAM * prm)
 {
   size_t size;
 
@@ -11536,8 +11091,7 @@ sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value,
 	  prm_value->str = strdup (PRM_GET_STRING (prm->value));
 	  if (prm_value->str == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		      (size_t) (strlen (PRM_GET_STRING (prm->value)) + 1));
 	    }
 	}
@@ -11555,8 +11109,7 @@ sysprm_set_sysprm_value_from_parameter (SYSPRM_VALUE * prm_value,
 	    prm_value->integer_list = (int *) malloc (size);
 	    if (prm_value->integer_list == NULL)
 	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	      }
 	    else
 	      {
@@ -11600,8 +11153,7 @@ sysprm_update_client_session_parameters (SESSION_PARAM * session_parameters)
   for (i = 0; i < NUM_SESSION_PRM; i++)
     {
       /* update value */
-      sysprm_set_value (GET_PRM (session_parameters[i].prm_id),
-			session_parameters[i].value, true, true);
+      sysprm_set_value (GET_PRM (session_parameters[i].prm_id), session_parameters[i].value, true, true);
     }
 }
 #endif /* CS_MODE */
@@ -11615,8 +11167,7 @@ sysprm_update_client_session_parameters (SESSION_PARAM * session_parameters)
  * length (in)	   : maximum allowed size for printed string.
  */
 int
-sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer,
-			    int length)
+sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int length)
 {
   int n = 0;
 
@@ -11628,9 +11179,7 @@ sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer,
 
   for (; prm_values != NULL; prm_values = prm_values->next)
     {
-      n +=
-	sysprm_print_sysprm_value (prm_values->prm_id, prm_values->value,
-				   buffer + n, length - n, PRM_PRINT_NAME);
+      n += sysprm_print_sysprm_value (prm_values->prm_id, prm_values->value, buffer + n, length - n, PRM_PRINT_NAME);
       if (prm_values->next)
 	{
 	  n += snprintf (buffer + n, length - n, "; ");
@@ -11662,8 +11211,7 @@ sysprm_print_parameters_for_qry_string (void)
     {
       if (PRM_PRINT_QRY_STRING (i))
 	{
-	  n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_ID,
-			 PRM_PRINT_CURR_VAL);
+	  n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_ID, PRM_PRINT_CURR_VAL);
 	  ptr += n;
 	  len -= n;
 
@@ -11685,8 +11233,7 @@ sysprm_print_parameters_for_qry_string (void)
   q = (char *) malloc (size + 1);
   if (q == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      size + 1);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size + 1);
       return NULL;
     }
 
@@ -11722,8 +11269,7 @@ sysprm_print_parameters_for_ha_repl (void)
 	  continue;
 	}
 
-      if (i == PRM_ID_INTL_COLLATION || i == PRM_ID_INTL_DATE_LANG
-	  || i == PRM_ID_INTL_NUMBER_LANG)
+      if (i == PRM_ID_INTL_COLLATION || i == PRM_ID_INTL_DATE_LANG || i == PRM_ID_INTL_NUMBER_LANG)
 	{
 	  char *val = prm_get_string_value (i);
 
@@ -11733,9 +11279,7 @@ sysprm_print_parameters_for_ha_repl (void)
 	    }
 
 	  if (i == PRM_ID_INTL_COLLATION
-	      && strcasecmp (val, lang_get_collation_name
-			     (LANG_GET_BINARY_COLLATION
-			      (LANG_SYS_CODESET))) == 0)
+	      && strcasecmp (val, lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET))) == 0)
 	    {
 	      continue;
 	    }
@@ -11751,8 +11295,7 @@ sysprm_print_parameters_for_ha_repl (void)
 	  continue;
 	}
 
-      n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_NAME,
-		     PRM_PRINT_CURR_VAL);
+      n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
       ptr += n;
       len -= n;
 
@@ -11773,8 +11316,7 @@ sysprm_print_parameters_for_ha_repl (void)
   q = (char *) malloc (size + 1);
   if (q == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      size + 1);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size + 1);
       return NULL;
     }
 
@@ -11802,18 +11344,12 @@ sysprm_init_intl_param (void)
   prm_intl_collation = prm_find (PRM_NAME_INTL_COLLATION, NULL);
   prm_timezone = prm_find (PRM_NAME_TIMEZONE, NULL);
 
-  /* intl system parameters are session based and depend on system language;
-   * The language is read from DB (and client from server), after the system
-   * parameters module was initialized and default values read from
-   * configuration file.
-   * This function avoids to override any value already read from config.
-   * If no values are set from config, then this function sets the values
-   * according to the default language.
-   *
-   * On client (CAS), we set the client copy of the value, and also the cached
-   * session parameter value (which is the default starting value, when the
-   * existing CAS serves another session) is intialized.
-   */
+  /* intl system parameters are session based and depend on system language; The language is read from DB (and client
+   * from server), after the system parameters module was initialized and default values read from configuration file.
+   * This function avoids to override any value already read from config. If no values are set from config, then this
+   * function sets the values according to the default language. On client (CAS), we set the client copy of the value, 
+   * and also the cached session parameter value (which is the default starting value, when the existing CAS serves
+   * another session) is intialized. */
 
   if (prm_date_lang != NULL && !PRM_IS_SET (*prm_date_lang->dynamic_flag))
     {
@@ -11831,12 +11367,9 @@ sysprm_init_intl_param (void)
 #endif
     }
 
-  if (prm_intl_collation != NULL
-      && !PRM_IS_SET (*prm_intl_collation->dynamic_flag))
+  if (prm_intl_collation != NULL && !PRM_IS_SET (*prm_intl_collation->dynamic_flag))
     {
-      prm_set (prm_intl_collation,
-	       lang_get_collation_name (LANG_GET_BINARY_COLLATION
-					(LANG_SYS_CODESET)), true);
+      prm_set (prm_intl_collation, lang_get_collation_name (LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET)), true);
 #if defined (CS_MODE)
       sysprm_update_cached_session_param_val (PRM_ID_INTL_COLLATION);
 #endif
@@ -11844,8 +11377,7 @@ sysprm_init_intl_param (void)
 
   if (prm_timezone != NULL && !PRM_IS_SET (*prm_timezone->dynamic_flag))
     {
-      prm_set (prm_timezone,
-	       prm_get_string_value (PRM_ID_SERVER_TIMEZONE), true);
+      prm_set (prm_timezone, prm_get_string_value (PRM_ID_SERVER_TIMEZONE), true);
 #if defined (CS_MODE)
       sysprm_update_cached_session_param_val (PRM_ID_TIMEZONE);
 #endif
@@ -11914,8 +11446,7 @@ sysprm_set_error (SYSPRM_ERR rc, const char *data)
 	  break;
 	case PRM_ERR_COMM_ERR:
 	  error = ER_NET_SERVER_COMM_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		  "db_set_system_parameters");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "db_set_system_parameters");
 	  break;
 	case PRM_ERR_NO_MEM_FOR_PRM:
 	default:
@@ -11970,8 +11501,7 @@ sysprm_update_cached_session_param_val (const PARAM_ID prm_id)
 	}
 
       cached_session_prm->flag = *sys_prm->dynamic_flag;
-      sysprm_set_sysprm_value_from_parameter (&cached_session_prm->value,
-					      sys_prm);
+      sysprm_set_sysprm_value_from_parameter (&cached_session_prm->value, sys_prm);
       sysprm_update_session_prm_flag_allocated (cached_session_prm);
       break;
     }

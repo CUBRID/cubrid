@@ -69,22 +69,19 @@ prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
   stream->xasl_id = (XASL_ID *) malloc (sizeof (XASL_ID));
   if (stream->xasl_id == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_ID));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_ID));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   /* send XASL stream to the server and get XASL_ID */
-  if (qmgr_prepare_query (context, stream,
-			  ws_identifier (db_get_user ())) == NULL)
+  if (qmgr_prepare_query (context, stream, ws_identifier (db_get_user ())) == NULL)
     {
       free_and_init (stream->xasl_id);
       return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
     }
 
   /* if the query is not found in the cache */
-  if (stream->xasl_stream == NULL && stream->xasl_id &&
-      XASL_ID_IS_NULL (stream->xasl_id))
+  if (stream->xasl_stream == NULL && stream->xasl_id && XASL_ID_IS_NULL (stream->xasl_id))
     {
       free_and_init (stream->xasl_id);
     }
@@ -107,10 +104,8 @@ prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
  *   srv_cache_time(in) :
  */
 int
-execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
-	       int var_cnt, const DB_VALUE * varptr,
-	       QFILE_LIST_ID ** list_idp, QUERY_FLAG flag,
-	       CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time)
+execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const DB_VALUE * varptr,
+	       QFILE_LIST_ID ** list_idp, QUERY_FLAG flag, CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time)
 {
   int query_timeout;
   int ret = NO_ERROR;
@@ -125,9 +120,8 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 
   query_timeout = tran_get_query_timeout ();
   /* send XASL file id and host variables to the server and get QFILE_LIST_ID */
-  *list_idp = qmgr_execute_query (xasl_id, query_idp, var_cnt, varptr, flag,
-				  clt_cache_time, srv_cache_time,
-				  query_timeout);
+  *list_idp =
+    qmgr_execute_query (xasl_id, query_idp, var_cnt, varptr, flag, clt_cache_time, srv_cache_time, query_timeout);
 
   if (*list_idp == NULL)
     {
@@ -157,8 +151,7 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
  *       calling regu_free_listid.
  */
 int
-prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id,
-			   int var_cnt, DB_VALUE * varptr,
+prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id, int var_cnt, DB_VALUE * varptr,
 			   QFILE_LIST_ID ** result, QUERY_FLAG flag)
 {
   QFILE_LIST_ID *list_idptr;
@@ -173,10 +166,7 @@ prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id,
     }
 
   query_timeout = tran_get_query_timeout ();
-  list_idptr = qmgr_prepare_and_execute_query (stream, stream_size,
-					       query_id,
-					       var_cnt, varptr, flag,
-					       query_timeout);
+  list_idptr = qmgr_prepare_and_execute_query (stream, stream_size, query_id, var_cnt, varptr, flag, query_timeout);
   if (list_idptr == NULL)
     {
       return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;

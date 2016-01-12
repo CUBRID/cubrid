@@ -79,33 +79,21 @@
 static void css_master_error (const char *error_string);
 static int css_master_timeout (void);
 static int css_master_init (int cport, SOCKET * clientfd);
-static void css_reject_client_request (CSS_CONN_ENTRY * conn,
-				       unsigned short rid, int reason);
+static void css_reject_client_request (CSS_CONN_ENTRY * conn, unsigned short rid, int reason);
 static void css_reject_server_request (CSS_CONN_ENTRY * conn, int reason);
 static void css_accept_server_request (CSS_CONN_ENTRY * conn, int reason);
-static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid,
-				    char *server_name,
+static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_name,
 				    int server_name_length);
-static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid,
-				    SOCKET_QUEUE_ENTRY * entry,
-				    char *server_name,
-				    int server_name_length);
-static void css_register_new_server (CSS_CONN_ENTRY * conn,
-				     unsigned short rid);
-static void css_register_new_server2 (CSS_CONN_ENTRY * conn,
-				      unsigned short rid);
-static bool css_send_new_request_to_server (SOCKET server_fd,
-					    SOCKET client_fd,
-					    unsigned short rid);
-static void css_send_to_existing_server (CSS_CONN_ENTRY * conn,
-					 unsigned short rid);
+static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry,
+				    char *server_name, int server_name_length);
+static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
+static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
+static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid);
+static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid);
 static void css_process_new_connection (SOCKET fd);
-static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p,
-				    fd_set * fd_var);
-static int css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p,
-				     fd_set * fd_var);
-static int css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p,
-					 fd_set * fd_var);
+static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
+static int css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
+static int css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
 
 static int css_enroll_master_read_sockets (fd_set * fd_var);
 static int css_enroll_master_write_sockets (fd_set * fd_var);
@@ -159,8 +147,7 @@ css_master_error (const char *error_string)
   fprintf (stderr, "Master process: %s\n", error_string);
   perror ("css_master_error");
 #else /* ! WINDOWS */
-  syslog (LOG_ALERT, "Master process: %s %s\n", error_string,
-	  errno > 0 ? strerror (errno) : "");
+  syslog (LOG_ALERT, "Master process: %s %s\n", error_string, errno > 0 ? strerror (errno) : "");
 #endif /* ! WINDOWS */
 }
 
@@ -184,18 +171,15 @@ css_master_timeout (void)
   struct timeval timeout;
 
   /* check for timeout */
-  if (css_Master_timeout &&
-      time ((time_t *) & timeout.tv_sec) != (time_t) - 1 &&
-      css_Master_timeout->tv_sec < timeout.tv_sec)
+  if (css_Master_timeout && time ((time_t *) & timeout.tv_sec) != (time_t) - 1
+      && css_Master_timeout->tv_sec < timeout.tv_sec)
     {
       return (0);
     }
 
 #if !defined(WINDOWS)
-  /* On the WINDOWS, it is not clear if we will ever have spawned child
-   * processes, at least initially.  There don't appear to be any
-   * similarly named "wait" functions in the MSVC runtime library.
-   */
+  /* On the WINDOWS, it is not clear if we will ever have spawned child processes, at least initially.  There don't
+   * appear to be any similarly named "wait" functions in the MSVC runtime library. */
   rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
@@ -215,8 +199,7 @@ css_master_timeout (void)
 	  else
 #endif
 	    {
-	      css_remove_entry_by_conn (temp->conn_ptr,
-					&css_Master_socket_anchor);
+	      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
 	    }
 	  break;
 	}
@@ -243,8 +226,7 @@ css_master_cleanup (int sig)
 
   if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
     {
-      MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-		     ER_HB_STOPPED, 0);
+      MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STOPPED, 0);
     }
 #endif
   exit (1);
@@ -261,19 +243,18 @@ static int
 css_master_init (int cport, SOCKET * clientfd)
 {
 #if defined(WINDOWS)
-  if (os_set_signal_handler (SIGABRT, css_master_cleanup) == SIG_ERR ||
-      os_set_signal_handler (SIGINT, css_master_cleanup) == SIG_ERR ||
-      os_set_signal_handler (SIGTERM, css_master_cleanup) == SIG_ERR)
+  if (os_set_signal_handler (SIGABRT, css_master_cleanup) == SIG_ERR
+      || os_set_signal_handler (SIGINT, css_master_cleanup) == SIG_ERR
+      || os_set_signal_handler (SIGTERM, css_master_cleanup) == SIG_ERR)
     {
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return (0);
     }
 #else /* ! WINDOWS */
   (void) os_set_signal_handler (SIGSTOP, css_master_cleanup);
-  if (os_set_signal_handler (SIGTERM, css_master_cleanup) == SIG_ERR ||
-      os_set_signal_handler (SIGINT, css_master_cleanup) == SIG_ERR ||
-      os_set_signal_handler (SIGPIPE, SIG_IGN) == SIG_ERR ||
-      os_set_signal_handler (SIGCHLD, SIG_IGN) == SIG_ERR)
+  if (os_set_signal_handler (SIGTERM, css_master_cleanup) == SIG_ERR
+      || os_set_signal_handler (SIGINT, css_master_cleanup) == SIG_ERR
+      || os_set_signal_handler (SIGPIPE, SIG_IGN) == SIG_ERR || os_set_signal_handler (SIGCHLD, SIG_IGN) == SIG_ERR)
     {
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return (0);
@@ -296,8 +277,7 @@ css_master_init (int cport, SOCKET * clientfd)
  *   reason(in)
  */
 static void
-css_reject_client_request (CSS_CONN_ENTRY * conn, unsigned short rid,
-			   int reason)
+css_reject_client_request (CSS_CONN_ENTRY * conn, unsigned short rid, int reason)
 {
   int reject_reason;
 
@@ -345,8 +325,7 @@ css_accept_server_request (CSS_CONN_ENTRY * conn, int reason)
  *   server_name_length(in)
  */
 static void
-css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid,
-			char *server_name, int server_name_length)
+css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_name, int server_name_length)
 {
   char *datagram;
   int datagram_length;
@@ -358,8 +337,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid,
   datagram = NULL;
   datagram_length = 0;
   css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED);
-  if (css_receive_data (conn, rid, &datagram, &datagram_length, -1) ==
-      NO_ERRORS)
+  if (css_receive_data (conn, rid, &datagram, &datagram_length, -1) == NO_ERRORS)
     {
       if (datagram != NULL && css_tcp_master_datagram (datagram, &server_fd))
 	{
@@ -367,27 +345,22 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid,
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (datagram_conn, false,
-					   server_name, server_fd, READ_WRITE,
-					   0, &css_Master_socket_anchor);
+	  css_add_request_to_socket_queue (datagram_conn, false, server_name, server_fd, READ_WRITE, 0,
+					   &css_Master_socket_anchor);
 	  length = strlen (server_name) + 1;
 	  if (length < server_name_length)
 	    {
-	      entry =
-		css_return_entry_of_server (server_name,
-					    css_Master_socket_anchor);
+	      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
 	      if (entry != NULL)
 		{
 		  server_name += length;
-		  entry->version_string =
-		    (char *) malloc (strlen (server_name) + 1);
+		  entry->version_string = (char *) malloc (strlen (server_name) + 1);
 		  if (entry->version_string != NULL)
 		    {
 		      strcpy (entry->version_string, server_name);
 		      server_name += strlen (entry->version_string) + 1;
 
-		      entry->env_var =
-			(char *) malloc (strlen (server_name) + 1);
+		      entry->env_var = (char *) malloc (strlen (server_name) + 1);
 		      if (entry->env_var != NULL)
 			{
 			  strcpy (entry->env_var, server_name);
@@ -421,8 +394,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid,
  *   server_name_length(in)
  */
 static void
-css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid,
-			SOCKET_QUEUE_ENTRY * entry, char *server_name,
+css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry, char *server_name,
 			int server_name_length)
 {
   char *datagram;
@@ -434,8 +406,7 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid,
   datagram = NULL;
   datagram_length = 0;
   css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED);
-  if (css_receive_data (conn, rid, &datagram, &datagram_length, -1) ==
-      NO_ERRORS)
+  if (css_receive_data (conn, rid, &datagram, &datagram_length, -1) == NO_ERRORS)
     {
       if (datagram != NULL && css_tcp_master_datagram (datagram, &server_fd))
 	{
@@ -447,8 +418,7 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid,
 	  if (length < server_name_length)
 	    {
 	      server_name += length;
-	      if ((entry->version_string =
-		   (char *) malloc (strlen (server_name) + 1)) != NULL)
+	      if ((entry->version_string = (char *) malloc (strlen (server_name) + 1)) != NULL)
 		{
 		  strcpy (entry->version_string, server_name);
 		}
@@ -476,19 +446,16 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
   char *server_name = NULL;
   SOCKET_QUEUE_ENTRY *entry;
 
-  /*read server name */
-  if (css_receive_data (conn, rid, &server_name, &name_length, -1) ==
-      NO_ERRORS)
+  /* read server name */
+  if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS)
     {
-      entry = css_return_entry_of_server (server_name,
-					  css_Master_socket_anchor);
+      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
       if (entry != NULL)
 	{
 	  if (IS_INVALID_SOCKET (entry->fd))
 	    {
 	      /* accept a server that was auto-started */
-	      css_accept_old_request (conn, rid, entry, server_name,
-				      name_length);
+	      css_accept_old_request (conn, rid, entry, server_name, name_length);
 	    }
 	  else
 	    {
@@ -503,8 +470,7 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 #if defined(DEBUG)
 	  css_Active_server_count++;
 #endif
-	  css_add_request_to_socket_queue (conn, false, server_name,
-					   conn->fd, READ_WRITE, 0,
+	  css_add_request_to_socket_queue (conn, false, server_name, conn->fd, READ_WRITE, 0,
 					   &css_Master_socket_anchor);
 
 #else /* ! WINDOWS */
@@ -544,18 +510,15 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
   int server_name_length, length;
 
   /* read server name */
-  if (css_receive_data (conn, rid, &server_name, &name_length, -1) ==
-      NO_ERRORS && server_name != NULL)
+  if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
     {
-      entry = css_return_entry_of_server (server_name,
-					  css_Master_socket_anchor);
+      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
       if (entry != NULL)
 	{
 	  if (IS_INVALID_SOCKET (entry->fd))
 	    {
 	      /* accept a server */
-	      css_accept_old_request (conn, rid, entry, server_name,
-				      name_length);
+	      css_accept_old_request (conn, rid, entry, server_name, name_length);
 	    }
 	  else
 	    {
@@ -572,16 +535,14 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	  /* accept but make it send us a port id */
 	  css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED_NEW);
 	  name_length = sizeof (buffer);
-	  if (css_net_recv (conn->fd, (char *) &buffer, &name_length, -1) ==
-	      NO_ERRORS)
+	  if (css_net_recv (conn->fd, (char *) &buffer, &name_length, -1) == NO_ERRORS)
 	    {
 #if defined(DEBUG)
 	      css_Active_server_count++;
 #endif
-	      entry = css_add_request_to_socket_queue (conn, false,
-						       server_name, conn->fd,
-						       READ_WRITE, 0,
-						       &css_Master_socket_anchor);
+	      entry =
+		css_add_request_to_socket_queue (conn, false, server_name, conn->fd, READ_WRITE, 0,
+						 &css_Master_socket_anchor);
 	      /* store this for later */
 	      if (entry != NULL)
 		{
@@ -590,21 +551,18 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 		  /* read server version_string, env_var, pid */
 		  if (length < server_name_length)
 		    {
-		      entry = css_return_entry_of_server (server_name,
-							  css_Master_socket_anchor);
+		      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
 		      if (entry != NULL)
 			{
 			  char *recv_data;
 
 			  recv_data = server_name + length;
-			  entry->version_string =
-			    (char *) malloc (strlen (recv_data) + 1);
+			  entry->version_string = (char *) malloc (strlen (recv_data) + 1);
 			  if (entry->version_string != NULL)
 			    {
 			      strcpy (entry->version_string, recv_data);
 			      recv_data += strlen (entry->version_string) + 1;
-			      entry->env_var =
-				(char *) malloc (strlen (recv_data) + 1);
+			      entry->env_var = (char *) malloc (strlen (recv_data) + 1);
 			      if (entry->env_var != NULL)
 				{
 				  strcpy (entry->env_var, recv_data);
@@ -653,8 +611,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
  *   rid(in)
  */
 static bool
-css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd,
-				unsigned short rid)
+css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
 {
   return (css_transfer_fd (server_fd, client_fd, rid));
 }
@@ -684,15 +641,12 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
   int name_length, buffer;
 
   name_length = 1024;
-  if (css_receive_data (conn, rid, &server_name, &name_length, -1) ==
-      NO_ERRORS && server_name != NULL)
+  if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
     {
-      temp =
-	css_return_entry_of_server (server_name, css_Master_socket_anchor);
+      temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
       if (temp != NULL
 #if !defined(WINDOWS)
-	  && (temp->ha_mode == false
-	      || hb_is_deactivation_started () == false)
+	  && (temp->ha_mode == false || hb_is_deactivation_started () == false)
 #endif /* !WINDOWS */
 	)
 	{
@@ -717,8 +671,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 		      return;
 		    }
 #endif
-		  if (css_send_new_request_to_server (temp->fd, conn->fd,
-						      rid))
+		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid))
 		    {
 		      free_and_init (server_name);
 		      css_free_conn (conn);
@@ -726,22 +679,18 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 		    }
 		  else if (!temp->ha_mode)
 		    {
-		      temp = css_return_entry_of_server (server_name,
-							 css_Master_socket_anchor);
+		      temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
 		      if (temp != NULL)
 			{
-			  css_remove_entry_by_conn (temp->conn_ptr,
-						    &css_Master_socket_anchor);
+			  css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
 			}
 		    }
 		}
 	    }
 	  else
 	    {
-	      /* Use new style connection.
-	         We found a registered server, give the client a response
-	         telling it to re-connect using the server's port id.
-	       */
+	      /* Use new style connection. We found a registered server, give the client a response telling it to
+	       * re-connect using the server's port id. */
 #if !defined(WINDOWS)
 	      if (hb_is_hang_process (temp->fd))
 		{
@@ -798,15 +747,12 @@ css_process_new_connection (SOCKET fd)
       return;
     }
 
-  if (css_receive_request (conn, &rid, &function_code,
-			   &buffer_size) == NO_ERRORS)
+  if (css_receive_request (conn, &rid, &function_code, &buffer_size) == NO_ERRORS)
     {
       switch (function_code)
 	{
 	case INFO_REQUEST:	/* request for information */
-	  css_add_request_to_socket_queue (conn, true, NULL, fd,
-					   READ_WRITE, 0,
-					   &css_Master_socket_anchor);
+	  css_add_request_to_socket_queue (conn, true, NULL, fd, READ_WRITE, 0, &css_Master_socket_anchor);
 	  break;
 	case DATA_REQUEST:	/* request from a remote client */
 	  css_send_to_existing_server (conn, rid);
@@ -971,8 +917,7 @@ again:
 	  else
 #endif
 	    {
-	      css_remove_entry_by_conn (temp->conn_ptr,
-					&css_Master_socket_anchor);
+	      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
 	    }
 	  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 	  goto again;
@@ -1009,8 +954,7 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 	{
 	  FD_CLR (temp->fd, fd_var);
 	  (*count)--;
-	  if (temp->fd == css_Master_socket_fd[0] ||
-	      temp->fd == css_Master_socket_fd[1])
+	  if (temp->fd == css_Master_socket_fd[0] || temp->fd == css_Master_socket_fd[1])
 	    {
 	      new_fd = css_master_accept (temp->fd);
 	      if (!IS_INVALID_SOCKET (new_fd))
@@ -1038,8 +982,7 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 			  css_Active_server_count--;
 			}
 #endif
-		      css_remove_entry_by_conn (temp->conn_ptr,
-						&css_Master_socket_anchor);
+		      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
 		    }
 		}
 	      /* stop loop in case an error caused temp to be deleted */
@@ -1086,13 +1029,10 @@ again:
     {
       if (!IS_INVALID_SOCKET (temp->fd) && ((FD_ISSET (temp->fd, fd_var) ||
 #if !defined(WINDOWS)
-					     (fcntl (temp->fd, F_GETFL, 0) <
-					      0) ||
+					     (fcntl (temp->fd, F_GETFL, 0) < 0) ||
 #endif /* !WINDOWS */
-					     (temp->error_p == true) ||
-					     (temp->conn_ptr == NULL) ||
-					     (temp->conn_ptr->status ==
-					      CONN_CLOSED))))
+					     (temp->error_p == true) || (temp->conn_ptr == NULL)
+					     || (temp->conn_ptr->status == CONN_CLOSED))))
 	{
 #if defined(DEBUG)
 	  if (css_Active_server_count > 0)
@@ -1101,8 +1041,7 @@ again:
 	    }
 #endif
 	  FD_CLR (temp->fd, fd_var);
-	  if (temp->fd == css_Master_socket_fd[0] ||
-	      temp->fd == css_Master_socket_fd[1])
+	  if (temp->fd == css_Master_socket_fd[0] || temp->fd == css_Master_socket_fd[1])
 	    {
 #if !defined(WINDOWS)
 	      pthread_mutex_unlock (&css_Master_socket_anchor_lock);
@@ -1118,8 +1057,7 @@ again:
 	  else
 #endif
 	    {
-	      css_remove_entry_by_conn (temp->conn_ptr,
-					&css_Master_socket_anchor);
+	      css_remove_entry_by_conn (temp->conn_ptr, &css_Master_socket_anchor);
 	    }
 #if !defined(WINDOWS)
 	  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
@@ -1211,10 +1149,8 @@ main (int argc, char **argv)
 
   if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) == 0)
     {
-      /* css_gethostname won't null-terminate if the name is
-       * overlong.  Put in a guaranteed null-terminator of our
-       * own so that strcat doesn't go wild.
-       */
+      /* css_gethostname won't null-terminate if the name is overlong.  Put in a guaranteed null-terminator of our own
+       * so that strcat doesn't go wild. */
       hostname[MAXHOSTNAMELEN] = '\0';
       strcat (hostname, suffix);
       errlog = hostname;
@@ -1226,12 +1162,9 @@ main (int argc, char **argv)
       status = EXIT_FAILURE;
       goto cleanup;
     }
-  if (master_util_config_startup ((argc > 1) ? argv[1] : NULL,
-				  &port_id) == false)
+  if (master_util_config_startup ((argc > 1) ? argv[1] : NULL, &port_id) == false)
     {
-      msg_format = msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_NO_PARAMETERS);
+      msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_NO_PARAMETERS);
       css_master_error (msg_format);
       util_log_write_errstr (msg_format);
       status = EXIT_FAILURE;
@@ -1240,17 +1173,14 @@ main (int argc, char **argv)
 
   if (css_does_master_exist (port_id))
     {
-      msg_format =
-	msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER,
-			MASTER_MSG_DUPLICATE);
+      msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_DUPLICATE);
       util_log_write_errstr (msg_format, argv[0]);
       /* printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_DUPLICATE), argv[0]); */
       status = EXIT_FAILURE;
       goto cleanup;
     }
 
-  TPRINTF (msgcat_message (MSGCAT_CATALOG_UTILS,
-			   MSGCAT_UTIL_SET_MASTER, MASTER_MSG_STARTING), 0);
+  TPRINTF (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_STARTING), 0);
 
   /* close the message catalog and let the master daemon reopen. */
   (void) msgcat_final ();
@@ -1271,9 +1201,7 @@ main (int argc, char **argv)
   if (css_master_init (port_id, css_Master_socket_fd) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s: %s\n", argv[0], db_error_string (1));
-      css_master_error (msgcat_message (MSGCAT_CATALOG_UTILS,
-					MSGCAT_UTIL_SET_MASTER,
-					MASTER_MSG_PROCESS_ERROR));
+      css_master_error (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_PROCESS_ERROR));
       status = EXIT_FAILURE;
       goto cleanup;
     }
@@ -1295,18 +1223,14 @@ main (int argc, char **argv)
 #endif
 
   conn = css_make_conn (css_Master_socket_fd[0]);
-  css_add_request_to_socket_queue (conn, false, NULL,
-				   css_Master_socket_fd[0], READ_WRITE, 0,
+  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[0], READ_WRITE, 0,
 				   &css_Master_socket_anchor);
   conn = css_make_conn (css_Master_socket_fd[1]);
-  css_add_request_to_socket_queue (conn, false, NULL,
-				   css_Master_socket_fd[1], READ_WRITE, 0,
+  css_add_request_to_socket_queue (conn, false, NULL, css_Master_socket_fd[1], READ_WRITE, 0,
 				   &css_Master_socket_anchor);
   css_master_loop ();
   css_master_cleanup (SIGINT);
-  css_master_error (msgcat_message (MSGCAT_CATALOG_UTILS,
-				    MSGCAT_UTIL_SET_MASTER,
-				    MASTER_MSG_EXITING));
+  css_master_error (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_EXITING));
 
 cleanup:
 #if defined(WINDOWS)
@@ -1360,8 +1284,7 @@ css_free_entry (SOCKET_QUEUE_ENTRY * entry_p)
  *   anchor_p(out):
  */
 void
-css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p,
-			  SOCKET_QUEUE_ENTRY ** anchor_p)
+css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p, *q;
 
@@ -1403,9 +1326,8 @@ css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p,
  *   anchor_p(out):
  */
 SOCKET_QUEUE_ENTRY *
-css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p,
-				 char *name_p, SOCKET fd, int fd_type,
-				 int pid, SOCKET_QUEUE_ENTRY ** anchor_p)
+css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, char *name_p, SOCKET fd, int fd_type, int pid,
+				 SOCKET_QUEUE_ENTRY ** anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p;
 
@@ -1426,10 +1348,8 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p,
 	{
 	  strcpy (p->name, name_p);
 #if !defined(WINDOWS)
-	  if (IS_MASTER_CONN_NAME_HA_SERVER (p->name) ||
-	      IS_MASTER_CONN_NAME_HA_COPYLOG (p->name) ||
-	      IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name) ||
-	      IS_MASTER_CONN_NAME_HA_PREFETCHLOG (p->name))
+	  if (IS_MASTER_CONN_NAME_HA_SERVER (p->name) || IS_MASTER_CONN_NAME_HA_COPYLOG (p->name)
+	      || IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name) || IS_MASTER_CONN_NAME_HA_PREFETCHLOG (p->name))
 	    {
 	      p->ha_mode = TRUE;
 	    }
@@ -1501,8 +1421,7 @@ css_return_entry_of_server (char *name_p, SOCKET_QUEUE_ENTRY * anchor_p)
  *   anchor_p(in):
  */
 SOCKET_QUEUE_ENTRY *
-css_return_entry_by_conn (CSS_CONN_ENTRY * conn_p,
-			  SOCKET_QUEUE_ENTRY ** anchor_p)
+css_return_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_p)
 {
   SOCKET_QUEUE_ENTRY *p;
 
@@ -1541,19 +1460,16 @@ css_daemon_start (void)
   int ppid = getpid ();
 
 
-  /* If we were started by init (process 1) from the /etc/inittab file
-   * there's no need to detatch.
-   * This test is unreliable due to an unavoidable ambiguity
-   * if the process is started by some other process and orphaned
-   * (i.e., if the parent process terminates before we get here).
-   */
+  /* If we were started by init (process 1) from the /etc/inittab file there's no need to detatch. This test is
+   * unreliable due to an unavoidable ambiguity if the process is started by some other process and orphaned (i.e., if
+   * the parent process terminates before we get here). */
 
   if (getppid () == 1)
     {
       goto out;
     }
 
-  /*
+  /* 
    * Ignore the terminal stop signals (BSD).
    */
 
@@ -1576,7 +1492,7 @@ css_daemon_start (void)
     }
 #endif
 
-  /*
+  /* 
    * Call fork and have the parent exit.
    * This does several things. First, if we were started as a simple shell
    * command, having the parent terminate makes the shell think that the
@@ -1589,8 +1505,7 @@ css_daemon_start (void)
   childpid = fork ();
   if (childpid < 0)
     {
-      MASTER_ER_SET (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		     ERR_CSS_CANNOT_FORK, 0);
+      MASTER_ER_SET (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_CANNOT_FORK, 0);
     }
   else if (childpid > 0)
     {
@@ -1598,7 +1513,7 @@ css_daemon_start (void)
     }
   else
     {
-      /*
+      /* 
        * Wait until the parent process has finished. Coded with polling since
        * the parent should finish immediately. SO, it is unlikely that we are
        * going to loop at all.
@@ -1609,7 +1524,7 @@ css_daemon_start (void)
 	}
     }
 
-  /*
+  /* 
    * Create a new session and make the child process the session leader of
    * the new session, the process group leader of the new process group.
    * The child process has no controlling terminal.
@@ -1624,7 +1539,7 @@ css_daemon_start (void)
 
 out:
 
-  /*
+  /* 
    * Close unneeded file descriptors which prevent the daemon from holding
    * open any descriptors that it may have inherited from its parent which
    * could be a shell. For now, leave in/out/err open
@@ -1639,7 +1554,7 @@ out:
 
   errno = 0;			/* Reset errno from last close */
 
-  /*
+  /* 
    * The file mode creation mask that is inherited could be set to deny
    * certain permissions. Therefore, clear the file mode creation mask.
    */

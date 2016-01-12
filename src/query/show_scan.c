@@ -57,11 +57,9 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 
-typedef SCAN_CODE (*NEXT_SCAN_FUNC) (THREAD_ENTRY * thread_p, int cursor,
-				     DB_VALUE ** out_values, int out_cnt,
+typedef SCAN_CODE (*NEXT_SCAN_FUNC) (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
 				     void *ctx);
-typedef int (*START_SCAN_FUNC) (THREAD_ENTRY * thread_p, int show_type,
-				DB_VALUE ** arg_values, int arg_cnt,
+typedef int (*START_SCAN_FUNC) (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
 				void **ctx);
 typedef int (*END_SCAN_FUNC) (THREAD_ENTRY * thread_p, void **ctx);
 
@@ -74,9 +72,8 @@ struct show_request
   END_SCAN_FUNC end_func;	/* end scan function */
 };
 
-static SCAN_CODE showstmt_array_next_scan (THREAD_ENTRY * thread_p,
-					   int cursor, DB_VALUE ** out_values,
-					   int out_cnt, void *ptr);
+static SCAN_CODE showstmt_array_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
+					   void *ptr);
 static int showstmt_array_end_scan (THREAD_ENTRY * thread_p, void **ptr);
 
 
@@ -254,8 +251,7 @@ showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     {
       pr_clear_value (stsidp->out_values[i]);
     }
-  code = (*next_func) (thread_p, stsidp->cursor++, stsidp->out_values,
-		       stsidp->out_cnt, stsidp->ctx);
+  code = (*next_func) (thread_p, stsidp->cursor++, stsidp->out_values, stsidp->out_cnt, stsidp->ctx);
   return code;
 }
 
@@ -280,8 +276,7 @@ showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       return NO_ERROR;
     }
 
-  error = (*start_func) (thread_p, (int) show_type, stsidp->arg_values,
-			 stsidp->arg_cnt, &stsidp->ctx);
+  error = (*start_func) (thread_p, (int) show_type, stsidp->arg_values, stsidp->arg_cnt, &stsidp->ctx);
   return error;
 }
 
@@ -317,8 +312,7 @@ showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
  *   num_col(in):
  */
 SHOWSTMT_ARRAY_CONTEXT *
-showstmt_alloc_array_context (THREAD_ENTRY * thread_p, int num_total,
-			      int num_cols)
+showstmt_alloc_array_context (THREAD_ENTRY * thread_p, int num_total, int num_cols)
 {
   SHOWSTMT_ARRAY_CONTEXT *ctx;
 
@@ -355,8 +349,7 @@ on_error:
  *   ctx(in):
  */
 void
-showstmt_free_array_context (THREAD_ENTRY * thread_p,
-			     SHOWSTMT_ARRAY_CONTEXT * ctx)
+showstmt_free_array_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx)
 {
   int i, j;
   DB_VALUE *vals;
@@ -385,8 +378,7 @@ showstmt_free_array_context (THREAD_ENTRY * thread_p,
  *   ctx(in):
  */
 DB_VALUE *
-showstmt_alloc_tuple_in_context (THREAD_ENTRY * thread_p,
-				 SHOWSTMT_ARRAY_CONTEXT * ctx)
+showstmt_alloc_tuple_in_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx)
 {
   int i, num_new_total;
   DB_VALUE **new_tuples = NULL;
@@ -395,25 +387,19 @@ showstmt_alloc_tuple_in_context (THREAD_ENTRY * thread_p,
   if (ctx->num_used == ctx->num_total)
     {
       num_new_total = ctx->num_total * 1.5 + 1;
-      new_tuples =
-	(DB_VALUE **) db_private_realloc (thread_p, ctx->tuples,
-					  sizeof (DB_VALUE *) *
-					  num_new_total);
+      new_tuples = (DB_VALUE **) db_private_realloc (thread_p, ctx->tuples, sizeof (DB_VALUE *) * num_new_total);
       if (new_tuples == NULL)
 	{
 	  return NULL;
 	}
 
-      memset (new_tuples + ctx->num_total, 0,
-	      sizeof (DB_VALUE *) * (num_new_total - ctx->num_total));
+      memset (new_tuples + ctx->num_total, 0, sizeof (DB_VALUE *) * (num_new_total - ctx->num_total));
 
       ctx->tuples = new_tuples;
       ctx->num_total = num_new_total;
     }
 
-  vals =
-    (DB_VALUE *) db_private_alloc (thread_p,
-				   sizeof (DB_VALUE) * ctx->num_cols);
+  vals = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * ctx->num_cols);
   if (vals == NULL)
     {
       return NULL;
@@ -437,8 +423,7 @@ showstmt_alloc_tuple_in_context (THREAD_ENTRY * thread_p,
  *   ptr(in):
  */
 static SCAN_CODE
-showstmt_array_next_scan (THREAD_ENTRY * thread_p, int cursor,
-			  DB_VALUE ** out_values, int out_cnt, void *ptr)
+showstmt_array_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt, void *ptr)
 {
   SHOWSTMT_ARRAY_CONTEXT *ctx = (SHOWSTMT_ARRAY_CONTEXT *) ptr;
   DB_VALUE *vals = NULL;
@@ -472,8 +457,7 @@ showstmt_array_end_scan (THREAD_ENTRY * thread_p, void **ptr)
 {
   if (*ptr != NULL)
     {
-      showstmt_free_array_context (thread_p,
-				   (SHOWSTMT_ARRAY_CONTEXT *) (*ptr));
+      showstmt_free_array_context (thread_p, (SHOWSTMT_ARRAY_CONTEXT *) (*ptr));
       *ptr = NULL;
     }
   return NO_ERROR;

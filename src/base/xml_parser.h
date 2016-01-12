@@ -133,19 +133,14 @@ extern "C"
 {
 #endif
 
-  XML_Parser xml_init_parser (void *data, const char *xml_file,
-			      const char *encoding,
-			      XML_ELEMENT_DEF ** element_array,
+  XML_Parser xml_init_parser (void *data, const char *xml_file, const char *encoding, XML_ELEMENT_DEF ** element_array,
 			      const int count);
   void xml_destroy_parser (void *data);
   void xml_destroy_parser_data (void *data);
   void xml_parser_exec (XML_PARSER_DATA * pd);
-  int xml_check_att_value (const char **attrs, const char *att_name,
-			   const char *att_value);
-  int xml_get_att_value (const char **attrs, const char *att_name,
-			 char **p_att_value);
-  XML_PARSER_DATA *xml_create_subparser (XML_PARSER_DATA * data,
-					 char *new_file);
+  int xml_check_att_value (const char **attrs, const char *att_name, const char *att_value);
+  int xml_get_att_value (const char **attrs, const char *att_name, char **p_att_value);
+  XML_PARSER_DATA *xml_create_subparser (XML_PARSER_DATA * data, char *new_file);
 
 #ifdef __cplusplus
 }

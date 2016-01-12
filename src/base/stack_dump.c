@@ -46,13 +46,11 @@ typedef Elf64_Sym GElf_Sym;
 
 extern struct ps_prochandle *Pgrab (pid_t, int, int *);
 extern void Pfree (struct ps_prochandle *);
-extern int Plookup_by_addr (struct ps_prochandle *, uintptr_t, char *, size_t,
-			    GElf_Sym *);
+extern int Plookup_by_addr (struct ps_prochandle *, uintptr_t, char *, size_t, GElf_Sym *);
 
 
 static ulong_t argcount (uintptr_t eip);
-static int read_safe (int fd, struct frame *fp, struct frame **savefp,
-		      uintptr_t * savepc);
+static int read_safe (int fd, struct frame *fp, struct frame **savefp, uintptr_t * savepc);
 
 
 /*
@@ -100,8 +98,7 @@ argcount (uintptr_t eip)
  *   savepc(in):
  */
 static int
-read_safe (int fd, struct frame *fp, struct frame **savefp,
-	   uintptr_t * savepc)
+read_safe (int fd, struct frame *fp, struct frame **savefp, uintptr_t * savepc)
 {
   uintptr_t newfp;
 
@@ -110,10 +107,8 @@ read_safe (int fd, struct frame *fp, struct frame **savefp,
       return (-1);		/* misaligned */
     }
 
-  if ((pread (fd, (void *) &newfp, sizeof (fp->fr_savfp),
-	      (off_t) & fp->fr_savfp) != sizeof (fp->fr_savfp))
-      || pread (fd, (void *) savepc, sizeof (fp->fr_savpc),
-		(off_t) & fp->fr_savpc) != sizeof (fp->fr_savpc))
+  if ((pread (fd, (void *) &newfp, sizeof (fp->fr_savfp), (off_t) & fp->fr_savfp) != sizeof (fp->fr_savfp))
+      || pread (fd, (void *) savepc, sizeof (fp->fr_savpc), (off_t) & fp->fr_savpc) != sizeof (fp->fr_savpc))
     {
       return (-1);
     }
@@ -138,8 +133,7 @@ read_safe (int fd, struct frame *fp, struct frame **savefp,
  *   Pr(in):
  */
 static int
-log_stack_info (FILE * logfile, uintptr_t pc, ulong_t argc, long *argv,
-		struct ps_prochandle *Pr)
+log_stack_info (FILE * logfile, uintptr_t pc, ulong_t argc, long *argv, struct ps_prochandle *Pr)
 {
   char buff[255];
   GElf_Sym sym;
@@ -149,8 +143,7 @@ log_stack_info (FILE * logfile, uintptr_t pc, ulong_t argc, long *argv,
   sprintf (buff, "%.*lx", 8, (long) pc);
   strcpy (buff + 8, " ????????");
 
-  if (Plookup_by_addr (Pr, pc, buff + 1 + 8, sizeof (buff) - 1 - 8, &sym) ==
-      0)
+  if (Plookup_by_addr (Pr, pc, buff + 1 + 8, sizeof (buff) - 1 - 8, &sym) == 0)
     {
       start = sym.st_value;
     }
@@ -200,8 +193,7 @@ er_dump_call_stack (FILE * outfp)
       return;
     }
 
-  fp = (struct frame *) ((caddr_t) ucp.uc_mcontext.gregs[FRAME_PTR_REGISTER] +
-			 STACK_BIAS);
+  fp = (struct frame *) ((caddr_t) ucp.uc_mcontext.gregs[FRAME_PTR_REGISTER] + STACK_BIAS);
 
   fd = open ("/proc/self/as", O_RDONLY);
   if (fd < 0)
@@ -242,9 +234,7 @@ er_dump_call_stack (FILE * outfp)
 }
 
 #elif defined(LINUX)
-static int er_resolve_function_name (const void *address,
-				     const char *lib_file_name, char *buffer,
-				     int buffer_size);
+static int er_resolve_function_name (const void *address, const char *lib_file_name, char *buffer, int buffer_size);
 
 #if __WORDSIZE == 32
 
@@ -296,8 +286,7 @@ er_dump_call_stack (FILE * outfp)
 
       if (dl_info.dli_fbase >= (const void *) 0x40000000)
 	{
-	  func_addr_p = (void *) ((size_t) ((const char *) return_addr) -
-				  (size_t) dl_info.dli_fbase);
+	  func_addr_p = (void *) ((size_t) ((const char *) return_addr) - (size_t) dl_info.dli_fbase);
 	}
       else
 	{
@@ -310,8 +299,7 @@ er_dump_call_stack (FILE * outfp)
 	}
       else
 	{
-	  if (er_resolve_function_name (func_addr_p, dl_info.dli_fname,
-					buffer, sizeof (buffer)) == NO_ERROR)
+	  if (er_resolve_function_name (func_addr_p, dl_info.dli_fname, buffer, sizeof (buffer)) == NO_ERROR)
 	    {
 	      func_name_p = buffer;
 	    }
@@ -321,8 +309,7 @@ er_dump_call_stack (FILE * outfp)
 	    }
 	}
 
-      fprintf (outfp, "%s(%p): %s", dl_info.dli_fname, func_addr_p,
-	       func_name_p);
+      fprintf (outfp, "%s(%p): %s", dl_info.dli_fname, func_addr_p, func_name_p);
 
       next_frame_pointer_addr = PEEK_DATA (frame_pointer_addr);
       nargs = (next_frame_pointer_addr - frame_pointer_addr - 8) / 4;
@@ -399,8 +386,7 @@ er_dump_call_stack (FILE * outfp)
 
       if (dl_info.dli_fbase >= (const void *) 0x40000000)
 	{
-	  func_addr_p = (void *) ((size_t) ((const char *) return_addr[i]) -
-				  (size_t) dl_info.dli_fbase);
+	  func_addr_p = (void *) ((size_t) ((const char *) return_addr[i]) - (size_t) dl_info.dli_fbase);
 	}
       else
 	{
@@ -413,8 +399,7 @@ er_dump_call_stack (FILE * outfp)
 	}
       else
 	{
-	  if (er_resolve_function_name (func_addr_p, dl_info.dli_fname,
-					buffer, sizeof (buffer)) == NO_ERROR)
+	  if (er_resolve_function_name (func_addr_p, dl_info.dli_fname, buffer, sizeof (buffer)) == NO_ERROR)
 	    {
 	      func_name_p = buffer;
 	    }
@@ -424,8 +409,7 @@ er_dump_call_stack (FILE * outfp)
 	    }
 	}
 
-      fprintf (outfp, "%s(%p): %s\n", dl_info.dli_fname, func_addr_p,
-	       func_name_p);
+      fprintf (outfp, "%s(%p): %s\n", dl_info.dli_fname, func_addr_p, func_name_p);
     }
 
   fflush (outfp);
@@ -435,8 +419,7 @@ er_dump_call_stack (FILE * outfp)
 MHT_TABLE *fname_table;
 
 static int
-er_resolve_function_name (const void *address, const char *lib_file_name_p,
-			  char *buffer, int buffer_size)
+er_resolve_function_name (const void *address, const char *lib_file_name_p, char *buffer, int buffer_size)
 {
   FILE *output;
   char cmd_line[BUFFER_SIZE];
@@ -451,8 +434,7 @@ er_resolve_function_name (const void *address, const char *lib_file_name_p,
       return NO_ERROR;
     }
 
-  snprintf (cmd_line, sizeof (cmd_line),
-	    "addr2line -f -C -e %s %p 2>/dev/null", lib_file_name_p, address);
+  snprintf (cmd_line, sizeof (cmd_line), "addr2line -f -C -e %s %p 2>/dev/null", lib_file_name_p, address);
 
   output = popen (cmd_line, "r");
   if (!output)

@@ -102,13 +102,10 @@ typedef struct
 typedef struct
 {
   uint32 cp;			/* Codepoint value */
-  uint32 *map;			/* A fully decomposed canonical mapping
-				 * stored as codepoints */
+  uint32 *map;			/* A fully decomposed canonical mapping stored as codepoints */
 
   int size;			/* The number of codepoints in the mapping */
-  bool is_full_decomp;		/* true  - if map is fully decomposed
-				 * false - otherwise.
-				 */
+  bool is_full_decomp;		/* true - if map is fully decomposed false - otherwise. */
 } UNICODE_CP_MAPPING;
 
 static UNICODE_CHAR *unicode_data = NULL;
@@ -118,16 +115,13 @@ static int unicode_data_upper_mult = 1;
 static char last_unicode_file[PATH_MAX] = { 0 };
 
 static int load_unicode_data (const LOCALE_DATA * ld);
-static int create_alphabet (ALPHABET_DATA * a, const int max_letters,
-			    const int lower_multiplier,
+static int create_alphabet (ALPHABET_DATA * a, const int max_letters, const int lower_multiplier,
 			    const int upper_multiplier);
 static int count_full_decomp_cp (int cp);
 static int count_decomp_steps (int cp);
-static int unicode_make_normalization_data (UNICODE_CP_MAPPING * decomp_maps,
-					    LOCALE_DATA * ld);
+static int unicode_make_normalization_data (UNICODE_CP_MAPPING * decomp_maps, LOCALE_DATA * ld);
 static int comp_func_unicode_cp_mapping (const void *arg1, const void *arg2);
-static int comp_func_grouping_unicode_cp_mapping (const void *arg1,
-						  const void *arg2);
+static int comp_func_grouping_unicode_cp_mapping (const void *arg1, const void *arg2);
 
 
 /*
@@ -165,15 +159,12 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
       int dummy;
       int dest_len;
 
-      dest_len = intl_utf8_to_cp_list ((unsigned char *) (tf_rule->dest),
-				       tf_rule->dest_size,
-				       &dummy_array, 1, &dummy);
+      dest_len = intl_utf8_to_cp_list ((unsigned char *) (tf_rule->dest), tf_rule->dest_size, &dummy_array, 1, &dummy);
 
       if (dest_len > INTL_CASING_EXPANSION_MULTIPLIER)
 	{
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Invalid alphabet rule :%d"
-		    ". Destination buffer contains more than 2 characters",
-		    i);
+	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "Invalid alphabet rule :%d" ". Destination buffer contains more than 2 characters", i);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  er_status = ER_LOC_GEN;
 	  goto error;
@@ -197,9 +188,7 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
 	}
 
       /* ASCII alphabet */
-      er_status =
-	create_alphabet (a, a_tailoring->sett_max_letters,
-			 lower_mult, upper_mult);
+      er_status = create_alphabet (a, a_tailoring->sett_max_letters, lower_mult, upper_mult);
       if (er_status != NO_ERROR)
 	{
 	  goto error;
@@ -220,8 +209,7 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
       for (cp = (int) 'a'; cp <= (int) 'z'; cp++)
 	{
 	  i_a->upper_cp[cp] = a->upper_cp[cp] = cp - ('a' - 'A');
-	  i_a->lower_cp[cp - ('a' - 'A')] =
-	    a->lower_cp[cp - ('a' - 'A')] = cp;
+	  i_a->lower_cp[cp - ('a' - 'A')] = a->lower_cp[cp - ('a' - 'A')] = cp;
 	}
 
       i_a->a_type = a->a_type = ALPHABET_ASCII;
@@ -230,8 +218,7 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
     {
       if (a_tailoring->alphabet_mode == 1)
 	{
-	  strncpy (unicode_file, a_tailoring->unicode_data_file,
-		   sizeof (unicode_file));
+	  strncpy (unicode_file, a_tailoring->unicode_data_file, sizeof (unicode_file));
 	  unicode_file[sizeof (unicode_file) - 1] = '\0';
 
 	  /* a user defined unicode file is handled as a tailored alphabet */
@@ -240,8 +227,7 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
       else
 	{
 	  assert (a_tailoring->alphabet_mode == 0);
-	  envvar_localedatadir_file (unicode_file, sizeof (unicode_file),
-				     UNICODEDATA_FILE);
+	  envvar_localedatadir_file (unicode_file, sizeof (unicode_file), UNICODEDATA_FILE);
 
 	  a->a_type = ALPHABET_UNICODE;
 	}
@@ -260,17 +246,14 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
       lower_mult = MAX (lower_mult, unicode_data_lower_mult);
       upper_mult = MAX (upper_mult, unicode_data_upper_mult);
 
-      er_status =
-	create_alphabet (a, a_tailoring->sett_max_letters,
-			 lower_mult, upper_mult);
+      er_status = create_alphabet (a, a_tailoring->sett_max_letters, lower_mult, upper_mult);
       if (er_status != NO_ERROR)
 	{
 	  goto error;
 	}
 
       er_status =
-	create_alphabet (i_a, a_tailoring->sett_max_letters,
-			 unicode_data_lower_mult, unicode_data_upper_mult);
+	create_alphabet (i_a, a_tailoring->sett_max_letters, unicode_data_lower_mult, unicode_data_upper_mult);
       if (er_status != NO_ERROR)
 	{
 	  goto error;
@@ -288,23 +271,19 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
 	  /* overwrite with UnicodeData */
 	  if (unicode_data[cp].gen_cat_id == CAT_Lu)
 	    {
-	      memcpy (&(a->lower_cp[cp * lower_mult]),
-		      &(unicode_data[cp].lower_cp), sizeof (uint32) *
-		      MIN (unicode_data_lower_mult, lower_mult));
+	      memcpy (&(a->lower_cp[cp * lower_mult]), &(unicode_data[cp].lower_cp),
+		      sizeof (uint32) * MIN (unicode_data_lower_mult, lower_mult));
 
-	      memcpy (&(i_a->lower_cp[cp * unicode_data_lower_mult]),
-		      &(unicode_data[cp].lower_cp), sizeof (uint32) *
-		      unicode_data_lower_mult);
+	      memcpy (&(i_a->lower_cp[cp * unicode_data_lower_mult]), &(unicode_data[cp].lower_cp),
+		      sizeof (uint32) * unicode_data_lower_mult);
 	    }
 	  else if (unicode_data[cp].gen_cat_id == CAT_Ll)
 	    {
-	      memcpy (&(a->upper_cp[cp * upper_mult]),
-		      &(unicode_data[cp].upper_cp), sizeof (uint32) *
-		      MIN (unicode_data_upper_mult, upper_mult));
+	      memcpy (&(a->upper_cp[cp * upper_mult]), &(unicode_data[cp].upper_cp),
+		      sizeof (uint32) * MIN (unicode_data_upper_mult, upper_mult));
 
-	      memcpy (&(i_a->upper_cp[cp * unicode_data_upper_mult]),
-		      &(unicode_data[cp].upper_cp), sizeof (uint32) *
-		      unicode_data_upper_mult);
+	      memcpy (&(i_a->upper_cp[cp * unicode_data_upper_mult]), &(unicode_data[cp].upper_cp),
+		      sizeof (uint32) * unicode_data_upper_mult);
 	    }
 	}
     }
@@ -316,8 +295,7 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
 
   if (is_verbose && a_tailoring->count_rules > 0)
     {
-      printf ("Applying %d alphabet tailoring rules\n",
-	      a_tailoring->count_rules);
+      printf ("Applying %d alphabet tailoring rules\n", a_tailoring->count_rules);
     }
   /* apply tailoring rules on user-alphabet only */
   for (i = 0; i < a_tailoring->count_rules; i++)
@@ -332,37 +310,30 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
 
       /* source codepoints */
       /* TODO : allow casing compression (many CPs for source) */
-      src_len = intl_utf8_to_cp_list ((unsigned char *) (tf_rule->src),
-				      tf_rule->src_size,
-				      &cp_src, 1, &src_cp_count);
+      src_len = intl_utf8_to_cp_list ((unsigned char *) (tf_rule->src), tf_rule->src_size, &cp_src, 1, &src_cp_count);
 
       if (src_len != 1 || src_len != src_cp_count)
 	{
-	  LOG_LOCALE_ERROR ("Invalid source buffer for alphabet rule",
-			    ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Invalid source buffer for alphabet rule", ER_LOC_GEN, true);
 	  er_status = ER_LOC_GEN;
 	  goto error;
 	}
 
       if ((int) cp_src >= a_tailoring->sett_max_letters)
 	{
-	  LOG_LOCALE_ERROR ("Codepoint for casing rule exceeds maximum"
-			    " allowed value", ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Codepoint for casing rule exceeds maximum" " allowed value", ER_LOC_GEN, true);
 	  er_status = ER_LOC_GEN;
 	  goto error;
 	}
 
       /* destination codepoints */
       dest_len =
-	intl_utf8_to_cp_list ((unsigned char *) (tf_rule->dest),
-			      tf_rule->dest_size, cp_dest,
-			      INTL_CASING_EXPANSION_MULTIPLIER,
-			      &dest_cp_count);
+	intl_utf8_to_cp_list ((unsigned char *) (tf_rule->dest), tf_rule->dest_size, cp_dest,
+			      INTL_CASING_EXPANSION_MULTIPLIER, &dest_cp_count);
 
       if (dest_len < 1 || dest_len != dest_cp_count)
 	{
-	  LOG_LOCALE_ERROR ("Invalid destination buffer for alphabet rule",
-			    ER_LOC_GEN, true);
+	  LOG_LOCALE_ERROR ("Invalid destination buffer for alphabet rule", ER_LOC_GEN, true);
 	  er_status = ER_LOC_GEN;
 	  goto error;
 	}
@@ -370,20 +341,16 @@ unicode_process_alphabet (LOCALE_DATA * ld, bool is_verbose)
       if (tf_rule->type == TR_UPPER)
 	{
 	  assert (dest_cp_count <= upper_mult);
-	  memset (&(a->upper_cp[cp_src * upper_mult]), 0,
-		  upper_mult * sizeof (uint32));
-	  memcpy (&(a->upper_cp[cp_src * upper_mult]),
-		  cp_dest, sizeof (uint32) * MIN (dest_cp_count, upper_mult));
+	  memset (&(a->upper_cp[cp_src * upper_mult]), 0, upper_mult * sizeof (uint32));
+	  memcpy (&(a->upper_cp[cp_src * upper_mult]), cp_dest, sizeof (uint32) * MIN (dest_cp_count, upper_mult));
 	}
       else
 	{
 	  assert (tf_rule->type == TR_LOWER);
 
 	  assert (dest_cp_count <= lower_mult);
-	  memset (&(a->lower_cp[cp_src * lower_mult]), 0,
-		  lower_mult * sizeof (uint32));
-	  memcpy (&(a->lower_cp[cp_src * lower_mult]),
-		  cp_dest, sizeof (uint32) * MIN (dest_cp_count, lower_mult));
+	  memset (&(a->lower_cp[cp_src * lower_mult]), 0, lower_mult * sizeof (uint32));
+	  memcpy (&(a->lower_cp[cp_src * lower_mult]), cp_dest, sizeof (uint32) * MIN (dest_cp_count, lower_mult));
 	}
     }
 
@@ -415,9 +382,7 @@ load_unicode_data (const LOCALE_DATA * ld)
   if (ld->unicode_mode == 0)
     {
       /* using default Unicode file */
-      envvar_localedatadir_file ((char *) (ld->unicode_data_file),
-				 sizeof (ld->unicode_data_file),
-				 UNICODEDATA_FILE);
+      envvar_localedatadir_file ((char *) (ld->unicode_data_file), sizeof (ld->unicode_data_file), UNICODEDATA_FILE);
     }
   else
     {
@@ -432,8 +397,7 @@ load_unicode_data (const LOCALE_DATA * ld)
 
   unicode_free_data ();
 
-  unicode_data =
-    (UNICODE_CHAR *) malloc (MAX_UNICODE_CHARS * sizeof (UNICODE_CHAR));
+  unicode_data = (UNICODE_CHAR *) malloc (MAX_UNICODE_CHARS * sizeof (UNICODE_CHAR));
   if (unicode_data == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -446,8 +410,7 @@ load_unicode_data (const LOCALE_DATA * ld)
   fp = fopen_ex (ld->unicode_data_file, "rt");
   if (fp == NULL)
     {
-      snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s",
-		ld->unicode_data_file);
+      snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", ld->unicode_data_file);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
       status = ER_LOC_GEN;
       goto error;
@@ -500,9 +463,7 @@ load_unicode_data (const LOCALE_DATA * ld)
 	    {
 	      int cat_idx;
 
-	      for (cat_idx = 0;
-		   cat_idx < (int) (sizeof (list_gen_cat) /
-				    sizeof (list_gen_cat[0])); cat_idx++)
+	      for (cat_idx = 0; cat_idx < (int) (sizeof (list_gen_cat) / sizeof (list_gen_cat[0])); cat_idx++)
 		{
 		  if (strcmp (list_gen_cat[cat_idx].val, str_p) == 0)
 		    {
@@ -511,50 +472,38 @@ load_unicode_data (const LOCALE_DATA * ld)
 		    }
 		}
 	    }
-	  else if (i == UNICODE_FILE_UPPER_CASE_MAP &&
-		   uc->gen_cat_id == CAT_Ll)
+	  else if (i == UNICODE_FILE_UPPER_CASE_MAP && uc->gen_cat_id == CAT_Ll)
 	    {
 	      /* lower case codepoints */
-	      cp_count =
-		string_to_int_array (str_p, uc->upper_cp,
-				     INTL_CASING_EXPANSION_MULTIPLIER, " ");
+	      cp_count = string_to_int_array (str_p, uc->upper_cp, INTL_CASING_EXPANSION_MULTIPLIER, " ");
 	      if (cp_count > INTL_CASING_EXPANSION_MULTIPLIER)
 		{
-		  snprintf (err_msg, sizeof (err_msg) - 1, "Invalid line %d"
-			    " of file %s contains more than 2 characters for "
-			    "upper case definition", line_count,
-			    ld->unicode_data_file);
+		  snprintf (err_msg, sizeof (err_msg) - 1,
+			    "Invalid line %d" " of file %s contains more than 2 characters for "
+			    "upper case definition", line_count, ld->unicode_data_file);
 		  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 		  status = ER_LOC_GEN;
 		  goto error;
 		}
 
-	      unicode_data_upper_mult =
-		(cp_count > unicode_data_upper_mult) ? cp_count :
-		unicode_data_upper_mult;
+	      unicode_data_upper_mult = (cp_count > unicode_data_upper_mult) ? cp_count : unicode_data_upper_mult;
 	    }
-	  else if (i == UNICODE_FILE_LOWER_CASE_MAP &&
-		   uc->gen_cat_id == CAT_Lu)
+	  else if (i == UNICODE_FILE_LOWER_CASE_MAP && uc->gen_cat_id == CAT_Lu)
 	    {
 	      /* lower case codepoints */
-	      cp_count =
-		string_to_int_array (str_p, uc->lower_cp,
-				     INTL_CASING_EXPANSION_MULTIPLIER, " ");
+	      cp_count = string_to_int_array (str_p, uc->lower_cp, INTL_CASING_EXPANSION_MULTIPLIER, " ");
 
 	      if (cp_count > INTL_CASING_EXPANSION_MULTIPLIER)
 		{
-		  snprintf (err_msg, sizeof (err_msg) - 1, "Invalid line %d"
-			    " of file %s contains more than 2 characters for "
-			    "lower case definition", line_count,
-			    ld->unicode_data_file);
+		  snprintf (err_msg, sizeof (err_msg) - 1,
+			    "Invalid line %d" " of file %s contains more than 2 characters for "
+			    "lower case definition", line_count, ld->unicode_data_file);
 		  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 		  status = ER_LOC_GEN;
 		  goto error;
 		}
 
-	      unicode_data_lower_mult =
-		(cp_count > unicode_data_lower_mult) ? cp_count :
-		unicode_data_lower_mult;
+	      unicode_data_lower_mult = (cp_count > unicode_data_lower_mult) ? cp_count : unicode_data_lower_mult;
 	    }
 	  else if (i == UNICODE_FILE_CHAR_DECOMPOSITION_MAPPING)
 	    {
@@ -564,8 +513,8 @@ load_unicode_data (const LOCALE_DATA * ld)
 		{
 		  bool is_format_tag = false;
 
-		  /* if no decomposition available, or decomposition is a
-		   * compatibility one, discard the specified decomposition */
+		  /* if no decomposition available, or decomposition is a compatibility one, discard the specified
+		   * decomposition */
 		  if (str_p[0] == ';' || str_p[0] == '<')
 		    {
 		      break;
@@ -574,9 +523,7 @@ load_unicode_data (const LOCALE_DATA * ld)
 		  if (str_p != NULL)
 		    {
 		      uc->unicode_mapping_cp_count =
-			string_to_int_array (str_p, uc->unicode_mapping,
-					     UNICODE_DECOMP_MAP_CP_COUNT,
-					     " ");
+			string_to_int_array (str_p, uc->unicode_mapping, UNICODE_DECOMP_MAP_CP_COUNT, " ");
 		    }
 		  break;
 		}
@@ -596,8 +543,7 @@ load_unicode_data (const LOCALE_DATA * ld)
   assert (fp != NULL);
   fclose (fp);
 
-  strncpy (last_unicode_file, ld->unicode_data_file,
-	   sizeof (last_unicode_file) - 1);
+  strncpy (last_unicode_file, ld->unicode_data_file, sizeof (last_unicode_file) - 1);
   last_unicode_file[sizeof (last_unicode_file) - 1] = '\0';
 
   return status;
@@ -639,22 +585,18 @@ unicode_free_data (void)
  * upper_multiplier(in) : upper case multlipier
  */
 static int
-create_alphabet (ALPHABET_DATA * a, const int max_letters,
-		 const int lower_multiplier, const int upper_multiplier)
+create_alphabet (ALPHABET_DATA * a, const int max_letters, const int lower_multiplier, const int upper_multiplier)
 {
   int er_status = NO_ERROR;
 
   assert (a != NULL);
-  assert (lower_multiplier > 0 &&
-	  lower_multiplier <= INTL_CASING_EXPANSION_MULTIPLIER);
-  assert (upper_multiplier > 0 &&
-	  upper_multiplier <= INTL_CASING_EXPANSION_MULTIPLIER);
+  assert (lower_multiplier > 0 && lower_multiplier <= INTL_CASING_EXPANSION_MULTIPLIER);
+  assert (upper_multiplier > 0 && upper_multiplier <= INTL_CASING_EXPANSION_MULTIPLIER);
 
   if (lower_multiplier > 1 && upper_multiplier > 1)
     {
       LOG_LOCALE_ERROR ("CUBRID does not support collations with both lower "
-			"and upper multipliers with values above 1.",
-			ER_LOC_GEN, true);
+			"and upper multipliers with values above 1.", ER_LOC_GEN, true);
       return ER_LOC_GEN;
     }
 
@@ -668,10 +610,8 @@ create_alphabet (ALPHABET_DATA * a, const int max_letters,
 
   if (max_letters > 0)
     {
-      a->lower_cp = (uint32 *) malloc (max_letters * lower_multiplier *
-				       sizeof (uint32));
-      a->upper_cp = (uint32 *) malloc (max_letters * upper_multiplier *
-				       sizeof (uint32));
+      a->lower_cp = (uint32 *) malloc (max_letters * lower_multiplier * sizeof (uint32));
+      a->upper_cp = (uint32 *) malloc (max_letters * upper_multiplier * sizeof (uint32));
 
       if (a->lower_cp == NULL || a->upper_cp == NULL)
 	{
@@ -680,10 +620,8 @@ create_alphabet (ALPHABET_DATA * a, const int max_letters,
 	  goto er_exit;
 	}
 
-      memset (a->lower_cp, 0, max_letters * lower_multiplier *
-	      sizeof (uint32));
-      memset (a->upper_cp, 0, max_letters * upper_multiplier *
-	      sizeof (uint32));
+      memset (a->lower_cp, 0, max_letters * lower_multiplier * sizeof (uint32));
+      memset (a->upper_cp, 0, max_letters * upper_multiplier * sizeof (uint32));
     }
 
   a->l_count = max_letters;
@@ -723,8 +661,7 @@ er_exit:
  *
  */
 int
-string_to_int_array (char *s, uint32 * cp_list, const int cp_list_size,
-		     const char *delims)
+string_to_int_array (char *s, uint32 * cp_list, const int cp_list_size, const char *delims)
 {
   int i = 0;
   char *str;
@@ -786,8 +723,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
   int err_status = NO_ERROR;
 
   int *unicode_decomp_map_count = NULL;
-  /* perm_unicode_mapping[cp] = the number of possible
-   * sorted permutations of the cp decomposition mapping */
+  /* perm_unicode_mapping[cp] = the number of possible sorted permutations of the cp decomposition mapping */
   UNICODE_CP_MAPPING *temp_list_unicode_decomp_maps = NULL;
 
   assert (ld != NULL);
@@ -808,15 +744,12 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
     }
   memset (unicode_decomp_map_count, 0, MAX_UNICODE_CHARS * sizeof (int));
 
-  /* Count the number of steps (buffers) necessary for the decomposition
-   * of each codepoint.
-   */
+  /* Count the number of steps (buffers) necessary for the decomposition of each codepoint. */
   for (cp = 0; cp < MAX_UNICODE_CHARS; cp++)
     {
       uc = &(unicode_data[cp]);
 
-      if (uc->unicode_mapping_cp_count <= 1 ||
-	  uc->unicode_mapping[0] > MAX_UNICODE_CHARS)
+      if (uc->unicode_mapping_cp_count <= 1 || uc->unicode_mapping[0] > MAX_UNICODE_CHARS)
 	{
 	  unicode_decomp_map_count[cp] = 0;
 	}
@@ -827,8 +760,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	}
       if (is_verbose)
 	{
-	  printf ("CP : %04X\t\tDeco CP count: %2d\t\tDeco steps: %2d\n",
-		  cp, uc->unicode_full_decomp_cp_count,
+	  printf ("CP : %04X\t\tDeco CP count: %2d\t\tDeco steps: %2d\n", cp, uc->unicode_full_decomp_cp_count,
 		  unicode_decomp_map_count[cp]);
 	}
       norm->unicode_mappings_count += unicode_decomp_map_count[cp];
@@ -836,21 +768,18 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 
   if (is_verbose)
     {
-      printf ("\nTotal number of composition maps (sum of deco steps) : %d\n",
-	      norm->unicode_mappings_count);
+      printf ("\nTotal number of composition maps (sum of deco steps) : %d\n", norm->unicode_mappings_count);
     }
 
   /* Prepare the generation of all decomposition steps for all codepoints */
-  temp_list_unicode_decomp_maps =
-    malloc (norm->unicode_mappings_count * sizeof (UNICODE_CP_MAPPING));
+  temp_list_unicode_decomp_maps = malloc (norm->unicode_mappings_count * sizeof (UNICODE_CP_MAPPING));
   if (temp_list_unicode_decomp_maps == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
       err_status = ER_LOC_GEN;
       goto exit;
     }
-  memset (temp_list_unicode_decomp_maps, 0,
-	  norm->unicode_mappings_count * sizeof (UNICODE_CP_MAPPING));
+  memset (temp_list_unicode_decomp_maps, 0, norm->unicode_mappings_count * sizeof (UNICODE_CP_MAPPING));
 
   /* Copy mappings loaded from UnicodeData.txt */
   cp = 0;
@@ -869,19 +798,15 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	      err_status = ER_LOC_GEN;
 	      goto exit;
 	    }
-	  memcpy (um->map, unicode_data[cp].unicode_mapping,
-		  um->size * sizeof (uint32));
+	  memcpy (um->map, unicode_data[cp].unicode_mapping, um->size * sizeof (uint32));
 	  orig_mapping_count++;
 	}
       cp++;
     }
 
-  /* Decompose each mapping, top-down, until no mapping can be
-   * further decomposed. Total number of decomposition mappings(steps)
-   * was computed previously for each codepoint in
-   * unicode_decomp_map_count[cp] and their sum in unicode_decomp_map_total.
-   * These constants will be used for validation (as assert args).
-   */
+  /* Decompose each mapping, top-down, until no mapping can be further decomposed. Total number of decomposition
+   * mappings(steps) was computed previously for each codepoint in unicode_decomp_map_count[cp] and their sum in
+   * unicode_decomp_map_total. These constants will be used for validation (as assert args). */
   mapping_cursor = orig_mapping_count;
   curr_mapping = 0;
   while (curr_mapping < mapping_cursor)
@@ -897,15 +822,12 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	{
 	  if (unicode_decomp_map_count[um->map[0]] > 0)
 	    {
-	      new_map->size =
-		um->size - 1 +
-		unicode_data[um->map[0]].unicode_mapping_cp_count;
+	      new_map->size = um->size - 1 + unicode_data[um->map[0]].unicode_mapping_cp_count;
 	      new_map->cp = um->cp;
 	      new_map->map = malloc (new_map->size * sizeof (uint32));
 	      if (new_map->map == NULL)
 		{
-		  LOG_LOCALE_ERROR ("memory allocation failed",
-				    ER_LOC_GEN, true);
+		  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
 		  err_status = ER_LOC_GEN;
 		  goto exit;
 		}
@@ -914,14 +836,11 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 		{
 		  if (i < unicode_data[um->map[0]].unicode_mapping_cp_count)
 		    {
-		      new_map->map[i] =
-			unicode_data[um->map[0]].unicode_mapping[i];
+		      new_map->map[i] = unicode_data[um->map[0]].unicode_mapping[i];
 		    }
 		  else
 		    {
-		      new_map->map[i] = um->map[1 + i -
-						unicode_data[um->map[0]].
-						unicode_mapping_cp_count];
+		      new_map->map[i] = um->map[1 + i - unicode_data[um->map[0]].unicode_mapping_cp_count];
 		    }
 		}
 	      mapping_cursor++;
@@ -943,34 +862,27 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
       um = &(temp_list_unicode_decomp_maps[i]);
       if (um->size > 0 && unicode_decomp_map_count[um->map[0]] == 0)
 	{
-	  /* This means that for um->cp, the um->map can't be further
-	   * decomposed, thus being the fully decomposed representation for
-	   * um->cp. It will be marked as such.
-	   */
+	  /* This means that for um->cp, the um->map can't be further decomposed, thus being the fully decomposed
+	   * representation for um->cp. It will be marked as such. */
 	  um->is_full_decomp = true;
 	}
     }
 
-  /* Sort/group the decompositions in list_unicode_decomp_maps by the
-   * value of the first codepoint in each mapping.
-   * The grouping is necessary for optimizing the future search for
-   * possible decompositions when putting a string in fully composed form.
-   */
-  qsort (temp_list_unicode_decomp_maps, norm->unicode_mappings_count,
-	 sizeof (UNICODE_CP_MAPPING), comp_func_grouping_unicode_cp_mapping);
+  /* Sort/group the decompositions in list_unicode_decomp_maps by the value of the first codepoint in each mapping. The 
+   * grouping is necessary for optimizing the future search for possible decompositions when putting a string in fully
+   * composed form. */
+  qsort (temp_list_unicode_decomp_maps, norm->unicode_mappings_count, sizeof (UNICODE_CP_MAPPING),
+	 comp_func_grouping_unicode_cp_mapping);
 
-  /* Build starting indexes for each cp which is the first cp in a
-   * compact group of mappings */
-  norm->unicode_mapping_index =
-    malloc ((MAX_UNICODE_CHARS + 1) * sizeof (int));
+  /* Build starting indexes for each cp which is the first cp in a compact group of mappings */
+  norm->unicode_mapping_index = malloc ((MAX_UNICODE_CHARS + 1) * sizeof (int));
   if (norm->unicode_mapping_index == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
       err_status = ER_LOC_GEN;
       goto exit;
     }
-  memset (norm->unicode_mapping_index, 0,
-	  (MAX_UNICODE_CHARS + 1) * sizeof (int));
+  memset (norm->unicode_mapping_index, 0, (MAX_UNICODE_CHARS + 1) * sizeof (int));
   cp = temp_list_unicode_decomp_maps[0].map[0];
   mapping_start = 0;
   mapping_count = 1;
@@ -982,29 +894,23 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	}
       else
 	{
-	  SET_MAPPING_INDEX (norm->unicode_mapping_index[cp],
-			     true, mapping_start);
+	  SET_MAPPING_INDEX (norm->unicode_mapping_index[cp], true, mapping_start);
 	  old_cp = cp;
 	  cp = (uint32) temp_list_unicode_decomp_maps[i].map[0];
 	  mapping_count = 1;
 	  mapping_start = i;
 	  for (j = old_cp + 1; j < cp; j++)
 	    {
-	      SET_MAPPING_INDEX (norm->unicode_mapping_index[j], false,
-				 mapping_start);
+	      SET_MAPPING_INDEX (norm->unicode_mapping_index[j], false, mapping_start);
 	    }
 	}
     }
   SET_MAPPING_INDEX (norm->unicode_mapping_index[cp], true, mapping_start);
-  SET_MAPPING_INDEX (norm->unicode_mapping_index[cp + 1], false,
-		     (mapping_start + mapping_count));
+  SET_MAPPING_INDEX (norm->unicode_mapping_index[cp + 1], false, (mapping_start + mapping_count));
 
-  /* Sort descending each range of UNICODE_MAPPINGs from
-   * list_unicode_decomp_maps, having the same codepoint value in
-   * UNICODE_MAPPING.map[0], using memcmp.
-   * The sorting is necessary for optimizing the future search for
-   * possible decompositions when putting a string in fully composed form.
-   */
+  /* Sort descending each range of UNICODE_MAPPINGs from list_unicode_decomp_maps, having the same codepoint value in
+   * UNICODE_MAPPING.map[0], using memcmp. The sorting is necessary for optimizing the future search for possible
+   * decompositions when putting a string in fully composed form. */
   for (cp = 0; cp < MAX_UNICODE_CHARS; cp++)
     {
       int mapping_start = 0;
@@ -1015,17 +921,13 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	  continue;
 	}
       mapping_start = GET_MAPPING_OFFSET (norm->unicode_mapping_index[cp]);
-      mapping_count =
-	GET_MAPPING_OFFSET (norm->unicode_mapping_index[cp + 1]) -
-	mapping_start;
+      mapping_count = GET_MAPPING_OFFSET (norm->unicode_mapping_index[cp + 1]) - mapping_start;
 
-      qsort (temp_list_unicode_decomp_maps + mapping_start,
-	     mapping_count, sizeof (UNICODE_CP_MAPPING),
+      qsort (temp_list_unicode_decomp_maps + mapping_start, mapping_count, sizeof (UNICODE_CP_MAPPING),
 	     comp_func_unicode_cp_mapping);
     }
 
-  err_status =
-    unicode_make_normalization_data (temp_list_unicode_decomp_maps, ld);
+  err_status = unicode_make_normalization_data (temp_list_unicode_decomp_maps, ld);
 
 exit:
   if (unicode_decomp_map_count != NULL)
@@ -1042,8 +944,7 @@ exit:
 	  if (um->map != NULL)
 	    {
 	      free (um->map);
-	      /* um->map = NULL not necessary, list_unicode_decomp_maps is
-	       * freed afterwards. */
+	      /* um->map = NULL not necessary, list_unicode_decomp_maps is freed afterwards. */
 	    }
 	}
       free (temp_list_unicode_decomp_maps);
@@ -1081,8 +982,7 @@ count_full_decomp_cp (int cp)
       return 1;
     }
 
-  return uc->unicode_mapping_cp_count - 1 +
-    count_full_decomp_cp ((int) uc->unicode_mapping[0]);
+  return uc->unicode_mapping_cp_count - 1 + count_full_decomp_cp ((int) uc->unicode_mapping[0]);
 }
 
 /*
@@ -1105,9 +1005,8 @@ count_decomp_steps (int cp)
     {
       return 0;
     }
-  if ((uc->unicode_mapping_cp_count == 1 &&
-       uc->unicode_mapping[0] < MAX_UNICODE_CHARS) ||
-      (uc->unicode_mapping_cp_count > 1))
+  if ((uc->unicode_mapping_cp_count == 1 && uc->unicode_mapping[0] < MAX_UNICODE_CHARS)
+      || (uc->unicode_mapping_cp_count > 1))
     {
       return 1 + count_decomp_steps (uc->unicode_mapping[0]);
     }
@@ -1129,15 +1028,13 @@ count_decomp_steps (int cp)
  *
  */
 static int
-unicode_make_normalization_data (UNICODE_CP_MAPPING * decomp_maps,
-				 LOCALE_DATA * ld)
+unicode_make_normalization_data (UNICODE_CP_MAPPING * decomp_maps, LOCALE_DATA * ld)
 {
   int err_status = NO_ERROR;
   int i, j;
   UNICODE_CP_MAPPING *um_cp;
   UNICODE_MAPPING *um;
-  unsigned char str_buf[INTL_UTF8_MAX_CHAR_SIZE *
-			UNICODE_DECOMP_MAP_CP_COUNT];
+  unsigned char str_buf[INTL_UTF8_MAX_CHAR_SIZE * UNICODE_DECOMP_MAP_CP_COUNT];
   unsigned char *cur_pos;
   char cur_size, byte_count;
   UNICODE_NORMALIZATION *norm;
@@ -1147,18 +1044,16 @@ unicode_make_normalization_data (UNICODE_CP_MAPPING * decomp_maps,
 
   norm = &(ld->unicode_normalization);
 
-  /* Prepare the unicode_mappings array for storing the data from decomp_maps
-   * as utf8 buffers + length + original codepoint. */
-  norm->unicode_mappings =
-    malloc (norm->unicode_mappings_count * sizeof (UNICODE_MAPPING));
+  /* Prepare the unicode_mappings array for storing the data from decomp_maps as utf8 buffers + length + original
+   * codepoint. */
+  norm->unicode_mappings = malloc (norm->unicode_mappings_count * sizeof (UNICODE_MAPPING));
   if (norm->unicode_mappings == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
       err_status = ER_LOC_GEN;
       goto exit;
     }
-  memset (norm->unicode_mappings, 0,
-	  norm->unicode_mappings_count * sizeof (UNICODE_MAPPING));
+  memset (norm->unicode_mappings, 0, norm->unicode_mappings_count * sizeof (UNICODE_MAPPING));
 
   /* Prepare the index list for fully decomposed mappings */
   norm->list_full_decomp = malloc (MAX_UNICODE_CHARS * sizeof (int));
@@ -1182,8 +1077,7 @@ unicode_make_normalization_data (UNICODE_CP_MAPPING * decomp_maps,
       um->cp = um_cp->cp;
 
       /* Empty temporary utf8 buffer */
-      memset (str_buf, 0,
-	      INTL_UTF8_MAX_CHAR_SIZE * UNICODE_DECOMP_MAP_CP_COUNT);
+      memset (str_buf, 0, INTL_UTF8_MAX_CHAR_SIZE * UNICODE_DECOMP_MAP_CP_COUNT);
 
       /* Convert the list of codepoints into a utf8 buffer */
       cur_pos = str_buf;
@@ -1203,8 +1097,7 @@ unicode_make_normalization_data (UNICODE_CP_MAPPING * decomp_maps,
       memcpy (um->buffer, str_buf, cur_size);
       um->size = cur_size;
 
-      /* If um_cp is a fully decomposed representation for cp,
-       * mark it as such. */
+      /* If um_cp is a fully decomposed representation for cp, mark it as such. */
       if (um_cp->is_full_decomp)
 	{
 	  norm->list_full_decomp[um_cp->cp] = i;
@@ -1234,9 +1127,7 @@ exit:
  *	   All input is assumed in UTF-8 character set
  */
 bool
-unicode_string_need_compose (const char *str_in, const int size_in,
-			     int *size_out,
-			     const UNICODE_NORMALIZATION * norm)
+unicode_string_need_compose (const char *str_in, const int size_in, int *size_out, const UNICODE_NORMALIZATION * norm)
 {
   const char *pc;
   const char *p_end;
@@ -1245,16 +1136,15 @@ unicode_string_need_compose (const char *str_in, const int size_in,
 
   *size_out = 0;
 
-  if (!prm_get_bool_value (PRM_ID_UNICODE_INPUT_NORMALIZATION) || norm == NULL
-      || size_in == 0 || str_in == NULL)
+  if (!prm_get_bool_value (PRM_ID_UNICODE_INPUT_NORMALIZATION) || norm == NULL || size_in == 0 || str_in == NULL)
     {
       return false;
     }
 
   assert (str_in != NULL);
 
-  /* If all chars are in the range 0-127, then the string is ASCII and
-   * no unicode operations are neccessary e.g. composition */
+  /* If all chars are in the range 0-127, then the string is ASCII and no unicode operations are neccessary e.g.
+   * composition */
   /* Reuse match_found as validation flag. */
   p_end = str_in + size_in;
 
@@ -1283,9 +1173,7 @@ unicode_string_need_compose (const char *str_in, const int size_in,
  * norm(in) : the unicode data for normalization
  */
 void
-unicode_compose_string (const char *str_in, const int size_in,
-			char *str_out, int *size_out,
-			bool * is_composed,
+unicode_compose_string (const char *str_in, const int size_in, char *str_out, int *size_out, bool * is_composed,
 			const UNICODE_NORMALIZATION * norm)
 {
   char *composed_str;
@@ -1298,8 +1186,7 @@ unicode_compose_string (const char *str_in, const int size_in,
   const char *str_cursor;
   const char *str_end;
 
-  assert (prm_get_bool_value (PRM_ID_UNICODE_INPUT_NORMALIZATION)
-	  && norm != NULL && size_in > 0 && str_in != NULL);
+  assert (prm_get_bool_value (PRM_ID_UNICODE_INPUT_NORMALIZATION) && norm != NULL && size_in > 0 && str_in != NULL);
 
   composed_index = 0;
 
@@ -1315,16 +1202,14 @@ unicode_compose_string (const char *str_in, const int size_in,
     {
       int first_cp_size;
 
-      cp = intl_utf8_to_cp ((unsigned char *) str_cursor,
-			    remaining_bytes, (unsigned char **) &str_next);
+      cp = intl_utf8_to_cp ((unsigned char *) str_cursor, remaining_bytes, (unsigned char **) &str_next);
 
       first_cp_size = str_next - str_cursor;
       remaining_bytes -= first_cp_size;
 
       match_found = false;
 
-      if (cp >= MAX_UNICODE_CHARS - 2
-	  || !CP_HAS_MAPPINGS (norm->unicode_mapping_index[cp]))
+      if (cp >= MAX_UNICODE_CHARS - 2 || !CP_HAS_MAPPINGS (norm->unicode_mapping_index[cp]))
 	{
 	  goto match_not_found;
 	}
@@ -1344,10 +1229,7 @@ unicode_compose_string (const char *str_in, const int size_in,
 	  if (memcmp (um->buffer, str_cursor, um->size) == 0)
 	    {
 	      /* If a composition matches, apply it. */
-	      composed_index +=
-		intl_cp_to_utf8 (um->cp,
-				 (unsigned char *)
-				 (&(composed_str[composed_index])));
+	      composed_index += intl_cp_to_utf8 (um->cp, (unsigned char *) (&(composed_str[composed_index])));
 	      str_cursor += um->size;
 	      match_found = true;
 	      composition_found = true;
@@ -1355,10 +1237,8 @@ unicode_compose_string (const char *str_in, const int size_in,
 	    }
 	}
 
-      /* If no composition can be matched to start with the decoded
-       * codepoint, just copy the bytes corresponding to the codepoint
-       * from the input string to the output, adjust pointers and loop again.
-       */
+      /* If no composition can be matched to start with the decoded codepoint, just copy the bytes corresponding to the 
+       * codepoint from the input string to the output, adjust pointers and loop again. */
     match_not_found:
       if (!match_found)
 	{
@@ -1393,9 +1273,7 @@ unicode_compose_string (const char *str_in, const int size_in,
  *  Note : Input string is assumed UTF-8 character set.
  */
 bool
-unicode_string_need_decompose (char *str_in, const int size_in,
-			       int *decomp_size,
-			       const UNICODE_NORMALIZATION * norm)
+unicode_string_need_decompose (char *str_in, const int size_in, int *decomp_size, const UNICODE_NORMALIZATION * norm)
 {
   int err_status = NO_ERROR;
   int bytes_read, decomp_index, decomposed_size = 0;
@@ -1405,8 +1283,7 @@ unicode_string_need_decompose (char *str_in, const int size_in,
   char *next;
   bool can_decompose;
 
-  if (!prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION)
-      || norm == NULL)
+  if (!prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION) || norm == NULL)
     {
       goto no_decompose_cnt;
     }
@@ -1436,13 +1313,10 @@ unicode_string_need_decompose (char *str_in, const int size_in,
   src_end = str_in + size_in;
   while (src_cursor < src_end)
     {
-      cp =
-	intl_utf8_to_cp ((unsigned char *) src_cursor, src_end - src_cursor,
-			 (unsigned char **) &next);
+      cp = intl_utf8_to_cp ((unsigned char *) src_cursor, src_end - src_cursor, (unsigned char **) &next);
       bytes_read = next - src_cursor;
 
-      decomp_index =
-	(cp < MAX_UNICODE_CHARS) ? norm->list_full_decomp[cp] : -1;
+      decomp_index = (cp < MAX_UNICODE_CHARS) ? norm->list_full_decomp[cp] : -1;
       if (decomp_index > -1)
 	{
 	  decomposed_size += norm->unicode_mappings[decomp_index].size;
@@ -1456,8 +1330,7 @@ unicode_string_need_decompose (char *str_in, const int size_in,
       src_cursor = next;
     }
 
-  /* If no decomposition is needed, return the same size as the input string
-   * and exit. */
+  /* If no decomposition is needed, return the same size as the input string and exit. */
   if (!can_decompose)
     {
       goto no_decompose_cnt;
@@ -1485,8 +1358,7 @@ no_decompose_cnt:
  * norm(in) : the unicode context in which the normalization is performed
  */
 void
-unicode_decompose_string (char *str_in, const int size_in,
-			  char *str_out, int *size_out,
+unicode_decompose_string (char *str_in, const int size_in, char *str_out, int *size_out,
 			  const UNICODE_NORMALIZATION * norm)
 {
   int bytes_read, decomp_index;
@@ -1496,8 +1368,7 @@ unicode_decompose_string (char *str_in, const int size_in,
   char *next;
   char *dest_cursor;
 
-  assert (prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION)
-	  && norm != NULL);
+  assert (prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION) && norm != NULL);
 
   assert (str_in != NULL);
   assert (str_out != NULL);
@@ -1509,16 +1380,12 @@ unicode_decompose_string (char *str_in, const int size_in,
   src_end = str_in + size_in;
   while (src_cursor < src_end)
     {
-      cp =
-	intl_utf8_to_cp ((unsigned char *) src_cursor, src_end - src_cursor,
-			 (unsigned char **) &next);
+      cp = intl_utf8_to_cp ((unsigned char *) src_cursor, src_end - src_cursor, (unsigned char **) &next);
       bytes_read = next - src_cursor;
-      decomp_index =
-	(cp < MAX_UNICODE_CHARS) ? norm->list_full_decomp[cp] : -1;
+      decomp_index = (cp < MAX_UNICODE_CHARS) ? norm->list_full_decomp[cp] : -1;
       if (decomp_index > -1)
 	{
-	  memcpy (dest_cursor, norm->unicode_mappings[decomp_index].buffer,
-		  norm->unicode_mappings[decomp_index].size);
+	  memcpy (dest_cursor, norm->unicode_mappings[decomp_index].buffer, norm->unicode_mappings[decomp_index].size);
 	  dest_cursor += norm->unicode_mappings[decomp_index].size;
 	}
       else

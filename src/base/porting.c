@@ -226,22 +226,20 @@ gettimeofday (struct timeval *tp, void *tzp)
 
   GetSystemTimeAsFileTime (&now.ft);
 
-  /*
+  /* 
    * Optimization for sec = (long) (x / 10000000);
    * where "x" is number of 100 nanoseconds since 1/1/1970.
    */
-  tp->tv_sec = (long) (((now.nsec100 - EPOCH_BIAS_IN_100NANOSECS) >> 7)
-		       / RAPID_CALC_DIVISOR);
+  tp->tv_sec = (long) (((now.nsec100 - EPOCH_BIAS_IN_100NANOSECS) >> 7) / RAPID_CALC_DIVISOR);
 
-  /*
+  /* 
    * Optimization for usec = (long) (x % 10000000) / 10;
    * Let c = x / b,
    * An alternative for MOD operation (x % b) is: (x - c * b),
    *   which consumes less time, specially, for a 64 bit "x".
    */
-  tp->tv_usec = ((long) (now.nsec100 - EPOCH_BIAS_IN_100NANOSECS -
-			 (((unsigned __int64) (tp->tv_sec *
-					       RAPID_CALC_DIVISOR)) << 7))) /
+  tp->tv_usec =
+    ((long) (now.nsec100 - EPOCH_BIAS_IN_100NANOSECS - (((unsigned __int64) (tp->tv_sec * RAPID_CALC_DIVISOR)) << 7))) /
     10;
 
   return 0;
@@ -365,7 +363,7 @@ pathconf (char *path, int name)
   switch (name)
     {
     case _PC_PATH_MAX:
-      /*
+      /* 
        * NT and OS/2 file systems claim to be able to handle 255 char
        * file names.  But none of the system calls seem to be able to
        * handle a path of more than 255 chars + 1 NULL.  Nor does there
@@ -375,18 +373,12 @@ pathconf (char *path, int name)
       return ((MAX_PATH - 1));
 
     case _PC_NAME_MAX:
-      if (GetVolumeInformation
-	  (NULL, NULL, 0, NULL, (LPDWORD) & namelen, (LPDWORD) & filesysflags,
-	   NULL, 0))
+      if (GetVolumeInformation (NULL, NULL, 0, NULL, (LPDWORD) & namelen, (LPDWORD) & filesysflags, NULL, 0))
 	{
-	  /* WARNING!, for "old" DOS style file systems, namelen will be 12
-	   * right now, totaling the 8 bytes for name with the 3 bytes for
-	   * for extension plus a dot.  This ISN'T what the caller wants,
-	   * It really wants the maximum size of an unqualified pathname.
-	   * I'm not sure what this works out to be under the new file system.
-	   * We probably need to make a similar adjustment but hopefully
-	   * we'll have more breathing room.
-	   */
+	  /* WARNING!, for "old" DOS style file systems, namelen will be 12 right now, totaling the 8 bytes for name
+	   * with the 3 bytes for for extension plus a dot.  This ISN'T what the caller wants, It really wants the
+	   * maximum size of an unqualified pathname. I'm not sure what this works out to be under the new file system.
+	   * We probably need to make a similar adjustment but hopefully we'll have more breathing room. */
 	  if (namelen == 12)
 	    namelen = 8;
 
@@ -463,43 +455,37 @@ setmask (sigset_t * set, sigset_t * oldset)
 
   tmp.mask = set->mask;
 
-  tmp.abrt_state =
-    signal (SIGABRT, (tmp.mask |= SIGABRT_BIT) ? SIG_IGN : SIG_DFL);
+  tmp.abrt_state = signal (SIGABRT, (tmp.mask |= SIGABRT_BIT) ? SIG_IGN : SIG_DFL);
   if (tmp.abrt_state < 0)
     goto whoops;
   if (!set)
     (void) signal (SIGABRT, tmp.abrt_state);
 
-  tmp.fpe_state =
-    signal (SIGFPE, (tmp.mask |= SIGFPE_BIT) ? SIG_IGN : SIG_DFL);
+  tmp.fpe_state = signal (SIGFPE, (tmp.mask |= SIGFPE_BIT) ? SIG_IGN : SIG_DFL);
   if (tmp.fpe_state < 0)
     goto whoops;
   if (!set)
     (void) signal (SIGFPE, tmp.fpe_state);
 
-  tmp.ill_state =
-    signal (SIGILL, (tmp.mask |= SIGILL_BIT) ? SIG_IGN : SIG_DFL);
+  tmp.ill_state = signal (SIGILL, (tmp.mask |= SIGILL_BIT) ? SIG_IGN : SIG_DFL);
   if (tmp.ill_state < 0)
     goto whoops;
   if (!set)
     (void) signal (SIGILL, tmp.ill_state);
 
-  tmp.int_state =
-    signal (SIGINT, (tmp.mask |= SIGINT_BIT) ? SIG_IGN : SIG_DFL);
+  tmp.int_state = signal (SIGINT, (tmp.mask |= SIGINT_BIT) ? SIG_IGN : SIG_DFL);
   if (tmp.int_state < 0)
     goto whoops;
   if (!set)
     (void) signal (SIGINT, tmp.int_state);
 
-  tmp.sev_state =
-    signal (SIGSEGV, (tmp.mask |= SIGSEGV_BIT) ? SIG_IGN : SIG_DFL);
+  tmp.sev_state = signal (SIGSEGV, (tmp.mask |= SIGSEGV_BIT) ? SIG_IGN : SIG_DFL);
   if (tmp.sev_state < 0)
     goto whoops;
   if (!set)
     (void) signal (SIGSEGV, tmp.sev_state);
 
-  tmp.term_state =
-    signal (SIGTERM, (tmp.mask |= SIGTERM_BIT) ? SIG_IGN : SIG_DFL);
+  tmp.term_state = signal (SIGTERM, (tmp.mask |= SIGTERM_BIT) ? SIG_IGN : SIG_DFL);
   if (tmp.term_state < 0)
     goto whoops;
   if (!set)
@@ -519,7 +505,7 @@ setmask (sigset_t * set, sigset_t * oldset)
   return (0);
 
 whoops:
-  /*
+  /* 
    * I'm supposed to restore the signals to the original
    * state if something fails, but I'm blowing it off for now.
    */
@@ -624,7 +610,7 @@ block_signals (sigset_t * set, sigset_t * oldset)
   return (0);
 
 whoops:
-  /*
+  /* 
    * I'm supposed to restore the signals to the original
    * state if something fails, but I'm blowing it off for now.
    */
@@ -729,7 +715,7 @@ unblock_signals (sigset_t * set, sigset_t * oldset)
   return (0);
 
 whoops:
-  /*
+  /* 
    * I'm supposed to restore the signals to the original
    * state if something fails, but I'm blowing it off for now.
    */
@@ -894,8 +880,7 @@ free_space (const char *path, int page_size)
     }
 
   /* if there's no colon use the root of local dir by passing a NULL */
-  if (!GetDiskFreeSpaceEx ((temp) ? disk : NULL,
-			   &freebytes_user, &total_bytes, &freebytes_system))
+  if (!GetDiskFreeSpaceEx ((temp) ? disk : NULL, &freebytes_user, &total_bytes, &freebytes_system))
     {
       return (-1);
     }
@@ -1310,8 +1295,7 @@ os_rename_file (const char *src_path, const char *dest_path)
 {
 #if defined(WINDOWS)
   /* NOTE: Windows 95 and 98 do not support MoveFileEx */
-  if (MoveFileEx (src_path, dest_path,
-		  MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED))
+  if (MoveFileEx (src_path, dest_path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED))
     {
       return 0;
     }
@@ -1319,11 +1303,8 @@ os_rename_file (const char *src_path, const char *dest_path)
     {
       return -1;
     }
-  /* TODO:
-   *   Windows 95/98 does not replace the file if it already exists.
-   *   (void) _unlink (dest_path);
-   *   return rename (src_path, dest_path);
-   */
+  /* TODO: Windows 95/98 does not replace the file if it already exists.  (void) _unlink (dest_path); return rename
+   * (src_path, dest_path); */
 #else
   return rename (src_path, dest_path);
 #endif /* WINDOWS */
@@ -1374,8 +1355,7 @@ os_set_signal_handler (const int sig_no, SIGNAL_HANDLER_FUNCTION sig_handler)
       break;
     default:
 #if defined(SA_RESTART)
-      act.sa_flags |= SA_RESTART;	/* making certain system calls
-					   restartable across signals */
+      act.sa_flags |= SA_RESTART;	/* making certain system calls restartable across signals */
 #endif /* SA_RESTART */
       break;
     }
@@ -1529,8 +1509,7 @@ round (double d)
 int
 pthread_mutex_init (pthread_mutex_t * mutex, pthread_mutexattr_t * attr)
 {
-  if (mutex->csp == &mutex->cs
-      && mutex->watermark == WATERMARK_MUTEX_INITIALIZED)
+  if (mutex->csp == &mutex->cs && mutex->watermark == WATERMARK_MUTEX_INITIALIZED)
     {
       /* already inited */
       assert (0);
@@ -1547,8 +1526,7 @@ pthread_mutex_init (pthread_mutex_t * mutex, pthread_mutexattr_t * attr)
 int
 pthread_mutex_destroy (pthread_mutex_t * mutex)
 {
-  if (mutex->csp != &mutex->cs
-      || mutex->watermark != WATERMARK_MUTEX_INITIALIZED)
+  if (mutex->csp != &mutex->cs || mutex->watermark != WATERMARK_MUTEX_INITIALIZED)
     {
       if (mutex->csp == NULL)	/* inited by PTHREAD_MUTEX_INITIALIZER */
 	{
@@ -1588,25 +1566,21 @@ pthread_mutexattr_destroy (pthread_mutexattr_t * attr)
 }
 
 
-pthread_mutex_t css_Internal_mutex_for_mutex_initialize =
-  PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t css_Internal_mutex_for_mutex_initialize = PTHREAD_MUTEX_INITIALIZER;
 
 void
 port_win_mutex_init_and_lock (pthread_mutex_t * mutex)
 {
-  if (css_Internal_mutex_for_mutex_initialize.csp !=
-      &css_Internal_mutex_for_mutex_initialize.cs
-      || css_Internal_mutex_for_mutex_initialize.watermark !=
-      WATERMARK_MUTEX_INITIALIZED)
+  if (css_Internal_mutex_for_mutex_initialize.csp != &css_Internal_mutex_for_mutex_initialize.cs
+      || css_Internal_mutex_for_mutex_initialize.watermark != WATERMARK_MUTEX_INITIALIZED)
     {
       pthread_mutex_init (&css_Internal_mutex_for_mutex_initialize, NULL);
     }
 
   EnterCriticalSection (css_Internal_mutex_for_mutex_initialize.csp);
-  if (mutex->csp != &mutex->cs
-      || mutex->watermark != WATERMARK_MUTEX_INITIALIZED)
+  if (mutex->csp != &mutex->cs || mutex->watermark != WATERMARK_MUTEX_INITIALIZED)
     {
-      /*
+      /* 
        * below assert means that lock without pthread_mutex_init
        * or PTHREAD_MUTEX_INITIALIZER
        */
@@ -1623,19 +1597,16 @@ port_win_mutex_init_and_trylock (pthread_mutex_t * mutex)
 {
   bool r;
 
-  if (css_Internal_mutex_for_mutex_initialize.csp !=
-      &css_Internal_mutex_for_mutex_initialize.cs
-      || css_Internal_mutex_for_mutex_initialize.watermark !=
-      WATERMARK_MUTEX_INITIALIZED)
+  if (css_Internal_mutex_for_mutex_initialize.csp != &css_Internal_mutex_for_mutex_initialize.cs
+      || css_Internal_mutex_for_mutex_initialize.watermark != WATERMARK_MUTEX_INITIALIZED)
     {
       pthread_mutex_init (&css_Internal_mutex_for_mutex_initialize, NULL);
     }
 
   EnterCriticalSection (css_Internal_mutex_for_mutex_initialize.csp);
-  if (mutex->csp != &mutex->cs
-      || mutex->watermark != WATERMARK_MUTEX_INITIALIZED)
+  if (mutex->csp != &mutex->cs || mutex->watermark != WATERMARK_MUTEX_INITIALIZED)
     {
-      /*
+      /* 
        * below assert means that trylock without pthread_mutex_init
        * or PTHREAD_MUTEX_INITIALIZER
        */
@@ -1656,9 +1627,7 @@ port_win_mutex_init_and_trylock (pthread_mutex_t * mutex)
 
 
 typedef void (WINAPI * InitializeConditionVariable_t) (CONDITION_VARIABLE *);
-typedef bool (WINAPI * SleepConditionVariableCS_t) (CONDITION_VARIABLE *,
-						    CRITICAL_SECTION *,
-						    DWORD dwMilliseconds);
+typedef bool (WINAPI * SleepConditionVariableCS_t) (CONDITION_VARIABLE *, CRITICAL_SECTION *, DWORD dwMilliseconds);
 
 typedef void (WINAPI * WakeAllConditionVariable_t) (CONDITION_VARIABLE *);
 typedef void (WINAPI * WakeConditionVariable_t) (CONDITION_VARIABLE *);
@@ -1677,20 +1646,17 @@ check_CONDITION_VARIABLE (void)
   HMODULE kernel32 = GetModuleHandle ("kernel32");
 
   have_CONDITION_VARIABLE = true;
-  fp_InitializeConditionVariable = (InitializeConditionVariable_t)
-    GetProcAddress (kernel32, "InitializeConditionVariable");
+  fp_InitializeConditionVariable =
+    (InitializeConditionVariable_t) GetProcAddress (kernel32, "InitializeConditionVariable");
   if (fp_InitializeConditionVariable == NULL)
     {
       have_CONDITION_VARIABLE = false;
       return;
     }
 
-  fp_SleepConditionVariableCS = (SleepConditionVariableCS_t)
-    GetProcAddress (kernel32, "SleepConditionVariableCS");
-  fp_WakeAllConditionVariable = (WakeAllConditionVariable_t)
-    GetProcAddress (kernel32, "WakeAllConditionVariable");
-  fp_WakeConditionVariable = (WakeConditionVariable_t)
-    GetProcAddress (kernel32, "WakeConditionVariable");
+  fp_SleepConditionVariableCS = (SleepConditionVariableCS_t) GetProcAddress (kernel32, "SleepConditionVariableCS");
+  fp_WakeAllConditionVariable = (WakeAllConditionVariable_t) GetProcAddress (kernel32, "WakeAllConditionVariable");
+  fp_WakeConditionVariable = (WakeConditionVariable_t) GetProcAddress (kernel32, "WakeConditionVariable");
 }
 
 static int
@@ -1732,9 +1698,7 @@ win_custom_cond_init (pthread_cond_t * cond, const pthread_condattr_t * attr)
   cond->events[COND_BROADCAST] = CreateEvent (NULL, TRUE, FALSE, NULL);
   cond->broadcast_block_event = CreateEvent (NULL, TRUE, TRUE, NULL);
 
-  if (cond->events[COND_SIGNAL] == NULL ||
-      cond->events[COND_BROADCAST] == NULL ||
-      cond->broadcast_block_event == NULL)
+  if (cond->events[COND_SIGNAL] == NULL || cond->events[COND_BROADCAST] == NULL || cond->broadcast_block_event == NULL)
     {
       return ENOMEM;
     }
@@ -1752,9 +1716,8 @@ win_custom_cond_destroy (pthread_cond_t * cond)
 
   DeleteCriticalSection (&cond->lock_waiting);
 
-  if (CloseHandle (cond->events[COND_SIGNAL]) == 0 ||
-      CloseHandle (cond->events[COND_BROADCAST]) == 0 ||
-      CloseHandle (cond->broadcast_block_event) == 0)
+  if (CloseHandle (cond->events[COND_SIGNAL]) == 0 || CloseHandle (cond->events[COND_BROADCAST]) == 0
+      || CloseHandle (cond->broadcast_block_event) == 0)
     {
       return EINVAL;
     }
@@ -1764,8 +1727,7 @@ win_custom_cond_destroy (pthread_cond_t * cond)
 }
 
 static int
-win_custom_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
-			   struct timespec *abstime)
+win_custom_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex, struct timespec *abstime)
 {
   int result;
   int msec;
@@ -1793,7 +1755,7 @@ win_custom_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
       ResetEvent (cond->events[COND_BROADCAST]);
       SetEvent (cond->broadcast_block_event);
 
-      /*
+      /* 
        * Remove additional signal if exists
        * (That's received in above THREAD UNSAFE AREA)
        */
@@ -1896,14 +1858,12 @@ pthread_cond_signal (pthread_cond_t * cond)
 }
 
 int
-pthread_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
-			struct timespec *abstime)
+pthread_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex, struct timespec *abstime)
 {
   if (have_CONDITION_VARIABLE)
     {
       int msec = timespec_to_msec (abstime);
-      if (fp_SleepConditionVariableCS (&cond->native_cond, mutex->csp, msec)
-	  == false)
+      if (fp_SleepConditionVariableCS (&cond->native_cond, mutex->csp, msec) == false)
 	{
 	  return ETIMEDOUT;
 	}
@@ -1923,8 +1883,7 @@ pthread_cond_wait (pthread_cond_t * cond, pthread_mutex_t * mutex)
 
 int
 pthread_create (pthread_t * thread, const pthread_attr_t * attr,
-		THREAD_RET_T (THREAD_CALLING_CONVENTION *
-			      start_routine) (void *), void *arg)
+		THREAD_RET_T (THREAD_CALLING_CONVENTION * start_routine) (void *), void *arg)
 {
   unsigned int tid;
   *thread = (pthread_t) _beginthreadex (NULL, 0, start_routine, arg, 0, &tid);
@@ -1979,8 +1938,7 @@ pthread_getspecific (pthread_key_t key)
  * Windows 32bit OS. See the comment in porting.h for more information.
  */
 UINT64
-win32_compare_exchange64 (UINT64 volatile *val_ptr,
-			  UINT64 swap_val, UINT64 cmp_val)
+win32_compare_exchange64 (UINT64 volatile *val_ptr, UINT64 swap_val, UINT64 cmp_val)
 {
   /* *INDENT-OFF* */
   __asm
@@ -2047,9 +2005,7 @@ strtod_win (const char *str, char **end_ptr)
       return result;
     }
 
-  /* if the string start with "0x", "0X", "+0x", "+0X", "-0x" or "-0X"
-   * then deal with it as hex string
-   */
+  /* if the string start with "0x", "0X", "+0x", "+0X", "-0x" or "-0X" then deal with it as hex string */
   p = str;
   if (*p == '+')
     {
@@ -2172,8 +2128,7 @@ end:
  *
  */
 INT64
-timeval_diff_in_msec (const struct timeval * end_time,
-		      const struct timeval * start_time)
+timeval_diff_in_msec (const struct timeval * end_time, const struct timeval * start_time)
 {
   INT64 msec;
 
@@ -2192,8 +2147,7 @@ timeval_diff_in_msec (const struct timeval * end_time,
  *   msec(in):
  */
 int
-timeval_add_msec (struct timeval *added_time,
-		  const struct timeval *start_time, int msec)
+timeval_add_msec (struct timeval *added_time, const struct timeval *start_time, int msec)
 {
   int usec;
 
@@ -2308,9 +2262,7 @@ trim (char *str)
   if (str == NULL)
     return (str);
 
-  for (s = str;
-       *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r');
-       s++)
+  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'); s++)
     ;
   if (*s == '\0')
     {
@@ -2402,8 +2354,7 @@ str_to_int32 (int *ret_p, char **end_p, const char *str_p, int base)
   errno = 0;
   val = strtol (str_p, end_p, base);
 
-  if ((errno == ERANGE && (val == LONG_MAX || val == LONG_MIN))
-      || (errno != 0 && val == 0))
+  if ((errno == ERANGE && (val == LONG_MAX || val == LONG_MIN)) || (errno != 0 && val == 0))
     {
       return -1;
     }
@@ -2413,9 +2364,7 @@ str_to_int32 (int *ret_p, char **end_p, const char *str_p, int base)
       return -1;
     }
 
-  /* Long is 8 bytes and int is 4 bytes in Linux 64bit, so the
-   * additional check of integer range is necessary.
-   */
+  /* Long is 8 bytes and int is 4 bytes in Linux 64bit, so the additional check of integer range is necessary. */
   if (val < INT_MIN || val > INT_MAX)
     {
       return -1;
@@ -2451,9 +2400,7 @@ str_to_uint32 (unsigned int *ret_p, char **end_p, const char *str_p, int base)
       return -1;
     }
 
-  /* Long is 8 bytes and int is 4 bytes in Linux 64bit, so the
-   * additional check of integer range is necessary.
-   */
+  /* Long is 8 bytes and int is 4 bytes in Linux 64bit, so the additional check of integer range is necessary. */
   if (val > UINT_MAX)
     {
       return -1;
@@ -2480,8 +2427,7 @@ str_to_int64 (INT64 * ret_p, char **end_p, const char *str_p, int base)
   errno = 0;
   val = strtoll (str_p, end_p, base);
 
-  if ((errno == ERANGE && (val == LLONG_MAX || val == LLONG_MIN))
-      || (errno != 0 && val == 0))
+  if ((errno == ERANGE && (val == LLONG_MAX || val == LLONG_MIN)) || (errno != 0 && val == 0))
     {
       return -1;
     }

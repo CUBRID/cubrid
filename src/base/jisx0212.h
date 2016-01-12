@@ -914,8 +914,7 @@ static int
 jisx0212_mbtowc (ucs4_t * pwc, const unsigned char *s, int n)
 {
   unsigned char c1 = s[0];
-  if ((c1 == 0x22) || (c1 >= 0x26 && c1 <= 0x27)
-      || (c1 >= 0x29 && c1 <= 0x2b) || (c1 >= 0x30 && c1 <= 0x6d))
+  if ((c1 == 0x22) || (c1 >= 0x26 && c1 <= 0x27) || (c1 >= 0x29 && c1 <= 0x2b) || (c1 >= 0x30 && c1 <= 0x6d))
     {
       if (n >= 2)
 	{

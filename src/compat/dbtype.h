@@ -471,7 +471,7 @@
    as value type tags in the DB_VALUE structures. */
 typedef enum
 {
-  DB_TYPE_FIRST = 0,		/* first for iteration   */
+  DB_TYPE_FIRST = 0,		/* first for iteration */
   DB_TYPE_UNKNOWN = 0,
   DB_TYPE_NULL = 0,
   DB_TYPE_INTEGER = 1,
@@ -495,12 +495,12 @@ typedef enum
   DB_TYPE_VOBJ = 19,		/* internal use only */
   DB_TYPE_OID = 20,		/* internal use only */
   DB_TYPE_DB_VALUE = 21,	/* special for esql */
-  DB_TYPE_NUMERIC = 22,		/* SQL NUMERIC(p,s) values      */
-  DB_TYPE_BIT = 23,		/* SQL BIT(n) values            */
-  DB_TYPE_VARBIT = 24,		/* SQL BIT(n) VARYING values    */
-  DB_TYPE_CHAR = 25,		/* SQL CHAR(n) values   */
-  DB_TYPE_NCHAR = 26,		/* SQL NATIONAL CHAR(n) values  */
-  DB_TYPE_VARNCHAR = 27,	/* SQL NATIONAL CHAR(n) VARYING values  */
+  DB_TYPE_NUMERIC = 22,		/* SQL NUMERIC(p,s) values */
+  DB_TYPE_BIT = 23,		/* SQL BIT(n) values */
+  DB_TYPE_VARBIT = 24,		/* SQL BIT(n) VARYING values */
+  DB_TYPE_CHAR = 25,		/* SQL CHAR(n) values */
+  DB_TYPE_NCHAR = 26,		/* SQL NATIONAL CHAR(n) values */
+  DB_TYPE_VARNCHAR = 27,	/* SQL NATIONAL CHAR(n) VARYING values */
   DB_TYPE_RESULTSET = 28,	/* internal use only */
   DB_TYPE_MIDXKEY = 29,		/* internal use only */
   DB_TYPE_TABLE = 30,		/* internal use only */
@@ -518,9 +518,9 @@ typedef enum
   DB_TYPE_TIMELTZ = 41,		/* internal use only - RESERVED */
   /* end of disabled types */
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
-  DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT           */
-  DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values   */
-  DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP  */
+  DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */
+  DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
+  DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP */
 
   DB_TYPE_LAST = DB_TYPE_DATETIMELTZ
 } DB_TYPE;
@@ -890,7 +890,7 @@ typedef struct db_workspace_stats DB_WORKSPACE_STATS;
 struct db_workspace_stats
 {
   int obj_desc_used;		/* number of object descriptors used */
-  int obj_desc_total;		/* total # of object descriptors allocated  */
+  int obj_desc_total;		/* total # of object descriptors allocated */
 };
 
 /* This defines the C language type identifier constants.
@@ -925,7 +925,7 @@ typedef enum
   DB_TYPE_C_IDENTIFIER,
   DB_TYPE_C_DATETIME,
   DB_TYPE_C_BIGINT,
-  DB_TYPE_C_LAST,		/* last for iteration   */
+  DB_TYPE_C_LAST,		/* last for iteration */
   DB_TYPE_C_UTIME = DB_TYPE_C_TIMESTAMP
 } DB_TYPE_C;
 
@@ -991,56 +991,39 @@ extern int db_value_clear (DB_VALUE * value);
 extern int db_value_free (DB_VALUE * value);
 extern int db_value_clear_array (DB_VALUE_ARRAY * value_array);
 extern void db_value_print (const DB_VALUE * value);
-extern int db_value_coerce (const DB_VALUE * src,
-			    DB_VALUE * dest,
-			    const DB_DOMAIN * desired_domain);
+extern int db_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const DB_DOMAIN * desired_domain);
 
 extern int db_value_equal (const DB_VALUE * value1, const DB_VALUE * value2);
-extern int db_value_compare (const DB_VALUE * value1,
-			     const DB_VALUE * value2);
-extern int db_value_domain_init (DB_VALUE * value, DB_TYPE type,
-				 const int precision, const int scale);
-extern int db_value_domain_min (DB_VALUE * value, DB_TYPE type,
-				const int precision, const int scale,
-				const int codeset, const int collation_id,
-				const DB_ENUMERATION * enumeration);
-extern int db_value_domain_max (DB_VALUE * value, DB_TYPE type,
-				const int precision, const int scale,
-				const int codeset, const int collation_id,
-				const DB_ENUMERATION * enumeration);
-extern int db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
-				    const int precision, const int scale,
-				    const int codeset,
-				    const int collation_id,
-				    DB_ENUMERATION * enumeration);
-extern int db_value_domain_zero (DB_VALUE * value, const DB_TYPE type,
-				 const int precision, const int scale);
+extern int db_value_compare (const DB_VALUE * value1, const DB_VALUE * value2);
+extern int db_value_domain_init (DB_VALUE * value, DB_TYPE type, const int precision, const int scale);
+extern int db_value_domain_min (DB_VALUE * value, DB_TYPE type, const int precision, const int scale, const int codeset,
+				const int collation_id, const DB_ENUMERATION * enumeration);
+extern int db_value_domain_max (DB_VALUE * value, DB_TYPE type, const int precision, const int scale, const int codeset,
+				const int collation_id, const DB_ENUMERATION * enumeration);
+extern int db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precision, const int scale,
+				    const int codeset, const int collation_id, DB_ENUMERATION * enumeration);
+extern int db_value_domain_zero (DB_VALUE * value, const DB_TYPE type, const int precision, const int scale);
 extern int db_string_truncate (DB_VALUE * value, const int max_precision);
 extern DB_TYPE db_value_domain_type (const DB_VALUE * value);
 extern DB_TYPE db_value_type (const DB_VALUE * value);
 extern int db_value_precision (const DB_VALUE * value);
 extern int db_value_scale (const DB_VALUE * value);
 extern int db_value_put_null (DB_VALUE * value);
-extern int db_value_put (DB_VALUE * value, const DB_TYPE_C c_type,
-			 void *input, const int input_length);
+extern int db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int input_length);
 extern bool db_value_type_is_collection (const DB_VALUE * value);
 extern bool db_value_type_is_numeric (const DB_VALUE * value);
 extern bool db_value_type_is_bit (const DB_VALUE * value);
 extern bool db_value_type_is_char (const DB_VALUE * value);
 extern bool db_value_type_is_internal (const DB_VALUE * value);
 extern bool db_value_is_null (const DB_VALUE * value);
-extern int db_value_get (DB_VALUE * value,
-			 const DB_TYPE_C type,
-			 void *buf,
-			 const int buflen, int *transferlen, int *outputlen);
+extern int db_value_get (DB_VALUE * value, const DB_TYPE_C type, void *buf, const int buflen, int *transferlen,
+			 int *outputlen);
 extern int db_value_size (const DB_VALUE * value, DB_TYPE_C type, int *size);
 extern int db_value_char_size (const DB_VALUE * value, int *size);
 extern DB_CURRENCY db_value_get_monetary_currency (const DB_VALUE * value);
 extern double db_value_get_monetary_amount_as_double (const DB_VALUE * value);
-extern int db_value_put_monetary_currency (DB_VALUE * value,
-					   const DB_CURRENCY type);
-extern int db_value_put_monetary_amount_as_double (DB_VALUE * value,
-						   const double amount);
+extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);
+extern int db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount);
 
 /*
  * DB_MAKE_ value constructors.
@@ -1060,70 +1043,47 @@ extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_collection (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey);
 extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
-extern int db_make_time (DB_VALUE * value,
-			 const int hour, const int minute, const int second);
+extern int db_make_time (DB_VALUE * value, const int hour, const int minute, const int second);
 extern int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value);
 extern int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value);
-extern int db_value_put_encoded_time (DB_VALUE * value,
-				      const DB_TIME * time_value);
-extern int db_make_date (DB_VALUE * value,
-			 const int month, const int day, const int year);
-extern int db_value_put_encoded_date (DB_VALUE * value,
-				      const DB_DATE * date_value);
+extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time_value);
+extern int db_make_date (DB_VALUE * value, const int month, const int day, const int year);
+extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date_value);
 extern int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval);
-extern int db_make_timestampltz (DB_VALUE * value,
-				 const DB_C_TIMESTAMP ts_val);
-extern int db_make_timestamptz (DB_VALUE * value,
-				const DB_C_TIMESTAMPTZ * ts_tz_val);
+extern int db_make_timestampltz (DB_VALUE * value, const DB_C_TIMESTAMP ts_val);
+extern int db_make_timestamptz (DB_VALUE * value, const DB_C_TIMESTAMPTZ * ts_tz_val);
 extern int db_make_datetime (DB_VALUE * value, const DB_DATETIME * datetime);
-extern int db_make_datetimeltz (DB_VALUE * value,
-				const DB_DATETIME * datetime);
-extern int db_make_datetimetz (DB_VALUE * value,
-			       const DB_DATETIMETZ * datetimetz);
-extern int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type,
-			     const double amount);
+extern int db_make_datetimeltz (DB_VALUE * value, const DB_DATETIME * datetime);
+extern int db_make_datetimetz (DB_VALUE * value, const DB_DATETIMETZ * datetimetz);
+extern int db_make_monetary (DB_VALUE * value, const DB_CURRENCY type, const double amount);
 extern int db_make_pointer (DB_VALUE * value, DB_C_POINTER ptr);
 extern int db_make_error (DB_VALUE * value, const int errcode);
-extern int db_make_method_error (DB_VALUE * value,
-				 const int errcode, const char *errmsg);
+extern int db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg);
 extern int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
 extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
 extern int db_make_string (DB_VALUE * value, const char *str);
 extern int db_make_string_copy (DB_VALUE * value, const char *str);
-extern int db_make_numeric (DB_VALUE * value,
-			    const DB_C_NUMERIC num,
-			    const int precision, const int scale);
+extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale);
 extern int db_value_put_numeric (DB_VALUE * value, DB_C_NUMERIC num);
-extern int db_make_bit (DB_VALUE * value, const int bit_length,
-			const DB_C_BIT bit_str, const int bit_str_bit_size);
+extern int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size);
 extern int db_value_put_bit (DB_VALUE * value, DB_C_BIT str, int size);
-extern int db_make_varbit (DB_VALUE * value, const int max_bit_length,
-			   const DB_C_BIT bit_str,
+extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
 			   const int bit_str_bit_size);
 extern int db_value_put_varbit (DB_VALUE * value, DB_C_BIT str, int size);
-extern int db_make_char (DB_VALUE * value, const int char_length,
-			 const DB_C_CHAR str, const int char_str_byte_size,
+extern int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
 			 const int codeset, const int collation_id);
 extern int db_value_put_char (DB_VALUE * value, DB_C_CHAR str, int size);
-extern int db_make_varchar (DB_VALUE * value, const int max_char_length,
-			    const DB_C_CHAR str, const int char_str_byte_size,
-			    const int codeset, const int collation_id);
+extern int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
+			    const int char_str_byte_size, const int codeset, const int collation_id);
 extern int db_value_put_varchar (DB_VALUE * value, DB_C_CHAR str, int size);
-extern int db_make_nchar (DB_VALUE * value, const int nchar_length,
-			  const DB_C_NCHAR str,
-			  const int nchar_str_byte_size, const int codeset,
-			  const int collation_id);
+extern int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str, const int nchar_str_byte_size,
+			  const int codeset, const int collation_id);
 extern int db_value_put_nchar (DB_VALUE * value, DB_C_NCHAR str, int size);
-extern int db_make_varnchar (DB_VALUE * value,
-			     const int max_nchar_length,
-			     const DB_C_NCHAR str,
-			     const int nchar_str_byte_size, const int codeset,
-			     const int collation_id);
+extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
+			     const int nchar_str_byte_size, const int codeset, const int collation_id);
 extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 
-extern int db_make_enumeration (DB_VALUE * value, unsigned short index,
-				DB_C_CHAR str, int size,
-				unsigned char codeset,
+extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size, unsigned char codeset,
 				const int collation_id);
 
 extern DB_CURRENCY db_get_currency_default (void);
@@ -1168,11 +1128,8 @@ extern DB_C_CHAR db_get_method_error_msg (void);
 
 extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
 
-extern int db_string_put_cs_and_collation (DB_VALUE * value,
-					   const int codeset,
-					   const int collation_id);
-extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset,
-					 const int collation_id);
+extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
+extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 extern int db_get_string_codeset (const DB_VALUE * value);
 extern int db_get_string_collation (const DB_VALUE * value);
 extern int valcnv_convert_value_to_string (DB_VALUE * value);

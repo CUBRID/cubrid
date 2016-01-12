@@ -86,27 +86,20 @@ static int send_for_all_stats (CSS_CONN_ENTRY * conn);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int send_for_server_downtime (CSS_CONN_ENTRY * conn);
 #endif
-static int return_integer_data (CSS_CONN_ENTRY * conn,
-				unsigned short request_id);
+static int return_integer_data (CSS_CONN_ENTRY * conn, unsigned short request_id);
 static int send_for_request_count (CSS_CONN_ENTRY * conn);
-static void process_status_query (CSS_CONN_ENTRY * conn, int server_type,
-				  char **server_info);
+static void process_status_query (CSS_CONN_ENTRY * conn, int server_type, char **server_info);
 static void process_master_kill (CSS_CONN_ENTRY * conn);
 static void process_master_stop_shutdown (CSS_CONN_ENTRY * conn);
 static void process_master_shutdown (CSS_CONN_ENTRY * conn, int minutes);
-static void process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name,
-				int minutes, int pid);
+static void process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name, int minutes, int pid);
 static void process_immediate_kill (CSS_CONN_ENTRY * conn, char *slave_name);
-static int process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server,
-				    int server_type);
+static int process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_type);
 static void process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name);
-static void process_ha_node_info_query (CSS_CONN_ENTRY * conn,
-					int verbose_yn);
-static void process_ha_process_info_query (CSS_CONN_ENTRY * conn,
-					   int verbose_yn);
+static void process_ha_node_info_query (CSS_CONN_ENTRY * conn, int verbose_yn);
+static void process_ha_process_info_query (CSS_CONN_ENTRY * conn, int verbose_yn);
 static void process_ha_ping_host_info_query (CSS_CONN_ENTRY * conn);
-static int process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn,
-					 char *pid_string);
+static int process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn, char *pid_string);
 static int process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, char *args);
 
 static int process_reconfig_heartbeat (CSS_CONN_ENTRY * conn);
@@ -176,13 +169,11 @@ send_request_no_args (CSS_CONN_ENTRY * conn, int command)
  *   size(in): size of argument
  */
 static unsigned short
-send_request_one_arg (CSS_CONN_ENTRY * conn, int command, char *buffer,
-		      int size)
+send_request_one_arg (CSS_CONN_ENTRY * conn, int command, char *buffer, int size)
 {
   unsigned short request_id;
 
-  if (css_send_request (conn, command, &request_id, buffer, size)
-      == NO_ERRORS)
+  if (css_send_request (conn, command, &request_id, buffer, size) == NO_ERRORS)
     return (request_id);
   else
     return (0);
@@ -199,13 +190,11 @@ send_request_one_arg (CSS_CONN_ENTRY * conn, int command, char *buffer,
  *   size2(in): size of first argument
  */
 static unsigned short
-send_request_two_args (CSS_CONN_ENTRY * conn, int command,
-		       char *buffer1, int size1, char *buffer2, int size2)
+send_request_two_args (CSS_CONN_ENTRY * conn, int command, char *buffer1, int size1, char *buffer2, int size2)
 {
   unsigned short request_id;
 
-  if (css_send_request (conn, command, &request_id, buffer1, size1)
-      == NO_ERRORS)
+  if (css_send_request (conn, command, &request_id, buffer1, size1) == NO_ERRORS)
     if (css_send_data (conn, request_id, buffer2, size2) == NO_ERRORS)
       return (request_id);
   return (0);
@@ -231,8 +220,7 @@ send_for_start_time (CSS_CONN_ENTRY * conn)
  *   buffer_size(out): size of data received
  */
 static void
-return_string (CSS_CONN_ENTRY * conn, unsigned short request_id,
-	       char **buffer, int *buffer_size)
+return_string (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer, int *buffer_size)
 {
   css_receive_data (conn, request_id, buffer, buffer_size, -1);
 }
@@ -307,8 +295,7 @@ return_integer_data (CSS_CONN_ENTRY * conn, unsigned short request_id)
   int size;
   int *buffer = NULL;
 
-  if (css_receive_data (conn, request_id, (char **) &buffer, &size, -1)
-      == NO_ERRORS)
+  if (css_receive_data (conn, request_id, (char **) &buffer, &size, -1) == NO_ERRORS)
     {
       if (size == sizeof (int))
 	{
@@ -344,8 +331,7 @@ send_for_request_count (CSS_CONN_ENTRY * conn)
  *                     process status is displayed to stdout
  */
 static void
-process_status_query (CSS_CONN_ENTRY * conn, int server_type,
-		      char **server_info)
+process_status_query (CSS_CONN_ENTRY * conn, int server_type, char **server_info)
 {
   int buffer_size;
   int server_count, requests_serviced;
@@ -386,9 +372,7 @@ process_status_query (CSS_CONN_ENTRY * conn, int server_type,
       return_string (conn, rid4, &buffer2, &buffer_size);
       if (server_info == NULL)
 	{
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-				  MSGCAT_UTIL_SET_COMMDB,
-				  COMMDB_STRING4), buffer2);
+	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING4), buffer2);
 	}
       else
 	{
@@ -438,8 +422,7 @@ process_master_shutdown (CSS_CONN_ENTRY * conn, int minutes)
   int down;
 
   down = htonl (minutes);
-  while (send_request_one_arg (conn, START_SHUTDOWN,
-			       (char *) &down, sizeof (int)) != 0)
+  while (send_request_one_arg (conn, START_SHUTDOWN, (char *) &down, sizeof (int)) != 0)
     {
       ;				/* wait to master shutdown */
     }
@@ -454,8 +437,7 @@ process_master_shutdown (CSS_CONN_ENTRY * conn, int minutes)
  *   pid(in): process id
  */
 static void
-process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name, int minutes,
-		    int pid)
+process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name, int minutes, int pid)
 {
   int net_minutes;
   char *reply_buffer = NULL;
@@ -463,9 +445,9 @@ process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name, int minutes,
   unsigned short rid;
 
   net_minutes = htonl (minutes);
-  rid = send_request_two_args (conn, KILL_SLAVE_SERVER,
-			       slave_name, strlen (slave_name) + 1,
-			       (char *) &net_minutes, sizeof (int));
+  rid =
+    send_request_two_args (conn, KILL_SLAVE_SERVER, slave_name, strlen (slave_name) + 1, (char *) &net_minutes,
+			   sizeof (int));
   return_string (conn, rid, &reply_buffer, &size);
   if (size)
     {
@@ -495,8 +477,7 @@ process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name)
   int size = 0;
   unsigned short rid;
 
-  rid = send_request_one_arg (conn, GET_SERVER_HA_MODE,
-			      server_name, strlen (server_name) + 1);
+  rid = send_request_one_arg (conn, GET_SERVER_HA_MODE, server_name, strlen (server_name) + 1);
   return_string (conn, rid, &reply_buffer, &size);
 
   if (size)
@@ -519,8 +500,7 @@ process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name)
  *   server_type(in): COMM_SERVER_TYPE
  */
 static int
-process_server_info_pid (CSS_CONN_ENTRY * conn,
-			 const char *server, int server_type)
+process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_type)
 {
   char search_pattern[256];
   char *p = NULL;
@@ -574,9 +554,7 @@ process_ha_node_info_query (CSS_CONN_ENTRY * conn, int verbose_yn)
 #endif /* !WINDOWS */
 
 #if !defined(WINDOWS)
-  rid = send_request_no_args (conn,
-			      (verbose_yn) ?
-			      GET_HA_NODE_LIST_VERBOSE : GET_HA_NODE_LIST);
+  rid = send_request_no_args (conn, (verbose_yn) ? GET_HA_NODE_LIST_VERBOSE : GET_HA_NODE_LIST);
   return_string (conn, rid, &reply_buffer, &size);
 #endif
 
@@ -607,10 +585,7 @@ process_ha_process_info_query (CSS_CONN_ENTRY * conn, int verbose_yn)
 #endif /* !WINDOWS */
 
 #if !defined(WINDOWS)
-  rid = send_request_no_args (conn,
-			      (verbose_yn) ?
-			      GET_HA_PROCESS_LIST_VERBOSE :
-			      GET_HA_PROCESS_LIST);
+  rid = send_request_no_args (conn, (verbose_yn) ? GET_HA_PROCESS_LIST_VERBOSE : GET_HA_PROCESS_LIST);
   return_string (conn, rid, &reply_buffer, &size);
 #endif
 
@@ -733,8 +708,7 @@ process_is_registered_proc (CSS_CONN_ENTRY * conn, char *args)
 
   strncpy (buffer, args, sizeof (buffer) - 1);
   len = strlen (buffer) + 1;
-  rid =
-    send_request_one_arg (conn, IS_REGISTERED_HA_PROC, (char *) buffer, len);
+  rid = send_request_one_arg (conn, IS_REGISTERED_HA_PROC, (char *) buffer, len);
   return_string (conn, rid, &reply_buffer, &size);
 
   if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
@@ -774,9 +748,7 @@ process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn, char *pid_string)
 
   pid = htonl (atoi (pid_string));
 
-  rid =
-    send_request_one_arg (conn, DEREGISTER_HA_PROCESS_BY_PID, (char *) &pid,
-			  sizeof (pid));
+  rid = send_request_one_arg (conn, DEREGISTER_HA_PROCESS_BY_PID, (char *) &pid, sizeof (pid));
   return_string (conn, rid, &reply_buffer, &size);
 
   if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
@@ -816,9 +788,7 @@ process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, char *args)
 
   strncpy (buffer, args, sizeof (buffer) - 1);
   len = strlen (buffer) + 1;
-  rid =
-    send_request_one_arg (conn, DEREGISTER_HA_PROCESS_BY_ARGS,
-			  (char *) buffer, len);
+  rid = send_request_one_arg (conn, DEREGISTER_HA_PROCESS_BY_ARGS, (char *) buffer, len);
   return_string (conn, rid, &reply_buffer, &size);
 
   if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
@@ -1001,10 +971,7 @@ process_deact_stop_all (CSS_CONN_ENTRY * conn)
 #endif /* !WINDOWS */
 
 #if !defined(WINDOWS)
-  rid =
-    send_request_one_arg (conn, DEACT_STOP_ALL,
-			  (char *) &commdb_Arg_deact_immediately,
-			  sizeof (bool));
+  rid = send_request_one_arg (conn, DEACT_STOP_ALL, (char *) &commdb_Arg_deact_immediately, sizeof (bool));
 
   return_string (conn, rid, &reply_buffer, &size);
 #endif /* !WINDOWS */
@@ -1082,8 +1049,7 @@ process_ha_start_util_process (CSS_CONN_ENTRY * conn, char *args)
 
   strncpy (buffer, args, sizeof (buffer) - 1);
   len = strlen (buffer) + 1;
-  rid =
-    send_request_one_arg (conn, START_HA_UTIL_PROCESS, (char *) buffer, len);
+  rid = send_request_one_arg (conn, START_HA_UTIL_PROCESS, (char *) buffer, len);
   return_string (conn, rid, &reply_buffer, &size);
 
   if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
@@ -1116,10 +1082,8 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 
   if ((commdb_Arg_server_name) && (!commdb_Arg_halt_shutdown))
     {
-      pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name,
-				     COMM_SERVER);
-      process_slave_kill (conn, (char *) commdb_Arg_server_name,
-			  commdb_Arg_shutdown_time, pid);
+      pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name, COMM_SERVER);
+      process_slave_kill (conn, (char *) commdb_Arg_server_name, commdb_Arg_shutdown_time, pid);
     }
 
   if (commdb_Arg_kill_all)
@@ -1179,16 +1143,12 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 
   if (commdb_Arg_ha_deregister_by_pid)
     {
-      return process_ha_deregister_by_pid (conn,
-					   (char *)
-					   commdb_Arg_ha_deregister_pid);
+      return process_ha_deregister_by_pid (conn, (char *) commdb_Arg_ha_deregister_pid);
     }
 
   if (commdb_Arg_ha_deregister_by_args)
     {
-      return process_ha_deregister_by_args (conn,
-					    (char *)
-					    commdb_Arg_ha_deregister_args);
+      return process_ha_deregister_by_args (conn, (char *) commdb_Arg_ha_deregister_args);
     }
 
   if (commdb_Arg_reconfig_heartbeat)
@@ -1223,9 +1183,7 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 
   if (commdb_Arg_ha_start_util_process)
     {
-      return process_ha_start_util_process (conn,
-					    (char *)
-					    commdb_Arg_ha_util_process_args);
+      return process_ha_start_util_process (conn, (char *) commdb_Arg_ha_util_process_args);
     }
 
   return NO_ERROR;
@@ -1306,8 +1264,7 @@ main (int argc, char **argv)
       char optstring[64];
 
       utility_make_getopt_optstring (commdb_options, optstring);
-      option_key = getopt_long (argc, argv, optstring,
-				commdb_options, &option_index);
+      option_key = getopt_long (argc, argv, optstring, commdb_options, &option_index);
       if (option_key == -1)
 	{
 	  break;
@@ -1430,12 +1387,9 @@ main (int argc, char **argv)
       hostname = commdb_Arg_host_name;
     }
 
-  if (master_util_config_startup ((argc > 1) ? argv[1] : NULL,
-				  &port_id) == false)
+  if (master_util_config_startup ((argc > 1) ? argv[1] : NULL, &port_id) == false)
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
-					     MSGCAT_UTIL_SET_COMMDB,
-					     COMMDB_STRING10));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING10));
       status = EXIT_FAILURE;
       goto error;
     }
@@ -1443,9 +1397,7 @@ main (int argc, char **argv)
   conn = css_connect_to_master_for_info (hostname, port_id, &rid);
   if (conn == NULL)
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
-					     MSGCAT_UTIL_SET_COMMDB,
-					     COMMDB_STRING11), hostname);
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING11), hostname);
       status = EXIT_FAILURE;
       goto error;
     }
@@ -1461,8 +1413,7 @@ error:
   goto end;
 
 usage:
-  printf (msgcat_message
-	  (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING7));
+  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING7));
   msgcat_final ();
   status = EXIT_FAILURE;
 

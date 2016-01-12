@@ -196,22 +196,15 @@ PUBLIC int element_from_setstring (char **current, char *buf);
 PUBLIC void add_element_to_setstring (char *setstring, char *element);
 
 PUBLIC char *odbc_trim (char *str);
-PUBLIC RETCODE str_value_assign (const char *in_value,
-				 char *out_buf,
-				 SQLLEN out_buf_len, SQLLEN * val_len_ptr);
-PUBLIC RETCODE bin_value_assign (const void *in_value,
-				 SQLLEN in_val_len,
-				 char *out_buf,
-				 SQLLEN out_buf_len, SQLLEN * val_len_ptr);
+PUBLIC RETCODE str_value_assign (const char *in_value, char *out_buf, SQLLEN out_buf_len, SQLLEN * val_len_ptr);
+PUBLIC RETCODE bin_value_assign (const void *in_value, SQLLEN in_val_len, char *out_buf, SQLLEN out_buf_len,
+				 SQLLEN * val_len_ptr);
 
 PUBLIC short is_oidstr (char *str);
 PUBLIC short is_oidstr_array (char **array, int size);
-PUBLIC int replace_oid (char *sql_text, char **org_param_pos_pt,
-			char **oid_param_pos_pt, char **oid_param_val_pt);
+PUBLIC int replace_oid (char *sql_text, char **org_param_pos_pt, char **oid_param_pos_pt, char **oid_param_val_pt);
 
-extern ERR_CODE ListTailAdd (ST_LIST * head, void *key, void *val,
-			     ERR_CODE (*assignFunc) (ST_LIST *, void *,
-						     void *));
+extern ERR_CODE ListTailAdd (ST_LIST * head, void *key, void *val, ERR_CODE (*assignFunc) (ST_LIST *, void *, void *));
 
 extern void ListDelete (ST_LIST * head, void (*nodeDelete) (ST_LIST *));
 extern ERR_CODE ListCreate (ST_LIST ** head);
@@ -229,7 +222,6 @@ extern ERR_CODE NodeAssign (ST_LIST * node, void *key, void *value);
 /*-------------  connection string util	------------------------*/
 PUBLIC const char *next_element (const char *element_list);
 PUBLIC const char *element_value (const char *element);
-PUBLIC const char *element_value_by_key (const char *element_list,
-					 const char *key);
+PUBLIC const char *element_value_by_key (const char *element_list, const char *key);
 
 #endif /* ! __CUBRID_ODBC_UTIL_HEADER */

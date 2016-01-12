@@ -154,9 +154,7 @@ sql_info_write (char *src_sql, char *q_name, FILE * fp)
 
   tmp_sql_info.sql = sql;
 
-  search_p =
-    (T_SQL_INFO *) bsearch (&tmp_sql_info, sql_list, num_sql_list,
-			    sizeof (T_SQL_INFO), comp_func);
+  search_p = (T_SQL_INFO *) bsearch (&tmp_sql_info, sql_list, num_sql_list, sizeof (T_SQL_INFO), comp_func);
 
   FREE_MEM (sql);
 
@@ -188,9 +186,7 @@ sql_info_add (const char *sql, char *sql_tag)
 
   if (si_idx == -1)
     {
-      sql_list =
-	(T_SQL_INFO *) REALLOC (sql_list,
-				sizeof (T_SQL_INFO) * (num_sql_list + 1));
+      sql_list = (T_SQL_INFO *) REALLOC (sql_list, sizeof (T_SQL_INFO) * (num_sql_list + 1));
       if (sql_list == NULL)
 	{
 	  fprintf (stderr, "%s\n", strerror (errno));
@@ -208,10 +204,8 @@ sql_info_add (const char *sql, char *sql_tag)
       num_sql_list++;
     }
 
-  sql_list[si_idx].filename = (char **) REALLOC (sql_list[si_idx].filename,
-						 sizeof (char *) *
-						 (sql_list[si_idx].num_file +
-						  1));
+  sql_list[si_idx].filename =
+    (char **) REALLOC (sql_list[si_idx].filename, sizeof (char *) * (sql_list[si_idx].num_file + 1));
   if (sql_list[si_idx].filename == NULL)
     {
       fprintf (stderr, "%s\n", strerror (errno));

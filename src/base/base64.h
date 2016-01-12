@@ -1,4 +1,4 @@
- /*
+ /* 
   * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
   *
   *   This program is free software; you can redistribute it and/or modify
@@ -34,11 +34,7 @@ enum
 };
 
 
-extern int
-base64_encode (const unsigned char *src, int src_len,
-	       unsigned char **dest, int *dest_len);
-extern int
-base64_decode (const unsigned char *src, int src_len,
-	       unsigned char **dest, int *dest_len);
+extern int base64_encode (const unsigned char *src, int src_len, unsigned char **dest, int *dest_len);
+extern int base64_decode (const unsigned char *src, int src_len, unsigned char **dest, int *dest_len);
 
 #endif

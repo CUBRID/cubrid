@@ -49,9 +49,7 @@ ut_trim (char *str)
   if (str == NULL)
     return (str);
 
-  for (s = str;
-       *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r');
-       s++)
+  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'); s++)
     ;
   if (*s == '\0')
     {
@@ -110,9 +108,8 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     }
 
   type = atoi (buf + 2);
-  if ((type != CCI_U_TYPE_CHAR) && (type != CCI_U_TYPE_STRING)
-      && (type != CCI_U_TYPE_NCHAR) && (type != CCI_U_TYPE_VARNCHAR)
-      && (type != CCI_U_TYPE_BIT) && (type != CCI_U_TYPE_VARBIT)
+  if ((type != CCI_U_TYPE_CHAR) && (type != CCI_U_TYPE_STRING) && (type != CCI_U_TYPE_NCHAR)
+      && (type != CCI_U_TYPE_VARNCHAR) && (type != CCI_U_TYPE_BIT) && (type != CCI_U_TYPE_VARBIT)
       && (type != CCI_U_TYPE_ENUM))
     {
       return false;
@@ -183,9 +180,8 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     }
   p += 2;
 
-  if ((strncmp (p, "CHAR", 4) != 0) && (strncmp (p, "VARCHAR", 7) != 0)
-      && (strncmp (p, "NCHAR", 5) != 0) && (strncmp (p, "VARNCHAR", 8) != 0)
-      && (strncmp (p, "BIT", 3) != 0) && (strncmp (p, "VARBIT", 6) != 0))
+  if ((strncmp (p, "CHAR", 4) != 0) && (strncmp (p, "VARCHAR", 7) != 0) && (strncmp (p, "NCHAR", 5) != 0)
+      && (strncmp (p, "VARNCHAR", 8) != 0) && (strncmp (p, "BIT", 3) != 0) && (strncmp (p, "VARBIT", 6) != 0))
     {
       return false;
     }
@@ -278,8 +274,7 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
       if (is_first)
 	{
 	  bind_with_size = is_bind_with_size (buf, &tot_val_size, &info_size);
-	  if (tot_val_size < 0 || info_size < 0
-	      || (tot_val_size + info_size + 1) < 0)
+	  if (tot_val_size < 0 || info_size < 0 || (tot_val_size + info_size + 1) < 0)
 	    {
 	      fprintf (stderr, "log error\n");
 	      return -1;
@@ -299,11 +294,8 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
 	      return -1;
 	    }
 	  fseek (fp, position, SEEK_SET);
-	  rlen =
-	    fread ((void *) value, sizeof (char), info_size + tot_val_size,
-		   fp);
-	  if (t_bind_string_add
-	      (t_str, value, info_size + tot_val_size, tot_val_size) < 0)
+	  rlen = fread ((void *) value, sizeof (char), info_size + tot_val_size, fp);
+	  if (t_bind_string_add (t_str, value, info_size + tot_val_size, tot_val_size) < 0)
 	    {
 	      fprintf (stderr, "memory allocation error.\n");
 	      FREE_MEM (value);
@@ -340,13 +332,11 @@ is_cas_log (char *str)
       return 0;
     }
 
-  if (str[2] == '-' && str[5] == '-' && str[8] == ' ' && str[11] == ':' &&
-      str[14] == ':' && str[21] == ' ')
+  if (str[2] == '-' && str[5] == '-' && str[8] == ' ' && str[11] == ':' && str[14] == ':' && str[21] == ' ')
     {
       return CAS_LOG_BEGIN_WITH_YEAR;
     }
-  else if (str[2] == '/' && str[5] == ' ' && str[8] == ':' &&
-	   str[11] == ':' && str[18] == ' ')
+  else if (str[2] == '/' && str[5] == ' ' && str[8] == ':' && str[11] == ':' && str[18] == ' ')
     {
       return CAS_LOG_BEGIN_WITH_MONTH;
     }
@@ -420,10 +410,8 @@ str_to_log_date_format (char *str, char *date_format_str)
 	}
     }
 
-  sprintf (date_format_str,
-	   "%02d-%02d-%02d %02d:%02d:%02d.%03d",
-	   date_val[0], date_val[1], date_val[2], date_val[3], date_val[4],
-	   date_val[5], date_val[6]);
+  sprintf (date_format_str, "%02d-%02d-%02d %02d:%02d:%02d.%03d", date_val[0], date_val[1], date_val[2], date_val[3],
+	   date_val[4], date_val[5], date_val[6]);
   return 0;
 
 error:
@@ -458,8 +446,7 @@ ut_get_execute_type (char *msg_p, int *prepare_flag, int *execute_flag)
 }
 
 int
-ut_check_log_valid_time (const char *log_date, const char *from_date,
-			 const char *to_date)
+ut_check_log_valid_time (const char *log_date, const char *from_date, const char *to_date)
 {
   if (from_date[0])
     {

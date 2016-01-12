@@ -117,8 +117,7 @@ query_info_print (void)
   qsort (query_info_arr, num_query_info, sizeof (T_QUERY_INFO), sort_func);
 
   if (log_top_mode == MODE_PROC_TIME)
-    fprintf (fp_res, "%8s %8s %9s %9s %10s\n", "", "max", "min", "avg",
-	     "cnt(err)");
+    fprintf (fp_res, "%8s %8s %9s %9s %10s\n", "", "max", "min", "avg", "cnt(err)");
   else
     fprintf (fp_res, "%8s %8s %10s\n", "", "max", "cnt");
 
@@ -129,18 +128,14 @@ query_info_print (void)
       sprintf (buf, "[Q%d]", i + 1);
       if (log_top_mode == MODE_PROC_TIME)
 	{
-	  fprintf (fp_res, "%-8s %9s %9s %9s %4d (%d)",
-		   buf,
-		   time2str (query_info_arr[i].max, maxstr),
-		   time2str (query_info_arr[i].min, minstr),
-		   time2str (query_info_arr[i].sum / query_info_arr[i].count,
-			     avgstr), query_info_arr[i].count,
+	  fprintf (fp_res, "%-8s %9s %9s %9s %4d (%d)", buf, time2str (query_info_arr[i].max, maxstr),
+		   time2str (query_info_arr[i].min, minstr), time2str (query_info_arr[i].sum / query_info_arr[i].count,
+								       avgstr), query_info_arr[i].count,
 		   query_info_arr[i].err_count);
 	}
       else
 	{
-	  fprintf (fp_res, "%-8s %8d %10d",
-		   buf, query_info_arr[i].max, query_info_arr[i].count);
+	  fprintf (fp_res, "%-8s %8d %10d", buf, query_info_arr[i].max, query_info_arr[i].count);
 	}
 
       fprintf (fp_q, "%s-------------------------------------------\n", buf);
@@ -153,8 +148,7 @@ query_info_print (void)
 
       fprintf (fp_res, "\n");
 
-      fwrite (query_info_arr[i].cas_log, query_info_arr[i].cas_log_len, 1,
-	      fp_q);
+      fwrite (query_info_arr[i].cas_log, query_info_arr[i].cas_log_len, 1, fp_q);
       fprintf (fp_q, "\n");
 
 #ifdef TEST
@@ -197,8 +191,7 @@ query_info_print_end:
 }
 
 int
-query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res,
-		char *filename, int lineno, char *end_date)
+query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res, char *filename, int lineno, char *end_date)
 {
   int qi_idx = -1;
   int i;
@@ -227,10 +220,7 @@ query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res,
 
   if (qi_idx == -1)
     {
-      query_info_arr =
-	(T_QUERY_INFO *) REALLOC (query_info_arr,
-				  sizeof (T_QUERY_INFO) * (num_query_info +
-							   1));
+      query_info_arr = (T_QUERY_INFO *) REALLOC (query_info_arr, sizeof (T_QUERY_INFO) * (num_query_info + 1));
       if (query_info_arr == NULL)
 	{
 	  fprintf (stderr, "%s\n", strerror (errno));
@@ -252,8 +242,7 @@ query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res,
     {
       query_info_arr[qi_idx].max = exec_time;
       FREE_MEM (query_info_arr[qi_idx].cas_log);
-      query_info_arr[qi_idx].cas_log =
-	(char *) MALLOC (strlen (filename) + qi->cas_log_len + 20);
+      query_info_arr[qi_idx].cas_log = (char *) MALLOC (strlen (filename) + qi->cas_log_len + 20);
       if (query_info_arr[qi_idx].cas_log == NULL)
 	{
 	  fprintf (stderr, "%s\n", strerror (errno));
@@ -261,11 +250,8 @@ query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res,
 	  goto query_info_add_end;
 	}
       sprintf (query_info_arr[qi_idx].cas_log, "%s:%d\n", filename, lineno);
-      query_info_arr[qi_idx].cas_log_len =
-	strlen (query_info_arr[qi_idx].cas_log);
-      memcpy (query_info_arr[qi_idx].cas_log +
-	      query_info_arr[qi_idx].cas_log_len, qi->cas_log,
-	      qi->cas_log_len);
+      query_info_arr[qi_idx].cas_log_len = strlen (query_info_arr[qi_idx].cas_log);
+      memcpy (query_info_arr[qi_idx].cas_log + query_info_arr[qi_idx].cas_log_len, qi->cas_log, qi->cas_log_len);
       query_info_arr[qi_idx].cas_log_len += qi->cas_log_len;
     }
   query_info_arr[qi_idx].count++;
@@ -324,10 +310,7 @@ query_info_add_ne (T_QUERY_INFO * qi, char *end_date)
 
   if (qi_idx == -1)
     {
-      query_info_arr_ne =
-	(T_QUERY_INFO *) REALLOC (query_info_arr_ne,
-				  sizeof (T_QUERY_INFO) * (num_query_info_ne +
-							   1));
+      query_info_arr_ne = (T_QUERY_INFO *) REALLOC (query_info_arr_ne, sizeof (T_QUERY_INFO) * (num_query_info_ne + 1));
       if (query_info_arr_ne == NULL)
 	{
 	  fprintf (stderr, "%s\n", strerror (errno));

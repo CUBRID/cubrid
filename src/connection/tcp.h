@@ -41,25 +41,21 @@ extern int css_fd_down (SOCKET fd);
 extern char *css_get_master_domain_path (void);
 
 extern SOCKET css_tcp_client_open (const char *host, int port);
-extern SOCKET css_tcp_client_open_with_retry (const char *host, int port,
-					      bool will_retry);
+extern SOCKET css_tcp_client_open_with_retry (const char *host, int port, bool will_retry);
 extern int css_tcp_master_open (int port, SOCKET * sockfd);
 extern bool css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd);
 extern bool css_tcp_listen_server_datagram (SOCKET sockfd, SOCKET * newfd);
 extern bool css_tcp_master_datagram (char *pathname, SOCKET * sockfd);
 extern SOCKET css_master_accept (SOCKET sockfd);
-extern SOCKET css_open_new_socket_from_master (SOCKET fd,
-					       unsigned short *rid);
-extern bool css_transfer_fd (SOCKET server_fd, SOCKET client_fd,
-			     unsigned short rid);
+extern SOCKET css_open_new_socket_from_master (SOCKET fd, unsigned short *rid);
+extern bool css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid);
 extern void css_shutdown_socket (SOCKET fd);
 extern int css_open_server_connection_socket (void);
 extern void css_close_server_connection_socket (void);
 extern SOCKET css_server_accept (SOCKET sockfd);
 extern int css_get_max_socket_fds (void);
 
-extern int css_tcp_client_open_with_timeout (const char *host, int port,
-					     int timeout);
+extern int css_tcp_client_open_with_timeout (const char *host, int port, int timeout);
 #if !defined (WINDOWS)
 extern int css_ping (SOCKET sd, struct sockaddr_in *sa_send, int timeout);
 extern bool css_peer_alive (SOCKET sd, int timeout);

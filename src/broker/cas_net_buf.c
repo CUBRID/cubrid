@@ -95,8 +95,7 @@ net_buf_cp_post_send_file (T_NET_BUF * net_buf, int size, char *filename)
 int
 net_buf_cp_byte (T_NET_BUF * net_buf, char ch)
 {
-  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_BYTE
-      && net_buf_realloc (net_buf, NET_SIZE_BYTE) < 0)
+  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_BYTE && net_buf_realloc (net_buf, NET_SIZE_BYTE) < 0)
     {
       return CAS_ER_NO_MORE_MEMORY;
     }
@@ -112,8 +111,7 @@ net_buf_cp_str (T_NET_BUF * net_buf, const char *buf, int size)
   if (size <= 0)
     return 0;
 
-  if (NET_BUF_FREE_SIZE (net_buf) < size
-      && net_buf_realloc (net_buf, size) < 0)
+  if (NET_BUF_FREE_SIZE (net_buf) < size && net_buf_realloc (net_buf, size) < 0)
     {
       return CAS_ER_NO_MORE_MEMORY;
     }
@@ -126,8 +124,7 @@ net_buf_cp_str (T_NET_BUF * net_buf, const char *buf, int size)
 int
 net_buf_cp_int (T_NET_BUF * net_buf, int value, int *begin_offset)
 {
-  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_INT
-      && net_buf_realloc (net_buf, NET_SIZE_INT) < 0)
+  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_INT && net_buf_realloc (net_buf, NET_SIZE_INT) < 0)
     {
       if (begin_offset)
 	{
@@ -162,8 +159,7 @@ net_buf_overwrite_int (T_NET_BUF * net_buf, int offset, int value)
 int
 net_buf_cp_bigint (T_NET_BUF * net_buf, DB_BIGINT value, int *begin_offset)
 {
-  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_BIGINT
-      && net_buf_realloc (net_buf, NET_SIZE_BIGINT) < 0)
+  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_BIGINT && net_buf_realloc (net_buf, NET_SIZE_BIGINT) < 0)
     {
       if (begin_offset)
 	{
@@ -194,16 +190,14 @@ net_buf_overwrite_bigint (T_NET_BUF * net_buf, int offset, DB_BIGINT value)
     }
 
   value = net_htoni64 (value);
-  memcpy (net_buf->data + NET_BUF_HEADER_SIZE + offset, &value,
-	  NET_SIZE_BIGINT);
+  memcpy (net_buf->data + NET_BUF_HEADER_SIZE + offset, &value, NET_SIZE_BIGINT);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 int
 net_buf_cp_float (T_NET_BUF * net_buf, float value)
 {
-  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_FLOAT
-      && net_buf_realloc (net_buf, NET_SIZE_FLOAT) < 0)
+  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_FLOAT && net_buf_realloc (net_buf, NET_SIZE_FLOAT) < 0)
     {
       return CAS_ER_NO_MORE_MEMORY;
     }
@@ -217,8 +211,7 @@ net_buf_cp_float (T_NET_BUF * net_buf, float value)
 int
 net_buf_cp_double (T_NET_BUF * net_buf, double value)
 {
-  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_DOUBLE
-      && net_buf_realloc (net_buf, NET_SIZE_DOUBLE) < 0)
+  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_DOUBLE && net_buf_realloc (net_buf, NET_SIZE_DOUBLE) < 0)
     {
       return CAS_ER_NO_MORE_MEMORY;
     }
@@ -232,8 +225,7 @@ net_buf_cp_double (T_NET_BUF * net_buf, double value)
 int
 net_buf_cp_short (T_NET_BUF * net_buf, short value)
 {
-  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_SHORT
-      && net_buf_realloc (net_buf, NET_SIZE_SHORT) < 0)
+  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_SHORT && net_buf_realloc (net_buf, NET_SIZE_SHORT) < 0)
     {
       return CAS_ER_NO_MORE_MEMORY;
     }
@@ -247,8 +239,7 @@ net_buf_cp_short (T_NET_BUF * net_buf, short value)
 int
 net_buf_cp_object (T_NET_BUF * net_buf, T_OBJECT * oid)
 {
-  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_OBJECT
-      && net_buf_realloc (net_buf, NET_SIZE_OBJECT) < 0)
+  if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_OBJECT && net_buf_realloc (net_buf, NET_SIZE_OBJECT) < 0)
     {
       return CAS_ER_NO_MORE_MEMORY;
     }
@@ -263,11 +254,9 @@ net_buf_cp_object (T_NET_BUF * net_buf, T_OBJECT * oid)
 int
 net_buf_cp_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob)
 {
-  int lob_handle_size =
-    NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT + lob->locator_size;
+  int lob_handle_size = NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT + lob->locator_size;
   /* db_type + lob_size + locator_size + locator including null character */
-  if (NET_BUF_FREE_SIZE (net_buf) < lob_handle_size
-      && net_buf_realloc (net_buf, lob_handle_size))
+  if (NET_BUF_FREE_SIZE (net_buf) < lob_handle_size && net_buf_realloc (net_buf, lob_handle_size))
     {
       return CAS_ER_NO_MORE_MEMORY;
     }
@@ -284,9 +273,7 @@ net_buf_cp_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob)
 
 /* shard_proxy dose not use this function */
 void
-net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
-		       int err_code, char *err_str, const char *file,
-		       int line)
+net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code, char *err_str, const char *file, int line)
 {
 #ifdef CAS_DEBUG
   char msg_buf[1024];
@@ -308,12 +295,10 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
       net_buf_cp_int (net_buf, err_indicator, NULL);
     }
 
-  if (!DOES_CLIENT_MATCH_THE_PROTOCOL (ver, PROTOCOL_V2)
-      && !cas_di_understand_renewed_error_code (as_info->driver_info)
+  if (!DOES_CLIENT_MATCH_THE_PROTOCOL (ver, PROTOCOL_V2) && !cas_di_understand_renewed_error_code (as_info->driver_info)
       && err_code != NO_ERROR)
     {
-      if (err_indicator == CAS_ERROR_INDICATOR
-	  || err_code == CAS_ER_NOT_AUTHORIZED_CLIENT)
+      if (err_indicator == CAS_ERROR_INDICATOR || err_code == CAS_ER_NOT_AUTHORIZED_CLIENT)
 	{
 	  err_code = CAS_CONV_ERROR_TO_OLD (err_code);
 	}
@@ -332,8 +317,7 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
   net_buf_cp_str (net_buf, msg_buf, strlen (msg_buf));
 #endif
 
-  err_msg_len =
-    net_error_append_shard_info (err_msg, err_str, ERR_MSG_LENGTH);
+  err_msg_len = net_error_append_shard_info (err_msg, err_str, ERR_MSG_LENGTH);
   if (err_msg_len == 0)
     {
       net_buf_cp_byte (net_buf, '\0');
@@ -406,8 +390,7 @@ net_htond (double from)
 #endif /* !BYTE_ORDER_BIG_ENDIAN */
 
 void
-net_buf_column_info_set (T_NET_BUF * net_buf, char ut, short scale,
-			 int prec, char charset, const char *name)
+net_buf_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, char charset, const char *name)
 {
   net_buf_cp_cas_type_and_charset (net_buf, ut, charset);
   net_buf_cp_short (net_buf, scale);
@@ -593,8 +576,7 @@ net_arg_get_time (short *hh, short *mm, short *ss, void *arg)
 }
 
 void
-net_arg_get_timetz (short *hh, short *mm, short *ss, char **tz, int *tz_size,
-		    void *arg)
+net_arg_get_timetz (short *hh, short *mm, short *ss, char **tz, int *tz_size, void *arg)
 {
   int tmp_i;
   char *cur_p = (char *) arg;
@@ -610,8 +592,7 @@ net_arg_get_timetz (short *hh, short *mm, short *ss, char **tz, int *tz_size,
 }
 
 void
-net_arg_get_timestamp (short *yr, short *mon, short *day, short *hh,
-		       short *mm, short *ss, void *arg)
+net_arg_get_timestamp (short *yr, short *mon, short *day, short *hh, short *mm, short *ss, void *arg)
 {
   short tmp_s;
   char *cur_p = (char *) arg + NET_SIZE_INT;
@@ -637,8 +618,7 @@ net_arg_get_timestamp (short *yr, short *mon, short *day, short *hh,
 }
 
 void
-net_arg_get_timestamptz (short *yr, short *mon, short *day, short *hh,
-			 short *mm, short *ss, char **tz, int *tz_size,
+net_arg_get_timestamptz (short *yr, short *mon, short *day, short *hh, short *mm, short *ss, char **tz, int *tz_size,
 			 void *arg)
 {
   int tmp_i;
@@ -655,8 +635,7 @@ net_arg_get_timestamptz (short *yr, short *mon, short *day, short *hh,
 }
 
 void
-net_arg_get_datetime (short *yr, short *mon, short *day, short *hh, short *mm,
-		      short *ss, short *ms, void *arg)
+net_arg_get_datetime (short *yr, short *mon, short *day, short *hh, short *mm, short *ss, short *ms, void *arg)
 {
   short tmp_s;
   char *cur_p = (char *) arg + NET_SIZE_INT;
@@ -685,8 +664,7 @@ net_arg_get_datetime (short *yr, short *mon, short *day, short *hh, short *mm,
 }
 
 void
-net_arg_get_datetimetz (short *yr, short *mon, short *day, short *hh,
-			short *mm, short *ss, short *ms, char **tz,
+net_arg_get_datetimetz (short *yr, short *mon, short *day, short *hh, short *mm, short *ss, short *ms, char **tz,
 			int *tz_size, void *arg)
 {
   int tmp_i;
@@ -836,8 +814,7 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
     {
       if (err_msg == NULL)
 	{
-	  snprintf (err_buf, buf_size, "[SHARD/CAS ID-%d,%d]",
-		    shm_shard_id, shm_shard_cas_id + 1);
+	  snprintf (err_buf, buf_size, "[SHARD/CAS ID-%d,%d]", shm_shard_id, shm_shard_cas_id + 1);
 	}
       else if (strlen (err_msg) + MAX_SHARD_INFO_LENGTH >= buf_size)
 	{
@@ -845,8 +822,7 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
 	}
       else
 	{
-	  snprintf (err_buf, buf_size, "%s [SHARD/CAS ID-%d,%d]",
-		    err_msg, shm_shard_id, shm_shard_cas_id + 1);
+	  snprintf (err_buf, buf_size, "%s [SHARD/CAS ID-%d,%d]", err_msg, shm_shard_id, shm_shard_cas_id + 1);
 	}
     }
   else
@@ -881,16 +857,13 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
  *			    
  */
 int
-net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type,
-				 unsigned char charset)
+net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type, unsigned char charset)
 {
-  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL
-      (net_buf->client_version, PROTOCOL_V7))
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V7))
     {
       unsigned char cas_net_first_byte, cas_net_second_byte;
 
-      if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_SHORT
-	  && net_buf_realloc (net_buf, NET_SIZE_SHORT) < 0)
+      if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_SHORT && net_buf_realloc (net_buf, NET_SIZE_SHORT) < 0)
 	{
 	  return CAS_ER_NO_MORE_MEMORY;
 	}
@@ -907,8 +880,7 @@ net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type,
     }
   else
     {
-      if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_BYTE
-	  && net_buf_realloc (net_buf, NET_SIZE_BYTE) < 0)
+      if (NET_BUF_FREE_SIZE (net_buf) < NET_SIZE_BYTE && net_buf_realloc (net_buf, NET_SIZE_BYTE) < 0)
 	{
 	  return CAS_ER_NO_MORE_MEMORY;
 	}

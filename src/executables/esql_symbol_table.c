@@ -51,8 +51,8 @@ enum esql_err_msg
 SYMTAB *pp_Symbol_table;
 SYMTAB *pp_Struct_table;
 
-static SYMBOL *symbol_free_list;	/* Free list of recycled symbols.    */
-static LINK *link_free_list;	/* Free list of recycled links.      */
+static SYMBOL *symbol_free_list;	/* Free list of recycled symbols.  */
+static LINK *link_free_list;	/* Free list of recycled links.  */
 static STRUCTDEF *struct_free_list;	/* Free list of recycled structdefs. */
 
 static const unsigned int SYMTAB_SIZE = 511;
@@ -217,8 +217,7 @@ pp_new_link (void)
       link_chunks = new_chunk;
       link_free_list = new_chunk->link;
 
-      /* This loop executes LCHUNK-1 times. the last (LCHUNK-th) link
-         is taken care of after the loop. */
+      /* This loop executes LCHUNK-1 times. the last (LCHUNK-th) link is taken care of after the loop. */
       for (p = link_free_list, i = LCHUNK; --i > 0; ++p)
 	{
 	  p->next = p + 1;
@@ -291,7 +290,7 @@ pp_discard_link (LINK * p)
 STRUCTDEF *
 pp_new_structdef (const char *tag)
 {
-  /*
+  /* 
    * Structs, even "anonymous" ones, must always have tag names for the
    * benefit of the symbol table manager, so if none was supplied at
    * creation time we must manufacture one ourselves.  These variables
@@ -414,8 +413,7 @@ pp_new_pseudo_def (SPECIFIER_NOUN type, const char *subscript)
       varstring new_subscript;
       vs_new (&new_subscript);
       vs_sprintf (&new_subscript, "((%s)+7)/8", subscript);
-      array_field->etype->decl.d.num_ele =
-	pp_strdup (vs_str (&new_subscript));
+      array_field->etype->decl.d.num_ele = pp_strdup (vs_str (&new_subscript));
       vs_free (&new_subscript);
     }
   pp_add_spec_to_decl (pp_current_type_spec (), array_field);
@@ -426,7 +424,7 @@ pp_new_pseudo_def (SPECIFIER_NOUN type, const char *subscript)
   pp_reset_current_type_spec ();
   pp_add_typedefed_spec (db_int32->type);
   pp_add_spec_to_decl (pp_current_type_spec (), length_field);
-  /*
+  /* 
    * Don't use pp_discard_link(pp_current_spec()) here, since it came
    * from a typedef.
    */
@@ -600,13 +598,10 @@ pp_the_same_type (LINK * p1, LINK * p2, int relax)
 	}
       else
 	{
-	  if ((p1->decl.s.noun == p2->decl.s.noun)
-	      && (p1->decl.s.is_long == p2->decl.s.is_long)
-	      && (p1->decl.s.is_short == p2->decl.s.is_short)
-	      && (p1->decl.s.is_unsigned == p2->decl.s.is_unsigned))
+	  if ((p1->decl.s.noun == p2->decl.s.noun) && (p1->decl.s.is_long == p2->decl.s.is_long)
+	      && (p1->decl.s.is_short == p2->decl.s.is_short) && (p1->decl.s.is_unsigned == p2->decl.s.is_unsigned))
 	    {
-	      return (p1->decl.s.noun == N_STRUCTURE) ?
-		p1->decl.s.val.v_struct == p2->decl.s.val.v_struct : 1;
+	      return (p1->decl.s.noun == N_STRUCTURE) ? p1->decl.s.val.v_struct == p2->decl.s.val.v_struct : 1;
 	    }
 	  return 0;
 	}
@@ -646,9 +641,7 @@ pp_attr_str (LINK * type)
 	  strcpy (str, "unsigned ");
 	}
 
-      strcat (str,
-	      type->decl.s.is_long ? "long " : type->decl.s.
-	      is_short ? "short " : "int ");
+      strcat (str, type->decl.s.is_long ? "long " : type->decl.s.is_short ? "short " : "int ");
       break;
 
     case N_FLOAT:
@@ -735,8 +728,7 @@ pp_type_str (LINK * link)
 	      noun_str = "label";
 	      break;
 	    case N_STRUCTURE:
-	      noun_str =
-		(const char *) link->decl.s.val.v_struct->type_string;
+	      noun_str = (const char *) link->decl.s.val.v_struct->type_string;
 	      break;
 	    case N_VARCHAR:
 	      noun_str = "varchar";
@@ -755,16 +747,14 @@ pp_type_str (LINK * link)
 
 	  if (link->decl.s.noun == N_STRUCTURE)
 	    {
-	      strncat (target, buf,
-		       sizeof (target) - strnlen (target, sizeof (target)));
+	      strncat (target, buf, sizeof (target) - strnlen (target, sizeof (target)));
 	      snprintf (buf, sizeof (buf), " %s",
-			(link->decl.s.val.v_struct->tag ? link->decl.s.val.
-			 v_struct->tag : ((unsigned char *) "untagged")));
+			(link->decl.s.val.v_struct->tag ? link->decl.s.val.v_struct->
+			 tag : ((unsigned char *) "untagged")));
 	    }
 	}
 
-      strncat (target, buf,
-	       sizeof (target) - strnlen (target, sizeof (target)));
+      strncat (target, buf, sizeof (target) - strnlen (target, sizeof (target)));
     }
 
   return target;
@@ -779,8 +769,7 @@ pp_type_str (LINK * link)
 static void
 es_print_symbol (SYMBOL * sym, FILE * fp)
 {
-  fprintf (fp, " * %-18.18s %4d  %s\n",
-	   sym->name, sym->level, pp_type_str (sym->type));
+  fprintf (fp, " * %-18.18s %4d  %s\n", sym->name, sym->level, pp_type_str (sym->type));
 }
 
 /*
@@ -794,13 +783,11 @@ es_print_struct (STRUCTDEF * sdef, FILE * fp)
 {
   SYMBOL *field;
 
-  fprintf (fp, " * %s %s:\n", sdef->type_string,
-	   (sdef->tag ? sdef->tag : ((unsigned char *) "<anon>")));
+  fprintf (fp, " * %s %s:\n", sdef->type_string, (sdef->tag ? sdef->tag : ((unsigned char *) "<anon>")));
 
   for (field = sdef->fields; field; field = field->next)
     {
-      fprintf (fp, " *     %-20s %s\n",
-	       field->name, pp_type_str (field->type));
+      fprintf (fp, " *     %-20s %s\n", field->name, pp_type_str (field->type));
     }
 }
 
@@ -828,8 +815,7 @@ pp_print_syms (FILE * fp)
   if (pp_Struct_table->get_symbol_count (pp_Struct_table))
     {
       fprintf (fp, " *\n * Structure table:\n *\n");
-      pp_Struct_table->print_table (pp_Struct_table,
-				    (void (*)()) es_print_struct, fp, 1);
+      pp_Struct_table->print_table (pp_Struct_table, (void (*)()) es_print_struct, fp, 1);
     }
 }
 
@@ -881,7 +867,7 @@ pp_symbol_init (void)
 void
 pp_symbol_finish (void)
 {
-  /*
+  /* 
    * Make sure that the symbols that are about to be freed from the
    * symbol tables are returned to the malloc pool rather than to our
    * free lists.
@@ -890,8 +876,7 @@ pp_symbol_finish (void)
   pp_free_symtab (pp_Symbol_table, (HT_FREE_FN) pp_discard_symbol);
   pp_free_symtab (pp_Struct_table, (HT_FREE_FN) pp_discard_structdef);
 
-  /* However, there may still be some symbols left on our free lists;
-     get rid of them. */
+  /* However, there may still be some symbols left on our free lists; get rid of them. */
   {
     SYMBOL *sym, *next = NULL;
 
@@ -938,29 +923,23 @@ pp_symbol_stats (FILE * fp)
 
   if (syms_allocated != syms_deallocated)
     {
-      fprintf (stderr, "symbol accounting problem: %d/%d\n",
-	       syms_allocated, syms_deallocated);
+      fprintf (stderr, "symbol accounting problem: %d/%d\n", syms_allocated, syms_deallocated);
     }
   if (links_allocated != links_deallocated)
     {
-      fprintf (stderr, "link accounting problem: %d/%d\n",
-	       links_allocated, links_deallocated);
+      fprintf (stderr, "link accounting problem: %d/%d\n", links_allocated, links_deallocated);
     }
   if (sdefs_allocated != sdefs_deallocated)
     {
-      fprintf (stderr, "structdef accounting problem: %d/%d\n",
-	       sdefs_allocated, sdefs_deallocated);
+      fprintf (stderr, "structdef accounting problem: %d/%d\n", sdefs_allocated, sdefs_deallocated);
     }
 
   if (pp_dump_malloc_info)
     {
       fputs ("\n/*\n", fp);
-      fprintf (fp, " * %d/%d symbols allocated/deallocated\n",
-	       syms_allocated, syms_deallocated);
-      fprintf (fp, " * %d/%d links allocated/deallocated\n",
-	       links_allocated, links_deallocated);
-      fprintf (fp, " * %d/%d structdefs allocated/deallocated\n",
-	       sdefs_allocated, sdefs_deallocated);
+      fprintf (fp, " * %d/%d symbols allocated/deallocated\n", syms_allocated, syms_deallocated);
+      fprintf (fp, " * %d/%d links allocated/deallocated\n", links_allocated, links_deallocated);
+      fprintf (fp, " * %d/%d structdefs allocated/deallocated\n", sdefs_allocated, sdefs_deallocated);
 
       fputs (" */\n", fp);
     }

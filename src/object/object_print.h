@@ -188,30 +188,21 @@ extern int help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen);
 
 extern void help_print_trigger (const char *name, FILE * fpp);
 
-extern PARSER_VARCHAR *obj_print_describe_class (const PARSER_CONTEXT * parser,
-                                       CLASS_HELP *class_schema,
-                                       DB_OBJECT *class_op);
+extern PARSER_VARCHAR *obj_print_describe_class (const PARSER_CONTEXT * parser, CLASS_HELP * class_schema,
+						 DB_OBJECT * class_op);
 #endif /* !SERVER_MODE */
 
-extern PARSER_VARCHAR *describe_money (const PARSER_CONTEXT * parser,
-				       PARSER_VARCHAR * buffer,
+extern PARSER_VARCHAR *describe_money (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 				       const DB_MONETARY * value);
-extern PARSER_VARCHAR *describe_data (const PARSER_CONTEXT * parser,
-				      PARSER_VARCHAR * buffer,
-				      const DB_VALUE * value);
-extern PARSER_VARCHAR *describe_value (const PARSER_CONTEXT * inparser,
-				       PARSER_VARCHAR * buffer,
+extern PARSER_VARCHAR *describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_VALUE * value);
+extern PARSER_VARCHAR *describe_value (const PARSER_CONTEXT * inparser, PARSER_VARCHAR * buffer,
 				       const DB_VALUE * value);
-extern PARSER_VARCHAR *describe_value2 (const PARSER_CONTEXT * inparser,
-					PARSER_VARCHAR * buffer,
+extern PARSER_VARCHAR *describe_value2 (const PARSER_CONTEXT * inparser, PARSER_VARCHAR * buffer,
 					const DB_VALUE * value);
-extern PARSER_VARCHAR *describe_string (const PARSER_CONTEXT * parser,
-					PARSER_VARCHAR * buffer,
-					const char *str, size_t str_length,
-					int max_token_length);
+extern PARSER_VARCHAR *describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const char *str,
+					size_t str_length, int max_token_length);
 extern void help_fprint_value (FILE * fp, const DB_VALUE * value);
-extern int help_sprint_value (const DB_VALUE * value, char *buffer,
-			      int max_length);
+extern int help_sprint_value (const DB_VALUE * value, char *buffer, int max_length);
 
 extern char *describe_comment (PARSER_CONTEXT * parser, const char *comment);
 extern void help_fprint_describe_comment (FILE * fp, const char *comment);

@@ -85,7 +85,7 @@ vs_grow (varstring * vstr, int n)
 	  return ER_FAILED;
 	}
 
-      /*
+      /* 
        * Don't use strcpy here; vs_grow() can be invoked in the middle
        * of string processing while the string isn't properly
        * null-terminated.
@@ -222,8 +222,7 @@ vs_new (varstring * vstr)
       vstr = (varstring *) malloc (sizeof (varstring));
       if (vstr == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (varstring));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (varstring));
 	  return NULL;
 	}
 
@@ -280,8 +279,7 @@ vs_clear (varstring * vstr)
       return;
     }
 
-  vstr->start = vstr->base +
-    (vstr->limit - vstr->base < PREFIX_CUSHION ? 0 : PREFIX_CUSHION);
+  vstr->start = vstr->base + (vstr->limit - vstr->base < PREFIX_CUSHION ? 0 : PREFIX_CUSHION);
 
   vstr->end = vstr->start;
   *vstr->start = '\0';
@@ -337,7 +335,7 @@ vs_prepend (varstring * vstr, const char *prefix)
   available = CAST_STRLEN (vstr->start - vstr->base);
   if (available < n)
     {
-      /*
+      /* 
        * Make room at the front of the string for the prefix.  If there
        * is enough slop at the end, shift the current string toward the
        * end without growing the string; if not, grow it and then do
@@ -346,8 +344,7 @@ vs_prepend (varstring * vstr, const char *prefix)
       char *new_start;
       int length;
 
-      if (vs_cannot_hold (vstr, PREFIX_CUSHION + (n - available))
-	  && vs_grow (vstr, n + PREFIX_CUSHION + FUDGE))
+      if (vs_cannot_hold (vstr, PREFIX_CUSHION + (n - available)) && vs_grow (vstr, n + PREFIX_CUSHION + FUDGE))
 	{
 	  return ER_FAILED;
 	}
@@ -511,7 +508,7 @@ vs_str (varstring * vstr)
     }
   else
     {
-      /*
+      /* 
        * Make sure it's null-terminated by emitting a null character
        * and then backing up the end pointer.
        */

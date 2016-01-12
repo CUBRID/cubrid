@@ -166,15 +166,13 @@ static FILE *unloadlog_file = NULL;
 
 static int get_estimated_objs (HFID * hfid, int *est_objects);
 static int set_referenced_subclasses (DB_OBJECT * class_);
-static bool check_referenced_domain (DB_DOMAIN * dom_list, bool set_cls_ref,
-				     int *num_cls_refp);
+static bool check_referenced_domain (DB_DOMAIN * dom_list, bool set_cls_ref, int *num_cls_refp);
 static void extractobjects_cleanup (void);
 static void extractobjects_term_handler (int sig);
 static bool mark_referenced_domain (SM_CLASS * class_ptr, int *num_set);
 static void gauge_alarm_handler (int sig);
 static int process_class (int cl_no);
-static int process_object (DESC_OBJ * desc_obj, OID * obj_oid,
-			   int referenced_class);
+static int process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class);
 static int process_set (DB_SET * set);
 static int process_value (DB_VALUE * value);
 static void update_hash (OID * object_oid, OID * class_oid, int *data);
@@ -228,8 +226,7 @@ set_referenced_subclasses (DB_OBJECT * class_)
 	{
 	  if (include_references || is_req_class (class_))
 	    {
-	      if (!IS_CLASS_REFERENCED (*cls_no_ptr)
-		  && !IS_CLASS_REQUESTED (*cls_no_ptr))
+	      if (!IS_CLASS_REFERENCED (*cls_no_ptr) && !IS_CLASS_REQUESTED (*cls_no_ptr))
 		{
 		  check_reference_chain = true;
 		}
@@ -238,8 +235,7 @@ set_referenced_subclasses (DB_OBJECT * class_)
 	}
       else
 	{
-	  if (!IS_CLASS_REFERENCED (*cls_no_ptr)
-	      && !IS_CLASS_REQUESTED (*cls_no_ptr))
+	  if (!IS_CLASS_REFERENCED (*cls_no_ptr) && !IS_CLASS_REQUESTED (*cls_no_ptr))
 	    {
 	      check_reference_chain = true;
 	    }
@@ -291,8 +287,7 @@ exit_on_error:
  *    referenced classes.
  */
 static bool
-check_referenced_domain (DB_DOMAIN * dom_list,
-			 bool set_cls_ref, int *num_cls_refp)
+check_referenced_domain (DB_DOMAIN * dom_list, bool set_cls_ref, int *num_cls_refp)
 {
   bool found_object_dom;
   DB_DOMAIN *dom;
@@ -327,9 +322,7 @@ check_referenced_domain (DB_DOMAIN * dom_list,
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
-	  found_object_dom = check_referenced_domain (db_domain_set (dom),
-						      set_cls_ref,
-						      num_cls_refp);
+	  found_object_dom = check_referenced_domain (db_domain_set (dom), set_cls_ref, num_cls_refp);
 	  break;
 	default:
 	  break;
@@ -399,8 +392,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
   if (class_ptr == NULL)
     return true;
 
-  for (attribute = class_ptr->shared; attribute != NULL;
-       attribute = (SM_ATTRIBUTE *) attribute->header.next)
+  for (attribute = class_ptr->shared; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
       if (check_referenced_domain (attribute->domain, true /* do marking */ ,
 				   num_set) != false)
@@ -409,8 +401,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 	}
     }
 
-  for (attribute = class_ptr->class_attributes; attribute != NULL;
-       attribute = (SM_ATTRIBUTE *) attribute->header.next)
+  for (attribute = class_ptr->class_attributes; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
       if (check_referenced_domain (attribute->domain, true /* do marking */ ,
 				   num_set) != false)
@@ -419,8 +410,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 	}
     }
 
-  for (attribute = class_ptr->ordered_attributes;
-       attribute; attribute = attribute->order_link)
+  for (attribute = class_ptr->ordered_attributes; attribute; attribute = attribute->order_link)
     {
       if (attribute->header.name_space != ID_ATTRIBUTE)
 	{
@@ -465,40 +455,33 @@ extractobjects (const char *exec_name)
   char unloadlog_filename[PATH_MAX];
 
   /* register new signal handlers */
-  prev_intr_handler =
-    os_set_signal_handler (SIGINT, extractobjects_term_handler);
-  prev_term_handler =
-    os_set_signal_handler (SIGTERM, extractobjects_term_handler);
+  prev_intr_handler = os_set_signal_handler (SIGINT, extractobjects_term_handler);
+  prev_term_handler = os_set_signal_handler (SIGTERM, extractobjects_term_handler);
 #if !defined(WINDOWS)
-  prev_quit_handler =
-    os_set_signal_handler (SIGQUIT, extractobjects_term_handler);
+  prev_quit_handler = os_set_signal_handler (SIGQUIT, extractobjects_term_handler);
 #endif
 
   if (cached_pages <= 0)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_UNLOADDB,
-				       UNLOADDB_MSG_INVALID_CACHED_PAGES));
+      fprintf (stderr,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_INVALID_CACHED_PAGES));
       return 1;
     }
   if (page_size < (ssize_t) (sizeof (OID) + sizeof (int)))
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_UNLOADDB,
-				       UNLOADDB_MSG_INVALID_CACHED_PAGE_SIZE));
+      fprintf (stderr,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_INVALID_CACHED_PAGE_SIZE));
       return 1;
     }
 
-  /*
+  /* 
    * Open output file
    */
   if (output_dirname == NULL)
     output_dirname = ".";
   if (strlen (output_dirname) > PATH_MAX - 8)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_UNLOADDB,
-				       UNLOADDB_MSG_INVALID_DIR_NAME));
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_INVALID_DIR_NAME));
       return 1;
     }
 
@@ -510,8 +493,7 @@ extractobjects (const char *exec_name)
 	{
 	  return 1;
 	}
-      snprintf (output_filename, PATH_MAX - 1, "%s/%s%s",
-		output_dirname, output_prefix, OBJECT_SUFFIX);
+      snprintf (output_filename, PATH_MAX - 1, "%s/%s%s", output_dirname, output_prefix, OBJECT_SUFFIX);
 
       obj_out->fp = fopen_ex (output_filename, "wb");
       if (obj_out->fp == NULL)
@@ -540,7 +522,7 @@ extractobjects (const char *exec_name)
 #endif /* WINDOWS */
       }
 
-    /*
+    /* 
      * Determine the IO buffer size by specifying a multiple of the
      * natural block size for the device.
      * NEED FUTURE OPTIMIZATION
@@ -554,7 +536,7 @@ extractobjects (const char *exec_name)
     obj_out->count = 0;		/* init */
   }
 
-  /*
+  /* 
    * The user indicates which classes are to be processed by
    * using -i with a file that contains a list of classes.
    * If the -i option is not used, it means process all classes.
@@ -563,8 +545,7 @@ extractobjects (const char *exec_name)
    * is requested, is referenced or is processed.  The index
    * into these arrays is the same as the index into class_table->mops.
    */
-  if ((unload_class_table =
-       (DB_OBJECT **) malloc (DB_SIZEOF (void *) * class_table->num)) == NULL)
+  if ((unload_class_table = (DB_OBJECT **) malloc (DB_SIZEOF (void *) * class_table->num)) == NULL)
     {
       status = 1;
       goto end;
@@ -573,20 +554,17 @@ extractobjects (const char *exec_name)
     {
       unload_class_table[i] = NULL;
     }
-  if ((class_requested =
-       (char *) malloc ((class_table->num + 7) / 8)) == NULL)
+  if ((class_requested = (char *) malloc ((class_table->num + 7) / 8)) == NULL)
     {
       status = 1;
       goto end;
     }
-  if ((class_referenced =
-       (char *) malloc ((class_table->num + 7) / 8)) == NULL)
+  if ((class_referenced = (char *) malloc ((class_table->num + 7) / 8)) == NULL)
     {
       status = 1;
       goto end;
     }
-  if ((class_processed =
-       (char *) malloc ((class_table->num + 7) / 8)) == NULL)
+  if ((class_processed = (char *) malloc ((class_table->num + 7) / 8)) == NULL)
     {
       status = 1;
       goto end;
@@ -596,14 +574,12 @@ extractobjects (const char *exec_name)
   memset (class_referenced, 0, (class_table->num + 7) / 8);
   memset (class_processed, 0, (class_table->num + 7) / 8);
 
-  /*
+  /* 
    * Create the class hash table
    * Its purpose is to hash a class OID to the index into the
    * class_table->mops array.
    */
-  cl_table = fh_create ("class hash", 4096, 1024, 4,
-			NULL, FH_OID_KEY, DB_SIZEOF (int),
-			oid_hash, oid_compare_equals);
+  cl_table = fh_create ("class hash", 4096, 1024, 4, NULL, FH_OID_KEY, DB_SIZEOF (int), oid_hash, oid_compare_equals);
   if (cl_table == NULL)
     {
       status = 1;
@@ -613,7 +589,7 @@ extractobjects (const char *exec_name)
   has_obj_ref = false;		/* init */
   num_cls_ref = 0;		/* init */
 
-  /*
+  /* 
    * Total the number of objects & mark requested classes.
    */
 #if defined(CUBRID_DEBUG)
@@ -621,14 +597,12 @@ extractobjects (const char *exec_name)
 #endif /* CUBRID_DEBUG */
   for (i = 0; i < class_table->num; i++)
     {
-      if (WS_IS_DELETED (class_table->mops[i])
-	  || class_table->mops[i] == sm_Root_class_mop)
+      if (WS_IS_DELETED (class_table->mops[i]) || class_table->mops[i] == sm_Root_class_mop)
 	{
 	  continue;
 	}
 
-      error = au_fetch_class (class_table->mops[i], NULL, AU_FETCH_READ,
-			      AU_SELECT);
+      error = au_fetch_class (class_table->mops[i], NULL, AU_FETCH_READ, AU_SELECT);
       if (error != NO_ERROR)
 	{
 	  continue;
@@ -651,8 +625,7 @@ extractobjects (const char *exec_name)
       if (*cptr == NULL)
 	{
 #if defined(CUBRID_DEBUG)
-	  fprintf (stdout, "%s%s%s\n",
-		   PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+	  fprintf (stdout, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
 #endif /* CUBRID_DEBUG */
 
 	  fh_put (cl_table, ws_oid (class_table->mops[i]), &i);
@@ -680,13 +653,11 @@ extractobjects (const char *exec_name)
 	  else
 	    MARK_CLASS_REQUESTED (i);
 
-	  if (!datafile_per_class &&
-	      (!required_class_only || IS_CLASS_REQUESTED (i)))
+	  if (!datafile_per_class && (!required_class_only || IS_CLASS_REQUESTED (i)))
 	    {
-	      if (text_print (obj_out, NULL, 0, "%cid %s%s%s %d\n", '%',
-			      PRINT_IDENTIFIER (sm_ch_name
-						((MOBJ) class_ptr)),
-			      i) != NO_ERROR)
+	      if (text_print
+		  (obj_out, NULL, 0, "%cid %s%s%s %d\n", '%', PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
+		   i) != NO_ERROR)
 		{
 		  status = 1;
 		  goto end;
@@ -699,24 +670,15 @@ extractobjects (const char *exec_name)
 		{
 		  if (!has_obj_ref)
 		    {		/* not found object domain */
-		      for (attribute = class_ptr->shared;
-			   attribute != NULL;
-			   attribute =
-			   (SM_ATTRIBUTE *) attribute->header.next)
+		      for (attribute = class_ptr->shared; attribute != NULL;
+			   attribute = (SM_ATTRIBUTE *) attribute->header.next)
 			{
 			  /* false -> don't set */
-			  if ((has_obj_ref =
-			       check_referenced_domain (attribute->domain,
-							false,
-							&num_cls_ref)) ==
-			      true)
+			  if ((has_obj_ref = check_referenced_domain (attribute->domain, false, &num_cls_ref)) == true)
 			    {
 #if defined(CUBRID_DEBUG)
-			      fprintf (stdout,
-				       "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (class_ptr->
-							 header.name),
-				       db_attribute_name (attribute));
+			      fprintf (stdout, "found OBJECT domain: %s%s%s->%s\n",
+				       PRINT_IDENTIFIER (class_ptr->header.name), db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
 			    }
@@ -725,24 +687,15 @@ extractobjects (const char *exec_name)
 
 		  if (!has_obj_ref)
 		    {		/* not found object domain */
-		      for (attribute = class_ptr->class_attributes;
-			   attribute != NULL;
-			   attribute =
-			   (SM_ATTRIBUTE *) attribute->header.next)
+		      for (attribute = class_ptr->class_attributes; attribute != NULL;
+			   attribute = (SM_ATTRIBUTE *) attribute->header.next)
 			{
 			  /* false -> don't set */
-			  if ((has_obj_ref =
-			       check_referenced_domain (attribute->domain,
-							false,
-							&num_cls_ref)) ==
-			      true)
+			  if ((has_obj_ref = check_referenced_domain (attribute->domain, false, &num_cls_ref)) == true)
 			    {
 #if defined(CUBRID_DEBUG)
-			      fprintf (stdout,
-				       "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (class_ptr->
-							 header.name),
-				       db_attribute_name (attribute));
+			      fprintf (stdout, "found OBJECT domain: %s%s%s->%s\n",
+				       PRINT_IDENTIFIER (class_ptr->header.name), db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
 			    }
@@ -751,25 +704,20 @@ extractobjects (const char *exec_name)
 
 		  if (!has_obj_ref)
 		    {		/* not found object domain */
-		      for (attribute = class_ptr->ordered_attributes;
-			   attribute; attribute = attribute->order_link)
+		      for (attribute = class_ptr->ordered_attributes; attribute; attribute = attribute->order_link)
 			{
 			  if (attribute->header.name_space != ID_ATTRIBUTE)
 			    {
 			      continue;
 			    }
-			  has_obj_ref =
-			    check_referenced_domain (attribute->domain, false
-						     /* don't set */ ,
-						     &num_cls_ref);
+			  has_obj_ref = check_referenced_domain (attribute->domain, false
+								 /* don't set */ ,
+								 &num_cls_ref);
 			  if (has_obj_ref == true)
 			    {
 #if defined(CUBRID_DEBUG)
-			      fprintf (stdout,
-				       "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (class_ptr->
-							 header.name),
-				       db_attribute_name (attribute));
+			      fprintf (stdout, "found OBJECT domain: %s%s%s->%s\n",
+				       PRINT_IDENTIFIER (class_ptr->header.name), db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
 			    }
@@ -795,8 +743,7 @@ extractobjects (const char *exec_name)
   OR_PUT_NULL_OID (&null_oid);
 
 #if defined(CUBRID_DEBUG)
-  fprintf (stdout, "has_obj_ref = %d, num_cls_ref = %d\n",
-	   has_obj_ref, num_cls_ref);
+  fprintf (stdout, "has_obj_ref = %d, num_cls_ref = %d\n", has_obj_ref, num_cls_ref);
 #endif /* CUBRID_DEBUG */
 
   if (has_obj_ref || num_cls_ref > 0)
@@ -812,9 +759,7 @@ extractobjects (const char *exec_name)
 	      continue;
 	    }
 
-	  /* check for emptyness, but not implemented
-	   * NEED FUTURE WORk
-	   */
+	  /* check for emptyness, but not implemented NEED FUTURE WORk */
 
 	  if (has_obj_ref)
 	    {
@@ -847,8 +792,7 @@ extractobjects (const char *exec_name)
 	  if (num_cls_ref != num_set)
 	    {
 #if defined(CUBRID_DEBUG)
-	      fprintf (stdout, "num_cls_ref = %d, num_set = %d\n",
-		       num_cls_ref, num_set);
+	      fprintf (stdout, "num_cls_ref = %d, num_set = %d\n", num_cls_ref, num_set);
 #endif /* CUBRID_DEBUG */
 	      status = 1;
 	      goto end;
@@ -877,22 +821,19 @@ extractobjects (const char *exec_name)
 		status = 1;
 		goto end;
 	      }
-	    fprintf (stdout, "%s%s%s\n",
-		     PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+	    fprintf (stdout, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
 	    total_ref_cls++;
 	  }
       }
-    fprintf (stdout,
-	     "class_table->num = %d, total_req_cls = %d, total_ref_cls = %d\n",
-	     class_table->num, total_req_cls, total_ref_cls);
+    fprintf (stdout, "class_table->num = %d, total_req_cls = %d, total_ref_cls = %d\n", class_table->num, total_req_cls,
+	     total_ref_cls);
   }
 #endif /* CUBRID_DEBUG */
 
-  /*
+  /* 
    * Lock all unloaded classes with IS_LOCK
    */
-  if (locator_fetch_set (num_unload_classes, unload_class_table,
-			 DB_FETCH_READ, DB_FETCH_READ, true) == NULL)
+  if (locator_fetch_set (num_unload_classes, unload_class_table, DB_FETCH_READ, DB_FETCH_READ, true) == NULL)
     {
       status = 1;
       goto end;
@@ -900,7 +841,7 @@ extractobjects (const char *exec_name)
 
   locator_get_append_lsa (&lsa);
 
-  /*
+  /* 
    * Estimate the number of objects.
    */
 
@@ -912,14 +853,14 @@ extractobjects (const char *exec_name)
   cache_size = cached_pages * page_size / (DB_SIZEOF (OID) + DB_SIZEOF (int));
   est_size = est_size > cache_size ? est_size : cache_size;
 
-  /*
+  /* 
    * Create the hash table
    */
   if (has_obj_ref || num_cls_ref > 0)
     {				/* found any referenced domain */
-      obj_table = fh_create ("object hash", est_size, page_size, cached_pages,
-			     hash_filename, FH_OID_KEY, DB_SIZEOF (int),
-			     oid_hash, oid_compare_equals);
+      obj_table =
+	fh_create ("object hash", est_size, page_size, cached_pages, hash_filename, FH_OID_KEY, DB_SIZEOF (int),
+		   oid_hash, oid_compare_equals);
 
       if (obj_table == NULL)
 	{
@@ -928,17 +869,15 @@ extractobjects (const char *exec_name)
 	}
     }
 
-  /*
+  /* 
    * Dump the object definitions
    */
   total_approximate_class_objects = est_objects;
-  snprintf (unloadlog_filename, sizeof (unloadlog_filename) - 1,
-	    "%s_unloaddb.log", output_prefix);
+  snprintf (unloadlog_filename, sizeof (unloadlog_filename) - 1, "%s_unloaddb.log", output_prefix);
   unloadlog_file = fopen (unloadlog_filename, "w+");
   if (unloadlog_file != NULL)
     {
-      fprintf (unloadlog_file, HEADER_FORMAT, "Class Name",
-	       "Total Instances");
+      fprintf (unloadlog_file, HEADER_FORMAT, "Class Name", "Total Instances");
     }
   if (verbose_flag)
     {
@@ -949,8 +888,7 @@ extractobjects (const char *exec_name)
     {
       for (i = 0; i < class_table->num; i++)
 	{
-	  if (!WS_IS_DELETED (class_table->mops[i])
-	      && class_table->mops[i] != sm_Root_class_mop)
+	  if (!WS_IS_DELETED (class_table->mops[i]) && class_table->mops[i] != sm_Root_class_mop)
 	    {
 	      int ret_val;
 
@@ -965,8 +903,7 @@ extractobjects (const char *exec_name)
 		      goto end;
 		    }
 
-		  snprintf (outfile, PATH_MAX - 1, "%s/%s_%s%s",
-			    output_dirname, output_prefix,
+		  snprintf (outfile, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, output_prefix,
 			    sm_ch_name ((MOBJ) class_ptr), OBJECT_SUFFIX);
 
 		  obj_out->fp = fopen_ex (outfile, "wb");
@@ -1007,23 +944,18 @@ extractobjects (const char *exec_name)
   if (failed_objects != 0)
     {
       status = 1;
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_UNLOADDB,
-				       UNLOADDB_MSG_OBJECTS_FAILED),
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
 	       total_objects - failed_objects, total_objects);
       if (unloadlog_file != NULL)
 	{
-	  fprintf (unloadlog_file, msgcat_message (MSGCAT_CATALOG_UTILS,
-						   MSGCAT_UTIL_SET_UNLOADDB,
-						   UNLOADDB_MSG_OBJECTS_FAILED),
+	  fprintf (unloadlog_file,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
 		   total_objects - failed_objects, total_objects);
 	}
     }
   else if (verbose_flag)
     {
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_UNLOADDB,
-				       UNLOADDB_MSG_OBJECTS_DUMPED),
+      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_DUMPED),
 	       total_objects);
     }
 
@@ -1031,14 +963,11 @@ extractobjects (const char *exec_name)
     {
       if (failed_objects == 0)
 	{
-	  fprintf (unloadlog_file, msgcat_message (MSGCAT_CATALOG_UTILS,
-						   MSGCAT_UTIL_SET_UNLOADDB,
-						   UNLOADDB_MSG_OBJECTS_DUMPED),
+	  fprintf (unloadlog_file,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_DUMPED),
 		   total_objects);
 	}
-      fprintf (unloadlog_file, msgcat_message (MSGCAT_CATALOG_UTILS,
-					       MSGCAT_UTIL_SET_UNLOADDB,
-					       UNLOADDB_MSG_LOG_LSA),
+      fprintf (unloadlog_file, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_LOG_LSA),
 	       lsa.pageid, lsa.offset);
     }
 
@@ -1054,7 +983,7 @@ end:
     {
       fclose (unloadlog_file);
     }
-  /*
+  /* 
    * Cleanup
    */
   free_and_init (unload_class_table);
@@ -1081,17 +1010,11 @@ gauge_alarm_handler (int sig)
 {
   if (sig == SIGALRM)
     {
-      fprintf (stdout, MSG_FORMAT "\r",
-	       gauge_class_name, class_objects,
+      fprintf (stdout, MSG_FORMAT "\r", gauge_class_name, class_objects,
 	       (class_objects > 0
 		&& approximate_class_objects >=
-		class_objects) ? (int) (100 * ((float) class_objects /
-					       (float)
-					       approximate_class_objects)) :
-	       100,
-	       (int) (100 *
-		      ((float) total_objects /
-		       (float) total_approximate_class_objects)));
+		class_objects) ? (int) (100 * ((float) class_objects / (float) approximate_class_objects)) : 100,
+	       (int) (100 * ((float) total_objects / (float) total_approximate_class_objects)));
       fflush (stdout);
     }
   else
@@ -1126,9 +1049,9 @@ process_class (int cl_no)
   LOCK lock = IS_LOCK;		/* Lock to acquire for the above purpose */
   int nobjects, nfetched;
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
-  LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area        */
+  LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
   RECDES recdes;		/* Record descriptor */
-  DESC_OBJ *desc_obj = NULL;	/* The object described by obj       */
+  DESC_OBJ *desc_obj = NULL;	/* The object described by obj */
   int requested_class = 0;
   int referenced_class = 0;
   void (*prev_handler) (int sig) = NULL;
@@ -1139,7 +1062,7 @@ process_class (int cl_no)
 #endif
   int total;
 
-  /*
+  /* 
    * Only process classes that were requested or classes that were
    * referenced via requested classes.
    */
@@ -1171,8 +1094,7 @@ process_class (int cl_no)
   class_oid = ws_oid (class_);
 
   v = 0;
-  for (attribute = class_ptr->shared; attribute != NULL;
-       attribute = (SM_ATTRIBUTE *) attribute->header.next)
+  for (attribute = class_ptr->shared; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
 
       if (DB_VALUE_TYPE (&attribute->default_value.value) == DB_TYPE_NULL)
@@ -1181,21 +1103,14 @@ process_class (int cl_no)
 	}
       if (v == 0)
 	{
-	  CHECK_PRINT_ERROR (text_print (obj_out,
-					 NULL, 0,
-					 "%cclass %s%s%s shared (%s%s%s", '%',
-					 PRINT_IDENTIFIER (sm_ch_name
-							   ((MOBJ)
-							    class_ptr)),
-					 PRINT_IDENTIFIER (attribute->header.
-							   name)));
+	  CHECK_PRINT_ERROR (text_print
+			     (obj_out, NULL, 0, "%cclass %s%s%s shared (%s%s%s", '%',
+			      PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
+			      PRINT_IDENTIFIER (attribute->header.name)));
 	}
       else
 	{
-	  CHECK_PRINT_ERROR (text_print (obj_out,
-					 NULL, 0, ", %s%s%s",
-					 PRINT_IDENTIFIER (attribute->header.
-							   name)));
+	  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, ", %s%s%s", PRINT_IDENTIFIER (attribute->header.name)));
 	}
 
       ++v;
@@ -1206,8 +1121,7 @@ process_class (int cl_no)
     }
 
   v = 0;
-  for (attribute = class_ptr->shared; attribute != NULL;
-       attribute = (SM_ATTRIBUTE *) attribute->header.next)
+  for (attribute = class_ptr->shared; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
       if (DB_VALUE_TYPE (&attribute->default_value.value) == DB_TYPE_NULL)
 	{
@@ -1232,8 +1146,7 @@ process_class (int cl_no)
     }
 
   v = 0;
-  for (attribute = class_ptr->class_attributes; attribute != NULL;
-       attribute = (SM_ATTRIBUTE *) attribute->header.next)
+  for (attribute = class_ptr->class_attributes; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
       if (DB_VALUE_TYPE (&attribute->default_value.value) == DB_TYPE_NULL)
 	{
@@ -1241,21 +1154,14 @@ process_class (int cl_no)
 	}
       if (v == 0)
 	{
-	  CHECK_PRINT_ERROR (text_print (obj_out,
-					 NULL, 0,
-					 "%cclass %s%s%s class (%s%s%s", '%',
-					 PRINT_IDENTIFIER (sm_ch_name
-							   ((MOBJ)
-							    class_ptr)),
-					 PRINT_IDENTIFIER (attribute->header.
-							   name)));
+	  CHECK_PRINT_ERROR (text_print
+			     (obj_out, NULL, 0, "%cclass %s%s%s class (%s%s%s", '%',
+			      PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
+			      PRINT_IDENTIFIER (attribute->header.name)));
 	}
       else
 	{
-	  CHECK_PRINT_ERROR (text_print (obj_out,
-					 NULL, 0, ", %s%s%s",
-					 PRINT_IDENTIFIER (attribute->header.
-							   name)));
+	  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, ", %s%s%s", PRINT_IDENTIFIER (attribute->header.name)));
 	}
       ++v;
     }
@@ -1265,8 +1171,7 @@ process_class (int cl_no)
     }
 
   v = 0;
-  for (attribute = class_ptr->class_attributes; attribute != NULL;
-       attribute = (SM_ATTRIBUTE *) attribute->header.next)
+  for (attribute = class_ptr->class_attributes; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
 
       if (DB_VALUE_TYPE (&attribute->default_value.value) == DB_TYPE_NULL)
@@ -1277,8 +1182,7 @@ process_class (int cl_no)
 	{
 	  CHECK_PRINT_ERROR (text_print (obj_out, " ", 1, NULL));
 	}
-      if ((error =
-	   process_value (&attribute->default_value.value)) != NO_ERROR)
+      if ((error = process_value (&attribute->default_value.value)) != NO_ERROR)
 	{
 	  if (!ignore_err_flag)
 	    {
@@ -1290,10 +1194,7 @@ process_class (int cl_no)
     }
 
   CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s ("	/* new line */
-				 : "%cclass %s%s%s (",
-				 '%',
-				 PRINT_IDENTIFIER (sm_ch_name
-						   ((MOBJ) class_ptr))));
+				 : "%cclass %s%s%s (", '%', PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr))));
 
   v = 0;
   attribute = class_ptr->ordered_attributes;
@@ -1302,9 +1203,7 @@ process_class (int cl_no)
       if (attribute->header.name_space == ID_ATTRIBUTE)
 	{
 	  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? " %s%s%s"	/* space */
-					 : "%s%s%s",
-					 PRINT_IDENTIFIER (attribute->header.
-							   name)));
+					 : "%s%s%s", PRINT_IDENTIFIER (attribute->header.name)));
 	  ++v;
 	}
       attribute = (SM_ATTRIBUTE *) attribute->order_link;
@@ -1321,16 +1220,13 @@ process_class (int cl_no)
 	}
       else
 	{
-	  total = 100 *
-	    ((float) total_objects / (float) total_approximate_class_objects);
+	  total = 100 * ((float) total_objects / (float) total_approximate_class_objects);
 	}
-      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr),
-	       0, 100, total);
+      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0,
-		   100, total);
+	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
 	  fflush (stdout);
 	}
       goto exit_on_end;
@@ -1346,16 +1242,13 @@ process_class (int cl_no)
 	}
       else
 	{
-	  total = 100 *
-	    ((float) total_objects / (float) total_approximate_class_objects);
+	  total = 100 * ((float) total_objects / (float) total_approximate_class_objects);
 	}
-      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr),
-	       0, 100, total);
+      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0,
-		   100, total);
+	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
 	  fflush (stdout);
 	}
       goto exit_on_end;
@@ -1387,9 +1280,8 @@ process_class (int cl_no)
 
   while (nobjects != nfetched)
     {
-      if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION,
-			     class_oid, &nobjects, &nfetched, &last_oid,
-			     &fetch_area) == NO_ERROR)
+      if (locator_fetch_all
+	  (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area) == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
 	    {
@@ -1398,20 +1290,16 @@ process_class (int cl_no)
 
 	      for (i = 0; i < mobjs->num_objs; ++i)
 		{
-		  /*
+		  /* 
 		   * Process all objects for a requested class, but
 		   * only referenced objects for a referenced class.
 		   */
 		  ++class_objects;
 		  ++total_objects;
 		  LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
-		  if ((error =
-		       desc_disk_to_obj (class_, class_ptr, &recdes,
-					 desc_obj)) == NO_ERROR)
+		  if ((error = desc_disk_to_obj (class_, class_ptr, &recdes, desc_obj)) == NO_ERROR)
 		    {
-		      if ((error = process_object (desc_obj, &obj->oid,
-						   referenced_class)) !=
-			  NO_ERROR)
+		      if ((error = process_object (desc_obj, &obj->oid, referenced_class)) != NO_ERROR)
 			{
 			  if (!ignore_err_flag)
 			    {
@@ -1473,16 +1361,14 @@ process_class (int cl_no)
 
   desc_free (desc_obj);
 
-  total_approximate_class_objects +=
-    (class_objects - approximate_class_objects);
+  total_approximate_class_objects += (class_objects - approximate_class_objects);
   if (total_objects == total_approximate_class_objects)
     {
       total = 100;
     }
   else
     {
-      total = 100 *
-	((float) total_objects / (float) total_approximate_class_objects);
+      total = 100 * ((float) total_objects / (float) total_approximate_class_objects);
     }
   if (verbose_flag)
     {
@@ -1491,12 +1377,10 @@ process_class (int cl_no)
       (void) os_set_signal_handler (SIGALRM, prev_handler);
 #endif
 
-      fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr),
-	       class_objects, 100, total);
+      fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
       fflush (stdout);
     }
-  fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr),
-	   class_objects, 100, total);
+  fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
 
 exit_on_end:
 
@@ -1534,10 +1418,9 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class)
       update_hash (obj_oid, class_oid, &data);
       if (debug_flag)
 	{
-	  CHECK_PRINT_ERROR (text_print (obj_out,
-					 NULL, 0, "%d/*%d.%d.%d*/: ", data,
-					 obj_oid->volid, obj_oid->pageid,
-					 obj_oid->slotid));
+	  CHECK_PRINT_ERROR (text_print
+			     (obj_out, NULL, 0, "%d/*%d.%d.%d*/: ", data, obj_oid->volid, obj_oid->pageid,
+			      obj_oid->slotid));
 	}
       else
 	{
@@ -1546,8 +1429,7 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class)
     }
 
   attribute = class_ptr->ordered_attributes;
-  for (attribute = class_ptr->ordered_attributes;
-       attribute; attribute = attribute->order_link)
+  for (attribute = class_ptr->ordered_attributes; attribute; attribute = attribute->order_link)
     {
 
       if (attribute->header.name_space != ID_ATTRIBUTE)
@@ -1666,8 +1548,7 @@ process_value (DB_VALUE * value)
 	    ref_oid = WS_OID (DB_PULL_OBJECT (value));
 	  }
 
-	if (required_class_only || (ref_oid == (OID *) 0)
-	    || (OID_EQ (ref_oid, &null_oid)) || datafile_per_class)
+	if (required_class_only || (ref_oid == (OID *) 0) || (OID_EQ (ref_oid, &null_oid)) || datafile_per_class)
 	  {
 	    CHECK_PRINT_ERROR (text_print (obj_out, "NULL", 4, NULL));
 	    break;
@@ -1675,11 +1556,9 @@ process_value (DB_VALUE * value)
 
 	OID_SET_NULL (&ref_class_oid);
 
-	if ((error = locator_does_exist (ref_oid, NULL_CHN, IS_LOCK,
-					 &ref_class_oid, NULL_CHN,
-					 false, false, NULL,
-					 TM_TRAN_READ_FETCH_VERSION ()))
-	    == LC_EXIST)
+	if ((error =
+	     locator_does_exist (ref_oid, NULL_CHN, IS_LOCK, &ref_class_oid, NULL_CHN, false, false, NULL,
+				 TM_TRAN_READ_FETCH_VERSION ())) == LC_EXIST)
 	  {
 	    if ((classop = is_class (ref_oid, &ref_class_oid)))
 	      {
@@ -1688,21 +1567,17 @@ process_value (DB_VALUE * value)
 		  {
 		    goto exit_on_error;
 		  }
-		CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, "@%s",
-					       sm_ch_name ((MOBJ)
-							   class_ptr)));
+		CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, "@%s", sm_ch_name ((MOBJ) class_ptr)));
 		break;
 	      }
 
-	    /*
+	    /* 
 	     * Lock referenced class with S_LOCK
 	     */
 	    error = NO_ERROR;	/* clear */
-	    if ((classop =
-		 is_class (&ref_class_oid, WS_OID (sm_Root_class_mop))))
+	    if ((classop = is_class (&ref_class_oid, WS_OID (sm_Root_class_mop))))
 	      {
-		if (locator_fetch_class (classop, DB_FETCH_QUERY_READ) ==
-		    NULL)
+		if (locator_fetch_class (classop, DB_FETCH_QUERY_READ) == NULL)
 		  {
 		    error = LC_ERROR;
 		  }
@@ -1733,19 +1608,16 @@ process_value (DB_VALUE * value)
 	      }
 	  }
 
-	/*
+	/* 
 	 * Output a reference indication if all classes are being processed,
 	 * or if a class_list is being used and references are being included,
 	 * or if a class_list is being used and the referenced class is a
 	 * requested class.  Otherwise, output "NULL".
 	 */
 
-	/* figure out what it means for this to be NULL, I think
-	   this happens only for the reserved system classes
-	   like db_user that are not dumped.  This is a problem because
-	   trigger objects for one, like to point directly at the
-	   user object.   There will probably be others in time.
-	 */
+	/* figure out what it means for this to be NULL, I think this happens only for the reserved system classes like 
+	 * db_user that are not dumped.  This is a problem because trigger objects for one, like to point directly at
+	 * the user object.  There will probably be others in time. */
 	error = fh_get (cl_table, &ref_class_oid, (FH_DATA *) (&cls_no_ptr));
 	if (error != NO_ERROR || cls_no_ptr == NULL)
 	  {
@@ -1754,47 +1626,35 @@ process_value (DB_VALUE * value)
 	else
 	  {
 	    cls_no = *cls_no_ptr;
-	    if (!input_filename || include_references
-		|| (IS_CLASS_REQUESTED (cls_no)))
+	    if (!input_filename || include_references || (IS_CLASS_REQUESTED (cls_no)))
 	      {
 		update_hash (ref_oid, &ref_class_oid, &ref_data);
 		if (debug_flag)
 		  {
 		    int *temp;
-		    error =
-		      fh_get (cl_table, &ref_class_oid, (FH_DATA *) (&temp));
+		    error = fh_get (cl_table, &ref_class_oid, (FH_DATA *) (&temp));
 		    if (error != NO_ERROR || temp == NULL)
 		      {
-			CHECK_PRINT_ERROR (text_print
-					   (obj_out, "NULL", 4, NULL));
+			CHECK_PRINT_ERROR (text_print (obj_out, "NULL", 4, NULL));
 		      }
 		    else
 		      {
-			CHECK_PRINT_ERROR (text_print (obj_out,
-						       NULL, 0,
-						       "@%d|%d/*%d.%d.%d*/",
-						       *temp,
-						       ref_data,
-						       ref_oid->volid,
-						       ref_oid->pageid,
-						       ref_oid->slotid));
+			CHECK_PRINT_ERROR (text_print
+					   (obj_out, NULL, 0, "@%d|%d/*%d.%d.%d*/", *temp, ref_data, ref_oid->volid,
+					    ref_oid->pageid, ref_oid->slotid));
 		      }
 		  }
 		else
 		  {
 		    int *temp;
-		    error =
-		      fh_get (cl_table, &ref_class_oid, (FH_DATA *) (&temp));
+		    error = fh_get (cl_table, &ref_class_oid, (FH_DATA *) (&temp));
 		    if (error != NO_ERROR || temp == NULL)
 		      {
-			CHECK_PRINT_ERROR (text_print
-					   (obj_out, "NULL", 4, NULL));
+			CHECK_PRINT_ERROR (text_print (obj_out, "NULL", 4, NULL));
 		      }
 		    else
 		      {
-			CHECK_PRINT_ERROR (text_print (obj_out,
-						       NULL, 0, "@%d|%d",
-						       *temp, ref_data));
+			CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, "@%d|%d", *temp, ref_data));
 		      }
 		  }
 	      }
@@ -1839,10 +1699,8 @@ process_value (DB_VALUE * value)
 	    if (elo->type == ELO_FBO)
 	      {
 		CHECK_PRINT_ERROR (text_print
-				   (obj_out, NULL, 0, "^E'%c%lld|%s|%s'",
-				    dts, elo->size, elo->locator,
-				    elo->meta_data !=
-				    NULL ? elo->meta_data : ""));
+				   (obj_out, NULL, 0, "^E'%c%lld|%s|%s'", dts, elo->size, elo->locator,
+				    elo->meta_data != NULL ? elo->meta_data : ""));
 	      }
 	    else if (elo->type == ELO_LO)
 	      {
@@ -1912,14 +1770,12 @@ update_hash (OID * object_oid, OID * class_oid, int *data)
 	}
       if (fh_put (obj_table, class_oid, data) != NO_ERROR)
 	{
-	  perror
-	    ("SYSTEM ERROR related with hash-file\n==>unloaddb is NOT completed");
+	  perror ("SYSTEM ERROR related with hash-file\n==>unloaddb is NOT completed");
 	  exit (1);
 	}
       if (fh_put (obj_table, object_oid, data) != NO_ERROR)
 	{
-	  perror
-	    ("SYSTEM ERROR related with hash-file\n==>unloaddb is NOT completed");
+	  perror ("SYSTEM ERROR related with hash-file\n==>unloaddb is NOT completed");
 	  exit (1);
 	}
     }
@@ -2041,11 +1897,9 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
       perror (input_filename);
       return 1;
     }
-  snprintf (scan_format, sizeof (scan_format), "%%%ds\n",
-	    (int) (sizeof (buffer) - 1));
+  snprintf (scan_format, sizeof (scan_format), "%%%ds\n", (int) (sizeof (buffer) - 1));
   i = 0;
-  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH,
-		input_file) != NULL)
+  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
     {
       DB_OBJECT *class_;
 
@@ -2064,16 +1918,13 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 	{
 	  sscanf ((char *) buffer, scan_format, (char *) class_name);
 
-	  sm_downcase_name (class_name, downcase_class_name,
-			    SM_MAX_IDENTIFIER_LENGTH);
+	  sm_downcase_name (class_name, downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
 
 	  class_ = locator_find_class (downcase_class_name);
 	  if (class_ != NULL)
 	    {
 	      class_list[i] = class_;
-	      error =
-		sm_partitioned_class_type (class_, &is_partition, NULL,
-					   &sub_partitions);
+	      error = sm_partitioned_class_type (class_, &is_partition, NULL, &sub_partitions);
 	      if (is_partition == 1 && sub_partitions != NULL)
 		{
 		  for (j = 0; sub_partitions[j]; j++)

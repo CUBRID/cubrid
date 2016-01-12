@@ -117,54 +117,29 @@ struct vacuum_data_entry
 typedef struct vacuum_data VACUUM_DATA;
 struct vacuum_data
 {
-  LOG_LSA crt_lsa;		/* Data is stored on disk and requires
-				 * logging, therefore it also requires a log
-				 * lsa.
-				 */
+  LOG_LSA crt_lsa;		/* Data is stored on disk and requires logging, therefore it also requires a log lsa. */
 
-  VACUUM_LOG_BLOCKID last_blockid;	/* Block id for last vacuum data
-					 * entry... This entry is actually the
-					 * id of last added block which may
-					 * not even be in vacuum data
-					 * (being already vacuumed).
-					 */
-  MVCCID oldest_mvccid;		/* Oldest MVCCID found in current vacuum
-				 * data.
-				 */
-  MVCCID newest_mvccid;		/* Newest MVCCID found in current vacuum
-				 * data.
-				 */
+  VACUUM_LOG_BLOCKID last_blockid;	/* Block id for last vacuum data entry... This entry is actually the id of last 
+					 * added block which may not even be in vacuum data (being already vacuumed). */
+  MVCCID oldest_mvccid;		/* Oldest MVCCID found in current vacuum data. */
+  MVCCID newest_mvccid;		/* Newest MVCCID found in current vacuum data. */
 
-  /* First and last blocks that couldn't fit into vacuum data and must be
-   * recovered from log. The blocks are linked between them using LOG_LSA
-   * location.
-   */
+  /* First and last blocks that couldn't fit into vacuum data and must be recovered from log. The blocks are linked
+   * between them using LOG_LSA location. */
   LOG_LSA first_blocks_to_recover;
   LOG_LSA last_blocks_to_recover;
-  int n_blocks_to_recover;	/* Total number of blocks saved to log that
-				 * need to be recovered.
-				 */
-  int n_first_blocks_to_recover;	/* Number of blocks to recover in
-					 * first log entry of saved blocks.
-					 * Used for early out when it doesn't
-					 * fit in vacuum data.
-					 */
+  int n_blocks_to_recover;	/* Total number of blocks saved to log that need to be recovered. */
+  int n_first_blocks_to_recover;	/* Number of blocks to recover in first log entry of saved blocks. Used for
+					 * early out when it doesn't fit in vacuum data. */
 
-  int log_block_npages;		/* Number of log pages in one block of log
-				 * data.
-				 */
+  int log_block_npages;		/* Number of log pages in one block of log data. */
 
   int n_table_entries;		/* Number of entries in log block table */
 
   /* NOTE: Leave the table at the end of vacuum data structure */
-  VACUUM_DATA_ENTRY vacuum_data_table[1];	/* Array containing log block
-						 * entries and skipped blocks
-						 * entries. This is a dynamic
-						 * array, new blocks will be
-						 * appended at the end, while
-						 * vacuumed blocks will be
-						 * removed when finished.
-						 */
+  VACUUM_DATA_ENTRY vacuum_data_table[1];	/* Array containing log block entries and skipped blocks entries. This
+						 * is a dynamic array, new blocks will be appended at the end, while
+						 * vacuumed blocks will be removed when finished. */
 };
 
 typedef struct block_log_buffer BLOCK_LOG_BUFFER;
@@ -513,19 +488,11 @@ INT32 vacuum_Running_workers_count = 0;
 typedef struct vacuum_heap_helper VACUUM_HEAP_HELPER;
 struct vacuum_heap_helper
 {
-  PAGE_PTR home_page;		/* Home page for objects
-				 * being vacuumed.
-				 */
+  PAGE_PTR home_page;		/* Home page for objects being vacuumed. */
   VPID home_vpid;		/* VPID of home page. */
-  PAGE_PTR forward_page;	/* Used to keep forward page
-				 * of REC_RELOCATION or first
-				 * overflow page of
-				 * REC_BIGONE.
-				 */
+  PAGE_PTR forward_page;	/* Used to keep forward page of REC_RELOCATION or first overflow page of REC_BIGONE. */
   OID forward_oid;		/* Link to forward page. */
-  PGSLOTID crt_slotid;		/* Slot ID of current record
-				 * being vacuumed.
-				 */
+  PGSLOTID crt_slotid;		/* Slot ID of current record being vacuumed. */
   INT16 record_type;		/* Current record type. */
   RECDES record;		/* Current record data. */
 
@@ -535,31 +502,22 @@ struct vacuum_heap_helper
   MVCC_REC_HEADER mvcc_header;	/* MVCC header. */
 
   HFID hfid;			/* Heap file identifier. */
-  VFID overflow_vfid;		/* Overflow file identifier.
-				 */
-  bool reusable;		/* True if heap file has
-				 * reusable slots.
-				 */
+  VFID overflow_vfid;		/* Overflow file identifier. */
+  bool reusable;		/* True if heap file has reusable slots. */
 
   MVCC_SATISFIES_VACUUM_RESULT can_vacuum;	/* Result of vacuum check. */
 
   /* Collect data on vacuum. */
   PGSLOTID slots[MAX_SLOTS_IN_PAGE];	/* Slot ID's. */
-  MVCC_SATISFIES_VACUUM_RESULT results[MAX_SLOTS_IN_PAGE];	/* Vacuum check
-								 * results.
-								 */
+  MVCC_SATISFIES_VACUUM_RESULT results[MAX_SLOTS_IN_PAGE];	/* Vacuum check results. */
   OID next_versions[MAX_SLOTS_IN_PAGE];	/* Next version links. */
   OID partition_links[MAX_SLOTS_IN_PAGE];	/* Partition links. */
 
-  OID forward_links[2];		/* REC_BIGONE, REC_RELOCATION forward links.
-				 * (buffer for forward_recdes) */
+  OID forward_links[2];		/* REC_BIGONE, REC_RELOCATION forward links. (buffer for forward_recdes) */
   RECDES forward_recdes;	/* Record descriptor to read forward links. */
 
-  int n_bulk_vacuumed;		/* Number of vacuumed objects to be logged in
-				 * bulk mode.
-				 */
-  int n_vacuumed;		/* Number of vacuumed objects.
-				 */
+  int n_bulk_vacuumed;		/* Number of vacuumed objects to be logged in bulk mode. */
+  int n_vacuumed;		/* Number of vacuumed objects. */
   int initial_home_free_space;	/* Free space in home page before vacuum */
 
   /* Performance tracking. */
@@ -586,108 +544,66 @@ struct vacuum_heap_helper
 /* Mask. */
 #define VACUUM_LOG_VACUUM_HEAP_MASK	      0xC000
 
-static void vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p,
-					 PAGE_PTR page_p,
-					 int n_slots, PGSLOTID * slots,
-					 MVCC_SATISFIES_VACUUM_RESULT *
-					 results, OID * next_versions,
-					 OID * partition_oids,
-					 bool reusable, bool all_vacuumed);
-static void vacuum_log_remove_ovf_insid (THREAD_ENTRY * thread_p,
-					 PAGE_PTR ovfpage);
+static void vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int n_slots, PGSLOTID * slots,
+					 MVCC_SATISFIES_VACUUM_RESULT * results, OID * next_versions,
+					 OID * partition_oids, bool reusable, bool all_vacuumed);
+static void vacuum_log_remove_ovf_insid (THREAD_ENTRY * thread_p, PAGE_PTR ovfpage);
 
 static int vacuum_init_master_prefetch (THREAD_ENTRY * thread_p);
 
-static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker,
-			MVCCID threshold_mvccid, bool was_interrupted);
-static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p,
-				       VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p,
-					     VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_record (THREAD_ENTRY * thread_p,
-			       VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_get_hfid (THREAD_ENTRY * thread_p,
-				 VACUUM_HEAP_HELPER * helper);
-static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
-					    VACUUM_HEAP_HELPER * helper,
-					    bool update_best_space_stat,
-					    bool unlatch_page);
+static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
+static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+					    bool update_best_space_stat, bool unlatch_page);
 
 static void vacuum_process_vacuum_data (THREAD_ENTRY * thread_p);
-static int vacuum_process_log_block (THREAD_ENTRY * thread_p,
-				     VACUUM_DATA_ENTRY * block_data,
-				     BLOCK_LOG_BUFFER * block_log_buffer,
-				     bool sa_mode_partial_block);
-static void vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p,
-					  VACUUM_DATA_ENTRY * block_data,
+static int vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * block_data,
+				     BLOCK_LOG_BUFFER * block_log_buffer, bool sa_mode_partial_block);
+static void vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * block_data,
 					  bool is_vacuum_complete);
 
-static int vacuum_process_log_record (THREAD_ENTRY * thread_p,
-				      VACUUM_WORKER * worker,
-				      LOG_LSA * log_lsa_p,
-				      LOG_PAGE * log_page_p,
-				      struct log_data *log_record_data,
-				      MVCCID * mvccid,
-				      char **undo_data_ptr,
-				      int *undo_data_size,
-				      struct log_vacuum_info *vacuum_info,
-				      bool * is_file_dropped,
-				      bool stop_after_vacuum_info);
+static int vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_LSA * log_lsa_p,
+				      LOG_PAGE * log_page_p, struct log_data *log_record_data, MVCCID * mvccid,
+				      char **undo_data_ptr, int *undo_data_size, struct log_vacuum_info *vacuum_info,
+				      bool * is_file_dropped, bool stop_after_vacuum_info);
 static int vacuum_compare_data_entries (const void *ptr1, const void *ptr2);
 static int vacuum_load_data_from_disk (THREAD_ENTRY * thread_p);
-static VACUUM_DATA_ENTRY *vacuum_get_vacuum_data_entry (VACUUM_LOG_BLOCKID
-							blockid);
+static VACUUM_DATA_ENTRY *vacuum_get_vacuum_data_entry (VACUUM_LOG_BLOCKID blockid);
 static bool vacuum_is_work_in_progress (THREAD_ENTRY * thread_p);
 static void vacuum_data_remove_finished_entries (THREAD_ENTRY * thread_p);
-static void vacuum_data_remove_entries (THREAD_ENTRY * thread_p,
-					int n_removed_entries,
-					int *removed_entries);
+static void vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries, int *removed_entries);
 
-static void vacuum_log_remove_data_entries (THREAD_ENTRY * thread_p,
-					    int *removed_indexes,
-					    int n_removed_indexes);
-static void vacuum_log_append_block_data (THREAD_ENTRY * thread_p,
-					  VACUUM_DATA_ENTRY * new_entries,
-					  int n_new_entries,
-					  LOG_LSA * first_blocks_to_recover,
-					  int n_first_blocks_to_recover);
+static void vacuum_log_remove_data_entries (THREAD_ENTRY * thread_p, int *removed_indexes, int n_removed_indexes);
+static void vacuum_log_append_block_data (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * new_entries, int n_new_entries,
+					  LOG_LSA * first_blocks_to_recover, int n_first_blocks_to_recover);
 
 static int vacuum_compare_dropped_files (const void *a, const void *b);
-static int vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid,
-				    MVCCID mvccid, LOG_RCV * rcv,
+static int vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid, LOG_RCV * rcv,
 				    LOG_LSA * postpone_ref_lsa);
 static int vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p);
-static bool vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid,
-				      MVCCID mvccid);
-static void vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p,
-					      PAGE_PTR page_p,
-					      INT16 * indexes,
+static bool vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid);
+static void vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 * indexes,
 					      INT16 n_indexes);
-static void vacuum_log_dropped_files_set_next_page (THREAD_ENTRY * thread_p,
-						    PAGE_PTR page_p,
-						    VPID * next_page);
+static void vacuum_log_dropped_files_set_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VPID * next_page);
 
 static void vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p);
 
 static int vacuum_compare_heap_object (const void *a, const void *b);
-static int vacuum_collect_heap_objects (VACUUM_WORKER * worker, OID * oid,
-					VFID * vfid);
-static void vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker,
-					      VFID * vfid);
+static int vacuum_collect_heap_objects (VACUUM_WORKER * worker, OID * oid, VFID * vfid);
+static void vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfid);
 
 static void vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p);
 static int vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p);
-static void vacuum_rv_discard_recovered_blocks_from_buffer (THREAD_ENTRY *
-							    thread_p);
+static void vacuum_rv_discard_recovered_blocks_from_buffer (THREAD_ENTRY * thread_p);
 
-static VPID *vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p,
-						  VPID * first_page_vpid);
-static VPID *vacuum_get_first_page_vacuum_data (THREAD_ENTRY * thread_p,
-						VPID * first_page_vpid);
+static VPID *vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p, VPID * first_page_vpid);
+static VPID *vacuum_get_first_page_vacuum_data (THREAD_ENTRY * thread_p, VPID * first_page_vpid);
 
 static int vacuum_assign_worker (THREAD_ENTRY * thread_p);
-static void vacuum_finalize_worker (THREAD_ENTRY * thread_p,
-				    VACUUM_WORKER * worker_info);
+static void vacuum_finalize_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker_info);
 static INT32 vacuum_get_worker_min_dropped_files_version (void);
 
 #if !defined (NDEBUG)
@@ -699,27 +615,16 @@ static void vacuum_verify_vacuum_data_debug (void);
 #endif /* NDEBUG */
 
 #if defined (SERVER_MODE)
-static int vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p,
-					     VACUUM_DATA_ENTRY * entry,
-					     BLOCK_LOG_BUFFER
-					     * block_log_buffer);
+static int vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * entry,
+					     BLOCK_LOG_BUFFER * block_log_buffer);
 #endif /* SERVER_MODE */
-static int vacuum_copy_log_page (THREAD_ENTRY * thread_p,
-				 LOG_PAGEID log_pageid,
-				 BLOCK_LOG_BUFFER * block_log_buffer,
+static int vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_BUFFER * block_log_buffer,
 				 LOG_PAGE * log_page);
 
-static bool is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p,
-				      MVCC_REC_HEADER * rec_header);
-static void print_not_vacuumed_to_log (OID * oid, OID * class_oid,
-				       MVCC_REC_HEADER * rec_header,
-				       int btree_node_type);
-static void vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p,
-					       PAGE_PTR page_p,
-					       PGSLOTID slotid,
-					       RECDES * undo_recdes,
-					       OID * next_version_oid,
-					       OID * partition_oid,
+static bool is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header);
+static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_header, int btree_node_type);
+static void vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
+					       RECDES * undo_recdes, OID * next_version_oid, OID * partition_oid,
 					       bool reusable);
 
 /*
@@ -740,18 +645,15 @@ xvacuum (THREAD_ENTRY * thread_p)
   return ER_VACUUM_CS_NOT_AVAILABLE;
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 
-  if (vacuum_Data->n_table_entries == 0
-      && LSA_ISNULL (&vacuum_Data->first_blocks_to_recover)
-      && LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer)
-      && LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
+  if (vacuum_Data->n_table_entries == 0 && LSA_ISNULL (&vacuum_Data->first_blocks_to_recover)
+      && LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer) && LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
     {
       /* Nothing to vacuum. */
       return NO_ERROR;
     }
 
   assert (vacuum_Assigned_workers_count <= 1);
-  VACUUM_CONVERT_THREAD_TO_VACUUM_WORKER (thread_p, &vacuum_Workers[0],
-					  dummy_save_type);
+  VACUUM_CONVERT_THREAD_TO_VACUUM_WORKER (thread_p, &vacuum_Workers[0], dummy_save_type);
   if (vacuum_Assigned_workers_count == 0)
     {
       /* Assign worker and allocate required resources. */
@@ -777,8 +679,7 @@ xvacuum (THREAD_ENTRY * thread_p)
  * dropped_files_vfid (in) : Dropped files VFID.
  */
 int
-vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
-		   VFID * vacuum_data_vfid, VFID * dropped_files_vfid)
+vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages, VFID * vacuum_data_vfid, VFID * dropped_files_vfid)
 {
   int error_code = NO_ERROR;
   int i;
@@ -799,9 +700,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
   VFID_COPY (&vacuum_Dropped_files_vfid, dropped_files_vfid);
 
   /* Save first page vpid. */
-  if (vacuum_get_first_page_dropped_files (thread_p,
-					   &vacuum_Dropped_files_vpid)
-      == NULL)
+  if (vacuum_get_first_page_dropped_files (thread_p, &vacuum_Dropped_files_vpid) == NULL)
     {
       assert (false);
       goto error;
@@ -819,38 +718,31 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
   /* Save number of disk pages in vacuum data */
   vacuum_Data_npages = vacuum_data_npages;
 
-  /* load vacuum data (also sets vacuum_Data->log_block_npages which must be
-   * preserved after server restarts) */
+  /* load vacuum data (also sets vacuum_Data->log_block_npages which must be preserved after server restarts) */
   if (vacuum_load_data_from_disk (thread_p) != NO_ERROR)
     {
       goto error;
     }
 
   /* Initialize the log block data buffer */
-  vacuum_Block_data_buffer =
-    lf_circular_queue_create (VACUUM_BLOCK_DATA_BUFFER_CAPACITY,
-			      sizeof (VACUUM_DATA_ENTRY));
+  vacuum_Block_data_buffer = lf_circular_queue_create (VACUUM_BLOCK_DATA_BUFFER_CAPACITY, sizeof (VACUUM_DATA_ENTRY));
   if (vacuum_Block_data_buffer == NULL)
     {
       goto error;
     }
 
 #if defined(SERVER_MODE)
-  vacuum_Prefetch_log_pages =
-    prm_get_integer_value (PRM_ID_VACUUM_PREFETCH_LOG_NBUFFERS);
+  vacuum_Prefetch_log_pages = prm_get_integer_value (PRM_ID_VACUUM_PREFETCH_LOG_NBUFFERS);
 
   if (VACUUM_JOB_QUEUE_CAPACITY < VACUUM_JOB_QUEUE_MIN_CAPACITY)
     {
       vacuum_Prefetch_log_pages =
-	(prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT)
-	 + VACUUM_JOB_QUEUE_MIN_CAPACITY)
-	* VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES;
-      assert (VACUUM_JOB_QUEUE_CAPACITY >=
-	      prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT));
+	(prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT) +
+	 VACUUM_JOB_QUEUE_MIN_CAPACITY) * VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES;
+      assert (VACUUM_JOB_QUEUE_CAPACITY >= prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT));
     }
 
-  vacuum_Prefetch_log_mode =
-    prm_get_integer_value (PRM_ID_VACUUM_PREFETCH_LOG_MODE);
+  vacuum_Prefetch_log_mode = prm_get_integer_value (PRM_ID_VACUUM_PREFETCH_LOG_MODE);
   if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
     {
       error_code = vacuum_init_master_prefetch (thread_p);
@@ -861,9 +753,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
     }
 
   /* Initialize job queue */
-  vacuum_Job_queue =
-    lf_circular_queue_create (VACUUM_JOB_QUEUE_CAPACITY,
-			      sizeof (VACUUM_JOB_ENTRY));
+  vacuum_Job_queue = lf_circular_queue_create (VACUUM_JOB_QUEUE_CAPACITY, sizeof (VACUUM_JOB_ENTRY));
   if (vacuum_Job_queue == NULL)
     {
       goto error;
@@ -899,13 +789,11 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_data_npages,
       vacuum_Workers[i].tdes = (LOG_TDES *) malloc (sizeof (LOG_TDES));
       if (vacuum_Workers[i].tdes == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (LOG_TDES));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_TDES));
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error;
 	}
-      logtb_initialize_vacuum_worker_tdes (vacuum_Workers[i].tdes,
-					   VACUUM_WORKER_INDEX_TO_TRANID (i));
+      logtb_initialize_vacuum_worker_tdes (vacuum_Workers[i].tdes, VACUUM_WORKER_INDEX_TO_TRANID (i));
     }
 
   vacuum_Global_oldest_active_blockers_counter = 0;
@@ -935,46 +823,35 @@ vacuum_init_master_prefetch (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   long long unsigned size_vacuum_prefetch_log_buffer;
 
-  size_vacuum_prefetch_log_buffer =
-    (((long long unsigned) VACUUM_PREFETCH_LOG_PAGES) * LOG_PAGESIZE)
-    + MAX_ALIGNMENT;
+  size_vacuum_prefetch_log_buffer = (((long long unsigned) VACUUM_PREFETCH_LOG_PAGES) * LOG_PAGESIZE) + MAX_ALIGNMENT;
 
   vacuum_er_log (VACUUM_ER_LOG_MASTER,
 		 "VACUUM INIT: prefetch pages:%d, log_page_size:%d, "
-		 "prefetch buffer size:%llu, job_queue_capacity:%d.",
-		 (int) VACUUM_PREFETCH_LOG_PAGES,
-		 (int) LOG_PAGESIZE,
-		 size_vacuum_prefetch_log_buffer,
-		 (int) VACUUM_JOB_QUEUE_CAPACITY);
+		 "prefetch buffer size:%llu, job_queue_capacity:%d.", (int) VACUUM_PREFETCH_LOG_PAGES,
+		 (int) LOG_PAGESIZE, size_vacuum_prefetch_log_buffer, (int) VACUUM_JOB_QUEUE_CAPACITY);
 
   if (!MEM_SIZE_IS_VALID (size_vacuum_prefetch_log_buffer))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
-	      "vacuum_prefetch_log_pages");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, "vacuum_prefetch_log_pages");
       error_code = ER_PRM_BAD_VALUE;
       goto error;
     }
 
-  vacuum_Prefetch_log_buffer =
-    (LOG_PAGE *) malloc ((size_t) size_vacuum_prefetch_log_buffer);
+  vacuum_Prefetch_log_buffer = (LOG_PAGE *) malloc ((size_t) size_vacuum_prefetch_log_buffer);
   if (vacuum_Prefetch_log_buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (size_t) size_vacuum_prefetch_log_buffer);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size_vacuum_prefetch_log_buffer);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
 
   error_code =
-    lf_bitmap_init (&vacuum_Prefetch_free_buffers_bitmap,
-		    LF_BITMAP_ONE_CHUNK,
-		    VACUUM_PREFETCH_LOG_BLOCK_BUFFERS_COUNT,
+    lf_bitmap_init (&vacuum_Prefetch_free_buffers_bitmap, LF_BITMAP_ONE_CHUNK, VACUUM_PREFETCH_LOG_BLOCK_BUFFERS_COUNT,
 		    LF_BITMAP_FULL_USAGE_RATIO);
   if (error_code != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, VACUUM_JOB_QUEUE_CAPACITY * sizeof (unsigned int)
-	      / LF_BITFIELD_WORD_SIZE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      VACUUM_JOB_QUEUE_CAPACITY * sizeof (unsigned int) / LF_BITFIELD_WORD_SIZE);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -1020,9 +897,7 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
       if (!LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer))
 	{
 	  /* Block data is lost, this should never happen */
-	  /* TODO: Make sure vacuum data is big enough to handle all buffered
-	   *       blocks.
-	   */
+	  /* TODO: Make sure vacuum data is big enough to handle all buffered blocks. */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert (0);
 	}
@@ -1080,8 +955,7 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
  * was_interrutped (in)  : True if same job was executed and interrupted.
  */
 static int
-vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker,
-	     MVCCID threshold_mvccid, bool was_interrupted)
+vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted)
 {
   VACUUM_HEAP_OBJECT *page_ptr;
   VACUUM_HEAP_OBJECT *obj_ptr;
@@ -1098,17 +972,13 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker,
   /* Set state to execute mode. */
   worker->state = VACUUM_WORKER_STATE_EXECUTE;
 
-  /* Sort all objects. Sort function will order all objects first by VFID
-   * then by OID. All objects belonging to one file will be consecutive.
-   * Also, all objects belonging to one page will be consecutive.
-   * Vacuum will be called for each different heap page.
-   */
-  qsort (worker->heap_objects, worker->n_heap_objects,
-	 sizeof (VACUUM_HEAP_OBJECT), vacuum_compare_heap_object);
+  /* Sort all objects. Sort function will order all objects first by VFID then by OID. All objects belonging to one
+   * file will be consecutive. Also, all objects belonging to one page will be consecutive. Vacuum will be called for
+   * each different heap page. */
+  qsort (worker->heap_objects, worker->n_heap_objects, sizeof (VACUUM_HEAP_OBJECT), vacuum_compare_heap_object);
 
   /* Start parsing array. Vacuum objects page by page. */
-  for (page_ptr = worker->heap_objects;
-       page_ptr < worker->heap_objects + worker->n_heap_objects;)
+  for (page_ptr = worker->heap_objects; page_ptr < worker->heap_objects + worker->n_heap_objects;)
     {
       if (!VFID_EQ (&vfid, &page_ptr->vfid))
 	{
@@ -1121,22 +991,18 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker,
       /* Find all objects for this page. */
       object_count = 1;
       for (obj_ptr = page_ptr + 1;
-	   obj_ptr < worker->heap_objects + worker->n_heap_objects
-	   && obj_ptr->oid.pageid == page_ptr->oid.pageid
+	   obj_ptr < worker->heap_objects + worker->n_heap_objects && obj_ptr->oid.pageid == page_ptr->oid.pageid
 	   && obj_ptr->oid.volid == page_ptr->oid.volid; obj_ptr++)
 	{
 	  object_count++;
 	}
       /* Vacuum page. */
-      error_code =
-	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid,
-			  reusable, was_interrupted);
+      error_code = vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, reusable, was_interrupted);
       if (error_code != NO_ERROR)
 	{
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			 "VACUUM ERROR: Vacuum heap page %d|%d, "
-			 "error_code=%d.\n",
-			 page_ptr->oid.volid, page_ptr->oid.pageid);
+			 "VACUUM ERROR: Vacuum heap page %d|%d, " "error_code=%d.\n", page_ptr->oid.volid,
+			 page_ptr->oid.pageid);
 
 	  assert_release (false);
 	  er_clear ();
@@ -1161,17 +1027,13 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker,
  * was_interrutped (in)  : True if same job was executed and interrupted.
  */
 int
-vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
-		  int n_heap_objects, MVCCID threshold_mvccid, bool reusable,
-		  bool was_interrupted)
+vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, int n_heap_objects,
+		  MVCCID threshold_mvccid, bool reusable, bool was_interrupted)
 {
   VACUUM_HEAP_HELPER helper;	/* Vacuum heap helper. */
-  HEAP_PAGE_VACUUM_STATUS page_vacuum_status;	/* Current page vacuum status.
-						 */
+  HEAP_PAGE_VACUUM_STATUS page_vacuum_status;	/* Current page vacuum status. */
   int error_code = NO_ERROR;	/* Error code. */
-  int obj_index = 0;		/* Index used to iterate the object
-				 * array.
-				 */
+  int obj_index = 0;		/* Index used to iterate the object array. */
 
   /* Assert expected arguments. */
   assert (heap_objects != NULL);
@@ -1184,15 +1046,12 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
   VPID_GET_FROM_OID (&helper.home_vpid, &heap_objects->oid);
   if (was_interrupted)
     {
-      DISK_ISVALID valid =
-	disk_isvalid_page (thread_p, helper.home_vpid.volid,
-			   helper.home_vpid.pageid);
+      DISK_ISVALID valid = disk_isvalid_page (thread_p, helper.home_vpid.volid,
+					      helper.home_vpid.pageid);
       if (valid == DISK_INVALID)
 	{
 	  /* Page was already deallocated in previous job run. */
-	  /* Safe guard: this was possible if there was only one object to
-	   *             be vacuumed.
-	   */
+	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
 	  assert (n_heap_objects == 1);
 	  return NO_ERROR;
 	}
@@ -1231,21 +1090,17 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
   VFID_SET_NULL (&helper.overflow_vfid);
 
   /* Fix heap page. */
-  helper.home_page =
-    pgbuf_fix (thread_p, &helper.home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-	       PGBUF_UNCONDITIONAL_LATCH);
+  helper.home_page = pgbuf_fix (thread_p, &helper.home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (helper.home_page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
-      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-		     "VACUUM ERROR: Failed to fix page %d|%d.\n",
+      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP, "VACUUM ERROR: Failed to fix page %d|%d.\n",
 		     helper.home_vpid.volid, helper.home_vpid.pageid);
       return error_code;
     }
   (void) pgbuf_check_page_ptype (thread_p, helper.home_page, PAGE_HEAP);
 
-  helper.initial_home_free_space =
-    spage_get_free_space_without_saving (thread_p, helper.home_page, NULL);
+  helper.initial_home_free_space = spage_get_free_space_without_saving (thread_p, helper.home_page, NULL);
 
   helper.crt_slotid = -1;
   for (obj_index = 0; obj_index < n_heap_objects; obj_index++)
@@ -1258,17 +1113,13 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
       /* Set current slotid. */
       helper.crt_slotid = heap_objects[obj_index].oid.slotid;
 
-      /* Prepare record for vacuum (get all required pages, info and MVCC
-       * header).
-       */
+      /* Prepare record for vacuum (get all required pages, info and MVCC header). */
       error_code = vacuum_heap_prepare_record (thread_p, &helper);
       if (error_code != NO_ERROR)
 	{
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			 "VACUUM ERROR: Could not prepare vacuum for "
-			 "object %d|%d|%d.\n",
-			 heap_objects[obj_index].oid.volid,
-			 heap_objects[obj_index].oid.pageid,
+			 "VACUUM ERROR: Could not prepare vacuum for " "object %d|%d|%d.\n",
+			 heap_objects[obj_index].oid.volid, heap_objects[obj_index].oid.pageid,
 			 heap_objects[obj_index].oid.slotid);
 
 	  assert_release (false);
@@ -1290,9 +1141,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	case REC_BIGONE:
 
 	  /* Check if record can be vacuumed. */
-	  helper.can_vacuum =
-	    mvcc_satisfies_vacuum (thread_p, &helper.mvcc_header,
-				   threshold_mvccid);
+	  helper.can_vacuum = mvcc_satisfies_vacuum (thread_p, &helper.mvcc_header, threshold_mvccid);
 	  if (helper.can_vacuum == VACUUM_RECORD_REMOVE)
 	    {
 	      /* Record has been deleted and it can be removed. */
@@ -1301,8 +1150,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	  else if (helper.can_vacuum == VACUUM_RECORD_DELETE_INSID)
 	    {
 	      /* Record insert MVCCID can be removed. */
-	      error_code =
-		vacuum_heap_record_insert_mvccid (thread_p, &helper);
+	      error_code = vacuum_heap_record_insert_mvccid (thread_p, &helper);
 	    }
 	  else
 	    {
@@ -1315,10 +1163,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	  if (error_code != NO_ERROR)
 	    {
 	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			     "VACUUM ERROR: Failed to vacuum object at "
-			     "%d|%d|%d.\n",
-			     helper.home_vpid.volid, helper.home_vpid.pageid,
-			     helper.crt_slotid);
+			     "VACUUM ERROR: Failed to vacuum object at " "%d|%d|%d.\n", helper.home_vpid.volid,
+			     helper.home_vpid.pageid, helper.crt_slotid);
 
 	      /* Debug should hit assert. Release should continue. */
 	      assert_release (false);
@@ -1329,9 +1175,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	  break;
 
 	default:
-	  /* Object cannot be vacuumed. Most likely it was already vacuumed
-	   * by another worker or it was rollbacked and reused.
-	   */
+	  /* Object cannot be vacuumed. Most likely it was already vacuumed by another worker or it was rollbacked and
+	   * reused. */
 	  assert (helper.forward_page == NULL);
 	  break;
 	}
@@ -1342,39 +1187,22 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	}
 
       /* Check page vacuum status. */
-      page_vacuum_status =
-	heap_page_get_vacuum_status (thread_p, helper.home_page);
+      page_vacuum_status = heap_page_get_vacuum_status (thread_p, helper.home_page);
       /* Safe guard. */
-      assert (page_vacuum_status != HEAP_PAGE_VACUUM_NONE
-	      || (was_interrupted && helper.n_vacuumed == 0));
+      assert (page_vacuum_status != HEAP_PAGE_VACUUM_NONE || (was_interrupted && helper.n_vacuumed == 0));
 
-      /* Page can be removed if no other worker will access this page.
-       * If this worker is the only one expected, then it can remove the page.
-       *
-       * It is also possible that this job was previously executed and
-       * interrupted due to shutdown or crash. This case is a little more
-       * complicated. There are two scenarios:
-       * 1. Current page status is vacuum none. This means all vacuum was
-       *    already executed.
-       * 2. Current page status is vacuum once. This means a vacuum is
-       *    expected, but we cannot tell if current vacuum worker was
-       *    interrupted and re-executes an old vacuum task or if it is
-       *    executing the task expected by page status.
-       *    Take next scenario:
-       *    1. Insert new object at OID1. page status is vacuum once.
-       *    2. Block with above operations is finished and vacuum job is
-       *       started.
-       *    3. Vacuum insert MVCCID at OID1. status is now vacuum none.
-       *    4. Delete object at OID1. page status is set to vacuum once.
-       *    5. Crash.
-       *    6. Job on block at step #2 is restarted.
-       *    7. Vacuum is executed on object OID1. Object can be removed.
-       *    8. Vacuum is executed for delete operation at #4.
-       *    It would be incorrect to change page status from vacuum once to
-       *    none, since it will be followed by another vacuum task. Since
-       *    vacuum none status means page might be deallocated, it is better
-       *    to be paranoid about it.
-       */
+      /* Page can be removed if no other worker will access this page. If this worker is the only one expected, then it 
+       * can remove the page. It is also possible that this job was previously executed and interrupted due to
+       * shutdown or crash. This case is a little more complicated. There are two scenarios: 1. Current page status is
+       * vacuum none. This means all vacuum was already executed. 2. Current page status is vacuum once. This means a
+       * vacuum is expected, but we cannot tell if current vacuum worker was interrupted and re-executes an old vacuum
+       * task or if it is executing the task expected by page status.  Take next scenario: 1. Insert new object at
+       * OID1. page status is vacuum once.  2. Block with above operations is finished and vacuum job is started.  3.
+       * Vacuum insert MVCCID at OID1. status is now vacuum none.  4. Delete object at OID1. page status is set to
+       * vacuum once.  5. Crash.  6. Job on block at step #2 is restarted.  7. Vacuum is executed on object OID1.
+       * Object can be removed.  8. Vacuum is executed for delete operation at #4.  It would be incorrect to change
+       * page status from vacuum once to none, since it will be followed by another vacuum task. Since vacuum none
+       * status means page might be deallocated, it is better to be paranoid about it. */
       if ((page_vacuum_status == HEAP_PAGE_VACUUM_ONCE && !was_interrupted)
 	  || (page_vacuum_status == HEAP_PAGE_VACUUM_NONE && was_interrupted))
 	{
@@ -1385,21 +1213,15 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	      heap_page_set_vacuum_status_none (thread_p, helper.home_page);
 
 	      vacuum_er_log (VACUUM_ER_LOG_HEAP,
-			     "VACUUM: Changed vacuum status of heap page "
-			     "%d|%d, lsa=%lld|%d from once to none.\n",
-			     pgbuf_get_volume_id (helper.home_page),
-			     pgbuf_get_page_id (helper.home_page),
-			     (long long int)
-			     pgbuf_get_lsa (helper.home_page)->pageid,
+			     "VACUUM: Changed vacuum status of heap page " "%d|%d, lsa=%lld|%d from once to none.\n",
+			     pgbuf_get_volume_id (helper.home_page), pgbuf_get_page_id (helper.home_page),
+			     (long long int) pgbuf_get_lsa (helper.home_page)->pageid,
 			     (int) pgbuf_get_lsa (helper.home_page)->offset);
 
 	      VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, &helper);
 
-	      vacuum_log_vacuum_heap_page (thread_p, helper.home_page,
-					   helper.n_bulk_vacuumed,
-					   helper.slots, helper.results,
-					   helper.next_versions,
-					   helper.partition_links,
+	      vacuum_log_vacuum_heap_page (thread_p, helper.home_page, helper.n_bulk_vacuumed, helper.slots,
+					   helper.results, helper.next_versions, helper.partition_links,
 					   helper.reusable, true);
 
 	      VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, &helper);
@@ -1412,8 +1234,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	  /* Set page dirty. */
 	  pgbuf_set_dirty (thread_p, helper.home_page, DONT_FREE);
 
-	  if (spage_number_of_records (helper.home_page) <= 1
-	      && helper.reusable)
+	  if (spage_number_of_records (helper.home_page) <= 1 && helper.reusable)
 	    {
 	      /* Try to remove page from heap. */
 
@@ -1429,20 +1250,15 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	      VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, &helper);
 
 	      if (pgbuf_has_prevent_dealloc (helper.home_page) == false
-		  && heap_remove_page_on_vacuum (thread_p, &helper.home_page,
-						 &helper.hfid))
+		  && heap_remove_page_on_vacuum (thread_p, &helper.home_page, &helper.hfid))
 		{
 		  /* Successfully removed page. */
 		  assert (helper.home_page == NULL);
 
 		  vacuum_er_log (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_HEAP,
-				 "VACUUM: Successfully removed page %d|%d "
-				 "from heap file (%d, %d|%d).\n",
-				 helper.home_vpid.volid,
-				 helper.home_vpid.pageid,
-				 helper.hfid.hpgid,
-				 helper.hfid.vfid.volid,
-				 helper.hfid.vfid.fileid);
+				 "VACUUM: Successfully removed page %d|%d " "from heap file (%d, %d|%d).\n",
+				 helper.home_vpid.volid, helper.home_vpid.pageid, helper.hfid.hpgid,
+				 helper.hfid.vfid.volid, helper.hfid.vfid.fileid);
 
 		  VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, &helper);
 		  goto end;
@@ -1468,19 +1284,16 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects,
 	  vacuum_heap_page_log_and_reset (thread_p, &helper, false, true);
 
 	  helper.home_page =
-	    pgbuf_fix (thread_p, &helper.home_vpid, OLD_PAGE,
-		       PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	    pgbuf_fix (thread_p, &helper.home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (helper.home_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
-	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			     "VACUUM ERROR: Failed to fix page %d|%d.\n",
+	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP, "VACUUM ERROR: Failed to fix page %d|%d.\n",
 			     helper.home_vpid.volid, helper.home_vpid.pageid);
 	      assert (helper.forward_page == NULL);
 	      return error_code;
 	    }
-	  (void) pgbuf_check_page_ptype (thread_p, helper.home_page,
-					 PAGE_HEAP);
+	  (void) pgbuf_check_page_ptype (thread_p, helper.home_page, PAGE_HEAP);
 	}
       /* Continue to next object. */
     }
@@ -1514,15 +1327,12 @@ end:
  * helper (in)	 : Vacuum heap helper.
  */
 static int
-vacuum_heap_prepare_record (THREAD_ENTRY * thread_p,
-			    VACUUM_HEAP_HELPER * helper)
+vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 {
   SPAGE_SLOT *slotp;		/* Slot at helper->crt_slotid or NULL. */
   VPID forward_vpid;		/* Forward page VPID. */
   int error_code = NO_ERROR;	/* Error code. */
-  PGBUF_LATCH_CONDITION fwd_condition;	/* Condition to latch forward page
-					 * for REC_RELOCATION.
-					 */
+  PGBUF_LATCH_CONDITION fwd_condition;	/* Condition to latch forward page for REC_RELOCATION. */
 
   /* Assert expected arguments. */
   assert (helper != NULL);
@@ -1542,21 +1352,13 @@ retry_prepare:
     }
   helper->record_type = slotp->record_type;
 
-  /* Get required pages and MVCC header in the three interesting cases:
-   * 1. REC_RELOCATION.
-   * 2. REC_BIGONE.
-   * 3. REC_HOME.
-   */
+  /* Get required pages and MVCC header in the three interesting cases: 1. REC_RELOCATION. 2. REC_BIGONE. 3. REC_HOME. */
   switch (helper->record_type)
     {
     case REC_RELOCATION:
-      /* Required info: forward page, forward OID, REC_NEWHOME record,
-       *                MVCC header and HFID.
-       */
+      /* Required info: forward page, forward OID, REC_NEWHOME record, MVCC header and HFID. */
 
-      /* Before getting forward page, we need to get HFID. It must be known
-       * to help deciding the order of fixing pages.
-       */
+      /* Before getting forward page, we need to get HFID. It must be known to help deciding the order of fixing pages. */
       error_code = vacuum_heap_get_hfid (thread_p, helper);
       if (error_code != NO_ERROR)
 	{
@@ -1568,8 +1370,7 @@ retry_prepare:
       /* Get forward OID. */
       helper->forward_recdes.data = (char *) helper->forward_links;
       helper->forward_recdes.area_size = sizeof (helper->forward_links);
-      if (spage_get_record (helper->home_page, helper->crt_slotid,
-			    &helper->forward_recdes, COPY) != S_SUCCESS)
+      if (spage_get_record (helper->home_page, helper->crt_slotid, &helper->forward_recdes, COPY) != S_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
@@ -1592,18 +1393,11 @@ retry_prepare:
 	}
       if (helper->forward_page == NULL)
 	{
-	  /* The condition used to fix forward page depends on its VPID and
-	   * home page VPID. Unconditional latch can be used if the order is
-	   * home before forward. If the order is forward before home, try
-	   * conditional latch, and if it fails, fix pages in reversed order.
-	   */
-	  fwd_condition =
-	    pgbuf_get_condition_for_ordered_fix (&forward_vpid,
-						 &helper->home_vpid,
-						 &helper->hfid);
-	  helper->forward_page =
-	    pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-		       fwd_condition);
+	  /* The condition used to fix forward page depends on its VPID and home page VPID. Unconditional latch can be
+	   * used if the order is home before forward. If the order is forward before home, try conditional latch, and
+	   * if it fails, fix pages in reversed order. */
+	  fwd_condition = pgbuf_get_condition_for_ordered_fix (&forward_vpid, &helper->home_vpid, &helper->hfid);
+	  helper->forward_page = pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, fwd_condition);
 	}
       if (helper->forward_page == NULL)
 	{
@@ -1612,8 +1406,7 @@ retry_prepare:
 	    {
 	      /* Fix should have worked. */
 	      ASSERT_ERROR_AND_SET (error_code);
-	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			     "VACUUM ERROR: Failed to fix page (%d, %d).",
+	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP, "VACUUM ERROR: Failed to fix page (%d, %d).",
 			     forward_vpid.volid, forward_vpid.pageid);
 	      return error_code;
 	    }
@@ -1628,44 +1421,35 @@ retry_prepare:
 	  /* Fix pages in reversed order. */
 	  /* Fix forward page. */
 	  helper->forward_page =
-	    pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-		       PGBUF_UNCONDITIONAL_LATCH);
+	    pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (helper->forward_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
-	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			     "VACUUM ERROR: Failed to fix page (%d, %d).",
+	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP, "VACUUM ERROR: Failed to fix page (%d, %d).",
 			     forward_vpid.volid, forward_vpid.pageid);
 	      return error_code;
 	    }
 	  /* Fix home page. */
 	  helper->home_page =
-	    pgbuf_fix (thread_p, &helper->home_vpid, OLD_PAGE,
-		       PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	    pgbuf_fix (thread_p, &helper->home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (helper->home_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
-	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			     "VACUUM ERROR: Failed to fix page (%d, %d).",
+	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP, "VACUUM ERROR: Failed to fix page (%d, %d).",
 			     forward_vpid.volid, forward_vpid.pageid);
 	      return error_code;
 	    }
 	  /* Both pages fixed. */
 
-	  /* While home has been unfixed, it is possible that current record
-	   * was changed. It could be returned to home, link could be changed,
-	   * or it could be vacuumed.
-	   * Repeat getting record.
-	   */
+	  /* While home has been unfixed, it is possible that current record was changed. It could be returned to home, 
+	   * link could be changed, or it could be vacuumed. Repeat getting record. */
 	  goto retry_prepare;
 	}
-      assert (VPID_EQ (pgbuf_get_vpid_ptr (helper->forward_page),
-		       &forward_vpid));
+      assert (VPID_EQ (pgbuf_get_vpid_ptr (helper->forward_page), &forward_vpid));
       /* COPY (needed for UNDO logging) REC_NEWHOME record. */
       helper->record.data = PTR_ALIGN (helper->rec_buf, MAX_ALIGNMENT);
       helper->record.area_size = sizeof (helper->rec_buf);
-      if (spage_get_record (helper->forward_page, helper->forward_oid.slotid,
-			    &helper->record, COPY) != S_SUCCESS)
+      if (spage_get_record (helper->forward_page, helper->forward_oid.slotid, &helper->record, COPY) != S_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
@@ -1680,15 +1464,11 @@ retry_prepare:
       return NO_ERROR;
 
     case REC_BIGONE:
-      /* Required info: forward oid, forward page, MVCC header, HFID and
-       *                overflow VFID.
-       */
+      /* Required info: forward oid, forward page, MVCC header, HFID and overflow VFID. */
 
       if (helper->forward_page != NULL)
 	{
-	  /* Retry from REC_RELOCATION. This forward_page cannot be good for
-	   * REC_BIGONE.
-	   */
+	  /* Retry from REC_RELOCATION. This forward_page cannot be good for REC_BIGONE. */
 	  pgbuf_unfix_and_init (thread_p, helper->forward_page);
 	}
 
@@ -1704,41 +1484,31 @@ retry_prepare:
       /* Overflow VFID is required to remove overflow pages. */
       if (VFID_ISNULL (&helper->overflow_vfid))
 	{
-	  if (heap_ovf_find_vfid (thread_p, &helper->hfid,
-				  &helper->overflow_vfid, false,
-				  PGBUF_CONDITIONAL_LATCH) == NULL)
+	  if (heap_ovf_find_vfid (thread_p, &helper->hfid, &helper->overflow_vfid, false, PGBUF_CONDITIONAL_LATCH) ==
+	      NULL)
 	    {
-	      /* Failed conditional latch. Unfix heap page and try again using
-	       * unconditional latch.
-	       */
+	      /* Failed conditional latch. Unfix heap page and try again using unconditional latch. */
 	      VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
 
 	      vacuum_heap_page_log_and_reset (thread_p, helper, false, true);
 
-	      if (heap_ovf_find_vfid (thread_p, &helper->hfid,
-				      &helper->overflow_vfid, false,
-				      PGBUF_UNCONDITIONAL_LATCH) == NULL
-		  || VFID_ISNULL (&helper->overflow_vfid))
+	      if (heap_ovf_find_vfid (thread_p, &helper->hfid, &helper->overflow_vfid, false, PGBUF_UNCONDITIONAL_LATCH)
+		  == NULL || VFID_ISNULL (&helper->overflow_vfid))
 		{
 		  assert_release (false);
 		  return ER_FAILED;
 		}
 	      helper->home_page =
-		pgbuf_fix (thread_p, &helper->home_vpid, OLD_PAGE,
-			   PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+		pgbuf_fix (thread_p, &helper->home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	      if (helper->home_page == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error_code);
-		  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-				 "VACUUM ERROR: Failed to fix page (%d, %d).",
-				 helper->home_vpid.volid,
-				 helper->home_vpid.pageid);
+		  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP, "VACUUM ERROR: Failed to fix page (%d, %d).",
+				 helper->home_vpid.volid, helper->home_vpid.pageid);
 		  return error_code;
 		}
-	      /* While home has been unfixed, it is possible that current
-	       * record was changed. It could be vacuumed.
-	       * Repeat getting record.
-	       */
+	      /* While home has been unfixed, it is possible that current record was changed. It could be vacuumed.
+	       * Repeat getting record. */
 	      goto retry_prepare;
 	    }
 	}
@@ -1748,8 +1518,7 @@ retry_prepare:
       /* Get forward OID. */
       helper->forward_recdes.data = (char *) helper->forward_links;
       helper->forward_recdes.area_size = sizeof (helper->forward_links);
-      if (spage_get_record (helper->home_page, helper->crt_slotid,
-			    &helper->forward_recdes, COPY) != S_SUCCESS)
+      if (spage_get_record (helper->home_page, helper->crt_slotid, &helper->forward_recdes, COPY) != S_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
@@ -1760,28 +1529,23 @@ retry_prepare:
       /* Fix first overflow page (forward_page). */
       VPID_GET_FROM_OID (&forward_vpid, &helper->forward_links[0]);
       helper->forward_page =
-	pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-		   PGBUF_UNCONDITIONAL_LATCH);
+	pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (helper->forward_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			 "VACUUM ERROR: Failed to fix page (%d, %d).",
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP, "VACUUM ERROR: Failed to fix page (%d, %d).",
 			 forward_vpid.volid, forward_vpid.pageid);
 	  return error_code;
 	}
 
       /* Read MVCC header from first overflow page. */
-      error_code =
-	heap_get_mvcc_rec_header_from_overflow (helper->forward_page,
-						&helper->mvcc_header, NULL);
+      error_code = heap_get_mvcc_rec_header_from_overflow (helper->forward_page, &helper->mvcc_header, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			 "VACUUM ERROR: Failed to get MVCC header from "
-			 "overflow page %d|%d.",
-			 forward_vpid.volid, forward_vpid.pageid);
+			 "VACUUM ERROR: Failed to get MVCC header from " "overflow page %d|%d.", forward_vpid.volid,
+			 forward_vpid.pageid);
 	  return error_code;
 	}
       break;
@@ -1791,15 +1555,12 @@ retry_prepare:
 
       if (helper->forward_page != NULL)
 	{
-	  /* Retry from REC_RELOCATION. This forward_page cannot be good for
-	   * REC_HOME.
-	   */
+	  /* Retry from REC_RELOCATION. This forward_page cannot be good for REC_HOME. */
 	  pgbuf_unfix_and_init (thread_p, helper->forward_page);
 	}
 
       /* Peek record. */
-      if (spage_get_record (helper->home_page, helper->crt_slotid,
-			    &helper->record, PEEK) != S_SUCCESS)
+      if (spage_get_record (helper->home_page, helper->crt_slotid, &helper->record, PEEK) != S_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
@@ -1819,20 +1580,15 @@ retry_prepare:
 
       if (helper->forward_page != NULL)
 	{
-	  /* Retry from REC_RELOCATION. This forward_page cannot be good for
-	   * vacuumed/deleted slot.
-	   */
+	  /* Retry from REC_RELOCATION. This forward_page cannot be good for vacuumed/deleted slot. */
 	  pgbuf_unfix_and_init (thread_p, helper->forward_page);
 	}
       break;
     }
 
-  /* Assert forward page is fixed if and only if record type is either
-   * REC_RELOCATION or REC_BIGONE.
-   */
+  /* Assert forward page is fixed if and only if record type is either REC_RELOCATION or REC_BIGONE. */
   assert ((helper->record_type == REC_RELOCATION
-	   || helper->record_type == REC_BIGONE)
-	  == (helper->forward_page != NULL));
+	   || helper->record_type == REC_BIGONE) == (helper->forward_page != NULL));
 
   VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
 
@@ -1848,12 +1604,9 @@ retry_prepare:
  * helper (in)	 : Vacuum heap helper.
  */
 static int
-vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p,
-				  VACUUM_HEAP_HELPER * helper)
+vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 {
-  RECDES update_record;		/* Record to build updated version without
-				 * insert MVCCID.
-				 */
+  RECDES update_record;		/* Record to build updated version without insert MVCCID. */
   /* Buffer for update_record data. */
   char update_record_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   int error_code = NO_ERROR;	/* Error code. */
@@ -1888,42 +1641,27 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p,
 	{
 	  ASSERT_ERROR ();
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			 "Vacuum error: set mvcc header "
-			 "(flag=%d, repid=%d, chn=%d, insid=%llu, "
-			 "delid=%llu, next_v=%d|%d|%d to object "
-			 "%d|%d|%d with record of type=%d and "
-			 "size=%d",
-			 (int) MVCC_GET_FLAG (&helper->mvcc_header),
-			 (int) MVCC_GET_REPID (&helper->mvcc_header),
-			 MVCC_GET_CHN (&helper->mvcc_header),
-			 MVCC_GET_INSID (&helper->mvcc_header),
-			 MVCC_GET_DELID (&helper->mvcc_header),
-			 helper->mvcc_header.next_version.volid,
-			 helper->mvcc_header.next_version.pageid,
-			 helper->mvcc_header.next_version.slotid,
-			 helper->forward_oid.volid,
-			 helper->forward_oid.pageid,
-			 helper->forward_oid.slotid, REC_NEWHOME,
+			 "Vacuum error: set mvcc header " "(flag=%d, repid=%d, chn=%d, insid=%llu, "
+			 "delid=%llu, next_v=%d|%d|%d to object " "%d|%d|%d with record of type=%d and " "size=%d",
+			 (int) MVCC_GET_FLAG (&helper->mvcc_header), (int) MVCC_GET_REPID (&helper->mvcc_header),
+			 MVCC_GET_CHN (&helper->mvcc_header), MVCC_GET_INSID (&helper->mvcc_header),
+			 MVCC_GET_DELID (&helper->mvcc_header), helper->mvcc_header.next_version.volid,
+			 helper->mvcc_header.next_version.pageid, helper->mvcc_header.next_version.slotid,
+			 helper->forward_oid.volid, helper->forward_oid.pageid, helper->forward_oid.slotid, REC_NEWHOME,
 			 helper->record.length);
 	  return error_code;
 	}
 
       /* Update record in page. */
-      if (spage_update (thread_p, helper->forward_page,
-			helper->forward_oid.slotid, &update_record)
-	  != SP_SUCCESS)
+      if (spage_update (thread_p, helper->forward_page, helper->forward_oid.slotid, &update_record) != SP_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
 	}
 
-      /* Since forward page was vacuumed, log it immediately. Then unfix
-       * forward page.
-       */
-      vacuum_log_vacuum_heap_page (thread_p, helper->forward_page, 1,
-				   &helper->forward_oid.slotid,
-				   &helper->can_vacuum, NULL, NULL,
-				   helper->reusable, false);
+      /* Since forward page was vacuumed, log it immediately. Then unfix forward page. */
+      vacuum_log_vacuum_heap_page (thread_p, helper->forward_page, 1, &helper->forward_oid.slotid, &helper->can_vacuum,
+				   NULL, NULL, helper->reusable, false);
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
@@ -1934,32 +1672,20 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p,
       /* First overflow page is required. */
       assert (helper->forward_page != NULL);
 
-      /* Replace current insert MVCCID with MVCCID_ALL_VISIBLE. Header must
-       * remain the same size.
-       */
+      /* Replace current insert MVCCID with MVCCID_ALL_VISIBLE. Header must remain the same size. */
       MVCC_SET_INSID (&helper->mvcc_header, MVCCID_ALL_VISIBLE);
-      error_code =
-	heap_set_mvcc_rec_header_on_overflow (helper->forward_page,
-					      &helper->mvcc_header);
+      error_code = heap_set_mvcc_rec_header_on_overflow (helper->forward_page, &helper->mvcc_header);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			 "Vacuum error: set mvcc header "
-			 "(flag=%d, repid=%d, chn=%d, insid=%llu, "
-			 "delid=%llu, next_v=%d|%d|%d to object "
-			 "%d|%d|%d with record of type=%d and "
-			 "size=%d",
-			 (int) MVCC_GET_FLAG (&helper->mvcc_header),
-			 (int) MVCC_GET_REPID (&helper->mvcc_header),
-			 MVCC_GET_CHN (&helper->mvcc_header),
-			 MVCC_GET_INSID (&helper->mvcc_header),
-			 MVCC_GET_DELID (&helper->mvcc_header),
-			 helper->mvcc_header.next_version.volid,
-			 helper->mvcc_header.next_version.pageid,
-			 helper->mvcc_header.next_version.slotid,
-			 helper->home_vpid.volid, helper->home_vpid.pageid,
-			 helper->crt_slotid, REC_BIGONE,
+			 "Vacuum error: set mvcc header " "(flag=%d, repid=%d, chn=%d, insid=%llu, "
+			 "delid=%llu, next_v=%d|%d|%d to object " "%d|%d|%d with record of type=%d and " "size=%d",
+			 (int) MVCC_GET_FLAG (&helper->mvcc_header), (int) MVCC_GET_REPID (&helper->mvcc_header),
+			 MVCC_GET_CHN (&helper->mvcc_header), MVCC_GET_INSID (&helper->mvcc_header),
+			 MVCC_GET_DELID (&helper->mvcc_header), helper->mvcc_header.next_version.volid,
+			 helper->mvcc_header.next_version.pageid, helper->mvcc_header.next_version.slotid,
+			 helper->home_vpid.volid, helper->home_vpid.pageid, helper->crt_slotid, REC_BIGONE,
 			 helper->record.length);
 	  return error_code;
 	}
@@ -1990,25 +1716,17 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p,
 	{
 	  ASSERT_ERROR ();
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-			 "Vacuum error: set mvcc header "
-			 "(flag=%d, repid=%d, chn=%d, insid=%llu, "
-			 "delid=%llu, next_v=%d|%d|%d to object "
-			 "%d|%d|%d with record of type=%d and "
-			 "size=%d",
-			 (int) MVCC_GET_FLAG (&helper->mvcc_header),
-			 (int) MVCC_GET_REPID (&helper->mvcc_header),
-			 MVCC_GET_CHN (&helper->mvcc_header),
-			 MVCC_GET_INSID (&helper->mvcc_header),
-			 MVCC_GET_DELID (&helper->mvcc_header),
-			 helper->mvcc_header.next_version.volid,
-			 helper->mvcc_header.next_version.pageid,
-			 helper->mvcc_header.next_version.slotid,
-			 helper->home_vpid.volid, helper->home_vpid.pageid,
-			 helper->crt_slotid, REC_HOME, helper->record.length);
+			 "Vacuum error: set mvcc header " "(flag=%d, repid=%d, chn=%d, insid=%llu, "
+			 "delid=%llu, next_v=%d|%d|%d to object " "%d|%d|%d with record of type=%d and " "size=%d",
+			 (int) MVCC_GET_FLAG (&helper->mvcc_header), (int) MVCC_GET_REPID (&helper->mvcc_header),
+			 MVCC_GET_CHN (&helper->mvcc_header), MVCC_GET_INSID (&helper->mvcc_header),
+			 MVCC_GET_DELID (&helper->mvcc_header), helper->mvcc_header.next_version.volid,
+			 helper->mvcc_header.next_version.pageid, helper->mvcc_header.next_version.slotid,
+			 helper->home_vpid.volid, helper->home_vpid.pageid, helper->crt_slotid, REC_HOME,
+			 helper->record.length);
 	  return error_code;
 	}
-      if (spage_update (thread_p, helper->home_page, helper->crt_slotid,
-			&update_record) != SP_SUCCESS)
+      if (spage_update (thread_p, helper->home_page, helper->crt_slotid, &update_record) != SP_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
@@ -2053,12 +1771,10 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   assert (helper->home_page != NULL);
   assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
 
-  if (helper->record_type == REC_RELOCATION
-      || helper->record_type == REC_BIGONE)
+  if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE)
     {
-      /* HOME record of rel/big records are performed as a single operation:
-       * flush all existing vacuumed slots before starting a system op for
-       * current record */
+      /* HOME record of rel/big records are performed as a single operation: flush all existing vacuumed slots before
+       * starting a system op for current record */
       vacuum_heap_page_log_and_reset (thread_p, helper, false, false);
 
       if (log_start_system_op (thread_p) == NULL)
@@ -2076,10 +1792,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       if (!helper->reusable)
 	{
 	  /* Save next version and partition links. */
-	  COPY_OID (&helper->next_versions[helper->n_bulk_vacuumed],
-		    &MVCC_GET_NEXT_VERSION (&helper->mvcc_header));
-	  COPY_OID (&helper->partition_links[helper->n_bulk_vacuumed],
-		    &MVCC_GET_PARTITION_OID (&helper->mvcc_header));
+	  COPY_OID (&helper->next_versions[helper->n_bulk_vacuumed], &MVCC_GET_NEXT_VERSION (&helper->mvcc_header));
+	  COPY_OID (&helper->partition_links[helper->n_bulk_vacuumed], &MVCC_GET_PARTITION_OID (&helper->mvcc_header));
 	}
       else
 	{
@@ -2088,21 +1802,18 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
     }
 
   /* Vacuum REC_HOME/REC_RELOCATION/REC_BIGONE */
-  if (spage_vacuum_slot (thread_p, helper->home_page, helper->crt_slotid,
-			 &MVCC_GET_NEXT_VERSION (&helper->mvcc_header),
-			 &MVCC_GET_PARTITION_OID (&helper->mvcc_header),
-			 helper->reusable) != NO_ERROR)
+  if (spage_vacuum_slot
+      (thread_p, helper->home_page, helper->crt_slotid, &MVCC_GET_NEXT_VERSION (&helper->mvcc_header),
+       &MVCC_GET_PARTITION_OID (&helper->mvcc_header), helper->reusable) != NO_ERROR)
     {
-      if (helper->record_type == REC_RELOCATION
-	  || helper->record_type == REC_BIGONE)
+      if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE)
 	{
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 	}
       return ER_FAILED;
     }
 
-  if (helper->reusable
-      || OID_ISNULL (&MVCC_GET_NEXT_VERSION (&helper->mvcc_header)))
+  if (helper->reusable || OID_ISNULL (&MVCC_GET_NEXT_VERSION (&helper->mvcc_header)))
     {
       mnt_heap_remove_vacuums (thread_p);
     }
@@ -2113,10 +1824,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
   if (helper->record_type != REC_HOME)
     {
-      /* We try to keep the same amount of pgbuf_set_dirty and logged changes;
-       * Changes on REC_HOME records are logged in bulk and page is set dirty
-       * along with that log record
-       */
+      /* We try to keep the same amount of pgbuf_set_dirty and logged changes; Changes on REC_HOME records are logged
+       * in bulk and page is set dirty along with that log record */
       pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
     }
 
@@ -2131,20 +1840,13 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
-      vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page,
-					 helper->crt_slotid,
-					 &helper->forward_recdes,
-					 &MVCC_GET_NEXT_VERSION (&helper->
-								 mvcc_header),
-					 &MVCC_GET_PARTITION_OID (&helper->
-								  mvcc_header),
-					 helper->reusable);
+      vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->forward_recdes,
+					 &MVCC_GET_NEXT_VERSION (&helper->mvcc_header),
+					 &MVCC_GET_PARTITION_OID (&helper->mvcc_header), helper->reusable);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
-      if (spage_vacuum_slot (thread_p, helper->forward_page,
-			     helper->forward_oid.slotid, NULL, NULL, true)
-	  != NO_ERROR)
+      if (spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, NULL, NULL, true) != NO_ERROR)
 	{
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 	  return ER_FAILED;
@@ -2153,9 +1855,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
       /* Log changes in forward page immediately. */
-      vacuum_log_redoundo_vacuum_record (thread_p, helper->forward_page,
-					 helper->forward_oid.slotid,
-					 &helper->record, NULL, NULL, true);
+      vacuum_log_redoundo_vacuum_record (thread_p, helper->forward_page, helper->forward_oid.slotid, &helper->record,
+					 NULL, NULL, true);
 
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
@@ -2174,22 +1875,16 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
-      vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page,
-					 helper->crt_slotid,
-					 &helper->forward_recdes,
-					 &MVCC_GET_NEXT_VERSION (&helper->
-								 mvcc_header),
-					 &MVCC_GET_PARTITION_OID (&helper->
-								  mvcc_header),
-					 helper->reusable);
+      vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->forward_recdes,
+					 &MVCC_GET_NEXT_VERSION (&helper->mvcc_header),
+					 &MVCC_GET_PARTITION_OID (&helper->mvcc_header), helper->reusable);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
       /* Unfix first overflow page. */
       pgbuf_unfix_and_init (thread_p, helper->forward_page);
 
-      if (heap_ovf_delete (thread_p, &helper->hfid, &helper->forward_oid,
-			   &helper->overflow_vfid) == NULL)
+      if (heap_ovf_delete (thread_p, &helper->hfid, &helper->forward_oid, &helper->overflow_vfid) == NULL)
 	{
 	  /* Failed to delete. */
 	  assert_release (false);
@@ -2250,15 +1945,12 @@ vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
     }
 
   /* Get class OID from heap page. */
-  error_code =
-    heap_get_class_oid_from_page (thread_p, helper->home_page, &class_oid);
+  error_code = heap_get_class_oid_from_page (thread_p, helper->home_page, &class_oid);
   if (error_code != NO_ERROR)
     {
       vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Failed to obtain class_oid from "
-		     "heap page %d|%d.\n",
-		     pgbuf_get_volume_id (helper->home_page),
-		     pgbuf_get_page_id (helper->home_page));
+		     "VACUUM WARNING: Failed to obtain class_oid from " "heap page %d|%d.\n",
+		     pgbuf_get_volume_id (helper->home_page), pgbuf_get_page_id (helper->home_page));
 
       assert_release (false);
       return error_code;
@@ -2266,14 +1958,12 @@ vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   assert (!OID_ISNULL (&class_oid));
 
   /* Get HFID for class OID. */
-  error_code =
-    heap_get_hfid_from_class_oid (thread_p, &class_oid, &helper->hfid);
+  error_code = heap_get_hfid_from_class_oid (thread_p, &class_oid, &helper->hfid);
   if (error_code != NO_ERROR)
     {
       vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
-		     "VACUUM ERROR: Failed to obtain heap file "
-		     "identifier for class (%d, %d, %d)",
-		     class_oid.volid, class_oid.pageid, class_oid.slotid);
+		     "VACUUM ERROR: Failed to obtain heap file " "identifier for class (%d, %d, %d)", class_oid.volid,
+		     class_oid.pageid, class_oid.slotid);
 
       assert_release (false);
       return error_code;
@@ -2295,9 +1985,7 @@ vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
  * unlatch_page (in) :
  */
 static void
-vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
-				VACUUM_HEAP_HELPER * helper,
-				bool update_best_space_stat,
+vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool update_best_space_stat,
 				bool unlatch_page)
 {
   assert (helper != NULL);
@@ -2319,8 +2007,7 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
       spage_compact (helper->home_page);
     }
 
-  /* Update statistics only for home pages;
-   * We assume that fwd pages (from relocated records) are home pages for other
+  /* Update statistics only for home pages; We assume that fwd pages (from relocated records) are home pages for other
    * OIDs and their statistics are updated in that context */
   if (update_best_space_stat == true && helper->initial_home_free_space != -1)
     {
@@ -2328,12 +2015,8 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
 	{
 	  int freespace;
 
-	  freespace = spage_get_free_space_without_saving (thread_p,
-							   helper->home_page,
-							   NULL);
-	  if (heap_should_try_update_stat (freespace,
-					   helper->initial_home_free_space)
-	      == true)
+	  freespace = spage_get_free_space_without_saving (thread_p, helper->home_page, NULL);
+	  if (heap_should_try_update_stat (freespace, helper->initial_home_free_space) == true)
 	    {
 	      (void) vacuum_heap_get_hfid (thread_p, helper);
 	    }
@@ -2341,19 +2024,15 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
 
       if (!HFID_IS_NULL (&helper->hfid))
 	{
-	  heap_stats_update (thread_p, helper->home_page, &helper->hfid,
-			     helper->initial_home_free_space);
+	  heap_stats_update (thread_p, helper->home_page, &helper->hfid, helper->initial_home_free_space);
 	}
     }
 
   VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
   /* Log vacuumed slots */
-  vacuum_log_vacuum_heap_page (thread_p, helper->home_page,
-			       helper->n_bulk_vacuumed, helper->slots,
-			       helper->results, helper->next_versions,
-			       helper->partition_links,
-			       helper->reusable, false);
+  vacuum_log_vacuum_heap_page (thread_p, helper->home_page, helper->n_bulk_vacuumed, helper->slots, helper->results,
+			       helper->next_versions, helper->partition_links, helper->reusable, false);
 
   /* Mark page as dirty and unfix */
   pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
@@ -2385,17 +2064,14 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p,
  * NOTE: Some values in slots array are modified and set to negative values.
  */
 static void
-vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
-			     int n_slots, PGSLOTID * slots,
-			     MVCC_SATISFIES_VACUUM_RESULT * results,
-			     OID * next_versions, OID * partition_oids,
+vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int n_slots, PGSLOTID * slots,
+			     MVCC_SATISFIES_VACUUM_RESULT * results, OID * next_versions, OID * partition_oids,
 			     bool reusable, bool all_vacuumed)
 {
   LOG_DATA_ADDR addr;
   int packed_size = 0, i = 0;
   char *ptr = NULL, *buffer_p = NULL;
-  char buffer[MAX_SLOTS_IN_PAGE * (sizeof (PGSLOTID) + 2 * OR_OID_SIZE)
-	      + (MAX_ALIGNMENT * 2)];
+  char buffer[MAX_SLOTS_IN_PAGE * (sizeof (PGSLOTID) + 2 * OR_OID_SIZE) + (MAX_ALIGNMENT * 2)];
   bool has_next_versions = false;
   bool has_partition_oids = false;
 
@@ -2471,16 +2147,13 @@ vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
       /* Pack slot ID's and results */
       for (i = 0; i < n_slots; i++)
 	{
-	  assert (results[i] == VACUUM_RECORD_DELETE_INSID
-		  || results[i] == VACUUM_RECORD_REMOVE);
+	  assert (results[i] == VACUUM_RECORD_DELETE_INSID || results[i] == VACUUM_RECORD_REMOVE);
 
 	  assert (slots[i] > 0);
 
 	  if (results[i] == VACUUM_RECORD_REMOVE)
 	    {
-	      /* Use negative slot ID to mark that object has been completely
-	       * removed.
-	       */
+	      /* Use negative slot ID to mark that object has been completely removed. */
 	      slots[i] = -slots[i];
 	    }
 	}
@@ -2508,8 +2181,7 @@ vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   assert ((ptr - buffer_p) == packed_size);
 
   /* Append new redo log rebuild_record */
-  log_append_redo_data (thread_p, RVVAC_HEAP_PAGE_VACUUM, &addr, packed_size,
-			buffer_p);
+  log_append_redo_data (thread_p, RVVAC_HEAP_PAGE_VACUUM, &addr, packed_size, buffer_p);
 }
 
 /*
@@ -2551,19 +2223,14 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   if (all_vacuumed)
     {
       vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY,
-		     "VACUUM: Change vacuum status for heap page %d|%d, "
-		     "lsa=%lld|%d, from once to none.\n",
-		     pgbuf_get_volume_id (rcv->pgptr),
-		     pgbuf_get_page_id (rcv->pgptr),
-		     (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
-		     (int) pgbuf_get_lsa (rcv->pgptr)->offset);
+		     "VACUUM: Change vacuum status for heap page %d|%d, " "lsa=%lld|%d, from once to none.\n",
+		     pgbuf_get_volume_id (rcv->pgptr), pgbuf_get_page_id (rcv->pgptr),
+		     (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid, (int) pgbuf_get_lsa (rcv->pgptr)->offset);
     }
 
   if (n_slots == 0)
     {
-      /* No slots have been vacuumed, but header must be changed from one
-       * vacuum required to no vacuum required.
-       */
+      /* No slots have been vacuumed, but header must be changed from one vacuum required to no vacuum required. */
       assert (all_vacuumed);
 
       if (all_vacuumed)
@@ -2612,12 +2279,9 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	{
 	  /* Record was removed completely */
 	  slotids[i] = -slotids[i];
-	  if (spage_vacuum_slot (thread_p, page_p, slotids[i],
-				 next_versions != NULL ?
-				 &next_versions[i] : NULL,
-				 partition_oids != NULL ?
-				 &partition_oids[i] : NULL, reusable)
-	      != NO_ERROR)
+	  if (spage_vacuum_slot
+	      (thread_p, page_p, slotids[i], next_versions != NULL ? &next_versions[i] : NULL,
+	       partition_oids != NULL ? &partition_oids[i] : NULL, reusable) != NO_ERROR)
 	    {
 	      assert_release (false);
 	      return ER_FAILED;
@@ -2626,14 +2290,10 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       else
 	{
 	  /* Only insert MVCCID has been removed */
-	  if (spage_get_record (rcv->pgptr, slotids[i], &peek_record, PEEK)
-	      != S_SUCCESS)
+	  if (spage_get_record (rcv->pgptr, slotids[i], &peek_record, PEEK) != S_SUCCESS)
 	    {
-	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP
-			     | VACUUM_ER_LOG_RECOVERY,
-			     "VACUUM ERROR: Failed to get record at "
-			     "(%d, %d, %d).",
-			     pgbuf_get_volume_id (rcv->pgptr),
+	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY,
+			     "VACUUM ERROR: Failed to get record at " "(%d, %d, %d).", pgbuf_get_volume_id (rcv->pgptr),
 			     pgbuf_get_page_id (rcv->pgptr), slotids[i]);
 	      assert_release (false);
 	      return ER_FAILED;
@@ -2648,11 +2308,9 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 	  /* Remove insert MVCCID */
 	  or_mvcc_get_header (&peek_record, &rec_header);
-	  old_header_size =
-	    or_mvcc_header_size_from_flags (MVCC_GET_FLAG (&rec_header));
+	  old_header_size = or_mvcc_header_size_from_flags (MVCC_GET_FLAG (&rec_header));
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID);
-	  new_header_size =
-	    or_mvcc_header_size_from_flags (MVCC_GET_FLAG (&rec_header));
+	  new_header_size = or_mvcc_header_size_from_flags (MVCC_GET_FLAG (&rec_header));
 
 	  /* Rebuild record */
 	  rebuild_record.type = peek_record.type;
@@ -2662,12 +2320,10 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  /* Set new header */
 	  or_mvcc_set_header (&rebuild_record, &rec_header);
 	  /* Copy record data */
-	  memcpy (rebuild_record.data + new_header_size,
-		  peek_record.data + old_header_size,
+	  memcpy (rebuild_record.data + new_header_size, peek_record.data + old_header_size,
 		  peek_record.length - old_header_size);
 
-	  if (spage_update (thread_p, rcv->pgptr, slotids[i], &rebuild_record)
-	      != SP_SUCCESS)
+	  if (spage_update (thread_p, rcv->pgptr, slotids[i], &rebuild_record) != SP_SUCCESS)
 	    {
 	      assert_release (false);
 	      return ER_FAILED;
@@ -2700,8 +2356,7 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 static void
 vacuum_log_remove_ovf_insid (THREAD_ENTRY * thread_p, PAGE_PTR ovfpage)
 {
-  log_append_redo_data2 (thread_p, RVVAC_REMOVE_OVF_INSID, NULL, ovfpage, 0,
-			 0, NULL);
+  log_append_redo_data2 (thread_p, RVVAC_REMOVE_OVF_INSID, NULL, ovfpage, 0, 0, NULL);
 }
 
 /*
@@ -2718,8 +2373,7 @@ vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   MVCC_REC_HEADER rec_header;
   int error = NO_ERROR;
 
-  error = heap_get_mvcc_rec_header_from_overflow (rcv->pgptr, &rec_header,
-						  NULL);
+  error = heap_get_mvcc_rec_header_from_overflow (rcv->pgptr, &rec_header, NULL);
   if (error != NO_ERROR)
     {
       return error;
@@ -2751,8 +2405,7 @@ vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * newest_mvccid (in) : Log block newest MVCCID.
  */
 void
-vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
-			       MVCCID oldest_mvccid, MVCCID newest_mvccid)
+vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVCCID oldest_mvccid, MVCCID newest_mvccid)
 {
   VACUUM_DATA_ENTRY block_data;
 
@@ -2763,20 +2416,12 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 
   if (vacuum_Block_data_buffer == NULL)
     {
-      /* TODO: Right now, the vacuum is not working when a database is
-       *       created, which means we will "leak" some MVCC operations.
-       * There are two possible solutions:
-       * 1. Initialize vacuum just to collect information on MVCC operations
-       *    done while creating the database.
-       * 2. Disable MVCC operation while creating database. No concurrency,
-       *    no MVCC is required.
-       * Option #2 is best, however the dynamic MVCC headers for heap records
-       * are required. Postpone solution until then, and just set a warning
-       * here.
-       * Update:
-       * Alex is going disable MVCC when the server will work in stand-alone
-       * mode with the implementation for Dynamic MVCC header for heap.
-       */
+      /* TODO: Right now, the vacuum is not working when a database is created, which means we will "leak" some MVCC
+       * operations. There are two possible solutions: 1. Initialize vacuum just to collect information on MVCC
+       * operations done while creating the database. 2. Disable MVCC operation while creating database. No
+       * concurrency, no MVCC is required. Option #2 is best, however the dynamic MVCC headers for heap records are
+       * required. Postpone solution until then, and just set a warning here. Update: Alex is going disable MVCC when
+       * the server will work in stand-alone mode with the implementation for Dynamic MVCC header for heap. */
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return;
     }
@@ -2797,27 +2442,20 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
   block_data.newest_mvccid = newest_mvccid;
 
   vacuum_er_log (VACUUM_ER_LOG_LOGGING | VACUUM_ER_LOG_VACUUM_DATA,
-		 "VACUUM, thread %d calls: "
-		 "vacuum_produce_log_block_data: blockid=(%lld) "
-		 "start_lsa=(%lld, %d) old_mvccid=(%llu) new_mvccid=(%llu)\n",
-		 thread_get_current_entry_index (),
-		 block_data.blockid,
-		 (long long int) block_data.start_lsa.pageid,
-		 (int) block_data.start_lsa.offset, block_data.oldest_mvccid,
-		 block_data.newest_mvccid);
+		 "VACUUM, thread %d calls: " "vacuum_produce_log_block_data: blockid=(%lld) "
+		 "start_lsa=(%lld, %d) old_mvccid=(%llu) new_mvccid=(%llu)\n", thread_get_current_entry_index (),
+		 block_data.blockid, (long long int) block_data.start_lsa.pageid, (int) block_data.start_lsa.offset,
+		 block_data.oldest_mvccid, block_data.newest_mvccid);
 
   /* Push new block into block data buffer */
   if (!lf_circular_queue_produce (vacuum_Block_data_buffer, &block_data))
     {
       /* Push failed, the buffer must be full */
       /* TODO: Set a new message error for full block data buffer */
-      /* TODO: Probably this case should be avoided... Make sure that we
-       *       do not lose vacuum data so there has to be enough space to
-       *       keep it.
-       */
+      /* TODO: Probably this case should be avoided... Make sure that we do not lose vacuum data so there has to be
+       * enough space to keep it. */
       vacuum_er_log (VACUUM_ER_LOG_ERROR,
-		     "VACUUM_ERROR: Cannot produce new log block data! "
-		     "The buffer is already full.");
+		     "VACUUM_ERROR: Cannot produce new log block data! " "The buffer is already full.");
       assert (false);
       return;
     }
@@ -2880,8 +2518,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   PERF_UTIME_TRACKER perf_tracker;
 
 #if defined (SA_MODE)
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	  ER_STAND_ALONE_VACUUM_START, 0);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_START, 0);
   er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum start.\n");
 #endif
 
@@ -2892,22 +2529,17 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
       local_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
 
       /* check again, maybe concurrent thread has modified the counter value */
-      if (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0)
-	  == 0)
+      if (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) == 0)
 	{
-	  ATOMIC_TAS_64 (&vacuum_Global_oldest_active_mvccid,
-			 local_oldest_active_mvccid);
+	  ATOMIC_TAS_64 (&vacuum_Global_oldest_active_mvccid, local_oldest_active_mvccid);
 	}
     }
 
   if (vacuum_Data == NULL
-      || (vacuum_Data->n_table_entries <= 0
-	  && LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer)
+      || (vacuum_Data->n_table_entries <= 0 && LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer)
 	  && LSA_ISNULL (&vacuum_Data->first_blocks_to_recover)))
     {
-      /* Vacuum data was not loaded yet from disk or it doesn't have any
-       * entries.
-       */
+      /* Vacuum data was not loaded yet from disk or it doesn't have any entries. */
 #if defined (SA_MODE)
       goto finish_sa_mode;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
@@ -2945,45 +2577,36 @@ restart:
   VACUUM_UNLOCK_DATA ();
 
   /* Search for blocks ready to be vacuumed */
-  /* Vacuum mutex is not hold here: but we search at most n_table_entries as it
-   * was during mutex hold; vacuum master is the only thread which
-   * removes vacuum entries, adding entries is performed only at the end of
-   * vacuum data array;
-   * For job queue, we use a copy of entry data, since after compacting vacuum
-   * data array, pointers would be invalidated */
+  /* Vacuum mutex is not hold here: but we search at most n_table_entries as it was during mutex hold; vacuum master is 
+   * the only thread which removes vacuum entries, adding entries is performed only at the end of vacuum data array;
+   * For job queue, we use a copy of entry data, since after compacting vacuum data array, pointers would be
+   * invalidated */
 #if defined(SERVER_MODE)
   for (i = 0, new_created_jobs = 0;
        i < vacuum_entries
-       && LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Job_queue)
-       < VACUUM_JOB_QUEUE_CAPACITY - VACUUM_JOB_QUEUE_SAFETY_BUFFER; i++)
+       && LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Job_queue) <
+       VACUUM_JOB_QUEUE_CAPACITY - VACUUM_JOB_QUEUE_SAFETY_BUFFER; i++)
 #else
   for (i = 0; i < vacuum_entries; i++)
 #endif
     {
       int error_code;
       entry = VACUUM_DATA_GET_ENTRY (i);
-      if (!VACUUM_LOG_BLOCK_CAN_VACUUM (entry,
-					vacuum_Global_oldest_active_mvccid))
+      if (!VACUUM_LOG_BLOCK_CAN_VACUUM (entry, vacuum_Global_oldest_active_mvccid))
 	{
 	  /* This block cannot be vacuumed */
 	  continue;
 	}
 
-      /* Flag block as being in progress in order to avoid adding the job again
-       * on next iteration.
-       */
+      /* Flag block as being in progress in order to avoid adding the job again on next iteration. */
       VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (entry);
       if (!VACUUM_BLOCK_IS_INTERRUPTED (entry))
 	{
-	  /* Log that a new job is starting. After recovery, the system will
-	   * then know this job was partially executed. Logging the start of a
-	   * job already interrupted is not necessary.
-	   * We do it here rather than when vacuum job is really started to
-	   * avoid locking vacuum data again (logging vacuum data cannot be
-	   * done without locking).
-	   */
-	  log_append_redo_data2 (thread_p, RVVAC_START_OR_END_JOB, NULL, NULL,
-				 0, sizeof (entry->blockid), &entry->blockid);
+	  /* Log that a new job is starting. After recovery, the system will then know this job was partially executed. 
+	   * Logging the start of a job already interrupted is not necessary. We do it here rather than when vacuum job 
+	   * is really started to avoid locking vacuum data again (logging vacuum data cannot be done without locking). */
+	  log_append_redo_data2 (thread_p, RVVAC_START_OR_END_JOB, NULL, NULL, 0, sizeof (entry->blockid),
+				 &entry->blockid);
 	}
 
 #if defined (SERVER_MODE)
@@ -2991,10 +2614,7 @@ restart:
 
       if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
 	{
-	  error_code =
-	    vacuum_log_prefetch_vacuum_block (thread_p, entry,
-					      &vacuum_job_entry.
-					      block_log_buffer);
+	  error_code = vacuum_log_prefetch_vacuum_block (thread_p, entry, &vacuum_job_entry.block_log_buffer);
 	  if (error_code != NO_ERROR)
 	    {
 	      return;
@@ -3008,23 +2628,17 @@ restart:
       if (!lf_circular_queue_produce (vacuum_Job_queue, &vacuum_job_entry))
 	{
 	  /* Queue is full, abort creating new jobs. */
-	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_MASTER,
-			 "VACUUM ERROR: Could not push new job.");
+	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_MASTER, "VACUUM ERROR: Could not push new job.");
 
-	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker,
-				   mnt_vac_master_time);
+	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
 	  return;
 	}
 
       new_created_jobs++;
 
-      /* Wakeup threads to start working on current threads. Try not to wake up
-       * more workers than necessary.
-       */
+      /* Wakeup threads to start working on current threads. Try not to wake up more workers than necessary. */
       n_jobs = (int) LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Job_queue);
-      n_available_workers =
-	prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT)
-	- vacuum_Running_workers_count;
+      n_available_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT) - vacuum_Running_workers_count;
       n_wakeup_workers = MIN (n_jobs, n_available_workers);
       if (n_wakeup_workers > 0)
 	{
@@ -3032,39 +2646,33 @@ restart:
 	  thread_wakeup_vacuum_worker_threads (n_wakeup_workers);
 	}
 
-      vacuum_block_data_buffer_aprox_size =
-	LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Block_data_buffer);
+      vacuum_block_data_buffer_aprox_size = LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Block_data_buffer);
       if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER
-	  && ((new_created_jobs >
-	       prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT)
-	       && vacuum_block_data_buffer_aprox_size
-	       > vacuum_Block_data_buffer->capacity / 2)
-	      || (new_created_jobs >= 1
-		  && vacuum_block_data_buffer_aprox_size
-		  > 9 * vacuum_Block_data_buffer->capacity / 10)))
+	  &&
+	  ((new_created_jobs > prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT)
+	    && vacuum_block_data_buffer_aprox_size > vacuum_Block_data_buffer->capacity / 2) || (new_created_jobs >= 1
+												 &&
+												 vacuum_block_data_buffer_aprox_size
+												 >
+												 9 *
+												 vacuum_Block_data_buffer->
+												 capacity / 10)))
 	{
-	  vacuum_er_log (VACUUM_ER_LOG_MASTER,
-			 "VACUUM abort job creation : "
-			 "vacuum_Block_data_buffer size:%lld/%lld",
-			 vacuum_block_data_buffer_aprox_size,
-			 vacuum_Block_data_buffer->capacity);
+	  vacuum_er_log (VACUUM_ER_LOG_MASTER, "VACUUM abort job creation : " "vacuum_Block_data_buffer size:%lld/%lld",
+			 vacuum_block_data_buffer_aprox_size, vacuum_Block_data_buffer->capacity);
 
-	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker,
-				   mnt_vac_master_time);
+	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
 	  return;
 	}
 #else
       PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
 
       vacuum_data_entry = *entry;
-      error_code =
-	vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, false);
+      error_code = vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, false);
       assert (error_code == NO_ERROR);
 
-      er_log_debug (ARG_FILE_LINE,
-		    "Stand-alone vacuum finished block %lld.\n",
-		    (long long int)
-		    VACUUM_DATA_ENTRY_BLOCKID (&vacuum_data_entry));
+      er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum finished block %lld.\n",
+		    (long long int) VACUUM_DATA_ENTRY_BLOCKID (&vacuum_data_entry));
 
       PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 #endif
@@ -3073,10 +2681,8 @@ restart:
 #if defined (SA_MODE)
   if (!LSA_ISNULL (&vacuum_Data->last_blocks_to_recover))
     {
-      /* Not all vacuum data was processed. We must recover blocks from log
-       * and execute vacuum again. It is unlikely (and extremely unwanted)
-       * to reach this, but it is important to handle it.
-       */
+      /* Not all vacuum data was processed. We must recover blocks from log and execute vacuum again. It is unlikely
+       * (and extremely unwanted) to reach this, but it is important to handle it. */
       goto restart;
     }
 
@@ -3095,39 +2701,32 @@ finish_sa_mode:
   save_check_interrupt = thread_set_check_interrupt (thread_p, false);
 
   /* Can we generate another block on information cached in log header? */
-  if (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid)
-      > vacuum_Data->last_blockid)
+  if (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) > vacuum_Data->last_blockid)
     {
       /* Execute vacuum based on the block not generated yet. */
 
       /* Create vacuum data entry for the job. */
-      vacuum_data_entry.blockid =
-	vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
+      vacuum_data_entry.blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
       LSA_COPY (&vacuum_data_entry.start_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
       vacuum_data_entry.oldest_mvccid = log_Gl.hdr.last_block_oldest_mvccid;
       vacuum_data_entry.newest_mvccid = log_Gl.hdr.last_block_newest_mvccid;
       VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (&vacuum_data_entry);
 
-      /* Update vacuum_Data as if it would contain only this entry.
-       * Do not update last_blockid since it may be generated again.
-       */
+      /* Update vacuum_Data as if it would contain only this entry. Do not update last_blockid since it may be
+       * generated again. */
       vacuum_Data->oldest_mvccid = vacuum_data_entry.oldest_mvccid;
       vacuum_Data->newest_mvccid = vacuum_data_entry.newest_mvccid;
       vacuum_Data->n_table_entries = 1;
       vacuum_Data->vacuum_data_table[0] = vacuum_data_entry;
 
-      /* We do not log here. We could have a problem if the server crashes,
-       * because same vacuum tasks may be re-executed. The worst that can
-       * happen is to hit an assert in debug mode.
-       * Instead of doing a voodoo fix here, it is better to live with the
-       * bug.
-       */
+      /* We do not log here. We could have a problem if the server crashes, because same vacuum tasks may be
+       * re-executed. The worst that can happen is to hit an assert in debug mode. Instead of doing a voodoo fix here,
+       * it is better to live with the bug. */
 
       PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
 
       /* Execute vacuum. */
-      (void) vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL,
-				       true);
+      (void) vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, true);
 
       PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
     }
@@ -3141,8 +2740,7 @@ finish_sa_mode:
   assert (vacuum_Data->n_blocks_to_recover == 0);
   assert (LSA_ISNULL (&vacuum_Data->first_blocks_to_recover));
 
-  log_append_redo_data2 (thread_p, RVVAC_COMPLETE, NULL, NULL, 0,
-			 sizeof (log_Gl.hdr.mvcc_next_id),
+  log_append_redo_data2 (thread_p, RVVAC_COMPLETE, NULL, NULL, 0, sizeof (log_Gl.hdr.mvcc_next_id),
 			 &log_Gl.hdr.mvcc_next_id);
   logpb_flush_pages_direct (thread_p);
 
@@ -3154,8 +2752,7 @@ finish_sa_mode:
   log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
   log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	  ER_STAND_ALONE_VACUUM_END, 0);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_END, 0);
   er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum end.\n");
 
   PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
@@ -3206,15 +2803,13 @@ vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *				Logging is skipped if true.
  */
 static int
-vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
-			  BLOCK_LOG_BUFFER * block_log_buffer,
+vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLOCK_LOG_BUFFER * block_log_buffer,
 			  bool sa_mode_partial_block)
 {
   VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
   LOG_LSA log_lsa;
   LOG_LSA rcv_lsa;
-  LOG_PAGEID first_block_pageid =
-    VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (VACUUM_DATA_ENTRY_BLOCKID (data));
+  LOG_PAGEID first_block_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (VACUUM_DATA_ENTRY_BLOCKID (data));
   int error_code = NO_ERROR;
   struct log_data log_record_data;
   char *undo_data_buffer = NULL, *undo_data = NULL;
@@ -3257,10 +2852,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 
   /* Check starting lsa is not null and that it really belong to this block */
   assert (!LSA_ISNULL (&VACUUM_DATA_ENTRY_START_LSA (data))
-	  && (VACUUM_DATA_ENTRY_BLOCKID (data)
-	      ==
-	      vacuum_get_log_blockid (VACUUM_DATA_ENTRY_START_LSA (data).
-				      pageid)));
+	  && (VACUUM_DATA_ENTRY_BLOCKID (data) == vacuum_get_log_blockid (VACUUM_DATA_ENTRY_START_LSA (data).pageid)));
 
   /* Fetch the page where start_lsa is located */
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -3268,18 +2860,15 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   log_page_p->hdr.offset = NULL_OFFSET;
 
   vacuum_er_log (VACUUM_ER_LOG_WORKER,
-		 "VACUUM: thread(%d): vacuum_process_log_block ():"
-		 "blockid(%lld) start_lsa(%lld, %d) old_mvccid(%llu)"
-		 " new_mvccid(%llu)\n", thread_get_current_entry_index (),
-		 data->blockid, (long long int) data->start_lsa.pageid,
-		 (int) data->start_lsa.offset, data->oldest_mvccid,
+		 "VACUUM: thread(%d): vacuum_process_log_block ():" "blockid(%lld) start_lsa(%lld, %d) old_mvccid(%llu)"
+		 " new_mvccid(%llu)\n", thread_get_current_entry_index (), data->blockid,
+		 (long long int) data->start_lsa.pageid, (int) data->start_lsa.offset, data->oldest_mvccid,
 		 data->newest_mvccid);
 
 #if defined (SERVER_MODE)
   if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_WORKERS)
     {
-      error_code =
-	vacuum_log_prefetch_vacuum_block (thread_p, data, block_log_buffer);
+      error_code = vacuum_log_prefetch_vacuum_block (thread_p, data, block_log_buffer);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -3305,41 +2894,33 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	}
 #endif /* SERVER_MODE */
 
-      vacuum_er_log (VACUUM_ER_LOG_WORKER,
-		     "VACUUM: thread(%d): process log entry at log_lsa "
-		     "(%lld, %d)\n", thread_get_current_entry_index (),
-		     (long long int) log_lsa.pageid, (int) log_lsa.offset);
+      vacuum_er_log (VACUUM_ER_LOG_WORKER, "VACUUM: thread(%d): process log entry at log_lsa " "(%lld, %d)\n",
+		     thread_get_current_entry_index (), (long long int) log_lsa.pageid, (int) log_lsa.offset);
 
       worker->state = VACUUM_WORKER_STATE_PROCESS_LOG;
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker,
-					   mnt_vac_worker_execute_time);
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, mnt_vac_worker_execute_time);
 
       LSA_COPY (&rcv_lsa, &log_lsa);
 
       if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
 	{
-	  error_code = vacuum_copy_log_page (thread_p, log_lsa.pageid,
-					     block_log_buffer, log_page_p);
+	  error_code = vacuum_copy_log_page (thread_p, log_lsa.pageid, block_log_buffer, log_page_p);
 	  if (error_code != NO_ERROR)
 	    {
 	      assert_release (false);
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "vacuum_process_log_block");
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_process_log_block");
 	      goto end;
 	    }
 	}
 
       /* Process log entry and obtain relevant information for vacuum. */
       error_code =
-	vacuum_process_log_record (thread_p, worker, &log_lsa, log_page_p,
-				   &log_record_data, &mvccid, &undo_data,
-				   &undo_data_size, &log_vacuum,
-				   &is_file_dropped, false);
+	vacuum_process_log_record (thread_p, worker, &log_lsa, log_page_p, &log_record_data, &mvccid, &undo_data,
+				   &undo_data_size, &log_vacuum, &is_file_dropped, false);
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "vacuum_process_log_block");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_process_log_block");
 	  goto end;
 	}
 
@@ -3347,27 +2928,22 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	{
 	  /* No need to vacuum */
 	  vacuum_er_log (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_DROPPED_FILES,
-			 "VACUUM: Skip vacuuming based on (%lld, %d) in "
-			 "file %d|%d. Log record info: rcvindex=%d.\n",
-			 (long long int) rcv_lsa.pageid, (int) rcv_lsa.offset,
-			 log_vacuum.vfid.volid, log_vacuum.vfid.fileid,
-			 log_record_data.rcvindex);
+			 "VACUUM: Skip vacuuming based on (%lld, %d) in " "file %d|%d. Log record info: rcvindex=%d.\n",
+			 (long long int) rcv_lsa.pageid, (int) rcv_lsa.offset, log_vacuum.vfid.volid,
+			 log_vacuum.vfid.fileid, log_record_data.rcvindex);
 	  continue;
 	}
 
       worker->state = VACUUM_WORKER_STATE_EXECUTE;
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker,
-					   mnt_vac_worker_process_log_time);
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, mnt_vac_worker_process_log_time);
 
 #if !defined (NDEBUG)
-      if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid)
-	  || MVCC_ID_PRECEDES (mvccid, data->oldest_mvccid)
+      if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid) || MVCC_ID_PRECEDES (mvccid, data->oldest_mvccid)
 	  || MVCC_ID_PRECEDES (data->newest_mvccid, mvccid))
 	{
 	  /* threshold_mvccid or mvccid or block data may be invalid */
 	  assert (0);
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "vacuum_process_log_block");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_process_log_block");
 	  goto end;
 	}
 #endif /* !NDEBUG */
@@ -3377,17 +2953,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	  /* Collect heap object to be vacuumed at the end of the job. */
 	  heap_object_oid.pageid = log_record_data.pageid;
 	  heap_object_oid.volid = log_record_data.volid;
-	  heap_object_oid.slotid =
-	    heap_rv_remove_flags_from_offset (log_record_data.offset);
+	  heap_object_oid.slotid = heap_rv_remove_flags_from_offset (log_record_data.offset);
 
-	  error_code =
-	    vacuum_collect_heap_objects (worker, &heap_object_oid,
-					 &log_vacuum.vfid);
+	  error_code = vacuum_collect_heap_objects (worker, &heap_object_oid, &log_vacuum.vfid);
 	  if (error_code != NO_ERROR)
 	    {
 	      assert_release (false);
-	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER
-			     | VACUUM_ER_LOG_HEAP,
+	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_HEAP,
 			     "VACUUM ERROR: vacuum_collect_heap_objects.\n");
 	      /* Release should not stop. */
 	      er_clear ();
@@ -3403,19 +2975,14 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	  assert (undo_data != NULL);
 
 	  if (log_record_data.rcvindex == RVBT_MVCC_UPDATE_SAME_KEY
-	      || log_record_data.rcvindex
-	      == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD)
+	      || log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD)
 	    {
-	      btree_rv_read_keybuf_two_objects (thread_p, undo_data,
-						undo_data_size, &btid_int,
-						&old_version, &new_version,
-						&key_buf);
+	      btree_rv_read_keybuf_two_objects (thread_p, undo_data, undo_data_size, &btid_int, &old_version,
+						&new_version, &key_buf);
 	    }
 	  else
 	    {
-	      btree_rv_read_keybuf_nocopy (thread_p, undo_data,
-					   undo_data_size, &btid_int,
-					   &class_oid, &oid, &mvcc_info,
+	      btree_rv_read_keybuf_nocopy (thread_p, undo_data, undo_data_size, &btid_int, &class_oid, &oid, &mvcc_info,
 					   &key_buf);
 	    }
 
@@ -3423,92 +2990,58 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	  if (log_record_data.rcvindex == RVBT_MVCC_UPDATE_SAME_KEY)
 	    {
 	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-			     "VACUUM: thread(%d): vacuum mvcc update same "
-			     "key from b-tree: btidp(%d, (%d %d)), "
-			     "old object oid(%d, %d, %d), "
-			     "class_oid(%d, %d, %d), "
-			     "new object oid(%d, %d, %d), "
-			     "class_oid(%d, %d, %d), mvccid=%llu.\n",
-			     thread_get_current_entry_index (),
-			     btid_int.sys_btid->root_pageid,
-			     btid_int.sys_btid->vfid.fileid,
-			     btid_int.sys_btid->vfid.volid,
-			     old_version.oid.volid, old_version.oid.pageid,
-			     old_version.oid.slotid,
-			     old_version.class_oid.volid,
-			     old_version.class_oid.pageid,
-			     old_version.class_oid.slotid,
-			     new_version.oid.volid, new_version.oid.pageid,
-			     new_version.oid.slotid,
-			     new_version.class_oid.volid,
-			     new_version.class_oid.pageid,
-			     new_version.class_oid.slotid,
-			     (unsigned long long int) mvccid);
+			     "VACUUM: thread(%d): vacuum mvcc update same " "key from b-tree: btidp(%d, (%d %d)), "
+			     "old object oid(%d, %d, %d), " "class_oid(%d, %d, %d), " "new object oid(%d, %d, %d), "
+			     "class_oid(%d, %d, %d), mvccid=%llu.\n", thread_get_current_entry_index (),
+			     btid_int.sys_btid->root_pageid, btid_int.sys_btid->vfid.fileid,
+			     btid_int.sys_btid->vfid.volid, old_version.oid.volid, old_version.oid.pageid,
+			     old_version.oid.slotid, old_version.class_oid.volid, old_version.class_oid.pageid,
+			     old_version.class_oid.slotid, new_version.oid.volid, new_version.oid.pageid,
+			     new_version.oid.slotid, new_version.class_oid.volid, new_version.class_oid.pageid,
+			     new_version.class_oid.slotid, (unsigned long long int) mvccid);
 	      error_code =
-		btree_vacuum_mvcc_update_same_key (thread_p,
-						   btid_int.sys_btid,
-						   &key_buf, &old_version,
-						   &new_version, mvccid);
+		btree_vacuum_mvcc_update_same_key (thread_p, btid_int.sys_btid, &key_buf, &old_version, &new_version,
+						   mvccid);
 	    }
 	  else if (log_record_data.rcvindex == RVBT_MVCC_NOTIFY_VACUUM)
 	    {
-	      /* The notification comes from loading index. The object may be
-	       * both inserted or deleted (load index considers all objects
-	       * for visibility reasons). Vacuum must also decide to remove
-	       * insert MVCCID or the entire object.
-	       */
+	      /* The notification comes from loading index. The object may be both inserted or deleted (load index
+	       * considers all objects for visibility reasons). Vacuum must also decide to remove insert MVCCID or the
+	       * entire object. */
 	      if (MVCCID_IS_VALID (mvcc_info.delete_mvccid))
 		{
 		  vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-				 "VACUUM: thread(%d): vacuum from b-tree: "
-				 "btidp(%d, (%d %d)) oid(%d, %d, %d) "
-				 "class_oid(%d, %d, %d), purpose=rem_object, "
-				 "mvccid=%llu\n",
-				 thread_get_current_entry_index (),
-				 btid_int.sys_btid->root_pageid,
-				 btid_int.sys_btid->vfid.fileid,
-				 btid_int.sys_btid->vfid.volid,
-				 oid.volid, oid.pageid, oid.slotid,
-				 class_oid.volid, class_oid.pageid,
-				 class_oid.slotid, mvcc_info.delete_mvccid);
+				 "VACUUM: thread(%d): vacuum from b-tree: " "btidp(%d, (%d %d)) oid(%d, %d, %d) "
+				 "class_oid(%d, %d, %d), purpose=rem_object, " "mvccid=%llu\n",
+				 thread_get_current_entry_index (), btid_int.sys_btid->root_pageid,
+				 btid_int.sys_btid->vfid.fileid, btid_int.sys_btid->vfid.volid, oid.volid, oid.pageid,
+				 oid.slotid, class_oid.volid, class_oid.pageid, class_oid.slotid,
+				 mvcc_info.delete_mvccid);
 		  error_code =
-		    btree_vacuum_object (thread_p, btid_int.sys_btid,
-					 &key_buf, &oid, &class_oid,
+		    btree_vacuum_object (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid,
 					 mvcc_info.delete_mvccid);
 		}
-	      else if (MVCCID_IS_VALID (mvcc_info.insert_mvccid)
-		       && mvcc_info.insert_mvccid != MVCCID_ALL_VISIBLE)
+	      else if (MVCCID_IS_VALID (mvcc_info.insert_mvccid) && mvcc_info.insert_mvccid != MVCCID_ALL_VISIBLE)
 		{
 		  vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-				 "VACUUM: thread(%d): vacuum from b-tree: "
-				 "btidp(%d, (%d %d)) oid(%d, %d, %d) "
-				 "class_oid(%d, %d, %d), purpose=rem_insid, "
-				 "mvccid=%llu\n",
-				 thread_get_current_entry_index (),
-				 btid_int.sys_btid->root_pageid,
-				 btid_int.sys_btid->vfid.fileid,
-				 btid_int.sys_btid->vfid.volid,
-				 oid.volid, oid.pageid, oid.slotid,
-				 class_oid.volid, class_oid.pageid,
-				 class_oid.slotid, mvcc_info.insert_mvccid);
+				 "VACUUM: thread(%d): vacuum from b-tree: " "btidp(%d, (%d %d)) oid(%d, %d, %d) "
+				 "class_oid(%d, %d, %d), purpose=rem_insid, " "mvccid=%llu\n",
+				 thread_get_current_entry_index (), btid_int.sys_btid->root_pageid,
+				 btid_int.sys_btid->vfid.fileid, btid_int.sys_btid->vfid.volid, oid.volid, oid.pageid,
+				 oid.slotid, class_oid.volid, class_oid.pageid, class_oid.slotid,
+				 mvcc_info.insert_mvccid);
 		  error_code =
-		    btree_vacuum_insert_mvccid (thread_p, btid_int.sys_btid,
-						&key_buf, &oid, &class_oid,
+		    btree_vacuum_insert_mvccid (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid,
 						mvcc_info.insert_mvccid);
 		}
 	      else
 		{
 		  /* impossible case */
-		  vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER |
-				 VACUUM_ER_LOG_ERROR,
-				 "VACUUM ERROR: invalid vacuum case for "
-				 "RVBT_MVCC_NOTIFY_VACUUM btid(%d, (%d %d)) "
-				 "oid(%d, %d, %d) class_oid(%d, %d, %d)",
-				 btid_int.sys_btid->root_pageid,
-				 btid_int.sys_btid->vfid.fileid,
-				 btid_int.sys_btid->vfid.volid, oid.volid,
-				 oid.pageid, oid.slotid, class_oid.volid,
-				 class_oid.pageid, class_oid.slotid);
+		  vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_ERROR,
+				 "VACUUM ERROR: invalid vacuum case for " "RVBT_MVCC_NOTIFY_VACUUM btid(%d, (%d %d)) "
+				 "oid(%d, %d, %d) class_oid(%d, %d, %d)", btid_int.sys_btid->root_pageid,
+				 btid_int.sys_btid->vfid.fileid, btid_int.sys_btid->vfid.volid, oid.volid, oid.pageid,
+				 oid.slotid, class_oid.volid, class_oid.pageid, class_oid.slotid);
 		  assert_release (false);
 		  continue;
 		}
@@ -3517,50 +3050,29 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	    {
 	      /* Object was deleted and must be completely removed. */
 	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-			     "VACUUM: thread(%d): vacuum from b-tree: "
-			     "btidp(%d, (%d %d)) oid(%d, %d, %d) "
-			     "class_oid(%d, %d, %d), purpose=rem_object, "
-			     "mvccid=%llu\n",
-			     thread_get_current_entry_index (),
-			     btid_int.sys_btid->root_pageid,
-			     btid_int.sys_btid->vfid.fileid,
-			     btid_int.sys_btid->vfid.volid,
-			     oid.volid, oid.pageid, oid.slotid,
-			     class_oid.volid, class_oid.pageid,
-			     class_oid.slotid, mvccid);
-	      error_code =
-		btree_vacuum_object (thread_p, btid_int.sys_btid, &key_buf,
-				     &oid, &class_oid, mvccid);
+			     "VACUUM: thread(%d): vacuum from b-tree: " "btidp(%d, (%d %d)) oid(%d, %d, %d) "
+			     "class_oid(%d, %d, %d), purpose=rem_object, " "mvccid=%llu\n",
+			     thread_get_current_entry_index (), btid_int.sys_btid->root_pageid,
+			     btid_int.sys_btid->vfid.fileid, btid_int.sys_btid->vfid.volid, oid.volid, oid.pageid,
+			     oid.slotid, class_oid.volid, class_oid.pageid, class_oid.slotid, mvccid);
+	      error_code = btree_vacuum_object (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid, mvccid);
 	    }
 	  else if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT
-		   || log_record_data.rcvindex ==
-		   RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD)
+		   || log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD)
 	    {
-	      /* Object was inserted and only its insert MVCCID must be
-	       * removed.
-	       */
-	      if (log_record_data.rcvindex
-		  == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD)
+	      /* Object was inserted and only its insert MVCCID must be removed. */
+	      if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD)
 		{
 		  COPY_OID (&oid, &old_version.oid);
 		  COPY_OID (&class_oid, &old_version.class_oid);
 		}
 	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-			     "VACUUM: thread(%d): vacuum from b-tree: "
-			     "btidp(%d, (%d %d)) oid(%d, %d, %d) "
-			     "class_oid(%d, %d, %d), purpose=rem_insid, "
-			     "mvccid=%llu\n",
-			     thread_get_current_entry_index (),
-			     btid_int.sys_btid->root_pageid,
-			     btid_int.sys_btid->vfid.fileid,
-			     btid_int.sys_btid->vfid.volid,
-			     oid.volid, oid.pageid, oid.slotid,
-			     class_oid.volid, class_oid.pageid,
-			     class_oid.slotid, mvccid);
-	      error_code =
-		btree_vacuum_insert_mvccid (thread_p, btid_int.sys_btid,
-					    &key_buf, &oid, &class_oid,
-					    mvccid);
+			     "VACUUM: thread(%d): vacuum from b-tree: " "btidp(%d, (%d %d)) oid(%d, %d, %d) "
+			     "class_oid(%d, %d, %d), purpose=rem_insid, " "mvccid=%llu\n",
+			     thread_get_current_entry_index (), btid_int.sys_btid->root_pageid,
+			     btid_int.sys_btid->vfid.fileid, btid_int.sys_btid->vfid.volid, oid.volid, oid.pageid,
+			     oid.slotid, class_oid.volid, class_oid.pageid, class_oid.slotid, mvccid);
+	      error_code = btree_vacuum_insert_mvccid (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid, mvccid);
 	    }
 	  else
 	    {
@@ -3572,8 +3084,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	    {
 	      assert_release (false);
 	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-			     "VACUUM: thread(%d): Error deleting object or "
-			     "insert MVCCID: error_code=%d",
+			     "VACUUM: thread(%d): Error deleting object or " "insert MVCCID: error_code=%d",
 			     thread_get_current_entry_index (), error_code);
 	      er_clear ();
 	      error_code = NO_ERROR;
@@ -3584,8 +3095,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	{
 	  /* A lob file must be deleted */
 	  (void) or_unpack_string (undo_data, &es_uri);
-	  vacuum_er_log (VACUUM_ER_LOG_WORKER,
-			 "VACUUM: Delete lob %s.", es_uri);
+	  vacuum_er_log (VACUUM_ER_LOG_WORKER, "VACUUM: Delete lob %s.", es_uri);
 	  (void) es_delete_file (es_uri);
 	  db_private_free_and_init (thread_p, es_uri);
 	}
@@ -3596,8 +3106,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 	}
     }
 
-  error_code =
-    vacuum_heap (thread_p, worker, threshold_mvccid, was_interrupted);
+  error_code = vacuum_heap (thread_p, worker, threshold_mvccid, was_interrupted);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -3610,29 +3119,24 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 
 end:
 #if defined(SERVER_MODE)
-  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER
-      && block_log_buffer != NULL)
+  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER && block_log_buffer != NULL)
     {
-      lf_bitmap_free_entry (&vacuum_Prefetch_free_buffers_bitmap,
-			    block_log_buffer->buffer_id);
+      lf_bitmap_free_entry (&vacuum_Prefetch_free_buffers_bitmap, block_log_buffer->buffer_id);
     }
 #endif /* SERVER_MODE */
 
   worker->state = VACUUM_WORKER_STATE_INACTIVE;
   if (!sa_mode_partial_block)
     {
-      /* TODO: Check that if start_lsa can be set to a different value when
-       *       vacuum is not complete, to avoid processing the same log data
-       *       again.
-       */
+      /* TODO: Check that if start_lsa can be set to a different value when vacuum is not complete, to avoid processing 
+       * the same log data again. */
       vacuum_finished_block_vacuum (thread_p, data, vacuum_complete);
     }
 
   /* Unfix all pages now. Normally all pages should already be unfixed. */
   pgbuf_unfix_all (thread_p);
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker,
-				       mnt_vac_worker_execute_time);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, mnt_vac_worker_execute_time);
 
   return error_code;
 }
@@ -3667,25 +3171,19 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   worker->log_zip_p = log_zip_alloc (IO_PAGESIZE, false);
   if (worker->log_zip_p == NULL)
     {
-      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER,
-		     "VACUUM ERROR: Could not allocate log zip.");
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "vacuum_assign_worker");
+      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER, "VACUUM ERROR: Could not allocate log zip.");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_assign_worker");
       return ER_FAILED;
     }
 
   /* Allocate heap objects buffer */
   worker->heap_objects_capacity = VACUUM_DEFAULT_HEAP_OBJECT_BUFFER_SIZE;
-  worker->heap_objects =
-    (VACUUM_HEAP_OBJECT *)
-    malloc (worker->heap_objects_capacity * sizeof (VACUUM_HEAP_OBJECT));
+  worker->heap_objects = (VACUUM_HEAP_OBJECT *) malloc (worker->heap_objects_capacity * sizeof (VACUUM_HEAP_OBJECT));
   if (worker->heap_objects == NULL)
     {
       vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER,
-		     "VACUUM ERROR: Could not allocate files and objects "
-		     "buffer.\n");
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "vacuum_assign_worker");
+		     "VACUUM ERROR: Could not allocate files and objects " "buffer.\n");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_assign_worker");
       goto error;
     }
 
@@ -3693,10 +3191,8 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   worker->undo_data_buffer = (char *) malloc (IO_PAGESIZE);
   if (worker->undo_data_buffer == NULL)
     {
-      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER,
-		     "VACUUM ERROR: Could not allocate undo data buffer.");
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "vacuum_assign_worker");
+      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER, "VACUUM ERROR: Could not allocate undo data buffer.");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_assign_worker");
       goto error;
     }
   worker->undo_data_buffer_capacity = IO_PAGESIZE;
@@ -3705,10 +3201,8 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   if (worker->postpone_redo_data_buffer == NULL)
     {
       vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER,
-		     "VACUUM ERROR: Could not allocate "
-		     "postpone_redo_data_buffer.");
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "vacuum_assign_worker");
+		     "VACUUM ERROR: Could not allocate " "postpone_redo_data_buffer.");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_assign_worker");
       goto error;
     }
 
@@ -3716,29 +3210,23 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   /* Save worker to thread entry */
   thread_p->vacuum_worker = worker;
 
-  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_WORKERS
-      && worker->prefetch_log_buffer == NULL)
+  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_WORKERS && worker->prefetch_log_buffer == NULL)
     {
       size_worker_prefetch_log_buffer =
-	(((long long unsigned) VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES)
-	 * LOG_PAGESIZE) + MAX_ALIGNMENT;
+	(((long long unsigned) VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES) * LOG_PAGESIZE) + MAX_ALIGNMENT;
 
-      worker->prefetch_log_buffer =
-	(char *) malloc ((size_t) size_worker_prefetch_log_buffer);
+      worker->prefetch_log_buffer = (char *) malloc ((size_t) size_worker_prefetch_log_buffer);
       if (worker->prefetch_log_buffer == NULL)
 	{
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER,
 			 "VACUUM ERROR: Could not allocate prefetch buffer.");
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "vacuum_assign_worker");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_assign_worker");
 	  goto error;
 	}
     }
 #endif
 
-  /* Safe guard - it is assumed that transaction descriptor is already
-   * initialized.
-   */
+  /* Safe guard - it is assumed that transaction descriptor is already initialized. */
   assert (worker->tdes != NULL);
 
   /* Increment number of assigned workers */
@@ -3836,8 +3324,7 @@ vacuum_rv_finish_worker_recovery (THREAD_ENTRY * thread_p, TRANID trid)
   assert (!LOG_ISRESTARTED ());
 
   vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		 "VACUUM: Finished recovery for vacuum worker with "
-		 "tdes->trid=%d.", trid);
+		 "VACUUM: Finished recovery for vacuum worker with " "tdes->trid=%d.", trid);
 
   /* Reset vacuum worker state */
   vacuum_Workers[worker_index].state = VACUUM_WORKER_STATE_INACTIVE;
@@ -3888,9 +3375,8 @@ vacuum_start_new_job (THREAD_ENTRY * thread_p)
 
   assert (thread_p->type == TT_VACUUM_WORKER);
 
-  /* The table where data about log blocks is kept can be modified.
-   * Lock vacuum data, identify the right block data and copy them.
-   */
+  /* The table where data about log blocks is kept can be modified. Lock vacuum data, identify the right block data and 
+   * copy them. */
   VACUUM_LOCK_DATA ();
 
   worker_info = VACUUM_GET_VACUUM_WORKER (thread_p);
@@ -3921,17 +3407,14 @@ vacuum_start_new_job (THREAD_ENTRY * thread_p)
       assert (VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry));
 
       /* Run vacuum */
-      (void) vacuum_process_log_block (thread_p, entry,
-				       &vacuum_job_entry.block_log_buffer,
-				       false);
+      (void) vacuum_process_log_block (thread_p, entry, &vacuum_job_entry.block_log_buffer, false);
     }
 
   /* Decrement running workers */
   ATOMIC_INC_32 (&vacuum_Running_workers_count, -1);
 
   /* No jobs in queue */
-  if (vacuum_Data->n_table_entries > 0
-      || !LSA_ISNULL (&vacuum_Data->last_blocks_to_recover)
+  if (vacuum_Data->n_table_entries > 0 || !LSA_ISNULL (&vacuum_Data->last_blocks_to_recover)
       || !LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer))
     {
       /* Wakeup master to assign new jobs */
@@ -3955,9 +3438,7 @@ vacuum_start_new_job (THREAD_ENTRY * thread_p)
  *	 block data received as argument.
  */
 static void
-vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p,
-			      VACUUM_DATA_ENTRY * data,
-			      bool is_vacuum_complete)
+vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, bool is_vacuum_complete)
 {
   VACUUM_DATA_ENTRY *table_entry = NULL;
   VACUUM_LOG_BLOCKID blockid;
@@ -3989,9 +3470,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p,
     }
   else
     {
-      /* We expect that worker job is abandoned during shutdown. But all other
-       * cases are error cases.
-       */
+      /* We expect that worker job is abandoned during shutdown. But all other cases are error cases. */
       int error_level =
 #if defined (SERVER_MODE)
 	thread_p->shutdown ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
@@ -4002,22 +3481,17 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p,
       /* Vacuum will have to be re-run */
       VACUUM_BLOCK_STATUS_SET_AVAILABLE (table_entry);
       /* Copy new block data */
-      /* The only relevant information is in fact the updated start_lsa
-       * if it has changed.
-       */
+      /* The only relevant information is in fact the updated start_lsa if it has changed. */
 
-      vacuum_er_log (error_level | VACUUM_ER_LOG_WORKER,
-		     "VACUUM %s: Processing log block %lld is not complete!",
-		     error_level == VACUUM_ER_LOG_ERROR ?
-		     "ERROR" : "WARNING", blockid);
+      vacuum_er_log (error_level | VACUUM_ER_LOG_WORKER, "VACUUM %s: Processing log block %lld is not complete!",
+		     error_level == VACUUM_ER_LOG_ERROR ? "ERROR" : "WARNING", blockid);
 
       /* Job was not fully executed. */
       VACUUM_BLOCK_SET_INTERRUPTED (table_entry);
     }
 
   /* TODO: Do we want to log start_lsa here? */
-  log_append_redo_data2 (thread_p, RVVAC_START_OR_END_JOB, NULL, NULL, 0,
-			 sizeof (table_entry->blockid),
+  log_append_redo_data2 (thread_p, RVVAC_START_OR_END_JOB, NULL, NULL, 0, sizeof (table_entry->blockid),
 			 &table_entry->blockid);
 
   /* Unlock vacuum data */
@@ -4042,16 +3516,9 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p,
  *				    from log record.
  */
 static int
-vacuum_process_log_record (THREAD_ENTRY * thread_p,
-			   VACUUM_WORKER * worker,
-			   LOG_LSA * log_lsa_p,
-			   LOG_PAGE * log_page_p,
-			   struct log_data *log_record_data,
-			   MVCCID * mvccid,
-			   char **undo_data_ptr, int *undo_data_size,
-			   struct log_vacuum_info *vacuum_info,
-			   bool * is_file_dropped,
-			   bool stop_after_vacuum_info)
+vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_LSA * log_lsa_p, LOG_PAGE * log_page_p,
+			   struct log_data *log_record_data, MVCCID * mvccid, char **undo_data_ptr, int *undo_data_size,
+			   struct log_vacuum_info *vacuum_info, bool * is_file_dropped, bool stop_after_vacuum_info)
 {
   LOG_RECORD_HEADER *log_rec_header = NULL;
   struct log_mvcc_undoredo *mvcc_undoredo = NULL;
@@ -4083,16 +3550,13 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
   /* Get log record header */
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, log_lsa_p);
   log_rec_type = log_rec_header->type;
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), log_lsa_p,
-		      log_page_p);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), log_lsa_p, log_page_p);
 
   if (log_rec_type == LOG_MVCC_UNDO_DATA)
     {
       /* Get log record mvcc_undo information */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo),
-					log_lsa_p, log_page_p);
-      mvcc_undo =
-	(struct log_mvcc_undo *) (log_page_p->area + log_lsa_p->offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
+      mvcc_undo = (struct log_mvcc_undo *) (log_page_p->area + log_lsa_p->offset);
 
       /* Get MVCCID */
       *mvccid = mvcc_undo->mvccid;
@@ -4104,21 +3568,16 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
       ulength = mvcc_undo->undo.length;
 
       /* Copy LSA for next MVCC operation */
-      LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa,
-		&mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa);
+      LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa);
       VFID_COPY (&vacuum_info->vfid, &mvcc_undo->vacuum_info.vfid);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), log_lsa_p,
-			  log_page_p);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
     }
-  else if (log_rec_type == LOG_MVCC_UNDOREDO_DATA
-	   || log_rec_type == LOG_MVCC_DIFF_UNDOREDO_DATA)
+  else if (log_rec_type == LOG_MVCC_UNDOREDO_DATA || log_rec_type == LOG_MVCC_DIFF_UNDOREDO_DATA)
     {
       /* Get log record undoredo information */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo),
-					log_lsa_p, log_page_p);
-      mvcc_undoredo =
-	(struct log_mvcc_undoredo *) (log_page_p->area + log_lsa_p->offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
+      mvcc_undoredo = (struct log_mvcc_undoredo *) (log_page_p->area + log_lsa_p->offset);
 
       /* Get MVCCID */
       *mvccid = mvcc_undoredo->mvccid;
@@ -4130,12 +3589,10 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
       ulength = mvcc_undoredo->undoredo.ulength;
 
       /* Copy LSA for next MVCC operation */
-      LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa,
-		&mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa);
+      LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa);
       VFID_COPY (&vacuum_info->vfid, &mvcc_undoredo->vacuum_info.vfid);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), log_lsa_p,
-			  log_page_p);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
     }
   else
     {
@@ -4156,10 +3613,8 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
       /* Check if file was dropped. */
       if (worker->drop_files_version != vacuum_Dropped_files_version)
 	{
-	  /* New files have been dropped. Droppers must wait until all running
-	   * workers have been notified. Save new version to let dropper know
-	   * this worker noticed the changes.
-	   */
+	  /* New files have been dropped. Droppers must wait until all running workers have been notified. Save new
+	   * version to let dropper know this worker noticed the changes. */
 
 	  /* But first, cleanup collected heap objects. */
 	  VFID vfid;
@@ -4168,14 +3623,12 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
 
 	  worker->drop_files_version = vacuum_Dropped_files_version;
 	  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_WORKER,
-			 "VACUUM: Worker(%d) update min version to %d",
-			 thread_get_current_tran_index (),
+			 "VACUUM: Worker(%d) update min version to %d", thread_get_current_tran_index (),
 			 worker->drop_files_version);
 	}
 
       /* Check if file is dropped */
-      *is_file_dropped = vacuum_is_file_dropped (thread_p, &vacuum_info->vfid,
-						 *mvccid);
+      *is_file_dropped = vacuum_is_file_dropped (thread_p, &vacuum_info->vfid, *mvccid);
       if (*is_file_dropped)
 	{
 	  return NO_ERROR;
@@ -4183,8 +3636,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
     }
 
   /* We are here because the file that will be vacuumed is not dropped. */
-  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex)
-      && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
+  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex) && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
     {
       /* No need to unpack undo data */
       return NO_ERROR;
@@ -4209,23 +3661,16 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
     }
   else
     {
-      /* Undo data is found on several pages and needs to be copied to a
-       * contiguous area.
-       */
+      /* Undo data is found on several pages and needs to be copied to a contiguous area. */
       if (worker->undo_data_buffer_capacity < *undo_data_size)
 	{
-	  /* Not enough space to save all undo data. Expand worker's undo data
-	   * buffer.
-	   */
-	  new_undo_data_buffer =
-	    (char *) realloc (worker->undo_data_buffer, *undo_data_size);
+	  /* Not enough space to save all undo data. Expand worker's undo data buffer. */
+	  new_undo_data_buffer = (char *) realloc (worker->undo_data_buffer, *undo_data_size);
 	  if (new_undo_data_buffer == NULL)
 	    {
 	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER,
-			     "VACUUM ERROR: Could not expand undo data "
-			     "buffer to %d.", *undo_data_size);
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "vacuum_process_log_record");
+			     "VACUUM ERROR: Could not expand undo data " "buffer to %d.", *undo_data_size);
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_process_log_record");
 	      return ER_FAILED;
 	    }
 	  /* Expand was successful, update worker. */
@@ -4236,8 +3681,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
       *undo_data_ptr = worker->undo_data_buffer;
 
       /* Copy data to buffer. */
-      logpb_copy_from_log (thread_p, *undo_data_ptr, *undo_data_size,
-			   log_lsa_p, log_page_p);
+      logpb_copy_from_log (thread_p, *undo_data_ptr, *undo_data_size, log_lsa_p, log_page_p);
     }
 
   if (is_zipped)
@@ -4251,10 +3695,8 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER,
-			 "VACUUM ERROR: Could not unzip undo data.");
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "vacuum_process_log_record");
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER, "VACUUM ERROR: Could not unzip undo data.");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_process_log_record");
 	  return ER_FAILED;
 	}
     }
@@ -4278,16 +3720,11 @@ vacuum_get_worker_min_dropped_files_version (void)
 
   for (i = 0; i < vacuum_Assigned_workers_count; i++)
     {
-      /* Update minimum version if worker is active and its seen version is
-       * smaller than current minimum version (or if minimum version is not
-       * initialized).
-       */
+      /* Update minimum version if worker is active and its seen version is smaller than current minimum version (or if 
+       * minimum version is not initialized). */
       if (vacuum_Workers[i].state != VACUUM_WORKER_STATE_INACTIVE
 	  && (min_version == -1
-	      || vacuum_compare_dropped_files_version (min_version,
-						       vacuum_Workers[i].
-						       drop_files_version) >
-	      0))
+	      || vacuum_compare_dropped_files_version (min_version, vacuum_Workers[i].drop_files_version) > 0))
 	{
 	  /* Update overall minimum version. */
 	  min_version = vacuum_Workers[i].drop_files_version;
@@ -4307,11 +3744,8 @@ vacuum_get_worker_min_dropped_files_version (void)
 static VACUUM_DATA_ENTRY *
 vacuum_get_vacuum_data_entry (VACUUM_LOG_BLOCKID blockid)
 {
-  return (VACUUM_DATA_ENTRY *) bsearch (&blockid,
-					vacuum_Data->vacuum_data_table,
-					vacuum_Data->n_table_entries,
-					sizeof (VACUUM_DATA_ENTRY),
-					vacuum_compare_data_entries);
+  return (VACUUM_DATA_ENTRY *) bsearch (&blockid, vacuum_Data->vacuum_data_table, vacuum_Data->n_table_entries,
+					sizeof (VACUUM_DATA_ENTRY), vacuum_compare_data_entries);
 }
 
 /*
@@ -4327,8 +3761,8 @@ vacuum_get_vacuum_data_entry (VACUUM_LOG_BLOCKID blockid)
 static int
 vacuum_compare_data_entries (const void *ptr1, const void *ptr2)
 {
-  return (int) (VACUUM_DATA_ENTRY_BLOCKID ((VACUUM_DATA_ENTRY *) ptr1)
-		- VACUUM_DATA_ENTRY_BLOCKID ((VACUUM_DATA_ENTRY *) ptr2));
+  return (int) (VACUUM_DATA_ENTRY_BLOCKID ((VACUUM_DATA_ENTRY *) ptr1) -
+		VACUUM_DATA_ENTRY_BLOCKID ((VACUUM_DATA_ENTRY *) ptr2));
 }
 
 /*
@@ -4375,9 +3809,8 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
   /* Read vacuum data from disk */
   /* Do not use page buffer */
   /* All vacuum data pages are contiguous */
-  if (fileio_read_pages (thread_p, vol_fd, (char *) vacuum_Data,
-			 vacuum_Data_vpid.pageid, vacuum_Data_npages,
-			 IO_PAGESIZE) == NULL)
+  if (fileio_read_pages
+      (thread_p, vol_fd, (char *) vacuum_Data, vacuum_Data_vpid.pageid, vacuum_Data_npages, IO_PAGESIZE) == NULL)
     {
       assert (false);
       return ER_FAILED;
@@ -4401,10 +3834,8 @@ vacuum_check_interrupted_jobs (THREAD_ENTRY * thread_p)
   int i = 0;
 
   /* Make sure no entry is marked as being vacuumed. */
-  /* When vacuum data was last flushed, it is possible that some blocks
-   * were being vacuumed. Set their status as available and mark them as
-   * interrupted.
-   */
+  /* When vacuum data was last flushed, it is possible that some blocks were being vacuumed. Set their status as
+   * available and mark them as interrupted. */
   for (i = 0; i < vacuum_Data->n_table_entries; i++)
     {
       if (VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (VACUUM_DATA_GET_ENTRY (i)))
@@ -4458,8 +3889,7 @@ vacuum_load_dropped_files_from_disk (THREAD_ENTRY * thread_p)
 
   while (!VPID_ISNULL (&vpid))
     {
-      page = vacuum_fix_dropped_entries_page (thread_p, &vpid,
-					      PGBUF_LATCH_READ);
+      page = vacuum_fix_dropped_entries_page (thread_p, &vpid, PGBUF_LATCH_READ);
       if (page == NULL)
 	{
 	  assert (false);
@@ -4473,15 +3903,11 @@ vacuum_load_dropped_files_from_disk (THREAD_ENTRY * thread_p)
       vacuum_Dropped_files_count += (INT32) page_count;
 
 #if !defined (NDEBUG)
-      track_new =
-	(VACUUM_TRACK_DROPPED_FILES *)
-	malloc (VACUUM_TRACK_DROPPED_FILES_SIZE);
+      track_new = (VACUUM_TRACK_DROPPED_FILES *) malloc (VACUUM_TRACK_DROPPED_FILES_SIZE);
       if (track_new == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, VACUUM_TRACK_DROPPED_FILES_SIZE);
-	  for (track_new = track_head; track_new != NULL;
-	       track_new = save_next)
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, VACUUM_TRACK_DROPPED_FILES_SIZE);
+	  for (track_new = track_head; track_new != NULL; track_new = save_next)
 	    {
 	      save_next = track_new->next_tracked_page;
 	      free_and_init (track_new);
@@ -4532,9 +3958,8 @@ vacuum_load_dropped_files_from_disk (THREAD_ENTRY * thread_p)
  *				  exiting the function.
  */
 int
-vacuum_flush_data (THREAD_ENTRY * thread_p, LOG_LSA * flush_to_lsa,
-		   LOG_LSA * prev_chkpt_lsa, LOG_LSA * oldest_not_flushed_lsa,
-		   bool is_vacuum_data_locked)
+vacuum_flush_data (THREAD_ENTRY * thread_p, LOG_LSA * flush_to_lsa, LOG_LSA * prev_chkpt_lsa,
+		   LOG_LSA * oldest_not_flushed_lsa, bool is_vacuum_data_locked)
 {
   int n_pages;
   int vacuum_data_actual_size;
@@ -4570,8 +3995,7 @@ vacuum_flush_data (THREAD_ENTRY * thread_p, LOG_LSA * flush_to_lsa,
   if (LSA_ISNULL (&vacuum_Data_oldest_not_flushed_lsa))
     {
       vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: Vacuum data is not flushed to disk because "
-		     "there are no changes since last flush.");
+		     "VACUUM: Vacuum data is not flushed to disk because " "there are no changes since last flush.");
       if (!is_vacuum_data_locked)
 	{
 	  VACUUM_UNLOCK_DATA ();
@@ -4581,17 +4005,13 @@ vacuum_flush_data (THREAD_ENTRY * thread_p, LOG_LSA * flush_to_lsa,
       return NO_ERROR;
     }
 
-  if (flush_to_lsa != NULL
-      && LSA_GT (&vacuum_Data_oldest_not_flushed_lsa, flush_to_lsa))
+  if (flush_to_lsa != NULL && LSA_GT (&vacuum_Data_oldest_not_flushed_lsa, flush_to_lsa))
     {
       vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_VACUUM_DATA,
 		     "VACUUM: Vacuum data is not flused to disk because "
-		     "flush_to_lsa (%lld, %d) is less than oldest vacuum "
-		     "data unflushed lsa (%lld, %d).",
-		     (long long int) flush_to_lsa->pageid,
-		     (int) flush_to_lsa->pageid,
-		     (long long int)
-		     vacuum_Data_oldest_not_flushed_lsa.pageid,
+		     "flush_to_lsa (%lld, %d) is less than oldest vacuum " "data unflushed lsa (%lld, %d).",
+		     (long long int) flush_to_lsa->pageid, (int) flush_to_lsa->pageid,
+		     (long long int) vacuum_Data_oldest_not_flushed_lsa.pageid,
 		     (int) vacuum_Data_oldest_not_flushed_lsa.offset);
       if (!is_vacuum_data_locked)
 	{
@@ -4602,13 +4022,11 @@ vacuum_flush_data (THREAD_ENTRY * thread_p, LOG_LSA * flush_to_lsa,
       return NO_ERROR;
     }
 
-  if (prev_chkpt_lsa != NULL
-      && LSA_LT (&vacuum_Data_oldest_not_flushed_lsa, prev_chkpt_lsa))
+  if (prev_chkpt_lsa != NULL && LSA_LT (&vacuum_Data_oldest_not_flushed_lsa, prev_chkpt_lsa))
     {
       /* Conservative safety check */
       vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM ERROR: Vacuum data oldest unflused lsa is older "
-		     "than previous checkpoint!");
+		     "VACUUM ERROR: Vacuum data oldest unflused lsa is older " "than previous checkpoint!");
       if (!is_vacuum_data_locked)
 	{
 	  VACUUM_UNLOCK_DATA ();
@@ -4622,28 +4040,23 @@ vacuum_flush_data (THREAD_ENTRY * thread_p, LOG_LSA * flush_to_lsa,
   /* Make sure the log is flushed up to vacuum_Data->crt_lsa. */
   logpb_flush_log_for_wal (thread_p, &vacuum_Data->crt_lsa);
 
-  vacuum_data_actual_size =
-    VACUUM_DATA_HEADER_SIZE +
-    (vacuum_Data->n_table_entries * sizeof (VACUUM_DATA_ENTRY));
+  vacuum_data_actual_size = VACUUM_DATA_HEADER_SIZE + (vacuum_Data->n_table_entries * sizeof (VACUUM_DATA_ENTRY));
   n_pages = CEIL_PTVDIV (vacuum_data_actual_size, IO_PAGESIZE);
 
   /* Flush to disk */
   vol_fd = fileio_get_volume_descriptor (vacuum_Data_vpid.volid);
-  if (fileio_write_pages (thread_p, vol_fd, (char *) vacuum_Data,
-			  vacuum_Data_vpid.pageid, n_pages,
-			  IO_PAGESIZE) == NULL)
+  if (fileio_write_pages (thread_p, vol_fd, (char *) vacuum_Data, vacuum_Data_vpid.pageid, n_pages, IO_PAGESIZE) ==
+      NULL)
     {
       vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
 		     "VACUUM: Flushing data failed! Could not write to disk.");
 
       if (oldest_not_flushed_lsa != NULL
 	  && (LSA_ISNULL (oldest_not_flushed_lsa)
-	      || LSA_LT (&vacuum_Data_oldest_not_flushed_lsa,
-			 oldest_not_flushed_lsa)))
+	      || LSA_LT (&vacuum_Data_oldest_not_flushed_lsa, oldest_not_flushed_lsa)))
 	{
 	  /* If flush is failed, noticing the caller may be required */
-	  LSA_COPY (oldest_not_flushed_lsa,
-		    &vacuum_Data_oldest_not_flushed_lsa);
+	  LSA_COPY (oldest_not_flushed_lsa, &vacuum_Data_oldest_not_flushed_lsa);
 	}
 
       if (!is_vacuum_data_locked)
@@ -4659,10 +4072,8 @@ vacuum_flush_data (THREAD_ENTRY * thread_p, LOG_LSA * flush_to_lsa,
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "VACUUM: Vacuum data was successfully flushed at LSA "
-		 "(%lld, %d). Reset vacuum_Data_oldest_not_flushed_lsa to "
-		 "(%lld, %d).",
-		 (long long int) vacuum_Data->crt_lsa.pageid,
-		 (int) vacuum_Data->crt_lsa.offset,
+		 "(%lld, %d). Reset vacuum_Data_oldest_not_flushed_lsa to " "(%lld, %d).",
+		 (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
 		 (long long int) vacuum_Data_oldest_not_flushed_lsa.pageid,
 		 (int) vacuum_Data_oldest_not_flushed_lsa.offset);
 
@@ -4684,9 +4095,7 @@ vacuum_flush_data (THREAD_ENTRY * thread_p, LOG_LSA * flush_to_lsa,
  * vacuum_data_vfid (out)  : Created file VFID.
  */
 int
-vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p,
-				    int vacuum_data_npages,
-				    VFID * vacuum_data_vfid)
+vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, int vacuum_data_npages, VFID * vacuum_data_vfid)
 {
   int vol_fd;
   VPID first_page_vpid;
@@ -4694,9 +4103,9 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p,
   char vacuum_data_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   /* Create disk file to keep vacuum data */
-  if (file_create (thread_p, vacuum_data_vfid, vacuum_data_npages,
-		   FILE_VACUUM_DATA, NULL, &first_page_vpid,
-		   -vacuum_data_npages) == NULL)
+  if (file_create
+      (thread_p, vacuum_data_vfid, vacuum_data_npages, FILE_VACUUM_DATA, NULL, &first_page_vpid,
+       -vacuum_data_npages) == NULL)
     {
       assert (false);
       return ER_FAILED;
@@ -4716,13 +4125,11 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p,
   vacuum_data_p->n_blocks_to_recover = 0;
   vacuum_data_p->n_first_blocks_to_recover = 0;
 
-  vacuum_data_p->log_block_npages =
-    prm_get_integer_value (PRM_ID_VACUUM_LOG_BLOCK_PAGES);
+  vacuum_data_p->log_block_npages = prm_get_integer_value (PRM_ID_VACUUM_LOG_BLOCK_PAGES);
 
   /* Write initialized vacuum data to disk */
   vol_fd = fileio_get_volume_descriptor (first_page_vpid.volid);
-  if (fileio_write (thread_p, vol_fd, vacuum_data_p, first_page_vpid.pageid,
-		    IO_PAGESIZE) == NULL)
+  if (fileio_write (thread_p, vol_fd, vacuum_data_p, first_page_vpid.pageid, IO_PAGESIZE) == NULL)
     {
       assert (false);
       return ER_FAILED;
@@ -4740,24 +4147,20 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p,
  * vacuum_data_vfid (out) : Created file VFID.
  */
 int
-vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p,
-				      VFID * dropped_files_vfid)
+vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p, VFID * dropped_files_vfid)
 {
   VPID first_page_vpid;
   VACUUM_DROPPED_FILES_PAGE *dropped_files_page = NULL;
 
   /* Create disk file to keep dropped files */
-  if (file_create (thread_p, dropped_files_vfid, 1, FILE_DROPPED_FILES, NULL,
-		   &first_page_vpid, 1) == NULL)
+  if (file_create (thread_p, dropped_files_vfid, 1, FILE_DROPPED_FILES, NULL, &first_page_vpid, 1) == NULL)
     {
       assert (false);
       return ER_FAILED;
     }
 
   /* Load first page of file */
-  dropped_files_page =
-    vacuum_fix_dropped_entries_page (thread_p, &first_page_vpid,
-				     PGBUF_LATCH_WRITE);
+  dropped_files_page = vacuum_fix_dropped_entries_page (thread_p, &first_page_vpid, PGBUF_LATCH_WRITE);
   if (dropped_files_page == NULL)
     {
       assert (false);
@@ -4769,8 +4172,7 @@ vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p,
   VPID_SET_NULL (&dropped_files_page->next_page);
   dropped_files_page->n_dropped_files = 0;
 
-  pgbuf_set_page_ptype (thread_p, (PAGE_PTR) dropped_files_page,
-			PAGE_DROPPED_FILES);
+  pgbuf_set_page_ptype (thread_p, (PAGE_PTR) dropped_files_page, PAGE_DROPPED_FILES);
 
   /* Set dirty page and free */
   vacuum_set_dirty_dropped_entries_page (thread_p, dropped_files_page, FREE);
@@ -4789,8 +4191,7 @@ vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p,
  * rcvindex (in)	: Recovery index for operation on vacuum data.
  */
 void
-vacuum_set_vacuum_data_lsa (THREAD_ENTRY * thread_p,
-			    LOG_LSA * vacuum_data_lsa, LOG_RCVINDEX rcvindex)
+vacuum_set_vacuum_data_lsa (THREAD_ENTRY * thread_p, LOG_LSA * vacuum_data_lsa, LOG_RCVINDEX rcvindex)
 {
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
@@ -4811,26 +4212,19 @@ vacuum_set_vacuum_data_lsa (THREAD_ENTRY * thread_p,
       LSA_COPY (&vacuum_Data->last_blocks_to_recover, vacuum_data_lsa);
 
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
-		     "first_blocks_to_recover = (%lld, %d), "
-		     "last_blocks_to_recover = (%lld, %d)",
-		     (long long int) vacuum_Data->crt_lsa.pageid,
-		     (int) vacuum_Data->crt_lsa.offset,
-		     (long long int)
-		     vacuum_Data->first_blocks_to_recover.pageid,
+		     "VACUUM: Vacuum data crt_lsa = (%lld, %d) - " "first_blocks_to_recover = (%lld, %d), "
+		     "last_blocks_to_recover = (%lld, %d)", (long long int) vacuum_Data->crt_lsa.pageid,
+		     (int) vacuum_Data->crt_lsa.offset, (long long int) vacuum_Data->first_blocks_to_recover.pageid,
 		     (int) vacuum_Data->first_blocks_to_recover.offset,
-		     (long long int)
-		     vacuum_Data->last_blocks_to_recover.pageid,
+		     (long long int) vacuum_Data->last_blocks_to_recover.pageid,
 		     (int) vacuum_Data->last_blocks_to_recover.offset);
     }
 
   /* Update current vacuum data LSA */
   LSA_COPY (&vacuum_Data->crt_lsa, vacuum_data_lsa);
 
-  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		 "VACUUM: Set vacuum data lsa to (%lld, %d).",
-		 (long long int) vacuum_data_lsa->pageid,
-		 (int) vacuum_data_lsa->offset);
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "VACUUM: Set vacuum data lsa to (%lld, %d).",
+		 (long long int) vacuum_data_lsa->pageid, (int) vacuum_data_lsa->offset);
 
   assert (!LSA_ISNULL (&vacuum_Data->crt_lsa));
 
@@ -4838,24 +4232,18 @@ vacuum_set_vacuum_data_lsa (THREAD_ENTRY * thread_p,
     {
       LSA_COPY (&vacuum_Data_oldest_not_flushed_lsa, &vacuum_Data->crt_lsa);
 
-      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: Updated vacuum data's oldest unflushed lsa to "
-		     "(%lld, %d).",
-		     (long long int)
-		     vacuum_Data_oldest_not_flushed_lsa.pageid,
+      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "VACUUM: Updated vacuum data's oldest unflushed lsa to " "(%lld, %d).",
+		     (long long int) vacuum_Data_oldest_not_flushed_lsa.pageid,
 		     (int) vacuum_Data_oldest_not_flushed_lsa.offset);
     }
   else
     {
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: No need to update vacuum data oldest unflushed "
-		     "lsa. It already is (%lld, %d).",
-		     (long long int)
-		     vacuum_Data_oldest_not_flushed_lsa.pageid,
+		     "VACUUM: No need to update vacuum data oldest unflushed " "lsa. It already is (%lld, %d).",
+		     (long long int) vacuum_Data_oldest_not_flushed_lsa.pageid,
 		     (int) vacuum_Data_oldest_not_flushed_lsa.offset);
 
-      assert (LSA_LT (&vacuum_Data_oldest_not_flushed_lsa,
-		      &vacuum_Data->crt_lsa));
+      assert (LSA_LT (&vacuum_Data_oldest_not_flushed_lsa, &vacuum_Data->crt_lsa));
     }
 }
 
@@ -4868,8 +4256,7 @@ vacuum_set_vacuum_data_lsa (THREAD_ENTRY * thread_p,
  * vacuum_data_lsa (out) : Pointer to log lsa where vacuum data lsa is saved.
  */
 void
-vacuum_get_vacuum_data_lsa (THREAD_ENTRY * thread_p,
-			    LOG_LSA * vacuum_data_lsa)
+vacuum_get_vacuum_data_lsa (THREAD_ENTRY * thread_p, LOG_LSA * vacuum_data_lsa)
 {
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
@@ -4924,8 +4311,7 @@ vacuum_is_work_in_progress (THREAD_ENTRY * thread_p)
  * removed_entries (in)	  : Indexes of entries to be removed.
  */
 static void
-vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries,
-			    int *removed_entries)
+vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries, int *removed_entries)
 {
 #define TEMP_BUFFER_SIZE 1024
   VACUUM_DATA_ENTRY temp_buffer[TEMP_BUFFER_SIZE], *entry = NULL;
@@ -4939,10 +4325,8 @@ vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries,
     }
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
-		 "n_table_entries = %d before removing entries.",
-		 (long long int) vacuum_Data->crt_lsa.pageid,
-		 (int) vacuum_Data->crt_lsa.offset,
+		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - " "n_table_entries = %d before removing entries.",
+		 (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
 		 vacuum_Data->n_table_entries);
 
   for (i = 0; i < n_removed_entries; i++)
@@ -4951,24 +4335,20 @@ vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries,
       table_index = removed_entries[i];
 
       /* Make sure that indexes in removed entries are in descending order */
-      assert (i == (n_removed_entries - 1)
-	      || table_index > removed_entries[i + 1]);
+      assert (i == (n_removed_entries - 1) || table_index > removed_entries[i + 1]);
 
       /* Get entry at table_index */
       entry = VACUUM_DATA_GET_ENTRY (table_index);
 
-      if (i < n_removed_entries - 1
-	  && table_index == removed_entries[i + 1] + 1)
+      if (i < n_removed_entries - 1 && table_index == removed_entries[i + 1] + 1)
 	{
 	  /* Successive entries are being removed. Group their removal. */
 	  n_successive++;
 	  continue;
 	}
 
-      /* Get starting index for current group. If no successive entries were
-       * found, starting index will be same as table index and n_successive
-       * will be 1.
-       */
+      /* Get starting index for current group. If no successive entries were found, starting index will be same as
+       * table index and n_successive will be 1. */
       start_index = table_index;
 
       if (VACUUM_IS_ER_LOG_LEVEL_SET (VACUUM_ER_LOG_VACUUM_DATA))
@@ -4976,28 +4356,18 @@ vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries,
 	  for (j = start_index; j < n_successive; j++)
 	    {
 	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-			     "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
-			     "remove block = "
-			     "{start_lsa = (%lld, %d), "
-			     "oldest_mvccid = %llu, newest_mvccid = %llu, "
-			     "blockid = %lld",
-			     (long long int) vacuum_Data->crt_lsa.pageid,
-			     (int) vacuum_Data->crt_lsa.offset,
-			     (long long int)
-			     VACUUM_DATA_GET_ENTRY (j)->start_lsa.pageid,
-			     (int)
-			     VACUUM_DATA_GET_ENTRY (j)->start_lsa.offset,
-			     VACUUM_DATA_GET_ENTRY (j)->oldest_mvccid,
-			     VACUUM_DATA_GET_ENTRY (j)->newest_mvccid,
-			     VACUUM_DATA_ENTRY_BLOCKID
-			     (VACUUM_DATA_GET_ENTRY (j)));
+			     "VACUUM: Vacuum data crt_lsa = (%lld, %d) - " "remove block = " "{start_lsa = (%lld, %d), "
+			     "oldest_mvccid = %llu, newest_mvccid = %llu, " "blockid = %lld",
+			     (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
+			     (long long int) VACUUM_DATA_GET_ENTRY (j)->start_lsa.pageid,
+			     (int) VACUUM_DATA_GET_ENTRY (j)->start_lsa.offset,
+			     VACUUM_DATA_GET_ENTRY (j)->oldest_mvccid, VACUUM_DATA_GET_ENTRY (j)->newest_mvccid,
+			     VACUUM_DATA_ENTRY_BLOCKID (VACUUM_DATA_GET_ENTRY (j)));
 	    }
 	}
 
       /* Compute the size of memory data being moved */
-      mem_size =
-	(vacuum_Data->n_table_entries - (start_index + n_successive))
-	* sizeof (VACUUM_DATA_ENTRY);
+      mem_size = (vacuum_Data->n_table_entries - (start_index + n_successive)) * sizeof (VACUUM_DATA_ENTRY);
 
       assert (mem_size >= 0);
 
@@ -5007,17 +4377,13 @@ vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries,
 	  if (mem_size <= temp_buffer_mem_size)
 	    {
 	      /* Use temporary buffer to move memory data */
-	      memcpy (temp_buffer,
-		      VACUUM_DATA_GET_ENTRY (start_index + n_successive),
-		      mem_size);
-	      memcpy (VACUUM_DATA_GET_ENTRY (start_index), temp_buffer,
-		      mem_size);
+	      memcpy (temp_buffer, VACUUM_DATA_GET_ENTRY (start_index + n_successive), mem_size);
+	      memcpy (VACUUM_DATA_GET_ENTRY (start_index), temp_buffer, mem_size);
 	    }
 	  else
 	    {
 	      /* Use memmove */
-	      memmove (VACUUM_DATA_GET_ENTRY (start_index),
-		       VACUUM_DATA_GET_ENTRY (start_index + n_successive),
+	      memmove (VACUUM_DATA_GET_ENTRY (start_index), VACUUM_DATA_GET_ENTRY (start_index + n_successive),
 		       mem_size);
 	    }
 	}
@@ -5029,10 +4395,8 @@ vacuum_data_remove_entries (THREAD_ENTRY * thread_p, int n_removed_entries,
     }
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
-		 "n_table_entries = %d after removing entries.",
-		 (long long int) vacuum_Data->crt_lsa.pageid,
-		 (int) vacuum_Data->crt_lsa.offset,
+		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - " "n_table_entries = %d after removing entries.",
+		 (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
 		 vacuum_Data->n_table_entries);
 
   VACUUM_VERIFY_VACUUM_DATA ();
@@ -5074,22 +4438,18 @@ vacuum_data_remove_finished_entries (THREAD_ENTRY * thread_p)
 		  if (new_removed_indexes != NULL)
 		    {
 		      /* copy values from stack array to alloced array */
-		      memcpy (new_removed_indexes, removed_indexes,
-			      n_removed_indexes *
-			      sizeof (removed_indexes[0]));
+		      memcpy (new_removed_indexes, removed_indexes, n_removed_indexes * sizeof (removed_indexes[0]));
 		    }
 		}
 	      else
 		{
-		  new_removed_indexes =
-		    (int *) realloc (removed_indexes_p, mem_size);
+		  new_removed_indexes = (int *) realloc (removed_indexes_p, mem_size);
 		}
 
 	      if (new_removed_indexes == NULL)
 		{
 		  assert_release (false);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  sizeof (int) * 2 * n_removed_indexes_capacity);
 		  goto end;
 		}
@@ -5105,12 +4465,10 @@ vacuum_data_remove_finished_entries (THREAD_ENTRY * thread_p)
   if (n_removed_indexes > 0)
     {
       /* Remove entries from vacuum data */
-      vacuum_data_remove_entries (thread_p, n_removed_indexes,
-				  removed_indexes_p);
+      vacuum_data_remove_entries (thread_p, n_removed_indexes, removed_indexes_p);
 
       /* Log removed data entries */
-      vacuum_log_remove_data_entries (thread_p, removed_indexes_p,
-				      n_removed_indexes);
+      vacuum_log_remove_data_entries (thread_p, removed_indexes_p, n_removed_indexes);
     }
 
 end:
@@ -5162,9 +4520,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
-  /* If there are no blocks saved to log, consume buffer directly to vacuum
-   * data.
-   */
+  /* If there are no blocks saved to log, consume buffer directly to vacuum data. */
   if (LSA_ISNULL (&vacuum_Data->last_blocks_to_recover))
     {
       /* Consume blocks data from buffer and append them to vacuum data */
@@ -5190,15 +4546,10 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	    }
 
 	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-			 "VACUUM: thread(%d) calls: "
-			 "vacuum_consume_buffer_log_blocks (): "
-			 "blockid=(%lld), start_lsa=(%lld, %d), "
-			 "old_mvccid=(%llu), new_mvccid=(%llu)\n",
-			 thread_get_current_entry_index (),
-			 entry->blockid,
-			 (long long int) entry->start_lsa.pageid,
-			 (int) entry->start_lsa.offset, entry->oldest_mvccid,
-			 entry->newest_mvccid);
+			 "VACUUM: thread(%d) calls: " "vacuum_consume_buffer_log_blocks (): "
+			 "blockid=(%lld), start_lsa=(%lld, %d), " "old_mvccid=(%llu), new_mvccid=(%llu)\n",
+			 thread_get_current_entry_index (), entry->blockid, (long long int) entry->start_lsa.pageid,
+			 (int) entry->start_lsa.offset, entry->oldest_mvccid, entry->newest_mvccid);
 
 	  vacuum_Data->n_table_entries++;
 
@@ -5206,8 +4557,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 
 	  vacuum_Data->last_blockid = entry->blockid;
 
-	  if (MVCC_ID_PRECEDES (vacuum_Data->newest_mvccid,
-				entry->newest_mvccid))
+	  if (MVCC_ID_PRECEDES (vacuum_Data->newest_mvccid, entry->newest_mvccid))
 	    {
 	      vacuum_Data->newest_mvccid = entry->newest_mvccid;
 	    }
@@ -5216,11 +4566,8 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
       if (save_n_entries < vacuum_Data->n_table_entries)
 	{
 	  /* New blocks have been appended and must be logged */
-	  vacuum_log_append_block_data (thread_p,
-					VACUUM_DATA_GET_ENTRY
-					(save_n_entries),
-					vacuum_Data->n_table_entries -
-					save_n_entries, NULL, 0);
+	  vacuum_log_append_block_data (thread_p, VACUUM_DATA_GET_ENTRY (save_n_entries),
+					vacuum_Data->n_table_entries - save_n_entries, NULL, 0);
 	}
     }
 
@@ -5228,13 +4575,9 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
     {
       while (!LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer))
 	{
-	  /* Couldn't fit entire buffer into vacuum data. Save blocks to log
-	   * to recover later.
-	   */
-	  /* Blocks are saved in chunks and the buffer may not be consumed
-	   * entirely in one iteration. Loop until the entire buffer is
-	   * consumed.
-	   */
+	  /* Couldn't fit entire buffer into vacuum data. Save blocks to log to recover later. */
+	  /* Blocks are saved in chunks and the buffer may not be consumed entirely in one iteration. Loop until the
+	   * entire buffer is consumed. */
 	  vacuum_log_blocks_to_recover (thread_p);
 	}
     }
@@ -5266,9 +4609,7 @@ vacuum_rv_discard_recovered_blocks_from_buffer (THREAD_ENTRY * thread_p)
   /* Discard all blocks before vacuum_Data->last_blockid. */
   while (!LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer))
     {
-      entry =
-	(VACUUM_DATA_ENTRY *)
-	lf_circular_queue_async_peek (vacuum_Block_data_buffer);
+      entry = (VACUUM_DATA_ENTRY *) lf_circular_queue_async_peek (vacuum_Block_data_buffer);
       assert (entry != NULL);
       if (entry->blockid > vacuum_Data->last_blockid)
 	{
@@ -5277,11 +4618,9 @@ vacuum_rv_discard_recovered_blocks_from_buffer (THREAD_ENTRY * thread_p)
 	}
       /* Remove from buffer. */
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: Discard recovered block from buffer - "
-		     "blockid = %lld, start_lsa = (%lld, %d), "
-		     "oldest_mvccid = %lld, newest_mvccid = %lld.",
-		     entry->blockid, (long long int) entry->start_lsa.pageid,
-		     (int) entry->start_lsa.offset, entry->oldest_mvccid,
+		     "VACUUM: Discard recovered block from buffer - " "blockid = %lld, start_lsa = (%lld, %d), "
+		     "oldest_mvccid = %lld, newest_mvccid = %lld.", entry->blockid,
+		     (long long int) entry->start_lsa.pageid, (int) entry->start_lsa.offset, entry->oldest_mvccid,
 		     entry->newest_mvccid);
       (void) lf_circular_queue_consume (vacuum_Block_data_buffer, NULL);
     }
@@ -5312,14 +4651,10 @@ vacuum_rv_discard_recovered_blocks_from_buffer (THREAD_ENTRY * thread_p)
  *				    checkpoint block.
  */
 int
-vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
-				       bool is_chkpt_block_incomplete,
-				       VACUUM_LOG_BLOCKID chkpt_blockid,
-				       const LOG_LSA * chkpt_lsa,
-				       LOG_LSA * chkpt_block_first_lsa,
-				       LOG_LSA * chkpt_block_start_lsa,
-				       MVCCID chkpt_block_oldest_mvccid,
-				       MVCCID chkpt_block_newest_mvccid)
+vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p, bool is_chkpt_block_incomplete,
+				       VACUUM_LOG_BLOCKID chkpt_blockid, const LOG_LSA * chkpt_lsa,
+				       LOG_LSA * chkpt_block_first_lsa, LOG_LSA * chkpt_block_start_lsa,
+				       MVCCID chkpt_block_oldest_mvccid, MVCCID chkpt_block_newest_mvccid)
 {
   int error_code = NO_ERROR;
   char log_page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
@@ -5337,16 +4672,13 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
   assert (chkpt_block_start_lsa != NULL);
   assert (!LOG_ISRESTARTED ());
 
-  /* Initialize vacuum_Global_oldest_active_mvccid. Since we don't have any
-   * active transactions yet, initialize it as maximum of
-   * vacuum_Data->newest_mvccid and log_Gl.hdr.last_block_oldest_mvccid .
-   */
+  /* Initialize vacuum_Global_oldest_active_mvccid. Since we don't have any active transactions yet, initialize it as
+   * maximum of vacuum_Data->newest_mvccid and log_Gl.hdr.last_block_oldest_mvccid . */
   vacuum_Global_oldest_active_mvccid = vacuum_Data->newest_mvccid;
   if (!LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
     {
       vacuum_Global_oldest_active_mvccid =
-	MAX (vacuum_Global_oldest_active_mvccid,
-	     log_Gl.hdr.last_block_oldest_mvccid);
+	MAX (vacuum_Global_oldest_active_mvccid, log_Gl.hdr.last_block_oldest_mvccid);
     }
 
   /* Initialize log_page_p. */
@@ -5355,34 +4687,23 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
   log_page_p->hdr.offset = NULL_OFFSET;
 
   vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
-		 "VACUUM: Finish recovery of vacuum data: "
-		 "is_chkpt_block_incomplete = %s, chkpt_blockid = %lld, "
-		 "chkpt_lsa = %lld|%d, chkpt_block_first_lsa = %lld|%d, "
-		 "chkpt_block_start_lsa = %lld|%d, "
-		 "chkpt_block_oldest_mvccid = %llu, "
-		 "chkpt_block_newest_mvccid = %llu.\n",
-		 is_chkpt_block_incomplete ? "true" : "false",
-		 (long long int) chkpt_blockid,
-		 (long long int) chkpt_lsa->pageid,
-		 (int) chkpt_lsa->offset,
-		 (long long int) chkpt_block_first_lsa->pageid,
-		 (int) chkpt_block_first_lsa->offset,
-		 (long long int) chkpt_block_start_lsa->pageid,
-		 (int) chkpt_block_start_lsa->offset,
+		 "VACUUM: Finish recovery of vacuum data: " "is_chkpt_block_incomplete = %s, chkpt_blockid = %lld, "
+		 "chkpt_lsa = %lld|%d, chkpt_block_first_lsa = %lld|%d, " "chkpt_block_start_lsa = %lld|%d, "
+		 "chkpt_block_oldest_mvccid = %llu, " "chkpt_block_newest_mvccid = %llu.\n",
+		 is_chkpt_block_incomplete ? "true" : "false", (long long int) chkpt_blockid,
+		 (long long int) chkpt_lsa->pageid, (int) chkpt_lsa->offset,
+		 (long long int) chkpt_block_first_lsa->pageid, (int) chkpt_block_first_lsa->offset,
+		 (long long int) chkpt_block_start_lsa->pageid, (int) chkpt_block_start_lsa->offset,
 		 (unsigned long long int) chkpt_block_oldest_mvccid,
 		 (unsigned long long int) chkpt_block_newest_mvccid);
 
-  if (!is_chkpt_block_incomplete
-      || chkpt_blockid <= vacuum_Data->last_blockid)
+  if (!is_chkpt_block_incomplete || chkpt_blockid <= vacuum_Data->last_blockid)
     {
-      /* Checkpoint_block was completely recovered. Just consume remaining
-       * entries in buffer.
-       */
+      /* Checkpoint_block was completely recovered. Just consume remaining entries in buffer. */
       error_code = vacuum_consume_buffer_log_blocks (thread_p);
       if (error_code != NO_ERROR)
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "vacuum_rv_finish_vacuum_data_recovery");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_rv_finish_vacuum_data_recovery");
 	  return error_code;
 	}
 
@@ -5398,33 +4719,26 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
 
   if (LSA_ISNULL (chkpt_block_first_lsa))
     {
-      /* No MVCC operations was found in checkpoint block after checkpoint
-       * LSA. Try to find one before checkpoint LSA.
-       */
+      /* No MVCC operations was found in checkpoint block after checkpoint LSA. Try to find one before checkpoint LSA. */
       LSA_SET_NULL (&chkpt_entry.start_lsa);
       chkpt_entry.oldest_mvccid = MVCCID_NULL;
       chkpt_entry.newest_mvccid = MVCCID_NULL;
 
-      /* Search checkpoint block for MVCC undo or undoredo log records. Stop
-       * when found one.
-       */
+      /* Search checkpoint block for MVCC undo or undoredo log records. Stop when found one. */
       LSA_COPY (&log_lsa, chkpt_lsa);
       while (log_lsa.pageid >= stop_at_pageid)
 	{
 	  if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
 	    {
 	      /* Get log page. */
-	      if (logpb_fetch_page (thread_p, log_lsa.pageid, log_page_p)
-		  == NULL)
+	      if (logpb_fetch_page (thread_p, log_lsa.pageid, log_page_p) == NULL)
 		{
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				     "vacuum_rv_finish_vacuum_data_recovery");
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_rv_finish_vacuum_data_recovery");
 		  return ER_FAILED;
 		}
 	    }
 	  log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
-	  if (log_rec_header->type == LOG_MVCC_UNDO_DATA
-	      || log_rec_header->type == LOG_MVCC_UNDOREDO_DATA
+	  if (log_rec_header->type == LOG_MVCC_UNDO_DATA || log_rec_header->type == LOG_MVCC_UNDOREDO_DATA
 	      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA)
 	    {
 	      LSA_COPY (chkpt_block_first_lsa, &log_lsa);
@@ -5435,17 +4749,13 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
 	}
       if (LSA_ISNULL (chkpt_block_first_lsa))
 	{
-	  /* Nothing to recover from checkpoint block. No MVCC op log records
-	   * have been found.
-	   */
+	  /* Nothing to recover from checkpoint block. No MVCC op log records have been found. */
 	  return NO_ERROR;
 	}
     }
   else
     {
-      /* Start processing log from chkpt_block_first_lsa. Initialize the
-       * block data with already recovered data.
-       */
+      /* Start processing log from chkpt_block_first_lsa. Initialize the block data with already recovered data. */
       assert (!LSA_ISNULL (chkpt_block_start_lsa));
       assert (MVCCID_IS_VALID (chkpt_block_oldest_mvccid));
       assert (MVCCID_IS_VALID (chkpt_block_newest_mvccid));
@@ -5455,9 +4765,7 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
       chkpt_entry.newest_mvccid = chkpt_block_newest_mvccid;
     }
 
-  /* We have at least one MVCC op log record. Check all remaining block
-   * records and update block data.
-   */
+  /* We have at least one MVCC op log record. Check all remaining block records and update block data. */
   LSA_COPY (&log_lsa, chkpt_block_first_lsa);
   while (log_lsa.pageid >= stop_at_pageid)
     {
@@ -5465,22 +4773,18 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
 	{
 	  if (logpb_fetch_page (thread_p, log_lsa.pageid, log_page_p) == NULL)
 	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "vacuum_rv_finish_vacuum_data_recovery");
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_rv_finish_vacuum_data_recovery");
 	      return ER_FAILED;
 	    }
 	}
       error_code =
-	vacuum_process_log_record (thread_p, NULL, &log_lsa, log_page_p,
-				   &dummy_log_data, &mvccid, NULL, NULL,
+	vacuum_process_log_record (thread_p, NULL, &log_lsa, log_page_p, &dummy_log_data, &mvccid, NULL, NULL,
 				   &vacuum_info, NULL, true);
-      if (chkpt_entry.oldest_mvccid == MVCCID_NULL
-	  || MVCC_ID_PRECEDES (mvccid, chkpt_entry.oldest_mvccid))
+      if (chkpt_entry.oldest_mvccid == MVCCID_NULL || MVCC_ID_PRECEDES (mvccid, chkpt_entry.oldest_mvccid))
 	{
 	  chkpt_entry.oldest_mvccid = mvccid;
 	}
-      if (chkpt_entry.newest_mvccid == MVCCID_NULL
-	  || MVCC_ID_PRECEDES (chkpt_entry.newest_mvccid, mvccid))
+      if (chkpt_entry.newest_mvccid == MVCCID_NULL || MVCC_ID_PRECEDES (chkpt_entry.newest_mvccid, mvccid))
 	{
 	  chkpt_entry.newest_mvccid = mvccid;
 	}
@@ -5489,30 +4793,22 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
 
   if (LSA_EQ (&log_Gl.hdr.mvcc_op_log_lsa, chkpt_block_start_lsa))
     {
-      /* Do not produce the block yet. Update header oldest and newest MVCCID
-       * and the block will be produced when a different block is created.
-       */
+      /* Do not produce the block yet. Update header oldest and newest MVCCID and the block will be produced when a
+       * different block is created. */
       assert (LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer));
       log_Gl.hdr.last_block_oldest_mvccid = chkpt_entry.oldest_mvccid;
       log_Gl.hdr.last_block_newest_mvccid = chkpt_entry.newest_mvccid;
       return NO_ERROR;
     }
 
-  assert (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid)
-	  > chkpt_blockid);
-  /* Add recovered data in buffer before current entries (to keep entries
-   * ordered by blockid).
-   */
-  if (!lf_circular_queue_async_push_ahead (vacuum_Block_data_buffer,
-					   &chkpt_entry))
+  assert (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) > chkpt_blockid);
+  /* Add recovered data in buffer before current entries (to keep entries ordered by blockid). */
+  if (!lf_circular_queue_async_push_ahead (vacuum_Block_data_buffer, &chkpt_entry))
     {
       /* Full buffer */
-      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA
-		     | VACUUM_ER_LOG_RECOVERY,
-		     "VACUUM ERROR: Couldn't produce checkpoint block. "
-		     "Block buffer is full.");
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "vacuum_rv_finish_vacuum_data_recovery");
+      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+		     "VACUUM ERROR: Couldn't produce checkpoint block. " "Block buffer is full.");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_rv_finish_vacuum_data_recovery");
       return ER_FAILED;
     }
 
@@ -5520,8 +4816,7 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p,
   error_code = vacuum_consume_buffer_log_blocks (thread_p);
   if (error_code != NO_ERROR)
     {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "vacuum_rv_finish_vacuum_data_recovery");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_rv_finish_vacuum_data_recovery");
       return error_code;
     }
 
@@ -5549,14 +4844,11 @@ vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p)
   int n_redo_crumbs = 0;
   LOG_DATA_ADDR addr;
 
-  /* Consume up to VACUUM_RECOVER_BLOCKS_MAX_COUNT entries from buffer.
-   * The buffer is not consumed entirely in one iteration, to avoid adding
-   * too much log data at once.
-   */
+  /* Consume up to VACUUM_RECOVER_BLOCKS_MAX_COUNT entries from buffer. The buffer is not consumed entirely in one
+   * iteration, to avoid adding too much log data at once. */
   while (n_blocks < VACUUM_RECOVER_BLOCKS_MAX_COUNT)
     {
-      if (!lf_circular_queue_consume
-	  (vacuum_Block_data_buffer, &recover_blocks[n_blocks]))
+      if (!lf_circular_queue_consume (vacuum_Block_data_buffer, &recover_blocks[n_blocks]))
 	{
 	  /* No more entries */
 	  break;
@@ -5564,15 +4856,12 @@ vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p)
       if (recover_blocks[n_blocks].blockid <= vacuum_Data->last_blockid)
 	{
 	  /* Duplicates are not expected */
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
-			 "VACUUM ERROR: Duplicate block ID.");
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA, "VACUUM ERROR: Duplicate block ID.");
 	  assert_release (false);
 	  return;
 	}
 
-      /* Update last_blockid since we still need it to skip duplicate objects
-       * when block data buffer is recovered.
-       */
+      /* Update last_blockid since we still need it to skip duplicate objects when block data buffer is recovered. */
       vacuum_Data->last_blockid = recover_blocks[n_blocks].blockid;
 
       /* Increment number of consumed blocks */
@@ -5586,8 +4875,7 @@ vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p)
     }
 
   vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_VACUUM_DATA,
-		 "VACUUM WARNING: %d vacuum data entries saved to log.",
-		 n_blocks);
+		 "VACUUM WARNING: %d vacuum data entries saved to log.", n_blocks);
 
   /* Update total number of blocks to be recovered */
   vacuum_Data->n_blocks_to_recover += n_blocks;
@@ -5600,10 +4888,8 @@ vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p)
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
 		 "n_blocks_to_recover = %d, n_first_blocks_to_recover = %d.",
-		 (long long int) vacuum_Data->crt_lsa.pageid,
-		 (int) vacuum_Data->crt_lsa.offset,
-		 vacuum_Data->n_blocks_to_recover,
-		 vacuum_Data->n_first_blocks_to_recover);
+		 (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
+		 vacuum_Data->n_blocks_to_recover, vacuum_Data->n_first_blocks_to_recover);
 
   /* Initialize log address data */
   addr.pgptr = NULL;
@@ -5623,11 +4909,9 @@ vacuum_log_blocks_to_recover (THREAD_ENTRY * thread_p)
   /* Safe guard */
   assert (n_redo_crumbs <= VACUUM_LOG_BLOCKS_TO_RECOVER_REDO_CRUMBS_MAX);
 
-  /* Log the entries to recover later. Note that when vacuum data LSA is
-   * updated, also LSA of first/last blocks to recover will be updated.
-   */
-  log_append_redo_crumbs (thread_p, RVVAC_LOG_BLOCK_SAVE, &addr,
-			  n_redo_crumbs, redo_crumbs);
+  /* Log the entries to recover later. Note that when vacuum data LSA is updated, also LSA of first/last blocks to
+   * recover will be updated. */
+  log_append_redo_crumbs (thread_p, RVVAC_LOG_BLOCK_SAVE, &addr, n_redo_crumbs, redo_crumbs);
 }
 
 /*
@@ -5650,9 +4934,7 @@ vacuum_rv_redo_save_blocks (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   if (LSA_ISNULL (&vacuum_Data->first_blocks_to_recover))
     {
-      /* Since this must be the first log entry for saved blocks, update also
-       * vacuum_Data->n_first_blocks_to_recover.
-       */
+      /* Since this must be the first log entry for saved blocks, update also vacuum_Data->n_first_blocks_to_recover. */
       vacuum_Data->n_first_blocks_to_recover = rcv->offset;
     }
 
@@ -5670,14 +4952,10 @@ vacuum_rv_redo_save_blocks (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
 		 "n_blocks_to_recover = %d, n_first_blocks_to_recover = %d.",
-		 (long long int) vacuum_Data->crt_lsa.pageid,
-		 (int) vacuum_Data->crt_lsa.offset,
-		 vacuum_Data->n_blocks_to_recover,
-		 vacuum_Data->n_first_blocks_to_recover);
+		 (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
+		 vacuum_Data->n_blocks_to_recover, vacuum_Data->n_first_blocks_to_recover);
 
-  /* LSA's of first/last block to be recovered are set when vacuum data LSA is
-   * set.
-   */
+  /* LSA's of first/last block to be recovered are set when vacuum data LSA is set. */
   return NO_ERROR;
 }
 
@@ -5708,10 +4986,8 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   int recover_blocks_max_count;
   int i;
-  char
-    redo_data_buffer[(VACUUM_RECOVER_BLOCKS_BUFFER_MAX_SIZE *
-		      sizeof (VACUUM_DATA_ENTRY)) + sizeof (LOG_LSA) +
-		     MAX_ALIGNMENT];
+  char redo_data_buffer[(VACUUM_RECOVER_BLOCKS_BUFFER_MAX_SIZE * sizeof (VACUUM_DATA_ENTRY)) + sizeof (LOG_LSA) +
+			MAX_ALIGNMENT];
   char *redo_data_p = NULL;
   bool is_zip = false;
 
@@ -5721,13 +4997,10 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
-  /* Compute the number of blocks we need to recover:
-   * 1. VACUUM_RECOVER_BLOCKS_MAX_COUNT if they fit in vacuum data.
-   * 2. The number of blocks that fit in vacuum data.
-   */
+  /* Compute the number of blocks we need to recover: 1. VACUUM_RECOVER_BLOCKS_MAX_COUNT if they fit in vacuum data. 2. 
+   * The number of blocks that fit in vacuum data. */
   recover_blocks_max_count =
-    MIN (VACUUM_RECOVER_BLOCKS_MAX_COUNT,
-	 VACUUM_DATA_TABLE_MAX_SIZE - vacuum_Data->n_table_entries);
+    MIN (VACUUM_RECOVER_BLOCKS_MAX_COUNT, VACUUM_DATA_TABLE_MAX_SIZE - vacuum_Data->n_table_entries);
 
   if (recover_blocks_max_count < vacuum_Data->n_first_blocks_to_recover)
     {
@@ -5739,10 +5012,8 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
   log_unzip_p = log_zip_alloc (IO_PAGESIZE, false);
   if (log_unzip_p == NULL)
     {
-      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM ERROR: Could not allocate log zip.");
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			 "vacuum_recover_blocks_from_log");
+      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA, "VACUUM ERROR: Could not allocate log zip.");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_blocks_from_log");
       error_code = ER_FAILED;
       goto end;
     }
@@ -5759,14 +5030,10 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
   log_page_p->hdr.logical_pageid = NULL_PAGEID;
   log_page_p->hdr.offset = NULL_OFFSET;
 
-  /* Loop to recover blocks. We need to recover first recover_blocks_max_count
-   * blocks. Process the log entries in reversed order using LOG_LSA links.
-   * When remaining number of blocks are less than recover_blocks_max_count,
-   * copy the blocks found in log entries. Next first_blocks_to_recover LSA
-   * will be updated to exclude the recovered blocks on next iteration. If
-   * all blocks have been recovered, first/last blocks to recover LSA will
-   * both be NULL.
-   */
+  /* Loop to recover blocks. We need to recover first recover_blocks_max_count blocks. Process the log entries in
+   * reversed order using LOG_LSA links. When remaining number of blocks are less than recover_blocks_max_count, copy
+   * the blocks found in log entries. Next first_blocks_to_recover LSA will be updated to exclude the recovered blocks
+   * on next iteration. If all blocks have been recovered, first/last blocks to recover LSA will both be NULL. */
   LSA_SET_NULL (&first_not_recovered_blocks_lsa);
   first_not_recovered_n_blocks = 0;
   LSA_COPY (&log_lsa, &vacuum_Data->last_blocks_to_recover);
@@ -5782,8 +5049,7 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
 	    {
 	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
 			     "VACUUM ERROR: Failed to fetch page from log.");
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "vacuum_recover_blocks_from_log");
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_blocks_from_log");
 	      error_code = ER_FAILED;
 	      goto end;
 	    }
@@ -5793,17 +5059,13 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
       log_rec_header_p = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
       assert (log_rec_header_p->type == LOG_REDO_DATA);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa,
-			  log_page_p);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_page_p);
 
       /* Get redo structure */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*redo), &log_lsa,
-					log_page_p);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*redo), &log_lsa, log_page_p);
       redo = (struct log_redo *) ((char *) log_page_p->area + log_lsa.offset);
       assert (redo->data.rcvindex == RVVAC_LOG_BLOCK_SAVE);
-      /* Consume required information from log redo structure before
-       * advancing to redo recovery data.
-       */
+      /* Consume required information from log redo structure before advancing to redo recovery data. */
       /* Number of blocks is stored in offset */
       crt_n_blocks = redo->data.offset;
       redo_data_length = redo->length;
@@ -5829,8 +5091,7 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
 	{
 	  assert (redo_data_length <= (int) sizeof (redo_data_buffer));
 	  redo_data_p = redo_data_buffer;
-	  logpb_copy_from_log (thread_p, redo_data_p, redo_data_length,
-			       &log_lsa, log_page_p);
+	  logpb_copy_from_log (thread_p, redo_data_p, redo_data_length, &log_lsa, log_page_p);
 	}
 
       if (is_zip)
@@ -5843,18 +5104,15 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
 	    }
 	  else
 	    {
-	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA,
-			     "VACUUM ERROR: Failed to unzip data.");
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "vacuum_recover_blocks_from_log");
+	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_VACUUM_DATA, "VACUUM ERROR: Failed to unzip data.");
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_blocks_from_log");
 	      error_code = ER_FAILED;
 	      goto end;
 	    }
 	}
 
       /* Safe guard */
-      assert (redo_data_length =
-	      sizeof (LOG_LSA) + crt_n_blocks * sizeof (VACUUM_DATA_ENTRY));
+      assert (redo_data_length = sizeof (LOG_LSA) + crt_n_blocks * sizeof (VACUUM_DATA_ENTRY));
 
       /* Copy LSA of previous blocks to recover */
       LSA_COPY (&log_lsa, (LOG_LSA *) redo_data_p);
@@ -5864,8 +5122,7 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
 	{
 	  /* Also read blocks */
 	  recover_index -= crt_n_blocks;
-	  memcpy (&recover_blocks[recover_index], redo_data_p,
-		  crt_n_blocks * sizeof (VACUUM_DATA_ENTRY));
+	  memcpy (&recover_blocks[recover_index], redo_data_p, crt_n_blocks * sizeof (VACUUM_DATA_ENTRY));
 	}
       else
 	{
@@ -5895,14 +5152,12 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
   /* Add recovered blocks */
   prev_n_table_entries = vacuum_Data->n_table_entries;
   n_recovered_blocks = VACUUM_RECOVER_BLOCKS_MAX_COUNT - recover_index;
-  memcpy (VACUUM_DATA_GET_ENTRY (prev_n_table_entries),
-	  &recover_blocks[recover_index],
+  memcpy (VACUUM_DATA_GET_ENTRY (prev_n_table_entries), &recover_blocks[recover_index],
 	  n_recovered_blocks * sizeof (VACUUM_DATA_ENTRY));
   vacuum_Data->n_table_entries += n_recovered_blocks;
 
   /* Update LSA of first blocks to recover */
-  LSA_COPY (&vacuum_Data->first_blocks_to_recover,
-	    &first_not_recovered_blocks_lsa);
+  LSA_COPY (&vacuum_Data->first_blocks_to_recover, &first_not_recovered_blocks_lsa);
   if (LSA_ISNULL (&first_not_recovered_blocks_lsa))
     {
       /* No blocks left to recover. Set last blocks to recover to NULL */
@@ -5911,41 +5166,31 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
   /* Update the number of blocks to recover */
   vacuum_Data->n_blocks_to_recover -= n_recovered_blocks;
   assert (vacuum_Data->n_blocks_to_recover >= 0);
-  assert (vacuum_Data->n_blocks_to_recover == 0
-	  || !LSA_ISNULL (&vacuum_Data->last_blocks_to_recover));
+  assert (vacuum_Data->n_blocks_to_recover == 0 || !LSA_ISNULL (&vacuum_Data->last_blocks_to_recover));
   vacuum_Data->n_first_blocks_to_recover = first_not_recovered_n_blocks;
 
   /* Update vacuum_Data->newest_mvccid */
   for (i = prev_n_table_entries; i < vacuum_Data->n_table_entries; i++)
     {
-      if (MVCC_ID_PRECEDES (vacuum_Data->newest_mvccid,
-			    VACUUM_DATA_GET_ENTRY (i)->newest_mvccid))
+      if (MVCC_ID_PRECEDES (vacuum_Data->newest_mvccid, VACUUM_DATA_GET_ENTRY (i)->newest_mvccid))
 	{
-	  vacuum_Data->newest_mvccid =
-	    VACUUM_DATA_GET_ENTRY (i)->newest_mvccid;
+	  vacuum_Data->newest_mvccid = VACUUM_DATA_GET_ENTRY (i)->newest_mvccid;
 	}
     }
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
-		 "first_blocks_to_recover = (%lld, %d), "
-		 "last_blocks_to_recover = (%lld, %d), "
-		 "n_blocks_to_recover = %d, n_first_blocks_to_recover = %d.",
-		 (long long int) vacuum_Data->crt_lsa.pageid,
-		 (int) vacuum_Data->crt_lsa.offset,
+		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - " "first_blocks_to_recover = (%lld, %d), "
+		 "last_blocks_to_recover = (%lld, %d), " "n_blocks_to_recover = %d, n_first_blocks_to_recover = %d.",
+		 (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
 		 (long long int) vacuum_Data->first_blocks_to_recover.pageid,
 		 (int) vacuum_Data->first_blocks_to_recover.offset,
 		 (long long int) vacuum_Data->last_blocks_to_recover.pageid,
-		 (int) vacuum_Data->last_blocks_to_recover.offset,
-		 vacuum_Data->n_blocks_to_recover,
+		 (int) vacuum_Data->last_blocks_to_recover.offset, vacuum_Data->n_blocks_to_recover,
 		 vacuum_Data->n_first_blocks_to_recover);
 
   /* Log changes */
-  vacuum_log_append_block_data (thread_p,
-				VACUUM_DATA_GET_ENTRY (prev_n_table_entries),
-				n_recovered_blocks,
-				&first_not_recovered_blocks_lsa,
-				first_not_recovered_n_blocks);
+  vacuum_log_append_block_data (thread_p, VACUUM_DATA_GET_ENTRY (prev_n_table_entries), n_recovered_blocks,
+				&first_not_recovered_blocks_lsa, first_not_recovered_n_blocks);
 end:
 #if defined (SERVER_MODE)
   if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
@@ -5972,10 +5217,7 @@ VACUUM_LOG_BLOCKID
 vacuum_get_log_blockid (LOG_PAGEID pageid)
 {
   assert (vacuum_Data != NULL);
-  return ((pageid ==
-	   NULL_PAGEID) ? VACUUM_NULL_LOG_BLOCKID : (pageid /
-						     vacuum_Data->
-						     log_block_npages));
+  return ((pageid == NULL_PAGEID) ? VACUUM_NULL_LOG_BLOCKID : (pageid / vacuum_Data->log_block_npages));
 }
 
 /*
@@ -6064,8 +5306,7 @@ vacuum_data_get_last_blockid (THREAD_ENTRY * thread_p)
  * n_removed_indexes (in) : Removed entries number.
  */
 static void
-vacuum_log_remove_data_entries (THREAD_ENTRY * thread_p,
-				int *removed_indexes, int n_removed_indexes)
+vacuum_log_remove_data_entries (THREAD_ENTRY * thread_p, int *removed_indexes, int n_removed_indexes)
 {
 #define MAX_LOG_DISCARD_BLOCK_DATA_CRUMBS 2
 
@@ -6093,16 +5334,14 @@ vacuum_log_remove_data_entries (THREAD_ENTRY * thread_p,
 
   /* Append removed blocks indexes to crumbs */
   redo_crumbs[n_redo_crumbs].data = removed_indexes;
-  redo_crumbs[n_redo_crumbs].length =
-    n_removed_indexes * sizeof (*removed_indexes);
+  redo_crumbs[n_redo_crumbs].length = n_removed_indexes * sizeof (*removed_indexes);
   n_redo_crumbs++;
 
   /* Safeguard check */
   assert (n_redo_crumbs <= MAX_LOG_DISCARD_BLOCK_DATA_CRUMBS);
 
   /* Append redo log record */
-  log_append_redo_crumbs (thread_p, RVVAC_LOG_BLOCK_REMOVE, &addr,
-			  n_redo_crumbs, redo_crumbs);
+  log_append_redo_crumbs (thread_p, RVVAC_LOG_BLOCK_REMOVE, &addr, n_redo_crumbs, redo_crumbs);
 
   assert (LSA_LT (&prev_lsa, &vacuum_Data->crt_lsa));
 }
@@ -6164,11 +5403,8 @@ vacuum_rv_redo_remove_data_entries (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *				  vacuum_Block_data_buffer.
  */
 static void
-vacuum_log_append_block_data (THREAD_ENTRY * thread_p,
-			      VACUUM_DATA_ENTRY * new_entries,
-			      int n_new_entries,
-			      LOG_LSA * first_blocks_to_recover,
-			      int n_first_blocks_to_recover)
+vacuum_log_append_block_data (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * new_entries, int n_new_entries,
+			      LOG_LSA * first_blocks_to_recover, int n_first_blocks_to_recover)
 {
 #define MAX_LOG_APPEND_BLOCK_DATA_CRUMBS 3
 
@@ -6215,38 +5451,27 @@ vacuum_log_append_block_data (THREAD_ENTRY * thread_p,
   if (VACUUM_IS_ER_LOG_LEVEL_SET (VACUUM_ER_LOG_VACUUM_DATA))
     {
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
-		     "n_table_entries = %d before append.",
-		     (long long int) vacuum_Data->crt_lsa.pageid,
-		     (int) vacuum_Data->crt_lsa.offset,
+		     "VACUUM: Vacuum data crt_lsa = (%lld, %d) - " "n_table_entries = %d before append.",
+		     (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
 		     vacuum_Data->n_table_entries - n_new_entries);
 
       for (i = 0; i < n_new_entries; i++)
 	{
 	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-			 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
-			 "Append block = "
-			 "{start_lsa=(%lld, %d), oldest_mvccid=%llu, "
-			 "newest_mvccid=%llu, blockid=%lld}",
-			 (long long int) vacuum_Data->crt_lsa.pageid,
-			 (int) vacuum_Data->crt_lsa.offset,
-			 (long long int) new_entries[i].start_lsa.pageid,
-			 (int) new_entries[i].start_lsa.offset,
-			 new_entries[i].oldest_mvccid,
-			 new_entries[i].newest_mvccid,
-			 new_entries[i].blockid);
+			 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - " "Append block = "
+			 "{start_lsa=(%lld, %d), oldest_mvccid=%llu, " "newest_mvccid=%llu, blockid=%lld}",
+			 (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
+			 (long long int) new_entries[i].start_lsa.pageid, (int) new_entries[i].start_lsa.offset,
+			 new_entries[i].oldest_mvccid, new_entries[i].newest_mvccid, new_entries[i].blockid);
 	}
 
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
-		     "n_table_entries = %d after append.",
-		     (long long int) vacuum_Data->crt_lsa.pageid,
-		     (int) vacuum_Data->crt_lsa.offset,
+		     "VACUUM: Vacuum data crt_lsa = (%lld, %d) - " "n_table_entries = %d after append.",
+		     (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
 		     vacuum_Data->n_table_entries);
     }
 
-  log_append_redo_crumbs (thread_p, RVVAC_LOG_BLOCK_APPEND, &addr,
-			  n_redo_crumbs, redo_crumbs);
+  log_append_redo_crumbs (thread_p, RVVAC_LOG_BLOCK_APPEND, &addr, n_redo_crumbs, redo_crumbs);
 
   assert (LSA_LT (&prev_lsa, &vacuum_Data->crt_lsa));
 }
@@ -6275,25 +5500,21 @@ vacuum_rv_redo_append_block_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   n_entries = rcv->offset;
 
   /* Append new blocks at the end of log block table */
-  memcpy (VACUUM_DATA_GET_ENTRY (vacuum_Data->n_table_entries), rcv->data,
-	  n_entries * sizeof (VACUUM_DATA_ENTRY));
+  memcpy (VACUUM_DATA_GET_ENTRY (vacuum_Data->n_table_entries), rcv->data, n_entries * sizeof (VACUUM_DATA_ENTRY));
   data_offset += n_entries * sizeof (VACUUM_DATA_ENTRY);
 
   /* Update log block table number of entries */
   vacuum_Data->n_table_entries += n_entries;
 
   /* Update last_blockid as the blockid of the last entry */
-  vacuum_Data->last_blockid =
-    VACUUM_DATA_ENTRY_BLOCKID (VACUUM_DATA_GET_ENTRY
-			       (vacuum_Data->n_table_entries - 1));
+  vacuum_Data->last_blockid = VACUUM_DATA_ENTRY_BLOCKID (VACUUM_DATA_GET_ENTRY (vacuum_Data->n_table_entries - 1));
   /* Discard blocks already recovered from blocks buffer. */
   vacuum_rv_discard_recovered_blocks_from_buffer (thread_p);
 
   if (data_offset < rcv->length)
     {
       /* First blocks to recover must be updated */
-      LSA_COPY (&vacuum_Data->first_blocks_to_recover,
-		(LOG_LSA *) (rcv->data + data_offset));
+      LSA_COPY (&vacuum_Data->first_blocks_to_recover, (LOG_LSA *) (rcv->data + data_offset));
       if (LSA_ISNULL (&vacuum_Data->first_blocks_to_recover))
 	{
 	  /* Also set last blocks to recover to NULL */
@@ -6303,31 +5524,22 @@ vacuum_rv_redo_append_block_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       /* Update the number of recovered blocks */
       vacuum_Data->n_blocks_to_recover -= n_entries;
       assert (vacuum_Data->n_blocks_to_recover >= 0);
-      assert (vacuum_Data->n_blocks_to_recover == 0
-	      || !LSA_ISNULL (&vacuum_Data->last_blocks_to_recover));
+      assert (vacuum_Data->n_blocks_to_recover == 0 || !LSA_ISNULL (&vacuum_Data->last_blocks_to_recover));
 
       data_offset += sizeof (LOG_LSA);
 
       /* Update number of blocks in first log entry of blocks to recover */
-      vacuum_Data->n_first_blocks_to_recover =
-	*((int *) (rcv->data + data_offset));
+      vacuum_Data->n_first_blocks_to_recover = *((int *) (rcv->data + data_offset));
       data_offset += sizeof (vacuum_Data->n_first_blocks_to_recover);
 
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
-		     "first_blocks_to_recover = (%lld, %d), "
-		     "last_blocks_to_recover = (%lld, %d), "
-		     "n_blocks_to_recover = %d, "
-		     "n_first_blocks_to_recover = %d.",
-		     (long long int) vacuum_Data->crt_lsa.pageid,
-		     (int) vacuum_Data->crt_lsa.offset,
-		     (long long int)
-		     vacuum_Data->first_blocks_to_recover.pageid,
+		     "VACUUM: Vacuum data crt_lsa = (%lld, %d) - " "first_blocks_to_recover = (%lld, %d), "
+		     "last_blocks_to_recover = (%lld, %d), " "n_blocks_to_recover = %d, "
+		     "n_first_blocks_to_recover = %d.", (long long int) vacuum_Data->crt_lsa.pageid,
+		     (int) vacuum_Data->crt_lsa.offset, (long long int) vacuum_Data->first_blocks_to_recover.pageid,
 		     (int) vacuum_Data->first_blocks_to_recover.offset,
-		     (long long int)
-		     vacuum_Data->last_blocks_to_recover.pageid,
-		     (int) vacuum_Data->last_blocks_to_recover.offset,
-		     vacuum_Data->n_blocks_to_recover,
+		     (long long int) vacuum_Data->last_blocks_to_recover.pageid,
+		     (int) vacuum_Data->last_blocks_to_recover.offset, vacuum_Data->n_blocks_to_recover,
 		     vacuum_Data->n_first_blocks_to_recover);
     }
 
@@ -6335,44 +5547,30 @@ vacuum_rv_redo_append_block_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (data_offset == rcv->length);
 
   vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
-		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
-		 "n_table_entries = %d before append.",
-		 (long long int) vacuum_Data->crt_lsa.pageid,
-		 (int) vacuum_Data->crt_lsa.offset,
+		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - " "n_table_entries = %d before append.",
+		 (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
 		 vacuum_Data->n_table_entries - n_entries);
 
   /* Update newest MVCCID */
-  for (i = vacuum_Data->n_table_entries - n_entries;
-       i < vacuum_Data->n_table_entries; i++)
+  for (i = vacuum_Data->n_table_entries - n_entries; i < vacuum_Data->n_table_entries; i++)
     {
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
-		     "Append block = "
-		     "{start_lsa=(%lld, %d), oldest_mvccid=%llu, "
-		     "newest_mvccid=%llu, blockid=%lld}",
-		     (long long int) vacuum_Data->crt_lsa.pageid,
-		     (int) vacuum_Data->crt_lsa.offset,
-		     (long long int)
-		     (VACUUM_DATA_GET_ENTRY (i)->start_lsa.pageid),
-		     (int) (VACUUM_DATA_GET_ENTRY (i)->start_lsa.offset),
-		     VACUUM_DATA_GET_ENTRY (i)->oldest_mvccid,
-		     VACUUM_DATA_GET_ENTRY (i)->newest_mvccid,
-		     VACUUM_DATA_GET_ENTRY (i)->blockid);
+		     "VACUUM: Vacuum data crt_lsa = (%lld, %d) - " "Append block = "
+		     "{start_lsa=(%lld, %d), oldest_mvccid=%llu, " "newest_mvccid=%llu, blockid=%lld}",
+		     (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
+		     (long long int) (VACUUM_DATA_GET_ENTRY (i)->start_lsa.pageid),
+		     (int) (VACUUM_DATA_GET_ENTRY (i)->start_lsa.offset), VACUUM_DATA_GET_ENTRY (i)->oldest_mvccid,
+		     VACUUM_DATA_GET_ENTRY (i)->newest_mvccid, VACUUM_DATA_GET_ENTRY (i)->blockid);
 
-      if (MVCC_ID_PRECEDES (vacuum_Data->newest_mvccid,
-			    VACUUM_DATA_ENTRY_NEWEST_MVCCID
-			    (VACUUM_DATA_GET_ENTRY (i))))
+      if (MVCC_ID_PRECEDES (vacuum_Data->newest_mvccid, VACUUM_DATA_ENTRY_NEWEST_MVCCID (VACUUM_DATA_GET_ENTRY (i))))
 	{
-	  vacuum_Data->newest_mvccid =
-	    VACUUM_DATA_ENTRY_NEWEST_MVCCID (VACUUM_DATA_GET_ENTRY (i));
+	  vacuum_Data->newest_mvccid = VACUUM_DATA_ENTRY_NEWEST_MVCCID (VACUUM_DATA_GET_ENTRY (i));
 	}
     }
 
   vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
-		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - "
-		 "n_table_entries = %d after append.",
-		 (long long int) vacuum_Data->crt_lsa.pageid,
-		 (int) vacuum_Data->crt_lsa.offset,
+		 "VACUUM: Vacuum data crt_lsa = (%lld, %d) - " "n_table_entries = %d after append.",
+		 (long long int) vacuum_Data->crt_lsa.pageid, (int) vacuum_Data->crt_lsa.offset,
 		 vacuum_Data->n_table_entries);
 
   VACUUM_VERIFY_VACUUM_DATA ();
@@ -6428,11 +5626,11 @@ vacuum_rv_redo_start_or_end_job_dump (FILE * fp, int length, void *data)
   blockid = rv_blockid & VACUUM_DATA_ENTRY_BLOCKID_MASK;
 
   fprintf (fp, " Set status %s, interrupted = %s for blockid = %lld.\n",
-	   (status == (INT64) VACUUM_BLOCK_STATUS_VACUUMED) ?
-	   "vacuumed" :
-	   ((status == (INT64) VACUUM_BLOCK_STATUS_AVAILABLE) ?
-	    "available" : "running"),
-	   was_interrupted ? "true" : "false", (long long int) blockid);
+	   (status ==
+	    (INT64) VACUUM_BLOCK_STATUS_VACUUMED) ? "vacuumed" : ((status ==
+								   (INT64) VACUUM_BLOCK_STATUS_AVAILABLE) ? "available"
+								  : "running"), was_interrupted ? "true" : "false",
+	   (long long int) blockid);
 }
 
 /*
@@ -6456,21 +5654,14 @@ vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
   MVCCID oldest_mvccid;
   MVCCID log_header_oldest_mvccid = log_Gl.hdr.last_block_oldest_mvccid;
 
-  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		 "VACUUM: Try to update oldest_mvccid.");
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "VACUUM: Try to update oldest_mvccid.");
 
-  /* Initialize oldest MVCCID as minimum between
-   * vacuum_Global_oldest_active_mvccid and oldest MVCCID in the block being
-   * logged but not produced yet. This is a defensive way of handling an old
-   * generated MVCCID that has been blocked before doing any actual changes.
-   * This MVCCID may be missing from several blocks (depending on how long the
-   * transaction is blocked). When these blocks are vacuumed, the oldest
-   * existing MVCCID in vacuum data may be bigger than the MVCCID of this
-   * transaction. Oldest MVCCID should always be smaller or equal to any
-   * unvacuumed MVCCID's!
-   */
-  if (MVCC_ID_PRECEDES (vacuum_Global_oldest_active_mvccid,
-			log_header_oldest_mvccid)
+  /* Initialize oldest MVCCID as minimum between vacuum_Global_oldest_active_mvccid and oldest MVCCID in the block
+   * being logged but not produced yet. This is a defensive way of handling an old generated MVCCID that has been
+   * blocked before doing any actual changes. This MVCCID may be missing from several blocks (depending on how long the
+   * transaction is blocked). When these blocks are vacuumed, the oldest existing MVCCID in vacuum data may be bigger
+   * than the MVCCID of this transaction. Oldest MVCCID should always be smaller or equal to any unvacuumed MVCCID's! */
+  if (MVCC_ID_PRECEDES (vacuum_Global_oldest_active_mvccid, log_header_oldest_mvccid)
       || LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
     {
       oldest_mvccid = vacuum_Global_oldest_active_mvccid;
@@ -6483,28 +5674,20 @@ vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
   /* Now compare with entries in vacuum data. */
   for (i = 0; i < vacuum_Data->n_table_entries; i++)
     {
-      if (MVCC_ID_PRECEDES (VACUUM_DATA_ENTRY_OLDEST_MVCCID
-			    (VACUUM_DATA_GET_ENTRY (i)), oldest_mvccid))
+      if (MVCC_ID_PRECEDES (VACUUM_DATA_ENTRY_OLDEST_MVCCID (VACUUM_DATA_GET_ENTRY (i)), oldest_mvccid))
 	{
-	  oldest_mvccid =
-	    VACUUM_DATA_ENTRY_OLDEST_MVCCID (VACUUM_DATA_GET_ENTRY (i));
+	  oldest_mvccid = VACUUM_DATA_ENTRY_OLDEST_MVCCID (VACUUM_DATA_GET_ENTRY (i));
 	}
     }
 
   if (vacuum_Data->oldest_mvccid != oldest_mvccid
-      && (vacuum_Data->oldest_mvccid != MVCCID_ALL_VISIBLE
-	  || oldest_mvccid != MVCCID_NULL))
+      && (vacuum_Data->oldest_mvccid != MVCCID_ALL_VISIBLE || oldest_mvccid != MVCCID_NULL))
     {
-      /* Oldest MVCCID has changed. Update it and run cleanup on dropped
-       * files.
-       */
-      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: Update oldest mvccid from %llu to %llu.",
+      /* Oldest MVCCID has changed. Update it and run cleanup on dropped files. */
+      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "VACUUM: Update oldest mvccid from %llu to %llu.",
 		     vacuum_Data->oldest_mvccid, oldest_mvccid);
 
-      /* If oldest MVCCID is changed, it should always become greater, not
-       * smaller.
-       */
+      /* If oldest MVCCID is changed, it should always become greater, not smaller. */
       assert (MVCC_ID_PRECEDES (vacuum_Data->oldest_mvccid, oldest_mvccid));
 
       vacuum_Data->oldest_mvccid = oldest_mvccid;
@@ -6515,9 +5698,7 @@ vacuum_update_oldest_mvccid (THREAD_ENTRY * thread_p)
     }
   else
     {
-      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: Oldest MVCCID remains %llu.",
-		     vacuum_Data->oldest_mvccid);
+      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "VACUUM: Oldest MVCCID remains %llu.", vacuum_Data->oldest_mvccid);
     }
 }
 
@@ -6557,8 +5738,7 @@ vacuum_compare_dropped_files (const void *a, const void *b)
  * type (in)	 : Dropped file.
  */
 static int
-vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
-			 LOG_RCV * rcv, LOG_LSA * postpone_ref_lsa)
+vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid, LOG_RCV * rcv, LOG_LSA * postpone_ref_lsa)
 {
   MVCCID save_mvccid;
   VPID vpid, prev_vpid;
@@ -6578,25 +5758,19 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 
   if (!vacuum_Dropped_files_loaded)
     {
-      /* Normally, dropped files are loaded after recovery, in order to
-       * provide a consistent state of its pages. Actually, the consistent
-       * state should be reached after all run postpone and compensate undo
-       * records are applied.
-       * However, this may be called from log_recovery_finish_all_postpone
-       * or from log_recovery_undo. Because there is no certain code that is
-       * executed after applying redo and before calling these function, the
-       * dropped files are loaded when needed.
-       */
+      /* Normally, dropped files are loaded after recovery, in order to provide a consistent state of its pages.
+       * Actually, the consistent state should be reached after all run postpone and compensate undo records are
+       * applied. However, this may be called from log_recovery_finish_all_postpone or from log_recovery_undo. Because
+       * there is no certain code that is executed after applying redo and before calling these function, the dropped
+       * files are loaded when needed. */
 
       /* This must be recover, otherwise the files should have been loaded. */
       assert (!LOG_ISRESTARTED ());
 
       if (vacuum_load_dropped_files_from_disk (thread_p) != NO_ERROR)
 	{
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_DROPPED_FILES
-			 | VACUUM_ER_LOG_RECOVERY,
-			 "VACUUM: Failed to load dropped files during "
-			 "recovery!");
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_RECOVERY,
+			 "VACUUM: Failed to load dropped files during " "recovery!");
 
 	  assert_release (false);
 	  return ER_FAILED;
@@ -6625,8 +5799,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 	}
 
       /* Fix current page */
-      page = vacuum_fix_dropped_entries_page (thread_p, &vpid,
-					      PGBUF_LATCH_WRITE);
+      page = vacuum_fix_dropped_entries_page (thread_p, &vpid, PGBUF_LATCH_WRITE);
       if (page == NULL)
 	{
 	  assert (false);
@@ -6640,31 +5813,20 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
       VPID_COPY (&vpid, &page->next_page);
       page_count = page->n_dropped_files;
 
-      /* dropped files must be ordered. Look for the right position for the
-       * new entry.
-       * The algorithm considers possible to have duplicate values in case of
-       * dropped indexes, because btid may be reused. Although unlikely, it
-       * is theoretically possible to drop index with same btid in a
-       * relatively short time, without being removed from the list of dropped
-       * indexes.
-       *
-       * Set position variable for adding new dropped file.
-       */
+      /* dropped files must be ordered. Look for the right position for the new entry. The algorithm considers possible 
+       * to have duplicate values in case of dropped indexes, because btid may be reused. Although unlikely, it is
+       * theoretically possible to drop index with same btid in a relatively short time, without being removed from the 
+       * list of dropped indexes. Set position variable for adding new dropped file. */
       if (page_count > 0)
 	{
 	  /* dropped files are kept in ascending order */
-	  /* Use a binary search to find the right position for the new
-	   * dropped file. If a duplicate is found, just replace the previous
-	   * MVCCID.
-	   */
+	  /* Use a binary search to find the right position for the new dropped file. If a duplicate is found, just
+	   * replace the previous MVCCID. */
 	  min = 0;
 	  max = page_count;
 
-	  /* Initialize compare with a non-zero value. If page_count is 1,
-	   * the while loop is skipped and then we must compare with the new
-	   * entry with the only existing value (which is only done if compare
-	   * is not 0).
-	   */
+	  /* Initialize compare with a non-zero value. If page_count is 1, the while loop is skipped and then we must
+	   * compare with the new entry with the only existing value (which is only done if compare is not 0). */
 	  compare = -1;
 	  while ((min + 1) < max)
 	    {
@@ -6672,9 +5834,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 	      mid = (min + max) / 2;
 
 	      /* Compare with mid value */
-	      compare =
-		vacuum_compare_dropped_files (vfid,
-					      &page->dropped_files[mid].vfid);
+	      compare = vacuum_compare_dropped_files (vfid, &page->dropped_files[mid].vfid);
 	      if (compare == 0)
 		{
 		  /* Duplicate found, break loop */
@@ -6695,16 +5855,10 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 
 	  if (compare != 0 && min == 0)
 	    {
-	      /* This code can be reached in two cases:
-	       * 1. There was previously only one value and the while loop was
-	       *    skipped.
-	       * 2. All compared entries have been bigger than the new value.
-	       *    The last remaining range is min = 0, max = 1 and the new
-	       *    value still must be compared with the first entry.
-	       */
-	      compare =
-		vacuum_compare_dropped_files (vfid,
-					      &page->dropped_files[0].vfid);
+	      /* This code can be reached in two cases: 1. There was previously only one value and the while loop was
+	       * skipped. 2. All compared entries have been bigger than the new value.  The last remaining range is min 
+	       * = 0, max = 1 and the new value still must be compared with the first entry. */
+	      compare = vacuum_compare_dropped_files (vfid, &page->dropped_files[0].vfid);
 	      if (compare == 0)
 		{
 		  /* Set mid to 0 to replace the MVCCID */
@@ -6723,10 +5877,8 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 	    }
 	  else
 	    {
-	      /* min is certainly smaller the the new entry. max is either
-	       * bigger or is the equal to the number of existing entries.
-	       * The position of the new entry must be max.
-	       */
+	      /* min is certainly smaller the the new entry. max is either bigger or is the equal to the number of
+	       * existing entries. The position of the new entry must be max. */
 	      position = max;
 	    }
 
@@ -6746,11 +5898,8 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 		  /* Append run postpone */
 		  addr.pgptr = (PAGE_PTR) page;
 		  addr.offset = mid | VACUUM_DROPPED_FILES_RV_FLAG_DUPLICATE;
-		  log_append_run_postpone (thread_p, RVVAC_DROPPED_FILE_ADD,
-					   &addr,
-					   pgbuf_get_vpid_ptr (addr.pgptr),
-					   rcv->length, rcv->data,
-					   postpone_ref_lsa);
+		  log_append_run_postpone (thread_p, RVVAC_DROPPED_FILE_ADD, &addr, pgbuf_get_vpid_ptr (addr.pgptr),
+					   rcv->length, rcv->data, postpone_ref_lsa);
 		}
 	      else
 		{
@@ -6758,10 +5907,8 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 		  addr.pgptr = (PAGE_PTR) page;
 		  addr.offset = mid | VACUUM_DROPPED_FILES_RV_FLAG_DUPLICATE;
 
-		  log_append_compensate (thread_p, RVVAC_DROPPED_FILE_ADD,
-					 pgbuf_get_vpid_ptr (addr.pgptr),
-					 addr.offset, addr.pgptr,
-					 rcv->length, rcv->data, tdes);
+		  log_append_compensate (thread_p, RVVAC_DROPPED_FILE_ADD, pgbuf_get_vpid_ptr (addr.pgptr), addr.offset,
+					 addr.pgptr, rcv->length, rcv->data, tdes);
 		}
 
 #if !defined (NDEBUG)
@@ -6771,21 +5918,14 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 		}
 #endif
 	      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-			     "VACUUM: thread(%d): add dropped file: found "
-			     "duplicate vfid(%d, %d) at position=%d, "
-			     "replace mvccid=%llu with mvccid=%llu. "
-			     "Page is (%d, %d) with lsa (%lld, %d)."
-			     "Page count=%d, global count=%d",
-			     thread_get_current_entry_index (),
-			     page->dropped_files[mid].vfid.volid,
-			     page->dropped_files[mid].vfid.fileid, mid,
-			     save_mvccid, page->dropped_files[mid].mvccid,
-			     pgbuf_get_volume_id ((PAGE_PTR) page),
+			     "VACUUM: thread(%d): add dropped file: found " "duplicate vfid(%d, %d) at position=%d, "
+			     "replace mvccid=%llu with mvccid=%llu. " "Page is (%d, %d) with lsa (%lld, %d)."
+			     "Page count=%d, global count=%d", thread_get_current_entry_index (),
+			     page->dropped_files[mid].vfid.volid, page->dropped_files[mid].vfid.fileid, mid,
+			     save_mvccid, page->dropped_files[mid].mvccid, pgbuf_get_volume_id ((PAGE_PTR) page),
 			     pgbuf_get_page_id ((PAGE_PTR) page),
-			     (long long int)
-			     pgbuf_get_lsa ((PAGE_PTR) page)->pageid,
-			     (int) pgbuf_get_lsa ((PAGE_PTR) page)->offset,
-			     page->n_dropped_files,
+			     (long long int) pgbuf_get_lsa ((PAGE_PTR) page)->pageid,
+			     (int) pgbuf_get_lsa ((PAGE_PTR) page)->offset, page->n_dropped_files,
 			     vacuum_Dropped_files_count);
 
 	      vacuum_set_dirty_dropped_entries_page (thread_p, page, FREE);
@@ -6801,10 +5941,8 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 #if !defined (NDEBUG)
 	      if (track_page != NULL && !VPID_ISNULL (&vpid))
 		{
-		  /* Don't advance from last track page. A new page will be
-		   * added and we need to set a link between last track page
-		   * and new track page.
-		   */
+		  /* Don't advance from last track page. A new page will be added and we need to set a link between
+		   * last track page and new track page. */
 		  track_page = track_page->next_tracked_page;
 		}
 #endif
@@ -6821,8 +5959,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
       mem_size = (page_count - position) * sizeof (VACUUM_DROPPED_FILE);
       if (mem_size > 0)
 	{
-	  memmove (&page->dropped_files[position + 1],
-		   &page->dropped_files[position], mem_size);
+	  memmove (&page->dropped_files[position + 1], &page->dropped_files[position], mem_size);
 	}
 
       /* Increment page count */
@@ -6839,8 +5976,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 	  /* Append run postpone */
 	  addr.pgptr = (PAGE_PTR) page;
 	  addr.offset = position;
-	  log_append_run_postpone (thread_p, RVVAC_DROPPED_FILE_ADD, &addr,
-				   pgbuf_get_vpid_ptr (addr.pgptr),
+	  log_append_run_postpone (thread_p, RVVAC_DROPPED_FILE_ADD, &addr, pgbuf_get_vpid_ptr (addr.pgptr),
 				   rcv->length, rcv->data, postpone_ref_lsa);
 	}
       else
@@ -6849,10 +5985,8 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 	  addr.pgptr = (PAGE_PTR) page;
 	  addr.offset = position;
 
-	  log_append_compensate (thread_p, RVVAC_DROPPED_FILE_ADD,
-				 pgbuf_get_vpid_ptr (addr.pgptr),
-				 addr.offset, addr.pgptr, rcv->length,
-				 rcv->data, tdes);
+	  log_append_compensate (thread_p, RVVAC_DROPPED_FILE_ADD, pgbuf_get_vpid_ptr (addr.pgptr), addr.offset,
+				 addr.pgptr, rcv->length, rcv->data, tdes);
 	}
 
 #if !defined (NDEBUG)
@@ -6863,19 +5997,13 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
 #endif
 
       vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		     "VACUUM: thread(%d): added new dropped "
-		     "file(%d, %d) and mvccid=%llu at position=%d. "
-		     "Page is (%d, %d) with lsa (%lld, %d)."
-		     "Page count=%d, global count=%d",
-		     thread_get_current_entry_index (),
-		     page->dropped_files[position].vfid.volid,
-		     page->dropped_files[position].vfid.fileid,
-		     page->dropped_files[position].mvccid, position,
-		     pgbuf_get_volume_id ((PAGE_PTR) page),
-		     pgbuf_get_page_id ((PAGE_PTR) page),
+		     "VACUUM: thread(%d): added new dropped " "file(%d, %d) and mvccid=%llu at position=%d. "
+		     "Page is (%d, %d) with lsa (%lld, %d)." "Page count=%d, global count=%d",
+		     thread_get_current_entry_index (), page->dropped_files[position].vfid.volid,
+		     page->dropped_files[position].vfid.fileid, page->dropped_files[position].mvccid, position,
+		     pgbuf_get_volume_id ((PAGE_PTR) page), pgbuf_get_page_id ((PAGE_PTR) page),
 		     (long long int) pgbuf_get_lsa ((PAGE_PTR) page)->pageid,
-		     (int) pgbuf_get_lsa ((PAGE_PTR) page)->offset,
-		     page->n_dropped_files, vacuum_Dropped_files_count);
+		     (int) pgbuf_get_lsa ((PAGE_PTR) page)->offset, page->n_dropped_files, vacuum_Dropped_files_count);
 
       vacuum_set_dirty_dropped_entries_page (thread_p, page, FREE);
 
@@ -6889,8 +6017,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
   assert (page != NULL);
 
   /* Extend file */
-  if (file_alloc_pages (thread_p, &vacuum_Dropped_files_vfid, &vpid, 1,
-			&prev_vpid, NULL, NULL) == NULL)
+  if (file_alloc_pages (thread_p, &vacuum_Dropped_files_vfid, &vpid, 1, &prev_vpid, NULL, NULL) == NULL)
     {
       assert (false);
       vacuum_unfix_dropped_entries_page (thread_p, page);
@@ -6898,8 +6025,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
     }
 
   /* Add new entry to new page */
-  new_page = vacuum_fix_dropped_entries_page (thread_p, &vpid,
-					      PGBUF_LATCH_WRITE);
+  new_page = vacuum_fix_dropped_entries_page (thread_p, &vpid, PGBUF_LATCH_WRITE);
   if (new_page == NULL)
     {
       assert (false);
@@ -6924,14 +6050,10 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
     {
       if (track_page->next_tracked_page == NULL)
 	{
-	  new_track_page =
-	    (VACUUM_TRACK_DROPPED_FILES *)
-	    malloc (VACUUM_TRACK_DROPPED_FILES_SIZE);
+	  new_track_page = (VACUUM_TRACK_DROPPED_FILES *) malloc (VACUUM_TRACK_DROPPED_FILES_SIZE);
 	  if (new_track_page == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      VACUUM_TRACK_DROPPED_FILES_SIZE);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, VACUUM_TRACK_DROPPED_FILES_SIZE);
 	      vacuum_unfix_dropped_entries_page (thread_p, page);
 	      vacuum_unfix_dropped_entries_page (thread_p, new_page);
 	      return ER_FAILED;
@@ -6953,8 +6075,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
       /* Append run postpone */
       addr.pgptr = (PAGE_PTR) new_page;
       addr.offset = VACUUM_DROPPED_FILES_RV_FLAG_NEWPAGE;
-      log_append_run_postpone (thread_p, RVVAC_DROPPED_FILE_ADD, &addr,
-			       pgbuf_get_vpid_ptr (addr.pgptr), rcv->length,
+      log_append_run_postpone (thread_p, RVVAC_DROPPED_FILE_ADD, &addr, pgbuf_get_vpid_ptr (addr.pgptr), rcv->length,
 			       rcv->data, postpone_ref_lsa);
     }
   else
@@ -6963,27 +6084,20 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
       addr.pgptr = (PAGE_PTR) new_page;
       addr.offset = VACUUM_DROPPED_FILES_RV_FLAG_NEWPAGE;
 
-      log_append_compensate (thread_p, RVVAC_DROPPED_FILE_ADD,
-			     pgbuf_get_vpid_ptr (addr.pgptr),
-			     addr.offset, addr.pgptr, rcv->length, rcv->data,
-			     tdes);
+      log_append_compensate (thread_p, RVVAC_DROPPED_FILE_ADD, pgbuf_get_vpid_ptr (addr.pgptr), addr.offset, addr.pgptr,
+			     rcv->length, rcv->data, tdes);
     }
   pgbuf_set_page_ptype (thread_p, (PAGE_PTR) new_page, PAGE_DROPPED_FILES);
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		 "VACUUM: thread(%d): added new dropped "
-		 "file(%d, %d) and mvccid=%llu to at position=%d. "
-		 "Page is (%d, %d) with lsa (%lld, %d)."
-		 "Page count=%d, global count=%d",
-		 thread_get_current_entry_index (),
-		 new_page->dropped_files[0].vfid.volid,
-		 new_page->dropped_files[0].vfid.fileid,
-		 new_page->dropped_files[0].mvccid, 0,
-		 pgbuf_get_volume_id ((PAGE_PTR) new_page),
-		 pgbuf_get_page_id ((PAGE_PTR) new_page),
+		 "VACUUM: thread(%d): added new dropped " "file(%d, %d) and mvccid=%llu to at position=%d. "
+		 "Page is (%d, %d) with lsa (%lld, %d)." "Page count=%d, global count=%d",
+		 thread_get_current_entry_index (), new_page->dropped_files[0].vfid.volid,
+		 new_page->dropped_files[0].vfid.fileid, new_page->dropped_files[0].mvccid, 0,
+		 pgbuf_get_volume_id ((PAGE_PTR) new_page), pgbuf_get_page_id ((PAGE_PTR) new_page),
 		 (long long int) pgbuf_get_lsa ((PAGE_PTR) new_page)->pageid,
-		 (int) pgbuf_get_lsa ((PAGE_PTR) new_page)->offset,
-		 new_page->n_dropped_files, vacuum_Dropped_files_count);
+		 (int) pgbuf_get_lsa ((PAGE_PTR) new_page)->offset, new_page->n_dropped_files,
+		 vacuum_Dropped_files_count);
 
   /* Set dirty and unfix new page */
   vacuum_set_dirty_dropped_entries_page (thread_p, new_page, FREE);
@@ -7016,16 +6130,13 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid,
  * class_oid(in) : class OID
  */
 void
-vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid,
-			     const OID * class_oid, bool pospone_or_undo)
+vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const OID * class_oid, bool pospone_or_undo)
 {
   LOG_DATA_ADDR addr;
   VACUUM_DROPPED_FILES_RCV_DATA rcv_data;
 
-  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		 "VACUUM: Append %s log from dropped file (%d, %d).",
-		 pospone_or_undo ? "postpone" : "undo",
-		 vfid->volid, vfid->fileid);
+  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "VACUUM: Append %s log from dropped file (%d, %d).",
+		 pospone_or_undo ? "postpone" : "undo", vfid->volid, vfid->fileid);
 
   /* Initialize recovery data */
   VFID_COPY (&rcv_data.vfid, vfid);
@@ -7045,13 +6156,11 @@ vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   if (pospone_or_undo == VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE)
     {
-      log_append_postpone (thread_p, RVVAC_DROPPED_FILE_ADD, &addr,
-			   sizeof (rcv_data), &rcv_data);
+      log_append_postpone (thread_p, RVVAC_DROPPED_FILE_ADD, &addr, sizeof (rcv_data), &rcv_data);
     }
   else
     {
-      log_append_undo_data (thread_p, RVVAC_DROPPED_FILE_ADD, &addr,
-			    sizeof (rcv_data), &rcv_data);
+      log_append_undo_data (thread_p, RVVAC_DROPPED_FILE_ADD, &addr, sizeof (rcv_data), &rcv_data);
     }
 }
 
@@ -7072,8 +6181,7 @@ vacuum_rv_undoredo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   int mem_size;
   VACUUM_DROPPED_FILES_RCV_DATA *rcv_data = NULL;
   bool replace = (rcv->offset & VACUUM_DROPPED_FILES_RV_FLAG_DUPLICATE) != 0;
-  bool is_new_page =
-    (rcv->offset & VACUUM_DROPPED_FILES_RV_FLAG_NEWPAGE) != 0;
+  bool is_new_page = (rcv->offset & VACUUM_DROPPED_FILES_RV_FLAG_NEWPAGE) != 0;
 
   /* We cannot have a new page and a duplicate at the same time */
   assert (!replace || !is_new_page);
@@ -7100,19 +6208,12 @@ vacuum_rv_undoredo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       if (position >= page->n_dropped_files)
 	{
 	  /* Error! */
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_DROPPED_FILES
-			 | VACUUM_ER_LOG_RECOVERY,
-			 "VACUUM: Dropped files recovery error: Invalid "
-			 "position %d (only %d entries in page) while "
-			 "replacing old entry with vfid=(%d, %d) mvccid=%llu."
-			 " Page is (%d, %d) at lsa (%lld, %d). ",
-			 position, page->n_dropped_files,
-			 rcv_data->vfid.volid, rcv_data->vfid.fileid,
-			 rcv_data->mvccid,
-			 pgbuf_get_volume_id (rcv->pgptr),
-			 pgbuf_get_page_id (rcv->pgptr),
-			 (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
-			 (int) pgbuf_get_lsa (rcv->pgptr)->offset);
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_RECOVERY,
+			 "VACUUM: Dropped files recovery error: Invalid " "position %d (only %d entries in page) while "
+			 "replacing old entry with vfid=(%d, %d) mvccid=%llu." " Page is (%d, %d) at lsa (%lld, %d). ",
+			 position, page->n_dropped_files, rcv_data->vfid.volid, rcv_data->vfid.fileid, rcv_data->mvccid,
+			 pgbuf_get_volume_id (rcv->pgptr), pgbuf_get_page_id (rcv->pgptr),
+			 (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid, (int) pgbuf_get_lsa (rcv->pgptr)->offset);
 
 	  assert_release (false);
 	  return ER_FAILED;
@@ -7121,20 +6222,13 @@ vacuum_rv_undoredo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       if (!VFID_EQ (&rcv_data->vfid, &page->dropped_files[position].vfid))
 	{
 	  /* Error! */
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_DROPPED_FILES
-			 | VACUUM_ER_LOG_RECOVERY,
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_RECOVERY,
 			 "VACUUM: Dropped files recovery error: expected to "
-			 "find vfid (%d, %d) at position %d and found "
-			 "(%d, %d) with MVCCID=%d. "
-			 "Page is (%d, %d) at lsa (%lld, %d). ",
-			 rcv_data->vfid.volid, rcv_data->vfid.fileid,
-			 position,
-			 page->dropped_files[position].vfid.volid,
-			 page->dropped_files[position].vfid.fileid,
-			 page->dropped_files[position].mvccid,
-			 pgbuf_get_volume_id (rcv->pgptr),
-			 pgbuf_get_page_id (rcv->pgptr),
-			 (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
+			 "find vfid (%d, %d) at position %d and found " "(%d, %d) with MVCCID=%d. "
+			 "Page is (%d, %d) at lsa (%lld, %d). ", rcv_data->vfid.volid, rcv_data->vfid.fileid, position,
+			 page->dropped_files[position].vfid.volid, page->dropped_files[position].vfid.fileid,
+			 page->dropped_files[position].mvccid, pgbuf_get_volume_id (rcv->pgptr),
+			 pgbuf_get_page_id (rcv->pgptr), (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
 			 (int) pgbuf_get_lsa (rcv->pgptr)->offset);
 
 	  assert_release (false);
@@ -7143,14 +6237,10 @@ vacuum_rv_undoredo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_RECOVERY,
 		     "VACUUM: Dropped files redo recovery, replace MVCCID for"
-		     " file (%d, %d) with %lld (position=%d). "
-		     "Page is (%d, %d) at lsa (%lld, %d).",
-		     rcv_data->vfid.volid, rcv_data->vfid.fileid,
-		     rcv_data->mvccid, position,
-		     pgbuf_get_volume_id (rcv->pgptr),
-		     pgbuf_get_page_id (rcv->pgptr),
-		     (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
-		     (int) pgbuf_get_lsa (rcv->pgptr)->offset);
+		     " file (%d, %d) with %lld (position=%d). " "Page is (%d, %d) at lsa (%lld, %d).",
+		     rcv_data->vfid.volid, rcv_data->vfid.fileid, rcv_data->mvccid, position,
+		     pgbuf_get_volume_id (rcv->pgptr), pgbuf_get_page_id (rcv->pgptr),
+		     (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid, (int) pgbuf_get_lsa (rcv->pgptr)->offset);
       page->dropped_files[position].mvccid = rcv_data->mvccid;
     }
   else
@@ -7158,19 +6248,12 @@ vacuum_rv_undoredo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       if (position > page->n_dropped_files)
 	{
 	  /* Error! */
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_DROPPED_FILES
-			 | VACUUM_ER_LOG_RECOVERY,
-			 "VACUUM: Dropped files recovery error: Invalid "
-			 "position %d (only %d entries in page) while "
-			 "inserting new entry vfid=(%d, %d) mvccid=%llu. "
-			 "Page is (%d, %d) at lsa (%lld, %d). ",
-			 position, page->n_dropped_files,
-			 rcv_data->vfid.volid, rcv_data->vfid.fileid,
-			 rcv_data->mvccid,
-			 pgbuf_get_volume_id (rcv->pgptr),
-			 pgbuf_get_page_id (rcv->pgptr),
-			 (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
-			 (int) pgbuf_get_lsa (rcv->pgptr)->offset);
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_RECOVERY,
+			 "VACUUM: Dropped files recovery error: Invalid " "position %d (only %d entries in page) while "
+			 "inserting new entry vfid=(%d, %d) mvccid=%llu. " "Page is (%d, %d) at lsa (%lld, %d). ",
+			 position, page->n_dropped_files, rcv_data->vfid.volid, rcv_data->vfid.fileid, rcv_data->mvccid,
+			 pgbuf_get_volume_id (rcv->pgptr), pgbuf_get_page_id (rcv->pgptr),
+			 (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid, (int) pgbuf_get_lsa (rcv->pgptr)->offset);
 
 	  assert_release (false);
 	  return ER_FAILED;
@@ -7179,10 +6262,8 @@ vacuum_rv_undoredo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       if (position < page->n_dropped_files)
 	{
 	  /* Make room for new record */
-	  mem_size =
-	    (page->n_dropped_files - position) * sizeof (VACUUM_DROPPED_FILE);
-	  memmove (&page->dropped_files[position + 1],
-		   &page->dropped_files[position], mem_size);
+	  mem_size = (page->n_dropped_files - position) * sizeof (VACUUM_DROPPED_FILE);
+	  memmove (&page->dropped_files[position + 1], &page->dropped_files[position], mem_size);
 	}
 
       /* Copy new dropped file */
@@ -7194,19 +6275,13 @@ vacuum_rv_undoredo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_RECOVERY,
 		     "VACUUM: Dropped files redo recovery, insert new entry "
-		     "vfid=(%d, %d), mvccid=%llu at position %d. "
-		     "Page is (%d, %d) at lsa (%lld, %d).",
-		     rcv_data->vfid.volid, rcv_data->vfid.fileid,
-		     rcv_data->mvccid, position,
-		     pgbuf_get_volume_id (rcv->pgptr),
-		     pgbuf_get_page_id (rcv->pgptr),
-		     (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid,
-		     (int) pgbuf_get_lsa (rcv->pgptr)->offset);
+		     "vfid=(%d, %d), mvccid=%llu at position %d. " "Page is (%d, %d) at lsa (%lld, %d).",
+		     rcv_data->vfid.volid, rcv_data->vfid.fileid, rcv_data->mvccid, position,
+		     pgbuf_get_volume_id (rcv->pgptr), pgbuf_get_page_id (rcv->pgptr),
+		     (long long int) pgbuf_get_lsa (rcv->pgptr)->pageid, (int) pgbuf_get_lsa (rcv->pgptr)->offset);
     }
 
-  /* Make sure the mvcc_next_id is also updated, since this is the marker used
-   * by dropped files.
-   */
+  /* Make sure the mvcc_next_id is also updated, since this is the marker used by dropped files. */
   if (!MVCC_ID_PRECEDES (rcv_data->mvccid, log_Gl.hdr.mvcc_next_id))
     {
       log_Gl.hdr.mvcc_next_id = rcv_data->mvccid;
@@ -7232,8 +6307,7 @@ vacuum_rv_undoredo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *			  an undo for created heap files and indexes.
  */
 int
-vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
-			    LOG_LSA * pospone_ref_lsa)
+vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv, LOG_LSA * pospone_ref_lsa)
 {
   int error = NO_ERROR;
   LOG_RCV new_rcv;
@@ -7249,19 +6323,13 @@ vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   new_rcv.data = (char *) &new_rcv_data;
   new_rcv.length = sizeof (new_rcv_data);
 
-  /* Copy VFID from current log recovery data but set MVCCID at this point.
-   * We will use the log_Gl.hdr.mvcc_next_id as borderline to distinguish
-   * this file from newer files.
-   * 1. All changes on this file must be done by transaction that have already
-   *    committed which means their MVCCID will be less than current
-   *    log_Gl.hdr.mvcc_next_id.
-   * 2. All changes on a new file that reused VFID must be done by transaction
-   *    that start after this call, which means their MVCCID's will be at
-   *    least equal to current log_Gl.hdr.mvcc_next_id.
-   */
+  /* Copy VFID from current log recovery data but set MVCCID at this point. We will use the log_Gl.hdr.mvcc_next_id as
+   * borderline to distinguish this file from newer files. 1. All changes on this file must be done by transaction that 
+   * have already committed which means their MVCCID will be less than current log_Gl.hdr.mvcc_next_id. 2. All changes
+   * on a new file that reused VFID must be done by transaction that start after this call, which means their MVCCID's
+   * will be at least equal to current log_Gl.hdr.mvcc_next_id. */
 
-  VFID_COPY (&new_rcv_data.vfid,
-	     &((VACUUM_DROPPED_FILES_RCV_DATA *) rcv->data)->vfid);
+  VFID_COPY (&new_rcv_data.vfid, &((VACUUM_DROPPED_FILES_RCV_DATA *) rcv->data)->vfid);
   new_rcv_data.mvccid = log_Gl.hdr.mvcc_next_id;
   OID_SET_NULL (&new_rcv_data.class_oid);
 
@@ -7269,35 +6337,27 @@ vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
   assert (MVCCID_IS_VALID (new_rcv_data.mvccid));
 
   /* Add dropped file to current list */
-  error = vacuum_add_dropped_file (thread_p, &new_rcv_data.vfid,
-				   new_rcv_data.mvccid, &new_rcv,
-				   pospone_ref_lsa);
+  error = vacuum_add_dropped_file (thread_p, &new_rcv_data.vfid, new_rcv_data.mvccid, &new_rcv, pospone_ref_lsa);
   if (error != NO_ERROR)
     {
       return error;
     }
 
 #if defined (SERVER_MODE)
-  /* Before notifying vacuum workers there is one last thing we have to do.
-   * Running workers must also be notified of the VFID being dropped to
-   * cleanup their collected heap object arrays.
-   * Since must done one file at a time, so a mutex is used for protection,
-   * in case there are several transactions doing file drops.
-   */
+  /* Before notifying vacuum workers there is one last thing we have to do. Running workers must also be notified of
+   * the VFID being dropped to cleanup their collected heap object arrays. Since must done one file at a time, so a
+   * mutex is used for protection, in case there are several transactions doing file drops. */
   pthread_mutex_lock (&vacuum_Dropped_files_mutex);
   assert (VFID_ISNULL (&vacuum_Last_dropped_vfid));
   VFID_COPY (&vacuum_Last_dropped_vfid, &new_rcv_data.vfid);
 
-  /* Increment dropped files version and save a version for current change.
-   * It is not important to keep the versioning synchronized with the changes.
-   * It is only used to make sure that all workers have seen current change.
-   */
+  /* Increment dropped files version and save a version for current change. It is not important to keep the versioning
+   * synchronized with the changes. It is only used to make sure that all workers have seen current change. */
   my_version = ++vacuum_Dropped_files_version;
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
 		 "VACUUM: Added dropped file - vfid=(%d, %d), mvccid=%llu - "
-		 "Wait for all workers to see my_version=%d",
-		 new_rcv_data.vfid.volid, new_rcv_data.vfid.fileid,
+		 "Wait for all workers to see my_version=%d", new_rcv_data.vfid.volid, new_rcv_data.vfid.fileid,
 		 new_rcv_data.mvccid, my_version);
 
   /* Wait until all workers have been notified of this change */
@@ -7306,15 +6366,13 @@ vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv,
        workers_min_version = vacuum_get_worker_min_dropped_files_version ())
     {
       vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		     "VACUUM: not all workers saw my changes, "
-		     "workers min version=%d. Sleep and retry.",
+		     "VACUUM: not all workers saw my changes, " "workers min version=%d. Sleep and retry.",
 		     workers_min_version);
 
       thread_sleep (1);
     }
 
-  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		 "VACUUM: All workers have been notified, min_version=%d",
+  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "VACUUM: All workers have been notified, min_version=%d",
 		 workers_min_version);
 
   VFID_SET_NULL (&vacuum_Last_dropped_vfid);
@@ -7352,18 +6410,15 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
   INT16 removed_entries[VACUUM_DROPPED_FILES_MAX_PAGE_CAPACITY];
   INT16 n_removed_entries, i;
 #if !defined (NDEBUG)
-  VACUUM_TRACK_DROPPED_FILES *track_page =
-    (VACUUM_TRACK_DROPPED_FILES *) vacuum_Track_dropped_files;
+  VACUUM_TRACK_DROPPED_FILES *track_page = (VACUUM_TRACK_DROPPED_FILES *) vacuum_Track_dropped_files;
 #endif
 
-  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		 "VACUUM: Start cleanup dropped files.");
+  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "VACUUM: Start cleanup dropped files.");
 
   if (!LOG_ISRESTARTED ())
     {
       /* Skip cleanup during recovery */
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_DROPPED_FILES,
-		     "VACUUM: Skip cleanup during recovery.");
+      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_DROPPED_FILES, "VACUUM: Skip cleanup during recovery.");
       return NO_ERROR;
     }
 
@@ -7373,8 +6428,7 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
   if (vacuum_Dropped_files_count == 0)
     {
       /* Nothing to clean */
-      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		     "VACUUM: Cleanup skipped, no current entries.");
+      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "VACUUM: Cleanup skipped, no current entries.");
       return NO_ERROR;
     }
 
@@ -7391,8 +6445,7 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
       VPID_COPY (&last_page_vpid, &vpid);
 
       /* Fix current page */
-      page = vacuum_fix_dropped_entries_page (thread_p, &vpid,
-					      PGBUF_LATCH_WRITE);
+      page = vacuum_fix_dropped_entries_page (thread_p, &vpid, PGBUF_LATCH_WRITE);
       if (page == NULL)
 	{
 	  assert (false);
@@ -7416,17 +6469,14 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
       /* Check entries for cleaning. Start from the end of the array */
       for (i = page_count - 1; i >= 0; i--)
 	{
-	  if (MVCC_ID_PRECEDES (page->dropped_files[i].mvccid,
-				vacuum_Data->oldest_mvccid))
+	  if (MVCC_ID_PRECEDES (page->dropped_files[i].mvccid, vacuum_Data->oldest_mvccid))
 	    {
 	      /* Remove entry */
 	      removed_entries[n_removed_entries++] = i;
 	      if (i < page_count - 1)
 		{
-		  mem_size =
-		    (page_count - i - 1) * sizeof (VACUUM_DROPPED_FILE);
-		  memmove (&page->dropped_files[i],
-			   &page->dropped_files[i + 1], mem_size);
+		  mem_size = (page_count - i - 1) * sizeof (VACUUM_DROPPED_FILE);
+		  memmove (&page->dropped_files[i], &page->dropped_files[i + 1], mem_size);
 		}
 	    }
 	}
@@ -7440,20 +6490,14 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
 	  page->n_dropped_files -= n_removed_entries;
 
 	  /* Log changes */
-	  vacuum_log_cleanup_dropped_files (thread_p, (PAGE_PTR) page,
-					    removed_entries,
-					    n_removed_entries);
+	  vacuum_log_cleanup_dropped_files (thread_p, (PAGE_PTR) page, removed_entries, n_removed_entries);
 
 	  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-			 "VACUUM: cleanup dropped files. "
-			 "Page is (%d %d) with lsa (%lld, %d). "
-			 "Page count=%d, global count=%d",
-			 pgbuf_get_volume_id ((PAGE_PTR) page),
-			 pgbuf_get_page_id ((PAGE_PTR) page),
-			 (long long int)
-			 pgbuf_get_lsa ((PAGE_PTR) page)->pageid,
-			 (int) pgbuf_get_lsa ((PAGE_PTR) page)->offset,
-			 page->n_dropped_files, vacuum_Dropped_files_count);
+			 "VACUUM: cleanup dropped files. " "Page is (%d %d) with lsa (%lld, %d). "
+			 "Page count=%d, global count=%d", pgbuf_get_volume_id ((PAGE_PTR) page),
+			 pgbuf_get_page_id ((PAGE_PTR) page), (long long int) pgbuf_get_lsa ((PAGE_PTR) page)->pageid,
+			 (int) pgbuf_get_lsa ((PAGE_PTR) page)->offset, page->n_dropped_files,
+			 vacuum_Dropped_files_count);
 
 #if !defined (NDEBUG)
 	  /* Copy changes to tracker */
@@ -7472,21 +6516,14 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
 #endif
     }
 
-  if (!VPID_ISNULL (&last_non_empty_page_vpid)
-      && !VPID_EQ (&last_non_empty_page_vpid, &last_page_vpid))
+  if (!VPID_ISNULL (&last_non_empty_page_vpid) && !VPID_EQ (&last_non_empty_page_vpid, &last_page_vpid))
     {
-      /* Update next page link in the last non-empty page to NULL, to avoid
-       * fixing empty pages in the future.
-       */
+      /* Update next page link in the last non-empty page to NULL, to avoid fixing empty pages in the future. */
       vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		     "VACUUM: Cleanup dropped files must remove pages to the "
-		     "of page (%d, %d)... Cut off link.",
-		     last_non_empty_page_vpid.volid,
-		     last_non_empty_page_vpid.pageid);
+		     "VACUUM: Cleanup dropped files must remove pages to the " "of page (%d, %d)... Cut off link.",
+		     last_non_empty_page_vpid.volid, last_non_empty_page_vpid.pageid);
 
-      page = vacuum_fix_dropped_entries_page (thread_p,
-					      &last_non_empty_page_vpid,
-					      PGBUF_LATCH_WRITE);
+      page = vacuum_fix_dropped_entries_page (thread_p, &last_non_empty_page_vpid, PGBUF_LATCH_WRITE);
       if (page == NULL)
 	{
 	  assert (false);
@@ -7494,14 +6531,12 @@ vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
 	}
 
       VPID_SET_NULL (&page->next_page);
-      vacuum_log_dropped_files_set_next_page (thread_p, (PAGE_PTR) page,
-					      &page->next_page);
+      vacuum_log_dropped_files_set_next_page (thread_p, (PAGE_PTR) page, &page->next_page);
 
       vacuum_set_dirty_dropped_entries_page (thread_p, page, FREE);
     }
 
-  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		 "VACUUM: Finished cleanup dropped files.");
+  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "VACUUM: Finished cleanup dropped files.");
   return NO_ERROR;
 }
 
@@ -7558,12 +6593,10 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
   while (!VPID_ISNULL (&vpid))
     {
       /* Fix current page */
-      page = vacuum_fix_dropped_entries_page (thread_p, &vpid,
-					      PGBUF_LATCH_READ);
+      page = vacuum_fix_dropped_entries_page (thread_p, &vpid, PGBUF_LATCH_READ);
       if (page == NULL)
 	{
-	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
-	      || er_errid () != ER_INTERRUPTED)
+	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) || er_errid () != ER_INTERRUPTED)
 	    {
 	      assert (false);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -7577,64 +6610,45 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 
       /* Use compare VFID to find a matching entry */
       dropped_file =
-	(VACUUM_DROPPED_FILE *) bsearch (vfid, page->dropped_files,
-					 page_count,
-					 sizeof (VACUUM_DROPPED_FILE),
+	(VACUUM_DROPPED_FILE *) bsearch (vfid, page->dropped_files, page_count, sizeof (VACUUM_DROPPED_FILE),
 					 vacuum_compare_dropped_files);
       if (dropped_file != NULL)
 	{
-	  /* Found matching entry.
-	   * Compare the given MVCCID with the MVCCID of dropped file.
-	   */
+	  /* Found matching entry. Compare the given MVCCID with the MVCCID of dropped file. */
 	  if (MVCC_ID_PRECEDES (mvccid, dropped_file->mvccid))
 	    {
 	      /* The record must belong to the dropped file */
 	      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
 			     "VACUUM: found dropped file: vfid=(%d, %d) "
-			     "mvccid=%d in page (%d, %d). Entry at position "
-			     "%d, vfid=(%d, %d) mvccid=%d. "
-			     "The vacuumed file is dropped.",
-			     vfid->volid, vfid->fileid, mvccid,
-			     pgbuf_get_volume_id ((PAGE_PTR) page),
-			     pgbuf_get_page_id ((PAGE_PTR) page),
-			     dropped_file - page->dropped_files,
-			     dropped_file->vfid.volid,
-			     dropped_file->vfid.fileid, dropped_file->mvccid);
+			     "mvccid=%d in page (%d, %d). Entry at position " "%d, vfid=(%d, %d) mvccid=%d. "
+			     "The vacuumed file is dropped.", vfid->volid, vfid->fileid, mvccid,
+			     pgbuf_get_volume_id ((PAGE_PTR) page), pgbuf_get_page_id ((PAGE_PTR) page),
+			     dropped_file - page->dropped_files, dropped_file->vfid.volid, dropped_file->vfid.fileid,
+			     dropped_file->mvccid);
 
 	      vacuum_unfix_dropped_entries_page (thread_p, page);
 	      return true;
 	    }
 	  else
 	    {
-	      /* The record belongs to an entry with the same identifier, but
-	       * is newer.
-	       */
+	      /* The record belongs to an entry with the same identifier, but is newer. */
 	      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
 			     "VACUUM: found dropped file: vfid=(%d, %d) "
-			     "mvccid=%d in page (%d, %d). Entry at position "
-			     "%d, vfid=(%d, %d) mvccid=%d. "
-			     "The vacuumed file is newer.",
-			     vfid->volid, vfid->fileid, mvccid,
-			     pgbuf_get_volume_id ((PAGE_PTR) page),
-			     pgbuf_get_page_id ((PAGE_PTR) page),
-			     dropped_file - page->dropped_files,
-			     dropped_file->vfid.volid,
-			     dropped_file->vfid.fileid, dropped_file->mvccid);
+			     "mvccid=%d in page (%d, %d). Entry at position " "%d, vfid=(%d, %d) mvccid=%d. "
+			     "The vacuumed file is newer.", vfid->volid, vfid->fileid, mvccid,
+			     pgbuf_get_volume_id ((PAGE_PTR) page), pgbuf_get_page_id ((PAGE_PTR) page),
+			     dropped_file - page->dropped_files, dropped_file->vfid.volid, dropped_file->vfid.fileid,
+			     dropped_file->mvccid);
 
 	      vacuum_unfix_dropped_entries_page (thread_p, page);
 	      return false;
 	    }
 	}
 
-      /* Do not log this unless you think it is useful. It spams the log
-       * file.
-       */
+      /* Do not log this unless you think it is useful. It spams the log file. */
       vacuum_er_log (VACUUM_ER_LOG_NONE,
-		     "VACUUM: didn't find dropped file: vfid=(%d, %d)"
-		     " mvccid=%d in page (%d, %d).",
-		     vfid->volid, vfid->fileid, mvccid,
-		     pgbuf_get_volume_id ((PAGE_PTR) page),
-		     pgbuf_get_page_id ((PAGE_PTR) page));
+		     "VACUUM: didn't find dropped file: vfid=(%d, %d)" " mvccid=%d in page (%d, %d).", vfid->volid,
+		     vfid->fileid, mvccid, pgbuf_get_volume_id ((PAGE_PTR) page), pgbuf_get_page_id ((PAGE_PTR) page));
 
       vacuum_unfix_dropped_entries_page (thread_p, page);
     }
@@ -7656,8 +6670,7 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
  *	 restart.
  */
 static void
-vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
-				  INT16 * indexes, INT16 n_indexes)
+vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 * indexes, INT16 n_indexes)
 {
 #define VACUUM_CLEANUP_DROPPED_FILES_MAX_REDO_CRUMBS 3
   LOG_CRUMB redo_crumbs[VACUUM_CLEANUP_DROPPED_FILES_MAX_REDO_CRUMBS];
@@ -7679,8 +6692,7 @@ vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   addr.vfid = &vacuum_Dropped_files_vfid;
   addr.offset = 0;
 
-  log_append_redo_crumbs (thread_p, RVVAC_DROPPED_FILE_CLEANUP, &addr,
-			  n_redo_crumbs, redo_crumbs);
+  log_append_redo_crumbs (thread_p, RVVAC_DROPPED_FILE_CLEANUP, &addr, n_redo_crumbs, redo_crumbs);
 }
 
 /*
@@ -7720,20 +6732,16 @@ vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       /* Remove entry at indexes[i] */
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_DROPPED_FILES,
-		     "Recovery of dropped classes: remove "
-		     "file(%d, %d), mvccid=%llu at position %d.",
+		     "Recovery of dropped classes: remove " "file(%d, %d), mvccid=%llu at position %d.",
 		     (int) page->dropped_files[indexes[i]].vfid.volid,
-		     (int) page->dropped_files[indexes[i]].vfid.fileid,
-		     page->dropped_files[indexes[i]].mvccid,
+		     (int) page->dropped_files[indexes[i]].vfid.fileid, page->dropped_files[indexes[i]].mvccid,
 		     (int) indexes[i]);
-      mem_size =
-	(page->n_dropped_files - indexes[i]) * sizeof (VACUUM_DROPPED_FILE);
+      mem_size = (page->n_dropped_files - indexes[i]) * sizeof (VACUUM_DROPPED_FILE);
 
       assert (mem_size >= 0);
       if (mem_size > 0)
 	{
-	  memmove (&page->dropped_files[indexes[i]],
-		   &page->dropped_files[indexes[i] + 1], mem_size);
+	  memmove (&page->dropped_files[indexes[i]], &page->dropped_files[indexes[i] + 1], mem_size);
 	}
 
       /* Update dropped files page counter */
@@ -7755,8 +6763,7 @@ vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * next_page (in) : Next page VPID.
  */
 static void
-vacuum_log_dropped_files_set_next_page (THREAD_ENTRY * thread_p,
-					PAGE_PTR page_p, VPID * next_page)
+vacuum_log_dropped_files_set_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VPID * next_page)
 {
   LOG_DATA_ADDR addr;
 
@@ -7766,8 +6773,7 @@ vacuum_log_dropped_files_set_next_page (THREAD_ENTRY * thread_p,
   addr.offset = 0;
 
   /* Append log redo */
-  log_append_redo_data (thread_p, RVVAC_DROPPED_FILE_NEXT_PAGE, &addr,
-			sizeof (*next_page), next_page);
+  log_append_redo_data (thread_p, RVVAC_DROPPED_FILE_NEXT_PAGE, &addr, sizeof (*next_page), next_page);
 }
 
 /*
@@ -7789,11 +6795,9 @@ vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   /* Check recovery data is as expected */
   assert (rcv->length = sizeof (VPID));
 
-  vacuum_er_log (VACUUM_ER_LOG_RECOVERY,
-		 "Set link for dropped files from page(%d, %d) to "
-		 "page(%d, %d).", pgbuf_get_vpid_ptr (rcv->pgptr)->pageid,
-		 pgbuf_get_vpid_ptr (rcv->pgptr)->volid,
-		 page->next_page.volid, page->next_page.pageid);
+  vacuum_er_log (VACUUM_ER_LOG_RECOVERY, "Set link for dropped files from page(%d, %d) to " "page(%d, %d).",
+		 pgbuf_get_vpid_ptr (rcv->pgptr)->pageid, pgbuf_get_vpid_ptr (rcv->pgptr)->volid, page->next_page.volid,
+		 page->next_page.pageid);
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -7861,10 +6865,8 @@ vacuum_compare_heap_object (const void *a, const void *b)
 static int
 vacuum_collect_heap_objects (VACUUM_WORKER * worker, OID * oid, VFID * vfid)
 {
-  /* Collect both file ID and object OID to vacuum at the end of the job.
-   * Heap file ID is required to know whether objects are reusable or not,
-   * OID is to point vacuum where data needs to be removed.
-   */
+  /* Collect both file ID and object OID to vacuum at the end of the job. Heap file ID is required to know whether
+   * objects are reusable or not, OID is to point vacuum where data needs to be removed. */
 
   /* Make sure we have enough storage. */
   if (worker->n_heap_objects >= worker->heap_objects_capacity)
@@ -7873,17 +6875,13 @@ vacuum_collect_heap_objects (VACUUM_WORKER * worker, OID * oid, VFID * vfid)
       VACUUM_HEAP_OBJECT *new_buffer = NULL;
       int new_capacity = worker->heap_objects_capacity * 2;
 
-      new_buffer =
-	(VACUUM_HEAP_OBJECT *) realloc (worker->heap_objects,
-					new_capacity *
-					sizeof (VACUUM_HEAP_OBJECT));
+      new_buffer = (VACUUM_HEAP_OBJECT *) realloc (worker->heap_objects, new_capacity * sizeof (VACUUM_HEAP_OBJECT));
       if (new_buffer == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, new_capacity * sizeof (VACUUM_HEAP_OBJECT));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  new_capacity * sizeof (VACUUM_HEAP_OBJECT));
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER,
-			 "VACUUM ERROR: Could not expact the files and "
-			 "objects capacity to %d.\n", new_capacity);
+			 "VACUUM ERROR: Could not expact the files and " "objects capacity to %d.\n", new_capacity);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       worker->heap_objects = new_buffer;
@@ -7914,22 +6912,17 @@ vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfid)
   int start, end;
 
   /* Sort collected. */
-  qsort (worker->heap_objects, worker->n_heap_objects,
-	 sizeof (VACUUM_HEAP_OBJECT), vacuum_compare_heap_object);
+  qsort (worker->heap_objects, worker->n_heap_objects, sizeof (VACUUM_HEAP_OBJECT), vacuum_compare_heap_object);
 
   /* Find first entry for file */
-  for (start = 0;
-       start < worker->n_heap_objects
-       && !VFID_EQ (&worker->heap_objects[start].vfid, vfid); start++);
+  for (start = 0; start < worker->n_heap_objects && !VFID_EQ (&worker->heap_objects[start].vfid, vfid); start++);
   if (start == worker->n_heap_objects)
     {
       /* VFID doesn't exist. */
       return;
     }
   /* Find first entry for other file. */
-  for (end = start + 1;
-       end < worker->n_heap_objects
-       && VFID_EQ (&worker->heap_objects[end].vfid, vfid); end++);
+  for (end = start + 1; end < worker->n_heap_objects && VFID_EQ (&worker->heap_objects[end].vfid, vfid); end++);
   /* Remove all between start and end. */
   if (end == worker->n_heap_objects)
     {
@@ -7969,18 +6962,13 @@ vacuum_compare_dropped_files_version (INT32 version_a, INT32 version_b)
       return (int) (version_a - version_b);
     }
 
-  /* If one is positive and the other negative we have to consider the case
-   * when version overflowed INT32 and the case when one just passed 0.
-   * In the first case, the positive value is considered smaller, while in the
-   * second case the negative value is considered smaller.
-   * The INT32 domain of values is split into 4 ranges:
-   * [-MAX_INT32, -MAX_INT32/2], [-MAX_INT32/2, 0], [0, MAX_INT32/2] and
-   * [MAX_INT32/2, MAX_INT32].
-   * We will consider the case when one value is in [-MAX_INT32, -MAX_INT32/2]
-   * and the other in [MAX_INT32/2, MAX_INT32] and the second case when the
-   * values are in [-MAX_INT32/2, 0] and [0, MAX_INT32].
-   * If the values are not in these ranges, the algorithm is flawed.
-   */
+  /* If one is positive and the other negative we have to consider the case when version overflowed INT32 and the case
+   * when one just passed 0. In the first case, the positive value is considered smaller, while in the second case the
+   * negative value is considered smaller. The INT32 domain of values is split into 4 ranges: [-MAX_INT32,
+   * -MAX_INT32/2], [-MAX_INT32/2, 0], [0, MAX_INT32/2] and [MAX_INT32/2, MAX_INT32]. We will consider the case when
+   * one value is in [-MAX_INT32, -MAX_INT32/2] and the other in [MAX_INT32/2, MAX_INT32] and the second case when the
+   * values are in [-MAX_INT32/2, 0] and [0, MAX_INT32]. If the values are not in these ranges, the algorithm is
+   * flawed. */
   if (version_a >= 0)
     {
       /* 0x3FFFFFFF is MAX_INT32/2 */
@@ -8056,13 +7044,10 @@ vacuum_verify_vacuum_data_debug (void)
       entry = VACUUM_DATA_GET_ENTRY (i);
       blockid = VACUUM_DATA_ENTRY_BLOCKID (entry);
 
-      /* Check entry oldest/newest MVCCID are included in the interval formed
-       * by vacuum data aggregated oldest/newest MVCID.
-       */
-      assert (!MVCC_ID_PRECEDES (entry->oldest_mvccid,
-				 vacuum_Data->oldest_mvccid));
-      assert (!MVCC_ID_PRECEDES (vacuum_Data->newest_mvccid,
-				 entry->newest_mvccid));
+      /* Check entry oldest/newest MVCCID are included in the interval formed by vacuum data aggregated oldest/newest
+       * MVCID. */
+      assert (!MVCC_ID_PRECEDES (entry->oldest_mvccid, vacuum_Data->oldest_mvccid));
+      assert (!MVCC_ID_PRECEDES (vacuum_Data->newest_mvccid, entry->newest_mvccid));
 
       /* Check start_lsa matched blockid. */
       assert (vacuum_get_log_blockid (entry->start_lsa.pageid) == blockid);
@@ -8070,15 +7055,11 @@ vacuum_verify_vacuum_data_debug (void)
       if (i < vacuum_Data->n_table_entries - 1)
 	{
 	  /* Check order of blocks is correct. */
-	  assert (blockid
-		  <
-		  VACUUM_DATA_ENTRY_BLOCKID (VACUUM_DATA_GET_ENTRY (i + 1)));
+	  assert (blockid < VACUUM_DATA_ENTRY_BLOCKID (VACUUM_DATA_GET_ENTRY (i + 1)));
 	}
       else
 	{
-	  /* Check vacuum data last_blockid is not less than biggest blockid
-	   * in table.
-	   */
+	  /* Check vacuum data last_blockid is not less than biggest blockid in table. */
 	  assert (blockid <= vacuum_Data->last_blockid);
 	}
     }
@@ -8101,8 +7082,7 @@ vacuum_verify_vacuum_data_debug (void)
  *	  the vacuum will require log pages before this one.
  */
 static int
-vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p,
-				  VACUUM_DATA_ENTRY * entry,
+vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * entry,
 				  BLOCK_LOG_BUFFER * block_log_buffer)
 {
   int i;
@@ -8117,42 +7097,34 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p,
 
   if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
     {
-      block_log_buffer->buffer_id =
-	lf_bitmap_get_entry (&vacuum_Prefetch_free_buffers_bitmap);
+      block_log_buffer->buffer_id = lf_bitmap_get_entry (&vacuum_Prefetch_free_buffers_bitmap);
       if (block_log_buffer->buffer_id < 0)
 	{
 	  assert (false);
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER,
-			 "VACUUM ERROR: Could not prefetch. "
-			 "No more free log block buffers.");
+			 "VACUUM ERROR: Could not prefetch. " "No more free log block buffers.");
 	  return ER_FAILED;
 	}
-      buffer_block_start_ptr =
-	VACUUM_PREFETCH_LOG_BLOCK_BUFFER (block_log_buffer->buffer_id);
+      buffer_block_start_ptr = VACUUM_PREFETCH_LOG_BLOCK_BUFFER (block_log_buffer->buffer_id);
     }
   else
     {
       buffer_block_start_ptr = worker->prefetch_log_buffer;
     }
 
-  start_log_pageid =
-    VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (VACUUM_DATA_ENTRY_BLOCKID (entry));
+  start_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (VACUUM_DATA_ENTRY_BLOCKID (entry));
   log_pageid = start_log_pageid;
 
   log_page = buffer_block_start_ptr;
-  for (i = 0; i < VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES
-       && log_pageid <= entry->start_lsa.pageid + 1; i++, log_pageid++)
+  for (i = 0; i < VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES && log_pageid <= entry->start_lsa.pageid + 1;
+       i++, log_pageid++)
     {
-      if (logpb_fetch_page (thread_p, log_pageid,
-			    (LOG_PAGE *) log_page) == NULL)
+      if (logpb_fetch_page (thread_p, log_pageid, (LOG_PAGE *) log_page) == NULL)
 	{
-	  vacuum_er_log (VACUUM_ER_LOG_ERROR,
-			 "VACUUM ERROR : cannot prefetch log page %d",
-			 log_pageid);
+	  vacuum_er_log (VACUUM_ER_LOG_ERROR, "VACUUM ERROR : cannot prefetch log page %d", log_pageid);
 	  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
 	    {
-	      lf_bitmap_free_entry (&vacuum_Prefetch_free_buffers_bitmap,
-				    block_log_buffer->buffer_id);
+	      lf_bitmap_free_entry (&vacuum_Prefetch_free_buffers_bitmap, block_log_buffer->buffer_id);
 	      block_log_buffer->buffer_id = VACUUM_LOG_BLOCK_BUFFER_INVALID;
 	    }
 
@@ -8166,10 +7138,8 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p,
   block_log_buffer->start_page = start_log_pageid;
   block_log_buffer->last_page = start_log_pageid + i - 1;
 
-  vacuum_er_log (VACUUM_ER_LOG_MASTER,
-		 "VACUUM : prefetched %d log pages from %lld to %lld", i,
-		 (long long int) block_log_buffer->start_page,
-		 (long long int) block_log_buffer->last_page);
+  vacuum_er_log (VACUUM_ER_LOG_MASTER, "VACUUM : prefetched %d log pages from %lld to %lld", i,
+		 (long long int) block_log_buffer->start_page, (long long int) block_log_buffer->last_page);
 
 end:
   return error;
@@ -8188,8 +7158,7 @@ end:
  *
  */
 static int
-vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
-		      BLOCK_LOG_BUFFER * block_log_buffer,
+vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_BUFFER * block_log_buffer,
 		      LOG_PAGE * log_page_p)
 {
 #if defined (SERVER_MODE)
@@ -8202,22 +7171,18 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
   assert (log_page_p != NULL);
 
 #if defined (SERVER_MODE)
-  if (block_log_buffer != NULL
-      && log_pageid >= block_log_buffer->start_page
+  if (block_log_buffer != NULL && log_pageid >= block_log_buffer->start_page
       && log_pageid <= block_log_buffer->last_page)
     {
       if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
 	{
-	  buffer_block_start_ptr =
-	    VACUUM_PREFETCH_LOG_BLOCK_BUFFER (block_log_buffer->buffer_id);
+	  buffer_block_start_ptr = VACUUM_PREFETCH_LOG_BLOCK_BUFFER (block_log_buffer->buffer_id);
 	}
       else
 	{
 	  buffer_block_start_ptr = worker->prefetch_log_buffer;
 	}
-      buffer_page_start_ptr =
-	buffer_block_start_ptr
-	+ (log_pageid - block_log_buffer->start_page) * LOG_PAGESIZE;
+      buffer_page_start_ptr = buffer_block_start_ptr + (log_pageid - block_log_buffer->start_page) * LOG_PAGESIZE;
 
       /* log page is cached */
       memcpy (log_page_p, buffer_page_start_ptr, LOG_PAGESIZE);
@@ -8229,8 +7194,7 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
     {
       if (logpb_fetch_page (thread_p, log_pageid, log_page_p) == NULL)
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "vacuum_copy_log_page");
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_copy_log_page");
 	  error = ER_FAILED;
 	}
     }
@@ -8253,8 +7217,7 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
  *
  */
 static void
-print_not_vacuumed_to_log (OID * oid, OID * class_oid,
-			   MVCC_REC_HEADER * rec_header, int btree_node_type)
+print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_header, int btree_node_type)
 {
 #define TEMP_BUFFER_SIZE 1024
   char mess[TEMP_BUFFER_SIZE], *p = mess;
@@ -8269,14 +7232,11 @@ print_not_vacuumed_to_log (OID * oid, OID * class_oid,
       p += sprintf (p, "Found not vacuumed HEAP record");
     }
   p +=
-    sprintf (p, " with oid=%d|%d|%d, class_oid=%d|%d|%d", (int) oid->volid,
-	     oid->pageid, (int) oid->slotid, (int) class_oid->volid,
-	     class_oid->pageid, (int) class_oid->slotid);
+    sprintf (p, " with oid=%d|%d|%d, class_oid=%d|%d|%d", (int) oid->volid, oid->pageid, (int) oid->slotid,
+	     (int) class_oid->volid, class_oid->pageid, (int) class_oid->slotid);
   if (MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
     {
-      p +=
-	sprintf (p, ", insert_id=%llu",
-		 (unsigned long long int) MVCC_GET_INSID (rec_header));
+      p += sprintf (p, ", insert_id=%llu", (unsigned long long int) MVCC_GET_INSID (rec_header));
     }
   else
     {
@@ -8284,17 +7244,13 @@ print_not_vacuumed_to_log (OID * oid, OID * class_oid,
     }
   if (MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
     {
-      p +=
-	sprintf (p, ", delete_id=%llu",
-		 (unsigned long long int) MVCC_GET_DELID (rec_header));
+      p += sprintf (p, ", delete_id=%llu", (unsigned long long int) MVCC_GET_DELID (rec_header));
     }
   else
     {
       p += sprintf (p, ", delete_id=missing");
     }
-  p +=
-    sprintf (p, ", oldest_mvcc_id=%llu",
-	     (unsigned long long int) vacuum_Data->oldest_mvccid);
+  p += sprintf (p, ", oldest_mvcc_id=%llu", (unsigned long long int) vacuum_Data->oldest_mvccid);
   if (is_btree)
     {
       const char *type_str = NULL;
@@ -8336,8 +7292,7 @@ print_not_vacuumed_to_log (OID * oid, OID * class_oid,
  *
  */
 DISK_ISVALID
-vacuum_check_not_vacuumed_recdes (THREAD_ENTRY * thread_p, OID * oid,
-				  OID * class_oid, RECDES * recdes,
+vacuum_check_not_vacuumed_recdes (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
 				  int btree_node_type)
 {
   MVCC_REC_HEADER rec_header;
@@ -8347,8 +7302,7 @@ vacuum_check_not_vacuumed_recdes (THREAD_ENTRY * thread_p, OID * oid,
       return DISK_ERROR;
     }
 
-  return vacuum_check_not_vacuumed_rec_header (thread_p, oid, class_oid,
-					       &rec_header, btree_node_type);
+  return vacuum_check_not_vacuumed_rec_header (thread_p, oid, class_oid, &rec_header, btree_node_type);
 }
 
 /*
@@ -8361,14 +7315,12 @@ vacuum_check_not_vacuumed_recdes (THREAD_ENTRY * thread_p, OID * oid,
  *
  */
 static bool
-is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p,
-			  MVCC_REC_HEADER * rec_header)
+is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 {
   MVCC_SATISFIES_VACUUM_RESULT res;
   bool not_vacuumed = false;
 
-  res =
-    mvcc_satisfies_vacuum (thread_p, rec_header, vacuum_Data->oldest_mvccid);
+  res = mvcc_satisfies_vacuum (thread_p, rec_header, vacuum_Data->oldest_mvccid);
   switch (res)
     {
     case VACUUM_RECORD_REMOVE:
@@ -8400,9 +7352,7 @@ is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p,
  *
  */
 DISK_ISVALID
-vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_p, OID * oid,
-				      OID * class_oid,
-				      MVCC_REC_HEADER * rec_header,
+vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_header,
 				      int btree_node_type)
 {
   if (is_not_vacuumed_and_lost (thread_p, rec_header))
@@ -8436,15 +7386,13 @@ vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_p, OID * oid,
  *
  */
 static VPID *
-vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p,
-				     VPID * first_page_vpid)
+vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p, VPID * first_page_vpid)
 {
   VPID *vpid;
 
   assert (!VFID_ISNULL (&vacuum_Dropped_files_vfid));
 
-  vpid = file_get_first_alloc_vpid (thread_p, &vacuum_Dropped_files_vfid,
-				    first_page_vpid);
+  vpid = file_get_first_alloc_vpid (thread_p, &vacuum_Dropped_files_vfid, first_page_vpid);
 
   assert (!VPID_ISNULL (first_page_vpid));
 
@@ -8461,15 +7409,13 @@ vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p,
  *
  */
 static VPID *
-vacuum_get_first_page_vacuum_data (THREAD_ENTRY * thread_p,
-				   VPID * first_page_vpid)
+vacuum_get_first_page_vacuum_data (THREAD_ENTRY * thread_p, VPID * first_page_vpid)
 {
   VPID *vpid;
 
   assert (!VFID_ISNULL (&vacuum_Data_vfid));
 
-  vpid = file_get_first_alloc_vpid (thread_p, &vacuum_Data_vfid,
-				    first_page_vpid);
+  vpid = file_get_first_alloc_vpid (thread_p, &vacuum_Data_vfid, first_page_vpid);
 
   assert (!VPID_ISNULL (first_page_vpid));
 
@@ -8511,10 +7457,8 @@ vacuum_is_mvccid_vacuumed (MVCCID id)
  * NOTE: Some values in slots array are modified and set to negative values.
  */
 static void
-vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
-				   PGSLOTID slotid, RECDES * undo_recdes,
-				   OID * next_version_oid,
-				   OID * partition_oid, bool reusable)
+vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, RECDES * undo_recdes,
+				   OID * next_version_oid, OID * partition_oid, bool reusable)
 {
   char *ptr = NULL, *buffer_p = NULL;
   char buffer[2 * OR_OID_SIZE + MAX_ALIGNMENT];
@@ -8567,8 +7511,7 @@ vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   undo_crumbs[1].data = undo_recdes->data;
   num_undo_crumbs = 2;
 
-  log_append_undoredo_crumbs (thread_p, RVVAC_HEAP_RECORD_VACUUM, &addr,
-			      num_undo_crumbs, num_redo_crumbs, undo_crumbs,
+  log_append_undoredo_crumbs (thread_p, RVVAC_HEAP_RECORD_VACUUM, &addr, num_undo_crumbs, num_redo_crumbs, undo_crumbs,
 			      (num_redo_crumbs == 0) ? NULL : redo_crumbs);
 }
 
@@ -8592,8 +7535,7 @@ vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       recdes_type = *(INT16 *) (rcv->data);
 
       assert ((recdes_type == REC_RELOCATION || recdes_type == REC_BIGONE)
-	      && (spage_get_record_type (rcv->pgptr, rcv->offset)
-		  == REC_MVCC_NEXT_VERSION));
+	      && (spage_get_record_type (rcv->pgptr, rcv->offset) == REC_MVCC_NEXT_VERSION));
 
       return heap_rv_undoredo_update (thread_p, rcv);
     }
@@ -8640,8 +7582,7 @@ vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	}
     }
 
-  if (spage_vacuum_slot (thread_p, rcv->pgptr, slotid, next_version_oid,
-			 partition_oid, reusable) != NO_ERROR)
+  if (spage_vacuum_slot (thread_p, rcv->pgptr, slotid, next_version_oid, partition_oid, reusable) != NO_ERROR)
     {
       assert_release (false);
       return ER_FAILED;
@@ -8668,9 +7609,7 @@ vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * rcv_data_length (in) : Recovery data size.
  */
 void
-vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p,
-				     char *data_header, char *rcv_data,
-				     int rcv_data_length)
+vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p, char *data_header, char *rcv_data, int rcv_data_length)
 {
 #if defined (SERVER_MODE)
   VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
@@ -8695,17 +7634,13 @@ vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p,
       worker->postpone_cache_status = VACUUM_CACHE_POSTPONE_YES;
     }
 
-  assert (worker->postpone_cached_entries_count
-	  <= VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT);
+  assert (worker->postpone_cached_entries_count <= VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT);
   assert (worker->postpone_redo_data_ptr != NULL);
-  assert (worker->postpone_redo_data_ptr
-	  >= worker->postpone_redo_data_buffer);
-  assert (CAST_BUFLEN (worker->postpone_redo_data_ptr
-		       - worker->postpone_redo_data_buffer) <= IO_PAGESIZE);
+  assert (worker->postpone_redo_data_ptr >= worker->postpone_redo_data_buffer);
+  assert (CAST_BUFLEN (worker->postpone_redo_data_ptr - worker->postpone_redo_data_buffer) <= IO_PAGESIZE);
   ASSERT_ALIGN (worker->postpone_redo_data_ptr, MAX_ALIGNMENT);
 
-  if (worker->postpone_cached_entries_count
-      == VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT)
+  if (worker->postpone_cached_entries_count == VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT)
     {
       /* Could not store all postpone records. */
       worker->postpone_cache_status = VACUUM_CACHE_POSTPONE_OVERFLOW;
@@ -8713,9 +7648,7 @@ vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p,
     }
 
   /* Check if recovery data fits in preallocated buffer. */
-  total_data_size =
-    CAST_BUFLEN (worker->postpone_redo_data_ptr
-		 - worker->postpone_redo_data_buffer);
+  total_data_size = CAST_BUFLEN (worker->postpone_redo_data_ptr - worker->postpone_redo_data_buffer);
   total_data_size += sizeof (struct log_redo);
   total_data_size += rcv_data_length;
   total_data_size += 2 * MAX_ALIGNMENT;
@@ -8727,16 +7660,13 @@ vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p,
     }
 
   /* Cache a new postpone log record entry. */
-  new_entry =
-    &worker->postpone_cached_entries[worker->postpone_cached_entries_count];
+  new_entry = &worker->postpone_cached_entries[worker->postpone_cached_entries_count];
   new_entry->redo_data = worker->postpone_redo_data_ptr;
 
   /* Cache struct log_redo from data_header */
-  memcpy (worker->postpone_redo_data_ptr, data_header,
-	  sizeof (struct log_redo));
+  memcpy (worker->postpone_redo_data_ptr, data_header, sizeof (struct log_redo));
   worker->postpone_redo_data_ptr += sizeof (struct log_redo);
-  worker->postpone_redo_data_ptr =
-    PTR_ALIGN (worker->postpone_redo_data_ptr, MAX_ALIGNMENT);
+  worker->postpone_redo_data_ptr = PTR_ALIGN (worker->postpone_redo_data_ptr, MAX_ALIGNMENT);
 
   /* Cache recovery data. */
   assert (((struct log_redo *) data_header)->length == rcv_data_length);
@@ -8744,8 +7674,7 @@ vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p,
     {
       memcpy (worker->postpone_redo_data_ptr, rcv_data, rcv_data_length);
       worker->postpone_redo_data_ptr += rcv_data_length;
-      worker->postpone_redo_data_ptr =
-	PTR_ALIGN (worker->postpone_redo_data_ptr, MAX_ALIGNMENT);
+      worker->postpone_redo_data_ptr = PTR_ALIGN (worker->postpone_redo_data_ptr, MAX_ALIGNMENT);
     }
 
   /* LSA will be saved later. */
@@ -8779,10 +7708,8 @@ vacuum_cache_log_postpone_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
       return;
     }
   assert (worker->postpone_cached_entries_count >= 0);
-  assert (worker->postpone_cached_entries_count
-	  < VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT);
-  new_entry =
-    &worker->postpone_cached_entries[worker->postpone_cached_entries_count];
+  assert (worker->postpone_cached_entries_count < VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT);
+  new_entry = &worker->postpone_cached_entries[worker->postpone_cached_entries_count];
   LSA_COPY (&new_entry->lsa, lsa);
 
   /* Now that all needed data is saved, increment cached entries counter. */
@@ -8800,8 +7727,7 @@ vacuum_cache_log_postpone_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
  * start_postpone_lsa (in) : Start postpone LSA.
  */
 bool
-vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p,
-			       LOG_LSA * start_postpone_lsa)
+vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p, LOG_LSA * start_postpone_lsa)
 {
 #if defined (SERVER_MODE)
   VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
@@ -8858,9 +7784,7 @@ vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p,
     }
   else
     {
-      /* Only some postpone entries were run. Update the number of entries
-       * which should be run on next commit.
-       */
+      /* Only some postpone entries were run. Update the number of entries which should be run on next commit. */
       worker->postpone_cached_entries_count = start_index;
     }
   return true;

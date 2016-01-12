@@ -400,8 +400,7 @@ extern int hb_master_init (void);
 extern void hb_resource_shutdown_and_cleanup (void);
 extern void hb_cluster_shutdown_and_cleanup (void);
 
-extern void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn,
-					       SOCKET sfd);
+extern void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd);
 
 extern void hb_get_node_info_string (char **str, bool verbose_yn);
 extern void hb_get_process_info_string (char **str, bool verbose_yn);

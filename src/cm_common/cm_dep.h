@@ -82,15 +82,13 @@ extern "C"
     dstring *listopener;
     dstring *listcloser;
 
-    dstring *delimiter;		/* ":"  */
+    dstring *delimiter;		/* ":" */
     dstring *endmarker;		/* "\n" */
   } nvplist;
 
 /* user interface functions */
-  nvplist *nv_create (int defsize, const char *lom, const char *lcm,
-		      const char *dm, const char *em);
-  int nv_init (nvplist * ref, int defsize, const char *lom, const char *lcm,
-	       const char *dm, const char *em);
+  nvplist *nv_create (int defsize, const char *lom, const char *lcm, const char *dm, const char *em);
+  int nv_init (nvplist * ref, int defsize, const char *lom, const char *lcm, const char *dm, const char *em);
   int nv_lookup (nvplist * ref, int index, char **name, char **value);
   int nv_locate (nvplist * ref, const char *marker, int *index, int *ilen);
   char *nv_get_val (nvplist * ref, const char *name);
@@ -102,10 +100,8 @@ extern "C"
   int nv_add_nvp (nvplist * ref, const char *name, const char *value);
   int nv_add_nvp_int64 (nvplist * ref, const char *name, int64_t value);
   int nv_add_nvp_int (nvplist * ref, const char *name, int value);
-  int nv_add_nvp_time (nvplist * ref, const char *name, time_t t,
-		       const char *fmt, int flat);
-  int nv_add_nvp_float (nvplist * ref, const char *name, float value,
-			const char *fmt);
+  int nv_add_nvp_time (nvplist * ref, const char *name, time_t t, const char *fmt, int flat);
+  int nv_add_nvp_float (nvplist * ref, const char *name, float value, const char *fmt);
   int nv_readfrom (nvplist * ref, char *filename);
 
 /* error codes */
@@ -244,8 +240,7 @@ extern "C"
     CM_MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR = 43
   } CM_MSGCAT_UTIL_GENERIC_MSG;
 
-  int cm_get_diag_data (T_CM_DIAG_MONITOR_DB_VALUE * ret_result,
-			char *db_name, char *mon_db);
+  int cm_get_diag_data (T_CM_DIAG_MONITOR_DB_VALUE * ret_result, char *db_name, char *mon_db);
 
   int cm_tsDBMTUserLogin (nvplist * in, nvplist * out, char *_dbmt_error);
   int cm_ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error);
@@ -265,8 +260,7 @@ extern "C"
   int uRetrieveDBLogDirectory (char *dbname, char *target);
   int uReadDBtxtFile (const char *dn, int idx, char *outbuf);
   int get_db_server_pid (char *dbname);
-  int run_child (const char *const argv[], int wait_flag,
-		 const char *stdin_file, char *stdout_file, char *stderr_file,
+  int run_child (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file, char *stderr_file,
 		 int *exit_status);
   int cm_util_log_write_result (int error);
   int cm_util_log_write_errid (int message_id, ...);

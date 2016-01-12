@@ -36,8 +36,7 @@
 
 
 static void
-shard_queue_insert_after (T_SHARD_QUEUE * q, T_SHARD_QUEUE_ENT * prev,
-			  T_SHARD_QUEUE_ENT * curr)
+shard_queue_insert_after (T_SHARD_QUEUE * q, T_SHARD_QUEUE_ENT * prev, T_SHARD_QUEUE_ENT * curr)
 {
   curr->next = NULL;
 
@@ -85,15 +84,14 @@ shard_queue_enqueue (T_SHARD_QUEUE * q, void *v)
       return 0;			/* SUCCESS */
     }
 
-  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. "
-	     "Failed to alloc shard queue entry. " "(errno:%d).", errno);
+  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. " "Failed to alloc shard queue entry. " "(errno:%d).",
+	     errno);
 
   return -1;			/* FAILED */
 }
 
 int
-shard_queue_ordered_enqueue (T_SHARD_QUEUE * q, void *v,
-			     SHARD_COMP_FN comp_fn)
+shard_queue_ordered_enqueue (T_SHARD_QUEUE * q, void *v, SHARD_COMP_FN comp_fn)
 {
   T_SHARD_QUEUE_ENT *q_ent;
   T_SHARD_QUEUE_ENT *curr, *prev;
@@ -126,8 +124,8 @@ shard_queue_ordered_enqueue (T_SHARD_QUEUE * q, void *v,
       return 0;
     }
 
-  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. "
-	     "Failed to alloc shard queue entry. " "(errno:%d).", errno);
+  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. " "Failed to alloc shard queue entry. " "(errno:%d).",
+	     errno);
   return -1;
 }
 
@@ -227,9 +225,7 @@ shard_cqueue_enqueue (T_SHARD_CQUEUE * q, void *e)
 
   if (shard_cqueue_is_full (q))
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR,
-		 "Queue is full. (q_size:%d, q_count:%d).", q->size,
-		 q->count);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Queue is full. (q_size:%d, q_count:%d).", q->size, q->count);
       /* FAILED */
       return -1;
     }
@@ -278,9 +274,9 @@ shard_cqueue_initialize (T_SHARD_CQUEUE * q, int size)
   q->ent = (void **) malloc (sizeof (void *) * size);
   if (q->ent == NULL)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Not enough virtual memory. "
-		 "Failed to alloc shard cqueue entry. "
-		 "(errno:%d, size:%d).", errno, (size * sizeof (void *)));
+      PROXY_LOG (PROXY_LOG_MODE_ERROR,
+		 "Not enough virtual memory. " "Failed to alloc shard cqueue entry. " "(errno:%d, size:%d).", errno,
+		 (size * sizeof (void *)));
 
       /* FAILED */
       return -1;

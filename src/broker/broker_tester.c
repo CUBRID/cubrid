@@ -133,18 +133,15 @@ static void init_default_conn_info (int appl_server_type);
 static int get_master_shm_id (void);
 static void get_time (struct timeval *start_time, char *time, int buf_len);
 
-static int execute_test_with_query (int conn_handle, char *query,
-				    int shard_flag);
+static int execute_test_with_query (int conn_handle, char *query, int shard_flag);
 static int execute_test (int conn_handle, int shard_flag);
 
 static void print_usage (void);
 static void print_conn_result (char *broker_name, int conn_hd_id);
 static void print_shard_result (void);
 static void print_title (int shard_flag);
-static void print_result (int row_count, int err_code, int shard_flag,
-			  int shard_id, char *time, char *query);
-static int print_result_set (int req, T_CCI_ERROR * err_buf,
-			     T_CCI_COL_INFO * col_info, int col_count);
+static void print_result (int row_count, int err_code, int shard_flag, int shard_id, char *time, char *query);
+static int print_result_set (int req, T_CCI_ERROR * err_buf, T_CCI_COL_INFO * col_info, int col_count);
 static void print_query_test_result (int ret);
 static void print_line (const char *ch, int num);
 
@@ -166,13 +163,10 @@ init_tester_info (char *broker_name)
       return -1;
     }
 
-  shm_br =
-    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER,
-				  SHM_MODE_MONITOR);
+  shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_MONITOR);
   if (shm_br == NULL)
     {
-      fprintf (stderr, "master shared memory open error[0x%x]\n",
-	       master_shm_id);
+      fprintf (stderr, "master shared memory open error[0x%x]\n", master_shm_id);
       return -1;
     }
 
@@ -198,13 +192,11 @@ init_tester_info (char *broker_name)
 
   if (broker_info_p->shard_flag == ON)
     {
-      shm_proxy = (T_SHM_PROXY *) uw_shm_open (broker_info_p->proxy_shm_id,
-					       SHM_PROXY, SHM_MODE_MONITOR);
+      shm_proxy = (T_SHM_PROXY *) uw_shm_open (broker_info_p->proxy_shm_id, SHM_PROXY, SHM_MODE_MONITOR);
       if (shm_proxy == NULL)
 	{
 	  uw_shm_detach (shm_br);
-	  fprintf (stderr, "proxy shared memory open error[0x%x]\n",
-		   broker_info_p->proxy_shm_id);
+	  fprintf (stderr, "proxy shared memory open error[0x%x]\n", broker_info_p->proxy_shm_id);
 	  return -1;
 	}
       br_tester_info.num_shard = shm_proxy->shm_shard_conn.num_shard_conn;
@@ -223,8 +215,7 @@ init_tester_info (char *broker_name)
 
       if (br_tester_info.db_passwd == NULL)
 	{
-	  br_tester_info.db_passwd =
-	    strdup (broker_info_p->shard_db_password);
+	  br_tester_info.db_passwd = strdup (broker_info_p->shard_db_password);
 	}
     }
 
@@ -301,8 +292,7 @@ get_master_shm_id (void)
     }
   else
     {
-      get_cubrid_file (FID_CUBRID_BROKER_CONF, conf_file_path,
-		       BROKER_PATH_MAX);
+      get_cubrid_file (FID_CUBRID_BROKER_CONF, conf_file_path, BROKER_PATH_MAX);
     }
 
   if (stat (conf_file_path, &stat_buf) == 0)
@@ -316,18 +306,15 @@ get_master_shm_id (void)
 
       if (!ini_findsec (ini, SECTION_NAME))
 	{
-	  fprintf (stderr, "cannot find [%s] section in conf file %s\n",
-		   SECTION_NAME, conf_file_path);
+	  fprintf (stderr, "cannot find [%s] section in conf file %s\n", SECTION_NAME, conf_file_path);
 	  ini_parser_free (ini);
 	  return -1;
 	}
 
-      master_shm_id =
-	ini_gethex (ini, SECTION_NAME, "MASTER_SHM_ID", 0, NULL);
+      master_shm_id = ini_gethex (ini, SECTION_NAME, "MASTER_SHM_ID", 0, NULL);
       if (master_shm_id <= 0)
 	{
-	  fprintf (stderr, "cannot find MASTER_SHM_ID in [%s] section\n",
-		   SECTION_NAME);
+	  fprintf (stderr, "cannot find MASTER_SHM_ID in [%s] section\n", SECTION_NAME);
 	}
     }
 
@@ -354,8 +341,7 @@ get_time (struct timeval *start_time, char *time, int buf_len)
       elapsed_time.tv_sec--;
       elapsed_time.tv_usec += 1000000;
     }
-  snprintf (time, buf_len, "%ld.%06ld sec", elapsed_time.tv_sec,
-	    elapsed_time.tv_usec);
+  snprintf (time, buf_len, "%ld.%06ld sec", elapsed_time.tv_sec, elapsed_time.tv_usec);
   return;
 }
 
@@ -378,14 +364,12 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
 
       if (br_tester_info.shard_flag == ON && !br_tester_info.single_shard)
 	{
-	  snprintf (query_with_hint, sizeof (query_with_hint),
-		    "%s /*+ shard_id(%d) */ /* broker_tester */", query,
+	  snprintf (query_with_hint, sizeof (query_with_hint), "%s /*+ shard_id(%d) */ /* broker_tester */", query,
 		    shard_id);
 	}
       else
 	{
-	  snprintf (query_with_hint, sizeof (query_with_hint),
-		    "%s /* broker_tester */", query);
+	  snprintf (query_with_hint, sizeof (query_with_hint), "%s /* broker_tester */", query);
 	}
 
       gettimeofday (&start_time, NULL);
@@ -393,8 +377,7 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
       req = cci_prepare (conn_handle, query_with_hint, 0, &err_buf);
       if (req < 0)
 	{
-	  snprintf (tester_err_msg, sizeof (tester_err_msg),
-		    "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
+	  snprintf (tester_err_msg, sizeof (tester_err_msg), "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
 		    err_buf.err_msg);
 	  ret = -1;
 	  err_num++;
@@ -404,8 +387,7 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
       ret = cci_execute (req, 0, 0, &err_buf);
       if (ret < 0)
 	{
-	  snprintf (tester_err_msg, sizeof (tester_err_msg),
-		    "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
+	  snprintf (tester_err_msg, sizeof (tester_err_msg), "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
 		    err_buf.err_msg);
 	  err_num++;
 	  goto end_tran;
@@ -418,8 +400,7 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
 	  ret = cci_get_shard_id_with_req_handle (req, &shard_id, &err_buf);
 	  if (ret < 0)
 	    {
-	      snprintf (tester_err_msg, sizeof (tester_err_msg),
-			"ERROR CODE : %d\n%s\n\n", err_buf.err_code,
+	      snprintf (tester_err_msg, sizeof (tester_err_msg), "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
 			err_buf.err_msg);
 	      err_num++;
 	      goto end_tran;
@@ -431,8 +412,7 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
 	  col_info = cci_get_result_info (req, &cmd_type, &col_count);
 	  if (cmd_type == CUBRID_STMT_SELECT && col_info == NULL)
 	    {
-	      snprintf (tester_err_msg, sizeof (tester_err_msg),
-			"ERROR CODE : %d\n%s\n\n", err_buf.err_code,
+	      snprintf (tester_err_msg, sizeof (tester_err_msg), "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
 			err_buf.err_msg);
 	      ret = -1;
 	      err_num++;
@@ -444,8 +424,7 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
 
       print_result (ret, err_buf.err_code, shard_flag, shard_id, time, query);
 
-      if (ret >= 0
-	  && br_tester_info.verbose_mode && cmd_type == CUBRID_STMT_SELECT)
+      if (ret >= 0 && br_tester_info.verbose_mode && cmd_type == CUBRID_STMT_SELECT)
 	{
 	  ret = print_result_set (req, &err_buf, col_info, col_count);
 	  if (ret < 0)
@@ -480,8 +459,7 @@ execute_test (int conn_handle, int shard_flag)
   file = fopen (br_tester_info.input_file_name, "r");
   if (file == NULL)
     {
-      fprintf (stderr, "cannot open input file %s\n",
-	       br_tester_info.input_file_name);
+      fprintf (stderr, "cannot open input file %s\n", br_tester_info.input_file_name);
       return -1;
     }
 
@@ -581,8 +559,7 @@ print_conn_result (char *broker_name, int conn_hd_id)
       PRINT_RESULT ("@ [OK] ");
     }
 
-  PRINT_RESULT ("CONNECT %s DB [%s] USER [%s]\n\n", broker_name,
-		br_tester_info.db_name, br_tester_info.db_user);
+  PRINT_RESULT ("CONNECT %s DB [%s] USER [%s]\n\n", broker_name, br_tester_info.db_name, br_tester_info.db_user);
   return;
 }
 
@@ -621,8 +598,7 @@ print_shard_result (void)
 }
 
 static void
-print_result (int row_count, int err_code, int shard_flag, int shard_id,
-	      char *time, char *query)
+print_result (int row_count, int err_code, int shard_flag, int shard_id, char *time, char *query)
 {
   if (row_count >= 0)
     {
@@ -658,8 +634,7 @@ print_result (int row_count, int err_code, int shard_flag, int shard_id,
 }
 
 static int
-print_result_set (int req, T_CCI_ERROR * err_buf, T_CCI_COL_INFO * col_info,
-		  int col_count)
+print_result_set (int req, T_CCI_ERROR * err_buf, T_CCI_COL_INFO * col_info, int col_count)
 {
   int i;
   int ind;
@@ -679,8 +654,7 @@ print_result_set (int req, T_CCI_ERROR * err_buf, T_CCI_COL_INFO * col_info,
       return -1;
     }
 
-  col_type_arr =
-    (T_CCI_U_EXT_TYPE *) malloc (sizeof (T_CCI_U_EXT_TYPE) * col_count);
+  col_type_arr = (T_CCI_U_EXT_TYPE *) malloc (sizeof (T_CCI_U_EXT_TYPE) * col_count);
   if (col_type_arr == NULL)
     {
       FREE_MEM (col_size_arr);
@@ -694,8 +668,7 @@ print_result_set (int req, T_CCI_ERROR * err_buf, T_CCI_COL_INFO * col_info,
   for (i = 1; i < col_count + 1; i++)
     {
       col_name = CCI_GET_RESULT_INFO_NAME (col_info, i);
-      col_size_arr[i - 1] =
-	MIN (MAX_DISPLAY_LENGTH, CCI_GET_RESULT_INFO_PRECISION (col_info, i));
+      col_size_arr[i - 1] = MIN (MAX_DISPLAY_LENGTH, CCI_GET_RESULT_INFO_PRECISION (col_info, i));
       col_size_arr[i - 1] = MAX (col_size_arr[i - 1], strlen (col_name));
       col_type_arr[i - 1] = CCI_GET_RESULT_INFO_TYPE (col_info, i);
 
@@ -718,16 +691,14 @@ print_result_set (int req, T_CCI_ERROR * err_buf, T_CCI_COL_INFO * col_info,
 
       if (ret < 0)
 	{
-	  PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf->err_code,
-			   err_buf->err_msg);
+	  PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf->err_code, err_buf->err_msg);
 	  goto end;
 	}
 
       ret = cci_fetch (req, err_buf);
       if (ret < 0)
 	{
-	  PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf->err_code,
-			   err_buf->err_msg);
+	  PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf->err_code, err_buf->err_msg);
 	  goto end;
 	}
 
@@ -736,8 +707,7 @@ print_result_set (int req, T_CCI_ERROR * err_buf, T_CCI_COL_INFO * col_info,
 	  ret = cci_get_data (req, i, CCI_A_TYPE_STR, &data, &ind);
 	  if (ret < 0)
 	    {
-	      PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf->err_code,
-			       err_buf->err_msg);
+	      PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf->err_code, err_buf->err_msg);
 	      goto end;
 	    }
 
@@ -867,18 +837,15 @@ main (int argc, char *argv[])
       return -1;
     }
 
-  snprintf (conn_url, sizeof (conn_url), "cci:cubrid:localhost:%u:%s:::",
-	    br_tester_info.broker_port, br_tester_info.db_name);
-  conn_handle =
-    cci_connect_with_url_ex (conn_url, br_tester_info.db_user,
-			     br_tester_info.db_passwd, &err_buf);
+  snprintf (conn_url, sizeof (conn_url), "cci:cubrid:localhost:%u:%s:::", br_tester_info.broker_port,
+	    br_tester_info.db_name);
+  conn_handle = cci_connect_with_url_ex (conn_url, br_tester_info.db_user, br_tester_info.db_passwd, &err_buf);
 
   print_conn_result (broker_name, conn_handle);
 
   if (conn_handle < 0)
     {
-      PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf.err_code,
-		       err_buf.err_msg);
+      PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf.err_code, err_buf.err_msg);
       free_br_tester_info ();
       return -1;
     }
@@ -895,8 +862,7 @@ main (int argc, char *argv[])
       out_file_fp = fopen (br_tester_info.output_file_name, "w");
       if (out_file_fp == NULL)
 	{
-	  fprintf (stderr, "cannot open output file %s\n",
-		   br_tester_info.input_file_name);
+	  fprintf (stderr, "cannot open output file %s\n", br_tester_info.input_file_name);
 	  goto end;
 	}
     }
@@ -907,9 +873,7 @@ main (int argc, char *argv[])
     {
       print_title (br_tester_info.shard_flag);
 
-      ret =
-	execute_test_with_query (conn_handle, br_tester_info.command,
-				 br_tester_info.shard_flag);
+      ret = execute_test_with_query (conn_handle, br_tester_info.command, br_tester_info.shard_flag);
     }
   else if (br_tester_info.input_file_name != NULL)
     {

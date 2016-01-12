@@ -138,8 +138,7 @@ MemcatImproved (D_STRING * dest, char *src, int srcSize)
       dest->totalSize = 0;
       dest->usedSize = 0;
     }
-  if (ReallocImproved (&(dest->value), &(dest->totalSize),
-		       dest->usedSize, srcSize) < 0)
+  if (ReallocImproved (&(dest->value), &(dest->totalSize), dest->usedSize, srcSize) < 0)
     {
       return -1;
     }
@@ -425,8 +424,7 @@ element_from_setstring (char **current, char *buf)
  *----------------------------------------------------------------------*/
 
 PUBLIC ERR_CODE
-ListTailAdd (ST_LIST * head, void *key, void *val,
-	     ERR_CODE (*assignFunc) (ST_LIST *, void *, void *))
+ListTailAdd (ST_LIST * head, void *key, void *val, ERR_CODE (*assignFunc) (ST_LIST *, void *, void *))
 {
   ST_LIST *newNode;
   ST_LIST *temp;
@@ -810,8 +808,7 @@ is_oidstr (char *str)
  *		parameter number는 1을 base로 하고 있다고 가정했다.
  ************************************************************************/
 PUBLIC int
-replace_oid (char *sql_text, char **org_param_pos_pt,
-	     char **oid_param_pos_pt, char **oid_param_val_pt)
+replace_oid (char *sql_text, char **org_param_pos_pt, char **oid_param_pos_pt, char **oid_param_val_pt)
 {
   char *oid_buf = NULL;
   char oid_param_pos[256];
@@ -903,9 +900,7 @@ odbc_trim (char *str)
   if (str == NULL)
     return (str);
 
-  for (s = str;
-       *s != '\0' && (*s == ' ' || *s == '\t' || *s == 0x0d || *s == 0x0a);
-       s++)
+  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == 0x0d || *s == 0x0a); s++)
     ;
   if (*s == '\0')
     {
@@ -934,8 +929,7 @@ odbc_trim (char *str)
  * NOTE:
  ************************************************************************/
 PUBLIC RETCODE
-str_value_assign (const char *in_value,
-		  char *out_buf, SQLLEN out_buf_len, SQLLEN * val_len_ptr)
+str_value_assign (const char *in_value, char *out_buf, SQLLEN out_buf_len, SQLLEN * val_len_ptr)
 {
   RETCODE rc = ODBC_SUCCESS;
 
@@ -974,9 +968,7 @@ str_value_assign (const char *in_value,
  * NOTE:
  ************************************************************************/
 PUBLIC RETCODE
-bin_value_assign (const void *in_value,
-		  SQLLEN in_val_len,
-		  char *out_buf, SQLLEN out_buf_len, SQLLEN * val_len_ptr)
+bin_value_assign (const void *in_value, SQLLEN in_val_len, char *out_buf, SQLLEN out_buf_len, SQLLEN * val_len_ptr)
 {
   RETCODE rc = ODBC_SUCCESS;
 

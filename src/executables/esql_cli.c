@@ -313,10 +313,7 @@ typedef struct cursor
 #endif
   int no;			/* sequential number */
   int num_stmt_ids;		/* # of element in `stmt_ids' */
-  CS_STMT_ID *stmt_ids;		/* array of stmt id for update/
-				 * delete cursor stmts which
-				 * belongs to this cursor
-				 */
+  CS_STMT_ID *stmt_ids;		/* array of stmt id for update/ delete cursor stmts which belongs to this cursor */
   int last_stmt_id;		/* last searched stmt_id */
   DB_QUERY_RESULT *result;	/* result pointer */
   long fetched_tuples;		/* # of fetched tuples */
@@ -410,24 +407,17 @@ static int uci_env_stack_top = -1;
 static void check_stack_size (void);
 static void free_db_values (void);
 static int uci_get_next_column (int cs_no, DB_VALUE * dbval);
-static void uci_get_value_indirect (int cs_no,
-				    DB_INDICATOR * ind, void **bufp,
-				    int *sizep);
-static REPETITIVE *alloc_repetitive (int no, DB_SESSION * session,
-				     STATEMENT_ID stmt_id,
-				     CUBRID_STMT_TYPE stmt_type,
+static void uci_get_value_indirect (int cs_no, DB_INDICATOR * ind, void **bufp, int *sizep);
+static REPETITIVE *alloc_repetitive (int no, DB_SESSION * session, STATEMENT_ID stmt_id, CUBRID_STMT_TYPE stmt_type,
 				     DB_GADGET * gadget);
 static REPETITIVE *get_repetitive (int no);
 static void free_repetitive (void);
-static DYNAMIC *alloc_dynamic (int stmt_no, CUBRID_STMT_TYPE stmt_type,
-			       DB_SESSION * session, STATEMENT_ID stmt_id,
-			       int num_markers, DB_QUERY_TYPE * col_spec,
-			       char *stmt, int length);
+static DYNAMIC *alloc_dynamic (int stmt_no, CUBRID_STMT_TYPE stmt_type, DB_SESSION * session, STATEMENT_ID stmt_id,
+			       int num_markers, DB_QUERY_TYPE * col_spec, char *stmt, int length);
 static DYNAMIC *get_dynamic (int stmt_no);
 static void free_dynamic (void);
 #if defined(UCI_TEMPORARY)
-static CURSOR *alloc_cursor (int no, DB_SESSION * static_session,
-			     STATEMENT_ID static_stmt_id,
+static CURSOR *alloc_cursor (int no, DB_SESSION * static_session, STATEMENT_ID static_stmt_id,
 			     DB_QUERY_RESULT * result);
 #else /* UCI_TEMPORARY */
 static CURSOR *alloc_cursor (int no, DB_QUERY_RESULT * result);
@@ -436,8 +426,7 @@ static CURSOR *get_cursor (int no);
 static void free_cursor (int no);
 static POINTER *put_pointer (CURSOR * cs, DB_VALUE * addr);
 static void free_pointers (CURSOR * cs);
-static void copy_column_spec_to_sqlda (DB_QUERY_TYPE * col_spec,
-				       CUBRIDDA * desc);
+static void copy_column_spec_to_sqlda (DB_QUERY_TYPE * col_spec, CUBRIDDA * desc);
 static void set_sqlca_err (void);
 static int push_uci_environment (void);
 static void pop_uci_environment (void);
@@ -629,8 +618,7 @@ uci_connect (const char *db_name, const char *user_name, const char *passwd)
       CHK_SQLCODE ();
     }
 
-  error =
-    db_login ((user_name ? user_name : au_get_public_user_name ()), passwd);
+  error = db_login ((user_name ? user_name : au_get_public_user_name ()), passwd);
   CHECK_DBI (error < 0, return);
 
   /* error handling option will be initialized by db_restart */
@@ -774,8 +762,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
       /* must be a repetition */
       if (!gadget)
 	{
-	  db_push_values (session, db_Value_table.db_value_top,
-			  db_Value_table.db_values);
+	  db_push_values (session, db_Value_table.db_value_top, db_Value_table.db_values);
 	}
     }
   else
@@ -795,8 +782,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 	{
 	  DB_NODE *att = NULL, *val = NULL, *val_list = NULL;
 	  int attrlist_len = pt_length_of_list (pt_attrs_part (statement)), i;
-	  const char *cname =
-	    pt_get_name (pt_from_entity_part (pt_class_part (statement)));
+	  const char *cname = pt_get_name (pt_from_entity_part (pt_class_part (statement)));
 	  char **attrs;
 
 	  /* build attribute name array */
@@ -808,8 +794,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 	      CHECK_DBI (true, return);
 	    }
 
-	  for (i = 0, att = pt_attrs_part (statement); att;
-	       i++, att = att->next)
+	  for (i = 0, att = pt_attrs_part (statement); att; i++, att = att->next)
 	    {
 	      attrs[i] = (char *) pt_get_name (att);
 	    }
@@ -824,14 +809,12 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 	  if (val_list == NULL || val_list->next == NULL)
 	    {
 	      /* This is a single tuple insert. */
-	      /* If gadget cannot be created, attempt to handle it as a
-	         regular insert statement. */
+	      /* If gadget cannot be created, attempt to handle it as a regular insert statement. */
 	      gadget = db_gadget_create (cname, (const char **) attrs);
 	    }
 	  else
 	    {
-	      /* If the this is a multiple tuples insert handle it as a
-	         regular insert statement. */
+	      /* If the this is a multiple tuples insert handle it as a regular insert statement. */
 	      assert (gadget == NULL);
 	    }
 
@@ -841,8 +824,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 	      DB_VALUE tmp_val, *insert_value = NULL;
 
 	      /* bind literal values */
-	      for (i = 0; val != NULL;
-		   i++, val = val->next, insert_value = NULL)
+	      for (i = 0; val != NULL; i++, val = val->next, insert_value = NULL)
 		{
 		  if (val->node_type == PT_HOST_VAR)
 		    {
@@ -854,16 +836,15 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 		    }
 		  else if (pt_is_expr_node (val))
 		    {
-		      /* Try to handle simple expressions so we don't
-		         choke on things like negative numbers */
+		      /* Try to handle simple expressions so we don't choke on things like negative numbers */
 		      if (pt_is_value_node (val->info.expr.arg1)
-			  && (!val->info.expr.arg2
-			      || pt_is_value_node (val->info.expr.arg2))
-			  && (!val->info.expr.arg3
-			      || pt_is_value_node (val->info.expr.arg3)))
+			  && (!val->info.expr.arg2 || pt_is_value_node (val->info.expr.arg2)) && (!val->info.expr.arg3
+												  ||
+												  pt_is_value_node
+												  (val->info.expr.
+												   arg3)))
 			{
-			  pt_evaluate_tree_having_serial (parser, val,
-							  &tmp_val, 1);
+			  pt_evaluate_tree_having_serial (parser, val, &tmp_val, 1);
 			  if (!parser->error_msgs)
 			    {
 			      insert_value = &tmp_val;
@@ -871,25 +852,18 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 			}
 		    }
 
-		  if (insert_value == NULL || (db_gadget_bind (gadget,
-							       gadget->
-							       attrs[i].
-							       attr_desc->
-							       name,
-							       insert_value))
-		      != NO_ERROR)
+		  if (insert_value == NULL
+		      || (db_gadget_bind (gadget, gadget->attrs[i].attr_desc->name, insert_value)) != NO_ERROR)
 		    {
-		      /* If we've had a binding error or encountered a node
-		         type we can't handle, free gadget and run a regular
-		         insert statement */
+		      /* If we've had a binding error or encountered a node type we can't handle, free gadget and run a 
+		       * regular insert statement */
 		      db_gadget_destroy (gadget);
 		      gadget = NULL;
 		      break;
 		    }
 		}
 
-	      /* fake these, which would have been obtained from
-	         compiled statement */
+	      /* fake these, which would have been obtained from compiled statement */
 	      stmt_id = 0;
 	      stmt_type = CUBRID_STMT_INSERT;
 	    }
@@ -900,8 +874,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
       if (!gadget)
 	{
 	  /* non-repetitive or non-insert, or failed gadget */
-	  db_push_values (session, db_Value_table.db_value_top,
-			  db_Value_table.db_values);
+	  db_push_values (session, db_Value_table.db_value_top, db_Value_table.db_values);
 	  stmt_id = db_compile_statement (session);
 	  if (stmt_id < 0)
 	    {
@@ -909,13 +882,10 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 	      CHECK_DBI (true, return);
 	    }
 
-	  stmt_type = (CUBRID_STMT_TYPE) db_get_statement_type (session,
-								stmt_id);
+	  stmt_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_id);
 	}
 
-      if (gadget
-	  && alloc_repetitive (stmt_no, session, stmt_id, stmt_type,
-			       gadget) == NULL)
+      if (gadget && alloc_repetitive (stmt_no, session, stmt_id, stmt_type, gadget) == NULL)
 	{
 	  db_close_session (session);
 	  assert (er_errid () != NO_ERROR);
@@ -938,9 +908,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
       DB_OBJECT *obj;
 
       /* manufacture query result from object returned from db_gadget_exec */
-      obj =
-	db_gadget_exec (gadget, db_Value_table.db_value_top,
-			db_Value_table.db_values);
+      obj = db_gadget_exec (gadget, db_Value_table.db_value_top, db_Value_table.db_values);
       if (obj)
 	{
 	  e = 1;
@@ -1025,8 +993,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
  * readonly(in) : true if readonly results.
  */
 void
-uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
-	     int readonly)
+uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no, int readonly)
 {
   DB_SESSION *session;
   STATEMENT_ID stmt_id;
@@ -1063,8 +1030,7 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
       stmt_id = dt->stmt_id;
       stmt_type = dt->stmt_type;
       num_markers = dt->num_markers;
-      db_push_values (session, db_Value_table.db_value_top,
-		      db_Value_table.db_values);
+      db_push_values (session, db_Value_table.db_value_top, db_Value_table.db_values);
     }
   else
     {
@@ -1077,8 +1043,7 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
 	  CHECK_DBI (error < 0, return);
 	}
 
-      db_push_values (session, db_Value_table.db_value_top,
-		      db_Value_table.db_values);
+      db_push_values (session, db_Value_table.db_value_top, db_Value_table.db_values);
       db_include_oid (session, !readonly);
       stmt_id = db_compile_statement (session);
       if (stmt_id < 0)
@@ -1145,9 +1110,7 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no,
     }
 
 #if defined(UCI_TEMPORARY)
-  alloc_cursor (cs_no,
-		(stmt == NULL) ? 0 : session,
-		(stmt == NULL) ? -1 : stmt_id, tmp_result);
+  alloc_cursor (cs_no, (stmt == NULL) ? 0 : session, (stmt == NULL) ? -1 : stmt_id, tmp_result);
 #else
   alloc_cursor (cs_no, tmp_result);	/* create a cursor */
 #endif
@@ -1354,8 +1317,7 @@ uci_prepare (int stmt_no, const char *stmt, int length)
   col_spec = db_get_query_type_list (session, stmt_id);
 
   /* register into dynamic stmt table */
-  dt = alloc_dynamic (stmt_no, stmt_type, session, stmt_id, markers, col_spec,
-		      (char *) stmt, length);
+  dt = alloc_dynamic (stmt_no, stmt_type, session, stmt_id, markers, col_spec, (char *) stmt, length);
   if (dt == NULL)
     {
       if (col_spec != NULL)
@@ -1449,8 +1411,7 @@ uci_execute (int stmt_no, int num_out_vars)
     }
 
   /* execute the compiled stmt */
-  db_push_values (dt->session, db_Value_table.db_value_top,
-		  db_Value_table.db_values);
+  db_push_values (dt->session, db_Value_table.db_value_top, db_Value_table.db_values);
   e = db_execute_and_keep_statement (dt->session, dt->stmt_id, &curr_result);
   db_push_values (dt->session, 0, NULL);
 
@@ -1459,7 +1420,7 @@ uci_execute (int stmt_no, int num_out_vars)
       pop_uci_environment ();
     }
 
-  /*
+  /* 
    * It is evidently ok to return here without closing dt->session, since
    * it will be closed by alloc_dynamic() the next time we need a
    * statement.
@@ -1598,8 +1559,7 @@ error:
  * desc(out) : SQLDA where the description will be stored.
  */
 void
-uci_object_describe (DB_OBJECT * obj, int num_attrs,
-		     const char **attr_names, CUBRIDDA * desc)
+uci_object_describe (DB_OBJECT * obj, int num_attrs, const char **attr_names, CUBRIDDA * desc)
 {
   DB_QUERY_TYPE *object_col_spec = NULL;
   int error;
@@ -1631,8 +1591,7 @@ uci_object_describe (DB_OBJECT * obj, int num_attrs,
  * num_out_vars(in) : # of output host variables
  */
 void
-uci_object_fetch (DB_OBJECT * obj, int num_attrs, const char **attr_names,
-		  int num_out_vars)
+uci_object_fetch (DB_OBJECT * obj, int num_attrs, const char **attr_names, int num_out_vars)
 {
   int error;
 
@@ -1677,13 +1636,10 @@ check_stack_size (void)
   if (db_Value_table.num_db_values == 0)
     {
       db_Value_table.num_db_values = DB_VALS_STCK_EXPANSION_UNIT;
-      tmp =
-	(DB_VALUE *) malloc (sizeof (DB_VALUE) *
-			     db_Value_table.num_db_values);
+      tmp = (DB_VALUE *) malloc (sizeof (DB_VALUE) * db_Value_table.num_db_values);
       if (tmp == NULL)
 	{
-	  PUT_UCI_ERR_NOMOREMEMORY (sizeof (DB_VALUE) *
-				    db_Value_table.num_db_values);
+	  PUT_UCI_ERR_NOMOREMEMORY (sizeof (DB_VALUE) * db_Value_table.num_db_values);
 	  set_sqlca_err ();
 	  return;
 	}
@@ -1691,19 +1647,15 @@ check_stack_size (void)
   else
     {
       db_Value_table.num_db_values += DB_VALS_STCK_EXPANSION_UNIT;
-      tmp =
-	(DB_VALUE *) malloc (sizeof (DB_VALUE) *
-			     db_Value_table.num_db_values);
+      tmp = (DB_VALUE *) malloc (sizeof (DB_VALUE) * db_Value_table.num_db_values);
       if (tmp == NULL)
 	{
-	  PUT_UCI_ERR_NOMOREMEMORY (sizeof (DB_VALUE) *
-				    db_Value_table.num_db_values);
+	  PUT_UCI_ERR_NOMOREMEMORY (sizeof (DB_VALUE) * db_Value_table.num_db_values);
 	  set_sqlca_err ();
 	  return;
 	}
 
-      (void) memcpy ((void *) tmp, (const void *) db_Value_table.db_values,
-		     sizeof (DB_VALUE) * old_num);
+      (void) memcpy ((void *) tmp, (const void *) db_Value_table.db_values, sizeof (DB_VALUE) * old_num);
       free (db_Value_table.db_values);
     }
 
@@ -1719,11 +1671,10 @@ free_db_values (void)
 {
   while (db_Value_table.db_value_top)
     {
-      db_value_clear (&db_Value_table.
-		      db_values[--db_Value_table.db_value_top]);
+      db_value_clear (&db_Value_table.db_values[--db_Value_table.db_value_top]);
     }
 
-  /*
+  /* 
    * free() used intentionally here (rather than free_and_init()) to avoid
    * misleading shutdown messages about space leaks.
    */
@@ -1749,10 +1700,8 @@ free_db_values (void)
  * bufsize(in) : length of the actual C data
  */
 void
-uci_put_value (DB_INDICATOR * indicator,
-	       DB_TYPE type,
-	       int precision,
-	       int scale, DB_TYPE_C ctype, void *buf, int bufsize)
+uci_put_value (DB_INDICATOR * indicator, DB_TYPE type, int precision, int scale, DB_TYPE_C ctype, void *buf,
+	       int bufsize)
 {
   DB_VALUE *dbval;
 
@@ -1772,7 +1721,7 @@ uci_put_value (DB_INDICATOR * indicator,
       return;
     }
 
-  /*
+  /* 
    * (char *) pointers cause special problems, because there is no way
    * for the preprocessor to guess the precision or buffer length.
    * Instead, we simply have it emit 0 for those things and then we
@@ -1780,8 +1729,7 @@ uci_put_value (DB_INDICATOR * indicator,
    * we've got. That means that users can't transfer strings with
    * embedded nulls using (char *) host vars.
    */
-  if (ctype == DB_TYPE_C_CHAR || ctype == DB_TYPE_C_NCHAR ||
-      ctype == DB_TYPE_C_VARCHAR || ctype == DB_TYPE_C_VARNCHAR)
+  if (ctype == DB_TYPE_C_CHAR || ctype == DB_TYPE_C_NCHAR || ctype == DB_TYPE_C_VARCHAR || ctype == DB_TYPE_C_VARNCHAR)
     {
       int tmp_len = strlen ((char *) buf);
       if (precision == 0)
@@ -1798,8 +1746,8 @@ uci_put_value (DB_INDICATOR * indicator,
 	}
     }
 
-  if (db_value_domain_init (dbval, type, precision, scale) != NO_ERROR ||
-      db_value_put (dbval, ctype, buf, bufsize) != NO_ERROR)
+  if (db_value_domain_init (dbval, type, precision, scale) != NO_ERROR
+      || db_value_put (dbval, ctype, buf, bufsize) != NO_ERROR)
     {
       set_sqlca_err ();
     }
@@ -1893,9 +1841,7 @@ uci_get_next_column (int cs_no, DB_VALUE * dbval)
  * xferlen(out) -
  */
 void
-uci_get_value (int cs_no,
-	       DB_INDICATOR * ind,
-	       void *buf, DB_TYPE_C type, int size, int *xferlen)
+uci_get_value (int cs_no, DB_INDICATOR * ind, void *buf, DB_TYPE_C type, int size, int *xferlen)
 {
   DB_VALUE val;
   int outlen, tmp_xferlen;
@@ -1929,7 +1875,7 @@ uci_get_value (int cs_no,
 
   if (outlen > 0)
     {
-      /*
+      /* 
        * If truncation occurred, set the truncation warning flag in the
        * SQLCA regardless of whether an indicator variable has been
        * supplied.
@@ -1939,7 +1885,7 @@ uci_get_value (int cs_no,
 
   if (ind)
     {
-      /*
+      /* 
        * If no truncation occurred (and there's no NULL value), the
        * indicator should be set to zero.  Truncation will be indicated
        * by an outlen that's greater than the buffer size.  If truncation
@@ -1970,8 +1916,7 @@ uci_get_value (int cs_no,
  * sizep(out) : pointer to int to receive size of result
  */
 static void
-uci_get_value_indirect (int cs_no,
-			DB_INDICATOR * ind, void **bufp, int *sizep)
+uci_get_value_indirect (int cs_no, DB_INDICATOR * ind, void **bufp, int *sizep)
 {
   DB_VALUE val;
   DB_TYPE sqltype;
@@ -2010,7 +1955,7 @@ uci_get_value_indirect (int cs_no,
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       {
-	/*
+	/* 
 	 * Why doesn't this cause us storage management problems?
 	 * It would if the user tried to hang on to the pointer
 	 * for more than a row.
@@ -2127,8 +2072,7 @@ uci_put_descriptor (CUBRIDDA * desc)
 
   for (i = 0, var = desc->sqlvar; i < num_values; i++, var++)
     {
-      uci_put_value (var->sqlind, var->sqltype, var->sqlprec,
-		     var->sqlscale, var->sqlctype, var->sqldata, var->sqllen);
+      uci_put_value (var->sqlind, var->sqltype, var->sqlprec, var->sqlscale, var->sqlctype, var->sqldata, var->sqllen);
     }
 }
 
@@ -2146,16 +2090,13 @@ uci_get_descriptor (int cs_no, CUBRIDDA * desc)
 
   for (i = 0, var = desc->sqlvar; i < desc->sqldesc; i++, var++)
     {
-      if (STRING_C_TYPE (var->sqlctype) &&
-	  (var->sqldata == NULL || var->sqllen == 0))
+      if (STRING_C_TYPE (var->sqlctype) && (var->sqldata == NULL || var->sqllen == 0))
 	{
-	  uci_get_value_indirect (cs_no,
-				  var->sqlind, &var->sqldata, &var->sqllen);
+	  uci_get_value_indirect (cs_no, var->sqlind, &var->sqldata, &var->sqllen);
 	}
       else
 	{
-	  uci_get_value (cs_no, var->sqlind, (void *) var->sqldata,
-			 var->sqlctype, var->sqllen, NULL);
+	  uci_get_value (cs_no, var->sqlind, (void *) var->sqldata, var->sqlctype, var->sqllen, NULL);
 	}
     }
 }
@@ -2173,9 +2114,7 @@ uci_get_descriptor (int cs_no, CUBRIDDA * desc)
  * gadget(in) :
  */
 static REPETITIVE *
-alloc_repetitive (int no, DB_SESSION * session,
-		  STATEMENT_ID stmt_id,
-		  CUBRID_STMT_TYPE stmt_type, DB_GADGET * gadget)
+alloc_repetitive (int no, DB_SESSION * session, STATEMENT_ID stmt_id, CUBRID_STMT_TYPE stmt_type, DB_GADGET * gadget)
 {
   int new_num;
   REPETITIVE *rt;
@@ -2186,10 +2125,10 @@ alloc_repetitive (int no, DB_SESSION * session,
       /* expansion is needed */
       new_num = num_repetitive_stmts + REPETITIVE_EXPANSION_UNIT;
       t_repetitive =
-	(num_repetitive_stmts == 0) ?
-	(REPETITIVE *) malloc (sizeof (REPETITIVE) * new_num) :
-	(REPETITIVE *) realloc (repetitive_stmts,
-				sizeof (REPETITIVE) * new_num);
+	(num_repetitive_stmts ==
+	 0) ? (REPETITIVE *) malloc (sizeof (REPETITIVE) * new_num) : (REPETITIVE *) realloc (repetitive_stmts,
+											      sizeof (REPETITIVE) *
+											      new_num);
       if (t_repetitive == NULL)
 	{
 	  PUT_UCI_ERR_NOMOREMEMORY (sizeof (REPETITIVE) * new_num);
@@ -2213,10 +2152,8 @@ alloc_repetitive (int no, DB_SESSION * session,
   rt->stmt_type = stmt_type;
   rt->gadget = gadget;
 
-  /* mark the last searched index (`last_repetitive') so that the immediately
-   * succeeding get_repetitive() can find this entry with minimum cost.
-   * And increment # of repetitive statements.
-   */
+  /* mark the last searched index (`last_repetitive') so that the immediately succeeding get_repetitive() can find this 
+   * entry with minimum cost. And increment # of repetitive statements. */
   last_repetitive = num_repetitive_stmts++;
 
   return (rt);
@@ -2307,10 +2244,8 @@ free_repetitive (void)
  * length(in) : length of stmt.
  */
 static DYNAMIC *
-alloc_dynamic (int stmt_no, CUBRID_STMT_TYPE stmt_type,
-	       DB_SESSION * session, STATEMENT_ID stmt_id,
-	       int num_markers, DB_QUERY_TYPE * column_spec,
-	       char *stmt, int length)
+alloc_dynamic (int stmt_no, CUBRID_STMT_TYPE stmt_type, DB_SESSION * session, STATEMENT_ID stmt_id, int num_markers,
+	       DB_QUERY_TYPE * column_spec, char *stmt, int length)
 {
   int new_num;
   DYNAMIC *dt;
@@ -2336,9 +2271,9 @@ alloc_dynamic (int stmt_no, CUBRID_STMT_TYPE stmt_type,
 	  /* expansion is needed */
 	  new_num = num_dynamic_stmts + DYNAMIC_EXPANSION_UNIT;
 	  t_dynamic =
-	    (num_dynamic_stmts == 0) ?
-	    (DYNAMIC *) malloc (sizeof (DYNAMIC) * new_num) :
-	    (DYNAMIC *) realloc (dynamic_stmts, sizeof (DYNAMIC) * new_num);
+	    (num_dynamic_stmts ==
+	     0) ? (DYNAMIC *) malloc (sizeof (DYNAMIC) * new_num) : (DYNAMIC *) realloc (dynamic_stmts,
+											 sizeof (DYNAMIC) * new_num);
 	  if (t_dynamic == NULL)
 	    {
 	      PUT_UCI_ERR_NOMOREMEMORY (sizeof (DYNAMIC) * new_num);
@@ -2355,10 +2290,8 @@ alloc_dynamic (int stmt_no, CUBRID_STMT_TYPE stmt_type,
       dt = dynamic_stmts + num_dynamic_stmts;
       (void) memset (dt, 0, sizeof (DYNAMIC));
 
-      /* mark the last searched index (`last_dynamic') so that the immediately
-       * succeeding get_dynamic() can find this entry with minimum cost.
-       * And increment # of dynamic statements.
-       */
+      /* mark the last searched index (`last_dynamic') so that the immediately succeeding get_dynamic() can find this
+       * entry with minimum cost. And increment # of dynamic statements. */
       last_dynamic = num_dynamic_stmts++;
     }
 
@@ -2455,8 +2388,7 @@ free_dynamic (void)
  */
 #if defined(UCI_TEMPORARY)
 static CURSOR *
-alloc_cursor (int no, DB_SESSION * static_session,
-	      STATEMENT_ID static_stmt_id, DB_QUERY_RESULT * result)
+alloc_cursor (int no, DB_SESSION * static_session, STATEMENT_ID static_stmt_id, DB_QUERY_RESULT * result)
 #else
 static CURSOR *
 alloc_cursor (int no, DB_QUERY_RESULT * result)
@@ -2483,10 +2415,8 @@ alloc_cursor (int no, DB_QUERY_RESULT * result)
   cs->fetched_tuples = 0;
   cs->num_pointers = 0;
 
-  /* insert this node at the front of cursor list so that
-   * rightly succeeding get_cursor() function (OPEN followed by FETCH
-   * statement) can find this entry with minimum cost.
-   */
+  /* insert this node at the front of cursor list so that rightly succeeding get_cursor() function (OPEN followed by
+   * FETCH statement) can find this entry with minimum cost. */
   cs->next = cursor_list;
   cursor_list = cs;
 
@@ -2550,7 +2480,7 @@ free_cursor (int no)
 	  /* free results */
 	  if (cs->result != NULL)
 	    {
-	      /*
+	      /* 
 	       * db_query_end() may "fail" if if there was a runtime error in
 	       * the statement it is associated with.  That is of no concern
 	       * here, and we need to make sure that we continue on to clean up
@@ -2707,8 +2637,7 @@ copy_column_spec_to_sqlda (DB_QUERY_TYPE * col_spec, CUBRIDDA * desc)
   int i;
   DB_DOMAIN *domain;
 
-  for (i = 0; col_spec != NULL;
-       col_spec = db_query_format_next (col_spec), i++)
+  for (i = 0; col_spec != NULL; col_spec = db_query_format_next (col_spec), i++)
     {
 
       if (i >= desc->sqlmax)	/* not suffcient sqlvars */
@@ -2724,9 +2653,7 @@ copy_column_spec_to_sqlda (DB_QUERY_TYPE * col_spec, CUBRIDDA * desc)
       desc->sqlvar[i].sqllen = db_query_format_size (col_spec);
       desc->sqlvar[i].sqlname = db_query_format_name (col_spec);
 
-      /* for undefined type, we'd better tell users to use DB_VALUE
-       * itself instead of just DB_TYPE_NULL.
-       */
+      /* for undefined type, we'd better tell users to use DB_VALUE itself instead of just DB_TYPE_NULL. */
       if (desc->sqlvar[i].sqltype == DB_TYPE_NULL)
 	{
 	  desc->sqlvar[i].sqltype = DB_TYPE_DB_VALUE;
@@ -2774,11 +2701,10 @@ push_uci_environment (void)
   if (uci_env_stack_top + 1 == num_uci_env_stack_entries)
     {
       /* expansion is needed */
-      new_size = sizeof (UCI_ENV_STACK_ENTRY) *
-	(num_uci_env_stack_entries + UCI_ENV_STACK_EXPANSION_UNIT);
-      t = (UCI_ENV_STACK_ENTRY *) ((num_uci_env_stack_entries == 0)
-				   ? malloc (new_size)
-				   : realloc (uci_env_stack, new_size));
+      new_size = sizeof (UCI_ENV_STACK_ENTRY) * (num_uci_env_stack_entries + UCI_ENV_STACK_EXPANSION_UNIT);
+      t =
+	(UCI_ENV_STACK_ENTRY *) ((num_uci_env_stack_entries == 0) ? malloc (new_size) :
+				 realloc (uci_env_stack, new_size));
       if (t == NULL)
 	{
 	  PUT_UCI_ERR_NOMOREMEMORY (new_size);
@@ -2794,11 +2720,9 @@ push_uci_environment (void)
 
   /* save stmt-sentisive variables */
 
-  /* special treatement of SQLCA fields. For many field except warning
-   * do not have to be saved because they are all initial status before
-   * execute a statement. Therefore, they'll not be saved, but will be
-   * re-initialized at the pop operation time.
-   */
+  /* special treatement of SQLCA fields. For many field except warning do not have to be saved because they are all
+   * initial status before execute a statement. Therefore, they'll not be saved, but will be re-initialized at the pop
+   * operation time. */
   memmove (&t->saved_sqlca_sqlwarn, &sqlca.sqlwarn, sizeof (sqlca.sqlwarn));
   t->saved_db_values = db_Value_table.db_values;
   t->saved_num_db_values = db_Value_table.num_db_values;
@@ -2807,10 +2731,8 @@ push_uci_environment (void)
   t->saved_curr_filename = curr_filename;
   t->saved_curr_lineno = curr_lineno;
 
-  /* special consideration of db_Value_table.db_values array - since uci
-   * functions would re-use the array for performance, we should reset
-   * the db_Value_table.num_db_values to allocate new table.
-   */
+  /* special consideration of db_Value_table.db_values array - since uci functions would re-use the array for
+   * performance, we should reset the db_Value_table.num_db_values to allocate new table. */
   db_Value_table.num_db_values = 0;
   db_Value_table.db_value_top = 0;
 
@@ -2830,9 +2752,8 @@ pop_uci_environment (void)
 
   t = uci_env_stack + uci_env_stack_top;
 
-  /* special consideration of db_Value_table.db_values array - since it will
-   * not be accessed any more, it should be freed.
-   */
+  /* special consideration of db_Value_table.db_values array - since it will not be accessed any more, it should be
+   * freed. */
   free_db_values ();
 
   memmove (&sqlca.sqlwarn, &t->saved_sqlca_sqlwarn, sizeof (sqlca.sqlwarn));
@@ -2843,9 +2764,7 @@ pop_uci_environment (void)
   curr_filename = t->saved_curr_filename;
   curr_lineno = t->saved_curr_lineno;
 
-  /* the followings were not saved because we already know the previous
-   * status (initially all zeros).
-   */
+  /* the followings were not saved because we already know the previous status (initially all zeros). */
   SQLCODE = 0;
   if (SQLERRML > 0)
     {

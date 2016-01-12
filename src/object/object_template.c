@@ -120,36 +120,28 @@ static unsigned int obj_Template_traversal = 0;
 static unsigned int template_savepoint_count = 0;
 
 
-static DB_VALUE *check_att_domain (SM_ATTRIBUTE * att,
-				   DB_VALUE * proposed_value);
-static int check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value,
-			      unsigned force_check_not_null);
+static DB_VALUE *check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value);
+static int check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value, unsigned force_check_not_null);
 static int quick_validate (SM_VALIDATION * valid, DB_VALUE * value);
 static void cache_validation (SM_VALIDATION * valid, DB_VALUE * value);
 static void begin_template_traversal (void);
 static void reset_template (OBJ_TEMPLATE * template_ptr);
 static OBJ_TEMPLATE *make_template (MOP object, MOP classobj);
 static int validate_template (OBJ_TEMPLATE * temp);
-static OBJ_TEMPASSIGN *obt_make_assignment (OBJ_TEMPLATE * template_ptr,
-					    SM_ATTRIBUTE * att);
+static OBJ_TEMPASSIGN *obt_make_assignment (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att);
 static void obt_free_assignment (OBJ_TEMPASSIGN * assign);
 static void obt_free_template (OBJ_TEMPLATE * template_ptr);
 static int populate_auto_increment (OBJ_TEMPLATE * template_ptr);
 static int populate_defaults (OBJ_TEMPLATE * template_ptr);
-static int obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
-			   int base_assignment, OBJ_TEMPLATE * value);
+static int obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att, int base_assignment, OBJ_TEMPLATE * value);
 static MOP create_template_object (OBJ_TEMPLATE * template_ptr);
-static int access_object (OBJ_TEMPLATE * template_ptr, MOP * object,
-			  MOBJ * objptr);
+static int access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr);
 static int obt_convert_set_templates (SETREF * setref, int check_uniques);
 static int obt_final_check_set (SETREF * setref, int *has_uniques);
 
-static int obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null,
-			    int *has_uniques);
-static int obt_apply_assignment (MOP op, SM_ATTRIBUTE * att, char *mem,
-				 DB_VALUE * value, int check_uniques);
-static int obt_apply_assignments (OBJ_TEMPLATE * template_ptr,
-				  int check_uniques, int level);
+static int obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null, int *has_uniques);
+static int obt_apply_assignment (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value, int check_uniques);
+static int obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level);
 
 static MOP make_temp_object (DB_OBJECT * class_, OBJ_TEMPLATE * object);
 static void free_temp_object (MOP obj);
@@ -169,8 +161,7 @@ obt_area_init (void)
       goto error;
     }
 
-  Assignment_area =
-    area_create ("Assignment templates", sizeof (OBJ_TEMPASSIGN), 64);
+  Assignment_area = area_create ("Assignment templates", sizeof (OBJ_TEMPASSIGN), 64);
   if (Assignment_area == NULL)
     {
       goto error;
@@ -222,8 +213,7 @@ obt_area_final (void)
  */
 
 int
-obt_find_attribute (OBJ_TEMPLATE * template_ptr, int use_base_class,
-		    const char *name, SM_ATTRIBUTE ** attp)
+obt_find_attribute (OBJ_TEMPLATE * template_ptr, int use_base_class, const char *name, SM_ATTRIBUTE ** attp)
 {
   int error = NO_ERROR;
   MOP classobj;
@@ -238,7 +228,7 @@ obt_find_attribute (OBJ_TEMPLATE * template_ptr, int use_base_class,
 
   if (att != NULL && att->header.name_space == ID_SHARED_ATTRIBUTE)
     {
-      /*
+      /* 
        * Sigh, when we originally fetched the class, it was fetched
        * with a read lock since we weren't sure of the intent.  Now
        * that we know we're about to update a shared attribute, we need to
@@ -248,14 +238,12 @@ obt_find_attribute (OBJ_TEMPLATE * template_ptr, int use_base_class,
        */
       if (!template_ptr->write_lock)
 	{
-	  classobj = ((use_base_class)
-		      ? template_ptr->base_classobj : template_ptr->classobj);
+	  classobj = ((use_base_class) ? template_ptr->base_classobj : template_ptr->classobj);
 
-	  error = au_fetch_class (classobj, &upgrade_class, AU_FETCH_UPDATE,
-				  AU_ALTER);
+	  error = au_fetch_class (classobj, &upgrade_class, AU_FETCH_UPDATE, AU_ALTER);
 	  template_ptr->write_lock = !error;
 
-	  /*
+	  /* 
 	   * This better damn well not re-fetch the class.
 	   * If this can happen, we'll need a general "recache" function
 	   * for the template.
@@ -315,12 +303,11 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
     }
   if (is_ref > 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
       return NULL;
     }
 
-  /*
+  /* 
    * Note that we set the "exact" match flag true to disallow "tolerance"
    * matches.  Some types (such as CHAR) may appear to overflow the domain,
    * but can be truncated during the coercion process.
@@ -334,9 +321,7 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
 	{
 	  return NULL;
 	}
-      status = tp_value_cast (proposed_value, value, att->domain,
-			      !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE
-						(att->domain)));
+      status = tp_value_cast (proposed_value, value, att->domain, !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (att->domain)));
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  (void) pr_free_ext_value (value);
@@ -353,20 +338,18 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
 	case DOMAIN_OVERFLOW:
 	  if (TP_IS_BIT_TYPE (DB_VALUE_DOMAIN_TYPE (proposed_value)))
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OBJ_STRING_OVERFLOW, 2, att->header.name,
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_STRING_OVERFLOW, 2, att->header.name,
 		      att->domain->precision);
 	    }
 	  else
 	    {
-	      (void) tp_domain_status_er_set (status, ARG_FILE_LINE,
-					      proposed_value, att->domain);
+	      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, proposed_value, att->domain);
 	      assert (er_errid () != NO_ERROR);
 	    }
 	  break;
 	case DOMAIN_INCOMPATIBLE:
 	default:
-	  /*
+	  /* 
 	   * the default case shouldn't really be encountered, might want to
 	   * signal a different error.  The OVERFLOW case should only
 	   * be returned during coercion which wasn't requested, to be safe,
@@ -374,8 +357,7 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
 	   * domain conflict error that uses full printed representations
 	   * of the entire domain.
 	   */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
-		  att->header.name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, att->header.name);
 	  break;
 	}
 
@@ -403,29 +385,24 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
  */
 
 static int
-check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value,
-		   unsigned force_check_not_null)
+check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value, unsigned force_check_not_null)
 {
   int error = NO_ERROR;
   MOP mop;
 
   /* check NOT NULL constraint */
   if (value == NULL || DB_IS_NULL (value)
-      || (att->domain->type == tp_Type_object
-	  && (mop = DB_GET_OBJECT (value)) && WS_MOP_IS_NULL (mop)))
+      || (att->domain->type == tp_Type_object && (mop = DB_GET_OBJECT (value)) && WS_MOP_IS_NULL (mop)))
     {
       if (att->flags & SM_ATTFLAG_NON_NULL)
 	{
-	  if ((att->flags & SM_ATTFLAG_AUTO_INCREMENT)
-	      && !force_check_not_null)
+	  if ((att->flags & SM_ATTFLAG_AUTO_INCREMENT) && !force_check_not_null)
 	    {
 	      assert (DB_IS_NULL (value));
 	      assert (att->domain->type != tp_Type_object);
 
-	      /* This is allowed to happen only during INSERT statements,
-	       * since the next serial value will be filled in at a later
-	       * time. For other cases, the force_check_not_null flag should
-	       * be set. */
+	      /* This is allowed to happen only during INSERT statements, since the next serial value will be filled in 
+	       * at a later time. For other cases, the force_check_not_null flag should be set. */
 	    }
 	  else
 	    {
@@ -439,8 +416,7 @@ check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value,
       if (tp_check_value_size (att->domain, value) != DOMAIN_COMPATIBLE)
 	{
 	  /* probably need an error message that isn't specific to "string" types */
-	  ERROR2 (error, ER_OBJ_STRING_OVERFLOW, att->header.name,
-		  att->domain->precision);
+	  ERROR2 (error, ER_OBJ_STRING_OVERFLOW, att->header.name, att->domain->precision);
 	}
     }
 
@@ -519,8 +495,7 @@ quick_validate (SM_VALIDATION * valid, DB_VALUE * value)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
-      if (type == valid->last_type
-	  && DB_GET_STRING_PRECISION (value) == valid->last_precision)
+      if (type == valid->last_type && DB_GET_STRING_PRECISION (value) == valid->last_precision)
 	{
 	  is_valid = 1;
 	}
@@ -528,16 +503,14 @@ quick_validate (SM_VALIDATION * valid, DB_VALUE * value)
 
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      if (type == valid->last_type
-	  && DB_GET_BIT_PRECISION (value) == valid->last_precision)
+      if (type == valid->last_type && DB_GET_BIT_PRECISION (value) == valid->last_precision)
 	{
 	  is_valid = 1;
 	}
       break;
 
     case DB_TYPE_NUMERIC:
-      if (type == valid->last_type
-	  && DB_GET_NUMERIC_PRECISION (value) == valid->last_precision
+      if (type == valid->last_type && DB_GET_NUMERIC_PRECISION (value) == valid->last_precision
 	  && DB_GET_NUMERIC_SCALE (value) == valid->last_scale)
 	{
 	  is_valid = 1;
@@ -592,7 +565,7 @@ cache_validation (SM_VALIDATION * valid, DB_VALUE * value)
 	    if (class_ != NULL)
 	      {
 		valid->last_class = class_;
-		/*
+		/* 
 		 * !! note that we have to be building an external object list
 		 * here so these serve as GC roots.  This is kludgey, we should
 		 * be encapsulating structure rules inside cl_ where the
@@ -674,8 +647,7 @@ cache_validation (SM_VALIDATION * valid, DB_VALUE * value)
  */
 
 DB_VALUE *
-obt_check_assignment (SM_ATTRIBUTE * att,
-		      DB_VALUE * proposed_value, SM_VALIDATION * valid,
+obt_check_assignment (SM_ATTRIBUTE * att, DB_VALUE * proposed_value, SM_VALIDATION * valid,
 		      unsigned force_check_not_null)
 {
   DB_VALUE *value;
@@ -690,7 +662,7 @@ obt_check_assignment (SM_ATTRIBUTE * att,
     }
   else
     {
-      /*
+      /* 
        * before we make the expensive checks, see if we've got some cached
        * validation information handy
        */
@@ -699,8 +671,7 @@ obt_check_assignment (SM_ATTRIBUTE * att,
 	  value = check_att_domain (att, proposed_value);
 	  if (value != NULL)
 	    {
-	      if (check_constraints
-		  (att, value, force_check_not_null) != NO_ERROR)
+	      if (check_constraints (att, value, force_check_not_null) != NO_ERROR)
 		{
 		  if (value != proposed_value)
 		    {
@@ -710,7 +681,7 @@ obt_check_assignment (SM_ATTRIBUTE * att,
 		}
 	      else
 		{
-		  /*
+		  /* 
 		   * we're ok, if there was no coercion required, remember this for
 		   * next time.
 		   */
@@ -828,7 +799,7 @@ make_template (MOP object, MOP classobj)
     }
   else
     {
-      /*
+      /* 
        * class variable update
        * NOTE: It might be good to use AU_FETCH_WRITE here and then
        * use locator_update_class to set the dirty bit after the template
@@ -844,7 +815,7 @@ make_template (MOP object, MOP classobj)
     }
 
 
-  /*
+  /* 
    * we only need to keep track of the base class if this is a
    * virtual class, for proxies, the instances look like usual
    */
@@ -852,7 +823,7 @@ make_template (MOP object, MOP classobj)
   if (class_->class_type == SM_VCLASS_CT	/* a view, and... */
       && object != classobj /* we are not doing a meta class update */ )
     {
-      /*
+      /* 
        * could use vid_is_updatable() if
        * the instance was supplied but since this can be NULL for
        * insert templates, use mq_is_updatable on the class object instead.
@@ -861,8 +832,7 @@ make_template (MOP object, MOP classobj)
        */
       if (!mq_is_updatable (classobj))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_NOT_UPDATABLE_STMT,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_NOT_UPDATABLE_STMT, 0);
 	  return NULL;
 	}
 
@@ -870,8 +840,7 @@ make_template (MOP object, MOP classobj)
       base_classobj = mq_fetch_one_real_class (classobj);
       if (base_classobj == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_NOT_UPDATABLE_STMT,
-		  0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_NOT_UPDATABLE_STMT, 0);
 	  return NULL;
 	}
 
@@ -887,7 +856,7 @@ make_template (MOP object, MOP classobj)
 	}
     }
 
-  /*
+  /* 
    * If this is an instance update, fetch & lock the instance.
    * NOTE: It might be good to use AU_FETCH_WRITE and use locator_update_instance
    * to set the dirty bit after the template has been successfully applied.
@@ -897,13 +866,12 @@ make_template (MOP object, MOP classobj)
    */
   if (object != NULL && object != classobj)
     {
-      if (au_fetch_instance (object, &obj, AU_FETCH_UPDATE,
-			     LC_FETCH_MVCC_VERSION, AU_UPDATE))
+      if (au_fetch_instance (object, &obj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE))
 	{
 	  return NULL;
 	}
 
-      /*
+      /* 
        * Could cache the object memory pointer this in the template as
        * well but that would require that it be pinned for a long
        * duration through code that we don't control.  Dangerous.
@@ -916,7 +884,7 @@ make_template (MOP object, MOP classobj)
       template_ptr->object = object;
       template_ptr->classobj = classobj;
 
-      /*
+      /* 
        * cache the class info directly in the template, will need
        * to remember the transaction id and chn for validation
        */
@@ -955,20 +923,18 @@ make_template (MOP object, MOP classobj)
       template_ptr->force_flush = 0;
       template_ptr->is_autoincrement_set = 0;
       template_ptr->pruning_type = DB_NOT_PARTITIONED_CLASS;
-      /*
+      /* 
        * Don't do this until we've initialized the other stuff;
        * OTMPL_NASSIGNS relies on the "class" attribute of the template.
        */
 
       if (template_ptr->is_class_update)
 	{
-	  template_ptr->nassigns =
-	    template_ptr->class_->class_attribute_count;
+	  template_ptr->nassigns = template_ptr->class_->class_attribute_count;
 	}
       else
 	{
-	  template_ptr->nassigns = (template_ptr->class_->att_count
-				    + template_ptr->class_->shared_count);
+	  template_ptr->nassigns = (template_ptr->class_->att_count + template_ptr->class_->shared_count);
 	}
 
       vec = NULL;
@@ -976,8 +942,7 @@ make_template (MOP object, MOP classobj)
 	{
 	  int i;
 
-	  vec = (OBJ_TEMPASSIGN **) malloc (template_ptr->nassigns *
-					    sizeof (OBJ_TEMPASSIGN *));
+	  vec = (OBJ_TEMPASSIGN **) malloc (template_ptr->nassigns * sizeof (OBJ_TEMPASSIGN *));
 	  if (!vec)
 	    {
 	      return NULL;
@@ -1006,9 +971,7 @@ validate_template (OBJ_TEMPLATE * temp)
 {
   int error = NO_ERROR;
 
-  if (temp != NULL
-      && (temp->tran_id != tm_Tran_index
-	  || temp->schema_id != sm_local_schema_version ()))
+  if (temp != NULL && (temp->tran_id != tm_Tran_index || temp->schema_id != sm_local_schema_version ()))
     {
       error = ER_OBJ_INVALID_TEMPLATE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -1052,8 +1015,7 @@ obt_make_assignment (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att)
 	  template_ptr->shared_was_modified = 1;
 	}
 
-      if (classobj_get_cached_constraint (att->constraints,
-					  SM_CONSTRAINT_FOREIGN_KEY, NULL))
+      if (classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_FOREIGN_KEY, NULL))
 	{
 	  template_ptr->fkeys_were_modified = 1;
 	}
@@ -1096,12 +1058,10 @@ obt_free_assignment (OBJ_TEMPASSIGN * assign)
 	  av_type = DB_VALUE_TYPE (assign->variable);
 	  if (av_type == DB_TYPE_POINTER)
 	    {
-	      obt_free_template ((OBJ_TEMPLATE *)
-				 DB_GET_POINTER (assign->variable));
+	      obt_free_template ((OBJ_TEMPLATE *) DB_GET_POINTER (assign->variable));
 	      DB_MAKE_POINTER (assign->variable, NULL);
 	    }
-	  else if (TP_IS_SET_TYPE (av_type)
-		   && DB_GET_SET (assign->variable) != NULL)
+	  else if (TP_IS_SET_TYPE (av_type) && DB_GET_SET (assign->variable) != NULL)
 	    {
 	      /* must go through and free any elements that may be template pointers */
 	      setref = DB_PULL_SET (assign->variable);
@@ -1111,11 +1071,9 @@ obt_free_assignment (OBJ_TEMPASSIGN * assign)
 		  for (i = 0; i < set_size; i++)
 		    {
 		      setobj_get_element_ptr (setref->set, i, &value);
-		      if (value != NULL
-			  && DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
+		      if (value != NULL && DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 			{
-			  obt_free_template ((OBJ_TEMPLATE *)
-					     DB_GET_POINTER (value));
+			  obt_free_template ((OBJ_TEMPLATE *) DB_GET_POINTER (value));
 			  DB_MAKE_POINTER (value, NULL);
 			}
 		    }
@@ -1242,14 +1200,11 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 	    }
 
 	  /* get original class's serial object */
-	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, class_name,
-					  att->header.name);
-	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
-					     auto_increment_name);
+	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, class_name, att->header.name);
+	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name);
 	  if (serial_mop == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OBJ_INVALID_ATTRIBUTE, 1, auto_increment_name);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ATTRIBUTE, 1, auto_increment_name);
 	      goto auto_increment_error;
 	    }
 
@@ -1279,8 +1234,7 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 	  goto auto_increment_error;
 	}
 
-      if (do_get_serial_cached_num (&cached_num, att->auto_increment) !=
-	  NO_ERROR)
+      if (do_get_serial_cached_num (&cached_num, att->auto_increment) != NO_ERROR)
 	{
 	  goto auto_increment_error;
 	}
@@ -1289,15 +1243,12 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
       /* Do not update LAST_INSERT_ID during executing a trigger. */
       if (do_Trigger_involved == true || obt_Last_insert_id_generated == true)
 	{
-	  error =
-	    serial_get_next_value (&val, &att->auto_increment->oid_info.oid,
-				   cached_num, 1, GENERATE_SERIAL);
+	  error = serial_get_next_value (&val, &att->auto_increment->oid_info.oid, cached_num, 1, GENERATE_SERIAL);
 	}
       else
 	{
 	  error =
-	    serial_get_next_value (&val, &att->auto_increment->oid_info.oid,
-				   cached_num, 1, GENERATE_AUTO_INCREMENT);
+	    serial_get_next_value (&val, &att->auto_increment->oid_info.oid, cached_num, 1, GENERATE_AUTO_INCREMENT);
 	  if (error == NO_ERROR)
 	    {
 	      obt_Last_insert_id_generated = true;
@@ -1308,11 +1259,9 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 	  goto auto_increment_error;
 	}
 
-      db_value_domain_init (a->variable, att->type->id,
-			    att->domain->precision, att->domain->scale);
+      db_value_domain_init (a->variable, att->type->id, att->domain->precision, att->domain->scale);
 
-      (void) numeric_db_value_coerce_from_num (&val, a->variable,
-					       &data_status);
+      (void) numeric_db_value_coerce_from_num (&val, a->variable, &data_status);
       if (data_status != NO_ERROR)
 	{
 	  goto auto_increment_error;
@@ -1364,22 +1313,18 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 
       if (template_ptr->base_class != NULL)
 	{
-	  /*
+	  /* 
 	   * first populate with the transformed default values of the
 	   * virtual class
 	   */
-	  for (att = template_ptr->class_->attributes; att != NULL;
-	       att = (SM_ATTRIBUTE *) att->header.next)
+	  for (att = template_ptr->class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	    {
 
 	      /* only update the attribute if it is updatable */
-	      if (mq_is_updatable_attribute (template_ptr->classobj,
-					     att->header.name,
-					     template_ptr->base_classobj))
+	      if (mq_is_updatable_attribute (template_ptr->classobj, att->header.name, template_ptr->base_classobj))
 		{
 		  if (mq_update_attribute
-		      (template_ptr->classobj, att->header.name,
-		       template_ptr->base_classobj, &att->default_value.value,
+		      (template_ptr->classobj, att->header.name, template_ptr->base_classobj, &att->default_value.value,
 		       &base_value, &base_name, DB_AUTH_INSERT))
 		    {
 		      assert (er_errid () != NO_ERROR);
@@ -1387,23 +1332,20 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 		    }
 
 		  /* find the associated attribute definition in the base class */
-		  if (obt_find_attribute
-		      (template_ptr, 1, base_name, &base_att))
+		  if (obt_find_attribute (template_ptr, 1, base_name, &base_att))
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      return er_errid ();
 		    }
 
 		  exists = template_ptr->assignments[base_att->order];
-		  /*
+		  /* 
 		   * if the tranformed virtual default is non-NULL we use it,
 		   * if the underlying base default is non-NULL, we let the virtual
 		   * default override it to NULL
 		   */
 
-		  if (exists == NULL
-		      && (!DB_IS_NULL (&base_value)
-			  || !DB_IS_NULL (&base_att->default_value.value)))
+		  if (exists == NULL && (!DB_IS_NULL (&base_value) || !DB_IS_NULL (&base_att->default_value.value)))
 		    {
 		      /* who owns base_value ? */
 		      a = obt_make_assignment (template_ptr, base_att);
@@ -1425,22 +1367,21 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 		}
 	    }
 
-	  /*
+	  /* 
 	   * change the class pointer to reference the base class rather
 	   * than the virtual class
 	   */
 	  class_ = template_ptr->base_class;
 	}
 
-      /*
+      /* 
        * populate with the standard default values, ignore duplicate
        * assignments if the virtual class has already supplied
        * a value for these.
        */
-      for (att = class_->attributes; att != NULL;
-	   att = (SM_ATTRIBUTE *) att->header.next)
+      for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	{
-	  /*
+	  /* 
 	   * can assume that the type is compatible and does not need
 	   * to be coerced
 	   */
@@ -1476,7 +1417,7 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
   return (NO_ERROR);
 
 memory_error:
-  /*
+  /* 
    * Here we couldn't allocate sufficient memory for the template and its
    * values. Probably the template should be marked as invalid and
    * the caller be forced to throw it away and start again since
@@ -1541,7 +1482,7 @@ obt_edit_object (MOP object)
     }
   if (is_class)
     {
-      /*
+      /* 
        * create a class object template, these are only allowed to
        * update class attributes
        */
@@ -1550,7 +1491,7 @@ obt_edit_object (MOP object)
   else if (!object->is_temp)
     {
       DB_OBJECT *class_;
-      /*
+      /* 
        * Need to make sure we have the class accessible, don't just
        * dereference obj->class. This gets a read lock early but that's ok
        * since we know we're dealing with an instance here.
@@ -1565,8 +1506,7 @@ obt_edit_object (MOP object)
 
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_TEMP_OBJECT,
-	      0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_TEMP_OBJECT, 0);
     }
 
   return template_ptr;
@@ -1614,8 +1554,8 @@ obt_quit (OBJ_TEMPLATE * template_ptr)
  */
 
 int
-obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
-	    int base_assignment, DB_VALUE * value, SM_VALIDATION * valid)
+obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att, int base_assignment, DB_VALUE * value,
+	    SM_VALIDATION * valid)
 {
   int error = NO_ERROR;
   OBJ_TEMPASSIGN *assign;
@@ -1641,16 +1581,15 @@ obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
       /* Don't translate class attributes */
       && template_ptr->object != template_ptr->classobj)
     {
-      /*
+      /* 
        * it's virtual, we could check for assignment validity before calling
        * the value translator
        */
 
       auth = (template_ptr->object == NULL) ? DB_AUTH_INSERT : DB_AUTH_UPDATE;
 
-      if (mq_update_attribute (template_ptr->classobj, att->header.name,
-			       template_ptr->base_classobj, value,
-			       &base_value, &base_name, auth))
+      if (mq_update_attribute
+	  (template_ptr->classobj, att->header.name, template_ptr->base_classobj, value, &base_value, &base_name, auth))
 	{
 	  goto error_exit;
 	}
@@ -1683,9 +1622,7 @@ obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 
   /* check assignment validity */
   object = OBT_BASE_OBJECT (template_ptr);
-  actual =
-    obt_check_assignment (att, value, valid,
-			  template_ptr->force_check_not_null);
+  actual = obt_check_assignment (att, value, valid, template_ptr->force_check_not_null);
   if (actual == NULL)
     {
       goto error_exit;
@@ -1711,7 +1648,7 @@ obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
     {
       if (assign->variable)
 	{
-	  /*
+	  /* 
 	   *
 	   * Clear the contents, but recycle the container.
 	   */
@@ -1725,7 +1662,7 @@ obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 	      goto error_exit;
 	    }
 	}
-      /*
+      /* 
        *
        * Note that this copies the set value, might not want to do this
        * when called by the interpreter under controlled conditions,
@@ -1763,8 +1700,7 @@ error_exit:
  */
 
 static int
-obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
-		int base_assignment, OBJ_TEMPLATE * value)
+obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att, int base_assignment, OBJ_TEMPLATE * value)
 {
   int error = NO_ERROR;
   OBJ_TEMPASSIGN *assign;
@@ -1784,9 +1720,9 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
   if (!base_assignment && template_ptr->base_class != NULL)
     {
       auth = (template_ptr->object == NULL) ? DB_AUTH_INSERT : DB_AUTH_UPDATE;
-      if (mq_update_attribute (template_ptr->classobj, att->header.name,
-			       template_ptr->base_classobj, &dummy_value,
-			       &base_value, &base_name, auth))
+      if (mq_update_attribute
+	  (template_ptr->classobj, att->header.name, template_ptr->base_classobj, &dummy_value, &base_value, &base_name,
+	   auth))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -1802,9 +1738,7 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 
   if (att->domain->type != tp_Type_object)
     {
-      ERROR3 (error, ER_OBJ_ATTRIBUTE_TYPE_CONFLICT,
-	      att->header.name, att->domain->type->name,
-	      tp_Type_object->name);
+      ERROR3 (error, ER_OBJ_ATTRIBUTE_TYPE_CONFLICT, att->header.name, att->domain->type->name, tp_Type_object->name);
     }
   else
     {
@@ -1816,7 +1750,7 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 	}
       else
 	{
-	  /*
+	  /* 
 	   * obt_check_assignment doesn't accept templates, this is a rather
 	   * controled condition, the only thing we need to check for
 	   * is a valid class hierarchy
@@ -1891,8 +1825,7 @@ obt_set (OBJ_TEMPLATE * template_ptr, const char *attname, DB_VALUE * value)
 
       if (DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 	{
-	  error = obt_assign_obt (template_ptr, att, 0,
-				  (OBJ_TEMPLATE *) DB_GET_POINTER (value));
+	  error = obt_assign_obt (template_ptr, att, 0, (OBJ_TEMPLATE *) DB_GET_POINTER (value));
 	}
       else
 	{
@@ -1913,8 +1846,7 @@ obt_set (OBJ_TEMPLATE * template_ptr, const char *attname, DB_VALUE * value)
  *
  */
 int
-obt_set_obt (OBJ_TEMPLATE * template_ptr, const char *attname,
-	     OBJ_TEMPLATE * value)
+obt_set_obt (OBJ_TEMPLATE * template_ptr, const char *attname, OBJ_TEMPLATE * value)
 {
   DB_VALUE v;
 
@@ -1935,8 +1867,7 @@ obt_set_obt (OBJ_TEMPLATE * template_ptr, const char *attname,
  */
 
 int
-obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc,
-	      DB_VALUE * value)
+obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc, DB_VALUE * value)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -1954,12 +1885,11 @@ obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc,
 	  return er_errid ();
 	}
 
-      /*
+      /* 
        * Note that we pass in the outer class MOP rather than an object
        * since we don't necessarily have an object at this point.
        */
-      if (sm_get_descriptor_component (template_ptr->classobj, desc, 1,
-				       &class_, (SM_COMPONENT **) & att))
+      if (sm_get_descriptor_component (template_ptr->classobj, desc, 1, &class_, (SM_COMPONENT **) & att))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -1967,8 +1897,7 @@ obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc,
 
       if (DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 	{
-	  error = obt_assign_obt (template_ptr, att, 0,
-				  (OBJ_TEMPLATE *) DB_GET_POINTER (value));
+	  error = obt_assign_obt (template_ptr, att, 0, (OBJ_TEMPLATE *) DB_GET_POINTER (value));
 	}
       else
 	{
@@ -2001,7 +1930,7 @@ create_template_object (OBJ_TEMPLATE * template_ptr)
 
   class_ = template_ptr->class_;
 
-  /*
+  /* 
    * NOTE: garbage collection can occur in either the call to locator_add_instance
    * or vid_add_virtual_instance (which calls locator_add_instance).  The object
    * we're caching can't contain any object references that aren't rooted
@@ -2024,10 +1953,9 @@ create_template_object (OBJ_TEMPLATE * template_ptr)
       if (obj != NULL)
 	{
 	  /* allocate 2 MOP's */
-	  mop = vid_add_virtual_instance (obj,
-					  template_ptr->classobj,
-					  template_ptr->base_classobj,
-					  template_ptr->base_class);
+	  mop =
+	    vid_add_virtual_instance (obj, template_ptr->classobj, template_ptr->base_classobj,
+				      template_ptr->base_class);
 	}
     }
 
@@ -2079,7 +2007,7 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
   MOP classobj, mop;
   MOBJ obj;
 
-  /*
+  /* 
    * The class and instance was already locked&fetched when the template was created.
    * The class pointer was cached since they are always pinned.
    * To avoid pinning the instance through a scope we don't control,
@@ -2099,7 +2027,7 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
 
   obj = NULL;
 
-  /*
+  /* 
    * First, check to see if this is an INSERT template and if so, create
    * the new object.
    */
@@ -2112,7 +2040,7 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
 	}
     }
 
-  /*
+  /* 
    * Now, fetch/lock the instance and mark the class.
    * At this point, we want to be dealing with only the base object.
    */
@@ -2130,8 +2058,7 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
 
   if (mop != NULL)
     {
-      error = au_fetch_instance_force (mop, &obj, AU_FETCH_UPDATE,
-				       LC_FETCH_MVCC_VERSION);
+      error = au_fetch_instance_force (mop, &obj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION);
       if (error == NO_ERROR)
 	{
 	  /* must call this when updating instances */
@@ -2190,8 +2117,7 @@ obt_convert_set_templates (SETREF * setref, int check_uniques)
 		{
 		  /* apply the template for this element */
 		  template_ptr = (OBJ_TEMPLATE *) DB_GET_POINTER (value);
-		  error = obt_apply_assignments (template_ptr,
-						 check_uniques, 1);
+		  error = obt_apply_assignments (template_ptr, check_uniques, 1);
 		  /* 1 means do eager flushing of (set-nested) proxy objects */
 		  if (error == NO_ERROR && template_ptr != NULL)
 		    {
@@ -2279,27 +2205,22 @@ obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr)
       /* use the base_class if this is a virtual class insert */
       class_ = OBT_BASE_CLASS (template_ptr);
 
-      for (att = class_->ordered_attributes; att != NULL && error == NO_ERROR;
-	   att = att->order_link)
+      for (att = class_->ordered_attributes; att != NULL && error == NO_ERROR; att = att->order_link)
 	{
 
-	  if (((att->flags & SM_ATTFLAG_NON_NULL)
-	       && DB_IS_NULL (&att->default_value.value)
-	       && att->default_value.default_expr == DB_DEFAULT_NONE)
-	      || (att->flags & SM_ATTFLAG_VID))
+	  if (((att->flags & SM_ATTFLAG_NON_NULL) && DB_IS_NULL (&att->default_value.value)
+	       && att->default_value.default_expr == DB_DEFAULT_NONE) || (att->flags & SM_ATTFLAG_VID))
 	    {
 	      ass = template_ptr->assignments[att->order];
 	      if (ass == NULL)
 		{
 		  if (att->flags & SM_ATTFLAG_NON_NULL)
 		    {
-		      ERROR1 (error, ER_OBJ_MISSING_NON_NULL_ASSIGN,
-			      att->header.name);
+		      ERROR1 (error, ER_OBJ_MISSING_NON_NULL_ASSIGN, att->header.name);
 		    }
 		  if (att->flags & SM_ATTFLAG_VID)
 		    {
-		      ERROR1 (error, ER_SM_OBJECT_ID_NOT_SET,
-			      sm_ch_name ((MOBJ) (template_ptr->class_)));
+		      ERROR1 (error, ER_SM_OBJECT_ID_NOT_SET, sm_ch_name ((MOBJ) (template_ptr->class_)));
 		    }
 		}
 	    }
@@ -2319,8 +2240,7 @@ obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr)
  */
 
 static int
-obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null,
-		 int *has_uniques)
+obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null, int *has_uniques)
 {
   int error = NO_ERROR;
   OBJ_TEMPASSIGN *a;
@@ -2342,22 +2262,21 @@ obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null,
   if (!template_ptr->is_class_update)
     {
 
-      /*
+      /* 
        * We locked the object when the template was created, this
        * should still be valid.  If not, it should have been detected
        * by validate_template above.
        * Could create the new instances here but wait for a later step.
        */
 
-      /*
+      /* 
        * Check missing assignments on an insert template, should be able
        * to optimize this, particularly when checking for uninitialized
        * shared attributes.
        */
       if (template_ptr->object == NULL)
 	{
-	  if (obt_Enable_autoincrement == true
-	      && populate_auto_increment (template_ptr))
+	  if (obt_Enable_autoincrement == true && populate_auto_increment (template_ptr))
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
@@ -2402,14 +2321,13 @@ obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null,
 	      av_type = DB_VALUE_TYPE (a->variable);
 	      if (TP_IS_SET_TYPE (av_type))
 		{
-		  error = obt_final_check_set (DB_GET_SET (a->variable),
-					       has_uniques);
+		  error = obt_final_check_set (DB_GET_SET (a->variable), has_uniques);
 		}
 	    }
 	}
 
       /* check unique_constraints, but only if not disabled */
-      /*
+      /* 
        * test & set interface doesn't work right now, full savepoints are instead
        * being performed in obt_update_internal.
        */
@@ -2436,8 +2354,7 @@ obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null,
  */
 
 static int
-obt_apply_assignment (MOP op, SM_ATTRIBUTE * att,
-		      char *mem, DB_VALUE * value, int check_uniques)
+obt_apply_assignment (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value, int check_uniques)
 {
   int error = NO_ERROR;
 
@@ -2481,8 +2398,7 @@ obt_apply_assignment (MOP op, SM_ATTRIBUTE * att,
  */
 
 static int
-obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
-		       int level)
+obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level)
 {
   int error = NO_ERROR;
   OBJ_TEMPASSIGN *a;
@@ -2514,12 +2430,11 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
   /* perform all operations on the base class */
   class_ = OBT_BASE_CLASS (template_ptr);
 
-  /*
+  /* 
    * figure out what kind of triggers to fire here, only do this
    * if the class indicates that there are active triggers
    */
-  trigstate = sm_active_triggers (OBT_BASE_CLASSOBJ (template_ptr),
-				  class_, TR_EVENT_ALL);
+  trigstate = sm_active_triggers (OBT_BASE_CLASSOBJ (template_ptr), class_, TR_EVENT_ALL);
   if (trigstate < 0)
     {
       assert (er_errid () != NO_ERROR);
@@ -2544,8 +2459,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
   temp = NULL;
   if (event != TR_EVENT_NULL)
     {
-      if (tr_prepare_class (&trstate, class_->triggers,
-			    OBT_BASE_CLASSOBJ (template_ptr), event))
+      if (tr_prepare_class (&trstate, class_->triggers, OBT_BASE_CLASSOBJ (template_ptr), event))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -2559,8 +2473,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 		{
 		  continue;
 		}
-	      if (tr_prepare_class (&trstate, a->att->triggers,
-				    OBT_BASE_CLASSOBJ (template_ptr), event))
+	      if (tr_prepare_class (&trstate, a->att->triggers, OBT_BASE_CLASSOBJ (template_ptr), event))
 		{
 		  tr_abort (trstate);
 
@@ -2585,8 +2498,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
   else
     {
       /* make the temporary object for the template */
-      temp = make_temp_object (OBT_BASE_CLASSOBJ (template_ptr),
-			       template_ptr);
+      temp = make_temp_object (OBT_BASE_CLASSOBJ (template_ptr), template_ptr);
       if (temp == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -2621,14 +2533,10 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 		  object = ws_mvcc_latest_version (object);
 		}
 
-	      /* in some cases, the object has been decached in before
-	       * trigger. we need fetch it again.
-	       */
+	      /* in some cases, the object has been decached in before trigger. we need fetch it again. */
 	      if (error == NO_ERROR && object->decached)
 		{
-		  error =
-		    au_fetch_instance_force (object, &mobj, AU_FETCH_UPDATE,
-					     LC_FETCH_MVCC_VERSION);
+		  error = au_fetch_instance_force (object, &mobj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION);
 		  if (error != NO_ERROR)
 		    {
 		      if (trstate != NULL)
@@ -2669,8 +2577,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	}
 
       /* save old value for AFTER triggers */
-      if (trstate != NULL && trstate->triggers != NULL
-	  && event == TR_EVENT_UPDATE)
+      if (trstate != NULL && trstate->triggers != NULL && event == TR_EVENT_UPDATE)
 	{
 	  a->old_value = pr_make_ext_value ();
 	  if (a->old_value == NULL)
@@ -2680,7 +2587,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	    }
 	  else
 	    {
-	      /*
+	      /* 
 	       * this will copy the value which is unfortunate since
 	       * we're just going to throw it away later
 	       */
@@ -2688,29 +2595,26 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	    }
 	}
 
-      /*
+      /* 
        * The following code block is for handling LOB type.
        * If the client is the log applier, it doesn't care LOB type.
        */
       if (db_get_client_type () != DB_CLIENT_TYPE_LOG_APPLIER)
 	{
 
-	  if (a->att->type->id == DB_TYPE_BLOB
-	      || a->att->type->id == DB_TYPE_CLOB)
+	  if (a->att->type->id == DB_TYPE_BLOB || a->att->type->id == DB_TYPE_CLOB)
 	    {
 	      DB_VALUE old;
 	      DB_TYPE value_type;
 
-	      db_value_domain_init (&old, a->att->type->id,
-				    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	      db_value_domain_init (&old, a->att->type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	      error = obj_get_value (object, a->att, mem, NULL, &old);
 	      if (error == NO_ERROR && !db_value_is_null (&old))
 		{
 		  DB_ELO *elo;
 
 		  value_type = db_value_type (&old);
-		  assert (value_type == DB_TYPE_BLOB
-			  || value_type == DB_TYPE_CLOB);
+		  assert (value_type == DB_TYPE_BLOB || value_type == DB_TYPE_CLOB);
 		  elo = db_get_elo (&old);
 		  if (elo)
 		    {
@@ -2725,8 +2629,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 		  char *save_meta_data;
 
 		  value_type = db_value_type (a->variable);
-		  assert (value_type == DB_TYPE_BLOB ||
-			  value_type == DB_TYPE_CLOB);
+		  assert (value_type == DB_TYPE_BLOB || value_type == DB_TYPE_CLOB);
 		  elo_p = db_get_elo (a->variable);
 
 		  assert (sm_ch_name ((MOBJ) class_) != NULL);
@@ -2744,7 +2647,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 		    }
 		}
 	    }			/* if (a->att->type->id == DB_TYPE_BLOB) || */
-	}			/* if (db_get_client_type () !=  */
+	}			/* if (db_get_client_type () != */
 
       if (error == NO_ERROR)
 	{
@@ -2752,20 +2655,17 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	  if (a->obj != NULL)
 	    {
 	      /* this is a template assignment, recurse on this template */
-	      error = obt_apply_assignments (a->obj, check_uniques,
-					     level + 1);
+	      error = obt_apply_assignments (a->obj, check_uniques, level + 1);
 	      if (error == NO_ERROR)
 		{
 		  DB_MAKE_OBJECT (&val, a->obj->object);
-		  error = obt_apply_assignment (object, a->att, mem,
-						&val, check_uniques);
+		  error = obt_apply_assignment (object, a->att, mem, &val, check_uniques);
 		}
 	    }
 	  else
 	    {
 	      /* non-template assignment */
-	      error = obt_apply_assignment (object, a->att, mem,
-					    a->variable, check_uniques);
+	      error = obt_apply_assignment (object, a->att, mem, a->variable, check_uniques);
 	    }
 	}
     }
@@ -2815,7 +2715,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
       free_temp_object (temp);
     }
 
-  /*
+  /* 
    * If this is a virtual instance, we used to flush it back to the server
    * at this point.  But that early flushing is too expensive.  Consider, for
    * example, that all db_template-based proxy inserts go thru this code and
@@ -2824,15 +2724,13 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
    * under what conditions we can safely delay flushing of nested proxy
    * inserts, so we don't.
    */
-  if (level > 0 && error == NO_ERROR && object
-      && object->is_vid && vid_is_base_instance (object))
+  if (level > 0 && error == NO_ERROR && object && object->is_vid && vid_is_base_instance (object))
     {
       error = vid_flush_and_rehash (object);
     }
-  else if (error != NO_ERROR && object
-	   && object->is_vid && vid_is_base_instance (object))
+  else if (error != NO_ERROR && object && object->is_vid && vid_is_base_instance (object))
     {
-      /*
+      /* 
        * if an error occurred in a nested proxy insert such as this
        *   insert into c_h_employee values ('new_e', 123456789,
        *     (insert into c_h_department (dept_no) values (11)),NULL)
@@ -2843,7 +2741,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
       ws_decache (object);
     }
 
-  /*
+  /* 
    * check for unique constraint violations.
    * if the object has uniques and this is an insert, we must
    * flush the object to ensure that the btrees for the uniques
@@ -2852,17 +2750,13 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
    */
   if (error == NO_ERROR)
     {
-      if ((check_uniques && template_ptr->uniques_were_modified)
-	  || template_ptr->fkeys_were_modified
+      if ((check_uniques && template_ptr->uniques_were_modified) || template_ptr->fkeys_were_modified
 	  || template_ptr->function_key_modified || template_ptr->force_flush
-	  || (template_ptr->check_serializable_conflict
-	      && template_ptr->object
+	  || (template_ptr->check_serializable_conflict && template_ptr->object
 	      && !OID_ISTEMP (&(template_ptr->object->oid_info.oid))))
 	{
-	  if ((locator_flush_class (OBT_BASE_CLASSOBJ (template_ptr))
-	       != NO_ERROR)
-	      || (locator_flush_instance (OBT_BASE_OBJECT (template_ptr))
-		  != NO_ERROR))
+	  if ((locator_flush_class (OBT_BASE_CLASSOBJ (template_ptr)) != NO_ERROR)
+	      || (locator_flush_instance (OBT_BASE_OBJECT (template_ptr)) != NO_ERROR))
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
@@ -3005,8 +2899,7 @@ obt_retain_after_finish (OBJ_TEMPLATE * template_ptr)
  */
 
 int
-obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
-		     int check_non_null)
+obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj, int check_non_null)
 {
   int error = NO_ERROR;
   char savepoint_name[80];
@@ -3020,14 +2913,13 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 	{
 	  /* allocate a new traversal counter for the check pass */
 	  begin_template_traversal ();
-	  error = obt_final_check (template_ptr, check_non_null,
-				   &has_uniques);
+	  error = obt_final_check (template_ptr, check_non_null, &has_uniques);
 	  if (error == NO_ERROR)
 	    {
 
 	      if (db_get_client_type () == DB_CLIENT_TYPE_LOG_APPLIER)
 		{
-		  /*
+		  /* 
 		   * Only one of the log_applier can apply replication
 		   * logs at the same time.
 		   * Therefore, log_applier don't need to perform
@@ -3037,22 +2929,14 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 		  /* do nothing */
 		  ;
 		}
-	      else if ((template_ptr->check_uniques && has_uniques)
-		       || template_ptr->fkeys_were_modified
-		       || template_ptr->function_key_modified
-		       || template_ptr->force_flush)
+	      else if ((template_ptr->check_uniques && has_uniques) || template_ptr->fkeys_were_modified
+		       || template_ptr->function_key_modified || template_ptr->force_flush)
 		{
-		  /* Must perform savepoint to handle unique maintenance until the
-		   * time when test & set will work correctly.
-		   *
-		   * We must do a savepoint if this template or any sub template
-		   * has uniques.  The actual unique tests will be done in
-		   * obt_apply_assignments().
-		   */
+		  /* Must perform savepoint to handle unique maintenance until the time when test & set will work
+		   * correctly. We must do a savepoint if this template or any sub template has uniques.  The actual
+		   * unique tests will be done in obt_apply_assignments(). */
 
-		  sprintf (savepoint_name, "%s-%d",
-			   OBJ_INTERNAL_SAVEPOINT_NAME,
-			   template_savepoint_count++);
+		  sprintf (savepoint_name, "%s-%d", OBJ_INTERNAL_SAVEPOINT_NAME, template_savepoint_count++);
 		  if (tran_system_savepoint (savepoint_name) != NO_ERROR)
 		    {
 		      assert (er_errid () != NO_ERROR);
@@ -3063,8 +2947,7 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 
 	      /* allocate another traversal counter for the assignment pass */
 	      begin_template_traversal ();
-	      error = obt_apply_assignments (template_ptr,
-					     template_ptr->check_uniques, 0);
+	      error = obt_apply_assignments (template_ptr, template_ptr->check_uniques, 0);
 	      if (error == NO_ERROR)
 		{
 		  if (newobj != NULL)
@@ -3085,12 +2968,11 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 	}
     }
 
-  /*
+  /* 
    * do we need to rollback due to failure?  We don't rollback if the
    * trans has already been aborted.
    */
-  if (error != NO_ERROR && savepoint_used
-      && error != ER_LK_UNILATERALLY_ABORTED)
+  if (error != NO_ERROR && savepoint_used && error != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_upto_system_savepoint (savepoint_name);
     }
@@ -3148,8 +3030,7 @@ make_temp_object (DB_OBJECT * class_, OBJ_TEMPLATE * object)
 
   if (class_ == NULL || object == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_TEMP_OBJECT,
-	      0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_TEMP_OBJECT, 0);
     }
   else
     {
@@ -3159,7 +3040,7 @@ make_temp_object (DB_OBJECT * class_, OBJ_TEMPLATE * object)
 	  obj->class_mop = class_;
 	  obj->object = (void *) object;
 	  obj->pruning_type = object->pruning_type;
-	  /*
+	  /* 
 	   * We have to be very careful here - we need to mimick the old oid
 	   * for "old" to behave correctly.
 	   */

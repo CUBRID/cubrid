@@ -88,7 +88,7 @@ struct nls_cat_hdr
 struct nls_set_hdr
 {
   INT32 _setno;			/* set number: 0 < x <= NL_SETMAX */
-  INT32 _nmsgs;			/* number of messages in the set  */
+  INT32 _nmsgs;			/* number of messages in the set */
   INT32 _index;			/* index of first msg_hdr in msg_hdr table */
 };
 
@@ -157,9 +157,7 @@ catopen (const char *name, int type)
     }
 
   if (lang == NULL || *lang == '\0' || strlen (lang) > ENCODING_LEN
-      || (lang[0] == '.' && (lang[1] == '\0'
-			     || (lang[1] == '.' && lang[2] == '\0')))
-      || strchr (lang, '/') != NULL)
+      || (lang[0] == '.' && (lang[1] == '\0' || (lang[1] == '.' && lang[2] == '\0'))) || strchr (lang, '/') != NULL)
     {
       lang = (char *) "C";
     }
@@ -305,8 +303,7 @@ catgets (nl_catd catd, int set_id, int msg_id, const char *s)
     }
 
   cat_hdr = (struct nls_cat_hdr *) catd->_data;
-  set_hdr = (struct nls_set_hdr *) (void *) ((char *) catd->_data
-					     + sizeof (struct nls_cat_hdr));
+  set_hdr = (struct nls_set_hdr *) (void *) ((char *) catd->_data + sizeof (struct nls_cat_hdr));
 
   /* binary search, see knuth algorithm b */
   l = 0;
@@ -318,10 +315,9 @@ catgets (nl_catd catd, int set_id, int msg_id, const char *s)
 
       if (r == 0)
 	{
-	  msg_hdr = (struct nls_msg_hdr *)
-	    (void *) ((char *) catd->_data +
-		      sizeof (struct nls_cat_hdr) +
-		      ntohl ((UINT32) cat_hdr->_msg_hdr_offset));
+	  msg_hdr =
+	    (struct nls_msg_hdr *) (void *) ((char *) catd->_data + sizeof (struct nls_cat_hdr) +
+					     ntohl ((UINT32) cat_hdr->_msg_hdr_offset));
 
 	  l = ntohl ((UINT32) set_hdr[i]._index);
 	  u = l + ntohl ((UINT32) set_hdr[i]._nmsgs) - 1;
@@ -331,11 +327,8 @@ catgets (nl_catd catd, int set_id, int msg_id, const char *s)
 	      r = msg_id - ntohl ((UINT32) msg_hdr[i]._msgno);
 	      if (r == 0)
 		{
-		  return ((char *) catd->_data +
-			  sizeof (struct nls_cat_hdr) +
-			  ntohl ((UINT32)
-				 cat_hdr->_msg_txt_offset) +
-			  ntohl ((UINT32) msg_hdr[i]._offset));
+		  return ((char *) catd->_data + sizeof (struct nls_cat_hdr) +
+			  ntohl ((UINT32) cat_hdr->_msg_txt_offset) + ntohl ((UINT32) msg_hdr[i]._offset));
 		}
 	      else if (r < 0)
 		{
@@ -407,8 +400,7 @@ load_msgcat (const char *path)
   /* XXX: path != NULL? */
 
 #if defined(WINDOWS)
-  file_handle = CreateFile (path, GENERIC_READ, FILE_SHARE_READ, NULL,
-			    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  file_handle = CreateFile (path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
   if (file_handle == NULL)
     {
       return NULL;
@@ -419,9 +411,7 @@ load_msgcat (const char *path)
       return NULL;
     }
 
-  map_handle =
-    CreateFileMapping ((HANDLE) file_handle, NULL, PAGE_READONLY, 0,
-		       st.st_size, NULL);
+  map_handle = CreateFileMapping ((HANDLE) file_handle, NULL, PAGE_READONLY, 0, st.st_size, NULL);
   if (map_handle != NULL)
     {
       data = MapViewOfFile (map_handle, FILE_MAP_READ, 0, 0, 0);
@@ -578,8 +568,7 @@ msgcat_message (int cat_id, int set_id, int msg_id)
 
   if (msgcat_System[cat_id].msg_catd == NULL)
     {
-      msgcat_System[cat_id].msg_catd =
-	msgcat_open (msgcat_System[cat_id].name);
+      msgcat_System[cat_id].msg_catd = msgcat_open (msgcat_System[cat_id].name);
       if (msgcat_System[cat_id].msg_catd == NULL)
 	{
 	  return NULL;
@@ -589,12 +578,9 @@ msgcat_message (int cat_id, int set_id, int msg_id)
   msg = msgcat_gets (msgcat_System[cat_id].msg_catd, set_id, msg_id, NULL);
   if (msg == NULL)
     {
-      fprintf (stderr,
-	       "Cannot find message id %d in set id %d from the file %s(%s).",
-	       msg_id, set_id, msgcat_System[cat_id].name,
-	       msgcat_System[cat_id].msg_catd->file);
-      /* to protect the error of copying NULL pointer, return empty string ("")
-       * rather than NULL */
+      fprintf (stderr, "Cannot find message id %d in set id %d from the file %s(%s).", msg_id, set_id,
+	       msgcat_System[cat_id].name, msgcat_System[cat_id].msg_catd->file);
+      /* to protect the error of copying NULL pointer, return empty string ("") rather than NULL */
       return empty;
     }
 
@@ -635,8 +621,7 @@ msgcat_open (const char *name)
   msg_catd = (MSG_CATD) malloc (sizeof (*msg_catd));
   if (msg_catd == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (*msg_catd));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*msg_catd));
       catclose (catd);
       return NULL;
     }

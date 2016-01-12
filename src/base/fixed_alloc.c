@@ -53,8 +53,7 @@ static int
 compute_rec_size (int nominal_size)
 {
   return db_align_to (MAX ((int) sizeof (REC_LINK), nominal_size),
-		      MAX (db_alignment (nominal_size),
-			   db_alignment ((int) sizeof (REC_LINK *))));
+		      MAX (db_alignment (nominal_size), db_alignment ((int) sizeof (REC_LINK *))));
 }
 
 /*

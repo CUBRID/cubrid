@@ -55,19 +55,15 @@
 static MHT_TABLE *pt_Label_table = NULL;
 
 static int pt_is_table_op (const PT_OP_TYPE op);
-static PT_NODE *pt_query_to_set_table (PARSER_CONTEXT * parser,
-				       PT_NODE * node);
-static DB_VALUE *pt_set_table_to_db (PARSER_CONTEXT * parser,
-				     PT_NODE * subquery_in,
-				     DB_VALUE * db_value, int is_seq);
+static PT_NODE *pt_query_to_set_table (PARSER_CONTEXT * parser, PT_NODE * node);
+static DB_VALUE *pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in, DB_VALUE * db_value, int is_seq);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int pt_make_label_list (const void *key, void *data, void *args);
 #endif /* ENABLE_UNUSED_FUNCTION */
 static int pt_free_label (const void *key, void *data, void *args);
 static int pt_associate_label_with_value (const char *label, DB_VALUE * val);
-static void pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
-				       PT_NODE * tree, DB_VALUE * db_values,
-				       int values_count, bool having_serial);
+static void pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_values, int values_count,
+				       bool having_serial);
 
 
 /*
@@ -137,8 +133,7 @@ pt_query_to_set_table (PARSER_CONTEXT * parser, PT_NODE * node)
  */
 
 static DB_VALUE *
-pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in,
-		    DB_VALUE * db_value, int is_seq)
+pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in, DB_VALUE * db_value, int is_seq)
 {
   DB_VALUE *vals = NULL, *e_val;
   QFILE_LIST_ID *list_id = NULL;
@@ -175,8 +170,7 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in,
       degree = pt_length_of_select_list (select_list, EXCLUDE_HIDDEN_COLUMNS);
       if ((vals = (DB_VALUE *) malloc (degree * sizeof (DB_VALUE))) == NULL)
 	{
-	  PT_ERRORmf (parser, subquery, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (DB_VALUE));
+	  PT_ERRORmf (parser, subquery, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (DB_VALUE));
 	  error = -1;
 	}
       for (col = 0; vals && col < degree; col++)
@@ -187,7 +181,7 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in,
 
   if (!(error < 0))
     {
-      /*
+      /* 
        * the  above select resulted in a list file put on subquery->etc
        * open it and add the elements to the set.
        */
@@ -207,8 +201,7 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in,
 	    {
 	      error = cursor_get_tuple_value_list (&cursor_id, degree, vals);
 
-	      for (e_val = vals, col = 0;
-		   error >= 0 && col < degree; e_val++, col++, idx++)
+	      for (e_val = vals, col = 0; error >= 0 && col < degree; e_val++, col++, idx++)
 		{
 		  if (is_seq)
 		    {
@@ -290,9 +283,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
   switch (tree->node_type)
     {
     case PT_DOT_:
-      if ((arg1 = tree->info.dot.arg1) != NULL
-	  && (arg2 = tree->info.dot.arg2) != NULL
-	  && arg2->node_type == PT_NAME
+      if ((arg1 = tree->info.dot.arg1) != NULL && (arg2 = tree->info.dot.arg2) != NULL && arg2->node_type == PT_NAME
 	  && (nam2 = arg2->info.name.original) != NULL)
 	{
 	  pt_evaluate_tree (parser, arg1, &val1, 1);
@@ -305,24 +296,18 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 	    {
 	      result = true;
 	    }
-	  else if (DB_VALUE_TYPE (&val1) == DB_TYPE_OBJECT
-		   && (obj1 = DB_GET_OBJECT (&val1)) != NULL)
+	  else if (DB_VALUE_TYPE (&val1) == DB_TYPE_OBJECT && (obj1 = DB_GET_OBJECT (&val1)) != NULL)
 	    {
 	      int error;
 
 	      error = db_get (obj1, nam2, val);
-	      if (error == ER_AU_SELECT_FAILURE ||
-		  error == ER_AU_AUTHORIZATION_FAILURE)
+	      if (error == ER_AU_SELECT_FAILURE || error == ER_AU_AUTHORIZATION_FAILURE)
 		{
 		  DB_OBJECT *class_op;
 
 		  class_op = db_get_class (obj1);
-		  PT_ERRORmf2 (parser, arg1, MSGCAT_SET_PARSER_RUNTIME,
-			       MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
-			       "Select",
-			       ((class_op)
-				? db_get_class_name (class_op)
-				: pt_short_print (parser, arg1)));
+		  PT_ERRORmf2 (parser, arg1, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "Select",
+			       ((class_op) ? db_get_class_name (class_op) : pt_short_print (parser, arg1)));
 		}
 
 	      result = (error == NO_ERROR);
@@ -354,8 +339,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 	    }
 	  else
 	    {
-	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-			  MSGCAT_RUNTIME_UNKNOWN_VARIABLE, label);
+	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_UNKNOWN_VARIABLE, label);
 	    }
 	  break;
 
@@ -367,8 +351,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 	case PT_TRIGGER_OID:
 	  db_make_object (val, obj1);
 	  /* check if this is really a path expression */
-	  if (((nam2 = tree->info.name.original) != NULL)
-	      && (nam2[0] != '\0'))
+	  if (((nam2 = tree->info.name.original) != NULL) && (nam2[0] != '\0'))
 	    {
 	      result = (db_get (obj1, nam2, val) == NO_ERROR);
 	    }
@@ -385,8 +368,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 	    }
 	  else if (!is_class)
 	    {
-	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-			  MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 			  pt_short_print (parser, tree));
 	    }
 	  break;
@@ -411,8 +393,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 	      }
 	    else
 	      {
-		PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-			    MSGCAT_RUNTIME_UNKNOWN_SHARED_ATTR, label);
+		PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_UNKNOWN_SHARED_ATTR, label);
 	      }
 	  }
 	  break;
@@ -422,8 +403,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 	default:
 	  if (db_get (obj1, label, val) != NO_ERROR)
 	    {
-	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-			  MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 			  pt_short_print (parser, tree));
 	    }
 	}
@@ -446,8 +426,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
  *   cnt(in): number of columns in the requested tuple
  */
 int
-pt_get_one_tuple_from_list_id (PARSER_CONTEXT * parser,
-			       PT_NODE * tree, DB_VALUE * vals, int cnt)
+pt_get_one_tuple_from_list_id (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * vals, int cnt)
 {
   QFILE_LIST_ID *list_id;
   CURSOR_ID cursor_id;
@@ -456,14 +435,11 @@ pt_get_one_tuple_from_list_id (PARSER_CONTEXT * parser,
 
   assert (parser != NULL);
 
-  if (!tree
-      || !vals
-      || !(list_id = (QFILE_LIST_ID *) (tree->etc))
+  if (!tree || !vals || !(list_id = (QFILE_LIST_ID *) (tree->etc))
       || !(select_list = pt_get_select_list (parser, tree)))
     return result;
 
-  if (cursor_open (&cursor_id, list_id, false,
-		   tree->info.query.oids_included))
+  if (cursor_open (&cursor_id, list_id, false, tree->info.query.oids_included))
     {
       /* succesfully opened a cursor */
       cursor_id.query_id = parser->query_id;
@@ -471,7 +447,7 @@ pt_get_one_tuple_from_list_id (PARSER_CONTEXT * parser,
       if (cursor_next_tuple (&cursor_id) != DB_CURSOR_SUCCESS
 	  || cursor_get_tuple_value_list (&cursor_id, cnt, vals) != NO_ERROR)
 	{
-	  /*
+	  /* 
 	   * This isn't really an error condition, especially when we are in an
 	   * esql context.  Just say that we didn't succeed, which should be
 	   * enough to keep upper levels from trying to do anything with the
@@ -498,8 +474,7 @@ pt_get_one_tuple_from_list_id (PARSER_CONTEXT * parser,
 		}
 	    }
 
-	  PT_ERRORmf (parser, select_list, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_YIELDS_GT_ONE_ROW, query_prefix);
+	  PT_ERRORmf (parser, select_list, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_YIELDS_GT_ONE_ROW, query_prefix);
 	}
       else
 	{
@@ -530,9 +505,8 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
   /* create label table if non-existent */
   if (!pt_Label_table)
     {
-      pt_Label_table = mht_create ("Interpreter labels", 70,
-				   intl_identifier_mht_1strlowerhash,
-				   mht_compare_identifiers_equal);
+      pt_Label_table =
+	mht_create ("Interpreter labels", 70, intl_identifier_mht_1strlowerhash, mht_compare_identifiers_equal);
 
       if (!pt_Label_table)
 	{
@@ -569,15 +543,11 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
     }
   else
     {
-      /* Sigh, the old key value was allocated too and needs to be freed or
-       * reused. We don't currently have a way to get the current key pointer
-       * in the table. mht_put has the undocumented behavior that if the key
-       * already exists in the table, it will continue to use the old key and
-       * ignore the one passed in. We rely on this here by passing in the label
-       * string which we don't own. If this mht_put behavior changes, then
-       * the only safe way will be to add a new mht_ function that allows us
-       * to get a pointer to the key so we can free it.
-       */
+      /* Sigh, the old key value was allocated too and needs to be freed or reused. We don't currently have a way to
+       * get the current key pointer in the table. mht_put has the undocumented behavior that if the key already exists 
+       * in the table, it will continue to use the old key and ignore the one passed in. We rely on this here by
+       * passing in the label string which we don't own. If this mht_put behavior changes, then the only safe way will
+       * be to add a new mht_ function that allows us to get a pointer to the key so we can free it. */
       if (mht_put_data (pt_Label_table, (char *) label, (void *) val) == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -622,8 +592,7 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
  */
 
 int
-pt_associate_label_with_value_check_reference (const char *label,
-					       DB_VALUE * val)
+pt_associate_label_with_value_check_reference (const char *label, DB_VALUE * val)
 {
   int is_ref = pt_is_reference_to_reusable_oid (val);
   if (is_ref < 0)
@@ -632,8 +601,7 @@ pt_associate_label_with_value_check_reference (const char *label,
     }
   if (is_ref > 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
       return ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED;
     }
   return pt_associate_label_with_value (label, val);
@@ -820,13 +788,10 @@ pt_find_labels (DB_NAMELIST ** list)
 
   if (pt_Label_table)
     {
-      /* notice that we are checking for true instead of NO_ERROR.  The
-       * function mht_map() requires true for normal processing.  Non-true
-       * values should be considered errors.  We change true to NO_ERROR for
-       * our return value here so the caller doesn't get confused.
-       */
-      if ((error = mht_map (pt_Label_table,
-			    pt_make_label_list, (void *) list)) != NO_ERROR)
+      /* notice that we are checking for true instead of NO_ERROR.  The function mht_map() requires true for normal
+       * processing.  Non-true values should be considered errors.  We change true to NO_ERROR for our return value
+       * here so the caller doesn't get confused. */
+      if ((error = mht_map (pt_Label_table, pt_make_label_list, (void *) list)) != NO_ERROR)
 	{
 	  nlist_free (*list);
 	  *list = NULL;
@@ -860,16 +825,11 @@ do_drop_variable (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return NO_ERROR;
     }
 
-  for (lbl = stmt->info.drop_variable.var_names;
-       lbl && lbl->node_type == PT_NAME; lbl = lbl->next)
+  for (lbl = stmt->info.drop_variable.var_names; lbl && lbl->node_type == PT_NAME; lbl = lbl->next)
     {
-      if (!pt_Label_table
-	  || (mht_rem (pt_Label_table, lbl->info.name.original,
-		       pt_free_label, NULL) != NO_ERROR))
+      if (!pt_Label_table || (mht_rem (pt_Label_table, lbl->info.name.original, pt_free_label, NULL) != NO_ERROR))
 	{
-	  PT_ERRORmf (parser, lbl, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_VAR_NOT_DEFINED,
-		      lbl->info.name.original);
+	  PT_ERRORmf (parser, lbl, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_VAR_NOT_DEFINED, lbl->info.name.original);
 	}
     }
 
@@ -944,8 +904,7 @@ parser_final (void)
  */
 
 void
-pt_evaluate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
-		  DB_VALUE * db_values, int values_count)
+pt_evaluate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_values, int values_count)
 {
   pt_evaluate_tree_internal (parser, tree, db_values, values_count, false);
 }
@@ -961,8 +920,7 @@ pt_evaluate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
  *   set_insert(in):
  */
 void
-pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
-			   DB_VALUE * db_values, int values_count,
+pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_values, int values_count,
 			   bool having_serial)
 {
   int error = NO_ERROR;
@@ -988,13 +946,11 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
     {
       return;
     }
-  if (values_count > 1 && tree->node_type != PT_SELECT
-      && tree->node_type != PT_INTERSECTION
+  if (values_count > 1 && tree->node_type != PT_SELECT && tree->node_type != PT_INTERSECTION
       && tree->node_type != PT_UNION && tree->node_type != PT_DIFFERENCE)
     {
       /* Only a query can return more than one value */
-      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-		  MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 		  pt_short_print (parser, tree));
       return;
     }
@@ -1012,11 +968,9 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 
     case PT_DOT_:
     case PT_NAME:
-      if (!pt_eval_path_expr (parser, tree, db_values)
-	  && !pt_has_error (parser))
+      if (!pt_eval_path_expr (parser, tree, db_values) && !pt_has_error (parser))
 	{
-	  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+	  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 		      pt_short_print (parser, tree));
 	}
       break;
@@ -1027,8 +981,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	int index = tree->info.tuple_value.index;
 	if (cursor_id == NULL)
 	  {
-	    PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-			MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+	    PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 			pt_short_print (parser, tree));
 	    break;
 	  }
@@ -1049,29 +1002,23 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
       else
 	{
 	  /* evaluate original node */
-	  pt_evaluate_tree_having_serial (parser,
-					  tree->info.insert_value.
-					  original_node, db_values,
-					  values_count);
+	  pt_evaluate_tree_having_serial (parser, tree->info.insert_value.original_node, db_values, values_count);
 	}
       break;
 
     case PT_EXPR:
       if (tree->info.expr.op == PT_FUNCTION_HOLDER)
 	{
-	  if (pt_evaluate_function (parser, tree->info.expr.arg1, db_values)
-	      != NO_ERROR)
+	  if (pt_evaluate_function (parser, tree->info.expr.arg1, db_values) != NO_ERROR)
 	    {
-	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-			  MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 			  pt_short_print (parser, tree));
 	    }
 	  break;
 	}
       if (tree->or_next)
 	{
-	  /* The expression tree has 'or_next' filed. Evaluate it after
-	     converting to 'OR' tree. */
+	  /* The expression tree has 'or_next' filed. Evaluate it after converting to 'OR' tree. */
 
 	  /* save 'or_next' */
 	  or_next = tree->or_next;
@@ -1099,18 +1046,15 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	{			/* if (tree->or_next) */
 	  op = tree->info.expr.op;
 
-	  /* If the an operand is a query, and the context is a table query
-	     (quantified comparison), rewrite the query into something we can
-	     actually handle here, a table to set conversion. */
+	  /* If the an operand is a query, and the context is a table query (quantified comparison), rewrite the query
+	   * into something we can actually handle here, a table to set conversion. */
 	  if (pt_is_table_op (op))
 	    {
-	      tree->info.expr.arg2 =
-		pt_query_to_set_table (parser, tree->info.expr.arg2);
+	      tree->info.expr.arg2 = pt_query_to_set_table (parser, tree->info.expr.arg2);
 	    }
 	  else if (op == PT_EXISTS)
 	    {
-	      tree->info.expr.arg1 =
-		pt_query_to_set_table (parser, tree->info.expr.arg1);
+	      tree->info.expr.arg1 = pt_query_to_set_table (parser, tree->info.expr.arg1);
 	    }
 
 	  arg1 = tree->info.expr.arg1;
@@ -1132,8 +1076,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      if (!having_serial)
 		{
 		  /* Serial not allowed in current context */
-		  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-			      MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+		  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 			      pt_short_print (parser, tree));
 		  break;
 		}
@@ -1143,8 +1086,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 		  serial_oid_p = db_identifier (serial_mop);
 		  if (serial_oid_p != NULL)
 		    {
-		      error =
-			do_get_serial_cached_num (&cached_num, serial_mop);
+		      error = do_get_serial_cached_num (&cached_num, serial_mop);
 		    }
 		  else
 		    {
@@ -1154,9 +1096,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 		    {
 		      if (op == PT_CURRENT_VALUE)
 			{
-			  error = serial_get_current_value (db_values,
-							    serial_oid_p,
-							    cached_num);
+			  error = serial_get_current_value (db_values, serial_oid_p, cached_num);
 			}
 		      else
 			{
@@ -1166,18 +1106,14 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 			  num_alloc = DB_GET_INTEGER (val);
 			  if (num_alloc < 1)
 			    {
-			      PT_ERRORm (parser, tree,
-					 MSGCAT_SET_PARSER_SEMANTIC,
+			      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
 					 MSGCAT_SEMANTIC_SERIAL_NUM_ALLOC_INVALID);
 			      return;
 			    }
 			  else
 			    {
-			      error = serial_get_next_value (db_values,
-							     serial_oid_p,
-							     cached_num,
-							     num_alloc,
-							     GENERATE_SERIAL);
+			      error =
+				serial_get_next_value (db_values, serial_oid_p, cached_num, num_alloc, GENERATE_SERIAL);
 			    }
 			}
 		    }
@@ -1187,8 +1123,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 		      switch (er_errid ())
 			{
 			case ER_DB_NO_MODIFICATIONS:
-			  PT_ERRORm (parser, tree, MSGCAT_SET_ERROR,
-				     -(ER_DB_NO_MODIFICATIONS));
+			  PT_ERRORm (parser, tree, MSGCAT_SET_ERROR, -(ER_DB_NO_MODIFICATIONS));
 			  return;
 			case ER_QPROC_DB_SERIAL_NOT_FOUND:
 			  error_code = MSGCAT_SEMANTIC_SERIAL_NOT_DEFINED;
@@ -1206,14 +1141,12 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 			  break;
 			}
 
-		      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-				  error_code, arg1->info.name.original);
+		      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, error_code, arg1->info.name.original);
 		    }
 		}
 	      else
 		{
-		  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			      MSGCAT_SEMANTIC_SERIAL_NOT_DEFINED,
+		  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SERIAL_NOT_DEFINED,
 			      arg1->info.name.original);
 		}
 	      return;
@@ -1232,9 +1165,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	    {
 	      pt_evaluate_tree_having_serial (parser, arg1, &opd1, 1);
 	    }
-	  type1 =
-	    (PT_TYPE_ENUM) pt_db_to_type_enum ((DB_TYPE) opd1.domain.
-					       general_info.type);
+	  type1 = (PT_TYPE_ENUM) pt_db_to_type_enum ((DB_TYPE) opd1.domain.general_info.type);
 	  if (arg2 && !pt_has_error (parser))
 	    {
 	      pt_evaluate_tree_having_serial (parser, arg2, &opd2, 1);
@@ -1242,10 +1173,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	    }
 	  else
 	    {
-	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET :
-		DB_GET_STRING_CODESET (&opd1);
-	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION :
-		DB_GET_STRING_COLLATION (&opd1);
+	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET : DB_GET_STRING_CODESET (&opd1);
+	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION : DB_GET_STRING_COLLATION (&opd1);
 
 	      switch (op)
 		{
@@ -1254,14 +1183,12 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 		case PT_RTRIM:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 		    {
-		      db_make_varnchar (&opd2, 1, (char *) " ", 1, opd1_cs,
-					opd1_coll);
+		      db_make_varnchar (&opd2, 1, (char *) " ", 1, opd1_cs, opd1_coll);
 		      type2 = PT_TYPE_VARNCHAR;
 		    }
 		  else
 		    {
-		      db_make_varchar (&opd2, 1, (char *) " ", 1, opd1_cs,
-				       opd1_coll);
+		      db_make_varchar (&opd2, 1, (char *) " ", 1, opd1_cs, opd1_coll);
 		      type2 = PT_TYPE_VARCHAR;
 		    }
 		  break;
@@ -1281,10 +1208,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	    }
 	  else
 	    {
-	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET :
-		DB_GET_STRING_CODESET (&opd1);
-	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION :
-		DB_GET_STRING_COLLATION (&opd1);
+	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET : DB_GET_STRING_CODESET (&opd1);
+	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION : DB_GET_STRING_COLLATION (&opd1);
 
 	      switch (op)
 		{
@@ -1292,14 +1217,12 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 		case PT_TRANSLATE:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 		    {
-		      db_make_varnchar (&opd3, 1, (char *) "", 0, opd1_cs,
-					opd1_coll);
+		      db_make_varnchar (&opd3, 1, (char *) "", 0, opd1_cs, opd1_coll);
 		      type3 = PT_TYPE_VARNCHAR;
 		    }
 		  else
 		    {
-		      db_make_varchar (&opd3, 1, (char *) "", 0, opd1_cs,
-				       opd1_coll);
+		      db_make_varchar (&opd3, 1, (char *) "", 0, opd1_cs, opd1_coll);
 		      type3 = PT_TYPE_VARCHAR;
 		    }
 		  break;
@@ -1307,14 +1230,12 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 		case PT_RPAD:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 		    {
-		      db_make_varnchar (&opd3, 1, (char *) " ", 1, opd1_cs,
-					opd1_coll);
+		      db_make_varnchar (&opd3, 1, (char *) " ", 1, opd1_cs, opd1_coll);
 		      type2 = PT_TYPE_VARNCHAR;
 		    }
 		  else
 		    {
-		      db_make_varchar (&opd3, 1, (char *) " ", 1, opd1_cs,
-				       opd1_coll);
+		      db_make_varchar (&opd3, 1, (char *) " ", 1, opd1_cs, opd1_coll);
 		      type2 = PT_TYPE_VARCHAR;
 		    }
 		  break;
@@ -1332,27 +1253,22 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	    }
 
 	  /* try to evaluate the expression */
-	  if (op == PT_TRIM || op == PT_EXTRACT
-	      || op == PT_SUBSTRING || op == PT_EQ)
+	  if (op == PT_TRIM || op == PT_EXTRACT || op == PT_SUBSTRING || op == PT_EQ)
 	    {
 	      qualifier = tree->info.expr.qualifier;
 	    }
 	  domain = pt_node_to_db_domain (parser, tree, NULL);
 	  domain = tp_domain_cache (domain);
 
-	  /* PT_BETWEEN_xxxx, PT_ASSIGN, PT_LIKE_ESCAPE do not need to be
-	     evaluated and will return 0 from 'pt_evaluate_db_value_expr()' */
-	  if (!pt_is_between_range_op (op)
-	      && op != PT_ASSIGN && op != PT_LIKE_ESCAPE
-	      && op != PT_CURRENT_VALUE)
+	  /* PT_BETWEEN_xxxx, PT_ASSIGN, PT_LIKE_ESCAPE do not need to be evaluated and will return 0 from
+	   * 'pt_evaluate_db_value_expr()' */
+	  if (!pt_is_between_range_op (op) && op != PT_ASSIGN && op != PT_LIKE_ESCAPE && op != PT_CURRENT_VALUE)
 	    {
-	      if (!pt_evaluate_db_value_expr (parser, tree, op, &opd1,
-					      opd2_set_null ? NULL : &opd2,
-					      &opd3, db_values, domain,
-					      arg1, arg2, arg3, qualifier))
+	      if (!pt_evaluate_db_value_expr
+		  (parser, tree, op, &opd1, opd2_set_null ? NULL : &opd2, &opd3, db_values, domain, arg1, arg2, arg3,
+		   qualifier))
 		{
-		  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-			      MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+		  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 			      pt_short_print (parser, tree));
 		}
 	    }
@@ -1386,11 +1302,9 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
       error = do_select (parser, temp);
       if (error == NO_ERROR)
 	{
-	  /* If there isn't a value from the select, but the select
-	     succeeded, return a NULL instead of an error.
-	     It might break something if an error were returned.    */
-	  if (pt_get_one_tuple_from_list_id (parser, temp, db_values,
-					     values_count) == 0)
+	  /* If there isn't a value from the select, but the select succeeded, return a NULL instead of an error. It
+	   * might break something if an error were returned.  */
+	  if (pt_get_one_tuple_from_list_id (parser, temp, db_values, values_count) == 0)
 	    {
 	      for (r = 0; r < values_count; r++)
 		{
@@ -1436,9 +1350,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	    }
 	  else
 	    {
-	      /* do_insert returns at most one value, inserts with selects
-	       * are not allowed to be nested
-	       */
+	      /* do_insert returns at most one value, inserts with selects are not allowed to be nested */
 	      (void) db_value_clone (val, db_values);
 	    }
 	  db_value_free (val);
@@ -1476,21 +1388,17 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
     case PT_FUNCTION:
       switch (tree->info.function.function_type)
 	{
-	  /* we have a set/multiset/sequence constructor function call.
-	   * build the set/multiset/sequence using the function arguments
-	   * as the    set/multiset/sequence element building blocks.
-	   */
+	  /* we have a set/multiset/sequence constructor function call. build the set/multiset/sequence using the
+	   * function arguments as the set/multiset/sequence element building blocks. */
 	case F_SET:
 	  db_make_set (db_values, db_set_create_basic (NULL, NULL));
 	  if (!db_get_set (db_values))
 	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      return;
 	    }
 
-	  if (pt_set_value_to_db (parser, &tree->info.function.arg_list,
-				  db_values, &tree->data_type) == NULL
+	  if (pt_set_value_to_db (parser, &tree->info.function.arg_list, db_values, &tree->data_type) == NULL
 	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
@@ -1501,13 +1409,11 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  db_make_multiset (db_values, db_set_create_multi (NULL, NULL));
 	  if (!db_get_set (db_values))
 	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      return;
 	    }
 
-	  if (pt_set_value_to_db (parser, &tree->info.function.arg_list,
-				  db_values, &tree->data_type) == NULL
+	  if (pt_set_value_to_db (parser, &tree->info.function.arg_list, db_values, &tree->data_type) == NULL
 	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
@@ -1518,13 +1424,11 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  db_make_sequence (db_values, db_seq_create (NULL, NULL, 0));
 	  if (!db_get_set (db_values))
 	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      return;
 	    }
 
-	  if (pt_seq_value_to_db (parser, tree->info.function.arg_list,
-				  db_values, &tree->data_type) == NULL
+	  if (pt_seq_value_to_db (parser, tree->info.function.arg_list, db_values, &tree->data_type) == NULL
 	      && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
@@ -1535,14 +1439,11 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  db_make_set (db_values, db_set_create_basic (NULL, NULL));
 	  if (!db_get_set (db_values))
 	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      return;
 	    }
 
-	  if (pt_set_table_to_db (parser, tree->info.function.arg_list,
-				  db_values, 0) == NULL
-	      && !pt_has_error (parser))
+	  if (pt_set_table_to_db (parser, tree->info.function.arg_list, db_values, 0) == NULL && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1552,13 +1453,10 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  db_make_multiset (db_values, db_set_create_multi (NULL, NULL));
 	  if (!db_get_set (db_values))
 	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      return;
 	    }
-	  if (pt_set_table_to_db (parser, tree->info.function.arg_list,
-				  db_values, 0) == NULL
-	      && !pt_has_error (parser))
+	  if (pt_set_table_to_db (parser, tree->info.function.arg_list, db_values, 0) == NULL && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1568,13 +1466,10 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  db_make_sequence (db_values, db_seq_create (NULL, NULL, 0));
 	  if (!db_get_set (db_values))
 	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      return;
 	    }
-	  if (pt_set_table_to_db (parser, tree->info.function.arg_list,
-				  db_values, 1) == NULL
-	      && !pt_has_error (parser))
+	  if (pt_set_table_to_db (parser, tree->info.function.arg_list, db_values, 1) == NULL && !pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
@@ -1586,8 +1481,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
 	}
 
     default:
-      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
-		  MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 		  pt_short_print (parser, tree));
       break;
     }
@@ -1602,8 +1496,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree,
  *   values_count(in):
  */
 void
-pt_evaluate_tree_having_serial (PARSER_CONTEXT * parser, PT_NODE * tree,
-				DB_VALUE * db_value, int vals_cnt)
+pt_evaluate_tree_having_serial (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_value, int vals_cnt)
 {
   pt_evaluate_tree_internal (parser, tree, db_value, vals_cnt, true);
 }

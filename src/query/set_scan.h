@@ -29,7 +29,6 @@
 
 #include "scan_manager.h"
 
-extern SCAN_CODE qproc_next_set_scan (THREAD_ENTRY * thread_p,
-				      SCAN_ID * s_id);
+extern SCAN_CODE qproc_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 
 #endif /* _SET_SCAN_H_ */

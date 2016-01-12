@@ -63,29 +63,23 @@ struct adj_array
   float rate;			/* growth rate (>= 1.0) */
 };
 
-extern const char *adj_ar_concat_strings (const char *string1,
-					  const char *string2, ...);
+extern const char *adj_ar_concat_strings (const char *string1, const char *string2, ...);
 
 extern ADJ_ARRAY *adj_ar_new (int element_size, int min, float growth_rate);
 
 extern void adj_ar_free (ADJ_ARRAY * adj_array_p);
 
-extern int adj_ar_reset (ADJ_ARRAY * adj_array_p, int element_size, int min,
-			 float growth_rate);
+extern int adj_ar_reset (ADJ_ARRAY * adj_array_p, int element_size, int min, float growth_rate);
 
-extern int adj_ar_initialize (ADJ_ARRAY * adj_array_p, const void *initial,
-			      int initial_length);
+extern int adj_ar_initialize (ADJ_ARRAY * adj_array_p, const void *initial, int initial_length);
 
-extern int adj_ar_replace (ADJ_ARRAY * adj_array_p, const void *src,
-			   int src_length, int start, int end);
+extern int adj_ar_replace (ADJ_ARRAY * adj_array_p, const void *src, int src_length, int start, int end);
 
 extern int adj_ar_remove (ADJ_ARRAY * adj_array_p, int start, int end);
 
-extern int adj_ar_insert (ADJ_ARRAY * adj_array_p, const void *src,
-			  int src_length, int start);
+extern int adj_ar_insert (ADJ_ARRAY * adj_array_p, const void *src, int src_length, int start);
 
-extern int adj_ar_append (ADJ_ARRAY * adj_array_p, const void *src,
-			  int src_length);
+extern int adj_ar_append (ADJ_ARRAY * adj_array_p, const void *src, int src_length);
 
 extern void *adj_ar_get_buffer (const ADJ_ARRAY * adj_array_p);
 

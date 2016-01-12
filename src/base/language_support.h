@@ -143,16 +143,13 @@ struct db_charset
 typedef struct coll_opt COLL_OPT;
 struct coll_opt
 {
-  /* enabled by default; disabled for case insensitive collations and
-   * collations with expansions */
+  /* enabled by default; disabled for case insensitive collations and collations with expansions */
   bool allow_like_rewrite;
 
-  /* enabled by default; disabled for collations having identical sort key
-   * for different strings (case insensitive collations).
-   * In order to produce specific sort keys, an UCA collation should be
-   * configured with maximum sorting level. But, even in this case there
-   * are some acceptatable codepoints which have the same weight. These
-   * codepoints ussually represent the same graphic symbol. */
+  /* enabled by default; disabled for collations having identical sort key for different strings (case insensitive
+   * collations). In order to produce specific sort keys, an UCA collation should be configured with maximum sorting
+   * level. But, even in this case there are some acceptatable codepoints which have the same weight. These codepoints
+   * ussually represent the same graphic symbol. */
   bool allow_index_opt;
 
   /* enabled by default; disabled for collations with expansions */
@@ -174,26 +171,19 @@ struct lang_collation
 
   COLL_DATA coll;		/* collation data */
   /* string compare */
-  int (*fastcmp) (const LANG_COLLATION * lang_coll,
-		  const unsigned char *string1, const int size1,
+  int (*fastcmp) (const LANG_COLLATION * lang_coll, const unsigned char *string1, const int size1,
 		  const unsigned char *string2, const int size2);
-  int (*strmatch) (const LANG_COLLATION * lang_coll, bool is_match,
-		   const unsigned char *string1, int size1,
-		   const unsigned char *string2, int size2,
-		   const unsigned char *escape,
-		   const bool has_last_escape, int *str1_match_size);
+  int (*strmatch) (const LANG_COLLATION * lang_coll, bool is_match, const unsigned char *string1, int size1,
+		   const unsigned char *string2, int size2, const unsigned char *escape, const bool has_last_escape,
+		   int *str1_match_size);
   /* function to get collatable character sequence (in sort order) */
-  int (*next_coll_seq) (const LANG_COLLATION * lang_coll,
-			const unsigned char *seq, const int size,
+  int (*next_coll_seq) (const LANG_COLLATION * lang_coll, const unsigned char *seq, const int size,
 			unsigned char *next_seq, int *len_next);
   /* find common key where str1 <= key < str2 (BTREE string prefix) */
-  int (*split_key) (const LANG_COLLATION * lang_coll, const bool is_desc,
-		    const unsigned char *str1, const int size1,
-		    const unsigned char *str2, const int size2,
-		    unsigned char **key, int *byte_size);
+  int (*split_key) (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1, const int size1,
+		    const unsigned char *str2, const int size2, unsigned char **key, int *byte_size);
   /* compute hash value pseudokey (mht_2str_pseudo_key) */
-  unsigned int (*mht2str) (const LANG_COLLATION * lang_coll,
-			   const unsigned char *str, const int size);
+  unsigned int (*mht2str) (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
   /* collation data init function */
   void (*init_coll) (LANG_COLLATION * lang_coll);
 };
@@ -246,9 +236,7 @@ struct lang_locale_data
   char *checksum;
 
   void (*initloc) (LANG_LOCALE_DATA * ld);	/* locale data init function */
-  bool is_user_data;		/* TRUE  if lang data is loaded from DLL/so
-				 * FALSE if built-in
-				 */
+  bool is_user_data;		/* TRUE if lang data is loaded from DLL/so FALSE if built-in */
 };
 
 typedef struct lang_coll_compat LANG_COLL_COMPAT;
@@ -295,25 +283,14 @@ extern "C"
 #endif
   extern bool lang_check_identifier (const char *name, int length);
   extern const LANG_LOCALE_DATA *lang_locale (void);
-  extern const LANG_LOCALE_DATA *lang_get_specific_locale
-    (const INTL_LANG lang, const INTL_CODESET codeset);
-  extern const LANG_LOCALE_DATA *lang_get_first_locale_for_lang
-    (const INTL_LANG lang);
-  extern int lang_get_lang_id_from_name (const char *lang_name,
-					 INTL_LANG * lang_id);
+  extern const LANG_LOCALE_DATA *lang_get_specific_locale (const INTL_LANG lang, const INTL_CODESET codeset);
+  extern const LANG_LOCALE_DATA *lang_get_first_locale_for_lang (const INTL_LANG lang);
+  extern int lang_get_lang_id_from_name (const char *lang_name, INTL_LANG * lang_id);
   extern const char *lang_get_lang_name_from_id (const INTL_LANG lang_id);
-  extern int lang_set_flag_from_lang (const char *lang_str,
-				      bool has_user_format,
-				      bool has_user_lang, int *flag);
-  extern int lang_set_flag_from_lang_id (const INTL_LANG lang,
-					 bool has_user_format,
-					 bool has_user_lang, int *flag);
-  extern INTL_LANG lang_get_lang_id_from_flag (const int flag,
-					       bool * has_user_format,
-					       bool * has_user_lang);
-  extern const char *lang_date_format_parse (const INTL_LANG lang_id,
-					     const INTL_CODESET codeset,
-					     const DB_TYPE type,
+  extern int lang_set_flag_from_lang (const char *lang_str, bool has_user_format, bool has_user_lang, int *flag);
+  extern int lang_set_flag_from_lang_id (const INTL_LANG lang, bool has_user_format, bool has_user_lang, int *flag);
+  extern INTL_LANG lang_get_lang_id_from_flag (const int flag, bool * has_user_format, bool * has_user_lang);
+  extern const char *lang_date_format_parse (const INTL_LANG lang_id, const INTL_CODESET codeset, const DB_TYPE type,
 					     INTL_CODESET * format_codeset);
   extern char lang_digit_grouping_symbol (const INTL_LANG lang_id);
   extern char lang_digit_fractional_symbol (const INTL_LANG lang_id);
@@ -323,27 +300,18 @@ extern "C"
   extern LANG_COLLATION *lang_get_collation_by_name (const char *coll_name);
   extern int lang_collation_count (void);
   extern const char *lang_get_codeset_name (int codeset_id);
-  extern const ALPHABET_DATA *lang_user_alphabet_w_coll
-    (const int collation_id);
+  extern const ALPHABET_DATA *lang_user_alphabet_w_coll (const int collation_id);
   extern TEXT_CONVERSION *lang_get_txt_conv (void);
   extern const char *lang_charset_name (const INTL_CODESET codeset);
   extern const char *lang_charset_cubrid_name (const INTL_CODESET codeset);
 
-  extern int lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data,
-						 bool is_match,
-						 const unsigned char *str1,
-						 const int size1,
-						 const unsigned char *str2,
-						 const int size2,
-						 const unsigned char *escape,
-						 const bool has_last_escape,
+  extern int lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data, bool is_match, const unsigned char *str1,
+						 const int size1, const unsigned char *str2, const int size2,
+						 const unsigned char *escape, const bool has_last_escape,
 						 int *str1_match_size);
-  extern int lang_get_charset_env_string (char *buf, int buf_size,
-					  const char *lang_name,
-					  const INTL_CODESET charset);
+  extern int lang_get_charset_env_string (char *buf, int buf_size, const char *lang_name, const INTL_CODESET charset);
 #if !defined (SERVER_MODE)
-  extern int lang_charset_name_to_id (const char *name,
-				      INTL_CODESET * codeset);
+  extern int lang_charset_name_to_id (const char *name, INTL_CODESET * codeset);
   extern int lang_db_put_charset (void);
   extern INTL_CODESET lang_get_client_charset (void);
   extern int lang_get_client_collation (void);
@@ -354,28 +322,18 @@ extern "C"
   extern INTL_CODESET lang_charset_cubrid_name_to_id (const char *name);
   extern const char *lang_charset_introducer (const INTL_CODESET codeset);
   extern int lang_load_library (const char *lib_file, void **handle);
-  extern int lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld,
-					     void *lib_handle,
-					     const LOCALE_FILE * lf,
+  extern int lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld, void *lib_handle, const LOCALE_FILE * lf,
 					     bool is_load_for_dump);
-  extern int lang_load_count_coll_from_lib (int *count_coll, void *lib_handle,
-					    const LOCALE_FILE * lf);
-  extern int lang_load_get_coll_name_from_lib (const int coll_pos,
-					       char **coll_name,
-					       void *lib_handle,
+  extern int lang_load_count_coll_from_lib (int *count_coll, void *lib_handle, const LOCALE_FILE * lf);
+  extern int lang_load_get_coll_name_from_lib (const int coll_pos, char **coll_name, void *lib_handle,
 					       const LOCALE_FILE * lf);
-  extern int lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle,
-				      const LOCALE_FILE * lf);
+  extern int lang_load_coll_from_lib (COLL_DATA * cd, void *lib_handle, const LOCALE_FILE * lf);
 
   extern UNICODE_NORMALIZATION *lang_get_generic_unicode_norm (void);
   extern void lang_set_generic_unicode_norm (UNICODE_NORMALIZATION * norm);
-  extern int lang_check_coll_compat (const LANG_COLL_COMPAT * coll_array,
-				     const int coll_cnt,
-				     const char *client_text,
+  extern int lang_check_coll_compat (const LANG_COLL_COMPAT * coll_array, const int coll_cnt, const char *client_text,
 				     const char *server_text);
-  extern int lang_check_locale_compat (const LANG_LOCALE_COMPAT * loc_array,
-				       const int loc_cnt,
-				       const char *client_text,
+  extern int lang_check_locale_compat (const LANG_LOCALE_COMPAT * loc_array, const int loc_cnt, const char *client_text,
 				       const char *server_text);
 #ifdef __cplusplus
 }

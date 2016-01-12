@@ -70,7 +70,7 @@ envvar_check_environment (void)
       size_t len = strlen (cubrid_tmp);
       size_t limit = 108 - 12;
       /* 108 = sizeof (((struct sockaddr_un *) 0)->sun_path) */
-      /* 12  = ("CUBRID65384" + 1) */
+      /* 12 = ("CUBRID65384" + 1) */
       envvar_name (name, _ENVVAR_MAX_LENGTH, "TMP");
       if (!IS_ABS_PATH (cubrid_tmp))
 	{
@@ -104,8 +104,7 @@ envvar_prefix (void)
 #if !defined (WINDOWS)
 	  if (access (envvar_Root, F_OK) != 0)
 	    {
-	      fprintf (stderr, env_msg[ENV_INVALID_DIR],
-		       envvar_Prefix_name, envvar_Root);
+	      fprintf (stderr, env_msg[ENV_INVALID_DIR], envvar_Prefix_name, envvar_Root);
 	      fflush (stderr);
 	      exit (1);
 	    }
@@ -417,8 +416,7 @@ envvar_javadir_file (char *path, size_t size, const char *filename)
 }
 
 char *
-envvar_localedir_file (char *path, size_t size, const char *langpath,
-		       const char *filename)
+envvar_localedir_file (char *path, size_t size, const char *langpath, const char *filename)
 {
   assert (filename != NULL);
 
@@ -568,8 +566,7 @@ envvar_codepagedir_file (char *path, size_t size, const char *filename)
     {
       envvar_root ();
     }
-  snprintf (path, size, "%s/locales/data/codepages/%s", envvar_Root,
-	    filename);
+  snprintf (path, size, "%s/locales/data/codepages/%s", envvar_Root, filename);
 #else
   snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
 #endif

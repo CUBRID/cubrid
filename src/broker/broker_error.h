@@ -88,8 +88,7 @@
 #define	UW_SET_ERROR_CODE(code, os_errno) \
 		uw_set_error_code(__FILE__, __LINE__, (code), (os_errno))
 
-extern void uw_set_error_code (const char *file_name, int line_no,
-			       int error_code, int os_errno);
+extern void uw_set_error_code (const char *file_name, int line_no, int error_code, int os_errno);
 extern int uw_get_error_code (void);
 extern int uw_get_os_error_code (void);
 extern const char *uw_get_error_message (int error_code, int os_errno);

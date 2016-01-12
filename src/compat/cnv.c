@@ -197,17 +197,12 @@ static int us_time_value (int *the_hour, int *the_min, int *the_sec);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static const char *us_alt_date_string (int month, int day, int year);
 static int us_alt_date_value (int *the_month, int *the_day, int *the_year);
-static const char *us_mtime_string (int hour, int minute, int second,
-				    int millisecond);
-static int us_mtime_value (int *the_hour, int *the_min, int *the_sec,
-			   int *the_msec);
+static const char *us_mtime_string (int hour, int minute, int second, int millisecond);
+static int us_mtime_value (int *the_hour, int *the_min, int *the_sec, int *the_msec);
 static const char *us_timestamp_string (const DB_TIMESTAMP * the_timestamp);
-static int us_timestamp_value (int *the_month, int *the_day,
-			       int *the_year, int *the_hour,
-			       int *the_min, int *the_sec);
+static int us_timestamp_value (int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min, int *the_sec);
 static const char *us_datetime_string (const DB_DATETIME * the_datetime);
-static int us_datetime_value (int *the_month, int *the_day, int *the_year,
-			      int *the_hour, int *the_min, int *the_sec,
+static int us_datetime_value (int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min, int *the_sec,
 			      int *the_msec);
 #endif
 
@@ -217,19 +212,14 @@ static int ko_date_value (int *the_month, int *the_day, int *the_year);
 static const char *ko_time_string (const DB_TIME * the_time);
 static int ko_time_value (int *the_hour, int *the_min, int *the_sec);
 #if defined(ENABLE_UNUSED_FUNCTION)
-static const char *ko_mtime_string (int hour, int minute, int second,
-				    int millisecond);
+static const char *ko_mtime_string (int hour, int minute, int second, int millisecond);
 static const char *ko_alt_date_string (int month, int day, int year);
 static int ko_alt_date_value (int *the_month, int *the_day, int *the_year);
-static int ko_mtime_value (int *the_hour, int *the_min, int *the_sec,
-			   int *the_msec);
+static int ko_mtime_value (int *the_hour, int *the_min, int *the_sec, int *the_msec);
 static const char *ko_timestamp_string (const DB_TIMESTAMP * the_timestamp);
-static int ko_timestamp_value (int *the_month, int *the_day,
-			       int *the_year, int *the_hour,
-			       int *the_min, int *the_sec);
+static int ko_timestamp_value (int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min, int *the_sec);
 static const char *ko_datetime_string (const DB_DATETIME * the_datetime);
-static int ko_datetime_value (int *the_month, int *the_day, int *the_year,
-			      int *the_hour, int *the_min, int *the_sec,
+static int ko_datetime_value (int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min, int *the_sec,
 			      int *the_msec);
 static wchar_t ko_euc_year_wc (void);
 static wchar_t ko_euc_month_wc (void);
@@ -256,8 +246,7 @@ static int local_date_value (int *, int *, int *);
 static const char *local_time_string (const DB_TIME * the_time);
 static int local_time_value (int *, int *, int *);
 #if defined(ENABLE_UNUSED_FUNCTION)
-static const char *local_timestamp_string (const DB_TIMESTAMP *
-					   the_timestamp);
+static const char *local_timestamp_string (const DB_TIMESTAMP * the_timestamp);
 static int local_timestamp_value (int *, int *, int *, int *, int *, int *);
 static const char *local_long_month_name (int month);
 static const char *local_long_weekday_name (int weekday);
@@ -266,8 +255,7 @@ static const char *local_short_weekday_name (int weekday);
 static const char *local_datetime_string (const DB_DATETIME * the_timestamp);
 static const char *local_alt_date_string (int month, int day, int year);
 static int local_alt_date_value (int *, int *, int *);
-static int local_datetime_value (int *the_month, int *the_day, int *the_year,
-				 int *the_hour, int *the_min, int *the_sec,
+static int local_datetime_value (int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min, int *the_sec,
 				 int *the_msec);
 #endif
 
@@ -279,29 +267,20 @@ static INTL_ZONE cnv_currency_zone (DB_CURRENCY currency);
 static ADJ_ARRAY *cnv_get_string_buffer (int nchars);
 static const char *cnv_currency_symbol (DB_CURRENCY currency);
 static bool cnv_valid_timestamp (DB_DATE * the_date, DB_TIME * the_time);
-static int fmt_validate (const char *format,
-			 FMT_LEX_MODE mode, FMT_TOKEN_TYPE token_type,
-			 DB_TYPE data_type);
+static int fmt_validate (const char *format, FMT_LEX_MODE mode, FMT_TOKEN_TYPE token_type, DB_TYPE data_type);
 #endif /* ENABLE_UNUSED_FUNCTION */
 static bool cnv_valid_currency (DB_CURRENCY currency);
 
-static int fmt_integral_digits (FORMAT_DIGIT digit_type, int ndigits,
-				bool sign_required, bool thousands,
+static int fmt_integral_digits (FORMAT_DIGIT digit_type, int ndigits, bool sign_required, bool thousands,
 				double *the_value, int *nfound);
-static int fmt_integral_value (FORMAT_DIGIT type, int ndigits,
-			       bool sign_required, bool thousands,
-			       double *the_value);
-static int fmt_fractional_value (FORMAT_DIGIT type, int ndigits,
-				 double *the_value);
-static int fmt_fractional_digits (FORMAT_DIGIT type, int ndigits,
-				  double *the_value, int *nfound);
+static int fmt_integral_value (FORMAT_DIGIT type, int ndigits, bool sign_required, bool thousands, double *the_value);
+static int fmt_fractional_value (FORMAT_DIGIT type, int ndigits, double *the_value);
+static int fmt_fractional_digits (FORMAT_DIGIT type, int ndigits, double *the_value, int *nfound);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void fmt_add_thousands (ADJ_ARRAY * string, int *position);
 static void fmt_drop_thousands (ADJ_ARRAY * string, int *position);
-static void fmt_add_integral (ADJ_ARRAY *, int *, int, FORMAT_DIGIT,
-			      FMT_LEX_MODE);
-static void fmt_drop_integral (ADJ_ARRAY * string, int *pos, int ndigits,
-			       FMT_LEX_MODE mode);
+static void fmt_add_integral (ADJ_ARRAY *, int *, int, FORMAT_DIGIT, FMT_LEX_MODE);
+static void fmt_drop_integral (ADJ_ARRAY * string, int *pos, int ndigits, FMT_LEX_MODE mode);
 static int fmt_decimals (ADJ_ARRAY * string);
 static int fmt_fraction_position (ADJ_ARRAY * string, int start);
 static bool fmt_add_decimal (ADJ_ARRAY * string, int *position);
@@ -311,8 +290,7 @@ static void fmt_add_currency (ADJ_ARRAY *, int *, MONETARY_FORMAT *);
 #endif /* ENABLE_UNUSED_FUNCTION */
 static void cnvutil_cleanup (void);
 
-static const char *fmt_date_string (const DB_DATE * the_date,
-				    const char *descriptor);
+static const char *fmt_date_string (const DB_DATE * the_date, const char *descriptor);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static const char *fmt_year_string (int year, const char *descriptor);
 static const char *fmt_month_string (int month, const char *descriptor);
@@ -324,95 +302,61 @@ static int fmt_year_value (const char *descriptor, int *the_year);
 static int fmt_weekday_value (const char *descriptor, int *the_day);
 static DB_DATE fmt_weekday_date (int month, int day, int year, int weekday);
 #endif
-static int fmt_date_value (const char *descriptor, int *the_month,
-			   int *the_day, int *the_year);
+static int fmt_date_value (const char *descriptor, int *the_month, int *the_day, int *the_year);
 
-static const char *fmt_time_string (const DB_TIME * the_time,
-				    const char *descriptor);
+static const char *fmt_time_string (const DB_TIME * the_time, const char *descriptor);
 #if defined (ENABLE_UNUSED_FUNCTION)
-static const char *fmt_hour_string (const DB_TIME * the_time,
-				    const char *descriptor);
+static const char *fmt_hour_string (const DB_TIME * the_time, const char *descriptor);
 static int fmt_hour_value (const char *descriptor, int *the_hour);
-static const char *fmt_minute_string (const DB_TIME * the_time,
-				      const char *descriptor);
-static const char *fmt_second_string (const DB_TIME * the_time,
-				      const char *descriptor);
+static const char *fmt_minute_string (const DB_TIME * the_time, const char *descriptor);
+static const char *fmt_second_string (const DB_TIME * the_time, const char *descriptor);
 #endif
-static int fmt_time_value (const char *descriptor, int *the_hour,
-			   int *the_min, int *the_sec);
-static const char *fmt_timestamp_string (const DB_TIMESTAMP * the_timestamp,
-					 const char *descriptor);
-static int fmt_timestamp_value (const char *descriptor, int *the_month,
-				int *the_day, int *the_year, int *the_hour,
+static int fmt_time_value (const char *descriptor, int *the_hour, int *the_min, int *the_sec);
+static const char *fmt_timestamp_string (const DB_TIMESTAMP * the_timestamp, const char *descriptor);
+static int fmt_timestamp_value (const char *descriptor, int *the_month, int *the_day, int *the_year, int *the_hour,
 				int *the_min, int *the_sec);
 static const FMT_TOKEN *tfmt_new (const char *format);
 
 static bool ffmt_valid_char (FMT_TOKEN * token);
 static void ffmt_new (FLOAT_FORMAT * ffmt, const char *format);
-static const char *ffmt_value (FLOAT_FORMAT * ffmt, const char *string,
-			       double *the_double);
+static const char *ffmt_value (FLOAT_FORMAT * ffmt, const char *string, double *the_double);
 #if defined (ENABLE_UNUSED_FUNCTION)
-static int ffmt_print (FLOAT_FORMAT * ffmt, double the_double, char *string,
-		       int max_size);
-static int mfmt_print (MONETARY_FORMAT * mfmt, double the_double,
-		       char *string, int max_size);
+static int ffmt_print (FLOAT_FORMAT * ffmt, double the_double, char *string, int max_size);
+static int mfmt_print (MONETARY_FORMAT * mfmt, double the_double, char *string, int max_size);
 #endif
 static bool mfmt_valid_char (FMT_TOKEN * token);
-static void mfmt_new (MONETARY_FORMAT * mfmt, const char *format,
-		      DB_CURRENCY currency_type);
-static const char *mfmt_value (MONETARY_FORMAT * mfmt, const char *string,
-			       double *the_double);
+static void mfmt_new (MONETARY_FORMAT * mfmt, const char *format, DB_CURRENCY currency_type);
+static const char *mfmt_value (MONETARY_FORMAT * mfmt, const char *string, double *the_double);
 
 static bool ifmt_valid_char (FMT_TOKEN * token);
 static void ifmt_new (INTEGER_FORMAT * ifmt, const char *format);
-static const char *ifmt_value (INTEGER_FORMAT * ifmt, const char *string,
-			       int *the_integer);
-static const char *bifmt_value (INTEGER_FORMAT * bifmt, const char *string,
-				DB_BIGINT * the_bigint);
-static const char *ifmt_numeric_value (INTEGER_FORMAT * ifmt,
-				       const char *string, int *the_integer);
-static const char *bifmt_numeric_value (INTEGER_FORMAT * ifmt,
-					const char *string,
-					DB_BIGINT * the_bigint);
+static const char *ifmt_value (INTEGER_FORMAT * ifmt, const char *string, int *the_integer);
+static const char *bifmt_value (INTEGER_FORMAT * bifmt, const char *string, DB_BIGINT * the_bigint);
+static const char *ifmt_numeric_value (INTEGER_FORMAT * ifmt, const char *string, int *the_integer);
+static const char *bifmt_numeric_value (INTEGER_FORMAT * ifmt, const char *string, DB_BIGINT * the_bigint);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int ifmt_text_numeric (INTEGER_FORMAT * ifmt, ADJ_ARRAY * string);
-static const char *ifmt_text_value (INTEGER_FORMAT * ifmt, const char *string,
-				    int *the_integer);
-static const char *bifmt_text_value (INTEGER_FORMAT * ifmt,
-				     const char *string,
-				     DB_BIGINT * the_bigint);
-static int ifmt_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint,
-		       char *string, int max_size);
-static int ifmt_text_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint,
-			    char *string, int max_size);
-static void ifmt_numeric_text (INTEGER_FORMAT * ifmt,
-			       ADJ_ARRAY * numeric_string);
-static int ifmt_numeric_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint,
-			       char *string, int max_size);
+static const char *ifmt_text_value (INTEGER_FORMAT * ifmt, const char *string, int *the_integer);
+static const char *bifmt_text_value (INTEGER_FORMAT * ifmt, const char *string, DB_BIGINT * the_bigint);
+static int ifmt_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string, int max_size);
+static int ifmt_text_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string, int max_size);
+static void ifmt_numeric_text (INTEGER_FORMAT * ifmt, ADJ_ARRAY * numeric_string);
+static int ifmt_numeric_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string, int max_size);
 #endif
 static bool bfmt_valid_char (FMT_TOKEN * token);
 static void bfmt_new (BIT_STRING_FORMAT * bfmt, const char *format);
-static const char *bfmt_value (BIT_STRING_FORMAT bfmt,
-			       const char *string, DB_VALUE * the_db_bit);
-static int bfmt_print (BIT_STRING_FORMAT * bfmt,
-		       const DB_VALUE * the_db_bit,
-		       char *string, int max_size);
+static const char *bfmt_value (BIT_STRING_FORMAT bfmt, const char *string, DB_VALUE * the_db_bit);
+static int bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
 
-static int num_fmt_print (FLOAT_FORMAT * ffmt, const DB_VALUE * the_numeric,
-			  char *string, int max_size);
+static int num_fmt_print (FLOAT_FORMAT * ffmt, const DB_VALUE * the_numeric, char *string, int max_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
-static const char *num_fmt_value (FLOAT_FORMAT * ffmt, const char *string,
-				  DB_VALUE * the_numeric);
-static int nfmt_integral_value (FORMAT_DIGIT digit_type, int ndigits,
-				bool sign_required, bool thousands,
+static const char *num_fmt_value (FLOAT_FORMAT * ffmt, const char *string, DB_VALUE * the_numeric);
+static int nfmt_integral_value (FORMAT_DIGIT digit_type, int ndigits, bool sign_required, bool thousands,
 				char *the_value);
-static int nfmt_integral_digits (FORMAT_DIGIT digit_type, int ndigits,
-				 bool sign_required, bool thousands,
+static int nfmt_integral_digits (FORMAT_DIGIT digit_type, int ndigits, bool sign_required, bool thousands,
 				 char *the_value, int *nfound);
-static int nfmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits,
-				   char *the_value, int *nfound);
-static int nfmt_fractional_value (FORMAT_DIGIT digit_type, int ndigits,
-				  char *the_value);
+static int nfmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits, char *the_value, int *nfound);
+static int nfmt_fractional_value (FORMAT_DIGIT digit_type, int ndigits, char *the_value);
 #endif
 static int fmt_max_digits;
 
@@ -569,10 +513,8 @@ us_date_value (int *the_month, int *the_day, int *the_year)
       FMT_TOKEN_TYPE type;
 
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY ||
-	  type == FT_TIME_DIGITS_0) ||
-	(*the_month = atoi (token.text)) > 12 || *the_month < 1;
+      bad_value = !(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY || type == FT_TIME_DIGITS_0)
+	|| (*the_month = atoi (token.text)) > 12 || *the_month < 1;
       if (bad_value)
 	{
 	  break;
@@ -585,10 +527,8 @@ us_date_value (int *the_month, int *the_day, int *the_year)
 	}
 
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY ||
-	  type == FT_TIME_DIGITS_0) ||
-	(*the_day = atoi (token.text)) > 31 || *the_day < 1;
+      bad_value = !(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY || type == FT_TIME_DIGITS_0)
+	|| (*the_day = atoi (token.text)) > 31 || *the_day < 1;
       if (bad_value)
 	{
 	  break;
@@ -601,9 +541,7 @@ us_date_value (int *the_month, int *the_day, int *the_year)
 	}
 
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS_0 ||
-	  type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY);
+      bad_value = !(type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY);
       if (bad_value)
 	{
 	  break;
@@ -692,9 +630,7 @@ us_time_string (const DB_TIME * the_time)
 
   db_time_decode ((DB_TIME *) the_time, &hour, &min, &sec);
 
-  sprintf (time_string, "%d:%02d:%02d %s",
-	   hour % 12 ? hour % 12 : 12,
-	   min, sec, local_am_pm_string (the_time));
+  sprintf (time_string, "%d:%02d:%02d %s", hour % 12 ? hour % 12 : 12, min, sec, local_am_pm_string (the_time));
   assert (strlen (time_string) < sizeof time_string);
 
   return time_string;
@@ -721,10 +657,8 @@ us_time_value (int *the_hour, int *the_min, int *the_sec)
   do
     {
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY ||
-	  type == FT_TIME_DIGITS_0) ||
-	(*the_hour = atoi (token.text)) > 23 || *the_hour < 0;
+      bad_value = !(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY || type == FT_TIME_DIGITS_0)
+	|| (*the_hour = atoi (token.text)) > 23 || *the_hour < 0;
       if (bad_value)
 	{
 	  break;
@@ -755,20 +689,17 @@ us_time_value (int *the_hour, int *the_min, int *the_sec)
 	}
 
       /* Skip blank "pattern" character. */
-      if (strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE))
-	  == 0)
+      if (strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)) == 0)
 	{
-	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE),
-			   FL_LOCAL_TIME);
+	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
 	}
       else
 	{
 	  cnv_fmt_analyze (cnv_fmt_next_token (), FL_LOCAL_TIME);
 	}
 
-      /* we used to use local_am_pm_value() here, but it wasn't flexible enough
-       * to handle 24 hour time strings (no "AM" or "PM" designator).
-       */
+      /* we used to use local_am_pm_value() here, but it wasn't flexible enough to handle 24 hour time strings (no "AM" 
+       * or "PM" designator). */
 
       type = cnv_fmt_lex (&token);
 
@@ -818,8 +749,7 @@ us_mtime_string (int hour, int minute, int second, int millisecond)
 {
   static char time_string[FMT_MAX_MTIME_STRING * MB_LEN_MAX + 1];
 
-  sprintf (time_string, "%d:%02d:%02d.%03d %s",
-	   hour % 12 ? hour % 12 : 12, minute, second, millisecond,
+  sprintf (time_string, "%d:%02d:%02d.%03d %s", hour % 12 ? hour % 12 : 12, minute, second, millisecond,
 	   hour > 12 ? local_pm () : local_am ());
   assert (strlen (time_string) < sizeof time_string);
 
@@ -845,8 +775,7 @@ us_mtime_value (int *the_hour, int *the_min, int *the_sec, int *the_msec)
   bool pm;
 
   type = cnv_fmt_lex (&token);
-  if (!(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY
-	|| type == FT_TIME_DIGITS_0)
+  if (!(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY || type == FT_TIME_DIGITS_0)
       || (*the_hour = atoi (token.text)) > 23 || *the_hour < 0)
     {
       error = CNV_ERR_BAD_TIME;
@@ -900,17 +829,15 @@ us_mtime_value (int *the_hour, int *the_min, int *the_sec, int *the_msec)
   /* Skip blank "pattern" character. */
   if (strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)) == 0)
     {
-      cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE),
-		       FL_LOCAL_TIME);
+      cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
     }
   else
     {
       cnv_fmt_analyze (cnv_fmt_next_token (), FL_LOCAL_TIME);
     }
 
-  /* we used to use local_am_pm_value() here, but it wasn't flexible enough
-   * to handle 24 hour time strings (no "AM" or "PM" designator).
-   */
+  /* we used to use local_am_pm_value() here, but it wasn't flexible enough to handle 24 hour time strings (no "AM" or
+   * "PM" designator). */
 
   type = cnv_fmt_lex (&token);
   if (type == FT_NONE)
@@ -955,12 +882,10 @@ us_timestamp_string (const DB_TIMESTAMP * the_timestamp)
   int day;
   int year;
 
-  db_timestamp_decode_ses ((DB_TIMESTAMP *) the_timestamp, &the_date,
-			   &the_time);
+  db_timestamp_decode_ses ((DB_TIMESTAMP *) the_timestamp, &the_date, &the_time);
   db_date_decode (&the_date, &month, &day, &year);
 
-  sprintf (timestamp_string, "%s %s",
-	   us_date_string (month, day, year), us_time_string (&the_time));
+  sprintf (timestamp_string, "%s %s", us_date_string (month, day, year), us_time_string (&the_time));
   assert (strlen (timestamp_string) < sizeof timestamp_string);
 
   return timestamp_string;
@@ -980,8 +905,7 @@ us_timestamp_string (const DB_TIMESTAMP * the_timestamp)
  * the_sec(out) :
  */
 static int
-us_timestamp_value (int *the_month, int *the_day, int *the_year,
-		    int *the_hour, int *the_min, int *the_sec)
+us_timestamp_value (int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min, int *the_sec)
 {
   bool bad_value = false;
   int error = 0;
@@ -995,14 +919,12 @@ us_timestamp_value (int *the_month, int *the_day, int *the_year,
 	}
 
       /* Skip blank "pattern" character. */
-      bad_value =
-	strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE));
+      bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE));
       if (bad_value)
 	{
 	  break;
 	}
-      cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE),
-		       FL_LOCAL_TIME);
+      cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
 
       error = us_time_value (the_hour, the_min, the_sec);
 
@@ -1032,8 +954,7 @@ us_datetime_string (const DB_DATETIME * the_datetime)
   int month, day, year;
   int hour, minute, second, millisecond;
 
-  db_datetime_decode ((DB_DATETIME *) the_datetime, &month, &day, &year,
-		      &hour, &minute, &second, &millisecond);
+  db_datetime_decode ((DB_DATETIME *) the_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
 
   sprintf (datetime_string, "%s %s", us_date_string (month, day, year),
 	   us_mtime_string (hour, minute, second, millisecond));
@@ -1055,8 +976,8 @@ us_datetime_string (const DB_DATETIME * the_datetime)
  * the_sec(out) :
  */
 static int
-us_datetime_value (int *the_month, int *the_day, int *the_year,
-		   int *the_hour, int *the_min, int *the_sec, int *the_msec)
+us_datetime_value (int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min, int *the_sec,
+		   int *the_msec)
 {
   bool bad_value = false;
   int error = 0;
@@ -1070,14 +991,12 @@ us_datetime_value (int *the_month, int *the_day, int *the_year,
 	}
 
       /* Skip blank "pattern" character. */
-      bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE,
-			   strlen (LOCAL_SPACE));
+      bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE));
       if (bad_value)
 	{
 	  break;
 	}
-      cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE),
-		       FL_LOCAL_TIME);
+      cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
 
       error = us_mtime_value (the_hour, the_min, the_sec, the_msec);
 
@@ -1182,8 +1101,7 @@ ko_alt_date_string (int month, int day, int year)
 {
   static char date_string[FMT_MAX_DATE_STRING * MB_LEN_MAX + 1];
 
-  sprintf (date_string, "%04d%s%02d%s%02d%s",
-	   year, KOREAN_EUC_YEAR_SYMBOL, month, KOREAN_EUC_MONTH_SYMBOL, day,
+  sprintf (date_string, "%04d%s%02d%s%02d%s", year, KOREAN_EUC_YEAR_SYMBOL, month, KOREAN_EUC_MONTH_SYMBOL, day,
 	   KOREAN_EUC_DAY_SYMBOL);
   assert (strlen (date_string) < sizeof date_string);
 
@@ -1212,9 +1130,7 @@ ko_date_value (int *the_month, int *the_day, int *the_year)
       FMT_TOKEN_TYPE type;
 
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS_0 ||
-	  type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY);
+      bad_value = !(type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY);
       if (bad_value)
 	{
 	  break;
@@ -1253,11 +1169,8 @@ ko_date_value (int *the_month, int *the_day, int *the_year)
 	}
 
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_0 ||
-	  type == FT_TIME_DIGITS_ANY ||
-	  type == FT_TIME_DIGITS_BLANK) ||
-	(*the_month = atoi (token.text)) > 12 || *the_month < 1;
+      bad_value = !(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS_ANY
+		    || type == FT_TIME_DIGITS_BLANK) || (*the_month = atoi (token.text)) > 12 || *the_month < 1;
       if (bad_value)
 	{
 	  break;
@@ -1270,11 +1183,8 @@ ko_date_value (int *the_month, int *the_day, int *the_year)
 	}
 
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_0 ||
-	  type == FT_TIME_DIGITS_ANY ||
-	  type == FT_TIME_DIGITS_BLANK) ||
-	(*the_day = atoi (token.text)) > 31 || *the_day < 1;
+      bad_value = !(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS_ANY
+		    || type == FT_TIME_DIGITS_BLANK) || (*the_day = atoi (token.text)) > 31 || *the_day < 1;
       if (bad_value)
 	{
 	  break;
@@ -1315,9 +1225,7 @@ ko_alt_date_value (int *the_month, int *the_day, int *the_year)
       FMT_TOKEN_TYPE type;
 
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS_0 ||
-	  type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY);
+      bad_value = !(type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY);
       if (bad_value)
 	{
 	  break;
@@ -1351,49 +1259,37 @@ ko_alt_date_value (int *the_month, int *the_day, int *the_year)
 	}
 
       type = cnv_fmt_lex (&token);
-      bad_value = !(type == FT_LOCAL_DATE_SEPARATOR &&
-		    token.text == intl_mbs_chr (token.text,
-						ko_euc_year_wc ()));
+      bad_value = !(type == FT_LOCAL_DATE_SEPARATOR && token.text == intl_mbs_chr (token.text, ko_euc_year_wc ()));
       if (bad_value)
 	{
 	  break;
 	}
 
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_0 ||
-	  type == FT_TIME_DIGITS_ANY ||
-	  type == FT_TIME_DIGITS_BLANK) ||
-	(*the_month = atoi (token.text)) > 12 || *the_month < 1;
+      bad_value = !(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS_ANY
+		    || type == FT_TIME_DIGITS_BLANK) || (*the_month = atoi (token.text)) > 12 || *the_month < 1;
       if (bad_value)
 	{
 	  break;
 	}
 
       type = cnv_fmt_lex (&token);
-      bad_value = !(type == FT_LOCAL_DATE_SEPARATOR &&
-		    token.text == intl_mbs_chr (token.text,
-						ko_euc_month_wc ()));
+      bad_value = !(type == FT_LOCAL_DATE_SEPARATOR && token.text == intl_mbs_chr (token.text, ko_euc_month_wc ()));
       if (bad_value)
 	{
 	  break;
 	}
 
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_0 ||
-	  type == FT_TIME_DIGITS_ANY ||
-	  type == FT_TIME_DIGITS_BLANK) ||
-	(*the_day = atoi (token.text)) > 31 || *the_day < 1;
+      bad_value = !(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS_ANY
+		    || type == FT_TIME_DIGITS_BLANK) || (*the_day = atoi (token.text)) > 31 || *the_day < 1;
       if (bad_value)
 	{
 	  break;
 	}
 
       type = cnv_fmt_lex (&token);
-      bad_value = !(type == FT_LOCAL_DATE_SEPARATOR &&
-		    token.text == intl_mbs_chr (token.text,
-						ko_euc_day_wc ()));
+      bad_value = !(type == FT_LOCAL_DATE_SEPARATOR && token.text == intl_mbs_chr (token.text, ko_euc_day_wc ()));
       if (bad_value)
 	{
 	  break;
@@ -1427,8 +1323,7 @@ ko_time_string (const DB_TIME * the_time)
   db_time_decode ((DB_TIME *) the_time, &hour, &min, &sec);
 
   sprintf (time_string, "%s %d\xbd\xc3%02d\xba\xd0%02d\xc3\xca",	/* ????/????/???? */
-	   local_am_pm_string (the_time),
-	   (hour % 12 ? hour % 12 : 12), min, sec);
+	   local_am_pm_string (the_time), (hour % 12 ? hour % 12 : 12), min, sec);
   assert (strlen (time_string) < sizeof time_string);
 
   return time_string;
@@ -1466,17 +1361,12 @@ ko_time_value (int *the_hour, int *the_min, int *the_sec)
 	  *the_hour += 12;
 	}
       /* Skip blank "pattern" character. */
-      while (!strncmp
-	     (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)))
-	cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE),
-			 FL_KO_KR_TIME);
+      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)))
+	cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_KO_KR_TIME);
 
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_BLANK ||
-	  type == FT_TIME_DIGITS_0 ||
-	  type == FT_TIME_DIGITS_ANY) ||
-	(*the_hour = atoi (token.text)) > 12 || *the_hour < 1;
+      bad_value = !(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_BLANK || type == FT_TIME_DIGITS_0
+		    || type == FT_TIME_DIGITS_ANY) || (*the_hour = atoi (token.text)) > 12 || *the_hour < 1;
       if (bad_value)
 	{
 	  break;
@@ -1534,8 +1424,7 @@ ko_mtime_string (int hour, int minute, int second, int millisecond)
   static char mtime_string[FMT_MAX_MTIME_STRING * MB_LEN_MAX + 1];
 
   sprintf (mtime_string, "%s %d\xbd\xc3%02d\xba\xd0%02d\xc3\xca.%03d",	/* ????/????/???? */
-	   hour >= 12 ? local_pm () : local_am (),
-	   (hour % 12 ? hour % 12 : 12), minute, second, millisecond);
+	   hour >= 12 ? local_pm () : local_am (), (hour % 12 ? hour % 12 : 12), minute, second, millisecond);
   assert (strlen (mtime_string) < sizeof (mtime_string));
 
   return mtime_string;
@@ -1574,17 +1463,12 @@ ko_mtime_value (int *the_hour, int *the_min, int *the_sec, int *the_msec)
 	  *the_hour += 12;
 	}
       /* Skip blank "pattern" character. */
-      while (!strncmp
-	     (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)))
-	cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE),
-			 FL_KO_KR_TIME);
+      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)))
+	cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_KO_KR_TIME);
 
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_BLANK ||
-	  type == FT_TIME_DIGITS_0 ||
-	  type == FT_TIME_DIGITS_ANY) ||
-	(*the_hour = atoi (token.text)) > 12 || *the_hour < 1;
+      bad_value = !(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_BLANK || type == FT_TIME_DIGITS_0
+		    || type == FT_TIME_DIGITS_ANY) || (*the_hour = atoi (token.text)) > 12 || *the_hour < 1;
       if (bad_value)
 	{
 	  break;
@@ -1643,12 +1527,10 @@ ko_timestamp_string (const DB_TIMESTAMP * the_timestamp)
   int day;
   int year;
 
-  db_timestamp_decode_ses ((DB_TIMESTAMP *) the_timestamp, &the_date,
-			   &the_time);
+  db_timestamp_decode_ses ((DB_TIMESTAMP *) the_timestamp, &the_date, &the_time);
   db_date_decode (&the_date, &month, &day, &year);
 
-  sprintf (timestamp_string, "%s %s",
-	   ko_date_string (month, day, year), ko_time_string (&the_time));
+  sprintf (timestamp_string, "%s %s", ko_date_string (month, day, year), ko_time_string (&the_time));
   assert (strlen (timestamp_string) < sizeof timestamp_string);
 
   return timestamp_string;
@@ -1669,8 +1551,7 @@ ko_timestamp_string (const DB_TIMESTAMP * the_timestamp)
  * the_sec(out) :
  */
 static int
-ko_timestamp_value (int *the_month, int *the_day, int *the_year,
-		    int *the_hour, int *the_min, int *the_sec)
+ko_timestamp_value (int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min, int *the_sec)
 {
   bool bad_value = false;
   int error = 0;
@@ -1684,11 +1565,9 @@ ko_timestamp_value (int *the_month, int *the_day, int *the_year,
 	}
 
       /* Skip blank "pattern" character. */
-      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE,
-		       strlen (LOCAL_SPACE)))
+      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)))
 	{
-	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE),
-			   FL_KO_KR_TIME);
+	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_KO_KR_TIME);
 	}
 
       error = ko_time_value (the_hour, the_min, the_sec);
@@ -1719,11 +1598,9 @@ ko_datetime_string (const DB_DATETIME * the_datetime)
   int month, day, year;
   int hour, minute, second, millisecond;
 
-  db_datetime_decode ((DB_DATETIME *) the_datetime, &month, &day, &year,
-		      &hour, &minute, &second, &millisecond);
+  db_datetime_decode ((DB_DATETIME *) the_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
 
-  sprintf (datetime_string, "%s %s",
-	   ko_date_string (month, day, year),
+  sprintf (datetime_string, "%s %s", ko_date_string (month, day, year),
 	   ko_mtime_string (hour, minute, second, millisecond));
   assert (strlen (datetime_string) < sizeof (datetime_string));
 
@@ -1745,8 +1622,8 @@ ko_datetime_string (const DB_DATETIME * the_datetime)
  * the_sec(out) :
  */
 static int
-ko_datetime_value (int *the_month, int *the_day, int *the_year,
-		   int *the_hour, int *the_min, int *the_sec, int *the_msec)
+ko_datetime_value (int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min, int *the_sec,
+		   int *the_msec)
 {
   bool bad_value = false;
   int error = 0;
@@ -1760,11 +1637,9 @@ ko_datetime_value (int *the_month, int *the_day, int *the_year,
 	}
 
       /* Skip blank "pattern" character. */
-      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE,
-		       strlen (LOCAL_SPACE)))
+      while (!strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE)))
 	{
-	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE),
-			   FL_KO_KR_TIME);
+	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_KO_KR_TIME);
 	}
 
       error = ko_time_value (the_hour, the_min, the_sec);
@@ -2349,9 +2224,7 @@ local_timestamp_string (const DB_TIMESTAMP * the_timestamp)
  * the_sec(out) :
  */
 static int
-local_timestamp_value (int *the_month,
-		       int *the_day, int *the_year, int *the_hour,
-		       int *the_min, int *the_sec)
+local_timestamp_value (int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min, int *the_sec)
 {
   int value;
 
@@ -2359,16 +2232,12 @@ local_timestamp_value (int *the_month,
     {
     case INTL_ZONE_US:
       {
-	value =
-	  us_timestamp_value
-	  (the_month, the_day, the_year, the_hour, the_min, the_sec);
+	value = us_timestamp_value (the_month, the_day, the_year, the_hour, the_min, the_sec);
 	break;
       }
     case INTL_ZONE_KR:
       {
-	value =
-	  ko_timestamp_value
-	  (the_month, the_day, the_year, the_hour, the_min, the_sec);
+	value = ko_timestamp_value (the_month, the_day, the_year, the_hour, the_min, the_sec);
 	break;
       }
     default:
@@ -2427,9 +2296,8 @@ local_datetime_string (const DB_DATETIME * the_datetime)
  * the_sec(out) :
  */
 static int
-local_datetime_value (int *the_month,
-		      int *the_day, int *the_year, int *the_hour,
-		      int *the_min, int *the_sec, int *the_msec)
+local_datetime_value (int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min, int *the_sec,
+		      int *the_msec)
 {
   int value;
 
@@ -2437,14 +2305,12 @@ local_datetime_value (int *the_month,
     {
     case INTL_ZONE_US:
       {
-	value = us_datetime_value (the_month, the_day, the_year,
-				   the_hour, the_min, the_sec, the_msec);
+	value = us_datetime_value (the_month, the_day, the_year, the_hour, the_min, the_sec, the_msec);
 	break;
       }
     case INTL_ZONE_KR:
       {
-	value = ko_datetime_value (the_month, the_day, the_year,
-				   the_hour, the_min, the_sec, the_msec);
+	value = ko_datetime_value (the_month, the_day, the_year, the_hour, the_min, the_sec, the_msec);
 	break;
       }
     default:
@@ -2688,16 +2554,13 @@ cnv_valid_timestamp (DB_DATE * the_date, DB_TIME * the_time)
     {
       char limit[FMT_MAX_TIMESTAMP_STRING + 1];
       db_timestamp_string (&min_timestamp, "", limit, sizeof limit);
-      co_signal (CNV_ERR_TIMESTAMP_UNDERFLOW, CNV_ER_FMT_TIMESTAMP_UNDERFLOW,
-		 limit);
+      co_signal (CNV_ERR_TIMESTAMP_UNDERFLOW, CNV_ER_FMT_TIMESTAMP_UNDERFLOW, limit);
     }
-  else if (*the_date > max_date
-	   || (*the_date == max_date && *the_time > max_time))
+  else if (*the_date > max_date || (*the_date == max_date && *the_time > max_time))
     {
       char limit[FMT_MAX_TIMESTAMP_STRING + 1];
       db_timestamp_string (&max_timestamp, "", limit, sizeof limit);
-      co_signal (CNV_ERR_TIMESTAMP_OVERFLOW, CNV_ER_FMT_TIMESTAMP_OVERFLOW,
-		 limit);
+      co_signal (CNV_ERR_TIMESTAMP_OVERFLOW, CNV_ER_FMT_TIMESTAMP_OVERFLOW, limit);
     }
   else
     {
@@ -2805,8 +2668,7 @@ cnv_bad_char (const char *string, bool unknown)
   strcpy (the_char + nbytes, "");
   assert (strlen (the_char) < sizeof the_char);
 
-  co_signal (error, unknown ? CNV_ER_FMT_BAD_CHAR : CNV_ER_FMT_BAD_POSITION,
-	     the_char);
+  co_signal (error, unknown ? CNV_ER_FMT_BAD_CHAR : CNV_ER_FMT_BAD_POSITION, the_char);
   return error;
 }
 
@@ -2820,8 +2682,7 @@ cnv_bad_char (const char *string, bool unknown)
  * data_type(in) :
  */
 static int
-fmt_validate (const char *format, FMT_LEX_MODE mode, FMT_TOKEN_TYPE fmt_type,
-	      DB_TYPE data_type)
+fmt_validate (const char *format, FMT_LEX_MODE mode, FMT_TOKEN_TYPE fmt_type, DB_TYPE data_type)
 {
   FMT_TOKEN token;
   FMT_TOKEN_TYPE ttype;
@@ -2829,14 +2690,10 @@ fmt_validate (const char *format, FMT_LEX_MODE mode, FMT_TOKEN_TYPE fmt_type,
 
   cnv_fmt_analyze (format, mode);
   ttype = cnv_fmt_lex (&token);
-  if (!
-      (ttype == FT_NONE
-       || (ttype == fmt_type && cnv_fmt_lex (&token) == FT_NONE)))
+  if (!(ttype == FT_NONE || (ttype == fmt_type && cnv_fmt_lex (&token) == FT_NONE)))
     {
       error = CNV_ERR_BAD_FORMAT;
-      co_signal
-	(CNV_ERR_BAD_FORMAT,
-	 CNV_ER_FMT_BAD_FORMAT, format, pr_type_name (data_type));
+      co_signal (CNV_ERR_BAD_FORMAT, CNV_ER_FMT_BAD_FORMAT, format, pr_type_name (data_type));
     }
   return error;
 }
@@ -2855,14 +2712,12 @@ fmt_validate (const char *format, FMT_LEX_MODE mode, FMT_TOKEN_TYPE fmt_type,
  * the_value(out):
  */
 static int
-fmt_integral_value (FORMAT_DIGIT digit_type, int ndigits, bool sign_required,
-		    bool thousands, double *the_value)
+fmt_integral_value (FORMAT_DIGIT digit_type, int ndigits, bool sign_required, bool thousands, double *the_value)
 {
   int nfound;
   int error;
 
-  error = fmt_integral_digits (digit_type, ndigits, sign_required, thousands,
-			       the_value, &nfound);
+  error = fmt_integral_digits (digit_type, ndigits, sign_required, thousands, the_value, &nfound);
 
   if (!error && ndigits)
     {
@@ -2897,9 +2752,7 @@ fmt_integral_value (FORMAT_DIGIT digit_type, int ndigits, bool sign_required,
  * nfound(out) : the number of digits in the value.
  */
 static int
-fmt_integral_digits (FORMAT_DIGIT digit_type,
-		     int ndigits,
-		     bool sign_required, bool thousands, double *the_value,
+fmt_integral_digits (FORMAT_DIGIT digit_type, int ndigits, bool sign_required, bool thousands, double *the_value,
 		     int *nfound)
 {
   int error = 0;
@@ -2951,20 +2804,17 @@ fmt_integral_digits (FORMAT_DIGIT digit_type,
 	  int group_size = *local_grouping ();
 
 	  /* Yes, add to numeric value. */
-	  for (; type == FT_NUMBER || type == FT_ZEROES;
-	       type = cnv_fmt_lex (&token))
+	  for (; type == FT_NUMBER || type == FT_ZEROES; type = cnv_fmt_lex (&token))
 	    {
 	      int tdigits = intl_mbs_len (token.text);
-	      if (thousands && group_size != CHAR_MAX &&
-		  ((initial_digits += tdigits) > group_size))
+	      if (thousands && group_size != CHAR_MAX && ((initial_digits += tdigits) > group_size))
 		{
 		  error = CNV_ERR_BAD_THOUS;
 		  co_signal (CNV_ERR_BAD_THOUS, CNV_ER_FMT_BAD_THOUS);
 		  break;
 		}
 
-	      *the_value =
-		*the_value * pow (10.0, tdigits) + strtod (token.text, NULL);
+	      *the_value = *the_value * pow (10.0, tdigits) + strtod (token.text, NULL);
 
 	      *nfound += tdigits;
 	    }
@@ -2975,14 +2825,11 @@ fmt_integral_digits (FORMAT_DIGIT digit_type,
 	      for (; type == FT_THOUSANDS; type = cnv_fmt_lex (&token))
 		{
 		  int tdigits = intl_mbs_len (token.text);
-		  *the_value =
-		    *the_value * pow (10.0, tdigits) +
-		    strtod (token.text, NULL);
+		  *the_value = *the_value * pow (10.0, tdigits) + strtod (token.text, NULL);
 		  *nfound += tdigits;
 		}
-	      if (type == FT_NUMBER || type == FT_ZEROES ||
-		  (type == FT_UNKNOWN
-		   && mbs_eql (token.text, local_thousands ())))
+	      if (type == FT_NUMBER || type == FT_ZEROES
+		  || (type == FT_UNKNOWN && mbs_eql (token.text, local_thousands ())))
 		{
 		  error = CNV_ERR_BAD_THOUS;
 		  co_signal (CNV_ERR_BAD_THOUS, CNV_ER_FMT_BAD_THOUS);
@@ -3003,19 +2850,15 @@ fmt_integral_digits (FORMAT_DIGIT digit_type,
       /* Valid leading fill chars? */
       if (leading != FT_NONE)
 	{
-	  if ((leading == FT_STARS && digit_type != DIGIT_STAR) ||
-	      (leading == FT_ZEROES && !(digit_type == DIGIT_9 ||
-					 /* allow singleton zero. */
-					 (digit_type == DIGIT_Z
-					  && nleading == 1
-					  && *the_value == 0.0))))
+	  if ((leading == FT_STARS && digit_type != DIGIT_STAR) || (leading == FT_ZEROES && !(digit_type == DIGIT_9 ||
+											      /* allow singleton zero. */
+											      (digit_type == DIGIT_Z
+											       && nleading == 1
+											       && *the_value == 0.0))))
 	    {
 
 	      error = CNV_ERR_BAD_LEADING;
-	      co_signal
-		(CNV_ERR_BAD_LEADING,
-		 CNV_ER_FMT_BAD_LEADING,
-		 leading == FT_ZEROES ? LOCAL_0 : LOCAL_STAR);
+	      co_signal (CNV_ERR_BAD_LEADING, CNV_ER_FMT_BAD_LEADING, leading == FT_ZEROES ? LOCAL_0 : LOCAL_STAR);
 	      break;
 	    }
 
@@ -3038,8 +2881,7 @@ fmt_integral_digits (FORMAT_DIGIT digit_type,
  * nfound(out) : set to the number of digits in the value.
  */
 static int
-fmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits,
-		       double *the_value, int *nfound)
+fmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits, double *the_value, int *nfound)
 {
   int error = 0;
 
@@ -3054,16 +2896,13 @@ fmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits,
       double exponent = 0.0;
 
       /* Any numeric chars? */
-      for (;
-	   (type = cnv_fmt_lex (&token)) == FT_NUMBER || type == FT_ZEROES;
-	   last = type)
+      for (; (type = cnv_fmt_lex (&token)) == FT_NUMBER || type == FT_ZEROES; last = type)
 	{
 
 	  /* Yes, add to numeric value. */
 	  int tdigits = intl_mbs_len (token.text);
 	  exponent -= tdigits;
-	  *the_value =
-	    *the_value + strtod (token.text, NULL) * pow (10.0, exponent);
+	  *the_value = *the_value + strtod (token.text, NULL) * pow (10.0, exponent);
 
 	  *nfound += tdigits;
 	}
@@ -3073,7 +2912,7 @@ fmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits,
 	{
 	  if (last != FT_ZEROES)
 	    {
-	      /*Can't have trailing zeroes AND trailing stars! */
+	      /* Can't have trailing zeroes AND trailing stars! */
 	      last = type;
 	    }
 	  *nfound += intl_mbs_len (token.text);
@@ -3085,15 +2924,11 @@ fmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits,
 	}
 
       /* Valid trailing fill chars? */
-      if ((last == FT_ZEROES
-	   && (digit_type != DIGIT_9 && digit_type != DIGIT_Z))
+      if ((last == FT_ZEROES && (digit_type != DIGIT_9 && digit_type != DIGIT_Z))
 	  || (last == FT_STARS && digit_type != DIGIT_STAR))
 	{
 	  error = CNV_ERR_BAD_TRAILING;
-	  co_signal
-	    (CNV_ERR_BAD_TRAILING,
-	     CNV_ER_FMT_BAD_TRAILING,
-	     last == FT_ZEROES ? LOCAL_0 : LOCAL_STAR);
+	  co_signal (CNV_ERR_BAD_TRAILING, CNV_ER_FMT_BAD_TRAILING, last == FT_ZEROES ? LOCAL_0 : LOCAL_STAR);
 	  break;
 	}
     }
@@ -3166,31 +3001,26 @@ fmt_add_thousands (ADJ_ARRAY * string, int *position)
 
   /* Find position of first digit */
   cnv_fmt_analyze (vstring, FL_LOCAL_NUMBER);
-  while ((ttype = cnv_fmt_lex (&token)) == FT_MINUS ||
-	 ttype == FT_PLUS ||
-	 ttype == FT_CURRENCY || ttype == FT_ZEROES || ttype == FT_STARS);
+  while ((ttype = cnv_fmt_lex (&token)) == FT_MINUS || ttype == FT_PLUS || ttype == FT_CURRENCY || ttype == FT_ZEROES
+	 || ttype == FT_STARS);
   start = CAST_BUFLEN ((cnv_fmt_next_token () - token.length) - vstring);
 
   /* Find end of digits. */
-  for (; ttype == FT_NUMBER || ttype == FT_ZEROES;
-       ttype = cnv_fmt_lex (&token));
+  for (; ttype == FT_NUMBER || ttype == FT_ZEROES; ttype = cnv_fmt_lex (&token));
   end = CAST_BUFLEN ((cnv_fmt_next_token () - token.length) - vstring);
 
   /* Get number of digits. */
   for (ndigits = 0, next_char = vstring + start, maxbytes = end - start;
-       maxbytes > 0 && (nbytes = mblen (next_char, maxbytes));
-       ndigits++, next_char += nbytes, maxbytes -= nbytes);
+       maxbytes > 0 && (nbytes = mblen (next_char, maxbytes)); ndigits++, next_char += nbytes, maxbytes -= nbytes);
 
   /* Insert separators from right to left, according to grouping. */
-  for (sep_pos = ndigits - *group_size;
-       *group_size != CHAR_MAX && sep_pos > 0; sep_pos -= *group_size)
+  for (sep_pos = ndigits - *group_size; *group_size != CHAR_MAX && sep_pos > 0; sep_pos -= *group_size)
     {
 
       int insert;
 
       vstring = (const char *) adj_ar_get_buffer (string);
-      insert =
-	CAST_STRLEN (intl_mbs_nth (vstring + start, sep_pos) - vstring);
+      insert = CAST_STRLEN (intl_mbs_nth (vstring + start, sep_pos) - vstring);
 
       adj_ar_insert (string, thous, strlen (thous), insert);
       if (position && *position > insert)
@@ -3221,9 +3051,7 @@ fmt_drop_thousands (ADJ_ARRAY * string, int *position)
   int nbytes;
 
   /* Scan value string chars. */
-  for (maxbytes = strlen (vstring);
-       maxbytes > 0 && (nbytes = mblen (vstring, maxbytes));
-       maxbytes -= nbytes)
+  for (maxbytes = strlen (vstring); maxbytes > 0 && (nbytes = mblen (vstring, maxbytes)); maxbytes -= nbytes)
     {
       /* Next char is thousands separator? */
       if (!strncmp (vstring, thous, tl))
@@ -3254,9 +3082,7 @@ fmt_drop_thousands (ADJ_ARRAY * string, int *position)
  * mode() :
  */
 static void
-fmt_add_integral (ADJ_ARRAY * string,
-		  int *position, int ndigits, FORMAT_DIGIT type,
-		  FMT_LEX_MODE mode)
+fmt_add_integral (ADJ_ARRAY * string, int *position, int ndigits, FORMAT_DIGIT type, FMT_LEX_MODE mode)
 {
   int i;
   FMT_TOKEN token;
@@ -3268,8 +3094,7 @@ fmt_add_integral (ADJ_ARRAY * string,
 
   /* Find position of first integral digit. */
   cnv_fmt_analyze (vstring, mode);
-  while ((ttype = cnv_fmt_lex (&token)) == FT_MINUS ||
-	 ttype == FT_PLUS || ttype == FT_CURRENCY);
+  while ((ttype = cnv_fmt_lex (&token)) == FT_MINUS || ttype == FT_PLUS || ttype == FT_CURRENCY);
   i = (cnv_fmt_next_token () - strlen (token.raw_text)) - vstring;
 
   if (position && *position > i)
@@ -3291,8 +3116,7 @@ fmt_add_integral (ADJ_ARRAY * string,
  * mode() :
  */
 static void
-fmt_drop_integral (ADJ_ARRAY * string, int *position, int ndigits,
-		   FMT_LEX_MODE mode)
+fmt_drop_integral (ADJ_ARRAY * string, int *position, int ndigits, FMT_LEX_MODE mode)
 {
   const char *vstring = (const char *) adj_ar_get_buffer (string);
   FMT_TOKEN token;
@@ -3306,14 +3130,12 @@ fmt_drop_integral (ADJ_ARRAY * string, int *position, int ndigits,
 
   /* Find position of first integral digit. */
   cnv_fmt_analyze (vstring, mode);
-  while ((ttype = cnv_fmt_lex (&token)) == FT_MINUS ||
-	 ttype == FT_PLUS || ttype == FT_CURRENCY);
+  while ((ttype = cnv_fmt_lex (&token)) == FT_MINUS || ttype == FT_PLUS || ttype == FT_CURRENCY);
   i = (cnv_fmt_next_token () - strlen (token.raw_text)) - vstring;
   vstring += i;
 
   /* Determine number of bytes to drop. */
-  for (nd = 0, sp = vstring, maxbytes = strlen (sp);
-       nd < ndigits && (nbytes = mblen (sp, maxbytes));
+  for (nd = 0, sp = vstring, maxbytes = strlen (sp); nd < ndigits && (nbytes = mblen (sp, maxbytes));
        nd++, sp += nbytes, maxbytes -= nbytes);
   ndbytes = sp - vstring;
 
@@ -3346,19 +3168,15 @@ fmt_add_decimal (ADJ_ARRAY * string, int *position)
   const char *vstring = (const char *) adj_ar_get_buffer (string);
 
   cnv_fmt_analyze (vstring, FL_LOCAL_NUMBER);
-  while ((ttype = cnv_fmt_lex (&token)) == FT_MINUS ||
-	 ttype == FT_PLUS || ttype == FT_CURRENCY);
+  while ((ttype = cnv_fmt_lex (&token)) == FT_MINUS || ttype == FT_PLUS || ttype == FT_CURRENCY);
 
-  /*
+  /* 
    * Add decimal only if at most one digit already exists. This allows us to
    * automatically add a decimal when interactive input begins, but then reject
    * attempt to drop decimal later (when we wouldn't know where to put it
    * back).
    */
-  ok =
-    ttype == FT_NONE ||
-    ((ttype == FT_ZEROES || ttype == FT_NUMBER)
-     && intl_mbs_len (token.text) == 1);
+  ok = ttype == FT_NONE || ((ttype == FT_ZEROES || ttype == FT_NUMBER) && intl_mbs_len (token.text) == 1);
 
   if (ok)
     {
@@ -3398,8 +3216,7 @@ fmt_fraction_position (ADJ_ARRAY * string, int start)
 
       cnv_fmt_analyze (vstring + start, FL_LOCAL_NUMBER);
 
-      for (pos = 0, ttype = FT_NONE;
-	   (ttype = cnv_fmt_lex (&token)) && ttype != FT_DECIMAL;
+      for (pos = 0, ttype = FT_NONE; (ttype = cnv_fmt_lex (&token)) && ttype != FT_DECIMAL;
 	   pos += strlen (token.raw_text));
 
       if (ttype == FT_DECIMAL)
@@ -3422,8 +3239,7 @@ fmt_decimals (ADJ_ARRAY * string)
   int n;
   int p;
 
-  for (n = 0, p = 0; (p = fmt_fraction_position (string, p)) != ADJ_AR_EOA;
-       n++);
+  for (n = 0, p = 0; (p = fmt_fraction_position (string, p)) != ADJ_AR_EOA; n++);
 
   return n;
 }
@@ -3437,8 +3253,7 @@ fmt_decimals (ADJ_ARRAY * string)
  * type() :
  */
 static void
-fmt_add_fractional (ADJ_ARRAY * string, int *position, int ndigits,
-		    FORMAT_DIGIT type)
+fmt_add_fractional (ADJ_ARRAY * string, int *position, int ndigits, FORMAT_DIGIT type)
 {
   int insert;
   FMT_TOKEN_TYPE ttype;
@@ -3450,8 +3265,7 @@ fmt_add_fractional (ADJ_ARRAY * string, int *position, int ndigits,
 
   cnv_fmt_analyze (vstring, FL_LOCAL_NUMBER);
   while (cnv_fmt_lex (&token) != FT_DECIMAL);
-  while ((ttype = cnv_fmt_lex (&token)) == FT_ZEROES ||
-	 ttype == FT_NUMBER || ttype == FT_STARS);
+  while ((ttype = cnv_fmt_lex (&token)) == FT_ZEROES || ttype == FT_NUMBER || ttype == FT_STARS);
   insert = (cnv_fmt_next_token () - strlen (token.raw_text)) - vstring;
 
   if (position && *position > insert)
@@ -3490,14 +3304,11 @@ fmt_drop_fractional (ADJ_ARRAY * string, int *position, int max_digits)
   vstring += first;
 
   /* Find total bytes of fractional digits. */
-  while ((ttype = cnv_fmt_lex (&token)) == FT_ZEROES ||
-	 ttype == FT_NUMBER || ttype == FT_STARS);
+  while ((ttype = cnv_fmt_lex (&token)) == FT_ZEROES || ttype == FT_NUMBER || ttype == FT_STARS);
   ndbytes = (cnv_fmt_next_token () - strlen (token.raw_text)) - vstring;
 
   /* Determine number of bytes to drop. */
-  for (nd = 0, sp = vstring;
-       nd < max_digits && (nbytes = mblen (sp, ndbytes));
-       nd++, sp += nbytes, ndbytes -= nbytes);
+  for (nd = 0, sp = vstring; nd < max_digits && (nbytes = mblen (sp, ndbytes)); nd++, sp += nbytes, ndbytes -= nbytes);
   first += sp - vstring;
 
   /* Drop digit bytes. */
@@ -3607,8 +3418,7 @@ fmt_date_string (const DB_DATE * the_date, const char *descriptor)
   const char *string = NULL;
   int month, day, year;
 
-  assert (mbs_eql (descriptor, "D") || mbs_eql (descriptor, "x") ||
-	  mbs_eql (descriptor, "E"));
+  assert (mbs_eql (descriptor, "D") || mbs_eql (descriptor, "x") || mbs_eql (descriptor, "E"));
 
   db_date_decode ((DB_DATE *) the_date, &month, &day, &year);
 
@@ -3617,10 +3427,8 @@ fmt_date_string (const DB_DATE * the_date, const char *descriptor)
     {
       static char date_string[FMT_MAX_DATE_STRING * MB_LEN_MAX + 1];
 
-      sprintf (date_string, "%s%s%s%s%s",
-	       fmt_month_string (month, "m"), LOCAL_SLASH,
-	       fmt_monthday_string (day, "d"), LOCAL_SLASH,
-	       fmt_year_string (year, "y"));
+      sprintf (date_string, "%s%s%s%s%s", fmt_month_string (month, "m"), LOCAL_SLASH, fmt_monthday_string (day, "d"),
+	       LOCAL_SLASH, fmt_year_string (year, "y"));
       assert (strlen (date_string) < sizeof date_string);
 
       string = date_string;
@@ -3679,8 +3487,7 @@ fmt_month_string (int month, const char *descriptor)
 {
   const char *month_string = NULL;
 
-  assert (mbs_eql (descriptor, "b") || mbs_eql (descriptor, "B") ||
-	  mbs_eql (descriptor, "m"));
+  assert (mbs_eql (descriptor, "b") || mbs_eql (descriptor, "B") || mbs_eql (descriptor, "m"));
 
   if (mbs_eql (descriptor, "b"))
     {
@@ -3690,7 +3497,7 @@ fmt_month_string (int month, const char *descriptor)
     {
       month_string = local_long_month_name (month - 1);
     }
-  else				/*if (mbs_eql (descriptor, "m")) */
+  else				/* if (mbs_eql (descriptor, "m")) */
     {
       static char month_number[2 * MB_LEN_MAX + 1];
       sprintf (month_number, "%02d", month);
@@ -3733,8 +3540,7 @@ fmt_weekday_string (int weekday, const char *descriptor)
 {
   const char *day_string = NULL;
 
-  assert (mbs_eql (descriptor, "a") || mbs_eql (descriptor, "A") ||
-	  mbs_eql (descriptor, "w"));
+  assert (mbs_eql (descriptor, "a") || mbs_eql (descriptor, "A") || mbs_eql (descriptor, "w"));
 
   if (mbs_eql (descriptor, "a"))
     {
@@ -3744,7 +3550,7 @@ fmt_weekday_string (int weekday, const char *descriptor)
     {
       day_string = local_long_weekday_name (weekday);
     }
-  else				/*if (mbs_eql (descriptor, "w")) */
+  else				/* if (mbs_eql (descriptor, "w")) */
     {
       static char day_number[MB_LEN_MAX + 1];
       sprintf (day_number, "%d", weekday);
@@ -3768,14 +3574,12 @@ fmt_weekday_string (int weekday, const char *descriptor)
  * the_year(out) :
  */
 static int
-fmt_date_value (const char *descriptor, int *the_month, int *the_day,
-		int *the_year)
+fmt_date_value (const char *descriptor, int *the_month, int *the_day, int *the_year)
 {
   bool bad_value = false;
   int error = 0;
 
-  assert (mbs_eql (descriptor, "D") || mbs_eql (descriptor, "x") ||
-	  mbs_eql (descriptor, "E"));
+  assert (mbs_eql (descriptor, "D") || mbs_eql (descriptor, "x") || mbs_eql (descriptor, "E"));
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   if (mbs_eql (descriptor, "D"))
@@ -3863,9 +3667,7 @@ fmt_year_value (const char *descriptor, int *the_year)
   if (mbs_eql (descriptor, "Y"))
     {
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY) ||
-	(*the_year = atoi (token.text)) == 0;
+      bad_value = !(type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY) || (*the_year = atoi (token.text)) == 0;
     }
 
   else if (mbs_eql (descriptor, "y"))
@@ -3904,16 +3706,14 @@ fmt_month_value (const char *descriptor, int *the_month)
   FMT_TOKEN token;
   FMT_TOKEN_TYPE type;
 
-  assert (mbs_eql (descriptor, "b") || mbs_eql (descriptor, "B") ||
-	  mbs_eql (descriptor, "m"));
+  assert (mbs_eql (descriptor, "b") || mbs_eql (descriptor, "B") || mbs_eql (descriptor, "m"));
 
   if (mbs_eql (descriptor, "b"))
     {
       type = cnv_fmt_lex (&token);
 
       /* Careful: long/short names for May are the same! */
-      bad_value = !(type == FT_MONTH
-		    || (type == FT_MONTH_LONG && token.value == 5));
+      bad_value = !(type == FT_MONTH || (type == FT_MONTH_LONG && token.value == 5));
       if (!bad_value)
 	{
 	  *the_month = token.value;
@@ -3932,9 +3732,8 @@ fmt_month_value (const char *descriptor, int *the_month)
   else if (mbs_eql (descriptor, "m"))
     {
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS) ||
-	(*the_month = atoi (token.text)) > 12 || *the_month < 1;
+      bad_value = !(type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS) || (*the_month = atoi (token.text)) > 12
+	|| *the_month < 1;
     }
 
   if (bad_value)
@@ -3964,10 +3763,8 @@ fmt_monthday_value (const char *descriptor, int *the_day)
   assert (mbs_eql (descriptor, "d") || mbs_eql (descriptor, "e"));
 
   type = cnv_fmt_lex (&token);
-  if (!(type == FT_TIME_DIGITS ||
-	type == (mbs_eql (descriptor, "d") ?
-		 FT_TIME_DIGITS_0 : FT_TIME_DIGITS_BLANK)) ||
-      (*the_day = atoi (token.text)) > 31 || *the_day < 1)
+  if (!(type == FT_TIME_DIGITS || type == (mbs_eql (descriptor, "d") ? FT_TIME_DIGITS_0 : FT_TIME_DIGITS_BLANK))
+      || (*the_day = atoi (token.text)) > 31 || *the_day < 1)
     {
       error = CNV_ERR_BAD_MDAY;
       co_signal (error, CNV_ER_FMT_BAD_MDAY, descriptor);
@@ -3991,8 +3788,7 @@ fmt_weekday_value (const char *descriptor, int *the_day)
   int error = 0;
   FMT_TOKEN token;
 
-  assert (mbs_eql (descriptor, "a") || mbs_eql (descriptor, "A") ||
-	  mbs_eql (descriptor, "w"));
+  assert (mbs_eql (descriptor, "a") || mbs_eql (descriptor, "A") || mbs_eql (descriptor, "w"));
 
   if (mbs_eql (descriptor, "a"))
     {
@@ -4014,9 +3810,7 @@ fmt_weekday_value (const char *descriptor, int *the_day)
 
   else if (mbs_eql (descriptor, "w"))
     {
-      bad_value =
-	cnv_fmt_lex (&token) != FT_TIME_DIGITS_ANY ||
-	(*the_day = atoi (token.text)) > 6;
+      bad_value = cnv_fmt_lex (&token) != FT_TIME_DIGITS_ANY || (*the_day = atoi (token.text)) > 6;
     }
 
   if (bad_value)
@@ -4062,19 +3856,14 @@ fmt_time_string (const DB_TIME * the_time, const char *descriptor)
 
   const char *string = NULL;
 
-  assert (mbs_eql (descriptor, "R") || mbs_eql (descriptor, "r") ||
-	  mbs_eql (descriptor, "T") || mbs_eql (descriptor, "X"));
+  assert (mbs_eql (descriptor, "R") || mbs_eql (descriptor, "r") || mbs_eql (descriptor, "T")
+	  || mbs_eql (descriptor, "X"));
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   if (mbs_eql (descriptor, "T"))
     {
-      sprintf
-	(time_string,
-	 "%s%s%s%s%s",
-	 fmt_hour_string (the_time, "H"),
-	 LOCAL_COLON,
-	 fmt_minute_string (the_time, "M"),
-	 LOCAL_COLON, fmt_second_string (the_time, "S"));
+      sprintf (time_string, "%s%s%s%s%s", fmt_hour_string (the_time, "H"), LOCAL_COLON,
+	       fmt_minute_string (the_time, "M"), LOCAL_COLON, fmt_second_string (the_time, "S"));
       assert (strlen (time_string) < sizeof time_string);
       string = time_string;
     }
@@ -4087,26 +3876,16 @@ fmt_time_string (const DB_TIME * the_time, const char *descriptor)
 #if defined (ENABLE_UNUSED_FUNCTION)
   else if (mbs_eql (descriptor, "r"))
     {
-      sprintf
-	(time_string,
-	 "%s%s%s%s%s%s%s",
-	 fmt_hour_string (the_time, "I"),
-	 LOCAL_COLON,
-	 fmt_minute_string (the_time, "M"),
-	 LOCAL_COLON,
-	 fmt_second_string (the_time, "S"),
-	 LOCAL_SPACE, local_am_pm_string (the_time));
+      sprintf (time_string, "%s%s%s%s%s%s%s", fmt_hour_string (the_time, "I"), LOCAL_COLON,
+	       fmt_minute_string (the_time, "M"), LOCAL_COLON, fmt_second_string (the_time, "S"), LOCAL_SPACE,
+	       local_am_pm_string (the_time));
       assert (strlen (time_string) < sizeof time_string);
       string = time_string;
     }
 
   else if (mbs_eql (descriptor, "R"))
     {
-      sprintf
-	(time_string,
-	 "%s%s%s",
-	 fmt_hour_string (the_time, "H"),
-	 LOCAL_COLON, fmt_minute_string (the_time, "M"));
+      sprintf (time_string, "%s%s%s", fmt_hour_string (the_time, "H"), LOCAL_COLON, fmt_minute_string (the_time, "M"));
       assert (strlen (time_string) < sizeof time_string);
       string = time_string;
     }
@@ -4126,8 +3905,7 @@ fmt_time_string (const DB_TIME * the_time, const char *descriptor)
  * the_sec(out) :
  */
 static int
-fmt_time_value (const char *descriptor, int *the_hour, int *the_min,
-		int *the_sec)
+fmt_time_value (const char *descriptor, int *the_hour, int *the_min, int *the_sec)
 {
   bool bad_value = false;
   int error = 0;
@@ -4135,8 +3913,8 @@ fmt_time_value (const char *descriptor, int *the_hour, int *the_min,
   FMT_TOKEN token;
 #endif
 
-  assert (mbs_eql (descriptor, "R") || mbs_eql (descriptor, "r") ||
-	  mbs_eql (descriptor, "T") || mbs_eql (descriptor, "X"));
+  assert (mbs_eql (descriptor, "R") || mbs_eql (descriptor, "r") || mbs_eql (descriptor, "T")
+	  || mbs_eql (descriptor, "X"));
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   if (mbs_eql (descriptor, "T"))
@@ -4217,15 +3995,12 @@ fmt_time_value (const char *descriptor, int *the_hour, int *the_min,
 	    }
 
 	  /* Skip blank "pattern" character. */
-	  bad_value =
-	    strncmp (cnv_fmt_next_token (), LOCAL_SPACE,
-		     strlen (LOCAL_SPACE));
+	  bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE));
 	  if (bad_value)
 	    {
 	      break;
 	    }
-	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE),
-			   FL_LOCAL_TIME);
+	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
 
 	  error = local_am_pm_value (&pm);
 	  if (error)
@@ -4285,17 +4060,14 @@ fmt_hour_string (const DB_TIME * the_time, const char *descriptor)
   static char hour_string[2 * MB_LEN_MAX + 1];
   int hour, min, sec;
 
-  assert (mbs_eql (descriptor, "H") || mbs_eql (descriptor, "I") ||
-	  mbs_eql (descriptor, "k") || mbs_eql (descriptor, "l"));
+  assert (mbs_eql (descriptor, "H") || mbs_eql (descriptor, "I") || mbs_eql (descriptor, "k")
+	  || mbs_eql (descriptor, "l"));
 
   db_time_decode ((DB_TIME *) the_time, &hour, &min, &sec);
 
-  sprintf
-    (hour_string,
-     mbs_eql (descriptor, "k") || mbs_eql (descriptor, "l") ?
-     "%2d" : "%02d",
-     mbs_eql (descriptor, "I") || mbs_eql (descriptor, "l") ?
-     (hour ? hour % 12 : 12) : hour);
+  sprintf (hour_string, mbs_eql (descriptor, "k")
+	   || mbs_eql (descriptor, "l") ? "%2d" : "%02d", mbs_eql (descriptor, "I")
+	   || mbs_eql (descriptor, "l") ? (hour ? hour % 12 : 12) : hour);
   assert (strlen (hour_string) < sizeof hour_string);
 
   return hour_string;
@@ -4317,39 +4089,33 @@ fmt_hour_value (const char *descriptor, int *the_hour)
   FMT_TOKEN token;
   FMT_TOKEN_TYPE type;
 
-  assert (mbs_eql (descriptor, "H") || mbs_eql (descriptor, "I") ||
-	  mbs_eql (descriptor, "k") || mbs_eql (descriptor, "l"));
+  assert (mbs_eql (descriptor, "H") || mbs_eql (descriptor, "I") || mbs_eql (descriptor, "k")
+	  || mbs_eql (descriptor, "l"));
 
   if (mbs_eql (descriptor, "H"))
     {
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS) ||
-	(*the_hour = atoi (token.text)) > 23;
+      bad_value = !(type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS) || (*the_hour = atoi (token.text)) > 23;
     }
 
   else if (mbs_eql (descriptor, "I"))
     {
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS) ||
-	(*the_hour = atoi (token.text)) > 12 || *the_hour < 1;
+      bad_value = !(type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS) || (*the_hour = atoi (token.text)) > 12
+	|| *the_hour < 1;
     }
 
   else if (mbs_eql (descriptor, "k"))
     {
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS_BLANK || type == FT_TIME_DIGITS) ||
-	(*the_hour = atoi (token.text)) > 23;
+      bad_value = !(type == FT_TIME_DIGITS_BLANK || type == FT_TIME_DIGITS) || (*the_hour = atoi (token.text)) > 23;
     }
 
   else if (mbs_eql (descriptor, "l"))
     {
       type = cnv_fmt_lex (&token);
-      bad_value =
-	!(type == FT_TIME_DIGITS_BLANK || type == FT_TIME_DIGITS) ||
-	(*the_hour = atoi (token.text)) > 12 || *the_hour < 1;
+      bad_value = !(type == FT_TIME_DIGITS_BLANK || type == FT_TIME_DIGITS) || (*the_hour = atoi (token.text)) > 12
+	|| *the_hour < 1;
     }
 
   if (bad_value)
@@ -4403,9 +4169,8 @@ fmt_minute_value (const char *descriptor, int *the_min)
   assert (mbs_eql (descriptor, "M"));
 
   type = cnv_fmt_lex (&token);
-  if (!(type == FT_TIME_DIGITS_0 ||
-	type == FT_TIME_DIGITS ||
-	type == FT_TIME_DIGITS_ANY) || (*the_min = atoi (token.text)) > 59)
+  if (!(type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY)
+      || (*the_min = atoi (token.text)) > 59)
     {
       error = CNV_ERR_BAD_MIN;
       co_signal (error, CNV_ER_FMT_BAD_MIN, descriptor);
@@ -4457,9 +4222,8 @@ fmt_second_value (const char *descriptor, int *the_sec)
   assert (mbs_eql (descriptor, "S"));
 
   type = cnv_fmt_lex (&token);
-  if (!(type == FT_TIME_DIGITS_0 ||
-	type == FT_TIME_DIGITS ||
-	type == FT_TIME_DIGITS_ANY) || (*the_sec = atoi (token.text)) > 59)
+  if (!(type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY)
+      || (*the_sec = atoi (token.text)) > 59)
     {
       error = CNV_ERR_BAD_SEC;
       co_signal (error, CNV_ER_FMT_BAD_SEC, descriptor);
@@ -4487,9 +4251,8 @@ fmt_millisecond_value (const char *descriptor, int *the_msec)
   assert (mbs_eql (descriptor, "MS"));
 
   type = cnv_fmt_lex (&token);
-  if (!(type == FT_TIME_DIGITS_0 ||
-	type == FT_TIME_DIGITS ||
-	type == FT_TIME_DIGITS_ANY) || (*the_msec = atoi (token.text)) > 999)
+  if (!(type == FT_TIME_DIGITS_0 || type == FT_TIME_DIGITS || type == FT_TIME_DIGITS_ANY)
+      || (*the_msec = atoi (token.text)) > 999)
     {
       error = CNV_ERR_BAD_MSEC;
       co_signal (error, CNV_ER_FMT_BAD_MSEC, descriptor);
@@ -4507,8 +4270,7 @@ fmt_millisecond_value (const char *descriptor, int *the_msec)
  * descriptor(in) :
  */
 static const char *
-fmt_timestamp_string (const DB_TIMESTAMP * the_timestamp,
-		      const char *descriptor)
+fmt_timestamp_string (const DB_TIMESTAMP * the_timestamp, const char *descriptor)
 {
   DB_DATE the_date;
   DB_TIME the_time;
@@ -4516,18 +4278,14 @@ fmt_timestamp_string (const DB_TIMESTAMP * the_timestamp,
 
   assert (mbs_eql (descriptor, "c") || mbs_eql (descriptor, "C"));
 
-  (void) db_timestamp_decode_ses ((DB_TIMESTAMP *) the_timestamp, &the_date,
-				  &the_time);
+  (void) db_timestamp_decode_ses ((DB_TIMESTAMP *) the_timestamp, &the_date, &the_time);
 
   if (mbs_eql (descriptor, "c"))
     {
       static char timestamp_string[FMT_MAX_TIMESTAMP_STRING * MB_LEN_MAX + 1];
 
-      sprintf
-	(timestamp_string,
-	 "%s%s%s",
-	 fmt_date_string (&the_date, "x"),
-	 LOCAL_SPACE, fmt_time_string (&the_time, "X"));
+      sprintf (timestamp_string, "%s%s%s", fmt_date_string (&the_date, "x"), LOCAL_SPACE,
+	       fmt_time_string (&the_time, "X"));
       assert (strlen (timestamp_string) < sizeof timestamp_string);
       string = timestamp_string;
     }
@@ -4555,9 +4313,7 @@ fmt_timestamp_string (const DB_TIMESTAMP * the_timestamp,
  * the_sec(out) :
  */
 static int
-fmt_timestamp_value (const char *descriptor,
-		     int *the_month,
-		     int *the_day, int *the_year, int *the_hour, int *the_min,
+fmt_timestamp_value (const char *descriptor, int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min,
 		     int *the_sec)
 {
   bool bad_value = false;
@@ -4576,15 +4332,12 @@ fmt_timestamp_value (const char *descriptor,
 	    }
 
 	  /* Skip blank "pattern" character. */
-	  bad_value =
-	    strncmp (cnv_fmt_next_token (), LOCAL_SPACE,
-		     strlen (LOCAL_SPACE));
+	  bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE));
 	  if (bad_value)
 	    {
 	      break;
 	    }
-	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE),
-			   FL_LOCAL_TIME);
+	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
 
 	  error = fmt_time_value ("X", the_hour, the_min, the_sec);
 	}
@@ -4594,9 +4347,7 @@ fmt_timestamp_value (const char *descriptor,
 #if defined (ENABLE_UNUSED_FUNCTION)
   else if (mbs_eql (descriptor, "C"))
     {
-      error =
-	local_timestamp_value
-	(the_month, the_day, the_year, the_hour, the_min, the_sec);
+      error = local_timestamp_value (the_month, the_day, the_year, the_hour, the_min, the_sec);
     }
 #endif
 
@@ -4625,15 +4376,13 @@ fmt_datetime_string (const DB_DATETIME * the_datetime, const char *descriptor)
 
   assert (mbs_eql (descriptor, "c") || mbs_eql (descriptor, "C"));
 
-  db_datetime_decode ((DB_DATETIME *) the_datetime, &months, &days, &years,
-		      &hours, &minutes, &seconds, &milliseconds);
+  db_datetime_decode ((DB_DATETIME *) the_datetime, &months, &days, &years, &hours, &minutes, &seconds, &milliseconds);
 
   if (mbs_eql (descriptor, "c"))
     {
       static char datetime_string[FMT_MAX_DATETIME_STRING * MB_LEN_MAX + 1];
 
-      sprintf (datetime_string, "%d/%d/%d %d:%d:%d.%d", months, days, years,
-	       hours, minutes, seconds, milliseconds);
+      sprintf (datetime_string, "%d/%d/%d %d:%d:%d.%d", months, days, years, hours, minutes, seconds, milliseconds);
       string = datetime_string;
     }
   else if (mbs_eql (descriptor, "C"))
@@ -4659,10 +4408,8 @@ fmt_datetime_string (const DB_DATETIME * the_datetime, const char *descriptor)
  * the_sec(out) :
  */
 static int
-fmt_datetime_value (const char *descriptor,
-		    int *the_month,
-		    int *the_day, int *the_year, int *the_hour,
-		    int *the_min, int *the_sec, int *the_msec)
+fmt_datetime_value (const char *descriptor, int *the_month, int *the_day, int *the_year, int *the_hour, int *the_min,
+		    int *the_sec, int *the_msec)
 {
   bool bad_value = false;
   int error = 0;
@@ -4678,15 +4425,12 @@ fmt_datetime_value (const char *descriptor,
 	    }
 
 	  /* Skip blank "pattern" character. */
-	  bad_value =
-	    strncmp (cnv_fmt_next_token (), LOCAL_SPACE,
-		     strlen (LOCAL_SPACE));
+	  bad_value = strncmp (cnv_fmt_next_token (), LOCAL_SPACE, strlen (LOCAL_SPACE));
 	  if (bad_value)
 	    {
 	      break;
 	    }
-	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE),
-			   FL_LOCAL_TIME);
+	  cnv_fmt_analyze (cnv_fmt_next_token () + strlen (LOCAL_SPACE), FL_LOCAL_TIME);
 	  error = fmt_time_value ("X", the_hour, the_min, the_sec);
 	}
       while (0);
@@ -4694,9 +4438,7 @@ fmt_datetime_value (const char *descriptor,
 
   else if (mbs_eql (descriptor, "C"))
     {
-      error =
-	local_timestamp_value
-	(the_month, the_day, the_year, the_hour, the_min, the_sec);
+      error = local_timestamp_value (the_month, the_day, the_year, the_hour, the_min, the_sec);
     }
 
   if (bad_value)
@@ -4728,7 +4470,7 @@ tfmt_new (const char *format)
 
   assert (format);
 
-  /*
+  /* 
    * Initialize arrays for tokens and token strings. We must copy all token
    * strings, because the token.text pointer is reused when the next token
    * is scanned.
@@ -4743,16 +4485,14 @@ tfmt_new (const char *format)
 
   /* Scan format string for tokens. */
   for (cnv_fmt_analyze (format, FL_TIME_FORMAT);
-       (type = cnv_fmt_lex (&token),
-	adj_ar_append (tokens, &token, 1), type != FT_NONE);)
+       (type = cnv_fmt_lex (&token), adj_ar_append (tokens, &token, 1), type != FT_NONE);)
     {
       /* Preserve a copy of token string. */
       adj_ar_append (strings, token.text, token.length + 1);
     }
 
   /* Update tokens to point to string copies. */
-  for (t = (FMT_TOKEN *) adj_ar_get_buffer (tokens),
-       string = (const char *) adj_ar_get_buffer (strings);
+  for (t = (FMT_TOKEN *) adj_ar_get_buffer (tokens), string = (const char *) adj_ar_get_buffer (strings);
        t->type != FT_NONE; string += t->length + 1, t++)
     {
       t->text = string;
@@ -4776,14 +4516,8 @@ ffmt_valid_char (FMT_TOKEN * token)
 {
   FMT_TOKEN_TYPE type = token->type;
 
-  return
-    type == FT_NUMBER ||
-    type == FT_ZEROES ||
-    type == FT_MINUS ||
-    type == FT_PLUS ||
-    type == FT_STARS ||
-    type == FT_DECIMAL ||
-    type == FT_THOUSANDS || mbs_eql (token->text, local_thousands ());
+  return type == FT_NUMBER || type == FT_ZEROES || type == FT_MINUS || type == FT_PLUS || type == FT_STARS
+    || type == FT_DECIMAL || type == FT_THOUSANDS || mbs_eql (token->text, local_thousands ());
 }
 
 /*
@@ -4810,8 +4544,7 @@ ffmt_new (FLOAT_FORMAT * ffmt, const char *format)
   ffmt->decimal = (fraction_part != NULL || !wcslen (wfmt));
 
   ffmt->fractional_type = DIGIT_Z;
-  ffmt->fractional_digits =
-    (fraction_part ? wcsspn (fraction_part, FMT_Z ()) : 0);
+  ffmt->fractional_digits = (fraction_part ? wcsspn (fraction_part, FMT_Z ()) : 0);
   if (fraction_part && !ffmt->fractional_digits)
     {
       ffmt->fractional_digits = wcsspn (fraction_part, FMT_9 ());
@@ -4837,24 +4570,17 @@ ffmt_new (FLOAT_FORMAT * ffmt, const char *format)
   ffmt->sign_required = integer_part != wfmt;
 
   ffmt->integral_type = DIGIT_Z;
-  ffmt->integral_digits =
-    wcsspn (integer_part,
-	    WCSCAT (idc, FMT_Z (), FMT_THOUSANDS ())) - ffmt->thousands;
+  ffmt->integral_digits = wcsspn (integer_part, WCSCAT (idc, FMT_Z (), FMT_THOUSANDS ())) - ffmt->thousands;
   if (ffmt->integral_digits <= 0)
     {
-      ffmt->integral_digits =
-	wcsspn (integer_part,
-		WCSCAT (idc, FMT_9 (), FMT_THOUSANDS ())) - ffmt->thousands;
+      ffmt->integral_digits = wcsspn (integer_part, WCSCAT (idc, FMT_9 (), FMT_THOUSANDS ())) - ffmt->thousands;
       if (ffmt->integral_digits > 0)
 	{
 	  ffmt->integral_type = DIGIT_9;
 	}
       else
 	{
-	  ffmt->integral_digits =
-	    wcsspn (integer_part,
-		    WCSCAT (idc, FMT_STAR (),
-			    FMT_THOUSANDS ())) - ffmt->thousands;
+	  ffmt->integral_digits = wcsspn (integer_part, WCSCAT (idc, FMT_STAR (), FMT_THOUSANDS ())) - ffmt->thousands;
 	  if (ffmt->integral_digits > 0)
 	    {
 	      ffmt->integral_type = DIGIT_STAR;
@@ -4891,10 +4617,8 @@ ffmt_value (FLOAT_FORMAT * ffmt, const char *string, double *the_double)
     {
       /* Get value of integer part. */
       error =
-	fmt_integral_value
-	(ffmt->integral_type,
-	 ffmt->integral_digits,
-	 ffmt->sign_required, ffmt->thousands, the_double);
+	fmt_integral_value (ffmt->integral_type, ffmt->integral_digits, ffmt->sign_required, ffmt->thousands,
+			    the_double);
 
       if (error && error != CNV_ERR_MISSING_INTEGER)
 	{
@@ -4917,10 +4641,7 @@ ffmt_value (FLOAT_FORMAT * ffmt, const char *string, double *the_double)
 		}
 
 	      /* Yes, get value of fraction part. */
-	      error =
-		fmt_fractional_value
-		(ffmt->fractional_type,
-		 ffmt->fractional_digits, &fraction_part);
+	      error = fmt_fractional_value (ffmt->fractional_type, ffmt->fractional_digits, &fraction_part);
 
 	      if (error && error != CNV_ERR_MISSING_FRACTION)
 		{
@@ -4969,8 +4690,7 @@ ffmt_value (FLOAT_FORMAT * ffmt, const char *string, double *the_double)
  *    the string (including final '\0' char)
  */
 static int
-ffmt_print (FLOAT_FORMAT * ffmt, double the_double,
-	    char *string, int max_size)
+ffmt_print (FLOAT_FORMAT * ffmt, double the_double, char *string, int max_size)
 {
   int error = 0;
   FMT_TOKEN token;
@@ -4978,11 +4698,9 @@ ffmt_print (FLOAT_FORMAT * ffmt, double the_double,
   double the_value;
   bool unlimited_fraction = ffmt->decimal && !ffmt->fractional_digits;
   int max_digits = (!ffmt->integral_digits
-		    || unlimited_fraction) ? FMT_MAX_DIGITS :
-    ffmt->integral_digits + ffmt->fractional_digits;
+		    || unlimited_fraction) ? FMT_MAX_DIGITS : ffmt->integral_digits + ffmt->fractional_digits;
   DB_C_INT nchars = (the_double < 0.0
-		     || ffmt->sign_required) + ffmt->decimal +
-    max_digits + (unlimited_fraction ? FLT_DIG : 0) +
+		     || ffmt->sign_required) + ffmt->decimal + max_digits + (unlimited_fraction ? FLT_DIG : 0) +
     (ffmt->scientific ? strlen (LOCAL_EXP_LENGTH) : 0);
   /* Create print format string. */
   const char *fmt_sign = ffmt->sign_required ? "+" : "";
@@ -4992,42 +4710,31 @@ ffmt_print (FLOAT_FORMAT * ffmt, double the_double,
   const char *fmt = adj_ar_concat_strings ("%", fmt_sign, fmt_zeroes,
 					   fmt_precision, fmt_type, NULL);
   /* Print undecorated value string. */
-  ADJ_ARRAY *buffer =
-    cnv_get_string_buffer (nchars - max_digits + FMT_MAX_DIGITS);
+  ADJ_ARRAY *buffer = cnv_get_string_buffer (nchars - max_digits + FMT_MAX_DIGITS);
   if (unlimited_fraction)
     {
       sprintf ((char *) adj_ar_get_buffer (buffer), fmt, nchars, the_double);
     }
   else
     {
-      sprintf
-	((char *) adj_ar_get_buffer (buffer),
-	 fmt, nchars, (DB_C_INT) (ffmt->fractional_digits), the_double);
+      sprintf ((char *) adj_ar_get_buffer (buffer), fmt, nchars, (DB_C_INT) (ffmt->fractional_digits), the_double);
     }
 
   /* Trim leading blanks... */
   if (!ffmt->integral_digits || ffmt->integral_type == DIGIT_Z)
     {
-      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer),
-		       FL_LOCAL_NUMBER);
-      while (cnv_fmt_lex (&token) == FT_UNKNOWN
-	     && mbs_eql (token.text, LOCAL_SPACE));
-      adj_ar_remove (buffer, 0,
-		     (int) (cnv_fmt_next_token () -
-			    token.length -
-			    (char *) adj_ar_get_buffer (buffer)));
+      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer), FL_LOCAL_NUMBER);
+      while (cnv_fmt_lex (&token) == FT_UNKNOWN && mbs_eql (token.text, LOCAL_SPACE));
+      adj_ar_remove (buffer, 0, (int) (cnv_fmt_next_token () - token.length - (char *) adj_ar_get_buffer (buffer)));
     }
 
   /* ...or replace with leading stars. */
   else if (ffmt->integral_type == DIGIT_STAR)
     {
       int start;
-      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer),
-		       FL_LOCAL_NUMBER);
+      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer), FL_LOCAL_NUMBER);
       while ((type = cnv_fmt_lex (&token)) == FT_MINUS || type == FT_PLUS);
-      start =
-	(int) (cnv_fmt_next_token () - token.length -
-	       (const char *) adj_ar_get_buffer (buffer));
+      start = (int) (cnv_fmt_next_token () - token.length - (const char *) adj_ar_get_buffer (buffer));
       if (type == FT_ZEROES)
 	{
 	  int nzeroes;
@@ -5046,20 +4753,14 @@ ffmt_print (FLOAT_FORMAT * ffmt, double the_double,
       int start;
       int length;
       int nzeroes;
-      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer),
-		       FL_LOCAL_NUMBER);
+      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer), FL_LOCAL_NUMBER);
       while (cnv_fmt_lex (&token) != FT_DECIMAL);
-      for (start = 0,
-	   nzeroes = 0,
-	   length = 0,
-	   type = cnv_fmt_lex (&token);
-	   type == FT_NUMBER || type == FT_ZEROES;
+      for (start = 0, nzeroes = 0, length = 0, type = cnv_fmt_lex (&token); type == FT_NUMBER || type == FT_ZEROES;
 	   type = cnv_fmt_lex (&token))
 	{
 	  if (type == FT_ZEROES)
 	    {
-	      start = (int) (cnv_fmt_next_token () - token.length -
-			     (const char *) adj_ar_get_buffer (buffer));
+	      start = (int) (cnv_fmt_next_token () - token.length - (const char *) adj_ar_get_buffer (buffer));
 	      length = token.length;
 	      nzeroes = intl_mbs_len (token.text);
 	    }
@@ -5086,8 +4787,7 @@ ffmt_print (FLOAT_FORMAT * ffmt, double the_double,
     }
 
   /* Too many digits? */
-  if (!ffmt_value
-      (ffmt, (const char *) adj_ar_get_buffer (buffer), &the_value))
+  if (!ffmt_value (ffmt, (const char *) adj_ar_get_buffer (buffer), &the_value))
     {
       error = co_code ();
     }
@@ -5121,14 +4821,8 @@ mfmt_valid_char (FMT_TOKEN * token)
 {
   FMT_TOKEN_TYPE type = token->type;
 
-  return
-    type == FT_CURRENCY ||
-    type == FT_NUMBER ||
-    type == FT_ZEROES ||
-    type == FT_MINUS ||
-    type == FT_STARS ||
-    type == FT_DECIMAL ||
-    type == FT_THOUSANDS || mbs_eql (token->text, local_thousands ());
+  return type == FT_CURRENCY || type == FT_NUMBER || type == FT_ZEROES || type == FT_MINUS || type == FT_STARS
+    || type == FT_DECIMAL || type == FT_THOUSANDS || mbs_eql (token->text, local_thousands ());
 }
 
 /*
@@ -5139,8 +4833,7 @@ mfmt_valid_char (FMT_TOKEN * token)
  * currency_type(in) :
  */
 static void
-mfmt_new (MONETARY_FORMAT * mfmt, const char *format,
-	  DB_CURRENCY currency_type)
+mfmt_new (MONETARY_FORMAT * mfmt, const char *format, DB_CURRENCY currency_type)
 {
   wchar_t idc[3];
   const wchar_t *wfmt = cnv_wcs (format);
@@ -5170,8 +4863,7 @@ mfmt_new (MONETARY_FORMAT * mfmt, const char *format,
 
   mfmt->thousands = wcsstr (wfmt, FMT_THOUSANDS ()) != NULL;
 
-  if (mfmt->format == CURRENCY_FIRST && wcslen (wfmt)
-      && currency_part != NULL)
+  if (mfmt->format == CURRENCY_FIRST && wcslen (wfmt) && currency_part != NULL)
     {
       integer_part = currency_part + 1;
     }
@@ -5225,15 +4917,11 @@ mfmt_new (MONETARY_FORMAT * mfmt, const char *format,
 
   mfmt->integral_type = DIGIT_Z;
 
-  mfmt->integral_digits =
-    wcsspn (integer_part, WCSCAT (idc, FMT_Z (), FMT_THOUSANDS ()))
-    - mfmt->thousands;
+  mfmt->integral_digits = wcsspn (integer_part, WCSCAT (idc, FMT_Z (), FMT_THOUSANDS ())) - mfmt->thousands;
 
   if (mfmt->integral_digits <= 0)
     {
-      mfmt->integral_digits =
-	wcsspn (integer_part, WCSCAT (idc, FMT_9 (), FMT_THOUSANDS ()))
-	- mfmt->thousands;
+      mfmt->integral_digits = wcsspn (integer_part, WCSCAT (idc, FMT_9 (), FMT_THOUSANDS ())) - mfmt->thousands;
 
       if (mfmt->integral_digits > 0)
 	{
@@ -5241,9 +4929,7 @@ mfmt_new (MONETARY_FORMAT * mfmt, const char *format,
 	}
       else
 	{
-	  mfmt->integral_digits =
-	    wcsspn (integer_part, WCSCAT (idc, FMT_STAR (), FMT_THOUSANDS ()))
-	    - mfmt->thousands;
+	  mfmt->integral_digits = wcsspn (integer_part, WCSCAT (idc, FMT_STAR (), FMT_THOUSANDS ())) - mfmt->thousands;
 	  if (mfmt->integral_digits > 0)
 	    {
 	      mfmt->integral_type = DIGIT_STAR;
@@ -5278,8 +4964,7 @@ mfmt_value (MONETARY_FORMAT * mfmt, const char *string, double *the_double)
 
   do
     {
-      if (mfmt->format == CURRENCY_FIRST
-	  && cnv_fmt_lex (&token) != FT_CURRENCY)
+      if (mfmt->format == CURRENCY_FIRST && cnv_fmt_lex (&token) != FT_CURRENCY)
 	{
 	  error = CNV_ERR_NO_CURRENCY;
 	  co_signal (CNV_ERR_NO_CURRENCY, CNV_ER_FMT_NO_CURRENCY);
@@ -5287,10 +4972,7 @@ mfmt_value (MONETARY_FORMAT * mfmt, const char *string, double *the_double)
 	}
 
       /* Get value of integer part. */
-      error =
-	fmt_integral_value
-	(mfmt->integral_type,
-	 mfmt->integral_digits, false, mfmt->thousands, the_double);
+      error = fmt_integral_value (mfmt->integral_type, mfmt->integral_digits, false, mfmt->thousands, the_double);
 
       if (error && error != CNV_ERR_MISSING_INTEGER)
 	{
@@ -5313,10 +4995,7 @@ mfmt_value (MONETARY_FORMAT * mfmt, const char *string, double *the_double)
 		}
 
 	      /* get value of fraction part. */
-	      error =
-		fmt_fractional_value
-		(mfmt->fractional_type,
-		 mfmt->fractional_digits, &fraction_part);
+	      error = fmt_fractional_value (mfmt->fractional_type, mfmt->fractional_digits, &fraction_part);
 
 	      if (error && error != CNV_ERR_MISSING_FRACTION)
 		{
@@ -5378,8 +5057,7 @@ mfmt_value (MONETARY_FORMAT * mfmt, const char *string, double *the_double)
  *   the string (including final '\0' char);
  */
 static int
-mfmt_print (MONETARY_FORMAT * mfmt, double the_double,
-	    char *string, int max_size)
+mfmt_print (MONETARY_FORMAT * mfmt, double the_double, char *string, int max_size)
 {
   int error = 0;
   FMT_TOKEN token;
@@ -5389,8 +5067,7 @@ mfmt_print (MONETARY_FORMAT * mfmt, double the_double,
   bool unlimited_fraction = mfmt->decimal && !mfmt->fractional_digits;
 
   int max_digits = (!mfmt->integral_digits
-		    || unlimited_fraction) ? FMT_MAX_DIGITS :
-    mfmt->integral_digits + mfmt->fractional_digits;
+		    || unlimited_fraction) ? FMT_MAX_DIGITS : mfmt->integral_digits + mfmt->fractional_digits;
   DB_C_INT nchars = (the_double < 0.0) + mfmt->decimal + max_digits;
 
   /* Create print format string. */
@@ -5402,30 +5079,23 @@ mfmt_print (MONETARY_FORMAT * mfmt, double the_double,
   const char *fmt = adj_ar_concat_strings ("%", fmt_sign, fmt_zeroes,
 					   fmt_precision, fmt_type, NULL);
   /* Print undecorated value string. */
-  ADJ_ARRAY *buffer =
-    cnv_get_string_buffer (nchars - max_digits + FMT_MAX_DIGITS);
+  ADJ_ARRAY *buffer = cnv_get_string_buffer (nchars - max_digits + FMT_MAX_DIGITS);
   if (unlimited_fraction)
     {
       sprintf ((char *) adj_ar_get_buffer (buffer), fmt, nchars, the_double);
     }
   else
     {
-      sprintf
-	((char *) adj_ar_get_buffer (buffer),
-	 fmt, nchars, (DB_C_INT) (mfmt->fractional_digits), the_double);
+      sprintf ((char *) adj_ar_get_buffer (buffer), fmt, nchars, (DB_C_INT) (mfmt->fractional_digits), the_double);
     }
 
   /* Trim leading blanks... */
   if (!mfmt->integral_digits || mfmt->integral_type == DIGIT_Z)
     {
-      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer),
-		       FL_LOCAL_NUMBER);
-      while (cnv_fmt_lex (&token) == FT_UNKNOWN
-	     && mbs_eql (token.text, LOCAL_SPACE));
+      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer), FL_LOCAL_NUMBER);
+      while (cnv_fmt_lex (&token) == FT_UNKNOWN && mbs_eql (token.text, LOCAL_SPACE));
       adj_ar_remove (buffer, 0,
-		     CAST_STRLEN (cnv_fmt_next_token () -
-				  token.length -
-				  (char *) adj_ar_get_buffer (buffer)));
+		     CAST_STRLEN (cnv_fmt_next_token () - token.length - (char *) adj_ar_get_buffer (buffer)));
     }
 
   /* ...or replace with leading stars. */
@@ -5433,12 +5103,9 @@ mfmt_print (MONETARY_FORMAT * mfmt, double the_double,
     {
       int start;
 
-      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer),
-		       FL_LOCAL_NUMBER);
+      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer), FL_LOCAL_NUMBER);
       while ((type = cnv_fmt_lex (&token)) == FT_MINUS || type == FT_PLUS);
-      start =
-	CAST_STRLEN (cnv_fmt_next_token () - token.length -
-		     (const char *) adj_ar_get_buffer (buffer));
+      start = CAST_STRLEN (cnv_fmt_next_token () - token.length - (const char *) adj_ar_get_buffer (buffer));
 
       if (type == FT_ZEROES)
 	{
@@ -5459,23 +5126,15 @@ mfmt_print (MONETARY_FORMAT * mfmt, double the_double,
       int length;
       int nzeroes;
 
-      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer),
-		       FL_LOCAL_NUMBER);
+      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer), FL_LOCAL_NUMBER);
       while (cnv_fmt_lex (&token) != FT_DECIMAL);
 
-      for (start = 0,
-	   length = 0,
-	   nzeroes = 0,
-	   type = cnv_fmt_lex (&token);
-	   type == FT_NUMBER || type == FT_ZEROES;
+      for (start = 0, length = 0, nzeroes = 0, type = cnv_fmt_lex (&token); type == FT_NUMBER || type == FT_ZEROES;
 	   type = cnv_fmt_lex (&token))
 	{
 	  if (type == FT_ZEROES)
 	    {
-	      start =
-		CAST_STRLEN (cnv_fmt_next_token () -
-			     token.length -
-			     (const char *) adj_ar_get_buffer (buffer));
+	      start = CAST_STRLEN (cnv_fmt_next_token () - token.length - (const char *) adj_ar_get_buffer (buffer));
 	      length = token.length;
 	      nzeroes = intl_mbs_len (token.text);
 	    }
@@ -5503,8 +5162,7 @@ mfmt_print (MONETARY_FORMAT * mfmt, double the_double,
   fmt_add_currency (buffer, NULL, mfmt);
 
   /* Too many digits? */
-  if (!mfmt_value
-      (mfmt, (const char *) adj_ar_get_buffer (buffer), &the_value))
+  if (!mfmt_value (mfmt, (const char *) adj_ar_get_buffer (buffer), &the_value))
     {
       error = co_code ();
     }
@@ -5538,13 +5196,8 @@ ifmt_valid_char (FMT_TOKEN * token)
 {
   FMT_TOKEN_TYPE type = token->type;
 
-  return
-    type == FT_NUMBER ||
-    type == FT_ZEROES ||
-    type == FT_MINUS ||
-    type == FT_PLUS ||
-    type == FT_STARS ||
-    type == FT_THOUSANDS || mbs_eql (token->text, local_thousands ());
+  return type == FT_NUMBER || type == FT_ZEROES || type == FT_MINUS || type == FT_PLUS || type == FT_STARS
+    || type == FT_THOUSANDS || mbs_eql (token->text, local_thousands ());
 }
 
 /*
@@ -5572,22 +5225,22 @@ ifmt_new (INTEGER_FORMAT * ifmt, const char *format)
       ifmt->pattern = NULL;
 
       ifmt->integral_type = DIGIT_Z;
-      if (!((ifmt->integral_digits =
-	     wcsspn (integer_part,
-		     WCSCAT (idc, FMT_Z (),
-			     FMT_THOUSANDS ())) - ifmt->thousands) > 0))
+      if (!
+	  ((ifmt->integral_digits =
+	    wcsspn (integer_part, WCSCAT (idc, FMT_Z (), FMT_THOUSANDS ())) - ifmt->thousands) > 0))
 	{
 
 	  ifmt->integral_type =
 	    ((ifmt->integral_digits =
 	      wcsspn (integer_part,
 		      WCSCAT (idc, FMT_9 (),
-			      FMT_THOUSANDS ())) - ifmt->thousands) >
-	     0) ? DIGIT_9 : ((ifmt->integral_digits =
-			      wcsspn (integer_part,
-				      WCSCAT (idc, FMT_STAR (),
-					      FMT_THOUSANDS ())) -
-			      ifmt->thousands) > 0) ? DIGIT_STAR : DIGIT_Z;
+			      FMT_THOUSANDS ())) - ifmt->thousands) > 0) ? DIGIT_9 : ((ifmt->integral_digits =
+										       wcsspn (integer_part,
+											       WCSCAT (idc, FMT_STAR (),
+												       FMT_THOUSANDS
+												       ())) -
+										       ifmt->thousands) >
+										      0) ? DIGIT_STAR : DIGIT_Z;
 	}
     }
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -5647,8 +5300,7 @@ ifmt_value (INTEGER_FORMAT * ifmt, const char *string, int *the_integer)
  * the_bigint(out) :
  */
 static const char *
-bifmt_value (INTEGER_FORMAT * ifmt, const char *string,
-	     DB_BIGINT * the_bigint)
+bifmt_value (INTEGER_FORMAT * ifmt, const char *string, DB_BIGINT * the_bigint)
 {
   return
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -5668,8 +5320,7 @@ bifmt_value (INTEGER_FORMAT * ifmt, const char *string,
  * the_integer(out) :
  */
 static const char *
-ifmt_numeric_value (INTEGER_FORMAT * ifmt,
-		    const char *string, int *the_integer)
+ifmt_numeric_value (INTEGER_FORMAT * ifmt, const char *string, int *the_integer)
 {
   int error = 0;
   FMT_TOKEN token;
@@ -5681,13 +5332,10 @@ ifmt_numeric_value (INTEGER_FORMAT * ifmt,
     {
       /* Get value of integer part. */
       error =
-	fmt_integral_value
-	(ifmt->integral_type,
-	 ifmt->integral_digits,
-	 ifmt->sign_required, ifmt->thousands, &the_double);
+	fmt_integral_value (ifmt->integral_type, ifmt->integral_digits, ifmt->sign_required, ifmt->thousands,
+			    &the_double);
 
-      if ((!error || error == CNV_ERR_MISSING_INTEGER) &&
-	  cnv_fmt_lex (&token) != FT_NONE)
+      if ((!error || error == CNV_ERR_MISSING_INTEGER) && cnv_fmt_lex (&token) != FT_NONE)
 	{
 	  /* Invalid chars at the end. */
 	  error = cnv_bad_char (token.raw_text, !ifmt_valid_char (&token));
@@ -5727,8 +5375,7 @@ ifmt_numeric_value (INTEGER_FORMAT * ifmt,
  * the_integer(out) :
  */
 static const char *
-bifmt_numeric_value (INTEGER_FORMAT * ifmt, const char *string,
-		     DB_BIGINT * the_bigint)
+bifmt_numeric_value (INTEGER_FORMAT * ifmt, const char *string, DB_BIGINT * the_bigint)
 {
   int error = 0;
   FMT_TOKEN token;
@@ -5739,12 +5386,11 @@ bifmt_numeric_value (INTEGER_FORMAT * ifmt, const char *string,
   do
     {
       /* Get value of integer part. */
-      error = fmt_integral_value (ifmt->integral_type, ifmt->integral_digits,
-				  ifmt->sign_required, ifmt->thousands,
-				  &the_double);
+      error =
+	fmt_integral_value (ifmt->integral_type, ifmt->integral_digits, ifmt->sign_required, ifmt->thousands,
+			    &the_double);
 
-      if ((!error || error == CNV_ERR_MISSING_INTEGER) &&
-	  cnv_fmt_lex (&token) != FT_NONE)
+      if ((!error || error == CNV_ERR_MISSING_INTEGER) && cnv_fmt_lex (&token) != FT_NONE)
 	{
 	  /* Invalid chars at the end. */
 	  error = cnv_bad_char (token.raw_text, !ifmt_valid_char (&token));
@@ -5757,15 +5403,13 @@ bifmt_numeric_value (INTEGER_FORMAT * ifmt, const char *string,
       if (the_double > DB_BIGINT_MAX)
 	{
 	  error = CNV_ERR_INTEGER_OVERFLOW;
-	  co_signal (error, CNV_ER_FMT_INTEGER_OVERFLOW,
-		     (long) DB_BIGINT_MAX);
+	  co_signal (error, CNV_ER_FMT_INTEGER_OVERFLOW, (long) DB_BIGINT_MAX);
 	  break;
 	}
       if (the_double < DB_BIGINT_MIN)
 	{
 	  error = CNV_ERR_INTEGER_UNDERFLOW;
-	  co_signal (error, CNV_ER_FMT_INTEGER_UNDERFLOW,
-		     (long) DB_BIGINT_MIN);
+	  co_signal (error, CNV_ER_FMT_INTEGER_UNDERFLOW, (long) DB_BIGINT_MIN);
 	  break;
 	}
       *the_bigint = (DB_BIGINT) the_double;
@@ -5796,9 +5440,7 @@ ifmt_text_value (INTEGER_FORMAT * ifmt, const char *string, int *the_integer)
   nchars = ifmt_text_numeric (ifmt, vstring);
 
   return (!nchars
-	  || !ifmt_numeric_value (ifmt,
-				  (const char *)
-				  adj_ar_get_buffer (vstring),
+	  || !ifmt_numeric_value (ifmt, (const char *) adj_ar_get_buffer (vstring),
 				  the_integer)) ? NULL : string + nchars;
 }
 
@@ -5813,8 +5455,7 @@ ifmt_text_value (INTEGER_FORMAT * ifmt, const char *string, int *the_integer)
  * the_integer(out) :
  */
 static const char *
-bifmt_text_value (INTEGER_FORMAT * ifmt, const char *string,
-		  DB_BIGINT * the_bigint)
+bifmt_text_value (INTEGER_FORMAT * ifmt, const char *string, DB_BIGINT * the_bigint)
 {
   ADJ_ARRAY *vstring = cnv_get_value_string_buffer (0);
   int nchars;
@@ -5822,10 +5463,9 @@ bifmt_text_value (INTEGER_FORMAT * ifmt, const char *string,
   adj_ar_replace (vstring, string, strlen (string) + 1, 0, ADJ_AR_EOA);
   nchars = ifmt_text_numeric (ifmt, vstring);
 
-  return
-    (!nchars ||
-     !bifmt_numeric_value (ifmt, (const char *) adj_ar_get_buffer (vstring),
-			   the_bigint)) ? NULL : string + nchars;
+  return (!nchars
+	  || !bifmt_numeric_value (ifmt, (const char *) adj_ar_get_buffer (vstring),
+				   the_bigint)) ? NULL : string + nchars;
 }
 
 /*
@@ -5848,9 +5488,8 @@ ifmt_text_numeric (INTEGER_FORMAT * ifmt, ADJ_ARRAY * text_string)
   int sbytes = 0;
 
   /* Strip pattern chars from numeric value string according to format. */
-  for (sp =
-       ts, cnv_fmt_analyze (ifmt->pattern, FL_INTEGER_FORMAT);
-       !error && (ttype = cnv_fmt_lex (&token)) != FT_NONE; nbytes += sbytes)
+  for (sp = ts, cnv_fmt_analyze (ifmt->pattern, FL_INTEGER_FORMAT); !error && (ttype = cnv_fmt_lex (&token)) != FT_NONE;
+       nbytes += sbytes)
     {
 
       if (ttype == FT_PATTERN)
@@ -5896,13 +5535,10 @@ ifmt_text_numeric (INTEGER_FORMAT * ifmt, ADJ_ARRAY * text_string)
  *   the string (including final '\0' char);
  */
 static int
-ifmt_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string,
-	    int max_size)
+ifmt_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string, int max_size)
 {
-  return
-    ifmt->pattern ?
-    ifmt_text_print (ifmt, the_bigint, string, max_size) :
-    ifmt_numeric_print (ifmt, the_bigint, string, max_size);
+  return ifmt->pattern ? ifmt_text_print (ifmt, the_bigint, string, max_size) : ifmt_numeric_print (ifmt, the_bigint,
+												    string, max_size);
 }
 
 /*
@@ -5917,16 +5553,14 @@ ifmt_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string,
  *   the string (including final '\0' char)
  */
 static int
-ifmt_numeric_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string,
-		    int max_size)
+ifmt_numeric_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string, int max_size)
 {
   int error = 0;
   int the_value;
   FMT_TOKEN token;
   FMT_TOKEN_TYPE type;
 
-  int max_digits =
-    !ifmt->integral_digits ? FMT_MAX_DIGITS : ifmt->integral_digits;
+  int max_digits = !ifmt->integral_digits ? FMT_MAX_DIGITS : ifmt->integral_digits;
 
   DB_C_INT nchars = (the_bigint < 0.0 || ifmt->sign_required) + max_digits;
 
@@ -5935,25 +5569,19 @@ ifmt_numeric_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string,
   const char *fmt_zeroes = ifmt->integral_type != DIGIT_Z ? "0" : "";
   const char *fmt_width = "*";
 
-  const char *fmt =
-    adj_ar_concat_strings ("%", fmt_sign, fmt_zeroes, fmt_width, "d", NULL);
+  const char *fmt = adj_ar_concat_strings ("%", fmt_sign, fmt_zeroes, fmt_width, "d", NULL);
 
   /* Print undecorated value string. */
-  ADJ_ARRAY *buffer =
-    cnv_get_string_buffer (nchars - max_digits + FMT_MAX_DIGITS);
+  ADJ_ARRAY *buffer = cnv_get_string_buffer (nchars - max_digits + FMT_MAX_DIGITS);
   sprintf ((char *) adj_ar_get_buffer (buffer), fmt, nchars, the_bigint);
 
   /* Trim leading blanks... */
   if (!ifmt->integral_digits || ifmt->integral_type == DIGIT_Z)
     {
-      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer),
-		       FL_LOCAL_NUMBER);
-      while (cnv_fmt_lex (&token) == FT_UNKNOWN
-	     && mbs_eql (token.text, LOCAL_SPACE));
+      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer), FL_LOCAL_NUMBER);
+      while (cnv_fmt_lex (&token) == FT_UNKNOWN && mbs_eql (token.text, LOCAL_SPACE));
       adj_ar_remove (buffer, 0,
-		     CAST_STRLEN (cnv_fmt_next_token () -
-				  token.length -
-				  (char *) adj_ar_get_buffer (buffer)));
+		     CAST_STRLEN (cnv_fmt_next_token () - token.length - (char *) adj_ar_get_buffer (buffer)));
     }
 
   /* ...or replace with leading stars. */
@@ -5961,12 +5589,9 @@ ifmt_numeric_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string,
     {
       int start;
 
-      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer),
-		       FL_LOCAL_NUMBER);
+      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer), FL_LOCAL_NUMBER);
       while ((type = cnv_fmt_lex (&token)) == FT_MINUS || type == FT_PLUS);
-      start =
-	CAST_STRLEN (cnv_fmt_next_token () - token.length -
-		     (const char *) adj_ar_get_buffer (buffer));
+      start = CAST_STRLEN (cnv_fmt_next_token () - token.length - (const char *) adj_ar_get_buffer (buffer));
       if (type == FT_ZEROES)
 	{
 	  int nzeroes;
@@ -5986,8 +5611,7 @@ ifmt_numeric_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string,
     }
 
   /* Too many digits? */
-  if (!ifmt_numeric_value
-      (ifmt, (const char *) adj_ar_get_buffer (buffer), &the_value))
+  if (!ifmt_numeric_value (ifmt, (const char *) adj_ar_get_buffer (buffer), &the_value))
     {
       error = co_code ();
     }
@@ -6019,8 +5643,7 @@ ifmt_numeric_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string,
  *   the string (including final '\0' char)
  */
 static int
-ifmt_text_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string,
-		 int max_size)
+ifmt_text_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint, char *string, int max_size)
 {
   ADJ_ARRAY *vstring = cnv_get_value_string_buffer (strlen (ifmt->pattern));
 
@@ -6065,8 +5688,8 @@ ifmt_numeric_text (INTEGER_FORMAT * ifmt, ADJ_ARRAY * numeric_string)
   int i;
 
   /* Elaborate text value string according to format pattern. */
-  for (i = 0, cnv_fmt_analyze (ifmt->pattern, FL_INTEGER_FORMAT);
-       (ttype = cnv_fmt_lex (&token)) != FT_NONE; i += token.length)
+  for (i = 0, cnv_fmt_analyze (ifmt->pattern, FL_INTEGER_FORMAT); (ttype = cnv_fmt_lex (&token)) != FT_NONE;
+       i += token.length)
     {
 
       if (ttype == FT_PATTERN)
@@ -6195,8 +5818,7 @@ bfmt_value (BIT_STRING_FORMAT bfmt, const char *string, DB_VALUE * the_db_bit)
 	{
 	  return NULL;
 	}
-      db_make_bit (the_db_bit, TP_FLOATING_PRECISION_VALUE,
-		   the_bit_string, 0);
+      db_make_bit (the_db_bit, TP_FLOATING_PRECISION_VALUE, the_bit_string, 0);
       the_db_bit->need_clear = true;
       return cnv_fmt_next_token ();
     }
@@ -6220,8 +5842,7 @@ bfmt_value (BIT_STRING_FORMAT bfmt, const char *string, DB_VALUE * the_db_bit)
 	      else
 		{
 		  length += token.length;
-		  the_bit_string =
-		    (char *) db_private_alloc (NULL, BYTE_COUNT (length));
+		  the_bit_string = (char *) db_private_alloc (NULL, BYTE_COUNT (length));
 		  if (!the_bit_string)
 		    {
 		      return NULL;
@@ -6230,8 +5851,7 @@ bfmt_value (BIT_STRING_FORMAT bfmt, const char *string, DB_VALUE * the_db_bit)
 		  for (src = token.text; src < end; src += BITS_IN_BYTE)
 		    {
 		      ndigs = GET_MIN (BITS_IN_BYTE, CAST_STRLEN (end - src));
-		      the_bit_string[byte_index] = bin_string_to_int (src,
-								      ndigs);
+		      the_bit_string[byte_index] = bin_string_to_int (src, ndigs);
 		      byte_index++;
 		    }
 		}
@@ -6239,8 +5859,7 @@ bfmt_value (BIT_STRING_FORMAT bfmt, const char *string, DB_VALUE * the_db_bit)
 	  else if (bfmt == BIT_STRING_HEX)
 	    {
 	      length = length + (token.length * BITS_IN_HEX);
-	      the_bit_string =
-		(char *) db_private_alloc (NULL, BYTE_COUNT (length));
+	      the_bit_string = (char *) db_private_alloc (NULL, BYTE_COUNT (length));
 	      if (!the_bit_string)
 		{
 		  return NULL;
@@ -6303,8 +5922,7 @@ bfmt_value (BIT_STRING_FORMAT bfmt, const char *string, DB_VALUE * the_db_bit)
  *   the string (including final '\0' char)
  */
 static int
-bfmt_print (BIT_STRING_FORMAT * bfmt,
-	    const DB_VALUE * the_db_bit, char *string, int max_size)
+bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 {
   int length = 0;
   int string_index = 0;
@@ -6331,11 +5949,9 @@ bfmt_print (BIT_STRING_FORMAT * bfmt,
 	{
 	  for (byte_index = 0; byte_index < BYTE_COUNT (length); byte_index++)
 	    {
-	      for (bit_index = 7;
-		   bit_index >= 0 && string_index < length; bit_index--)
+	      for (bit_index = 7; bit_index >= 0 && string_index < length; bit_index--)
 		{
-		  *string =
-		    digits[((bstring[byte_index] >> bit_index) & 0x1)];
+		  *string = digits[((bstring[byte_index] >> bit_index) & 0x1)];
 		  string++;
 		  string_index++;
 		}
@@ -6391,15 +6007,12 @@ bfmt_print (BIT_STRING_FORMAT * bfmt,
  * the_value(out) :
  */
 static int
-nfmt_integral_value (FORMAT_DIGIT digit_type,
-		     int ndigits, bool sign_required,
-		     bool thousands, char *the_value)
+nfmt_integral_value (FORMAT_DIGIT digit_type, int ndigits, bool sign_required, bool thousands, char *the_value)
 {
   int nfound;
   int error;
 
-  error = nfmt_integral_digits (digit_type, ndigits, sign_required,
-				thousands, the_value, &nfound);
+  error = nfmt_integral_digits (digit_type, ndigits, sign_required, thousands, the_value, &nfound);
   if (!error && ndigits)
     {
       /* Too many digits? */
@@ -6433,9 +6046,8 @@ nfmt_integral_value (FORMAT_DIGIT digit_type,
  * nfound(out) : The number of digits in the value
  */
 static int
-nfmt_integral_digits (FORMAT_DIGIT digit_type, int ndigits,
-		      bool sign_required, bool thousands,
-		      char *the_value, int *nfound)
+nfmt_integral_digits (FORMAT_DIGIT digit_type, int ndigits, bool sign_required, bool thousands, char *the_value,
+		      int *nfound)
 {
   int error = 0;
 
@@ -6492,12 +6104,10 @@ nfmt_integral_digits (FORMAT_DIGIT digit_type, int ndigits,
 	  int group_size = *local_grouping ();
 
 	  /* Yes, add to numeric value. */
-	  for (; type == FT_NUMBER || type == FT_ZEROES;
-	       type = cnv_fmt_lex (&token))
+	  for (; type == FT_NUMBER || type == FT_ZEROES; type = cnv_fmt_lex (&token))
 	    {
 	      int tdigits = intl_mbs_len (token.text);
-	      if (thousands && group_size != CHAR_MAX &&
-		  ((initial_digits += tdigits) > group_size))
+	      if (thousands && group_size != CHAR_MAX && ((initial_digits += tdigits) > group_size))
 		{
 		  error = CNV_ERR_BAD_THOUS;
 		  co_signal (CNV_ERR_BAD_THOUS, CNV_ER_FMT_BAD_THOUS);
@@ -6516,9 +6126,8 @@ nfmt_integral_digits (FORMAT_DIGIT digit_type, int ndigits,
 		  strcat (the_value, token.text);
 		  *nfound += tdigits;
 		}
-	      if (type == FT_NUMBER || type == FT_ZEROES ||
-		  (type == FT_UNKNOWN
-		   && mbs_eql (token.text, local_thousands ())))
+	      if (type == FT_NUMBER || type == FT_ZEROES
+		  || (type == FT_UNKNOWN && mbs_eql (token.text, local_thousands ())))
 		{
 		  error = CNV_ERR_BAD_THOUS;
 		  co_signal (CNV_ERR_BAD_THOUS, CNV_ER_FMT_BAD_THOUS);
@@ -6533,17 +6142,15 @@ nfmt_integral_digits (FORMAT_DIGIT digit_type, int ndigits,
       /* Valid leading fill chars? */
       if (leading != FT_NONE)
 	{
-	  if ((leading == FT_STARS && digit_type != DIGIT_STAR) ||
-	      (leading == FT_ZEROES && !(digit_type == DIGIT_9 ||
-					 /* allow singleton zero. */
-					 (digit_type == DIGIT_Z
-					  && nleading == 1
-					  && *the_value == 0.0))))
+	  if ((leading == FT_STARS && digit_type != DIGIT_STAR) || (leading == FT_ZEROES && !(digit_type == DIGIT_9 ||
+											      /* allow singleton zero. */
+											      (digit_type == DIGIT_Z
+											       && nleading == 1
+											       && *the_value == 0.0))))
 	    {
 
 	      error = CNV_ERR_BAD_LEADING;
-	      co_signal (CNV_ERR_BAD_LEADING, CNV_ER_FMT_BAD_LEADING,
-			 leading == FT_ZEROES ? LOCAL_0 : LOCAL_STAR);
+	      co_signal (CNV_ERR_BAD_LEADING, CNV_ER_FMT_BAD_LEADING, leading == FT_ZEROES ? LOCAL_0 : LOCAL_STAR);
 	      break;
 	    }
 	  *nfound += nleading;
@@ -6565,8 +6172,7 @@ nfmt_integral_digits (FORMAT_DIGIT digit_type, int ndigits,
  * nfound(out) : set to the number of digits in the value
  */
 static int
-nfmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits,
-			char *the_value, int *nfound)
+nfmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits, char *the_value, int *nfound)
 {
   int error = 0;
 
@@ -6580,9 +6186,7 @@ nfmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits,
       FMT_TOKEN_TYPE last = FT_NONE;
 
       /* Any numeric chars? */
-      for (;
-	   (type = cnv_fmt_lex (&token)) == FT_NUMBER
-	   || type == FT_ZEROES; last = type)
+      for (; (type = cnv_fmt_lex (&token)) == FT_NUMBER || type == FT_ZEROES; last = type)
 	{
 
 	  /* Yes, add to numeric value. */
@@ -6596,7 +6200,7 @@ nfmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits,
 	{
 	  if (last != FT_ZEROES)
 	    {
-	      /*Can't have trailing zeroes AND trailing stars! */
+	      /* Can't have trailing zeroes AND trailing stars! */
 	      last = type;
 	    }
 	  *nfound += intl_mbs_len (token.text);
@@ -6611,8 +6215,7 @@ nfmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits,
       if (last == FT_STARS && digit_type != DIGIT_STAR)
 	{
 	  error = CNV_ERR_BAD_TRAILING;
-	  co_signal (CNV_ERR_BAD_TRAILING, CNV_ER_FMT_BAD_TRAILING,
-		     last == FT_ZEROES ? LOCAL_0 : LOCAL_STAR);
+	  co_signal (CNV_ERR_BAD_TRAILING, CNV_ER_FMT_BAD_TRAILING, last == FT_ZEROES ? LOCAL_0 : LOCAL_STAR);
 	  break;
 	}
     }
@@ -6669,8 +6272,7 @@ nfmt_fractional_value (FORMAT_DIGIT digit_type, int ndigits, char *the_value)
  * the_numeric(out) :
  */
 static const char *
-num_fmt_value (FLOAT_FORMAT * ffmt, const char *string,
-	       DB_VALUE * the_numeric)
+num_fmt_value (FLOAT_FORMAT * ffmt, const char *string, DB_VALUE * the_numeric)
 {
   int error = 0;
   FMT_TOKEN token;
@@ -6686,10 +6288,8 @@ num_fmt_value (FLOAT_FORMAT * ffmt, const char *string,
   do
     {
       /* Get value of integer part. */
-      error = nfmt_integral_value (ffmt->integral_type,
-				   ffmt->integral_digits,
-				   ffmt->sign_required, ffmt->thousands,
-				   temp);
+      error =
+	nfmt_integral_value (ffmt->integral_type, ffmt->integral_digits, ffmt->sign_required, ffmt->thousands, temp);
 
       if (error && error != CNV_ERR_MISSING_INTEGER)
 	{
@@ -6713,16 +6313,13 @@ num_fmt_value (FLOAT_FORMAT * ffmt, const char *string,
 		}
 
 	      /* Yes, get value of fraction part. */
-	      error = nfmt_fractional_value (ffmt->fractional_type,
-					     ffmt->fractional_digits,
-					     fraction_part);
-	      /*
+	      error = nfmt_fractional_value (ffmt->fractional_type, ffmt->fractional_digits, fraction_part);
+	      /* 
 	       * Digit really missing? Or did invalid char stop scan prematurely?
 	       * Find out later. Important to ValueEditor to report
 	       * CNV_ERR_MISSING_FRACTION correctly!
 	       */
-	      if (error && error != CNV_ERR_MISSING_FRACTION &&
-		  error != CNV_ERR_EXTRA_FRACTION)
+	      if (error && error != CNV_ERR_MISSING_FRACTION && error != CNV_ERR_EXTRA_FRACTION)
 		{
 		  break;
 		}
@@ -6731,22 +6328,14 @@ num_fmt_value (FLOAT_FORMAT * ffmt, const char *string,
 	      precision += strlen (fraction_part);
 	      scale = strlen (fraction_part);
 	      type = cnv_fmt_lex (&token);
-	      numeric_coerce_dec_str_to_num (temp,
-					     db_locate_numeric
-					     (&local_numeric));
-	      db_make_numeric (the_numeric,
-			       db_locate_numeric (&local_numeric), precision,
-			       scale);
+	      numeric_coerce_dec_str_to_num (temp, db_locate_numeric (&local_numeric));
+	      db_make_numeric (the_numeric, db_locate_numeric (&local_numeric), precision, scale);
 	    }
 	  /* No decimal point found.  Compute the integer portion */
 	  else
 	    {
-	      numeric_coerce_dec_str_to_num (temp,
-					     db_locate_numeric
-					     (&local_numeric));
-	      db_make_numeric (the_numeric,
-			       db_locate_numeric (&local_numeric), precision,
-			       0);
+	      numeric_coerce_dec_str_to_num (temp, db_locate_numeric (&local_numeric));
+	      db_make_numeric (the_numeric, db_locate_numeric (&local_numeric), precision, 0);
 	    }
 	}
 
@@ -6783,8 +6372,7 @@ num_fmt_value (FLOAT_FORMAT * ffmt, const char *string,
  *   the string (including final '\0' char);
  */
 static int
-num_fmt_print (FLOAT_FORMAT * ffmt,
-	       const DB_VALUE * the_numeric, char *string, int max_size)
+num_fmt_print (FLOAT_FORMAT * ffmt, const DB_VALUE * the_numeric, char *string, int max_size)
 {
   int error = 0;
   FMT_TOKEN token;
@@ -6798,8 +6386,7 @@ num_fmt_print (FLOAT_FORMAT * ffmt,
 
   /* Copy the numeric decimal digits into the buffer in the default format */
   scale = DB_VALUE_SCALE (the_numeric);
-  numeric_coerce_num_to_dec_str (db_locate_numeric
-				 ((DB_VALUE *) the_numeric), num_dec_digits);
+  numeric_coerce_num_to_dec_str (db_locate_numeric ((DB_VALUE *) the_numeric), num_dec_digits);
   sprintf ((char *) adj_ar_get_buffer (buffer), "%s", num_dec_digits);
 
   /* Add the decimal point */
@@ -6810,30 +6397,23 @@ num_fmt_print (FLOAT_FORMAT * ffmt,
       adj_ar_insert (buffer, dp, strlen (dp), position);
     }
 
-  /* Trim leading zeroes  */
-  cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer),
-		   FL_LOCAL_NUMBER);
+  /* Trim leading zeroes */
+  cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer), FL_LOCAL_NUMBER);
   while ((type = cnv_fmt_lex (&token)) == FT_MINUS || type == FT_PLUS)
     integral_start_pos++;
   if (type == FT_ZEROES)
     {
-      adj_ar_remove (buffer,
-		     integral_start_pos,
-		     CAST_STRLEN (cnv_fmt_next_token () -
-				  (char *) adj_ar_get_buffer (buffer)));
+      adj_ar_remove (buffer, integral_start_pos,
+		     CAST_STRLEN (cnv_fmt_next_token () - (char *) adj_ar_get_buffer (buffer)));
     }
 
   /* Trim leading blanks... */
   if (!ffmt->integral_digits || ffmt->integral_type == DIGIT_Z)
     {
-      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer),
-		       FL_LOCAL_NUMBER);
-      while (cnv_fmt_lex (&token) == FT_UNKNOWN
-	     && mbs_eql (token.text, LOCAL_SPACE));
+      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer), FL_LOCAL_NUMBER);
+      while (cnv_fmt_lex (&token) == FT_UNKNOWN && mbs_eql (token.text, LOCAL_SPACE));
       adj_ar_remove (buffer, 0,
-		     CAST_STRLEN (cnv_fmt_next_token () -
-				  token.length -
-				  (char *) adj_ar_get_buffer (buffer)));
+		     CAST_STRLEN (cnv_fmt_next_token () - token.length - (char *) adj_ar_get_buffer (buffer)));
     }
 
   /* ...or replace with leading stars. */
@@ -6841,12 +6421,9 @@ num_fmt_print (FLOAT_FORMAT * ffmt,
     {
       int start;
 
-      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer),
-		       FL_LOCAL_NUMBER);
+      cnv_fmt_analyze ((const char *) adj_ar_get_buffer (buffer), FL_LOCAL_NUMBER);
       while ((type = cnv_fmt_lex (&token)) == FT_MINUS || type == FT_PLUS);
-      start =
-	CAST_STRLEN (cnv_fmt_next_token () - token.length -
-		     (const char *) adj_ar_get_buffer (buffer));
+      start = CAST_STRLEN (cnv_fmt_next_token () - token.length - (const char *) adj_ar_get_buffer (buffer));
 
       if (type == FT_ZEROES)
 	{
@@ -6903,8 +6480,7 @@ num_fmt_print (FLOAT_FORMAT * ffmt,
  *
  */
 const char *
-db_string_value (const char *string, int str_size, const char *format,
-		 DB_VALUE * value)
+db_string_value (const char *string, int str_size, const char *format, DB_VALUE * value)
 {
   const char *next = NULL;
 
@@ -6914,8 +6490,7 @@ db_string_value (const char *string, int str_size, const char *format,
   /* Empty string is always NULL value. */
   if (!strlen (string))
     {
-      db_value_domain_init (value, DB_VALUE_DOMAIN_TYPE (value),
-			    DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      db_value_domain_init (value, DB_VALUE_DOMAIN_TYPE (value), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       next = string;
     }
   else
@@ -7055,8 +6630,7 @@ db_string_value (const char *string, int str_size, const char *format,
 	case DB_TYPE_CHAR:
 	  {
 	    int size = strlen (string);
-	    db_make_char (value, size, (char *) string, size,
-			  LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_char (value, size, (char *) string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + size;
 	    break;
 	  }
@@ -7064,8 +6638,7 @@ db_string_value (const char *string, int str_size, const char *format,
 	case DB_TYPE_VARCHAR:
 	  {
 	    int size = strlen (string);
-	    db_make_varchar (value, size, (char *) string, size,
-			     LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_varchar (value, size, (char *) string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + size;
 	    break;
 	  }
@@ -7073,10 +6646,8 @@ db_string_value (const char *string, int str_size, const char *format,
 	case DB_TYPE_NCHAR:
 	  {
 	    int size;
-	    intl_char_count ((unsigned char *) string,
-			     strlen (string), LANG_SYS_CODESET, &size);
-	    db_make_nchar (value, size, (char *) string, size,
-			   LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    intl_char_count ((unsigned char *) string, strlen (string), LANG_SYS_CODESET, &size);
+	    db_make_nchar (value, size, (char *) string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + strlen (string);
 	    break;
 	  }
@@ -7084,10 +6655,8 @@ db_string_value (const char *string, int str_size, const char *format,
 	case DB_TYPE_VARNCHAR:
 	  {
 	    int char_count;
-	    intl_char_count ((unsigned char *) string,
-			     strlen (string), LANG_SYS_CODESET, &char_count);
-	    db_make_varnchar (value, char_count, (char *) string, char_count,
-			      LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    intl_char_count ((unsigned char *) string, strlen (string), LANG_SYS_CODESET, &char_count);
+	    db_make_varnchar (value, char_count, (char *) string, char_count, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + strlen (string);
 	    break;
 	  }
@@ -7180,8 +6749,7 @@ db_string_value (const char *string, int str_size, const char *format,
 	case DB_TYPE_SUB:
 	case DB_TYPE_VARIABLE:
 	case DB_TYPE_VOBJ:
-	  co_signal (CNV_ERR_BAD_TYPE, CNV_ER_FMT_BAD_TYPE,
-		     pr_type_name (DB_VALUE_DOMAIN_TYPE (value)));
+	  co_signal (CNV_ERR_BAD_TYPE, CNV_ER_FMT_BAD_TYPE, pr_type_name (DB_VALUE_DOMAIN_TYPE (value)));
 	  break;
 	default:
 	  co_signal (CNV_ERR_BAD_TYPE, CNV_ER_FMT_BAD_TYPE, "UNKNWON TYPE");
@@ -7242,8 +6810,7 @@ db_string_to_value (const char *string, const char *format, DB_TYPE type, ...)
  *
  */
 int
-db_value_string (const DB_VALUE * value, const char *format,
-		 char *string, int max_size)
+db_value_string (const DB_VALUE * value, const char *format, char *string, int max_size)
 {
   int error = 0;
   int dummy;
@@ -7264,28 +6831,22 @@ db_value_string (const DB_VALUE * value, const char *format,
       break;
 
     case DB_TYPE_DOUBLE:
-      error = db_double_string (DB_GET_DOUBLE (value), format, string,
-				max_size);
+      error = db_double_string (DB_GET_DOUBLE (value), format, string, max_size);
       break;
 
     case DB_TYPE_FLOAT:
-      error =
-	db_float_string (DB_GET_FLOAT (value), format, string, max_size);
+      error = db_float_string (DB_GET_FLOAT (value), format, string, max_size);
       break;
 
     case DB_TYPE_INTEGER:
-      error =
-	db_integer_string (DB_GET_INTEGER (value), format, string, max_size);
+      error = db_integer_string (DB_GET_INTEGER (value), format, string, max_size);
       break;
     case DB_TYPE_BIGINT:
-      error = db_bigint_string (DB_GET_BIGINT (value), format, string,
-				max_size);
+      error = db_bigint_string (DB_GET_BIGINT (value), format, string, max_size);
       break;
 
     case DB_TYPE_MONETARY:
-      error =
-	db_monetary_string (DB_GET_MONETARY (value), format, string,
-			    max_size);
+      error = db_monetary_string (DB_GET_MONETARY (value), format, string, max_size);
       break;
 
     case DB_TYPE_NULL:
@@ -7293,8 +6854,7 @@ db_value_string (const DB_VALUE * value, const char *format,
       break;
 
     case DB_TYPE_SHORT:
-      error = db_short_string (DB_GET_SHORT (value), format, string,
-			       max_size);
+      error = db_short_string (DB_GET_SHORT (value), format, string, max_size);
       break;
 
     case DB_TYPE_VARCHAR:
@@ -7339,14 +6899,11 @@ db_value_string (const DB_VALUE * value, const char *format,
       break;
 
     case DB_TYPE_TIMESTAMP:
-      error = db_timestamp_string (DB_GET_TIMESTAMP (value), format, string,
-				   max_size);
+      error = db_timestamp_string (DB_GET_TIMESTAMP (value), format, string, max_size);
       break;
 
     case DB_TYPE_DATETIME:
-      error =
-	db_datetime_string (DB_GET_DATETIME (value), format, string,
-			    max_size);
+      error = db_datetime_string (DB_GET_DATETIME (value), format, string, max_size);
       break;
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
@@ -7368,8 +6925,7 @@ db_value_string (const DB_VALUE * value, const char *format,
     case DB_TYPE_VARIABLE:
     case DB_TYPE_VOBJ:
       error = CNV_ERR_BAD_TYPE;
-      co_signal (error, CNV_ER_FMT_BAD_TYPE,
-		 pr_type_name (DB_VALUE_DOMAIN_TYPE (value)));
+      co_signal (error, CNV_ER_FMT_BAD_TYPE, pr_type_name (DB_VALUE_DOMAIN_TYPE (value)));
       break;
 
     default:
@@ -7414,8 +6970,7 @@ db_value_to_string (const DB_VALUE * value, const char *format)
     }
 
   /* Reallocate buffer until big enough. */
-  while ((error = db_value_string (value, format, buffer, max_size))
-	 == CNV_ERR_STRING_TOO_LONG)
+  while ((error = db_value_string (value, format, buffer, max_size)) == CNV_ERR_STRING_TOO_LONG)
     {
       max_size += max_size / 2;	/* Grow by 1.5x */
       if ((buffer = (char *) realloc (buffer, max_size)) == NULL)
@@ -7440,8 +6995,7 @@ db_value_to_string (const DB_VALUE * value, const char *format)
  * the_date(out) :
  */
 const char *
-db_string_date (const char *date_string,
-		const char *date_format, DB_DATE * the_date)
+db_string_date (const char *date_string, const char *date_format, DB_DATE * the_date)
 {
   const FMT_TOKEN *fmt_token;
   int month;
@@ -7461,8 +7015,7 @@ db_string_date (const char *date_string,
   db_date_decode (the_date, &month, &day, &year);
 
   /* Scan value string according to format. */
-  for (fmt_token = tfmt_new (strlen (date_format) ? date_format : "%x"),
-       cnv_fmt_analyze (date_string, FL_LOCAL_TIME);
+  for (fmt_token = tfmt_new (strlen (date_format) ? date_format : "%x"), cnv_fmt_analyze (date_string, FL_LOCAL_TIME);
        !error && fmt_token->type != FT_NONE; fmt_token++)
     {
 
@@ -7481,17 +7034,14 @@ db_string_date (const char *date_string,
 	    {
 
 	      /* Yes, restart scan after pattern. */
-	      cnv_fmt_analyze (value_string + fmt_token->length,
-			       FL_LOCAL_TIME);
+	      cnv_fmt_analyze (value_string + fmt_token->length, FL_LOCAL_TIME);
 	    }
 	  else
 	    {
 	      /* No, signal error showing where mismatch occurs. */
-	      for (i = fmt_token->length - 1;
-		   i > 0 && strncmp (fmt_token->text, value_string, i); i--);
+	      for (i = fmt_token->length - 1; i > 0 && strncmp (fmt_token->text, value_string, i); i--);
 	      error = CNV_ERR_BAD_PATTERN;
-	      co_signal (error, CNV_ER_FMT_BAD_PATTERN,
-			 fmt_token->text + i, value_string - date_string + i);
+	      co_signal (error, CNV_ER_FMT_BAD_PATTERN, fmt_token->text + i, value_string - date_string + i);
 	    }
 	  break;
 
@@ -7530,16 +7080,14 @@ db_string_date (const char *date_string,
       if (error != NO_ERROR)
 	{
 	  error = CNV_ERR_UNKNOWN_DATE;
-	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE,
-		     local_date_string (month, day, year));
+	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE, local_date_string (month, day, year));
 	  goto function_end;
 	}
       db_date_decode (the_date, &m, &d, &y);
       if (!(month == m && day == d && year == y))
 	{
 	  error = CNV_ERR_UNKNOWN_DATE;
-	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE,
-		     local_date_string (month, day, year));
+	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE, local_date_string (month, day, year));
 	}
     }
 
@@ -7562,8 +7110,7 @@ function_end:
  *   the string (including final '\0' char).
  */
 int
-db_date_string (const DB_DATE * the_date,
-		const char *date_format, char *string, int max_size)
+db_date_string (const DB_DATE * the_date, const char *date_format, char *string, int max_size)
 {
   int error = 0;
   ADJ_ARRAY *buffer = cnv_get_value_string_buffer (0);
@@ -7585,11 +7132,8 @@ db_date_string (const DB_DATE * the_date,
   db_date_decode ((DB_DATE *) the_date, &month, &day, &year);
 
   /* Print according to format. */
-  for (cnv_fmt_analyze
-       (strlen (date_format) ? date_format : "%x",
-	FL_TIME_FORMAT);
-       (ttype = cnv_fmt_lex (&token)) != FT_NONE;
-       adj_ar_append (buffer, value_string, strlen (value_string)))
+  for (cnv_fmt_analyze (strlen (date_format) ? date_format : "%x", FL_TIME_FORMAT);
+       (ttype = cnv_fmt_lex (&token)) != FT_NONE; adj_ar_append (buffer, value_string, strlen (value_string)))
     {
 
       switch (ttype)
@@ -7655,8 +7199,7 @@ db_date_string (const DB_DATE * the_date,
  * the_double(out) :
  */
 const char *
-db_string_double (const char *double_string,
-		  const char *double_format, double *the_double)
+db_string_double (const char *double_string, const char *double_format, double *the_double)
 {
   FLOAT_FORMAT ffmt;
 
@@ -7686,8 +7229,7 @@ db_string_double (const char *double_string,
  *   the string (including final '\0' char).
  */
 int
-db_double_string (double the_double, const char *double_format,
-		  char *string, int max_size)
+db_double_string (double the_double, const char *double_format, char *string, int max_size)
 {
   FLOAT_FORMAT ffmt;
   int r;
@@ -7725,8 +7267,7 @@ db_double_string (double the_double, const char *double_format,
  * the_numeric(out) :
  */
 const char *
-db_string_numeric (const char *numeric_string,
-		   const char *numeric_format, DB_VALUE * the_numeric)
+db_string_numeric (const char *numeric_string, const char *numeric_format, DB_VALUE * the_numeric)
 {
   FLOAT_FORMAT ffmt;
 
@@ -7752,8 +7293,7 @@ db_string_numeric (const char *numeric_string,
  *   the string (including final '\0' char).
  */
 int
-db_numeric_string (const DB_VALUE * the_numeric,
-		   const char *numeric_format, char *string, int max_size)
+db_numeric_string (const DB_VALUE * the_numeric, const char *numeric_format, char *string, int max_size)
 {
   FLOAT_FORMAT ffmt;
   int r;
@@ -7793,8 +7333,7 @@ db_numeric_string (const DB_VALUE * the_numeric,
  * the_float(out) :
  */
 const char *
-db_string_float (const char *float_string,
-		 const char *float_format, float *the_float)
+db_string_float (const char *float_string, const char *float_format, float *the_float)
 {
   FLOAT_FORMAT ffmt;
   const char *endp;
@@ -7814,14 +7353,12 @@ db_string_float (const char *float_string,
     {
       if (the_double > FLT_MAX)
 	{
-	  co_signal (CNV_ERR_FLOAT_OVERFLOW, CNV_ER_FMT_FLOAT_OVERFLOW,
-		     FLT_MAX);
+	  co_signal (CNV_ERR_FLOAT_OVERFLOW, CNV_ER_FMT_FLOAT_OVERFLOW, FLT_MAX);
 	  endp = NULL;
 	}
       else if (the_double < -FLT_MAX)
 	{
-	  co_signal (CNV_ERR_FLOAT_UNDERFLOW, CNV_ER_FMT_FLOAT_UNDERFLOW,
-		     -FLT_MAX);
+	  co_signal (CNV_ERR_FLOAT_UNDERFLOW, CNV_ER_FMT_FLOAT_UNDERFLOW, -FLT_MAX);
 	  endp = NULL;
 	}
       else
@@ -7848,8 +7385,7 @@ db_string_float (const char *float_string,
  *   the string (including final '\0' char)
  */
 int
-db_float_string (float the_float, const char *float_format,
-		 char *string, int max_size)
+db_float_string (float the_float, const char *float_format, char *string, int max_size)
 {
   FLOAT_FORMAT ffmt;
   int r;
@@ -7883,8 +7419,7 @@ db_float_string (float the_float, const char *float_format,
  * the_integer(out) :
  */
 const char *
-db_string_integer (const char *integer_string,
-		   const char *integer_format, int *the_integer)
+db_string_integer (const char *integer_string, const char *integer_format, int *the_integer)
 {
   INTEGER_FORMAT ifmt;
 
@@ -7910,8 +7445,7 @@ db_string_integer (const char *integer_string,
  *   the string (including final '\0' char)
  */
 int
-db_integer_string (int the_integer, const char *integer_format,
-		   char *string, int max_size)
+db_integer_string (int the_integer, const char *integer_format, char *string, int max_size)
 {
   INTEGER_FORMAT ifmt;
   int r;
@@ -7945,8 +7479,7 @@ db_integer_string (int the_integer, const char *integer_format,
  * the_bigint(out) :
  */
 const char *
-db_string_bigint (const char *bitint_string, const char *bigint_format,
-		  DB_BIGINT * the_bigint)
+db_string_bigint (const char *bitint_string, const char *bigint_format, DB_BIGINT * the_bigint)
 {
   INTEGER_FORMAT ifmt;
 
@@ -7972,8 +7505,7 @@ db_string_bigint (const char *bitint_string, const char *bigint_format,
  *   the string (including final '\0' char)
  */
 int
-db_bigint_string (DB_BIGINT the_bigint, const char *bigint_format,
-		  char *string, int max_size)
+db_bigint_string (DB_BIGINT the_bigint, const char *bigint_format, char *string, int max_size)
 {
   INTEGER_FORMAT ifmt;
   int r;
@@ -8016,8 +7548,7 @@ db_bigint_string (DB_BIGINT the_bigint, const char *bigint_format,
  *        allowed in the monetary_string.
  */
 const char *
-db_string_monetary (const char *monetary_string,
-		    const char *monetary_format, DB_MONETARY * the_monetary)
+db_string_monetary (const char *monetary_string, const char *monetary_format, DB_MONETARY * the_monetary)
 {
   MONETARY_FORMAT mfmt;
 
@@ -8045,8 +7576,7 @@ db_string_monetary (const char *monetary_string,
  *   the string (including final '\0' char)
  */
 int
-db_monetary_string (const DB_MONETARY * the_monetary,
-		    const char *monetary_format, char *string, int max_size)
+db_monetary_string (const DB_MONETARY * the_monetary, const char *monetary_format, char *string, int max_size)
 {
   MONETARY_FORMAT mfmt;
   int r;
@@ -8087,8 +7617,7 @@ db_monetary_string (const DB_MONETARY * the_monetary,
  * the_short(out) :
  */
 const char *
-db_string_short (const char *short_string,
-		 const char *short_format, short *the_short)
+db_string_short (const char *short_string, const char *short_format, short *the_short)
 {
   INTEGER_FORMAT ifmt;
   const char *endp;
@@ -8104,14 +7633,12 @@ db_string_short (const char *short_string,
     {
       if (the_integer > DB_INT16_MAX)
 	{
-	  co_signal (CNV_ERR_INTEGER_OVERFLOW, CNV_ER_FMT_INTEGER_OVERFLOW,
-		     DB_INT16_MAX);
+	  co_signal (CNV_ERR_INTEGER_OVERFLOW, CNV_ER_FMT_INTEGER_OVERFLOW, DB_INT16_MAX);
 	  endp = NULL;
 	}
       else if (the_integer < DB_INT16_MIN)
 	{
-	  co_signal (CNV_ERR_INTEGER_UNDERFLOW, CNV_ER_FMT_INTEGER_UNDERFLOW,
-		     DB_INT16_MIN);
+	  co_signal (CNV_ERR_INTEGER_UNDERFLOW, CNV_ER_FMT_INTEGER_UNDERFLOW, DB_INT16_MIN);
 	  endp = NULL;
 	}
       else
@@ -8138,8 +7665,7 @@ db_string_short (const char *short_string,
  *   the string (including final '\0' char)
  */
 int
-db_short_string (short the_short, const char *short_format,
-		 char *string, int max_size)
+db_short_string (short the_short, const char *short_format, char *string, int max_size)
 {
   INTEGER_FORMAT ifmt;
   int r;
@@ -8180,8 +7706,7 @@ db_short_string (short the_short, const char *short_format,
  * the_time(out) :
  */
 const char *
-db_string_time (const char *time_string,
-		const char *time_format, DB_TIME * the_time)
+db_string_time (const char *time_string, const char *time_format, DB_TIME * the_time)
 {
   const FMT_TOKEN *fmt_token;
   int hour;
@@ -8203,8 +7728,7 @@ db_string_time (const char *time_string,
   db_time_decode (the_time, &hour, &min, &sec);
 
   /* Scan value string according to format. */
-  for (fmt_token = tfmt_new (strlen (time_format) ? time_format : "%X"),
-       cnv_fmt_analyze (time_string, FL_LOCAL_TIME);
+  for (fmt_token = tfmt_new (strlen (time_format) ? time_format : "%X"), cnv_fmt_analyze (time_string, FL_LOCAL_TIME);
        !error && fmt_token->type != FT_NONE; fmt_token++)
     {
       switch (fmt_token->type)
@@ -8224,17 +7748,14 @@ db_string_time (const char *time_string,
 	  if (!strncmp (fmt_token->text, value_string, fmt_token->length))
 	    {
 	      /* Yes, restart scan after pattern. */
-	      cnv_fmt_analyze (value_string + fmt_token->length,
-			       FL_LOCAL_TIME);
+	      cnv_fmt_analyze (value_string + fmt_token->length, FL_LOCAL_TIME);
 	    }
 	  else
 	    {
 	      /* No, signal error showing where mismatch occurs. */
-	      for (i = fmt_token->length - 1;
-		   i > 0 && strncmp (fmt_token->text, value_string, i); i--);
+	      for (i = fmt_token->length - 1; i > 0 && strncmp (fmt_token->text, value_string, i); i--);
 	      error = CNV_ERR_BAD_PATTERN;
-	      co_signal (error, CNV_ER_FMT_BAD_PATTERN,
-			 fmt_token->text + i, value_string - time_string + i);
+	      co_signal (error, CNV_ER_FMT_BAD_PATTERN, fmt_token->text + i, value_string - time_string + i);
 	    }
 	  break;
 
@@ -8281,8 +7802,7 @@ db_string_time (const char *time_string,
 	}
       else
 	{
-	  db_time_encode (the_time, hrs == 12 && pm ?
-			  hour % 12 + 12 : hour, min, sec);
+	  db_time_encode (the_time, hrs == 12 && pm ? hour % 12 + 12 : hour, min, sec);
 	}
     }
 
@@ -8303,8 +7823,7 @@ db_string_time (const char *time_string,
  *   the string (including final '\0' char)
  */
 int
-db_time_string (const DB_TIME * the_time,
-		const char *time_format, char *string, int max_size)
+db_time_string (const DB_TIME * the_time, const char *time_format, char *string, int max_size)
 {
   int error = 0;
   ADJ_ARRAY *buffer = cnv_get_value_string_buffer (0);
@@ -8323,10 +7842,8 @@ db_time_string (const DB_TIME * the_time,
     }
 
   /* Print according to format. */
-  for (cnv_fmt_analyze (strlen (time_format) ? time_format : "%X",
-			FL_TIME_FORMAT);
-       (ttype = cnv_fmt_lex (&token)) != FT_NONE;
-       adj_ar_append (buffer, value_string, strlen (value_string)))
+  for (cnv_fmt_analyze (strlen (time_format) ? time_format : "%X", FL_TIME_FORMAT);
+       (ttype = cnv_fmt_lex (&token)) != FT_NONE; adj_ar_append (buffer, value_string, strlen (value_string)))
     {
 
       switch (ttype)
@@ -8409,9 +7926,7 @@ db_time_string (const DB_TIME * the_time,
  * the_timestamp(out) :
  */
 const char *
-db_string_timestamp (const char *timestamp_string,
-		     const char *timestamp_format,
-		     DB_TIMESTAMP * the_timestamp)
+db_string_timestamp (const char *timestamp_string, const char *timestamp_format, DB_TIMESTAMP * the_timestamp)
 {
   const FMT_TOKEN *fmt_token;
   DB_DATE the_date;
@@ -8441,17 +7956,16 @@ db_string_timestamp (const char *timestamp_string,
   db_time_decode (&the_time, &hour, &min, &sec);
 
   /* Scan value string according to format. */
-  for (fmt_token = tfmt_new (strlen (timestamp_format) ?
-			     timestamp_format : "%c"),
-       cnv_fmt_analyze (timestamp_string, FL_LOCAL_TIME);
+  for (fmt_token =
+       tfmt_new (strlen (timestamp_format) ? timestamp_format : "%c"), cnv_fmt_analyze (timestamp_string,
+											FL_LOCAL_TIME);
        !error && fmt_token->type != FT_NONE; fmt_token++)
     {
 
       switch (fmt_token->type)
 	{
 	case FT_TIMESTAMP:
-	  error = fmt_timestamp_value (fmt_token->text, &month, &day, &year,
-				       &hour, &min, &sec);
+	  error = fmt_timestamp_value (fmt_token->text, &month, &day, &year, &hour, &min, &sec);
 	  if (!error)
 	    {
 	      new_hour = true;
@@ -8466,19 +7980,15 @@ db_string_timestamp (const char *timestamp_string,
 	    {
 
 	      /* Yes, restart scan after pattern. */
-	      cnv_fmt_analyze (value_string + fmt_token->length,
-			       FL_LOCAL_TIME);
+	      cnv_fmt_analyze (value_string + fmt_token->length, FL_LOCAL_TIME);
 	    }
 	  else
 	    {
 	      /* No, signal error showing where mismatch occurs. */
-	      for (i = fmt_token->length - 1;
-		   i > 0 && strncmp (fmt_token->text, value_string, i); i--)
+	      for (i = fmt_token->length - 1; i > 0 && strncmp (fmt_token->text, value_string, i); i--)
 		;
 	      error = CNV_ERR_BAD_PATTERN;
-	      co_signal (error, CNV_ER_FMT_BAD_PATTERN,
-			 fmt_token->text + i,
-			 value_string - timestamp_string + i);
+	      co_signal (error, CNV_ER_FMT_BAD_PATTERN, fmt_token->text + i, value_string - timestamp_string + i);
 	    }
 	  break;
 
@@ -8556,18 +8066,14 @@ db_string_timestamp (const char *timestamp_string,
       if (error != NO_ERROR)
 	{
 	  error = CNV_ERR_UNKNOWN_DATE;
-	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE,
-		     local_date_string (month, day, year));
+	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE, local_date_string (month, day, year));
 	  goto function_end;
 	}
-      error = db_time_encode (&the_time,
-			      (hrs == 12 && pm ? hour % 12 + 12 : hour), min,
-			      sec);
+      error = db_time_encode (&the_time, (hrs == 12 && pm ? hour % 12 + 12 : hour), min, sec);
       if (error != NO_ERROR)
 	{
 	  error = CNV_ERR_UNKNOWN_DATE;
-	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE,
-		     local_date_string (month, day, year));
+	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE, local_date_string (month, day, year));
 	  goto function_end;
 	}
 
@@ -8576,8 +8082,7 @@ db_string_timestamp (const char *timestamp_string,
       if (!(month == m && day == d && year == y))
 	{
 	  error = CNV_ERR_UNKNOWN_DATE;
-	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE,
-		     local_date_string (month, day, year));
+	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE, local_date_string (month, day, year));
 	}
       /* Hour consistent with AM/PM? */
       else if (hrs == 12 && new_hour && (hour > 12 || hour < 1))
@@ -8587,8 +8092,7 @@ db_string_timestamp (const char *timestamp_string,
 	}
       else
 	{
-	  (void) db_timestamp_encode_ses (&the_date, &the_time, the_timestamp,
-					  NULL);
+	  (void) db_timestamp_encode_ses (&the_date, &the_time, the_timestamp, NULL);
 	}
     }
 
@@ -8610,8 +8114,7 @@ function_end:
  *   the string (including final '\0' char)
  */
 int
-db_timestamp_string (const DB_TIMESTAMP * the_timestamp,
-		     const char *timestamp_format, char *string, int max_size)
+db_timestamp_string (const DB_TIMESTAMP * the_timestamp, const char *timestamp_format, char *string, int max_size)
 {
   int error = 0;
   ADJ_ARRAY *buffer = cnv_get_value_string_buffer (0);
@@ -8637,17 +8140,13 @@ db_timestamp_string (const DB_TIMESTAMP * the_timestamp,
     }
 
   /* Reject timestamp encoding errors. */
-  (void) db_timestamp_decode_ses ((DB_TIMESTAMP *) the_timestamp, &the_date,
-				  &the_time);
+  (void) db_timestamp_decode_ses ((DB_TIMESTAMP *) the_timestamp, &the_date, &the_time);
   db_date_decode (&the_date, &month, &day, &year);
   db_time_decode (&the_time, &hour, &minute, &second);
 
   /* Print according to format. */
-  for (cnv_fmt_analyze
-       (strlen (timestamp_format) ? timestamp_format : "%c",
-	FL_TIME_FORMAT);
-       (ttype = cnv_fmt_lex (&token)) != FT_NONE;
-       adj_ar_append (buffer, value_string, strlen (value_string)))
+  for (cnv_fmt_analyze (strlen (timestamp_format) ? timestamp_format : "%c", FL_TIME_FORMAT);
+       (ttype = cnv_fmt_lex (&token)) != FT_NONE; adj_ar_append (buffer, value_string, strlen (value_string)))
     {
 
       switch (ttype)
@@ -8750,8 +8249,7 @@ db_timestamp_string (const DB_TIMESTAMP * the_timestamp,
  * the_timestamp(out) :
  */
 const char *
-db_string_datetime (const char *datetime_string,
-		    const char *datetime_format, DB_DATETIME * the_datetime)
+db_string_datetime (const char *datetime_string, const char *datetime_format, DB_DATETIME * the_datetime)
 {
   const FMT_TOKEN *fmt_token;
   DB_DATETIME tmp_datetime;
@@ -8776,21 +8274,17 @@ db_string_datetime (const char *datetime_string,
   assert (datetime_string != NULL);
 
   /* Initialize to given datetime. */
-  db_datetime_decode (the_datetime, &month, &day, &year,
-		      &hour, &min, &sec, &msec);
+  db_datetime_decode (the_datetime, &month, &day, &year, &hour, &min, &sec, &msec);
 
   /* Scan value string according to format. */
-  for (fmt_token = tfmt_new (strlen (datetime_format) ?
-			     datetime_format : "%c"),
-       cnv_fmt_analyze (datetime_string, FL_LOCAL_TIME);
+  for (fmt_token =
+       tfmt_new (strlen (datetime_format) ? datetime_format : "%c"), cnv_fmt_analyze (datetime_string, FL_LOCAL_TIME);
        !error && fmt_token->type != FT_NONE; fmt_token++)
     {
       switch (fmt_token->type)
 	{
 	case FT_TIMESTAMP:
-	  error =
-	    fmt_timestamp_value (fmt_token->text, &month, &day, &year,
-				 &hour, &min, &sec);
+	  error = fmt_timestamp_value (fmt_token->text, &month, &day, &year, &hour, &min, &sec);
 	  if (!error)
 	    {
 	      new_hour = true;
@@ -8805,18 +8299,14 @@ db_string_datetime (const char *datetime_string,
 	    {
 
 	      /* Yes, restart scan after pattern. */
-	      cnv_fmt_analyze (value_string + fmt_token->length,
-			       FL_LOCAL_TIME);
+	      cnv_fmt_analyze (value_string + fmt_token->length, FL_LOCAL_TIME);
 	    }
 	  else
 	    {
 	      /* No, signal error showing where mismatch occurs. */
-	      for (i = fmt_token->length - 1;
-		   i > 0 && strncmp (fmt_token->text, value_string, i); i--);
+	      for (i = fmt_token->length - 1; i > 0 && strncmp (fmt_token->text, value_string, i); i--);
 	      error = CNV_ERR_BAD_PATTERN;
-	      co_signal (error, CNV_ER_FMT_BAD_PATTERN,
-			 fmt_token->text + i,
-			 value_string - datetime_string + i);
+	      co_signal (error, CNV_ER_FMT_BAD_PATTERN, fmt_token->text + i, value_string - datetime_string + i);
 	    }
 	  break;
 	case FT_DATE:
@@ -8878,16 +8368,13 @@ db_string_datetime (const char *datetime_string,
   if (!error)
     {
       int m, d, y, hh, mm, ss, ms;
-      db_datetime_encode (&tmp_datetime, month, day, year,
-			  (hrs == 12 && pm ? hour % 12 + 12 : hour),
-			  min, sec, msec);
+      db_datetime_encode (&tmp_datetime, month, day, year, (hrs == 12 && pm ? hour % 12 + 12 : hour), min, sec, msec);
       /* Is this a bogus date like 9/31? */
       db_datetime_decode (&tmp_datetime, &m, &d, &y, &hh, &mm, &ss, &ms);
       if (!(month == m && day == d && year == y))
 	{
 	  error = CNV_ERR_UNKNOWN_DATE;
-	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE,
-		     local_date_string (month, day, year));
+	  co_signal (error, CNV_ER_FMT_UNKNOWN_DATE, local_date_string (month, day, year));
 	}
       /* Hour consistent with AM/PM? */
       else if (hrs == 12 && new_hour && (hour > 12 || hour < 1))
@@ -8914,8 +8401,7 @@ db_string_datetime (const char *datetime_string,
  *   the string (including final '\0' char)
  */
 int
-db_datetime_string (const DB_DATETIME * the_datetime,
-		    const char *datetime_format, char *string, int max_size)
+db_datetime_string (const DB_DATETIME * the_datetime, const char *datetime_format, char *string, int max_size)
 {
   int error = 0;
   ADJ_ARRAY *buffer = cnv_get_value_string_buffer (0);
@@ -8942,22 +8428,18 @@ db_datetime_string (const DB_DATETIME * the_datetime,
     }
 
   /* Reject datetime encoding errors. */
-  db_datetime_decode ((DB_DATETIME *) the_datetime, &month,
-		      &day, &year, &hour, &minute, &second, &millisecond);
+  db_datetime_decode ((DB_DATETIME *) the_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
 
   /* Print according to format. */
-  for (cnv_fmt_analyze ((strlen (datetime_format) ? datetime_format : "%c"),
-			FL_TIME_FORMAT);
-       (ttype = cnv_fmt_lex (&token)) != FT_NONE;
-       adj_ar_append (buffer, value_string, strlen (value_string)))
+  for (cnv_fmt_analyze ((strlen (datetime_format) ? datetime_format : "%c"), FL_TIME_FORMAT);
+       (ttype = cnv_fmt_lex (&token)) != FT_NONE; adj_ar_append (buffer, value_string, strlen (value_string)))
     {
       switch (ttype)
 	{
 	case FT_TIMESTAMP:
 	  db_date_encode (&the_date, month, day, year);
 	  db_time_encode (&the_time, hour, minute, second);
-	  (void) db_timestamp_encode_ses (&the_date, &the_time,
-					  &the_timestamp, NULL);
+	  (void) db_timestamp_encode_ses (&the_date, &the_time, &the_timestamp, NULL);
 
 	  value_string = fmt_timestamp_string (&the_timestamp, token.text);
 	  break;
@@ -9043,8 +8525,7 @@ db_datetime_string (const DB_DATETIME * the_datetime,
  * the_db_bit(out) :
  */
 const char *
-db_string_bit (const char *bit_char_string,
-	       const char *bit_format, DB_VALUE * the_db_bit)
+db_string_bit (const char *bit_char_string, const char *bit_format, DB_VALUE * the_db_bit)
 {
   BIT_STRING_FORMAT bfmt;
 
@@ -9070,8 +8551,7 @@ db_string_bit (const char *bit_char_string,
  *   the string (including final '\0' char)
  */
 int
-db_bit_string (const DB_VALUE * the_db_bit,
-	       const char *bit_format, char *string, int max_size)
+db_bit_string (const DB_VALUE * the_db_bit, const char *bit_format, char *string, int max_size)
 {
   BIT_STRING_FORMAT bfmt;
   int r;
@@ -9111,43 +8591,36 @@ db_validate_format (const char *format, DB_TYPE type)
   switch (type)
     {
     case DB_TYPE_DATE:
-      error = fmt_validate (format, FL_VALIDATE_DATE_FORMAT, FT_DATE_FORMAT,
-			    DB_TYPE_DATE);
+      error = fmt_validate (format, FL_VALIDATE_DATE_FORMAT, FT_DATE_FORMAT, DB_TYPE_DATE);
       break;
 
     case DB_TYPE_DOUBLE:
     case DB_TYPE_FLOAT:
     case DB_TYPE_NUMERIC:
-      error = fmt_validate (format, FL_VALIDATE_FLOAT_FORMAT, FT_FLOAT_FORMAT,
-			    DB_TYPE_FLOAT);
+      error = fmt_validate (format, FL_VALIDATE_FLOAT_FORMAT, FT_FLOAT_FORMAT, DB_TYPE_FLOAT);
       break;
 
     case DB_TYPE_BIGINT:
     case DB_TYPE_INTEGER:
     case DB_TYPE_SHORT:
-      error = fmt_validate (format, FL_VALIDATE_INTEGER_FORMAT,
-			    FT_INTEGER_FORMAT, DB_TYPE_INTEGER);
+      error = fmt_validate (format, FL_VALIDATE_INTEGER_FORMAT, FT_INTEGER_FORMAT, DB_TYPE_INTEGER);
       break;
 
     case DB_TYPE_MONETARY:
-      error = fmt_validate (format, FL_VALIDATE_MONETARY_FORMAT,
-			    FT_MONETARY_FORMAT, DB_TYPE_MONETARY);
+      error = fmt_validate (format, FL_VALIDATE_MONETARY_FORMAT, FT_MONETARY_FORMAT, DB_TYPE_MONETARY);
       break;
 
     case DB_TYPE_TIME:
-      error = fmt_validate (format, FL_VALIDATE_TIME_FORMAT, FT_TIME_FORMAT,
-			    DB_TYPE_TIME);
+      error = fmt_validate (format, FL_VALIDATE_TIME_FORMAT, FT_TIME_FORMAT, DB_TYPE_TIME);
       break;
 
     case DB_TYPE_TIMESTAMP:
-      error = fmt_validate (format, FL_VALIDATE_TIMESTAMP_FORMAT,
-			    FT_TIMESTAMP_FORMAT, DB_TYPE_TIMESTAMP);
+      error = fmt_validate (format, FL_VALIDATE_TIMESTAMP_FORMAT, FT_TIMESTAMP_FORMAT, DB_TYPE_TIMESTAMP);
       break;
 
       /* TODO:DATETIME datetime format ?? */
     case DB_TYPE_DATETIME:
-      error = fmt_validate (format, FL_VALIDATE_TIMESTAMP_FORMAT,
-			    FT_TIMESTAMP_FORMAT, DB_TYPE_DATETIME);
+      error = fmt_validate (format, FL_VALIDATE_TIMESTAMP_FORMAT, FT_TIMESTAMP_FORMAT, DB_TYPE_DATETIME);
       break;
 
     case DB_TYPE_NULL:
@@ -9159,8 +8632,7 @@ db_validate_format (const char *format, DB_TYPE type)
 
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
-      error = fmt_validate (format, FL_VALIDATE_BIT_STRING_FORMAT,
-			    FT_BIT_STRING_FORMAT, DB_TYPE_BIT);
+      error = fmt_validate (format, FL_VALIDATE_BIT_STRING_FORMAT, FT_BIT_STRING_FORMAT, DB_TYPE_BIT);
       break;
 
     case DB_TYPE_ELO:

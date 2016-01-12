@@ -106,95 +106,45 @@ static int chksum_init_checksum_tables (bool resume);
 static int chksum_get_prev_checksum_results (void);
 static CHKSUM_RESULT *chksum_get_checksum_result (const char *table_name);
 static void chksum_free_results (CHKSUM_RESULT * results);
-static bool chksum_need_skip_table (const char *table_name,
-				    CHKSUM_ARG * chksum_arg);
-static int chksum_set_initial_chunk_id_and_lower_bound (PARSER_CONTEXT *
-							parser,
-							const char
-							*table_name,
-							DB_CONSTRAINT *
-							pk_cons,
-							int *chunk_id,
-							PARSER_VARCHAR **
-							lower_bound);
-static PARSER_VARCHAR *chksum_print_pk_list (PARSER_CONTEXT * parser,
-					     DB_CONSTRAINT * pk,
-					     int *pk_col_cnt,
+static bool chksum_need_skip_table (const char *table_name, CHKSUM_ARG * chksum_arg);
+static int chksum_set_initial_chunk_id_and_lower_bound (PARSER_CONTEXT * parser, const char *table_name,
+							DB_CONSTRAINT * pk_cons, int *chunk_id,
+							PARSER_VARCHAR ** lower_bound);
+static PARSER_VARCHAR *chksum_print_pk_list (PARSER_CONTEXT * parser, DB_CONSTRAINT * pk, int *pk_col_cnt,
 					     bool include_decs);
-static PARSER_VARCHAR *chksum_print_select_last_chunk (PARSER_CONTEXT *
-						       parser,
-						       const char *table_name,
-						       PARSER_VARCHAR *
-						       pk_list,
-						       PARSER_VARCHAR *
-						       pk_orderby,
-						       PARSER_VARCHAR *
-						       prev_lower_bound,
-						       int limit);
-static PARSER_VARCHAR *chksum_print_checksum_query (PARSER_CONTEXT * parser,
-						    const char *table_name,
-						    DB_ATTRIBUTE * attributes,
-						    PARSER_VARCHAR *
-						    lower_bound, int chunk_id,
-						    int chunk_size);
-static PARSER_VARCHAR *chksum_print_lower_bound_string (PARSER_CONTEXT *
-							parser,
-							DB_VALUE values[],
-							DB_CONSTRAINT * pk,
+static PARSER_VARCHAR *chksum_print_select_last_chunk (PARSER_CONTEXT * parser, const char *table_name,
+						       PARSER_VARCHAR * pk_list, PARSER_VARCHAR * pk_orderby,
+						       PARSER_VARCHAR * prev_lower_bound, int limit);
+static PARSER_VARCHAR *chksum_print_checksum_query (PARSER_CONTEXT * parser, const char *table_name,
+						    DB_ATTRIBUTE * attributes, PARSER_VARCHAR * lower_bound,
+						    int chunk_id, int chunk_size);
+static PARSER_VARCHAR *chksum_print_lower_bound_string (PARSER_CONTEXT * parser, DB_VALUE values[], DB_CONSTRAINT * pk,
 							int pk_col_cnt);
-static PARSER_VARCHAR *chksum_get_quote_escaped_lower_bound (PARSER_CONTEXT *
-							     parser,
-							     PARSER_VARCHAR *
-							     orig_lower_bound);
-static PARSER_VARCHAR *chksum_print_attribute_list (PARSER_CONTEXT * parser,
-						    DB_ATTRIBUTE *
-						    attributes);
-static PARSER_VARCHAR *chksum_get_next_lower_bound (PARSER_CONTEXT * parser,
-						    const char *table_name,
-						    DB_CONSTRAINT * pk_cons,
-						    PARSER_VARCHAR *
-						    prev_lower_bound,
-						    int chunk_size,
-						    int *exec_error);
-static PARSER_VARCHAR *chksum_get_initial_lower_bound (PARSER_CONTEXT *
-						       parser,
-						       const char *table_name,
-						       DB_CONSTRAINT *
-						       pk_cons,
-						       int *exec_error);
-static PARSER_VARCHAR *chksum_print_select_master_checksum (PARSER_CONTEXT *
-							    parser,
-							    const char
-							    *table_name,
+static PARSER_VARCHAR *chksum_get_quote_escaped_lower_bound (PARSER_CONTEXT * parser,
+							     PARSER_VARCHAR * orig_lower_bound);
+static PARSER_VARCHAR *chksum_print_attribute_list (PARSER_CONTEXT * parser, DB_ATTRIBUTE * attributes);
+static PARSER_VARCHAR *chksum_get_next_lower_bound (PARSER_CONTEXT * parser, const char *table_name,
+						    DB_CONSTRAINT * pk_cons, PARSER_VARCHAR * prev_lower_bound,
+						    int chunk_size, int *exec_error);
+static PARSER_VARCHAR *chksum_get_initial_lower_bound (PARSER_CONTEXT * parser, const char *table_name,
+						       DB_CONSTRAINT * pk_cons, int *exec_error);
+static PARSER_VARCHAR *chksum_print_select_master_checksum (PARSER_CONTEXT * parser, const char *table_name,
 							    int chunk_id);
-static PARSER_VARCHAR *chksum_print_update_master_checksum (PARSER_CONTEXT *
-							    parser,
-							    const char
-							    *table_name,
-							    int chunk_id,
-							    int
-							    master_checksum);
-static int chksum_update_master_checksum (PARSER_CONTEXT * parser,
-					  const char *table_name,
-					  int chunk_id);
-static int chksum_set_repl_info_and_demote_table_lock (const char *table_name,
-						       const char
-						       *checksum_query,
-						       const OID *
-						       class_oidp);
+static PARSER_VARCHAR *chksum_print_update_master_checksum (PARSER_CONTEXT * parser, const char *table_name,
+							    int chunk_id, int master_checksum);
+static int chksum_update_master_checksum (PARSER_CONTEXT * parser, const char *table_name, int chunk_id);
+static int chksum_set_repl_info_and_demote_table_lock (const char *table_name, const char *checksum_query,
+						       const OID * class_oidp);
 static int chksum_update_current_schema_definition (const char *table_name, int repid);
 static int chksum_insert_schema_definition (const char *table_name, int repid);
-static int chksum_calculate_checksum (PARSER_CONTEXT * parser,
-				      const OID * class_oidp,
-				      const char *table_name,
-				      DB_ATTRIBUTE * attributes,
-				      PARSER_VARCHAR * lower_bound,
-				      int chunk_id, int chunk_size);
+static int chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp, const char *table_name,
+				      DB_ATTRIBUTE * attributes, PARSER_VARCHAR * lower_bound, int chunk_id,
+				      int chunk_size);
 static int chksum_start (CHKSUM_ARG * chksum_arg);
 static int chksum_report (const char *command_name, const char *database);
 static int chksum_report_summary (FILE * fp);
 static int chksum_report_diff (FILE * fp);
-static int chksum_report_schema_diff (FILE *fp);
+static int chksum_report_schema_diff (FILE * fp);
 static void chksum_report_header (FILE * fp, const char *database);
 static FILE *chksum_report_open_file (const char *command_name);
 
@@ -226,24 +176,19 @@ chksum_report_header (FILE * fp, const char *database)
 
   state = css_ha_server_state ();
 
-  CHKSUM_PRINT_AND_LOG (fp, "================================="
-			"===============================\n");
-  CHKSUM_PRINT_AND_LOG (fp, " target DB: %s (state: %s)\n", database,
-			css_ha_server_state_string (state));
-  CHKSUM_PRINT_AND_LOG (fp, " report time: %04d-%02d-%02d %02d:%02d:%02d\n",
-			report_tm_p->tm_year + 1900, report_tm_p->tm_mon + 1,
-			report_tm_p->tm_mday, report_tm_p->tm_hour,
-			report_tm_p->tm_min, report_tm_p->tm_sec);
-  CHKSUM_PRINT_AND_LOG (fp, " checksum table name: %s, %s\n",
-                        chksum_result_Table_name, chksum_schema_Table_name);
-  CHKSUM_PRINT_AND_LOG (fp, "================================="
-			"===============================\n\n");
+  CHKSUM_PRINT_AND_LOG (fp, "=================================" "===============================\n");
+  CHKSUM_PRINT_AND_LOG (fp, " target DB: %s (state: %s)\n", database, css_ha_server_state_string (state));
+  CHKSUM_PRINT_AND_LOG (fp, " report time: %04d-%02d-%02d %02d:%02d:%02d\n", report_tm_p->tm_year + 1900,
+			report_tm_p->tm_mon + 1, report_tm_p->tm_mday, report_tm_p->tm_hour, report_tm_p->tm_min,
+			report_tm_p->tm_sec);
+  CHKSUM_PRINT_AND_LOG (fp, " checksum table name: %s, %s\n", chksum_result_Table_name, chksum_schema_Table_name);
+  CHKSUM_PRINT_AND_LOG (fp, "=================================" "===============================\n\n");
 
   return;
 }
 
 static int
-chksum_report_schema_diff (FILE *fp)
+chksum_report_schema_diff (FILE * fp)
 {
 #define QUERY_BUF_SIZE		1024
   DB_QUERY_RESULT *query_result = NULL;
@@ -256,15 +201,10 @@ chksum_report_schema_diff (FILE *fp)
   CHKSUM_PRINT_AND_LOG (fp, " different table schema\n");
   CHKSUM_PRINT_AND_LOG (fp, "------------------------\n");
 
-  snprintf (query_buf, sizeof (query_buf), "SELECT "
-            CHKSUM_TABLE_CLASS_NAME_COL ", "
-            CHKSUM_TABLE_SCHEMA_TIME_COL ", "
-            CHKSUM_TABLE_SCHEMA_COL ", "
-            CHKSUM_TABLE_MASTER_SCHEMA_COL
-            " FROM %s WHERE "
-            CHKSUM_TABLE_SCHEMA_COL " IS NULL OR "
-            CHKSUM_TABLE_SCHEMA_COL " <> "
-            CHKSUM_TABLE_MASTER_SCHEMA_COL, chksum_schema_Table_name);
+  snprintf (query_buf, sizeof (query_buf),
+	    "SELECT " CHKSUM_TABLE_CLASS_NAME_COL ", " CHKSUM_TABLE_SCHEMA_TIME_COL ", " CHKSUM_TABLE_SCHEMA_COL ", "
+	    CHKSUM_TABLE_MASTER_SCHEMA_COL " FROM %s WHERE " CHKSUM_TABLE_SCHEMA_COL " IS NULL OR "
+	    CHKSUM_TABLE_SCHEMA_COL " <> " CHKSUM_TABLE_MASTER_SCHEMA_COL, chksum_schema_Table_name);
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res > 0)
@@ -278,9 +218,7 @@ chksum_report_schema_diff (FILE *fp)
 	  out_val_idx = 0;
 
 	  /* class name */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -291,9 +229,7 @@ chksum_report_schema_diff (FILE *fp)
 	  db_value_clear (&out_value);
 
 	  /* collected time */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -306,15 +242,13 @@ chksum_report_schema_diff (FILE *fp)
 	    }
 	  else
 	    {
-	      db_datetime_to_string (time_buf, sizeof (time_buf), DB_GET_DATETIME(&out_value));
+	      db_datetime_to_string (time_buf, sizeof (time_buf), DB_GET_DATETIME (&out_value));
 	    }
 	  db_value_clear (&out_value);
 
 	  /* current schema */
 	  CHKSUM_PRINT_AND_LOG (fp, "<current schema - collected at %s>\n", time_buf);
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -329,13 +263,11 @@ chksum_report_schema_diff (FILE *fp)
 	    {
 	      CHKSUM_PRINT_AND_LOG (fp, "%s\n", db_get_string (&out_value));
 	    }
-	    db_value_clear (&out_value);
+	  db_value_clear (&out_value);
 
-	    /* master schema */
-	    CHKSUM_PRINT_AND_LOG (fp, "<schema from master>\n");
-	    error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  /* master schema */
+	  CHKSUM_PRINT_AND_LOG (fp, "<schema from master>\n");
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -350,15 +282,16 @@ chksum_report_schema_diff (FILE *fp)
 	    {
 	      CHKSUM_PRINT_AND_LOG (fp, "%s\n", db_get_string (&out_value));
 	    }
-	    db_value_clear (&out_value);
+	  db_value_clear (&out_value);
 
-	    pos = db_query_next_tuple (query_result);
-	    CHKSUM_PRINT_AND_LOG (fp, "\n");
+	  pos = db_query_next_tuple (query_result);
+	  CHKSUM_PRINT_AND_LOG (fp, "\n");
 	}
       db_query_end (query_result);
 
-      CHKSUM_PRINT_AND_LOG (fp, "* Due to schema inconsistency, the checksum "
-	  "difference of the above table(s) may not be reported.\n");
+      CHKSUM_PRINT_AND_LOG (fp,
+			    "* Due to schema inconsistency, the checksum "
+			    "difference of the above table(s) may not be reported.\n");
     }
   else if (res == 0)
     {
@@ -385,18 +318,13 @@ chksum_report_diff (FILE * fp)
   int res, error = NO_ERROR;
   char query_buf[QUERY_BUF_SIZE];
 
-  CHKSUM_PRINT_AND_LOG (fp, "-------------------------------"
-			"---------------------------------\n");
+  CHKSUM_PRINT_AND_LOG (fp, "-------------------------------" "---------------------------------\n");
   CHKSUM_PRINT_AND_LOG (fp, "table name\tdiff chunk id\tchunk lower bound\n");
-  CHKSUM_PRINT_AND_LOG (fp, "-------------------------------"
-			"---------------------------------\n");
+  CHKSUM_PRINT_AND_LOG (fp, "-------------------------------" "---------------------------------\n");
 
-  snprintf (query_buf, sizeof (query_buf), "SELECT "
-	    CHKSUM_TABLE_CLASS_NAME_COL ", "
-	    CHKSUM_TABLE_CHUNK_ID_COL ", "
-	    CHKSUM_TABLE_LOWER_BOUND_COL " FROM %s WHERE "
-	    CHKSUM_TABLE_MASTER_CHEKSUM_COL " <> "
-	    CHKSUM_TABLE_CHUNK_CHECKSUM_COL " OR "
+  snprintf (query_buf, sizeof (query_buf),
+	    "SELECT " CHKSUM_TABLE_CLASS_NAME_COL ", " CHKSUM_TABLE_CHUNK_ID_COL ", " CHKSUM_TABLE_LOWER_BOUND_COL
+	    " FROM %s WHERE " CHKSUM_TABLE_MASTER_CHEKSUM_COL " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " OR "
 	    CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL", chksum_result_Table_name);
 
   res = db_execute (query_buf, &query_result, &query_error);
@@ -410,9 +338,7 @@ chksum_report_diff (FILE * fp)
 	  out_val_idx = 0;
 
 	  /* class name */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -422,9 +348,7 @@ chksum_report_diff (FILE * fp)
 	  db_value_clear (&out_value);
 
 	  /* chunk id */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -434,9 +358,7 @@ chksum_report_diff (FILE * fp)
 	  db_value_clear (&out_value);
 
 	  /* lower bound */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -477,26 +399,16 @@ chksum_report_summary (FILE * fp)
   char query_buf[QUERY_BUF_SIZE];
 
   CHKSUM_PRINT_AND_LOG (fp,
-			"-------------------------------------------------"
-			"-------------------------------------\n");
+			"-------------------------------------------------" "-------------------------------------\n");
+  CHKSUM_PRINT_AND_LOG (fp, "table name\ttotal # of chunks\t# of diff chunks\t" "total/avg/min/max time\n");
   CHKSUM_PRINT_AND_LOG (fp,
-			"table name\ttotal # of chunks\t# of diff chunks\t"
-			"total/avg/min/max time\n");
-  CHKSUM_PRINT_AND_LOG (fp,
-			"-------------------------------------------------"
-			"-------------------------------------\n");
+			"-------------------------------------------------" "-------------------------------------\n");
 
-  snprintf (query_buf, sizeof (query_buf), "SELECT "
-	    CHKSUM_TABLE_CLASS_NAME_COL ", "
-	    "COUNT (*), "
-	    "COUNT(CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL
-	    " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL
-	    " OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL
-	    " IS NULL THEN 1 END), "
-	    " SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
-	    " MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
-	    " MAX (" CHKSUM_TABLE_ELAPSED_TIME_COL ") "
-	    "FROM %s GROUP BY " CHKSUM_TABLE_CLASS_NAME_COL,
+  snprintf (query_buf, sizeof (query_buf),
+	    "SELECT " CHKSUM_TABLE_CLASS_NAME_COL ", " "COUNT (*), " "COUNT(CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL
+	    " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL THEN 1 END), "
+	    " SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), " " MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), " " MAX ("
+	    CHKSUM_TABLE_ELAPSED_TIME_COL ") " "FROM %s GROUP BY " CHKSUM_TABLE_CLASS_NAME_COL,
 	    chksum_result_Table_name);
 
   res = db_execute (query_buf, &query_result, &query_error);
@@ -510,9 +422,7 @@ chksum_report_summary (FILE * fp)
 	  out_val_idx = 0;
 
 	  /* class_name */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -522,9 +432,7 @@ chksum_report_summary (FILE * fp)
 	  db_value_clear (&out_value);
 
 	  /* total num of chunks */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -535,9 +443,7 @@ chksum_report_summary (FILE * fp)
 	  db_value_clear (&out_value);
 
 	  /* total num of diff chunk */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -547,23 +453,18 @@ chksum_report_summary (FILE * fp)
 	  db_value_clear (&out_value);
 
 	  /* total elapsed time */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
 	      return error;
 	    }
 
-	  CHKSUM_PRINT_AND_LOG (fp, "%d / %d ", DB_GET_INT (&out_value),
-				DB_GET_INT (&out_value) / num_chunks);
+	  CHKSUM_PRINT_AND_LOG (fp, "%d / %d ", DB_GET_INT (&out_value), DB_GET_INT (&out_value) / num_chunks);
 	  db_value_clear (&out_value);
 
 	  /* min elapsed time */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -574,9 +475,7 @@ chksum_report_summary (FILE * fp)
 	  db_value_clear (&out_value);
 
 	  /* max elapsed time */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++,
-				      &out_value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &out_value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -618,8 +517,7 @@ chksum_report (const char *command_name, const char *database)
   fp = chksum_report_open_file (command_name);
   if (fp == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
-	      "Failed to open a report file", ER_FAILED);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, "Failed to open a report file", ER_FAILED);
       return ER_FAILED;
     }
 
@@ -635,12 +533,10 @@ chksum_report (const char *command_name, const char *database)
 
   if (missing_table != NULL)
     {
-      snprintf (err_msg, sizeof (err_msg), "Cannot find table %s",
-                missing_table);
+      snprintf (err_msg, sizeof (err_msg), "Cannot find table %s", missing_table);
 
       error = er_errid ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
-	      err_msg, error);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, error);
       return error;
     }
 
@@ -686,13 +582,13 @@ chksum_init_checksum_tables (bool resume)
   if (classobj != NULL)
     {
       if (db_get_attribute (classobj, CHKSUM_TABLE_CLASS_NAME_COL) == NULL
-      || db_get_attribute (classobj, CHKSUM_TABLE_CHUNK_ID_COL) == NULL
-      || db_get_attribute (classobj, CHKSUM_TABLE_LOWER_BOUND_COL) == NULL
-      || db_get_attribute (classobj, CHKSUM_TABLE_CHUNK_CHECKSUM_COL) == NULL
-      || db_get_attribute (classobj, CHKSUM_TABLE_COUNT_COL) == NULL
-      || db_get_attribute (classobj, CHKSUM_TABLE_MASTER_CHEKSUM_COL) == NULL
-      || db_get_attribute (classobj, CHKSUM_TABLE_BEGINS_AT_COL) == NULL
-      || db_get_attribute (classobj, CHKSUM_TABLE_ELAPSED_TIME_COL) == NULL)
+	  || db_get_attribute (classobj, CHKSUM_TABLE_CHUNK_ID_COL) == NULL
+	  || db_get_attribute (classobj, CHKSUM_TABLE_LOWER_BOUND_COL) == NULL
+	  || db_get_attribute (classobj, CHKSUM_TABLE_CHUNK_CHECKSUM_COL) == NULL
+	  || db_get_attribute (classobj, CHKSUM_TABLE_COUNT_COL) == NULL
+	  || db_get_attribute (classobj, CHKSUM_TABLE_MASTER_CHEKSUM_COL) == NULL
+	  || db_get_attribute (classobj, CHKSUM_TABLE_BEGINS_AT_COL) == NULL
+	  || db_get_attribute (classobj, CHKSUM_TABLE_ELAPSED_TIME_COL) == NULL)
 	{
 	  invalid_table = chksum_result_Table_name;
 	  error = er_errid ();
@@ -703,8 +599,8 @@ chksum_init_checksum_tables (bool resume)
     {
       /* resumed but no checksum table */
       missing_table = chksum_result_Table_name;
-	  error = er_errid ();
-	  goto end;
+      error = er_errid ();
+      goto end;
     }
 
   /* check checksum schema table */
@@ -734,8 +630,7 @@ chksum_init_checksum_tables (bool resume)
       error = chksum_drop_and_create_checksum_table ();
       if (error != NO_ERROR)
 	{
-	  snprintf (err_msg, sizeof (err_msg),
-		    "Failed to drop and create checksum tables");
+	  snprintf (err_msg, sizeof (err_msg), "Failed to drop and create checksum tables");
 	}
     }
 
@@ -744,18 +639,14 @@ end:
     {
       if (invalid_table != NULL)
 	{
-	  snprintf (err_msg, sizeof (err_msg),
-		    "Invalid checksum table [%s] exists", invalid_table);
+	  snprintf (err_msg, sizeof (err_msg), "Invalid checksum table [%s] exists", invalid_table);
 	}
       else if (missing_table != NULL && resume == true)
 	{
-	  snprintf (err_msg, sizeof (err_msg),
-		"Failed to resume calculation. Table [%s] not found",
-		missing_table);
+	  snprintf (err_msg, sizeof (err_msg), "Failed to resume calculation. Table [%s] not found", missing_table);
 	}
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
-		  err_msg, error);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, error);
     }
 
   return error;
@@ -785,15 +676,15 @@ chksum_drop_and_create_checksum_table (void)
 	    " %s INT,"		/* 7 */
 	    " %s DATETIME DEFAULT sys_datetime,"	/* 8 */
 	    " %s INT,"		/* 9 */
-	    " CONSTRAINT UNIQUE INDEX (%s, %s));" /* 10, 11 */
-            "DROP TABLE IF EXISTS %s;" /* 12 */
-            "CREATE TABLE %s" /* 13 */
-            "(%s VARCHAR (255) NOT NULL," /* 14 */
-            " %s INT NOT NULL," /* 15 */
-            " %s VARCHAR," /* 16 */
-            " %s VARCHAR," /* 17 */
-            " %s DATETIME," /* 18 */
-            " PRIMARY KEY (%s, %s));", /* 19, 20 */
+	    " CONSTRAINT UNIQUE INDEX (%s, %s));"	/* 10, 11 */
+	    "DROP TABLE IF EXISTS %s;"	/* 12 */
+	    "CREATE TABLE %s"	/* 13 */
+	    "(%s VARCHAR (255) NOT NULL,"	/* 14 */
+	    " %s INT NOT NULL,"	/* 15 */
+	    " %s VARCHAR,"	/* 16 */
+	    " %s VARCHAR,"	/* 17 */
+	    " %s DATETIME,"	/* 18 */
+	    " PRIMARY KEY (%s, %s));",	/* 19, 20 */
 	    chksum_result_Table_name,	/* 0 */
 	    chksum_result_Table_name,	/* 1 */
 	    CHKSUM_TABLE_CLASS_NAME_COL,	/* 2 */
@@ -805,16 +696,16 @@ chksum_drop_and_create_checksum_table (void)
 	    CHKSUM_TABLE_BEGINS_AT_COL,	/* 8 */
 	    CHKSUM_TABLE_ELAPSED_TIME_COL,	/* 9 */
 	    CHKSUM_TABLE_CLASS_NAME_COL,	/* 10 */
-	    CHKSUM_TABLE_CHUNK_ID_COL, /* 11 */
-	    chksum_schema_Table_name, /* 12 */
-	    chksum_schema_Table_name, /* 13 */
-	    CHKSUM_TABLE_CLASS_NAME_COL, /* 14 */
-	    CHKSUM_TABLE_SCHEMA_REPID_COL, /* 15 */
-	    CHKSUM_TABLE_SCHEMA_COL, /* 16 */
-	    CHKSUM_TABLE_MASTER_SCHEMA_COL, /* 17 */
-	    CHKSUM_TABLE_SCHEMA_TIME_COL, /* 18 */
-	    CHKSUM_TABLE_CLASS_NAME_COL, /* 19 */
-	    CHKSUM_TABLE_SCHEMA_REPID_COL); /* 20 */
+	    CHKSUM_TABLE_CHUNK_ID_COL,	/* 11 */
+	    chksum_schema_Table_name,	/* 12 */
+	    chksum_schema_Table_name,	/* 13 */
+	    CHKSUM_TABLE_CLASS_NAME_COL,	/* 14 */
+	    CHKSUM_TABLE_SCHEMA_REPID_COL,	/* 15 */
+	    CHKSUM_TABLE_SCHEMA_COL,	/* 16 */
+	    CHKSUM_TABLE_MASTER_SCHEMA_COL,	/* 17 */
+	    CHKSUM_TABLE_SCHEMA_TIME_COL,	/* 18 */
+	    CHKSUM_TABLE_CLASS_NAME_COL,	/* 19 */
+	    CHKSUM_TABLE_SCHEMA_REPID_COL);	/* 20 */
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res >= 0)
@@ -913,20 +804,13 @@ chksum_get_prev_checksum_results (void)
       chksum_free_results (chksum_Prev_results);
     }
 
-  snprintf (query_buf, sizeof (query_buf), "SELECT "
-	    "C1." CHKSUM_TABLE_CLASS_NAME_COL ", "
-	    "C1." CHKSUM_TABLE_CHUNK_ID_COL ", "
-	    "C1." CHKSUM_TABLE_LOWER_BOUND_COL ", "
-	    "C1." CHKSUM_TABLE_COUNT_COL " FROM "
-	    " %s AS C1 INNER JOIN (SELECT "
-	    CHKSUM_TABLE_CLASS_NAME_COL ", "
-	    "MAX (" CHKSUM_TABLE_CHUNK_ID_COL ") "
-	    "AS MAX_ID FROM %s GROUP BY "
-	    CHKSUM_TABLE_CLASS_NAME_COL ") C2 "
-	    "ON C1." CHKSUM_TABLE_CLASS_NAME_COL
-	    " = C2." CHKSUM_TABLE_CLASS_NAME_COL
-	    " AND C1." CHKSUM_TABLE_CHUNK_ID_COL
-	    " = C2.MAX_ID", chksum_result_Table_name, chksum_result_Table_name);
+  snprintf (query_buf, sizeof (query_buf),
+	    "SELECT " "C1." CHKSUM_TABLE_CLASS_NAME_COL ", " "C1." CHKSUM_TABLE_CHUNK_ID_COL ", " "C1."
+	    CHKSUM_TABLE_LOWER_BOUND_COL ", " "C1." CHKSUM_TABLE_COUNT_COL " FROM " " %s AS C1 INNER JOIN (SELECT "
+	    CHKSUM_TABLE_CLASS_NAME_COL ", " "MAX (" CHKSUM_TABLE_CHUNK_ID_COL ") " "AS MAX_ID FROM %s GROUP BY "
+	    CHKSUM_TABLE_CLASS_NAME_COL ") C2 " "ON C1." CHKSUM_TABLE_CLASS_NAME_COL " = C2."
+	    CHKSUM_TABLE_CLASS_NAME_COL " AND C1." CHKSUM_TABLE_CHUNK_ID_COL " = C2.MAX_ID", chksum_result_Table_name,
+	    chksum_result_Table_name);
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res >= 0)
@@ -943,8 +827,7 @@ chksum_get_prev_checksum_results (void)
 	  checksum_result = (CHKSUM_RESULT *) malloc (sizeof (CHKSUM_RESULT));
 	  if (checksum_result == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CHKSUM_RESULT));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CHKSUM_RESULT));
 	      res = ER_OUT_OF_VIRTUAL_MEMORY;
 	      break;
 	    }
@@ -952,8 +835,7 @@ chksum_get_prev_checksum_results (void)
 	  memset (checksum_result, 0, sizeof (CHKSUM_RESULT));
 
 	  /* class_name */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++, &value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -963,14 +845,12 @@ chksum_get_prev_checksum_results (void)
 	  db_string_p = db_get_string (&value);
 	  if (db_string_p != NULL)
 	    {
-	      snprintf (checksum_result->class_name, SM_MAX_IDENTIFIER_LENGTH,
-			"%s", db_string_p);
+	      snprintf (checksum_result->class_name, SM_MAX_IDENTIFIER_LENGTH, "%s", db_string_p);
 	    }
 	  db_value_clear (&value);
 
 	  /* chunk_id */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++, &value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -981,8 +861,7 @@ chksum_get_prev_checksum_results (void)
 	  db_value_clear (&value);
 
 	  /* chunk_lower_bound */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++, &value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -997,8 +876,7 @@ chksum_get_prev_checksum_results (void)
 	  db_value_clear (&value);
 
 	  /* chunk_count */
-	  error =
-	    db_query_get_tuple_value (query_result, out_val_idx++, &value);
+	  error = db_query_get_tuple_value (query_result, out_val_idx++, &value);
 	  if (error != NO_ERROR)
 	    {
 	      db_query_end (query_result);
@@ -1035,11 +913,8 @@ chksum_get_prev_checksum_results (void)
  *   lower_bound(out): initial starting point
  */
 static int
-chksum_set_initial_chunk_id_and_lower_bound (PARSER_CONTEXT * parser,
-					     const char *table_name,
-					     DB_CONSTRAINT * pk_cons,
-					     int *chunk_id,
-					     PARSER_VARCHAR ** lower_bound)
+chksum_set_initial_chunk_id_and_lower_bound (PARSER_CONTEXT * parser, const char *table_name, DB_CONSTRAINT * pk_cons,
+					     int *chunk_id, PARSER_VARCHAR ** lower_bound)
 {
   CHKSUM_RESULT *prev_result = NULL;
   int error = NO_ERROR;
@@ -1054,17 +929,14 @@ chksum_set_initial_chunk_id_and_lower_bound (PARSER_CONTEXT * parser,
     {
       *chunk_id = prev_result->last_chunk_id;
 
-      assert (prev_result->last_lower_bound != NULL
-	      && prev_result->last_lower_bound[0] != '\0');
+      assert (prev_result->last_lower_bound != NULL && prev_result->last_lower_bound[0] != '\0');
 
-      *lower_bound =
-	pt_append_nulstring (parser, NULL, prev_result->last_lower_bound);
+      *lower_bound = pt_append_nulstring (parser, NULL, prev_result->last_lower_bound);
     }
   else
     {
       /* no previous work exists */
-      *lower_bound =
-	chksum_get_initial_lower_bound (parser, table_name, pk_cons, &error);
+      *lower_bound = chksum_get_initial_lower_bound (parser, table_name, pk_cons, &error);
     }
 
   return error;
@@ -1080,8 +952,7 @@ chksum_set_initial_chunk_id_and_lower_bound (PARSER_CONTEXT * parser,
  *   include_decs(in): include DESC if exists
  */
 static PARSER_VARCHAR *
-chksum_print_pk_list (PARSER_CONTEXT * parser, DB_CONSTRAINT * pk,
-		      int *pk_col_cnt, bool include_decs)
+chksum_print_pk_list (PARSER_CONTEXT * parser, DB_CONSTRAINT * pk, int *pk_col_cnt, bool include_decs)
 {
   PARSER_VARCHAR *buffer = NULL;
   DB_ATTRIBUTE **pk_attrs = NULL;
@@ -1112,8 +983,7 @@ chksum_print_pk_list (PARSER_CONTEXT * parser, DB_CONSTRAINT * pk,
 	  buffer = pt_append_nulstring (parser, buffer, ", ");
 	}
 
-      buffer =
-	pt_append_nulstring (parser, buffer, db_attribute_name (pk_attrs[i]));
+      buffer = pt_append_nulstring (parser, buffer, db_attribute_name (pk_attrs[i]));
 
       if (include_decs == true && asc_desc[i] == 1)
 	{
@@ -1141,11 +1011,8 @@ chksum_print_pk_list (PARSER_CONTEXT * parser, DB_CONSTRAINT * pk,
  *   limit(in): number used for LIMIT
  */
 static PARSER_VARCHAR *
-chksum_print_select_last_chunk (PARSER_CONTEXT * parser,
-				const char *table_name,
-				PARSER_VARCHAR * pk_list,
-				PARSER_VARCHAR * pk_orderby,
-				PARSER_VARCHAR * prev_lower_bound, int limit)
+chksum_print_select_last_chunk (PARSER_CONTEXT * parser, const char *table_name, PARSER_VARCHAR * pk_list,
+				PARSER_VARCHAR * pk_orderby, PARSER_VARCHAR * prev_lower_bound, int limit)
 {
   PARSER_VARCHAR *buffer = NULL;
   char limit_str[15];
@@ -1190,11 +1057,8 @@ chksum_print_select_last_chunk (PARSER_CONTEXT * parser,
  *   chunk_size(in):
  */
 static PARSER_VARCHAR *
-chksum_print_checksum_query (PARSER_CONTEXT * parser,
-			     const char *table_name,
-			     DB_ATTRIBUTE * attributes,
-			     PARSER_VARCHAR * lower_bound, int chunk_id,
-			     int chunk_size)
+chksum_print_checksum_query (PARSER_CONTEXT * parser, const char *table_name, DB_ATTRIBUTE * attributes,
+			     PARSER_VARCHAR * lower_bound, int chunk_id, int chunk_size)
 {
   PARSER_VARCHAR *buffer = NULL;
   PARSER_VARCHAR *att_list = NULL;
@@ -1209,32 +1073,27 @@ chksum_print_checksum_query (PARSER_CONTEXT * parser,
 
 
   att_list = chksum_print_attribute_list (parser, attributes);
-  escaped_lower_bound =
-    chksum_get_quote_escaped_lower_bound (parser, lower_bound);
+  escaped_lower_bound = chksum_get_quote_escaped_lower_bound (parser, lower_bound);
 
   /* query for calculating checksum */
   buffer = pt_append_nulstring (parser, buffer, "REPLACE INTO ");
   buffer = pt_append_nulstring (parser, buffer, chksum_result_Table_name);
-  buffer = pt_append_nulstring (parser, buffer, "("
-				CHKSUM_TABLE_CLASS_NAME_COL ", "
-				CHKSUM_TABLE_CHUNK_ID_COL ", "
-				CHKSUM_TABLE_LOWER_BOUND_COL ", "
-				CHKSUM_TABLE_COUNT_COL ", "
-				CHKSUM_TABLE_CHUNK_CHECKSUM_COL ", "
-				CHKSUM_TABLE_BEGINS_AT_COL ") " "SELECT '");
+  buffer =
+    pt_append_nulstring (parser, buffer,
+			 "(" CHKSUM_TABLE_CLASS_NAME_COL ", " CHKSUM_TABLE_CHUNK_ID_COL ", "
+			 CHKSUM_TABLE_LOWER_BOUND_COL ", " CHKSUM_TABLE_COUNT_COL ", " CHKSUM_TABLE_CHUNK_CHECKSUM_COL
+			 ", " CHKSUM_TABLE_BEGINS_AT_COL ") " "SELECT '");
   buffer = pt_append_nulstring (parser, buffer, table_name);
   buffer = pt_append_nulstring (parser, buffer, "', ");
   buffer = pt_append_nulstring (parser, buffer, chunk_id_str);
   buffer = pt_append_nulstring (parser, buffer, ", '");
   buffer = pt_append_varchar (parser, buffer, escaped_lower_bound);
-  buffer = pt_append_nulstring (parser, buffer, "', "
-				" count (*), "
-				" BIT_XOR (crc32_result), "
-				" SYS_DATETIME "
-				"FROM" " (SELECT CRC32(CONCAT_WS('', ");
+  buffer =
+    pt_append_nulstring (parser, buffer,
+			 "', " " count (*), " " BIT_XOR (crc32_result), " " SYS_DATETIME " "FROM"
+			 " (SELECT CRC32(CONCAT_WS('', ");
   buffer = pt_append_varchar (parser, buffer, att_list);
-  buffer = pt_append_nulstring (parser, buffer, ")) AS crc32_result"
-				"  FROM ");
+  buffer = pt_append_nulstring (parser, buffer, ")) AS crc32_result" "  FROM ");
   buffer = pt_append_nulstring (parser, buffer, table_name);
   buffer = pt_append_nulstring (parser, buffer, " WHERE ");
   buffer = pt_append_varchar (parser, buffer, lower_bound);
@@ -1247,12 +1106,11 @@ chksum_print_checksum_query (PARSER_CONTEXT * parser,
   buffer = pt_append_nulstring (parser, buffer, chksum_result_Table_name);
   buffer = pt_append_nulstring (parser, buffer, " SET ");
   buffer =
-    pt_append_nulstring (parser, buffer, CHKSUM_TABLE_ELAPSED_TIME_COL
-			 " = SYS_DATETIME - " CHKSUM_TABLE_BEGINS_AT_COL
-			 " WHERE " CHKSUM_TABLE_CLASS_NAME_COL " = '");
+    pt_append_nulstring (parser, buffer,
+			 CHKSUM_TABLE_ELAPSED_TIME_COL " = SYS_DATETIME - " CHKSUM_TABLE_BEGINS_AT_COL " WHERE "
+			 CHKSUM_TABLE_CLASS_NAME_COL " = '");
   buffer = pt_append_nulstring (parser, buffer, table_name);
-  buffer = pt_append_nulstring (parser, buffer, "' AND "
-				CHKSUM_TABLE_CHUNK_ID_COL " = ");
+  buffer = pt_append_nulstring (parser, buffer, "' AND " CHKSUM_TABLE_CHUNK_ID_COL " = ");
   buffer = pt_append_nulstring (parser, buffer, chunk_id_str);
   buffer = pt_append_nulstring (parser, buffer, ";");
 
@@ -1271,9 +1129,7 @@ chksum_print_checksum_query (PARSER_CONTEXT * parser,
  *   pk_col_cnt(in): the number of columns in primary key
  */
 static PARSER_VARCHAR *
-chksum_print_lower_bound_string (PARSER_CONTEXT * parser,
-				 DB_VALUE values[], DB_CONSTRAINT * pk,
-				 int pk_col_cnt)
+chksum_print_lower_bound_string (PARSER_CONTEXT * parser, DB_VALUE values[], DB_CONSTRAINT * pk, int pk_col_cnt)
 {
   PARSER_VARCHAR *buffer = NULL;
   PARSER_VARCHAR *value = NULL;
@@ -1317,9 +1173,7 @@ chksum_print_lower_bound_string (PARSER_CONTEXT * parser,
 
 	  value = describe_value (parser, NULL, &values[i]);
 
-	  buffer =
-	    pt_append_nulstring (parser, buffer,
-				 db_attribute_name (pk_attrs[i]));
+	  buffer = pt_append_nulstring (parser, buffer, db_attribute_name (pk_attrs[i]));
 
 	  if (asc_desc[i] == 1)
 	    {
@@ -1353,8 +1207,7 @@ chksum_print_lower_bound_string (PARSER_CONTEXT * parser,
  *   attributes(in):
  */
 static PARSER_VARCHAR *
-chksum_print_attribute_list (PARSER_CONTEXT * parser,
-			     DB_ATTRIBUTE * attributes)
+chksum_print_attribute_list (PARSER_CONTEXT * parser, DB_ATTRIBUTE * attributes)
 {
   PARSER_VARCHAR *buffer = NULL;
   DB_ATTRIBUTE *att;
@@ -1389,8 +1242,7 @@ chksum_print_attribute_list (PARSER_CONTEXT * parser,
  *   orig_lower_bound(in):
  */
 static PARSER_VARCHAR *
-chksum_get_quote_escaped_lower_bound (PARSER_CONTEXT * parser,
-				      PARSER_VARCHAR * orig_lower_bound)
+chksum_get_quote_escaped_lower_bound (PARSER_CONTEXT * parser, PARSER_VARCHAR * orig_lower_bound)
 {
   PARSER_VARCHAR *buffer = NULL;
   char *start, *end, *pos;
@@ -1439,11 +1291,8 @@ chksum_get_quote_escaped_lower_bound (PARSER_CONTEXT * parser,
  *   exec_error(out): error
  */
 static PARSER_VARCHAR *
-chksum_get_next_lower_bound (PARSER_CONTEXT * parser,
-			     const char *table_name,
-			     DB_CONSTRAINT * pk_cons,
-			     PARSER_VARCHAR * prev_lower_bound,
-			     int chunk_size, int *exec_error)
+chksum_get_next_lower_bound (PARSER_CONTEXT * parser, const char *table_name, DB_CONSTRAINT * pk_cons,
+			     PARSER_VARCHAR * prev_lower_bound, int chunk_size, int *exec_error)
 {
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
@@ -1466,8 +1315,7 @@ chksum_get_next_lower_bound (PARSER_CONTEXT * parser,
   pk_orderby = chksum_print_pk_list (parser, pk_cons, NULL, true);
 
   select_last_chunk =
-    chksum_print_select_last_chunk (parser, table_name, pk_list, pk_orderby,
-				    prev_lower_bound, chunk_size);
+    chksum_print_select_last_chunk (parser, table_name, pk_list, pk_orderby, prev_lower_bound, chunk_size);
 
   query = (const char *) pt_get_varchar_bytes (select_last_chunk);
   res = db_execute (query, &query_result, &query_error);
@@ -1493,25 +1341,19 @@ chksum_get_next_lower_bound (PARSER_CONTEXT * parser,
 	  out_values = (DB_VALUE *) malloc (sizeof (DB_VALUE) * pk_col_cnt);
 	  if (out_values == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (DB_VALUE) * pk_col_cnt);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * pk_col_cnt);
 	      res = ER_OUT_OF_VIRTUAL_MEMORY;
 	      break;
 	    }
 
-	  error =
-	    db_query_get_tuple_valuelist (query_result, pk_col_cnt,
-					  out_values);
+	  error = db_query_get_tuple_valuelist (query_result, pk_col_cnt, out_values);
 	  if (error != NO_ERROR)
 	    {
 	      res = error;
 	      break;
 	    }
 
-	  lower_bound_str =
-	    chksum_print_lower_bound_string (parser, out_values, pk_cons,
-					     pk_col_cnt);
+	  lower_bound_str = chksum_print_lower_bound_string (parser, out_values, pk_cons, pk_col_cnt);
 	  break;
 	case DB_CURSOR_END:
 	case DB_CURSOR_ERROR:
@@ -1524,10 +1366,8 @@ chksum_get_next_lower_bound (PARSER_CONTEXT * parser,
 
   if (res < 0)
     {
-      snprintf (err_msg, LINE_MAX, "Failed to get lower bound condition "
-		"for table %s", table_name);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
-	      err_msg, res);
+      snprintf (err_msg, LINE_MAX, "Failed to get lower bound condition " "for table %s", table_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, res);
 
       *exec_error = res;
     }
@@ -1555,12 +1395,10 @@ chksum_get_next_lower_bound (PARSER_CONTEXT * parser,
  *   exec_error(out): error
  */
 static PARSER_VARCHAR *
-chksum_get_initial_lower_bound (PARSER_CONTEXT * parser,
-				const char *table_name,
-				DB_CONSTRAINT * pk_cons, int *exec_error)
+chksum_get_initial_lower_bound (PARSER_CONTEXT * parser, const char *table_name, DB_CONSTRAINT * pk_cons,
+				int *exec_error)
 {
-  return chksum_get_next_lower_bound (parser, table_name, pk_cons, NULL, 1,
-				      exec_error);
+  return chksum_get_next_lower_bound (parser, table_name, pk_cons, NULL, 1, exec_error);
 }
 
 /*
@@ -1572,16 +1410,14 @@ chksum_get_initial_lower_bound (PARSER_CONTEXT * parser,
  *   chunk_id(in):
  */
 static PARSER_VARCHAR *
-chksum_print_select_master_checksum (PARSER_CONTEXT * parser,
-				     const char *table_name, int chunk_id)
+chksum_print_select_master_checksum (PARSER_CONTEXT * parser, const char *table_name, int chunk_id)
 {
   PARSER_VARCHAR *buffer = NULL;
   char chunk_id_str[15];
 
   snprintf (chunk_id_str, sizeof (chunk_id_str), "%d", chunk_id);
 
-  buffer =
-    pt_append_nulstring (parser, buffer, "SELECT chunk_checksum FROM ");
+  buffer = pt_append_nulstring (parser, buffer, "SELECT chunk_checksum FROM ");
   buffer = pt_append_nulstring (parser, buffer, chksum_result_Table_name);
   buffer = pt_append_nulstring (parser, buffer, " WHERE class_name = '");
   buffer = pt_append_nulstring (parser, buffer, table_name);
@@ -1599,29 +1435,22 @@ chksum_print_select_master_checksum (PARSER_CONTEXT * parser,
  *   master_checksum(in): caculated checksum
  */
 static PARSER_VARCHAR *
-chksum_print_update_master_checksum (PARSER_CONTEXT * parser,
-				     const char *table_name, int chunk_id,
-				     int master_checksum)
+chksum_print_update_master_checksum (PARSER_CONTEXT * parser, const char *table_name, int chunk_id, int master_checksum)
 {
   PARSER_VARCHAR *buffer = NULL;
   char chunk_id_str[15];
   char master_checksum_str[15];
 
   snprintf (chunk_id_str, sizeof (chunk_id_str), "%d", chunk_id);
-  snprintf (master_checksum_str, sizeof (master_checksum_str), "%d",
-	    master_checksum);
+  snprintf (master_checksum_str, sizeof (master_checksum_str), "%d", master_checksum);
 
   buffer = pt_append_nulstring (parser, buffer, "UPDATE /*+ USE_SBR */ ");
   buffer = pt_append_nulstring (parser, buffer, chksum_result_Table_name);
-  buffer = pt_append_nulstring (parser, buffer, " SET "
-				CHKSUM_TABLE_MASTER_CHEKSUM_COL " = ");
+  buffer = pt_append_nulstring (parser, buffer, " SET " CHKSUM_TABLE_MASTER_CHEKSUM_COL " = ");
   buffer = pt_append_nulstring (parser, buffer, master_checksum_str);
-  buffer =
-    pt_append_nulstring (parser, buffer, " WHERE "
-			 CHKSUM_TABLE_CLASS_NAME_COL " = '");
+  buffer = pt_append_nulstring (parser, buffer, " WHERE " CHKSUM_TABLE_CLASS_NAME_COL " = '");
   buffer = pt_append_nulstring (parser, buffer, table_name);
-  buffer = pt_append_nulstring (parser, buffer, "' AND "
-				CHKSUM_TABLE_CHUNK_ID_COL " = ");
+  buffer = pt_append_nulstring (parser, buffer, "' AND " CHKSUM_TABLE_CHUNK_ID_COL " = ");
   buffer = pt_append_nulstring (parser, buffer, chunk_id_str);
 
   return buffer;
@@ -1636,8 +1465,7 @@ chksum_print_update_master_checksum (PARSER_CONTEXT * parser,
  *   chunk_id(in):
  */
 static int
-chksum_update_master_checksum (PARSER_CONTEXT * parser,
-			       const char *table_name, int chunk_id)
+chksum_update_master_checksum (PARSER_CONTEXT * parser, const char *table_name, int chunk_id)
 {
   PARSER_VARCHAR *update_checksum_query = NULL;
   PARSER_VARCHAR *select_checksum_query = NULL;
@@ -1651,8 +1479,7 @@ chksum_update_master_checksum (PARSER_CONTEXT * parser,
   int res, error;
   char err_msg[LINE_MAX];
 
-  select_checksum_query =
-    chksum_print_select_master_checksum (parser, table_name, chunk_id);
+  select_checksum_query = chksum_print_select_master_checksum (parser, table_name, chunk_id);
   if (select_checksum_query == NULL)
     {
       return ER_FAILED;
@@ -1687,9 +1514,7 @@ chksum_update_master_checksum (PARSER_CONTEXT * parser,
 	}
       db_query_end (query_result);
 
-      update_checksum_query =
-	chksum_print_update_master_checksum (parser, table_name, chunk_id,
-					     master_checksum);
+      update_checksum_query = chksum_print_update_master_checksum (parser, table_name, chunk_id, master_checksum);
       if (update_checksum_query == NULL)
 	{
 	  return ER_FAILED;
@@ -1705,11 +1530,10 @@ chksum_update_master_checksum (PARSER_CONTEXT * parser,
 
   if (res < 0)
     {
-      snprintf (err_msg, LINE_MAX, "Failed to update master checksum. "
-		"(table name: %s, chunk id: %d)", table_name, chunk_id);
+      snprintf (err_msg, LINE_MAX, "Failed to update master checksum. " "(table name: %s, chunk id: %d)", table_name,
+		chunk_id);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
-	      err_msg, res);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, res);
     }
 
   return res;
@@ -1725,9 +1549,7 @@ chksum_update_master_checksum (PARSER_CONTEXT * parser,
  * NOTE: insert replication log and release demote table lock to IS lock
  */
 static int
-chksum_set_repl_info_and_demote_table_lock (const char *table_name,
-					    const char *checksum_query,
-					    const OID * class_oidp)
+chksum_set_repl_info_and_demote_table_lock (const char *table_name, const char *checksum_query, const OID * class_oidp)
 {
   REPL_INFO repl_info;
   REPL_INFO_SBR repl_stmt;
@@ -1741,8 +1563,7 @@ chksum_set_repl_info_and_demote_table_lock (const char *table_name,
   repl_info.repl_info_type = REPL_INFO_TYPE_SBR;
   repl_info.info = (char *) &repl_stmt;
 
-  return chksum_insert_repl_log_and_demote_table_lock (&repl_info,
-						       class_oidp);
+  return chksum_insert_repl_log_and_demote_table_lock (&repl_info, class_oidp);
 }
 
 /*
@@ -1761,13 +1582,13 @@ chksum_update_current_schema_definition (const char *table_name, int repid)
   int res, error = NO_ERROR;
   char query_buf[QUERY_BUF_SIZE];
 
-  snprintf (query_buf, sizeof (query_buf), "UPDATE /*+ USE_SBR */ %s " /* 1 */
-      "SET " CHKSUM_TABLE_SCHEMA_COL " = SCHEMA_DEF ('%s'), " /* 2 */
-      CHKSUM_TABLE_SCHEMA_TIME_COL " = SYS_DATETIME " /* collected time */
-      "WHERE " CHKSUM_TABLE_CLASS_NAME_COL " = '%s' " /* 3 */
-      "AND " CHKSUM_TABLE_SCHEMA_REPID_COL " = %d;", /* 4 */
-      chksum_schema_Table_name, /* 1 */
-      table_name, table_name, repid); /* 2, 3, 4 */
+  snprintf (query_buf, sizeof (query_buf), "UPDATE /*+ USE_SBR */ %s "	/* 1 */
+	    "SET " CHKSUM_TABLE_SCHEMA_COL " = SCHEMA_DEF ('%s'), "	/* 2 */
+	    CHKSUM_TABLE_SCHEMA_TIME_COL " = SYS_DATETIME "	/* collected time */
+	    "WHERE " CHKSUM_TABLE_CLASS_NAME_COL " = '%s' "	/* 3 */
+	    "AND " CHKSUM_TABLE_SCHEMA_REPID_COL " = %d;",	/* 4 */
+	    chksum_schema_Table_name,	/* 1 */
+	    table_name, table_name, repid);	/* 2, 3, 4 */
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res >= 0)
@@ -1803,10 +1624,8 @@ chksum_insert_schema_definition (const char *table_name, int repid)
   char query_buf[QUERY_BUF_SIZE];
   char err_msg[LINE_MAX];
 
-  snprintf (query_buf, sizeof (query_buf), "REPLACE INTO %s "
-      "SELECT '%s', %d, NULL, SCHEMA_DEF ('%s'), NULL;",
-      chksum_schema_Table_name,
-      table_name, repid, table_name);
+  snprintf (query_buf, sizeof (query_buf), "REPLACE INTO %s " "SELECT '%s', %d, NULL, SCHEMA_DEF ('%s'), NULL;",
+	    chksum_schema_Table_name, table_name, repid, table_name);
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res >= 0)
@@ -1841,11 +1660,8 @@ chksum_insert_schema_definition (const char *table_name, int repid)
  *   chunk_size(in):
  */
 static int
-chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp,
-			   const char *table_name,
-			   DB_ATTRIBUTE * attributes,
-			   PARSER_VARCHAR * lower_bound, int chunk_id,
-			   int chunk_size)
+chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp, const char *table_name,
+			   DB_ATTRIBUTE * attributes, PARSER_VARCHAR * lower_bound, int chunk_id, int chunk_size)
 {
   PARSER_VARCHAR *checksum_query = NULL;
   PARSER_VARCHAR *update_checksum_query = NULL;
@@ -1859,9 +1675,7 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp,
   int res;
   int error = NO_ERROR;
 
-  checksum_query =
-    chksum_print_checksum_query (parser, table_name, attributes,
-				 lower_bound, chunk_id, chunk_size);
+  checksum_query = chksum_print_checksum_query (parser, table_name, attributes, lower_bound, chunk_id, chunk_size);
   if (checksum_query == NULL)
     {
       return ER_FAILED;
@@ -1869,22 +1683,17 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp,
 
   query = (const char *) pt_get_varchar_bytes (checksum_query);
 
-  /*
+  /* 
    * write replication log first and release all locks
    * to avoid long lock wait of other concurrent clients on active server
    */
-  error =
-    chksum_set_repl_info_and_demote_table_lock (table_name, query,
-						class_oidp);
+  error = chksum_set_repl_info_and_demote_table_lock (table_name, query, class_oidp);
   if (error != NO_ERROR)
     {
       snprintf (err_msg, LINE_MAX,
-		"Failed to write a checksum replication log."
-		" (table name: %s, chunk id: %d, lower bound: %s)",
-		table_name, chunk_id,
-		(char *) pt_get_varchar_bytes (lower_bound));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
-	      err_msg, error);
+		"Failed to write a checksum replication log." " (table name: %s, chunk id: %d, lower bound: %s)",
+		table_name, chunk_id, (char *) pt_get_varchar_bytes (lower_bound));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, error);
       return error;
     }
 
@@ -1901,13 +1710,10 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp,
     }
   else
     {
-      snprintf (err_msg, LINE_MAX, "Failed to calculate checksum. "
-		"(table name: %s, chunk id: %d, lower bound: %s)",
-		table_name, chunk_id,
-		(char *) pt_get_varchar_bytes (lower_bound));
+      snprintf (err_msg, LINE_MAX, "Failed to calculate checksum. " "(table name: %s, chunk id: %d, lower bound: %s)",
+		table_name, chunk_id, (char *) pt_get_varchar_bytes (lower_bound));
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
-	      err_msg, res);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, res);
       error = res;
     }
 
@@ -1928,8 +1734,7 @@ chksum_need_skip_table (const char *table_name, CHKSUM_ARG * chksum_arg)
   dynamic_array *list = NULL;
   char table_in_list[SM_MAX_IDENTIFIER_LENGTH];
 
-  if (table_name == NULL
-      || (strcasecmp (table_name, chksum_result_Table_name) == 0)
+  if (table_name == NULL || (strcasecmp (table_name, chksum_result_Table_name) == 0)
       || (strcasecmp (table_name, chksum_schema_Table_name) == 0))
     {
       return true;
@@ -1941,8 +1746,7 @@ chksum_need_skip_table (const char *table_name, CHKSUM_ARG * chksum_arg)
     }
 
   /* cannot have both lists */
-  assert (chksum_arg->include_list == NULL
-	  || chksum_arg->exclude_list == NULL);
+  assert (chksum_arg->include_list == NULL || chksum_arg->exclude_list == NULL);
 
   list = chksum_arg->exclude_list;
   if (list != NULL)
@@ -1990,8 +1794,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
   int prev_repid = -1;
   bool force_refetch_class_info;
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR,
-	  2, "checksum calculation started", 0);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, "checksum calculation started", 0);
 
   if (chksum_init_checksum_tables (chksum_arg->resume) != NO_ERROR)
     {
@@ -2004,8 +1807,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
       if (error != NO_ERROR)
 	{
 	  snprintf (err_msg, LINE_MAX, "Failed to load previous checksum result");
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
-		  err_msg, error);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, error);
 	  goto exit;
 	}
     }
@@ -2016,8 +1818,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
   error = db_commit_transaction ();
   if (error != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
-	      "Failed to get the list of tables", error);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, "Failed to get the list of tables", error);
       goto exit;
     }
 
@@ -2064,8 +1865,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 	      if (table_name == NULL || attributes == NULL)
 		{
 		  error = er_errid ();
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_CHKSUM_GENERIC_ERR, 2,
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
 			  "Failed to load table information", error);
 		  break;
 		}
@@ -2093,10 +1893,8 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 
 		  if (error != NO_ERROR)
 		    {
-		      snprintf (err_msg, LINE_MAX, "Failed to update schema definition"
-			  " of [%s]", table_name);
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
-			      err_msg, error);
+		      snprintf (err_msg, LINE_MAX, "Failed to update schema definition" " of [%s]", table_name);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, error);
 
 		      (void) db_abort_transaction ();
 		      break;
@@ -2108,9 +1906,8 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 		    }
 		  else
 		    {
-		      /* continue here since commit unlocks the current class
-		       * and there might be a chance that the class is modified.
-		       */
+		      /* continue here since commit unlocks the current class and there might be a chance that the
+		       * class is modified. */
 		      prev_repid = repid;
 		      continue;
 		    }
@@ -2122,13 +1919,10 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 
 	  if (locator_fetch_class (classobj, DB_FETCH_QUERY_READ) == NULL)
 	    {
-	      snprintf (err_msg, LINE_MAX,
-			"Failed to acquire a table READ lock for [%s]",
-			table_name);
+	      snprintf (err_msg, LINE_MAX, "Failed to acquire a table READ lock for [%s]", table_name);
 
 	      error = er_errid ();
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR,
-		      2, err_msg, error);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, error);
 	      break;
 	    }
 
@@ -2139,11 +1933,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 	  if (chunk_id == 0 && lower_bound == NULL)
 	    {
 	      error =
-		chksum_set_initial_chunk_id_and_lower_bound (parser,
-							     table_name,
-							     pk_cons,
-							     &chunk_id,
-							     &lower_bound);
+		chksum_set_initial_chunk_id_and_lower_bound (parser, table_name, pk_cons, &chunk_id, &lower_bound);
 	      if (error != NO_ERROR)
 		{
 		  (void) db_abort_transaction ();
@@ -2171,8 +1961,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 	  assert (lower_bound != NULL);
 
 	  error =
-	    chksum_calculate_checksum (parser, class_oidp, table_name,
-				       attributes, lower_bound, chunk_id,
+	    chksum_calculate_checksum (parser, class_oidp, table_name, attributes, lower_bound, chunk_id,
 				       chksum_arg->chunk_size);
 	  if (error != NO_ERROR)
 	    {
@@ -2191,9 +1980,7 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 	    }
 
 	  next_lower_bound =
-	    chksum_get_next_lower_bound (parser, table_name, pk_cons,
-					 lower_bound, chksum_arg->chunk_size,
-					 &error);
+	    chksum_get_next_lower_bound (parser, table_name, pk_cons, lower_bound, chksum_arg->chunk_size, &error);
 	  if (error != NO_ERROR)
 	    {
 	      (void) db_abort_transaction ();
@@ -2241,10 +2028,8 @@ chksum_start (CHKSUM_ARG * chksum_arg)
 
       if (error != NO_ERROR)
 	{
-	  snprintf (err_msg, sizeof (err_msg),
-		    "Table [%s] skipped due to error", table_name);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
-		  err_msg, error);
+	  snprintf (err_msg, sizeof (err_msg), "Table [%s] skipped due to error", table_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, error);
 	}
     }
 
@@ -2261,13 +2046,11 @@ exit:
 
   if (error == NO_ERROR)
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR,
-	      2, "checksum calculation completed", 0);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, "checksum calculation completed", 0);
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2,
-	      "checksum calculation terminated", error);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, "checksum calculation terminated", error);
     }
 
   return error;
@@ -2281,9 +2064,8 @@ int
 checksumdb (UTIL_FUNCTION_ARG * arg)
 {
 #if defined (WINDOWS)
-  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
-					 MSGCAT_UTIL_SET_CHECKSUMDB,
-					 CHECKSUMDB_MSG_HA_NOT_SUPPORT),
+  PRINT_AND_LOG_ERR_MSG (msgcat_message
+			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKSUMDB, CHECKSUMDB_MSG_HA_NOT_SUPPORT),
 			 basename (arg->argv0));
 
   return EXIT_FAILURE;
@@ -2307,8 +2089,7 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
       goto print_checksumdb_usage;
     }
 
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
     {
       goto print_checksumdb_usage;
@@ -2319,35 +2100,27 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  checksum_table =
-    utility_get_option_string_value (arg_map, CHECKSUM_TABLE_NAME_S, 0);
+  checksum_table = utility_get_option_string_value (arg_map, CHECKSUM_TABLE_NAME_S, 0);
   if (sm_check_name (checksum_table) > 0)
     {
-      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s",
-		checksum_table);
+      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", checksum_table);
     }
   else
     {
-      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s",
-		CHKSUM_DEFAULT_TABLE_NAME);
+      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", CHKSUM_DEFAULT_TABLE_NAME);
     }
 
-  snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s%s",
-            chksum_result_Table_name, CHKSUM_SCHEMA_TABLE_SUFFIX);
+  snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s%s", chksum_result_Table_name,
+	    CHKSUM_SCHEMA_TABLE_SUFFIX);
 
-  report_only =
-    utility_get_option_bool_value (arg_map, CHECKSUM_REPORT_ONLY_S);
+  report_only = utility_get_option_bool_value (arg_map, CHECKSUM_REPORT_ONLY_S);
   if (report_only == true)
     {
       goto begin;
     }
 
-  incl_class_file =
-    utility_get_option_string_value (arg_map, CHECKSUM_INCLUDE_CLASS_FILE_S,
-				     0);
-  excl_class_file =
-    utility_get_option_string_value (arg_map, CHECKSUM_EXCLUDE_CLASS_FILE_S,
-				     0);
+  incl_class_file = utility_get_option_string_value (arg_map, CHECKSUM_INCLUDE_CLASS_FILE_S, 0);
+  excl_class_file = utility_get_option_string_value (arg_map, CHECKSUM_EXCLUDE_CLASS_FILE_S, 0);
 
   if (incl_class_file != NULL && excl_class_file != NULL)
     {
@@ -2357,15 +2130,11 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
 
   if (incl_class_file != NULL)
     {
-      chksum_arg.include_list =
-	da_create (CHKSUM_DEFAULT_LIST_SIZE, SM_MAX_IDENTIFIER_LENGTH);
-      if (util_get_table_list_from_file
-	  (incl_class_file, chksum_arg.include_list) != NO_ERROR)
+      chksum_arg.include_list = da_create (CHKSUM_DEFAULT_LIST_SIZE, SM_MAX_IDENTIFIER_LENGTH);
+      if (util_get_table_list_from_file (incl_class_file, chksum_arg.include_list) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS,
-				  MSGCAT_UTIL_SET_CHECKSUMDB,
-				  CHECKSUMDB_MSG_INVALID_INPUT_FILE),
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKSUMDB, CHECKSUMDB_MSG_INVALID_INPUT_FILE),
 				 incl_class_file);
 	  goto error_exit;
 	}
@@ -2373,52 +2142,42 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
 
   if (excl_class_file != NULL)
     {
-      chksum_arg.exclude_list =
-	da_create (CHKSUM_DEFAULT_LIST_SIZE, SM_MAX_IDENTIFIER_LENGTH);
-      if (util_get_table_list_from_file
-	  (excl_class_file, chksum_arg.exclude_list) != NO_ERROR)
+      chksum_arg.exclude_list = da_create (CHKSUM_DEFAULT_LIST_SIZE, SM_MAX_IDENTIFIER_LENGTH);
+      if (util_get_table_list_from_file (excl_class_file, chksum_arg.exclude_list) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS,
-				  MSGCAT_UTIL_SET_CHECKSUMDB,
-				  CHECKSUMDB_MSG_INVALID_INPUT_FILE),
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKSUMDB, CHECKSUMDB_MSG_INVALID_INPUT_FILE),
 				 excl_class_file);
 	  goto error_exit;
 	}
     }
 
-  chksum_arg.chunk_size =
-    utility_get_option_int_value (arg_map, CHECKSUM_CHUNK_SIZE_S);
+  chksum_arg.chunk_size = utility_get_option_int_value (arg_map, CHECKSUM_CHUNK_SIZE_S);
   if (chksum_arg.chunk_size < CHKSUM_MIN_CHUNK_SIZE)
     {
       goto print_checksumdb_usage;
     }
 
-  chksum_arg.resume =
-    utility_get_option_bool_value (arg_map, CHECKSUM_RESUME_S);
+  chksum_arg.resume = utility_get_option_bool_value (arg_map, CHECKSUM_RESUME_S);
 
   chksum_arg.schema_only = utility_get_option_bool_value (arg_map, CHECKSUM_SCHEMA_ONLY_S);
 
-  chksum_arg.sleep_msecs =
-    utility_get_option_int_value (arg_map, CHECKSUM_SLEEP_S);
+  chksum_arg.sleep_msecs = utility_get_option_int_value (arg_map, CHECKSUM_SLEEP_S);
   if (chksum_arg.sleep_msecs < 0)
     {
       chksum_arg.sleep_msecs = 0;
     }
 
-  chksum_arg.timeout_msecs =
-    utility_get_option_int_value (arg_map, CHECKSUM_TIMEOUT_S);
+  chksum_arg.timeout_msecs = utility_get_option_int_value (arg_map, CHECKSUM_TIMEOUT_S);
   if (chksum_arg.timeout_msecs < 0)
     {
       chksum_arg.timeout_msecs = 0;
     }
 
-  chksum_arg.cont_on_err =
-    utility_get_option_bool_value (arg_map, CHECKSUM_CONT_ON_ERROR_S);
+  chksum_arg.cont_on_err = utility_get_option_bool_value (arg_map, CHECKSUM_CONT_ON_ERROR_S);
 
 begin:
-  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err",
-	    database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   AU_DISABLE_PASSWORDS ();
@@ -2467,11 +2226,8 @@ begin:
       if (ha_state != HA_SERVER_STATE_ACTIVE)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS,
-				  MSGCAT_UTIL_SET_CHECKSUMDB,
-				  CHECKSUMDB_MSG_MUST_RUN_ON_ACTIVE),
-				 database_name,
-				 css_ha_server_state_string (ha_state));
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKSUMDB, CHECKSUMDB_MSG_MUST_RUN_ON_ACTIVE),
+				 database_name, css_ha_server_state_string (ha_state));
 
 	  (void) db_shutdown ();
 
@@ -2504,9 +2260,7 @@ begin:
   return EXIT_SUCCESS;
 
 print_checksumdb_usage:
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_CHECKSUMDB,
-				   CHECKSUMDB_MSG_USAGE),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKSUMDB, CHECKSUMDB_MSG_USAGE),
 	   basename (arg->argv0));
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
@@ -2523,9 +2277,8 @@ error_exit:
 
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS,
-					 MSGCAT_UTIL_SET_CHECKSUMDB,
-					 CHECKSUMDB_MSG_NOT_IN_STANDALONE),
+  PRINT_AND_LOG_ERR_MSG (msgcat_message
+			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKSUMDB, CHECKSUMDB_MSG_NOT_IN_STANDALONE),
 			 basename (arg->argv0));
 
 error_exit:

@@ -91,7 +91,7 @@ extern "C"
 #ifdef Unsigned_Shifts
 #define Sign_Extend(a,b) if (b < 0) a |= (uint32_t)0xffff0000;
 #else
-#define Sign_Extend(a,b)	/*no-op */
+#define Sign_Extend(a,b)	/* no-op */
 #endif
 
 #if defined(IEEE_8087) + defined(IEEE_MC68k) + defined(VAX) + defined(IBM) != 1
@@ -363,35 +363,27 @@ extern "C"
 #define _dtoa_r _Jv_dtoa_r
 #define _strtod_r _Jv_strtod_r
 
-  extern double _EXFUN (_strtod_r,
-			(struct _Jv_reent * ptr, const char *s00, char **se));
+  extern double _EXFUN (_strtod_r, (struct _Jv_reent * ptr, const char *s00, char **se));
   extern char *_EXFUN (_dtoa_r,
-		       (struct _Jv_reent * ptr, double d, int mode,
-			int ndigits, int *decpt, int *sign, char **rve,
+		       (struct _Jv_reent * ptr, double d, int mode, int ndigits, int *decpt, int *sign, char **rve,
 			int float_type));
   extern void _EXFUN (_dtoa,
-		      (double d, int mode, int ndigits, int *decpt, int *sign,
-		       char **rve, char *buf, int float_type));
+		      (double d, int mode, int ndigits, int *decpt, int *sign, char **rve, char *buf, int float_type));
 
   double _EXFUN (ulp, (double x));
   double _EXFUN (b2d, (_Jv_Bigint * a, int *e));
   _Jv_Bigint *_EXFUN (Balloc, (struct _Jv_reent * p, int k));
   void _EXFUN (Bfree, (struct _Jv_reent * p, _Jv_Bigint * v));
-  _Jv_Bigint *_EXFUN (multadd,
-		      (struct _Jv_reent * p, _Jv_Bigint *, int, int));
-  _Jv_Bigint *_EXFUN (s2b,
-		      (struct _Jv_reent *, const char *, int, int,
-		       unsigned long));
+  _Jv_Bigint *_EXFUN (multadd, (struct _Jv_reent * p, _Jv_Bigint *, int, int));
+  _Jv_Bigint *_EXFUN (s2b, (struct _Jv_reent *, const char *, int, int, unsigned long));
   _Jv_Bigint *_EXFUN (i2b, (struct _Jv_reent *, int));
   _Jv_Bigint *_EXFUN (mult, (struct _Jv_reent *, _Jv_Bigint *, _Jv_Bigint *));
   _Jv_Bigint *_EXFUN (pow5mult, (struct _Jv_reent *, _Jv_Bigint *, int k));
   int _EXFUN (hi0bits, (unsigned long));
   int _EXFUN (lo0bits, (unsigned long *));
-  _Jv_Bigint *_EXFUN (d2b,
-		      (struct _Jv_reent * p, double d, int *e, int *bits));
+  _Jv_Bigint *_EXFUN (d2b, (struct _Jv_reent * p, double d, int *e, int *bits));
   _Jv_Bigint *_EXFUN (lshift, (struct _Jv_reent * p, _Jv_Bigint * b, int k));
-  _Jv_Bigint *_EXFUN (diff,
-		      (struct _Jv_reent * p, _Jv_Bigint * a, _Jv_Bigint * b));
+  _Jv_Bigint *_EXFUN (diff, (struct _Jv_reent * p, _Jv_Bigint * a, _Jv_Bigint * b));
   int _EXFUN (cmp, (_Jv_Bigint * a, _Jv_Bigint * b));
 
   double _EXFUN (ratio, (_Jv_Bigint * a, _Jv_Bigint * b));

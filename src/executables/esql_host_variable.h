@@ -84,25 +84,25 @@ typedef enum specifier_noun
 
 typedef enum storage_class
 {
-  C_FIXED = 0,			/* Fixed address                */
-  C_REGISTER = 1,		/* In a register                */
-  C_AUTO = 2,			/* On run-time stack            */
-  C_TYPEDEF = 3,		/* typedef                      */
-  C_CONSTANT = 4		/* Const decl                   */
+  C_FIXED = 0,			/* Fixed address */
+  C_REGISTER = 1,		/* In a register */
+  C_AUTO = 2,			/* On run-time stack */
+  C_TYPEDEF = 3,		/* typedef */
+  C_CONSTANT = 4		/* Const decl */
 } STORAGE_CLASS;
 
 typedef enum alias_class
 {
-  A_DIRECT = 0,			/* Specifier supplied directly             */
-  A_TYPEDEF = 1,		/* Specifier supplied via typedef          */
+  A_DIRECT = 0,			/* Specifier supplied directly */
+  A_TYPEDEF = 1,		/* Specifier supplied via typedef */
   A_STRUCT = 2			/* Specifier supplied via tagged struct ref */
 } ALIAS_CLASS;
 
 typedef enum dcl_type
 {
-  D_POINTER = 0,		/* If declarator is pointer             */
-  D_ARRAY = 1,			/* If declarator is an array            */
-  D_FUNCTION = 2		/* If declarator is a function          */
+  D_POINTER = 0,		/* If declarator is pointer */
+  D_ARRAY = 1,			/* If declarator is an array */
+  D_FUNCTION = 2		/* If declarator is a function */
 } DCL_TYPE;
 
 typedef struct ptr_vec PTR_VEC;
@@ -130,7 +130,7 @@ struct host_lod			/* list or descriptor */
   int n_real_refs;
   HOST_REF *real_refs;
 
-  HOST_LOD *next;		/* Link to previous descriptor  */
+  HOST_LOD *next;		/* Link to previous descriptor */
 };
 
 /*
@@ -154,13 +154,13 @@ union yystype
 
 struct structdef
 {
-  unsigned char *tag;		/* Tag part of struct def               */
-  const unsigned char *type_string;	/* "struct" or "union"                  */
-  unsigned char type;		/* 1 if a struct, 0 if a union          */
-  unsigned char level;		/* Nesting level of struct decl         */
-  SYMBOL *fields;		/* Linked list of field decls           */
-  size_t size;			/* Size of the struct in bytes          */
-  int by_name;			/* See note below                       */
+  unsigned char *tag;		/* Tag part of struct def */
+  const unsigned char *type_string;	/* "struct" or "union" */
+  unsigned char type;		/* 1 if a struct, 0 if a union */
+  unsigned char level;		/* Nesting level of struct decl */
+  SYMBOL *fields;		/* Linked list of field decls */
+  size_t size;			/* Size of the struct in bytes */
+  int by_name;			/* See note below */
   STRUCTDEF *next;		/* Link to next structdef at this level */
 
 
@@ -179,39 +179,39 @@ struct ptr_vec
 
 struct declarator
 {
-  DCL_TYPE dcl_type;		/* POINTER, ARRAY, or FUNCTION          */
-  char *num_ele;		/* # of elements for ARRAY              */
-  SYMBOL *args;			/* arg decls for a FUNCTION             */
+  DCL_TYPE dcl_type;		/* POINTER, ARRAY, or FUNCTION */
+  char *num_ele;		/* # of elements for ARRAY */
+  SYMBOL *args;			/* arg decls for a FUNCTION */
 };
 
 struct specifier
 {
-  SPECIFIER_NOUN noun;		/* INT CHR VOID STRUCTURE LABEL         */
+  SPECIFIER_NOUN noun;		/* INT CHR VOID STRUCTURE LABEL */
   STORAGE_CLASS sclass;		/* FIXED REGISTER AUTO TYPEDEF CONSTANT */
-  unsigned char is_long;	/* 1 = long.                            */
-  unsigned char is_short;	/* 1 = short.                           */
-  unsigned char is_unsigned;	/* 1 = unsigned.        0 = signed.     */
-  unsigned char is_static;	/* 1 if static keyword in declaration   */
-  unsigned char is_extern;	/* 1 if extern keyword in declaration   */
+  unsigned char is_long;	/* 1 = long.  */
+  unsigned char is_short;	/* 1 = short.  */
+  unsigned char is_unsigned;	/* 1 = unsigned.  0 = signed.  */
+  unsigned char is_static;	/* 1 if static keyword in declaration */
+  unsigned char is_extern;	/* 1 if extern keyword in declaration */
   unsigned char is_volatile;	/* 1 if volatile keyword in declaration */
-  unsigned char is_const;	/* 1 if const keyword in declaration    */
-  unsigned char is_auto;	/* 1 if auto keyword in declaration     */
+  unsigned char is_const;	/* 1 if const keyword in declaration */
+  unsigned char is_auto;	/* 1 if auto keyword in declaration */
   unsigned char is_register;	/* 1 if register keyword in declaration */
-  unsigned char is_by_name;	/* 1 if this is a STRUCTURE specifier   */
+  unsigned char is_by_name;	/* 1 if this is a STRUCTURE specifier */
 
   union
-  {				/* Value if constant:                   */
-    int v_int;			/* Int & char values.  If a string,     */
-    /* is numeric component of the label.   */
-    unsigned int v_uint;	/* Unsigned int constant value.         */
-    long v_long;		/* Signed long constant value.          */
-    unsigned long v_ulong;	/* Unsigned long constant value.        */
+  {				/* Value if constant: */
+    int v_int;			/* Int & char values.  If a string, */
+    /* is numeric component of the label.  */
+    unsigned int v_uint;	/* Unsigned int constant value.  */
+    long v_long;		/* Signed long constant value.  */
+    unsigned long v_ulong;	/* Unsigned long constant value.  */
 
-    STRUCTDEF *v_struct;	/* If this is a struct or a varchar,    */
-    /* points at a structure-table element  */
+    STRUCTDEF *v_struct;	/* If this is a struct or a varchar, */
+    /* points at a structure-table element */
 
-    SYMBOL *v_tdef;		/* The typedef-table entry for this     */
-    /* link if it belongs to a typedef.     */
+    SYMBOL *v_tdef;		/* The typedef-table entry for this */
+    /* link if it belongs to a typedef.  */
   } val;
 };
 
@@ -223,17 +223,17 @@ enum link_class
 
 struct link
 {
-  LINK_CLASS class_;		/* DECLARATOR or SPECIFIER              */
+  LINK_CLASS class_;		/* DECLARATOR or SPECIFIER */
   SYMBOL *tdef;			/* Points to typedef used to create the */
-  SYMBOL *from_tdef;		/* link if it was created by cloning a  */
-  /* typedef.                             */
+  SYMBOL *from_tdef;		/* link if it was created by cloning a */
+  /* typedef.  */
   union
   {
-    specifier s;		/* If class == SPECIFIER               */
-    declarator d;		/* if class == DECLARATOR              */
+    specifier s;		/* If class == SPECIFIER */
+    declarator d;		/* if class == DECLARATOR */
   } decl;			/* declaration */
 
-  LINK *next;			/* Next element of chain.               */
+  LINK *next;			/* Next element of chain.  */
 };
 
 struct host_var
@@ -276,28 +276,28 @@ typedef enum when_action
 
 struct symbol
 {
-  unsigned char *name;		/* Input variable name.                 */
-  int level;			/* Decl level, field offset             */
-  LINK *type;			/* First link in declarator chain       */
-  LINK *etype;			/* Last link in declarator chain        */
-  SYMBOL *args;			/* If a func decl, the arg list         */
-  /* If a var, the initializer            */
-  SYMBOL *next;			/* Cross link to next variable at the   */
-  /* current nesting level                */
+  unsigned char *name;		/* Input variable name.  */
+  int level;			/* Decl level, field offset */
+  LINK *type;			/* First link in declarator chain */
+  LINK *etype;			/* Last link in declarator chain */
+  SYMBOL *args;			/* If a func decl, the arg list */
+  /* If a var, the initializer */
+  SYMBOL *next;			/* Cross link to next variable at the */
+  /* current nesting level */
 };
 
 struct cursor
 {
-  unsigned char *name;		/* The name of the cursor               */
-  int cid;			/* A unique cursor id                   */
+  unsigned char *name;		/* The name of the cursor */
+  int cid;			/* A unique cursor id */
   int level;			/* The nesting level of the declaration */
-  CURSOR *next;			/* A pointer to the next cursor at the  */
-  /* same nesting level                   */
+  CURSOR *next;			/* A pointer to the next cursor at the */
+  /* same nesting level */
 
   unsigned char *static_stmt;	/* The prepared SELECT statement */
   int stmtLength;
-  HOST_LOD *host_refs;		/* The host variables           */
-  STMT *dynamic_stmt;		/* The dynamic statement        */
+  HOST_LOD *host_refs;		/* The host variables */
+  STMT *dynamic_stmt;		/* The dynamic statement */
 };
 
 struct stmt

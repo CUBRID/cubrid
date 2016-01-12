@@ -65,8 +65,7 @@ char db_err_log_file[BROKER_PATH_MAX];
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 int
-ut_access_log (int as_index, struct timeval *start_time, char error_flag,
-	       int error_log_offset)
+ut_access_log (int as_index, struct timeval *start_time, char error_flag, int error_log_offset)
 {
   FILE *fp;
   char *access_log = getenv (ACCESS_LOG_ENV_STR);
@@ -117,25 +116,18 @@ ut_access_log (int as_index, struct timeval *start_time, char error_flag,
 
 #ifdef V3_TEST
   fprintf (fp,
-	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
-	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %d\n",
-	   as_index + 1, clt_ip, clt_appl, script,
-	   (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
-	   (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
-	   ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
-	   ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour,
-	   ct2.tm_min, ct2.tm_sec,
-	   (int) getpid (), err_str, error_file_offset, uts_size ());
+	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ " "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %d\n",
+	   as_index + 1, clt_ip, clt_appl, script, (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
+	   (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000), ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday,
+	   ct1.tm_hour, ct1.tm_min, ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour, ct2.tm_min,
+	   ct2.tm_sec, (int) getpid (), err_str, error_file_offset, uts_size ());
 #else
   fprintf (fp,
-	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
-	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d\n",
-	   as_index + 1, clt_ip, clt_appl, script,
-	   (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
-	   (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
-	   ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
-	   ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour,
-	   ct2.tm_min, ct2.tm_sec, (int) getpid (), err_str, -1);
+	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ " "%02d/%02d/%02d %02d:%02d:%02d %d %s %d\n",
+	   as_index + 1, clt_ip, clt_appl, script, (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
+	   (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000), ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday,
+	   ct1.tm_hour, ct1.tm_min, ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour, ct2.tm_min,
+	   ct2.tm_sec, (int) getpid (), err_str, -1);
 #endif
 
   fclose (fp);
@@ -160,8 +152,7 @@ ut_file_lock (char *lock_file)
 	fp = fopen ("uts_file_lock.log", "a");
 	if (fp != NULL)
 	  {
-	    fprintf (fp, "[%d] file lock error. err = [%d], [%s]\n",
-		     (int) getpid (), errno, strerror (errno));
+	    fprintf (fp, "[%d] file lock error. err = [%d], [%s]\n", (int) getpid (), errno, strerror (errno));
 	    fclose (fp);
 	  }
       }
@@ -274,7 +265,7 @@ ut_kill_as_process (int pid, char *broker_name, int as_index, int shard_flag)
     {
       char tmp[BROKER_PATH_MAX];
 
-      /*
+      /* 
        * shard_cas does not have unix-domain socket and pid lock file.
        * so, we need not delete socket and lock file.
        */
@@ -324,8 +315,7 @@ run_child (const char *appl_name)
 
   sprintf (cmd, "%s/%s.exe", cwd, appl_name);
 
-  res = CreateProcess (cmd, NULL, NULL, NULL, FALSE,
-		       0, NULL, NULL, &start_info, &proc_info);
+  res = CreateProcess (cmd, NULL, NULL, NULL, FALSE, 0, NULL, NULL, &start_info, &proc_info);
 
   if (res == FALSE)
     {
@@ -408,22 +398,20 @@ as_pid_file_create (char *br_name, int as_index)
 }
 
 void
-as_db_err_log_set (char *br_name, int proxy_index, int shard_id,
-		   int shard_cas_id, int as_index, int shard_flag)
+as_db_err_log_set (char *br_name, int proxy_index, int shard_id, int shard_cas_id, int as_index, int shard_flag)
 {
   char buf[BROKER_PATH_MAX];
 
   if (shard_flag == ON)
     {
       sprintf (db_err_log_file, "CUBRID_ERROR_LOG=%s%s_%d_%d_%d.err",
-	       get_cubrid_file (FID_CUBRID_ERR_DIR, buf, BROKER_PATH_MAX),
-	       br_name, proxy_index + 1, shard_id, shard_cas_id + 1);
+	       get_cubrid_file (FID_CUBRID_ERR_DIR, buf, BROKER_PATH_MAX), br_name, proxy_index + 1, shard_id,
+	       shard_cas_id + 1);
     }
   else
     {
       sprintf (db_err_log_file, "CUBRID_ERROR_LOG=%s%s_%d.err",
-	       get_cubrid_file (FID_CUBRID_ERR_DIR, buf, BROKER_PATH_MAX),
-	       br_name, as_index + 1);
+	       get_cubrid_file (FID_CUBRID_ERR_DIR, buf, BROKER_PATH_MAX), br_name, as_index + 1);
     }
 
   putenv (db_err_log_file);
@@ -494,8 +482,7 @@ ut_get_ipv4_string (char *ip_str, int len, const unsigned char *ip_addr)
   assert (ip_str != NULL);
   assert (len >= 16);		/* xxx.xxx.xxx.xxx\0 */
 
-  snprintf (ip_str, len, "%d.%d.%d.%d", (unsigned char) ip_addr[0],
-	    (unsigned char) ip_addr[1],
+  snprintf (ip_str, len, "%d.%d.%d.%d", (unsigned char) ip_addr[0], (unsigned char) ip_addr[1],
 	    (unsigned char) ip_addr[2], (unsigned char) ip_addr[3]);
   return (ip_str);
 }
@@ -567,8 +554,7 @@ ut_get_broker_port_name (char *port_name, char *broker_name, int len)
 }
 
 void
-ut_get_proxy_port_name (char *port_name, char *broker_name, int proxy_id,
-			int len)
+ut_get_proxy_port_name (char *port_name, char *broker_name, int proxy_id, int len)
 {
   char dir_name[BROKER_PATH_MAX];
 

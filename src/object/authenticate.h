@@ -146,10 +146,8 @@ typedef enum au_fetchmode
 {
   AU_FETCH_READ,
   AU_FETCH_SCAN,		/* scan that does not allow write */
-  AU_FETCH_EXCLUSIVE_SCAN,	/* scan that does allow neither write 
-				 * nor other exclusive scan, 
-				 * i.e, scan for load index. 
-				 */
+  AU_FETCH_EXCLUSIVE_SCAN,	/* scan that does allow neither write nor other exclusive scan, i.e, scan for load
+				 * index. */
   AU_FETCH_WRITE,
   AU_FETCH_UPDATE
 } AU_FETCHMODE;
@@ -173,8 +171,7 @@ extern int au_install (void);
 extern int au_force_write_new_auth (void);
 extern int au_add_method_check_authorization (void);
 extern int au_start (void);
-extern int au_login (const char *name, const char *password,
-		     bool ignore_dba_privilege);
+extern int au_login (const char *name, const char *password, bool ignore_dba_privilege);
 
 extern void au_disable_passwords (void);
 extern int au_set_user (MOP newuser);
@@ -196,28 +193,20 @@ extern int au_user_password (char *buffer);
 #endif
 
 /* grant/revoke */
-extern int au_grant (MOP user, MOP class_mop, DB_AUTH type,
-		     bool grant_option);
+extern int au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
 extern int au_revoke (MOP user, MOP class_mop, DB_AUTH type);
 
 extern int au_delete_auth_of_dropping_table (const char *class_name);
 
 /* class & instance accessors */
-extern int au_fetch_class (MOP op, SM_CLASS ** class_ptr,
-			   AU_FETCHMODE fetchmode, DB_AUTH type);
-extern int au_fetch_class_by_classmop (MOP op, SM_CLASS ** class_ptr,
-				       AU_FETCHMODE fetchmode, DB_AUTH type);
-extern int au_fetch_class_by_instancemop (MOP op, SM_CLASS ** class_ptr,
-					  AU_FETCHMODE fetchmode,
-					  DB_AUTH type);
-extern int au_fetch_class_force (MOP op, SM_CLASS ** class_,
-				 AU_FETCHMODE fetchmode);
+extern int au_fetch_class (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH type);
+extern int au_fetch_class_by_classmop (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH type);
+extern int au_fetch_class_by_instancemop (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH type);
+extern int au_fetch_class_force (MOP op, SM_CLASS ** class_, AU_FETCHMODE fetchmode);
 
-extern int au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode,
-			      LC_FETCH_VERSION_TYPE fetch_version_type,
+extern int au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, LC_FETCH_VERSION_TYPE fetch_version_type,
 			      DB_AUTH type);
-extern int au_fetch_instance_force (MOP op, MOBJ * obj_ptr,
-				    AU_FETCHMODE fetchmode,
+extern int au_fetch_instance_force (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode,
 				    LC_FETCH_VERSION_TYPE fetch_version_type);
 
 extern int au_check_authorization (MOP op, DB_AUTH auth);
@@ -232,9 +221,7 @@ extern MOP au_get_class_owner (MOP classmop);
 extern int au_check_user (void);
 extern char *au_get_user_name (MOP obj);
 extern bool au_is_dba_group_member (MOP user);
-extern void au_change_serial_owner_method (MOP obj, DB_VALUE * returnval,
-					   DB_VALUE * serial,
-					   DB_VALUE * owner);
+extern void au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial, DB_VALUE * owner);
 
 /* debugging functions */
 extern void au_dump (void);
@@ -260,45 +247,26 @@ extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
  * Etc
  */
 
-extern void au_find_user_method (MOP class_mop, DB_VALUE * returnval,
-				 DB_VALUE * name);
-extern void au_add_user_method (MOP class_mop, DB_VALUE * returnval,
-				DB_VALUE * name, DB_VALUE * password);
-extern void au_set_password_method (MOP user, DB_VALUE * returnval,
-				    DB_VALUE * password);
-extern void au_set_password_encoded_method (MOP user, DB_VALUE * returnval,
-					    DB_VALUE * password);
-extern void au_set_password_encoded_sha1_method (MOP user,
-						 DB_VALUE * returnval,
-						 DB_VALUE * password);
-extern void au_add_member_method (MOP user, DB_VALUE * returnval,
-				  DB_VALUE * memval);
-extern void au_drop_member_method (MOP user, DB_VALUE * returnval,
-				   DB_VALUE * memval);
-extern void au_drop_user_method (MOP root, DB_VALUE * returnval,
-				 DB_VALUE * name);
-extern void au_change_owner_method (MOP obj, DB_VALUE * returnval,
-				    DB_VALUE * class_, DB_VALUE * owner);
+extern void au_find_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name);
+extern void au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VALUE * password);
+extern void au_set_password_method (MOP user, DB_VALUE * returnval, DB_VALUE * password);
+extern void au_set_password_encoded_method (MOP user, DB_VALUE * returnval, DB_VALUE * password);
+extern void au_set_password_encoded_sha1_method (MOP user, DB_VALUE * returnval, DB_VALUE * password);
+extern void au_add_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval);
+extern void au_drop_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval);
+extern void au_drop_user_method (MOP root, DB_VALUE * returnval, DB_VALUE * name);
+extern void au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VALUE * owner);
 extern int au_change_trigger_owner (MOP trigger, MOP owner);
-extern void au_change_trigger_owner_method (MOP obj, DB_VALUE * returnval,
-					    DB_VALUE * trigger,
-					    DB_VALUE * owner);
-extern void au_get_owner_method (MOP obj, DB_VALUE * returnval,
-				 DB_VALUE * class_);
-extern void au_check_authorization_method (MOP obj, DB_VALUE * returnval,
-					   DB_VALUE * class_,
-					   DB_VALUE * auth);
+extern void au_change_trigger_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * trigger, DB_VALUE * owner);
+extern void au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_);
+extern void au_check_authorization_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VALUE * auth);
 extern int au_change_sp_owner (MOP sp, MOP owner);
-extern void au_change_sp_owner_method (MOP obj, DB_VALUE * returnval,
-				       DB_VALUE * sp, DB_VALUE * owner);
-extern void au_login_method (MOP class_mop, DB_VALUE * returnval,
-			     DB_VALUE * user, DB_VALUE * password);
+extern void au_change_sp_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * sp, DB_VALUE * owner);
+extern void au_login_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * user, DB_VALUE * password);
 extern void au_dump_auth (FILE * fp);
 extern void au_describe_user_method (MOP user, DB_VALUE * returnval);
-extern void au_info_method (MOP class_mop, DB_VALUE * returnval,
-			    DB_VALUE * info);
-extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval,
-				     DB_VALUE * info);
+extern void au_info_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
+extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
 extern int au_check_serial_authorization (MOP serial_object);
 extern const char *au_get_public_user_name (void);
 extern const char *au_get_user_class_name (void);

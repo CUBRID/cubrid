@@ -84,8 +84,7 @@ pt_trim_as_identifier (char *name)
 
   len = strlen (name);
   if (len >= 2
-      && ((name[0] == '[' && name[len - 1] == ']')
-	  || (name[0] == '`' && name[len - 1] == '`')
+      && ((name[0] == '[' && name[len - 1] == ']') || (name[0] == '`' && name[len - 1] == '`')
 	  || (name[0] == '"' && name[len - 1] == '"')))
     {
       tmp_name = pt_makename (name);
@@ -174,7 +173,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 #if 0
 	      node->info.query.q.select.ordered = hint_table[i].arg_list;
 	      hint_table[i].arg_list = NULL;
-#endif /* 0                              */
+#endif /* 0 */
 	      if (node->node_type == PT_SELECT)
 		{
 		  node->info.query.q.select.hint |= hint_table[i].hint;
@@ -197,18 +196,16 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	    case PT_HINT_INDEX_SS:
 	      if (node->node_type == PT_SELECT)
 		{
-		  if (hint_table[i].arg_list != NULL
-		      && PT_IS_NULL_NODE (hint_table[i].arg_list))
+		  if (hint_table[i].arg_list != NULL && PT_IS_NULL_NODE (hint_table[i].arg_list))
 		    {
-		      /* For INDEX_SS(), just ignore index skip scan hint  */
+		      /* For INDEX_SS(), just ignore index skip scan hint */
 		      node->info.query.q.select.hint &= ~PT_HINT_INDEX_SS;
 		      node->info.query.q.select.index_ss = NULL;
 		    }
 		  else
 		    {
 		      node->info.query.q.select.hint |= hint_table[i].hint;
-		      node->info.query.q.select.index_ss =
-			hint_table[i].arg_list;
+		      node->info.query.q.select.index_ss = hint_table[i].arg_list;
 		      hint_table[i].arg_list = NULL;
 		    }
 		}
@@ -261,8 +258,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      if (node->node_type == PT_SELECT)
 		{
 		  node->info.query.q.select.hint |= hint_table[i].hint;
-		  node->info.query.q.select.use_merge =
-		    hint_table[i].arg_list;
+		  node->info.query.q.select.use_merge = hint_table[i].arg_list;
 		  hint_table[i].arg_list = NULL;
 		}
 	      else if (node->node_type == PT_DELETE)
@@ -289,8 +285,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      if (node->node_type == PT_SELECT)
 		{
 		  node->info.query.q.select.hint |= hint_table[i].hint;
-		  node->info.query.q.select.waitsecs_hint =
-		    hint_table[i].arg_list;
+		  node->info.query.q.select.waitsecs_hint = hint_table[i].arg_list;
 		}
 	      else if (node->node_type == PT_UPDATE)
 		{
@@ -340,8 +335,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.query.qcache_hint = hint_table[i].arg_list;
 		  if (node->info.query.qcache_hint)
 		    {
-		      if (atoi
-			  (node->info.query.qcache_hint->info.name.original))
+		      if (atoi (node->info.query.qcache_hint->info.name.original))
 			node->info.query.do_cache = 1;
 		      else
 			node->info.query.do_not_cache = 1;
@@ -376,8 +370,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      if (node->node_type == PT_SELECT)
 		{
 		  node->info.query.q.select.hint |= hint_table[i].hint;
-		  node->info.query.q.select.jdbc_life_time =
-		    hint_table[i].arg_list;
+		  node->info.query.q.select.jdbc_life_time = hint_table[i].arg_list;
 		  hint_table[i].arg_list = NULL;
 		}
 	      break;
@@ -457,18 +450,16 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	    case PT_HINT_INDEX_LS:	/* enable loose index scan */
 	      if (node->node_type == PT_SELECT)
 		{
-		  if (hint_table[i].arg_list != NULL
-		      && PT_IS_NULL_NODE (hint_table[i].arg_list))
+		  if (hint_table[i].arg_list != NULL && PT_IS_NULL_NODE (hint_table[i].arg_list))
 		    {
-		      /* For INDEX_LS(), just ignore loose index scan hint  */
+		      /* For INDEX_LS(), just ignore loose index scan hint */
 		      node->info.query.q.select.hint &= ~PT_HINT_INDEX_LS;
 		      node->info.query.q.select.index_ls = NULL;
 		    }
 		  else
 		    {
 		      node->info.query.q.select.hint |= PT_HINT_INDEX_LS;
-		      node->info.query.q.select.index_ls =
-			hint_table[i].arg_list;
+		      node->info.query.q.select.index_ls = hint_table[i].arg_list;
 		      hint_table[i].arg_list = NULL;
 		    }
 		}
@@ -484,18 +475,14 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	    case PT_HINT_SELECT_BTREE_NODE_INFO:
 	      if (node->node_type == PT_SELECT)
 		{
-		  /* SELECT_KEY_INFO hint can work if it has one and only one
-		   * index name as argument. Same for SELECT_BTREE_NODE_INFO.
-		   * Ignore hint if this condition is not met.
-		   */
-		  if (hint_table[i].arg_list == NULL
-		      || hint_table[i].arg_list->next != NULL)
+		  /* SELECT_KEY_INFO hint can work if it has one and only one index name as argument. Same for
+		   * SELECT_BTREE_NODE_INFO. Ignore hint if this condition is not met. */
+		  if (hint_table[i].arg_list == NULL || hint_table[i].arg_list->next != NULL)
 		    {
 		      break;
 		    }
 		  node->info.query.q.select.hint |= hint_table[i].hint;
-		  node->info.query.q.select.using_index =
-		    hint_table[i].arg_list;
+		  node->info.query.q.select.using_index = hint_table[i].arg_list;
 		  hint_table[i].arg_list = NULL;
 		}
 	      break;
@@ -528,8 +515,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
  *   prev_is_white_char(in): flag indicates prev char
  */
 void
-pt_check_hint (const char *text, PT_HINT hint_table[],
-	       PT_HINT_ENUM * result_hint, bool prev_is_white_char)
+pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hint, bool prev_is_white_char)
 {
   int i, j, len, count;
   PT_HINT_ENUM hint;
@@ -551,9 +537,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 	  has_parenthesis = false;
 	  len = strlen (hint_table[i].tokens);
 	  /* check token before */
-	  if ((count == 0 && (prev_is_white_char ||
-			      (hint_p > hint_buf
-			       && IS_WHITE_CHAR (*(hint_p - 1)))))
+	  if ((count == 0 && (prev_is_white_char || (hint_p > hint_buf && IS_WHITE_CHAR (*(hint_p - 1)))))
 	      || IS_WHITE_CHAR (*(hint_p - 1)))
 	    {
 	      hint_p += len;	/* consume token */
@@ -570,8 +554,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 		  arg_start = hint_p;
 		  arg_end = strstr (arg_start, ")");
 		  /* check arguments */
-		  if (arg_end
-		      && ((len = CAST_STRLEN (arg_end - arg_start)) > 0))
+		  if (arg_end && ((len = CAST_STRLEN (arg_end - arg_start)) > 0))
 		    {
 		      for (j = 0; j < len; j++)
 			{
@@ -591,8 +574,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 				      break;
 				    }
 				}
-			      for (temp = &(hint_p[j - 1]); temp > arg_start;
-				   temp--)
+			      for (temp = &(hint_p[j - 1]); temp > arg_start; temp--)
 				{
 				  if (!IS_WHITE_CHAR (*temp))
 				    {
@@ -603,42 +585,26 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 			      /* add specified spec */
 			      if (arg_start < &(hint_p[j]))
 				{
-				  arg =
-				    parser_new_node (this_parser, PT_NAME);
+				  arg = parser_new_node (this_parser, PT_NAME);
 				  if (arg)
 				    {
 				      temp = strstr (arg_start, ".");
-				      if (temp && temp < &(hint_p[j])
-					  && !IS_HINT_ON_TABLE (hint_table[i].
-								hint))
+				      if (temp && temp < &(hint_p[j]) && !IS_HINT_ON_TABLE (hint_table[i].hint))
 					{
 					  *temp = '\0';
-					  arg->info.name.resolved =
-					    pt_trim_as_identifier (arg_start);
-					  arg->info.name.resolved =
-					    pt_makename (arg->info.name.
-							 resolved);
+					  arg->info.name.resolved = pt_trim_as_identifier (arg_start);
+					  arg->info.name.resolved = pt_makename (arg->info.name.resolved);
 					  *temp++ = '.';
-					  arg->info.name.original =
-					    pt_trim_as_identifier (temp);
-					  arg->info.name.original =
-					    pt_makename (arg->info.name.
-							 original);
+					  arg->info.name.original = pt_trim_as_identifier (temp);
+					  arg->info.name.original = pt_makename (arg->info.name.original);
 					}
 				      else
 					{
-					  arg->info.name.original =
-					    pt_trim_as_identifier (arg_start);
-					  arg->info.name.original =
-					    pt_makename (arg->info.name.
-							 original);
+					  arg->info.name.original = pt_trim_as_identifier (arg_start);
+					  arg->info.name.original = pt_makename (arg->info.name.original);
 					}
-				      arg->info.name.meta_class =
-					PT_HINT_NAME;
-				      hint_table[i].arg_list =
-					parser_append_node (arg,
-							    hint_table
-							    [i].arg_list);
+				      arg->info.name.meta_class = PT_HINT_NAME;
+				      hint_table[i].arg_list = parser_append_node (arg, hint_table[i].arg_list);
 				    }
 				}
 			      arg_start = &(hint_p[j + 1]);
@@ -650,8 +616,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 			  /* error occurs. free alloced nodes */
 			  if (hint_table[i].arg_list)
 			    {
-			      parser_free_tree (this_parser,
-						hint_table[i].arg_list);
+			      parser_free_tree (this_parser, hint_table[i].arg_list);
 			      hint_table[i].arg_list = NULL;
 			    }
 			  /* consume illegal hint expression */
@@ -669,8 +634,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 				  break;
 				}
 			    }
-			  for (temp = &(hint_p[j - 1]); temp > arg_start;
-			       temp--)
+			  for (temp = &(hint_p[j - 1]); temp > arg_start; temp--)
 			    {
 			      if (!IS_WHITE_CHAR (*temp))
 				{
@@ -684,33 +648,22 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 			      if (arg)
 				{
 				  temp = strstr (arg_start, ".");
-				  if (temp && temp < &(hint_p[j])
-				      && !IS_HINT_ON_TABLE (hint_table[i].
-							    hint))
+				  if (temp && temp < &(hint_p[j]) && !IS_HINT_ON_TABLE (hint_table[i].hint))
 				    {
 				      *temp = '\0';
-				      arg->info.name.resolved =
-					pt_trim_as_identifier (arg_start);
-				      arg->info.name.resolved =
-					pt_makename (arg->info.name.resolved);
+				      arg->info.name.resolved = pt_trim_as_identifier (arg_start);
+				      arg->info.name.resolved = pt_makename (arg->info.name.resolved);
 				      *temp++ = '.';
-				      arg->info.name.original =
-					pt_trim_as_identifier (temp);
-				      arg->info.name.original =
-					pt_makename (arg->info.name.original);
+				      arg->info.name.original = pt_trim_as_identifier (temp);
+				      arg->info.name.original = pt_makename (arg->info.name.original);
 				    }
 				  else
 				    {
-				      arg->info.name.original =
-					pt_trim_as_identifier (arg_start);
-				      arg->info.name.original =
-					pt_makename (arg->info.name.original);
+				      arg->info.name.original = pt_trim_as_identifier (arg_start);
+				      arg->info.name.original = pt_makename (arg->info.name.original);
 				    }
 				  arg->info.name.meta_class = PT_HINT_NAME;
-				  hint_table[i].arg_list =
-				    parser_append_node (arg,
-							hint_table
-							[i].arg_list);
+				  hint_table[i].arg_list = parser_append_node (arg, hint_table[i].arg_list);
 				}
 			    }
 
@@ -724,10 +677,9 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 		    {
 		      hint = hint_table[i].hint;
 		    }
-		  else if (has_parenthesis
-			   && IS_HINT_ON_TABLE (hint_table[i].hint))
+		  else if (has_parenthesis && IS_HINT_ON_TABLE (hint_table[i].hint))
 		    {
-		      /*
+		      /* 
 		       * INDEX_SS() or INDEX_LS() means do not apply
 		       * hint, use special node to mark this.
 		       */

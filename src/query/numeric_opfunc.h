@@ -46,70 +46,42 @@ extern void numeric_init_power_value_string (void);
 #endif
 
 /* Arithmetic routines */
-extern int numeric_db_value_add (const DB_VALUE * dbv1,
-				 const DB_VALUE * dbv2, DB_VALUE * answer);
-extern int numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
-				 DB_VALUE * answer);
-extern int numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
-				 DB_VALUE * answer);
-extern int numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2,
-				 DB_VALUE * answer);
+extern int numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
+extern int numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
+extern int numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
+extern int numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int numeric_db_value_negate (DB_VALUE * answer);
-extern void numeric_db_value_abs (DB_C_NUMERIC src_num,
-				  DB_C_NUMERIC dest_num);
+extern void numeric_db_value_abs (DB_C_NUMERIC src_num, DB_C_NUMERIC dest_num);
 extern int numeric_db_value_increase (DB_VALUE * arg);
 
 /* Comparison routines */
-extern int numeric_db_value_compare (const DB_VALUE * dbv1,
-				     const DB_VALUE * dbv2,
-				     DB_VALUE * answer);
+extern int numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 
 /* Coercion routines */
 extern void numeric_coerce_int_to_num (int arg, DB_C_NUMERIC answer);
 extern void numeric_coerce_bigint_to_num (DB_BIGINT arg, DB_C_NUMERIC answer);
 extern void numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer);
-extern int numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale,
-					 DB_BIGINT * answer);
+extern int numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer);
 
-extern void numeric_coerce_dec_str_to_num (const char *dec_str,
-					   DB_C_NUMERIC result);
+extern void numeric_coerce_dec_str_to_num (const char *dec_str, DB_C_NUMERIC result);
 extern void numeric_coerce_num_to_dec_str (DB_C_NUMERIC num, char *dec_str);
 
-extern void numeric_coerce_num_to_double (DB_C_NUMERIC num,
-					  int scale, double *adouble);
-extern int numeric_internal_double_to_num (double adouble,
-					   int dst_scale,
-					   DB_C_NUMERIC num,
-					   int *prec, int *scale);
-extern int numeric_internal_float_to_num (float afloat,
-					  int dst_scale,
-					  DB_C_NUMERIC num,
-					  int *prec, int *scale);
+extern void numeric_coerce_num_to_double (DB_C_NUMERIC num, int scale, double *adouble);
+extern int numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale);
+extern int numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-extern int numeric_coerce_double_to_num (double adouble,
-					 DB_C_NUMERIC num, int *prec,
-					 int *scale);
+extern int numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *scale);
 #endif
 
-extern int numeric_coerce_string_to_num (const char *astring, int astring_len,
-					 INTL_CODESET codeset,
-					 DB_VALUE * num);
+extern int numeric_coerce_string_to_num (const char *astring, int astring_len, INTL_CODESET codeset, DB_VALUE * num);
 
-extern int numeric_coerce_num_to_num (DB_C_NUMERIC src_num,
-				      int src_prec,
-				      int src_scale,
-				      int dest_prec,
-				      int dest_scale, DB_C_NUMERIC dest_num);
+extern int numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, int dest_prec, int dest_scale,
+				      DB_C_NUMERIC dest_num);
 
-extern int numeric_db_value_coerce_to_num (DB_VALUE * src,
-					   DB_VALUE * dest,
-					   DB_DATA_STATUS * data_stat);
-extern int numeric_db_value_coerce_from_num (DB_VALUE * src,
-					     DB_VALUE * dest,
-					     DB_DATA_STATUS * data_stat);
-extern int numeric_db_value_coerce_from_num_strict (DB_VALUE * src,
-						    DB_VALUE * dest);
+extern int numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
+extern int numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
+extern int numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest);
 extern char *numeric_db_value_print (DB_VALUE * val);
 
 /* Testing Routines */

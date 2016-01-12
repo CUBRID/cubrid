@@ -69,52 +69,38 @@ void *handle = NULL;
 #endif
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-extern char *envvar_confdir_file (char *path, size_t size,
-				  const char *filename);
+extern char *envvar_confdir_file (char *path, size_t size, const char *filename);
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
 static void shard_println_1 (FILE * fp);
 static void shard_println_2 (FILE * fp);
 
-static int shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name,
-				     char *db_user, char *db_password);
-static int shard_metadata_read_key (const char *filename,
-				    T_SHM_PROXY * shm_proxy_p);
-static int shard_metadata_read_conn (const char *filename,
-				     T_SHM_PROXY * shm_proxy_p);
+static int shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name, char *db_user, char *db_password);
+static int shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p);
+static int shard_metadata_read_conn (const char *filename, T_SHM_PROXY * shm_proxy_p);
 static int shard_metadata_key_range_comp (const void *p1, const void *p2);
 static int shard_metadata_conn_comp (const void *p1, const void *p2);
 static void shard_metadata_sort_key (T_SHM_SHARD_KEY * shm_key_p);
 static void shard_metadata_sort_conn (T_SHM_SHARD_CONN * shm_conn_p);
 
 
-static void shard_metadata_dump_user (FILE * fp,
-				      T_SHM_SHARD_USER * shm_user_p);
+static void shard_metadata_dump_user (FILE * fp, T_SHM_SHARD_USER * shm_user_p);
 static void shard_metadata_dump_key (FILE * fp, T_SHM_SHARD_KEY * shm_key_p);
-static void shard_metadata_dump_conn (FILE * fp,
-				      T_SHM_SHARD_CONN * shm_conn_p);
-static int shard_metadata_validate (T_BROKER_INFO * br_info_p,
-				    T_SHM_PROXY * shm_proxy_p);
+static void shard_metadata_dump_conn (FILE * fp, T_SHM_SHARD_CONN * shm_conn_p);
+static int shard_metadata_validate (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p);
 static int shard_metadata_validate_user (T_SHM_SHARD_USER * shm_user_p);
-static int shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p,
-						       T_SHM_SHARD_CONN *
-						       shm_conn_p,
-						       int modular);
-static int shard_metadata_validate_key (T_SHM_SHARD_KEY * shm_key_p,
-					T_SHM_SHARD_CONN * shm_conn_p,
-					int modular);
+static int shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p, T_SHM_SHARD_CONN * shm_conn_p, int modular);
+static int shard_metadata_validate_key (T_SHM_SHARD_KEY * shm_key_p, T_SHM_SHARD_CONN * shm_conn_p, int modular);
 static int shard_metadata_validate_conn (T_SHM_SHARD_CONN * shm_conn_p);
 
-static int shard_metadata_validate_key_function (const char *library_name,
-						 const char *function_name);
+static int shard_metadata_validate_key_function (const char *library_name, const char *function_name);
 
 static void
 shard_println_1 (FILE * fp)
 {
   assert (fp);
 
-  fprintf (fp, "========================================"
-	   "========================================\n");
+  fprintf (fp, "========================================" "========================================\n");
 }
 
 static void
@@ -122,13 +108,11 @@ shard_println_2 (FILE * fp)
 {
   assert (fp);
 
-  fprintf (fp, "----------------------------------------"
-	   "----------------------------------------\n");
+  fprintf (fp, "----------------------------------------" "----------------------------------------\n");
 }
 
 static int
-shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name,
-			  char *db_user, char *db_password)
+shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name, char *db_user, char *db_password)
 {
   int error = NO_ERROR;
   int max_user;
@@ -144,12 +128,10 @@ shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name,
   user_p = &(shm_user_p->shard_user[0]);
   strncpy (user_p->db_name, db_name, sizeof (user_p->db_name) - 1);
   strncpy (user_p->db_user, db_user, sizeof (user_p->db_user) - 1);
-  strncpy (user_p->db_password, db_password,
-	   sizeof (user_p->db_password) - 1);
+  strncpy (user_p->db_password, db_password, sizeof (user_p->db_password) - 1);
 
-  SHARD_INF ("<USERINFO> [%d] db_name:[%s], "
-	     "db_user:[%s], db_password:[%s]\n",
-	     0, user_p->db_name, user_p->db_user, user_p->db_password);
+  SHARD_INF ("<USERINFO> [%d] db_name:[%s], " "db_user:[%s], db_password:[%s]\n", 0, user_p->db_name, user_p->db_user,
+	     user_p->db_password);
 
   return 0;
 }
@@ -212,8 +194,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	  if (nargs == 1)
 	    {
 	      trim (section);
-	      if (strncasecmp (section, key_column, SHARD_KEY_COLUMN_LEN) !=
-		  0)
+	      if (strncasecmp (section, key_column, SHARD_KEY_COLUMN_LEN) != 0)
 		{
 		  strncpy (key_column, section, sizeof (key_column) - 1);
 
@@ -255,8 +236,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 
       assert (idx_range >= 0 && idx_range < SHARD_KEY_RANGE_MAX);
       range_p = (T_SHARD_KEY_RANGE *) & ((key_p->range[idx_range]));
-      nargs = sscanf (line, "%d %d %d", &range_p->min,
-		      &range_p->max, &range_p->shard_id);
+      nargs = sscanf (line, "%d %d %d", &range_p->min, &range_p->max, &range_p->shard_id);
 
       range_p->key_index = idx_key;
       range_p->range_index = idx_range;
@@ -266,10 +246,8 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	  continue;
 	}
 
-      SHARD_INF ("<KEYINFO> [%d:%d] key_column:%s, "
-		 "min:%d, max:%d, shard_id:%d. \n",
-		 idx_key, idx_range, key_p->key_column,
-		 range_p->min, range_p->max, range_p->shard_id);
+      SHARD_INF ("<KEYINFO> [%d:%d] key_column:%s, " "min:%d, max:%d, shard_id:%d. \n", idx_key, idx_range,
+		 key_p->key_column, range_p->min, range_p->max, range_p->shard_id);
 
       key_p->num_key_range = ++idx_range;
     }
@@ -337,8 +315,7 @@ shard_metadata_read_conn (const char *filename, T_SHM_PROXY * shm_proxy_p)
 
       assert (idx_conn >= 0);
       conn_p = &(shm_conn_p->shard_conn[idx_conn]);
-      nargs = sscanf (line, "%d %s %[^\n]", &conn_p->shard_id,
-		      conn_p->db_name, conn_p->db_conn_info);
+      nargs = sscanf (line, "%d %s %[^\n]", &conn_p->shard_id, conn_p->db_name, conn_p->db_conn_info);
       if (nargs != 3)
 	{
 	  continue;
@@ -346,9 +323,8 @@ shard_metadata_read_conn (const char *filename, T_SHM_PROXY * shm_proxy_p)
 
       trim (conn_p->db_conn_info);
 
-      SHARD_INF
-	("<CONNINFO> [%d] shard_id:%d, db_name:<%s>, db_conn_info:<%s>.\n",
-	 idx_conn, conn_p->shard_id, conn_p->db_name, conn_p->db_conn_info);
+      SHARD_INF ("<CONNINFO> [%d] shard_id:%d, db_name:<%s>, db_conn_info:<%s>.\n", idx_conn, conn_p->shard_id,
+		 conn_p->db_name, conn_p->db_conn_info);
 
       shm_conn_p->num_shard_conn = ++idx_conn;
     }
@@ -413,8 +389,7 @@ shard_metadata_sort_key (T_SHM_SHARD_KEY * shm_key_p)
   for (i = 0; i < shm_key_p->num_shard_key; i++)
     {
       key_p = &shm_key_p->shard_key[i];
-      qsort ((void *) key_p->range, key_p->num_key_range,
-	     sizeof (T_SHARD_KEY_RANGE), shard_metadata_key_range_comp);
+      qsort ((void *) key_p->range, key_p->num_key_range, sizeof (T_SHARD_KEY_RANGE), shard_metadata_key_range_comp);
     }
   return;
 }
@@ -422,8 +397,7 @@ shard_metadata_sort_key (T_SHM_SHARD_KEY * shm_key_p)
 static void
 shard_metadata_sort_conn (T_SHM_SHARD_CONN * shm_conn_p)
 {
-  qsort ((void *) shm_conn_p->shard_conn, shm_conn_p->num_shard_conn,
-	 sizeof (T_SHARD_CONN), shard_metadata_conn_comp);
+  qsort ((void *) shm_conn_p->shard_conn, shm_conn_p->num_shard_conn, sizeof (T_SHARD_CONN), shard_metadata_conn_comp);
   return;
 }
 
@@ -473,9 +447,8 @@ shard_metadata_initialize (T_BROKER_INFO * br_info, T_SHM_PROXY * shm_proxy_p)
   assert (br_info);
   assert (shm_proxy_p);
 
-  res = shard_metadata_read_user (shm_proxy_p, br_info->shard_db_name,
-				  br_info->shard_db_user,
-				  br_info->shard_db_password);
+  res =
+    shard_metadata_read_user (shm_proxy_p, br_info->shard_db_name, br_info->shard_db_user, br_info->shard_db_password);
 
   res = shard_metadata_read_key (br_info->shard_key_file, shm_proxy_p);
   if (res < 0)
@@ -489,12 +462,10 @@ shard_metadata_initialize (T_BROKER_INFO * br_info, T_SHM_PROXY * shm_proxy_p)
   shard_metadata_dump_key (stdout, &shm_proxy_p->shm_shard_key);
 #endif
 
-  res =
-    shard_metadata_read_conn (br_info->shard_connection_file, shm_proxy_p);
+  res = shard_metadata_read_conn (br_info->shard_connection_file, shm_proxy_p);
   if (res < 0)
     {
-      fprintf (stderr, "failed to read metadata connection [%s]\n",
-	       br_info->name);
+      fprintf (stderr, "failed to read metadata connection [%s]\n", br_info->name);
       return res;
     }
 
@@ -503,15 +474,13 @@ shard_metadata_initialize (T_BROKER_INFO * br_info, T_SHM_PROXY * shm_proxy_p)
   shard_metadata_dump_conn (stdout, &shm_proxy_p->shm_shard_conn);
 #endif
 
-  SHARD_INF ("num USER:[%d], num KEY:[%d], num CONN:[%d].\n",
-	     shm_user_p->num_shard_user, shm_key_p->num_shard_key,
+  SHARD_INF ("num USER:[%d], num KEY:[%d], num CONN:[%d].\n", shm_user_p->num_shard_user, shm_key_p->num_shard_key,
 	     shm_conn_p->num_shard_conn);
 
   res = shard_metadata_validate (br_info, shm_proxy_p);
   if (res < 0)
     {
-      fprintf (stderr, "failed to metadata validate check [%s]\n",
-	       br_info->name);
+      fprintf (stderr, "failed to metadata validate check [%s]\n", br_info->name);
       return res;
     }
 
@@ -535,8 +504,7 @@ shard_metadata_dump_user (FILE * fp, T_SHM_SHARD_USER * shm_user_p)
   for (i = 0; i < shm_user_p->num_shard_user; i++)
     {
       user_p = (T_SHARD_USER *) (&(shm_user_p->shard_user[i]));
-      fprintf (fp, "[%-3d] %-15s %-20s\n", i,
-	       user_p->db_name, user_p->db_user);
+      fprintf (fp, "[%-3d] %-15s %-20s\n", i, user_p->db_name, user_p->db_user);
     }
   shard_println_1 (fp);
   fprintf (fp, "\n\n");
@@ -556,8 +524,7 @@ shard_metadata_dump_key (FILE * fp, T_SHM_SHARD_KEY * shm_key_p)
 
   fprintf (fp, "%s=%d\n", "NUM_SHARD_KEY", shm_key_p->num_shard_key);
   shard_println_1 (fp);
-  fprintf (fp, "          %-30s %-5s %-5s %-10s\n",
-	   "KEY", "MIN", "MAX", "SHARD_ID");
+  fprintf (fp, "          %-30s %-5s %-5s %-10s\n", "KEY", "MIN", "MAX", "SHARD_ID");
   shard_println_2 (fp);
   for (i = 0; i < shm_key_p->num_shard_key; i++)
     {
@@ -566,8 +533,7 @@ shard_metadata_dump_key (FILE * fp, T_SHM_SHARD_KEY * shm_key_p)
 	{
 	  range_p = (T_SHARD_KEY_RANGE *) (&(key_p->range[j]));
 
-	  fprintf (fp, "[%-3d|%-3d] %-30s %-5d %-5d %-10d\n", i, j,
-		   key_p->key_column, range_p->min, range_p->max,
+	  fprintf (fp, "[%-3d|%-3d] %-30s %-5d %-5d %-10d\n", i, j, key_p->key_column, range_p->min, range_p->max,
 		   range_p->shard_id);
 	}
     }
@@ -588,14 +554,12 @@ shard_metadata_dump_conn (FILE * fp, T_SHM_SHARD_CONN * shm_conn_p)
 
   fprintf (fp, "%s=%d\n", "NUM_SHARD_CONN", shm_conn_p->num_shard_conn);
   shard_println_1 (fp);
-  fprintf (fp, "      %-10s %-20s %-30s\n", "SHARD_ID", "DB_NAME",
-	   "DB_CONN_INFO");
+  fprintf (fp, "      %-10s %-20s %-30s\n", "SHARD_ID", "DB_NAME", "DB_CONN_INFO");
   shard_println_2 (fp);
   for (i = 0; i < shm_conn_p->num_shard_conn; i++)
     {
       conn_p = (T_SHARD_CONN *) (&(shm_conn_p->shard_conn[i]));
-      fprintf (fp, "[%-3d] %-10d %-20s %-30s\n", i, conn_p->shard_id,
-	       conn_p->db_name, conn_p->db_conn_info);
+      fprintf (fp, "[%-3d] %-10d %-20s %-30s\n", i, conn_p->shard_id, conn_p->db_name, conn_p->db_conn_info);
     }
   shard_println_1 (fp);
   fprintf (fp, "\n\n");
@@ -638,8 +602,7 @@ shard_metadata_dump (FILE * fp, int shmid)
 {
   T_SHM_PROXY *shm_proxy_p = NULL;
 
-  shm_proxy_p =
-    (T_SHM_PROXY *) uw_shm_open (shmid, SHM_PROXY, SHM_MODE_MONITOR);
+  shm_proxy_p = (T_SHM_PROXY *) uw_shm_open (shmid, SHM_PROXY, SHM_MODE_MONITOR);
   if (shm_proxy_p == NULL)
     {
       SHARD_ERR ("failed to uw_shm_open(shmid:%x). \n", shmid);
@@ -659,15 +622,13 @@ shard_metadata_validate (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p)
   int error = 0;
   int modular = 0;
 
-  error =
-    shard_metadata_validate_user (shard_metadata_get_user (shm_proxy_p));
+  error = shard_metadata_validate_user (shard_metadata_get_user (shm_proxy_p));
   if (error < 0)
     {
       return error;
     }
 
-  error =
-    shard_metadata_validate_conn (shard_metadata_get_conn (shm_proxy_p));
+  error = shard_metadata_validate_conn (shard_metadata_get_conn (shm_proxy_p));
   if (error < 0)
     {
       return error;
@@ -683,19 +644,14 @@ shard_metadata_validate (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p)
       modular = 0;
 
       error =
-	shard_metadata_validate_key_function (br_info_p->
-					      shard_key_library_name,
-					      br_info_p->
-					      shard_key_function_name);
+	shard_metadata_validate_key_function (br_info_p->shard_key_library_name, br_info_p->shard_key_function_name);
       if (error < 0)
 	{
 	  return error;
 	}
     }
   error =
-    shard_metadata_validate_key (shard_metadata_get_key (shm_proxy_p),
-				 shard_metadata_get_conn (shm_proxy_p),
-				 modular);
+    shard_metadata_validate_key (shard_metadata_get_key (shm_proxy_p), shard_metadata_get_conn (shm_proxy_p), modular);
 
   return error;
 }
@@ -713,9 +669,7 @@ shard_metadata_validate_user (T_SHM_SHARD_USER * shm_user_p)
 }
 
 static int
-shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p,
-					    T_SHM_SHARD_CONN * shm_conn_p,
-					    int modular)
+shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p, T_SHM_SHARD_CONN * shm_conn_p, int modular)
 {
   int i = 0, j = 0;
   int prv_range_max = -1;
@@ -737,15 +691,13 @@ shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p,
       range_p = &(key_p->range[i]);
       if (range_p->min > range_p->max)
 	{
-	  SHARD_ERR ("%s : shard range (%d, %d) is invalid.\n",
-		     key_p->key_column, range_p->min, range_p->max);
+	  SHARD_ERR ("%s : shard range (%d, %d) is invalid.\n", key_p->key_column, range_p->min, range_p->max);
 	  return -1;
 	}
 
       if (range_p->min != prv_range_max + 1)
 	{
-	  SHARD_ERR ("%s : shard range (%d, %d) is invalid.\n",
-		     key_p->key_column, range_p->min, range_p->max);
+	  SHARD_ERR ("%s : shard range (%d, %d) is invalid.\n", key_p->key_column, range_p->min, range_p->max);
 	  return -1;
 	}
 
@@ -758,8 +710,7 @@ shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p,
 	}
       if (j >= num_shard_conn)
 	{
-	  SHARD_ERR ("%s: shard range shard_id (%d) is invalid.\n",
-		     range_p->shard_id);
+	  SHARD_ERR ("%s: shard range shard_id (%d) is invalid.\n", range_p->shard_id);
 	  return -1;
 	}
 
@@ -768,8 +719,7 @@ shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p,
 
   if ((modular >= 1) && (prv_range_max > modular))
     {
-      SHARD_ERR ("%s: shard range max (%d, modular %d) is invalid.\n",
-		 range_p->max, modular);
+      SHARD_ERR ("%s: shard range max (%d, modular %d) is invalid.\n", range_p->max, modular);
       return -1;
     }
 
@@ -777,8 +727,7 @@ shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p,
 }
 
 static int
-shard_metadata_validate_key (T_SHM_SHARD_KEY * shm_key_p,
-			     T_SHM_SHARD_CONN * shm_conn_p, int modular)
+shard_metadata_validate_key (T_SHM_SHARD_KEY * shm_key_p, T_SHM_SHARD_CONN * shm_conn_p, int modular)
 {
   int error, i;
   T_SHARD_KEY *curr_key_p;
@@ -793,17 +742,13 @@ shard_metadata_validate_key (T_SHM_SHARD_KEY * shm_key_p,
   for (i = 0; i < shm_key_p->num_shard_key; i++)
     {
       curr_key_p = &(shm_key_p->shard_key[i]);
-      if (prev_key_p
-	  && strcasecmp (curr_key_p->key_column, prev_key_p->key_column) == 0)
+      if (prev_key_p && strcasecmp (curr_key_p->key_column, prev_key_p->key_column) == 0)
 	{
-	  SHARD_ERR ("key column [%s] is duplicated.\n",
-		     curr_key_p->key_column);
+	  SHARD_ERR ("key column [%s] is duplicated.\n", curr_key_p->key_column);
 	  return -1;
 	}
 
-      error =
-	shard_metadata_validate_key_range_internal (curr_key_p, shm_conn_p,
-						    modular);
+      error = shard_metadata_validate_key_range_internal (curr_key_p, shm_conn_p, modular);
       if (error < 0)
 	{
 	  return error;
@@ -830,8 +775,7 @@ shard_metadata_validate_conn (T_SHM_SHARD_CONN * shm_conn_p)
     {
       if (shm_conn_p->shard_conn[i].shard_id != i)
 	{
-	  SHARD_ERR ("shard id (%d, %d) is invalid.\n",
-		     shm_conn_p->shard_conn[i].shard_id, i);
+	  SHARD_ERR ("shard id (%d, %d) is invalid.\n", shm_conn_p->shard_conn[i].shard_id, i);
 	  return -1;
 	}
     }
@@ -840,16 +784,14 @@ shard_metadata_validate_conn (T_SHM_SHARD_CONN * shm_conn_p)
 }
 
 static int
-shard_metadata_validate_key_function (const char *library_name,
-				      const char *function_name)
+shard_metadata_validate_key_function (const char *library_name, const char *function_name)
 {
   int ret;
 
   ret = load_shard_key_function (library_name, function_name);
   if (ret < 0)
     {
-      SHARD_ERR ("user defined function [%s:%s] is invalid.\n", library_name,
-		 function_name);
+      SHARD_ERR ("user defined function [%s:%s] is invalid.\n", library_name, function_name);
       close_shard_key_function ();
       return -1;
     }
@@ -858,8 +800,7 @@ shard_metadata_validate_key_function (const char *library_name,
 }
 
 T_SHARD_KEY *
-shard_metadata_bsearch_key (T_SHM_SHARD_KEY * shm_key_p,
-			    const char *keycolumn)
+shard_metadata_bsearch_key (T_SHM_SHARD_KEY * shm_key_p, const char *keycolumn)
 {
   int min, mid, max;
   int result;
@@ -926,8 +867,7 @@ shard_metadata_bsearch_range (T_SHARD_KEY * key_p, unsigned int hash_res)
 }
 
 T_SHARD_KEY_RANGE *
-shard_metadata_find_shard_range (T_SHM_SHARD_KEY * shm_key_p, const char *key,
-				 unsigned int hash_res)
+shard_metadata_find_shard_range (T_SHM_SHARD_KEY * shm_key_p, const char *key, unsigned int hash_res)
 {
   T_SHARD_KEY *key_p = shard_metadata_bsearch_key (shm_key_p, key);
   if (key_p == NULL)
@@ -983,8 +923,7 @@ load_shard_key_function (const char *library_name, const char *function_name)
       return -1;
     }
 #if defined(WINDOWS)
-  fn_get_shard_key =
-    (FN_GET_SHARD_KEY) GetProcAddress ((HMODULE) handle, function_name);
+  fn_get_shard_key = (FN_GET_SHARD_KEY) GetProcAddress ((HMODULE) handle, function_name);
 #else
   dlerror ();
   fn_get_shard_key = dlsym (handle, function_name);

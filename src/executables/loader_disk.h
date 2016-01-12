@@ -38,9 +38,7 @@ extern int disk_reserve_instance (MOP classop, OID * oid);
 extern int disk_insert_instance (MOP classop, DESC_OBJ * obj, OID * oid);
 extern int disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid);
 #if defined (ENABLE_UNUSED_FUNCTION)
-extern int disk_insert_instance_using_mobj (MOP classop, MOBJ classobj,
-					    MOBJ obj, OID * oid);
-extern int disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
-					    MOBJ obj, OID * oid);
+extern int disk_insert_instance_using_mobj (MOP classop, MOBJ classobj, MOBJ obj, OID * oid);
+extern int disk_update_instance_using_mobj (MOP classop, MOBJ classobj, MOBJ obj, OID * oid);
 #endif
 #endif /* _LOADER_DISK_H_ */

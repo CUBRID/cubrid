@@ -96,8 +96,7 @@ static char *ip_list_file_name = NULL;
 static char ip_file_real_path[PATH_MAX];
 
 /* internal request hander function */
-static int (*css_Server_request_handler) (THREAD_ENTRY *, unsigned int,
-					  int, int, char *);
+static int (*css_Server_request_handler) (THREAD_ENTRY *, unsigned int, int, int, char *);
 
 /* server's state for HA feature */
 static HA_SERVER_STATE ha_Server_state = HA_SERVER_STATE_IDLE;
@@ -192,8 +191,7 @@ struct ha_log_applier_state_table
   HA_LOG_APPLIER_STATE state;
 };
 
-static HA_LOG_APPLIER_STATE_TABLE
-  ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABLE_MAX] = {
+static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABLE_MAX] = {
   {-1, HA_LOG_APPLIER_STATE_NA},
   {-1, HA_LOG_APPLIER_STATE_NA},
   {-1, HA_LOG_APPLIER_STATE_NA},
@@ -218,15 +216,11 @@ static void css_process_get_eof_request (SOCKET master_fd);
 static void css_close_connection_to_master (void);
 static int css_reestablish_connection_to_master (void);
 static void dummy_sigurg_handler (int sig);
-static int css_connection_handler_thread (THREAD_ENTRY * thrd,
-					  CSS_CONN_ENTRY * conn);
+static int css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
 static int css_internal_connection_handler (CSS_CONN_ENTRY * conn);
-static int css_internal_request_handler (THREAD_ENTRY * thrd,
-					 CSS_THREAD_ARG arg);
-static int css_test_for_client_errors (CSS_CONN_ENTRY * conn,
-				       unsigned int eid);
-static int css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd,
-					   int jobq_index);
+static int css_internal_request_handler (THREAD_ENTRY * thrd, CSS_THREAD_ARG arg);
+static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
+static int css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index);
 static bool css_can_occupy_worker_thread_on_jobq (int jobq_index);
 static int css_wakeup_worker_thread_on_jobq (int jobq_index);
 static int css_check_accessibility (SOCKET new_fd);
@@ -248,8 +242,7 @@ static bool css_check_ha_log_applier_working (void);
  *   index(in):
  */
 CSS_JOB_ENTRY *
-css_make_job_entry (CSS_CONN_ENTRY * conn, CSS_THREAD_FN func,
-		    CSS_THREAD_ARG arg, int index)
+css_make_job_entry (CSS_CONN_ENTRY * conn, CSS_THREAD_FN func, CSS_THREAD_ARG arg, int index)
 {
   CSS_JOB_ENTRY *job_entry_p;
   int jobq_index;
@@ -278,8 +271,7 @@ css_make_job_entry (CSS_CONN_ENTRY * conn, CSS_THREAD_FN func,
       job_entry_p = (CSS_JOB_ENTRY *) malloc (sizeof (CSS_JOB_ENTRY));
       if (job_entry_p == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (CSS_JOB_ENTRY));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CSS_JOB_ENTRY));
 	  return NULL;
 	}
 
@@ -294,8 +286,7 @@ css_make_job_entry (CSS_CONN_ENTRY * conn, CSS_THREAD_FN func,
 	  job_entry_p = (CSS_JOB_ENTRY *) malloc (sizeof (CSS_JOB_ENTRY));
 	  if (job_entry_p == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CSS_JOB_ENTRY));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CSS_JOB_ENTRY));
 	      return NULL;
 	    }
 
@@ -381,8 +372,7 @@ css_init_job_queue (void)
 	  job_entry_p = (CSS_JOB_ENTRY *) malloc (sizeof (CSS_JOB_ENTRY));
 	  if (job_entry_p == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CSS_JOB_ENTRY));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CSS_JOB_ENTRY));
 	      break;
 	    }
 
@@ -459,12 +449,10 @@ css_add_to_job_queue (CSS_JOB_ENTRY * job_entry_p)
 	{
 	  rv = pthread_mutex_lock (&css_Job_queue[jobq_index].job_lock);
 
-	  if (css_can_occupy_worker_thread_on_jobq (jobq_index)
-	      || i == MAX_NTRIES)
+	  if (css_can_occupy_worker_thread_on_jobq (jobq_index) || i == MAX_NTRIES)
 	    {
-	      /* If there's no available thread even though it has probed
-	       * the entire job queues, just add the job to the original job queue.
-	       */
+	      /* If there's no available thread even though it has probed the entire job queues, just add the job to
+	       * the original job queue. */
 	      css_add_list (&css_Job_queue[jobq_index].job_list, job_entry_p);
 	      css_wakeup_worker_thread_on_jobq (jobq_index);
 
@@ -493,8 +481,7 @@ css_add_to_job_queue (CSS_JOB_ENTRY * job_entry_p)
  *   ptr(in/out): 'show job queues' context
  */
 int
-css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type,
-			   DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
 {
   int error = NO_ERROR;
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
@@ -596,8 +583,7 @@ css_get_new_job (void)
 	}
     }
 
-  job_entry_p = (CSS_JOB_ENTRY *)
-    css_remove_list_from_head (&css_Job_queue[jobq_index].job_list);
+  job_entry_p = (CSS_JOB_ENTRY *) css_remove_list_from_head (&css_Job_queue[jobq_index].job_list);
 
   pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
 
@@ -707,8 +693,7 @@ css_empty_job_queue (void)
     {
       rv = pthread_mutex_lock (&css_Job_queue[i].job_lock);
 
-      css_traverse_list (&css_Job_queue[i].job_list, css_free_job_entry_func,
-			 NULL);
+      css_traverse_list (&css_Job_queue[i].job_list, css_free_job_entry_func, NULL);
 
       pthread_mutex_unlock (&css_Job_queue[i].job_lock);
     }
@@ -729,8 +714,7 @@ css_final_job_queue (void)
     {
       rv = pthread_mutex_lock (&css_Job_queue[i].job_lock);
 
-      css_traverse_list (&css_Job_queue[i].job_list, css_free_job_entry_func,
-			 NULL);
+      css_traverse_list (&css_Job_queue[i].job_list, css_free_job_entry_func, NULL);
       css_finalize_list (&css_Job_queue[i].job_list);
       while (css_Job_queue[i].free_list != NULL)
 	{
@@ -771,8 +755,7 @@ css_setup_server_loop (void)
     }
   else
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_MASTER_PIPE_ERROR, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_MASTER_PIPE_ERROR, 0);
     }
 }
 
@@ -791,8 +774,7 @@ css_check_conn (CSS_CONN_ENTRY * p)
 #endif
 
 #if defined(WINDOWS)
-  if (ioctlsocket (p->fd, FIONREAD, &status) == SockError
-      || p->status != CONN_OPEN)
+  if (ioctlsocket (p->fd, FIONREAD, &status) == SockError || p->status != CONN_OPEN)
     {
       return ER_FAILED;
     }
@@ -840,8 +822,7 @@ css_master_thread (void)
   while (run_code)
     {
       /* check if socket has error or client is down */
-      if (!IS_INVALID_SOCKET (css_Pipe_to_master)
-	  && css_check_conn (css_Master_conn) < 0)
+      if (!IS_INVALID_SOCKET (css_Pipe_to_master) && css_check_conn (css_Master_conn) < 0)
 	{
 	  css_shutdown_conn (css_Master_conn);
 	  css_Pipe_to_master = INVALID_SOCKET;
@@ -868,15 +849,10 @@ css_master_thread (void)
 #endif /* WINDOWS */
 
       /* select() sets timeout value to 0 or waited time */
-      r = poll (po, nfds,
-		(prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) *
-		 1000));
-      if (r > 0
-	  && (IS_INVALID_SOCKET (css_Pipe_to_master)
-	      || !(po[0].revents & POLLIN))
+      r = poll (po, nfds, (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000));
+      if (r > 0 && (IS_INVALID_SOCKET (css_Pipe_to_master) || !(po[0].revents & POLLIN))
 #if defined(WINDOWS)
-	  && (IS_INVALID_SOCKET (css_Server_connection_socket)
-	      || !(po[1].revents & POLLIN))
+	  && (IS_INVALID_SOCKET (css_Server_connection_socket) || !(po[1].revents & POLLIN))
 #endif /* WINDOWS */
 	)
 	{
@@ -887,8 +863,7 @@ css_master_thread (void)
 	{
 	  if (!IS_INVALID_SOCKET (css_Pipe_to_master)
 #if defined(WINDOWS)
-	      && ioctlsocket (css_Pipe_to_master, FIONREAD,
-			      (u_long *) & status) == SockError
+	      && ioctlsocket (css_Pipe_to_master, FIONREAD, (u_long *) & status) == SockError
 #else /* WINDOWS */
 	      && fcntl (css_Pipe_to_master, F_GETFL, status) == SockError
 #endif /* WINDOWS */
@@ -900,26 +875,20 @@ css_master_thread (void)
 	}
       else if (r > 0)
 	{
-	  if (!IS_INVALID_SOCKET (css_Pipe_to_master)
-	      && (po[0].revents & POLLIN))
+	  if (!IS_INVALID_SOCKET (css_Pipe_to_master) && (po[0].revents & POLLIN))
 	    {
 	      run_code = css_process_master_request (css_Pipe_to_master);
 	      if (run_code == -1)
 		{
 		  css_close_connection_to_master ();
 		  /* shutdown message received */
-		  run_code =
-		    (prm_get_integer_value (PRM_ID_HA_MODE) !=
-		     HA_MODE_OFF) ? 0 : 1;
+		  run_code = (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF) ? 0 : 1;
 		}
 
-	      if (run_code == 0
-		  && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+	      if (run_code == 0 && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_HB_PROCESS_EVENT, 2,
-			  "Disconnected with the cub_master and will shut itself down",
-			  "");
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+			  "Disconnected with the cub_master and will shut itself down", "");
 		}
 	    }
 #if !defined(WINDOWS)
@@ -929,8 +898,7 @@ css_master_thread (void)
 	    }
 
 #else /* !WINDOWS */
-	  if (!IS_INVALID_SOCKET (css_Server_connection_socket)
-	      && (po[1].revents & POLLIN))
+	  if (!IS_INVALID_SOCKET (css_Server_connection_socket) && (po[1].revents & POLLIN))
 	    {
 	      css_process_new_connection_request ();
 	    }
@@ -950,8 +918,7 @@ css_master_thread (void)
 	}
     }
 
-  css_set_shutdown_timeout (prm_get_integer_value
-			    (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS));
+  css_set_shutdown_timeout (prm_get_integer_value (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS));
 
   /* going down, so stop dispatching request */
   css_empty_job_queue ();
@@ -1054,8 +1021,7 @@ css_process_shutdown_request (SOCKET master_fd)
   r = css_readn (master_fd, buffer, MASTER_TO_SRV_MSG_SIZE, -1);
   if (r < 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ERR_CSS_SHUTDOWN_ERROR, 0);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SHUTDOWN_ERROR, 0);
       return;
     }
 }
@@ -1086,8 +1052,7 @@ css_process_new_client (SOCKET master_fd)
       return;
     }
 
-  if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true &&
-      css_check_accessibility (new_fd) != NO_ERROR)
+  if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
     {
       css_initialize_conn (&temp_conn, new_fd);
       csect_initialize_critical_section (&temp_conn.csect);
@@ -1111,8 +1076,7 @@ css_process_new_client (SOCKET master_fd)
       css_initialize_conn (&temp_conn, new_fd);
       csect_initialize_critical_section (&temp_conn.csect);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED,
-	      1, NUM_NORMAL_TRANS);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
       reason = htonl (SERVER_CLIENTS_EXCEEDED);
       css_send_data (&temp_conn, rid, (char *) &reason, (int) sizeof (int));
 
@@ -1183,18 +1147,14 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 
   if (state == HA_SERVER_STATE_ACTIVE || state == HA_SERVER_STATE_STANDBY)
     {
-      if (css_change_ha_server_state
-	  (thread_p, state, false, HA_CHANGE_MODE_IMMEDIATELY,
-	   true) != NO_ERROR)
+      if (css_change_ha_server_state (thread_p, state, false, HA_CHANGE_MODE_IMMEDIATELY, true) != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER,
-		  1, "Cannot change server HA mode");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1, "Cannot change server HA mode");
 	}
     }
   else
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "ERROR : unexpected state. (state :%d). \n", state);
+      er_log_debug (ARG_FILE_LINE, "ERROR : unexpected state. (state :%d). \n", state);
     }
 
   state = htonl ((int) css_ha_server_state ());
@@ -1230,8 +1190,7 @@ css_process_get_eof_request (SOCKET master_fd)
   LOG_CS_EXIT (thread_p);
 
   css_send_heartbeat_request (css_Master_conn, SERVER_GET_EOF);
-  css_send_heartbeat_data (css_Master_conn, reply,
-			   OR_ALIGNED_BUF_SIZE (a_reply));
+  css_send_heartbeat_data (css_Master_conn, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 #endif
 }
 
@@ -1298,8 +1257,7 @@ css_process_new_connection_request (void)
 
   if (!IS_INVALID_SOCKET (new_fd))
     {
-      if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true &&
-	  css_check_accessibility (new_fd) != NO_ERROR)
+      if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
 	{
 	  CSS_CONN_ENTRY new_conn;
 	  void *error_string;
@@ -1311,13 +1269,11 @@ css_process_new_connection_request (void)
 	  buffer_size = rid = 0;
 
 	  reason = htonl (SERVER_INACCESSIBLE_IP);
-	  css_send_data (&new_conn, rid, (char *) &reason,
-			 (int) sizeof (int));
+	  css_send_data (&new_conn, rid, (char *) &reason, (int) sizeof (int));
 
 	  error_string = er_get_area_error (buffer, &length);
 	  new_conn.db_error = ER_INACCESSIBLE_IP;
-	  css_send_error (&new_conn, rid, (const char *) error_string,
-			  length);
+	  css_send_error (&new_conn, rid, (const char *) error_string, length);
 	  css_shutdown_conn (&new_conn);
 	  css_dealloc_conn_csect (&new_conn);
 
@@ -1328,7 +1284,7 @@ css_process_new_connection_request (void)
       conn = css_make_conn (new_fd);
       if (conn == NULL)
 	{
-	  /*
+	  /* 
 	   * all pre-allocated connection entries are being used now.
 	   * create a new entry and send error message throuth it.
 	   */
@@ -1340,16 +1296,13 @@ css_process_new_connection_request (void)
 
 	  rc = css_read_header (&new_conn, &header);
 	  buffer_size = rid = 0;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED,
-		  1, NUM_NORMAL_TRANS);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
 	  reason = htonl (SERVER_CLIENTS_EXCEEDED);
-	  css_send_data (&new_conn, rid, (char *) &reason,
-			 (int) sizeof (int));
+	  css_send_data (&new_conn, rid, (char *) &reason, (int) sizeof (int));
 
 	  error_string = er_get_area_error (buffer, &length);
 	  new_conn.db_error = ER_CSS_CLIENTS_EXCEEDED;
-	  css_send_error (&new_conn, rid, (const char *) error_string,
-			  length);
+	  css_send_error (&new_conn, rid, (const char *) error_string, length);
 	  css_shutdown_conn (&new_conn);
 	  css_dealloc_conn_csect (&new_conn);
 
@@ -1379,8 +1332,7 @@ css_process_new_connection_request (void)
 		}
 	      else
 		{
-		  reason =
-		    (int) (unsigned short) ntohs (header.function_code);
+		  reason = (int) (unsigned short) ntohs (header.function_code);
 		  buffer_size = (int) ntohl (header.buffer_size);
 		}
 	    }
@@ -1392,8 +1344,7 @@ css_process_new_connection_request (void)
 	  if (reason == DATA_REQUEST)
 	    {
 	      reason = htonl (SERVER_CONNECTED);
-	      (void) css_send_data (conn, rid, (char *) &reason,
-				    sizeof (int));
+	      (void) css_send_data (conn, rid, (char *) &reason, sizeof (int));
 
 	      if (css_Connect_handler)
 		{
@@ -1403,8 +1354,7 @@ css_process_new_connection_request (void)
 	  else
 	    {
 	      reason = htonl (SERVER_NOT_FOUND);
-	      (void) css_send_data (conn, rid, (char *) &reason,
-				    sizeof (int));
+	      (void) css_send_data (conn, rid, (char *) &reason, sizeof (int));
 	      css_free_conn (conn);
 	    }
 	}
@@ -1433,12 +1383,10 @@ css_reestablish_connection_to_master (void)
     }
   i = CSS_WAIT_COUNT;
 
-  packed_server_name = css_pack_server_name (css_Master_server_name,
-					     &name_length);
+  packed_server_name = css_pack_server_name (css_Master_server_name, &name_length);
   if (packed_server_name != NULL)
     {
-      conn = css_connect_to_master_server (css_Master_port_id,
-					   packed_server_name, name_length);
+      conn = css_connect_to_master_server (css_Master_port_id, packed_server_name, name_length);
       if (conn != NULL)
 	{
 	  css_Pipe_to_master = conn->fd;
@@ -1500,8 +1448,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
   thread_p->type = TT_SERVER;	/* server thread */
 
-  prefetchlogdb_max_thread_count =
-    prm_get_integer_value (PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT);
+  prefetchlogdb_max_thread_count = prm_get_integer_value (PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT);
 
   css_peer_alive_timeout = 5000;
   poll_timeout = 100;
@@ -1515,9 +1462,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
       /* check the connection */
       if (conn->status != CONN_OPEN)
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"css_connection_handler_thread: "
-			"conn->status is not CONN_OPEN.");
+	  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "conn->status is not CONN_OPEN.");
 	  status = CONNECTION_CLOSED;
 	  break;
 	}
@@ -1541,19 +1486,15 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	    {
 	      if (css_peer_alive (fd, css_peer_alive_timeout) == false)
 		{
-		  er_log_debug (ARG_FILE_LINE,
-				"css_connection_handler_thread: "
-				"css_peer_alive() error\n");
+		  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "css_peer_alive() error\n");
 		  status = CONNECTION_CLOSED;
 		  break;
 		}
 	    }
 
 	  /* check server's HA state */
-	  if (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY
-	      && conn->in_transaction == false
-	      && thread_has_threads (thread_p, conn->transaction_id,
-				     conn->client_id) == 0)
+	  if (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && conn->in_transaction == false
+	      && thread_has_threads (thread_p, conn->transaction_id, conn->client_id) == 0)
 	    {
 	      status = REQUEST_REFUSED;
 	      break;
@@ -1571,9 +1512,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	    }
 	  else
 	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "css_connection_handler_thread: "
-			    "select() error\n");
+	      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "select() error\n");
 	      status = ERROR_ON_READ;
 	      break;
 	    }
@@ -1588,29 +1527,22 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	      break;
 	    }
 
-	  /* read command/data/etc request from socket,
-	     and enqueue it to appr. queue */
+	  /* read command/data/etc request from socket, and enqueue it to appr. queue */
 	  status = css_read_and_queue (conn, &type);
 	  if (status != NO_ERRORS)
 	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "css_connection_handler_thread: "
-			    "css_read_and_queue() error\n");
+	      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "css_read_and_queue() error\n");
 	      break;
 	    }
 	  else
 	    {
-	      /* if new command request has arrived,
-	         make new job and add it to job queue */
+	      /* if new command request has arrived, make new job and add it to job queue */
 	      if (type == COMMAND_TYPE)
 		{
 		  do
 		    {
-		      if (conn->client_type == BOOT_CLIENT_LOG_PREFETCHER
-			  && (prefetchlogdb_max_thread_count
-			      > 0)
-			  && (conn->prefetcher_thread_count >=
-			      prefetchlogdb_max_thread_count))
+		      if (conn->client_type == BOOT_CLIENT_LOG_PREFETCHER && (prefetchlogdb_max_thread_count > 0)
+			  && (conn->prefetcher_thread_count >= prefetchlogdb_max_thread_count))
 			{
 			  thread_sleep (10);	/* 10 msec */
 			  continue;
@@ -1618,11 +1550,9 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
 		      break;
 		    }
-		  while (thread_p->shutdown == false
-			 && conn->stop_talk == false);
+		  while (thread_p->shutdown == false && conn->stop_talk == false);
 
-		  job = css_make_job_entry (conn, css_Request_handler,
-					    (CSS_THREAD_ARG) conn, -1);
+		  job = css_make_job_entry (conn, css_Request_handler, (CSS_THREAD_ARG) conn, -1);
 		  if (job)
 		    {
 		      css_add_to_job_queue (job);
@@ -1635,10 +1565,9 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   /* check the connection and call connection error handler */
   if (status != NO_ERRORS || css_check_conn (conn) != NO_ERROR)
     {
-      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: "
-		    "status %d conn { status %d transaction_id %d "
-		    "db_error %d stop_talk %d stop_phase %d }\n",
-		    status, conn->status, conn->transaction_id,
+      er_log_debug (ARG_FILE_LINE,
+		    "css_connection_handler_thread: " "status %d conn { status %d transaction_id %d "
+		    "db_error %d stop_talk %d stop_phase %d }\n", status, conn->status, conn->transaction_id,
 		    conn->db_error, conn->stop_talk, conn->stop_phase);
       rv = pthread_mutex_lock (&thread_p->tran_index_lock);
       (*css_Connection_error_handler) (thread_p, conn);
@@ -1799,10 +1728,9 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
 
   css_insert_into_active_conn_list (conn);
 
-  job = css_make_job_entry (conn,
-			    (CSS_THREAD_FN) css_connection_handler_thread,
-			    (CSS_THREAD_ARG) conn,
-			    -1 /* implicit: DEFAULT */ );
+  job = css_make_job_entry (conn, (CSS_THREAD_FN) css_connection_handler_thread, (CSS_THREAD_ARG) conn, -1	/* implicit: 
+														 * DEFAULT 
+														 */ );
   assert (job != NULL);
 
   if (job != NULL)
@@ -1868,12 +1796,10 @@ css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 
       eid = css_return_eid_from_conn (conn, rid);
       /* 2. change thread's client, rid, tran_index for this request */
-      thread_set_info (thread_p, conn->client_id, eid, conn->transaction_id,
-		       request);
+      thread_set_info (thread_p, conn->client_id, eid, conn->transaction_id, request);
 
       /* 3. Call server_request() function */
-      status = (*css_Server_request_handler) (thread_p, eid, request,
-					      size, buffer);
+      status = (*css_Server_request_handler) (thread_p, eid, request, size, buffer);
 
       /* 4. reset thread transaction id(may be NULL_TRAN_INDEX) */
       thread_set_info (thread_p, -1, 0, local_tran_index, -1);
@@ -1903,13 +1829,11 @@ css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
  */
 void
 css_initialize_server_interfaces (int (*request_handler)
-				  (THREAD_ENTRY * thrd, unsigned int eid,
-				   int request, int size, char *buffer),
+				  (THREAD_ENTRY * thrd, unsigned int eid, int request, int size, char *buffer),
 				  CSS_THREAD_FN connection_error_function)
 {
   css_Server_request_handler = request_handler;
-  css_register_handler_routines (css_internal_connection_handler,
-				 css_internal_request_handler,
+  css_register_handler_routines (css_internal_connection_handler, css_internal_request_handler,
 				 connection_error_function);
 }
 
@@ -1952,8 +1876,7 @@ css_init (char *server_name, int name_length, int port_id)
       if (status == ER_CSS_PTHREAD_CREATE)
 	{
 	  /* thread creation error */
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK,
-		  1, NUM_NORMAL_TRANS);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, NUM_NORMAL_TRANS);
 	}
       return ER_FAILED;
     }
@@ -1988,7 +1911,7 @@ css_init (char *server_name, int name_length, int port_id)
       status = NO_ERROR;
     }
 
-  /*
+  /* 
    * start to shutdown server
    */
 #if !defined(WINDOWS)
@@ -2017,9 +1940,8 @@ shutdown:
       node = log_Gl.prior_info.prior_list_header;
       while (node != NULL)
 	{
-	  /* All active transaction and vacuum workers should have been
-	   * stopped. Only system transactions are still running.
-	   */
+	  /* All active transaction and vacuum workers should have been stopped. Only system transactions are still
+	   * running. */
 	  assert (node->log_header.trid == LOG_SYSTEM_TRANID);
 	  node = node->next;
 	}
@@ -2043,9 +1965,7 @@ shutdown:
       free_and_init (css_Master_server_name);
     }
 
-  /* If this was opened for the new style connection protocol, make sure
-   * it gets closed.
-   */
+  /* If this was opened for the new style connection protocol, make sure it gets closed. */
   css_close_server_connection_socket ();
 #if defined(WINDOWS)
   css_windows_shutdown ();
@@ -2079,8 +1999,7 @@ css_shutdown (int exit_reason)
  * Note: This is to be used ONLY by the server to return data to the client
  */
 unsigned int
-css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
-			 char *buffer, int buffer_size)
+css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
   int rc = 0;
 
@@ -2104,8 +2023,7 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
  * Note: This is to be used only by the server
  */
 unsigned int
-css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
-				   char *reply, int reply_size, char *buffer,
+css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size, char *buffer,
 				   int buffer_size)
 {
   int rc = 0;
@@ -2114,8 +2032,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 
   if (buffer_size > 0 && buffer != NULL)
     {
-      rc = css_send_two_data (conn, CSS_RID_FROM_EID (eid),
-			      reply, reply_size, buffer, buffer_size);
+      rc = css_send_two_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer, buffer_size);
     }
   else
     {
@@ -2141,9 +2058,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
  * Note: This is to be used only by the server
  */
 unsigned int
-css_send_reply_and_large_data_to_client (unsigned int eid, char *reply,
-					 int reply_size, char *buffer,
-					 INT64 buffer_size)
+css_send_reply_and_large_data_to_client (unsigned int eid, char *reply, int reply_size, char *buffer, INT64 buffer_size)
 {
   CSS_CONN_ENTRY *conn;
   int rc = 0;
@@ -2161,8 +2076,7 @@ css_send_reply_and_large_data_to_client (unsigned int eid, char *reply,
       buffers = (char **) malloc (sizeof (char *) * num_buffers);
       if (buffers == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (char *) * num_buffers);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * num_buffers);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -2170,8 +2084,7 @@ css_send_reply_and_large_data_to_client (unsigned int eid, char *reply,
       if (buffers_size == NULL)
 	{
 	  free (buffers);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, sizeof (int) * num_buffers);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * num_buffers);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -2192,9 +2105,7 @@ css_send_reply_and_large_data_to_client (unsigned int eid, char *reply,
 	  pos += buffers_size[i];
 	}
 
-      rc = css_send_large_data (conn, CSS_RID_FROM_EID (eid),
-				(const char **) buffers, buffers_size,
-				num_buffers);
+      rc = css_send_large_data (conn, CSS_RID_FROM_EID (eid), (const char **) buffers, buffers_size, num_buffers);
 
       free (buffers);
       free (buffers_size);
@@ -2224,10 +2135,8 @@ css_send_reply_and_large_data_to_client (unsigned int eid, char *reply,
  * Note: This is to be used only by the server
  */
 unsigned int
-css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
-				     char *reply, int reply_size,
-				     char *buffer1, int buffer1_size,
-				     char *buffer2, int buffer2_size)
+css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size,
+				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size)
 {
   int rc = 0;
 
@@ -2235,13 +2144,10 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 
   if (buffer2 == NULL || buffer2_size <= 0)
     {
-      return (css_send_reply_and_data_to_client (conn,
-						 eid, reply, reply_size,
-						 buffer1, buffer1_size));
+      return (css_send_reply_and_data_to_client (conn, eid, reply, reply_size, buffer1, buffer1_size));
     }
-  rc = css_send_three_data (conn, CSS_RID_FROM_EID (eid),
-			    reply, reply_size, buffer1, buffer1_size,
-			    buffer2, buffer2_size);
+  rc =
+    css_send_three_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2, buffer2_size);
 
   return (rc == NO_ERRORS) ? 0 : rc;
 }
@@ -2264,11 +2170,9 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
  * Note: This is to be used only by the server
  */
 unsigned int
-css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
-				     char *reply, int reply_size,
-				     char *buffer1, int buffer1_size,
-				     char *buffer2, int buffer2_size,
-				     char *buffer3, int buffer3_size)
+css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size,
+				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size, char *buffer3,
+				     int buffer3_size)
 {
   int rc = 0;
 
@@ -2277,12 +2181,11 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
   if (buffer3 == NULL || buffer3_size <= 0)
     {
       return (css_send_reply_and_2_data_to_client
-	      (conn, eid, reply, reply_size, buffer1, buffer1_size, buffer2,
-	       buffer2_size));
+	      (conn, eid, reply, reply_size, buffer1, buffer1_size, buffer2, buffer2_size));
     }
-  rc = css_send_four_data (conn, CSS_RID_FROM_EID (eid),
-			   reply, reply_size, buffer1, buffer1_size,
-			   buffer2, buffer2_size, buffer3, buffer3_size);
+  rc =
+    css_send_four_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2, buffer2_size,
+			buffer3, buffer3_size);
 
   return (rc == NO_ERRORS) ? 0 : rc;
 }
@@ -2299,8 +2202,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
  *       client.
  */
 unsigned int
-css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
-			  char *buffer, int buffer_size)
+css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
   int rc;
 
@@ -2342,8 +2244,7 @@ css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid)
 
   assert (conn != NULL);
 
-  if (css_return_queued_error (conn, CSS_RID_FROM_EID (eid),
-			       &error_buffer, &error_size, &rc))
+  if (css_return_queued_error (conn, CSS_RID_FROM_EID (eid), &error_buffer, &error_size, &rc))
     {
       errid = er_set_area_error ((void *) error_buffer);
       free_and_init (error_buffer);
@@ -2362,11 +2263,9 @@ css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid)
  *   returns css error code on failure
  */
 unsigned int
-css_receive_data_from_client (CSS_CONN_ENTRY * conn, unsigned int eid,
-			      char **buffer, int *size)
+css_receive_data_from_client (CSS_CONN_ENTRY * conn, unsigned int eid, char **buffer, int *size)
 {
-  return css_receive_data_from_client_with_timeout (conn, eid, buffer, size,
-						    -1);
+  return css_receive_data_from_client_with_timeout (conn, eid, buffer, size, -1);
 }
 
 /*
@@ -2381,9 +2280,8 @@ css_receive_data_from_client (CSS_CONN_ENTRY * conn, unsigned int eid,
  *   returns css error code on failure
  */
 unsigned int
-css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn,
-					   unsigned int eid, char **buffer,
-					   int *size, int timeout)
+css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn, unsigned int eid, char **buffer, int *size,
+					   int timeout)
 {
   int rc = 0;
 
@@ -2455,7 +2353,7 @@ css_pack_server_name (const char *server_name, int *name_length)
 	  return NULL;
 	}
 
-      /*
+      /* 
        * here we changed the 2nd string in packed_name from
        * rel_release_string() to rel_major_release_string()
        * solely for the purpose of matching the name of the cubrid driver.
@@ -2466,9 +2364,9 @@ css_pack_server_name (const char *server_name, int *name_length)
        */
 
       sprintf (pid_string, "%d", getpid ());
-      *name_length = strlen (server_name) + 1
-	+ strlen (rel_major_release_string ()) + 1
-	+ strlen (env_name) + 1 + strlen (pid_string) + 1;
+      *name_length =
+	strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1 +
+	strlen (pid_string) + 1;
 
       /* in order to prepend '#' */
       if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
@@ -2479,8 +2377,7 @@ css_pack_server_name (const char *server_name, int *name_length)
       packed_name = (char *) malloc (*name_length);
       if (packed_name == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (*name_length));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (*name_length));
 	  return NULL;
 	}
 
@@ -2529,8 +2426,7 @@ css_pack_server_name (const char *server_name, int *name_length)
  *   version_string(in):
  */
 char *
-css_add_client_version_string (THREAD_ENTRY * thread_p,
-			       const char *version_string)
+css_add_client_version_string (THREAD_ENTRY * thread_p, const char *version_string)
 {
   char *ver_str = NULL;
   CSS_CONN_ENTRY *conn;
@@ -2550,8 +2446,7 @@ css_add_client_version_string (THREAD_ENTRY * thread_p,
 	    }
 	  else
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		      (size_t) (strlen (version_string) + 1));
 	    }
 	}
@@ -2661,8 +2556,7 @@ css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index)
   /* sleep on the thrd's condition variable with the mutex of the job queue */
   pthread_cond_wait (&thrd->wakeup_cond, &css_Job_queue[jobq_index].job_lock);
 
-  if (thrd->shutdown == false
-      && thrd->resume_status != THREAD_JOB_QUEUE_RESUMED)
+  if (thrd->shutdown == false && thrd->resume_status != THREAD_JOB_QUEUE_RESUMED)
     {
       char notimsg[LINE_MAX];
       THREAD_ENTRY *current, *prev = NULL;
@@ -2670,11 +2564,9 @@ css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index)
       /* something is wrong!!! My entry in the job queue must be removed. */
       assert (thrd->resume_status == THREAD_JOB_QUEUE_RESUMED);
 
-      snprintf (notimsg, LINE_MAX, "Thread %p's resume status is"
-		" not JOB QUEUE RESUMED but %d (job Q index : %d)",
+      snprintf (notimsg, LINE_MAX, "Thread %p's resume status is" " not JOB QUEUE RESUMED but %d (job Q index : %d)",
 		thrd, thrd->resume_status, jobq_index);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_EMERGENCY_ERROR, 1, notimsg);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, notimsg);
 
       current = css_Job_queue[jobq_index].worker_thrd_list;
       while (current)
@@ -2683,8 +2575,7 @@ css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index)
 	    {
 	      if (prev == NULL)
 		{
-		  css_Job_queue[jobq_index].worker_thrd_list =
-		    thrd->worker_thrd_list;
+		  css_Job_queue[jobq_index].worker_thrd_list = thrd->worker_thrd_list;
 		}
 	      else
 		{
@@ -2702,8 +2593,7 @@ css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index)
 	}
     }
 
-  if (thrd->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN
-      || thrd->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
+  if (thrd->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN || thrd->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
     {
       assert_release (thrd->shutdown == true);
       return ER_FAILED;
@@ -2724,8 +2614,7 @@ css_wakeup_worker_thread_on_jobq (int jobq_index)
   int r = NO_ERROR;
   THREAD_ENTRY *worker = NULL;
 
-  for (wait_thrd = css_Job_queue[jobq_index].worker_thrd_list;
-       wait_thrd; wait_thrd = wait_thrd->worker_thrd_list)
+  for (wait_thrd = css_Job_queue[jobq_index].worker_thrd_list; wait_thrd; wait_thrd = wait_thrd->worker_thrd_list)
     {
       /* wakeup a free worker thread */
       if (wait_thrd->status == TS_FREE)
@@ -2735,8 +2624,7 @@ css_wakeup_worker_thread_on_jobq (int jobq_index)
 	    {
 	      if (prev_thrd == NULL)
 		{
-		  css_Job_queue[jobq_index].worker_thrd_list =
-		    wait_thrd->worker_thrd_list;
+		  css_Job_queue[jobq_index].worker_thrd_list = wait_thrd->worker_thrd_list;
 		}
 	      else
 		{
@@ -2757,11 +2645,8 @@ css_wakeup_worker_thread_on_jobq (int jobq_index)
     {
       int thread_index, num_workers;
 
-      /* Defence code of a bug.
-       * Find an available worker thread
-       * that is not in the list of job queue,
-       * but is waiting for a job.
-       */
+      /* Defence code of a bug. Find an available worker thread that is not in the list of job queue, but is waiting
+       * for a job. */
       thread_index = jobq_index;
       if (thread_index == 0)
 	{
@@ -2777,21 +2662,18 @@ css_wakeup_worker_thread_on_jobq (int jobq_index)
 	  thread_p = thread_find_entry_by_index (thread_index);
 	  assert_release (thread_p->index % CSS_NUM_JOB_QUEUE == jobq_index);
 
-	  if (thread_p->resume_status == THREAD_JOB_QUEUE_SUSPENDED
-	      && thread_p->status == TS_FREE)
+	  if (thread_p->resume_status == THREAD_JOB_QUEUE_SUSPENDED && thread_p->status == TS_FREE)
 	    {
 	      r = thread_wakeup (thread_p, THREAD_JOB_QUEUE_RESUMED);
 	      if (r == NO_ERROR)
 		{
 		  char notimsg[LINE_MAX];
 
-		  snprintf (notimsg, LINE_MAX, "Wakes up thread %p. "
-			    "It was suspended in the job queue (index : %d), "
-			    "but was not in the joq Q's worker thread list",
-			    thread_p, jobq_index);
+		  snprintf (notimsg, LINE_MAX,
+			    "Wakes up thread %p. " "It was suspended in the job queue (index : %d), "
+			    "but was not in the joq Q's worker thread list", thread_p, jobq_index);
 
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-			  ER_EMERGENCY_ERROR, 1, notimsg);
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, notimsg);
 		  thread_p->worker_thrd_list = NULL;
 		  break;
 		}
@@ -2815,8 +2697,7 @@ css_can_occupy_worker_thread_on_jobq (int jobq_index)
 {
   THREAD_ENTRY *wait_thrd;
 
-  for (wait_thrd = css_Job_queue[jobq_index].worker_thrd_list;
-       wait_thrd; wait_thrd = wait_thrd->worker_thrd_list)
+  for (wait_thrd = css_Job_queue[jobq_index].worker_thrd_list; wait_thrd; wait_thrd = wait_thrd->worker_thrd_list)
     {
       if (wait_thrd->status == TS_FREE)
 	{
@@ -2895,8 +2776,7 @@ css_unset_ha_repl_delayed (void)
  *
  */
 static HA_SERVER_STATE
-css_transit_ha_server_state (THREAD_ENTRY * thread_p,
-			     HA_SERVER_STATE req_state)
+css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state)
 {
   struct ha_server_state_transition_table
   {
@@ -2904,8 +2784,7 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p,
     HA_SERVER_STATE req_state;
     HA_SERVER_STATE next_state;
   };
-  static struct ha_server_state_transition_table
-    ha_Server_state_transition[] = {
+  static struct ha_server_state_transition_table ha_Server_state_transition[] = {
     /* idle -> active */
     {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_ACTIVE},
 #if 0
@@ -2956,25 +2835,19 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p,
 
   csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT);
 
-  for (table = ha_Server_state_transition;
-       table->cur_state != HA_SERVER_STATE_NA; table++)
+  for (table = ha_Server_state_transition; table->cur_state != HA_SERVER_STATE_NA; table++)
     {
-      if (table->cur_state == ha_Server_state
-	  && table->req_state == req_state)
+      if (table->cur_state == ha_Server_state && table->req_state == req_state)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_transit_ha_server_state: "
-			"ha_Server_state (%s) -> (%s)\n",
-			css_ha_server_state_string (ha_Server_state),
-			css_ha_server_state_string (table->next_state));
+	  er_log_debug (ARG_FILE_LINE, "css_transit_ha_server_state: " "ha_Server_state (%s) -> (%s)\n",
+			css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (table->next_state));
 	  new_state = table->next_state;
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, new_state);
 	  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_CSS_SERVER_HA_MODE_CHANGE, 2,
-		      css_ha_server_state_string (ha_Server_state),
-		      css_ha_server_state_string (new_state));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_SERVER_HA_MODE_CHANGE, 2,
+		      css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (new_state));
 	    }
 	  ha_Server_state = new_state;
 	  /* sync up the current HA state with the system parameter */
@@ -3016,18 +2889,17 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
       break;
 
     case HA_SERVER_STATE_TO_BE_STANDBY:
-      /*
+      /* 
        * If the server's state is 'to-be-standby',
        * new connection request will be rejected for HA fail-back action.
        */
       if (whence == FROM_REGISTER_CLIENT)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER,
-		  1, "Connection rejected. "
-		  "The server is changing to standby mode.");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1,
+		  "Connection rejected. " "The server is changing to standby mode.");
 	  err = ERR_CSS_ERROR_FROM_SERVER;
 	}
-      /*
+      /* 
        * If all connected clients are released (by reset-on-commit),
        * change the state to 'standby' as a completion of HA fail-back action.
        */
@@ -3038,14 +2910,11 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
 	      er_log_debug (ARG_FILE_LINE,
 			    "logtb_count_clients () = 1 including me "
 			    "transit state from 'to-be-standby' to 'standby'\n");
-	      state = css_transit_ha_server_state (thread_p,
-						   HA_SERVER_STATE_STANDBY);
+	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
 	      assert (state == HA_SERVER_STATE_STANDBY);
 	      if (state == HA_SERVER_STATE_STANDBY)
 		{
-		  er_log_debug (ARG_FILE_LINE,
-				"css_check_ha_server_state_for_client: "
-				"logtb_disable_update() \n");
+		  er_log_debug (ARG_FILE_LINE, "css_check_ha_server_state_for_client: " "logtb_disable_update() \n");
 		  logtb_disable_update (thread_p);
 		}
 	    }
@@ -3077,8 +2946,7 @@ css_check_ha_log_applier_done (void)
 	}
     }
   if (i == ha_Server_num_of_hosts
-      && (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE
-	  || ha_Server_state == HA_SERVER_STATE_ACTIVE))
+      && (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE))
     {
       return true;
     }
@@ -3103,8 +2971,7 @@ css_check_ha_log_applier_working (void)
 	}
     }
   if (i == ha_Server_num_of_hosts
-      && (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY
-	  || ha_Server_state == HA_SERVER_STATE_STANDBY))
+      && (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY || ha_Server_state == HA_SERVER_STATE_STANDBY))
     {
       return true;
     }
@@ -3120,37 +2987,36 @@ css_check_ha_log_applier_working (void)
  *   heartbeat(in): from heartbeat master
  */
 int
-css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
-			    bool force, int timeout, bool heartbeat)
+css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout, bool heartbeat)
 {
   HA_SERVER_STATE orig_state;
   int i;
 
-  er_log_debug (ARG_FILE_LINE,
-		"css_change_ha_server_state: ha_Server_state %s "
-		"state %s force %c heartbeat %c\n",
-		css_ha_server_state_string (ha_Server_state),
-		css_ha_server_state_string (state), (force ? 't' : 'f'),
+  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
+		css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state), (force ? 't' : 'f'),
 		(heartbeat ? 't' : 'f'));
 
   assert (state >= HA_SERVER_STATE_IDLE && state <= HA_SERVER_STATE_DEAD);
 
   if (state == ha_Server_state
-      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE
-	  && state == HA_SERVER_STATE_ACTIVE)
-      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY
-	  && state == HA_SERVER_STATE_STANDBY))
+      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE) || (!force
+													    &&
+													    ha_Server_state
+													    ==
+													    HA_SERVER_STATE_TO_BE_STANDBY
+													    && state ==
+													    HA_SERVER_STATE_STANDBY))
     {
       return NO_ERROR;
     }
 
-  if (heartbeat == false
-      && !(ha_Server_state == HA_SERVER_STATE_STANDBY
-	   && state == HA_SERVER_STATE_MAINTENANCE)
-      && !(ha_Server_state == HA_SERVER_STATE_MAINTENANCE
-	   && state == HA_SERVER_STATE_STANDBY)
-      && !(force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE
-	   && state == HA_SERVER_STATE_ACTIVE))
+  if (heartbeat == false && !(ha_Server_state == HA_SERVER_STATE_STANDBY && state == HA_SERVER_STATE_MAINTENANCE)
+      && !(ha_Server_state == HA_SERVER_STATE_MAINTENANCE && state == HA_SERVER_STATE_STANDBY) && !(force
+												    && ha_Server_state
+												    ==
+												    HA_SERVER_STATE_TO_BE_ACTIVE
+												    && state ==
+												    HA_SERVER_STATE_ACTIVE))
     {
       return NO_ERROR;
     }
@@ -3163,19 +3029,15 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
     {
       if (ha_Server_state != state)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state:"
-			" set force from %s to state %s\n",
-			css_ha_server_state_string (ha_Server_state),
-			css_ha_server_state_string (state));
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state:" " set force from %s to state %s\n",
+			css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state));
 	  ha_Server_state = state;
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, state);
 	  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_CSS_SERVER_HA_MODE_CHANGE, 2,
-		      css_ha_server_state_string (ha_Server_state),
-		      css_ha_server_state_string (state));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_SERVER_HA_MODE_CHANGE, 2,
+		      css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state));
 	    }
 
 	  if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
@@ -3193,20 +3055,16 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 	{
 	  break;
 	}
-      /* If log appliers have changed their state to done,
-       * go directly to active mode */
+      /* If log appliers have changed their state to done, go directly to active mode */
       if (css_check_ha_log_applier_done ())
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: "
-			"css_check_ha_log_applier_done ()\n");
-	  state =
-	    css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "css_check_ha_log_applier_done ()\n");
+	  state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
 	  assert (state == HA_SERVER_STATE_ACTIVE);
 	}
       if (state == HA_SERVER_STATE_ACTIVE)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: "
-			"logtb_enable_update() \n");
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
 	}
       break;
@@ -3219,29 +3077,21 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 	}
       if (orig_state == HA_SERVER_STATE_IDLE)
 	{
-	  /* If all log appliers have done their recovering actions,
-	   * go directly to standby mode */
+	  /* If all log appliers have done their recovering actions, go directly to standby mode */
 	  if (css_check_ha_log_applier_working ())
 	    {
-	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: "
-			    "css_check_ha_log_applier_working ()\n");
-	      state =
-		css_transit_ha_server_state (thread_p,
-					     HA_SERVER_STATE_STANDBY);
+	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "css_check_ha_log_applier_working ()\n");
+	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
 	      assert (state == HA_SERVER_STATE_STANDBY);
 	    }
 	}
       else
 	{
-	  /* If there's no active clients (except me),
-	   * go directly to standby mode */
+	  /* If there's no active clients (except me), go directly to standby mode */
 	  if (logtb_count_clients (thread_p) == 0)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: "
-			    "logtb_count_clients () = 0\n");
-	      state =
-		css_transit_ha_server_state (thread_p,
-					     HA_SERVER_STATE_STANDBY);
+	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_count_clients () = 0\n");
+	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
 	      assert (state == HA_SERVER_STATE_STANDBY);
 	    }
 	}
@@ -3251,15 +3101,13 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 	}
       if (state == HA_SERVER_STATE_STANDBY)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: "
-			"logtb_disable_update() \n");
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_disable_update() \n");
 	  logtb_disable_update (thread_p);
 	}
       break;
 
     case HA_SERVER_STATE_MAINTENANCE:
-      state =
-	css_transit_ha_server_state (thread_p, HA_SERVER_STATE_MAINTENANCE);
+      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_MAINTENANCE);
       if (state == HA_SERVER_STATE_NA)
 	{
 	  break;
@@ -3267,8 +3115,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 
       if (state == HA_SERVER_STATE_MAINTENANCE)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: "
-			"logtb_enable_update() \n");
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
 
 	  boot_server_status (BOOT_SERVER_MAINTENANCE);
@@ -3277,8 +3124,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
       for (i = 0; i < timeout; i++)
 	{
 	  /* waiting timeout second while transaction terminated normally. */
-	  if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p)
-	      == 0)
+	  if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) == 0)
 	    {
 	      break;
 	    }
@@ -3297,8 +3143,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 	      if (tdes != NULL && tdes->trid != NULL_TRANID)
 		{
 		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE
-		      (tdes->client.host_name, boot_Host_name,
-		       tdes->client.client_type))
+		      (tdes->client.host_name, boot_Host_name, tdes->client.client_type))
 		    {
 		      thread_slam_tran_index (thread_p, tdes->tran_index);
 		    }
@@ -3326,24 +3171,20 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
  *   state(in): new state to be recorded
  */
 int
-css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p,
-				 HA_LOG_APPLIER_STATE state)
+css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state)
 {
   HA_LOG_APPLIER_STATE_TABLE *table;
   HA_SERVER_STATE server_state;
   int i, client_id;
 
-  assert (state >= HA_LOG_APPLIER_STATE_UNREGISTERED
-	  && state <= HA_LOG_APPLIER_STATE_ERROR);
+  assert (state >= HA_LOG_APPLIER_STATE_UNREGISTERED && state <= HA_LOG_APPLIER_STATE_ERROR);
 
   csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT);
 
   client_id = thread_get_client_id (thread_p);
-  er_log_debug (ARG_FILE_LINE,
-		"css_notify_ha_log_applier_state: client %d state %s\n",
-		client_id, css_ha_server_state_string (state));
-  for (i = 0, table = ha_Log_applier_state;
-       i < ha_Log_applier_state_num; i++, table++)
+  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: client %d state %s\n", client_id,
+		css_ha_server_state_string (state));
+  for (i = 0, table = ha_Log_applier_state; i < ha_Log_applier_state_num; i++, table++)
     {
       if (table->client_id == client_id)
 	{
@@ -3362,8 +3203,7 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p,
 	  break;
 	}
     }
-  if (i == ha_Log_applier_state_num
-      && ha_Log_applier_state_num < ha_Server_num_of_hosts)
+  if (i == ha_Log_applier_state_num && ha_Log_applier_state_num < ha_Server_num_of_hosts)
     {
       table = &ha_Log_applier_state[ha_Log_applier_state_num++];
       table->client_id = client_id;
@@ -3372,30 +3212,24 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p,
 
   if (css_check_ha_log_applier_done ())
     {
-      er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: "
-		    "css_check_ha_log_applier_done()\n");
-      server_state =
-	css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
+      er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: " "css_check_ha_log_applier_done()\n");
+      server_state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
       assert (server_state == HA_SERVER_STATE_ACTIVE);
       if (server_state == HA_SERVER_STATE_ACTIVE)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: "
-			"logtb_enable_update() \n");
+	  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: " "logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
 	}
     }
 
   if (css_check_ha_log_applier_working ())
     {
-      er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: "
-		    "css_check_ha_log_applier_working()\n");
-      server_state =
-	css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
+      er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: " "css_check_ha_log_applier_working()\n");
+      server_state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
       assert (server_state == HA_SERVER_STATE_STANDBY);
       if (server_state == HA_SERVER_STATE_STANDBY)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: "
-			"logtb_disable_update() \n");
+	  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: " "logtb_disable_update() \n");
 	  logtb_disable_update (thread_p);
 	}
     }
@@ -3421,17 +3255,15 @@ css_check_accessibility (SOCKET new_fd)
 
   saddr_len = sizeof (clt_sock_addr);
 
-  if (getpeername (new_fd,
-		   (struct sockaddr *) &clt_sock_addr, &saddr_len) != 0)
+  if (getpeername (new_fd, (struct sockaddr *) &clt_sock_addr, &saddr_len) != 0)
     {
       return ER_FAILED;
     }
 
   ip_addr = (unsigned char *) &(clt_sock_addr.sin_addr);
 
-  if (clt_sock_addr.sin_family == AF_UNIX ||
-      (ip_addr[0] == 127 && ip_addr[1] == 0 &&
-       ip_addr[2] == 0 && ip_addr[3] == 1))
+  if (clt_sock_addr.sin_family == AF_UNIX
+      || (ip_addr[0] == 127 && ip_addr[1] == 0 && ip_addr[2] == 0 && ip_addr[3] == 1))
     {
       return NO_ERROR;
     }
@@ -3440,11 +3272,9 @@ css_check_accessibility (SOCKET new_fd)
     {
       char ip_str[32];
 
-      sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0],
-	       ip_addr[1], ip_addr[2], ip_addr[3]);
+      sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_INACCESSIBLE_IP, 1, ip_str);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INACCESSIBLE_IP, 1, ip_str);
 
       return ER_INACCESSIBLE_IP;
     }
@@ -3457,11 +3287,9 @@ css_check_accessibility (SOCKET new_fd)
     {
       char ip_str[32];
 
-      sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0],
-	       ip_addr[1], ip_addr[2], ip_addr[3]);
+      sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_INACCESSIBLE_IP, 1, ip_str);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INACCESSIBLE_IP, 1, ip_str);
     }
 
   return err_code;
@@ -3484,19 +3312,15 @@ css_set_accessible_ip_info (void)
       && isalpha (prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE)[0])
       && prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE)[1] == ':')
 #else
-  if (prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE)[0] ==
-      PATH_SEPARATOR)
+  if (prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE)[0] == PATH_SEPARATOR)
 #endif
     {
-      ip_list_file_name =
-	(char *) prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE);
+      ip_list_file_name = (char *) prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE);
     }
   else
     {
       ip_list_file_name =
-	envvar_confdir_file (ip_file_real_path, PATH_MAX,
-			     prm_get_string_value
-			     (PRM_ID_ACCESS_IP_CONTROL_FILE));
+	envvar_confdir_file (ip_file_real_path, PATH_MAX, prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE));
     }
 
   ret_val = css_read_ip_info (&tmp_accessible_ip_info, ip_list_file_name);
@@ -3537,13 +3361,10 @@ xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp)
       outfp = stdout;
     }
 
-  fprintf (outfp, "access_ip_control=%s\n",
-	   (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) ? "yes" : "no"));
-  fprintf (outfp, "access_ip_control_file=%s\n",
-	   (ip_list_file_name != NULL) ? ip_list_file_name : "NULL");
+  fprintf (outfp, "access_ip_control=%s\n", (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) ? "yes" : "no"));
+  fprintf (outfp, "access_ip_control_file=%s\n", (ip_list_file_name != NULL) ? ip_list_file_name : "NULL");
 
-  if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == false
-      || css_Server_accessible_ip_info == NULL)
+  if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == false || css_Server_accessible_ip_info == NULL)
     {
       return;
     }
@@ -3554,13 +3375,9 @@ xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp)
     {
       int address_index = i * IP_BYTE_COUNT;
 
-      for (j = 0;
-	   j < css_Server_accessible_ip_info->
-	   address_list[address_index]; j++)
+      for (j = 0; j < css_Server_accessible_ip_info->address_list[address_index]; j++)
 	{
-	  fprintf (outfp, "%d%s",
-		   css_Server_accessible_ip_info->
-		   address_list[address_index + j + 1],
+	  fprintf (outfp, "%d%s", css_Server_accessible_ip_info->address_list[address_index + j + 1],
 		   ((j != 3) ? "." : ""));
 	}
       if (j != 4)

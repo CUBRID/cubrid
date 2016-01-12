@@ -47,18 +47,13 @@ static int last_tran_index = -1;
 static bool is_class (OID * obj_oid, OID * class_oid);
 static int process_set (DB_SET * set);
 static int process_value (DB_VALUE * value);
-static int process_object (THREAD_ENTRY * thread_p,
-			   HEAP_SCANCACHE * upd_scancache,
-			   HEAP_CACHE_ATTRINFO * attr_info, OID * oid);
-static int desc_disk_to_attr_info (THREAD_ENTRY * thread_p, OID * oid,
-				   RECDES * recdes,
+static int process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CACHE_ATTRINFO * attr_info,
+			   OID * oid);
+static int desc_disk_to_attr_info (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes,
 				   HEAP_CACHE_ATTRINFO * attr_info);
-static int process_class (THREAD_ENTRY * thread_p, OID * class_oid,
-			  HFID * hfid, int max_space_to_process,
-			  int *instance_lock_timeout,
-			  int *space_to_process, OID * last_processed_oid,
-			  int *total_objects, int *failed_objects,
-			  int *modified_objects, int *big_objects);
+static int process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, int max_space_to_process,
+			  int *instance_lock_timeout, int *space_to_process, OID * last_processed_oid,
+			  int *total_objects, int *failed_objects, int *modified_objects, int *big_objects);
 static void free_att_id (THREAD_ENTRY * thread_p);
 
 
@@ -110,9 +105,7 @@ process_value (DB_VALUE * value)
 
 	/* TODO: Find a better function here. */
 	scan_code =
-	  heap_get_class_oid_with_lock (NULL, &ref_class_oid, ref_oid,
-					SNAPSHOT_TYPE_MVCC, NULL_LOCK,
-					&update_oid);
+	  heap_get_class_oid_with_lock (NULL, &ref_class_oid, ref_oid, SNAPSHOT_TYPE_MVCC, NULL_LOCK, &update_oid);
 	if (scan_code == S_ERROR)
 	  {
 	    ASSERT_ERROR_AND_SET (return_value);
@@ -140,12 +133,8 @@ process_value (DB_VALUE * value)
 	  }
 
 #if defined(CUBRID_DEBUG)
-	printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-				MSGCAT_UTIL_SET_COMPACTDB,
-				COMPACTDB_MSG_REFOID),
-		ref_oid->volid, ref_oid->pageid, ref_oid->slotid,
-		ref_class_oid.volid, ref_class_oid.pageid,
-		ref_class_oid.slotid);
+	printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_REFOID), ref_oid->volid,
+		ref_oid->pageid, ref_oid->slotid, ref_class_oid.volid, ref_class_oid.pageid, ref_class_oid.slotid);
 #endif
 
 	break;
@@ -210,8 +199,7 @@ process_set (DB_SET * set)
  *    oid(in): the oid of the object to process
  */
 static int
-process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
-		HEAP_CACHE_ATTRINFO * attr_info, OID * oid)
+process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CACHE_ATTRINFO * attr_info, OID * oid)
 {
   int i, result = 0;
   int updated_flag = 0;
@@ -232,9 +220,8 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
   copy_recdes.data = NULL;
 
   scan_code =
-    heap_mvcc_get_for_delete (thread_p, oid, &upd_scancache->node.class_oid,
-			      &copy_recdes, upd_scancache, COPY, NULL_CHN,
-			      NULL, &updated_oid, LOG_WARNING_IF_DELETED);
+    heap_mvcc_get_for_delete (thread_p, oid, &upd_scancache->node.class_oid, &copy_recdes, upd_scancache, COPY,
+			      NULL_CHN, NULL, &updated_oid, LOG_WARNING_IF_DELETED);
   if (scan_code != S_SUCCESS)
     {
       if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
@@ -250,15 +237,13 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
       COPY_OID (oid, &updated_oid);
     }
 
-  atts_id = (int *) db_private_alloc (thread_p,
-				      attr_info->num_values * sizeof (int));
+  atts_id = (int *) db_private_alloc (thread_p, attr_info->num_values * sizeof (int));
   if (atts_id == NULL)
     {
       return -1;
     }
 
-  for (i = 0, value = attr_info->values;
-       i < attr_info->num_values; i++, value++)
+  for (i = 0, value = attr_info->values; i < attr_info->num_values; i++, value++)
     {
       error_code = process_value (&value->dbvalue);
       if (error_code > 0)
@@ -274,21 +259,16 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
 	}
     }
 
-  if ((updated_n_attrs_id > 0) ||
-      (attr_info->read_classrepr != NULL && attr_info->last_classrepr != NULL
-       && attr_info->read_classrepr->id != attr_info->last_classrepr->id))
+  if ((updated_n_attrs_id > 0)
+      || (attr_info->read_classrepr != NULL && attr_info->last_classrepr != NULL
+	  && attr_info->read_classrepr->id != attr_info->last_classrepr->id))
     {
       /* oid already locked at heap_mvcc_get_for_delete */
       error_code =
-	locator_attribute_info_force (thread_p, &upd_scancache->node.hfid,
-				      oid, attr_info, atts_id,
-				      updated_n_attrs_id, LC_FLUSH_UPDATE,
-				      SINGLE_ROW_UPDATE, upd_scancache,
-				      &force_count, false,
-				      REPL_INFO_TYPE_RBR_NORMAL,
-				      DB_NOT_PARTITIONED_CLASS, NULL, NULL,
-				      NULL, UPDATE_INPLACE_NONE,
-				      &copy_recdes, false);
+	locator_attribute_info_force (thread_p, &upd_scancache->node.hfid, oid, attr_info, atts_id, updated_n_attrs_id,
+				      LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, upd_scancache, &force_count, false,
+				      REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
+				      UPDATE_INPLACE_NONE, &copy_recdes, false);
       if (error_code != NO_ERROR)
 	{
 	  if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -324,8 +304,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache,
  *    attr_info(out): the HEAP_CACHE_ATTRINFO structure
  */
 static int
-desc_disk_to_attr_info (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes,
-			HEAP_CACHE_ATTRINFO * attr_info)
+desc_disk_to_attr_info (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
 {
   if (oid == NULL || recdes == NULL || attr_info == NULL)
     {
@@ -337,8 +316,7 @@ desc_disk_to_attr_info (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes,
       return ER_FAILED;
     }
 
-  if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, attr_info) !=
-      NO_ERROR)
+  if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, attr_info) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -362,11 +340,9 @@ desc_disk_to_attr_info (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes,
  *    big_objects(in, out): count the big class objects
  */
 static int
-process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
-	       int max_space_to_process, int *instance_lock_timeout,
-	       int *space_to_process, OID * last_processed_oid,
-	       int *total_objects, int *failed_objects,
-	       int *modified_objects, int *big_objects)
+process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, int max_space_to_process,
+	       int *instance_lock_timeout, int *space_to_process, OID * last_processed_oid, int *total_objects,
+	       int *failed_objects, int *modified_objects, int *big_objects)
 {
   int nobjects, nfetched, i, j;
   OID last_oid, prev_oid;
@@ -374,7 +350,7 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
   LOCK oid_lock = X_LOCK;
   LC_COPYAREA *fetch_area = NULL;	/* Area where objects are received */
   struct lc_copyarea_manyobjs *mobjs;	/* Describe multiple objects in area */
-  struct lc_copyarea_oneobj *obj;	/* Describe on object in area        */
+  struct lc_copyarea_oneobj *obj;	/* Describe on object in area */
   RECDES recdes;
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_SCANCACHE upd_scancache;
@@ -383,11 +359,10 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
 
   int nfailed_instances = 0;
 
-  if (class_oid == NULL || hfid == NULL || space_to_process == NULL ||
-      *space_to_process <= 0 || *space_to_process > max_space_to_process ||
-      last_processed_oid == NULL || total_objects == NULL ||
-      failed_objects == NULL || modified_objects == NULL ||
-      big_objects == NULL || *total_objects < 0 || *failed_objects < 0)
+  if (class_oid == NULL || hfid == NULL || space_to_process == NULL || *space_to_process <= 0
+      || *space_to_process > max_space_to_process || last_processed_oid == NULL || total_objects == NULL
+      || failed_objects == NULL || modified_objects == NULL || big_objects == NULL || *total_objects < 0
+      || *failed_objects < 0)
     {
       return ER_FAILED;
     }
@@ -404,9 +379,7 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
   nobjects = 0;
   nfetched = -1;
 
-  ret =
-    heap_scancache_start_modify (thread_p, &upd_scancache, hfid, class_oid,
-				 SINGLE_ROW_UPDATE, NULL);
+  ret = heap_scancache_start_modify (thread_p, &upd_scancache, hfid, class_oid, SINGLE_ROW_UPDATE, NULL);
   if (ret != NO_ERROR)
     {
       return ER_FAILED;
@@ -424,11 +397,9 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
 
   while (nobjects != nfetched)
     {
-      ret = xlocator_lock_and_fetch_all (thread_p, hfid, &oid_lock,
-					 instance_lock_timeout, class_oid,
-					 &null_lock, &nobjects, &nfetched,
-					 &nfailed_instances, &last_oid,
-					 &fetch_area, mvcc_snapshot);
+      ret =
+	xlocator_lock_and_fetch_all (thread_p, hfid, &oid_lock, instance_lock_timeout, class_oid, &null_lock, &nobjects,
+				     &nfetched, &nfailed_instances, &last_oid, &fetch_area, mvcc_snapshot);
 
       if (ret == NO_ERROR)
 	{
@@ -448,8 +419,7 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
 			{
 			  (*total_objects)++;
 			  (*big_objects)++;
-			  lock_unlock_object (thread_p, &obj->oid, class_oid,
-					      oid_lock, true);
+			  lock_unlock_object (thread_p, &obj->oid, class_oid, oid_lock, true);
 			}
 		      else
 			{
@@ -458,8 +428,7 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
 
 			  for (j = i; j < mobjs->num_objs; j++)
 			    {
-			      lock_unlock_object (thread_p, &obj->oid,
-						  class_oid, oid_lock, true);
+			      lock_unlock_object (thread_p, &obj->oid, class_oid, oid_lock, true);
 			      obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
 			    }
 
@@ -477,17 +446,13 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
 		      (*total_objects)++;
 		      LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
 
-		      if (desc_disk_to_attr_info
-			  (thread_p, &obj->oid, &recdes,
-			   &attr_info) == NO_ERROR)
+		      if (desc_disk_to_attr_info (thread_p, &obj->oid, &recdes, &attr_info) == NO_ERROR)
 			{
-			  object_processed = process_object
-			    (thread_p, &upd_scancache, &attr_info, &obj->oid);
+			  object_processed = process_object (thread_p, &upd_scancache, &attr_info, &obj->oid);
 
 			  if (object_processed != 1)
 			    {
-			      lock_unlock_object (thread_p, &obj->oid,
-						  class_oid, oid_lock, true);
+			      lock_unlock_object (thread_p, &obj->oid, class_oid, oid_lock, true);
 
 			      if (object_processed == -1)
 				{
@@ -538,7 +503,7 @@ end:
 }
 
 
- /*
+ /* 
   * boot_compact_db - compact specified classes
   * HEAP_CACHE_ATTRINFO structure
   *    return: error status
@@ -559,16 +524,10 @@ end:
   * representation
   */
 int
-boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
-		 int space_to_process,
-		 int instance_lock_timeout,
-		 int class_lock_timeout,
-		 bool delete_old_repr,
-		 OID * last_processed_class_oid,
-		 OID * last_processed_oid,
-		 int *total_objects, int *failed_objects,
-		 int *modified_objects, int *big_objects,
-		 int *initial_last_repr_id)
+boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes, int space_to_process,
+		 int instance_lock_timeout, int class_lock_timeout, bool delete_old_repr,
+		 OID * last_processed_class_oid, OID * last_processed_oid, int *total_objects, int *failed_objects,
+		 int *modified_objects, int *big_objects, int *initial_last_repr_id)
 {
   int result = NO_ERROR;
   int i, j, start_index = -1;
@@ -581,11 +540,9 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
       return ER_COMPACTDB_ALREADY_STARTED;
     }
 
-  if (class_oids == NULL || n_classes <= 0 ||
-      space_to_process <= 0 || last_processed_class_oid == NULL ||
-      last_processed_oid == NULL || total_objects == NULL ||
-      failed_objects == NULL || modified_objects == NULL ||
-      big_objects == NULL || initial_last_repr_id == NULL)
+  if (class_oids == NULL || n_classes <= 0 || space_to_process <= 0 || last_processed_class_oid == NULL
+      || last_processed_oid == NULL || total_objects == NULL || failed_objects == NULL || modified_objects == NULL
+      || big_objects == NULL || initial_last_repr_id == NULL)
     {
       return ER_QPROC_INVALID_PARAMETER;
     }
@@ -614,9 +571,9 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
   max_space_to_process = space_to_process;
   for (i = start_index; i < n_classes; i++)
     {
-      lock_ret = lock_object_wait_msecs (thread_p, class_oids + i,
-					 oid_Root_class_oid, IX_LOCK,
-					 LK_UNCOND_LOCK, class_lock_timeout);
+      lock_ret =
+	lock_object_wait_msecs (thread_p, class_oids + i, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK,
+				class_lock_timeout);
 
       if (lock_ret != LK_GRANTED)
 	{
@@ -625,11 +582,9 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
 	  continue;
 	}
 
-      if (heap_get_hfid_from_class_oid (thread_p, class_oids + i, &hfid) !=
-	  NO_ERROR)
+      if (heap_get_hfid_from_class_oid (thread_p, class_oids + i, &hfid) != NO_ERROR)
 	{
-	  lock_unlock_object (thread_p, class_oids + i, oid_Root_class_oid,
-			      IX_LOCK, true);
+	  lock_unlock_object (thread_p, class_oids + i, oid_Root_class_oid, IX_LOCK, true);
 	  OID_SET_NULL (last_processed_oid);
 	  total_objects[i] = COMPACTDB_INVALID_CLASS;
 	  continue;
@@ -637,8 +592,7 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
 
       if (HFID_IS_NULL (&hfid))
 	{
-	  lock_unlock_object (thread_p, class_oids + i, oid_Root_class_oid,
-			      IX_LOCK, true);
+	  lock_unlock_object (thread_p, class_oids + i, oid_Root_class_oid, IX_LOCK, true);
 	  OID_SET_NULL (last_processed_oid);
 	  total_objects[i] = COMPACTDB_INVALID_CLASS;
 	  continue;
@@ -646,23 +600,19 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
 
       if (OID_ISNULL (last_processed_oid))
 	{
-	  initial_last_repr_id[i] =
-	    heap_get_class_repr_id (thread_p, class_oids + i);
+	  initial_last_repr_id[i] = heap_get_class_repr_id (thread_p, class_oids + i);
 	  if (initial_last_repr_id[i] <= 0)
 	    {
-	      lock_unlock_object (thread_p, class_oids + i,
-				  oid_Root_class_oid, IX_LOCK, true);
+	      lock_unlock_object (thread_p, class_oids + i, oid_Root_class_oid, IX_LOCK, true);
 	      total_objects[i] = COMPACTDB_INVALID_CLASS;
 	      continue;
 	    }
 	}
 
-      if (process_class (thread_p, class_oids + i, &hfid,
-			 max_space_to_process,
-			 &instance_lock_timeout, &space_to_process,
-			 last_processed_oid, total_objects + i,
-			 failed_objects + i, modified_objects + i,
-			 big_objects + i) != NO_ERROR)
+      if (process_class
+	  (thread_p, class_oids + i, &hfid, max_space_to_process, &instance_lock_timeout, &space_to_process,
+	   last_processed_oid, total_objects + i, failed_objects + i, modified_objects + i,
+	   big_objects + i) != NO_ERROR)
 	{
 	  OID_SET_NULL (last_processed_oid);
 	  for (j = start_index; j <= i; j++)
@@ -677,19 +627,15 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
 	  break;
 	}
 
-      if (delete_old_repr &&
-	  OID_ISNULL (last_processed_oid) && failed_objects[i] == 0 &&
-	  heap_get_class_repr_id (thread_p, class_oids + i) ==
-	  initial_last_repr_id[i])
+      if (delete_old_repr && OID_ISNULL (last_processed_oid) && failed_objects[i] == 0
+	  && heap_get_class_repr_id (thread_p, class_oids + i) == initial_last_repr_id[i])
 	{
-	  lock_ret = lock_object_wait_msecs (thread_p, class_oids + i,
-					     oid_Root_class_oid, X_LOCK,
-					     LK_UNCOND_LOCK,
-					     class_lock_timeout);
+	  lock_ret =
+	    lock_object_wait_msecs (thread_p, class_oids + i, oid_Root_class_oid, X_LOCK, LK_UNCOND_LOCK,
+				    class_lock_timeout);
 	  if (lock_ret == LK_GRANTED)
 	    {
-	      if (catalog_drop_old_representations (thread_p, class_oids + i)
-		  != NO_ERROR)
+	      if (catalog_drop_old_representations (thread_p, class_oids + i) != NO_ERROR)
 		{
 		  for (j = start_index; j <= i; j++)
 		    {
@@ -760,8 +706,7 @@ boot_compact_start (THREAD_ENTRY * thread_p)
 {
   int current_tran_index = -1;
 
-  if (csect_enter (thread_p, CSECT_COMPACTDB_ONE_INSTANCE, INF_WAIT) !=
-      NO_ERROR)
+  if (csect_enter (thread_p, CSECT_COMPACTDB_ONE_INSTANCE, INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -791,8 +736,7 @@ boot_compact_stop (THREAD_ENTRY * thread_p)
 {
   int current_tran_index = -1;
 
-  if (csect_enter (thread_p, CSECT_COMPACTDB_ONE_INSTANCE, INF_WAIT) !=
-      NO_ERROR)
+  if (csect_enter (thread_p, CSECT_COMPACTDB_ONE_INSTANCE, INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -820,8 +764,7 @@ bool
 boot_can_compact (THREAD_ENTRY * thread_p)
 {
   int current_tran_index = -1;
-  if (csect_enter (thread_p, CSECT_COMPACTDB_ONE_INSTANCE, INF_WAIT) !=
-      NO_ERROR)
+  if (csect_enter (thread_p, CSECT_COMPACTDB_ONE_INSTANCE, INF_WAIT) != NO_ERROR)
     {
       return false;
     }

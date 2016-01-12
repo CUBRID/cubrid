@@ -32,8 +32,7 @@ extern int getsize (int pid);
 #if defined(WINDOWS)
 extern int pdh_init ();
 extern int pdh_collect ();
-extern int pdh_get_value (int pid, int *workset, float *pct_cpu,
-			  int *br_num_thr);
+extern int pdh_get_value (int pid, int *workset, float *pct_cpu, int *br_num_thr);
 #endif
 
 #endif /* _BROKER_PROCESS_SIZE_H_ */

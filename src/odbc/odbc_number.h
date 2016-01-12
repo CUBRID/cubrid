@@ -1,5 +1,5 @@
-/* odbc_number.h: Arbitrary precision numbers header file. */
-
+/* odbc_number.h: Arbitrary precision numbers header file. */  
+  
 /*  This file is part of GNU bc.
     Copyright (C) 1991, 1992, 1993, 1994, 1997 Free Software Foundation, Inc.
 
@@ -24,30 +24,25 @@
                 Western Washington University
                 Bellingham, WA 98226-9062
        
-*************************************************************************/
-
-typedef enum
+*************************************************************************/ 
+typedef enum 
 { PLUS, MINUS } sign;
-
-typedef struct
+typedef struct 
 {
-  sign n_sign;
-  int n_len;			/* The number of digits before the decimal point. */
-  int n_scale;			/* The number of digits after the decimal point. */
-  int n_refs;			/* The number of pointers to this number. */
-  char n_value[1];		/* The storage. Not zero char terminated. It is 
-				   allocated with all other fields.  */
-} bc_struct;
+  sign n_sign;
+  int n_len;			/* The number of digits before the decimal point. */
+   int n_scale;		/* The number of digits after the decimal point. */
+   int n_refs;			/* The number of pointers to this number. */
+   char n_value[1];		/* The storage. Not zero char terminated. It is  allocated with all other fields.  */
+ } bc_struct;
+typedef bc_struct *bc_num;
+int init_numbers ();
+void free_num (bc_num * num);
+int str2num (bc_num * num, char *str, int scale);
+char *num2str (bc_num num);
+int bc_add (bc_num n1, bc_num n2, bc_num * result, int scale_min);
+int bc_sub (bc_num n1, bc_num n2, bc_num * result, int scale_min);
+int bc_multiply (bc_num n1, bc_num n2, bc_num * prod, int scale);
+int bc_divide (bc_num n1, bc_num n2, bc_num * quot, int scale);
+int bc_divmod (bc_num num1, bc_num num2, bc_num * quot, bc_num * rem, int scale);
 
-typedef bc_struct *bc_num;
-
-int init_numbers ();
-void free_num (bc_num * num);
-int str2num (bc_num * num, char *str, int scale);
-char *num2str (bc_num num);
-int bc_add (bc_num n1, bc_num n2, bc_num * result, int scale_min);
-int bc_sub (bc_num n1, bc_num n2, bc_num * result, int scale_min);
-int bc_multiply (bc_num n1, bc_num n2, bc_num * prod, int scale);
-int bc_divide (bc_num n1, bc_num n2, bc_num * quot, int scale);
-int bc_divmod (bc_num num1, bc_num num2, bc_num * quot, bc_num * rem,
-	       int scale);

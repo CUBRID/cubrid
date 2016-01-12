@@ -161,9 +161,8 @@ fh_calculate_htsize (int htsize)
  *    return true if key1 == key2, otherwise, false.
  */
 FH_TABLE *
-fh_create (const char *name, int est_size, int page_size, int cached_pages,
-	   const char *hash_filename, FH_KEY_TYPE key_type, int data_size,
-	   HASH_FUNC hfun, CMP_FUNC cmpfun)
+fh_create (const char *name, int est_size, int page_size, int cached_pages, const char *hash_filename,
+	   FH_KEY_TYPE key_type, int data_size, HASH_FUNC hfun, CMP_FUNC cmpfun)
 {
   FH_TABLE *ht;			/* Hash table information */
   FH_PAGE_HDR *pg_hdr;		/* Entries of hash table */
@@ -178,15 +177,13 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages,
   switch (key_type)
     {
     case FH_OID_KEY:
-      entry_size = data_size + offsetof (FH_INFO, fh_oidk_data) +
-	offsetof (FH_ENTRY, info);
+      entry_size = data_size + offsetof (FH_INFO, fh_oidk_data) + offsetof (FH_ENTRY, info);
       break;
     case FH_INT_KEY:
-      entry_size = data_size + offsetof (FH_INFO, fh_intk_data) +
-	offsetof (FH_ENTRY, info);
+      entry_size = data_size + offsetof (FH_INFO, fh_intk_data) + offsetof (FH_ENTRY, info);
       break;
     default:
-      /*
+      /* 
        * this should be calling er_set
        * fprintf(stderr, "Invalid key type\n");
        */
@@ -195,7 +192,7 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages,
 
   if (page_size < entry_size)
     {
-      /*
+      /* 
        * should be calling er_set
        * fprintf(stderr, "Invalid page_size\n");
        */
@@ -238,9 +235,7 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages,
 #endif
   if (ht->fd < 0)
     {
-      perror (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_MIGDB,
-			      MIGDB_MSG_FH_HASH_FILENAME));
+      perror (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_HASH_FILENAME));
       fh_destroy (ht);
       return NULL;
     }
@@ -270,7 +265,7 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages,
   ht->pg_hdr = ht->pg_hdr_alloc = pg_hdr;
   memset (ht->pg_hdr, 0, size);
 
-  /*
+  /* 
    * Allocate the cached pages and fill in the page headers and
    * initialize each of the hash entries
    */
@@ -364,7 +359,7 @@ fh_get (FH_TABLE * ht, FH_KEY key, FH_DATA * data)
   FH_PAGE_HDR *pg_hdr;
   char *ptr;
 
-  /*
+  /* 
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -460,7 +455,7 @@ fh_put (FH_TABLE * ht, FH_KEY key, FH_DATA data)
   FH_PAGE_HDR *pg_hdr;
   char *ptr;
 
-  /*
+  /* 
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -502,8 +497,7 @@ fh_put (FH_TABLE * ht, FH_KEY key, FH_DATA data)
 	    }
 	  if ((*ht->cmpfun) (&entry->info.fh_oidk_key, key))
 	    {
-	      memcpy (&entry->info.fh_oidk_data, (char *) data,
-		      ht->data_size);
+	      memcpy (&entry->info.fh_oidk_data, (char *) data, ht->data_size);
 	      return NO_ERROR;
 	    }
 	  break;
@@ -514,8 +508,7 @@ fh_put (FH_TABLE * ht, FH_KEY key, FH_DATA data)
 	    }
 	  if ((*ht->cmpfun) (&entry->info.fh_intk_key, key))
 	    {
-	      memcpy (&entry->info.fh_intk_data, (char *) data,
-		      ht->data_size);
+	      memcpy (&entry->info.fh_intk_data, (char *) data, ht->data_size);
 	      return NO_ERROR;
 	    }
 	  break;
@@ -602,7 +595,7 @@ fh_fetch_page (FH_TABLE * ht, int page)
 	}
     }
 
-  /*
+  /* 
    * If the page is the least recently used, make the previous page
    * the least recently used.
    */
@@ -610,7 +603,7 @@ fh_fetch_page (FH_TABLE * ht, int page)
     {
       ht->pg_hdr_last = pg_hdr->prev;
     }
-  /*
+  /* 
    * If the page is the most recently used, do nothing.
    * Otherwise, make the page the most recently used.
    */
@@ -659,7 +652,7 @@ fh_read_page (FH_TABLE * ht, int page)
 #endif
   int n;
 
-  /*
+  /* 
    * If a free page exists, use it.  Since pages are not freed, free
    * pages only exist after initialization until they are used.  Thus
    * the next page after the first free page is the next free page.
@@ -708,7 +701,7 @@ fh_read_page (FH_TABLE * ht, int page)
       return pg_hdr;
     }
 
-  /* Seek to the page location and read it.                             */
+  /* Seek to the page location and read it.  */
 #if defined(SOLARIS) || defined(AIX) || (defined(HPUX) && (_LFS64_LARGEFILE == 1))
   offset = lseek64 (ht->fd, ((off64_t) page) * ht->page_size, SEEK_SET);
 #elif defined(I386) && defined(LINUX)
@@ -754,16 +747,13 @@ fh_write_page (FH_TABLE * ht, FH_PAGE_HDR * pg_hdr)
 #endif
   int n;
 
-  /* Seek to the page location and write it.                            */
+  /* Seek to the page location and write it.  */
 #if defined(SOLARIS) || defined(AIX) || (defined(HPUX) && (_LFS64_LARGEFILE == 1))
-  offset =
-    lseek64 (ht->fd, ((off64_t) pg_hdr->page) * ht->page_size, SEEK_SET);
+  offset = lseek64 (ht->fd, ((off64_t) pg_hdr->page) * ht->page_size, SEEK_SET);
 #elif defined(I386) && defined(LINUX)
-  offset =
-    lseek64 (ht->fd, ((__off64_t) pg_hdr->page) * ht->page_size, SEEK_SET);
+  offset = lseek64 (ht->fd, ((__off64_t) pg_hdr->page) * ht->page_size, SEEK_SET);
 #elif defined(WINDOWS)
-  offset =
-    _lseeki64 (ht->fd, ((__int64) pg_hdr->page) * ht->page_size, SEEK_SET);
+  offset = _lseeki64 (ht->fd, ((__int64) pg_hdr->page) * ht->page_size, SEEK_SET);
 #else
   offset = lseek (ht->fd, pg_hdr->page * ht->page_size, SEEK_SET);
 #endif
@@ -844,72 +834,34 @@ fh_dump (FH_TABLE * ht)
   static char oid_string[] = "OID";
   static char int_string[] = "INT";
 
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MIGDB,
-				   MIGDB_MSG_FH_NAME), ht->name);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MIGDB,
-				   MIGDB_MSG_FH_SIZE), ht->name);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MIGDB,
-				   MIGDB_MSG_FH_PAGE_SIZE), ht->page_size);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MIGDB,
-				   MIGDB_MSG_FH_DATA_SIZE), ht->data_size);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MIGDB,
-				   MIGDB_MSG_FH_ENTRY_SIZE), ht->entry_size);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MIGDB,
-				   MIGDB_MSG_FH_ENTRIES_PER_PAGE),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_NAME), ht->name);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_SIZE), ht->name);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_PAGE_SIZE), ht->page_size);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_DATA_SIZE), ht->data_size);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_ENTRY_SIZE),
+	   ht->entry_size);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_ENTRIES_PER_PAGE),
 	   ht->entries_per_page);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MIGDB,
-				   MIGDB_MSG_FH_CACHED_PAGES),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_CACHED_PAGES),
 	   ht->cached_pages);
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS,
-			   MSGCAT_UTIL_SET_MIGDB,
-			   MIGDB_MSG_FH_NUM_ENTRIES), ht->nentries);
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS,
-			   MSGCAT_UTIL_SET_MIGDB,
-			   MIGDB_MSG_FH_NUM_COLLISIONS), ht->ncollisions);
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS,
-			   MSGCAT_UTIL_SET_MIGDB,
-			   MIGDB_MSG_FH_HASH_FILENAME2), ht->hash_filename);
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS,
-			   MSGCAT_UTIL_SET_MIGDB,
-			   MIGDB_MSG_FH_NEXT_OVERFLOW_ENTRY), ht->overflow);
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS,
-			   MSGCAT_UTIL_SET_MIGDB,
-			   MIGDB_MSG_FH_KEY_TYPE),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_NUM_ENTRIES),
+	   ht->nentries);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_NUM_COLLISIONS),
+	   ht->ncollisions);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_HASH_FILENAME2),
+	   ht->hash_filename);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_NEXT_OVERFLOW_ENTRY),
+	   ht->overflow);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_KEY_TYPE),
 	   ht->key_type == FH_OID_KEY ? oid_string : int_string);
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS,
-			   MSGCAT_UTIL_SET_MIGDB,
-			   MIGDB_MSG_FH_PAGE_HEADERS),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_PAGE_HEADERS),
 	   (unsigned long) ht->pg_hdr);
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS,
-			   MSGCAT_UTIL_SET_MIGDB,
-			   MIGDB_MSG_FH_LAST_PAGE_HEADER),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_LAST_PAGE_HEADER),
 	   (unsigned long) ht->pg_hdr_last);
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS,
-			   MSGCAT_UTIL_SET_MIGDB,
-			   MIGDB_MSG_FH_FREE_PAGE_HEADER),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_FREE_PAGE_HEADER),
 	   (unsigned long) ht->pg_hdr_free);
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS,
-			   MSGCAT_UTIL_SET_MIGDB,
-			   MIGDB_MSG_FH_PAGE_BITMAP),
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_PAGE_BITMAP),
 	   (unsigned long) ht->bitmap);
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS,
-			   MSGCAT_UTIL_SET_MIGDB,
-			   MIGDB_MSG_FH_PAGE_BITMAP_SIZE), ht->bitmap_size);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_FH_PAGE_BITMAP_SIZE),
+	   ht->bitmap_size);
 }

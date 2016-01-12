@@ -34,8 +34,7 @@
 #include "broker_list.h"
 
 
-static T_LIST *delete_node (T_LIST * head, T_LIST * del_node,
-			    void (*node_dealloc) (T_LIST *));
+static T_LIST *delete_node (T_LIST * head, T_LIST * del_node, void (*node_dealloc) (T_LIST *));
 static int true_func (void *key, void *value);
 static void swap_node (T_LIST * node1, T_LIST * node2);
 
@@ -62,8 +61,7 @@ static void swap_node (T_LIST * node1, T_LIST * node2);
  *  in assigning function.
  */
 int
-link_list_add (T_LIST ** cur_head, void *add_key, void *add_val,
-	       int (*assign_func) (T_LIST *, void *, void *))
+link_list_add (T_LIST ** cur_head, void *add_key, void *add_val, int (*assign_func) (T_LIST *, void *, void *))
 {
   T_LIST *tmp;
   T_LIST *new_node;
@@ -112,8 +110,7 @@ link_list_add (T_LIST ** cur_head, void *add_key, void *add_val,
  * NOTE:
  */
 T_LIST *
-link_list_find (T_LIST * head, void *key, void *val,
-		int (*key_cmp_func) (void *, void *),
+link_list_find (T_LIST * head, void *key, void *val, int (*key_cmp_func) (void *, void *),
 		int (*val_cmp_func) (void *, void *))
 {
   T_LIST *tmp;
@@ -129,8 +126,7 @@ link_list_find (T_LIST * head, void *key, void *val,
   tmp = head;
   do
     {
-      if ((*key_cmp_func) (tmp->key, key)
-	  && (*val_cmp_func) (tmp->value, val))
+      if ((*key_cmp_func) (tmp->key, key) && (*val_cmp_func) (tmp->value, val))
 	return tmp;
       tmp = tmp->next;
     }
@@ -158,9 +154,7 @@ link_list_find (T_LIST * head, void *key, void *val,
  *  this module.
  */
 int
-link_list_node_delete (T_LIST ** cur_head, void *key,
-		       int (*cmp_func) (void *, void *),
-		       void (*node_dealloc) (T_LIST *))
+link_list_node_delete (T_LIST ** cur_head, void *key, int (*cmp_func) (void *, void *), void (*node_dealloc) (T_LIST *))
 {
   T_LIST *tmp;
   T_LIST *del;
@@ -201,10 +195,8 @@ link_list_node_delete (T_LIST ** cur_head, void *key,
  *  this module.
  */
 int
-link_list_node_delete2 (T_LIST ** cur_head, void *key, void *value,
-			int (*key_cmp_func) (void *, void *),
-			int (*val_cmp_func) (void *, void *),
-			void (*node_dealloc) (T_LIST *))
+link_list_node_delete2 (T_LIST ** cur_head, void *key, void *value, int (*key_cmp_func) (void *, void *),
+			int (*val_cmp_func) (void *, void *), void (*node_dealloc) (T_LIST *))
 {
   T_LIST *tmp;
   T_LIST *del;
@@ -286,8 +278,7 @@ link_list_default_compare_func (void *key, void *value)
 
 
 static T_LIST *
-delete_node (T_LIST * head, T_LIST * del_node,
-	     void (*node_dealloc) (T_LIST *))
+delete_node (T_LIST * head, T_LIST * del_node, void (*node_dealloc) (T_LIST *))
 {
   T_LIST *new_head;
   T_LIST *free_node;

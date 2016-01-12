@@ -34,10 +34,8 @@
 #include "file_manager.h"
 #include "oid.h"
 
-extern EH_SEARCH ehash_search (THREAD_ENTRY * thread_p, EHID * ehid,
-			       void *key, OID * value_ptr);
-extern void *ehash_insert (THREAD_ENTRY * thread_p, EHID * ehid, void *key,
-			   OID * value_ptr);
+extern EH_SEARCH ehash_search (THREAD_ENTRY * thread_p, EHID * ehid, void *key, OID * value_ptr);
+extern void *ehash_insert (THREAD_ENTRY * thread_p, EHID * ehid, void *key, OID * value_ptr);
 extern void *ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid, void *key);
 
 /* TODO: check not use */
@@ -46,26 +44,20 @@ extern void *ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid, void *key);
 extern int eh_size (EHID * ehid, int *num_bucket_pages, int *num_dir_pages);
 extern int eh_count (EHID * ehid);
 extern int eh_depth (EHID * ehid);
-extern int eh_capacity (EHID * ehid, int *num_recs,
-			int *avg_reclength, int *num_bucket_pages,
-			int *num_dir_pages, int *dir_depth,
-			int *avg_freespace_per_page,
-			int *avg_overhead_per_page);
+extern int eh_capacity (EHID * ehid, int *num_recs, int *avg_reclength, int *num_bucket_pages, int *num_dir_pages,
+			int *dir_depth, int *avg_freespace_per_page, int *avg_overhead_per_page);
 #endif
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-extern int ehash_estimate_npages_needed (THREAD_ENTRY * thread_p,
-					 int total_nkeys, int avg_key_size);
+extern int ehash_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_nkeys, int avg_key_size);
 #endif
 extern int ehash_map (THREAD_ENTRY * thread_p, EHID * ehid,
-		      int (*fun) (THREAD_ENTRY * thread_p, void *, void *,
-				  void *args), void *args);
+		      int (*fun) (THREAD_ENTRY * thread_p, void *, void *, void *args), void *args);
 
 /* For debugging purposes only */
 extern void ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid);
 #if defined (ENABLE_UNUSED_FUNCTION)
-extern void ehash_print_bucket (THREAD_ENTRY * thread_p, EHID * ehid,
-				int offset);
+extern void ehash_print_bucket (THREAD_ENTRY * thread_p, EHID * ehid, int offset);
 #endif
 
 /* Recovery functions */

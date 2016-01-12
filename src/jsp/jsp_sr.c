@@ -161,16 +161,14 @@ get_java_root_path (char *path)
       return false;
     }
 
-  rc = RegOpenKeyEx (HKEY_LOCAL_MACHINE, REGKEY_JAVA, 0, KEY_QUERY_VALUE,
-		     &hKeyReg);
+  rc = RegOpenKeyEx (HKEY_LOCAL_MACHINE, REGKEY_JAVA, 0, KEY_QUERY_VALUE, &hKeyReg);
   if (rc != ERROR_SUCCESS)
     {
       return false;
     }
 
   len = sizeof (currentVersion);
-  rc = RegQueryValueEx (hKeyReg, "CurrentVersion", 0, &dwType,
-			(LPBYTE) currentVersion, &len);
+  rc = RegQueryValueEx (hKeyReg, "CurrentVersion", 0, &dwType, (LPBYTE) currentVersion, &len);
 
   if (hKeyReg)
     {
@@ -183,10 +181,8 @@ get_java_root_path (char *path)
     }
 
   hKeyReg = NULL;
-  sprintf (regkey_java_current_version, "%s\\%s", REGKEY_JAVA,
-	   currentVersion);
-  rc = RegOpenKeyEx (HKEY_LOCAL_MACHINE, regkey_java_current_version, 0,
-		     KEY_QUERY_VALUE, &hKeyReg);
+  sprintf (regkey_java_current_version, "%s\\%s", REGKEY_JAVA, currentVersion);
+  rc = RegOpenKeyEx (HKEY_LOCAL_MACHINE, regkey_java_current_version, 0, KEY_QUERY_VALUE, &hKeyReg);
 
   if (rc != ERROR_SUCCESS)
     {
@@ -194,8 +190,7 @@ get_java_root_path (char *path)
     }
 
   len = sizeof (java_root_path);
-  rc = RegQueryValueEx (hKeyReg, "JavaHome", 0, &dwType,
-			(LPBYTE) java_root_path, &len);
+  rc = RegQueryValueEx (hKeyReg, "JavaHome", 0, &dwType, (LPBYTE) java_root_path, &len);
 
   if (hKeyReg)
     {
@@ -288,8 +283,7 @@ delay_load_dll_exception_filter (PEXCEPTION_POINTERS pep)
     {
     case VcppException (ERROR_SEVERITY_ERROR, ERROR_MOD_NOT_FOUND):
     case VcppException (ERROR_SEVERITY_ERROR, ERROR_PROC_NOT_FOUND):
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1,
-	      "jvm.dll");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, "jvm.dll");
       break;
 
     default:
@@ -318,27 +312,23 @@ jsp_get_create_java_vm_function_ptr (void)
   libVM_p = dlopen (JVM_LIB_FILE, RTLD_LAZY | RTLD_GLOBAL);
   if (libVM_p == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1,
-	      dlerror ());
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
 
       java_home = getenv ("JAVA_HOME");
       if (java_home != NULL)
 	{
-	  snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home,
-		    JVM_LIB_PATH, JVM_LIB_FILE);
+	  snprintf (jvm_library_path, PATH_MAX - 1, "%s/%s/%s", java_home, JVM_LIB_PATH, JVM_LIB_FILE);
 	  libVM_p = dlopen (jvm_library_path, RTLD_LAZY | RTLD_GLOBAL);
 
 	  if (libVM_p == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
 	      return NULL;
 	    }
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND,
-		  1, dlerror ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
 	  return NULL;
 	}
     }
@@ -388,19 +378,15 @@ jsp_start_server (const char *db_name, const char *path)
   envroot = envvar_root ();
   if (envroot == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,
-	      1, "envvar_root");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "envvar_root");
       return ER_SP_CANNOT_START_JVM;
     }
 
-  snprintf (classpath, sizeof (classpath) - 1,
-	    "-Djava.class.path=%s",
+  snprintf (classpath, sizeof (classpath) - 1, "-Djava.class.path=%s",
 	    envvar_javadir_file (jsp_file_path, PATH_MAX, "jspserver.jar"));
 
-  snprintf (logging_prop, sizeof (logging_prop) - 1,
-	    "-Djava.util.logging.config.file=%s",
-	    envvar_javadir_file (jsp_file_path, PATH_MAX,
-				 "logging.properties"));
+  snprintf (logging_prop, sizeof (logging_prop) - 1, "-Djava.util.logging.config.file=%s",
+	    envvar_javadir_file (jsp_file_path, PATH_MAX, "logging.properties"));
 
   options[0].optionString = classpath;
   options[1].optionString = logging_prop;
@@ -437,8 +423,7 @@ jsp_start_server (const char *db_name, const char *path)
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1,
-	      dlerror ());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_JVM_LIB_NOT_FOUND, 1, dlerror ());
       if (locale != NULL)
 	{
 	  free (locale);
@@ -456,8 +441,7 @@ jsp_start_server (const char *db_name, const char *path)
 
   if (res < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,
-	      1, "JNI_CreateJavaVM");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "JNI_CreateJavaVM");
       jvm = NULL;
       return er_errid ();
     }
@@ -465,64 +449,56 @@ jsp_start_server (const char *db_name, const char *path)
   cls = JVM_FindClass (env_p, "com/cubrid/jsp/Server");
   if (cls == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,
-	      1, "FindClass: " "com/cubrid/jsp/Server");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "FindClass: " "com/cubrid/jsp/Server");
       goto error;
     }
 
   mid = JVM_GetStaticMethodID (env_p, cls, "start", "([Ljava/lang/String;)I");
   if (mid == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,
-	      1, "GetStaticMethodID");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "GetStaticMethodID");
       goto error;
     }
 
   jstr_dbname = JVM_NewStringUTF (env_p, db_name);
   if (jstr_dbname == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,
-	      1, "NewStringUTF");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
       goto error;
     }
 
   jstr_path = JVM_NewStringUTF (env_p, path);
   if (jstr_path == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,
-	      1, "NewStringUTF");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
       goto error;
     }
 
   jstr_version = JVM_NewStringUTF (env_p, rel_build_number ());
   if (jstr_version == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,
-	      1, "NewStringUTF");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
       goto error;
     }
 
   jstr_envroot = JVM_NewStringUTF (env_p, envvar_root ());
   if (jstr_envroot == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,
-	      1, "NewStringUTF");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewStringUTF");
       goto error;
     }
 
   string_cls = JVM_FindClass (env_p, "java/lang/String");
   if (string_cls == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,
-	      1, "FindClass: " "java/lang/String");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "FindClass: " "java/lang/String");
       goto error;
     }
 
   args = JVM_NewObjectArray (env_p, 4, string_cls, NULL);
   if (args == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,
-	      1, "NewObjectArray");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM, 1, "NewObjectArray");
       goto error;
     }
 

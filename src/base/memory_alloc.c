@@ -99,8 +99,7 @@ ansisql_strcmp (const char *s, const char *t)
     }
   else
     {
-      return (*(unsigned const char *) s <
-	      *(unsigned const char *) t) ? -1 : 1;
+      return (*(unsigned const char *) s < *(unsigned const char *) t) ? -1 : 1;
     }
 }
 
@@ -181,10 +180,12 @@ ansisql_strcasecmp (const char *s, const char *t)
 int
 db_alignment (int n)
 {
-  return (n >= (int) sizeof (double)) ? (int) sizeof (double) :
-    (n >= (int) sizeof (void *))? (int) sizeof (void *) :
-    (n >= (int) sizeof (int)) ? (int) sizeof (int) :
-    (n >= (int) sizeof (short)) ? (int) sizeof (short) : 1;
+  return (n >= (int) sizeof (double)) ? (int) sizeof (double) : (n >=
+								 (int) sizeof (void *))? (int) sizeof (void *) : (n >=
+														  (int)
+														  sizeof
+														  (int))
+    ? (int) sizeof (int) : (n >= (int) sizeof (short)) ? (int) sizeof (short) : 1;
 }
 
 /*
@@ -197,7 +198,7 @@ db_alignment (int n)
 int
 db_align_to (int n, int alignment)
 {
-  /*
+  /* 
    * Return the least multiple of 'alignment' that is greater than or
    * equal to 'n'.  'alignment' must be a power of 2.
    */
@@ -395,8 +396,7 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
 }
 #else
 void *
-db_private_alloc_debug (void *thrd, size_t size, bool rc_track,
-			const char *caller_file, int caller_line)
+db_private_alloc_debug (void *thrd, size_t size, bool rc_track, const char *caller_file, int caller_line)
 {
   return NULL;
 }
@@ -405,8 +405,7 @@ db_private_alloc_debug (void *thrd, size_t size, bool rc_track,
 
 #if !defined(NDEBUG)
 void *
-db_private_alloc_debug (void *thrd, size_t size, bool rc_track,
-			const char *caller_file, int caller_line)
+db_private_alloc_debug (void *thrd, size_t size, bool rc_track, const char *caller_file, int caller_line)
 #else /* NDEBUG */
 void *
 db_private_alloc_release (void *thrd, size_t size, bool rc_track)
@@ -427,8 +426,7 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
       return NULL;
     }
 
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id :
-	     css_get_private_heap (NULL));
+  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : css_get_private_heap (NULL));
 
   if (heap_id)
     {
@@ -439,8 +437,7 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
       ptr = malloc (size);
       if (ptr == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	}
     }
 
@@ -449,8 +446,7 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file,
-				 caller_line, 1, ptr, RC_VMEM, MGR_DEF);
+	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file, caller_line, 1, ptr, RC_VMEM, MGR_DEF);
 	}
     }
 #endif /* !NDEBUG */
@@ -492,8 +488,7 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
 	  ptr = malloc (size);
 	  if (ptr == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	    }
 	  return ptr;
 	}
@@ -525,8 +520,7 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
       return NULL;
     }
 
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id :
-	     css_get_private_heap (NULL));
+  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : css_get_private_heap (NULL));
 
   if (heap_id)
     {
@@ -537,8 +531,7 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
       new_ptr = realloc (ptr, size);
       if (new_ptr == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	}
     }
   return new_ptr;
@@ -591,8 +584,7 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
 	  new_ptr = realloc (ptr, size);
 	  if (new_ptr == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	    }
 	  return new_ptr;
 	}
@@ -648,8 +640,7 @@ db_private_free_release (void *thrd, void *ptr, bool rc_track)
 }
 #else
 void
-db_private_free_debug (void *thrd, void *ptr, bool rc_track,
-		       const char *caller_file, int caller_line)
+db_private_free_debug (void *thrd, void *ptr, bool rc_track, const char *caller_file, int caller_line)
 {
   return;
 }
@@ -658,8 +649,7 @@ db_private_free_debug (void *thrd, void *ptr, bool rc_track,
 
 #if !defined(NDEBUG)
 void
-db_private_free_debug (void *thrd, void *ptr, bool rc_track,
-		       const char *caller_file, int caller_line)
+db_private_free_debug (void *thrd, void *ptr, bool rc_track, const char *caller_file, int caller_line)
 #else /* NDEBUG */
 void
 db_private_free_release (void *thrd, void *ptr, bool rc_track)
@@ -677,8 +667,7 @@ db_private_free_release (void *thrd, void *ptr, bool rc_track)
 #if defined (CS_MODE)
   db_ws_free (ptr);
 #elif defined (SERVER_MODE)
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id :
-	     css_get_private_heap (NULL));
+  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : css_get_private_heap (NULL));
 
   if (heap_id)
     {
@@ -694,8 +683,7 @@ db_private_free_release (void *thrd, void *ptr, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file,
-				 caller_line, -1, ptr, RC_VMEM, MGR_DEF);
+	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file, caller_line, -1, ptr, RC_VMEM, MGR_DEF);
 	}
     }
 #endif /* !NDEBUG */
@@ -776,8 +764,7 @@ db_private_realloc_external (void *thrd, void *ptr, size_t size)
  */
 #if !defined(NDEBUG)
 void *
-os_malloc_debug (size_t size, bool rc_track,
-		 const char *caller_file, int caller_line)
+os_malloc_debug (size_t size, bool rc_track, const char *caller_file, int caller_line)
 #else /* NDEBUG */
 void *
 os_malloc_release (size_t size, bool rc_track)
@@ -790,8 +777,7 @@ os_malloc_release (size_t size, bool rc_track)
   ptr = malloc (size);
   if (ptr == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
     }
 
 #if !defined (NDEBUG)
@@ -799,8 +785,7 @@ os_malloc_release (size_t size, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter (NULL, caller_file,
-				 caller_line, 1, ptr, RC_VMEM, MGR_DEF);
+	  thread_rc_track_meter (NULL, caller_file, caller_line, 1, ptr, RC_VMEM, MGR_DEF);
 	}
     }
 #endif /* !NDEBUG */
@@ -816,8 +801,7 @@ os_malloc_release (size_t size, bool rc_track)
  */
 #if !defined(NDEBUG)
 void *
-os_calloc_debug (size_t n, size_t size, bool rc_track,
-		 const char *caller_file, int caller_line)
+os_calloc_debug (size_t n, size_t size, bool rc_track, const char *caller_file, int caller_line)
 #else /* NDEBUG */
 void *
 os_calloc_release (size_t n, size_t size, bool rc_track)
@@ -830,8 +814,7 @@ os_calloc_release (size_t n, size_t size, bool rc_track)
   ptr = calloc (n, size);
   if (ptr == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
     }
 
 #if !defined (NDEBUG)
@@ -839,8 +822,7 @@ os_calloc_release (size_t n, size_t size, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter (NULL, caller_file,
-				 caller_line, 1, ptr, RC_VMEM, MGR_DEF);
+	  thread_rc_track_meter (NULL, caller_file, caller_line, 1, ptr, RC_VMEM, MGR_DEF);
 	}
     }
 #endif /* !NDEBUG */
@@ -856,8 +838,7 @@ os_calloc_release (size_t n, size_t size, bool rc_track)
  */
 #if !defined(NDEBUG)
 void
-os_free_debug (void *ptr, bool rc_track,
-	       const char *caller_file, int caller_line)
+os_free_debug (void *ptr, bool rc_track, const char *caller_file, int caller_line)
 #else /* NDEBUG */
 void
 os_free_release (void *ptr, bool rc_track)
@@ -870,8 +851,7 @@ os_free_release (void *ptr, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter (NULL, caller_file,
-				 caller_line, -1, ptr, RC_VMEM, MGR_DEF);
+	  thread_rc_track_meter (NULL, caller_file, caller_line, -1, ptr, RC_VMEM, MGR_DEF);
 	}
     }
 #endif /* !NDEBUG */

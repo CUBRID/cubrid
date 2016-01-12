@@ -212,9 +212,7 @@
 
 typedef struct mvcc_snapshot MVCC_SNAPSHOT;
 
-typedef bool (*MVCC_SNAPSHOT_FUNC) (THREAD_ENTRY * thread_p,
-				    MVCC_REC_HEADER * rec_header,
-				    MVCC_SNAPSHOT * snapshot);
+typedef bool (*MVCC_SNAPSHOT_FUNC) (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot);
 struct mvcc_snapshot
 {
   MVCCID lowest_active_mvccid;	/* lowest active id */
@@ -242,11 +240,9 @@ struct mvcc_info
   /* MVCC ID - increase with each transaction that modified data */
   MVCCID id;
 
-  /* recent_snapshot_lowest_active_mvccid - the lowest active MVCCID computed
-   * for the most recent snapshot of current transaction. This field help to
-   * know faster whether an MVCCID is active or not. Thus, mvccid older than
-   * this field are not active anymore
-   */
+  /* recent_snapshot_lowest_active_mvccid - the lowest active MVCCID computed for the most recent snapshot of current
+   * transaction. This field help to know faster whether an MVCCID is active or not. Thus, mvccid older than this field 
+   * are not active anymore */
   MVCCID recent_snapshot_lowest_active_mvccid;
 
   MVCCID *sub_ids;		/* MVCC sub-transaction ID array */
@@ -270,34 +266,17 @@ enum mvcc_satisfies_vacuum_result
 {
   VACUUM_RECORD_REMOVE,		/* record can be removed completely */
   VACUUM_RECORD_DELETE_INSID,	/* record insert MVCCID can be removed */
-  VACUUM_RECORD_CANNOT_VACUUM	/* record cannot be vacuumed because:
-				 * 1. it was already vacuumed.
-				 * 2. it was recently inserted.
-				 * 3. it was recently deleted and has no
-				 *    insert MVCCID.
-				 */
+  VACUUM_RECORD_CANNOT_VACUUM	/* record cannot be vacuumed because: 1. it was already vacuumed. 2. it was recently
+				 * inserted. 3. it was recently deleted and has no insert MVCCID. */
 };				/* Heap record satisfies vacuum result */
 
-extern bool mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p,
-				     MVCC_REC_HEADER * rec_header,
-				     MVCC_SNAPSHOT * snapshot);
-extern MVCC_SATISFIES_VACUUM_RESULT mvcc_satisfies_vacuum (THREAD_ENTRY
-							   * thread_p,
-							   MVCC_REC_HEADER
-							   *
-							   rec_header,
-							   MVCCID
-							   oldest_mvccid);
-extern bool mvcc_satisfies_not_vacuumed (THREAD_ENTRY * thread_p,
-					 MVCC_REC_HEADER * rec_header,
+extern bool mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot);
+extern MVCC_SATISFIES_VACUUM_RESULT mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
+							   MVCCID oldest_mvccid);
+extern bool mvcc_satisfies_not_vacuumed (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 					 MVCC_SNAPSHOT * snapshot);
-extern MVCC_SATISFIES_DELETE_RESULT mvcc_satisfies_delete (THREAD_ENTRY
-							   * thread_p,
-							   MVCC_REC_HEADER
-							   * rec_header);
+extern MVCC_SATISFIES_DELETE_RESULT mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header);
 
-extern bool mvcc_satisfies_dirty (THREAD_ENTRY * thread_p,
-				  MVCC_REC_HEADER * rec_header,
-				  MVCC_SNAPSHOT * snapshot);
+extern bool mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot);
 
 #endif /* _MVCC_H_ */

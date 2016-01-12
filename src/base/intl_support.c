@@ -73,8 +73,7 @@
 #define ISO_8859_9_LAST_CP 0x15f
 
 static CONV_CP_TO_BYTES iso8859_9_To_utf8_conv[256];
-static CONV_CP_TO_BYTES utf8_Cp_to_iso_8859_9_conv[ISO_8859_9_LAST_CP -
-						   ISO_8859_9_FIRST_CP + 1];
+static CONV_CP_TO_BYTES utf8_Cp_to_iso_8859_9_conv[ISO_8859_9_LAST_CP - ISO_8859_9_FIRST_CP + 1];
 
 /* conversion from Latin 1 ISO 8859-1 to UTF-8: */
 static CONV_CP_TO_BYTES iso8859_1_To_utf8_conv[256];
@@ -96,25 +95,17 @@ static int intl_is_korean (unsigned char ch);
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /* UTF-8 string manipulations */
-static int intl_tolower_utf8 (const ALPHABET_DATA * a,
-			      unsigned char *s, unsigned char *d,
-			      int length_in_chars, int *d_size);
-static int intl_toupper_utf8 (const ALPHABET_DATA * a,
-			      unsigned char *s, unsigned char *d,
-			      int length_in_chars, int *d_size);
+static int intl_tolower_utf8 (const ALPHABET_DATA * a, unsigned char *s, unsigned char *d, int length_in_chars,
+			      int *d_size);
+static int intl_toupper_utf8 (const ALPHABET_DATA * a, unsigned char *s, unsigned char *d, int length_in_chars,
+			      int *d_size);
 static int intl_count_utf8_bytes (unsigned char *s, int length_in_chars);
-static int intl_char_tolower_utf8 (const ALPHABET_DATA * a,
-				   unsigned char *s, const int size,
-				   unsigned char *d, unsigned char **next);
-static int intl_char_toupper_utf8 (const ALPHABET_DATA * a,
-				   unsigned char *s, const int size,
-				   unsigned char *d, unsigned char **next);
-static int intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
-					unsigned char *str1,
-					unsigned char *str2,
-					const int size_str1,
-					const int size_str2,
-					unsigned int cp1, unsigned int cp2,
+static int intl_char_tolower_utf8 (const ALPHABET_DATA * a, unsigned char *s, const int size, unsigned char *d,
+				   unsigned char **next);
+static int intl_char_toupper_utf8 (const ALPHABET_DATA * a, unsigned char *s, const int size, unsigned char *d,
+				   unsigned char **next);
+static int intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet, unsigned char *str1, unsigned char *str2,
+					const int size_str1, const int size_str2, unsigned int cp1, unsigned int cp2,
 					int *skip_size1, int *skip_size2);
 static void intl_init_conv_iso8859_9_to_utf8 (void);
 static void intl_init_conv_iso8859_1_to_utf8 (void);
@@ -165,9 +156,7 @@ intl_mbs_chr (const char *mbs, wchar_t wc)
       return (char *) (strchr (mbs, (int) wc));
     }
 
-  for (nbytes = 0;
-       (nbytes = mbtowc (&cur_wc, mbs, MB_LEN_MAX)) > 0
-       && cur_wc != L'\0' && cur_wc != wc; mbs += nbytes)
+  for (nbytes = 0; (nbytes = mbtowc (&cur_wc, mbs, MB_LEN_MAX)) > 0 && cur_wc != L'\0' && cur_wc != wc; mbs += nbytes)
     {
       continue;
     }
@@ -201,9 +190,7 @@ intl_mbs_len (const char *mbs)
       return strlen (mbs);
     }
 
-  for (num_of_chars = 0;
-       (clen = mblen (mbs, MB_LEN_MAX)) > 0 && *mbs;
-       mbs += clen, num_of_chars++)
+  for (num_of_chars = 0; (clen = mblen (mbs, MB_LEN_MAX)) > 0 && *mbs; mbs += clen, num_of_chars++)
     {
       continue;
     }
@@ -248,9 +235,7 @@ intl_mbs_nth (const char *mbs, size_t n)
       return &mbs[n];
     }
 
-  for (num_of_chars = 0, clen = 0;
-       num_of_chars < n
-       && (clen = mblen (mbs, MB_LEN_MAX)) > 0 && *mbs;
+  for (num_of_chars = 0, clen = 0; num_of_chars < n && (clen = mblen (mbs, MB_LEN_MAX)) > 0 && *mbs;
        mbs += clen, num_of_chars++)
     {
       continue;
@@ -292,9 +277,7 @@ intl_mbs_spn (const char *mbs, const wchar_t * chars)
       return (int) strspn (mbs, (const char *) chars);
     }
 
-  for (size = 0;
-       (clen = mbtowc (&wc, mbs, MB_LEN_MAX)) > 0 && *mbs
-       && wcschr (chars, wc); mbs += clen, size += clen)
+  for (size = 0; (clen = mbtowc (&wc, mbs, MB_LEN_MAX)) > 0 && *mbs && wcschr (chars, wc); mbs += clen, size += clen)
     {
       continue;
     }
@@ -386,10 +369,8 @@ intl_mbs_casecmp (const char *mbs1, const char *mbs2)
 #endif
     }
 
-  for (mb1_len = mbtowc (&wc1, mbs1, MB_LEN_MAX),
-       mb2_len = mbtowc (&wc2, mbs2, MB_LEN_MAX);
-       mb1_len > 0 && mb2_len > 0 && wc1 && wc2
-       && !(towlower (wc1) - towlower (wc2));)
+  for (mb1_len = mbtowc (&wc1, mbs1, MB_LEN_MAX), mb2_len = mbtowc (&wc2, mbs2, MB_LEN_MAX);
+       mb1_len > 0 && mb2_len > 0 && wc1 && wc2 && !(towlower (wc1) - towlower (wc2));)
     {
       mbs1 += mb1_len;
       mbs2 += mb2_len;
@@ -420,8 +401,7 @@ intl_mbs_cmp (const char *mbs1, const char *mbs2)
       return strcmp (mbs1, mbs2);
     }
 
-  for (mb1_len = mbtowc (&wc1, mbs1, MB_LEN_MAX),
-       mb2_len = mbtowc (&wc2, mbs2, MB_LEN_MAX);
+  for (mb1_len = mbtowc (&wc1, mbs1, MB_LEN_MAX), mb2_len = mbtowc (&wc2, mbs2, MB_LEN_MAX);
        mb1_len > 0 && mb2_len > 0 && wc1 && wc2 && !(wc1 - wc2);)
     {
       mbs1 += mb1_len;
@@ -473,11 +453,9 @@ intl_mbs_ncasecmp (const char *mbs1, const char *mbs2, size_t n)
 #endif
     }
 
-  for (num_of_chars = 1,
-       mb1_len = mbtowc (&wc1, mbs1, MB_LEN_MAX),
-       mb2_len = mbtowc (&wc2, mbs2, MB_LEN_MAX);
-       mb1_len > 0 && mb2_len > 0 && wc1 && wc2 && num_of_chars < n
-       && !(towlower (wc1) - towlower (wc2)); num_of_chars++)
+  for (num_of_chars = 1, mb1_len = mbtowc (&wc1, mbs1, MB_LEN_MAX), mb2_len = mbtowc (&wc2, mbs2, MB_LEN_MAX);
+       mb1_len > 0 && mb2_len > 0 && wc1 && wc2 && num_of_chars < n && !(towlower (wc1) - towlower (wc2));
+       num_of_chars++)
     {
       mbs1 += mb1_len;
       mbs2 += mb2_len;
@@ -531,8 +509,7 @@ intl_mbs_ncpy (char *mbs1, const char *mbs2, size_t n)
       return mbs1;
     }
 
-  for (num_of_bytes = 0, clen = mblen (mbs2, MB_LEN_MAX), dest = mbs1;
-       clen > 0 && (num_of_bytes + clen) <= n - 1;
+  for (num_of_bytes = 0, clen = mblen (mbs2, MB_LEN_MAX), dest = mbs1; clen > 0 && (num_of_bytes + clen) <= n - 1;
        clen = mblen (mbs2, MB_LEN_MAX))
     {
       /* copy the next multi-byte char */
@@ -590,10 +567,8 @@ intl_mbs_lower (const char *mbs1, char *mbs2)
 
   if (length_in_bytes)
     {
-      intl_char_count ((unsigned char *) mbs1, length_in_bytes,
-		       lang_charset (), &char_count);
-      intl_lower_string ((unsigned char *) mbs1, (unsigned char *) mbs2,
-			 char_count, lang_charset ());
+      intl_char_count ((unsigned char *) mbs1, length_in_bytes, lang_charset (), &char_count);
+      intl_lower_string ((unsigned char *) mbs1, (unsigned char *) mbs2, char_count, lang_charset ());
       mbs2[length_in_bytes] = '\0';
     }
   else
@@ -645,10 +620,8 @@ intl_mbs_nlower (char *dest, const char *src, const int max_len)
 
   if (length_in_bytes > 0)
     {
-      intl_char_count ((unsigned char *) src, length_in_bytes,
-		       lang_charset (), &char_count);
-      intl_lower_string ((unsigned char *) src, (unsigned char *) dest,
-			 char_count, lang_charset ());
+      intl_char_count ((unsigned char *) src, length_in_bytes, lang_charset (), &char_count);
+      intl_lower_string ((unsigned char *) src, (unsigned char *) dest, char_count, lang_charset ());
       dest[length_in_bytes] = '\0';
     }
   else
@@ -689,10 +662,8 @@ intl_mbs_upper (const char *mbs1, char *mbs2)
 
   if (length_in_bytes)
     {
-      intl_char_count ((unsigned char *) mbs1, length_in_bytes,
-		       lang_charset (), &char_count);
-      intl_upper_string ((unsigned char *) mbs1, (unsigned char *) mbs2,
-			 char_count, lang_charset ());
+      intl_char_count ((unsigned char *) mbs1, length_in_bytes, lang_charset (), &char_count);
+      intl_upper_string ((unsigned char *) mbs1, (unsigned char *) mbs2, char_count, lang_charset ());
       mbs2[length_in_bytes] = '\0';
     }
   else
@@ -830,8 +801,7 @@ intl_nextchar_euc (unsigned char *s, int *curr_char_length)
  *   prev_char_length(out): length of the previous character
  */
 unsigned char *
-intl_prevchar_euc (unsigned char *s, const unsigned char *s_start,
-		   int *prev_char_length)
+intl_prevchar_euc (unsigned char *s, const unsigned char *s_start, int *prev_char_length)
 {
   assert (s != NULL);
   assert (s > s_start);
@@ -950,8 +920,7 @@ intl_count_euc_bytes (unsigned char *s, int length_in_chars)
 
   assert (s != NULL);
 
-  for (char_count = 0, byte_count = 0; char_count < length_in_chars;
-       char_count++)
+  for (char_count = 0, byte_count = 0; char_count < length_in_chars; char_count++)
     {
       s = intl_nextchar_euc (s, &char_width);
       byte_count += char_width;
@@ -977,8 +946,7 @@ intl_count_euc_bytes (unsigned char *s, int length_in_chars)
  * Note: Currently, codeset conversion is not supported
  */
 int
-intl_convert_charset (unsigned char *src, int length_in_chars,
-		      INTL_CODESET src_codeset, unsigned char *dest,
+intl_convert_charset (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, unsigned char *dest,
 		      INTL_CODESET dest_codeset, int *unconverted)
 {
   int error_code = NO_ERROR;
@@ -1008,8 +976,7 @@ intl_convert_charset (unsigned char *src, int length_in_chars,
  * Note: Embedded NULL characters are counted.
  */
 int
-intl_char_count (unsigned char *src, int length_in_bytes,
-		 INTL_CODESET src_codeset, int *char_count)
+intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count)
 {
   switch (src_codeset)
     {
@@ -1048,8 +1015,7 @@ intl_char_count (unsigned char *src, int length_in_bytes,
  * Note: Embedded NULL's are counted as characters.
  */
 int
-intl_char_size (unsigned char *src, int length_in_chars,
-		INTL_CODESET src_codeset, int *byte_count)
+intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count)
 {
   switch (src_codeset)
     {
@@ -1093,8 +1059,7 @@ intl_char_size (unsigned char *src, int length_in_chars,
  *	 This function is used in context of some specific string functions.
  */
 int
-intl_char_size_pseudo_kor (unsigned char *src, int length_in_chars,
-			   INTL_CODESET src_codeset, int *byte_count)
+intl_char_size_pseudo_kor (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count)
 {
   switch (src_codeset)
     {
@@ -1156,8 +1121,7 @@ intl_char_size_pseudo_kor (unsigned char *src, int length_in_chars,
  *   prev_char_size(out) : size of previous character
  */
 unsigned char *
-intl_prev_char (unsigned char *s, const unsigned char *s_start,
-		INTL_CODESET codeset, int *prev_char_size)
+intl_prev_char (unsigned char *s, const unsigned char *s_start, INTL_CODESET codeset, int *prev_char_size)
 {
   assert (s > s_start);
 
@@ -1196,16 +1160,14 @@ intl_prev_char (unsigned char *s, const unsigned char *s_start,
  *	 This function is used in context of some specific string functions.
  */
 unsigned char *
-intl_prev_char_pseudo_kor (unsigned char *s, const unsigned char *s_start,
-			   INTL_CODESET codeset, int *prev_char_size)
+intl_prev_char_pseudo_kor (unsigned char *s, const unsigned char *s_start, INTL_CODESET codeset, int *prev_char_size)
 {
   assert (s > s_start);
 
   switch (codeset)
     {
     case INTL_CODESET_ISO88591:
-      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
-	  && IS_PSEUDO_KOREAN (*(s - 1)))
+      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE) && IS_PSEUDO_KOREAN (*(s - 1)))
 	{
 	  if (s - 2 >= s_start && *(s - 2) == SS3)
 	    {
@@ -1248,8 +1210,7 @@ intl_prev_char_pseudo_kor (unsigned char *s, const unsigned char *s_start,
  *	 curr_char_length is set to the byte length of the current character.
  */
 unsigned char *
-intl_next_char (unsigned char *s, INTL_CODESET codeset,
-		int *current_char_size)
+intl_next_char (unsigned char *s, INTL_CODESET codeset, int *current_char_size)
 {
   switch (codeset)
     {
@@ -1286,14 +1247,12 @@ intl_next_char (unsigned char *s, INTL_CODESET codeset,
  *	 where korean characters are expected to be handled.
  */
 unsigned char *
-intl_next_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset,
-			   int *current_char_size)
+intl_next_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset, int *current_char_size)
 {
   switch (codeset)
     {
     case INTL_CODESET_ISO88591:
-      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
-	  && IS_PSEUDO_KOREAN (*s))
+      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE) && IS_PSEUDO_KOREAN (*s))
 	{
 	  if (*s == SS3)
 	    {
@@ -1337,8 +1296,7 @@ intl_next_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset,
  *
  */
 int
-intl_cmp_char (const unsigned char *s1, const unsigned char *s2,
-	       INTL_CODESET codeset, int *char_size)
+intl_cmp_char (const unsigned char *s1, const unsigned char *s2, INTL_CODESET codeset, int *char_size)
 {
 
   switch (codeset)
@@ -1379,14 +1337,12 @@ intl_cmp_char (const unsigned char *s1, const unsigned char *s2,
  *
  */
 int
-intl_cmp_char_pseudo_kor (unsigned char *s1, unsigned char *s2,
-			  INTL_CODESET codeset, int *char_size)
+intl_cmp_char_pseudo_kor (unsigned char *s1, unsigned char *s2, INTL_CODESET codeset, int *char_size)
 {
   switch (codeset)
     {
     case INTL_CODESET_ISO88591:
-      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
-	  && IS_PSEUDO_KOREAN (*s1))
+      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE) && IS_PSEUDO_KOREAN (*s1))
 	{
 	  if (*s1 == SS3)
 	    {
@@ -1435,8 +1391,7 @@ intl_kor_cmp (unsigned char *s1, unsigned char *s2, int size)
   int r;
   while (size > 0)
     {
-      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
-	  && IS_PSEUDO_KOREAN (*s1) && IS_PSEUDO_KOREAN (*s2))
+      if (!prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE) && IS_PSEUDO_KOREAN (*s1) && IS_PSEUDO_KOREAN (*s2))
 	{
 	  r = memcmp (s1, s2, 2);
 	  if (r == 0)
@@ -1450,9 +1405,7 @@ intl_kor_cmp (unsigned char *s1, unsigned char *s2, int size)
 	      return r;
 	    }
 	}
-      else
-	if ((prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE)
-	     || !IS_PSEUDO_KOREAN (*s1)) && *s1 == *s2)
+      else if ((prm_get_bool_value (PRM_ID_SINGLE_BYTE_COMPARE) || !IS_PSEUDO_KOREAN (*s1)) && *s1 == *s2)
 	{
 	  s1++;
 	  s2++;
@@ -1483,8 +1436,7 @@ intl_kor_cmp (unsigned char *s1, unsigned char *s2, int size)
  *
  */
 void
-intl_pad_char (const INTL_CODESET codeset, unsigned char *pad_char,
-	       int *pad_size)
+intl_pad_char (const INTL_CODESET codeset, unsigned char *pad_char, int *pad_size)
 {
   switch (codeset)
     {
@@ -1556,8 +1508,7 @@ intl_pad_size (INTL_CODESET codeset)
  *   src_length(in): length of the string measured in characters
  */
 int
-intl_upper_string_size (const void *alphabet, unsigned char *src,
-			int src_size, int src_length)
+intl_upper_string_size (const void *alphabet, unsigned char *src, int src_size, int src_length)
 {
   int char_count;
   int req_size = src_size;
@@ -1579,11 +1530,9 @@ intl_upper_string_size (const void *alphabet, unsigned char *src,
 	unsigned char *next = NULL;
 
 	req_size = 0;
-	for (char_count = 0; char_count < src_length && src_size > 0;
-	     char_count++)
+	for (char_count = 0; char_count < src_length && src_size > 0; char_count++)
 	  {
-	    req_size += intl_char_toupper_utf8 (alphabet, src, src_size,
-						upper, &next);
+	    req_size += intl_char_toupper_utf8 (alphabet, src, src_size, upper, &next);
 	    src_size -= (next - src);
 	    src = next;
 	  }
@@ -1608,8 +1557,7 @@ intl_upper_string_size (const void *alphabet, unsigned char *src,
  *   length_in_chars(in): length of the string measured in characters
  */
 int
-intl_upper_string (const void *alphabet, unsigned char *src,
-		   unsigned char *dst, int length_in_chars)
+intl_upper_string (const void *alphabet, unsigned char *src, unsigned char *dst, int length_in_chars)
 {
   int char_count = 0;
 
@@ -1637,8 +1585,7 @@ intl_upper_string (const void *alphabet, unsigned char *src,
     case INTL_CODESET_KSC5601_EUC:
       {
 	int byte_count;
-	intl_char_size (src, length_in_chars, INTL_CODESET_KSC5601_EUC,
-			&byte_count);
+	intl_char_size (src, length_in_chars, INTL_CODESET_KSC5601_EUC, &byte_count);
 	if (byte_count > 0)
 	  {
 	    memcpy (dst, src, byte_count);
@@ -1650,8 +1597,7 @@ intl_upper_string (const void *alphabet, unsigned char *src,
     case INTL_CODESET_UTF8:
       {
 	int dummy_size;
-	char_count = intl_toupper_utf8 (alphabet, src, dst, length_in_chars,
-					&dummy_size);
+	char_count = intl_toupper_utf8 (alphabet, src, dst, length_in_chars, &dummy_size);
       }
       break;
 
@@ -1673,8 +1619,7 @@ intl_upper_string (const void *alphabet, unsigned char *src,
  *   src_length(in): length of the string measured in characters
  */
 int
-intl_lower_string_size (const void *alphabet, unsigned char *src,
-			int src_size, int src_length)
+intl_lower_string_size (const void *alphabet, unsigned char *src, int src_size, int src_length)
 {
   int char_count;
   int req_size = src_size;
@@ -1696,11 +1641,9 @@ intl_lower_string_size (const void *alphabet, unsigned char *src,
 	unsigned char *next;
 
 	req_size = 0;
-	for (char_count = 0; char_count < src_length && src_size > 0;
-	     char_count++)
+	for (char_count = 0; char_count < src_length && src_size > 0; char_count++)
 	  {
-	    req_size += intl_char_tolower_utf8 (alphabet, src, src_size,
-						lower, &next);
+	    req_size += intl_char_tolower_utf8 (alphabet, src, src_size, lower, &next);
 	    src_size -= (next - src);
 	    src = next;
 	  }
@@ -1725,8 +1668,7 @@ intl_lower_string_size (const void *alphabet, unsigned char *src,
  *   length_in_chars(in): length of the string measured in characters
  */
 int
-intl_lower_string (const void *alphabet, unsigned char *src,
-		   unsigned char *dst, int length_in_chars)
+intl_lower_string (const void *alphabet, unsigned char *src, unsigned char *dst, int length_in_chars)
 {
   int char_count = 0;
 
@@ -1753,8 +1695,7 @@ intl_lower_string (const void *alphabet, unsigned char *src,
     case INTL_CODESET_KSC5601_EUC:
       {
 	int byte_count;
-	intl_char_size (src, length_in_chars, INTL_CODESET_KSC5601_EUC,
-			&byte_count);
+	intl_char_size (src, length_in_chars, INTL_CODESET_KSC5601_EUC, &byte_count);
 	if (byte_count > 0)
 	  {
 	    memcpy (dst, src, byte_count);
@@ -1766,8 +1707,7 @@ intl_lower_string (const void *alphabet, unsigned char *src,
     case INTL_CODESET_UTF8:
       {
 	int dummy_size;
-	char_count = intl_tolower_utf8 (alphabet, src, dst, length_in_chars,
-					&dummy_size);
+	char_count = intl_tolower_utf8 (alphabet, src, dst, length_in_chars, &dummy_size);
       }
       break;
 
@@ -1854,8 +1794,7 @@ intl_zone (int category)
  *   codeset(in): enumeration of source string
  */
 int
-intl_reverse_string (unsigned char *src, unsigned char *dst,
-		     int length_in_chars, int size_in_bytes,
+intl_reverse_string (unsigned char *src, unsigned char *dst, int length_in_chars, int size_in_bytes,
 		     INTL_CODESET codeset)
 {
   unsigned char *end, *s, *d;
@@ -1953,8 +1892,7 @@ intl_is_max_bound_chr (INTL_CODESET codeset, const unsigned char *chr)
   switch (codeset)
     {
     case INTL_CODESET_UTF8:
-      if ((*chr == 0xf4) && (*(chr + 1) == 0x8f) &&
-	  (*(chr + 2) == 0xbf) && (*(chr + 3) == 0xbf))
+      if ((*chr == 0xf4) && (*(chr + 1) == 0x8f) && (*(chr + 2) == 0xbf) && (*(chr + 3) == 0xbf))
 	{
 	  return true;
 	}
@@ -2107,8 +2045,7 @@ intl_nextchar_utf8 (unsigned char *s, int *curr_char_length)
  *   prev_char_length(out): length of the previous character
  */
 unsigned char *
-intl_prevchar_utf8 (unsigned char *s, const unsigned char *s_start,
-		    int *prev_char_length)
+intl_prevchar_utf8 (unsigned char *s, const unsigned char *s_start, int *prev_char_length)
 {
   int l = 0;
 
@@ -2136,8 +2073,7 @@ intl_prevchar_utf8 (unsigned char *s, const unsigned char *s_start,
  *   d_size(out): size in bytes of destination
  */
 static int
-intl_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
-		   unsigned char *d, int length_in_chars, int *d_size)
+intl_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, unsigned char *d, int length_in_chars, int *d_size)
 {
   int char_count, size;
   int s_size;
@@ -2177,8 +2113,7 @@ intl_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
  *   d_size(out): size in bytes of destination
  */
 static int
-intl_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
-		   unsigned char *d, int length_in_chars, int *d_size)
+intl_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, unsigned char *d, int length_in_chars, int *d_size)
 {
   int char_count, size;
   int s_size;
@@ -2258,8 +2193,7 @@ intl_count_utf8_bytes (unsigned char *s, int length_in_chars)
 
   assert (s != NULL);
 
-  for (char_count = 0, byte_count = 0; char_count < length_in_chars;
-       char_count++)
+  for (char_count = 0, byte_count = 0; char_count < length_in_chars; char_count++)
     {
       s = intl_nextchar_utf8 (s, &char_width);
       byte_count += char_width;
@@ -2281,8 +2215,7 @@ intl_count_utf8_bytes (unsigned char *s, int length_in_chars)
  *	   UTF-8 character
  */
 static int
-intl_char_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
-			const int size, unsigned char *d,
+intl_char_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, const int size, unsigned char *d,
 			unsigned char **next)
 {
   unsigned int cp = intl_utf8_to_cp (s, size, next);
@@ -2304,9 +2237,7 @@ intl_char_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
 	  int bytes;
 	  int total_bytes = 0;
 
-	  assert (alphabet->lower_multiplier > 1 &&
-		  alphabet->lower_multiplier <=
-		  INTL_CASING_EXPANSION_MULTIPLIER);
+	  assert (alphabet->lower_multiplier > 1 && alphabet->lower_multiplier <= INTL_CASING_EXPANSION_MULTIPLIER);
 
 	  case_p = &(alphabet->lower_cp[cp * alphabet->lower_multiplier]);
 
@@ -2325,8 +2256,7 @@ intl_char_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
     }
   else if (cp == 0xffffffff)
     {
-      /* this may happen when UTF-8 text validation is disabled (by default)
-       */
+      /* this may happen when UTF-8 text validation is disabled (by default) */
       *d = *s;
       return 1;
     }
@@ -2347,8 +2277,7 @@ intl_char_tolower_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
  *	   UTF-8 character
  */
 static int
-intl_char_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
-			const int size, unsigned char *d,
+intl_char_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s, const int size, unsigned char *d,
 			unsigned char **next)
 {
   unsigned int cp = intl_utf8_to_cp (s, size, next);
@@ -2370,9 +2299,7 @@ intl_char_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
 	  int bytes;
 	  int total_bytes = 0;
 
-	  assert (alphabet->upper_multiplier > 1 &&
-		  alphabet->upper_multiplier <=
-		  INTL_CASING_EXPANSION_MULTIPLIER);
+	  assert (alphabet->upper_multiplier > 1 && alphabet->upper_multiplier <= INTL_CASING_EXPANSION_MULTIPLIER);
 
 	  case_p = &(alphabet->upper_cp[cp * alphabet->upper_multiplier]);
 	  do
@@ -2390,8 +2317,7 @@ intl_char_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
     }
   else if (cp == 0xffffffff)
     {
-      /* this may happen when UTF-8 text validation is disabled (by default)
-       */
+      /* this may happen when UTF-8 text validation is disabled (by default) */
       *d = *s;
       return 1;
     }
@@ -2409,8 +2335,7 @@ intl_char_toupper_utf8 (const ALPHABET_DATA * alphabet, unsigned char *s,
  *
  */
 int
-intl_identifier_casecmp_w_size (const INTL_LANG lang_id, unsigned char *str1,
-				unsigned char *str2, const int size_str1,
+intl_identifier_casecmp_w_size (const INTL_LANG lang_id, unsigned char *str1, unsigned char *str2, const int size_str1,
 				const int size_str2)
 {
 #if INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER <= 1
@@ -2427,8 +2352,7 @@ intl_identifier_casecmp_w_size (const INTL_LANG lang_id, unsigned char *str1,
 	unsigned char *str1_end, *str2_end;
 	unsigned char *dummy;
 	unsigned int cp1, cp2;
-	const LANG_LOCALE_DATA *loc =
-	  lang_get_specific_locale (lang_id, INTL_CODESET_UTF8);
+	const LANG_LOCALE_DATA *loc = lang_get_specific_locale (lang_id, INTL_CODESET_UTF8);
 	const ALPHABET_DATA *alphabet;
 
 	assert (loc != NULL);
@@ -2447,10 +2371,8 @@ intl_identifier_casecmp_w_size (const INTL_LANG lang_id, unsigned char *str1,
 	    cp2 = intl_utf8_to_cp (str2, str2_end - str2, &dummy);
 
 	    res =
-	      intl_strcasecmp_utf8_one_cp (alphabet, str1, str2,
-					   str1_end - str1, str2_end - str2,
-					   cp1, cp2, &skip_size1,
-					   &skip_size2);
+	      intl_strcasecmp_utf8_one_cp (alphabet, str1, str2, str1_end - str1, str2_end - str2, cp1, cp2,
+					   &skip_size1, &skip_size2);
 
 	    if (res != 0)
 	      {
@@ -2522,10 +2444,8 @@ intl_identifier_casecmp_w_size (const INTL_LANG lang_id, unsigned char *str1,
  *	   it takes into account case expansion (length in chars may differ).
  */
 int
-intl_case_match_tok (const INTL_LANG lang_id, const INTL_CODESET codeset,
-		     unsigned char *tok, unsigned char *src,
-		     const int size_tok, const int size_src,
-		     int *matched_size_src)
+intl_case_match_tok (const INTL_LANG lang_id, const INTL_CODESET codeset, unsigned char *tok, unsigned char *src,
+		     const int size_tok, const int size_src, int *matched_size_src)
 {
   assert (tok != NULL);
   assert (src != NULL);
@@ -2544,8 +2464,7 @@ intl_case_match_tok (const INTL_LANG lang_id, const INTL_CODESET codeset,
 	unsigned char *tok_end, *src_end;
 	unsigned char *dummy;
 	unsigned int cp1, cp2;
-	const LANG_LOCALE_DATA *loc =
-	  lang_get_specific_locale (lang_id, INTL_CODESET_UTF8);
+	const LANG_LOCALE_DATA *loc = lang_get_specific_locale (lang_id, INTL_CODESET_UTF8);
 	const ALPHABET_DATA *alphabet;
 
 	assert (loc != NULL);
@@ -2564,9 +2483,7 @@ intl_case_match_tok (const INTL_LANG lang_id, const INTL_CODESET codeset,
 	    cp2 = intl_utf8_to_cp (src, src_end - src, &dummy);
 
 	    res =
-	      intl_strcasecmp_utf8_one_cp (alphabet, tok, src,
-					   tok_end - tok, src_end - src,
-					   cp1, cp2, &skip_size_tok,
+	      intl_strcasecmp_utf8_one_cp (alphabet, tok, src, tok_end - tok, src_end - src, cp1, cp2, &skip_size_tok,
 					   &skip_size_src);
 
 	    if (res != 0)
@@ -2643,10 +2560,8 @@ intl_case_match_tok (const INTL_LANG lang_id, const INTL_CODESET codeset,
  *	   (returned value is zero).
  */
 static int
-intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
-			     unsigned char *str1, unsigned char *str2,
-			     const int size_str1, const int size_str2,
-			     unsigned int cp1, unsigned int cp2,
+intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet, unsigned char *str1, unsigned char *str2,
+			     const int size_str1, const int size_str2, unsigned int cp1, unsigned int cp2,
 			     int *skip_size1, int *skip_size2)
 {
   int alpha_cnt;
@@ -2699,7 +2614,7 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
       return 0;
     }
 
-  /*
+  /* 
    * Multipliers can be either 1 or 2, as imposed by the LDML parsing code.
    * Currently, alphabets with both multipliers equal to 2 are not supported
    * for case sensitive comparisons.
@@ -2719,9 +2634,7 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
   use_original_str1 = true;
   if (cp1 < (unsigned int) alpha_cnt)
     {
-      memcpy (l_array_1,
-	      &(casing_arr[cp1 * casing_multiplier]),
-	      casing_multiplier * sizeof (unsigned int));
+      memcpy (l_array_1, &(casing_arr[cp1 * casing_multiplier]), casing_multiplier * sizeof (unsigned int));
 
       if (cp1 != l_array_1[0])
 	{
@@ -2738,9 +2651,7 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
   use_original_str2 = true;
   if (cp2 < (unsigned int) alpha_cnt)
     {
-      memcpy (l_array_2,
-	      &(casing_arr[cp2 * casing_multiplier]),
-	      casing_multiplier * sizeof (unsigned int));
+      memcpy (l_array_2, &(casing_arr[cp2 * casing_multiplier]), casing_multiplier * sizeof (unsigned int));
 
       if (cp2 != l_array_2[0])
 	{
@@ -2756,14 +2667,12 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet,
 
   if (use_original_str1)
     {
-      (void) intl_utf8_to_cp_list (str1, size_str1, l_array_1,
-				   casing_multiplier, &l_count_1);
+      (void) intl_utf8_to_cp_list (str1, size_str1, l_array_1, casing_multiplier, &l_count_1);
     }
 
   if (use_original_str2)
     {
-      (void) intl_utf8_to_cp_list (str2, size_str2, l_array_2,
-				   casing_multiplier, &l_count_2);
+      (void) intl_utf8_to_cp_list (str2, size_str2, l_array_2, casing_multiplier, &l_count_2);
     }
 
   l_count = MIN (l_count_1, l_count_2);
@@ -2831,8 +2740,7 @@ intl_identifier_casecmp (const char *str1, const char *str2)
   str1_size = strlen (str1);
   str2_size = strlen (str2);
 
-  return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) str1,
-					 (unsigned char *) str2, str1_size,
+  return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) str1, (unsigned char *) str2, str1_size,
 					 str2_size);
 }
 
@@ -2850,13 +2758,10 @@ intl_identifier_ncasecmp (const char *str1, const char *str2, const int len)
 {
   int str1_size, str2_size;
 
-  (void) intl_char_size ((unsigned char *) str1, len, lang_charset (),
-			 &str1_size);
-  (void) intl_char_size ((unsigned char *) str2, len, lang_charset (),
-			 &str2_size);
+  (void) intl_char_size ((unsigned char *) str1, len, lang_charset (), &str1_size);
+  (void) intl_char_size ((unsigned char *) str2, len, lang_charset (), &str2_size);
 
-  return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) str1,
-					 (unsigned char *) str2, str1_size,
+  return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) str1, (unsigned char *) str2, str1_size,
 					 str2_size);
 }
 
@@ -2910,8 +2815,7 @@ intl_identifier_namecmp (const char *str1, const char *str2)
       str2_size -= 2;
     }
 
-  return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) cp1,
-					 (unsigned char *) cp2, str1_size,
+  return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) cp1, (unsigned char *) cp2, str1_size,
 					 str2_size);
 }
 
@@ -2956,11 +2860,9 @@ intl_identifier_lower_string_size (const char *src)
 	    if (cp < (unsigned int) (alphabet->l_count))
 	      {
 		int lower_cnt;
-		unsigned int *lower_cp =
-		  &(alphabet->lower_cp[cp * alphabet->lower_multiplier]);
+		unsigned int *lower_cp = &(alphabet->lower_cp[cp * alphabet->lower_multiplier]);
 
-		for (lower_cnt = 0; lower_cnt < alphabet->lower_multiplier &&
-		     *lower_cp != 0; lower_cnt++, lower_cp++)
+		for (lower_cnt = 0; lower_cnt < alphabet->lower_multiplier && *lower_cp != 0; lower_cnt++, lower_cp++)
 		  {
 		    src_lower_size += intl_cp_to_utf8 (*lower_cp, lower);
 		  }
@@ -3017,19 +2919,16 @@ intl_identifier_lower (const char *src, char *dst)
       {
 	const LANG_LOCALE_DATA *locale = lang_locale ();
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
-	length_in_chars =
-	  intl_count_utf8_chars ((unsigned char *) src, length_in_bytes);
-	(void) intl_tolower_utf8 (alphabet, (unsigned char *) src,
-				  (unsigned char *) dst,
-				  length_in_chars, &d_size);
+	length_in_chars = intl_count_utf8_chars ((unsigned char *) src, length_in_bytes);
+	(void) intl_tolower_utf8 (alphabet, (unsigned char *) src, (unsigned char *) dst, length_in_chars, &d_size);
 	d = (unsigned char *) dst + d_size;
       }
       break;
 
     case INTL_CODESET_ISO88591:
       {
-	for (d = (unsigned char *) dst, s = (unsigned char *) src;
-	     d < (unsigned char *) dst + length_in_bytes; d++, s++)
+	for (d = (unsigned char *) dst, s = (unsigned char *) src; d < (unsigned char *) dst + length_in_bytes;
+	     d++, s++)
 	  {
 	    *d = char_tolower_iso8859 (*s);
 	  }
@@ -3039,8 +2938,8 @@ intl_identifier_lower (const char *src, char *dst)
     case INTL_CODESET_KSC5601_EUC:
     default:
       {
-	for (d = (unsigned char *) dst, s = (unsigned char *) src;
-	     d < (unsigned char *) dst + length_in_bytes; d++, s++)
+	for (d = (unsigned char *) dst, s = (unsigned char *) src; d < (unsigned char *) dst + length_in_bytes;
+	     d++, s++)
 	  {
 	    *d = char_tolower (*s);
 	  }
@@ -3094,11 +2993,9 @@ intl_identifier_upper_string_size (const char *src)
 	    if (cp < (unsigned int) (alphabet->l_count))
 	      {
 		int upper_cnt;
-		unsigned int *upper_cp =
-		  &(alphabet->upper_cp[cp * alphabet->upper_multiplier]);
+		unsigned int *upper_cp = &(alphabet->upper_cp[cp * alphabet->upper_multiplier]);
 
-		for (upper_cnt = 0; upper_cnt < alphabet->upper_multiplier &&
-		     *upper_cp != 0; upper_cnt++, upper_cp++)
+		for (upper_cnt = 0; upper_cnt < alphabet->upper_multiplier && *upper_cp != 0; upper_cnt++, upper_cp++)
 		  {
 		    src_upper_size += intl_cp_to_utf8 (*upper_cp, upper);
 		  }
@@ -3155,18 +3052,15 @@ intl_identifier_upper (const char *src, char *dst)
       {
 	const LANG_LOCALE_DATA *locale = lang_locale ();
 	const ALPHABET_DATA *alphabet = &(locale->ident_alphabet);
-	length_in_chars =
-	  intl_count_utf8_chars ((unsigned char *) src, length_in_bytes);
-	(void) intl_toupper_utf8 (alphabet, (unsigned char *) src,
-				  (unsigned char *) dst,
-				  length_in_chars, &d_size);
+	length_in_chars = intl_count_utf8_chars ((unsigned char *) src, length_in_bytes);
+	(void) intl_toupper_utf8 (alphabet, (unsigned char *) src, (unsigned char *) dst, length_in_chars, &d_size);
 	d = (unsigned char *) dst + d_size;
       }
       break;
     case INTL_CODESET_ISO88591:
       {
-	for (d = (unsigned char *) dst, s = (unsigned char *) src;
-	     d < (unsigned char *) dst + length_in_bytes; d++, s++)
+	for (d = (unsigned char *) dst, s = (unsigned char *) src; d < (unsigned char *) dst + length_in_bytes;
+	     d++, s++)
 	  {
 	    *d = char_toupper_iso8859 (*s);
 	  }
@@ -3175,8 +3069,8 @@ intl_identifier_upper (const char *src, char *dst)
     case INTL_CODESET_KSC5601_EUC:
     default:
       {
-	for (d = (unsigned char *) dst, s = (unsigned char *) src;
-	     d < (unsigned char *) dst + length_in_bytes; d++, s++)
+	for (d = (unsigned char *) dst, s = (unsigned char *) src; d < (unsigned char *) dst + length_in_bytes;
+	     d++, s++)
 	  {
 	    *d = char_toupper (*s);
 	  }
@@ -3213,8 +3107,7 @@ intl_identifier_upper (const char *src, char *dst)
  *	   (DB_MAX_IDENTIFIER_LENGTH - 1).
  */
 int
-intl_identifier_fix (char *name, int ident_max_size,
-		     bool error_on_case_overflow)
+intl_identifier_fix (char *name, int ident_max_size, bool error_on_case_overflow)
 {
   int i, length_bytes;
   unsigned char *name_char = (unsigned char *) name;
@@ -3242,9 +3135,8 @@ intl_identifier_fix (char *name, int ident_max_size,
 
   assert (INTL_CODESET_MULT (codeset) > 1);
 
-  /* we do not check contents of non-ASCII if codeset is UTF-8 or EUC;
-   * valid codeset sequences are checked with 'intl_check_string' when
-   * enabled */
+  /* we do not check contents of non-ASCII if codeset is UTF-8 or EUC; valid codeset sequences are checked with
+   * 'intl_check_string' when enabled */
 
 check_truncation:
   /* check if last char of identifier may have been truncated */
@@ -3255,8 +3147,7 @@ check_truncation:
 	  length_bytes = ident_max_size;
 	}
 
-      /* count original size based on the size given by first byte of each
-       * char */
+      /* count original size based on the size given by first byte of each char */
       for (i = 0; i < length_bytes;)
 	{
 	  INTL_NEXT_CHAR (name_char, name_char, codeset, &char_size);
@@ -3265,8 +3156,8 @@ check_truncation:
 
       assert (i >= length_bytes);
 
-      /* i == length_bytes means last character fit entirely in 'length_bytes'
-       * otherwise assume the last character was truncated */
+      /* i == length_bytes means last character fit entirely in 'length_bytes' otherwise assume the last character was
+       * truncated */
       if (i > length_bytes)
 	{
 	  assert (i < length_bytes + INTL_CODESET_MULT (codeset));
@@ -3278,8 +3169,7 @@ check_truncation:
       name[length_bytes] = '\0';
     }
 
-  /* ensure that lower or upper versions of identifier do not exceed maximum
-   * allowed size of an identifier */
+  /* ensure that lower or upper versions of identifier do not exceed maximum allowed size of an identifier */
 #if (INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER > 1)
   if (intl_identifier_upper_string_size (name) > ident_max_size
       || intl_identifier_lower_string_size (name) > ident_max_size)
@@ -3315,8 +3205,7 @@ check_truncation:
  * Note: Charset dependent version of 'mht_1strlowerhashTaken' function
  */
 unsigned int
-intl_identifier_mht_1strlowerhash (const void *key,
-				   const unsigned int ht_size)
+intl_identifier_mht_1strlowerhash (const void *key, const unsigned int ht_size)
 {
   unsigned int hash;
   unsigned const char *byte_p = (unsigned char *) key;
@@ -3445,8 +3334,7 @@ intl_strncat (unsigned char *dest, const unsigned char *src, int len)
  *
  */
 int
-intl_put_char (unsigned char *dest, const unsigned char *char_p,
-	       const INTL_CODESET codeset)
+intl_put_char (unsigned char *dest, const unsigned char *char_p, const INTL_CODESET codeset)
 {
   int char_len;
 
@@ -3499,8 +3387,7 @@ intl_put_char (unsigned char *dest, const unsigned char *char_p,
  *
  */
 bool
-intl_is_space (const char *str, const char *str_end,
-	       const INTL_CODESET codeset, int *space_size)
+intl_is_space (const char *str, const char *str_end, const INTL_CODESET codeset, int *space_size)
 {
   assert (str != NULL);
 
@@ -3514,8 +3401,7 @@ intl_is_space (const char *str, const char *str_end,
     case INTL_CODESET_KSC5601_EUC:
       if (str_end == NULL)
 	{
-	  if (*((unsigned char *) str) == 0xa1
-	      && *((unsigned char *) (str + 1)) == 0xa1)
+	  if (*((unsigned char *) str) == 0xa1 && *((unsigned char *) (str + 1)) == 0xa1)
 	    {
 	      if (space_size != NULL)
 		{
@@ -3532,8 +3418,7 @@ intl_is_space (const char *str, const char *str_end,
 	{
 	  if (str < str_end)
 	    {
-	      if (*((const unsigned char *) str) == 0xa1
-		  && str + 1 < str_end
+	      if (*((const unsigned char *) str) == 0xa1 && str + 1 < str_end
 		  && *((const unsigned char *) (str + 1)) == 0xa1)
 		{
 		  if (space_size != NULL)
@@ -3587,8 +3472,7 @@ intl_is_space (const char *str, const char *str_end,
  *
  */
 const char *
-intl_skip_spaces (const char *str, const char *str_end,
-		  const INTL_CODESET codeset)
+intl_skip_spaces (const char *str, const char *str_end, const INTL_CODESET codeset)
 {
   assert (str != NULL);
 
@@ -3599,8 +3483,7 @@ intl_skip_spaces (const char *str, const char *str_end,
 	{
 	  while (*str != '\0')
 	    {
-	      if (*((unsigned char *) str) == 0xa1
-		  && *((unsigned char *) (str + 1)) == 0xa1)
+	      if (*((unsigned char *) str) == 0xa1 && *((unsigned char *) (str + 1)) == 0xa1)
 		{
 		  str++;
 		  str++;
@@ -3619,8 +3502,7 @@ intl_skip_spaces (const char *str, const char *str_end,
 	{
 	  while (str < str_end)
 	    {
-	      if (*((const unsigned char *) str) == 0xa1
-		  && str + 1 < str_end
+	      if (*((const unsigned char *) str) == 0xa1 && str + 1 < str_end
 		  && *((const unsigned char *) (str + 1)) == 0xa1)
 		{
 		  str++;
@@ -3674,8 +3556,7 @@ intl_skip_spaces (const char *str, const char *str_end,
  *
  */
 const char *
-intl_backskip_spaces (const char *str_begin, const char *str_end,
-		      const INTL_CODESET codeset)
+intl_backskip_spaces (const char *str_begin, const char *str_end, const INTL_CODESET codeset)
 {
   assert (str_begin != NULL);
   assert (str_end != NULL);
@@ -3685,8 +3566,7 @@ intl_backskip_spaces (const char *str_begin, const char *str_end,
     case INTL_CODESET_KSC5601_EUC:
       while (str_end > str_begin)
 	{
-	  if (*((const unsigned char *) str_end) == 0xa1
-	      && str_end - 1 > str_begin
+	  if (*((const unsigned char *) str_end) == 0xa1 && str_end - 1 > str_begin
 	      && *((const unsigned char *) (str_end - 1)) == 0xa1)
 	    {
 	      str_end--;
@@ -3776,8 +3656,7 @@ intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq)
  *
  */
 int
-intl_cp_to_dbcs (const unsigned int codepoint,
-		 const unsigned char *byte_flag, unsigned char *seq)
+intl_cp_to_dbcs (const unsigned int codepoint, const unsigned char *byte_flag, unsigned char *seq)
 {
   assert (seq != NULL);
 
@@ -3820,8 +3699,7 @@ intl_cp_to_dbcs (const unsigned int codepoint,
  *
  */
 unsigned int
-intl_utf8_to_cp (const unsigned char *utf8, const int size,
-		 unsigned char **next_char)
+intl_utf8_to_cp (const unsigned char *utf8, const int size, unsigned char **next_char)
 {
   assert (utf8 != NULL);
   assert (size > 0);
@@ -3840,33 +3718,26 @@ intl_utf8_to_cp (const unsigned char *utf8, const int size,
   else if (size >= 3 && utf8[0] >= 0xe0 && utf8[0] < 0xf0)
     {
       *next_char = (unsigned char *) utf8 + 3;
-      return (unsigned int) (((utf8[0] & 0x0f) << 12) |
-			     ((utf8[1] & 0x3f) << 6) | (utf8[2] & 0x3f));
+      return (unsigned int) (((utf8[0] & 0x0f) << 12) | ((utf8[1] & 0x3f) << 6) | (utf8[2] & 0x3f));
     }
   else if (size >= 4 && utf8[0] >= 0xf0 && utf8[0] < 0xf8)
     {
       *next_char = (unsigned char *) utf8 + 4;
-      return (unsigned int) (((utf8[0] & 0x07) << 18)
-			     | ((utf8[1] & 0x3f) << 12)
-			     | ((utf8[2] & 0x3f) << 6) | (utf8[3] & 0x3f));
+      return (unsigned int) (((utf8[0] & 0x07) << 18) | ((utf8[1] & 0x3f) << 12) | ((utf8[2] & 0x3f) << 6) |
+			     (utf8[3] & 0x3f));
     }
 #if INTL_UTF8_MAX_CHAR_SIZE > 4
   else if (size >= 5 && utf8[0] >= 0xf8 && utf8[0] < 0xfc)
     {
       *next_char = (unsigned char *) utf8 + 5;
-      return (unsigned int) (((utf8[0] & 0x03) << 24)
-			     | ((utf8[1] & 0x3f) << 18)
-			     | ((utf8[2] & 0x3f) << 12)
-			     | ((utf8[3] & 0x3f) << 6) | (utf8[4] & 0x3f));
+      return (unsigned int) (((utf8[0] & 0x03) << 24) | ((utf8[1] & 0x3f) << 18) | ((utf8[2] & 0x3f) << 12) |
+			     ((utf8[3] & 0x3f) << 6) | (utf8[4] & 0x3f));
     }
   else if (size >= 6 && utf8[0] >= 0xfc && utf8[0] < 0xfe)
     {
       *next_char = (unsigned char *) utf8 + 6;
-      return (unsigned int) (((utf8[0] & 0x01) << 30)
-			     | ((utf8[1] & 0x3f) << 24)
-			     | ((utf8[2] & 0x3f) << 18)
-			     | ((utf8[3] & 0x3f) << 12)
-			     | ((utf8[4] & 0x3f) << 6) | (utf8[5] & 0x3f));
+      return (unsigned int) (((utf8[0] & 0x01) << 30) | ((utf8[1] & 0x3f) << 24) | ((utf8[2] & 0x3f) << 18) |
+			     ((utf8[3] & 0x3f) << 12) | ((utf8[4] & 0x3f) << 6) | (utf8[5] & 0x3f));
     }
 #endif
 
@@ -3886,8 +3757,7 @@ intl_utf8_to_cp (const unsigned char *utf8, const int size,
  *
  */
 unsigned int
-intl_back_utf8_to_cp (const unsigned char *utf8_start,
-		      const unsigned char *utf8_last,
+intl_back_utf8_to_cp (const unsigned char *utf8_start, const unsigned char *utf8_last,
 		      unsigned char **last_byte__prev_char)
 {
   int char_size = 1;
@@ -3934,8 +3804,7 @@ intl_back_utf8_to_cp (const unsigned char *utf8_start,
  *
  */
 unsigned int
-intl_dbcs_to_cp (const unsigned char *seq, const int size,
-		 const unsigned char *byte_flag, unsigned char **next_char)
+intl_dbcs_to_cp (const unsigned char *seq, const int size, const unsigned char *byte_flag, unsigned char **next_char)
 {
   assert (seq != NULL);
   assert (size > 0);
@@ -3966,8 +3835,7 @@ intl_dbcs_to_cp (const unsigned char *seq, const int size,
  *  array_count(out) : number of elements in codepoints list
  */
 int
-intl_utf8_to_cp_list (const unsigned char *utf8, const int size,
-		      unsigned int *cp_array, const int max_array_size,
+intl_utf8_to_cp_list (const unsigned char *utf8, const int size, unsigned int *cp_array, const int max_array_size,
 		      int *array_count)
 {
   unsigned char *next = NULL;
@@ -4095,7 +3963,7 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
 	}
 
       /* check 3 bytes sequences */
-      /* 3 bytes sequence : E0   , A0 - BF , 80 - BF */
+      /* 3 bytes sequence : E0 , A0 - BF , 80 - BF */
       if (*p == 0xe0)
 	{
 	  p++;
@@ -4123,8 +3991,7 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
 	}
       /* 3 bytes sequence : E1 - EC , 80 - BF , 80 - BF */
       /* 3 bytes sequence : EE - EF , 80 - BF , 80 - BF */
-      else if (UTF8_BYTE_IN_RANGE (*p, 0xe1, 0xec) ||
-	       UTF8_BYTE_IN_RANGE (*p, 0xee, 0xef))
+      else if (UTF8_BYTE_IN_RANGE (*p, 0xe1, 0xec) || UTF8_BYTE_IN_RANGE (*p, 0xee, 0xef))
 	{
 	  p++;
 	  if (p >= p_end)
@@ -4148,7 +4015,7 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
 	    }
 	  UTF8_RETURN_INVALID_BYTE (curr_char, pos);
 	}
-      /* 3 bytes sequence : ED   , 80 - 9F , 80 - BF */
+      /* 3 bytes sequence : ED , 80 - 9F , 80 - BF */
       else if (*p == 0xed)
 	{
 	  p++;
@@ -4174,7 +4041,7 @@ intl_check_utf8 (const unsigned char *buf, int size, char **pos)
 	  UTF8_RETURN_INVALID_BYTE (curr_char, pos);
 	}
 
-      /* 4 bytes sequence : F0   , 90 - BF , 80 - BF , 80 - BF */
+      /* 4 bytes sequence : F0 , 90 - BF , 80 - BF , 80 - BF */
       if (*p == 0xf0)
 	{
 	  p++;
@@ -4374,8 +4241,7 @@ intl_check_euckr (const unsigned char *buf, int size, char **pos)
  *   codeset(in): codeset assumed for buf
  */
 int
-intl_check_string (const char *buf, int size, char **pos,
-		   const INTL_CODESET codeset)
+intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET codeset)
 {
   if (!intl_String_validation)
     {
@@ -4440,14 +4306,10 @@ intl_is_bom_magic (const char *buf, const int size)
  *   out_size(out): size of string (NUL terminator not included)
  */
 int
-intl_text_single_byte_to_utf8 (const char *in_buf, const int in_size,
-			       char **out_buf, int *out_size)
+intl_text_single_byte_to_utf8 (const char *in_buf, const int in_size, char **out_buf, int *out_size)
 {
-  return intl_text_single_byte_to_utf8_ext (lang_get_txt_conv (),
-					    (const unsigned char *) in_buf,
-					    in_size,
-					    (unsigned char **) out_buf,
-					    out_size);
+  return intl_text_single_byte_to_utf8_ext (lang_get_txt_conv (), (const unsigned char *) in_buf, in_size,
+					    (unsigned char **) out_buf, out_size);
 }
 
 /*
@@ -4464,9 +4326,7 @@ intl_text_single_byte_to_utf8 (const char *in_buf, const int in_size,
  *   out_size(in/out): size of string (NUL terminator not included)
  */
 int
-intl_text_single_byte_to_utf8_ext (void *t,
-				   const unsigned char *in_buf,
-				   const int in_size, unsigned char **out_buf,
+intl_text_single_byte_to_utf8_ext (void *t, const unsigned char *in_buf, const int in_size, unsigned char **out_buf,
 				   int *out_size)
 {
 
@@ -4504,8 +4364,7 @@ intl_text_single_byte_to_utf8_ext (void *t,
       *out_buf = (unsigned char *) malloc (in_size * 2 + 1);
       if (*out_buf == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (in_size * 2 + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (in_size * 2 + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -4523,10 +4382,8 @@ intl_text_single_byte_to_utf8_ext (void *t,
     {
       if (*p_in >= txt_conv->text_first_cp && *p_in <= txt_conv->text_last_cp)
 	{
-	  unsigned char *utf8_bytes =
-	    txt_conv->text_to_utf8[*p_in - txt_conv->text_first_cp].bytes;
-	  int utf8_size =
-	    txt_conv->text_to_utf8[*p_in - txt_conv->text_first_cp].size;
+	  unsigned char *utf8_bytes = txt_conv->text_to_utf8[*p_in - txt_conv->text_first_cp].bytes;
+	  int utf8_size = txt_conv->text_to_utf8[*p_in - txt_conv->text_first_cp].size;
 
 	  do
 	    {
@@ -4567,8 +4424,7 @@ intl_text_single_byte_to_utf8_ext (void *t,
  *   out_size(in/out): size of output string (NUL terminator not counted)
  */
 int
-intl_text_utf8_to_single_byte (const char *in_buf, const int in_size,
-			       char **out_buf, int *out_size)
+intl_text_utf8_to_single_byte (const char *in_buf, const int in_size, char **out_buf, int *out_size)
 {
   const unsigned char *p_in = NULL;
   unsigned char *p_out = NULL;
@@ -4602,8 +4458,7 @@ intl_text_utf8_to_single_byte (const char *in_buf, const int in_size,
       *out_buf = malloc (in_size + 1);
       if (*out_buf == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (in_size + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (in_size + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -4616,8 +4471,7 @@ intl_text_utf8_to_single_byte (const char *in_buf, const int in_size,
 	}
     }
 
-  for (p_in = (const unsigned char *) in_buf,
-       p_out = (unsigned char *) *out_buf;
+  for (p_in = (const unsigned char *) in_buf, p_out = (unsigned char *) *out_buf;
        p_in < (const unsigned char *) in_buf + in_size;)
     {
       unsigned int cp = 0;
@@ -4631,10 +4485,8 @@ intl_text_utf8_to_single_byte (const char *in_buf, const int in_size,
       cp = intl_utf8_to_cp (p_in, in_buf + in_size - (char *) p_in, &p_next);
       if (cp >= txt_conv->utf8_first_cp && cp <= txt_conv->utf8_last_cp)
 	{
-	  assert (txt_conv->utf8_to_text[cp - txt_conv->utf8_first_cp].size
-		  == 1);
-	  cp = (unsigned int) *(txt_conv->utf8_to_text
-				[cp - txt_conv->utf8_first_cp].bytes);
+	  assert (txt_conv->utf8_to_text[cp - txt_conv->utf8_first_cp].size == 1);
+	  cp = (unsigned int) *(txt_conv->utf8_to_text[cp - txt_conv->utf8_first_cp].bytes);
 	}
 
       if (cp > 0xff)
@@ -4668,31 +4520,27 @@ intl_init_conv_iso8859_1_to_utf8 (void)
   for (i = 0; i <= 0x7e; i++)
     {
       iso8859_1_To_utf8_conv[i].size = 1;
-      *((unsigned char *) (iso8859_1_To_utf8_conv[i].bytes)) =
-	(unsigned char) i;
+      *((unsigned char *) (iso8859_1_To_utf8_conv[i].bytes)) = (unsigned char) i;
     }
 
   /* 7F - 9F : not mapped */
   for (i = 0x7f; i <= 0x9f; i++)
     {
       iso8859_1_To_utf8_conv[i].size = 1;
-      *((unsigned char *) (iso8859_1_To_utf8_conv[i].bytes)) =
-	(unsigned char) '?';
+      *((unsigned char *) (iso8859_1_To_utf8_conv[i].bytes)) = (unsigned char) '?';
     }
 
   /* A0 - FF : mapped to Unicode codepoint with the same value */
   for (i = 0xa0; i <= 0xff; i++)
     {
-      iso8859_1_To_utf8_conv[i].size =
-	intl_cp_to_utf8 (i, iso8859_1_To_utf8_conv[i].bytes);
+      iso8859_1_To_utf8_conv[i].size = intl_cp_to_utf8 (i, iso8859_1_To_utf8_conv[i].bytes);
     }
 
   con_Iso_8859_1_conv.text_first_cp = 0;
   con_Iso_8859_1_conv.text_last_cp = 0xff;
   con_Iso_8859_1_conv.text_to_utf8 = iso8859_1_To_utf8_conv;
 
-  /* no specific mapping here : Unicode codepoints in range 00-FF map directly
-   * onto ISO-8859-1 */
+  /* no specific mapping here : Unicode codepoints in range 00-FF map directly onto ISO-8859-1 */
   con_Iso_8859_1_conv.utf8_first_cp = 0;
   con_Iso_8859_1_conv.utf8_last_cp = 0;
   con_Iso_8859_1_conv.utf8_to_text = NULL;
@@ -4721,23 +4569,20 @@ intl_init_conv_iso8859_9_to_utf8 (void)
   for (i = 0; i <= 0x7e; i++)
     {
       iso8859_9_To_utf8_conv[i].size = 1;
-      *((unsigned char *) (iso8859_9_To_utf8_conv[i].bytes)) =
-	(unsigned char) i;
+      *((unsigned char *) (iso8859_9_To_utf8_conv[i].bytes)) = (unsigned char) i;
     }
 
   /* 7F - 9F : not mapped */
   for (i = 0x7f; i <= 0x9f; i++)
     {
       iso8859_9_To_utf8_conv[i].size = 1;
-      *((unsigned char *) (iso8859_9_To_utf8_conv[i].bytes)) =
-	(unsigned char) '?';
+      *((unsigned char *) (iso8859_9_To_utf8_conv[i].bytes)) = (unsigned char) '?';
     }
 
   /* A0 - FF : mapped to Unicode codepoint with the same value */
   for (i = 0xa0; i <= 0xff; i++)
     {
-      iso8859_9_To_utf8_conv[i].size =
-	intl_cp_to_utf8 (i, iso8859_9_To_utf8_conv[i].bytes);
+      iso8859_9_To_utf8_conv[i].size = intl_cp_to_utf8 (i, iso8859_9_To_utf8_conv[i].bytes);
     }
 
   for (i = ISO_8859_9_FIRST_CP; i <= ISO_8859_9_LAST_CP; i++)
@@ -4752,8 +4597,7 @@ intl_init_conv_iso8859_9_to_utf8 (void)
       unsigned int val8bit = iso8859_9_special_mapping[i][0];
       unsigned int cp = iso8859_9_special_mapping[i][1];
 
-      iso8859_9_To_utf8_conv[val8bit].size =
-	intl_cp_to_utf8 (cp, iso8859_9_To_utf8_conv[val8bit].bytes);
+      iso8859_9_To_utf8_conv[val8bit].size = intl_cp_to_utf8 (cp, iso8859_9_To_utf8_conv[val8bit].bytes);
 
       *(utf8_Cp_to_iso_8859_9_conv[cp - ISO_8859_9_FIRST_CP].bytes) = val8bit;
 
@@ -4782,11 +4626,9 @@ intl_init_conv_iso8859_9_to_utf8 (void)
  *   out_size(out): size of string (NUL terminator not included)
  */
 int
-intl_text_dbcs_to_utf8 (const char *in_buf, const int in_size,
-			char **out_buf, int *out_size)
+intl_text_dbcs_to_utf8 (const char *in_buf, const int in_size, char **out_buf, int *out_size)
 {
-  return intl_text_dbcs_to_utf8_ext (lang_get_txt_conv (),
-				     (const unsigned char *) in_buf, in_size,
+  return intl_text_dbcs_to_utf8_ext (lang_get_txt_conv (), (const unsigned char *) in_buf, in_size,
 				     (unsigned char **) out_buf, out_size);
 }
 
@@ -4804,8 +4646,7 @@ intl_text_dbcs_to_utf8 (const char *in_buf, const int in_size,
  *   out_size(in/out): size of string (NUL terminator not included)
  */
 int
-intl_text_dbcs_to_utf8_ext (void *t, const unsigned char *in_buf,
-			    const int in_size, unsigned char **out_buf,
+intl_text_dbcs_to_utf8_ext (void *t, const unsigned char *in_buf, const int in_size, unsigned char **out_buf,
 			    int *out_size)
 {
   const unsigned char *p_in = NULL;
@@ -4838,17 +4679,13 @@ intl_text_dbcs_to_utf8_ext (void *t, const unsigned char *in_buf,
 
   if (*out_buf == NULL)
     {
-      /* a DBCS text may contain ASCII characters (encoded with 1 byte) which
-       * may expand to maximum 2 bytes in UTF-8 and DBCS characters (2 bytes)
-       * which may expand to maximum 3 bytes in UTF-8;
-       * Also it may contain single byte characters which may expand to 3
-       * bytes characters in UTF-8
-       * Apply a safe expansion of 3 */
+      /* a DBCS text may contain ASCII characters (encoded with 1 byte) which may expand to maximum 2 bytes in UTF-8
+       * and DBCS characters (2 bytes) which may expand to maximum 3 bytes in UTF-8; Also it may contain single byte
+       * characters which may expand to 3 bytes characters in UTF-8 Apply a safe expansion of 3 */
       *out_buf = (unsigned char *) malloc (in_size * 3 + 1);
       if (*out_buf == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (in_size * 3 + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (in_size * 3 + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -4870,13 +4707,10 @@ intl_text_dbcs_to_utf8_ext (void *t, const unsigned char *in_buf,
 					      txt_conv->byte_flag,
 					      &p_next);
 
-      if (text_cp >= txt_conv->text_first_cp
-	  && text_cp <= txt_conv->text_last_cp)
+      if (text_cp >= txt_conv->text_first_cp && text_cp <= txt_conv->text_last_cp)
 	{
-	  unsigned char *utf8_bytes =
-	    txt_conv->text_to_utf8[text_cp - txt_conv->text_first_cp].bytes;
-	  int utf8_size =
-	    txt_conv->text_to_utf8[text_cp - txt_conv->text_first_cp].size;
+	  unsigned char *utf8_bytes = txt_conv->text_to_utf8[text_cp - txt_conv->text_first_cp].bytes;
+	  int utf8_size = txt_conv->text_to_utf8[text_cp - txt_conv->text_first_cp].size;
 
 	  do
 	    {
@@ -4919,8 +4753,7 @@ intl_text_dbcs_to_utf8_ext (void *t, const unsigned char *in_buf,
  *   out_size(in/out): size of output string (NUL terminator not counted)
  */
 int
-intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
-			char **out_buf, int *out_size)
+intl_text_utf8_to_dbcs (const char *in_buf, const int in_size, char **out_buf, int *out_size)
 {
   const unsigned char *p_in = NULL;
   unsigned char *p_out = NULL;
@@ -4954,8 +4787,7 @@ intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
       *out_buf = malloc (in_size + 1);
       if (*out_buf == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (in_size + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (in_size + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -4970,8 +4802,7 @@ intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
 
   assert (txt_conv->utf8_last_cp > 0);
 
-  for (p_in = (const unsigned char *) in_buf,
-       p_out = (unsigned char *) *out_buf;
+  for (p_in = (const unsigned char *) in_buf, p_out = (unsigned char *) *out_buf;
        p_in < (const unsigned char *) in_buf + in_size;)
     {
       unsigned int cp = 0;
@@ -4985,10 +4816,8 @@ intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
       cp = intl_utf8_to_cp (p_in, in_buf + in_size - (char *) p_in, &p_next);
       if (cp >= txt_conv->utf8_first_cp && cp <= txt_conv->utf8_last_cp)
 	{
-	  unsigned char *text_bytes =
-	    txt_conv->utf8_to_text[cp - txt_conv->utf8_first_cp].bytes;
-	  int text_size =
-	    txt_conv->utf8_to_text[cp - txt_conv->utf8_first_cp].size;
+	  unsigned char *text_bytes = txt_conv->utf8_to_text[cp - txt_conv->utf8_first_cp].bytes;
+	  int text_size = txt_conv->utf8_to_text[cp - txt_conv->utf8_first_cp].size;
 
 	  assert (text_size >= 1);
 	  do
@@ -5028,8 +4857,7 @@ intl_text_utf8_to_dbcs (const char *in_buf, const int in_size,
  *   out_size(out): size of string (NUL terminator not included)
  */
 int
-intl_fast_iso88591_to_utf8 (const unsigned char *in_buf, const int in_size,
-			    unsigned char **out_buf, int *out_size)
+intl_fast_iso88591_to_utf8 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf, int *out_size)
 {
   const unsigned char *p_in = NULL;
   const unsigned char *p_end;
@@ -5041,8 +4869,7 @@ intl_fast_iso88591_to_utf8 (const unsigned char *in_buf, const int in_size,
   assert (out_buf != NULL);
   assert (out_size != NULL);
 
-  for (p_in = in_buf, p_end = p_in + in_size,
-       p_out = (unsigned char *) *out_buf; p_in < p_end; p_in++)
+  for (p_in = in_buf, p_end = p_in + in_size, p_out = (unsigned char *) *out_buf; p_in < p_end; p_in++)
     {
       if (*p_in < 0x7f)
 	{
@@ -5079,8 +4906,7 @@ intl_fast_iso88591_to_utf8 (const unsigned char *in_buf, const int in_size,
  *   out_size(out): size of string (NUL terminator not included)
  */
 int
-intl_euckr_to_iso88591 (const unsigned char *in_buf, const int in_size,
-			unsigned char **out_buf, int *out_size)
+intl_euckr_to_iso88591 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf, int *out_size)
 {
   const unsigned char *p_in = NULL;
   const unsigned char *p_end;
@@ -5093,8 +4919,7 @@ intl_euckr_to_iso88591 (const unsigned char *in_buf, const int in_size,
   assert (out_buf != NULL);
   assert (out_size != NULL);
 
-  for (p_in = in_buf, p_end = p_in + in_size,
-       p_out = (unsigned char *) *out_buf; p_in < p_end; p_in++)
+  for (p_in = in_buf, p_end = p_in + in_size, p_out = (unsigned char *) *out_buf; p_in < p_end; p_in++)
     {
       if (*p_in < 0x80)
 	{
@@ -5117,8 +4942,7 @@ intl_euckr_to_iso88591 (const unsigned char *in_buf, const int in_size,
 		}
 	      else
 		{
-		  if ((unicode_cp <= 0x1F) || (unicode_cp > 0xFF)
-		      || ((unicode_cp >= 0x7F) && (unicode_cp <= 0x9F)))
+		  if ((unicode_cp <= 0x1F) || (unicode_cp > 0xFF) || ((unicode_cp >= 0x7F) && (unicode_cp <= 0x9F)))
 		    {
 		      *p_out++ = '?';
 		      status = 1;
@@ -5140,8 +4964,7 @@ intl_euckr_to_iso88591 (const unsigned char *in_buf, const int in_size,
 	}
       else if (*p_in == 0x8f && p_end - p_in >= 3)
 	{
-	  if (*(p_in + 1) >= 0xa1 && *(p_in + 1) < 0xff
-	      && *(p_in + 2) >= 0xa1 && *(p_in + 2) < 0xff)
+	  if (*(p_in + 1) >= 0xa1 && *(p_in + 1) < 0xff && *(p_in + 2) >= 0xa1 && *(p_in + 2) < 0xff)
 	    {
 	      /* JISX0212 three bytes character */
 	      unsigned char jis_buf[2];
@@ -5156,8 +4979,7 @@ intl_euckr_to_iso88591 (const unsigned char *in_buf, const int in_size,
 		}
 	      else
 		{
-		  if ((unicode_cp <= 0x1F) || (unicode_cp > 0xFF)
-		      || ((unicode_cp >= 0x7F) && (unicode_cp <= 0x9F)))
+		  if ((unicode_cp <= 0x1F) || (unicode_cp > 0xFF) || ((unicode_cp >= 0x7F) && (unicode_cp <= 0x9F)))
 		    {
 		      *p_out++ = '?';
 		      status = 1;
@@ -5204,8 +5026,7 @@ intl_euckr_to_iso88591 (const unsigned char *in_buf, const int in_size,
  *   out_size(out): size of string (NUL terminator not included)
  */
 int
-intl_euckr_to_utf8 (const unsigned char *in_buf, const int in_size,
-		    unsigned char **out_buf, int *out_size)
+intl_euckr_to_utf8 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf, int *out_size)
 {
   const unsigned char *p_in = NULL;
   const unsigned char *p_end;
@@ -5219,8 +5040,7 @@ intl_euckr_to_utf8 (const unsigned char *in_buf, const int in_size,
   assert (out_buf != NULL);
   assert (out_size != NULL);
 
-  for (p_in = in_buf, p_end = p_in + in_size,
-       p_out = (unsigned char *) *out_buf; p_in < p_end; p_in++)
+  for (p_in = in_buf, p_end = p_in + in_size, p_out = (unsigned char *) *out_buf; p_in < p_end; p_in++)
     {
       if (*p_in < 0x80)
 	{
@@ -5258,8 +5078,7 @@ intl_euckr_to_utf8 (const unsigned char *in_buf, const int in_size,
 	}
       else if (*p_in == 0x8f && p_end - p_in >= 3)
 	{
-	  if (*(p_in + 1) >= 0xa1 && *(p_in + 1) < 0xff
-	      && *(p_in + 2) >= 0xa1 && *(p_in + 2) < 0xff)
+	  if (*(p_in + 1) >= 0xa1 && *(p_in + 1) < 0xff && *(p_in + 2) >= 0xa1 && *(p_in + 2) < 0xff)
 	    {
 	      /* JISX0212 three bytes character */
 	      unsigned char jis_buf[2];
@@ -5313,8 +5132,7 @@ intl_euckr_to_utf8 (const unsigned char *in_buf, const int in_size,
  *   out_size(out): size of string (NUL terminator not included)
  */
 int
-intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size,
-		       unsigned char **out_buf, int *out_size)
+intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf, int *out_size)
 {
   const unsigned char *p_in = NULL;
   const unsigned char *p_end;
@@ -5328,13 +5146,11 @@ intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size,
   assert (out_buf != NULL);
   assert (out_size != NULL);
 
-  for (p_in = in_buf, p_end = in_buf + in_size, p_out =
-       (unsigned char *) *out_buf; p_in < p_end;)
+  for (p_in = in_buf, p_end = in_buf + in_size, p_out = (unsigned char *) *out_buf; p_in < p_end;)
     {
       unicode_cp = intl_utf8_to_cp (p_in, p_end - p_in, &next_utf8);
 
-      if ((unicode_cp > 0xFF)
-	  || ((unicode_cp >= 0x7F) && (unicode_cp <= 0x9F)))
+      if ((unicode_cp > 0xFF) || ((unicode_cp >= 0x7F) && (unicode_cp <= 0x9F)))
 	{
 	  *p_out++ = '?';
 	  status = 1;
@@ -5365,8 +5181,7 @@ intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size,
  *   out_size(out): size of string (NUL terminator not included)
  */
 int
-intl_utf8_to_euckr (const unsigned char *in_buf, const int in_size,
-		    unsigned char **out_buf, int *out_size)
+intl_utf8_to_euckr (const unsigned char *in_buf, const int in_size, unsigned char **out_buf, int *out_size)
 {
   const unsigned char *p_in = NULL;
   const unsigned char *p_end;
@@ -5378,8 +5193,7 @@ intl_utf8_to_euckr (const unsigned char *in_buf, const int in_size,
   assert (out_buf != NULL);
   assert (out_size != NULL);
 
-  for (p_in = in_buf, p_end = p_in + in_size,
-       p_out = (unsigned char *) *out_buf; p_in < p_end;)
+  for (p_in = in_buf, p_end = p_in + in_size, p_out = (unsigned char *) *out_buf; p_in < p_end;)
     {
       if (*p_in < 0x80)
 	{
@@ -5458,8 +5272,7 @@ intl_utf8_to_euckr (const unsigned char *in_buf, const int in_size,
  *   out_size(out): size of string (NUL terminator not included)
  */
 int
-intl_iso88591_to_euckr (const unsigned char *in_buf, const int in_size,
-			unsigned char **out_buf, int *out_size)
+intl_iso88591_to_euckr (const unsigned char *in_buf, const int in_size, unsigned char **out_buf, int *out_size)
 {
   const unsigned char *p_in = NULL;
   const unsigned char *p_end;
@@ -5471,8 +5284,7 @@ intl_iso88591_to_euckr (const unsigned char *in_buf, const int in_size,
   assert (out_buf != NULL);
   assert (out_size != NULL);
 
-  for (p_in = in_buf, p_end = p_in + in_size,
-       p_out = (unsigned char *) *out_buf; p_in < p_end; p_in++)
+  for (p_in = in_buf, p_end = p_in + in_size, p_out = (unsigned char *) *out_buf; p_in < p_end; p_in++)
     {
       if (*p_in < 0x80)
 	{
@@ -5543,7 +5355,7 @@ intl_iso88591_to_euckr (const unsigned char *in_buf, const int in_size,
 /* UTF-8 encoding of money symbols - maps to DB_CURRENCY enum type */
 static char moneysymbols_utf8[][4] = {
   "$",				/* dollar sign */
-  "\xc2\xa5",			/* Japan money symbols  */
+  "\xc2\xa5",			/* Japan money symbols */
   "\xc2\xa3",			/* pound sterling - British money symbols */
   "\xe2\x82\xa9",		/* won - Korean money symbols */
   "TL",				/* TL - Turkish money symbols */
@@ -5597,8 +5409,7 @@ static char moneysymbols_console[][4] = {
   "SEK",			/* Swedish krona */
   "HRK",			/* Croatian kuna */
   "RSD",			/* serbian dinar */
-  ""				/* generic currency symbol - add new symbols
-				 * before this */
+  ""				/* generic currency symbol - add new symbols before this */
 };
 
 /* encoding (for grammars) of money symbols - maps to DB_CURRENCY enum type */
@@ -5628,8 +5439,7 @@ static char moneysymbols_grammar[][5] = {
   "\\SEK",			/* Swedish krona */
   "\\HRK",			/* Croatian kuna */
   "\\RSD",			/* serbian dinar */
-  ""				/* generic currency symbol - add new symbols
-				 * before this */
+  ""				/* generic currency symbol - add new symbols before this */
 };
 
 /* ISO encoding of money symbols - maps to DB_CURRENCY enum type */
@@ -5658,8 +5468,7 @@ static char moneysymbols_iso_codes[][4] = {
   "SEK",			/* Swedish krona */
   "HRK",			/* Croatian kuna */
   "RSD",			/* serbian dinar */
-  ""				/* generic currency symbol - add new symbols
-				 * before this */
+  ""				/* generic currency symbol - add new symbols before this */
 };
 
 /* escaped ISO encoding of money symbols - maps to DB_CURRENCY enum type */
@@ -5688,8 +5497,7 @@ static char moneysymbols_esc_iso_codes[][5] = {
   "\\SEK",			/* Swedish krona */
   "\\HRK",			/* Croatian kuna */
   "\\RSD",			/* serbian dinar */
-  ""				/* generic currency symbol - add new symbols
-				 * before this */
+  ""				/* generic currency symbol - add new symbols before this */
 };
 
 /* ISO88591 encoding of money symbols - maps to DB_CURRENCY enum type */
@@ -5718,8 +5526,7 @@ static char moneysymbols_iso88591_codes[][4] = {
   "SEK",			/* Swedish krona */
   "HRK",			/* Croatian kuna */
   "RSD",			/* serbian dinar */
-  ""				/* generic currency symbol - add new symbols
-				 * before this */
+  ""				/* generic currency symbol - add new symbols before this */
 };
 
 /*
@@ -5730,8 +5537,7 @@ static char moneysymbols_iso88591_codes[][4] = {
  *   currency(out): currency found
  */
 bool
-intl_is_currency_symbol (const char *src, DB_CURRENCY * currency,
-			 int *symbol_size,
+intl_is_currency_symbol (const char *src, DB_CURRENCY * currency, int *symbol_size,
 			 const CURRENCY_CHECK_MODE check_mode)
 {
   int sym_currency;
@@ -5745,13 +5551,11 @@ intl_is_currency_symbol (const char *src, DB_CURRENCY * currency,
 
   if (check_mode & CURRENCY_CHECK_MODE_ISO)
     {
-      for (sym_currency = 0;
-	   src_len > 0 && sym_currency < (int) DIM (moneysymbols_iso_codes);
-	   sym_currency++)
+      for (sym_currency = 0; src_len > 0 && sym_currency < (int) DIM (moneysymbols_iso_codes); sym_currency++)
 	{
 	  int symbol_len = strlen (moneysymbols_iso_codes[sym_currency]);
-	  if (src_len >= symbol_len && symbol_len > 0 &&
-	      !memcmp (src, moneysymbols_iso_codes[sym_currency], symbol_len))
+	  if (src_len >= symbol_len && symbol_len > 0
+	      && !memcmp (src, moneysymbols_iso_codes[sym_currency], symbol_len))
 	    {
 	      *currency = (DB_CURRENCY) sym_currency;
 	      *symbol_size = symbol_len;
@@ -5762,14 +5566,11 @@ intl_is_currency_symbol (const char *src, DB_CURRENCY * currency,
 
   if (check_mode & CURRENCY_CHECK_MODE_ESC_ISO)
     {
-      for (sym_currency = 0; src_len > 0
-	   && sym_currency < (int) DIM (moneysymbols_esc_iso_codes);
-	   sym_currency++)
+      for (sym_currency = 0; src_len > 0 && sym_currency < (int) DIM (moneysymbols_esc_iso_codes); sym_currency++)
 	{
 	  int symbol_len = strlen (moneysymbols_esc_iso_codes[sym_currency]);
-	  if (src_len >= symbol_len && symbol_len > 0 &&
-	      !memcmp (src, moneysymbols_esc_iso_codes[sym_currency],
-		       symbol_len))
+	  if (src_len >= symbol_len && symbol_len > 0
+	      && !memcmp (src, moneysymbols_esc_iso_codes[sym_currency], symbol_len))
 	    {
 	      *currency = (DB_CURRENCY) sym_currency;
 	      *symbol_size = symbol_len;
@@ -5780,13 +5581,10 @@ intl_is_currency_symbol (const char *src, DB_CURRENCY * currency,
 
   if (check_mode & CURRENCY_CHECK_MODE_UTF8)
     {
-      for (sym_currency = 0;
-	   src_len > 0 && sym_currency < (int) DIM (moneysymbols_utf8);
-	   sym_currency++)
+      for (sym_currency = 0; src_len > 0 && sym_currency < (int) DIM (moneysymbols_utf8); sym_currency++)
 	{
 	  int symbol_len = strlen (moneysymbols_utf8[sym_currency]);
-	  if (src_len >= symbol_len && symbol_len > 0 &&
-	      !memcmp (src, moneysymbols_utf8[sym_currency], symbol_len))
+	  if (src_len >= symbol_len && symbol_len > 0 && !memcmp (src, moneysymbols_utf8[sym_currency], symbol_len))
 	    {
 	      *currency = (DB_CURRENCY) sym_currency;
 	      *symbol_size = symbol_len;
@@ -5797,13 +5595,10 @@ intl_is_currency_symbol (const char *src, DB_CURRENCY * currency,
 
   if (check_mode & CURRENCY_CHECK_MODE_CONSOLE)
     {
-      for (sym_currency = 0;
-	   src_len > 0 && sym_currency < (int) DIM (moneysymbols_console);
-	   sym_currency++)
+      for (sym_currency = 0; src_len > 0 && sym_currency < (int) DIM (moneysymbols_console); sym_currency++)
 	{
 	  int symbol_len = strlen (moneysymbols_console[sym_currency]);
-	  if (src_len >= symbol_len && symbol_len > 0 &&
-	      !memcmp (src, moneysymbols_console[sym_currency], symbol_len))
+	  if (src_len >= symbol_len && symbol_len > 0 && !memcmp (src, moneysymbols_console[sym_currency], symbol_len))
 	    {
 	      *currency = (DB_CURRENCY) sym_currency;
 	      *symbol_size = symbol_len;
@@ -5812,16 +5607,13 @@ intl_is_currency_symbol (const char *src, DB_CURRENCY * currency,
 	}
     }
 
-  /* search backwards : "\TL" (turkish lira) symbol may be
-   * miss-interpreted as "\" (korean won) */
+  /* search backwards : "\TL" (turkish lira) symbol may be miss-interpreted as "\" (korean won) */
   if (check_mode & CURRENCY_CHECK_MODE_GRAMMAR)
     {
-      for (sym_currency = (int) DIM (moneysymbols_grammar) - 1;
-	   src_len > 0 && sym_currency >= 0; sym_currency--)
+      for (sym_currency = (int) DIM (moneysymbols_grammar) - 1; src_len > 0 && sym_currency >= 0; sym_currency--)
 	{
 	  int symbol_len = strlen (moneysymbols_grammar[sym_currency]);
-	  if (src_len >= symbol_len && symbol_len > 0 &&
-	      !memcmp (src, moneysymbols_grammar[sym_currency], symbol_len))
+	  if (src_len >= symbol_len && symbol_len > 0 && !memcmp (src, moneysymbols_grammar[sym_currency], symbol_len))
 	    {
 	      *currency = (DB_CURRENCY) sym_currency;
 	      *symbol_size = symbol_len;
@@ -5832,15 +5624,11 @@ intl_is_currency_symbol (const char *src, DB_CURRENCY * currency,
 
   if (check_mode & CURRENCY_CHECK_MODE_ISO88591)
     {
-      for (sym_currency = 0;
-	   src_len > 0
-	   && sym_currency < (int) DIM (moneysymbols_iso88591_codes);
-	   sym_currency++)
+      for (sym_currency = 0; src_len > 0 && sym_currency < (int) DIM (moneysymbols_iso88591_codes); sym_currency++)
 	{
 	  int symbol_len = strlen (moneysymbols_iso88591_codes[sym_currency]);
-	  if (src_len >= symbol_len && symbol_len > 0 &&
-	      !memcmp (src, moneysymbols_iso88591_codes[sym_currency],
-		       symbol_len))
+	  if (src_len >= symbol_len && symbol_len > 0
+	      && !memcmp (src, moneysymbols_iso88591_codes[sym_currency], symbol_len))
 	    {
 	      *currency = (DB_CURRENCY) sym_currency;
 	      *symbol_size = symbol_len;
@@ -6010,8 +5798,7 @@ intl_get_money_ISO88591_symbol (const DB_CURRENCY currency)
  *		 F4	 , 80 - 8F , 80 - BF , 80 - BF (U +100000 .. +10FFFF)
  */
 void
-intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
-		     unsigned char **out_buf, int *out_size)
+intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf, int *out_size)
 {
   const unsigned char *p = in_buf;
   const unsigned char *p_end = NULL;
@@ -6065,7 +5852,7 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	}
 
       /* check 3 bytes sequences */
-      /* 3 bytes sequence : E0   , A0 - BF , 80 - BF */
+      /* 3 bytes sequence : E0 , A0 - BF , 80 - BF */
       if (*p == 0xe0)
 	{
 	  p++;
@@ -6102,8 +5889,7 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	}
       /* 3 bytes sequence : E1 - EC , 80 - BF , 80 - BF */
       /* 3 bytes sequence : EE - EF , 80 - BF , 80 - BF */
-      else if (UTF8_BYTE_IN_RANGE (*p, 0xe1, 0xec) ||
-	       UTF8_BYTE_IN_RANGE (*p, 0xee, 0xef))
+      else if (UTF8_BYTE_IN_RANGE (*p, 0xe1, 0xec) || UTF8_BYTE_IN_RANGE (*p, 0xee, 0xef))
 	{
 	  p++;
 	  if (p >= p_end)
@@ -6134,7 +5920,7 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	  *p_out++ = '?';
 	  continue;
 	}
-      /* 3 bytes sequence : ED   , 80 - 9F , 80 - BF */
+      /* 3 bytes sequence : ED , 80 - 9F , 80 - BF */
       else if (*p == 0xed)
 	{
 	  p++;
@@ -6167,7 +5953,7 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
 	  continue;
 	}
 
-      /* 4 bytes sequence : F0   , 90 - BF , 80 - BF , 80 - BF */
+      /* 4 bytes sequence : F0 , 90 - BF , 80 - BF , 80 - BF */
       if (*p == 0xf0)
 	{
 	  p++;
@@ -6319,8 +6105,7 @@ intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size,
  *    - 3 bytes: 8F	 , 00 - FF , 00 - FF
  */
 void
-intl_binary_to_euckr (const unsigned char *in_buf, const int in_size,
-		      unsigned char **out_buf, int *out_size)
+intl_binary_to_euckr (const unsigned char *in_buf, const int in_size, unsigned char **out_buf, int *out_size)
 {
   const unsigned char *p = in_buf;
   const unsigned char *p_end = NULL;

@@ -233,13 +233,9 @@ struct t_proxy_context
   bool free_on_end_tran;
   bool free_on_client_io_write;
   bool free_context;
-  bool is_client_in_tran;	/* it is only for faking cas status 
-				 * when check_cas is requested. 
-				 * after completion dummy prepare,
-				 * context status will be out_tran.
-				 * In this case we should fake transaction 
-				 * status to in_tran. 
-				 */
+  bool is_client_in_tran;	/* it is only for faking cas status when check_cas is requested. after completion
+				 * dummy prepare, context status will be out_tran. In this case we should fake
+				 * transaction status to in_tran. */
   bool is_cas_in_tran;		/* cas transaction status */
   bool waiting_dummy_prepare;
   bool dont_free_statement;

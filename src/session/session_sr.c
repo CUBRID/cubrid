@@ -102,8 +102,7 @@ xsession_get_row_count (THREAD_ENTRY * thread_p, int *row_count)
  *
  */
 int
-xsession_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
-			    bool force)
+xsession_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value, bool force)
 {
   int err = NO_ERROR;
 
@@ -123,8 +122,7 @@ xsession_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
  *  update_last_insert_id(in): whether update the last insert id
  */
 int
-xsession_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value,
-			     bool update_last_insert_id)
+xsession_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value, bool update_last_insert_id)
 {
   int err = NO_ERROR;
 
@@ -171,12 +169,10 @@ xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p)
  * will free the memory allocated for its arguments
  */
 int
-xsession_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
-				    char *name, char *alias_print, char *info,
+xsession_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name, char *alias_print, char *info,
 				    int info_len)
 {
-  return session_create_prepared_statement (thread_p, user, name, alias_print,
-					    info, info_len);
+  return session_create_prepared_statement (thread_p, user, name, alias_print, info, info_len);
 }
 
 /*
@@ -192,10 +188,8 @@ xsession_create_prepared_statement (THREAD_ENTRY * thread_p, OID user,
  * xasl_header_p (out)	: XASL node header for this statement.
  */
 int
-xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
-				 char **info, int *info_len,
-				 XASL_ID * xasl_id,
-				 XASL_NODE_HEADER * xasl_header_p)
+xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
+				 XASL_ID * xasl_id, XASL_NODE_HEADER * xasl_header_p)
 {
   XASL_CACHE_ENTRY *xasl_entry = NULL;
 
@@ -215,8 +209,7 @@ xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name,
 	  qfile_load_xasl_node_header (thread_p, xasl_id, xasl_header_p);
 	}
 
-      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_entry,
-						    true, false);
+      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_entry, true, false);
     }
 
   return error;
@@ -254,8 +247,7 @@ xlogin_user (THREAD_ENTRY * thread_p, const char *username)
  * count (in)	 : number of elements in array
  */
 int
-xsession_set_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values,
-				const int count)
+xsession_set_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values, const int count)
 {
   return session_set_session_variables (thread_p, values, count);
 }
@@ -268,8 +260,7 @@ xsession_set_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values,
  * value (out)	 : variable value
  */
 int
-xsession_get_session_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
-			       DB_VALUE * value)
+xsession_get_session_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE * value)
 {
   return session_get_variable (thread_p, name, value);
 }
@@ -286,9 +277,7 @@ xsession_get_session_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
  * and it should only be called in the stand alone mode
  */
 int
-xsession_get_session_variable_no_copy (THREAD_ENTRY * thread_p,
-				       const DB_VALUE * name,
-				       DB_VALUE ** value)
+xsession_get_session_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE ** value)
 {
 #if defined (SERVER_MODE)
   /* do not call this function in a multi-threaded context */
@@ -306,8 +295,7 @@ xsession_get_session_variable_no_copy (THREAD_ENTRY * thread_p,
  * count (in)	 : number of elements in the values array
  */
 int
-xsession_drop_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values,
-				 const int count)
+xsession_drop_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values, const int count)
 {
   return session_drop_session_variables (thread_p, values, count);
 }
@@ -319,8 +307,7 @@ xsession_drop_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values,
  * qentry_p (in) : query entry
  */
 void
-xsession_store_query_entry_info (THREAD_ENTRY * thread_p,
-				 QMGR_QUERY_ENTRY * qentry_p)
+xsession_store_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qentry_p)
 {
   session_store_query_entry_info (thread_p, qentry_p);
 }
@@ -332,8 +319,7 @@ xsession_store_query_entry_info (THREAD_ENTRY * thread_p,
  * qentry_p (in/out) : query entry
  */
 int
-xsession_load_query_entry_info (THREAD_ENTRY * thread_p,
-				QMGR_QUERY_ENTRY * qentry_p)
+xsession_load_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qentry_p)
 {
   return session_load_query_entry_info (thread_p, qentry_p);
 }
@@ -346,8 +332,7 @@ xsession_load_query_entry_info (THREAD_ENTRY * thread_p,
  * query_id (in) : query id
  */
 int
-xsession_remove_query_entry_info (THREAD_ENTRY * thread_p,
-				  const QUERY_ID query_id)
+xsession_remove_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id)
 {
   return session_remove_query_entry_info (thread_p, query_id);
 }
@@ -361,8 +346,7 @@ xsession_remove_query_entry_info (THREAD_ENTRY * thread_p,
  * query_id (in) : query id
  */
 int
-xsession_clear_query_entry_info (THREAD_ENTRY * thread_p,
-				 const QUERY_ID query_id)
+xsession_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id)
 {
   return session_clear_query_entry_info (thread_p, query_id);
 }

@@ -107,12 +107,10 @@ static CO_DETAIL co_Current_detail = CO_DETAIL_USER;
 
 static int co_signalv (int code, const char *format, va_list args);
 #if defined(ENABLE_UNUSED_FUNCTION)
-static const char *co_print_parameter (int p, CO_FORMAT_TYPE type,
-				       const char *format, int width);
+static const char *co_print_parameter (int p, CO_FORMAT_TYPE type, const char *format, int width);
 #endif
-static int co_find_conversion (const char *format, int from,
-			       int *start, CO_FORMAT_TYPE * type,
-			       int *position, int *width);
+static int co_find_conversion (const char *format, int from, int *start, CO_FORMAT_TYPE * type, int *position,
+			       int *width);
 
 static const char *co_conversion_spec (const char *cspec, int size);
 
@@ -189,8 +187,7 @@ co_code_id (int code)
 void
 co_report (FILE * file, CO_SEVERITY severity)
 {
-  static const int co_Report_msg_width =
-    REPORT_LINE_WIDTH - REPORT_LINE_INDENT;
+  static const int co_Report_msg_width = REPORT_LINE_WIDTH - REPORT_LINE_INDENT;
 
   char label[MB_LEN_MAX * 32];
   char line[MB_LEN_MAX * REPORT_LINE_WIDTH];
@@ -229,11 +226,9 @@ co_report (FILE * file, CO_SEVERITY severity)
 
   /* Print message lines. */
   message = co_message ();
-  for (msg_length = intl_mbs_len (message),
-       label_length = intl_mbs_len (label);
+  for (msg_length = intl_mbs_len (message), label_length = intl_mbs_len (label);
        (length = msg_length + label_length) > co_Report_msg_width;
-       message = intl_mbs_nth (message, line_length),
-       message += intl_mbs_spn (message, SPACE ()), msg_length =
+       message = intl_mbs_nth (message, line_length), message += intl_mbs_spn (message, SPACE ()), msg_length =
        intl_mbs_len (message))
     {
       /* Look for word break for next line. */
@@ -248,10 +243,7 @@ co_report (FILE * file, CO_SEVERITY severity)
 	  int nbytes;
 	  wchar_t wc;
 	  for (line_length = co_Report_msg_width;
-	       line_length > 0
-	       && (nbytes = mbtowc (&wc,
-				    intl_mbs_nth (message, line_length),
-				    MB_LEN_MAX))
+	       line_length > 0 && (nbytes = mbtowc (&wc, intl_mbs_nth (message, line_length), MB_LEN_MAX))
 	       && !wcschr (SPACE (), wc); line_length--)
 	    {
 	      ;
@@ -324,12 +316,9 @@ co_message (void)
     {
       /* For each conversion specification in message... */
       for (start = 0;
-	   (start = co_find_conversion ((const char *)
-					adj_ar_get_buffer
-					(co_Current_message), start, &end,
-					&type, &position,
-					&width)) != ADJ_AR_EOA;
-	   start += length)
+	   (start =
+	    co_find_conversion ((const char *) adj_ar_get_buffer (co_Current_message), start, &end, &type, &position,
+				&width)) != ADJ_AR_EOA; start += length)
 	{
 	  /* Get formatted parameter string. */
 	  if (type == FORMAT_LITERAL)
@@ -348,15 +337,10 @@ co_message (void)
 		{
 		  index = default_position;
 		}
-	      parameter = co_print_parameter (index, type,
-					      co_conversion_spec ((const char
-								   *)
-								  adj_ar_get_buffer
-								  (co_Current_message)
-								  + start,
-								  end -
-								  start),
-					      width);
+	      parameter =
+		co_print_parameter (index, type,
+				    co_conversion_spec ((const char *) adj_ar_get_buffer (co_Current_message) + start,
+							end - start), width);
 	    }
 
 	  /* Replace conversion spec with formatted parameter string. */
@@ -506,8 +490,7 @@ co_signalv (int code, const char *format, va_list args)
       int position;
       int width;
 
-      start = co_find_conversion (format, start, &end,
-				  &type, &position, &width);
+      start = co_find_conversion (format, start, &end, &type, &position, &width);
       if (start == ADJ_AR_EOA)
 	{
 	  break;
@@ -557,9 +540,7 @@ co_signalv (int code, const char *format, va_list args)
 
 	    default:
 	      error = CO_ERR_BAD_FORMAT;
-	      co_signal (error,
-			 CO_ER_FMT_BAD_FORMAT,
-			 co_conversion_spec (format + start, end - start));
+	      co_signal (error, CO_ER_FMT_BAD_FORMAT, co_conversion_spec (format + start, end - start));
 	    }
 
 	  if (!error)
@@ -583,8 +564,7 @@ co_signalv (int code, const char *format, va_list args)
  *   width(in) : parameter field width
  */
 static const char *
-co_print_parameter (int index, CO_FORMAT_TYPE type, const char *format,
-		    int width)
+co_print_parameter (int index, CO_FORMAT_TYPE type, const char *format, int width)
 {
   static const char *bad_index = "?";
   static const char *bad_type = "*";
@@ -610,8 +590,7 @@ co_print_parameter (int index, CO_FORMAT_TYPE type, const char *format,
   /* Valid parameter index? */
   if (index < 0 || index >= adj_ar_length (co_Current_arguments))
     {
-      adj_ar_replace (co_Parameter_string, bad_index,
-		      strlen (bad_index) + 1, 0, ADJ_AR_EOA);
+      adj_ar_replace (co_Parameter_string, bad_index, strlen (bad_index) + 1, 0, ADJ_AR_EOA);
     }
   else
     {
@@ -619,8 +598,7 @@ co_print_parameter (int index, CO_FORMAT_TYPE type, const char *format,
       arg = (CO_ARGUMENT *) adj_ar_get_buffer (co_Current_arguments) + index;
       if (type != arg->format)
 	{
-	  adj_ar_replace (co_Parameter_string, bad_type,
-			  strlen (bad_type) + 1, 0, ADJ_AR_EOA);
+	  adj_ar_replace (co_Parameter_string, bad_type, strlen (bad_type) + 1, 0, ADJ_AR_EOA);
 	}
       else
 	{
@@ -628,60 +606,40 @@ co_print_parameter (int index, CO_FORMAT_TYPE type, const char *format,
 	  switch (type)
 	    {
 	    case FORMAT_STRING:
-	      string =
-		(char *) adj_ar_get_buffer (co_String_values) +
-		arg->value.int_value;
+	      string = (char *) adj_ar_get_buffer (co_String_values) + arg->value.int_value;
 	      adj_ar_initialize (co_Parameter_string, NULL,
-				 width > (int) strlen (string) ?
-				 width + 1 : (int) strlen (string) + 1);
-	      sprintf ((char *) adj_ar_get_buffer (co_Parameter_string),
-		       format, string);
+				 width > (int) strlen (string) ? width + 1 : (int) strlen (string) + 1);
+	      sprintf ((char *) adj_ar_get_buffer (co_Parameter_string), format, string);
 	      break;
 
 	    case FORMAT_INTEGER:
-	      adj_ar_initialize (co_Parameter_string, NULL,
-				 width > MAX_INT_WIDTH ?
-				 width + 1 : MAX_INT_WIDTH);
-	      sprintf ((char *) adj_ar_get_buffer (co_Parameter_string),
-		       format, arg->value.int_value);
+	      adj_ar_initialize (co_Parameter_string, NULL, width > MAX_INT_WIDTH ? width + 1 : MAX_INT_WIDTH);
+	      sprintf ((char *) adj_ar_get_buffer (co_Parameter_string), format, arg->value.int_value);
 	      break;
 
 	    case FORMAT_FLOAT:
-	      adj_ar_initialize (co_Parameter_string, NULL,
-				 width > MAX_FLOAT_WIDTH ?
-				 width + 1 : MAX_FLOAT_WIDTH);
-	      sprintf ((char *) adj_ar_get_buffer (co_Parameter_string),
-		       format, arg->value.double_value);
+	      adj_ar_initialize (co_Parameter_string, NULL, width > MAX_FLOAT_WIDTH ? width + 1 : MAX_FLOAT_WIDTH);
+	      sprintf ((char *) adj_ar_get_buffer (co_Parameter_string), format, arg->value.double_value);
 	      break;
 
 	    case FORMAT_POINTER:
-	      adj_ar_initialize (co_Parameter_string, NULL,
-				 width > MAX_POINTER_WIDTH ?
-				 width + 1 : MAX_POINTER_WIDTH);
-	      sprintf ((char *) adj_ar_get_buffer (co_Parameter_string),
-		       format, arg->value.pointer_value);
+	      adj_ar_initialize (co_Parameter_string, NULL, width > MAX_POINTER_WIDTH ? width + 1 : MAX_POINTER_WIDTH);
+	      sprintf ((char *) adj_ar_get_buffer (co_Parameter_string), format, arg->value.pointer_value);
 	      break;
 
 	    case FORMAT_LONG_INTEGER:
-	      adj_ar_initialize (co_Parameter_string, NULL,
-				 width > MAX_INT_WIDTH ?
-				 width + 1 : MAX_INT_WIDTH);
-	      sprintf ((char *) adj_ar_get_buffer (co_Parameter_string),
-		       format, arg->value.long_int_value);
+	      adj_ar_initialize (co_Parameter_string, NULL, width > MAX_INT_WIDTH ? width + 1 : MAX_INT_WIDTH);
+	      sprintf ((char *) adj_ar_get_buffer (co_Parameter_string), format, arg->value.long_int_value);
 	      break;
 
 	    case FORMAT_LONG_DOUBLE:
-	      adj_ar_initialize (co_Parameter_string, NULL,
-				 width > MAX_FLOAT_WIDTH ?
-				 width + 1 : MAX_FLOAT_WIDTH);
-	      sprintf ((char *) adj_ar_get_buffer (co_Parameter_string),
-		       format, arg->value.long_double_value);
+	      adj_ar_initialize (co_Parameter_string, NULL, width > MAX_FLOAT_WIDTH ? width + 1 : MAX_FLOAT_WIDTH);
+	      sprintf ((char *) adj_ar_get_buffer (co_Parameter_string), format, arg->value.long_double_value);
 	      break;
 
 	    default:
 	      /* Should never get here. */
-	      adj_ar_replace (co_Parameter_string, bad_type,
-			      strlen (bad_type) + 1, 0, ADJ_AR_EOA);
+	      adj_ar_replace (co_Parameter_string, bad_type, strlen (bad_type) + 1, 0, ADJ_AR_EOA);
 	      break;
 	    }
 	}
@@ -704,8 +662,7 @@ co_print_parameter (int index, CO_FORMAT_TYPE type, const char *format,
  *   width(out): field width of format returned (0 if none)
  */
 static int
-co_find_conversion (const char *format, int from, int *end,
-		    CO_FORMAT_TYPE * type, int *position, int *width)
+co_find_conversion (const char *format, int from, int *end, CO_FORMAT_TYPE * type, int *position, int *width)
 {
   const char *p;
   wchar_t wc;
@@ -817,8 +774,8 @@ co_find_conversion (const char *format, int from, int *end,
 
       /* Reconcile conversion char with short/long spec. */
       if ((length_type == FORMAT_INTEGER && *type != FORMAT_INTEGER)
-	  || (length_type == FORMAT_LONG_INTEGER && *type != FORMAT_INTEGER)
-	  || (length_type == FORMAT_LONG_DOUBLE && *type != FORMAT_FLOAT))
+	  || (length_type == FORMAT_LONG_INTEGER && *type != FORMAT_INTEGER) || (length_type == FORMAT_LONG_DOUBLE
+										 && *type != FORMAT_FLOAT))
 	{
 	  /* Invalid combination! */
 	  *type = FORMAT_UNKNOWN;
@@ -866,12 +823,11 @@ co_conversion_spec (const char *cspec, int size)
   end = intl_mbs_chr (new_cspec, WC_PSPEC ());
   if (end)
     {
-      /*
+      /* 
        * remove position specifier from conversion spec, i.e. remove
        * all chars following initial '%' up through final '$'.
        */
-      adj_ar_remove (co_Conversion_buffer,
-		     mblen (new_cspec, MB_LEN_MAX),
+      adj_ar_remove (co_Conversion_buffer, mblen (new_cspec, MB_LEN_MAX),
 		     CAST_STRLEN (end + mblen (end, MB_LEN_MAX) - new_cspec));
     }
 
