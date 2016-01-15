@@ -942,6 +942,8 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
 
   /* Unlock data */
   VACUUM_UNLOCK_DATA ();
+  pthread_mutex_destroy (&vacuum_Data_mutex);
+  pthread_mutex_destroy (&vacuum_Dropped_files_mutex);
 }
 
 /*
