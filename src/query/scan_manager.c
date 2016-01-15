@@ -4849,6 +4849,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   OID updated_oid, retry_oid;
   LOG_LSA ref_lsa;
   int is_peeking;
+  bool object_need_rescan;
 
   hsidp = &scan_id->s.hsid;
   if (scan_id->mvcc_select_lock_needed)
@@ -4875,6 +4876,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       COPY_OID (&retry_oid, &hsidp->curr_oid);
 
     restart_scan_oid:
+      object_need_rescan = false;
+
       /* get next object */
       if (scan_id->grouped)
 	{
@@ -5116,13 +5119,15 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  lock = S_LOCK;
 		}
 
-	      if (lock != NULL_LOCK)
+	      if (lock != NULL_LOCK && hsidp->scan_cache.page_watcher.pgptr != NULL)
 		{
 		  if (tran_isolation == TRAN_READ_COMMITTED && lock == S_LOCK)
 		    {
 		      if (lock_hold_object_instant (thread_p, &hsidp->curr_oid, &hsidp->cls_oid, lock) == LK_GRANTED)
 			{
 			  lock = NULL_LOCK;
+			  /* object_need_rescan needs to be kept false (page is still fixed, no other transaction could
+			   * have change it) */
 			}
 		    }
 		  else
@@ -5131,6 +5136,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			{
 			  /* successfully locked */
 			  lock = NULL_LOCK;
+			  /* object_need_rescan needs to be kept false (page is still fixed, no other transaction could
+			   * have change it) */
 			}
 		    }
 		}
@@ -5145,6 +5152,11 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		    {
 		      pgbuf_get_vpid (hsidp->scan_cache.page_watcher.pgptr, &curr_vpid);
 		      pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
+		    }
+		  else
+		    {
+		      /* page not fixed, recdes was read without lock, object may have changed */
+		      object_need_rescan = true;
 		    }
 
 		  if (lock_object (thread_p, &hsidp->curr_oid, &hsidp->cls_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED)
@@ -5167,14 +5179,16 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 		  assert (hsidp->scan_cache.page_watcher.pgptr == NULL);
 
-		  if (pgbuf_ordered_fix
-		      (thread_p, &curr_vpid, OLD_PAGE, PGBUF_LATCH_READ, &hsidp->scan_cache.page_watcher) != NO_ERROR)
+		  if (!VPID_ISNULL (&curr_vpid)
+		      && pgbuf_ordered_fix (thread_p, &curr_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+					    &hsidp->scan_cache.page_watcher) != NO_ERROR)
 		    {
 		      return S_ERROR;
 		    }
 
-		  if (hsidp->scan_cache.page_watcher.pgptr != NULL
-		      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
+		  if (object_need_rescan
+		      || (hsidp->scan_cache.page_watcher.pgptr != NULL
+			  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa)))
 		    {
 		      is_peeking = COPY;
 		      COPY_OID (&hsidp->curr_oid, &retry_oid);
