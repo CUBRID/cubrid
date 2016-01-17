@@ -14558,6 +14558,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      else
 		{
 		  db_make_null (result);
+		  er_clear ();
 		  return 1;
 		}
 	    }
@@ -19269,6 +19270,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	{
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
+	      er_clear ();
 	      DB_MAKE_NULL (&dbval_res);
 	    }
 	  else

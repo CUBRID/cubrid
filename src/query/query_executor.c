@@ -3161,9 +3161,6 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QU
   SORT_PUT_FUNC *put_fn;
   int limit;
   int error = NO_ERROR;
-#if !defined(NDEBUG)
-  int track_id;
-#endif
 
   xasl->orderby_stats.orderby_filesort = true;
 
@@ -9079,19 +9076,25 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		{
 		  error = NO_ERROR;
 		}
-	      else if (error != NO_ERROR && error != ER_HEAP_UNKNOWN_OBJECT)
+	      else if (error == ER_HEAP_UNKNOWN_OBJECT)
+		{
+		  /* TODO: This is a very dangerous. A different way of handling it must be found.
+		   *       This may not even be necessary. I guess this is legacy code from READ COMMITTED
+		   *       re-evaluation made under locator_attribute_info_force. I think currently locking object
+		   *       is done on select phase. However, I am not removing this code yet until more investigation
+		   *       is done.
+		   */
+		  er_clear ();
+		  error = NO_ERROR;
+		}
+	      else if (error != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 	      else
 		{
-		  /* either NO_ERROR or unknown object */
-		  if (error == ER_HEAP_UNKNOWN_OBJECT)
-		    {
-		      er_clear ();
-		    }
+		  /* Successful update. */
 		  force_count = 1;
-		  error = NO_ERROR;
 		}
 
 	      /* Instances are not put into the result list file, but are counted. */

@@ -2790,7 +2790,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 	}
       else
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, lob_path);
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, lob_path);
 	  if (mkdir (lob_path, 0777) < 0)
 	    {
 	      cub_dirname_r (lob_path, fixed_pathbuf, PATH_MAX);

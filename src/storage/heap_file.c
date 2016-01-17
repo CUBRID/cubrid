@@ -3250,7 +3250,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
    * expenses of storage.
    */
 
-  /* LK_FORCE_ZERO_WAIT doesn't set error when deadlock occurrs */
+  /* LK_FORCE_ZERO_WAIT doesn't set error when deadlock occurs */
   old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
 
   found = HEAP_FINDSPACE_NOTFOUND;
@@ -3316,6 +3316,16 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 	  break;		/* not found, exit loop */
 	}
 
+      /* If page could not be fixed, we will interrogate er_errid () to see the error type. If an error is already
+       * set, the interrogation will be corrupted.
+       * Make sure an error is not set.
+       */
+      if (er_errid () != NO_ERROR)
+	{
+	  assert (false);
+	  er_clear ();
+	}
+
       pg_watcher->pgptr = heap_scan_pb_lock_and_fetch (thread_p, &best.vpid, OLD_PAGE, X_LOCK, scan_cache, pg_watcher);
       if (pg_watcher->pgptr == NULL)
 	{
@@ -3349,6 +3359,9 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 		  (void) heap_stats_del_bestspace_by_vpid (thread_p, &best.vpid);
 		}
 	      found = HEAP_FINDSPACE_ERROR;
+
+	      /* Do not allow unexpected errors. */
+	      assert (false);
 	      break;
 	    }
 	}
@@ -3459,6 +3472,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   int num_pages_found;
   float other_high_best_ratio;
   PGBUF_WATCHER hdr_page_watcher;
+  int error_code = NO_ERROR;
 
   /* 
    * Try to use the space cache for as much information as possible to avoid
@@ -3483,16 +3497,20 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   addr_hdr.vfid = &hfid->vfid;
   addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
-  if (pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &hdr_page_watcher) != NO_ERROR)
+  error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &hdr_page_watcher);
+  if (error_code != NO_ERROR)
     {
       /* something went wrong. Unable to fetch header page */
+      ASSERT_ERROR ();
       return NULL;
     }
+  assert (hdr_page_watcher.pgptr != NULL);
 
   (void) pgbuf_check_page_ptype (thread_p, hdr_page_watcher.pgptr, PAGE_HEAP);
 
   if (spage_get_record (hdr_page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
     {
+      assert (false);
       pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
       return NULL;
     }
@@ -3526,6 +3544,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
 	  (thread_p, hfid, heap_hdr->estimates.best, &(heap_hdr->estimates.head), needed_space, total_space, scan_cache,
 	   pg_watcher) == HEAP_FINDSPACE_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  assert (pg_watcher->pgptr == NULL);
 	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	  return NULL;
@@ -3584,6 +3603,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
 	  if (num_pages_found < 0)
 	    {
 	      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
+	      ASSERT_ERROR ();
 	      return NULL;
 	    }
 	}
@@ -10637,22 +10657,29 @@ exit_on_end:
 }
 
 /*
- * heap_does_exist_visible () - Similar to heap does exist, but also checks
- *				MVCC chain to find a visible version.
+ * heap_is_object_not_null () - Check if object should be considered not NULL.
  *
- * return	  : True if visible version of object exists, false otherwise.
+ * return	  : True if object is visible or too new, false if it is deleted or if errors occur.
  * thread_p (in)  : Thread entry.
  * class_oid (in) : Class OID.
  * oid (in)	  : Instance OID.
  */
 bool
-heap_does_exist_visible (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
+heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 {
   bool old_check_interrupt = thread_set_check_interrupt (thread_p, false);
   bool doesexist = false;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan = S_SUCCESS;
   OID local_class_oid = OID_INITIALIZER;
+  MVCC_SNAPSHOT *mvcc_snapshot_ptr;
+  MVCC_SNAPSHOT copy_mvcc_snapshot;
+  bool is_scancache_started = false;
+
+  /* Error will be cleared at the end of this function, so any errors previously set may be lost.
+   * This function is not supposed to be called if system has errors.
+   */
+  assert (er_errid () == NO_ERROR);
 
   if (HEAP_ISVALID_OID (oid) != DISK_VALID)
     {
@@ -10677,11 +10704,28 @@ heap_does_exist_visible (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
     {
       goto exit_on_end;
     }
-  scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  is_scancache_started = true;
+
+  mvcc_snapshot_ptr = logtb_get_mvcc_snapshot (thread_p);
+  if (mvcc_snapshot_ptr == NULL)
+    {
+      assert (false);
+      goto exit_on_end;
+    }
+  /* Make a copy of snapshot. We need all MVCC information, but we also want to change the visibility function. */
+  copy_mvcc_snapshot = *mvcc_snapshot_ptr;
+  copy_mvcc_snapshot.snapshot_fnc = mvcc_is_not_deleted_for_snapshot;
+  scan_cache.mvcc_snapshot = &copy_mvcc_snapshot;
+
+  /* Check if object is visible (chain must be followed if version is old but has next version). If version is too
+   * "new", then it means the visible version does exist somewhere in the chain previous to this version.
+   * NOTE: We needed this kind of check, because sometimes the given argument could be last version (if it was
+   *       locked). If we would check only visibility, this last version could be invisible and the function result
+   *       could be inaccurate.
+   */
   scan =
     heap_mvcc_lock_and_get_object_version (thread_p, (OID *) oid, class_oid, NULL, &scan_cache, S_SELECT, PEEK,
 					   NULL_CHN, NULL, NULL, LOG_WARNING_IF_DELETED);
-  heap_scancache_end (thread_p, &scan_cache);
   if (scan != S_SUCCESS)
     {
       goto exit_on_end;
@@ -10693,6 +10737,16 @@ heap_does_exist_visible (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
 
 exit_on_end:
   (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+
+  if (is_scancache_started)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+    }
+  /* We don't need to propagate errors from here. */
+  if (er_errid () != NO_ERROR)
+    {
+      er_clear ();
+    }
 
   return doesexist;
 }
@@ -24060,6 +24114,7 @@ heap_fix_header_page (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       if (rc == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, header_vpid.volid, header_vpid.pageid);
+	  rc = ER_PAGE_LATCH_ABORTED;
 	}
       return rc;
     }
@@ -24327,6 +24382,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 {
   int slot_count, slot_id, lk_result;
   LOCK lock;
+  int error_code = NO_ERROR;
 
   /* check input */
   assert (context != NULL);
@@ -24340,7 +24396,8 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	  (thread_p, &context->hfid, context->recdes_p->length, (context->recdes_p->type != REC_NEWHOME),
 	   context->recdes_p->length, context->scan_cache_p, context->home_page_watcher_p) == NULL)
 	{
-	  return ER_FAILED;
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
 	}
     }
   else
@@ -24419,6 +24476,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
     {
       context->home_page_watcher_p = NULL;
     }
+  assert (false);
   return ER_FAILED;
 }
 
@@ -24440,7 +24498,8 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 static int
 heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
-  int sp_success;
+  SCAN_CODE sp_success;
+  int error_code = NO_ERROR;
 
   /* check input */
   assert (context != NULL);
@@ -24462,7 +24521,8 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
       (thread_p, &context->hfid, context->recdes_p->length, false, context->recdes_p->length, context->scan_cache_p,
        context->home_page_watcher_p) == NULL)
     {
-      return ER_FAILED;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 
 #if !defined(NDEBUG)
@@ -24491,6 +24551,7 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
     }
   else
     {
+      assert (false);
       if (sp_success != SP_ERROR)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -24519,6 +24580,7 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
 		     OID * out_oid_p)
 {
   HEAP_OPERATION_CONTEXT ins_context;
+  int error_code = NO_ERROR;
 
   /* check input */
   assert (recdes_p != NULL);
@@ -24529,9 +24591,11 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
   heap_create_insert_context (&ins_context, &parent_context->hfid, &parent_context->class_oid, recdes_p, NULL, false);
 
   /* physical insertion */
-  if (heap_find_location_and_insert_rec_newhome (thread_p, &ins_context) != NO_ERROR)
+  error_code = heap_find_location_and_insert_rec_newhome (thread_p, &ins_context);
+  if (error_code != NO_ERROR)
     {
-      return ER_FAILED;
+      ASSERT_ERROR ();
+      return error_code;
     }
 
   HEAP_PERF_TRACK_EXECUTE (thread_p, parent_context);
@@ -24583,16 +24647,20 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, P
   /* fix header page if REC_BIGONE */
   if (heap_is_big_length (context->recdes_p->length))
     {
-      if (heap_fix_header_page (thread_p, context) != NO_ERROR)
+      rc = heap_fix_header_page (thread_p, context);
+      if (rc != NO_ERROR)
 	{
-	  return NO_ERROR;
+	  ASSERT_ERROR ();
+	  return rc;
 	}
     }
 
   /* handle overflow case of new record version */
-  if (heap_insert_handle_multipage_record (thread_p, context) != NO_ERROR)
+  rc = heap_insert_handle_multipage_record (thread_p, context);
+  if (rc != NO_ERROR)
     {
-      return ER_FAILED;
+      ASSERT_ERROR ();
+      return rc;
     }
 
   /* if we get a page hint, try to get the insert location in it */
@@ -24601,6 +24669,7 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, P
       rc = heap_get_insert_location_with_lock (thread_p, context, home_hint);
       if (rc != NO_ERROR && rc != ER_SP_NOSPACE_IN_PAGE)
 	{
+	  ASSERT_ERROR ();
 	  return rc;
 	}
     }
@@ -24611,22 +24680,28 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, P
       assert (home_hint == NULL || rc == ER_SP_NOSPACE_IN_PAGE);
 
       /* fix header page */
-      if (heap_fix_header_page (thread_p, context) != NO_ERROR)
+      rc = heap_fix_header_page (thread_p, context);
+      if (rc != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  ASSERT_ERROR ();
+	  return rc;
 	}
 
       /* get new insert location */
-      if (heap_get_insert_location_with_lock (thread_p, context, NULL) != NO_ERROR)
+      rc = heap_get_insert_location_with_lock (thread_p, context, NULL);
+      if (rc != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  ASSERT_ERROR ();
+	  return rc;
 	}
     }
 
   /* physically insert new version's home */
-  if (heap_insert_physical (thread_p, context) != NO_ERROR)
+  rc = heap_insert_physical (thread_p, context);
+  if (rc != NO_ERROR)
     {
-      return ER_FAILED;
+      ASSERT_ERROR ();
+      return rc;
     }
 
   HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -25513,6 +25588,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 static int
 heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
 {
+  int error_code = NO_ERROR;
+
   /* check input */
   assert (context != NULL);
   assert (context->record_type == REC_HOME || context->record_type == REC_ASSIGN_ADDRESS);
@@ -25532,6 +25609,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       if (spage_get_record (context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes, is_peeking)
 	  != S_SUCCESS)
 	{
+	  assert (false);
 	  return ER_FAILED;
 	}
     }
@@ -25546,13 +25624,15 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       OID forward_oid[2];
       MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
       char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
-      int header_size, rc;
+      int header_size;
       INT32 chn;
 
       /* get home record header size */
-      if (or_mvcc_get_header (&context->home_recdes, &record_header) != NO_ERROR)
+      error_code = or_mvcc_get_header (&context->home_recdes, &record_header);
+      if (error_code != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
       header_size = or_mvcc_header_size_from_flags (record_header.mvcc_flag);
       chn = MVCC_GET_CHN (&record_header);
@@ -25613,23 +25693,23 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	      if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid[0], &built_recdes, &mvcc_relocate_delete) ==
 		  NULL)
 		{
-		  return ER_FAILED;
+		  ASSERT_ERROR_AND_SET (error_code);
+		  return error_code;
 		}
 
 	      mnt_heap_home_to_big_deletes (thread_p);
 	    }
 	  else
 	    {
-	      int rc;
-
 	      /* new record is relocated - REC_NEWHOME case */
 	      forwarding_recdes.type = REC_RELOCATION;
 
 	      /* insert NEWHOME record */
-	      rc = heap_insert_newhome (thread_p, context, &built_recdes, &forward_oid[0]);
-	      if (rc != NO_ERROR)
+	      error_code = heap_insert_newhome (thread_p, context, &built_recdes, &forward_oid[0]);
+	      if (error_code != NO_ERROR)
 		{
-		  return rc;
+		  ASSERT_ERROR ();
+		  return error_code;
 		}
 
 	      mnt_heap_home_to_rel_deletes (thread_p);
@@ -25654,6 +25734,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 		  (context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
 		   is_peeking) != S_SUCCESS)
 		{
+		  assert (false);
 		  return ER_FAILED;
 		}
 	    }
@@ -25692,19 +25773,19 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	}
 
       /* update home page and check operation result */
-      rc =
+      error_code =
 	heap_update_physical (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
 			      home_page_updated_recdes);
-      if (rc != NO_ERROR)
+      if (error_code != NO_ERROR)
 	{
-	  return rc;
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
   else
     {
-      int rc;
       bool is_reusable = heap_is_reusable_oid (context->file_type);
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -25716,13 +25797,14 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* physical deletion */
-      rc = heap_delete_physical (thread_p, &context->hfid, context->home_page_watcher_p->pgptr, &context->oid);
+      error_code = heap_delete_physical (thread_p, &context->hfid, context->home_page_watcher_p->pgptr, &context->oid);
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       mnt_heap_home_deletes (thread_p);
 
-      return rc;
+      assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
+      return error_code;
     }
 
   /* all ok */
@@ -26305,6 +26387,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 static int
 heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
 {
+  int error_code = NO_ERROR;
+
   assert (context != NULL);
   assert (context->recdes_p != NULL);
   assert (context->type == HEAP_OPERATION_UPDATE);
@@ -26341,9 +26425,11 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       insert_context.time_track = context->time_track;
 
       /* insert new version */
-      if (heap_insert_newver (thread_p, &insert_context, context->home_page_watcher_p) != NO_ERROR)
+      error_code = heap_insert_newver (thread_p, &insert_context, context->home_page_watcher_p);
+      if (error_code != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
 
       /* unfix new version's pages */
@@ -26368,9 +26454,11 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       delete_context.time_track = context->time_track;
 
       /* delete old record */
-      if (heap_delete_home (thread_p, &delete_context, true) != NO_ERROR)
+      error_code = heap_delete_home (thread_p, &delete_context, true);
+      if (error_code != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
     }
   else
@@ -26382,15 +26470,18 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       if (heap_is_big_length (context->recdes_p->length))
 	{
 	  /* fix header page */
-	  if (heap_fix_header_page (thread_p, context) != NO_ERROR)
+	  error_code = heap_fix_header_page (thread_p, context);
+	  if (error_code != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      ASSERT_ERROR ();
+	      return error_code;
 	    }
 
 	  /* insert new overflow record */
 	  if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid[0], context->recdes_p, NULL) == NULL)
 	    {
-	      return ER_FAILED;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
 	    }
 
 	  /* forwarding record is REC_BIGONE */
@@ -26407,16 +26498,20 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	    (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, context->recdes_p->length))
 	{
 	  /* fix header page */
-	  if (heap_fix_header_page (thread_p, context) != NO_ERROR)
+	  error_code = heap_fix_header_page (thread_p, context);
+	  if (error_code != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      ASSERT_ERROR ();
+	      return error_code;
 	    }
 
 	  /* insert new home record */
 	  context->recdes_p->type = REC_NEWHOME;
-	  if (heap_insert_newhome (thread_p, context, context->recdes_p, &forward_oid[0]) != NO_ERROR)
+	  error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &forward_oid[0]);
+	  if (error_code != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      ASSERT_ERROR ();
+	      return error_code;
 	    }
 
 	  /* forwarding record is REC_RELOCATION */
@@ -26454,6 +26549,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	      (context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
 	       is_peeking) != S_SUCCESS)
 	    {
+	      assert (false);
 	      return ER_FAILED;
 	    }
 	}
@@ -26465,10 +26561,13 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* physical update of home record */
-      if (heap_update_physical
-	  (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, home_page_updated_recdes_p) != NO_ERROR)
+      error_code =
+	heap_update_physical (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+			      home_page_updated_recdes_p);
+      if (error_code != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -26494,6 +26593,7 @@ heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, R
 {
   SCAN_CODE scancode;
   INT16 old_record_type;
+  int error_code = NO_ERROR;
 
   /* check input */
   assert (page_p != NULL);
@@ -26511,6 +26611,7 @@ heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, R
        * This is likely a system error since we have already checked
        * for space.
        */
+      assert (false);
       if (scancode != SP_ERROR)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -27555,10 +27656,11 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   HEAP_PERF_START (thread_p, context);
 
   /* check scancache */
-  if (heap_scancache_check_with_hfid (thread_p, &context->hfid, &context->class_oid, &context->scan_cache_p) !=
-      NO_ERROR)
+  rc = heap_scancache_check_with_hfid (thread_p, &context->hfid, &context->class_oid, &context->scan_cache_p);
+  if (rc != NO_ERROR)
     {
-      return ER_FAILED;
+      ASSERT_ERROR ();
+      return rc;
     }
 
   /* check file type */
@@ -27580,14 +27682,17 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	{
 	  er_log_debug (ARG_FILE_LINE, "heap_update: Bad interface a heap is needed");
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_HEAP, 3, "", NULL_FILEID, NULL_PAGEID);
+	  assert (false);
 	  return ER_FAILED;
 	}
     }
 
   /* check provided object identifier */
-  if (heap_is_valid_oid (&context->oid) != NO_ERROR)
+  rc = heap_is_valid_oid (&context->oid);
+  if (rc != NO_ERROR)
     {
-      return ER_FAILED;
+      ASSERT_ERROR ();
+      return rc;
     }
 
   /* by default, consider it old */
@@ -27616,10 +27721,11 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* 
    * Get location
    */
-  if (heap_get_record_location (thread_p, context) != NO_ERROR)
+  rc = heap_get_record_location (thread_p, context);
+  if (rc != NO_ERROR)
     {
-      rc = ER_FAILED;
-      goto error;
+      ASSERT_ERROR ();
+      goto exit;
     }
 
   /* 
@@ -27628,11 +27734,11 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid))
     {
       bool is_mvcc_class = !heap_is_mvcc_disabled_for_class (&context->class_oid);
-      if (heap_insert_adjust_recdes_header (thread_p, context, context->recdes_p, is_mvcc_op, is_mvcc_class) !=
-	  NO_ERROR)
+      rc = heap_insert_adjust_recdes_header (thread_p, context, context->recdes_p, is_mvcc_op, is_mvcc_class);
+      if (rc != NO_ERROR)
 	{
-	  rc = ER_FAILED;
-	  goto error;
+	  ASSERT_ERROR ();
+	  goto exit;
 	}
     }
 
@@ -27647,8 +27753,8 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid, context->oid.pageid,
 	      context->oid.slotid);
-      rc = ER_FAILED;
-      goto error;
+      rc = ER_HEAP_UNKNOWN_OBJECT;
+      goto exit;
     }
 
   context->home_recdes.area_size = DB_PAGESIZE;
@@ -27657,7 +27763,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       S_SUCCESS)
     {
       rc = ER_FAILED;
-      goto error;
+      goto exit;
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
@@ -27687,13 +27793,14 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3, context->oid.volid, context->oid.pageid,
 	      context->oid.slotid);
       rc = ER_FAILED;
-      goto error;
+      goto exit;
     }
 
   /* check return code of operation */
   if (rc != NO_ERROR)
     {
-      goto error;
+      ASSERT_ERROR ();
+      goto exit;
     }
 
   /* 
@@ -27701,14 +27808,15 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
    */
   if (HFID_EQ ((&context->hfid), &(heap_Classrepr->rootclass_hfid)))
     {
-      if (heap_mark_class_as_modified (thread_p, &context->oid, or_chn (context->recdes_p), false) != NO_ERROR)
+      rc = heap_mark_class_as_modified (thread_p, &context->oid, or_chn (context->recdes_p), false);
+      if (rc != NO_ERROR)
 	{
-	  rc = ER_FAILED;
-	  goto error;
+	  ASSERT_ERROR ();
+	  goto exit;
 	}
     }
 
-error:
+exit:
 
   /* unfix or cache home page */
   if (context->home_page_watcher_p->pgptr != NULL && context->home_page_watcher_p == &context->home_page_watcher)

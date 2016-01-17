@@ -2293,6 +2293,7 @@ end:
     {
       error = NO_ERROR;
       DB_MAKE_NULL (result);
+      er_clear ();
     }
 
   return error;
@@ -2359,6 +2360,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
+	      er_clear ();
 	      return NO_ERROR;
 	    }
 	  else
@@ -2406,6 +2408,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	    {
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		{
+		  er_clear ();
 		  return NO_ERROR;
 		}
 	      else
@@ -2543,6 +2546,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 			  /* overflow happened during round up */
 			  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 			    {
+			      er_clear ();
 			      return NO_ERROR;
 			    }
 			  else
@@ -2576,12 +2580,13 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     }
 
 
-  if (er_errid () < 0 && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
+  if (er_errid () != NO_ERROR && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
-      return ER_FAILED;
+      er_clear ();
+      DB_MAKE_NULL (result);
     }
 
-  return NO_ERROR;
+  return er_errid ();
 }
 
 /*
@@ -3367,6 +3372,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 	    {
 	      DB_MAKE_NULL (result);
+	      er_clear ();
 	      er_status = NO_ERROR;
 	    }
 	  else
@@ -3418,6 +3424,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 	    {
 	      DB_MAKE_NULL (result);
+	      er_clear ();
 	      er_status = NO_ERROR;
 	    }
 	  else
@@ -4594,6 +4601,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true) \
 	{ \
 	  DB_MAKE_NULL (result); \
+	  er_clear (); \
 	  return NO_ERROR; \
 	} \
       else \
@@ -4610,6 +4618,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true) \
         { \
           DB_MAKE_NULL (result); \
+          er_clear (); \
           return NO_ERROR; \
         } \
       else \
@@ -5098,6 +5107,7 @@ error:
   PRIM_SET_NULL (result);
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
+      er_clear ();
       return NO_ERROR;
     }
   else

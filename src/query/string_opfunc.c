@@ -1351,6 +1351,7 @@ db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2)
 
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
+	  er_clear ();
 	  err_status = NO_ERROR;
 	}
       else
@@ -2384,6 +2385,7 @@ error:
   DB_MAKE_NULL (result);
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
+      er_clear ();
       return NO_ERROR;
     }
   else
@@ -2472,6 +2474,7 @@ error:
   DB_MAKE_NULL (result);
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
+      er_clear ();
       return NO_ERROR;
     }
   else
@@ -2539,6 +2542,7 @@ error:
   DB_MAKE_NULL (result);
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
+      er_clear ();
       return NO_ERROR;
     }
   else
@@ -2613,6 +2617,7 @@ error:
   DB_MAKE_NULL (result);
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
+      er_clear ();
       return NO_ERROR;
     }
   else
@@ -4405,6 +4410,7 @@ cleanup:
     {
       /* we must not return an error code */
       *result = V_UNKNOWN;
+      er_clear ();
       return NO_ERROR;
     }
 
@@ -8935,13 +8941,6 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 	}
 
       assert (*dest_size <= alloc_size);
-
-      if (conv_status != 0 && er_errid () != ER_CHAR_CONV_NO_MATCH)
-	{
-	  /* set a warning */
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_CHAR_CONV_NO_MATCH, 2, lang_charset_cubrid_name (src_codeset),
-		  lang_charset_cubrid_name (dest_codeset));
-	}
     }
 
   return error_status;
@@ -8968,7 +8967,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
  * Note:
  *     This function accepts a source string <src_sring> and a string
  *     string fragment <sub_string> and returns the character position
- *     corresponding to the first occurance of <sub_string> within
+ *     corresponding to the first occurrence of <sub_string> within
  *     <src_string>.
  *
  *     This function works with National character strings.
@@ -9734,6 +9733,8 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
 		if (tp_value_cast (src_date, dt_tz_p, tp_datetime, false) == DOMAIN_COMPATIBLE)
 		  {
 		    type = DB_TYPE_DATETIME;
+		    /* Clear error from cast to DB_TYPE_DATETIMETZ. */
+		    er_clear ();
 		  }
 		else
 		  {
@@ -10301,6 +10302,7 @@ error:
 
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
+      er_clear ();
       return NO_ERROR;
     }
 
@@ -10350,6 +10352,7 @@ error:
 
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
+      er_clear ();
       return NO_ERROR;
     }
 
@@ -10416,6 +10419,7 @@ error:
 
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
+      er_clear ();
       return NO_ERROR;
     }
 
@@ -11660,6 +11664,7 @@ db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day)
   if (month == 0 && day == 0 && year == 0)
     {
       DB_MAKE_NULL (result_day);
+      er_clear ();
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  return NO_ERROR;
@@ -19965,6 +19970,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
       if (m == 0 && d == 0 && y == 0)
 	{
 	  DB_MAKE_NULL (result);
+	  er_clear ();
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      return NO_ERROR;
@@ -20035,6 +20041,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	{
 	  DB_MAKE_NULL (result);
+	  er_clear ();
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      return NO_ERROR;
@@ -20137,6 +20144,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0)
 	{
 	  DB_MAKE_NULL (result);
+	  er_clear ();
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      return NO_ERROR;
@@ -20928,6 +20936,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       if (m == 0 && d == 0 && y == 0)
 	{
 	  DB_MAKE_NULL (result);
+	  er_clear ();
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      return NO_ERROR;
@@ -20964,6 +20973,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	  if (m == 0 && d == 0 && y == 0)
 	    {
 	      DB_MAKE_NULL (result);
+	      er_clear ();
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		{
 		  return NO_ERROR;
@@ -20999,6 +21009,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	  if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	    {
 	      DB_MAKE_NULL (result);
+	      er_clear ();
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		{
 		  return NO_ERROR;
@@ -21061,6 +21072,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	{
 	  DB_MAKE_NULL (result);
+	  er_clear ();
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      return NO_ERROR;
@@ -21155,6 +21167,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0)
 	{
 	  DB_MAKE_NULL (result);
+	  er_clear ();
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      return NO_ERROR;
@@ -23196,6 +23209,7 @@ conversion_error:
 
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
+      er_clear ();
       error_status = NO_ERROR;
     }
   else
@@ -23237,6 +23251,7 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value, const TP_DOMA
       DB_MAKE_NULL (result);
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
+	  er_clear ();
 	  return NO_ERROR;
 	}
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
@@ -23334,6 +23349,7 @@ db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value, const TP_DOMAIN *
       DB_MAKE_NULL (result);
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
+	  er_clear ();
 	  return NO_ERROR;
 	}
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
@@ -23576,6 +23592,7 @@ error:
   DB_MAKE_NULL (result);
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
+      er_clear ();
       return NO_ERROR;
     }
   if (er_errid () == NO_ERROR)
@@ -23638,6 +23655,11 @@ db_time_diff (const DB_VALUE * val1, const DB_VALUE * val2, DB_VALUE * result)
 	      val1_type = DB_TYPE_DATETIME;
 	    }
 	}
+      else
+	{
+	  /* Extracted time is used. Make sure error is not leaked. */
+	  er_clear ();
+	}
     }
   else
     {
@@ -23645,6 +23667,8 @@ db_time_diff (const DB_VALUE * val1, const DB_VALUE * val2, DB_VALUE * result)
       if (db_get_datetime_from_dbvalue (val1, &y1, &m1, &d1, &hour_aux, &min_aux, &sec_aux, &ms_aux, NULL) == NO_ERROR)
 	{
 	  val1_type = DB_TYPE_DATE;
+	  /* Extracted time is used. Make sure error is not leaked. */
+	  er_clear ();
 	}
       else
 	{
@@ -23669,12 +23693,19 @@ db_time_diff (const DB_VALUE * val1, const DB_VALUE * val2, DB_VALUE * result)
 	      val2_type = DB_TYPE_DATETIME;
 	    }
 	}
+      else
+	{
+	  /* Extracted time is used. Make sure error is not leaked. */
+	  er_clear ();
+	}
     }
   else
     {
       /* val2 may be Date type, try it here */
       if (db_get_datetime_from_dbvalue (val2, &y2, &m2, &d2, &hour_aux, &min_aux, &sec_aux, &ms_aux, NULL) == NO_ERROR)
 	{
+	  /* Extracted time is used. Make sure error is not leaked. */
+	  er_clear ();
 	  val2_type = DB_TYPE_DATE;
 	}
       else
@@ -23726,6 +23757,7 @@ db_time_diff (const DB_VALUE * val1, const DB_VALUE * val2, DB_VALUE * result)
 
 error:
   DB_MAKE_NULL (result);
+  er_clear ();
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;
@@ -25980,6 +26012,7 @@ error:
     }
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
+      er_clear ();
       return NO_ERROR;
     }
 
@@ -26155,6 +26188,7 @@ error:
     {
       DB_MAKE_NULL (result);
     }
+  er_clear ();
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;
@@ -27080,6 +27114,7 @@ db_get_cs_coll_info (DB_VALUE * result, const DB_VALUE * val, const int mode)
     {
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
+	  er_clear ();
 	  DB_MAKE_NULL (result);
 	}
       else

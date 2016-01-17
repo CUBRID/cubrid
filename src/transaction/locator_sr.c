@@ -5772,17 +5772,23 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
       heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, scan_cache,
 				  UPDATE_INPLACE_CURRENT_MVCCID, false);
-      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
+      error_code = heap_update_logical (thread_p, &update_context);
+      if (error_code != NO_ERROR)
 	{
 	  /* 
 	   * Problems updating the object...Maybe, the transaction should be
 	   * aborted by the caller...Quit..
 	   */
-	  error_code = er_errid ();
-	  if (error_code == NO_ERROR)
+	  if (error_code == ER_FAILED)
 	    {
-	      error_code = ER_FAILED;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      assert (false);
 	    }
+	  else
+	    {
+	      ASSERT_ERROR ();
+	    }
+
 	  goto error;
 	}
       isold_object = update_context.is_logical_old;
@@ -5838,16 +5844,21 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, scan_cache,
 					  UPDATE_INPLACE_CURRENT_MVCCID, false);
-	      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
+	      error_code = heap_update_logical (thread_p, &update_context);
+	      if (error_code != NO_ERROR)
 		{
 		  /* 
 		   * Problems updating the object...Maybe, the transaction should be
 		   * aborted by the caller...Quit..
 		   */
-		  error_code = er_errid ();
-		  if (error_code == NO_ERROR)
+		  if (error_code == ER_FAILED)
 		    {
-		      error_code = ER_FAILED;
+		      ASSERT_ERROR_AND_SET (error_code);
+		      assert (false);
+		    }
+		  else
+		    {
+		      ASSERT_ERROR ();
 		    }
 		  goto error;
 		}
@@ -5958,7 +5969,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      force_in_place = UPDATE_INPLACE_CURRENT_MVCCID;
 
 		      /* The object is a new instance, that is only the address (no content) is known by the heap
-		       * manager. This is a normal behaviour and, if we have an index, we need to add the object to the 
+		       * manager. This is a normal behavior and, if we have an index, we need to add the object to the 
 		       * index later. Because the following processing can remove this error, we save it here in
 		       * no_data_new_address */
 		      no_data_new_address = true;
@@ -6195,18 +6206,22 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  /* in MVCC update heap and then indexes */
 	  heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place,
 				      use_bigone_maxsize);
-	  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
+	  error_code = heap_update_logical (thread_p, &update_context);
+	  if (error_code != NO_ERROR)
 	    {
-	      /* 
+	      /*
 	       * Problems updating the object...Maybe, the transaction should be
 	       * aborted by the caller...Quit..
 	       */
-	      error_code = er_errid ();
-	      if (error_code == NO_ERROR)
+	      if (error_code == ER_FAILED)
 		{
-		  error_code = ER_FAILED;
+		  ASSERT_ERROR_AND_SET (error_code);
+		  assert (false);
 		}
-
+	      else
+		{
+		  ASSERT_ERROR ();
+		}
 	      goto error;
 	    }
 	  COPY_OID (new_oid_p, &update_context.res_oid);
@@ -6294,16 +6309,21 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	  heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place,
 				      use_bigone_maxsize);
-	  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
+	  error_code = heap_update_logical (thread_p, &update_context);
+	  if (error_code != NO_ERROR)
 	    {
-	      /* 
+	      /*
 	       * Problems updating the object...Maybe, the transaction should be
 	       * aborted by the caller...Quit..
 	       */
-	      error_code = er_errid ();
-	      if (error_code == NO_ERROR)
+	      if (error_code == ER_FAILED)
 		{
-		  error_code = ER_FAILED;
+		  ASSERT_ERROR_AND_SET (error_code);
+		  assert (false);
+		}
+	      else
+		{
+		  ASSERT_ERROR ();
 		}
 	      goto error;
 	    }
@@ -7962,6 +7982,10 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    locator_update_force (thread_p, &class_hfid, &class_oid, oid, NULL, old_recdes, &new_recdes, has_index,
 				  att_id, n_att_id, op_type, scan_cache, force_count, not_check_fk, repl_info,
 				  pruning_type, pcontext, mvcc_reev_data, force_update_inplace, need_locking);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	    }
 	}
 
       if (copyarea != NULL)

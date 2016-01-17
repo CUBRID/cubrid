@@ -303,6 +303,9 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
       /* The record is deleted */
       if (MVCC_IS_REC_INSERTER_IN_SNAPSHOT (thread_p, rec_header, snapshot))
 	{
+	  /* TODO: Is this check necessary? It seems that if inserter is active, then so will be the deleter (actually
+	   *       they will be the same). It only adds an extra-check in a function frequently called.
+	   */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_DELETED,
 			     PERF_SNAPSHOT_INVISIBLE);
@@ -343,6 +346,46 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 				 PERF_SNAPSHOT_INVISIBLE);
 	    }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
+	  return false;
+	}
+    }
+}
+
+/*
+ * mvcc_is_not_deleted_for_snapshot () - Check whether a record is deleted or not regarding the snapshot
+ *   return: true, if the record is valid for snapshot
+ *   thread_p(in): thread entry
+ *   rec_header(out): the record header
+ *   snapshot(in): the snapshot used for record validation
+ *   page_ptr(in): the page where the record reside
+ */
+bool
+mvcc_is_not_deleted_for_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot)
+{
+  assert (rec_header != NULL && snapshot != NULL);
+
+  if (!MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_DELID))
+    {
+      /* The record is not deleted */
+      return true;
+    }
+  else
+    {
+      /* The record is deleted */
+      if (MVCC_IS_REC_DELETED_BY_ME (thread_p, rec_header))
+	{
+	  /* The record was deleted by current transaction and it is not visible anymore. */
+	  return false;
+	}
+      else if (MVCC_IS_REC_DELETER_IN_SNAPSHOT (thread_p, rec_header, snapshot))
+	{
+	  /* The record was deleted by an active transaction or by a transaction that has committed after snapshot was
+	   * obtained. */
+	  return true;
+	}
+      else
+	{
+	  /* The deleter transaction has committed and the record is not visible to current transaction. */
 	  return false;
 	}
     }

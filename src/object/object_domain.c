@@ -11665,6 +11665,7 @@ tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * des
 	  status = DOMAIN_COMPATIBLE;
 	  pr_clear_value (dest);
 	  DB_MAKE_NULL (dest);
+	  er_clear ();
 	}
     }
 
