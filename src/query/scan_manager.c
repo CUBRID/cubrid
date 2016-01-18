@@ -4827,6 +4827,12 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   return status;
 }
 
+typedef enum
+{
+  OBJ_GET_WITHOUT_LOCK = 0,
+  OBJ_REPEAT_GET_WITH_LOCK = 1,
+  OBJ_GET_WITH_LOCK_COMPLETE = 2
+} OBJECT_GET_STATUS;
 /*
  * scan_next_heap_scan () - The scan is moved to the next heap scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
@@ -4849,7 +4855,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   OID updated_oid, retry_oid;
   LOG_LSA ref_lsa;
   int is_peeking;
-  bool object_need_rescan;
+  OBJECT_GET_STATUS object_get_status;
 
   hsidp = &scan_id->s.hsid;
   if (scan_id->mvcc_select_lock_needed)
@@ -4874,9 +4880,9 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   while (1)
     {
       COPY_OID (&retry_oid, &hsidp->curr_oid);
+      object_get_status = OBJ_GET_WITHOUT_LOCK;
 
     restart_scan_oid:
-      object_need_rescan = false;
 
       /* get next object */
       if (scan_id->grouped)
@@ -5153,11 +5159,21 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		      pgbuf_get_vpid (hsidp->scan_cache.page_watcher.pgptr, &curr_vpid);
 		      pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
 		    }
+#if defined (SERVER_MODE)
 		  else
 		    {
-		      /* page not fixed, recdes was read without lock, object may have changed */
-		      object_need_rescan = true;
+		      if (object_get_status == OBJ_GET_WITHOUT_LOCK)
+			{
+			  /* page not fixed, recdes was read without lock, object may have changed */
+			  object_get_status = OBJ_REPEAT_GET_WITH_LOCK;
+			}
+		      else if (object_get_status == OBJ_REPEAT_GET_WITH_LOCK)
+			{
+			  /* already read with lock, set flag to continue scanning next object */
+			  object_get_status = OBJ_GET_WITH_LOCK_COMPLETE;
+			}
 		    }
+#endif
 
 		  if (lock_object (thread_p, &hsidp->curr_oid, &hsidp->cls_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED)
 		    {
@@ -5186,7 +5202,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		      return S_ERROR;
 		    }
 
-		  if (object_need_rescan
+		  if (object_get_status == OBJ_REPEAT_GET_WITH_LOCK
 		      || (hsidp->scan_cache.page_watcher.pgptr != NULL
 			  && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa)))
 		    {
