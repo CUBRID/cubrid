@@ -2988,7 +2988,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
   pr_clear_value (&db_temp);
   if (error == NO_ERROR && warning_size_exceeded == true)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_SIZE_STRING_TRUNCATED, 1, warning_context);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_SIZE_STRING_TRUNCATED, 1, warning_context);
     }
 
   return error;
