@@ -1593,7 +1593,7 @@ db_string_space (DB_VALUE const *count, DB_VALUE * result)
 
       if (len > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, len,
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, len,
 		  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
 	  DB_MAKE_NULL (result);
 	  return NO_ERROR;
@@ -7664,7 +7664,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
 
   if (result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_size,
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, result_size,
 	      (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
 
       DB_MAKE_NULL (result);
@@ -16871,7 +16871,8 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
 
   if (number_lang == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      assert (number_lang != NULL);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
