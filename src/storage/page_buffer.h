@@ -452,4 +452,7 @@ extern void pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * l
 			      UINT64 * victim_cand_cnt);
 
 extern int pgbuf_flush_control_from_dirty_ratio (void);
+
+extern int pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern void pgbuf_rv_flush_page_dump (FILE * fp, int length, void *data);
 #endif /* _PAGE_BUFFER_H_ */

@@ -2369,6 +2369,14 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
     {
       int undo_size, redo_size;
 
+      if (next_volid != NULL_VOLID)
+	{
+	  /* Before updating and logging disk link to a new volume, we need to log a page flush on undo.
+	   * Recovery must flush disk link changes before removing volume from disk.
+	   */
+	  log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid), &vpid);
+	}
+
       undo_size = (sizeof (*undo_recv) + (int) strlen (disk_vhdr_get_next_vol_fullname (vhdr)));
       undo_recv = (DISK_RECV_LINK_PERM_VOLUME *) malloc (undo_size);
       if (undo_recv == NULL)

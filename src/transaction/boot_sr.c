@@ -565,6 +565,7 @@ boot_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info)
   int vol_fd;
   RECDES recdes;		/* Record descriptor which describe the volume. */
   bool in_system_op = false;
+  VPID boot_db_parm_vpid = VPID_INITIALIZER;
 
   if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
     {
@@ -644,6 +645,12 @@ boot_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info)
 
   recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
   recdes.data = (char *) boot_Db_parm;
+
+  /* Before updating and logging disk representation of boot_Dp_parm, we need to log a page flush on undo.
+   * Recovery must flush boot_Db_parm changes before removing volume from disk.
+   */
+  VPID_GET_FROM_OID (&boot_db_parm_vpid, boot_Db_parm_oid);
+  log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (boot_db_parm_vpid), &boot_db_parm_vpid);
 
   heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
 			      &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID, false);

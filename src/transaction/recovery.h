@@ -201,7 +201,9 @@ typedef enum
 
   RVLOC_CLASSNAME_DUMMY = 146,
 
-  RV_LAST_LOGID = RVLOC_CLASSNAME_DUMMY,
+  RVPGBUF_FLUSH_PAGE = 147,
+
+  RV_LAST_LOGID = RVPGBUF_FLUSH_PAGE,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -258,6 +260,7 @@ extern void rv_check_rvfuns (void);
     || RCV_IS_BTREE_LOGICAL_LOG (idx) \
     || ((idx) == RVBT_MVCC_INCREMENTS_UPD) \
     || ((idx) == RVBT_CREATE_INDEX) \
-    || ((idx) == RVFL_POSTPONE_DESTROY_FILE)) ? true : false)
+    || ((idx) == RVFL_POSTPONE_DESTROY_FILE) \
+    || ((idx) == RVPGBUF_FLUSH_PAGE)) ? true : false)
 
 #endif /* _RECOVERY_H_ */

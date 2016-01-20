@@ -949,7 +949,14 @@ struct rvfun RV_fun[] = {
    NULL,
    locator_rv_redo_rename,
    NULL,
-   NULL}
+   NULL},
+
+  {RVPGBUF_FLUSH_PAGE,
+   "RVPGBUF_FLUSH_PAGE",
+   pgbuf_rv_flush_page,
+   pgbuf_rv_flush_page,
+   pgbuf_rv_flush_page_dump,
+   pgbuf_rv_flush_page_dump},
 };
 
 /*

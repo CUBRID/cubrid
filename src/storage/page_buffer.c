@@ -11998,3 +11998,54 @@ pgbuf_flush_control_from_dirty_ratio (void)
 
   return adapt_flush_rate;
 }
+
+/*
+ * pgbuf_rv_flush_page () - Flush page during recovery. Some changes must be flushed immediately to provide
+ *			    consistency, in case server crashes again during recovery.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data (VPID of page to flush).
+ */
+int
+pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  PAGE_PTR page_to_flush = NULL;
+  VPID vpid_to_flush = VPID_INITIALIZER;
+
+  assert (rcv->pgptr == NULL);
+  assert (rcv->length == sizeof (VPID));
+
+  VPID_COPY (&vpid_to_flush, (VPID *) rcv->data);
+  page_to_flush =
+    pgbuf_fix_without_validation (thread_p, &vpid_to_flush, OLD_PAGE, PGBUF_LATCH_FLUSH, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_to_flush == NULL)
+    {
+      /* Page no longer exist. */
+      return NO_ERROR;
+    }
+  /* Flush page and unfix. */
+  pgbuf_flush (thread_p, page_to_flush, DONT_FREE);
+  pgbuf_unfix (thread_p, page_to_flush);
+
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_rv_flush_page_dump () - Dump data for recovery page flush.
+ *
+ * return      : Void.
+ * fp (in)     : Output target.
+ * length (in) : Length of recovery data.
+ * data (in)   : Recovery data (VPID of page to flush).
+ */
+void
+pgbuf_rv_flush_page_dump (FILE * fp, int length, void *data)
+{
+  VPID vpid_to_flush = VPID_INITIALIZER;
+
+  assert (length == sizeof (VPID));
+
+  VPID_COPY (&vpid_to_flush, (VPID *) data);
+  fprintf (fp, "Page to flush: %d|%d. \n", vpid_to_flush.volid, vpid_to_flush.pageid);
+}
