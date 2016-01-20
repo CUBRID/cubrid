@@ -3322,7 +3322,9 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
        */
       if (er_errid () != NO_ERROR)
 	{
+#if defined (SERVER_MODE)
 	  assert (false);
+#endif /* SERVER_MODE */
 	  er_clear ();
 	}
 
