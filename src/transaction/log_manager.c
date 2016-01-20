@@ -5314,6 +5314,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
   logtb_complete_mvcc (thread_p, tdes, true);
 
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
+  /* undo_nxlsa is no longer required here and must be reset, in case checkpoint takes a snapshot of this transaction
+   * during TRAN_UNACTIVE_WILL_COMMIT phase.
+   */
+  LSA_SET_NULL (&tdes->undo_nxlsa);
+
   if (tdes->num_new_temp_files > 0)
     {
       (void) file_new_destroy_all_tmp (thread_p, FILE_TEMP);

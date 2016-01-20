@@ -3647,7 +3647,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /* 
        * The transaction was the one that was committing
        */
-      if (!LSA_ISNULL (&tdes->undo_nxlsa))
+      if (tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE && !LSA_ISNULL (&tdes->undo_nxlsa))
 	{
 	  /* Transaction stopped in the middle of a logical postpone. We must rollback it. */
 	  assert (tdes->topops.last == -1);
