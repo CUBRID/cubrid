@@ -154,11 +154,12 @@ extern "C"
   extern int tz_create_session_tzid_for_timestamp (const DB_UTIME * src_ts, TZ_ID * tz_id);
   extern int tz_str_to_region (const char *tz_str, const int tz_str_size, TZ_REGION * tz_region);
   extern int tz_create_session_tzid_for_time (const DB_TIME * src_time, bool src_is_utc, TZ_ID * tz_id);
-  extern int tz_str_read_number (const char *str, const bool strict, const bool read_sign, int *val,
-				 const char **str_next);
-  extern int tz_str_read_time (const char *str, bool need_minutes, bool allow_sec60, int *hour, int *min, int *sec,
-			       const char **str_next);
-  extern int tz_str_to_seconds (const char *str, int *sec, const char **str_next, const bool is_offset);
+  extern int tz_str_read_number (const char *str, const char *str_end, const bool strict, const bool read_sign,
+				 int *val, const char **str_next);
+  extern int tz_str_read_time (const char *str, const char *str_end, bool need_minutes, bool allow_sec60, int *hour,
+			       int *min, int *sec, const char **str_next);
+  extern int tz_str_to_seconds (const char *str, const char *str_end, int *sec, const char **str_next,
+				const bool is_offset);
   extern int tz_get_ds_change_julian_date_diff (const int src_julian_date, const TZ_DS_RULE * ds_rule, const int year,
 						int *ds_rule_julian_date, full_date_t * date_diff);
   extern int tz_create_datetimetz (const DB_DATETIME * dt, const char *tz_str, const int tz_size,

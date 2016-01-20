@@ -887,7 +887,7 @@ tz_get_timezone_offset (const char *tz_str, int tz_size, char *result, DB_DATETI
     {
       int seconds = 0;
       const char *zone_end;
-      if (tz_str_to_seconds (p, &seconds, &zone_end, true) != NO_ERROR)
+      if (tz_str_to_seconds (p, tz_str + tz_size, &seconds, &zone_end, true) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
 	  return ER_TZ_INVALID_TIMEZONE;
@@ -1132,7 +1132,7 @@ tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INF
 
   if (*zone_str == '+' || *zone_str == '-')
     {
-      if (tz_str_to_seconds (zone_str, &(tz_info->offset), &zone_str_end, true) != NO_ERROR)
+      if (tz_str_to_seconds (zone_str, tz_str_end, &(tz_info->offset), &zone_str_end, true) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
 	  return ER_TZ_INVALID_TIMEZONE;
@@ -1251,7 +1251,7 @@ tz_str_to_region (const char *tz_str, const int tz_str_size, TZ_REGION * tz_regi
 
   if (*zone_str == '+' || *zone_str == '-')
     {
-      if (tz_str_to_seconds (zone_str, &reg_offset, &zone_str_end, true) != NO_ERROR)
+      if (tz_str_to_seconds (zone_str, tz_str_end, &reg_offset, &zone_str_end, true) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
 	  return ER_TZ_INVALID_TIMEZONE;
@@ -2341,6 +2341,7 @@ tz_get_first_weekday_around_date (const int year, const int month, const int wee
  *
  * Returns: error code
  * str(in): string to parse
+ * str_end(in): pointer to end of string (after last character)
  * strict(in): true, if no trailing characters allowed
  * read_sign(in): true, if shoud read leading sign
  * val(out): the integer found in the input string
@@ -2348,17 +2349,18 @@ tz_get_first_weekday_around_date (const int year, const int month, const int wee
  *		  If no value was read, str_next will reference str.
  */
 int
-tz_str_read_number (const char *str, const bool strict, const bool read_sign, int *val, const char **str_next)
+tz_str_read_number (const char *str, const char *str_end, const bool strict, const bool read_sign, int *val,
+		    const char **str_next)
 {
   int cur_val = 0;
   const char *str_cursor;
   bool is_negative = false;
 
-  assert (!IS_EMPTY_STR (str));
+  assert (str < str_end && !IS_EMPTY_STR (str));
 
   str_cursor = str;
 
-  if (read_sign == true)
+  if (read_sign == true && str < str_end)
     {
       if (*str_cursor == '-')
 	{
@@ -2371,7 +2373,7 @@ tz_str_read_number (const char *str, const bool strict, const bool read_sign, in
 	}
     }
 
-  while (char_isdigit (*str_cursor))
+  while (str < str_end && char_isdigit (*str_cursor))
     {
       cur_val = cur_val * 10 + (*str_cursor - '0');
       str_cursor++;
@@ -2395,6 +2397,7 @@ tz_str_read_number (const char *str, const bool strict, const bool read_sign, in
  *
  * Returns: ER_FAILED (message error is not set) or NO_ERROR
  * str(in): string to parse
+ * str_end(in): end of string (pointer to first character after string)
  * need_minutes(in): true if it is mandatory to read minutes part, otherwise
  *		     hour specifier is enough
  * allow_sec60(in): true if 60 is allowed for the value of seconds,
@@ -2405,18 +2408,18 @@ tz_str_read_number (const char *str, const bool strict, const bool read_sign, in
  * str_next(out): pointer to the char after the parsed time value
  */
 int
-tz_str_read_time (const char *str, bool need_minutes, bool allow_sec60, int *hour, int *min, int *sec,
-		  const char **str_next)
+tz_str_read_time (const char *str, const char *str_end, bool need_minutes, bool allow_sec60, int *hour, int *min,
+		  int *sec, const char **str_next)
 {
   const char *str_cursor;
   int val_read = 0;
 
-  assert (!IS_EMPTY_STR (str));
+  assert (str < str_end && !IS_EMPTY_STR (str));
 
   *hour = *min = *sec = 0;
   str_cursor = str;
 
-  if (tz_str_read_number (str_cursor, true, false, &val_read, str_next) != NO_ERROR)
+  if (tz_str_read_number (str_cursor, str_end, true, false, &val_read, str_next) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -2437,12 +2440,12 @@ tz_str_read_time (const char *str, bool need_minutes, bool allow_sec60, int *hou
       return ER_FAILED;
     }
   str_cursor++;
-  if (IS_EMPTY_STR (str_cursor))
+  if (str_cursor >= str_end || IS_EMPTY_STR (str_cursor))
     {
       /* missing minute token */
       return ER_FAILED;
     }
-  if (tz_str_read_number (str_cursor, true, false, &val_read, str_next) != NO_ERROR)
+  if (tz_str_read_number (str_cursor, str_end, true, false, &val_read, str_next) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -2457,7 +2460,7 @@ tz_str_read_time (const char *str, bool need_minutes, bool allow_sec60, int *hou
     {
       /* if there is a token for seconds, read it */
       str_cursor++;
-      if (tz_str_read_number (str_cursor, true, false, &val_read, str_next) != NO_ERROR)
+      if (tz_str_read_number (str_cursor, str_end, true, false, &val_read, str_next) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -2482,7 +2485,7 @@ tz_str_read_time (const char *str, bool need_minutes, bool allow_sec60, int *hou
  *                an absolute value
  */
 int
-tz_str_to_seconds (const char *str, int *seconds, const char **str_next, const bool is_offset)
+tz_str_to_seconds (const char *str, const char *str_end, int *seconds, const char **str_next, const bool is_offset)
 {
   int err_status = NO_ERROR;
   int pos = -1;
@@ -2496,17 +2499,17 @@ tz_str_to_seconds (const char *str, int *seconds, const char **str_next, const b
   assert (str != NULL);
 
   str_cursor = str;
-  if (*str_cursor == '-')
+  if (str < str_end && *str_cursor == '-')
     {
       is_negative = true;
       str_cursor++;
     }
-  if (*str_cursor == '+')
+  if (str < str_end && *str_cursor == '+')
     {
       str_cursor++;
     }
 
-  err_status = tz_str_read_time (str_cursor, false, false, &hour, &min, &sec, str_next);
+  err_status = tz_str_read_time (str_cursor, str_end, false, false, &hour, &min, &sec, str_next);
   if (err_status != NO_ERROR)
     {
       return err_status;

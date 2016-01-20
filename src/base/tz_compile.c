@@ -1508,6 +1508,7 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 
   while (fgets (str, sizeof (str), fp))
     {
+      const char *str_end;
       tzd_raw->context.current_line++;
       trim_comments_whitespaces (str);
 
@@ -1516,11 +1517,13 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 	  continue;
 	}
 
+      str_end = str + strlen (str);
+
       entry_type_str = strtok (str, "\t");
       assert (entry_type_str != NULL && strcmp (entry_type_str, "Leap") == 0);
 
       next_token = strtok (NULL, "\t");
-      if (tz_str_read_number (next_token, true, false, &leap_year, &str_next) != NO_ERROR)
+      if (tz_str_read_number (next_token, str_end, true, false, &leap_year, &str_next) != NO_ERROR)
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
 	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "year",
@@ -1538,7 +1541,7 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 	}
 
       next_token = strtok (NULL, "\t");
-      if (tz_str_read_number (next_token, true, false, &leap_day_num, &str_next) != NO_ERROR)
+      if (tz_str_read_number (next_token, str_end, true, false, &leap_day_num, &str_next) != NO_ERROR)
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
 	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "day",
@@ -1547,7 +1550,8 @@ tzc_load_leap_secs (TZ_RAW_DATA * tzd_raw, const char *input_folder)
 	}
 
       next_token = strtok (NULL, "\t");
-      if (tz_str_read_time (next_token, false, true, &leap_time_h, &leap_time_m, &leap_time_s, &str_next) != NO_ERROR)
+      if (tz_str_read_time (next_token, str_end, false, true, &leap_time_h, &leap_time_m, &leap_time_s, &str_next) !=
+	  NO_ERROR)
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
 	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_INVALID_VALUE, "time",
@@ -1824,10 +1828,13 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
   int err_status = NO_ERROR;
   TZ_RAW_OFFSET_RULE *temp_rule = NULL;
   const char *str_dummy = NULL;
+  char *rule_text_end;
   int gmt_off_num = 0;
   bool is_numeric_gmt_off = false;
 
   assert (zone != NULL);
+
+  rule_text_end = rule_text + strlen (rule_text);
 
   gmt_off = strtok (rule_text, "\t ");
 
@@ -1847,7 +1854,7 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
   else if (strchr (gmt_off, ':') == NULL)
     {
       /* string might not be a GMT offset rule; check if it's a number */
-      err_status = tz_str_read_number (gmt_off, true, true, &gmt_off_num, &str_dummy);
+      err_status = tz_str_read_number (gmt_off, rule_text_end, true, true, &gmt_off_num, &str_dummy);
       if (err_status != NO_ERROR)
 	{
 	  err_status = TZC_ERR_INVALID_VALUE;
@@ -1899,7 +1906,7 @@ tzc_add_offset_rule (TZ_RAW_ZONE_INFO * zone, char *rule_text)
     }
   else
     {
-      err_status = tz_str_to_seconds (gmt_off, &(temp_rule->gmt_off), &str_dummy, false);
+      err_status = tz_str_to_seconds (gmt_off, rule_text_end, &(temp_rule->gmt_off), &str_dummy, false);
       if (err_status != NO_ERROR)
 	{
 	  TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_INVALID_TIME, gmt_off, "tz offset rule");
@@ -1976,8 +1983,11 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
   char *col_name, *col_from, *col_to, *col_type, *col_in, *col_on, *col_at;
   char *col_save, *col_letters;
   const char *str_cursor = NULL;
+  const char *rule_text_end;
 
   assert (tzd_raw != NULL);
+
+  rule_text_end = rule_text + strlen (rule_text);
 
   col_name = strtok (rule_text, " \t");
   col_from = strtok (NULL, " \t");
@@ -2072,7 +2082,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
   /* process and save data into the new TZ_RULE item */
   val_read = 0;
   /* process and store "FROM" year */
-  if (tz_str_read_number (col_from, true, false, &val_read, &str_cursor) != NO_ERROR)
+  if (tz_str_read_number (col_from, rule_text_end, true, false, &val_read, &str_cursor) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
       TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE, "year", col_from);
@@ -2089,7 +2099,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
     {
       ds_rule->to_year = TZ_MAX_YEAR;
     }
-  else if (tz_str_read_number (col_to, true, false, &val_read, &str_cursor) != NO_ERROR)
+  else if (tz_str_read_number (col_to, rule_text_end, true, false, &val_read, &str_cursor) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
       TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE, "year", col_to);
@@ -2132,7 +2142,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
     {
       val_read = 0;
     }
-  else if (tz_str_to_seconds (col_at, &val_read, &str_cursor, false) != NO_ERROR)
+  else if (tz_str_to_seconds (col_at, rule_text_end, &val_read, &str_cursor, false) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
       TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE, "AT column", col_at);
@@ -2150,7 +2160,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
    * amount of time specified as hh:mm. So first check if col_save == "<one_char>" */
   if (strlen (col_save) == 1)
     {
-      if (tz_str_read_number (col_save, true, false, &val_read, &str_cursor) != NO_ERROR)
+      if (tz_str_read_number (col_save, rule_text_end, true, false, &val_read, &str_cursor) != NO_ERROR)
 	{
 	  err_status = TZC_ERR_CANT_READ_VALUE;
 	  TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE, "SAVE column", col_save);
@@ -2158,7 +2168,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
 	}
       val_read *= 3600;
     }
-  else if (tz_str_to_seconds (col_save, &val_read, &str_cursor, false) != NO_ERROR)
+  else if (tz_str_to_seconds (col_save, rule_text_end, &val_read, &str_cursor, false) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
       TZC_LOG_ERROR_2ARG (TZC_CONTEXT (tzd_raw), TZC_ERR_CANT_READ_VALUE, "SAVE column", col_save);
@@ -3085,8 +3095,9 @@ tzc_compile_data (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 		{
 		  offrule->ds_ruleset = 0;
 		}
-	      else if (tz_str_to_seconds (raw_offrule->ds_ruleset_name, &(offrule->ds_ruleset), &dummy, false) !=
-		       NO_ERROR)
+	      else if (tz_str_to_seconds (raw_offrule->ds_ruleset_name,
+					  raw_offrule->ds_ruleset_name + strlen (raw_offrule->ds_ruleset_name),
+					  &(offrule->ds_ruleset), &dummy, false) != NO_ERROR)
 		{
 		  err_status = TZC_ERR_INVALID_TIME;
 		  goto exit;
@@ -3354,7 +3365,7 @@ tzc_compile_ds_rules (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 		}
 	      else
 		{
-		  prev_letter_abbrev = rule->letter_abbrev;
+		  prev_letter_abbrev = (char *) rule->letter_abbrev;
 		}
 	    }
 
@@ -3412,6 +3423,7 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
 {
   const char *str_cursor;
   const char *str_next;
+  const char *str_end;
   int year = 0;
   int val_read = 0;
   int type = -1, day = -1, bound = -1;
@@ -3427,8 +3439,10 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
       return NO_ERROR;
     }
 
+  str_end = str + strlen (str);
+
   str_cursor = strtok (str, " ");
-  if (tz_str_read_number (str_cursor, true, false, &val_read, &str_next) != NO_ERROR && val_read > 0
+  if (tz_str_read_number (str_cursor, str_end, true, false, &val_read, &str_next) != NO_ERROR && val_read > 0
       && val_read < TZ_MAX_YEAR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
@@ -3572,7 +3586,7 @@ str_to_offset_rule_until (TZ_RAW_OFFSET_RULE * offset_rule, char *str)
       goto exit;
     }
 
-  if (tz_str_read_time (str_cursor, false, false, &hour, &min, &sec, &str_next) != NO_ERROR)
+  if (tz_str_read_time (str_cursor, str_end, false, false, &hour, &min, &sec, &str_next) != NO_ERROR)
     {
       char temp_msg[TZC_ERR_MSG_MAX_SIZE] = { 0 };
 
@@ -3725,11 +3739,14 @@ str_read_day_var (const char *str, const int month, int *type, int *day, int *bo
   int day_num;
   char str_last[5] = "last";
   const char *str_cursor;
+  const char *str_end;
   const int days_of_month[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
 
   assert (str != NULL);
 
   *str_next = str;
+
+  str_end = str + strlen (str);
 
   /* initialize output parameters */
   *type = -1;
@@ -3737,7 +3754,7 @@ str_read_day_var (const char *str, const int month, int *type, int *day, int *bo
   *bound = -1;
 
   /* try reading a number */
-  if (tz_str_read_number (str, false, false, &day_num, str_next) != NO_ERROR)
+  if (tz_str_read_number (str, str_end, false, false, &day_num, str_next) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
       TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_CANT_READ_VALUE, "day numeric", str);
@@ -3805,7 +3822,7 @@ str_read_day_var (const char *str, const int month, int *type, int *day, int *bo
   str_cursor += 2;		/* skip the '>=' operator */
 
   *day = day_num;
-  if (tz_str_read_number (str_cursor, true, false, &day_num, &str_cursor) != NO_ERROR)
+  if (tz_str_read_number (str_cursor, str_end, true, false, &day_num, &str_cursor) != NO_ERROR)
     {
       err_status = TZC_ERR_CANT_READ_VALUE;
       TZC_LOG_ERROR_2ARG (NULL, TZC_ERR_CANT_READ_VALUE, "day string", str_cursor);
@@ -5670,11 +5687,10 @@ tzc_extend (TZ_DATA * tzd, bool * write_checksum)
 
   /* Add the new offset rules, fix the old ones and do a check for backward compatibility */
 
-  /* Use the old_tzd_offset_rule_map and the tzd_offset_rule_map arrays to filter out duplicate offset rule intervals. 
-   * For each timezone we check if its offset rule interval was
-   * previously found. If it was, we use the mapped start of the interval
-   * in the new timezone library. If not, we map the old start of the interval
-   * to the new one in the new timezone library. */
+  /* Use the old_tzd_offset_rule_map and the tzd_offset_rule_map arrays to filter out duplicate offset rule intervals.
+   * For each timezone we check if its offset rule interval was previously found. If it was, we use the mapped start of
+   * the interval in the new timezone library. If not, we map the old start of the interval to the new one in the new
+   * timezone library. */
 
   for (i = 0; i < all_timezones_count; i++)
     {
