@@ -4155,13 +4155,6 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	}
     }
 
-#if defined (SA_MODE)
-  if (LOG_ISRESTARTED ())
-    {
-      (void) vacuum_consume_buffer_log_blocks (thread_p);
-    }
-#endif
-
   tdes->num_log_records_written++;
 
   return start_lsa;
