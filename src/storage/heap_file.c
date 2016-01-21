@@ -6663,10 +6663,13 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
 	}
       else if (!HFID_EQ (&(*scan_cache)->node.hfid, hfid) || OID_ISNULL (&(*scan_cache)->node.class_oid))
 	{
+	  int r;
+
 	  /* scancache is not on our heap file, reinitialize it */
-	  if (heap_scancache_reset_modify (thread_p, *scan_cache, hfid, class_oid) != NO_ERROR)
+	  r = heap_scancache_reset_modify (thread_p, *scan_cache, hfid, class_oid);
+	  if (r != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      return r;
 	    }
 	}
     }
@@ -6991,7 +6994,7 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
       scan_cache->file_type = file_get_type (thread_p, &hfid->vfid);
       if (scan_cache->file_type == FILE_UNKNOWN_TYPE)
 	{
-	  ASSER_ERROR_AND_SET (ret);
+	  ASSERT_ERROR_AND_SET (ret);
 	  return ret;
 	}
     }
