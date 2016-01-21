@@ -979,18 +979,16 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid, IN
        */
 
       /* 1st: search DATA volumes */
-      if (disk_probe_disk_cache_to_find_desirable_vol
-	  (thread_p, &best_volid, &best_numpages, undesirable_volid, exp_numpages,
-	   DISK_PERMVOL_DATA_PURPOSE) != NULL_VOLID)
+      if (disk_probe_disk_cache_to_find_desirable_vol (thread_p, &best_volid, &best_numpages, undesirable_volid,
+						       exp_numpages, DISK_PERMVOL_DATA_PURPOSE) != NULL_VOLID)
 	{
 	  break;
 	}
 
       /* 2nd: search GENERIC volumes */
       best_numpages = -1;
-      if (disk_probe_disk_cache_to_find_desirable_vol
-	  (thread_p, &best_volid, &best_numpages, undesirable_volid, exp_numpages,
-	   DISK_PERMVOL_GENERIC_PURPOSE) != NULL_VOLID)
+      if (disk_probe_disk_cache_to_find_desirable_vol (thread_p, &best_volid, &best_numpages, undesirable_volid,
+						       exp_numpages, DISK_PERMVOL_GENERIC_PURPOSE) != NULL_VOLID)
 	{
 	  break;
 	}
@@ -1007,18 +1005,16 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid, IN
        */
 
       /* 1st: search INDEX volumes */
-      if (disk_probe_disk_cache_to_find_desirable_vol
-	  (thread_p, &best_volid, &best_numpages, undesirable_volid, exp_numpages,
-	   DISK_PERMVOL_INDEX_PURPOSE) != NULL_VOLID)
+      if (disk_probe_disk_cache_to_find_desirable_vol (thread_p, &best_volid, &best_numpages, undesirable_volid,
+						       exp_numpages, DISK_PERMVOL_INDEX_PURPOSE) != NULL_VOLID)
 	{
 	  break;
 	}
 
       /* 2nd: search GENERIC volumes */
       best_numpages = -1;
-      if (disk_probe_disk_cache_to_find_desirable_vol
-	  (thread_p, &best_volid, &best_numpages, undesirable_volid, exp_numpages,
-	   DISK_PERMVOL_GENERIC_PURPOSE) != NULL_VOLID)
+      if (disk_probe_disk_cache_to_find_desirable_vol (thread_p, &best_volid, &best_numpages, undesirable_volid,
+						       exp_numpages, DISK_PERMVOL_GENERIC_PURPOSE) != NULL_VOLID)
 	{
 	  break;
 	}
@@ -1034,9 +1030,8 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid, IN
        * The best volume is one in the following range
        * 1) A volume with main purpose = GENERIC
        */
-      if (disk_probe_disk_cache_to_find_desirable_vol
-	  (thread_p, &best_volid, &best_numpages, undesirable_volid, exp_numpages,
-	   DISK_PERMVOL_GENERIC_PURPOSE) != NULL_VOLID)
+      if (disk_probe_disk_cache_to_find_desirable_vol (thread_p, &best_volid, &best_numpages, undesirable_volid,
+						       exp_numpages, DISK_PERMVOL_GENERIC_PURPOSE) != NULL_VOLID)
 	{
 	  break;
 	}
@@ -1073,18 +1068,16 @@ disk_find_goodvol_from_disk_cache (THREAD_ENTRY * thread_p, INT16 hint_volid, IN
 
       /* 2nd: search PERM TEMP volumes */
       best_numpages = -1;
-      if (disk_probe_disk_cache_to_find_desirable_vol
-	  (thread_p, &best_volid, &best_numpages, undesirable_volid, exp_numpages,
-	   DISK_PERMVOL_TEMP_PURPOSE) != NULL_VOLID)
+      if (disk_probe_disk_cache_to_find_desirable_vol (thread_p, &best_volid, &best_numpages, undesirable_volid,
+						       exp_numpages, DISK_PERMVOL_TEMP_PURPOSE) != NULL_VOLID)
 	{
 	  break;
 	}
 
       /* 3rd: search TEMP TEMP volumes */
       best_numpages = -1;
-      if (disk_probe_disk_cache_to_find_desirable_vol
-	  (thread_p, &best_volid, &best_numpages, undesirable_volid, exp_numpages,
-	   DISK_TEMPVOL_TEMP_PURPOSE) != NULL_VOLID)
+      if (disk_probe_disk_cache_to_find_desirable_vol (thread_p, &best_volid, &best_numpages, undesirable_volid,
+						       exp_numpages, DISK_TEMPVOL_TEMP_PURPOSE) != NULL_VOLID)
 	{
 	  break;
 	}
@@ -3694,8 +3687,8 @@ disk_id_alloc (THREAD_ENTRY * thread_p, INT16 volid, DISK_VAR_HEADER * vhdr, INT
 		      lpageid = fpageid + vhdr->sect_npgs - 1;
 		    }
 
-		  if (disk_check_sector_has_npages
-		      (thread_p, volid, vhdr->page_alloctb_page1, fpageid, lpageid, exp_npages) == false)
+		  if (disk_check_sector_has_npages (thread_p, volid, vhdr->page_alloctb_page1, fpageid, lpageid,
+						    exp_npages) == false)
 		    {
 		      nfound = 0;
 		      allid = NULL_PAGEID;
@@ -5028,9 +5021,8 @@ disk_dump_goodvol_system (THREAD_ENTRY * thread_p, FILE * fp, INT16 volid, INT32
     {
       /* Display Page allocator Map table */
       (void) fprintf (fp, "\nPAGE ALLOCATOR MAP TABLE\n");
-      if (disk_map_dump
-	  (thread_p, fp, &vpid, "PAGE ID", (fs_pageid / DISK_PAGE_BIT) + vhdr->page_alloctb_page1,
-	   (ls_pageid / DISK_PAGE_BIT) + vhdr->page_alloctb_page1, fs_pageid, ls_pageid) != NO_ERROR)
+      if (disk_map_dump (thread_p, fp, &vpid, "PAGE ID", (fs_pageid / DISK_PAGE_BIT) + vhdr->page_alloctb_page1,
+			 (ls_pageid / DISK_PAGE_BIT) + vhdr->page_alloctb_page1, fs_pageid, ls_pageid) != NO_ERROR)
 	{
 	  (void) fprintf (fp, "Problems dumping page table of volume = %s\n", disk_vhdr_get_vol_fullname (vhdr));
 	}

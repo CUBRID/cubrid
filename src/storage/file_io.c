@@ -1211,7 +1211,6 @@ again:
       fp = fopen (name_info_lock, "r");
       if (fp == NULL)
 	{
-
 	  (void) sleep (3);
 	  num_loops += 3;
 	  total_num_loops += 3;
@@ -2365,11 +2364,10 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 	   && !fileio_initialize_pages (vol_fd, malloc_io_page_p, npages, page_size, kbytes_to_be_written_per_sec))
 	  || (is_sweep_clean == false && !fileio_write (vol_fd, malloc_io_page_p, npages - 1, page_size)))
 #else /* HPUX */
-      if (!
-	  ((fileio_write (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size) == malloc_io_page_p)
-	   && (is_sweep_clean == false
-	       || fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, 0, npages, page_size,
-					   kbytes_to_be_written_per_sec) == malloc_io_page_p)))
+      if (!((fileio_write (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size) == malloc_io_page_p)
+	    && (is_sweep_clean == false
+		|| fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, 0, npages, page_size,
+					    kbytes_to_be_written_per_sec) == malloc_io_page_p)))
 #endif /* HPUX */
 	{
 	  /* It is likely that we run of space. The partition where the volume was created has been used since we
@@ -2524,8 +2522,8 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DIS
       /* support generic volume only */
       assert_release (purpose == DISK_PERMVOL_GENERIC_PURPOSE);
 
-      if (fileio_initialize_pages
-	  (thread_p, vol_fd, malloc_io_page_p, start_pageid, last_pageid - start_pageid + 1, IO_PAGESIZE, -1) == NULL)
+      if (fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, start_pageid, last_pageid - start_pageid + 1,
+				   IO_PAGESIZE, -1) == NULL)
 	{
 	  npages_toadd = -1;
 	}
@@ -6774,18 +6772,16 @@ fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_full_name_p, INT64 
   LSA_COPY (&session_p->dbfile.lsa, backup_start_lsa_p);
   session_p->bkup.vdes =
     fileio_create_backup_volume (thread_p, db_full_name_p, session_p->bkup.vlabel, LOG_DBCOPY_VOLID, false, false,
-				 (session_p->dbfile.level ==
-				  FILEIO_BACKUP_FULL_LEVEL) ? FILEIO_BACKUP_MINIMUM_NUM_PAGES_FULL_LEVEL :
-				 FILEIO_BACKUP_MINIMUM_NUM_PAGES);
+				 (session_p->dbfile.level == FILEIO_BACKUP_FULL_LEVEL)
+				 ? FILEIO_BACKUP_MINIMUM_NUM_PAGES_FULL_LEVEL : FILEIO_BACKUP_MINIMUM_NUM_PAGES);
   if (session_p->bkup.vdes == NULL_VOLDES)
     {
       goto error;
     }
 
   /* Remember name of new backup volume */
-  if (fileio_add_volume_to_backup_info
-      (session_p->bkup.name, session_p->dbfile.level, session_p->bkup.bkuphdr->unit_num,
-       FILEIO_FIRST_BACKUP_VOL_INFO) != NO_ERROR)
+  if (fileio_add_volume_to_backup_info (session_p->bkup.name, session_p->dbfile.level,
+					session_p->bkup.bkuphdr->unit_num, FILEIO_FIRST_BACKUP_VOL_INFO) != NO_ERROR)
     {
       goto error;
     }
@@ -7030,17 +7026,15 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
 
   /* Tell user that current backup volume just completed */
 #if defined(SERVER_MODE) && !defined(WINDOWS)
-  if (asprintf
-      (&msg_area, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BACKUP_LABEL_INFO),
-       session_p->bkup.bkuphdr->level, session_p->bkup.bkuphdr->unit_num,
-       fileio_get_base_file_name (session_p->bkup.bkuphdr->db_fullname),
-       fileio_ctime (&session_p->bkup.bkuphdr->start_time, io_time_val)) < 0)
+  if (asprintf (&msg_area, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BACKUP_LABEL_INFO),
+		session_p->bkup.bkuphdr->level, session_p->bkup.bkuphdr->unit_num,
+		fileio_get_base_file_name (session_p->bkup.bkuphdr->db_fullname),
+		fileio_ctime (&session_p->bkup.bkuphdr->start_time, io_time_val)) < 0)
 #else /* SERVER_MODE && !WINDOWS */
-  if (asprintf
-      (&msg_area, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BACKUP_LABEL_INFO),
-       session_p->bkup.bkuphdr->level, session_p->bkup.bkuphdr->unit_num,
-       fileio_get_base_file_name (session_p->bkup.bkuphdr->db_fullname),
-       fileio_ctime (&session_p->bkup.bkuphdr->start_time, io_time_val)) < 0)
+  if (asprintf (&msg_area, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BACKUP_LABEL_INFO),
+		session_p->bkup.bkuphdr->level, session_p->bkup.bkuphdr->unit_num,
+		fileio_get_base_file_name (session_p->bkup.bkuphdr->db_fullname),
+		fileio_ctime (&session_p->bkup.bkuphdr->start_time, io_time_val)) < 0)
 #endif /* SERVER_MODE && !WINDOWS */
     {
       /* Note: we do not know the exact malloc size that failed */
@@ -7999,9 +7993,8 @@ fileio_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
   if (thread_info_p->act_r_threads > 0)
     {
 #if defined(SERVER_MODE)
-      if (fileio_start_backup_thread
-	  (thread_p, session_p, thread_info_p, from_npages, is_only_updated_pages, check_ratio, check_npages,
-	   queue_p) != NO_ERROR)
+      if (fileio_start_backup_thread (thread_p, session_p, thread_info_p, from_npages, is_only_updated_pages,
+				      check_ratio, check_npages, queue_p) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -8599,9 +8592,8 @@ fileio_initialize_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, 
       fprintf (stdout, "%s\n", er_msg ());
       /* Let user see original prompt name until good one is chosen */
       strcpy (backup_source_p, orig_name);
-      if (fileio_find_restore_volume
-	  (thread_p, db_full_name_p, backup_source_p, FILEIO_INITIAL_BACKUP_UNITS, level,
-	   MSGCAT_FILEIO_RESTORE_FIND_REASON) == FILEIO_RELOCATION_QUIT)
+      if (fileio_find_restore_volume (thread_p, db_full_name_p, backup_source_p, FILEIO_INITIAL_BACKUP_UNITS, level,
+				      MSGCAT_FILEIO_RESTORE_FIND_REASON) == FILEIO_RELOCATION_QUIT)
 	{
 	  return NULL;
 	}
@@ -8612,9 +8604,8 @@ fileio_initialize_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, 
   session_p->type = FILEIO_BACKUP_READ;	/* access backup device for read */
   /* save database full-pathname specified in the database-loc-file */
   strncpy (session_p->bkup.loc_db_fullname, is_new_vol_path ? db_full_name_p : "", PATH_MAX);
-  return (fileio_initialize_backup (db_full_name_p, (const char *) backup_source_p, session_p, level, restore_verbose_file_path, 0	/* no 
-																	 * multi-thread 
-				     */ , 0 /* no sleep */ ));
+  return (fileio_initialize_backup (db_full_name_p, (const char *) backup_source_p, session_p, level, restore_verbose_file_path, 0,	/* no multi-thread */
+				    0 /* no sleep */ ));
 }
 
 /*
@@ -8747,10 +8738,10 @@ fileio_read_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 			    {
 			      strncpy (session_p->bkup.name, next_vol_p, PATH_MAX - 1);
 			    }
-			  if (fileio_find_restore_volume
-			      (thread_p, session_p->bkup.bkuphdr->db_fullname, session_p->bkup.name,
-			       session_p->bkup.bkuphdr->unit_num + 1, session_p->bkup.bkuphdr->level,
-			       MSGCAT_FILEIO_RESTORE_FIND_REASON) == FILEIO_RELOCATION_QUIT)
+			  if (fileio_find_restore_volume (thread_p, session_p->bkup.bkuphdr->db_fullname,
+							  session_p->bkup.name, session_p->bkup.bkuphdr->unit_num + 1,
+							  session_p->bkup.bkuphdr->level,
+							  MSGCAT_FILEIO_RESTORE_FIND_REASON) == FILEIO_RELOCATION_QUIT)
 			    {
 			      return ER_FAILED;
 			    }
@@ -8767,9 +8758,9 @@ fileio_read_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 		      /* Bump the unit number to find the next volume */
 		      session_p->bkup.bkuphdr->unit_num++;
 		      /* Open the next volume */
-		      if (fileio_continue_restore
-			  (thread_p, session_p->bkup.bkuphdr->db_fullname, session_p->bkup.bkuphdr->db_creation,
-			   session_p, false, true, session_p->bkup.bkuphdr->start_time) == NULL)
+		      if (fileio_continue_restore (thread_p, session_p->bkup.bkuphdr->db_fullname,
+						   session_p->bkup.bkuphdr->db_creation, session_p, false, true,
+						   session_p->bkup.bkuphdr->start_time) == NULL)
 			{
 			  return ER_FAILED;
 			}
@@ -8915,8 +8906,8 @@ fileio_start_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, char 
   FILEIO_BACKUP_SESSION *temp_session_p;
 
   /* Initialize the session array and open the backup source device. */
-  if (fileio_initialize_restore
-      (thread_p, db_full_name_p, backup_source_p, session_p, level, restore_verbose_file_path, is_new_vol_path) == NULL)
+  if (fileio_initialize_restore (thread_p, db_full_name_p, backup_source_p, session_p, level,
+				 restore_verbose_file_path, is_new_vol_path) == NULL)
     {
       return NULL;
     }
@@ -8939,8 +8930,8 @@ fileio_make_error_message (THREAD_ENTRY * thread_p, char *error_message_p)
   char *header_message_p = NULL;
   char *remote_message_p = NULL;
 
-  if (asprintf
-      (&header_message_p, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_INCORRECT_BKVOLUME)) < 0)
+  if (asprintf (&header_message_p, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO,
+						   MSGCAT_FILEIO_INCORRECT_BKVOLUME)) < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
@@ -9035,9 +9026,8 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 	       * the first place. */
 	      strcpy (session_p->bkup.name, orig_name);
 	      /* Attempt to locate the desired volume */
-	      if (fileio_find_restore_volume
-		  (thread_p, db_full_name_p, session_p->bkup.name, unit_num, level,
-		   MSGCAT_FILEIO_RESTORE_FIND_REASON) == FILEIO_RELOCATION_QUIT)
+	      if (fileio_find_restore_volume (thread_p, db_full_name_p, session_p->bkup.name, unit_num, level,
+					      MSGCAT_FILEIO_RESTORE_FIND_REASON) == FILEIO_RELOCATION_QUIT)
 		{
 		  /* Cannot access backup file. Restore from backup is cancelled. */
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_CANNOT_ACCESS_BACKUP, 1,
@@ -9081,10 +9071,9 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 	    }
 	  else
 	    {
-	      if (asprintf
-		  (&error_message_p,
-		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_MAGIC_MISMATCH),
-		   session_p->bkup.vlabel) < 0)
+	      if (asprintf (&error_message_p,
+			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_MAGIC_MISMATCH),
+			    session_p->bkup.vlabel) < 0)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 		  return NULL;
@@ -9124,10 +9113,9 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 
 	  if (level != backup_header_p->level)
 	    {
-	      if (asprintf
-		  (&error_message_p,
-		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_LEVEL_MISMATCH),
-		   session_p->bkup.vlabel, backup_header_p->level, level) < 0)
+	      if (asprintf (&error_message_p,
+			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_LEVEL_MISMATCH),
+			    session_p->bkup.vlabel, backup_header_p->level, level) < 0)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 		  return NULL;
@@ -9154,10 +9142,9 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 	      strcpy (save_time1, io_timeval);
 
 	      fileio_ctime (&backup_header_p->start_time, io_timeval);
-	      if (asprintf
-		  (&error_message_p,
-		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BACKUP_TIME_MISMATCH),
-		   session_p->bkup.vlabel, save_time1, io_timeval) < 0)
+	      if (asprintf (&error_message_p,
+			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BACKUP_TIME_MISMATCH),
+			    session_p->bkup.vlabel, save_time1, io_timeval) < 0)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 		  return NULL;
@@ -9177,10 +9164,9 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 	  /* Need to match the expected unit_num */
 	  if (unit_num != backup_header_p->unit_num)
 	    {
-	      if (asprintf
-		  (&error_message_p,
-		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_UNIT_NUM_MISMATCH),
-		   session_p->bkup.vlabel, backup_header_p->unit_num, unit_num) < 0)
+	      if (asprintf (&error_message_p,
+			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_UNIT_NUM_MISMATCH),
+			    session_p->bkup.vlabel, backup_header_p->unit_num, unit_num) < 0)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 		  return NULL;
@@ -9201,10 +9187,9 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 	  expect_page_id = (is_first_time) ? FILEIO_BACKUP_START_PAGE_ID : FILEIO_BACKUP_VOL_CONT_PAGE_ID;
 	  if (backup_header_p->iopageid != expect_page_id)
 	    {
-	      if (asprintf
-		  (&error_message_p,
-		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_MAGIC_MISMATCH),
-		   session_p->bkup.vlabel) < 0)
+	      if (asprintf (&error_message_p,
+			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_MAGIC_MISMATCH),
+			    session_p->bkup.vlabel) < 0)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 		  return NULL;
@@ -9242,10 +9227,9 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 	      else
 		{
 		  fileio_ctime (&backup_header_p->db_creation, io_timeval);
-		  if (asprintf
-		      (&error_message_p,
-		       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_DB_MISMATCH),
-		       session_p->bkup.vlabel, backup_header_p->db_fullname, io_timeval) < 0)
+		  if (asprintf (&error_message_p,
+				msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_DB_MISMATCH),
+				session_p->bkup.vlabel, backup_header_p->db_fullname, io_timeval) < 0)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 		      return NULL;
@@ -9275,9 +9259,8 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 	}
 
       /* Since there was a problem, let the user try again */
-      if (fileio_find_restore_volume
-	  (thread_p, db_full_name_p, session_p->bkup.name, unit_num, level,
-	   MSGCAT_FILEIO_RESTORE_FIND_REASON) == FILEIO_RELOCATION_QUIT)
+      if (fileio_find_restore_volume (thread_p, db_full_name_p, session_p->bkup.name, unit_num, level,
+				      MSGCAT_FILEIO_RESTORE_FIND_REASON) == FILEIO_RELOCATION_QUIT)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_CANNOT_ACCESS_BACKUP, 1, session_p->bkup.vlabel);
 	  return NULL;
@@ -9369,9 +9352,8 @@ fileio_list_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, char *
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
-  if (fileio_start_restore
-      (thread_p, db_full_name_p, backup_source_p, db_creation_time, &db_iopagesize, &db_compatibility, session_p, level,
-       false, 0, NULL, is_new_vol_path) == NULL)
+  if (fileio_start_restore (thread_p, db_full_name_p, backup_source_p, db_creation_time, &db_iopagesize,
+			    &db_compatibility, session_p, level, false, 0, NULL, is_new_vol_path) == NULL)
     {
       /* Cannot access backup file.. Restore from backup is cancelled */
       if (er_errid () == ER_GENERIC_ERROR)
@@ -9709,9 +9691,8 @@ fileio_fill_hole_during_restore (THREAD_ENTRY * thread_p, int *next_page_id_p, i
        * is a hole of some kind that must be filled in with correctly
        * formatted pages.
        */
-      if (fileio_write_restore
-	  (thread_p, page_bitmap, session_p->dbfile.vdes, malloc_io_pgptr, session_p->dbfile.volid, *next_page_id_p,
-	   session_p->dbfile.level) == NULL)
+      if (fileio_write_restore (thread_p, page_bitmap, session_p->dbfile.vdes, malloc_io_pgptr, session_p->dbfile.volid,
+				*next_page_id_p, session_p->dbfile.level) == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_RESTORE_READ_ERROR, 1, session_p->bkup.bkuphdr->unit_num);
 	  return ER_FAILED;
@@ -10000,8 +9981,8 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
       if (session_p->dbfile.level == FILEIO_BACKUP_FULL_LEVEL
 	  && (next_page_id < FILEIO_GET_BACKUP_PAGE_ID (session_p->dbfile.area)))
 	{
-	  if (fileio_fill_hole_during_restore
-	      (thread_p, &next_page_id, session_p->dbfile.area->iopageid, session_p, bitmap) != NO_ERROR)
+	  if (fileio_fill_hole_during_restore (thread_p, &next_page_id, session_p->dbfile.area->iopageid, session_p,
+					       bitmap) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -10014,9 +9995,8 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
       buffer_p = (char *) &session_p->dbfile.area->iopage;
       for (i = 0; i < unit && next_page_id < npages; i++)
 	{
-	  if (fileio_write_restore
-	      (thread_p, bitmap, session_p->dbfile.vdes, buffer_p + i * IO_PAGESIZE, session_p->dbfile.volid,
-	       next_page_id, session_p->dbfile.level) == NULL)
+	  if (fileio_write_restore (thread_p, bitmap, session_p->dbfile.vdes, buffer_p + i * IO_PAGESIZE,
+				    session_p->dbfile.volid, next_page_id, session_p->dbfile.level) == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_RESTORE_READ_ERROR, 1, backup_header_p->unit_num);
 	      goto error;
@@ -10052,9 +10032,8 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
       VOLID volid;
 
       volid = session_p->dbfile.volid;
-      if (disk_set_creation
-	  (thread_p, volid, to_vol_label_p, &backup_header_p->db_creation, &session_p->bkup.last_chkpt_lsa, false,
-	   DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
+      if (disk_set_creation (thread_p, volid, to_vol_label_p, &backup_header_p->db_creation,
+			     &session_p->bkup.last_chkpt_lsa, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -10274,9 +10253,8 @@ fileio_find_restore_volume (THREAD_ENTRY * thread_p, const char *db_name_p, char
       goto end;
     }
 
-  if (asprintf
-      (&fail_prompt_p, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_INPUT_RANGE_ERROR),
-       (int) FILEIO_RELOCATION_FIRST, (int) FILEIO_RELOCATION_LAST) < 0
+  if (asprintf (&fail_prompt_p, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_INPUT_RANGE_ERROR),
+		(int) FILEIO_RELOCATION_FIRST, (int) FILEIO_RELOCATION_LAST) < 0
       || asprintf (&reprompt_p, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_NEWLOCATION)) < 0
       || asprintf (&full_message_p, "%s%s%s%s%s", ptr1, ptr2, ptr3, ptr4, ptr1) < 0)
     {
@@ -10285,9 +10263,9 @@ fileio_find_restore_volume (THREAD_ENTRY * thread_p, const char *db_name_p, char
       goto end;
     }
 
-  if (fileio_request_user_response
-      (thread_p, FILEIO_PROMPT_RANGE_WITH_SECONDARY_STRING_TYPE, full_message_p, new_vol_name, fail_prompt_p,
-       FILEIO_RELOCATION_QUIT, FILEIO_RELOCATION_ALTERNATE, reprompt_p, FILEIO_RELOCATION_ALTERNATE) != NO_ERROR)
+  if (fileio_request_user_response (thread_p, FILEIO_PROMPT_RANGE_WITH_SECONDARY_STRING_TYPE, full_message_p,
+				    new_vol_name, fail_prompt_p, FILEIO_RELOCATION_QUIT, FILEIO_RELOCATION_ALTERNATE,
+				    reprompt_p, FILEIO_RELOCATION_ALTERNATE) != NO_ERROR)
     {
       rval = FILEIO_RELOCATION_QUIT;
       goto end;
@@ -10482,10 +10460,9 @@ fileio_get_next_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * 
   session_p->bkup.voltotalio = 0;
   /* Tell user that current backup volume just completed */
   fileio_ctime (&session_p->bkup.bkuphdr->start_time, io_timeval);
-  if (asprintf
-      (&message_area_p, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BACKUP_LABEL_INFO),
-       session_p->bkup.bkuphdr->level, session_p->bkup.bkuphdr->unit_num,
-       fileio_get_base_file_name (session_p->bkup.bkuphdr->db_fullname), io_timeval) < 0)
+  if (asprintf (&message_area_p, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BACKUP_LABEL_INFO),
+		session_p->bkup.bkuphdr->level, session_p->bkup.bkuphdr->unit_num,
+		fileio_get_base_file_name (session_p->bkup.bkuphdr->db_fullname), io_timeval) < 0)
     {
       /* Note: we do not know the exact malloc size that failed */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) FILEIO_MAX_USER_RESPONSE_SIZE);
@@ -10531,9 +10508,9 @@ fileio_get_next_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * 
     {
       if (is_new_user)
 	{
-	  if (fileio_find_restore_volume
-	      (thread_p, session_p->bkup.bkuphdr->db_fullname, copy_name, session_p->bkup.bkuphdr->unit_num,
-	       session_p->dbfile.level, MSGCAT_FILEIO_BKUP_FIND_REASON) == FILEIO_RELOCATION_QUIT)
+	  if (fileio_find_restore_volume (thread_p, session_p->bkup.bkuphdr->db_fullname, copy_name,
+					  session_p->bkup.bkuphdr->unit_num, session_p->dbfile.level,
+					  MSGCAT_FILEIO_BKUP_FIND_REASON) == FILEIO_RELOCATION_QUIT)
 	    {
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_CANNOT_ACCESS_BACKUP, 1, session_p->bkup.vlabel);
 	      return ER_FAILED;
@@ -10558,9 +10535,8 @@ fileio_get_next_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * 
       session_p->bkup.vdes =
 	fileio_create_backup_volume (thread_p, session_p->bkup.bkuphdr->db_fullname, session_p->bkup.vlabel,
 				     LOG_DBCOPY_VOLID, false, false,
-				     ((session_p->dbfile.level ==
-				       FILEIO_BACKUP_FULL_LEVEL) ? FILEIO_BACKUP_MINIMUM_NUM_PAGES_FULL_LEVEL :
-				      FILEIO_BACKUP_MINIMUM_NUM_PAGES));
+				     ((session_p->dbfile.level == FILEIO_BACKUP_FULL_LEVEL)
+				      ? FILEIO_BACKUP_MINIMUM_NUM_PAGES_FULL_LEVEL : FILEIO_BACKUP_MINIMUM_NUM_PAGES));
       if (session_p->bkup.vdes < 0)
 	{
 
@@ -10580,9 +10556,8 @@ fileio_get_next_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * 
   while (session_p->bkup.vdes == NULL_VOLDES);
 
   /* Remember name of new backup volume */
-  if (fileio_add_volume_to_backup_info
-      (session_p->bkup.name, session_p->dbfile.level, session_p->bkup.bkuphdr->unit_num,
-       FILEIO_FIRST_BACKUP_VOL_INFO) != NO_ERROR)
+  if (fileio_add_volume_to_backup_info (session_p->bkup.name, session_p->dbfile.level,
+					session_p->bkup.bkuphdr->unit_num, FILEIO_FIRST_BACKUP_VOL_INFO) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -10970,9 +10945,8 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
   char *ptr;
 
   /* Send the prompt to the client */
-  if (xio_send_user_prompt_to_client
-      (thread_p, prompt_id, prompt_p, failure_prompt_p, range_low, range_high, secondary_prompt_p,
-       reprompt_value) != NO_ERROR)
+  if (xio_send_user_prompt_to_client (thread_p, prompt_id, prompt_p, failure_prompt_p, range_low, range_high,
+				      secondary_prompt_p, reprompt_value) != NO_ERROR)
     {
       return ER_FAILED;
     }

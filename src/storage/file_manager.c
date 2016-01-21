@@ -1886,9 +1886,8 @@ file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid, const void *
 	  if (VPID_ISNULL (&next_vpid))
 	    {
 	      /* We need to allocate a new page */
-	      if (file_ftabvpid_alloc
-		  (thread_p, pgbuf_get_volume_id (addr.pgptr), pgbuf_get_page_id (addr.pgptr), &next_vpid, 1,
-		   file_type) != NO_ERROR)
+	      if (file_ftabvpid_alloc (thread_p, pgbuf_get_volume_id (addr.pgptr), pgbuf_get_page_id (addr.pgptr),
+				       &next_vpid, 1, file_type) != NO_ERROR)
 		{
 		  /* Something went wrong */
 		  pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
@@ -2433,9 +2432,8 @@ file_create_check_not_dropped (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_n
 
   while (n_created_files < FILE_NOT_DROPPED_CREATE_RETRIES)
     {
-      if (file_create
-	  (thread_p, &created_files[n_created_files], exp_numpages, file_type, file_des, first_prealloc_vpid,
-	   prealloc_npages) == NULL)
+      if (file_create (thread_p, &created_files[n_created_files], exp_numpages, file_type, file_des,
+		       first_prealloc_vpid, prealloc_npages) == NULL)
 	{
 	  /* Failed to create a new file. */
 	  break;
@@ -3215,8 +3213,8 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages, FILE_TYP
       if (prealloc_npages > 0)
 	{
 	  /* First time */
-	  if (file_alloc_pages_at_volid
-	      (thread_p, vfid, first_prealloc_vpid, prealloc_npages, NULL, vfid->volid, NULL, NULL) == NULL)
+	  if (file_alloc_pages_at_volid (thread_p, vfid, first_prealloc_vpid, prealloc_npages, NULL, vfid->volid, NULL,
+					 NULL) == NULL)
 	    {
 	      /* 
 	       * We were unable to allocate the pages on the desired volume. In
@@ -3238,8 +3236,8 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages, FILE_TYP
 	{
 	  /* Second time. If it fails Bye... */
 	  prealloc_npages = -prealloc_npages;
-	  if (file_alloc_pages_at_volid
-	      (thread_p, vfid, first_prealloc_vpid, prealloc_npages, NULL, vfid->volid, NULL, NULL) == NULL)
+	  if (file_alloc_pages_at_volid (thread_p, vfid, first_prealloc_vpid, prealloc_npages, NULL, vfid->volid, NULL,
+					 NULL) == NULL)
 	    {
 	      /* We were unable to allocate the pages on the desired volume. */
 	      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
@@ -5954,8 +5952,8 @@ file_expand_ftab (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr)
   addr.vfid = &fhdr->vfid;
 
   /* Allocate a new page for file table in any volume */
-  if (file_ftabvpid_alloc
-      (thread_p, fhdr->last_table_vpid.volid, fhdr->last_table_vpid.pageid, &new_ftb_vpid, 1, fhdr->type) != NO_ERROR)
+  if (file_ftabvpid_alloc (thread_p, fhdr->last_table_vpid.volid, fhdr->last_table_vpid.pageid, &new_ftb_vpid, 1,
+			   fhdr->type) != NO_ERROR)
     {
       return NULL;
     }
@@ -6740,8 +6738,8 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, VPID * 
   if (alloc_pageid != NULL_PAGEID && alloc_pageid != DISK_NULL_PAGEID_WITH_ENOUGH_DISK_PAGES)
     {
       /* Add the pageids entries */
-      if (file_allocset_add_pageids
-	  (thread_p, fhdr_pgptr, allocset_pgptr, allocset_offset, alloc_pageid, npages, alloc_vpids) == NULL_PAGEID)
+      if (file_allocset_add_pageids (thread_p, fhdr_pgptr, allocset_pgptr, allocset_offset, alloc_pageid, npages,
+				     alloc_vpids) == NULL_PAGEID)
 	{
 	  /* 
 	   * Something went wrong, return
@@ -7583,9 +7581,8 @@ file_allocset_find_page (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, PAGE_PTR 
 	      isfound = DISK_VALID;
 	      if (fun)
 		{
-		  if ((*fun)
-		      (thread_p, fhdr, allocset, fhdr_pgptr, allocset_pgptr, allocset_offset, pgptr, aid_ptr, pageid,
-		       args) != NO_ERROR)
+		  if ((*fun) (thread_p, fhdr, allocset, fhdr_pgptr, allocset_pgptr, allocset_offset, pgptr, aid_ptr,
+			      pageid, args) != NO_ERROR)
 		    {
 		      isfound = DISK_ERROR;
 		    }
@@ -9910,8 +9907,8 @@ file_allocset_compact (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, VPID * prev
 	}
     }
 
-  if (file_allocset_shift_sector_table (thread_p, fhdr_pgptr, allocset_pgptr, *allocset_offset, ftb_vpid, *ftb_offset)
-      != NO_ERROR
+  if (file_allocset_shift_sector_table (thread_p, fhdr_pgptr, allocset_pgptr, *allocset_offset, ftb_vpid,
+					*ftb_offset) != NO_ERROR
       || file_allocset_compact_page_table (thread_p, fhdr_pgptr, allocset_pgptr, *allocset_offset,
 					   !islast_allocset) != NO_ERROR)
     {
@@ -10222,8 +10219,8 @@ file_check_all_pages (THREAD_ENTRY * thread_p, const VFID * vfid, bool validate_
 	{
 	  num_found =
 	    file_find_nthpages (thread_p, vfid, &set_vpids[0], i,
-				((fhdr->num_user_pages - i <
-				  FILE_SET_NUMVPIDS) ? fhdr->num_user_pages - i : FILE_SET_NUMVPIDS));
+				((fhdr->num_user_pages - i < FILE_SET_NUMVPIDS)
+				 ? fhdr->num_user_pages - i : FILE_SET_NUMVPIDS));
 	  if (num_found <= 0)
 	    {
 	      if (num_found == -1)
@@ -11018,8 +11015,8 @@ file_tracker_register (THREAD_ENTRY * thread_p, const VFID * vfid)
       allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr + fhdr->last_allocset_offset);
     }
 
-  if (file_allocset_add_pageids
-      (thread_p, fhdr_pgptr, allocset_pgptr, fhdr->last_allocset_offset, vfid->fileid, 1, NULL) == NULL_PAGEID)
+  if (file_allocset_add_pageids (thread_p, fhdr_pgptr, allocset_pgptr, fhdr->last_allocset_offset, vfid->fileid, 1,
+				 NULL) == NULL_PAGEID)
     {
       goto exit_on_error;
     }

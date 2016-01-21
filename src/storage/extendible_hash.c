@@ -1076,8 +1076,8 @@ ehash_create_helper (THREAD_ENTRY * thread_p, EHID * ehid_p, DB_TYPE key_type, i
   init_bucket_data[0] = alignment;
   init_bucket_data[1] = 0;
 
-  if (file_alloc_pages
-      (thread_p, &bucket_vfid, &bucket_vpid, 1, NULL, ehash_initialize_bucket_new_page, init_bucket_data) == NULL)
+  if (file_alloc_pages (thread_p, &bucket_vfid, &bucket_vpid, 1, NULL, ehash_initialize_bucket_new_page,
+			init_bucket_data) == NULL)
     {
       (void) file_destroy (thread_p, &bucket_vfid);
       return NULL;
@@ -1541,9 +1541,8 @@ ehash_insert_to_bucket_after_create (THREAD_ENTRY * thread_p, EHID * ehid_p, PAG
       return ER_FAILED;
     }
 
-  if (file_alloc_pages
-      (thread_p, &dir_header_p->bucket_file, bucket_vpid_p, 1, NULL, ehash_initialize_bucket_new_page,
-       init_bucket_data) == NULL)
+  if (file_alloc_pages (thread_p, &dir_header_p->bucket_file, bucket_vpid_p, 1, NULL, ehash_initialize_bucket_new_page,
+			init_bucket_data) == NULL)
     {
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
       return ER_FAILED;
@@ -2268,8 +2267,8 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_t
 	       * the chopped portion of the bucket string and compare it with
 	       * the chopped portion of the key.
 	       */
-	      if (ehash_compare_overflow
-		  (thread_p, ovf_vpid_p, (char *) key_p + EHASH_LONG_STRING_PREFIX_SIZE, &compare_result) != NO_ERROR)
+	      if (ehash_compare_overflow (thread_p, ovf_vpid_p, (char *) key_p + EHASH_LONG_STRING_PREFIX_SIZE,
+					  &compare_result) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -2723,9 +2722,8 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
   bucket_header_p = (EHASH_BUCKET_HEADER *) recdes.data;
   *out_old_local_depth_p = bucket_header_p->local_depth;
 
-  if (ehash_find_first_bit_position
-      (thread_p, dir_header_p, bucket_page_p, bucket_header_p, key_p, num_records, first_slot_id, out_old_local_depth_p,
-       out_new_local_depth_p) != NO_ERROR)
+  if (ehash_find_first_bit_position (thread_p, dir_header_p, bucket_page_p, bucket_header_p, key_p, num_records,
+				     first_slot_id, out_old_local_depth_p, out_new_local_depth_p) != NO_ERROR)
     {
       return NULL;
     }
@@ -2734,8 +2732,8 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
   init_bucket_data[0] = dir_header_p->alignment;
   init_bucket_data[1] = *out_new_local_depth_p;
 
-  if (file_alloc_pages
-      (thread_p, &bucket_vfid, sibling_vpid_p, 1, NULL, ehash_initialize_bucket_new_page, init_bucket_data) == NULL)
+  if (file_alloc_pages (thread_p, &bucket_vfid, sibling_vpid_p, 1, NULL, ehash_initialize_bucket_new_page,
+			init_bucket_data) == NULL)
     {
       return NULL;
     }
@@ -2748,8 +2746,8 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
       return NULL;
     }
 
-  if (ehash_distribute_records_into_two_bucket
-      (thread_p, dir_header_p, bucket_page_p, bucket_header_p, num_records, first_slot_id, sibling_page_p) != NO_ERROR)
+  if (ehash_distribute_records_into_two_bucket (thread_p, dir_header_p, bucket_page_p, bucket_header_p, num_records,
+						first_slot_id, sibling_page_p) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, sibling_page_p);
       (void) file_dealloc_page (thread_p, &bucket_vfid, sibling_vpid_p, FILE_EXTENDIBLE_HASH);
@@ -3232,9 +3230,8 @@ ehash_find_depth (THREAD_ENTRY * thread_p, EHID * ehid_p, int location, VPID * b
 	    }
 	  dir_record_p = (EHASH_DIR_RECORD *) ((char *) page_p + rel_loc);
 
-	  if (!
-	      ((VPID_ISNULL (&dir_record_p->bucket_vpid)) || VPID_EQ (&dir_record_p->bucket_vpid, bucket_vpid_p)
-	       || VPID_EQ (&dir_record_p->bucket_vpid, sibling_vpid_p)))
+	  if (!((VPID_ISNULL (&dir_record_p->bucket_vpid)) || VPID_EQ (&dir_record_p->bucket_vpid, bucket_vpid_p)
+		|| VPID_EQ (&dir_record_p->bucket_vpid, sibling_vpid_p)))
 	    {
 	      is_stop = true;
 	      break;
@@ -3838,9 +3835,9 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p)
 	      /* Perform actual merge operation */
 	      log_start_system_op (thread_p);
 
-	      if (ehash_merge_permanent
-		  (thread_p, ehid_p, dir_root_page_p, dir_header_p, bucket_page_p, sibling_page_p, &bucket_vpid,
-		   &sibling_vpid, num_records, sibling_location, first_slot_id, &new_local_depth) != NO_ERROR)
+	      if (ehash_merge_permanent (thread_p, ehid_p, dir_root_page_p, dir_header_p, bucket_page_p, sibling_page_p,
+					 &bucket_vpid, &sibling_vpid, num_records, sibling_location, first_slot_id,
+					 &new_local_depth) != NO_ERROR)
 		{
 		  pgbuf_unfix_and_init (thread_p, sibling_page_p);
 		  pgbuf_unfix_and_init (thread_p, bucket_page_p);
@@ -4797,9 +4794,8 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
 	  bucket_record_p = (char *) recdes.data;
 	  bucket_record_p = ehash_read_oid_from_record (bucket_record_p, &assoc_value);
 
-	  if (ehash_apply_each
-	      (thread_p, ehid_p, &recdes, dir_header_p->key_type, bucket_record_p, &assoc_value, &apply_error_code,
-	       apply_function, args) != NO_ERROR)
+	  if (ehash_apply_each (thread_p, ehid_p, &recdes, dir_header_p->key_type, bucket_record_p, &assoc_value,
+				&apply_error_code, apply_function, args) != NO_ERROR)
 	    {
 	      pgbuf_unfix_and_init (thread_p, bucket_page_p);
 	      pgbuf_unfix_and_init (thread_p, dir_page_p);

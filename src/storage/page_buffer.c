@@ -238,7 +238,7 @@ static int rv;
 	  } \
 	while (0)
 
-#define PGBUF_ADD_FIXED_PAGE(th,page)                         \
+#define PGBUF_ADD_FIXED_PAGE(th,page) \
         do { \
 	  if ((th) != NULL) \
 	    { \
@@ -898,6 +898,9 @@ static int pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * se
 				 int *time_rem);
 static int pgbuf_initialize_seq_flusher (PGBUF_SEQ_FLUSHER * seq_flusher, PGBUF_VICTIM_CANDIDATE_LIST * f_list,
 					 const int cnt);
+static const char *pgbuf_latch_mode_str (PGBUF_LATCH_MODE latch_mode);
+static const char *pgbuf_zone_str (PGBUF_ZONE zone);
+static const char *pgbuf_consistent_str (int consistent);
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -1546,9 +1549,8 @@ try_again:
 	    }
 #endif /* ENABLE_SYSTEMTAP */
 
-	  if (fileio_read
-	      (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage, vpid->pageid,
-	       IO_PAGESIZE) == NULL)
+	  if (fileio_read (thread_p, fileio_get_volume_descriptor (vpid->volid), &bufptr->iopage_buffer->iopage,
+			   vpid->pageid, IO_PAGESIZE) == NULL)
 	    {
 	      /* There was an error in reading the page. Clean the buffer... since it may have been corrupted */
 
@@ -1676,12 +1678,11 @@ try_again:
 
   /* Latch Pass */
 #if !defined (NDEBUG)
-  if (pgbuf_latch_bcb_upon_fix
-      (thread_p, bufptr, request_mode, buf_lock_acquired, condition, &is_latch_wait, caller_file,
-       caller_line) != NO_ERROR)
+  if (pgbuf_latch_bcb_upon_fix (thread_p, bufptr, request_mode, buf_lock_acquired, condition, &is_latch_wait,
+				caller_file, caller_line) != NO_ERROR)
 #else /* NDEBUG */
-  if (pgbuf_latch_bcb_upon_fix (thread_p, bufptr, request_mode, buf_lock_acquired, condition, &is_latch_wait) !=
-      NO_ERROR)
+  if (pgbuf_latch_bcb_upon_fix (thread_p, bufptr, request_mode, buf_lock_acquired, condition, &is_latch_wait)
+      != NO_ERROR)
 #endif /* NDEBUG */
     {
       /* bufptr->BCB_mutex has been released, error was set in the function, */
@@ -2335,28 +2336,13 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
 	  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 	  assert (!VPID_ISNULL (&bufptr->vpid));
 
-	  latch_mode_str =
-	    (bufptr->latch_mode == PGBUF_NO_LATCH) ? "No Latch" : (bufptr->latch_mode ==
-								   PGBUF_LATCH_READ) ? "Read" : (bufptr->latch_mode ==
-												 PGBUF_LATCH_WRITE) ?
-	    "Write" : (bufptr->latch_mode == PGBUF_LATCH_FLUSH) ? "Flush" : (bufptr->latch_mode ==
-									     PGBUF_LATCH_VICTIM) ? "Victim" : (bufptr->
-													       latch_mode
-													       ==
-													       PGBUF_LATCH_FLUSH_INVALID)
-	    ? "FlushInv" : (bufptr->latch_mode == PGBUF_LATCH_VICTIM_INVALID) ? "VictimInv" : "Fault";
-
-	  zone_str =
-	    ((bufptr->zone == PGBUF_LRU_1_ZONE) ? "LRU_1_Zone" : (bufptr->zone ==
-								  PGBUF_LRU_2_ZONE) ? "LRU_2_Zone" : (bufptr->zone ==
-												      PGBUF_INVALID_ZONE)
-	     ? "INVALID_Zone" : "VOID_Zone");
+	  latch_mode_str = pgbuf_latch_mode_str (bufptr->latch_mode);
+	  zone_str = pgbuf_latch_mode_str (bufptr->zone);
 
 	  /* check if the content of current buffer page is consistent. */
 #if defined(CUBRID_DEBUG)
 	  consistent = pgbuf_is_consistent (bufptr, 0);
-	  consistent_str =
-	    ((consistent == PGBUF_CONTENT_GOOD) ? "GOOD" : (consistent == PGBUF_CONTENT_BAD) ? "BAD" : "LIKELY BAD");
+	  consistenet_str = pgbuf_consistent_str (consistent);
 #else /* CUBRID_DEBUG */
 	  consistent_str = "UNKNOWN";
 #endif /* CUBRID_DEBUG */
@@ -3953,8 +3939,8 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	  /* Record number of reads in statistics */
 	  mnt_pb_ioreads (thread_p);
 
-	  if (fileio_read_user_area
-	      (thread_p, fileio_get_volume_descriptor (vpid->volid), vpid->pageid, start_offset, length, area) == NULL)
+	  if (fileio_read_user_area (thread_p, fileio_get_volume_descriptor (vpid->volid), vpid->pageid, start_offset,
+				     length, area) == NULL)
 	    {
 	      area = NULL;
 	    }
@@ -8769,8 +8755,8 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 #endif /* ENABLE_SYSTEMTAP */
 
   /* now, flush buffer page */
-  if (fileio_write
-      (thread_p, fileio_get_volume_descriptor (bufptr->vpid.volid), iopage, bufptr->vpid.pageid, IO_PAGESIZE) == NULL)
+  if (fileio_write (thread_p, fileio_get_volume_descriptor (bufptr->vpid.volid), iopage, bufptr->vpid.pageid,
+		    IO_PAGESIZE) == NULL)
     {
       MUTEX_LOCK_VIA_BUSY_WAIT (rv, bufptr->BCB_mutex);
       PGBUF_SET_DIRTY (bufptr);
@@ -9329,25 +9315,9 @@ pgbuf_dump (void)
 	}
       else
 	{
-	  latch_mode_str =
-	    (bufptr->latch_mode == PGBUF_NO_LATCH) ? "No Latch" : (bufptr->latch_mode ==
-								   PGBUF_LATCH_READ) ? "Read" : (bufptr->latch_mode ==
-												 PGBUF_LATCH_WRITE) ?
-	    "Write" : (bufptr->latch_mode == PGBUF_LATCH_FLUSH) ? "Flush" : (bufptr->latch_mode ==
-									     PGBUF_LATCH_VICTIM) ? "Victim" : (bufptr->
-													       latch_mode
-													       ==
-													       PGBUF_LATCH_FLUSH_INVALID)
-	    ? "FlushInv" : (bufptr->latch_mode == PGBUF_LATCH_VICTIM_INVALID) ? "VictimInv" : "Fault";
-
-	  zone_str =
-	    ((bufptr->zone == PGBUF_LRU_1_ZONE) ? "LRU_1_Zone" : (bufptr->zone ==
-								  PGBUF_LRU_2_ZONE) ? "LRU_2_Zone" : (bufptr->zone ==
-												      PGBUF_INVALID_ZONE)
-	     ? "INVALID_Zone" : "VOID_Zone");
-
-	  consistent_str =
-	    ((consistent == PGBUF_CONTENT_GOOD) ? "GOOD" : (consistent == PGBUF_CONTENT_BAD) ? "BAD" : "LIKELY BAD");
+	  latch_mode_str = pgbuf_latch_mode_str (bufptr->latch_mode);
+	  zone_str = pgbuf_latch_mode_str (bufptr->zone);
+	  consistenet_str = pgbuf_consistent_str (consistent);
 
 	  fprintf (stdout, "%4d %5d %6d %4d %9s %1d %1d %1d %11s %lld|%4d %10s %p %p-%p\n", bufptr->ipool,
 		   bufptr->vpid.volid, bufptr->vpid.pageid, bufptr->fcnt, latch_mode_str, bufptr->dirty,
@@ -9405,9 +9375,8 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 	}
 
       /* Read the disk page into local page area */
-      if (fileio_read
-	  (NULL, fileio_get_volume_descriptor (bufptr->vpid.volid), malloc_io_pgptr, bufptr->vpid.pageid,
-	   IO_PAGESIZE) == NULL)
+      if (fileio_read (NULL, fileio_get_volume_descriptor (bufptr->vpid.volid), malloc_io_pgptr, bufptr->vpid.pageid,
+		       IO_PAGESIZE) == NULL)
 	{
 	  /* Unable to verify consistency of this page */
 	  consistent = PGBUF_CONTENT_BAD;
@@ -10410,9 +10379,8 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
       pthread_mutex_unlock (&bufptr->BCB_mutex);
 
       /* flush buffer page */
-      if (fileio_write
-	  (thread_p, fileio_get_volume_descriptor (bufptr->vpid.volid), iopage, bufptr->vpid.pageid,
-	   IO_PAGESIZE) != NULL)
+      if (fileio_write (thread_p, fileio_get_volume_descriptor (bufptr->vpid.volid), iopage, bufptr->vpid.pageid,
+			IO_PAGESIZE) != NULL)
 	{
 	  *flushed = true;
 	  mnt_pb_iowrites (thread_p, 1);
@@ -12048,4 +12016,103 @@ pgbuf_rv_flush_page_dump (FILE * fp, int length, void *data)
 
   VPID_COPY (&vpid_to_flush, (VPID *) data);
   fprintf (fp, "Page to flush: %d|%d. \n", vpid_to_flush.volid, vpid_to_flush.pageid);
+}
+
+/*
+ * pgbuf_latch_mode_str () - print latch_mode
+ *
+ * return          : const char *
+ * latch_mode (in) : 
+ */
+static const char *
+pgbuf_latch_mode_str (PGBUF_LATCH_MODE latch_mode)
+{
+  const char *latch_mode_str;
+
+  switch (latch_mode)
+    {
+    case PGBUF_NO_LATCH:
+      latch_mode_str = "No Latch";
+      break;
+    case PGBUF_LATCH_READ:
+      latch_mode_str = "Read";
+      break;
+    case PGBUF_LATCH_WRITE:
+      latch_mode_str = "Write";
+      break;
+    case PGBUF_LATCH_FLUSH:
+      latch_mode_str = "Flush";
+      break;
+    case PGBUF_LATCH_VICTIM:
+      latch_mode_str = "Victim";
+      break;
+    case PGBUF_LATCH_FLUSH_INVALID:
+      latch_mode_str = "FlushInv";
+      break;
+    case PGBUF_LATCH_VICTIM_INVALID:
+      latch_mode_str = "VictimInv";
+      break;
+    default:
+      latch_mode_str = "Fault";
+      break;
+    }
+
+  return latch_mode_str;
+}
+
+/*
+ * pgbuf_zone_str () - print zone info
+ *
+ * return          : const char *
+ * zone (in) : 
+ */
+static const char *
+pgbuf_zone_str (PGBUF_ZONE zone)
+{
+  const char *zone_str;
+
+  switch (zone)
+    {
+    case PGBUF_LRU_1_ZONE:
+      zone_str = "LRU_1_Zone";
+      break;
+    case PGBUF_LRU_2_ZONE:
+      zone_str = "LRU_2_Zone";
+      break;
+    case PGBUF_INVALID_ZONE:
+      zone_str = "INVALID_Zone";
+      break;
+    default:
+      zone_str = "VOID_Zone";
+      break;
+    }
+
+  return zone_str;
+}
+
+/*
+ * pgbuf_consistent_str () - print consistent info
+ *
+ * return          : const char *
+ * consistent (in) : 
+ */
+static const char *
+pgbuf_consistent_str (int consistent)
+{
+  const char *consistent_str;
+
+  switch (consistent)
+    {
+    case PGBUF_CONTENT_GOOD:
+      consistent_str = "GOOD";
+      break;
+    case PGBUF_CONTENT_BAD:
+      consistent_str = "BAD";
+      break;
+    default:
+      consistent_str = "LIKELY BAD";
+      break;
+    }
+
+  return consistent_str;
 }

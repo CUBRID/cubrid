@@ -3860,8 +3860,8 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
     }
 
   /* for replication */
-  if (locator_add_or_remove_index
-      (thread_p, &record, oid_p, class_oid_p, true, SINGLE_ROW_INSERT, scan_p, false, false, hfid_p, NULL) != NO_ERROR)
+  if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p, true, SINGLE_ROW_INSERT, scan_p, false, false,
+				   hfid_p, NULL) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -3963,8 +3963,8 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
     }
 
   /* for replication */
-  if (locator_add_or_remove_index
-      (thread_p, &record, oid_p, class_oid_p, false, SINGLE_ROW_DELETE, scan_p, false, false, hfid_p, NULL) != NO_ERROR)
+  if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p, false, SINGLE_ROW_DELETE, scan_p, false,
+				   false, hfid_p, NULL) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4125,9 +4125,8 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 	}
 
       /* give up setting updated attr info */
-      if (locator_update_index
-	  (thread_p, &record, &old_record, NULL, 0, oid_p, oid_p, class_oid_p, SINGLE_ROW_UPDATE, scan_p,
-	   NULL) != NO_ERROR)
+      if (locator_update_index (thread_p, &record, &old_record, NULL, 0, oid_p, oid_p, class_oid_p, SINGLE_ROW_UPDATE,
+				scan_p, NULL) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
@@ -4345,16 +4344,14 @@ catcls_is_mvcc_update_needed (THREAD_ENTRY * thread_p, OID * oid, bool * need_mv
   PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 
   assert (oid != NULL && need_mvcc_update != NULL);
-  if (heap_prepare_get_record
-      (thread_p, oid, NULL, &forward_oid, NULL, &home_page_watcher, &fwd_page_watcher, &record_type, PGBUF_LATCH_READ,
-       false, LOG_ERROR_IF_DELETED) != S_SUCCESS)
+  if (heap_prepare_get_record (thread_p, oid, NULL, &forward_oid, NULL, &home_page_watcher, &fwd_page_watcher,
+			       &record_type, PGBUF_LATCH_READ, false, LOG_ERROR_IF_DELETED) != S_SUCCESS)
     {
       goto error;
     }
 
-  if (heap_get_mvcc_header
-      (thread_p, oid, &forward_oid, home_page_watcher.pgptr, fwd_page_watcher.pgptr, record_type,
-       &mvcc_rec_header) != S_SUCCESS)
+  if (heap_get_mvcc_header (thread_p, oid, &forward_oid, home_page_watcher.pgptr, fwd_page_watcher.pgptr,
+			    record_type, &mvcc_rec_header) != S_SUCCESS)
     {
       goto error;
     }
@@ -5207,9 +5204,8 @@ catcls_mvcc_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * 
     }
 
   /* give up setting updated attr info */
-  if (locator_update_index
-      (thread_p, &record, &old_record, NULL, 0, oid_p, new_oid, class_oid_p, SINGLE_ROW_UPDATE, scan_p,
-       NULL) != NO_ERROR)
+  if (locator_update_index (thread_p, &record, &old_record, NULL, 0, oid_p, new_oid, class_oid_p, SINGLE_ROW_UPDATE,
+			    scan_p, NULL) != NO_ERROR)
     {
       error = er_errid ();
       goto error;
