@@ -2137,7 +2137,7 @@ thread_dump_threads (void)
     {
       thread_p = &thread_Manager.thread_array[i];
 
-      fprintf (stderr, "thread %d(tid(%ld),client_id(%d),tran_index(%d)," "rid(%d),status(%s),interrupt(%d))\n",
+      fprintf (stderr, "thread %d(tid(%ld),client_id(%d),tran_index(%d),rid(%d),status(%s),interrupt(%d))\n",
 	       thread_p->index, thread_p->tid, thread_p->client_id, thread_p->tran_index, thread_p->rid,
 	       status[thread_p->status], thread_p->interrupted);
 
@@ -3619,7 +3619,7 @@ thread_log_flush_thread (void *arg_p)
       pthread_mutex_unlock (&group_commit_info->gc_mutex);
 
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "css_log_flush_thread: " "[%d]send signal - waiters\n", (int) THREAD_ID ());
+      er_log_debug (ARG_FILE_LINE, "css_log_flush_thread: [%d]send signal - waiters\n", (int) THREAD_ID ());
 #endif /* CUBRID_DEBUG */
     }
 
@@ -3632,7 +3632,7 @@ thread_log_flush_thread (void *arg_p)
   tsd_ptr->status = TS_DEAD;
 
 #if defined(CUBRID_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "css_log_flush_thread: " "[%d]end \n", (int) THREAD_ID ());
+  er_log_debug (ARG_FILE_LINE, "css_log_flush_thread: [%d]end \n", (int) THREAD_ID ());
 #endif /* CUBRID_DEBUG */
 
   return (THREAD_RET_T) 0;
@@ -5317,7 +5317,7 @@ thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_name, const int
 	    else if (report_track_cs_overflow == false)
 	      {
 		report_track_cs_overflow = true;	/* report only once */
-		er_log_debug (ARG_FILE_LINE, "thread_rc_track_meter: hold_buf overflow: " "buf_size=%d, idx=%d",
+		er_log_debug (ARG_FILE_LINE, "thread_rc_track_meter: hold_buf overflow: buf_size=%d, idx=%d",
 			      meter->m_hold_buf_size, cs_idx);
 	      }
 	  }

@@ -818,7 +818,7 @@ logpb_finalize_pool (void)
 #if defined(CUBRID_DEBUG)
   if (logpb_is_any_dirty () == true || logpb_is_any_fix () == true)
     {
-      er_log_debug (ARG_FILE_LINE, "log_pbpool_final: Log Buffer" " pool contains dirty or fixed pages at the end.\n");
+      er_log_debug (ARG_FILE_LINE, "log_pbpool_final: Log Buffer pool contains dirty or fixed pages at the end.\n");
       logpb_dump (stdout);
     }
 #endif /* CUBRID_DEBUG */
@@ -1551,7 +1551,7 @@ logpb_dump (FILE * out_fp)
     }
 
   (void) fprintf (out_fp, "\n\n");
-  (void) fprintf (out_fp, "Buf Log_Pageid Phy_pageid Drt Rct Fcnt Bufaddr" "   Pagearea    HDR:Pageid offset\n");
+  (void) fprintf (out_fp, "Buf Log_Pageid Phy_pageid Drt Rct Fcnt Bufaddr   Pagearea    HDR:Pageid offset\n");
 
   logpb_dump_pages (out_fp);
 
@@ -1577,7 +1577,7 @@ logpb_dump_information (FILE * out_fp)
   fprintf (out_fp, "\n\n");
 
   fprintf (out_fp,
-	   " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d," " Prev append LSA = %lld|%d\n"
+	   " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d, Prev append LSA = %lld|%d\n"
 	   " Prior LSA = %lld|%d, Prev prior LSA = %lld|%d\n\n", (long long int) log_Gl.append.nxio_lsa.pageid,
 	   (int) log_Gl.append.nxio_lsa.offset, (long long int) log_Gl.hdr.append_lsa.pageid,
 	   (int) log_Gl.hdr.append_lsa.offset, (long long int) log_Gl.append.prev_lsa.pageid,
@@ -1668,7 +1668,7 @@ logpb_dump_pages (FILE * out_fp)
 	}
       else
 	{
-	  fprintf (out_fp, "%3d %10lld %10d %3d %3d %4d  %p %p-%p" " %4s %5lld %5d\n", i,
+	  fprintf (out_fp, "%3d %10lld %10d %3d %3d %4d  %p %p-%p %4s %5lld %5d\n", i,
 		   (long long) log_bufptr->pageid, log_bufptr->phy_pageid, log_bufptr->dirty,
 		   log_bufptr->recently_freed, log_bufptr->fcnt, (void *) log_bufptr, (void *) (&log_bufptr->logpage),
 		   (void *) (&log_bufptr->logpage.area[LOGAREA_SIZE - 1]), "",
@@ -1975,7 +1975,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 
 #if defined(CUBRID_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "log_flush_hdr: " "call count(%ld) avg flush (%f) \n", log_Stat.flush_hdr_call_count,
+  er_log_debug (ARG_FILE_LINE, "log_flush_hdr: call count(%ld) avg flush (%f) \n", log_Stat.flush_hdr_call_count,
 		(double) log_Stat.total_flush_hdr_sec_by_LFT / log_Stat.flush_hdr_call_count);
 #endif /* CUBRID_DEBUG */
 }
@@ -2212,7 +2212,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
 	  if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
 	    {
 	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_ARCHIVES,
-			     "VACUUM ERROR: Failed to fetch page %lld from " "archives.", pageid);
+			     "VACUUM ERROR: Failed to fetch page %lld from archives.", pageid);
 	    }
 #endif /* SERVER_MODE */
 	  goto error;
@@ -2249,7 +2249,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
 		      if (thread_p != NULL && thread_p->type == TT_VACUUM_MASTER)
 			{
 			  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_ARCHIVES,
-					 "VACUUM ERROR: Failed to fetch page " "%lld from archives.", pageid);
+					 "VACUUM ERROR: Failed to fetch page %lld from archives.", pageid);
 			}
 #endif /* SERVER_MODE */
 		      goto error;
@@ -2851,7 +2851,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 
 #if defined(CUBRID_DEBUG)
   er_log_debug (ARG_FILE_LINE,
-		"log_next_append_page: " "new page id(%lld) delayed page id(%lld) "
+		"log_next_append_page: new page id(%lld) delayed page id(%lld) "
 		"total_append_page_count(%ld) total_delayed_page_count(%ld) "
 		" num_toflush(%d) use_append_page_sec(%f) need_flush(%d) "
 		"commit_count(%ld) total_commit_count(%ld)\n", (int) log_Stat.last_append_pageid,
@@ -4059,7 +4059,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &log_Gl.hdr.mvcc_op_log_lsa);
 
       vacuum_er_log (VACUUM_ER_LOG_LOGGING,
-		     "VACUUM: thread(%d): log mvcc op at (%lld, %d) " "and create link with log_lsa(%lld, %d)\n",
+		     "VACUUM: thread(%d): log mvcc op at (%lld, %d) and create link with log_lsa(%lld, %d)\n",
 		     thread_get_current_entry_index (), (long long int) node->start_lsa.pageid,
 		     (int) node->start_lsa.offset, (long long int) log_Gl.hdr.mvcc_op_log_lsa.pageid,
 		     (int) log_Gl.hdr.mvcc_op_log_lsa.offset);
@@ -4444,7 +4444,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   if (log_Gl.append.nxio_lsa.pageid != logpb_get_page_id (flush_info->toflush[0]))
     {
       er_log_debug (ARG_FILE_LINE,
-		    "logpb_flush_all_append_pages: SYSTEM ERROR\n " " NXIO_PAGE %d does not seem the same as next free"
+		    "logpb_flush_all_append_pages: SYSTEM ERROR\n  NXIO_PAGE %d does not seem the same as next free"
 		    " append page %d to flush\n", log_Gl.append.nxio_lsa.pageid,
 		    logpb_get_page_id (flush_info->toflush[0]));
       goto error;
@@ -4623,7 +4623,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 		    for (j = 0; j != i - idxflush; ++j)
 		      {
-			er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: flush1 " "pageid(%lld)\n",
+			er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: flush1 pageid(%lld)\n",
 				      (flush_info->toflush[idxflush])->hdr.logical_pageid + j);
 		      }
 		  }
@@ -4779,7 +4779,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG) && logpb_is_any_dirty () == true)
     {
-      er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: Log Buffer" " contains dirty pages\n");
+      er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: Log Buffer contains dirty pages\n");
       logpb_dump (stdout);
       fflush (stdout);
     }
@@ -4845,7 +4845,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   log_Stat.total_commit_count_in_flush_pages += log_Stat.last_commit_count_in_flush_pages;
 
   er_log_debug (ARG_FILE_LINE,
-		"logpb_flush_all_append_pages: " "flush page(%ld / %d / %ld)" "avg flush count(%f), avg flush sec(%f)"
+		"logpb_flush_all_append_pages: flush page(%ld / %d / %ld) avg flush count(%f), avg flush sec(%f)"
 		"commit count(%ld) avg commit count(%f)\n", log_Stat.last_flush_count_by_trans, dirty_page_count,
 		curr_flush_count,
 		(double) log_Stat.total_flush_count_by_trans / log_Stat.flushall_append_pages_call_count,
@@ -4960,7 +4960,7 @@ void
 logpb_flush_pages_direct (THREAD_ENTRY * thread_p)
 {
 #if defined(CUBRID_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "logpb_flush_pages_direct: " "[%d]flush direct\n", (int) THREAD_ID ());
+  er_log_debug (ARG_FILE_LINE, "logpb_flush_pages_direct: [%d]flush direct\n", (int) THREAD_ID ());
 #endif /* CUBRID_DEBUG */
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -6326,7 +6326,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 #if !defined(NDEBUG)
   if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
     {
-      fprintf (stdout, "\n **log_fetch_from_archive has been called on" " pageid = %lld ** \n", (long long int) pageid);
+      fprintf (stdout, "\n **log_fetch_from_archive has been called on pageid = %lld ** \n", (long long int) pageid);
       fflush (stdout);
     }
 #endif
@@ -6770,8 +6770,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   if (log_Gl.hdr.nxarv_pageid >= log_Gl.hdr.append_lsa.pageid)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "log_archive_active_log: WARNING " "Trying to archive ONLY the append page"
-		    " which is incomplete\n");
+		    "log_archive_active_log: WARNING Trying to archive ONLY the append page" " which is incomplete\n");
       return;
     }
 
@@ -7017,7 +7016,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 	      if (catmsg == NULL)
 		{
 		  catmsg =
-		    "29 COMMENT: Log archive %s," " which contains log pages before %lld,"
+		    "29 COMMENT: Log archive %s, which contains log pages before %lld,"
 		    " is not needed any longer by any HA utilities.\n";
 		}
 	      error_code = log_dump_log_info (log_Name_info, true, catmsg, unneeded_logarv_name, min_fpageid);
@@ -7056,7 +7055,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 	}
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_archive_active_log end, arvhdr->fpageid = %lld, " "arvhdr->npages = %d\n",
+  er_log_debug (ARG_FILE_LINE, "logpb_archive_active_log end, arvhdr->fpageid = %lld, arvhdr->npages = %d\n",
 		arvhdr->fpageid, arvhdr->npages);
 
   free_and_init (malloc_arv_hdr_pgptr);
@@ -7206,7 +7205,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED);
       if (catmsg == NULL)
 	{
-	  catmsg = (char *) "Number of active log archives has been exceeded" " the max desired number.";
+	  catmsg = (char *) "Number of active log archives has been exceeded the max desired number.";
 	}
       deleted_count =
 	logpb_remove_archive_logs_internal (thread_p, first_arv_num_to_delete, last_arv_num_to_delete, catmsg);
@@ -8340,8 +8339,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_LOGINFO_COMMENT_ARCHIVE_NONEEDED);
 	      if (catmsg == NULL)
 		{
-		  catmsg =
-		    "COMMENT: Log archive %s is not needed any longer" " unless a database media crash occurs.\n";
+		  catmsg = "COMMENT: Log archive %s is not needed any longer unless a database media crash occurs.\n";
 		}
 	      error_code = log_dump_log_info (log_Name_info, true, catmsg, logarv_name);
 	    }
@@ -8431,15 +8429,15 @@ logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data)
       fprintf (out_fp,
 	       "     Trid = %d, State = %s, isloose_end = %d,\n"
 	       "        Head_lsa = %lld|%d, Tail_lsa = %lld|%d, UndoNxtLSA = %lld|%d,\n"
-	       "        Postpone_lsa = %lld|%d, Save_lsa = %lld|%d," " Tail_topresult_lsa = %lld|%d,\n"
+	       "        Postpone_lsa = %lld|%d, Save_lsa = %lld|%d, Tail_topresult_lsa = %lld|%d,\n"
 	       "	Client_User: name=%s.\n", chkpt_one->trid, log_state_string (chkpt_one->state),
-	       chkpt_one->isloose_end, (long long int) chkpt_one->head_lsa.pageid, (int) chkpt_one->head_lsa.offset,
-	       (long long int) chkpt_one->tail_lsa.pageid, (int) chkpt_one->tail_lsa.offset,
-	       (long long int) chkpt_one->undo_nxlsa.pageid, (int) chkpt_one->undo_nxlsa.offset,
-	       (long long int) chkpt_one->posp_nxlsa.pageid, (int) chkpt_one->posp_nxlsa.offset,
-	       (long long int) chkpt_one->savept_lsa.pageid, (int) chkpt_one->savept_lsa.offset,
-	       (long long int) chkpt_one->tail_topresult_lsa.pageid, (int) chkpt_one->tail_topresult_lsa.offset,
-	       chkpt_one->user_name);
+	       chkpt_one->isloose_end, (long long int) chkpt_one->head_lsa.pageid,
+	       (int) chkpt_one->head_lsa.offset, (long long int) chkpt_one->tail_lsa.pageid,
+	       (int) chkpt_one->tail_lsa.offset, (long long int) chkpt_one->undo_nxlsa.pageid,
+	       (int) chkpt_one->undo_nxlsa.offset, (long long int) chkpt_one->posp_nxlsa.pageid,
+	       (int) chkpt_one->posp_nxlsa.offset, (long long int) chkpt_one->savept_lsa.pageid,
+	       (int) chkpt_one->savept_lsa.offset, (long long int) chkpt_one->tail_topresult_lsa.pageid,
+	       (int) chkpt_one->tail_topresult_lsa.offset, chkpt_one->user_name);
     }
   (void) fprintf (out_fp, "\n");
 }
@@ -8470,7 +8468,7 @@ logpb_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
   for (i = 0; i < ntops; i++)
     {
       chkpt_topone = &chkpt_topops[i];
-      fprintf (out_fp, "     Trid = %d, Lastparent_lsa = %lld|%d, " "Postpone_lsa = %lld|%d\n", chkpt_topone->trid,
+      fprintf (out_fp, "     Trid = %d, Lastparent_lsa = %lld|%d, Postpone_lsa = %lld|%d\n", chkpt_topone->trid,
 	       (long long int) chkpt_topone->lastparent_lsa.pageid, chkpt_topone->lastparent_lsa.offset,
 	       (long long int) chkpt_topone->posp_lsa.pageid, chkpt_topone->posp_lsa.offset);
     }
@@ -11428,7 +11426,7 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_fl
   msglog = er_get_msglog_filename ();
   if (msglog != NULL && strcmp (msglog, "/dev/null") != 0)
     {
-      fprintf (stderr, "Please consult error_log file = %s for additional" " information\n", msglog);
+      fprintf (stderr, "Please consult error_log file = %s for additional information\n", msglog);
     }
 
   fflush (stderr);
@@ -11801,12 +11799,12 @@ error:
       bg_arv_info->last_sync_pageid = NULL_PAGEID;
 
       er_log_debug (ARG_FILE_LINE,
-		    "background archiving error, hdr->start_page_id = %d, " "hdr->current_page_id = %d, error:%d\n",
+		    "background archiving error, hdr->start_page_id = %d, hdr->current_page_id = %d, error:%d\n",
 		    bg_arv_info->start_page_id, bg_arv_info->current_page_id, error_code);
     }
 
   er_log_debug (ARG_FILE_LINE,
-		"logpb_background_archiving end, hdr->start_page_id = %d, " "hdr->current_page_id = %d\n",
+		"logpb_background_archiving end, hdr->start_page_id = %d, hdr->current_page_id = %d\n",
 		bg_arv_info->start_page_id, bg_arv_info->current_page_id);
 
   return error_code;

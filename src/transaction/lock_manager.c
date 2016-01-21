@@ -2277,7 +2277,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 	{
 	  /* We are already aborting, fall through. Don't do double aborts that could cause an infinite loop. */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ABORT_TRAN_TWICE, 1, entry_ptr->tran_index);
-	  /* er_log_debug(ARG_FILE_LINE, "lk_suspend: Likely a system error." "Trying to abort a transaction
+	  /* er_log_debug(ARG_FILE_LINE, "lk_suspend: Likely a system error. Trying to abort a transaction
 	   * twice.\n"); */
 
 	  /* Since we deadlocked during an abort, forcibly remove all page latches of this transaction and hope this
@@ -5193,7 +5193,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  inact_trans_found = true;
 #if defined(CUBRID_DEBUG)
 	  er_log_debug (ARG_FILE_LINE,
-			"Inactive transaction is found in a deadlock cycle\n" "(tran_index=%d, tranid=%d, state=%s)\n",
+			"Inactive transaction is found in a deadlock cycle\n(tran_index=%d, tranid=%d, state=%s)\n",
 			t, tranid, log_state_string (logtb_find_state (t)));
 	  tran_index_set[WFG_nidx] = t;
 	  WFG_nidx += 1;

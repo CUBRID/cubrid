@@ -535,7 +535,7 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
   ptr = or_pack_string_with_length (ptr, repl_info->sys_prm_context, strlen4);
 
   er_log_debug (ARG_FILE_LINE,
-		"repl_log_insert_statement:" " repl_info_sbr { type %d, name %s, stmt_txt %s, user %s, "
+		"repl_log_insert_statement: repl_info_sbr { type %d, name %s, stmt_txt %s, user %s, "
 		"sys_prm_context %s }\n", repl_info->statement_type, repl_info->name, repl_info->stmt_text,
 		repl_info->db_user, repl_info->sys_prm_context);
   LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);

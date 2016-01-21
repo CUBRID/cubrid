@@ -657,7 +657,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
        * of the caller
        */
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "locator_lock: ** SYSTEM ERROR don't know how to fetch " "virtual objects.");
+      er_log_debug (ARG_FILE_LINE, "locator_lock: ** SYSTEM ERROR don't know how to fetch virtual objects.");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 #endif /* CUBRID_DEBUG */
       /* if this gets occurs in a production system, we want to guard against a crash & have the same test results as
@@ -1503,7 +1503,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
        * of the caller
        */
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "locator_lock_nested: ** SYSTEM ERROR don't know how to " "fetch virtual objects. ");
+      er_log_debug (ARG_FILE_LINE, "locator_lock_nested: ** SYSTEM ERROR don't know how to fetch virtual objects. ");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 #endif /* CUBRID_DEBUG */
       /* if this gets occurs in a production system, we want to guard against a crash & have the same test results as
@@ -1778,7 +1778,7 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
        * of the caller
        */
       er_log_debug (ARG_FILE_LINE,
-		    "locator_lock_class_of_instance: ** SYSTEM ERROR " "don't know how to fetch virtual objects. ");
+		    "locator_lock_class_of_instance: ** SYSTEM ERROR don't know how to fetch virtual objects. ");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 #endif /* CUBRID_DEBUG */
       /* if this gets occurs in a production system, we want to guard against a crash & have the same test results as
@@ -1944,7 +1944,7 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
        * of the caller
        */
       er_log_debug (ARG_FILE_LINE,
-		    "locator_lock_and_doesexist: ** SYSTEM ERROR don't " "know how to fetch virtual objects.");
+		    "locator_lock_and_doesexist: ** SYSTEM ERROR don't know how to fetch virtual objects.");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 #endif /* CUBRID_DEBUG */
       /* if this gets occurs in a production system, we want to guard against a crash & have the same test results as
@@ -2155,8 +2155,8 @@ locator_fetch_mode_to_lock (DB_FETCH_MODE purpose, LC_OBJTYPE type, LC_FETCH_VER
 	  || purpose == DB_FETCH_QUERY_WRITE))
     {
       er_log_debug (ARG_FILE_LINE,
-		    "locator_fetch_mode_to_lock: *** SYSTEM " "ERROR Fetching instance with incorrect "
-		    "fetch purpose mode = %d" " ... assume READ_FETCMODE...***\n", purpose);
+		    "locator_fetch_mode_to_lock: *** SYSTEM ERROR Fetching instance with incorrect "
+		    "fetch purpose mode = %d ... assume READ_FETCMODE...***\n", purpose);
       purpose = DB_FETCH_READ;
     }
 #endif /* CUBRID_DEBUG */
@@ -2486,7 +2486,7 @@ locator_fetch_instance (MOP mop, DB_FETCH_MODE purpose, LC_FETCH_VERSION_TYPE fe
 	  er_log_debug (ARG_FILE_LINE,
 			"locator_fetch_instance: SYSTEM ERROR Incorrect"
 			" use of function.\n Object OID %d|%d|%d associated"
-			" with argument mop is not an instance.\n  Calling..." " locator_fetch_class instead..\n",
+			" with argument mop is not an instance.\n  Calling... locator_fetch_class instead..\n",
 			oid->volid, oid->pageid, oid->slotid);
 	  return locator_fetch_class (mop, purpose);
 	}
@@ -2640,7 +2640,7 @@ locator_fetch_nested (MOP mop, DB_FETCH_MODE purpose, int prune_level, int quit_
 
 	  oid = ws_oid (mop);
 	  er_log_debug (ARG_FILE_LINE,
-			"locator_fetch_nested: SYSTEM ERROR" " Incorrect use of function.\n "
+			"locator_fetch_nested: SYSTEM ERROR Incorrect use of function.\n "
 			"Object OID %d|%d|%d associated with argument mop is "
 			"not an instance.\n Calling locator_fetch_class instead..\n", oid->volid, oid->pageid,
 			oid->slotid);
@@ -3022,7 +3022,7 @@ locator_get_all_nested_mops (MOP mop, int prune_level, DB_FETCH_MODE inst_purpos
 
 	  oid = ws_oid (mop);
 	  er_log_debug (ARG_FILE_LINE,
-			"locator_get_all_nested_mops: SYSTEM ERROR" " Incorrect use of function.\n Object OID %d|%d|%d"
+			"locator_get_all_nested_mops: SYSTEM ERROR Incorrect use of function.\n Object OID %d|%d|%d"
 			" associated with argument mop is not an instance.\n"
 			" Calling locator_fetch_class instead..\n", oid->volid, oid->pageid, oid->slotid);
 	  return NULL;
@@ -3456,7 +3456,7 @@ locator_cache_object_class (MOP mop, LC_COPYAREA_ONEOBJ * obj, MOBJ * object_p, 
     default:
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
-		    "locator_cache: ** SYSTEM ERROR unknown" " fetch state operation for object " "= %d|%d|%d",
+		    "locator_cache: ** SYSTEM ERROR unknown fetch state operation for object = %d|%d|%d",
 		    obj->oid.volid, obj->oid.pageid, obj->oid.slotid);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 #endif /* CUBRID_DEBUG */
@@ -3547,7 +3547,7 @@ locator_cache_object_instance (MOP mop, MOP class_mop, MOP * hint_class_mop_p, M
     default:
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
-		    "locator_cache: ** SYSTEM ERROR unknown" " fetch state operation for object " "= %d|%d|%d",
+		    "locator_cache: ** SYSTEM ERROR unknown fetch state operation for object = %d|%d|%d",
 		    obj->oid.volid, obj->oid.pageid, obj->oid.slotid);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 #endif /* CUBRID_DEBUG */
@@ -3639,7 +3639,7 @@ locator_cache_not_have_object (MOP * mop_p, MOBJ * object_p, bool * call_fun, LC
 	default:
 #if defined(CUBRID_DEBUG)
 	  er_log_debug (ARG_FILE_LINE,
-			"locator_cache: ** SYSTEM ERROR fetch operation" " without the content of the"
+			"locator_cache: ** SYSTEM ERROR fetch operation without the content of the"
 			" object = %d|%d|%d", obj->oid.volid, obj->oid.pageid, obj->oid.slotid);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 #endif /* CUBRID_DEBUG */
@@ -3679,7 +3679,7 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p, MOP 
       if (*mop_p == NULL)
 	{
 #if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE, "locator_cache: ** SYSTEM ERROR unable to " "create mop for object = %d|%d|%d",
+	  er_log_debug (ARG_FILE_LINE, "locator_cache: ** SYSTEM ERROR unable to create mop for object = %d|%d|%d",
 			obj->oid.volid, obj->oid.pageid, obj->oid.slotid);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 #endif /* CUBRID_DEBUG */
@@ -3731,7 +3731,7 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p, MOP 
       if (*mop_p == NULL)
 	{
 #if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE, "locator_cache: ** SYSTEM ERROR unable to " "create mop for object = %d|%d|%d",
+	  er_log_debug (ARG_FILE_LINE, "locator_cache: ** SYSTEM ERROR unable to create mop for object = %d|%d|%d",
 			obj->oid.volid, obj->oid.pageid, obj->oid.slotid);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 #endif /* CUBRID_DEBUG */
@@ -4035,7 +4035,7 @@ locator_dump_mflush (FILE * out_fp, LOCATOR_MFLUSH_CACHE * mflush)
 {
   fprintf (out_fp, "\n***Dumping mflush area ***\n");
 
-  fprintf (out_fp, "Num_objects = %d, Area = %p, Area Size = %d, " "Available_area_at = %p, Available area size = %d\n",
+  fprintf (out_fp, "Num_objects = %d, Area = %p, Area Size = %d, Available_area_at = %p, Available area size = %d\n",
 	   mflush->mobjs->num_objs, (void *) (mflush->copy_area->mem), (int) mflush->copy_area->length,
 	   mflush->recdes.data, mflush->recdes.area_size);
 
@@ -4765,7 +4765,7 @@ locator_mflush (MOP mop, void *mf)
   if (OID_ISNULL (oid))
     {
       er_log_debug (ARG_FILE_LINE,
-		    "locator_mflush: SYSTEM ERROR OID %d|%d|%d in" " the workspace is a NULL_OID. It cannot be...\n",
+		    "locator_mflush: SYSTEM ERROR OID %d|%d|%d in the workspace is a NULL_OID. It cannot be...\n",
 		    oid->volid, oid->pageid, oid->slotid);
       return WS_MAP_FAIL;
     }
@@ -4778,7 +4778,7 @@ locator_mflush (MOP mop, void *mf)
 	      oid->slotid);
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
-		    "locator_mflush: SYSTEM ERROR Unable to flush.\n" " Workspace does not know class_mop for object "
+		    "locator_mflush: SYSTEM ERROR Unable to flush.\n Workspace does not know class_mop for object "
 		    "OID %d|%d|%d\n", oid->volid, oid->pageid, oid->slotid);
 #endif /* CUBRID_DEBUG */
       return WS_MAP_FAIL;
@@ -4875,7 +4875,7 @@ locator_mflush (MOP mop, void *mf)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
-		    "locator_mflush: SYSTEM ERROR, The MOP of" " object OID %d|%d|%d is dirty, is not marked as\n"
+		    "locator_mflush: SYSTEM ERROR, The MOP of object OID %d|%d|%d is dirty, is not marked as\n"
 		    " deleted and does not have the object\n", oid->volid, oid->pageid, oid->slotid);
 #endif /* CUBRID_DEBUG */
       return WS_MAP_FAIL;

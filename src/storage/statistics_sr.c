@@ -1205,7 +1205,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	    }
 
 	  fprintf (fpp, ") ,");
-	  fprintf (fpp, " Total Pages: %d , Leaf Pages: %d ," " Height: %d\n", bt_statsp->pages, bt_statsp->leafs,
+	  fprintf (fpp, " Total Pages: %d , Leaf Pages: %d , Height: %d\n", bt_statsp->pages, bt_statsp->leafs,
 		   bt_statsp->height);
 	}
       fprintf (fpp, "\n");

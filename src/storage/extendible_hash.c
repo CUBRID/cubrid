@@ -2647,8 +2647,8 @@ ehash_distribute_records_into_two_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEA
 	    {
 #ifdef EHASH_DEBUG
 	      er_log_debug (ARG_FILE_LINE,
-			    "Unable to move the record from the " "bucket to empty sibling bucket. Slotted page module"
-			    " refuses to insert a short size record to an empty " "page. This should never happen.");
+			    "Unable to move the record from the bucket to empty sibling bucket. Slotted page module"
+			    " refuses to insert a short size record to an empty page. This should never happen.");
 #endif
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
@@ -3010,7 +3010,7 @@ ehash_expand_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
       || (file_get_numpages (&ehid_p->vfid) > file_get_numpages (&dir_header_p->bucket_file)))
     {
       er_log_debug (ARG_FILE_LINE,
-		    "WARNING: Ext. Hash EHID=%d|%d|%d is unbalanced.\n" " Num_bucket_pages = %d, num_dir_pages = %d,\n"
+		    "WARNING: Ext. Hash EHID=%d|%d|%d is unbalanced.\n Num_bucket_pages = %d, num_dir_pages = %d,\n"
 		    " num_dir_pointers = %d, directory_depth = %d.\n"
 		    " You may want to consider another hash function.\n", ehid_p->vfid.volid, ehid_p->vfid.fileid,
 		    ehid_p->pageid, file_get_numpages (&dir_header_p->bucket_file), file_get_numpages (&ehid_p->vfid),
@@ -3939,7 +3939,7 @@ ehash_shrink_directory (THREAD_ENTRY * thread_p, EHID * ehid_p, int new_depth)
   if (dir_header_p->depth < new_depth)
     {
 #ifdef EHASH_DEBUG
-      er_log_debug (ARG_FILE_LINE, "WARNING in eh_shrink_dir:" "The directory has a depth of %d , shrink is cancelled ",
+      er_log_debug (ARG_FILE_LINE, "WARNING in eh_shrink_dir:The directory has a depth of %d , shrink is cancelled ",
 		    dir_header_p->depth);
 #endif
       pgbuf_unfix (thread_p, (PAGE_PTR) dir_header_p);
@@ -4995,11 +4995,11 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
 
       if (VPID_ISNULL (&dir_record_p->bucket_vpid))
 	{
-	  printf ("*    Dir loc :  %d   points to bucket page  id:" " NULL    *\n", dir_ptr_no);
+	  printf ("*    Dir loc :  %d   points to bucket page  id: NULL    *\n", dir_ptr_no);
 	}
       else
 	{
-	  printf ("*    Dir loc :  %d   points to vol:%d bucket pgid:" " %d  *\n", dir_ptr_no,
+	  printf ("*    Dir loc :  %d   points to vol:%d bucket pgid: %d  *\n", dir_ptr_no,
 		  dir_record_p->bucket_vpid.volid, dir_record_p->bucket_vpid.pageid);
 	}
 

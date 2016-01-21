@@ -1322,7 +1322,7 @@ xserial_decache (THREAD_ENTRY * thread_p, OID * oidp)
       && qexec_remove_xasl_cache_ent_by_class (thread_p, oidp, 0) != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "xserial_decache:" " qexec_remove_xasl_cache_ent_by_class" " failed for serial { %d %d %d }\n",
+		    "xserial_decache: qexec_remove_xasl_cache_ent_by_class failed for serial { %d %d %d }\n",
 		    oidp->pageid, oidp->slotid, oidp->volid);
     }
 

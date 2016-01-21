@@ -995,7 +995,7 @@ rv_check_rvfuns (void)
     if (RV_fun[i].recv_index != i)
       {
 	er_log_debug (ARG_FILE_LINE,
-		      "log_check_rvfuns: *** SYSTEM ERROR ***" " Bad compilation... Recovery function %d is out of"
+		      "log_check_rvfuns: *** SYSTEM ERROR *** Bad compilation... Recovery function %d is out of"
 		      " sequence in index %d of recovery function array\n", RV_fun[i].recv_index, i);
 	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	assert (false);

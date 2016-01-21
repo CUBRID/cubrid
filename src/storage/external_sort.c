@@ -330,7 +330,7 @@ sort_spage_initialize (PAGE_PTR pgptr, INT16 slots_type, INT16 alignment)
   if (!spage_is_valid_anchor_type (slots_type))
     {
       (void) fprintf (stderr,
-		      "sort_spage_initialize:" " **INTERFACE SYSTEM ERROR BAD value for" " slots_type = %d.\n"
+		      "sort_spage_initialize: **INTERFACE SYSTEM ERROR BAD value for slots_type = %d.\n"
 		      " UNANCHORED_KEEP_SEQUENCE was assumed **\n", slots_type);
       slots_type = UNANCHORED_KEEP_SEQUENCE;
     }
@@ -339,7 +339,7 @@ sort_spage_initialize (PAGE_PTR pgptr, INT16 slots_type, INT16 alignment)
        || alignment == LONG_ALIGNMENT || alignment == FLOAT_ALIGNMENT || alignment == DOUBLE_ALIGNMENT))
     {
       (void) fprintf (stderr,
-		      "sort_spage_initialize:" " **INTERFACE SYSTEM ERROR BAD value = %d"
+		      "sort_spage_initialize: **INTERFACE SYSTEM ERROR BAD value = %d"
 		      " for alignment. %d was assumed\n. Alignment must be"
 		      " either SIZEOF char, short, int, long, float, or double", alignment, MAX_ALIGNMENT);
       alignment = MAX_ALIGNMENT;
@@ -743,7 +743,7 @@ sort_spage_dump_hdr (SLOTTED_PAGE_HEADER * sphdr)
   (void) fprintf (stdout, "ALIGNMENT-TO = %s, WASTED AREA FOR ALIGNMENT = %d,\n",
 		  spage_alignment_string (sphdr->alignment), spage_waste_align);
 
-  (void) fprintf (stdout, "TOTAL FREE AREA = %d, CONTIGUOUS FREE AREA = %d," " FREE SPACE OFFSET = %d,\n", sphdr->tfree,
+  (void) fprintf (stdout, "TOTAL FREE AREA = %d, CONTIGUOUS FREE AREA = %d, FREE SPACE OFFSET = %d,\n", sphdr->tfree,
 		  sphdr->cfree, sphdr->foffset);
 }
 
@@ -802,14 +802,14 @@ sort_spage_dump (PAGE_PTR pgptr, int rec_p)
   if (used_length + sphdr->tfree > DB_PAGESIZE)
     {
       (void) fprintf (stdout,
-		      "sort_spage_dump: Inconsistent page \n" " (Used_space + tfree > DB_PAGESIZE\n (%d + %d) > %d \n "
+		      "sort_spage_dump: Inconsistent page \n (Used_space + tfree > DB_PAGESIZE\n (%d + %d) > %d \n "
 		      " %d > %d\n", used_length, sphdr->tfree, DB_PAGESIZE, used_length + sphdr->tfree, DB_PAGESIZE);
     }
 
   if ((sphdr->cfree + sphdr->foffset + sizeof (SLOT) * sphdr->nslots) > DB_PAGESIZE)
     {
       (void) fprintf (stdout,
-		      "sort_spage_dump: Inconsistent page\n" " (cfree + foffset + SIZEOF(SLOT) * nslots) > "
+		      "sort_spage_dump: Inconsistent page\n (cfree + foffset + SIZEOF(SLOT) * nslots) > "
 		      " DB_PAGESIZE\n (%d + %d + (%d * %d)) > %d\n %d > %d\n", sphdr->cfree, sphdr->foffset,
 		      sizeof (SLOT), sphdr->nslots, DB_PAGESIZE,
 		      (sphdr->cfree + sphdr->foffset + sizeof (SLOT) * sphdr->nslots), DB_PAGESIZE);
@@ -817,7 +817,7 @@ sort_spage_dump (PAGE_PTR pgptr, int rec_p)
 
   if (sphdr->cfree <= -(sphdr->alignment - 1))
     {
-      (void) fprintf (stdout, "sort_spage_dump: Cfree %d is inconsistent in page. " "Cannot be < -%d\n", sphdr->cfree,
+      (void) fprintf (stdout, "sort_spage_dump: Cfree %d is inconsistent in page. Cannot be < -%d\n", sphdr->cfree,
 		      sphdr->alignment);
     }
 }

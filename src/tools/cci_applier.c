@@ -408,7 +408,7 @@ execute_sql_query (int conn, char *query, T_CCI_ERROR * error)
 
   while (req < 0 && CA_RETRY_ON_ERROR (error->err_code))
     {
-      snprintf (err_msg, LINE_MAX, "attempts to try applying " "failed SQL log again - %s", error->err_msg);
+      snprintf (err_msg, LINE_MAX, "attempts to try applying failed SQL log again - %s", error->err_msg);
       er_log (error->err_code, query, err_msg);
 
       sleep (10);

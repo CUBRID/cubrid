@@ -2293,7 +2293,7 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
 	  /* impossible case */
 #if defined(CT_DEBUG)
 	  er_log_debug (ARG_FILE_LINE,
-			"catalog_get_representation_item: " "Insertion to hash table failed.\n "
+			"catalog_get_representation_item: Insertion to hash table failed.\n "
 			"Key: Class_Id: { %d , %d , %d } Repr: %d", class_id_p->pageid, class_id_p->volid,
 			class_id_p->slotid, repr_item_p->repr_id);
 #endif /* CT_DEBUG */
@@ -3163,7 +3163,7 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p, CLS_INFO *
       if (er_errid () == ER_SP_UNKNOWN_SLOTID)
 	er_log_debug (ARG_FILE_LINE, "catalog_update_class_info: ",
 		      "no class information record found in catalog.\n"
-		      "possibly catalog index points to a non_existent " "disk repr.\n");
+		      "possibly catalog index points to a non_existent disk repr.\n");
 #endif /* CT_DEBUG */
       pgbuf_unfix_and_init (thread_p, page_p);
       if (do_end_access)
@@ -4127,7 +4127,7 @@ start:
 	   * reflected to the index or to the memory hash table. */
 	  er_log_debug (ARG_FILE_LINE, "catalog_get_class_info: ",
 			"no class information record found in catalog.\n"
-			"possibly catalog index points to a non_existent " "disk repr.\n");
+			"possibly catalog index points to a non_existent disk repr.\n");
 	}
 #endif /* CT_DEBUG */
 
@@ -4830,7 +4830,7 @@ catalog_dump_representation (DISK_REPR * disk_repr_p)
   if (disk_repr_p != NULL)
     {
       fprintf (stdout, " DISK REPRESENTATION:  \n\n");
-      fprintf (stdout, " Repr_Id : %d  N_Fixed : %d  Fixed_Length : %d " " N_Variable : %d\n\n", disk_repr_p->id,
+      fprintf (stdout, " Repr_Id : %d  N_Fixed : %d  Fixed_Length : %d  N_Variable : %d\n\n", disk_repr_p->id,
 	       disk_repr_p->n_fixed, disk_repr_p->fixed_length, disk_repr_p->n_variable);
 
       fprintf (stdout, " Fixed Attribute Representations : \n\n");

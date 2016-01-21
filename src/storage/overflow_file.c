@@ -409,7 +409,7 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID *
   if (length > 0)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "ovf_insert: ** SYSTEM ERROR calculation" " of number of pages needed to store overflow data seems"
+		    "ovf_insert: ** SYSTEM ERROR calculation of number of pages needed to store overflow data seems"
 		    " incorrect. Need no more than %d pages", npages);
       goto exit_on_error;
     }
@@ -1348,7 +1348,7 @@ overflow_rv_newpage_logical_dump_undo (FILE * fp, int length_ignore, void *data)
   OVERFLOW_RECV_LINKS *newpg;
 
   newpg = (OVERFLOW_RECV_LINKS *) data;
-  (void) fprintf (fp, "Deallocating page %d|%d" " from Volid = %d, Fileid = %d\n", newpg->new_vpid.volid,
+  (void) fprintf (fp, "Deallocating page %d|%d from Volid = %d, Fileid = %d\n", newpg->new_vpid.volid,
 		  newpg->new_vpid.pageid, newpg->ovf_vfid.volid, newpg->ovf_vfid.fileid);
 }
 

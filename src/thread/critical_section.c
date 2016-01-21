@@ -711,7 +711,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_enter_critical_section_as_reader: %6d.%06d"
-		    " %s total_enter %d total_nwaits %d max_wait %d.%06d" " total_wait %d.06d\n", elapsed_time.tv_sec,
+		    " %s total_enter %d total_nwaits %d max_wait %d.%06d total_wait %d.06d\n", elapsed_time.tv_sec,
 		    elapsed_time.tv_usec, cs_ptr->name, cs_ptr->total_enter, cs_ptr->total_nwaits,
 		    cs_ptr->max_wait.tv_sec, cs_ptr->max_wait.tv_usec, cs_ptr->total_wait.tv_sec,
 		    cs_ptr->total_wait.tv_usec);
@@ -946,7 +946,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, CSS_CRITICAL_SE
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE,
-		    "csect_enter_critical_section: %6d.%06d" " %s total_enter %d total_nwaits %d max_wait %d.%06d"
+		    "csect_enter_critical_section: %6d.%06d %s total_enter %d total_nwaits %d max_wait %d.%06d"
 		    " total_wait %d.06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec, cs_ptr->name,
 		    cs_ptr->total_enter, cs_ptr->total_nwaits, cs_ptr->max_wait.tv_sec, cs_ptr->max_wait.tv_usec,
 		    cs_ptr->total_wait.tv_sec, cs_ptr->total_wait.tv_usec);
@@ -1222,7 +1222,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * c
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE,
-		    "csect_demote_critical_section: %6d.%06d" " %s total_enter %d total_nwaits %d max_wait %d.%06d"
+		    "csect_demote_critical_section: %6d.%06d %s total_enter %d total_nwaits %d max_wait %d.%06d"
 		    " total_wait %d.06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec, cs_ptr->name,
 		    cs_ptr->total_enter, cs_ptr->total_nwaits, cs_ptr->max_wait.tv_sec, cs_ptr->max_wait.tv_usec,
 		    cs_ptr->total_wait.tv_sec, cs_ptr->total_wait.tv_usec);
@@ -1446,7 +1446,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * 
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE,
-		    "csect_promote_critical_section: %6d.%06d" " %s total_enter %d total_nwaits %d max_wait %d.%06d"
+		    "csect_promote_critical_section: %6d.%06d %s total_enter %d total_nwaits %d max_wait %d.%06d"
 		    " total_wait %d.06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec, cs_ptr->name,
 		    cs_ptr->total_enter, cs_ptr->total_nwaits, cs_ptr->max_wait.tv_sec, cs_ptr->max_wait.tv_usec,
 		    cs_ptr->total_wait.tv_sec, cs_ptr->total_wait.tv_usec);

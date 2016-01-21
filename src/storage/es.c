@@ -203,7 +203,7 @@ es_write_file (const char *uri, const void *buf, size_t count, off_t offset)
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
       ret = es_owfs_write_file (ES_OWFS_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_write_file: es_owfs_write_file(%s," " count %d, offset %ld) -> %d\n", uri, count,
+      er_log_debug (ARG_FILE_LINE, "es_write_file: es_owfs_write_file(%s, count %d, offset %ld) -> %d\n", uri, count,
 		    offset, ret);
 #endif /* !WINDOWS */
     }
@@ -211,11 +211,11 @@ es_write_file (const char *uri, const void *buf, size_t count, off_t offset)
     {
 #if defined (CS_MODE)
       ret = es_posix_write_file (ES_POSIX_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_write_file: es_posix_write_file(%s" " count %d, offset %ld) -> %d\n", uri, count,
+      er_log_debug (ARG_FILE_LINE, "es_write_file: es_posix_write_file(%s count %d, offset %ld) -> %d\n", uri, count,
 		    offset, ret);
 #else /* CS_MODE */
       ret = xes_posix_write_file (ES_POSIX_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_write_file: xes_posix_write_file(%s" " count %d, offset %ld) -> %d\n", uri,
+      er_log_debug (ARG_FILE_LINE, "es_write_file: xes_posix_write_file(%s count %d, offset %ld) -> %d\n", uri,
 		    count, offset, ret);
 #endif /* SERVER_MODE || SA_MODE */
     }
@@ -262,7 +262,7 @@ es_read_file (const char *uri, void *buf, size_t count, off_t offset)
       ret = ER_ES_GENERAL;
 #else /* WINDOWS */
       ret = es_owfs_read_file (ES_OWFS_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_read_file: (es_owfs_read_file(%s," " count %d, offset %ld) -> %d\n", uri, count,
+      er_log_debug (ARG_FILE_LINE, "es_read_file: (es_owfs_read_file(%s, count %d, offset %ld) -> %d\n", uri, count,
 		    offset, ret);
 #endif /* !WINDOWS */
     }
@@ -270,18 +270,18 @@ es_read_file (const char *uri, void *buf, size_t count, off_t offset)
     {
 #if defined (CS_MODE)
       ret = es_posix_read_file (ES_POSIX_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_read_file: es_posix_read_file(%s," " count %d, offset %ld) -> %d\n", uri, count,
+      er_log_debug (ARG_FILE_LINE, "es_read_file: es_posix_read_file(%s, count %d, offset %ld) -> %d\n", uri, count,
 		    offset, ret);
 #else /* CS_MODE */
       ret = xes_posix_read_file (ES_POSIX_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_read_file: xes_posix_read_file(%s," " count %d, offset %ld) -> %d\n", uri, count,
+      er_log_debug (ARG_FILE_LINE, "es_read_file: xes_posix_read_file(%s, count %d, offset %ld) -> %d\n", uri, count,
 		    offset, ret);
 #endif /* SERVER_MODE || SA_MODE */
     }
   else if (es_type == ES_LOCAL)
     {
       ret = es_local_read_file (ES_LOCAL_PATH_POS (uri), buf, count, offset);
-      er_log_debug (ARG_FILE_LINE, "es_read_file: es_local_read_file(%s," " count %d, offset %ld) -> %d\n", uri, count,
+      er_log_debug (ARG_FILE_LINE, "es_read_file: es_local_read_file(%s, count %d, offset %ld) -> %d\n", uri, count,
 		    offset, ret);
     }
   else

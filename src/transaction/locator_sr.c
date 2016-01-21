@@ -2093,8 +2093,8 @@ locator_find_lockset_missing_class_oids (THREAD_ENTRY * thread_p, LC_LOCKSET * l
       || lockset->objects < ((LC_LOCKSET_REQOBJ *) (lockset->classes + lockset->num_reqobjs)))
     {
       er_log_debug (ARG_FILE_LINE,
-		    "locator_find_lockset_missing_class_oids: " " *** SYSTEM ERROR. Requesting area is incorrect,\n"
-		    " either area is too small %d (expect at least %d),\n" " pointer to classes %p (expected %p), or\n"
+		    "locator_find_lockset_missing_class_oids:  *** SYSTEM ERROR. Requesting area is incorrect,\n"
+		    " either area is too small %d (expect at least %d),\n pointer to classes %p (expected %p), or\n"
 		    " pointer to objects %p (expected >= %p) are incorrect\n", lockset->length, i, lockset->classes,
 		    ((LC_LOCKSET_CLASSOF *) (lockset->mem + sizeof (*lockset))), lockset->objects,
 		    ((LC_LOCKSET_REQOBJ *) (lockset->classes + lockset->num_reqobjs)));
@@ -4715,7 +4715,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		    {
 		      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 			{
-			  er_log_debug (ARG_FILE_LINE, "locator_update_force: " "unknown oid ( %d|%d|%d )\n",
+			  er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n",
 					oid_ptr->pageid, oid_ptr->slotid, oid_ptr->volid);
 			  continue;
 			}
@@ -5043,7 +5043,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		    {
 		      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 			{
-			  er_log_debug (ARG_FILE_LINE, "locator_update_force: " "unknown oid ( %d|%d|%d )\n",
+			  er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n",
 					oid_ptr->pageid, oid_ptr->slotid, oid_ptr->volid);
 			  continue;
 			}
@@ -5488,7 +5488,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  if (qexec_clear_list_cache_by_class (thread_p, &real_class_oid) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "locator_insert_force: qexec_clear_list_cache_by_class " "failed for class { %d %d %d }\n",
+			    "locator_insert_force: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    real_class_oid.pageid, real_class_oid.slotid, real_class_oid.volid);
 	    }
 	  qmgr_add_modified_class (thread_p, &real_class_oid);
@@ -5887,7 +5887,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  && qexec_remove_xasl_cache_ent_by_class (thread_p, oid, 1) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"locator_update_force:" " qexec_remove_xasl_cache_ent_by_class"
+			"locator_update_force: qexec_remove_xasl_cache_ent_by_class"
 			" failed for class { %d %d %d }\n", oid->pageid, oid->slotid, oid->volid);
 	}
 
@@ -5895,7 +5895,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  && qexec_remove_filter_pred_cache_ent_by_class (thread_p, oid) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"locator_update_force:" " xs_remove_filter_pred_cache_ent_by_class"
+			"locator_update_force: xs_remove_filter_pred_cache_ent_by_class"
 			" failed for class { %d %d %d }\n", oid->pageid, oid->slotid, oid->volid);
 	}
     }
@@ -5980,7 +5980,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      error_code = er_errid ();
 		      if (error_code == ER_HEAP_UNKNOWN_OBJECT)
 			{
-			  er_log_debug (ARG_FILE_LINE, "locator_update_force: " "unknown oid ( %d|%d|%d )\n",
+			  er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n",
 					oid->pageid, oid->slotid, oid->volid);
 			}
 		      else if (error_code == NO_ERROR)
@@ -6128,7 +6128,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		{
 		  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 		    {
-		      er_log_debug (ARG_FILE_LINE, "locator_update_force: " "unknown oid ( %d|%d|%d )\n", oid->pageid,
+		      er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n", oid->pageid,
 				    oid->slotid, oid->volid);
 		    }
 
@@ -6354,7 +6354,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  if (qexec_clear_list_cache_by_class (thread_p, class_oid) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "locator_update_force: qexec_clear_list_cache_by_class failed for" " class { %d %d %d }\n",
+			    "locator_update_force: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    class_oid->pageid, class_oid->slotid, class_oid->volid);
 	    }
 	  qmgr_add_modified_class (thread_p, class_oid);
@@ -6585,7 +6585,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	  error_code = catalog_delete (thread_p, oid);
 	  if (error_code != NO_ERROR)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "locator_delete_force: ct_delete_catalog failed " "for tran %d\n",
+	      er_log_debug (ARG_FILE_LINE, "locator_delete_force: ct_delete_catalog failed for tran %d\n",
 			    LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 	      goto error;
 	    }
@@ -6604,7 +6604,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	  && qexec_remove_xasl_cache_ent_by_class (thread_p, oid, 1) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"locator_delete_force:" " qexec_remove_xasl_cache_ent_by_class"
+			"locator_delete_force: qexec_remove_xasl_cache_ent_by_class"
 			" failed for class { %d %d %d }\n", oid->pageid, oid->slotid, oid->volid);
 	}
 
@@ -6612,7 +6612,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	  && qexec_remove_filter_pred_cache_ent_by_class (thread_p, oid) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"locator_delete_force:" " xs_remove_filter_pred_cache_ent_by_class"
+			"locator_delete_force: xs_remove_filter_pred_cache_ent_by_class"
 			" failed for class { %d %d %d }\n", oid->pageid, oid->slotid, oid->volid);
 	}
     }
@@ -6694,7 +6694,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	  if (qexec_clear_list_cache_by_class (thread_p, &class_oid) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "locator_delete_force: qexec_clear_list_cache_by_class" " failed for class { %d %d %d }\n",
+			    "locator_delete_force: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    class_oid.pageid, class_oid.slotid, class_oid.volid);
 	    }
 	  qmgr_add_modified_class (thread_p, &class_oid);
@@ -7240,7 +7240,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 	  error_code = er_errid ();
 	  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force : " "unknown oid ( %d|%d|%d )\n",
+	      er_log_debug (ARG_FILE_LINE, "locator_repl_prepare_force : unknown oid ( %d|%d|%d )\n",
 			    obj->oid.pageid, obj->oid.slotid, obj->oid.volid);
 	    }
 
@@ -8604,7 +8604,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICAT
       if (cache_entry_p == NULL)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"locator_eval_filter_predicate: " "qexec_update_predxasl_cache_ent failed pseudo_xasl_id"
+			"locator_eval_filter_predicate: qexec_update_predxasl_cache_ent failed pseudo_xasl_id"
 			" { first_vpid { %d %d } temp_vfid { %d %d } }\n", pseudo_xasl_id.first_vpid.pageid,
 			pseudo_xasl_id.first_vpid.volid, pseudo_xasl_id.temp_vfid.fileid,
 			pseudo_xasl_id.temp_vfid.volid);
@@ -8642,7 +8642,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICAT
     {
       /* It doesn't be there or was marked to be deleted. */
       er_log_debug (ARG_FILE_LINE,
-		    "locator_eval_filter_predicate: " "qexec_check_xasl_cache_ent_by_xasl failed"
+		    "locator_eval_filter_predicate: qexec_check_xasl_cache_ent_by_xasl failed"
 		    " pseudo_xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n", pseudo_xasl_id.first_vpid.pageid,
 		    pseudo_xasl_id.first_vpid.volid, pseudo_xasl_id.temp_vfid.fileid, pseudo_xasl_id.temp_vfid.volid);
 

@@ -5712,7 +5712,7 @@ qfile_print_list_cache_entry (FILE * fp, const void *key, void *data, void *args
     }
 
   fprintf (fp,
-	   " } tuple_cnt %d page_cnt %d first_vpid { %d %d } " " last_vpid { %d %d } lasttpl_len %d query_id %lld  "
+	   " } tuple_cnt %d page_cnt %d first_vpid { %d %d } last_vpid { %d %d } lasttpl_len %d query_id %lld  "
 	   " temp_vfid { %d %d } }\n", ent->list_id.tuple_cnt, ent->list_id.page_cnt, ent->list_id.first_vpid.pageid,
 	   ent->list_id.first_vpid.volid, ent->list_id.last_vpid.pageid, ent->list_id.last_vpid.volid,
 	   ent->list_id.lasttpl_len, (long long) ent->list_id.query_id, ent->list_id.temp_vfid.fileid,
@@ -5787,7 +5787,7 @@ qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p, FILE * fp)
 
   fprintf (fp,
 	   "LIST_CACHE {\n  n_hts %d\n  n_entries %d  n_pages %d\n"
-	   "  lookup_counter %d\n  hit_counter %d\n  miss_counter %d\n" "  full_counter %d\n}\n",
+	   "  lookup_counter %d\n  hit_counter %d\n  miss_counter %d\n  full_counter %d\n}\n",
 	   qfile_List_cache.n_hts, qfile_List_cache.n_entries, qfile_List_cache.n_pages,
 	   qfile_List_cache.lookup_counter, qfile_List_cache.hit_counter, qfile_List_cache.miss_counter,
 	   qfile_List_cache.full_counter);
@@ -5981,7 +5981,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 		}
 
 	      er_log_debug (ARG_FILE_LINE,
-			    "ls_delete_list_cache_ent: mht_rem failed for" " param_values { %d %s ...}\n",
+			    "ls_delete_list_cache_ent: mht_rem failed for param_values { %d %s ...}\n",
 			    lent->param_values.size, s ? s : "(null)");
 	      if (s)
 		{
@@ -5993,7 +5993,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
       /* destroy the temp file of XASL_ID */
       if (!VFID_ISNULL (&lent->list_id.temp_vfid) && file_destroy (thread_p, &lent->list_id.temp_vfid) != NO_ERROR)
 	{
-	  er_log_debug (ARG_FILE_LINE, "ls_delete_list_cache_ent: fl_destroy failed for" " vfid { %d %d }\n",
+	  er_log_debug (ARG_FILE_LINE, "ls_delete_list_cache_ent: fl_destroy failed for vfid { %d %d }\n",
 			lent->list_id.temp_vfid.fileid, lent->list_id.temp_vfid.volid);
 	}
 
@@ -6599,7 +6599,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
       char *s;
 
       s = ((lent->param_values.size > 0) ? pr_valstring (&lent->param_values.vals[0]) : NULL);
-      er_log_debug (ARG_FILE_LINE, "ls_update_list_cache_ent: mht_rem failed for" " param_values { %d %s ...}\n",
+      er_log_debug (ARG_FILE_LINE, "ls_update_list_cache_ent: mht_rem failed for param_values { %d %s ...}\n",
 		    lent->param_values.size, s ? s : "(null)");
       if (s)
 	{

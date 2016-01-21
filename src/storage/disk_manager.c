@@ -1492,7 +1492,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid, DBDEF_VOL
     {
       er_log_debug (ARG_FILE_LINE,
 		    "dk_format: ** SYSTEM_ERROR AT COMPILE TIME **"
-		    " DB_PAGESIZE must be > %d and multiple of %d. Current value" " is set to %d",
+		    " DB_PAGESIZE must be > %d and multiple of %d. Current value is set to %d",
 		    sizeof (DISK_VAR_HEADER), sizeof (INT32), DB_PAGESIZE);
 #if defined(NDEBUG)
       exit (EXIT_FAILURE);
@@ -3336,8 +3336,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid, INT32 npage
 #if defined(CUBRID_DEBUG)
   if (npages <= 0)
     {
-      er_log_debug (ARG_FILE_LINE, "dk_pgalloc: ** SYSTEM_ERROR.. Bad interface" " trying to allocate %d pages",
-		    npages);
+      er_log_debug (ARG_FILE_LINE, "dk_pgalloc: ** SYSTEM_ERROR.. Bad interface trying to allocate %d pages", npages);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return NULL_PAGEID;
     }
@@ -5301,7 +5300,7 @@ disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr)
   (void) fprintf (fp, " MAGIC SYMBOL = %s at disk location = %lld\n", vhdr->magic,
 		  offsetof (FILEIO_PAGE, page) + (long long) offsetof (DISK_VAR_HEADER, magic));
   (void) fprintf (fp, " io_pagesize = %d,\n", vhdr->iopagesize);
-  (void) fprintf (fp, " VID = %d, VOL_FULLNAME = %s\n" " VOL PURPOSE = %s\n VOL_REMARKS = %s\n", vhdr->volid,
+  (void) fprintf (fp, " VID = %d, VOL_FULLNAME = %s\n VOL PURPOSE = %s\n VOL_REMARKS = %s\n", vhdr->volid,
 		  disk_vhdr_get_vol_fullname (vhdr), disk_purpose_to_string (vhdr->purpose),
 		  disk_vhdr_get_vol_remarks (vhdr));
   (void) fprintf (fp, " NEXT_VID = %d, NEXT_VOL_FULLNAME = %s\n", vhdr->next_volid,
@@ -5318,7 +5317,7 @@ disk_vhdr_dump (FILE * fp, const DISK_VAR_HEADER * vhdr)
 
   tmp_time = (time_t) vhdr->db_creation;
   (void) ctime_r (&tmp_time, time_val);
-  (void) fprintf (fp, " Database creation time = %s\n" " Lowest Checkpoint for recovery = %lld|%d\n", time_val,
+  (void) fprintf (fp, " Database creation time = %s\n Lowest Checkpoint for recovery = %lld|%d\n", time_val,
 		  (long long int) vhdr->chkpt_lsa.pageid, vhdr->chkpt_lsa.offset);
   (void) fprintf (fp, "Boot_hfid: volid %d, fileid %d header_pageid %d\n", vhdr->boot_hfid.vfid.volid,
 		  vhdr->boot_hfid.vfid.fileid, vhdr->boot_hfid.hpgid);

@@ -909,7 +909,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
-      _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on " "class(%d, %d, %d), btid(%d, (%d, %d)).",
+      _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on class(%d, %d, %d), btid(%d, (%d, %d)).",
 		     sort_args->class_ids[sort_args->cur_class].volid,
 		     sort_args->class_ids[sort_args->cur_class].pageid,
 		     sort_args->class_ids[sort_args->cur_class].slotid, sort_args->btid->sys_btid->root_pageid,
@@ -925,7 +925,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "DEBUG_BTREE: load finished all. " "%d classes loaded, found %d nulls and %d oids, "
+		     "DEBUG_BTREE: load finished all. %d classes loaded, found %d nulls and %d oids, "
 		     "load %d keys.", sort_args->n_classes, sort_args->n_nulls, sort_args->n_oids, load_args->n_keys);
     }
 
@@ -987,7 +987,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
       if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: " "load built index btid (%d, (%d, %d)).",
+	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load built index btid (%d, (%d, %d)).",
 			 load_args->btid->sys_btid->root_pageid, load_args->btid->sys_btid->vfid.volid,
 			 load_args->btid->sys_btid->vfid.fileid);
 	}
@@ -1001,7 +1001,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: " "load didn't build any leaves btid (%d, (%d, %d)).",
+	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load didn't build any leaves btid (%d, (%d, %d)).",
 			 load_args->btid->sys_btid->root_pageid, load_args->btid->sys_btid->vfid.volid,
 			 load_args->btid->sys_btid->vfid.fileid);
 	}
@@ -1090,7 +1090,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
-      _er_log_debug (ARG_FILE_LINE, "BTREE_DEBUG: load finished successful " "index btid(%d, (%d, %d)).",
+      _er_log_debug (ARG_FILE_LINE, "BTREE_DEBUG: load finished successful index btid(%d, (%d, %d)).",
 		     load_args->btid->sys_btid->root_pageid, load_args->btid->sys_btid->vfid.volid,
 		     load_args->btid->sys_btid->vfid.fileid);
     }
@@ -1184,7 +1184,7 @@ error:
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
-      _er_log_debug (ARG_FILE_LINE, "BTREE_DEBUG: load aborted index " "btid(%d, (%d, %d)).",
+      _er_log_debug (ARG_FILE_LINE, "BTREE_DEBUG: load aborted index btid(%d, (%d, %d)).",
 		     load_args->btid->sys_btid->root_pageid, load_args->btid->sys_btid->vfid.volid,
 		     load_args->btid->sys_btid->vfid.fileid);
     }
@@ -2347,7 +2347,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
       if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "DEBUG_BTREE: load new " "object(%d, %d, %d) " "class(%d, %d, %d) and btid(%d, (%d, %d)) with "
+			 "DEBUG_BTREE: load new object(%d, %d, %d) class(%d, %d, %d) and btid(%d, (%d, %d)) with "
 			 "mvccinfo=%llu| %llu", this_oid.volid, this_oid.pageid, this_oid.slotid, this_class_oid.volid,
 			 this_class_oid.pageid, this_class_oid.slotid, load_args->btid->sys_btid->root_pageid,
 			 load_args->btid->sys_btid->vfid.volid, load_args->btid->sys_btid->vfid.fileid,
@@ -2721,8 +2721,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
       if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "DEBUG_BTREE: load added " "object(%d, %d, %d) "
-			 "class(%d, %d, %d) and btid(%d, (%d, %d)) with " "mvccinfo=%llu | %llu", this_oid.volid,
+			 "DEBUG_BTREE: load added object(%d, %d, %d) "
+			 "class(%d, %d, %d) and btid(%d, (%d, %d)) with mvccinfo=%llu | %llu", this_oid.volid,
 			 this_oid.pageid, this_oid.slotid, this_class_oid.volid, this_class_oid.pageid,
 			 this_class_oid.slotid, load_args->btid->sys_btid->root_pageid,
 			 load_args->btid->sys_btid->vfid.volid, load_args->btid->sys_btid->vfid.fileid,
@@ -2749,8 +2749,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
-			     "DEBUG_BTREE: load notify " "vacuum object(%d, %d, %d) "
-			     "class(%d, %d, %d) and btid(%d, (%d, %d)) with " "mvccinfo=%llu | %llu",
+			     "DEBUG_BTREE: load notify vacuum object(%d, %d, %d) "
+			     "class(%d, %d, %d) and btid(%d, (%d, %d)) with mvccinfo=%llu | %llu",
 			     original_oid.volid, original_oid.pageid, original_oid.slotid, original_class_oid.volid,
 			     original_class_oid.pageid, original_class_oid.slotid,
 			     load_args->btid->sys_btid->root_pageid, load_args->btid->sys_btid->vfid.volid,
@@ -3168,7 +3168,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
 	      if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 		{
-		  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on " "class(%d, %d, %d), btid(%d, (%d, %d)).",
+		  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on class(%d, %d, %d), btid(%d, (%d, %d)).",
 				 sort_args->class_ids[sort_args->cur_class].volid,
 				 sort_args->class_ids[sort_args->cur_class].pageid,
 				 sort_args->class_ids[sort_args->cur_class].slotid,
@@ -3315,7 +3315,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
-			     "DEBUG_BTREE: load sort found null at " "oid(%d, %d, %d)"
+			     "DEBUG_BTREE: load sort found null at oid(%d, %d, %d)"
 			     ", class_oid(%d, %d, %d), btid(%d, (%d, %d).", sort_args->cur_oid.volid,
 			     sort_args->cur_oid.pageid, sort_args->cur_oid.slotid,
 			     sort_args->class_ids[sort_args->cur_class].volid,
@@ -3411,7 +3411,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
 			     "DEBUG_BTREE: load sort found oid(%d, %d, %d)"
-			     ", class_oid(%d, %d, %d), btid(%d, (%d, %d), " "mvcc_info=%llu | %llu.",
+			     ", class_oid(%d, %d, %d), btid(%d, (%d, %d), mvcc_info=%llu | %llu.",
 			     sort_args->cur_oid.volid, sort_args->cur_oid.pageid, sort_args->cur_oid.slotid,
 			     sort_args->class_ids[sort_args->cur_class].volid,
 			     sort_args->class_ids[sort_args->cur_class].pageid,
@@ -3855,7 +3855,7 @@ btree_rv_nodehdr_dump (FILE * fp, int length, void *data)
   header = (BTREE_NODE_HEADER *) data;
   assert (header != NULL);
 
-  fprintf (fp, "\nNODE_TYPE: %s MAX_KEY_LEN: %4d " "PREV_PAGEID: {%4d , %4d} NEXT_PAGEID: {%4d , %4d} \n\n",
+  fprintf (fp, "\nNODE_TYPE: %s MAX_KEY_LEN: %4d PREV_PAGEID: {%4d , %4d} NEXT_PAGEID: {%4d , %4d} \n\n",
 	   header->node_level > 1 ? "NON_LEAF" : "LEAF", header->max_key_len, header->prev_vpid.volid,
 	   header->prev_vpid.pageid, header->next_vpid.volid, header->next_vpid.pageid);
 }
@@ -3892,7 +3892,7 @@ btree_node_number_of_keys (PAGE_PTR page_ptr)
 
     if ((node_type == BTREE_NON_LEAF_NODE && key_cnt <= 0) || (node_type == BTREE_LEAF_NODE && key_cnt < 0))
       {
-	er_log_debug (ARG_FILE_LINE, "btree_node_number_of_keys: " "node key count underflow: %d\n", key_cnt);
+	er_log_debug (ARG_FILE_LINE, "btree_node_number_of_keys: node key count underflow: %d\n", key_cnt);
 	assert (false);
       }
   }

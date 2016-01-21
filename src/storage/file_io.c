@@ -1304,7 +1304,7 @@ again:
 	}
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
-		    "io_lock: WARNING ignoring a run away" " lock on volume = %s\n. lockd deamon may not be"
+		    "io_lock: WARNING ignoring a run away lock on volume = %s\n. lockd deamon may not be"
 		    " working right.\n UNIX error = %s", vol_label_p, strerror (lockf_errno));
 #endif /* CUBRID_DEBUG */
     }
@@ -1440,7 +1440,7 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, in
 	}
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
-		    "io_lock: WARNING ignoring a run away" " lock on volume = %s\n. lockd deamon may not be"
+		    "io_lock: WARNING ignoring a run away lock on volume = %s\n. lockd deamon may not be"
 		    " working right.\n UNIX error = %s", lock_path_p, strerror (lockf_errno));
 #endif /* CUBRID_DEBUG */
 
@@ -4802,8 +4802,7 @@ fileio_rename (VOLID vol_id, const char *old_label_p, const char *new_label_p)
 #if defined(CUBRID_DEBUG)
   if (fileio_get_volume_descriptor (vol_id) != NULL_VOLDES)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "io_rename: SYSTEM ERROR..The volume %s must" " be dismounted to rename a volume...");
+      er_log_debug (ARG_FILE_LINE, "io_rename: SYSTEM ERROR..The volume %s must be dismounted to rename a volume...");
       return NULL;
     }
 #endif /* CUBRID_DEBUG */
@@ -6843,7 +6842,7 @@ fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_full_name_p, INT64 
 #if defined(CUBRID_DEBUG)
 	  fprintf (stdout, "internal error - lzo_init() failed !!!\n");
 	  fprintf (stdout,
-		   "(this usually indicates a compiler bug - " "try recompiling\nwithout optimizations, and enable "
+		   "(this usually indicates a compiler bug - try recompiling\nwithout optimizations, and enable "
 		   "`-DLZO_DEBUG' for diagnostics)\n");
 #endif /* CUBRID_DEBUG */
 	  goto error;
@@ -7340,8 +7339,8 @@ fileio_compress_backup_node (FILEIO_NODE * node_p, FILEIO_BACKUP_HEADER * backup
 		  fileio_get_zip_level_string (backup_header_p->zip_level));
 #if defined(CUBRID_DEBUG)
 	  fprintf (stdout,
-		   "internal error - compression failed: %d, " "node->pageid = %d, node->nread = %d, "
-		   "node->zip_page->buf_len = %d, " "node->nread + node->nread / 16 + 64 + 3 = %d\n", rv,
+		   "internal error - compression failed: %d, node->pageid = %d, node->nread = %d, "
+		   "node->zip_page->buf_len = %d, node->nread + node->nread / 16 + 64 + 3 = %d\n", rv,
 		   node_p->pageid, node_p->nread, node_p->zip_page->buf_len,
 		   node_p->nread + node_p->nread / 16 + 64 + 3);
 #endif /* CUBRID_DEBUG */
@@ -8228,7 +8227,7 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
   if ((int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
       && session_p->bkup.count > (int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))
     {
-      er_log_debug (ARG_FILE_LINE, "Backup_flush: Backup aborted because count %d " "larger than max volume size %d\n",
+      er_log_debug (ARG_FILE_LINE, "Backup_flush: Backup aborted because count %d larger than max volume size %d\n",
 		    session_p->bkup.count, (int) prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE));
       return ER_FAILED;
     }
@@ -8411,7 +8410,7 @@ fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, 
 	  if (nread > 0)
 	    {
 #if defined(CUBRID_DEBUG)
-	      fprintf (stdout, "io_backup_read: io_pagesize = %d, nread = %d, " "voltotalio = %d : ADD FILLER\n",
+	      fprintf (stdout, "io_backup_read: io_pagesize = %d, nread = %d, voltotalio = %d : ADD FILLER\n",
 		       io_page_size, nread, session_p->bkup.voltotalio);
 #endif /* CUBRID_DEBUG */
 	      /* 
@@ -9793,7 +9792,7 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 		    fileio_get_zip_method_string (backup_header_p->zip_method), backup_header_p->zip_level,
 		    fileio_get_zip_level_string (backup_header_p->zip_level));
 #if defined(CUBRID_DEBUG)
-	    fprintf (stdout, "io_restore_volume_decompress_read: " "block size error - data corrupted\n");
+	    fprintf (stdout, "io_restore_volume_decompress_read: block size error - data corrupted\n");
 #endif /* CUBRID_DEBUG */
 	    goto exit_on_error;
 	  }
@@ -9824,7 +9823,7 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 		error = ER_IO_LZO_DECOMPRESS_FAIL;
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 #if defined(CUBRID_DEBUG)
-		fprintf (stdout, "io_restore_volume_decompress_read: " "compressed data violation\n");
+		fprintf (stdout, "io_restore_volume_decompress_read: compressed data violation\n");
 #endif /* CUBRID_DEBUG */
 		goto exit_on_error;
 	      }
@@ -10658,7 +10657,7 @@ fileio_add_volume_to_backup_info (const char *name_p, FILEIO_BACKUP_LEVEL level,
 	{
 	  if (back_p->unit_num == unit_num)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "bkvinf inconsistency, duplicate unit num %d found " "for level %d\n",
+	      er_log_debug (ARG_FILE_LINE, "bkvinf inconsistency, duplicate unit num %d found for level %d\n",
 			    unit_num, level);
 	    }
 	  back_p = back_p->link;
@@ -10666,7 +10665,7 @@ fileio_add_volume_to_backup_info (const char *name_p, FILEIO_BACKUP_LEVEL level,
       /* check the last entry */
       if (back_p->unit_num == unit_num)
 	{
-	  er_log_debug (ARG_FILE_LINE, "bkvinf inconsistency, duplicate unit num %d found " "for level %d\n", unit_num,
+	  er_log_debug (ARG_FILE_LINE, "bkvinf inconsistency, duplicate unit num %d found for level %d\n", unit_num,
 			level);
 	}
 

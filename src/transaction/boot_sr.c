@@ -3481,7 +3481,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       char er_msg[ERR_MSG_SIZE];
       snprintf (er_msg, sizeof (er_msg) - 1,
-		"Cannot find a valid charset " "in log header or first volume header or different values have "
+		"Cannot find a valid charset in log header or first volume header or different values have "
 		"been found");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, er_msg);
       error_code = ER_LOC_INIT;
@@ -3603,7 +3603,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (db_charset_db_header != db_charset_db_root)
     {
       char er_msg[ERR_MSG_SIZE];
-      snprintf (er_msg, sizeof (er_msg) - 1, "Invalid charset in db_root " "system table: expecting %s, found %s",
+      snprintf (er_msg, sizeof (er_msg) - 1, "Invalid charset in db_root system table: expecting %s, found %s",
 		lang_charset_cubrid_name (db_charset_db_header), lang_charset_cubrid_name (db_charset_db_root));
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, er_msg);
       error_code = ER_LOC_INIT;
@@ -4160,7 +4160,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	  if (css_check_ha_server_state_for_client (thread_p, 1) != NO_ERROR)
 	    {
 	      logtb_release_tran_index (thread_p, tran_index);
-	      er_log_debug (ARG_FILE_LINE, "xboot_register_client: " "css_check_ha_server_state_for_client() error\n");
+	      er_log_debug (ARG_FILE_LINE, "xboot_register_client: css_check_ha_server_state_for_client() error\n");
 	      *tran_state = TRAN_UNACTIVE_UNKNOWN;
 	      client_credential->db_user = db_user_save;
 	      return NULL_TRAN_INDEX;
@@ -4237,8 +4237,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	{
 	  if (css_check_ha_server_state_for_client (thread_p, 2) != NO_ERROR)
 	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "xboot_unregister_client: " "css_check_ha_server_state_for_client() error\n");
+	      er_log_debug (ARG_FILE_LINE, "xboot_unregister_client: css_check_ha_server_state_for_client() error\n");
 	    }
 	}
 #else
@@ -4433,7 +4432,7 @@ boot_check_db_at_num_shutdowns (bool force_nshutdowns)
 		  tmpname = "/dev/null";
 		}
 	      fprintf (stdout,
-		       "Some inconsistencies were detected in your" " database.\n Please consult error_log file = %s"
+		       "Some inconsistencies were detected in your database.\n Please consult error_log file = %s"
 		       " for additional information\n", tmpname);
 	      fflush (stdout);
 	      /* 
@@ -6315,7 +6314,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
 	{
 	  char er_msg[ERR_MSG_SIZE];
 	  snprintf (er_msg, sizeof (er_msg) - 1,
-		    "Cannot found a valid charset " "in volumes header or there is a missmatch.");
+		    "Cannot found a valid charset in volumes header or there is a missmatch.");
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, er_msg);
 	  error_code = ER_LOC_INIT;
 	  goto error_exit;
@@ -6407,7 +6406,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
   if (db_charset_db_header != db_charset_db_root)
     {
       char er_msg[ERR_MSG_SIZE];
-      snprintf (er_msg, sizeof (er_msg) - 1, "Invalid charset in db_root " "system table: expecting %s, found %s",
+      snprintf (er_msg, sizeof (er_msg) - 1, "Invalid charset in db_root system table: expecting %s, found %s",
 		lang_charset_cubrid_name (db_charset_db_header), lang_charset_cubrid_name (db_charset_db_root));
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, er_msg);
       error_code = ER_LOC_INIT;

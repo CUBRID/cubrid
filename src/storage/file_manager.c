@@ -1647,8 +1647,8 @@ file_descriptor_insert (THREAD_ENTRY * thread_p, FILE_HEADER * fhdr, const void 
 	  if (npages < (ipage + 1))
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "file_descriptor_insert:" " ** SYSTEM ERROR calculation of number of pages needed"
-			    " to store comments seems incorrect. Need more than %d" " pages", npages);
+			    "file_descriptor_insert: ** SYSTEM ERROR calculation of number of pages needed"
+			    " to store comments seems incorrect. Need more than %d pages", npages);
 	      goto exit_on_error;
 	    }
 #endif /* FILE_DEBUG */
@@ -2004,7 +2004,7 @@ file_descriptor_get (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr, void *xf
     {
       /* This is an error.. we have already check for the total length */
       er_log_debug (ARG_FILE_LINE,
-		    "file_descriptor_get: **SYSTEM_ERROR:" " First length = %d > total length = %d of file descriptor"
+		    "file_descriptor_get: **SYSTEM_ERROR: First length = %d > total length = %d of file descriptor"
 		    " for file VFID = %d|%d\n", fhdr->des.first_length, fhdr->des.total_length, fhdr->vfid.fileid,
 		    fhdr->vfid.volid);
       file_des[0] = '\0';
@@ -5775,7 +5775,7 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, PAGE_
 #ifdef FILE_DEBUG
 	  if (from_outptr > from_aid_ptr)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "file_allocset_expand_sector: ***" " Boundary condition system error ***\n");
+	      er_log_debug (ARG_FILE_LINE, "file_allocset_expand_sector: *** Boundary condition system error ***\n");
 	    }
 #endif /* FILE_DEBUG */
 	  /* Use the linked list to find previous page */
@@ -5812,7 +5812,7 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, PAGE_
 #ifdef FILE_DEBUG
 	  if (to_outptr > to_aid_ptr)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "file_allocset_expand_sector: ***" " Boundary condition system error ***\n");
+	      er_log_debug (ARG_FILE_LINE, "file_allocset_expand_sector: *** Boundary condition system error ***\n");
 	    }
 #endif /* FILE_DEBUG */
 	  if (length != 0)
@@ -9115,7 +9115,7 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, 
 	      if (to_aid_ptr > to_outptr)
 		{
 		  er_log_debug (ARG_FILE_LINE,
-				"file_allocset_compact_page_table:" " *** Boundary condition system error ***\n");
+				"file_allocset_compact_page_table: *** Boundary condition system error ***\n");
 		}
 #endif /* FILE_DEBUG */
 	      /* Get next page */
@@ -9202,7 +9202,7 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, 
 	  if (from_aid_ptr > from_outptr)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "file_allocset_compact_page_table:" " *** Boundary condition system error ***\n");
+			    "file_allocset_compact_page_table: *** Boundary condition system error ***\n");
 	    }
 #endif /* FILE_DEBUG */
 	  /* Get next page */
@@ -9243,7 +9243,7 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, 
 	  if (to_aid_ptr > to_outptr)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "file_allocset_compact_page_table:" " *** Boundary condition system error ***\n");
+			    "file_allocset_compact_page_table: *** Boundary condition system error ***\n");
 	    }
 #endif /* FILE_DEBUG */
 
@@ -10408,12 +10408,12 @@ file_dump_fhdr (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr)
   int ret = NO_ERROR;
   time_t tmp_time;
 
-  (void) fprintf (fp, "*** FILE HEADER TABLE DUMP FOR FILE IDENTIFIER = %d" " ON VOLUME = %d ***\n", fhdr->vfid.fileid,
+  (void) fprintf (fp, "*** FILE HEADER TABLE DUMP FOR FILE IDENTIFIER = %d ON VOLUME = %d ***\n", fhdr->vfid.fileid,
 		  fhdr->vfid.volid);
 
   tmp_time = (time_t) fhdr->creation;
   (void) ctime_r (&tmp_time, time_val);
-  (void) fprintf (fp, "File_type = %s, Ismark_as_deleted = %s,\n" "Creation_time = %s",
+  (void) fprintf (fp, "File_type = %s, Ismark_as_deleted = %s,\nCreation_time = %s",
 		  file_type_to_string (fhdr->type), (fhdr->ismark_as_deleted == true) ? "true" : "false", time_val);
   (void) fprintf (fp, "File Descriptor comments = ");
   ret = file_descriptor_dump_internal (thread_p, fp, fhdr);
@@ -10421,9 +10421,9 @@ file_dump_fhdr (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr)
     {
       return ret;
     }
-  (void) fprintf (fp, "Num_allocsets = %d, Num_user_pages = %d," " Num_mark_deleted = %d\n", fhdr->num_allocsets,
+  (void) fprintf (fp, "Num_allocsets = %d, Num_user_pages = %d, Num_mark_deleted = %d\n", fhdr->num_allocsets,
 		  fhdr->num_user_pages, fhdr->num_user_pages_mrkdelete);
-  (void) fprintf (fp, "Num_ftb_pages = %d, Next_ftb_page = %d|%d," " Last_ftb_page = %d|%d,\n", fhdr->num_table_vpids,
+  (void) fprintf (fp, "Num_ftb_pages = %d, Next_ftb_page = %d|%d, Last_ftb_page = %d|%d,\n", fhdr->num_table_vpids,
 		  fhdr->next_table_vpid.volid, fhdr->next_table_vpid.pageid, fhdr->last_table_vpid.volid,
 		  fhdr->last_table_vpid.pageid);
   (void) fprintf (fp, "Last allocset at VPID: %d|%d, offset = %d\n", fhdr->last_allocset_vpid.volid,
@@ -10503,7 +10503,7 @@ file_allocset_dump (FILE * fp, const FILE_ALLOCSET * allocset, bool doprint_titl
       (void) fprintf (fp, "ALLOCATION SET:\n");
     }
 
-  (void) fprintf (fp, "Volid=%d, Num_sects = %d, Num_pages = %d," " Num_entries_to_compact = %d\n", allocset->volid,
+  (void) fprintf (fp, "Volid=%d, Num_sects = %d, Num_pages = %d, Num_entries_to_compact = %d\n", allocset->volid,
 		  allocset->num_sects, allocset->num_pages, allocset->num_holes);
 
   (void) fprintf (fp, "Next_allocation_set: Page = %d|%d, Offset = %d\n", allocset->next_allocset_vpid.volid,
@@ -10606,7 +10606,7 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER
 
   if (allocset->num_sects != num_aids)
     {
-      (void) fprintf (fp, "WARNING: Number of sectors = %d does not match" " sectors = %d in allocationset header\n",
+      (void) fprintf (fp, "WARNING: Number of sectors = %d does not match sectors = %d in allocationset header\n",
 		      num_aids, allocset->num_sects);
     }
 
@@ -10683,7 +10683,7 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER
 
   if (allocset->num_pages != num_aids)
     {
-      (void) fprintf (fp, "WARNING: Number of pages = %d does not match" " pages = %d in allocationset header\n",
+      (void) fprintf (fp, "WARNING: Number of pages = %d does not match pages = %d in allocationset header\n",
 		      num_aids, allocset->num_pages);
     }
 
@@ -10771,7 +10771,7 @@ file_dump (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid)
       /* Get the allocation set */
       allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr + allocset_offset);
 
-      (void) fprintf (fp, "ALLOCATION SET NUM %d located at" "vpid = %d|%d offset = %d:\n", setno, allocset_vpid.volid,
+      (void) fprintf (fp, "ALLOCATION SET NUM %d located at vpid = %d|%d offset = %d:\n", setno, allocset_vpid.volid,
 		      allocset_vpid.pageid, allocset_offset);
       ret = file_allocset_dump (fp, allocset, false);
       if (ret != NO_ERROR)
@@ -10779,7 +10779,7 @@ file_dump (THREAD_ENTRY * thread_p, FILE * fp, const VFID * vfid)
 	  goto exit_on_error;
 	}
 
-      (void) fprintf (fp, "First page in this allocation set is the" " nthpage = %d\n", num_pages);
+      (void) fprintf (fp, "First page in this allocation set is the nthpage = %d\n", num_pages);
       ret = file_allocset_dump_tables (thread_p, fp, fhdr, allocset);
       if (ret != NO_ERROR)
 	{
@@ -11847,7 +11847,7 @@ file_tracker_dump (THREAD_ENTRY * thread_p, FILE * fp)
 
 	  if (VFID_EQ (&vfid, file_Tracker->vfid))
 	    {
-	      fprintf (fp, "\n**NOTE: Num_alloc_pgs for tracker are number of" " allocated files...\n");
+	      fprintf (fp, "\n**NOTE: Num_alloc_pgs for tracker are number of allocated files...\n");
 	    }
 	}
     }
@@ -12790,7 +12790,7 @@ file_rv_allocset_dump_sector (FILE * fp, int length_ignore, void *data)
 
   rvsect = (FILE_RECV_ALLOCSET_SECTOR *) data;
 
-  (void) fprintf (fp, "Num_sects = %d, Curr_sectid = %d,\n" "Sector Table end: pageid = %d|%d, offset = %d\n",
+  (void) fprintf (fp, "Num_sects = %d, Curr_sectid = %d,\nSector Table end: pageid = %d|%d, offset = %d\n",
 		  rvsect->num_sects, rvsect->curr_sectid, rvsect->end_sects_vpid.volid, rvsect->end_sects_vpid.pageid,
 		  rvsect->end_sects_offset);
 }
@@ -12882,7 +12882,7 @@ file_rv_fhdr_dump_expansion (FILE * fp, int length_ignore, void *data)
   FILE_RECV_FTB_EXPANSION *rvftb;
 
   rvftb = (FILE_RECV_FTB_EXPANSION *) data;
-  fprintf (fp, "Num_ftb_pages = %d, Next_ftb_page = %d|%d" " Last_ftb_page = %d|%d,\n", rvftb->num_table_vpids,
+  fprintf (fp, "Num_ftb_pages = %d, Next_ftb_page = %d|%d Last_ftb_page = %d|%d,\n", rvftb->num_table_vpids,
 	   rvftb->next_table_vpid.volid, rvftb->next_table_vpid.pageid, rvftb->last_table_vpid.volid,
 	   rvftb->last_table_vpid.pageid);
 }

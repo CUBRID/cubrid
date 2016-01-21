@@ -4525,7 +4525,7 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
     {
       snprintf (err_msg, sizeof (err_msg),
 		"spage_check: Inconsistent page = %d of volume = %s.\n"
-		"(Used_space + tfree > DB_PAGESIZE\n (%d + %d) > %d \n " " %d > %d\n", pgbuf_get_page_id (page_p),
+		"(Used_space + tfree > DB_PAGESIZE\n (%d + %d) > %d \n  %d > %d\n", pgbuf_get_page_id (page_p),
 		pgbuf_get_volume_label (page_p), used_length, page_header_p->total_free, DB_PAGESIZE,
 		used_length + page_header_p->total_free, DB_PAGESIZE);
 
@@ -4558,7 +4558,7 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
   if (page_header_p->cont_free <= (int) -(page_header_p->alignment - 1))
     {
       snprintf (err_msg, sizeof (err_msg),
-		"spage_check: Cfree %d is inconsistent in page = %d" " of volume = %s. Cannot be < -%d\n",
+		"spage_check: Cfree %d is inconsistent in page = %d of volume = %s. Cannot be < -%d\n",
 		page_header_p->cont_free, pgbuf_get_page_id (page_p), pgbuf_get_volume_label (page_p),
 		page_header_p->alignment);
 
@@ -4583,7 +4583,7 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 
 	{
 	  snprintf (err_msg, sizeof (err_msg),
-		    "spage_check: Other savings of %d is inconsistent in page = %d" " of volume = %s.\n",
+		    "spage_check: Other savings of %d is inconsistent in page = %d of volume = %s.\n",
 		    other_saved_spaces, pgbuf_get_page_id (page_p), pgbuf_get_volume_label (page_p));
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (page_p),
@@ -4596,7 +4596,7 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
       if (total_saved < 0)
 	{
 	  snprintf (err_msg, sizeof (err_msg),
-		    "spage_check: Total savings of %d is inconsistent in page = %d" " of volume = %s. Cannot be < 0\n",
+		    "spage_check: Total savings of %d is inconsistent in page = %d of volume = %s. Cannot be < 0\n",
 		    total_saved, pgbuf_get_page_id (page_p), pgbuf_get_volume_label (page_p));
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (page_p),

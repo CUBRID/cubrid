@@ -499,7 +499,7 @@ log_get_crash_point_lsa (void)
     {
       /* i.e. cannot be RESTARTED or ANALYSIS */
       er_log_debug (ARG_FILE_LINE,
-		    "log_find_crash_point_lsa: Warning, only expected " "to be called during recovery phases.");
+		    "log_find_crash_point_lsa: Warning, only expected to be called during recovery phases.");
     }
 #endif /* CUBRID_DEBUG */
 
@@ -2843,7 +2843,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
       /* Warning run postpone is ignored when transaction is not committed */
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
-		    "log_run_postpone: Warning run postpone" " logging is ignored when transaction is not committed\n");
+		    "log_run_postpone: Warning run postpone logging is ignored when transaction is not committed\n");
 #endif /* CUBRID_DEBUG */
       assert (false);
     }
@@ -3187,7 +3187,7 @@ log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
   if (addr->pgptr == NULL)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "log_skip_logging: A data page pointer must" " be given as part of the address... ignored\n");
+		    "log_skip_logging: A data page pointer must be given as part of the address... ignored\n");
       return;
     }
 #endif /* CUBRID_DEBUG */
@@ -3549,7 +3549,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 	      || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
 
       vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-		     "VACUUM: Start system operation. Current worker tdes: " "tdes->trid=%d, tdes->topops.last=%d, "
+		     "VACUUM: Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
 		     "tdes->tail_lsa=(%lld, %d). Worker state=%d", tdes->trid, tdes->topops.last,
 		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 		     VACUUM_GET_WORKER_STATE (thread_p));
@@ -3626,7 +3626,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 	  if (compensate_debug)
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
-			     "COMPENSATE_DEBUG: Start compensate system op " "for transaction rollback. Tran_ID=%d. "
+			     "COMPENSATE_DEBUG: Start compensate system op for transaction rollback. Tran_ID=%d. "
 			     "Undo_nxlsa=%llu|%d\n", tdes->trid, (long long int) reference_lsa->pageid,
 			     (int) reference_lsa->offset);
 	    }
@@ -3647,7 +3647,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 	  if (compensate_debug)
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
-			     "COMPENSATE_DEBUG: Start compensate system op " "for system op abort. Tran_ID=%d. "
+			     "COMPENSATE_DEBUG: Start compensate system op for system op abort. Tran_ID=%d. "
 			     "Undo_nxlsa=%llu|%d\n", tdes->trid, (long long int) reference_lsa->pageid,
 			     (int) reference_lsa->offset);
 	    }
@@ -3665,7 +3665,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 
       if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "POSTPONE_DEBUG: Start postpone system op. " "Tran_ID=%d. Ref_lsa=%lld|%d.\n",
+	  _er_log_debug (ARG_FILE_LINE, "POSTPONE_DEBUG: Start postpone system op. Tran_ID=%d. Ref_lsa=%lld|%d.\n",
 			 tdes->trid, (long long int) reference_lsa->pageid, (int) reference_lsa->offset);
 	}
     }
@@ -3740,8 +3740,8 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	}
 
       vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-		     "VACUUM: End system operation. Worker tdes: " "tdes->trid=%d, tdes->topops.last=%d, "
-		     "crt_topop->last_parent_lsa=(%lld, %d), " "tdes->tail_lsa=(%lld, %d). Worker state=%d."
+		     "VACUUM: End system operation. Worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
+		     "crt_topop->last_parent_lsa=(%lld, %d), tdes->tail_lsa=(%lld, %d). Worker state=%d."
 		     "LOG_RESULT_TOPOP=%d", tdes->trid, tdes->topops.last,
 		     (long long int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.pageid,
 		     (int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.offset,
@@ -3796,7 +3796,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	  /* TODO: It would be useful to print a call-stack here. */
 	  _er_log_debug (ARG_FILE_LINE,
 			 "WARNING: Attach to outer is used for top system "
-			 "operation, even though transaction is not active." "Tran_ID=%d", tdes->trid);
+			 "operation, even though transaction is not active.Tran_ID=%d", tdes->trid);
 	}
       else if (tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT
 	       && tdes->topops.compensate_level == tdes->topops.last)
@@ -3805,7 +3805,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	  if (compensate_debug && result != LOG_RESULT_TOPOP_COMMIT)
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
-			     "COMPENSATE_DEBUG: Convert result from %d to " "%d. Tran_ID=%d, system op depth=%d.\n",
+			     "COMPENSATE_DEBUG: Convert result from %d to %d. Tran_ID=%d, system op depth=%d.\n",
 			     result, LOG_RESULT_TOPOP_COMMIT, tdes->trid, tdes->topops.last);
 	    }
 	  result = LOG_RESULT_TOPOP_COMMIT;
@@ -3817,13 +3817,13 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	  if (tdes->topops.type != LOG_TOPOPS_POSTPONE && compensate_debug)
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
-			     "COMPENSATE_DEBUG: Convert result from %d to " "%d. Tran_ID=%d, system op depth=%d.\n",
+			     "COMPENSATE_DEBUG: Convert result from %d to %d. Tran_ID=%d, system op depth=%d.\n",
 			     result, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, tdes->trid, tdes->topops.last);
 	    }
 	  if (tdes->topops.type == LOG_TOPOPS_POSTPONE && postpone_debug)
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
-			     "POSTPONE_DEBUG: Convert result from %d to " "%d. Tran_ID=%d, system op depth=%d.\n",
+			     "POSTPONE_DEBUG: Convert result from %d to %d. Tran_ID=%d, system op depth=%d.\n",
 			     result, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, tdes->trid, tdes->topops.last);
 	    }
 	  result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
@@ -3833,13 +3833,13 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	      || tdes->topops.type == LOG_TOPOPS_COMPENSATE_TRAN_ABORT))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "COMPENSATE_DEBUG: End system operation under " "compensate. Tran_ID=%d, system op depth=%d, "
+			 "COMPENSATE_DEBUG: End system operation under compensate. Tran_ID=%d, system op depth=%d, "
 			 "result=%d.\n", tdes->trid, tdes->topops.last, result);
 	}
       if (postpone_debug && tdes->topops.type == LOG_TOPOPS_POSTPONE)
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "POSTPONE_DEBUG: End system operation under " "postpone. Tran_ID=%d, system op depth=%d, "
+			 "POSTPONE_DEBUG: End system operation under postpone. Tran_ID=%d, system op depth=%d, "
 			 "result=%d.\n", tdes->trid, tdes->topops.last, result);
 	}
     }
@@ -3963,9 +3963,9 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	    }
 
 	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-			 "VACUUM: Ended all top operations. Tdes: " "tdes->trid=%d" "tdes->head_lsa=(%lld, %d), "
-			 "tdes->tail_lsa=(%lld, %d), " "tdes->undo_nxlsa=(%lld, %d), "
-			 "tdes->tail_topresult_lsa=(%lld, %d). " "Worker state=%d.", tdes->trid,
+			 "VACUUM: Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
+			 "tdes->tail_lsa=(%lld, %d), tdes->undo_nxlsa=(%lld, %d), "
+			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.", tdes->trid,
 			 (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
 			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 			 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
@@ -4719,7 +4719,7 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, v
       && (qexec_remove_xasl_cache_ent_by_class (thread_p, &t->m_class_oid, 1) != NO_ERROR))
     {
       er_log_debug (ARG_FILE_LINE,
-		    "log_cleanup_modified_class: " "qexec_remove_xasl_cache_ent_by_class"
+		    "log_cleanup_modified_class: qexec_remove_xasl_cache_ent_by_class"
 		    " failed for class { %d %d %d }\n", t->m_class_oid.pageid, t->m_class_oid.slotid,
 		    t->m_class_oid.volid);
     }
@@ -4728,7 +4728,7 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, v
       && qexec_remove_filter_pred_cache_ent_by_class (thread_p, &t->m_class_oid) != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "log_cleanup_modified_class: " "xs_remove_filter_pred_cache_ent_by_class"
+		    "log_cleanup_modified_class: xs_remove_filter_pred_cache_ent_by_class"
 		    " failed for class { %d %d %d }\n", t->m_class_oid.pageid, t->m_class_oid.slotid,
 		    t->m_class_oid.volid);
     }
@@ -5572,7 +5572,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
     {
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
-		    "log_commit: Warning, unique statistical information " "kept in transaction entry is not freed.");
+		    "log_commit: Warning, unique statistical information kept in transaction entry is not freed.");
 #endif /* CUBRID_DEBUG */
       free_and_init (tdes->tran_unique_stats);
       tdes->num_unique_btrees = 0;
@@ -5695,7 +5695,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
     {
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
-		    "log_abort: Warning, unique statistical information " "kept in transaction entry is not freed.");
+		    "log_abort: Warning, unique statistical information kept in transaction entry is not freed.");
 #endif /* CUBRID_DEBUG */
       free_and_init (tdes->tran_unique_stats);
       tdes->num_unique_btrees = 0;
@@ -6303,13 +6303,13 @@ log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP r
 	      || tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "COMPENSATE_DEBUG: Successfully completed " "compensate. Tran_ID=%d, system op depth=%d.\n",
+			 "COMPENSATE_DEBUG: Successfully completed compensate. Tran_ID=%d, system op depth=%d.\n",
 			 tdes->trid, tdes->topops.last);
 	}
       if (prm_get_bool_value (PRM_ID_COMPENSATE_DEBUG) && tdes->topops.type == LOG_TOPOPS_POSTPONE)
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "POSTPONE_DEBUG: Successfully completed " "postpone. Tran_ID=%d, system op depth=%d.\n",
+			 "POSTPONE_DEBUG: Successfully completed postpone. Tran_ID=%d, system op depth=%d.\n",
 			 tdes->trid, tdes->topops.last);
 	}
     }
@@ -6613,7 +6613,7 @@ log_dump_header (FILE * out_fp, struct log_header *log_header_p)
   tmp_time = (time_t) log_header_p->db_creation;
   (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp,
-	   "HDR: Magic Symbol = %s at disk location = %lld\n" "     Creation_time = %s"
+	   "HDR: Magic Symbol = %s at disk location = %lld\n     Creation_time = %s"
 	   "     Release = %s, Compatibility_disk_version = %g,\n"
 	   "     Db_pagesize = %d, log_pagesize= %d, Shutdown = %d,\n"
 	   "     Next_trid = %d, Next_mvcc_id = %llu, Num_avg_trans = %d, Num_avg_locks = %d,\n"
@@ -6630,7 +6630,7 @@ log_dump_header (FILE * out_fp, struct log_header *log_header_p)
 	   "     Next_archive_pageid = %lld at active_phy_pageid = %d,\n"
 	   "     Next_archive_num = %d, Last_archiv_num_for_syscrashes = %d,\n"
 	   "     Last_deleted_arv_num = %d, has_logging_been_skipped = %d,\n"
-	   "     bkup_lsa: level0 = %lld|%d, level1 = %lld|%d, level2 = %lld|%d,\n" "     Log_prefix = %s\n",
+	   "     bkup_lsa: level0 = %lld|%d, level1 = %lld|%d, level2 = %lld|%d,\n     Log_prefix = %s\n",
 	   (long long int) log_header_p->nxarv_pageid, log_header_p->nxarv_phy_pageid, log_header_p->nxarv_num,
 	   log_header_p->last_arv_num_for_syscrashes, log_header_p->last_deleted_arv_num,
 	   log_header_p->has_logging_been_skipped, (long long int) log_header_p->bkup_level0_lsa.pageid,
@@ -6653,7 +6653,7 @@ log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_
   undoredo = (struct log_undoredo *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Recv_index = %s, \n", rv_rcvindex_string (undoredo->data.rcvindex));
   fprintf (out_fp,
-	   "     Volid = %d Pageid = %d Offset = %d,\n" "     Undo(Before) length = %d," " Redo(After) length = %d,\n",
+	   "     Volid = %d Pageid = %d Offset = %d,\n     Undo(Before) length = %d, Redo(After) length = %d,\n",
 	   undoredo->data.volid, undoredo->data.pageid, undoredo->data.offset, (int) GET_ZIP_LEN (undoredo->ulength),
 	   (int) GET_ZIP_LEN (undoredo->rlength));
 
@@ -6687,7 +6687,7 @@ log_dump_record_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
   undo = (struct log_undo *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (undo->data.rcvindex));
-  fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n" "     Undo (Before) length = %d,\n", undo->data.volid,
+  fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n", undo->data.volid,
 	   undo->data.pageid, undo->data.offset, (int) GET_ZIP_LEN (undo->length));
 
   undo_length = undo->length;
@@ -6715,7 +6715,7 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
   redo = (struct log_redo *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (redo->data.rcvindex));
-  fprintf (stdout, "     Volid = %d Pageid = %d Offset = %d,\n" "     Redo (After) length = %d,\n", redo->data.volid,
+  fprintf (stdout, "     Volid = %d Pageid = %d Offset = %d,\n     Redo (After) length = %d,\n", redo->data.volid,
 	   redo->data.pageid, redo->data.offset, (int) GET_ZIP_LEN (redo->length));
 
   redo_length = redo->length;
@@ -6744,10 +6744,10 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
   mvcc_undoredo = (struct log_mvcc_undoredo *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Recv_index = %s, \n", rv_rcvindex_string (mvcc_undoredo->undoredo.data.rcvindex));
   fprintf (out_fp,
-	   "     Volid = %d Pageid = %d Offset = %d,\n" "     Undo(Before) length = %d," " Redo(After) length = %d,\n",
+	   "     Volid = %d Pageid = %d Offset = %d,\n     Undo(Before) length = %d, Redo(After) length = %d,\n",
 	   mvcc_undoredo->undoredo.data.volid, mvcc_undoredo->undoredo.data.pageid, mvcc_undoredo->undoredo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.ulength), (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.rlength));
-  fprintf (out_fp, "     MVCCID = %llu, \n" "     Prev_mvcc_op_log_lsa = (%lld, %d), \n" "     VFID = (%d, %d)",
+  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = (%lld, %d), \n     VFID = (%d, %d)",
 	   (long long int) mvcc_undoredo->mvccid,
 	   (long long int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.offset, mvcc_undoredo->vacuum_info.vfid.volid,
@@ -6783,10 +6783,10 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   mvcc_undo = (struct log_mvcc_undo *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (mvcc_undo->undo.data.rcvindex));
-  fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n" "     Undo (Before) length = %d,\n",
+  fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
 	   mvcc_undo->undo.data.volid, mvcc_undo->undo.data.pageid, mvcc_undo->undo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undo->undo.length));
-  fprintf (out_fp, "     MVCCID = %llu, \n" "     Prev_mvcc_op_log_lsa = (%lld, %d), \n" "     VFID = (%d, %d)",
+  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = (%lld, %d), \n     VFID = (%d, %d)",
 	   (long long int) mvcc_undo->mvccid, (long long int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.offset, mvcc_undo->vacuum_info.vfid.volid,
 	   mvcc_undo->vacuum_info.vfid.fileid);
@@ -6816,7 +6816,7 @@ log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   mvcc_redo = (struct log_mvcc_redo *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (mvcc_redo->redo.data.rcvindex));
-  fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n" "     Redo (After) length = %d,\n",
+  fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Redo (After) length = %d,\n",
 	   mvcc_redo->redo.data.volid, mvcc_redo->redo.data.pageid, mvcc_redo->redo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_redo->redo.length));
   fprintf (out_fp, "     MVCCID = %llu, \n", (long long int) mvcc_redo->mvccid);
@@ -6845,8 +6845,8 @@ log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_
   run_posp = (struct log_run_postpone *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (run_posp->data.rcvindex));
   fprintf (out_fp,
-	   "     Volid = %d Pageid = %d Offset = %d,\n" "     Run postpone (Redo/After) length = %d, corresponding"
-	   " to\n" "         Postpone record with LSA = %lld|%d\n", run_posp->data.volid, run_posp->data.pageid,
+	   "     Volid = %d Pageid = %d Offset = %d,\n     Run postpone (Redo/After) length = %d, corresponding"
+	   " to\n         Postpone record with LSA = %lld|%d\n", run_posp->data.volid, run_posp->data.pageid,
 	   run_posp->data.offset, run_posp->length, (long long int) run_posp->ref_lsa.pageid, run_posp->ref_lsa.offset);
 
   redo_length = run_posp->length;
@@ -6899,7 +6899,7 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   compensate = (struct log_compensate *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (compensate->data.rcvindex));
-  fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n" "     Compensate length = %d, Next_to_UNDO = %lld|%d\n",
+  fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Compensate length = %d, Next_to_UNDO = %lld|%d\n",
 	   compensate->data.volid, compensate->data.pageid, compensate->data.offset, compensate->length,
 	   (long long int) compensate->undo_nxlsa.pageid, compensate->undo_nxlsa.offset);
 
@@ -6923,7 +6923,7 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_posp), log_lsa, log_page_p);
   start_posp = (struct log_start_postpone *) ((char *) log_page_p->area + log_lsa->offset);
-  fprintf (out_fp, ", First postpone record at before or after" " Page = %lld and offset = %d\n",
+  fprintf (out_fp, ", First postpone record at before or after Page = %lld and offset = %d\n",
 	   (long long int) start_posp->posp_lsa.pageid, start_posp->posp_lsa.offset);
 
   return log_page_p;
@@ -7003,7 +7003,7 @@ log_dump_record_commit_topope_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_start_posp), log_lsa, log_page_p);
   top_start_posp = ((struct log_topope_start_postpone *) ((char *) log_page_p->area + log_lsa->offset));
-  fprintf (out_fp, ", Lastparent_LSA = %lld|%d, First postpone_LSA" " at or after = %lld|%d\n",
+  fprintf (out_fp, ", Lastparent_LSA = %lld|%d, First postpone_LSA at or after = %lld|%d\n",
 	   (long long int) top_start_posp->lastparent_lsa.pageid, top_start_posp->lastparent_lsa.offset,
 	   (long long int) top_start_posp->posp_lsa.pageid, top_start_posp->posp_lsa.offset);
 
@@ -7018,7 +7018,7 @@ log_dump_record_topope_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_result), log_lsa, log_page_p);
   top_result = ((struct log_topop_result *) ((char *) log_page_p->area + log_lsa->offset));
-  fprintf (out_fp, ",\n     Next UNDO at/before = %lld|%d," " Prev_topresult_lsa = %lld|%d\n",
+  fprintf (out_fp, ",\n     Next UNDO at/before = %lld|%d, Prev_topresult_lsa = %lld|%d\n",
 	   (long long int) top_result->lastparent_lsa.pageid, top_result->lastparent_lsa.offset,
 	   (long long int) top_result->prv_topresult_lsa.pageid, top_result->prv_topresult_lsa.offset);
 
@@ -7118,7 +7118,7 @@ log_dump_record_2pc_start (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   start_2pc = (struct log_2pc_start *) ((char *) log_page_p->area + log_lsa->offset);
 
   /* Initilize the coordinator information */
-  fprintf (out_fp, "  Client_name = %s, Gtrid = %d, " " Num_participants = %d", start_2pc->user_name, start_2pc->gtrid,
+  fprintf (out_fp, "  Client_name = %s, Gtrid = %d,  Num_participants = %d", start_2pc->user_name, start_2pc->gtrid,
 	   start_2pc->num_particps);
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*start_2pc), log_lsa, log_page_p);
@@ -7485,8 +7485,8 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 	    }
 
 	  fprintf (out_fp,
-		   "\nLSA = %3lld|%3d, Forw log = %3lld|%3d," " Backw log = %3lld|%3d,\n"
-		   "     Trid = %3d, Prev tran logrec = %3lld|%3d\n" "     Type = %s", (long long int) log_lsa.pageid,
+		   "\nLSA = %3lld|%3d, Forw log = %3lld|%3d, Backw log = %3lld|%3d,\n"
+		   "     Trid = %3d, Prev tran logrec = %3lld|%3d\n     Type = %s", (long long int) log_lsa.pageid,
 		   (int) log_lsa.offset, (long long int) log_rec->forw_lsa.pageid, (int) log_rec->forw_lsa.offset,
 		   (long long int) log_rec->back_lsa.pageid, (int) log_rec->back_lsa.offset, log_rec->trid,
 		   (long long int) log_rec->prev_tranlsa.pageid, (int) log_rec->prev_tranlsa.offset,
@@ -7673,8 +7673,8 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	  if (rv_err != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "log_rollback_record: SYSTEM ERROR... " "Transaction %d, "
-			    "Log record %lld|%d, rcvindex = %s, " "was not undone due to error (%d)\n",
+			    "log_rollback_record: SYSTEM ERROR... Transaction %d, "
+			    "Log record %lld|%d, rcvindex = %s, was not undone due to error (%d)\n",
 			    tdes->tran_index, (long long int) log_lsa->pageid, log_lsa->offset,
 			    rv_rcvindex_string (rcvindex), rv_err);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
@@ -7693,8 +7693,8 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	  if (rv_err != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "log_rollback_record: SYSTEM ERROR... " "Transaction %d, "
-			    "Log record %lld|%d, rcvindex = %s, " "was not undone due to error (%d)\n",
+			    "log_rollback_record: SYSTEM ERROR... Transaction %d, "
+			    "Log record %lld|%d, rcvindex = %s, was not undone due to error (%d)\n",
 			    tdes->tran_index, (long long int) log_lsa->pageid, log_lsa->offset,
 			    rv_rcvindex_string (rcvindex), rv_err);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
@@ -7704,8 +7704,8 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	  else if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
-			     "BTREE_ROLLBACK: Successfully executed " "undo/compensate for log entry before "
-			     "lsa=%lld|%d, undo_nxlsa=%lld|%d. " "Transaction=%d, rcvindex=%d.\n",
+			     "BTREE_ROLLBACK: Successfully executed undo/compensate for log entry before "
+			     "lsa=%lld|%d, undo_nxlsa=%lld|%d. Transaction=%d, rcvindex=%d.\n",
 			     (long long int) log_lsa->pageid, (int) log_lsa->offset,
 			     (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset, tdes->tran_index,
 			     rcvindex);
@@ -7719,8 +7719,8 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	  if (rv_err != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "log_rollback_record: SYSTEM ERROR... " "Transaction %d, "
-			    "Log record %lld|%d, rcvindex = %s, " "was not undone due to error (%d)\n",
+			    "log_rollback_record: SYSTEM ERROR... Transaction %d, "
+			    "Log record %lld|%d, rcvindex = %s, was not undone due to error (%d)\n",
 			    tdes->tran_index, (long long int) log_lsa->pageid, log_lsa->offset,
 			    rv_rcvindex_string (rcvindex), rv_err);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
@@ -7775,7 +7775,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "log_rollback_record: SYSTEM ERROR... Transaction %d, "
-			    "Log record %lld|%d, rcvindex = %s, " "was not undone due to error (%d)\n",
+			    "Log record %lld|%d, rcvindex = %s, was not undone due to error (%d)\n",
 			    tdes->tran_index, (long long int) log_lsa->pageid, log_lsa->offset,
 			    rv_rcvindex_string (rcvindex), rv_err);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
@@ -8531,7 +8531,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 			{
 #if defined(CUBRID_DEBUG)
 			  er_log_debug (ARG_FILE_LINE,
-					"log_do_postpone: SYSTEM ERROR.." " Bad log_rectype = %d\n (%s)."
+					"log_do_postpone: SYSTEM ERROR.. Bad log_rectype = %d\n (%s)."
 					" Maybe BAD POSTPONE RANGE\n", log_rec->type, log_to_string (log_rec->type));
 #endif /* CUBRID_DEBUG */
 			  ;	/* Nothing */
@@ -8559,7 +8559,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    default:
 #if defined(CUBRID_DEBUG)
 		      er_log_debug (ARG_FILE_LINE,
-				    "log_do_postpone: SYSTEM ERROR.." "Bad log_rectype = %d (%s)... ignored\n",
+				    "log_do_postpone: SYSTEM ERROR..Bad log_rectype = %d (%s)... ignored\n",
 				    log_rec->type, log_to_string (log_rec->type));
 #endif /* CUBRID_DEBUG */
 		      break;
@@ -8821,7 +8821,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 	      else if (type <= LOG_SMALLER_LOGREC_TYPE || type >= LOG_LARGER_LOGREC_TYPE)
 		{
 #if defined(CUBRID_DEBUG)
-		  er_log_debug (ARG_FILE_LINE, "log_find_end_log: Unknown record" " type = %d (%s).\n", type,
+		  er_log_debug (ARG_FILE_LINE, "log_find_end_log: Unknown record type = %d (%s).\n", type,
 				log_to_string (type));
 #endif /* CUBRID_DEBUG */
 		  LSA_SET_NULL (end_lsa);

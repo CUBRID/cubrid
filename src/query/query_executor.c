@@ -8811,7 +8811,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		  if (error != NO_ERROR || internal_class->class_hfid == NULL)
 		    {
 		      /* matching class oid does not exist... error */
-		      er_log_debug (ARG_FILE_LINE, "qexec_execute_update: class OID is" " not correct\n");
+		      er_log_debug (ARG_FILE_LINE, "qexec_execute_update: class OID is not correct\n");
 		      GOTO_EXIT_ON_ERROR;
 		    }
 
@@ -9185,7 +9185,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	  if (qexec_clear_list_cache_by_class (class_oid) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "qexec_execute_update: qexec_clear_list_cache_by_class failed for" " class { %d %d %d }\n",
+			    "qexec_execute_update: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    class_oid->pageid, class_oid->slotid, class_oid->volid);
 	    }
 	}
@@ -9652,7 +9652,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		      if (error != NO_ERROR)
 			{
 			  /* matching class oid does not exist... error */
-			  er_log_debug (ARG_FILE_LINE, "qexec_execute_delete: class OID is not" " correct\n");
+			  er_log_debug (ARG_FILE_LINE, "qexec_execute_delete: class OID is not correct\n");
 			  GOTO_EXIT_ON_ERROR;
 			}
 
@@ -9875,7 +9875,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  if (qexec_clear_list_cache_by_class (class_oid) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "qexec_execute_delete: qexec_clear_list_cache_by_class failed for" " class { %d %d %d }\n",
+			    "qexec_execute_delete: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    class_oid->pageid, class_oid->slotid, class_oid->volid);
 	    }
 	}
@@ -11349,7 +11349,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       if (qexec_clear_list_cache_by_class (&class_oid) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"qexec_execute_insert: qexec_clear_list_cache_by_class failed for " "class { %d %d %d }\n",
+			"qexec_execute_insert: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			class_oid.pageid, class_oid.slotid, class_oid.volid);
 	}
       qmgr_add_modified_class (&class_oid);
@@ -11942,7 +11942,7 @@ qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, HF
 	{
 	  OID *o = class_oid;
 	  er_log_debug (ARG_FILE_LINE,
-			"qexec_execute_increment: qexec_clear_list_cache_by_class failed for" " class { %d %d %d }\n",
+			"qexec_execute_increment: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			o->pageid, o->slotid, o->volid);
 	}
       qmgr_add_modified_class (class_oid);
@@ -14304,8 +14304,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 	       */
 #if defined(QP_DEBUG)
 	      (void) fprintf (stderr,
-			      "*WARNING* qexec_execute_query: " "No more pages left in the query area.\n"
-			      " Query execution falls into sleep for transaction" " index %d with %d deadlocks. \n\n",
+			      "*WARNING* qexec_execute_query: No more pages left in the query area.\n"
+			      " Query execution falls into sleep for transaction index %d with %d deadlocks. \n\n",
 			      tran_index, num_deadlock_reexecute);
 #endif
 	      /* 
@@ -15622,7 +15622,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
     {
       XASL_ID *xasl_id = stream->xasl_id;
       er_log_debug (ARG_FILE_LINE,
-		    "qexec_update_xasl_cache_ent: duplicated xasl_id " "{ first_vpid { %d %d } temp_vfid { %d %d } }\n",
+		    "qexec_update_xasl_cache_ent: duplicated xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n",
 		    xasl_id->first_vpid.pageid, xasl_id->first_vpid.volid, xasl_id->temp_vfid.fileid,
 		    xasl_id->temp_vfid.volid);
       ent = NULL;
@@ -16166,7 +16166,7 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xas
       if (ent && !CACHE_TIME_EQ (&(ent->xasl_id.time_stored), &(xasl_id->time_stored)))
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"qexec_check_xasl_cache_ent_by_xasl: store time " "mismatch %d sec %d usec vs %d sec %d usec\n",
+			"qexec_check_xasl_cache_ent_by_xasl: store time mismatch %d sec %d usec vs %d sec %d usec\n",
 			ent->xasl_id.time_stored.sec, ent->xasl_id.time_stored.usec, xasl_id->time_stored.sec,
 			xasl_id->time_stored.usec);
 	  ent = NULL;
@@ -16175,7 +16175,7 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xas
       /* check the number of parameters of the XASL */
       if (ent && dbval_cnt > 0 && ent->dbval_cnt > dbval_cnt)
 	{
-	  er_log_debug (ARG_FILE_LINE, "qexec_check_xasl_cache_ent_by_xasl: dbval_cnt " "mismatch %d vs %d\n",
+	  er_log_debug (ARG_FILE_LINE, "qexec_check_xasl_cache_ent_by_xasl: dbval_cnt mismatch %d vs %d\n",
 			ent->dbval_cnt, dbval_cnt);
 	  ent = NULL;
 	}
@@ -16497,7 +16497,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 	  if (mht_rem2 (xasl_ent_cache.oid_ht, o, ent, NULL, NULL) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "qexec_delete_xasl_cache_ent: mht_rem failed for" " class_oid { %d %d %d }\n",
+			    "qexec_delete_xasl_cache_ent: mht_rem failed for class_oid { %d %d %d }\n",
 			    ent->class_oid_list[i].pageid, ent->class_oid_list[i].slotid, ent->class_oid_list[i].volid);
 	    }
 	}
@@ -16946,7 +16946,7 @@ qexec_free_mark_deleted_xasl_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * 
 	  if (mht_rem2 (xasl_ent_cache.oid_ht, o, ent, NULL, NULL) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "qexec_delete_xasl_cache_ent: mht_rem failed for" " class_oid { %d %d %d }\n",
+			    "qexec_delete_xasl_cache_ent: mht_rem failed for class_oid { %d %d %d }\n",
 			    ent->class_oid_list[i].pageid, ent->class_oid_list[i].slotid, ent->class_oid_list[i].volid);
 	    }
 	}
@@ -23575,7 +23575,7 @@ qexec_alloc_filter_pred_cache_ent (int req_size)
 	}
       else
 	{
-	  er_log_debug (ARG_FILE_LINE, "qexec_alloc_filter_pred_cache_ent: " "allocation failed\n");
+	  er_log_debug (ARG_FILE_LINE, "qexec_alloc_filter_pred_cache_ent: allocation failed\n");
 	}
     }
   else
@@ -23872,7 +23872,7 @@ qexec_append_LRU_filter_pred_cache_clo (THREAD_ENTRY * thread_p, XASL_CACHE_CLON
       if (!cur)
 	{			/* unknown error */
 	  er_log_debug (ARG_FILE_LINE,
-			"qexec_append_LRU_filter_pred_cache_clo: " "not found victim for qstr %s xasl_id "
+			"qexec_append_LRU_filter_pred_cache_clo: not found victim for qstr %s xasl_id "
 			"{ first_vpid { %d %d } temp_vfid { %d %d } }\n", ent->sql_info.sql_hash_text,
 			ent->xasl_id.first_vpid.pageid, ent->xasl_id.first_vpid.volid, ent->xasl_id.temp_vfid.fileid,
 			ent->xasl_id.temp_vfid.volid);
@@ -24276,7 +24276,7 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr, X
 
   if (mht_put_new (filter_pred_ent_cache.qstr_ht, &ent->qstr_ht_key, ent) == NULL)
     {
-      er_log_debug (ARG_FILE_LINE, "qexec_update_filter_pred_cache_ent: mht_put failed for " "qstr %s\n",
+      er_log_debug (ARG_FILE_LINE, "qexec_update_filter_pred_cache_ent: mht_put failed for qstr %s\n",
 		    ent->sql_info.sql_hash_text);
       (void) qexec_delete_filter_pred_cache_ent (thread_p, ent, NULL);
       ent = NULL;
@@ -24300,7 +24300,7 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr, X
     {
       er_log_debug (ARG_FILE_LINE,
 		    "qexec_update_filter_pred_cache_ent: mht_put failed "
-		    "for xasl_id { first_vpid { %d %d } temp_vfid " "{ %d %d } }\n", ent->xasl_id.first_vpid.pageid,
+		    "for xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n", ent->xasl_id.first_vpid.pageid,
 		    ent->xasl_id.first_vpid.volid, ent->xasl_id.temp_vfid.fileid, ent->xasl_id.temp_vfid.volid);
       (void) qexec_delete_filter_pred_cache_ent (thread_p, ent, NULL);
       ent = NULL;
@@ -24312,7 +24312,7 @@ qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr, X
       if (mht_put2_new (filter_pred_ent_cache.oid_ht, o, ent) == NULL)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"qexec_update_filter_pred_cache_ent: mht_put2 " "failed for class_oid { %d %d %d }\n",
+			"qexec_update_filter_pred_cache_ent: mht_put2 failed for class_oid { %d %d %d }\n",
 			o->pageid, o->slotid, o->volid);
 	  (void) qexec_delete_filter_pred_cache_ent (thread_p, ent, NULL);
 	  ent = NULL;
@@ -24387,7 +24387,7 @@ qexec_end_use_of_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const XASL_ID *
   else
     {
       er_log_debug (ARG_FILE_LINE,
-		    "qexec_end_use_of_filter_pred_cache_ent: " "mht_get failed for xasl_id { first_vpid { %d %d } "
+		    "qexec_end_use_of_filter_pred_cache_ent: mht_get failed for xasl_id { first_vpid { %d %d } "
 		    "temp_vfid { %d %d } }\n", xasl_id->first_vpid.pageid, xasl_id->first_vpid.volid,
 		    xasl_id->temp_vfid.fileid, xasl_id->temp_vfid.volid);
     }
@@ -24448,7 +24448,7 @@ qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p, const XASL_I
       /* check the number of parameters of the XASL */
       if (ent && dbval_cnt > 0 && ent->dbval_cnt > dbval_cnt)
 	{
-	  er_log_debug (ARG_FILE_LINE, "qexec_check_filter_pred_cache_ent_by_xasl: dbval_cnt " "mismatch %d vs %d\n",
+	  er_log_debug (ARG_FILE_LINE, "qexec_check_filter_pred_cache_ent_by_xasl: dbval_cnt mismatch %d vs %d\n",
 			ent->dbval_cnt, dbval_cnt);
 	  ent = NULL;
 	}
@@ -24617,7 +24617,7 @@ qexec_delete_filter_pred_cache_ent (THREAD_ENTRY * thread_p, void *data, void *a
     {
       if (!ent->deletion_marker)
 	{
-	  er_log_debug (ARG_FILE_LINE, "qexec_delete_filter_pred_cache_ent: mht_rem2 " "failed for qstr %s\n",
+	  er_log_debug (ARG_FILE_LINE, "qexec_delete_filter_pred_cache_ent: mht_rem2 failed for qstr %s\n",
 			ent->sql_info.sql_hash_text);
 	}
     }
@@ -24627,7 +24627,7 @@ qexec_delete_filter_pred_cache_ent (THREAD_ENTRY * thread_p, void *data, void *a
   if (mht_rem2 (filter_pred_ent_cache.xid_ht, &ent->xasl_id, ent, NULL, NULL) != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "qexec_delete_filter_pred_cache_ent: mht_rem failed for" " xasl_id { first_vpid { %d %d } "
+		    "qexec_delete_filter_pred_cache_ent: mht_rem failed for xasl_id { first_vpid { %d %d } "
 		    "temp_vfid { %d %d } }\n", ent->xasl_id.first_vpid.pageid, ent->xasl_id.first_vpid.volid,
 		    ent->xasl_id.temp_vfid.fileid, ent->xasl_id.temp_vfid.volid);
     }
@@ -24637,7 +24637,7 @@ qexec_delete_filter_pred_cache_ent (THREAD_ENTRY * thread_p, void *data, void *a
       if (mht_rem2 (filter_pred_ent_cache.oid_ht, o, ent, NULL, NULL) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"qexec_delete_filter_pred_cache_ent: mht_rem " " failed for class_oid { %d %d %d }\n",
+			"qexec_delete_filter_pred_cache_ent: mht_rem failed for class_oid { %d %d %d }\n",
 			ent->class_oid_list[i].pageid, ent->class_oid_list[i].slotid, ent->class_oid_list[i].volid);
 	}
     }

@@ -1188,7 +1188,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
 				 context->recompile_xasl_pinned);
   if (cache_entry_p)
     {
-      er_log_debug (ARG_FILE_LINE, "xqmgr_prepare_query: second qexec_lookup_xasl_cache_ent " "qstmt %s\n",
+      er_log_debug (ARG_FILE_LINE, "xqmgr_prepare_query: second qexec_lookup_xasl_cache_ent qstmt %s\n",
 		    context->sql_hash_text);
       XASL_ID_COPY (stream->xasl_id, &(cache_entry_p->xasl_id));
 
@@ -1480,7 +1480,7 @@ xqmgr_unpack_xasl_tree (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, char *
 	  if (qfile_load_xasl (thread_p, xasl_id, &xstream, &xstream_size) == 0)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "xqmgr_unpack_xasl_tree: qfile_load_xasl failed" " xasl_id { first_vpid { %d %d } "
+			    "xqmgr_unpack_xasl_tree: qfile_load_xasl failed xasl_id { first_vpid { %d %d } "
 			    "temp_vfid { %d %d } }\n", xasl_id->first_vpid.pageid, xasl_id->first_vpid.volid,
 			    xasl_id->temp_vfid.fileid, xasl_id->temp_vfid.volid);
 
@@ -1846,7 +1846,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       /* It doesn't be there or was marked to be deleted. */
       er_log_debug (ARG_FILE_LINE,
-		    "xqmgr_execute_query: " "qexec_check_xasl_cache_ent_by_xasl failed "
+		    "xqmgr_execute_query: qexec_check_xasl_cache_ent_by_xasl failed "
 		    "xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n", xasl_id_p->first_vpid.pageid,
 		    xasl_id_p->first_vpid.volid, xasl_id_p->temp_vfid.fileid, xasl_id_p->temp_vfid.volid);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
@@ -2130,7 +2130,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	      s = (params.size > 0) ? pr_valstring (&params.vals[0]) : NULL;
 	      er_log_debug (ARG_FILE_LINE,
 			    "xqmgr_execute_query: ls_update_xasl failed "
-			    "xasl_id { first_vpid { %d %d } temp_vfid { %d %d } } " "params { %d %s ... }\n",
+			    "xasl_id { first_vpid { %d %d } temp_vfid { %d %d } } params { %d %s ... }\n",
 			    xasl_id_p->first_vpid.pageid, xasl_id_p->first_vpid.volid, xasl_id_p->temp_vfid.fileid,
 			    xasl_id_p->temp_vfid.volid, params.size, s ? s : "(null)");
 	      if (s)
@@ -2213,7 +2213,7 @@ exit_on_error:
 
       if (qmgr_free_query_temp_file_by_query_entry (thread_p, query_p, tran_index) != NO_ERROR)
 	{
-	  er_log_debug (ARG_FILE_LINE, "xqmgr_execute_query: " "qmgr_free_query_temp_file_by_query_entry");
+	  er_log_debug (ARG_FILE_LINE, "xqmgr_execute_query: qmgr_free_query_temp_file_by_query_entry");
 	}
 
       qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
@@ -2568,7 +2568,7 @@ exit_on_error:
 
       if (qmgr_free_query_temp_file_by_query_entry (thread_p, query_p, tran_index) != NO_ERROR)
 	{
-	  er_log_debug (ARG_FILE_LINE, "xqmgr_prepare_and_execute_query: " "qmgr_free_query_temp_file_by_query_entry");
+	  er_log_debug (ARG_FILE_LINE, "xqmgr_prepare_and_execute_query: qmgr_free_query_temp_file_by_query_entry");
 	}
       qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
     }
@@ -2783,7 +2783,7 @@ qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tr
 	  if (qexec_clear_list_cache_by_class (thread_p, class_oid_p) != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "qm_clear_trans_wakeup: qexec_clear_list_cache_by_class failed for" " class { %d %d %d }\n",
+			    "qm_clear_trans_wakeup: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    class_oid_p->pageid, class_oid_p->slotid, class_oid_p->volid);
 	    }
 	}
@@ -2827,7 +2827,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
     )
     {
 #ifdef QP_DEBUG
-      er_log_debug (ARG_FILE_LINE, "qm_clear_trans_wakeup:" "Invalid transaction index %d called...\n", tran_index);
+      er_log_debug (ARG_FILE_LINE, "qm_clear_trans_wakeup:Invalid transaction index %d called...\n", tran_index);
 #endif
       return;
     }
@@ -2967,7 +2967,7 @@ again:
       if (qmgr_free_query_temp_file_by_query_entry (thread_p, query_p, tran_index) != NO_ERROR)
 	{
 #ifdef QP_DEBUG
-	  er_log_debug (ARG_FILE_LINE, "qm_clear_trans_wakeup: " "External volume deletion failed.\n");
+	  er_log_debug (ARG_FILE_LINE, "qm_clear_trans_wakeup: External volume deletion failed.\n");
 #endif
 	}
 
@@ -4198,7 +4198,7 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p, QMGR_ASYNC_QUERY * async_que
       /* check the number of the host variables for this XASL */
       if (xasl_p->dbval_cnt > dbval_count)
 	{
-	  er_log_debug (ARG_FILE_LINE, "qmgr_execute_async_select: " "dbval_cnt mismatch %d vs %d\n", xasl_p->dbval_cnt,
+	  er_log_debug (ARG_FILE_LINE, "qmgr_execute_async_select: dbval_cnt mismatch %d vs %d\n", xasl_p->dbval_cnt,
 			dbval_count);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 	  goto exit_on_error;

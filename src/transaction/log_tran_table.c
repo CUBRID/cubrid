@@ -1524,7 +1524,7 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
   if (tran_index > NUM_TOTAL_TRAN_INDICES || tdes == NULL || tdes->trid == NULL_TRANID)
     {
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "log_free_tran_index: Unknown index = %d." " Operation is ignored", tran_index);
+      er_log_debug (ARG_FILE_LINE, "log_free_tran_index: Unknown index = %d. Operation is ignored", tran_index);
 #endif /* CUBRID_DEBUG */
       return;
     }
@@ -1624,10 +1624,10 @@ static void
 logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
 {
   fprintf (out_fp,
-	   "Tran_index = %2d, Trid = %d,\n" "    State = %s,\n" "    Isolation = %s,\n"
-	   "    Wait_msecs = %d, isloose_end = %d,\n" "    Head_lsa = %lld|%d, Tail_lsa = %lld|%d,"
-	   " Postpone_lsa = %lld|%d,\n" "    SaveLSA = %lld|%d, UndoNextLSA = %lld|%d,\n"
-	   "    Client_User: (Type = %d, User = %s, Program = %s, " "Login = %s, Host = %s, Pid = %d)" "\n",
+	   "Tran_index = %2d, Trid = %d,\n    State = %s,\n    Isolation = %s,\n"
+	   "    Wait_msecs = %d, isloose_end = %d,\n    Head_lsa = %lld|%d, Tail_lsa = %lld|%d,"
+	   " Postpone_lsa = %lld|%d,\n    SaveLSA = %lld|%d, UndoNextLSA = %lld|%d,\n"
+	   "    Client_User: (Type = %d, User = %s, Program = %s, Login = %s, Host = %s, Pid = %d)\n",
 	   tdes->tran_index, tdes->trid, log_state_string (tdes->state), log_isolation_string (tdes->isolation),
 	   tdes->wait_msecs, tdes->isloose_end, (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
 	   (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset, (long long int) tdes->posp_nxlsa.pageid,
@@ -1688,7 +1688,7 @@ logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id, LOG_2
   /* This is a distributed transaction */
   if (coord != NULL)
     {
-      fprintf (out_fp, "    COORDINATOR SITE" "(or NESTED PARTICIPANT SITE)");
+      fprintf (out_fp, "    COORDINATOR SITE(or NESTED PARTICIPANT SITE)");
     }
   else
     {
@@ -3236,7 +3236,7 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
       if (tdes->query_timeout < now)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"logtb_is_interrupted_tdes: timeout %lld milliseconds " "delayed (expected=%lld, now=%lld)",
+			"logtb_is_interrupted_tdes: timeout %lld milliseconds delayed (expected=%lld, now=%lld)",
 			now - tdes->query_timeout, tdes->query_timeout, now);
 	  interrupt = true;
 	}
@@ -5200,9 +5200,9 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
       if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
 	  fprintf (stdout,
-		   "\n*** Transaction = %d (index = %d) is" " prepared to commit as gobal tran = %d\n"
-		   "    The coordinator site (maybe the client user = %s)" " needs to attach\n"
-		   "    to this transaction and either commit or abort it." " ***\n", tdes->trid, tdes->tran_index,
+		   "\n*** Transaction = %d (index = %d) is prepared to commit as gobal tran = %d\n"
+		   "    The coordinator site (maybe the client user = %s) needs to attach\n"
+		   "    to this transaction and either commit or abort it. ***\n", tdes->trid, tdes->tran_index,
 		   tdes->gtrid, tdes->client.db_user);
 	  fflush (stdout);
 	}
@@ -5216,10 +5216,10 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
       if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
 	  fprintf (stdout,
-		   "\n*** Transaction = %d (index = %d) needs to" " complete informing participants\n"
-		   "    about its fate = %s and collect participant" " acknowledgements.\n"
-		   "    This transaction has been disassociated from" " the client user = %s.\n"
-		   "    The transaction will be completely finished by" " the system ***\n", tdes->trid,
+		   "\n*** Transaction = %d (index = %d) needs to complete informing participants\n"
+		   "    about its fate = %s and collect participant acknowledgements.\n"
+		   "    This transaction has been disassociated from the client user = %s.\n"
+		   "    The transaction will be completely finished by the system ***\n", tdes->trid,
 		   tdes->tran_index, ((LOG_ISTRAN_COMMITTED (tdes)) ? "COMMIT" : "ABORT"), tdes->client.db_user);
 	  fflush (stdout);
 	}
@@ -6555,7 +6555,7 @@ logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid
   if (prm_get_bool_value (PRM_ID_LOG_UNIQUE_STATS))
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "Update stats for index (%d, %d|%d) to nulls=%d, " "oids=%d, keys=%d. LSA=%lld|%d.\n",
+		     "Update stats for index (%d, %d|%d) to nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n",
 		     btid->root_pageid, btid->vfid.volid, btid->vfid.fileid, num_nulls, num_oids, num_keys,
 		     (long long int) stats->last_log_lsa.pageid, (int) stats->last_log_lsa.offset);
     }
@@ -6659,7 +6659,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
     {
       _er_log_debug (ARG_FILE_LINE,
 		     "Update stats for index (%d, %d|%d) by nulls=%d, "
-		     "oids=%d, keys=%d to nulls=%d, oids=%d, keys=%d. " "LSA=%lld|%d.\n", btid->root_pageid,
+		     "oids=%d, keys=%d to nulls=%d, oids=%d, keys=%d. LSA=%lld|%d.\n", btid->root_pageid,
 		     btid->vfid.volid, btid->vfid.fileid, null_delta, oid_delta, key_delta, num_nulls, num_oids,
 		     num_keys, (long long int) stats->last_log_lsa.pageid, (int) stats->last_log_lsa.offset);
     }

@@ -1525,7 +1525,7 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 	    "   commit_counter, "	/* 23 */
 	    "   fail_counter, "	/* 24 */
 	    "   start_time "	/* 25 */
-	    " FROM %s " " WHERE db_name = ? and copied_log_path = ? ;", CT_HA_APPLY_INFO_NAME);
+	    " FROM %s WHERE db_name = ? and copied_log_path = ? ;", CT_HA_APPLY_INFO_NAME);
 
   in_value_idx = 0;
   db_make_varchar (&in_value[in_value_idx++], 255, (char *) prefix_name, strlen (prefix_name), LANG_SYS_CODESET,
@@ -1839,7 +1839,7 @@ la_update_ha_apply_info_start_time (void)
   act_log = &la_Info.act_log;
 
   snprintf (query_buf, sizeof (query_buf),
-	    "UPDATE %s" " SET start_time = SYS_DATETIME, status = 0" " WHERE db_name = ? AND copied_log_path = ? ;",
+	    "UPDATE %s SET start_time = SYS_DATETIME, status = 0 WHERE db_name = ? AND copied_log_path = ? ;",
 	    CT_HA_APPLY_INFO_NAME);
 
   in_value_idx = 0;
@@ -2196,7 +2196,7 @@ la_delete_ha_apply_info (void)
 
   act_log = &la_Info.act_log;
 
-  snprintf (query_buf, sizeof (query_buf), "DELETE FROM %s " "WHERE db_name = ? AND copied_log_path = ?",
+  snprintf (query_buf, sizeof (query_buf), "DELETE FROM %s WHERE db_name = ? AND copied_log_path = ?",
 	    CT_HA_APPLY_INFO_NAME);
 
   in_value_idx = 0;
@@ -2709,7 +2709,7 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 	  char err_msg[ERR_MSG_SIZE];
 
 	  la_applier_need_shutdown = true;
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Active log file(%s) charset is not valid (%s), " "expecting %s.",
+	  snprintf (err_msg, sizeof (err_msg) - 1, "Active log file(%s) charset is not valid (%s), expecting %s.",
 		    act_log->path, lang_charset_cubrid_name (act_log->log_hdr->db_charset),
 		    lang_charset_cubrid_name (lang_charset ()));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
@@ -4790,7 +4790,7 @@ la_flush_repl_items (bool immediate)
 	      if (la_restart_on_bulk_flush_error (flush_err->error_code) == true)
 		{
 		  snprintf (buf, sizeof (buf),
-			    "applylogdb will reconnect to server " "due to a failure in flushing changes. "
+			    "applylogdb will reconnect to server due to a failure in flushing changes. "
 			    "class: %s, key: %s, server error: %d, %s", class_name, pkey_str, flush_err->error_code,
 			    server_err_msg);
 		  er_stack_push ();
@@ -6118,7 +6118,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       break;
 
     case LOG_DUMMY_CRASH_RECOVERY:
-      snprintf (buffer, sizeof (buffer), "process log record (type:%d). " "skip this log record. LSA: %lld|%d",
+      snprintf (buffer, sizeof (buffer), "process log record (type:%d). skip this log record. LSA: %lld|%d",
 		lrec->type, (long long int) final->pageid, (int) final->offset);
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
@@ -6342,7 +6342,7 @@ la_change_state (void)
       error = boot_notify_ha_log_applier_state (new_state);
       if (error == NO_ERROR)
 	{
-	  snprintf (buffer, sizeof (buffer), "change log apply state from '%s' to '%s'. " "last committed LSA: %lld|%d",
+	  snprintf (buffer, sizeof (buffer), "change log apply state from '%s' to '%s'. last committed LSA: %lld|%d",
 		    css_ha_applier_state_string (la_Info.apply_state), css_ha_applier_state_string (new_state),
 		    (long long int) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
@@ -6394,7 +6394,7 @@ la_log_commit (bool update_commit_time)
     {
       la_Info.fail_counter++;
 
-      er_log_debug (ARG_FILE_LINE, "log applied but cannot update last committed LSA " "(%d|%d)",
+      er_log_debug (ARG_FILE_LINE, "log applied but cannot update last committed LSA (%d|%d)",
 		    la_Info.committed_lsa.pageid, la_Info.committed_lsa.offset);
       if (res == ER_NET_CANT_CONNECT_SERVER || res == ER_OBJ_NO_CONNECT)
 	{
@@ -7174,7 +7174,7 @@ check_applied_info_end:
 	    {
 	      lrec = LOG_GET_LOG_RECORD_HEADER (logpage, &lsa);
 
-	      printf ("offset:%04d " "(tid:%d bck p:%lld,o:%d frw p:%lld,o:%d type:%d)\n", lsa.offset, lrec->trid,
+	      printf ("offset:%04d (tid:%d bck p:%lld,o:%d frw p:%lld,o:%d type:%d)\n", lsa.offset, lrec->trid,
 		      (long long int) lrec->back_lsa.pageid, lrec->back_lsa.offset,
 		      (long long int) lrec->forw_lsa.pageid, lrec->forw_lsa.offset, lrec->type);
 	      LSA_COPY (&lsa, &lrec->forw_lsa);
@@ -7545,7 +7545,7 @@ lp_adjust_prefetcher_speed (void)
 
       if (LSA_ISNULL (&lp_Info.la_sync_lsa) == false)
 	{
-	  er_log_debug (ARG_FILE_LINE, "prefetcher is waiting that applier apply ddl. " "(pageid:%d, offset:%d)",
+	  er_log_debug (ARG_FILE_LINE, "prefetcher is waiting that applier apply ddl. (pageid:%d, offset:%d)",
 			lp_Info.la_sync_lsa.pageid, lp_Info.la_sync_lsa.offset);
 
 	  if (LSA_GT (&la_Info.final_lsa, &lp_Info.la_sync_lsa))
@@ -7575,7 +7575,7 @@ lp_adjust_prefetcher_speed (void)
       else if (pageid_diff > max_prefetch_page_count)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"prefetcher is waiting for applier (limit max_prefetch_page_count). " "(pageid:%d, offset:%d)",
+			"prefetcher is waiting for applier (limit max_prefetch_page_count). (pageid:%d, offset:%d)",
 			lp_Info.final_lsa.pageid, lp_Info.final_lsa.offset);
 
 	  LA_SLEEP (1, 0);
@@ -8013,7 +8013,7 @@ la_remove_archive_logs (const char *db_name, int last_deleted_arv_num, int nxarv
       info_reason = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED);
       if (info_reason == NULL)
 	{
-	  info_reason = "Number of active log archives has been exceeded" " the max desired number.";
+	  info_reason = "Number of active log archives has been exceeded the max desired number.";
 	}
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_LOGINFO_REMOVE_REASON);
       if (catmsg == NULL)
@@ -8795,7 +8795,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      else if (final_log_hdr.append_lsa.pageid < la_Info.final_lsa.pageid)
 		{
 		  er_log_debug (ARG_FILE_LINE,
-				"requested pageid (%lld) is greater than " "append_las.pageid (%lld) in log header",
+				"requested pageid (%lld) is greater than append_las.pageid (%lld) in log header",
 				(long long int) la_Info.final_lsa.pageid,
 				(long long int) final_log_hdr.append_lsa.pageid);
 		  usleep (100 * 1000);
@@ -8901,7 +8901,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		{
 #if defined (LA_VERBOSE_DEBUG)
 		  er_log_debug (ARG_FILE_LINE,
-				"this page is grater than eof_lsa. (%lld|%d) > " "eof (%lld|%d). appended (%lld|%d)",
+				"this page is grater than eof_lsa. (%lld|%d) > eof (%lld|%d). appended (%lld|%d)",
 				(long long int) la_Info.final_lsa.pageid, la_Info.final_lsa.offset,
 				(long long int) final_log_hdr.eof_lsa.pageid, final_log_hdr.eof_lsa.offset,
 				(long long int) final_log_hdr.append_lsa.pageid, final_log_hdr.append_lsa.offset);
@@ -9057,7 +9057,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       la_Info.reinit_copylog = false;
 
       sprintf (error_str,
-	       "Replication logs and catalog have been reinitialized " "due to rebuilt database on the peer node");
+	       "Replication logs and catalog have been reinitialized due to rebuilt database on the peer node");
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_str);
       error = ER_HA_GENERIC_ERROR;
@@ -9131,7 +9131,7 @@ la_delay_replica (time_t eot_time)
 		}
 
 	      snprintf (buffer, sizeof (buffer),
-			"applylogdb paused since it reached " "a log record committed on master at %s or later.\n"
+			"applylogdb paused since it reached a log record committed on master at %s or later.\n"
 			"Adjust or remove %s and restart applylogdb to resume", replica_time_bound_str,
 			prm_get_name (PRM_ID_HA_REPLICA_TIME_BOUND));
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);

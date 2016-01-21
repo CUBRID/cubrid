@@ -1094,7 +1094,7 @@ heap_stats_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ign
 {
   HEAP_STATS_ENTRY *entry = (HEAP_STATS_ENTRY *) ent;
 
-  fprintf (outfp, "HFID:Volid = %6d, Fileid = %6d, Header-pageid = %6d" ",VPID = %4d|%4d, freespace = %6d\n",
+  fprintf (outfp, "HFID:Volid = %6d, Fileid = %6d, Header-pageid = %6d,VPID = %4d|%4d, freespace = %6d\n",
 	   entry->hfid.vfid.volid, entry->hfid.vfid.fileid, entry->hfid.hpgid, entry->best.vpid.volid,
 	   entry->best.vpid.pageid, entry->best.freespace);
 
@@ -2699,7 +2699,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   fprintf (fp, "\n");
   fprintf (fp,
 	   " Class-OID = %d|%d|%d, Classname = %s, reprid = %d,\n"
-	   " Attrs: Tot = %d, Nfix = %d, Nvar = %d, Nshare = %d, Nclass = %d,\n" " Total_length_of_fixattrs = %d\n",
+	   " Attrs: Tot = %d, Nfix = %d, Nvar = %d, Nshare = %d, Nclass = %d,\n Total_length_of_fixattrs = %d\n",
 	   (int) class_oid->volid, class_oid->pageid, (int) class_oid->slotid, classname, repr->id, repr->n_attributes,
 	   (repr->n_attributes - repr->n_variable - repr->n_shared_attrs - repr->n_class_attrs), repr->n_variable,
 	   repr->n_shared_attrs, repr->n_class_attrs, repr->fixed_length);
@@ -2720,7 +2720,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 	  attr_name = "?????";
 	}
 
-      fprintf (fp, "\n Attrid = %d, Attrname = %s, type = %s,\n" " location = %d, position = %d,\n", attrepr->id,
+      fprintf (fp, "\n Attrid = %d, Attrname = %s, type = %s,\n location = %d, position = %d,\n", attrepr->id,
 	       attr_name, pr_type_name (attrepr->type), attrepr->location, attrepr->position);
 
       if (!OID_ISNULL (&attrepr->classoid) && !OID_EQ (&attrepr->classoid, class_oid))
@@ -2845,7 +2845,7 @@ heap_classrepr_dump_anyfixed (void)
 
   if (heap_Classrepr->num_fix_entries > 0)
     {
-      er_log_debug (ARG_FILE_LINE, "heap_classrepr_dump_anyfixed:" " Some entries are fixed\n");
+      er_log_debug (ARG_FILE_LINE, "heap_classrepr_dump_anyfixed: Some entries are fixed\n");
       ret = heap_classrepr_dump_cache (true);
     }
 
@@ -3596,8 +3596,8 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
 	{
 	  try_sync++;
 	  er_log_debug (ARG_FILE_LINE,
-			"heap_stats_find_best_page: " "call heap_stats_sync_bestspace() "
-			"hfid { vfid  { fileid %d volid %d } hpgid %d } " "hdr_vpid { pageid %d volid %d } "
+			"heap_stats_find_best_page: call heap_stats_sync_bestspace() "
+			"hfid { vfid  { fileid %d volid %d } hpgid %d } hdr_vpid { pageid %d volid %d } "
 			"scan_all %d ", hfid->vfid.fileid, hfid->vfid.volid, hfid->hpgid, hdr_vpidp->pageid,
 			hdr_vpidp->volid, 0);
 
@@ -3804,7 +3804,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 	      if (++num_iterations > max_iterations)
 		{
 		  er_log_debug (ARG_FILE_LINE,
-				"heap_stats_sync_bestspace: " "num_iterations %d best %d "
+				"heap_stats_sync_bestspace: num_iterations %d best %d "
 				"next_vpid { pageid %d volid %d }\n", num_iterations, num_high_best, next_vpid.pageid,
 				next_vpid.volid);
 
@@ -3899,7 +3899,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
     }
 
   er_log_debug (ARG_FILE_LINE,
-		"heap_stats_sync_bestspace: " "scans from {%d|%d} to {%d|%d}, num_iterations(%d) "
+		"heap_stats_sync_bestspace: scans from {%d|%d} to {%d|%d}, num_iterations(%d) "
 		"max_iterations(%d) num_high_best(%d)\n", start_vpid.volid, start_vpid.pageid, vpid.volid, vpid.pageid,
 		num_iterations, max_iterations, num_high_best);
 
@@ -4423,7 +4423,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
 
   if (rm_vpid->pageid == hfid->hpgid && rm_vpid->volid == hfid->vfid.volid)
     {
-      er_log_debug (ARG_FILE_LINE, "heap_vpid_remove: Trying to remove header" " page = %d|%d of heap file = %d|%d|%d",
+      er_log_debug (ARG_FILE_LINE, "heap_vpid_remove: Trying to remove header page = %d|%d of heap file = %d|%d|%d",
 		    (int) rm_vpid->volid, rm_vpid->pageid, (int) hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       goto error;
@@ -4716,7 +4716,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     {
       /* Give up. */
       vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Could not remove candidate empty " "heap page %d|%d.\n", page_vpid.volid,
+		     "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
 		     page_vpid.pageid);
       goto error;
     }
@@ -4728,7 +4728,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     {
       /* Give up. */
       vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Could not remove candidate empty " "heap page %d|%d.\n", page_vpid.volid,
+		     "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
 		     page_vpid.pageid);
       goto error;
     }
@@ -4740,7 +4740,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 	{
 	  /* Give up. */
 	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Could not remove candidate empty " "heap page %d|%d.\n", page_vpid.volid,
+			 "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
 			 page_vpid.pageid);
 	  goto error;
 	}
@@ -4753,7 +4753,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 	{
 	  /* Give up. */
 	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Could not remove candidate empty " "heap page %d|%d.\n", page_vpid.volid,
+			 "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
 			 page_vpid.pageid);
 	  goto error;
 	}
@@ -4765,7 +4765,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     {
       /* Current page has new data. It is no longer a candidate for removal. */
       vacuum_er_log (VACUUM_ER_LOG_HEAP,
-		     "VACUUM: Candidate heap page %d|%d to remove was " "changed and has new data.\n", page_vpid.volid,
+		     "VACUUM: Candidate heap page %d|%d to remove was changed and has new data.\n", page_vpid.volid,
 		     page_vpid.pageid);
       goto error;
     }
@@ -4777,8 +4777,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       /* Even though we have fixed all required pages, somebody was doing a heap scan, and already reached our page. We 
        * cannot deallocate it. */
       vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_WARNING,
-		     "VACUUM: Candidate heap page %d|%d to remove has " "waiters.\n", page_vpid.volid,
-		     page_vpid.pageid);
+		     "VACUUM: Candidate heap page %d|%d to remove has waiters.\n", page_vpid.volid, page_vpid.pageid);
       goto error;
     }
 
@@ -4787,7 +4786,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     {
       assert_release (false);
       vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Could not remove candidate empty heap " "page %d|%d.\n", page_vpid.volid,
+		     "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
 		     page_vpid.pageid);
       goto error;
     }
@@ -4800,7 +4799,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     {
       assert_release (false);
       vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Could not remove candidate empty heap " "page %d|%d.\n", page_vpid.volid,
+		     "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
 		     page_vpid.pageid);
       goto error;
     }
@@ -4841,7 +4840,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     {
       assert_release (false);
       vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Could not remove candidate empty heap " "page %d|%d.\n", page_vpid.volid,
+		     "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
 		     page_vpid.pageid);
       goto error;
     }
@@ -4860,7 +4859,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 	{
 	  assert_release (false);
 	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Could not remove candidate empty " "heap page %d|%d.\n", page_vpid.volid,
+			 "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
 			 page_vpid.pageid);
 	  goto error;
 	}
@@ -4872,7 +4871,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 	{
 	  assert_release (false);
 	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Could not remove candidate empty " "heap page %d|%d.\n", page_vpid.volid,
+			 "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
 			 page_vpid.pageid);
 	  goto error;
 	}
@@ -4889,7 +4888,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 	{
 	  assert_release (false);
 	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Could not remove candidate empty " "heap page %d|%d.\n", page_vpid.volid,
+			 "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
 			 page_vpid.pageid);
 	  goto error;
 	}
@@ -4902,7 +4901,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 	{
 	  assert_release (false);
 	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-			 "VACUUM WARNING: Could not remove candidate empty " "heap page %d|%d.\n", page_vpid.volid,
+			 "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
 			 page_vpid.pageid);
 	  goto error;
 	}
@@ -4918,7 +4917,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     {
       ASSERT_ERROR ();
       vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_HEAP,
-		     "VACUUM WARNING: Could not remove candidate empty heap " "page %d|%d.\n", page_vpid.volid,
+		     "VACUUM WARNING: Could not remove candidate empty heap page %d|%d.\n", page_vpid.volid,
 		     page_vpid.pageid);
       goto error;
     }
@@ -6245,7 +6244,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid, bool reclai
 	    {
 	      goto exit_on_error;
 	    }
-	  vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Compactdb removed page %d|%d from " "heap file (%d, %d|%d).\n",
+	  vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Compactdb removed page %d|%d from heap file (%d, %d|%d).\n",
 			 vpid.volid, vpid.pageid, hfid->hpgid, hfid->vfid.volid, hfid->vfid.fileid);
 	}
       else
@@ -6665,7 +6664,7 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
     {
       if ((*scan_cache)->debug_initpattern != HEAP_DEBUG_SCANCACHE_INITPATTERN)
 	{
-	  er_log_debug (ARG_FILE_LINE, "heap_insert: Your scancache is not" " initialized");
+	  er_log_debug (ARG_FILE_LINE, "heap_insert: Your scancache is not initialized");
 	  *scan_cache = NULL;
 	}
       else if (!HFID_EQ (&(*scan_cache)->node.hfid, hfid) || OID_ISNULL (&(*scan_cache)->node.class_oid))
@@ -7107,7 +7106,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 
   if (scan_cache->debug_initpattern != HEAP_DEBUG_SCANCACHE_INITPATTERN)
     {
-      er_log_debug (ARG_FILE_LINE, "heap_scancache_quick_end: Your scancache" " is not initialized");
+      er_log_debug (ARG_FILE_LINE, "heap_scancache_quick_end: Your scancache is not initialized");
       ret = ER_GENERIC_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
     }
@@ -7178,7 +7177,7 @@ heap_scancache_end_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 
   if (scan_cache->debug_initpattern != HEAP_DEBUG_SCANCACHE_INITPATTERN)
     {
-      er_log_debug (ARG_FILE_LINE, "heap_scancache_end_internal: Your scancache" " is not initialized");
+      er_log_debug (ARG_FILE_LINE, "heap_scancache_end_internal: Your scancache is not initialized");
       return ER_FAILED;
     }
 
@@ -7481,7 +7480,7 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RE
 #if !defined (NDEBUG)
   if (scan_cache == NULL && ispeeking == PEEK)
     {
-      er_log_debug (ARG_FILE_LINE, "heap_get: Using wrong interface." " scan_cache cannot be NULL when peeking.");
+      er_log_debug (ARG_FILE_LINE, "heap_get: Using wrong interface. scan_cache cannot be NULL when peeking.");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       assert (0);
       return S_ERROR;
@@ -7503,7 +7502,7 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RE
       /* It is possible only in case of ispeeking == COPY */
       if (recdes->data == NULL)
 	{
-	  er_log_debug (ARG_FILE_LINE, "heap_get: Using wrong interface." " recdes->area_size cannot be -1.");
+	  er_log_debug (ARG_FILE_LINE, "heap_get: Using wrong interface. recdes->area_size cannot be -1.");
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return S_ERROR;
 	}
@@ -9495,7 +9494,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 #if defined(CUBRID_DEBUG)
   if (scan_cache == NULL && ispeeking == PEEK)
     {
-      er_log_debug (ARG_FILE_LINE, "heap_next: Using wrong interface." " scan_cache cannot be NULL when peeking.");
+      er_log_debug (ARG_FILE_LINE, "heap_next: Using wrong interface. scan_cache cannot be NULL when peeking.");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return S_ERROR;
     }
@@ -9508,8 +9507,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   if (scan_cache != NULL && HFID_IS_NULL (&scan_cache->hfid))
     {
       er_log_debug (ARG_FILE_LINE,
-		    "heap_next: scan_cache without heap.." " heap file must be given to heap_scancache_start () when"
-		    " scan_cache is used with heap_first, heap_next, heap_prev" " heap_last");
+		    "heap_next: scan_cache without heap.. heap file must be given to heap_scancache_start () when"
+		    " scan_cache is used with heap_first, heap_next, heap_prev heap_last");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return S_ERROR;
     }
@@ -9520,7 +9519,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       /* It is possible only in case of ispeeking == COPY */
       if (recdes->data == NULL)
 	{
-	  er_log_debug (ARG_FILE_LINE, "heap_next: Using wrong interface." " recdes->area_size cannot be -1.");
+	  er_log_debug (ARG_FILE_LINE, "heap_next: Using wrong interface. recdes->area_size cannot be -1.");
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return S_ERROR;
 	}
@@ -11509,7 +11508,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	   (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs))
     {
-      fprintf (stdout, " XXX There are not that many attributes." " Num_attrs = %d, Num_requested_attrs = %d\n",
+      fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
 	       attr_info->last_classrepr->n_attributes, requested_num_attrs);
       requested_num_attrs =
 	attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
@@ -16100,9 +16099,9 @@ heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr)
   fprintf (fp, "OVF_VFID = %4d|%4d, NEXT_VPID = %4d|%4d\n", heap_hdr->ovf_vfid.volid, heap_hdr->ovf_vfid.fileid,
 	   heap_hdr->next_vpid.volid, heap_hdr->next_vpid.pageid);
   fprintf (fp, "unfill_space = %4d\n", heap_hdr->unfill_space);
-  fprintf (fp, "Estimated: num_pages = %d, num_recs = %d, " " avg reclength = %d\n", heap_hdr->estimates.num_pages,
+  fprintf (fp, "Estimated: num_pages = %d, num_recs = %d,  avg reclength = %d\n", heap_hdr->estimates.num_pages,
 	   heap_hdr->estimates.num_recs, avg_length);
-  fprintf (fp, "Estimated: num high best = %d, " "num others(not in array) high best = %d\n",
+  fprintf (fp, "Estimated: num high best = %d, num others(not in array) high best = %d\n",
 	   heap_hdr->estimates.num_high_best, heap_hdr->estimates.num_other_high_best);
   fprintf (fp, "Hint of best set of vpids with head = %d\n", heap_hdr->estimates.head);
 
@@ -16279,7 +16278,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 
 	  while (heap_next (thread_p, hfid, NULL, &oid, &peek_recdes, &scan_cache, PEEK) == S_SUCCESS)
 	    {
-	      fprintf (fp, "Object-OID = %2d|%4d|%2d,\n" "  Length on disk = %d,\n", oid.volid, oid.pageid, oid.slotid,
+	      fprintf (fp, "Object-OID = %2d|%4d|%2d,\n  Length on disk = %d,\n", oid.volid, oid.pageid, oid.slotid,
 		       peek_recdes.length);
 
 	      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, NULL, &attr_info) != NO_ERROR)
@@ -16398,9 +16397,9 @@ heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp)
 	       &avg_freespace_nolast, &avg_reclength, &avg_overhead) == NO_ERROR)
 	    {
 	      fprintf (fp,
-		       "HFID:%d|%d|%d, Num_recs = %" PRId64 ", Num_reloc_recs = %" PRId64 ",\n" "    Num_recs_inovf = %"
-		       PRId64 ", Avg_reclength = %d,\n" "    Num_pages = %" PRId64 ", Avg_free_space_per_page = %d,\n"
-		       "    Avg_free_space_per_page_without_lastpage = %d\n" "    Avg_overhead_per_page = %d\n",
+		       "HFID:%d|%d|%d, Num_recs = %" PRId64 ", Num_reloc_recs = %" PRId64 ",\n    Num_recs_inovf = %"
+		       PRId64 ", Avg_reclength = %d,\n    Num_pages = %" PRId64 ", Avg_free_space_per_page = %d,\n"
+		       "    Avg_free_space_per_page_without_lastpage = %d\n    Avg_overhead_per_page = %d\n",
 		       (int) hfid.vfid.volid, hfid.vfid.fileid, hfid.hpgid, num_recs, num_recs_relocated,
 		       num_recs_inovf, avg_reclength, num_pages, avg_freespace, avg_freespace_nolast, avg_overhead);
 	      /* 
@@ -16615,7 +16614,7 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
 	    }
 	  else
 	    {
-	      er_log_debug (ARG_FILE_LINE, "Unable to find relocation/home object" " for relocated_oid=%d|%d|%d\n",
+	      er_log_debug (ARG_FILE_LINE, "Unable to find relocation/home object for relocated_oid=%d|%d|%d\n",
 			    (int) chk->unfound_reloc_oids[i].volid, chk->unfound_reloc_oids[i].pageid,
 			    (int) chk->unfound_reloc_oids[i].slotid);
 #if defined (SA_MODE)
@@ -16666,7 +16665,7 @@ heap_chkreloc_print_notfound (const void *ignore_reloc_oid, void *ent, void *xch
   if (chk->verify == true)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "Unable to find relocated record with" " oid=%d|%d|%d for home object with oid=%d|%d|%d\n",
+		    "Unable to find relocated record with oid=%d|%d|%d for home object with oid=%d|%d|%d\n",
 		    (int) forward->reloc_oid.volid, forward->reloc_oid.pageid, (int) forward->reloc_oid.slotid,
 		    (int) forward->real_oid.volid, forward->real_oid.pageid, (int) forward->real_oid.slotid);
 #if defined (SA_MODE)
@@ -17374,7 +17373,7 @@ heap_chnguess_dump (FILE * fp)
     {
       fprintf (fp, "*** Dump of CLASS_OID to CHNGUESS at clients *** \n");
       fprintf (fp, "Schema_change = %d, clock_hand = %d,\n", heap_Guesschn->schema_change, heap_Guesschn->clock_hand);
-      fprintf (fp, "Nentries = %d, Nactive_entries = %u," " maxnum of clients = %d, nbytes = %d\n",
+      fprintf (fp, "Nentries = %d, Nactive_entries = %u, maxnum of clients = %d, nbytes = %d\n",
 	       heap_Guesschn->num_entries, mht_count (heap_Guesschn->ht), heap_Guesschn->num_clients,
 	       heap_Guesschn->nbytes);
       fprintf (fp, "Hash Table = %p, Entries = %p, Bitindex = %p\n", heap_Guesschn->ht, heap_Guesschn->entries,
@@ -17747,7 +17746,7 @@ heap_rv_dump_chain (FILE * fp, int ignore_length, void *data)
   HEAP_CHAIN *chain;
 
   chain = (HEAP_CHAIN *) data;
-  fprintf (fp, "CLASS_OID = %2d|%4d|%2d, " "PREV_VPID = %2d|%4d, NEXT_VPID = %2d|%4d, MAX_MVCCID=%llu, " "flags=%d.\n",
+  fprintf (fp, "CLASS_OID = %2d|%4d|%2d, PREV_VPID = %2d|%4d, NEXT_VPID = %2d|%4d, MAX_MVCCID=%llu, flags=%d.\n",
 	   chain->class_oid.volid, chain->class_oid.pageid, chain->class_oid.slotid, chain->prev_vpid.volid,
 	   chain->prev_vpid.pageid, chain->next_vpid.volid, chain->next_vpid.pageid,
 	   (unsigned long long int) chain->max_mvccid, (int) chain->flags);
@@ -19185,7 +19184,7 @@ heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid)
   if (heap_get (thread_p, class_oid, &peek_recdes, &scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
     {
       rep_all = or_get_all_representation (&peek_recdes, true, &count);
-      fprintf (fp, "*** Dumping representations of class %s\n" "    Classname = %s, Class-OID = %d|%d|%d, #Repr = %d\n",
+      fprintf (fp, "*** Dumping representations of class %s\n    Classname = %s, Class-OID = %d|%d|%d, #Repr = %d\n",
 	       classname, classname, (int) class_oid->volid, class_oid->pageid, (int) class_oid->slotid, count);
 
       for (i = 0; i < count; i++)
@@ -26495,9 +26494,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
 	  mnt_heap_home_to_big_updates (thread_p);
 	}
-      else
-	if (!spage_is_updatable
-	    (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, context->recdes_p->length))
+      else if (!spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+				    context->recdes_p->length))
 	{
 	  /* fix header page */
 	  error_code = heap_fix_header_page (thread_p, context);
@@ -26547,9 +26545,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	   * same or smaller (INSID removed by VACUUM). 
 	   */
 	  int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
-	  if (spage_get_record
-	      (context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
-	       is_peeking) != S_SUCCESS)
+	  if (spage_get_record (context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
+				is_peeking) != S_SUCCESS)
 	    {
 	      assert (false);
 	      return ER_FAILED;
@@ -26621,7 +26618,7 @@ heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, R
 
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
-		    "heap_update_physical: ** SYSTEM_ERROR ** update" " operation failed even when have already checked"
+		    "heap_update_physical: ** SYSTEM_ERROR ** update operation failed even when have already checked"
 		    " for space");
 #endif
 
@@ -28345,7 +28342,7 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_pag
       assert (MVCC_ID_PRECEDES (chain->max_mvccid, mvccid));
       HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_ONCE);
       vacuum_er_log (VACUUM_ER_LOG_HEAP,
-		     "VACUUM: Changed vacuum status for page %d|%d, " "lsa=%lld|%d from no vacuum to vacuum once.\n",
+		     "VACUUM: Changed vacuum status for page %d|%d, lsa=%lld|%d from no vacuum to vacuum once.\n",
 		     pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (heap_page),
 		     (long long int) pgbuf_get_lsa (heap_page)->pageid, (int) pgbuf_get_lsa (heap_page)->offset);
       break;
@@ -28354,7 +28351,7 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_pag
       /* Change status to unknown number of vacuums. */
       HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_UNKNOWN);
       vacuum_er_log (VACUUM_ER_LOG_HEAP,
-		     "VACUUM: Changed vacuum status for page %d|%d, " "lsa=%lld|%d from vacuum once to unknown.\n",
+		     "VACUUM: Changed vacuum status for page %d|%d, lsa=%lld|%d from vacuum once to unknown.\n",
 		     pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (heap_page),
 		     (long long int) pgbuf_get_lsa (heap_page)->pageid, (int) pgbuf_get_lsa (heap_page)->offset);
       break;
@@ -28366,14 +28363,14 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_pag
 	  /* Now page must be vacuumed once, due to new MVCC op. */
 	  HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_ONCE);
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP,
-			 "VACUUM: Changed vacuum status for page %d|%d, " "lsa=%lld|%d from unknown to vacuum once.\n ",
+			 "VACUUM: Changed vacuum status for page %d|%d, lsa=%lld|%d from unknown to vacuum once.\n ",
 			 pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (heap_page),
 			 (long long int) pgbuf_get_lsa (heap_page)->pageid, (int) pgbuf_get_lsa (heap_page)->offset);
 	}
       else
 	{
 	  /* Status remains the same. Number of vacuums needed still cannot be predicted. */
-	  vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Vacuum status for page %d|%d, %lld|%d " "remains unknown.\n ",
+	  vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Vacuum status for page %d|%d, %lld|%d remains unknown.\n ",
 			 pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (heap_page),
 			 (long long int) pgbuf_get_lsa (heap_page)->pageid, (int) pgbuf_get_lsa (heap_page)->offset);
 	}
@@ -28386,7 +28383,7 @@ heap_page_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, PAGE_PTR heap_pag
   /* Update max_mvccid. */
   if (MVCC_ID_PRECEDES (chain->max_mvccid, mvccid))
     {
-      vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Update max MVCCID for page %d|%d from %llu" "to %llu.\n",
+      vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Update max MVCCID for page %d|%d from %llu to %llu.\n",
 		     pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (heap_page),
 		     (unsigned long long int) chain->max_mvccid, (unsigned long long int) mvccid);
       chain->max_mvccid = mvccid;
@@ -28437,7 +28434,7 @@ heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID m
 	  HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_ONCE);
 
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY,
-			 "VACUUM: Change heap page %d|%d, lsa=%lld|%d, " "status from %s to once.\n",
+			 "VACUUM: Change heap page %d|%d, lsa=%lld|%d, status from %s to once.\n",
 			 pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (heap_page),
 			 (long long int) pgbuf_get_lsa (heap_page)->pageid, (int) pgbuf_get_lsa (heap_page)->offset,
 			 vacuum_status == HEAP_PAGE_VACUUM_NONE ? "none" : "unknown");
@@ -28446,7 +28443,7 @@ heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_page, MVCCID m
 	  HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_UNKNOWN);
 
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_RECOVERY,
-			 "VACUUM: Change heap page %d|%d, lsa=%lld|%d, " "status from once to unknown.\n",
+			 "VACUUM: Change heap page %d|%d, lsa=%lld|%d, status from once to unknown.\n",
 			 pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (heap_page),
 			 (long long int) pgbuf_get_lsa (heap_page)->pageid, (int) pgbuf_get_lsa (heap_page)->offset);
 	  break;
@@ -28498,7 +28495,7 @@ heap_page_set_vacuum_status_none (THREAD_ENTRY * thread_p, PAGE_PTR heap_page)
   /* Update vacuum status. */
   HEAP_PAGE_SET_VACUUM_STATUS (chain, HEAP_PAGE_VACUUM_NONE);
 
-  vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Changed vacuum status for page %d|%d from " "vacuum once to no vacuum.\n",
+  vacuum_er_log (VACUUM_ER_LOG_HEAP, "VACUUM: Changed vacuum status for page %d|%d from vacuum once to no vacuum.\n",
 		 pgbuf_get_volume_id (heap_page), pgbuf_get_page_id (heap_page));
 }
 

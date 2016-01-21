@@ -981,7 +981,7 @@ pgbuf_initialize (void)
   if (pgbuf_Pool.num_buffers < PGBUF_MINIMUM_BUFFERS)
     {
 #if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "pgbuf_initialize: WARNING " "Num_buffers = %d is too small. %d was assumed",
+      er_log_debug (ARG_FILE_LINE, "pgbuf_initialize: WARNING Num_buffers = %d is too small. %d was assumed",
 		    pgbuf_Pool.num_buffers, PGBUF_MINIMUM_BUFFERS);
 #endif /* CUBRID_DEBUG */
       pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
@@ -2143,7 +2143,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
       && !log_is_logged_since_restart (&bufptr->iopage_buffer->iopage.prv.lsa))
     {
       er_log_debug (ARG_FILE_LINE,
-		    "pgbuf_unfix: WARNING: No logging on" " dirty pageid = %d of Volume = %s.\n Recovery problems"
+		    "pgbuf_unfix: WARNING: No logging on dirty pageid = %d of Volume = %s.\n Recovery problems"
 		    " may happen\n", bufptr->vpid.pageid, fileio_get_volume_label (bufptr->vpid.volid, PEEK));
       /* 
        * Do not give warnings on this page any longer. Set the LSA of the
@@ -2157,7 +2157,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   /* Check for over runs */
   if (memcmp (PGBUF_FIND_BUFFER_GUARD (bufptr), pgbuf_Guard, sizeof (pgbuf_Guard)) != 0)
     {
-      er_log_debug (ARG_FILE_LINE, "pgbuf_unfix: SYSTEM ERROR" "buffer of pageid = %d|%d has been OVER RUN",
+      er_log_debug (ARG_FILE_LINE, "pgbuf_unfix: SYSTEM ERROR buffer of pageid = %d|%d has been OVER RUN",
 		    bufptr->vpid.volid, bufptr->vpid.pageid);
       memcpy (PGBUF_FIND_BUFFER_GUARD (bufptr), pgbuf_Guard, sizeof (pgbuf_Guard));
     }
@@ -2166,7 +2166,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   if (bufptr->fcnt <= 0)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "pgbuf_unfix: SYSTEM ERROR Freeing" " too much buffer of pageid = %d of Volume = %s\n",
+		    "pgbuf_unfix: SYSTEM ERROR Freeing too much buffer of pageid = %d of Volume = %s\n",
 		    bufptr->vpid.pageid, fileio_get_volume_label (bufptr->vpid.volid, PEEK));
     }
 #endif /* CUBRID_DEBUG */
@@ -2228,7 +2228,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 	  /* Check for consistency */
 	  if (!VPID_ISNULL (&bufptr->vpid) && pgbuf_is_consistent (bufptr, 0) == PGBUF_CONTENT_BAD)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "pgbuf_unfix: WARNING" " Pageid = %d|%d seems inconsistent",
+	      er_log_debug (ARG_FILE_LINE, "pgbuf_unfix: WARNING Pageid = %d|%d seems inconsistent",
 			    bufptr->vpid.volid, bufptr->vpid.pageid);
 	      /* some problems in the consistency of the given buffer page */
 	      pgbuf_dump ();
@@ -2361,7 +2361,7 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
 	  consistent_str = "UNKNOWN";
 #endif /* CUBRID_DEBUG */
 	  er_log_debug (ARG_FILE_LINE,
-			"pgbuf_unfix_all: WARNING" " %4d %5d %6d %4d %9s %1d %1d %1d %11s" " %6d|%4d %10s %p %p-%p\n",
+			"pgbuf_unfix_all: WARNING %4d %5d %6d %4d %9s %1d %1d %1d %11s %6d|%4d %10s %p %p-%p\n",
 			bufptr->ipool, bufptr->vpid.volid, bufptr->vpid.pageid, bufptr->fcnt, latch_mode_str,
 			(int) bufptr->dirty, (int) bufptr->avoid_victim, (int) bufptr->async_flush_request, zone_str,
 			bufptr->iopage_buffer->iopage.prv.lsa.pageid, bufptr->iopage_buffer->iopage.prv.lsa.offset,
@@ -3297,7 +3297,7 @@ end:
   pgbuf_Pool.is_flushing_victims = false;
 #endif
   er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_victim_candidate: " "flush %d pages from (%d) to (%d) list. "
+		"pgbuf_flush_victim_candidate: flush %d pages from (%d) to (%d) list. "
 		"Found AIN:%d/%d/%d, Found LRU:%d/%d", total_flushed_count, start_lru_idx,
 		pgbuf_Pool.last_flushed_LRU_list_idx, victim_count_ain, check_count_ain, cnt_in_ain, victim_count_lru,
 		check_count_lru);
@@ -3347,7 +3347,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   int rv;
 #endif /* SERVER_MODE */
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint start : flush_upto_LSA:%d, " "prev_chkpt_redo_LSA:%d\n",
+  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint start : flush_upto_LSA:%d, prev_chkpt_redo_LSA:%d\n",
 		flush_upto_lsa->pageid, (prev_chkpt_redo_lsa ? prev_chkpt_redo_lsa->pageid : -1));
 
   if (flushed_page_cnt != NULL)
@@ -3646,9 +3646,9 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 #endif /* SERVER_MODE */
 
   er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_seq_list (%s): start_idx:%d, " "flush_cnt:%d, LSA_flush:%d, "
+		"pgbuf_flush_seq_list (%s): start_idx:%d, flush_cnt:%d, LSA_flush:%d, "
 		"flush_rate:%.2f, control_flushed:%d, this_interval:%d, "
-		"Est_tot_flush:%.2f, control_intervals:%d, %d " "Avail_time:%d\n", (is_ckpt ? "chkpt" : "bg"),
+		"Est_tot_flush:%.2f, control_intervals:%d, %d Avail_time:%d\n", (is_ckpt ? "chkpt" : "bg"),
 		seq_flusher->flush_idx, seq_flusher->flush_cnt, seq_flusher->flush_upto_lsa.pageid,
 		seq_flusher->flush_rate, seq_flusher->control_flushed, flush_per_interval, control_est_flush_total,
 		seq_flusher->control_intervals_cnt, control_total_cnt_intervals, avail_time_msec);
@@ -3852,7 +3852,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 #endif /* SERVER_MODE */
 
   er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_seq_list end (%s): %s %s" "pages : %d written/%d dropped, "
+		"pgbuf_flush_seq_list end (%s): %s %s pages : %d written/%d dropped, "
 		"Remaining_time:%d, Avail_time:%d, Curr:%d/%d,", is_ckpt ? "ckpt" : "",
 		((time_rem_msec <= 0) ? "[Expired] " : ""), (ignore_time_limit ? "[boost]" : ""),
 		seq_flusher->flushed_pages, dropped_pages, time_rem_msec, avail_time_msec, seq_flusher->flush_idx,
@@ -3898,7 +3898,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
     {
       er_log_debug (ARG_FILE_LINE,
 		    "pgbuf_copy_to_area: SYSTEM ERROR.. Trying to copy"
-		    " from beyond page boundary limits. Start_offset = %d," " length = %d\n", start_offset, length);
+		    " from beyond page boundary limits. Start_offset = %d, length = %d\n", start_offset, length);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return NULL;
     }
@@ -6594,7 +6594,7 @@ er_set_return:
 	   * double aborts that could cause an infinite loop.
 	   */
 	  er_log_debug (ARG_FILE_LINE,
-			"pgbuf_timed_sleep: Likely a system error." "Trying to abort a transaction twice.\n");
+			"pgbuf_timed_sleep: Likely a system error. Trying to abort a transaction twice.\n");
 	  /* We can release all the page latches held by current thread. */
 	}
     }
@@ -9303,7 +9303,7 @@ pgbuf_dump (void)
 
   /* Now, dump all buffer pages */
   (void) fprintf (stdout,
-		  " Buf Volid Pageid Fcnt LatchMode D A F        Zone" "      Lsa    consistent Bufaddr   Usrarea\n");
+		  " Buf Volid Pageid Fcnt LatchMode D A F        Zone      Lsa    consistent Bufaddr   Usrarea\n");
 
   for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
     {
@@ -9349,7 +9349,7 @@ pgbuf_dump (void)
 	  consistent_str =
 	    ((consistent == PGBUF_CONTENT_GOOD) ? "GOOD" : (consistent == PGBUF_CONTENT_BAD) ? "BAD" : "LIKELY BAD");
 
-	  fprintf (stdout, "%4d %5d %6d %4d %9s %1d %1d %1d %11s" " %lld|%4d %10s %p %p-%p\n", bufptr->ipool,
+	  fprintf (stdout, "%4d %5d %6d %4d %9s %1d %1d %1d %11s %lld|%4d %10s %p %p-%p\n", bufptr->ipool,
 		   bufptr->vpid.volid, bufptr->vpid.pageid, bufptr->fcnt, latch_mode_str, bufptr->dirty,
 		   bufptr->avoid_victim, bufptr->async_flush_request, zone_str,
 		   (long long) bufptr->iopage_buffer->iopage.prv.lsa.pageid,
@@ -9360,7 +9360,7 @@ pgbuf_dump (void)
       pthread_mutex_unlock (&bufptr->BCB_mutex);
     }
 
-  (void) fprintf (stdout, "Number of fetched buffers = %d\n" "Number of dirty buffers = %d\n", nfetched, ndirty);
+  (void) fprintf (stdout, "Number of fetched buffers = %d\nNumber of dirty buffers = %d\n", nfetched, ndirty);
 }
 
 /*
@@ -9391,7 +9391,7 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
   /* the caller is holding bufptr->BCB_mutex */
   if (memcmp (PGBUF_FIND_BUFFER_GUARD (bufptr), pgbuf_Guard, sizeof (pgbuf_Guard)) != 0)
     {
-      er_log_debug (ARG_FILE_LINE, "SYSTEM ERROR" "buffer of pageid = %d|%d has been OVER RUN", bufptr->vpid.volid,
+      er_log_debug (ARG_FILE_LINE, "SYSTEM ERROR buffer of pageid = %d|%d has been OVER RUN", bufptr->vpid.volid,
 		    bufptr->vpid.pageid);
       return PGBUF_CONTENT_BAD;
     }
@@ -10281,7 +10281,7 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
     }
 
   er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_page_and_neighbors_fb: " "collected_pages:%d, written:%d, back_offset:%d, fwd_offset%d, "
+		"pgbuf_flush_page_and_neighbors_fb: collected_pages:%d, written:%d, back_offset:%d, fwd_offset%d, "
 		"abort_reason:%d", helper->npages, written_pages, helper->back_offset, helper->fwd_offset,
 		abort_reason);
 
@@ -10710,7 +10710,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	    {
 #if defined(PGBUF_ORDERED_DEBUG)
 	      _er_log_debug (__FILE__, __LINE__,
-			     "ORDERED_FIX(%u): page VPID:(%d,%d) " "(GROUP:%d,%d; rank:%d/%d) "
+			     "ORDERED_FIX(%u): page VPID:(%d,%d) (GROUP:%d,%d; rank:%d/%d) "
 			     "invalid, while having holder: %X ", ordered_fix_id, req_vpid->volid, req_vpid->pageid,
 			     req_watcher->group_id.volid, req_watcher->group_id.pageid, req_watcher->curr_rank,
 			     req_watcher->initial_rank, holder);
@@ -10818,8 +10818,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 #if defined(PGBUF_ORDERED_DEBUG)
 	      _er_log_debug (__FILE__, __LINE__,
-			     "ordered_fix(%u): check_watcher: pgptr:%X, " "VPID:(%d,%d), GROUP:%d,%d, rank:%d/%d, "
-			     "holder_fix_count:%d, holder_watch_count:%d, " "holder_fixed_at:%s", ordered_fix_id,
+			     "ordered_fix(%u): check_watcher: pgptr:%X, VPID:(%d,%d), GROUP:%d,%d, rank:%d/%d, "
+			     "holder_fix_count:%d, holder_watch_count:%d, holder_fixed_at:%s", ordered_fix_id,
 			     pg_watcher->pgptr, holder->bufptr->vpid.volid, holder->bufptr->vpid.pageid,
 			     pg_watcher->group_id.volid, pg_watcher->group_id.pageid, pg_watcher->curr_rank,
 			     pg_watcher->initial_rank, holder->fix_count, holder->watch_count, holder->fixed_at);
@@ -10850,8 +10850,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 #if defined(PGBUF_ORDERED_DEBUG)
 	      _er_log_debug (__FILE__, __LINE__,
-			     "ordered_fix(%u):  save_watchers (%d): " "pgptr:%X, VPID:(%d,%d), "
-			     "GROUP:(%d,%d), rank:%d(page_rank:%d), " "holder_fix_count:%d, holder_watch_count:%d",
+			     "ordered_fix(%u):  save_watchers (%d): pgptr:%X, VPID:(%d,%d), "
+			     "GROUP:(%d,%d), rank:%d(page_rank:%d), holder_fix_count:%d, holder_watch_count:%d",
 			     ordered_fix_id, ordered_holders_info[saved_pages_cnt].watch_count, save_page_ptr,
 			     ordered_holders_info[saved_pages_cnt].vpid.volid,
 			     ordered_holders_info[saved_pages_cnt].vpid.pageid,
@@ -10939,8 +10939,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 #if defined(PGBUF_ORDERED_DEBUG)
 	  _er_log_debug (__FILE__, __LINE__,
-			 "ordered_fix(%u):  unfix & clear_watcher(%d/%d): " "pgptr:%X, VPID:(%d,%d), GROUP:%d,%d, "
-			 "rank:%d/%d, latch_mode:%d, " "holder_fix_cnt:%d", ordered_fix_id, j + 1,
+			 "ordered_fix(%u):  unfix & clear_watcher(%d/%d): pgptr:%X, VPID:(%d,%d), GROUP:%d,%d, "
+			 "rank:%d/%d, latch_mode:%d, holder_fix_cnt:%d", ordered_fix_id, j + 1,
 			 ordered_holders_info[i].watch_count, pg_watcher->pgptr, ordered_holders_info[i].vpid.volid,
 			 ordered_holders_info[i].vpid.pageid, pg_watcher->group_id.volid, pg_watcher->group_id.pageid,
 			 pg_watcher->curr_rank, pg_watcher->initial_rank, pg_watcher->latch_mode, holder_fix_cnt_save);
@@ -11011,7 +11011,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 #if defined(PGBUF_ORDERED_DEBUG)
   _er_log_debug (__FILE__, __LINE__,
-		 "ordered_fix(%u) : restore_pages: %d, " "req_VPID(%d,%d), GROUP(%d,%d), rank:%d/%d", ordered_fix_id,
+		 "ordered_fix(%u) : restore_pages: %d, req_VPID(%d,%d), GROUP(%d,%d), rank:%d/%d", ordered_fix_id,
 		 saved_pages_cnt, req_vpid->volid, req_vpid->pageid, req_watcher->group_id.volid,
 		 req_watcher->group_id.pageid, req_watcher->curr_rank, req_watcher->initial_rank);
 #endif
@@ -11094,8 +11094,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 				 VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid)), NULL, NULL);
 #if defined(PGBUF_ORDERED_DEBUG)
 	  _er_log_debug (__FILE__, __LINE__,
-			 "ORDERED_FIX(%u): restore_pages_ERR: " "cannot fix VPID:(%d,%d), "
-			 "GROUP:%d,%d, rank:%d, page_fetch_mode:%d , " "latch_req: %d, valid:%d", ordered_fix_id,
+			 "ORDERED_FIX(%u): restore_pages_ERR: cannot fix VPID:(%d,%d), "
+			 "GROUP:%d,%d, rank:%d, page_fetch_mode:%d , latch_req: %d, valid:%d", ordered_fix_id,
 			 ordered_holders_info[i].vpid.volid, ordered_holders_info[i].vpid.pageid,
 			 ordered_holders_info[i].group_id.volid, ordered_holders_info[i].group_id.pageid,
 			 ordered_holders_info[i].rank, curr_fetch_mode, curr_request_mode, valid);
@@ -11155,8 +11155,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 #if defined(PGBUF_ORDERED_DEBUG)
 	      _er_log_debug (__FILE__, __LINE__,
-			     "ordered_fix(%u) : fixed req page, VPID:(%d,%d), " "GROUP:%d,%d, "
-			     "rank:%d, pgptr:%X, holder_fix_count:%d, " "holder_watch_count:%d, holder_fixed_at:%s, ",
+			     "ordered_fix(%u) : fixed req page, VPID:(%d,%d), GROUP:%d,%d, "
+			     "rank:%d, pgptr:%X, holder_fix_count:%d, holder_watch_count:%d, holder_fixed_at:%s, ",
 			     ordered_fix_id, ordered_holders_info[i].vpid.volid, ordered_holders_info[i].vpid.pageid,
 			     ordered_holders_info[i].group_id.volid, ordered_holders_info[i].group_id.pageid,
 			     ordered_holders_info[i].rank, pgptr, holder->fix_count, holder->watch_count,
@@ -11173,8 +11173,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 
 #if defined(PGBUF_ORDERED_DEBUG)
 	  _er_log_debug (__FILE__, __LINE__,
-			 "ordered_fix(%u) : restore_holder:%X, VPID:(%d,%d), " "pgptr:%X, holder_fix_count:%d, "
-			 "holder_watch_count:%d, holder_fixed_at:%s, " "saved_fix_cnt:%d, saved_watch_cnt:%d",
+			 "ordered_fix(%u) : restore_holder:%X, VPID:(%d,%d), pgptr:%X, holder_fix_count:%d, "
+			 "holder_watch_count:%d, holder_fixed_at:%s, saved_fix_cnt:%d, saved_watch_cnt:%d",
 			 ordered_fix_id, holder, ordered_holders_info[i].vpid.volid,
 			 ordered_holders_info[i].vpid.pageid, pgptr, holder->fix_count, holder->watch_count,
 			 holder->fixed_at, ordered_holders_info[i].fix_cnt, ordered_holders_info[i].watch_count);
@@ -11212,8 +11212,8 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 #endif
 #if defined(PGBUF_ORDERED_DEBUG)
 	      _er_log_debug (__FILE__, __LINE__,
-			     "ordered_fix(%u) : restore_watcher:%X, " "GROUP:%d,%d, rank:%d/%d,"
-			     " pgptr:%X, holder_fix_count:%d, " "holder_watch_count:%d, holder_fixed_at:%s",
+			     "ordered_fix(%u) : restore_watcher:%X, GROUP:%d,%d, rank:%d/%d,"
+			     " pgptr:%X, holder_fix_count:%d, holder_watch_count:%d, holder_fixed_at:%s",
 			     ordered_fix_id, ordered_holders_info[i].watcher[j],
 			     ordered_holders_info[i].watcher[j]->group_id.volid,
 			     ordered_holders_info[i].watcher[j]->group_id.pageid,

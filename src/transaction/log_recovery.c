@@ -181,7 +181,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 					      save_thread_type);
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Log undo (%lld, %d), rcvindex=%d for tdes: " "tdes->trid=%d.",
+		     "VACUUM: Log undo (%lld, %d), rcvindex=%d for tdes: tdes->trid=%d.",
 		     (long long int) rcv_undo_lsa->pageid, (int) rcv_undo_lsa->offset, rcvindex, tdes->trid);
     }
   else
@@ -278,8 +278,8 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	  if (error_code != NO_ERROR)
 	    {
 	      er_log_debug (ARG_FILE_LINE,
-			    "log_rollback_record: SYSTEM ERROR... " "Transaction %d, "
-			    "Log record %lld|%d, rcvindex = %s, " "was not undone due to error (%d)\n",
+			    "log_rollback_record: SYSTEM ERROR... Transaction %d, "
+			    "Log record %lld|%d, rcvindex = %s, was not undone due to error (%d)\n",
 			    tdes->tran_index, (long long int) log_lsa->pageid, log_lsa->offset,
 			    rv_rcvindex_string (rcvindex), error_code);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
@@ -297,16 +297,16 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	  if (error_code != NO_ERROR)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "log_rv_undo_record: Error applying " "compensation at log_lsa=(%lld, %d), "
-				 "rcv = {mvccid=%llu, " "offset = %d, data_length = %d}",
+				 "log_rv_undo_record: Error applying compensation at log_lsa=(%lld, %d), "
+				 "rcv = {mvccid=%llu, offset = %d, data_length = %d}",
 				 (long long int) rcv_undo_lsa->pageid, (int) rcv_undo_lsa->offset,
 				 (unsigned long long int) rcv->mvcc_id, (int) rcv->offset, (int) rcv->length);
 	    }
 	  else if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	    {
 	      _er_log_debug (ARG_FILE_LINE,
-			     "BTREE_UNDO: Successfully executed " "undo/compensate for log entry at "
-			     "lsa=%lld|%d, before lsa=%lld|%d, " "undo_nxlsa=%lld|%d. "
+			     "BTREE_UNDO: Successfully executed undo/compensate for log entry at "
+			     "lsa=%lld|%d, before lsa=%lld|%d, undo_nxlsa=%lld|%d. "
 			     "Transaction=%d, rcvindex=%d.\n", (long long int) rcv_undo_lsa->pageid,
 			     (int) rcv_undo_lsa->offset, (long long int) log_lsa->pageid, (int) log_lsa->offset,
 			     (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset, tdes->tran_index,
@@ -333,8 +333,8 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 		}
 
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				 "log_rv_undo_record: Error applying " "compensation at log_lsa=(%lld, %d), "
-				 "rcv = {mvccid=%llu, vpid=(%d, %d), " "offset = %d, data_length = %d}",
+				 "log_rv_undo_record: Error applying compensation at log_lsa=(%lld, %d), "
+				 "rcv = {mvccid=%llu, vpid=(%d, %d), offset = %d, data_length = %d}",
 				 (long long int) rcv_undo_lsa->pageid, (int) rcv_undo_lsa->offset,
 				 (unsigned long long int) rcv->mvcc_id, (int) vpid.pageid, (int) vpid.volid,
 				 (int) rcv->offset, (int) rcv->length);
@@ -523,8 +523,8 @@ log_rv_redo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	    }
 
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_rvredo_rec: Error applying redo record " "at log_lsa=(%lld, %d), "
-			     "rcv = {mvccid=%llu, vpid=(%d, %d), " "offset = %d, data_length = %d}",
+			     "log_rvredo_rec: Error applying redo record at log_lsa=(%lld, %d), "
+			     "rcv = {mvccid=%llu, vpid=(%d, %d), offset = %d, data_length = %d}",
 			     (long long int) rcv_lsa_ptr->pageid, (int) rcv_lsa_ptr->offset,
 			     (long long int) rcv->mvcc_id, (int) vpid.pageid, (int) vpid.volid, (int) rcv->offset,
 			     (int) rcv->length);
@@ -1009,8 +1009,8 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
       if (!LSA_ISNULL (check_point))
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"log_recovery_analysis: SYSTEM ERROR\n" " Incorrect state = %s\n at log_rec at %lld|%d\n"
-			" for transaction = %d (index %d).\n" " State should have been either of\n" " %s\n %s\n %s\n",
+			"log_recovery_analysis: SYSTEM ERROR\n Incorrect state = %s\n at log_rec at %lld|%d\n"
+			" for transaction = %d (index %d).\n State should have been either of\n %s\n %s\n %s\n",
 			log_state_string (tdes->state), (long long int) log_lsa->pageid, (int) log_lsa->offset,
 			tdes->trid, tdes->tran_index, log_state_string (TRAN_UNACTIVE_WILL_COMMIT),
 			log_state_string (TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE),
@@ -1065,7 +1065,7 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
   if (LOG_IS_VACUUM_WORKER_TRANID (tdes->trid))
     {
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Found postpone record. tdes->trid=%d, " "tdes->state=%d, ref_lsa=(%lld, %d).", tdes->trid,
+		     "VACUUM: Found postpone record. tdes->trid=%d, tdes->state=%d, ref_lsa=(%lld, %d).", tdes->trid,
 		     tdes->state, (long long int) run_posp->ref_lsa.pageid, (int) run_posp->ref_lsa.offset);
     }
 
@@ -1234,7 +1234,7 @@ log_rv_analysis_commit_topope_with_postpone (THREAD_ENTRY * thread_p, int tran_i
   if (LOG_IS_VACUUM_WORKER_TRANID (tdes->trid))
     {
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Found commit_topope_with_postpone. " "tdes->trid=%d. ", tdes->trid);
+		     "VACUUM: Found commit_topope_with_postpone. tdes->trid=%d. ", tdes->trid);
     }
 
   tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
@@ -1413,7 +1413,7 @@ log_rv_analysis_complete_topope (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA *
       if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "POSTPONE_DEBUG: Found system op complete after " "commit with postpone. Tran_ID=%d, "
+			 "POSTPONE_DEBUG: Found system op complete after commit with postpone. Tran_ID=%d, "
 			 "reference_lsa=%lld|%d.\n", tdes->trid, (long long int) tdes->posp_nxlsa.pageid,
 			 (int) tdes->posp_nxlsa.offset);
 	}
@@ -2106,7 +2106,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
     default:
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
-		    "log_recovery_analysis: Unknown record" " type = %d (%s) ... May be a system error\n", log_rtype,
+		    "log_recovery_analysis: Unknown record type = %d (%s) ... May be a system error\n", log_rtype,
 		    log_to_string (log_rtype));
 #endif /* CUBRID_DEBUG */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, log_lsa->pageid);
@@ -2292,7 +2292,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    {
 	      /* It seems to be a system error. Maybe a loop in the log */
 	      er_log_debug (ARG_FILE_LINE,
-			    "log_recovery_analysis: ** System error:" " It seems to be a loop in the log\n."
+			    "log_recovery_analysis: ** System error: It seems to be a loop in the log\n."
 			    " Current log_rec at %lld|%d. Next log_rec at %lld|%d\n", (long long int) log_lsa.pageid,
 			    log_lsa.offset, (long long int) lsa.pageid, lsa.offset);
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
@@ -2322,7 +2322,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  logpb_write_page_to_disk (thread_p, log_page_p, log_lsa.pageid);
 		}
 	      er_log_debug (ARG_FILE_LINE,
-			    "log_recovery_analysis: ** WARNING:" " An end of the log record was not found."
+			    "log_recovery_analysis: ** WARNING: An end of the log record was not found."
 			    " Will Assume = %lld|%d and Next Trid = %d\n", (long long int) log_Gl.hdr.append_lsa.pageid,
 			    log_Gl.hdr.append_lsa.offset, tran_id);
 	      log_Gl.hdr.next_trid = tran_id;
@@ -2620,8 +2620,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LSA_SET_NULL (&chkpt_block_start_lsa);
 
   vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
-		 "VACUUM: Status when redo recovery is starting: " "log_Gl.hdr.mvcc_op_log_lsa = %lld|%d, "
-		 "log_Gl.hdr.last_block_oldest_mvccid = %llu, " "log_Gl.hdr.last_block_newest_mvccid = %llu, "
+		 "VACUUM: Status when redo recovery is starting: log_Gl.hdr.mvcc_op_log_lsa = %lld|%d, "
+		 "log_Gl.hdr.last_block_oldest_mvccid = %llu, log_Gl.hdr.last_block_newest_mvccid = %llu, "
 		 "vacuum_last_blockid = %lld, checkpoint_blockid = %lld.\n",
 		 (long long int) log_Gl.hdr.mvcc_op_log_lsa.pageid, (int) log_Gl.hdr.mvcc_op_log_lsa.offset,
 		 (unsigned long long int) log_Gl.hdr.last_block_oldest_mvccid,
@@ -2711,7 +2711,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 
 	      er_log_debug (ARG_FILE_LINE,
-			    "log_recovery_redo: ** System error:" " It seems to be a loop in the log\n."
+			    "log_recovery_redo: ** System error: It seems to be a loop in the log\n."
 			    " Current log_rec at %lld|%d. Next log_rec at %lld|%d\n", (long long int) log_lsa.pageid,
 			    log_lsa.offset, (long long int) lsa.pageid, lsa.offset);
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_redo");
@@ -3314,7 +3314,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS) && rcvindex == RVBT_RECORD_MODIFY_COMPENSATE)
 		{
 		  _er_log_debug (ARG_FILE_LINE,
-				 "BTREE_REDO: Successfully applied " "compensate lsa=%lld|%d, " "undo_nxlsa=%lld|%d.\n",
+				 "BTREE_REDO: Successfully applied compensate lsa=%lld|%d, undo_nxlsa=%lld|%d.\n",
 				 (long long int) rcv_lsa.pageid, (int) rcv_lsa.offset,
 				 (long long int) compensate->undo_nxlsa.pageid, (int) compensate->undo_nxlsa.offset);
 		}
@@ -3442,9 +3442,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		      if (tdes->coord == NULL || tdes->coord->ack_received == NULL)
 			{
 			  er_log_debug (ARG_FILE_LINE,
-					"log_recovery_redo: SYSTEM ERROR" " There is likely an error in the recovery"
+					"log_recovery_redo: SYSTEM ERROR There is likely an error in the recovery"
 					" analysis phase since coordinator information"
-					" has not been allocated for transaction = %d" " with state = %s", tdes->trid,
+					" has not been allocated for transaction = %d with state = %s", tdes->trid,
 					log_state_string (tdes->state));
 			  break;
 			}
@@ -3551,7 +3551,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    default:
 #if defined(CUBRID_DEBUG)
 	      er_log_debug (ARG_FILE_LINE,
-			    "log_recovery_redo: Unknown record" " type = %d (%s)... May be a system error", log_rtype,
+			    "log_recovery_redo: Unknown record type = %d (%s)... May be a system error", log_rtype,
 			    log_to_string (log_rtype));
 #endif /* CUBRID_DEBUG */
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, log_lsa.pageid);
@@ -3586,8 +3586,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
       log_Gl.hdr.last_block_newest_mvccid = last_block_newest_mvccid;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: Finished redo recovery. Global header: " "log_Gl.hdr.mvcc_op_log_lsa = %lld|%d, "
-		     "log_Gl.hdr.last_block_oldest_mvccid = %llu, " "log_Gl.hdr.last_block_newest_mvccid = %llu.\n",
+		     "VACUUM: Finished redo recovery. Global header: log_Gl.hdr.mvcc_op_log_lsa = %lld|%d, "
+		     "log_Gl.hdr.last_block_oldest_mvccid = %llu, log_Gl.hdr.last_block_newest_mvccid = %llu.\n",
 		     (long long int) log_Gl.hdr.mvcc_op_log_lsa.pageid, (int) log_Gl.hdr.mvcc_op_log_lsa.offset,
 		     (unsigned long long int) log_Gl.hdr.last_block_oldest_mvccid,
 		     (unsigned long long int) log_Gl.hdr.last_block_newest_mvccid);
@@ -3787,7 +3787,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
       tdes = worker->tdes;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "VACUUM: Finish postpone for tdes: " "tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
+		     "VACUUM: Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
 		     tdes->trid, tdes->state, tdes->topops.last);
 
       log_recovery_finish_postpone (thread_p, tdes);
@@ -3924,7 +3924,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	      if (tran_index == NULL_TRAN_INDEX)
 		{
 #if defined(CUBRID_DEBUG)
-		  er_log_debug (ARG_FILE_LINE, "log_recovery_undo: SYSTEM ERROR for" " log located at %lld|%d\n",
+		  er_log_debug (ARG_FILE_LINE, "log_recovery_undo: SYSTEM ERROR for log located at %lld|%d\n",
 				(long long int) log_lsa.pageid, log_lsa.offset);
 #endif /* CUBRID_DEBUG */
 		  logtb_free_tran_index_with_undo_lsa (thread_p, lsa_ptr);
@@ -3936,7 +3936,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    {
 		      /* This looks like a system error in the analysis phase */
 #if defined(CUBRID_DEBUG)
-		      er_log_debug (ARG_FILE_LINE, "log_recovery_undo: SYSTEM ERROR for" " log located at %lld|%d\n",
+		      er_log_debug (ARG_FILE_LINE, "log_recovery_undo: SYSTEM ERROR for log located at %lld|%d\n",
 				    (long long int) log_lsa.pageid, log_lsa.offset);
 #endif /* CUBRID_DEBUG */
 		      logtb_free_tran_index_with_undo_lsa (thread_p, lsa_ptr);
@@ -4134,7 +4134,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  /* This looks like a system error in the analysis phase */
 #if defined(CUBRID_DEBUG)
 		  er_log_debug (ARG_FILE_LINE,
-				"log_recovery_undo: SYSTEM ERROR for" " log located at %lld|%d,"
+				"log_recovery_undo: SYSTEM ERROR for log located at %lld|%d,"
 				" Bad log_rectype = %d\n (%s).\n", (long long int) log_lsa.pageid, log_lsa.offset,
 				log_rtype, log_to_string (log_rtype));
 #endif /* CUBRID_DEBUG */
@@ -4160,7 +4160,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		default:
 #if defined(CUBRID_DEBUG)
 		  er_log_debug (ARG_FILE_LINE,
-				"log_recovery_undo: Unknown record" " type = %d (%s)\n ... May be a system error",
+				"log_recovery_undo: Unknown record type = %d (%s)\n ... May be a system error",
 				log_rtype, log_to_string (log_rtype));
 #endif /* CUBRID_DEBUG */
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, log_lsa.pageid);
@@ -4213,7 +4213,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		      if (LOG_IS_VACUUM_WORKER_TRANID (tdes->trid))
 			{
 			  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-					 "VACUUM: Update undo_nxlsa=" "(%lld, %d) for tdes->trid=%d.",
+					 "VACUUM: Update undo_nxlsa=(%lld, %d) for tdes->trid=%d.",
 					 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
 					 tdes->trid);
 			}
@@ -5248,7 +5248,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 			      if (prm_get_bool_value (PRM_ID_POSTPONE_DEBUG))
 				{
 				  _er_log_debug (ARG_FILE_LINE,
-						 "POSTPONE_DEBUG: Found " "postpone using commit top "
+						 "POSTPONE_DEBUG: Found postpone using commit top "
 						 "op. Postpone_lsa=%lld|%d\n",
 						 (long long int) start_postpone_lsa->pageid,
 						 (int) start_postpone_lsa->offset);
@@ -5446,7 +5446,7 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p, LOG_LSA * mvcc_op_lsa,
     {
       /* First MVCC op log entry to recover. */
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM: Found first mvcc log entry: lsa = %lld|%d, " "mvccid = %llu.\n",
+		     "VACUUM: Found first mvcc log entry: lsa = %lld|%d, mvccid = %llu.\n",
 		     (long long int) mvcc_op_lsa->pageid, (int) mvcc_op_lsa->offset, (unsigned long long int) mvccid);
 
       /* Initialize last_mvcc_op_lsa, last_block_oldest_mvccid and last_block_newest_mvccid. */
@@ -5467,7 +5467,7 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p, LOG_LSA * mvcc_op_lsa,
 	{
 	  /* Already recovered. Second condition is not met. */
 	  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
-			 "VACUUM: Checkpoint block is already in vacuum " "data.");
+			 "VACUUM: Checkpoint block is already in vacuum data.");
 	  return;
 	}
 
@@ -5487,7 +5487,7 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p, LOG_LSA * mvcc_op_lsa,
 	      if (log_hdr_blockid > recover_after_blockid)
 		{
 		  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
-				 "VACUUM: Generate a new block based on " "global header information. Checkpoint block"
+				 "VACUUM: Generate a new block based on global header information. Checkpoint block"
 				 " doesn't need recovering.\n");
 		  vacuum_produce_log_block_data (thread_p, &log_Gl.hdr.mvcc_op_log_lsa,
 						 log_Gl.hdr.last_block_oldest_mvccid,
@@ -5496,7 +5496,7 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p, LOG_LSA * mvcc_op_lsa,
 	      else
 		{
 		  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
-				 "VACUUM: Checkpoint block doesn't need " "recovering.\n");
+				 "VACUUM: Checkpoint block doesn't need recovering.\n");
 		}
 	    }
 	  else
@@ -5527,7 +5527,7 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p, LOG_LSA * mvcc_op_lsa,
 		}
 	      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
 			     "VACUUM: Aggregate info from global header with "
-			     "current MVCC op. Updated block data is: " "start_lsa = %lld|%d, oldest_mvccid = %llu, "
+			     "current MVCC op. Updated block data is: start_lsa = %lld|%d, oldest_mvccid = %llu, "
 			     "newest_mvccid = %llu, blockid = %lld.\n", (long long int) mvcc_op_lsa->pageid,
 			     (int) mvcc_op_lsa->offset, (unsigned long long int) (*last_block_oldest_mvccid),
 			     (unsigned long long int) (*last_block_newest_mvccid), (long long int) mvcc_op_blockid);
@@ -5588,8 +5588,8 @@ log_recovery_vacuum_data_buffer (THREAD_ENTRY * thread_p, LOG_LSA * mvcc_op_lsa,
 	  *chkpt_block_newest_mvccid = *last_block_newest_mvccid;
 
 	  vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_VACUUM_DATA,
-			 "VACUUM: Checkpoint block not produced yet. Must " "recover missing part. So far we have: "
-			 "start_lsa = %lld|%d, oldest_mvccid = %llu, " "newest_mvccid = %llu, blockid = %d",
+			 "VACUUM: Checkpoint block not produced yet. Must recover missing part. So far we have: "
+			 "start_lsa = %lld|%d, oldest_mvccid = %llu, newest_mvccid = %llu, blockid = %d",
 			 (long long int) chkpt_block_start_lsa->pageid, (int) chkpt_block_start_lsa->offset,
 			 (unsigned long long int) (*chkpt_block_oldest_mvccid),
 			 (unsigned long long int) (*chkpt_block_newest_mvccid), (long long int) chkpt_blockid);

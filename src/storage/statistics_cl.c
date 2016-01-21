@@ -508,7 +508,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
 		  prefix_p = ",";
 		}
 	      fprintf (file_p, ") ,");
-	      fprintf (file_p, " Total pages: %d , Leaf pages: %d ," " Height: %d\n", bt_stats_p->pages,
+	      fprintf (file_p, " Total pages: %d , Leaf pages: %d , Height: %d\n", bt_stats_p->pages,
 		       bt_stats_p->leafs, bt_stats_p->height);
 	    }
 	}
