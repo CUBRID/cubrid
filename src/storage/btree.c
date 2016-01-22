@@ -33349,6 +33349,7 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
   assert (search_key != NULL && search_key->result == BTREE_KEY_FOUND && search_key->slotid > 0);
   assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
 	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
+	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
 	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
 	  || delete_helper->purpose == BTREE_OP_UNDO_SAME_KEY_DIFF_OID
 	  || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID
@@ -33496,7 +33497,8 @@ error:
   if (delete_helper->is_system_op_started && !save_system_op_started)
     {
       if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD)
+	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
+	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
 	{
 	  assert_release (false);
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
