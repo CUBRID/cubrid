@@ -11986,7 +11986,7 @@ pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   VPID_COPY (&vpid_to_flush, (VPID *) rcv->data);
   page_to_flush =
-    pgbuf_fix_without_validation (thread_p, &vpid_to_flush, OLD_PAGE, PGBUF_LATCH_FLUSH, PGBUF_UNCONDITIONAL_LATCH);
+    pgbuf_fix_without_validation (thread_p, &vpid_to_flush, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_to_flush == NULL)
     {
       /* Page no longer exist. */
