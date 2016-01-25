@@ -633,9 +633,8 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p, VPID * near_pag
 {
   PAGE_PTR page_p;
 
-  if (file_alloc_pages
-      (thread_p, &catalog_Id.vfid, page_id_p, 1, near_page_p, catalog_initialize_new_page,
-       (void *) is_overflow_page) == NULL)
+  if (file_alloc_pages (thread_p, &catalog_Id.vfid, page_id_p, 1, near_page_p, catalog_initialize_new_page,
+			(void *) is_overflow_page) == NULL)
     {
       return NULL;
     }
@@ -809,10 +808,8 @@ catalog_free_representation (DISK_REPR * repr_p)
       attr_cnt = repr_p->n_fixed + repr_p->n_variable;
       for (k = 0; k < attr_cnt; k++)
 	{
-	  attr_p =
-	    (k <
-	     repr_p->n_fixed) ? (DISK_ATTR *) repr_p->fixed + k : (DISK_ATTR *) repr_p->variable + (k -
-												    repr_p->n_fixed);
+	  attr_p = (k < repr_p->n_fixed) ? (DISK_ATTR *) repr_p->fixed + k
+	    : (DISK_ATTR *) repr_p->variable + (k - repr_p->n_fixed);
 
 	  if (attr_p->value != NULL)
 	    {
@@ -2571,8 +2568,8 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p, DKNPAGES expected_
   int new_space;
   bool is_overflow_page = false;
 
-  if (xehash_create
-      (thread_p, &catalog_id_p->xhid, DB_TYPE_OBJECT, expected_index_entries, oid_Root_class_oid, -1, false) == NULL)
+  if (xehash_create (thread_p, &catalog_id_p->xhid, DB_TYPE_OBJECT, expected_index_entries, oid_Root_class_oid, -1,
+		     false) == NULL)
     {
       return NULL;
     }
@@ -2583,8 +2580,8 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p, DKNPAGES expected_
       return NULL;
     }
 
-  if (catalog_initialize_new_page
-      (thread_p, &catalog_id_p->vfid, FILE_CATALOG, &first_page_vpid, 1, (void *) is_overflow_page) == false)
+  if (catalog_initialize_new_page (thread_p, &catalog_id_p->vfid, FILE_CATALOG, &first_page_vpid, 1,
+				   (void *) is_overflow_page) == false)
     {
       (void) xehash_destroy (thread_p, &catalog_id_p->xhid);
       (void) file_destroy (thread_p, &catalog_id_p->vfid);
@@ -2871,8 +2868,8 @@ catalog_add_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
 	  return error_code;
 	}
 
-      if (catalog_store_attribute_value
-	  (thread_p, disk_attr_p->value, disk_attr_p->val_length, &catalog_record, &remembered_slot_id) != NO_ERROR)
+      if (catalog_store_attribute_value (thread_p, disk_attr_p->value, disk_attr_p->val_length, &catalog_record,
+					 &remembered_slot_id) != NO_ERROR)
 	{
 	  db_private_free_and_init (thread_p, data);
 
@@ -4213,8 +4210,8 @@ catalog_get_representation_directory (THREAD_ENTRY * thread_p, OID * class_id_p,
 
   *repr_count_p = 0;
 
-  page_p = catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_READ, PEEK, &rep_dir, &item_count, true	/* lookup_hash 
-																		 */ );
+  page_p = catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_READ, PEEK,
+							   &rep_dir, &item_count, true /* lookup_hash */ );
   if (page_p == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -4274,8 +4271,8 @@ catalog_get_last_representation_id (THREAD_ENTRY * thread_p, OID * class_oid_p, 
 
   *repr_id_p = NULL_REPRID;
 
-  page_p = catalog_get_representation_record_after_search (thread_p, class_oid_p, &record, PGBUF_LATCH_READ, PEEK, &rep_dir, &item_count, true	/* lookup_hash 
-																		 */ );
+  page_p = catalog_get_representation_record_after_search (thread_p, class_oid_p, &record, PGBUF_LATCH_READ, PEEK,
+							   &rep_dir, &item_count, true /* lookup_hash */ );
   if (page_p == NULL)
     {
       assert (er_errid () != NO_ERROR);

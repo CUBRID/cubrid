@@ -2387,8 +2387,8 @@ logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p)
       tdes = log_Gl.trantable.all_tdes[i];
       if (tdes != NULL && tdes->trid != NULL_TRANID)
 	{
-	  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE
-	      (tdes->client.host_name, boot_Host_name, tdes->client.client_type))
+	  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.host_name, boot_Host_name,
+						       tdes->client.client_type))
 	    {
 	      count++;
 	    }
@@ -2641,11 +2641,11 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	  continue;
 	}
 
-      size += 3 * OR_INT_SIZE	/* tran index + tran state + process id */
-	+ or_packed_string_length (tdes->client.db_user, NULL) + or_packed_string_length (tdes->client.program_name,
-											  NULL) +
-	or_packed_string_length (tdes->client.login_name, NULL) + or_packed_string_length (tdes->client.host_name,
-											   NULL);
+      size += (3 * OR_INT_SIZE	/* tran index + tran state + process id */
+	       + or_packed_string_length (tdes->client.db_user, NULL)
+	       + or_packed_string_length (tdes->client.program_name, NULL)
+	       + or_packed_string_length (tdes->client.login_name, NULL)
+	       + or_packed_string_length (tdes->client.host_name, NULL));
 
 #if defined(SERVER_MODE)
       if (include_query_exec_info)
@@ -5093,10 +5093,11 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	  if (serial_unique_stats != NULL)
 	    {
 	      /* Reflect serial unique statistics. */
-	      if (logtb_update_global_unique_stats_by_delta
-		  (thread_p, &serial_index_btid, serial_unique_stats->tran_stats.num_oids,
-		   serial_unique_stats->tran_stats.num_nulls, serial_unique_stats->tran_stats.num_keys,
-		   true) != NO_ERROR)
+	      if (logtb_update_global_unique_stats_by_delta (thread_p, &serial_index_btid,
+							     serial_unique_stats->tran_stats.num_oids,
+							     serial_unique_stats->tran_stats.num_nulls,
+							     serial_unique_stats->tran_stats.num_keys,
+							     true) != NO_ERROR)
 		{
 		  /* No errors are permitted here. */
 		  assert (false);

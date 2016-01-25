@@ -2620,12 +2620,12 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, OID * original_oid,
   assert (skip_fetch_version_type_check || (OID_EQ (class_oid, oid_Root_class_oid))
 	  || ((lock != NULL_LOCK)
 	      || (lock_get_object_lock (oid, class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) != NULL_LOCK)
-	      ||
-	      ((class_lock =
-		lock_get_object_lock (class_oid, oid_Root_class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
-	       || class_lock >= SIX_LOCK)
-	      || ((class_lock = lock_get_object_lock (oid_Root_class_oid, NULL, LOG_FIND_THREAD_TRAN_INDEX (thread_p)))
-		  == S_LOCK || class_lock >= SIX_LOCK)));
+	      || ((class_lock = lock_get_object_lock (class_oid, oid_Root_class_oid,
+						      LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
+		  || class_lock >= SIX_LOCK)
+	      || ((class_lock = lock_get_object_lock (oid_Root_class_oid, NULL,
+						      LOG_FIND_THREAD_TRAN_INDEX (thread_p))) == S_LOCK
+		  || class_lock >= SIX_LOCK)));
 
   if (!OID_IS_ROOTOID (class_oid) && lock > NULL_LOCK && !object_locked)
     {
@@ -4182,9 +4182,8 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
 	  original_oid = NULL;
 	}
 
-      if (xlocator_fetch
-	  (thread_p, p_oid, NULL_CHN, original_oid, NULL_LOCK, fetch_version_type, initial_fetch_version_type,
-	   class_oid, class_chn, prefetching, fetch_area) != NO_ERROR)
+      if (xlocator_fetch (thread_p, p_oid, NULL_CHN, original_oid, NULL_LOCK, fetch_version_type,
+			  initial_fetch_version_type, class_oid, class_chn, prefetching, fetch_area) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  if (lock != NULL_LOCK)
@@ -5752,9 +5751,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      assert (false);	/* should avoid */
 
 		      rep_dir_offset =
-			(char *) recdes->data + OR_FIXED_ATTRIBUTES_OFFSET (recdes->data,
-									    ORC_CLASS_VAR_ATT_COUNT) +
-			ORC_REP_DIR_OFFSET;
+			(char *) recdes->data + OR_FIXED_ATTRIBUTES_OFFSET (recdes->data, ORC_CLASS_VAR_ATT_COUNT)
+			+ ORC_REP_DIR_OFFSET;
 
 		      OR_PUT_OID (rep_dir_offset, &old_rep_dir);
 		    }
@@ -5837,8 +5835,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      /* save oid of the representation directory */
 	      rep_dir_offset =
-		(char *) recdes->data + OR_FIXED_ATTRIBUTES_OFFSET (recdes->data,
-								    ORC_CLASS_VAR_ATT_COUNT) + ORC_REP_DIR_OFFSET;
+		(char *) recdes->data + OR_FIXED_ATTRIBUTES_OFFSET (recdes->data, ORC_CLASS_VAR_ATT_COUNT)
+		+ ORC_REP_DIR_OFFSET;
 
 	      OR_PUT_OID (rep_dir_offset, &rep_dir);
 
@@ -6509,8 +6507,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	heap_get_with_class_oid (thread_p, &class_oid, oid, &copy_recdes, scan_cache, S_SELECT, COPY, NULL,
 				 LOG_WARNING_IF_DELETED);
       assert ((lock_get_object_lock (oid, &class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= X_LOCK)
-	      ||
-	      (lock_get_object_lock (&class_oid, oid_Root_class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
+	      || (lock_get_object_lock (&class_oid, oid_Root_class_oid,
+					LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
     }
 
   if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
@@ -7859,9 +7857,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	{
 	  scan = heap_get (thread_p, oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
 	  assert ((lock_get_object_lock (oid, &class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= X_LOCK)
-		  ||
-		  (lock_get_object_lock
-		   (&class_oid, oid_Root_class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
+		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid,
+					    LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
 	}
       else
 	{
@@ -7883,9 +7880,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  else
 	    {
 	      assert ((lock_get_object_lock (oid, &class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= X_LOCK)
-		      ||
-		      (lock_get_object_lock
-		       (&class_oid, oid_Root_class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
+		      || (lock_get_object_lock (&class_oid, oid_Root_class_oid,
+						LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
 	      scan = heap_get (thread_p, oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
 	    }
 	  if (scan == S_SUCCESS && !OID_ISNULL (&updated_oid))
@@ -9985,9 +9981,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 
       if (index->filter_predicate)
 	{
-	  if (locator_eval_filter_predicate
-	      (thread_p, &index->btid, index->filter_predicate, class_oid, &p_inst_oid, 1, &p_peek,
-	       &ev_res) != NO_ERROR)
+	  if (locator_eval_filter_predicate (thread_p, &index->btid, index->filter_predicate, class_oid, &p_inst_oid, 1,
+					     &p_peek, &ev_res) != NO_ERROR)
 	    {
 	      isallvalid = DISK_ERROR;
 	    }
@@ -10004,9 +9999,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 
       /* Make sure that the index entry exist */
       if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, NULL, &attr_info) != NO_ERROR)
-	  || (key =
-	      heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, &btid_info, &dbvalue, aligned_buf, NULL,
-				      NULL)) == NULL)
+	  || (key = heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, &btid_info, &dbvalue, aligned_buf,
+					    NULL, NULL)) == NULL)
 	{
 	  if (isallvalid != DISK_INVALID)
 	    {
@@ -10347,8 +10341,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
   scan_init_index_scan (&isid, NULL, mvcc_snapshot);
 
   /* get all the heap files associated with this unique btree */
-  if (or_get_unique_hierarchy
-      (thread_p, classrec, attr_ids[0], btid, &class_oids, &hfids, &num_classes, &partition_local_index) != NO_ERROR
+  if (or_get_unique_hierarchy (thread_p, classrec, attr_ids[0], btid, &class_oids, &hfids, &num_classes,
+			       &partition_local_index) != NO_ERROR
       || class_oids == NULL || hfids == NULL || num_classes < 1)
     {
       if (class_oids != NULL)
@@ -11708,9 +11702,8 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 			  tmp_lock = IS_LOCK;
 			}
 
-		      if (lock_object
-			  (thread_p, &(*hlock)->classes[n].oid, oid_Root_class_oid, tmp_lock,
-			   LK_UNCOND_LOCK) != LK_GRANTED)
+		      if (lock_object (thread_p, &(*hlock)->classes[n].oid, oid_Root_class_oid, tmp_lock,
+				       LK_UNCOND_LOCK) != LK_GRANTED)
 			{
 			  /* 
 			   * Unable to acquired the lock; exit retry-loop
@@ -11900,9 +11893,8 @@ xlocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint
 		    {
 		      continue;
 		    }
-		  if (lock_object
-		      (thread_p, &lockhint->classes[i].oid, oid_Root_class_oid, lockhint->classes[i].lock,
-		       LK_UNCOND_LOCK) != LK_GRANTED)
+		  if (lock_object (thread_p, &lockhint->classes[i].oid, oid_Root_class_oid, lockhint->classes[i].lock,
+				   LK_UNCOND_LOCK) != LK_GRANTED)
 		    {
 		      OID_SET_NULL (&lockhint->classes[i].oid);
 		    }

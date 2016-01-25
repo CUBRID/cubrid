@@ -2576,7 +2576,7 @@ hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg)
 
       if (proc->type != HB_PTYPE_SERVER)
 	{
-	  if (proc->pid > 0 && (kill (proc->pid, 0) == 0 || error != ESRCH))
+	  if (proc->pid > 0 && (kill (proc->pid, 0) == 0 || errno != ESRCH))
 	    {
 	      kill (proc->pid, SIGKILL);
 

@@ -1249,8 +1249,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
-      if (fileio_map_mounted
-	  (thread_p, (bool (*)(THREAD_ENTRY *, VOLID, void *)) log_verify_dbcreation, &log_Gl.hdr.db_creation) != true)
+      if (fileio_map_mounted (thread_p, (bool (*)(THREAD_ENTRY *, VOLID, void *)) log_verify_dbcreation,
+			      &log_Gl.hdr.db_creation) != true)
 	{
 	  /* The log does not belong to the given database */
 	  logtb_undefine_trantable (thread_p);
@@ -9082,9 +9082,9 @@ log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char *db_fullna
   int db_charset = INTL_CODESET_NONE;
 
   LOG_CS_ENTER (thread_p);
-  if (logpb_find_header_parameters
-      (thread_p, db_fullname, logpath, prefix_logname, &dummy_db_iopagesize, &dummy_ignore_log_page_size,
-       &dummy_ignore_dbcreation, &dummy_ignore_dbcomp, &db_charset) == -1)
+  if (logpb_find_header_parameters (thread_p, db_fullname, logpath, prefix_logname, &dummy_db_iopagesize,
+				    &dummy_ignore_log_page_size, &dummy_ignore_dbcreation, &dummy_ignore_dbcomp,
+				    &db_charset) == -1)
     {
       /* 
        * For case where active log could not be found, user still needs

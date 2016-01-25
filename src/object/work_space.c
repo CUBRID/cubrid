@@ -51,6 +51,7 @@
 #include "transaction_cl.h"
 #include "object_template.h"
 #include "server_interface.h"
+#include "view_transform.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

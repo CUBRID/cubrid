@@ -960,10 +960,9 @@ largeobjmgr_dir_pgsplit (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds, int
        * this page.
        */
       if (ds->firstdir.hdr->pg_act_idxcnt < LARGEOBJMGR_MAX_DIRMAP_ENTRY_CNT
-	  &&
-	  ((ds->firstdir.idx < (ds->firstdir.hdr->pg_act_idxcnt - 1)
-	    && VPID_EQ (&((ds->firstdir.idxptr + 1)->vpid), &next_vpid))
-	   || (ds->firstdir.idx == (ds->firstdir.hdr->pg_act_idxcnt - 1) && VPID_ISNULL (&next_vpid))))
+	  && ((ds->firstdir.idx < (ds->firstdir.hdr->pg_act_idxcnt - 1)
+	       && VPID_EQ (&((ds->firstdir.idxptr + 1)->vpid), &next_vpid))
+	      || (ds->firstdir.idx == (ds->firstdir.hdr->pg_act_idxcnt - 1) && VPID_ISNULL (&next_vpid))))
 	{
 
 	  /* find entry count to be moved */

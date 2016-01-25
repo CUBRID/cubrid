@@ -2079,6 +2079,7 @@ db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey)
       value->data.midxkey.size = 0;
       value->data.midxkey.buf = NULL;
       value->data.midxkey.min_max_val.position = -1;
+      value->data.midxkey.min_max_val.type = MIN_COLUMN;
     }
   else
     {

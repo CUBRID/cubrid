@@ -118,9 +118,8 @@ static int rv;
 						 * page. This page is backed up in all archive logs */
 #define LOGPB_NEXT_ARCHIVE_PAGE_ID    (log_Gl.hdr.nxarv_pageid)
 #define LOGPB_FIRST_ACTIVE_PAGE_ID    (log_Gl.hdr.fpageid)
-#define LOGPB_LAST_ACTIVE_PAGE_ID     (log_Gl.hdr.nxarv_pageid +                 \
-                                    log_Gl.hdr.npages - 1)
-#define LOGPB_ACTIVE_NPAGES          (log_Gl.hdr.npages)
+#define LOGPB_LAST_ACTIVE_PAGE_ID     (log_Gl.hdr.nxarv_pageid + log_Gl.hdr.npages - 1)
+#define LOGPB_ACTIVE_NPAGES           (log_Gl.hdr.npages)
 
 
 /*
@@ -146,8 +145,7 @@ static int rv;
 
 #define LOG_PRIOR_LSA_APPEND_ALIGN() \
   do { \
-    log_Gl.prior_info.prior_lsa.offset = DB_ALIGN (log_Gl.prior_info.prior_lsa.offset, \
-						   DOUBLE_ALIGNMENT); \
+    log_Gl.prior_info.prior_lsa.offset = DB_ALIGN (log_Gl.prior_info.prior_lsa.offset, DOUBLE_ALIGNMENT); \
     if (log_Gl.prior_info.prior_lsa.offset >= (int) LOGAREA_SIZE) \
       { \
         log_Gl.prior_info.prior_lsa.pageid++; \
@@ -203,10 +201,8 @@ static int rv;
 
 #define LOG_PREV_APPEND_PTR() \
   ((log_Gl.append.delayed_free_log_pgptr != NULL) \
-   ? ((char *) log_Gl.append.delayed_free_log_pgptr->area \
-      + log_Gl.append.prev_lsa.offset) \
-   : ((char *) log_Gl.append.log_pgptr->area \
-      + log_Gl.append.prev_lsa.offset))
+   ? ((char *) log_Gl.append.delayed_free_log_pgptr->area + log_Gl.append.prev_lsa.offset) \
+   : ((char *) log_Gl.append.log_pgptr->area + log_Gl.append.prev_lsa.offset))
 
 /* LOG BUFFER STRUCTURE */
 
@@ -3382,10 +3378,8 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       /* Fall through */
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
-      undoredo_p =
-	((node->log_header.type == LOG_UNDOREDO_DATA
-	  || node->log_header.type ==
-	  LOG_DIFF_UNDOREDO_DATA) ? (struct log_undoredo *) node->data_header : &mvcc_undoredo_p->undoredo);
+      undoredo_p = ((node->log_header.type == LOG_UNDOREDO_DATA || node->log_header.type == LOG_DIFF_UNDOREDO_DATA)
+		    ? (struct log_undoredo *) node->data_header : &mvcc_undoredo_p->undoredo);
 
       data_header_ulength_p = &undoredo_p->ulength;
       data_header_rlength_p = &undoredo_p->rlength;
@@ -5723,10 +5717,9 @@ logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
     {
       while (fgets (line, LOG_MAX_LOGINFO_LINE, fp) != NULL)
 	{
-	  if (strstr
-	      (line + TIME_SIZE_OF_DUMP_LOG_INFO,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG,
-			       MSGCAT_LOG_LOGINFO_KEYWORD_ARCHIVE)) == line + TIME_SIZE_OF_DUMP_LOG_INFO)
+	  if (strstr (line + TIME_SIZE_OF_DUMP_LOG_INFO,
+		      msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_LOGINFO_KEYWORD_ARCHIVE))
+	      == line + TIME_SIZE_OF_DUMP_LOG_INFO)
 	    {
 	      /* A candidate for a guess */
 	      if (sscanf (line + TIME_SIZE_OF_DUMP_LOG_INFO, "%*s %d %*s %lld %lld", &next_arvnum, &f, &t) == 3)
@@ -8658,9 +8651,8 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 
   /* Initialization gives us some useful information about the backup location. */
   session.type = FILEIO_BACKUP_WRITE;	/* access backup device for write */
-  if (fileio_initialize_backup
-      (log_Db_fullname, allbackup_path, &session, backup_level, backup_verbose_file_path, num_threads,
-       sleep_msecs) == NULL)
+  if (fileio_initialize_backup (log_Db_fullname, allbackup_path, &session, backup_level, backup_verbose_file_path,
+				num_threads, sleep_msecs) == NULL)
     {
       error_code = ER_FAILED;
       goto error;
@@ -9397,9 +9389,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
   LOG_CS_ENTER (thread_p);
 
-  if (logpb_find_header_parameters
-      (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize, &log_page_size, &db_creation, &db_compatibility,
-       &dummy) == -1)
+  if (logpb_find_header_parameters (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize, &log_page_size,
+				    &db_creation, &db_compatibility, &dummy) == -1)
     {
       db_iopagesize = IO_PAGESIZE;
       log_page_size = LOG_PAGESIZE;
@@ -9463,9 +9454,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	}
 
       printtoc = (r_args->printtoc) ? false : true;
-      if (fileio_start_restore
-	  (thread_p, db_fullname, from_volbackup, db_creation, &bkdb_iopagesize, &bkdb_compatibility, &session_storage,
-	   try_level, printtoc, bkup_match_time, r_args->verbose_file, r_args->newvolpath) == NULL)
+      if (fileio_start_restore (thread_p, db_fullname, from_volbackup, db_creation, &bkdb_iopagesize,
+				&bkdb_compatibility, &session_storage, try_level, printtoc, bkup_match_time,
+				r_args->verbose_file, r_args->newvolpath) == NULL)
 	{
 	  /* Cannot access backup file.. Restore from backup is cancelled */
 	  if (er_errid () == ER_GENERIC_ERROR)
@@ -11527,8 +11518,8 @@ logpb_remote_ask_user_before_delete_volumes (THREAD_ENTRY * thread_p, const char
       goto end;
     }
 
-  if (fileio_request_user_response
-      (thread_p, FILEIO_PROMPT_BOOLEAN_TYPE, fullmsg, user_response, NULL, -1, -1, NULL, -1) != NO_ERROR)
+  if (fileio_request_user_response (thread_p, FILEIO_PROMPT_BOOLEAN_TYPE, fullmsg, user_response, NULL, -1, -1, NULL,
+				    -1) != NO_ERROR)
     {
       r = false;
       goto end;

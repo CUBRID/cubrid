@@ -5496,7 +5496,7 @@ static LANG_LOCALE_DATA lc_English_binary = {
   ',',
   DB_CURRENCY_DOLLAR,
   LANG_NO_NORMALIZATION,
-  "390462b716493cbd74c77f545a77a2bf",
+  (char *) "390462b716493cbd74c77f545a77a2bf",
   lang_initloc_en_binary,
   false
 };

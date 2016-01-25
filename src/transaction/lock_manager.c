@@ -4321,12 +4321,9 @@ lock_internal_demote_shared_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entr
 	       entry_ptr->res_head->key.oid.slotid, entry_ptr->res_head->key.class_oid.volid,
 	       entry_ptr->res_head->key.class_oid.pageid, entry_ptr->res_head->key.class_oid.slotid,
 	       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode),
-	       entry_ptr->granted_mode == S_LOCK ? LOCK_TO_LOCKMODE_STRING (IS_LOCK) : (entry_ptr->granted_mode ==
-											X_LOCK ?
-											LOCK_TO_LOCKMODE_STRING
-											(IX_LOCK) :
-											LOCK_TO_LOCKMODE_STRING
-											(entry_ptr->granted_mode)));
+	       entry_ptr->granted_mode == S_LOCK ? LOCK_TO_LOCKMODE_STRING (IS_LOCK)
+	       : (entry_ptr->granted_mode == X_LOCK ? LOCK_TO_LOCKMODE_STRING (IX_LOCK)
+		  : LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode)));
     }
 #endif /* LK_DUMP */
 
@@ -5634,9 +5631,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 		       classname);
 	      free_and_init (classname);
 
-	      if (heap_get_indexinfo_of_btid
-		  (thread_p, &res_ptr->key.class_oid, &res_ptr->key.btid, NULL, NULL, NULL, NULL, &btname,
-		   NULL) == NO_ERROR)
+	      if (heap_get_indexinfo_of_btid (thread_p, &res_ptr->key.class_oid, &res_ptr->key.btid, NULL, NULL, NULL,
+					      NULL, &btname, NULL) == NO_ERROR)
 		{
 		  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_INDEXNAME), btname);
 		}
@@ -5833,9 +5829,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	{
 	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_NON2PL_RELEASED_ENTRY),
 		   "", entry_ptr->tran_index,
-		   ((entry_ptr->granted_mode ==
-		     INCON_NON_TWO_PHASE_LOCK) ? "INCON_NON_TWO_PHASE_LOCK" : LOCK_TO_LOCKMODE_STRING (entry_ptr->
-												       granted_mode)));
+		   ((entry_ptr->granted_mode == INCON_NON_TWO_PHASE_LOCK) ? "INCON_NON_TWO_PHASE_LOCK"
+		    : LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode)));
 	  entry_ptr = entry_ptr->next;
 	}
     }
@@ -9024,8 +9019,8 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
   for (tran_index = 0; tran_index < lk_Gl.num_trans; tran_index++)
     {
-      if (logtb_find_client_name_host_pid
-	  (tran_index, &client_prog_name, &client_user_name, &client_host_name, &client_pid) != NO_ERROR)
+      if (logtb_find_client_name_host_pid (tran_index, &client_prog_name, &client_user_name, &client_host_name,
+					   &client_pid) != NO_ERROR)
 	{
 	  /* Likely this index is not assigned */
 	  continue;
@@ -9230,9 +9225,9 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock,
 
       /* initialize lockcomp_class */
       COPY_OID (&lockcomp_class->class_oid, class_oid);
-      if (lock_internal_perform_lock_object
-	  (thread_p, lockcomp->tran_index, class_oid, NULL, NULL, IX_LOCK, lockcomp->wait_msecs,
-	   &lockcomp_class->class_lock_ptr, lockcomp->root_class_ptr) != LK_GRANTED)
+      if (lock_internal_perform_lock_object (thread_p, lockcomp->tran_index, class_oid, NULL, NULL, IX_LOCK,
+					     lockcomp->wait_msecs, &lockcomp_class->class_lock_ptr,
+					     lockcomp->root_class_ptr) != LK_GRANTED)
 	{
 	  ret = ER_FAILED;
 	  goto exit_on_error;
@@ -10282,9 +10277,8 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 
       if (!BTID_IS_NULL (&res_ptr->key.btid))
 	{
-	  if (heap_get_indexinfo_of_btid
-	      (thread_p, &res_ptr->key.class_oid, &res_ptr->key.btid, NULL, NULL, NULL, NULL, &btname,
-	       NULL) == NO_ERROR)
+	  if (heap_get_indexinfo_of_btid (thread_p, &res_ptr->key.class_oid, &res_ptr->key.btid, NULL, NULL, NULL,
+					  NULL, &btname, NULL) == NO_ERROR)
 	    {
 	      fprintf (log_fp, ", index=%s", btname);
 	      free_and_init (btname);
@@ -10390,8 +10384,8 @@ lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag)
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
 
-  if (lock_internal_perform_lock_object
-      (thread_p, tran_index, rep_read_oid, NULL, NULL, lock, wait_msecs, &entry_addr, NULL) != LK_GRANTED)
+  if (lock_internal_perform_lock_object (thread_p, tran_index, rep_read_oid, NULL, NULL, lock, wait_msecs, &entry_addr,
+					 NULL) != LK_GRANTED)
     {
       return ER_FAILED;
     }

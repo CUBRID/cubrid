@@ -14604,6 +14604,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
   midxkey->ncolumns = num_vals;
   midxkey->domain = NULL;
   midxkey->min_max_val.position = -1;
+  midxkey->min_max_val.type = MIN_COLUMN;
 
   return midxkey;
 }

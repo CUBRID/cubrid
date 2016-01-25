@@ -1641,9 +1641,8 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
       DKNPAGES max_npages;
 
       max_npages = boot_get_temp_temp_vol_max_npages ();
-      if (disk_set_alloctables
-	  (DISK_TEMPVOL_TEMP_PURPOSE, 0, max_npages, &sect_alloctb_npages, &page_alloctb_npages, &sect_alloctb_page1,
-	   &page_alloctb_page1, &sys_lastpage) != NO_ERROR)
+      if (disk_set_alloctables (DISK_TEMPVOL_TEMP_PURPOSE, 0, max_npages, &sect_alloctb_npages, &page_alloctb_npages,
+				&sect_alloctb_page1, &page_alloctb_page1, &sys_lastpage) != NO_ERROR)
 	{
 	  return NULL_VOLID;
 	}
@@ -4260,6 +4259,10 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
       xmnt_server_stop_stats (thread_p);
 
+#if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
+      CUBRID_CONN_END (client_id, tdes->client.db_user);
+#endif /* ENABLE_SYSTEMTAP */
+
       /* Release the transaction index */
       logtb_release_tran_index (thread_p, tran_index);
 
@@ -4273,10 +4276,6 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 #if defined(SA_MODE)
   (void) xboot_shutdown_server (NULL, ER_ALL_FINAL);
 #endif /* SA_MODE */
-
-#if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
-  CUBRID_CONN_END (client_id, tdes->client.db_user);
-#endif /* ENABLE_SYSTEMTAP */
 
   return NO_ERROR;
 }
@@ -5861,8 +5860,8 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
 #if 1				/* TODO */
-  if (xehash_create
-      (thread_p, &boot_Db_parm->classname_table, DB_TYPE_STRING, -1, &boot_Db_parm->rootclass_oid, -1, false) == NULL)
+  if (xehash_create (thread_p, &boot_Db_parm->classname_table, DB_TYPE_STRING, -1, &boot_Db_parm->rootclass_oid, -1,
+		     false) == NULL)
     {
       goto error;
     }

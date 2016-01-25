@@ -1764,6 +1764,9 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       midxkey.domain = btree_domainp;
     }
 
+  midxkey.min_max_val.position = -1;
+  midxkey.min_max_val.type = MIN_COLUMN;
+
   ret = db_make_midxkey (retval, &midxkey);
   if (ret != NO_ERROR)
     {

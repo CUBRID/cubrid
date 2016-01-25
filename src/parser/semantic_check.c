@@ -9399,8 +9399,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    {
 	      fold_as = STATEMENT_SET_FOLD_AS_ARG2;
 	    }
-	  else if (node->node_type == PT_INTERSECTION || node->node_type == PT_DIFFERENCE)
+	  else
 	    {
+	      assert (node->node_type == PT_INTERSECTION || node->node_type == PT_DIFFERENCE);
 	      fold_as = STATEMENT_SET_FOLD_AS_NULL;
 	    }
 	}
@@ -9412,8 +9413,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    {
 	      fold_as = STATEMENT_SET_FOLD_AS_ARG1;
 	    }
-	  else if (node->node_type == PT_INTERSECTION)
+	  else
 	    {
+	      assert (node->node_type == PT_INTERSECTION);
 	      fold_as = STATEMENT_SET_FOLD_AS_NULL;
 	    }
 	}

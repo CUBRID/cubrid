@@ -62,10 +62,10 @@
 #endif
 
 #include "db_elo.h"
+#include "tz_support.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
-#include "tz_support.h"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;
@@ -8198,6 +8198,7 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
   midxkey.ncolumns = 0;
   midxkey.domain = domain;
   midxkey.min_max_val.position = -1;
+  midxkey.min_max_val.type = MIN_COLUMN;
 
   for (dom = domain->setdomain; dom; dom = dom->next)
     {
@@ -9768,6 +9769,7 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
   memcpy (midx_result.buf + offset_prefix, midx_postfix->buf + offset_postfix, midx_postfix->size - offset_postfix);
 
   midx_result.min_max_val.position = -1;
+  midx_result.min_max_val.type = MIN_COLUMN;
   DB_MAKE_MIDXKEY (result, &midx_result);
   result->need_clear = true;
 
@@ -10081,6 +10083,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
 	}
 
       result_midxkey.min_max_val.position = -1;
+      result_midxkey.min_max_val.type = MIN_COLUMN;
       DB_MAKE_MIDXKEY (db_result, &result_midxkey);
 
       db_result->need_clear = true;

@@ -359,7 +359,7 @@ oid_get_cached_class_name (const int cache_id)
  * class_oid (in): class OID to search for
  */
 bool
-oid_is_cached_class_oid (OID * class_oid)
+oid_is_cached_class_oid (const OID * class_oid)
 {
   int i;
 

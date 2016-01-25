@@ -2146,10 +2146,8 @@ largeobjmgr_compress_data (THREAD_ENTRY * thread_p, LOID * loid)
 	  /* enlarge the record by appending */
 
 	  nrecs = spage_number_of_records (page_ptr);
-	  append_length =
-	    ((nrecs == 1) ? largeobjmgr_max_append_putin (thread_p, page_ptr,
-							  cur_dir_entry.length) : (LARGEOBJMGR_MAX_DATA_SLOT_SIZE -
-										   cur_dir_entry.length));
+	  append_length = ((nrecs == 1) ? largeobjmgr_max_append_putin (thread_p, page_ptr, cur_dir_entry.length)
+			   : (LARGEOBJMGR_MAX_DATA_SLOT_SIZE - cur_dir_entry.length));
 	  appended_length = 0;
 	  buffer_ptr = (char *) recdes.data + cur_dir_entry.length;
 	  buffer_len = cur_dir_entry.length;
@@ -2439,10 +2437,8 @@ xlargeobjmgr_create (THREAD_ENTRY * thread_p, LOID * loid, int length, char *buf
    * First compute the number of data pages and directory pages
    * required for the given data.
    */
-  est_data_pg_cnt =
-    ((est_lo_len <=
-      length) ? ((length > 0) ? CEIL_PTVDIV (length, LARGEOBJMGR_MAX_DATA_SLOT_SIZE) : 0) : CEIL_PTVDIV (est_lo_len,
-													 LARGEOBJMGR_MAX_DATA_SLOT_SIZE));
+  est_data_pg_cnt = ((est_lo_len <= length) ? ((length > 0) ? CEIL_PTVDIV (length, LARGEOBJMGR_MAX_DATA_SLOT_SIZE) : 0)
+		     : CEIL_PTVDIV (est_lo_len, LARGEOBJMGR_MAX_DATA_SLOT_SIZE));
 
   largeobjmgr_init_dir_pagecnt (est_data_pg_cnt, &dir_pg_cnt, &dir_ind_pg_cnt);
   tot_pg_cnt = dir_pg_cnt + dir_ind_pg_cnt;

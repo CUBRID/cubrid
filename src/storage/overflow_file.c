@@ -266,9 +266,8 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID *
 
   if (need_alloc)
     {
-      if (file_alloc_pages_as_noncontiguous
-	  (thread_p, ovf_vfid, (alloc_vpids.vpids + alloc_vpids.index), &alloc_nth, alloc_npages, NULL, NULL, NULL,
-	   &alloc_vpids) == NULL)
+      if (file_alloc_pages_as_noncontiguous (thread_p, ovf_vfid, (alloc_vpids.vpids + alloc_vpids.index), &alloc_nth,
+					     alloc_npages, NULL, NULL, NULL, &alloc_vpids) == NULL)
 	{
 	  if (vpids != vpids_buffer)
 	    {
@@ -1024,9 +1023,8 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * re
       if (start_offset > 0)
 	{
 	  /* Advance .. seek as much as you can */
-	  copy_length =
-	    (int) ((copyfrom + start_offset) >
-		   ((char *) pgptr + DB_PAGESIZE) ? DB_PAGESIZE - (copyfrom - (char *) pgptr) : start_offset);
+	  copy_length = (int) ((copyfrom + start_offset) > ((char *) pgptr + DB_PAGESIZE)
+			       ? DB_PAGESIZE - (copyfrom - (char *) pgptr) : start_offset);
 	  start_offset -= copy_length;
 	  copyfrom += copy_length;
 	}
@@ -1250,9 +1248,8 @@ overflow_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * ovf_vpid)
 
   while (remain_length > 0)
     {
-      dump_length =
-	(int) ((dumpfrom + remain_length >
-		(char *) pgptr + DB_PAGESIZE) ? DB_PAGESIZE - (dumpfrom - (char *) pgptr) : remain_length);
+      dump_length = (int) ((dumpfrom + remain_length > (char *) pgptr + DB_PAGESIZE)
+			   ? DB_PAGESIZE - (dumpfrom - (char *) pgptr) : remain_length);
       for (i = 0; i < dump_length; i++)
 	{
 	  (void) fputc (*dumpfrom++, fp);
