@@ -999,8 +999,8 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, XASL_STREAM * stream)
 
   if (num_pages < demand_pages)
     {
-      if (file_alloc_pages_as_noncontiguous
-	  (thread_p, &xasl_id->temp_vfid, &vpid, &nth_page, demand_pages - num_pages, NULL, NULL, NULL, NULL) == NULL)
+      if (file_alloc_pages_as_noncontiguous (thread_p, &xasl_id->temp_vfid, &vpid, &nth_page, demand_pages - num_pages,
+					     NULL, NULL, NULL, NULL) == NULL)
 	{
 	  goto error;
 	}
@@ -1023,7 +1023,7 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, XASL_STREAM * stream)
     {
       if (file_alloc_iterator_get_current_page (thread_p, iter_p, &vpid) == NULL)
 	{
-	  assert (false);
+	  assert (er_errid () == ER_INTERRUPTED);
 	  goto error;
 	}
 
@@ -3090,8 +3090,8 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
     {
       if (!have_lhs)
 	{
-	  if (qfile_advance
-	      (thread_p, advance_func, &lhs, &last_lhs, lhs_scan_p, last_lhs_scan_p, lhs_file_p, &have_lhs) != NO_ERROR)
+	  if (qfile_advance (thread_p, advance_func, &lhs, &last_lhs, lhs_scan_p, last_lhs_scan_p, lhs_file_p,
+			     &have_lhs) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -3099,8 +3099,8 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
 
       if (!have_rhs)
 	{
-	  if (qfile_advance
-	      (thread_p, advance_func, &rhs, &last_rhs, rhs_scan_p, last_rhs_scan_p, rhs_file_p, &have_rhs) != NO_ERROR)
+	  if (qfile_advance (thread_p, advance_func, &rhs, &last_rhs, rhs_scan_p, last_rhs_scan_p, rhs_file_p,
+			     &have_rhs) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -4561,9 +4561,8 @@ qfile_duplicate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int fl
       return NULL;
     }
 
-  if (qfile_copy_list_pages
-      (thread_p, &list_id_p->first_vpid, list_id_p->tfile_vfid, &dup_list_id_p->first_vpid, &dup_list_id_p->last_vpid,
-       dup_list_id_p->tfile_vfid) != NO_ERROR)
+  if (qfile_copy_list_pages (thread_p, &list_id_p->first_vpid, list_id_p->tfile_vfid, &dup_list_id_p->first_vpid,
+			     &dup_list_id_p->last_vpid, dup_list_id_p->tfile_vfid) != NO_ERROR)
     {
       qfile_destroy_list (thread_p, dup_list_id_p);
       QFILE_FREE_AND_INIT_LIST_ID (dup_list_id_p);
