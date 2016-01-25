@@ -24968,6 +24968,8 @@ heap_get_record_location (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * cont
 					  context->home_page_watcher_p);
       if (context->home_page_watcher_p->pgptr == NULL)
 	{
+	  int rc;
+
 	  if (er_errid () == ER_PB_BAD_PAGEID)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
@@ -24975,7 +24977,8 @@ heap_get_record_location (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * cont
 	    }
 
 	  /* something went wrong, return */
-	  return ER_FAILED;
+	  ASSERT_ERROR_AND_SET (rc);
+	  return rc;
 	}
     }
 
@@ -27643,7 +27646,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   if (context->file_type != FILE_HEAP && context->file_type != FILE_HEAP_REUSE_SLOTS)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_FAILED;
+      return ER_GENERIC_ERROR;
     }
 
   /* get heap file identifier from scancache if none was provided */
@@ -27658,7 +27661,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	  er_log_debug (ARG_FILE_LINE, "heap_update: Bad interface a heap is needed");
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_HEAP, 3, "", NULL_FILEID, NULL_PAGEID);
 	  assert (false);
-	  return ER_FAILED;
+	  return ER_HEAP_UNKNOWN_HEAP;
 	}
     }
 
@@ -27767,7 +27770,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3, context->oid.volid, context->oid.pageid,
 	      context->oid.slotid);
-      rc = ER_FAILED;
+      rc = ER_HEAP_BAD_OBJECT_TYPE;
       goto exit;
     }
 
