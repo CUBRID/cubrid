@@ -2373,7 +2373,7 @@ tz_str_read_number (const char *str, const char *str_end, const bool strict, con
 	}
     }
 
-  while (str < str_end && char_isdigit (*str_cursor))
+  while (str_cursor < str_end && char_isdigit (*str_cursor))
     {
       cur_val = cur_val * 10 + (*str_cursor - '0');
       str_cursor++;
@@ -2499,12 +2499,12 @@ tz_str_to_seconds (const char *str, const char *str_end, int *seconds, const cha
   assert (str != NULL);
 
   str_cursor = str;
-  if (str < str_end && *str_cursor == '-')
+  if (str_cursor < str_end && *str_cursor == '-')
     {
       is_negative = true;
       str_cursor++;
     }
-  if (str < str_end && *str_cursor == '+')
+  if (str_cursor < str_end && *str_cursor == '+')
     {
       str_cursor++;
     }
