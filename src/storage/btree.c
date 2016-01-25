@@ -27309,7 +27309,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
     }
   if (insert_helper.log_operations && insert_helper.is_unique_multi_update && !insert_helper.is_ha_enabled)
     {
-      _er_log_debug (ARG_FILE_LINE, "BTREE UNIQUE MULTI-UPDATE STATS: %s object %d|%d|%d in index (%d, %d|%d). ",
+      _er_log_debug (ARG_FILE_LINE, "BTREE UNIQUE MULTI-UPDATE STATS: %s object %d|%d|%d in index (%d, %d|%d). "
 		     "New stats = %d keys, %d objects, %d nulls."
 #if defined (SERVER_MODE)
 		     " Tran ID = %d."
