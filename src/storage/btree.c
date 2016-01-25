@@ -27326,7 +27326,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
 #if defined (SERVER_MODE)
 		     , thread_get_current_tran_index ()
 #endif /* SERVER_MODE */
-		     );
+	);
     }
 
   return NO_ERROR;
@@ -32959,6 +32959,7 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p, BTID_INT * b
   assert (offset_to_last_object > 0 && offset_to_last_object < leaf_record->length);
   assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
 	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
+	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
 	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
 	  || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID);
   assert (delete_helper->rv_redo_data != NULL && delete_helper->rv_redo_data_ptr != NULL);
