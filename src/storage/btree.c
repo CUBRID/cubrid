@@ -27319,7 +27319,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
   if (insert_helper.log_operations && insert_helper.is_unique_multi_update && !insert_helper.is_ha_enabled)
     {
       _er_log_debug (ARG_FILE_LINE, "BTREE UNIQUE MULTI-UPDATE STATS: %s object %d|%d|%d in index (%d, %d|%d). "
-		     "New stats = %d keys, %d objects, %d nulls."
+		     "%s: new stats = %d keys, %d objects, %d nulls."
 #if defined (SERVER_MODE)
 		     " Tran ID = %d."
 #endif /* SERVER_MODE */
@@ -27329,8 +27329,8 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
 		     insert_helper.obj_info.oid.slotid,
 		     btid_int.sys_btid->root_pageid, btid_int.sys_btid->vfid.volid, btid_int.sys_btid->vfid.fileid,
 		     insert_helper.purpose == BTREE_OP_INSERT_NEW_OBJECT ?
-		     (insert_helper.is_unique_key_added_or_deleted ? "added new key" : "did not add new key") :
-		     (insert_helper.is_unique_key_added_or_deleted) ? "removed key" : "did not remove key",
+		     (insert_helper.is_unique_key_added_or_deleted ? "Added new key" : "Did not add new key") :
+		     (insert_helper.is_unique_key_added_or_deleted) ? "Removed key" : "Did not remove key",
 		     unique_stat_info->num_keys, unique_stat_info->num_oids, unique_stat_info->num_nulls
 #if defined (SERVER_MODE)
 		     , thread_get_current_tran_index ()

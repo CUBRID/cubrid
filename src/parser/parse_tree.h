@@ -1547,7 +1547,8 @@ typedef enum
   PT_SPEC_FLAG_KEY_INFO_SCAN = 0x100,	/* one of the spec's indexes will be scanned for key information. */
   PT_SPEC_FLAG_BTREE_NODE_INFO_SCAN = 0x200,	/* one of the spec's indexes will be scanned for b-tree node info */
   PT_SPEC_FLAG_MVCC_COND_REEV = 0x400,	/* the spec is used in mvcc condition reevaluation */
-  PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800	/* the spec is used in UPDATE assignment reevaluation */
+  PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,	/* the spec is used in UPDATE assignment reevaluation */
+  PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000	/* the spec was checked and does not have any uniques */
 } PT_SPEC_FLAG;
 
 typedef enum

@@ -8126,7 +8126,7 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique, PT_NODE 
 	      goto exit_on_error;
 	    }
 
-	  if (!*has_unique)
+	  if ((spec->info.spec.flag & (PT_SPEC_FLAG_HAS_UNIQUE | PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE)) == 0)
 	    {
 	      bool has_unique_temp = false;
 	      bool check_subclasses = (spec->info.spec.only_all == PT_ALL);
@@ -8138,6 +8138,10 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique, PT_NODE 
 		    {
 		      *has_unique = 1;
 		      spec->info.spec.flag |= PT_SPEC_FLAG_HAS_UNIQUE;
+		    }
+		  else
+		    {
+		      spec->info.spec.flag |= PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE;
 		    }
 		}
 	      else
