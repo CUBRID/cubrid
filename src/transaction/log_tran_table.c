@@ -2598,7 +2598,7 @@ int
 xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_p, int include_query_exec_info)
 {
   int error_code = NO_ERROR;
-  int num_clients = 0;
+  int num_clients = 0, num_clients_packed = 0;
   int i;
   int size;
   char *buffer, *ptr;
@@ -2706,11 +2706,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	      XASL_ID_SET_NULL (&query_exec_info[i].xasl_id);
 	    }
 
-	  size += 2 * OR_FLOAT_SIZE	/* query time + tran time */
-	    + or_packed_string_length (query_exec_info[i].wait_for_tran_index_string,
-				       NULL) + or_packed_string_length (query_exec_info[i].query_stmt,
-									NULL) +
-	    or_packed_string_length (query_exec_info[i].sql_id, NULL) + OR_XASL_ID_SIZE;
+	  size += (2 * OR_FLOAT_SIZE	/* query time + tran time */
+		   + or_packed_string_length (query_exec_info[i].wait_for_tran_index_string, NULL)
+		   + or_packed_string_length (query_exec_info[i].query_stmt, NULL)
+		   + or_packed_string_length (query_exec_info[i].sql_id, NULL) + OR_XASL_ID_SIZE);
 	}
 #endif
       num_clients++;
@@ -2757,8 +2756,13 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	  OR_PACK_XASL_ID (ptr, &query_exec_info[i].xasl_id);
 	}
 #endif
+
+      num_clients_packed++;
+      assert (num_clients_packed <= num_clients);
+      assert (ptr <= buffer + size);
     }
 
+  assert (num_clients_packed == num_clients);
   assert (num_total_indices == NUM_TOTAL_TRAN_INDICES);
   assert (ptr <= buffer + size);
 
