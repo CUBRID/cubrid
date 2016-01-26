@@ -10543,10 +10543,12 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
     {
       /* modify rec_descriptor representation id to that of attr_info */
       assert (OID_EQ (&attr_info->class_oid, &pcontext->root_oid));
+
       if (OID_ISNULL (&attr_info->inst_oid))
 	{
 	  or_set_rep_id (&rec_descriptor, pcontext->root_repr_id);
 	}
+
       local_op_type = (BTREE_IS_MULTI_ROW_OP (op_type) ? MULTI_ROW_UPDATE : SINGLE_ROW_UPDATE);
     }
 
@@ -10602,6 +10604,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
 	      ASSERT_ERROR ();
 	      goto exit_on_error;
 	    }
+
 	  error = heap_attrinfo_set (&unique_oid, odku->attr_ids[assign_idx], val, attr_info);
 	  if (error != NO_ERROR)
 	    {
@@ -10629,9 +10632,11 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
 
   heap_attrinfo_clear_dbvalues (attr_info);
   heap_attrinfo_clear_dbvalues (odku->attr_info);
+
   return error;
 
 exit_on_error:
+
   if (need_clear)
     {
       heap_attrinfo_clear_dbvalues (odku->attr_info);
@@ -10961,6 +10966,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       scan_cache_inited = true;
 
       assert (xasl->scan_op_type == S_SELECT);
+
       /* force_select_lock = false */
       if (qexec_open_scan
 	  (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan, true,
@@ -11045,10 +11051,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      if (insert->do_replace && insert->has_uniques)
 		{
 		  int removed_count = 0;
+
 		  assert (index_attr_info_inited == true);
-		  if (qexec_remove_duplicates_for_replace
-		      (thread_p, &scan_cache, &attr_info, &index_attr_info, &idx_info, scan_cache_op_type,
-		       insert->pruning_type, pcontext, &removed_count) != NO_ERROR)
+
+		  if (qexec_remove_duplicates_for_replace (thread_p, &scan_cache, &attr_info, &index_attr_info,
+							   &idx_info, scan_cache_op_type, insert->pruning_type,
+							   pcontext, &removed_count) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
@@ -11066,9 +11074,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
+
 		  if (force_count != 0)
 		    {
 		      assert (force_count == 1);
+
 		      xasl->list_id->tuple_cnt += force_count * 2;
 		      continue;
 		    }
@@ -11076,20 +11086,23 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
 	      force_count = 0;
 	      /* when insert in heap, don't care about instance locking */
-	      if (locator_attribute_info_force
-		  (thread_p, &insert->class_hfid, &oid, &attr_info, NULL, 0, operation, scan_cache_op_type, &scan_cache,
-		   &force_count, false, REPL_INFO_TYPE_RBR_NORMAL, insert->pruning_type, pcontext, func_indx_preds,
-		   NULL, UPDATE_INPLACE_NONE, NULL, false) != NO_ERROR)
+	      if (locator_attribute_info_force (thread_p, &insert->class_hfid, &oid, &attr_info, NULL, 0, operation,
+						scan_cache_op_type, &scan_cache, &force_count, false,
+						REPL_INFO_TYPE_RBR_NORMAL, insert->pruning_type, pcontext,
+						func_indx_preds, NULL, UPDATE_INPLACE_NONE, NULL, false) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
+
 	      /* restore class oid and hfid that might have changed in the call above */
 	      HFID_COPY (&insert->class_hfid, &class_hfid);
 	      COPY_OID (&(attr_info.class_oid), &class_oid);
+
 	      /* Instances are not put into the result list file, but are counted. */
 	      if (force_count)
 		{
 		  assert (force_count == 1);
+
 		  if (!OID_ISNULL (&oid) && XASL_IS_FLAGED (xasl, XASL_RETURN_GENERATED_KEYS)
 		      && is_autoincrement_set > 0)
 		    {
@@ -11241,10 +11254,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
 	  if (force_count == 0)
 	    {
-	      if (locator_attribute_info_force
-		  (thread_p, &insert->class_hfid, &oid, &attr_info, NULL, 0, operation, scan_cache_op_type, &scan_cache,
-		   &force_count, false, REPL_INFO_TYPE_RBR_NORMAL, insert->pruning_type, pcontext, NULL, NULL,
-		   UPDATE_INPLACE_NONE, NULL, false) != NO_ERROR)
+	      if (locator_attribute_info_force (thread_p, &insert->class_hfid, &oid, &attr_info, NULL, 0, operation,
+						scan_cache_op_type, &scan_cache, &force_count, false,
+						REPL_INFO_TYPE_RBR_NORMAL, insert->pruning_type, pcontext, NULL, NULL,
+						UPDATE_INPLACE_NONE, NULL, false) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}

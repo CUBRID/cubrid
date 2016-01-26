@@ -1789,13 +1789,21 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 	    result_rhs = eval_pred (thread_p, pr->pe.pred.rhs, vd, obj_oid);
 
 	    if (result_lhs == V_ERROR || result_rhs == V_ERROR)
-	      result = V_ERROR;
+	      {
+		result = V_ERROR;
+	      }
 	    else if (result_lhs == V_UNKNOWN || result_rhs == V_UNKNOWN)
-	      result = V_UNKNOWN;
+	      {
+		result = V_UNKNOWN;
+	      }
 	    else if (result_lhs == result_rhs)
-	      result = V_FALSE;
+	      {
+		result = V_FALSE;
+	      }
 	    else
-	      result = V_TRUE;
+	      {
+		result = V_TRUE;
+	      }
 	  }
 	  break;
 
@@ -1812,11 +1820,17 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 	    result_rhs = eval_pred (thread_p, pr->pe.pred.rhs, vd, obj_oid);
 
 	    if (result_lhs == V_ERROR || result_rhs == V_ERROR)
-	      result = V_ERROR;
+	      {
+		result = V_ERROR;
+	      }
 	    else if (result_lhs == result_rhs)
-	      result = _v_true;
+	      {
+		result = _v_true;
+	      }
 	    else
-	      result = _v_false;
+	      {
+		result = _v_false;
+	      }
 	  }
 	  break;
 
