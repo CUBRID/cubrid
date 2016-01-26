@@ -5349,6 +5349,8 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	{
 	  /* Let btree_search_leaf_page find the key, if it exists. */
 	  search_key->result = BTREE_KEY_BETWEEN;
+	  /* Unknown slot */
+	  search_key->slotid = -1;
 	}
       else
 	{
@@ -5361,12 +5363,15 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   else if (c != DB_GT)
     {
       /* Not bigger than first key. */
-      search_key->result = (c == DB_LT) ? BTREE_KEY_SMALLER : BTREE_KEY_FOUND;
+      search_key->result = (c == DB_LT) ? BTREE_KEY_SMALLER : BTREE_KEY_NOTFOUND;
+      /* Unknown slot */
+      search_key->slotid = -1;
       return NO_ERROR;
     }
   else if (key_count == 1)
     {
       search_key->result = BTREE_KEY_BIGGER;
+      search_key->slotid = key_count + 1;
       return NO_ERROR;
     }
 
@@ -5395,6 +5400,7 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       if (btree_leaf_is_flaged (&border_record, BTREE_LEAF_RECORD_FENCE))
 	{
 	  search_key->result = BTREE_KEY_BIGGER;
+	  search_key->slotid = key_count + 1;
 	}
       else
 	{
@@ -5406,12 +5412,15 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   else if (c != DB_LT)
     {
       /* Not smaller than last key. */
-      search_key->result = (c == DB_GT) ? BTREE_KEY_BIGGER : BTREE_KEY_FOUND;
+      search_key->result = (c == DB_GT) ? BTREE_KEY_BIGGER : BTREE_KEY_NOTFOUND;
+      search_key->slotid = key_count + 1;
       return NO_ERROR;
     }
 
   /* Key is between first and last key in leaf page. */
   search_key->result = BTREE_KEY_BETWEEN;
+  /* Unknown slot */
+  search_key->slotid = -1;
   return NO_ERROR;
 }
 
