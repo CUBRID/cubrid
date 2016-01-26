@@ -2603,12 +2603,14 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
   int size;
   char *buffer, *ptr;
   LOG_TDES *tdes;		/* Transaction descriptor */
+  int num_total_indices;
 #if defined(SERVER_MODE)
   UINT64 current_msec = 0;
   TRAN_QUERY_EXEC_INFO *query_exec_info = NULL;
   XASL_CACHE_ENTRY *ent;
 #endif
 
+  num_total_indices = NUM_TOTAL_TRAN_INDICES;
 #if defined(SERVER_MODE)
   if (include_query_exec_info)
     {
@@ -2757,6 +2759,9 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 #endif
     }
 
+  assert (num_total_indices == NUM_TOTAL_TRAN_INDICES);
+  assert (ptr <= buffer + size);
+
   *buffer_p = buffer;
   *size_p = size;
 
@@ -2765,6 +2770,7 @@ error:
 #if defined(SERVER_MODE)
   if (query_exec_info != NULL)
     {
+      assert (num_total_indices == NUM_TOTAL_TRAN_INDICES);
       for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
 	{
 	  if (query_exec_info[i].wait_for_tran_index_string)
