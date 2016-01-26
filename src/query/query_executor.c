@@ -10518,6 +10518,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
 				       pruning_type, pcontext, &unique_oid, op_type);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto exit_on_error;
     }
 
@@ -10532,6 +10533,8 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   scan_code = heap_get (thread_p, &unique_oid, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN);
   if (scan_code != S_SUCCESS)
     {
+      assert (false);
+      error = ER_FAILED;
       goto exit_on_error;
     }
 
@@ -10550,6 +10553,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   error = heap_attrinfo_read_dbvalues (thread_p, &unique_oid, &rec_descriptor, local_scan_cache, odku->attr_info);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto exit_on_error;
     }
 
@@ -10562,6 +10566,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
       satisfies_constraints = eval_pred (thread_p, odku->cons_pred, vd, NULL);
       if (satisfies_constraints == V_ERROR)
 	{
+	  ASSERT_ERROR_AND_SET (error);
 	  goto exit_on_error;
 	}
 
@@ -10569,6 +10574,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
 	{
 	  /* currently there are only NOT NULL constraints */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
+	  error = ER_NULL_CONSTRAINT_VIOLATION;
 	  goto exit_on_error;
 	}
     }
@@ -10581,6 +10587,11 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
       if (assign->constant)
 	{
 	  error = heap_attrinfo_set (&unique_oid, odku->attr_ids[assign_idx], assign->constant, attr_info);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit_on_error;
+	    }
 	}
       else
 	{
@@ -10588,15 +10599,16 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
 	  error = fetch_peek_dbval (thread_p, assign->regu_var, vd, NULL, NULL, NULL, &val);
 	  if (error != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto exit_on_error;
 	    }
 	  error = heap_attrinfo_set (&unique_oid, odku->attr_ids[assign_idx], val, attr_info);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit_on_error;
+	    }
 	}
-    }
-
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
     }
 
   /* unique_oid already locked in qexec_oid_of_duplicate_key_update */
@@ -10606,10 +10618,12 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
 				  pruning_type, pcontext, NULL, NULL, UPDATE_INPLACE_NONE, &rec_descriptor, false);
   if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
     {
+      er_clear ();
       error = NO_ERROR;
     }
   else if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto exit_on_error;
     }
 
@@ -10622,6 +10636,7 @@ exit_on_error:
     {
       heap_attrinfo_clear_dbvalues (odku->attr_info);
     }
+  assert (error != NO_ERROR);
   return error;
 }
 
