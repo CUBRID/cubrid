@@ -2610,11 +2610,16 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
   XASL_CACHE_ENTRY *ent;
 #endif
 
+  /* Note, we'll be in a critical section while we gather the data but the section ends as soon as we return the data.
+   * This means that the transaction table can change after the information is used. */
+
+  TR_TABLE_CS_ENTER_READ_MODE (thread_p);
+
   num_total_indices = NUM_TOTAL_TRAN_INDICES;
 #if defined(SERVER_MODE)
   if (include_query_exec_info)
     {
-      query_exec_info = (TRAN_QUERY_EXEC_INFO *) calloc (NUM_TOTAL_TRAN_INDICES, sizeof (TRAN_QUERY_EXEC_INFO));
+      query_exec_info = (TRAN_QUERY_EXEC_INFO *) calloc (num_total_indices, sizeof (TRAN_QUERY_EXEC_INFO));
 
       if (query_exec_info == NULL)
 	{
@@ -2626,15 +2631,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
     }
 #endif
 
-  /* Note, we'll be in a critical section while we gather the data but the section ends as soon as we return the data.
-   * This means that the transaction table can change after the information is used. */
-
-  TR_TABLE_CS_ENTER_READ_MODE (thread_p);
-
   size = OR_INT_SIZE;		/* Number of client transactions */
 
   /* Find size of needed buffer */
-  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+  for (i = 0; i < num_total_indices; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
       if (tdes == NULL || tdes->trid == NULL_TRANID || tdes->tran_index == LOG_SYSTEM_TRAN_INDEX)
@@ -2644,10 +2644,10 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	}
 
       size += (3 * OR_INT_SIZE	/* tran index + tran state + process id */
-	       + or_packed_string_length (tdes->client.db_user, NULL)
-	       + or_packed_string_length (tdes->client.program_name, NULL)
-	       + or_packed_string_length (tdes->client.login_name, NULL)
-	       + or_packed_string_length (tdes->client.host_name, NULL));
+	       + OR_INT_SIZE + DB_ALIGN (sizeof (tdes->client.db_user), INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (sizeof (tdes->client.program_name), INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (sizeof (tdes->client.login_name), INT_ALIGNMENT)
+	       + OR_INT_SIZE + DB_ALIGN (sizeof (tdes->client.host_name), INT_ALIGNMENT));
 
 #if defined(SERVER_MODE)
       if (include_query_exec_info)
@@ -2728,7 +2728,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
   ptr = or_pack_int (ptr, num_clients);
 
   /* Find size of needed buffer */
-  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+  for (i = 0; i < num_total_indices; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
       if (tdes == NULL || tdes->trid == NULL_TRANID || tdes->tran_index == LOG_SYSTEM_TRAN_INDEX)
@@ -2770,12 +2770,12 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
   *size_p = size;
 
 error:
+  TR_TABLE_CS_EXIT (thread_p);
 
 #if defined(SERVER_MODE)
   if (query_exec_info != NULL)
     {
-      assert (num_total_indices == NUM_TOTAL_TRAN_INDICES);
-      for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+      for (i = 0; i < num_total_indices; i++)
 	{
 	  if (query_exec_info[i].wait_for_tran_index_string)
 	    {
@@ -2794,7 +2794,6 @@ error:
     }
 #endif
 
-  TR_TABLE_CS_EXIT (thread_p);
   return error_code;
 }
 
