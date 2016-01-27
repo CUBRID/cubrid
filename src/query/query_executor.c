@@ -131,12 +131,10 @@
 
 #define QEXEC_EMPTY_ACCESS_SPEC_SCAN(specp) \
   ((specp)->type == TARGET_CLASS \
-    && ((ACCESS_SPEC_HFID((specp)).vfid.fileid == NULL_FILEID \
-         || ACCESS_SPEC_HFID((specp)).vfid.volid == NULL_VOLID)))
+    && ((ACCESS_SPEC_HFID((specp)).vfid.fileid == NULL_FILEID || ACCESS_SPEC_HFID((specp)).vfid.volid == NULL_VOLID)))
 
-#define QEXEC_IS_MULTI_TABLE_UPDATE_DELETE(xasl)			      \
-    (xasl->upd_del_class_cnt > 1					      \
-     || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr != NULL))
+#define QEXEC_IS_MULTI_TABLE_UPDATE_DELETE(xasl) \
+    (xasl->upd_del_class_cnt > 1 || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr != NULL))
 
 #define QEXEC_SEL_UPD_USE_REEVALUATION(xasl) \
   ((xasl) && ((xasl)->spec_list) && ((xasl)->spec_list->next == NULL) \
@@ -167,11 +165,11 @@
     } \
   while (0)
 
-#define MAKE_XASL_QSTR_HT_KEY(K, SQL, O)\
-  do {\
-    assert ((SQL) != NULL && (O) != NULL);\
-    (K).query_string = (SQL);\
-    COPY_OID((&(K).creator_oid), (O));\
+#define MAKE_XASL_QSTR_HT_KEY(K, SQL, O) \
+  do { \
+    assert ((SQL) != NULL && (O) != NULL); \
+    (K).query_string = (SQL); \
+    COPY_OID((&(K).creator_oid), (O)); \
   } while (0)
 
 /* XASL scan block function */
@@ -1447,9 +1445,9 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_agg_list != NULL
 	  && !xasl->proc.buildlist.g_agg_domains_resolved)
 	{
-	  if (qexec_resolve_domains_for_aggregation
-	      (thread_p, xasl->proc.buildlist.g_agg_list, xasl_state, tplrec, xasl->proc.buildlist.g_scan_regu_list,
-	       &xasl->proc.buildlist.g_agg_domains_resolved) != NO_ERROR)
+	  if (qexec_resolve_domains_for_aggregation (thread_p, xasl->proc.buildlist.g_agg_list, xasl_state, tplrec,
+						     xasl->proc.buildlist.g_scan_regu_list,
+						     &xasl->proc.buildlist.g_agg_domains_resolved) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -1556,9 +1554,8 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 
 	  if (xasl->proc.buildvalue.agg_list != NULL && !xasl->proc.buildvalue.agg_domains_resolved)
 	    {
-	      if (qexec_resolve_domains_for_aggregation
-		  (thread_p, xasl->proc.buildvalue.agg_list, xasl_state, tplrec, NULL,
-		   &xasl->proc.buildvalue.agg_domains_resolved) != NO_ERROR)
+	      if (qexec_resolve_domains_for_aggregation (thread_p, xasl->proc.buildvalue.agg_list, xasl_state, tplrec,
+							 NULL, &xasl->proc.buildvalue.agg_domains_resolved) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -3969,9 +3966,8 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	}
 
       /* read tuple into value */
-      if (qdata_load_agg_hentry_from_tuple
-	  (thread_p, data, context->temp_part_key, context->temp_part_value, context->key_domains,
-	   context->accumulator_domains) != NO_ERROR)
+      if (qdata_load_agg_hentry_from_tuple (thread_p, data, context->temp_part_key, context->temp_part_value,
+					    context->key_domains, context->accumulator_domains) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -4007,9 +4003,8 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	  if (context->sorted_count > 0)
 	    {
 	      /* different key, write current accumulators */
-	      if (qdata_save_agg_hentry_to_list
-		  (thread_p, context->curr_part_key, context->curr_part_value, context->temp_dbval_array,
-		   context->sorted_part_list_id) != NO_ERROR)
+	      if (qdata_save_agg_hentry_to_list (thread_p, context->curr_part_key, context->curr_part_value,
+						 context->temp_dbval_array, context->sorted_part_list_id) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -4191,16 +4186,15 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	      bool found = false;
 
 	      /* build key for current */
-	      if (qexec_build_agg_hkey
-		  (thread_p, info->xasl_state, info->g_hk_regu_list, data,
-		   info->agg_hash_context->temp_key) != NO_ERROR)
+	      if (qexec_build_agg_hkey (thread_p, info->xasl_state, info->g_hk_regu_list, data,
+					info->agg_hash_context->temp_key) != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
 
 	      /* search in partial list */
-	      if (qexec_locate_agg_hentry_in_list
-		  (thread_p, info->agg_hash_context, info->agg_hash_context->temp_key, &found) != NO_ERROR)
+	      if (qexec_locate_agg_hentry_in_list (thread_p, info->agg_hash_context, info->agg_hash_context->temp_key,
+						   &found) != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
@@ -4251,16 +4245,15 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	      bool found = false;
 
 	      /* build key for current */
-	      if (qexec_build_agg_hkey
-		  (thread_p, info->xasl_state, info->g_hk_regu_list, data,
-		   info->agg_hash_context->temp_key) != NO_ERROR)
+	      if (qexec_build_agg_hkey (thread_p, info->xasl_state, info->g_hk_regu_list, data,
+					info->agg_hash_context->temp_key) != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
 
 	      /* search in partial list */
-	      if (qexec_locate_agg_hentry_in_list
-		  (thread_p, info->agg_hash_context, info->agg_hash_context->temp_key, &found) != NO_ERROR)
+	      if (qexec_locate_agg_hentry_in_list (thread_p, info->agg_hash_context, info->agg_hash_context->temp_key,
+						   &found) != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
@@ -4291,9 +4284,10 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 
 			  while (ru_agg_list)
 			    {
-			      if (qdata_aggregate_accumulator_to_accumulator
-				  (thread_p, &ru_agg_list->accumulator, &ru_agg_list->accumulator_domain,
-				   ru_agg_list->function, ru_agg_list->domain, &acc[j]) != NO_ERROR)
+			      if (qdata_aggregate_accumulator_to_accumulator (thread_p, &ru_agg_list->accumulator,
+									      &ru_agg_list->accumulator_domain,
+									      ru_agg_list->function,
+									      ru_agg_list->domain, &acc[j]) != NO_ERROR)
 				{
 				  goto exit_on_error;
 				}
@@ -4396,11 +4390,13 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       qexec_resolve_domains_for_group_by (buildlist, xasl->outptr_list);
     }
 
-  if (qexec_initialize_groupby_state
-      (&gbstate, buildlist->groupby_list, buildlist->g_having_pred, buildlist->g_grbynum_pred, buildlist->g_grbynum_val,
-       buildlist->g_grbynum_flag, buildlist->eptr_list, buildlist->g_agg_list, buildlist->g_regu_list,
-       buildlist->g_val_list, buildlist->g_outptr_list, buildlist->g_hk_sort_regu_list, buildlist->g_with_rollup,
-       buildlist->g_hash_eligible, &buildlist->agg_hash_context, xasl, xasl_state, &list_id->type_list, tplrec) == NULL)
+  if (qexec_initialize_groupby_state (&gbstate, buildlist->groupby_list, buildlist->g_having_pred,
+				      buildlist->g_grbynum_pred, buildlist->g_grbynum_val, buildlist->g_grbynum_flag,
+				      buildlist->eptr_list, buildlist->g_agg_list, buildlist->g_regu_list,
+				      buildlist->g_val_list, buildlist->g_outptr_list, buildlist->g_hk_sort_regu_list,
+				      buildlist->g_with_rollup, buildlist->g_hash_eligible,
+				      &buildlist->agg_hash_context, xasl, xasl_state, &list_id->type_list,
+				      tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -4526,9 +4522,9 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 	}
 
       /* save hash table */
-      if (qdata_save_agg_htable_to_list
-	  (thread_p, gbstate.agg_hash_context->hash_table, list_id, gbstate.agg_hash_context->part_list_id,
-	   gbstate.agg_hash_context->temp_dbval_array) != NO_ERROR)
+      if (qdata_save_agg_htable_to_list (thread_p, gbstate.agg_hash_context->hash_table, list_id,
+					 gbstate.agg_hash_context->part_list_id,
+					 gbstate.agg_hash_context->temp_dbval_array) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -4564,9 +4560,9 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 	}
 
       /* sort and aggregate partial results */
-      if (sort_listfile
-	  (thread_p, NULL_VOLID, estimated_pages, &qexec_hash_gby_get_next, &gbstate, &qexec_hash_gby_put_next,
-	   &gbstate, cmp_fn, &gbstate.agg_hash_context->sort_key, SORT_DUP, NO_SORT_LIMIT) != NO_ERROR)
+      if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_hash_gby_get_next, &gbstate,
+			 &qexec_hash_gby_put_next, &gbstate, cmp_fn, &gbstate.agg_hash_context->sort_key, SORT_DUP,
+			 NO_SORT_LIMIT) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -4575,9 +4571,10 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       if (gbstate.agg_hash_context->sorted_count > 0)
 	{
 	  /* different key, write current accumulators */
-	  if (qdata_save_agg_hentry_to_list
-	      (thread_p, gbstate.agg_hash_context->curr_part_key, gbstate.agg_hash_context->curr_part_value,
-	       gbstate.agg_hash_context->temp_dbval_array, gbstate.agg_hash_context->sorted_part_list_id) != NO_ERROR)
+	  if (qdata_save_agg_hentry_to_list (thread_p, gbstate.agg_hash_context->curr_part_key,
+					     gbstate.agg_hash_context->curr_part_value,
+					     gbstate.agg_hash_context->temp_dbval_array,
+					     gbstate.agg_hash_context->sorted_part_list_id) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -4642,9 +4639,8 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 
   estimated_pages = qfile_get_estimated_pages_for_sorting (list_id, &gbstate.key_info);
 
-  if (sort_listfile
-      (thread_p, NULL_VOLID, estimated_pages, &qexec_gby_get_next, &gbstate, &qexec_gby_put_next, &gbstate,
-       gbstate.cmp_fn, &gbstate.key_info, SORT_DUP, NO_SORT_LIMIT) != NO_ERROR)
+  if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_gby_get_next, &gbstate, &qexec_gby_put_next,
+		     &gbstate, gbstate.cmp_fn, &gbstate.key_info, SORT_DUP, NO_SORT_LIMIT) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -5229,10 +5225,9 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
 
   for (k = 0; k < type_list.type_cnt; k++)
     {
-      type_list.domp[k] =
-	(merge_infop->ls_outer_inner_list[k] ==
-	 QFILE_OUTER_LIST) ? outer_list_idp->type_list.domp[merge_infop->ls_pos_list[k]] : inner_list_idp->type_list.
-	domp[merge_infop->ls_pos_list[k]];
+      type_list.domp[k] = ((merge_infop->ls_outer_inner_list[k] == QFILE_OUTER_LIST)
+			   ? outer_list_idp->type_list.domp[merge_infop->ls_pos_list[k]]
+			   : inner_list_idp->type_list.domp[merge_infop->ls_pos_list[k]]);
     }
 
   outer_sid.status = S_CLOSED;
@@ -5675,10 +5670,9 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 
   for (k = 0; k < type_list.type_cnt; k++)
     {
-      type_list.domp[k] =
-	(merge_infop->ls_outer_inner_list[k] ==
-	 QFILE_OUTER_LIST) ? outer_list_idp->type_list.domp[merge_infop->ls_pos_list[k]] : inner_list_idp->type_list.
-	domp[merge_infop->ls_pos_list[k]];
+      type_list.domp[k] = ((merge_infop->ls_outer_inner_list[k] == QFILE_OUTER_LIST)
+			   ? outer_list_idp->type_list.domp[merge_infop->ls_pos_list[k]]
+			   : inner_list_idp->type_list.domp[merge_infop->ls_pos_list[k]]);
     }
 
   /* open the result list file; same query id with outer(inner) list file */
@@ -6320,16 +6314,16 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       inner_spec = xasl->proc.mergelist.inner_spec_list;
 
       assert (xasl->scan_op_type == S_SELECT);
-      if (qexec_open_scan
-	  (thread_p, outer_spec, xasl->proc.mergelist.outer_val_list, &xasl_state->vd, false, outer_spec->fixed_scan,
-	   outer_spec->grouped_scan, true, &outer_spec->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+      if (qexec_open_scan (thread_p, outer_spec, xasl->proc.mergelist.outer_val_list, &xasl_state->vd, false,
+			   outer_spec->fixed_scan, outer_spec->grouped_scan, true, &outer_spec->s_id,
+			   xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (qexec_open_scan
-	  (thread_p, inner_spec, xasl->proc.mergelist.inner_val_list, &xasl_state->vd, false, inner_spec->fixed_scan,
-	   inner_spec->grouped_scan, true, &inner_spec->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+      if (qexec_open_scan (thread_p, inner_spec, xasl->proc.mergelist.inner_val_list, &xasl_state->vd, false,
+			   inner_spec->fixed_scan, inner_spec->grouped_scan, true, &inner_spec->s_id,
+			   xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -6475,35 +6469,38 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}			/* if */
       if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO)
 	{
-	  if (scan_open_heap_scan
-	      (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, curr_spec->single_fetch,
-	       curr_spec->s_dbval, val_list, vd, &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
-	       curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
-	       curr_spec->s.cls_node.cls_regu_list_rest, curr_spec->s.cls_node.cls_regu_list_last_version,
-	       curr_spec->s.cls_node.num_attrs_pred, curr_spec->s.cls_node.attrids_pred,
-	       curr_spec->s.cls_node.cache_pred, curr_spec->s.cls_node.num_attrs_rest,
-	       curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest, scan_type,
-	       curr_spec->s.cls_node.cache_reserved, curr_spec->s.cls_node.cls_regu_list_reserved) != NO_ERROR)
+	  if (scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
+				   curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+				   &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
+				   curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
+				   curr_spec->s.cls_node.cls_regu_list_rest,
+				   curr_spec->s.cls_node.cls_regu_list_last_version,
+				   curr_spec->s.cls_node.num_attrs_pred, curr_spec->s.cls_node.attrids_pred,
+				   curr_spec->s.cls_node.cache_pred, curr_spec->s.cls_node.num_attrs_rest,
+				   curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest, scan_type,
+				   curr_spec->s.cls_node.cache_reserved,
+				   curr_spec->s.cls_node.cls_regu_list_reserved) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
 	}
       else if (scan_type == S_HEAP_PAGE_SCAN)
 	{
-	  if (scan_open_heap_page_scan
-	      (thread_p, s_id, val_list, vd, &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
-	       curr_spec->where_pred, scan_type, curr_spec->s.cls_node.cache_reserved,
-	       curr_spec->s.cls_node.cls_regu_list_reserved) != NO_ERROR)
+	  if (scan_open_heap_page_scan (thread_p, s_id, val_list, vd, &ACCESS_SPEC_CLS_OID (curr_spec),
+					&ACCESS_SPEC_HFID (curr_spec), curr_spec->where_pred, scan_type,
+					curr_spec->s.cls_node.cache_reserved,
+					curr_spec->s.cls_node.cls_regu_list_reserved) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
 	}
       else if (scan_type == S_INDX_KEY_INFO_SCAN)
 	{
-	  if (scan_open_index_key_info_scan
-	      (thread_p, s_id, val_list, vd, indx_info, &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
-	       curr_spec->where_pred, curr_spec->s.cls_node.cls_output_val_list, iscan_oid_order, query_id,
-	       curr_spec->s.cls_node.cache_reserved, curr_spec->s.cls_node.cls_regu_list_reserved) != NO_ERROR)
+	  if (scan_open_index_key_info_scan (thread_p, s_id, val_list, vd, indx_info, &ACCESS_SPEC_CLS_OID (curr_spec),
+					     &ACCESS_SPEC_HFID (curr_spec), curr_spec->where_pred,
+					     curr_spec->s.cls_node.cls_output_val_list, iscan_oid_order, query_id,
+					     curr_spec->s.cls_node.cache_reserved,
+					     curr_spec->s.cls_node.cls_regu_list_reserved) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
@@ -6512,9 +6509,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
       else if (scan_type == S_INDX_NODE_INFO_SCAN)
 	{
-	  if (scan_open_index_node_info_scan
-	      (thread_p, s_id, val_list, vd, indx_info, curr_spec->where_pred, curr_spec->s.cls_node.cache_reserved,
-	       curr_spec->s.cls_node.cls_regu_list_reserved) != NO_ERROR)
+	  if (scan_open_index_node_info_scan (thread_p, s_id, val_list, vd, indx_info, curr_spec->where_pred,
+					      curr_spec->s.cls_node.cache_reserved,
+					      curr_spec->s.cls_node.cls_regu_list_reserved) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
@@ -6523,20 +6520,22 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
       else			/* S_INDX_SCAN */
 	{
-	  if (scan_open_index_scan
-	      (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, curr_spec->single_fetch,
-	       curr_spec->s_dbval, val_list, vd, indx_info, &ACCESS_SPEC_CLS_OID (curr_spec),
-	       &ACCESS_SPEC_HFID (curr_spec), curr_spec->s.cls_node.cls_regu_list_key, curr_spec->where_key,
-	       curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
-	       curr_spec->s.cls_node.cls_regu_list_rest, curr_spec->where_range,
-	       curr_spec->s.cls_node.cls_regu_list_range, curr_spec->s.cls_node.cls_regu_list_last_version,
-	       curr_spec->s.cls_node.cls_output_val_list, curr_spec->s.cls_node.cls_regu_val_list,
-	       curr_spec->s.cls_node.num_attrs_key, curr_spec->s.cls_node.attrids_key, curr_spec->s.cls_node.cache_key,
-	       curr_spec->s.cls_node.num_attrs_pred, curr_spec->s.cls_node.attrids_pred,
-	       curr_spec->s.cls_node.cache_pred, curr_spec->s.cls_node.num_attrs_rest,
-	       curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
-	       curr_spec->s.cls_node.num_attrs_range, curr_spec->s.cls_node.attrids_range,
-	       curr_spec->s.cls_node.cache_range, iscan_oid_order, query_id) != NO_ERROR)
+	  if (scan_open_index_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
+				    curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd, indx_info,
+				    &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
+				    curr_spec->s.cls_node.cls_regu_list_key, curr_spec->where_key,
+				    curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
+				    curr_spec->s.cls_node.cls_regu_list_rest, curr_spec->where_range,
+				    curr_spec->s.cls_node.cls_regu_list_range,
+				    curr_spec->s.cls_node.cls_regu_list_last_version,
+				    curr_spec->s.cls_node.cls_output_val_list, curr_spec->s.cls_node.cls_regu_val_list,
+				    curr_spec->s.cls_node.num_attrs_key, curr_spec->s.cls_node.attrids_key,
+				    curr_spec->s.cls_node.cache_key, curr_spec->s.cls_node.num_attrs_pred,
+				    curr_spec->s.cls_node.attrids_pred, curr_spec->s.cls_node.cache_pred,
+				    curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
+				    curr_spec->s.cls_node.cache_rest, curr_spec->s.cls_node.num_attrs_range,
+				    curr_spec->s.cls_node.attrids_range, curr_spec->s.cls_node.cache_range,
+				    iscan_oid_order, query_id) != NO_ERROR)
 
 	    {
 	      goto exit_on_error;
@@ -6547,12 +6546,13 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
       break;
 
     case TARGET_CLASS_ATTR:
-      if (scan_open_class_attr_scan
-	  (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-	   &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec), curr_spec->s.cls_node.cls_regu_list_pred,
-	   curr_spec->where_pred, curr_spec->s.cls_node.cls_regu_list_rest, curr_spec->s.cls_node.num_attrs_pred,
-	   curr_spec->s.cls_node.attrids_pred, curr_spec->s.cls_node.cache_pred, curr_spec->s.cls_node.num_attrs_rest,
-	   curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest) != NO_ERROR)
+      if (scan_open_class_attr_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+				     &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
+				     curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
+				     curr_spec->s.cls_node.cls_regu_list_rest, curr_spec->s.cls_node.num_attrs_pred,
+				     curr_spec->s.cls_node.attrids_pred, curr_spec->s.cls_node.cache_pred,
+				     curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
+				     curr_spec->s.cls_node.cache_rest) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -6560,10 +6560,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
     case TARGET_LIST:
       /* open a list file scan */
-      if (scan_open_list_scan
-	  (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-	   ACCESS_SPEC_LIST_ID (curr_spec), curr_spec->s.list_node.list_regu_list_pred, curr_spec->where_pred,
-	   curr_spec->s.list_node.list_regu_list_rest) != NO_ERROR)
+      if (scan_open_list_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+			       ACCESS_SPEC_LIST_ID (curr_spec), curr_spec->s.list_node.list_regu_list_pred,
+			       curr_spec->where_pred, curr_spec->s.list_node.list_regu_list_rest) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -6571,9 +6570,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
     case TARGET_SHOWSTMT:
       /* open a showstmt scan */
-      if (scan_open_showstmt_scan
-	  (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd, curr_spec->where_pred,
-	   curr_spec->s.showstmt_node.show_type, curr_spec->s.showstmt_node.arg_list) != NO_ERROR)
+      if (scan_open_showstmt_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+				   curr_spec->where_pred, curr_spec->s.showstmt_node.show_type,
+				   curr_spec->s.showstmt_node.arg_list) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -6581,9 +6580,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
     case TARGET_REGUVAL_LIST:
       /* open a regu value list scan */
-      if (scan_open_values_scan
-	  (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-	   ACCESS_SPEC_RLIST_VALPTR_LIST (curr_spec)) != NO_ERROR)
+      if (scan_open_values_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+				 ACCESS_SPEC_RLIST_VALPTR_LIST (curr_spec)) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -6591,18 +6589,18 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
     case TARGET_SET:
       /* open a set based derived table scan */
-      if (scan_open_set_scan
-	  (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-	   ACCESS_SPEC_SET_PTR (curr_spec), ACCESS_SPEC_SET_REGU_LIST (curr_spec), curr_spec->where_pred) != NO_ERROR)
+      if (scan_open_set_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+			      ACCESS_SPEC_SET_PTR (curr_spec), ACCESS_SPEC_SET_REGU_LIST (curr_spec),
+			      curr_spec->where_pred) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
       break;
 
     case TARGET_METHOD:
-      if (scan_open_method_scan
-	  (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-	   ACCESS_SPEC_METHOD_LIST_ID (curr_spec), ACCESS_SPEC_METHOD_SIG_LIST (curr_spec)) != NO_ERROR)
+      if (scan_open_method_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+				 ACCESS_SPEC_METHOD_LIST_ID (curr_spec),
+				 ACCESS_SPEC_METHOD_SIG_LIST (curr_spec)) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -8479,8 +8477,8 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
   reev_data->cons_pred = cons_pred;
   reev_data->vd = &xasl_state->vd;
 
-  if (qexec_create_mvcc_reev_assignments
-      (thread_p, aptr, has_delete, internal_classes, no_classes, no_assigns, assigns, mvcc_reev_assigns) != NO_ERROR)
+  if (qexec_create_mvcc_reev_assignments (thread_p, aptr, has_delete, internal_classes, no_classes, no_assigns, assigns,
+					  mvcc_reev_assigns) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -8654,9 +8652,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   specp = xasl->spec_list;
   /* force_select_lock = false */
   assert (xasl->scan_op_type == S_SELECT);
-  if (qexec_open_scan
-      (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan, true,
-       &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+  if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan,
+		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
     {
       if (savepoint_used)
 	{
@@ -9570,9 +9567,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   specp = xasl->spec_list;
   assert (xasl->scan_op_type == S_SELECT);
   /* force_select_lock = false */
-  if (qexec_open_scan
-      (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan, true,
-       &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+  if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan,
+		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -9942,9 +9938,8 @@ qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, 
   del_lob_info->class_oid = class_info->class_oid;
   del_lob_info->class_hfid = class_info->class_hfid;
 
-  if (heap_attrinfo_start
-      (thread_p, class_info->class_oid, class_info->no_lob_attrs, class_info->lob_attr_ids,
-       &del_lob_info->attr_info) != NO_ERROR)
+  if (heap_attrinfo_start (thread_p, class_info->class_oid, class_info->no_lob_attrs, class_info->lob_attr_ids,
+			   &del_lob_info->attr_info) != NO_ERROR)
     {
       goto error;
     }
@@ -10177,12 +10172,14 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	    {
 	      /* need to provide appropriate scan_cache to locator_delete_force in order to correctly compute
 	       * statistics */
-	      PRUNING_SCAN_CACHE *pruning_cache = locator_get_partition_scancache (pcontext, &pruned_oid,
-										   &pruned_hfid, local_op_type,
-										   false);
+	      PRUNING_SCAN_CACHE *pruning_cache;
+
+	      pruning_cache =
+		locator_get_partition_scancache (pcontext, &pruned_oid, &pruned_hfid, local_op_type, false);
 	      if (pruning_cache == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
+
 		  error_code = er_errid ();
 		  if (error_code == NO_ERROR)
 		    {
@@ -10190,6 +10187,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 		    }
 		  goto error_exit;
 		}
+
 	      local_scan_cache = &pruning_cache->scan_cache;
 	    }
 
@@ -10261,6 +10259,7 @@ error_exit:
       pr_clear_value (&dbvalue);
       key_dbvalue = NULL;
     }
+
   if (copyarea != NULL)
     {
       locator_free_copy_area (copyarea);
@@ -10268,6 +10267,7 @@ error_exit:
       new_recdes.data = NULL;
       new_recdes.area_size = 0;
     }
+
   return ER_FAILED;
 }
 
@@ -10373,6 +10373,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 	      assert (false);
 	      goto error_exit;
 	    }
+
 	  error_code = partition_prune_unique_btid (pcontext, key_dbvalue, &class_oid, &class_hfid, &btid);
 	  if (error_code != NO_ERROR)
 	    {
@@ -10393,12 +10394,13 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 	    {
 	      /* need to provide appropriate scan_cache to locator_delete_force in order to correctly compute
 	       * statistics */
-	      PRUNING_SCAN_CACHE *pruning_cache = locator_get_partition_scancache (pcontext, &class_oid,
-										   &class_hfid, local_op_type,
-										   false);
+	      PRUNING_SCAN_CACHE *pruning_cache;
+
+	      pruning_cache = locator_get_partition_scancache (pcontext, &class_oid, &class_hfid, local_op_type, false);
 	      if (pruning_cache == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
+
 		  error_code = er_errid ();
 		  if (error_code == NO_ERROR)
 		    {
@@ -10409,6 +10411,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 
 	      *pruned_partition_scan_cache = &pruning_cache->scan_cache;
 	    }
+
 	  /* We now hold an U_LOCK on the instance. It will be upgraded to an X_LOCK when the update is executed. */
 	  if (pruning_type == DB_PARTITION_CLASS)
 	    {
@@ -10419,6 +10422,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 		  goto error_exit;
 		}
 	    }
+
 	  found_duplicate = true;
 	  COPY_OID (unique_oid_p, &unique_oid);
 	}
@@ -10460,6 +10464,7 @@ error_exit:
       pr_clear_value (&dbvalue);
       key_dbvalue = NULL;
     }
+
   if (copyarea != NULL)
     {
       locator_free_copy_area (copyarea);
@@ -10467,6 +10472,7 @@ error_exit:
       recdes.data = NULL;
       recdes.area_size = 0;
     }
+
   return ER_FAILED;
 }
 
@@ -10530,10 +10536,11 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
 
   /* get attribute values */
   ispeeking = ((local_scan_cache != NULL && local_scan_cache->cache_last_fix_page) ? PEEK : COPY);
+
   scan_code = heap_get (thread_p, &unique_oid, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN);
   if (scan_code != S_SUCCESS)
     {
-      assert (false);
+      assert (er_errid () == ER_INTERRUPTED);
       error = ER_FAILED;
       goto exit_on_error;
     }
@@ -10641,7 +10648,9 @@ exit_on_error:
     {
       heap_attrinfo_clear_dbvalues (odku->attr_info);
     }
+
   assert (error != NO_ERROR);
+
   return error;
 }
 
@@ -11583,9 +11592,8 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       scan_cache_end_needed = true;
 
       /* fetch the object and the class oid */
-      if (heap_get_with_class_oid
-	  (thread_p, &cls_oid, dbvaloid, &oRec, &scan_cache, scan_operation_type, PEEK, NULL,
-	   LOG_ERROR_IF_DELETED) != S_SUCCESS)
+      if (heap_get_with_class_oid (thread_p, &cls_oid, dbvaloid, &oRec, &scan_cache, scan_operation_type, PEEK, NULL,
+				   LOG_ERROR_IF_DELETED) != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
@@ -12090,15 +12098,13 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	  varptr = &(outptr->list->value);
 
 	  /* check something */
-	  if (!
-	      ((varptr->type == TYPE_INARITH || varptr->type == TYPE_OUTARITH)
-	       && (varptr->value.arithptr->opcode == T_INCR || varptr->value.arithptr->opcode == T_DECR)))
+	  if (!((varptr->type == TYPE_INARITH || varptr->type == TYPE_OUTARITH)
+		&& (varptr->value.arithptr->opcode == T_INCR || varptr->value.arithptr->opcode == T_DECR)))
 	    {
 	      goto exit_on_error;
 	    }
-	  if (!
-	      (varptr->value.arithptr->leftptr->type == TYPE_CONSTANT
-	       && varptr->value.arithptr->rightptr->type == TYPE_CONSTANT))
+	  if (varptr->value.arithptr->leftptr->type != TYPE_CONSTANT
+	      || varptr->value.arithptr->rightptr->type != TYPE_CONSTANT)
 	    {
 	      goto exit_on_error;
 	    }
@@ -12282,8 +12288,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 		      || lock_get_object_lock (class_oid, oid_Root_class_oid, tran_index) >= X_LOCK);
 	    }
 
-	  if (qexec_execute_increment
-	      (thread_p, oid, class_oid, class_hfid, attrid, n_increment, needs_pruning, need_locking) != NO_ERROR)
+	  if (qexec_execute_increment (thread_p, oid, class_oid, class_hfid, attrid, n_increment, needs_pruning,
+				       need_locking) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
@@ -13631,11 +13637,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 					     xasl->sql_hash_text, "", 0);
 #endif
 #endif
-			  if (qexec_open_scan
-			      (thread_p, specp, xptr->merge_val_list, &xasl_state->vd, force_select_lock,
-			       specp->fixed_scan, specp->grouped_scan, iscan_oid_order, &specp->s_id,
-			       xasl_state->query_id, xasl->scan_op_type, scan_immediately_stop,
-			       &mvcc_select_lock_needed) != NO_ERROR)
+			  if (qexec_open_scan (thread_p, specp, xptr->merge_val_list, &xasl_state->vd,
+					       force_select_lock, specp->fixed_scan, specp->grouped_scan,
+					       iscan_oid_order, &specp->s_id, xasl_state->query_id, xasl->scan_op_type,
+					       scan_immediately_stop, &mvcc_select_lock_needed) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;
@@ -13665,10 +13670,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 #endif
 #endif
 
-			  if (qexec_open_scan
-			      (thread_p, specp, xptr->val_list, &xasl_state->vd, force_select_lock, specp->fixed_scan,
-			       specp->grouped_scan, iscan_oid_order, &specp->s_id, xasl_state->query_id,
-			       xptr->scan_op_type, scan_immediately_stop, &mvcc_select_lock_needed) != NO_ERROR)
+			  if (qexec_open_scan (thread_p, specp, xptr->val_list, &xasl_state->vd, force_select_lock,
+					       specp->fixed_scan, specp->grouped_scan, iscan_oid_order, &specp->s_id,
+					       xasl_state->query_id, xptr->scan_op_type, scan_immediately_stop,
+					       &mvcc_select_lock_needed) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;
@@ -15723,8 +15728,8 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
 
   /* get new entry from the XASL_CACHE_ENTRY_POOL */
   ent =
-    qexec_alloc_xasl_cache_ent (XASL_CACHE_ENTRY_ALLOC_SIZE
-				(sql_hash_text_len + sql_plan_text_len + sql_user_text_len, n_oids));
+    qexec_alloc_xasl_cache_ent (XASL_CACHE_ENTRY_ALLOC_SIZE (sql_hash_text_len + sql_plan_text_len + sql_user_text_len,
+							     n_oids));
   if (ent == NULL)
     {
       goto end;
@@ -17269,14 +17274,14 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   input_lfscan_id.status = S_CLOSED;
   lfscan_id.status = S_CLOSED;
 
-  if (qexec_init_index_pseudocolumn_strings (thread_p, &father_index, &len_father_index, &son_index, &len_son_index) !=
-      NO_ERROR)
+  if (qexec_init_index_pseudocolumn_strings (thread_p, &father_index, &len_father_index, &son_index,
+					     &len_son_index) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (qexec_set_pseudocolumns_val_pointers
-      (xasl, &level_valp, &isleaf_valp, &iscycle_valp, &parent_pos_valp, &index_valp) != NO_ERROR)
+  if (qexec_set_pseudocolumns_val_pointers (xasl, &level_valp, &isleaf_valp, &iscycle_valp, &parent_pos_valp,
+					    &index_valp) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -17397,15 +17402,13 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
 	  /* fetch regu_variable values from parent tuple; obs: prior_regu_list was split into pred and rest for
 	   * possible future optimizations. */
-	  if (fetch_val_list
-	      (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
-	       PEEK) != NO_ERROR)
+	  if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+			      PEEK) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
-	  if (fetch_val_list
-	      (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
-	       PEEK) != NO_ERROR)
+	  if (fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+			      PEEK) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -17427,8 +17430,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	      /* not START WITH tuples but a previous generation of children, now parents. They have the index string
 	       * column written. */
 
-	      if (qexec_get_index_pseudocolumn_value_from_tuple
-		  (thread_p, xasl, tuple_rec.tpl, &index_valp, &father_index, &len_father_index) != NO_ERROR)
+	      if (qexec_get_index_pseudocolumn_value_from_tuple (thread_p, xasl, tuple_rec.tpl, &index_valp,
+								 &father_index, &len_father_index) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -17439,9 +17442,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	    {
 	      assert (xasl->scan_op_type == S_SELECT);
 	      /* heap/index scan for single table query optimization */
-	      if (qexec_open_scan
-		  (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, true, false, false,
-		   &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+	      if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, true, false,
+				   false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false,
+				   NULL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -17489,9 +17492,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	      if (!connect_by->single_table_opt)
 		{
 		  /* fetch pred regu_variable values from input list tuple */
-		  if (fetch_val_list
-		      (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL, input_tuple_rec.tpl,
-		       PEEK) != NO_ERROR)
+		  if (fetch_val_list (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL,
+				      input_tuple_rec.tpl, PEEK) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
@@ -17523,9 +17525,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  if (!connect_by->single_table_opt)
 		    {
 		      /* fetch rest of regu_var values from input list tuple */
-		      if (fetch_val_list
-			  (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL, input_tuple_rec.tpl,
-			   PEEK) != NO_ERROR)
+		      if (fetch_val_list (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL,
+					  input_tuple_rec.tpl, PEEK) != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
@@ -17559,17 +17560,17 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		      DB_MAKE_INT (isleaf_valp, isleaf_value);
 
 		      /* preserve the parent position pseudocolumn value */
-		      if (qexec_get_tuple_column_value
-			  (tuple_rec.tpl, xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET, parent_pos_valp,
-			   &tp_Bit_domain) != NO_ERROR)
+		      if (qexec_get_tuple_column_value (tuple_rec.tpl,
+							(xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
+							parent_pos_valp, &tp_Bit_domain) != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
 
 		      /* make the "final" parent tuple */
 		      tuple_rec = temp_tuple_rec;
-		      if (qdata_copy_valptr_list_to_tuple
-			  (thread_p, connect_by->prior_outptr_list, &xasl_state->vd, &tuple_rec) != NO_ERROR)
+		      if (qdata_copy_valptr_list_to_tuple (thread_p, connect_by->prior_outptr_list, &xasl_state->vd,
+							   &tuple_rec) != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
@@ -17593,8 +17594,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		    {
 		      if (has_order_siblings_by)
 			{
-			  if (qexec_insert_tuple_into_list
-			      (thread_p, listfile2_tmp, xasl->outptr_list, &xasl_state->vd, tplrec) != NO_ERROR)
+			  if (qexec_insert_tuple_into_list (thread_p, listfile2_tmp, xasl->outptr_list, &xasl_state->vd,
+							    tplrec) != NO_ERROR)
 			    {
 			      GOTO_EXIT_ON_ERROR;
 			    }
@@ -17611,8 +17612,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
 			  DB_MAKE_STRING (index_valp, son_index);
 
-			  if (qexec_insert_tuple_into_list
-			      (thread_p, listfile2, xasl->outptr_list, &xasl_state->vd, tplrec) != NO_ERROR)
+			  if (qexec_insert_tuple_into_list (thread_p, listfile2, xasl->outptr_list, &xasl_state->vd,
+							    tplrec) != NO_ERROR)
 			    {
 			      GOTO_EXIT_ON_ERROR;
 			    }
@@ -17663,9 +17664,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
 	      DB_MAKE_INT (isleaf_valp, isleaf_value);
 
-	      if (qexec_get_tuple_column_value
-		  (tuple_rec.tpl, (xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET), parent_pos_valp,
-		   &tp_Bit_domain) != NO_ERROR)
+	      if (qexec_get_tuple_column_value (tuple_rec.tpl,
+						(xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
+						parent_pos_valp, &tp_Bit_domain) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -17687,18 +17688,18 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  /* set CONNECT_BY_ISCYCLE pseudocolumn value */
 	  DB_MAKE_INT (iscycle_valp, iscycle_value);
 	  /* it is fixed size data, so we can set it in this fashion */
-	  if (qfile_set_tuple_column_value
-	      (thread_p, listfile0, NULL, &parent_pos.vpid, parent_pos.tpl,
-	       xasl->outptr_list->valptr_cnt - PCOL_ISCYCLE_TUPLE_OFFSET, iscycle_valp, &tp_Integer_domain) != NO_ERROR)
+	  if (qfile_set_tuple_column_value (thread_p, listfile0, NULL, &parent_pos.vpid, parent_pos.tpl,
+					    (xasl->outptr_list->valptr_cnt - PCOL_ISCYCLE_TUPLE_OFFSET), iscycle_valp,
+					    &tp_Integer_domain) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
 	  /* set CONNECT_BY_ISLEAF pseudocolumn value */
 	  DB_MAKE_INT (isleaf_valp, isleaf_value);
-	  if (qfile_set_tuple_column_value
-	      (thread_p, listfile0, NULL, &parent_pos.vpid, parent_pos.tpl,
-	       xasl->outptr_list->valptr_cnt - PCOL_ISLEAF_TUPLE_OFFSET, isleaf_valp, &tp_Integer_domain) != NO_ERROR)
+	  if (qfile_set_tuple_column_value (thread_p, listfile0, NULL, &parent_pos.vpid, parent_pos.tpl,
+					    (xasl->outptr_list->valptr_cnt - PCOL_ISLEAF_TUPLE_OFFSET), isleaf_valp,
+					    &tp_Integer_domain) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -17707,8 +17708,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	    {
 	      /* sort the listfile2_tmp according to orderby lists */
 	      index = 0;
-	      if (qexec_listfile_orderby
-		  (thread_p, xasl, listfile2_tmp, xasl->orderby_list, xasl_state, xasl->outptr_list) != NO_ERROR)
+	      if (qexec_listfile_orderby (thread_p, xasl, listfile2_tmp, xasl->orderby_list, xasl_state,
+					  xasl->outptr_list) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -17736,41 +17737,39 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
 		  DB_MAKE_STRING (index_valp, son_index);
 
-		  if (fetch_val_list
-		      (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL, tpl_lst2tmp.tpl,
-		       PEEK) != NO_ERROR)
+		  if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL,
+				      tpl_lst2tmp.tpl, PEEK) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
-		  if (fetch_val_list
-		      (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL, tpl_lst2tmp.tpl,
-		       PEEK) != NO_ERROR)
+		  if (fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL,
+				      tpl_lst2tmp.tpl, PEEK) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
 
 		  /* preserve iscycle, isleaf and parent_pos pseudocolumns */
-		  if (qexec_get_tuple_column_value
-		      (tpl_lst2tmp.tpl, xasl->outptr_list->valptr_cnt - PCOL_ISCYCLE_TUPLE_OFFSET, iscycle_valp,
-		       &tp_Integer_domain) != NO_ERROR)
+		  if (qexec_get_tuple_column_value (tpl_lst2tmp.tpl,
+						    (xasl->outptr_list->valptr_cnt - PCOL_ISCYCLE_TUPLE_OFFSET),
+						    iscycle_valp, &tp_Integer_domain) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
-		  if (qexec_get_tuple_column_value
-		      (tpl_lst2tmp.tpl, xasl->outptr_list->valptr_cnt - PCOL_ISLEAF_TUPLE_OFFSET, isleaf_valp,
-		       &tp_Integer_domain) != NO_ERROR)
+		  if (qexec_get_tuple_column_value (tpl_lst2tmp.tpl,
+						    (xasl->outptr_list->valptr_cnt - PCOL_ISLEAF_TUPLE_OFFSET),
+						    isleaf_valp, &tp_Integer_domain) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
-		  if (qexec_get_tuple_column_value
-		      (tpl_lst2tmp.tpl, xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET, parent_pos_valp,
-		       &tp_Bit_domain) != NO_ERROR)
+		  if (qexec_get_tuple_column_value (tpl_lst2tmp.tpl,
+						    (xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
+						    parent_pos_valp, &tp_Bit_domain) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
 
-		  if (qexec_insert_tuple_into_list
-		      (thread_p, listfile2, connect_by->prior_outptr_list, &xasl_state->vd, tplrec) != NO_ERROR)
+		  if (qexec_insert_tuple_into_list (thread_p, listfile2, connect_by->prior_outptr_list,
+						    &xasl_state->vd, tplrec) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
@@ -18340,9 +18339,9 @@ qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE
 	}
 
       /* get the parent node */
-      if (qexec_get_tuple_column_value
-	  (tuple_rec.tpl, outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET, &p_pos_dbval,
-	   &tp_Bit_domain) != NO_ERROR)
+      if (qexec_get_tuple_column_value (tuple_rec.tpl,
+					(outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET), &p_pos_dbval,
+					&tp_Bit_domain) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return ER_FAILED;
@@ -18789,8 +18788,8 @@ static int
 qexec_get_index_pseudocolumn_value_from_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_TUPLE tpl,
 					       DB_VALUE ** index_valp, char **index_value, int *index_len)
 {
-  if (qexec_get_tuple_column_value
-      (tpl, xasl->outptr_list->valptr_cnt - PCOL_INDEX_STRING_TUPLE_OFFSET, *index_valp, &tp_String_domain) != NO_ERROR)
+  if (qexec_get_tuple_column_value (tpl, (xasl->outptr_list->valptr_cnt - PCOL_INDEX_STRING_TUPLE_OFFSET),
+				    *index_valp, &tp_String_domain) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -18883,9 +18882,8 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 	  started = true;
 	}
 
-      if (qexec_get_tuple_column_value
-	  (tuple_rec.tpl, list_id_p->type_list.type_cnt - PCOL_LEVEL_TUPLE_OFFSET, &level_dbval,
-	   &tp_Integer_domain) != NO_ERROR)
+      if (qexec_get_tuple_column_value (tuple_rec.tpl, (list_id_p->type_list.type_cnt - PCOL_LEVEL_TUPLE_OFFSET),
+					&level_dbval, &tp_Integer_domain) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -18907,10 +18905,9 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 	      DB_MAKE_BIT (&parent_pos_dbval, DB_DEFAULT_PRECISION, (void *) &pos_info_p->tpl_pos,
 			   sizeof (pos_info_p->tpl_pos) * 8);
 
-	      if (qfile_set_tuple_column_value
-		  (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
-		   list_id_p->type_list.type_cnt - PCOL_PARENTPOS_TUPLE_OFFSET, &parent_pos_dbval,
-		   &tp_Bit_domain) != NO_ERROR)
+	      if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
+						(list_id_p->type_list.type_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
+						&parent_pos_dbval, &tp_Bit_domain) != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
@@ -18939,10 +18936,9 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 	  DB_MAKE_BIT (&parent_pos_dbval, DB_DEFAULT_PRECISION, (void *) &pos_info_p->tpl_pos,
 		       sizeof (pos_info_p->tpl_pos) * 8);
 
-	  if (qfile_set_tuple_column_value
-	      (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
-	       list_id_p->type_list.type_cnt - PCOL_PARENTPOS_TUPLE_OFFSET, &parent_pos_dbval,
-	       &tp_Bit_domain) != NO_ERROR)
+	  if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
+					    (list_id_p->type_list.type_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
+					    &parent_pos_dbval, &tp_Bit_domain) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
@@ -18975,10 +18971,9 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 	      DB_MAKE_BIT (&parent_pos_dbval, DB_DEFAULT_PRECISION, (void *) &pos_info_p->tpl_pos,
 			   sizeof (pos_info_p->tpl_pos) * 8);
 
-	      if (qfile_set_tuple_column_value
-		  (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
-		   list_id_p->type_list.type_cnt - PCOL_PARENTPOS_TUPLE_OFFSET, &parent_pos_dbval,
-		   &tp_Bit_domain) != NO_ERROR)
+	      if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
+						(list_id_p->type_list.type_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
+						&parent_pos_dbval, &tp_Bit_domain) != NO_ERROR)
 		{
 		  goto exit_on_error;
 		}
@@ -19228,8 +19223,8 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* fetch LEVEL pseudocolumn value */
       if (xasl->level_val)
 	{
-	  if (fetch_peek_dbval (thread_p, xasl->level_regu, &xasl_state->vd, NULL, NULL, tuple_rec.tpl, &dbvalp) !=
-	      NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, xasl->level_regu, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+				&dbvalp) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
@@ -19238,8 +19233,8 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* fetch CONNECT_BY_ISLEAF pseudocolumn value */
       if (xasl->isleaf_val)
 	{
-	  if (fetch_peek_dbval (thread_p, xasl->isleaf_regu, &xasl_state->vd, NULL, NULL, tuple_rec.tpl, &dbvalp) !=
-	      NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, xasl->isleaf_regu, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+				&dbvalp) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
@@ -19248,23 +19243,23 @@ qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* fetch CONNECT_BY_ISCYCLE pseudocolumn value */
       if (xasl->iscycle_val)
 	{
-	  if (fetch_peek_dbval (thread_p, xasl->iscycle_regu, &xasl_state->vd, NULL, NULL, tuple_rec.tpl, &dbvalp) !=
-	      NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, xasl->iscycle_regu, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+				&dbvalp) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
 	}
 
       /* fetch pred part of xasl->connect_by_ptr->val_list from the tuple */
-      if (fetch_val_list
-	  (thread_p, connect_by->after_cb_regu_list_pred, &xasl_state->vd, NULL, NULL, tuple_rec.tpl, PEEK) != NO_ERROR)
+      if (fetch_val_list (thread_p, connect_by->after_cb_regu_list_pred, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+			  PEEK) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
       /* fetch the rest of xasl->connect_by_ptr->val_list from the tuple */
-      if (fetch_val_list
-	  (thread_p, connect_by->after_cb_regu_list_rest, &xasl_state->vd, NULL, NULL, tuple_rec.tpl, PEEK) != NO_ERROR)
+      if (fetch_val_list (thread_p, connect_by->after_cb_regu_list_rest, &xasl_state->vd, NULL, NULL, tuple_rec.tpl,
+			  PEEK) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -19631,9 +19626,8 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 	   * leave it as it is. */
 	  if (false)
 	    {
-	      if (qexec_add_composite_lock
-		  (thread_p, gbstate->g_outptr_list->valptrp, xasl_state, gbstate->composite_lock,
-		   gbstate->upd_del_class_cnt, NULL) != NO_ERROR)
+	      if (qexec_add_composite_lock (thread_p, gbstate->g_outptr_list->valptrp, xasl_state,
+					    gbstate->composite_lock, gbstate->upd_del_class_cnt, NULL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -20648,9 +20642,8 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  if (agg_p->accumulator.value != NULL && agg_p->accumulator_domain.value_dom != NULL
 	      && DB_VALUE_TYPE (agg_p->accumulator.value) == DB_TYPE_NULL)
 	    {
-	      if (db_value_domain_init
-		  (agg_p->accumulator.value, TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom), DB_DEFAULT_PRECISION,
-		   DB_DEFAULT_SCALE) != NO_ERROR)
+	      if (db_value_domain_init (agg_p->accumulator.value, TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom),
+					DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -20659,9 +20652,9 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  if (agg_p->accumulator.value2 != NULL && agg_p->accumulator_domain.value2_dom != NULL
 	      && DB_VALUE_TYPE (agg_p->accumulator.value2) == DB_TYPE_NULL)
 	    {
-	      if (db_value_domain_init
-		  (agg_p->accumulator.value2, TP_DOMAIN_TYPE (agg_p->accumulator_domain.value2_dom),
-		   DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
+	      if (db_value_domain_init (agg_p->accumulator.value2,
+					TP_DOMAIN_TYPE (agg_p->accumulator_domain.value2_dom),
+					DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -20719,11 +20712,11 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 
   assert (buildlist->g_with_rollup == 0);
 
-  if (qexec_initialize_groupby_state
-      (&gbstate, buildlist->groupby_list, buildlist->g_having_pred, buildlist->g_grbynum_pred, buildlist->g_grbynum_val,
-       buildlist->g_grbynum_flag, buildlist->eptr_list, buildlist->g_agg_list, buildlist->g_regu_list,
-       buildlist->g_val_list, buildlist->g_outptr_list, NULL, buildlist->g_with_rollup, 0, NULL, xasl, xasl_state,
-       &list_id->type_list, tplrec) == NULL)
+  if (qexec_initialize_groupby_state (&gbstate, buildlist->groupby_list, buildlist->g_having_pred,
+				      buildlist->g_grbynum_pred, buildlist->g_grbynum_val, buildlist->g_grbynum_flag,
+				      buildlist->eptr_list, buildlist->g_agg_list, buildlist->g_regu_list,
+				      buildlist->g_val_list, buildlist->g_outptr_list, NULL, buildlist->g_with_rollup,
+				      0, NULL, xasl, xasl_state, &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -21158,10 +21151,10 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   qexec_resolve_domains_on_sort_list (analytic_eval->sort_list, buildlist->a_outptr_list_ex->valptrp);
 
   /* initialized analytic functions state structure */
-  if (qexec_initialize_analytic_state
-      (thread_p, &analytic_state, analytic_eval->head, analytic_eval->sort_list, buildlist->a_regu_list,
-       buildlist->a_val_list, a_outptr_list, buildlist->a_outptr_list_interm, is_last, xasl, xasl_state,
-       &list_id->type_list, tplrec) == NULL)
+  if (qexec_initialize_analytic_state (thread_p, &analytic_state, analytic_eval->head, analytic_eval->sort_list,
+				       buildlist->a_regu_list, buildlist->a_val_list, a_outptr_list,
+				       buildlist->a_outptr_list_interm, is_last, xasl, xasl_state, &list_id->type_list,
+				       tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -21275,9 +21268,9 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   analytic_state.key_info.use_original = 1;
   analytic_state.cmp_fn = &qfile_compare_partial_sort_record;
 
-  if (sort_listfile
-      (thread_p, NULL_VOLID, estimated_pages, &qexec_analytic_get_next, &analytic_state, &qexec_analytic_put_next,
-       &analytic_state, analytic_state.cmp_fn, &analytic_state.key_info, SORT_DUP, NO_SORT_LIMIT) != NO_ERROR)
+  if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_analytic_get_next, &analytic_state,
+		     &qexec_analytic_put_next, &analytic_state, analytic_state.cmp_fn, &analytic_state.key_info,
+		     SORT_DUP, NO_SORT_LIMIT) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -21303,8 +21296,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     {
       for (i = 0; i < analytic_state.func_count; i++)
 	{
-	  if (qexec_analytic_finalize_group
-	      (thread_p, analytic_state.xasl_state, &analytic_state.func_state_list[i], false) != NO_ERROR)
+	  if (qexec_analytic_finalize_group (thread_p, analytic_state.xasl_state, &analytic_state.func_state_list[i],
+					     false) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -22027,9 +22020,8 @@ qexec_analytic_finalize_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
   /* dump group */
   if (!is_same_group)
     {
-      if (qfile_fast_intint_tuple_to_list
-	  (thread_p, func_state->group_list_id, func_state->curr_group_tuple_count,
-	   func_state->curr_group_tuple_count_nn) != NO_ERROR)
+      if (qfile_fast_intint_tuple_to_list (thread_p, func_state->group_list_id, func_state->curr_group_tuple_count,
+					   func_state->curr_group_tuple_count_nn) != NO_ERROR)
 	{
 	  rc = ER_FAILED;
 	  goto cleanup;
@@ -22108,9 +22100,8 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_sta
     {
       /* records that did not pass the instnum() predicate evaluation are used for computing the function value, but
        * are not included in the intermediate file */
-      if (qexec_insert_tuple_into_list
-	  (thread_p, list_id, analytic_state->a_outptr_list_interm, &xasl_state->vd,
-	   analytic_state->output_tplrec) != NO_ERROR)
+      if (qexec_insert_tuple_into_list (thread_p, list_id, analytic_state->a_outptr_list_interm, &xasl_state->vd,
+					analytic_state->output_tplrec) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -23022,15 +23013,13 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
   /* open scans on all result files */
   for (i = 0; i < analytic_state->func_count; i++)
     {
-      if (qfile_open_list_scan
-	  (analytic_state->func_state_list[i].group_list_id,
-	   &analytic_state->func_state_list[i].group_scan_id) != NO_ERROR)
+      if (qfile_open_list_scan (analytic_state->func_state_list[i].group_list_id,
+				&analytic_state->func_state_list[i].group_scan_id) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
-      if (qfile_open_list_scan
-	  (analytic_state->func_state_list[i].value_list_id,
-	   &analytic_state->func_state_list[i].value_scan_id) != NO_ERROR)
+      if (qfile_open_list_scan (analytic_state->func_state_list[i].value_list_id,
+				&analytic_state->func_state_list[i].value_scan_id) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &analytic_state->func_state_list[i].group_scan_id);
 	  return ER_FAILED;
