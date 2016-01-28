@@ -8554,13 +8554,21 @@ logtb_free_trans_info (TRANS_INFO * info)
   for (i = 0; i < info->num_trans; i++)
     {
       if (info->tran[i].db_user != NULL)
-	db_private_free_and_init (NULL, info->tran[i].db_user);
+	{
+	  db_private_free_and_init (NULL, info->tran[i].db_user);
+	}
       if (info->tran[i].program_name != NULL)
-	db_private_free_and_init (NULL, info->tran[i].program_name);
+	{
+	  db_private_free_and_init (NULL, info->tran[i].program_name);
+	}
       if (info->tran[i].login_name != NULL)
-	db_private_free_and_init (NULL, info->tran[i].login_name);
+	{
+	  db_private_free_and_init (NULL, info->tran[i].login_name);
+	}
       if (info->tran[i].host_name != NULL)
-	db_private_free_and_init (NULL, info->tran[i].host_name);
+	{
+	  db_private_free_and_init (NULL, info->tran[i].host_name);
+	}
 
       if (info->include_query_exec_info)
 	{
@@ -8602,7 +8610,9 @@ logtb_get_trans_info (bool include_query_exec_info)
 
   error = logtb_get_pack_tran_table (&buffer, &bufsize, include_query_exec_info);
   if (error != NO_ERROR || buffer == NULL)
-    return NULL;
+    {
+      return NULL;
+    }
 
   ptr = buffer;
   ptr = or_unpack_int (ptr, &num_trans);
@@ -8665,10 +8675,14 @@ logtb_get_trans_info (bool include_query_exec_info)
 
 error:
   if (buffer != NULL)
-    free_and_init (buffer);
+    {
+      free_and_init (buffer);
+    }
 
   if (info != NULL)
-    logtb_free_trans_info (info);
+    {
+      logtb_free_trans_info (info);
+    }
 
   return NULL;
 }

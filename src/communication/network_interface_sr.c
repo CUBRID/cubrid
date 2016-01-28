@@ -7154,9 +7154,8 @@ sthread_kill_tran_index (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
   ptr = or_unpack_string_nocopy (ptr, &kill_host);
   ptr = or_unpack_int (ptr, &kill_pid);
 
-  success =
-    (xthread_kill_tran_index (thread_p, kill_tran_index, kill_user, kill_host, kill_pid) ==
-     NO_ERROR) ? NO_ERROR : ER_FAILED;
+  success = (xthread_kill_tran_index (thread_p, kill_tran_index, kill_user, kill_host, kill_pid)
+	     == NO_ERROR) ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
@@ -7326,7 +7325,6 @@ slogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   (void) or_unpack_int (request, &include_query_exec_info);
 
   error = xlogtb_get_pack_tran_table (thread_p, &buffer, &size, include_query_exec_info);
-
 
   if (error != NO_ERROR)
     {

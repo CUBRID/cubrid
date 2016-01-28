@@ -782,9 +782,8 @@ csql_killtran (const char *argument)
 		       tran_get_tranlist_state_name (info->tran[i].state), info->tran[i].db_user,
 		       info->tran[i].host_name, info->tran[i].process_id, info->tran[i].program_name);
 
-	      if (thread_kill_tran_index
-		  (info->tran[i].tran_index, info->tran[i].db_user, info->tran[i].host_name,
-		   info->tran[i].process_id) == NO_ERROR)
+	      if (thread_kill_tran_index (info->tran[i].tran_index, info->tran[i].db_user, info->tran[i].host_name,
+					  info->tran[i].process_id) == NO_ERROR)
 		{
 		  csql_display_msg (csql_get_message (CSQL_STAT_KILLTRAN_TEXT));
 		}
@@ -801,6 +800,7 @@ csql_killtran (const char *argument)
     {
       logtb_free_trans_info (info);
     }
+
   return;
 
 error:

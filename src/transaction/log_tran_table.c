@@ -2767,7 +2767,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
   assert (ptr <= buffer + size);
 
   *buffer_p = buffer;
-  *size_p = size;
+  *size_p = CAST_BUFLEN (ptr - buffer);
 
 error:
   TR_TABLE_CS_EXIT (thread_p);
