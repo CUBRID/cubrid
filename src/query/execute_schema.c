@@ -60,6 +60,7 @@
 #define UNIQUE_SAVEPOINT_ADD_ATTR_MTHD "aDDaTTRmTHD"
 #define UNIQUE_SAVEPOINT_CREATE_ENTITY "cREATEeNTITY"
 #define UNIQUE_SAVEPOINT_DROP_ENTITY "dROPeNTITY"
+#define UNIQUE_SAVEPOINT_REPLACE_VIEW "rEPlACE"
 #define UNIQUE_SAVEPOINT_RENAME "rENAME"
 #define UNIQUE_SAVEPOINT_MULTIPLE_ALTER "mULTIPLEaLTER"
 #define UNIQUE_SAVEPOINT_TRUNCATE "tRUnCATE"
@@ -8456,6 +8457,14 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 
 	  error = drop_class_name (class_name, false);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  /* Quick fix: create a savepoint to mark deleted transient state. */
+	  /* NOTE: Without this savepoint, creating view will completely replace deleted classname. */
+	  error = tran_system_savepoint (UNIQUE_SAVEPOINT_REPLACE_VIEW);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
