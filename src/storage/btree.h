@@ -393,7 +393,7 @@ struct btree_node_scan
   BTREE_NODE_SCAN_QUEUE_ITEM *queue_tail;	/* B-tree node queue tail */
 };
 
-/* Initialize BTREE_NODE_SCAN stucture for node info scan */
+/* Initialize BTREE_NODE_SCAN structure for node info scan */
 #define BTREE_NODE_SCAN_INIT(bns) \
   do \
     { \
@@ -617,10 +617,11 @@ extern int btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID *
 					  char *preallocated_buffer, char **data, int *capacity, int *length);
 extern int btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key,
 						      BTREE_OBJECT_INFO * first_version,
-						      BTREE_OBJECT_INFO * second_version, char *preallocated_buffer,
-						      char **data, int *capacity, int *length);
+						      BTREE_OBJECT_INFO * second_version, BTREE_OP_PURPOSE purpose,
+						      char *preallocated_buffer, char **data, int *capacity,
+						      int *length);
 extern int btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int btree_rv_keyval_undo_insert_unique_multiupd (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int btree_rv_keyval_undo_insert_unique (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_undo_mvcc_update_same_key (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

@@ -1380,7 +1380,7 @@ enum log_repl_flush
 #define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
   ((rcvindex) == RVBT_MVCC_DELETE_OBJECT \
    || (rcvindex) == RVBT_MVCC_INSERT_OBJECT \
-   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD \
+   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT_UNQ \
    || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM \
    || (rcvindex) == RVBT_MVCC_UPDATE_SAME_KEY)
 

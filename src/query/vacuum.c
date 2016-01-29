@@ -2981,7 +2981,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	  assert (undo_data != NULL);
 
 	  if (log_record_data.rcvindex == RVBT_MVCC_UPDATE_SAME_KEY
-	      || log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD)
+	      || log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ)
 	    {
 	      btree_rv_read_keybuf_two_objects (thread_p, undo_data, undo_data_size, &btid_int, &old_version,
 						&new_version, &key_buf);
@@ -3064,10 +3064,10 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	      error_code = btree_vacuum_object (thread_p, btid_int.sys_btid, &key_buf, &oid, &class_oid, mvccid);
 	    }
 	  else if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT
-		   || log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD)
+		   || log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ)
 	    {
 	      /* Object was inserted and only its insert MVCCID must be removed. */
-	      if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD)
+	      if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ)
 		{
 		  COPY_OID (&oid, &old_version.oid);
 		  COPY_OID (&class_oid, &old_version.class_oid);

@@ -153,7 +153,7 @@ typedef enum
   RVBT_RECORD_MODIFY_UNDOREDO = 105,
   RVBT_DELETE_OBJECT_POSTPONE = 106,
   RVBT_MARK_DELETED = 107,
-  RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD = 108,
+  RVBT_MVCC_INSERT_OBJECT_UNQ = 108,
   RVBT_MARK_DEALLOC_PAGE = 109,
 
   RVCT_NEWPAGE = 110,
@@ -252,7 +252,7 @@ extern void rv_check_rvfuns (void);
    || ((idx) == RVBT_MVCC_UPDATE_SAME_KEY) \
    || ((idx) == RVBT_MARK_DELETED) \
    || ((idx) == RVBT_DELETE_OBJECT_POSTPONE) \
-   || ((idx) == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD))
+   || ((idx) == RVBT_MVCC_INSERT_OBJECT_UNQ))
 
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
   ((((vpid)->volid == NULL_VOLID) \

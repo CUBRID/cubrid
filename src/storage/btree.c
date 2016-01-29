@@ -17816,7 +17816,8 @@ btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid, O
  */
 int
 btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key, BTREE_OBJECT_INFO * first_version,
-					   BTREE_OBJECT_INFO * second_version, char *preallocated_buffer, char **data,
+					   BTREE_OBJECT_INFO * second_version, BTREE_OP_PURPOSE purpose,
+					   char *preallocated_buffer, char **data,
 					   int *capacity, int *length)
 {
   int size;
@@ -17893,7 +17894,7 @@ btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key, BTRE
 
   datap = or_pack_btid (datap, btid->sys_btid);
 
-  /* Save old object. */
+  /* Save first object. */
   if (BTREE_IS_UNIQUE (btid->unique_pk) && !OID_EQ (&first_version->class_oid, &btid->topclass_oid))
     {
       /* Mark object OID that class OID is also packed. */
@@ -17910,11 +17911,30 @@ btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key, BTRE
       datap = or_pack_oid (datap, &first_version->oid);
     }
 
-  /* Save new object. */
+  /* Save second object. */
+  COPY_OID (&oid_and_flags, &second_version->oid);
+  /* What MVCC info to save. */
+  switch (purpose)
+    {
+    case BTREE_OP_UPDATE_SAME_KEY_DIFF_OID:
+      /* No MVCC info is necessary. Object will be found based on MVCCID saved in log record meta data. */
+      break;
+    case BTREE_OP_INSERT_NEW_OBJECT:
+      /* We need to save delete MVCCID of object being relocated to be able to find it. */
+      if (BTREE_MVCC_INFO_IS_DELID_VALID (&second_version->mvcc_info))
+	{
+	  BTREE_OID_SET_MVCC_FLAG (&oid_and_flags, BTREE_OID_HAS_MVCC_DELID);
+	}
+      break;
+    default:
+      /* Unexpected. */
+      assert (false);
+      break;
+    }
+  
   if (BTREE_IS_UNIQUE (btid->unique_pk) && !OID_EQ (&second_version->class_oid, &btid->topclass_oid))
     {
       /* Mark object OID that class OID is also packed. */
-      COPY_OID (&oid_and_flags, &second_version->oid);
       BTREE_OID_SET_RECORD_FLAG (&oid_and_flags, BTREE_LEAF_RECORD_CLASS_OID);
       /* Pack OID. */
       datap = or_pack_oid (datap, &oid_and_flags);
@@ -17924,7 +17944,18 @@ btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key, BTRE
   else
     {
       /* Pack OID. */
-      datap = or_pack_oid (datap, &second_version->oid);
+      datap = or_pack_oid (datap, &oid_and_flags);
+    }
+
+  if (BTREE_OID_IS_MVCC_FLAG_SET (&oid_and_flags, BTREE_OID_HAS_MVCC_INSID))
+    {
+      /* Pack insert MVCCID. */
+      datap = or_pack_mvccid (datap, second_version->mvcc_info.insert_mvccid);
+    }
+  if (BTREE_OID_IS_MVCC_FLAG_SET (&oid_and_flags, BTREE_OID_HAS_MVCC_DELID))
+    {
+      /* Pack delete MVCCID. */
+      datap = or_pack_mvccid (datap, second_version->mvcc_info.delete_mvccid);
     }
 
   ASSERT_ALIGN (datap, INT_ALIGNMENT);
@@ -18749,8 +18780,7 @@ btree_rv_read_keybuf_nocopy (THREAD_ENTRY * thread_p, char *datap, int data_size
 }
 
 /*
- * btree_rv_read_keybuf_two_objects () - Read undo buffer packed
- *						  which contains two objects.
+ * btree_rv_read_keybuf_two_objects () - Read undo buffer packed which contains two objects.
  *
  * return		: Void.
  * thread_p (in)	: Thread entry.
@@ -18781,27 +18811,39 @@ btree_rv_read_keybuf_two_objects (THREAD_ENTRY * thread_p, char *datap, int data
 
   /* extract first object. */
   datap = or_unpack_oid (datap, &first_version->oid);
+  assert (BTREE_OID_GET_MVCC_FLAGS (&first_version->oid) == 0);
   if (BTREE_OID_IS_RECORD_FLAG_SET (&first_version->oid, BTREE_LEAF_RECORD_CLASS_OID))
     {
       datap = or_unpack_oid (datap, &first_version->class_oid);
-      BTREE_OID_CLEAR_RECORD_FLAGS (&first_version->oid);
     }
   else
     {
       OID_SET_NULL (&first_version->class_oid);
     }
+  BTREE_OID_CLEAR_ALL_FLAGS (&first_version->oid);
 
   /* extract second object. */
   datap = or_unpack_oid (datap, &second_version->oid);
   if (BTREE_OID_IS_RECORD_FLAG_SET (&second_version->oid, BTREE_LEAF_RECORD_CLASS_OID))
     {
       datap = or_unpack_oid (datap, &second_version->class_oid);
-      BTREE_OID_CLEAR_RECORD_FLAGS (&second_version->oid);
     }
   else
     {
-      OID_SET_NULL (&first_version->class_oid);
+      OID_SET_NULL (&second_version->class_oid);
     }
+
+  if (BTREE_OID_IS_MVCC_FLAG_SET (&second_version->oid, BTREE_OID_HAS_MVCC_INSID))
+    {
+      datap = or_unpack_mvccid (datap, &second_version->mvcc_info.insert_mvccid);
+      second_version->mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
+    }
+  if (BTREE_OID_IS_MVCC_FLAG_SET (&second_version->oid, BTREE_OID_HAS_MVCC_DELID))
+    {
+      datap = or_unpack_mvccid (datap, &second_version->mvcc_info.delete_mvccid);
+      second_version->mvcc_info.flags |= BTREE_OID_HAS_MVCC_DELID;
+    }
+  BTREE_OID_CLEAR_ALL_FLAGS (&second_version->oid);
 
   datap = PTR_ALIGN (datap, INT_ALIGNMENT);
   or_init (key_buf, datap, (data_size - CAST_BUFLEN (datap - start)));
@@ -18861,19 +18903,15 @@ btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 }
 
 /*
- * btree_rv_keyval_undo_insert_unique_multiupd () - Undo insert operation.
- *						    Additional to regular
- *						    insert, must make sure
- *						    visible object is
- *						    returned to first
- *						    position.
+ * btree_rv_keyval_undo_insert_unique () - Undo insert operation. Additional to regular insert, must make sure visible
+ *					   object is returned to first position.
  *
  * return		  : Error code.
  * thread_p (in)	  : Thread entry.
  * recv (in)		  : Recovery data.
  */
 int
-btree_rv_keyval_undo_insert_unique_multiupd (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+btree_rv_keyval_undo_insert_unique (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   BTID_INT btid;
   BTID sys_btid;
@@ -29122,14 +29160,22 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
       return error_code;
     }
 
-  if (!insert_helper->is_unique_key_added_or_deleted && insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT)
+  /* Do we need to bring back the existing first object on undo? We normally should. We don't have to do it if the
+   * first record is deleted and committed. Opposite to that is either object is not deleted (and this is
+   * multi-update) or the object is deleted by current transaction. If it happens to be one of these cases, then
+   * we have to bring the first object back on undo to ensure unique constraint.
+   */
+  if ((!insert_helper->is_unique_key_added_or_deleted
+       || (BTREE_MVCC_INFO_DELID (&first_object.mvcc_info)
+	   == BTREE_MVCC_INFO_INSID (BTREE_INSERT_MVCC_INFO (insert_helper))))
+      && insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT)
     {
       /* We need to log two objects: the one that is being inserted and the one that was first before. Undo will return 
        * the visible object to its place. */
       char *rv_keyval_data_buf = NULL;
       int rv_keyval_data_capacity = IO_MAX_PAGE_SIZE;
 
-      insert_helper->rcvindex = RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD;
+      insert_helper->rcvindex = RVBT_MVCC_INSERT_OBJECT_UNQ;
       if (insert_helper->rv_keyval_data_length <= IO_MAX_PAGE_SIZE)
 	{
 	  /* Undo data uses preallocated data buffer. */
@@ -29142,8 +29188,9 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 	}
       error_code =
 	btree_rv_save_keyval_for_undo_two_objects (btid_int, key, &insert_helper->obj_info, &first_object,
-						   rv_keyval_data_buf, &insert_helper->rv_keyval_data,
-						   &rv_keyval_data_capacity, &insert_helper->rv_keyval_data_length);
+						   insert_helper->purpose, rv_keyval_data_buf,
+						   &insert_helper->rv_keyval_data, &rv_keyval_data_capacity,
+						   &insert_helper->rv_keyval_data_length);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -29345,7 +29392,7 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
   assert (insert_helper->rv_keyval_data != NULL && insert_helper->rv_keyval_data_length > 0);
   assert (insert_helper->leaf_addr.offset != 0 && insert_helper->leaf_addr.pgptr == leaf);
   assert (insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT || insert_helper->rcvindex == RVBT_NON_MVCC_INSERT_OBJECT
-	  || insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ_MULTIUPD);
+	  || insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ);
   assert (first_object != NULL && !OID_ISNULL (&first_object->oid));
 
   /* First object must be relocated at the end of leaf record. First we need to make sure there is enough room to do
@@ -30057,7 +30104,7 @@ btree_key_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
       helper->rv_keyval_data = rv_undo_data_bufalign;
       error_code =
 	btree_rv_save_keyval_for_undo_two_objects (btid_int, key, &helper->obj_info, &helper->update_to,
-						   rv_undo_data_bufalign, &helper->rv_keyval_data,
+						   helper->purpose, rv_undo_data_bufalign, &helper->rv_keyval_data,
 						   &rv_undo_data_capacity, &helper->rv_keyval_data_length);
       if (error_code != NO_ERROR)
 	{
@@ -32668,6 +32715,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
 					 * that object is last in an overflow page and page must be deallocated. */
   int offset_to_object = NOT_FOUND;	/* Offset in record where object to be removed is found. */
   int offset_to_second_object = NOT_FOUND;	/* Offset to second visible object. */
+  BTREE_OP_PURPOSE second_object_search_purpose;    /* Purpose used for searching second object. */
 
   /* Recovery structures. */
   /* Undo recovery structures. */
@@ -32787,14 +32835,33 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   /* Find second visible version (which must be moved first). */
   assert (prev_found_page == NULL);
   found_page = NULL;
+
+  if (BTREE_MVCC_INFO_HAS_DELID (&delete_helper->second_object_info.mvcc_info))
+    {
+      /* This must be an object deleted by current transaction. */
+      assert (BTREE_MVCC_INFO_DELID (&delete_helper->second_object_info.mvcc_info) == delete_helper->match_mvccid);
+      /* Search with matching delete MVCCID. */
+      second_object_search_purpose = BTREE_OP_DELETE_UNDO_INSERT_DELID;
+    }
+  else
+    {
+      /* Previous object was not deleted. Search as if we'd want to delete it. */
+      second_object_search_purpose = BTREE_OP_DELETE_OBJECT_PHYSICAL;
+    }
   error_code =
     btree_find_oid_and_its_page (thread_p, btid_int, &delete_helper->second_object_info.oid, *leaf_page,
-				 BTREE_OP_DELETE_OBJECT_PHYSICAL, NULL, &leaf_record, &leaf_rec_info, offset_after_key,
-				 &found_page, &prev_found_page, &offset_to_second_object,
-				 &delete_helper->second_object_info.mvcc_info);
+				 second_object_search_purpose, &delete_helper->match_mvccid, &leaf_record,
+				 &leaf_rec_info, offset_after_key, &found_page, &prev_found_page,
+				 &offset_to_second_object, &delete_helper->second_object_info.mvcc_info);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
+      error_code = ER_FAILED;
+      goto exit;
+    }
+  if (offset_to_second_object == NOT_FOUND)
+    {
+      assert (false);
       error_code = ER_FAILED;
       goto exit;
     }
