@@ -17817,8 +17817,7 @@ btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid, O
 int
 btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key, BTREE_OBJECT_INFO * first_version,
 					   BTREE_OBJECT_INFO * second_version, BTREE_OP_PURPOSE purpose,
-					   char *preallocated_buffer, char **data,
-					   int *capacity, int *length)
+					   char *preallocated_buffer, char **data, int *capacity, int *length)
 {
   int size;
   int key_len;
@@ -17931,7 +17930,7 @@ btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key, BTRE
       assert (false);
       break;
     }
-  
+
   if (BTREE_IS_UNIQUE (btid->unique_pk) && !OID_EQ (&second_version->class_oid, &btid->topclass_oid))
     {
       /* Mark object OID that class OID is also packed. */
@@ -32715,7 +32714,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
 					 * that object is last in an overflow page and page must be deallocated. */
   int offset_to_object = NOT_FOUND;	/* Offset in record where object to be removed is found. */
   int offset_to_second_object = NOT_FOUND;	/* Offset to second visible object. */
-  BTREE_OP_PURPOSE second_object_search_purpose;    /* Purpose used for searching second object. */
+  BTREE_OP_PURPOSE second_object_search_purpose;	/* Purpose used for searching second object. */
 
   /* Recovery structures. */
   /* Undo recovery structures. */
@@ -33191,8 +33190,6 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
     {
       /* Undoredo logging is required. */
       rv_undo_data_ptr = rv_undo_data;
-      assert (delete_helper->purpose == BTREE_OP_UNDO_SAME_KEY_DIFF_OID
-	      || delete_helper->purpose == BTREE_OP_VACUUM_SAME_KEY_DIFF_OID);
     }
 
 #if !defined (NDEBUG)
