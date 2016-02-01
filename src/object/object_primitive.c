@@ -9670,40 +9670,31 @@ pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
   /* get domain list, attr number */
   domain = midxkey->domain->setdomain;	/* first element's domain */
 
-  {
-    buf = NULL;			/* init */
-    i = 0;			/* init */
+  buf = &buf_space;
+  or_init (buf, midxkey->buf, midxkey->size);
 
-    /* 2nd phase: need to set buf info */
-    if (buf == NULL)
-      {
-	buf = &buf_space;
-	or_init (buf, midxkey->buf, midxkey->size);
+  advance_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
+  if (or_advance (buf, advance_size) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
-	advance_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
-	if (or_advance (buf, advance_size) != NO_ERROR)
-	  {
-	    goto exit_on_error;
-	  }
-      }
+  for (i = 0; i < index; i++, domain = domain->next)
+    {
+      /* check for element is NULL */
+      if (OR_MULTI_ATT_IS_UNBOUND (bitptr, i))
+	{
+	  continue;		/* skip and go ahead */
+	}
 
-    for (; i < index; i++, domain = domain->next)
-      {
-	/* check for element is NULL */
-	if (OR_MULTI_ATT_IS_UNBOUND (bitptr, i))
-	  {
-	    continue;		/* skip and go ahead */
-	  }
+      advance_size = pr_midxkey_element_disk_size (buf->ptr, domain);
+      or_advance (buf, advance_size);
+    }
 
-	advance_size = pr_midxkey_element_disk_size (buf->ptr, domain);
-	or_advance (buf, advance_size);
-      }
-
-    if (error != NO_ERROR)
-      {
-	goto exit_on_error;
-      }
-  }
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   return buf->ptr - buf->buffer;
 
@@ -9712,8 +9703,6 @@ exit_on_error:
   assert (false);
   return -1;
 }
-
-
 
 /*
  * pr_midxkey_add_prefix - 
@@ -9727,7 +9716,7 @@ exit_on_error:
 int
 pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix, int n_prefix)
 {
-  int i, j, k, offset_postfix, offset_prefix;
+  int i, offset_postfix, offset_prefix;
   DB_MIDXKEY *midx_postfix, *midx_prefix;
   DB_MIDXKEY midx_result;
 
@@ -9748,21 +9737,21 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
   memcpy (midx_result.buf, midx_prefix->buf, offset_prefix);
 
 #if !defined(NDEBUG)
-  for (j = 0; j < n_prefix; j++)
+  for (i = 0; i < n_prefix; i++)
     {
-      assert (!OR_MULTI_ATT_IS_BOUND (midx_postfix->buf, j));
+      assert (!OR_MULTI_ATT_IS_BOUND (midx_postfix->buf, i));
     }
 #endif
 
-  for (j = n_prefix; j < midx_result.ncolumns; j++)
+  for (i = n_prefix; i < midx_result.ncolumns; i++)
     {
-      if (OR_MULTI_ATT_IS_BOUND (midx_postfix->buf, j))
+      if (OR_MULTI_ATT_IS_BOUND (midx_postfix->buf, i))
 	{
-	  OR_MULTI_ENABLE_BOUND_BIT (midx_result.buf, j);
+	  OR_MULTI_ENABLE_BOUND_BIT (midx_result.buf, i);
 	}
       else
 	{
-	  OR_MULTI_CLEAR_BOUND_BIT (midx_result.buf, j);
+	  OR_MULTI_CLEAR_BOUND_BIT (midx_result.buf, i);
 	}
     }
 
@@ -9776,7 +9765,6 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
   return NO_ERROR;
 }
 
-
 /*
  * pr_midxkey_remove_prefix - 
  *
@@ -9787,27 +9775,25 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
 int
 pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
 {
-  int i, j, k;
   DB_MIDXKEY *midx_key;
-  int start, offset, size;
+  int i, start, offset, size;
 
   midx_key = DB_PULL_MIDXKEY (key);
 
   start = pr_midxkey_get_element_offset (midx_key, 0);
   offset = pr_midxkey_get_element_offset (midx_key, prefix);
 
-  memmove (midx_key->buf + start, midx_key->buf + offset, midx_key->size - offset + start);
+  memmove (midx_key->buf + start, midx_key->buf + offset, midx_key->size - offset);
 
-  for (j = 0; j < prefix; j++)
+  for (i = 0; i < prefix; i++)
     {
-      OR_MULTI_CLEAR_BOUND_BIT (midx_key->buf, j);
+      OR_MULTI_CLEAR_BOUND_BIT (midx_key->buf, i);
     }
 
   midx_key->size = midx_key->size - offset + start;
 
   return NO_ERROR;
 }
-
 
 /*
  * pr_midxkey_common_prefix - 
