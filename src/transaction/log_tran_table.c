@@ -695,6 +695,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 	{
 	  log_Gl.trantable.area = area->next;
 	  free_and_init (area);
+	  area = log_Gl.trantable.area;
 	}
     }
 
