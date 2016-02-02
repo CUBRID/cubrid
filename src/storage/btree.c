@@ -32867,7 +32867,6 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
 
   /* Prepare leaf page logging. */
   rv_redo_data_ptr = rv_redo_data;
-  LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
   if (found_page == *leaf_page)
     {
@@ -32875,6 +32874,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       BTREE_RV_REDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, btid_int,
 				    BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
 #endif /* !NDEBUG */
+      LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
       /* Remove record from leaf. */
       btree_record_remove_object_internal (thread_p, btid_int, &leaf_record, BTREE_LEAF_NODE, offset_to_second_object,
@@ -32885,11 +32885,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       /* Leaf and overflow OID's page are going to be changed. A system operation and undo logging is required. */
       log_start_compensate_system_op (thread_p, &delete_helper->reference_lsa);
       delete_helper->is_system_op_started = true;
-      rv_undo_data_ptr = rv_undo_data;
-#if !defined (NDEBUG)
-      BTREE_RV_UNDOREDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, rv_undo_data_ptr, btid_int,
-					BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
-#endif /* !NDEBUG */
+
 
       error_code =
 	btree_overflow_remove_object (thread_p, key, btid_int, delete_helper, &found_page, prev_found_page, *leaf_page,
@@ -32899,6 +32895,17 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
 	  assert_release (false);
 	  goto exit;
 	}
+
+#if !defined (NDEBUG)
+      /* Leaf may have been logged if object was removed from overflow page. Reset logging structures for new logging.
+       */
+      rv_undo_data_ptr = rv_undo_data;
+      rv_redo_data_ptr = rv_redo_data;
+      delete_helper->leaf_addr.offset = search_key->slotid;
+      BTREE_RV_UNDOREDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, rv_undo_data_ptr, btid_int,
+					BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
+#endif /* !NDEBUG */
+      LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
     }
 
   /* Replace inserted object with second visible object. */
