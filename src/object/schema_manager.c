@@ -13622,36 +13622,40 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *co
       /* promote the class lock as SCH_M lock and mark class as dirty */
       if (locator_update_class (classop) == NULL)
 	{
+	  ASSERT_ERROR_AND_SET (error);
 	  goto severe_error;
 	}
 
       /* modify the class to point at the new index */
-      if (classobj_put_index_id
-	  (&(class_->properties), constraint_type, constraint_name, attrs, asc_desc, attrs_prefix_length, &index,
-	   filter_index, NULL, out_shared_cons_name, function_index, comment) != NO_ERROR)
+      error =
+	classobj_put_index_id (&(class_->properties), constraint_type, constraint_name, attrs, asc_desc,
+			       attrs_prefix_length, &index, filter_index, NULL, out_shared_cons_name, function_index,
+			       comment);
+      if (error != NO_ERROR)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  ASSERT_ERROR ();
 	  goto severe_error;
 	}
 
       error = classobj_cache_class_constraints (class_);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto severe_error;
 	}
 
       if (!classobj_cache_constraints (class_))
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  ASSERT_ERROR_AND_SET (error);
 	  goto severe_error;
 	}
 
       /* now that the index is physically attached to the class, we must flush it again to make sure the catalog is
        * updated correctly. */
-      if (locator_flush_class (classop) != NO_ERROR)
+      error = locator_flush_class (classop);
+      if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto severe_error;
 	}
 
@@ -13659,8 +13663,10 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *co
        * be updated so that the optimizer is able to make use of the new index.  Recall that the optimizer looks at the 
        * statistics structures, not the schema structures. */
       assert_release (!BTID_IS_NULL (&index));
-      if (sm_update_statistics (classop, STATS_WITH_SAMPLING) != NO_ERROR)
+      error = sm_update_statistics (classop, STATS_WITH_SAMPLING);
+      if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto severe_error;
 	}
     }
@@ -13716,6 +13722,16 @@ general_error:
   return error;
 
 severe_error:
+
+  if (error == NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+  else
+    {
+      ASSERT_ERROR ();
+    }
+
   /* Something happened at a bad time, the database is in an inconsistent state.  Must abort the transaction. Save the
    * error that caused the problem. We should try to disable error overwriting when we abort so the caller can find out 
    * what happened. */
@@ -13737,9 +13753,6 @@ severe_error:
       sm_free_filter_index_info (new_filter_index_info);
       free_and_init (new_filter_index_info);
     }
-
-  assert (er_errid () != NO_ERROR);
-  error = er_errid ();
 
   /* Some errors will led ws_abort_mops() be called. mops maybe be decached. In this case, its class_ is invalid and we 
    * cannot access it any more. */
