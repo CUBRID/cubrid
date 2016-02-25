@@ -1107,7 +1107,7 @@ function get_options ()
     fi
   done
   if [ "$packages" = "all" -o "$packages" = "ALL" ]; then
-    packages="src zip_src cci_src php_src tarball shell cci jdbc srpm rpm owfs"
+    packages="src zip_src cci_src php_src tarball shell cci jdbc srpm rpm"
   fi
 
   if [ "x$output_dir" = "x" ]; then
