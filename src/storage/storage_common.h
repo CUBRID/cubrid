@@ -374,7 +374,7 @@ struct mvcc_rec_header
     MVCCID mvcc_del_id;		/* MVCC delete id */
     int chn;			/* cache coherency number */
   } delid_chn;
-  OID next_version;		/* next row version */
+  OID next_version;		/* next row version */ /* TODO: remove */
   OID partition_oid;		/* partition link */
   LOG_LSA prev_version_lsa;	/* log adress of previous version */
 };

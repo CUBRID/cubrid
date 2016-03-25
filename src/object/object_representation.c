@@ -94,11 +94,10 @@ static INLINE union DELID_CHN or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flag
 static INLINE int or_mvcc_set_delid_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
   __attribute__ ((ALWAYS_INLINE));
 static MVCCID or_mvcc_get_delete_id (RECDES * record);
-static INLINE int or_mvcc_get_next_version (OR_BUF * buf, int mvcc_flags, OID * oid) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_next_version (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) 
   __attribute__ ((ALWAYS_INLINE));
-static int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header);
-static int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa);
+static INLINE int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
+  __attribute__ ((ALWAYS_INLINE));
 
 /*
  * classobj_get_prop - searches a property list for a value with the given name

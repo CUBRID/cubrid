@@ -22213,6 +22213,7 @@ unconditional_lock:
   return rc;
 }
 
+/* TODO: remove function */
 /*
  * heap_mvcc_find_next_valid_version () - finds the next valid version,
  *				  excluding the versions that assume moving into

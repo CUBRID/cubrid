@@ -42,9 +42,11 @@
 #define MVCC_SET_DELID(header, mvcc_id) \
   ((header)->delid_chn.mvcc_del_id = (mvcc_id))
 
+/* TODO: remove */
 #define MVCC_SET_NEXT_VERSION(header, next_oid_version) \
   ((header)->next_version = *(next_oid_version))
 
+/* TODO: remove */
 #define MVCC_GET_NEXT_VERSION(header) \
   ((header)->next_version)
 
