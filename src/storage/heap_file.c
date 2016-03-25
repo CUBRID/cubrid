@@ -6200,7 +6200,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid, bool reclai
       if (spage_number_of_records (curr_page_watcher.pgptr) > 1
 	  || (vpid.pageid == hfid->hpgid && vpid.volid == hfid->vfid.volid))
 	{
-	  if (spage_reclaim (thread_p, curr_page_watcher.pgptr, reclaim_mvcc_next_versions) == true)
+	  if (spage_reclaim (thread_p, curr_page_watcher.pgptr) == true)
 	    {
 	      addr.pgptr = curr_page_watcher.pgptr;
 	      /* 
