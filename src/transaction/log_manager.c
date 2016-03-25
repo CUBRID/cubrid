@@ -9789,3 +9789,104 @@ log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time)
 
   return;
 }
+
+
+/*
+ * log_get_undo_record () - gets undo record from log lsa adress
+ * return:...
+ * 
+ * thread_p (in):
+ * lsa_addr (in):
+ * page (in):
+ * record (in/out):
+ */
+int
+log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA process_lsa, RECDES * recdes)
+{
+  LOG_RECORD_HEADER *log_rec_header = NULL;
+  struct log_mvcc_undo *mvcc_undo = NULL;
+  int udata_length;
+  char *undo_data;
+
+  if (true)			//consider log record is not in prior list
+    {
+      log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
+
+      assert (log_rec_header->type == LOG_MVCC_UNDO_DATA);
+
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (mvcc_undo), &process_lsa, log_page_p);
+      mvcc_undo = (struct log_mvcc_undo *) (log_page_p->area + process_lsa.offset);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), &process_lsa, log_page_p);
+
+      /*     assert (mvcc_undo->undo.data.volid == oid->volid && mvcc_undo->undo.data.pageid == oid->pageid
+         && mvcc_undo->undo.data.offset == oid->slotid); */
+
+      /* get undo record */
+      if (ZIP_CHECK (mvcc_undo->undo.length))
+	{			/* check compress data */
+	  udata_length = (int) GET_ZIP_LEN (mvcc_undo->undo.length);	/* convert compress length */
+	}
+      else
+	{
+	  udata_length = mvcc_undo->undo.length;
+	}
+
+      /* 
+       * If data is contained in only one buffer, pass pointer directly.
+       * Otherwise, allocate a contiguous area, copy the data and pass this area.
+       * At the end deallocate the area.
+       */
+      if (process_lsa.offset + udata_length < (int) LOGAREA_SIZE)
+	{
+	  undo_data = (char *) log_page_p->area + process_lsa.offset;
+	}
+      else
+	{
+	  /* Need to copy the data into a contiguous area */
+	  char *area = (char *) malloc (udata_length);
+	  if (area == NULL)
+	    {
+	      assert (false);
+	      return S_ERROR;
+	    }
+	  /* Copy the data */
+	  logpb_copy_from_log (thread_p, area, udata_length, &process_lsa, log_page_p);
+	  undo_data = area;
+	}
+
+      if (ZIP_CHECK (mvcc_undo->undo.length))
+	{
+	  LOG_ZIP undo_unzip;
+
+	  undo_unzip.log_data = NULL;
+	  if (log_unzip (&undo_unzip, udata_length, (char *) undo_data))
+	    {
+	      udata_length = (int) undo_unzip.data_length;
+	      undo_data = (char *) undo_unzip.log_data;
+	    }
+	  else
+	    {
+	      assert (false);
+	      return S_ERROR;
+	    }
+	}
+    }
+
+  /* copy the record */
+  recdes->type = *(INT16 *) (undo_data);
+  recdes->length = udata_length - sizeof (recdes->type);
+  if (recdes->area_size < 0 || recdes->area_size < (int) recdes->length)
+    {
+      /* 
+       * DOES NOT FIT
+       * Give a hint to the user of the needed length. Hint is given as a
+       * negative value
+       */
+      /* do not use unary minus because slot_p->record_length is unsigned */
+      recdes->length *= -1;
+      return S_DOESNT_FIT;
+    }
+  memcpy (recdes->data, (char *) (undo_data) + sizeof (recdes->type), recdes->length);
+
+}

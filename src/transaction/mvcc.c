@@ -244,7 +244,7 @@ start_check_active:
  *   snapshot(in): the snapshot used for record validation
  *   page_ptr(in): the page where the record reside
  */
-bool
+MVCC_SATISFIES_SNAPSHOT_RESULT
 mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot)
 {
   assert (rec_header != NULL && snapshot != NULL);
@@ -259,7 +259,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_VACUUMED,
 			     PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return true;
+	  return SNAPSHOT_SATISFIED;
 	}
       else if (MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header))
 	{
@@ -268,7 +268,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_CURR_TRAN,
 			     PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return true;
+	  return SNAPSHOT_SATISFIED;
 	}
       else if (MVCC_IS_REC_INSERTER_IN_SNAPSHOT (thread_p, rec_header, snapshot))
 	{
@@ -278,7 +278,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
 			     PERF_SNAPSHOT_INVISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return false;
+	  return TOO_NEW_FOR_SNAPSHOT;
 	}
       else
 	{
@@ -295,31 +295,31 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 				 PERF_SNAPSHOT_VISIBLE);
 	    }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return true;
+	  return SNAPSHOT_SATISFIED;
 	}
     }
   else
     {
       /* The record is deleted */
-      if (MVCC_IS_REC_INSERTER_IN_SNAPSHOT (thread_p, rec_header, snapshot))
-	{
-	  /* TODO: Is this check necessary? It seems that if inserter is active, then so will be the deleter (actually
-	   *       they will be the same). It only adds an extra-check in a function frequently called.
-	   */
-#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
-	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_DELETED,
-			     PERF_SNAPSHOT_INVISIBLE);
-#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return false;
-	}
-      else if (MVCC_IS_REC_DELETED_BY_ME (thread_p, rec_header))
+      if (MVCC_IS_REC_DELETED_BY_ME (thread_p, rec_header))
 	{
 	  /* The record was deleted by current transaction and it is not visible anymore. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_DELETED_CURR_TRAN,
 			     PERF_SNAPSHOT_INVISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return false;
+	  return TOO_OLD_FOR_SNAPSHOT;
+	}
+      else if (MVCC_IS_REC_INSERTER_IN_SNAPSHOT (thread_p, rec_header, snapshot))
+	{
+	  /* !!TODO: Is this check necessary? It seems that if inserter is active, then so will be the deleter (actually
+	   *       they will be the same). It only adds an extra-check in a function frequently called.
+	   */
+#if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
+	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_INSERTED_DELETED,
+			     PERF_SNAPSHOT_INVISIBLE);
+#endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
+	  return TOO_NEW_FOR_SNAPSHOT;
 	}
       else if (MVCC_IS_REC_DELETER_IN_SNAPSHOT (thread_p, rec_header, snapshot))
 	{
@@ -329,7 +329,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_SNAPSHOT, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
 			     PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return true;
+	  return SNAPSHOT_SATISFIED;
 	}
       else
 	{
@@ -346,7 +346,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
 				 PERF_SNAPSHOT_INVISIBLE);
 	    }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return false;
+	  return TOO_OLD_FOR_SNAPSHOT;
 	}
     }
 }
@@ -433,12 +433,12 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MV
       else
 	{
 	  /* The inserter transaction has committed and the record is visible to all running transactions. Insert
-	   * MVCCID can be removed. */
+	   * MVCCID and previous version lsa can be removed. */
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_VACUUM, PERF_SNAPSHOT_RECORD_INSERTED_COMMITED,
 			     PERF_SNAPSHOT_VISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return VACUUM_RECORD_DELETE_INSID;
+	  return VACUUM_RECORD_DELETE_INSID_PREV_VER;
 	}
     }
   else

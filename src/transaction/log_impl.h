@@ -1374,7 +1374,8 @@ enum log_repl_flush
    || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
    || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
    || ((rcvindex) == RVHF_MVCC_DELETE_NO_MODIFY_HOME) \
-   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE))
+   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE) \
+   || ((rcvindex) == RVHF_MVCC_UPDATE_OVERFLOW))
 
 /* Is log record for a b-tree MVCC operation */
 #define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \

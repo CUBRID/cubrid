@@ -2872,7 +2872,6 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid, HFID hfid, REGU
   REGU_VARIABLE_LIST regup;
   RECDES mvcc_last_record;
   DB_VALUE *peek_dbval;
-  OID mvcc_updated_oid;
   int ispeeking;
 
   if (!OID_IS_ROOTOID (class_oid))
@@ -2912,7 +2911,7 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid, HFID hfid, REGU
       mvcc_last_record.data = NULL;
       if (heap_mvcc_get_visible
 	  (thread_p, DB_GET_OID (peek_dbval), NULL, &mvcc_last_record, &local_scancache, S_SELECT, COPY, NULL_CHN,
-	   &mvcc_updated_oid, LOG_WARNING_IF_DELETED) != S_SUCCESS)
+	   LOG_WARNING_IF_DELETED) != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_NODATA_NEWADDRESS || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
@@ -2923,11 +2922,6 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid, HFID hfid, REGU
 	  return er_errid ();
 	}
       heap_scancache_end (thread_p, &local_scancache);
-
-      if (!OID_ISNULL (&mvcc_updated_oid) && !OID_EQ (&mvcc_updated_oid, DB_GET_OID (peek_dbval)))
-	{
-	  DB_MAKE_OID (peek_dbval, &mvcc_updated_oid);
-	}
     }
 
   return NO_ERROR;

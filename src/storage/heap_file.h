@@ -316,7 +316,8 @@ struct heap_operation_context
   /* logical operation input */
   HFID hfid;			/* heap file identifier */
   OID oid;			/* object identifier */
-  OID next_version;		/* pre-inserted next version for delete case */
+  LOG_LSA prev_version_lsa;	/* previous version lsa address */
+  OID next_version;
   OID partition_link;		/* partition link */
   OID class_oid;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
@@ -438,14 +439,14 @@ extern SCAN_CODE heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * re
 			   int ispeeking, int chn);
 extern SCAN_CODE heap_mvcc_get_visible (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
 					HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, int ispeeking,
-					int old_chn, OID * updated_oid, NON_EXISTENT_HANDLING non_ex_handling_type);
+					int old_chn, NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
-					   struct mvcc_reev_data *mvcc_reev_data, OID * update_oid,
+					   struct mvcc_reev_data *mvcc_reev_data,
 					   NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE heap_get_with_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RECDES * recdes,
 					  HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE scan_operation_type,
-					  int ispeeking, OID * updated_oid, NON_EXISTENT_HANDLING non_ex_handling_type);
+					  int ispeeking, NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
@@ -489,7 +490,7 @@ extern INT32 heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_
 					     int num_var_attrs);
 
 extern SCAN_CODE heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
-					       SNAPSHOT_TYPE snapshot_type, LOCK lock_mode, OID * updated_oid);
+					       SNAPSHOT_TYPE snapshot_type, LOCK lock_mode);
 extern char *heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern char *heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oid, char *guess_classname);
 extern char *heap_get_class_name_of_instance (THREAD_ENTRY * thread_p, const OID * inst_oid);
@@ -667,7 +668,7 @@ extern int heap_scancache_quick_start_with_class_hfid (THREAD_ENTRY * thread_p, 
 extern int heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 							     OID * class_oid);
 extern SCAN_CODE heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, LOCK lock_mode,
-					SNAPSHOT_TYPE snapshot_type, OID * locked_oid);
+					SNAPSHOT_TYPE snapshot_type);
 extern int heap_remove_partition_links (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid_list, int no_oids);
 extern int heap_rv_mvcc_redo_remove_partition_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
@@ -702,5 +703,9 @@ extern void heap_stats_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HF
 extern bool heap_should_try_update_stat (const int current_freespace, const int prev_freespace);
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
+extern int heap_rv_mvcc_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_mvcc_redo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern SCAN_CODE heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
+						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache);
 
 #endif /* _HEAP_FILE_H_ */

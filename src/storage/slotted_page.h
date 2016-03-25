@@ -75,10 +75,8 @@ enum
  */
   REC_DELETED_WILL_REUSE = 7,
 
-/* Slot used after vacuum to keep link to newer object version */
-  REC_MVCC_NEXT_VERSION = 8,
-
 /* unused reserved record type */
+  REC_RESERVED_TYPE_8 = 8,
   REC_RESERVED_TYPE_9 = 9,
   REC_RESERVED_TYPE_10 = 10,
   REC_RESERVED_TYPE_11 = 11,
@@ -87,7 +85,7 @@ enum
   REC_RESERVED_TYPE_14 = 14,
   REC_RESERVED_TYPE_15 = 15,
 /* 4bit record type max */
-  REC_4BIT_USED_TYPE_MAX = REC_MVCC_NEXT_VERSION,
+  REC_4BIT_USED_TYPE_MAX = REC_DELETED_WILL_REUSE,
   REC_4BIT_TYPE_MAX = REC_RESERVED_TYPE_15
 };
 

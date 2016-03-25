@@ -553,7 +553,7 @@ static int vacuum_init_master_prefetch (THREAD_ENTRY * thread_p);
 
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_record_insid_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
@@ -1153,10 +1153,10 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	      /* Record has been deleted and it can be removed. */
 	      error_code = vacuum_heap_record (thread_p, &helper);
 	    }
-	  else if (helper.can_vacuum == VACUUM_RECORD_DELETE_INSID)
+	  else if (helper.can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
 	    {
-	      /* Record insert MVCCID can be removed. */
-	      error_code = vacuum_heap_record_insert_mvccid (thread_p, &helper);
+	      /* Record insert MVCCID and prev version lsa can be removed. */
+	      error_code = vacuum_heap_record_insid_prev_version (thread_p, &helper);
 	    }
 	  else
 	    {
@@ -1603,14 +1603,14 @@ retry_prepare:
 }
 
 /*
- * vacuum_heap_record_insert_mvccid () - Remove insert MVCCID from record.
+ * vacuum_heap_record_insid_prev_version () - Remove insert MVCCID and prev version lsa from record.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
  */
 static int
-vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
+vacuum_heap_record_insid_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 {
   RECDES update_record;		/* Record to build updated version without insert MVCCID. */
   /* Buffer for update_record data. */
@@ -1619,7 +1619,7 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * 
 
   /* Assert expected arguments. */
   assert (helper != NULL);
-  assert (helper->can_vacuum == VACUUM_RECORD_DELETE_INSID);
+  assert (helper->can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER);
   assert (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&helper->mvcc_header));
 
   switch (helper->record_type)
@@ -1631,8 +1631,8 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * 
       assert (helper->forward_page != NULL);
       assert (!OID_ISNULL (&helper->forward_oid));
 
-      /* Clear flag for valid insert MVCCID and get new header size */
-      MVCC_CLEAR_FLAG_BITS (&helper->mvcc_header, OR_MVCC_FLAG_VALID_INSID);
+      /* Clear flag for valid insert MVCCID and prev version lsa */
+      MVCC_CLEAR_FLAG_BITS (&helper->mvcc_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
 
       /* Create updated record. */
       update_record.data = PTR_ALIGN (update_record_buffer, MAX_ALIGNMENT);
@@ -1680,6 +1680,7 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * 
 
       /* Replace current insert MVCCID with MVCCID_ALL_VISIBLE. Header must remain the same size. */
       MVCC_SET_INSID (&helper->mvcc_header, MVCCID_ALL_VISIBLE);
+      LSA_SET_NULL (&helper->mvcc_header.prev_version_lsa);
       error_code = heap_set_mvcc_rec_header_on_overflow (helper->forward_page, &helper->mvcc_header);
       if (error_code != NO_ERROR)
 	{
@@ -1706,8 +1707,8 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * 
     case REC_HOME:
       /* Remove insert MVCCID */
 
-      /* Clear valid insert MVCCID flag */
-      MVCC_CLEAR_FLAG_BITS (&helper->mvcc_header, OR_MVCC_FLAG_VALID_INSID);
+      /* Clear valid insert MVCCID flag and prev version lsa */
+      MVCC_CLEAR_FLAG_BITS (&helper->mvcc_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
 
       /* Create updated record. */
       update_record.data = PTR_ALIGN (update_record_buffer, MAX_ALIGNMENT);
@@ -1739,7 +1740,7 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * 
 	}
       /* Collect vacuum data to be logged later. */
       helper->slots[helper->n_bulk_vacuumed] = helper->crt_slotid;
-      helper->results[helper->n_bulk_vacuumed] = VACUUM_RECORD_DELETE_INSID;
+      helper->results[helper->n_bulk_vacuumed] = VACUUM_RECORD_DELETE_INSID_PREV_VER;
       OID_SET_NULL (&helper->next_versions[helper->n_bulk_vacuumed]);
       OID_SET_NULL (&helper->partition_links[helper->n_bulk_vacuumed]);
       helper->n_bulk_vacuumed++;
@@ -2153,7 +2154,7 @@ vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int n_slo
       /* Pack slot ID's and results */
       for (i = 0; i < n_slots; i++)
 	{
-	  assert (results[i] == VACUUM_RECORD_DELETE_INSID || results[i] == VACUUM_RECORD_REMOVE);
+	  assert (results[i] == VACUUM_RECORD_DELETE_INSID_PREV_VER || results[i] == VACUUM_RECORD_REMOVE);
 
 	  assert (slots[i] > 0);
 
@@ -2483,6 +2484,7 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVC
  *	 classes with referable objects. Currently we can only do this by
  *	 scanning the entire heap file and update REC_MVCC_NEXT_VERSION slots.
  *	 It should be called rarely and may require keeping some statistics.
+ *	 ****not necessary anymore*******
  */
 void
 vacuum_master_start (void)
@@ -2960,6 +2962,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	  heap_object_oid.pageid = log_record_data.pageid;
 	  heap_object_oid.volid = log_record_data.volid;
 	  heap_object_oid.slotid = heap_rv_remove_flags_from_offset (log_record_data.offset);
+
+	  if (log_record_data.rcvindex == RVHF_MVCC_UPDATE_OVERFLOW)
+	    {
+	      /* only the old OVF record must be removed;
+	       * can do this here to avoid complications */
+	      continue;		// s pose it's done :)
+	    }
 
 	  error_code = vacuum_collect_heap_objects (worker, &heap_object_oid, &log_vacuum.vfid);
 	  if (error_code != NO_ERROR)
@@ -7332,8 +7341,8 @@ is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
     case VACUUM_RECORD_REMOVE:
       return true;
 
-    case VACUUM_RECORD_DELETE_INSID:
-      return MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID);
+    case VACUUM_RECORD_DELETE_INSID_PREV_VER:
+      return false;		// MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
 
     case VACUUM_RECORD_CANNOT_VACUUM:
       return false;
@@ -7540,8 +7549,7 @@ vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       recdes_type = *(INT16 *) (rcv->data);
 
-      assert ((recdes_type == REC_RELOCATION || recdes_type == REC_BIGONE)
-	      && (spage_get_record_type (rcv->pgptr, rcv->offset) == REC_MVCC_NEXT_VERSION));
+      assert (recdes_type == REC_RELOCATION || recdes_type == REC_BIGONE);
 
       return heap_rv_undoredo_update (thread_p, rcv);
     }

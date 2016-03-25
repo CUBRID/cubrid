@@ -376,9 +376,10 @@ struct mvcc_rec_header
   } delid_chn;
   OID next_version;		/* next row version */
   OID partition_oid;		/* partition link */
+  LOG_LSA prev_version_lsa;	/* log adress of previous version */
 };
 #define MVCC_REC_HEADER_INITIALIZER \
-  { 0, 0, MVCCID_NULL, { MVCCID_NULL }, OID_INITIALIZER, OID_INITIALIZER }
+  { 0, 0, MVCCID_NULL, { MVCCID_NULL }, OID_INITIALIZER, OID_INITIALIZER, LSA_INITIALIZER }
 
 typedef struct mvcc_relocate_delete_info MVCC_RELOCATE_DELETE_INFO;
 struct mvcc_relocate_delete_info
@@ -645,7 +646,7 @@ typedef enum
   HEAP_RECORD_INFO_T_MVCC_INSID,
   HEAP_RECORD_INFO_T_MVCC_DELID,
   HEAP_RECORD_INFO_T_MVCC_FLAGS,
-  HEAP_RECORD_INFO_T_MVCC_NEXT_VERSION,
+  HEAP_RECORD_INFO_T_MVCC_PREV_VERSION,
   HEAP_RECORD_INFO_T_MVCC_PARTITION_OID,
 
   /* leave this last */

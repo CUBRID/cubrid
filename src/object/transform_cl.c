@@ -1362,10 +1362,10 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
 	    }
 	}
 
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	{
-	  /* skip next version */
-	  or_advance (buf, OR_OID_SIZE);
+	  /* skip prev version lsa */
+	  or_advance (buf, sizeof (LOG_LSA));
 	}
 
       if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)

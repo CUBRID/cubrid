@@ -4855,7 +4855,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
   MVCC_REEV_DATA mvcc_reev_data;
   FILTER_INFO *p_range_filter = NULL, *p_key_filter = NULL;
-  OID updated_oid, retry_oid;
+  OID retry_oid;
   LOG_LSA ref_lsa;
   int is_peeking;
   OBJECT_GET_STATUS object_get_status;
@@ -4909,7 +4909,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 	      sp_scan =
 		heap_mvcc_get_for_delete (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_range.scan_cache,
-					  is_peeking, NULL_CHN, &mvcc_reev_data, &updated_oid, LOG_WARNING_IF_DELETED);
+					  is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
 	      if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
 		{
 		  continue;
@@ -4918,10 +4918,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		{
 		  er_clear ();
 		  continue;
-		}
-	      if (!OID_ISNULL (&updated_oid))
-		{
-		  COPY_OID (&current_oid, &updated_oid);
 		}
 	    }
 	}
@@ -4951,7 +4947,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			}
 		      sp_scan =
 			heap_mvcc_get_for_delete (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache, is_peeking,
-						  NULL_CHN, &mvcc_reev_data, &updated_oid, LOG_WARNING_IF_DELETED);
+						  NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
 		      if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
 			{
 			  continue;
@@ -4960,10 +4956,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			{
 			  er_clear ();
 			  continue;
-			}
-		      if (!OID_ISNULL (&updated_oid))
-			{
-			  COPY_OID (&current_oid, &updated_oid);
 			}
 		    }
 		}
@@ -4999,7 +4991,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			}
 		      sp_scan =
 			heap_mvcc_get_for_delete (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache, is_peeking,
-						  NULL_CHN, &mvcc_reev_data, &updated_oid, LOG_WARNING_IF_DELETED);
+						  NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
 		      if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
 			{
 			  continue;
@@ -5008,10 +5000,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			{
 			  er_clear ();
 			  continue;
-			}
-		      if (!OID_ISNULL (&updated_oid))
-			{
-			  COPY_OID (&current_oid, &updated_oid);
 			}
 		    }
 		}
@@ -5813,7 +5801,6 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
   char *indx_name_p;
   char *class_name_p;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
-  OID updated_oid;
 
   assert (scan_id != NULL);
   assert (isidp != NULL);
@@ -5860,7 +5847,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 
       sp_scan =
 	heap_mvcc_get_for_delete (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
-				  NULL_CHN, &mvcc_reev_data, &updated_oid, LOG_WARNING_IF_DELETED);
+				  NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
       if (sp_scan == S_SUCCESS)
 	{
 	  switch (mvcc_reev_data.filter_result)
@@ -5872,10 +5859,6 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 	    default:
 	      break;
 	    }
-	}
-      if (!OID_ISNULL (&updated_oid))
-	{
-	  COPY_OID (isidp->curr_oidp, &updated_oid);
 	}
     }
 
@@ -6456,7 +6439,6 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   REGU_VARIABLE_LIST ptr;
   int size;
   DB_VALUE *p_dbvalue;
-  OID mvcc_updated_oid;
   HEAP_SCANCACHE scan_cache;
   int scan_cache_end_needed = false;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
@@ -6511,7 +6493,7 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 
 	  if (heap_mvcc_get_visible
-	      (thread_p, DB_GET_OID (p_dbvalue), NULL, NULL, &scan_cache, S_SELECT, COPY, NULL_CHN, &mvcc_updated_oid,
+	      (thread_p, DB_GET_OID (p_dbvalue), NULL, NULL, &scan_cache, S_SELECT, COPY, NULL_CHN,
 	       LOG_WARNING_IF_DELETED) != S_SUCCESS)
 	    {
 	      if (er_errid () == ER_HEAP_NODATA_NEWADDRESS || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
@@ -6523,10 +6505,6 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  (void) heap_scancache_end (thread_p, &scan_cache);
 		  return S_ERROR;
 		}
-	    }
-	  if (!OID_ISNULL (&mvcc_updated_oid) && !OID_EQ (&mvcc_updated_oid, DB_GET_OID (p_dbvalue)))
-	    {
-	      DB_MAKE_OID (p_dbvalue, &mvcc_updated_oid);
 	    }
 	}
 

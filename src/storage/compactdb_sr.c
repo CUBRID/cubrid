@@ -86,7 +86,6 @@ static int
 process_value (DB_VALUE * value)
 {
   int return_value = 0;
-  OID update_oid = OID_INITIALIZER;
   SCAN_CODE scan_code;
 
   switch (DB_VALUE_TYPE (value))
@@ -104,8 +103,7 @@ process_value (DB_VALUE * value)
 	  }
 
 	/* TODO: Find a better function here. */
-	scan_code =
-	  heap_get_class_oid_with_lock (NULL, &ref_class_oid, ref_oid, SNAPSHOT_TYPE_MVCC, NULL_LOCK, &update_oid);
+	scan_code = heap_get_class_oid_with_lock (NULL, &ref_class_oid, ref_oid, SNAPSHOT_TYPE_MVCC, NULL_LOCK);
 	if (scan_code == S_ERROR)
 	  {
 	    ASSERT_ERROR_AND_SET (return_value);
@@ -117,15 +115,6 @@ process_value (DB_VALUE * value)
 	    return_value = 1;
 	    break;
 	  }
-#if 0
-	/* TODO: Fix compactdb before re-enabling this code. */
-	else if (!OID_ISNULL (&update_oid) && !OID_EQ (ref_oid, &update_oid))
-	  {
-	    COPY_OID (ref_oid, &update_oid);
-	    return_value = 1;
-	    break;
-	  }
-#endif
 
 	if (is_class (ref_oid, &ref_class_oid))
 	  {
@@ -207,7 +196,6 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
   int force_count = 0, updated_n_attrs_id = 0;
   int *atts_id = NULL;
   int error_code;
-  OID updated_oid;
   SCAN_CODE scan_code;
   RECDES copy_recdes;
 
@@ -221,7 +209,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
 
   scan_code =
     heap_mvcc_get_for_delete (thread_p, oid, &upd_scancache->node.class_oid, &copy_recdes, upd_scancache, COPY,
-			      NULL_CHN, NULL, &updated_oid, LOG_WARNING_IF_DELETED);
+			      NULL_CHN, NULL, LOG_WARNING_IF_DELETED);
   if (scan_code != S_SUCCESS)
     {
       if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
@@ -231,10 +219,6 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
 	}
 
       return -1;
-    }
-  if (!OID_ISNULL (&updated_oid))
-    {
-      COPY_OID (oid, &updated_oid);
     }
 
   atts_id = (int *) db_private_alloc (thread_p, attr_info->num_values * sizeof (int));

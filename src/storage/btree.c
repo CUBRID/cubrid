@@ -14997,6 +14997,8 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE
 
   if (same_key)
     {
+      /* not reachable */
+      assert (false);
       ret =
 	btree_mvcc_update_same_key (thread_p, btid, old_key, cls_oid, oid, new_oid, op_type, &p_mvcc_rec_header[0],
 				    &p_mvcc_rec_header[1], unique);
@@ -15007,7 +15009,7 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE
       goto end;
     }
 
-  if (p_mvcc_rec_header != NULL && !OID_EQ (oid, new_oid))
+  if (p_mvcc_rec_header != NULL)	// && !OID_EQ (oid, new_oid))
     {
       /* in MVCC, logical deletion means DEL_ID insertion */
       /* Note that it is possible that update "in-place" is done instead of standard MVCC update, in which case the

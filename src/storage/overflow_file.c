@@ -1553,17 +1553,21 @@ overflow_rv_newpage_delete_relocated_redo (THREAD_ENTRY * thread_p, LOG_RCV * rc
     }
   MVCC_SET_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID);
   MVCC_SET_DELID (&mvcc_rec_header, rcv->mvcc_id);
-  if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_NEXT_VERSION))
+  /*if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_NEXT_VERSION))
+     {
+     MVCC_SET_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_NEXT_VERSION);
+     }
+     if (next_version != NULL)
+     {
+     MVCC_SET_NEXT_VERSION (&mvcc_rec_header, next_version);
+     }
+     else
+     {
+     MVCC_SET_NEXT_VERSION (&mvcc_rec_header, &oid_Null_oid);
+     } */
+  if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
     {
-      MVCC_SET_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_NEXT_VERSION);
-    }
-  if (next_version != NULL)
-    {
-      MVCC_SET_NEXT_VERSION (&mvcc_rec_header, next_version);
-    }
-  else
-    {
-      MVCC_SET_NEXT_VERSION (&mvcc_rec_header, &oid_Null_oid);
+      LSA_SET_NULL (&mvcc_rec_header.prev_version_lsa);
     }
 
   HEAP_SET_RECORD (&recdes, IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE, 0, REC_UNKNOWN,

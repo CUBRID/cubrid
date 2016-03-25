@@ -1008,10 +1008,10 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
 	  or_advance (buf, OR_INT_SIZE);
 	}
 
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
+      if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	{
-	  /* skip next version */
-	  or_advance (buf, OR_OID_SIZE);
+	  /* skip prev version lsa */
+	  or_advance (buf, sizeof (LOG_LSA));
 	}
 
       if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
