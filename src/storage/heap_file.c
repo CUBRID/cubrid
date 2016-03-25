@@ -837,9 +837,6 @@ static char *heap_bestspace_to_string (char *buf, int buf_size, const HEAP_BESTS
 
 static int fill_string_to_buffer (char **start, char *end, const char *str);
 
-static int heap_scan_get_record (THREAD_ENTRY * thread_p, const OID oid, OID * class_oid, RECDES * recdes,
-				 RECDES forward_recdes, PGBUF_WATCHER * home_pg_watcher, HEAP_SCANCACHE * scan_cache,
-				 int ispeeking, bool check_snapshot);
 static int heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, RECDES forward_recdes,
 				 PGBUF_WATCHER * page_watcher, HEAP_SCANCACHE * scan_cache, int ispeeking,
 				 DB_VALUE ** record_info);
@@ -20405,117 +20402,6 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       break;
     }
 
-  return scan;
-}
-
-/*
- * heap_get_record () - Get heap record during a heap scan.
- *
- * return	       : Scan code.
- * thread_p (in)       : Thread entry.
- * oid (in)	       : Object to be obtained.
- * recdes (in)	       : Record descriptor to keep object data.
- * forward_recdes (in) : Record descriptor used for REC_BIGONE and
- *			 REC_RELOCATION. -- legacy
- * pgptr (in)	       : Pointer to home page.
- * scan_cache (in)     : Scan cache.
- * ispeeking (in)      : Peek record or copy.
- * type (in)	       : Record type.
- * check_snapshot (in) : true, if snapshot function must be checked
- *
- * NOTE: This is called from heap_next_internal.
- */
-static int
-heap_scan_get_record (THREAD_ENTRY * thread_p, const OID oid, OID * class_oid, RECDES * recdes, RECDES forward_recdes,
-		      PGBUF_WATCHER * home_pg_watcher, HEAP_SCANCACHE * scan_cache, int ispeeking, bool check_snapshot)
-{
-  OID forward_oid = OID_INITIALIZER;
-  SCAN_CODE scan = S_SUCCESS;
-  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
-  MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
-  PGBUF_WATCHER fwd_pg_watcher;
-  INT16 type;
-
-  assert (false);
-  assert (recdes != NULL);
-  assert ((check_snapshot == false)
-	  || (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL
-	      && scan_cache->mvcc_snapshot->snapshot_fnc != NULL));
-  assert (scan_cache != NULL || ispeeking == COPY);
-  assert (home_pg_watcher != NULL);
-  assert (home_pg_watcher->pgptr != NULL);
-
-  PGBUF_INIT_WATCHER (&fwd_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, HEAP_SCAN_ORDERED_HFID (scan_cache));
-
-  scan =
-    heap_prepare_get_record (thread_p, &oid, class_oid, &forward_oid, NULL, home_pg_watcher, &fwd_pg_watcher, &type,
-			     PGBUF_LATCH_READ, true, LOG_ERROR_IF_DELETED);
-  if (scan != S_SUCCESS)
-    {
-      goto exit;
-    }
-  assert (type == REC_HOME || type == REC_BIGONE || type == REC_RELOCATION);
-  assert (type == REC_HOME || (!OID_ISNULL (&forward_oid) && fwd_pg_watcher.pgptr != NULL));
-
-  if (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL
-      && check_snapshot)
-    {
-      mvcc_snapshot = scan_cache->mvcc_snapshot;
-    }
-  if (mvcc_snapshot != NULL)
-    {
-      scan =
-	heap_get_mvcc_header (thread_p, &oid, &forward_oid, home_pg_watcher->pgptr, fwd_pg_watcher.pgptr, type,
-			      &mvcc_header);
-      if (scan != S_SUCCESS)
-	{
-	  goto exit;
-	}
-      if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot) == false)
-	{
-	  //if (mvcc_is_record_deleted (thread_p, &mvcc_header))
-	  {
-	    scan = S_SNAPSHOT_NOT_SATISFIED;
-	    goto exit;
-	  }
-
-	  /* current version is not visible, check previous versions from log and skip record get from heap */
-	  scan =
-	    heap_mvcc_get_old_visible_version (thread_p, mvcc_snapshot, recdes,
-					       &MVCC_GET_PREV_VERSION_LSA (&mvcc_header), scan_cache);
-	  if (scan != S_SUCCESS)
-	    {
-	      scan = S_SNAPSHOT_NOT_SATISFIED;
-	    }
-
-	  goto exit;
-	}
-    }
-
-  //scan = heap_mvcc_get_visible(thread_p, (OID *) & oid, NULL, recdes, scan_cache, S_SELECT, ispeeking, NULL_CHN, LOG_WARNING_IF_DELETED);
-  scan = heap_get_record_data_when_all_ready (thread_p, (OID *) & oid, &forward_oid, home_pg_watcher->pgptr,
-					      fwd_pg_watcher.pgptr, type, recdes, scan_cache, ispeeking);
-  /* Fall through to exit. */
-
-exit:
-
-  if (fwd_pg_watcher.pgptr != NULL)
-    {
-      /* Unfix forward page. */
-      pgbuf_ordered_unfix (thread_p, &fwd_pg_watcher);
-    }
-  if (scan == S_SUCCESS && scan_cache != NULL && scan_cache->cache_last_fix_page)
-    {
-      /* Record was successfully obtained and scan is fixed. Save home page (or NULL if it had to be unfixed) to
-       * scan_cache. */
-      pgbuf_replace_watcher (thread_p, home_pg_watcher, &scan_cache->page_watcher);
-      assert (home_pg_watcher->pgptr == NULL);
-    }
-  else if (home_pg_watcher->pgptr)
-    {
-      /* Unfix home page. */
-      pgbuf_ordered_unfix (thread_p, home_pg_watcher);
-    }
   return scan;
 }
 
