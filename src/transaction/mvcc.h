@@ -84,10 +84,6 @@
   (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_DELID) \
    && MVCCID_IS_VALID (MVCC_GET_DELID (rec_header_p)))
 
-#define MVCC_IS_HEADER_NEXT_VERSION_VALID(rec_header_p) \
-  (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_NEXT_VERSION) \
-   && !OID_ISNULL (&MVCC_GET_NEXT_VERSION (rec_header_p)))
-
 #define MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE(rec_header_p) \
   (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_INSID) \
    && MVCC_GET_INSID (rec_header_p) != MVCCID_ALL_VISIBLE)

@@ -3693,7 +3693,7 @@ la_make_room_for_mvcc_insid (RECDES * recdes)
   mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
   assert (mvcc_flag != 0);
-  assert (!(mvcc_flag & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_LONG_CHN | OR_MVCC_FLAG_VALID_NEXT_VERSION)));
+  assert (!(mvcc_flag & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_LONG_CHN)));
 
   assert (recdes->area_size >= recdes->length + OR_MVCCID_SIZE);
 
@@ -3771,10 +3771,10 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
 		}
 	    }
 
-	  if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
+	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	    {
-	      /* skip next version */
-	      (void) or_advance (buf, OR_OID_SIZE);
+	      /* skip prev version lsa */
+	      (void) or_advance (buf, sizeof(LOG_LSA));
 	    }
 	}
 
