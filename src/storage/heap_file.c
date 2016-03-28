@@ -25093,8 +25093,8 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  SP_SUCCESS)
 	{
 	  /* yaay! new record fits in home page; update it's type in the page */
-	  context->recdes_p->type = REC_HOME;
-	  spage_update_record_type (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, REC_HOME);
+	  spage_update_record_type (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, 
+				    context->recdes_p->type);
 
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
