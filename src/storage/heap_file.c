@@ -25365,7 +25365,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
     {
       /* log redo record, undo log already done */
       heap_log_update_redo (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-			    &context->recdes_p, RVHF_UPDATE);
+			    context->recdes_p, RVHF_UPDATE);
 
       if (is_mvcc_op)
 	{
