@@ -2257,4 +2257,6 @@ extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_t
 extern int logtb_collect_local_clients (int **local_client_pids);
 #endif /* !NDEBUG */
 
+extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
+
 #endif /* _LOG_IMPL_H_ */

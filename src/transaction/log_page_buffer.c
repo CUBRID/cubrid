@@ -398,7 +398,6 @@ static void logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * heade
 static void logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data);
 static void logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * crumbs);
 static void logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty);
-static int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
 static LOG_PAGE *logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);

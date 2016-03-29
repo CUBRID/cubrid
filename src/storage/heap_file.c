@@ -88,6 +88,7 @@
 #endif
 
 #include "log_compress.h"
+#include "log_impl.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -27902,6 +27903,7 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
   OID forward_oid;
   RECDES local_recdes;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  LOG_LSA * oldest_prior_lsa;
 
   if (recdes == NULL)
     {
@@ -27920,6 +27922,17 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
       mvcc_snapshot = scan_cache->mvcc_snapshot;
     }
 
+  /* make sure prev_version_lsa is flushed from prior lsa list - wake up log flush thread if it's not flushed */
+  oldest_prior_lsa = log_get_append_lsa();
+  if (LSA_LT (oldest_prior_lsa, previous_version_lsa))
+      {
+	LOG_CS_ENTER(thread_p);
+	logpb_prior_lsa_append_all_list(thread_p);
+	LOG_CS_EXIT(thread_p);
+
+	oldest_prior_lsa = log_get_append_lsa();
+	assert(!LSA_LT(oldest_prior_lsa, previous_version_lsa));
+      }
 
   if (scan_cache != NULL && recdes->data == NULL)
     {
