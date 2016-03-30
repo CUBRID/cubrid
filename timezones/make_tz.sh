@@ -25,6 +25,8 @@ show_usage ()
   echo "                 and it must be included in CUBRID src before the new"
   echo "                 timezone library can be used."
   echo "    -d arg  Set the database name used when in extend mode"
+  echo "    -a Write the checksum in all the available databases on disk"
+  echo "	The -d and the -a options are mutual exclusive"
   echo "    -? | -h Show this help message and exit"
   echo ""
   echo " EXAMPLES"
@@ -34,33 +36,23 @@ show_usage ()
   echo ""
 }
 
-error_database_name()
-{
-	show_usage
-	echo ""
-	echo "When using extend we must have a database"
-	exit 1
-}
-
 BUILD_TARGET=64bit
 BUILD_MODE=release
 TZ_GEN_MODE=new
 DATABASE_NAME=""
+ALL=""
 
-while getopts ":t:m:g:d:h" opt; do
+while getopts ":t:m:g:d:ha" opt; do
 	case $opt in
 		t ) BUILD_TARGET="$OPTARG";;
 		m ) BUILD_MODE="$OPTARG";;
 		g ) TZ_GEN_MODE="$OPTARG";;
 		d ) DATABASE_NAME="$OPTARG";;
+		a ) ALL="all";;
 		h|\?|* ) show_usage; exit 1;;
 	esac
 done
 shift $(($OPTIND - 1))
-
-if [[ "$DATABASE_NAME" = "" && "$TZ_GEN_MODE" = "extend" ]]; then
-	error_database_name
-fi
 
 if [ $# -gt 0 ]; then
 	show_usage
@@ -103,13 +95,26 @@ echo "         BUILD_TARGET = $BUILD_TARGET"
 echo "         BUILD_MODE   = $BUILD_MODE"
 echo "         TZ_GEN_MODE  = $TZ_GEN_MODE"
 if [ "$TZ_GEN_MODE" = "extend" ]; then
-	echo "         DATABASE_NAME  = $DATABASE_NAME"
-fi
+	if ! [[ "$DATABASE_NAME" = "" || "$ALL" = "" ]]; then
+		echo "The database option and the all option are mutual exclusive!"
+		exit 1
+	elif ! [ "$DATABASE_NAME" = "" ]; then
+		echo "         DATABASE_NAME  = $DATABASE_NAME"
+	elif [ "$ALL" = "" ]; then
+		echo "The extend option must have either the -d option or the -a option"
+		exit 1
+	fi
+	fi
 echo ""
 
 echo "Generating timezone C file in mode $TZ_GEN_MODE"
 
-PS=$(cubrid gen_tz -g $TZ_GEN_MODE $DATABASE_NAME 2>&1)
+if ! [ "$DATABASE_NAME" = "" ]; then
+	PS=$(cubrid gen_tz -g $TZ_GEN_MODE $DATABASE_NAME 2>&1)
+else
+	PS=$(cubrid gen_tz -g $TZ_GEN_MODE 2>&1)
+fi
+
 if ! [ "$?" -eq 0 ] ; then
 	echo $PS
 	echo "Error: Command cubrid gen_tz -g $TZ_GEN_MODE failed!"

@@ -5,6 +5,8 @@ set APP_NAME=%0
 set BUILD_TARGET=x64
 set BUILD_MODE=.
 set TZ_MODE=.
+set DATABASE=.
+set ALL=.
 
 set VS80_VC_FOLDER=
 set VS90_VC_FOLDER=
@@ -55,14 +57,19 @@ GOTO :GET_DATABASE_NAME
 
 :GET_DATABASE_NAME
 if not "%1" == "" (
-set DATABASE=%1
+if "%1" == "-d" (
+set DATABASE=%2
+shift
 shift
 GOTO :CHECK_OPTION
-) else ( 
-if "%TZ_MODE%" == "extend" ( 
-GOTO :ERROR
-) else (GOTO :CHECK_OPTION)
+) else (if "%1" == "-all" (
+set ALL=all
+shift
+GOTO :CHECK_OPTION
+) else (GOTO :ERROR_BUILD_MODE)
 )
+) else (if "%TZ_MODE%" == "extend" ( GOTO :ERROR_BUILD_MODE
+) else ( GOTO :CHECK_OPTION ))
 
 :CHECK_ENV
 
@@ -111,12 +118,17 @@ goto :ENV_ERROR
 @echo.         BUILD_MODE = %BUILD_MODE%
 @echo.         TZ_MODE = %TZ_MODE%
 if "%TZ_MODE%" == "extend" ( 
+if not "%DATABASE%" == "." (
 echo          DATABASE_NAME = %DATABASE%
 )
-@echo. 
+)
+@echo.
 
 @echo. Generating timezone C file with mode %TZ_MODE% ...
+
+if not "%DATABASE%" == "." (
 %CUBRID%\bin\cubrid gen_tz -g %TZ_MODE% %DATABASE%
+) else (%CUBRID%\bin\cubrid gen_tz -g %TZ_MODE%)
 
 if %ERRORLEVEL% NEQ 0 goto :ERROR_GENTZ
 
@@ -183,7 +195,7 @@ goto :GENERIC_ERROR
 
 :SHOW_USAGE
 @echo.
-@echo.USAGE: %APP_NAME% [/release^|/debug] [/new^|/extend] [database_name] (only for extend mode)
+@echo.USAGE: %APP_NAME% [/release^|/debug] [/new^|/extend] [-d database_name^|-all] (only for extend mode)
 @echo.Build timezone shared 32bit DLL for CUBRID
 @echo. OPTIONS
 @echo.  /release or /debug    Build with release or debug mode (default: release)
@@ -202,10 +214,13 @@ goto :GENERIC_ERROR
 @echo.                   a new C file containing all timezone names is generated,
 @echo.                   and it must be included in CUBRID src before the new
 @echo.                   timezone library can be used.
-@echo.        database_name = this is necessary only when using extend mode;
+@echo.        -d = the flag tells that next is the database name
+@echo.        database_name = optional parameter when using extend mode;
 @echo.                        the computed timezone checksum is written in
 @echo.                        the timezone_checksum column of the db_root
-@echo.                        system table
+@echo.                        system table;
+@echo.        -all = flag that signals that all the databases available on disk
+@echo.               will be updated with the new checksum
 @echo.  /help /h /?      Display this help message and exit
 @echo.
 @echo. Examples:

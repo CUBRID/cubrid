@@ -3874,9 +3874,12 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
   char *tz_gen_mode = NULL;
   TZ_GEN_TYPE tz_gen_type = TZ_GEN_TYPE_NEW;
   int exit_status = EXIT_SUCCESS;
-  const char *db_name = NULL;
   bool write_checksum = false;
   char checksum[CHECKSUM_SIZE + 1];
+  bool need_db_shutdown = false;
+  DB_INFO *dir = NULL;
+  DB_INFO *db_info_p = NULL;
+  char *db_name = NULL;
   char er_msg_file[PATH_MAX];
 
   assert (arg != NULL);
@@ -3898,18 +3901,11 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
   else if (strcasecmp (tz_gen_mode, "extend") == 0)
     {
       tz_gen_type = TZ_GEN_TYPE_EXTEND;
+
       db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-      if (db_name == NULL || check_database_name (db_name) != NO_ERROR)
+      if (db_name != NULL && check_database_name (db_name) != NO_ERROR)
 	{
-	  if (db_name == NULL)
-	    {
-	      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GEN_TZ, GEN_TZ_MSG_USAGE),
-		       basename (arg->argv0), basename (arg->argv0));
-	    }
-	  else
-	    {
-	      exit_status = EXIT_FAILURE;
-	    }
+	  exit_status = EXIT_FAILURE;
 	  goto exit;
 	}
     }
@@ -3933,49 +3929,86 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
       input_path = inputpath_local;
     }
 
-  /* error message log file */
-  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
-  er_init (er_msg_file, ER_NEVER_EXIT);
-  if (tz_gen_type == TZ_GEN_TYPE_EXTEND)
-    {
-      AU_DISABLE_PASSWORDS ();
-      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-      db_login ("DBA", NULL);
-      if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
-	{
-	  exit_status = EXIT_FAILURE;
-	  goto exit;
-	}
-    }
-
   memset (checksum, 0, sizeof (checksum));
   if (timezone_compile_data (input_path, tz_gen_type, checksum) != NO_ERROR)
     {
       exit_status = EXIT_FAILURE;
       goto exit;
     }
-  if (checksum[0] != '\0')
+
+  if (db_name != NULL)
     {
-      if (put_timezone_checksum (checksum) != NO_ERROR)
+      /* error message log file */
+      snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
+      er_init (er_msg_file, ER_NEVER_EXIT);
+    }
+  if (tz_gen_type == TZ_GEN_TYPE_EXTEND && checksum[0] != '\0')
+    {
+      AU_DISABLE_PASSWORDS ();
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+      db_login ("DBA", NULL);
+
+      if (db_name != NULL)
+	{
+	  dir = (DB_INFO *) calloc (1, sizeof (DB_INFO));
+	  if (dir == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_INFO));
+	      exit_status = EXIT_FAILURE;
+	      goto exit;
+	    }
+	  dir->name = (char *) calloc (strlen (db_name) + 1, sizeof (char));
+	  if (dir->name == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_INFO));
+	      exit_status = EXIT_FAILURE;
+	      goto exit;
+	    }
+	  strcpy (dir->name, db_name);
+	  dir->next = NULL;
+	}
+      else if (cfg_read_directory (&dir, false) != NO_ERROR)
 	{
 	  exit_status = EXIT_FAILURE;
-	  db_abort_transaction ();
 	  goto exit;
 	}
-      else
+
+      for (db_info_p = dir; db_info_p != NULL; db_info_p = db_info_p->next)
 	{
-	  /* write the new checksum in the database */
-	  db_commit_transaction ();
+	  if (db_restart (arg->command_name, TRUE, db_info_p->name) != NO_ERROR)
+	    {
+	      need_db_shutdown = true;
+	      exit_status = EXIT_FAILURE;
+	      goto exit;
+	    }
+	  if (put_timezone_checksum (checksum) != NO_ERROR)
+	    {
+	      need_db_shutdown = true;
+	      exit_status = EXIT_FAILURE;
+	      db_abort_transaction ();
+	      goto exit;
+	    }
+	  else
+	    {
+	      /* write the new checksum in the database */
+	      db_commit_transaction ();
+	    }
+	  db_shutdown ();
 	}
     }
 
 exit:
-  if (tz_gen_type == TZ_GEN_TYPE_EXTEND)
+  if (dir != NULL)
     {
-      db_shutdown ();
+      cfg_free_directory (dir);
     }
   if (exit_status != EXIT_SUCCESS)
     {
+      if (need_db_shutdown == true)
+	{
+	  db_shutdown ();
+	}
+
       fprintf (stderr, "%s\n", db_error_string (3));
     }
 
