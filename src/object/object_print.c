@@ -3479,7 +3479,7 @@ help_fprint_resident_instances (FILE * fp, MOP op)
  * comes in as a string that is "parsed" to determine the nature
  * of the request.  This is intended primarily as a backdoor
  * for the "info" method on the root class.  This allows us
- * to get information dumped to stdout from batch SQL/X
+ * to get information dumped to stdout from batch CSQL
  * files which isn't possible currently since session commands
  * aren't allowed.
  *

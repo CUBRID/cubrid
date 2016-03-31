@@ -495,7 +495,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       goto fatal_error;
     }
 
-  /* For batch file input and SQL/X command argument input */
+  /* For batch file input and csql command argument input */
   csql_Tty_fp = NULL;
   if (csql_arg->command)
     {

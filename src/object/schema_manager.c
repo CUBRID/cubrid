@@ -10705,11 +10705,10 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
     }
   else
     {
-      if (allocate_index (classop, class_, subclasses, con->attributes, NULL, con->attrs_prefix_length, 0	/* unique_pk 
-														 */ ,
-			  false, false, con->name, &con->index_btid, &(con->fk_info->ref_class_oid),
-			  &(con->fk_info->ref_class_pk_btid), con->fk_info->name, con->filter_predicate,
-			  con->func_index_info))
+      if (allocate_index (classop, class_, subclasses, con->attributes, NULL, con->attrs_prefix_length,
+			  0 /* unique_pk */ , false, false, con->name, &con->index_btid,
+			  &(con->fk_info->ref_class_oid), &(con->fk_info->ref_class_pk_btid), con->fk_info->name,
+			  con->filter_predicate, con->func_index_info))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -10773,10 +10772,9 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
       else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX)
 	{
 	  reverse = (con->type == SM_CONSTRAINT_INDEX) ? false : true;
-	  error = allocate_index (classop, class_, NULL, con->attributes, con->asc_desc, con->attrs_prefix_length, 0	/* unique_pk 
-															 */ ,
-				  false, reverse, con->name, &con->index_btid, NULL, NULL, NULL, con->filter_predicate,
-				  con->func_index_info);
+	  error = allocate_index (classop, class_, NULL, con->attributes, con->asc_desc, con->attrs_prefix_length,
+				  0 /* unique_pk */ , false, reverse, con->name, &con->index_btid, NULL, NULL, NULL,
+				  con->filter_predicate, con->func_index_info);
 	}
       else if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	{
@@ -10795,11 +10793,12 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
 	}
     }
 
-  /* Whether we allocated a BTID or not, always write the constraint info back out to the property list.  This is where 
-   * the promotion of attribute name references to ids references happens. */
-  if (classobj_put_index_id
-      (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc, con->attrs_prefix_length,
-       &(con->index_btid), con->filter_predicate, con->fk_info, NULL, con->func_index_info, con->comment) != NO_ERROR)
+  /* Whether we allocated a BTID or not, always write the constraint info back out to the property list.  
+   * This is where the promotion of attribute name references to ids references happens. 
+   */
+  if (classobj_put_index_id (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc,
+			     con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
+			     con->func_index_info, con->comment) != NO_ERROR)
     {
       return error;
     }

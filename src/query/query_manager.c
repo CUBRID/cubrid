@@ -1144,7 +1144,8 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
 
   /* If xasl_stream is NULL, it means that the client requested looking up the XASL cache to know there's a reusable
    * execution plan (XASL) for this query. The XASL is stored as a file so that the XASL file id (XASL_ID) will be
-   * returned if found in the cache. */
+   * returned if found in the cache. 
+   */
 
   if (stream->xasl_stream == NULL)
     {
@@ -1179,10 +1180,12 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
 
   /* xasl_stream is given. It means that the client generated a XASL for this query and requested to store it. As a
    * matter of course, the XASL cache will be updated after saving the XASL stream into the file. The XASL file id
-   * (XASL_ID) will be returned if all right. */
+   * (XASL_ID) will be returned if all right. 
+   */
 
   /* at this time, I'd like to look up once again because it is possible that the other competing thread which is
-   * running the same query has updated the cache before me */
+   * running the same query has updated the cache before me 
+   */
   cache_entry_p =
     qexec_lookup_xasl_cache_ent (thread_p, context->sql_hash_text, user_oid_p, context->is_xasl_pinned_reference,
 				 context->recompile_xasl_pinned);
@@ -1268,12 +1271,14 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
     {
       XASL_ID *xasl_id = stream->xasl_id;
       er_log_debug (ARG_FILE_LINE,
-		    "xqmgr_prepare_query: qexec_update_xasl_cache_ent changed xasl_id { first_vpid { %d %d } temp_vfid { %d %d } } to xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n",
+		    "xqmgr_prepare_query: qexec_update_xasl_cache_ent changed xasl_id { first_vpid { %d %d } temp_vfid { %d %d } } "
+		    "to xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n",
 		    temp_xasl_id.first_vpid.pageid, temp_xasl_id.first_vpid.volid, temp_xasl_id.temp_vfid.fileid,
 		    temp_xasl_id.temp_vfid.volid, xasl_id->first_vpid.pageid, xasl_id->first_vpid.volid,
 		    xasl_id->temp_vfid.fileid, xasl_id->temp_vfid.volid);
       /* the other competing thread which is running the has updated the cache very after the moment of the previous
-       * check; simply abandon my XASL file */
+       * check; simply abandon my XASL file 
+       */
       (void) file_destroy (thread_p, &temp_xasl_id.temp_vfid);
     }
 
@@ -1806,9 +1811,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 			    (LOCK) xasl_cache_entry_p->class_locks[i]) != LK_GRANTED)
 	    {
 	      check_xasl_cache = true;
-	      if (lock_scan
-		  (thread_p, &xasl_cache_entry_p->class_oid_list[i], LK_UNCOND_LOCK,
-		   (LOCK) xasl_cache_entry_p->class_locks[i]) != LK_GRANTED)
+	      if (lock_scan (thread_p, &xasl_cache_entry_p->class_oid_list[i], LK_UNCOND_LOCK, 
+			     (LOCK) xasl_cache_entry_p->class_locks[i]) != LK_GRANTED)
 		{
 		  ASSERT_ERROR ();
 		  qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_cache_entry_p, false, is_xasl_pinned_reference);
@@ -1877,7 +1881,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       assert (data != NULL);
 
       /* use global heap for memory allocation. In the case of async query, the space will be freed when the query is
-       * completed. See qmgr_execute_async_select() */
+       * completed. See qmgr_execute_async_select() 
+       */
       if (IS_ASYNC_EXEC_MODE (*flag_p))
 	{
 	  use_global_heap = true;
@@ -1922,7 +1927,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   /* If it is not inhibited from getting the cached result, inspect the list cache (query result cache) and get the
    * list file id(QFILE_LIST_ID) to be returned to the client if it is in there. The list cache will be searched with
    * the XASL cache entry of the target query that is obtained from the XASL_ID, because all results of the query with
-   * different parameters (host variables - DB_VALUES) are linked at the XASL cache entry. */
+   * different parameters (host variables - DB_VALUES) are linked at the XASL cache entry. 
+   */
   params.size = dbval_count;
   params.vals = dbvals_p;
 

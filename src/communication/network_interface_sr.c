@@ -392,9 +392,8 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *req
    * 3. check if the client has a capability to make it compatible.
    */
   compat = rel_get_net_compatible (client_release, server_release);
-  if (check_client_capabilities
-      (thread_p, client_capabilities, rel_compare (client_release, server_release), &compat,
-       client_host) != client_capabilities)
+  if (check_client_capabilities (thread_p, client_capabilities, rel_compare (client_release, server_release),
+				 &compat, client_host) != client_capabilities)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_HAND_SHAKE, 1, client_host);
       return_error_to_client (thread_p, rid);
@@ -418,9 +417,8 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *req
       thread_p->conn_entry->client_type = client_type;
     }
 
-  reply_size =
-    or_packed_string_length (server_release, &strlen1) + (OR_INT_SIZE * 3) + or_packed_string_length (boot_Host_name,
-												      &strlen2);
+  reply_size = (or_packed_string_length (server_release, &strlen1) + (OR_INT_SIZE * 3)
+		+ or_packed_string_length (boot_Host_name, &strlen2));
   ptr = or_pack_string_with_length (reply, (char *) server_release, strlen1);
   ptr = or_pack_string (ptr, NULL);	/* for backward compatibility */
   ptr = or_pack_int (ptr, server_capabilities ());
@@ -1563,9 +1561,8 @@ slocator_assign_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_string_nocopy (ptr, &classname);
 
-  success =
-    (xlocator_assign_oid (thread_p, &hfid, &perm_oid, expected_length, &class_oid, classname) ==
-     NO_ERROR) ? NO_ERROR : ER_FAILED;
+  success = ((xlocator_assign_oid (thread_p, &hfid, &perm_oid, expected_length, &class_oid, classname) == NO_ERROR)
+	     ? NO_ERROR : ER_FAILED);
   if (success != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
@@ -6892,8 +6889,8 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, ch
   ptr = or_unpack_int (ptr, &quit_on_errors);
   ptr = or_unpack_int (ptr, &lock_rr_tran);
 
-  malloc_size =
-    ((sizeof (char *) + sizeof (LOCK) + sizeof (int) + sizeof (int) + sizeof (OID) + sizeof (int)) * num_classes);
+  malloc_size = ((sizeof (char *) + sizeof (LOCK) + sizeof (int) + sizeof (int) + sizeof (OID) + sizeof (int))
+		 * num_classes);
 
   malloc_area = (char *) db_private_alloc (thread_p, malloc_size);
   if (malloc_area != NULL)
@@ -7637,9 +7634,8 @@ shf_get_class_num_objs_and_pages (THREAD_ENTRY * thread_p, unsigned int rid, cha
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_int (ptr, &approximation);
 
-  success =
-    (xheap_get_class_num_objects_pages (thread_p, &hfid, approximation, &nobjs, &npages) ==
-     NO_ERROR) ? NO_ERROR : ER_FAILED;
+  success = ((xheap_get_class_num_objects_pages (thread_p, &hfid, approximation, &nobjs, &npages) == NO_ERROR)
+	     ? NO_ERROR : ER_FAILED);
 
   if (success != NO_ERROR)
     {
@@ -8258,8 +8254,8 @@ slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ptr = or_unpack_btid (ptr, &pk_btid);
   ptr = or_unpack_string (ptr, &fk_name);
 
-  if (xlocator_check_fk_validity
-      (thread_p, &class_oid, &hfid, key_type, n_attrs, attr_ids, &pk_cls_oid, &pk_btid, fk_name) != NO_ERROR)
+  if (xlocator_check_fk_validity (thread_p, &class_oid, &hfid, key_type, n_attrs, attr_ids, &pk_cls_oid, &pk_btid,
+				  fk_name) != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
     }

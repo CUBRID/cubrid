@@ -48,7 +48,7 @@ static void pp_print_cursor (void *cp, void *fp);
  *    and dynamic fields accordingly.
  * return : CURSOR *
  * name(in): A character string.
- * static_stmt(in): A prepared SQL/X SELECT statement, or NULL.
+ * static_stmt(in): A prepared CSQL SELECT statement, or NULL.
  * length(in) :
  * dynamic_stmt(in): A STMT pointer, or NULL.
  * host_refs(in):

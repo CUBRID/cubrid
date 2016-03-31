@@ -3141,9 +3141,8 @@ fileio_traverse_temporary_volume (THREAD_ENTRY * thread_p, VOLINFO_APPLY_FN appl
   num_temp_vols = LOG_MAX_DBVOLID - header_p->next_temp_volid;
 
   for (i = header_p->num_volinfo_array - 1;
-       i >
-       (header_p->num_volinfo_array - 1 - (num_temp_vols + FILEIO_VOLINFO_INCREMENT - 1) / FILEIO_VOLINFO_INCREMENT);
-       i--)
+       i > (header_p->num_volinfo_array - 1
+	    - (num_temp_vols + FILEIO_VOLINFO_INCREMENT - 1) / FILEIO_VOLINFO_INCREMENT); i--)
     {
       min_j = fileio_min_temporary_volumes (i, num_temp_vols, header_p->num_volinfo_array);
 
@@ -3334,9 +3333,8 @@ fileio_map_mounted (THREAD_ENTRY * thread_p, bool (*fun) (THREAD_ENTRY * thread_
 
   num_temp_vols = LOG_MAX_DBVOLID - header_p->next_temp_volid;
   for (i = header_p->num_volinfo_array - 1;
-       i >
-       (header_p->num_volinfo_array - 1 - (num_temp_vols + FILEIO_VOLINFO_INCREMENT - 1) / FILEIO_VOLINFO_INCREMENT);
-       i--)
+       i > (header_p->num_volinfo_array - 1
+	    - (num_temp_vols + FILEIO_VOLINFO_INCREMENT - 1) / FILEIO_VOLINFO_INCREMENT); i--)
     {
       min_j = fileio_min_temporary_volumes (i, num_temp_vols, header_p->num_volinfo_array);
 
