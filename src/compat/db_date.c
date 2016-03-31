@@ -661,7 +661,7 @@ db_timestamp_encode_utc (const DB_DATE * date, const DB_TIME * timeval, DB_TIMES
   /* The first item adds the days off all the years between 1970 and the given year considering that each year has 365
    * days. The second item adds a day every 4 years starting from 1973. The third item subtracts a day back out every
    * 100 years starting with 2001. The fourth item adds a day back every 400 years starting with 2001 */
-  t = ((year - 70) * secs_in_a_year + ((year - 69) / 4) * secs_per_day - ((year - 1) / 100) * secs_per_day 
+  t = ((year - 70) * secs_in_a_year + ((year - 69) / 4) * secs_per_day - ((year - 1) / 100) * secs_per_day
        + ((year + 299) / 400) * secs_per_day);
 
   if (mon > TZ_MON_JAN)

@@ -1811,7 +1811,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 			    (LOCK) xasl_cache_entry_p->class_locks[i]) != LK_GRANTED)
 	    {
 	      check_xasl_cache = true;
-	      if (lock_scan (thread_p, &xasl_cache_entry_p->class_oid_list[i], LK_UNCOND_LOCK, 
+	      if (lock_scan (thread_p, &xasl_cache_entry_p->class_oid_list[i], LK_UNCOND_LOCK,
 			     (LOCK) xasl_cache_entry_p->class_locks[i]) != LK_GRANTED)
 		{
 		  ASSERT_ERROR ();
