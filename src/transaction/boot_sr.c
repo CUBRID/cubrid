@@ -3156,7 +3156,7 @@ boot_make_session_server_key (void)
  */
 int
 boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db_name, bool from_backup,
-		     bool check_db_coll, BO_RESTART_ARG * r_args)
+		     CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args)
 {
   char log_path[PATH_MAX];
   const char *log_prefix;
@@ -3614,14 +3614,16 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* Check server timezone checksum versus database checksum */
-
-  tzd = tz_get_data ();
-  assert (tzd != NULL);
-
-  error_code = check_timezone_compat (tzd->checksum, timezone_checksum, "server", "database");
-  if (error_code != NO_ERROR)
+  if (check_coll_and_timezone->check_timezone == true)
     {
-      goto error;
+      tzd = tz_get_data ();
+      assert (tzd != NULL);
+
+      error_code = check_timezone_compat (tzd->checksum, timezone_checksum, "server", "database");
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
 #if defined (SERVER_MODE)
@@ -3730,7 +3732,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* check server collations with database collations */
-  if (check_db_coll)
+  if (check_coll_and_timezone->check_db_coll == true)
     {
       LANG_COLL_COMPAT *db_collations = NULL;
       int db_coll_cnt;
@@ -3898,6 +3900,8 @@ error:
 int
 xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const char *db_name, BO_RESTART_ARG * r_args)
 {
+  CHECK_ARGS check_coll_and_timezone = { true, true };
+
   if (lang_init () != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
@@ -3949,7 +3953,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
       return NULL_TRAN_INDEX;
     }
 
-  if (boot_restart_server (thread_p, print_restart, db_name, true, true, r_args) != NO_ERROR)
+  if (boot_restart_server (thread_p, print_restart, db_name, true, &check_coll_and_timezone, r_args) != NO_ERROR)
     {
       return NULL_TRAN_INDEX;
     }
@@ -4056,10 +4060,10 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 		       BOOT_SERVER_CREDENTIAL * server_credential)
 {
   int tran_index;
-  bool check_db_coll = true;
   char *db_user_save;
   char *adm_prg_file_name = NULL;
   char db_user_upper[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  CHECK_ARGS check_coll_and_timezone = { true, true };
 
 #if defined(SA_MODE)
   if (client_credential != NULL && client_credential->program_name != NULL
@@ -4076,15 +4080,23 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	  adm_prg_file_name++;
 	}
     }
-  if (adm_prg_file_name != NULL
-      && (strncasecmp (adm_prg_file_name, "synccolldb", strlen ("synccolldb")) == 0
-	  || strncasecmp (adm_prg_file_name, "migrate_", strlen ("migrate_")) == 0))
+  if (adm_prg_file_name != NULL)
     {
-      check_db_coll = false;
+      if (strncasecmp (adm_prg_file_name, "synccolldb", strlen ("synccolldb")) == 0
+	  || strncasecmp (adm_prg_file_name, "migrate_", strlen ("migrate_")) == 0)
+	{
+	  check_coll_and_timezone.check_db_coll = false;
+	}
+      if (strncasecmp (adm_prg_file_name, "gen_tz", strlen ("gen_tz")) == 0)
+	{
+	  check_coll_and_timezone.check_timezone = false;
+	}
     }
+
   /* If the server is not restarted, restart the server at this moment */
   if (!BO_IS_SERVER_RESTARTED ()
-      && boot_restart_server (thread_p, false, client_credential->db_name, false, check_db_coll, NULL) != NO_ERROR)
+      && boot_restart_server (thread_p, false, client_credential->db_name, false, &check_coll_and_timezone,
+			      NULL) != NO_ERROR)
     {
       *tran_state = TRAN_UNACTIVE_UNKNOWN;
       return NULL_TRAN_INDEX;
@@ -5078,6 +5090,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	   * so on are removed... then continue...
 	   * Note: we do not call xboot_delete since it reverts a bunch of stuff.
 	   */
+	  CHECK_ARGS check_col_and_timezone = { true, true };
 	  cfg_free_directory (dir);
 	  dir = NULL;
 
@@ -5093,8 +5106,8 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	    {
 	      goto error;
 	    }
-
-	  error_code = boot_restart_server (thread_p, false, from_dbname, false, false, NULL);
+	  check_col_and_timezone.check_db_coll = false;
+	  error_code = boot_restart_server (thread_p, false, from_dbname, false, &check_col_and_timezone, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
