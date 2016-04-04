@@ -175,7 +175,9 @@ uc_broker_shm_open (char *err_msg)
     }
   ret_val = uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
   if (!ret_val && err_msg)
-    strcpy (err_msg, strerror (errno));
+    {
+      strcpy (err_msg, strerror (errno));
+    }
   return ret_val;
 }
 
@@ -193,7 +195,9 @@ uc_get_br_name_with_opened_shm (void *shm_br, int br_index, char *name, int buff
   if (name == NULL)
     {
       if (err_msg)
-	strcpy (err_msg, "Invalid name buffer.");
+	{
+	  strcpy (err_msg, "Invalid name buffer.");
+	}
       return -1;
     }
 
@@ -205,17 +209,22 @@ DLL_EXPORT void *
 uc_as_shm_open (void *shm_br, int br_index, char *err_msg)
 {
   void *ret_val;
+
   if (shm_br == NULL)
     {
       if (err_msg)
-	strcpy (err_msg, "Shared memory is not opened.");
+	{
+	  strcpy (err_msg, "Shared memory is not opened.");
+	}
       return NULL;
     }
 
-  ret_val =
-    uw_shm_open (((T_SHM_BROKER *) shm_br)->br_info[br_index].appl_server_shm_id, SHM_APPL_SERVER, SHM_MODE_MONITOR);
+  ret_val = uw_shm_open (((T_SHM_BROKER *) shm_br)->br_info[br_index].appl_server_shm_id, SHM_APPL_SERVER,
+			 SHM_MODE_MONITOR);
   if (!ret_val && err_msg)
-    strcpy (err_msg, strerror (errno));
+    {
+      strcpy (err_msg, strerror (errno));
+    }
   return ret_val;
 }
 
@@ -259,7 +268,9 @@ uc_get_active_session_with_opened_shm (void *shm_p, char *err_msg)
   for (i = 0; i < shm_br->num_broker; i++)
     {
       if (shm_br->br_info[i].service_flag == ON)
-	num_ses += shm_br->br_info[i].num_busy_count;
+	{
+	  num_ses += shm_br->br_info[i].num_busy_count;
+	}
     }
 
   return num_ses;
@@ -541,7 +552,9 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_inf
 
       as_info[i].service_flag = shm_appl->as_info[i].service_flag;
       if (shm_appl->as_info[i].service_flag != SERVICE_ON)
-	continue;
+	{
+	  continue;
+	}
 
       as_info[i].pid = shm_appl->as_info[i].pid;
       as_info[i].psize = getsize (as_info[i].pid);
@@ -555,9 +568,12 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_inf
       if (shm_appl->use_pdh_flag == TRUE)
 	{
 	  float pct_cpu;
+
 	  pct_cpu = shm_appl->as_info[i].pdh_pct_cpu;
 	  if (pct_cpu >= 0)
-	    as_info[i].pcpu = pct_cpu;
+	    {
+	      as_info[i].pcpu = pct_cpu;
+	    }
 	  as_info[i].psize = shm_appl->as_info[i].pdh_workset;
 	  as_info[i].cpu_time = shm_appl->as_info[i].cpu_time;
 	}
@@ -572,23 +588,37 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_inf
 	  if (IS_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
 	    {
 	      if (shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN)
-		as_info[i].status = AS_STATUS_CLOSE_WAIT;
+		{
+		  as_info[i].status = AS_STATUS_CLOSE_WAIT;
+		}
 	      else if (shm_appl->as_info[i].log_msg[0] == '\0')
-		as_info[i].status = AS_STATUS_CLIENT_WAIT;
+		{
+		  as_info[i].status = AS_STATUS_CLIENT_WAIT;
+		}
 	      else
-		as_info[i].status = AS_STATUS_BUSY;
+		{
+		  as_info[i].status = AS_STATUS_BUSY;
+		}
 	    }
 	  else
-	    as_info[i].status = AS_STATUS_BUSY;
+	    {
+	      as_info[i].status = AS_STATUS_BUSY;
+	    }
 	}
 #if defined(WINDOWS)
       else if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY_WAIT)
-	as_info[i].status = AS_STATUS_BUSY;
+	{
+	  as_info[i].status = AS_STATUS_BUSY;
+	}
 #endif /* WINDOWS */
       else if (shm_appl->as_info[i].uts_status == UTS_STATUS_RESTART)
-	as_info[i].status = AS_STATUS_RESTART;
+	{
+	  as_info[i].status = AS_STATUS_RESTART;
+	}
       else
-	as_info[i].status = AS_STATUS_IDLE;
+	{
+	  as_info[i].status = AS_STATUS_IDLE;
+	}
 
       as_info[i].last_access_time = shm_appl->as_info[i].last_access_time;
       as_info[i].last_connect_time = shm_appl->as_info[i].last_connect_time;
@@ -615,11 +645,14 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_inf
   if (job_info)
     {
       T_MAX_HEAP_NODE job_q[JOB_QUEUE_MAX_SIZE + 1];
+
       memcpy (job_q, shm_appl->job_queue, sizeof (T_MAX_HEAP_NODE) * (JOB_QUEUE_MAX_SIZE + 1));
       *num_job = copy_job_info (job_info, job_q);
     }
   else if (num_job)
-    *num_job = shm_appl->job_queue[0].id;
+    {
+      *num_job = shm_appl->job_queue[0].id;
+    }
 
   uw_shm_detach (shm_appl);
   uw_shm_detach (shm_br);
@@ -629,9 +662,13 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_inf
 
 as_info_error:
   if (shm_appl)
-    uw_shm_detach (shm_appl);
+    {
+      uw_shm_detach (shm_appl);
+    }
   if (shm_br)
-    uw_shm_detach (shm_br);
+    {
+      uw_shm_detach (shm_br);
+    }
   uc_info_free (as_info);
   return -1;
 }
@@ -755,7 +792,9 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
 	  strncpy (br_info[i].log_dir, shm_br->br_info[i].access_log_file, sizeof (br_info[i].log_dir) - 1);
 	  p = strrchr (br_info[i].log_dir, '/');
 	  if (p != NULL)
-	    *p = '\0';
+	    {
+	      *p = '\0';
+	    }
 	  br_info[i].as_max_size = shm_br->br_info[i].appl_server_max_size;
 	  br_info[i].as_hard_limit = shm_br->br_info[i].appl_server_hard_limit;
 	  br_info[i].log_backup_flag = shm_br->br_info[i].log_backup;
@@ -763,13 +802,22 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
 	  uw_shm_detach (shm_appl);
 	}
       if (shm_br->br_info[i].acl_file[0] == '\0')
-	br_info[i].access_list_flag = 0;
+	{
+	  br_info[i].access_list_flag = 0;
+	}
       else
-	br_info[i].access_list_flag = 1;
+	{
+	  br_info[i].access_list_flag = 1;
+	}
+
       if (shm_br->br_info[i].source_env[0] == '\0')
-	br_info[i].source_env_flag = 0;
+	{
+	  br_info[i].source_env_flag = 0;
+	}
       else
-	br_info[i].source_env_flag = 1;
+	{
+	  br_info[i].source_env_flag = 1;
+	}
     }
   uw_shm_detach (shm_br);
 
@@ -779,9 +827,13 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
 
 br_info_error:
   if (shm_br)
-    uw_shm_detach (shm_br);
+    {
+      uw_shm_detach (shm_br);
+    }
   if (br_info)
-    uc_info_free (br_info);
+    {
+      uc_info_free (br_info);
+    }
   return -1;
 }
 
@@ -903,7 +955,9 @@ uc_change_config (T_UC_CONF * unicas_conf, const char *br_name, const char *name
       br_conf = NULL;
     }
   if (br_conf == NULL)
-    return;
+    {
+      return;
+    }
 
   for (i = 0; i < br_conf->num; i++)
     {
@@ -947,10 +1001,14 @@ uc_del_cas_log (const char *br_name, int asid, char *err_msg)
   err_msg[0] = '\0';
 
   if (admin_common (br_info, &num_broker, &master_shm_id, admin_log_file, err_msg, 0, NULL, NULL) < 0)
-    return -1;
+    {
+      return -1;
+    }
 
   if (admin_del_cas_log (master_shm_id, br_name, asid) < 0)
-    return -1;
+    {
+      return -1;
+    }
 
   return 0;
 }
@@ -973,7 +1031,9 @@ get_broker_name (T_BR_CONF * br_conf)
       if (strcmp (conf_item[i].name, UC_CONF_PARAM_BROKER_NAME) == 0)
 	{
 	  if (conf_item[i].value == NULL)
-	    return (char *) "";
+	    {
+	      return (char *) "";
+	    }
 	  return conf_item[i].value;
 	}
     }
@@ -986,9 +1046,13 @@ conf_item_free (T_UC_CONF_ITEM * conf_item, int num)
   int i;
 
   if (conf_item == NULL)
-    return;
+    {
+      return;
+    }
   for (i = 0; i < num; i++)
-    FREE_MEM (conf_item[i].value);
+    {
+      FREE_MEM (conf_item[i].value);
+    }
   FREE_MEM (conf_item);
 }
 
@@ -1086,8 +1150,8 @@ static int
 admin_common (T_BROKER_INFO * br_info, int *num_broker, int *master_shm_id, char *admin_log_file, char *err_msg,
 	      char admin_flag, bool * acl_flag, char *acl_file)
 {
-  if (broker_config_read
-      (NULL, br_info, num_broker, master_shm_id, admin_log_file, admin_flag, acl_flag, acl_file, err_msg) < 0)
+  if (broker_config_read (NULL, br_info, num_broker, master_shm_id, admin_log_file, admin_flag, acl_flag, acl_file,
+			  err_msg) < 0)
     {
       return -1;
     }
@@ -1095,7 +1159,9 @@ admin_common (T_BROKER_INFO * br_info, int *num_broker, int *master_shm_id, char
   ut_cd_work_dir ();
 
   if (!admin_flag)
-    return 0;
+    {
+      return 0;
+    }
 
 #if defined(WINDOWS)
   if (wsa_initialize () < 0)
@@ -1128,7 +1194,9 @@ copy_job_info (T_JOB_INFO ** ret_job_info, T_MAX_HEAP_NODE * job_q)
 
   job_info = (T_JOB_INFO *) malloc (sizeof (T_JOB_INFO) * num_job);
   if (job_info == NULL)
-    return 0;
+    {
+      return 0;
+    }
   memset (job_info, 0, sizeof (T_JOB_INFO) * num_job);
 
   for (i = 0; i < num_job; i++)
@@ -1154,11 +1222,17 @@ static const char *
 get_as_type_str (char as_type)
 {
   if (as_type == APPL_SERVER_CAS_ORACLE)
-    return APPL_SERVER_CAS_ORACLE_TYPE_NAME;
+    {
+      return APPL_SERVER_CAS_ORACLE_TYPE_NAME;
+    }
   if (as_type == APPL_SERVER_CAS_MYSQL51)
-    return APPL_SERVER_CAS_MYSQL51_TYPE_NAME;
+    {
+      return APPL_SERVER_CAS_MYSQL51_TYPE_NAME;
+    }
   if (as_type == APPL_SERVER_CAS_MYSQL)
-    return APPL_SERVER_CAS_MYSQL_TYPE_NAME;
+    {
+      return APPL_SERVER_CAS_MYSQL_TYPE_NAME;
+    }
   return APPL_SERVER_CAS_TYPE_NAME;
 }
 
@@ -1166,11 +1240,17 @@ static int
 get_as_type (const char *type_str)
 {
   if (strcasecmp (type_str, APPL_SERVER_CAS_ORACLE_TYPE_NAME) == 0)
-    return APPL_SERVER_CAS_ORACLE;
+    {
+      return APPL_SERVER_CAS_ORACLE;
+    }
   if (strcasecmp (type_str, APPL_SERVER_CAS_MYSQL51_TYPE_NAME) == 0)
-    return APPL_SERVER_CAS_MYSQL51;
+    {
+      return APPL_SERVER_CAS_MYSQL51;
+    }
   if (strcasecmp (type_str, APPL_SERVER_CAS_MYSQL_TYPE_NAME) == 0)
-    return APPL_SERVER_CAS_MYSQL;
+    {
+      return APPL_SERVER_CAS_MYSQL;
+    }
   return APPL_SERVER_CAS;
 }
 
@@ -1204,7 +1284,9 @@ reset_conf_value (int num_item, T_UC_CONF_ITEM * item, const char *name)
       if (strcasecmp (item[i].name, name) == 0)
 	{
 	  if (item[i].value)
-	    item[i].value[0] = '\0';
+	    {
+	      item[i].value[0] = '\0';
+	    }
 	  return;
 	}
     }

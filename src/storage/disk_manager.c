@@ -1340,12 +1340,12 @@ disk_vhdr_set_vol_fullname (DISK_VAR_HEADER * vhdr, const char *vol_fullname)
 
   length_diff = vhdr->offset_to_vol_remarks;
 
-  length_to_move =
-    (length_diff + (int) strlen (vhdr->var_fields + length_diff) + 1 - vhdr->offset_to_next_vol_fullname);
+  length_to_move = (length_diff + (int) strlen (vhdr->var_fields + length_diff) + 1
+		    - vhdr->offset_to_next_vol_fullname);
 
   /* Difference in length between new name and old name */
-  length_diff =
-    (((int) strlen (vol_fullname) + 1) - (vhdr->offset_to_next_vol_fullname - vhdr->offset_to_vol_fullname));
+  length_diff = (((int) strlen (vol_fullname) + 1)
+		 - (vhdr->offset_to_next_vol_fullname - vhdr->offset_to_vol_fullname));
 
   if (length_diff != 0)
     {
@@ -1581,10 +1581,9 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid, DBDEF_VOL
   vhdr->dummy1 = vhdr->dummy2 = vhdr->dummy3 = 0;
 
   /* page/sect alloctable must be created with max_npages. not initial size(extend_npages) */
-  if (disk_set_alloctables
-      (vol_purpose, CEIL_PTVDIV (max_npages, DISK_SECTOR_NPAGES), max_npages, &vhdr->sect_alloctb_npages,
-       &vhdr->page_alloctb_npages, &vhdr->sect_alloctb_page1, &vhdr->page_alloctb_page1,
-       &vhdr->sys_lastpage) != NO_ERROR)
+  if (disk_set_alloctables (vol_purpose, CEIL_PTVDIV (max_npages, DISK_SECTOR_NPAGES), max_npages,
+			    &vhdr->sect_alloctb_npages, &vhdr->page_alloctb_npages, &vhdr->sect_alloctb_page1,
+			    &vhdr->page_alloctb_page1, &vhdr->sys_lastpage) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
@@ -1682,14 +1681,14 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, INT16 volid, DBDEF_VOL
   /* Now initialize the sector and page allocator tables and link the volume to previous allocated volume */
 
   prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
-  if (disk_map_init
-      (thread_p, volid, vhdr->sect_alloctb_page1, vhdr->sect_alloctb_page1 + vhdr->sect_alloctb_npages - 1,
-       vhdr->total_sects - vhdr->free_sects, vol_purpose) != NO_ERROR
+  if (disk_map_init (thread_p, volid, vhdr->sect_alloctb_page1,
+		     (vhdr->sect_alloctb_page1 + vhdr->sect_alloctb_npages - 1), vhdr->total_sects - vhdr->free_sects,
+		     vol_purpose) != NO_ERROR
       || disk_map_init (thread_p, volid, vhdr->page_alloctb_page1,
 			vhdr->page_alloctb_page1 + vhdr->page_alloctb_npages - 1, vhdr->sys_lastpage + 1,
-			vol_purpose) != NO_ERROR || (vol_purpose != DISK_TEMPVOL_TEMP_PURPOSE && volid > 0
-						     && disk_set_link (thread_p, prev_volid, volid, vol_fullname, true,
-								       DISK_FLUSH) != NO_ERROR))
+			vol_purpose) != NO_ERROR
+      || (vol_purpose != DISK_TEMPVOL_TEMP_PURPOSE && volid > 0
+	  && disk_set_link (thread_p, prev_volid, volid, vol_fullname, true, DISK_FLUSH) != NO_ERROR))
     {
       /* Problems setting the map allocation tables, release the header page, dismount and destroy the volume, and
        * return */
@@ -2160,9 +2159,9 @@ disk_reinit (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
 
   /* Now initialize the sector and page allocator tables and link the volume to previous allocated volume */
 
-  if (disk_map_init
-      (thread_p, volid, vhdr->sect_alloctb_page1, vhdr->sect_alloctb_page1 + vhdr->sect_alloctb_npages - 1,
-       vhdr->total_sects - vhdr->free_sects, vhdr->purpose) != NO_ERROR
+  if (disk_map_init (thread_p, volid, vhdr->sect_alloctb_page1,
+		     (vhdr->sect_alloctb_page1 + vhdr->sect_alloctb_npages - 1),
+		     (vhdr->total_sects - vhdr->free_sects), vhdr->purpose) != NO_ERROR
       || disk_map_init (thread_p, volid, vhdr->page_alloctb_page1,
 			(vhdr->page_alloctb_page1 + vhdr->page_alloctb_npages - 1), vhdr->sys_lastpage + 1,
 			vhdr->purpose) != NO_ERROR)
@@ -5011,9 +5010,8 @@ disk_dump_goodvol_system (THREAD_ENTRY * thread_p, FILE * fp, INT16 volid, INT32
 
   /* Display Sector allocator Map table */
   (void) fprintf (fp, "\nSECTOR ALLOCATOR MAP TABLE\n");
-  if (disk_map_dump
-      (thread_p, fp, &vpid, "SECTOR ID", (fs_sectid / DISK_PAGE_BIT) + vhdr->sect_alloctb_page1,
-       (ls_sectid / DISK_PAGE_BIT) + vhdr->sect_alloctb_page1, fs_sectid, ls_sectid) != NO_ERROR)
+  if (disk_map_dump (thread_p, fp, &vpid, "SECTOR ID", (fs_sectid / DISK_PAGE_BIT) + vhdr->sect_alloctb_page1,
+		     (ls_sectid / DISK_PAGE_BIT) + vhdr->sect_alloctb_page1, fs_sectid, ls_sectid) != NO_ERROR)
     {
       (void) fprintf (fp, "Problems dumping sector table of volume = %s\n", disk_vhdr_get_vol_fullname (vhdr));
     }

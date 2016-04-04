@@ -99,7 +99,7 @@ db_create_internal (DB_OBJECT * obj)
 
   retval = obj_create (obj);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -151,7 +151,7 @@ db_create_by_name_internal (const char *name)
 
   retval = (obj_create_by_name (name));
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -176,7 +176,7 @@ db_copy (MOP sourcemop)
   retval = (obj_copy (sourcemop));
 
   /* handles NULL */
-  return (retval);
+  return retval;
 }
 
 /*
@@ -196,7 +196,7 @@ db_drop (DB_OBJECT * obj)
 
   retval = (obj_delete (obj));
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -239,7 +239,7 @@ db_get (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
   /* handles NULL */
   retval = (obj_get_path (object, attpath, value));
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -261,7 +261,7 @@ db_get_shared (DB_OBJECT * object, const char *attname, DB_VALUE * value)
   /* handles NULL */
   retval = (obj_get_shared (object, attname, value));
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -353,7 +353,7 @@ db_put_internal (DB_OBJECT * obj, const char *name, DB_VALUE * value)
 
   retval = (obj_set (obj, name, value));
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -394,7 +394,7 @@ db_send (MOP obj, const char *name, DB_VALUE * returnval, ...)
   error = obj_send_va (obj, name, returnval, args);
   va_end (args);
 
-  return (error);
+  return error;
 }
 
 /*
@@ -507,7 +507,7 @@ dbt_create_object_internal (MOP classobj)
 
   def = obt_def_object (classobj);
 
-  return (def);
+  return def;
 }
 
 /*
@@ -539,7 +539,7 @@ dbt_edit_object (MOP object)
 
   def = obt_edit_object (object);
 
-  return (def);
+  return def;
 }
 
 /*
@@ -569,7 +569,7 @@ dbt_finish_object (DB_OTMPL * def)
       object = NULL;		/* probably not necessary but be safe */
     }
 
-  return (object);
+  return object;
 }
 
 /*
@@ -596,7 +596,7 @@ dbt_finish_object_and_decache_when_failure (DB_OTMPL * def)
       object = NULL;		/* probably not necessary but be safe */
     }
 
-  return (object);
+  return object;
 }
 
 /*
@@ -683,7 +683,7 @@ dbt_put_internal (DB_OTMPL * def, const char *name, DB_VALUE * value)
       error = obt_set (def, name, value);
     }
 
-  return (error);
+  return error;
 }
 
 /*
@@ -769,7 +769,7 @@ db_get_attribute_descriptor (DB_OBJECT * obj, const char *attname, int class_att
 
   retval = sm_get_attribute_descriptor (obj, attname, class_attribute, for_update, descriptor);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -861,7 +861,7 @@ db_get_method_descriptor (DB_OBJECT * obj, const char *methname, int class_metho
   CHECK_3ARGS_ERROR (obj, methname, descriptor);
 
   retval = sm_get_method_descriptor (obj, methname, class_method, descriptor);
-  return (retval);
+  return retval;
 }
 
 /*
@@ -893,7 +893,7 @@ db_dget (DB_OBJECT * obj, DB_ATTDESC * attribute, DB_VALUE * value)
 
   /* checks NULL */
   retval = obj_desc_get (obj, attribute, value);
-  return (retval);
+  return retval;
 }
 
 /*
@@ -938,7 +938,7 @@ db_dput_internal (DB_OBJECT * obj, DB_ATTDESC * attribute, DB_VALUE * value)
 
   retval = obj_desc_set (obj, attribute, value);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -982,7 +982,7 @@ dbt_dput_internal (DB_OTMPL * def, DB_ATTDESC * attribute, DB_VALUE * value)
 
   retval = obt_desc_set (def, attribute, value);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1005,7 +1005,7 @@ db_dsend (DB_OBJECT * obj, DB_METHDESC * method, DB_VALUE * returnval, ...)
   va_start (args, returnval);
   error = obj_desc_send_va (obj, method, returnval, args);
   va_end (args);
-  return (error);
+  return error;
 }
 
 /*
@@ -1070,7 +1070,7 @@ db_dsend_quick (DB_OBJECT * obj, DB_METHDESC * method, DB_VALUE * returnval, int
   CHECK_CONNECT_ERROR ();
 
   retval = obj_desc_send_array_quick (obj, method, returnval, nargs, args);
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1095,9 +1095,9 @@ db_find_unique (MOP classmop, const char *attname, DB_VALUE * value)
   CHECK_CONNECT_NULL ();
   CHECK_3ARGS_NULL (classmop, attname, value);
 
-  retval = (obj_find_unique (classmop, attname, value, AU_FETCH_READ));
+  retval = obj_find_unique (classmop, attname, value, AU_FETCH_READ);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1120,7 +1120,7 @@ db_find_unique_write_mode (MOP classmop, const char *attname, DB_VALUE * value)
 
   retval = obj_find_unique (classmop, attname, value, AU_FETCH_UPDATE);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1148,7 +1148,7 @@ db_find_primary_key (MOP classmop, const DB_VALUE ** values, int size, DB_FETCH_
 
   retval = obj_find_primary_key (classmop, values, size, purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE : AU_FETCH_READ);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1203,10 +1203,9 @@ db_dfind_unique (MOP classmop, DB_ATTDESC * attdesc, DB_VALUE * value, DB_FETCH_
   CHECK_CONNECT_NULL ();
   CHECK_3ARGS_NULL (classmop, attdesc, value);
 
-  retval =
-    (obj_desc_find_unique (classmop, attdesc, value, purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE : AU_FETCH_READ));
+  retval = obj_desc_find_unique (classmop, attdesc, value, purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE : AU_FETCH_READ);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1307,12 +1306,10 @@ db_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
   CHECK_MODIFICATION_NULL ();
 
   /* check for invalid arguments */
-  retval =
-    (tr_create_trigger
-     (name, status, priority, event, class_, attr, cond_time, cond_source, action_time, action_type, action_source,
-      NULL));
+  retval = tr_create_trigger (name, status, priority, event, class_, attr, cond_time, cond_source, action_time,
+			      action_type, action_source, NULL);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1333,7 +1330,7 @@ db_drop_trigger (DB_OBJECT * obj)
 
   /* auditing will be done at tr_drop_trigger() */
   retval = tr_drop_trigger (obj, true);
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1354,7 +1351,7 @@ db_rename_trigger (DB_OBJECT * obj, const char *newname)
 
   /* auditing will be done at tr_rename_trigger() */
   retval = tr_rename_trigger (obj, newname, true);
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1377,7 +1374,7 @@ db_find_trigger (const char *name)
 
   retval = tr_find_trigger (name);
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1400,7 +1397,7 @@ db_find_all_triggers (DB_OBJLIST ** list)
   CHECK_1ARG_ERROR (list);
 
   retval = tr_find_all_triggers (list);
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1426,7 +1423,7 @@ db_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_, const char *
   CHECK_CONNECT_ERROR ();
 
   retval = tr_find_event_triggers (event, class_, attr, false, list);
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1446,7 +1443,7 @@ db_alter_trigger_priority (DB_OBJECT * trobj, double priority)
 
   /* auditing will be done at tr_set_priority() */
   retval = tr_set_priority (trobj, priority, true);
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1470,7 +1467,7 @@ db_alter_trigger_status (DB_OBJECT * trobj, DB_TRIGGER_STATUS status)
 
   /* auditing will be done at tr_set_status() */
   retval = tr_set_status (trobj, status, true);
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1502,7 +1499,7 @@ db_execute_deferred_activities (DB_OBJECT * trigger_obj, DB_OBJECT * target)
   CHECK_MODIFICATION_ERROR ();
 
   retval = tr_execute_deferred_activities (trigger_obj, target);
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1533,7 +1530,7 @@ db_drop_deferred_activities (DB_OBJECT * trigger_obj, DB_OBJECT * target)
   CHECK_MODIFICATION_ERROR ();
 
   retval = tr_drop_deferred_activities (trigger_obj, target);
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1554,7 +1551,7 @@ db_trigger_name (DB_OBJECT * trobj, char **name)
   CHECK_2ARGS_ERROR (trobj, name);
 
   retval = (tr_trigger_name (trobj, name));
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1573,7 +1570,7 @@ db_trigger_status (DB_OBJECT * trobj, DB_TRIGGER_STATUS * status)
   CHECK_2ARGS_ERROR (trobj, status);
 
   retval = (tr_trigger_status (trobj, status));
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1591,7 +1588,7 @@ db_trigger_priority (DB_OBJECT * trobj, double *priority)
   CHECK_2ARGS_ERROR (trobj, priority);
 
   retval = (tr_trigger_priority (trobj, priority));
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1609,7 +1606,7 @@ db_trigger_event (DB_OBJECT * trobj, DB_TRIGGER_EVENT * event)
   CHECK_2ARGS_ERROR (trobj, event);
 
   retval = (tr_trigger_event (trobj, event));
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1629,7 +1626,7 @@ db_trigger_class (DB_OBJECT * trobj, DB_OBJECT ** class_)
   CHECK_2ARGS_ERROR (trobj, class_);
 
   retval = (tr_trigger_class (trobj, class_));
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1649,7 +1646,7 @@ db_trigger_attribute (DB_OBJECT * trobj, char **attr)
   CHECK_2ARGS_ERROR (trobj, attr);
 
   retval = (tr_trigger_attribute (trobj, attr));
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1669,7 +1666,7 @@ db_trigger_condition (DB_OBJECT * trobj, char **condition)
   CHECK_2ARGS_ERROR (trobj, condition);
 
   retval = (tr_trigger_condition (trobj, condition));
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1689,7 +1686,7 @@ db_trigger_condition_time (DB_OBJECT * trobj, DB_TRIGGER_TIME * tr_time)
   CHECK_2ARGS_ERROR (trobj, tr_time);
 
   retval = (tr_trigger_condition_time (trobj, tr_time));
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1711,7 +1708,7 @@ db_trigger_action_type (DB_OBJECT * trobj, DB_TRIGGER_ACTION * type)
   CHECK_2ARGS_ERROR (trobj, type);
 
   retval = (tr_trigger_action_type (trobj, type));
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1730,7 +1727,7 @@ db_trigger_action_time (DB_OBJECT * trobj, DB_TRIGGER_TIME * tr_time)
   CHECK_2ARGS_ERROR (trobj, tr_time);
 
   retval = (tr_trigger_action_time (trobj, tr_time));
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1748,7 +1745,7 @@ db_trigger_action (DB_OBJECT * trobj, char **action)
   CHECK_2ARGS_ERROR (trobj, action);
 
   retval = (tr_trigger_action (trobj, action));
-  return (retval);
+  return retval;
 }
 
 /*
@@ -1769,7 +1766,7 @@ db_trigger_comment (DB_OBJECT * trobj, char **comment)
   CHECK_2ARGS_ERROR (trobj, comment);
 
   retval = (tr_trigger_comment (trobj, comment));
-  return (retval);
+  return retval;
 }
 
 /*

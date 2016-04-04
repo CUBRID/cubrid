@@ -246,39 +246,23 @@ extern unsigned int db_on_server;
   0				/* is_visited */
 
 TP_DOMAIN tp_Null_domain = { NULL, NULL, &tp_Null, DOMAIN_INIT };
-TP_DOMAIN tp_Short_domain = { NULL, NULL, &tp_Short,
-  DOMAIN_INIT4 (DB_SHORT_PRECISION, 0)
-};
-TP_DOMAIN tp_Integer_domain = { NULL, NULL, &tp_Integer,
-  DOMAIN_INIT4 (DB_INTEGER_PRECISION, 0)
-};
-TP_DOMAIN tp_Bigint_domain = { NULL, NULL, &tp_Bigint,
-  DOMAIN_INIT4 (DB_BIGINT_PRECISION, 0)
-};
-TP_DOMAIN tp_Float_domain = { NULL, NULL, &tp_Float,
-  DOMAIN_INIT4 (DB_FLOAT_DECIMAL_PRECISION, 0)
-};
-TP_DOMAIN tp_Double_domain = { NULL, NULL, &tp_Double,
-  DOMAIN_INIT4 (DB_DOUBLE_DECIMAL_PRECISION, 0)
-};
-TP_DOMAIN tp_Monetary_domain = { NULL, NULL, &tp_Monetary,
-  DOMAIN_INIT4 (DB_MONETARY_DECIMAL_PRECISION, 0)
-};
+TP_DOMAIN tp_Short_domain = { NULL, NULL, &tp_Short, DOMAIN_INIT4 (DB_SHORT_PRECISION, 0) };
+TP_DOMAIN tp_Integer_domain = { NULL, NULL, &tp_Integer, DOMAIN_INIT4 (DB_INTEGER_PRECISION, 0) };
+TP_DOMAIN tp_Bigint_domain = { NULL, NULL, &tp_Bigint, DOMAIN_INIT4 (DB_BIGINT_PRECISION, 0) };
+TP_DOMAIN tp_Float_domain = { NULL, NULL, &tp_Float, DOMAIN_INIT4 (DB_FLOAT_DECIMAL_PRECISION, 0) };
+TP_DOMAIN tp_Double_domain = { NULL, NULL, &tp_Double, DOMAIN_INIT4 (DB_DOUBLE_DECIMAL_PRECISION, 0) };
+TP_DOMAIN tp_Monetary_domain = { NULL, NULL, &tp_Monetary, DOMAIN_INIT4 (DB_MONETARY_DECIMAL_PRECISION, 0) };
 
-TP_DOMAIN tp_String_domain = { NULL, NULL, &tp_String,
-  DB_MAX_VARCHAR_PRECISION, 0,
+TP_DOMAIN tp_String_domain = { NULL, NULL, &tp_String, DB_MAX_VARCHAR_PRECISION, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
+
 TP_DOMAIN tp_Object_domain = { NULL, NULL, &tp_Object, DOMAIN_INIT3 };
 TP_DOMAIN tp_Set_domain = { NULL, NULL, &tp_Set, DOMAIN_INIT3 };
 
-TP_DOMAIN tp_Multiset_domain = {
-  NULL, NULL, &tp_Multiset, DOMAIN_INIT3
-};
+TP_DOMAIN tp_Multiset_domain = { NULL, NULL, &tp_Multiset, DOMAIN_INIT3 };
 
-TP_DOMAIN tp_Sequence_domain = {
-  NULL, NULL, &tp_Sequence, DOMAIN_INIT3
-};
+TP_DOMAIN tp_Sequence_domain = { NULL, NULL, &tp_Sequence, DOMAIN_INIT3 };
 
 TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
@@ -295,27 +279,13 @@ TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
 TP_DOMAIN tp_Elo_domain = { NULL, NULL, &tp_Elo, DOMAIN_INIT };
 TP_DOMAIN tp_Blob_domain = { NULL, NULL, &tp_Blob, DOMAIN_INIT };
 TP_DOMAIN tp_Clob_domain = { NULL, NULL, &tp_Clob, DOMAIN_INIT };
-TP_DOMAIN tp_Time_domain = { NULL, NULL, &tp_Time,
-  DOMAIN_INIT4 (DB_TIME_PRECISION, 0)
-};
-TP_DOMAIN tp_Timetz_domain = { NULL, NULL, &tp_Timetz,
-  DOMAIN_INIT4 (DB_TIMETZ_PRECISION, 0)
-};
-TP_DOMAIN tp_Timeltz_domain = { NULL, NULL, &tp_Timeltz,
-  DOMAIN_INIT4 (DB_TIME_PRECISION, 0)
-};
-TP_DOMAIN tp_Utime_domain = { NULL, NULL, &tp_Utime,
-  DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0)
-};
-TP_DOMAIN tp_Timestamptz_domain = { NULL, NULL, &tp_Timestamptz,
-  DOMAIN_INIT4 (DB_TIMESTAMPTZ_PRECISION, 0)
-};
-TP_DOMAIN tp_Timestampltz_domain = { NULL, NULL, &tp_Timestampltz,
-  DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0)
-};
-TP_DOMAIN tp_Date_domain = { NULL, NULL, &tp_Date,
-  DOMAIN_INIT4 (DB_DATE_PRECISION, 0)
-};
+TP_DOMAIN tp_Time_domain = { NULL, NULL, &tp_Time, DOMAIN_INIT4 (DB_TIME_PRECISION, 0) };
+TP_DOMAIN tp_Timetz_domain = { NULL, NULL, &tp_Timetz, DOMAIN_INIT4 (DB_TIMETZ_PRECISION, 0) };
+TP_DOMAIN tp_Timeltz_domain = { NULL, NULL, &tp_Timeltz, DOMAIN_INIT4 (DB_TIME_PRECISION, 0) };
+TP_DOMAIN tp_Utime_domain = { NULL, NULL, &tp_Utime, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
+TP_DOMAIN tp_Timestamptz_domain = { NULL, NULL, &tp_Timestamptz, DOMAIN_INIT4 (DB_TIMESTAMPTZ_PRECISION, 0) };
+TP_DOMAIN tp_Timestampltz_domain = { NULL, NULL, &tp_Timestampltz, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
+TP_DOMAIN tp_Date_domain = { NULL, NULL, &tp_Date, DOMAIN_INIT4 (DB_DATE_PRECISION, 0) };
 TP_DOMAIN tp_Datetime_domain = { NULL, NULL, &tp_Datetime,
   DOMAIN_INIT4 (DB_DATETIME_PRECISION, DB_DATETIME_DECIMAL_SCALE)
 };
@@ -326,13 +296,9 @@ TP_DOMAIN tp_Datetimeltz_domain = { NULL, NULL, &tp_Datetimeltz,
   DOMAIN_INIT4 (DB_DATETIME_PRECISION, DB_DATETIME_DECIMAL_SCALE)
 };
 
-TP_DOMAIN tp_Variable_domain = {
-  NULL, NULL, &tp_Variable, DOMAIN_INIT3
-};
+TP_DOMAIN tp_Variable_domain = { NULL, NULL, &tp_Variable, DOMAIN_INIT3 };
 
-TP_DOMAIN tp_Substructure_domain = {
-  NULL, NULL, &tp_Substructure, DOMAIN_INIT3
-};
+TP_DOMAIN tp_Substructure_domain = { NULL, NULL, &tp_Substructure, DOMAIN_INIT3 };
 TP_DOMAIN tp_Pointer_domain = { NULL, NULL, &tp_Pointer, DOMAIN_INIT };
 TP_DOMAIN tp_Error_domain = { NULL, NULL, &tp_Error, DOMAIN_INIT };
 TP_DOMAIN tp_Vobj_domain = { NULL, NULL, &tp_Vobj, DOMAIN_INIT3 };
@@ -341,33 +307,27 @@ TP_DOMAIN tp_Enumeration_domain = { NULL, NULL, &tp_Enumeration, 0, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-TP_DOMAIN tp_Numeric_domain = { NULL, NULL, &tp_Numeric,
-  DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE,
+TP_DOMAIN tp_Numeric_domain = { NULL, NULL, &tp_Numeric, DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE,
   DOMAIN_INIT2 (0, 0)
 };
 
-TP_DOMAIN tp_Bit_domain = { NULL, NULL, &tp_Bit,
-  TP_FLOATING_PRECISION_VALUE, 0,
+TP_DOMAIN tp_Bit_domain = { NULL, NULL, &tp_Bit, TP_FLOATING_PRECISION_VALUE, 0,
   DOMAIN_INIT2 (INTL_CODESET_RAW_BITS, 0)
 };
 
-TP_DOMAIN tp_VarBit_domain = { NULL, NULL, &tp_VarBit,
-  DB_MAX_VARBIT_PRECISION, 0,
+TP_DOMAIN tp_VarBit_domain = { NULL, NULL, &tp_VarBit, DB_MAX_VARBIT_PRECISION, 0,
   DOMAIN_INIT2 (INTL_CODESET_RAW_BITS, 0)
 };
 
-TP_DOMAIN tp_Char_domain = { NULL, NULL, &tp_Char,
-  TP_FLOATING_PRECISION_VALUE, 0,
+TP_DOMAIN tp_Char_domain = { NULL, NULL, &tp_Char, TP_FLOATING_PRECISION_VALUE, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-TP_DOMAIN tp_NChar_domain = { NULL, NULL, &tp_NChar,
-  TP_FLOATING_PRECISION_VALUE, 0,
+TP_DOMAIN tp_NChar_domain = { NULL, NULL, &tp_NChar, TP_FLOATING_PRECISION_VALUE, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
-TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, &tp_VarNChar,
-  DB_MAX_VARNCHAR_PRECISION, 0,
+TP_DOMAIN tp_VarNChar_domain = { NULL, NULL, &tp_VarNChar, DB_MAX_VARNCHAR_PRECISION, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
@@ -837,8 +797,7 @@ tp_final (void)
 }
 
 /*
- * tp_domain_clear_enumeration () - free memory allocated for an enumeration
- *				    type
+ * tp_domain_clear_enumeration () - free memory allocated for an enumeration type
  * return : void
  * enumeration (in/out): enumeration
  */
@@ -846,6 +805,7 @@ void
 tp_domain_clear_enumeration (DB_ENUMERATION * enumeration)
 {
   int i = 0;
+
   if (enumeration == NULL || enumeration->count == 0)
     {
       return;
@@ -897,10 +857,12 @@ tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db
     {
       enum1 = &db_enum1->elements[i];
       enum2 = &db_enum2->elements[i];
+
       if (DB_GET_ENUM_ELEM_STRING_SIZE (enum1) != DB_GET_ENUM_ELEM_STRING_SIZE (enum2))
 	{
 	  return 0;
 	}
+
       /* 
        * memcmp is used here because it is necessary for domains like
        * ENUM('a', 'b') COLLATE utf8_en_ci and
@@ -908,8 +870,8 @@ tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db
        * domains, despite their common case-insensitive collation.
        * Thus, collation-based comparison is not correct here.
        */
-      if (memcmp
-	  (DB_GET_ENUM_ELEM_STRING (enum1), DB_GET_ENUM_ELEM_STRING (enum2), DB_GET_ENUM_ELEM_STRING_SIZE (enum1)) != 0)
+      if (memcmp (DB_GET_ENUM_ELEM_STRING (enum1), DB_GET_ENUM_ELEM_STRING (enum2),
+		  DB_GET_ENUM_ELEM_STRING_SIZE (enum1)) != 0)
 	{
 	  return 0;
 	}
@@ -1026,19 +988,19 @@ tp_domain_free (TP_DOMAIN * dom)
  * values.
  *    return: none
  *    domain(out): domain structure to initialize
- *    typeid(in): basic type of the domain
+ *    type_id(in): basic type of the domain
  * Note:
  *    Used by tp_domain_new and also in some other places
  *    where we need to quickly synthesize some transient domain structures.
  */
 static void
-domain_init (TP_DOMAIN * domain, DB_TYPE typeid_)
+domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
 {
-  assert (typeid_ <= DB_TYPE_LAST);
+  assert (type_id <= DB_TYPE_LAST);
 
   domain->next = NULL;
   domain->next_list = NULL;
-  domain->type = PR_TYPE_FROM_ID (typeid_);
+  domain->type = PR_TYPE_FROM_ID (type_id);
   domain->precision = 0;
   domain->scale = 0;
   domain->class_mop = NULL;
@@ -1048,16 +1010,16 @@ domain_init (TP_DOMAIN * domain, DB_TYPE typeid_)
   OID_SET_NULL (&domain->class_oid);
 
   domain->collation_flag = TP_DOMAIN_COLL_NORMAL;
-  if (TP_TYPE_HAS_COLLATION (typeid_))
+  if (TP_TYPE_HAS_COLLATION (type_id))
     {
       domain->codeset = LANG_SYS_CODESET;
       domain->collation_id = LANG_SYS_COLLATION;
-      if (typeid_ == DB_TYPE_ENUMERATION)
+      if (type_id == DB_TYPE_ENUMERATION)
 	{
 	  domain->enumeration.collation_id = LANG_SYS_COLLATION;
 	}
     }
-  else if (TP_IS_BIT_TYPE (typeid_))
+  else if (TP_IS_BIT_TYPE (type_id))
     {
       domain->codeset = INTL_CODESET_RAW_BITS;
       domain->collation_id = 0;
@@ -1071,7 +1033,7 @@ domain_init (TP_DOMAIN * domain, DB_TYPE typeid_)
   domain->built_in_index = 0;
 
   /* use the built-in domain template to see if we're parameterized or not */
-  domain->is_parameterized = tp_Domains[typeid_]->is_parameterized;
+  domain->is_parameterized = tp_Domains[type_id]->is_parameterized;
 
   domain->is_desc = 0;
 }
@@ -1091,15 +1053,15 @@ domain_init (TP_DOMAIN * domain, DB_TYPE typeid_)
 TP_DOMAIN *
 tp_domain_new (DB_TYPE type)
 {
-  TP_DOMAIN *new_;
+  TP_DOMAIN *new_dm;
 
-  new_ = (TP_DOMAIN *) area_alloc (tp_Domain_area);
-  if (new_ != NULL)
+  new_dm = (TP_DOMAIN *) area_alloc (tp_Domain_area);
+  if (new_dm != NULL)
     {
-      domain_init (new_, type);
+      domain_init (new_dm, type);
     }
 
-  return new_;
+  return new_dm;
 }
 
 
@@ -1122,11 +1084,11 @@ tp_domain_new (DB_TYPE type)
 TP_DOMAIN *
 tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, int scale, TP_DOMAIN * setdomain)
 {
-  TP_DOMAIN *new_;
+  TP_DOMAIN *new_dm;
   int fixed_precision;
 
-  new_ = tp_domain_new (domain_type);
-  if (new_)
+  new_dm = tp_domain_new (domain_type);
+  if (new_dm)
     {
       fixed_precision = tp_get_fixed_precision (domain_type);
       if (fixed_precision != DB_DEFAULT_PRECISION)
@@ -1140,19 +1102,19 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
 	  precision = fixed_precision;
 	}
 
-      new_->precision = precision;
-      new_->scale = scale;
-      new_->setdomain = setdomain;
+      new_dm->precision = precision;
+      new_dm->scale = scale;
+      new_dm->setdomain = setdomain;
 
 #if !defined (NDEBUG)
       if (domain_type == DB_TYPE_MIDXKEY)
 	{
-	  assert ((new_->setdomain && new_->precision == tp_domain_size (new_->setdomain))
-		  || (new_->setdomain == NULL && new_->precision == 0));
+	  assert ((new_dm->setdomain && new_dm->precision == tp_domain_size (new_dm->setdomain))
+		  || (new_dm->setdomain == NULL && new_dm->precision == 0));
 
 	  {
 	    TP_DOMAIN *d;
-	    for (d = new_->setdomain; d != NULL; d = d->next)
+	    for (d = new_dm->setdomain; d != NULL; d = d->next)
 	      {
 		assert (d->is_cached == 0);
 	      }
@@ -1162,20 +1124,20 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
 
       if (class_obj == (DB_OBJECT *) TP_DOMAIN_SELF_REF)
 	{
-	  new_->class_mop = NULL;
-	  new_->self_ref = 1;
+	  new_dm->class_mop = NULL;
+	  new_dm->self_ref = 1;
 	}
       else
 	{
-	  new_->class_mop = class_obj;
-	  new_->self_ref = 0;
+	  new_dm->class_mop = class_obj;
+	  new_dm->self_ref = 0;
 	  /* 
 	   * For compatibility on the server side, class objects must have
 	   * the oid in the domain match the oid in the class object.
 	   */
 	  if (class_obj)
 	    {
-	      new_->class_oid = class_obj->oid_info.oid;
+	      new_dm->class_oid = class_obj->oid_info.oid;
 	    }
 	}
 
@@ -1186,9 +1148,8 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
        * tp_domain_new and set the domain fields directly.
        */
     }
-  return new_;
+  return new_dm;
 }
-
 
 /*
  * tp_domain_copy_enumeration () - copy an enumeration

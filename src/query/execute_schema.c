@@ -10672,8 +10672,8 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
     }
 
   /* special case : DEFAULT */
-  if (is_att_prop_set
-      (attr_chg_properties->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_PRESENT_NEW))
+  if (is_att_prop_set (attr_chg_properties->p[P_DEFAULT_VALUE],
+		       (ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_PRESENT_NEW)))
     {
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_DIFF;
       /* remove "UNCHANGED" flag */

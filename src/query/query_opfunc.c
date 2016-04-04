@@ -9098,9 +9098,8 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARIABLE * re
   tuple_rec.tpl = tpl;
 
   /* get the parent node */
-  if (qexec_get_tuple_column_value
-      (tuple_rec.tpl, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET, &p_pos_dbval,
-       &tp_Bit_domain) != NO_ERROR)
+  if (qexec_get_tuple_column_value (tuple_rec.tpl, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET,
+				    &p_pos_dbval, &tp_Bit_domain) != NO_ERROR)
     {
       qfile_close_scan (thread_p, &s_id);
       return false;
@@ -10066,9 +10065,9 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
       return ER_FAILED;
     }
 
-  if (db_string_make_empty_typed_string
-      (thread_p, agg_p->accumulator.value, agg_type, DB_DEFAULT_PRECISION, TP_DOMAIN_CODESET (agg_p->domain),
-       TP_DOMAIN_COLLATION (agg_p->domain)) != NO_ERROR)
+  if (db_string_make_empty_typed_string (thread_p, agg_p->accumulator.value, agg_type, DB_DEFAULT_PRECISION,
+					 TP_DOMAIN_CODESET (agg_p->domain),
+					 TP_DOMAIN_COLLATION (agg_p->domain)) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -10083,9 +10082,8 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
 
   max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
 
-  if (qdata_concatenate_dbval
-      (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain, max_allowed_size,
-       "GROUP_CONCAT()") != NO_ERROR)
+  if (qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain, max_allowed_size,
+			       "GROUP_CONCAT()") != NO_ERROR)
     {
       pr_clear_value (dbvalue);
       return ER_FAILED;
@@ -10128,9 +10126,9 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VA
 
   if (DB_IS_NULL (agg_p->accumulator.value2) && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true)
     {
-      if (db_string_make_empty_typed_string
-	  (thread_p, agg_p->accumulator.value2, agg_type, DB_DEFAULT_PRECISION, TP_DOMAIN_CODESET (agg_p->domain),
-	   TP_DOMAIN_COLLATION (agg_p->domain)) != NO_ERROR)
+      if (db_string_make_empty_typed_string (thread_p, agg_p->accumulator.value2, agg_type, DB_DEFAULT_PRECISION,
+					     TP_DOMAIN_CODESET (agg_p->domain),
+					     TP_DOMAIN_COLLATION (agg_p->domain)) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -10140,9 +10138,8 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VA
   /* add separator if specified (it may be the case for bit string) */
   if (!DB_IS_NULL (agg_p->accumulator.value2))
     {
-      if (qdata_concatenate_dbval
-	  (thread_p, agg_p->accumulator.value, agg_p->accumulator.value2, &tmp_val, result_domain, max_allowed_size,
-	   "GROUP_CONCAT()") != NO_ERROR)
+      if (qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, agg_p->accumulator.value2, &tmp_val,
+				   result_domain, max_allowed_size, "GROUP_CONCAT()") != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -10161,9 +10158,8 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VA
 
   pr_clear_value (&tmp_val);
 
-  if (qdata_concatenate_dbval
-      (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain, max_allowed_size,
-       "GROUP_CONCAT()") != NO_ERROR)
+  if (qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain, max_allowed_size,
+			       "GROUP_CONCAT()") != NO_ERROR)
     {
       pr_clear_value (dbvalue);
       return ER_FAILED;

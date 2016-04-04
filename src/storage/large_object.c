@@ -563,9 +563,9 @@ largeobjmgr_allocset_pages (THREAD_ENTRY * thread_p, LOID * loid, int num_pages,
   alloc_p->tot_allocated = num_pages;
 
   /* Allocate the set of pages for the file */
-  if (file_alloc_pages_as_noncontiguous
-      (thread_p, &loid->vfid, &alloc_p->cached_nthvpids[alloc_p->nxcache], &alloc_p->nth_first_allocated, num_pages,
-       NULL, largeobjmgr_initlo_set_noncontiguous_pages, NULL, NULL) == NULL)
+  if (file_alloc_pages_as_noncontiguous (thread_p, &loid->vfid, &alloc_p->cached_nthvpids[alloc_p->nxcache],
+					 &alloc_p->nth_first_allocated, num_pages, NULL,
+					 largeobjmgr_initlo_set_noncontiguous_pages, NULL, NULL) == NULL)
     {
       goto exit_on_error;
     }

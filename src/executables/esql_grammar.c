@@ -7357,7 +7357,7 @@ esql_yy_push_mode (enum scanner_mode new_mode)
   /*
    * Set up so that the first id-like token that we see in VAR_MODE
    * will be reported as an IDENTIFIER, regardless of whether it
-   * strcasecmps the same as some SQL/X keyword.
+   * strcasecmps the same as some CSQL keyword.
    */
   recognize_keywords = (new_mode != VAR_MODE);
 

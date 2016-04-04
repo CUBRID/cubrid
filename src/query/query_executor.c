@@ -588,8 +588,7 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
 #define XASL_CACHE_ENTRY_TRAN_FIX_COUNT_ARRAY(ent) \
         (char *) (((char *) (ent)) + sizeof(XASL_CACHE_ENTRY))
 #define XASL_CACHE_ENTRY_CLASS_OID_LIST(ent) \
-        (OID *) (((char *) XASL_CACHE_ENTRY_TRAN_FIX_COUNT_ARRAY(ent)) + \
-                 sizeof(char) * MAX_NTRANS)
+        (OID *) (((char *) XASL_CACHE_ENTRY_TRAN_FIX_COUNT_ARRAY(ent)) + sizeof(char) * MAX_NTRANS)
 
 #else /* SA_MODE */
 
@@ -605,22 +604,17 @@ static XASL_CACHE_ENTRY_POOL filter_pred_cache_entry_pool = { NULL, 0, -1 };
 #endif /* SA_MODE */
 
 #define XASL_CACHE_ENTRY_CLASS_LOCKS(ent) \
-        (int *) (((char *) XASL_CACHE_ENTRY_CLASS_OID_LIST(ent)) + \
-                 sizeof(OID) * (ent)->n_oid_list)
+        (int *) (((char *) XASL_CACHE_ENTRY_CLASS_OID_LIST(ent)) + sizeof(OID) * (ent)->n_oid_list)
 #define XASL_CACHE_ENTRY_TCARD_LIST(ent) \
-        (int *) (((char *) XASL_CACHE_ENTRY_CLASS_LOCKS(ent)) + \
-                 sizeof(int) * (ent)->n_oid_list)
+        (int *) (((char *) XASL_CACHE_ENTRY_CLASS_LOCKS(ent)) + sizeof(int) * (ent)->n_oid_list)
 #define XASL_CACHE_ENTRY_SQL_HASH_TEXT(ent) \
-        (char *) (((char *) XASL_CACHE_ENTRY_TCARD_LIST(ent)) + \
-                  sizeof(int) * (ent)->n_oid_list)
+        (char *) (((char *) XASL_CACHE_ENTRY_TCARD_LIST(ent)) + sizeof(int) * (ent)->n_oid_list)
 #define XASL_CACHE_ENTRY_SQL_PLAN_TEXT(ent) \
-        (char *) (XASL_CACHE_ENTRY_SQL_HASH_TEXT(ent) + \
-                  strlen (ent->sql_info.sql_hash_text) + 1)
+        (char *) (XASL_CACHE_ENTRY_SQL_HASH_TEXT(ent) + strlen (ent->sql_info.sql_hash_text) + 1)
 
 #define XASL_CACHE_ENTRY_SQL_USER_TEXT(ent) \
-        (char *) (XASL_CACHE_ENTRY_SQL_PLAN_TEXT(ent) + \
-                  (ent->sql_info.sql_plan_text ? \
-		  (strlen (ent->sql_info.sql_plan_text) + 1) : 0))
+        (char *) (XASL_CACHE_ENTRY_SQL_PLAN_TEXT(ent) \
+                  + (ent->sql_info.sql_plan_text ? (strlen (ent->sql_info.sql_plan_text) + 1) : 0))
 
 #if defined (HAVE_ATOMIC_BUILTINS)
 #define XASL_CACHE_INCREMENT_REFERER_COUNT(ent) \
@@ -15443,13 +15437,10 @@ qexec_free_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
  *   recompile_xasl_pinned (in):
  *
  * NOTE : In SERVER_MODE. If a entry is found in the query string hash table,
- *        this function increases the fix count in the tran_fix_count_array
- *        of the xasl cache entry.
- *        This count must be decreased with qexec_remove_my_tran_id_in_xasl_entry
- *        before current request is finished.
+ *        this function increases the fix count in the tran_fix_count_array of the xasl cache entry.
+ *        This count must be decreased with qexec_remove_my_tran_id_in_xasl_entry before current request is finished.
  *
- *        A fixed xasl cache entry cannot be deleted
- *        from the xasl_id hash table when victimized.
+ *        A fixed xasl cache entry cannot be deleted from the xasl_id hash table when victimized.
  */
 XASL_CACHE_ENTRY *
 qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr, const OID * user_oid, bool is_pinned_reference,
@@ -15490,21 +15481,21 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr, const OI
 	{
 	  /* mark deleted entry can't be found from qstr_ht */
 	  assert (0);
+
 	  ent = NULL;
 	  goto end;
 	}
 
       /* check age - timeout */
       if (ent && prm_get_integer_value (PRM_ID_XASL_PLAN_CACHE_TIMEOUT) >= 0
-	  && (difftime (time (NULL), ent->time_created.tv_sec) >
-	      prm_get_integer_value (PRM_ID_XASL_PLAN_CACHE_TIMEOUT)))
+	  && difftime (time (NULL), ent->time_created.tv_sec) > prm_get_integer_value (PRM_ID_XASL_PLAN_CACHE_TIMEOUT))
 	{
 	  /* delete the entry which is timed out */
 	  (void) qexec_delete_xasl_cache_ent (thread_p, ent, NULL);
 	  ent = NULL;
 	}
 
-      /* finally, we found an useful cache entry to reuse */
+      /* finally, we find an useful cache entry to reuse */
       if (ent)
 	{
 	  /* record my transaction id into the entry and adjust timestamp and reference counter */
@@ -15578,8 +15569,7 @@ end:
  *   is_pinned_reference(in):
  *
  * Note: Update XASL cache entry if exist or create new one
- * As a side effect, the given 'xasl_id' can be change if the entry which has
- * the same query is found in the cache
+ * As a side effect, the given 'xasl_id' can be changed if the entry which has the same query is found in the cache
  */
 XASL_CACHE_ENTRY *
 qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID * oid,
@@ -15617,12 +15607,14 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
 	{
 	  /* mark deleted entry can't be found from qstr_ht */
 	  assert (0);
+
 	  ent = NULL;
 	  goto end;
 	}
 
       /* the other competing thread which is running the same query already updated this entry after that this and the
-       * thread had failed to find the query in the cache; change the given XASL_ID to force to use the cached entry */
+       * thread had failed to find the query in the cache; change the given XASL_ID to force to use the cached entry 
+       */
       XASL_ID_COPY (stream->xasl_id, &(ent->xasl_id));
 
 #if defined(SERVER_MODE)
@@ -15654,10 +15646,12 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
   if ((XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.xid_ht, stream->xasl_id) != NULL)
     {
       XASL_ID *xasl_id = stream->xasl_id;
+
       er_log_debug (ARG_FILE_LINE,
 		    "qexec_update_xasl_cache_ent: duplicated xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n",
 		    xasl_id->first_vpid.pageid, xasl_id->first_vpid.volid, xasl_id->temp_vfid.fileid,
 		    xasl_id->temp_vfid.volid);
+
       ent = NULL;
       goto end;
     }
@@ -15665,8 +15659,9 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
   /* check the number of XASL cache entries; compare with qstr hash entries */
   if ((int) mht_count (xasl_ent_cache.qstr_ht) >= xasl_ent_cache.max_entries)
     {
-      /* Cache full! We need to remove some entries from the cache. We will refer to the LRU list of query string hash
-       * table to find out victims. */
+      /* Cache full! We need to remove some entries from the cache. 
+       * We will refer to the LRU list of query string hash table to find out victims. 
+       */
       xasl_ent_cache.counter.full++;	/* counter */
       mnt_pc_full (thread_p);
 
@@ -15701,7 +15696,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
 	  assert (0);
 #endif
 	}
-    }				/* if */
+    }
 
 #if defined (SERVER_MODE)
   if (xasl_ent_cache.mark_deleted_list)
@@ -15852,7 +15847,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
 	  ent = NULL;
 	  goto end;
 	}
-    }				/* for (i = 0, ...) */
+    }
   mnt_pc_class_oid_hash_entries (thread_p, mht_count (xasl_ent_cache.oid_ht));
 
   xasl_ent_cache.num++;
@@ -16154,14 +16149,11 @@ qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent)
  *   clop(in)   :
  *   is_pinned_reference(in) :
  *
- * NOTE : In SERVER_MODE. If a entry is found in the query string hash table,
- *        this function increases the fix count in the tran_fix_count_array
- *        of the xasl cache entry.
- *        This count must be decreased with qexec_remove_my_tran_id_in_xasl_entry
- *        before current request is finished.
+ * NOTE : In SERVER_MODE. If an entry is found in the query string hash table,
+ *        this function increases the fix count in the tran_fix_count_array of the xasl cache entry.
+ *        This count must be decreased with qexec_remove_my_tran_id_in_xasl_entry before current request is finished.
  *
- *        A fixed xasl cache entry cannot be deleted
- *        from the xasl_id hash table when victimized.
+ *        A fixed xasl cache entry cannot be deleted from the xasl_id hash table when victimized.
  *
  */
 XASL_CACHE_ENTRY *
@@ -16333,8 +16325,7 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xas
 }
 
 /*
- * qexec_remove_xasl_cache_ent_by_class () - Remove the XASL cache entries by
- *                                        class/serial OID
+ * qexec_remove_xasl_cache_ent_by_class () - Remove the XASL cache entries by class/serial OID
  *   return: NO_ERROR, or ER_code
  *   class_oid(in)      :
  */
@@ -16360,8 +16351,9 @@ qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p, const OID * class
       return ER_FAILED;
     }
 
-  /* for all entries in the class/serial oid hash table Note that mht_put2() allows mutiple data with the same key, so
-   * we have to use mht_get2() */
+  /* for all entries in the class/serial oid hash table.
+   * Note that mht_put2() allows mutiple data with the same key, so we have to use mht_get2() 
+   */
   last = NULL;
   do
     {
@@ -16386,8 +16378,7 @@ qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p, const OID * class
 }
 
 /*
- * qexec_remove_xasl_cache_ent_by_qstr () - Remove the XASL cache entries by
- *                                       query string
+ * qexec_remove_xasl_cache_ent_by_qstr () - Remove the XASL cache entries by query string
  *   return: NO_ERROR, or ER_code
  *   qstr(in)   :
  *   user_oid(in)       :
@@ -16425,8 +16416,7 @@ qexec_remove_xasl_cache_ent_by_qstr (THREAD_ENTRY * thread_p, const char *qstr, 
 }
 
 /*
- * qexec_remove_xasl_cache_ent_by_xasl () - Remove the XASL cache entries by
- *                                       XASL ID
+ * qexec_remove_xasl_cache_ent_by_xasl () - Remove the XASL cache entries by XASL ID
  *   return: NO_ERROR, or ER_code
  *   xasl_id(in)        :
  */
@@ -16636,8 +16626,7 @@ qexec_delete_xasl_cache_ent_by_volume (THREAD_ENTRY * thread_p, void *data, void
 
 #if defined (SERVER_MODE)
 /*
- * qexec_add_into_pinned_xasl_cache_list() -- add the cache entry into the 
- *                                            pinned xasl cache list
+ * qexec_add_into_pinned_xasl_cache_list() -- add the cache entry into the pinned xasl cache list
  *
  *   return:
  *   thread_p(in) :
@@ -16671,8 +16660,7 @@ qexec_add_into_pinned_xasl_cache_list (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY
 }
 
 /*
- * qexec_remove_from_pinned_xasl_cache_list() -- remove the cache entry 
- *                                      from the pinned xasl cache list
+ * qexec_remove_from_pinned_xasl_cache_list() -- remove the cache entry from the pinned xasl cache list
  *
  *   return:
  *   thread_p(in) :
@@ -16911,7 +16899,6 @@ qexec_mark_delete_xasl_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent, b
 #endif
 
   deleted_entry = malloc (sizeof (XASL_CACHE_MARK_DELETED_LIST));
-
   if (deleted_entry == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (XASL_CACHE_MARK_DELETED_LIST));
@@ -17044,6 +17031,7 @@ qexec_remove_all_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p)
   return rc;
 }
 
+#if 0
 /*
  * qexec_remove_xasl_cache_ent_by_volume () - Remove all XASL cache entries related with the volid
  *   return: NO_ERROR, or ER_code
@@ -17088,6 +17076,7 @@ qexec_remove_xasl_cache_ent_by_volume (THREAD_ENTRY * thread_p, VOLID volid, boo
 
   return rc;
 }
+#endif
 
 /*
  * qexec_clear_list_cache_by_class () - Clear the list cache entries of the XASL

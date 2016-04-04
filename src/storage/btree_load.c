@@ -768,9 +768,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
   /* Start scancache */
   has_fk = (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid));
-  if (heap_scancache_start
-      (thread_p, &sort_args->hfscan_cache, &sort_args->hfids[cur_class], &sort_args->class_ids[cur_class], !has_fk,
-       false, NULL) != NO_ERROR)
+  if (heap_scancache_start (thread_p, &sort_args->hfscan_cache, &sort_args->hfids[cur_class],
+			    &sort_args->class_ids[cur_class], !has_fk, false, NULL) != NO_ERROR)
     {
       goto error;
     }
@@ -783,9 +782,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       tdes->has_deadlock_priority = true;
     }
 
-  if (heap_attrinfo_start
-      (thread_p, &sort_args->class_ids[cur_class], sort_args->n_attrs, &sort_args->attr_ids[attr_offset],
-       &sort_args->attr_info) != NO_ERROR)
+  if (heap_attrinfo_start (thread_p, &sort_args->class_ids[cur_class], sort_args->n_attrs,
+			   &sort_args->attr_ids[attr_offset], &sort_args->attr_info) != NO_ERROR)
     {
       goto error;
     }

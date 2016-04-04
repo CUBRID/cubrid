@@ -1144,10 +1144,8 @@ or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid, B
   attr_name = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_NAME_INDEX));
 
   if (!found || (OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_NAME_INDEX) == 0)
-      ||
-      (or_get_hierarchy_helper
-       (thread_p, &source_class, &source_class, btid, class_oids, hfids, num_classes, &max_classes,
-	partition_local_index) != NO_ERROR))
+      || (or_get_hierarchy_helper (thread_p, &source_class, &source_class, btid, class_oids, hfids, num_classes,
+				   &max_classes, partition_local_index) != NO_ERROR))
     {
       goto error;
     }
