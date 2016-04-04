@@ -65,7 +65,7 @@
 #define	IS_NULL_INDICATED(ind)	((ind) < 0)	/* negative */
 
 /* macro to check if there was a error.
- * execution of an Embedded SQL/X statement is stopped upon error.
+ * execution of an Embedded CSQL statement is stopped upon error.
  * But, a user can specify 'CONTINUE' even though there is an error.
  * To implement such behaviour, every statement calls uci_start() function
  * first to clear current error code (if any set) and call successive

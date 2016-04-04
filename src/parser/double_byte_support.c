@@ -365,7 +365,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char, int c
 	  default:
 	    /* 
 	     * Double quote did not appear after the double quote.  Then
-	     * terminate double quote string status and go back to SQL/X
+	     * terminate double quote string status and go back to CSQL
 	     * statement status.
 	     */
 	    DBCS_STATUS_UNGET_RETURN (CSQL_, c1, converted_char);

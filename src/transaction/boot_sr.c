@@ -533,9 +533,8 @@ boot_max_pages_new_volume (void)
 {
   int nfree_pages;
 
-  nfree_pages =
-    (fileio_get_number_of_partition_free_pages (boot_Db_full_name, IO_PAGESIZE) -
-     BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
+  nfree_pages = (fileio_get_number_of_partition_free_pages (boot_Db_full_name, IO_PAGESIZE)
+		 - BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
   if (nfree_pages < 0)
     {
       nfree_pages = 0;
@@ -1684,9 +1683,8 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 
   fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
 
-  part_npages =
-    (fileio_get_number_of_partition_free_pages (temp_vol_fullname, IO_PAGESIZE) -
-     BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
+  part_npages = (fileio_get_number_of_partition_free_pages (temp_vol_fullname, IO_PAGESIZE)
+		 - BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
 
   if (min_npages > part_npages && part_npages >= 0)
     {

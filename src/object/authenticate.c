@@ -6927,7 +6927,7 @@ au_start (void)
  * MIGRATION SUPPORT
  *
  * These functions provide a way to dump the authorization catalog
- * as a sequence of SQL/X statements.  When the statements are evaluated
+ * as a sequence of CSQL statements.  When the statements are evaluated
  * by the interpreter, it will reconstruct the authorization catalog.
  */
 
@@ -7223,7 +7223,7 @@ au_export_users (FILE * outfp)
  *
  * This is in support of the authorization migration utilities.  We build
  * hierarchy of grant information and then generate a sequence of
- * SQL/X statemenets to recreate the grants.  Note that the grants have
+ * CSQL statemenets to recreate the grants.  Note that the grants have
  * to be done in order of dependencies.
  */
 
@@ -7500,7 +7500,7 @@ build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop)
 }
 
 /*
- * issue_grant_statement - Generates an SQL/X "grant" statement.
+ * issue_grant_statement - Generates an CSQL "grant" statement.
  *   return: none
  *   fp(in): output file
  *   auth(in): class authorization state
@@ -7658,7 +7658,7 @@ class_grant_loop (CLASS_AUTH * auth, FILE * outfp)
 }
 
 /*
- * au_export_grants() - Issues a sequence of SQL/X grant statements related
+ * au_export_grants() - Issues a sequence of CSQL grant statements related
  *                      to the given class.
  *   return: error code
  *   outfp(in): output file

@@ -5905,7 +5905,7 @@ setobj_insert_element (COL * col, int index, DB_VALUE * value)
  *    For sequences the elements are made NULL.
  *    If match_nulls is true and we have a NULL db_value, then we'll
  *    drop all of the NULL values from the set, multi-set, or sequence.
- *    To be more consistent with the SQL/X language, this has been
+ *    To be more consistent with the CSQL language, this has been
  *    changed so that it will only drop the FIRST occurrence of
  *    the value.  This is mostly an issue for multisets.
  *

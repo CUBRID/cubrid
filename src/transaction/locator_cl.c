@@ -1600,8 +1600,8 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
    * And bring the first batch of classes and objects
    */
 
-  if (locator_fetch_all_reference_lockset
-      (oid, chn, class_oid, class_chn, lock, quit_on_errors, prune_level, &lockset, &fetch_area) == NO_ERROR)
+  if (locator_fetch_all_reference_lockset (oid, chn, class_oid, class_chn, lock, quit_on_errors, prune_level, &lockset,
+					   &fetch_area) == NO_ERROR)
     {
       error_code = NO_ERROR;
     }

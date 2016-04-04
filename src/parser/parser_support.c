@@ -8941,8 +8941,8 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
       goto error;
     }
 
-  if (pt_make_outer_select_for_show_columns
-      (parser, sub_query, NULL, pquery_names, pquery_aliases, query_list_size, is_show_full, &outer_query) != NO_ERROR)
+  if (pt_make_outer_select_for_show_columns (parser, sub_query, NULL, pquery_names, pquery_aliases, query_list_size,
+					     is_show_full, &outer_query) != NO_ERROR)
     {
       goto error;
     }

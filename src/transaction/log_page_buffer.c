@@ -177,8 +177,7 @@ static int rv;
       { \
         logpb_set_dirty ((thread_p), log_Gl.append.log_pgptr, DONT_FREE); \
       } \
-    log_Gl.hdr.append_lsa.offset = DB_ALIGN (log_Gl.hdr.append_lsa.offset, \
-					     DOUBLE_ALIGNMENT); \
+    log_Gl.hdr.append_lsa.offset = DB_ALIGN (log_Gl.hdr.append_lsa.offset, DOUBLE_ALIGNMENT); \
     if (log_Gl.hdr.append_lsa.offset >= (int) LOGAREA_SIZE) \
       { \
         logpb_next_append_page((thread_p), LOG_DONT_SET_DIRTY); \
@@ -261,16 +260,14 @@ typedef struct
   int item_count;
 } ARV_LOG_PAGE_INFO_TABLE;
 
-#define SIZEOF_LOG_BUFFER \
-  (offsetof (struct log_buffer, logpage) + LOG_PAGESIZE)
+#define SIZEOF_LOG_BUFFER (offsetof (struct log_buffer, logpage) + LOG_PAGESIZE)
 
 #define LOG_GET_LOG_BUFFER_PTR(log_pgptr) \
   ((struct log_buffer *) ((char *) (log_pgptr) - offsetof (struct log_buffer, logpage)))
 
 static const int LOG_BKUP_HASH_NUM_PAGEIDS = 1000;
 /* MIN AND MAX BUFFERS */
-#define LOG_MAX_NUM_CONTIGUOUS_BUFFERS \
-  ((unsigned int) (INT_MAX / (5 * SIZEOF_LOG_BUFFER)))
+#define LOG_MAX_NUM_CONTIGUOUS_BUFFERS ((unsigned int) (INT_MAX / (5 * SIZEOF_LOG_BUFFER)))
 
 #define LOG_MAX_LOGINFO_LINE (PATH_MAX * 4)
 
@@ -281,9 +278,7 @@ int log_default_input_for_archive_log_location = 0;
 int log_default_input_for_archive_log_location = -1;
 #endif
 
-LOG_PB_GLOBAL_DATA log_Pb = {
-  NULL, NULL, NULL, 0, 0
-};
+LOG_PB_GLOBAL_DATA log_Pb = { NULL, NULL, NULL, 0, 0 };
 
 LOG_LOGGING_STAT log_Stat;
 static ARV_LOG_PAGE_INFO_TABLE logpb_Arv_page_info_table;
@@ -8962,9 +8957,8 @@ loop:
   /* Begin backing up in earnest */
   session.bkup.bkuphdr->skip_activelog = skip_activelog;
 
-  if (fileio_start_backup
-      (thread_p, log_Db_fullname, &log_Gl.hdr.db_creation, backup_level, &bkup_start_lsa, &chkpt_lsa, all_bkup_info,
-       &session, zip_method, zip_level) == NULL)
+  if (fileio_start_backup (thread_p, log_Db_fullname, &log_Gl.hdr.db_creation, backup_level, &bkup_start_lsa,
+			   &chkpt_lsa, all_bkup_info, &session, zip_method, zip_level) == NULL)
     {
       error_code = ER_FAILED;
       goto error;

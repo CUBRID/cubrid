@@ -23472,8 +23472,8 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 	  || arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE || arg3_type == PT_TYPE_MAYBE
 	  || arg1_need_coerce == true || arg2_need_coerce == true || arg3_need_coerce == true);
 
-  if (pt_common_collation
-      (&arg1_coll_inf, &arg2_coll_inf, &arg3_coll_inf, args_w_coll_maybe, op_has_3_args, &common_coll, &common_cs) != 0)
+  if (pt_common_collation (&arg1_coll_inf, &arg2_coll_inf, &arg3_coll_inf, args_w_coll_maybe, op_has_3_args,
+			   &common_coll, &common_cs) != 0)
     {
       goto error;
     }
