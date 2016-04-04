@@ -327,7 +327,7 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
 #if defined(SERVER_MODE)
   /* conn->csect.cs_index may equal to -1 and conn->csect.name may be NULL when initializing temp_conn in
    * css_process_new_client */
-  assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx && conn->csect.name == css_Csect_name_conn)
+  assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx && conn->csect.name == csect_Name_conn)
 	  || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
 #endif
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
@@ -406,7 +406,7 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
       conn->session_id = DB_EMPTY_SESSION;
     }
 
-  assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx && conn->csect.name == css_Csect_name_conn)
+  assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx && conn->csect.name == csect_Name_conn)
 	  || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
 #endif
   csect_exit_critical_section (NULL, &conn->csect);
@@ -460,7 +460,7 @@ css_init_conn_list (void)
 	  assert (conn->csect.name == NULL);
 
 	  conn->csect.cs_index = CRITICAL_SECTION_COUNT + conn->idx;
-	  conn->csect.name = css_Csect_name_conn;
+	  conn->csect.name = csect_Name_conn;
 #endif
 	}
       else
@@ -523,7 +523,7 @@ css_final_conn_list (void)
 #if defined(SERVER_MODE)
 	  assert (conn->idx == i);
 	  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-	  assert (conn->csect.name == css_Csect_name_conn);
+	  assert (conn->csect.name == csect_Name_conn);
 #endif
 
 	  csect_finalize_critical_section (&conn->csect);
@@ -1343,7 +1343,7 @@ css_get_request_id (CSS_CONN_ENTRY * conn)
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
 
@@ -1361,7 +1361,7 @@ css_get_request_id (CSS_CONN_ENTRY * conn)
 
 #if defined(SERVER_MODE)
 	  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-	  assert (conn->csect.name == css_Csect_name_conn);
+	  assert (conn->csect.name == csect_Name_conn);
 #endif
 
 	  csect_exit_critical_section (NULL, &conn->csect);
@@ -1379,7 +1379,7 @@ css_get_request_id (CSS_CONN_ENTRY * conn)
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_exit_critical_section (NULL, &conn->csect);
@@ -1437,7 +1437,7 @@ css_send_abort_request (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
@@ -1447,7 +1447,7 @@ css_send_abort_request (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_exit_critical_section (NULL, &conn->csect);
@@ -1918,7 +1918,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
@@ -1976,7 +1976,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_exit_critical_section (NULL, &conn->csect);
@@ -2282,7 +2282,7 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
@@ -2318,7 +2318,7 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_exit_critical_section (NULL, &conn->csect);
@@ -2384,7 +2384,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char 
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   /* enter the critical section of this connection */
@@ -2436,7 +2436,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char 
 
 #if defined(SERVER_MODE)
 	  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-	  assert (conn->csect.name == css_Csect_name_conn);
+	  assert (conn->csect.name == csect_Name_conn);
 #endif
 
 	  csect_exit_critical_section (NULL, &conn->csect);
@@ -2460,7 +2460,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char 
 	    {
 #if defined(SERVER_MODE)
 	      assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-	      assert (conn->csect.name == css_Csect_name_conn);
+	      assert (conn->csect.name == csect_Name_conn);
 #endif
 
 	      /* exit the critical section before to be suspended */
@@ -2528,7 +2528,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char 
 		{
 #if defined(SERVER_MODE)
 		  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-		  assert (conn->csect.name == css_Csect_name_conn);
+		  assert (conn->csect.name == csect_Name_conn);
 #endif
 
 		  clear_wait_queue_entry_and_free_buffer (thrd, conn, rid, buffer);
@@ -2553,7 +2553,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid, char 
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   /* exit the critical section */
@@ -2593,7 +2593,7 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char 
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
@@ -2610,7 +2610,7 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char 
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_exit_critical_section (NULL, &conn->csect);
@@ -2698,7 +2698,7 @@ css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, in
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
@@ -2712,7 +2712,7 @@ css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, in
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_exit_critical_section (NULL, &conn->csect);
@@ -2756,7 +2756,7 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 #if defined(SERVER_MODE)
   /* conn->csect.cs_index may equal to -1 and conn->csect.name may be NULL when initializing temp_conn in
    * css_process_new_client */
-  assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx && conn->csect.name == css_Csect_name_conn)
+  assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx && conn->csect.name == csect_Name_conn)
 	  || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
 #endif
 
@@ -2773,7 +2773,7 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
   css_traverse_list (&conn->error_queue, css_remove_and_free_queue_entry, conn);
 
 #if defined(SERVER_MODE)
-  assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx && conn->csect.name == css_Csect_name_conn)
+  assert ((conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx && conn->csect.name == csect_Name_conn)
 	  || (conn->csect.cs_index == -1 && conn->csect.name == NULL));
 #endif
 

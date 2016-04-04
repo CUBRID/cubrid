@@ -4320,7 +4320,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_enter_critical_section (thread_p, &conn->csect, INF_WAIT);
@@ -4337,7 +4337,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_exit_critical_section (thread_p, &conn->csect);
