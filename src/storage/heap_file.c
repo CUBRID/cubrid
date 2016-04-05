@@ -15961,9 +15961,8 @@ heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_nobjs, int av
    *                        - slot overhead to store the link chain)
    */
 
-  nobj_page =
-    ((int) (DB_PAGESIZE * (1 - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR))) - spage_header_size ()
-     - sizeof (HEAP_CHAIN) - spage_slot_size ());
+  nobj_page = ((int) (DB_PAGESIZE * (1 - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR))) - spage_header_size ()
+	       - sizeof (HEAP_CHAIN) - spage_slot_size ());
   /* 
    * Find the number of objects per page
    */
@@ -15990,9 +15989,8 @@ heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_nobjs, int av
        * Find number of pages for the indirect record references (OIDs) to
        * overflow records
        */
-      nobj_page =
-	((int) (DB_PAGESIZE * (1 - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR))) - spage_header_size () -
-	 sizeof (HEAP_CHAIN) - spage_slot_size ());
+      nobj_page = ((int) (DB_PAGESIZE * (1 - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR))) - spage_header_size ()
+		   - sizeof (HEAP_CHAIN) - spage_slot_size ());
       nobj_page = nobj_page / (sizeof (OID) + spage_slot_size ());
       /* 
        * Now calculate the number of pages
@@ -16022,8 +16020,8 @@ heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_nobjs, int av
 static DISK_ISVALID
 heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk)
 {
-  chk->ht =
-    mht_create ("Validate Relocation entries hash table", HEAP_CHK_ADD_UNFOUND_RELOCOIDS, oid_hash, oid_compare_equals);
+  chk->ht = mht_create ("Validate Relocation entries hash table", HEAP_CHK_ADD_UNFOUND_RELOCOIDS, oid_hash,
+			oid_compare_equals);
   if (chk->ht == NULL)
     {
       chk->ht = NULL;
@@ -19604,9 +19602,8 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   db_make_bigint (out_values[idx], heap_hdr->estimates.num_recs);
   idx++;
 
-  avg_length =
-    ((heap_hdr->estimates.num_recs >
-      0) ? (int) ((heap_hdr->estimates.recs_sumlen / (float) heap_hdr->estimates.num_recs) + 0.9) : 0);
+  avg_length = ((heap_hdr->estimates.num_recs > 0)
+		? (int) ((heap_hdr->estimates.recs_sumlen / (float) heap_hdr->estimates.num_recs) + 0.9) : 0);
   db_make_int (out_values[idx], avg_length);
   idx++;
 

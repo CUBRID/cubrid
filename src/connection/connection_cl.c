@@ -759,9 +759,8 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name, u
     }
 
   /* timeout in second in css_common_connect() */
-  return (css_common_connect
-	  (host_name, conn, DATA_REQUEST, server_name, length, css_Service_id,
-	   prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true));
+  return (css_common_connect (host_name, conn, DATA_REQUEST, server_name, length, css_Service_id,
+			      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true));
 }
 
 /* New style server connection function that uses an explicit port id */
@@ -789,9 +788,8 @@ css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id
    * the server name.
    */
   /* timeout in second in css_common_connect() */
-  if (css_common_connect
-      (host_name, conn, DATA_REQUEST, NULL, 0, port_id, prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid,
-       false) != NULL)
+  if (css_common_connect (host_name, conn, DATA_REQUEST, NULL, 0, port_id,
+			  prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, false) != NULL)
     {
       /* now ask for a reply from the server */
       css_queue_user_data_buffer (conn, *rid, sizeof (int), (char *) &reason);

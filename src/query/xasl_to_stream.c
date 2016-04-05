@@ -5544,7 +5544,7 @@ xts_process_regu_value_list (char *ptr, const REGU_VALUE_LIST * regu_value_list)
   REGU_VALUE_ITEM *regu_value_item;
   REGU_DATATYPE type;
 
-  assert (regu_value_list);
+  assert (regu_value_list != NULL);
 
   ptr = or_pack_int (ptr, regu_value_list->count);
   for (regu_value_item = regu_value_list->regu_list; regu_value_item; regu_value_item = regu_value_item->next)
@@ -5579,48 +5579,48 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
   int tmp_size = 0;
   ACCESS_SPEC_TYPE *access_spec = NULL;
 
-  size += XASL_NODE_HEADER_SIZE +	/* header */
-    OR_INT_SIZE +		/* type */
-    OR_INT_SIZE +		/* flag */
-    PTR_SIZE +			/* list_id */
-    PTR_SIZE +			/* after_iscan_list */
-    PTR_SIZE +			/* orderby_list */
-    PTR_SIZE +			/* ordbynum_pred */
-    PTR_SIZE +			/* ordbynum_val */
-    PTR_SIZE +			/* orderby_limit */
-    OR_INT_SIZE +		/* ordbynum_flag */
-    PTR_SIZE +			/* single_tuple */
-    OR_INT_SIZE +		/* is_single_tuple */
-    OR_INT_SIZE +		/* option */
-    PTR_SIZE +			/* outptr_list */
-    PTR_SIZE +			/* selected_upd_list */
-    PTR_SIZE +			/* val_list */
-    PTR_SIZE +			/* merge_val_list */
-    PTR_SIZE +			/* aptr_list */
-    PTR_SIZE +			/* bptr_list */
-    PTR_SIZE +			/* dptr_list */
-    PTR_SIZE +			/* after_join_pred */
-    PTR_SIZE +			/* if_pred */
-    PTR_SIZE +			/* instnum_pred */
-    PTR_SIZE +			/* instnum_val */
-    PTR_SIZE +			/* save_instnum_val */
-    OR_INT_SIZE +		/* instnum_flag */
-    PTR_SIZE +			/* limit_row_count */
-    PTR_SIZE +			/* fptr_list */
-    PTR_SIZE +			/* scan_ptr */
-    PTR_SIZE +			/* connect_by_ptr */
-    PTR_SIZE +			/* level_val */
-    PTR_SIZE +			/* level_regu */
-    PTR_SIZE +			/* isleaf_val */
-    PTR_SIZE +			/* isleaf_regu */
-    PTR_SIZE +			/* iscycle_val */
-    PTR_SIZE +			/* iscycle_regu */
-    OR_INT_SIZE +		/* next_scan_on */
-    OR_INT_SIZE +		/* next_scan_block_on */
-    OR_INT_SIZE +		/* cat_fetched */
-    OR_INT_SIZE +		/* scan_op_type */
-    OR_INT_SIZE +		/* upd_del_class_cnt */
-    OR_INT_SIZE;		/* mvcc_reev_extra_cls_cnt */
+  size += (XASL_NODE_HEADER_SIZE	/* header */
+	   + OR_INT_SIZE	/* type */
+	   + OR_INT_SIZE	/* flag */
+	   + PTR_SIZE		/* list_id */
+	   + PTR_SIZE		/* after_iscan_list */
+	   + PTR_SIZE		/* orderby_list */
+	   + PTR_SIZE		/* ordbynum_pred */
+	   + PTR_SIZE		/* ordbynum_val */
+	   + PTR_SIZE		/* orderby_limit */
+	   + OR_INT_SIZE	/* ordbynum_flag */
+	   + PTR_SIZE		/* single_tuple */
+	   + OR_INT_SIZE	/* is_single_tuple */
+	   + OR_INT_SIZE	/* option */
+	   + PTR_SIZE		/* outptr_list */
+	   + PTR_SIZE		/* selected_upd_list */
+	   + PTR_SIZE		/* val_list */
+	   + PTR_SIZE		/* merge_val_list */
+	   + PTR_SIZE		/* aptr_list */
+	   + PTR_SIZE		/* bptr_list */
+	   + PTR_SIZE		/* dptr_list */
+	   + PTR_SIZE		/* after_join_pred */
+	   + PTR_SIZE		/* if_pred */
+	   + PTR_SIZE		/* instnum_pred */
+	   + PTR_SIZE		/* instnum_val */
+	   + PTR_SIZE		/* save_instnum_val */
+	   + OR_INT_SIZE	/* instnum_flag */
+	   + PTR_SIZE		/* limit_row_count */
+	   + PTR_SIZE		/* fptr_list */
+	   + PTR_SIZE		/* scan_ptr */
+	   + PTR_SIZE		/* connect_by_ptr */
+	   + PTR_SIZE		/* level_val */
+	   + PTR_SIZE		/* level_regu */
+	   + PTR_SIZE		/* isleaf_val */
+	   + PTR_SIZE		/* isleaf_regu */
+	   + PTR_SIZE		/* iscycle_val */
+	   + PTR_SIZE		/* iscycle_regu */
+	   + OR_INT_SIZE	/* next_scan_on */
+	   + OR_INT_SIZE	/* next_scan_block_on */
+	   + OR_INT_SIZE	/* cat_fetched */
+	   + OR_INT_SIZE	/* scan_op_type */
+	   + OR_INT_SIZE	/* upd_del_class_cnt */
+	   + OR_INT_SIZE);	/* mvcc_reev_extra_cls_cnt */
 
   size += OR_INT_SIZE;		/* number of access specs in spec_list */
   for (access_spec = xasl->spec_list; access_spec; access_spec = access_spec->next)
@@ -5743,15 +5743,12 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
       return ER_FAILED;
     }
 
-  size += OR_INT_SIZE;		/* projected_size */
+  size += (OR_INT_SIZE		/* projected_size */
+	   + OR_DOUBLE_ALIGNED_SIZE	/* cardinality */
+	   + OR_INT_SIZE	/* iscan_oid_order */
+	   + PTR_SIZE		/* query_alias */
+	   + PTR_SIZE);		/* next */
 
-  size += OR_DOUBLE_ALIGNED_SIZE;	/* cardinality */
-
-  size += OR_INT_SIZE;		/* iscan_oid_order */
-
-  size += PTR_SIZE;		/* query_alias */
-
-  size += PTR_SIZE;		/* next */
   return size;
 }
 
@@ -5764,10 +5761,11 @@ static int
 xts_sizeof_filter_pred_node (const PRED_EXPR_WITH_CONTEXT * pred)
 {
   int size = 0;
-  size += PTR_SIZE +		/* PRED_EXPR pointer: pred */
-    OR_INT_SIZE +		/* num_attrs_pred */
-    PTR_SIZE +			/* array pointer : */
-    PTR_SIZE;			/* HEAP_CACHE_ATTRINFO pointer: cache_pred */
+
+  size += (PTR_SIZE		/* PRED_EXPR pointer: pred */
+	   + OR_INT_SIZE	/* num_attrs_pred */
+	   + PTR_SIZE		/* array pointer : */
+	   + PTR_SIZE);		/* HEAP_CACHE_ATTRINFO pointer: cache_pred */
 
   return size;
 }
@@ -5781,8 +5779,9 @@ static int
 xts_sizeof_func_pred (const FUNC_PRED * xasl)
 {
   int size = 0;
-  size += PTR_SIZE;		/* REGU_VAR pointer */
-  size += PTR_SIZE;		/* HEAP_CACHE_ATTRINFO pointer */
+
+  size += (PTR_SIZE		/* REGU_VAR pointer */
+	   + PTR_SIZE);		/* HEAP_CACHE_ATTRINFO pointer */
 
   return size;
 }
@@ -5808,8 +5807,8 @@ xts_sizeof_union_proc (const UNION_PROC_NODE * union_proc)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* left */
-    PTR_SIZE;			/* right */
+  size += (PTR_SIZE		/* left */
+	   + PTR_SIZE);		/* right */
 
   return size;
 }
@@ -5824,10 +5823,10 @@ xts_sizeof_fetch_proc (const FETCH_PROC_NODE * obj_set_fetch_proc)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* arg */
-    OR_INT_SIZE +		/* fetch_res */
-    PTR_SIZE +			/* set_pred */
-    OR_INT_SIZE;		/* ql_flag */
+  size += (PTR_SIZE		/* arg */
+	   + OR_INT_SIZE	/* fetch_res */
+	   + PTR_SIZE		/* set_pred */
+	   + OR_INT_SIZE);	/* ql_flag */
 
   return size;
 }
@@ -5842,38 +5841,37 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
 {
   int size = 0;
 
-  size +=
-    /* output_columns (not sent to server) */
-    PTR_SIZE +			/* eptr_list */
-    PTR_SIZE +			/* groupby_list */
-    PTR_SIZE +			/* after_groupby_list */
-    PTR_SIZE +			/* push_list_id */
-    PTR_SIZE +			/* g_outptr_list */
-    PTR_SIZE +			/* g_regu_list */
-    PTR_SIZE +			/* g_val_list */
-    PTR_SIZE +			/* g_having_pred */
-    PTR_SIZE +			/* g_grbynum_pred */
-    PTR_SIZE +			/* g_grbynum_val */
-    PTR_SIZE +			/* g_hk_scan_regu_list */
-    PTR_SIZE +			/* g_hk_sort_regu_list */
-    PTR_SIZE +			/* g_scan_regu_list */
-    OR_INT_SIZE +		/* g_grbynum_flag */
-    OR_INT_SIZE +		/* g_with_rollup */
-    OR_INT_SIZE +		/* g_hash_eligible */
-    OR_INT_SIZE +		/* g_output_first_tuple */
-    OR_INT_SIZE +		/* g_hkey_size */
-    OR_INT_SIZE +		/* g_func_count */
-    PTR_SIZE +			/* g_agg_list */
-    PTR_SIZE +			/* g_outarith_list */
-    PTR_SIZE +			/* a_func_list */
-    PTR_SIZE +			/* a_regu_list */
-    PTR_SIZE +			/* a_outptr_list */
-    PTR_SIZE +			/* a_outptr_list_ex */
-    PTR_SIZE +			/* a_outptr_list_interm */
-    PTR_SIZE +			/* a_val_list */
-    PTR_SIZE +			/* a_instnum_pred */
-    PTR_SIZE +			/* a_instnum_val */
-    OR_INT_SIZE;		/* a_instnum_flag */
+  size += (0			/* output_columns (not sent to server) */
+	   + PTR_SIZE		/* eptr_list */
+	   + PTR_SIZE		/* groupby_list */
+	   + PTR_SIZE		/* after_groupby_list */
+	   + PTR_SIZE		/* push_list_id */
+	   + PTR_SIZE		/* g_outptr_list */
+	   + PTR_SIZE		/* g_regu_list */
+	   + PTR_SIZE		/* g_val_list */
+	   + PTR_SIZE		/* g_having_pred */
+	   + PTR_SIZE		/* g_grbynum_pred */
+	   + PTR_SIZE		/* g_grbynum_val */
+	   + PTR_SIZE		/* g_hk_scan_regu_list */
+	   + PTR_SIZE		/* g_hk_sort_regu_list */
+	   + PTR_SIZE		/* g_scan_regu_list */
+	   + OR_INT_SIZE	/* g_grbynum_flag */
+	   + OR_INT_SIZE	/* g_with_rollup */
+	   + OR_INT_SIZE	/* g_hash_eligible */
+	   + OR_INT_SIZE	/* g_output_first_tuple */
+	   + OR_INT_SIZE	/* g_hkey_size */
+	   + OR_INT_SIZE	/* g_func_count */
+	   + PTR_SIZE		/* g_agg_list */
+	   + PTR_SIZE		/* g_outarith_list */
+	   + PTR_SIZE		/* a_func_list */
+	   + PTR_SIZE		/* a_regu_list */
+	   + PTR_SIZE		/* a_outptr_list */
+	   + PTR_SIZE		/* a_outptr_list_ex */
+	   + PTR_SIZE		/* a_outptr_list_interm */
+	   + PTR_SIZE		/* a_val_list */
+	   + PTR_SIZE		/* a_instnum_pred */
+	   + PTR_SIZE		/* a_instnum_val */
+	   + OR_INT_SIZE);	/* a_instnum_flag */
 
   return size;
 }
@@ -5888,11 +5886,11 @@ xts_sizeof_buildvalue_proc (const BUILDVALUE_PROC_NODE * build_value)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* having_pred */
-    PTR_SIZE +			/* grbynum_val */
-    PTR_SIZE +			/* agg_list */
-    PTR_SIZE +			/* outarith_list */
-    OR_INT_SIZE;		/* is_always_false */
+  size += (PTR_SIZE		/* having_pred */
+	   + PTR_SIZE		/* grbynum_val */
+	   + PTR_SIZE		/* agg_list */
+	   + PTR_SIZE		/* outarith_list */
+	   + OR_INT_SIZE);	/* is_always_false */
 
   return size;
 }
@@ -5907,16 +5905,16 @@ xts_sizeof_ls_merge_info (const QFILE_LIST_MERGE_INFO * qfile_list_merge_info)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* join_type */
-    OR_INT_SIZE +		/* single_fetch */
-    OR_INT_SIZE +		/* ls_column_cnt */
-    PTR_SIZE +			/* ls_outer_column */
-    PTR_SIZE +			/* ls_outer_unique */
-    PTR_SIZE +			/* ls_inner_column */
-    PTR_SIZE +			/* ls_inner_unique */
-    OR_INT_SIZE +		/* ls_pos_cnt */
-    PTR_SIZE +			/* ls_outer_inner_list */
-    PTR_SIZE;			/* ls_pos_list */
+  size += (OR_INT_SIZE		/* join_type */
+	   + OR_INT_SIZE	/* single_fetch */
+	   + OR_INT_SIZE	/* ls_column_cnt */
+	   + PTR_SIZE		/* ls_outer_column */
+	   + PTR_SIZE		/* ls_outer_unique */
+	   + PTR_SIZE		/* ls_inner_column */
+	   + PTR_SIZE		/* ls_inner_unique */
+	   + OR_INT_SIZE	/* ls_pos_cnt */
+	   + PTR_SIZE		/* ls_outer_inner_list */
+	   + PTR_SIZE);		/* ls_pos_list */
 
   return size;
 }
@@ -5932,11 +5930,11 @@ xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * merge_list_info)
   int size = 0;
   ACCESS_SPEC_TYPE *access_spec = NULL;
 
-  size += PTR_SIZE +		/* outer_xasl */
-    PTR_SIZE +			/* outer_val_list */
-    PTR_SIZE +			/* inner_xasl */
-    PTR_SIZE +			/* inner_val_list */
-    xts_sizeof_ls_merge_info (&merge_list_info->ls_merge);	/* ls_merge_info */
+  size += (PTR_SIZE		/* outer_xasl */
+	   + PTR_SIZE		/* outer_val_list */
+	   + PTR_SIZE		/* inner_xasl */
+	   + PTR_SIZE		/* inner_val_list */
+	   + xts_sizeof_ls_merge_info (&merge_list_info->ls_merge));	/* ls_merge_info */
 
   size += OR_INT_SIZE;		/* count of access specs in outer_spec_list */
   for (access_spec = merge_list_info->outer_spec_list; access_spec; access_spec = access_spec->next)
@@ -5963,17 +5961,17 @@ xts_sizeof_upddel_class_info (const UPDDEL_CLASS_INFO * upd_cls)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* no_subclasses */
-    PTR_SIZE +			/* class_oid */
-    PTR_SIZE +			/* class_hfid */
-    OR_INT_SIZE +		/* no_attrs */
-    PTR_SIZE +			/* att_id */
-    OR_INT_SIZE +		/* needs pruning */
-    OR_INT_SIZE +		/* has_uniques */
-    PTR_SIZE +			/* no_lob_attrs */
-    PTR_SIZE +			/* lob_attr_ids */
-    OR_INT_SIZE +		/* no_extra_assign_reev */
-    PTR_SIZE;			/* mvcc_extra_assign_reev */
+  size += (OR_INT_SIZE		/* no_subclasses */
+	   + PTR_SIZE		/* class_oid */
+	   + PTR_SIZE		/* class_hfid */
+	   + OR_INT_SIZE	/* no_attrs */
+	   + PTR_SIZE		/* att_id */
+	   + OR_INT_SIZE	/* needs pruning */
+	   + OR_INT_SIZE	/* has_uniques */
+	   + PTR_SIZE		/* no_lob_attrs */
+	   + PTR_SIZE		/* lob_attr_ids */
+	   + OR_INT_SIZE	/* no_extra_assign_reev */
+	   + PTR_SIZE);		/* mvcc_extra_assign_reev */
 
   return size;
 }
@@ -5988,10 +5986,10 @@ xts_sizeof_update_assignment (const UPDATE_ASSIGNMENT * assign)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* cls_idx */
-    OR_INT_SIZE +		/* att_idx */
-    PTR_SIZE +			/* constant */
-    PTR_SIZE;			/* regu_var */
+  size += (OR_INT_SIZE		/* cls_idx */
+	   + OR_INT_SIZE	/* att_idx */
+	   + PTR_SIZE		/* constant */
+	   + PTR_SIZE);		/* regu_var */
 
   return size;
 }
@@ -6001,11 +5999,11 @@ xts_sizeof_odku_info (const ODKU_INFO * odku_info)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* no_assigns */
-    PTR_SIZE +			/* attr_ids */
-    PTR_SIZE +			/* assignments */
-    PTR_SIZE +			/* cons_pred */
-    PTR_SIZE;			/* attr_info */
+  size += (OR_INT_SIZE		/* no_assigns */
+	   + PTR_SIZE		/* attr_ids */
+	   + PTR_SIZE		/* assignments */
+	   + PTR_SIZE		/* cons_pred */
+	   + PTR_SIZE);		/* attr_info */
 
   return size;
 }
@@ -6020,17 +6018,17 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* no_classes */
-    PTR_SIZE +			/* classes */
-    PTR_SIZE +			/* cons_pred */
-    OR_INT_SIZE +		/* no_assigns */
-    PTR_SIZE +			/* assignments */
-    OR_INT_SIZE +		/* wait_msecs */
-    OR_INT_SIZE +		/* no_logging */
-    OR_INT_SIZE +		/* no_orderby_keys */
-    OR_INT_SIZE +		/* no_assign_reev_classes */
-    OR_INT_SIZE +		/* no_cond_reev_classes */
-    PTR_SIZE;			/* mvcc_cond_reev_classes */
+  size += (OR_INT_SIZE		/* no_classes */
+	   + PTR_SIZE		/* classes */
+	   + PTR_SIZE		/* cons_pred */
+	   + OR_INT_SIZE	/* no_assigns */
+	   + PTR_SIZE		/* assignments */
+	   + OR_INT_SIZE	/* wait_msecs */
+	   + OR_INT_SIZE	/* no_logging */
+	   + OR_INT_SIZE	/* no_orderby_keys */
+	   + OR_INT_SIZE	/* no_assign_reev_classes */
+	   + OR_INT_SIZE	/* no_cond_reev_classes */
+	   + PTR_SIZE);		/* mvcc_cond_reev_classes */
 
   return size;
 }
@@ -6045,12 +6043,12 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* classes */
-    OR_INT_SIZE +		/* no_classes */
-    OR_INT_SIZE +		/* wait_msecs */
-    OR_INT_SIZE +		/* no_logging */
-    OR_INT_SIZE +		/* no_cond_reev_classes */
-    PTR_SIZE;			/* mvcc_cond_reev_classes */
+  size += (PTR_SIZE		/* classes */
+	   + OR_INT_SIZE	/* no_classes */
+	   + OR_INT_SIZE	/* wait_msecs */
+	   + OR_INT_SIZE	/* no_logging */
+	   + OR_INT_SIZE	/* no_cond_reev_classes */
+	   + PTR_SIZE);		/* mvcc_cond_reev_classes */
 
   return size;
 }
@@ -6065,22 +6063,21 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 {
   int size = 0;
 
-  size += OR_OID_SIZE +		/* class_oid */
-    OR_HFID_SIZE +		/* class_hfid */
-    OR_INT_SIZE +		/* no_vals */
-    OR_INT_SIZE +		/* no_default_expr */
-    PTR_SIZE +			/* array pointer: att_id */
-    PTR_SIZE +			/* constraint predicate: cons_pred */
-    PTR_SIZE +			/* odku */
-    OR_INT_SIZE +		/* has_uniques */
-    OR_INT_SIZE +		/* wait_msecs */
-    OR_INT_SIZE +		/* no_logging */
-    OR_INT_SIZE +		/* do_replace */
-    OR_INT_SIZE +		/* needs pruning */
-    OR_INT_SIZE +		/* no_val_lists */
-    PTR_SIZE;			/* obj_oid */
-
-  size += insert_info->no_val_lists * PTR_SIZE;	/* valptr_lists */
+  size += (OR_OID_SIZE		/* class_oid */
+	   + OR_HFID_SIZE	/* class_hfid */
+	   + OR_INT_SIZE	/* no_vals */
+	   + OR_INT_SIZE	/* no_default_expr */
+	   + PTR_SIZE		/* array pointer: att_id */
+	   + PTR_SIZE		/* constraint predicate: cons_pred */
+	   + PTR_SIZE		/* odku */
+	   + OR_INT_SIZE	/* has_uniques */
+	   + OR_INT_SIZE	/* wait_msecs */
+	   + OR_INT_SIZE	/* no_logging */
+	   + OR_INT_SIZE	/* do_replace */
+	   + OR_INT_SIZE	/* needs pruning */
+	   + OR_INT_SIZE	/* no_val_lists */
+	   + PTR_SIZE		/* obj_oid */
+	   + (insert_info->no_val_lists * PTR_SIZE));	/* valptr_lists */
 
   return size;
 }
@@ -6095,9 +6092,9 @@ xts_sizeof_merge_proc (const MERGE_PROC_NODE * merge_info)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* update_xasl */
-    PTR_SIZE +			/* insert_xasl */
-    OR_INT_SIZE;		/* has_delete */
+  size += (PTR_SIZE		/* update_xasl */
+	   + PTR_SIZE		/* insert_xasl */
+	   + OR_INT_SIZE);	/* has_delete */
 
   return size;
 }
@@ -6112,8 +6109,8 @@ xts_sizeof_outptr_list (const OUTPTR_LIST * outptr_list)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* valptr_cnt */
-    PTR_SIZE;			/* valptrp */
+  size += (OR_INT_SIZE		/* valptr_cnt */
+	   + PTR_SIZE);		/* valptrp */
 
   return size;
 }
@@ -6172,12 +6169,12 @@ xts_sizeof_selupd_list (const SELUPD_LIST * selupd_list)
 {
   int size = 0;
 
-  size = OR_OID_SIZE +		/* class_oid */
-    OR_HFID_SIZE +		/* class_hfid */
-    OR_INT_SIZE +		/* select_list_size */
-    PTR_SIZE +			/* select_list */
-    OR_INT_SIZE +		/* wait_msecs */
-    PTR_SIZE;			/* next */
+  size = (OR_OID_SIZE		/* class_oid */
+	  + OR_HFID_SIZE	/* class_hfid */
+	  + OR_INT_SIZE		/* select_list_size */
+	  + PTR_SIZE		/* select_list */
+	  + OR_INT_SIZE		/* wait_msecs */
+	  + PTR_SIZE);		/* next */
 
   return size;
 }
@@ -6194,8 +6191,8 @@ xts_sizeof_pred (const PRED * pred)
   int tmp_size = 0;
   PRED_EXPR *rhs;
 
-  size += PTR_SIZE +		/* lhs */
-    OR_INT_SIZE;		/* bool_op */
+  size += (PTR_SIZE		/* lhs */
+	   + OR_INT_SIZE);	/* bool_op */
 
   rhs = pred->rhs;
   size += OR_INT_SIZE;		/* rhs-type */
@@ -6205,8 +6202,8 @@ xts_sizeof_pred (const PRED * pred)
     {
       pred = &rhs->pe.pred;
 
-      size += PTR_SIZE +	/* lhs */
-	OR_INT_SIZE;		/* bool_op */
+      size += (PTR_SIZE		/* lhs */
+	       + OR_INT_SIZE);	/* bool_op */
 
       rhs = pred->rhs;
       size += OR_INT_SIZE;	/* rhs-type */
@@ -6285,10 +6282,10 @@ xts_sizeof_comp_eval_term (const COMP_EVAL_TERM * comp_eval_term)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* lhs */
-    PTR_SIZE +			/* rhs */
-    OR_INT_SIZE +		/* rel_op */
-    OR_INT_SIZE;		/* type */
+  size += (PTR_SIZE		/* lhs */
+	   + PTR_SIZE		/* rhs */
+	   + OR_INT_SIZE	/* rel_op */
+	   + OR_INT_SIZE);	/* type */
 
   return size;
 }
@@ -6303,11 +6300,11 @@ xts_sizeof_alsm_eval_term (const ALSM_EVAL_TERM * alsm_eval_term)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* elem */
-    PTR_SIZE +			/* elemset */
-    OR_INT_SIZE +		/* eq_flag */
-    OR_INT_SIZE +		/* rel_op */
-    OR_INT_SIZE;		/* item_type */
+  size += (PTR_SIZE		/* elem */
+	   + PTR_SIZE		/* elemset */
+	   + OR_INT_SIZE	/* eq_flag */
+	   + OR_INT_SIZE	/* rel_op */
+	   + OR_INT_SIZE);	/* item_type */
 
   return size;
 }
@@ -6322,9 +6319,9 @@ xts_sizeof_like_eval_term (const LIKE_EVAL_TERM * like_eval_term)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* src */
-    PTR_SIZE +			/* pattern */
-    PTR_SIZE;			/* esc_char */
+  size += (PTR_SIZE		/* src */
+	   + PTR_SIZE		/* pattern */
+	   + PTR_SIZE);		/* esc_char */
 
   return size;
 }
@@ -6339,9 +6336,9 @@ xts_sizeof_rlike_eval_term (const RLIKE_EVAL_TERM * rlike_eval_term)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* src */
-    PTR_SIZE +			/* pattern */
-    PTR_SIZE;			/* case_sensitive */
+  size += (PTR_SIZE		/* src */
+	   + PTR_SIZE		/* pattern */
+	   + PTR_SIZE);		/* case_sensitive */
 
   return size;
 }
@@ -6357,13 +6354,13 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
   int size = 0;
   int tmp_size = 0;
 
-  size += OR_INT_SIZE +		/* type */
-    OR_INT_SIZE +		/* access */
-    OR_INT_SIZE +		/* flags */
-    PTR_SIZE +			/* index_ptr */
-    PTR_SIZE +			/* where_key */
-    PTR_SIZE +			/* where_pred */
-    PTR_SIZE;			/* where_range */
+  size += (OR_INT_SIZE		/* type */
+	   + OR_INT_SIZE	/* access */
+	   + OR_INT_SIZE	/* flags */
+	   + PTR_SIZE		/* index_ptr */
+	   + PTR_SIZE		/* where_key */
+	   + PTR_SIZE		/* where_pred */
+	   + PTR_SIZE);		/* where_range */
 
   switch (access_spec->type)
     {
@@ -6422,13 +6419,13 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
       return ER_FAILED;
     }
 
-  size +=			/* s_id (not sent to server) */
-    OR_INT_SIZE +		/* grouped_scan */
-    OR_INT_SIZE +		/* fixed_scan */
-    OR_INT_SIZE +		/* qualified_scan */
-    OR_INT_SIZE +		/* single_fetch */
-    OR_INT_SIZE +		/* needs pruning */
-    PTR_SIZE;			/* s_dbval */
+  size += (0			/* s_id (not sent to server) */
+	   + OR_INT_SIZE	/* grouped_scan */
+	   + OR_INT_SIZE	/* fixed_scan */
+	   + OR_INT_SIZE	/* qualified_scan */
+	   + OR_INT_SIZE	/* single_fetch */
+	   + OR_INT_SIZE	/* needs pruning */
+	   + PTR_SIZE);		/* s_dbval */
 
   return size;
 }
@@ -6451,9 +6448,8 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
     }
   size += tmp_size;
 
-  size += OR_INT_SIZE;		/* coverage */
-
-  size += OR_INT_SIZE;		/* range_type */
+  size += (OR_INT_SIZE		/* coverage */
+	   + OR_INT_SIZE);	/* range_type */
 
   tmp_size = xts_sizeof_key_info (&indx_info->key_info);
   if (tmp_size == ER_FAILED)
@@ -6462,25 +6458,16 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
     }
   size += tmp_size;
 
-  size += OR_INT_SIZE;		/* orderby_desc */
-
-  size += OR_INT_SIZE;		/* groupby_desc */
-
-  size += OR_INT_SIZE;		/* use_desc_index */
-
-  size += OR_INT_SIZE;		/* orderby_skip */
-
-  size += OR_INT_SIZE;		/* groupby_skip */
-
-  size += OR_INT_SIZE;		/* use_iss boolean (int) */
-
-  size += OR_INT_SIZE;		/* ils_prefix_len (int) */
-
-  size += OR_INT_SIZE;		/* func_idx_col_id (int) */
-
-  size += OR_INT_SIZE;		/* iss_range's range */
-
-  size += PTR_SIZE;		/* iss_range's key1 */
+  size += (OR_INT_SIZE		/* orderby_desc */
+	   + OR_INT_SIZE	/* groupby_desc */
+	   + OR_INT_SIZE	/* use_desc_index */
+	   + OR_INT_SIZE	/* orderby_skip */
+	   + OR_INT_SIZE	/* groupby_skip */
+	   + OR_INT_SIZE	/* use_iss boolean (int) */
+	   + OR_INT_SIZE	/* ils_prefix_len (int) */
+	   + OR_INT_SIZE	/* func_idx_col_id (int) */
+	   + OR_INT_SIZE	/* iss_range's range */
+	   + PTR_SIZE);		/* iss_range's key1 */
 
   return size;
 }
@@ -6524,12 +6511,12 @@ xts_sizeof_key_info (const KEY_INFO * key_info)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* key_cnt */
-    PTR_SIZE +			/* key_ranges */
-    OR_INT_SIZE +		/* is_constant */
-    PTR_SIZE +			/* key_limit_l */
-    PTR_SIZE +			/* key_limit_u */
-    OR_INT_SIZE;		/* key_limit_reset */
+  size += (OR_INT_SIZE		/* key_cnt */
+	   + PTR_SIZE		/* key_ranges */
+	   + OR_INT_SIZE	/* is_constant */
+	   + PTR_SIZE		/* key_limit_l */
+	   + PTR_SIZE		/* key_limit_u */
+	   + OR_INT_SIZE);	/* key_limit_reset */
 
   return size;
 }
@@ -6544,31 +6531,31 @@ xts_sizeof_cls_spec_type (const CLS_SPEC_TYPE * cls_spec)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* cls_regu_list_key */
-    PTR_SIZE +			/* cls_regu_list_pred */
-    PTR_SIZE +			/* cls_regu_list_rest */
-    PTR_SIZE +			/* cls_regu_list_range */
-    PTR_SIZE +			/* cls_regu_list_last_version */
-    PTR_SIZE +			/* cls_output_val_list */
-    PTR_SIZE +			/* regu_val_list */
-    OR_HFID_SIZE +		/* hfid */
-    OR_OID_SIZE +		/* cls_oid */
-    OR_INT_SIZE +		/* num_attrs_key */
-    PTR_SIZE +			/* attrids_key */
-    PTR_SIZE +			/* cache_key */
-    OR_INT_SIZE +		/* num_attrs_pred */
-    PTR_SIZE +			/* attrids_pred */
-    PTR_SIZE +			/* cache_pred */
-    OR_INT_SIZE +		/* num_attrs_rest */
-    PTR_SIZE +			/* attrids_rest */
-    PTR_SIZE +			/* cache_rest */
-    OR_INT_SIZE +		/* schema_type */
-    OR_INT_SIZE +		/* num_attrs_reserved */
-    PTR_SIZE +			/* cache_reserved */
-    PTR_SIZE +			/* cls_regu_list_reserved */
-    PTR_SIZE +			/* atrtrids_range */
-    PTR_SIZE +			/* cache_range */
-    OR_INT_SIZE;		/* num_attrs_range */
+  size += (PTR_SIZE		/* cls_regu_list_key */
+	   + PTR_SIZE		/* cls_regu_list_pred */
+	   + PTR_SIZE		/* cls_regu_list_rest */
+	   + PTR_SIZE		/* cls_regu_list_range */
+	   + PTR_SIZE		/* cls_regu_list_last_version */
+	   + PTR_SIZE		/* cls_output_val_list */
+	   + PTR_SIZE		/* regu_val_list */
+	   + OR_HFID_SIZE	/* hfid */
+	   + OR_OID_SIZE	/* cls_oid */
+	   + OR_INT_SIZE	/* num_attrs_key */
+	   + PTR_SIZE		/* attrids_key */
+	   + PTR_SIZE		/* cache_key */
+	   + OR_INT_SIZE	/* num_attrs_pred */
+	   + PTR_SIZE		/* attrids_pred */
+	   + PTR_SIZE		/* cache_pred */
+	   + OR_INT_SIZE	/* num_attrs_rest */
+	   + PTR_SIZE		/* attrids_rest */
+	   + PTR_SIZE		/* cache_rest */
+	   + OR_INT_SIZE	/* schema_type */
+	   + OR_INT_SIZE	/* num_attrs_reserved */
+	   + PTR_SIZE		/* cache_reserved */
+	   + PTR_SIZE		/* cls_regu_list_reserved */
+	   + PTR_SIZE		/* atrtrids_range */
+	   + PTR_SIZE		/* cache_range */
+	   + OR_INT_SIZE);	/* num_attrs_range */
 
   return size;
 }
@@ -6583,9 +6570,9 @@ xts_sizeof_list_spec_type (const LIST_SPEC_TYPE * list_spec)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* list_regu_list_pred */
-    PTR_SIZE +			/* list_regu_list_rest */
-    PTR_SIZE;			/* xasl_node */
+  size += (PTR_SIZE		/* list_regu_list_pred */
+	   + PTR_SIZE		/* list_regu_list_rest */
+	   + PTR_SIZE);		/* xasl_node */
 
   return size;
 }
@@ -6600,8 +6587,8 @@ xts_sizeof_showstmt_spec_type (const SHOWSTMT_SPEC_TYPE * showstmt_spec)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* show_type */
-    PTR_SIZE;			/* arg_list */
+  size += (OR_INT_SIZE		/* show_type */
+	   + PTR_SIZE);		/* arg_list */
 
   return size;
 }
@@ -6616,8 +6603,8 @@ xts_sizeof_set_spec_type (const SET_SPEC_TYPE * set_spec)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* set_regu_list */
-    PTR_SIZE;			/* set_ptr */
+  size += (PTR_SIZE		/* set_regu_list */
+	   + PTR_SIZE);		/* set_ptr */
 
   return size;
 }
@@ -6632,9 +6619,9 @@ xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * method_spec)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* method_regu_list */
-    PTR_SIZE +			/* xasl_node */
-    PTR_SIZE;			/* method_sig_list */
+  size += (PTR_SIZE		/* method_regu_list */
+	   + PTR_SIZE		/* xasl_node */
+	   + PTR_SIZE);		/* method_sig_list */
 
   return size;
 }
@@ -6692,11 +6679,11 @@ xts_sizeof_regu_variable (const REGU_VARIABLE * regu_var)
     }
 
   /* we prepend the domain before we pack the regu_variable */
-  size += or_packed_domain_size (regu_var->domain, 0);
-  size += OR_INT_SIZE;		/* type */
-  size += OR_INT_SIZE;		/* flags */
-  size += PTR_SIZE;		/* vfetch_to */
-  size += PTR_SIZE;		/* REGU_VARIABLE_XASL */
+  size += (or_packed_domain_size (regu_var->domain, 0)	/* domain */
+	   + OR_INT_SIZE	/* type */
+	   + OR_INT_SIZE	/* flags */
+	   + PTR_SIZE		/* vfetch_to */
+	   + PTR_SIZE);		/* REGU_VARIABLE_XASL */
 
   tmp_size = xts_get_regu_variable_value_size (regu_var);
   if (tmp_size == ER_FAILED)
@@ -6787,9 +6774,9 @@ xts_sizeof_attr_descr (const ATTR_DESCR * attr_descr)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* id */
-    OR_INT_SIZE +		/* type */
-    PTR_SIZE;			/* cache_attrinfo */
+  size += (OR_INT_SIZE		/* id */
+	   + OR_INT_SIZE	/* type */
+	   + PTR_SIZE);		/* cache_attrinfo */
 
   return size;
 }
@@ -6804,8 +6791,8 @@ xts_sizeof_pos_descr (const QFILE_TUPLE_VALUE_POSITION * position_descr)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* pos_no */
-    or_packed_domain_size (position_descr->dom, 0);	/* type */
+  size += (OR_INT_SIZE		/* pos_no */
+	   + or_packed_domain_size (position_descr->dom, 0));	/* type */
 
   return size;
 }
@@ -6830,18 +6817,20 @@ static int
 xts_sizeof_arith_type (const ARITH_TYPE * arith)
 {
   int size = 0;
+  int case_pred_size = 0;
 
-  size += PTR_SIZE +		/* next */
-    PTR_SIZE +			/* value */
-    OR_INT_SIZE +		/* operator */
-    PTR_SIZE +			/* leftptr */
-    PTR_SIZE +			/* rightptr */
-    PTR_SIZE +			/* thirdptr */
-    OR_INT_SIZE +		/* misc_operand */
-    ((arith->opcode == T_CASE || arith->opcode == T_DECODE || arith->opcode == T_PREDICATE || arith->opcode == T_IF) ? PTR_SIZE : 0	/* case 
-																	 * pred 
-																	 */ ) +
-    or_packed_domain_size (arith->domain, 0);
+  case_pred_size = ((arith->opcode == T_CASE || arith->opcode == T_DECODE || arith->opcode == T_PREDICATE
+		     || arith->opcode == T_IF) ? PTR_SIZE : 0);
+
+  size += (PTR_SIZE		/* next */
+	   + PTR_SIZE		/* value */
+	   + OR_INT_SIZE	/* operator */
+	   + PTR_SIZE		/* leftptr */
+	   + PTR_SIZE		/* rightptr */
+	   + PTR_SIZE		/* thirdptr */
+	   + OR_INT_SIZE	/* misc_operand */
+	   + case_pred_size	/* case pred */
+	   + or_packed_domain_size (arith->domain, 0));
 
   return size;
 }
@@ -6857,13 +6846,14 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
   int size = 0;
   int tmp_size = 0;
 
-  size += or_packed_domain_size (aggregate->domain, 0) + PTR_SIZE +	/* next */
-    PTR_SIZE +			/* value */
-    PTR_SIZE +			/* value2 */
-    OR_INT_SIZE +		/* curr_cnt */
-    OR_INT_SIZE +		/* function */
-    OR_INT_SIZE +		/* option */
-    OR_INT_SIZE;		/* opr_dbtype */
+  size += (or_packed_domain_size (aggregate->domain, 0)	/* domain */
+	   + PTR_SIZE		/* next */
+	   + PTR_SIZE		/* value */
+	   + PTR_SIZE		/* value2 */
+	   + OR_INT_SIZE	/* curr_cnt */
+	   + OR_INT_SIZE	/* function */
+	   + OR_INT_SIZE	/* option */
+	   + OR_INT_SIZE);	/* opr_dbtype */
 
   tmp_size = xts_sizeof_regu_variable (&aggregate->operand);
   if (tmp_size == ER_FAILED)
@@ -6872,8 +6862,8 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
     }
   size += tmp_size;
 
-  size += PTR_SIZE		/* list_id */
-    + OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
+  size += (PTR_SIZE		/* list_id */
+	   + OR_INT_SIZE + OR_BTID_ALIGNED_SIZE);
 
   size += PTR_SIZE;		/* sort_info */
 
@@ -6907,9 +6897,9 @@ xts_sizeof_function_type (const FUNCTION_TYPE * function)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* value */
-    OR_INT_SIZE +		/* ftype */
-    PTR_SIZE;			/* operand */
+  size += (PTR_SIZE		/* value */
+	   + OR_INT_SIZE	/* ftype */
+	   + PTR_SIZE);		/* operand */
 
   return size;
 }
@@ -6925,22 +6915,22 @@ xts_sizeof_analytic_type (const ANALYTIC_TYPE * analytic)
   int size = 0;
   int tmp_size = 0;
 
-  size += or_packed_domain_size (analytic->domain, 0) + PTR_SIZE +	/* next */
-    PTR_SIZE +			/* value */
-    PTR_SIZE +			/* value2 */
-    PTR_SIZE +			/* valptr_value */
-    PTR_SIZE +			/* list_id */
-    OR_INT_SIZE +		/* function */
-    OR_INT_SIZE +		/* offset_idx */
-    OR_INT_SIZE +		/* default_idx */
-    OR_INT_SIZE +		/* option */
-    OR_INT_SIZE +		/* opr_dbtype */
-    OR_INT_SIZE +		/* sort_prefix_size */
-    OR_INT_SIZE +		/* sort_list_size */
-    OR_INT_SIZE +		/* flag */
-    OR_INT_SIZE +		/* from_last */
-    OR_INT_SIZE +		/* ignore_nulls */
-    OR_INT_SIZE;		/* is_const_opr */
+  size += (or_packed_domain_size (analytic->domain, 0) + PTR_SIZE	/* next */
+	   + PTR_SIZE		/* value */
+	   + PTR_SIZE		/* value2 */
+	   + PTR_SIZE		/* valptr_value */
+	   + PTR_SIZE		/* list_id */
+	   + OR_INT_SIZE	/* function */
+	   + OR_INT_SIZE	/* offset_idx */
+	   + OR_INT_SIZE	/* default_idx */
+	   + OR_INT_SIZE	/* option */
+	   + OR_INT_SIZE	/* opr_dbtype */
+	   + OR_INT_SIZE	/* sort_prefix_size */
+	   + OR_INT_SIZE	/* sort_list_size */
+	   + OR_INT_SIZE	/* flag */
+	   + OR_INT_SIZE	/* from_last */
+	   + OR_INT_SIZE	/* ignore_nulls */
+	   + OR_INT_SIZE);	/* is_const_opr */
 
   tmp_size = xts_sizeof_regu_variable (&analytic->operand);
   if (tmp_size == ER_FAILED)
@@ -6977,11 +6967,10 @@ static int
 xts_sizeof_analytic_eval_type (const ANALYTIC_EVAL_TYPE * analytic_eval)
 {
   int size = 0;
-  int tmp_size = 0;
 
-  size = PTR_SIZE +		/* next */
-    PTR_SIZE +			/* head */
-    PTR_SIZE;			/* sort_list */
+  size = (PTR_SIZE		/* next */
+	  + PTR_SIZE		/* head */
+	  + PTR_SIZE);		/* sort_list */
 
   return size;
 }
@@ -6996,8 +6985,8 @@ xts_sizeof_srlist_id (const QFILE_SORTED_LIST_ID * sort_list_id)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* sorted */
-    PTR_SIZE;			/* list_id */
+  size += (OR_INT_SIZE		/* sorted */
+	   + PTR_SIZE);		/* list_id */
 
   return size;
 }
@@ -7022,11 +7011,9 @@ xts_sizeof_sort_list (const SORT_LIST * sort_lis)
     }
   size += tmp_size;
 
-  size +=
-    /* other (not sent to server) */
-    OR_INT_SIZE;		/* s_order */
-
-  size += OR_INT_SIZE;		/* s_nulls */
+  size += (0			/* other (not sent to server) */
+	   + OR_INT_SIZE	/* s_order */
+	   + OR_INT_SIZE);	/* s_nulls */
 
   return size;
 }
@@ -7041,8 +7028,8 @@ xts_sizeof_method_sig_list (const METHOD_SIG_LIST * method_sig_list)
 {
   int size = 0;
 
-  size += OR_INT_SIZE +		/* no_methods */
-    PTR_SIZE;			/* method_sig */
+  size += (OR_INT_SIZE		/* no_methods */
+	   + PTR_SIZE);		/* method_sig */
 
   return size;
 }
@@ -7052,12 +7039,12 @@ xts_sizeof_method_sig (const METHOD_SIG * method_sig)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* method_name */
-    PTR_SIZE +			/* class_name */
-    OR_INT_SIZE +		/* method_type */
-    OR_INT_SIZE +		/* no_method_args */
-    (OR_INT_SIZE * (method_sig->no_method_args + 1)) +	/* method_arg_pos */
-    PTR_SIZE;			/* next */
+  size += (PTR_SIZE		/* method_name */
+	   + PTR_SIZE		/* class_name */
+	   + OR_INT_SIZE	/* method_type */
+	   + OR_INT_SIZE	/* no_method_args */
+	   + (OR_INT_SIZE * (method_sig->no_method_args + 1))	/* method_arg_pos */
+	   + PTR_SIZE);		/* next */
 
   return size;
 }
@@ -7072,19 +7059,19 @@ xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * connectby)
 {
   int size = 0;
 
-  size += PTR_SIZE +		/* start_with_pred */
-    PTR_SIZE +			/* after_connect_by_pred */
-    PTR_SIZE +			/* input_list_id */
-    PTR_SIZE +			/* start_with_list_id */
-    PTR_SIZE +			/* regu_list_pred */
-    PTR_SIZE +			/* regu_list_rest */
-    PTR_SIZE +			/* prior_val_list */
-    PTR_SIZE +			/* prior_outptr_list */
-    PTR_SIZE +			/* prior_regu_list_pred */
-    PTR_SIZE +			/* prior_regu_list_rest */
-    PTR_SIZE +			/* after_cb_regu_list_pred */
-    PTR_SIZE +			/* after_cb_regu_list_rest */
-    OR_INT_SIZE;		/* single_table_opt */
+  size += (PTR_SIZE		/* start_with_pred */
+	   + PTR_SIZE		/* after_connect_by_pred */
+	   + PTR_SIZE		/* input_list_id */
+	   + PTR_SIZE		/* start_with_list_id */
+	   + PTR_SIZE		/* regu_list_pred */
+	   + PTR_SIZE		/* regu_list_rest */
+	   + PTR_SIZE		/* prior_val_list */
+	   + PTR_SIZE		/* prior_outptr_list */
+	   + PTR_SIZE		/* prior_regu_list_pred */
+	   + PTR_SIZE		/* prior_regu_list_rest */
+	   + PTR_SIZE		/* after_cb_regu_list_pred */
+	   + PTR_SIZE		/* after_cb_regu_list_rest */
+	   + OR_INT_SIZE);	/* single_table_opt */
 
   return size;
 }
@@ -7324,7 +7311,8 @@ xts_process_regu_variable_list (char *ptr, const REGU_VARIABLE_LIST regu_var_lis
 {
   int offset = 0;
 
-  assert (regu_var_list);
+  assert (regu_var_list != NULL);
+
   /* save regu variable list */
   offset = xts_save_regu_variable_list (regu_var_list);
   if (offset == ER_FAILED)

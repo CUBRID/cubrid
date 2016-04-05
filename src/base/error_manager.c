@@ -95,18 +95,14 @@ syslog (long priority, const char *message, ...)
 #endif
 
 #if defined (SERVER_MODE)
-#define ER_CSECT_ENTER_LOG_FILE() \
-  (csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT))
-#define ER_CSECT_EXIT_LOG_FILE() \
-  (csect_exit (NULL, CSECT_ER_LOG_FILE))
+#define ER_CSECT_ENTER_LOG_FILE() (csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT))
+#define ER_CSECT_EXIT_LOG_FILE() (csect_exit (NULL, CSECT_ER_LOG_FILE))
 #elif defined (CS_MODE)
 static pthread_mutex_t er_log_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int er_csect_enter_log_file (void);
 
-#define ER_CSECT_ENTER_LOG_FILE() \
-  er_csect_enter_log_file()
-#define ER_CSECT_EXIT_LOG_FILE() \
-  pthread_mutex_unlock (&er_log_file_mutex)
+#define ER_CSECT_ENTER_LOG_FILE() er_csect_enter_log_file()
+#define ER_CSECT_EXIT_LOG_FILE() pthread_mutex_unlock (&er_log_file_mutex)
 #else /* SA_MODE */
 #define ER_CSECT_ENTER_LOG_FILE() NO_ERROR
 #define ER_CSECT_EXIT_LOG_FILE()

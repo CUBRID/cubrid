@@ -10922,9 +10922,8 @@ mq_is_real_class_of_vclass (PARSER_CONTEXT * parser, const PT_NODE * s_class, co
   saved_msgs = parser->error_msgs;
   parser->error_msgs = NULL;
 
-  result =
-    (mq_fetch_select_for_real_class_update
-     (parser, (PT_NODE *) d_class, (PT_NODE *) s_class, PT_NORMAL_SELECT, DB_AUTH_SELECT) != NULL);
+  result = (mq_fetch_select_for_real_class_update (parser, (PT_NODE *) d_class, (PT_NODE *) s_class, PT_NORMAL_SELECT,
+						   DB_AUTH_SELECT) != NULL);
   if (pt_has_error (parser))
     {
       parser_free_tree (parser, parser->error_msgs);

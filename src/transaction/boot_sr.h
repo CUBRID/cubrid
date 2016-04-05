@@ -76,6 +76,14 @@ enum boot_server_shutdown_mode
 extern AUTO_ADDVOL_JOB boot_Auto_addvol_job;
 #endif
 
+typedef struct check_args CHECK_ARGS;
+
+struct check_args
+{
+  bool check_db_coll;
+  bool check_timezone;
+};
+
 #define BO_IS_SERVER_RESTARTED() \
         (boot_Server_status == BOOT_SERVER_UP \
          || boot_Server_status == BOOT_SERVER_MAINTENANCE)
@@ -109,7 +117,7 @@ extern DKNPAGES boot_get_temp_temp_vol_max_npages (void);
 extern int boot_add_temp_volume_and_file (VFID * vfid, DKNPAGES npages);
 
 extern int boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db_name, bool from_backup,
-				bool check_db_coll, BO_RESTART_ARG * r_args);
+				CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args);
 extern int xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const char *db_name,
 				      BO_RESTART_ARG * r_args);
 extern bool xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final);

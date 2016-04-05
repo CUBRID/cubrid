@@ -7883,10 +7883,8 @@ lp_get_ha_applied_info (bool is_first)
   int diff_msec;
 
   gettimeofday (&curtime, NULL);
-  diff_msec =
-    (curtime.tv_sec - lp_Info.last_ha_applied_info_time.tv_sec) * 1000 + (curtime.tv_usec / 1000 -
-									  lp_Info.last_ha_applied_info_time.tv_usec /
-									  1000);
+  diff_msec = ((curtime.tv_sec - lp_Info.last_ha_applied_info_time.tv_sec) * 1000
+	       + (curtime.tv_usec / 1000 - lp_Info.last_ha_applied_info_time.tv_usec / 1000));
 
   if (lp_Info.last_ha_applied_info_time.tv_sec != 0 && diff_msec > 0 && diff_msec < LP_HA_APPLIED_INFO_REFRESH_TIME)
     {

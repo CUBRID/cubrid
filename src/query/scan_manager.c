@@ -3036,9 +3036,9 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     }
 
   /* attribute information of the index key */
-  if (heap_get_indexinfo_of_btid
-      (thread_p, cls_oid, &indx_info->indx_id.i.btid, &isidp->bt_type, &isidp->bt_num_attrs, &isidp->bt_attr_ids,
-       &isidp->bt_attrs_prefix_length, NULL, &func_index_col_id) != NO_ERROR)
+  if (heap_get_indexinfo_of_btid (thread_p, cls_oid, &indx_info->indx_id.i.btid, &isidp->bt_type, &isidp->bt_num_attrs,
+				  &isidp->bt_attr_ids, &isidp->bt_attrs_prefix_length, NULL,
+				  &func_index_col_id) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -3193,9 +3193,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   isidp->iscan_oid_order = iscan_oid_order;
 
-  if (scan_init_indx_coverage
-      (thread_p, coverage_enabled, output_val_list, regu_val_list, vd, query_id, root_header->node.max_key_len,
-       func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
+  if (scan_init_indx_coverage (thread_p, coverage_enabled, output_val_list, regu_val_list, vd, query_id,
+			       root_header->node.max_key_len, func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -3211,8 +3210,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				&& isidp->key_limit_upper > 0 && isidp->key_limit_upper < DB_INT32_MAX
 				&& isidp->key_limit_lower == -1) ? true : false;
 
-    if (scan_init_multi_range_optimization
-	(thread_p, &(isidp->multi_range_opt), use_multi_range_opt, (int) isidp->key_limit_upper) != NO_ERROR)
+    if (scan_init_multi_range_optimization (thread_p, &(isidp->multi_range_opt), use_multi_range_opt,
+					    (int) isidp->key_limit_upper) != NO_ERROR)
       {
 	goto exit_on_error;
       }
@@ -3369,9 +3368,8 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   bts->is_btid_int_valid = true;
 
   /* attribute information of the index key */
-  if (heap_get_indexinfo_of_btid
-      (thread_p, cls_oid, &indx_info->indx_id.i.btid, &isidp->bt_type, &isidp->bt_num_attrs, NULL, NULL, NULL,
-       &func_index_col_id) != NO_ERROR)
+  if (heap_get_indexinfo_of_btid (thread_p, cls_oid, &indx_info->indx_id.i.btid, &isidp->bt_type, &isidp->bt_num_attrs,
+				  NULL, NULL, NULL, &func_index_col_id) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -3416,9 +3414,8 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   isidp->iscan_oid_order = iscan_oid_order;
 
-  if (scan_init_indx_coverage
-      (thread_p, false, NULL, NULL, vd, query_id, root_header->node.max_key_len, func_index_col_id,
-       &(isidp->indx_cov)) != NO_ERROR)
+  if (scan_init_indx_coverage (thread_p, false, NULL, NULL, vd, query_id, root_header->node.max_key_len,
+			       func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
     {
       goto exit_on_error;
     }

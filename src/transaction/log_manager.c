@@ -596,7 +596,7 @@ log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_d
       return false;
     }
 
-  if (difftime ((time_t) vol_dbcreation, (time_t) * log_dbcreation) == 0)
+  if (difftime ((time_t) vol_dbcreation, (time_t) (*log_dbcreation)) == 0)
     {
       return true;
     }
@@ -629,6 +629,7 @@ log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
+
   memcpy (db_creation, &log_Gl.hdr.db_creation, sizeof (*db_creation));
   rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
   memcpy (chkpt_lsa, &log_Gl.hdr.chkpt_lsa, sizeof (*chkpt_lsa));
@@ -1536,9 +1537,8 @@ loop:
 	  else if (LOG_ISTRAN_ACTIVE (tdes) && abort_thread_running[i] == 0)
 	    {
 	      conn = css_find_conn_by_tran_index (i);
-	      job_entry = css_make_job_entry (conn, (CSS_THREAD_FN) log_abort_by_tdes, (CSS_THREAD_ARG) tdes, -1	/* implicit: 
-															 * DEFAULT 
-															 */ );
+	      job_entry = css_make_job_entry (conn, (CSS_THREAD_FN) log_abort_by_tdes, (CSS_THREAD_ARG) tdes,
+					      -1 /* implicit: DEFAULT */ );
 	      if (job_entry != NULL)
 		{
 		  css_add_to_job_queue (job_entry);
@@ -9039,9 +9039,8 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const ch
   int dummy;
 
   LOG_CS_ENTER (thread_p);
-  if (logpb_find_header_parameters
-      (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize, &ignore_log_page_size, &ignore_dbcreation,
-       &ignore_dbcomp, &dummy) == -1)
+  if (logpb_find_header_parameters (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize,
+				    &ignore_log_page_size, &ignore_dbcreation, &ignore_dbcomp, &dummy) == -1)
     {
       /* 
        * For case where active log could not be found, user still needs
@@ -9784,10 +9783,10 @@ void
 log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time)
 {
   LOG_CS_ENTER (thread_p);
-  log_Gl.hdr.db_restore_time = db_restore_time;
-  LOG_CS_EXIT (thread_p);
 
-  return;
+  log_Gl.hdr.db_restore_time = db_restore_time;
+
+  LOG_CS_EXIT (thread_p);
 }
 
 

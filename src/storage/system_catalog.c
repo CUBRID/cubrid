@@ -77,29 +77,29 @@ static int rv;
 
 /* READERS for CATALOG_PAGE_HEADER related fields */
 #define CATALOG_GET_PGHEADER_OVFL_PGID_PAGEID(ptr) \
-   (PAGEID) OR_GET_INT((ptr) + CATALOG_PGHEADER_OVFL_PGID_PAGEID_OFF )
+   (PAGEID) OR_GET_INT ((ptr) + CATALOG_PGHEADER_OVFL_PGID_PAGEID_OFF)
 
 #define CATALOG_GET_PGHEADER_OVFL_PGID_VOLID(ptr) \
-  (VOLID) OR_GET_SHORT((ptr) + CATALOG_PGHEADER_OVFL_PGID_VOLID_OFF )
+  (VOLID) OR_GET_SHORT ((ptr) + CATALOG_PGHEADER_OVFL_PGID_VOLID_OFF)
 
 #define CATALOG_GET_PGHEADER_DIR_COUNT(ptr) \
-   (int) OR_GET_INT((ptr) + CATALOG_PGHEADER_DIR_CNT_OFF )
+   (int) OR_GET_INT ((ptr) + CATALOG_PGHEADER_DIR_CNT_OFF)
 
 #define CATALOG_GET_PGHEADER_PG_OVFL(ptr) \
-   (bool) OR_GET_INT((ptr) + CATALOG_PGHEADER_PG_OVFL_OFF )
+   (bool) OR_GET_INT ((ptr) + CATALOG_PGHEADER_PG_OVFL_OFF)
 
 /* WRITERS for CATALOG_PAGE_HEADER related fields */
 #define CATALOG_PUT_PGHEADER_OVFL_PGID_PAGEID(ptr,val) \
-  OR_PUT_INT((ptr) + CATALOG_PGHEADER_OVFL_PGID_PAGEID_OFF, val)
+  OR_PUT_INT ((ptr) + CATALOG_PGHEADER_OVFL_PGID_PAGEID_OFF, (val))
 
 #define CATALOG_PUT_PGHEADER_OVFL_PGID_VOLID(ptr,val) \
-  OR_PUT_SHORT((ptr) + CATALOG_PGHEADER_OVFL_PGID_VOLID_OFF, val)
+  OR_PUT_SHORT ((ptr) + CATALOG_PGHEADER_OVFL_PGID_VOLID_OFF, (val))
 
 #define CATALOG_PUT_PGHEADER_DIR_COUNT(ptr,val) \
-  OR_PUT_INT((ptr) + CATALOG_PGHEADER_DIR_CNT_OFF, val)
+  OR_PUT_INT ((ptr) + CATALOG_PGHEADER_DIR_CNT_OFF, (val))
 
 #define CATALOG_PUT_PGHEADER_PG_OVFL(ptr,val) \
-  OR_PUT_INT((ptr) + CATALOG_PGHEADER_PG_OVFL_OFF, (int)(val))
+  OR_PUT_INT ((ptr) + CATALOG_PGHEADER_PG_OVFL_OFF, (int) (val))
 
 /* Each disk representation is aligned with MAX_ALIGNMENT */
 #define CATALOG_DISK_REPR_ID_OFF             0
@@ -130,17 +130,10 @@ static int rv;
 #define CATALOG_BT_STATS_FUNC_INDEX_OFF	 28
 #define CATALOG_BT_STATS_PKEYS_OFF       32
 #define CATALOG_BT_STATS_RESERVED_OFF    (CATALOG_BT_STATS_PKEYS_OFF + (OR_INT_SIZE * BTREE_STATS_PKEYS_NUM))	/* 64 */
-#define CATALOG_BT_STATS_SIZE            (CATALOG_BT_STATS_RESERVED_OFF + (OR_INT_SIZE * BTREE_STATS_RESERVED_NUM))	/* 64 
-															 * + 
-															 * (4 
-															 * * 
-															 * R_NUM) 
-															 * = 
-															 * 80 
-															 */
+#define CATALOG_BT_STATS_SIZE            (CATALOG_BT_STATS_RESERVED_OFF + (OR_INT_SIZE * BTREE_STATS_RESERVED_NUM))	/* 64 + (4 * R_NUM) = 80 */
 
 #define CATALOG_GET_BT_STATS_BTID(var, ptr) \
-    OR_GET_BTID((ptr) + CATALOG_BT_STATS_BTID_OFF, var)
+    OR_GET_BTID((ptr) + CATALOG_BT_STATS_BTID_OFF, (var))
 
 #define CATALOG_CLS_INFO_HFID_OFF           0
 #define CATALOG_CLS_INFO_TOT_PAGES_OFF     12
@@ -158,20 +151,20 @@ static int rv;
 
 #define CATALOG_REPR_ITEM_SIZE               16
 
-#define CATALOG_GET_REPR_ITEM_PAGEID_PAGEID(ptr)\
-  (PAGEID) OR_GET_INT((ptr) + CATALOG_REPR_ITEM_PAGEID_PAGEID_OFF)
+#define CATALOG_GET_REPR_ITEM_PAGEID_PAGEID(ptr) \
+  (PAGEID) OR_GET_INT ((ptr) + CATALOG_REPR_ITEM_PAGEID_PAGEID_OFF)
 
-#define CATALOG_GET_REPR_ITEM_PAGEID_VOLID(ptr)\
-  (VOLID) OR_GET_SHORT((ptr) + CATALOG_REPR_ITEM_PAGEID_VOLID_OFF)
+#define CATALOG_GET_REPR_ITEM_PAGEID_VOLID(ptr) \
+  (VOLID) OR_GET_SHORT ((ptr) + CATALOG_REPR_ITEM_PAGEID_VOLID_OFF)
 
 #define CATALOG_GET_REPR_ITEM_REPRID(ptr) \
-  (REPR_ID) OR_GET_SHORT((ptr)+ CATALOG_REPR_ITEM_REPRID_OFF)
+  (REPR_ID) OR_GET_SHORT ((ptr) + CATALOG_REPR_ITEM_REPRID_OFF)
 
 #define CATALOG_GET_REPR_ITEM_SLOTID(ptr) \
-  (PGSLOTID) OR_GET_SHORT((ptr)+ CATALOG_REPR_ITEM_SLOTID_OFF)
+  (PGSLOTID) OR_GET_SHORT ((ptr) + CATALOG_REPR_ITEM_SLOTID_OFF)
 
 #define CATALOG_GET_REPR_ITEM_COUNT(ptr) \
-  (PGSLOTID) OR_GET_BYTE((ptr)+ CATALOG_REPR_ITEM_COUNT_OFF)
+  (PGSLOTID) OR_GET_BYTE ((ptr) + CATALOG_REPR_ITEM_COUNT_OFF)
 
 /* catalog estimated max. space information */
 typedef struct catalog_max_space CATALOG_MAX_SPACE;
@@ -808,8 +801,8 @@ catalog_free_representation (DISK_REPR * repr_p)
       attr_cnt = repr_p->n_fixed + repr_p->n_variable;
       for (k = 0; k < attr_cnt; k++)
 	{
-	  attr_p = (k < repr_p->n_fixed) ? (DISK_ATTR *) repr_p->fixed + k
-	    : (DISK_ATTR *) repr_p->variable + (k - repr_p->n_fixed);
+	  attr_p = ((k < repr_p->n_fixed)
+		    ? (DISK_ATTR *) repr_p->fixed + k : (DISK_ATTR *) repr_p->variable + (k - repr_p->n_fixed));
 
 	  if (attr_p->value != NULL)
 	    {
@@ -2249,8 +2242,7 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
 
       page_p =
 	catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_READ, PEEK, &rep_dir,
-							&repr_count, false
-							/* lookup_hash */ );
+							&repr_count, false /* lookup_hash */ );
       if (page_p == NULL)
 	{
 	  return ER_FAILED;
@@ -2348,8 +2340,9 @@ catalog_drop_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CAT
       return ER_FAILED;
     }
 
-  page_p = catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_WRITE, COPY, &rep_dir, &repr_count, true	/* lookup_hash 
-																		 */ );
+  page_p =
+    catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_WRITE, COPY, &rep_dir,
+						    &repr_count, true /* lookup_hash */ );
   if (page_p == NULL)
     {
       recdes_free_data_area (&record);
@@ -3299,8 +3292,8 @@ catalog_drop_all (THREAD_ENTRY * thread_p, OID * class_id_p)
       return er_errid ();
     }
 
-  page_p = catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_READ, COPY, &rep_dir, &repr_count, true	/* lookup_hash 
-																		 */ );
+  page_p = catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_READ, COPY,
+							   &rep_dir, &repr_count, true /* lookup_hash */ );
   if (page_p == NULL)
     {
       recdes_free_data_area (&record);
@@ -3394,8 +3387,8 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p, OID * class_
       return error_code;
     }
 
-  page_p = catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_WRITE, COPY, &rep_dir, &repr_count, true	/* lookup_hash 
-																		 */ );
+  page_p = catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_WRITE, COPY,
+							   &rep_dir, &repr_count, true /* lookup_hash */ );
   if (page_p == NULL)
     {
       recdes_free_data_area (&record);
@@ -3505,8 +3498,8 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
       return error_code;
     }
 
-  page_p = catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_WRITE, COPY, &rep_dir, &repr_count, true	/* lookup_hash 
-																		 */ );
+  page_p = catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_WRITE, COPY,
+							   &rep_dir, &repr_count, true /* lookup_hash */ );
   if (page_p == NULL)
     {
       recdes_free_data_area (&record);
@@ -3648,8 +3641,8 @@ xcatalog_check_rep_dir (THREAD_ENTRY * thread_p, OID * class_id_p, OID * rep_dir
       return ER_FAILED;
     }
 
-  page_p = catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_WRITE, PEEK, rep_dir_p, &repr_count, true	/* lookup_hash 
-																		 */ );
+  page_p = catalog_get_representation_record_after_search (thread_p, class_id_p, &record, PGBUF_LATCH_WRITE, PEEK,
+							   rep_dir_p, &repr_count, true /* lookup_hash */ );
 
   assert (er_errid () != ER_HEAP_NODATA_NEWADDRESS);	/* TODO - */
 

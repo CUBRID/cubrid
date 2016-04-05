@@ -3742,8 +3742,8 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
   /* Read vacuum data from disk */
   /* Do not use page buffer */
   /* All vacuum data pages are contiguous */
-  if (fileio_read_pages
-      (thread_p, vol_fd, (char *) vacuum_Data, vacuum_Data_vpid.pageid, vacuum_Data_npages, IO_PAGESIZE) == NULL)
+  if (fileio_read_pages (thread_p, vol_fd, (char *) vacuum_Data, vacuum_Data_vpid.pageid, vacuum_Data_npages,
+			 IO_PAGESIZE) == NULL)
     {
       assert (false);
       return ER_FAILED;
@@ -4036,9 +4036,8 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, int vacuum_data_npa
   char vacuum_data_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   /* Create disk file to keep vacuum data */
-  if (file_create
-      (thread_p, vacuum_data_vfid, vacuum_data_npages, FILE_VACUUM_DATA, NULL, &first_page_vpid,
-       -vacuum_data_npages) == NULL)
+  if (file_create (thread_p, vacuum_data_vfid, vacuum_data_npages, FILE_VACUUM_DATA, NULL, &first_page_vpid,
+		   -vacuum_data_npages) == NULL)
     {
       assert (false);
       return ER_FAILED;
