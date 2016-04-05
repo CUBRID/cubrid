@@ -3585,177 +3585,6 @@ error:
 }
 
 /*
- * catcls_update_subset () -
- *   return:
- *   value(in):
- *   old_value(in):
- *   uflag(in):
- *   force_in_place(in): INPLACE update style
- */
-//static int
-//catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * old_value_p, int *update_flag_p, 
-//                    UPDATE_INPLACE_STYLE force_in_place)
-//{
-//  OR_VALUE *subset_p, *old_subset_p;
-//  int n_subset, n_old_subset;
-//  int n_min_subset;
-//  OID *class_oid_p;
-//  CLS_INFO *cls_info_p = NULL;
-//  HFID *hfid_p;
-//  OID *oid_p, tmp_oid;
-//  DB_SET *old_oid_set_p = NULL;
-//  DB_VALUE oid_val;
-//  int i;
-//  HEAP_SCANCACHE scan;
-//  bool is_scan_inited = false;
-//  int error = NO_ERROR;
-//
-//  if ((value_p->sub.count > 0) && ((old_value_p->sub.count < 0) || DB_IS_NULL (&old_value_p->value)))
-//    {
-//      old_oid_set_p = set_create_sequence (0);
-//      db_make_sequence (&old_value_p->value, old_oid_set_p);
-//      old_value_p->sub.count = 0;
-//    }
-//
-//  subset_p = value_p->sub.value;
-//  n_subset = value_p->sub.count;
-//
-//  old_subset_p = old_value_p->sub.value;
-//  n_old_subset = old_value_p->sub.count;
-//
-//  if (subset_p != NULL)
-//    {
-//      class_oid_p = &subset_p[0].id.classoid;
-//    }
-//  else if (old_subset_p != NULL)
-//    {
-//      class_oid_p = &old_subset_p[0].id.classoid;
-//    }
-//  else
-//    {
-//      return NO_ERROR;
-//    }
-//
-//  old_oid_set_p = DB_PULL_SET (&old_value_p->value);
-//  cls_info_p = catalog_get_class_info (thread_p, class_oid_p, NULL);
-//  if (cls_info_p == NULL)
-//    {
-//      assert (er_errid () != NO_ERROR);
-//      error = er_errid ();
-//      goto error;
-//    }
-//
-//  hfid_p = &cls_info_p->ci_hfid;
-//  if (heap_scancache_start_modify (thread_p, &scan, hfid_p, class_oid_p, MULTI_ROW_UPDATE, NULL) != NO_ERROR)
-//    {
-//      goto error;
-//    }
-//
-//  is_scan_inited = true;
-//
-//  n_min_subset = (n_subset > n_old_subset) ? n_old_subset : n_subset;
-//  /* update components */
-//  for (i = 0; i < n_min_subset; i++)
-//    {
-//      error = set_get_element (old_oid_set_p, i, &oid_val);
-//      if (error != NO_ERROR)
-//      {
-//        goto error;
-//      }
-//
-//      if (DB_VALUE_TYPE (&oid_val) != DB_TYPE_OID)
-//      {
-//        goto error;
-//      }
-//
-//      oid_p = DB_PULL_OID (&oid_val);
-//      error = catcls_update_instance (thread_p, &subset_p[i], oid_p, class_oid_p, hfid_p, &scan);
-//      if (error != NO_ERROR)
-//      {
-//        goto error;
-//      }
-//    }
-//
-//  /* drop components */
-//  if (n_old_subset > n_subset)
-//    {
-//      for (i = n_old_subset - 1; i >= n_min_subset; i--)
-//      {
-//        error = set_get_element (old_oid_set_p, i, &oid_val);
-//        if (error != NO_ERROR)
-//          {
-//            goto error;
-//          }
-//
-//        if (DB_VALUE_TYPE (&oid_val) != DB_TYPE_OID)
-//          {
-//            goto error;
-//          }
-//
-//        oid_p = DB_PULL_OID (&oid_val);
-//        error = catcls_delete_instance (thread_p, oid_p, class_oid_p, hfid_p, &scan);
-//        if (error != NO_ERROR)
-//          {
-//            goto error;
-//          }
-//
-//        error = set_drop_seq_element (old_oid_set_p, i);
-//        if (error != NO_ERROR)
-//          {
-//            goto error;
-//          }
-//      }
-//
-//      if (set_size (old_oid_set_p) == 0)
-//      {
-//        pr_clear_value (&old_value_p->value);
-//      }
-//
-//      *update_flag_p = true;
-//    }
-//  /* add components */
-//  else if (n_old_subset < n_subset)
-//    {
-//      OID root_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
-//      for (i = n_min_subset, oid_p = &tmp_oid; i < n_subset; i++)
-//      {
-//        error = catcls_insert_instance (thread_p, &subset_p[i], oid_p, &root_oid, class_oid_p, hfid_p, &scan);
-//        if (error != NO_ERROR)
-//          {
-//            goto error;
-//          }
-//
-//        db_push_oid (&oid_val, oid_p);
-//        error = set_add_element (old_oid_set_p, &oid_val);
-//        if (error != NO_ERROR)
-//          {
-//            goto error;
-//          }
-//      }
-//      *update_flag_p = true;
-//    }
-//
-//  heap_scancache_end_modify (thread_p, &scan);
-//  catalog_free_class_info (cls_info_p);
-//
-//  return NO_ERROR;
-//
-//error:
-//
-//  if (is_scan_inited)
-//    {
-//      heap_scancache_end_modify (thread_p, &scan);
-//    }
-//
-//  if (cls_info_p)
-//    {
-//      catalog_free_class_info (cls_info_p);
-//    }
-//
-//  return error;
-//}
-
-/*
  * catcls_insert_instance () -
  *   return:
  *   value(in):
@@ -4122,7 +3951,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 	}
 
       /* give up setting updated attr info */
-      if (locator_update_index (thread_p, &record, &old_record, NULL, 0, oid_p, oid_p, class_oid_p, SINGLE_ROW_UPDATE,
+      if (locator_update_index (thread_p, &record, &old_record, NULL, 0, oid_p, class_oid_p, SINGLE_ROW_UPDATE,
 				scan_p, NULL) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -4131,8 +3960,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 	}
 
       /* update in place */
-      heap_create_update_context (&update_context, hfid_p, oid_p, class_oid_p, &record, scan_p,
-				  UPDATE_INPLACE_CURRENT_MVCCID, false);
+      heap_create_update_context (&update_context, hfid_p, oid_p, class_oid_p, &record, scan_p, force_in_place, false);
       if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -4464,8 +4292,7 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p, RECD
   is_scan_inited = true;
 
   /* update catalog classes */
-  if (catcls_update_instance (thread_p, value_p, &oid, catalog_class_oid_p, hfid_p, &scan,
-			      UPDATE_INPLACE_CURRENT_MVCCID) != NO_ERROR)
+  if (catcls_update_instance (thread_p, value_p, &oid, catalog_class_oid_p, hfid_p, &scan, force_in_place) != NO_ERROR)
     {
       goto error;
     }

@@ -474,7 +474,7 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 
   copy_area = NULL;
   success =
-    xlocator_fetch (thread_p, &oid, chn, NULL, lock, (LC_FETCH_VERSION_TYPE) fetch_version_type,
+    xlocator_fetch (thread_p, &oid, chn, lock, (LC_FETCH_VERSION_TYPE) fetch_version_type,
 		    (LC_FETCH_VERSION_TYPE) fetch_version_type, &class_oid, class_chn, prefetch, &copy_area);
 
   if (success != NO_ERROR)

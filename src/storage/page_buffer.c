@@ -11582,10 +11582,7 @@ pgbuf_replace_watcher (THREAD_ENTRY * thread_p, PGBUF_WATCHER * old_watcher, PGB
   PGBUF_LATCH_MODE latch_mode;
 
   assert (old_watcher != NULL);
-  if (!PGBUF_IS_CLEAN_WATCHER (new_watcher))
-    {
-      assert (PGBUF_IS_CLEAN_WATCHER (new_watcher));
-    }
+  assert (PGBUF_IS_CLEAN_WATCHER (new_watcher));
 
 #if !defined(NDEBUG)
   assert (old_watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);

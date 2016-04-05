@@ -510,8 +510,6 @@ struct vacuum_heap_helper
   /* Collect data on vacuum. */
   PGSLOTID slots[MAX_SLOTS_IN_PAGE];	/* Slot ID's. */
   MVCC_SATISFIES_VACUUM_RESULT results[MAX_SLOTS_IN_PAGE];	/* Vacuum check results. */
-  OID next_versions[MAX_SLOTS_IN_PAGE];	/* Next version links. */
-  OID partition_links[MAX_SLOTS_IN_PAGE];	/* Partition links. */
 
   OID forward_links[2];		/* REC_BIGONE, REC_RELOCATION forward links. (buffer for forward_recdes) */
   RECDES forward_recdes;	/* Record descriptor to read forward links. */
@@ -545,15 +543,14 @@ struct vacuum_heap_helper
 #define VACUUM_LOG_VACUUM_HEAP_MASK	      0xC000
 
 static void vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int n_slots, PGSLOTID * slots,
-					 MVCC_SATISFIES_VACUUM_RESULT * results, OID * next_versions,
-					 OID * partition_oids, bool reusable, bool all_vacuumed);
+					 MVCC_SATISFIES_VACUUM_RESULT * results, bool reusable, bool all_vacuumed);
 static void vacuum_log_remove_ovf_insid (THREAD_ENTRY * thread_p, PAGE_PTR ovfpage);
 
 static int vacuum_init_master_prefetch (THREAD_ENTRY * thread_p);
 
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_record_insid_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_get_hfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
@@ -624,9 +621,9 @@ static int vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid,
 static bool is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header);
 static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_header, int btree_node_type);
 static void vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
-					       RECDES * undo_recdes, OID * next_version_oid, OID * partition_oid,
-					       bool reusable);
-
+					       RECDES * undo_recdes, bool reusable);
+static int vacuum_heap_ovf (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_object, MVCCID threshold_mvccid,
+			    bool reusable, bool was_interrupted);
 /*
  * xvacuum () - Vacuumes database
  *
@@ -1156,7 +1153,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  else if (helper.can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
 	    {
 	      /* Record insert MVCCID and prev version lsa can be removed. */
-	      error_code = vacuum_heap_record_insid_prev_version (thread_p, &helper);
+	      error_code = vacuum_heap_record_insid_and_prev_version (thread_p, &helper);
 	    }
 	  else
 	    {
@@ -1227,8 +1224,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	      VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, &helper);
 
 	      vacuum_log_vacuum_heap_page (thread_p, helper.home_page, helper.n_bulk_vacuumed, helper.slots,
-					   helper.results, helper.next_versions, helper.partition_links,
-					   helper.reusable, true);
+					   helper.results, helper.reusable, true);
 
 	      VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, &helper);
 	    }
@@ -1603,14 +1599,14 @@ retry_prepare:
 }
 
 /*
- * vacuum_heap_record_insid_prev_version () - Remove insert MVCCID and prev version lsa from record.
+ * vacuum_heap_record_insid_and_prev_version () - Remove insert MVCCID and prev version lsa from record.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
  */
 static int
-vacuum_heap_record_insid_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
+vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 {
   RECDES update_record;		/* Record to build updated version without insert MVCCID. */
   /* Buffer for update_record data. */
@@ -1667,7 +1663,7 @@ vacuum_heap_record_insid_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELP
 
       /* Since forward page was vacuumed, log it immediately. Then unfix forward page. */
       vacuum_log_vacuum_heap_page (thread_p, helper->forward_page, 1, &helper->forward_oid.slotid, &helper->can_vacuum,
-				   NULL, NULL, helper->reusable, false);
+				   helper->reusable, false);
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
@@ -1741,8 +1737,6 @@ vacuum_heap_record_insid_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELP
       /* Collect vacuum data to be logged later. */
       helper->slots[helper->n_bulk_vacuumed] = helper->crt_slotid;
       helper->results[helper->n_bulk_vacuumed] = VACUUM_RECORD_DELETE_INSID_PREV_VER;
-      OID_SET_NULL (&helper->next_versions[helper->n_bulk_vacuumed]);
-      OID_SET_NULL (&helper->partition_links[helper->n_bulk_vacuumed]);
       helper->n_bulk_vacuumed++;
 
       mnt_heap_home_vacuums (thread_p);
@@ -1796,22 +1790,10 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       /* Collect home page changes. */
       helper->slots[helper->n_bulk_vacuumed] = helper->crt_slotid;
       helper->results[helper->n_bulk_vacuumed] = VACUUM_RECORD_REMOVE;
-      if (!helper->reusable)
-	{
-	  /* Save next version and partition links. */
-	  COPY_OID (&helper->next_versions[helper->n_bulk_vacuumed], &MVCC_GET_NEXT_VERSION (&helper->mvcc_header));
-	  COPY_OID (&helper->partition_links[helper->n_bulk_vacuumed], &MVCC_GET_PARTITION_OID (&helper->mvcc_header));
-	}
-      else
-	{
-	  /* Links not logged. */
-	}
     }
 
   /* Vacuum REC_HOME/REC_RELOCATION/REC_BIGONE */
-  if (spage_vacuum_slot
-      (thread_p, helper->home_page, helper->crt_slotid, &MVCC_GET_NEXT_VERSION (&helper->mvcc_header),
-       &MVCC_GET_PARTITION_OID (&helper->mvcc_header), helper->reusable) != NO_ERROR)
+  if (spage_vacuum_slot (thread_p, helper->home_page, helper->crt_slotid, helper->reusable) != NO_ERROR)
     {
       if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE)
 	{
@@ -1820,13 +1802,9 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       return ER_FAILED;
     }
 
-  if (helper->reusable || OID_ISNULL (&MVCC_GET_NEXT_VERSION (&helper->mvcc_header)))
+  if (helper->reusable)
     {
       mnt_heap_remove_vacuums (thread_p);
-    }
-  else
-    {
-      mnt_heap_next_ver_vacuums (thread_p);
     }
 
   if (helper->record_type != REC_HOME)
@@ -1848,12 +1826,11 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
       vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->forward_recdes,
-					 &MVCC_GET_NEXT_VERSION (&helper->mvcc_header),
-					 &MVCC_GET_PARTITION_OID (&helper->mvcc_header), helper->reusable);
+					 helper->reusable);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
-      if (spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, NULL, NULL, true) != NO_ERROR)
+      if (spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, true) != NO_ERROR)
 	{
 	  log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
 	  return ER_FAILED;
@@ -1863,7 +1840,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       /* Log changes in forward page immediately. */
       vacuum_log_redoundo_vacuum_record (thread_p, helper->forward_page, helper->forward_oid.slotid, &helper->record,
-					 NULL, NULL, true);
+					 true);
 
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
@@ -1883,8 +1860,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
       vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->forward_recdes,
-					 &MVCC_GET_NEXT_VERSION (&helper->mvcc_header),
-					 &MVCC_GET_PARTITION_OID (&helper->mvcc_header), helper->reusable);
+					 helper->reusable);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
@@ -2039,7 +2015,7 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * he
 
   /* Log vacuumed slots */
   vacuum_log_vacuum_heap_page (thread_p, helper->home_page, helper->n_bulk_vacuumed, helper->slots, helper->results,
-			       helper->next_versions, helper->partition_links, helper->reusable, false);
+			       helper->reusable, false);
 
   /* Mark page as dirty and unfix */
   pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
@@ -2064,23 +2040,18 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * he
  * n_slots (in)	      : OID count in slots.
  * slots (in/out)     : Array of slots removed from heap page.
  * results (in)	      : Satisfies vacuum result.
- * next_versions (in) : OID of next versions.
- * partition_oids (in): partition OIDs.
  * reusable (in)      :
  *
  * NOTE: Some values in slots array are modified and set to negative values.
  */
 static void
 vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int n_slots, PGSLOTID * slots,
-			     MVCC_SATISFIES_VACUUM_RESULT * results, OID * next_versions, OID * partition_oids,
-			     bool reusable, bool all_vacuumed)
+			     MVCC_SATISFIES_VACUUM_RESULT * results, bool reusable, bool all_vacuumed)
 {
   LOG_DATA_ADDR addr;
   int packed_size = 0, i = 0;
   char *ptr = NULL, *buffer_p = NULL;
   char buffer[MAX_SLOTS_IN_PAGE * (sizeof (PGSLOTID) + 2 * OR_OID_SIZE) + (MAX_ALIGNMENT * 2)];
-  bool has_next_versions = false;
-  bool has_partition_oids = false;
 
   assert (n_slots >= 0 && n_slots <= ((SPAGE_HEADER *) page_p)->num_slots);
   assert (n_slots > 0 || all_vacuumed);
@@ -2099,46 +2070,7 @@ vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int n_slo
     {
       addr.offset |= VACUUM_LOG_VACUUM_HEAP_REUSABLE;
     }
-  else
-    {
-      if (next_versions != NULL)
-	{
-	  /* next versions */
-	  /* is there any non-null next version? */
-	  for (i = 0; i < n_slots; i++)
-	    {
-	      if (!OID_ISNULL (&next_versions[i]))
-		{
-		  has_next_versions = true;
-		  break;
-		}
-	    }
-	  if (has_next_versions)
-	    {
-	      /* Found non-null next version. */
-	      packed_size = DB_ALIGN (packed_size, OR_OID_SIZE);
-	      packed_size += n_slots * OR_OID_SIZE;
-	    }
 
-	  if (partition_oids != NULL)
-	    {
-	      /* next version partition oids */
-	      for (i = 0; i < n_slots; i++)
-		{
-		  if (!OID_ISNULL (&partition_oids[i]))
-		    {
-		      has_partition_oids = true;
-		      break;
-		    }
-		}
-	      if (has_partition_oids)
-		{
-		  /* Found non-null partition oids. */
-		  packed_size += n_slots * OR_OID_SIZE;
-		}
-	    }
-	}
-    }
   if (all_vacuumed)
     {
       addr.offset |= VACUUM_LOG_VACUUM_HEAP_ALL_VACUUMED;
@@ -2168,23 +2100,6 @@ vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int n_slo
       ptr += n_slots * sizeof (PGSLOTID);
     }
 
-  if (has_next_versions)
-    {
-      /* Pack next versions */
-      ptr = PTR_ALIGN (ptr, OR_OID_SIZE);
-      memcpy (ptr, next_versions, n_slots * OR_OID_SIZE);
-
-      ptr += n_slots * OR_OID_SIZE;
-
-      if (has_partition_oids)
-	{
-	  /* Pack partition OIDs */
-	  memcpy (ptr, partition_oids, n_slots * OR_OID_SIZE);
-
-	  ptr += n_slots * OR_OID_SIZE;
-	}
-    }
-
   assert ((ptr - buffer_p) == packed_size);
 
   /* Append new redo log rebuild_record */
@@ -2206,8 +2121,6 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   PGSLOTID *slotids = NULL;
   PAGE_PTR page_p = NULL;
   MVCC_SATISFIES_VACUUM_RESULT *results = NULL;
-  OID *next_versions = NULL;
-  OID *partition_oids = NULL;
   RECDES rebuild_record, peek_record;
   int old_header_size, new_header_size;
   MVCC_REC_HEADER rec_header;
@@ -2254,24 +2167,6 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   slotids = (PGSLOTID *) ptr;
   ptr += n_slots * sizeof (PGSLOTID);
 
-  if (ptr < rcv->data + rcv->length)
-    {
-      /* Next versions must be obtained */
-      assert (!reusable);
-      ptr = PTR_ALIGN (ptr, OR_OID_SIZE);
-      next_versions = (OID *) ptr;
-
-      ptr += n_slots * OR_OID_SIZE;
-
-      if (ptr < rcv->data + rcv->length)
-	{
-	  /* partition OIDs must be obtained */
-	  partition_oids = (OID *) ptr;
-
-	  ptr += n_slots * OR_OID_SIZE;
-	}
-    }
-
   /* Safeguard for correct unpacking of recovery data */
   assert (ptr == rcv->data + rcv->length);
 
@@ -2286,9 +2181,7 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	{
 	  /* Record was removed completely */
 	  slotids[i] = -slotids[i];
-	  if (spage_vacuum_slot
-	      (thread_p, page_p, slotids[i], next_versions != NULL ? &next_versions[i] : NULL,
-	       partition_oids != NULL ? &partition_oids[i] : NULL, reusable) != NO_ERROR)
+	  if (spage_vacuum_slot (thread_p, page_p, slotids[i], reusable) != NO_ERROR)
 	    {
 	      assert_release (false);
 	      return ER_FAILED;
@@ -2478,13 +2371,6 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVC
  *			  and vacuum records from b-trees and heap files.
  *
  * return : Void.
- *
- * TODO: Current vacuum algorithm cannot handle REC_MVCC_NEXT_VERSION slot
- *	 types. We may need to add a new routine that will only vacuum
- *	 classes with referable objects. Currently we can only do this by
- *	 scanning the entire heap file and update REC_MVCC_NEXT_VERSION slots.
- *	 It should be called rarely and may require keeping some statistics.
- *	 ****not necessary anymore*******
  */
 void
 vacuum_master_start (void)
@@ -2958,17 +2844,48 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 
       if (LOG_IS_MVCC_HEAP_OPERATION (log_record_data.rcvindex))
 	{
-	  /* Collect heap object to be vacuumed at the end of the job. */
-	  heap_object_oid.pageid = log_record_data.pageid;
-	  heap_object_oid.volid = log_record_data.volid;
-	  heap_object_oid.slotid = heap_rv_remove_flags_from_offset (log_record_data.offset);
-
 	  if (log_record_data.rcvindex == RVHF_MVCC_UPDATE_OVERFLOW)
 	    {
 	      /* only the old OVF record must be removed;
 	       * can do this here to avoid complications */
-	      continue;		// s pose it's done :)
+
+	      RECDES ovf_rec;
+	      OID ovf_oid;
+	      VACUUM_HEAP_OBJECT ovf_obj;
+	      bool reusable;
+
+	      assert (undo_data != NULL);
+	      ovf_rec.type = *(INT16 *) (undo_data);
+	      ovf_rec.data = (char *) (undo_data) + sizeof (ovf_rec.type);
+	      ovf_rec.area_size = ovf_rec.length = undo_data_size - sizeof (ovf_rec.type);
+
+	      assert (ovf_rec.type == REC_BIGONE);
+	      ovf_oid = *((OID *) ovf_rec.data);
+
+	      VFID_COPY (&ovf_obj.vfid, &log_vacuum.vfid);
+	      COPY_OID (&ovf_obj.oid, &ovf_oid);
+	      reusable = file_get_type (thread_p, &ovf_obj.vfid);
+
+	      error_code = vacuum_heap_ovf (thread_p, &ovf_obj, threshold_mvccid, reusable, was_interrupted);
+	      if (error_code != NO_ERROR)
+		{
+		  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
+				 "VACUUM ERROR: Vacuum heap page %d|%d, error_code=%d.\n", ovf_obj.oid.volid,
+				 ovf_obj.oid.pageid);
+
+		  assert_release (false);
+		  er_clear ();
+		  error_code = NO_ERROR;
+		  /* Release should not stop. Continue. */
+		}
+
+	      continue;
 	    }
+
+	  /* Collect heap object to be vacuumed at the end of the job. */
+	  heap_object_oid.pageid = log_record_data.pageid;
+	  heap_object_oid.volid = log_record_data.volid;
+	  heap_object_oid.slotid = heap_rv_remove_flags_from_offset (log_record_data.offset);
 
 	  error_code = vacuum_collect_heap_objects (worker, &heap_object_oid, &log_vacuum.vfid);
 	  if (error_code != NO_ERROR)
@@ -3651,7 +3568,8 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
     }
 
   /* We are here because the file that will be vacuumed is not dropped. */
-  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex) && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
+  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex) && log_record_data->rcvindex != RVES_NOTIFY_VACUUM
+      && log_record_data->rcvindex != RVHF_MVCC_UPDATE_OVERFLOW)
     {
       /* No need to unpack undo data */
       return NO_ERROR;
@@ -7464,25 +7382,19 @@ vacuum_is_mvccid_vacuumed (MVCCID id)
  * page_p (in)	      : Page pointer.
  * slotid (in)	      : slot id
  * undo_recdes (in)   : record descriptor before vacuuming
- * results (in)	      : Satisfies vacuum result.
- * next_versions (in) : OID of next versions.
- * partition_oids (in): partition OIDs.
  * reusable (in)      :
  *
  * NOTE: Some values in slots array are modified and set to negative values.
  */
 static void
 vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, RECDES * undo_recdes,
-				   OID * next_version_oid, OID * partition_oid, bool reusable)
+				   bool reusable)
 {
   char *ptr = NULL, *buffer_p = NULL;
   char buffer[2 * OR_OID_SIZE + MAX_ALIGNMENT];
   LOG_DATA_ADDR addr;
-  LOG_CRUMB crumbs[4];
-  LOG_CRUMB *undo_crumbs = &crumbs[0];
-  LOG_CRUMB *redo_crumbs = &crumbs[2];
+  LOG_CRUMB undo_crumbs[2];
   int num_undo_crumbs;
-  int num_redo_crumbs;
   int packed_size;
 
   assert (slotid >= 0 && slotid < ((SPAGE_HEADER *) page_p)->num_slots);
@@ -7492,32 +7404,9 @@ vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGS
   addr.pgptr = page_p;
   addr.vfid = NULL;
 
-  num_redo_crumbs = 0;
   if (reusable)
     {
       addr.offset |= VACUUM_LOG_VACUUM_HEAP_REUSABLE;
-    }
-  else if (next_version_oid != NULL && !OID_ISNULL (next_version_oid))
-    {
-      buffer_p = PTR_ALIGN (buffer, MAX_ALIGNMENT);
-      ptr = buffer_p;
-      ptr = PTR_ALIGN (ptr, OR_OID_SIZE);
-      memcpy (ptr, next_version_oid, OR_OID_SIZE);
-
-      ptr += OR_OID_SIZE;
-      packed_size = OR_OID_SIZE;
-
-      if (partition_oid != NULL && !OID_ISNULL (partition_oid))
-	{
-	  /* Pack partition OIDs */
-	  memcpy (ptr, partition_oid, OR_OID_SIZE);
-	  ptr += OR_OID_SIZE;
-	  packed_size += OR_OID_SIZE;
-	}
-
-      redo_crumbs[0].length = packed_size;
-      redo_crumbs[0].data = buffer_p;
-      num_redo_crumbs = 1;
     }
 
   undo_crumbs[0].length = sizeof (undo_recdes->type);
@@ -7526,8 +7415,7 @@ vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGS
   undo_crumbs[1].data = undo_recdes->data;
   num_undo_crumbs = 2;
 
-  log_append_undoredo_crumbs (thread_p, RVVAC_HEAP_RECORD_VACUUM, &addr, num_undo_crumbs, num_redo_crumbs, undo_crumbs,
-			      (num_redo_crumbs == 0) ? NULL : redo_crumbs);
+  log_append_undoredo_crumbs (thread_p, RVVAC_HEAP_RECORD_VACUUM, &addr, num_undo_crumbs, 0, &undo_crumbs, NULL);
 }
 
 /*
@@ -7570,8 +7458,6 @@ vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  OID *next_version_oid = NULL;
-  OID *partition_oid = NULL;
   char *ptr;
   INT16 slotid;
   bool reusable;
@@ -7579,24 +7465,7 @@ vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   slotid = (rcv->offset & (~VACUUM_LOG_VACUUM_HEAP_MASK));
   reusable = (rcv->offset & VACUUM_LOG_VACUUM_HEAP_REUSABLE) != 0;
 
-  if (rcv->data != NULL && rcv->length > 0)
-    {
-      assert (!reusable);
-
-      ptr = (char *) rcv->data;
-      ptr = PTR_ALIGN (ptr, OR_OID_SIZE);
-      next_version_oid = (OID *) ptr;
-
-      ptr += OR_OID_SIZE;
-
-      if (ptr < rcv->data + rcv->length)
-	{
-	  partition_oid = (OID *) ptr;
-	  ptr += OR_OID_SIZE;
-	}
-    }
-
-  if (spage_vacuum_slot (thread_p, rcv->pgptr, slotid, next_version_oid, partition_oid, reusable) != NO_ERROR)
+  if (spage_vacuum_slot (thread_p, rcv->pgptr, slotid, reusable) != NO_ERROR)
     {
       assert_release (false);
       return ER_FAILED;
@@ -7805,4 +7674,23 @@ vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p, LOG_LSA * start_postpone
 #else /* !SERVER_MODE */
   return false;
 #endif /* !SERVER_MODE */
+}
+
+/*
+ * vacuum_heap_ovf () - Vacuum overflow heap record of bigone.
+ *
+ * return		 : Error code.
+ * thread_p (in)	 : Thread entry.
+ * heap_object (in)	 : Object to vacuum.
+ * threshold_mvccid (in) : Threshold MVCCID used to vacuum.
+ * reusable (in)	 : True if object slots are reusable.
+ * was_interrutped (in)  : True if same job was executed and interrupted.
+ */
+int
+vacuum_heap_ovf (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * ovf_object, MVCCID threshold_mvccid,
+		 bool reusable, bool was_interrupted)
+{
+  int error_code = NO_ERROR;
+
+  return error_code;
 }

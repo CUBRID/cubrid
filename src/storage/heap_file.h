@@ -105,7 +105,6 @@ typedef struct heap_mvcc_delete_info HEAP_MVCC_DELETE_INFO;
 struct heap_mvcc_delete_info
 {
   MVCCID row_delid;		/* row delete id */
-  OID next_row_version;		/* next row version */
   MVCC_SATISFIES_DELETE_RESULT satisfies_delete_result;	/* can delete row? */
 };
 
@@ -302,6 +301,7 @@ enum update_inplace_style
   UPDATE_INPLACE_OLD_MVCCID = 2	/* non-MVCC in-place update style with old MVCC ID. Preserves old MVCC ID */
 };
 
+/* Currently mvcc update is also executed inplace, but coresponds to UPDATE_INPLACE_NONE. TODO: Refactor */
 #define HEAP_IS_UPDATE_INPLACE(update_inplace_style) \
   ((update_inplace_style) != UPDATE_INPLACE_NONE)
 

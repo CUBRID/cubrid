@@ -4899,28 +4899,21 @@ spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id)
  * thread_p (in)     : Thread entry.
  * page_p (in)	     : Page pointer.
  * slotid (in)	     : Record slot id.
- * next_version (in) : Next object version if it was updated.
- * partition_oid (in): partition OID if partition has changed.
  * reusable (in)     : True if slots are reusable, false if they are
  *		       referable.
  *
  * NOTE: Vacuuming the slot can be done in three ways depending on
  *	 next_version and reusable:
- *	 1. Reusable = false, next_version is NULL: Replace slot with
+ *	 1. Reusable = false: Replace slot with
  *	    REC_MARKDELETED (deleted slot, but cannot be reused since there
  *	    may still be references pointing to this slot).
- *	 2. Reusable = false, next_version is not NULL: Replace slot with
- *	    REC_MVCC_NEXT_VERSION since references to this slot have to follow
- *	    update chain.
- *	 3. Reusable = true: Slot is always replaced with
+ *	 2. Reusable = true: Slot is always replaced with
  *	    REC_DELETED_WILL_REUSE. Since there are no references to this
  *	    slot and this version is invisible, there is no point in keeping
  *	    links to newer versions.
- *	no more case 2. !!
  */
 int
-spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, OID * next_version, OID * partition_oid,
-		   bool reusable)
+spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bool reusable)
 {
   SPAGE_HEADER *page_header_p = (SPAGE_HEADER *) page_p;
   SPAGE_SLOT *slot_p = NULL;

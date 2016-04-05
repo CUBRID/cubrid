@@ -222,7 +222,6 @@ struct lc_copyarea_oneobj
   HFID hfid;			/* Valid only for flushing */
   OID class_oid;		/* Oid of the Class of the object */
   OID oid;			/* Oid of the object */
-  OID updated_oid;		/* Stores new object OID in case it has changed. */
   int length;			/* Length of the object */
   int offset;			/* location in the copy area where the content of the object is stored */
 };

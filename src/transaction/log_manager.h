@@ -206,6 +206,7 @@ extern int log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_
 extern SCAN_CODE log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values,
 						   int out_cnt, void *ptr);
 extern int log_archive_log_header_end_scan (THREAD_ENTRY * thread_p, void **ptr);
-extern int log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA process_lsa, RECDES * recdes);
+extern SCAN_CODE log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA process_lsa,
+				      RECDES * recdes);
 
 #endif /* _LOG_MANAGER_H_ */
