@@ -3140,11 +3140,6 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
       or_advance (buf_p, sizeof (LOG_LSA));
     }
 
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
-    {
-      or_advance (buf_p, OR_OID_SIZE);	/* skip partition link */
-    }
-
   if (bound_bits_flag)
     {
       size = OR_BOUND_BIT_BYTES (n_fixed);

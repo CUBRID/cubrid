@@ -1014,11 +1014,6 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
 	  or_advance (buf, sizeof (LOG_LSA));
 	}
 
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
-	{
-	  /* skip partition link */
-	  or_advance (buf, OR_OID_SIZE);
-	}
       bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
 
       if (repid == class_->repid)

@@ -56,18 +56,6 @@
   (recdes)->data      = (char *)record_data; \
   }while(0)
 
-/* use this to set REC_RELOCATION and REC_BIGONE records */
-#define HEAP_SET_FORWARD_RECORD(recdes, record_area_size, record_length, \
-				record_type, record_data, forward_oid) \
-  do  {	\
-  (recdes)->area_size = record_area_size;  \
-  (recdes)->length    = record_length;  \
-  (recdes)->type      = record_type; \
-  (recdes)->data      = (char *)record_data; \
-  COPY_OID ((OID *) (recdes)->data, forward_oid); \
-  COPY_OID ((OID *) ((recdes)->data + OR_OID_SIZE), &oid_Null_oid); \
-  }while(0)
-
 #define HEAP_HEADER_AND_CHAIN_SLOTID  0	/* Slot for chain and header */
 
 #define HEAP_MAX_ALIGN INT_ALIGNMENT	/* maximum alignment for heap record */
@@ -316,9 +304,6 @@ struct heap_operation_context
   /* logical operation input */
   HFID hfid;			/* heap file identifier */
   OID oid;			/* object identifier */
-  LOG_LSA prev_version_lsa;	/* previous version lsa address */
-  OID next_version;
-  OID partition_link;		/* partition link */
   OID class_oid;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache_p;	/* scan cache */

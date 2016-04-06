@@ -823,50 +823,6 @@ or_mvcc_set_delid_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 }
 
 /*
- * or_mvcc_get_partition_oid () - Get MVCC partition link from record data.
- *
- * return	   : error code
- * buf (in/out)	   : or buffer
- * mvcc_falgs(in)  : MVCC flags
- * oid(out)	   : OID of next version
- */
-static int
-or_mvcc_get_partition_oid (OR_BUF * buf, int mvcc_flags, OID * oid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID))
-    {
-      OID_SET_NULL (oid);
-      return NO_ERROR;
-    }
-
-  return or_get_oid (buf, oid);
-}
-
-/*
- * or_mvcc_set_partition_oid () - Set MVCC partition OID
- *
- * return	      : error code 
- * buf (in/out)	      : or buffer
- * mvcc_rec_header(in): MVCC record header
- */
-static int
-or_mvcc_set_partition_oid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  int error_code = NO_ERROR;
-  assert (buf != NULL);
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_PARTITION_OID))
-    {
-      return NO_ERROR;
-    }
-
-  return or_put_oid (buf, &(mvcc_rec_header->partition_oid));
-}
-
-/*
  * or_mvcc_get_header () - Get mvcc record header from record data.
  *
  * return		: Void.
@@ -905,12 +861,6 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
     }
 
   rc = or_mvcc_get_prev_version_lsa (&buf, mvcc_header->mvcc_flag, &(mvcc_header->prev_version_lsa));
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  rc = or_mvcc_get_partition_oid (&buf, mvcc_header->mvcc_flag, &(mvcc_header->partition_oid));
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
@@ -992,12 +942,6 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
       goto exit_on_error;
     }
 
-  error = or_mvcc_set_partition_oid (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
   return NO_ERROR;
 
 exit_on_error:
@@ -1054,12 +998,6 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
     }
 
   error = or_mvcc_set_prev_version_lsa (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_partition_oid (buf, mvcc_rec_header);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -7804,11 +7742,6 @@ or_mvcc_header_size_from_flags (char mvcc_flags)
   if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
     {
       mvcc_header_size += sizeof (LOG_LSA);
-    }
-
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
-    {
-      mvcc_header_size += OR_OID_SIZE;
     }
 
   return mvcc_header_size;

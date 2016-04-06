@@ -24838,8 +24838,6 @@ pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID 
       return HEAP_RECORD_INFO_T_MVCC_FLAGS;
     case RESERVED_T_MVCC_PREV_VERSION_LSA:
       return HEAP_RECORD_INFO_T_MVCC_PREV_VERSION;
-    case RESERVED_T_MVCC_PARTITION_OID:
-      return HEAP_RECORD_INFO_T_MVCC_PARTITION_OID;
 
       /* Page info names */
     case RESERVED_P_CLASS_OID:

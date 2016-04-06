@@ -5961,16 +5961,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  MVCC_CLEAR_FLAG_BITS (&new_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
 		}
 
-	      if (MVCC_IS_FLAG_SET (&old_rec_header, OR_MVCC_FLAG_VALID_PARTITION_OID))
-		{
-		  MVCC_SET_FLAG_BITS (&new_rec_header, OR_MVCC_FLAG_VALID_PARTITION_OID);
-		  MVCC_SET_PARTITION_OID (&new_rec_header, &MVCC_GET_PARTITION_OID (&old_rec_header));
-		}
-	      else
-		{
-		  MVCC_CLEAR_FLAG_BITS (&new_rec_header, OR_MVCC_FLAG_VALID_PARTITION_OID);
-		}
-
 	      if (or_mvcc_set_header (recdes, &new_rec_header) != NO_ERROR)
 		{
 		  goto error;
@@ -6523,13 +6513,6 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
 	      /* build operation context */
 	      heap_create_delete_context (&delete_context, hfid, oid, &class_oid, scan_cache);
-
-	      /* treat moving */
-	      if (idx_action_flag == FOR_MOVE)
-		{
-		  assert (new_obj_oid != NULL && partition_oid != NULL);
-		  COPY_OID (&delete_context.partition_link, partition_oid);
-		}
 
 	      /* attempt delete */
 	      if (heap_delete_logical (thread_p, &delete_context) != NO_ERROR)

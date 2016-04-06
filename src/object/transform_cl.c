@@ -1368,11 +1368,6 @@ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp)
 	  or_advance (buf, sizeof (LOG_LSA));
 	}
 
-      if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
-	{
-	  /* skip partition link */
-	  or_advance (buf, OR_OID_SIZE);
-	}
       bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
 
       if (repid == class_->repid)

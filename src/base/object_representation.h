@@ -631,9 +631,6 @@
 /* The record contains 8 bytes CHN */
 #define OR_MVCC_FLAG_VALID_LONG_CHN	  0x08
 
-/* The record contains a valid partition link */
-#define OR_MVCC_FLAG_VALID_PARTITION_OID  0x10
-
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
 
 /* OBJECT HEADER ACCESS MACROS */

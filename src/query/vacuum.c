@@ -1644,13 +1644,10 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	  ASSERT_ERROR ();
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
 			 "Vacuum error: set mvcc header (flag=%d, repid=%d, chn=%d, insid=%llu, "
-			 "delid=%llu, next_v=%d|%d|%d to object %d|%d|%d with record of type=%d and size=%d",
+			 "delid=%llu, forward object %d|%d|%d with record of type=%d and size=%d",
 			 (int) MVCC_GET_FLAG (&helper->mvcc_header), (int) MVCC_GET_REPID (&helper->mvcc_header),
 			 MVCC_GET_CHN (&helper->mvcc_header), MVCC_GET_INSID (&helper->mvcc_header),
-			 MVCC_GET_DELID (&helper->mvcc_header), helper->mvcc_header.next_version.volid,
-			 helper->mvcc_header.next_version.pageid, helper->mvcc_header.next_version.slotid,
-			 helper->forward_oid.volid, helper->forward_oid.pageid, helper->forward_oid.slotid, REC_NEWHOME,
-			 helper->record.length);
+			 MVCC_GET_DELID (&helper->mvcc_header), helper->forward_oid.volid, helper->forward_oid.pageid, helper->forward_oid.slotid, REC_NEWHOME,		 helper->record.length);
 	  return error_code;
 	}
 
@@ -1683,13 +1680,10 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	  ASSERT_ERROR ();
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
 			 "Vacuum error: set mvcc header (flag=%d, repid=%d, chn=%d, insid=%llu, "
-			 "delid=%llu, next_v=%d|%d|%d to object %d|%d|%d with record of type=%d and size=%d",
+			 "delid=%llu, forward object %d|%d|%d with record of type=%d and size=%d",
 			 (int) MVCC_GET_FLAG (&helper->mvcc_header), (int) MVCC_GET_REPID (&helper->mvcc_header),
 			 MVCC_GET_CHN (&helper->mvcc_header), MVCC_GET_INSID (&helper->mvcc_header),
-			 MVCC_GET_DELID (&helper->mvcc_header), helper->mvcc_header.next_version.volid,
-			 helper->mvcc_header.next_version.pageid, helper->mvcc_header.next_version.slotid,
-			 helper->home_vpid.volid, helper->home_vpid.pageid, helper->crt_slotid, REC_BIGONE,
-			 helper->record.length);
+			 MVCC_GET_DELID (&helper->mvcc_header), helper->home_vpid.volid, helper->home_vpid.pageid, helper->crt_slotid, REC_BIGONE,			 helper->record.length);
 	  return error_code;
 	}
       /* Log changes and unfix first overflow page. */
@@ -1720,13 +1714,10 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	  ASSERT_ERROR ();
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
 			 "Vacuum error: set mvcc header (flag=%d, repid=%d, chn=%d, insid=%llu, "
-			 "delid=%llu, next_v=%d|%d|%d to object %d|%d|%d with record of type=%d and size=%d",
+			 "delid=%llu, forward object %d|%d|%d with record of type=%d and size=%d",
 			 (int) MVCC_GET_FLAG (&helper->mvcc_header), (int) MVCC_GET_REPID (&helper->mvcc_header),
 			 MVCC_GET_CHN (&helper->mvcc_header), MVCC_GET_INSID (&helper->mvcc_header),
-			 MVCC_GET_DELID (&helper->mvcc_header), helper->mvcc_header.next_version.volid,
-			 helper->mvcc_header.next_version.pageid, helper->mvcc_header.next_version.slotid,
-			 helper->home_vpid.volid, helper->home_vpid.pageid, helper->crt_slotid, REC_HOME,
-			 helper->record.length);
+			 MVCC_GET_DELID (&helper->mvcc_header), 		 helper->home_vpid.volid, helper->home_vpid.pageid, helper->crt_slotid, REC_HOME,			 helper->record.length);
 	  return error_code;
 	}
       if (spage_update (thread_p, helper->home_page, helper->crt_slotid, &update_record) != SP_SUCCESS)

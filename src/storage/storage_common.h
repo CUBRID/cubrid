@@ -374,12 +374,10 @@ struct mvcc_rec_header
     MVCCID mvcc_del_id;		/* MVCC delete id */
     int chn;			/* cache coherency number */
   } delid_chn;
-  OID next_version;		/* next row version *//* TODO: remove */
-  OID partition_oid;		/* partition link */
-  LOG_LSA prev_version_lsa;	/* log adress of previous version */
+  LOG_LSA prev_version_lsa;	/* log address of previous version */
 };
 #define MVCC_REC_HEADER_INITIALIZER \
-  { 0, 0, MVCCID_NULL, { MVCCID_NULL }, OID_INITIALIZER, OID_INITIALIZER, LSA_INITIALIZER }
+  { 0, 0, MVCCID_NULL, { MVCCID_NULL }, LSA_INITIALIZER }
 
 typedef struct lorecdes LORECDES;	/* Work area descriptor */
 struct lorecdes
