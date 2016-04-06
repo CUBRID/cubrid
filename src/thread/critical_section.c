@@ -2468,7 +2468,7 @@ rwlock_dump_statistics (FILE * fp)
   RWLOCK *rwlock;
   int i, cnt;
 
-  fprintf (fp, "             RWlock Name    |Total Enter|   Max Wait    |  Total wait\n");
+  fprintf (fp, "\n             RWlock Name    |Total Enter|   Max Wait    |  Total wait\n");
 
   pthread_mutex_lock (&rwlock_Mutex);
 
