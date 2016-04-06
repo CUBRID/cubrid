@@ -2098,6 +2098,9 @@ rwlock_read_lock (RWLOCK * rwlock)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_LOCK, 0);
 	  assert (0);
+
+	  (void) pthread_mutex_unlock (&rwlock->read_lock);
+
 	  return ER_CSS_PTHREAD_MUTEX_LOCK;
 	}
     }
@@ -2154,6 +2157,9 @@ rwlock_read_unlock (RWLOCK * rwlock)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
 	  assert (0);
+
+	  (void) pthread_mutex_unlock (&rwlock->read_lock);
+
 	  return ER_CSS_PTHREAD_MUTEX_UNLOCK;
 	}
     }
