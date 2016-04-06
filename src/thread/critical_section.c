@@ -2270,7 +2270,7 @@ rwlock_finalize_rwlock_monitor (void)
     }
 
   /* clear the head entry */
-  rwlock_initialize_rwlock_monitor_entry (p);
+  rwlock_initialize_rwlock_monitor_entry (&rwlock_Monitor);
 
   return NO_ERROR;
 }
