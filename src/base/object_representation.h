@@ -571,7 +571,7 @@
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
 
 /* representation id, MVCC insert id and CHN == 36 ?? */ 
-#define OR_MVCC_MAX_HEADER_SIZE  36
+#define OR_MVCC_MAX_HEADER_SIZE  28
 
 /* representation id and CHN */
 #define OR_MVCC_MIN_HEADER_SIZE  8
