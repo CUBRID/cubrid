@@ -23593,12 +23593,14 @@ heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       slotid = rcv->offset;
       if (spage_get_record (rcv->pgptr, slotid, &peek_recdes, PEEK) != S_SUCCESS)
 	{
+	  assert_release (false);
 	  return ER_FAILED;
 	}
       if (peek_recdes.type != REC_MVCC_NEXT_VERSION)
 	{
 	  if (or_mvcc_get_header (&peek_recdes, &mvcc_rec_header) != NO_ERROR)
 	    {
+	      assert_release (false);
 	      return ER_FAILED;
 	    }
 	}
@@ -23607,6 +23609,7 @@ heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       if (heap_get_mvcc_rec_header_from_overflow (rcv->pgptr, &mvcc_rec_header, &peek_recdes) != NO_ERROR)
 	{
+	  assert_release (false);
 	  return ER_FAILED;
 	}
     }
@@ -23631,6 +23634,7 @@ heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	    {
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	    }
+	  assert_release (false);
 	  return er_errid ();
 	}
 
@@ -23653,6 +23657,7 @@ heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       if (heap_set_mvcc_rec_header_on_overflow (rcv->pgptr, &mvcc_rec_header) != NO_ERROR)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  assert_release (false);
 	  return ER_FAILED;
 	}
     }
@@ -23664,6 +23669,7 @@ heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 			      OR_GET_OFFSET_SIZE (peek_recdes.data)) != NO_ERROR)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  assert_release (false);
 	  return ER_FAILED;
 	}
       memcpy (recdes.data + recdes.length, peek_recdes.data + old_mvcc_header_size,
@@ -23678,6 +23684,7 @@ heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	    {
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	    }
+	  assert_release (false);
 	  return er_errid ();
 	}
     }
@@ -26884,72 +26891,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
-  if (context->update_in_place == UPDATE_INPLACE_OLD_MVCCID)
-    {
-      MVCC_REC_HEADER mvcc_rec_header;
-      MVCCID mvcc_insid, mvcc_delid;
-      bool mutex_acquired = false, has_insid = false, has_delid = false;
-
-      or_mvcc_get_header (context->recdes_p, &mvcc_rec_header);
-      has_insid = MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
-      has_delid = MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID);
-      if (has_insid || has_delid)
-	{
-	  if (has_insid)
-	    {
-	      mvcc_insid = MVCC_GET_INSID (&mvcc_rec_header);
-	      if (MVCC_ID_PRECEDES (log_Gl.hdr.last_block_newest_mvccid, mvcc_insid)
-		  || MVCC_ID_PRECEDES (mvcc_insid, log_Gl.hdr.last_block_oldest_mvccid))
-		{
-		  /* we have a chance to update global newest/oldest */
-		  (void) pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
-		  mutex_acquired = true;
-		  /* need to check again, maybe another thread has update last_block_newest_mvccid or
-		   * last_block_oldest_mvccid meanwhile */
-		  if (MVCC_ID_PRECEDES (log_Gl.hdr.last_block_newest_mvccid, mvcc_insid))
-		    {
-		      /* A newer MVCCID was found */
-		      log_Gl.hdr.last_block_newest_mvccid = mvcc_insid;
-		    }
-		  else if (MVCC_ID_PRECEDES (mvcc_insid, log_Gl.hdr.last_block_oldest_mvccid))
-		    {
-		      /* An older MVCCID was found */
-		      log_Gl.hdr.last_block_oldest_mvccid = mvcc_insid;
-		    }
-		}
-	    }
-
-	  if (has_delid)
-	    {
-	      mvcc_delid = MVCC_GET_DELID (&mvcc_rec_header);
-	      if (MVCC_ID_PRECEDES (log_Gl.hdr.last_block_newest_mvccid, mvcc_delid)
-		  || MVCC_ID_PRECEDES (mvcc_delid, log_Gl.hdr.last_block_oldest_mvccid))
-		{
-		  if (mutex_acquired == false)
-		    {
-		      (void) pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
-		      mutex_acquired = true;
-		    }
-		  if (MVCC_ID_PRECEDES (log_Gl.hdr.last_block_newest_mvccid, mvcc_delid))
-		    {
-		      /* A newer MVCCID was found */
-		      log_Gl.hdr.last_block_newest_mvccid = mvcc_delid;
-		    }
-		  else if (MVCC_ID_PRECEDES (mvcc_delid, log_Gl.hdr.last_block_oldest_mvccid))
-		    {
-		      /* An older MVCCID was found */
-		      log_Gl.hdr.last_block_oldest_mvccid = mvcc_delid;
-		    }
-		}
-	    }
-
-	  if (mutex_acquired == true)
-	    {
-	      pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
-	    }
-	}
-    }
-
   /* mark insert page as dirty */
   pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr, DONT_FREE);
 
@@ -28149,7 +28090,8 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
       temp_oid.volid = vpid.volid;
       temp_oid.pageid = vpid.pageid;
       worker.n_heap_objects = spage_number_of_slots (pg_watcher.pgptr) - 1;
-      if (worker.n_heap_objects > 0)
+      if (worker.n_heap_objects > 0
+	  && heap_page_get_vacuum_status (thread_p, pg_watcher.pgptr) != HEAP_PAGE_VACUUM_NONE)
 	{
 	  for (i = 1; i <= worker.n_heap_objects; i++)
 	    {

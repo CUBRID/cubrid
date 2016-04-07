@@ -13330,6 +13330,10 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
   int force_count = -1;
   OID oid;
   OID cls_oid;
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  MVCCID threshold_mvccid = MVCCID_NULL;
+
+  assert (tdes != NULL);
 
   PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_RANK_UNDEFINED, PGBUF_ORDERED_NULL_HFID);
 
@@ -13381,6 +13385,35 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	  goto exit;
 	}
       is_part_scancache_started = true;
+
+      if (tdes->block_global_oldest_active_until_commit == false)
+	{
+	  /* do not allow to advance with vacuum_Global_oldest_active_mvccid */
+	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 1);
+	  tdes->block_global_oldest_active_until_commit = true;
+	}
+      else
+	{
+	  assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) > 0);
+	}
+
+      if (threshold_mvccid == MVCCID_NULL)
+	{
+	  /* Can't use vacuum_Global_oldest_active_mvccid here. That's because we want to avoid scenarios where VACUUM
+	   * compute oldest active mvccid, but didn't set yet vacuum_Global_oldest_active_mvccid, current transaction
+	   * uses the old value of vacuum_Global_oldest_active_mvccid, then VACUUM uses updated value of
+	   * vacuum_Global_oldest_active_mvccid.
+	   * In such scenario, VACUUM can remove heap records that can't be removed by the current thread. */
+	  threshold_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+	}
+
+      /* VACUUM all cleanable heap objects before upgrading the domain */
+      error = heap_vacuum_all_objects (thread_p, &scan_cache, threshold_mvccid);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
 
       /* start with first OID of the first page */
       vpid.volid = hfid.vfid.volid;

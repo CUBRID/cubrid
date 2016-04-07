@@ -7893,7 +7893,7 @@ file_allocset_remove_contiguous_pages (THREAD_ENTRY * thread_p, FILE_HEADER * fh
       log_append_undoredo_data (thread_p, RVFL_FHDR_UPDATE_NUM_USER_PAGES, &addr, sizeof (undo_data),
 				sizeof (redo_data), &undo_data, &redo_data);
 
-      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && allocset->num_holes >= (int) NUM_HOLES_NEED_COMPACTION
+      if (VACUUM_IS_THREAD_VACUUM (thread_p) && allocset->num_holes >= (int) NUM_HOLES_NEED_COMPACTION
 	  && fhdr->num_user_pages_mrkdelete == 0)
 	{
 	  /* Compress file. */
