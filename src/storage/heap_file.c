@@ -23214,7 +23214,7 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
 
   /* Add a map record to point to the record in overflow */
   /* NOTE: MVCC information is held in overflow record */
-  heap_build_forwarding_recdes (&context->map_recdes, REC_BIGONE, context->ovf_oid, use_bigone_maxsize);
+  heap_build_forwarding_recdes (&context->map_recdes, REC_BIGONE, context->ovf_oid);
 
   /* use map_recdes for page insertion */
   context->recdes_p = &context->map_recdes;
