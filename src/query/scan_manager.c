@@ -6442,7 +6442,7 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   ssidp = &scan_id->s.ssid;
 
-  /* if we are in the before postion, fetch the set */
+  /* if we are in the before position, fetch the set */
   if (scan_id->position == S_BEFORE)
     {
       func = ssidp->set_ptr;
@@ -6489,9 +6489,8 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      scan_cache_end_needed = true;
 	    }
 
-	  if (heap_mvcc_get_visible
-	      (thread_p, DB_GET_OID (p_dbvalue), NULL, NULL, &scan_cache, S_SELECT, COPY, NULL_CHN,
-	       LOG_WARNING_IF_DELETED) != S_SUCCESS)
+	  if (heap_get_visible_version
+	      (thread_p, DB_GET_OID (p_dbvalue), NULL, NULL, &scan_cache, COPY, NULL_CHN, false) != S_SUCCESS)
 	    {
 	      if (er_errid () == ER_HEAP_NODATA_NEWADDRESS || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 		{

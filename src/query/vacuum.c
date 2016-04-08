@@ -1647,7 +1647,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 			 "delid=%llu, forward object %d|%d|%d with record of type=%d and size=%d",
 			 (int) MVCC_GET_FLAG (&helper->mvcc_header), (int) MVCC_GET_REPID (&helper->mvcc_header),
 			 MVCC_GET_CHN (&helper->mvcc_header), MVCC_GET_INSID (&helper->mvcc_header),
-			 MVCC_GET_DELID (&helper->mvcc_header), helper->forward_oid.volid, helper->forward_oid.pageid, helper->forward_oid.slotid, REC_NEWHOME,		 helper->record.length);
+			 MVCC_GET_DELID (&helper->mvcc_header), helper->forward_oid.volid, helper->forward_oid.pageid,
+			 helper->forward_oid.slotid, REC_NEWHOME, helper->record.length);
 	  return error_code;
 	}
 
@@ -1683,7 +1684,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 			 "delid=%llu, forward object %d|%d|%d with record of type=%d and size=%d",
 			 (int) MVCC_GET_FLAG (&helper->mvcc_header), (int) MVCC_GET_REPID (&helper->mvcc_header),
 			 MVCC_GET_CHN (&helper->mvcc_header), MVCC_GET_INSID (&helper->mvcc_header),
-			 MVCC_GET_DELID (&helper->mvcc_header), helper->home_vpid.volid, helper->home_vpid.pageid, helper->crt_slotid, REC_BIGONE,			 helper->record.length);
+			 MVCC_GET_DELID (&helper->mvcc_header), helper->home_vpid.volid, helper->home_vpid.pageid,
+			 helper->crt_slotid, REC_BIGONE, helper->record.length);
 	  return error_code;
 	}
       /* Log changes and unfix first overflow page. */
@@ -1714,10 +1716,11 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	  ASSERT_ERROR ();
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_HEAP,
 			 "Vacuum error: set mvcc header (flag=%d, repid=%d, chn=%d, insid=%llu, "
-			 "delid=%llu, forward object %d|%d|%d with record of type=%d and size=%d",
+			 "delid=%llu, object %d|%d|%d with record of type=%d and size=%d",
 			 (int) MVCC_GET_FLAG (&helper->mvcc_header), (int) MVCC_GET_REPID (&helper->mvcc_header),
 			 MVCC_GET_CHN (&helper->mvcc_header), MVCC_GET_INSID (&helper->mvcc_header),
-			 MVCC_GET_DELID (&helper->mvcc_header), 		 helper->home_vpid.volid, helper->home_vpid.pageid, helper->crt_slotid, REC_HOME,			 helper->record.length);
+			 MVCC_GET_DELID (&helper->mvcc_header), helper->home_vpid.volid, helper->home_vpid.pageid,
+			 helper->crt_slotid, REC_HOME, helper->record.length);
 	  return error_code;
 	}
       if (spage_update (thread_p, helper->home_page, helper->crt_slotid, &update_record) != SP_SUCCESS)
@@ -2897,8 +2900,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 
 	  assert (undo_data != NULL);
 
-	  if (log_record_data.rcvindex == RVBT_MVCC_UPDATE_SAME_KEY
-	      || log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ)
+	  if (log_record_data.rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ)
 	    {
 	      btree_rv_read_keybuf_two_objects (thread_p, undo_data, undo_data_size, &btid_int, &old_version,
 						&new_version, &key_buf);
@@ -2910,23 +2912,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	    }
 
 	  /* Vacuum based on rcvindex. */
-	  if (log_record_data.rcvindex == RVBT_MVCC_UPDATE_SAME_KEY)
-	    {
-	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
-			     "VACUUM: thread(%d): vacuum mvcc update same key from b-tree: btidp(%d, (%d %d)), "
-			     "old object oid(%d, %d, %d), class_oid(%d, %d, %d), new object oid(%d, %d, %d), "
-			     "class_oid(%d, %d, %d), mvccid=%llu.\n", thread_get_current_entry_index (),
-			     btid_int.sys_btid->root_pageid, btid_int.sys_btid->vfid.fileid,
-			     btid_int.sys_btid->vfid.volid, old_version.oid.volid, old_version.oid.pageid,
-			     old_version.oid.slotid, old_version.class_oid.volid, old_version.class_oid.pageid,
-			     old_version.class_oid.slotid, new_version.oid.volid, new_version.oid.pageid,
-			     new_version.oid.slotid, new_version.class_oid.volid, new_version.class_oid.pageid,
-			     new_version.class_oid.slotid, (unsigned long long int) mvccid);
-	      error_code =
-		btree_vacuum_mvcc_update_same_key (thread_p, btid_int.sys_btid, &key_buf, &old_version, &new_version,
-						   mvccid);
-	    }
-	  else if (log_record_data.rcvindex == RVBT_MVCC_NOTIFY_VACUUM)
+	  if (log_record_data.rcvindex == RVBT_MVCC_NOTIFY_VACUUM)
 	    {
 	      /* The notification comes from loading index. The object may be both inserted or deleted (load index
 	       * considers all objects for visibility reasons). Vacuum must also decide to remove insert MVCCID or the
@@ -7405,7 +7391,7 @@ vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGS
   undo_crumbs[1].data = undo_recdes->data;
   num_undo_crumbs = 2;
 
-  log_append_undoredo_crumbs (thread_p, RVVAC_HEAP_RECORD_VACUUM, &addr, num_undo_crumbs, 0, &undo_crumbs, NULL);
+  log_append_undoredo_crumbs (thread_p, RVVAC_HEAP_RECORD_VACUUM, &addr, num_undo_crumbs, 0, undo_crumbs, NULL);
 }
 
 /*
@@ -7419,22 +7405,9 @@ vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGS
 int
 vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  INT16 recdes_type;
-
   rcv->offset = (rcv->offset & (~VACUUM_LOG_VACUUM_HEAP_MASK));
 
-  if (spage_is_slot_exist (rcv->pgptr, rcv->offset))
-    {
-      recdes_type = *(INT16 *) (rcv->data);
-
-      assert (recdes_type == REC_RELOCATION || recdes_type == REC_BIGONE);
-
-      return heap_rv_undoredo_update (thread_p, rcv);
-    }
-  else
-    {
-      return heap_rv_redo_insert (thread_p, rcv);
-    }
+  return heap_rv_redo_insert (thread_p, rcv);
 }
 
 /*

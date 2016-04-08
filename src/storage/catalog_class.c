@@ -4745,14 +4745,6 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
 	{
 	  goto error;
 	}
-
-      db_push_oid (&oid_val, oid_p);
-      /* maybe unncessary, need to check */
-      error = set_put_element (oid_set_p, i, &oid_val);
-      if (error != NO_ERROR)
-	{
-	  goto error;
-	}
     }
 
   /* drop components */

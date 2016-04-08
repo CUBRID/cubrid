@@ -814,7 +814,7 @@ static int heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p, OID * o
 						MVCC_REC_HEADER * recdes_header, PGBUF_WATCHER * home_page_watcher,
 						PGBUF_WATCHER * fwd_page_watcher, OID * forward_oid,
 						INT16 * record_type, HEAP_MVCC_DELETE_INFO * mvcc_delete_info);
-static SCAN_CODE heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
+extern SCAN_CODE heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 							RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 							SCAN_OPERATION_TYPE op_type, int ispeeking, int old_chn,
 							MVCC_REEV_DATA * mvcc_reev_data,
@@ -957,8 +957,6 @@ static void heap_log_update_undo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID
 				  RECDES * undo_recdes, LOG_RCVINDEX rcvindex);
 static void heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
 				  RECDES * redo_recdes, LOG_RCVINDEX rcvindex);
-static SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID oid, OID * class_oid, RECDES * recdes,
-					   HEAP_SCANCACHE * scan_cache, int ispeeking);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -7861,38 +7859,6 @@ end:
 }
 
 /*
- * heap_mvcc_get_visible () - Try to get the last updated version of an object.
- *		      For non-MVCC is a simple heap_get call, for MVCC it may
- *		      need to follow up the update chain.
- *
- * return		 : SCAN CODE
- *			   - S_SUCCESS_CHN_UPTODATE if the object is up to
- *			     date and obtaining data is not required.
- *			   - S_SUCCESS if obtaining data is required.
- *			   - S_SNAPSHOT_NOT_SATISFIED if the object is not
- *			     visible to current transaction.
- *			   - S_ERROR for errors.
- * thread_p (in)	 : Thread entry.
- * oid (in)		 : Initial OID.
- * class_oid(in/out)	 : Class OID
- * op_type(in)		 : Scan operation type
- * recdes (in)		 : Record descriptor.
- * scan_cache (in)	 : Scan cache.
- * ispeeking (in)	 : PEEK or COPY.
- * non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the 
- *				ER_HEAP_UNKNOWN_OBJECT error to log
- *                            - LOG_WARNING_IF_DELETED: set only warning
- */
-SCAN_CODE
-heap_mvcc_get_visible (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
-		       HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, int ispeeking, int old_chn,
-		       NON_EXISTENT_HANDLING non_ex_handling_type)
-{
-  return heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, recdes, scan_cache, op_type, ispeeking,
-						old_chn, NULL, non_ex_handling_type);
-}
-
-/*
  * heap_mvcc_get_for_delete () - Get MVCC object version for delete/update.
  *
  * return	       : SCAN_CODE.
@@ -7969,7 +7935,7 @@ heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, R
  *	 shouldn't be any). No locks are acquired either (it's up to the
  *	 caller to handle locks for non-MVCC classes).
  */
-static SCAN_CODE
+SCAN_CODE
 heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 				       HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, int ispeeking,
 				       int old_chn, MVCC_REEV_DATA * mvcc_reev_data,
@@ -8042,6 +8008,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
   if (op_type == S_SELECT)
     {
       /* Regular read. MVCC doesn't require locks and isolation is guaranteed just using snapshot. */
+      assert (false);		/* use heap_get_visible_version() instead */
       lock = NULL_LOCK;
     }
   else if (op_type == S_SELECT_WITH_LOCK)
@@ -9271,7 +9238,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  scan_cache->cache_last_fix_page = true;
 	  pgbuf_replace_watcher (thread_p, &curr_page_watcher, &scan_cache->page_watcher);
 
-	  scan = heap_get_visible_version (thread_p, oid, class_oid, recdes, scan_cache, ispeeking);
+	  scan = heap_get_visible_version (thread_p, &oid, class_oid, recdes, scan_cache, ispeeking, NULL_CHN, true);
 	  scan_cache->cache_last_fix_page = cache_last_fix_page_save;
 
 	  if (!cache_last_fix_page_save && scan_cache->page_watcher.pgptr)
@@ -11939,9 +11906,10 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
 	      /* scan_cache is initialized with a class and heap unrelated to referenced OIDs retrieved here; Different 
 	       * scan_cache is needed here : it is likely that these OIDs do not belong to the same heap, less to same
 	       * page. */
-	      if (heap_mvcc_lock_and_get_object_version (thread_p, DB_GET_OID (&(value->dbvalue)), NULL, NULL,
-							 &local_scancache, S_SELECT, COPY, NULL_CHN, NULL,
-							 LOG_WARNING_IF_DELETED) != S_SUCCESS)
+	      if (heap_get_visible_version
+		  (thread_p, DB_GET_OID (&(value->dbvalue)), NULL, NULL, &local_scancache, COPY, NULL_CHN,
+		   false) != S_SUCCESS)
+
 		{
 		  if (er_errid () == ER_HEAP_NODATA_NEWADDRESS || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 		    {
@@ -25809,7 +25777,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       goto error;
     }
 
-  
+
 error:
 
   /* unfix or keep home page */
@@ -27590,7 +27558,6 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
     }
 
   /* make sure prev_version_lsa is flushed from prior lsa list - wake up log flush thread if it's not flushed */
-  /* !!! improve this to look more like logpb_flush_pages */
   oldest_prior_lsa = log_get_append_lsa ();
   if (LSA_LT (oldest_prior_lsa, previous_version_lsa))
     {
@@ -27713,10 +27680,14 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
  *   recdes (out): Record descriptor.
  *   scan_cache(in): Heap scan cache.
  *   ispeeking(in): Peek record or copy.
+ *   old_chn (in): Cache coherency number for existing record data. It is
+ *		   used by clients to avoid resending record data when
+ *		   it was not updated.
+ *   is_heap_scan(in): required for heap_prepare_record
  */
-static SCAN_CODE
-heap_get_visible_version (THREAD_ENTRY * thread_p, const OID oid, OID * class_oid, RECDES * recdes,
-			  HEAP_SCANCACHE * scan_cache, int ispeeking)
+SCAN_CODE
+heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+			  HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn, bool is_heap_scan)
 {
   OID forward_oid = OID_INITIALIZER;
   SCAN_CODE scan = S_SUCCESS;
@@ -27779,6 +27750,13 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID oid, OID * class_oi
       else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
 	{
 	  scan = S_SNAPSHOT_NOT_SATISFIED;
+	  goto exit;
+	}
+      else if (MVCC_IS_CHN_UPTODATE (thread_p, &mvcc_header, old_chn))
+	{
+	  /* Object version didn't change and CHN is up-to-date. Don't get record data and return
+	   * S_SUCCESS_CHN_UPTODATE instead. */
+	  scan = S_SUCCESS_CHN_UPTODATE;
 	  goto exit;
 	}
       /* else...fall through to heap get */

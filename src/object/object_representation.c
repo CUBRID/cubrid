@@ -93,8 +93,7 @@ static INLINE union DELID_CHN or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flag
   __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_set_delid_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
   __attribute__ ((ALWAYS_INLINE));
-static MVCCID or_mvcc_get_delete_id (RECDES * record);
-static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) 
+static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
   __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
   __attribute__ ((ALWAYS_INLINE));
@@ -8091,7 +8090,7 @@ or_unpack_mvccid (char *ptr, MVCCID * mvccid)
  * buf (in/out)	      : or buffer
  * mvcc_rec_header(in): MVCC record header
  */
-static int
+STATIC_INLINE int
 or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
   int error_code = NO_ERROR;
@@ -8124,7 +8123,7 @@ or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
  * prev_version_lsa(out): the LSA to previous version
  * mvcc_rec_header(in)  : MVCC record header
  */
-static int
+STATIC_INLINE int
 or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
 {
   int error_code = NO_ERROR;

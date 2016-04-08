@@ -2364,21 +2364,21 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
       /* Get object. */
       scan = heap_get (thread_p, oid, &assign->recdes, assign->ptr_scancache, COPY, chn);
     }
-  else if (lock_mode == X_LOCK)
+  else if (lock_mode == X_LOCK || lock_mode == S_LOCK)
     {
       /* Get and lock last object version. */
       scan =
-	heap_mvcc_get_for_delete (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, COPY, chn, NULL,
-				  LOG_WARNING_IF_DELETED);
+	heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache,
+					       op_type, COPY, chn, NULL, LOG_WARNING_IF_DELETED);
     }
   else
     {
-      /* !heap_is_mvcc_disabled_for_class && (lock_mode == NULL_LOCK || lock_mode == S_LOCK) */
-      assert (!heap_is_mvcc_disabled_for_class (class_oid) && (lock_mode == NULL_LOCK || lock_mode == S_LOCK));
+      /* !heap_is_mvcc_disabled_for_class && (lock_mode == NULL_LOCK) */
+      assert (!heap_is_mvcc_disabled_for_class (class_oid) && (lock_mode == NULL_LOCK));
       /* Don't lock anything and get visible object version. */
       scan =
-	heap_mvcc_get_visible (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, op_type, COPY, chn,
-			       LOG_WARNING_IF_DELETED);
+	heap_get_visible_version (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, COPY, NULL_CHN,
+				  false);
     }
 
   if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END)
