@@ -18,7 +18,7 @@
  */
 
 /*
- * mvcc_snapshot.c - mvcc snapshot
+ * mvcc.c - mvcc snapshot
  */
 
 #ident "$Id$"

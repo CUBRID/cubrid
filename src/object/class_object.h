@@ -339,7 +339,7 @@ typedef enum
  */
 typedef enum
 {
-  SM_CLASS_CT,			/* default SQL/X class */
+  SM_CLASS_CT,			/* default CSQL class */
   SM_VCLASS_CT,			/* component db virtual class */
   SM_ADT_CT			/* Abstract data type-pseudo class */
 } SM_CLASS_TYPE;

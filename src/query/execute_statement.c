@@ -1682,9 +1682,8 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       goto end;
     }
 
-  att_name =
-    (char *) (att->info.attr_def.attr_name->alias_print ? att->info.attr_def.attr_name->alias_print : att->info.
-	      attr_def.attr_name->info.name.original);
+  att_name = (char *) (att->info.attr_def.attr_name->alias_print
+		       ? att->info.attr_def.attr_name->alias_print : att->info.attr_def.attr_name->info.name.original);
 
   sm_downcase_name (att_name, att_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
   att_name = att_downcase_name;
@@ -1927,9 +1926,8 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
       goto end;
     }
 
-  att_name =
-    (char *) (att->info.attr_def.attr_name->alias_print ? att->info.attr_def.attr_name->alias_print : att->info.
-	      attr_def.attr_name->info.name.original);
+  att_name = (char *) (att->info.attr_def.attr_name->alias_print
+		       ? att->info.attr_def.attr_name->alias_print : att->info.attr_def.attr_name->info.name.original);
 
   sm_downcase_name (att_name, att_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
   att_name = att_downcase_name;
