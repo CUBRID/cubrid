@@ -2909,9 +2909,8 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid, HFID hfid, REGU
 	}
 
       mvcc_last_record.data = NULL;
-      if (heap_mvcc_get_visible
-	  (thread_p, DB_GET_OID (peek_dbval), NULL, &mvcc_last_record, &local_scancache, S_SELECT, COPY, NULL_CHN,
-	   LOG_WARNING_IF_DELETED) != S_SUCCESS)
+      if (heap_get_visible_version (thread_p, DB_GET_OID (peek_dbval), NULL, &mvcc_last_record, &local_scancache, COPY,
+				    NULL_CHN, false) != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_NODATA_NEWADDRESS || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {

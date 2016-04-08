@@ -1382,8 +1382,7 @@ enum log_repl_flush
   ((rcvindex) == RVBT_MVCC_DELETE_OBJECT \
    || (rcvindex) == RVBT_MVCC_INSERT_OBJECT \
    || (rcvindex) == RVBT_MVCC_INSERT_OBJECT_UNQ \
-   || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM \
-   || (rcvindex) == RVBT_MVCC_UPDATE_SAME_KEY)
+   || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM)
 
 /* Is log record for a MVCC operation */
 #define LOG_IS_MVCC_OPERATION(rcvindex) \
