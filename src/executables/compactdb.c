@@ -449,7 +449,6 @@ process_value (DB_VALUE * value)
     case DB_TYPE_OBJECT:
       {
 	OID *ref_oid;
-	OID updated_oid = OID_INITIALIZER;
 	SCAN_CODE scan_code;
 	HEAP_SCANCACHE scan_cache;
 
@@ -470,8 +469,7 @@ process_value (DB_VALUE * value)
 	heap_scancache_quick_start (&scan_cache);
 	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (NULL);
 	scan_code =
-	  heap_mvcc_get_visible (NULL, ref_oid, NULL, NULL, NULL, S_SELECT, PEEK, NULL_CHN, &updated_oid,
-				 LOG_ERROR_IF_DELETED);
+	  heap_mvcc_get_visible (NULL, ref_oid, NULL, NULL, NULL, S_SELECT, PEEK, NULL_CHN, LOG_ERROR_IF_DELETED);
 	heap_scancache_end (NULL, &scan_cache);
 
 #if defined(CUBRID_DEBUG)
@@ -483,13 +481,6 @@ process_value (DB_VALUE * value)
 	  {
 	    /* Set NULL link. */
 	    OID_SET_NULL (ref_oid);
-	    return_value = 1;
-	    break;
-	  }
-	if (!OID_ISNULL (&updated_oid))
-	  {
-	    /* Update link */
-	    COPY_OID (ref_oid, &updated_oid);
 	    return_value = 1;
 	    break;
 	  }
@@ -701,7 +692,7 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
        * 9rd arg -> data or schema, 10th arg -> max repl. log or not
        */
       success =
-	locator_update_index (NULL, rec, &oldrec, NULL, 0, obj_oid, obj_oid, class_oid, SINGLE_ROW_UPDATE,
+	locator_update_index (NULL, rec, &oldrec, NULL, 0, obj_oid, class_oid, SINGLE_ROW_UPDATE,
 			      (HEAP_SCANCACHE *) NULL, NULL);
     }
   else

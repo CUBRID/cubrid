@@ -331,8 +331,9 @@ boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID * dbparm_o
 
   recdes.area_size = recdes.length = DB_SIZEOF (*dbparm);
   recdes.data = (char *) dbparm;
-  if (heap_first (thread_p, &boot_Db_parm->hfid, NULL, dbparm_oid, &recdes, NULL, COPY) != S_SUCCESS)
+  if (heap_first_without_scancache (thread_p, &boot_Db_parm->hfid, NULL, dbparm_oid, &recdes, COPY) != S_SUCCESS)
     {
+      assert (false);
       return ER_FAILED;
     }
 

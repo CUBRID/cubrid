@@ -957,6 +957,13 @@ struct rvfun RV_fun[] = {
    pgbuf_rv_flush_page,
    pgbuf_rv_flush_page_dump,
    pgbuf_rv_flush_page_dump},
+
+  {RVHF_MVCC_UPDATE_OVERFLOW,
+   "RVHF_MVCC_UPDATE_OVERFLOW",
+   heap_rv_undoredo_update,
+   heap_rv_undoredo_update_and_update_chain,
+   log_rv_dump_hexa,
+   log_rv_dump_hexa}
 };
 
 /*

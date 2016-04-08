@@ -1661,10 +1661,6 @@ static int btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE
 				  BTREE_OP_PURPOSE purpose);
 static int btree_undo_delete_physical (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
 				       BTREE_MVCC_INFO * mvcc_info, LOG_LSA * undo_nxlsa);
-static int btree_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
-				       OID * old_version, OID * new_version, int op_type,
-				       MVCC_REC_HEADER * old_version_mvcc_header,
-				       MVCC_REC_HEADER * new_version_mvcc_header, int *unique);
 static int btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_int, DB_VALUE * key,
 				      PAGE_PTR * root_page, bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key,
 				      bool * stop, bool * restart, void *other_args);
@@ -14968,12 +14964,10 @@ exit_on_error:
  *		      when search
  *   cls_oid(in):
  *   oid(in): Object identifier to be updated
- *   new_oid(in): Object identifier after it was updated
  *   op_type(in):
  *   unique_stat_info(in):
  *   unique(in):
  *   p_mvcc_rec_header(in/out): array of MVCC_REC_HEADER of size 2 or NULL
- *   same_key(in) : Key is not changed.
  *
  * Note: Deletes the <old_key, oid> key-value pair from the B+tree
  * index and inserts the <new_key, oid> key-value pair to the
@@ -14982,8 +14976,7 @@ exit_on_error:
  */
 int
 btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE * new_key, OID * cls_oid, OID * oid,
-	      OID * new_oid, int op_type, BTREE_UNIQUE_STATS * unique_stat_info, int *unique,
-	      MVCC_REC_HEADER * p_mvcc_rec_header, bool same_key)
+	      int op_type, BTREE_UNIQUE_STATS * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header)
 {
   int ret = NO_ERROR;
 
@@ -14995,19 +14988,7 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE
   assert_release (p_mvcc_rec_header == NULL);
 #endif /* SERVER_MODE */
 
-  if (same_key)
-    {
-      ret =
-	btree_mvcc_update_same_key (thread_p, btid, old_key, cls_oid, oid, new_oid, op_type, &p_mvcc_rec_header[0],
-				    &p_mvcc_rec_header[1], unique);
-      if (ret != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	}
-      goto end;
-    }
-
-  if (p_mvcc_rec_header != NULL && !OID_EQ (oid, new_oid))
+  if (p_mvcc_rec_header != NULL)
     {
       /* in MVCC, logical deletion means DEL_ID insertion */
       /* Note that it is possible that update "in-place" is done instead of standard MVCC update, in which case the
@@ -15047,8 +15028,7 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE
 	p_local_rec_header = &p_mvcc_rec_header[1];
       }
 
-    ret =
-      btree_insert (thread_p, btid, new_key, cls_oid, new_oid, op_type, unique_stat_info, unique, p_local_rec_header);
+    ret = btree_insert (thread_p, btid, new_key, cls_oid, oid, op_type, unique_stat_info, unique, p_local_rec_header);
     if (ret != NO_ERROR)
       {
 	ASSERT_ERROR ();
@@ -27112,68 +27092,6 @@ btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * c
 
   return btree_insert_internal (thread_p, btid, key, class_oid, oid, op_type, unique_stat_info, unique, &mvcc_info,
 				NULL, NULL, BTREE_OP_INSERT_MVCC_DELID);
-}
-
-/*
- * btree_mvcc_update_same_key () - MVCC update when key is not changed.
- *
- * return			: Error code.
- * thread_p (in)		: Thread entry.
- * btid (in)			: B-tree ID.
- * key (in)			: Key value.
- * class_oid (in)		: Class OID.
- * old_version (in)		: Old version OID.
- * new_version (in)		: New version OID.
- * op_type (in)			: Operation type.
- * old_version_mvcc_header (in) : Old version MVCC header.
- * new_version_mvcc_header (in) : New version MVCC header.
- * unique (out)			: Output whether index is unique.
- */
-static int
-btree_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * old_version,
-			    OID * new_version, int op_type, MVCC_REC_HEADER * old_version_mvcc_header,
-			    MVCC_REC_HEADER * new_version_mvcc_header, int *unique)
-{
-  BTREE_MVCC_INFO old_mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
-  BTREE_OBJECT_INFO new_version_info = BTREE_OBJECT_INFO_INITIALIZER;
-
-  /* Assert expected arguments. */
-  assert (btid != NULL);
-  assert (old_version != NULL);
-  assert (new_version != NULL);
-  assert (old_version_mvcc_header != NULL);
-  assert (new_version_mvcc_header != NULL);
-
-  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
-    {
-      if (class_oid == NULL)
-	{
-	  class_oid = (OID *) & oid_Null_oid;
-	}
-      _er_log_debug (ARG_FILE_LINE,
-		     "BTREE_MVCC_UPDATE_SAME_KEY: Start MVCC update same key "
-		     "class_oid %d|%d|%d, old object %d|%d|%d, new object %d|%d|%d MVCCID=%llu in "
-		     "index (%d, %d|%d).\n", class_oid->volid, class_oid->pageid, class_oid->slotid, old_version->volid,
-		     old_version->pageid, old_version->slotid, new_version->volid, new_version->pageid,
-		     new_version->slotid, MVCC_GET_DELID (old_version_mvcc_header), btid->root_pageid, btid->vfid.volid,
-		     btid->vfid.fileid);
-    }
-
-  btree_mvcc_info_from_heap_mvcc_header (old_version_mvcc_header, &old_mvcc_info);
-  /* Safe guard. */
-  assert (BTREE_MVCC_INFO_IS_DELID_VALID (&old_mvcc_info));
-
-  COPY_OID (&new_version_info.oid, new_version);
-  if (class_oid != NULL)
-    {
-      COPY_OID (&new_version_info.class_oid, class_oid);
-    }
-  btree_mvcc_info_from_heap_mvcc_header (new_version_mvcc_header, &new_version_info.mvcc_info);
-  assert (BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (&new_version_info.mvcc_info));
-  assert (new_version_info.mvcc_info.insert_mvccid == old_mvcc_info.delete_mvccid);
-
-  return btree_insert_internal (thread_p, btid, key, class_oid, old_version, op_type, NULL, unique, &old_mvcc_info,
-				NULL, &new_version_info, BTREE_OP_UPDATE_SAME_KEY_DIFF_OID);
 }
 
 /*

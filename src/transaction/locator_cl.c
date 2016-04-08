@@ -3727,7 +3727,7 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p, MOP 
 	    }
 	  return error_code;
 	}
-      *mop_p = ws_mvcc_updated_mop (&obj->oid, &obj->updated_oid, class_mop, LC_ONEOBJ_IS_UPDATED_BY_ME (obj));
+      *mop_p = ws_mop (&obj->oid, class_mop);
       if (*mop_p == NULL)
 	{
 #if defined(CUBRID_DEBUG)
@@ -4271,122 +4271,122 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
       /* Notify the workspace about the changes that were made to objects belonging to partitioned classes. In the case 
        * of a partition change, what the server returns here is a new object (not an updated one) and the object that
        * we sent was deleted */
-      mop_toid = mflush->mop_uoids;
-      while (mop_toid != NULL)
-	{
-	  if (mop_toid->mop != NULL)
-	    {
-	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, mop_toid->obj);
-	      /* There are two cases when OID can change after update: 1. when operation is LC_FLUSH_UPDATE_PRUNE. 2.
-	       * MVCC implementation of LC_FLUSH_UPDATE. */
+      //     mop_toid = mflush->mop_uoids;
+      //     while (mop_toid != NULL)
+      //{
+      //  if (mop_toid->mop != NULL)
+      //    {
+      //      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, mop_toid->obj);
+      //      /* There are two cases when OID can change after update: 1. when operation is LC_FLUSH_UPDATE_PRUNE. 2.
+      //       * MVCC implementation of LC_FLUSH_UPDATE. */
 
-	      /* TODO: Must investigate what happens with MVCC and pruning */
+      //      /* TODO: Must investigate what happens with MVCC and pruning */
 
-	      assert (obj->operation == LC_FLUSH_UPDATE || obj->operation == LC_FLUSH_UPDATE_PRUNE);
+      //      assert (obj->operation == LC_FLUSH_UPDATE || obj->operation == LC_FLUSH_UPDATE_PRUNE);
 
-	      /* Check if object OID has changed */
-	      if ((!OID_ISNULL (&obj->updated_oid) && !OID_EQ (WS_OID (mop_toid->mop), &obj->updated_oid))
-		  || (!OID_ISNULL (&obj->oid) && !OID_EQ (WS_OID (mop_toid->mop->class_mop), &obj->class_oid)))
-		{
-		  MOP new_mop;
-		  MOP cached_mop_of_new;
-		  OID *new_oid;
+      //      /* Check if object OID has changed */
+      //      if ((!OID_ISNULL (&obj->updated_oid) && !OID_EQ (WS_OID (mop_toid->mop), &obj->updated_oid))
+      //        || (!OID_ISNULL (&obj->oid) && !OID_EQ (WS_OID (mop_toid->mop->class_mop), &obj->class_oid)))
+      //      {
+      //        MOP new_mop;
+      //        MOP cached_mop_of_new;
+      //        OID *new_oid;
 
-		  MOP new_class_mop = ws_mop (&obj->class_oid, sm_Root_class_mop);
+      //        MOP new_class_mop = ws_mop (&obj->class_oid, sm_Root_class_mop);
 
-		  if (new_class_mop == NULL)
-		    {
-		      /* Error */
-		      error_code = ER_FAILED;
-		    }
-		  else
-		    {
-		      /* Make sure that we have the new class in workspace */
-		      if (new_class_mop->object == NULL)
-			{
-			  SM_CLASS *smclass = NULL;
+      //        if (new_class_mop == NULL)
+      //          {
+      //            /* Error */
+      //            error_code = ER_FAILED;
+      //          }
+      //        else
+      //          {
+      //            /* Make sure that we have the new class in workspace */
+      //            if (new_class_mop->object == NULL)
+      //              {
+      //                SM_CLASS *smclass = NULL;
 
-			  /* No need to check authorization here */
-			  error_code = au_fetch_class_force (new_class_mop, &smclass, AU_FETCH_READ);
-			}
+      //                /* No need to check authorization here */
+      //                error_code = au_fetch_class_force (new_class_mop, &smclass, AU_FETCH_READ);
+      //              }
 
-		      new_oid = OID_ISNULL (&obj->updated_oid) ? &obj->oid : &obj->updated_oid;
-		      cached_mop_of_new = ws_mop_if_exists (new_oid);
-		      if (cached_mop_of_new == NULL)
-			{
-			  /* new_oid has not been cached. Cache as a new object. */
-			  new_mop = ws_new_mop (new_oid, new_class_mop);
-			}
-		      else
-			{
-			  if (!cached_mop_of_new->decached)
-			    {
-			      assert (!cached_mop_of_new->dirty);
-			      ws_decache (cached_mop_of_new);
-			    }
+      //            new_oid = OID_ISNULL (&obj->updated_oid) ? &obj->oid : &obj->updated_oid;
+      //            cached_mop_of_new = ws_mop_if_exists (new_oid);
+      //            if (cached_mop_of_new == NULL)
+      //              {
+      //                /* new_oid has not been cached. Cache as a new object. */
+      //                new_mop = ws_new_mop (new_oid, new_class_mop);
+      //              }
+      //            else
+      //              {
+      //                if (!cached_mop_of_new->decached)
+      //                  {
+      //                    assert (!cached_mop_of_new->dirty);
+      //                    ws_decache (cached_mop_of_new);
+      //                  }
 
-			  cached_mop_of_new->mvcc_link = NULL;
-			  cached_mop_of_new->permanent_mvcc_link = 0;
+      //                cached_mop_of_new->mvcc_link = NULL;
+      //                cached_mop_of_new->permanent_mvcc_link = 0;
 
-			  /* ws_mop will remove the old class_mop link and link to the new one and reset mop->decached
-			   * to reuse it. */
-			  new_mop = ws_mop (new_oid, new_class_mop);
-			}
+      //                /* ws_mop will remove the old class_mop link and link to the new one and reset mop->decached
+      //                 * to reuse it. */
+      //                new_mop = ws_mop (new_oid, new_class_mop);
+      //              }
 
-		      if (new_mop == NULL)
-			{
-			  error_code = ER_FAILED;
-			}
-		      else
-			{
-			  if (!mop_toid->mop->decached && mop_toid->mop->object != NULL)
-			    {
-			      /* Move buffered object to new mop */
-			      new_mop->object = mop_toid->mop->object;
-			      mop_toid->mop->object = NULL;
-			    }
+      //            if (new_mop == NULL)
+      //              {
+      //                error_code = ER_FAILED;
+      //              }
+      //            else
+      //              {
+      //                if (!mop_toid->mop->decached && mop_toid->mop->object != NULL)
+      //                  {
+      //                    /* Move buffered object to new mop */
+      //                    new_mop->object = mop_toid->mop->object;
+      //                    mop_toid->mop->object = NULL;
+      //                  }
 
-			  if (WS_ISDIRTY (mop_toid->mop))
-			    {
-			      /* Reset dirty flag in old mop and set it in the new mop. */
-			      WS_RESET_DIRTY (mop_toid->mop);
-			      ws_dirty (new_mop);
-			    }
+      //                if (WS_ISDIRTY (mop_toid->mop))
+      //                  {
+      //                    /* Reset dirty flag in old mop and set it in the new mop. */
+      //                    WS_RESET_DIRTY (mop_toid->mop);
+      //                    ws_dirty (new_mop);
+      //                  }
 
-			  /* preserve pruning type */
-			  new_mop->pruning_type = mop_toid->mop->pruning_type;
+      //                /* preserve pruning type */
+      //                new_mop->pruning_type = mop_toid->mop->pruning_type;
 
-			  /* Set MVCC link */
-			  assert (new_mop->mvcc_link == NULL && new_mop->permanent_mvcc_link == 0);
-			  mop_toid->mop->mvcc_link = new_mop;
-			  /* Mvcc is link is not yet permanent */
-			  mop_toid->mop->permanent_mvcc_link = 0;
+      //                /* Set MVCC link */
+      //                assert (new_mop->mvcc_link == NULL && new_mop->permanent_mvcc_link == 0);
+      //                mop_toid->mop->mvcc_link = new_mop;
+      //                /* Mvcc is link is not yet permanent */
+      //                mop_toid->mop->permanent_mvcc_link = 0;
 
-			  ws_move_label_value_list (new_mop, mop_toid->mop);
+      //                ws_move_label_value_list (new_mop, mop_toid->mop);
 
-			  /* Add object to class */
-			  ws_set_class (new_mop, new_class_mop);
+      //                /* Add object to class */
+      //                ws_set_class (new_mop, new_class_mop);
 
-			  /* Update MVCC snapshot version */
-			  ws_set_mop_fetched_with_current_snapshot (new_mop);
-			}
-		    }
-		}
+      //                /* Update MVCC snapshot version */
+      //                ws_set_mop_fetched_with_current_snapshot (new_mop);
+      //              }
+      //          }
+      //      }
 
-	      /* Do not return in case of error. Allow the allocated memory to be freed first */
-	    }
+      //      /* Do not return in case of error. Allow the allocated memory to be freed first */
+      //    }
 
-	  next_mop_toid = mop_toid->next;
+      //  next_mop_toid = mop_toid->next;
 
-	  /* 
-	   * Set mop to NULL before freeing the structure, so that it does not
-	   * become a GC root for this mop..
-	   */
-	  mop_toid->mop = NULL;
-	  free_and_init (mop_toid);
-	  mop_toid = next_mop_toid;
-	}
-      mflush->mop_uoids = NULL;
+      //  /* 
+      //   * Set mop to NULL before freeing the structure, so that it does not
+      //   * become a GC root for this mop..
+      //   */
+      //  mop_toid->mop = NULL;
+      //  free_and_init (mop_toid);
+      //  mop_toid = next_mop_toid;
+      //}
+      //     mflush->mop_uoids = NULL;
 
       for (i = 0; error_code == NO_ERROR && i < mflush->mobjs->num_objs; i++)
 	{
@@ -5067,7 +5067,6 @@ locator_mflush (MOP mop, void *mf)
   HFID_COPY (&mflush->obj->hfid, hfid);
   COPY_OID (&mflush->obj->class_oid, ws_oid (class_mop));
   COPY_OID (&mflush->obj->oid, oid);
-  OID_SET_NULL (&mflush->obj->updated_oid);
   if (operation == LC_FLUSH_DELETE)
     {
       mflush->obj->length = -1;

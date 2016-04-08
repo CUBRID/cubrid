@@ -2820,8 +2820,17 @@ _op_get_db_user_id (nvplist * res, DB_OBJECT * user)
   DB_VALUE v;
   char buf[20];
 
-  db_get (user, "password", &v);
-  snprintf (buf, sizeof (buf) - 1, "%d", db_get_int (&v));
+  db_get (user, "id", &v);
+
+  if (DB_IS_NULL (&v))
+    {
+      buf[0] = '\0';
+    }
+  else
+    {
+      snprintf (buf, sizeof (buf) - 1, "%d", db_get_int (&v));
+    }
+
   nv_add_nvp (res, "id", buf);
   db_value_clear (&v);
 }

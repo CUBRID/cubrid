@@ -1374,7 +1374,8 @@ enum log_repl_flush
    || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
    || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
    || ((rcvindex) == RVHF_MVCC_DELETE_NO_MODIFY_HOME) \
-   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE))
+   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE) \
+   || ((rcvindex) == RVHF_MVCC_UPDATE_OVERFLOW))
 
 /* Is log record for a b-tree MVCC operation */
 #define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
@@ -2255,5 +2256,7 @@ extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_t
 #if !defined (NDEBUG)
 extern int logtb_collect_local_clients (int **local_client_pids);
 #endif /* !NDEBUG */
+
+extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 
 #endif /* _LOG_IMPL_H_ */

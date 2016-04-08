@@ -80,15 +80,14 @@ static const VPID *overflow_traverse (THREAD_ENTRY * thread_p, const VFID * ovf_
 static int overflow_delete_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * vpid, PAGE_PTR pgptr);
 static int overflow_flush_internal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 static VPID *overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes,
-				       OVERFLOW_LOGGING_TYPE logging_type, int *ovf_first_page,
-				       MVCC_RELOCATE_DELETE_INFO * mvcc_delete_relocate_info);
+				       OVERFLOW_LOGGING_TYPE logging_type, int *ovf_first_page, OID * mvcc_delete_oid);
 /*
  * overflow_insert () - Insert a multipage data in overflow
  *   return: ovf_vpid on success or NULL on failure
  *   ovf_vfid(in): File where the overflow data is going to be stored
  *   ovf_vpid(out): Overflow address
  *   recdes(in): Record descriptor
- *   mvcc_relocate_delete(in): MVCC relocate delete info
+ *   mvcc_delete_oid(in): OID of old home record in case of home record delete relocation into ovf
  *
  * Note: Data in overflow is composed of several pages. Pages in the overflow
  *       area are not shared among other pieces of overflow data.
@@ -106,10 +105,10 @@ static VPID *overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf
  */
 VPID *
 overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes, int *ovf_first_page,
-		 MVCC_RELOCATE_DELETE_INFO * mvcc_relocate_delete)
+		 OID * mvcc_delete_oid)
 {
   return overflow_insert_internal (thread_p, ovf_vfid, ovf_vpid, recdes, OVERFLOW_NORMAL_LOGGING, ovf_first_page,
-				   mvcc_relocate_delete);
+				   mvcc_delete_oid);
 }
 
 VPID *
@@ -122,8 +121,7 @@ overflow_insert_without_undo_logging (THREAD_ENTRY * thread_p, const VFID * ovf_
 
 static VPID *
 overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes,
-			  OVERFLOW_LOGGING_TYPE logging_type, int *ovf_first_page,
-			  MVCC_RELOCATE_DELETE_INFO * mvcc_delete_relocate_info)
+			  OVERFLOW_LOGGING_TYPE logging_type, int *ovf_first_page, OID * mvcc_delete_oid)
 {
   PAGE_PTR vfid_fhdr_pgptr = NULL;
   OVERFLOW_FIRST_PART *first_part;
@@ -354,7 +352,7 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID *
 				&undo_recv);
 	}
 
-      if (mvcc_delete_relocate_info == NULL)
+      if (mvcc_delete_oid == NULL)
 	{
 	  log_append_redo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr,
 				copy_length + CAST_BUFLEN (copyto - (char *) addr.pgptr), (char *) addr.pgptr);
@@ -366,11 +364,11 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID *
 	  LOG_CRUMB redo_crumbs[6];
 	  int redo_size = 0, copy_position;
 
-	  assert (npages <= 2 && mvcc_delete_relocate_info->mvcc_delete_oid != NULL);
+	  assert (npages <= 2 && mvcc_delete_oid != NULL);
 
 	  copy_position = CAST_BUFLEN (data - recdes->data);
 	  redo_crumbs[redo_size].length = OR_OID_SIZE;
-	  redo_crumbs[redo_size++].data = mvcc_delete_relocate_info->mvcc_delete_oid;
+	  redo_crumbs[redo_size++].data = mvcc_delete_oid;
 
 	  redo_crumbs[redo_size].length = sizeof (VPID);
 	  redo_crumbs[redo_size++].data = &(vpids[i + 1]);
@@ -380,12 +378,6 @@ overflow_insert_internal (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID *
 
 	  redo_crumbs[redo_size].length = OR_INT_SIZE;
 	  redo_crumbs[redo_size++].data = &copy_length;
-
-	  if (mvcc_delete_relocate_info->next_version != NULL)
-	    {
-	      redo_crumbs[redo_size].length = OR_OID_SIZE;
-	      redo_crumbs[redo_size++].data = mvcc_delete_relocate_info->next_version;
-	    }
 
 	  if (i == 0)
 	    {
@@ -1508,13 +1500,6 @@ overflow_rv_newpage_delete_relocated_redo (THREAD_ENTRY * thread_p, LOG_RCV * rc
   copy_length = *(int *) data;
   data += OR_INT_SIZE;
 
-  assert ((rcv->length - (int) (data - rcv->data)) <= (OR_OID_SIZE + OR_INT_SIZE));
-  if ((rcv->length - (int) (data - rcv->data)) >= OR_OID_SIZE)
-    {
-      next_version = (OID *) data;
-      data += OR_OID_SIZE;
-    }
-
   assert ((rcv->length - (int) (data - rcv->data)) <= (OR_INT_SIZE));
   if ((rcv->length - (int) (data - rcv->data)) == OR_INT_SIZE)
     {
@@ -1553,17 +1538,11 @@ overflow_rv_newpage_delete_relocated_redo (THREAD_ENTRY * thread_p, LOG_RCV * rc
     }
   MVCC_SET_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID);
   MVCC_SET_DELID (&mvcc_rec_header, rcv->mvcc_id);
-  if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_NEXT_VERSION))
+
+  if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
     {
-      MVCC_SET_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_NEXT_VERSION);
-    }
-  if (next_version != NULL)
-    {
-      MVCC_SET_NEXT_VERSION (&mvcc_rec_header, next_version);
-    }
-  else
-    {
-      MVCC_SET_NEXT_VERSION (&mvcc_rec_header, &oid_Null_oid);
+      MVCC_SET_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
+      LSA_SET_NULL (&mvcc_rec_header.prev_version_lsa);
     }
 
   HEAP_SET_RECORD (&recdes, IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE, 0, REC_UNKNOWN,

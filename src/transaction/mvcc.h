@@ -42,18 +42,6 @@
 #define MVCC_SET_DELID(header, mvcc_id) \
   ((header)->delid_chn.mvcc_del_id = (mvcc_id))
 
-#define MVCC_SET_NEXT_VERSION(header, next_oid_version) \
-  ((header)->next_version = *(next_oid_version))
-
-#define MVCC_GET_NEXT_VERSION(header) \
-  ((header)->next_version)
-
-#define MVCC_SET_PARTITION_OID(header, part_oid) \
-  ((header)->partition_oid = *(part_oid))
-
-#define MVCC_GET_PARTITION_OID(header) \
-  ((header)->partition_oid)
-
 #define MVCC_GET_REPID(header) \
   ((header)->repid)
 
@@ -82,17 +70,9 @@
   (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_DELID) \
    && MVCCID_IS_VALID (MVCC_GET_DELID (rec_header_p)))
 
-#define MVCC_IS_HEADER_NEXT_VERSION_VALID(rec_header_p) \
-  (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_NEXT_VERSION) \
-   && !OID_ISNULL (&MVCC_GET_NEXT_VERSION (rec_header_p)))
-
 #define MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE(rec_header_p) \
   (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_INSID) \
    && MVCC_GET_INSID (rec_header_p) != MVCCID_ALL_VISIBLE)
-
-#define MVCC_IS_HEADER_PARTITION_OID_VALID(rec_header_p) \
-  (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_PARTITION_OID) \
-  && !OID_ISNULL (&MVCC_GET_PARTITION_OID (rec_header_p)))
 
 #define MVCC_SET_FLAG_BITS(rec_header_p, flag) \
   ((rec_header_p)->mvcc_flag |= (flag))
@@ -210,6 +190,21 @@
 #define MVCC_ID_PRECEDES(id1, id2) ((id1) < (id2))
 #define MVCC_ID_FOLLOW_OR_EQUAL(id1, id2) ((id1) >= (id2))
 
+#define MVCC_IS_HEADER_PREV_VERSION_VALID(rec_header_p) \
+  (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_PREV_VERSION) \
+  && !LSA_ISNULL (&MVCC_GET_PREV_VERSION_LSA (rec_header_p)))
+
+#define MVCC_SET_PREVIOUS_VERSION_LSA(header, new_lsa) \
+  do \
+    { \
+      (header)->prev_version_lsa.pageid = (new_lsa)->pageid; \
+      (header)->prev_version_lsa.offset = (new_lsa)->offset; \
+    } \
+  while (0)
+
+#define MVCC_GET_PREV_VERSION_LSA(header) \
+  ((header)->prev_version_lsa)
+
 typedef struct mvcc_snapshot MVCC_SNAPSHOT;
 
 typedef bool (*MVCC_SNAPSHOT_FUNC) (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot);
@@ -265,18 +260,25 @@ typedef enum mvcc_satisfies_vacuum_result MVCC_SATISFIES_VACUUM_RESULT;
 enum mvcc_satisfies_vacuum_result
 {
   VACUUM_RECORD_REMOVE,		/* record can be removed completely */
-  VACUUM_RECORD_DELETE_INSID,	/* record insert MVCCID can be removed */
+  VACUUM_RECORD_DELETE_INSID_PREV_VER,	/* record insert MVCCID and prev version lsa can be removed */
   VACUUM_RECORD_CANNOT_VACUUM	/* record cannot be vacuumed because: 1. it was already vacuumed. 2. it was recently
 				 * inserted. 3. it was recently deleted and has no insert MVCCID. */
 };				/* Heap record satisfies vacuum result */
 
-extern bool mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot);
+typedef enum mvcc_satisfies_snapshot_result MVCC_SATISFIES_SNAPSHOT_RESULT;
+enum mvcc_satisfies_snapshot_result
+{
+  TOO_OLD_FOR_SNAPSHOT,		/* not visible */
+  SNAPSHOT_SATISFIED,		/* is visible and valid */
+  TOO_NEW_FOR_SNAPSHOT		/* invisible, have to check prev versions */
+};				/* Heap record satisfies snapshot result */
+
+extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
+							       MVCC_SNAPSHOT * snapshot);
 extern bool mvcc_is_not_deleted_for_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 					      MVCC_SNAPSHOT * snapshot);
 extern MVCC_SATISFIES_VACUUM_RESULT mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 							   MVCCID oldest_mvccid);
-extern bool mvcc_satisfies_not_vacuumed (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
-					 MVCC_SNAPSHOT * snapshot);
 extern MVCC_SATISFIES_DELETE_RESULT mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header);
 
 extern bool mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot);

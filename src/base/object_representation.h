@@ -570,8 +570,8 @@
 /* OBJECT HEADER LAYOUT */
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
 
-/* representation id, MVCC insert id and CHN */
-#define OR_MVCC_MAX_HEADER_SIZE  36
+/* representation id, MVCC insert id and CHN == 36 ?? */ 
+#define OR_MVCC_MAX_HEADER_SIZE  28
 
 /* representation id and CHN */
 #define OR_MVCC_MIN_HEADER_SIZE  8
@@ -625,14 +625,11 @@
 /* The record contains MVCC delete id. If not set, the record contains chn */
 #define OR_MVCC_FLAG_VALID_DELID	  0x02
 
-/* The record contains next version */
-#define OR_MVCC_FLAG_VALID_NEXT_VERSION	  0x04
+/* The record have an LSA with the location of the previous version */
+#define OR_MVCC_FLAG_VALID_PREV_VERSION   0x04
 
 /* The record contains 8 bytes CHN */
 #define OR_MVCC_FLAG_VALID_LONG_CHN	  0x08
-
-/* The record contains a valid partition link */
-#define OR_MVCC_FLAG_VALID_PARTITION_OID  0x10
 
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
 
@@ -1563,5 +1560,6 @@ extern int or_mvcc_header_size_from_flags (char mvcc_flags);
 
 extern char *or_pack_mvccid (char *ptr, const MVCCID mvccid);
 extern char *or_unpack_mvccid (char *ptr, MVCCID * mvccid);
+extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
 
 #endif /* _OBJECT_REPRESENTATION_H_ */

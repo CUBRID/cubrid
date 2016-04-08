@@ -279,7 +279,7 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  *   log_type(in): log type (DATA or SCHEMA)
  *   rcvindex(in): recovery index (INSERT or DELETE or UPDATE)
  *   key_dbvalue(in): Primary Key value
- *   is_update_inplace(in): is it in-place update
+ *   is_update_inplace(in): is it in-place update //to investigate
  *
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
