@@ -626,9 +626,8 @@ extern int heap_vpid_next (const HFID * hfid, PAGE_PTR pgptr, VPID * next_vpid);
 extern int heap_vpid_prev (const HFID * hfid, PAGE_PTR pgptr, VPID * prev_vpid);
 
 extern SCAN_CODE heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, OID * forward_oid,
-					  OID * partition_oid, PGBUF_WATCHER * home_page_watcher,
-					  PGBUF_WATCHER * fwd_page_watcher, INT16 * record_type,
-					  PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
+					  PGBUF_WATCHER * home_page_watcher, PGBUF_WATCHER * fwd_page_watcher,
+					  INT16 * record_type, PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
 					  NON_EXISTENT_HANDLING non_existent_handling_type);
 extern SCAN_CODE heap_get_mvcc_header (THREAD_ENTRY * thread_p, const OID * oid, const OID * forward_oid,
 				       PAGE_PTR home_page, PAGE_PTR forward_page, INT16 record_type,

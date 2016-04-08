@@ -7990,7 +7990,6 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
   RECDES temp_recdes;		/* Record descriptor used to temporary obtain record data for reevaluation. */
   INT16 type;			/* Record type. */
   bool is_version_locked = false;	/* True if newest version has been locked. */
-  OID partition_class_oid;
   OID save_class_oid;
   HFID save_hfid;
   HEAP_SCANCACHE local_scancache;
@@ -8095,13 +8094,10 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
       pgbuf_ordered_unfix (thread_p, &fwd_page_watcher);
     }
 
-  OID_SET_NULL (&partition_class_oid);
-
   /* Prepare to get record. It will obtain class_oid, record type, required pages, and forward_oid. */
   scan_code =
-    heap_prepare_get_record (thread_p, oid, class_oid, &forward_oid, &partition_class_oid,
-			     &home_page_watcher, &fwd_page_watcher, &type, PGBUF_LATCH_READ, false,
-			     non_ex_handling_type);
+    heap_prepare_get_record (thread_p, oid, class_oid, &forward_oid, &home_page_watcher, &fwd_page_watcher, &type,
+			     PGBUF_LATCH_READ, false, non_ex_handling_type);
   if (scan_code != S_SUCCESS)
     {
       /* Stop here. */
@@ -8411,8 +8407,6 @@ error:
  *			   page header record.
  * forward_oid (in/out)  : Forward OID to keep link in case of REC_RELOCATION,
  *			   REC_BIGONE.
- * partition_class_oid (out)   : only for REC_MVCC_NEXT_VERSION, class OID of
- *			   partition. // maybe not necessary anymore...
  * home_page_watcher (in/out): Heap page of given object.
  * fwd_page_watcher (in/out) : Heap page of REC_NEWHOME in case of REC_RELOCATION,
  *			   first overflow page in case of REC_BIGONE.
@@ -8437,9 +8431,8 @@ error:
  */
 SCAN_CODE
 heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, OID * forward_oid,
-			 OID * partition_class_oid, PGBUF_WATCHER * home_page_watcher, PGBUF_WATCHER * fwd_page_watcher,
-			 INT16 * record_type, PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
-			 NON_EXISTENT_HANDLING non_ex_handling_type)
+			 PGBUF_WATCHER * home_page_watcher, PGBUF_WATCHER * fwd_page_watcher, INT16 * record_type,
+			 PGBUF_LATCH_MODE latch_mode, bool is_heap_scan, NON_EXISTENT_HANDLING non_ex_handling_type)
 {
   SPAGE_SLOT *slot_p = NULL;
   VPID home_vpid;
@@ -8669,14 +8662,13 @@ try_again:
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_NODATA_NEWADDRESS, 3, oid->volid, oid->pageid,
 		  oid->slotid);
-	  scan = S_DOESNT_EXIST;
+	  return S_DOESNT_EXIST;
 	}
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid, oid->slotid);
 	  goto error;
 	}
-      return scan;
 
     case REC_HOME:
       /* Only home page is needed. */
@@ -20435,7 +20427,6 @@ heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * c
   OID curr_row_version = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   bool ignore_record = false;
   INT16 rec_type_local;
-  OID partition_class_oid;
 
   assert (recdes_header != NULL);
   assert (home_page_watcher != NULL);
@@ -20517,10 +20508,9 @@ try_again:
 
       /* Prepare for getting record again. Since pages have been unlatched, others may have changed them (even our
        * record). */
-      OID_SET_NULL (&partition_class_oid);
-      if (heap_prepare_get_record (thread_p, oid, class_oid, forward_oid, &partition_class_oid, home_page_watcher,
-				   fwd_page_watcher, record_type, PGBUF_LATCH_READ, false,
-				   LOG_WARNING_IF_DELETED) != S_SUCCESS)
+      if (heap_prepare_get_record
+	  (thread_p, oid, class_oid, forward_oid, home_page_watcher, fwd_page_watcher, record_type, PGBUF_LATCH_READ,
+	   false, LOG_WARNING_IF_DELETED) != S_SUCCESS)
 	{
 	  goto error;
 	}
@@ -22036,7 +22026,7 @@ heap_mvcc_cleanup_partition_link (THREAD_ENTRY * thread_p, HFID * hfid, const OI
 retry:
   /* Prepare to get record. It will obtain class_oid, record type, required pages, and forward_oid. */
   scan_code =
-    heap_prepare_get_record (thread_p, oid, class_oid, &forward_oid, &partition_oid, home_page_watcher,
+    heap_prepare_get_record (thread_p, oid, class_oid, &forward_oid, home_page_watcher,
 			     &fwd_page_watcher, &type, PGBUF_LATCH_WRITE, false, LOG_WARNING_IF_DELETED);
   if (scan_code != S_SUCCESS)
     {
@@ -23078,9 +23068,9 @@ heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type, OID * oid_buffe
   recdes_p->type = rec_type;
   recdes_p->data = (char *) oid_buffer_p;
 
-     recdes_p->length = sizeof (OID);
-      recdes_p->area_size = sizeof (OID);
- }
+  recdes_p->length = sizeof (OID);
+  recdes_p->area_size = sizeof (OID);
+}
 
 /*
  * heap_insert_adjust_recdes_header () - adjust record header for insert
@@ -27716,6 +27706,7 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
  *	     - S_DOESNT_FIT: the record doesn't fit in allocated area
  *	     - S_ERROR: In case of error
  *	     - S_SNAPSHOT_NOT_SATISFIED
+ *	     - S_SUCCESS_CHN_UPTODATE: CHN is up to date and it's not necessary to get record again
  *   thread_p (in): Thread entry.
  *   oid (in): Object to be obtained.
  *   class_oid (in): 
@@ -27747,8 +27738,8 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID oid, OID * class_oi
     }
 
   scan =
-    heap_prepare_get_record (thread_p, &oid, class_oid, &forward_oid, NULL, &home_pg_watcher, &fwd_pg_watcher, &type,
-			     PGBUF_LATCH_READ, true, LOG_ERROR_IF_DELETED);
+    heap_prepare_get_record (thread_p, &oid, class_oid, &forward_oid, &home_pg_watcher, &fwd_pg_watcher, &type,
+			     PGBUF_LATCH_READ, true, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
       goto exit;

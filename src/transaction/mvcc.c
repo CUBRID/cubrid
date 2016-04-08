@@ -238,7 +238,9 @@ start_check_active:
 /*
  * mvcc_satisfies_snapshot () - Check whether a record is valid for 
  *				    a snapshot
- *   return: true, if the record is valid for snapshot
+ *   return: - SNAPSHOT_SATISFIED: record is valid for snapshot
+ *	     - TOO_NEW_FOR_SNAPSHOT: record was either inserted or updated recently; commited after snapshot
+ *	     - TOO_OLD_FOR_SNAPSHOT: record not visible; deleted and commited
  *   thread_p(in): thread entry
  *   rec_header(out): the record header
  *   snapshot(in): the snapshot used for record validation
