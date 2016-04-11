@@ -7914,25 +7914,6 @@ locator_was_index_already_applied (HEAP_CACHE_ATTRINFO * index_attrinfo, BTID * 
 }
 
 /*
- * xlocator_cleanup_partition_links () - This function performs cleanup of the
- *					partition links of the given partitions.
- *   return: NO_ERROR on success, non-zero for ERROR
- *   thread_p (in)	: thread entry
- *   class_oid (in)     : partitioned class OID
- *   no_oids (in)	:
- *   oid_list (in)      :
- */
-int
-xlocator_cleanup_partition_links (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list)
-{
-  int error = NO_ERROR;
-
-  error = heap_remove_partition_links (thread_p, class_oid, oid_list, no_oids);
-
-  return error;
-}
-
-/*
  * locator_add_or_remove_index () - Add or remove index entries
  *
  * return: NO_ERROR if all OK, ER_ status otherwise

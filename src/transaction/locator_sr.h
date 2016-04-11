@@ -97,7 +97,6 @@ extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, R
 extern int locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, RECDES * recdes);
 extern PRUNING_SCAN_CACHE *locator_get_partition_scancache (PRUNING_CONTEXT * pcontext, const OID * class_oid,
 							    const HFID * hfid, int op_type, bool has_function_index);
-extern int xlocator_cleanup_partition_links (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list);
 extern int xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list);
 
 extern int locator_rv_redo_rename (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

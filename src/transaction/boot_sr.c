@@ -166,7 +166,6 @@ LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &partition_link_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &hfid_table_Ts, 0}
 };
 
@@ -6659,9 +6658,6 @@ boot_decoy_entries_finalize (void)
   lf_tran_destroy_entry (t_entry);
 
   t_entry = thread_get_tran_entry (NULL, THREAD_TS_GLOBAL_UNIQUE_STATS);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_PARTITION_LINK_HASH);
   lf_tran_destroy_entry (t_entry);
 
   t_entry = thread_get_tran_entry (NULL, THREAD_TS_HFID_TABLE);

@@ -262,7 +262,6 @@ extern int btree_get_index_key_type (BTID btid, TP_DOMAIN ** key_type_p);
 extern int db_local_transaction_id (DB_VALUE * trid);
 extern int qp_get_server_info (PARSER_CONTEXT * parser, int server_info_bits);
 extern int heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance);
-extern int locator_cleanup_partition_links (OID * class_oid, int no_oids, OID * oid_list);
 extern int locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_list);
 
 extern int jsp_get_server_port (void);
