@@ -478,10 +478,10 @@ struct rvfun RV_fun[] = {
    overflow_rv_link,
    overflow_rv_link_dump,
    overflow_rv_link_dump},
-  {RVOVF_NEWPAGE_DELETE_RELOCATED,
+  {RVOVF_NEWPAGE_DELETE_RELOCATED,	      /* Obsolete. */
    "RVOVF_NEWPAGE_DELETE_RELOCATED",
    NULL,
-   overflow_rv_newpage_delete_relocated_redo,
+   NULL,
    NULL,
    NULL},
 
