@@ -166,7 +166,6 @@ LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &partition_link_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &hfid_table_Ts, 0}
 };
 
@@ -328,10 +327,17 @@ static int
 boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID * dbparm_oid)
 {
   RECDES recdes;
+  HEAP_SCANCACHE scan_cache;
+  SCAN_CODE scan = S_SUCCESS;
 
   recdes.area_size = recdes.length = DB_SIZEOF (*dbparm);
   recdes.data = (char *) dbparm;
-  if (heap_first_without_scancache (thread_p, &boot_Db_parm->hfid, NULL, dbparm_oid, &recdes, COPY) != S_SUCCESS)
+
+  heap_scancache_quick_start_with_class_hfid (thread_p, &scan_cache, &boot_Db_parm->hfid);
+  scan = heap_first (thread_p, &boot_Db_parm->hfid, NULL, dbparm_oid, &recdes, &scan_cache, COPY);
+  heap_scancache_end (thread_p, &scan_cache);
+
+  if (scan != S_SUCCESS)
     {
       assert (false);
       return ER_FAILED;
@@ -6659,9 +6665,6 @@ boot_decoy_entries_finalize (void)
   lf_tran_destroy_entry (t_entry);
 
   t_entry = thread_get_tran_entry (NULL, THREAD_TS_GLOBAL_UNIQUE_STATS);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_PARTITION_LINK_HASH);
   lf_tran_destroy_entry (t_entry);
 
   t_entry = thread_get_tran_entry (NULL, THREAD_TS_HFID_TABLE);

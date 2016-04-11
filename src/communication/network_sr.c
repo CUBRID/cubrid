@@ -935,11 +935,6 @@ net_server_init (void)
   req_p->processing_function = slocator_repl_force;
   req_p->name = "NET_SERVER_LC_REPL_FORCE";
 
-  req_p = &net_Requests[NET_SERVER_LC_CLEANUP_PARTITION_LINKS];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slocator_cleanup_partition_links;
-  req_p->name = "NET_SERVER_LC_CLEANUP_PARTITION_LINKS";
-
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];
   req_p->action_attribute = IN_TRANSACTION;

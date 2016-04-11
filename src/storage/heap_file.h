@@ -147,28 +147,6 @@ struct heap_scanrange
   HEAP_SCANCACHE scan_cache;	/* Current cached information from previous scan */
 };
 
-typedef struct heap_partition_link_cache HEAP_PARTITION_LINK_CACHE;
-struct heap_partition_link_cache
-{
-  LF_HASH_TABLE partition_link_hash;	/* key is OID */
-  LF_ENTRY_DESCRIPTOR partition_link_descriptor;	/* used by partition_link_hash */
-  LF_FREELIST partition_link_free_list;	/* used by partition_link_hash */
-};
-
-typedef struct heap_partition_link_cache_entry HEAP_PARTITION_LINK_CACHE_ENTRY;
-struct heap_partition_link_cache_entry
-{
-  OID class_oid;		/* key - OID */
-  HEAP_PARTITION_LINK_CACHE_ENTRY *stack;	/* used in freelist */
-  HEAP_PARTITION_LINK_CACHE_ENTRY *next;	/* used in hash table */
-  pthread_mutex_t mutex;	/* state mutex */
-  UINT64 del_id;		/* delete transaction ID (for lock free) */
-
-  int partition_link_flag;	/* value - partition link flag */
-};
-
-#define HEAP_PARTITION_LINK_HASH_SIZE 1000
-
 typedef struct heap_hfid_table HEAP_HFID_TABLE;
 struct heap_hfid_table
 {
@@ -650,9 +628,6 @@ extern int heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thre
 							     OID * class_oid);
 extern SCAN_CODE heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, LOCK lock_mode,
 					SNAPSHOT_TYPE snapshot_type);
-extern int heap_remove_partition_links (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid_list, int no_oids);
-extern int heap_rv_mvcc_redo_remove_partition_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int heap_rv_mvcc_undo_remove_partition_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * class_oid_p,
 					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, bool bigone_max_size);
 extern void heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
@@ -663,9 +638,6 @@ extern void heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID *
 extern int heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 extern int heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 extern int heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
-extern int heap_partition_link_cache_initialize (void);
-extern void heap_partition_link_cache_finalize (void);
-extern int heap_rv_undoredo_partition_link_flag (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern int heap_initialize_hfid_table (void);
 extern void heap_finalize_hfid_table (void);

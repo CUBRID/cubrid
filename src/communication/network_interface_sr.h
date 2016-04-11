@@ -233,7 +233,6 @@ extern void slogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
-extern void slocator_cleanup_partition_links (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void schksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 							   int reqlen);
 extern void slogtb_does_active_user_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
