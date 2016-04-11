@@ -361,6 +361,7 @@ mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, 
  *   snapshot(in): the snapshot used for record validation
  *   page_ptr(in): the page where the record reside
  */
+/* TODO: Return too old or visible. */
 bool
 mvcc_is_not_deleted_for_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot)
 {

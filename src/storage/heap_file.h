@@ -384,7 +384,7 @@ extern const OID *heap_ovf_delete (THREAD_ENTRY * thread_p, const HFID * hfid, c
 extern VFID *heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid, bool create,
 				 PGBUF_LATCH_CONDITION latch_cond);
 extern void heap_flush (THREAD_ENTRY * thread_p, const OID * oid);
-extern int xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid, bool reclaim_mvcc_next_versions);
+extern int xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid);
 extern int heap_scancache_start (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 				 const OID * class_oid, int cache_last_fix_page, int is_indexscan,
 				 MVCC_SNAPSHOT * mvcc_snapshot);
