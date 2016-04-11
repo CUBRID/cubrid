@@ -26481,31 +26481,3 @@ exit:
     }
   return scan;
 }
-
-/*
- * heap_first_without_scancache () - Starts a scan_cache and retrieve or peek first object of heap
- *   return: SCAN_CODE (Either of S_SUCCESS, S_DOESNT_FIT, S_END, S_ERROR)
- *   hfid(in):
- *   class_oid(in):
- *   oid(in/out): Object identifier of current record.
- *                Will be set to first available record or NULL_OID when there
- *                is not one.
- *   recdes(in/out): Pointer to a record descriptor. Will be modified to
- *                   describe the new record.
- *   ispeeking(in): PEEK when the object is peeked, scan_cache cannot be NULL
- *                  COPY when the object is copied
- */
-SCAN_CODE
-heap_first_without_scancache (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
-			      int ispeeking)
-{
-  HEAP_SCANCACHE scan_cache;
-  SCAN_CODE scan;
-
-  heap_scancache_quick_start_with_class_hfid (thread_p, &scan_cache, hfid);
-
-  scan = heap_first (thread_p, hfid, class_oid, oid, recdes, &scan_cache, ispeeking);
-
-  heap_scancache_quick_end (thread_p, &scan_cache);
-  return scan;
-}

@@ -327,10 +327,17 @@ static int
 boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID * dbparm_oid)
 {
   RECDES recdes;
+  HEAP_SCANCACHE scan_cache;
+  SCAN_CODE scan = S_SUCCESS;
 
   recdes.area_size = recdes.length = DB_SIZEOF (*dbparm);
   recdes.data = (char *) dbparm;
-  if (heap_first_without_scancache (thread_p, &boot_Db_parm->hfid, NULL, dbparm_oid, &recdes, COPY) != S_SUCCESS)
+
+  heap_scancache_quick_start_with_class_hfid (thread_p, &scan_cache, &boot_Db_parm->hfid);
+  scan = heap_first (thread_p, &boot_Db_parm->hfid, NULL, dbparm_oid, &recdes, &scan_cache, COPY);
+  heap_scancache_end (thread_p, &scan_cache);
+
+  if (scan != S_SUCCESS)
     {
       assert (false);
       return ER_FAILED;
