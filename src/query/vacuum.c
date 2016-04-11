@@ -162,7 +162,7 @@ struct vacuum_data_page
  */
 #define vacuum_fix_data_page(thread_p, vpidp)								      \
   (!vacuum_Data.is_loaded ?										      \
-   /* If not vacuum data is not loaded, fix the page. */						      \
+   /* If vacuum data is not loaded, fix the page. */							      \
    (VACUUM_DATA_PAGE *) pgbuf_fix (thread_p, vpidp, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH) : \
    /* Else, check if page is vacuum_Data.first_page. */							      \
    VPID_EQ (pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.first_page), vpidp) ? vacuum_Data.first_page :	      \
@@ -215,6 +215,7 @@ struct vacuum_data_page
 	{ \
 	  pgbuf_unfix (thread_p, (PAGE_PTR) vacuum_Data.first_page); \
 	} \
+      vacuum_Data.first_page = NULL; \
     } while (0)
 
 /* Vacuum data.
