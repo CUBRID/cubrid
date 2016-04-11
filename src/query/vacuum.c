@@ -7368,12 +7368,9 @@ static void
 vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, RECDES * undo_recdes,
 				   bool reusable)
 {
-  char *ptr = NULL, *buffer_p = NULL;
-  char buffer[2 * OR_OID_SIZE + MAX_ALIGNMENT];
   LOG_DATA_ADDR addr;
   LOG_CRUMB undo_crumbs[2];
   int num_undo_crumbs;
-  int packed_size;
 
   assert (slotid >= 0 && slotid < ((SPAGE_HEADER *) page_p)->num_slots);
 
@@ -7423,7 +7420,6 @@ vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 int
 vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  char *ptr;
   INT16 slotid;
   bool reusable;
 

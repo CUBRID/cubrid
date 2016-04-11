@@ -205,9 +205,20 @@
 #define MVCC_GET_PREV_VERSION_LSA(header) \
   ((header)->prev_version_lsa)
 
+typedef enum mvcc_satisfies_snapshot_result MVCC_SATISFIES_SNAPSHOT_RESULT;
+enum mvcc_satisfies_snapshot_result
+{
+  TOO_OLD_FOR_SNAPSHOT,		/* not visible, deleted by me or deleted by inactive transaction */
+  SNAPSHOT_SATISFIED,		/* is visible and valid */
+  TOO_NEW_FOR_SNAPSHOT		/* not visible, inserter is still active.
+				 * when looking for visible version, if this is the snapshot result, we have to
+				 * check previous versions in log (if there are previous versions).
+				 */
+};				/* Possible results by check versions against snapshots. */
 typedef struct mvcc_snapshot MVCC_SNAPSHOT;
 
-typedef bool (*MVCC_SNAPSHOT_FUNC) (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot);
+typedef MVCC_SATISFIES_SNAPSHOT_RESULT (*MVCC_SNAPSHOT_FUNC) (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
+							      MVCC_SNAPSHOT * snapshot);
 struct mvcc_snapshot
 {
   MVCCID lowest_active_mvccid;	/* lowest active id */
@@ -265,22 +276,16 @@ enum mvcc_satisfies_vacuum_result
 				 * inserted. 3. it was recently deleted and has no insert MVCCID. */
 };				/* Heap record satisfies vacuum result */
 
-typedef enum mvcc_satisfies_snapshot_result MVCC_SATISFIES_SNAPSHOT_RESULT;
-enum mvcc_satisfies_snapshot_result
-{
-  TOO_OLD_FOR_SNAPSHOT,		/* not visible */
-  SNAPSHOT_SATISFIED,		/* is visible and valid */
-  TOO_NEW_FOR_SNAPSHOT		/* invisible, have to check prev versions */
-};				/* Heap record satisfies snapshot result */
-
 extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 							       MVCC_SNAPSHOT * snapshot);
-extern bool mvcc_is_not_deleted_for_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
-					      MVCC_SNAPSHOT * snapshot);
+extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_is_not_deleted_for_snapshot (THREAD_ENTRY * thread_p,
+									MVCC_REC_HEADER * rec_header,
+									MVCC_SNAPSHOT * snapshot);
 extern MVCC_SATISFIES_VACUUM_RESULT mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 							   MVCCID oldest_mvccid);
 extern MVCC_SATISFIES_DELETE_RESULT mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header);
 
-extern bool mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot);
+extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
+							    MVCC_SNAPSHOT * snapshot);
 
 #endif /* _MVCC_H_ */

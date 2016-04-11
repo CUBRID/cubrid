@@ -914,7 +914,7 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * re
     {
       MVCC_REC_HEADER mvcc_header;
       heap_get_mvcc_rec_header_from_overflow (pgptr, &mvcc_header, NULL);
-      if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot) != true)
+      if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot) != SNAPSHOT_SATISFIED)
 	{
 	  pgbuf_unfix_and_init (thread_p, pgptr);
 	  return S_SNAPSHOT_NOT_SATISFIED;

@@ -4917,13 +4917,8 @@ spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bo
 {
   SPAGE_HEADER *page_header_p = (SPAGE_HEADER *) page_p;
   SPAGE_SLOT *slot_p = NULL;
-  RECDES forward_recdes;
-  int space_left;
   int waste;
   int free_space;
-  OID oid_buff[2];
-  int size = 0;
-  unsigned int saved_record_length;
 
   SPAGE_VERIFY_HEADER (page_header_p);
 

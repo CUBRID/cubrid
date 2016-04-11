@@ -2651,7 +2651,7 @@ btree_record_get_num_visible_oids (THREAD_ENTRY * thread_p, BTID_INT * btid, REC
       btree_mvcc_info_to_heap_mvcc_header (&mvcc_info, &mvcc_rec_header);
 
       /* Check snapshot */
-      if ((mvcc_snapshot)->snapshot_fnc (thread_p, &mvcc_rec_header, mvcc_snapshot))
+      if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_rec_header, mvcc_snapshot) == SNAPSHOT_SATISFIED)
 	{
 	  /* Satisfies snapshot so counter must be incremented */
 	  rec_oid_cnt++;
@@ -21803,7 +21803,7 @@ btree_key_find_first_visible_row (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	}
 
       btree_mvcc_info_to_heap_mvcc_header (&mvcc_info, &mvcc_rec_header);
-      if ((mvcc_snapshot_dirty).snapshot_fnc (thread_p, &mvcc_rec_header, &mvcc_snapshot_dirty))
+      if (mvcc_snapshot_dirty.snapshot_fnc (thread_p, &mvcc_rec_header, &mvcc_snapshot_dirty) == SNAPSHOT_SATISFIED)
 	{
 	  /* visible row found it */
 	  if (MVCCID_IS_VALID (mvcc_snapshot_dirty.lowest_active_mvccid)
@@ -24585,7 +24585,7 @@ btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
 
   btree_mvcc_info_to_heap_mvcc_header (mvcc_info, &mvcc_header_for_snapshot);
   if (helper->snapshot == NULL
-      || helper->snapshot->snapshot_fnc (thread_p, &mvcc_header_for_snapshot, helper->snapshot))
+      || helper->snapshot->snapshot_fnc (thread_p, &mvcc_header_for_snapshot, helper->snapshot) == SNAPSHOT_SATISFIED)
     {
       /* Snapshot satisfied or not required. */
 
@@ -26150,7 +26150,7 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 
   /* Check snapshot. */
   if (snapshot != NULL && snapshot->snapshot_fnc != NULL
-      && !snapshot->snapshot_fnc (thread_p, &mvcc_header_for_snapshot, snapshot))
+      && snapshot->snapshot_fnc (thread_p, &mvcc_header_for_snapshot, snapshot) != SNAPSHOT_SATISFIED)
     {
       /* Snapshot not satisfied. Ignore object. */
       return NO_ERROR;

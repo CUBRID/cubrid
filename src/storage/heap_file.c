@@ -681,8 +681,7 @@ static int heap_reinitialize_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, cons
 static DISK_ISVALID heap_hfid_isvalid (HFID * hfid);
 static DISK_ISVALID heap_scanrange_isvalid (HEAP_SCANRANGE * scan_range);
 #endif /* CUBRID_DEBUG */
-static OID *heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * ovf_oid, RECDES * recdes,
-			     OID * mvcc_delete_oid);
+static OID *heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * ovf_oid, RECDES * recdes);
 static const OID *heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, RECDES * recdes);
 static int heap_ovf_flush (THREAD_ENTRY * thread_p, const OID * ovf_oid);
 static int heap_ovf_get_length (THREAD_ENTRY * thread_p, const OID * ovf_oid);
@@ -808,11 +807,6 @@ static int heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p, OID * o
 						MVCC_REC_HEADER * recdes_header, PGBUF_WATCHER * home_page_watcher,
 						PGBUF_WATCHER * fwd_page_watcher, OID * forward_oid,
 						INT16 * record_type, HEAP_MVCC_DELETE_INFO * mvcc_delete_info);
-extern SCAN_CODE heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
-							RECDES * recdes, HEAP_SCANCACHE * scan_cache,
-							SCAN_OPERATION_TYPE op_type, int ispeeking, int old_chn,
-							MVCC_REEV_DATA * mvcc_reev_data,
-							NON_EXISTENT_HANDLING non_ex_handling_type);
 static SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, OID * oid, OID * forward_oid,
 						      PAGE_PTR home_page, PAGE_PTR forward_page, INT16 record_type,
 						      RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
@@ -934,6 +928,8 @@ static void heap_log_update_undo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID
 				  RECDES * undo_recdes, LOG_RCVINDEX rcvindex);
 static void heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
 				  RECDES * redo_recdes, LOG_RCVINDEX rcvindex);
+static SCAN_CODE heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
+						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -7223,7 +7219,7 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
       or_mvcc_get_header (recdes, &mvcc_header);
       if (scan == S_SUCCESS && mvcc_snapshot != NULL && mvcc_snapshot->snapshot_fnc != NULL)
 	{
-	  if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot) != true)
+	  if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot) != SNAPSHOT_SATISFIED)
 	    {
 	      return S_SNAPSHOT_NOT_SATISFIED;
 	    }
@@ -7248,7 +7244,7 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
       or_mvcc_get_header (&chn_recdes, &mvcc_header);
       if (scan == S_SUCCESS && mvcc_snapshot != NULL && mvcc_snapshot->snapshot_fnc != NULL)
 	{
-	  if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot) != true)
+	  if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot) != SNAPSHOT_SATISFIED)
 	    {
 	      return S_SNAPSHOT_NOT_SATISFIED;
 	    }
@@ -7892,7 +7888,7 @@ heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, R
 SCAN_CODE
 heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 				       HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, int ispeeking,
-				       int old_chn, MVCC_REEV_DATA * mvcc_reev_data,
+				       int old_chn, struct mvcc_reev_data * mvcc_reev_data,
 				       NON_EXISTENT_HANDLING non_ex_handling_type)
 {
   OID forward_oid;		/* Forward OID - used for REC_RELOCATION/REC_NEWHOME, REC_BIGONE. */
@@ -8908,26 +8904,14 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   RECDES forward_recdes;
   SCAN_CODE scan = S_ERROR;
   int get_rec_info = cache_recordinfo != NULL;
-  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
-  MVCC_REC_HEADER mvcc_header;
   bool check_snapshot = false;
   bool is_null_recdata;
   PGBUF_WATCHER curr_page_watcher;
   PGBUF_WATCHER old_page_watcher;
 
   assert (scan_cache != NULL);
-  if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
-    {
-      mvcc_snapshot = scan_cache->mvcc_snapshot;
-    }
 
 #if defined(CUBRID_DEBUG)
-  if (scan_cache == NULL && ispeeking == PEEK)
-    {
-      er_log_debug (ARG_FILE_LINE, "heap_next: Using wrong interface. scan_cache cannot be NULL when peeking.");
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return S_ERROR;
-    }
   if (scan_cache != NULL && scan_cache->debug_initpattern != HEAP_DEBUG_SCANCACHE_INITPATTERN)
     {
       er_log_debug (ARG_FILE_LINE, "heap_next: Your scancache is not initialized");
@@ -21239,7 +21223,7 @@ heap_get_mvcc_record_header (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * mvcc_hea
       or_mvcc_get_header (&recdes, mvcc_header_p);
       if (mvcc_snapshot_p != NULL && mvcc_snapshot_p->snapshot_fnc != NULL)
 	{
-	  if (mvcc_snapshot_p->snapshot_fnc (thread_p, mvcc_header_p, mvcc_snapshot_p) == false)
+	  if (mvcc_snapshot_p->snapshot_fnc (thread_p, mvcc_header_p, mvcc_snapshot_p) != SNAPSHOT_SATISFIED)
 	    {
 	      scan = S_SNAPSHOT_NOT_SATISFIED;
 	    }
@@ -21275,7 +21259,7 @@ heap_ovf_get_mvcc_record_header (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * mvcc
   scan = S_SUCCESS;
   if (mvcc_snapshot_p != NULL)
     {
-      if (mvcc_snapshot_p->snapshot_fnc (thread_p, mvcc_header_p, mvcc_snapshot_p) != true)
+      if (mvcc_snapshot_p->snapshot_fnc (thread_p, mvcc_header_p, mvcc_snapshot_p) != SNAPSHOT_SATISFIED)
 	{
 	  scan = S_SNAPSHOT_NOT_SATISFIED;
 	}
@@ -22235,8 +22219,6 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   if (is_mvcc_op && context->type == HEAP_OPERATION_UPDATE)
     {
-      MVCC_REC_HEADER old_rec_header;
-
       if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
 	{
 	  MVCC_SET_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
@@ -24146,7 +24128,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
 	  p_addr.pgptr = context->home_page_watcher_p->pgptr;
 	  p_addr.vfid = &context->hfid.vfid;
-	  p_addr.offset = &context->oid;
+	  p_addr.offset = context->oid.slotid;
 
 	  /* home remains untouched, log no_change on home to notify vacuum */
 	  heap_mvcc_log_home_no_change_on_delete (thread_p, &p_addr);
@@ -26219,7 +26201,7 @@ heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, O
  *   previous_version_lsa (in): Log address of previous version.
  *   scan_cache(in): Heap scan cache.
  */
-SCAN_CODE
+static SCAN_CODE
 heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
 				   LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache)
 {
@@ -26231,6 +26213,7 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
   OID forward_oid;
   RECDES local_recdes;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
   LOG_LSA *oldest_prior_lsa;
   SCAN_CODE error_code = NO_ERROR;
 
@@ -26303,14 +26286,30 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
 
       if (recdes->type == REC_HOME || recdes->type == REC_NEWHOME)
 	{
-	  or_mvcc_get_header (recdes, &mvcc_header);
-	  if (mvcc_snapshot == NULL || mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot) == true)
+	  if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)
+	    {
+	      assert (false);
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return S_ERROR;
+	    }
+	  snapshot_res =
+	    mvcc_snapshot == NULL ?
+	    SNAPSHOT_SATISFIED : mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
+	  if (snapshot_res == SNAPSHOT_SATISFIED)
 	    {
 	      /* current version satisfies snapshot - return it */
 	      return S_SUCCESS;
 	    }
+	  else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
+	    {
+	      assert (false);
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return S_ERROR;
+	    }
 	  else
 	    {
+	      /* TOO_NEW_FOR_SNAPSHOT */
+	      assert (snapshot_res == TOO_NEW_FOR_SNAPSHOT);
 	      /* continue with previous version */
 	      LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
 	      continue;
@@ -26330,18 +26329,18 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
 	  else if (scan_code == S_SNAPSHOT_NOT_SATISFIED)
 	    {
 	      /* continue with previous version */
-	      scan_code = heap_get_mvcc_rec_header_from_overflow (forward_oid.pageid, &mvcc_header, PEEK);
-	      if (scan_code != NO_ERROR)
+	      if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)
 		{
 		  assert (false);
-		  return scan_code;
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		  return S_ERROR;
 		}
 	      LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
 	      continue;
 	    }
 	  else
 	    {
-	      /* to handle S_DOESNT_FIT */
+	      /* TODO: Do not forget to handle S_DOESNT_FIT !!! */
 	      assert (false);
 	      return S_ERROR;
 	    }
@@ -26403,7 +26402,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
     }
 
   scan =
-    heap_prepare_get_record (thread_p, &oid, class_oid, &forward_oid, &home_pg_watcher, &fwd_pg_watcher, &type,
+    heap_prepare_get_record (thread_p, oid, class_oid, &forward_oid, &home_pg_watcher, &fwd_pg_watcher, &type,
 			     PGBUF_LATCH_READ, true, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
@@ -26420,7 +26419,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
     {
       MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
       scan =
-	heap_get_mvcc_header (thread_p, &oid, &forward_oid, home_pg_watcher.pgptr, fwd_pg_watcher.pgptr, type,
+	heap_get_mvcc_header (thread_p, oid, &forward_oid, home_pg_watcher.pgptr, fwd_pg_watcher.pgptr, type,
 			      &mvcc_header);
       if (scan != S_SUCCESS)
 	{
@@ -26456,7 +26455,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
       /* else...fall through to heap get */
     }
 
-  scan = heap_get_record_data_when_all_ready (thread_p, (OID *) & oid, &forward_oid, home_pg_watcher.pgptr,
+  scan = heap_get_record_data_when_all_ready (thread_p, oid, &forward_oid, home_pg_watcher.pgptr,
 					      fwd_pg_watcher.pgptr, type, recdes, scan_cache, ispeeking);
   /* Fall through to exit. */
 
