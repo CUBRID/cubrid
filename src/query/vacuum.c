@@ -7233,10 +7233,12 @@ is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
   switch (res)
     {
     case VACUUM_RECORD_REMOVE:
+      /* Record should have been vacuumed by now. */
       return true;
 
     case VACUUM_RECORD_DELETE_INSID_PREV_VER:
-      return false;		// MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION);
+      /* Record insert & previous version should have been vacuumed by now. */
+      return true;
 
     case VACUUM_RECORD_CANNOT_VACUUM:
       return false;
