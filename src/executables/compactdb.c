@@ -149,7 +149,6 @@ compactdb_start (bool verbose_flag)
   MOBJ object = NULL;
   HFID *hfid;
   int status = 0;
-  bool reclaim_mvcc_next_versions = false;
 
   /* 
    * Build class name table
@@ -212,9 +211,6 @@ compactdb_start (bool verbose_flag)
 	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PROCESSED),
 		  total_objects);
 	}
-
-      /* We can also reclaim REC_MVCC_NEXT_VERSIONS now. */
-      reclaim_mvcc_next_versions = true;
     }
 
 phase2:
@@ -242,7 +238,7 @@ phase2:
 	{
 	  continue;
 	}
-      (void) heap_reclaim_addresses (hfid, reclaim_mvcc_next_versions);
+      (void) heap_reclaim_addresses (hfid);
 
     }
 

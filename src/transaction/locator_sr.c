@@ -2339,7 +2339,15 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
 	{
 	  /* Use S_LOCK. This lock will be transformed into NULL_LOCK if op_type is S_SELECT and MVCC is not disabled
 	   * for class OID. */
-	  lock_mode = S_LOCK;
+	  if (op_type == S_SELECT && !heap_is_mvcc_disabled_for_class (class_oid))
+	    {
+	      lock_mode = NULL_LOCK;
+	    }
+	  else
+	    {
+	      lock_mode = S_LOCK;
+	    }
+
 	}
       else if (lock_mode == IX_LOCK)
 	{

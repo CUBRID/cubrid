@@ -2294,7 +2294,6 @@ void
 shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error;
-  int reclaim_mvcc_next_versions = 0;
   HFID hfid;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -2310,9 +2309,8 @@ shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *req
     }
 
   ptr = or_unpack_hfid (request, &hfid);
-  ptr = or_unpack_int (ptr, &reclaim_mvcc_next_versions);
 
-  error = xheap_reclaim_addresses (thread_p, &hfid, reclaim_mvcc_next_versions);
+  error = xheap_reclaim_addresses (thread_p, &hfid);
   if (error != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);

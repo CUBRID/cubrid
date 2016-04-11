@@ -6489,8 +6489,8 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      scan_cache_end_needed = true;
 	    }
 
-	  if (heap_get_visible_version
-	      (thread_p, DB_GET_OID (p_dbvalue), NULL, NULL, &scan_cache, COPY, NULL_CHN, false) != S_SUCCESS)
+	  if (heap_get_visible_version (thread_p, DB_GET_OID (p_dbvalue), NULL, NULL, &scan_cache, COPY, NULL_CHN,
+					false) != S_SUCCESS)
 	    {
 	      if (er_errid () == ER_HEAP_NODATA_NEWADDRESS || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 		{
