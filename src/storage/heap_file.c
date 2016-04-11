@@ -26211,28 +26211,13 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
   LOG_PAGE *log_page_p = NULL;
   MVCC_REC_HEADER mvcc_header;
   OID forward_oid;
-  RECDES local_recdes;
-  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
   LOG_LSA *oldest_prior_lsa;
   SCAN_CODE error_code = NO_ERROR;
 
-  if (recdes == NULL)
-    {
-      recdes = &local_recdes;
-      recdes->data = NULL;
-    }
-
-  if (scan_cache == NULL && recdes->data == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return S_ERROR;
-    }
-
-  if (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
-    {
-      mvcc_snapshot = scan_cache->mvcc_snapshot;
-    }
+  assert (recdes != NULL);
+  assert (scan_cache != NULL);
+  assert (scan_cache->mvcc_snapshot != NULL);
 
   /* make sure prev_version_lsa is flushed from prior lsa list - wake up log flush thread if it's not flushed */
   oldest_prior_lsa = log_get_append_lsa ();
@@ -26246,7 +26231,7 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
       assert (!LSA_LT (oldest_prior_lsa, previous_version_lsa));
     }
 
-  if (scan_cache != NULL && recdes->data == NULL)
+  if (recdes->data == NULL)
     {
       if (scan_cache->area == NULL)
 	{
@@ -26263,7 +26248,6 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
       recdes->data = scan_cache->area;
       recdes->area_size = scan_cache->area_size;
     }
-
 
   /* check visibility of old versions from log following prev_version_lsa links */
   for (LSA_COPY (&process_lsa, previous_version_lsa); !LSA_ISNULL (&process_lsa);)
@@ -26292,9 +26276,7 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      return S_ERROR;
 	    }
-	  snapshot_res =
-	    mvcc_snapshot == NULL ?
-	    SNAPSHOT_SATISFIED : mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
+	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
 	  if (snapshot_res == SNAPSHOT_SATISFIED)
 	    {
 	      /* current version satisfies snapshot - return it */
@@ -26317,42 +26299,55 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
 	}
       else if (recdes->type == REC_BIGONE)
 	{
+	  PAGE_PTR overflow_page = NULL;
+	  VPID overflow_first_vpid;
+
 	  /* get forward oid to ovf record */
 	  forward_oid = *((OID *) recdes->data);
 
-	  scan_code = heap_ovf_get (thread_p, &forward_oid, recdes, NULL_CHN, mvcc_snapshot);
+	  /* Fix first overflow page. */
+	  VPID_GET_FROM_OID (&overflow_first_vpid, &forward_oid);
+	  overflow_page =
+	    pgbuf_fix (thread_p, &overflow_first_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (overflow_page == NULL)
+	    {
+	      ASSERT_ERROR ();
+	      return S_ERROR;
+	    }
+	  
+	  /* Check snapshot & get MVCC record header. */
+	  scan_code =
+	    heap_ovf_get_mvcc_record_header (thread_p, &mvcc_header, scan_cache->mvcc_snapshot, overflow_page);
+	  /* First page no longer required. */
+	  pgbuf_unfix_and_init (thread_p, overflow_page);
+
 	  if (scan_code == S_SUCCESS)
 	    {
-	      /* current version satisfies snapshot -> return it */
-	      return S_SUCCESS;
+	      /* Visible. Get record. */
+	      return heap_get_bigone_content (thread_p, scan_cache, COPY, &forward_oid, recdes);
 	    }
 	  else if (scan_code == S_SNAPSHOT_NOT_SATISFIED)
 	    {
-	      /* continue with previous version */
-	      if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)
-		{
-		  assert (false);
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-		  return S_ERROR;
-		}
+	      /* Not visible. Continue with previous version */
 	      LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
 	      continue;
 	    }
 	  else
 	    {
-	      /* TODO: Do not forget to handle S_DOESNT_FIT !!! */
+	      /* Unexpected. */
 	      assert (false);
 	      return S_ERROR;
 	    }
 	}
       else
 	{
+	  /* Unexpected record type. */
 	  assert (false);
 	  return S_ERROR;
 	}
-
     }
 
+  /* No visible version found. */
   return S_DOESNT_EXIST;
 }
 
@@ -26454,7 +26449,10 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 	}
       /* else...fall through to heap get */
     }
-
+  else
+    {
+      /* TODO: What about CHN? */
+    }
   scan = heap_get_record_data_when_all_ready (thread_p, oid, &forward_oid, home_pg_watcher.pgptr,
 					      fwd_pg_watcher.pgptr, type, recdes, scan_cache, ispeeking);
   /* Fall through to exit. */
