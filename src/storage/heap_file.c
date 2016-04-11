@@ -6382,23 +6382,17 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * ovf_vfid,
  *   hfid(in): Object heap file identifier
  *   ovf_oid(in/out): Overflow address
  *   recdes(in): Record descriptor
- *   mvcc_delete_oid(in): OID of old home record in case of home record delete relocation into ovf
  *
  * Note: Insert the content of a multipage object in overflow.
- *
- *	 In MVCC only, if mvcc_relocate_delete is not null, the object is
- *	 inserted in overflow due to delete relocation. Thus, the object
- *	 has been resized during logical deletion (new MVCC fields in header)
- *	 and the new size doesn't fit into a page anymore.
  */
 static OID *
-heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * ovf_oid, RECDES * recdes, OID * mvcc_delete_oid)
+heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * ovf_oid, RECDES * recdes)
 {
   VFID ovf_vfid;
   VPID ovf_vpid;		/* Address of overflow insertion */
 
   if (heap_ovf_find_vfid (thread_p, hfid, &ovf_vfid, true, PGBUF_UNCONDITIONAL_LATCH) == NULL
-      || overflow_insert (thread_p, &ovf_vfid, &ovf_vpid, recdes, NULL, mvcc_delete_oid) == NULL)
+      || overflow_insert (thread_p, &ovf_vfid, &ovf_vpid, recdes, NULL) == NULL)
     {
       return NULL;
     }
@@ -23072,7 +23066,7 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
     }
 
   /* insert overflow record */
-  if (heap_ovf_insert (thread_p, &context->hfid, &context->ovf_oid[0], context->recdes_p, NULL) == NULL)
+  if (heap_ovf_insert (thread_p, &context->hfid, &context->ovf_oid[0], context->recdes_p) == NULL)
     {
       return ER_FAILED;
     }
@@ -23993,7 +23987,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       if (heap_is_big_length (adjusted_size))
 	{
 	  /* insert new overflow record */
-	  if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid[0], &new_forward_recdes, NULL) == NULL)
+	  if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid[0], &new_forward_recdes) == NULL)
 	    {
 	      return ER_FAILED;
 	    }
@@ -24368,7 +24362,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	    {
 	      /* new record is overflow record - REC_BIGONE case */
 	      forwarding_recdes.type = REC_BIGONE;
-	      if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid[0], &built_recdes, &context->oid) == NULL)
+	      if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid[0], &built_recdes) == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error_code);
 		  return error_code;
@@ -24820,7 +24814,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   if (heap_is_big_length (context->recdes_p->length))
     {
       /* insert new overflow record */
-      if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid[0], context->recdes_p, NULL) == NULL)
+      if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid[0], context->recdes_p) == NULL)
 	{
 	  return ER_FAILED;
 	}
@@ -25009,7 +25003,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	}
 
       /* insert new overflow record */
-      if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid[0], context->recdes_p, NULL) == NULL)
+      if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid[0], context->recdes_p) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
