@@ -8916,7 +8916,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   PGBUF_WATCHER old_page_watcher;
 
   assert (scan_cache != NULL);
-  if (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
+  if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
     {
       mvcc_snapshot = scan_cache->mvcc_snapshot;
     }
@@ -9209,7 +9209,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
   if (curr_page_watcher.pgptr != NULL)
     {
-      if (scan_cache == NULL || !scan_cache->cache_last_fix_page)
+      if (!scan_cache->cache_last_fix_page)
 	{
 	  pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
 	}
