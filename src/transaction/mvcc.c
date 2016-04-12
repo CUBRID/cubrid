@@ -500,7 +500,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_INSERTED_OTHER_TRAN,
 			     PERF_SNAPSHOT_INVISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return DELETE_RECORD_INVISIBLE;
+	  return DELETE_RECORD_INSERT_IN_PROGRESS;
 	}
       else
 	{
@@ -539,7 +539,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	  mnt_mvcc_snapshot (thread_p, PERF_SNAPSHOT_SATISFIES_DELETE, PERF_SNAPSHOT_RECORD_DELETED_OTHER_TRAN,
 			     PERF_SNAPSHOT_INVISIBLE);
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
-	  return DELETE_RECORD_IN_PROGRESS;
+	  return DELETE_RECORD_DELETE_IN_PROGRESS;
 	}
       else
 	{

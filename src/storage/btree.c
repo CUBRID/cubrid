@@ -23674,8 +23674,8 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
       satisfies_delete = mvcc_satisfies_delete (thread_p, &mvcc_header);
       switch (satisfies_delete)
 	{
-	case DELETE_RECORD_INVISIBLE:
-	case DELETE_RECORD_IN_PROGRESS:
+	case DELETE_RECORD_INSERT_IN_PROGRESS:
+	case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SA_MODE)
 	  /* Impossible. */
 	  assert_release (false);
@@ -23702,7 +23702,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	      find_unique_helper->found_object = true;
 	      return NO_ERROR;
 	    }
-	  /* Don't try conditional lock if DELETE_RECORD_INVISIBLE or DELETE_RECORD_IN_PROGRESS. Most likely it will
+	  /* Don't try conditional lock if DELETE_RECORD_INSERT_IN_PROGRESS or DELETE_RECORD_DELETE_IN_PROGRESS. Most likely it will
 	   * fail. */
 	  try_cond_lock = (satisfies_delete == DELETE_RECORD_CAN_DELETE);
 	  /* Lock object. */
@@ -23990,8 +23990,8 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
       satisfies_delete = mvcc_satisfies_delete (thread_p, &mvcc_header);
       switch (satisfies_delete)
 	{
-	case DELETE_RECORD_INVISIBLE:
-	case DELETE_RECORD_IN_PROGRESS:
+	case DELETE_RECORD_INSERT_IN_PROGRESS:
+	case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SA_MODE)
 	  /* Impossible. */
 	  assert_release (false);
@@ -24032,8 +24032,8 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 		  OID_SET_NULL (&find_unique_helper->locked_oid);
 		}
 	    }
-	  /* Don't try conditional lock if DELETE_RECORD_INVISIBLE or DELETE_RECORD_IN_PROGRESS. Most likely it will
-	   * fail. */
+	  /* Don't try conditional lock if DELETE_RECORD_INSERT_IN_PROGRESS or DELETE_RECORD_DELETE_IN_PROGRESS.
+	   * Most likely it will fail. */
 	  try_cond_lock = (satisfies_delete == DELETE_RECORD_CAN_DELETE);
 	  /* Lock object. */
 	  error_code =
@@ -26463,7 +26463,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
       /* Object is already deleted. It doesn't exist. */
       return NO_ERROR;
 
-    case DELETE_RECORD_INVISIBLE:
+    case DELETE_RECORD_INSERT_IN_PROGRESS:
 #if defined (SERVER_MODE)
       /* Recently inserted. This can be ignored, since it is not inserted yet. To successfully insert, the inserter
        * should also obtain lock on primary key object (which is already held by current transaction). Current
@@ -26475,7 +26475,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
       return ER_FAILED;
 #endif /* SA_MODE */
 
-    case DELETE_RECORD_IN_PROGRESS:
+    case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SERVER_MODE)
       /* Object is being deleted by an active transaction. We have to wait for that transaction to commit. Fall through 
        * to suspend. */
