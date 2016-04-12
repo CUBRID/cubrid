@@ -65,7 +65,7 @@ do { \
 } while (0)
 
 /* define critical section array */
-CRITICAL_SECTION csectgl_Critical_sections[CRITICAL_SECTION_COUNT];
+SYNC_CRITICAL_SECTION csectgl_Critical_sections[CRITICAL_SECTION_COUNT];
 
 static const char *csect_Names[] = {
   "ER_LOG_FILE",
@@ -107,39 +107,40 @@ const char *csect_Name_tdes = "TDES";
 
 /*
  * This is not a pre-allocated free rwlock chunk. 
- * Each RWLOCK locates in its local manager. RWLOCK Monitor only manages the pointers to the registered global RWLOCKs.
+ * Each SYNC_RWLOCK locates in its local manager. SYNC_RWLOCK Monitor only manages the pointers to the registered global RWLOCKs.
  * This makes debugging and performance trouble shooting easier.
  */
-typedef struct rwlock_chunk RWLOCK_CHUNK;
-struct rwlock_chunk
+typedef struct sync_rwlock_chunk SYNC_RWLOCK_CHUNK;
+struct sync_rwlock_chunk
 {
-  RWLOCK *block[NUM_ENTRIES_OF_RWLOCK_CHUNK];
-  RWLOCK_CHUNK *next_chunk;
+  SYNC_RWLOCK *block[NUM_ENTRIES_OF_RWLOCK_CHUNK];
+  SYNC_RWLOCK_CHUNK *next_chunk;
   int hint_free_entry_idx;
   int num_entry_in_use;
   pthread_mutex_t rwlock_monitor_mutex;
 };
 
-RWLOCK_CHUNK rwlock_Monitor;
+SYNC_RWLOCK_CHUNK rwlock_Monitor;
 
 static int csect_initialize_entry (int cs_index);
 static int csect_finalize_entry (int cs_index);
-static int csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr, int timeout,
+static int csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int timeout,
 				       struct timespec *to);
-static int csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr, int timeout,
+static int csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int timeout,
 					 struct timespec *to);
-static int csect_wakeup_waiting_writer (CRITICAL_SECTION * cs_ptr);
-static int csect_wakeup_waiting_promoter (CRITICAL_SECTION * cs_ptr);
-static int csect_demote_critical_section (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr, int wait_secs);
-static int csect_promote_critical_section (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr, int wait_secs);
-static int csect_check_own_critical_section (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr);
+static int csect_wakeup_waiting_writer (SYNC_CRITICAL_SECTION * cs_ptr);
+static int csect_wakeup_waiting_promoter (SYNC_CRITICAL_SECTION * cs_ptr);
+static int csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs);
+static int csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs);
+static int csect_check_own_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr);
 
-static RWLOCK_CHUNK *rwlock_allocate_rwlock_chunk_monitor_entry (void);
-static int rwlock_initialize_rwlock_monitor_entry (RWLOCK_CHUNK * rwlock_chunk_entry);
-static int rwlock_consume_a_rwlock_monitor_entry (RWLOCK_CHUNK * rwlock_chunk_entry, int idx, RWLOCK * rwlock);
-static int rwlock_reclaim_a_rwlock_monitor_entry (RWLOCK_CHUNK * rwlock_chunk_entry, int idx);
-static int rwlock_register_a_rwlock_entry_to_monitor (RWLOCK * rwlock);
-static int rwlock_unregister_a_rwlock_entry_from_monitor (RWLOCK * rwlock);
+static SYNC_RWLOCK_CHUNK *rwlock_allocate_rwlock_chunk_monitor_entry (void);
+static int rwlock_initialize_rwlock_monitor_entry (SYNC_RWLOCK_CHUNK * rwlock_chunk_entry);
+static int rwlock_consume_a_rwlock_monitor_entry (SYNC_RWLOCK_CHUNK * rwlock_chunk_entry, int idx,
+						  SYNC_RWLOCK * rwlock);
+static int rwlock_reclaim_a_rwlock_monitor_entry (SYNC_RWLOCK_CHUNK * rwlock_chunk_entry, int idx);
+static int rwlock_register_a_rwlock_entry_to_monitor (SYNC_RWLOCK * rwlock);
+static int rwlock_unregister_a_rwlock_entry_from_monitor (SYNC_RWLOCK * rwlock);
 
 /*
  * csect_initialize_critical_section() - initialize critical section
@@ -147,7 +148,7 @@ static int rwlock_unregister_a_rwlock_entry_from_monitor (RWLOCK * rwlock);
  *   cs_ptr(in): critical section
  */
 int
-csect_initialize_critical_section (CRITICAL_SECTION * cs_ptr)
+csect_initialize_critical_section (SYNC_CRITICAL_SECTION * cs_ptr)
 {
   int error_code = NO_ERROR;
   pthread_mutexattr_t mattr;
@@ -227,7 +228,7 @@ static int
 csect_initialize_entry (int cs_index)
 {
   int error_code = NO_ERROR;
-  CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
@@ -249,7 +250,7 @@ csect_initialize_entry (int cs_index)
  *   cs_ptr(in): critical section
  */
 int
-csect_finalize_critical_section (CRITICAL_SECTION * cs_ptr)
+csect_finalize_critical_section (SYNC_CRITICAL_SECTION * cs_ptr)
 {
   int error_code = NO_ERROR;
 
@@ -297,7 +298,7 @@ static int
 csect_finalize_entry (int cs_index)
 {
   int error_code = NO_ERROR;
-  CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
@@ -358,7 +359,7 @@ csect_finalize (void)
 }
 
 static int
-csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr, int timeout, struct timespec *to)
+csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int timeout, struct timespec *to)
 {
   THREAD_ENTRY *prev_thread_p = NULL;
   int err = NO_ERROR;
@@ -427,7 +428,7 @@ csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr, 
 }
 
 static int
-csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr, int timeout, struct timespec *to)
+csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int timeout, struct timespec *to)
 {
   THREAD_ENTRY *prev_thread_p = NULL;
   int err = NO_ERROR;
@@ -496,7 +497,7 @@ csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr
 }
 
 static int
-csect_wakeup_waiting_writer (CRITICAL_SECTION * cs_ptr)
+csect_wakeup_waiting_writer (SYNC_CRITICAL_SECTION * cs_ptr)
 {
   THREAD_ENTRY *waiting_thread_p = NULL;
   int error_code = NO_ERROR;
@@ -515,7 +516,7 @@ csect_wakeup_waiting_writer (CRITICAL_SECTION * cs_ptr)
 }
 
 static int
-csect_wakeup_waiting_promoter (CRITICAL_SECTION * cs_ptr)
+csect_wakeup_waiting_promoter (SYNC_CRITICAL_SECTION * cs_ptr)
 {
   THREAD_ENTRY *waiting_thread_p = NULL;
   int error_code = NO_ERROR;
@@ -540,7 +541,7 @@ csect_wakeup_waiting_promoter (CRITICAL_SECTION * cs_ptr)
  *   wait_secs(in): timeout second
  */
 int
-csect_enter_critical_section (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr, int wait_secs)
+csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
   int error_code = NO_ERROR, r;
 #if defined (EnableThreadMonitoring)
@@ -761,7 +762,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr
 int
 csect_enter (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
 {
-  CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
@@ -781,7 +782,7 @@ csect_enter (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
  *   wait_secs(in): timeout second
  */
 int
-csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr, int wait_secs)
+csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
   int error_code = NO_ERROR, r;
 #if defined (EnableThreadMonitoring)
@@ -994,7 +995,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, CRITICAL_SECTIO
 int
 csect_enter_as_reader (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
 {
-  CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
@@ -1016,7 +1017,7 @@ csect_enter_as_reader (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
  * Note: Always successful because I have the write lock.
  */
 static int
-csect_demote_critical_section (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr, int wait_secs)
+csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
   int error_code = NO_ERROR, r;
 #if defined (EnableThreadMonitoring)
@@ -1270,7 +1271,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_pt
 int
 csect_demote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
 {
-  CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
@@ -1288,7 +1289,7 @@ csect_demote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
  * Note: Always successful because I have the write lock.
  */
 static int
-csect_promote_critical_section (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr, int wait_secs)
+csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
   int error_code = NO_ERROR, r;
 #if defined (EnableThreadMonitoring)
@@ -1494,7 +1495,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_p
 int
 csect_promote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
 {
-  CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
@@ -1509,7 +1510,7 @@ csect_promote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
  *   cs_ptr(in): critical section
  */
 int
-csect_exit_critical_section (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr)
+csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr)
 {
   int error_code = NO_ERROR;
   bool ww, wr, wp;
@@ -1641,7 +1642,7 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr)
 int
 csect_exit (THREAD_ENTRY * thread_p, int cs_index)
 {
-  CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
@@ -1661,7 +1662,7 @@ csect_exit (THREAD_ENTRY * thread_p, int cs_index)
 void
 csect_dump_statistics (FILE * fp)
 {
-  CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
   int i;
 
   fprintf (fp, "             CS Name    |Total Enter|Total Wait |   Max Wait    |  Total wait\n");
@@ -1696,7 +1697,7 @@ csect_dump_statistics (FILE * fp)
 int
 csect_check_own (THREAD_ENTRY * thread_p, int cs_index)
 {
-  CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
   int error_code = NO_ERROR;
 
   assert (cs_index >= 0);
@@ -1713,7 +1714,7 @@ csect_check_own (THREAD_ENTRY * thread_p, int cs_index)
  *   cs_ptr(in): critical section
  */
 static int
-csect_check_own_critical_section (THREAD_ENTRY * thread_p, CRITICAL_SECTION * cs_ptr)
+csect_check_own_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr)
 {
   int error_code = NO_ERROR, return_code;
 
@@ -1773,7 +1774,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
   int i, idx, error = NO_ERROR;
   DB_VALUE *vals = NULL;
-  CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
   char buf[256] = { 0 };
   double msec;
   DB_VALUE db_val;
@@ -1938,10 +1939,10 @@ exit_on_error:
  *
  *   rwlock(in/out):
  *   name(in):
- *   for_trace(in): RWLOCK_TRACE to monitor the rwlock. Note that it should be a global RWLOCK to be traced.
+ *   for_trace(in): RWLOCK_TRACE to monitor the rwlock. Note that it should be a global SYNC_RWLOCK to be traced.
  */
 int
-rwlock_initialize (RWLOCK * rwlock, const char *name, int for_trace)
+rwlock_initialize (SYNC_RWLOCK * rwlock, const char *name, int for_trace)
 {
   int error_code = NO_ERROR;
   pthread_mutexattr_t mattr;
@@ -2023,7 +2024,7 @@ rwlock_initialize (RWLOCK * rwlock, const char *name, int for_trace)
  *   rwlock(in/out):
  */
 int
-rwlock_finalize (RWLOCK * rwlock)
+rwlock_finalize (SYNC_RWLOCK * rwlock)
 {
   int error_code = NO_ERROR;
 
@@ -2067,7 +2068,7 @@ rwlock_finalize (RWLOCK * rwlock)
  *   rwlock(in/out):
  */
 int
-rwlock_read_lock (RWLOCK * rwlock)
+rwlock_read_lock (SYNC_RWLOCK * rwlock)
 {
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -2130,7 +2131,7 @@ rwlock_read_lock (RWLOCK * rwlock)
  *   rwlock(in/out):
  */
 int
-rwlock_read_unlock (RWLOCK * rwlock)
+rwlock_read_unlock (SYNC_RWLOCK * rwlock)
 {
   int error_code;
 
@@ -2182,7 +2183,7 @@ rwlock_read_unlock (RWLOCK * rwlock)
  *   rwlock(in/out):
  */
 int
-rwlock_write_lock (RWLOCK * rwlock)
+rwlock_write_lock (SYNC_RWLOCK * rwlock)
 {
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -2217,7 +2218,7 @@ rwlock_write_lock (RWLOCK * rwlock)
  *   rwlock(in/out):
  */
 int
-rwlock_write_unlock (RWLOCK * rwlock)
+rwlock_write_unlock (SYNC_RWLOCK * rwlock)
 {
   int error_code;
 
@@ -2274,7 +2275,7 @@ rwlock_initialize_rwlock_monitor (void)
 int
 rwlock_finalize_rwlock_monitor (void)
 {
-  RWLOCK_CHUNK *p, *next;
+  SYNC_RWLOCK_CHUNK *p, *next;
 
   p = &rwlock_Monitor;
 
@@ -2305,15 +2306,15 @@ rwlock_finalize_rwlock_monitor (void)
  *   return: the allocated monitor entry or NULL
  *
  */
-static RWLOCK_CHUNK *
+static SYNC_RWLOCK_CHUNK *
 rwlock_allocate_rwlock_chunk_monitor_entry (void)
 {
-  RWLOCK_CHUNK *p;
+  SYNC_RWLOCK_CHUNK *p;
 
-  p = (RWLOCK_CHUNK *) malloc (sizeof (RWLOCK_CHUNK));
+  p = (SYNC_RWLOCK_CHUNK *) malloc (sizeof (SYNC_RWLOCK_CHUNK));
   if (p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (RWLOCK_CHUNK));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYNC_RWLOCK_CHUNK));
       return NULL;
     }
 
@@ -2328,7 +2329,7 @@ rwlock_allocate_rwlock_chunk_monitor_entry (void)
  *
  */
 static int
-rwlock_initialize_rwlock_monitor_entry (RWLOCK_CHUNK * rwlock_chunk_entry)
+rwlock_initialize_rwlock_monitor_entry (SYNC_RWLOCK_CHUNK * rwlock_chunk_entry)
 {
   assert (rwlock_chunk_entry != NULL);
 
@@ -2346,7 +2347,7 @@ rwlock_initialize_rwlock_monitor_entry (RWLOCK_CHUNK * rwlock_chunk_entry)
  *
  */
 static int
-rwlock_consume_a_rwlock_monitor_entry (RWLOCK_CHUNK * rwlock_chunk_entry, int idx, RWLOCK * rwlock)
+rwlock_consume_a_rwlock_monitor_entry (SYNC_RWLOCK_CHUNK * rwlock_chunk_entry, int idx, SYNC_RWLOCK * rwlock)
 {
   assert (rwlock_chunk_entry != NULL && rwlock != NULL);
   assert (0 <= idx && idx < NUM_ENTRIES_OF_RWLOCK_CHUNK);
@@ -2367,7 +2368,7 @@ rwlock_consume_a_rwlock_monitor_entry (RWLOCK_CHUNK * rwlock_chunk_entry, int id
  *
  */
 static int
-rwlock_reclaim_a_rwlock_monitor_entry (RWLOCK_CHUNK * rwlock_chunk_entry, int idx)
+rwlock_reclaim_a_rwlock_monitor_entry (SYNC_RWLOCK_CHUNK * rwlock_chunk_entry, int idx)
 {
   assert (rwlock_chunk_entry != NULL);
   assert (0 <= idx && idx < NUM_ENTRIES_OF_RWLOCK_CHUNK);
@@ -2388,9 +2389,9 @@ rwlock_reclaim_a_rwlock_monitor_entry (RWLOCK_CHUNK * rwlock_chunk_entry, int id
  *
  */
 static int
-rwlock_register_a_rwlock_entry_to_monitor (RWLOCK * rwlock)
+rwlock_register_a_rwlock_entry_to_monitor (SYNC_RWLOCK * rwlock)
 {
-  RWLOCK_CHUNK *p, *last_chunk, *new_chunk;
+  SYNC_RWLOCK_CHUNK *p, *last_chunk, *new_chunk;
   int i, idx;
   bool found = false;
 
@@ -2448,9 +2449,9 @@ rwlock_register_a_rwlock_entry_to_monitor (RWLOCK * rwlock)
  *
  */
 static int
-rwlock_unregister_a_rwlock_entry_from_monitor (RWLOCK * rwlock)
+rwlock_unregister_a_rwlock_entry_from_monitor (SYNC_RWLOCK * rwlock)
 {
-  RWLOCK_CHUNK *p;
+  SYNC_RWLOCK_CHUNK *p;
   int i, idx;
   bool found = false;
 
@@ -2489,8 +2490,8 @@ rwlock_unregister_a_rwlock_entry_from_monitor (RWLOCK * rwlock)
 void
 rwlock_dump_statistics (FILE * fp)
 {
-  RWLOCK_CHUNK *p;
-  RWLOCK *rwlock;
+  SYNC_RWLOCK_CHUNK *p;
+  SYNC_RWLOCK *rwlock;
   int i, cnt;
 
   fprintf (fp, "\n             RWlock Name     |Total Enter|   Max Wait    |  Total wait\n");
