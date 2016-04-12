@@ -350,7 +350,7 @@ struct parent_pos_info
 /* XASL cache related things */
 
 /* RWLOCK for XASL cache */
-RWLOCK qexec_Rwlock_xasl_cache;
+SYNC_RWLOCK qexec_Rwlock_xasl_cache;
 #define QEXEC_RWLOCK_XASL_CACHE (&qexec_Rwlock_xasl_cache)
 #define QEXEC_RWLOCK_XASL_CACHE_NAME "QEXEC_RWLOCK_XASL_CACHE"
 

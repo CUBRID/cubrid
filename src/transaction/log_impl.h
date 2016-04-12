@@ -870,7 +870,7 @@ struct log_tdes
   int gtrid;			/* Global transaction identifier; used only if this transaction is a participant to a
 				 * global transaction and it is prepared to commit. */
   LOG_CLIENTIDS client;		/* Client identification */
-  CRITICAL_SECTION cs_topop;	/* critical section to serialize system top operations */
+  SYNC_CRITICAL_SECTION cs_topop;	/* critical section to serialize system top operations */
   LOG_TOPOPS_STACK topops;	/* Active top system operations. Used for system permanent nested operations which are
 				 * independent from current transaction outcome. */
   LOG_2PC_GTRINFO gtrinfo;	/* Global transaction user information; used to store XID of XA interface. */
