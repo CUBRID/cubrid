@@ -3560,17 +3560,24 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  (void) qexec_initialize_xasl_cache (thread_p);
+  error_code = qexec_initialize_xasl_cache (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   if (qmgr_initialize (thread_p) != NO_ERROR)
     {
       error_code = ER_FAILED;
       goto error;
     }
+
   error_code = qfile_initialize_list_cache (thread_p);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+
   (void) qexec_initialize_filter_pred_cache (thread_p);
 
   /* 

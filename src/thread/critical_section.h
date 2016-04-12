@@ -53,7 +53,6 @@ enum
   CSECT_LOCATOR_SR_CLASSNAME_TABLE,	/* Latch for classname to classOID entries */
   CSECT_FILE_NEWFILE,		/* Latch related to new file table */
   CSECT_QPROC_QUERY_TABLE,	/* Latch for query manager table */
-  CSECT_QPROC_XASL_CACHE,	/* Latch for XASL cache (mht: memory hash table) */
   CSECT_QPROC_LIST_CACHE,	/* Latch for query result(list file) cache (mht) */
   CSECT_BOOT_SR_DBPARM,		/* Latch for accessing System Database parameters. Used during vol creation */
   CSECT_DISK_REFRESH_GOODVOL,	/* Latch for refreshing good volume cache */
@@ -162,6 +161,13 @@ extern void rwlock_dump_statistics (FILE * fp);
 #define csect_exit_critical_section(a, b)
 #define csect_check_own(a, b) 1
 #define csect_start_scan NULL
+
+#define rwlock_initialize(a, b, c) NO_ERROR
+#define rwlock_finalize(a) NO_ERROR
+#define rwlock_read_lock(a) NO_ERROR
+#define rwlock_read_unlock(a) NO_ERROR
+#define rwlock_write_lock(a) NO_ERROR
+#define rwlock_write_unlock(a) NO_ERROR
 #endif /* !SERVER_MODE */
 
 #endif /* _CRITICAL_SECTION_H_ */

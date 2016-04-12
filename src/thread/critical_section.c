@@ -75,7 +75,6 @@ static const char *csect_Names[] = {
   "LOCATOR_CLASSNAME_TABLE",
   "FILE_NEWFILE",
   "QPROC_QUERY_TABLE",
-  "QPROC_XASL_CACHE",
   "QPROC_LIST_CACHE",
   "BOOT_SR_DBPARM",
   "DISK_REFRESH_GOODVOL",
@@ -118,10 +117,10 @@ struct rwlock_chunk
   RWLOCK_CHUNK *next_chunk;
   int hint_free_entry_idx;
   int num_entry_in_use;
+  pthread_mutex_t rwlock_monitor_mutex;
 };
 
 RWLOCK_CHUNK rwlock_Monitor;
-pthread_mutex_t rwlock_Mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int csect_initialize_entry (int cs_index);
 static int csect_finalize_entry (int cs_index);
@@ -2244,6 +2243,25 @@ rwlock_write_unlock (RWLOCK * rwlock)
 int
 rwlock_initialize_rwlock_monitor (void)
 {
+  int error_code = NO_ERROR;
+  pthread_mutexattr_t mattr;
+
+  error_code = pthread_mutexattr_init (&mattr);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEXATTR_INIT, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEXATTR_INIT;
+    }
+
+  error_code = pthread_mutex_init (&rwlock_Monitor.rwlock_monitor_mutex, &mattr);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
+
   return rwlock_initialize_rwlock_monitor_entry (&rwlock_Monitor);
 }
 
@@ -2270,7 +2288,14 @@ rwlock_finalize_rwlock_monitor (void)
     }
 
   /* clear the head entry */
-  rwlock_initialize_rwlock_monitor_entry (&rwlock_Monitor);
+  (void) rwlock_initialize_rwlock_monitor_entry (&rwlock_Monitor);
+
+  if (pthread_mutex_destroy (&rwlock_Monitor.rwlock_monitor_mutex) != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_DESTROY;
+    }
 
   return NO_ERROR;
 }
@@ -2369,7 +2394,7 @@ rwlock_register_a_rwlock_entry_to_monitor (RWLOCK * rwlock)
   int i, idx;
   bool found = false;
 
-  pthread_mutex_lock (&rwlock_Mutex);
+  pthread_mutex_lock (&rwlock_Monitor.rwlock_monitor_mutex);
 
   p = &rwlock_Monitor;
   while (p != NULL)
@@ -2412,7 +2437,7 @@ rwlock_register_a_rwlock_entry_to_monitor (RWLOCK * rwlock)
       rwlock_consume_a_rwlock_monitor_entry (new_chunk, 0, rwlock);
     }
 
-  pthread_mutex_unlock (&rwlock_Mutex);
+  pthread_mutex_unlock (&rwlock_Monitor.rwlock_monitor_mutex);
 
   return NO_ERROR;
 }
@@ -2429,7 +2454,7 @@ rwlock_unregister_a_rwlock_entry_from_monitor (RWLOCK * rwlock)
   int i, idx;
   bool found = false;
 
-  pthread_mutex_lock (&rwlock_Mutex);
+  pthread_mutex_lock (&rwlock_Monitor.rwlock_monitor_mutex);
 
   p = &rwlock_Monitor;
   while (p != NULL)
@@ -2450,7 +2475,7 @@ rwlock_unregister_a_rwlock_entry_from_monitor (RWLOCK * rwlock)
       p = p->next_chunk;
     }
 
-  pthread_mutex_unlock (&rwlock_Mutex);
+  pthread_mutex_unlock (&rwlock_Monitor.rwlock_monitor_mutex);
 
   assert (found == true);
 
@@ -2468,9 +2493,9 @@ rwlock_dump_statistics (FILE * fp)
   RWLOCK *rwlock;
   int i, cnt;
 
-  fprintf (fp, "\n             RWlock Name    |Total Enter|   Max Wait    |  Total wait\n");
+  fprintf (fp, "\n             RWlock Name     |Total Enter|   Max Wait    |  Total wait\n");
 
-  pthread_mutex_lock (&rwlock_Mutex);
+  pthread_mutex_lock (&rwlock_Monitor.rwlock_monitor_mutex);
 
   p = &rwlock_Monitor;
   while (p != NULL)
@@ -2500,7 +2525,7 @@ rwlock_dump_statistics (FILE * fp)
       p = p->next_chunk;
     }
 
-  pthread_mutex_unlock (&rwlock_Mutex);
+  pthread_mutex_unlock (&rwlock_Monitor.rwlock_monitor_mutex);
 
   fflush (fp);
 }
