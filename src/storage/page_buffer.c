@@ -3355,7 +3355,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   vacuum_notify_flush_data ();
   while (!vacuum_is_vacuum_data_flushed ())
     {
-      thread_sleep (0);
+      thread_sleep (10);
     }
 #endif /* SERVER_MODE */
 
