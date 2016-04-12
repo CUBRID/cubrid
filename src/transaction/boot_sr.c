@@ -3560,17 +3560,24 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  (void) qexec_initialize_xasl_cache (thread_p);
+  error_code = qexec_initialize_xasl_cache (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   if (qmgr_initialize (thread_p) != NO_ERROR)
     {
       error_code = ER_FAILED;
       goto error;
     }
+
   error_code = qfile_initialize_list_cache (thread_p);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+
   (void) qexec_initialize_filter_pred_cache (thread_p);
 
   /* 
@@ -4320,7 +4327,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_enter_critical_section (thread_p, &conn->csect, INF_WAIT);
@@ -4337,7 +4344,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_exit_critical_section (thread_p, &conn->csect);
