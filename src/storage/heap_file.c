@@ -803,21 +803,21 @@ static SCAN_CODE heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oi
 				     const PAGE_PTR pgptr, DB_VALUE ** page_info);
 static int heap_scancache_start_chain_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * new_scan_cache,
 					      HEAP_SCANCACHE * old_scan_cache, OID * next_row_version);
-static int heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, LOCK lock,
+static int heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, LOCK lock,
 						MVCC_REC_HEADER * recdes_header, PGBUF_WATCHER * home_page_watcher,
 						PGBUF_WATCHER * fwd_page_watcher, OID * forward_oid,
 						INT16 * record_type, HEAP_MVCC_DELETE_INFO * mvcc_delete_info);
-static SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, OID * oid, OID * forward_oid,
+static SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, const OID * oid, OID * forward_oid,
 						      PAGE_PTR home_page, PAGE_PTR forward_page, INT16 record_type,
 						      RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
-static DB_LOGICAL mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data, OID * oid,
-					   RECDES * recdes);
+static DB_LOGICAL mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data,
+					   const OID * oid, RECDES * recdes);
 static SCAN_CODE heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					  OID * forward_oid, RECDES * recdes);
-static DB_LOGICAL heap_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, OID * oid, HEAP_SCANCACHE * scan_cache,
+static DB_LOGICAL heap_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP_SCANCACHE * scan_cache,
 						 RECDES * recdes, UPDDEL_MVCC_COND_REEVAL * mvcc_cond_reeval,
 						 bool is_upddel);
-static DB_LOGICAL heap_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid,
+static DB_LOGICAL heap_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 					       HEAP_SCANCACHE * scan_cache, RECDES * recdes,
 					       MVCC_UPDDEL_REEV_DATA * mvcc_reev_data);
 
@@ -834,7 +834,7 @@ static int heap_mvcc_lock_scan_and_set_scancache_node (THREAD_ENTRY * thread_p, 
 
 static DB_LOGICAL heap_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 						      MVCC_REEV_DATA * mvcc_reev_data, MVCC_REC_HEADER * mvcc_header,
-						      OID * p_curr_row_version, RECDES * recdes);
+						      const OID * p_curr_row_version, RECDES * recdes);
 static SCAN_CODE heap_get_from_page_no_snapshot (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 						 MVCC_REEV_DATA * mvcc_reev_data_p, MVCC_REC_HEADER * mvcc_header_p,
 						 OID * curr_row_version_oid_p, RECDES * recdes, int ispeeking);
@@ -8780,7 +8780,7 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, const OID * oid, const OID * forw
  * int ispeeking (in) : PEEK or COPY.
  */
 static SCAN_CODE
-heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, OID * oid, OID * forward_oid, PAGE_PTR home_page,
+heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, const OID * oid, OID * forward_oid, PAGE_PTR home_page,
 				     PAGE_PTR forward_page, INT16 record_type, RECDES * recdes,
 				     HEAP_SCANCACHE * scan_cache, int ispeeking)
 {
@@ -20245,7 +20245,7 @@ heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_o
  *    to advance to the next version.
  */
 static int
-heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, LOCK lock,
+heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, LOCK lock,
 				     MVCC_REC_HEADER * recdes_header, PGBUF_WATCHER * home_page_watcher,
 				     PGBUF_WATCHER * fwd_page_watcher, OID * forward_oid, INT16 * record_type,
 				     HEAP_MVCC_DELETE_INFO * mvcc_delete_info)
@@ -20631,7 +20631,8 @@ heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, i
  *   recdes(in): Record descriptor that will contain the record
  */
 static DB_LOGICAL
-mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data, OID * oid, RECDES * recdes)
+mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data, const OID * oid,
+			 RECDES * recdes)
 {
   FILTER_INFO *filter;
   DB_LOGICAL ev_res = V_TRUE;
@@ -20643,7 +20644,8 @@ mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_ree
 	{
 	  return V_ERROR;
 	}
-      ev_res = (*filter->scan_pred->pr_eval_fnc) (thread_p, filter->scan_pred->pred_expr, filter->val_descr, oid);
+      ev_res =
+	(*filter->scan_pred->pr_eval_fnc) (thread_p, filter->scan_pred->pred_expr, filter->val_descr, (OID *) oid);
       ev_res = update_logical_result (thread_p, ev_res, NULL, NULL, NULL, NULL);
       if (ev_res != V_TRUE)
 	{
@@ -20658,7 +20660,8 @@ mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_ree
 	{
 	  return V_ERROR;
 	}
-      ev_res = (*filter->scan_pred->pr_eval_fnc) (thread_p, filter->scan_pred->pred_expr, filter->val_descr, oid);
+      ev_res =
+	(*filter->scan_pred->pr_eval_fnc) (thread_p, filter->scan_pred->pred_expr, filter->val_descr, (OID *) oid);
       ev_res = update_logical_result (thread_p, ev_res, NULL, NULL, NULL, NULL);
       if (ev_res != V_TRUE)
 	{
@@ -20669,7 +20672,7 @@ mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_ree
   filter = mvcc_reev_data->data_filter;
   if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
     {
-      ev_res = eval_data_filter (thread_p, oid, recdes, NULL, filter);
+      ev_res = eval_data_filter (thread_p, (OID *) oid, recdes, NULL, filter);
       ev_res =
 	update_logical_result (thread_p, ev_res, (int *) mvcc_reev_data->qualification, mvcc_reev_data->key_filter,
 			       recdes, oid);
@@ -20701,10 +20704,11 @@ end:
  *	    data filter.
  */
 static DB_LOGICAL
-heap_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, OID * oid, HEAP_SCANCACHE * scan_cache, RECDES * recdes,
+heap_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP_SCANCACHE * scan_cache, RECDES * recdes,
 			       UPDDEL_MVCC_COND_REEVAL * mvcc_cond_reeval, bool is_upddel)
 {
-  OID *cls_oid = NULL, *oid_inst = NULL;
+  OID *cls_oid = NULL;
+  const OID *oid_inst = NULL;
   MVCC_SCAN_REEV_DATA scan_reev;
   RECDES temp_recdes, *recdesp = NULL;
   HEAP_SCANCACHE local_scan_cache;
@@ -20747,7 +20751,8 @@ heap_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, OID * oid, HEAP_SCANCACH
 	  goto end;
 	}
 
-      if (fetch_val_list (thread_p, mvcc_cond_reeval->rest_regu_list, NULL, cls_oid, oid_inst, NULL, PEEK) != NO_ERROR)
+      if (fetch_val_list (thread_p, mvcc_cond_reeval->rest_regu_list, NULL, cls_oid, (OID *) oid_inst, NULL, PEEK)
+	  != NO_ERROR)
 	{
 	  ev_res = V_ERROR;
 	  goto end;
@@ -20799,7 +20804,7 @@ end:
  *	    (e.g. qexec_execute_update).
  */
 static DB_LOGICAL
-heap_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, HEAP_SCANCACHE * scan_cache,
+heap_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, HEAP_SCANCACHE * scan_cache,
 			     RECDES * recdes, MVCC_UPDDEL_REEV_DATA * mvcc_reev_data)
 {
   DB_LOGICAL ev_res = V_TRUE;
@@ -20859,8 +20864,8 @@ heap_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid
 	    }
 	  else
 	    {
-	      if (fetch_peek_dbval (thread_p, assign->regu_right, mvcc_reev_data->vd, (OID *) class_oid, oid, NULL,
-				    &dbval) != NO_ERROR)
+	      if (fetch_peek_dbval (thread_p, assign->regu_right, mvcc_reev_data->vd, (OID *) class_oid, (OID *) oid,
+				    NULL, &dbval) != NO_ERROR)
 		{
 		  ev_res = V_ERROR;
 		  goto end;
@@ -21115,7 +21120,7 @@ heap_attrinfo_check_unique_index (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO *
 static DB_LOGICAL
 heap_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 				    MVCC_REEV_DATA * mvcc_reev_data_p, MVCC_REC_HEADER * mvcc_header_p,
-				    OID * curr_row_version_oid_p, RECDES * recdes)
+				    const OID * curr_row_version_oid_p, RECDES * recdes)
 {
   bool ev_res = V_TRUE;
 
