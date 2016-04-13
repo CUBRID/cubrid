@@ -7930,7 +7930,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
     }
   else
     {
-      if (heap_scancache_quick_start(&local_scancache) != NO_ERROR)
+      if (heap_scancache_quick_start (&local_scancache) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -7989,8 +7989,8 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 
   /* Prepare to get record. It will obtain class_oid, record type, required pages, and forward_oid. */
   scan_code =
-    heap_prepare_get_record (thread_p, oid, class_oid, &forward_oid, &scan_cache->page_watcher, &fwd_page_watcher, &type,
-			     PGBUF_LATCH_READ, false, non_ex_handling_type);
+    heap_prepare_get_record (thread_p, oid, class_oid, &forward_oid, &scan_cache->page_watcher, &fwd_page_watcher,
+			     &type, PGBUF_LATCH_READ, false, non_ex_handling_type);
   if (scan_code != S_SUCCESS)
     {
       /* Stop here. */
@@ -8072,7 +8072,8 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 	  if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
 	    {
 	      /* Not visible. */
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid, oid->slotid);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
+		      oid->slotid);
 	      scan_code = S_DOESNT_EXIST;
 	      goto end;
 	    }
@@ -8106,7 +8107,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 
 	  /* Check re-evaluation. */
 	  if (mvcc_reev_data != NULL)
-	    {	
+	    {
 	      RECDES temp_recdes;
 	      MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
 
@@ -8124,16 +8125,16 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 		  assert (scan_code != S_ERROR || er_errid () != NO_ERROR);
 		  goto end;
 		}
-	      
-	      is_record_retrived = true;	
 
-	      if (or_mvcc_get_header(recdes, &mvcc_header) != NO_ERROR) /* maybe useless, maybe not */
+	      is_record_retrived = true;
+
+	      if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)	/* maybe useless, maybe not */
 		{
 		  scan_code = S_ERROR;
 		  goto error;
 		}
 
-	      snapshot_res = mvcc_snapshot->snapshot_fnc(thread_p, &mvcc_header, mvcc_snapshot);
+	      snapshot_res = mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
 	      if (snapshot_res != TOO_NEW_FOR_SNAPSHOT)
 		{
 		  /* Skip the re-evaluation if last version is visible. It should be the same as the visible version 
@@ -8145,8 +8146,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 		}
 
 	      ev_res =
-		heap_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid,
-						    recdes);
+		heap_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
 	      switch (ev_res)
 		{
 		case V_TRUE:
@@ -8276,14 +8276,14 @@ get_heap_record:
       /* Get record data. */
       if (!is_record_retrived)
 	{
-      scan_code =
-	heap_get_record_data_when_all_ready (thread_p, oid, &forward_oid, scan_cache->page_watcher.pgptr,
-					     fwd_page_watcher.pgptr, type, recdes, scan_cache, ispeeking);
-      if (scan_code != S_SUCCESS)
-	{
-	  assert (scan_code != S_ERROR || er_errid () != NO_ERROR);
-	  goto end;
-	}
+	  scan_code =
+	    heap_get_record_data_when_all_ready (thread_p, oid, &forward_oid, scan_cache->page_watcher.pgptr,
+						 fwd_page_watcher.pgptr, type, recdes, scan_cache, ispeeking);
+	  if (scan_code != S_SUCCESS)
+	    {
+	      assert (scan_code != S_ERROR || er_errid () != NO_ERROR);
+	      goto end;
+	    }
 	}
     }
 
@@ -8297,7 +8297,7 @@ end:
   else if (!scan_cache->cache_last_fix_page)
     {
       /* unfix the page from the received scan_cache */
-      pgbuf_ordered_unfix(thread_p, &scan_cache->page_watcher);
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
     }
 
   if (fwd_page_watcher.pgptr != NULL)
@@ -20280,7 +20280,8 @@ try_again:
 	      oid->slotid);
       goto error;
     }
-  else if (satisfies_delete_result == DELETE_RECORD_DELETE_IN_PROGRESS || satisfies_delete_result == DELETE_RECORD_CAN_DELETE
+  else if (satisfies_delete_result == DELETE_RECORD_DELETE_IN_PROGRESS
+	   || satisfies_delete_result == DELETE_RECORD_CAN_DELETE
 	   || satisfies_delete_result == DELETE_RECORD_INSERT_IN_PROGRESS)
     {
       /* Object must be locked. */
@@ -26337,7 +26338,7 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	      ASSERT_ERROR ();
 	      return S_ERROR;
 	    }
-	  
+
 	  /* Check snapshot & get MVCC record header. */
 	  scan_code =
 	    heap_ovf_get_mvcc_record_header (thread_p, &mvcc_header, scan_cache->mvcc_snapshot, overflow_page);
@@ -26392,7 +26393,7 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
  *   thread_p (in): Thread entry.
  *   oid (in): Object to be obtained.
  *   class_oid (in): 
- *   recdes (out): Record descriptor.
+ *   recdes (out): Record descriptor. NULL if not needed
  *   scan_cache(in): Heap scan cache.
  *   ispeeking(in): Peek record or copy.
  *   old_chn (in): Cache coherency number for existing record data. It is
@@ -26411,7 +26412,6 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
   PGBUF_WATCHER home_pg_watcher, fwd_pg_watcher;
   INT16 type;
 
-  assert (recdes != NULL);
   assert (scan_cache != NULL);
 
   PGBUF_INIT_WATCHER (&home_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, HEAP_SCAN_ORDERED_HFID (scan_cache));
@@ -26481,8 +26481,13 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
     {
       /* TODO: What about CHN? */
     }
-  scan = heap_get_record_data_when_all_ready (thread_p, oid, &forward_oid, home_pg_watcher.pgptr,
-					      fwd_pg_watcher.pgptr, type, recdes, scan_cache, ispeeking);
+
+  if (recdes != NULL)
+    {
+      scan = heap_get_record_data_when_all_ready (thread_p, oid, &forward_oid, home_pg_watcher.pgptr,
+						  fwd_pg_watcher.pgptr, type, recdes, scan_cache, ispeeking);
+    }
+
   /* Fall through to exit. */
 
 exit:

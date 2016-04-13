@@ -6435,10 +6435,6 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   REGU_VARIABLE *func;
   REGU_VARIABLE_LIST ptr;
   int size;
-  DB_VALUE *p_dbvalue;
-  HEAP_SCANCACHE scan_cache;
-  int scan_cache_end_needed = false;
-  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
   ssidp = &scan_id->s.ssid;
 
@@ -6473,47 +6469,12 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       assert (scan_id->val_list != NULL);
       assert (scan_id->val_list->val_cnt == 1);
 
-      p_dbvalue = scan_id->val_list->valp->val;
-      if (DB_VALUE_DOMAIN_TYPE (p_dbvalue) == DB_TYPE_OID && !DB_IS_NULL (p_dbvalue))
-	{
-	  if (scan_cache_end_needed == false)
-	    {
-	      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-	      if (mvcc_snapshot == NULL)
-		{
-		  return S_ERROR;
-		}
-
-	      (void) heap_scancache_start (thread_p, &scan_cache, NULL, NULL, false, false, mvcc_snapshot);
-
-	      scan_cache_end_needed = true;
-	    }
-
-	  if (heap_get_visible_version (thread_p, DB_GET_OID (p_dbvalue), NULL, NULL, &scan_cache, COPY, NULL_CHN,
-					false) != S_SUCCESS)
-	    {
-	      if (er_errid () == ER_HEAP_NODATA_NEWADDRESS || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-		{
-		  er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
-		}
-	      else
-		{
-		  (void) heap_scancache_end (thread_p, &scan_cache);
-		  return S_ERROR;
-		}
-	    }
-	}
-
       ev_res = V_TRUE;
       if (ssidp->scan_pred.pr_eval_fnc && ssidp->scan_pred.pred_expr)
 	{
 	  ev_res = (*ssidp->scan_pred.pr_eval_fnc) (thread_p, ssidp->scan_pred.pred_expr, scan_id->vd, NULL);
 	  if (ev_res == V_ERROR)
 	    {
-	      if (scan_cache_end_needed)
-		{
-		  (void) heap_scancache_end (thread_p, &scan_cache);
-		}
 	      return S_ERROR;
 	    }
 	}
@@ -6556,18 +6517,9 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	}
 
-      if (scan_cache_end_needed)
-	{
-	  (void) heap_scancache_end (thread_p, &scan_cache);
-	}
       return S_SUCCESS;
 
     }				/* while ((qp_scan = ) == S_SUCCESS) */
-
-  if (scan_cache_end_needed)
-    {
-      (void) heap_scancache_end (thread_p, &scan_cache);
-    }
 
   return qp_scan;
 }
