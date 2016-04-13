@@ -94,6 +94,7 @@ process_value (DB_VALUE * value)
       {
 	OID *ref_oid;
 	OID ref_class_oid;
+	HEAP_SCANCACHE scan_cache;
 
 	ref_oid = DB_GET_OID (value);
 
@@ -102,8 +103,11 @@ process_value (DB_VALUE * value)
 	    break;
 	  }
 
-	/* TODO: Find a better function here. */
-	scan_code = heap_get_class_oid_with_lock (NULL, &ref_class_oid, ref_oid, SNAPSHOT_TYPE_MVCC, NULL_LOCK);
+	heap_scancache_quick_start (&scan_cache);
+	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (NULL);
+	scan_code = heap_get_visible_version (NULL, ref_oid, &ref_class_oid, NULL, &scan_cache, PEEK, NULL_CHN, false);
+	heap_scancache_end (NULL, &scan_cache);
+
 	if (scan_code == S_ERROR)
 	  {
 	    ASSERT_ERROR_AND_SET (return_value);

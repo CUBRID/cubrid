@@ -2712,8 +2712,6 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATI
  *   regu_list_pred(in):
  *   pr(in):
  *   regu_list_rest(in):
- *   regu_list_last_version(in): constant regu variable list used to get
- *				object last version
  *   num_attrs_pred(in):
  *   attrids_pred(in):
  *   cache_pred(in):
@@ -2732,10 +2730,10 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list, VAL_DESCR * vd,
 		     /* fields of HEAP_SCAN_ID */
 		     OID * cls_oid, HFID * hfid, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr,
-		     REGU_VARIABLE_LIST regu_list_rest, REGU_VARIABLE_LIST regu_list_last_version, int num_attrs_pred,
-		     ATTR_ID * attrids_pred, HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest,
-		     ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest, SCAN_TYPE scan_type,
-		     DB_VALUE ** cache_recordinfo, REGU_VARIABLE_LIST regu_list_recordinfo)
+		     REGU_VARIABLE_LIST regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
+		     HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
+		     HEAP_CACHE_ATTRINFO * cache_rest, SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
+		     REGU_VARIABLE_LIST regu_list_recordinfo)
 {
   HEAP_SCAN_ID *hsidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -2768,8 +2766,6 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* regulator variable list for other than predicates */
   hsidp->rest_regu_list = regu_list_rest;
-  hsidp->regu_list_last_version = regu_list_last_version;
-  hsidp->cls_regu_inited = false;
 
   /* attribute information from other than predicates */
   scan_init_scan_attrs (&hsidp->rest_attrs, num_attrs_rest, attrids_rest, cache_rest);
@@ -2887,8 +2883,6 @@ scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_attrs (&hsidp->pred_attrs, num_attrs_pred, attrids_pred, cache_pred);
   /* regulator vairable list for other than predicates */
   hsidp->rest_regu_list = regu_list_rest;
-  hsidp->regu_list_last_version = NULL;
-  hsidp->cls_regu_inited = false;
   /* attribute information from other than predicates */
   scan_init_scan_attrs (&hsidp->rest_attrs, num_attrs_rest, attrids_rest, cache_rest);
 
@@ -2946,7 +2940,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      INDX_INFO * indx_info, OID * cls_oid, HFID * hfid, REGU_VARIABLE_LIST regu_list_key,
 		      PRED_EXPR * pr_key, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr,
 		      REGU_VARIABLE_LIST regu_list_rest, PRED_EXPR * pr_range, REGU_VARIABLE_LIST regu_list_range,
-		      REGU_VARIABLE_LIST regu_list_last_version, OUTPTR_LIST * output_val_list,
+		      OUTPTR_LIST * output_val_list,
 		      REGU_VARIABLE_LIST regu_val_list, int num_attrs_key, ATTR_ID * attrids_key,
 		      HEAP_CACHE_ATTRINFO * cache_key, int num_attrs_pred, ATTR_ID * attrids_pred,
 		      HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
@@ -3126,8 +3120,6 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* regulator variable list for other than predicates */
   isidp->rest_regu_list = regu_list_rest;
-  isidp->regu_list_last_version = regu_list_last_version;
-  isidp->cls_regu_inited = false;
 
   /* attribute information from other than predicates */
   scan_init_scan_attrs (&isidp->rest_attrs, num_attrs_rest, attrids_rest, cache_rest);
@@ -5021,24 +5013,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  LSA_COPY (&ref_lsa, pgbuf_get_lsa (hsidp->scan_cache.page_watcher.pgptr));
 	}
 
-      if (hsidp->regu_list_last_version && hsidp->cls_regu_inited == false)
-	{
-	  if (eval_set_last_version (thread_p, &hsidp->cls_oid, hsidp->hfid, hsidp->regu_list_last_version) != NO_ERROR)
-	    {
-	      return S_ERROR;
-	    }
-
-	  if (is_peeking == PEEK && hsidp->scan_cache.page_watcher.pgptr != NULL
-	      && pgbuf_page_has_changed (hsidp->scan_cache.page_watcher.pgptr, &ref_lsa))
-	    {
-	      is_peeking = COPY;
-	      COPY_OID (&hsidp->curr_oid, &retry_oid);
-	      goto restart_scan_oid;
-	    }
-
-	  hsidp->cls_regu_inited = true;
-	}
-
       /* evaluate the predicates to see if the object qualifies */
       scan_id->stats.read_rows++;
       if (!scan_id->mvcc_select_lock_needed)
@@ -5919,16 +5893,6 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       return S_ERROR;
     }
 
-  if (isidp->regu_list_last_version && isidp->cls_regu_inited == false)
-    {
-      if (eval_set_last_version (thread_p, &isidp->cls_oid, isidp->hfid, isidp->regu_list_last_version) != NO_ERROR)
-	{
-	  return S_ERROR;
-	}
-
-      isidp->cls_regu_inited = true;
-    }
-
   if (!scan_id->mvcc_select_lock_needed)
     {
       /* evaluate the predicates to see if the object qualifies */
@@ -6435,10 +6399,6 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   REGU_VARIABLE *func;
   REGU_VARIABLE_LIST ptr;
   int size;
-  DB_VALUE *p_dbvalue;
-  HEAP_SCANCACHE scan_cache;
-  int scan_cache_end_needed = false;
-  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
   ssidp = &scan_id->s.ssid;
 
@@ -6473,47 +6433,12 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       assert (scan_id->val_list != NULL);
       assert (scan_id->val_list->val_cnt == 1);
 
-      p_dbvalue = scan_id->val_list->valp->val;
-      if (DB_VALUE_DOMAIN_TYPE (p_dbvalue) == DB_TYPE_OID && !DB_IS_NULL (p_dbvalue))
-	{
-	  if (scan_cache_end_needed == false)
-	    {
-	      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-	      if (mvcc_snapshot == NULL)
-		{
-		  return S_ERROR;
-		}
-
-	      (void) heap_scancache_start (thread_p, &scan_cache, NULL, NULL, false, false, mvcc_snapshot);
-
-	      scan_cache_end_needed = true;
-	    }
-
-	  if (heap_get_visible_version (thread_p, DB_GET_OID (p_dbvalue), NULL, NULL, &scan_cache, COPY, NULL_CHN,
-					false) != S_SUCCESS)
-	    {
-	      if (er_errid () == ER_HEAP_NODATA_NEWADDRESS || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-		{
-		  er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
-		}
-	      else
-		{
-		  (void) heap_scancache_end (thread_p, &scan_cache);
-		  return S_ERROR;
-		}
-	    }
-	}
-
       ev_res = V_TRUE;
       if (ssidp->scan_pred.pr_eval_fnc && ssidp->scan_pred.pred_expr)
 	{
 	  ev_res = (*ssidp->scan_pred.pr_eval_fnc) (thread_p, ssidp->scan_pred.pred_expr, scan_id->vd, NULL);
 	  if (ev_res == V_ERROR)
 	    {
-	      if (scan_cache_end_needed)
-		{
-		  (void) heap_scancache_end (thread_p, &scan_cache);
-		}
 	      return S_ERROR;
 	    }
 	}
@@ -6556,18 +6481,9 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	}
 
-      if (scan_cache_end_needed)
-	{
-	  (void) heap_scancache_end (thread_p, &scan_cache);
-	}
       return S_SUCCESS;
 
     }				/* while ((qp_scan = ) == S_SUCCESS) */
-
-  if (scan_cache_end_needed)
-    {
-      (void) heap_scancache_end (thread_p, &scan_cache);
-    }
 
   return qp_scan;
 }

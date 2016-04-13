@@ -4614,13 +4614,6 @@ xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spec)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_regu_variable_list (cls_spec->cls_regu_list_last_version);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
   offset = xts_save_outptr_list (cls_spec->cls_output_val_list);
   if (offset == ER_FAILED)
     {

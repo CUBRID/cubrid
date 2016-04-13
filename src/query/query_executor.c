@@ -1968,8 +1968,6 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.scan_pred.regu_list, final);
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.rest_regu_list, final);
 
-	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.regu_list_last_version, final);
-
 	  hsidp = &p->s_id.s.hsid;
 	  if (hsidp->caches_inited)
 	    {
@@ -2006,8 +2004,6 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	    {
 	      pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.isid.indx_cov.regu_val_list, final);
 	    }
-
-	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.isid.regu_list_last_version, final);
 
 	  if (p->s_id.s.isid.indx_cov.output_val_list != NULL)
 	    {
@@ -2081,7 +2077,6 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.cls_node.cls_regu_list_key, final);
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.cls_node.cls_regu_list_pred, final);
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.cls_node.cls_regu_list_rest, final);
-	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.cls_node.cls_regu_list_last_version, final);
 	  if (p->access == INDEX)
 	    {
 	      INDX_INFO *indx_info;
@@ -6468,11 +6463,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 				   &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
 				   curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
 				   curr_spec->s.cls_node.cls_regu_list_rest,
-				   curr_spec->s.cls_node.cls_regu_list_last_version,
-				   curr_spec->s.cls_node.num_attrs_pred, curr_spec->s.cls_node.attrids_pred,
-				   curr_spec->s.cls_node.cache_pred, curr_spec->s.cls_node.num_attrs_rest,
-				   curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest, scan_type,
-				   curr_spec->s.cls_node.cache_reserved,
+				   curr_spec->s.cls_node.num_attrs_pred,
+				   curr_spec->s.cls_node.attrids_pred, curr_spec->s.cls_node.cache_pred,
+				   curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
+				   curr_spec->s.cls_node.cache_rest, scan_type, curr_spec->s.cls_node.cache_reserved,
 				   curr_spec->s.cls_node.cls_regu_list_reserved) != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -6521,7 +6515,6 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 				    curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
 				    curr_spec->s.cls_node.cls_regu_list_rest, curr_spec->where_range,
 				    curr_spec->s.cls_node.cls_regu_list_range,
-				    curr_spec->s.cls_node.cls_regu_list_last_version,
 				    curr_spec->s.cls_node.cls_output_val_list, curr_spec->s.cls_node.cls_regu_val_list,
 				    curr_spec->s.cls_node.num_attrs_key, curr_spec->s.cls_node.attrids_key,
 				    curr_spec->s.cls_node.cache_key, curr_spec->s.cls_node.num_attrs_pred,
@@ -7485,7 +7478,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_rest);
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_key);
-  qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_last_version);
   qexec_reset_pred_expr (spec->where_pred);
   qexec_reset_pred_expr (spec->where_key);
 
@@ -7532,11 +7524,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	scan_open_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, single_fetch,
 			     spec->s_dbval, val_list, vd, &class_oid, &class_hfid, spec->s.cls_node.cls_regu_list_pred,
 			     spec->where_pred, spec->s.cls_node.cls_regu_list_rest,
-			     spec->s.cls_node.cls_regu_list_last_version, spec->s.cls_node.num_attrs_pred,
-			     spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
-			     spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
-			     spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
-			     spec->s.cls_node.cls_regu_list_reserved);
+			     spec->s.cls_node.num_attrs_pred, spec->s.cls_node.attrids_pred,
+			     spec->s.cls_node.cache_pred, spec->s.cls_node.num_attrs_rest,
+			     spec->s.cls_node.attrids_rest, spec->s.cls_node.cache_rest,
+			     scan_type, spec->s.cls_node.cache_reserved, spec->s.cls_node.cls_regu_list_reserved);
     }
   else if (spec->type == TARGET_CLASS && spec->access == SEQUENTIAL_PAGE_SCAN)
     {
@@ -7582,7 +7573,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 			      single_fetch, spec->s_dbval, val_list, vd, idxptr, &class_oid, &class_hfid,
 			      spec->s.cls_node.cls_regu_list_key, spec->where_key, spec->s.cls_node.cls_regu_list_pred,
 			      spec->where_pred, spec->s.cls_node.cls_regu_list_rest, spec->where_range,
-			      spec->s.cls_node.cls_regu_list_range, spec->s.cls_node.cls_regu_list_last_version,
+			      spec->s.cls_node.cls_regu_list_range,
 			      spec->s.cls_node.cls_output_val_list, spec->s.cls_node.cls_regu_val_list,
 			      spec->s.cls_node.num_attrs_key, spec->s.cls_node.attrids_key, spec->s.cls_node.cache_key,
 			      spec->s.cls_node.num_attrs_pred, spec->s.cls_node.attrids_pred,
