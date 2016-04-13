@@ -26456,7 +26456,6 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
       snapshot_res = mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
       if (snapshot_res == TOO_NEW_FOR_SNAPSHOT)
 	{
-
 	  /* current version is not visible, check previous versions from log and skip record get from heap */
 	  scan =
 	    heap_mvcc_get_old_visible_version (thread_p, recdes, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header), scan_cache,
@@ -26473,18 +26472,15 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 	  scan = S_SNAPSHOT_NOT_SATISFIED;
 	  goto exit;
 	}
-      else if (MVCC_IS_CHN_UPTODATE (thread_p, &mvcc_header, old_chn))
-	{
-	  /* Object version didn't change and CHN is up-to-date. Don't get record data and return
-	   * S_SUCCESS_CHN_UPTODATE instead. */
-	  scan = S_SUCCESS_CHN_UPTODATE;
-	  goto exit;
-	}
       /* else...fall through to heap get */
     }
-  else
+
+  if (MVCC_IS_CHN_UPTODATE (thread_p, &mvcc_header, old_chn))
     {
-      /* TODO: What about CHN? */
+      /* Object version didn't change and CHN is up-to-date. Don't get record data and return
+       * S_SUCCESS_CHN_UPTODATE instead. */
+      scan = S_SUCCESS_CHN_UPTODATE;
+      goto exit;
     }
 
   if (recdes != NULL)
