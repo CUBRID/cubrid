@@ -1392,6 +1392,12 @@ net_server_start (const char *server_name)
       status = -1;
       goto end;
     }
+  if (rwlock_initialize_rwlock_monitor () != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize rwlock monitor\n");
+      status = -1;
+      goto end;
+    }
   if (thread_initialize_manager () != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize thread manager\n");
@@ -1461,6 +1467,7 @@ net_server_start (const char *server_name)
     }
 
   thread_final_manager ();
+  (void) rwlock_finalize_rwlock_monitor ();
   csect_finalize ();
 
 end:

@@ -3573,7 +3573,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 #if defined(SERVER_MODE)
 	  assert (tdes->cs_topop.cs_index ==
 		  CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	  assert (tdes->cs_topop.name == css_Csect_name_tdes);
+	  assert (tdes->cs_topop.name == csect_Name_tdes);
 #endif
 
 	  csect_enter_critical_section (thread_p, &tdes->cs_topop, INF_WAIT);
@@ -3590,7 +3590,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 #if defined(SERVER_MODE)
 	      assert (tdes->cs_topop.cs_index ==
 		      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	      assert (tdes->cs_topop.name == css_Csect_name_tdes);
+	      assert (tdes->cs_topop.name == csect_Name_tdes);
 #endif
 
 	      csect_exit_critical_section (thread_p, &tdes->cs_topop);
@@ -3939,7 +3939,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 #if defined(SERVER_MODE)
       assert (tdes->cs_topop.cs_index ==
 	      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-      assert (tdes->cs_topop.name == css_Csect_name_tdes);
+      assert (tdes->cs_topop.name == csect_Name_tdes);
 #endif
 
       csect_exit_critical_section (thread_p, &tdes->cs_topop);
