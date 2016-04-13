@@ -752,6 +752,91 @@ ws_insert_mop_on_hash_link_with_position (MOP mop, int slot, MOP prev)
 }
 
 /*
+ * ws_mvcc_updated_mop () - It is a replacement for ws_mop in the context of MVCC.
+ *		       After an object is fetched from server, it may have
+ *		       been updated, and the updated data may be found on
+ *		       a different OID. If this is true, make sure that the
+ *		       old mop is updated with the new OID and class.
+ *
+ * return	  : MOP for updated version of the object.
+ * oid (in)	  : Initial object identifier.
+ * new_oid (in)	  : Updated object identifier.
+ * class_mop (in) : Class MOP.
+ */
+MOP
+ws_mvcc_updated_mop (OID * oid, OID * new_oid, MOP class_mop, bool updated_by_me)
+{
+  MOP mop = NULL, new_mop = NULL, cached_mop_of_new = NULL;
+  int error_code = NO_ERROR;
+  int pruning_type = DB_NOT_PARTITIONED_CLASS;
+
+  if (!OID_ISNULL (new_oid) && !OID_EQ (oid, new_oid))
+    {
+      /* OID has changed */
+      mop = ws_mop_if_exists (oid);
+      if (mop == NULL)
+	{
+	  /* Create/find mop for new OID */
+	  return ws_mop (new_oid, class_mop);
+	}
+      else
+	{
+	  pruning_type = mop->pruning_type;
+	  /* Decache old object */
+	  ws_decache (mop);
+
+	  cached_mop_of_new = ws_mop_if_exists (new_oid);
+	  if (cached_mop_of_new == NULL)
+	    {
+	      /* new_oid has not been cached. Cache as a new object. */
+	      new_mop = ws_new_mop (new_oid, class_mop);
+	    }
+	  else
+	    {
+	      if (!cached_mop_of_new->decached)
+		{
+		  assert (!cached_mop_of_new->dirty);
+		  ws_decache (cached_mop_of_new);
+		}
+
+	      cached_mop_of_new->mvcc_link = NULL;
+	      cached_mop_of_new->permanent_mvcc_link = 0;
+
+	      /* ws_mop will remove the old class_mop link and link to the new one and reset mop->decached to reuse it. */
+	      new_mop = ws_mop (new_oid, class_mop);
+	    }
+
+	  assert (new_mop->mvcc_link == NULL && new_mop->permanent_mvcc_link == 0);
+	  mop->mvcc_link = new_mop;
+
+	  new_mop->pruning_type = pruning_type;
+
+	  if (updated_by_me)
+	    {
+	      /* Mark mvcc link as temporary */
+	      mop->permanent_mvcc_link = 0;
+	      /* Add old object to commit list to resolve link on commit/rollback */
+	      WS_PUT_COMMIT_MOP (mop);
+	    }
+	  else
+	    {
+	      /* Mark mvcc link as permanent */
+	      mop->permanent_mvcc_link = 1;
+	    }
+
+	  /* move label value list from old mop to new mop */
+	  ws_move_label_value_list (new_mop, mop);
+	  return new_mop;
+	}
+    }
+  else
+    {
+      /* No new version, just find/create MOP for object */
+      return ws_mop (oid, class_mop);
+    }
+}
+
+/*
  * ws_mop_if_exists () - Get object mop if it exists in mop table.
  *
  * return	  : MOP or NULL if not found.
