@@ -9804,34 +9804,48 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
 {
   LOG_RECORD_HEADER *log_rec_header = NULL;
   struct log_mvcc_undo *mvcc_undo = NULL;
+  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
   int udata_length;
+  int udata_size;
   char *undo_data;
   LOG_LSA nxio_lsa;
+  bool is_zipped = false;
+  char log_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   /* assert log record is not in prior list */
-  logpb_get_nxio_lsa (&nxio_lsa);
-  assert (LSA_LT (&process_lsa, &nxio_lsa));
+  assert (LSA_LT (&process_lsa, log_get_append_lsa ()));
 
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
-
-  assert (log_rec_header->type == LOG_MVCC_UNDO_DATA);
-
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (mvcc_undo), &process_lsa, log_page_p);
-  mvcc_undo = (struct log_mvcc_undo *) (log_page_p->area + process_lsa.offset);
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), &process_lsa, log_page_p);
 
-  /*     assert (mvcc_undo->undo.data.volid == oid->volid && mvcc_undo->undo.data.pageid == oid->pageid
-     && mvcc_undo->undo.data.offset == oid->slotid); */
+  if (log_rec_header->type == LOG_MVCC_UNDO_DATA)
+    {
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), &process_lsa, log_page_p);
+      mvcc_undo = (struct log_mvcc_undo *) (log_page_p->area + process_lsa.offset);
+
+      udata_length = mvcc_undo->undo.length;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), &process_lsa, log_page_p);
+    }
+  else if (log_rec_header->type == LOG_MVCC_UNDOREDO_DATA)
+    {
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
+      mvcc_undoredo = (struct log_mvcc_undoredo *) (log_page_p->area + process_lsa.offset);
+
+      udata_length = mvcc_undoredo->undoredo.ulength;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
+    }
+
 
   /* get undo record */
-  if (ZIP_CHECK (mvcc_undo->undo.length))
-    {				/* check compress data */
-      udata_length = (int) GET_ZIP_LEN (mvcc_undo->undo.length);	/* convert compress length */
+  if (ZIP_CHECK (udata_length))
+    {
+      /* Get real size */
+      udata_size = (int) GET_ZIP_LEN (udata_length);
+      is_zipped = true;
     }
   else
     {
-      udata_length = mvcc_undo->undo.length;
+      udata_size = udata_length;
     }
 
   /* 
@@ -9839,32 +9853,31 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
    * Otherwise, allocate a contiguous area, copy the data and pass this area.
    * At the end deallocate the area.
    */
-  if (process_lsa.offset + udata_length < (int) LOGAREA_SIZE)
+  if (process_lsa.offset + udata_size < (int) LOGAREA_SIZE)
     {
       undo_data = (char *) log_page_p->area + process_lsa.offset;
     }
   else
     {
       /* Need to copy the data into a contiguous area */
-      char *area = (char *) malloc (udata_length);
-      if (area == NULL)
-	{
-	  assert (false);
-	  return S_ERROR;
-	}
+      char *area = PTR_ALIGN (log_buf, MAX_ALIGNMENT);
+
+      /* consider size of undo record is not larger than IO_MAX_PAGE_SIZE */
+      assert (udata_size <= IO_MAX_PAGE_SIZE);
+
       /* Copy the data */
-      logpb_copy_from_log (thread_p, area, udata_length, &process_lsa, log_page_p);
+      logpb_copy_from_log (thread_p, area, udata_size, &process_lsa, log_page_p);
       undo_data = area;
     }
 
-  if (ZIP_CHECK (mvcc_undo->undo.length))
+  if (is_zipped)
     {
       LOG_ZIP undo_unzip;
 
       undo_unzip.log_data = NULL;
-      if (log_unzip (&undo_unzip, udata_length, (char *) undo_data))
+      if (log_unzip (&undo_unzip, udata_size, (char *) undo_data))
 	{
-	  udata_length = (int) undo_unzip.data_length;
+	  udata_size = (int) undo_unzip.data_length;
 	  undo_data = (char *) undo_unzip.log_data;
 	}
       else
@@ -9874,10 +9887,9 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
 	}
     }
 
-
   /* copy the record */
   recdes->type = *(INT16 *) (undo_data);
-  recdes->length = udata_length - sizeof (recdes->type);
+  recdes->length = udata_size - sizeof (recdes->type);
   if (recdes->area_size < 0 || recdes->area_size < (int) recdes->length)
     {
       /* 

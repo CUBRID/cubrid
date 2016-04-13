@@ -26262,7 +26262,7 @@ heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	{
 	  /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better
 	   * estimates. */
-	  scan_cache->area_size = DB_PAGESIZE * 2;	// maybe one page should be enough
+	  scan_cache->area_size = DB_PAGESIZE * 2;
 	  scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
 	  if (scan_cache->area == NULL)
 	    {
