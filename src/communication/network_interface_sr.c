@@ -7263,6 +7263,8 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
     }
 
   csect_dump_statistics (outfp);
+  rwlock_dump_statistics (outfp);
+
   file_size = ftell (outfp);
 
   /* 
