@@ -4745,6 +4745,14 @@ catcls_update_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OR_VALUE * ol
 	{
 	  goto error;
 	}
+
+      /* oid_p remains the same, but it has to be reinserted in set; set_get_element don't let the value unchanged */
+      db_push_oid (&oid_val, oid_p);
+      error = set_put_element (oid_set_p, i, &oid_val);
+      if (error != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   /* drop components */
