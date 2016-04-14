@@ -8128,21 +8128,24 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 
 	      is_record_retrived = true;
 
-	      if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)	/* maybe useless, maybe not */
+	      if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)	/* Not sure if necessary */
 		{
 		  scan_code = S_ERROR;
 		  goto error;
 		}
 
-	      snapshot_res = mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
-	      if (snapshot_res != TOO_NEW_FOR_SNAPSHOT)
+	      if (mvcc_snapshot)
 		{
-		  /* Skip the re-evaluation if last version is visible. It should be the same as the visible version 
-		   * which was already evaluated. */
-		  assert (snapshot_res == SNAPSHOT_SATISFIED);
+		  snapshot_res = mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
+		  if (snapshot_res != TOO_NEW_FOR_SNAPSHOT)
+		    {
+		      /* Skip the re-evaluation if last version is visible. It should be the same as the visible version 
+		       * which was already evaluated. */
+		      assert (snapshot_res == SNAPSHOT_SATISFIED);
 
-		  /* goto get.. just in case of CHN_UPTODATE; maybe it's useless to check for CHN now... */
-		  goto get_heap_record;
+		      /* goto get.. just in case of CHN_UPTODATE; maybe it's useless to check for CHN now... */
+		      goto get_heap_record;
+		    }
 		}
 
 	      ev_res =

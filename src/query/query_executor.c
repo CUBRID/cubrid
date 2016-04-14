@@ -26572,8 +26572,9 @@ qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * q
 	}
       internal_class->unique_stats.scan_cache_inited = true;
       internal_class->scan_cache = &internal_class->unique_stats.scan_cache;
-    }
+      internal_class->scan_cache->mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 
+    }
   COPY_OID (&internal_class->prev_class_oid, current_oid);
 
   return NO_ERROR;
