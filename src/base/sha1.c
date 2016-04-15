@@ -40,6 +40,8 @@
 
 #include "sha1.h"
 
+#include <assert.h>
+
 /*
  *  Define the circular shift macro
  */
@@ -363,4 +365,41 @@ SHA1PadMessage (SHA1Context * context)
   context->Message_Block[63] = (context->Length_Low) & 0xFF;
 
   SHA1ProcessMessageBlock (context);
+}
+
+void
+SHA1Compute (const unsigned char * message_array, unsigned length, SHA1Hash * hash)
+{
+  SHA1Context context;
+
+  assert (message_array != NULL);
+  assert (hash != NULL);
+
+  SHA1Reset (&context);
+  SHA1Input (&context, message_array, length);
+
+  hash->h[0] = (INT32) context.Message_Digest[0];
+  hash->h[1] = (INT32) context.Message_Digest[1];
+  hash->h[2] = (INT32) context.Message_Digest[2];
+  hash->h[3] = (INT32) context.Message_Digest[3];
+  hash->h[4] = (INT32) context.Message_Digest[4];
+}
+
+int
+SHA1Compare (void *a, void *b)
+{
+  SHA1Hash *a_hash = (SHA1Hash *) a;
+  SHA1Hash *b_hash = (SHA1Hash *) b;
+  INT32 diff;
+  int i;
+
+  for (i = 0; i < 5; i++)
+    {
+      diff = a_hash->h[i] - b_hash->h[i];
+      if (diff != 0)
+	{
+	  return diff;
+	}
+    }
+  return 0;
 }

@@ -30,6 +30,7 @@
 #include "storage_common.h"
 #include "object_representation.h"
 #include "object_domain.h"
+#include "sha1.h"
 
 typedef enum
 {
@@ -158,6 +159,8 @@ struct xasl_node_header
 typedef struct xasl_id XASL_ID;
 struct xasl_id
 {
+  SHA1Hash sha1;		/* SHA-1 hash generated from query string. */
+  INT32 cache_flag;		/* Multiple-purpose field used to handle XASL cache. */
   VPID first_vpid;		/* first page real identifier */
   VFID temp_vfid;		/* temp file volume and file identifier */
   CACHE_TIME time_stored;	/* when this XASL plan stored */
@@ -165,6 +168,12 @@ struct xasl_id
 
 #define XASL_ID_SET_NULL(X) \
     do { \
+	(X)->sha1.h[0] = 0; \
+	(X)->sha1.h[1] = 0; \
+	(X)->sha1.h[2] = 0; \
+	(X)->sha1.h[3] = 0; \
+	(X)->sha1.h[4] = 0; \
+	(X)->cache_flag = 0; \
         (X)->first_vpid.pageid = NULL_PAGEID;\
         (X)->first_vpid.volid  = NULL_VOLID;\
         (X)->temp_vfid.fileid = NULL_FILEID;\
@@ -178,16 +187,21 @@ struct xasl_id
     (((XASL_ID *) (X) != NULL) && (X)->first_vpid.pageid == NULL_PAGEID)
 
 #define XASL_ID_COPY(X1, X2) \
-    *(X1) = *(X2)
+  do { \
+	(X1)->sha1 = (X2)->sha1; \
+	VPID_COPY (&((X1)->first_vpid), &((X2)->first_vpid)); \
+	VFID_COPY (&((X1)->temp_vfid), &((X2)->temp_vfid)); \
+        (X1)->time_stored = (X2)->time_stored; \
+	/* Do not copy cache_flag. */ \
+    } while (0)
 
 #define MAKE_PSEUDO_XASL_ID_FROM_BTREE(X,B) \
     do { \
+	XASL_ID_SET_NULL(X); \
         (X)->first_vpid.pageid = (B)->root_pageid;\
         (X)->first_vpid.volid  = 0x8000 | (B)->vfid.volid;\
         (X)->temp_vfid.fileid = (B)->vfid.fileid;\
         (X)->temp_vfid.volid = 0x8000 | (B)->vfid.volid;\
-        (X)->time_stored.sec = 0;\
-        (X)->time_stored.usec = 0;\
     } while (0)
 
 /* do not compare with X.time_stored */

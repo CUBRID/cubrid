@@ -56,6 +56,7 @@ LF_TRAN_SYSTEM free_sort_list_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM global_unique_stats_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM partition_link_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM hfid_table_Ts = LF_TRAN_SYSTEM_INITIALIZER;
+LF_TRAN_SYSTEM xcache_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 
 static bool tran_systems_initialized = false;
 
@@ -65,6 +66,10 @@ static bool tran_systems_initialized = false;
 #define OF_GET_REF(p,o)		(void * volatile *) (((char *)(p)) + (o))
 #define OF_GET_PTR(p,o)		(void *) (((char *)(p)) + (o))
 #define OF_GET_PTR_DEREF(p,o)	(*OF_GET_REF (p,o))
+
+static int lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
+				    LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry);
+static int lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry);
 
 /*
  * lf_callback_vpid_hash () - hash a VPID
@@ -434,6 +439,12 @@ lf_initialize_transaction_systems (int max_threads)
       goto error;
     }
 
+  if (lf_tran_system_init (&hfid_table_Ts, max_threads) != NO_ERROR)
+    {
+      /* TODO: Could we not use an array for tran systems? */
+      goto error;
+    }
+
   tran_systems_initialized = true;
   return NO_ERROR;
 
@@ -457,6 +468,7 @@ lf_destroy_transaction_systems (void)
   lf_tran_system_destroy (&global_unique_stats_Ts);
   lf_tran_system_destroy (&partition_link_Ts);
   lf_tran_system_destroy (&hfid_table_Ts);
+  lf_tran_system_destroy (&xcache_Ts);
 
   tran_systems_initialized = false;
 }
@@ -1189,7 +1201,7 @@ restart_search:
 }
 
 /*
- * lf_list_find_or_insert () - find or insert an entry
+ * lf_list_insert_internal () - insert an entry into latch-free list.
  *   returns: error code or NO_ERROR
  *   tran(in): lock free transaction system
  *   list_p(in): address of list head
@@ -1197,14 +1209,29 @@ restart_search:
  *   behavior_flags(in/out): flags that control restart behavior
  *   edesc(in): entry descriptor
  *   freelist(in): freelist to fetch new entries from
- *   entry(out): found entry or inserted entry
+ *   entry(in/out): found entry or inserted entry
  *
- * NOTE: This function will search for an entry with the specified key; if none
- * is found, it will add the entry in the hash table and return it in "entry".
+ * Behavior flags:
+ *
+ * LF_LIST_BF_RETURN_ON_RESTART - When insert fails because last entry in bucket was deleted, if this flag is set,
+ *				  then the operation is restarted from here, instead of looping inside
+ *				  lf_list_insert_internal (as a consequence, hash key is recalculated).
+ *				  NOTE: Currently, this flag is always used (I must find out why).
+ *
+ * LF_LIST_BF_INSERT_GIVEN	- If this flag is set, the caller means to force its own entry into hash table.
+ *				  When the flag is not set, a new entry is claimed from freelist.
+ *				  NOTE: If an entry with the same key already exists, the entry given as argument is
+ *					automatically retired.
+ *
+ * LF_LIST_BF_FIND_OR_INSERT	- If this flag is set and an entry for the same key already exists, the existing
+ *				  key will be output. If the flag is not set and key exists, insert just gives up
+ *				  and a NULL entry is output.
+ *				  NOTE: insert will not give up when key exists, if edesc->f_update is provided.
+ *					a new key is generated and insert is restarted.
  */
-int
-lf_list_find_or_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
-			LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry)
+static int
+lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
+			 LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry)
 {
   pthread_mutex_t *entry_mutex;
   void **curr_p;
@@ -1215,11 +1242,12 @@ lf_list_find_or_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *beh
   assert (list_p != NULL && edesc != NULL);
   assert (key != NULL && entry != NULL);
   assert (freelist != NULL);
+  assert (behavior_flags != NULL);
 
-  /* by default, not found */
-  (*entry) = NULL;
+  assert ((*entry != NULL) == LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN));
 
 restart_search:
+
   if (lf_tran_start (tran, false) != NO_ERROR)
     {
       return ER_FAILED;
@@ -1232,21 +1260,21 @@ restart_search:
   /* search */
   while (curr_p != NULL)
     {
-      /* is this the droid we are looking for? */
       if (curr != NULL)
 	{
 	  if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	    {
-	      if ((*entry) != NULL)
+	      /* found an entry with the same key. */
+
+	      if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN) && entry != NULL)
 		{
-		  /* save this for further (local) use */
+		  /* save this for further (local) use. */
 		  tran->temp_entry = *entry;
 
-		  /* this operation may fail as well, so don't keep the entry around */
-		  (*entry) = NULL;
+		  /* don't keep the entry around. */
+		  *entry = NULL;
 		}
 
-	      /* found! */
 	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 		{
 		  /* entry has a mutex protecting it's members; lock it */
@@ -1278,8 +1306,70 @@ restart_search:
 		    }
 		}
 
+	      if (edesc->f_duplicate != NULL)
+		{
+		  /* we have a duplicate key callback. */
+		  if (edesc->f_duplicate (key, curr) != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return ER_FAILED;
+		    }
+#if 1
+		  LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
+		  MEMORY_BARRIER ();
+		  return lf_tran_end (tran);
+#else /* !1 = 0 */
+		  /* Could we have such cases that we just update existing entry without modifying anything else?
+		   * And would it be usable with just a flag?
+		   * Then this code may be used.
+		   * So far we have only one usage for f_duplicate, which increment SESSION_ID and requires
+		   * restarting hash search. This will be the usual approach if f_duplicate.
+		   * If we just increment a counter in existing entry, we don't need to do anything else. This however
+		   * most likely depends on f_duplicate implementation. Maybe it is more useful to give behavior_flags
+		   * argument to f_duplicate to tell us if restart is or is not needed.
+		   */
+		  if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_RESTART_ON_DUPLICATE))
+		    {
+		      LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
+		      MEMORY_BARRIER ();
+		      return lf_tran_end (tran);
+		    }
+		  else
+		    {
+		      /* duplicate does not require restarting search. */
+		      if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN))
+			{
+			  /* Could not be inserted. Retire the entry. */
+			  lf_freelist_retire (tran, freelist, *entry);
+			  *entry = NULL;
+			}
+
+		      /* fall through to output current entry. */
+		    }
+#endif /* 0 */
+		}
+	      else
+		{
+		  if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN))
+		    {
+		      /* the given entry could not be inserted. retire it. */
+		      lf_freelist_retire (tran, freelist, *entry);
+		      *entry = NULL;
+		    }
+
+		  if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_FIND_OR_INSERT))
+		    {
+		      /* found entry is not accepted */
+		      MEMORY_BARRIER ();
+		      return lf_tran_end (tran);
+		    }
+
+		  /* fall through to output current entry. */
+		}
+
+	      assert (*entry == NULL);
 	      assert (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0);
-	      (*entry) = curr;
+	      *entry = curr;
 	      return NO_ERROR;
 	    }
 
@@ -1290,37 +1380,25 @@ restart_search:
       else
 	{
 	  /* end of bucket, we must insert */
-	  if ((*entry) == NULL)
+	  if (*entry == NULL)
 	    {
-	      if (tran->temp_entry != NULL)
+	      assert (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN));
+	      
+	      *entry = lf_freelist_claim (tran, freelist);
+	      if (*entry == NULL)
 		{
-		  *entry = tran->temp_entry;
-		  tran->temp_entry = NULL;
-		}
-	      else
-		{
-		  *entry = lf_freelist_claim (tran, freelist);
-		  if (*entry == NULL)
-		    {
-		      return ER_FAILED;
-		    }
-		}
-	      assert ((*entry) != NULL);
-
-	      /* set it's key */
-	      if (edesc->f_key_copy (key, OF_GET_PTR (*entry, edesc->of_key)) != NO_ERROR)
-		{
+		  assert (false);
 		  return ER_FAILED;
 		}
 	    }
-
+	  
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
 	    }
-
+	  
 	  /* attempt an add */
 	  if (!ATOMIC_CAS_ADDR (curr_p, NULL, (*entry)))
 	    {
@@ -1330,16 +1408,16 @@ restart_search:
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 		  pthread_mutex_unlock (entry_mutex);
 		}
-
+	      
 	      /* someone added before us, restart process */
-	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
+	      if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_RETURN_ON_RESTART))
 		{
-		  if (*entry != NULL)
+		  if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN))
 		    {
 		      tran->temp_entry = *entry;
 		      *entry = NULL;
 		    }
-		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
+		  LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
 		  MEMORY_BARRIER ();
 		  return lf_tran_end (tran);
 		}
@@ -1347,185 +1425,24 @@ restart_search:
 		{
 		  goto restart_search;
 		}
-	    }
-
-	  /* end transaction if mutex is acquired */
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
-	    {
-	      MEMORY_BARRIER ();
-	      if (lf_tran_end (tran) != NO_ERROR)
+	      
+	      /* end transaction if mutex is acquired */
+	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 		{
-		  return ER_FAILED;
+		  MEMORY_BARRIER ();
+		  if (lf_tran_end (tran) != NO_ERROR)
+		    {
+		      return ER_FAILED;
+		    }
 		}
+	      
+	      /* done! */
+	      return NO_ERROR;
 	    }
-
-	  /* done! */
-	  return NO_ERROR;
 	}
     }
 
   /* impossible case */
-  assert (false);
-  return ER_FAILED;
-}
-
-/*
- * lf_list_insert () - insert an entry into a list
- *   returns: error code or NO_ERROR
- *   tran(in): lock free transaction system
- *   list_p(in): address of list head
- *   key(in): key to insert
- *   behavior_flags(in/out): flags that control restart behavior
- *   edesc(in): entry descriptor
- *   freelist(in): freelist to fetch new entries from
- *   entry(out): entry (if found) or NULL
- *   inserted_count(out): number of inserted entries (will return 0 on restart)
- *
- * NOTE: If key already exists, the function will call f_duplicate of the entry
- * descriptor and then retry the insert. If f_duplicate is NULL or does not
- * modify the key then it will consequently spin until the entry with the given
- * key is removed;
- * NOTE: The default use case would be for f_duplicate to increment the key.
- */
-int
-lf_list_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
-		LF_FREELIST * freelist, void **entry, int *inserted_count)
-{
-  pthread_mutex_t *entry_mutex;
-  void **curr_p;
-  void *curr;
-  int rv;
-
-  assert (tran != NULL);
-  assert (list_p != NULL && edesc != NULL);
-  assert (key != NULL && entry != NULL);
-  assert (inserted_count != NULL);
-  assert (freelist != NULL);
-
-  *inserted_count = 0;
-
-  if (tran->temp_entry != NULL)
-    {
-      *entry = tran->temp_entry;
-      tran->temp_entry = NULL;
-    }
-  else
-    {
-      *entry = lf_freelist_claim (tran, freelist);
-    }
-  if ((*entry) == NULL)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-restart_search:
-  if (lf_tran_start (tran, false) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  MEMORY_BARRIER ();
-
-  curr_p = list_p;
-  curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
-
-  /* search */
-  while (curr_p != NULL)
-    {
-      if (curr != NULL)
-	{
-	  if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
-	    {
-	      /* found an entry with the same key */
-	      if (edesc->f_duplicate != NULL)
-		{
-		  /* we have duplicate key callback */
-		  if (edesc->f_duplicate (key, curr) != NO_ERROR)
-		    {
-		      return ER_FAILED;
-		    }
-
-		  if (*behavior_flags & LF_LIST_BF_RETURN_ON_DUPLICATE)
-		    {
-		      *behavior_flags = (*behavior_flags) | LF_LIST_BR_DUPLICATE;
-		      MEMORY_BARRIER ();
-		      return lf_tran_end (tran);
-		    }
-		}
-
-	      /* retry insert */
-	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
-		{
-		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-		  MEMORY_BARRIER ();
-		  return lf_tran_end (tran);
-		}
-	      else
-		{
-		  goto restart_search;
-		}
-	    }
-
-	  /* advance */
-	  curr_p = (void **) OF_GET_REF (curr, edesc->of_next);
-	  curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
-	}
-      else
-	{
-	  /* end of bucket, we must insert */
-	  /* set entry's key */
-	  if (edesc->f_key_copy (key, OF_GET_PTR (*entry, edesc->of_key)) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
-	    {
-	      /* entry has a mutex protecting it's members; lock it */
-	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
-	      rv = pthread_mutex_lock (entry_mutex);
-	    }
-
-	  /* attempt an add */
-	  if (!ATOMIC_CAS_ADDR (curr_p, NULL, (*entry)))
-	    {
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
-		{
-		  /* link failed, unlock mutex */
-		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
-		  pthread_mutex_unlock (entry_mutex);
-		}
-
-	      /* someone added or deleted before us, restart process */
-	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
-		{
-		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-		  MEMORY_BARRIER ();
-		  return lf_tran_end (tran);
-		}
-	      else
-		{
-		  goto restart_search;
-		}
-	    }
-
-	  /* end transaction if we have mutex acquired */
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
-	    {
-	      MEMORY_BARRIER ();
-	      if (lf_tran_end (tran) != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
-	    }
-
-	  /* done! */
-	  *inserted_count = 1;
-	  return NO_ERROR;
-	}
-    }
-
-  /* all not ok */
   assert (false);
   return ER_FAILED;
 }
@@ -1843,20 +1760,38 @@ restart:
 }
 
 /*
- * lf_hash_find_or_insert () - find or insert an entry in the hash table
+ * lf_hash_insert_internal () - hash insert function.
  *   returns: error code or NO_ERROR
  *   tran(in): LF transaction entry
  *   table(in): hash table
  *   key(in): key of entry that we seek
+ *   bflags(in): behavior flags
  *   entry(out): existing or new entry
  *
+ * Behavior flags:
+ *
+ * LF_LIST_BF_RETURN_ON_RESTART - When insert fails because last entry in bucket was deleted, if this flag is set,
+ *				  then the operation is restarted from here, instead of looping inside
+ *				  lf_list_insert_internal (as a consequence, hash key is recalculated).
+ *				  NOTE: Currently, this flag is always used (I must find out why).
+ *
+ * LF_LIST_BF_INSERT_GIVEN	- If this flag is set, the caller means to force its own entry into hash table.
+ *				  When the flag is not set, a new entry is claimed from freelist.
+ *				  NOTE: If an entry with the same key already exists, the entry given as argument is
+ *					automatically retired.
+ *
+ * LF_LIST_BF_FIND_OR_INSERT	- If this flag is set and an entry for the same key already exists, the existing
+ *				  key will be output. If the flag is not set and key exists, insert just gives up
+ *				  and a NULL entry is output.
+ *				  NOTE: insert will not give up when key exists, if edesc->f_update is provided.
+ *					a new key is generated and insert is restarted.
  */
-int
-lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry)
+static int
+lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   unsigned int hash_value;
-  int rc, bflags;
+  int rc;
 
   assert (table != NULL && key != NULL && entry != NULL);
   edesc = table->entry_desc;
@@ -1871,10 +1806,10 @@ restart:
       return ER_FAILED;
     }
 
-  bflags = LF_LIST_BF_RETURN_ON_RESTART;
-  rc = lf_list_find_or_insert (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, entry);
+  rc = lf_list_insert_internal (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, entry);
   if ((rc == NO_ERROR) && (bflags & LF_LIST_BR_RESTARTED))
     {
+      bflags &= ~LF_LIST_BR_RESTARTED;
       goto restart;
     }
   else
@@ -1884,7 +1819,22 @@ restart:
 }
 
 /*
- * lf_hash_insert () - insert a new entry with a specified key
+ * lf_hash_find_or_insert () - find or insert an entry in the hash table
+ *   returns: error code or NO_ERROR
+ *   tran(in): LF transaction entry
+ *   table(in): hash table
+ *   key(in): key of entry that we seek
+ *   entry(out): existing or new entry
+ *
+ */
+int
+lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry)
+{
+  return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_FIND_OR_INSERT, entry);
+}
+
+/*
+ * lf_hash_insert () - insert a new entry with a specified key.
  *   returns: error code or NO_ERROR
  *   tran(in): LF transaction entry
  *   table(in): hash table
@@ -1895,35 +1845,23 @@ restart:
 int
 lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry)
 {
-  LF_ENTRY_DESCRIPTOR *edesc;
-  unsigned int hash_value;
-  int inserted_count = 0, err = NO_ERROR, bflags;
+  return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART, entry);
+}
 
-  assert (table != NULL && key != NULL && entry != NULL);
-  edesc = table->entry_desc;
-  assert (edesc != NULL);
-  *entry = NULL;
-
-  while (inserted_count == 0)
-    {
-      /* if duplicate is found then key may have been modified, so rehashing is necessary */
-      hash_value = edesc->f_hash (key, table->hash_size);
-      if (hash_value >= table->hash_size)
-	{
-	  assert (false);
-	  return ER_FAILED;
-	}
-
-      bflags = LF_LIST_BF_RETURN_ON_DUPLICATE | LF_LIST_BF_RETURN_ON_RESTART;
-      if (lf_list_insert
-	  (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, entry, &inserted_count) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
-
-  /* all ok */
-  return NO_ERROR;
+/*
+ * lf_hash_insert_given () - insert entry given as argument. if same key exists however, replace it with existing key.
+ *   returns: error code or NO_ERROR
+ *   tran(in): LF transaction entry
+ *   table(in): hash table
+ *   key(in): key of entry to insert
+ *   entry(in/out): new entry
+ *
+ */
+int
+lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry)
+{
+  assert (entry != NULL && *entry != NULL);
+  return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_INSERT_GIVEN, entry);
 }
 
 /*

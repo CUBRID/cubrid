@@ -734,6 +734,10 @@
 					RelativePath="..\..\src\query\vacuum.c"
 					>
 				</File>
+                <File
+					RelativePath="..\..\src\query\xasl_cache.c"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="storage"

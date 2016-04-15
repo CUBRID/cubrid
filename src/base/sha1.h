@@ -24,6 +24,8 @@
 #ifndef _SHA1_H_
 #define _SHA1_H_
 
+#include "system.h"
+
 /* 
  *  This structure will hold context information for the hashing
  *  operation
@@ -39,8 +41,16 @@ typedef struct SHA1Context
   int Message_Block_Index;	/* Index into message block array */
 
   int Computed;			/* Is the digest computed? */
-  int Corrupted;		/* Is the message digest corruped? */
+  int Corrupted;		/* Is the message digest corrupted? */
 } SHA1Context;
+
+/*
+ * This structure holds the hash (message digest) computed using SHA-1.
+ */
+typedef struct SHA1Hash
+{
+  INT32 h[5];
+} SHA1Hash;
 
 /*
  *  Function Prototypes
@@ -48,5 +58,8 @@ typedef struct SHA1Context
 void SHA1Reset (SHA1Context *);
 int SHA1Result (SHA1Context *);
 void SHA1Input (SHA1Context *, const unsigned char *, unsigned);
+
+void SHA1Compute (const unsigned char *, unsigned, SHA1Hash *);
+int SHA1Compare (void *a, void *b);
 
 #endif
