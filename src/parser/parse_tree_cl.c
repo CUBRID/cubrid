@@ -1657,7 +1657,7 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer, c
     {
       parser->next_char = buffgetin;
       /* It would be a nice optimization to use strcasecmp if we are doing a Latin 8 bit character set. Unfortunately,
-       * strcasesmp is braindamaged about 8 bit ascii, so this is not a safe optimization. Perhaps
+       * strcasecmp is braindamaged about 8 bit ascii, so this is not a safe optimization. Perhaps
        * intl_identifier_casecmp can be further optimized for the single byte character case. */
       parser->casecmp = intl_identifier_casecmp;
     }
