@@ -537,5 +537,50 @@ xcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
 
 /* TODO more stuff
  * xcache_remove_when_full.
+ * I have named xcache_Soft_capacity the size of xasl cache because I don't want it to be a hard limit. We will allow
+ * it to overflow. When a new entry is inserted and overflow occurs, the inserter takes the responsibility to free up
+ * some entries (by marking them as deleted).
+ * The hard limit would have to block the xasl cache for a time. Not only that this hash-free table has no means of
+ * being blocked, but it is really unnecessary.
+ * Freeing up entries could be done in two ways:
+ * 1. Similarly to xasl_remove_by_class, we could provide a condition to free entries in one iteration.
+ * 2. We could collect a set of victims during first iterate and then delete all collected victims.
+ * I don't like the second approach because is too complex, we would have to keep a sorted list of victims which gets
+ * updated with each entry.
+ * I'd rather like to find a condition based on how often and how recent the entry was used. Anything older than and
+ * used less often than would be removed. If that did not remove enough entries, which I hope never happens, we could
+ * mark everything as deleted - but the real problem would be that the xasl cache is really too small for the system
+ * needs.
+ *
  * xcache_check_tcard.
+ * the current RT system specifics:
+ * 1. it is called only prepare query. It is not called if prepared query execution is called directly (which is the
+ * most likely usage).
+ * 2. it is called only if original tcard is less than 50 pages.
+ * 3. it doesn't care when it was last time called, so if preparing queries is usual, it may get called very often.
+ * I think some of the stuff above are not ok.
+ * 1. We should be able to check RT for both prepare and execute prepared. So forcing the check on getting xasl cache
+ *    entry would be better.
+ * 2. There should be no limit on tcard. We could treat the small/big tcards in two ways, but I think both can be
+ *    handled.
+ * 3. We can have some conditions of when to call it. If we limit the calls to every now and then, the file header page
+ *    fix would not have any impact to the overall throughput.
+ *
+ * Cache clones: no longer used for xasl cache, just filter predicate.
+ *
+ * Now to get to filter predicate:
+ * I was going to change this code to handle both xasl and filter predicate (I actually started changing it). However,
+ * I now reconsidered, since the two systems are quite different. The differences I discovered so far may not be all
+ * the differences between the two caches, but they are enough not to use them together anymore:
+ * 1. Cache clones are still used by filter predicate. I still don't really like the idea, and I think it is still not
+ *    an optimization good enough for filter predicates. We are planning to optimize XASL unpacking, which can be
+ *    applied to filter predicate unpacking too. Moreover, once unpacked, the filter predicate could be cached in
+ *    query execution context somewhere, with requesting it again with every locator_eval_filter_predicate!
+ * 2. Deleting hash entries does not require such an elaborate approach. There is no risk of using the wrong filter
+ *    predicate entry, since it is protected by locks before calling lf_find! If it is there, it is the right one.
+ * 3. Another consequence of the fact that we have the class locks when finding filter predicates, we do not need
+ *    to lock the classes in class_oid_list.
+ * 4. Actually there should be only one class! And that does not need tcard.
+ * 5. We will never need to do RT check.
+ * 6. The key of filter predicate should actually be BTID and nothing else (no XASL_ID, no sha1).
  */
