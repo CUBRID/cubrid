@@ -220,7 +220,6 @@ xcache_hash_key (void *key, int hash_table_size)
 static int
 xcache_find_internal (THREAD_ENTRY * thread_p, XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry)
 {
-  int retry_count = 0;
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
 #if defined (SERVER_MODE)
@@ -253,22 +252,15 @@ xcache_find_internal (THREAD_ENTRY * thread_p, XASL_ID * xid, XASL_CACHE_ENTRY *
   /* We need to consider that in the short time between finding entry and setting user counter, it is possible that
    * someone marks the entry as deleted, prohibiting use from using it from now on.
    */
-  do
+  if (!xcache_entry_increment_read_counter (thread_p, *xcache_entry))
     {
-      /* xasl_id.cache_flag field is used to manage thread concurrency. */
-      cache_flag = ATOMIC_INC_32 (&(*xcache_entry)->xasl_id.cache_flag, 0);
-      if (cache_flag & XCACHE_ENTRY_MARK_DELETED)
-	{
-	  /* Someone marked the entry as deleted after we found it.
-	   * It is very unlikely that someone already added a new entry for this key, in this short time.
-	   * Therefore, it's better to give up.
-	   */
-	  /* TODO: investigate is_xasl_pinned_reference. */
-	  *xcache_entry = NULL;
-	  return NO_ERROR;
-	}
-      /* Now try to increment the user counter. */
-    } while (!ATOMIC_CAS_32 (&(*xcache_entry)->xasl_id.cache_flag, cache_flag, cache_flag + 1));
+      /* Someone marked the entry as deleted after we found it.
+       * It is very unlikely that someone already added a new entry for this key, in this short time.
+       * Therefore, it's better to give up.
+       */
+      *xcache_entry = NULL;
+      return NO_ERROR;
+    }
   /* Successfully incremented user counter. */
 
   /* Get lock on all classes in xasl cache entry. */
@@ -340,6 +332,26 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, XASL_ID * xid, XASL_CACHE_ENTRY **
   return NO_ERROR;
 }
 
+bool
+xcache_entry_increment_read_counter (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
+{
+  INT32 cache_flag;
+
+  assert (xcache_entry != NULL);
+
+  do
+    {
+      cache_flag = ATOMIC_INC_32 (&xcache_entry->xasl_id.cache_flag, 0);
+      if (cache_flag | XCACHE_ENTRY_MARK_DELETED)
+	{
+	  /* It was deleted. */
+	  return false;
+	}
+    } while (ATOMIC_CAS_32 (&xcache_entry->xasl_id.cache_flag, cache_flag, cache_flag + 1));
+  /* Success */
+  return true;
+}
+
 int
 xcache_entry_decrement_read_counter (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 {
@@ -372,6 +384,43 @@ xcache_entry_decrement_read_counter (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY *
 	  return ER_FAILED;
 	}
     }
+  return NO_ERROR;
+}
+
+int
+xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
+{
+  INT32 cache_flag;
+  int error_code = NO_ERROR;
+
+  do
+    {
+      cache_flag = ATOMIC_INC_32 (&xcache_entry->xasl_id.cache_flag, 0);
+      if (cache_flag | XCACHE_ENTRY_MARK_DELETED)
+	{
+	  /* Already marked as deleted. */
+	  return NO_ERROR;
+	}
+    } while (ATOMIC_CAS_32 (&xcache_entry->xasl_id.cache_flag, cache_flag, cache_flag | XCACHE_ENTRY_MARK_DELETED));
+
+  if (cache_flag == 0)
+    {
+      /* No one was reading the entry. We can also remove it from hash. */
+      error_code = lf_hash_delete (t_entry, &xcache_Ht, &xcache_entry->xasl_id, &success);
+      if (error_code != NO_ERROR)
+	{
+	  /* Errors are not expected. */
+	  assert (false);
+	  return error_code;
+	}
+      if (success == 0)
+	{
+	  /* Failure is not expected. */
+	  assert (false);
+	  return ER_FAILED;
+	}
+    }
+  /* Success */
   return NO_ERROR;
 }
 
@@ -429,31 +478,64 @@ xcache_find_or_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * s
 	}
       assert (*xcache_entry != NULL);
       /* Mark myself as reader. */
-      do 
+      if (xcache_entry_increment_read_counter (thread_p, *xcache_entry))
 	{
-	  cache_flag = ATOMIC_INC_32 (&(*xcache_entry)->xasl_id.cache_flag, 0);
-	  if (cache_flag | XCACHE_ENTRY_MARK_DELETED)
-	    {
-	      /* Somebody already deleted the entry... Try again. */
-	      break;
-	    }
-	} while (ATOMIC_CAS_32 (&(*xcache_entry)->xasl_id.cache_flag, cache_flag - 1, cache_flag));
-      if (cache_flag | XCACHE_ENTRY_MARK_DELETED)
-	{
-	  /* Cache entry is deleted. It must have been found first, and then someone deleted it. */
-	  continue;
-	}
-      else
-	{
-	  assert (cache_flag > 0);
+	  /* Successfully marked as reader. Break loop. */
 	  break;
 	}
+      /* The entry was marked as deleted. Try again to insert again. */
     }
   assert (*xcache_entry != NULL);
   return NO_ERROR;
 }
 
+int
+xcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
+{
+  LF_HASH_TABLE_ITERATOR iter;
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
+  XASL_CACHE_ENTRY *xcache_entry;
+  XASL_CACHE_ENTRY *del_prev_entry = NULL;
+  int class_idx;
+
+  lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
+
+  do
+    {
+      /* Start by iterating to next hash entry. */
+      xcache_entry = lf_hash_iterate (&iter);
+
+      /* Check if previous hash entry must be deleted. */
+      if (del_prev_entry != NULL)
+	{
+	  if (xcache_entry_mark_deleted (thread_p, del_prev_entry) != NO_ERROR)
+	    {
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      /* Continue removing other entries. */
+	    }
+	  del_prev_entry = NULL;
+	}
+
+      if (xcache_entry == NULL)
+	{
+	  /* Finished hash iteration. */
+	  break;
+	}
+
+      for (class_idx = 0; class_idx < xcache_entry->n_oid_list; class_idx++)
+	{
+	  if (OID_EQ (&xcache_entry->class_oid_list[class_idx], class_oid))
+	    {
+	      /* Save entry to be deleted after we advance to next hash entry. */
+	      del_prev_entry = xcache_entry;
+	      break;
+	    }
+	}
+    }
+}
+
 /* TODO more stuff
- * xcache_remove_by_class.
  * xcache_remove_when_full.
+ * xcache_check_tcard.
  */
