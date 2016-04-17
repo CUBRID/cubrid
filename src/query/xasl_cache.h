@@ -91,11 +91,15 @@ struct xasl_cache_clo
   void *xasl_buf_info;		/* XASL tree buffer info */
 };
 
-int xcache_initialize (void);
-void xcache_finalize (void);
+extern int xcache_initialize (void);
+extern void xcache_finalize (void);
 
-int xcache_find_sha1 (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_CACHE_ENTRY ** xcache_entry);
-int xcache_find_xasl_id (THREAD_ENTRY * thread_p, XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry);
-int xcache_entry_decrement_read_counter (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
+extern int xcache_find_sha1 (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_CACHE_ENTRY ** xcache_entry);
+extern int xcache_find_xasl_id (THREAD_ENTRY * thread_p, XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry);
+extern int xcache_entry_decrement_read_counter (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
+extern int xcache_find_or_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, const OID * oid,
+				  int n_oid, const OID * class_oids, const int * class_locks, const int *tcards,
+				  int dbval_cnt, XASL_CACHE_ENTRY ** xcache_entry);
+extern int xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid);
 
 #endif /* _XASL_CACHE_H_ */

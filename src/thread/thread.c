@@ -1164,6 +1164,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->tran_entries[THREAD_TS_PARTITION_LINK_HASH] = lf_tran_request_entry (&partition_link_Ts);
   entry_p->tran_entries[THREAD_TS_HFID_TABLE] = lf_tran_request_entry (&hfid_table_Ts);
   entry_p->tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
+  entry_p->tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
 
   entry_p->vacuum_worker = NULL;
 

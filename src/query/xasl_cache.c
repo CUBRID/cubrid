@@ -69,6 +69,7 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
   };
 
 static int xcache_find_internal (THREAD_ENTRY * thread_p, XASL_ID * xasl_id, XASL_CACHE_ENTRY ** xcache_entry);
+static bool xcache_entry_increment_read_counter (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
 
 int
 xcache_initialize (void)
@@ -222,11 +223,8 @@ xcache_find_internal (THREAD_ENTRY * thread_p, XASL_ID * xid, XASL_CACHE_ENTRY *
 {
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
-#if defined (SERVER_MODE)
-  INT32 cache_flag;
   int class_index;
   int lock_result;
-#endif /* SERVER_MODE */
 
   assert (xcache_entry != NULL && *xcache_entry == NULL);
   assert (xcache_Enabled);
@@ -245,7 +243,6 @@ xcache_find_internal (THREAD_ENTRY * thread_p, XASL_ID * xid, XASL_CACHE_ENTRY *
       return NO_ERROR;
     }
 
-#if defined (SERVER_MODE)
   /* Found a match. */
   /* We cannot yet get entry until we mark it as used, by incrementing user counter in cache_flag. */
 
@@ -283,9 +280,6 @@ xcache_find_internal (THREAD_ENTRY * thread_p, XASL_ID * xid, XASL_CACHE_ENTRY *
       xcache_entry_decrement_read_counter (thread_p, *xcache_entry);
       *xcache_entry = NULL;
     }
-#else /* !SERVER_MODE */ /* SA_MODE */
-  assert ((((*xcache_entry)->xasl_id.cache_flag & XCACHE_ENTRY_MARK_DELETED) == 0));
-#endif /* SA_MODE */
 
   return NO_ERROR;
 }
@@ -332,7 +326,7 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, XASL_ID * xid, XASL_CACHE_ENTRY **
   return NO_ERROR;
 }
 
-bool
+static bool
 xcache_entry_increment_read_counter (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 {
   INT32 cache_flag;
@@ -390,8 +384,10 @@ xcache_entry_decrement_read_counter (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY *
 int
 xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 {
-  INT32 cache_flag;
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
+  INT32 cache_flag = 0;
   int error_code = NO_ERROR;
+  int success = 0;
 
   do
     {
@@ -423,6 +419,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
   /* Success */
   return NO_ERROR;
 }
+
 
 int
 xcache_find_or_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, const OID * oid, int n_oid,
@@ -490,17 +487,17 @@ xcache_find_or_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * s
 }
 
 int
-xcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
+xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid)
 {
   LF_HASH_TABLE_ITERATOR iter;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
   XASL_CACHE_ENTRY *xcache_entry;
   XASL_CACHE_ENTRY *del_prev_entry = NULL;
-  int class_idx;
+  int oid_idx;
 
   lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
 
-  do
+  while (true)
     {
       /* Start by iterating to next hash entry. */
       xcache_entry = lf_hash_iterate (&iter);
@@ -523,9 +520,9 @@ xcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
 	  break;
 	}
 
-      for (class_idx = 0; class_idx < xcache_entry->n_oid_list; class_idx++)
+      for (oid_idx = 0; oid_idx < xcache_entry->n_oid_list; oid_idx++)
 	{
-	  if (OID_EQ (&xcache_entry->class_oid_list[class_idx], class_oid))
+	  if (OID_EQ (&xcache_entry->class_oid_list[oid_idx], oid))
 	    {
 	      /* Save entry to be deleted after we advance to next hash entry. */
 	      del_prev_entry = xcache_entry;
@@ -568,19 +565,6 @@ xcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
  *
  * Cache clones: no longer used for xasl cache, just filter predicate.
  *
- * Now to get to filter predicate:
- * I was going to change this code to handle both xasl and filter predicate (I actually started changing it). However,
- * I now reconsidered, since the two systems are quite different. The differences I discovered so far may not be all
- * the differences between the two caches, but they are enough not to use them together anymore:
- * 1. Cache clones are still used by filter predicate. I still don't really like the idea, and I think it is still not
- *    an optimization good enough for filter predicates. We are planning to optimize XASL unpacking, which can be
- *    applied to filter predicate unpacking too. Moreover, once unpacked, the filter predicate could be cached in
- *    query execution context somewhere, with requesting it again with every locator_eval_filter_predicate!
- * 2. Deleting hash entries does not require such an elaborate approach. There is no risk of using the wrong filter
- *    predicate entry, since it is protected by locks before calling lf_find! If it is there, it is the right one.
- * 3. Another consequence of the fact that we have the class locks when finding filter predicates, we do not need
- *    to lock the classes in class_oid_list.
- * 4. Actually there should be only one class! And that does not need tcard.
- * 5. We will never need to do RT check.
- * 6. The key of filter predicate should actually be BTID and nothing else (no XASL_ID, no sha1).
+ * There is the pin xasl I managed to understand its overall scope, however I don't understand the issue it was
+ * supposed to fix. Maybe we can find a better way to handle the original problem.
  */

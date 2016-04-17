@@ -78,6 +78,7 @@
 #include "partition.h"
 #include "connection_support.h"
 #include "log_writer.h"
+#include "filter_pred_cache.h"
 
 #include "fault_injection.h"
 
@@ -4723,14 +4724,12 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, v
 		    " failed for class { %d %d %d }\n", t->m_class_oid.pageid, t->m_class_oid.slotid,
 		    t->m_class_oid.volid);
     }
-  /* remove filter predicatecache entries which are relevant with this class */
-  if (prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) > 0
-      && qexec_remove_filter_pred_cache_ent_by_class (thread_p, &t->m_class_oid) != NO_ERROR)
+  /* remove filter predicate cache entries which are relevant with this class */
+  if (fpcache_remove_by_class (thread_p, &t->m_class_oid) != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "log_cleanup_modified_class: xs_remove_filter_pred_cache_ent_by_class"
-		    " failed for class { %d %d %d }\n", t->m_class_oid.pageid, t->m_class_oid.slotid,
-		    t->m_class_oid.volid);
+		    "log_cleanup_modified_class: fpcache_remove_by_class returned error for class { %d %d %d }\n",
+		    t->m_class_oid.pageid, t->m_class_oid.slotid, t->m_class_oid.volid);
     }
 
 }

@@ -478,6 +478,10 @@
 					RelativePath="..\..\src\query\fetch.c"
 					>
 				</File>
+                <File
+					RelativePath="..\..\src\query\filter_pred_cache.c"
+					>
+				</File>
 				<File
 					RelativePath="..\..\src\query\list_file.c"
 					>

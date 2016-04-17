@@ -2757,7 +2757,7 @@ void
 xqmgr_dump_query_plans (THREAD_ENTRY * thread_p, FILE * out_fp)
 {
   (void) qexec_dump_xasl_cache_internal (thread_p, out_fp, 7);
-  (void) qexec_dump_filter_pred_cache_internal (thread_p, out_fp, 7);
+  fpcache_dump (thread_p, out_fp);
 }
 
 /*

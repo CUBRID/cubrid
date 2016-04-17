@@ -87,7 +87,6 @@ static const char *css_Csect_name[] = {
   "HA_SERVER_STATE",
   "COMPACTDB_ONE_INSTANCE",
   "ACL",
-  "QPROC_FILTER_PRED_CACHE",
   "PARTITION_CACHE",
   "EVENT_LOG_FILE",
   "CONN_ACTIVE",

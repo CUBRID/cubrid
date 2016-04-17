@@ -219,6 +219,7 @@ QUERY_SOURCES = \
 	$(QUERY_DIR)/query_dump.c \
 	$(QUERY_DIR)/query_evaluator.c \
 	$(QUERY_DIR)/fetch.c \
+    $(QUERY_DIR)/filter_pred_cache.c \
 	$(QUERY_DIR)/list_file.c \
 	$(QUERY_DIR)/numeric_opfunc.c \
 	$(QUERY_DIR)/query.c \

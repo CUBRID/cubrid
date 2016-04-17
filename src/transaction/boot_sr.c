@@ -95,6 +95,7 @@
 #include "event_log.h"
 #include "tz_support.h"
 #include "tsc_timer.h"
+#include "filter_pred_cache.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -3571,7 +3572,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
-  (void) qexec_initialize_filter_pred_cache (thread_p);
+  error_code = fpcache_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   /* 
    * Since no logging is done on temporary volumes, we can not trust
@@ -3866,7 +3871,7 @@ error:
   logtb_finalize_global_unique_stats_table (thread_p);
 
   log_final (thread_p);
-  qexec_finalize_filter_pred_cache (thread_p);
+  fpcache_finalize ();
   qfile_finalize_list_cache (thread_p);
   qexec_finalize_xasl_cache (thread_p);
 
@@ -3995,7 +4000,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
       qfile_finalize_list_cache (thread_p);
       (void) qexec_finalize_xasl_cache (thread_p);
-      (void) qexec_finalize_filter_pred_cache (thread_p);
+      fpcache_finalize ();
       session_states_finalize (thread_p);
 
       if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)

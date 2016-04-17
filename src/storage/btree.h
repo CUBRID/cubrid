@@ -712,4 +712,6 @@ extern void btree_leaf_record_change_overflow_link (THREAD_ENTRY * thread_p, BTI
 						    char **rv_redo_data_ptr);
 
 extern int btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+
+extern unsigned int btree_hash_btid (void *btid, int hash_size);
 #endif /* _BTREE_H_ */

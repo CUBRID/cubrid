@@ -968,6 +968,7 @@ struct pred_expr_with_context
   int num_attrs_pred;		/* number of atts from the predicate */
   ATTR_ID *attrids_pred;	/* array of attr ids from the pred */
   HEAP_CACHE_ATTRINFO *cache_pred;	/* cache for the pred attrs */
+  void *unpack_info;			/* Buffer information. */
 };
 
 /* new type used by function index for cleaner code */
@@ -1066,54 +1067,35 @@ extern void get_xasl_dumper_linked_in ();
 
 /* XASL cache entry manipulation functions */
 extern int qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p);
-extern int qexec_initialize_filter_pred_cache (THREAD_ENTRY * thread_p);
 extern int qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p);
-extern int qexec_finalize_filter_pred_cache (THREAD_ENTRY * thread_p);
 extern int qexec_dump_xasl_cache_internal (THREAD_ENTRY * thread_p, FILE * fp, int mask);
-extern int qexec_dump_filter_pred_cache_internal (THREAD_ENTRY * thread_p, FILE * fp, int mask);
 #if defined(CUBRID_DEBUG)
 extern int qexec_dump_xasl_cache (THREAD_ENTRY * thread_p, const char *fname, int mask);
 #endif
 extern XASL_CACHE_ENTRY *qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr, const OID * user_oid,
 						      bool is_pinned_reference, bool recompile_xasl_pinned);
-extern XASL_CACHE_ENTRY *qexec_lookup_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
-							     const OID * user_oid);
 extern XASL_CACHE_ENTRY *qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
 						      XASL_STREAM * stream, const OID * oid, int n_oids,
 						      const OID * class_oids, const int *class_locks,
 						      const int *repr_ids, int dbval_cnt, bool is_pinned_reference);
-extern XASL_CACHE_ENTRY *qexec_update_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
-							     XASL_ID * xasl_id, const OID * oid, int n_oids,
-							     const OID * class_oids, const int *tcards, int dbval_cnt);
-
-extern int qexec_remove_my_tran_id_in_filter_pred_xasl_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent,
-							      bool unfix_all);
 extern int qexec_remove_my_tran_id_in_xasl_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent, bool unfix_all,
 						  bool is_pinned_reference);
-
-extern int qexec_end_use_of_filter_pred_cache_ent (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, bool marker);
 extern int qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent);
 extern XASL_CACHE_ENTRY *qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id,
 							     int dbval_cnt, XASL_CACHE_CLONE ** clop,
 							     bool is_pinned_reference);
-extern XASL_CACHE_ENTRY *qexec_check_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id,
-								    int dbval_cnt, XASL_CACHE_CLONE ** clop);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int qexec_free_xasl_cache_clo (XASL_CACHE_CLONE * clo);
 #endif /* ENABLE_UNUSED_FUNCTION */
-extern int qexec_free_filter_pred_cache_clo (THREAD_ENTRY * thread_p, XASL_CACHE_CLONE * clo);
 extern int xasl_id_hash_cmpeq (const void *key1, const void *key2);
 extern int qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p, const OID * class_oid, int force_remove);
-extern int qexec_remove_filter_pred_cache_ent_by_class (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern int qexec_remove_xasl_cache_ent_by_qstr (THREAD_ENTRY * thread_p, const char *qstr, const OID * user_oid);
 extern int qexec_remove_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id);
 extern int qexec_remove_all_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p);
 #if 0
 extern int qexec_remove_xasl_cache_ent_by_volume (THREAD_ENTRY * thread_p, VOLID volid, bool not_reuse_file);
 #endif
-extern int qexec_remove_all_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p);
 extern int qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p, const OID * class_oid);
-extern int qexec_clear_list_pred_cache_by_class (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern bool qdump_print_xasl (XASL_NODE * xasl);
 #if defined(CUBRID_DEBUG)
 extern bool qdump_check_xasl_tree (XASL_NODE * xasl);
@@ -1127,7 +1109,7 @@ extern void xts_final (void);
 extern int stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, char *xasl_stream,
 				   int xasl_stream_size, void **xasl_unpack_info_ptr);
 extern int stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT ** pred_expr_tree,
-					  char *pred_stream, int pred_stream_size, void **xasl_unpack_info_ptr);
+					  char *pred_stream, int pred_stream_size);
 extern int stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, char *xasl_stream,
 					int xasl_stream_size, void **xasl_unpack_info_ptr);
 extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * xasl_header_p,
