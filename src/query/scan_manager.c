@@ -4881,34 +4881,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  /* grouped, fixed scan */
 	  sp_scan = heap_scanrange_next (thread_p, &hsidp->curr_oid, &recdes, &hsidp->scan_range, is_peeking);
-
-	  if (scan_id->mvcc_select_lock_needed && sp_scan == S_SUCCESS)
-	    {
-	      /* data filter already initialized, don't have key or range init scan reevaluation structure */
-	      INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, p_range_filter, p_key_filter, &data_filter,
-				   &scan_id->qualification);
-	      /* set reevaluation data */
-	      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE, NULL);
-
-	      COPY_OID (&current_oid, &hsidp->curr_oid);
-	      if (scan_id->fixed)
-		{
-		  /* Reset recdes.data if PEEK is used. */
-		  recdes.data = NULL;
-		}
-	      sp_scan =
-		heap_mvcc_get_for_delete (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_range.scan_cache,
-					  is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
-	      if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
-		{
-		  continue;
-		}
-	      else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-		{
-		  er_clear ();
-		  continue;
-		}
-	    }
 	}
       else
 	{
@@ -4962,7 +4934,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       /* evaluate the predicates to see if the object qualifies */
       scan_id->stats.read_rows++;
-
 
       ev_res = eval_data_filter (thread_p, p_current_oid, &recdes, &hsidp->scan_cache, &data_filter);
       if (ev_res == V_ERROR)
