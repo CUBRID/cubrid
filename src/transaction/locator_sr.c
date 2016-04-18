@@ -7742,6 +7742,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	{
 	  /* The oid has been already locked in select phase, however need to get the last object that may differ by
 	   * the current one in case that transaction updates same OID many times during command execution */
+	  /* TODO: investigate if this is still true */
 	  if (scan_cache && scan_cache->mvcc_snapshot != NULL)
 	    {
 	      /* Why is snapshot set to NULL? */

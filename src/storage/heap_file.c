@@ -8297,7 +8297,7 @@ end:
       heap_scancache_end (thread_p, &local_scancache);
       scan_cache = NULL;
     }
-  else if (!scan_cache->cache_last_fix_page)
+  else if (!scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
     {
       /* unfix the page from the received scan_cache */
       pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
