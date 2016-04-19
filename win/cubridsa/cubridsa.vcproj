@@ -478,7 +478,7 @@
 					RelativePath="..\..\src\query\fetch.c"
 					>
 				</File>
-                <File
+				<File
 					RelativePath="..\..\src\query\filter_pred_cache.c"
 					>
 				</File>
@@ -550,7 +550,7 @@
 					RelativePath="..\..\src\query\vacuum.c"
 					>
 				</File>
-                <File
+				<File
 					RelativePath="..\..\src\query\xasl_cache.c"
 					>
 				</File>
@@ -608,6 +608,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\base\error_manager.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\base\fault_injection.c"
 					>
 				</File>
 				<File
@@ -712,10 +716,6 @@
 				</File>
 				<File
 					RelativePath="..\..\src\base\system_parameter.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\base\fault_injection.c"
 					>
 				</File>
 				<File

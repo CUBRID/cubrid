@@ -27425,7 +27425,8 @@ heap_get_partition_link_from_cache (THREAD_ENTRY * thread_p, OID * class_oid)
   assert (class_oid != NULL);
 
   error_code =
-    lf_hash_find_or_insert (t_entry, &heap_Partition_link_cache->partition_link_hash, class_oid, (void **) &entry);
+    lf_hash_find_or_insert (t_entry, &heap_Partition_link_cache->partition_link_hash, class_oid, (void **) &entry,
+			    NULL);
 
   if (error_code != NO_ERROR)
     {
@@ -28208,7 +28209,8 @@ heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, 
       return NO_ERROR;
     }
 
-  error_code = lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry);
+  error_code =
+    lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -28243,8 +28245,8 @@ heap_get_hfid_from_cache (THREAD_ENTRY * thread_p, const OID * class_oid, HFID *
 
   assert (class_oid != NULL);
 
-  error_code = lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry);
-
+  error_code =
+    lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;

@@ -489,7 +489,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
   vpid_p = pgbuf_get_vpid_ptr (page_p);
 
   /* retrieve a hash entry for specified VPID */
-  if (lf_hash_find_or_insert (t_entry, &spage_saving_ht, (void *) vpid_p, (void **) &head_p) != NO_ERROR)
+  if (lf_hash_find_or_insert (t_entry, &spage_saving_ht, (void *) vpid_p, (void **) &head_p, NULL) != NO_ERROR)
     {
       return ER_FAILED;
     }

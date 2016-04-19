@@ -6425,7 +6425,7 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool 
 	    }
 	}
       error_code =
-	lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid, (void **) &stats);
+	lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid, (void **) &stats, NULL);
       if (error_code != NO_ERROR || stats == NULL)
 	{
 	  return NULL;

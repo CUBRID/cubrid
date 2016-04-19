@@ -2268,8 +2268,8 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
       catalog_key.r_slot_id = repr_item_p->slot_id;
 
       /* insert value */
-      if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p) !=
-	  NO_ERROR)
+      if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p, NULL)
+	  != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -5699,8 +5699,8 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
   catalog_key.r_slot_id = dir_oid_p->slotid;
 
   /* insert value */
-  if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p) !=
-      NO_ERROR)
+  if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p, NULL)
+      != NO_ERROR)
     {
       return ER_FAILED;
     }

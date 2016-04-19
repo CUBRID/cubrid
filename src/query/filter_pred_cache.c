@@ -285,7 +285,7 @@ fpcache_retire (THREAD_ENTRY * thread_p, BTID * btid, PRED_EXPR_WITH_CONTEXT * f
   if (fpcache_Enabled)
     {
       ATOMIC_INC_64 (&fpcache_Stat_add, 1);
-      error_code = lf_hash_find_or_insert (t_entry, &fpcache_Ht, btid, &fpcache_entry);
+      error_code = lf_hash_find_or_insert (t_entry, &fpcache_Ht, btid, &fpcache_entry, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

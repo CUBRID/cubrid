@@ -3361,7 +3361,7 @@ start:
 
   /* find or add the lockable object in the lock table */
   search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid, (BTID *) btid);
-  rv = lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table, (void *) &search_key, (void **) &res_ptr);
+  rv = lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table, (void *) &search_key, (void **) &res_ptr, NULL);
   if (rv != NO_ERROR)
     {
       return rv;

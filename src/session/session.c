@@ -596,7 +596,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   *id = next_session_id;
 
   /* insert new entry into hash table */
-  ret = lf_hash_insert (t_entry, &sessions.sessions_table, (void *) id, (void **) &session_p);
+  ret = lf_hash_insert (t_entry, &sessions.sessions_table, (void *) id, (void **) &session_p, NULL);
   if (ret != NO_ERROR)
     {
       return ret;

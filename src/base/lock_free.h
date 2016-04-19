@@ -357,9 +357,10 @@ extern int lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned
 extern void lf_hash_destroy (LF_HASH_TABLE * table);
 
 extern int lf_hash_find (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry);
-extern int lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry);
-extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry);
-extern int lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry);
+extern int lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry,
+				   int * inserted);
+extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted);
+extern int lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted);
 extern int lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
 extern int lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table);
 

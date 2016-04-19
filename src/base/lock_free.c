@@ -69,8 +69,9 @@ static bool tran_systems_initialized = false;
 #define OF_GET_PTR_DEREF(p,o)	(*OF_GET_REF (p,o))
 
 static int lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
-				    LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry);
-static int lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry);
+				    LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int * inserted);
+static int lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry,
+				    int * inserted);
 
 /*
  * lf_callback_vpid_hash () - hash a VPID
@@ -1211,6 +1212,7 @@ restart_search:
  *   edesc(in): entry descriptor
  *   freelist(in): freelist to fetch new entries from
  *   entry(in/out): found entry or inserted entry
+ *   inserted(out): returns 1 if inserted, 0 if found or not inserted.
  *
  * Behavior flags:
  *
@@ -1232,7 +1234,7 @@ restart_search:
  */
 static int
 lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
-			 LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry)
+			 LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int * inserted)
 {
   pthread_mutex_t *entry_mutex;
   void **curr_p;
@@ -1246,6 +1248,11 @@ lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *be
   assert (behavior_flags != NULL);
 
   assert ((*entry != NULL) == LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN));
+
+  if (inserted != NULL)
+    {
+      *inserted = 0;
+    }
 
 restart_search:
 
@@ -1391,6 +1398,12 @@ restart_search:
 		  assert (false);
 		  return ER_FAILED;
 		}
+
+	      /* set it's key */
+	      if (edesc->f_key_copy (key, OF_GET_PTR (*entry, edesc->of_key)) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
 	    }
 	  
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
@@ -1426,20 +1439,25 @@ restart_search:
 		{
 		  goto restart_search;
 		}
-	      
-	      /* end transaction if mutex is acquired */
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
-		{
-		  MEMORY_BARRIER ();
-		  if (lf_tran_end (tran) != NO_ERROR)
-		    {
-		      return ER_FAILED;
-		    }
-		}
-	      
-	      /* done! */
-	      return NO_ERROR;
 	    }
+	  
+	  /* end transaction if mutex is acquired */
+	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	    {
+	      MEMORY_BARRIER ();
+	      if (lf_tran_end (tran) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	    }
+	  if (inserted)
+	    {
+	      *inserted = 1;
+	    }
+	  
+	  /* done! */
+	  return NO_ERROR;
+	    
 	}
     }
 
@@ -1768,6 +1786,7 @@ restart:
  *   key(in): key of entry that we seek
  *   bflags(in): behavior flags
  *   entry(out): existing or new entry
+ *   inserted(out): returns 1 if inserted, 0 if found or not inserted.
  *
  * Behavior flags:
  *
@@ -1788,7 +1807,8 @@ restart:
  *					a new key is generated and insert is restarted.
  */
 static int
-lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry)
+lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry,
+			 int * inserted)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   unsigned int hash_value;
@@ -1807,7 +1827,8 @@ restart:
       return ER_FAILED;
     }
 
-  rc = lf_list_insert_internal (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, entry);
+  rc =
+    lf_list_insert_internal (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, entry, inserted);
   if ((rc == NO_ERROR) && (bflags & LF_LIST_BR_RESTARTED))
     {
       bflags &= ~LF_LIST_BR_RESTARTED;
@@ -1826,12 +1847,14 @@ restart:
  *   table(in): hash table
  *   key(in): key of entry that we seek
  *   entry(out): existing or new entry
+ *   inserted(out): returns 1 if inserted, 0 if found or not inserted.
  *
  */
 int
-lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry)
+lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted)
 {
-  return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_FIND_OR_INSERT, entry);
+  return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_FIND_OR_INSERT, entry,
+				  inserted);
 }
 
 /*
@@ -1841,12 +1864,13 @@ lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, 
  *   table(in): hash table
  *   key(in): key of entry to insert
  *   entry(out): new entry
+ *   inserted(out): returns 1 if inserted, 0 if found or not inserted.
  *
  */
 int
-lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry)
+lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted)
 {
-  return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART, entry);
+  return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART, entry, inserted);
 }
 
 /*
@@ -1856,13 +1880,15 @@ lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **e
  *   table(in): hash table
  *   key(in): key of entry to insert
  *   entry(in/out): new entry
+ *   inserted(out): returns 1 if inserted, 0 if found or not inserted.
  *
  */
 int
-lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry)
+lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted)
 {
   assert (entry != NULL && *entry != NULL);
-  return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_INSERT_GIVEN, entry);
+  return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_INSERT_GIVEN, entry,
+				  inserted);
 }
 
 /*

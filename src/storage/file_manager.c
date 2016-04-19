@@ -3591,7 +3591,8 @@ file_rv_postpone_destroy_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	    {
 	      /* restore global statistics for debug purpose */
 	      stats = NULL;
-	      lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, &btid, (void **) &stats);
+	      lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, &btid, (void **) &stats,
+				      NULL);
 	      stats->unique_stats.num_oids = num_oids;
 	      stats->unique_stats.num_keys = num_keys;
 	      stats->unique_stats.num_nulls = num_nulls;
