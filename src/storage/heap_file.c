@@ -928,7 +928,7 @@ static void heap_log_update_undo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID
 				  RECDES * undo_recdes, LOG_RCVINDEX rcvindex);
 static void heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
 				  RECDES * redo_recdes, LOG_RCVINDEX rcvindex);
-static SCAN_CODE heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes,
+static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
 
@@ -8143,7 +8143,6 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 		       * which was already evaluated. */
 		      assert (snapshot_res == SNAPSHOT_SATISFIED);
 
-		      /* goto get.. just in case of CHN_UPTODATE; maybe it's useless to check for CHN now... */
 		      goto get_heap_record;
 		    }
 		}
@@ -8215,7 +8214,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 	{
 	  /* This version is not visible, but maybe there is an older visible version. */
 	  scan_code =
-	    heap_mvcc_get_old_visible_version (thread_p, recdes, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header), scan_cache,
+	    heap_get_visible_version_from_log (thread_p, recdes, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header), scan_cache,
 					       old_chn);
 	  if (scan_code != S_DOESNT_EXIST)
 	    {
@@ -26212,7 +26211,7 @@ heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, O
 }
 
 /*
- * heap_mvcc_get_old_visible_version () - Iterate through old versions of object until a visible object is found
+ * heap_get_visible_version_from_log () - Iterate through old versions of object until a visible object is found
  *				    
  *   return: SCAN_CODE. Posible values: 
  *	     - S_SUCCESS: for successful case when record was obtained.
@@ -26225,7 +26224,7 @@ heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, O
  *   scan_cache(in): Heap scan cache.
  */
 static SCAN_CODE
-heap_mvcc_get_old_visible_version (THREAD_ENTRY * thread_p, RECDES * recdes, LOG_LSA * previous_version_lsa,
+heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG_LSA * previous_version_lsa,
 				   HEAP_SCANCACHE * scan_cache, int has_chn)
 {
   LOG_LSA process_lsa;
@@ -26462,7 +26461,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 	{
 	  /* current version is not visible, check previous versions from log and skip record get from heap */
 	  scan =
-	    heap_mvcc_get_old_visible_version (thread_p, recdes, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header), scan_cache,
+	    heap_get_visible_version_from_log (thread_p, recdes, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header), scan_cache,
 					       old_chn);
 	  if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE)
 	    {
