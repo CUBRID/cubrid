@@ -8142,7 +8142,6 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 		      /* Skip the re-evaluation if last version is visible. It should be the same as the visible version 
 		       * which was already evaluated. */
 		      assert (snapshot_res == SNAPSHOT_SATISFIED);
-
 		      goto get_heap_record;
 		    }
 		}
@@ -24003,7 +24002,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   /* get forward record */
   forward_recdes.area_size = DB_PAGESIZE;
   forward_recdes.data = PTR_ALIGN (forward_recdes_buffer, MAX_ALIGNMENT);
-  if (spage_get_record (context->forward_page_watcher_p->pgptr, forward_oid.slotid, &forward_recdes, COPY) != S_SUCCESS)	//maybe Peek?
+  if (spage_get_record (context->forward_page_watcher_p->pgptr, forward_oid.slotid, &forward_recdes, COPY) != S_SUCCESS)
     {
       assert (false);
       return ER_FAILED;
@@ -24407,13 +24406,8 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
   address.vfid = vfid_p;
 
   /* actual logging */
-  if (LOG_IS_MVCC_HEAP_OPERATION (rcvindex))	// && old_recdes_p->type == REC_ASSIGN_ADDRESS)
+  if (LOG_IS_MVCC_HEAP_OPERATION (rcvindex))
     {
-      /* This physical update of record in home page. In most cases, vacuum doesn't need to be notified of this update
-       * (since it was already notified when object was first inserted). One exception is when REC_ASSIGN_ADDRESS
-       * content is updated. When REC_ASSIGN_ADDRESS was inserted, vacuum is not notified. The actual insert of record
-       * data is done through physical update, but the record still has MVCC information. Update page chain header and
-       * notify vacuum of this change. *///this explanation doesn't apply anymore...
       HEAP_PAGE_VACUUM_STATUS vacuum_status = heap_page_get_vacuum_status (thread_p, page_p);
       heap_page_update_chain_after_mvcc_op (thread_p, page_p, logtb_get_current_mvccid (thread_p));
       if (heap_page_get_vacuum_status (thread_p, page_p) != vacuum_status)
