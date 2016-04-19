@@ -8231,6 +8231,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
       else
 	{
 	  /* Snapshot is not satisfied. */
+	  scan_code = S_DOESNT_EXIST;
 	}
       /* S_DOESNT_EXIST */
       /* Set ER_HEAP_UNKNOWN_OBJECT error. Decide whether it is error or warning. */
@@ -8256,7 +8257,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 	    }
 	}
       /* Set warning. */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, oid->volid, oid->pageid, oid->slotid);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, oid->volid, oid->pageid, oid->slotid);
       goto end;
     }
 
