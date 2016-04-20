@@ -7220,8 +7220,10 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
       or_mvcc_get_header (recdes, &mvcc_header);
       if (scan == S_SUCCESS && mvcc_snapshot != NULL && mvcc_snapshot->snapshot_fnc != NULL)
 	{
-	  if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot) != SNAPSHOT_SATISFIED)
+	  if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot) == TOO_OLD_FOR_SNAPSHOT)
 	    {
+	      /* consider snapshot is not satisified only in case of TOO_OLD_FOR_SNAPSHOT;
+	       * TOO_NEW_FOR_SNAPSHOT records should be accepted, e.g. a recently updated record, locked at select */
 	      return S_SNAPSHOT_NOT_SATISFIED;
 	    }
 	}
@@ -7245,8 +7247,10 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
       or_mvcc_get_header (&chn_recdes, &mvcc_header);
       if (scan == S_SUCCESS && mvcc_snapshot != NULL && mvcc_snapshot->snapshot_fnc != NULL)
 	{
-	  if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot) != SNAPSHOT_SATISFIED)
+	  if (mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot) == TOO_OLD_FOR_SNAPSHOT)
 	    {
+	      /* consider snapshot is not satisified only in case of TOO_OLD_FOR_SNAPSHOT;
+	       * TOO_NEW_FOR_SNAPSHOT records should be accepted, e.g. a recently updated record, locked at select */
 	      return S_SNAPSHOT_NOT_SATISFIED;
 	    }
 	}
@@ -26301,7 +26305,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
 	  if (snapshot_res == SNAPSHOT_SATISFIED)
 	    {
-	      /* current version satisfies snapshot - return it */
+	      /* Visible. Get record (unless CHN is not changed). */
 	      if (MVCC_IS_CHN_UPTODATE (thread_p, &mvcc_header, has_chn))
 		{
 		  return S_SUCCESS_CHN_UPTODATE;
@@ -26342,12 +26346,17 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	    }
 
 	  /* Check snapshot & get MVCC record header. */
-	  scan_code =
-	    heap_ovf_get_mvcc_record_header (thread_p, &mvcc_header, scan_cache->mvcc_snapshot, overflow_page);
+	  if (heap_get_mvcc_rec_header_from_overflow (overflow_page, &mvcc_header, NULL) != NO_ERROR)
+	    {
+	      /* Unexpected. */
+	      assert (false);
+	      return S_ERROR;
+	    }
 	  /* First page no longer required. */
 	  pgbuf_unfix_and_init (thread_p, overflow_page);
 
-	  if (scan_code == S_SUCCESS)
+	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
+	  if (snapshot_res == SNAPSHOT_SATISFIED)
 	    {
 	      /* Visible. Get record (unless CHN is not changed). */
 	      if (MVCC_IS_CHN_UPTODATE (thread_p, &mvcc_header, has_chn))
@@ -26356,17 +26365,19 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 		}
 	      return heap_get_bigone_content (thread_p, scan_cache, COPY, &forward_oid, recdes);
 	    }
-	  else if (scan_code == S_SNAPSHOT_NOT_SATISFIED)
+	  else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
 	    {
-	      /* Not visible. Continue with previous version */
-	      LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
-	      continue;
+	      assert (false);
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return S_ERROR;
 	    }
 	  else
 	    {
-	      /* Unexpected. */
-	      assert (false);
-	      return S_ERROR;
+	      /* TOO_NEW_FOR_SNAPSHOT */
+	      assert (snapshot_res == TOO_NEW_FOR_SNAPSHOT);
+	      /* continue with previous version */
+	      LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
+	      continue;
 	    }
 	}
       else
