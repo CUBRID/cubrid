@@ -838,11 +838,6 @@ static DB_LOGICAL heap_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, H
 static SCAN_CODE heap_get_from_page_no_snapshot (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 						 MVCC_REEV_DATA * mvcc_reev_data_p, MVCC_REC_HEADER * mvcc_header_p,
 						 OID * curr_row_version_oid_p, RECDES * recdes, int ispeeking);
-static SCAN_CODE heap_get_mvcc_record_header (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * mvcc_header_p,
-					      MVCC_SNAPSHOT * mvcc_snapshot_p, PAGE_PTR pgptr, PGSLOTID slotid);
-static SCAN_CODE heap_ovf_get_mvcc_record_header (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * mvcc_header_p,
-						  MVCC_SNAPSHOT * mvcc_snapshot_p, PAGE_PTR ovf_first_pgptr);
-
 static void heap_mvcc_log_redistribute (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA_ADDR * p_addr);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -21218,77 +21213,6 @@ heap_get_from_page_no_snapshot (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_c
 
   scan_cache->cache_last_fix_page = saved_cache_last_fix_page;
   scan_cache->mvcc_snapshot = saved_snapshot;
-
-  return scan;
-}
-
-/*
- * heap_get_mvcc_record_header () -
- *
- *   return: SCAN_CODE
- *   thread_p(in): thread entry
- *   mvcc_header_p(in/out):
- *   mvcc_snapshot_p(in):
- *   pgptr(in):
- *   slotid(in):
- */
-static SCAN_CODE
-heap_get_mvcc_record_header (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * mvcc_header_p, MVCC_SNAPSHOT * mvcc_snapshot_p,
-			     PAGE_PTR pgptr, PGSLOTID slotid)
-{
-  RECDES recdes;
-  SCAN_CODE scan;
-
-  assert (pgptr != NULL);
-  assert (mvcc_header_p != NULL);
-
-  scan = spage_get_record_mvcc (pgptr, slotid, &recdes, PEEK);
-  if (scan == S_SUCCESS)
-    {
-      or_mvcc_get_header (&recdes, mvcc_header_p);
-      if (mvcc_snapshot_p != NULL && mvcc_snapshot_p->snapshot_fnc != NULL)
-	{
-	  if (mvcc_snapshot_p->snapshot_fnc (thread_p, mvcc_header_p, mvcc_snapshot_p) != SNAPSHOT_SATISFIED)
-	    {
-	      scan = S_SNAPSHOT_NOT_SATISFIED;
-	    }
-	}
-    }
-
-  return scan;
-}
-
-/*
- * heap_ovf_get_mvcc_record_header () -
- *
- *   return: SCAN_CODE
- *   thread_p(in): thread entry
- *   mvcc_header_p(in/out):
- *   mvcc_snapshot_p(in):
- *   ovf_first_page(in):
- */
-static SCAN_CODE
-heap_ovf_get_mvcc_record_header (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * mvcc_header_p,
-				 MVCC_SNAPSHOT * mvcc_snapshot_p, PAGE_PTR ovf_first_pgptr)
-{
-  RECDES recdes;
-  SCAN_CODE scan;
-
-  assert (mvcc_header_p != NULL);
-  assert (ovf_first_pgptr != NULL);
-
-  recdes.data = overflow_get_first_page_data (ovf_first_pgptr);
-  recdes.length = OR_HEADER_SIZE (recdes.data);
-  or_mvcc_get_header (&recdes, mvcc_header_p);
-
-  scan = S_SUCCESS;
-  if (mvcc_snapshot_p != NULL)
-    {
-      if (mvcc_snapshot_p->snapshot_fnc (thread_p, mvcc_header_p, mvcc_snapshot_p) != SNAPSHOT_SATISFIED)
-	{
-	  scan = S_SNAPSHOT_NOT_SATISFIED;
-	}
-    }
 
   return scan;
 }
