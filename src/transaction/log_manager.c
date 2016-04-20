@@ -9808,11 +9808,12 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   int udata_length;
   int udata_size;
   char *undo_data;
-  LOG_LSA nxio_lsa;
+  LOG_LSA oldest_prior_lsa;
   bool is_zipped = false;
   char log_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   /* assert log record is not in prior list */
+  oldest_prior_lsa = *log_get_append_lsa ();
   assert (LSA_LT (&process_lsa, log_get_append_lsa ()));
 
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
