@@ -7390,6 +7390,8 @@ vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGS
   undo_crumbs[1].data = undo_recdes->data;
   num_undo_crumbs = 2;
 
+  /* Log undoredo with NULL redo crumbs - the redo function (vacuum_rv_redo_vacuum_heap_record) require only
+   * the object's address to re-vacuum */
   log_append_undoredo_crumbs (thread_p, RVVAC_HEAP_RECORD_VACUUM, &addr, num_undo_crumbs, 0, undo_crumbs, NULL);
 }
 

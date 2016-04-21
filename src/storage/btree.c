@@ -979,7 +979,7 @@ typedef struct btree_delete_helper BTREE_DELETE_HELPER;
 struct btree_delete_helper
 {
   BTREE_OBJECT_INFO object_info;	/* Object info required for b-tree. */
-  BTREE_OBJECT_INFO second_object_info;	/* Object info required for undo or vacuum of mvcc update same key. */
+  BTREE_OBJECT_INFO second_object_info;	/* Object info required for undo insert to unique index. */
   BTREE_OP_PURPOSE purpose;	/* Purpose of delete operation. */
   PGBUF_LATCH_MODE nonleaf_latch_mode;	/* Latch mode used to for non-leaf nodes. */
   int op_type;			/* Operation type. */
@@ -1010,7 +1010,7 @@ struct btree_delete_helper
 #define BTREE_DELETE_HELPER_INITIALIZER \
   { \
     BTREE_OBJECT_INFO_INITIALIZER /* object_info */, \
-    BTREE_OBJECT_INFO_INITIALIZER /* updated_to */, \
+    BTREE_OBJECT_INFO_INITIALIZER /* second_object_info */, \
     BTREE_OP_NO_OP /* purpose */, \
     PGBUF_LATCH_READ /* non_leaf_latch_mode */, \
     SINGLE_ROW_DELETE /* op_type */, \

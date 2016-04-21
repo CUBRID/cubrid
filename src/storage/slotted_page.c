@@ -4902,8 +4902,7 @@ spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id)
  * reusable (in)     : True if slots are reusable, false if they are
  *		       referable.
  *
- * NOTE: Vacuuming the slot can be done in three ways depending on
- *	 next_version and reusable:
+ * NOTE: Vacuuming the slot can be done in two ways depending on reusable:
  *	 1. Reusable = false: Replace slot with
  *	    REC_MARKDELETED (deleted slot, but cannot be reused since there
  *	    may still be references pointing to this slot).
