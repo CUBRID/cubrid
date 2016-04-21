@@ -26392,7 +26392,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 	  scan =
 	    heap_get_visible_version_from_log (thread_p, recdes, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header), scan_cache,
 					       old_chn);
-	  if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE)
+	  if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE && scan != S_ERROR)
 	    {
 	      scan = S_SNAPSHOT_NOT_SATISFIED;
 	    }
