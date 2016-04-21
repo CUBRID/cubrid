@@ -9814,7 +9814,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
 
   /* assert log record is not in prior list */
   oldest_prior_lsa = *log_get_append_lsa ();
-  assert (LSA_LT (&process_lsa, log_get_append_lsa ()));
+  assert (LSA_LT (&process_lsa, &oldest_prior_lsa));
 
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
