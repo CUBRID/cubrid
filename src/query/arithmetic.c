@@ -5041,7 +5041,7 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
       goto end;
     }
 
-  million_sec = DB_GET_DOUBLE (value) * 1000L;
+  million_sec = (long) (DB_GET_DOUBLE (value) * 1000L);
 
   error = msleep (million_sec);
   if (error == NO_ERROR)

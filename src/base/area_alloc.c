@@ -303,8 +303,8 @@ area_alloc_block (AREA * area)
       return NULL;
     }
 
-  if (lf_bitmap_init (&new_block->bitmap, LF_BITMAP_LIST_OF_CHUNKS, area->alloc_count, LF_AREA_BITMAP_USAGE_RATIO) !=
-      NO_ERROR)
+  if (lf_bitmap_init (&new_block->bitmap, LF_BITMAP_LIST_OF_CHUNKS, (int) area->alloc_count, LF_AREA_BITMAP_USAGE_RATIO)
+		      != NO_ERROR)
     {
       goto error;
     }
@@ -565,7 +565,7 @@ area_free (AREA * area, void *ptr)
   *prefix = AREA_PREFIX_FREED;
 #endif /* !NDEBUG */
 
-  entry_idx = offset / area->element_size;
+  entry_idx = offset / (int) area->element_size;
 
   assert (entry_idx >= 0 && entry_idx < area->alloc_count);
 
@@ -649,7 +649,6 @@ area_insert_block (AREA * area, AREA_BLOCK * new_block)
   AREA_BLOCKSET_LIST **last_blockset_p;
   AREA_BLOCKSET_LIST *blockset, *new_blockset;
   int used_count;
-  int error;
 
   assert (area != NULL && new_block != NULL);
 
@@ -794,7 +793,7 @@ area_info (AREA * area, FILE * fp)
   size_t nblocksets, nblocks, bytes, elements, used, unused;
   size_t min_blocks_in_set, avg_blocks_in_set, max_blocks_in_set;
   size_t nallocs = 0, nfrees = 0;
-  unsigned int i;
+  int i;
 
   assert (area != NULL && fp != NULL);
 

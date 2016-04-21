@@ -415,7 +415,7 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser)
     }
 
   ftime (&curr_client_timeb);
-  diff_time = curr_client_timeb.time - base_client_timeb.time;
+  diff_time = (int) (curr_client_timeb.time - base_client_timeb.time);
   diff_mtime = curr_client_timeb.millitm - base_client_timeb.millitm;
 
   if (diff_time > MAX_SERVER_TIME_CACHE)
@@ -3177,8 +3177,6 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
 int
 db_set_system_generated_statement (DB_SESSION * session)
 {
-  PT_NODE *statement;
-
   CHECK_CONNECT_MINUSONE ();
 
   if (session == NULL || session->parser == NULL)

@@ -16277,7 +16277,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
 	  if (ptr)
 	    {
-	      sql_plan = pt_alloc_packing_buf (sizeloc + 1);
+	      sql_plan = pt_alloc_packing_buf ((int) sizeloc + 1);
 	      if (sql_plan == NULL)
 		{
 		  goto exit;
@@ -16295,7 +16295,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
 	  if (contextp->sql_plan_alloc_size == 0)
 	    {
-	      int size = MAX (1024, plan_len * 2);
+	      int size = MAX (1024, (int) plan_len * 2);
 	      contextp->sql_plan_text = parser_alloc (parser, size);
 	      if (contextp->sql_plan_text == NULL)
 		{
@@ -16308,7 +16308,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	  else if (contextp->sql_plan_alloc_size - strlen (contextp->sql_plan_text) < plan_len)
 	    {
 	      char *ptr;
-	      int size = (contextp->sql_plan_alloc_size + plan_len) * 2;
+	      int size = (contextp->sql_plan_alloc_size + (int) plan_len) * 2;
 
 	      ptr = parser_alloc (parser, size);
 	      if (ptr == NULL)
@@ -16682,7 +16682,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 		{
 		  /* Find index of existing object. */
 		  assert (oid_ptr != NULL);
-		  index = oid_ptr - o_list;
+		  index = (int) (oid_ptr - o_list);
 
 		  /* Merge existing lock with IS_LOCK/IX_LOCK. */
 		  lck_list[index] = lock_Conv[lck_list[index]][lock];
@@ -23393,7 +23393,6 @@ PT_NODE *
 pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MERGE_INFO * info)
 {
   PT_NODE *statement, *where, *group_by, *oid, *save_next;
-  PT_NODE *spec;
 
   statement = parser_new_node (parser, PT_SELECT);
   if (!statement)
@@ -25350,7 +25349,7 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_N
   VAL_LIST *value_list;
   TP_DOMAIN *domain;
   PT_NODE *pnode, *order, *pname;
-  int i, len;
+  int i;
 
   assert (parser != NULL && node != NULL && info != NULL && regu != NULL && regu->type == TYPE_REGU_VAR_LIST);
 
@@ -25413,7 +25412,7 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_N
 
   /* append scan_regu_list, out_list and value_list */
   scan_regu_list = info->scan_regu_list;
-  out_list = info->out_list;
+  out_list = info->out_list->valptrp;
   value_tmp = info->value_list->valp;
 
   for (pnode = node, regu_var = regu_list; pnode != NULL; pnode = pnode->next, regu_var = regu_var->next)

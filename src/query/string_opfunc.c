@@ -1973,8 +1973,8 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 	}
 
       error_status =
-	db_string_make_empty_typed_string (NULL, &dummy, result_type, new_length, DB_GET_STRING_CODESET (src_string),
-					   DB_GET_STRING_COLLATION (src_string));
+	db_string_make_empty_typed_string (NULL, &dummy, result_type, (int) new_length,
+					   DB_GET_STRING_CODESET (src_string), DB_GET_STRING_COLLATION (src_string));
       if (error_status != NO_ERROR)
 	{
 	  return error_status;
@@ -1995,7 +1995,7 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 	  return ER_QPROC_STRING_SIZE_TOO_BIG;
 	}
 
-      error_status = qstr_grow_string (&dummy, result, expected_size);
+      error_status = qstr_grow_string (&dummy, result, (int) expected_size);
       if (error_status < 0)
 	{
 	  pr_clear_value (&dummy);
@@ -2436,7 +2436,7 @@ db_string_sha_two (DB_VALUE const *src, DB_VALUE const *hash_len, DB_VALUE * res
       len = DB_GET_INT (hash_len);
       break;
     case DB_TYPE_BIGINT:
-      len = DB_GET_BIGINT (hash_len);
+      len = (int) DB_GET_BIGINT (hash_len);
       break;
     default:
       return ER_QSTR_INVALID_DATA_TYPE;
@@ -4350,7 +4350,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       if (rx_err != CUB_REG_OKAY)
 	{
 	  /* regex compilation error */
-	  rx_err_len = cub_regerror (rx_err, rx_compiled_regex, rx_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
+	  rx_err_len = (int) cub_regerror (rx_err, rx_compiled_regex, rx_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
 	  error_status = ER_REGEX_COMPILE_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, rx_err_buf);
 	  *result = V_ERROR;
@@ -4372,7 +4372,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       break;
 
     default:
-      rx_err_len = cub_regerror (rx_err, rx_compiled_regex, rx_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
+      rx_err_len = (int) cub_regerror (rx_err, rx_compiled_regex, rx_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
       error_status = ER_REGEX_EXEC_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, rx_err_buf);
       *result = V_ERROR;
@@ -4748,9 +4748,9 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 
 		  /* match using collation */
 		  cmp =
-		    current_collation->strmatch (current_collation, true, tar_ptr, end_tar - tar_ptr, expr_ptr,
-						 expr_seq_end - expr_ptr, match_escape, has_last_escape,
-						 &tar_matched_size);
+		    current_collation->strmatch (current_collation, true, tar_ptr, CAST_BUFLEN (end_tar - tar_ptr),
+						 expr_ptr, CAST_BUFLEN (expr_seq_end - expr_ptr), match_escape,
+						 has_last_escape, &tar_matched_size);
 
 		  if (cmp == 0)
 		    {
@@ -4865,10 +4865,9 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 		{
 		  /* match using collation */
 		  cmp =
-		    current_collation->strmatch (current_collation, true, tar_ptr, end_tar - tar_ptr, next_expr_ptr,
-						 expr_seq_end - next_expr_ptr, match_escape, has_last_escape,
-						 &tar_matched_size);
-
+		    current_collation->strmatch (current_collation, true, tar_ptr, CAST_BUFLEN (end_tar - tar_ptr),
+						 next_expr_ptr, CAST_BUFLEN (expr_seq_end - next_expr_ptr),
+						 match_escape, has_last_escape, &tar_matched_size);
 		  if (cmp == 0)
 		    {
 		      if (stackp >= STACK_SIZE - 1)
@@ -5134,9 +5133,8 @@ qstr_replace (unsigned char *src_buf, int src_len, int src_size, INTL_CODESET co
     {
       int matched_size;
 
-      if (QSTR_MATCH
-	  (coll_id, src_ptr, src_buf + src_size - src_ptr, srch_str_buf, srch_str_size, NULL, false,
-	   &matched_size) == 0)
+      if (QSTR_MATCH (coll_id, src_ptr, CAST_BUFLEN (src_buf - src_ptr) + src_size, srch_str_buf, srch_str_size, NULL,
+		      false, &matched_size) == 0)
 	{
 	  /* store byte position and size of matched string */
 	  if (repl_pos_array_cnt >= repl_pos_array_size)
@@ -5151,7 +5149,7 @@ qstr_replace (unsigned char *src_buf, int src_len, int src_size, INTL_CODESET co
 		  goto exit;
 		}
 	    }
-	  repl_pos_array[repl_pos_array_cnt * 2] = src_ptr - src_buf;
+	  repl_pos_array[repl_pos_array_cnt * 2] = CAST_BUFLEN (src_ptr - src_buf);
 	  repl_pos_array[repl_pos_array_cnt * 2 + 1] = matched_size;
 	  src_ptr += matched_size;
 	  repl_pos_array_cnt++;
@@ -5785,9 +5783,9 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 	      if (needle_size > 0)
 		{
 		  cmp =
-		    QSTR_MATCH (coll_id, (const unsigned char *) elem_start, stack_ptr - elem_start,
+		    QSTR_MATCH (coll_id, (const unsigned char *) elem_start, CAST_BUFLEN (stack_ptr - elem_start),
 				(const unsigned char *) needle_str, needle_size, false, false, &matched_stack_size);
-		  if (cmp == 0 && matched_stack_size == stack_ptr - elem_start)
+		  if (cmp == 0 && matched_stack_size == CAST_BUFLEN (stack_ptr - elem_start))
 		    {
 		      DB_MAKE_INT (result, position);
 		      return NO_ERROR;
@@ -9035,8 +9033,8 @@ qstr_position (const char *sub_string, const int sub_size, const int sub_length,
       for (i = 0; i < num_searches; i++)
 	{
 	  result =
-	    QSTR_MATCH (coll_id, ptr, (unsigned char *) src_end - ptr, (unsigned char *) sub_string, sub_size, NULL,
-			false, &dummy);
+	    QSTR_MATCH (coll_id, ptr, CAST_BUFLEN ((unsigned char *) src_end - ptr), (unsigned char *) sub_string,
+			sub_size, NULL, false, &dummy);
 	  current_position++;
 	  if (result == 0)
 	    {
@@ -9831,7 +9829,7 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
       /* The supported timestamp range is '1970-01-01 00:00:01' UTC to '2038-01-19 03:14:07' UTC */
       ts = *DB_GET_TIMESTAMP (src_date);
       /* supplementary conversion from long to int will be needed on 64 bit platforms.  */
-      DB_MAKE_INT (result_timestamp, ts);
+      DB_MAKE_INT (result_timestamp, (int) ts);
       return NO_ERROR;
 
     case DB_TYPE_TIMESTAMPTZ:
@@ -9839,7 +9837,7 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
 	DB_TIMESTAMPTZ *timestamp_tz;
 	timestamp_tz = DB_GET_TIMESTAMPTZ (src_date);
 	ts = timestamp_tz->timestamp;
-	DB_MAKE_INT (result_timestamp, ts);
+	DB_MAKE_INT (result_timestamp, (int) ts);
 	return NO_ERROR;
       }
 
@@ -12518,7 +12516,7 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
       const char *default_format_str;
 
       /* try default CUBRID format first */
-      if (NO_ERROR == db_string_to_date_ex ((char *) cs, last_src - cs, &date_tmp))
+      if (NO_ERROR == db_string_to_date_ex ((char *) cs, CAST_BUFLEN (last_src - cs), &date_tmp))
 	{
 	  DB_MAKE_ENCODED_DATE (result_date, &date_tmp);
 	  goto exit;
@@ -13087,7 +13085,7 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
       /* try default CUBRID format first */
       if (type == DB_TYPE_TIME)
 	{
-	  if (NO_ERROR == db_string_to_time_ex ((const char *) cs, last_src - cs, &time_tmp))
+	  if (NO_ERROR == db_string_to_time_ex ((const char *) cs, CAST_BUFLEN (last_src - cs), &time_tmp))
 	    {
 	      DB_MAKE_ENCODED_TIME (result_time, &time_tmp);
 	      goto exit;
@@ -13097,7 +13095,8 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	{
 	  bool has_zone;
 
-	  if (NO_ERROR == db_string_to_timetz_ex ((const char *) cs, last_src - cs, false, &timetz_tmp, &has_zone))
+	  if (db_string_to_timetz_ex ((const char *) cs, CAST_BUFLEN (last_src - cs), false, &timetz_tmp, &has_zone)
+	      == NO_ERROR)
 	    {
 	      DB_MAKE_TIMETZ (result_time, &timetz_tmp);
 	      goto exit;
@@ -13366,7 +13365,7 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 		goto exit;
 	      }
-	    start_tzr = cs - initial_buf_str;
+	    start_tzr = CAST_BUFLEN (cs - initial_buf_str);
 	    zone_id = tz_get_best_match_zone (cs, &len_tzr);
 	    if (zone_id < 0)
 	      {
@@ -13387,7 +13386,7 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 		goto exit;
 	      }
 
-	    start_tzd = cs - initial_buf_str;
+	    start_tzd = CAST_BUFLEN (cs - initial_buf_str);
 	    len_tzd = parse_tzd (cs, TZD_MAX_EXPECTED_LEN);
 	    if (len_tzd < 0)
 	      {
@@ -13707,7 +13706,7 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
       /* try default CUBRID format first */
       if (type == DB_TYPE_TIMESTAMP)
 	{
-	  if (NO_ERROR == db_string_to_timestamp_ex ((const char *) cs, last_src - cs, &timestamp_tmp))
+	  if (db_string_to_timestamp_ex ((const char *) cs, CAST_BUFLEN (last_src - cs), &timestamp_tmp) == NO_ERROR)
 	    {
 	      DB_MAKE_TIMESTAMP (result_timestamp, timestamp_tmp);
 	      goto exit;
@@ -13716,8 +13715,8 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
       else
 	{
 	  bool has_zone;
-	  if (db_string_to_timestamptz_ex ((const char *) cs, last_src - cs, &timestamptz_tmp, &has_zone, false) ==
-	      NO_ERROR)
+	  if (db_string_to_timestamptz_ex ((const char *) cs, CAST_BUFLEN (last_src - cs), &timestamptz_tmp, &has_zone,
+					   false) == NO_ERROR)
 	    {
 	      DB_MAKE_TIMESTAMPTZ (result_timestamp, &timestamptz_tmp);
 	      goto exit;
@@ -14248,7 +14247,7 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 		goto exit;
 	      }
-	    start_tzr = cs - initial_buf_str;
+	    start_tzr = CAST_BUFLEN (cs - initial_buf_str);
 	    zone_id = tz_get_best_match_zone (cs, &len_tzr);
 	    if (zone_id < 0)
 	      {
@@ -14269,7 +14268,7 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 		goto exit;
 	      }
 
-	    start_tzd = cs - initial_buf_str;
+	    start_tzd = CAST_BUFLEN (cs - initial_buf_str);
 	    len_tzd = parse_tzd (cs, TZD_MAX_EXPECTED_LEN);
 	    if (len_tzd < 0)
 	      {
@@ -14618,7 +14617,7 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
       /* try default CUBRID format first */
       if (type == DB_TYPE_DATETIME)
 	{
-	  if (db_string_to_datetime_ex ((const char *) cs, last_src - cs, &datetime_tmp) == NO_ERROR)
+	  if (db_string_to_datetime_ex ((const char *) cs, CAST_BUFLEN (last_src - cs), &datetime_tmp) == NO_ERROR)
 	    {
 	      DB_MAKE_DATETIME (result_datetime, &datetime_tmp);
 	      goto exit;
@@ -14627,7 +14626,8 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
       else
 	{
 	  bool has_zone;
-	  if (db_string_to_datetimetz_ex ((const char *) cs, last_src - cs, &datetimetz_tmp, &has_zone) == NO_ERROR)
+	  if (db_string_to_datetimetz_ex ((const char *) cs, CAST_BUFLEN (last_src - cs), &datetimetz_tmp, &has_zone)
+	      == NO_ERROR)
 	    {
 	      DB_MAKE_DATETIMETZ (result_datetime, &datetimetz_tmp);
 	      goto exit;
@@ -15207,7 +15207,7 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 		goto exit;
 	      }
-	    start_tzr = cs - initial_buf_str;
+	    start_tzr = CAST_BUFLEN (cs - initial_buf_str);
 	    zone_id = tz_get_best_match_zone (cs, &len_tzr);
 	    if (zone_id < 0)
 	      {
@@ -15228,7 +15228,7 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
 		goto exit;
 	      }
 
-	    start_tzd = cs - initial_buf_str;
+	    start_tzd = CAST_BUFLEN (cs - initial_buf_str);
 	    len_tzd = parse_tzd (cs, TZD_MAX_EXPECTED_LEN);
 	    if (len_tzd < 0)
 	      {
@@ -23547,7 +23547,7 @@ db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format, const DB_
   if (format == NULL)
     {
       /* if unix_timestamp is called without a format argument, return the timestamp */
-      DB_MAKE_TIMESTAMP (result, unix_timestamp);
+      DB_MAKE_TIMESTAMP (result, (DB_TIMESTAMP) unix_timestamp);
       return NO_ERROR;
     }
 
@@ -23568,7 +23568,7 @@ db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format, const DB_
 	DB_VALUE ts_val;
 	DB_VALUE default_date_lang;
 
-	DB_MAKE_TIMESTAMP (&ts_val, unix_timestamp);
+	DB_MAKE_TIMESTAMP (&ts_val, (DB_TIMESTAMP) unix_timestamp);
 	if (date_lang == NULL || DB_IS_NULL (date_lang))
 	  {
 	    /* use date_lang for en_US */
@@ -23818,7 +23818,7 @@ parse_time_string (const char *timestr, int timestr_size, int *sign, int *h, int
       char ms_string[4];
 
       dot++;
-      tmp = end - dot;
+      tmp = CAST_BUFLEN (end - dot);
       if (tmp)
 	{
 	  tmp = (tmp < 3 ? tmp : 3);
@@ -25097,7 +25097,8 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_VALUE * boun
 	      int next_len = 0;
 
 	      result_size +=
-		QSTR_NEXT_ALPHA_CHAR (collation_id, (unsigned char *) crt_char_p, original + original_size - crt_char_p,
+		QSTR_NEXT_ALPHA_CHAR (collation_id, (unsigned char *) crt_char_p,
+				      CAST_BUFLEN (original - crt_char_p) + original_size,
 				      (unsigned char *) next_alpha_char_p, &next_len);
 	      result_length += next_len;
 	    }
@@ -25468,7 +25469,7 @@ db_check_or_create_null_term_string (const DB_VALUE * str_val, char *pre_alloc_b
 	{
 	  val_buf++;
 	}
-      val_size = val_buf_end - val_buf;
+      val_size = CAST_BUFLEN (val_buf_end - val_buf);
       assert (val_size >= 0);
     }
 
@@ -25482,7 +25483,7 @@ db_check_or_create_null_term_string (const DB_VALUE * str_val, char *pre_alloc_b
 	{
 	  val_buf_end_non_space--;
 	}
-      val_size = val_buf_end_non_space - val_buf + 1;
+      val_size = CAST_BUFLEN (val_buf_end_non_space - val_buf) + 1;
       assert (val_size >= 0);
     }
 
@@ -27872,5 +27873,5 @@ parse_tzd (const char *str, const int max_expect_len)
       p++;
     }
 
-  return p - str;
+  return CAST_BUFLEN (p - str);
 }

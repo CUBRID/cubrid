@@ -1220,7 +1220,7 @@ process_class (int cl_no)
 	}
       else
 	{
-	  total = 100 * ((float) total_objects / (float) total_approximate_class_objects);
+	  total = (int) (100 * ((float) total_objects / (float) total_approximate_class_objects));
 	}
       fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
       fflush (unloadlog_file);
@@ -1242,7 +1242,7 @@ process_class (int cl_no)
 	}
       else
 	{
-	  total = 100 * ((float) total_objects / (float) total_approximate_class_objects);
+	  total = (int) (100 * ((float) total_objects / (float) total_approximate_class_objects));
 	}
       fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
       fflush (unloadlog_file);
@@ -1368,7 +1368,7 @@ process_class (int cl_no)
     }
   else
     {
-      total = 100 * ((float) total_objects / (float) total_approximate_class_objects);
+      total = (int) (100 * ((float) total_objects / (float) total_approximate_class_objects));
     }
   if (verbose_flag)
     {

@@ -14653,7 +14653,7 @@ sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
 	}
       if (info->comment != NULL)
 	{
-	  free_and_init (info->comment);
+	  free_and_init ((void *) info->comment);
 	}
       free_and_init (info->asc_desc);
       free_and_init (info->prefix_length);

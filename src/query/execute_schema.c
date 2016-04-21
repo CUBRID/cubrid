@@ -383,7 +383,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   const char *entity_name, *new_query;
   const char *attr_name, *mthd_name, *mthd_file, *attr_mthd_name;
   const char *new_name, *old_name, *domain;
-  const char *property_type;
   DB_CTMPL *ctemplate = NULL;
   DB_OBJECT *vclass, *sup_class;
   int error = NO_ERROR;
@@ -406,7 +405,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   SM_CLASS_CONSTRAINT *sm_constraint = NULL;
   bool partition_savepoint = false;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
+#if defined (ENABLE_RENAME_CONSTRAINT)
   SM_CONSTRAINT_FAMILY constraint_family;
+#endif
   unsigned int save_custom;
   PT_NODE *super_node = NULL;
   MOP super_class;
@@ -8968,7 +8969,7 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 	  goto exit_on_error;
 	}
 
-      free_and_init (att_names);
+      free_and_init ((void *) att_names);
 
       if (new_cons_name != NULL && new_cons_name != c->name)
 	{
@@ -8986,7 +8987,7 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 
 exit_on_error:
 
-  free_and_init (att_names);
+  free_and_init ((void *) att_names);
 
   if (new_cons_name != NULL && new_cons_name != c->name)
     {

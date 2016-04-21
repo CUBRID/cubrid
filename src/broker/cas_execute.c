@@ -10142,7 +10142,7 @@ ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
 
   /* set result: on success, bytes read */
   net_buf_cp_int (net_buf, (int) size_read, NULL);
-  net_buf->data_size += size_read;
+  net_buf->data_size += (int) size_read;
 
   return 0;
 }

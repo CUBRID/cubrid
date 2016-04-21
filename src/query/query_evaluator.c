@@ -2873,7 +2873,6 @@ eval_set_last_version (THREAD_ENTRY * thread_p, OID * class_oid, HFID hfid, REGU
   RECDES mvcc_last_record;
   DB_VALUE *peek_dbval;
   OID mvcc_updated_oid;
-  int ispeeking;
 
   if (!OID_IS_ROOTOID (class_oid))
     {

@@ -12045,8 +12045,6 @@ qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, QFILE_LIST_SCA
   REGU_VARIABLE regu_var;
   SCAN_CODE scan_code;
   DB_BIGINT bi;
-  /* for calculate */
-  double d_result;
 
   assert (scan_id != NULL && domain != NULL && result != NULL && result_dom != NULL);
 

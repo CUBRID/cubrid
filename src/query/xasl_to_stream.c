@@ -1314,7 +1314,7 @@ xts_save_regu_variable (const REGU_VARIABLE * regu_var)
 #if !defined(NDEBUG)
   do
     {
-      int margin = size - (buf - buf_p);
+      int margin = size - CAST_BUFLEN (buf - buf_p);
       if (margin > 0)
 	{
 	  memset (buf, 0, margin);
@@ -1603,7 +1603,7 @@ xts_save_xasl_node (const XASL_NODE * xasl)
 #if !defined(NDEBUG)
   do
     {
-      int margin = size - (buf - buf_p);
+      int margin = size - CAST_BUFLEN (buf - buf_p);
       if (margin > 0)
 	{
 	  memset (buf, 0, margin);

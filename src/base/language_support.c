@@ -2488,15 +2488,15 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match, const unsig
       assert (str1_end - str1 > 0);
       assert (str2_end - str2 > 0);
 
-      cp1 = intl_utf8_to_cp (str1, str1_end - str1, &str1_next);
-      cp2 = intl_utf8_to_cp (str2, str2_end - str2, &str2_next);
+      cp1 = intl_utf8_to_cp (str1, CAST_BUFLEN (str1_end - str1), &str1_next);
+      cp2 = intl_utf8_to_cp (str2, CAST_BUFLEN (str2_end - str2), &str2_next);
 
       if (is_match && escape != NULL && memcmp (str2, escape, str2_next - str2) == 0)
 	{
 	  if (!(has_last_escape && str2_next >= str2_end))
 	    {
 	      str2 = str2_next;
-	      cp2 = intl_utf8_to_cp (str2, str2_end - str2, &str2_next);
+	      cp2 = intl_utf8_to_cp (str2, CAST_BUFLEN (str2_end - str2), &str2_next);
 	    }
 	}
 
@@ -2527,15 +2527,15 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match, const unsig
       str2 = str2_next;
     }
 
-  size1 = str1_end - str1;
-  size2 = str2_end - str2;
+  size1 = CAST_BUFLEN (str1_end - str1);
+  size2 = CAST_BUFLEN (str2_end - str2);
 
   assert (size1 == 0 || size2 == 0);
 
   if (is_match)
     {
       assert (str1_match_size != NULL);
-      *str1_match_size = str1 - str1_begin;
+      *str1_match_size = CAST_BUFLEN (str1 - str1_begin);
     }
 
   if (size1 == size2)
@@ -2549,7 +2549,7 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match, const unsig
 	  return -1;
 	}
 
-      if (lang_str_utf8_trail_zero_weights (lang_coll, str2, str2_end - str2) != 0)
+      if (lang_str_utf8_trail_zero_weights (lang_coll, str2, CAST_BUFLEN (str2_end - str2)) != 0)
 	{
 	  return -1;
 	}
@@ -2563,7 +2563,7 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match, const unsig
 	  return 0;
 	}
 
-      if (lang_str_utf8_trail_zero_weights (lang_coll, str1, str1_end - str1) != 0)
+      if (lang_str_utf8_trail_zero_weights (lang_coll, str1, CAST_BUFLEN (str1_end - str1)) != 0)
 	{
 	  return 1;
 	}
@@ -2630,15 +2630,15 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
       assert (str1_end - str1 > 0);
       assert (str2_end - str2 > 0);
 
-      cp1 = intl_utf8_to_cp (str1, str1_end - str1, &str1_next);
-      cp2 = intl_utf8_to_cp (str2, str2_end - str2, &str2_next);
+      cp1 = intl_utf8_to_cp (str1, CAST_BUFLEN (str1_end - str1), &str1_next);
+      cp2 = intl_utf8_to_cp (str2, CAST_BUFLEN (str2_end - str2), &str2_next);
 
       if (is_match && escape != NULL && memcmp (str2, escape, str2_next - str2) == 0)
 	{
 	  if (!(has_last_escape && str2_next >= str2_end))
 	    {
 	      str2 = str2_next;
-	      cp2 = intl_utf8_to_cp (str2, str2_end - str2, &str2_next);
+	      cp2 = intl_utf8_to_cp (str2, CAST_BUFLEN (str2_end - str2), &str2_next);
 	    }
 	}
 
@@ -2650,7 +2650,7 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
 
 	  if (str1_end - str1 >= coll->contr_min_size && cp1 >= coll->cp_first_contr_offset
 	      && cp1 < (coll->cp_first_contr_offset + coll->cp_first_contr_count)
-	      && ((contr = lang_get_contr_for_string (coll, str1, str1_end - str1, cp1)) != NULL))
+	      && ((contr = lang_get_contr_for_string (coll, str1, CAST_BUFLEN (str1_end - str1), cp1)) != NULL))
 	    {
 	      assert (contr != NULL);
 
@@ -2674,7 +2674,7 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
 
 	  if (str2_end - str2 >= coll->contr_min_size && cp2 >= coll->cp_first_contr_offset
 	      && cp2 < (coll->cp_first_contr_offset + coll->cp_first_contr_count)
-	      && ((contr = lang_get_contr_for_string (coll, str2, str2_end - str2, cp2)) != NULL))
+	      && ((contr = lang_get_contr_for_string (coll, str2, CAST_BUFLEN (str2_end - str2), cp2)) != NULL))
 	    {
 	      assert (contr != NULL);
 
@@ -2716,15 +2716,15 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
       str2 = str2_next;
     }
 
-  size1 = str1_end - str1;
-  size2 = str2_end - str2;
+  size1 = CAST_BUFLEN (str1_end - str1);
+  size2 = CAST_BUFLEN (str2_end - str2);
 
   assert (size1 == 0 || size2 == 0);
 
   if (is_match)
     {
       assert (str1_match_size != NULL);
-      *str1_match_size = str1 - str1_begin;
+      *str1_match_size = CAST_BUFLEN (str1 - str1_begin);
     }
 
   if (size1 == size2)
@@ -2740,7 +2740,7 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
 
       /* use same function as for collation without contractions : we suppose that there are no contractions with zero
        * weights or having starting codepoints with zero weight */
-      if (lang_str_utf8_trail_zero_weights (lang_coll, str2, str2_end - str2) != 0)
+      if (lang_str_utf8_trail_zero_weights (lang_coll, str2, CAST_BUFLEN (str2_end - str2)) != 0)
 	{
 	  return -1;
 	}
@@ -2754,7 +2754,7 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
 	}
 
       /* same function as for collation without contractions */
-      if (lang_str_utf8_trail_zero_weights (lang_coll, str1, str1_end - str1) != 0)
+      if (lang_str_utf8_trail_zero_weights (lang_coll, str1, CAST_BUFLEN (str1_end - str1)) != 0)
 	{
 	  return 1;
 	}
@@ -2801,7 +2801,7 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
     {
       assert (str_end - str > 0);
 
-      cp = intl_utf8_to_cp (str, str_end - str, &str_next);
+      cp = intl_utf8_to_cp (str, CAST_BUFLEN (str_end - str), &str_next);
 
       if (cp < (unsigned int) alpha_cnt)
 	{
@@ -2809,7 +2809,7 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
 
 	  if (coll->count_contr > 0 && str_end - str >= coll->contr_min_size && cp >= coll->cp_first_contr_offset
 	      && cp < (coll->cp_first_contr_offset + coll->cp_first_contr_count)
-	      && ((contr = lang_get_contr_for_string (coll, str, str_end - str, cp)) != NULL))
+	      && ((contr = lang_get_contr_for_string (coll, str, CAST_BUFLEN (str_end - str), cp)) != NULL))
 	    {
 	      assert (contr != NULL);
 
@@ -3066,8 +3066,8 @@ lang_get_uca_back_weight_l13 (const COLL_DATA * coll_data, const bool use_contra
 	  if (use_contractions && coll_data->count_contr > 0 && cp_prev < (unsigned int) alpha_cnt
 	      && str_last - *str_prev >= coll_data->contr_min_size && cp >= coll_data->cp_first_contr_offset
 	      && cp < (coll_data->cp_first_contr_offset + coll_data->cp_first_contr_count)
-	      && ((contr = lang_get_contr_for_string (coll_data, str_prev_prev + 1, str_last - str_prev_prev, cp_prev))
-		  != NULL))
+	      && ((contr = lang_get_contr_for_string (coll_data, str_prev_prev + 1,
+						      CAST_BUFLEN (str_last - str_prev_prev), cp_prev)) != NULL))
 	    {
 	      assert (contr != NULL);
 	      *uca_w_l13 = contr->uca_w_l13;
@@ -3248,13 +3248,13 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 
 	  if (level == 3)
 	    {
-	      lang_get_uca_w_l4 (coll_data, true, str1, str1_end - str1, &uca_w_l4_1, &num_ce1, &str1_next,
-				 &str1_cp_contr);
+	      lang_get_uca_w_l4 (coll_data, true, str1, CAST_BUFLEN (str1_end - str1), &uca_w_l4_1, &num_ce1,
+				 &str1_next, &str1_cp_contr);
 	    }
 	  else
 	    {
-	      lang_get_uca_w_l13 (coll_data, true, str1, str1_end - str1, &uca_w_l13_1, &num_ce1, &str1_next,
-				  &str1_cp_contr);
+	      lang_get_uca_w_l13 (coll_data, true, str1, CAST_BUFLEN (str1_end - str1), &uca_w_l13_1, &num_ce1,
+				  &str1_next, &str1_cp_contr);
 	    }
 	  assert (num_ce1 > 0);
 
@@ -3282,13 +3282,13 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 
 	  if (level == 3)
 	    {
-	      lang_get_uca_w_l4 (coll_data, true, str2, str2_end - str2, &uca_w_l4_2, &num_ce2, &str2_next,
-				 &str1_cp_contr);
+	      lang_get_uca_w_l4 (coll_data, true, str2, CAST_BUFLEN (str2_end - str2), &uca_w_l4_2, &num_ce2,
+				 &str2_next, &str1_cp_contr);
 	    }
 	  else
 	    {
-	      lang_get_uca_w_l13 (coll_data, true, str2, str2_end - str2, &uca_w_l13_2, &num_ce2, &str2_next,
-				  &str2_cp_contr);
+	      lang_get_uca_w_l13 (coll_data, true, str2, CAST_BUFLEN (str2_end - str2), &uca_w_l13_2, &num_ce2,
+				  &str2_next, &str2_cp_contr);
 	    }
 
 	  if (is_match && coll_data->uca_opt.sett_match_contr == MATCH_CONTR_BOUND_ALLOW
@@ -3298,13 +3298,13 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 	      /* re-compute weight of str1 without considering contractions */
 	      if (level == 3)
 		{
-		  lang_get_uca_w_l4 (coll_data, false, str1, str1_end - str1, &uca_w_l4_1, &num_ce1, &str1_next,
-				     &str1_cp_contr);
+		  lang_get_uca_w_l4 (coll_data, false, str1, CAST_BUFLEN (str1_end - str1), &uca_w_l4_1, &num_ce1,
+				     &str1_next, &str1_cp_contr);
 		}
 	      else
 		{
-		  lang_get_uca_w_l13 (coll_data, false, str1, str1_end - str1, &uca_w_l13_1, &num_ce1, &str1_next,
-				      &str1_cp_contr);
+		  lang_get_uca_w_l13 (coll_data, false, str1, CAST_BUFLEN (str1_end - str1), &uca_w_l13_1, &num_ce1,
+				      &str1_next, &str1_cp_contr);
 		}
 	      assert (num_ce1 > 0);
 	    }
@@ -3321,7 +3321,7 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 	      if (!INTL_CONTR_FOUND (str1_cp_contr) && str1_cp_contr == str2_cp_contr)
 		{
 		  assert (!INTL_CONTR_FOUND (str2_cp_contr));
-		  cmp_offset += str1_next - str1;
+		  cmp_offset += CAST_BUFLEN (str1_next - str1);
 		}
 	      else
 		{
@@ -3452,7 +3452,7 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
   if (str2 < str2_end)
     {
       assert (str1 == str1_end);
-      if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str2, str2_end - str2) != 0)
+      if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str2, CAST_BUFLEN (str2_end - str2)) != 0)
 	{
 	  result = -1;
 	}
@@ -3460,7 +3460,7 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
   else if (str1 < str1_end)
     {
       assert (str2 == str2_end);
-      if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str1, str1_end - str1) != 0)
+      if (lang_str_utf8_trail_zero_weights_w_exp (coll_data, level, str1, CAST_BUFLEN (str1_end - str1)) != 0)
 	{
 	  result = 1;
 	}
@@ -3483,7 +3483,7 @@ exit:
   if (is_match)
     {
       assert (str1_match_size != NULL);
-      *str1_match_size = str1 - str1_begin;
+      *str1_match_size = CAST_BUFLEN (str1 - str1_begin);
     }
 
   if (level == 0)
@@ -3545,7 +3545,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
 	      break;
 	    }
 
-	  str_size = str_end - str;
+	  str_size = CAST_BUFLEN (str_end - str);
 	  cp = intl_utf8_to_cp (str, str_size, &str_next);
 
 	  if (cp < (unsigned int) alpha_cnt)
@@ -3871,7 +3871,7 @@ exit:
   if (is_match)
     {
       assert (str1_match_size != NULL);
-      *str1_match_size = str1_last - str1_start + 1;
+      *str1_match_size = CAST_BUFLEN (str1_last - str1_start) + 1;
     }
 
   return result;
@@ -4062,7 +4062,7 @@ lang_str_utf8_trail_zero_weights (const LANG_COLLATION * lang_coll, const unsign
 	{
 	  return 1;
 	}
-      size -= str_next - str;
+      size -= CAST_BUFLEN (str_next - str);
       str = str_next;
     }
 
@@ -4109,7 +4109,7 @@ lang_str_utf8_trail_zero_weights_w_exp (const COLL_DATA * coll_data, const int l
 	  assert (num_ce > 0);
 
 	  ce_index = 0;
-	  size -= str_next - str;
+	  size -= CAST_BUFLEN (str_next - str);
 	  str = str_next;
 	}
 
@@ -4294,7 +4294,7 @@ lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_desc, const 
 	    }
 	}
       assert (str2 <= str2_end);
-      key_size = str2 - str2_begin;
+      key_size = CAST_BUFLEN (str2 - str2_begin);
     }
   else
     {				/* reverse index */
@@ -4313,13 +4313,13 @@ lang_split_key_iso (const LANG_COLLATION * lang_coll, const bool is_desc, const 
 	{
 	  /* str1 exhaused or at last char, we use str2 as key */
 	  *key = (unsigned char *) str2_begin;
-	  key_size = str2_end - str2_begin;
+	  key_size = CAST_BUFLEN (str2_end - str2_begin);
 	}
       else
 	{
 	  assert (str1 < str1_end);
 	  *key = (unsigned char *) str1_begin;
-	  key_size = str1 - str1_begin;
+	  key_size = CAST_BUFLEN (str1 - str1_begin);
 	}
     }
 
@@ -4386,7 +4386,7 @@ lang_split_key_byte (const LANG_COLLATION * lang_coll, const bool is_desc, const
 	      break;
 	    }
 	}
-      key_size = str2 - str2_begin;
+      key_size = CAST_BUFLEN (str2 - str2_begin);
     }
   else
     {				/* reverse index */
@@ -4405,13 +4405,13 @@ lang_split_key_byte (const LANG_COLLATION * lang_coll, const bool is_desc, const
 	{
 	  /* str1 exhaused or at last char, we use str2 as key */
 	  *key = (unsigned char *) str2_begin;
-	  key_size = str2_end - str2_begin;
+	  key_size = CAST_BUFLEN (str2_end - str2_begin);
 	}
       else
 	{
 	  assert (str1 < str1_end);
 	  *key = (unsigned char *) str1_begin;
-	  key_size = str1 - str1_begin;
+	  key_size = CAST_BUFLEN (str1 - str1_begin);
 	}
     }
 
@@ -4457,8 +4457,8 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const
 
   for (; str1 < str1_end && str2 < str2_end;)
     {
-      w1 = lang_get_w_first_el (coll, str1, str1_end - str1, &str1_next);
-      w2 = lang_get_w_first_el (coll, str2, str2_end - str2, &str2_next);
+      w1 = lang_get_w_first_el (coll, str1, CAST_BUFLEN (str1_end - str1), &str1_next);
+      w2 = lang_get_w_first_el (coll, str2, CAST_BUFLEN (str2_end - str2), &str2_next);
 
       if (w1 != w2)
 	{
@@ -4477,7 +4477,7 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const
       /* common part plus a character with non-zero weight from str2 */
       while (str2 < str2_end)
 	{
-	  w2 = lang_get_w_first_el (coll, str2, str2_end - str2, &str2_next);
+	  w2 = lang_get_w_first_el (coll, str2, CAST_BUFLEN (str2_end - str2), &str2_next);
 	  str2 = str2_next;
 	  if (w2 != 0)
 	    {
@@ -4486,7 +4486,7 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const
 	}
 
       assert (str2 <= str2_end);
-      key_size = str2 - str2_begin;
+      key_size = CAST_BUFLEN (str2 - str2_begin);
     }
   else
     {				/* reverse index */
@@ -4494,7 +4494,7 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const
       /* common part plus a character with non-zero weight from str1 */
       while (str1 < str1_end)
 	{
-	  w1 = lang_get_w_first_el (coll, str1, str1_end - str1, &str1_next);
+	  w1 = lang_get_w_first_el (coll, str1, CAST_BUFLEN (str1_end - str1), &str1_next);
 	  str1 = str1_next;
 	  if (w1 != 0)
 	    {
@@ -4506,13 +4506,13 @@ lang_split_key_utf8 (const LANG_COLLATION * lang_coll, const bool is_desc, const
 	{
 	  /* str1 exhaused or at last char, we use str2 as key */
 	  *key = (unsigned char *) str2_begin;
-	  key_size = str2_end - str2_begin;
+	  key_size = CAST_BUFLEN (str2_end - str2_begin);
 	}
       else
 	{
 	  assert (str1 < str1_end);
 	  *key = (unsigned char *) str1_begin;
-	  key_size = str1 - str1_begin;
+	  key_size = CAST_BUFLEN (str1 - str1_begin);
 	}
     }
 
@@ -4577,7 +4577,8 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 	      goto read_weights2;
 	    }
 
-	  lang_get_uca_w_l13 (cd, true, str1, str1_end - str1, &uca_w_l13_1, &num_ce1, &str1_next, &dummy);
+	  lang_get_uca_w_l13 (cd, true, str1, CAST_BUFLEN (str1_end - str1), &uca_w_l13_1, &num_ce1, &str1_next,
+			      &dummy);
 	  assert (num_ce1 > 0);
 
 	  ce_index1 = 0;
@@ -4592,7 +4593,8 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 	      goto compare;
 	    }
 
-	  lang_get_uca_w_l13 (cd, true, str2, str2_end - str2, &uca_w_l13_2, &num_ce2, &str2_next, &dummy);
+	  lang_get_uca_w_l13 (cd, true, str2, CAST_BUFLEN (str2_end - str2), &uca_w_l13_2, &num_ce2, &str2_next,
+			      &dummy);
 
 	  assert (num_ce2 > 0);
 
@@ -4659,7 +4661,8 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
       /* common part plus a character with non-zero weight */
       while (str2 < str2_end)
 	{
-	  lang_get_uca_w_l13 (cd, true, str2, str2_end - str2, &uca_w_l13_2, &num_ce2, &str2_next, &dummy);
+	  lang_get_uca_w_l13 (cd, true, str2, CAST_BUFLEN (str2_end - str2), &uca_w_l13_2, &num_ce2, &str2_next,
+			      &dummy);
 	  str2 = str2_next;
 
 	  if (UCA_GET_L1_W (uca_w_l13_2[0]) != 0)
@@ -4669,7 +4672,7 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 	}
 
       assert (str2 <= str2_end);
-      key_size = str2 - str2_begin;
+      key_size = CAST_BUFLEN (str2 - str2_begin);
     }
   else
     {				/* reverse index */
@@ -4677,7 +4680,8 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
       /* common part plus a character with non-zero weight from str1 */
       while (str1 < str1_end)
 	{
-	  lang_get_uca_w_l13 (cd, true, str1, str1_end - str1, &uca_w_l13_1, &num_ce1, &str1_next, &dummy);
+	  lang_get_uca_w_l13 (cd, true, str1, CAST_BUFLEN (str1_end - str1), &uca_w_l13_1, &num_ce1, &str1_next,
+			      &dummy);
 	  str1 = str1_next;
 
 	  if (UCA_GET_L1_W (uca_w_l13_1[0]) != 0)
@@ -4690,13 +4694,13 @@ lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is_desc, cons
 	{
 	  /* str1 exhaused or at last char, we use str2 as key */
 	  *key = (unsigned char *) str2_begin;
-	  key_size = str2_end - str2_begin;
+	  key_size = CAST_BUFLEN (str2_end - str2_begin);
 	}
       else
 	{
 	  assert (str1 < str1_end);
 	  *key = (unsigned char *) str1_begin;
-	  key_size = str1 - str1_begin;
+	  key_size = CAST_BUFLEN (str1 - str1_begin);
 	}
     }
 
@@ -4772,7 +4776,7 @@ lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc, const 
 	}
 
       assert (str2 <= str2_end);
-      key_size = str2 - str2_begin;
+      key_size = CAST_BUFLEN (str2 - str2_begin);
     }
   else
     {				/* reverse index */
@@ -4798,13 +4802,13 @@ lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc, const 
 	{
 	  /* str1 exhaused or at last char, we use str2 as key */
 	  *key = (unsigned char *) str2_begin;
-	  key_size = str2_end - str2_begin;
+	  key_size = CAST_BUFLEN (str2_end - str2_begin);
 	}
       else
 	{
 	  assert (str1 < str1_end);
 	  *key = (unsigned char *) str1_begin;
-	  key_size = str1 - str1_begin;
+	  key_size = CAST_BUFLEN (str1 - str1_begin);
 	}
     }
 
@@ -5183,15 +5187,15 @@ lang_strmatch_iso_88591 (const LANG_COLLATION * lang_coll, bool is_match, const 
 	}
     }
 
-  size1 = str1_end - str1;
-  size2 = str2_end - str2;
+  size1 = CAST_BUFLEN (str1_end - str1);
+  size2 = CAST_BUFLEN (str2_end - str2);
 
   assert (size1 == 0 || size2 == 0);
 
   if (is_match)
     {
       assert (str1_match_size != NULL);
-      *str1_match_size = str1 - str1_begin;
+      *str1_match_size = CAST_BUFLEN (str1 - str1_begin);
     }
 
   if (size1 == size2)
@@ -5925,8 +5929,8 @@ lang_fastcmp_ko (const LANG_COLLATION * lang_coll, const unsigned char *string1,
       return cmp;
     }
 
-  size1 = str1_end - string1;
-  size2 = str2_end - string2;
+  size1 = CAST_BUFLEN (str1_end - string1);
+  size2 = CAST_BUFLEN (str2_end - string2);
 
   assert (size1 == 0 || size2 == 0);
 
@@ -6143,13 +6147,13 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match, const unsigne
       str2 = str2_next;
     }
 
-  size1 = str1_end - str1;
-  size2 = str2_end - str2;
+  size1 = CAST_BUFLEN (str1_end - str1);
+  size2 = CAST_BUFLEN (str2_end - str2);
 
   if (is_match)
     {
       assert (str1_match_size != NULL);
-      *str1_match_size = str1 - str1_begin;
+      *str1_match_size = CAST_BUFLEN (str1 - str1_begin);
     }
 
   assert (size1 == 0 || size2 == 0);
@@ -6365,15 +6369,15 @@ lang_strmatch_binary (const LANG_COLLATION * lang_coll, bool is_match, const uns
 	}
     }
 
-  size1 = str1_end - str1;
-  size2 = str2_end - str2;
+  size1 = CAST_BUFLEN (str1_end - str1);
+  size2 = CAST_BUFLEN (str2_end - str2);
 
   assert (size1 == 0 || size2 == 0);
 
   if (is_match)
     {
       assert (str1_match_size != NULL);
-      *str1_match_size = str1 - str1_begin;
+      *str1_match_size = CAST_BUFLEN (str1 - str1_begin);
     }
 
   if (size1 == size2)
@@ -6469,7 +6473,7 @@ lang_split_key_binary (const LANG_COLLATION * lang_coll, const bool is_desc, con
 	    }
 	}
       assert (str2 <= str2_end);
-      key_size = str2 - str2_begin;
+      key_size = CAST_BUFLEN (str2 - str2_begin);
     }
   else
     {				/* reverse index */
@@ -6488,13 +6492,13 @@ lang_split_key_binary (const LANG_COLLATION * lang_coll, const bool is_desc, con
 	{
 	  /* str1 exhaused or at last char, we use str2 as key */
 	  *key = (unsigned char *) str2_begin;
-	  key_size = str2_end - str2_begin;
+	  key_size = CAST_BUFLEN (str2_end - str2_begin);
 	}
       else
 	{
 	  assert (str1 < str1_end);
 	  *key = (unsigned char *) str1_begin;
-	  key_size = str1 - str1_begin;
+	  key_size = CAST_BUFLEN (str1 - str1_begin);
 	}
     }
 

@@ -1215,12 +1215,6 @@ qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, char **xasl
 int
 qfile_initialize (void)
 {
-  SORT_LIST *sort_list_p;
-  int i;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
   qfile_Is_list_cache_disabled =
     ((prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == QFILE_LIST_QUERY_CACHE_MODE_OFF)
      || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0));

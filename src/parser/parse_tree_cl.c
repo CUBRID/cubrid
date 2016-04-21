@@ -16509,7 +16509,7 @@ pt_init_constraint (PT_NODE * node)
 static PARSER_VARCHAR *
 pt_print_col_def_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *b = 0, *r1, *r2, *r3;
+  PARSER_VARCHAR *b = 0, *r1, *r2;
 
   assert (p->node_type == PT_CONSTRAINT);
   assert (p->info.constraint.name == NULL);
@@ -16608,7 +16608,7 @@ pt_print_col_def_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *b = 0, *r1, *r2, *r3;
+  PARSER_VARCHAR *b = 0, *r1, *r2;
 
   if (p->info.constraint.name)
     {

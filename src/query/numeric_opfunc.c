@@ -3919,7 +3919,7 @@ numeric_db_value_print (DB_VALUE * val)
 
   /* Remove the extra padded zeroes and add the decimal point */
   nbuf = 0;
-  temp_size = strnlen (temp, sizeof (temp));
+  temp_size = (int) strnlen (temp, sizeof (temp));
   for (i = 0; i < temp_size; i++)
     {
       /* Add the negative sign */

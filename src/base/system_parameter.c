@@ -6426,7 +6426,7 @@ static SYSPRM_ERR
 sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_list)
 {
   SYSPRM_PARAM *prm = NULL;
-  SYSPRM_ASSIGN_VALUE *assignment = NULL;
+  const SYSPRM_ASSIGN_VALUE *assignment = NULL;
   bool set_require_like_escape, set_no_backslash_escape;
   bool is_require_like_escape, is_no_backslash_escape;
 
@@ -8232,7 +8232,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
     case PRM_STRING:
       {
 	/* duplicate string */
-	char *val = NULL;
+	const char *val = NULL;
 
 	if (set_default)
 	  {
@@ -10757,7 +10757,7 @@ sysprm_free_assign_values (SYSPRM_ASSIGN_VALUE ** assign_values_ptr)
 static PARAM_ID
 sysprm_get_id (const SYSPRM_PARAM * prm)
 {
-  int id = (prm - prm_Def);
+  int id = (int) (prm - prm_Def);
 
   assert (id >= PRM_FIRST_ID && id <= PRM_LAST_ID);
 

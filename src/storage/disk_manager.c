@@ -403,7 +403,6 @@ disk_goodvol_decache (THREAD_ENTRY * thread_p)
 static bool
 disk_cache_goodvol_refresh_onevol (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
 {
-  void *ptr;
   DISK_VOLPURPOSE vol_purpose;
   VOL_SPACE_INFO space_info;
 
@@ -481,7 +480,6 @@ disk_goodvol_refresh_with_new (THREAD_ENTRY * thread_p, INT16 volid)
 bool
 disk_goodvol_refresh (THREAD_ENTRY * thread_p)
 {
-  void *ptr;
   int i;
   DISK_VOLPURPOSE vol_purpose;
   bool answer = false;
@@ -558,7 +556,6 @@ static int
 disk_cache_goodvol_update (THREAD_ENTRY * thread_p, INT16 volid, DISK_VOLPURPOSE vol_purpose, INT32 nfree_pages_toadd,
 			   bool do_update_total, bool * need_to_add_generic_volume)
 {
-  int i;
 #if defined (SERVER_MODE)
   bool need_to_check_auto_volume_ext = false;
 #endif

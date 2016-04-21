@@ -1467,7 +1467,7 @@ css_set_net_header (NET_HEADER * header_p, int type, short function_code, int re
     {
       flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
     }
-  header_p->flags = htonl (flags);
+  header_p->flags = htons (flags);
 }
 
 /*
