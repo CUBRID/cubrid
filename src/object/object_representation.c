@@ -8138,7 +8138,7 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
 
   if ((buf->ptr + sizeof (LOG_LSA)) > buf->endptr)
     {
-      return (or_overflow (buf));
+      return (or_underflow (buf));
     }
 
   *prev_version_lsa = *(LOG_LSA *) buf->ptr;
@@ -8173,9 +8173,9 @@ or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
       return ER_FAILED;
     }
 
-  lsa_offset =
-    OR_REP_OFFSET + OR_MVCC_REP_SIZE + (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0) +
-    (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : OR_INT_SIZE);
+  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE
+		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
+		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : OR_INT_SIZE));
 
   memcpy (record->data + lsa_offset, lsa, sizeof (LOG_LSA));
 

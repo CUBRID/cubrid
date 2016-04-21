@@ -6528,7 +6528,6 @@ xts_sizeof_cls_spec_type (const CLS_SPEC_TYPE * cls_spec)
 	   + PTR_SIZE		/* cls_regu_list_pred */
 	   + PTR_SIZE		/* cls_regu_list_rest */
 	   + PTR_SIZE		/* cls_regu_list_range */
-	   + PTR_SIZE		/* cls_regu_list_last_version */
 	   + PTR_SIZE		/* cls_output_val_list */
 	   + PTR_SIZE		/* regu_val_list */
 	   + OR_HFID_SIZE	/* hfid */
