@@ -7905,7 +7905,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
   INT16 type;			/* Record type. */
   bool is_version_locked = false;	/* True if newest version has been locked. */
   HEAP_SCANCACHE local_scancache;
-  bool is_record_retrived = false;
+  bool is_record_retrieved = false;
 
   PGBUF_INIT_WATCHER (&fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, HEAP_SCAN_ORDERED_HFID (scan_cache));
 
@@ -8125,7 +8125,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 		  goto end;
 		}
 
-	      is_record_retrived = true;
+	      is_record_retrieved = true;
 
 	      if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)	/* Not sure if necessary */
 		{
@@ -8136,11 +8136,10 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 	      if (mvcc_snapshot)
 		{
 		  snapshot_res = mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
-		  if (snapshot_res != TOO_NEW_FOR_SNAPSHOT)
+		  if (snapshot_res == SNAPSHOT_SATISFIED)
 		    {
 		      /* Skip the re-evaluation if last version is visible. It should be the same as the visible version 
 		       * which was already evaluated. */
-		      assert (snapshot_res == SNAPSHOT_SATISFIED);
 		      goto get_heap_record;
 		    }
 		}
@@ -8275,7 +8274,7 @@ get_heap_record:
 	  goto end;
 	}
       /* Get record data. */
-      if (!is_record_retrived)
+      if (!is_record_retrieved)
 	{
 	  scan_code =
 	    heap_get_record_data_when_all_ready (thread_p, oid, &forward_oid, scan_cache->page_watcher.pgptr,
@@ -17324,15 +17323,14 @@ heap_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * return		    : Void.
  * thread_p (in)	    : Thread entry.
  * undo_chn (in)	    : Record CHN before delete.
- * partition_oid	    : In case of recorded relocated to another
- *			      partition
  * p_addr (in)		    : Log address data.
+ * rcvindex(in)		    : Index to recovery function
  */
 static void
 heap_mvcc_log_delete (THREAD_ENTRY * thread_p, INT32 undo_chn, LOG_DATA_ADDR * p_addr, LOG_RCVINDEX rcvindex)
 {
   char undo_data_buffer[OR_INT_SIZE + MAX_ALIGNMENT];
-  char redo_data_buffer[OR_MVCCID_SIZE + 2 * OR_OID_SIZE + MAX_ALIGNMENT];
+  char redo_data_buffer[OR_MVCCID_SIZE + MAX_ALIGNMENT];
   char *undo_data_p = PTR_ALIGN (undo_data_buffer, MAX_ALIGNMENT);
   char *redo_data_p = PTR_ALIGN (redo_data_buffer, MAX_ALIGNMENT);
   char *ptr;
@@ -20019,7 +20017,6 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       else
 	{
 	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 0);
-	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_PARTITION_OID]);
 	}
       break;
 
@@ -20339,9 +20336,8 @@ try_again:
 
       /* Prepare for getting record again. Since pages have been unlatched, others may have changed them (even our
        * record). */
-      if (heap_prepare_get_record
-	  (thread_p, oid, class_oid, forward_oid, home_page_watcher, fwd_page_watcher, record_type, PGBUF_LATCH_READ,
-	   false, LOG_WARNING_IF_DELETED) != S_SUCCESS)
+      if (heap_prepare_get_record (thread_p, oid, class_oid, forward_oid, home_page_watcher, fwd_page_watcher,
+				   record_type, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED) != S_SUCCESS)
 	{
 	  goto error;
 	}
