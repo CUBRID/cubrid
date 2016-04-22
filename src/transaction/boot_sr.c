@@ -928,9 +928,10 @@ xboot_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid, bool clear_cac
        * if some transactions are using the xasl, we don't remove xasl cache
        * and the volume will not be removed from database.
        */
-      (void) qexec_remove_xasl_cache_ent_by_volume (thread_p, volid, true);
+      /* If this code is ever reactivated, xasl_cache.c must provide the necessary functions. This no longer exist. */
+      /* (void) qexec_remove_xasl_cache_ent_by_volume (thread_p, volid, true); */
 
-      (void) file_destroy_cached_tmp (thread_p, volid);
+      /* (void) file_destroy_cached_tmp (thread_p, volid); */
     }
 
   r = disk_del_volume_extension (thread_p, volid);
@@ -3561,7 +3562,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  (void) qexec_initialize_xasl_cache (thread_p);
+  error_code = xcache_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
   if (qmgr_initialize (thread_p) != NO_ERROR)
     {
       error_code = ER_FAILED;
@@ -3575,6 +3581,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   error_code = fpcache_initialize ();
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error;
     }
 
@@ -3873,7 +3880,7 @@ error:
   log_final (thread_p);
   fpcache_finalize ();
   qfile_finalize_list_cache (thread_p);
-  qexec_finalize_xasl_cache (thread_p);
+  xcache_finalize ();
 
 #if defined(SERVER_MODE)
   css_final_conn_list ();
@@ -3999,7 +4006,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       /* before removing temp vols */
       (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
       qfile_finalize_list_cache (thread_p);
-      (void) qexec_finalize_xasl_cache (thread_p);
+      xcache_finalize ();
       fpcache_finalize ();
       session_states_finalize (thread_p);
 

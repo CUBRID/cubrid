@@ -441,7 +441,13 @@ lf_initialize_transaction_systems (int max_threads)
       goto error;
     }
 
-  if (lf_tran_system_init (&hfid_table_Ts, max_threads) != NO_ERROR)
+  if (lf_tran_system_init (&xcache_Ts, max_threads) != NO_ERROR)
+    {
+      /* TODO: Could we not use an array for tran systems? */
+      goto error;
+    }
+
+  if (lf_tran_system_init (&fpcache_Ts, max_threads) != NO_ERROR)
     {
       /* TODO: Could we not use an array for tran systems? */
       goto error;
@@ -1819,7 +1825,14 @@ lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key,
   assert (edesc != NULL);
 
 restart:
-  *entry = NULL;
+  if (LF_LIST_BF_IS_FLAG_SET (&bflags, LF_LIST_BF_INSERT_GIVEN))
+    {
+      assert (*entry != NULL);
+    }
+  else
+    {
+      *entry = NULL;
+    }
   hash_value = edesc->f_hash (key, table->hash_size);
   if (hash_value >= table->hash_size)
     {

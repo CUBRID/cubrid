@@ -1066,35 +1066,6 @@ extern void get_xasl_dumper_linked_in ();
 #endif
 
 /* XASL cache entry manipulation functions */
-extern int qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p);
-extern int qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p);
-extern int qexec_dump_xasl_cache_internal (THREAD_ENTRY * thread_p, FILE * fp, int mask);
-#if defined(CUBRID_DEBUG)
-extern int qexec_dump_xasl_cache (THREAD_ENTRY * thread_p, const char *fname, int mask);
-#endif
-extern XASL_CACHE_ENTRY *qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr, const OID * user_oid,
-						      bool is_pinned_reference, bool recompile_xasl_pinned);
-extern XASL_CACHE_ENTRY *qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
-						      XASL_STREAM * stream, const OID * oid, int n_oids,
-						      const OID * class_oids, const int *class_locks,
-						      const int *repr_ids, int dbval_cnt, bool is_pinned_reference);
-extern int qexec_remove_my_tran_id_in_xasl_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent, bool unfix_all,
-						  bool is_pinned_reference);
-extern int qexec_RT_xasl_cache_ent (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * ent);
-extern XASL_CACHE_ENTRY *qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id,
-							     int dbval_cnt, XASL_CACHE_CLONE ** clop,
-							     bool is_pinned_reference);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int qexec_free_xasl_cache_clo (XASL_CACHE_CLONE * clo);
-#endif /* ENABLE_UNUSED_FUNCTION */
-extern int xasl_id_hash_cmpeq (const void *key1, const void *key2);
-extern int qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p, const OID * class_oid, int force_remove);
-extern int qexec_remove_xasl_cache_ent_by_qstr (THREAD_ENTRY * thread_p, const char *qstr, const OID * user_oid);
-extern int qexec_remove_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id);
-extern int qexec_remove_all_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p);
-#if 0
-extern int qexec_remove_xasl_cache_ent_by_volume (THREAD_ENTRY * thread_p, VOLID volid, bool not_reuse_file);
-#endif
 extern int qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern bool qdump_print_xasl (XASL_NODE * xasl);
 #if defined(CUBRID_DEBUG)
@@ -1130,6 +1101,4 @@ extern void qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent);
 extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent);
 #endif /* SERVER_MODE */
 extern const char *qdump_function_type_string (FUNC_TYPE ftype);
-
-extern int qexec_clear_my_leaked_pinned_xasl_cache_entries (THREAD_ENTRY * thread_p);
 #endif /* _QUERY_EXECUTOR_H_ */

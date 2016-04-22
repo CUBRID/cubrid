@@ -76,7 +76,6 @@ static const char *css_Csect_name[] = {
   "LOCATOR_CLASSNAME_TABLE",
   "FILE_NEWFILE",
   "QPROC_QUERY_TABLE",
-  "QPROC_XASL_CACHE",
   "QPROC_LIST_CACHE",
   "BOOT_SR_DBPARM",
   "DISK_REFRESH_GOODVOL",

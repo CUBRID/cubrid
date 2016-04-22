@@ -345,7 +345,7 @@ event_log_print_client_info (int tran_index, int indent)
 void
 event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp, XASL_ID * xasl_id, int indent)
 {
-  XASL_CACHE_ENTRY *ent;
+  XASL_CACHE_ENTRY *ent = NULL;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -357,7 +357,11 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp, XASL_ID * xasl_id,
       return;
     }
 
-  ent = qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id, -1, NULL, false);
+  if (xcache_find_sha1 (thread_p, &xasl_id->sha1, &ent) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return;
+    }
 
   if (ent != NULL && ent->sql_info.sql_hash_text != NULL)
     {
@@ -370,7 +374,7 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp, XASL_ID * xasl_id,
 
   if (ent != NULL)
     {
-      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, false, false);
+      xcache_unfix (thread_p, ent);
     }
 }
 

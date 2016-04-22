@@ -959,7 +959,6 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->first_save_entry = NULL;
   tdes->num_new_files = 0;
   tdes->num_new_temp_files = 0;
-  tdes->num_pinned_xasl_cache_entries = 0;
   RB_INIT (&tdes->lob_locator_root);
 }
 
@@ -1942,7 +1941,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
-  assert (tdes->num_pinned_xasl_cache_entries == 0);
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
@@ -2024,7 +2022,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->first_save_entry = NULL;
   tdes->num_new_files = 0;
   tdes->num_new_temp_files = 0;
-  tdes->num_pinned_xasl_cache_entries = 0;
   tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
   tdes->query_timeout = 0;
@@ -2606,7 +2603,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 #if defined(SERVER_MODE)
   UINT64 current_msec = 0;
   TRAN_QUERY_EXEC_INFO *query_exec_info = NULL;
-  XASL_CACHE_ENTRY *ent;
+  XASL_CACHE_ENTRY *ent = NULL;
 #endif
 
   /* Note, we'll be in a critical section while we gather the data but the section ends as soon as we return the data.
@@ -2667,7 +2664,12 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	  if (!XASL_ID_IS_NULL (&tdes->xasl_id))
 	    {
 	      /* retrieve query statement in the xasl_cache entry */
-	      ent = qexec_check_xasl_cache_ent_by_xasl (thread_p, &tdes->xasl_id, -1, NULL, false);
+	      error_code = xcache_find_sha1 (thread_p, &tdes->xasl_id.sha1, &ent);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto error;
+		}
 
 	      /* entry can be NULL, if xasl cache entry is deleted */
 	      if (ent != NULL)
@@ -2694,7 +2696,8 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 			  goto error;
 			}
 		    }
-		  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, true, false);
+		  xcache_unfix (thread_p, ent);
+		  ent = NULL;
 		}
 
 	      /* structure copy */
@@ -2790,6 +2793,11 @@ error:
 	    }
 	}
       free_and_init (query_exec_info);
+    }
+
+  if (ent != NULL)
+    {
+      xcache_unfix (thread_p, ent);
     }
 #endif
 

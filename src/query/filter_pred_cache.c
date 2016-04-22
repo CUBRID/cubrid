@@ -383,7 +383,7 @@ fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 {
   LF_HASH_TABLE_ITERATOR iter;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
-  FPCACHE_ENTRY *fpcache_entry;
+  FPCACHE_ENTRY *fpcache_entry = NULL;
 
   assert (fp);
 
@@ -397,7 +397,7 @@ fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 
   /* NOTE: While dumping information, other threads are still free to modify the existing entries. */
 
-  fprintf (fp, "Filter predicate cache.\n");
+  fprintf (fp, "Filter predicate cache\n");
   fprintf (fp, "Stats: \n");
   fprintf (fp, "Max size:                   %d\n", fpcache_Soft_capacity);
   fprintf (fp, "Current entry count:        %d\n", ATOMIC_INC_32 (&fpcache_Entry_counter, 0));

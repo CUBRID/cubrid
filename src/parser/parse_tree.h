@@ -3506,6 +3506,8 @@ struct compile_context
   int sql_plan_alloc_size;	/* query_plan alloc size */
   bool is_xasl_pinned_reference;	/* to pin xasl cache entry */
   bool recompile_xasl_pinned;	/* whether recompile again after xasl cache entry has been pinned */
+  bool recompile_xasl;
+  SHA1Hash sha1;
 };
 
 struct parser_context

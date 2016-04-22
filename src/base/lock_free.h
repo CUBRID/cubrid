@@ -309,7 +309,7 @@ extern int lf_io_list_find_or_insert (void **list_p, void *new_entry, LF_ENTRY_D
 #define LF_LIST_BF_RESTART_ON_DUPLICATE	  0x2	    /* Not used for now. */
 #define LF_LIST_BF_INSERT_GIVEN		  0x4
 #define LF_LIST_BF_FIND_OR_INSERT	  0x8
-#define LF_LIST_BF_IS_FLAG_SET(bf, flag) ((*(bf) & (flag)))
+#define LF_LIST_BF_IS_FLAG_SET(bf, flag) ((*(bf) & (flag)) != 0)
 #define LF_LIST_BF_SET_FLAG(bf, flag) (*(bf) = *(bf) | (flag))
 
 /* responses to flags from lf_list_* functions */

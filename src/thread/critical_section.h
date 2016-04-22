@@ -52,7 +52,6 @@ enum
   CSECT_LOCATOR_SR_CLASSNAME_TABLE,	/* Latch for classname to classOID entries */
   CSECT_FILE_NEWFILE,		/* Latch related to new file table */
   CSECT_QPROC_QUERY_TABLE,	/* Latch for query manager table */
-  CSECT_QPROC_XASL_CACHE,	/* Latch for XASL cache (mht: memory hash table) */
   CSECT_QPROC_LIST_CACHE,	/* Latch for query result(list file) cache (mht) */
   CSECT_BOOT_SR_DBPARM,		/* Latch for accessing System Database parameters. Used during vol creation */
   CSECT_DISK_REFRESH_GOODVOL,	/* Latch for refreshing good volume cache */

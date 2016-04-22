@@ -4136,7 +4136,7 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids, BTID * inde
   OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
   char *reply;
   char *request, *ptr;
-  size_t request_size;
+  int request_size;
   int i;
 
   request_size = OR_INT_SIZE;	/* check_flag */
@@ -4818,6 +4818,7 @@ csession_create_prepared_statement (const char *name, const char *alias_print, c
   char *reply = NULL;
   char *ptr = NULL;
   int req_size = 0, name_len = 0, alias_print_len = 0;
+  SHA1Hash alias_sha1;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4829,6 +4830,8 @@ csession_create_prepared_statement (const char *name, const char *alias_print, c
   req_size += length_const_string (alias_print, &alias_print_len);
   /* data_size */
   req_size += OR_INT_SIZE;
+  /* sha1 */
+  req_size += OR_SHA1_SIZE;
 
   request = (char *) malloc (req_size);
   if (request == NULL)
@@ -4845,7 +4848,10 @@ csession_create_prepared_statement (const char *name, const char *alias_print, c
   /* alias_print */
   ptr = pack_const_string_with_length (ptr, alias_print, alias_print_len);
   /* data size */
-  or_pack_int (ptr, info_length);
+  ptr = or_pack_int (ptr, info_length);
+
+  SHA1Compute ((const unsigned char *) alias_print, (unsigned) strlen (alias_print), &alias_sha1);
+  ptr = or_pack_sha1 (ptr, &alias_sha1);
 
   req_error =
     net_client_request (NET_SERVER_SES_CREATE_PREPARED_STATEMENT, request, req_size, reply,
@@ -4869,6 +4875,8 @@ cleanup:
   char *local_alias_print = NULL;
   char *local_stmt_info = NULL;
   int len = 0;
+  SHA1Hash alias_sha1;
+
   user = ws_identifier (db_get_user ());
 
   ENTER_SERVER ();
@@ -4918,8 +4926,10 @@ cleanup:
       memcpy (local_stmt_info, stmt_info, info_length);
     }
 
+  SHA1Compute ((const unsigned char *) alias_print, (unsigned) strlen (alias_print), &alias_sha1);
   result =
-    xsession_create_prepared_statement (NULL, *user, local_name, local_alias_print, local_stmt_info, info_length);
+    xsession_create_prepared_statement (NULL, *user, local_name, local_alias_print, &alias_sha1, local_stmt_info,
+				        info_length);
   if (result != NO_ERROR)
     {
       goto error;
@@ -7064,8 +7074,8 @@ qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *b
  *
  * NOTE: If xasl_header_p is not null, also XASL node header will be requested
  */
-XASL_ID *
-qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID * user_oid)
+int
+qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
@@ -7074,7 +7084,6 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID *
   char *request = NULL, *reply = NULL, *ptr = NULL, *reply_buffer = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int get_xasl_header = stream->xasl_header != NULL;
-  XASL_ID *result = NULL;
 
   INIT_XASL_NODE_HEADER (stream->xasl_header);
 
@@ -7089,17 +7098,18 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID *
   /* sql user text */
   request_size += length_string_with_null_padding (context->sql_user_text_len);
 
-  request_size += OR_OID_SIZE;	/* user_oid */
   request_size += OR_INT_SIZE;	/* size */
   request_size += OR_INT_SIZE;	/* get_xasl_header */
   request_size += OR_INT_SIZE;	/* whether to pin xasl cache entry */
   request_size += OR_INT_SIZE;	/* whether to recompile the pinned xasl cache entry */
+  request_size += OR_INT_SIZE;	/* context->recompile_xasl */
+  request_size += OR_SHA1_SIZE;	/* sha1 */
 
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return NULL;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   /* pack query alias string as a request data */
@@ -7109,14 +7119,15 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID *
   /* pack query string as a request data */
   ptr = pack_string_with_null_padding (ptr, context->sql_user_text, context->sql_user_text_len);
 
-
-  /* pack OID of the current user */
-  ptr = or_pack_oid (ptr, (OID *) user_oid);
   /* pack size of XASL stream */
   ptr = or_pack_int (ptr, stream->xasl_stream_size);
+  /* Pack get_xasl_header. */
   ptr = or_pack_int (ptr, get_xasl_header);
+  /* Pack context. */
   ptr = or_pack_int (ptr, (int) context->is_xasl_pinned_reference);
   ptr = or_pack_int (ptr, (int) context->recompile_xasl_pinned);
+  ptr = or_pack_int (ptr, (int) context->recompile_xasl);
+  ptr = or_pack_sha1 (ptr, &context->sha1);
 
   /* send SERVER_QM_QUERY_PREPARE request with request data and XASL stream; receive XASL file id (XASL_ID) as a reply */
   req_error =
@@ -7130,7 +7141,6 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID *
 	{
 	  /* NULL XASL_ID will be returned when cache not found */
 	  OR_UNPACK_XASL_ID (ptr, stream->xasl_id);
-	  result = stream->xasl_id;
 
 	  if (get_xasl_header && reply_buffer != NULL && reply_buffer_size != 0)
 	    {
@@ -7138,6 +7148,14 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID *
 	      OR_UNPACK_XASL_NODE_HEADER (ptr, stream->xasl_header);
 	    }
 	}
+      else
+	{
+	  ASSERT_ERROR ();
+	}
+    }
+  else
+    {
+      error = req_error;
     }
 
   if (request != NULL)
@@ -7150,27 +7168,23 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID *
       free_and_init (reply_buffer);
     }
 
-  return result;
+  return error;
 #else /* CS_MODE */
-  XASL_ID *p;
+  int error_code = NO_ERROR;
 
   ENTER_SERVER ();
 
   INIT_XASL_NODE_HEADER (stream->xasl_header);
   /* call the server routine of query prepare */
-  p = xqmgr_prepare_query (NULL, context, stream, user_oid);
-  if (p)
+  error_code = xqmgr_prepare_query (NULL, context, stream);
+  if (error_code != NO_ERROR)
     {
-      *stream->xasl_id = *p;
-    }
-  else
-    {
-      return NULL;
+      ASSERT_ERROR ();
     }
 
   EXIT_SERVER ();
 
-  return p;
+  return error_code;
 
 #endif /* !CS_MODE */
 }
@@ -7559,81 +7573,6 @@ qmgr_end_query (QUERY_ID query_id)
   EXIT_SERVER ();
 
   return success;
-#endif /* !CS_MODE */
-}
-
-/*
- * qmgr_drop_query_plan - Send a SERVER_QM_DROP_PLAN request to the server
- *
- * Request the server to delete the XASL cache specified by either
- * the query string or the XASL file id. When the client want to delete
- * the old XASL cache entry and update it with new one, this function will be
- * used.
- * This function is a counter part to sqmgr_drop_query_plan().
- */
-/*
- * qmgr_drop_query_plan -
- *
- * return:
- *
- *   qstmt(in):
- *   user_oid(in):
- *   xasl_id(in):
- *   delete(in):
- *
- * NOTE:
- */
-int
-qmgr_drop_query_plan (const char *qstmt, const OID * user_oid, const XASL_ID * xasl_id)
-{
-#if defined(CS_MODE)
-  int status = ER_FAILED;
-  int req_error, request_size, strlen;
-  char *request, *reply, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  request_size = length_const_string (qstmt, &strlen) + OR_OID_SIZE + OR_XASL_ID_SIZE;
-
-  request = (char *) malloc (request_size);
-  if (request)
-    {
-      /* pack query string as a request data */
-      ptr = pack_const_string_with_length (request, qstmt, strlen);
-      /* pack OID of the current user */
-      ptr = or_pack_oid (ptr, (OID *) user_oid);
-      /* pack XASL file id (XASL_ID) */
-      OR_PACK_XASL_ID (ptr, xasl_id);
-
-      /* send SERVER_QM_QUERY_DROP_PLAN request with request data; receive status code (int) as a reply */
-      req_error =
-	net_client_request (NET_SERVER_QM_QUERY_DROP_PLAN, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-			    NULL, 0, NULL, 0);
-      if (!req_error)
-	{
-	  /* first argument should be status code (int) */
-	  (void) or_unpack_int (reply, &status);
-	}
-      free_and_init (request);
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-    }
-
-  return status;
-#else /* CS_MODE */
-  int status;
-
-  ENTER_SERVER ();
-
-  /* call the server routine of query drop plan */
-  status = xqmgr_drop_query_plan (NULL, qstmt, user_oid, xasl_id);
-
-  EXIT_SERVER ();
-
-  return status;
 #endif /* !CS_MODE */
 }
 
@@ -10189,7 +10128,7 @@ es_posix_read_file (const char *path, void *buf, size_t count, off_t offset)
 
       req_error =
 	net_client_request (NET_SERVER_ES_READ_FILE, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
-			    0, (char *) buf, count);
+			    0, (char *) buf, (int) count);
       if (!req_error)
 	{
 	  ptr = or_unpack_int64 (reply, &ret);

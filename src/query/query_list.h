@@ -89,7 +89,7 @@ struct cache_time
 
 #define OR_PACK_CACHE_TIME(PTR, T)                      \
         do {                                            \
-          if ((CACHE_TIME *) (T) != NULL) {                                      \
+          if ((CACHE_TIME *) (T) != NULL) {		\
             PTR = or_pack_int(PTR, (T)->sec);           \
             PTR = or_pack_int(PTR, (T)->usec);          \
           }                                             \
@@ -101,7 +101,7 @@ struct cache_time
 
 #define OR_UNPACK_CACHE_TIME(PTR, T)                    \
         do {                                            \
-          if ((CACHE_TIME *) (T) != NULL) {                                      \
+          if ((CACHE_TIME *) (T) != NULL) {             \
             PTR = or_unpack_int(PTR, &((T)->sec));      \
             PTR = or_unpack_int(PTR, &((T)->usec));     \
           }                                             \
@@ -214,32 +214,30 @@ struct xasl_id
       (X1)->temp_vfid.fileid == (X2)->temp_vfid.fileid && \
        (X1)->temp_vfid.volid == (X2)->temp_vfid.volid))
 
-#define OR_XASL_ID_SIZE (OR_LOID_SIZE + OR_CACHE_TIME_SIZE)
+#define OR_XASL_ID_SIZE (OR_SHA1_SIZE + OR_LOID_SIZE + OR_CACHE_TIME_SIZE)
 
 /* pack XASL file id (XASL_ID)
      - borrow LOID structure only for transmission purpose
  */
 #define OR_PACK_XASL_ID(PTR, X)                                \
         do {                                                   \
-          CACHE_TIME _t;                                       \
+	  assert ((X) != NULL);				       \
                                                                \
-          PTR = or_pack_loid (PTR, (LOID *) (X));              \
-          CACHE_TIME_RESET (&_t);                              \
-          if ((XASL_ID *) (X) != NULL)                                               \
-            {                                                  \
-              _t = (X)->time_stored;                           \
-            }                                                  \
-          OR_PACK_CACHE_TIME (PTR, &_t);                       \
+	  PTR = or_pack_sha1 (PTR, &(X)->sha1);		       \
+          PTR = or_pack_loid (PTR, (LOID *) &(X)->first_vpid); \
+          OR_PACK_CACHE_TIME (PTR, &(X)->time_stored);         \
         } while (0)
 
 /* unpack XASL file id (XASL_ID)
      - borrow LOID structure only for transmission purpose
      - NULL XASL_ID will be returned when cache not found
  */
-#define OR_UNPACK_XASL_ID(PTR, X)                              \
-        do {                                                   \
-          PTR = or_unpack_loid (PTR, (LOID *) (X));            \
-          OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored));     \
+#define OR_UNPACK_XASL_ID(PTR, X)				  \
+        do {							  \
+	  assert ((X) != NULL);					  \
+	  PTR = or_unpack_sha1 (PTR, &(X)->sha1);		  \
+          PTR = or_unpack_loid (PTR, (LOID *) &(X)->first_vpid);  \
+          OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored));	  \
         } while (0)
 
 /* PAGE CONSTANTS */

@@ -95,6 +95,7 @@ struct prepared_statement
   OID user;
   char *name;
   char *alias_print;
+  SHA1Hash sha1;
   int info_length;
   char *info;
   PREPARED_STATEMENT *next;
@@ -1717,7 +1718,6 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;
   int err = NO_ERROR;
-  XASL_CACHE_ENTRY *entry = NULL;
   OID user;
   const char *alias_print;
   char *data = NULL;
@@ -1777,21 +1777,13 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
       return NO_ERROR;
     }
 
-  entry = qexec_lookup_xasl_cache_ent (thread_p, alias_print, &user, false, false);
-  if (entry == NULL)
+  *xasl_entry = NULL;
+  err = xcache_find_sha1 (thread_p, &stmt_p->sha1, xasl_entry);
+  if (err != NO_ERROR)
     {
-#if defined (SESSION_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "found null xasl_id for %s(%d)\n", name, state_p->id);
-#endif /* SESSION_DEBUG */
+      ASSERT_ERROR ();
+      return err;
     }
-  else
-    {
-#if defined (SESSION_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "found xasl_id for %s(%d)\n", name, state_p->id);
-#endif /* SESSION_DEBUG */
-    }
-
-  *xasl_entry = entry;
 
   return NO_ERROR;
 }

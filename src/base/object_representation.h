@@ -43,6 +43,7 @@
 #include "dbtype.h"
 #include "byte_order.h"
 #include "memory_alloc.h"
+#include "sha1.h"
 
 /*
  * NUMERIC TYPE SIZES
@@ -138,6 +139,8 @@
 #define OR_MONETARY_AMOUNT      4
 #define OR_ELO_LENGTH_SIZE	4
 #define OR_ELO_HEADER_SIZE	(OR_LOID_SIZE + OR_ELO_LENGTH_SIZE)
+
+#define OR_SHA1_SIZE		(5 * OR_INT_SIZE)
 
 /* NUMERIC RANGES */
 #define OR_MAX_BYTE 127
@@ -385,6 +388,24 @@
     OR_PUT_INT (((char *) (ptr)) + OR_MONETARY_TYPE, (int) (value)->type); \
     OR_PUT_DOUBLE (&pack_value, &((value)->amount)); \
     memcpy (((char *) (ptr)) + OR_MONETARY_AMOUNT, &pack_value, OR_DOUBLE_SIZE); \
+  } while (0)
+
+/* Sha1 */
+#define OR_GET_SHA1(ptr, value) \
+  do { \
+    int i = 0; \
+    for (; i < 5; i++) \
+      { \
+	((SHA1Hash *) (value))->h[i] = (INT32) OR_GET_INT (ptr + i * OR_INT_SIZE); \
+      } \
+  } while (0)
+#define OR_PUT_SHA1(ptr, value) \
+  do { \
+    int i = 0; \
+    for (; i < 5; i++) \
+      { \
+	OR_PUT_INT (ptr + i * OR_INT_SIZE, ((SHA1Hash *) (value))->h[i]); \
+      } \
   } while (0)
 
 /* DISK IDENTIFIERS */
@@ -1563,5 +1584,8 @@ extern int or_mvcc_header_size_from_flags (char mvcc_flags);
 
 extern char *or_pack_mvccid (char *ptr, const MVCCID mvccid);
 extern char *or_unpack_mvccid (char *ptr, MVCCID * mvccid);
+
+extern char *or_pack_sha1 (char *ptr, SHA1Hash * sha1);
+extern char *or_unpack_sha1 (char *ptr, SHA1Hash * sha1);
 
 #endif /* _OBJECT_REPRESENTATION_H_ */

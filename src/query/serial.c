@@ -1318,11 +1318,10 @@ xserial_decache (THREAD_ENTRY * thread_p, OID * oidp)
   int rc;
 #endif /* SERVER_MODE */
 
-  if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
-      && qexec_remove_xasl_cache_ent_by_class (thread_p, oidp, 0) != NO_ERROR)
+  if (xcache_remove_by_oid (thread_p, oidp) != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "xserial_decache: qexec_remove_xasl_cache_ent_by_class failed for serial { %d %d %d }\n",
+		    "xserial_decache: xcache_remove_by_oid failed for serial { %d %d %d }\n",
 		    oidp->pageid, oidp->slotid, oidp->volid);
     }
 
