@@ -1354,10 +1354,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 #endif /* SERVER_MODE */
 #if defined(ENABLE_SYSTEMTAP)
   bool pgbuf_hit = false;
-  int tran_index;
-  QMGR_TRAN_ENTRY *tran_entry;
-  QUERY_ID query_id = -1;
   bool monitored = false;
+  QUERY_ID query_id = NULL_QUERY_ID;
 #endif /* ENABLE_SYSTEMTAP */
   PERF_PAGE_MODE perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
   PERF_HOLDER_LATCH perf_latch_mode;
@@ -1539,11 +1537,9 @@ try_again:
 	  mnt_pb_ioreads (thread_p);
 
 #if defined(ENABLE_SYSTEMTAP)
-	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	  tran_entry = qmgr_get_tran_entry (tran_index);
-	  if (tran_entry->query_entry_list_p)
+	  query_id = qmgr_get_current_query_id (thread_p);
+	  if (query_id != NULL_QUERY_ID)
 	    {
-	      query_id = tran_entry->query_entry_list_p->query_id;
 	      monitored = true;
 	      CUBRID_IO_READ_START (query_id);
 	    }
@@ -8683,9 +8679,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   LOG_LSA oldest_unflush_lsa;
   int error = NO_ERROR;
 #if defined(ENABLE_SYSTEMTAP)
-  int tran_index;
-  QMGR_TRAN_ENTRY *tran_entry;
-  QUERY_ID query_id = -1;
+  QUERY_ID query_id = NULL_QUERY_ID;
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
 
@@ -8744,11 +8738,9 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   mnt_pb_iowrites (thread_p, 1);
 
 #if defined(ENABLE_SYSTEMTAP)
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_entry = qmgr_get_tran_entry (tran_index);
-  if (tran_entry->query_entry_list_p)
+  query_id = qmgr_get_current_query_id (thread_p);
+  if (query_id != NULL_QUERY_ID)
     {
-      query_id = tran_entry->query_entry_list_p->query_id;
       monitored = true;
       CUBRID_IO_WRITE_START (query_id);
     }
@@ -9992,18 +9984,14 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
   int abort_reason;
   bool was_page_flushed = false;
 #if defined(ENABLE_SYSTEMTAP)
-  int tran_index;
-  QMGR_TRAN_ENTRY *tran_entry;
   QUERY_ID query_id = -1;
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined(ENABLE_SYSTEMTAP)
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_entry = qmgr_get_tran_entry (tran_index);
-  if (tran_entry->query_entry_list_p)
+  query_id = qmgr_get_current_query_id (thread_p);
+  if (query_id != NULL_QUERY_ID)
     {
-      query_id = tran_entry->query_entry_list_p->query_id;
       monitored = true;
       CUBRID_IO_WRITE_START (query_id);
     }
@@ -10316,18 +10304,14 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
 #endif /* SERVER_MODE */
 
 #if defined(ENABLE_SYSTEMTAP)
-  int tran_index;
-  QMGR_TRAN_ENTRY *tran_entry;
-  QUERY_ID query_id = -1;
+  QUERY_ID query_id = NULL_QUERY_ID;
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined(ENABLE_SYSTEMTAP)
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_entry = qmgr_get_tran_entry (tran_index);
-  if (tran_entry->query_entry_list_p)
+  query_id = qmgr_get_current_query_id (thread_p);
+  if (query_id != NULL_QUERY_ID)
     {
-      query_id = tran_entry->query_entry_list_p->query_id;
       monitored = true;
       CUBRID_IO_WRITE_START (query_id);
     }

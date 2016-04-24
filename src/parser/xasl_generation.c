@@ -520,8 +520,6 @@ static SORT_LIST *pt_to_order_siblings_by (PARSER_CONTEXT * parser, XASL_NODE * 
 static SORT_LIST *pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * agg_args_list);
 static PT_NODE *pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
-static bool pt_is_async_executable (PARSER_CONTEXT * parser, XASL_NODE * xasl);
-static bool pt_has_unresolved_types (PARSER_CONTEXT * parser, XASL_NODE * xasl);
 static bool pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p, SORT_LIST * covered_list_p);
 static int pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static DB_VALUE **pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type);
@@ -16166,26 +16164,12 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       xasl = pt_to_buildlist_proc (parser, select_node, plan);
     }
 
-  if (xasl)
-    {
-      if (!pt_is_async_executable (parser, xasl))
-	{
-	  /* treat as sync query */
-	  xasl->header.xasl_flag |= ASYNC_UNEXECUTABLE;
-	}
-      else if (pt_has_unresolved_types (parser, xasl))
-	{
-	  /* if this query has unresolved types and we want to delay sending the results to the client until those
-	   * types have been resolved */
-	  xasl->header.xasl_flag |= ASYNC_UNEXECUTABLE;
-	}
-    }
-
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
       && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_FULL_INFO_COLS_SCHEMA)
-      && !select_node->is_system_generated_stmt && !((spec = select_node->info.query.q.select.from) != NULL
-						     && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
+      && !select_node->is_system_generated_stmt
+      && !((spec = select_node->info.query.q.select.from) != NULL
+	   && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
     {
       dump_plan = true;
     }
@@ -24662,103 +24646,6 @@ error_return:
       parser_free_tree (parser, new_order_by);
     }
   return NULL;
-}
-
-/*
- * pt_has_unresolved_types () - check if the outptr list has unresolved
- *				  types
- * return : boolean
- *   parser (in) : parser context
- *   xasl (in) : XASL tree
- */
-static bool
-pt_has_unresolved_types (PARSER_CONTEXT * parser, XASL_NODE * xasl)
-{
-  PROC_TYPE xasl_type = xasl->type;
-  REGU_VARIABLE_LIST list = NULL;
-
-  if (xasl->outptr_list == NULL)
-    {
-      return false;
-    }
-
-  switch (xasl_type)
-    {
-    case UNION_PROC:
-    case DIFFERENCE_PROC:
-    case INTERSECTION_PROC:
-    case BUILDLIST_PROC:
-    case BUILDVALUE_PROC:
-    case SCAN_PROC:
-    case MERGELIST_PROC:
-    case CONNECTBY_PROC:
-      break;
-    default:
-      return false;
-      break;
-    }
-  list = xasl->outptr_list->valptrp;
-  while (list != NULL)
-    {
-      if (list->value.domain == NULL)
-	{
-	  continue;
-	}
-      if (TP_DOMAIN_TYPE (list->value.domain) == DB_TYPE_VARIABLE)
-	{
-	  return true;
-	}
-      list = list->next;
-    }
-  return false;
-}
-
-/*
- * pt_is_async_executable () -
- *   return:
- *   parser (in) : parser context
- *   xasl (in)       :
- */
-static bool
-pt_is_async_executable (PARSER_CONTEXT * parser, XASL_NODE * xasl)
-{
-  PROC_TYPE xasl_type = xasl->type;
-
-  if (xasl_type == UNION_PROC || xasl_type == DIFFERENCE_PROC || xasl_type == INTERSECTION_PROC)
-    {
-      return false;
-    }
-
-  if (xasl_type == BUILDVALUE_PROC)
-    {
-      return false;
-    }
-
-  if (xasl_type == BUILDLIST_PROC && xasl->proc.buildlist.groupby_list != NULL)
-    {
-      return false;
-    }
-
-  if (xasl_type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list != NULL)
-    {
-      return false;
-    }
-
-  if (xasl->option == Q_DISTINCT)
-    {
-      return false;
-    }
-
-  /* ORDER BY */
-  if ((xasl_type == BUILDLIST_PROC || xasl_type == BUILD_SCHEMA_PROC) && xasl->orderby_list)
-    {
-      if (xasl->ordbynum_val != NULL || !pt_is_sort_list_covered (parser, xasl->after_iscan_list, xasl->orderby_list))
-	{
-	  return false;
-	}
-    }
-
-  return true;
 }
 
 /*

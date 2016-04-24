@@ -1003,7 +1003,6 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no, int readonly)
   DB_QUERY_RESULT *tmp_result;
   int n;
   int error;
-  bool prm_query_mode_sync = prm_get_query_mode_sync ();
 
   CHK_SQLCODE ();
 
@@ -1076,15 +1075,6 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no, int readonly)
       SET_WARN_VARS_MISMATCH ();
     }
 
-  if (prm_query_mode_sync)
-    {
-      db_set_session_mode_sync (session);
-    }
-  else
-    {
-      db_set_session_mode_async (session);
-    }
-
   /* execute the compiled stmt */
   tmp_result = (DB_QUERY_RESULT *) NULL;
   n = db_execute_and_keep_statement (session, stmt_id, &tmp_result);
@@ -1101,12 +1091,9 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no, int readonly)
     }
 
   SQLCA_NUM_AFFECTED_OBJECTS = n;
-  if (prm_query_mode_sync)
+  if (n == 0)
     {
-      if (n == 0)
-	{
-	  SQLCODE = SQL_NOT_FOUND;
-	}
+      SQLCODE = SQL_NOT_FOUND;
     }
 
 #if defined(UCI_TEMPORARY)

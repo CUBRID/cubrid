@@ -375,7 +375,7 @@ area_alloc (AREA * area)
 
   assert (area != NULL);
 
-  /* Step 1: find free entry from hint block */
+  /* Step 1: find a free entry from the hint block */
   hint_block = VOLATILE_ACCESS (area->hint_block, AREA_BLOCK *);
   entry_idx = lf_bitmap_get_entry (&hint_block->bitmap);
   if (entry_idx != -1)
@@ -384,7 +384,7 @@ area_alloc (AREA * area)
       goto found;
     }
 
-  /* Step 2: if not found, find free entry from blockset list */
+  /* Step 2: if not found, find a free entry from the blockset lists */
   for (blockset = area->blockset_list; blockset != NULL;
        blockset = VOLATILE_ACCESS (blockset->next, AREA_BLOCKSET_LIST *))
     {
@@ -396,7 +396,7 @@ area_alloc (AREA * area)
 	  entry_idx = lf_bitmap_get_entry (&block->bitmap);
 	  if (entry_idx != -1)
 	    {
-	      /* change hint block if needed */
+	      /* change the hint block */
 	      hint_block = VOLATILE_ACCESS (area->hint_block, AREA_BLOCK *);
 	      if (LF_BITMAP_IS_FULL (&hint_block->bitmap) && !LF_BITMAP_IS_FULL (&block->bitmap))
 		{
@@ -408,13 +408,14 @@ area_alloc (AREA * area)
 	}
     }
 
-  /* Step 3: if not found, add an new block. Then find free entry in this new block. Only allow 1 thread add new block
-   * in the same time */
+  /* Step 3: if not found, add a new block. Then find free entry in this new block. 
+   * Only one thread is allowed to add a new block at a moment.
+   */
   rv = pthread_mutex_lock (&area->area_mutex);
 
   if (area->hint_block != hint_block)
     {
-      /* someone maybe change the hint block */
+      /* someone may change the hint block */
       block = area->hint_block;
       entry_idx = lf_bitmap_get_entry (&block->bitmap);
       if (entry_idx != -1)

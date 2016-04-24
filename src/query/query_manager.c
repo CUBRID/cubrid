@@ -54,20 +54,15 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 
-#ifndef SERVER_MODE
+#if !defined (SERVER_MODE)
 
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
 #define pthread_mutex_lock(a)	0
 #define pthread_mutex_unlock(a)
-static int rv;
 extern int method_Num_method_jsp_calls;
 #define IS_IN_METHOD_OR_JSP_CALL() (method_Num_method_jsp_calls > 0)
 
-#define qmgr_initialize_mutex(a)
-#define qmgr_destroy_mutex(a)
-#define qmgr_lock_mutex(a, b)
-#define qmgr_unlock_mutex(a)
 #endif
 
 #define QMGR_MAX_QUERY_ENTRY_PER_TRAN   100
@@ -81,8 +76,7 @@ extern int method_Num_method_jsp_calls;
 #define QMGR_SQL_ID_LENGTH      13
 
 /* We have two valid types of membuf used by temporary file. */
-#define QMGR_IS_VALID_MEMBUF_TYPE(m)    ((m) == TEMP_FILE_MEMBUF_NORMAL \
-    || (m) == TEMP_FILE_MEMBUF_KEY_BUFFER)
+#define QMGR_IS_VALID_MEMBUF_TYPE(m)    ((m) == TEMP_FILE_MEMBUF_NORMAL || (m) == TEMP_FILE_MEMBUF_KEY_BUFFER)
 
 typedef enum qmgr_page_type QMGR_PAGE_TYPE;
 enum qmgr_page_type
@@ -92,31 +86,26 @@ enum qmgr_page_type
   QMGR_TEMP_FILE_PAGE
 };
 
-/* For streaming queries */
-typedef struct query_async QMGR_ASYNC_QUERY;
-struct query_async
-{
-  const XASL_ID *xasl_id;
-  char *xasl_stream;
-  int xasl_stream_size;
-  int dbval_count;
-  const DB_VALUE *dbvals_p;
-  QUERY_FLAG flag;
-#if defined (ENABLE_UNUSED_FUNCTION)
-  XASL_CACHE_CLONE *cache_clone_p;	/* cache clone pointer */
-#endif				/* ENABLE_UNUSED_FUNCTION */
-  QMGR_QUERY_ENTRY *query_p;
-  int tran_index;
-  QFILE_LIST_ID *async_list_id;	/* result list_id */
-  QMGR_TEMP_FILE *async_wait_vfid;	/* streaming query start up cond wait */
-};
-
 /*
  *       		     ALLOCATION STRUCTURES
  *
  * A resource mechanism used to effectively handle memory allocation for the
  * query entry structures.
  */
+
+typedef struct qmgr_tran_entry QMGR_TRAN_ENTRY;
+struct qmgr_tran_entry
+{
+  QMGR_TRAN_STATUS trans_stat;	/* transaction status */
+  int query_id_generator;	/* global query identifier count */
+
+  int num_query_entries;	/* number of allocated query entries */
+
+  QMGR_QUERY_ENTRY *query_entry_list_p;	/* linked list of query entries */
+  QMGR_QUERY_ENTRY *free_query_entry_list_p;	/* free query entry list */
+
+  OID_BLOCK_LIST *modified_classes_p;	/* array of class OIDs */
+};
 
 typedef struct qmgr_temp_file_list QMGR_TEMP_FILE_LIST;
 struct qmgr_temp_file_list
@@ -125,6 +114,7 @@ struct qmgr_temp_file_list
   QMGR_TEMP_FILE *list;
   int count;
 };
+
 /*
  * Global query table variable used to keep track of query entries and
  * the anchor for the out of space in the temp vol WFG.
@@ -150,20 +140,6 @@ QMGR_QUERY_TABLE qmgr_Query_table = { NULL, 0, NULL,
 static struct drand48_data qmgr_rand_buf;
 #endif
 
-/*
- * 			QM_MUTEX_LOCK/UNLOCK : recursive mutex
- *
- * Solaris 2.7 seems that does not support recursive mutex. There is option
- * which names PTHREAD_MUTEX_RECURSIVE. But it does not work.
- */
-#if defined (SERVER_MODE)
-static void qmgr_check_mutex_error (int r, const char *file, int line);
-static void qmgr_initialize_mutex (QMGR_MUTEX * qm_mutex);
-static void qmgr_destroy_mutex (QMGR_MUTEX * qm_mutex);
-static void qmgr_lock_mutex (THREAD_ENTRY * thread_p, QMGR_MUTEX * qm_mutex);
-static void qmgr_unlock_mutex (QMGR_MUTEX * qm_mutex);
-#endif
-
 static QMGR_PAGE_TYPE qmgr_get_page_type (PAGE_PTR page_p, QMGR_TEMP_FILE * temp_file_p);
 static bool qmgr_is_allowed_result_cache (QUERY_FLAG flag);
 static bool qmgr_can_get_result_from_cache (QUERY_FLAG flag);
@@ -177,13 +153,6 @@ static QMGR_QUERY_ENTRY *qmgr_find_query_entry (QMGR_QUERY_ENTRY * query_list_p,
 static void qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int trans_ind);
 static void qmgr_free_tran_entries (THREAD_ENTRY * thread_p);
 
-#if defined (SERVER_MODE)
-static void qmgr_check_active_query_and_wait (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * trans_entry,
-					      THREAD_ENTRY * curr_thrd, int exec_mode);
-static void qmgr_check_waiter_and_wakeup (QMGR_TRAN_ENTRY * trans_entry, THREAD_ENTRY * curr_thrd,
-					  int propagate_interrupt);
-#endif
-
 static int xqmgr_unpack_xasl_tree (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, char *xasl_stream,
 				   int xasl_stream_size, XASL_CACHE_CLONE * cache_clone_p, XASL_NODE ** xasl_tree,
 				   void **xasl_unpack_info_ptr);
@@ -191,20 +160,16 @@ static void qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRA
 static OID_BLOCK_LIST *qmgr_allocate_oid_block (THREAD_ENTRY * thread_p);
 static void qmgr_free_oid_block (THREAD_ENTRY * thread_p, OID_BLOCK_LIST * oid_block);
 static PAGE_PTR qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid, QMGR_TEMP_FILE * vfid);
-static int qmgr_free_query_temp_file_by_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qptr, int tran_idx);
+static int qmgr_free_query_temp_file_helper (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p);
+static int qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qptr, int tran_idx);
 static QMGR_TEMP_FILE *qmgr_allocate_tempfile_with_buffer (int num_buffer_pages);
 
 #if defined (SERVER_MODE)
-static void qmgr_execute_async_select (THREAD_ENTRY * thread_p, QMGR_ASYNC_QUERY * async);
 static XASL_NODE *qmgr_find_leaf (XASL_NODE * xasl);
 static QFILE_LIST_ID *qmgr_process_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, char *xasl_stream,
 					  int xasl_stream_size, int dbval_count, const DB_VALUE * dbvals_p,
 					  QUERY_FLAG flag, XASL_CACHE_CLONE * cache_clone_p, QMGR_QUERY_ENTRY * query_p,
 					  QMGR_TRAN_ENTRY * tran_entry_p);
-static QFILE_LIST_ID *qmgr_process_async_select (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, char *xasl_stream,
-						 int xasl_stream_size, int dbval_count, const DB_VALUE * dbvals_p,
-						 QUERY_FLAG flag, XASL_CACHE_CLONE * cache_clone_p,
-						 QMGR_QUERY_ENTRY * query_p);
 static void qmgr_reset_query_exec_info (int tran_index);
 static void qmgr_set_query_exec_info_to_tdes (int tran_index, int query_timeout, const XASL_ID * xasl_id);
 #endif
@@ -236,9 +201,8 @@ qmgr_get_page_type (PAGE_PTR page_p, QMGR_TEMP_FILE * temp_file_p)
       return QMGR_MEMBUF_PAGE;
     }
 
-  begin_page =
-    (PAGE_PTR) ((PAGE_PTR) temp_file_p->membuf +
-		DB_ALIGN (sizeof (PAGE_PTR) * temp_file_p->membuf_npages, MAX_ALIGNMENT));
+  begin_page = (PAGE_PTR) ((PAGE_PTR) temp_file_p->membuf
+			   + DB_ALIGN (sizeof (PAGE_PTR) * temp_file_p->membuf_npages, MAX_ALIGNMENT));
   end_page = begin_page + temp_file_p->membuf_npages * DB_PAGESIZE;
   if (begin_page <= page_p && page_p <= end_page)
     {
@@ -299,137 +263,10 @@ qmgr_put_page_header (PAGE_PTR page_p, QFILE_PAGE_HEADER * header_p)
 #endif
 }
 
-
-#if defined (SERVER_MODE)
-static void
-qmgr_check_mutex_error (int r, const char *file, int line)
-{
-  if (r != 0)
-    {
-      fprintf (stderr, "Error at %s(%d) : (%s)\n **** THREAD EXIT ****\n", file, line, "Mutex operation error");
-      pthread_exit (NULL);
-    }
-}
-
-/*
- * qmgr_initialize_mutex () -
- *   return:
- *   qm_mutex(in)       :
- */
-static void
-qmgr_initialize_mutex (QMGR_MUTEX * mutex_p)
-{
-  int r;
-
-  mutex_p->owner = (pthread_t) 0;	/* null thread id */
-  mutex_p->lock_count = 0;
-
-  r = pthread_mutex_init (&mutex_p->lock, NULL);
-  qmgr_check_mutex_error (r, __FILE__, __LINE__);
-
-  r = pthread_cond_init (&mutex_p->not_busy_cond, NULL);
-  qmgr_check_mutex_error (r, __FILE__, __LINE__);
-  mutex_p->nwaits = 0;
-}
-
-/*
- * qmgr_destroy_mutex () -
- *   return:
- *   qm_mutex(in)       :
- */
-static void
-qmgr_destroy_mutex (QMGR_MUTEX * mutex_p)
-{
-  mutex_p->owner = (pthread_t) 0;
-  pthread_mutex_destroy (&mutex_p->lock);
-  pthread_cond_destroy (&mutex_p->not_busy_cond);
-}
-
-/*
- * qmgr_lock_mutex () -
- *   return:
- *   qm_mutex(in)       :
- */
-static void
-qmgr_lock_mutex (THREAD_ENTRY * thread_p, QMGR_MUTEX * mutex_p)
-{
-  int r;
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  r = pthread_mutex_lock (&mutex_p->lock);
-  qmgr_check_mutex_error (r, __FILE__, __LINE__);
-
-  /* If other thread owns this mutex wait until released */
-  if (mutex_p->lock_count > 0 && mutex_p->owner != thread_p->tid)
-    {
-      do
-	{
-	  mutex_p->nwaits++;
-	  pthread_cond_wait (&mutex_p->not_busy_cond, &mutex_p->lock);
-	  mutex_p->nwaits--;
-	}
-      while (mutex_p->lock_count != 0);
-    }
-
-  mutex_p->owner = thread_p->tid;
-  mutex_p->lock_count++;
-
-  pthread_mutex_unlock (&mutex_p->lock);
-}
-
-/*
- * qmgr_unlock_mutex () -
- *   return:
- *   qm_mutex(in)       :
- */
-static void
-qmgr_unlock_mutex (QMGR_MUTEX * mutex_p)
-{
-  int r;
-
-  r = pthread_mutex_lock (&mutex_p->lock);
-  qmgr_check_mutex_error (r, __FILE__, __LINE__);
-
-  if (--mutex_p->lock_count == 0)
-    {
-      mutex_p->owner = (pthread_t) 0;
-      if (mutex_p->nwaits > 0)	/* there is an waiter */
-	{
-	  pthread_cond_signal (&mutex_p->not_busy_cond);
-	}
-    }
-
-  pthread_mutex_unlock (&mutex_p->lock);
-}
-#endif
-
 static void
 qmgr_mark_query_as_completed (QMGR_QUERY_ENTRY * query_p)
 {
-#if defined (SERVER_MODE)
-  int rv;
-
-  rv = pthread_mutex_lock (&query_p->lock);
-
-  query_p->query_mode = QUERY_COMPLETED;
-  query_p->interrupt = false;
-  query_p->propagate_interrupt = true;
-
-  if (query_p->nwaits > 0)
-    {
-      pthread_cond_signal (&query_p->cond);
-    }
-
-  pthread_mutex_unlock (&query_p->lock);
-#else
-  query_p->query_mode = QUERY_COMPLETED;
-  query_p->interrupt = false;
-  query_p->propagate_interrupt = true;
-#endif
+  query_p->query_status = QUERY_COMPLETED;
 }
 
 /*
@@ -466,12 +303,6 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 
       query_p->list_id = NULL;
 
-#if defined (SERVER_MODE)
-      pthread_mutex_init (&query_p->lock, NULL);
-      pthread_cond_init (&query_p->cond, NULL);
-      query_p->nwaits = 0;
-#endif
-
       tran_entry_p->num_query_entries++;
     }
 
@@ -493,11 +324,8 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   query_p->list_ent = NULL;
   query_p->errid = NO_ERROR;
   query_p->er_msg = NULL;
-  query_p->interrupt = false;
-  query_p->propagate_interrupt = true;
   query_p->query_flag = 0;
   query_p->is_holdable = false;
-  VPID_SET_NULL (&query_p->save_vpid);	/* Setup default for save_vpid */
 
   return query_p;
 }
@@ -554,9 +382,6 @@ qmgr_deallocate_query_entries (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query
 	{
 	  free_and_init (p->er_msg);
 	}
-
-      pthread_mutex_destroy (&p->lock);
-      pthread_cond_destroy (&p->cond);
 #endif
 
       if (p->list_id)
@@ -581,14 +406,13 @@ static void
 qmgr_add_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p, int tran_index)
 {
   QMGR_TRAN_ENTRY *tran_entry_p;
+  int r;
 
   if (tran_index == NULL_TRAN_INDEX)
     {
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     }
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
 
   if (tran_entry_p->trans_stat == QMGR_TRAN_NULL || tran_entry_p->trans_stat == QMGR_TRAN_TERMINATED)
     {
@@ -600,8 +424,6 @@ qmgr_add_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p, int t
       query_p->next = tran_entry_p->query_entry_list_p;
       tran_entry_p->query_entry_list_p = query_p;
     }
-
-  qmgr_unlock_mutex (&tran_entry_p->lock);
 }
 
 static QMGR_QUERY_ENTRY *
@@ -635,7 +457,7 @@ qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index
 
   /* 
    * The code for finding the query_entry pointer is in-lined in
-   * xqmgr_end_query and qmgr_interrupt_query to avoid calling this function.
+   * xqmgr_end_query and qmgr_is_query_interrupted to avoid calling this function.
    */
 
   if (qmgr_Query_table.tran_entries_p == NULL)
@@ -650,11 +472,9 @@ qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
   query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
   if (query_p != NULL)
     {
-      qmgr_unlock_mutex (&tran_entry_p->lock);
       return query_p;
     }
 
@@ -662,7 +482,6 @@ qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index
    * result, we need to create a new entry for this query in the transaction query entries and copy result information
    * from the session. */
   query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
-  qmgr_unlock_mutex (&tran_entry_p->lock);
   if (query_p == NULL)
     {
       return NULL;
@@ -671,21 +490,11 @@ qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index
   query_p->query_id = query_id;
   if (xsession_load_query_entry_info (thread_p, query_p) != NO_ERROR)
     {
-      qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
       qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
-      qmgr_unlock_mutex (&tran_entry_p->lock);
-
       query_p = NULL;
+
       return NULL;
     }
-
-#if defined (SERVER_MODE)
-  /* mark this query as belonging to this transaction */
-  if (thread_p != NULL)
-    {
-      query_p->tid = thread_p->tid;
-    }
-#endif
 
   /* add it to this transaction also */
   qmgr_add_query_entry (thread_p, query_p, tran_index);
@@ -720,8 +529,6 @@ qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_in
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-
   prev_query_p = NULL;
   query_p = tran_entry_p->query_entry_list_p;
 
@@ -733,7 +540,6 @@ qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_in
 
   if (query_p == NULL)
     {
-      qmgr_unlock_mutex (&tran_entry_p->lock);
       return;
     }
 
@@ -753,7 +559,6 @@ qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_in
     }
 
   qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
-  qmgr_unlock_mutex (&tran_entry_p->lock);
 }
 
 static void
@@ -764,33 +569,26 @@ qmgr_initialize_tran_entry (QMGR_TRAN_ENTRY * tran_entry_p)
   tran_entry_p->num_query_entries = 0;
   tran_entry_p->query_entry_list_p = NULL;
   tran_entry_p->free_query_entry_list_p = NULL;
-
-#if defined (SERVER_MODE)
-  tran_entry_p->exist_active_query = false;
-  tran_entry_p->active_sync_query_count = 0;
-  tran_entry_p->wait_thread_p = NULL;
-#endif
-
   tran_entry_p->modified_classes_p = NULL;
-  qmgr_initialize_mutex (&tran_entry_p->lock);
 }
 
 /*
  * qmgr_allocate_tran_entries () -
  *   return: int (NO_ERROR or ER_FAILED)
- *   trans_cnt(in)      : Number of transactions
+ *   num_new_entries(in)      : Number of transactions
  *
  * Note: Allocates(Reallocates) the area pointed by the query manager
  * transaction index pointer
  */
 int
-qmgr_allocate_tran_entries (THREAD_ENTRY * thread_p, int count)
+qmgr_allocate_tran_entries (THREAD_ENTRY * thread_p, int num_new_entries)
 {
   QMGR_TRAN_ENTRY *tran_entry_p;
-  int i;
+  int i, num_current_entries;
+  size_t tran_entry_size;
 
 #if defined (SERVER_MODE)
-  count = MAX (count, MAX_NTRANS);
+  num_new_entries = MAX (num_new_entries, MAX_NTRANS);
 #endif
 
   /* enter critical section, this prevents another to perform malloc/init */
@@ -799,53 +597,41 @@ qmgr_allocate_tran_entries (THREAD_ENTRY * thread_p, int count)
       return ER_FAILED;
     }
 
-  if (qmgr_Query_table.tran_entries_p == NULL)
+  num_current_entries = qmgr_Query_table.num_trans;
+
+  if (num_new_entries <= num_current_entries)
     {
-      qmgr_Query_table.tran_entries_p = (QMGR_TRAN_ENTRY *) malloc (count * sizeof (QMGR_TRAN_ENTRY));
-
-      if (qmgr_Query_table.tran_entries_p == NULL)
-	{
-	  csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
-	  return ER_FAILED;
-	}
-
-      qmgr_Query_table.num_trans = count;
-
-      /* initialize newly allocated areas */
-      tran_entry_p = qmgr_Query_table.tran_entries_p;
-      for (i = 0; i < qmgr_Query_table.num_trans; i++)
-	{
-	  qmgr_initialize_tran_entry (tran_entry_p);
-	  tran_entry_p++;
-	}
-
-      csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
-
-      return NO_ERROR;
-    }
-
-  if (count <= qmgr_Query_table.num_trans)
-    {
+      /* enough */
       csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
       return NO_ERROR;
     }
 
-  qmgr_Query_table.tran_entries_p =
-    (QMGR_TRAN_ENTRY *) realloc (qmgr_Query_table.tran_entries_p, count * sizeof (QMGR_TRAN_ENTRY));
+  tran_entry_size = num_new_entries * sizeof (QMGR_TRAN_ENTRY);
+  if (qmgr_Query_table.tran_entries_p == NULL)
+    {
+      qmgr_Query_table.tran_entries_p = (QMGR_TRAN_ENTRY *) malloc (tran_entry_size);
+    }
+  else
+    {
+      qmgr_Query_table.tran_entries_p = (QMGR_TRAN_ENTRY *) realloc (qmgr_Query_table.tran_entries_p, tran_entry_size);
+    }
+
   if (qmgr_Query_table.tran_entries_p == NULL)
     {
       csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, tran_entry_size);
       return ER_FAILED;
     }
 
-  tran_entry_p = (QMGR_TRAN_ENTRY *) qmgr_Query_table.tran_entries_p + qmgr_Query_table.num_trans;
-  for (i = qmgr_Query_table.num_trans; i < count; i++)
+  /* initialize newly allocated areas */
+  tran_entry_p = (QMGR_TRAN_ENTRY *) qmgr_Query_table.tran_entries_p + num_current_entries;
+  for (i = qmgr_Query_table.num_trans; i < num_new_entries; i++, tran_entry_p++)
     {
       qmgr_initialize_tran_entry (tran_entry_p);
-      tran_entry_p++;
     }
 
-  qmgr_Query_table.num_trans = count;
+  qmgr_Query_table.num_trans = num_new_entries;
 
   csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 
@@ -872,12 +658,9 @@ qmgr_free_tran_entries (THREAD_ENTRY * thread_p)
   tran_entry_p = qmgr_Query_table.tran_entries_p;
   for (i = 0; i < qmgr_Query_table.num_trans; i++)
     {
-      qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
       qmgr_deallocate_query_entries (thread_p, tran_entry_p->query_entry_list_p);
       qmgr_deallocate_query_entries (thread_p, tran_entry_p->free_query_entry_list_p);
-      qmgr_unlock_mutex (&tran_entry_p->lock);
 
-      qmgr_destroy_mutex (&tran_entry_p->lock);
       tran_entry_p++;
     }
 
@@ -1105,12 +888,13 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
 
   qmgr_free_tran_entries (thread_p);
 
-  qmgr_Query_table.tran_entries_p = NULL;
+  assert (qmgr_Query_table.tran_entries_p == NULL && qmgr_Query_table.num_trans == 0);
 
   for (i = 0; i < QMGR_NUM_TEMP_FILE_LISTS; i++)
     {
       qmgr_finalize_temp_file_list (&qmgr_Query_table.temp_file_list[i]);
     }
+
   csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 }
 
@@ -1125,9 +909,8 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
  *
  * Note: Store the given XASL stream into the XASL file and return its file id.
  * The XASL file is a temporay file, ..
- * If NULL is given as the input argument xasl_stream, this function will look
- * up the XASL cache, and return the cached XASL file id if found. If not found,
- * NULL will be returned.
+ * If NULL is given as the input argument xasl_stream, this function will look up the XASL cache, 
+ * and return the cached XASL file id if found. If not found, NULL will be returned.
  */
 XASL_ID *
 xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID * user_oid_p)
@@ -1305,145 +1088,6 @@ exit_on_error:
   goto exit_on_end;
 }
 
-#if defined (SERVER_MODE)
-/*
- * qmgr_check_active_query_and_wait () -
- *   return:
- *   trans_entry(in)    :
- *   curr_thrd(in)      :
- *   exec_mode(in)      :
- */
-static void
-qmgr_check_active_query_and_wait (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p,
-				  THREAD_ENTRY * current_thread_p, int exec_mode)
-{
-  THREAD_ENTRY *prev_thread_p;
-
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-
-  if ((tran_entry_p->exist_active_query && tran_entry_p->active_sync_query_count == 0)
-      || tran_entry_p->wait_thread_p != NULL)
-    {
-      current_thread_p->next_wait_thrd = NULL;
-
-      if (tran_entry_p->wait_thread_p == NULL)
-	{
-	  tran_entry_p->wait_thread_p = current_thread_p;
-	}
-      else
-	{
-	  prev_thread_p = tran_entry_p->wait_thread_p;
-	  while (prev_thread_p->next_wait_thrd != NULL)
-	    {
-	      prev_thread_p = prev_thread_p->next_wait_thrd;
-	    }
-	  prev_thread_p->next_wait_thrd = current_thread_p;
-	}
-
-      thread_lock_entry (current_thread_p);
-      qmgr_unlock_mutex (&tran_entry_p->lock);
-
-      thread_suspend_wakeup_and_unlock_entry (current_thread_p, THREAD_QMGR_ACTIVE_QRY_SUSPENDED);
-
-      if (current_thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
-	  || (current_thread_p->resume_status != THREAD_QMGR_ACTIVE_QRY_RESUMED))
-	{
-	  assert (current_thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT);
-
-	  ((QMGR_QUERY_ENTRY *) current_thread_p->query_entry)->interrupt = true;
-	  ((QMGR_QUERY_ENTRY *) current_thread_p->query_entry)->propagate_interrupt = true;
-
-	  /* remove current thread_p from the tran wait list, if exist */
-	  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-
-	  if (tran_entry_p->wait_thread_p == current_thread_p)
-	    {
-	      tran_entry_p->wait_thread_p = current_thread_p->next_wait_thrd;
-	      current_thread_p->next_wait_thrd = NULL;
-	    }
-	  else
-	    {
-	      prev_thread_p = tran_entry_p->wait_thread_p;
-
-	      while (prev_thread_p)
-		{
-		  if (prev_thread_p->next_wait_thrd == current_thread_p)
-		    {
-		      prev_thread_p->next_wait_thrd = current_thread_p->next_wait_thrd;
-		      current_thread_p->next_wait_thrd = NULL;
-		      break;
-		    }
-		  prev_thread_p = prev_thread_p->next_wait_thrd;
-		}
-	    }
-	  qmgr_unlock_mutex (&tran_entry_p->lock);
-
-	  return;
-	}
-      else
-	{
-	  assert (current_thread_p->resume_status == THREAD_QMGR_ACTIVE_QRY_RESUMED);
-
-	  /* wake up properly */
-	}
-
-      qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-    }
-
-  if (IS_SYNC_EXEC_MODE (exec_mode))
-    {
-      tran_entry_p->active_sync_query_count++;
-    }
-
-  tran_entry_p->exist_active_query = true;
-  qmgr_unlock_mutex (&tran_entry_p->lock);
-}
-#endif
-
-/*
- * qmgr_check_waiter_and_wakeup () -
- *   return:
- *   trans_entry(in)    :
- *   curr_thrd(in)      :
- *   propagate_interrupt(in)    :
- */
-static void
-qmgr_check_waiter_and_wakeup (QMGR_TRAN_ENTRY * tran_entry_p, THREAD_ENTRY * current_thread_p, int propagate_interrupt)
-{
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *wait_thread_p;
-
-  qmgr_lock_mutex (current_thread_p, &tran_entry_p->lock);
-
-  if (tran_entry_p->active_sync_query_count > 0)
-    {
-      tran_entry_p->active_sync_query_count--;
-    }
-
-  if (tran_entry_p->active_sync_query_count == 0)
-    {
-      tran_entry_p->exist_active_query = false;
-    }
-
-  wait_thread_p = tran_entry_p->wait_thread_p;
-
-  if (wait_thread_p != NULL)
-    {
-      tran_entry_p->wait_thread_p = wait_thread_p->next_wait_thrd;
-      wait_thread_p->next_wait_thrd = NULL;
-
-      if (er_errid () == ER_INTERRUPTED && propagate_interrupt == true)
-	{
-	  ((QMGR_QUERY_ENTRY *) wait_thread_p->query_entry)->interrupt = true;
-	}
-      thread_wakeup (wait_thread_p, THREAD_QMGR_ACTIVE_QRY_RESUMED);
-    }
-
-  qmgr_unlock_mutex (&tran_entry_p->lock);
-  current_thread_p->query_entry = NULL;
-#endif
-}
-
 /*
  * xqmgr_unpack_xasl_tree () -
  *   return: if successful, return 0, otherwise non-zero error code
@@ -1557,7 +1201,7 @@ exit_on_error:
  *   xasl_stream_size(in)        :
  *   dbval_count(in)      : number of host variables
  *   dbvals_p(in) : array of host variables (query input parameters)
- *   flag(in)  : flag to determine if this is an asynchronous query
+ *   flag(in)  : flag 
  *   cache_clone_p  :
  *   query_p        :
  *   tran_entry_p   :
@@ -1576,9 +1220,6 @@ qmgr_process_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, char *xasl
 {
   XASL_NODE *xasl_p;
   void *xasl_buf_info;
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *current_thread_p;
-#endif
   QFILE_LIST_ID *list_id;
 
   assert (query_p != NULL);
@@ -1586,9 +1227,6 @@ qmgr_process_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, char *xasl
 
   xasl_p = NULL;
   xasl_buf_info = NULL;
-#if defined (SERVER_MODE)
-  current_thread_p = NULL;
-#endif
   list_id = NULL;
 
   if (xqmgr_unpack_xasl_tree (thread_p, xasl_id, xasl_stream, xasl_stream_size, cache_clone_p, &xasl_p, &xasl_buf_info)
@@ -1618,28 +1256,14 @@ qmgr_process_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, char *xasl
 	}
     }
 
-#if defined (SERVER_MODE)
-  /* if a query is executing, wait until exist_active_query becomes false */
-  current_thread_p = (thread_p) ? thread_p : thread_get_thread_entry_info ();
-  current_thread_p->query_entry = query_p;
-
-  qmgr_check_active_query_and_wait (thread_p, tran_entry_p, current_thread_p, SYNC_EXEC);
-
-  if (query_p->interrupt)
-    {
-      /* this was async query and interrupted by ???; treat as an error */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-      qmgr_set_query_error (thread_p, query_p->query_id);
-      goto exit_on_error;
-    }
-#endif
-
   if (flag & RETURN_GENERATED_KEYS)
     {
       XASL_SET_FLAG (xasl_p, XASL_RETURN_GENERATED_KEYS);
     }
+
   /* execute the query with the value list, if any */
   query_p->list_id = qexec_execute_query (thread_p, xasl_p, dbval_count, dbvals_p, query_p->query_id);
+
   /* Note: qexec_execute_query() returns listid (NOT NULL) even if an error was occurred. We should check the error
    * condition and free listid. */
   if (query_p->errid < 0)
@@ -1667,14 +1291,6 @@ qmgr_process_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, char *xasl
 
 end:
 
-  /* wake up waiters if any */
-#if defined (SERVER_MODE)
-  if (current_thread_p)
-    {
-      qmgr_check_waiter_and_wakeup (tran_entry_p, current_thread_p, query_p->propagate_interrupt);
-    }
-#endif
-
   if (xasl_buf_info)
     {
       /* free the XASL tree */
@@ -1699,7 +1315,7 @@ exit_on_error:
  *   query_idp(out)     : query id to be used for getting results
  *   dbval_count(in)      : number of host variables
  *   dbval_p(in) : array of host variables (query input parameters)
- *   flagp(in)  : flag to determine if this is an asynchronous query
+ *   flagp(in)  : flag 
  *   clt_cache_time(in) :
  *   srv_cache_time(in) :
  *   query_timeout(in) : query_timeout in millisec.
@@ -1725,7 +1341,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   HL_HEAPID old_pri_heap_id;
   char *data;
   int i;
-  bool use_global_heap;
 #endif
   DB_VALUE_ARRAY params;
   QMGR_QUERY_ENTRY *query_p;
@@ -1747,12 +1362,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 
   dbvals_p = NULL;
 #if defined (SERVER_MODE)
-  use_global_heap = false;
   data = (char *) dbval_p;
   old_pri_heap_id = 0;
 #endif
-
-  assert_release (IS_SYNC_EXEC_MODE (*flag_p));
 
 #if defined (SERVER_MODE)
   assert (thread_get_recursion_depth (thread_p) == 0);
@@ -1869,39 +1481,15 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     }
 
 #if defined (SERVER_MODE)
-  if (IS_ASYNC_UNEXECUTABLE (xasl_cache_entry_p->xasl_header_flag))
-    {
-      *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
-    }
-
   if (dbval_count)
     {
       char *ptr;
 
       assert (data != NULL);
 
-      /* use global heap for memory allocation. In the case of async query, the space will be freed when the query is
-       * completed. See qmgr_execute_async_select() 
-       */
-      if (IS_ASYNC_EXEC_MODE (*flag_p))
-	{
-	  use_global_heap = true;
-	}
-
-      if (use_global_heap)
-	{
-	  old_pri_heap_id = db_change_private_heap (thread_p, 0);
-	}
-
       dbvals_p = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * dbval_count);
       if (dbvals_p == NULL)
 	{
-	  if (use_global_heap)
-	    {
-	      /* restore private heap */
-	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
-	    }
-
 	  goto exit_on_error;
 	}
 
@@ -1911,16 +1499,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	{
 	  ptr = or_unpack_db_value (ptr, dbval);
 	}
-
-      if (use_global_heap)
-	{
-	  /* restore private heap */
-	  (void) db_change_private_heap (thread_p, old_pri_heap_id);
-	}
     }
 #else
-  *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
-
   dbvals_p = (DB_VALUE *) dbval_p;
 #endif
 
@@ -1947,8 +1527,6 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  /* found the cached result */
 	  cached_result = true;
 
-	  *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
-
 	  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
 	  if (CACHE_TIME_EQ (client_cache_time_p, server_cache_time_p))
 	    {
@@ -1974,16 +1552,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined (SERVER_MODE)
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
   tran_entry_p->trans_stat = QMGR_TRAN_RUNNING;
-  if (tran_entry_p->active_sync_query_count > 0)
-    {
-      *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
-    }
 
   /* allocate a new query entry */
   query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
-  qmgr_unlock_mutex (&tran_entry_p->lock);
 
   /* set a timeout if necessary */
   qmgr_set_query_exec_info_to_tdes (tran_index, query_timeout, xasl_id_p);
@@ -2002,14 +1574,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   XASL_ID_COPY (&query_p->xasl_id, xasl_id_p);
   query_p->xasl_ent = xasl_cache_entry_p;
   query_p->list_ent = list_cache_entry_p;	/* for qfile_end_use_of_list_cache_entry() */
-  query_p->query_mode = IS_SYNC_EXEC_MODE (*flag_p) ? SYNC_MODE : ASYNC_MODE;
+  query_p->query_status = QUERY_IN_PROGRESS;
   query_p->query_flag = *flag_p;
-#if defined (SERVER_MODE)
-  if (thread_p != NULL)
-    {
-      query_p->tid = thread_p->tid;
-    }
-#endif
   if (*flag_p & RESULT_HOLDABLE)
     {
       query_p->is_holdable = true;
@@ -2057,37 +1623,15 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 
   assert (cached_result == false);
 
-  /* synchronous or asynchronous execution mode? */
-  if (IS_SYNC_EXEC_MODE (*flag_p))
+  list_id_p = qmgr_process_query (thread_p, xasl_id_p, NULL, 0, dbval_count, dbvals_p, *flag_p, cache_clone_p,
+				  query_p, tran_entry_p);
+  if (list_id_p == NULL)
     {
-      list_id_p =
-	qmgr_process_query (thread_p, xasl_id_p, NULL, 0, dbval_count, dbvals_p, *flag_p, cache_clone_p, query_p,
-			    tran_entry_p);
-      if (list_id_p == NULL)
-	{
-	  goto exit_on_error;
-	}
+      goto exit_on_error;
+    }
 
-      /* everything is ok, mark that the query is completed */
-      qmgr_mark_query_as_completed (query_p);
-    }
-  else
-    {
-#if defined (SERVER_MODE)
-      /* start the query in asynchronous mode and get temporary QFILE_LIST_ID */
-      list_id_p =
-	qmgr_process_async_select (thread_p, xasl_id_p, NULL, 0, dbval_count, dbvals_p, *flag_p, cache_clone_p,
-				   query_p);
-      if (list_id_p == NULL)
-	{
-	  goto exit_on_error;
-	}
-#else
-      /* error - cannot run a asynchronous query in stand-alone mode */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "asynchronous query");
-      list_id_p = NULL;
-#endif
-    }
+  /* everything is ok, mark that the query is completed */
+  qmgr_mark_query_as_completed (query_p);
 
   /* If it is allowed to cache the query result or if it is required to cache, put the list file id(QFILE_LIST_ID) into 
    * the list cache. Provided are the corresponding XASL cache entry to be linked, and the parameters (host variables - 
@@ -2160,37 +1704,21 @@ end:
       session_set_trigger_state (thread_p, false);
     }
 
-  if (IS_SYNC_EXEC_MODE (*flag_p))
-    {
 #if defined (SERVER_MODE)
-      /* clear and free space for DB_VALUEs after the query is executed In the case of async query, the space will be
-       * freed when the query is completed. See qmgr_execute_async_select() */
-      if (dbvals_p)
+  if (dbvals_p)
+    {
+      for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
-	  if (use_global_heap)
-	    {
-	      old_pri_heap_id = db_change_private_heap (thread_p, 0);
-	    }
-
-	  for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
-	    {
-	      db_value_clear (dbval);
-	    }
-	  db_private_free_and_init (thread_p, dbvals_p);
-
-	  if (use_global_heap)
-	    {
-	      /* restore private heap */
-	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
-	    }
+	  db_value_clear (dbval);
 	}
+      db_private_free_and_init (thread_p, dbvals_p);
+    }
 #endif
 
-      /* save XASL tree */
-      if (cache_clone_p)
-	{
-	  (void) qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id_p, -1, &cache_clone_p, is_xasl_pinned_reference);
-	}
+  /* save XASL tree */
+  if (cache_clone_p)
+    {
+      (void) qexec_check_xasl_cache_ent_by_xasl (thread_p, xasl_id_p, -1, &cache_clone_p, is_xasl_pinned_reference);
     }
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
@@ -2217,9 +1745,9 @@ exit_on_error:
       /* mark that the query is completed and then delete this query entry */
       qmgr_mark_query_as_completed (query_p);
 
-      if (qmgr_free_query_temp_file_by_query_entry (thread_p, query_p, tran_index) != NO_ERROR)
+      if (qmgr_free_query_temp_file (thread_p, query_p, tran_index) != NO_ERROR)
 	{
-	  er_log_debug (ARG_FILE_LINE, "xqmgr_execute_query: qmgr_free_query_temp_file_by_query_entry");
+	  er_log_debug (ARG_FILE_LINE, "xqmgr_execute_query: qmgr_free_query_temp_file");
 	}
 
       qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
@@ -2323,7 +1851,6 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
   HL_HEAPID old_pri_heap_id;
   char *data;
   int i;
-  bool use_global_heap;
 #endif
   DB_VALUE *dbvals_p;
   QMGR_QUERY_ENTRY *query_p;
@@ -2341,7 +1868,6 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
   assert (thread_get_recursion_depth (thread_p) == 0);
 
 #if defined (SERVER_MODE)
-  use_global_heap = false;
   data = (char *) dbval_p;
   old_pri_heap_id = 0;
 #endif
@@ -2389,17 +1915,10 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined (SERVER_MODE)
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
   tran_entry_p->trans_stat = QMGR_TRAN_RUNNING;
-  if (tran_entry_p->active_sync_query_count > 0)
-    {
-      *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
-    }
 
   /* allocate a new query entry */
   query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
-
-  qmgr_unlock_mutex (&tran_entry_p->lock);
 
   /* set a timeout if necessary */
   qmgr_set_query_exec_info_to_tdes (tran_index, query_timeout, NULL);
@@ -2410,27 +1929,9 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 
       assert (data != NULL);
 
-      /* use global heap for memory allocation. In the case of async query, the space will be freed when the query is
-       * completed. See qmgr_execute_async_select() */
-      if (IS_ASYNC_EXEC_MODE (*flag_p))
-	{
-	  use_global_heap = true;
-	}
-
-      if (use_global_heap)
-	{
-	  old_pri_heap_id = db_change_private_heap (thread_p, 0);
-	}
-
       dbvals_p = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * dbval_count);
       if (dbvals_p == NULL)
 	{
-	  if (use_global_heap)
-	    {
-	      /* restore private heap */
-	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
-	    }
-
 	  goto exit_on_error;
 	}
 
@@ -2440,16 +1941,8 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 	{
 	  ptr = or_unpack_db_value (ptr, dbval);
 	}
-
-      if (use_global_heap)
-	{
-	  /* restore private heap */
-	  (void) db_change_private_heap (thread_p, old_pri_heap_id);
-	}
     }
 #else
-  *flag_p &= ~ASYNC_EXEC;	/* treat as sync query */
-
   dbvals_p = (DB_VALUE *) dbval_p;
 
   /* allocate a new query entry */
@@ -2466,14 +1959,8 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
   XASL_ID_SET_NULL (&query_p->xasl_id);
   query_p->xasl_ent = NULL;
   query_p->list_ent = NULL;
-  query_p->query_mode = SYNC_MODE;
+  query_p->query_status = QUERY_IN_PROGRESS;
   query_p->query_flag = *flag_p;
-#if defined (SERVER_MODE)
-  if (thread_p != NULL)
-    {
-      query_p->tid = thread_p->tid;
-    }
-#endif
 
   assert (!(*flag_p & RESULT_HOLDABLE));
   query_p->is_holdable = false;
@@ -2484,38 +1971,15 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
   /* to return query id */
   *query_id_p = query_p->query_id;
 
-  assert_release (IS_SYNC_EXEC_MODE (*flag_p));
-
-  if (IS_SYNC_EXEC_MODE (*flag_p))
+  list_id_p = qmgr_process_query (thread_p, NULL, xasl_stream, xasl_stream_size, dbval_count, dbvals_p, *flag_p, NULL,
+				  query_p, tran_entry_p);
+  if (list_id_p == NULL)
     {
-      list_id_p =
-	qmgr_process_query (thread_p, NULL, xasl_stream, xasl_stream_size, dbval_count, dbvals_p, *flag_p, NULL,
-			    query_p, tran_entry_p);
-      if (list_id_p == NULL)
-	{
-	  goto exit_on_error;
-	}
+      goto exit_on_error;
+    }
 
-      /* everything is ok, mark that the query is completed */
-      qmgr_mark_query_as_completed (query_p);
-    }
-  else
-    {
-#if defined (SERVER_MODE)
-      /* start the query in asynchronous mode and get temporary QFILE_LIST_ID */
-      list_id_p =
-	qmgr_process_async_select (thread_p, NULL, xasl_stream, xasl_stream_size, dbval_count, dbvals_p, *flag_p, NULL,
-				   query_p);
-      if (list_id_p == NULL)
-	{
-	  goto exit_on_async_error;
-	}
-#else
-      /* this is an error - cannot run a streaming query in stand-alone mode */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "asynchronous query");
-      list_id_p = NULL;
-#endif
-    }
+  /* everything is ok, mark that the query is completed */
+  qmgr_mark_query_as_completed (query_p);
 
 end:
   if (IS_TRIGGER_INVOLVED (*flag_p))
@@ -2523,32 +1987,16 @@ end:
       session_set_trigger_state (thread_p, false);
     }
 
-  if (IS_SYNC_EXEC_MODE (*flag_p))
-    {
 #if defined (SERVER_MODE)
-      /* clear and free space for DB_VALUEs after the query is executed In the case of async query, the space will be
-       * freed when the query is completed. See qmgr_execute_async_select() */
-      if (dbvals_p)
+  if (dbvals_p)
+    {
+      for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
-	  if (use_global_heap)
-	    {
-	      old_pri_heap_id = db_change_private_heap (thread_p, 0);
-	    }
-
-	  for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
-	    {
-	      db_value_clear (dbval);
-	    }
-	  db_private_free_and_init (thread_p, dbvals_p);
-
-	  if (use_global_heap)
-	    {
-	      /* restore private heap */
-	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
-	    }
+	  db_value_clear (dbval);
 	}
-#endif
+      db_private_free_and_init (thread_p, dbvals_p);
     }
+#endif
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
     {
@@ -2572,16 +2020,12 @@ exit_on_error:
       /* mark that the query is completed and then delete this query entry */
       qmgr_mark_query_as_completed (query_p);
 
-      if (qmgr_free_query_temp_file_by_query_entry (thread_p, query_p, tran_index) != NO_ERROR)
+      if (qmgr_free_query_temp_file (thread_p, query_p, tran_index) != NO_ERROR)
 	{
-	  er_log_debug (ARG_FILE_LINE, "xqmgr_prepare_and_execute_query: qmgr_free_query_temp_file_by_query_entry");
+	  er_log_debug (ARG_FILE_LINE, "xqmgr_prepare_and_execute_query: qmgr_free_query_temp_file");
 	}
       qmgr_delete_query_entry (thread_p, query_p->query_id, tran_index);
     }
-
-#if defined (SERVER_MODE)
-exit_on_async_error:
-#endif
 
   *query_id_p = 0;
 
@@ -2617,9 +2061,7 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   QMGR_QUERY_ENTRY *query_p = NULL;
   QMGR_TRAN_ENTRY *tran_entry_p = NULL;
   int tran_index, rc = NO_ERROR;
-#if defined (SERVER_MODE)
   int rv;
-#endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
@@ -2632,14 +2074,11 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-
   query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
   if (query_p == NULL)
     {
       /* maybe this is a holdable result and we'll find it in the session state object */
       xsession_remove_query_entry_info (thread_p, query_id);
-      qmgr_unlock_mutex (&tran_entry_p->lock);
       return NO_ERROR;
     }
 
@@ -2650,30 +2089,7 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       xsession_clear_query_entry_info (thread_p, query_id);
     }
 
-#if defined (SERVER_MODE)
-  rv = pthread_mutex_lock (&query_p->lock);
-  if (query_p->query_mode != QUERY_COMPLETED)
-    {
-      logtb_set_tran_index_interrupt (thread_p, tran_index, true);
-      query_p->interrupt = true;
-      query_p->propagate_interrupt = false;
-      qmgr_unlock_mutex (&tran_entry_p->lock);
-      query_p->nwaits++;
-
-      rv = pthread_cond_wait (&query_p->cond, &query_p->lock);
-      query_p->nwaits--;
-
-      query_p->interrupt = false;
-      logtb_set_tran_index_interrupt (thread_p, tran_index, false);
-
-      pthread_mutex_unlock (&query_p->lock);
-    }
-  else
-    {
-      pthread_mutex_unlock (&query_p->lock);
-      qmgr_unlock_mutex (&tran_entry_p->lock);
-    }
-#endif
+  assert (query_p->query_status == QUERY_COMPLETED);
 
   /* end use of the list file of the cahed result */
   if (query_p->xasl_ent && query_p->list_ent)
@@ -2687,7 +2103,7 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       QFILE_FREE_AND_INIT_LIST_ID (query_p->list_id);
 
       /* free external volumes, if any */
-      rc = qmgr_free_query_temp_file_by_query_entry (thread_p, query_p, tran_index);
+      rc = qmgr_free_query_temp_file (thread_p, query_p, tran_index);
     }
 
   XASL_ID_SET_NULL (&query_p->xasl_id);
@@ -2821,9 +2237,6 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
 {
   QMGR_QUERY_ENTRY *query_p;
   QMGR_TRAN_ENTRY *tran_entry_p;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   /* for bulletproofing check if tran_index is a valid index, note that normally this should never happen... */
   if (tran_index >= qmgr_Query_table.num_trans
@@ -2839,8 +2252,6 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
     }
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
 
   if (!QFILE_IS_LIST_CACHE_DISABLED)
     {
@@ -2859,73 +2270,20 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
       tran_entry_p->modified_classes_p = NULL;
     }
 
-  qmgr_unlock_mutex (&tran_entry_p->lock);
-
   if (tran_entry_p->query_entry_list_p == NULL)
     {
       return;
     }
 
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-  query_p = tran_entry_p->query_entry_list_p;
-
-#if defined (SERVER_MODE)
-  /* interrupt all active queries */
-  while (query_p != NULL)
+#if defined (SERVER_MODE) && !defined (NDEBUG)
+  /* there should be no active query */
+  for (query_p = tran_entry_p->query_entry_list_p; query_p != NULL; query_p = query_p->next)
     {
-      rv = pthread_mutex_lock (&query_p->lock);
-
-      if (query_p->query_mode != QUERY_COMPLETED)
-	{
-	  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
-	  query_p->interrupt = true;
-	}
-
-      pthread_mutex_unlock (&query_p->lock);
-      query_p = query_p->next;
-    }
-#endif
-
-#if defined (SERVER_MODE)
-/* check if all active queries are finished */
-again:
-  query_p = tran_entry_p->query_entry_list_p;
-  if (query_p == NULL)
-    {
-      qmgr_unlock_mutex (&tran_entry_p->lock);
-      return;
-    }
-
-  while (query_p != NULL)
-    {
-      rv = pthread_mutex_lock (&query_p->lock);
-      /* If I'm the async_query executor, "q_ptr->query_mode" will be set to QUERY_COMPLETED by me. Do you feel uneasy
-       * about skipping my query ? Q : Why don't you use "thread_get_thread_entry_info()->tid" instead of "THREAD_ID()" 
-       * ? */
-      if (query_p->query_mode != QUERY_COMPLETED && query_p->tid != pthread_self ())
-	{
-	  qmgr_unlock_mutex (&tran_entry_p->lock);
-
-	  query_p->nwaits++;
-	  pthread_cond_wait (&query_p->cond, &query_p->lock);
-	  query_p->nwaits--;
-	  pthread_mutex_unlock (&query_p->lock);
-
-	  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-	  goto again;
-	}
-      pthread_mutex_unlock (&query_p->lock);
-      query_p = query_p->next;
+      assert (query_p->query_status == QUERY_COMPLETED);
     }
 #endif
 
   query_p = tran_entry_p->query_entry_list_p;
-  if (query_p == NULL)
-    {
-      qmgr_unlock_mutex (&tran_entry_p->lock);
-      return;
-    }
-
   while (query_p)
     {
       if (query_p->is_holdable)
@@ -2938,7 +2296,7 @@ again:
 	  else
 	    {
 	      /* this is a commit and we have to add the result to the holdable queries list. */
-	      if (query_p->query_mode != QUERY_COMPLETED)
+	      if (query_p->query_status != QUERY_COMPLETED)
 		{
 		  er_log_debug (ARG_FILE_LINE, "query %d not completed !\n", query_p->query_id);
 		}
@@ -2964,18 +2322,10 @@ again:
        * log_abort_local. */
       if (query_p->temp_vfid != NULL)
 	{
-	  qmgr_free_query_temp_file_by_query_entry (thread_p, query_p, tran_index);
+	  (void) qmgr_free_query_temp_file_helper (thread_p, query_p);
 	}
 
       XASL_ID_SET_NULL (&query_p->xasl_id);
-      /* if there were external volumes created for the transaction, free them so that they can be used by coming
-       * transactions. */
-      if (qmgr_free_query_temp_file_by_query_entry (thread_p, query_p, tran_index) != NO_ERROR)
-	{
-#ifdef QP_DEBUG
-	  er_log_debug (ARG_FILE_LINE, "qm_clear_trans_wakeup: External volume deletion failed.\n");
-#endif
-	}
 
       /* end use of the list file of the cached result */
       if (query_p->xasl_ent != NULL && query_p->list_ent != NULL)
@@ -2986,12 +2336,12 @@ again:
       /* remove query entry */
       tran_entry_p->query_entry_list_p = query_p->next;
       qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
+
       query_p = tran_entry_p->query_entry_list_p;
     }
+
   assert (tran_entry_p->query_entry_list_p == NULL);
   tran_entry_p->trans_stat = QMGR_TRAN_TERMINATED;
-
-  qmgr_unlock_mutex (&tran_entry_p->lock);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -3060,9 +2410,9 @@ qmgr_allocate_oid_block (THREAD_ENTRY * thread_p)
 	}
     }
 
-
   oid_block_p->next = NULL;
   oid_block_p->last_oid_idx = 0;
+
   csect_exit (thread_p, CSECT_QPROC_QUERY_TABLE);
 
   return oid_block_p;
@@ -3113,12 +2463,9 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-
   if (tran_entry_p->modified_classes_p == NULL
       && (tran_entry_p->modified_classes_p = qmgr_allocate_oid_block (thread_p)) == NULL)
     {
-      qmgr_unlock_mutex (&tran_entry_p->lock);
       return;
     }
 
@@ -3151,8 +2498,6 @@ qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid_p)
 	  oid_block_p->oid_array[oid_block_p->last_oid_idx++] = *class_oid_p;
 	}
     }
-
-  qmgr_unlock_mutex (&tran_entry_p->lock);
 }
 
 /*
@@ -3260,25 +2605,6 @@ qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, QMGR_TEMP_FILE * t
   else
     {
       assert (page_type == QMGR_MEMBUF_PAGE);
-
-      rv = pthread_mutex_lock (&tfile_vfid_p->membuf_mutex);
-      if (tfile_vfid_p->membuf_thread_p)
-	{
-#if 0				/* wakeup */
-	  if (tfile_vfid_p->wait_page_ptr == page_p)
-	    {
-	      thread_wakeup (tfile_vfid_p->membuf_thread_p, THREAD_QMGR_MEMBUF_PAGE_RESUMED);
-	      tfile_vfid_p->membuf_thread_p = NULL;
-	      tfile_vfid_p->wait_page_ptr = NULL;
-	    }
-#else
-	  /* xqfile_get_list_file_page() is doing conditional wait */
-	  thread_wakeup (tfile_vfid_p->membuf_thread_p, THREAD_QMGR_MEMBUF_PAGE_RESUMED);
-	  tfile_vfid_p->membuf_thread_p = NULL;
-#endif
-	}
-
-      pthread_mutex_unlock (&tfile_vfid_p->membuf_mutex);
     }
 #endif
 }
@@ -3295,9 +2621,6 @@ void
 qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page, LOG_DATA_ADDR * addr_p,
 		     QMGR_TEMP_FILE * tfile_vfid_p)
 {
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
   QMGR_PAGE_TYPE page_type;
 
   page_type = qmgr_get_page_type (page_p, tfile_vfid_p);
@@ -3316,24 +2639,6 @@ qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page, LO
   else if (free_page == FREE)
     {
       assert (page_type == QMGR_MEMBUF_PAGE);
-
-      rv = pthread_mutex_lock (&tfile_vfid_p->membuf_mutex);
-      if (tfile_vfid_p->membuf_thread_p)
-	{
-	  /* xqfile_get_list_file_page() is doing conditional wait */
-#if 0				/* wakeup */
-	  if (tfile_vfid_p->wait_page_ptr == page_p)
-	    {
-	      thread_wakeup (tfile_vfid_p->membuf_thread_p, THREAD_QMGR_MEMBUF_PAGE_RESUMED);
-	      tfile_vfid_p->membuf_thread_p = NULL;
-	      tfile_vfid_p->wait_page_ptr = NULL;
-	    }
-#else
-	  thread_wakeup (tfile_vfid_p->membuf_thread_p, THREAD_QMGR_MEMBUF_PAGE_RESUMED);
-	  tfile_vfid_p->membuf_thread_p = NULL;
-#endif
-	}
-      pthread_mutex_unlock (&tfile_vfid_p->membuf_mutex);
     }
 #endif
 }
@@ -3344,10 +2649,8 @@ qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page, LO
  *   vpidp(in)  : Set to the allocated real page identifier
  *   tfile_vfidp(in)    : Query Associated with the XASL tree
  *
- * Note: A new query file page is allocated and returned. The page
- * fetched and returned, is not locked. This routine is called
- * succesively to allocate pages for the query result files (list
- * files) or XASL tree files.
+ * Note: A new query file page is allocated and returned. The page fetched and returned, is not locked. 
+ * This routine is called succesively to allocate pages for the query result files (list files) or XASL tree files.
  * If an error occurs, NULL pointer is returned.
  */
 PAGE_PTR
@@ -3402,11 +2705,9 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
  *   vpid(in)   : Set to the allocated virtual page identifier
  *   tmp_vfid(in)       : tempfile_vfid struct pointer
  *
- * Note: This function tries to allocate a new page from an external
- * query file, fetchs and returns the page pointer. Since,
- * pages are not shared by different transactions, it does not
- * lock the page on fetching. If it can not allocate a new page,
- * necessary error code is set and NULL pointer is returned.
+ * Note: This function tries to allocate a new page from an external query file, fetchs and returns the page pointer. 
+ * Since pages are not shared by different transactions, it does not lock the page on fetching. 
+ * If it can not allocate a new page, necessary error code is set and NULL pointer is returned.
  */
 static PAGE_PTR
 qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tmp_vfid_p)
@@ -3415,9 +2716,7 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
   int nthpg;
   LOG_DATA_ADDR addr;
   DKNPAGES num_pages = TEMP_FILE_DEFAULT_PAGES;
-  QFILE_PAGE_HEADER page_header = { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID,
-    NULL_VOLID, NULL_VOLID, NULL_VOLID
-  };
+  QFILE_PAGE_HEADER page_header = { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID, NULL_VOLID, NULL_VOLID, NULL_VOLID };
 
   /* 
    * If there are existing pages allocated in the vpid_array[], use them
@@ -3429,9 +2728,8 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
 
   if (tmp_vfid_p->vpid_index != -1)
     {
-      page_p =
-	pgbuf_fix (thread_p, &(tmp_vfid_p->vpid_array[tmp_vfid_p->vpid_index]), NEW_PAGE, PGBUF_LATCH_WRITE,
-		   PGBUF_UNCONDITIONAL_LATCH);
+      page_p = pgbuf_fix (thread_p, &(tmp_vfid_p->vpid_array[tmp_vfid_p->vpid_index]), NEW_PAGE, PGBUF_LATCH_WRITE,
+			  PGBUF_UNCONDITIONAL_LATCH);
       if (page_p == NULL)
 	{
 	  VPID_SET_NULL (vpid_p);
@@ -3468,8 +2766,8 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
        * allocate next extent of pages for the file
        * Don't care about initializing the pages
        */
-      if (file_alloc_pages_as_noncontiguous
-	  (thread_p, &tmp_vfid_p->temp_vfid, vpid_p, &nthpg, num_pages, NULL, NULL, NULL, NULL) == NULL)
+      if (file_alloc_pages_as_noncontiguous (thread_p, &tmp_vfid_p->temp_vfid, vpid_p, &nthpg, num_pages, NULL, NULL,
+					     NULL, NULL) == NULL)
 	{
 	  /* if error was no more pages, ignore this expected error code */
 	  if (er_errid () != ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME)
@@ -3503,9 +2801,8 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
     }
 
   /* fetch and return the external volume page */
-  tmp_vfid_p->vpid_count =
-    file_find_nthpages (thread_p, &tmp_vfid_p->temp_vfid, tmp_vfid_p->vpid_array, tmp_vfid_p->curr_free_page_index,
-			QMGR_VPID_ARRAY_SIZE);
+  tmp_vfid_p->vpid_count = file_find_nthpages (thread_p, &tmp_vfid_p->temp_vfid, tmp_vfid_p->vpid_array,
+					       tmp_vfid_p->curr_free_page_index, QMGR_VPID_ARRAY_SIZE);
   if (tmp_vfid_p->vpid_count == -1)
     {
       tmp_vfid_p->vpid_index = -1;
@@ -3516,9 +2813,8 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
   tmp_vfid_p->vpid_index = 0;
   tmp_vfid_p->total_count += num_pages;
 
-  page_p =
-    pgbuf_fix (thread_p, &(tmp_vfid_p->vpid_array[tmp_vfid_p->vpid_index]), NEW_PAGE, PGBUF_LATCH_WRITE,
-	       PGBUF_UNCONDITIONAL_LATCH);
+  page_p = pgbuf_fix (thread_p, &(tmp_vfid_p->vpid_array[tmp_vfid_p->vpid_index]), NEW_PAGE, PGBUF_LATCH_WRITE,
+		      PGBUF_UNCONDITIONAL_LATCH);
   if (page_p == NULL)
     {
       VPID_SET_NULL (vpid_p);
@@ -3579,20 +2875,18 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   int tran_index, i, num_buffer_pages;
   QMGR_TEMP_FILE *tfile_vfid_p, *temp;
   PAGE_PTR page_p;
-  QFILE_PAGE_HEADER pgheader = { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID,
-    NULL_VOLID, NULL_VOLID, NULL_VOLID
-  };
+  QFILE_PAGE_HEADER pgheader = { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID, NULL_VOLID, NULL_VOLID, NULL_VOLID };
 
   assert (QMGR_IS_VALID_MEMBUF_TYPE (membuf_type));
+
   if (!QMGR_IS_VALID_MEMBUF_TYPE (membuf_type))
     {
       return NULL;
     }
 
-  num_buffer_pages =
-    (membuf_type ==
-     TEMP_FILE_MEMBUF_NORMAL) ? prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) :
-    prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES);
+  num_buffer_pages = ((membuf_type == TEMP_FILE_MEMBUF_NORMAL)
+		      ? prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES)
+		      : prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES));
 
   tfile_vfid_p = qmgr_get_temp_file_from_list (&qmgr_Query_table.temp_file_list[membuf_type]);
   if (tfile_vfid_p == NULL)
@@ -3624,9 +2918,8 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
 
   tfile_vfid_p->total_count = 0;
   tfile_vfid_p->membuf_last = -1;
-  page_p =
-    (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf +
-		DB_ALIGN (sizeof (PAGE_PTR) * tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
+  page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf
+		       + DB_ALIGN (sizeof (PAGE_PTR) * tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
 
   for (i = 0; i < tfile_vfid_p->membuf_npages; i++)
     {
@@ -3635,22 +2928,9 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
       page_p += DB_PAGESIZE;
     }
 
-#if defined (SERVER_MODE)
-  if (tfile_vfid_p->membuf_mutex_inited == 0)
-    {
-      pthread_mutex_init (&tfile_vfid_p->membuf_mutex, NULL);
-      tfile_vfid_p->membuf_mutex_inited = 1;
-    }
-  tfile_vfid_p->membuf_thread_p = NULL;
-#if 0				/* async wakeup */
-  tfile_vfid_p->wait_page_ptr = NULL;
-#endif
-#endif
-
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
   /* find query entry */
   if (qmgr_Query_table.tran_entries_p != NULL)
     {
@@ -3664,7 +2944,6 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   if (query_p == NULL)
     {
       free_and_init (tfile_vfid_p);
-      qmgr_unlock_mutex (&tran_entry_p->lock);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
       return NULL;
     }
@@ -3687,10 +2966,9 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
       tfile_vfid_p->next = tfile_vfid_p;
       tfile_vfid_p->prev = tfile_vfid_p;
     }
-  /* increase the counter of query entry */
-  query_p->num_tmp++;
 
-  qmgr_unlock_mutex (&tran_entry_p->lock);
+  /* increment the counter of query entry */
+  query_p->num_tmp++;
 
   return tfile_vfid_p;
 }
@@ -3704,7 +2982,7 @@ QMGR_TEMP_FILE *
 qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 {
   QMGR_QUERY_ENTRY *query_p;
-  int tran_index, i;
+  int tran_index, i, rv;
   QMGR_TEMP_FILE *tfile_vfid_p, *temp;
   QMGR_TRAN_ENTRY *tran_entry_p;
 
@@ -3742,23 +3020,11 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tfile_vfid_p->membuf_npages = 0;
   tfile_vfid_p->membuf_type = TEMP_FILE_MEMBUF_NONE;
 
-#if defined (SERVER_MODE)
-  pthread_mutex_init (&tfile_vfid_p->membuf_mutex, NULL);
-  tfile_vfid_p->membuf_mutex_inited = 1;
-  tfile_vfid_p->membuf_thread_p = NULL;
-#endif
-
-#if 0				/* async wakeup */
-  tfile_vfid_p->wait_page_ptr = NULL;
-#endif
-
   /* Find the query entry and chain the created temp file to the entry */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &(qmgr_Query_table.tran_entries_p[tran_index]);
 
-  /* lock the query entry table until the end of this function */
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
   /* find the query entry */
   if (qmgr_Query_table.tran_entries_p != NULL)
     {
@@ -3772,7 +3038,6 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   if (query_p == NULL)
     {
       /* query entry is not found */
-      qmgr_unlock_mutex (&tran_entry_p->lock);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
       free_and_init (tfile_vfid_p);
       return NULL;
@@ -3795,121 +3060,12 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       tfile_vfid_p->next = tfile_vfid_p;
       tfile_vfid_p->prev = tfile_vfid_p;
     }
-  /* increase the counter of query entry */
-  query_p->num_tmp++;
 
-  qmgr_unlock_mutex (&tran_entry_p->lock);
+  /* increment the counter of query entry */
+  query_p->num_tmp++;
 
   return tfile_vfid_p;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * qmgr_free_query_temp_file () -
- *   return: int (NO_ERROR or ER_FAILED)
- *   query_id(in) : Query ID to determine what temp file (if any) to destroy
- *
- * Note: Destroy the external temporary file used, if any.
- */
-int
-qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
-{
-  QMGR_QUERY_ENTRY *query_p;
-  QMGR_TRAN_ENTRY *tran_entry_p;
-  int tran_index, rc;
-  QMGR_TEMP_FILE *tfile_vfid_p, *temp;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-
-  if (qmgr_Query_table.tran_entries_p != NULL)
-    {
-      query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
-    }
-  else
-    {
-      query_p = NULL;
-    }
-
-  if (query_p == NULL)
-    {
-      /* if this is a streaming query and it is terminating */
-      qmgr_unlock_mutex (&tran_entry_p->lock);
-      return NO_ERROR;
-    }
-
-  rc = NO_ERROR;
-  if (query_p->temp_vfid)
-    {
-      tfile_vfid_p = query_p->temp_vfid;
-      tfile_vfid_p->prev->next = NULL;
-
-      while (tfile_vfid_p)
-	{
-	  if (!(tfile_vfid_p->temp_file_type == FILE_QUERY_AREA && query_p->errid >= 0)
-	      && !VFID_ISNULL (&tfile_vfid_p->temp_vfid))
-	    {
-	      if (file_destroy (thread_p, &tfile_vfid_p->temp_vfid) != NO_ERROR)
-		{
-		  /* stop; return error */
-		  rc = ER_FAILED;
-		}
-	    }
-	  temp = tfile_vfid_p;
-	  tfile_vfid_p = tfile_vfid_p->next;
-
-#if defined (SERVER_MODE)
-	  rv = pthread_mutex_lock (&temp->membuf_mutex);
-
-	  if (temp->membuf_thread_p)
-	    {
-	      if (er_errid () != NO_ERROR)
-		{
-		  qmgr_set_query_error (thread_p, query_id);
-		}
-	      thread_wakeup (temp->membuf_thread_p, THREAD_QMGR_MEMBUF_PAGE_RESUMED);
-	      temp->membuf_thread_p = NULL;
-	    }
-	  pthread_mutex_unlock (&temp->membuf_mutex);
-	  pthread_mutex_destroy (&temp->membuf_mutex);
-	  temp->membuf_mutex_inited = 0;
-#endif
-
-	  if (temp->temp_file_type != FILE_QUERY_AREA)
-	    {
-	      rv = pthread_mutex_lock (&qmgr_Query_table.temp_file_free_mutex);
-
-	      /* add to the free list */
-	      if (qmgr_Query_table.temp_file_free_count < QMGR_TEMP_FILE_FREE_LIST_SIZE)
-		{
-		  temp->prev = NULL;
-		  temp->next = qmgr_Query_table.temp_file_free_list;
-		  qmgr_Query_table.temp_file_free_list = temp;
-		  qmgr_Query_table.temp_file_free_count++;
-		  temp = NULL;
-		}
-
-	      pthread_mutex_unlock (&qmgr_Query_table.temp_file_free_mutex);
-	    }
-
-	  /* free too many temp_file */
-	  if (temp)
-	    {
-	      free_and_init (temp);
-	    }
-	}
-      query_p->temp_vfid = NULL;
-    }
-
-  qmgr_unlock_mutex (&tran_entry_p->lock);
-  return rc;
-}
-#endif
 
 /*
  * qmgr_free_temp_file_list () - free temporary files in tfile_vfid_p
@@ -3923,7 +3079,7 @@ int
 qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p, QUERY_ID query_id, bool is_error)
 {
   QMGR_TEMP_FILE *temp = NULL;
-  int rc = NO_ERROR, fd_ret = NO_ERROR;
+  int rc = NO_ERROR, fd_ret = NO_ERROR, rv;
 
   /* make sure temp file list is not cyclic */
   assert (tfile_vfid_p->prev == NULL || tfile_vfid_p->prev->next == NULL);
@@ -3944,23 +3100,6 @@ qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p
       temp = tfile_vfid_p;
       tfile_vfid_p = tfile_vfid_p->next;
 
-#if defined (SERVER_MODE)
-      pthread_mutex_lock (&temp->membuf_mutex);
-      if (temp->membuf_thread_p)
-	{
-	  if (fd_ret != NO_ERROR)
-	    {
-	      qmgr_set_query_error (thread_p, query_id);
-	    }
-	  thread_wakeup (temp->membuf_thread_p, THREAD_QMGR_MEMBUF_PAGE_RESUMED);
-	  temp->membuf_thread_p = NULL;
-	}
-
-      pthread_mutex_unlock (&temp->membuf_mutex);
-      pthread_mutex_destroy (&temp->membuf_mutex);
-      temp->membuf_mutex_inited = 0;
-#endif
-
       if (temp->temp_file_type != FILE_QUERY_AREA)
 	{
 	  qmgr_put_temp_file_into_list (temp);
@@ -3975,19 +3114,47 @@ qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p
 }
 
 /*
- * qmgr_free_query_temp_file_by_query_entry () -
+ * qmgr_free_query_temp_file_helper () -
  *   return: int (NO_ERROR or ER_FAILED)
- *   query_entryp(in)   : Query entry ptr to determine what temp file (if any)
- *                        to destroy
+ *   query_entryp(in/out)   : Query entry ptr to determine what temp file (if any) to destroy
+ *
+ * Note: Destroy the external temporary file used, if any.
+ */
+static int
+qmgr_free_query_temp_file_helper (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p)
+{
+  QMGR_TEMP_FILE *tfile_vfid_p;
+  int rc = NO_ERROR;
+
+  assert (query_p != NULL);
+
+  if (query_p->temp_vfid != NULL)
+    {
+      bool is_error = (query_p->errid < 0);
+
+      tfile_vfid_p = query_p->temp_vfid;
+      tfile_vfid_p->prev->next = NULL;
+
+      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p, query_p->query_id, is_error);
+
+      query_p->temp_vfid = NULL;
+    }
+
+  return rc;
+}
+
+/*
+ * qmgr_free_query_temp_file () -
+ *   return: int (NO_ERROR or ER_FAILED)
+ *   query_entryp(in/out)   : Query entry ptr to determine what temp file (if any) to destroy
  *   tran_idx(in)       :
  *
  * Note: Destroy the external temporary file used, if any.
  */
 static int
-qmgr_free_query_temp_file_by_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p, int tran_index)
+qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p, int tran_index)
 {
   int rc;
-  QMGR_TEMP_FILE *tfile_vfid_p;
   QMGR_TRAN_ENTRY *tran_entry_p;
 
   if (query_p == NULL || qmgr_Query_table.tran_entries_p == NULL)
@@ -4002,21 +3169,12 @@ qmgr_free_query_temp_file_by_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_EN
 
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-
   rc = NO_ERROR;
-  if (query_p->temp_vfid)
+  if (query_p->temp_vfid != NULL)
     {
-      bool is_error = (query_p->errid < 0);
-      tfile_vfid_p = query_p->temp_vfid;
-      tfile_vfid_p->prev->next = NULL;
-
-      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p, query_p->query_id, is_error);
-
-      query_p->temp_vfid = NULL;
+      rc = qmgr_free_query_temp_file_helper (thread_p, query_p);
     }
 
-  qmgr_unlock_mutex (&tran_entry_p->lock);
   return rc;
 }
 
@@ -4035,14 +3193,9 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
   QMGR_QUERY_ENTRY *query_p;
   QMGR_TRAN_ENTRY *tran_entry_p;
   int tran_index, rc;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
 
   if (qmgr_Query_table.tran_entries_p != NULL)
     {
@@ -4055,8 +3208,6 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
 
   if (query_p == NULL)
     {
-      /* if this is a streaming query and it is terminating */
-      qmgr_unlock_mutex (&tran_entry_p->lock);
       return NO_ERROR;
     }
 
@@ -4087,24 +3238,6 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
 	    }
 	}
 
-#if defined (SERVER_MODE)
-      rv = pthread_mutex_lock (&tfile_vfid_p->membuf_mutex);
-
-      if (tfile_vfid_p->membuf_thread_p)
-	{
-	  if (er_errid () != NO_ERROR)
-	    {
-	      qmgr_set_query_error (thread_p, query_id);
-	    }
-	  thread_wakeup (tfile_vfid_p->membuf_thread_p, THREAD_QMGR_MEMBUF_PAGE_RESUMED);
-	  tfile_vfid_p->membuf_thread_p = NULL;
-	}
-
-      pthread_mutex_unlock (&tfile_vfid_p->membuf_mutex);
-      pthread_mutex_destroy (&tfile_vfid_p->membuf_mutex);
-      tfile_vfid_p->membuf_mutex_inited = 0;
-#endif
-
       if (tfile_vfid_p->temp_file_type != FILE_QUERY_AREA)
 	{
 	  qmgr_put_temp_file_into_list (tfile_vfid_p);
@@ -4116,389 +3249,21 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
 	}
     }
 
-  qmgr_unlock_mutex (&tran_entry_p->lock);
   return NO_ERROR;
 }
 
-#if defined (SERVER_MODE)
 /*
- * qmgr_is_thread_executing_async_query () -
- *   return:
- *   thrd_entry(in)     :
- */
-bool
-qmgr_is_thread_executing_async_query (THREAD_ENTRY * thread_p)
-{
-  QMGR_QUERY_ENTRY *query_p = (QMGR_QUERY_ENTRY *) thread_p->query_entry;
-
-  return (query_p != NULL) && (query_p->query_mode == ASYNC_MODE);
-}
-
-/*
- * qmgr_execute_async_select () -
- *   return:
- *   async_query_p(in)  :
- */
-static void
-qmgr_execute_async_select (THREAD_ENTRY * thread_p, QMGR_ASYNC_QUERY * async_query_p)
-{
-  const XASL_ID *xasl_id;
-  char *xasl_stream;
-  int xasl_stream_size;
-  int dbval_count;
-  DB_VALUE *dbvals_p;
-  QUERY_FLAG flag;
-  XASL_CACHE_CLONE *cache_clone_p;
-  QMGR_QUERY_ENTRY *query_p;
-  int tran_index;
-  QFILE_LIST_ID *async_list_id;
-  QMGR_TEMP_FILE *async_wait_vfid;
-
-  XASL_NODE *xasl_p;
-  void *xasl_buf_info;
-  QMGR_TRAN_ENTRY *tran_entry_p = NULL;
-  XASL_STATE xasl_state;
-  int rv;
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  xasl_id = async_query_p->xasl_id;
-  xasl_stream = async_query_p->xasl_stream;
-  xasl_stream_size = async_query_p->xasl_stream_size;
-  dbval_count = async_query_p->dbval_count;
-  dbvals_p = (DB_VALUE *) async_query_p->dbvals_p;
-  flag = async_query_p->flag;
-#if defined (ENABLE_UNUSED_FUNCTION)
-  cache_clone_p = async_query_p->cache_clone_p;
-#else /* ENABLE_UNUSED_FUNCTION */
-  cache_clone_p = NULL;
-#endif /* !ENABLE_UNUSED_FUNCTION */
-  query_p = async_query_p->query_p;
-  thread_p->tran_index = tran_index = async_query_p->tran_index;
-  async_list_id = async_query_p->async_list_id;
-  async_wait_vfid = async_query_p->async_wait_vfid;
-
-  pthread_mutex_unlock (&thread_p->tran_index_lock);
-
-  assert (query_p != NULL);
-  assert (async_list_id != NULL);
-  assert (async_wait_vfid != NULL);
-
-  xasl_p = NULL;
-  xasl_buf_info = NULL;
-
-  tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-
-  /* load the XASL stream from the file of xasl_id */
-  if (xqmgr_unpack_xasl_tree (thread_p, xasl_id, xasl_stream, xasl_stream_size, cache_clone_p, &xasl_p, &xasl_buf_info)
-      != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  if (xasl_id)
-    {
-      /* check the number of the host variables for this XASL */
-      if (xasl_p->dbval_cnt > dbval_count)
-	{
-	  er_log_debug (ARG_FILE_LINE, "qmgr_execute_async_select: dbval_cnt mismatch %d vs %d\n", xasl_p->dbval_cnt,
-			dbval_count);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-	  goto exit_on_error;
-	}
-
-      /* Adjust XASL flag for query result cache. For the last list file(QFILE_LIST_ID) as the query result, the
-       * permanent query result file(FILE_QUERY_AREA) rather than temporary file(FILE_TEMP) will be created if and only 
-       * if XASL_TO_BE_CACHED flag is set. */
-      if (qmgr_is_allowed_result_cache (flag))
-	{
-	  assert (xasl_p != NULL);
-	  XASL_SET_FLAG (xasl_p, XASL_TO_BE_CACHED);
-	}
-    }
-
-  query_p->tid = thread_p->tid;
-  thread_p->query_entry = query_p;	/* save query entry pointer */
-
-  qmgr_check_active_query_and_wait (thread_p, tran_entry_p, thread_p, ASYNC_EXEC);
-
-  if (query_p->interrupt)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-      qmgr_set_query_error (thread_p, query_p->query_id);
-
-      goto exit_on_error;
-    }
-
-  /* xasl->type == BUILDLIST_PROC */
-
-  xasl_state.vd.dbval_cnt = dbval_count;
-  xasl_state.vd.dbval_ptr = (DB_VALUE *) dbvals_p;
-  xasl_state.vd.xasl_state = &xasl_state;
-
-  /* save the query_id into the XASL state struct */
-  xasl_state.query_id = query_p->query_id;
-  xasl_state.qp_xasl_line = 0;	/* initialize error line */
-
-  (void) qexec_start_mainblock_iterations (thread_p, xasl_p, &xasl_state);
-
-  if (xasl_p->list_id == NULL)
-    {
-      goto exit_on_error;
-    }
-  xasl_p->list_id->query_id = query_p->query_id;
-
-  /* This is still a streaming query, but we need a real first page. qfile_get_first_page() can return ER_FAILED, so
-   * should check it here. */
-  if (qfile_get_first_page (thread_p, xasl_p->list_id) != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  /* copy and return query result file identifier */
-  if (qfile_copy_list_id (async_list_id, xasl_p->list_id, false) != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-  assert (async_list_id->sort_list == NULL);
-
-  async_list_id->last_pgptr = NULL;
-
-  /* Wake up waiting thread */
-  assert (async_wait_vfid != NULL);
-
-  rv = pthread_mutex_lock (&async_wait_vfid->membuf_mutex);
-  if (async_wait_vfid->membuf_thread_p)
-    {
-      /* qmgr_process_async_select () is doing conditional wait */
-      thread_wakeup (async_wait_vfid->membuf_thread_p, THREAD_QMGR_MEMBUF_PAGE_RESUMED);
-      async_wait_vfid->membuf_thread_p = NULL;
-    }
-
-  pthread_mutex_unlock (&async_wait_vfid->membuf_mutex);
-
-  query_p->list_id = qexec_execute_query (thread_p, xasl_p, dbval_count, dbvals_p, query_p->query_id);
-
-end:
-
-  if (dbvals_p)
-    {
-      HL_HEAPID old_pri_heap_id;
-      DB_VALUE *dbval;
-      int i;
-
-      /* use global heap for memory allocation */
-      old_pri_heap_id = db_change_private_heap (thread_p, 0);
-
-      for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
-	{
-	  db_value_clear (dbval);
-	}
-      db_private_free (thread_p, dbvals_p);
-
-      /* restore private heap */
-      (void) db_change_private_heap (thread_p, old_pri_heap_id);
-    }
-
-  if (cache_clone_p && cache_clone_p->xasl == xasl_p)
-    {
-#if defined (ENABLE_UNUSED_FUNCTION)
-      /* plan_cache=on; called from xqmgr_execute_query() */
-      /* save XASL tree */
-      (void) qexec_check_xasl_cache_ent_by_xasl (thread_p, &query_p->xasl_id, -1, &cache_clone_p);
-#endif /* ENABLE_UNUSED_FUNCTION */
-    }
-  else
-    {
-      if (xasl_buf_info)
-	{
-	  stx_free_additional_buff (thread_p, xasl_buf_info);
-	  stx_free_xasl_unpack_info (xasl_buf_info);
-	  db_private_free_and_init (thread_p, xasl_buf_info);
-	}
-    }
-
-  qmgr_check_waiter_and_wakeup (tran_entry_p, thread_p, query_p->propagate_interrupt);
-
-  /* Mark the Async Query as completed */
-  qmgr_mark_query_as_completed (query_p);
-
-  /* clear memory to be used at async worker thread */
-  db_clear_private_heap (thread_p, 0);
-
-  return;
-
-exit_on_error:
-
-  QFILE_CLEAR_LIST_ID (async_list_id);
-
-  /* Wake up waiting thread */
-  assert (async_wait_vfid != NULL);
-
-  rv = pthread_mutex_lock (&async_wait_vfid->membuf_mutex);
-  if (async_wait_vfid->membuf_thread_p)
-    {
-      /* qmgr_process_async_select () is doing conditional wait */
-      thread_wakeup (async_wait_vfid->membuf_thread_p, THREAD_QMGR_MEMBUF_PAGE_RESUMED);
-      async_wait_vfid->membuf_thread_p = NULL;
-    }
-
-  pthread_mutex_unlock (&async_wait_vfid->membuf_mutex);
-
-  goto end;
-}
-#endif /* (SERVER_MODE) */
-
-/*
- * xqmgr_get_query_info () -
- *   return:
- *   query_id(in)       :
- */
-int
-xqmgr_get_query_info (THREAD_ENTRY * thread_p, QUERY_ID query_id)
-{
-  QMGR_QUERY_ENTRY *query_p = NULL;
-
-#if defined (SERVER_MODE)
-  /* if query execution has error. */
-  if (qmgr_get_query_error_with_id (thread_p, query_id) < 0)
-    {
-      qmgr_set_query_error (thread_p, query_id);
-      return -1;
-    }
-#endif
-
-  query_p = qmgr_get_query_entry (thread_p, query_id, NULL_TRAN_INDEX);
-
-  if (query_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
-      return -1;
-    }
-
-  /* Errors are handled by sqmgr_get_query_info */
-  if (query_p->list_id)
-    {
-      return (query_p->list_id->tuple_cnt);
-    }
-  else
-    {
-      return -1;
-    }
-}
-
-/*
- * qmgr_get_area_error_async () -
- *   return:
- *   length(in) :
- *   count(in)  :
- *   query_id(in)       :
- */
-void *
-qmgr_get_area_error_async (THREAD_ENTRY * thread_p, int *length_p, int count, QUERY_ID query_id)
-{
-  int len;
-  char *area, *ptr;
-  QMGR_QUERY_ENTRY *query_p;
-#if 0
-  VPID vpid;
-#endif
-  int done = true;
-  int s_len, strlen;
-  int errid;
-  char *er_msg;
-#if 0
-  PAGE_PTR last_pgptr = NULL;
-#endif
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  query_p = qmgr_get_query_entry (thread_p, query_id, NULL_TRAN_INDEX);
-  if (query_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
-      return NULL;
-    }
-
-
-  rv = pthread_mutex_lock (&query_p->lock);
-  errid = query_p->errid;
-  er_msg = query_p->er_msg;
-  done = (query_p->query_mode == ASYNC_MODE) ? false : true;
-  pthread_mutex_unlock (&query_p->lock);
-
-  if (er_msg == NULL || errid == NO_ERROR)
-    {
-      *length_p = len = (OR_INT_SIZE * 5);
-      strlen = 0;
-    }
-  else
-    {
-      s_len = or_packed_string_length (er_msg, &strlen);
-      *length_p = len = (OR_INT_SIZE * 4) + s_len;
-    }
-
-  area = (char *) malloc (len);
-  if (area == NULL)
-    {
-      *length_p = 0;
-      return NULL;
-    }
-
-  ptr = area;
-
-#if 0
-  if (query_p->list_id)
-    {
-      last_pgptr = query_p->list_id->last_pgptr;
-      if (last_pgptr)
-	{
-	  QFILE_GET_NEXT_VPID (&vpid, last_pgptr) if (vpid.pageid != NULL_PAGEID)
-	    {
-	      done = false;
-	      /* 
-	       * If the query is not completed, return ONLY the number of
-	       * tuples that can be retrieved without blocking the client app.
-	       * That is, do not count the tuples on the uncompleted last page.
-	       */
-	      count -= QFILE_GET_TUPLE_COUNT (last_pgptr);
-	    }
-	}
-    }
-#endif
-
-  OR_PUT_INT (ptr, len);
-  ptr += OR_INT_SIZE;
-  OR_PUT_INT (ptr, done);
-  ptr += OR_INT_SIZE;
-  OR_PUT_INT (ptr, count);
-  ptr += OR_INT_SIZE;
-  /* 
-   * Now copy the information
-   */
-  OR_PUT_INT (ptr, (int) (errid));
-  ptr += OR_INT_SIZE;
-  or_pack_string_with_length (ptr, er_msg, strlen);
-
-  return area;
-}
-
-/*
- * qmgr_interrupt_query () -
+ * qmgr_is_query_interrupted () -
  *   return:
  *   query_id(in)       :
  */
 bool
-qmgr_interrupt_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
+qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 {
   QMGR_QUERY_ENTRY *query_p = NULL;
   QMGR_TRAN_ENTRY *tran_entry_p;
   int tran_index;
-  int is_interrupted;
+  bool dummy;
 
   /* 
    * get query entry - This is done in-line to avoid qmgr_get_query_entry
@@ -4513,190 +3278,17 @@ qmgr_interrupt_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-
   query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
-
   if (query_p == NULL)
     {
-      qmgr_unlock_mutex (&tran_entry_p->lock);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
       return true;
     }
-  else
-    {
-      is_interrupted = query_p->interrupt;
-      qmgr_unlock_mutex (&tran_entry_p->lock);
-    }
 
-  return (is_interrupted);
+  return (thread_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
 }
 
-#if defined (SERVER_MODE)
-
-/*
- * xqmgr_sync_query () -
- *   return:
- *   query_id(in)       :
- *   wait(in)   :
- *   new_list_id(in)    :
- *   call_from_server(in)       :
- *
- * Note: The parameter(QFILE_LIST_ID *new_list_id) is added to update the list_id
- */
-int
-xqmgr_sync_query (THREAD_ENTRY * thread_p, QUERY_ID query_id, int wait, QFILE_LIST_ID * new_list_id_p,
-		  int call_from_server)
-{
 #if defined (ENABLE_UNUSED_FUNCTION)
-  QMGR_QUERY_ENTRY *query_p = NULL;
-  QMGR_TRAN_ENTRY *tran_entry_p;
-  int trans_ind, rv, prev_error;
-
-  if (qmgr_Query_table.tran_entries_p == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  trans_ind = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_entry_p = &qmgr_Query_table.tran_entries_p[trans_ind];
-
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-
-  query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
-
-  if (query_p == NULL)
-    {
-      qmgr_unlock_mutex (&tran_entry_p->lock);
-      return ER_FAILED;
-    }
-
-  if (IS_SYNC_EXEC_MODE (query_p->query_flag))
-    {
-      /* Query is either not a streaming query or is completed or has error */
-      qmgr_unlock_mutex (&tran_entry_p->lock);
-      goto end;
-    }
-
-  rv = pthread_mutex_lock (&query_p->lock);
-  qmgr_unlock_mutex (&tran_entry_p->lock);
-  /* 
-   * If the query is not completed and "wait" is set, then wait else
-   * terminate the query and then wait.
-   */
-  if (wait != true && query_p->query_mode != QUERY_COMPLETED)
-    {
-      logtb_set_tran_index_interrupt (thread_p, trans_ind, true);
-      query_p->interrupt = true;
-      if (call_from_server)
-	{
-	  query_p->propagate_interrupt = false;
-	}
-    }
-
-  /* Now wait for the query to actually end */
-  if (query_p)
-    {
-      if (query_p->query_mode != QUERY_COMPLETED)
-	{
-	  query_p->nwaits++;
-	  rv = pthread_cond_wait (&query_p->cond, &query_p->lock);
-	  query_p->nwaits--;
-	  pthread_mutex_unlock (&query_p->lock);
-	}
-      else
-	{
-	  pthread_mutex_unlock (&query_p->lock);
-	}
-    }
-
-  prev_error = er_errid ();
-
-  /* check if query has error. A new error in the query_entry will be set */
-  if (qmgr_get_query_error_with_id (thread_p, query_id) < 0)
-    {
-      if (wait != true && er_errid () == ER_INTERRUPTED)
-	{
-	  /* If there was a previous error, do not call er_clear. */
-	  if (call_from_server && prev_error == NO_ERROR)
-	    {
-	      er_clear ();
-	    }
-	  goto end;
-	}
-
-      return ER_FAILED;
-    }
-
-end:
-  if (new_list_id_p && query_p->list_id)
-    {
-      /* copy the current list id */
-      if (qfile_copy_list_id (new_list_id_p, query_p->list_id, true) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
-
-  return NO_ERROR;
-#else /* ENABLE_UNUSED_FUNCTION */
-  /* We are not using ASYNC_EXEC mode. */
-  return NO_ERROR;
-#endif /* !ENABLE_UNUSED_FUNCTION */
-}
-
-/*
- * qmgr_is_async_query_interrupted () -
- *   return:
- *   query_id(in)       :
- */
-bool
-qmgr_is_async_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
-{
-  QMGR_QUERY_ENTRY *query_p = NULL;
-  QMGR_TRAN_ENTRY *tran_entry_p;
-  int tran_index;
-  bool r = false;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
-
-  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
-
-  query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
-
-  if (query_p != NULL)
-    {
-      r = (query_p->query_mode == ASYNC_MODE && query_p->interrupt == true);
-    }
-
-  qmgr_unlock_mutex (&tran_entry_p->lock);
-
-  return r;
-}
-
-/*
- * qmgr_get_query_error_with_id () -
- *   return:
- *   query_id(in)       :
- */
-int
-qmgr_get_query_error_with_id (THREAD_ENTRY * thread_p, QUERY_ID query_id)
-{
-  QMGR_QUERY_ENTRY *query_p = NULL;
-
-  query_p = qmgr_get_query_entry (thread_p, query_id, NULL_TRAN_INDEX);
-
-  if (query_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, (int) query_id);
-      return ER_QPROC_UNKNOWN_QUERYID;
-    }
-
-  return qmgr_get_query_error_with_entry (query_p);
-}
-#endif
-
 /*
  * qmgr_get_query_error_with_entry () -
  *   return:
@@ -4708,14 +3300,10 @@ qmgr_get_query_error_with_entry (QMGR_QUERY_ENTRY * query_p)
   int errid;
   char *er_msg;
   char *error_area, *p;
-#if defined (SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
 
-  rv = pthread_mutex_lock (&query_p->lock);
   errid = query_p->errid;
   er_msg = query_p->er_msg;
-  pthread_mutex_unlock (&query_p->lock);
 
   if (errid < 0)
     {
@@ -4735,6 +3323,7 @@ qmgr_get_query_error_with_entry (QMGR_QUERY_ENTRY * query_p)
 
   return errid;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * qmgr_set_query_error () - set current thread's error to query entry
@@ -4745,18 +3334,14 @@ void
 qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 {
   QMGR_QUERY_ENTRY *query_p;
-#if defined (SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
 
   query_p = qmgr_get_query_entry (thread_p, query_id, NULL_TRAN_INDEX);
   if (query_p != NULL)
     {
-      rv = pthread_mutex_lock (&query_p->lock);
       if (query_p->errid != NO_ERROR)
 	{
 	  /* if an error was already set, don't overwrite it */
-	  pthread_mutex_unlock (&query_p->lock);
 	  return;
 	}
 
@@ -4783,8 +3368,6 @@ qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 	{
 	  query_p->er_msg = NULL;
 	}
-
-      pthread_mutex_unlock (&query_p->lock);
     }
 }
 
@@ -4807,160 +3390,6 @@ qmgr_find_leaf (XASL_NODE * xasl_p)
     }
 
   return xasl_p;
-}
-
-/*
- * qmgr_process_async_select () -
- *   return:
- *   thread_p(in)  :
- *   xasl_p(in)  :
- *   xasl_stream(in)  :
- *   xasl_stream_size(in)  :
- *   dbval_count(in)      :
- *   dbvals_p(in)      :
- *   flag(in)      :
- *   cache_clone_p(in)    :
- *   query_p(in)  :
- */
-static QFILE_LIST_ID *
-qmgr_process_async_select (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, char *xasl_stream, int xasl_stream_size,
-			   int dbval_count, const DB_VALUE * dbvals_p, QUERY_FLAG flag,
-			   XASL_CACHE_CLONE * cache_clone_p, QMGR_QUERY_ENTRY * query_p)
-{
-  QFILE_LIST_ID *async_list_id;
-  QMGR_TEMP_FILE *async_wait_vfid;
-  QMGR_ASYNC_QUERY *async_query_p;
-  CSS_JOB_ENTRY *job_p;
-  int rv;
-
-  assert (query_p);
-  assert (query_p->list_id == NULL);
-
-  async_list_id = NULL;
-  async_wait_vfid = NULL;
-  async_query_p = NULL;
-
-  /* 
-   * If this streaming query will require post-processing such as
-   * orderby or groupby, then we cannot return a valid VPID to the user
-   * since the list_file will be changed during the sorting. So, we
-   * save the current VPID in the query result structure and return the
-   * negative of the query_id as an indicator that this query required
-   * post-processing causing xqfile_get_list_file_page() to sync up the
-   * query before returning.
-   */
-  /* Above comment is not true. Somedays circumstance was changed by someone. Currently, if the query is a type of
-   * requiring post-processing such as UNION, DIFFERENCE, INTERSECTION, GROUP BY, ORDER BY, or DISTINCT then 'list_id'
-   * of the 'query_entry' remains not set and 'first_vpid' of the 'list_id' returned to the client is set to
-   * NULL_PAGEID_ASYNC. 'xqfile_get_list_file_page()' will wait util it is set to sync up the query if
-   * 'query_entry->list_id == NULL || pageid == NULL_PAGEID_ASYNC'. */
-
-  /* 'list_id' to be returned */
-  async_list_id = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
-  if (async_list_id == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  QFILE_CLEAR_LIST_ID (async_list_id);
-
-  async_wait_vfid = qmgr_create_new_temp_file (thread_p, query_p->query_id, TEMP_FILE_MEMBUF_NORMAL);
-  if (async_wait_vfid == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  /* packing up the arguments for 'qexec_execute_query()' */
-  async_query_p = (QMGR_ASYNC_QUERY *) malloc (sizeof (QMGR_ASYNC_QUERY));
-  if (async_query_p == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  async_query_p->xasl_id = xasl_id;
-  async_query_p->xasl_stream = xasl_stream;
-  async_query_p->xasl_stream_size = xasl_stream_size;
-  async_query_p->dbval_count = dbval_count;
-  async_query_p->dbvals_p = dbvals_p;
-  async_query_p->flag = flag;
-#if defined (ENABLE_UNUSED_FUNCTION)
-  async_query_p->cache_clone_p = cache_clone_p;
-#endif /* ENABLE_UNUSED_FUNCTION */
-  async_query_p->query_p = query_p;
-  async_query_p->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  async_query_p->async_list_id = async_list_id;
-  async_query_p->async_wait_vfid = async_wait_vfid;
-
-  /* 
-   * setting query mode flag to ASYNC_MODE here to prevent a async
-   * query which has returned above due to error can not be roll backed.
-   */
-  query_p->query_mode = ASYNC_MODE;
-
-  job_p = css_make_job_entry (thread_get_current_conn_entry (), (CSS_THREAD_FN) qmgr_execute_async_select, (CSS_THREAD_ARG) async_query_p, -1	/* implicit: 
-																		 * DEFAULT 
-																		 */ );
-  if (job_p == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  css_add_to_job_queue (job_p);
-
-  /* wait for the first result page */
-
-  assert (async_wait_vfid != NULL);
-
-  rv = pthread_mutex_lock (&async_wait_vfid->membuf_mutex);
-  if (rv != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  if (VPID_ISNULL (&(async_list_id->first_vpid)))
-    {
-      async_wait_vfid->membuf_thread_p = thread_p;
-
-      /* qmgr_execute_async_select () will wake up */
-      thread_suspend_with_other_mutex (async_wait_vfid->membuf_thread_p, &async_wait_vfid->membuf_mutex, INF_WAIT, NULL,
-				       THREAD_QMGR_MEMBUF_PAGE_SUSPENDED);
-
-    }
-
-  pthread_mutex_unlock (&async_wait_vfid->membuf_mutex);
-
-  /* check error derived from qmgr_execute_async_select () */
-  if (VPID_ISNULL (&(async_list_id->first_vpid)))
-    {
-      goto exit_on_error;
-    }
-
-  /* async_wait_vfid is destroyed later at xqmgr_end_query() */
-
-  assert (async_list_id != NULL);
-  assert (async_list_id->tfile_vfid != NULL);
-  assert (!VPID_ISNULL (&(async_list_id->first_vpid)));
-  assert (async_list_id->sort_list == NULL);
-  assert (async_list_id->last_pgptr == NULL);
-
-end:
-
-  if (async_query_p)
-    {
-      free_and_init (async_query_p);
-    }
-
-  return async_list_id;
-
-exit_on_error:
-
-  if (async_list_id)
-    {
-      QFILE_FREE_AND_INIT_LIST_ID (async_list_id);
-    }
-  assert (async_list_id == NULL);
-
-  goto end;
 }
 #endif /* (SERVER_MODE) */
 
@@ -4988,9 +3417,7 @@ qmgr_initialize_temp_file_list (QMGR_TEMP_FILE_LIST * temp_file_list_p, QMGR_TEM
 {
   int i, num_buffer_pages;
   QMGR_TEMP_FILE *temp_file_p;
-#if defined(SERVER_MODE)
   int rv;
-#endif
 
   assert (temp_file_list_p != NULL && QMGR_IS_VALID_MEMBUF_TYPE (membuf_type));
   if (temp_file_list_p == NULL || !QMGR_IS_VALID_MEMBUF_TYPE (membuf_type))
@@ -4998,10 +3425,8 @@ qmgr_initialize_temp_file_list (QMGR_TEMP_FILE_LIST * temp_file_list_p, QMGR_TEM
       return;
     }
 
-  num_buffer_pages =
-    (membuf_type ==
-     TEMP_FILE_MEMBUF_NORMAL) ? prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) :
-    prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES);
+  num_buffer_pages = ((membuf_type == TEMP_FILE_MEMBUF_NORMAL) ? prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES)
+		      : prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES));
 
   pthread_mutex_init (&temp_file_list_p->mutex, NULL);
   rv = pthread_mutex_lock (&temp_file_list_p->mutex);
@@ -5062,9 +3487,8 @@ QMGR_TEMP_FILE *
 qmgr_get_temp_file_from_list (QMGR_TEMP_FILE_LIST * temp_file_list_p)
 {
   QMGR_TEMP_FILE *temp_file_p = NULL;
-#if defined(SERVER_MODE)
   int rv;
-#endif
+
   assert (temp_file_list_p != NULL);
   if (temp_file_list_p == NULL)
     {
@@ -5096,9 +3520,8 @@ void
 qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p)
 {
   QMGR_TEMP_FILE_LIST *temp_file_list_p;
-#if defined(SERVER_MODE)
   int rv;
-#endif
+
   assert (temp_file_p != NULL);
   if (temp_file_p == NULL)
     {
@@ -5232,17 +3655,16 @@ qmgr_reset_query_exec_info (int tran_index)
  *
  *   note : caller must free sql_id_buf
  *
- *   CUBRID SQL_ID is generated from md5 hash_value.
- *   The last 13 hexa-digit string of md5-hash(32 hexa-digit) string.
- *   Oracle's SQL_ID is also generated from md5 hash-value.
- *   But they uses the last 8 hexa-digit to generate 13-digit string.
- *   So the SQL_ID of a query is different in CUBRID and oracle,
- *   even though the length is same.
+ *   CUBRID SQL_ID is generated from md5 hash_value. The last 13 hexa-digit string of md5-hash(32 hexa-digit) string.
+ *   Oracle's SQL_ID is also generated from md5 hash-value. But it uses the last 8 hexa-digit to generate 13-digit string.
+ *   So the SQL_ID of a query is different in CUBRID and oracle, even though the length is same.
  */
 int
 qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *query, int sql_len)
 {
-  char hashstring[32 + 1] = { '\0' };
+  char hashstring[32 + 1] = {
+    '\0'
+  };
   char *ret_buf;
 
   if (sql_id_buf == NULL)
@@ -5288,8 +3710,52 @@ qmgr_get_rand_buf (THREAD_ENTRY * thread_p)
 #endif
 }
 
-QMGR_TRAN_ENTRY *
-qmgr_get_tran_entry (int trans_id)
+/*
+ * qmgr_get_current_query_id () - return the current query id
+ *   return: QUERY_ID
+ *   thread_p(in):
+ */
+QUERY_ID
+qmgr_get_current_query_id (THREAD_ENTRY * thread_p)
 {
-  return &qmgr_Query_table.tran_entries_p[trans_id];
+  QMGR_TRAN_ENTRY *tran_entry_p = NULL;
+  QUERY_ID query_id = NULL_QUERY_ID;
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  if (tran_entry_p->query_entry_list_p != NULL)
+    {
+      query_id = tran_entry_p->query_entry_list_p->query_id;
+    }
+
+  return query_id;
+}
+
+/*
+ * qmgr_get_query_sql_user_text () - return sql_user_text of the given query_id
+ *   return: query string
+ *   thread_p(in):
+ *   query_id(in):
+ *   tran_index(in):
+ */
+char *
+qmgr_get_query_sql_user_text (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index)
+{
+  QMGR_QUERY_ENTRY *query_ent_p = NULL;
+  XASL_CACHE_ENTRY *xasl_ent_p = NULL;
+  char *query_str = NULL;
+
+  query_ent_p = qmgr_get_query_entry (thread_p, query_id, tran_index);
+  if (query_ent_p != NULL)
+    {
+      xasl_ent_p = query_ent_p->xasl_ent;
+      if (xasl_ent_p != NULL)
+	{
+	  query_str = xasl_ent_p->sql_info.sql_user_text;
+	}
+    }
+
+  return query_str;
 }

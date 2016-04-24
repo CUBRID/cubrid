@@ -2914,21 +2914,25 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 
 	      QFILE_GET_OVERFLOW_VPID (&ovfl_vpid, page);
 
-	      if (ovfl_vpid.pageid == NULL_PAGEID || ovfl_vpid.pageid == NULL_PAGEID_ASYNC)
+	      if (ovfl_vpid.pageid == NULL_PAGEID)
 		{
 		  /* This is the normal case of a non-overflow tuple. We can use the page image directly, since we know 
 		   * that the tuple resides entirely on that page. */
 		  data = page + key->s.original.offset;
+
 		  /* update orderby_num() in the tuple */
 		  for (i = 0; ordby_info && i < ordby_info->ordbynum_pos_cnt; i++)
 		    {
 		      QFILE_GET_TUPLE_VALUE_HEADER_POSITION (data, ordby_info->ordbynum_pos[i], tvalhp);
 		      (void) qdata_copy_db_value_to_tuple_value (ordby_info->ordbynum_val, tvalhp, &tval_size);
 		    }
+
 		  error = qfile_add_tuple_to_list (thread_p, info->output_file, data);
 		}
 	      else
 		{
+		  assert (NULL_PAGEID < ovfl_vpid.pageid);	/* should not be NULL_PAGEID_IN_PROGRESS */
+
 		  /* Rats; this tuple requires overflow pages. We need to copy all of the pages from the input file to
 		   * the output file. */
 		  if (ordby_info && ordby_info->ordbynum_pos_cnt > 0)
@@ -14140,91 +14144,87 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   struct timeb tloc;
   struct tm *c_time_struct, tm_val;
   int tran_index;
+
 #if defined(CUBRID_DEBUG)
   static int trace = -1;
   static FILE *fp = NULL;
 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-
 #endif /* CUBRID_DEBUG */
+
   struct drand48_data *rand_buf_p;
+
 #if !defined (NDEBUG)
   int amount_qlist_enter;
   int amount_qlist_exit;
   int amount_qlist_new;
 #endif /* NDEBUG */
+
 #if defined(ENABLE_SYSTEMTAP)
-  LOG_TDES *tdes = NULL;
-  QMGR_TRAN_ENTRY *tran_entry_p = NULL;
-  QMGR_QUERY_ENTRY *query_p = NULL;
   char *query_str = NULL;
   int client_id = -1;
   char *db_user = NULL;
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined(CUBRID_DEBUG)
-  {
-    /* check the consistency of the XASL tree */
-    if (!qdump_check_xasl_tree (xasl))
-      {
-	if (xasl)
-	  {
-	    qdump_print_xasl (xasl);
-	  }
-	else
-	  {
-	    printf ("<NULL XASL tree>\n");
-	  }
-      }
-  }
+  /* check the consistency of the XASL tree */
+  if (!qdump_check_xasl_tree (xasl))
+    {
+      if (xasl)
+	{
+	  qdump_print_xasl (xasl);
+	}
+      else
+	{
+	  printf ("<NULL XASL tree>\n");
+	}
+    }
 
-  {
-    if (trace == -1)
-      {
-	char *file;
+  if (trace == -1)
+    {
+      char *file;
 
-	file = envvar_get ("QUERY_TRACE_FILE");
-	if (file)
-	  {
-	    trace = 1;
-	    if (!strcmp (file, "stdout"))
-	      {
-		fp = stdout;
-	      }
-	    else if (!strcmp (file, "stderr"))
-	      {
-		fp = stderr;
-	      }
-	    else
-	      {
-		fp = fopen (file, "a");
-		if (!fp)
-		  {
-		    fprintf (stderr, "Error: QUERY_TRACE_FILE '%s'\n", file);
-		    trace = 0;
-		  }
-	      }
-	  }
-	else
-	  {
-	    trace = 0;
-	  }
-      }
+      file = envvar_get ("QUERY_TRACE_FILE");
+      if (file)
+	{
+	  trace = 1;
+	  if (!strcmp (file, "stdout"))
+	    {
+	      fp = stdout;
+	    }
+	  else if (!strcmp (file, "stderr"))
+	    {
+	      fp = stderr;
+	    }
+	  else
+	    {
+	      fp = fopen (file, "a");
+	      if (!fp)
+		{
+		  fprintf (stderr, "Error: QUERY_TRACE_FILE '%s'\n", file);
+		  trace = 0;
+		}
+	    }
+	}
+      else
+	{
+	  trace = 0;
+	}
+    }
 
-    if (trace && fp)
-      {
-	time_t loc;
-	char str[19];
+  if (trace && fp)
+    {
+      time_t loc;
+      char str[19];
 
-	time (&loc);
-	strftime (str, 19, "%x %X", localtime_r (&loc, &tm_val));
-	fprintf (fp, "start %s tid %d qid %ld query %s\n", str, LOG_FIND_THREAD_TRAN_INDEX (thread_p), query_id,
-		 (xasl->sql_hash_text ? xasl->sql_hash_text : "<NULL>"));
+      time (&loc);
+      strftime (str, 19, "%x %X", localtime_r (&loc, &tm_val));
+      fprintf (fp, "start %s tid %d qid %ld query %s\n", str, LOG_FIND_THREAD_TRAN_INDEX (thread_p), query_id,
+	       (xasl->sql_hash_text ? xasl->sql_hash_text : "<NULL>"));
 
-	tsc_getticks (&start_tick);
-      }
-  }
+      tsc_getticks (&start_tick);
+    }
 #endif /* CUBRID_DEBUG */
 
 #if !defined (NDEBUG)
@@ -14236,31 +14236,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
 #if defined(ENABLE_SYSTEMTAP)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  tran_entry_p = qmgr_get_tran_entry (tran_index);
+  query_str = qmgr_get_query_sql_user_text (thread_p, query_id, tran_index);
 
-  if (tdes != NULL)
-    {
-      client_id = tdes->client_id;
-      db_user = tdes->client.db_user;
-    }
-
-  query_p = tran_entry_p->query_entry_list_p;
-  while (query_p && query_p->query_id != query_id)
-    {
-      query_p = query_p->next;
-    }
-
-  if (query_p != NULL)
-    {
-      XASL_CACHE_ENTRY *xasl_ent = NULL;
-
-      xasl_ent = query_p->xasl_ent;
-      if (xasl_ent != NULL)
-	{
-	  query_str = xasl_ent->sql_info.sql_user_text;
-	}
-    }
   CUBRID_QUERY_EXEC_START (query_str, query_id, client_id, db_user);
 #endif /* ENABLE_SYSTEMTAP */
 
@@ -14318,123 +14295,63 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
       if (stat != NO_ERROR)
 	{
-
-	  /* Don't reexecute the query when temp file is not available. */
-#if 0
-#if defined(SERVER_MODE)
-	  if (er_errid () == ER_QPROC_NOMORE_QFILE_PAGES
-	      && num_deadlock_reexecute <= QP_MAX_RE_EXECUTES_UNDER_DEADLOCKS)
+	  switch (er_errid ())
 	    {
+	    case NO_ERROR:
+	      {
+		char buf[512];
 
-	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	      if (qmgr_get_tran_status (tran_index) == QMGR_TRAN_RESUME_DUE_DEADLOCK)
-		{
-		  num_deadlock_reexecute++;
-		}
+		/* Make sure this does NOT return error indication without setting an error message and code. If we 
+		 * get here, we most likely have a system error. qp_xasl_line is the first line to set an error
+		 * condition. */
+		snprintf (buf, 511, "Query execution failure #%d.", xasl_state.qp_xasl_line);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_EXECUTE, 2, buf, "");
+		break;
+	      }
+	    case ER_INTERRUPTED:
+	      {
+		/* 
+		 * Most of the cleanup that's about to happen will get
+		 * screwed up if the interrupt is still in effect (e.g.,
+		 * someone will do a pb_fetch, which will quit early, and
+		 * so they'll bail without actually finishing their
+		 * cleanup), so disable it.
+		 */
+		xlogtb_set_interrupt (thread_p, false);
+		break;
+	      }
+	    }			/* switch */
 
-	      /* 
-	       * no more pages left in the query file. deallocate all the
-	       * pages and goto sleep.
-	       */
-#if defined(QP_DEBUG)
-	      (void) fprintf (stderr,
-			      "*WARNING* qexec_execute_query: No more pages left in the query area.\n"
-			      " Query execution falls into sleep for transaction index %d with %d deadlocks. \n\n",
-			      tran_index, num_deadlock_reexecute);
-#endif
-	      /* 
-	       * Do ***NOT*** clear out the DB_VALUEs in this tree: if you
-	       * do, you'll get incorrect results when you restart the
-	       * query, because all of your "constants" will have turned to
-	       * NULL.
-	       */
-	      (void) qexec_clear_xasl (thread_p, xasl, false);
-	      (void) qmgr_free_query_temp_file (query_id);
+	  qmgr_set_query_error (thread_p, query_id);	/* propagate error */
 
-	      /* 
-	       * Wait until some of the holders finish
-	       */
-
-	      if (qm_addtg_waiter (tran_index, QMGR_TRAN_WAITING) != NO_ERROR)
-		{
-		  return (QFILE_LIST_ID *) NULL;
-		}
-
-	      qmgr_set_tran_status (tran_index, QMGR_TRAN_RUNNING);
-	      re_execute = true;	/* resume execution */
+	  if (xasl->list_id)
+	    {
+	      qfile_close_list (thread_p, xasl->list_id);
 	    }
-	  else
-#endif
-#endif
-	    {
-	      switch (er_errid ())
-		{
-		case NO_ERROR:
-		  {
-		    char buf[512];
 
-		    /* if this query was interrupted by user then, set error ER_QM_EXECUTION_INTERRUPTED */
-#if defined(SERVER_MODE)
-		    if (qmgr_is_async_query_interrupted (thread_p, query_id))
-		      {
-			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_EXECUTION_INTERRUPTED, 0);
-		      }
-		    /* Make sure this does NOT return error indication without setting an error message and code. If we 
-		     * get here, we most likely have a system error. qp_xasl_line is the first line to set an error
-		     * condition. */
-		    else
-#endif
-		      {
-			snprintf (buf, 511, "Query execution failure #%d.", xasl_state.qp_xasl_line);
-			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_EXECUTE, 2, buf, "");
-		      }
-		    break;
-		  }
-		case ER_INTERRUPTED:
-		  {
-		    /* 
-		     * Most of the cleanup that's about to happen will get
-		     * screwed up if the interrupt is still in effect (e.g.,
-		     * someone will do a pb_fetch, which will quit early, and
-		     * so they'll bail without actually finishing their
-		     * cleanup), so disable it.
-		     */
-		    xlogtb_set_interrupt (thread_p, false);
-		    break;
-		  }
-		}		/* switch */
+	  list_id = qexec_get_xasl_list_id (xasl);
 
-	      qmgr_set_query_error (thread_p, query_id);	/* propagate error */
-
-	      if (xasl->list_id)
-		{
-		  qfile_close_list (thread_p, xasl->list_id);
-		}
-
-	      list_id = qexec_get_xasl_list_id (xasl);
-
-	      (void) qexec_clear_xasl (thread_p, xasl, true);
+	  (void) qexec_clear_xasl (thread_p, xasl, true);
 
 #if !defined (NDEBUG)
-	      amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
-	      amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
-	      if (thread_rc_track_need_to_trace (thread_p))
+	  amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
+	  amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
+	  if (thread_rc_track_need_to_trace (thread_p))
+	    {
+	      if (list_id && list_id->type_list.type_cnt != 0)
 		{
-		  if (list_id && list_id->type_list.type_cnt != 0)
-		    {
-		      assert_release (amount_qlist_new == 1);
-		    }
-		  else
-		    {
-		      assert_release (amount_qlist_new == 0);
-		    }
+		  assert_release (amount_qlist_new == 1);
 		}
+	      else
+		{
+		  assert_release (amount_qlist_new == 0);
+		}
+	    }
 #endif /* NDEBUG */
 
-	      /* caller will detect the error condition and free the listid */
-	      goto end;
-	    }			/* if-else */
-	}			/* if */
+	  /* caller will detect the error condition and free the listid */
+	  goto end;
+	}
       /* for async query, clean error */
       else
 	{

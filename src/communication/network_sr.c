@@ -641,26 +641,6 @@ net_server_init (void)
   req_p->processing_function = sqmgr_drop_all_query_plans;
   req_p->name = "NET_SERVER_QM_QUERY_DROP_ALL_PLANS";
 
-  req_p = &net_Requests[NET_SERVER_QM_QUERY_SYNC];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = sqmgr_sync_query;
-  req_p->name = "NET_SERVER_QM_QUERY_SYNC";
-
-  req_p = &net_Requests[NET_SERVER_QM_GET_QUERY_INFO];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = sqmgr_get_query_info;
-  req_p->name = "NET_SERVER_QM_GET_QUERY_INFO";
-
-  req_p = &net_Requests[NET_SERVER_QM_QUERY_EXECUTE_ASYNC];
-  req_p->action_attribute = (SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
-  req_p->processing_function = sqmgr_execute_query;
-  req_p->name = "NET_SERVER_QM_QUERY_EXECUTE_ASYNC";
-
-  req_p = &net_Requests[NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC];
-  req_p->action_attribute = (SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
-  req_p->processing_function = sqmgr_prepare_and_execute_query;
-  req_p->name = "NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC";
-
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DUMP_PLANS];
   req_p->processing_function = sqmgr_dump_query_plans;
   req_p->name = "NET_SERVER_QM_QUERY_DUMP_PLANS";
@@ -1175,7 +1155,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
       gettimeofday (&diag_end_time, NULL);
       DIFF_TIMEVAL (diag_start_time, diag_end_time, diag_elapsed_time);
       if (request == NET_SERVER_QM_QUERY_EXECUTE || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE
-	  || request == NET_SERVER_QM_QUERY_EXECUTE_ASYNC || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC)
+	  || request == NET_SERVER_QM_QUERY_EXECUTE_ASYNC)
 	{
 	  SET_DIAG_VALUE_SLOW_QUERY (diag_executediag, diag_start_time, diag_end_time, 1, DIAG_VAL_SETTYPE_INC, NULL);
 	}
@@ -1280,8 +1260,6 @@ loop:
 		  wakeup_now = false;
 		  break;
 		case THREAD_CSS_QUEUE_SUSPENDED:
-		case THREAD_QMGR_ACTIVE_QRY_SUSPENDED:
-		case THREAD_QMGR_MEMBUF_PAGE_SUSPENDED:
 		case THREAD_HEAP_CLSREPR_SUSPENDED:
 		case THREAD_LOGWR_SUSPENDED:
 		  wakeup_now = true;
@@ -1296,8 +1274,6 @@ loop:
 		case THREAD_CSECT_WRITER_RESUMED:
 		case THREAD_CSECT_PROMOTER_RESUMED:
 		case THREAD_CSS_QUEUE_RESUMED:
-		case THREAD_QMGR_ACTIVE_QRY_RESUMED:
-		case THREAD_QMGR_MEMBUF_PAGE_RESUMED:
 		case THREAD_HEAP_CLSREPR_RESUMED:
 		case THREAD_LOCK_RESUMED:
 		case THREAD_LOGWR_RESUMED:

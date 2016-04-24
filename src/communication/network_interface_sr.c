@@ -5054,15 +5054,10 @@ sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   error = xqfile_get_list_file_page (thread_p, query_id, volid, pageid, aligned_page_buf, &page_size);
   if (error != NO_ERROR)
     {
-      if (error == ER_INTERRUPTED && query_id != NULL_QUERY_ID
-	  && qmgr_get_query_error_with_id (thread_p, query_id) == NO_ERROR)
-	{
-	  xqmgr_sync_query (thread_p, query_id, false, NULL, true);
-	}
-
       return_error_to_client (thread_p, rid);
       goto empty_page;
     }
+
   if (page_size == 0)
     {
       goto empty_page;
@@ -5386,7 +5381,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   page_size = 0;
   page_ptr = NULL;
-  if (list_id && IS_SYNC_EXEC_MODE (query_flag))
+  if (list_id)
     {
       /* get the first page of the list file */
       if (VPID_ISNULL (&(list_id->first_vpid)))
@@ -5794,54 +5789,53 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
 
   if (listid_length)
     {
-      if (IS_SYNC_EXEC_MODE (flag))
+      if (VPID_ISNULL (&q_result->first_vpid))
 	{
-	  if (VPID_ISNULL (&q_result->first_vpid))
-	    {
-	      page_ptr = NULL;
-	    }
-	  else
-	    {
-	      page_ptr = qmgr_get_old_page (thread_p, &q_result->first_vpid, q_result->tfile_vfid);
-	    }
-
-	  if (page_ptr)
-	    {
-	      if ((QFILE_GET_TUPLE_COUNT (page_ptr) == -2) || (QFILE_GET_OVERFLOW_PAGE_ID (page_ptr) != NULL_PAGEID))
-		{
-		  page_size = DB_PAGESIZE;
-		}
-	      else
-		{
-		  int offset = QFILE_GET_LAST_TUPLE_OFFSET (page_ptr);
-
-		  page_size = (offset + QFILE_GET_TUPLE_LENGTH (page_ptr + offset));
-		}
-
-	      /* to free page_ptr early */
-	      memcpy (aligned_page_buf, page_ptr, page_size);
-	      qmgr_free_old_page_and_init (thread_p, page_ptr, q_result->tfile_vfid);
-	    }
-	  else
-	    {
-	      /* 
-	       * During query execution, ER_LK_UNILATERALLY_ABORTED may have
-	       * occurred.
-	       * xqmgr_sync_query() had set this error
-	       * so that the transaction will be rolled back.
-	       */
-	      if (er_errid () < 0)
-		{
-		  return_error_to_client (thread_p, rid);
-		  listid_length = 0;
-		}
-	      /* if query type is not select, page ptr can be null */
-	    }
+	  page_ptr = NULL;
 	}
+      else
+	{
+	  page_ptr = qmgr_get_old_page (thread_p, &q_result->first_vpid, q_result->tfile_vfid);
+	}
+
+      if (page_ptr)
+	{
+	  if ((QFILE_GET_TUPLE_COUNT (page_ptr) == -2) || (QFILE_GET_OVERFLOW_PAGE_ID (page_ptr) != NULL_PAGEID))
+	    {
+	      page_size = DB_PAGESIZE;
+	    }
+	  else
+	    {
+	      int offset = QFILE_GET_LAST_TUPLE_OFFSET (page_ptr);
+
+	      page_size = (offset + QFILE_GET_TUPLE_LENGTH (page_ptr + offset));
+	    }
+
+	  /* to free page_ptr early */
+	  memcpy (aligned_page_buf, page_ptr, page_size);
+	  qmgr_free_old_page_and_init (thread_p, page_ptr, q_result->tfile_vfid);
+	}
+      else
+	{
+	  /* 
+	   * During query execution, ER_LK_UNILATERALLY_ABORTED may have
+	   * occurred.
+	   * xqmgr_sync_query() had set this error
+	   * so that the transaction will be rolled back.
+	   */
+	  if (er_errid () < 0)
+	    {
+	      return_error_to_client (thread_p, rid);
+	      listid_length = 0;
+	    }
+	  /* if query type is not select, page ptr can be null */
+	}
+
       if ((page_size > DB_PAGESIZE) || (page_size < 0))
 	{
 	  page_size = 0;
 	}
+
       if (listid_length > 0)
 	{
 	  list_data = (char *) db_private_alloc (thread_p, listid_length);
@@ -5850,6 +5844,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
 	      listid_length = 0;
 	    }
 	}
+
       if (list_data)
 	{
 	  or_pack_listid (list_data, q_result);
@@ -6182,118 +6177,6 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     }
   fclose (outfp);
   db_private_free_and_init (thread_p, buffer);
-}
-
-/*
- * sqmgr_get_query_info -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sqmgr_get_query_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  QUERY_ID query_id;
-  int count;
-  int length;
-  char *buf;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_unpack_ptr (request, &query_id);
-
-  count = xqmgr_get_query_info (thread_p, query_id);
-
-  buf = (char *) qmgr_get_area_error_async (thread_p, &length, count, query_id);
-
-  (void) or_pack_int (reply, length);
-
-  /* xqmgr_get_query_info() check query error, if error was ER_LK_UNILATERALLY_ABORTED, then rollback transaction */
-  if (count < 0 && er_errid () == ER_LK_UNILATERALLY_ABORTED)
-    {
-      tran_server_unilaterally_abort_tran (thread_p);
-    }
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buf, length);
-  free_and_init (buf);
-}
-
-/*
- * sqmgr_sync_query -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-#if defined (ENABLE_UNUSED_FUNCTION)
-  QUERY_ID query_id;
-  int wait, success;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  QFILE_LIST_ID new_list_id;
-  int list_length;
-  char *list_data;
-
-  ptr = or_unpack_ptr (request, &query_id);
-  ptr = or_unpack_int (ptr, &wait);
-
-  memset (&new_list_id, 0, sizeof (QFILE_LIST_ID));
-
-  success = xqmgr_sync_query (thread_p, query_id, wait, &new_list_id, false);
-  if (success != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      success = er_errid ();
-      list_length = 0;
-      list_data = NULL;
-    }
-  else
-    {
-      list_length = or_listid_length (&new_list_id);
-      list_data = (char *) db_private_alloc (thread_p, list_length);
-      if (list_data == NULL)
-	{
-	  success = ER_OUT_OF_VIRTUAL_MEMORY;
-	  list_length = 0;
-	}
-    }
-  ptr = or_pack_int (reply, list_length);
-  ptr = or_pack_int (ptr, success);
-
-  if (list_data == NULL)
-    {
-      /* 
-       * During query execution, ER_LK_UNILATERALLY_ABORTED may have occurred.
-       * xqmgr_sync_query() had set this error
-       * so that the transaction will be rolled back.
-       */
-      return_error_to_client (thread_p, rid);
-    }
-  else
-    {
-      ptr = or_pack_listid (list_data, &new_list_id);
-    }
-
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), list_data,
-				     list_length);
-  qfile_clear_list_id (&new_list_id);
-  db_private_free_and_init (thread_p, list_data);
-#else /* ENABLE_UNUSED_FUNCTION */
-  /* We are not using ASYNC_EXEC mode. */
-  return;
-#endif /* !ENABLE_UNUSED_FUNCTION */
 }
 
 /*

@@ -40,7 +40,7 @@
     } \
   while (0)
 
-#define NULL_PAGEID_ASYNC -2
+#define NULL_PAGEID_IN_PROGRESS -2
 #define QMGR_VPID_ARRAY_SIZE    20
 
 typedef enum
@@ -77,20 +77,12 @@ struct qmgr_temp_file
   int last_free_page_index;	/* last free page index */
   int vpid_index;		/* index into vpid_array */
   int vpid_count;		/* index into vpid_array */
-  VPID vpid_array[QMGR_VPID_ARRAY_SIZE];	/* an arrary of vpids */
+  VPID vpid_array[QMGR_VPID_ARRAY_SIZE];	/* an array of vpids */
   int total_count;		/* total number of file pages alloc'd */
   int membuf_last;
   PAGE_PTR *membuf;
   int membuf_npages;
   QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type;
-#ifdef SERVER_MODE
-  pthread_mutex_t membuf_mutex;
-  THREAD_ENTRY *membuf_thread_p;
-  unsigned membuf_mutex_inited:1;
-#if 0				/* async wakeup */
-  PAGE_PTR wait_page_ptr;
-#endif
-#endif
 };
 
 /*
@@ -120,19 +112,13 @@ typedef enum
 
 typedef enum
 {
-  SYNC_MODE,
-  ASYNC_MODE,
+  QUERY_IN_PROGRESS,
   QUERY_COMPLETED
-} QMGR_QUERY_MODE;
+} QMGR_QUERY_STATUS;
 
 typedef struct qmgr_query_entry QMGR_QUERY_ENTRY;
 struct qmgr_query_entry
 {
-#ifdef SERVER_MODE
-  pthread_mutex_t lock;		/* mutex for error message */
-  pthread_cond_t cond;
-  unsigned int nwaits;		/* the number of waiters who wait for cond */
-#endif
   QUERY_ID query_id;		/* unique query identifier */
   XASL_ID xasl_id;		/* XASL tree storage identifier */
   XASL_CACHE_ENTRY *xasl_ent;	/* XASL cache entry for this query */
@@ -144,51 +130,9 @@ struct qmgr_query_entry
   int total_count;		/* total number of file pages alloc'd for the entire query */
   char *er_msg;			/* pointer to error message string of last error */
   int errid;			/* errid for last error of query */
-  volatile QMGR_QUERY_MODE query_mode;
-  volatile QUERY_FLAG query_flag;
-  volatile int interrupt;	/* Set to one when the query execution must be stopped. */
-  volatile int propagate_interrupt;
-#ifdef SERVER_MODE
-  pthread_t tid;		/* used in qm_clear_tans_wakeup() */
-#endif
-  VPID save_vpid;		/* Save VPID for certain async queries */
+  QMGR_QUERY_STATUS query_status;
+  QUERY_FLAG query_flag;
   bool is_holdable;		/* true if this query should be available */
-};
-
-#if defined (SERVER_MODE)
-/* This struct is used when implements recursive mutex. */
-typedef struct qmgr_mutex QMGR_MUTEX;
-struct qmgr_mutex
-{
-  pthread_t owner;		/* mutex owner */
-  unsigned int lock_count;	/* how many times we acquired mutex */
-  pthread_mutex_t lock;
-  pthread_cond_t not_busy_cond;
-  unsigned int nwaits;		/* the number of waiters */
-};
-#endif
-
-typedef struct qmgr_tran_entry QMGR_TRAN_ENTRY;
-struct qmgr_tran_entry
-{
-#if defined (SERVER_MODE)
-  QMGR_MUTEX lock;
-#endif
-  QMGR_TRAN_STATUS trans_stat;	/* transaction status */
-  int query_id_generator;	/* global query identifier count */
-
-  int num_query_entries;	/* number of allocated query entries */
-
-  QMGR_QUERY_ENTRY *query_entry_list_p;	/* linked list of query entries */
-  QMGR_QUERY_ENTRY *free_query_entry_list_p;	/* free query entry list */
-
-  OID_BLOCK_LIST *modified_classes_p;	/* array of class OIDs */
-
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *wait_thread_p;
-  int active_sync_query_count;
-  bool exist_active_query;
-#endif
 };
 
 extern QMGR_QUERY_ENTRY *qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int trans_ind);
@@ -200,6 +144,7 @@ extern void qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bo
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern QMGR_TRAN_STATUS qmgr_get_tran_status (THREAD_ENTRY * thread_p, int tran_index);
 extern void qmgr_set_tran_status (THREAD_ENTRY * thread_p, int tran_index, QMGR_TRAN_STATUS trans_status);
+extern int qmgr_get_query_error_with_entry (QMGR_QUERY_ENTRY * query_entryp);
 #endif /* ENABLE_UNUSED_FUNCTION */
 extern void qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern PAGE_PTR qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
@@ -210,26 +155,17 @@ extern PAGE_PTR qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_T
 extern QMGR_TEMP_FILE *qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 						  QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type);
 extern QMGR_TEMP_FILE *qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id);
-#endif
 extern int qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_FILE * tfile_vfidp);
 extern int qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfidp, QUERY_ID query_id,
 				     bool is_error);
 
-#if defined(SERVER_MODE)
-extern bool qmgr_is_thread_executing_async_query (THREAD_ENTRY * thrd_entry);
-#endif
-extern void *qmgr_get_area_error_async (THREAD_ENTRY * thread_p, int *length, int count, QUERY_ID query_id);
-extern bool qmgr_interrupt_query (THREAD_ENTRY * thread_p, QUERY_ID query_id);
-extern bool qmgr_is_async_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id);
-extern int qmgr_get_query_error_with_id (THREAD_ENTRY * thread_p, QUERY_ID query_id);
-extern int qmgr_get_query_error_with_entry (QMGR_QUERY_ENTRY * query_entryp);
+extern bool qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id);
 extern void qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id);
 extern void qmgr_setup_empty_list_file (char *page_buf);
 extern int qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p);
 extern int qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *query, int sql_len);
 extern struct drand48_data *qmgr_get_rand_buf (THREAD_ENTRY * thread_p);
-extern QMGR_TRAN_ENTRY *qmgr_get_tran_entry (int trans_id);
+extern QUERY_ID qmgr_get_current_query_id (THREAD_ENTRY * thread_p);
+extern char *qmgr_get_query_sql_user_text (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index);
 
 #endif /* _QUERY_MANAGER_H_ */

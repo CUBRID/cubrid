@@ -2817,7 +2817,6 @@ int
 do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
-  QUERY_EXEC_MODE old_exec_mode;
   bool need_stmt_replication = false;
   int suppress_repl_error = NO_ERROR;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
@@ -2854,10 +2853,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      /* only SELECT query can be executed in async mode */
-      old_exec_mode = parser->exec_mode;
-      parser->exec_mode = (statement->node_type == PT_SELECT) ? old_exec_mode : SYNC_EXEC;
-
       /* for the subset of nodes which represent top level statements, process them. For any other node, return an
        * error. */
 
@@ -2872,15 +2867,12 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (error != NO_ERROR)
 	    {
 	      /* restore execution flag */
-	      parser->exec_mode = old_exec_mode;
 	      goto end;
 	    }
 
 	  suppress_repl_error = db_set_suppress_repl_on_transaction (true);
 	  if (suppress_repl_error != NO_ERROR)
 	    {
-	      /* restore execution flag */
-	      parser->exec_mode = old_exec_mode;
 	      goto end;
 	    }
 	}
@@ -3184,9 +3176,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 	}
 
-      /* restore execution flag */
-      parser->exec_mode = old_exec_mode;
-
       /* enable data replication log */
       if (need_stmt_replication)
 	{
@@ -3315,7 +3304,6 @@ int
 do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
-  QUERY_EXEC_MODE old_exec_mode;
   bool need_stmt_based_repl = false;
   int suppress_repl_error;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
@@ -3352,10 +3340,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  /* only SELECT query can be executed in async mode */
-  old_exec_mode = parser->exec_mode;
-  parser->exec_mode = (statement->node_type == PT_SELECT) ? old_exec_mode : SYNC_EXEC;
-
   /* for the subset of nodes which represent top level statements, process them; for any other node, return an error */
 
   /* disable data replication log for schema replication log types in HA mode */
@@ -3368,16 +3352,12 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = locator_all_flush ();
       if (err != NO_ERROR)
 	{
-	  /* restore execution flag */
-	  parser->exec_mode = old_exec_mode;
 	  goto end;
 	}
 
       suppress_repl_error = db_set_suppress_repl_on_transaction (true);
       if (suppress_repl_error != NO_ERROR)
 	{
-	  /* restore execution flag */
-	  parser->exec_mode = old_exec_mode;
 	  goto end;
 	}
     }
@@ -3648,9 +3628,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
       break;
     }
-
-  /* restore execution flag */
-  parser->exec_mode = old_exec_mode;
 
   /* enable data replication log */
   if (need_stmt_based_repl)
@@ -8007,14 +7984,16 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
   if (error == NO_ERROR)
     {
       int au_save;
+      QUERY_FLAG query_flag;
+
+      query_flag = DEFAULT_EXEC_MODE;
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
-      assert (IS_SYNC_EXEC_MODE (parser->exec_mode));
       error =
 	prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
 				   parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
-				   parser->exec_mode | ASYNC_UNEXECUTABLE);
+				   query_flag);
       AU_RESTORE (au_save);
     }
 
@@ -8978,7 +8957,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   * id (QFILE_LIST_ID) will be returned. do_prepare_update() has saved the XASL file id (XASL_ID) in
 	   * 'statement->xasl_id' */
 
-	  int query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
+	  int query_flag = DEFAULT_EXEC_MODE;
 
 	  /* flush necessary objects before execute */
 	  spec = statement->info.update.spec;
@@ -9564,14 +9543,16 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (error == NO_ERROR)
     {
       int au_save;
+      QUERY_FLAG query_flag;
+
+      query_flag = DEFAULT_EXEC_MODE;
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
-      assert (IS_SYNC_EXEC_MODE (parser->exec_mode));
       error =
 	prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
 				   parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
-				   parser->exec_mode | ASYNC_UNEXECUTABLE);
+				   query_flag);
       AU_RESTORE (au_save);
     }
 
@@ -10218,7 +10199,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
        * host variables given by users as parameter values for the query. As a result, query id and result file id
        * (QFILE_LIST_ID) will be returned. do_prepare_delete() has saved the XASL file id (XASL_ID) in
        * 'statement->xasl_id' */
-      query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
+      query_flag = DEFAULT_EXEC_MODE;
       query_flag |= NOT_FROM_RESULT_CACHE;
       query_flag |= RESULT_CACHE_INHIBITED;
       if (parser->is_xasl_pinned_reference)
@@ -10736,7 +10717,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       int au_save;
       QUERY_FLAG query_flag;
 
-      query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
+      query_flag = DEFAULT_EXEC_MODE;
       /* Do not update LAST_INSERT_ID during executing a trigger. */
       if (do_Trigger_involved == true)
 	{
@@ -10747,7 +10728,6 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
-      assert (IS_SYNC_EXEC_MODE (parser->exec_mode));
       error =
 	prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
 				   (parser->host_var_count + parser->auto_param_count), parser->host_variables,
@@ -13315,7 +13295,7 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   flat = statement->info.insert.spec->info.spec.flat_entity_list;
   class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-  query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
+  query_flag = DEFAULT_EXEC_MODE;
 
   query_flag |= NOT_FROM_RESULT_CACHE;
   query_flag |= RESULT_CACHE_INHIBITED;
@@ -13711,21 +13691,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_trace = true;
     }
 
-  if (parser->exec_mode == ASYNC_EXEC && query_trace == false)
-    {
-      if (pt_statement_have_methods (parser, statement))
-	{
-	  query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
-	}
-      else
-	{
-	  query_flag = ASYNC_EXEC | ASYNC_EXECUTABLE;
-	}
-    }
-  else
-    {
-      query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
-    }
+  query_flag = DEFAULT_EXEC_MODE;
 
   if (parser->dont_collect_exec_stats)
     {
@@ -13748,12 +13714,6 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  if (IS_ASYNC_UNEXECUTABLE (xasl->header.xasl_flag))
-	    {
-	      /* treat as sync query */
-	      query_flag &= ~ASYNC_EXEC;
-	    }
-
 	  if (query_trace == true)
 	    {
 	      do_set_trace_to_query_flag (&query_flag);
@@ -14066,14 +14026,7 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_trace = true;
     }
 
-  if (parser->exec_mode == ASYNC_EXEC && query_trace == false)
-    {
-      query_flag = ASYNC_EXEC | ASYNC_EXECUTABLE;
-    }
-  else
-    {
-      query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
-    }
+  query_flag = DEFAULT_EXEC_MODE;
 
   if (parser->is_holdable)
     {
@@ -14214,22 +14167,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* adjust query flag */
-  if (parser->exec_mode == ASYNC_EXEC && query_trace == false)
-    {
-      if (pt_statement_have_methods (parser, statement)
-	  || (statement->node_type == PT_SELECT && statement->is_click_counter))
-	{
-	  query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
-	}
-      else
-	{
-	  query_flag = ASYNC_EXEC | ASYNC_EXECUTABLE;
-	}
-    }
-  else
-    {
-      query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
-    }
+  query_flag = DEFAULT_EXEC_MODE;
 
   if (statement->si_datetime == 1 || statement->si_tran_id == 1)
     {
@@ -14683,8 +14621,9 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
 
-  /* only sync executable because we're after the side effects */
-  query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
+  /* always sync exec */
+  query_flag = DEFAULT_EXEC_MODE;
+
   /* don't cache anything */
   query_flag |= NOT_FROM_RESULT_CACHE;
   query_flag |= RESULT_CACHE_INHIBITED;
@@ -14721,7 +14660,6 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  assert (IS_SYNC_EXEC_MODE (query_flag));
   error =
     prepare_and_execute_query (stream.xasl_stream, stream.xasl_stream_size, &parser->query_id,
 			       parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
@@ -15917,7 +15855,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP)
     {
       /* server side execution */
-      int query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
+      int query_flag = DEFAULT_EXEC_MODE;
 
       /* check if it is not necessary to execute this statement */
       if (statement->xasl_id == NULL)
@@ -15982,7 +15920,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (statement->info.merge.update.assignment && !insert_only && !statement->info.merge.update.do_class_attrs)
 	{
-	  int query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
+	  int query_flag = DEFAULT_EXEC_MODE;
 
 	  /* flush necessary objects before execute */
 	  err = sm_flush_objects (class_obj);

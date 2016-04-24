@@ -603,12 +603,10 @@ cursor_get_list_file_page (CURSOR_ID * cursor_id_p, VPID * vpid_p)
   /* if not found, get the page from server */
   if (cursor_id_p->buffer == NULL)
     {
-      int ret_val = qfile_get_list_file_page (cursor_id_p->query_id,
-					      vpid_p->volid,
-					      vpid_p->pageid,
-					      cursor_id_p->buffer_area,
-					      &cursor_id_p->buffer_filled_size);
+      int ret_val;
 
+      ret_val = qfile_get_list_file_page (cursor_id_p->query_id, vpid_p->volid, vpid_p->pageid,
+					  cursor_id_p->buffer_area, &cursor_id_p->buffer_filled_size);
       if (ret_val != NO_ERROR)
 	{
 	  return ret_val;
