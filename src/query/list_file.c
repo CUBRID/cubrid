@@ -1511,10 +1511,12 @@ qfile_allocate_new_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAG
   PAGE_PTR new_page_p;
   VPID new_vpid;
 
+#if defined (SERVER_MODE)
   if (qmgr_is_query_interrupted (thread_p, list_id_p->query_id) == true)
     {
       return NULL;
     }
+#endif /* SERVER_MODE */
 
   new_page_p = qmgr_get_new_page (thread_p, &new_vpid, list_id_p->tfile_vfid);
   if (new_page_p == NULL)

@@ -14309,18 +14309,14 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 		break;
 	      }
 	    case ER_INTERRUPTED:
-	      {
-		/* 
-		 * Most of the cleanup that's about to happen will get
-		 * screwed up if the interrupt is still in effect (e.g.,
-		 * someone will do a pb_fetch, which will quit early, and
-		 * so they'll bail without actually finishing their
-		 * cleanup), so disable it.
-		 */
-		xlogtb_set_interrupt (thread_p, false);
-		break;
-	      }
-	    }			/* switch */
+	      /*
+	       * Most of the cleanup that's about to happen will get screwed up if the interrupt is still in effect
+	       * (e.g., someone will do a pb_fetch, which will quit early, and so they'll bail without actually
+	       *  finishing their cleanup), so disable it.
+	       */
+	      xlogtb_set_interrupt (thread_p, false);
+	      break;
+	    }
 
 	  qmgr_set_query_error (thread_p, query_id);	/* propagate error */
 
@@ -14397,26 +14393,24 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 #endif /* NDEBUG */
 
 #if defined(CUBRID_DEBUG)
-  {
-    if (trace && fp)
-      {
-	time_t loc;
-	char str[19];
-	float elapsed;
+  if (trace && fp)
+    {
+      time_t loc;
+      char str[19];
+      float elapsed;
 
-	tsc_getticks (&end_tick);
-	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	elapsed = (float) (tv_diff.tv_sec) * 1000000;
-	elapsed += (float) tv_diff.tv_usec;
-	elapsed /= 1000000;
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      elapsed = (float) (tv_diff.tv_sec) * 1000000;
+      elapsed += (float) tv_diff.tv_usec;
+      elapsed /= 1000000;
 
-	time (&loc);
-	strftime (str, 19, "%x %X", localtime_r (&loc, &tm_val));
-	fprintf (fp, "end %s tid %d qid %d elapsed %.6f\n", str, LOG_FIND_THREAD_TRAN_INDEX (thread_p), query_id,
-		 elapsed);
-	fflush (fp);
-      }
-  }
+      time (&loc);
+      strftime (str, 19, "%x %X", localtime_r (&loc, &tm_val));
+      fprintf (fp, "end %s tid %d qid %d elapsed %.6f\n", str, LOG_FIND_THREAD_TRAN_INDEX (thread_p), query_id,
+	       elapsed);
+      fflush (fp);
+    }
 #endif /* CUBRID_DEBUG */
 
 end:

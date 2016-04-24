@@ -159,7 +159,10 @@ extern int qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 extern int qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfidp, QUERY_ID query_id,
 				     bool is_error);
 
+#if defined (SERVER_MODE)
 extern bool qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id);
+#endif /* SERVER_MODE */
+
 extern void qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id);
 extern void qmgr_setup_empty_list_file (char *page_buf);
 extern int qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p);

@@ -42,6 +42,7 @@
 #include "query_manager.h"
 #include "query_opfunc.h"
 #include "session.h"
+#include "thread.h"
 
 #if defined (SERVER_MODE)
 #include "connection_defs.h"
@@ -406,7 +407,6 @@ static void
 qmgr_add_query_entry (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p, int tran_index)
 {
   QMGR_TRAN_ENTRY *tran_entry_p;
-  int r;
 
   if (tran_index == NULL_TRAN_INDEX)
     {
@@ -2573,9 +2573,6 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
 void
 qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, QMGR_TEMP_FILE * tfile_vfid_p)
 {
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
   QMGR_PAGE_TYPE page_type;
 
   if (page_p == NULL)
@@ -2982,7 +2979,7 @@ QMGR_TEMP_FILE *
 qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 {
   QMGR_QUERY_ENTRY *query_p;
-  int tran_index, i, rv;
+  int tran_index, i;
   QMGR_TEMP_FILE *tfile_vfid_p, *temp;
   QMGR_TRAN_ENTRY *tran_entry_p;
 
@@ -3079,7 +3076,7 @@ int
 qmgr_free_temp_file_list (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p, QUERY_ID query_id, bool is_error)
 {
   QMGR_TEMP_FILE *temp = NULL;
-  int rc = NO_ERROR, fd_ret = NO_ERROR, rv;
+  int rc = NO_ERROR, fd_ret = NO_ERROR;
 
   /* make sure temp file list is not cyclic */
   assert (tfile_vfid_p->prev == NULL || tfile_vfid_p->prev->next == NULL);
@@ -3252,6 +3249,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE)
 /*
  * qmgr_is_query_interrupted () -
  *   return:
@@ -3287,6 +3285,7 @@ qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   return (thread_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
 }
+#endif /* SERVER_MODE */
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -3334,7 +3333,6 @@ void
 qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 {
   QMGR_QUERY_ENTRY *query_p;
-  int rv;
 
   query_p = qmgr_get_query_entry (thread_p, query_id, NULL_TRAN_INDEX);
   if (query_p != NULL)
@@ -3662,9 +3660,7 @@ qmgr_reset_query_exec_info (int tran_index)
 int
 qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *query, int sql_len)
 {
-  char hashstring[32 + 1] = {
-    '\0'
-  };
+  char hashstring[32 + 1] = { '\0' };
   char *ret_buf;
 
   if (sql_id_buf == NULL)

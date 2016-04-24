@@ -9676,7 +9676,7 @@ static bool
 check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
 {
   if (srv_handle->auto_commit_mode == TRUE && srv_handle->cur_result_index == srv_handle->num_q_result
-      && srv_handle->forward_only_cursor == TRUE && srv_handle->is_updatable == FALSE && srv_handle->q_result == NULL)
+      && srv_handle->forward_only_cursor == TRUE && srv_handle->is_updatable == FALSE)
     {
       return true;
     }
