@@ -868,7 +868,7 @@ static FILE_TYPE heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
 static int heap_is_valid_oid (OID * oid);
 static int heap_fix_header_page (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_fix_forward_page (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, OID * forward_oid_hint);
-static void heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type, OID * oid_buffer_p);
+static void heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type, OID * forward_oid);
 
 /* heap insert related functions */
 static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
@@ -5857,7 +5857,6 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
   OID forward_oid;
   RECDES forward_recdes;
   int ret = NO_ERROR;
-  OID forward_rec_buffer[2];
 
   if (HEAP_ISVALID_OID (oid) != DISK_VALID)
     {
@@ -5900,15 +5899,14 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
        * the object.
        */
 
-      forward_recdes.data = (char *) forward_rec_buffer;
-      forward_recdes.area_size = 2 * OR_OID_SIZE;
+      forward_recdes.data = (char *) &forward_oid;
+      forward_recdes.area_size = OR_OID_SIZE;
 
       if (spage_get_record (pgptr, oid->slotid, &forward_recdes, COPY) != S_SUCCESS)
 	{
 	  /* Unable to get relocation record of the object */
 	  goto end;
 	}
-      COPY_OID (&forward_oid, (OID *) forward_recdes.data);
       pgbuf_unfix_and_init (thread_p, pgptr);
 
       /* Fetch the new home page */
@@ -5937,15 +5935,14 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
        * The object stored in the heap page is a relocation_overflow record,
        * get the overflow address of the object
        */
-      forward_recdes.data = (char *) forward_rec_buffer;
-      forward_recdes.area_size = 2 * OR_OID_SIZE;
+      forward_recdes.data = (char *) &forward_oid;
+      forward_recdes.area_size = OR_OID_SIZE;
 
       if (spage_get_record (pgptr, oid->slotid, &forward_recdes, COPY) != S_SUCCESS)
 	{
 	  /* Unable to peek overflow address of multipage object */
 	  goto end;
 	}
-      COPY_OID (&forward_oid, (OID *) forward_recdes.data);
       pgbuf_unfix_and_init (thread_p, pgptr);
       ret = heap_ovf_flush (thread_p, &forward_oid);
       break;
@@ -7374,7 +7371,6 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RE
   PGBUF_WATCHER home_page_watcher;
   PGBUF_WATCHER fwd_page_watcher;
   int error_code = NO_ERROR;
-  OID forward_rec_buffer[2];
   bool need_buffer = false;
 
   PGBUF_INIT_WATCHER (&home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, HEAP_SCAN_ORDERED_HFID (scan_cache));
@@ -7527,8 +7523,8 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RE
        * The record stored on the page is a relocation record, get the new
        * home of the record
        */
-      forward_recdes.data = (char *) forward_rec_buffer;
-      forward_recdes.area_size = 2 * OR_OID_SIZE;
+      forward_recdes.data = (char *) &forward_oid;
+      forward_recdes.area_size = OR_OID_SIZE;
 
       scan = spage_get_record (home_page_watcher.pgptr, oid->slotid, &forward_recdes, COPY);
       if (scan != S_SUCCESS)
@@ -7539,8 +7535,6 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RE
 	  scan = S_DOESNT_EXIST;
 	  goto end;
 	}
-
-      COPY_OID (&forward_oid, (OID *) forward_recdes.data);
 
       /* Fetch the page of relocated (forwarded) record */
       forward_vpid.volid = forward_oid.volid;
@@ -7702,8 +7696,8 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RE
 
     case REC_BIGONE:
       /* Get the address of the content of the multipage object in overflow */
-      forward_recdes.data = (char *) forward_rec_buffer;
-      forward_recdes.area_size = 2 * OR_OID_SIZE;
+      forward_recdes.data = (char *) &forward_oid;
+      forward_recdes.area_size = OR_OID_SIZE;
 
       scan = spage_get_record (home_page_watcher.pgptr, oid->slotid, &forward_recdes, COPY);
       if (scan != S_SUCCESS)
@@ -7715,7 +7709,6 @@ heap_get_internal (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RE
 	  scan = S_ERROR;
 	  goto end;
 	}
-      COPY_OID (&forward_oid, (OID *) forward_recdes.data);
       pgbuf_ordered_unfix (thread_p, &home_page_watcher);
 
       /* 
@@ -21842,8 +21835,7 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   context->map_recdes.area_size = 0;
   context->map_recdes.type = REC_UNKNOWN;
 
-  OID_SET_NULL (&context->ovf_oid[0]);
-  OID_SET_NULL (&context->ovf_oid[1]);
+  OID_SET_NULL (&context->ovf_oid);
 
   context->home_recdes.data = NULL;
   context->home_recdes.length = 0;
@@ -22079,16 +22071,16 @@ heap_fix_forward_page (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context
  *                                   a forward object
  *   recdes_p(in): record descriptor to build into
  *   rec_type(in): type of record
- *   oid_buffer(in): OID buffer to use
+ *   forward_oid(in): the oid where the forwarding record will point
  */
 static void
-heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type, OID * oid_buffer_p)
+heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type, OID * forward_oid)
 {
   assert (recdes_p != NULL);
-  assert (oid_buffer_p != NULL);
+  assert (forward_oid != NULL);
 
   recdes_p->type = rec_type;
-  recdes_p->data = (char *) oid_buffer_p;
+  recdes_p->data = (char *) forward_oid;
 
   recdes_p->length = sizeof (OID);
   recdes_p->area_size = sizeof (OID);
@@ -22215,7 +22207,7 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
     }
 
   /* insert overflow record */
-  if (heap_ovf_insert (thread_p, &context->hfid, &context->ovf_oid[0], context->recdes_p) == NULL)
+  if (heap_ovf_insert (thread_p, &context->hfid, &context->ovf_oid, context->recdes_p) == NULL)
     {
       return ER_FAILED;
     }
@@ -22224,7 +22216,7 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
 
   /* Add a map record to point to the record in overflow */
   /* NOTE: MVCC information is held in overflow record */
-  heap_build_forwarding_recdes (&context->map_recdes, REC_BIGONE, context->ovf_oid);
+  heap_build_forwarding_recdes (&context->map_recdes, REC_BIGONE, &context->ovf_oid);
 
   /* use map_recdes for page insertion */
   context->recdes_p = &context->map_recdes;
@@ -23061,7 +23053,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       MVCC_REC_HEADER forward_rec_header, new_forward_rec_header;
       MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
       char buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
-      OID new_forward_oid[2];
+      OID new_forward_oid;
       int adjusted_size, forward_rec_header_size;
       bool fits_in_home, fits_in_forward;
       bool update_old_home = false;
@@ -23136,13 +23128,13 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       if (heap_is_big_length (adjusted_size))
 	{
 	  /* insert new overflow record */
-	  if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid[0], &new_forward_recdes) == NULL)
+	  if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid, &new_forward_recdes) == NULL)
 	    {
 	      return ER_FAILED;
 	    }
 
 	  /* home record descriptor will be an overflow OID and will be placed in original home page */
-	  heap_build_forwarding_recdes (&new_home_recdes, REC_BIGONE, new_forward_oid);
+	  heap_build_forwarding_recdes (&new_home_recdes, REC_BIGONE, &new_forward_oid);
 
 	  /* remove old forward record */
 	  remove_old_forward = true;
@@ -23183,14 +23175,14 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  /* doesn't fit in either home or forward page */
 	  /* insert a new forward record */
 	  new_forward_recdes.type = REC_NEWHOME;
-	  rc = heap_insert_newhome (thread_p, context, &new_forward_recdes, &new_forward_oid[0]);
+	  rc = heap_insert_newhome (thread_p, context, &new_forward_recdes, &new_forward_oid);
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
 	    }
 
 	  /* new home record will be a REC_RELOCATION and will be placed in the original home page */
-	  heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, new_forward_oid);
+	  heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, &new_forward_oid);
 
 	  /* remove old forward record */
 	  remove_old_forward = true;
@@ -23450,7 +23442,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       RECDES built_recdes;
       RECDES forwarding_recdes;
       RECDES *home_page_updated_recdes;
-      OID forward_oid[2];
+      OID forward_oid;
       MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
       char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
       int header_size;
@@ -23511,7 +23503,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	    {
 	      /* new record is overflow record - REC_BIGONE case */
 	      forwarding_recdes.type = REC_BIGONE;
-	      if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid[0], &built_recdes) == NULL)
+	      if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid, &built_recdes) == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error_code);
 		  return error_code;
@@ -23525,7 +23517,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	      forwarding_recdes.type = REC_RELOCATION;
 
 	      /* insert NEWHOME record */
-	      error_code = heap_insert_newhome (thread_p, context, &built_recdes, &forward_oid[0]);
+	      error_code = heap_insert_newhome (thread_p, context, &built_recdes, &forward_oid);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -23536,7 +23528,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	    }
 
 	  /* build forwarding rebuild_record */
-	  heap_build_forwarding_recdes (&forwarding_recdes, forwarding_recdes.type, forward_oid);
+	  heap_build_forwarding_recdes (&forwarding_recdes, forwarding_recdes.type, &forward_oid);
 
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
@@ -23811,18 +23803,18 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	}
       else
 	{
-	  OID newhome_oid[2];
+	  OID newhome_oid;
 
 	  /* insert new home */
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	  context->recdes_p->type = REC_NEWHOME;
-	  if (heap_insert_newhome (thread_p, context, context->recdes_p, &newhome_oid[0]) != NO_ERROR)
+	  if (heap_insert_newhome (thread_p, context, context->recdes_p, &newhome_oid) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
 
 	  /* prepare record descriptor */
-	  heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, newhome_oid);
+	  heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, &newhome_oid);
 
 	  /* update home */
 	  if (heap_update_physical (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
@@ -23884,7 +23876,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   OID forward_oid;
   int rc;
   RECDES new_home_recdes;
-  OID new_forward_oid[2];
+  OID new_forward_oid;
   bool fits_in_home, fits_in_forward;
   bool update_old_home = false;
   bool update_old_forward = false;
@@ -23965,13 +23957,13 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   if (heap_is_big_length (context->recdes_p->length))
     {
       /* insert new overflow record */
-      if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid[0], context->recdes_p) == NULL)
+      if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid, context->recdes_p) == NULL)
 	{
 	  return ER_FAILED;
 	}
 
       /* home record descriptor will be an overflow OID and will be placed in original home page */
-      heap_build_forwarding_recdes (&new_home_recdes, REC_BIGONE, new_forward_oid);
+      heap_build_forwarding_recdes (&new_home_recdes, REC_BIGONE, &new_forward_oid);
 
       mnt_heap_rel_to_big_updates (thread_p);
     }
@@ -23980,14 +23972,14 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* insert a new forward record */
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
       context->recdes_p->type = REC_NEWHOME;
-      rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid[0]);
+      rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
 
       /* new home record will be a REC_RELOCATION and will be placed in the original home page */
-      heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, new_forward_oid);
+      heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, &new_forward_oid);
 
       mnt_heap_rel_to_rel_updates (thread_p);
     }
@@ -24109,7 +24101,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   int error_code = NO_ERROR;
   RECDES forwarding_recdes;
   RECDES *home_page_updated_recdes_p = NULL;
-  OID forward_oid[2];
+  OID forward_oid;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
@@ -24152,14 +24144,14 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       /* insert new overflow record */
       HEAP_PERF_TRACK_PREPARE (thread_p, context);
-      if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid[0], context->recdes_p) == NULL)
+      if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid, context->recdes_p) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
 
       /* forwarding record is REC_BIGONE */
-      heap_build_forwarding_recdes (&forwarding_recdes, REC_BIGONE, forward_oid);
+      heap_build_forwarding_recdes (&forwarding_recdes, REC_BIGONE, &forward_oid);
 
       /* we'll be updating home with forwarding record */
       home_page_updated_recdes_p = &forwarding_recdes;
@@ -24180,7 +24172,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* insert new home record */
       HEAP_PERF_TRACK_PREPARE (thread_p, context);
       context->recdes_p->type = REC_NEWHOME;
-      error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &forward_oid[0]);
+      error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &forward_oid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -24188,7 +24180,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	}
 
       /* forwarding record is REC_RELOCATION */
-      heap_build_forwarding_recdes (&forwarding_recdes, REC_RELOCATION, forward_oid);
+      heap_build_forwarding_recdes (&forwarding_recdes, REC_RELOCATION, &forward_oid);
 
       /* we'll be updating home with forwarding record */
       home_page_updated_recdes_p = &forwarding_recdes;

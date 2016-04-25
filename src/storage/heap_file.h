@@ -289,7 +289,7 @@ struct heap_operation_context
 
   /* overflow transient data */
   RECDES map_recdes;		/* built record descriptor during multipage insert */
-  OID ovf_oid[2];		/* overflow object location */
+  OID ovf_oid;			/* overflow object location */
 
   /* transient data */
   RECDES home_recdes;
@@ -663,7 +663,7 @@ extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * 
 extern SCAN_CODE heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 							RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 							SCAN_OPERATION_TYPE op_type, int ispeeking, int old_chn,
-							struct mvcc_reev_data * mvcc_reev_data,
+							struct mvcc_reev_data *mvcc_reev_data,
 							NON_EXISTENT_HANDLING non_ex_handling_type);
 
 #endif /* _HEAP_FILE_H_ */

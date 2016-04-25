@@ -511,7 +511,7 @@ struct vacuum_heap_helper
   PGSLOTID slots[MAX_SLOTS_IN_PAGE];	/* Slot ID's. */
   MVCC_SATISFIES_VACUUM_RESULT results[MAX_SLOTS_IN_PAGE];	/* Vacuum check results. */
 
-  OID forward_links[2];		/* REC_BIGONE, REC_RELOCATION forward links. (buffer for forward_recdes) */
+  OID forward_link;		/* REC_BIGONE, REC_RELOCATION forward links. (buffer for forward_recdes) */
   RECDES forward_recdes;	/* Record descriptor to read forward links. */
 
   int n_bulk_vacuumed;		/* Number of vacuumed objects to be logged in bulk mode. */
@@ -1370,17 +1370,17 @@ retry_prepare:
       assert (!HFID_IS_NULL (&helper->hfid));
 
       /* Get forward OID. */
-      helper->forward_recdes.data = (char *) helper->forward_links;
-      helper->forward_recdes.area_size = sizeof (helper->forward_links);
+      helper->forward_recdes.data = (char *) &helper->forward_link;
+      helper->forward_recdes.area_size = sizeof (helper->forward_link);
       if (spage_get_record (helper->home_page, helper->crt_slotid, &helper->forward_recdes, COPY) != S_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
 	}
-      COPY_OID (&helper->forward_oid, &helper->forward_links[0]);
+      COPY_OID (&helper->forward_oid, &helper->forward_link);
 
       /* Get forward page. */
-      VPID_GET_FROM_OID (&forward_vpid, &helper->forward_links[0]);
+      VPID_GET_FROM_OID (&forward_vpid, &helper->forward_link);
       if (helper->forward_page != NULL)
 	{
 	  VPID crt_fwd_vpid = VPID_INITIALIZER;
@@ -1518,18 +1518,18 @@ retry_prepare:
       assert (helper->home_page != NULL);
 
       /* Get forward OID. */
-      helper->forward_recdes.data = (char *) helper->forward_links;
-      helper->forward_recdes.area_size = sizeof (helper->forward_links);
+      helper->forward_recdes.data = (char *) &helper->forward_link;
+      helper->forward_recdes.area_size = sizeof (helper->forward_link);
       if (spage_get_record (helper->home_page, helper->crt_slotid, &helper->forward_recdes, COPY) != S_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
 	}
 
-      COPY_OID (&helper->forward_oid, &helper->forward_links[0]);
+      COPY_OID (&helper->forward_oid, &helper->forward_link);
 
       /* Fix first overflow page (forward_page). */
-      VPID_GET_FROM_OID (&forward_vpid, &helper->forward_links[0]);
+      VPID_GET_FROM_OID (&forward_vpid, &helper->forward_link);
       helper->forward_page =
 	pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (helper->forward_page == NULL)
