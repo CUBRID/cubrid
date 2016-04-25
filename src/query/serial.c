@@ -1318,12 +1318,7 @@ xserial_decache (THREAD_ENTRY * thread_p, OID * oidp)
   int rc;
 #endif /* SERVER_MODE */
 
-  if (xcache_remove_by_oid (thread_p, oidp) != NO_ERROR)
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "xserial_decache: xcache_remove_by_oid failed for serial { %d %d %d }\n",
-		    oidp->pageid, oidp->slotid, oidp->volid);
-    }
+  xcache_remove_by_oid (thread_p, oidp);
 
   rc = pthread_mutex_lock (&serial_Cache_pool.cache_pool_mutex);
   entry = (SERIAL_CACHE_ENTRY *) mht_get (serial_Cache_pool.ht, oidp);

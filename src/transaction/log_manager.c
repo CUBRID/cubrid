@@ -4716,12 +4716,7 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, v
   (void) partition_decache_class (thread_p, &t->m_class_oid);
 
   /* remove XASL cache entries which are relevant with this class */
-  if (xcache_remove_by_oid (thread_p, &t->m_class_oid) != NO_ERROR)
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "log_cleanup_modified_class: xcache_remove_by_oid failed for class { %d %d %d }\n",
-		    t->m_class_oid.pageid, t->m_class_oid.slotid, t->m_class_oid.volid);
-    }
+  xcache_remove_by_oid (thread_p, &t->m_class_oid);
   /* remove filter predicate cache entries which are relevant with this class */
   if (fpcache_remove_by_class (thread_p, &t->m_class_oid) != NO_ERROR)
     {

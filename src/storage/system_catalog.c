@@ -2232,7 +2232,8 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
       repr_item_p->slot_id = catalog_value_p->key.r_slot_id;
 
       /* end transaction */
-      return lf_tran_end (t_entry);
+      lf_tran_end_with_mb (t_entry);
+      return NO_ERROR;
     }
   else
     {
@@ -2275,7 +2276,8 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
 	}
       else if (catalog_value_p != NULL)
 	{
-	  return lf_tran_end (t_entry);
+	  lf_tran_end_with_mb (t_entry);
+	  return NO_ERROR;
 	}
       else
 	{
@@ -5666,7 +5668,8 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
       dir_oid_p->slotid = catalog_value_p->key.r_slot_id;
 
       /* end transaction */
-      return lf_tran_end (t_entry);
+      lf_tran_end_with_mb (t_entry);
+      return NO_ERROR;
     }
 
   /* not found in cache, get it from class record */
@@ -5706,7 +5709,8 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
     }
   else if (catalog_value_p != NULL)
     {
-      return lf_tran_end (t_entry);
+      lf_tran_end_with_mb (t_entry);
+      return NO_ERROR;
     }
   else
     {

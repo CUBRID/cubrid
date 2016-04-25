@@ -5882,11 +5882,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       /* system class do not include foreign keys. we need not check here. */
 
       /* remove XASL cache entries which is relevant with that class */
-      if (!OID_IS_ROOTOID (oid) && xcache_remove_by_oid (thread_p, oid) != NO_ERROR)
+      if (!OID_IS_ROOTOID (oid))
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"locator_update_force: xcache_remove_by_oid  failed for class { %d %d %d }\n",
-			oid->pageid, oid->slotid, oid->volid);
+	  xcache_remove_by_oid (thread_p, oid);
 	}
 
       if (!OID_IS_ROOTOID (oid) && fpcache_remove_by_class (thread_p, oid) != NO_ERROR)
@@ -6597,11 +6595,9 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	}
 
       /* remove XASL cache entries which is relevant with that class */
-      if (!OID_IS_ROOTOID (oid) && xcache_remove_by_oid (thread_p, oid) != NO_ERROR)
+      if (!OID_IS_ROOTOID (oid))
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"locator_delete_force: xcache_remove_by_oid failed for class { %d %d %d }\n",
-			oid->pageid, oid->slotid, oid->volid);
+	  xcache_remove_by_oid (thread_p, oid);
 	}
 
       if (!OID_IS_ROOTOID (oid) && fpcache_remove_by_class (thread_p, oid) != NO_ERROR)

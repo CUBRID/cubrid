@@ -105,7 +105,7 @@ lf_callback_vpid_compare (void *vpid_1, void *vpid_2)
 /*
  * lf_callback_vpid_copy () - copy a vpid
  *   returns: error code or NO_ERROR
- *   stc(in): source VPID
+ *   src(in): source VPID
  *   dest(in): destination to copy to
  */
 int
@@ -309,7 +309,7 @@ lf_tran_destroy_entry (LF_TRAN_ENTRY * entry)
  *   return: error code or NO_ERROR
  *   sys(in): tran system
  */
-int
+void
 lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys)
 {
   UINT64 minvalue = LF_NULL_TRANSACTION_ID;
@@ -346,13 +346,14 @@ lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys)
  *   entry(in): tran entry
  *   incr(in): increment global counter?
  */
-int
+void
 lf_tran_start (LF_TRAN_ENTRY * entry, bool incr)
 {
   LF_TRAN_SYSTEM *sys;
 
   assert (entry != NULL);
   assert (entry->tran_system != NULL);
+  assert (entry->transaction_id == LF_NULL_TRANSACTION_ID);
 
   sys = entry->tran_system;
 
@@ -362,16 +363,13 @@ lf_tran_start (LF_TRAN_ENTRY * entry, bool incr)
 
       if (entry->transaction_id % entry->tran_system->mati_refresh_interval == 0)
 	{
-	  return lf_tran_compute_minimum_transaction_id (entry->tran_system);
+	  lf_tran_compute_minimum_transaction_id (entry->tran_system);
 	}
     }
   else
     {
       entry->transaction_id = VOLATILE_ACCESS (sys->global_transaction_id, UINT64);
     }
-
-  /* all ok */
-  return NO_ERROR;
 }
 
 /*
@@ -384,10 +382,8 @@ int
 lf_tran_end (LF_TRAN_ENTRY * entry)
 {
   /* maximum value of domain */
+  assert (entry->transaction_id != LF_NULL_TRANSACTION_ID);
   entry->transaction_id = LF_NULL_TRANSACTION_ID;
-
-  /* all ok */
-  return NO_ERROR;
 }
 
 /*
@@ -719,11 +715,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
   if (tran_entry->transaction_id == LF_NULL_TRANSACTION_ID)
     {
       local_tran = true;
-      if (lf_tran_start (tran_entry, true) != NO_ERROR)
-	{
-	  return NULL;
-	}
-      MEMORY_BARRIER ();
+      lf_tran_start_with_mb (tran_entry, true);
     }
 
   /* clean retired list, if possible */
@@ -734,8 +726,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	  /* end local transaction */
 	  if (local_tran)
 	    {
-	      MEMORY_BARRIER ();
-	      (void) lf_tran_end (tran_entry);
+	      lf_tran_end_with_mb (tran_entry);
 	    }
 	  return NULL;
 	}
@@ -757,8 +748,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	      /* end local transaction */
 	      if (local_tran)
 		{
-		  MEMORY_BARRIER ();
-		  (void) lf_tran_end (tran_entry);
+		  lf_tran_end_with_mb (tran_entry);
 		}
 	      /* can't initialize it */
 	      return NULL;
@@ -770,8 +760,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	  /* end local transaction */
 	  if (local_tran)
 	    {
-	      MEMORY_BARRIER ();
-	      (void) lf_tran_end (tran_entry);
+	      lf_tran_end_with_mb (tran_entry);
 	    }
 
 	  /* done! */
@@ -787,8 +776,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	      /* end local transaction */
 	      if (local_tran)
 		{
-		  MEMORY_BARRIER ();
-		  (void) lf_tran_end (tran_entry);
+		  lf_tran_end_with_mb (tran_entry);
 		}
 	      return NULL;
 	    }
@@ -826,11 +814,7 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
   if (tran_entry->transaction_id == LF_NULL_TRANSACTION_ID)
     {
       local_tran = true;
-      if (lf_tran_start (tran_entry, true) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-      MEMORY_BARRIER ();
+      lf_tran_start_with_mb (tran_entry, true);
     }
 
   /* do a retired list cleanup, if possible */
@@ -857,11 +841,7 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
   /* end local transaction */
   if (local_tran)
     {
-      MEMORY_BARRIER ();
-      if (lf_tran_end (tran_entry) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
+      lf_tran_end_with_mb (tran_entry);
     }
 
   return ret;
@@ -1149,11 +1129,7 @@ lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flag
   (*entry) = NULL;
 
 restart_search:
-  if (lf_tran_start (tran, false) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  MEMORY_BARRIER ();
+  lf_tran_start_with_mb (tran_entry, false);
 
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
@@ -1171,11 +1147,7 @@ restart_search:
 	      rv = pthread_mutex_lock (entry_mutex);
 
 	      /* mutex has been locked, no need to keep transaction */
-	      MEMORY_BARRIER ();
-	      if (lf_tran_end (tran) != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
+	      lf_tran_end_with_mb (tran_entry);
 
 	      if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		{
@@ -1185,8 +1157,8 @@ restart_search:
 		  if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		    {
 		      *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-		      MEMORY_BARRIER ();
-		      return lf_tran_end (tran);
+		      lf_tran_end_with_mb (tran_entry);
+		      return NO_ERROR;
 		    }
 		  else
 		    {
@@ -1205,7 +1177,8 @@ restart_search:
     }
 
   /* all ok but not found */
-  return lf_tran_end (tran);
+  lf_tran_end_with_mb (tran_entry);
+  return NO_ERROR;
 }
 
 /*
@@ -1262,11 +1235,7 @@ lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *be
 
 restart_search:
 
-  if (lf_tran_start (tran, false) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  MEMORY_BARRIER ();
+  lf_tran_start_with_mb (tran_entry, false);
 
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
@@ -1296,11 +1265,7 @@ restart_search:
 		  rv = pthread_mutex_lock (entry_mutex);
 
 		  /* mutex has been locked, no need to keep transaction alive */
-		  MEMORY_BARRIER ();
-		  if (lf_tran_end (tran) != NO_ERROR)
-		    {
-		      return ER_FAILED;
-		    }
+		  lf_tran_end_with_mb (tran);
 
 		  if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		    {
@@ -1310,8 +1275,8 @@ restart_search:
 		      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 			{
 			  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-			  MEMORY_BARRIER ();
-			  return lf_tran_end (tran);
+			  lf_tran_end_with_mb (tran);
+			  return NO_ERROR;
 			}
 		      else
 			{
@@ -1326,12 +1291,13 @@ restart_search:
 		  if (edesc->f_duplicate (key, curr) != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
-		      return ER_FAILED;
+		      lf_tran_end_with_mb (tran);
+		      return NO_ERROR;
 		    }
 #if 1
 		  LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
-		  MEMORY_BARRIER ();
-		  return lf_tran_end (tran);
+		  lf_tran_end_with_mb (tran);
+		  return NO_ERROR;
 #else /* !1 = 0 */
 		  /* Could we have such cases that we just update existing entry without modifying anything else?
 		   * And would it be usable with just a flag?
@@ -1345,8 +1311,8 @@ restart_search:
 		  if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_RESTART_ON_DUPLICATE))
 		    {
 		      LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
-		      MEMORY_BARRIER ();
-		      return lf_tran_end (tran);
+		      lf_tran_end_with_mb (tran);
+		      return NO_ERROR;
 		    }
 		  else
 		    {
@@ -1374,8 +1340,8 @@ restart_search:
 		  if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_FIND_OR_INSERT))
 		    {
 		      /* found entry is not accepted */
-		      MEMORY_BARRIER ();
-		      return lf_tran_end (tran);
+		      lf_tran_end_with_mb (tran);
+		      return NO_ERROR;
 		    }
 
 		  /* fall through to output current entry. */
@@ -1438,8 +1404,8 @@ restart_search:
 		      *entry = NULL;
 		    }
 		  LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
-		  MEMORY_BARRIER ();
-		  return lf_tran_end (tran);
+		  lf_tran_end_with_mb (tran);
+		  return NO_ERROR;
 		}
 	      else
 		{
@@ -1450,11 +1416,7 @@ restart_search:
 	  /* end transaction if mutex is acquired */
 	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
 	    {
-	      MEMORY_BARRIER ();
-	      if (lf_tran_end (tran) != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
+	      lf_tran_end_with_mb (tran);
 	    }
 	  if (inserted)
 	    {
@@ -1503,12 +1465,9 @@ lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_fl
   assert (tran != NULL && tran->tran_system != NULL);
 
 restart_search:
-  if (lf_tran_start (tran, false) != NO_ERROR)
-    {
-/* read transaction; we start a write transaction only after remove */
-      return ER_FAILED;
-    }
-  MEMORY_BARRIER ();
+
+  /* read transaction; we start a write transaction only after remove */
+  lf_tran_start_with_mb (tran_entry, false);
 
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
@@ -1531,8 +1490,7 @@ restart_search:
 		{
 		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		  assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
-		  MEMORY_BARRIER ();
-		  return lf_tran_end (tran);
+		  lf_tran_end_with_mb (tran);
 		}
 	      else
 		{
@@ -1570,8 +1528,7 @@ restart_search:
 		{
 		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		  assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
-		  MEMORY_BARRIER ();
-		  return lf_tran_end (tran);
+		  lf_tran_end_with_mb (tran);
 		}
 	      else
 		{
@@ -1587,11 +1544,7 @@ restart_search:
 	    }
 
 	  MEMORY_BARRIER ();
-	  if (lf_tran_start (tran, true) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	  MEMORY_BARRIER ();
+	  lf_tran_start_with_mb (tran, true);
 
 	  /* now we can feed the entry to the freelist and forget about it */
 	  if (lf_freelist_retire (tran, freelist, curr) != NO_ERROR)
@@ -1600,11 +1553,7 @@ restart_search:
 	    }
 
 	  /* end the transaction */
-	  MEMORY_BARRIER ();
-	  if (lf_tran_end (tran) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
+	  lf_tran_end_with_mb (tran);
 
 	  /* set success flag */
 	  if (success != NULL)
@@ -1622,11 +1571,7 @@ restart_search:
     }
 
   /* search yielded no result so no delete was performed */
-  MEMORY_BARRIER ();
-  if (lf_tran_end (tran) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
+  lf_tran_end_with_mb (tran);
   return NO_ERROR;
 }
 
@@ -2043,12 +1988,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
   if (ret_head != NULL)
     {
       /* reuse entries */
-      if (lf_tran_start (tran, true) != NO_ERROR)
-	{
-	  pthread_mutex_unlock (&table->backbuffer_mutex);
-	  return ER_FAILED;
-	}
-      MEMORY_BARRIER ();
+      lf_tran_start_with_mb (tran, true);
 
       for (curr = ret_head; curr != NULL; curr = OF_GET_PTR_DEREF (curr, edesc->of_local_next))
 	{
@@ -2061,12 +2001,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 
       ATOMIC_INC_32 (&table->freelist->retired_cnt, ret_count);
 
-      MEMORY_BARRIER ();
-      if (lf_tran_end (tran) != NO_ERROR)
-	{
-	  pthread_mutex_unlock (&table->backbuffer_mutex);
-	  return ER_FAILED;
-	}
+      lf_tran_end_with_mb (tran);
     }
 
   /* unlock mutex and return to caller */
@@ -2139,20 +2074,8 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
       else
 	{
 	  /* reset transaction for each bucket */
-	  MEMORY_BARRIER ();
-	  if (lf_tran_end (tran_entry) != NO_ERROR)
-	    {
-	      /* should not happen */
-	      assert (false);
-	      return NULL;
-	    }
-	  if (lf_tran_start (tran_entry, false) != NO_ERROR)
-	    {
-	      /* should not happen */
-	      assert (false);
-	      return NULL;
-	    }
-	  MEMORY_BARRIER ();
+	  lf_tran_end_with_mb (tran);
+	  lf_tran_start_with_mb (tran, false);
 
 	  /* load next bucket */
 	  it->bucket_index++;
@@ -2164,12 +2087,7 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 	  else
 	    {
 	      /* end */
-	      MEMORY_BARRIER ();
-	      if (lf_tran_end (tran_entry) != NO_ERROR)
-		{
-		  /* nothing we can report here, but shouldn't happen */
-		  assert (false);
-		}
+	      lf_tran_end_with_mb (tran);
 	      return NULL;
 	    }
 	}

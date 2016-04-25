@@ -28219,7 +28219,7 @@ heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, 
   assert (entry->hfid.hpgid == NULL_PAGEID);
 
   HFID_COPY (&entry->hfid, hfid);
-  (void) lf_tran_end (t_entry);
+  lf_tran_end_with_mb (t_entry);
 
   /* Successfully cached. */
   return NO_ERROR;
@@ -28271,7 +28271,7 @@ heap_get_hfid_from_cache (THREAD_ENTRY * thread_p, const OID * class_oid, HFID *
       HFID_SET_NULL (hfid);
     }
 
-  (void) lf_tran_end (t_entry);
+  lf_tran_end_with_mb (t_entry);
   return error_code;
 }
 

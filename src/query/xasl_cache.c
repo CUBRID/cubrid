@@ -463,6 +463,8 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
       return NO_ERROR;
     }
   /* Found a match. */
+  /* We have incremented fix count, we don't need lf_tran anymore. */
+  lf_tran_end_with_mb (t_entry);
 
   /* Get lock on all classes in xasl cache entry. */
   for (oid_index = 0; oid_index < (*xcache_entry)->n_oid_list; oid_index++)
@@ -683,7 +685,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
     }
 }
 
-int
+static bool
 xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
@@ -706,7 +708,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 			    XCACHE_LOG_ENTRY_ARGS (xcache_entry),
 			    XCACHE_LOG_TRAN_ARGS (thread_p));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_FAILED;
+	  return false;
 	}
       if (cache_flag & XCACHE_ENTRY_TO_BE_RECOMPILED)
 	{
@@ -718,7 +720,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 			    XCACHE_LOG_TRAN_ARGS (thread_p));
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_FAILED;
+	  return false;
 	}
       if (cache_flag & XCACHE_ENTRY_WAS_RECOMPILED)
 	{
@@ -726,7 +728,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 	   * with XCACHE_ENTRY_MARK_DELETED. */
 	  cache_flag &= ~XCACHE_ENTRY_WAS_RECOMPILED;
 	}
-      new_cache_flag = (cache_flag - 1) | XCACHE_ENTRY_MARK_DELETED;
+      new_cache_flag = cache_flag | XCACHE_ENTRY_MARK_DELETED;
     } while (!XCACHE_ATOMIC_CAS_CACHE_FLAG (&xcache_entry->xasl_id, cache_flag, new_cache_flag));
 
   xcache_log ("marked entry as deleted: \n"
@@ -738,30 +740,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
   ATOMIC_INC_64 (&xcache_Stat_deletes, 1);
   ATOMIC_INC_32 (&xcache_Entry_counter, -1);
 
-  if (new_cache_flag == XCACHE_ENTRY_MARK_DELETED)
-    {
-      /* No one else is reading the entry. We can also remove it from hash. */
-      xcache_log ("delete entry after marking it as deleted: \n"
-		  XCACHE_LOG_ENTRY_TEXT ("entry")
-		  XCACHE_LOG_TRAN_TEXT,
-		  XCACHE_LOG_ENTRY_ARGS (xcache_entry),
-		  XCACHE_LOG_TRAN_ARGS (thread_p));
-      error_code = lf_hash_delete (t_entry, &xcache_Ht, &xcache_entry->xasl_id, &success);
-      if (error_code != NO_ERROR)
-	{
-	  /* Errors are not expected. */
-	  assert (false);
-	  return error_code;
-	}
-      if (success == 0)
-	{
-	  /* Failure is not expected. */
-	  assert (false);
-	  return ER_FAILED;
-	}
-    }
-  /* Success */
-  return NO_ERROR;
+  return (new_cache_flag == XCACHE_ENTRY_MARK_DELETED);
 }
 
 int
@@ -865,6 +844,9 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
 	  goto error;
 	}
       assert (*xcache_entry != NULL);
+
+      /* We have incremented fix count, we don't need lf_tran anymore. */
+      lf_tran_end_with_mb (t_entry);
 
       if (inserted)
 	{
@@ -1014,20 +996,24 @@ error:
   return error_code;
 }
 
-int
+void
 xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid)
 {
+#define XCACHE_DELETE_XIDS_SIZE 1024
   LF_HASH_TABLE_ITERATOR iter;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
-  XASL_CACHE_ENTRY *xcache_entry;
-  XASL_CACHE_ENTRY *del_prev_entry = NULL;
+  XASL_CACHE_ENTRY *xcache_entry = NULL;
   int oid_idx;
-  int error_code = NO_ERROR;
-  int return_error = NO_ERROR;
+  bool can_delete = false;
+  int success;
+  XASL_ID delete_xids[XCACHE_DELETE_XIDS_SIZE];
+  int n_delete_xids = 0;
+  int xid_index = 0;
+  bool finished = false;
 
   if (!xcache_Enabled)
     {
-      return NO_ERROR;
+      return;
     }
 
   xcache_check_logging ();
@@ -1038,42 +1024,65 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid)
 	      OID_AS_ARGS (oid),
 	      XCACHE_LOG_TRAN_ARGS (thread_p));
 
-  lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
+restart:
 
-  while (true)
+  while (!finished)
     {
-      /* Start by iterating to next hash entry. */
-      xcache_entry = lf_hash_iterate (&iter);
-
-      /* Check if previous hash entry must be deleted. */
-      if (del_prev_entry != NULL)
+      /* Create iterator. */
+      lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
+      
+      /* Iterate through hash, check entry OID's and if one matches the argument, mark the entry for delete and save
+       * it in delete_xids buffer. We cannot delete them from hash while iterating, because the one lock-free
+       * transaction can be used for one hash entry only.
+       */
+      while (true)
 	{
-	  error_code = xcache_entry_mark_deleted (thread_p, del_prev_entry);
-	  if (error_code != NO_ERROR)
+	  xcache_entry = lf_hash_iterate (&iter);
+	  if (xcache_entry == NULL)
 	    {
-	      assert (false);
-	      return_error = error_code;
+	      finished = true;
+	      break;
 	    }
-	  del_prev_entry = NULL;
-	}
-
-      if (xcache_entry == NULL)
-	{
-	  /* Finished hash iteration. */
-	  break;
-	}
-
-      for (oid_idx = 0; oid_idx < xcache_entry->n_oid_list; oid_idx++)
-	{
-	  if (OID_EQ (&xcache_entry->class_oid_list[oid_idx], oid))
+	  
+	  for (oid_idx = 0; oid_idx < xcache_entry->n_oid_list; oid_idx++)
 	    {
-	      /* Save entry to be deleted after we advance to next hash entry. */
-	      del_prev_entry = xcache_entry;
+	      if (OID_EQ (&xcache_entry->class_oid_list[oid_idx], oid))
+		{
+		  /* Mark entry as deleted. */
+		  if (xcache_entry_mark_deleted (thread_p, xcache_entry))
+		    {
+		      /* Successfully marked for delete. Save it to delete after the iteration. */
+		      delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
+		    }
+		  break;
+		}
+	    }
+	  
+	  if (n_delete_xids == XCACHE_DELETE_XIDS_SIZE)
+	    {
+	      /* Full buffer. Interrupt iteration and we'll start over. */
+	      lf_tran_end_with_mb (t_entry);
 	      break;
 	    }
 	}
+
+      /* Remove collected entries. */
+      for (xid_index = 0; xid_index < n_delete_xids; xid_index++)
+	{
+	  if (lf_hash_delete (t_entry, &xcache_Ht, &delete_xids[xid_index], &success) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	  if (success == 0)
+	    {
+	      /* I don't think this is expected. */
+	      assert (false);
+	    }
+	}
+      n_delete_xids = 0;
     }
-  return return_error;
+
+#undef XCACHE_DELETE_XIDS_SIZE
 }
 
 void

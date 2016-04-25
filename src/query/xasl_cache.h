@@ -66,7 +66,7 @@ extern void xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_ent
 extern int xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, const OID * oid, int n_oid,
 			  const OID * class_oids, const int * class_locks, const int *tcards, bool recompile,
 			  XASL_CACHE_ENTRY ** xcache_entry);
-extern int xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid);
+extern void xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid);
 extern void xcache_dump (THREAD_ENTRY * thread_p, FILE * fp);
 
 extern bool xcache_can_entry_cache_list (XASL_CACHE_ENTRY * xcache_entry);

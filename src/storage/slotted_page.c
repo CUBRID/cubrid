@@ -363,7 +363,7 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
   while (entry != NULL)
     {
       /* we are about to access a lock-free pointer; make sure it's retained until we're done with it */
-      (void) lf_tran_start (t_entry, false);
+      lf_tran_start_with_mb (t_entry, false);
 
       current = entry;
       head = entry->head;
@@ -377,7 +377,7 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
       rv = pthread_mutex_lock (&head->mutex);
 
       /* mutex acquired, no need for lock-free transaction */
-      (void) lf_tran_end (t_entry);
+      lf_tran_end_with_mb (t_entry);
 
       /* Delete the current node from save entry list */
       if (current->prev == NULL)

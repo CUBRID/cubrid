@@ -326,56 +326,69 @@ fpcache_retire (THREAD_ENTRY * thread_p, BTID * btid, PRED_EXPR_WITH_CONTEXT * f
   return error_code;
 }
 
-int
+void
 fpcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
 {
+#define FPCACHE_DELETE_BTIDS_SIZE 1024
+
   LF_HASH_TABLE_ITERATOR iter;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
   FPCACHE_ENTRY *fpcache_entry;
-  FPCACHE_ENTRY *del_prev_entry = NULL;
-  int error_code = NO_ERROR;
-  int return_error = NO_ERROR;
   int dummy_success = 0;
+  BTID delete_btids[FPCACHE_DELETE_BTIDS_SIZE];
+  int n_delete_btids = 0;
+  int btid_index = 0;
+  bool finished = false;
 
   if (!fpcache_Enabled)
     {
       return NO_ERROR;
     }
 
-  lf_hash_create_iterator (&iter, t_entry, &fpcache_Ht);
-
-  while (true)
+  while (!finished)
     {
-      /* Start by iterating to next hash entry. */
-      fpcache_entry = lf_hash_iterate (&iter);
+      lf_hash_create_iterator (&iter, t_entry, &fpcache_Ht);
 
-      /* Check if previous hash entry must be deleted. */
-      if (del_prev_entry != NULL)
+      while (true)
 	{
-	  ATOMIC_INC_64 (&fpcache_Stat_discard, 1);
-	  ATOMIC_INC_64 (&fpcache_Stat_clone_discard, del_prev_entry->clone_stack_head + 1);
-	  error_code = lf_hash_delete (t_entry, &fpcache_Ht, &del_prev_entry->btid, &dummy_success);
-	  if (error_code != NO_ERROR)
+	  /* Start by iterating to next hash entry. */
+	  fpcache_entry = lf_hash_iterate (&iter);
+
+	  if (fpcache_entry == NULL)
+	    {
+	      /* Finished hash. */
+	      finished = true;
+	      break;
+	    }
+
+	  if (OID_EQ (&fpcache_entry->class_oid, class_oid))
+	    {
+	      /* Save entry to be deleted after the iteration.
+	       * We cannot delete from hash while iterating. The lock-free transaction used by iterator cannot be used
+	       * for delete too (and we have just one transaction for each thread).
+	       */
+	      delete_btids[n_delete_btids++] = fpcache_entry->btid;
+
+	      if (n_delete_btids == FPCACHE_DELETE_BTIDS_SIZE)
+		{
+		  /* Full buffer. Interrupt iteration, delete entries collected so far and then start over. */
+		  lf_tran_end_with_mb (tran);
+		  break;
+		}
+	    }
+	}
+
+      /* Delete collected btids. */
+      for (btid_index = 0; btid_index < n_delete_btids; btid_index++)
+	{
+	  if (lf_hash_delete (t_entry, &fpcache_Ht, &delete_btids[btid_index], &dummy_success) != NO_ERROR)
 	    {
 	      assert (false);
-	      return_error = error_code;
 	    }
-	  del_prev_entry = NULL;
-	}
-
-      if (fpcache_entry == NULL)
-	{
-	  /* Finished hash iteration. */
-	  break;
-	}
-
-      if (OID_EQ (&fpcache_entry->class_oid, class_oid))
-	{
-	  /* Save entry to be deleted after we advance to next hash entry. */
-	  del_prev_entry = fpcache_entry;
 	}
     }
-  return error_code;
+
+#undef FPCACHE_DELETE_BTIDS_SIZE
 }
 
 void

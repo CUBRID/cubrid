@@ -228,10 +228,15 @@ extern void lf_tran_system_destroy (LF_TRAN_SYSTEM * sys);
 extern LF_TRAN_ENTRY *lf_tran_request_entry (LF_TRAN_SYSTEM * sys);
 extern int lf_tran_return_entry (LF_TRAN_ENTRY * entry);
 extern void lf_tran_destroy_entry (LF_TRAN_ENTRY * entry);
-extern int lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys);
+extern void lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys);
 
-extern int lf_tran_start (LF_TRAN_ENTRY * entry, bool incr);
-extern int lf_tran_end (LF_TRAN_ENTRY * entry);
+extern void lf_tran_start (LF_TRAN_ENTRY * entry, bool incr);
+extern void lf_tran_end (LF_TRAN_ENTRY * entry);
+/* TODO: Investigate memory barriers. First of all, I need to check if it breaks the inlining of lf_tran_start and
+ *	 lf_tran_end functions. Second of all, full memory barriers might not be necessary.
+ */
+#define lf_tran_start_with_mb(entry, incr) lf_tran_start (entry, incr); MEMORY_BARRIER ()
+#define lf_tran_end_with_mb(entry) MEMORY_BARRIER (); lf_tran_end (entry)
 
 /*
  * Global lock free transaction system declarations
