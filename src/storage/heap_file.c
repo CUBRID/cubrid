@@ -23748,12 +23748,15 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       return ER_FAILED;
     }
 
+  HEAP_PERF_TRACK_PREPARE (thread_p, context);
+
   /* update */
   if (is_mvcc_op)
     {
       /* in mvcc, old ovf record is deleted at update - log mvcc delete on old overflow to notify vacuum */
       heap_log_update_undo (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
 			    &context->oid, &context->home_recdes, RVHF_MVCC_UPDATE_OVERFLOW);
+      HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* set old version lsa */
       or_mvcc_set_log_lsa_to_record (context->recdes_p, logtb_find_current_tran_lsa (thread_p));
@@ -23805,14 +23808,13 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
 	  /* dirty home page */
 	  pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr, DONT_FREE);
-
-	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 	}
       else
 	{
 	  OID newhome_oid[2];
 
 	  /* insert new home */
+	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	  context->recdes_p->type = REC_NEWHOME;
 	  if (heap_insert_newhome (thread_p, context, context->recdes_p, &newhome_oid[0]) != NO_ERROR)
 	    {
@@ -23855,15 +23857,14 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	      assert (false);
 	      return ER_FAILED;
 	    }
+	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	}
-
-      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       /* location did not change */
       COPY_OID (&context->res_oid, &context->oid);
     }
 
-  mnt_heap_big_updates (thread_p);	/* ??? */
+  mnt_heap_big_updates (thread_p);
 
   /* all ok */
   return NO_ERROR;
@@ -23905,8 +23906,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       return ER_FAILED;
     }
 
-  HEAP_PERF_TRACK_PREPARE (thread_p, context);
-
   /* fix header if necessary */
   fits_in_home =
     spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, context->recdes_p->length);
@@ -23932,6 +23931,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       return ER_FAILED;
     }
 
+  HEAP_PERF_TRACK_PREPARE (thread_p, context);
+
   /* log old record first, to be able to set new record prev_version_lsa for mvcc */
   if (fits_in_home || (!fits_in_home && !fits_in_forward) || heap_is_big_length (context->recdes_p->length))
     {
@@ -23952,6 +23953,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       update_old_forward = true;
       /* for non mvcc operations, the redo logging can also be done here, maybe... */
     }
+  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
   if (is_mvcc_op)
     {
@@ -23976,6 +23978,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   else if (!fits_in_forward && !fits_in_home)
     {
       /* insert a new forward record */
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
       context->recdes_p->type = REC_NEWHOME;
       rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid[0]);
       if (rc != NO_ERROR)
@@ -24010,8 +24013,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       return ER_FAILED;
     }
 
-  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
-
   /* The old rec_newhome must be removed or updated */
   assert (remove_old_forward || update_old_forward);
   /* Remove rec_newhome only in case of old_home update */
@@ -24024,17 +24025,14 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
     {
       bool mark_reusable = true;
 
-      HEAP_PERF_TRACK_LOGGING (thread_p, context);
-
       /* physical removal of forward record */
       rc = heap_delete_physical (thread_p, &context->hfid, context->forward_page_watcher_p->pgptr, &forward_oid);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
-
-      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
+  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
   /* 
    * Update old home record (if necessary)
@@ -24135,6 +24133,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   /* log update undo by saving old record */
   heap_log_update_undo (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 			&context->home_recdes, (is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
+  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
   if (is_mvcc_op)
     {
@@ -24152,6 +24151,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	}
 
       /* insert new overflow record */
+      HEAP_PERF_TRACK_PREPARE (thread_p, context);
       if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid[0], context->recdes_p) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -24178,6 +24178,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	}
 
       /* insert new home record */
+      HEAP_PERF_TRACK_PREPARE (thread_p, context);
       context->recdes_p->type = REC_NEWHOME;
       error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &forward_oid[0]);
       if (error_code != NO_ERROR)
@@ -24222,6 +24223,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  assert (false);
 	  return ER_FAILED;
 	}
+      HEAP_PERF_TRACK_PREPARE (thread_p, context);
     }
 
   /* log operation redo, undo log already done */
