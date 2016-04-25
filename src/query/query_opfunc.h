@@ -157,6 +157,12 @@ struct execution_info
   char *sql_user_text;		/* original query statement that user input */
   char *sql_plan_text;		/* plans for this query */
 };
+#define EXEINFO_HASH_TEXT_STRING(einfo) ((einfo)->sql_hash_text ? (einfo)->sql_hash_text : "UNKNOWN HASH TEXT")
+#define EXEINFO_USER_TEXT_STRING(einfo) ((einfo)->sql_user_text ? (einfo)->sql_user_text : "UNKNOWN USER TEXT")
+#define EXEINFO_PLAN_TEXT_STRING(einfo) ((einfo)->sql_plan_text ? (einfo)->sql_plan_text : "UNKNOWN PLAN TEXT")
+
+#define EXEINFO_AS_ARGS(einfo)	\
+  EXEINFO_USER_TEXT_STRING(einfo), EXEINFO_PLAN_TEXT_STRING(einfo), EXEINFO_HASH_TEXT_STRING(einfo)
 
 /* Object for enabling performing aggregate optimizations on class
  * hierarchies

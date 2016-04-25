@@ -5299,7 +5299,7 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
   else
     {
       /* create */
-      qfile_List_cache.n_hts = prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) + 10;
+      qfile_List_cache.n_hts = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) + 10;
       qfile_List_cache.list_hts = (MHT_TABLE **) calloc (qfile_List_cache.n_hts, sizeof (MHT_TABLE *));
       if (qfile_List_cache.list_hts == NULL)
 	{

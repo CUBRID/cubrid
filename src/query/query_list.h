@@ -68,6 +68,8 @@ struct cache_time
   int usec;
 };
 
+#define CACHE_TIME_AS_ARGS(ct)	(ct)->sec, (ct)->usec
+
 #define CACHE_TIME_EQ(T1, T2)               \
         (((T1)->sec != 0) &&                \
          ((T1)->sec == (T2)->sec) &&        \

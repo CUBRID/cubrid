@@ -54,6 +54,9 @@ static INT64 xcache_Stat_unfix;
 static INT64 xcache_Stat_inserts;
 static INT64 xcache_Stat_found_at_insert;
 
+/* Logging. */
+static bool xcache_Log = false;
+
 /* xcache_Entry_descriptor - used for latch-free hash table.
  * we have to declare member functions before instantiating xcache_Entry_descriptor.
  */
@@ -89,6 +92,62 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
 #define XCACHE_ATOMIC_TAS_CACHE_FLAG(xid, cf) (ATOMIC_TAS_32 (&(xid)->cache_flag, cf))
 #define XCACHE_ATOMIC_CAS_CACHE_FLAG(xid, oldcf, newcf) (ATOMIC_CAS_32 (&(xid)->cache_flag, oldcf, newcf))
 
+/* Logging macro's */
+#define xcache_check_logging() (xcache_Log = prm_get_bool_value (PRM_ID_XASL_CACHE_LOGGING))
+#define xcache_log(...) if (xcache_Log) _er_log_debug (ARG_FILE_LINE, "XASL CACHE: " __VA_ARGS__)
+#define xcache_log_error(...) if (xcache_Log) _er_log_debug (ARG_FILE_LINE, "XASL CACHE ERROR: " __VA_ARGS__)
+
+#define XCACHE_LOG_TRAN_TEXT		  "\t tran = %d \n"
+#define XCACHE_LOG_ERROR_TEXT		  "\t error_code = %d \n"
+#define XCACHE_LOG_ENTRY_PTR_TEXT	  "\t\t entry ptr = %p \n"
+#define XCACHE_LOG_SHA1_TEXT		  "\t\t\t sha1 = %08x | %08x | %08x | %08x | %08x \n"
+#define XCACHE_LOG_FVPID_TEXT		  "\t\t\t first vpid = %d|%d \n"
+#define XCACHE_LOG_TEMPVFID_TEXT	  "\t\t\t temp vfid = %d|%d \n"
+#define XCACHE_LOG_TIME_STORED_TEXT	  "\t\t\t time stored = %d sec, %d usec \n"
+#define XCACHE_LOG_EXEINFO_TEXT		  "\t\t\t user text = %s \n"					  \
+					  "\t\t\t plan text = %s \n"					  \
+					  "\t\t\t hash text = %s \n"
+#define XCACHE_LOG_OBJECT_TEXT		  "\t\t\t oid = %d|%d|%d \n"					  \
+					  "\t\t\t lock = %s \n"						  \
+					  "\t\t\t tcard = %d \n"
+
+
+#define XCACHE_LOG_XASL_ID_TEXT(msg)									  \
+  "\t\t " msg ": \n"											  \
+  XCACHE_LOG_SHA1_TEXT											  \
+  XCACHE_LOG_FVPID_TEXT											  \
+  XCACHE_LOG_TEMPVFID_TEXT										  \
+  XCACHE_LOG_TIME_STORED_TEXT
+
+#define XCACHE_LOG_ENTRY_TEXT(msg)	 								  \
+  "\t " msg ": \n"											  \
+  XCACHE_LOG_ENTRY_PTR_TEXT										  \
+  XCACHE_LOG_XASL_ID_TEXT ("xasl_id")									  \
+  "\t\t sql_info: \n"											  \
+  XCACHE_LOG_EXEINFO_TEXT										  \
+  "\t\t n_oids = %d \n"
+
+#define XCACHE_LOG_ENTRY_OBJECT_TEXT(msg)								  \
+  "\t\t " msg ": \n"											  \
+  XCACHE_LOG_OBJECT_TEXT
+
+#define XCACHE_LOG_TRAN_ARGS(thrd) LOG_FIND_THREAD_TRAN_INDEX (thrd)
+#define XCACHE_LOG_SHA1_ARGS(sha1) SHA1_AS_ARGS (sha1)
+#define XCACHE_LOG_XASL_ID_ARGS(xid)									  \
+  SHA1_AS_ARGS (&(xid)->sha1),										  \
+  VPID_AS_ARGS (&(xid)->first_vpid),									  \
+  VFID_AS_ARGS (&(xid)->temp_vfid),									  \
+  CACHE_TIME_AS_ARGS (&(xid)->time_stored)
+#define XCACHE_LOG_ENTRY_ARGS(xent)									  \
+  (xent),												  \
+  XCACHE_LOG_XASL_ID_ARGS (&(xent)->xasl_id),								  \
+  EXEINFO_AS_ARGS(&(xent)->sql_info),									  \
+  (xent)->n_oid_list
+#define XCACHE_LOG_ENTRY_OBJECT_ARGS(xent, oidx)							  \
+  OID_AS_ARGS (&(xent)->class_oid_list[oidx]),								  \
+  LOCK_TO_LOCKMODE_STRING ((xent)->class_locks[oidx]),							  \
+  (xent)->tcard_list[oidx]
+
 static bool xcache_fix (XASL_ID * xid);
 
 int
@@ -97,16 +156,20 @@ xcache_initialize (void)
   int error_code = NO_ERROR;
 
   xcache_Enabled = false;
+
+  xcache_check_logging ();
   
-  xcache_Soft_capacity = prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES);
+  xcache_Soft_capacity = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES);
   if (xcache_Soft_capacity <= 0)
     {
+      xcache_log ("disabled.\n");
       return NO_ERROR;
     }
 
   error_code = lf_freelist_init (&xcache_Ht_freelist, 1, xcache_Soft_capacity, &xcache_Entry_descriptor, &xcache_Ts);
   if (error_code != NO_ERROR)
     {
+      xcache_log_error ("could not init freelist.\n");
       return error_code;
     }
   
@@ -115,6 +178,7 @@ xcache_initialize (void)
   if (error_code != NO_ERROR)
     {
       lf_freelist_destroy (&xcache_Ht_freelist);
+      xcache_log_error ("could not init hash table.\n");
       return error_code;
     }
   xcache_Entry_counter = 0;
@@ -131,6 +195,8 @@ xcache_initialize (void)
   xcache_Stat_inserts = 0;
   xcache_Stat_found_at_insert = 0;
 
+  xcache_log ("init successful.\n");
+
   xcache_Enabled = true;
   return NO_ERROR;
 }
@@ -142,6 +208,9 @@ xcache_finalize (void)
     {
       return;
     }
+
+  xcache_check_logging ();
+  xcache_log ("finalize.\n");
 
   lf_freelist_destroy (&xcache_Ht_freelist);
   lf_hash_destroy (&xcache_Ht);
@@ -178,8 +247,15 @@ static int
 xcache_entry_uninit (void *entry)
 {
   XASL_CACHE_ENTRY *xcache_entry = XCACHE_PTR_TO_ENTRY (entry);
+  THREAD_ENTRY *thread_p = NULL;
 
   assert ((xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) == 0);
+
+  xcache_log ("uninit an entry from cache: \n"
+	      XCACHE_LOG_ENTRY_TEXT("xasl cache entry")
+	      XCACHE_LOG_TRAN_TEXT,
+	      XCACHE_LOG_ENTRY_ARGS (xcache_entry),
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
 
   if (xcache_entry->class_locks != NULL)
     {
@@ -210,10 +286,19 @@ static int
 xcache_copy_key (void *src, void *dest)
 {
   /* Key is already set before insert. */
-#if !defined (NDEBUG)
   XASL_ID *xid = (XASL_ID *) dest;
+  THREAD_ENTRY *thread_p = NULL;
+
+#if !defined (NDEBUG)
   assert (xid->cache_flag == 1);    /* One reader, no flags. */
 #endif /* !NDEBUG */
+
+  xcache_log ("dummy copy key call: \n"
+	      XCACHE_LOG_XASL_ID_TEXT("key")
+	      XCACHE_LOG_TRAN_TEXT,
+	      XCACHE_LOG_XASL_ID_ARGS (xid),
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
+
   return NO_ERROR;
 }
 
@@ -223,10 +308,19 @@ xcache_compare_key (void *key1, void *key2)
   XASL_ID *lookup_key = XCACHE_PTR_TO_KEY (key1);
   XASL_ID *entry_key = XCACHE_PTR_TO_KEY (key2);
   INT32 cache_flag;
+  THREAD_ENTRY *thread_p = NULL;
 
   if (SHA1Compare (&lookup_key->sha1, &entry_key->sha1) != 0)
     {
       /* Not the same query. */
+      
+      xcache_log ("compare keys: sha1 mismatch\n"
+		  "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
+		  "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
+		  XCACHE_LOG_TRAN_TEXT,
+		  XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
+		  XCACHE_LOG_SHA1_ARGS (&entry_key->sha1),
+		  XCACHE_LOG_TRAN_ARGS (thread_p));
       return -1;
     }
   /* SHA-1 hash matched. */
@@ -239,11 +333,26 @@ xcache_compare_key (void *key1, void *key2)
       if (lookup_key->cache_flag == cache_flag)
 	{
 	  /* The deleter found its entry. */
+	  xcache_log ("compare keys: found for delete\n"
+		      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
+		      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
+		      XCACHE_LOG_SHA1_ARGS (&entry_key->sha1),
+		      XCACHE_LOG_TRAN_ARGS (thread_p));
 	  return 0;
 	}
       else
 	{
 	  /* This is not the deleter. Ignore this entry until it is removed from hash. */
+
+	  xcache_log ("(tran=%d) compare keys: skip deleted\n"
+		      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
+		      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
+		      XCACHE_LOG_SHA1_ARGS (&entry_key->sha1),
+		      XCACHE_LOG_TRAN_ARGS (thread_p));
 	  return -1;
 	}
     }
@@ -251,6 +360,14 @@ xcache_compare_key (void *key1, void *key2)
   if (cache_flag & XCACHE_ENTRY_WAS_RECOMPILED)
     {
       /* Go to another entry. */
+
+      xcache_log ("compare keys: skip recompiled\n"
+		  "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
+		  "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
+		  XCACHE_LOG_TRAN_TEXT,
+		  XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
+		  XCACHE_LOG_SHA1_ARGS (&entry_key->sha1),
+		  XCACHE_LOG_TRAN_ARGS (thread_p));
       return - 1;
     }
 
@@ -258,9 +375,25 @@ xcache_compare_key (void *key1, void *key2)
   if (!xcache_fix (entry_key))
     {
       /* Entry was deleted. */
+
+      xcache_log ("compare keys: could not fix\n"
+		  "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
+		  "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
+		  XCACHE_LOG_TRAN_TEXT,
+		  XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
+		  XCACHE_LOG_SHA1_ARGS (&entry_key->sha1),
+		  XCACHE_LOG_TRAN_ARGS (thread_p));
       return -1;
     }
+
   /* Successfully marked as reader. */
+  xcache_log ("compare keys: key matched and fixed\n"
+	      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
+	      "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
+	      XCACHE_LOG_TRAN_TEXT,
+	      XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
+	      XCACHE_LOG_SHA1_ARGS (&entry_key->sha1),
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
   return 0;
 }
 
@@ -268,8 +401,15 @@ static unsigned int
 xcache_hash_key (void *key, int hash_table_size)
 {
   XASL_ID *xasl_id = XCACHE_PTR_TO_KEY (key);
+  unsigned int hash_index = ((unsigned int) xasl_id->sha1.h[0]) % hash_table_size;
 
-  return ((unsigned int) xasl_id->sha1.h[0]) % hash_table_size;
+  xcache_log ("hash index: \n"
+	      XCACHE_LOG_SHA1_TEXT
+	      "\t\t hash index value = %d \n"
+	      XCACHE_LOG_TRAN_TEXT,
+	      XCACHE_LOG_SHA1_ARGS (&xasl_id->sha1));
+
+  return hash_index;
 }
 
 int
@@ -288,6 +428,8 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
       return NO_ERROR;
     }
 
+  xcache_check_logging ();
+
   ATOMIC_INC_64 (&xcache_Stat_lookups, 1);
 
   XASL_ID_SET_NULL (&lookup_key);
@@ -297,6 +439,14 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      xcache_log_error ("error finding cache entry: \n"
+			XCACHE_LOG_SHA1_TEXT
+			XCACHE_LOG_ERROR_TEXT
+			XCACHE_LOG_TRAN_TEXT,
+			XCACHE_LOG_SHA1_ARGS (&lookup_key.sha1),
+			error_code,
+			XCACHE_LOG_TRAN_ARGS (thread_p));
+
       return error_code;
     }
   if (*xcache_entry == NULL)
@@ -304,6 +454,12 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
       /* No match! */
       ATOMIC_INC_64 (&xcache_Stat_miss, 1);
       mnt_pc_miss (thread_p);
+      xcache_log ("could not find cache entry: \n"
+		  XCACHE_LOG_SHA1_TEXT
+		  XCACHE_LOG_TRAN_TEXT,
+		  XCACHE_LOG_SHA1_ARGS (&lookup_key.sha1),
+		  XCACHE_LOG_TRAN_ARGS (thread_p));
+
       return NO_ERROR;
     }
   /* Found a match. */
@@ -326,6 +482,14 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
 	  *xcache_entry = NULL;
 	  ATOMIC_INC_64 (&xcache_Stat_miss, 1);
 	  mnt_pc_miss (thread_p);
+	  xcache_log ("could not get cache entry because lock on oid failed: \n"
+		      XCACHE_LOG_ENTRY_TEXT("entry")
+		      XCACHE_LOG_ENTRY_OBJECT_TEXT("object that could not be locked")
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+		      XCACHE_LOG_ENTRY_OBJECT_ARGS (*xcache_entry, oid_index),
+		      XCACHE_LOG_TRAN_ARGS (thread_p));
+
 	  return error_code;
 	}
     }
@@ -333,14 +497,28 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
   if ((*xcache_entry)->xasl_id.cache_flag & XCACHE_ENTRY_MARK_DELETED)
     {
       /* Someone has marked entry as deleted. */
+      xcache_log ("could not get cache entry because it was deleted until locked: \n"
+		  XCACHE_LOG_ENTRY_TEXT("entry")
+		  XCACHE_LOG_TRAN_TEXT,
+		  XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+		  XCACHE_LOG_TRAN_ARGS (thread_p));
+
       xcache_unfix (thread_p, *xcache_entry);
       ATOMIC_INC_64 (&xcache_Stat_miss, 1);
       mnt_pc_miss (thread_p);
       *xcache_entry = NULL;
     }
+  else
+    {
+      ATOMIC_INC_64 (&xcache_Stat_hits, 1);
+      mnt_pc_hit (thread_p);
+    }
 
-  ATOMIC_INC_64 (&xcache_Stat_hits, 1);
-  mnt_pc_hit (thread_p);
+  xcache_log ("found cache entry by sha1: \n"
+	      XCACHE_LOG_ENTRY_TEXT("entry")
+	      XCACHE_LOG_TRAN_TEXT,
+	      XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
   return NO_ERROR;
 }
 
@@ -367,6 +545,13 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, XASL_ID * xid, XASL_CACHE_ENTRY **
       || (*xcache_entry)->xasl_id.time_stored.usec != xid->time_stored.usec)
     {
       /* We don't know if this XASL cache entry is good for us. We need to restart by recompiling. */
+      xcache_log ("could not get cache entry because time_stored mismatch \n"
+		  XCACHE_LOG_ENTRY_TEXT ("entry")
+		  XCACHE_LOG_XASL_ID_TEXT ("lookup xasl_id")
+		  XCACHE_LOG_TRAN_TEXT,
+		  XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+		  XCACHE_LOG_XASL_ID_ARGS (xid),
+		  XCACHE_LOG_TRAN_ARGS (thread_p));
       xcache_unfix (thread_p, *xcache_entry);
       *xcache_entry = NULL;
 
@@ -377,6 +562,16 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, XASL_ID * xid, XASL_CACHE_ENTRY **
        * Instead of using time_stored, we could find another way to identify if an XASL cache entry is still usable.
        * Something that could detect if classes have been modified (and maybe serials).
        */
+    }
+  else
+    {
+      xcache_log ("found cache entry by xasl_id: \n"
+		  XCACHE_LOG_ENTRY_TEXT ("entry")
+		  XCACHE_LOG_XASL_ID_TEXT ("lookup xasl_id")
+		  XCACHE_LOG_TRAN_TEXT,
+		  XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+		  XCACHE_LOG_XASL_ID_ARGS (xid),
+		  XCACHE_LOG_TRAN_ARGS (thread_p));
     }
   return NO_ERROR;
 }
@@ -446,15 +641,31 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 	  /* Should never happen! There should be at least the recompiler! */
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  xcache_log_error ("unexpected cache_flag = XCACHE_ENTRY_TO_BE_RECOMPILED on unfix: \n"
+			    XCACHE_LOG_ENTRY_TEXT("invalid entry")
+			    XCACHE_LOG_TRAN_TEXT,
+			    XCACHE_LOG_ENTRY_ARGS (xcache_entry),
+			    XCACHE_LOG_TRAN_ARGS (thread_p));
 	  return;
 	}
       /* Safe guard: we don't decrement readers more than necessary. */
       assert ((new_cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) != XCACHE_ENTRY_FIX_COUNT_MASK);
     } while (!XCACHE_ATOMIC_CAS_CACHE_FLAG (&xcache_entry->xasl_id, cache_flag, new_cache_flag));
 
+  xcache_log ("unfix entry: \n"
+	      XCACHE_LOG_ENTRY_TEXT ("entry")
+	      XCACHE_LOG_TRAN_TEXT,
+	      XCACHE_LOG_ENTRY_ARGS (xcache_entry),
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
+
   if (new_cache_flag == XCACHE_ENTRY_MARK_DELETED)
     {
       /* I am last user after object was marked as deleted. */
+      xcache_log ("delete entry from hash after unfix: \n"
+		  XCACHE_LOG_ENTRY_TEXT ("entry")
+		  XCACHE_LOG_TRAN_TEXT,
+		  XCACHE_LOG_ENTRY_ARGS (xcache_entry),
+		  XCACHE_LOG_TRAN_ARGS (thread_p));
       error_code = lf_hash_delete (t_entry, &xcache_Ht, &xcache_entry->xasl_id, &success);
       if (error_code != NO_ERROR)
 	{
@@ -489,12 +700,22 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 	{
 	  /* Somebody else deleted? I don't think we can accept it. */
 	  assert (false);
+	  xcache_log_error ("tried to mark entry as deleted, but somebody else already marked it: \n"
+			    XCACHE_LOG_ENTRY_TEXT ("entry")
+			    XCACHE_LOG_TRAN_TEXT,
+			    XCACHE_LOG_ENTRY_ARGS (xcache_entry),
+			    XCACHE_LOG_TRAN_ARGS (thread_p));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
 	}
       if (cache_flag & XCACHE_ENTRY_TO_BE_RECOMPILED)
 	{
 	  /* Somebody is compiling the entry? I think the locks have been messed up. */
+	  xcache_log_error ("tried to mark entry as deleted, but it was marked as to be recompiled: \n"
+			    XCACHE_LOG_ENTRY_TEXT ("entry")
+			    XCACHE_LOG_TRAN_TEXT,
+			    XCACHE_LOG_ENTRY_ARGS (xcache_entry),
+			    XCACHE_LOG_TRAN_ARGS (thread_p));
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
@@ -508,12 +729,23 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
       new_cache_flag = (cache_flag - 1) | XCACHE_ENTRY_MARK_DELETED;
     } while (!XCACHE_ATOMIC_CAS_CACHE_FLAG (&xcache_entry->xasl_id, cache_flag, new_cache_flag));
 
+  xcache_log ("marked entry as deleted: \n"
+	      XCACHE_LOG_ENTRY_TEXT ("entry")
+	      XCACHE_LOG_TRAN_TEXT,
+	      XCACHE_LOG_ENTRY_ARGS (xcache_entry),
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
+
   ATOMIC_INC_64 (&xcache_Stat_deletes, 1);
   ATOMIC_INC_32 (&xcache_Entry_counter, -1);
 
   if (new_cache_flag == XCACHE_ENTRY_MARK_DELETED)
     {
       /* No one else is reading the entry. We can also remove it from hash. */
+      xcache_log ("delete entry after marking it as deleted: \n"
+		  XCACHE_LOG_ENTRY_TEXT ("entry")
+		  XCACHE_LOG_TRAN_TEXT,
+		  XCACHE_LOG_ENTRY_ARGS (xcache_entry),
+		  XCACHE_LOG_TRAN_ARGS (thread_p));
       error_code = lf_hash_delete (t_entry, &xcache_Ht, &xcache_entry->xasl_id, &success);
       if (error_code != NO_ERROR)
 	{
@@ -553,6 +785,8 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
     {
       return NO_ERROR;
     }
+
+  xcache_check_logging ();
 
   XASL_ID_SET_NULL (&xid);
   xid.sha1 = *sha1;
@@ -620,6 +854,13 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
       error_code = lf_hash_insert_given (t_entry, &xcache_Ht, &xid, xcache_entry, &inserted);
       if (error_code != NO_ERROR)
 	{
+	  xcache_log_error ("error inserting new entry: \n",
+			    XCACHE_LOG_ENTRY_TEXT ("entry"),
+			    XCACHE_LOG_ERROR_TEXT
+			    XCACHE_LOG_TRAN_TEXT,
+			    XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+			    XCACHE_LOG_TRAN_ARGS (thread_p),
+			    error_code);
 	  ASSERT_ERROR ();
 	  goto error;
 	}
@@ -652,6 +893,13 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
 		    {
 		      /* Unexpected flags. */
 		      assert (false);
+		      xcache_log_error ("unexpected flag for entry to be recompiled: \n"
+					XCACHE_LOG_ENTRY_TEXT ("entry to be recompiled"),
+					"\t cache_flag = %d\n"
+					XCACHE_LOG_TRAN_TEXT,
+					XCACHE_LOG_ENTRY_ARGS (to_be_recompiled),
+					cache_flag,
+					XCACHE_LOG_TRAN_ARGS (thread_p));
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 		      error_code = ER_QPROC_INVALID_XASLNODE;
 		      goto error;
@@ -659,9 +907,24 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
 		  new_cache_flag = (cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) | XCACHE_ENTRY_WAS_RECOMPILED;
 		} while (!XCACHE_ATOMIC_CAS_CACHE_FLAG (&to_be_recompiled->xasl_id, cache_flag, new_cache_flag));
 	      /* We marked the entry as recompiled. */
+	      xcache_log ("marked entry as recompiled: \n"
+			  XCACHE_LOG_ENTRY_TEXT ("entry")
+			  XCACHE_LOG_TRAN_TEXT,
+			  XCACHE_LOG_ENTRY_ARGS (to_be_recompiled),
+			  XCACHE_LOG_TRAN_ARGS (thread_p));
 	      xcache_unfix (thread_p, to_be_recompiled);
 	      to_be_recompiled = NULL;
 	    }
+
+	  xcache_log_error ("successful find or insert: \n"
+			    XCACHE_LOG_ENTRY_TEXT ("entry found or inserted")
+			    "\t found or inserted = %s \n"
+			    "\t recompile xasl = %s \n"
+			    XCACHE_LOG_TRAN_TEXT,
+			    XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+			    inserted ? "inserted" : "found",
+			    recompile_xasl ? "true" : "false",
+			    XCACHE_LOG_TRAN_ARGS (thread_p));
 	  break;
 	}
 
@@ -676,6 +939,11 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
 	    {
 	      /* Deleted? We certainly did not expect. */
 	      assert (false);
+	      xcache_log_error ("(recompile) entry is marked as deleted: \n"
+				XCACHE_LOG_ENTRY_TEXT ("entry"),
+				XCACHE_LOG_TRAN_TEXT,
+				XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+				XCACHE_LOG_TRAN_ARGS (thread_p));
 	      xcache_unfix (thread_p, *xcache_entry);
 	      *xcache_entry = NULL;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
@@ -685,6 +953,11 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
 	  if (cache_flag & (XCACHE_ENTRY_TO_BE_RECOMPILED | XCACHE_ENTRY_WAS_RECOMPILED))
 	    {
 	      /* Somebody else recompiles this entry. Loop again. */
+	      xcache_log ("(recompile) entry is recompiled by somebody else: \n"
+			  XCACHE_LOG_ENTRY_TEXT ("entry"),
+			  XCACHE_LOG_TRAN_TEXT,
+			  XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+			  XCACHE_LOG_TRAN_ARGS (thread_p));
 	      ATOMIC_INC_64 (&xcache_Stat_failed_recompiles, 1);
 	      xcache_unfix (thread_p, *xcache_entry);
 	      *xcache_entry = NULL;
@@ -699,7 +972,14 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
 	  /* We have marked this entry to be recompiled. We have to insert new and then we will mark it as recompiled.
 	   */
 	  to_be_recompiled = *xcache_entry;
+	  *xcache_entry = NULL;
 	  ATOMIC_INC_64 (&xcache_Stat_recompiles, 1);
+
+	  xcache_log ("(recompile) we marked entry to be recompiled: \n"
+		      XCACHE_LOG_ENTRY_TEXT ("entry"),
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_ENTRY_ARGS (to_be_recompiled),
+		      XCACHE_LOG_TRAN_ARGS (thread_p));
 
 	  /* We have to "inherit" the time_stored from this entry. The new XASL cache entry should be usable by anyone
 	   * that cached this entry on client. Currently, xcache_find_xasl_id uses time_stored to match the entries.
@@ -749,6 +1029,14 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid)
     {
       return NO_ERROR;
     }
+
+  xcache_check_logging ();
+
+  xcache_log ("remove all entries: \n"
+	      "\t OID = %d|%d|%d \n"
+	      XCACHE_LOG_TRAN_TEXT,
+	      OID_AS_ARGS (oid),
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
 
   lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
 
