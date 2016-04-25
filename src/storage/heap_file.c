@@ -26199,6 +26199,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
       if (logpb_fetch_page (thread_p, process_lsa.pageid, log_page_p) == NULL)
 	{
 	  assert (false);
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_visible_version_from_log");
 	  return S_ERROR;
 	}
 
@@ -26219,7 +26220,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
 	  if (snapshot_res == SNAPSHOT_SATISFIED)
 	    {
-	      /* Visible. Get record (unless CHN is not changed). */
+	      /* Visible. Get record if CHN was changed. */
 	      if (MVCC_IS_CHN_UPTODATE (thread_p, &mvcc_header, has_chn))
 		{
 		  return S_SUCCESS_CHN_UPTODATE;
@@ -26264,6 +26265,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	    {
 	      /* Unexpected. */
 	      assert (false);
+	      pgbuf_unfix_and_init (thread_p, overflow_page);
 	      return S_ERROR;
 	    }
 	  /* First page no longer required. */
@@ -26272,7 +26274,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
 	  if (snapshot_res == SNAPSHOT_SATISFIED)
 	    {
-	      /* Visible. Get record (unless CHN is not changed). */
+	      /* Visible. Get record if CHN was changed. */
 	      if (MVCC_IS_CHN_UPTODATE (thread_p, &mvcc_header, has_chn))
 		{
 		  return S_SUCCESS_CHN_UPTODATE;

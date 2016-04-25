@@ -3727,7 +3727,7 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p, MOP 
 	    }
 	  return error_code;
 	}
-      *mop_p = ws_mvcc_updated_mop (&obj->oid, &obj->oid, class_mop, LC_ONEOBJ_IS_UPDATED_BY_ME (obj));
+      *mop_p = ws_mop (&obj->oid, class_mop);
       if (*mop_p == NULL)
 	{
 #if defined(CUBRID_DEBUG)

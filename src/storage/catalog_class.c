@@ -3844,7 +3844,6 @@ static int
 catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p, OID * class_oid_p, HFID * hfid_p,
 			HEAP_SCANCACHE * scan_p, UPDATE_INPLACE_STYLE force_in_place)
 {
-  HEAP_OPERATION_CONTEXT update_context;
   RECDES record, old_record;
   OR_VALUE *old_value_p = NULL;
   OR_VALUE *attrs, *old_attrs;

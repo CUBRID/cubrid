@@ -5920,7 +5920,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  MVCC_REC_HEADER old_rec_header;
 
 		  or_mvcc_get_header (oldrecdes, &old_rec_header);
-		  if (!logtb_find_current_mvccid (thread_p) == old_rec_header.mvcc_ins_id)
+		  if (logtb_find_current_mvccid (thread_p) != old_rec_header.mvcc_ins_id)
 		    {
 #if defined (SERVER_MODE)
 		      /* If not inserted by me, I must have lock. */
