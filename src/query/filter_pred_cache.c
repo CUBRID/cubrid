@@ -342,7 +342,7 @@ fpcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
 
   if (!fpcache_Enabled)
     {
-      return NO_ERROR;
+      return;
     }
 
   while (!finished)
@@ -372,7 +372,7 @@ fpcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
 	      if (n_delete_btids == FPCACHE_DELETE_BTIDS_SIZE)
 		{
 		  /* Full buffer. Interrupt iteration, delete entries collected so far and then start over. */
-		  lf_tran_end_with_mb (tran);
+		  lf_tran_end_with_mb (t_entry);
 		  break;
 		}
 	    }

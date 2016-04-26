@@ -335,9 +335,6 @@ lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys)
 
   /* store new minimum for later fetching */
   ATOMIC_TAS_64 (&sys->min_active_transaction_id, minvalue);
-
-  /* all ok */
-  return NO_ERROR;
 }
 
 /*
@@ -378,7 +375,7 @@ lf_tran_start (LF_TRAN_ENTRY * entry, bool incr)
  *   sys(in): tran system
  *   entry(in): tran entry
  */
-int
+void
 lf_tran_end (LF_TRAN_ENTRY * entry)
 {
   /* maximum value of domain */
@@ -1129,7 +1126,7 @@ lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flag
   (*entry) = NULL;
 
 restart_search:
-  lf_tran_start_with_mb (tran_entry, false);
+  lf_tran_start_with_mb (tran, false);
 
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
@@ -1147,7 +1144,7 @@ restart_search:
 	      rv = pthread_mutex_lock (entry_mutex);
 
 	      /* mutex has been locked, no need to keep transaction */
-	      lf_tran_end_with_mb (tran_entry);
+	      lf_tran_end_with_mb (tran);
 
 	      if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		{
@@ -1157,7 +1154,7 @@ restart_search:
 		  if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		    {
 		      *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-		      lf_tran_end_with_mb (tran_entry);
+		      lf_tran_end_with_mb (tran);
 		      return NO_ERROR;
 		    }
 		  else
@@ -1177,7 +1174,7 @@ restart_search:
     }
 
   /* all ok but not found */
-  lf_tran_end_with_mb (tran_entry);
+  lf_tran_end_with_mb (tran);
   return NO_ERROR;
 }
 
@@ -1235,7 +1232,7 @@ lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *be
 
 restart_search:
 
-  lf_tran_start_with_mb (tran_entry, false);
+  lf_tran_start_with_mb (tran, false);
 
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
@@ -1467,7 +1464,7 @@ lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_fl
 restart_search:
 
   /* read transaction; we start a write transaction only after remove */
-  lf_tran_start_with_mb (tran_entry, false);
+  lf_tran_start_with_mb (tran, false);
 
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
@@ -2074,8 +2071,8 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
       else
 	{
 	  /* reset transaction for each bucket */
-	  lf_tran_end_with_mb (tran);
-	  lf_tran_start_with_mb (tran, false);
+	  lf_tran_end_with_mb (tran_entry);
+	  lf_tran_start_with_mb (tran_entry, false);
 
 	  /* load next bucket */
 	  it->bucket_index++;
@@ -2087,7 +2084,7 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 	  else
 	    {
 	      /* end */
-	      lf_tran_end_with_mb (tran);
+	      lf_tran_end_with_mb (tran_entry);
 	      return NULL;
 	    }
 	}

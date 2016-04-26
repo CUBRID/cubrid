@@ -1742,7 +1742,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     }
 
   xasl_cache_entry_p = NULL;
-  if (xcache_find_xasl_id (thread_p, &xasl_id_p->sha1, &xasl_cache_entry_p) != NO_ERROR)
+  if (xcache_find_xasl_id (thread_p, xasl_id_p, &xasl_cache_entry_p) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;

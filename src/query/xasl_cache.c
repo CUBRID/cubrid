@@ -525,7 +525,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
 }
 
 int
-xcache_find_xasl_id (THREAD_ENTRY * thread_p, XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry)
+xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry)
 {
   int error_code = NO_ERROR;
 
@@ -1023,8 +1023,6 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid)
 	      XCACHE_LOG_TRAN_TEXT,
 	      OID_AS_ARGS (oid),
 	      XCACHE_LOG_TRAN_ARGS (thread_p));
-
-restart:
 
   while (!finished)
     {
