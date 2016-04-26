@@ -45,7 +45,7 @@ extern int session_set_row_count (THREAD_ENTRY * thread_p, const int row_count);
 extern int session_get_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARAM ** session_parameters);
 extern int session_set_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARAM * session_parameters);
 extern int session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name, char *alias_print,
-					      char *info, int info_len);
+					      SHA1Hash * sha1, char *info, int info_len);
 extern int session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
 					   XASL_CACHE_ENTRY ** xasl_entry);
 extern int session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name);

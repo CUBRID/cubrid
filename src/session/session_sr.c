@@ -172,7 +172,7 @@ int
 xsession_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name, char *alias_print, SHA1Hash * sha1,
 				    char *info, int info_len)
 {
-  return session_create_prepared_statement (thread_p, user, name, alias_print, info, info_len);
+  return session_create_prepared_statement (thread_p, user, name, alias_print, sha1, info, info_len);
 }
 
 /*

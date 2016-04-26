@@ -1588,7 +1588,8 @@ session_set_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARAM * session
  * thread_p (in)	:
  * user (in)		: OID of the user who prepared this statement
  * name (in)		: the name of the statement
- * alias_print(in)	: the printed compiled statement
+ * alias_print (in)	: the printed compiled statement
+ * sha1 (in)		: sha1 hash for printed compiled statement
  * info (in)		: serialized prepared statement info
  * info_len (in)	: serialized buffer length
  *
@@ -1598,8 +1599,8 @@ session_set_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARAM * session
  * will free the memory allocated for its arguments.
  */
 int
-session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name, char *alias_print, char *info,
-				   int info_len)
+session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name, char *alias_print, SHA1Hash * sha1,
+				   char *info, int info_len)
 {
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;
@@ -1616,6 +1617,7 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name
   COPY_OID (&(stmt_p->user), &user);
   stmt_p->name = name;
   stmt_p->alias_print = alias_print;
+  stmt_p->sha1 = *sha1;
   stmt_p->info_length = info_len;
   stmt_p->info = info;
   stmt_p->next = NULL;
@@ -2260,6 +2262,7 @@ session_dump_prepared_statement (PREPARED_STATEMENT * stmt_p)
   if (stmt_p->alias_print != NULL)
     {
       fprintf (stdout, "%s\n", stmt_p->alias_print);
+      fprintf (stdout, "sha1 = %08x | %08x | %08x | %08x | %08x\n", SHA1_AS_ARGS (&stmt_p->sha1));
     }
 }
 
