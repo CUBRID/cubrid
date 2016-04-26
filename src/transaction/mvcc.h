@@ -113,9 +113,10 @@
  *  2. MVCC is inserted by current transaction (checking whether it was
  *     deleted is not necessary. Other transactions cannot delete it, while
  *     current transaction would remove it completely.
+ *  TODO: change this macro after delid and chn are splitted.
  */
 #define MVCC_SHOULD_TEST_CHN(thread_p, rec_header_p) \
-  (!MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID) \
+  (!MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_DELID) \
    || MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header_p))
 
 /* Check if given CHN is up-to-date according to MVCC header:
