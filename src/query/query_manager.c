@@ -1268,7 +1268,7 @@ exit_on_end:
       db_private_free_and_init (thread_p, tcard_list_p);
     }
 
-  return NO_ERROR;
+  return error_code;
 
 exit_on_error:
 
