@@ -3139,7 +3139,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_NAME_XASL_CACHE_LOGGING,
    (PRM_FOR_SERVER),
-   PRM_INTEGER,
+   PRM_BOOLEAN,
    (void *) &prm_xasl_cache_logging_flag,
    (void *) &prm_xasl_cache_logging_default,
    (void *) &PRM_XASL_CACHE_LOGGING,

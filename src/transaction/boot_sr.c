@@ -160,15 +160,17 @@ extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 int thread_Recursion_depth = 0;
 
 LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &spage_saving_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_res_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_ent_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &catalog_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &partition_link_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &hfid_table_Ts, 0}
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &spage_saving_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_res_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_ent_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &catalog_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &partition_link_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &hfid_table_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &xcache_Ts, 0, false},
+  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &fpcache_Ts, 0, false}
 };
 
 extern void boot_client_all_finalize (bool is_er_final);

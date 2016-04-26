@@ -156,6 +156,7 @@ lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads)
       sys->entries[i].tran_system = sys;
       sys->entries[i].entry_idx = i;
       sys->entries[i].transaction_id = LF_NULL_TRANSACTION_ID;
+      sys->entries[i].did_incr = false;
       sys->entries[i].last_cleanup_id = 0;
       sys->entries[i].retired_list = NULL;
       sys->entries[i].temp_entry = NULL;
@@ -350,13 +351,14 @@ lf_tran_start (LF_TRAN_ENTRY * entry, bool incr)
 
   assert (entry != NULL);
   assert (entry->tran_system != NULL);
-  assert (entry->transaction_id == LF_NULL_TRANSACTION_ID);
+  assert (entry->transaction_id == LF_NULL_TRANSACTION_ID || (!entry->did_incr && incr));
 
   sys = entry->tran_system;
 
-  if (incr)
+  if (incr && !entry->did_incr)
     {
       entry->transaction_id = ATOMIC_INC_64 (&sys->global_transaction_id, 1);
+      entry->did_incr = true;
 
       if (entry->transaction_id % entry->tran_system->mati_refresh_interval == 0)
 	{
@@ -381,6 +383,7 @@ lf_tran_end (LF_TRAN_ENTRY * entry)
   /* maximum value of domain */
   assert (entry->transaction_id != LF_NULL_TRANSACTION_ID);
   entry->transaction_id = LF_NULL_TRANSACTION_ID;
+  entry->did_incr = false;
 }
 
 /*
@@ -470,6 +473,7 @@ lf_destroy_transaction_systems (void)
   lf_tran_system_destroy (&partition_link_Ts);
   lf_tran_system_destroy (&hfid_table_Ts);
   lf_tran_system_destroy (&xcache_Ts);
+  lf_tran_system_destroy (&fpcache_Ts);
 
   tran_systems_initialized = false;
 }
@@ -712,6 +716,12 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
   if (tran_entry->transaction_id == LF_NULL_TRANSACTION_ID)
     {
       local_tran = true;
+      /* TODO: Analyze if increment is necessary here. Vasi says it might not be necessary. */
+      lf_tran_start_with_mb (tran_entry, true);
+    }
+  else if (!tran_entry->did_incr)
+    {
+      /* TODO: Analyze if increment is necessary here. Vasi says it might not be necessary. */
       lf_tran_start_with_mb (tran_entry, true);
     }
 
@@ -811,6 +821,10 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
   if (tran_entry->transaction_id == LF_NULL_TRANSACTION_ID)
     {
       local_tran = true;
+      lf_tran_start_with_mb (tran_entry, true);
+    }
+  else if (!tran_entry->did_incr)
+    {
       lf_tran_start_with_mb (tran_entry, true);
     }
 
@@ -1125,9 +1139,9 @@ lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flag
   /* by default, not found */
   (*entry) = NULL;
 
-restart_search:
   lf_tran_start_with_mb (tran, false);
 
+restart_search:
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
 
@@ -1230,10 +1244,9 @@ lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *be
       *inserted = 0;
     }
 
-restart_search:
-
   lf_tran_start_with_mb (tran, false);
 
+restart_search:
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
 
@@ -1461,11 +1474,10 @@ lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_fl
   assert (freelist != NULL);
   assert (tran != NULL && tran->tran_system != NULL);
 
-restart_search:
-
   /* read transaction; we start a write transaction only after remove */
   lf_tran_start_with_mb (tran, false);
 
+restart_search:
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
 
@@ -1488,6 +1500,7 @@ restart_search:
 		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		  assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
 		  lf_tran_end_with_mb (tran);
+		  return NO_ERROR;
 		}
 	      else
 		{
@@ -1526,6 +1539,7 @@ restart_search:
 		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		  assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
 		  lf_tran_end_with_mb (tran);
+		  return NO_ERROR;
 		}
 	      else
 		{
@@ -2071,7 +2085,10 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
       else
 	{
 	  /* reset transaction for each bucket */
-	  lf_tran_end_with_mb (tran_entry);
+	  if (it->bucket_index >= 0)
+	    {
+	      lf_tran_end_with_mb (tran_entry);
+	    }
 	  lf_tran_start_with_mb (tran_entry, false);
 
 	  /* load next bucket */

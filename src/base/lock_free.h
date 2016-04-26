@@ -141,9 +141,12 @@ struct lf_tran_entry
 
   /* entry in transaction system */
   int entry_idx;
+
+  /* Was transaction ID incremented? */
+  bool did_incr;
 };
 
-#define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1 }
+#define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1, false }
 
 typedef enum lf_bitmap_style LF_BITMAP_STYLE;
 enum lf_bitmap_style
