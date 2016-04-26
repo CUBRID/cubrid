@@ -5887,11 +5887,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  xcache_remove_by_oid (thread_p, oid);
 	}
 
-      if (!OID_IS_ROOTOID (oid) && fpcache_remove_by_class (thread_p, oid) != NO_ERROR)
+      if (!OID_IS_ROOTOID (oid))
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"locator_update_force: fpcache_remove_by_class returned error for class { %d %d %d }\n",
-			oid->pageid, oid->slotid, oid->volid);
+	  fpcache_remove_by_class (thread_p, oid);
 	}
     }
   else
@@ -6600,11 +6598,9 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	  xcache_remove_by_oid (thread_p, oid);
 	}
 
-      if (!OID_IS_ROOTOID (oid) && fpcache_remove_by_class (thread_p, oid) != NO_ERROR)
+      if (!OID_IS_ROOTOID (oid))
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"locator_delete_force: fpcache_remove_by_class returned error for class { %d %d %d }\n",
-			oid->pageid, oid->slotid, oid->volid);
+	  fpcache_remove_by_class (thread_p, oid);
 	}
     }
   else

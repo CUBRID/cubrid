@@ -4718,13 +4718,7 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, v
   /* remove XASL cache entries which are relevant with this class */
   xcache_remove_by_oid (thread_p, &t->m_class_oid);
   /* remove filter predicate cache entries which are relevant with this class */
-  if (fpcache_remove_by_class (thread_p, &t->m_class_oid) != NO_ERROR)
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "log_cleanup_modified_class: fpcache_remove_by_class returned error for class { %d %d %d }\n",
-		    t->m_class_oid.pageid, t->m_class_oid.slotid, t->m_class_oid.volid);
-    }
-
+  fpcache_remove_by_class (thread_p, &t->m_class_oid);
 }
 
 extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa);
