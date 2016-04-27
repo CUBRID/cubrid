@@ -232,7 +232,7 @@ fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICATE * or_pred, PRE
     {
       ATOMIC_INC_64 (&fpcache_Stat_lookup, 1);
 
-      error_code = lf_hash_find (t_entry, &fpcache_Ht, btid, &fpcache_entry);
+      error_code = lf_hash_find (t_entry, &fpcache_Ht, btid, (void **) &fpcache_entry);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -285,7 +285,7 @@ fpcache_retire (THREAD_ENTRY * thread_p, BTID * btid, PRED_EXPR_WITH_CONTEXT * f
   if (fpcache_Enabled)
     {
       ATOMIC_INC_64 (&fpcache_Stat_add, 1);
-      error_code = lf_hash_find_or_insert (t_entry, &fpcache_Ht, btid, &fpcache_entry, NULL);
+      error_code = lf_hash_find_or_insert (t_entry, &fpcache_Ht, btid, (void **) &fpcache_entry, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -416,23 +416,23 @@ fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Max size:                   %d\n", fpcache_Soft_capacity);
   fprintf (fp, "Current entry count:        %d\n", ATOMIC_INC_32 (&fpcache_Entry_counter, 0));
   fprintf (fp, "Current clone count:        %d\n", ATOMIC_INC_32 (&fpcache_Clone_counter, 0));
-  fprintf (fp, "Lookups:                    %d\n", ATOMIC_INC_64 (&fpcache_Stat_lookup, 0));
-  fprintf (fp, "Entry Hits:                 %d\n", ATOMIC_INC_64 (&fpcache_Stat_hit, 0));
-  fprintf (fp, "Entry Miss:                 %d\n", ATOMIC_INC_64 (&fpcache_Stat_miss, 0));
-  fprintf (fp, "Entry discards:             %d\n", ATOMIC_INC_64 (&fpcache_Stat_discard, 0));
-  fprintf (fp, "Clone Hits:                 %d\n", ATOMIC_INC_64 (&fpcache_Stat_clone_hit, 0));
-  fprintf (fp, "Clone Miss:                 %d\n", ATOMIC_INC_64 (&fpcache_Stat_clone_miss, 0));
-  fprintf (fp, "Clone discards:             %d\n", ATOMIC_INC_64 (&fpcache_Stat_clone_discard, 0));
-  fprintf (fp, "Adds:                       %d\n", ATOMIC_INC_64 (&fpcache_Stat_add, 0));
-  fprintf (fp, "Clone adds:                 %d\n", ATOMIC_INC_64 (&fpcache_Stat_clone_add, 0));
+  fprintf (fp, "Lookups:                    %lld\n", ATOMIC_INC_64 (&fpcache_Stat_lookup, 0));
+  fprintf (fp, "Entry Hits:                 %lld\n", ATOMIC_INC_64 (&fpcache_Stat_hit, 0));
+  fprintf (fp, "Entry Miss:                 %lld\n", ATOMIC_INC_64 (&fpcache_Stat_miss, 0));
+  fprintf (fp, "Entry discards:             %lld\n", ATOMIC_INC_64 (&fpcache_Stat_discard, 0));
+  fprintf (fp, "Clone Hits:                 %lld\n", ATOMIC_INC_64 (&fpcache_Stat_clone_hit, 0));
+  fprintf (fp, "Clone Miss:                 %lld\n", ATOMIC_INC_64 (&fpcache_Stat_clone_miss, 0));
+  fprintf (fp, "Clone discards:             %lld\n", ATOMIC_INC_64 (&fpcache_Stat_clone_discard, 0));
+  fprintf (fp, "Adds:                       %lld\n", ATOMIC_INC_64 (&fpcache_Stat_add, 0));
+  fprintf (fp, "Clone adds:                 %lld\n", ATOMIC_INC_64 (&fpcache_Stat_clone_add, 0));
 
   fprintf (fp, "\nEntries:\n");
   lf_hash_create_iterator (&iter, t_entry, &fpcache_Ht);
-  while (fpcache_entry = lf_hash_iterate (&iter))
+  while ((fpcache_entry = lf_hash_iterate (&iter)) != NULL)
     {
-      fprintf (fp, "\n  BTID = %d, %d|d\n", fpcache_entry->btid.root_pageid, fpcache_entry->btid.vfid.volid,
+      fprintf (fp, "\n  BTID = %d, %d|%d\n", fpcache_entry->btid.root_pageid, fpcache_entry->btid.vfid.volid,
 	       fpcache_entry->btid.vfid.fileid);
-      fprintf (fp, "  Clones = %d", fpcache_entry->clone_stack_head + 1);
+      fprintf (fp, "  Clones = %d\n", fpcache_entry->clone_stack_head + 1);
     }
   /* TODO: add more. */
 }
