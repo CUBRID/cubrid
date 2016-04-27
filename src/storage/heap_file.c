@@ -27336,7 +27336,7 @@ heap_partition_link_cache_initialize (void)
   edesc->of_del_tran_id = offsetof (HEAP_PARTITION_LINK_CACHE_ENTRY, del_id);
   edesc->of_key = offsetof (HEAP_PARTITION_LINK_CACHE_ENTRY, class_oid);
   edesc->of_mutex = offsetof (HEAP_PARTITION_LINK_CACHE_ENTRY, mutex);
-  edesc->mutex_flags = LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_LOCK_ON_DELETE | LF_EM_FLAG_UNLOCK_AFTER_DELETE;
+  edesc->using_mutex = LF_EM_USING_MUTEX;
   edesc->f_alloc = heap_partition_link_entry_alloc;
   edesc->f_free = heap_partition_link_entry_free;
   edesc->f_init = heap_partition_link_entry_init;
@@ -28008,7 +28008,7 @@ heap_initialize_hfid_table (void)
   edesc->of_del_tran_id = offsetof (HEAP_HFID_TABLE_ENTRY, del_id);
   edesc->of_key = offsetof (HEAP_HFID_TABLE_ENTRY, class_oid);
   edesc->of_mutex = 0;
-  edesc->mutex_flags = LF_EM_NOT_USING_MUTEX;
+  edesc->using_mutex = LF_EM_NOT_USING_MUTEX;
   edesc->f_alloc = heap_hfid_table_entry_alloc;
   edesc->f_free = heap_hfid_table_entry_free;
   edesc->f_init = heap_hfid_table_entry_init;

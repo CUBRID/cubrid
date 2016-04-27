@@ -4850,7 +4850,12 @@ csession_create_prepared_statement (const char *name, const char *alias_print, c
   /* data size */
   ptr = or_pack_int (ptr, info_length);
 
-  SHA1Compute ((const unsigned char *) alias_print, (unsigned) strlen (alias_print), &alias_sha1);
+  req_error = SHA1Compute ((const unsigned char *) alias_print, (unsigned) strlen (alias_print), &alias_sha1);
+  if (req_error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
   ptr = or_pack_sha1 (ptr, &alias_sha1);
 
   req_error =
@@ -4926,7 +4931,13 @@ cleanup:
       memcpy (local_stmt_info, stmt_info, info_length);
     }
 
-  SHA1Compute ((const unsigned char *) alias_print, (unsigned) strlen (alias_print), &alias_sha1);
+  result = SHA1Compute ((const unsigned char *) alias_print, (unsigned) strlen (alias_print), &alias_sha1);
+  if (result != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return result;
+    }
+
   result =
     xsession_create_prepared_statement (NULL, *user, local_name, local_alias_print, &alias_sha1, local_stmt_info,
 				        info_length);

@@ -39,6 +39,7 @@
  */
 
 #include "sha1.h"
+#include "error_manager.h"
 
 #include <assert.h>
 
@@ -367,7 +368,7 @@ SHA1PadMessage (SHA1Context * context)
   SHA1ProcessMessageBlock (context);
 }
 
-void
+int
 SHA1Compute (const unsigned char * message_array, unsigned length, SHA1Hash * hash)
 {
   SHA1Context context;
@@ -378,11 +379,21 @@ SHA1Compute (const unsigned char * message_array, unsigned length, SHA1Hash * ha
   SHA1Reset (&context);
   SHA1Input (&context, message_array, length);
 
+  if (!SHA1Result (&context))
+    {
+      assert (false);
+      /* TODO: Set an appropiate error message. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+
   hash->h[0] = (INT32) context.Message_Digest[0];
   hash->h[1] = (INT32) context.Message_Digest[1];
   hash->h[2] = (INT32) context.Message_Digest[2];
   hash->h[3] = (INT32) context.Message_Digest[3];
   hash->h[4] = (INT32) context.Message_Digest[4];
+
+  return NO_ERROR;
 }
 
 int

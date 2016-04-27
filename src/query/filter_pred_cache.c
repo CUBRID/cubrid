@@ -86,8 +86,8 @@ static LF_ENTRY_DESCRIPTOR fpcache_Entry_descriptor = {
     offsetof (FPCACHE_ENTRY, btid),
     offsetof (FPCACHE_ENTRY, mutex),	/* No mutex. */
 
-    /* mutex flags */
-    LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_LOCK_ON_DELETE | LF_EM_FLAG_UNLOCK_AFTER_DELETE,
+    /* using mutex? */
+    LF_EM_USING_MUTEX,
 
     fpcache_entry_alloc,
     fpcache_entry_free,
@@ -386,6 +386,7 @@ fpcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
 	      assert (false);
 	    }
 	}
+      n_delete_btids = 0;
     }
 
 #undef FPCACHE_DELETE_BTIDS_SIZE

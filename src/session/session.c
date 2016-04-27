@@ -157,7 +157,7 @@ static LF_ENTRY_DESCRIPTOR session_state_Descriptor = {
   offsetof (SESSION_STATE, id),
   offsetof (SESSION_STATE, mutex),
 
-  LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_UNLOCK_AFTER_DELETE,
+  LF_EM_USING_MUTEX,
 
   session_state_alloc,
   session_state_free,
@@ -711,7 +711,7 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
   assert (session_p->ref_count == 0);
 #endif
 
-  error = lf_hash_delete (t_entry, &sessions.sessions_table, (void *) &id, &success);
+  error = lf_hash_delete_already_locked (t_entry, &sessions.sessions_table, (void *) &id, &success);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
@@ -817,67 +817,85 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
 int
 session_remove_expired_sessions (struct timeval *timeout)
 {
+#define EXPIRED_SESSION_BUFFER_SIZE 1024
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_SESSIONS);
   LF_HASH_TABLE_ITERATOR it;
-  SESSION_STATE *state, *next_state = NULL, *session_p;
+  SESSION_STATE *state = NULL;
   int err = NO_ERROR, success = 0;
   bool is_expired = false;
   SESSION_TIMEOUT_INFO timeout_info;
+  SESSION_ID expired_sid_buffer[EXPIRED_SESSION_BUFFER_SIZE];
+  int n_expired_sids = 0;
+  int sid_index;
+  bool finished = false;
 
   timeout_info.count = -1;
   timeout_info.session_ids = NULL;
   timeout_info.timeout = timeout;
 
-  lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
-  state = lf_hash_iterate (&it);
-  while (state)
+  /* Loop until all expired sessions are removed.
+   * NOTE: We cannot call lf_hash_delete while iterating... lf_hash_delete may have to retry, which also resets the
+   *	   lock-free transaction. And resetting lock-free transaction can break our iterator.
+   */
+  while (!finished)
     {
-      /* iterate next. the mutex lock of the current state will be released */
-      next_state = lf_hash_iterate (&it);
-
-      if (lf_hash_find (t_entry, &sessions.sessions_table, (void *) &state->id, (void **) &session_p) != NO_ERROR)
+      lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
+      while (true)
 	{
-	  err = ER_FAILED;
-	  break;
-	}
-      else if (session_p == NULL)
-	{
-	  err = ER_FAILED;
-	  break;
-	}
-
-      if (session_check_timeout (state, &timeout_info, &is_expired) != NO_ERROR)
-	{
-	  pthread_mutex_unlock (&session_p->mutex);
-	  err = ER_FAILED;
-	  break;
-	}
-
-      if (is_expired)
-	{
-	  if (lf_hash_delete (t_entry, &sessions.sessions_table, (void *) &state->id, &success) != NO_ERROR)
+	  state = lf_hash_iterate (&it);
+	  if (state == NULL)
 	    {
-	      err = ER_FAILED;
+	      finished = true;
 	      break;
 	    }
 
+	  /* iterate next. the mutex lock of the current state will be released */
+	  if (session_check_timeout (state, &timeout_info, &is_expired) != NO_ERROR)
+	    {
+	      pthread_mutex_unlock (&state->mutex);
+	      err = ER_FAILED;
+	      goto exit_on_end;
+	    }
+	  
+	  if (is_expired)
+	    {
+	      expired_sid_buffer[n_expired_sids++] = state->id;
+	      if (n_expired_sids == EXPIRED_SESSION_BUFFER_SIZE)
+		{
+		  /* No more room in buffer */
+
+		  /* Interrupt iteration. */
+		  /* Free current entry mutex. */
+		  pthread_mutex_unlock (&state->mutex);
+		  /* End lock-free transaction started by iterator. */
+		  lf_tran_end_with_mb (t_entry);
+		  break;
+		}
+	    }
+	}
+
+      /* Remove expired sessions. */
+      for (sid_index = 0; sid_index < n_expired_sids; sid_index++)
+	{
+	  err = lf_hash_delete (t_entry, &sessions.sessions_table, &expired_sid_buffer[sid_index], &success);
+	  if (err != NO_ERROR)
+	    {
+	      /* I don't think we can expect errors. */
+	      assert (false);
+	      goto exit_on_end;
+	    }
 	  if (!success)
 	    {
 	      /* we don't have clear operations on this hash table, this shouldn't happen */
-	      pthread_mutex_unlock (&session_p->mutex);
 	      assert_release (false);
 	      err = ER_FAILED;
-	      break;
+	      goto exit_on_end;
 	    }
 	}
-      else
-	{
-	  pthread_mutex_unlock (&session_p->mutex);
-	}
-
-      state = next_state;
+      n_expired_sids = 0;
     }
 
+exit_on_end:
   if (timeout_info.session_ids != NULL)
     {
       assert (timeout_info.count > 0);
@@ -885,6 +903,8 @@ session_remove_expired_sessions (struct timeval *timeout)
     }
 
   return err;
+
+#undef EXPIRED_SESSION_BUFFER_SIZE
 }
 
 /*

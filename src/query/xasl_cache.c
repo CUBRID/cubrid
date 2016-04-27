@@ -75,7 +75,7 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
     offsetof (XASL_CACHE_ENTRY, xasl_id),
     0,	/* No mutex. */
 
-    /* mutex flags */
+    /* using mutex? */
     LF_EM_NOT_USING_MUTEX,
 
     xcache_entry_alloc,
@@ -259,15 +259,20 @@ xcache_entry_uninit (void *entry)
 
   if (xcache_entry->class_locks != NULL)
     {
-      free_and_init ((void *) xcache_entry->class_locks);
+      free_and_init (xcache_entry->class_locks);
     }
   if (xcache_entry->class_oid_list != NULL)
     {
-      free_and_init ((void *) xcache_entry->class_oid_list);
+      free_and_init (xcache_entry->class_oid_list);
     }
   if (xcache_entry->tcard_list != NULL)
     {
-      free_and_init ((void *) xcache_entry->tcard_list);
+      free_and_init (xcache_entry->tcard_list);
+    }
+
+  if (xcache_entry->sql_info.sql_hash_text != NULL)
+    {
+      free_and_init (xcache_entry->sql_info.sql_hash_text);
     }
 
   if (XASL_ID_IS_NULL (&xcache_entry->xasl_id))
@@ -744,8 +749,8 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 }
 
 int
-xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, const OID * oid, int n_oid,
-	       const OID * class_oids, const int * class_locks, const int *tcards, bool recompile_xasl,
+xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID * oid,
+	       int n_oid, const OID * class_oids, const int * class_locks, const int *tcards,
 	       XASL_CACHE_ENTRY ** xcache_entry)
 {
   int error_code = NO_ERROR;
@@ -768,7 +773,7 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
   xcache_check_logging ();
 
   XASL_ID_SET_NULL (&xid);
-  xid.sha1 = *sha1;
+  xid.sha1 = context->sha1;
 
   ATOMIC_INC_64 (&xcache_Stat_inserts, 1);
 
@@ -796,7 +801,7 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
 	}
       /* Initialize xcache_entry stuff. */
       XASL_ID_COPY (&(*xcache_entry)->xasl_id, stream->xasl_id);
-      (*xcache_entry)->xasl_id.sha1 = *sha1;
+      (*xcache_entry)->xasl_id.sha1 = context->sha1;
       (*xcache_entry)->xasl_id.cache_flag = 1;
       (*xcache_entry)->n_oid_list = n_oid;
       if (n_oid > 0)
@@ -850,10 +855,54 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
 
       if (inserted)
 	{
-	  if (!recompile_xasl)
+	  if (!context->recompile_xasl)
 	    {
 	      /* This is a new entry. If recompile_xasl flag is true, then this replaces another cache entry. */
 	      ATOMIC_INC_32 (&xcache_Entry_counter, 1);
+	    }
+
+	  if (xcache_Log)
+	    {
+	      /* We want to set SQL execution info - hash text, user text and plan text, for debugging purposes.
+	       * They are not required for execution, and it was not necessary to add them before inserting.
+	       * Do we want to add the strings even if xcache_Log is not set? E.g. to print them when XASL cache is
+	       * dumped?
+	       */
+	      int sql_hash_text_len = 0, sql_user_text_len = 0, sql_plan_text_len = 0;
+	      char *strbuf = NULL;
+
+	      sql_hash_text_len = strlen (context->sql_hash_text) + 1;
+	      if (context->sql_user_text != NULL)
+		{
+		  sql_user_text_len = strlen (context->sql_user_text) + 1;
+		}
+	      if (context->sql_plan_text != NULL)
+		{
+		  sql_plan_text_len = strlen (context->sql_plan_text) + 1;
+		}
+	      strbuf = (char *) malloc (sql_hash_text_len + sql_user_text_len + sql_plan_text_len);
+	      if (strbuf == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  sql_hash_text_len + sql_user_text_len + sql_plan_text_len);
+		}
+	      memcpy (strbuf, context->sql_hash_text, sql_hash_text_len);
+	      (*xcache_entry)->sql_info.sql_hash_text = strbuf;
+	      strbuf += sql_hash_text_len;
+
+	      if (sql_user_text_len > 0)
+		{
+		  memcpy (strbuf, context->sql_user_text, sql_user_text_len);
+		  (*xcache_entry)->sql_info.sql_user_text = strbuf;
+		  strbuf += sql_user_text_len;
+		}
+
+	      if (sql_plan_text_len > 0)
+		{
+		  memcpy (strbuf, context->sql_plan_text, sql_plan_text_len);
+		  (*xcache_entry)->sql_info.sql_plan_text = strbuf;
+		  strbuf += sql_plan_text_len;
+		}
 	    }
 	}
       else
@@ -861,12 +910,12 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
 	  ATOMIC_INC_64 (&xcache_Stat_found_at_insert, 1);
 	}
 
-      if (inserted || !recompile_xasl)
+      if (inserted || !context->recompile_xasl)
 	{
 	  /* The entry is accepted. */
 	  if (to_be_recompiled != NULL)
 	    {
-	      assert (recompile_xasl);
+	      assert (context->recompile_xasl);
 	      /* Now that we inserted new cache entry, we can mark the old entry as recompiled. */
 	      do 
 		{
@@ -898,19 +947,19 @@ xcache_insert (THREAD_ENTRY * thread_p, SHA1Hash * sha1, XASL_STREAM * stream, c
 	      to_be_recompiled = NULL;
 	    }
 
-	  xcache_log_error ("successful find or insert: \n"
-			    XCACHE_LOG_ENTRY_TEXT ("entry found or inserted")
-			    "\t found or inserted = %s \n"
-			    "\t recompile xasl = %s \n"
-			    XCACHE_LOG_TRAN_TEXT,
-			    XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
-			    inserted ? "inserted" : "found",
-			    recompile_xasl ? "true" : "false",
-			    XCACHE_LOG_TRAN_ARGS (thread_p));
+	  xcache_log ("successful find or insert: \n"
+		      XCACHE_LOG_ENTRY_TEXT ("entry found or inserted")
+		      "\t found or inserted = %s \n"
+		      "\t recompile xasl = %s \n"
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+		      inserted ? "inserted" : "found",
+		      context->recompile_xasl ? "true" : "false",
+		      XCACHE_LOG_TRAN_ARGS (thread_p));
 	  break;
 	}
 
-      assert (!inserted && recompile_xasl);
+      assert (!inserted && context->recompile_xasl);
       assert (to_be_recompiled == NULL);
       /* We want to refresh the xasl cache entry, not to use existing. */
       /* Mark existing as to be recompiled. */

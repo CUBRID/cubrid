@@ -6328,7 +6328,7 @@ logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p)
   edesc->of_del_tran_id = offsetof (GLOBAL_UNIQUE_STATS, del_id);
   edesc->of_key = offsetof (GLOBAL_UNIQUE_STATS, btid);
   edesc->of_mutex = offsetof (GLOBAL_UNIQUE_STATS, mutex);
-  edesc->mutex_flags = LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_LOCK_ON_DELETE | LF_EM_FLAG_UNLOCK_AFTER_DELETE;
+  edesc->using_mutex = LF_EM_USING_MUTEX;
   edesc->f_alloc = logtb_global_unique_stat_alloc;
   edesc->f_free = logtb_global_unique_stat_free;
   edesc->f_init = logtb_global_unique_stat_init;

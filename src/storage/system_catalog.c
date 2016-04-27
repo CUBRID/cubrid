@@ -217,7 +217,7 @@ static LF_ENTRY_DESCRIPTOR catalog_entry_Descriptor = {
   offsetof (CATALOG_ENTRY, key),
   0,
 
-  /* mutex flags */
+  /* using mutex? */
   LF_EM_NOT_USING_MUTEX,
 
   catalog_entry_alloc,

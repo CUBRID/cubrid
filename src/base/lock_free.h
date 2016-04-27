@@ -58,10 +58,8 @@ typedef int (*LF_ENTRY_KEY_COMPARE_FUNC) (void *key1, void *key2);
 typedef unsigned int (*LF_ENTRY_HASH_FUNC) (void *key, int htsize);
 typedef int (*LF_ENTRY_DUPLICATE_KEY_HANDLER) (void *key, void *existing);
 
-#define LF_EM_NOT_USING_MUTEX		      0x0
-#define LF_EM_FLAG_LOCK_ON_FIND		      0x1
-#define LF_EM_FLAG_LOCK_ON_DELETE	      0x2
-#define LF_EM_FLAG_UNLOCK_AFTER_DELETE	      0x4
+#define LF_EM_NOT_USING_MUTEX		      0
+#define LF_EM_USING_MUTEX		      1
 
 typedef struct lf_entry_descriptor LF_ENTRY_DESCRIPTOR;
 struct lf_entry_descriptor
@@ -81,8 +79,8 @@ struct lf_entry_descriptor
   /* offset of entry mutex */
   unsigned int of_mutex;
 
-  /* mutex action flags */
-  int mutex_flags;
+  /* does entry have mutex */
+  int using_mutex;
 
   /* allocation callback */
   LF_ENTRY_ALLOC_FUNC f_alloc;
@@ -313,16 +311,17 @@ extern int lf_io_list_find_or_insert (void **list_p, void *new_entry, LF_ENTRY_D
 #define LF_LIST_BF_NONE			  0x0
 
 /* flags that can be given to lf_list_* functions */
-#define LF_LIST_BF_RETURN_ON_RESTART	  0x1
-#define LF_LIST_BF_RESTART_ON_DUPLICATE	  0x2	    /* Not used for now. */
-#define LF_LIST_BF_INSERT_GIVEN		  0x4
-#define LF_LIST_BF_FIND_OR_INSERT	  0x8
+#define LF_LIST_BF_RETURN_ON_RESTART	  0x01
+#define LF_LIST_BF_RESTART_ON_DUPLICATE	  0x02	    /* Not used for now. */
+#define LF_LIST_BF_INSERT_GIVEN		  0x04
+#define LF_LIST_BF_FIND_OR_INSERT	  0x08
+#define LF_LIST_BF_LOCK_ON_DELETE	  0x10
 #define LF_LIST_BF_IS_FLAG_SET(bf, flag) ((*(bf) & (flag)) != 0)
 #define LF_LIST_BF_SET_FLAG(bf, flag) (*(bf) = *(bf) | (flag))
 
 /* responses to flags from lf_list_* functions */
-#define LF_LIST_BR_RESTARTED		  0x10
-#define LF_LIST_BR_DUPLICATE		  0x20	    /* Not used for now. */
+#define LF_LIST_BR_RESTARTED		  0x100
+#define LF_LIST_BR_DUPLICATE		  0x200	    /* Not used for now. */
 #define LF_LIST_BR_IS_FLAG_SET(br, flag) ((*(br) & (flag)))
 #define LF_LIST_BR_SET_FLAG(br, flag) (*(br) = *(br) | (flag))
 
@@ -370,6 +369,7 @@ extern int lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, 
 extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted);
 extern int lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted);
 extern int lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
+extern int lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
 extern int lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table);
 
 /*

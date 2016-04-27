@@ -72,6 +72,7 @@ static int lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *k
 				    LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int * inserted);
 static int lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry,
 				    int * inserted);
+static int lf_hash_delete_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, int *success);
 
 /*
  * lf_callback_vpid_hash () - hash a VPID
@@ -1002,7 +1003,7 @@ lf_io_list_find (void **list_p, void *key, LF_ENTRY_DESCRIPTOR * edesc, void **e
       if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	{
 	  /* found! */
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
@@ -1064,7 +1065,7 @@ restart_search:
 	  if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	    {
 	      /* found! */
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	      if (edesc->using_mutex)
 		{
 		  /* entry has a mutex protecting it's members; lock it */
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
@@ -1083,7 +1084,7 @@ restart_search:
 	{
 	  /* end of bucket, we must insert */
 	  (*entry) = new_entry;
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
@@ -1093,7 +1094,7 @@ restart_search:
 	  /* attempt an add */
 	  if (!ATOMIC_CAS_ADDR (curr_p, NULL, (*entry)))
 	    {
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	      if (edesc->using_mutex)
 		{
 		  /* link failed, unlock mutex */
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
@@ -1151,7 +1152,7 @@ restart_search:
       if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	{
 	  /* found! */
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
@@ -1268,7 +1269,7 @@ restart_search:
 		  *entry = NULL;
 		}
 
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	      if (edesc->using_mutex)
 		{
 		  /* entry has a mutex protecting it's members; lock it */
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
@@ -1388,7 +1389,7 @@ restart_search:
 		}
 	    }
 	  
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
@@ -1398,7 +1399,7 @@ restart_search:
 	  /* attempt an add */
 	  if (!ATOMIC_CAS_ADDR (curr_p, NULL, (*entry)))
 	    {
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	      if (edesc->using_mutex)
 		{
 		  /* link failed, unlock mutex */
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
@@ -1424,7 +1425,7 @@ restart_search:
 	    }
 	  
 	  /* end transaction if mutex is acquired */
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      lf_tran_end_with_mb (tran);
 	    }
@@ -1509,7 +1510,7 @@ restart_search:
 	    }
 
 	  /* lock mutex if necessary */
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE)
+	  if (edesc->using_mutex && LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
 	    {
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
@@ -1521,7 +1522,7 @@ restart_search:
 	  if (!ATOMIC_CAS_ADDR (curr_p, curr, next))
 	    {
 	      /* unlink failed; first step is to remove lock (if applicable) */
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE)
+	      if (edesc->using_mutex && LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
 		{
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 		  pthread_mutex_unlock (entry_mutex);
@@ -1548,7 +1549,7 @@ restart_search:
 	    }
 
 	  /* unlock mutex if necessary */
-	  if (edesc->mutex_flags & LF_EM_FLAG_UNLOCK_AFTER_DELETE)
+	  if (edesc->using_mutex)
 	    {
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      pthread_mutex_unlock (entry_mutex);
@@ -1861,18 +1862,54 @@ lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, vo
 }
 
 /*
+ * lf_hash_delete_already_locked () - Delete hash entry without locking mutex.
+ *
+ * return	 : error code or NO_ERROR
+ * tran (in)	 : LF transaction entry
+ * table (in)	 : hash table
+ * key (in)	 : key to seek
+ * success (out) : 1 if entry is deleted, 0 otherwise
+ *
+ * NOTE: Careful when calling this function. The typical scenario to call this function is to first find entry using
+ *	 lf_hash_find and then call lf_hash_delete on the found entry.
+ * NOTE: lf_hash_delete_already_locks and lf_hash_delete have identical behavior is entries do not have mutexes.
+ */
+int
+lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success)
+{
+  return lf_hash_delete_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART, success);
+}
+
+/*
+ * lf_hash_delete () - Delete hash entry. If the entries have mutex, it will lock the mutex before deleting.
+ *
+ * return	 : error code or NO_ERROR
+ * tran (in)	 : LF transaction entry
+ * table (in)	 : hash table
+ * key (in)	 : key to seek
+ * success (out) : 1 if entry is deleted, 0 otherwise
+ */
+int
+lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success)
+{
+  return lf_hash_delete_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_LOCK_ON_DELETE, success);
+}
+
+
+/*
  * lf_hash_delete () - delete an entry from the hash table
  *   returns: error code or NO_ERROR
  *   tran(in): LF transaction entry
  *   table(in): hash table
  *   key(in): key to seek
+ *   success(out): 1 if entry is deleted, 0 otherwise.
  */
-int
-lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success)
+static int
+lf_hash_delete_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, int *success)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   unsigned int hash_value;
-  int rc, bflags;
+  int rc;
 
   assert (table != NULL && key != NULL);
   edesc = table->entry_desc;
@@ -1890,7 +1927,6 @@ restart:
       return ER_FAILED;
     }
 
-  bflags = LF_LIST_BF_RETURN_ON_RESTART;
   rc = lf_list_delete (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, success);
   if ((rc == NO_ERROR) && (bflags & LF_LIST_BR_RESTARTED))
     {
@@ -1966,7 +2002,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 	  while (!ATOMIC_CAS_ADDR (next_p, next, ADDR_WITH_MARK (next)));
 
 	  /* wait for mutex */
-	  if ((edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND) || (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE))
+	  if (edesc->using_mutex)
 	    {
 	      mutex_p = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 
@@ -2069,7 +2105,7 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
       /* save current leader as trailer */
       if (it->curr != NULL)
 	{
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      /* follow house rules: lock mutex */
 	      pthread_mutex_t *mx;
@@ -2108,7 +2144,7 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 
       if (it->curr != NULL)
 	{
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      pthread_mutex_t *mx;
 	      int rv;
