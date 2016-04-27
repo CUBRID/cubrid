@@ -622,11 +622,11 @@ put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size)
 	      len = att->domain->type->disksize;
 	    }
 
-	  or_put_offset_internal (buf, offset, offset_size);
+	  or_put_offset_internal (buf, offset, offset_size, OVERFLOW_COLUMN_DISABLED);
 	  offset += len;
 	}
 
-      or_put_offset_internal (buf, offset, offset_size);
+      or_put_offset_internal (buf, offset, offset_size, OVERFLOW_COLUMN_DISABLED);
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
   return rc;

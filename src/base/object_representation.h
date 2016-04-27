@@ -535,6 +535,25 @@
  * The variable offset table is present in the headers of objects and sets.
  */
 
+#define OVERFLOW_COLUMN_ENABLED 1
+#define OVERFLOW_COLUMN_DISABLED 0
+
+#define OR_GET_BYTE_OFFSET(ptr) \
+  ((*(unsigned char *) ((char *) (ptr))) & 0x7f)
+#define OR_GET_SHORT_OFFSET(ptr) \
+  (((short) ntohs (*(short *) ((char *) (ptr)))) & 0x7fff)
+#define OR_GET_INT_OFFSET(ptr) \
+  (((int) ntohl (*(int *) ((char *) (ptr)))) & 0x7fffffff)
+
+
+#define OR_GET_BYTE_OVERFLOW_COLUMN_BIT(ptr) \
+  ((*(unsigned char *) ((char *) (ptr))) & ~0x7f)
+#define OR_GET_SHORT_OVERFLOW_COLUMN_BIT(ptr) \
+  (((short) ntohs (*(short *) ((char *) (ptr)))) & ~0x7fff)
+#define OR_GET_INT_OVERFLOW_COLUMN_BIT(ptr) \
+  (((int) ntohl (*(int *) ((char *) (ptr)))) & ~0x7fffffff)
+
+
 #define OR_VAR_TABLE_SIZE(vars) \
   (OR_VAR_TABLE_SIZE_INTERNAL (vars, BIG_VAR_OFFSET_SIZE))
 
@@ -550,10 +569,17 @@
 
 #define OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, index, offset_size) \
   ((offset_size == OR_BYTE_SIZE) \
-   ? (OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
+   ? (OR_GET_BYTE_OFFSET (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
    : ((offset_size == OR_SHORT_SIZE) \
-      ? (OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
-      : (OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))))
+      ? (OR_GET_SHORT_OFFSET (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
+      : (OR_GET_INT_OFFSET (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))))
+
+#define OR_VAR_TABLE_ELEMENT_OUT_OF_ROW_BIT_INTERNAL(table, index, offset_size) \
+  ((offset_size == OR_BYTE_SIZE) \
+   ? (OR_GET_BYTE_OVERFLOW_COLUMN_BIT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
+   : ((offset_size == OR_SHORT_SIZE) \
+      ? (OR_GET_SHORT_OVERFLOW_COLUMN_BIT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
+      : (OR_GET_INT_OVERFLOW_COLUMN_BIT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))))
 
 #define OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL(table, index, offset_size) \
   (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (table, (index) + 1, offset_size) \
@@ -1457,7 +1483,7 @@ extern int or_put_varchar (OR_BUF * buf, char *string, int charlen);
 extern int or_packed_put_varchar (OR_BUF * buf, char *string, int charlen);
 extern int or_put_align32 (OR_BUF * buf);
 extern int or_put_offset (OR_BUF * buf, int num);
-extern int or_put_offset_internal (OR_BUF * buf, int num, int offset_size);
+extern int or_put_offset_internal (OR_BUF * buf, int num, int offset_size, bool overflow_column_flag);
 extern int or_put_mvccid (OR_BUF * buf, MVCCID mvccid);
 
 /* Data unpacking functions */

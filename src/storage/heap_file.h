@@ -174,7 +174,8 @@ typedef enum
   HEAP_READ_ATTRVALUE,
   HEAP_WRITTEN_ATTRVALUE,
   HEAP_UNINIT_ATTRVALUE,
-  HEAP_WRITTEN_LOB_ATTRVALUE
+  HEAP_WRITTEN_LOB_ATTRVALUE,
+  HEAP_READ_ATTRVALUE_OOR_OID
 } HEAP_ATTRVALUE_STATE;
 
 typedef enum
@@ -281,9 +282,11 @@ struct heap_operation_context
 
   /* logical operation input */
   HFID hfid;			/* heap file identifier */
+  HFID oor_hfid;		/* out of row heap file identifier */
   OID oid;			/* object identifier */
   OID class_oid;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
+  OUT_OF_ROW_RECDES *out_of_row_recdes;
   HEAP_SCANCACHE *scan_cache_p;	/* scan cache */
   unsigned int flags;		/* flags */
 
@@ -338,6 +341,19 @@ typedef enum
   SNAPSHOT_TYPE_MVCC,		/* use MVCC snapshot */
   SNAPSHOT_TYPE_DIRTY		/* use dirty snapshot */
 } SNAPSHOT_TYPE;
+
+typedef enum
+{
+  HEAPATTR_IGNORE_OOR = 0,
+  HEAPATTR_READ_OOR
+} HEAPATTR_OOR_MODE;
+
+
+/* values with this size or above are stored in out of record data (heap or overflow) */
+#define HEAP_OOR_THRESHOLD_SIZE 50
+/* values with size below this threshold are stored in heap file */
+#define HEAP_OOR_SLOTTED_THRESHOLD_SIZE 200
+
 
 /* HEAP_PAGE_VACUUM_STATUS -
  * Heap page attribute used to predict when page is no longer going to need
@@ -466,7 +482,8 @@ extern int heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, 
 extern void heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
-					HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info);
+					HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
+					HEAPATTR_OOR_MODE oor_read_mode);
 extern int heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);
@@ -474,9 +491,11 @@ extern DB_VALUE *heap_attrinfo_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * att
 extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
 			      HEAP_CACHE_ATTRINFO * attr_info);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-						  RECDES * old_recdes, RECDES * new_recdes);
+						  RECDES * old_recdes, RECDES * new_recdes,
+						  OUT_OF_ROW_RECDES * out_of_row_recdes);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-							     RECDES * old_recdes, RECDES * new_recdes);
+							     RECDES * old_recdes, RECDES * new_recdes,
+							     OUT_OF_ROW_RECDES * out_of_row_recdes);
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * dbvalue,
@@ -629,11 +648,13 @@ extern int heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thre
 extern SCAN_CODE heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, LOCK lock_mode,
 					SNAPSHOT_TYPE snapshot_type);
 extern void heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * class_oid_p,
-					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, bool bigone_max_size);
+					RECDES * recdes_p, OUT_OF_ROW_RECDES *out_of_row_recdes_p,
+					HEAP_SCANCACHE * scancache_p, bool bigone_max_size);
 extern void heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
 					HEAP_SCANCACHE * scancache_p);
 extern void heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
-					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place,
+					RECDES * recdes_p, OUT_OF_ROW_RECDES *out_of_row_recdes_p,
+					HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place,
 					bool bigone_max_size);
 extern int heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 extern int heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);

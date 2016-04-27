@@ -162,12 +162,14 @@ static int locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force
 static void locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, LC_COPYAREA_ONEOBJ * obj,
 						DB_VALUE * key_value, int err_code, const char *err_msg);
 static int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
-				 int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
-				 int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
+				 OUT_OF_ROW_RECDES * out_of_row_recdes, int has_index, int op_type,
+				 HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
+				 PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 				 UPDATE_INPLACE_STYLE force_in_place);
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * ikdrecdes,
-				 RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
-				 HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
+				 RECDES * recdes, OUT_OF_ROW_RECDES * out_of_row_recdes,
+				 int has_index, ATTR_ID * att_id, int n_att_id,
+				 int op_type, HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
 				 REPL_INFO_TYPE repl_info_type, int pruning_type, PRUNING_CONTEXT * pcontext,
 				 MVCC_REEV_DATA * mvcc_reev_data, UPDATE_INPLACE_STYLE force_in_place,
 				 bool need_locking);
@@ -4203,7 +4205,7 @@ locator_check_primary_key_upddel (THREAD_ENTRY * thread_p, OID * class_oid, OID 
 
   if (idx_info.has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo, HEAPATTR_READ_OOR);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -4318,7 +4320,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 
   if (idx_info.has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo, HEAPATTR_READ_OOR);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -5093,6 +5095,7 @@ error3:
  *		 the actual partition in which the record was inserted)
  *   oid(in/out): The new object identifier
  *   recdes(in): The object in disk format
+ *   out_of_row_recdes(in): Overflow column objects in disk format
  *   has_index(in): false if we now for sure that there is not any index on the
  *              instances of the class.
  *   op_type(in):
@@ -5108,10 +5111,10 @@ error3:
  *              index entries are inserted.
  */
 static int
-locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes, int has_index,
-		      int op_type, HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
-		      PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
-		      UPDATE_INPLACE_STYLE force_in_place)
+locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
+		      OUT_OF_ROW_RECDES * out_of_row_recdes, int has_index, int op_type, HEAP_SCANCACHE * scan_cache,
+		      int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
+		      FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place)
 {
 #if 0				/* TODO - dead code; do not delete me */
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -5144,6 +5147,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       OID superclass_oid;
       int granted;
       /* Perform partition pruning on the given class */
+      /* TODO[arnia] : disable overflow column on partitioned columns */
       error_code =
 	partition_prune_insert (thread_p, class_oid, recdes, scan_cache, pcontext, pruning_type, &real_class_oid,
 				&real_hfid, &superclass_oid);
@@ -5222,7 +5226,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   use_bigone_maxsize = (pruning_type != DB_NOT_PARTITIONED_CLASS);
 
   /* prepare context */
-  heap_create_insert_context (&context, &real_hfid, &real_class_oid, recdes, local_scan_cache, use_bigone_maxsize);
+  heap_create_insert_context (&context, &real_hfid, &real_class_oid, recdes, out_of_row_recdes, local_scan_cache,
+			      use_bigone_maxsize);
   context.update_in_place = force_in_place;
 
   if (force_in_place == UPDATE_INPLACE_OLD_MVCCID)
@@ -5308,7 +5313,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	  OR_PUT_OID (rep_dir_offset, &rep_dir);
 
-	  heap_create_update_context (&update_context, &real_hfid, oid, &real_class_oid, recdes, local_scan_cache);
+	  heap_create_update_context (&update_context, &real_hfid, oid, &real_class_oid, recdes, NULL, local_scan_cache);
 	  update_context.force_non_mvcc = true;
 
 	  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
@@ -5382,8 +5387,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      recdes = &new_recdes;
 	      /* Cache object has been updated, we need update the value again */
-	      heap_create_update_context (&update_context, &real_hfid, oid, &real_class_oid, recdes, local_scan_cache,
-					  UPDATE_INPLACE_CURRENT_MVCCID, false);
+	      heap_create_update_context (&update_context, &real_hfid, oid, &real_class_oid, recdes, out_of_row_recdes,
+					  local_scan_cache, UPDATE_INPLACE_CURRENT_MVCCID, false);
 	      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -5494,8 +5499,9 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 
       insert_cache = &ins_cache->scan_cache;
 
+      /* TODO[arnia] : overflow columns */
       error =
-	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
+	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, NULL, has_index, op_type,
 			      insert_cache, force_count, context->pruning_type, NULL, NULL, UPDATE_INPLACE_NONE);
     }
   else
@@ -5509,9 +5515,10 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 	  return error;
 	}
 
+      /* TODO[arnia] : overflow columns */
       /* insert the new record */
       error =
-	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
+	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, NULL, has_index, op_type,
 			      &insert_cache, force_count, DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE);
       heap_scancache_end (thread_p, &insert_cache);
     }
@@ -5566,9 +5573,9 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
  * Note: The given object is updated on this heap and all appropriate
  *              index entries are updated.
  */
-static int
 locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * oldrecdes,
-		      RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
+		      RECDES * recdes, OUT_OF_ROW_RECDES * out_of_row_recdes, 
+		      int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk, REPL_INFO_TYPE repl_info_type,
 		      int pruning_type, PRUNING_CONTEXT * pcontext, MVCC_REEV_DATA * mvcc_reev_data,
 		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking)
@@ -5685,7 +5692,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
-      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, scan_cache,
+      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, out_of_row_recdes, scan_cache,
 				  UPDATE_INPLACE_CURRENT_MVCCID, false);
       error_code = heap_update_logical (thread_p, &update_context);
       if (error_code != NO_ERROR)
@@ -5757,7 +5764,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      OR_PUT_OID (rep_dir_offset, &rep_dir);
 
-	      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, scan_cache,
+	      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, out_of_row_recdes, scan_cache,
 					  UPDATE_INPLACE_CURRENT_MVCCID, false);
 	      error_code = heap_update_logical (thread_p, &update_context);
 	      if (error_code != NO_ERROR)
@@ -6096,8 +6103,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  HEAP_OPERATION_CONTEXT update_context;
 
 	  /* in MVCC update heap and then indexes */
-	  heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place,
-				      use_bigone_maxsize);
+	  heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, out_of_row_recdes,
+				      local_scan_cache, force_in_place, use_bigone_maxsize);
 	  error_code = heap_update_logical (thread_p, &update_context);
 	  if (error_code != NO_ERROR)
 	    {
@@ -6198,8 +6205,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	{
 	  HEAP_OPERATION_CONTEXT update_context;
 
-	  heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place,
-				      use_bigone_maxsize);
+	  heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, out_of_row_recdes,
+				      local_scan_cache, force_in_place, use_bigone_maxsize);
 	  error_code = heap_update_logical (thread_p, &update_context);
 	  if (error_code != NO_ERROR)
 	    {
@@ -6849,6 +6856,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	  /* update */
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,
+				  NULL /* TODO[arnia]: out of record */, 
 				  has_index, NULL, 0, MULTI_ROW_UPDATE, &scan_cache, &force_count, false, repl_info,
 				  DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE, true);
 	  if (error_code != NO_ERROR)
@@ -7257,8 +7265,9 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    case LC_FLUSH_INSERT_PRUNE:
 	    case LC_FLUSH_INSERT_PRUNE_VERIFY:
 	      pruning_type = locator_area_op_to_pruning_type (obj->operation);
+	      /* TODO[arnia] : overflow columns */
 	      error_code =
-		locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, &recdes, has_index,
+		locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, &recdes, NULL, has_index,
 				      SINGLE_ROW_INSERT, force_scancache, &force_count, pruning_type, NULL, NULL,
 				      UPDATE_INPLACE_NONE);
 
@@ -7273,9 +7282,10 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    case LC_FLUSH_UPDATE_PRUNE:
 	    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
 	      pruning_type = locator_area_op_to_pruning_type (obj->operation);
+	      /* TODO[arnia] : overflow columns */
 	      error_code =
-		locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, has_index,
-				      NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
+		locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, NULL,
+				      has_index, NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
 				      REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true);
 
 	      if (error_code == NO_ERROR)
@@ -7445,8 +7455,9 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	case LC_FLUSH_INSERT_PRUNE:
 	case LC_FLUSH_INSERT_PRUNE_VERIFY:
 	  pruning_type = locator_area_op_to_pruning_type (obj->operation);
+	  /* TODO[arnia] : overflow columns */
 	  error_code =
-	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, &recdes, has_index,
+	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, &recdes, NULL, has_index,
 				  SINGLE_ROW_INSERT, force_scancache, &force_count, pruning_type, NULL, NULL,
 				  UPDATE_INPLACE_NONE);
 
@@ -7461,8 +7472,10 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	case LC_FLUSH_UPDATE_PRUNE:
 	case LC_FLUSH_UPDATE_PRUNE_VERIFY:
 	  pruning_type = locator_area_op_to_pruning_type (obj->operation);
+	  /* TODO[arnia] : overflow columns */
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,
+				  NULL,
 				  has_index, NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
 				  REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true);
 
@@ -7595,7 +7608,9 @@ error:
  */
 LC_COPYAREA *
 locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
-					 RECDES * new_recdes, const int copyarea_length_hint, int lob_create_flag)
+					 RECDES * new_recdes, const int copyarea_length_hint,
+					 OUT_OF_ROW_RECDES * out_of_row_recdes,
+					 int lob_create_flag)
 {
   LC_COPYAREA *copyarea = NULL;
   int copyarea_length = copyarea_length_hint <= 0 ? DB_PAGESIZE : copyarea_length_hint;
@@ -7614,11 +7629,11 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 
       if (lob_create_flag == LOB_FLAG_EXCLUDE_LOB)
 	{
-	  scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, new_recdes);
+	  scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, new_recdes, out_of_row_recdes);
 	}
       else
 	{
-	  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, new_recdes);
+	  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, new_recdes, out_of_row_recdes);
 	}
 
       if (scan != S_SUCCESS)
@@ -7707,6 +7722,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   HFID class_hfid;
   OID class_oid;
   MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
+  OUT_OF_ROW_RECDES out_of_row_recdes = OUT_OF_ROW_RECDES_INITILIAZER;
 
   /* 
    * While scanning objects, the given scancache does not fix the last
@@ -7821,7 +7837,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_INSERT_PRUNE:
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
       copyarea =
-	locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1,
+	locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1, &out_of_row_recdes,
 						 LOB_FLAG_INCLUDE_LOB);
       if (copyarea == NULL)
 	{
@@ -7833,8 +7849,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       if (LC_IS_FLUSH_INSERT (operation))
 	{
 	  error_code =
-	    locator_insert_force (thread_p, &class_hfid, &class_oid, oid, &new_recdes, true, op_type, scan_cache,
-				  force_count, pruning_type, pcontext, func_preds, UPDATE_INPLACE_NONE);
+	    locator_insert_force (thread_p, &class_hfid, &class_oid, oid, &new_recdes, &out_of_row_recdes, true, op_type,
+				  scan_cache, force_count, pruning_type, pcontext, func_preds, UPDATE_INPLACE_NONE);
 	}
       else
 	{
@@ -7850,7 +7866,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    }
 
 	  error_code =
-	    locator_update_force (thread_p, &class_hfid, &class_oid, oid, old_recdes, &new_recdes, has_index,
+	    locator_update_force (thread_p, &class_hfid, &class_oid, oid, old_recdes, &new_recdes,
+				  &out_of_row_recdes, has_index,
 				  att_id, n_att_id, op_type, scan_cache, force_count, not_check_fk, repl_info,
 				  pruning_type, pcontext, mvcc_reev_data, force_update_inplace, need_locking);
 	  if (error_code != NO_ERROR)
@@ -8087,7 +8104,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
    */
   if (idx_info.has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo, HEAPATTR_READ_OOR);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -8564,7 +8581,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICAT
 
   for (i = 0; i < num_insts; i++)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oids[i], recs[i], NULL, pred_filter->cache_pred);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oids[i], recs[i], NULL, pred_filter->cache_pred, HEAPATTR_READ_OOR);
       if (error_code != NO_ERROR)
 	{
 	  goto end;
@@ -8760,12 +8777,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   new_attrinfo = &space_attrinfo[0];
   old_attrinfo = &space_attrinfo[1];
 
-  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, new_recdes, NULL, new_attrinfo);
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, new_recdes, NULL, new_attrinfo, HEAPATTR_READ_OOR);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
-  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, old_recdes, NULL, old_attrinfo);
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, old_recdes, NULL, old_attrinfo, HEAPATTR_READ_OOR);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -9374,7 +9391,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	  continue;
 	}
 
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &copy_rec, NULL, &index_attrinfo);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &copy_rec, NULL, &index_attrinfo, HEAPATTR_READ_OOR);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -9838,7 +9855,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 	}
 
       /* Make sure that the index entry exist */
-      if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, NULL, &attr_info) != NO_ERROR)
+      if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, NULL, &attr_info, HEAPATTR_READ_OOR) != NO_ERROR)
 	  || (key = heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, &btid_info, &dbvalue, aligned_buf,
 					    NULL, NULL)) == NULL)
 	{
@@ -10275,7 +10292,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 	    }
 
 	  /* Make sure that the index entry exists */
-	  if ((heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, NULL, &attr_info) != NO_ERROR)
+	  if ((heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, NULL, &attr_info, HEAPATTR_READ_OOR) != NO_ERROR)
 	      ||
 	      ((key =
 		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL,
@@ -12136,7 +12153,7 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
     {
       if (n_attrs == 1)
 	{
-	  error_code = heap_attrinfo_read_dbvalues (thread_p, &oid, &copy_recdes, NULL, &attr_info);
+	  error_code = heap_attrinfo_read_dbvalues (thread_p, &oid, &copy_recdes, NULL, &attr_info, HEAPATTR_READ_OOR);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto end;
@@ -12690,7 +12707,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
 	      goto error_exit;
 	    }
 
-	  error = heap_attrinfo_read_dbvalues (thread_p, &obj->oid, &recdes, NULL, &attr_info);
+	  error = heap_attrinfo_read_dbvalues (thread_p, &obj->oid, &recdes, NULL, &attr_info, HEAPATTR_READ_OOR);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -13297,8 +13314,9 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
 	      /* make sure that pruning does not change the given class OID */
 	      COPY_OID (&cls_oid, class_oid);
+	      /* TODO[arnia] : overflow columns */
 	      error =
-		locator_insert_force (thread_p, &class_hfid, &cls_oid, &oid, &recdes, true, SINGLE_ROW_INSERT,
+		locator_insert_force (thread_p, &class_hfid, &cls_oid, &oid, &recdes, NULL, true, SINGLE_ROW_INSERT,
 				      &parent_scan_cache, &force_count, DB_PARTITIONED_CLASS, &pcontext, NULL,
 				      UPDATE_INPLACE_OLD_MVCCID);
 	      if (error != NO_ERROR)

@@ -600,7 +600,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
       update_indexes (WS_OID (classop), oid, Diskrec);
     }
 
-  heap_create_update_context (&update_context, hfid, oid, WS_OID (classop), Diskrec, NULL,
+  heap_create_update_context (&update_context, hfid, oid, WS_OID (classop), Diskrec, NULL, NULL,
 			      UPDATE_INPLACE_CURRENT_MVCCID, false);
   if (heap_update_logical (NULL, &update_context) != NO_ERROR)
     {

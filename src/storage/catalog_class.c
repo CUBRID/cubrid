@@ -3692,7 +3692,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
       goto error;
     }
 
-  heap_create_update_context (&update_context, hfid_p, oid_p, class_oid_p, &record, scan_p,
+  heap_create_update_context (&update_context, hfid_p, oid_p, class_oid_p, &record, NULL, scan_p,
 			      UPDATE_INPLACE_CURRENT_MVCCID, false);
   if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
@@ -3954,7 +3954,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 	}
 
       /* update in place */
-      heap_create_update_context (&update_context, hfid_p, oid_p, class_oid_p, &record, scan_p, force_in_place, false);
+      heap_create_update_context (&update_context, hfid_p, oid_p, class_oid_p, &record, NULL, scan_p, force_in_place, false);
       if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -4538,7 +4538,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char 
     {
       HEAP_ATTRVALUE *heap_value = NULL;
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info, HEAPATTR_READ_OOR) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto exit;
@@ -4831,7 +4831,6 @@ error:
   return error;
 }
 
-
 /*
  * catcls_get_db_collation () - get infomation on all collation in DB
  *				stored in the "_db_collation" system table
@@ -4973,7 +4972,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
       HEAP_ATTRVALUE *heap_value = NULL;
       LANG_COLL_COMPAT *curr_coll;
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info, HEAPATTR_READ_OOR) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto exit;
@@ -5162,7 +5161,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
     {
       HEAP_ATTRVALUE *heap_value = NULL;
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info, HEAPATTR_READ_OOR) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto exit;

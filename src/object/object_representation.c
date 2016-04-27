@@ -1669,25 +1669,25 @@ or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align)
 int
 or_put_offset (OR_BUF * buf, int num)
 {
-  return or_put_offset_internal (buf, num, BIG_VAR_OFFSET_SIZE);
+  return or_put_offset_internal (buf, num, BIG_VAR_OFFSET_SIZE, OVERFLOW_COLUMN_DISABLED);
 }
 
 int
-or_put_offset_internal (OR_BUF * buf, int num, int offset_size)
+or_put_offset_internal (OR_BUF * buf, int num, int offset_size, bool overflow_column_flag)
 {
   if (offset_size == OR_BYTE_SIZE)
     {
-      return or_put_byte (buf, num);
+      return or_put_byte (buf, num | (overflow_column_flag ? 0x80 : 0));
     }
   else if (offset_size == OR_SHORT_SIZE)
     {
-      return or_put_short (buf, num);
+      return or_put_short (buf, num | (overflow_column_flag ? 0x8000 : 0));
     }
   else
     {
       assert (offset_size == BIG_VAR_OFFSET_SIZE);
 
-      return or_put_int (buf, num);
+      return or_put_int (buf, num | (overflow_column_flag ? 0x80000000L : 0));
     }
 }
 

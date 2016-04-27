@@ -303,10 +303,10 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size)
 		  len = tp_domain_disk_size (att->domain);
 		}
 	    }
-	  or_put_offset_internal (buf, offset, offset_size);
+	  or_put_offset_internal (buf, offset, offset_size, OVERFLOW_COLUMN_DISABLED);
 	  offset += len;
 	}
-      or_put_offset_internal (buf, offset, offset_size);
+      or_put_offset_internal (buf, offset, offset_size, OVERFLOW_COLUMN_DISABLED);
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
 }

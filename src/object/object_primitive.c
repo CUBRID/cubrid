@@ -9776,7 +9776,7 @@ int
 pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
 {
   DB_MIDXKEY *midx_key;
-  int i, start, offset, size;
+  int i, start, offset;
 
   midx_key = DB_PULL_MIDXKEY (key);
 
@@ -15643,4 +15643,16 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
   s2 = DB_GET_ENUM_SHORT (value2);
 
   return MR_CMP (s1, s2);
+}
+
+bool
+pr_is_overflow_column (DB_VALUE * val)
+{
+  if (DB_VALUE_TYPE (val) == DB_TYPE_VARCHAR
+      && DB_GET_STRING_SIZE (val) > HEAP_OOR_THRESHOLD_SIZE)
+    {
+      return true;
+    }
+
+  return false;
 }

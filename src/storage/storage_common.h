@@ -705,6 +705,17 @@ typedef enum
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
 
+typedef struct out_of_row_recdes OUT_OF_ROW_RECDES;
+struct out_of_row_recdes
+{
+  RECDES *oor_recdes;		/* array of RECDES of out of row values */
+  int *home_recdes_oid_offsets;	/* array of offsets into home record for OIDs of out of row values */
+  int recdes_capacity;		/* allowed RECDES elements in RECDES array */
+  int recdes_cnt;		/* current count of elements in RECDES array */
+};
+
+#define OUT_OF_ROW_RECDES_INITILIAZER {NULL, NULL, 0, 0}
+
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);
 extern INT16 db_log_page_size (void);

@@ -8866,7 +8866,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		      if (scan_code == S_SUCCESS)
 			{
 			  error =
-			    heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, NULL, &crt_del_lob_info->attr_info);
+			    heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, NULL, &crt_del_lob_info->attr_info, HEAPATTR_READ_OOR);
 			  if (error != NO_ERROR)
 			    {
 			      GOTO_EXIT_ON_ERROR;
@@ -9721,7 +9721,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 		  if (scan_code == S_SUCCESS)
 		    {
-		      error = heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, NULL, &crt_del_lob_info->attr_info);
+		      error = heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, NULL, &crt_del_lob_info->attr_info, HEAPATTR_READ_OOR);
 		      if (error != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -10093,7 +10093,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, LOB_FLAG_EXCLUDE_LOB);
+  /* TODO[arnoa]*/
+  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, NULL, LOB_FLAG_EXCLUDE_LOB);
   if (copyarea == NULL)
     {
       goto error_exit;
@@ -10101,7 +10102,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 
   if (idx_info->has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &new_recdes, NULL, index_attr_info);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &new_recdes, NULL, index_attr_info, HEAPATTR_READ_OOR);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -10324,7 +10325,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, LOB_FLAG_INCLUDE_LOB);
+  /* TODO[arnia] */
+  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, NULL, LOB_FLAG_INCLUDE_LOB);
   if (copyarea == NULL)
     {
       goto error_exit;
@@ -10332,7 +10334,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 
   if (idx_info->has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &recdes, NULL, index_attr_info);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &recdes, NULL, index_attr_info, HEAPATTR_READ_OOR);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -10551,7 +10553,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
       local_op_type = (BTREE_IS_MULTI_ROW_OP (op_type) ? MULTI_ROW_UPDATE : SINGLE_ROW_UPDATE);
     }
 
-  error = heap_attrinfo_read_dbvalues (thread_p, &unique_oid, &rec_descriptor, local_scan_cache, odku->attr_info);
+  error = heap_attrinfo_read_dbvalues (thread_p, &unique_oid, &rec_descriptor, local_scan_cache, odku->attr_info, HEAPATTR_READ_OOR);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -11695,7 +11697,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  fetch_init_val_list (specp->s.cls_node.cls_regu_list_rest);
 
 	  /* read the predicate values from the heap into the scancache */
-	  status = heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_pred);
+	  status = heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_pred, HEAPATTR_READ_OOR);
 	  if (status != NO_ERROR)
 	    {
 	      goto wrapup;
@@ -11736,7 +11738,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      fetch->fetch_res = true;
 	      /* read the rest of the values from the heap */
 	      status =
-		heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_rest);
+		heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_rest, HEAPATTR_READ_OOR);
 	      if (status != NO_ERROR)
 		{
 		  goto wrapup;
