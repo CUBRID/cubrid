@@ -618,10 +618,9 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ ** new_proper
 	    }
 	  if (is_global == 0)
 	    {
-	      if (classobj_put_index_id
-		  (new_properties, c->type, c->name, c->attributes, c->asc_desc, c->attrs_prefix_length,
-		   &(c->index_btid), c->filter_predicate, c->fk_info, c->shared_cons_name, c->func_index_info,
-		   c->comment) == ER_FAILED)
+	      if (classobj_put_index_id (new_properties, c->type, c->name, c->attributes, c->asc_desc,
+					 c->attrs_prefix_length, &(c->index_btid), c->filter_predicate, c->fk_info,
+					 c->shared_cons_name, c->func_index_info, c->comment) == ER_FAILED)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -4597,9 +4596,9 @@ classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * 
 	{
 	  continue;
 	}
-      if (classobj_put_index_id
-	  (properties, type, con->name, con->attributes, con->asc_desc, con->attrs_prefix_length, &(con->index_btid),
-	   con->filter_predicate, con->fk_info, con->shared_cons_name, con->func_index_info, con->comment) == ER_FAILED)
+      if (classobj_put_index_id (properties, type, con->name, con->attributes, con->asc_desc, con->attrs_prefix_length,
+				 &(con->index_btid), con->filter_predicate, con->fk_info, con->shared_cons_name,
+				 con->func_index_info, con->comment) == ER_FAILED)
 	{
 	  error = ER_SM_INVALID_PROPERTY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);

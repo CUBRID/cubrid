@@ -4254,9 +4254,8 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      return NULL;
 	    }
-	  if (QSTR_COMPARE
-	      (d->collation_id, (const unsigned char *) dom_str, dom_size, (const unsigned char *) val_str,
-	       val_size) == 0)
+	  if (QSTR_COMPARE (d->collation_id, (const unsigned char *) dom_str, dom_size,
+			    (const unsigned char *) val_str, val_size) == 0)
 	    {
 	      if (best == NULL)
 		{
@@ -10207,9 +10206,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		    size = DB_GET_ENUM_ELEM_STRING_SIZE (db_enum);
 
 		    /* use collation from the PT_TYPE_ENUMERATION */
-		    if (QSTR_COMPARE
-			(desired_domain->collation_id, (const unsigned char *) val_str, val_str_size,
-			 (const unsigned char *) DB_GET_ENUM_ELEM_STRING (db_enum), size) == 0)
+		    if (QSTR_COMPARE (desired_domain->collation_id, (const unsigned char *) val_str, val_str_size,
+				      (const unsigned char *) DB_GET_ENUM_ELEM_STRING (db_enum), size) == 0)
 		      {
 			break;
 		      }

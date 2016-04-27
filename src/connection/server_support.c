@@ -1827,8 +1827,8 @@ css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
  *   buffer(in):
  */
 void
-css_initialize_server_interfaces (int (*request_handler)
-				  (THREAD_ENTRY * thrd, unsigned int eid, int request, int size, char *buffer),
+css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, unsigned int eid, int request,
+							  int size, char *buffer),
 				  CSS_THREAD_FN connection_error_function)
 {
   css_Server_request_handler = request_handler;
@@ -2179,12 +2179,12 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 
   if (buffer3 == NULL || buffer3_size <= 0)
     {
-      return (css_send_reply_and_2_data_to_client
-	      (conn, eid, reply, reply_size, buffer1, buffer1_size, buffer2, buffer2_size));
+      return (css_send_reply_and_2_data_to_client (conn, eid, reply, reply_size, buffer1, buffer1_size, buffer2,
+						   buffer2_size));
     }
-  rc =
-    css_send_four_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2, buffer2_size,
-			buffer3, buffer3_size);
+
+  rc = css_send_four_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2,
+			   buffer2_size, buffer3, buffer3_size);
 
   return (rc == NO_ERRORS) ? 0 : rc;
 }
@@ -2998,24 +2998,15 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
   assert (state >= HA_SERVER_STATE_IDLE && state <= HA_SERVER_STATE_DEAD);
 
   if (state == ha_Server_state
-      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE) || (!force
-													    &&
-													    ha_Server_state
-													    ==
-													    HA_SERVER_STATE_TO_BE_STANDBY
-													    && state ==
-													    HA_SERVER_STATE_STANDBY))
+      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE)
+      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && state == HA_SERVER_STATE_STANDBY))
     {
       return NO_ERROR;
     }
 
   if (heartbeat == false && !(ha_Server_state == HA_SERVER_STATE_STANDBY && state == HA_SERVER_STATE_MAINTENANCE)
-      && !(ha_Server_state == HA_SERVER_STATE_MAINTENANCE && state == HA_SERVER_STATE_STANDBY) && !(force
-												    && ha_Server_state
-												    ==
-												    HA_SERVER_STATE_TO_BE_ACTIVE
-												    && state ==
-												    HA_SERVER_STATE_ACTIVE))
+      && !(ha_Server_state == HA_SERVER_STATE_MAINTENANCE && state == HA_SERVER_STATE_STANDBY)
+      && !(force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE))
     {
       return NO_ERROR;
     }
@@ -3141,8 +3132,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      tdes = log_Gl.trantable.all_tdes[i];
 	      if (tdes != NULL && tdes->trid != NULL_TRANID)
 		{
-		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE
-		      (tdes->client.host_name, boot_Host_name, tdes->client.client_type))
+		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.host_name, boot_Host_name,
+							       tdes->client.client_type))
 		    {
 		      thread_slam_tran_index (thread_p, tdes->tran_index);
 		    }

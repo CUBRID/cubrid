@@ -1323,9 +1323,8 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 	      /* only update the attribute if it is updatable */
 	      if (mq_is_updatable_attribute (template_ptr->classobj, att->header.name, template_ptr->base_classobj))
 		{
-		  if (mq_update_attribute
-		      (template_ptr->classobj, att->header.name, template_ptr->base_classobj, &att->default_value.value,
-		       &base_value, &base_name, DB_AUTH_INSERT))
+		  if (mq_update_attribute (template_ptr->classobj, att->header.name, template_ptr->base_classobj,
+					   &att->default_value.value, &base_value, &base_name, DB_AUTH_INSERT))
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      return er_errid ();
@@ -1588,8 +1587,8 @@ obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att, int base_assignment
 
       auth = (template_ptr->object == NULL) ? DB_AUTH_INSERT : DB_AUTH_UPDATE;
 
-      if (mq_update_attribute
-	  (template_ptr->classobj, att->header.name, template_ptr->base_classobj, value, &base_value, &base_name, auth))
+      if (mq_update_attribute (template_ptr->classobj, att->header.name, template_ptr->base_classobj, value,
+			       &base_value, &base_name, auth))
 	{
 	  goto error_exit;
 	}
@@ -1720,9 +1719,8 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att, int base_assign
   if (!base_assignment && template_ptr->base_class != NULL)
     {
       auth = (template_ptr->object == NULL) ? DB_AUTH_INSERT : DB_AUTH_UPDATE;
-      if (mq_update_attribute
-	  (template_ptr->classobj, att->header.name, template_ptr->base_classobj, &dummy_value, &base_value, &base_name,
-	   auth))
+      if (mq_update_attribute (template_ptr->classobj, att->header.name, template_ptr->base_classobj, &dummy_value,
+			       &base_value, &base_name, auth))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
