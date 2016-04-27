@@ -346,7 +346,6 @@ struct cls_spec_node
   REGU_VARIABLE_LIST cls_regu_list_rest;	/* regu list for rest of attrs */
   REGU_VARIABLE_LIST cls_regu_list_range;	/* regu list for range part of a condition. Used only in reevaluation
 						 * at index scan */
-  REGU_VARIABLE_LIST cls_regu_list_last_version;
   OUTPTR_LIST *cls_output_val_list;	/* regu list writer for val list */
   REGU_VARIABLE_LIST cls_regu_val_list;	/* regu list reader for val list */
   HFID hfid;			/* heap file identifier */

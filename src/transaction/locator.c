@@ -589,7 +589,6 @@ locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char *d
       ptr = or_pack_hfid (ptr, &obj->hfid);
       ptr = or_pack_oid (ptr, &obj->class_oid);
       ptr = or_pack_oid (ptr, &obj->oid);
-      ptr = or_pack_oid (ptr, &obj->updated_oid);
       ptr = or_pack_int (ptr, obj->length);
       ptr = or_pack_int (ptr, obj->offset);
     }
@@ -628,7 +627,6 @@ locator_unpack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea, char 
       desc = or_unpack_hfid (desc, &obj->hfid);
       desc = or_unpack_oid (desc, &obj->class_oid);
       desc = or_unpack_oid (desc, &obj->oid);
-      desc = or_unpack_oid (desc, &obj->updated_oid);
       desc = or_unpack_int (desc, &obj->length);
       desc = or_unpack_int (desc, &obj->offset);
     }
