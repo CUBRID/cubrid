@@ -1975,8 +1975,6 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.scan_pred.regu_list, final);
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.rest_regu_list, final);
 
-	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.hsid.regu_list_last_version, final);
-
 	  hsidp = &p->s_id.s.hsid;
 	  if (hsidp->caches_inited)
 	    {
@@ -2013,8 +2011,6 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	    {
 	      pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.isid.indx_cov.regu_val_list, final);
 	    }
-
-	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.isid.regu_list_last_version, final);
 
 	  if (p->s_id.s.isid.indx_cov.output_val_list != NULL)
 	    {
@@ -2088,7 +2084,6 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.cls_node.cls_regu_list_key, final);
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.cls_node.cls_regu_list_pred, final);
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.cls_node.cls_regu_list_rest, final);
-	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.cls_node.cls_regu_list_last_version, final);
 	  if (p->access == INDEX)
 	    {
 	      INDX_INFO *indx_info;
@@ -6475,11 +6470,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 				   &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
 				   curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
 				   curr_spec->s.cls_node.cls_regu_list_rest,
-				   curr_spec->s.cls_node.cls_regu_list_last_version,
-				   curr_spec->s.cls_node.num_attrs_pred, curr_spec->s.cls_node.attrids_pred,
-				   curr_spec->s.cls_node.cache_pred, curr_spec->s.cls_node.num_attrs_rest,
-				   curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest, scan_type,
-				   curr_spec->s.cls_node.cache_reserved,
+				   curr_spec->s.cls_node.num_attrs_pred,
+				   curr_spec->s.cls_node.attrids_pred, curr_spec->s.cls_node.cache_pred,
+				   curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
+				   curr_spec->s.cls_node.cache_rest, scan_type, curr_spec->s.cls_node.cache_reserved,
 				   curr_spec->s.cls_node.cls_regu_list_reserved) != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -6528,7 +6522,6 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 				    curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
 				    curr_spec->s.cls_node.cls_regu_list_rest, curr_spec->where_range,
 				    curr_spec->s.cls_node.cls_regu_list_range,
-				    curr_spec->s.cls_node.cls_regu_list_last_version,
 				    curr_spec->s.cls_node.cls_output_val_list, curr_spec->s.cls_node.cls_regu_val_list,
 				    curr_spec->s.cls_node.num_attrs_key, curr_spec->s.cls_node.attrids_key,
 				    curr_spec->s.cls_node.cache_key, curr_spec->s.cls_node.num_attrs_pred,
@@ -7492,7 +7485,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_rest);
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_key);
-  qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_last_version);
   qexec_reset_pred_expr (spec->where_pred);
   qexec_reset_pred_expr (spec->where_key);
 
@@ -7539,11 +7531,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	scan_open_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, single_fetch,
 			     spec->s_dbval, val_list, vd, &class_oid, &class_hfid, spec->s.cls_node.cls_regu_list_pred,
 			     spec->where_pred, spec->s.cls_node.cls_regu_list_rest,
-			     spec->s.cls_node.cls_regu_list_last_version, spec->s.cls_node.num_attrs_pred,
-			     spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
-			     spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
-			     spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
-			     spec->s.cls_node.cls_regu_list_reserved);
+			     spec->s.cls_node.num_attrs_pred, spec->s.cls_node.attrids_pred,
+			     spec->s.cls_node.cache_pred, spec->s.cls_node.num_attrs_rest,
+			     spec->s.cls_node.attrids_rest, spec->s.cls_node.cache_rest,
+			     scan_type, spec->s.cls_node.cache_reserved, spec->s.cls_node.cls_regu_list_reserved);
     }
   else if (spec->type == TARGET_CLASS && spec->access == SEQUENTIAL_PAGE_SCAN)
     {
@@ -7589,7 +7580,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 			      single_fetch, spec->s_dbval, val_list, vd, idxptr, &class_oid, &class_hfid,
 			      spec->s.cls_node.cls_regu_list_key, spec->where_key, spec->s.cls_node.cls_regu_list_pred,
 			      spec->where_pred, spec->s.cls_node.cls_regu_list_rest, spec->where_range,
-			      spec->s.cls_node.cls_regu_list_range, spec->s.cls_node.cls_regu_list_last_version,
+			      spec->s.cls_node.cls_regu_list_range,
 			      spec->s.cls_node.cls_output_val_list, spec->s.cls_node.cls_regu_val_list,
 			      spec->s.cls_node.num_attrs_key, spec->s.cls_node.attrids_key, spec->s.cls_node.cache_key,
 			      spec->s.cls_node.num_attrs_pred, spec->s.cls_node.attrids_pred,
@@ -11593,7 +11584,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       scan_cache_end_needed = true;
 
       /* fetch the object and the class oid */
-      if (heap_get_with_class_oid (thread_p, &cls_oid, dbvaloid, &oRec, &scan_cache, scan_operation_type, PEEK, NULL,
+      if (heap_get_with_class_oid (thread_p, &cls_oid, dbvaloid, &oRec, &scan_cache, scan_operation_type, PEEK,
 				   LOG_ERROR_IF_DELETED) != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
@@ -12024,7 +12015,6 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   int err = NO_ERROR;
   int needs_pruning = DB_NOT_PARTITIONED_CLASS;
   HEAP_SCANCACHE scan_cache;
-  OID updated_oid;
   bool scan_cache_inited = false;
   SCAN_CODE scan_code;
   MVCC_INFO *curr_mvcc_info = NULL;
@@ -12226,7 +12216,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      /* need to handle reevaluation */
 	      scan_code =
 		heap_mvcc_get_for_delete (thread_p, oid, class_oid, NULL, &scan_cache, COPY, NULL_CHN, p_mvcc_reev_data,
-					  &updated_oid, LOG_WARNING_IF_DELETED);
+					  LOG_WARNING_IF_DELETED);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();
@@ -12275,11 +12265,6 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 		{
 		  /* one tuple successfully reevaluated, do not clear list file */
 		  clear_list_id = false;
-
-		  if (!OID_ISNULL (&updated_oid))
-		    {
-		      COPY_OID (oid, &updated_oid);
-		    }
 		}
 	    }
 	  else
@@ -26587,8 +26572,9 @@ qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * q
 	}
       internal_class->unique_stats.scan_cache_inited = true;
       internal_class->scan_cache = &internal_class->unique_stats.scan_cache;
-    }
+      internal_class->scan_cache->mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 
+    }
   COPY_OID (&internal_class->prev_class_oid, current_oid);
 
   return NO_ERROR;

@@ -4465,16 +4465,6 @@ mnt_x_heap_remove_vacuums (THREAD_ENTRY * thread_p)
 }
 
 void
-mnt_x_heap_next_ver_vacuums (THREAD_ENTRY * thread_p)
-{
-  MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      ADD_STATS (stats, heap_next_ver_vacuums, 1);
-    }
-}
-
-void
 mnt_x_heap_insert_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount)
 {
   MNT_SERVER_EXEC_STATS *stats = mnt_server_get_stats (thread_p);

@@ -418,15 +418,15 @@ struct rvfun RV_fun[] = {
    heap_rv_undoredo_update_and_update_chain,
    log_rv_dump_hexa,
    log_rv_dump_hexa},
-  {RVHF_MVCC_REMOVE_PARTITION_LINK,
+  {RVHF_MVCC_REMOVE_PARTITION_LINK,	    /* Obsolete */
    "RVHF_MVCC_REMOVE_PARTITION_LINK",
-   heap_rv_mvcc_undo_remove_partition_link,
-   heap_rv_mvcc_redo_remove_partition_link,
+   NULL,
+   NULL,
    NULL, NULL},
-  {RVHF_PARTITION_LINK_FLAG,
+  {RVHF_PARTITION_LINK_FLAG,	      /* Obsolete */
    "RVHF_PARTITION_LINK_FLAG",
-   heap_rv_undoredo_partition_link_flag,
-   heap_rv_undoredo_partition_link_flag,
+   NULL,
+   NULL,
    NULL,
    NULL},
   {RVHF_INSERT_NEWHOME,
@@ -478,10 +478,10 @@ struct rvfun RV_fun[] = {
    overflow_rv_link,
    overflow_rv_link_dump,
    overflow_rv_link_dump},
-  {RVOVF_NEWPAGE_DELETE_RELOCATED,
+  {RVOVF_NEWPAGE_DELETE_RELOCATED,	      /* Obsolete. */
    "RVOVF_NEWPAGE_DELETE_RELOCATED",
    NULL,
-   overflow_rv_newpage_delete_relocated_redo,
+   NULL,
    NULL,
    NULL},
 
@@ -677,12 +677,12 @@ struct rvfun RV_fun[] = {
    btree_rv_redo_delete_index,
    NULL,
    NULL},
-  {RVBT_MVCC_UPDATE_SAME_KEY,
+   {RVBT_MVCC_UPDATE_SAME_KEY,
    "RVBT_MVCC_UPDATE_SAME_KEY",
-   btree_rv_undo_mvcc_update_same_key,
-   btree_rv_redo_record_modify,
-   btree_rv_keyval_mvcc_update_same_key_dump,
-   log_rv_dump_hexa},
+   NULL,
+   NULL,
+   NULL,
+   NULL},
   {RVBT_RECORD_MODIFY_UNDOREDO,
    "RVBT_RECORD_MODIFY_UNDOREDO",
    btree_rv_undo_record_modify,
@@ -957,6 +957,13 @@ struct rvfun RV_fun[] = {
    pgbuf_rv_flush_page,
    pgbuf_rv_flush_page_dump,
    pgbuf_rv_flush_page_dump},
+
+  {RVHF_MVCC_UPDATE_OVERFLOW,
+   "RVHF_MVCC_UPDATE_OVERFLOW",
+   heap_rv_undoredo_update,
+   heap_rv_undoredo_update_and_update_chain,
+   log_rv_dump_hexa,
+   log_rv_dump_hexa}
 };
 
 /*
