@@ -108,7 +108,7 @@ extern int heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid);
 extern int heap_destroy (const HFID * hfid);
 #endif
 extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid);
-extern int heap_reclaim_addresses (const HFID * hfid, bool reclaim_mvcc_next_versions);
+extern int heap_reclaim_addresses (const HFID * hfid);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);
@@ -260,7 +260,6 @@ extern int btree_get_index_key_type (BTID btid, TP_DOMAIN ** key_type_p);
 extern int db_local_transaction_id (DB_VALUE * trid);
 extern int qp_get_server_info (PARSER_CONTEXT * parser, int server_info_bits);
 extern int heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance);
-extern int locator_cleanup_partition_links (OID * class_oid, int no_oids, OID * oid_list);
 extern int locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_list);
 
 extern int jsp_get_server_port (void);

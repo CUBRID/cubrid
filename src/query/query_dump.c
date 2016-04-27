@@ -701,8 +701,6 @@ qdump_print_class (CLS_SPEC_TYPE * class_p)
   qdump_print_regu_variable_list (class_p->cls_regu_list_pred);
   fprintf (foutput, "\n	regu_list_rest:");
   qdump_print_regu_variable_list (class_p->cls_regu_list_rest);
-  fprintf (foutput, "\n	regu_list_ct:");
-  qdump_print_regu_variable_list (class_p->cls_regu_list_last_version);
   return true;
 }
 

@@ -93,9 +93,9 @@ static INLINE union DELID_CHN or_mvcc_get_delid_chn (OR_BUF * buf, int mvcc_flag
   __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_set_delid_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
   __attribute__ ((ALWAYS_INLINE));
-static MVCCID or_mvcc_get_delete_id (RECDES * record);
-static INLINE int or_mvcc_get_next_version (OR_BUF * buf, int mvcc_flags, OID * oid) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_next_version (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+  __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
   __attribute__ ((ALWAYS_INLINE));
 
 /*
@@ -822,95 +822,6 @@ or_mvcc_set_delid_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 }
 
 /*
- * or_mvcc_get_next_version () - Get MVCC next version from record data.
- *
- * return	   : error code
- * buf (in/out)	   : or buffer
- * mvcc_falgs(in)  : MVCC flags
- * oid(out)	   : OID of next version
- */
-STATIC_INLINE int
-or_mvcc_get_next_version (OR_BUF * buf, int mvcc_flags, OID * oid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION))
-    {
-      OID_SET_NULL (oid);
-      return NO_ERROR;
-    }
-
-  return or_get_oid (buf, oid);
-}
-
-/*
- * or_mvcc_set_next_version () - Set MVCC next version
- *
- * return	      : error code 
- * buf (in/out)	      : or buffer
- * mvcc_rec_header(in): MVCC record header
- */
-STATIC_INLINE int
-or_mvcc_set_next_version (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  int error_code = NO_ERROR;
-  assert (buf != NULL);
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_NEXT_VERSION))
-    {
-      return NO_ERROR;
-    }
-
-  /* MVCC DELID is active */
-  return or_put_oid (buf, &(mvcc_rec_header->next_version));
-}
-
-/*
- * or_mvcc_get_partition_oid () - Get MVCC partition link from record data.
- *
- * return	   : error code
- * buf (in/out)	   : or buffer
- * mvcc_falgs(in)  : MVCC flags
- * oid(out)	   : OID of next version
- */
-static int
-or_mvcc_get_partition_oid (OR_BUF * buf, int mvcc_flags, OID * oid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID))
-    {
-      OID_SET_NULL (oid);
-      return NO_ERROR;
-    }
-
-  return or_get_oid (buf, oid);
-}
-
-/*
- * or_mvcc_set_partition_oid () - Set MVCC partition OID
- *
- * return	      : error code 
- * buf (in/out)	      : or buffer
- * mvcc_rec_header(in): MVCC record header
- */
-static int
-or_mvcc_set_partition_oid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  int error_code = NO_ERROR;
-  assert (buf != NULL);
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_PARTITION_OID))
-    {
-      return NO_ERROR;
-    }
-
-  return or_put_oid (buf, &(mvcc_rec_header->partition_oid));
-}
-
-/*
  * or_mvcc_get_header () - Get mvcc record header from record data.
  *
  * return		: Void.
@@ -948,13 +859,7 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
       goto exit_on_error;
     }
 
-  rc = or_mvcc_get_next_version (&buf, mvcc_header->mvcc_flag, &(mvcc_header->next_version));
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  rc = or_mvcc_get_partition_oid (&buf, mvcc_header->mvcc_flag, &(mvcc_header->partition_oid));
+  rc = or_mvcc_get_prev_version_lsa (&buf, mvcc_header->mvcc_flag, &(mvcc_header->prev_version_lsa));
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
@@ -1030,13 +935,7 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
       goto exit_on_error;
     }
 
-  error = or_mvcc_set_next_version (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_partition_oid (buf, mvcc_rec_header);
+  error = or_mvcc_set_prev_version_lsa (buf, mvcc_rec_header);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -1097,13 +996,7 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
       goto exit_on_error;
     }
 
-  error = or_mvcc_set_next_version (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_partition_oid (buf, mvcc_rec_header);
+  error = or_mvcc_set_prev_version_lsa (buf, mvcc_rec_header);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -7843,15 +7736,9 @@ or_mvcc_header_size_from_flags (char mvcc_flags)
       mvcc_header_size += OR_INT_SIZE;
     }
 
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_NEXT_VERSION)
+  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
     {
-      /* skip next version */
-      mvcc_header_size += OR_OID_SIZE;
-    }
-
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_PARTITION_OID)
-    {
-      mvcc_header_size += OR_OID_SIZE;
+      mvcc_header_size += sizeof (LOG_LSA);
     }
 
   return mvcc_header_size;
@@ -8192,6 +8079,105 @@ or_unpack_mvccid (char *ptr, MVCCID * mvccid)
 
   OR_GET_MVCCID (ptr, mvccid);
   return (((char *) ptr) + OR_MVCCID_SIZE);
+}
+
+/*
+ * or_mvcc_set_prev_version_lsa () - Set MVCC prev version LSA
+ *
+ * return	      : error code 
+ * buf (in/out)	      : or buffer
+ * mvcc_rec_header(in): MVCC record header
+ */
+STATIC_INLINE int
+or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+{
+  int error_code = NO_ERROR;
+
+  assert (buf != NULL);
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_PREV_VERSION))
+    {
+      return NO_ERROR;
+    }
+
+  if ((buf->ptr + sizeof (LOG_LSA)) > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+
+  memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa, sizeof (LOG_LSA));
+  buf->ptr += sizeof (LOG_LSA);
+
+  return NO_ERROR;
+}
+
+/*
+ * or_mvcc_get_prev_version_lsa () - Get MVCC prev version LSA from buffer
+ *
+ * return	        : error code 
+ * buf (in)	        : or buffer
+ * mvcc_flags(in)       : header mvcc flags
+ * prev_version_lsa(out): the LSA to previous version
+ * mvcc_rec_header(in)  : MVCC record header
+ */
+STATIC_INLINE int
+or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
+{
+  int error_code = NO_ERROR;
+  assert (buf != NULL);
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
+    {
+      LSA_SET_NULL (prev_version_lsa);
+      return NO_ERROR;
+    }
+
+  if ((buf->ptr + sizeof (LOG_LSA)) > buf->endptr)
+    {
+      return (or_underflow (buf));
+    }
+
+  *prev_version_lsa = *(LOG_LSA *) buf->ptr;
+  buf->ptr += sizeof (LOG_LSA);
+
+  return NO_ERROR;
+}
+
+/*
+ * or_mvcc_set_log_lsa_to_record () - Sets the previus version LSA in record header. 
+ *			    Assumes the previous version lsa is allocated in header
+ *
+ * return		 : error_code
+ * record (in/out)	 : record 
+ * lsa (in) : lsa to be set
+ */
+int
+or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
+{
+  int mvcc_flags = or_mvcc_get_flag (record);
+  int lsa_offset = -1;
+
+  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (record == NULL || lsa == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE
+		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
+		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : OR_INT_SIZE));
+
+  memcpy (record->data + lsa_offset, lsa, sizeof (LOG_LSA));
+
+  return NO_ERROR;
 }
 
 /*

@@ -15988,32 +15988,6 @@ error_exit:
 }
 
 /*
- * sm_cleanup_partition_links () - This function performs partition link cleanup
- *			  for the specified classes.
- *   return: NO_ERROR on success, non-zero for ERROR
- *   class_ (in)        :
- *   partitions (in)    :
- *   no_partitions (in) :
- */
-int
-sm_cleanup_partition_links (MOP op, SM_CLASS * class_, OID * partitions, int no_partitions)
-{
-  int error = NO_ERROR;
-  DB_OBJLIST *subs = NULL;
-
-  /* get write locks on all subclasses */
-  error = lock_subclasses (NULL, NULL, class_->users, &subs);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  error = locator_cleanup_partition_links (&op->oid_info.oid, no_partitions, partitions);
-
-  return error;
-}
-
-/*
  * flatten_partition info() - Flatten partition info structure. Currently, it
  *			    can not be a list.
  *   return: NO_ERROR on success, non-zero for ERROR

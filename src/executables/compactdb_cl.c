@@ -1444,7 +1444,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
     {
       assert (hfid != NULL && !HFID_IS_NULL (hfid));
 
-      skipped_error_code = heap_reclaim_addresses (hfid, false);
+      skipped_error_code = heap_reclaim_addresses (hfid);
       if (skipped_error_code != NO_ERROR)
 	{
 	  goto error_exit;
