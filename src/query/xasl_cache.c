@@ -440,7 +440,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
   XASL_ID_SET_NULL (&lookup_key);
   lookup_key.sha1 = *sha1;
 
-  error_code = lf_hash_find (t_entry, &xcache_Ht, &lookup_key, xcache_entry);
+  error_code = lf_hash_find (t_entry, &xcache_Ht, &lookup_key, (void **) xcache_entry);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -835,7 +835,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	}
 
       /* Now that new entry is initialized, we can try to insert it. */
-      error_code = lf_hash_insert_given (t_entry, &xcache_Ht, &xid, xcache_entry, &inserted);
+      error_code = lf_hash_insert_given (t_entry, &xcache_Ht, &xid, (void **) xcache_entry, &inserted);
       if (error_code != NO_ERROR)
 	{
 	  xcache_log_error ("error inserting new entry: \n",
@@ -1156,40 +1156,39 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Stats: \n");
   fprintf (fp, "Max size:                   %d\n", xcache_Soft_capacity);
   fprintf (fp, "Current entry count:        %d\n", ATOMIC_INC_32 (&xcache_Entry_counter, 0));
-  fprintf (fp, "Lookups:                    %d\n", ATOMIC_INC_64 (&xcache_Stat_lookups, 0));
-  fprintf (fp, "Hits:                       %d\n", ATOMIC_INC_64 (&xcache_Stat_hits, 0));
-  fprintf (fp, "Miss:                       %d\n", ATOMIC_INC_64 (&xcache_Stat_miss, 0));
-  fprintf (fp, "Inserts:                    %d\n", ATOMIC_INC_64 (&xcache_Stat_inserts, 0));
-  fprintf (fp, "Found at insert:            %d\n", ATOMIC_INC_64 (&xcache_Stat_found_at_insert, 0));
-  fprintf (fp, "Recompiles:                 %d\n", ATOMIC_INC_64 (&xcache_Stat_recompiles, 0));
-  fprintf (fp, "Failed recompiles:          %d\n", ATOMIC_INC_64 (&xcache_Stat_failed_recompiles, 0));
-  fprintf (fp, "Deletes:                    %d\n", ATOMIC_INC_64 (&xcache_Stat_deletes, 0));
-  fprintf (fp, "Fix:                        %d\n", ATOMIC_INC_64 (&xcache_Stat_fix, 0));
-  fprintf (fp, "Unfix:                      %d\n", ATOMIC_INC_64 (&xcache_Stat_unfix, 0));
-  fprintf (fp, "Cleanups:                   %d\n", ATOMIC_INC_64 (&xcache_Stat_cleanups, 0));
+  fprintf (fp, "Lookups:                    %ld\n", ATOMIC_INC_64 (&xcache_Stat_lookups, 0));
+  fprintf (fp, "Hits:                       %ld\n", ATOMIC_INC_64 (&xcache_Stat_hits, 0));
+  fprintf (fp, "Miss:                       %ld\n", ATOMIC_INC_64 (&xcache_Stat_miss, 0));
+  fprintf (fp, "Inserts:                    %ld\n", ATOMIC_INC_64 (&xcache_Stat_inserts, 0));
+  fprintf (fp, "Found at insert:            %ld\n", ATOMIC_INC_64 (&xcache_Stat_found_at_insert, 0));
+  fprintf (fp, "Recompiles:                 %ld\n", ATOMIC_INC_64 (&xcache_Stat_recompiles, 0));
+  fprintf (fp, "Failed recompiles:          %ld\n", ATOMIC_INC_64 (&xcache_Stat_failed_recompiles, 0));
+  fprintf (fp, "Deletes:                    %ld\n", ATOMIC_INC_64 (&xcache_Stat_deletes, 0));
+  fprintf (fp, "Fix:                        %ld\n", ATOMIC_INC_64 (&xcache_Stat_fix, 0));
+  fprintf (fp, "Unfix:                      %ld\n", ATOMIC_INC_64 (&xcache_Stat_unfix, 0));
+  fprintf (fp, "Cleanups:                   %ld\n", ATOMIC_INC_64 (&xcache_Stat_cleanups, 0));
   /* add overflow, RT checks. */
 
   fprintf (fp, "\nEntries:\n");
   lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
-  while (xcache_entry = lf_hash_iterate (&iter))
+  while ((xcache_entry = lf_hash_iterate (&iter)) != NULL)
     {
       fprintf (fp, "\n");
       fprintf (fp, "  XASL_ID = { \n");
       fprintf (fp, "              sha1 = { %08x %08x %08x %08x %08x }, \n",
-	       xcache_entry->xasl_id.sha1.h[0], xcache_entry->xasl_id.sha1.h[1], xcache_entry->xasl_id.sha1.h[2],
-	       xcache_entry->xasl_id.sha1.h[3], xcache_entry->xasl_id.sha1.h[4]);
+	       SHA1_AS_ARGS (&xcache_entry->xasl_id.sha1));
       fprintf (fp, "              first_vpid = %d|%d, \n",
 	       xcache_entry->xasl_id.first_vpid.volid, xcache_entry->xasl_id.first_vpid.pageid);
       fprintf (fp, "              temp_vfid = %d|%d, \n",
 	       xcache_entry->xasl_id.temp_vfid.volid, xcache_entry->xasl_id.temp_vfid.fileid);
-      fprintf (fp, "	          time_stored = %ld sec, %ld usec \n",
+      fprintf (fp, "	          time_stored = %d sec, %d usec \n",
 	       xcache_entry->xasl_id.time_stored.sec, xcache_entry->xasl_id.time_stored.usec);
       fprintf (fp, "            } \n");
       fprintf (fp, "  fix_count = %d \n",
 	       XCACHE_ATOMIC_READ_CACHE_FLAG (&xcache_entry->xasl_id) & XCACHE_ENTRY_FIX_COUNT_MASK);
       fprintf (fp, "  cache flags = %08x \n",
 	       XCACHE_ATOMIC_READ_CACHE_FLAG (&xcache_entry->xasl_id) & XCACHE_ENTRY_FLAGS_MASK);
-      fprintf (fp, "  reference count = %lld \n", ATOMIC_INC_64 (&xcache_entry->ref_count, 0));
+      fprintf (fp, "  reference count = %ld \n", ATOMIC_INC_64 (&xcache_entry->ref_count, 0));
 
       fprintf (fp, "  OID_LIST (count = %d): \n", xcache_entry->n_oid_list);
       for (oid_index = 0; oid_index < xcache_entry->n_oid_list; oid_index++)
