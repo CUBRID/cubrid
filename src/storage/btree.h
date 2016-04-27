@@ -674,7 +674,7 @@ extern int btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * k
 extern void btree_set_mvcc_header_ids_for_update (THREAD_ENTRY * thread_p, bool do_delete_only, bool do_insert_only,
 						  MVCCID * mvccid, MVCC_REC_HEADER * mvcc_rec_header);
 
-extern int btree_compare_btids (const void *mem_btid1, const void *mem_btid2);
+extern int btree_compare_btids (void *mem_btid1, void *mem_btid2);
 
 extern char *btree_unpack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info, short btree_mvcc_flags);
 extern char *btree_pack_mvccinfo (char *ptr, BTREE_MVCC_INFO * mvcc_info);
