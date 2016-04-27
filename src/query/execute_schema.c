@@ -8969,7 +8969,7 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 	  goto exit_on_error;
 	}
 
-      free_and_init ((void *) att_names);
+      free_and_init (att_names);
 
       if (new_cons_name != NULL && new_cons_name != c->name)
 	{
@@ -8987,7 +8987,7 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 
 exit_on_error:
 
-  free_and_init ((void *) att_names);
+  free_and_init (att_names);
 
   if (new_cons_name != NULL && new_cons_name != c->name)
     {

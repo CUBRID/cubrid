@@ -6904,10 +6904,10 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRAINT * const
 	dbt_add_foreign_key (ctemplate, new_cons_name, att_names, sm_ch_name ((MOBJ) ref_cls), ref_attrs,
 			     constraint->fk_info->delete_action, constraint->fk_info->update_action,
 			     constraint->comment);
-      free_and_init ((void *) ref_attrs);
+      free_and_init (ref_attrs);
     }
 
-  free_and_init ((void *) att_names);
+  free_and_init (att_names);
 
   if (new_cons_name != NULL && new_cons_name != constraint->name)
     {
@@ -6920,12 +6920,12 @@ error_exit:
 
   if (att_names != NULL)
     {
-      free_and_init ((void *) att_names);
+      free_and_init (att_names);
     }
 
   if (ref_attrs != NULL)
     {
-      free_and_init ((void *) ref_attrs);
+      free_and_init (ref_attrs);
     }
 
   if (new_cons_name != NULL && new_cons_name != constraint->name)

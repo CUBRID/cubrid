@@ -8108,7 +8108,7 @@ qo_seg_free (QO_SEGMENT * seg)
 	{
 	  if (QO_SEG_NAME (seg))
 	    {
-	      free_and_init ((void *) QO_SEG_NAME (seg));
+	      free_and_init (QO_SEG_NAME (seg));
 	    }
 	}
     }
