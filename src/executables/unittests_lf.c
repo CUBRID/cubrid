@@ -291,7 +291,7 @@ test_hash_proc_1 (void *param)
       if (i % 10 < 5)
 	{
 	  entry = NULL;
-	  if (lf_hash_find_or_insert (te, hash, &key, &entry) != NO_ERROR)
+	  if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	    {
 	      pthread_exit (ER_FAILED);
 	      return ER_FAILED;
