@@ -935,11 +935,6 @@ net_server_init (void)
   req_p->processing_function = slocator_repl_force;
   req_p->name = "NET_SERVER_LC_REPL_FORCE";
 
-  req_p = &net_Requests[NET_SERVER_LC_CLEANUP_PARTITION_LINKS];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slocator_cleanup_partition_links;
-  req_p->name = "NET_SERVER_LC_CLEANUP_PARTITION_LINKS";
-
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];
   req_p->action_attribute = IN_TRANSACTION;
@@ -1363,6 +1358,7 @@ net_server_start (const char *server_name)
   int name_length;
   char *packed_name;
   int r, status = 0;
+  CHECK_ARGS check_coll_and_timezone = { true, true };
 
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)
@@ -1396,6 +1392,12 @@ net_server_start (const char *server_name)
       status = -1;
       goto end;
     }
+  if (rwlock_initialize_rwlock_monitor () != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize rwlock monitor\n");
+      status = -1;
+      goto end;
+    }
   if (thread_initialize_manager () != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize thread manager\n");
@@ -1416,7 +1418,7 @@ net_server_start (const char *server_name)
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
-  if (boot_restart_server (NULL, true, server_name, false, true, NULL) != NO_ERROR)
+  if (boot_restart_server (NULL, true, server_name, false, &check_coll_and_timezone, NULL) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -1465,6 +1467,7 @@ net_server_start (const char *server_name)
     }
 
   thread_final_manager ();
+  (void) rwlock_finalize_rwlock_monitor ();
   csect_finalize ();
 
 end:

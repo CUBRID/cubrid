@@ -2707,14 +2707,12 @@ spage_update_record_type (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slo
  *   return: true if anything was reclaimed and false if nothing was reclaimed
  *
  *   page_p(in): Pointer to slotted page
- *   reclaim_mvcc_next_versions(in): True to also reclaim
- *				     REC_MVCC_NEXT_VERSION records.
  *
  * Note: This function is intended to be run when there are no more references
  *       of the marked deleted slots, and thus they can be reused.
  */
 bool
-spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool reclaim_mvcc_next_versions)
+spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 {
   SPAGE_HEADER *page_header_p;
   SPAGE_SLOT *slot_p, *first_slot_p;
@@ -2734,16 +2732,10 @@ spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool reclaim_mvcc_next_
       for (slot_id = page_header_p->num_slots - 1; slot_id >= 0; slot_id--)
 	{
 	  slot_p = first_slot_p - slot_id;
-	  if ((slot_p->offset_to_record == SPAGE_EMPTY_OFFSET
-	       && (slot_p->record_type == REC_MARKDELETED || slot_p->record_type == REC_DELETED_WILL_REUSE))
-	      || (reclaim_mvcc_next_versions && slot_p->record_type == REC_MVCC_NEXT_VERSION))
+	  if (slot_p->offset_to_record == SPAGE_EMPTY_OFFSET
+	      && (slot_p->record_type == REC_MARKDELETED || slot_p->record_type == REC_DELETED_WILL_REUSE))
 	    {
 	      assert (page_header_p->anchor_type == ANCHORED_DONT_REUSE_SLOTS);
-	      if (slot_p->record_type == REC_MVCC_NEXT_VERSION)
-		{
-		  /* This is considered record (since it still has data). */
-		  spage_delete (thread_p, page_p, slot_id);
-		}
 	      assert (slot_p->offset_to_record == SPAGE_EMPTY_OFFSET);
 
 	      if ((slot_id + 1) == page_header_p->num_slots)
@@ -4215,8 +4207,6 @@ spage_record_type_string (INT16 record_type)
       return "DELETED_WILL_REUSE";
     case REC_ASSIGN_ADDRESS:
       return "ASSIGN_ADDRESS";
-    case REC_MVCC_NEXT_VERSION:
-      return "REC_MVCC_NEXT_VERSION";
     default:
       assert (false);
       return "UNKNOWN";
@@ -4378,7 +4368,6 @@ spage_dump_record (FILE * fp, PAGE_PTR page_p, PGSLOTID slot_id, SPAGE_SLOT * sl
 	  break;
 
 	case REC_RELOCATION:
-	case REC_MVCC_NEXT_VERSION:
 	  oid = (OID *) (page_p + slot_p->offset_to_record);
 	  fprintf (fp, "OID = %d|%d|%d\n", oid->volid, oid->pageid, oid->slotid);
 	  break;
@@ -4910,89 +4899,36 @@ spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id)
  * thread_p (in)     : Thread entry.
  * page_p (in)	     : Page pointer.
  * slotid (in)	     : Record slot id.
- * next_version (in) : Next object version if it was updated.
- * partition_oid (in): partition OID if partition has changed.
  * reusable (in)     : True if slots are reusable, false if they are
  *		       referable.
  *
- * NOTE: Vacuuming the slot can be done in three ways depending on
- *	 next_version and reusable:
- *	 1. Reusable = false, next_version is NULL: Replace slot with
+ * NOTE: Vacuuming the slot can be done in two ways depending on reusable:
+ *	 1. Reusable = false: Replace slot with
  *	    REC_MARKDELETED (deleted slot, but cannot be reused since there
  *	    may still be references pointing to this slot).
- *	 2. Reusable = false, next_version is not NULL: Replace slot with
- *	    REC_MVCC_NEXT_VERSION since references to this slot have to follow
- *	    update chain.
- *	 3. Reusable = true: Slot is always replaced with
+ *	 2. Reusable = true: Slot is always replaced with
  *	    REC_DELETED_WILL_REUSE. Since there are no references to this
  *	    slot and this version is invisible, there is no point in keeping
  *	    links to newer versions.
  */
 int
-spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, OID * next_version, OID * partition_oid,
-		   bool reusable)
+spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bool reusable)
 {
   SPAGE_HEADER *page_header_p = (SPAGE_HEADER *) page_p;
   SPAGE_SLOT *slot_p = NULL;
-  RECDES forward_recdes;
-  int space_left;
   int waste;
   int free_space;
-  OID oid_buff[2];
-  int size = 0;
-  unsigned int saved_record_length;
 
   SPAGE_VERIFY_HEADER (page_header_p);
 
   assert (spage_is_valid_anchor_type (page_header_p->anchor_type));
 
   slot_p = spage_find_slot (page_p, page_header_p, slotid, false);
-  if (slot_p->record_type == REC_MVCC_NEXT_VERSION || slot_p->record_type == REC_MARKDELETED
-      || slot_p->record_type == REC_DELETED_WILL_REUSE)
+  if (slot_p->record_type == REC_MARKDELETED || slot_p->record_type == REC_DELETED_WILL_REUSE)
     {
       /* Vacuum error log */
       vacuum_er_log (VACUUM_ER_LOG_ERROR, "VACUUM: Object (%d, %d, %d) was already vacuumed",
 		     pgbuf_get_vpid_ptr (page_p)->volid, pgbuf_get_vpid_ptr (page_p)->pageid, slotid);
-      return NO_ERROR;
-    }
-  if (next_version != NULL && !OID_ISNULL (next_version) && !reusable)
-    {
-      /* Replace current record with an REC_MVCC_NEXT_VERSION which will point to next_version. NOTE: Reusable objects
-       * don't need to keep next version, since no one will ever revisit this slot. */
-      assert (slot_p->record_type == REC_HOME || slot_p->record_type == REC_BIGONE || slot_p->record_type == REC_NEWHOME
-	      || slot_p->record_type == REC_MVCC_NEXT_VERSION || slot_p->record_type == REC_RELOCATION);
-
-      saved_record_length = slot_p->record_length;
-      if ((slot_p->record_length > OR_OID_SIZE) && (partition_oid != NULL))
-	{
-	  /* We may improve the disk space by adding only not null partition */
-	  size = 2 * OR_OID_SIZE;
-	  COPY_OID (&oid_buff[0], next_version);
-	  COPY_OID (&oid_buff[1], partition_oid ? partition_oid : &oid_Null_oid);
-	  forward_recdes.data = (char *) oid_buff;
-	}
-      else
-	{
-	  assert (partition_oid == NULL || OID_ISNULL (partition_oid));
-	  size = OR_OID_SIZE;
-	  forward_recdes.data = (char *) next_version;
-	}
-
-      forward_recdes.length = size;
-      forward_recdes.area_size = size;
-      waste = DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment);
-      space_left = slot_p->record_length + waste - size;
-
-      assert (space_left >= 0);
-
-      if (spage_update_record_in_place (page_p, page_header_p, slot_p, &forward_recdes, -space_left) != SP_SUCCESS)
-	{
-	  assert (0);
-	  return ER_FAILED;
-	}
-      spage_set_slot (slot_p, slot_p->offset_to_record, size, REC_MVCC_NEXT_VERSION);
-      assert (saved_record_length >= slot_p->record_length);
-      SPAGE_VERIFY_HEADER (page_header_p);
       return NO_ERROR;
     }
 

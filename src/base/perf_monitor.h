@@ -1231,8 +1231,6 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_insid_vacuums (thread_p)
 #define mnt_heap_remove_vacuums(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_remove_vacuums (thread_p)
-#define mnt_heap_next_ver_vacuums(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_heap_next_ver_vacuums (thread_p)
 
 #define mnt_heap_insert_prepare_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
@@ -1289,9 +1287,6 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_bt_mark_delete_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_mark_delete_time (thread_p, amount)
-#define mnt_bt_update_sk_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_update_sk_time (thread_p, amount)
 #define mnt_bt_undo_insert_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_undo_insert_time (thread_p, amount)
@@ -1301,19 +1296,12 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_bt_undo_mvcc_delete_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_undo_mvcc_delete_time (thread_p, amount)
-#define mnt_bt_undo_update_sk_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_undo_update_sk_time (thread_p, amount)
 #define mnt_bt_vacuum_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_vacuum_time (thread_p, amount)
 #define mnt_bt_vacuum_insid_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_vacuum_insid_time (thread_p, amount)
-#define mnt_bt_vacuum_update_sk_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_vacuum_update_sk_time (thread_p, amount)
-
 #define mnt_bt_traverse_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_traverse_time (thread_p, amount)
@@ -1335,9 +1323,6 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_bt_mark_delete_traverse_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_mark_delete_traverse_time (thread_p, amount)
-#define mnt_bt_update_sk_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_update_sk_traverse_time (thread_p, amount)
 #define mnt_bt_undo_insert_traverse_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_undo_insert_traverse_time (thread_p, amount)
@@ -1347,19 +1332,12 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_bt_undo_mvcc_delete_traverse_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_undo_mvcc_delete_traverse_time (thread_p, amount)
-#define mnt_bt_undo_update_sk_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_undo_update_sk_traverse_time (thread_p, amount)
 #define mnt_bt_vacuum_traverse_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_vacuum_traverse_time (thread_p, amount)
 #define mnt_bt_vacuum_insid_traverse_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_vacuum_insid_traverse_time (thread_p, amount)
-#define mnt_bt_vacuum_update_sk_traverse_time(thread_p,amount) \
-  if (mnt_Num_tran_exec_stats > 0) \
-    mnt_x_bt_vacuum_update_sk_traverse_time (thread_p, amount)
-
 #define mnt_bt_fix_ovf_oids_time(thread_p,amount) \
   if (mnt_Num_tran_exec_stats > 0) \
     mnt_x_bt_fix_ovf_oids_time (thread_p, amount)
@@ -1538,7 +1516,6 @@ extern void mnt_x_heap_big_vacuums (THREAD_ENTRY * thread_p);
 extern void mnt_x_heap_rel_vacuums (THREAD_ENTRY * thread_p);
 extern void mnt_x_heap_insid_vacuums (THREAD_ENTRY * thread_p);
 extern void mnt_x_heap_remove_vacuums (THREAD_ENTRY * thread_p);
-extern void mnt_x_heap_next_ver_vacuums (THREAD_ENTRY * thread_p);
 
 extern void mnt_x_heap_insert_prepare_time (THREAD_ENTRY * thread_p, UINT64 amount);
 extern void mnt_x_heap_insert_execute_time (THREAD_ENTRY * thread_p, UINT64 amount);
@@ -1756,14 +1733,11 @@ extern void mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p, UINT64 amoun
 #define mnt_bt_delete_time(thread_p,amount)
 #define mnt_bt_mvcc_delete_time(thread_p,amount)
 #define mnt_bt_mark_delete_time(thread_p,amount)
-#define mnt_bt_update_sk_time(thread_p,amount)
 #define mnt_bt_undo_insert_time(thread_p,amount)
 #define mnt_bt_undo_delete_time(thread_p,amount)
 #define mnt_bt_undo_mvcc_delete_time(thread_p,amount)
-#define mnt_bt_undo_update_sk_time(thread_p,amount)
 #define mnt_bt_vacuum_time(thread_p,amount)
 #define mnt_bt_vacuum_insid_time(thread_p,amount)
-#define mnt_bt_vacuum_update_sk_time(thread_p,amount)
 
 #define mnt_bt_traverse_time(thread_p,amount)
 #define mnt_bt_find_unique_traverse_time(thread_p,amount)
@@ -1772,14 +1746,11 @@ extern void mnt_x_vac_worker_execute_time (THREAD_ENTRY * thread_p, UINT64 amoun
 #define mnt_bt_delete_traverse_time(thread_p,amount)
 #define mnt_bt_mvcc_delete_traverse_time(thread_p,amount)
 #define mnt_bt_mark_delete_traverse_time(thread_p,amount)
-#define mnt_bt_update_sk_traverse_time(thread_p,amount)
 #define mnt_bt_undo_insert_traverse_time(thread_p,amount)
 #define mnt_bt_undo_delete_traverse_time(thread_p,amount)
 #define mnt_bt_undo_mvcc_delete_traverse_time(thread_p,amount)
-#define mnt_bt_undo_update_sk_traverse_time(thread_p,amount)
 #define mnt_bt_vacuum_traverse_time(thread_p,amount)
 #define mnt_bt_vacuum_insid_traverse_time(thread_p,amount)
-#define mnt_bt_vacuum_update_sk_traverse_time(thread_p,amount)
 
 #define mnt_bt_fix_ovf_oids_time(thread_p,amount)
 #define mnt_bt_unique_slocks_time(thread_p,amount)

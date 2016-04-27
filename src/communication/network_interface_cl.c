@@ -252,7 +252,7 @@ locator_fetch (OID * oidp, int chn, LOCK lock, LC_FETCH_VERSION_TYPE fetch_versi
   ENTER_SERVER ();
 
   success =
-    xlocator_fetch (NULL, oidp, chn, NULL, lock, fetch_version_type, fetch_version_type, class_oid, class_chn, prefetch,
+    xlocator_fetch (NULL, oidp, chn, lock, fetch_version_type, fetch_version_type, class_oid, class_chn, prefetch,
 		    fetch_copyarea);
 
   EXIT_SERVER ();
@@ -1787,7 +1787,7 @@ heap_destroy_newly_created (const HFID * hfid, const OID * class_oid)
  * NOTE:
  */
 int
-heap_reclaim_addresses (const HFID * hfid, bool reclaim_mvcc_next_versions)
+heap_reclaim_addresses (const HFID * hfid)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -1802,7 +1802,6 @@ heap_reclaim_addresses (const HFID * hfid, bool reclaim_mvcc_next_versions)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_pack_hfid (request, hfid);
-  ptr = or_pack_int (ptr, reclaim_mvcc_next_versions ? 1 : 0);
 
   req_error =
     net_client_request (NET_SERVER_HEAP_RECLAIM_ADDRESSES, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
@@ -1818,7 +1817,7 @@ heap_reclaim_addresses (const HFID * hfid, bool reclaim_mvcc_next_versions)
 
   ENTER_SERVER ();
 
-  success = xheap_reclaim_addresses (NULL, hfid, reclaim_mvcc_next_versions);
+  success = xheap_reclaim_addresses (NULL, hfid);
 
   EXIT_SERVER ();
 
@@ -10752,73 +10751,6 @@ error:
   return -1;
 #endif
 #undef CHECKSUM_SIZE
-}
-
-/*
- * locator_cleanup_partition_links () - This function sends a request to server
- *			 to cleanup the partition links of the given partitions.
- *   return: NO_ERROR on success, non-zero for ERROR
- *   class_oid (in)     : partitioned class OID
- *   no_oids (in)	:
- *   oid_list (in)      :
- */
-int
-locator_cleanup_partition_links (OID * class_oid, int no_oids, OID * oid_list)
-{
-#if defined(CS_MODE)
-  int success = ER_FAILED, req_error;
-  char *request, *reply, *ptr;
-  int request_size = 0;
-  int i;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  if (oid_list == NULL || no_oids < 1)
-    {
-      return ER_QPROC_INVALID_PARAMETER;
-    }
-
-  request_size = OR_OID_SIZE + OR_INT_SIZE + no_oids * OR_OID_SIZE;
-
-  request = (char *) malloc (request_size);
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  ptr = request;
-  ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_int (ptr, no_oids);
-
-  for (i = 0; i < no_oids; i++)
-    {
-      ptr = or_pack_oid (ptr, &oid_list[i]);
-    }
-
-  req_error =
-    net_client_request (NET_SERVER_LC_CLEANUP_PARTITION_LINKS, request, request_size, reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &success);
-    }
-
-  free_and_init (request);
-
-  return success;
-
-#else /* CS_MODE */
-  int success = ER_FAILED;
-
-  ENTER_SERVER ();
-
-  success = xlocator_cleanup_partition_links (NULL, class_oid, no_oids, oid_list);
-
-  EXIT_SERVER ();
-
-  return success;
-#endif /* !CS_MODE */
 }
 
 int

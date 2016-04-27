@@ -346,7 +346,6 @@ struct cls_spec_node
   REGU_VARIABLE_LIST cls_regu_list_rest;	/* regu list for rest of attrs */
   REGU_VARIABLE_LIST cls_regu_list_range;	/* regu list for range part of a condition. Used only in reevaluation
 						 * at index scan */
-  REGU_VARIABLE_LIST cls_regu_list_last_version;
   OUTPTR_LIST *cls_output_val_list;	/* regu list writer for val list */
   REGU_VARIABLE_LIST cls_regu_val_list;	/* regu list reader for val list */
   HFID hfid;			/* heap file identifier */
@@ -1158,7 +1157,9 @@ extern int qexec_remove_filter_pred_cache_ent_by_class (THREAD_ENTRY * thread_p,
 extern int qexec_remove_xasl_cache_ent_by_qstr (THREAD_ENTRY * thread_p, const char *qstr, const OID * user_oid);
 extern int qexec_remove_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id);
 extern int qexec_remove_all_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p);
+#if 0
 extern int qexec_remove_xasl_cache_ent_by_volume (THREAD_ENTRY * thread_p, VOLID volid, bool not_reuse_file);
+#endif
 extern int qexec_remove_all_filter_pred_cache_ent_by_xasl (THREAD_ENTRY * thread_p);
 extern int qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern int qexec_clear_list_pred_cache_by_class (THREAD_ENTRY * thread_p, const OID * class_oid);

@@ -58,7 +58,7 @@ static BUILTIN_TYPE builtin_types[] = {
   /* These are esql-specific types that the preprocessor needs to know about to do its job. */
   {
    "CUBRIDDA", NULL, C_TYPE_SQLDA, true},
-  /* These are SQL/X types that programmers need to use, and so the preprocessor also needs to know about them. */
+  /* These are CSQL types that programmers need to use, and so the preprocessor also needs to know about them. */
   {
    "DB_VALUE", NULL, C_TYPE_DB_VALUE, false},
   {
@@ -517,7 +517,7 @@ pp_detach_host_refs (void)
  * pp_add_host_str() - Allocate a host variable, assign the string as its name,
  *    and give it the special C_TYPE of C_TYPE_STRING_CONST.
  * return : pointer to the HOST_REF if everything is ok, NULL otherwise.
- * str(in) : An SQL/X string to be treated as a constant.
+ * str(in) : An CSQL string to be treated as a constant.
  */
 HOST_REF *
 pp_add_host_str (char *str)
@@ -1521,13 +1521,13 @@ pp_switch_to_descriptor (void)
  *    when processed by a C compiler, yield the original string.  This
  *    means being careful about things like single and double quotes and
  *    backslashes. If the string is being embedded within another C string
- *   (e.g., the string is a literal within some SQL/X command that is being
+ *   (e.g., the string is a literal within some CSQL command that is being
  *   prepared into a C string) we need to do some things a little differently
  *   (e.g., make sure we escape the enclosing double quotes of
  *   a C-style string).
  * return : void
  * vstr(out) : A varstring to receive the translated string.
- * str(in) : An input string, following either C or SQL/X punctuation rules.
+ * str(in) : An input string, following either C or CSQL punctuation rules.
  * in_string(in) : true iff the translated string is being embedded within a C
  *	       string. false otherwise.
  */

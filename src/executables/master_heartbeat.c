@@ -1562,8 +1562,8 @@ hb_cluster_send_heartbeat_req (char *dest_host_name)
 
   /* construct destination address */
   memset ((void *) &saddr, 0, sizeof (saddr));
-  if (hb_hostname_n_port_to_sockaddr
-      (dest_host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID), (struct sockaddr *) &saddr, &saddr_len) != NO_ERROR)
+  if (hb_hostname_n_port_to_sockaddr (dest_host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID),
+				      (struct sockaddr *) &saddr, &saddr_len) != NO_ERROR)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_hostname_n_port_to_sockaddr failed. \n");
       return;

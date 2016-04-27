@@ -166,7 +166,6 @@ LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &partition_link_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &hfid_table_Ts, 0}
 };
 
@@ -328,11 +327,19 @@ static int
 boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID * dbparm_oid)
 {
   RECDES recdes;
+  HEAP_SCANCACHE scan_cache;
+  SCAN_CODE scan = S_SUCCESS;
 
   recdes.area_size = recdes.length = DB_SIZEOF (*dbparm);
   recdes.data = (char *) dbparm;
-  if (heap_first (thread_p, &boot_Db_parm->hfid, NULL, dbparm_oid, &recdes, NULL, COPY) != S_SUCCESS)
+
+  heap_scancache_quick_start_with_class_hfid (thread_p, &scan_cache, &boot_Db_parm->hfid);
+  scan = heap_first (thread_p, &boot_Db_parm->hfid, NULL, dbparm_oid, &recdes, &scan_cache, COPY);
+  heap_scancache_end (thread_p, &scan_cache);
+
+  if (scan != S_SUCCESS)
     {
+      assert (false);
       return ER_FAILED;
     }
 
@@ -533,9 +540,8 @@ boot_max_pages_new_volume (void)
 {
   int nfree_pages;
 
-  nfree_pages =
-    (fileio_get_number_of_partition_free_pages (boot_Db_full_name, IO_PAGESIZE) -
-     BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
+  nfree_pages = (fileio_get_number_of_partition_free_pages (boot_Db_full_name, IO_PAGESIZE)
+		 - BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
   if (nfree_pages < 0)
     {
       nfree_pages = 0;
@@ -1684,9 +1690,8 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 
   fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
 
-  part_npages =
-    (fileio_get_number_of_partition_free_pages (temp_vol_fullname, IO_PAGESIZE) -
-     BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
+  part_npages = (fileio_get_number_of_partition_free_pages (temp_vol_fullname, IO_PAGESIZE)
+		 - BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
 
   if (min_npages > part_npages && part_npages >= 0)
     {
@@ -3158,7 +3163,7 @@ boot_make_session_server_key (void)
  */
 int
 boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db_name, bool from_backup,
-		     bool check_db_coll, BO_RESTART_ARG * r_args)
+		     CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args)
 {
   char log_path[PATH_MAX];
   const char *log_prefix;
@@ -3562,17 +3567,24 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  (void) qexec_initialize_xasl_cache (thread_p);
+  error_code = qexec_initialize_xasl_cache (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   if (qmgr_initialize (thread_p) != NO_ERROR)
     {
       error_code = ER_FAILED;
       goto error;
     }
+
   error_code = qfile_initialize_list_cache (thread_p);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+
   (void) qexec_initialize_filter_pred_cache (thread_p);
 
   /* 
@@ -3616,14 +3628,16 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* Check server timezone checksum versus database checksum */
-
-  tzd = tz_get_data ();
-  assert (tzd != NULL);
-
-  error_code = check_timezone_compat (tzd->checksum, timezone_checksum, "server", "database");
-  if (error_code != NO_ERROR)
+  if (check_coll_and_timezone->check_timezone == true)
     {
-      goto error;
+      tzd = tz_get_data ();
+      assert (tzd != NULL);
+
+      error_code = check_timezone_compat (tzd->checksum, timezone_checksum, "server", "database");
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
 #if defined (SERVER_MODE)
@@ -3732,7 +3746,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* check server collations with database collations */
-  if (check_db_coll)
+  if (check_coll_and_timezone->check_db_coll == true)
     {
       LANG_COLL_COMPAT *db_collations = NULL;
       int db_coll_cnt;
@@ -3900,6 +3914,8 @@ error:
 int
 xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const char *db_name, BO_RESTART_ARG * r_args)
 {
+  CHECK_ARGS check_coll_and_timezone = { true, true };
+
   if (lang_init () != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
@@ -3951,7 +3967,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
       return NULL_TRAN_INDEX;
     }
 
-  if (boot_restart_server (thread_p, print_restart, db_name, true, true, r_args) != NO_ERROR)
+  if (boot_restart_server (thread_p, print_restart, db_name, true, &check_coll_and_timezone, r_args) != NO_ERROR)
     {
       return NULL_TRAN_INDEX;
     }
@@ -4058,10 +4074,10 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 		       BOOT_SERVER_CREDENTIAL * server_credential)
 {
   int tran_index;
-  bool check_db_coll = true;
   char *db_user_save;
   char *adm_prg_file_name = NULL;
   char db_user_upper[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  CHECK_ARGS check_coll_and_timezone = { true, true };
 
 #if defined(SA_MODE)
   if (client_credential != NULL && client_credential->program_name != NULL
@@ -4078,15 +4094,23 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	  adm_prg_file_name++;
 	}
     }
-  if (adm_prg_file_name != NULL
-      && (strncasecmp (adm_prg_file_name, "synccolldb", strlen ("synccolldb")) == 0
-	  || strncasecmp (adm_prg_file_name, "migrate_", strlen ("migrate_")) == 0))
+  if (adm_prg_file_name != NULL)
     {
-      check_db_coll = false;
+      if (strncasecmp (adm_prg_file_name, "synccolldb", strlen ("synccolldb")) == 0
+	  || strncasecmp (adm_prg_file_name, "migrate_", strlen ("migrate_")) == 0)
+	{
+	  check_coll_and_timezone.check_db_coll = false;
+	}
+      if (strncasecmp (adm_prg_file_name, "gen_tz", strlen ("gen_tz")) == 0)
+	{
+	  check_coll_and_timezone.check_timezone = false;
+	}
     }
+
   /* If the server is not restarted, restart the server at this moment */
   if (!BO_IS_SERVER_RESTARTED ()
-      && boot_restart_server (thread_p, false, client_credential->db_name, false, check_db_coll, NULL) != NO_ERROR)
+      && boot_restart_server (thread_p, false, client_credential->db_name, false, &check_coll_and_timezone,
+			      NULL) != NO_ERROR)
     {
       *tran_state = TRAN_UNACTIVE_UNKNOWN;
       return NULL_TRAN_INDEX;
@@ -4310,7 +4334,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_enter_critical_section (thread_p, &conn->csect, INF_WAIT);
@@ -4327,7 +4351,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_exit_critical_section (thread_p, &conn->csect);
@@ -5080,6 +5104,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	   * so on are removed... then continue...
 	   * Note: we do not call xboot_delete since it reverts a bunch of stuff.
 	   */
+	  CHECK_ARGS check_col_and_timezone = { true, true };
 	  cfg_free_directory (dir);
 	  dir = NULL;
 
@@ -5095,8 +5120,8 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	    {
 	      goto error;
 	    }
-
-	  error_code = boot_restart_server (thread_p, false, from_dbname, false, false, NULL);
+	  check_col_and_timezone.check_db_coll = false;
+	  error_code = boot_restart_server (thread_p, false, from_dbname, false, &check_col_and_timezone, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -6647,9 +6672,6 @@ boot_decoy_entries_finalize (void)
   lf_tran_destroy_entry (t_entry);
 
   t_entry = thread_get_tran_entry (NULL, THREAD_TS_GLOBAL_UNIQUE_STATS);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_PARTITION_LINK_HASH);
   lf_tran_destroy_entry (t_entry);
 
   t_entry = thread_get_tran_entry (NULL, THREAD_TS_HFID_TABLE);
