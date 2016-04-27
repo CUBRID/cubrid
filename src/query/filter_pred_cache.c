@@ -416,15 +416,15 @@ fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Max size:                   %d\n", fpcache_Soft_capacity);
   fprintf (fp, "Current entry count:        %d\n", ATOMIC_INC_32 (&fpcache_Entry_counter, 0));
   fprintf (fp, "Current clone count:        %d\n", ATOMIC_INC_32 (&fpcache_Clone_counter, 0));
-  fprintf (fp, "Lookups:                    %lld\n", ATOMIC_INC_64 (&fpcache_Stat_lookup, 0));
-  fprintf (fp, "Entry Hits:                 %lld\n", ATOMIC_INC_64 (&fpcache_Stat_hit, 0));
-  fprintf (fp, "Entry Miss:                 %lld\n", ATOMIC_INC_64 (&fpcache_Stat_miss, 0));
-  fprintf (fp, "Entry discards:             %lld\n", ATOMIC_INC_64 (&fpcache_Stat_discard, 0));
-  fprintf (fp, "Clone Hits:                 %lld\n", ATOMIC_INC_64 (&fpcache_Stat_clone_hit, 0));
-  fprintf (fp, "Clone Miss:                 %lld\n", ATOMIC_INC_64 (&fpcache_Stat_clone_miss, 0));
-  fprintf (fp, "Clone discards:             %lld\n", ATOMIC_INC_64 (&fpcache_Stat_clone_discard, 0));
-  fprintf (fp, "Adds:                       %lld\n", ATOMIC_INC_64 (&fpcache_Stat_add, 0));
-  fprintf (fp, "Clone adds:                 %lld\n", ATOMIC_INC_64 (&fpcache_Stat_clone_add, 0));
+  fprintf (fp, "Lookups:                    %ld\n", ATOMIC_INC_64 (&fpcache_Stat_lookup, 0));
+  fprintf (fp, "Entry Hits:                 %ld\n", ATOMIC_INC_64 (&fpcache_Stat_hit, 0));
+  fprintf (fp, "Entry Miss:                 %ld\n", ATOMIC_INC_64 (&fpcache_Stat_miss, 0));
+  fprintf (fp, "Entry discards:             %ld\n", ATOMIC_INC_64 (&fpcache_Stat_discard, 0));
+  fprintf (fp, "Clone Hits:                 %ld\n", ATOMIC_INC_64 (&fpcache_Stat_clone_hit, 0));
+  fprintf (fp, "Clone Miss:                 %ld\n", ATOMIC_INC_64 (&fpcache_Stat_clone_miss, 0));
+  fprintf (fp, "Clone discards:             %ld\n", ATOMIC_INC_64 (&fpcache_Stat_clone_discard, 0));
+  fprintf (fp, "Adds:                       %ld\n", ATOMIC_INC_64 (&fpcache_Stat_add, 0));
+  fprintf (fp, "Clone adds:                 %ld\n", ATOMIC_INC_64 (&fpcache_Stat_clone_add, 0));
 
   fprintf (fp, "\nEntries:\n");
   lf_hash_create_iterator (&iter, t_entry, &fpcache_Ht);
