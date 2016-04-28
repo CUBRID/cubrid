@@ -468,6 +468,9 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
   int oid_index;
   int lock_result;
 
+  PERF_UTIME_TRACKER time_track;
+  PERF_UTIME_TRACKER_START (thread_p, &time_track);
+
   assert (xcache_entry != NULL && *xcache_entry == NULL);
 
   if (!xcache_Enabled)
@@ -513,6 +516,9 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
   /* We have incremented fix count, we don't need lf_tran anymore. */
   lf_tran_end_with_mb (t_entry);
 
+  /* Temporary: use mnt_bt_fix_ovf_oids_time to track time. */
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_track, mnt_bt_undo_insert_time);
+
   /* Get lock on all classes in xasl cache entry. */
   for (oid_index = 0; oid_index < (*xcache_entry)->n_oid_list; oid_index++)
     {
@@ -542,6 +548,9 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
 	  return error_code;
 	}
     }
+
+  /* Temporary: use mnt_bt_fix_ovf_oids_time to track time. */
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_track, mnt_bt_undo_delete_time);
 
   if ((*xcache_entry)->xasl_id.cache_flag & XCACHE_ENTRY_MARK_DELETED)
     {
