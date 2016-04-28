@@ -2467,7 +2467,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	      /* Create a multipage record for this long record : insert to multipage_file and put the pointer as the
 	       * first record in this run */
 	      if (overflow_insert (thread_p, &sort_param->multipage_file, (VPID *) item_ptr, &long_recdes,
-				   &sort_param->multipage_npages, NULL) == NULL)
+				   &sort_param->multipage_npages) == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();

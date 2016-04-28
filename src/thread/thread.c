@@ -1161,7 +1161,6 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->tran_entries[THREAD_TS_SESSIONS] = lf_tran_request_entry (&sessions_Ts);
   entry_p->tran_entries[THREAD_TS_FREE_SORT_LIST] = lf_tran_request_entry (&free_sort_list_Ts);
   entry_p->tran_entries[THREAD_TS_GLOBAL_UNIQUE_STATS] = lf_tran_request_entry (&global_unique_stats_Ts);
-  entry_p->tran_entries[THREAD_TS_PARTITION_LINK_HASH] = lf_tran_request_entry (&partition_link_Ts);
   entry_p->tran_entries[THREAD_TS_HFID_TABLE] = lf_tran_request_entry (&hfid_table_Ts);
   entry_p->tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
   entry_p->tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);

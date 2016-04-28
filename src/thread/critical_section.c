@@ -57,8 +57,7 @@ do { \
   (total).tv_sec += (total).tv_usec / 1000000; \
   (total).tv_usec %= 1000000; \
   if (((max).tv_sec < elapsed.tv_sec) \
-      || ((max).tv_sec == elapsed.tv_sec \
-          && (max).tv_usec < elapsed.tv_usec)) \
+      || ((max).tv_sec == elapsed.tv_sec && (max).tv_usec < elapsed.tv_usec)) \
     { \
       (max).tv_sec = elapsed.tv_sec; \
       (max).tv_usec = elapsed.tv_usec; \
@@ -66,9 +65,9 @@ do { \
 } while (0)
 
 /* define critical section array */
-CSS_CRITICAL_SECTION css_Csect_array[CRITICAL_SECTION_COUNT];
+SYNC_CRITICAL_SECTION csectgl_Critical_sections[CRITICAL_SECTION_COUNT];
 
-static const char *css_Csect_name[] = {
+static const char *csect_Names[] = {
   "ER_LOG_FILE",
   "ER_MSG_CACHE",
   "WFG",
@@ -93,24 +92,54 @@ static const char *css_Csect_name[] = {
   "TEMPFILE_CACHE",
   "LOG_PB",
   "LOG_ARCHIVE",
-  "ACCESS_STATUS",
-  "MVCC_ACTIVE_TRANS"
+  "ACCESS_STATUS"
 };
 
-const char *css_Csect_name_conn = "CONN_ENTRY";
-const char *css_Csect_name_tdes = "TDES";
+const char *csect_Name_conn = "CONN_ENTRY";
+const char *csect_Name_tdes = "TDES";
+
+/* 
+ * rwlock monitor
+ */
+
+#define NUM_ENTRIES_OF_RWLOCK_CHUNK 64
+
+/*
+ * This is not a pre-allocated free rwlock chunk. 
+ * Each SYNC_RWLOCK locates in its local manager. SYNC_RWLOCK Monitor only manages the pointers to the registered global RWLOCKs.
+ * This makes debugging and performance trouble shooting easier.
+ */
+typedef struct sync_rwlock_chunk SYNC_RWLOCK_CHUNK;
+struct sync_rwlock_chunk
+{
+  SYNC_RWLOCK *block[NUM_ENTRIES_OF_RWLOCK_CHUNK];
+  SYNC_RWLOCK_CHUNK *next_chunk;
+  int hint_free_entry_idx;
+  int num_entry_in_use;
+  pthread_mutex_t rwlock_monitor_mutex;
+};
+
+SYNC_RWLOCK_CHUNK rwlock_Monitor;
 
 static int csect_initialize_entry (int cs_index);
 static int csect_finalize_entry (int cs_index);
-static int csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr, int timeout,
+static int csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int timeout,
 				       struct timespec *to);
-static int csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr, int timeout,
+static int csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int timeout,
 					 struct timespec *to);
-static int csect_wakeup_waiting_writer (CSS_CRITICAL_SECTION * cs_ptr);
-static int csect_wakeup_waiting_promoter (CSS_CRITICAL_SECTION * cs_ptr);
-static int csect_demote_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr, int wait_secs);
-static int csect_promote_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr, int wait_secs);
-static int csect_check_own_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr);
+static int csect_wakeup_waiting_writer (SYNC_CRITICAL_SECTION * cs_ptr);
+static int csect_wakeup_waiting_promoter (SYNC_CRITICAL_SECTION * cs_ptr);
+static int csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs);
+static int csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs);
+static int csect_check_own_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr);
+
+static SYNC_RWLOCK_CHUNK *rwlock_allocate_rwlock_chunk_monitor_entry (void);
+static int rwlock_initialize_rwlock_monitor_entry (SYNC_RWLOCK_CHUNK * rwlock_chunk_entry);
+static int rwlock_consume_a_rwlock_monitor_entry (SYNC_RWLOCK_CHUNK * rwlock_chunk_entry, int idx,
+						  SYNC_RWLOCK * rwlock);
+static int rwlock_reclaim_a_rwlock_monitor_entry (SYNC_RWLOCK_CHUNK * rwlock_chunk_entry, int idx);
+static int rwlock_register_a_rwlock_entry_to_monitor (SYNC_RWLOCK * rwlock);
+static int rwlock_unregister_a_rwlock_entry_from_monitor (SYNC_RWLOCK * rwlock);
 
 /*
  * csect_initialize_critical_section() - initialize critical section
@@ -118,7 +147,7 @@ static int csect_check_own_critical_section (THREAD_ENTRY * thread_p, CSS_CRITIC
  *   cs_ptr(in): critical section
  */
 int
-csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
+csect_initialize_critical_section (SYNC_CRITICAL_SECTION * cs_ptr)
 {
   int error_code = NO_ERROR;
   pthread_mutexattr_t mattr;
@@ -198,17 +227,17 @@ static int
 csect_initialize_entry (int cs_index)
 {
   int error_code = NO_ERROR;
-  CSS_CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
 
-  cs_ptr = &css_Csect_array[cs_index];
+  cs_ptr = &csectgl_Critical_sections[cs_index];
   error_code = csect_initialize_critical_section (cs_ptr);
   if (error_code == NO_ERROR)
     {
       cs_ptr->cs_index = cs_index;
-      cs_ptr->name = css_Csect_name[cs_index];
+      cs_ptr->name = csect_Names[cs_index];
     }
 
   return error_code;
@@ -220,7 +249,7 @@ csect_initialize_entry (int cs_index)
  *   cs_ptr(in): critical section
  */
 int
-csect_finalize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
+csect_finalize_critical_section (SYNC_CRITICAL_SECTION * cs_ptr)
 {
   int error_code = NO_ERROR;
 
@@ -268,12 +297,12 @@ static int
 csect_finalize_entry (int cs_index)
 {
   int error_code = NO_ERROR;
-  CSS_CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
 
-  cs_ptr = &css_Csect_array[cs_index];
+  cs_ptr = &csectgl_Critical_sections[cs_index];
   assert (cs_ptr->cs_index == cs_index);
 
   error_code = csect_finalize_critical_section (cs_ptr);
@@ -329,7 +358,7 @@ csect_finalize (void)
 }
 
 static int
-csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr, int timeout, struct timespec *to)
+csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int timeout, struct timespec *to)
 {
   THREAD_ENTRY *prev_thread_p = NULL;
   int err = NO_ERROR;
@@ -398,7 +427,7 @@ csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_p
 }
 
 static int
-csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr, int timeout, struct timespec *to)
+csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int timeout, struct timespec *to)
 {
   THREAD_ENTRY *prev_thread_p = NULL;
   int err = NO_ERROR;
@@ -467,7 +496,7 @@ csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs
 }
 
 static int
-csect_wakeup_waiting_writer (CSS_CRITICAL_SECTION * cs_ptr)
+csect_wakeup_waiting_writer (SYNC_CRITICAL_SECTION * cs_ptr)
 {
   THREAD_ENTRY *waiting_thread_p = NULL;
   int error_code = NO_ERROR;
@@ -486,7 +515,7 @@ csect_wakeup_waiting_writer (CSS_CRITICAL_SECTION * cs_ptr)
 }
 
 static int
-csect_wakeup_waiting_promoter (CSS_CRITICAL_SECTION * cs_ptr)
+csect_wakeup_waiting_promoter (SYNC_CRITICAL_SECTION * cs_ptr)
 {
   THREAD_ENTRY *waiting_thread_p = NULL;
   int error_code = NO_ERROR;
@@ -511,7 +540,7 @@ csect_wakeup_waiting_promoter (CSS_CRITICAL_SECTION * cs_ptr)
  *   wait_secs(in): timeout second
  */
 int
-csect_enter_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
+csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
   int error_code = NO_ERROR, r;
 #if defined (EnableThreadMonitoring)
@@ -732,12 +761,12 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs
 int
 csect_enter (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
 {
-  CSS_CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
 
-  cs_ptr = &css_Csect_array[cs_index];
+  cs_ptr = &csectgl_Critical_sections[cs_index];
 #if defined (SERVER_MODE)
   assert (cs_ptr->cs_index == cs_index);
 #endif
@@ -752,7 +781,7 @@ csect_enter (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
  *   wait_secs(in): timeout second
  */
 int
-csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
+csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
   int error_code = NO_ERROR, r;
 #if defined (EnableThreadMonitoring)
@@ -965,12 +994,12 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, CSS_CRITICAL_SE
 int
 csect_enter_as_reader (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
 {
-  CSS_CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
 
-  cs_ptr = &css_Csect_array[cs_index];
+  cs_ptr = &csectgl_Critical_sections[cs_index];
 #if defined (SERVER_MODE)
   assert (cs_ptr->cs_index == cs_index);
 #endif
@@ -987,7 +1016,7 @@ csect_enter_as_reader (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
  * Note: Always successful because I have the write lock.
  */
 static int
-csect_demote_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
+csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
   int error_code = NO_ERROR, r;
 #if defined (EnableThreadMonitoring)
@@ -1241,12 +1270,12 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * c
 int
 csect_demote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
 {
-  CSS_CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
 
-  cs_ptr = &css_Csect_array[cs_index];
+  cs_ptr = &csectgl_Critical_sections[cs_index];
   return csect_demote_critical_section (thread_p, cs_ptr, wait_secs);
 }
 
@@ -1259,7 +1288,7 @@ csect_demote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
  * Note: Always successful because I have the write lock.
  */
 static int
-csect_promote_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr, int wait_secs)
+csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs)
 {
   int error_code = NO_ERROR, r;
 #if defined (EnableThreadMonitoring)
@@ -1423,7 +1452,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * 
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, cs_ptr->max_wait, tv_diff);
+      TOTAL_AND_MAX_TIMEVAL (cs_ptr->total_wait, rwlock->max_wait, tv_diff);
     }
 #endif
 
@@ -1465,12 +1494,12 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * 
 int
 csect_promote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
 {
-  CSS_CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
 
-  cs_ptr = &css_Csect_array[cs_index];
+  cs_ptr = &csectgl_Critical_sections[cs_index];
   return csect_promote_critical_section (thread_p, cs_ptr, wait_secs);
 }
 
@@ -1480,7 +1509,7 @@ csect_promote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs)
  *   cs_ptr(in): critical section
  */
 int
-csect_exit_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr)
+csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr)
 {
   int error_code = NO_ERROR;
   bool ww, wr, wp;
@@ -1612,12 +1641,12 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_
 int
 csect_exit (THREAD_ENTRY * thread_p, int cs_index)
 {
-  CSS_CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
 
-  cs_ptr = &css_Csect_array[cs_index];
+  cs_ptr = &csectgl_Critical_sections[cs_index];
 #if defined (SERVER_MODE)
   assert (cs_ptr->cs_index == cs_index);
 #endif
@@ -1632,44 +1661,48 @@ csect_exit (THREAD_ENTRY * thread_p, int cs_index)
 void
 csect_dump_statistics (FILE * fp)
 {
-  CSS_CRITICAL_SECTION *cs_ptr;
-  int r = NO_ERROR, i;
+  SYNC_CRITICAL_SECTION *cs_ptr;
+  int i;
 
   fprintf (fp, "             CS Name    |Total Enter|Total Wait |   Max Wait    |  Total wait\n");
 
   for (i = 0; i < CRITICAL_SECTION_COUNT; i++)
     {
-      cs_ptr = &css_Csect_array[i];
+      cs_ptr = &csectgl_Critical_sections[i];
+
       fprintf (fp, "%23s |%10d |%10d | %6ld.%06ld | %6ld.%06ld\n", cs_ptr->name, cs_ptr->total_enter,
 	       cs_ptr->total_nwaits, cs_ptr->max_wait.tv_sec, cs_ptr->max_wait.tv_usec, cs_ptr->total_wait.tv_sec,
 	       cs_ptr->total_wait.tv_usec);
 
       cs_ptr->total_enter = 0;
       cs_ptr->total_nwaits = 0;
+
       cs_ptr->max_wait.tv_sec = 0;
       cs_ptr->max_wait.tv_usec = 0;
 
       cs_ptr->total_wait.tv_sec = 0;
       cs_ptr->total_wait.tv_usec = 0;
     }
+
+  fflush (fp);
 }
 
 
 /*
  * csect_check_own() - check if current thread is critical section owner
  *   return: true if cs's owner is me, false if not
- *   cs_index(in): css_Csect_array's index
+ *   cs_index(in): csectgl_Critical_sections's index
  */
 int
 csect_check_own (THREAD_ENTRY * thread_p, int cs_index)
 {
-  CSS_CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
   int error_code = NO_ERROR;
 
   assert (cs_index >= 0);
   assert (cs_index < CRITICAL_SECTION_COUNT);
 
-  cs_ptr = &css_Csect_array[cs_index];
+  cs_ptr = &csectgl_Critical_sections[cs_index];
 
   return csect_check_own_critical_section (thread_p, cs_ptr);
 }
@@ -1680,7 +1713,7 @@ csect_check_own (THREAD_ENTRY * thread_p, int cs_index)
  *   cs_ptr(in): critical section
  */
 static int
-csect_check_own_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr)
+csect_check_own_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr)
 {
   int error_code = NO_ERROR, return_code;
 
@@ -1740,7 +1773,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
   int i, idx, error = NO_ERROR;
   DB_VALUE *vals = NULL;
-  CSS_CRITICAL_SECTION *cs_ptr;
+  SYNC_CRITICAL_SECTION *cs_ptr;
   char buf[256] = { 0 };
   double msec;
   DB_VALUE db_val;
@@ -1768,7 +1801,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
 	  goto exit_on_error;
 	}
 
-      cs_ptr = &css_Csect_array[i];
+      cs_ptr = &csectgl_Critical_sections[i];
 
       /* The index of the critical section */
       db_make_int (&vals[idx], cs_ptr->cs_index);
@@ -1896,4 +1929,603 @@ exit_on_error:
     }
 
   return error;
+}
+
+
+/*
+ * rwlock_initialize () - initialize a rwlock 
+ *   return: NO_ERROR, or ER_code
+ *
+ *   rwlock(in/out):
+ *   name(in):
+ *   for_trace(in): RWLOCK_TRACE to monitor the rwlock. Note that it should be a global SYNC_RWLOCK to be traced.
+ */
+int
+rwlock_initialize (SYNC_RWLOCK * rwlock, const char *name, int for_trace)
+{
+  int error_code = NO_ERROR;
+  pthread_mutexattr_t mattr;
+
+  assert (rwlock != NULL && name != NULL);
+  assert (for_trace == RWLOCK_TRACE || for_trace == RWLOCK_NOT_TRACE);
+
+  error_code = pthread_mutexattr_init (&mattr);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEXATTR_INIT, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEXATTR_INIT;
+    }
+
+#ifdef CHECK_MUTEX
+  error_code = pthread_mutexattr_settype (&mattr, PTHREAD_MUTEX_ERRORCHECK);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEXATTR_SETTYPE, 0);
+      return ER_CSS_PTHREAD_MUTEXATTR_SETTYPE;
+    }
+#endif /* CHECK_MUTEX */
+
+  error_code = pthread_mutex_init (&rwlock->read_lock, &mattr);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
+
+  error_code = pthread_mutex_init (&rwlock->global_lock, &mattr);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
+
+  error_code = pthread_mutexattr_destroy (&mattr);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEXATTR_DESTROY, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEXATTR_DESTROY;
+    }
+
+  rwlock->name = strdup (name);
+  if (rwlock->name == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (name) + 1));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  rwlock->num_readers = 0;
+  rwlock->for_trace = for_trace;
+
+  rwlock->total_enter = 0;
+
+  rwlock->max_wait.tv_sec = 0;
+  rwlock->max_wait.tv_usec = 0;
+
+  rwlock->total_wait.tv_sec = 0;
+  rwlock->total_wait.tv_usec = 0;
+
+  if (rwlock->for_trace == RWLOCK_TRACE)
+    {
+      error_code = rwlock_register_a_rwlock_entry_to_monitor (rwlock);
+    }
+
+  return error_code;
+}
+
+/*
+ * rwlock_finalize () - finalize a rwlock 
+ *   return: NO_ERROR, or ER_code
+ *
+ *   rwlock(in/out):
+ */
+int
+rwlock_finalize (SYNC_RWLOCK * rwlock)
+{
+  int error_code = NO_ERROR;
+
+  assert (rwlock != NULL && rwlock->num_readers == 0);
+
+  rwlock->num_readers = 0;
+
+  if (rwlock->name != NULL)
+    {
+      free_and_init (rwlock->name);
+    }
+
+  error_code = pthread_mutex_destroy (&rwlock->read_lock);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_DESTROY;
+    }
+
+  error_code = pthread_mutex_destroy (&rwlock->global_lock);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_DESTROY;
+    }
+
+  if (rwlock->for_trace == RWLOCK_TRACE)
+    {
+      error_code = rwlock_unregister_a_rwlock_entry_from_monitor (rwlock);
+    }
+
+  return error_code;
+}
+
+/*
+ * rwlock_read_lock () - acquire a read-lock of the given rwlock
+ *   return: NO_ERROR, or ER_code
+ *
+ *   rwlock(in/out):
+ */
+int
+rwlock_read_lock (SYNC_RWLOCK * rwlock)
+{
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  int error_code;
+
+  assert (rwlock != NULL);
+
+  tsc_getticks (&start_tick);
+
+  /* hold the reader lock */
+  error_code = pthread_mutex_lock (&rwlock->read_lock);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
+
+  /* increment the number of readers */
+  rwlock->num_readers++;
+
+  /* hold the global lock if it is the first reader */
+  if (rwlock->num_readers == 1)
+    {
+      error_code = pthread_mutex_lock (&rwlock->global_lock);
+      if (error_code != NO_ERROR)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+	  assert (0);
+
+	  (void) pthread_mutex_unlock (&rwlock->read_lock);
+
+	  return ER_CSS_PTHREAD_MUTEX_LOCK;
+	}
+    }
+
+  /* collect statistics */
+  tsc_getticks (&end_tick);
+  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+  TOTAL_AND_MAX_TIMEVAL (rwlock->total_wait, rwlock->max_wait, tv_diff);
+
+  rwlock->total_enter++;
+
+  /* release the reader lock */
+  error_code = pthread_mutex_unlock (&rwlock->read_lock);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * rwlock_read_unlock () - release a read-lock of the given rwlock
+ *   return: NO_ERROR, or ER_code
+ *
+ *   rwlock(in/out):
+ */
+int
+rwlock_read_unlock (SYNC_RWLOCK * rwlock)
+{
+  int error_code;
+
+  assert (rwlock != NULL);
+
+  /* hold the reader lock */
+  error_code = pthread_mutex_lock (&rwlock->read_lock);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
+
+  /* decrement the number of readers */
+  rwlock->num_readers--;
+
+  /* release the global lock if it is the last reader */
+  if (rwlock->num_readers == 0)
+    {
+      error_code = pthread_mutex_unlock (&rwlock->global_lock);
+      if (error_code != NO_ERROR)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+	  assert (0);
+
+	  (void) pthread_mutex_unlock (&rwlock->read_lock);
+
+	  return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+	}
+    }
+
+  /* release the reader lock */
+  error_code = pthread_mutex_unlock (&rwlock->read_lock);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * rwlock_write_lock () - acquire write-lock of the given rwlock
+ *   return: NO_ERROR, or ER_code
+ *
+ *   rwlock(in/out):
+ */
+int
+rwlock_write_lock (SYNC_RWLOCK * rwlock)
+{
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  int error_code;
+
+  assert (rwlock != NULL);
+
+  tsc_getticks (&start_tick);
+
+  error_code = pthread_mutex_lock (&rwlock->global_lock);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
+
+  /* collect statistics */
+  tsc_getticks (&end_tick);
+  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+  TOTAL_AND_MAX_TIMEVAL (rwlock->total_wait, rwlock->max_wait, tv_diff);
+
+  rwlock->total_enter++;
+
+  return NO_ERROR;
+}
+
+/*
+ * rwlock_write_unlock () - release write-lock of the given rwlock
+ *   return: NO_ERROR, or ER_code
+ *
+ *   rwlock(in/out):
+ */
+int
+rwlock_write_unlock (SYNC_RWLOCK * rwlock)
+{
+  int error_code;
+
+  assert (rwlock != NULL);
+
+  error_code = pthread_mutex_unlock (&rwlock->global_lock);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * rwlock_initialize_rwlock_monitor () - initialize rwlock monitor
+ *   return: NO_ERROR
+ *
+ *   called during server startup 
+ */
+int
+rwlock_initialize_rwlock_monitor (void)
+{
+  int error_code = NO_ERROR;
+  pthread_mutexattr_t mattr;
+
+  error_code = pthread_mutexattr_init (&mattr);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEXATTR_INIT, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEXATTR_INIT;
+    }
+
+  error_code = pthread_mutex_init (&rwlock_Monitor.rwlock_monitor_mutex, &mattr);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
+
+  return rwlock_initialize_rwlock_monitor_entry (&rwlock_Monitor);
+}
+
+/*
+ * rwlock_finalize_rwlock_monitor () - finalize rwlock monitor
+ *   return: NO_ERROR
+ *
+ *   called during server shutdown 
+ */
+int
+rwlock_finalize_rwlock_monitor (void)
+{
+  SYNC_RWLOCK_CHUNK *p, *next;
+
+  p = &rwlock_Monitor;
+
+  /* the head entry will be kept. */
+  for (p = p->next_chunk; p != NULL; p = next)
+    {
+      next = p->next_chunk;
+
+      /* may require assertions on the chunk entry here. */
+      free_and_init (p);
+    }
+
+  /* clear the head entry */
+  (void) rwlock_initialize_rwlock_monitor_entry (&rwlock_Monitor);
+
+  if (pthread_mutex_destroy (&rwlock_Monitor.rwlock_monitor_mutex) != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_DESTROY;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * rwlock_allocate_rwlock_chunk_monitor_entry () - allocate a monitor entry
+ *   return: the allocated monitor entry or NULL
+ *
+ */
+static SYNC_RWLOCK_CHUNK *
+rwlock_allocate_rwlock_chunk_monitor_entry (void)
+{
+  SYNC_RWLOCK_CHUNK *p;
+
+  p = (SYNC_RWLOCK_CHUNK *) malloc (sizeof (SYNC_RWLOCK_CHUNK));
+  if (p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYNC_RWLOCK_CHUNK));
+      return NULL;
+    }
+
+  rwlock_initialize_rwlock_monitor_entry (p);
+
+  return p;
+}
+
+/*
+ * rwlock_initialize_rwlock_monitor_entry () - initialize a monitor entry
+ *   return: NO_ERROR
+ *
+ */
+static int
+rwlock_initialize_rwlock_monitor_entry (SYNC_RWLOCK_CHUNK * rwlock_chunk_entry)
+{
+  assert (rwlock_chunk_entry != NULL);
+
+  memset (rwlock_chunk_entry->block, 0, NUM_ENTRIES_OF_RWLOCK_CHUNK);
+  rwlock_chunk_entry->next_chunk = NULL;
+  rwlock_chunk_entry->hint_free_entry_idx = 0;
+  rwlock_chunk_entry->num_entry_in_use = 0;
+
+  return NO_ERROR;
+}
+
+/*
+ * rwlock_consume_a_rwlock_monitor_entry () - 
+ *   return: NO_ERROR
+ *
+ */
+static int
+rwlock_consume_a_rwlock_monitor_entry (SYNC_RWLOCK_CHUNK * rwlock_chunk_entry, int idx, SYNC_RWLOCK * rwlock)
+{
+  assert (rwlock_chunk_entry != NULL && rwlock != NULL);
+  assert (0 <= idx && idx < NUM_ENTRIES_OF_RWLOCK_CHUNK);
+  assert (rwlock_chunk_entry->block[idx] == NULL);
+  assert (0 <= rwlock_chunk_entry->num_entry_in_use
+	  && rwlock_chunk_entry->num_entry_in_use < NUM_ENTRIES_OF_RWLOCK_CHUNK - 1);
+
+  rwlock_chunk_entry->block[idx] = rwlock;
+  rwlock_chunk_entry->num_entry_in_use++;
+  rwlock_chunk_entry->hint_free_entry_idx = (idx + 1) % NUM_ENTRIES_OF_RWLOCK_CHUNK;
+
+  return NO_ERROR;
+}
+
+/*
+ * rwlock_reclaim_a_rwlock_monitor_entry () - 
+ *   return: NO_ERROR
+ *
+ */
+static int
+rwlock_reclaim_a_rwlock_monitor_entry (SYNC_RWLOCK_CHUNK * rwlock_chunk_entry, int idx)
+{
+  assert (rwlock_chunk_entry != NULL);
+  assert (0 <= idx && idx < NUM_ENTRIES_OF_RWLOCK_CHUNK);
+  assert (rwlock_chunk_entry->block[idx] != NULL);
+  assert (0 < rwlock_chunk_entry->num_entry_in_use
+	  && rwlock_chunk_entry->num_entry_in_use < NUM_ENTRIES_OF_RWLOCK_CHUNK);
+
+  rwlock_chunk_entry->block[idx] = NULL;
+  rwlock_chunk_entry->num_entry_in_use--;
+  rwlock_chunk_entry->hint_free_entry_idx = idx;
+
+  return NO_ERROR;
+}
+
+/*
+ * rwlock_register_a_rwlock_entry_to_monitor () - 
+ *   return: NO_ERROR
+ *
+ */
+static int
+rwlock_register_a_rwlock_entry_to_monitor (SYNC_RWLOCK * rwlock)
+{
+  SYNC_RWLOCK_CHUNK *p, *last_chunk, *new_chunk;
+  int i, idx;
+  bool found = false;
+
+  pthread_mutex_lock (&rwlock_Monitor.rwlock_monitor_mutex);
+
+  p = &rwlock_Monitor;
+  while (p != NULL)
+    {
+      if (p->num_entry_in_use < NUM_ENTRIES_OF_RWLOCK_CHUNK)
+	{
+	  assert (0 <= p->hint_free_entry_idx && p->hint_free_entry_idx < NUM_ENTRIES_OF_RWLOCK_CHUNK);
+
+	  for (i = 0, idx = p->hint_free_entry_idx; i < NUM_ENTRIES_OF_RWLOCK_CHUNK; i++)
+	    {
+	      if (p->block[idx] == NULL)
+		{
+		  found = true;
+		  rwlock_consume_a_rwlock_monitor_entry (p, idx, rwlock);
+		  break;
+		}
+
+	      idx = (idx + 1) % NUM_ENTRIES_OF_RWLOCK_CHUNK;
+	    }
+
+	  assert (found == true);
+	}
+
+      last_chunk = p;
+
+      p = p->next_chunk;
+    }
+
+  if (found == false)
+    {
+      new_chunk = rwlock_allocate_rwlock_chunk_monitor_entry ();
+      if (new_chunk == NULL)
+	{
+	  /* error was set */
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      last_chunk->next_chunk = new_chunk;
+
+      rwlock_consume_a_rwlock_monitor_entry (new_chunk, 0, rwlock);
+    }
+
+  pthread_mutex_unlock (&rwlock_Monitor.rwlock_monitor_mutex);
+
+  return NO_ERROR;
+}
+
+/*
+ * rwlock_unregister_a_rwlock_entry_from_monitor () - 
+ *   return: NO_ERROR
+ *
+ */
+static int
+rwlock_unregister_a_rwlock_entry_from_monitor (SYNC_RWLOCK * rwlock)
+{
+  SYNC_RWLOCK_CHUNK *p;
+  int i, idx;
+  bool found = false;
+
+  pthread_mutex_lock (&rwlock_Monitor.rwlock_monitor_mutex);
+
+  p = &rwlock_Monitor;
+  while (p != NULL)
+    {
+      if (0 < p->num_entry_in_use)
+	{
+	  for (i = 0; i < NUM_ENTRIES_OF_RWLOCK_CHUNK; i++)
+	    {
+	      if (p->block[i] == rwlock)
+		{
+		  found = true;
+		  rwlock_reclaim_a_rwlock_monitor_entry (p, i);
+		  break;
+		}
+	    }
+	}
+
+      p = p->next_chunk;
+    }
+
+  pthread_mutex_unlock (&rwlock_Monitor.rwlock_monitor_mutex);
+
+  assert (found == true);
+
+  return NO_ERROR;
+}
+
+/*
+ * rwlock_dump_statistics() - dump rwlock statistics
+ *   return: void
+ */
+void
+rwlock_dump_statistics (FILE * fp)
+{
+  SYNC_RWLOCK_CHUNK *p;
+  SYNC_RWLOCK *rwlock;
+  int i, cnt;
+
+  fprintf (fp, "\n             RWlock Name     |Total Enter|   Max Wait    |  Total wait\n");
+
+  pthread_mutex_lock (&rwlock_Monitor.rwlock_monitor_mutex);
+
+  p = &rwlock_Monitor;
+  while (p != NULL)
+    {
+      for (i = 0, cnt = 0; cnt < p->num_entry_in_use && i < NUM_ENTRIES_OF_RWLOCK_CHUNK; i++)
+	{
+	  rwlock = p->block[i];
+	  if (rwlock != NULL)
+	    {
+	      cnt++;
+
+	      fprintf (fp, "%28s |%10d | %6ld.%06ld | %6ld.%06ld\n", rwlock->name, rwlock->total_enter,
+		       rwlock->max_wait.tv_sec, rwlock->max_wait.tv_usec,
+		       rwlock->total_wait.tv_sec, rwlock->total_wait.tv_usec);
+
+	      /* reset statistics */
+	      rwlock->total_enter = 0;
+
+	      rwlock->max_wait.tv_sec = 0;
+	      rwlock->max_wait.tv_usec = 0;
+
+	      rwlock->total_wait.tv_sec = 0;
+	      rwlock->total_wait.tv_usec = 0;
+	    }
+	}
+
+      p = p->next_chunk;
+    }
+
+  pthread_mutex_unlock (&rwlock_Monitor.rwlock_monitor_mutex);
+
+  fflush (fp);
 }

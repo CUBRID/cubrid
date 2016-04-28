@@ -75,10 +75,8 @@ enum
  */
   REC_DELETED_WILL_REUSE = 7,
 
-/* Slot used after vacuum to keep link to newer object version */
-  REC_MVCC_NEXT_VERSION = 8,
-
 /* unused reserved record type */
+  REC_RESERVED_TYPE_8 = 8,
   REC_RESERVED_TYPE_9 = 9,
   REC_RESERVED_TYPE_10 = 10,
   REC_RESERVED_TYPE_11 = 11,
@@ -87,7 +85,7 @@ enum
   REC_RESERVED_TYPE_14 = 14,
   REC_RESERVED_TYPE_15 = 15,
 /* 4bit record type max */
-  REC_4BIT_USED_TYPE_MAX = REC_MVCC_NEXT_VERSION,
+  REC_4BIT_USED_TYPE_MAX = REC_DELETED_WILL_REUSE,
   REC_4BIT_TYPE_MAX = REC_RESERVED_TYPE_15
 };
 
@@ -161,7 +159,7 @@ extern void spage_update_record_type (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, P
 extern bool spage_is_updatable (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, int recdes_length);
 extern bool spage_is_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
 				     int delete_record_length, int insert_record_length);
-extern bool spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool reclaim_mvcc_next_versions);
+extern bool spage_reclaim (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern int spage_split (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, int offset, PGSLOTID * new_slotid);
 extern int spage_append (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, const RECDES * recdes);
 extern int spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, int takeout_offset,
@@ -215,7 +213,6 @@ extern SCAN_CODE spage_slots_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_
 					void *ctx);
 extern int spage_slots_end_scan (THREAD_ENTRY * thread_p, void **ctx);
 
-extern int spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, OID * next_version,
-			      OID * partition_oid, bool reusable);
+extern int spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bool reusable);
 extern bool spage_need_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 #endif /* _SLOTTED_PAGE_H_ */

@@ -35,7 +35,8 @@
 #include "dbtype.h"
 
 enum
-{ INF_WAIT = -1,		/* INFINITE WAIT */
+{
+  INF_WAIT = -1,		/* INFINITE WAIT */
   NOT_WAIT = 0			/* NO WAIT */
 };
 
@@ -71,16 +72,15 @@ enum
   CSECT_LOG_PB,			/* Latch for log_Pb */
   CSECT_LOG_ARCHIVE,		/* Latch for log_Gl.archive */
   CSECT_ACCESS_STATUS,		/* Latch for user access status */
-  CSECT_MVCC_ACTIVE_TRANS,	/* Latch for mvcc active transaction */
   CSECT_LAST
 };
 
 #define CRITICAL_SECTION_COUNT  CSECT_LAST
 
-extern const char *css_Csect_name_conn;
-extern const char *css_Csect_name_tdes;
+extern const char *csect_Name_conn;
+extern const char *csect_Name_tdes;
 
-typedef struct css_critical_section
+typedef struct sync_critical_section
 {
   int cs_index;
   const char *name;
@@ -97,7 +97,22 @@ typedef struct css_critical_section
   unsigned int total_nwaits;	/* total # of waiters */
   struct timeval max_wait;
   struct timeval total_wait;
-} CSS_CRITICAL_SECTION;
+} SYNC_CRITICAL_SECTION;
+
+typedef struct sync_rwlock
+{
+  pthread_mutex_t read_lock;	/* read lock. Only readers will use it. */
+  pthread_mutex_t global_lock;	/* global lock */
+  char *name;			/* name strduped - should be freed */
+  int num_readers;		/* # of readers. Only readers will use it. */
+  int for_trace;		/* SYNC_RWLOCK_TRACE to monitor the SYNC_RWLOCK. It should be a global SYNC_RWLOCK. */
+  unsigned int total_enter;
+  struct timeval max_wait;
+  struct timeval total_wait;
+} SYNC_RWLOCK;
+
+#define RWLOCK_TRACE 1
+#define RWLOCK_NOT_TRACE 0
 
 extern int csect_initialize (void);
 extern int csect_finalize (void);
@@ -108,18 +123,32 @@ extern int csect_demote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs);
 extern int csect_promote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs);
 extern int csect_exit (THREAD_ENTRY * thread_p, int cs_index);
 
-extern int csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
-extern int csect_finalize_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
-extern int csect_enter_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr, int wait_secs);
-extern int csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr,
+extern int csect_initialize_critical_section (SYNC_CRITICAL_SECTION * cs_ptr);
+extern int csect_finalize_critical_section (SYNC_CRITICAL_SECTION * cs_ptr);
+extern int csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs);
+extern int csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr,
 						   int wait_secs);
-extern int csect_exit_critical_section (THREAD_ENTRY * thread_p, CSS_CRITICAL_SECTION * cs_ptr);
+extern int csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr);
 
 extern int csect_check_own (THREAD_ENTRY * thread_p, int cs_index);
 
 extern void csect_dump_statistics (FILE * fp);
 
 extern int csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ctx);
+
+extern int rwlock_initialize (SYNC_RWLOCK * rwlock, const char *name, int for_trace);
+extern int rwlock_finalize (SYNC_RWLOCK * rwlock);
+
+extern int rwlock_read_lock (SYNC_RWLOCK * rwlock);
+extern int rwlock_read_unlock (SYNC_RWLOCK * rwlock);
+
+extern int rwlock_write_lock (SYNC_RWLOCK * rwlock);
+extern int rwlock_write_unlock (SYNC_RWLOCK * rwlock);
+
+extern int rwlock_initialize_rwlock_monitor (void);
+extern int rwlock_finalize_rwlock_monitor (void);
+
+extern void rwlock_dump_statistics (FILE * fp);
 
 #if !defined(SERVER_MODE)
 #define csect_initialize_critical_section(a)
@@ -132,6 +161,13 @@ extern int csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE **
 #define csect_exit_critical_section(a, b)
 #define csect_check_own(a, b) 1
 #define csect_start_scan NULL
+
+#define rwlock_initialize(a, b, c) NO_ERROR
+#define rwlock_finalize(a) NO_ERROR
+#define rwlock_read_lock(a) NO_ERROR
+#define rwlock_read_unlock(a) NO_ERROR
+#define rwlock_write_lock(a) NO_ERROR
+#define rwlock_write_unlock(a) NO_ERROR
 #endif /* !SERVER_MODE */
 
 #endif /* _CRITICAL_SECTION_H_ */

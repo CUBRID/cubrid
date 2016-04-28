@@ -4936,14 +4936,6 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list, DB_CTMPL * tmpl)
       COPY_OID (&partitions[i], &classcata->oid_info.oid);
     }
 
-  error = sm_cleanup_partition_links (class_, smclass, partitions, no_partitions);
-  if (error != NO_ERROR)
-    {
-      error = ER_INVALID_PARTITION_REQUEST;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto exit;
-    }
-
   for (names = name_list, i = 0; names; names = names->next, i++)
     {
       sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s", smclass->header.ch_name, names->info.name.original);
@@ -5823,12 +5815,6 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
       goto error_return;
     }
 
-  error = sm_cleanup_partition_links (pinfo->root_op, class_, partitions, names_count);
-  if (error != NO_ERROR)
-    {
-      goto error_return;
-    }
-
   /* keep the promoted names in the partition alter context */
   pinfo->promoted_names = names;
   pinfo->promoted_count = names_count;
@@ -5935,14 +5921,6 @@ do_coalesce_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITI
 	  goto exit;
 	}
       COPY_OID (&partitions[i], &subclass_mop->oid_info.oid);
-    }
-
-  error = sm_cleanup_partition_links (class_, smclass, partitions, pinfo->promoted_count);
-  if (error != NO_ERROR)
-    {
-      error = ER_INVALID_PARTITION_REQUEST;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto exit;
     }
 
   for (i = 0; i < pinfo->promoted_count; i++)
@@ -6377,8 +6355,6 @@ do_promote_partition_list (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
 	  goto exit;
 	}
     }
-
-  error = sm_cleanup_partition_links (pinfo->root_op, smclass, partitions, promoted_count);
 
 exit:
   if (partitions != NULL)

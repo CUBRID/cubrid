@@ -4771,21 +4771,6 @@ stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr, CLS_SPEC_TYPE * cls
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      cls_spec->cls_regu_list_last_version = NULL;
-    }
-  else
-    {
-      cls_spec->cls_regu_list_last_version =
-	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (cls_spec->cls_regu_list_last_version == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
       cls_spec->cls_output_val_list = NULL;
     }
   else

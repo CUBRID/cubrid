@@ -3054,7 +3054,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
   int result;
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
-  bool snapshot_dirty_satisfied;
+  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_dirty_satisfied;
 
   DB_MAKE_NULL (&dbvalue);
 
@@ -3202,7 +3202,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_INSID);
 	}
 
-      snapshot_dirty_satisfied = (mvcc_snapshot_dirty).snapshot_fnc (thread_p, &mvcc_header, &mvcc_snapshot_dirty);
+      snapshot_dirty_satisfied = mvcc_snapshot_dirty.snapshot_fnc (thread_p, &mvcc_header, &mvcc_snapshot_dirty);
 
       if (sort_args->filter)
 	{
@@ -3259,7 +3259,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (sort_args->fk_refcls_oid && !OID_ISNULL (sort_args->fk_refcls_oid))
 	{
-	  if (snapshot_dirty_satisfied)
+	  if (snapshot_dirty_satisfied == SNAPSHOT_SATISFIED)
 	    {
 	      if (btree_check_foreign_key (thread_p, &sort_args->class_ids[cur_class], &sort_args->hfids[cur_class],
 					   &sort_args->cur_oid, dbvalue_ptr, sort_args->n_attrs,
@@ -3281,7 +3281,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  value_has_null = 1;	/* found null columns */
 	}
 
-      if (sort_args->not_null_flag && value_has_null && snapshot_dirty_satisfied)
+      if (sort_args->not_null_flag && value_has_null && snapshot_dirty_satisfied == SNAPSHOT_SATISFIED)
 	{
 	  if (dbvalue_ptr == &dbvalue)
 	    {
@@ -3294,7 +3294,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (DB_IS_NULL (dbvalue_ptr) || btree_multicol_key_is_null (dbvalue_ptr))
 	{
-	  if (snapshot_dirty_satisfied)
+	  if (snapshot_dirty_satisfied == SNAPSHOT_SATISFIED)
 	    {
 	      /* All objects that were not candidates for vacuum are loaded, but statistics should only care for
 	       * objects that have not been deleted and committed at the time of load. */
@@ -3432,7 +3432,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	    }
 	}
 
-      if (snapshot_dirty_satisfied)
+      if (snapshot_dirty_satisfied == SNAPSHOT_SATISFIED)
 	{
 	  /* All objects that were not candidates for vacuum are loaded, but statistics should only care for objects
 	   * that have not been deleted and committed at the time of load. */
