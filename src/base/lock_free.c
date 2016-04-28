@@ -1857,8 +1857,9 @@ int
 lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted)
 {
   assert (entry != NULL && *entry != NULL);
-  return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_INSERT_GIVEN, entry,
-				  inserted);
+  return lf_hash_insert_internal (tran, table, key,
+				  LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_INSERT_GIVEN | LF_LIST_BF_FIND_OR_INSERT,
+				  entry, inserted);
 }
 
 /*
