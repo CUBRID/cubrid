@@ -166,7 +166,6 @@ LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &partition_link_Ts, 0},
   {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &hfid_table_Ts, 0}
 };
 
@@ -328,11 +327,19 @@ static int
 boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID * dbparm_oid)
 {
   RECDES recdes;
+  HEAP_SCANCACHE scan_cache;
+  SCAN_CODE scan = S_SUCCESS;
 
   recdes.area_size = recdes.length = DB_SIZEOF (*dbparm);
   recdes.data = (char *) dbparm;
-  if (heap_first (thread_p, &boot_Db_parm->hfid, NULL, dbparm_oid, &recdes, NULL, COPY) != S_SUCCESS)
+
+  heap_scancache_quick_start_with_class_hfid (thread_p, &scan_cache, &boot_Db_parm->hfid);
+  scan = heap_first (thread_p, &boot_Db_parm->hfid, NULL, dbparm_oid, &recdes, &scan_cache, COPY);
+  heap_scancache_end (thread_p, &scan_cache);
+
+  if (scan != S_SUCCESS)
     {
+      assert (false);
       return ER_FAILED;
     }
 
@@ -3560,17 +3567,24 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  (void) qexec_initialize_xasl_cache (thread_p);
+  error_code = qexec_initialize_xasl_cache (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   if (qmgr_initialize (thread_p) != NO_ERROR)
     {
       error_code = ER_FAILED;
       goto error;
     }
+
   error_code = qfile_initialize_list_cache (thread_p);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+
   (void) qexec_initialize_filter_pred_cache (thread_p);
 
   /* 
@@ -4315,7 +4329,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_enter_critical_section (thread_p, &conn->csect, INF_WAIT);
@@ -4332,7 +4346,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
 #if defined(SERVER_MODE)
   assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == css_Csect_name_conn);
+  assert (conn->csect.name == csect_Name_conn);
 #endif
 
   csect_exit_critical_section (thread_p, &conn->csect);
@@ -6652,9 +6666,6 @@ boot_decoy_entries_finalize (void)
   lf_tran_destroy_entry (t_entry);
 
   t_entry = thread_get_tran_entry (NULL, THREAD_TS_GLOBAL_UNIQUE_STATS);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_PARTITION_LINK_HASH);
   lf_tran_destroy_entry (t_entry);
 
   t_entry = thread_get_tran_entry (NULL, THREAD_TS_HFID_TABLE);

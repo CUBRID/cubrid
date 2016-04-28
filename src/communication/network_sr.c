@@ -935,11 +935,6 @@ net_server_init (void)
   req_p->processing_function = slocator_repl_force;
   req_p->name = "NET_SERVER_LC_REPL_FORCE";
 
-  req_p = &net_Requests[NET_SERVER_LC_CLEANUP_PARTITION_LINKS];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slocator_cleanup_partition_links;
-  req_p->name = "NET_SERVER_LC_CLEANUP_PARTITION_LINKS";
-
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];
   req_p->action_attribute = IN_TRANSACTION;
@@ -1397,6 +1392,12 @@ net_server_start (const char *server_name)
       status = -1;
       goto end;
     }
+  if (rwlock_initialize_rwlock_monitor () != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize rwlock monitor\n");
+      status = -1;
+      goto end;
+    }
   if (thread_initialize_manager () != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize thread manager\n");
@@ -1466,6 +1467,7 @@ net_server_start (const char *server_name)
     }
 
   thread_final_manager ();
+  (void) rwlock_finalize_rwlock_monitor ();
   csect_finalize ();
 
 end:

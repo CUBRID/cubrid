@@ -451,7 +451,7 @@ struct btree_node_scan
       MVCC_SET_INSID (p_mvcc_rec_header, MVCCID_NULL); \
       MVCC_SET_DELID (p_mvcc_rec_header, MVCCID_NULL); \
       MVCC_SET_REPID (p_mvcc_rec_header, 0); \
-      MVCC_SET_NEXT_VERSION (p_mvcc_rec_header, &oid_Null_oid); \
+      LSA_SET_NULL (p_mvcc_rec_header.prev_version_lsa); \
     } \
   while (0)
 
@@ -487,10 +487,6 @@ enum btree_op_purpose
 					 * object becomes completely invisible. */
   BTREE_OP_DELETE_VACUUM_INSID,	/* Remove only insert MVCCID for an object in b-tree. It is called by vacuum when the
 				 * object becomes visible to all running transactions. */
-
-  BTREE_OP_UPDATE_SAME_KEY_DIFF_OID,	/* MVCC update of object when key doesn't change. */
-  BTREE_OP_UNDO_SAME_KEY_DIFF_OID,	/* Undo of MVCC update same key. */
-  BTREE_OP_VACUUM_SAME_KEY_DIFF_OID,	/* Vacuum of MVCC update same key. */
 
   BTREE_OP_NOTIFY_VACUUM	/* Notify vacuum of an object in need of cleanup. */
 };
@@ -567,12 +563,9 @@ extern int btree_vacuum_insert_mvccid (THREAD_ENTRY * thread_p, BTID * btid, OR_
 				       OID * class_oid, MVCCID insert_mvccid);
 extern int btree_vacuum_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid, OID * class_oid,
 				MVCCID delete_mvccid);
-extern int btree_vacuum_mvcc_update_same_key (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key,
-					      BTREE_OBJECT_INFO * old_version, BTREE_OBJECT_INFO * new_version,
-					      MVCCID tran_mvccid);
 extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE * new_key, OID * cls_oid,
-			 OID * oid, OID * new_oid, int op_type, BTREE_UNIQUE_STATS * unique_stat_info, int *unique,
-			 MVCC_REC_HEADER * p_mvcc_rec_header, bool same_key);
+			 OID * oid, int op_type, BTREE_UNIQUE_STATS * unique_stat_info, int *unique,
+			 MVCC_REC_HEADER * p_mvcc_rec_header);
 extern int btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_STATS * unique_stat_info,
 						   bool only_active_tran);
 extern int btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, int flag_minkey);
@@ -624,10 +617,8 @@ extern int btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 extern int btree_rv_keyval_undo_insert_unique (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);
-extern int btree_rv_undo_mvcc_update_same_key (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int btree_rv_remove_marked_for_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void btree_rv_keyval_dump (FILE * fp, int length, void *data);
-extern void btree_rv_keyval_mvcc_update_same_key_dump (FILE * fp, int length, void *data);
 extern int btree_rv_undoredo_copy_page (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 

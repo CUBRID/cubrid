@@ -35,7 +35,7 @@
 #include "recovery.h"
 
 extern VPID *overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes,
-			      int *ovf_first_page, MVCC_RELOCATE_DELETE_INFO * mvcc_relocate_delete);
+			      int *ovf_first_page);
 extern VPID *overflow_insert_without_undo_logging (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid,
 						   RECDES * recdes, int *ovf_first_page);
 extern const VPID *overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ovf_vpid,
@@ -62,5 +62,4 @@ extern void overflow_rv_link_dump (FILE * fp, int length_ignore, void *data);
 extern int overflow_rv_page_update_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void overflow_rv_page_dump (FILE * fp, int length, void *data);
 extern char *overflow_get_first_page_data (char *page_ptr);
-extern int overflow_rv_newpage_delete_relocated_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #endif /* _OVERFLOW_FILE_H_ */

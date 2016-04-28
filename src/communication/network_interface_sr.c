@@ -472,7 +472,7 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 
   copy_area = NULL;
   success =
-    xlocator_fetch (thread_p, &oid, chn, NULL, lock, (LC_FETCH_VERSION_TYPE) fetch_version_type,
+    xlocator_fetch (thread_p, &oid, chn, lock, (LC_FETCH_VERSION_TYPE) fetch_version_type,
 		    (LC_FETCH_VERSION_TYPE) fetch_version_type, &class_oid, class_chn, prefetch, &copy_area);
 
   if (success != NO_ERROR)
@@ -2294,7 +2294,6 @@ void
 shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error;
-  int reclaim_mvcc_next_versions = 0;
   HFID hfid;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -2310,9 +2309,8 @@ shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *req
     }
 
   ptr = or_unpack_hfid (request, &hfid);
-  ptr = or_unpack_int (ptr, &reclaim_mvcc_next_versions);
 
-  error = xheap_reclaim_addresses (thread_p, &hfid, reclaim_mvcc_next_versions);
+  error = xheap_reclaim_addresses (thread_p, &hfid);
   if (error != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
@@ -7263,6 +7261,8 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
     }
 
   csect_dump_statistics (outfp);
+  rwlock_dump_statistics (outfp);
+
   file_size = ftell (outfp);
 
   /* 
@@ -9896,72 +9896,6 @@ sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     {
       free_and_init (data_reply);
     }
-}
-
-/*
- * slocator_cleanup_partition_links () -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-slocator_cleanup_partition_links (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr;
-  OID *oid_list;
-  int nr_oids;
-  int success = NO_ERROR;
-  int i;
-  OID class_oid;
-
-  ptr = request;
-  ptr = or_unpack_oid (ptr, &class_oid);
-  ptr = or_unpack_int (ptr, &nr_oids);
-
-  if (nr_oids < 1)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_PARTITION_REQUEST, 0);
-      return_error_to_client (thread_p, rid);
-      success = ER_INVALID_PARTITION_REQUEST;
-      goto end;
-    }
-
-  oid_list = (OID *) malloc (nr_oids * sizeof (OID));
-  if (oid_list == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_oids * sizeof (OID));
-      return_error_to_client (thread_p, rid);
-      success = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto end;
-    }
-
-  for (i = 0; i < nr_oids; i++)
-    {
-      ptr = or_unpack_oid (ptr, &oid_list[i]);
-    }
-
-  success = xlocator_cleanup_partition_links (thread_p, &class_oid, nr_oids, oid_list);
-
-  if (oid_list != NULL)
-    {
-      free_and_init (oid_list);
-    }
-
-  if (success != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-end:
-  ptr = or_pack_int (reply, success);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 

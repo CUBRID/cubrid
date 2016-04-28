@@ -3727,7 +3727,7 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p, MOP 
 	    }
 	  return error_code;
 	}
-      *mop_p = ws_mvcc_updated_mop (&obj->oid, &obj->updated_oid, class_mop, LC_ONEOBJ_IS_UPDATED_BY_ME (obj));
+      *mop_p = ws_mop (&obj->oid, class_mop);
       if (*mop_p == NULL)
 	{
 #if defined(CUBRID_DEBUG)
@@ -4277,16 +4277,14 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	  if (mop_toid->mop != NULL)
 	    {
 	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, mop_toid->obj);
-	      /* There are two cases when OID can change after update: 1. when operation is LC_FLUSH_UPDATE_PRUNE. 2.
-	       * MVCC implementation of LC_FLUSH_UPDATE. */
+	      /* There IS ONE case when OID can change after update:
+	       * 1. when operation is LC_FLUSH_UPDATE_PRUNE.
+	       */
 
-	      /* TODO: Must investigate what happens with MVCC and pruning */
-
-	      assert (obj->operation == LC_FLUSH_UPDATE || obj->operation == LC_FLUSH_UPDATE_PRUNE);
+	      assert (obj->operation == LC_FLUSH_UPDATE_PRUNE);
 
 	      /* Check if object OID has changed */
-	      if ((!OID_ISNULL (&obj->updated_oid) && !OID_EQ (WS_OID (mop_toid->mop), &obj->updated_oid))
-		  || (!OID_ISNULL (&obj->oid) && !OID_EQ (WS_OID (mop_toid->mop->class_mop), &obj->class_oid)))
+	      if (!OID_ISNULL (&obj->oid) && !OID_EQ (WS_OID (mop_toid->mop->class_mop), &obj->class_oid))
 		{
 		  MOP new_mop;
 		  MOP cached_mop_of_new;
@@ -4310,7 +4308,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 			  error_code = au_fetch_class_force (new_class_mop, &smclass, AU_FETCH_READ);
 			}
 
-		      new_oid = OID_ISNULL (&obj->updated_oid) ? &obj->oid : &obj->updated_oid;
+		      new_oid = &obj->oid;
 		      cached_mop_of_new = ws_mop_if_exists (new_oid);
 		      if (cached_mop_of_new == NULL)
 			{
@@ -5008,8 +5006,7 @@ locator_mflush (MOP mop, void *mf)
 	  oid = ws_oid (mop);
 	}
     }
-  else if (operation == LC_FLUSH_UPDATE_PRUNE
-	   || (operation == LC_FLUSH_UPDATE && ws_class_mop (mop) != sm_Root_class_mop))
+  else if (operation == LC_FLUSH_UPDATE_PRUNE)
     {
       /* We have to keep track of updated objects from partitioned classes. If this object will be moved in another
        * partition we have to mark it like this (a delete/insert operation). This means that the current mop will be
@@ -5067,7 +5064,6 @@ locator_mflush (MOP mop, void *mf)
   HFID_COPY (&mflush->obj->hfid, hfid);
   COPY_OID (&mflush->obj->class_oid, ws_oid (class_mop));
   COPY_OID (&mflush->obj->oid, oid);
-  OID_SET_NULL (&mflush->obj->updated_oid);
   if (operation == LC_FLUSH_DELETE)
     {
       mflush->obj->length = -1;
