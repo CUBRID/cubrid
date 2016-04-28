@@ -28,7 +28,9 @@
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)
 #define XCACHE_ENTRY_WAS_RECOMPILED	    ((INT32) 0x20000000)
+#define XCACHE_ENTRY_SKIP_TO_BE_RECOMPILED  ((INT32) 0x10000000)
 #define XCACHE_ENTRY_FLAGS_MASK		    ((INT32) 0xFF000000)
+
 #define XCACHE_ENTRY_FIX_COUNT_MASK	    ((INT32) 0x00FFFFFF)
 
 #define XCACHE_PTR_TO_KEY(ptr) ((XASL_ID *) ptr)
@@ -378,6 +380,20 @@ xcache_compare_key (void *key1, void *key2)
 		  XCACHE_LOG_SHA1_ARGS (&entry_key->sha1),
 		  XCACHE_LOG_TRAN_ARGS (thread_p));
       return - 1;
+    }
+
+  if ((cache_flag & XCACHE_ENTRY_TO_BE_RECOMPILED) && (lookup_key->cache_flag & XCACHE_ENTRY_SKIP_TO_BE_RECOMPILED))
+    {
+      /* We are trying to insert a new entry to replace the entry to be recompiled. Skip this. */
+
+      xcache_log ("compare keys: skip to be recompiled\n"
+		  "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
+		  "\t\t  entry key: \n" XCACHE_LOG_SHA1_TEXT
+		  XCACHE_LOG_TRAN_TEXT,
+		  XCACHE_LOG_SHA1_ARGS (&lookup_key->sha1),
+		  XCACHE_LOG_SHA1_ARGS (&entry_key->sha1),
+		  XCACHE_LOG_TRAN_ARGS (thread_p));
+      return -1;
     }
 
   /* The entry is what we are looking for. One last step, we must increment read counter in cache flag. */
@@ -1020,6 +1036,9 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	   * that cached this entry on client. Currently, xcache_find_xasl_id uses time_stored to match the entries.
 	   */
 	  stream->xasl_id->time_stored = to_be_recompiled->xasl_id.time_stored;
+
+	  /* On next find or insert, we want to skip the to be recompiled entry. */
+	  xid.cache_flag = XCACHE_ENTRY_SKIP_TO_BE_RECOMPILED;
 	  /* We don't unfix yet. */
 	}
       /* Try to insert again. */
