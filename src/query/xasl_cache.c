@@ -769,13 +769,14 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return false;
 	}
-      if (cache_flag & XCACHE_ENTRY_WAS_RECOMPILED)
+      new_cache_flag = cache_flag;
+      if (new_cache_flag & XCACHE_ENTRY_WAS_RECOMPILED)
 	{
 	  /* This can happen. Somebody recompiled the entry and it was not (yet) removed. We will replace the flag
 	   * with XCACHE_ENTRY_MARK_DELETED. */
-	  cache_flag &= ~XCACHE_ENTRY_WAS_RECOMPILED;
+	  new_cache_flag &= ~XCACHE_ENTRY_WAS_RECOMPILED;
 	}
-      new_cache_flag = cache_flag | XCACHE_ENTRY_MARK_DELETED;
+      new_cache_flag = new_cache_flag | XCACHE_ENTRY_MARK_DELETED;
     } while (!XCACHE_ATOMIC_CAS_CACHE_FLAG (&xcache_entry->xasl_id, cache_flag, new_cache_flag));
 
   xcache_log ("marked entry as deleted: \n"
