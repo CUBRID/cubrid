@@ -43,6 +43,8 @@ static LF_FREELIST xcache_Ht_freelist = LF_FREELIST_INITIALIZER;
 /* TODO: Handle counter >= soft capacity. */
 static INT32 xcache_Entry_counter = 0;
 
+static bool xcache_Temp_vols_were_removed = false;
+
 /* Statistics */
 static INT64 xcache_Stat_lookups;
 static INT64 xcache_Stat_hits;
@@ -185,6 +187,8 @@ xcache_initialize (void)
     }
   xcache_Entry_counter = 0;
 
+  xcache_Temp_vols_were_removed = false;
+
   xcache_Stat_lookups = 0;
   xcache_Stat_hits = 0;
   xcache_Stat_miss = 0;
@@ -246,6 +250,7 @@ xcache_entry_init (void *entry)
   xcache_entry->sql_info.sql_plan_text = NULL;
 
   XASL_ID_SET_NULL (&xcache_entry->xasl_id);
+  xcache_entry->initialized = true;
   return NO_ERROR;
 }
 
@@ -256,6 +261,13 @@ xcache_entry_uninit (void *entry)
   THREAD_ENTRY *thread_p = NULL;
 
   assert ((xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) == 0);
+
+  if (!xcache_entry->initialized)
+    {
+      /* Already uninitialized? */
+      assert (false);
+      return NO_ERROR;
+    }
 
   xcache_log ("uninit an entry from cache: \n"
 	      XCACHE_LOG_ENTRY_TEXT("xasl cache entry")
@@ -287,9 +299,19 @@ xcache_entry_uninit (void *entry)
     }
   else
     {
-      /* Destroy the temporary file used to store the XASL. */
-      (void) file_destroy (thread_get_thread_entry_info (), &xcache_entry->xasl_id.temp_vfid);
+      /* NOTE: During shutdown, some lock-free hash entries may remain in so called "retired list". They were not
+       *       uninitialized when xcache_finalize () was called, and are uninitialized much later, after temporary
+       *       volumes have been destroyed.
+       *       In this case, xcache_Temp_vols_were_removed should be true, and we have to skip destroying temp_vfid.
+       */
+      if (!xcache_Temp_vols_were_removed)
+	{
+	  /* Destroy the temporary file used to store the XASL. */
+	  (void) file_destroy (thread_get_thread_entry_info (), &xcache_entry->xasl_id.temp_vfid);
+	}
+      XASL_ID_SET_NULL (&xcache_entry->xasl_id);
     }
+  xcache_entry->initialized = false;
   return NO_ERROR;
 }
 
@@ -1236,6 +1258,12 @@ xcache_can_entry_cache_list (XASL_CACHE_ENTRY * xcache_entry)
     }
   return (xcache_entry != NULL
 	  && (XCACHE_ATOMIC_READ_CACHE_FLAG (&xcache_entry->xasl_id) & XCACHE_ENTRY_FLAGS_MASK) == 0);
+}
+
+void
+xcache_notify_removed_temp_vols (void)
+{
+  xcache_Temp_vols_were_removed = true;
 }
 
 /* TODO more stuff
