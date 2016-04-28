@@ -1791,7 +1791,7 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
   /* since the xasl id is not session specific, we can fetch it outside of the session critical section */
   if (alias_print == NULL)
     {
-      /* if we don't have an alias print, we do not search for the XASL id */
+      /* if we don't have an alias print, we do not search for the XASL entry */
       *xasl_entry = NULL;
 #if defined (SESSION_DEBUG)
       er_log_debug (ARG_FILE_LINE, "found null xasl_id for %s(%d)\n", name, state_p->id);

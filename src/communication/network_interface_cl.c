@@ -4818,7 +4818,7 @@ csession_create_prepared_statement (const char *name, const char *alias_print, c
   char *reply = NULL;
   char *ptr = NULL;
   int req_size = 0, name_len = 0, alias_print_len = 0;
-  SHA1Hash alias_sha1;
+  SHA1Hash alias_sha1 = SHA1_HASH_INITIALIZER;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4830,8 +4830,11 @@ csession_create_prepared_statement (const char *name, const char *alias_print, c
   req_size += length_const_string (alias_print, &alias_print_len);
   /* data_size */
   req_size += OR_INT_SIZE;
-  /* sha1 */
-  req_size += OR_SHA1_SIZE;
+  if (alias_print != NULL)
+    {
+      /* sha1 */
+      req_size += OR_SHA1_SIZE;
+    }
 
   request = (char *) malloc (req_size);
   if (request == NULL)
@@ -4850,13 +4853,16 @@ csession_create_prepared_statement (const char *name, const char *alias_print, c
   /* data size */
   ptr = or_pack_int (ptr, info_length);
 
-  req_error = SHA1Compute ((const unsigned char *) alias_print, (unsigned) strlen (alias_print), &alias_sha1);
-  if (req_error != NO_ERROR)
+  if (alias_print)
     {
-      ASSERT_ERROR ();
-      goto cleanup;
+      req_error = SHA1Compute ((const unsigned char *) alias_print, (unsigned) strlen (alias_print), &alias_sha1);
+      if (req_error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto cleanup;
+	}
+      ptr = or_pack_sha1 (ptr, &alias_sha1);
     }
-  ptr = or_pack_sha1 (ptr, &alias_sha1);
 
   req_error =
     net_client_request (NET_SERVER_SES_CREATE_PREPARED_STATEMENT, request, req_size, reply,
@@ -4880,7 +4886,7 @@ cleanup:
   char *local_alias_print = NULL;
   char *local_stmt_info = NULL;
   int len = 0;
-  SHA1Hash alias_sha1;
+  SHA1Hash alias_sha1 = SHA1_HASH_INITIALIZER;
 
   user = ws_identifier (db_get_user ());
 
@@ -4916,6 +4922,13 @@ cleanup:
 	}
       memcpy (local_alias_print, alias_print, len);
       local_alias_print[len] = 0;
+
+      result = SHA1Compute ((const unsigned char *) alias_print, (unsigned) strlen (alias_print), &alias_sha1);
+      if (result != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return result;
+	}
     }
 
   /* copy stmt_info */
@@ -4929,13 +4942,6 @@ cleanup:
 	  goto error;
 	}
       memcpy (local_stmt_info, stmt_info, info_length);
-    }
-
-  result = SHA1Compute ((const unsigned char *) alias_print, (unsigned) strlen (alias_print), &alias_sha1);
-  if (result != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return result;
     }
 
   result =

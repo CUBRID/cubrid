@@ -51,6 +51,7 @@ typedef struct SHA1Hash
 {
   INT32 h[5];
 } SHA1Hash;
+#define SHA1_HASH_INITIALIZER { 0, 0, 0, 0, 0 }
 
 #define SHA1_AS_ARGS(sha1) (sha1)->h[0], (sha1)->h[1], (sha1)->h[2], (sha1)->h[3], (sha1)->h[4]
 

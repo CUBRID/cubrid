@@ -9180,7 +9180,7 @@ ssession_create_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, c
   int data_size = 0, err = 0, i = 0;
   OID user;
   char *info = NULL;
-  SHA1Hash alias_sha1;
+  SHA1Hash alias_sha1 = SHA1_HASH_INITIALIZER;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -9198,8 +9198,11 @@ ssession_create_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, c
       css_send_abort_to_client (thread_p->conn_entry, rid);
       goto error;
     }
-  /* alias_sha1 */
-  ptr = or_unpack_sha1 (ptr, &alias_sha1);
+  if (alias_print != NULL)
+    {
+      /* alias_sha1 */
+      ptr = or_unpack_sha1 (ptr, &alias_sha1);
+    }
 
   err = css_receive_data_from_client (thread_p->conn_entry, rid, &data_request, &data_size);
   if (err != NO_ERROR)
