@@ -243,21 +243,23 @@ fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICATE * or_pred, PRE
 	  /* Entry not found. */
 	  ATOMIC_INC_64 (&fpcache_Stat_miss, 1);
 	  ATOMIC_INC_64 (&fpcache_Stat_clone_miss, 1);
-	  return NO_ERROR;
-	}
-      ATOMIC_INC_64 (&fpcache_Stat_hit, 1);
-      if (fpcache_entry->clone_stack_head >= 0)
-	{
-	  assert (fpcache_entry->clone_stack_head < fpcache_Clone_stack_size);
-	  *filter_pred = fpcache_entry->clone_stack[fpcache_entry->clone_stack_head--];
-	  ATOMIC_INC_64 (&fpcache_Stat_clone_hit, 1);
-	  ATOMIC_INC_32 (&fpcache_Clone_counter, -1);
 	}
       else
 	{
-	  ATOMIC_INC_64 (&fpcache_Stat_clone_miss, 1);
+	  ATOMIC_INC_64 (&fpcache_Stat_hit, 1);
+	  if (fpcache_entry->clone_stack_head >= 0)
+	    {
+	      assert (fpcache_entry->clone_stack_head < fpcache_Clone_stack_size);
+	      *filter_pred = fpcache_entry->clone_stack[fpcache_entry->clone_stack_head--];
+	      ATOMIC_INC_64 (&fpcache_Stat_clone_hit, 1);
+	      ATOMIC_INC_32 (&fpcache_Clone_counter, -1);
+	    }
+	  else
+	    {
+	      ATOMIC_INC_64 (&fpcache_Stat_clone_miss, 1);
+	    }
+	  pthread_mutex_unlock (&fpcache_entry->mutex);
 	}
-      pthread_mutex_unlock (&fpcache_entry->mutex);
     }
 
   if (*filter_pred == NULL)
