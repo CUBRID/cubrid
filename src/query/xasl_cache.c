@@ -239,6 +239,10 @@ xcache_entry_init (void *entry)
   xcache_entry->tcard_list = NULL;
   xcache_entry->ref_count = 0;
 
+  xcache_entry->sql_info.sql_hash_text = NULL;
+  xcache_entry->sql_info.sql_user_text = NULL;
+  xcache_entry->sql_info.sql_plan_text = NULL;
+
   XASL_ID_SET_NULL (&xcache_entry->xasl_id);
   return NO_ERROR;
 }
