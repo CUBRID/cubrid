@@ -1359,7 +1359,6 @@ restart_search:
 		}
 
 	      assert (*entry == NULL);
-	      assert (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0);
 	      *entry = curr;
 	      return NO_ERROR;
 	    }
