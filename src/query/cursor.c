@@ -864,8 +864,8 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
     }
 
   return cursor_fetch_oids (cursor_id_p, oid_index, cursor_id_p->prefetch_lock_mode,
-			    (cursor_id_p->prefetch_lock_mode ==
-			     DB_FETCH_WRITE) ? DB_FETCH_QUERY_WRITE : DB_FETCH_QUERY_READ);
+			    ((cursor_id_p->prefetch_lock_mode == DB_FETCH_WRITE)
+			     ? DB_FETCH_QUERY_WRITE : DB_FETCH_QUERY_READ));
 }
 
 static int

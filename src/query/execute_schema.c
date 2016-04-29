@@ -11948,8 +11948,8 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t, const SM_ATTR
 	}
 
       /* cannot keep UNIQUE constr if type is changed */
-      if (is_att_prop_set
-	  (attr_chg_prop->p[P_S_CONSTR_UNI], ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_PRESENT_NEW)
+      if (is_att_prop_set (attr_chg_prop->p[P_S_CONSTR_UNI],
+			   ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_PRESENT_NEW)
 	  && is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_DIFF))
 	{
 	  error = ER_ALTER_CHANGE_TYPE_WITH_S_UNIQUE;

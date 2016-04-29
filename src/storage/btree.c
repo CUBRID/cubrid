@@ -88,8 +88,7 @@
 #define RESERVED_SIZE_IN_PAGE   sizeof(FILEIO_PAGE_RESERVED)
 
 #define BTREE_NODE_MAX_SPLIT_SIZE(page_ptr) \
-  (db_page_size() - spage_header_size() \
-   - spage_get_space_for_record((page_ptr), HEADER))
+  (db_page_size() - spage_header_size() - spage_get_space_for_record((page_ptr), HEADER))
 
 #define OID_MSG_BUF_SIZE 64
 
@@ -3140,8 +3139,8 @@ btree_leaf_get_nth_oid_ptr (BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node
       return recp->data;
     }
 
-  vpid_size =
-    (btree_leaf_is_flaged (recp, BTREE_LEAF_RECORD_OVERFLOW_OIDS) ? DB_ALIGN (DISK_VPID_SIZE, INT_ALIGNMENT) : 0);
+  vpid_size = (btree_leaf_is_flaged (recp, BTREE_LEAF_RECORD_OVERFLOW_OIDS)
+	       ? DB_ALIGN (DISK_VPID_SIZE, INT_ALIGNMENT) : 0);
 
   if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
@@ -4251,9 +4250,9 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
 	  int dummy_offset;
 
 	  (void) spage_get_record (pgptr, 1, &peek_rec, PEEK);
-	  error =
-	    btree_read_record_without_decompression (thread_p, btid, &peek_rec, &lf_key, &leaf_pnt, BTREE_LEAF_NODE,
-						     &lf_clear_key, &dummy_offset, PEEK_KEY_VALUE);
+	  error = btree_read_record_without_decompression (thread_p, btid, &peek_rec, &lf_key, &leaf_pnt,
+							   BTREE_LEAF_NODE, &lf_clear_key, &dummy_offset,
+							   PEEK_KEY_VALUE);
 	  if (error != NO_ERROR)
 	    {
 	      btree_clear_key_value (clear_key, key);
@@ -8890,18 +8889,16 @@ btree_estimate_total_numpages (THREAD_ENTRY * thread_p, int dis_key_cnt, int avg
 	{
 	  unfill_factor = (float) (0.50 + 0.05);
 	}
-      page_size =
-	(int) (DB_PAGESIZE -
-	       (spage_header_size () + (sizeof (BTREE_NODE_HEADER) + spage_slot_size ()) +
-		(DB_PAGESIZE * unfill_factor)));
+      page_size = (int) (DB_PAGESIZE - (spage_header_size () + (sizeof (BTREE_NODE_HEADER) + spage_slot_size ())
+					+ (DB_PAGESIZE * unfill_factor)));
 
       /* find the number of records per index page */
       if (avg_rec_len >= page_size)
 	{
 	  /* records will use overflow pages, so each leaf page will get one record, plus number overflow pages */
 	  nrecs_leaf_page = 1;
-	  ovfl_page_size =
-	    DB_PAGESIZE - (spage_header_size () + (DISK_VPID_SIZE + spage_slot_size ()) + spage_slot_size ());
+	  ovfl_page_size = DB_PAGESIZE - (spage_header_size () + (DISK_VPID_SIZE + spage_slot_size ())
+					  + spage_slot_size ());
 	  num_ovfl_pages = dis_key_cnt * (CEIL_PTVDIV (avg_rec_len - page_size, ovfl_page_size));
 	}
       else
@@ -9285,7 +9282,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   fprintf (fp, "\n-------------------------------------------------------------\n");
   fprintf (fp, "BTID: {{%d, %d}, %d}, %s ON %s, CAPACITY INFORMATION:\n", btid->vfid.volid, btid->vfid.fileid,
 	   btid->root_pageid, (index_name == NULL) ? "*UNKOWN_INDEX*" : index_name,
-	   (class_name == NULL) ? "*UNKOWN_CLASS*" : class_name);
+	   (class_name == NULL) ? "*UNKNOWN_CLASS*" : class_name);
 
   /* dump the capacity information */
   fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
@@ -9956,9 +9953,8 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
   (void) btree_check_valid_record (thread_p, btid, &ovfl_copy_rec, BTREE_OVERFLOW_NODE, NULL);
 #endif /* NDEBUG */
   /* Get last object. */
-  ret =
-    btree_record_get_last_object (thread_p, btid, &ovfl_copy_rec, BTREE_OVERFLOW_NODE, 0, &last_oid, &last_class_oid,
-				  &last_mvcc_info, &offset_to_ovfl_object);
+  ret = btree_record_get_last_object (thread_p, btid, &ovfl_copy_rec, BTREE_OVERFLOW_NODE, 0, &last_oid,
+				      &last_class_oid, &last_mvcc_info, &offset_to_ovfl_object);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17309,10 +17305,10 @@ btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid, O
 
   key_len = (int) btree_get_disk_size_of_key (key);
 
-  size = OR_BTID_ALIGNED_SIZE +	/* btid */
-    BTREE_OBJECT_MAX_SIZE +	/* Object OID and all its info. */
-    key_len +			/* key length */
-    (2 * INT_ALIGNMENT);	/* extra space for alignment */
+  size = (OR_BTID_ALIGNED_SIZE	/* btid */
+	  + BTREE_OBJECT_MAX_SIZE	/* Object OID and all its info. */
+	  + key_len		/* key length */
+	  + (2 * INT_ALIGNMENT));	/* extra space for alignment */
 
   /* Allocate enough memory to handle estimated size. */
   if (*data == NULL)
@@ -19650,16 +19646,15 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       for (i = 0; i < multi_range_opt->no_attrs; i++)
 	{
 	  DB_MAKE_NULL (&comp_key_value);
-	  error =
-	    pr_midxkey_get_element_nocopy (comp_mkey, multi_range_opt->sort_att_idx[i], &comp_key_value, NULL, NULL);
+	  error = pr_midxkey_get_element_nocopy (comp_mkey, multi_range_opt->sort_att_idx[i], &comp_key_value, NULL,
+						 NULL);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit;
 	    }
 
-	  c =
-	    (*(multi_range_opt->sort_col_dom[i]->type->cmpval)) (&comp_key_value, &new_key_value[i], 1, 1, NULL,
-								 multi_range_opt->sort_col_dom[i]->collation_id);
+	  c = (*(multi_range_opt->sort_col_dom[i]->type->cmpval)) (&comp_key_value, &new_key_value[i], 1, 1, NULL,
+								   multi_range_opt->sort_col_dom[i]->collation_id);
 	  if (c != 0)
 	    {
 	      /* see if new element should be rejected or accepted and stop checking keys */
@@ -19821,9 +19816,8 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 		{
 		  return error;
 		}
-	      c =
-		(*(domains[i]->type->cmpval)) (&comp_key_value, &new_key_values[i], 1, 1, NULL,
-					       domains[i]->collation_id);
+	      c = (*(domains[i]->type->cmpval)) (&comp_key_value, &new_key_values[i], 1, 1, NULL,
+						 domains[i]->collation_id);
 	      if (c != 0)
 		{
 		  if ((desc_order != NULL && desc_order[i] ? c > 0 : c < 0))
@@ -27340,8 +27334,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   assert (key_count > 0 || node_type == BTREE_LEAF_NODE);
 
   /* Is new key possible? True if inserting new object or if undoing the removal of some key/object. */
-  is_new_key_possible = insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
-    || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE;
+  is_new_key_possible = (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
+			 || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
 
   /* Split algorithm: There are two types of splits: root split and normal split. 1. Root split: If there is not enough 
    * space for new data in root, split it into three nodes: two nodes containing all previous entries and a new root
@@ -27619,11 +27613,9 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
       ASSERT_ERROR ();
       goto error;
     }
-  child_page =
-    pgbuf_fix (thread_p, &child_vpid, OLD_PAGE,
-	       (is_child_leaf
-		|| insert_helper->need_update_max_key_len) ? PGBUF_LATCH_WRITE : insert_helper->nonleaf_latch_mode,
-	       PGBUF_UNCONDITIONAL_LATCH);
+  child_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, ((is_child_leaf || insert_helper->need_update_max_key_len)
+							    ? PGBUF_LATCH_WRITE : insert_helper->nonleaf_latch_mode),
+			  PGBUF_UNCONDITIONAL_LATCH);
   if (child_page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -28641,9 +28633,8 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 #endif
 
       /* Read record. */
-      error_code =
-	btree_read_record (thread_p, btid_int, *leaf, leaf_record, NULL, &leaf_info, BTREE_LEAF_NODE, &dummy_clear_key,
-			   &offset_after_key, PEEK_KEY_VALUE, NULL);
+      error_code = btree_read_record (thread_p, btid_int, *leaf, leaf_record, NULL, &leaf_info, BTREE_LEAF_NODE,
+				      &dummy_clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

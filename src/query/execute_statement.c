@@ -1468,9 +1468,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * cannot be the reason which voilates the invariant.
    */
   initialize_serial_invariant (&invariants[ninvars++], min_val, under_e36, PT_GE,
-			       (min_val_msgid ==
-				MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID) ? MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID :
-			       MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW, 0, ER_QPROC_SERIAL_RANGE_OVERFLOW);
+			       ((min_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID)
+				? MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID : MSGCAT_SEMANTIC_SERIAL_MIN_VAL_UNDERFLOW),
+			       0, ER_QPROC_SERIAL_RANGE_OVERFLOW);
 
   /* 
    * invariant for max_val <= e37. Like the above invariant, if
@@ -1479,9 +1479,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * is voilated.
    */
   initialize_serial_invariant (&invariants[ninvars++], max_val, e37, PT_LE,
-			       (max_val_msgid ==
-				MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID) ? MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID :
-			       MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW, 0, ER_QPROC_SERIAL_RANGE_OVERFLOW);
+			       ((max_val_msgid == MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID)
+				? MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID : MSGCAT_SEMANTIC_SERIAL_MAX_VAL_OVERFLOW),
+			       0, ER_QPROC_SERIAL_RANGE_OVERFLOW);
 
   /* invariant for min_val < max_val. */
   initialize_serial_invariant (&invariants[ninvars++], min_val, max_val, PT_LT, min_val_msgid, max_val_msgid,
@@ -6972,11 +6972,10 @@ update_object_tuple (PARSER_CONTEXT * parser, CLIENT_UPDATE_INFO * assigns, int 
 	  else
 	    {
 	      /* check condition for 'with check option' */
-	      error =
-		mq_evaluate_check_option (parser,
-					  cls_info->check_where !=
-					  NULL ? cls_info->check_where->info.check_option.expr : NULL, object,
-					  cls_info->spec->info.spec.flat_entity_list);
+	      error = mq_evaluate_check_option (parser,
+						(cls_info->check_where != NULL
+						 ? cls_info->check_where->info.check_option.expr : NULL), object,
+						cls_info->spec->info.spec.flat_entity_list);
 	    }
 	}
 
@@ -12063,9 +12062,8 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 		      parser->custom_print = parser->custom_print | PT_PRINT_DB_VALUE;
 
 		      PT_ERRORmf3 (parser, vc, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_DBT_PUT_ERROR,
-				   pt_short_print (parser, vc), attr->info.name.original, pt_chop_trailing_dots (parser,
-														 db_error_string
-														 (3)));
+				   pt_short_print (parser, vc), attr->info.name.original,
+				   pt_chop_trailing_dots (parser, db_error_string (3)));
 
 		      parser->custom_print = save_custom;
 

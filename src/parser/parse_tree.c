@@ -479,8 +479,11 @@ parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, 
 
   if (block == NULL)
     {
-      if ((block = parser_create_string_block (parser, length + (align - 1) + 1)) == NULL)
-	return NULL;
+      block = parser_create_string_block (parser, length + (align - 1) + 1);
+      if (block == NULL)
+	{
+	  return NULL;
+	}
     }
 
   /* set start to the aligned length */
@@ -593,21 +596,29 @@ pt_append_string_for (const PARSER_CONTEXT * parser, char *old_string, const cha
   string = pt_find_string_block (parser, old_string);
   new_tail_length = strlen (new_tail);
   if (wrap_with_single_quote)
-    new_tail_length += 2;	/* for opening/closing "'" */
+    {
+      new_tail_length += 2;	/* for opening/closing "'" */
+    }
 
   /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy 
    * both to new string */
   if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
     {
       s = parser_allocate_string_buffer (parser, strlen (old_string) + new_tail_length, sizeof (char));
-      if (!s)
-	return NULL;
+      if (s == NULL)
+	{
+	  return NULL;
+	}
       strcpy (s, old_string);
       if (wrap_with_single_quote)
-	strcat (s, "'");
+	{
+	  strcat (s, "'");
+	}
       strcat (s, new_tail);
       if (wrap_with_single_quote)
-	strcat (s, "'");
+	{
+	  strcat (s, "'");
+	}
 
       /* We might be appending to ever-growing buffers. Detect if there was a string found, but it was out of space,
        * and it was the ONLY string in the buffer. If this happened, free it. */
@@ -673,12 +684,13 @@ pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
    * both to new string */
   if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
     {
-      s =
-	parser_allocate_string_buffer (parser, offsetof (PARSER_VARCHAR, bytes) + old_string->length + new_tail_length,
-				       sizeof (long));
-
-      if (!s)
-	return NULL;
+      s = parser_allocate_string_buffer (parser,
+					 offsetof (PARSER_VARCHAR, bytes) + old_string->length + new_tail_length,
+					 sizeof (long));
+      if (s == NULL)
+	{
+	  return NULL;
+	}
 
       memcpy (s, old_string, old_string->length + offsetof (PARSER_VARCHAR, bytes));
       old_string = (PARSER_VARCHAR *) s;
@@ -947,8 +959,10 @@ pt_append_string (const PARSER_CONTEXT * parser, char *old_string, const char *n
   else if (old_string == NULL)
     {
       s = parser_allocate_string_buffer (parser, strlen (new_tail), sizeof (char));
-      if (!s)
-	return NULL;
+      if (s == NULL)
+	{
+	  return NULL;
+	}
       strcpy (s, new_tail);
     }
   else
@@ -978,8 +992,10 @@ pt_append_bytes (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, con
       old_string =
 	(PARSER_VARCHAR *) parser_allocate_string_buffer ((PARSER_CONTEXT *) parser, offsetof (PARSER_VARCHAR, bytes),
 							  sizeof (long));
-      if (!old_string)
-	return NULL;
+      if (old_string == NULL)
+	{
+	  return NULL;
+	}
       old_string->length = 0;
       old_string->bytes[0] = 0;
     }
@@ -1006,8 +1022,10 @@ pt_append_bytes (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, con
 PARSER_VARCHAR *
 pt_append_varchar (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const PARSER_VARCHAR * new_tail)
 {
-  if (!new_tail)
-    return old_string;
+  if (new_tail == NULL)
+    {
+      return old_string;
+    }
 
   return pt_append_bytes (parser, old_string, (char *) new_tail->bytes, new_tail->length);
 }
