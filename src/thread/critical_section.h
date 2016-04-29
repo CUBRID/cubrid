@@ -112,6 +112,13 @@ typedef struct sync_rwlock
   struct timeval total_wait;
 } SYNC_RWLOCK;
 
+typedef struct sync_rmutex
+{
+  pthread_mutex_t lock;		/* mutex */
+  pthread_t owner;		/* owner thread id */
+  int nenters;			/* # of times that owner enters */
+} SYNC_RMUTEX;
+
 #define RWLOCK_TRACE 1
 #define RWLOCK_NOT_TRACE 0
 
@@ -151,6 +158,12 @@ extern int rwlock_finalize_rwlock_monitor (void);
 
 extern void rwlock_dump_statistics (FILE * fp);
 
+extern int rmutex_initialize (SYNC_RMUTEX * rmutex);
+extern int rmutex_finalize (SYNC_RMUTEX * rmutex);
+
+extern int rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex);
+extern int rmutex_unlock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex);
+
 #if !defined(SERVER_MODE)
 #define csect_initialize_critical_section(a)
 #define csect_finalize_critical_section(a)
@@ -169,6 +182,11 @@ extern void rwlock_dump_statistics (FILE * fp);
 #define rwlock_read_unlock(a) NO_ERROR
 #define rwlock_write_lock(a) NO_ERROR
 #define rwlock_write_unlock(a) NO_ERROR
+
+#define rmutex_initialize(a) NO_ERROR
+#define rmutex_finalize(a) NO_ERROR
+#define rmutex_lock(a, b) NO_ERROR
+#define rmutex_unlock(a, b) NO_ERROR
 #endif /* !SERVER_MODE */
 
 #endif /* _CRITICAL_SECTION_H_ */

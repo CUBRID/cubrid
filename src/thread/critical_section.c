@@ -2530,3 +2530,66 @@ rwlock_dump_statistics (FILE * fp)
 
   fflush (fp);
 }
+
+int
+rmutex_initialize (SYNC_RMUTEX * rmutex)
+{
+  assert (rmutex != NULL);
+
+  pthread_mutex_init (&rmutex->lock, NULL);
+
+  rmutex->owner = (pthread_t) 0;
+  rmutex->nenters = 0;
+
+  return NO_ERROR;
+}
+
+int
+rmutex_finalize (SYNC_RMUTEX * rmutex)
+{
+  assert (rmutex != NULL);
+
+  pthread_mutex_destroy (&rmutex->lock);
+}
+
+int
+rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
+{
+  assert (thread_p != NULL && rmutex != NULL);
+
+  if (rmutex->owner == thread_p->tid)
+    {
+      assert (rmutex->nenters > 0);
+    }
+  else
+    {
+      pthread_mutex_lock (&rmutex->lock);
+
+      assert (rmutex->nenters == 0);
+
+      rmutex->owner = thread_p->tid;
+    }
+
+  rmutex->nenters++;
+
+  return NO_ERROR;
+}
+
+int
+rmutex_unlock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
+{
+  assert (thread_p != NULL && rmutex != NULL);
+  assert (rmutex->nenters > 0);
+  assert (rmutex->owner == thread_p->tid);
+
+  rmutex->nenters--;
+
+  if (rmutex->nenters == 0)
+    {
+      rmutex->owner = (pthread_t) 0;
+
+      pthread_mutex_unlock (&rmutex->lock);
+    }
+
+  return NO_ERROR;
+}
