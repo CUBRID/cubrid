@@ -452,15 +452,12 @@ css_init_conn_list (void)
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT, 0);
 	  return ER_CSS_CONN_INIT;
 	}
-      err = csect_initialize_critical_section (&conn->csect);
+      err = csect_initialize_critical_section (&conn->csect, csect_Name_conn);
       if (err == NO_ERROR)
 	{
 #if defined(SERVER_MODE)
 	  assert (conn->csect.cs_index == -1);
-	  assert (conn->csect.name == NULL);
-
 	  conn->csect.cs_index = CRITICAL_SECTION_COUNT + conn->idx;
-	  conn->csect.name = csect_Name_conn;
 #endif
 	}
       else
