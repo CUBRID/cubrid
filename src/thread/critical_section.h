@@ -70,7 +70,6 @@ enum
   CSECT_CONN_ACTIVE,		/* Latch for Active conn list */
   CSECT_CONN_FREE,		/* Latch for Free conn list */
   CSECT_TEMPFILE_CACHE,		/* Latch for temp file cache */
-  CSECT_LOG_PB,			/* Latch for log_Pb */
   CSECT_LOG_ARCHIVE,		/* Latch for log_Gl.archive */
   CSECT_ACCESS_STATUS,		/* Latch for user access status */
   CSECT_LAST

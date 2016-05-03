@@ -3363,6 +3363,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       error_code = ER_FAILED;
       goto error;
     }
+
+  /* note that thread entry was re-initialized */
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
   if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
     {
       error_code = ER_FAILED;
