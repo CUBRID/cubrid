@@ -2364,7 +2364,7 @@ sync_consume_sync_stats_from_pool (SYNC_STATS_CHUNK * sync_stats_chunk, int idx,
   SYNC_STATS *stats;
 
   assert (sync_stats_chunk != NULL);
-  assert (sync_prim_type != SYNC_TYPE_NONE);
+  assert (SYNC_TYPE_NONE < sync_prim_type && sync_prim_type <= SYNC_TYPE_LAST);
   assert (0 <= idx && idx < NUM_ENTRIES_OF_SYNC_STATS_BLOCK);
   assert (sync_stats_chunk->block[idx].type == SYNC_TYPE_NONE);
   assert (0 <= sync_stats_chunk->num_entry_in_use
@@ -2392,7 +2392,7 @@ sync_return_sync_stats_to_pool (SYNC_STATS_CHUNK * sync_stats_chunk, int idx)
 {
   assert (sync_stats_chunk != NULL);
   assert (0 <= idx && idx < NUM_ENTRIES_OF_SYNC_STATS_BLOCK);
-  assert (sync_stats_chunk->block[idx].type != SYNC_TYPE_NONE);
+  assert (SYNC_TYPE_NONE < sync_stats_chunk->block[idx].type && sync_stats_chunk->block[idx].type <= SYNC_TYPE_LAST);
   assert (0 < sync_stats_chunk->num_entry_in_use
 	  && sync_stats_chunk->num_entry_in_use <= NUM_ENTRIES_OF_SYNC_STATS_BLOCK);
 
@@ -2491,7 +2491,7 @@ sync_deallocate_sync_stats (SYNC_STATS * stats)
 	{
 	  idx = (int) (stats - p->block);
 
-	  assert (p->block[idx].type != SYNC_TYPE_NONE);
+	  assert (SYNC_TYPE_NONE < p->block[idx].type && p->block[idx].type <= SYNC_TYPE_LAST);
 
 	  sync_return_sync_stats_to_pool (p, idx);
 
