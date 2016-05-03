@@ -133,7 +133,7 @@ SYNC_RMUTEX logpb_Rmutex_log_pb;
 
 #define LOGPB_FIND_BUFPTR(bufid) log_Pb.pool[(bufid)]
 #define LOGPB_FIND_NBUFFER_FROM_CONT_BUFFERS(setbufs, nbuf) \
-  ((struct log_buffer *) ((SIZEOF_LOG_BUFFER * (nbuf)) + (char *)(setbufs)))
+  ((LOG_BUFFER *) ((SIZEOF_LOG_BUFFER * (nbuf)) + (char *)(setbufs)))
 
 /* PAGES OF ACTIVE LOG PORTION */
 #define LOGPB_HEADER_PAGE_ID             (-9)	/* The first log page in the infinite log sequence. It is always kept
@@ -249,22 +249,20 @@ struct log_buffer
   LOG_PAGE logpage;		/* The actual buffered log page */
 };
 
+typedef struct log_bufarea LOG_BUFAREA;
 struct log_bufarea
 {				/* A buffer area */
-  struct log_buffer *bufarea;
-  struct log_bufarea *next;
+  LOG_BUFFER *bufarea;
+  LOG_BUFAREA *next;
 };
-
-/* callback function for scan pages to flush */
-typedef void (*log_buffer_apply_func) (struct log_buffer * bufptr);
 
 /* Global structure to trantable, log buffer pool, etc   */
 typedef struct log_pb_global_data LOG_PB_GLOBAL_DATA;
 struct log_pb_global_data
 {
   MHT_TABLE *ht;		/* Hash table from logical pageid to log buffer */
-  struct log_bufarea *poolarea;	/* Contiguous area of buffers */
-  struct log_buffer **pool;	/* Log buffer pool */
+  LOG_BUFAREA *poolarea;	/* Contiguous area of buffers */
+  LOG_BUFFER **pool;		/* Log buffer pool */
   int num_buffers;		/* Number of log buffers */
   int clock_hand;		/* Clock hand */
 };
@@ -286,7 +284,7 @@ typedef struct
 #define SIZEOF_LOG_BUFFER (offsetof (struct log_buffer, logpage) + LOG_PAGESIZE)
 
 #define LOG_GET_LOG_BUFFER_PTR(log_pgptr) \
-  ((struct log_buffer *) ((char *) (log_pgptr) - offsetof (struct log_buffer, logpage)))
+  ((LOG_BUFFER *) ((char *) (log_pgptr) - offsetof (struct log_buffer, logpage)))
 
 static const int LOG_BKUP_HASH_NUM_PAGEIDS = 1000;
 /* MIN AND MAX BUFFERS */
@@ -321,7 +319,7 @@ LOG_LSA NULL_LSA = { NULL_PAGEID, NULL_OFFSET };
  */
 
 static int logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers);
-static struct log_buffer *logpb_replace (THREAD_ENTRY * thread_p, bool * retry);
+static LOG_BUFFER *logpb_replace (THREAD_ENTRY * thread_p, bool * retry);
 static LOG_PAGE *logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetch_mode);
 static bool logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 #if !defined(NDEBUG)
@@ -370,7 +368,7 @@ static void logpb_dump_parameter (FILE * outfp);
 static void logpb_dump_runtime (FILE * outfp);
 static void logpb_reset_clock_hand (int buffer_index);
 static void logpb_move_next_clock_hand (void);
-static void logpb_unfix_page (struct log_buffer *bufptr);
+static void logpb_unfix_page (LOG_BUFFER * bufptr);
 static void logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p);
 
 static int logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_t backup_time);
@@ -483,7 +481,7 @@ logpb_move_next_clock_hand (void)
  *
  */
 static void
-logpb_unfix_page (struct log_buffer *bufptr)
+logpb_unfix_page (LOG_BUFFER * bufptr)
 {
   bufptr->fcnt--;
   if (bufptr->fcnt < 0)
@@ -542,13 +540,13 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p)
 static int
 logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
 {
-  struct log_buffer *log_bufptr;	/* Pointer to array of buffers */
-  struct log_bufarea *area;	/* Contiguous area for buffers */
+  LOG_BUFFER *log_bufptr;	/* Pointer to array of buffers */
+  LOG_BUFAREA *area;	/* Contiguous area for buffers */
   int bufid, i;			/* Buffer index */
   int total_buffers;		/* Total num buffers */
   int size;			/* Size of area to allocate */
   float expand_rate;
-  struct log_buffer **buffer_pool;
+  LOG_BUFFER **buffer_pool;
   int error_code = NO_ERROR;
   int r;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
@@ -613,9 +611,9 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
        * and keep the address of the buffer area for deallocation purposes at a
        * later time.
        */
-      size = ((num_new_buffers * SIZEOF_LOG_BUFFER) + sizeof (struct log_bufarea));
+      size = ((num_new_buffers * SIZEOF_LOG_BUFFER) + sizeof (LOG_BUFAREA));
 
-      area = (struct log_bufarea *) malloc (size);
+      area = (LOG_BUFAREA *) malloc (size);
       if (area == NULL)
 	{
 	  END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
@@ -624,7 +622,7 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
 	}
 
       /* allocate a pointer array to point to each buffer */
-      buffer_pool = (struct log_buffer **) realloc (log_Pb.pool, total_buffers * sizeof (*log_Pb.pool));
+      buffer_pool = (LOG_BUFFER **) realloc (log_Pb.pool, total_buffers * sizeof (*log_Pb.pool));
       if (buffer_pool == NULL)
 	{
 	  free_and_init (area);
@@ -637,7 +635,7 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
 
       memset (area, 1, size);
 
-      area->bufarea = ((struct log_buffer *) ((char *) area + sizeof (struct log_bufarea)));
+      area->bufarea = ((LOG_BUFFER *) ((char *) area + sizeof (LOG_BUFAREA)));
       area->next = log_Pb.poolarea;
 
       /* Initialize every new buffer */
@@ -809,7 +807,7 @@ error:
 void
 logpb_finalize_pool (THREAD_ENTRY * thread_p)
 {
-  struct log_bufarea *area;	/* Buffer area to free */
+  LOG_BUFAREA *area;	/* Buffer area to free */
   int r;
 
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
@@ -931,7 +929,7 @@ logpb_is_initialize_pool (void)
 void
 logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 {
-  register struct log_buffer *log_bufptr;	/* A log buffer */
+  LOG_BUFFER *log_bufptr;	/* A log buffer */
   int i, rv;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -967,16 +965,16 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 /*
  * logpb_replace - Find a page to replace
  *
- * return: struct log_buffer *
+ * return: LOG_BUFFER *
  *                       retry : true if need to retry, false if not
  *
  *   retry(in/out): true if need to retry, false if not
  *
  */
-static struct log_buffer *
+static LOG_BUFFER *
 logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 {
-  register struct log_buffer *log_bufptr = NULL;	/* A log buffer */
+  LOG_BUFFER *log_bufptr = NULL;	/* A log buffer */
   int bufid;
   int ixpool = -1;
   int num_unfixed = 1;
@@ -1115,7 +1113,7 @@ logpb_create (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
 static LOG_PAGE *
 logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetch_mode)
 {
-  struct log_buffer *log_bufptr;	/* A log buffer */
+  LOG_BUFFER *log_bufptr;	/* A log buffer */
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;	/* The corresponding physical page */
   int rv;
   bool retry;
@@ -1137,7 +1135,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 
   START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
-  log_bufptr = (struct log_buffer *) mht_get (log_Pb.ht, &pageid);
+  log_bufptr = (LOG_BUFFER *) mht_get (log_Pb.ht, &pageid);
   if (log_bufptr == NULL)
     {
       /* 
@@ -1268,7 +1266,7 @@ error:
 void
 logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 {
-  struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
   int rv;
 
   /* Get the address of the buffer from the page. */
@@ -1305,7 +1303,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 static bool
 logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 {
-  struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
   int rv;
   bool is_dirty;
 
@@ -1332,7 +1330,7 @@ logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 static bool
 logpb_is_any_dirty (THREAD_ENTRY * thread_p)
 {
-  register struct log_buffer *bufptr;	/* A log buffer */
+  LOG_BUFFER *bufptr;		/* A log buffer */
   int i, rv;
   bool ret;
 
@@ -1365,7 +1363,7 @@ logpb_is_any_dirty (THREAD_ENTRY * thread_p)
 static bool
 logpb_is_any_fix (THREAD_ENTRY * thread_p)
 {
-  register struct log_buffer *bufptr;	/* A log buffer */
+  LOG_BUFFER *bufptr;		/* A log buffer */
   int i, rv;
   bool ret;
 
@@ -1402,7 +1400,7 @@ logpb_is_any_fix (THREAD_ENTRY * thread_p)
 int
 logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 {
-  struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
   int rv;
 
   /* Get the address of the buffer from the page. */
@@ -1504,7 +1502,7 @@ logpb_free_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 void
 logpb_free_without_mutex (LOG_PAGE * log_pgptr)
 {
-  struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
 
   /* Get the address of the buffer from the page. */
   bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
@@ -1536,7 +1534,7 @@ logpb_free_without_mutex (LOG_PAGE * log_pgptr)
 LOG_PAGEID
 logpb_get_page_id (LOG_PAGE * log_pgptr)
 {
-  struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
 
   bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
 
@@ -1641,7 +1639,7 @@ static void
 logpb_dump_to_flush_page (FILE * out_fp)
 {
   int i;
-  struct log_buffer *log_bufptr;
+  LOG_BUFFER *log_bufptr;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   (void) fprintf (out_fp, " Candidate append pages to flush are:\n");
@@ -1677,7 +1675,7 @@ static void
 logpb_dump_pages (FILE * out_fp)
 {
   int i;
-  struct log_buffer *log_bufptr;
+  LOG_BUFFER *log_bufptr;
 
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
@@ -1716,7 +1714,7 @@ int
 logpb_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore)
 {
   const LOG_PAGEID *pageid = (LOG_PAGEID *) key;
-  struct log_buffer *log_bufptr = (struct log_buffer *) ent;
+  LOG_BUFFER *log_bufptr = (LOG_BUFFER *) ent;
 
   fprintf (outfp, "Pageid = %5lld, Address = %p\n", (long long int) (*pageid), (void *) log_bufptr);
 
@@ -2123,7 +2121,7 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
 static LOG_PAGE *
 logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr)
 {
-  register struct log_buffer *log_bufptr = NULL;
+  LOG_BUFFER *log_bufptr = NULL;
   LOG_PAGE *ret_pgptr = NULL;
   int rv;
   bool is_perf_tracking;
@@ -2152,7 +2150,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgpt
   /* TODO: Can we use a latch free structure here? */
   START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
-  log_bufptr = (struct log_buffer *) mht_get (log_Pb.ht, &pageid);
+  log_bufptr = (LOG_BUFFER *) mht_get (log_Pb.ht, &pageid);
   if (log_bufptr != NULL)
     {
       memcpy (log_pgptr, &log_bufptr->logpage, LOG_PAGESIZE);
@@ -2818,7 +2816,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
     log_Stat.last_delayed_pageid = NULL_PAGEID;
     if (log_Gl.append.delayed_free_log_pgptr != NULL)
       {
-	struct log_buffer *delayed_bufptr;
+	LOG_BUFFER *delayed_bufptr;
 	delayed_bufptr = LOG_GET_LOG_BUFFER_PTR (log_Gl.append.delayed_free_log_pgptr);
 	log_Stat.last_delayed_pageid = log_Gl.append.delayed_free_log_pgptr->hdr.logical_pageid;
 	log_Stat.total_delayed_page_count++;
@@ -2895,7 +2893,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 static LOG_PAGE **
 logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAGES npages)
 {
-  struct log_buffer *bufptr;
+  LOG_BUFFER *bufptr;
   LOG_PHY_PAGEID phy_pageid;
 
   /* In this point, flush buffer cannot be replaced by trans. So, bufptr's pageid and phy_pageid are not changed. */
@@ -2941,7 +2939,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   LOG_PHY_PAGEID phy_pageid;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_pgptr = NULL;
-  struct log_buffer *bufptr;
+  LOG_BUFFER *bufptr;
 
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
@@ -4337,8 +4335,8 @@ static int
 logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 {
   LOG_RECORD_HEADER *tmp_eof = NULL;	/* End of log record */
-  struct log_buffer *bufptr;	/* The current buffer log append page scanned */
-  struct log_buffer *prv_bufptr;	/* The previous buffer log append page scanned */
+  LOG_BUFFER *bufptr;		/* The current buffer log append page scanned */
+  LOG_BUFFER *prv_bufptr;	/* The previous buffer log append page scanned */
   int last_idxflush;		/* The smallest dirty append log page to flush. This is the last one to flush. */
   int idxflush;			/* An index into the first log page buffer to flush */
   bool need_sync;		/* How we flush anything ? */
@@ -4348,12 +4346,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   int flush_page_count = 0;
 #if defined(CUBRID_DEBUG)
-  struct timeval start_time = {
-    0, 0
-  };
-  struct timeval end_time = {
-    0, 0
-  };
+  struct timeval start_time = { 0, 0 };
+  struct timeval end_time = { 0, 0 };
   int dirty_page_count = 0;
   int curr_flush_count = 0;
   long commit_count = 0;
