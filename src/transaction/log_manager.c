@@ -1626,7 +1626,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   save_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (!logpb_is_initialize_pool ())
+  if (!logpb_is_pool_initialized ())
     {
       logtb_undefine_trantable (thread_p);
       LOG_CS_EXIT (thread_p);
@@ -9204,7 +9204,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
 {
   LOG_CS_ENTER (thread_p);
 
-  if (log_Gl.trantable.area == NULL || !logpb_is_initialize_pool ())
+  if (log_Gl.trantable.area == NULL || !logpb_is_pool_initialized ())
     {
       LOG_CS_EXIT (thread_p);
       return;

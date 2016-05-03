@@ -281,10 +281,10 @@ typedef struct
   int item_count;
 } ARV_LOG_PAGE_INFO_TABLE;
 
-#define SIZEOF_LOG_BUFFER (offsetof (struct log_buffer, logpage) + LOG_PAGESIZE)
+#define SIZEOF_LOG_BUFFER (offsetof (LOG_BUFFER, logpage) + LOG_PAGESIZE)
 
 #define LOG_GET_LOG_BUFFER_PTR(log_pgptr) \
-  ((LOG_BUFFER *) ((char *) (log_pgptr) - offsetof (struct log_buffer, logpage)))
+  ((LOG_BUFFER *) ((char *) (log_pgptr) - offsetof (LOG_BUFFER, logpage)))
 
 static const int LOG_BKUP_HASH_NUM_PAGEIDS = 1000;
 /* MIN AND MAX BUFFERS */
@@ -380,10 +380,6 @@ static LOG_ZIP *logpb_get_zip_undo (THREAD_ENTRY * thread_p);
 static LOG_ZIP *logpb_get_zip_redo (THREAD_ENTRY * thread_p);
 static char *logpb_get_data_ptr (THREAD_ENTRY * thread_p);
 static bool logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length);
-
-#if 0
-static FILEIO_BACKUP_LEVEL log_find_most_recent_backup_level (void);
-#endif
 
 static int logpb_flush_all_append_pages (THREAD_ENTRY * thread_p);
 static int logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * ndoe);
@@ -525,7 +521,6 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p)
 }
 
 /*
- * TODO : STL
  * logpb_expand_pool - Expand log buffer pool
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -534,14 +529,13 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p)
  *
  * NOTE:Expand the log buffer pool with the given number of buffers.
  *              If a zero or a negative value is given, the function expands
- *              the buffer pool with a default porcentage of the currently
- *              size.
+ *              the buffer pool with a default percentage of the current size.
  */
 static int
 logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
 {
   LOG_BUFFER *log_bufptr;	/* Pointer to array of buffers */
-  LOG_BUFAREA *area;	/* Contiguous area for buffers */
+  LOG_BUFAREA *area;		/* Contiguous area for buffers */
   int bufid, i;			/* Buffer index */
   int total_buffers;		/* Total num buffers */
   int size;			/* Size of area to allocate */
@@ -665,8 +659,7 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- * NOTE:Initialize the log buffer pool. All resident pages are
- *              invalidated.
+ * NOTE:Initialize the log buffer pool. All resident pages are invalidated.
  */
 int
 logpb_initialize_pool (THREAD_ENTRY * thread_p)
@@ -753,9 +746,8 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
       goto error;
     }
 
-  log_Pb.ht =
-    mht_create ("Log buffer pool hash table", log_Pb.num_buffers * 8, mht_logpageidhash,
-		mht_compare_logpageids_are_equal);
+  log_Pb.ht = mht_create ("Log buffer pool hash table", log_Pb.num_buffers, mht_logpageidhash,
+			  mht_compare_logpageids_are_equal);
   if (log_Pb.ht == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -801,13 +793,12 @@ error:
  *
  * return: nothing
  *
- * NOTE:Terminate the log buffer pool. All log resident pages are
- *              invalidated.
+ * NOTE:Terminate the log buffer pool. All log resident pages are invalidated.
  */
 void
 logpb_finalize_pool (THREAD_ENTRY * thread_p)
 {
-  LOG_BUFAREA *area;	/* Buffer area to free */
+  LOG_BUFAREA *area;		/* Buffer area to free */
   int r;
 
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
@@ -898,14 +889,14 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logpb_is_initialize_pool - Find out if buffer pool has been initialized
+ * logpb_is_pool_initialized - Find out if buffer pool has been initialized
  *
  * return:
  *
  * NOTE:Find out if the buffer pool has been initialized.
  */
 bool
-logpb_is_initialize_pool (void)
+logpb_is_pool_initialized (void)
 {
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
   if (log_Pb.pool != NULL)
@@ -1079,8 +1070,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
  *
  *   pageid(in): Page identifier
  *
- * NOTE:Creates the log page identified by pageid on a log buffer and
- *              return such buffer.
+ * NOTE:Creates the log page identified by pageid on a log buffer and return such buffer.
  *              Just initializes log buffer hdr,
  *              To read a page from disk is not needed.
  */
@@ -1260,8 +1250,7 @@ error:
  *   log_pgptr(in): Log page pointer
  *   free_page(in): Free the page too ? Valid values:  FREE, DONT_FREE
  *
- * NOTE:Mark the current log page as dirty and optionally free the
- *              page.
+ * NOTE:Mark the current log page as dirty and optionally free the page.
  */
 void
 logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
@@ -1547,8 +1536,7 @@ logpb_get_page_id (LOG_PAGE * log_pgptr)
  *
  * return: nothing
  *
- * NOTE:Dump the log page buffer pool. This function is used for
- *              debugging purposes.
+ * NOTE:Dump the log page buffer pool. This function is used for debugging purposes.
  */
 void
 logpb_dump (THREAD_ENTRY * thread_p, FILE * out_fp)
@@ -1595,14 +1583,13 @@ logpb_dump_information (FILE * out_fp)
   mht_dump (out_fp, log_Pb.ht, false, logpb_print_hash_entry, NULL);
   fprintf (out_fp, "\n\n");
 
-  fprintf (out_fp,
-	   " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d, Prev append LSA = %lld|%d\n"
-	   " Prior LSA = %lld|%d, Prev prior LSA = %lld|%d\n\n", (long long int) log_Gl.append.nxio_lsa.pageid,
-	   (int) log_Gl.append.nxio_lsa.offset, (long long int) log_Gl.hdr.append_lsa.pageid,
-	   (int) log_Gl.hdr.append_lsa.offset, (long long int) log_Gl.append.prev_lsa.pageid,
-	   (int) log_Gl.append.prev_lsa.offset, (long long int) log_Gl.prior_info.prior_lsa.pageid,
-	   (int) log_Gl.prior_info.prior_lsa.offset, (long long int) log_Gl.prior_info.prev_lsa.pageid,
-	   (int) log_Gl.prior_info.prev_lsa.offset);
+  fprintf (out_fp, " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d, Prev append LSA = %lld|%d\n"
+	   " Prior LSA = %lld|%d, Prev prior LSA = %lld|%d\n\n",
+	   (long long int) log_Gl.append.nxio_lsa.pageid, (int) log_Gl.append.nxio_lsa.offset,
+	   (long long int) log_Gl.hdr.append_lsa.pageid, (int) log_Gl.hdr.append_lsa.offset,
+	   (long long int) log_Gl.append.prev_lsa.pageid, (int) log_Gl.append.prev_lsa.offset,
+	   (long long int) log_Gl.prior_info.prior_lsa.pageid, (int) log_Gl.prior_info.prior_lsa.offset,
+	   (long long int) log_Gl.prior_info.prev_lsa.pageid, (int) log_Gl.prior_info.prev_lsa.offset);
 
   if (log_Gl.append.delayed_free_log_pgptr == NULL)
     {
@@ -1622,10 +1609,9 @@ logpb_dump_information (FILE * out_fp)
       append = logpb_get_page_id (log_Gl.append.log_pgptr);
     }
 
-  fprintf (out_fp,
-	   " Append to_flush array: max = %d, num_active = %d\n"
-	   " Delayed free page = %lld, Current append page = %lld\n", log_Gl.flush_info.max_toflush,
-	   log_Gl.flush_info.num_toflush, delayed_free, append);
+  fprintf (out_fp, " Append to_flush array: max = %d, num_active = %d\n"
+	   " Delayed free page = %lld, Current append page = %lld\n",
+	   log_Gl.flush_info.max_toflush, log_Gl.flush_info.num_toflush, delayed_free, append);
 }
 
 /*
@@ -1687,8 +1673,8 @@ logpb_dump_pages (FILE * out_fp)
 	}
       else
 	{
-	  fprintf (out_fp, "%3d %10lld %10d %3d %3d %4d  %p %p-%p %4s %5lld %5d\n", i,
-		   (long long) log_bufptr->pageid, log_bufptr->phy_pageid, log_bufptr->dirty,
+	  fprintf (out_fp, "%3d %10lld %10d %3d %3d %4d  %p %p-%p %4s %5lld %5d\n",
+		   i, (long long) log_bufptr->pageid, log_bufptr->phy_pageid, log_bufptr->dirty,
 		   log_bufptr->recently_freed, log_bufptr->fcnt, (void *) log_bufptr, (void *) (&log_bufptr->logpage),
 		   (void *) (&log_bufptr->logpage.area[LOGAREA_SIZE - 1]), "",
 		   (long long) log_bufptr->logpage.hdr.logical_pageid, log_bufptr->logpage.hdr.offset);
@@ -1718,7 +1704,7 @@ logpb_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore)
 
   fprintf (outfp, "Pageid = %5lld, Address = %p\n", (long long int) (*pageid), (void *) log_bufptr);
 
-  return (true);
+  return true;
 }
 
 /*
@@ -1947,8 +1933,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, struct log_header *hdr,
  *
  * return: nothing
  *
- * NOTE:Flush out the log header from the global variable log_Gl.hdr
- *              to disk. Note append pages are not flushed.
+ * NOTE:Flush out the log header from the global variable log_Gl.hdr to disk. Note append pages are not flushed.
  */
 void
 logpb_flush_header (THREAD_ENTRY * thread_p)
@@ -2007,10 +1992,8 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
  *   pageid(in): Page identifier
  *   log_pgptr(in): Page buffer to copy
  *
- * NOTE:Fetch the log page identified by pageid into a log buffer and
- *              return such buffer.
- *              If there is the page in hash table, copy it to buffer
- *              and return it.
+ * NOTE:Fetch the log page identified by pageid into a log buffer and return such buffer.
+ *              If there is the page in hash table, copy it to buffer and return it.
  *              If not, read log page from log.
  */
 LOG_PAGE *
@@ -2112,10 +2095,8 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
  *   pageid(in): Page identifier
  *   log_pgptr(in): Page buffer to copy
  *
- * NOTE:Fetch the log page identified by pageid into a log buffer and
- *              return such buffer.
- *              If there is the page in hash table, copy it to buffer
- *              and return it.
+ * NOTE:Fetch the log page identified by pageid into a log buffer and return such buffer.
+ *              If there is the page in hash table, copy it to buffer and return it.
  *              If not, read log page from log.
  */
 static LOG_PAGE *
@@ -2200,8 +2181,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgpt
  *   pageid(in): Page identifier
  *   log_pgptr(in): Page buffer to read
  *
- * NOTE:read the log page identified by pageid into a buffer
- *              from from archive or active log.
+ * NOTE:read the log page identified by pageid into a buffer from from archive or active log.
  */
 LOG_PAGE *
 logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr)
@@ -2414,8 +2394,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
  *   db_compatibility(in): Set as a side effect to database disk compatibility
  *   db_charset(in): Set as a side effect to database charset
  *
- * NOTE:Find some database creation parameters such as pagesize,
- *              creation time, and disk compatability.
+ * NOTE:Find some database creation parameters such as pagesize, creation time, and disk compatability.
  */
 PGLENGTH
 logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -2712,12 +2691,8 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 #endif /* SERVER_MODE */
 #if defined(CUBRID_DEBUG)
   long commit_count = 0;
-  static struct timeval start_append_time = {
-    0, 0
-  };
-  struct timeval end_append_time = {
-    0, 0
-  };
+  static struct timeval start_append_time = { 0, 0 };
+  struct timeval end_append_time = { 0, 0 };
   static long prev_commit_count_in_append = 0;
   double elapsed = 0;
 
@@ -2945,6 +2920,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
 
   assert (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING));
+
   if (log_Gl.bg_archive_info.vdes == NULL_VOLDES || flush_info->num_toflush <= 1)
     {
       return;
@@ -3981,9 +3957,8 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, 
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
     case LOG_MVCC_UNDO_DATA:
     case LOG_MVCC_REDO_DATA:
-      error =
-	prior_lsa_gen_undoredo_record_from_crumbs (thread_p, node, rcvindex, addr, num_ucrumbs, ucrumbs, num_rcrumbs,
-						   rcrumbs);
+      error = prior_lsa_gen_undoredo_record_from_crumbs (thread_p, node, rcvindex, addr, num_ucrumbs, ucrumbs,
+							 num_rcrumbs, rcrumbs);
       break;
 
     default:
@@ -4419,7 +4394,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   {
     const char *env_value;
     int verbose_dump = -1;
-
 
     if (verbose_dump == -1)
       {
@@ -5159,8 +5133,7 @@ logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p)
  *
  *   lsa_ptr(in): Force all log records up to this lsa
  *
- * NOTE:Flush the log up to given log sequence address according to
- *              the WAL rule.
+ * NOTE:Flush the log up to given log sequence address according to the WAL rule.
  *              The page buffer manager must call this function whenever a
  *              page is about to be flushed due to a page replacement.
  */
@@ -5441,8 +5414,7 @@ prior_lsa_append_data (int length)
  *   num_crumbs(in): Number of crumbs
  *   crumbs(in): The crumbs (length + data)
  *
- * NOTE: Append crumbs of data by gluing them. After this the log
- *              manager will lose track of what was glued.
+ * NOTE: Append crumbs of data by gluing them. After this the log manager will lose track of what was glued.
  */
 static void
 logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * crumbs)
@@ -5703,8 +5675,7 @@ logpb_create_log_info (const char *logname_info, const char *db_fullname)
  *
  *   pageid(in): Desired page
  *
- * NOTE: Guess the archive number where the desired page is archived by
- *              searching the log information file.
+ * NOTE: Guess the archive number where the desired page is archived by searching the log information file.
  */
 static int
 logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
@@ -5874,8 +5845,7 @@ logpb_create_volume_info (const char *db_fullname)
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- * NOTE: Recreate the database volume information from the internal
- *              information that is stored in each volume.
+ * NOTE: Recreate the database volume information from the internal information that is stored in each volume.
  */
 int
 logpb_recreate_volume_info (THREAD_ENTRY * thread_p)
@@ -5998,8 +5968,7 @@ logpb_add_volume (const char *db_fullname, VOLID new_volid, const char *new_volf
  *   fun(in): Function to be called on each entry
  *   args(in): Additional arguments to be passed to function
  *
- * NOTE: Scan the volume information entries calling the given function
- *              on each entry.
+ * NOTE: Scan the volume information entries calling the given function on each entry.
  */
 int
 logpb_scan_volume_info (THREAD_ENTRY * thread_p, const char *db_fullname, VOLID ignore_volid, VOLID start_volid,
@@ -6095,8 +6064,7 @@ logpb_scan_volume_info (THREAD_ENTRY * thread_p, const char *db_fullname, VOLID 
  *
  *   logical_pageid(in): logical_pageid: Logical log page
  *
- * NOTE: Returns the physical page identifier associated with given
- *              logical page.
+ * NOTE: Returns the physical page identifier associated with given logical page.
  */
 LOG_PHY_PAGEID
 logpb_to_physical_pageid (LOG_PAGEID logical_pageid)
@@ -6154,8 +6122,7 @@ logpb_is_page_in_archive (LOG_PAGEID pageid)
  *
  * return:
  *
- * NOTE: Returns true if the smallest active LSA is located in an
- *              archive log.
+ * NOTE: Returns true if the smallest active LSA is located in an archive log.
  */
 bool
 logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p)
@@ -6173,8 +6140,7 @@ logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p)
  *
  *   pageid(in): The desired logical page
  *
- * NOTE: Find in what archive the page is located or in what archive
- *              the page should have been located.
+ * NOTE: Find in what archive the page is located or in what archive the page should have been located.
  */
 int
 logpb_get_archive_number (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
@@ -7597,22 +7563,17 @@ logpb_append_archives_delete_pend_to_log_info (int first, int last)
  * logpb_copy_from_log: Copy a portion of the log
  *
  * arguments:
- *         area: Area where the portion of the log is copied.
- *               (Set as a side effect)
+ *  area: Area where the portion of the log is copied. (Set as a side effect)
  *  area_length: the length to copy
- *   log_lsa: log address of the log data to copy
- *               (May be set as a side effect)
- *    log_pgptr: the buffer containing the log page
- *               (May be set as a side effect)
+ *  log_lsa: log address of the log data to copy (May be set as a side effect)
+ *  log_pgptr: the buffer containing the log page (May be set as a side effect)
  *
  * returns/side-effects: nothing
  *    area is set as a side effect.
  *    log_lsa, and log_pgptr are set as a side effect.
  *
- * description: Copy "length" bytes of the log starting at log_lsa->pageid,
- *              log_offset onto the given area.
- * NOTE:        The location of the log is updated to point to the end of the
- *              data.
+ * description: Copy "length" bytes of the log starting at log_lsa->pageid, log_offset onto the given area.
+ * NOTE:        The location of the log is updated to point to the end of the data.
  */
 void
 logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
@@ -7779,7 +7740,7 @@ logpb_verify_length (const char *db_fullname, const char *log_path, const char *
  *                      Log_information = db_loginfo
  *                      Database Backup = db_backup
  *
- * NOTE:Initialize name of log volumes and files
+ * NOTE: Initialize name of log volumes and files
  */
 int
 logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -7846,13 +7807,13 @@ logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, co
  *                      Log_information = db_loginfo
  *                      Database Backup = db_backup
  *
- * NOTE:Find if the log associated with the aboive database exists.
+ * NOTE: Find if the log associated with the aboive database exists.
  */
 bool
 logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname)
 {
   /* Is the system restarted ? */
-  if (!logpb_is_initialize_pool ())
+  if (!logpb_is_pool_initialized ())
     {
       if (logpb_initialize_log_names (thread_p, db_fullname, logpath, prefix_logname) != NO_ERROR)
 	{
@@ -8110,8 +8071,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   length_all_chkpt_trans = sizeof (*chkpt_trans) * tmp_chkpt.ntrans;
 
   /* 
-   * Scan again if there were any top system operations in the process of
-   * being committed.
+   * Scan again if there were any top system operations in the process of being committed.
    * NOTE that we checkpoint top system operations only when there are in the
    * process of commit. Not knowledge of top system operations that are not
    * in the process of commit is required since if there is a crash, the system

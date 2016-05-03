@@ -1935,7 +1935,7 @@ extern char log_Name_removed_archive[];
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (THREAD_ENTRY * thread_p);
-extern bool logpb_is_initialize_pool (void);
+extern bool logpb_is_pool_initialized (void);
 extern void logpb_invalidate_pool (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_create (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 extern LOG_PAGE *log_pbfetch (LOG_PAGEID pageid);
