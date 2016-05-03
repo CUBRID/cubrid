@@ -1996,14 +1996,12 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
 
-  csect_initialize_critical_section (&tdes->cs_topop);
+  csect_initialize_critical_section (&tdes->cs_topop, csect_Name_tdes);
 
 #if defined(SERVER_MODE)
   assert (tdes->cs_topop.cs_index == -1);
-  assert (tdes->cs_topop.name == NULL);
 
   tdes->cs_topop.cs_index = CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index;
-  tdes->cs_topop.name = csect_Name_tdes;
 #endif
 
   tdes->topops.stack = NULL;
