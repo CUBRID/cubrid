@@ -1055,7 +1055,7 @@ css_process_new_client (SOCKET master_fd)
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
     {
       css_initialize_conn (&temp_conn, new_fd);
-      csect_initialize_critical_section (&temp_conn.csect);
+      csect_initialize_critical_section (&temp_conn.csect, csect_Name_conn);
 
       reason = htonl (SERVER_INACCESSIBLE_IP);
       css_send_data (&temp_conn, rid, (char *) &reason, (int) sizeof (int));
@@ -1074,7 +1074,7 @@ css_process_new_client (SOCKET master_fd)
   if (conn == NULL)
     {
       css_initialize_conn (&temp_conn, new_fd);
-      csect_initialize_critical_section (&temp_conn.csect);
+      csect_initialize_critical_section (&temp_conn.csect, csect_Name_conn);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
       reason = htonl (SERVER_CLIENTS_EXCEEDED);
@@ -1263,7 +1263,7 @@ css_process_new_connection_request (void)
 	  void *error_string;
 
 	  css_initialize_conn (&new_conn, new_fd);
-	  csect_initialize_critical_section (&new_conn.csect);
+	  csect_initialize_critical_section (&new_conn.csect, csect_Name_conn);
 
 	  rc = css_read_header (&new_conn, &header);
 	  buffer_size = rid = 0;
@@ -1292,7 +1292,7 @@ css_process_new_connection_request (void)
 	  void *error_string;
 
 	  css_initialize_conn (&new_conn, new_fd);
-	  csect_initialize_critical_section (&new_conn.csect);
+	  csect_initialize_critical_section (&new_conn.csect, csect_Name_conn);
 
 	  rc = css_read_header (&new_conn, &header);
 	  buffer_size = rid = 0;

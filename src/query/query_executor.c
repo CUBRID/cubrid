@@ -14489,7 +14489,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
-  if (rwlock_initialize (QEXEC_RWLOCK_XASL_CACHE, QEXEC_RWLOCK_XASL_CACHE_NAME, RWLOCK_TRACE) != NO_ERROR)
+  if (rwlock_initialize (QEXEC_RWLOCK_XASL_CACHE, QEXEC_RWLOCK_XASL_CACHE_NAME) != NO_ERROR)
     {
       return ER_FAILED;
     }

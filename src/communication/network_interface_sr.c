@@ -7143,8 +7143,7 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       return;
     }
 
-  csect_dump_statistics (outfp);
-  rwlock_dump_statistics (outfp);
+  sync_dump_statistics (outfp, SYNC_TYPE_ALL);
 
   file_size = ftell (outfp);
 
