@@ -126,7 +126,7 @@ typedef struct sync_critical_section
 
 typedef struct sync_rwlock
 {
-  char *name;
+  const char *name;
   pthread_mutex_t read_lock;	/* read lock. Only readers will use it. */
   pthread_mutex_t global_lock;	/* global lock */
   int num_readers;		/* # of readers. Only readers will use it. */
@@ -135,7 +135,7 @@ typedef struct sync_rwlock
 
 typedef struct sync_rmutex
 {
-  char *name;
+  const char *name;
   pthread_mutex_t lock;		/* mutex */
   pthread_t owner;		/* owner thread id */
   int lock_cnt;			/* # of times that owner enters */
@@ -173,8 +173,8 @@ extern int rwlock_read_unlock (SYNC_RWLOCK * rwlock);
 extern int rwlock_write_lock (SYNC_RWLOCK * rwlock);
 extern int rwlock_write_unlock (SYNC_RWLOCK * rwlock);
 
-extern int sync_initialize_sync_monitor (void);
-extern int sync_finalize_sync_monitor (void);
+extern int sync_initialize_sync_stats (void);
+extern int sync_finalize_sync_stats (void);
 
 extern void rwlock_dump_statistics (FILE * fp);
 

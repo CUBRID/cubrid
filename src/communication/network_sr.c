@@ -1386,7 +1386,7 @@ net_server_start (const char *server_name)
   sysprm_load_and_init (NULL, NULL);
   sysprm_set_er_log_file (server_name);
 
-  if (sync_initialize_sync_monitor () != NO_ERROR)
+  if (sync_initialize_sync_stats () != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize synchronization primitives monitor\n");
       status = -1;
@@ -1468,7 +1468,7 @@ net_server_start (const char *server_name)
 
   thread_final_manager ();
   csect_finalize_static_critical_sections ();
-  (void) sync_finalize_sync_monitor ();
+  (void) sync_finalize_sync_stats ();
 
 end:
 #if defined(WINDOWS)

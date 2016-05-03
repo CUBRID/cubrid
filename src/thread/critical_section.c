@@ -101,27 +101,22 @@ const char *csect_Name_conn = "CONN_ENTRY";
 const char *csect_Name_tdes = "TDES";
 
 /* 
- * rwlock monitor
+ * Synchronization Primitives Statistics Monitor
  */
 
 #define NUM_ENTRIES_OF_SYNC_STATS_BLOCK 256
 
-/*
- * This is not a pre-allocated free rwlock chunk. 
- * Each SYNC_RWLOCK locates in its local manager. SYNC_RWLOCK Monitor only manages the pointers to the registered global RWLOCKs.
- * This makes debugging and performance trouble shooting easier.
- */
-typedef struct sync_monitor_chunk SYNC_MONITOR;
-struct sync_monitor_chunk
+typedef struct sync_stats_chunk SYNC_STATS_CHUNK;
+struct sync_stats_chunk
 {
   SYNC_STATS block[NUM_ENTRIES_OF_SYNC_STATS_BLOCK];
-  SYNC_MONITOR *next;
+  SYNC_STATS_CHUNK *next;
   int hint_free_entry_idx;
   int num_entry_in_use;
 };
 
-SYNC_MONITOR sync_Monitor;
-pthread_mutex_t sync_Monitor_lock;
+SYNC_STATS_CHUNK sync_Stats;
+pthread_mutex_t sync_Stats_lock;
 
 static int csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * csect, int timeout,
 				       struct timespec *to);
@@ -133,14 +128,13 @@ static int csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL
 static int csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * csect, int wait_secs);
 static int csect_check_own_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * csect);
 
-static SYNC_MONITOR *sync_allocate_sync_monitor_entry (void);
-static int sync_initialize_sync_monitor_entry (SYNC_MONITOR * sync_monitor_entry);
-static SYNC_STATS *sync_consume_sync_stats_from_pool (SYNC_MONITOR * sync_monitor_entry, int idx,
+static SYNC_STATS_CHUNK *sync_allocate_sync_stats_chunk (void);
+static int sync_initialize_sync_stats_chunk (SYNC_STATS_CHUNK * sync_stats_chunk);
+static SYNC_STATS *sync_consume_sync_stats_from_pool (SYNC_STATS_CHUNK * sync_stats_chunk, int idx,
 						      SYNC_PRIMITIVE_TYPE sync_prim_type, const char *name);
-static int sync_return_sync_stats_to_pool (SYNC_MONITOR * sync_monitor_entry, int idx);
+static int sync_return_sync_stats_to_pool (SYNC_STATS_CHUNK * sync_stats_chunk, int idx);
 static SYNC_STATS *sync_allocate_sync_stats (SYNC_PRIMITIVE_TYPE sync_prim_type, const char *name);
 static int sync_deallocate_sync_stats (SYNC_STATS * stats);
-
 static void sync_reset_stats_metrics (SYNC_STATS * stats);
 
 /*
@@ -1560,7 +1554,6 @@ csect_dump_statistics (FILE * fp)
   fflush (fp);
 }
 
-
 /*
  * csect_check_own() - check if current thread is critical section owner
  *   return: true if cs's owner is me, false if not
@@ -1837,13 +1830,7 @@ rwlock_initialize (SYNC_RWLOCK * rwlock, const char *name)
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
-  rwlock->name = strdup (name);
-  if (rwlock->name == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (name) + 1));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
+  rwlock->name = name;
   rwlock->num_readers = 0;
 
   rwlock->stats = sync_allocate_sync_stats (SYNC_TYPE_RWLOCK, rwlock->name);
@@ -1870,11 +1857,7 @@ rwlock_finalize (SYNC_RWLOCK * rwlock)
   assert (rwlock != NULL && rwlock->num_readers == 0);
 
   rwlock->num_readers = 0;
-
-  if (rwlock->name != NULL)
-    {
-      free_and_init (rwlock->name);
-    }
+  rwlock->name = NULL;
 
   error_code = pthread_mutex_destroy (&rwlock->read_lock);
   if (error_code != NO_ERROR)
@@ -2079,15 +2062,15 @@ rwlock_write_unlock (SYNC_RWLOCK * rwlock)
 void
 rwlock_dump_statistics (FILE * fp)
 {
-  SYNC_MONITOR *p;
+  SYNC_STATS_CHUNK *p;
   SYNC_STATS *stats;
   int i, cnt;
 
   fprintf (fp, "\n         RWlock Name         |Total Enter|  Max elapsed  |  Total elapsed\n");
 
-  pthread_mutex_lock (&sync_Monitor_lock);
+  pthread_mutex_lock (&sync_Stats_lock);
 
-  p = &sync_Monitor;
+  p = &sync_Stats;
   while (p != NULL)
     {
       for (i = 0, cnt = 0; cnt < p->num_entry_in_use && i < NUM_ENTRIES_OF_SYNC_STATS_BLOCK; i++)
@@ -2109,11 +2092,18 @@ rwlock_dump_statistics (FILE * fp)
       p = p->next;
     }
 
-  pthread_mutex_unlock (&sync_Monitor_lock);
+  pthread_mutex_unlock (&sync_Stats_lock);
 
   fflush (fp);
 }
 
+/*
+ * rmutex_initialize () - initialize a reentrant mutex 
+ *   return: NO_ERROR, or ER_code
+ *
+ *   rmutex(in/out):
+ *   name(in):
+ */
 int
 rmutex_initialize (SYNC_RMUTEX * rmutex, const char *name)
 {
@@ -2121,7 +2111,13 @@ rmutex_initialize (SYNC_RMUTEX * rmutex, const char *name)
 
   assert (rmutex != NULL);
 
-  pthread_mutex_init (&rmutex->lock, NULL);
+  error_code = pthread_mutex_init (&rmutex->lock, NULL);
+  if (error_code != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
 
   rmutex->owner = (pthread_t) 0;
   rmutex->lock_cnt = 0;
@@ -2136,6 +2132,12 @@ rmutex_initialize (SYNC_RMUTEX * rmutex, const char *name)
   return NO_ERROR;
 }
 
+/*
+ * rmutex_finalize () - finalize a rmutex 
+ *   return: NO_ERROR, or ER_code
+ *
+ *   rmutex(in/out):
+ */
 int
 rmutex_finalize (SYNC_RMUTEX * rmutex)
 {
@@ -2143,7 +2145,13 @@ rmutex_finalize (SYNC_RMUTEX * rmutex)
 
   assert (rmutex != NULL);
 
-  pthread_mutex_destroy (&rmutex->lock);
+  err = pthread_mutex_destroy (&rmutex->lock);
+  if (err != NO_ERROR)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
+      assert (0);
+      return ER_CSS_PTHREAD_MUTEX_DESTROY;
+    }
 
   err = sync_deallocate_sync_stats (rmutex->stats);
   rmutex->stats = NULL;
@@ -2151,6 +2159,13 @@ rmutex_finalize (SYNC_RMUTEX * rmutex)
   return err;
 }
 
+/*
+ * rmutex_lock () - acquire lock of the given rmutex. The owner is allowed to hold it again.
+ *   return: NO_ERROR, or ER_code
+ *
+ *   thread_p(in):
+ *   rmutex(in/out):
+ */
 int
 rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
 {
@@ -2194,6 +2209,12 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
   return NO_ERROR;
 }
 
+/*
+ * rmutex_unlock () - decrement lock_cnt and release the given rmutex when lock_cnt returns to 0
+ *   return: NO_ERROR, or ER_code
+ *
+ *   rwlock(in/out):
+ */
 int
 rmutex_unlock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
 {
@@ -2213,6 +2234,11 @@ rmutex_unlock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
   return NO_ERROR;
 }
 
+/*
+ * sync_reset_stats_metrics () - reset stats metrics
+ *   return: void
+ *
+ */
 static void
 sync_reset_stats_metrics (SYNC_STATS * stats)
 {
@@ -2230,17 +2256,17 @@ sync_reset_stats_metrics (SYNC_STATS * stats)
 }
 
 /*
- * sync_initialize_sync_monitor () - initialize synchronization primitives monitor
+ * sync_initialize_sync_stats () - initialize synchronization primitives stats monitor
  *   return: NO_ERROR
  *
  *   called during server startup 
  */
 int
-sync_initialize_sync_monitor (void)
+sync_initialize_sync_stats (void)
 {
   int error_code = NO_ERROR;
 
-  error_code = pthread_mutex_init (&sync_Monitor_lock, NULL);
+  error_code = pthread_mutex_init (&sync_Stats_lock, NULL);
   if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
@@ -2248,21 +2274,21 @@ sync_initialize_sync_monitor (void)
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
-  return sync_initialize_sync_monitor_entry (&sync_Monitor);
+  return sync_initialize_sync_stats_chunk (&sync_Stats);
 }
 
 /*
- * sync_finalize_sync_monitor () - finalize synchronization primitives monitor
+ * sync_finalize_sync_stats () - finalize synchronization primitives stats monitor
  *   return: NO_ERROR
  *
  *   called during server shutdown 
  */
 int
-sync_finalize_sync_monitor (void)
+sync_finalize_sync_stats (void)
 {
-  SYNC_MONITOR *p, *next;
+  SYNC_STATS_CHUNK *p, *next;
 
-  p = &sync_Monitor;
+  p = &sync_Stats;
 
   /* the head entry will be kept. */
   for (p = p->next; p != NULL; p = next)
@@ -2274,9 +2300,9 @@ sync_finalize_sync_monitor (void)
     }
 
   /* clear the head entry */
-  (void) sync_initialize_sync_monitor_entry (&sync_Monitor);
+  (void) sync_initialize_sync_stats_chunk (&sync_Stats);
 
-  if (pthread_mutex_destroy (&sync_Monitor_lock) != NO_ERROR)
+  if (pthread_mutex_destroy (&sync_Stats_lock) != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
       assert (0);
@@ -2287,41 +2313,41 @@ sync_finalize_sync_monitor (void)
 }
 
 /*
- * sync_allocate_sync_monitor_entry () - allocate a monitor entry
- *   return: the allocated monitor entry or NULL
+ * sync_allocate_sync_stats_chunk () - allocate a sync stats chunk
+ *   return: the allocated sync stats entry or NULL
  *
  */
-static SYNC_MONITOR *
-sync_allocate_sync_monitor_entry (void)
+static SYNC_STATS_CHUNK *
+sync_allocate_sync_stats_chunk (void)
 {
-  SYNC_MONITOR *p;
+  SYNC_STATS_CHUNK *p;
 
-  p = (SYNC_MONITOR *) malloc (sizeof (SYNC_MONITOR));
+  p = (SYNC_STATS_CHUNK *) malloc (sizeof (SYNC_STATS_CHUNK));
   if (p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYNC_MONITOR));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SYNC_STATS_CHUNK));
       return NULL;
     }
 
-  sync_initialize_sync_monitor_entry (p);
+  sync_initialize_sync_stats_chunk (p);
 
   return p;
 }
 
 /*
- * sync_initialize_sync_monitor_entry () - initialize a monitor entry
+ * sync_initialize_sync_stats_chunk () - initialize a sync stats chunk
  *   return: NO_ERROR
  *
  */
 static int
-sync_initialize_sync_monitor_entry (SYNC_MONITOR * sync_monitor_entry)
+sync_initialize_sync_stats_chunk (SYNC_STATS_CHUNK * sync_stats_chunk)
 {
-  assert (sync_monitor_entry != NULL);
+  assert (sync_stats_chunk != NULL);
 
-  memset (sync_monitor_entry->block, 0, sizeof (SYNC_STATS) * NUM_ENTRIES_OF_SYNC_STATS_BLOCK);
-  sync_monitor_entry->next = NULL;
-  sync_monitor_entry->hint_free_entry_idx = 0;
-  sync_monitor_entry->num_entry_in_use = 0;
+  memset (sync_stats_chunk->block, 0, sizeof (SYNC_STATS) * NUM_ENTRIES_OF_SYNC_STATS_BLOCK);
+  sync_stats_chunk->next = NULL;
+  sync_stats_chunk->hint_free_entry_idx = 0;
+  sync_stats_chunk->num_entry_in_use = 0;
 
   return NO_ERROR;
 }
@@ -2332,26 +2358,26 @@ sync_initialize_sync_monitor_entry (SYNC_MONITOR * sync_monitor_entry)
  *
  */
 static SYNC_STATS *
-sync_consume_sync_stats_from_pool (SYNC_MONITOR * sync_monitor_entry, int idx, SYNC_PRIMITIVE_TYPE sync_prim_type,
+sync_consume_sync_stats_from_pool (SYNC_STATS_CHUNK * sync_stats_chunk, int idx, SYNC_PRIMITIVE_TYPE sync_prim_type,
 				   const char *name)
 {
   SYNC_STATS *stats;
 
-  assert (sync_monitor_entry != NULL);
+  assert (sync_stats_chunk != NULL);
   assert (sync_prim_type != SYNC_TYPE_NONE);
   assert (0 <= idx && idx < NUM_ENTRIES_OF_SYNC_STATS_BLOCK);
-  assert (sync_monitor_entry->block[idx].type == SYNC_TYPE_NONE);
-  assert (0 <= sync_monitor_entry->num_entry_in_use
-	  && sync_monitor_entry->num_entry_in_use < NUM_ENTRIES_OF_SYNC_STATS_BLOCK);
+  assert (sync_stats_chunk->block[idx].type == SYNC_TYPE_NONE);
+  assert (0 <= sync_stats_chunk->num_entry_in_use
+	  && sync_stats_chunk->num_entry_in_use < NUM_ENTRIES_OF_SYNC_STATS_BLOCK);
 
-  stats = &sync_monitor_entry->block[idx];
+  stats = &sync_stats_chunk->block[idx];
 
   stats->name = name;
   stats->type = sync_prim_type;
   sync_reset_stats_metrics (stats);
 
-  sync_monitor_entry->num_entry_in_use++;
-  sync_monitor_entry->hint_free_entry_idx = (idx + 1) % NUM_ENTRIES_OF_SYNC_STATS_BLOCK;
+  sync_stats_chunk->num_entry_in_use++;
+  sync_stats_chunk->hint_free_entry_idx = (idx + 1) % NUM_ENTRIES_OF_SYNC_STATS_BLOCK;
 
   return stats;
 }
@@ -2362,19 +2388,19 @@ sync_consume_sync_stats_from_pool (SYNC_MONITOR * sync_monitor_entry, int idx, S
  *
  */
 static int
-sync_return_sync_stats_to_pool (SYNC_MONITOR * sync_monitor_entry, int idx)
+sync_return_sync_stats_to_pool (SYNC_STATS_CHUNK * sync_stats_chunk, int idx)
 {
-  assert (sync_monitor_entry != NULL);
+  assert (sync_stats_chunk != NULL);
   assert (0 <= idx && idx < NUM_ENTRIES_OF_SYNC_STATS_BLOCK);
-  assert (sync_monitor_entry->block[idx].type != SYNC_TYPE_NONE);
-  assert (0 < sync_monitor_entry->num_entry_in_use
-	  && sync_monitor_entry->num_entry_in_use <= NUM_ENTRIES_OF_SYNC_STATS_BLOCK);
+  assert (sync_stats_chunk->block[idx].type != SYNC_TYPE_NONE);
+  assert (0 < sync_stats_chunk->num_entry_in_use
+	  && sync_stats_chunk->num_entry_in_use <= NUM_ENTRIES_OF_SYNC_STATS_BLOCK);
 
-  sync_monitor_entry->block[idx].type = SYNC_TYPE_NONE;
-  sync_monitor_entry->block[idx].name = NULL;
+  sync_stats_chunk->block[idx].type = SYNC_TYPE_NONE;
+  sync_stats_chunk->block[idx].name = NULL;
 
-  sync_monitor_entry->num_entry_in_use--;
-  sync_monitor_entry->hint_free_entry_idx = idx;
+  sync_stats_chunk->num_entry_in_use--;
+  sync_stats_chunk->hint_free_entry_idx = idx;
 
   return NO_ERROR;
 }
@@ -2387,14 +2413,14 @@ sync_return_sync_stats_to_pool (SYNC_MONITOR * sync_monitor_entry, int idx)
 static SYNC_STATS *
 sync_allocate_sync_stats (SYNC_PRIMITIVE_TYPE sync_prim_type, const char *name)
 {
-  SYNC_MONITOR *p, *last_chunk, *new_chunk;
+  SYNC_STATS_CHUNK *p, *last_chunk, *new_chunk;
   SYNC_STATS *stats = NULL;
   int i, idx;
   bool found = false;
 
-  pthread_mutex_lock (&sync_Monitor_lock);
+  pthread_mutex_lock (&sync_Stats_lock);
 
-  p = &sync_Monitor;
+  p = &sync_Stats;
   while (p != NULL)
     {
       if (p->num_entry_in_use < NUM_ENTRIES_OF_SYNC_STATS_BLOCK)
@@ -2424,11 +2450,11 @@ sync_allocate_sync_stats (SYNC_PRIMITIVE_TYPE sync_prim_type, const char *name)
   if (found == false)
     {
       /* none is available. allocate a block */
-      new_chunk = sync_allocate_sync_monitor_entry ();
+      new_chunk = sync_allocate_sync_stats_chunk ();
       if (new_chunk == NULL)
 	{
 	  /* error was set */
-	  pthread_mutex_unlock (&sync_Monitor_lock);
+	  pthread_mutex_unlock (&sync_Stats_lock);
 	  return NULL;
 	}
 
@@ -2437,7 +2463,7 @@ sync_allocate_sync_stats (SYNC_PRIMITIVE_TYPE sync_prim_type, const char *name)
       stats = sync_consume_sync_stats_from_pool (new_chunk, 0, sync_prim_type, name);
     }
 
-  pthread_mutex_unlock (&sync_Monitor_lock);
+  pthread_mutex_unlock (&sync_Stats_lock);
 
   return stats;
 }
@@ -2450,15 +2476,15 @@ sync_allocate_sync_stats (SYNC_PRIMITIVE_TYPE sync_prim_type, const char *name)
 static int
 sync_deallocate_sync_stats (SYNC_STATS * stats)
 {
-  SYNC_MONITOR *p;
+  SYNC_STATS_CHUNK *p;
   int idx;
   bool found = false;
 
   assert (stats != NULL);
 
-  pthread_mutex_lock (&sync_Monitor_lock);
+  pthread_mutex_lock (&sync_Stats_lock);
 
-  p = &sync_Monitor;
+  p = &sync_Stats;
   while (p != NULL)
     {
       if (0 < p->num_entry_in_use && p->block <= stats && stats <= p->block + NUM_ENTRIES_OF_SYNC_STATS_BLOCK)
@@ -2476,7 +2502,7 @@ sync_deallocate_sync_stats (SYNC_STATS * stats)
       p = p->next;
     }
 
-  pthread_mutex_unlock (&sync_Monitor_lock);
+  pthread_mutex_unlock (&sync_Stats_lock);
 
   assert (found == true);
 
@@ -2490,15 +2516,15 @@ sync_deallocate_sync_stats (SYNC_STATS * stats)
 void
 rmutex_dump_statistics (FILE * fp)
 {
-  SYNC_MONITOR *p;
+  SYNC_STATS_CHUNK *p;
   SYNC_STATS *stats;
   int i, cnt;
 
   fprintf (fp, "\n         RMutex Name         |Total Enter|Total Reenter|  Max elapsed  |  Total elapsed\n");
 
-  pthread_mutex_lock (&sync_Monitor_lock);
+  pthread_mutex_lock (&sync_Stats_lock);
 
-  p = &sync_Monitor;
+  p = &sync_Stats;
   while (p != NULL)
     {
       for (i = 0, cnt = 0; cnt < p->num_entry_in_use && i < NUM_ENTRIES_OF_SYNC_STATS_BLOCK; i++)
@@ -2520,11 +2546,15 @@ rmutex_dump_statistics (FILE * fp)
       p = p->next;
     }
 
-  pthread_mutex_unlock (&sync_Monitor_lock);
+  pthread_mutex_unlock (&sync_Stats_lock);
 
   fflush (fp);
 }
 
+/*
+ * sync_dump_statistics() - dump statistics of synchronization primitives
+ *   return: void
+ */
 void
 sync_dump_statistics (FILE * fp, SYNC_PRIMITIVE_TYPE type)
 {
