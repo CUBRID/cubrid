@@ -91,8 +91,8 @@ XCACHE xcache_Global =
 #define xcache_Log xcache_Global.logging_enabled
 
 /* Statistics */
-#define XCACHE_STAT_GET(name) ATOMIC_INC_64 (&xcache_Global.stats. ## name, 0)
-#define XCACHE_STAT_INC(name) ATOMIC_INC_64 (&xcache_Global.stats. ## name, 1)
+#define XCACHE_STAT_GET(name) ATOMIC_INC_64 (&xcache_Global.stats.name, 0)
+#define XCACHE_STAT_INC(name) ATOMIC_INC_64 (&xcache_Global.stats.name, 1)
 
 static INT64 xcache_Stat_lookups;
 static INT64 xcache_Stat_hits;
