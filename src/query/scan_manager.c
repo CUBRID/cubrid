@@ -5015,6 +5015,10 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      er_clear ();
 	      continue;
 	    }
+	  else if (sp_scan != S_SUCCESS)
+	    {
+	      return S_ERROR;
+	    }
 	}
 
       if (heap_is_mvcc_disabled_for_class (&hsidp->cls_oid))
