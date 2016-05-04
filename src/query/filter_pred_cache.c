@@ -307,6 +307,7 @@ fpcache_retire (THREAD_ENTRY * thread_p, BTID * btid, PRED_EXPR_WITH_CONTEXT * f
 	    {
 	      ATOMIC_INC_64 (&fpcache_Stat_clone_discard, 1);
 	    }
+	  pthread_mutex_unlock (&fpcache_entry->mutex);
 	}
       else
 	{
@@ -373,6 +374,8 @@ fpcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid)
 
 	      if (n_delete_btids == FPCACHE_DELETE_BTIDS_SIZE)
 		{
+		  /* Free mutex. */
+		  pthread_mutex_unlock (&fpcache_entry->mutex);
 		  /* Full buffer. Interrupt iteration, delete entries collected so far and then start over. */
 		  lf_tran_end_with_mb (t_entry);
 		  break;
