@@ -893,7 +893,7 @@ static int heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTE
 static int heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, OID * oid_p);
 static void heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
-				      RECDES * recdes_p, bool mark_reusable);
+				      RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa);
 
 /* heap update related functions */
 static int heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
@@ -22982,7 +22982,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       /* log operation */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable);
+				&context->home_recdes, is_reusable, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23347,7 +23347,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        */
 
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable);
+				&context->home_recdes, is_reusable, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23379,7 +23379,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        * should not be referenced anywhere in the database.
        */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true);
+				&forward_recdes, true, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23601,7 +23601,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       /* log operation */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable);
+				&context->home_recdes, is_reusable, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23665,10 +23665,11 @@ heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, O
  *   oid_p(in): object identifier of deleted record
  *   recdes_p(in): record descriptor of deleted record
  *   mark_reusable(in): if true, will mark the slot as reusable
+ *   undo_lsa(out): lsa to the undo record; needed to set previous version lsa of record at update
  */
 static void
 heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, RECDES * recdes_p,
-			  bool mark_reusable)
+			  bool mark_reusable, LOG_LSA * undo_lsa)
 {
   LOG_DATA_ADDR log_addr;
 
@@ -23701,6 +23702,12 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
     {
       /* log record descriptor */
       log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p, NULL);
+    }
+
+  if (undo_lsa)
+    {
+      /* get, set undo lsa before log_append_postpone() will make it inaccessible */
+      LSA_COPY (undo_lsa, logtb_find_current_tran_lsa (thread_p));
     }
 
   /* log postponed operation */
@@ -23881,6 +23888,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   bool update_old_home = false;
   bool update_old_forward = false;
   bool remove_old_forward = false;
+  LOG_LSA prev_version_lsa;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
@@ -23930,7 +23938,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
     {
       /* old forward record is deleted and the new record is inserted into old home, or into a new location */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true);
+				&forward_recdes, true, &prev_version_lsa);
       remove_old_forward = true;
       /* old home is updated in any case */
       update_old_home = true;
@@ -23941,7 +23949,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        * log just undo record, as the redo object needs the lsa from this log */
       heap_log_update_undo (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
 			    &forward_recdes, RVHF_UPDATE);
-
+      LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
       update_old_forward = true;
       /* for non mvcc operations, the redo logging can also be done here, maybe... */
     }
@@ -23950,7 +23958,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   if (is_mvcc_op)
     {
       /* set the previous version of the new record */
-      or_mvcc_set_log_lsa_to_record (context->recdes_p, logtb_find_current_tran_lsa (thread_p));
+      or_mvcc_set_log_lsa_to_record (context->recdes_p, &prev_version_lsa);
     }
 
   /* determine what operations on home/forward pages are necessary and execute extra operations for each case */

@@ -9805,6 +9805,8 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   LOG_RECORD_HEADER *log_rec_header = NULL;
   struct log_mvcc_undo *mvcc_undo = NULL;
   struct log_mvcc_undoredo *mvcc_undoredo = NULL;
+  struct log_undo *undo = NULL;
+  struct log_undoredo *undoredo = NULL;
   int udata_length;
   int udata_size;
   char *undo_data;
@@ -9836,9 +9838,27 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
       udata_length = mvcc_undoredo->undoredo.ulength;
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
     }
+  else if (log_rec_header->type == LOG_UNDO_DATA)
+    {
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undo), &process_lsa, log_page_p);
+      undo = (struct log_undo *) (log_page_p->area + process_lsa.offset);
+
+      udata_length = undo->length;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*undo), &process_lsa, log_page_p);
+    }
+  else if (log_rec_header->type == LOG_UNDOREDO_DATA || log_rec_header->type == LOG_DIFF_UNDOREDO_DATA)
+    {
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
+      undoredo = (struct log_undoredo *) (log_page_p->area + process_lsa.offset);
+
+      udata_length = undoredo->ulength;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
+    }
   else
     {
       assert_release (log_rec_header->type == LOG_MVCC_UNDO_DATA || log_rec_header->type == LOG_MVCC_UNDOREDO_DATA
+		      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA || log_rec_header->type == LOG_UNDO_DATA
+		      || log_rec_header->type == LOG_UNDOREDO_DATA
 		      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_FATAL_ERROR, 1, "Expecting undo/undoredo log record");
       return S_ERROR;
