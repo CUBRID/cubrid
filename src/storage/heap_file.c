@@ -23707,7 +23707,7 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
   if (undo_lsa)
     {
       /* get, set undo lsa before log_append_postpone() will make it inaccessible */
-      undo_lsa = logtb_find_current_tran_lsa (thread_p);
+      LSA_COPY(undo_lsa, logtb_find_current_tran_lsa (thread_p));
     }
 
   /* log postponed operation */
@@ -23949,7 +23949,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        * log just undo record, as the redo object needs the lsa from this log */
       heap_log_update_undo (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
 			    &forward_recdes, RVHF_UPDATE);
-      prev_version_lsa = *logtb_find_current_tran_lsa (thread_p);
+      LSA_COPY(&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
       update_old_forward = true;
       /* for non mvcc operations, the redo logging can also be done here, maybe... */
     }
