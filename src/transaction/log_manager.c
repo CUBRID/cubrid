@@ -9858,7 +9858,8 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
     {
       assert_release (log_rec_header->type == LOG_MVCC_UNDO_DATA || log_rec_header->type == LOG_MVCC_UNDOREDO_DATA
 		      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA || log_rec_header->type == LOG_UNDO_DATA
-		      || log_rec_header->type == LOG_UNDOREDO_DATA);
+		      || log_rec_header->type == LOG_UNDOREDO_DATA
+		      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_FATAL_ERROR, 1, "Expecting undo/undoredo log record");
       return S_ERROR;
     }
