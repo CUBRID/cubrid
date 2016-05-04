@@ -5238,6 +5238,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
       rep = heap_get_class_repr_id (thread_p, &real_class_oid);
       (void) or_replace_rep_id (context.recdes_p, rep);
+      /* TODO[arnia] : replace in oor recdes */
     }
 
   /* execute insert */
