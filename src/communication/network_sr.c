@@ -1386,15 +1386,15 @@ net_server_start (const char *server_name)
   sysprm_load_and_init (NULL, NULL);
   sysprm_set_er_log_file (server_name);
 
-  if (csect_initialize () != NO_ERROR)
+  if (sync_initialize_sync_stats () != NO_ERROR)
     {
-      PRINT_AND_LOG_ERR_MSG ("Failed to initialize critical section\n");
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize synchronization primitives monitor\n");
       status = -1;
       goto end;
     }
-  if (rwlock_initialize_rwlock_monitor () != NO_ERROR)
+  if (csect_initialize_static_critical_sections () != NO_ERROR)
     {
-      PRINT_AND_LOG_ERR_MSG ("Failed to initialize rwlock monitor\n");
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize critical section\n");
       status = -1;
       goto end;
     }
@@ -1418,7 +1418,8 @@ net_server_start (const char *server_name)
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
-  if (boot_restart_server (NULL, true, server_name, false, &check_coll_and_timezone, NULL) != NO_ERROR)
+  if (boot_restart_server (thread_get_thread_entry_info (), true, server_name, false, &check_coll_and_timezone,
+			   NULL) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -1442,11 +1443,11 @@ net_server_start (const char *server_name)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 
-	  xboot_shutdown_server (NULL, ER_THREAD_FINAL);
+	  xboot_shutdown_server (thread_get_thread_entry_info (), ER_THREAD_FINAL);
 	}
       else
 	{
-	  (void) xboot_shutdown_server (NULL, ER_ALL_FINAL);
+	  (void) xboot_shutdown_server (thread_get_thread_entry_info (), ER_ALL_FINAL);
 	}
 
 #if defined(CUBRID_DEBUG)
@@ -1467,8 +1468,8 @@ net_server_start (const char *server_name)
     }
 
   thread_final_manager ();
-  (void) rwlock_finalize_rwlock_monitor ();
-  csect_finalize ();
+  csect_finalize_static_critical_sections ();
+  (void) sync_finalize_sync_stats ();
 
 end:
 #if defined(WINDOWS)

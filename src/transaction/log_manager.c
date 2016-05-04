@@ -891,13 +891,13 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 	}
     }
 
-  logpb_finalize_pool ();
+  logpb_finalize_pool (thread_p);
   LOG_CS_EXIT (thread_p);
 
   return NO_ERROR;
 
 error:
-  logpb_finalize_pool ();
+  logpb_finalize_pool (thread_p);
   LOG_CS_EXIT (thread_p);
 
   return (error_code == NO_ERROR) ? ER_FAILED : error_code;
@@ -1131,7 +1131,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * Call the function again... since we have a different setting for the
        * page size
        */
-      logpb_finalize_pool ();
+      logpb_finalize_pool (thread_p);
       fileio_dismount (thread_p, log_Gl.append.vdes);
       log_Gl.append.vdes = NULL_VOLDES;
 
@@ -1626,7 +1626,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   save_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (!logpb_is_initialize_pool ())
+  if (!logpb_is_pool_initialized ())
     {
       logtb_undefine_trantable (thread_p);
       LOG_CS_EXIT (thread_p);
@@ -1635,7 +1635,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   if (log_Gl.append.vdes == NULL_VOLDES)
     {
-      logpb_finalize_pool ();
+      logpb_finalize_pool (thread_p);
       logtb_undefine_trantable (thread_p);
       LOG_CS_EXIT (thread_p);
       return;
@@ -1701,7 +1701,7 @@ log_final (THREAD_ENTRY * thread_p)
   logpb_flush_header (thread_p);
 
   /* Undefine page buffer pool and transaction table */
-  logpb_finalize_pool ();
+  logpb_finalize_pool (thread_p);
 
   logtb_undefine_trantable (thread_p);
 
@@ -7328,7 +7328,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   LOG_CS_ENTER (thread_p);
 
   xlogtb_dump_trantable (thread_p, out_fp);
-  logpb_dump (out_fp);
+  logpb_dump (thread_p, out_fp);
   logpb_flush_pages_direct (thread_p);
   logpb_flush_header (thread_p);
 
@@ -9204,7 +9204,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
 {
   LOG_CS_ENTER (thread_p);
 
-  if (log_Gl.trantable.area == NULL || !logpb_is_initialize_pool ())
+  if (log_Gl.trantable.area == NULL || !logpb_is_pool_initialized ())
     {
       LOG_CS_EXIT (thread_p);
       return;
@@ -9223,7 +9223,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
 
   /* Undefine log buffer pool and transaction table */
 
-  logpb_finalize_pool ();
+  logpb_finalize_pool (thread_p);
   logtb_undefine_trantable (thread_p);
 
   LOG_CS_EXIT (thread_p);
