@@ -6386,21 +6386,11 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
   isold_object = true;
 
   copy_recdes.data = NULL;
-  if (need_locking)
-    {
-      scan_code =
-	heap_mvcc_get_for_delete (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN, mvcc_reev_data,
-				  LOG_WARNING_IF_DELETED);
-    }
-  else
-    {
-      scan_code =
-	heap_get_with_class_oid (thread_p, &class_oid, oid, &copy_recdes, scan_cache, S_SELECT, COPY,
-				 LOG_WARNING_IF_DELETED);
-      assert ((lock_get_object_lock (oid, &class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= X_LOCK)
-	      || (lock_get_object_lock (&class_oid, oid_Root_class_oid,
-					LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
-    }
+
+  /* IMPORTANT TODO: use a different get function when need_locking==false, but make sure it gets the last version,
+     not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
+  scan_code = heap_mvcc_get_for_delete (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
+					mvcc_reev_data, LOG_WARNING_IF_DELETED);
 
   if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
     {
