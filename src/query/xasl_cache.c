@@ -94,18 +94,6 @@ XCACHE xcache_Global =
 #define XCACHE_STAT_GET(name) ATOMIC_INC_64 (&xcache_Global.stats.name, 0)
 #define XCACHE_STAT_INC(name) ATOMIC_INC_64 (&xcache_Global.stats.name, 1)
 
-static INT64 xcache_Stat_lookups;
-static INT64 xcache_Stat_hits;
-static INT64 xcache_Stat_miss;
-static INT64 xcache_Stat_recompiles;
-static INT64 xcache_Stat_failed_recompiles;
-static INT64 xcache_Stat_deletes;
-static INT64 xcache_Stat_cleanups;
-static INT64 xcache_Stat_fix;
-static INT64 xcache_Stat_unfix;
-static INT64 xcache_Stat_inserts;
-static INT64 xcache_Stat_found_at_insert;
-
 /* xcache_Entry_descriptor - used for latch-free hash table.
  * we have to declare member functions before instantiating xcache_Entry_descriptor.
  */
