@@ -9805,8 +9805,8 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   LOG_RECORD_HEADER *log_rec_header = NULL;
   struct log_mvcc_undo *mvcc_undo = NULL;
   struct log_mvcc_undoredo *mvcc_undoredo = NULL;
-  struct log_undo *non_mvcc_undo = NULL;
-  struct log_undoredo *non_mvcc_undoredo = NULL;
+  struct log_undo *undo = NULL;
+  struct log_undoredo *undoredo = NULL;
   int udata_length;
   int udata_size;
   char *undo_data;
@@ -9840,19 +9840,19 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
     }
   else if (log_rec_header->type == LOG_UNDO_DATA)
     {
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*non_mvcc_undo), &process_lsa, log_page_p);
-      non_mvcc_undo = (struct log_undo *) (log_page_p->area + process_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undo), &process_lsa, log_page_p);
+      undo = (struct log_undo *) (log_page_p->area + process_lsa.offset);
 
-      udata_length = non_mvcc_undo->length;
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*non_mvcc_undo), &process_lsa, log_page_p);
+      udata_length = undo->length;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*undo), &process_lsa, log_page_p);
     }
-  else if (log_rec_header->type == LOG_UNDOREDO_DATA)
+  else if (log_rec_header->type == LOG_UNDOREDO_DATA || log_rec_header->type == LOG_DIFF_UNDOREDO_DATA)
     {
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*non_mvcc_undoredo), &process_lsa, log_page_p);
-      non_mvcc_undoredo = (struct log_undoredo *) (log_page_p->area + process_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
+      undoredo = (struct log_undoredo *) (log_page_p->area + process_lsa.offset);
 
-      udata_length = non_mvcc_undoredo->ulength;
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*non_mvcc_undoredo), &process_lsa, log_page_p);
+      udata_length = undoredo->ulength;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
     }
   else
     {
