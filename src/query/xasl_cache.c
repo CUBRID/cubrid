@@ -1005,14 +1005,23 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
   /* Allocate XASL cache entry data. */
   if (n_oid > 0)
     {
+      int index;
       related_objects = (XCACHE_RELATED_OBJECT *) malloc (n_oid * sizeof (XCACHE_RELATED_OBJECT));
       if (related_objects == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, n_oid * sizeof (XCACHE_RELATED_OBJECT));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  n_oid * sizeof (XCACHE_RELATED_OBJECT));
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error;
 	}
+      for (index = 0; index < n_oid; index++)
+	{
+	  related_objects[index].oid = class_oids[index];
+	  related_objects[index].lock = class_locks[index];
+	  related_objects[index].tcard = tcards[index];
+	}
     }
+
   if (xcache_Log)
     {
       /* Do we want to add the strings even if xcache logging is not enabled?
@@ -1080,6 +1089,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
+
       /* Initialize xcache_entry stuff. */
       XASL_ID_COPY (&(*xcache_entry)->xasl_id, stream->xasl_id);
       (*xcache_entry)->xasl_id.sha1 = context->sha1;
