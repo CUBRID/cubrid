@@ -8555,7 +8555,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   (void) logtb_get_mvcc_snapshot (thread_p);
 
   mvcc_upddel_reev_data.copyarea = NULL;
-  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE, NULL);
+  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE);
   class_oid_cnt = update->no_classes;
   mvcc_reev_class_cnt = update->no_reev_classes;
 
@@ -9471,7 +9471,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   class_oid_cnt = delete_->no_classes;
   mvcc_reev_class_cnt = delete_->no_reev_classes;
-  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE, NULL);
+  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE);
 
   mvcc_upddel_reev_data.copyarea = NULL;
 
@@ -12041,7 +12041,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       /* init scan reevaluation structure */
       INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, &range_filter, &key_filter, &data_filter, &scan_id->qualification);
       /* set reevaluation data */
-      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE, NULL);
+      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
       p_mvcc_reev_data = &mvcc_reev_data;
 
       /* clear list id if all reevaluations result is false */

@@ -4994,7 +4994,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* data filter already initialized, don't have key or range init scan reevaluation structure */
 	  INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, p_range_filter, p_key_filter, &data_filter,
 			       &scan_id->qualification);
-	  SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE, NULL);
+	  SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
 	  COPY_OID (&current_oid, &hsidp->curr_oid);
 	  if (scan_id->fixed)
 	    {
@@ -5790,7 +5790,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       /* init scan reevaluation structure */
       INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, &range_filter, &key_filter, data_filter, &scan_id->qualification);
       /* set reevaluation data */
-      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE, NULL);
+      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
 
       sp_scan =
 	heap_mvcc_get_for_delete (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,

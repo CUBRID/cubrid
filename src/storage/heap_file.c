@@ -20263,7 +20263,7 @@ try_again:
 
   /* Check satisfies delete. */
   satisfies_delete_result = mvcc_satisfies_delete (thread_p, recdes_header);
-  if (satisfies_delete_result == DELETE_RECORD_INSERT_IN_PROGRESS && !MVCC_IS_HEADER_PREV_VERSION_VALID (recdes_header))	/* yolo */
+  if (satisfies_delete_result == DELETE_RECORD_INSERT_IN_PROGRESS && !MVCC_IS_HEADER_PREV_VERSION_VALID (recdes_header))
     {
       /* Record is too "new" and cannot be seen (the inserter is still considered active). Should be handled before
        * calling this function. */
@@ -21124,32 +21124,23 @@ heap_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * sc
   ev_res = V_TRUE;
   if (!MVCC_IS_REC_INSERTED_BY_ME (thread_p, mvcc_header_p))
     {
-      if (mvcc_reev_data_p->primary_key != NULL)
+      switch (mvcc_reev_data_p->type)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_ROW_INVALID_FOR_DELETE, 3, curr_row_version_oid_p->volid,
-		  curr_row_version_oid_p->pageid, curr_row_version_oid_p->slotid);
-	  ev_res = V_ERROR;
-	}
-      else
-	{
-	  switch (mvcc_reev_data_p->type)
-	    {
-	    case REEV_DATA_SCAN:
-	      ev_res =
-		mvcc_reevaluate_filters (thread_p, mvcc_reev_data_p->select_reev_data, curr_row_version_oid_p, recdes);
-	      mvcc_reev_data_p->filter_result = ev_res;
-	      break;
+	case REEV_DATA_SCAN:
+	  ev_res =
+	    mvcc_reevaluate_filters (thread_p, mvcc_reev_data_p->select_reev_data, curr_row_version_oid_p, recdes);
+	  mvcc_reev_data_p->filter_result = ev_res;
+	  break;
 
-	    case REEV_DATA_UPDDEL:
-	      ev_res =
-		heap_mvcc_reev_cond_assigns (thread_p, &scan_cache->node.class_oid, curr_row_version_oid_p, scan_cache,
-					     recdes, mvcc_reev_data_p->upddel_reev_data);
-	      mvcc_reev_data_p->filter_result = ev_res;
-	      break;
+	case REEV_DATA_UPDDEL:
+	  ev_res =
+	    heap_mvcc_reev_cond_assigns (thread_p, &scan_cache->node.class_oid, curr_row_version_oid_p, scan_cache,
+					 recdes, mvcc_reev_data_p->upddel_reev_data);
+	  mvcc_reev_data_p->filter_result = ev_res;
+	  break;
 
-	    default:
-	      break;
-	    }
+	default:
+	  break;
 	}
     }
   else
