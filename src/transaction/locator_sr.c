@@ -6382,6 +6382,12 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
   copy_recdes.data = NULL;
 
+  if (need_locking == false)
+    {
+      /* the reevaluation is not necessary if the object is already locked */
+      mvcc_reev_data = NULL;
+    }
+
   /* IMPORTANT TODO: use a different get function when need_locking==false, but make sure it gets the last version,
      not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
   scan_code = heap_mvcc_get_for_delete (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
