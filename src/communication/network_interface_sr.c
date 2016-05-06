@@ -392,9 +392,8 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *req
    * 3. check if the client has a capability to make it compatible.
    */
   compat = rel_get_net_compatible (client_release, server_release);
-  if (check_client_capabilities
-      (thread_p, client_capabilities, rel_compare (client_release, server_release), &compat,
-       client_host) != client_capabilities)
+  if (check_client_capabilities (thread_p, client_capabilities, rel_compare (client_release, server_release),
+				 &compat, client_host) != client_capabilities)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_HAND_SHAKE, 1, client_host);
       return_error_to_client (thread_p, rid);
@@ -418,9 +417,8 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *req
       thread_p->conn_entry->client_type = client_type;
     }
 
-  reply_size =
-    or_packed_string_length (server_release, &strlen1) + (OR_INT_SIZE * 3) + or_packed_string_length (boot_Host_name,
-												      &strlen2);
+  reply_size = (or_packed_string_length (server_release, &strlen1) + (OR_INT_SIZE * 3)
+		+ or_packed_string_length (boot_Host_name, &strlen2));
   ptr = or_pack_string_with_length (reply, (char *) server_release, strlen1);
   ptr = or_pack_string (ptr, NULL);	/* for backward compatibility */
   ptr = or_pack_int (ptr, server_capabilities ());
@@ -474,7 +472,7 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 
   copy_area = NULL;
   success =
-    xlocator_fetch (thread_p, &oid, chn, NULL, lock, (LC_FETCH_VERSION_TYPE) fetch_version_type,
+    xlocator_fetch (thread_p, &oid, chn, lock, (LC_FETCH_VERSION_TYPE) fetch_version_type,
 		    (LC_FETCH_VERSION_TYPE) fetch_version_type, &class_oid, class_chn, prefetch, &copy_area);
 
   if (success != NO_ERROR)
@@ -1563,9 +1561,8 @@ slocator_assign_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_string_nocopy (ptr, &classname);
 
-  success =
-    (xlocator_assign_oid (thread_p, &hfid, &perm_oid, expected_length, &class_oid, classname) ==
-     NO_ERROR) ? NO_ERROR : ER_FAILED;
+  success = ((xlocator_assign_oid (thread_p, &hfid, &perm_oid, expected_length, &class_oid, classname) == NO_ERROR)
+	     ? NO_ERROR : ER_FAILED);
   if (success != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
@@ -2297,7 +2294,6 @@ void
 shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error;
-  int reclaim_mvcc_next_versions = 0;
   HFID hfid;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -2313,9 +2309,8 @@ shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *req
     }
 
   ptr = or_unpack_hfid (request, &hfid);
-  ptr = or_unpack_int (ptr, &reclaim_mvcc_next_versions);
 
-  error = xheap_reclaim_addresses (thread_p, &hfid, reclaim_mvcc_next_versions);
+  error = xheap_reclaim_addresses (thread_p, &hfid);
   if (error != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
@@ -5468,7 +5463,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      event_log_slow_query (thread_p, &info, response_time, &diff_stats);
 	    }
 
-	  if (trace_ioreads > 0 && diff_stats.perf_statistics[PB_NUM_IOREADS] >= trace_ioreads)
+	  if (trace_ioreads > 0 && diff_stats.pb_num_ioreads >= trace_ioreads)
 	    {
 	      event_log_many_ioreads (thread_p, &info, response_time, &diff_stats);
 	    }
@@ -5610,9 +5605,8 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
   fprintf (log_fp, "%*cbuffer: fetch=%lld, ioread=%lld, iowrite=%lld\n", indent, ' ',
-	   (long long int) diff_stats->perf_statistics[PB_NUM_FETCHES], 
-	   (long long int) diff_stats->perf_statistics[PB_NUM_IOREADS],
-	   (long long int) diff_stats->perf_statistics[PB_NUM_IOWRITES]);
+	   (long long int) diff_stats->pb_num_fetches, (long long int) diff_stats->pb_num_ioreads,
+	   (long long int) diff_stats->pb_num_iowrites);
   fprintf (log_fp, "%*cwait: cs=%d, lock=%d, latch=%d\n\n", indent, ' ', TO_MSEC (thread_p->event_stats.cs_waits),
 	   TO_MSEC (thread_p->event_stats.lock_waits), TO_MSEC (thread_p->event_stats.latch_waits));
 
@@ -5655,7 +5649,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
-  fprintf (log_fp, "%*cioreads: %lld\n\n", indent, ' ', (long long int) diff_stats->perf_statistics[PB_NUM_IOREADS]);
+  fprintf (log_fp, "%*cioreads: %lld\n\n", indent, ' ', (long long int) diff_stats->pb_num_ioreads);
 
   event_log_end (thread_p);
 }
@@ -6893,8 +6887,8 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, ch
   ptr = or_unpack_int (ptr, &quit_on_errors);
   ptr = or_unpack_int (ptr, &lock_rr_tran);
 
-  malloc_size =
-    ((sizeof (char *) + sizeof (LOCK) + sizeof (int) + sizeof (int) + sizeof (OID) + sizeof (int)) * num_classes);
+  malloc_size = ((sizeof (char *) + sizeof (LOCK) + sizeof (int) + sizeof (int) + sizeof (OID) + sizeof (int))
+		 * num_classes);
 
   malloc_area = (char *) db_private_alloc (thread_p, malloc_size);
   if (malloc_area != NULL)
@@ -7266,7 +7260,8 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       return;
     }
 
-  csect_dump_statistics (outfp);
+  sync_dump_statistics (outfp, SYNC_TYPE_ALL);
+
   file_size = ftell (outfp);
 
   /* 
@@ -7638,9 +7633,8 @@ shf_get_class_num_objs_and_pages (THREAD_ENTRY * thread_p, unsigned int rid, cha
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_int (ptr, &approximation);
 
-  success =
-    (xheap_get_class_num_objects_pages (thread_p, &hfid, approximation, &nobjs, &npages) ==
-     NO_ERROR) ? NO_ERROR : ER_FAILED;
+  success = ((xheap_get_class_num_objects_pages (thread_p, &hfid, approximation, &nobjs, &npages) == NO_ERROR)
+	     ? NO_ERROR : ER_FAILED);
 
   if (success != NO_ERROR)
     {
@@ -8259,8 +8253,8 @@ slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ptr = or_unpack_btid (ptr, &pk_btid);
   ptr = or_unpack_string (ptr, &fk_name);
 
-  if (xlocator_check_fk_validity
-      (thread_p, &class_oid, &hfid, key_type, n_attrs, attr_ids, &pk_cls_oid, &pk_btid, fk_name) != NO_ERROR)
+  if (xlocator_check_fk_validity (thread_p, &class_oid, &hfid, key_type, n_attrs, attr_ids, &pk_cls_oid, &pk_btid,
+				  fk_name) != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
     }
@@ -9901,72 +9895,6 @@ sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     {
       free_and_init (data_reply);
     }
-}
-
-/*
- * slocator_cleanup_partition_links () -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-slocator_cleanup_partition_links (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *ptr;
-  OID *oid_list;
-  int nr_oids;
-  int success = NO_ERROR;
-  int i;
-  OID class_oid;
-
-  ptr = request;
-  ptr = or_unpack_oid (ptr, &class_oid);
-  ptr = or_unpack_int (ptr, &nr_oids);
-
-  if (nr_oids < 1)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_PARTITION_REQUEST, 0);
-      return_error_to_client (thread_p, rid);
-      success = ER_INVALID_PARTITION_REQUEST;
-      goto end;
-    }
-
-  oid_list = (OID *) malloc (nr_oids * sizeof (OID));
-  if (oid_list == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_oids * sizeof (OID));
-      return_error_to_client (thread_p, rid);
-      success = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto end;
-    }
-
-  for (i = 0; i < nr_oids; i++)
-    {
-      ptr = or_unpack_oid (ptr, &oid_list[i]);
-    }
-
-  success = xlocator_cleanup_partition_links (thread_p, &class_oid, nr_oids, oid_list);
-
-  if (oid_list != NULL)
-    {
-      free_and_init (oid_list);
-    }
-
-  if (success != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-end:
-  ptr = or_pack_int (reply, success);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 

@@ -67,6 +67,7 @@
 #include "connection_defs.h"
 #include "connection_sr.h"
 #endif
+#include "critical_section.h"
 #include "page_buffer.h"
 #include "file_io.h"
 #include "disk_manager.h"
@@ -108,9 +109,31 @@ static int rv;
 #define COND_DESTROY(a)
 #endif /* !SERVER_MODE */
 
+/* RMutex for log page buffer */
+SYNC_RMUTEX logpb_Rmutex_log_pb;
+#define LOGPB_RMUTEX_LOG_PB (&logpb_Rmutex_log_pb)
+#define LOGPB_RMUTEX_LOG_PB_NAME "LOGPB_RMUTEX_LOG_PB"
+
+#define START_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p) \
+  do \
+    { \
+      (r) = rmutex_lock ((thread_p), LOGPB_RMUTEX_LOG_PB); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define END_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p) \
+  do \
+    { \
+      (r) = rmutex_unlock ((thread_p), LOGPB_RMUTEX_LOG_PB); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+
 #define LOGPB_FIND_BUFPTR(bufid) log_Pb.pool[(bufid)]
 #define LOGPB_FIND_NBUFFER_FROM_CONT_BUFFERS(setbufs, nbuf) \
-  ((struct log_buffer *) ((SIZEOF_LOG_BUFFER * (nbuf)) + (char *)(setbufs)))
+  ((LOG_BUFFER *) ((SIZEOF_LOG_BUFFER * (nbuf)) + (char *)(setbufs)))
 
 /* PAGES OF ACTIVE LOG PORTION */
 #define LOGPB_HEADER_PAGE_ID             (-9)	/* The first log page in the infinite log sequence. It is always kept
@@ -177,8 +200,7 @@ static int rv;
       { \
         logpb_set_dirty ((thread_p), log_Gl.append.log_pgptr, DONT_FREE); \
       } \
-    log_Gl.hdr.append_lsa.offset = DB_ALIGN (log_Gl.hdr.append_lsa.offset, \
-					     DOUBLE_ALIGNMENT); \
+    log_Gl.hdr.append_lsa.offset = DB_ALIGN (log_Gl.hdr.append_lsa.offset, DOUBLE_ALIGNMENT); \
     if (log_Gl.hdr.append_lsa.offset >= (int) LOGAREA_SIZE) \
       { \
         logpb_next_append_page((thread_p), LOG_DONT_SET_DIRTY); \
@@ -227,22 +249,20 @@ struct log_buffer
   LOG_PAGE logpage;		/* The actual buffered log page */
 };
 
+typedef struct log_bufarea LOG_BUFAREA;
 struct log_bufarea
 {				/* A buffer area */
-  struct log_buffer *bufarea;
-  struct log_bufarea *next;
+  LOG_BUFFER *bufarea;
+  LOG_BUFAREA *next;
 };
-
-/* callback function for scan pages to flush */
-typedef void (*log_buffer_apply_func) (struct log_buffer * bufptr);
 
 /* Global structure to trantable, log buffer pool, etc   */
 typedef struct log_pb_global_data LOG_PB_GLOBAL_DATA;
 struct log_pb_global_data
 {
   MHT_TABLE *ht;		/* Hash table from logical pageid to log buffer */
-  struct log_bufarea *poolarea;	/* Contiguous area of buffers */
-  struct log_buffer **pool;	/* Log buffer pool */
+  LOG_BUFAREA *poolarea;	/* Contiguous area of buffers */
+  LOG_BUFFER **pool;		/* Log buffer pool */
   int num_buffers;		/* Number of log buffers */
   int clock_hand;		/* Clock hand */
 };
@@ -261,16 +281,14 @@ typedef struct
   int item_count;
 } ARV_LOG_PAGE_INFO_TABLE;
 
-#define SIZEOF_LOG_BUFFER \
-  (offsetof (struct log_buffer, logpage) + LOG_PAGESIZE)
+#define SIZEOF_LOG_BUFFER (offsetof (LOG_BUFFER, logpage) + LOG_PAGESIZE)
 
 #define LOG_GET_LOG_BUFFER_PTR(log_pgptr) \
-  ((struct log_buffer *) ((char *) (log_pgptr) - offsetof (struct log_buffer, logpage)))
+  ((LOG_BUFFER *) ((char *) (log_pgptr) - offsetof (LOG_BUFFER, logpage)))
 
 static const int LOG_BKUP_HASH_NUM_PAGEIDS = 1000;
 /* MIN AND MAX BUFFERS */
-#define LOG_MAX_NUM_CONTIGUOUS_BUFFERS \
-  ((unsigned int) (INT_MAX / (5 * SIZEOF_LOG_BUFFER)))
+#define LOG_MAX_NUM_CONTIGUOUS_BUFFERS ((unsigned int) (INT_MAX / (5 * SIZEOF_LOG_BUFFER)))
 
 #define LOG_MAX_LOGINFO_LINE (PATH_MAX * 4)
 
@@ -281,9 +299,7 @@ int log_default_input_for_archive_log_location = 0;
 int log_default_input_for_archive_log_location = -1;
 #endif
 
-LOG_PB_GLOBAL_DATA log_Pb = {
-  NULL, NULL, NULL, 0, 0
-};
+LOG_PB_GLOBAL_DATA log_Pb = { NULL, NULL, NULL, 0, 0 };
 
 LOG_LOGGING_STAT log_Stat;
 static ARV_LOG_PAGE_INFO_TABLE logpb_Arv_page_info_table;
@@ -302,15 +318,15 @@ LOG_LSA NULL_LSA = { NULL_PAGEID, NULL_OFFSET };
  * Functions
  */
 
-static int logpb_expand_pool (int num_new_buffers);
-static struct log_buffer *logpb_replace (THREAD_ENTRY * thread_p, bool * retry);
+static int logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers);
+static LOG_BUFFER *logpb_replace (THREAD_ENTRY * thread_p, bool * retry);
 static LOG_PAGE *logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetch_mode);
 static bool logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 #if !defined(NDEBUG)
-static bool logpb_is_any_dirty (void);
+static bool logpb_is_any_dirty (THREAD_ENTRY * thread_p);
 #endif /* !NDEBUG */
 #if defined(CUBRID_DEBUG)
-static bool logpb_is_any_fix (void);
+static bool logpb_is_any_fix (THREAD_ENTRY * thread_p);
 #endif /* CUBRID_DEBUG */
 static void logpb_dump_information (FILE * out_fp);
 static void logpb_dump_to_flush_page (FILE * out_fp);
@@ -352,7 +368,7 @@ static void logpb_dump_parameter (FILE * outfp);
 static void logpb_dump_runtime (FILE * outfp);
 static void logpb_reset_clock_hand (int buffer_index);
 static void logpb_move_next_clock_hand (void);
-static void logpb_unfix_page (struct log_buffer *bufptr);
+static void logpb_unfix_page (LOG_BUFFER * bufptr);
 static void logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p);
 
 static int logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_t backup_time);
@@ -364,10 +380,6 @@ static LOG_ZIP *logpb_get_zip_undo (THREAD_ENTRY * thread_p);
 static LOG_ZIP *logpb_get_zip_redo (THREAD_ENTRY * thread_p);
 static char *logpb_get_data_ptr (THREAD_ENTRY * thread_p);
 static bool logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length);
-
-#if 0
-static FILEIO_BACKUP_LEVEL log_find_most_recent_backup_level (void);
-#endif
 
 static int logpb_flush_all_append_pages (THREAD_ENTRY * thread_p);
 static int logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * ndoe);
@@ -398,7 +410,6 @@ static void logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * heade
 static void logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data);
 static void logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * crumbs);
 static void logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty);
-static int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
 static LOG_PAGE *logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
@@ -466,7 +477,7 @@ logpb_move_next_clock_hand (void)
  *
  */
 static void
-logpb_unfix_page (struct log_buffer *bufptr)
+logpb_unfix_page (LOG_BUFFER * bufptr)
 {
   bufptr->fcnt--;
   if (bufptr->fcnt < 0)
@@ -510,7 +521,6 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p)
 }
 
 /*
- * TODO : STL
  * logpb_expand_pool - Expand log buffer pool
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -519,26 +529,25 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p)
  *
  * NOTE:Expand the log buffer pool with the given number of buffers.
  *              If a zero or a negative value is given, the function expands
- *              the buffer pool with a default porcentage of the currently
- *              size.
+ *              the buffer pool with a default percentage of the current size.
  */
 static int
-logpb_expand_pool (int num_new_buffers)
+logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
 {
-  struct log_buffer *log_bufptr;	/* Pointer to array of buffers */
-  struct log_bufarea *area;	/* Contiguous area for buffers */
+  LOG_BUFFER *log_bufptr;	/* Pointer to array of buffers */
+  LOG_BUFAREA *area;		/* Contiguous area for buffers */
   int bufid, i;			/* Buffer index */
   int total_buffers;		/* Total num buffers */
   int size;			/* Size of area to allocate */
   float expand_rate;
-  struct log_buffer **buffer_pool;
+  LOG_BUFFER **buffer_pool;
   int error_code = NO_ERROR;
   int r;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
-  assert (LOG_CS_OWN_WRITE_MODE (NULL));
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  r = csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
 
   if (num_new_buffers <= 0)
     {
@@ -576,13 +585,14 @@ logpb_expand_pool (int num_new_buffers)
   while ((unsigned int) num_new_buffers > LOG_MAX_NUM_CONTIGUOUS_BUFFERS)
     {
       /* Note that we control overflow of size in this way */
-      csect_exit (NULL, CSECT_LOG_PB);
-      error_code = logpb_expand_pool (LOG_MAX_NUM_CONTIGUOUS_BUFFERS);
+      END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
+
+      error_code = logpb_expand_pool (thread_p, LOG_MAX_NUM_CONTIGUOUS_BUFFERS);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
-      r = csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
+      START_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
       num_new_buffers -= LOG_MAX_NUM_CONTIGUOUS_BUFFERS;
     }
 
@@ -595,23 +605,23 @@ logpb_expand_pool (int num_new_buffers)
        * and keep the address of the buffer area for deallocation purposes at a
        * later time.
        */
-      size = ((num_new_buffers * SIZEOF_LOG_BUFFER) + sizeof (struct log_bufarea));
+      size = ((num_new_buffers * SIZEOF_LOG_BUFFER) + sizeof (LOG_BUFAREA));
 
-      area = (struct log_bufarea *) malloc (size);
+      area = (LOG_BUFAREA *) malloc (size);
       if (area == NULL)
 	{
-	  csect_exit (NULL, CSECT_LOG_PB);
+	  END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
       /* allocate a pointer array to point to each buffer */
-      buffer_pool = (struct log_buffer **) realloc (log_Pb.pool, total_buffers * sizeof (*log_Pb.pool));
+      buffer_pool = (LOG_BUFFER **) realloc (log_Pb.pool, total_buffers * sizeof (*log_Pb.pool));
       if (buffer_pool == NULL)
 	{
 	  free_and_init (area);
 
-	  csect_exit (NULL, CSECT_LOG_PB);
+	  END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_buffers * sizeof (*log_Pb.pool));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -619,7 +629,7 @@ logpb_expand_pool (int num_new_buffers)
 
       memset (area, 1, size);
 
-      area->bufarea = ((struct log_buffer *) ((char *) area + sizeof (struct log_bufarea)));
+      area->bufarea = ((LOG_BUFFER *) ((char *) area + sizeof (LOG_BUFAREA)));
       area->next = log_Pb.poolarea;
 
       /* Initialize every new buffer */
@@ -637,7 +647,7 @@ logpb_expand_pool (int num_new_buffers)
       log_Pb.num_buffers = total_buffers;
     }
 
-  csect_exit (NULL, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
 
   log_Stat.log_buffer_expand_count++;
 
@@ -649,8 +659,7 @@ logpb_expand_pool (int num_new_buffers)
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- * NOTE:Initialize the log buffer pool. All resident pages are
- *              invalidated.
+ * NOTE:Initialize the log buffer pool. All resident pages are invalidated.
  */
 int
 logpb_initialize_pool (THREAD_ENTRY * thread_p)
@@ -658,6 +667,11 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
+
+  if (rmutex_initialize (LOGPB_RMUTEX_LOG_PB, LOGPB_RMUTEX_LOG_PB_NAME) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   if (lzo_init () == LZO_E_OK)
     {				/* lzo library init */
@@ -714,7 +728,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 
   if (log_Pb.pool != NULL)
     {
-      logpb_finalize_pool ();
+      logpb_finalize_pool (thread_p);
     }
 
   assert (log_Pb.pool == NULL && log_Pb.poolarea == NULL && log_Pb.ht == NULL);
@@ -726,15 +740,14 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   /* 
    * Create an area to keep the number of desired buffers
    */
-  error_code = logpb_expand_pool (-1);
+  error_code = logpb_expand_pool (thread_p, -1);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  log_Pb.ht =
-    mht_create ("Log buffer pool hash table", log_Pb.num_buffers * 8, mht_logpageidhash,
-		mht_compare_logpageids_are_equal);
+  log_Pb.ht = mht_create ("Log buffer pool hash table", log_Pb.num_buffers, mht_logpageidhash,
+			  mht_compare_logpageids_are_equal);
   if (log_Pb.ht == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -769,7 +782,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 
 error:
 
-  logpb_finalize_pool ();
+  logpb_finalize_pool (thread_p);
   logpb_fatal_error (thread_p, false, ARG_FILE_LINE, "log_pbpool_init");
 
   return error_code;
@@ -780,23 +793,22 @@ error:
  *
  * return: nothing
  *
- * NOTE:Terminate the log buffer pool. All log resident pages are
- *              invalidated.
+ * NOTE:Terminate the log buffer pool. All log resident pages are invalidated.
  */
 void
-logpb_finalize_pool (void)
+logpb_finalize_pool (THREAD_ENTRY * thread_p)
 {
-  struct log_bufarea *area;	/* Buffer area to free */
+  LOG_BUFAREA *area;		/* Buffer area to free */
   int r;
 
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
 
-  r = csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
 
   if (log_Pb.pool == NULL)
     {
       /* logpb already finalized */
-      csect_exit (NULL, CSECT_LOG_PB);
+      END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
       return;
     }
 
@@ -812,10 +824,10 @@ logpb_finalize_pool (void)
   LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
 
 #if defined(CUBRID_DEBUG)
-  if (logpb_is_any_dirty () == true || logpb_is_any_fix () == true)
+  if (logpb_is_any_dirty (thread_p) == true || logpb_is_any_fix (thread_p) == true)
     {
       er_log_debug (ARG_FILE_LINE, "log_pbpool_final: Log Buffer pool contains dirty or fixed pages at the end.\n");
-      logpb_dump (stdout);
+      logpb_dump (thread_p, stdout);
     }
 #endif /* CUBRID_DEBUG */
 
@@ -840,7 +852,7 @@ logpb_finalize_pool (void)
       free_and_init (area);
     }
 
-  csect_exit (NULL, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
 
   logpb_finalize_flush_info ();
 
@@ -872,17 +884,19 @@ logpb_finalize_pool (void)
 	}
 #endif
     }
+
+  (void) rmutex_finalize (LOGPB_RMUTEX_LOG_PB);
 }
 
 /*
- * logpb_is_initialize_pool - Find out if buffer pool has been initialized
+ * logpb_is_pool_initialized - Find out if buffer pool has been initialized
  *
  * return:
  *
  * NOTE:Find out if the buffer pool has been initialized.
  */
 bool
-logpb_is_initialize_pool (void)
+logpb_is_pool_initialized (void)
 {
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
   if (log_Pb.pool != NULL)
@@ -906,7 +920,7 @@ logpb_is_initialize_pool (void)
 void
 logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 {
-  register struct log_buffer *log_bufptr;	/* A log buffer */
+  LOG_BUFFER *log_bufptr;	/* A log buffer */
   int i, rv;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -922,7 +936,7 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
    */
   logpb_flush_pages_direct (thread_p);
 
-  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
@@ -936,22 +950,22 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 	}
     }
 
-  csect_exit (thread_p, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 }
 
 /*
  * logpb_replace - Find a page to replace
  *
- * return: struct log_buffer *
+ * return: LOG_BUFFER *
  *                       retry : true if need to retry, false if not
  *
  *   retry(in/out): true if need to retry, false if not
  *
  */
-static struct log_buffer *
+static LOG_BUFFER *
 logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 {
-  register struct log_buffer *log_bufptr = NULL;	/* A log buffer */
+  LOG_BUFFER *log_bufptr = NULL;	/* A log buffer */
   int bufid;
   int ixpool = -1;
   int num_unfixed = 1;
@@ -996,14 +1010,14 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 		  ixpool = log_bufptr->ipool;
 		  if (log_bufptr->dirty == true)
 		    {
-		      csect_exit (thread_p, CSECT_LOG_PB);
+		      END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
 		      assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 		      log_Stat.log_buffer_flush_count_by_replacement++;
 		      logpb_flush_all_append_pages (thread_p);
 
-		      rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
-		      mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_REPLACEMENTS);
+		      START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+		      mnt_log_replacements (thread_p);
 		      *retry = true;
 		      return NULL;
 		    }
@@ -1027,9 +1041,9 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
        * aborted at the same time or it is likely that there is a bug in the
        * system (e.g., buffer are not being freed).
        */
-      csect_exit (thread_p, CSECT_LOG_PB);
+      END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
-      error_code = logpb_expand_pool (-1);
+      error_code = logpb_expand_pool (thread_p, -1);
 
       if (error_code != NO_ERROR)
 	{
@@ -1043,7 +1057,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 	}
       log_bufptr = NULL;
 
-      rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+      START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
     }
 
   return log_bufptr;
@@ -1056,8 +1070,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
  *
  *   pageid(in): Page identifier
  *
- * NOTE:Creates the log page identified by pageid on a log buffer and
- *              return such buffer.
+ * NOTE:Creates the log page identified by pageid on a log buffer and return such buffer.
  *              Just initializes log buffer hdr,
  *              To read a page from disk is not needed.
  */
@@ -1090,7 +1103,7 @@ logpb_create (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
 static LOG_PAGE *
 logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetch_mode)
 {
-  struct log_buffer *log_bufptr;	/* A log buffer */
+  LOG_BUFFER *log_bufptr;	/* A log buffer */
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;	/* The corresponding physical page */
   int rv;
   bool retry;
@@ -1110,9 +1123,9 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
   assert ((fetch_mode == NEW_PAGE) || (fetch_mode == OLD_PAGE));
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
-  log_bufptr = (struct log_buffer *) mht_get (log_Pb.ht, &pageid);
+  log_bufptr = (LOG_BUFFER *) mht_get (log_Pb.ht, &pageid);
   if (log_bufptr == NULL)
     {
       /* 
@@ -1169,7 +1182,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 	    {
 	      goto error;
 	    }
-	  mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_FETCH_IOREADS);
+	  mnt_log_fetch_ioreads (thread_p);
 	}
 
       /* Recall the page in the buffer pool, and hash the identifier */
@@ -1187,9 +1200,9 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
       log_bufptr->fcnt++;
     }
 
-  csect_exit (thread_p, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
-  mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_FETCHES);
+  mnt_log_fetches (thread_p);
 
   if (is_perf_tracking)
     {
@@ -1224,7 +1237,7 @@ error:
       logpb_initialize_log_buffer (log_bufptr);
       logpb_reset_clock_hand (log_bufptr->ipool);
     }
-  csect_exit (thread_p, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   return NULL;
 }
@@ -1237,13 +1250,12 @@ error:
  *   log_pgptr(in): Log page pointer
  *   free_page(in): Free the page too ? Valid values:  FREE, DONT_FREE
  *
- * NOTE:Mark the current log page as dirty and optionally free the
- *              page.
+ * NOTE:Mark the current log page as dirty and optionally free the page.
  */
 void
 logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 {
-  struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
   int rv;
 
   /* Get the address of the buffer from the page. */
@@ -1257,7 +1269,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
     }
 #endif /* CUBRID_DEBUG */
 
-  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   bufptr->dirty = true;
   if (free_page == FREE)
@@ -1265,7 +1277,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
       logpb_unfix_page (bufptr);
     }
 
-  csect_exit (thread_p, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 }
 
 /*
@@ -1280,18 +1292,18 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 static bool
 logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 {
-  struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
   int rv;
   bool is_dirty;
 
   /* Get the address of the buffer from the page. */
   bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
 
-  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   is_dirty = (bool) bufptr->dirty;
 
-  csect_exit (thread_p, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   return is_dirty;
 }
@@ -1305,13 +1317,13 @@ logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
  * NOTE:Find if any log buffer is dirty.
  */
 static bool
-logpb_is_any_dirty (void)
+logpb_is_any_dirty (THREAD_ENTRY * thread_p)
 {
-  register struct log_buffer *bufptr;	/* A log buffer */
+  LOG_BUFFER *bufptr;		/* A log buffer */
   int i, rv;
   bool ret;
 
-  rv = csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   ret = false;
   for (i = 0; i < log_Pb.num_buffers; i++)
@@ -1324,7 +1336,7 @@ logpb_is_any_dirty (void)
 	}
     }
 
-  csect_exit (NULL, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
   return ret;
 }
 #endif /* !NDEBUG || CUBRID_DEBUG */
@@ -1338,13 +1350,13 @@ logpb_is_any_dirty (void)
  * NOTE:Find if any buffer is fixed
  */
 static bool
-logpb_is_any_fix (void)
+logpb_is_any_fix (THREAD_ENTRY * thread_p)
 {
-  register struct log_buffer *bufptr;	/* A log buffer */
-  int i;
+  LOG_BUFFER *bufptr;		/* A log buffer */
+  int i, rv;
   bool ret;
 
-  csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   ret = false;
   for (i = 0; i < log_Pb.num_buffers; i++)
@@ -1357,7 +1369,7 @@ logpb_is_any_fix (void)
 	}
     }
 
-  csect_exit (NULL, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   return ret;
 }
@@ -1377,7 +1389,7 @@ logpb_is_any_fix (void)
 int
 logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 {
-  struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
   int rv;
 
   /* Get the address of the buffer from the page. */
@@ -1385,20 +1397,20 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
 #if defined(CUBRID_DEBUG)
   if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
       && (bufptr->pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID || bufptr->pageid > LOGPB_LAST_ACTIVE_PAGE_ID))
     {
-      csect_exit (thread_p, CSECT_LOG_PB);
+      END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSHING_UNUPDATABLE, 1, bufptr->pageid);
       return ER_LOG_FLUSHING_UNUPDATABLE;
     }
   if (bufptr->phy_pageid == NULL_PAGEID || bufptr->phy_pageid != logpb_to_physical_pageid (bufptr->pageid))
     {
-      csect_exit (thread_p, CSECT_LOG_PB);
+      END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
       /* Bad physical log page for such logical page */
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, bufptr->pageid);
@@ -1434,12 +1446,12 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
       logpb_unfix_page (bufptr);
     }
 
-  csect_exit (thread_p, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   return NO_ERROR;
 
 error:
-  csect_exit (thread_p, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   return ER_FAILED;
 }
@@ -1460,11 +1472,11 @@ logpb_free_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 {
   int rv;
 
-  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   logpb_free_without_mutex (log_pgptr);
 
-  csect_exit (thread_p, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 }
 
 /*
@@ -1479,7 +1491,7 @@ logpb_free_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 void
 logpb_free_without_mutex (LOG_PAGE * log_pgptr)
 {
-  struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
 
   /* Get the address of the buffer from the page. */
   bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
@@ -1511,7 +1523,7 @@ logpb_free_without_mutex (LOG_PAGE * log_pgptr)
 LOG_PAGEID
 logpb_get_page_id (LOG_PAGE * log_pgptr)
 {
-  struct log_buffer *bufptr;	/* Log buffer associated with given page */
+  LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
 
   bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
 
@@ -1524,11 +1536,10 @@ logpb_get_page_id (LOG_PAGE * log_pgptr)
  *
  * return: nothing
  *
- * NOTE:Dump the log page buffer pool. This function is used for
- *              debugging purposes.
+ * NOTE:Dump the log page buffer pool. This function is used for debugging purposes.
  */
 void
-logpb_dump (FILE * out_fp)
+logpb_dump (THREAD_ENTRY * thread_p, FILE * out_fp)
 {
   int rv;
 
@@ -1537,7 +1548,7 @@ logpb_dump (FILE * out_fp)
       return;
     }
 
-  rv = csect_enter (NULL, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   logpb_dump_information (out_fp);
 
@@ -1551,7 +1562,7 @@ logpb_dump (FILE * out_fp)
 
   logpb_dump_pages (out_fp);
 
-  csect_exit (NULL, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 }
 
 /*
@@ -1572,14 +1583,13 @@ logpb_dump_information (FILE * out_fp)
   mht_dump (out_fp, log_Pb.ht, false, logpb_print_hash_entry, NULL);
   fprintf (out_fp, "\n\n");
 
-  fprintf (out_fp,
-	   " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d, Prev append LSA = %lld|%d\n"
-	   " Prior LSA = %lld|%d, Prev prior LSA = %lld|%d\n\n", (long long int) log_Gl.append.nxio_lsa.pageid,
-	   (int) log_Gl.append.nxio_lsa.offset, (long long int) log_Gl.hdr.append_lsa.pageid,
-	   (int) log_Gl.hdr.append_lsa.offset, (long long int) log_Gl.append.prev_lsa.pageid,
-	   (int) log_Gl.append.prev_lsa.offset, (long long int) log_Gl.prior_info.prior_lsa.pageid,
-	   (int) log_Gl.prior_info.prior_lsa.offset, (long long int) log_Gl.prior_info.prev_lsa.pageid,
-	   (int) log_Gl.prior_info.prev_lsa.offset);
+  fprintf (out_fp, " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d, Prev append LSA = %lld|%d\n"
+	   " Prior LSA = %lld|%d, Prev prior LSA = %lld|%d\n\n",
+	   (long long int) log_Gl.append.nxio_lsa.pageid, (int) log_Gl.append.nxio_lsa.offset,
+	   (long long int) log_Gl.hdr.append_lsa.pageid, (int) log_Gl.hdr.append_lsa.offset,
+	   (long long int) log_Gl.append.prev_lsa.pageid, (int) log_Gl.append.prev_lsa.offset,
+	   (long long int) log_Gl.prior_info.prior_lsa.pageid, (int) log_Gl.prior_info.prior_lsa.offset,
+	   (long long int) log_Gl.prior_info.prev_lsa.pageid, (int) log_Gl.prior_info.prev_lsa.offset);
 
   if (log_Gl.append.delayed_free_log_pgptr == NULL)
     {
@@ -1599,10 +1609,9 @@ logpb_dump_information (FILE * out_fp)
       append = logpb_get_page_id (log_Gl.append.log_pgptr);
     }
 
-  fprintf (out_fp,
-	   " Append to_flush array: max = %d, num_active = %d\n"
-	   " Delayed free page = %lld, Current append page = %lld\n", log_Gl.flush_info.max_toflush,
-	   log_Gl.flush_info.num_toflush, delayed_free, append);
+  fprintf (out_fp, " Append to_flush array: max = %d, num_active = %d\n"
+	   " Delayed free page = %lld, Current append page = %lld\n",
+	   log_Gl.flush_info.max_toflush, log_Gl.flush_info.num_toflush, delayed_free, append);
 }
 
 /*
@@ -1616,7 +1625,7 @@ static void
 logpb_dump_to_flush_page (FILE * out_fp)
 {
   int i;
-  struct log_buffer *log_bufptr;
+  LOG_BUFFER *log_bufptr;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   (void) fprintf (out_fp, " Candidate append pages to flush are:\n");
@@ -1652,7 +1661,7 @@ static void
 logpb_dump_pages (FILE * out_fp)
 {
   int i;
-  struct log_buffer *log_bufptr;
+  LOG_BUFFER *log_bufptr;
 
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
@@ -1664,8 +1673,8 @@ logpb_dump_pages (FILE * out_fp)
 	}
       else
 	{
-	  fprintf (out_fp, "%3d %10lld %10d %3d %3d %4d  %p %p-%p %4s %5lld %5d\n", i,
-		   (long long) log_bufptr->pageid, log_bufptr->phy_pageid, log_bufptr->dirty,
+	  fprintf (out_fp, "%3d %10lld %10d %3d %3d %4d  %p %p-%p %4s %5lld %5d\n",
+		   i, (long long) log_bufptr->pageid, log_bufptr->phy_pageid, log_bufptr->dirty,
 		   log_bufptr->recently_freed, log_bufptr->fcnt, (void *) log_bufptr, (void *) (&log_bufptr->logpage),
 		   (void *) (&log_bufptr->logpage.area[LOGAREA_SIZE - 1]), "",
 		   (long long) log_bufptr->logpage.hdr.logical_pageid, log_bufptr->logpage.hdr.offset);
@@ -1691,11 +1700,11 @@ int
 logpb_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore)
 {
   const LOG_PAGEID *pageid = (LOG_PAGEID *) key;
-  struct log_buffer *log_bufptr = (struct log_buffer *) ent;
+  LOG_BUFFER *log_bufptr = (LOG_BUFFER *) ent;
 
   fprintf (outfp, "Pageid = %5lld, Address = %p\n", (long long int) (*pageid), (void *) log_bufptr);
 
-  return (true);
+  return true;
 }
 
 /*
@@ -1924,8 +1933,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, struct log_header *hdr,
  *
  * return: nothing
  *
- * NOTE:Flush out the log header from the global variable log_Gl.hdr
- *              to disk. Note append pages are not flushed.
+ * NOTE:Flush out the log header from the global variable log_Gl.hdr to disk. Note append pages are not flushed.
  */
 void
 logpb_flush_header (THREAD_ENTRY * thread_p)
@@ -1984,10 +1992,8 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
  *   pageid(in): Page identifier
  *   log_pgptr(in): Page buffer to copy
  *
- * NOTE:Fetch the log page identified by pageid into a log buffer and
- *              return such buffer.
- *              If there is the page in hash table, copy it to buffer
- *              and return it.
+ * NOTE:Fetch the log page identified by pageid into a log buffer and return such buffer.
+ *              If there is the page in hash table, copy it to buffer and return it.
  *              If not, read log page from log.
  */
 LOG_PAGE *
@@ -2089,16 +2095,14 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
  *   pageid(in): Page identifier
  *   log_pgptr(in): Page buffer to copy
  *
- * NOTE:Fetch the log page identified by pageid into a log buffer and
- *              return such buffer.
- *              If there is the page in hash table, copy it to buffer
- *              and return it.
+ * NOTE:Fetch the log page identified by pageid into a log buffer and return such buffer.
+ *              If there is the page in hash table, copy it to buffer and return it.
  *              If not, read log page from log.
  */
 static LOG_PAGE *
 logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr)
 {
-  register struct log_buffer *log_bufptr = NULL;
+  LOG_BUFFER *log_bufptr = NULL;
   LOG_PAGE *ret_pgptr = NULL;
   int rv;
   bool is_perf_tracking;
@@ -2125,21 +2129,21 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgpt
     }
 
   /* TODO: Can we use a latch free structure here? */
-  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
-  log_bufptr = (struct log_buffer *) mht_get (log_Pb.ht, &pageid);
+  log_bufptr = (LOG_BUFFER *) mht_get (log_Pb.ht, &pageid);
   if (log_bufptr != NULL)
     {
       memcpy (log_pgptr, &log_bufptr->logpage, LOG_PAGESIZE);
       ret_pgptr = log_pgptr;
     }
 
-  csect_exit (thread_p, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   if (log_bufptr == NULL)
     {
       ret_pgptr = logpb_read_page_from_file (thread_p, pageid, log_pgptr);
-      mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_FETCH_IOREADS);
+      mnt_log_fetch_ioreads (thread_p);
       stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
     }
 
@@ -2149,7 +2153,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgpt
       LOG_CS_EXIT (thread_p);
     }
 
-  mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_FETCHES);
+  mnt_log_fetches (thread_p);
 
   if (is_perf_tracking)
     {
@@ -2177,8 +2181,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgpt
  *   pageid(in): Page identifier
  *   log_pgptr(in): Page buffer to read
  *
- * NOTE:read the log page identified by pageid into a buffer
- *              from from archive or active log.
+ * NOTE:read the log page identified by pageid into a buffer from from archive or active log.
  */
 LOG_PAGE *
 logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr)
@@ -2224,7 +2227,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
        */
       phy_pageid = logpb_to_physical_pageid (pageid);
 
-      mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_IOREADS);
+      mnt_log_ioreads (thread_p);
 
       if (fileio_read (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
 	{
@@ -2301,7 +2304,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
   phy_start_pageid = logpb_to_physical_pageid (pageid);
   num_pages = MIN (num_pages, LOGPB_ACTIVE_NPAGES - phy_start_pageid + 1);
 
-  mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_IOREADS);
+  mnt_log_ioreads (thread_p);
   if (fileio_read_pages (thread_p, log_Gl.append.vdes, (char *) log_pgptr, phy_start_pageid, num_pages, LOG_PAGESIZE) ==
       NULL)
     {
@@ -2391,8 +2394,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
  *   db_compatibility(in): Set as a side effect to database disk compatibility
  *   db_charset(in): Set as a side effect to database charset
  *
- * NOTE:Find some database creation parameters such as pagesize,
- *              creation time, and disk compatability.
+ * NOTE:Find some database creation parameters such as pagesize, creation time, and disk compatability.
  */
 PGLENGTH
 logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -2423,7 +2425,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
 	      goto error;
 	    }
 
-	  logpb_finalize_pool ();
+	  logpb_finalize_pool (thread_p);
 	  error_code = logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices);
 	  if (error_code != NO_ERROR)
 	    {
@@ -2476,7 +2478,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   logpb_fetch_header_with_buffer (thread_p, &hdr, log_pgptr);
-  logpb_finalize_pool ();
+  logpb_finalize_pool (thread_p);
 
   fileio_dismount (thread_p, log_Gl.append.vdes);
   log_Gl.append.vdes = NULL_VOLDES;
@@ -2689,12 +2691,8 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 #endif /* SERVER_MODE */
 #if defined(CUBRID_DEBUG)
   long commit_count = 0;
-  static struct timeval start_append_time = {
-    0, 0
-  };
-  struct timeval end_append_time = {
-    0, 0
-  };
+  static struct timeval start_append_time = { 0, 0 };
+  struct timeval end_append_time = { 0, 0 };
   static long prev_commit_count_in_append = 0;
   double elapsed = 0;
 
@@ -2793,7 +2791,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
     log_Stat.last_delayed_pageid = NULL_PAGEID;
     if (log_Gl.append.delayed_free_log_pgptr != NULL)
       {
-	struct log_buffer *delayed_bufptr;
+	LOG_BUFFER *delayed_bufptr;
 	delayed_bufptr = LOG_GET_LOG_BUFFER_PTR (log_Gl.append.delayed_free_log_pgptr);
 	log_Stat.last_delayed_pageid = log_Gl.append.delayed_free_log_pgptr->hdr.logical_pageid;
 	log_Stat.total_delayed_page_count++;
@@ -2870,7 +2868,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 static LOG_PAGE **
 logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAGES npages)
 {
-  struct log_buffer *bufptr;
+  LOG_BUFFER *bufptr;
   LOG_PHY_PAGEID phy_pageid;
 
   /* In this point, flush buffer cannot be replaced by trans. So, bufptr's pageid and phy_pageid are not changed. */
@@ -2916,12 +2914,13 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   LOG_PHY_PAGEID phy_pageid;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_pgptr = NULL;
-  struct log_buffer *bufptr;
+  LOG_BUFFER *bufptr;
 
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
 
   assert (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING));
+
   if (log_Gl.bg_archive_info.vdes == NULL_VOLDES || flush_info->num_toflush <= 1)
     {
       return;
@@ -3958,9 +3957,8 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, 
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
     case LOG_MVCC_UNDO_DATA:
     case LOG_MVCC_REDO_DATA:
-      error =
-	prior_lsa_gen_undoredo_record_from_crumbs (thread_p, node, rcvindex, addr, num_ucrumbs, ucrumbs, num_rcrumbs,
-						   rcrumbs);
+      error = prior_lsa_gen_undoredo_record_from_crumbs (thread_p, node, rcvindex, addr, num_ucrumbs, ucrumbs,
+							 num_rcrumbs, rcrumbs);
       break;
 
     default:
@@ -4126,7 +4124,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 
       if (log_Gl.prior_info.list_size >= LOG_PRIOR_LSA_LIST_MAX_SIZE ())
 	{
-	  mnt_x_add_value_to_statistic (thread_p, 1, PRIOR_LSA_LIST_MAXED);
+	  mnt_prior_lsa_list_maxed (thread_p);
 
 #if defined(SERVER_MODE)
 	  if (!log_is_in_crash_recovery ())
@@ -4293,8 +4291,8 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 
   if (prior_list != NULL)
     {
-      mnt_add_value_to_statistic(thread_p, (unsigned int) current_size / ONE_K, PRIOR_LSA_LIST_SIZE); /* kbytes */
-      mnt_add_value_to_statistic(thread_p, 1, PRIOR_LSA_LIST_REMOVED);
+      mnt_prior_lsa_list_size (thread_p, (unsigned int) current_size / ONE_K);	/* kbytes */
+      mnt_prior_lsa_list_removed (thread_p);
 
       logpb_append_prior_lsa_list (thread_p, prior_list);
     }
@@ -4312,8 +4310,8 @@ static int
 logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 {
   LOG_RECORD_HEADER *tmp_eof = NULL;	/* End of log record */
-  struct log_buffer *bufptr;	/* The current buffer log append page scanned */
-  struct log_buffer *prv_bufptr;	/* The previous buffer log append page scanned */
+  LOG_BUFFER *bufptr;		/* The current buffer log append page scanned */
+  LOG_BUFFER *prv_bufptr;	/* The previous buffer log append page scanned */
   int last_idxflush;		/* The smallest dirty append log page to flush. This is the last one to flush. */
   int idxflush;			/* An index into the first log page buffer to flush */
   bool need_sync;		/* How we flush anything ? */
@@ -4323,12 +4321,8 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   int flush_page_count = 0;
 #if defined(CUBRID_DEBUG)
-  struct timeval start_time = {
-    0, 0
-  };
-  struct timeval end_time = {
-    0, 0
-  };
+  struct timeval start_time = { 0, 0 };
+  struct timeval end_time = { 0, 0 };
   int dirty_page_count = 0;
   int curr_flush_count = 0;
   long commit_count = 0;
@@ -4401,7 +4395,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     const char *env_value;
     int verbose_dump = -1;
 
-
     if (verbose_dump == -1)
       {
 	/* 
@@ -4420,7 +4413,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     if (verbose_dump != 0)
       {
 	fprintf (stdout, "\n DUMP BEFORE FLUSHING APPEND PAGES\n");
-	logpb_dump (stdout);
+	logpb_dump (thread_p, stdout);
       }
   }
 #endif
@@ -4554,7 +4547,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   rv = pthread_mutex_lock (&flush_info->flush_mutex);
   hold_flush_mutex = true;
 
-  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
   hold_lpb_cs = true;
 
 #if defined(CUBRID_DEBUG)
@@ -4563,7 +4556,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 
   /* Record number of writes in statistics */
-  mnt_add_value_to_statistic(thread_p, flush_info->num_toflush, LOG_NUM_IOWRITES);
+  mnt_log_iowrites (thread_p, flush_info->num_toflush);
 
   for (i = 0; i < flush_info->num_toflush; i++)
     {
@@ -4600,7 +4593,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	       *
 	       * Flush the accumulated contiguous pages
 	       */
-	      csect_exit (thread_p, CSECT_LOG_PB);
+	      END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 	      hold_lpb_cs = false;
 
 	      if (logpb_writev_append_pages (thread_p, &(flush_info->toflush[idxflush]), i - idxflush) == NULL)
@@ -4631,7 +4624,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 		  idxflush = -1;
 		}
 
-	      rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+	      START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 	      hold_lpb_cs = true;
 	    }
 	}
@@ -4654,7 +4647,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * If there are any accumulated pages, flush them at this point
    */
 
-  csect_exit (thread_p, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
   hold_lpb_cs = false;
 
   if (idxflush != -1)
@@ -4744,7 +4737,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * any more.
    */
 
-  rv = csect_enter (thread_p, CSECT_LOG_PB, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
   hold_lpb_cs = true;
 
   for (i = 0; i < flush_info->num_toflush; i++)
@@ -4763,18 +4756,18 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   assert (flush_page_count == dirty_page_count);
 #endif /* CUBRID_DEBUG */
 
-  csect_exit (thread_p, CSECT_LOG_PB);
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
   hold_lpb_cs = false;
 
 #if defined(CUBRID_DEBUG)
-  assert (!logpb_is_any_dirty ());
+  assert (!logpb_is_any_dirty (thread_p));
 #endif /* CUBRID_DEBUG */
 
 #if !defined(NDEBUG)
-  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG) && logpb_is_any_dirty () == true)
+  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG) && logpb_is_any_dirty (thread_p) == true)
     {
       er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: Log Buffer contains dirty pages\n");
-      logpb_dump (stdout);
+      logpb_dump (thread_p, stdout);
       fflush (stdout);
     }
 #endif
@@ -4923,7 +4916,7 @@ error:
 
   if (hold_lpb_cs)
     {
-      csect_exit (thread_p, CSECT_LOG_PB);
+      END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
     }
   if (hold_flush_mutex)
     {
@@ -5140,8 +5133,7 @@ logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p)
  *
  *   lsa_ptr(in): Force all log records up to this lsa
  *
- * NOTE:Flush the log up to given log sequence address according to
- *              the WAL rule.
+ * NOTE:Flush the log up to given log sequence address according to the WAL rule.
  *              The page buffer manager must call this function whenever a
  *              page is about to be flushed due to a page replacement.
  */
@@ -5150,7 +5142,7 @@ logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
 {
   if (logpb_need_wal (lsa_ptr))
     {
-      mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_WALS);
+      mnt_log_wals (thread_p);
 
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
@@ -5160,7 +5152,7 @@ logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
       if (logpb_need_wal (lsa_ptr) && !LSA_EQ (&log_Gl.rcv_phase_lsa, lsa_ptr))
 	{
 	  er_log_debug (ARG_FILE_LINE, "log_wal: SYSTEM ERROR.. DUMP LOG BUFFER\n");
-	  logpb_dump (stdout);
+	  logpb_dump (thread_p, stdout);
 	}
 #endif /* CUBRID_DEBUG */
     }
@@ -5190,7 +5182,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   /* Record number of append log record in statistics */
-  mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_APPENDRECS);
+  mnt_log_appendrecs (thread_p);
 
   /* Does the new log record fit in this page ? */
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
@@ -5422,8 +5414,7 @@ prior_lsa_append_data (int length)
  *   num_crumbs(in): Number of crumbs
  *   crumbs(in): The crumbs (length + data)
  *
- * NOTE: Append crumbs of data by gluing them. After this the log
- *              manager will lose track of what was glued.
+ * NOTE: Append crumbs of data by gluing them. After this the log manager will lose track of what was glued.
  */
 static void
 logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * crumbs)
@@ -5684,8 +5675,7 @@ logpb_create_log_info (const char *logname_info, const char *db_fullname)
  *
  *   pageid(in): Desired page
  *
- * NOTE: Guess the archive number where the desired page is archived by
- *              searching the log information file.
+ * NOTE: Guess the archive number where the desired page is archived by searching the log information file.
  */
 static int
 logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
@@ -5855,8 +5845,7 @@ logpb_create_volume_info (const char *db_fullname)
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
- * NOTE: Recreate the database volume information from the internal
- *              information that is stored in each volume.
+ * NOTE: Recreate the database volume information from the internal information that is stored in each volume.
  */
 int
 logpb_recreate_volume_info (THREAD_ENTRY * thread_p)
@@ -5979,8 +5968,7 @@ logpb_add_volume (const char *db_fullname, VOLID new_volid, const char *new_volf
  *   fun(in): Function to be called on each entry
  *   args(in): Additional arguments to be passed to function
  *
- * NOTE: Scan the volume information entries calling the given function
- *              on each entry.
+ * NOTE: Scan the volume information entries calling the given function on each entry.
  */
 int
 logpb_scan_volume_info (THREAD_ENTRY * thread_p, const char *db_fullname, VOLID ignore_volid, VOLID start_volid,
@@ -6076,8 +6064,7 @@ logpb_scan_volume_info (THREAD_ENTRY * thread_p, const char *db_fullname, VOLID 
  *
  *   logical_pageid(in): logical_pageid: Logical log page
  *
- * NOTE: Returns the physical page identifier associated with given
- *              logical page.
+ * NOTE: Returns the physical page identifier associated with given logical page.
  */
 LOG_PHY_PAGEID
 logpb_to_physical_pageid (LOG_PAGEID logical_pageid)
@@ -6135,8 +6122,7 @@ logpb_is_page_in_archive (LOG_PAGEID pageid)
  *
  * return:
  *
- * NOTE: Returns true if the smallest active LSA is located in an
- *              archive log.
+ * NOTE: Returns true if the smallest active LSA is located in an archive log.
  */
 bool
 logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p)
@@ -6154,8 +6140,7 @@ logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p)
  *
  *   pageid(in): The desired logical page
  *
- * NOTE: Find in what archive the page is located or in what archive
- *              the page should have been located.
+ * NOTE: Find in what archive the page is located or in what archive the page should have been located.
  */
 int
 logpb_get_archive_number (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
@@ -6413,7 +6398,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	  phy_pageid = (LOG_PHY_PAGEID) (pageid - arv_hdr->fpageid + 1);
 
 	  /* Record number of reads in statistics */
-	  mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_IOREADS);
+	  mnt_log_ioreads (thread_p);
 
 	  if (fileio_read (thread_p, vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
 	    {
@@ -6667,7 +6652,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	      /* Read header page and make sure the page is here */
 
 	      /* Record number of reads in statistics */
-	      mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_IOREADS);
+	      mnt_log_ioreads (thread_p);
 
 	      if (fileio_read (thread_p, vdes, hdr_pgptr, 0, LOG_PAGESIZE) == NULL)
 		{
@@ -6841,7 +6826,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
    * Now create the archive and start copying pages
    */
 
-  mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_ARCHIVES);
+  mnt_log_archives (thread_p);
 
   fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, log_Gl.hdr.nxarv_num);
 
@@ -7578,22 +7563,17 @@ logpb_append_archives_delete_pend_to_log_info (int first, int last)
  * logpb_copy_from_log: Copy a portion of the log
  *
  * arguments:
- *         area: Area where the portion of the log is copied.
- *               (Set as a side effect)
+ *  area: Area where the portion of the log is copied. (Set as a side effect)
  *  area_length: the length to copy
- *   log_lsa: log address of the log data to copy
- *               (May be set as a side effect)
- *    log_pgptr: the buffer containing the log page
- *               (May be set as a side effect)
+ *  log_lsa: log address of the log data to copy (May be set as a side effect)
+ *  log_pgptr: the buffer containing the log page (May be set as a side effect)
  *
  * returns/side-effects: nothing
  *    area is set as a side effect.
  *    log_lsa, and log_pgptr are set as a side effect.
  *
- * description: Copy "length" bytes of the log starting at log_lsa->pageid,
- *              log_offset onto the given area.
- * NOTE:        The location of the log is updated to point to the end of the
- *              data.
+ * description: Copy "length" bytes of the log starting at log_lsa->pageid, log_offset onto the given area.
+ * NOTE:        The location of the log is updated to point to the end of the data.
  */
 void
 logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
@@ -7760,7 +7740,7 @@ logpb_verify_length (const char *db_fullname, const char *log_path, const char *
  *                      Log_information = db_loginfo
  *                      Database Backup = db_backup
  *
- * NOTE:Initialize name of log volumes and files
+ * NOTE: Initialize name of log volumes and files
  */
 int
 logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -7827,13 +7807,13 @@ logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, co
  *                      Log_information = db_loginfo
  *                      Database Backup = db_backup
  *
- * NOTE:Find if the log associated with the aboive database exists.
+ * NOTE: Find if the log associated with the aboive database exists.
  */
 bool
 logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname)
 {
   /* Is the system restarted ? */
-  if (!logpb_is_initialize_pool ())
+  if (!logpb_is_pool_initialized ())
     {
       if (logpb_initialize_log_names (thread_p, db_fullname, logpath, prefix_logname) != NO_ERROR)
 	{
@@ -7913,7 +7893,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    */
 #endif /* SERVER_MODE */
 
-  mnt_x_add_value_to_statistic(thread_p, 1, LOG_NUM_START_CHECKPOINTS);
+  mnt_log_start_checkpoints (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_STARTED, 2, log_Gl.hdr.chkpt_lsa.pageid,
 	  log_Gl.chkpt_redo_lsa.pageid);
@@ -8091,8 +8071,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   length_all_chkpt_trans = sizeof (*chkpt_trans) * tmp_chkpt.ntrans;
 
   /* 
-   * Scan again if there were any top system operations in the process of
-   * being committed.
+   * Scan again if there were any top system operations in the process of being committed.
    * NOTE that we checkpoint top system operations only when there are in the
    * process of commit. Not knowledge of top system operations that are not
    * in the process of commit is required since if there is a crash, the system
@@ -8379,7 +8358,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   fileio_synchronize_all (thread_p, true /* include_log */ );
 #endif
 
-  mnt_add_value_to_statistic(thread_p, 1, LOG_NUM_END_CHECKPOINTS);
+  mnt_log_end_checkpoints (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_FINISHED, 3, log_Gl.hdr.chkpt_lsa.pageid,
 	  log_Gl.chkpt_redo_lsa.pageid, flushed_page_cnt);
@@ -8962,9 +8941,8 @@ loop:
   /* Begin backing up in earnest */
   session.bkup.bkuphdr->skip_activelog = skip_activelog;
 
-  if (fileio_start_backup
-      (thread_p, log_Db_fullname, &log_Gl.hdr.db_creation, backup_level, &bkup_start_lsa, &chkpt_lsa, all_bkup_info,
-       &session, zip_method, zip_level) == NULL)
+  if (fileio_start_backup (thread_p, log_Db_fullname, &log_Gl.hdr.db_creation, backup_level, &bkup_start_lsa,
+			   &chkpt_lsa, all_bkup_info, &session, zip_method, zip_level) == NULL)
     {
       error_code = ER_FAILED;
       goto error;
@@ -10725,7 +10703,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 
   if (extern_rename == true)
     {
-      logpb_finalize_pool ();
+      logpb_finalize_pool (thread_p);
       fileio_dismount (thread_p, log_Gl.append.vdes);
 
       fileio_make_log_active_name (to_volname, to_logpath, to_prefix_logname);
@@ -11050,7 +11028,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 		}
 	    }
 	  logpb_fetch_header_with_buffer (thread_p, &disk_hdr, log_pgptr);
-	  logpb_finalize_pool ();
+	  logpb_finalize_pool (thread_p);
 	  fileio_dismount (thread_p, log_Gl.append.vdes);
 	  log_Gl.append.vdes = NULL_VOLDES;
 	  loghdr = &disk_hdr;
@@ -11209,7 +11187,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
   /* Now undefine all pages */
   if (log_Gl.trantable.area != NULL && log_Gl.append.log_pgptr != NULL)
     {
-      logpb_finalize_pool ();
+      logpb_finalize_pool (thread_p);
       (void) pgbuf_invalidate_all (thread_p, NULL_VOLID);
       logtb_undefine_trantable (thread_p);
       if (log_Gl.append.vdes != NULL_VOLDES)
@@ -12378,7 +12356,7 @@ logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db_fullname, 
 	    }
 	}
       logpb_fetch_header_with_buffer (thread_p, &disk_hdr, log_pgptr);
-      logpb_finalize_pool ();
+      logpb_finalize_pool (thread_p);
       fileio_dismount (thread_p, log_Gl.append.vdes);
       log_Gl.append.vdes = NULL_VOLDES;
       loghdr = &disk_hdr;
