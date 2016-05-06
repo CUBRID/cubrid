@@ -4659,7 +4659,6 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 		  if (fkref->del_action == SM_FOREIGN_KEY_CASCADE)
 		    {
-		      MVCC_REEV_DATA mvcc_reev_data, *p_mvcc_reev_data = NULL;
 		      if (lob_exist)
 			{
 			  error_code = locator_delete_lob_force (thread_p, &fkref->self_oid, oid_ptr, NULL);
@@ -4668,15 +4667,11 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			{
 			  goto error1;
 			}
-		      /* The relationship between primary key and foreign key must be reevaluated so we provide to
-		       * reevaluation the primary key. That's because between fetch of foreign keys and the deletion
-		       * the foreign keys can be modified by other transactions. */
-		      p_mvcc_reev_data = &mvcc_reev_data;
-		      SET_MVCC_UPDATE_REEV_DATA (p_mvcc_reev_data, NULL, V_TRUE, key);
+
 		      /* oid already locked at heap_mvcc_get_for_delete */
 		      error_code =
 			locator_delete_force (thread_p, &hfid, oid_ptr, true, SINGLE_ROW_DELETE, &scan_cache,
-					      &force_count, p_mvcc_reev_data, false);
+					      &force_count, NULL, false);
 		      if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 			{
 			  /* skip foreign keys that were already deleted. For example the "cross type" reference */
@@ -6386,6 +6381,12 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
   isold_object = true;
 
   copy_recdes.data = NULL;
+
+  if (need_locking == false)
+    {
+      /* the reevaluation is not necessary if the object is already locked */
+      mvcc_reev_data = NULL;
+    }
 
   /* IMPORTANT TODO: use a different get function when need_locking==false, but make sure it gets the last version,
      not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
