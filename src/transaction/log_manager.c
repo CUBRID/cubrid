@@ -596,7 +596,7 @@ log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_d
       return false;
     }
 
-  if (difftime ((time_t) vol_dbcreation, (time_t) (*log_dbcreation)) == 0)
+  if (difftime ((time_t) vol_dbcreation, (time_t) * log_dbcreation) == 0)
     {
       return true;
     }
@@ -629,7 +629,6 @@ log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
-
   memcpy (db_creation, &log_Gl.hdr.db_creation, sizeof (*db_creation));
   rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
   memcpy (chkpt_lsa, &log_Gl.hdr.chkpt_lsa, sizeof (*chkpt_lsa));
@@ -891,13 +890,13 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 	}
     }
 
-  logpb_finalize_pool (thread_p);
+  logpb_finalize_pool ();
   LOG_CS_EXIT (thread_p);
 
   return NO_ERROR;
 
 error:
-  logpb_finalize_pool (thread_p);
+  logpb_finalize_pool ();
   LOG_CS_EXIT (thread_p);
 
   return (error_code == NO_ERROR) ? ER_FAILED : error_code;
@@ -1131,7 +1130,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * Call the function again... since we have a different setting for the
        * page size
        */
-      logpb_finalize_pool (thread_p);
+      logpb_finalize_pool ();
       fileio_dismount (thread_p, log_Gl.append.vdes);
       log_Gl.append.vdes = NULL_VOLDES;
 
@@ -1537,8 +1536,9 @@ loop:
 	  else if (LOG_ISTRAN_ACTIVE (tdes) && abort_thread_running[i] == 0)
 	    {
 	      conn = css_find_conn_by_tran_index (i);
-	      job_entry = css_make_job_entry (conn, (CSS_THREAD_FN) log_abort_by_tdes, (CSS_THREAD_ARG) tdes,
-					      -1 /* implicit: DEFAULT */ );
+	      job_entry = css_make_job_entry (conn, (CSS_THREAD_FN) log_abort_by_tdes, (CSS_THREAD_ARG) tdes, -1	/* implicit: 
+															 * DEFAULT 
+															 */ );
 	      if (job_entry != NULL)
 		{
 		  css_add_to_job_queue (job_entry);
@@ -1626,7 +1626,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   save_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (!logpb_is_pool_initialized ())
+  if (!logpb_is_initialize_pool ())
     {
       logtb_undefine_trantable (thread_p);
       LOG_CS_EXIT (thread_p);
@@ -1635,7 +1635,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   if (log_Gl.append.vdes == NULL_VOLDES)
     {
-      logpb_finalize_pool (thread_p);
+      logpb_finalize_pool ();
       logtb_undefine_trantable (thread_p);
       LOG_CS_EXIT (thread_p);
       return;
@@ -1701,7 +1701,7 @@ log_final (THREAD_ENTRY * thread_p)
   logpb_flush_header (thread_p);
 
   /* Undefine page buffer pool and transaction table */
-  logpb_finalize_pool (thread_p);
+  logpb_finalize_pool ();
 
   logtb_undefine_trantable (thread_p);
 
@@ -3330,7 +3330,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
 
   LSA_COPY (&tdes->savept_lsa, &tdes->tail_lsa);
 
-  mnt_tran_savepoints (thread_p);
+  mnt_add_value_to_statistic(thread_p, 1, TRAN_NUM_SAVEPOINTS);
 
   return &tdes->savept_lsa;
 }
@@ -3573,7 +3573,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 #if defined(SERVER_MODE)
 	  assert (tdes->cs_topop.cs_index ==
 		  CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	  assert (tdes->cs_topop.name == csect_Name_tdes);
+	  assert (tdes->cs_topop.name == css_Csect_name_tdes);
 #endif
 
 	  csect_enter_critical_section (thread_p, &tdes->cs_topop, INF_WAIT);
@@ -3590,7 +3590,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 #if defined(SERVER_MODE)
 	      assert (tdes->cs_topop.cs_index ==
 		      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	      assert (tdes->cs_topop.name == csect_Name_tdes);
+	      assert (tdes->cs_topop.name == css_Csect_name_tdes);
 #endif
 
 	      csect_exit_critical_section (thread_p, &tdes->cs_topop);
@@ -3684,7 +3684,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
 
-  mnt_tran_start_topops (thread_p);
+  mnt_add_value_to_statistic(thread_p, 1, TRAN_NUM_START_TOPOPS);
 
   return &tdes->topops.stack[tdes->topops.last].lastparent_lsa;
 }
@@ -3939,13 +3939,13 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 #if defined(SERVER_MODE)
       assert (tdes->cs_topop.cs_index ==
 	      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-      assert (tdes->cs_topop.name == csect_Name_tdes);
+      assert (tdes->cs_topop.name == css_Csect_name_tdes);
 #endif
 
       csect_exit_critical_section (thread_p, &tdes->cs_topop);
     }
 
-  mnt_tran_end_topops (thread_p);
+  mnt_add_value_to_statistic(thread_p, 1, TRAN_NUM_END_TOPOPS);
 
   if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
@@ -5621,7 +5621,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       LOG_CS_EXIT (thread_p);
     }
 
-  mnt_tran_commits (thread_p);
+  mnt_add_value_to_statistic(thread_p, 1, TRAN_NUM_COMMITS);
 
   return state;
 }
@@ -5725,7 +5725,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
       state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
     }
 
-  mnt_tran_rollbacks (thread_p);
+  mnt_add_value_to_statistic(thread_p, 1, TRAN_NUM_ROLLBACKS);
 
   return state;
 }
@@ -7328,7 +7328,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   LOG_CS_ENTER (thread_p);
 
   xlogtb_dump_trantable (thread_p, out_fp);
-  logpb_dump (thread_p, out_fp);
+  logpb_dump (out_fp);
   logpb_flush_pages_direct (thread_p);
   logpb_flush_header (thread_p);
 
@@ -9039,8 +9039,9 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const ch
   int dummy;
 
   LOG_CS_ENTER (thread_p);
-  if (logpb_find_header_parameters (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize,
-				    &ignore_log_page_size, &ignore_dbcreation, &ignore_dbcomp, &dummy) == -1)
+  if (logpb_find_header_parameters
+      (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize, &ignore_log_page_size, &ignore_dbcreation,
+       &ignore_dbcomp, &dummy) == -1)
     {
       /* 
        * For case where active log could not be found, user still needs
@@ -9204,7 +9205,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
 {
   LOG_CS_ENTER (thread_p);
 
-  if (log_Gl.trantable.area == NULL || !logpb_is_pool_initialized ())
+  if (log_Gl.trantable.area == NULL || !logpb_is_initialize_pool ())
     {
       LOG_CS_EXIT (thread_p);
       return;
@@ -9223,7 +9224,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
 
   /* Undefine log buffer pool and transaction table */
 
-  logpb_finalize_pool (thread_p);
+  logpb_finalize_pool ();
   logtb_undefine_trantable (thread_p);
 
   LOG_CS_EXIT (thread_p);
@@ -9783,168 +9784,8 @@ void
 log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time)
 {
   LOG_CS_ENTER (thread_p);
-
   log_Gl.hdr.db_restore_time = db_restore_time;
-
   LOG_CS_EXIT (thread_p);
-}
 
-
-/*
- * log_get_undo_record () - gets undo record from log lsa adress
- *   return: S_SUCCESS or ER_code
- * 
- * thread_p (in):
- * lsa_addr (in):
- * page (in):
- * record (in/out):
- */
-SCAN_CODE
-log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA process_lsa, RECDES * recdes)
-{
-  LOG_RECORD_HEADER *log_rec_header = NULL;
-  struct log_mvcc_undo *mvcc_undo = NULL;
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
-  struct log_undo *undo = NULL;
-  struct log_undoredo *undoredo = NULL;
-  int udata_length;
-  int udata_size;
-  char *undo_data;
-  LOG_LSA oldest_prior_lsa;
-  bool is_zipped = false;
-  char log_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  LOG_ZIP *log_unzip_ptr = NULL;
-
-  /* assert log record is not in prior list */
-  oldest_prior_lsa = *log_get_append_lsa ();
-  assert (LSA_LT (&process_lsa, &oldest_prior_lsa));
-
-  log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
-
-  if (log_rec_header->type == LOG_MVCC_UNDO_DATA)
-    {
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), &process_lsa, log_page_p);
-      mvcc_undo = (struct log_mvcc_undo *) (log_page_p->area + process_lsa.offset);
-
-      udata_length = mvcc_undo->undo.length;
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), &process_lsa, log_page_p);
-    }
-  else if (log_rec_header->type == LOG_MVCC_UNDOREDO_DATA || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA)
-    {
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
-      mvcc_undoredo = (struct log_mvcc_undoredo *) (log_page_p->area + process_lsa.offset);
-
-      udata_length = mvcc_undoredo->undoredo.ulength;
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
-    }
-  else if (log_rec_header->type == LOG_UNDO_DATA)
-    {
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undo), &process_lsa, log_page_p);
-      undo = (struct log_undo *) (log_page_p->area + process_lsa.offset);
-
-      udata_length = undo->length;
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*undo), &process_lsa, log_page_p);
-    }
-  else if (log_rec_header->type == LOG_UNDOREDO_DATA || log_rec_header->type == LOG_DIFF_UNDOREDO_DATA)
-    {
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
-      undoredo = (struct log_undoredo *) (log_page_p->area + process_lsa.offset);
-
-      udata_length = undoredo->ulength;
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
-    }
-  else
-    {
-      assert_release (log_rec_header->type == LOG_MVCC_UNDO_DATA || log_rec_header->type == LOG_MVCC_UNDOREDO_DATA
-		      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA || log_rec_header->type == LOG_UNDO_DATA
-		      || log_rec_header->type == LOG_UNDOREDO_DATA
-		      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA);
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_FATAL_ERROR, 1, "Expecting undo/undoredo log record");
-      return S_ERROR;
-    }
-
-  /* get undo record */
-  if (ZIP_CHECK (udata_length))
-    {
-      /* Get real size */
-      udata_size = (int) GET_ZIP_LEN (udata_length);
-      is_zipped = true;
-    }
-  else
-    {
-      udata_size = udata_length;
-    }
-
-  /* 
-   * If data is contained in only one buffer, pass pointer directly.
-   * Otherwise, copy the data into a contiguous area and pass this area.
-   */
-  if (process_lsa.offset + udata_size < (int) LOGAREA_SIZE)
-    {
-      undo_data = (char *) log_page_p->area + process_lsa.offset;
-    }
-  else
-    {
-      /* Need to copy the data into a contiguous area */
-      char *area = PTR_ALIGN (log_buf, MAX_ALIGNMENT);
-
-      /* The records processed in this function shouldn't be overflow records because of the different way of 
-       * logging REC_BIGONE updates. In this way, IO_PAGESIZE is the maximum size one can have. */
-      assert (udata_size <= IO_MAX_PAGE_SIZE);
-
-      /* Copy the data */
-      logpb_copy_from_log (thread_p, area, udata_size, &process_lsa, log_page_p);
-      undo_data = area;
-    }
-
-  if (is_zipped)
-    {
-      log_unzip_ptr = log_zip_alloc (IO_PAGESIZE, false);
-      if (log_unzip_ptr == NULL)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_get_undo_record");
-	  return S_ERROR;
-	}
-
-      if (log_unzip (log_unzip_ptr, udata_size, (char *) undo_data))
-	{
-	  udata_size = (int) log_unzip_ptr->data_length;
-	  undo_data = (char *) log_unzip_ptr->log_data;
-	}
-      else
-	{
-	  assert (false);
-	  log_zip_free (log_unzip_ptr);
-	  return S_ERROR;
-	}
-    }
-
-  /* copy the record */
-  recdes->type = *(INT16 *) (undo_data);
-  recdes->length = udata_size - sizeof (recdes->type);
-  if (recdes->area_size < 0 || recdes->area_size < (int) recdes->length)
-    {
-      /* 
-       * DOES NOT FIT
-       * Give a hint to the user of the needed length. Hint is given as a
-       * negative value
-       */
-      /* do not use unary minus because slot_p->record_length is unsigned */
-      recdes->length *= -1;
-      if (log_unzip_ptr != NULL)
-	{
-	  log_zip_free (log_unzip_ptr);
-	}
-
-      return S_DOESNT_FIT;
-    }
-  memcpy (recdes->data, (char *) (undo_data) + sizeof (recdes->type), recdes->length);
-
-  if (log_unzip_ptr != NULL)
-    {
-      log_zip_free (log_unzip_ptr);
-    }
-
-  return S_SUCCESS;
+  return;
 }

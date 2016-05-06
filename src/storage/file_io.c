@@ -801,7 +801,10 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_usec, int *
   *token_consumed = tb->token_consumed;
   tb->token_consumed = 0;
 
-  mnt_fc_stats (thread_p, fc_Stats.num_pages, fc_Stats.num_log_pages, fc_Stats.num_tokens);
+  mnt_add_value_to_statistic(thread_p, fc_Stats.num_pages, FC_NUM_PAGES);
+  mnt_add_value_to_statistic(thread_p, fc_Stats.num_log_pages, FC_NUM_LOG_PAGES);
+  mnt_add_value_to_statistic(thread_p, fc_Stats.num_tokens, FC_TOKENS);
+
 
   if (prm_get_bool_value (PRM_ID_ADAPTIVE_FLUSH_CONTROL) == true)
     {
@@ -2108,7 +2111,7 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
     }
 #endif /* WINDOWS */
 
-  mnt_file_creates (thread_p);
+  mnt_add_value_to_statistic(thread_p, 1, FILE_NUM_CREATES);
 
   if (vol_fd != NULL_VOLDES)
     {
@@ -3141,8 +3144,9 @@ fileio_traverse_temporary_volume (THREAD_ENTRY * thread_p, VOLINFO_APPLY_FN appl
   num_temp_vols = LOG_MAX_DBVOLID - header_p->next_temp_volid;
 
   for (i = header_p->num_volinfo_array - 1;
-       i > (header_p->num_volinfo_array - 1
-	    - (num_temp_vols + FILEIO_VOLINFO_INCREMENT - 1) / FILEIO_VOLINFO_INCREMENT); i--)
+       i >
+       (header_p->num_volinfo_array - 1 - (num_temp_vols + FILEIO_VOLINFO_INCREMENT - 1) / FILEIO_VOLINFO_INCREMENT);
+       i--)
     {
       min_j = fileio_min_temporary_volumes (i, num_temp_vols, header_p->num_volinfo_array);
 
@@ -3333,8 +3337,9 @@ fileio_map_mounted (THREAD_ENTRY * thread_p, bool (*fun) (THREAD_ENTRY * thread_
 
   num_temp_vols = LOG_MAX_DBVOLID - header_p->next_temp_volid;
   for (i = header_p->num_volinfo_array - 1;
-       i > (header_p->num_volinfo_array - 1
-	    - (num_temp_vols + FILEIO_VOLINFO_INCREMENT - 1) / FILEIO_VOLINFO_INCREMENT); i--)
+       i >
+       (header_p->num_volinfo_array - 1 - (num_temp_vols + FILEIO_VOLINFO_INCREMENT - 1) / FILEIO_VOLINFO_INCREMENT);
+       i--)
     {
       min_j = fileio_min_temporary_volumes (i, num_temp_vols, header_p->num_volinfo_array);
 
@@ -3711,7 +3716,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
     }
 #endif
 
-  mnt_file_ioreads (thread_p);
+  mnt_add_value_to_statistic(thread_p, 1, FILE_NUM_IOREADS);
   return io_page_p;
 }
 
@@ -3856,7 +3861,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
 #endif
 
   fileio_compensate_flush (thread_p, vol_fd, 1);
-  mnt_file_iowrites (thread_p, 1);
+  mnt_add_value_to_statistic(thread_p, 1, FILE_NUM_IOWRITES);
   return io_page_p;
 }
 
@@ -4005,7 +4010,7 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
     }
 #endif
 
-  mnt_file_ioreads (thread_p);
+  mnt_add_value_to_statistic(thread_p, 1, FILE_NUM_IOREADS);
   return io_pages_p;
 }
 
@@ -4153,7 +4158,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
 #endif
 
   fileio_compensate_flush (thread_p, vol_fd, num_pages);
-  mnt_file_iowrites (thread_p, num_pages);
+  mnt_add_value_to_statistic(thread_p, num_pages, FILE_NUM_IOWRITES);
   return io_pages_p;
 }
 
@@ -4287,7 +4292,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 	}
 #endif
 
-      mnt_file_iosynches (thread_p);
+      mnt_add_value_to_statistic(thread_p, 1, FILE_NUM_IOSYNCHES);
       return vol_fd;
     }
 }
@@ -4518,7 +4523,7 @@ fileio_read_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off_
       free_and_init (io_page_p);
     }
 
-  mnt_file_ioreads (thread_p);
+  mnt_add_value_to_statistic(thread_p, 1, FILE_NUM_IOREADS);
   return area_p;
 }
 
@@ -4688,7 +4693,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off
     }
 
   fileio_compensate_flush (thread_p, vol_fd, 1);
-  mnt_file_iowrites (thread_p, 1);
+  mnt_add_value_to_statistic(thread_p, 1, FILE_NUM_IOWRITES);
   return area_p;
 }
 #endif

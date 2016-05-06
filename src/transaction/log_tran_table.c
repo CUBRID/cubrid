@@ -416,9 +416,9 @@ logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, 
   LOG_CS_ENTER (thread_p);
   TR_TABLE_CS_ENTER (thread_p);
 
-  if (logpb_is_pool_initialized ())
+  if (logpb_is_initialize_pool ())
     {
-      logpb_finalize_pool (thread_p);
+      logpb_finalize_pool ();
     }
 
   (void) logtb_define_trantable_log_latch (thread_p, num_expected_tran_indices);
@@ -674,7 +674,7 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 	      assert (tdes->tran_index == i);
 	      assert (tdes->cs_topop.cs_index ==
 		      CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index);
-	      assert (tdes->cs_topop.name == csect_Name_tdes);
+	      assert (tdes->cs_topop.name == css_Csect_name_tdes);
 #endif
 
 	      logtb_finalize_tdes (thread_p, tdes);
@@ -1996,12 +1996,14 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
 
-  csect_initialize_critical_section (&tdes->cs_topop, csect_Name_tdes);
+  csect_initialize_critical_section (&tdes->cs_topop);
 
 #if defined(SERVER_MODE)
   assert (tdes->cs_topop.cs_index == -1);
+  assert (tdes->cs_topop.name == NULL);
 
   tdes->cs_topop.cs_index = CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index;
+  tdes->cs_topop.name = css_Csect_name_tdes;
 #endif
 
   tdes->topops.stack = NULL;
@@ -3163,7 +3165,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set
 	    {
 	      pgbuf_force_to_check_for_interrupts ();
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
-	      mnt_tran_interrupts (thread_p);
+	      mnt_add_value_to_statistic(thread_p, 1, TRAN_NUM_INTERRUPTS);
 	    }
 
 	  return true;
@@ -4351,11 +4353,11 @@ start_get_mvcc_table:
       snapshot_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (snapshot_wait_time > 0)
 	{
-	  mnt_snapshot_acquire_time (thread_p, snapshot_wait_time);
+	  mnt_add_in_statistics_array (thread_p, snapshot_wait_time, LOG_SNAPSHOT_TIME_COUNTERS);
 	}
       if (snapshot_retry_cnt > 1)
 	{
-	  mnt_snapshot_retry_counters (thread_p, snapshot_retry_cnt - 1);
+	   mnt_add_in_statistics_array (thread_p, snapshot_retry_cnt - 1, LOG_SNAPSHOT_RETRY_COUNTERS);
 	}
     }
 
@@ -4555,11 +4557,11 @@ start_get_oldest_active:
       oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (oldest_time > 0)
 	{
-	  mnt_oldest_mvcc_acquire_time (thread_p, oldest_time);
+	  mnt_add_in_statistics_array (thread_p, oldest_time, LOG_OLDEST_MVCC_TIME_COUNTERS);
 	}
       if (retry_cnt > 1)
 	{
-	  mnt_oldest_mvcc_retry_counters (thread_p, retry_cnt - 1);
+	  mnt_add_in_statistics_array (thread_p, retry_cnt - 1, LOG_OLDEST_MVCC_RETRY_COUNTERS);
 	}
     }
 
@@ -5147,7 +5149,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
       tran_complete_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
       if (tran_complete_time > 0)
 	{
-	  mnt_tran_complete_time (thread_p, tran_complete_time);
+	  mnt_add_in_statistics_array (thread_p, tran_complete_time, LOG_TRAN_COMPLETE_TIME_COUNTERS);
 	}
     }
 }
