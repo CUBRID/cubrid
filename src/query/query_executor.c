@@ -11480,7 +11480,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   XASL_NODE *xptr;
   DB_LOGICAL ev_res;
   DB_LOGICAL ev_res2;
-  RECDES oRec;
+  RECDES oRec = RECDES_INITIALIZER;
   HEAP_SCANCACHE scan_cache;
   ACCESS_SPEC_TYPE *specp = NULL;
   OID cls_oid;
