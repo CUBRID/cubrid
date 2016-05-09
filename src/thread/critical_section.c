@@ -92,7 +92,6 @@ static const char *csect_Names[] = {
   "CONN_ACTIVE",
   "CONN_FREE",
   "TEMPFILE_CACHE",
-  "LOG_PB",
   "LOG_ARCHIVE",
   "ACCESS_STATUS"
 };
@@ -2172,7 +2171,18 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
 
-  assert (thread_p != NULL && rmutex != NULL);
+  if (!thread_is_manager_initialized ())
+    {
+      /* Regard the resource is available, since system is working as a single thread. */
+      return NO_ERROR;
+    }
+
+  assert (rmutex != NULL);
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
 
   if (rmutex->owner == thread_p->tid)
     {
@@ -2218,8 +2228,19 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
 int
 rmutex_unlock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
 {
-  assert (thread_p != NULL && rmutex != NULL);
-  assert (rmutex->lock_cnt > 0);
+  if (!thread_is_manager_initialized ())
+    {
+      /* Regard the resource is available, since system is working as a single thread. */
+      return NO_ERROR;
+    }
+
+  assert (rmutex != NULL && rmutex->lock_cnt > 0);
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
   assert (rmutex->owner == thread_p->tid);
 
   rmutex->lock_cnt--;
@@ -2416,7 +2437,6 @@ sync_allocate_sync_stats (SYNC_PRIMITIVE_TYPE sync_prim_type, const char *name)
   SYNC_STATS_CHUNK *p, *last_chunk, *new_chunk;
   SYNC_STATS *stats = NULL;
   int i, idx;
-  bool found = false;
 
   pthread_mutex_lock (&sync_Stats_lock);
 
@@ -2431,15 +2451,14 @@ sync_allocate_sync_stats (SYNC_PRIMITIVE_TYPE sync_prim_type, const char *name)
 	    {
 	      if (p->block[idx].type == SYNC_TYPE_NONE)
 		{
-		  found = true;
 		  stats = sync_consume_sync_stats_from_pool (p, idx, sync_prim_type, name);
-		  break;
+
+		  pthread_mutex_unlock (&sync_Stats_lock);
+		  return stats;
 		}
 
 	      idx = (idx + 1) % NUM_ENTRIES_OF_SYNC_STATS_BLOCK;
 	    }
-
-	  assert (found == true);
 	}
 
       last_chunk = p;
@@ -2447,21 +2466,18 @@ sync_allocate_sync_stats (SYNC_PRIMITIVE_TYPE sync_prim_type, const char *name)
       p = p->next;
     }
 
-  if (found == false)
+  /* none is available. allocate a block */
+  new_chunk = sync_allocate_sync_stats_chunk ();
+  if (new_chunk == NULL)
     {
-      /* none is available. allocate a block */
-      new_chunk = sync_allocate_sync_stats_chunk ();
-      if (new_chunk == NULL)
-	{
-	  /* error was set */
-	  pthread_mutex_unlock (&sync_Stats_lock);
-	  return NULL;
-	}
-
-      last_chunk->next = new_chunk;
-
-      stats = sync_consume_sync_stats_from_pool (new_chunk, 0, sync_prim_type, name);
+      /* error was set */
+      pthread_mutex_unlock (&sync_Stats_lock);
+      return NULL;
     }
+
+  last_chunk->next = new_chunk;
+
+  stats = sync_consume_sync_stats_from_pool (new_chunk, 0, sync_prim_type, name);
 
   pthread_mutex_unlock (&sync_Stats_lock);
 

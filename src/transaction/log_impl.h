@@ -1934,8 +1934,8 @@ extern char log_Name_removed_archive[];
   (DB_ALIGN (new_data_size + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE, INT_ALIGNMENT))
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
-extern void logpb_finalize_pool (void);
-extern bool logpb_is_initialize_pool (void);
+extern void logpb_finalize_pool (THREAD_ENTRY * thread_p);
+extern bool logpb_is_pool_initialized (void);
 extern void logpb_invalidate_pool (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_create (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 extern LOG_PAGE *log_pbfetch (LOG_PAGEID pageid);
@@ -2038,7 +2038,7 @@ extern void logpb_initialize_logging_statistics (void);
 extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
 extern void xlogpb_dump_stat (FILE * outfp);
 
-extern void logpb_dump (FILE * out_fp);
+extern void logpb_dump (THREAD_ENTRY * thread_p, FILE * out_fp);
 
 extern int logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 					 const char *prefix_logname);
@@ -2051,20 +2051,13 @@ extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool 
 extern void log_2pc_define_funs (int (*get_participants) (int *particp_id_length, void **block_particps_ids),
 				 int (*lookup_participant) (void *particp_id, int num_particps,
 							    void *block_particps_ids),
-				 char *(*fmt_participant) (void *particp_id), void (*dump_participants) (FILE * fp,
-													 int
-													 block_length,
-													 void
-													 *block_particps_id),
+				 char *(*fmt_participant) (void *particp_id),
+				 void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id),
 				 int (*send_prepare) (int gtrid, int num_particps, void *block_particps_ids),
 				 bool (*send_commit) (int gtrid, int num_particps, int *particp_indices,
-						      void *block_particps_ids), bool (*send_abort) (int gtrid,
-												     int num_particps,
-												     int
-												     *particp_indices,
-												     void
-												     *block_particps_ids,
-												     int collect));
+						      void *block_particps_ids),
+				 bool (*send_abort) (int gtrid, int num_particps, int *particp_indices,
+						     void *block_particps_ids, int collect));
 #endif
 extern char *log_2pc_sprintf_particp (void *particp_id);
 extern void log_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_ids);

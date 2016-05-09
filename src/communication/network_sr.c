@@ -1393,7 +1393,8 @@ net_server_start (const char *server_name)
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
-  if (boot_restart_server (NULL, true, server_name, false, &check_coll_and_timezone, NULL) != NO_ERROR)
+  if (boot_restart_server (thread_get_thread_entry_info (), true, server_name, false, &check_coll_and_timezone,
+			   NULL) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -1417,11 +1418,11 @@ net_server_start (const char *server_name)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 
-	  xboot_shutdown_server (NULL, ER_THREAD_FINAL);
+	  xboot_shutdown_server (thread_get_thread_entry_info (), ER_THREAD_FINAL);
 	}
       else
 	{
-	  (void) xboot_shutdown_server (NULL, ER_ALL_FINAL);
+	  (void) xboot_shutdown_server (thread_get_thread_entry_info (), ER_ALL_FINAL);
 	}
 
 #if defined(CUBRID_DEBUG)
