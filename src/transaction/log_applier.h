@@ -52,7 +52,7 @@ int la_log_page_check (const char *database_name, const char *log_path, INT64 pa
 		       LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa);
 int la_apply_log_file (const char *database_name, const char *log_path, const int max_mem_size);
 void la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose);
-void la_print_log_arv_header (const char *database_name, struct log_arv_header *hdr, bool verbose);
+void la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool verbose);
 void la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa, float process_rate);
 
 extern int lp_prefetch_log_file (const char *database_name, const char *log_path);

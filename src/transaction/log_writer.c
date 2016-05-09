@@ -1118,7 +1118,7 @@ logwr_archive_active_log (void)
 {
   char archive_name[PATH_MAX] = { '\0' };
   LOG_PAGE *arvhdr_pgptr = NULL;
-  struct log_arv_header *arvhdr;
+  LOG_ARV_HEADER *arvhdr;
   char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
@@ -1148,7 +1148,7 @@ logwr_archive_active_log (void)
   malloc_arv_hdr_pgptr->hdr.offset = NULL_OFFSET;
 
   /* Construct the archive log header */
-  arvhdr = (struct log_arv_header *) malloc_arv_hdr_pgptr->area;
+  arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
   strncpy (arvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
   arvhdr->db_creation = logwr_Gl.hdr.db_creation;
   arvhdr->next_trid = NULL_TRANID;
@@ -1878,7 +1878,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   int ha_file_status;
   int error_code;
 
-  struct log_arv_header arvhdr;
+  LOG_ARV_HEADER arvhdr;
   LOG_HEADER *hdr_ptr;
   int nxarv_num;
   LOG_PAGEID nxarv_pageid, nxarv_phy_pageid;
@@ -1967,7 +1967,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 	}
       else
 	{
-	  struct log_arv_header arvhdr;
+	  LOG_ARV_HEADER arvhdr;
 
 	  /* If the fpageid is in archive log, fetch the page and the header page in the archive */
 	  if (logpb_fetch_from_archive (thread_p, fpageid, NULL, NULL, &arvhdr, false) == NULL)

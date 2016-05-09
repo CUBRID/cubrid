@@ -6278,11 +6278,11 @@ logpb_is_archive_available (int arv_num)
  */
 LOG_PAGE *
 logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr, int *ret_arv_num,
-			  struct log_arv_header * ret_arv_hdr, bool is_fatal)
+			  LOG_ARV_HEADER * ret_arv_hdr, bool is_fatal)
 {
   char hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_hdr_pgbuf;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
-  struct log_arv_header *arv_hdr;
+  LOG_ARV_HEADER *arv_hdr;
   LOG_PAGE *hdr_pgptr;
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;
   char arv_name[PATH_MAX];
@@ -6352,7 +6352,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 		  return NULL;
 		}
 	      error_code = NO_ERROR;
-	      arv_hdr = (struct log_arv_header *) hdr_pgptr->area;
+	      arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
 	      if (log_Gl.append.vdes != NULL_VOLDES)
 		{
 		  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
@@ -6662,7 +6662,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 
 		  return NULL;
 		}
-	      arv_hdr = (struct log_arv_header *) hdr_pgptr->area;
+	      arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
 	      if (log_Gl.append.vdes != NULL_VOLDES)
 		{
 		  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
@@ -6722,7 +6722,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 {
   char arv_name[PATH_MAX] = { '\0' };	/* Archive name */
   LOG_PAGE *malloc_arv_hdr_pgptr = NULL;	/* Archive header page PTR */
-  struct log_arv_header *arvhdr;	/* Archive header */
+  LOG_ARV_HEADER *arvhdr;	/* Archive header */
   BACKGROUND_ARCHIVING_INFO *bg_arv_info;
   char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
   char *aligned_log_pgbuf;
@@ -6774,7 +6774,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   malloc_arv_hdr_pgptr->hdr.offset = NULL_OFFSET;
 
   /* Construct the archive log header */
-  arvhdr = (struct log_arv_header *) malloc_arv_hdr_pgptr->area;
+  arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
   strncpy (arvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
   arvhdr->db_creation = log_Gl.hdr.db_creation;
   arvhdr->next_trid = log_Gl.hdr.next_trid;
@@ -6977,7 +6977,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 	    }
 	  else
 	    {
-	      struct log_arv_header min_arvhdr;
+	      LOG_ARV_HEADER min_arvhdr;
 	      if (logpb_fetch_from_archive (thread_p, min_fpageid, NULL, NULL, &min_arvhdr, false) != NULL)
 		{
 		  unneeded_arvnum = min_arvhdr.arv_num - 1;
@@ -7357,7 +7357,7 @@ logpb_get_archive_num_from_info_table (THREAD_ENTRY * thread_p, LOG_PAGEID page_
 static int
 logpb_get_remove_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID safe_pageid, int archive_num)
 {
-  struct log_arv_header *arvhdr;
+  LOG_ARV_HEADER *arvhdr;
   char arv_name[PATH_MAX];
   char arv_hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_arv_hdr_pgbuf;
   LOG_PAGE *arv_hdr_pgptr;
@@ -7392,7 +7392,7 @@ logpb_get_remove_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID safe_pageid, i
 	    }
 	  fileio_dismount (thread_p, vdes);
 
-	  arvhdr = (struct log_arv_header *) arv_hdr_pgptr->area;
+	  arvhdr = (LOG_ARV_HEADER *) arv_hdr_pgptr->area;
 	  if (safe_pageid > arvhdr->fpageid + arvhdr->npages)
 	    {
 	      break;
@@ -12212,7 +12212,7 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
   LOG_PAGEID page_id = NULL_PAGEID;
   int vdes = NULL_VOLDES;
   int arv_num;
-  struct log_arv_header *arv_hdr;
+  LOG_ARV_HEADER *arv_hdr;
   char arv_hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_arv_hdr_pgbuf;
   LOG_PAGE *arv_hdr_pgptr;
   char arv_name[PATH_MAX];
@@ -12253,7 +12253,7 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
 	  return NULL_PAGEID;
 	}
 
-      arv_hdr = (struct log_arv_header *) arv_hdr_pgptr->area;
+      arv_hdr = (LOG_ARV_HEADER *) arv_hdr_pgptr->area;
       if (log_Gl.append.vdes != NULL_VOLDES)
 	{
 	  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)

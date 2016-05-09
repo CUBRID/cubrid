@@ -1214,6 +1214,7 @@ struct log_header
      false					 \
   }
 
+typedef struct log_arv_header LOG_ARV_HEADER;
 struct log_arv_header
 {				/* Log archive header information */
   char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix utility */
@@ -1645,7 +1646,7 @@ enum log_recvphase
 struct log_archives
 {
   int vdes;			/* Last archived accessed */
-  struct log_arv_header hdr;	/* The log archive header */
+  LOG_ARV_HEADER hdr;		/* The log archive header */
   int max_unav;			/* Max size of unavailable array */
   int next_unav;		/* Last unavailable entry */
   int *unav_archives;		/* Unavailable archives */
@@ -1996,7 +1997,7 @@ extern bool logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p);
 extern int logpb_get_archive_number (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 extern void logpb_decache_archive_info (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr,
-					   int *ret_arv_num, struct log_arv_header *arv_hdr, bool is_fatal);
+					   int *ret_arv_num, LOG_ARV_HEADER * arv_hdr, bool is_fatal);
 extern void logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason);
 extern int logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count);
 extern void logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * log_lsa,

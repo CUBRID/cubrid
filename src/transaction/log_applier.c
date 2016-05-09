@@ -210,7 +210,7 @@ struct la_arv_log
   char path[PATH_MAX];
   int log_vdes;
   LOG_PAGE *hdr_page;
-  struct log_arv_header *log_hdr;
+  LOG_ARV_HEADER *log_hdr;
   int arv_num;
 };
 
@@ -761,7 +761,7 @@ static int
 la_get_range_of_archive (int arv_log_num, LOG_PAGEID * fpageid, DKNPAGES * npages)
 {
   int error = NO_ERROR;
-  struct log_arv_header *log_hdr = NULL;
+  LOG_ARV_HEADER *log_hdr = NULL;
   int arv_log_vdes = NULL_VOLDES;
   char arv_log_path[PATH_MAX];
 
@@ -805,7 +805,7 @@ log_reopen:
 	}
     }
 
-  log_hdr = (struct log_arv_header *) hdr_page->area;
+  log_hdr = (LOG_ARV_HEADER *) hdr_page->area;
   *fpageid = log_hdr->fpageid;
   *npages = log_hdr->npages;
 
@@ -825,7 +825,7 @@ la_find_archive_num (int *arv_log_num, LOG_PAGEID pageid)
 {
   int error = NO_ERROR;
   int guess_num = 0;
-  struct log_arv_header *log_hdr = NULL;
+  LOG_ARV_HEADER *log_hdr = NULL;
   LOG_PAGEID fpageid;
   DKNPAGES npages;
   int arv_log_vdes = NULL_VOLDES;
@@ -907,7 +907,7 @@ la_log_fetch_from_archive (LOG_PAGEID pageid, char *data)
   int error = NO_ERROR;
   int arv_log_num;
   bool need_guess = true;
-  struct log_arv_header *log_hdr = NULL;
+  LOG_ARV_HEADER *log_hdr = NULL;
   LOG_PAGEID fpageid;
   int npages;
 
@@ -1011,7 +1011,7 @@ log_reopen:
 	    }
 	}
 
-      la_Info.arv_log.log_hdr = (struct log_arv_header *) la_Info.arv_log.hdr_page->area;
+      la_Info.arv_log.log_hdr = (LOG_ARV_HEADER *) la_Info.arv_log.hdr_page->area;
     }
 
 
@@ -6947,7 +6947,7 @@ la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose)
  * la_print_log_arv_header () -
  */
 void
-la_print_log_arv_header (const char *database_name, struct log_arv_header *hdr, bool verbose)
+la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool verbose)
 {
   time_t tloc;
   DB_DATETIME datetime;

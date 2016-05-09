@@ -190,7 +190,7 @@ struct actve_log_header_scan_context
 typedef struct archive_log_header_scan_context ARCHIVE_LOG_HEADER_SCAN_CTX;
 struct archive_log_header_scan_context
 {
-  struct log_arv_header header;
+  LOG_ARV_HEADER header;
 };
 
 /*
@@ -9645,7 +9645,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
       goto exit_on_error;
     }
 
-  memcpy (&ctx->header, page_hdr->area, sizeof (struct log_arv_header));
+  memcpy (&ctx->header, page_hdr->area, sizeof (LOG_ARV_HEADER));
   close (fd);
   fd = -1;
 
@@ -9689,7 +9689,7 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
   DB_DATETIME time_val;
 
   ARCHIVE_LOG_HEADER_SCAN_CTX *ctx = (ARCHIVE_LOG_HEADER_SCAN_CTX *) ptr;
-  struct log_arv_header *header = &ctx->header;
+  LOG_ARV_HEADER *header = &ctx->header;
 
   if (cursor >= 1)
     {
@@ -9707,7 +9707,7 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
       goto exit_on_error;
     }
 
-  val = offsetof (LOG_PAGE, area) + offsetof (struct log_arv_header, magic);
+  val = offsetof (LOG_PAGE, area) + offsetof (LOG_ARV_HEADER, magic);
   db_make_int (out_values[idx], val);
   idx++;
 
