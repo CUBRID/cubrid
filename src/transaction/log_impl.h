@@ -1514,7 +1514,8 @@ struct log_rec_compensate
 };
 
 /* This entry is included during commit */
-struct log_start_postpone
+typedef struct log_rec_start_postpone LOG_REC_START_POSTPONE;
+struct log_rec_start_postpone
 {
   LOG_LSA posp_lsa;
 };

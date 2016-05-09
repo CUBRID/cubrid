@@ -4234,7 +4234,7 @@ log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, 
 static void
 log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa)
 {
-  struct log_start_postpone *start_posp;	/* Start postpone actions */
+  LOG_REC_START_POSTPONE *start_posp;	/* Start postpone actions */
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
 
@@ -4244,7 +4244,7 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
       return;
     }
 
-  start_posp = (struct log_start_postpone *) node->data_header;
+  start_posp = (LOG_REC_START_POSTPONE *) node->data_header;
   LSA_COPY (&start_posp->posp_lsa, start_postpone_lsa);
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
@@ -6918,11 +6918,11 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 static LOG_PAGE *
 log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_start_postpone *start_posp;
+  LOG_REC_START_POSTPONE *start_posp;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_posp), log_lsa, log_page_p);
-  start_posp = (struct log_start_postpone *) ((char *) log_page_p->area + log_lsa->offset);
+  start_posp = (LOG_REC_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", First postpone record at before or after Page = %lld and offset = %d\n",
 	   (long long int) start_posp->posp_lsa.pageid, start_posp->posp_lsa.offset);
 

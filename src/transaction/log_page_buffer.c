@@ -3723,7 +3723,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       break;
 
     case LOG_COMMIT_WITH_POSTPONE:
-      node->data_header_length = sizeof (struct log_start_postpone);
+      node->data_header_length = sizeof (LOG_REC_START_POSTPONE);
       break;
 
     case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
