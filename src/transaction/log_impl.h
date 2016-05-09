@@ -1529,7 +1529,8 @@ struct log_rec_topope_start_postpone
 };
 
 /* Information of execution of a postpone data */
-struct log_run_postpone
+typedef struct log_rec_run_postpone LOG_REC_RUN_POSTPONE;
+struct log_rec_run_postpone
 {
   struct log_data data;		/* Location of recovery data */
   LOG_LSA ref_lsa;		/* Address of the original postpone record */

@@ -3706,7 +3706,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       break;
 
     case LOG_RUN_POSTPONE:
-      node->data_header_length = sizeof (struct log_run_postpone);
+      node->data_header_length = sizeof (LOG_REC_RUN_POSTPONE);
       break;
 
     case LOG_COMPENSATE:

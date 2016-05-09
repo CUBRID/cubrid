@@ -2808,7 +2808,7 @@ void
 log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, const VPID * rcv_vpid,
 			 int length, const void *data, const LOG_LSA * ref_lsa)
 {
-  struct log_run_postpone *run_posp;	/* A run postpone record */
+  LOG_REC_RUN_POSTPONE *run_posp;	/* A run postpone record */
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
   int error_code = NO_ERROR;
@@ -2857,7 +2857,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 	  return;
 	}
 
-      run_posp = (struct log_run_postpone *) node->data_header;
+      run_posp = (LOG_REC_RUN_POSTPONE *) node->data_header;
       run_posp->data.rcvindex = rcvindex;
       run_posp->data.pageid = rcv_vpid->pageid;
       run_posp->data.volid = rcv_vpid->volid;
@@ -6836,13 +6836,13 @@ log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
 static LOG_PAGE *
 log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_run_postpone *run_posp;
+  LOG_REC_RUN_POSTPONE *run_posp;
   int redo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*run_posp), log_lsa, log_page_p);
-  run_posp = (struct log_run_postpone *) ((char *) log_page_p->area + log_lsa->offset);
+  run_posp = (LOG_REC_RUN_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (run_posp->data.rcvindex));
   fprintf (out_fp,
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Run postpone (Redo/After) length = %d, corresponding"

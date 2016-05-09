@@ -986,7 +986,7 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 			      LOG_LSA * check_point)
 {
   LOG_TDES *tdes;
-  struct log_run_postpone *run_posp;
+  LOG_REC_RUN_POSTPONE *run_posp;
 
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
   if (tdes == NULL)
@@ -1045,9 +1045,9 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * lo
 
   /* Read the DATA HEADER */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_run_postpone), log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_RUN_POSTPONE), log_lsa, log_page_p);
 
-  run_posp = (struct log_run_postpone *) ((char *) log_page_p->area + log_lsa->offset);
+  run_posp = (LOG_REC_RUN_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
 
   if (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE)
     {
@@ -2503,7 +2503,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* MVCC op undo log record */
   LOG_REC_DBOUT_REDO *dbout_redo = NULL;	/* A external redo log record */
   LOG_REC_COMPENSATE *compensate = NULL;	/* Compensating log record */
-  struct log_run_postpone *run_posp = NULL;	/* A run postpone action */
+  LOG_REC_RUN_POSTPONE *run_posp = NULL;	/* A run postpone action */
   struct log_2pc_start *start_2pc = NULL;	/* Start 2PC commit log record */
   struct log_2pc_particp_ack *received_ack = NULL;	/* A 2PC participant ack */
   struct log_donetime *donetime = NULL;
@@ -3132,8 +3132,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      /* Get the DATA HEADER */
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_run_postpone), &log_lsa, log_pgptr);
-	      run_posp = (struct log_run_postpone *) ((char *) log_pgptr->area + log_lsa.offset);
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_RUN_POSTPONE), &log_lsa, log_pgptr);
+	      run_posp = (LOG_REC_RUN_POSTPONE *) ((char *) log_pgptr->area + log_lsa.offset);
 
 	      assert (!LOG_IS_VACUUM_DATA_RECOVERY (run_posp->data.rcvindex));
 
@@ -3187,7 +3187,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      rcv.length = run_posp->length;
 	      rcv.offset = run_posp->data.offset;
 
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_run_postpone), &log_lsa, log_pgptr);
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_RUN_POSTPONE), &log_lsa, log_pgptr);
 	      /* GET AFTER DATA */
 	      LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
 
@@ -4702,7 +4702,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_DBOUT_REDO *dbout_redo;	/* A external redo log record */
   struct log_savept *savept;	/* A savepoint log record */
   LOG_REC_COMPENSATE *compensate;	/* Compensating log record */
-  struct log_run_postpone *run_posp;	/* A run postpone action */
+  LOG_REC_RUN_POSTPONE *run_posp;	/* A run postpone action */
   struct log_chkpt *chkpt;	/* Checkpoint log record */
   struct log_2pc_start *start_2pc;	/* A 2PC start log record */
   struct log_2pc_prepcommit *prepared;	/* A 2PC prepare to commit */
@@ -4842,11 +4842,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_RUN_POSTPONE:
       /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_run_postpone), &log_lsa, log_pgptr);
-      run_posp = (struct log_run_postpone *) ((char *) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_RUN_POSTPONE), &log_lsa, log_pgptr);
+      run_posp = (LOG_REC_RUN_POSTPONE *) ((char *) log_pgptr->area + log_lsa.offset);
       redo_length = run_posp->length;
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_run_postpone), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_RUN_POSTPONE), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
       break;
 
@@ -5032,7 +5032,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
   LOG_LSA forward_lsa;
   LOG_LSA next_postpone_lsa;
   LOG_LSA local_start_postpone_run_lsa;
-  struct log_run_postpone *run_posp;
+  LOG_REC_RUN_POSTPONE *run_posp;
 
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *aligned_log_pgbuf;
@@ -5182,10 +5182,9 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 		      LSA_COPY (&local_start_postpone_run_lsa, &log_lsa);
 		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 
-		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_run_postpone), &log_lsa,
-							log_pgptr);
+		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_RUN_POSTPONE), &log_lsa, log_pgptr);
 
-		      run_posp = (struct log_run_postpone *) ((char *) log_pgptr->area + log_lsa.offset);
+		      run_posp = (LOG_REC_RUN_POSTPONE *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		      if (LSA_EQ (start_postpone_lsa, &run_posp->ref_lsa))
 			{
