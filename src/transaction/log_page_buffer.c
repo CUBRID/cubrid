@@ -3152,7 +3152,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   LOG_REC_REDO *redo_p = NULL;
   LOG_REC_UNDO *undo_p = NULL;
   LOG_REC_UNDOREDO *undoredo_p = NULL;
-  struct log_mvcc_redo *mvcc_redo_p = NULL;
+  LOG_REC_MVCC_REDO *mvcc_redo_p = NULL;
   LOG_REC_MVCC_UNDO *mvcc_undo_p = NULL;
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo_p = NULL;
   struct log_data *log_data_p = NULL;
@@ -3299,7 +3299,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       node->data_header_length = sizeof (LOG_REC_UNDO);
       break;
     case LOG_MVCC_REDO_DATA:
-      node->data_header_length = sizeof (struct log_mvcc_redo);
+      node->data_header_length = sizeof (LOG_REC_MVCC_REDO);
       break;
     case LOG_REDO_DATA:
       node->data_header_length = sizeof (LOG_REC_REDO);
@@ -3349,7 +3349,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 
     case LOG_MVCC_REDO_DATA:
       /* Use redo data from MVCC redo structure */
-      mvcc_redo_p = (struct log_mvcc_redo *) node->data_header;
+      mvcc_redo_p = (LOG_REC_MVCC_REDO *) node->data_header;
 
       /* Must also fill MVCCID field */
       mvccid_p = &mvcc_redo_p->mvccid;

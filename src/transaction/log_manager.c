@@ -6807,13 +6807,13 @@ static LOG_PAGE *
 log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			   LOG_ZIP * log_zip_p)
 {
-  struct log_mvcc_redo *mvcc_redo;
+  LOG_REC_MVCC_REDO *mvcc_redo;
   int redo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_redo), log_lsa, log_page_p);
-  mvcc_redo = (struct log_mvcc_redo *) ((char *) log_page_p->area + log_lsa->offset);
+  mvcc_redo = (LOG_REC_MVCC_REDO *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (mvcc_redo->redo.data.rcvindex));
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Redo (After) length = %d,\n",

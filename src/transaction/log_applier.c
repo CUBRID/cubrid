@@ -3959,7 +3959,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
-  struct log_mvcc_redo *mvcc_redo = NULL;
+  LOG_REC_MVCC_REDO *mvcc_redo = NULL;
 
   bool is_undo_zip = false;
   int rec_len = 0;
@@ -4117,7 +4117,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
     case LOG_MVCC_REDO_DATA:
       if (is_mvcc_log == true)
 	{
-	  log_size = DB_SIZEOF (struct log_mvcc_redo);
+	  log_size = DB_SIZEOF (LOG_REC_MVCC_REDO);
 	}
       else
 	{
@@ -4129,7 +4129,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	{
 	  if (is_mvcc_log == true)
 	    {
-	      mvcc_redo = (struct log_mvcc_redo *) ((char *) pg->area + offset);
+	      mvcc_redo = (LOG_REC_MVCC_REDO *) ((char *) pg->area + offset);
 	      redo = &mvcc_redo->redo;
 	    }
 	  else

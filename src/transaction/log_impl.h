@@ -1489,7 +1489,8 @@ struct log_rec_mvcc_undo
 };
 
 /* Information of redo log records for MVCC operations */
-struct log_mvcc_redo
+typedef struct log_rec_mvcc_redo LOG_REC_MVCC_REDO;
+struct log_rec_mvcc_redo
 {
   LOG_REC_REDO redo;		/* Location of recovery data */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
