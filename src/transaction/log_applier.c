@@ -3953,7 +3953,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
   LOG_PAGEID pageid;
   int error = NO_ERROR;
 
-  struct log_undoredo *undoredo;
+  LOG_REC_UNDOREDO *undoredo;
   struct log_undo *undo;
   struct log_redo *redo;
 
@@ -4006,7 +4006,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	}
       else
 	{
-	  log_size = DB_SIZEOF (struct log_undoredo);
+	  log_size = DB_SIZEOF (LOG_REC_UNDOREDO);
 	}
 
       LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
@@ -4020,7 +4020,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	    }
 	  else
 	    {
-	      undoredo = (struct log_undoredo *) ((char *) pg->area + offset);
+	      undoredo = (LOG_REC_UNDOREDO *) ((char *) pg->area + offset);
 	    }
 
 	  undo_length = undoredo->ulength;	/* undo log length */
@@ -4265,8 +4265,8 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
   int length = 0;
 
   LSA_COPY (&current_lsa, &log_record->prev_tranlsa);
-  prev_vpid.pageid = ((struct log_undoredo *) logs)->data.pageid;
-  prev_vpid.volid = ((struct log_undoredo *) logs)->data.volid;
+  prev_vpid.pageid = ((LOG_REC_UNDOREDO *) logs)->data.pageid;
+  prev_vpid.volid = ((LOG_REC_UNDOREDO *) logs)->data.volid;
 
   while (!LSA_ISNULL (&current_lsa))
     {
@@ -4405,8 +4405,8 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
   LOG_PAGEID pageid;
   int error = NO_ERROR;
   LOG_RECORD_HEADER *lrec;
-  struct log_undoredo *undoredo;
-  struct log_undoredo *prev_log;
+  LOG_REC_UNDOREDO *undoredo;
+  LOG_REC_UNDOREDO *prev_log;
   struct log_mvcc_undoredo *mvcc_undoredo = NULL;
   int zip_len = 0;
   int temp_length = 0;
@@ -4424,7 +4424,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 
   pg = pgptr;
   LSA_COPY (&lsa, &prev_lrec->forw_lsa);
-  prev_log = *(struct log_undoredo **) logs;
+  prev_log = *(LOG_REC_UNDOREDO **) logs;
 
   redo_unzip_data = la_Info.redo_unzip_ptr;
 
@@ -4452,7 +4452,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 	      else
 		{
 		  is_mvcc_log = false;
-		  log_size = DB_SIZEOF (struct log_undoredo);
+		  log_size = DB_SIZEOF (LOG_REC_UNDOREDO);
 		}
 
 	      offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa.offset;
@@ -4468,7 +4468,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 		    }
 		  else
 		    {
-		      undoredo = (struct log_undoredo *) ((char *) pg->area + offset);
+		      undoredo = (LOG_REC_UNDOREDO *) ((char *) pg->area + offset);
 		    }
 
 		  undo_length = undoredo->ulength;

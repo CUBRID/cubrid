@@ -3151,7 +3151,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 {
   struct log_redo *redo_p = NULL;
   struct log_undo *undo_p = NULL;
-  struct log_undoredo *undoredo_p = NULL;
+  LOG_REC_UNDOREDO *undoredo_p = NULL;
   struct log_mvcc_redo *mvcc_redo_p = NULL;
   struct log_mvcc_undo *mvcc_undo_p = NULL;
   struct log_mvcc_undoredo *mvcc_undoredo_p = NULL;
@@ -3310,7 +3310,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       break;
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
-      node->data_header_length = sizeof (struct log_undoredo);
+      node->data_header_length = sizeof (LOG_REC_UNDOREDO);
       break;
     default:
       assert (0);
@@ -3321,7 +3321,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   node->data_header = (char *) malloc (node->data_header_length);
   if (node->data_header == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct log_undoredo));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_REC_UNDOREDO));
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -3377,7 +3377,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
       undoredo_p = ((node->log_header.type == LOG_UNDOREDO_DATA || node->log_header.type == LOG_DIFF_UNDOREDO_DATA)
-		    ? (struct log_undoredo *) node->data_header : &mvcc_undoredo_p->undoredo);
+		    ? (LOG_REC_UNDOREDO *) node->data_header : &mvcc_undoredo_p->undoredo);
 
       data_header_ulength_p = &undoredo_p->ulength;
       data_header_rlength_p = &undoredo_p->rlength;

@@ -2496,7 +2496,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */
   LOG_LSA log_lsa;
   LOG_RECORD_HEADER *log_rec = NULL;	/* Pointer to log record */
-  struct log_undoredo *undoredo = NULL;	/* Undo_redo log record */
+  LOG_REC_UNDOREDO *undoredo = NULL;	/* Undo_redo log record */
   struct log_mvcc_undoredo *mvcc_undoredo = NULL;	/* MVCC op undo/redo log record */
   struct log_redo *redo = NULL;	/* Redo log record */
   struct log_mvcc_redo *mvcc_redo = NULL;	/* MVCC op redo log record */
@@ -2774,9 +2774,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      else
 		{
 		  /* Data header is a regular undoredo */
-		  data_header_size = sizeof (struct log_undoredo);
+		  data_header_size = sizeof (LOG_REC_UNDOREDO);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
-		  undoredo = (struct log_undoredo *) ((char *) log_pgptr->area + log_lsa.offset);
+		  undoredo = (LOG_REC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		  mvccid = MVCCID_NULL;
 		}
@@ -3811,7 +3811,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */
   LOG_LSA log_lsa;
   LOG_RECORD_HEADER *log_rec = NULL;	/* Pointer to log record */
-  struct log_undoredo *undoredo = NULL;	/* Undo_redo log record */
+  LOG_REC_UNDOREDO *undoredo = NULL;	/* Undo_redo log record */
   struct log_undo *undo = NULL;	/* Undo log record */
   struct log_mvcc_undoredo *mvcc_undoredo = NULL;	/* MVCC op Undo_redo log record */
   struct log_mvcc_undo *mvcc_undo = NULL;	/* MVCC op Undo log record */
@@ -3986,9 +3986,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		    }
 		  else
 		    {
-		      data_header_size = sizeof (struct log_undoredo);
+		      data_header_size = sizeof (LOG_REC_UNDOREDO);
 		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
-		      undoredo = (struct log_undoredo *) ((char *) log_pgptr->area + log_lsa.offset);
+		      undoredo = (LOG_REC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		      rcv.mvcc_id = MVCCID_NULL;
 		    }
@@ -4693,7 +4693,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_LSA log_lsa;
   LOG_RECTYPE type;		/* Log record type */
   LOG_RECORD_HEADER *log_rec;	/* Pointer to log record */
-  struct log_undoredo *undoredo;	/* Undo_redo log record */
+  LOG_REC_UNDOREDO *undoredo;	/* Undo_redo log record */
   struct log_undo *undo;	/* Undo log record */
   struct log_redo *redo;	/* Redo log record */
   struct log_mvcc_undoredo *mvcc_undoredo;	/* MVCC op undo_redo log record */
@@ -4772,13 +4772,13 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
       /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_undoredo), &log_lsa, log_pgptr);
-      undoredo = (struct log_undoredo *) ((char *) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_UNDOREDO), &log_lsa, log_pgptr);
+      undoredo = (LOG_REC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
       undo_length = (int) GET_ZIP_LEN (undoredo->ulength);
       redo_length = (int) GET_ZIP_LEN (undoredo->rlength);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_undoredo), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_UNDOREDO), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
       break;

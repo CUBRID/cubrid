@@ -1437,6 +1437,7 @@ struct log_data
 };
 
 /* Information of undo_redo log records */
+typedef struct log_undoredo LOG_REC_UNDOREDO;
 struct log_undoredo
 {
   struct log_data data;		/* Location of recovery data */
@@ -1470,7 +1471,7 @@ struct log_vacuum_info
 /* Information of undo_redo log records for MVCC operations */
 struct log_mvcc_undoredo
 {
-  struct log_undoredo undoredo;	/* Undoredo information */
+  LOG_REC_UNDOREDO undoredo;	/* Undoredo information */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
   struct log_vacuum_info vacuum_info;	/* Info required for vacuum */
 };
