@@ -1774,7 +1774,7 @@ struct log_global
   TRANTABLE trantable;		/* Transaction table */
   struct log_append_info append;	/* The log append info */
   LOG_PRIOR_LSA_INFO prior_info;
-  struct log_header hdr;	/* The log header */
+  LOG_HEADER hdr;		/* The log header */
   struct log_archives archive;	/* Current archive information */
   LOG_PAGEID run_nxchkpt_atpageid;
 #if defined(SERVER_MODE)
@@ -1945,11 +1945,11 @@ extern void logpb_free_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 extern void logpb_free_without_mutex (LOG_PAGE * log_pgptr);
 extern LOG_PAGEID logpb_get_page_id (LOG_PAGE * log_pgptr);
 extern int logpb_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore);
-extern int logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr, const char *prefix_logname,
+extern int logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const char *prefix_logname,
 				    DKNPAGES npages, INT64 * db_creation);
 extern LOG_PAGE *logpb_create_header_page (THREAD_ENTRY * thread_p);
-extern void logpb_fetch_header (THREAD_ENTRY * thread_p, struct log_header *hdr);
-extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, struct log_header *hdr, LOG_PAGE * log_pgptr);
+extern void logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr);
+extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
 extern void logpb_flush_header (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);

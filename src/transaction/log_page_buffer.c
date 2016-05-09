@@ -419,8 +419,7 @@ static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, 
 
 static void logpb_set_nxio_lsa (LOG_LSA * lsa);
 
-static int logpb_copy_log_header (THREAD_ENTRY * thread_p, struct log_header *to_hdr,
-				  const struct log_header *from_hdr);
+static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -1753,7 +1752,7 @@ logpb_initialize_backup_info ()
  * NOTE:Initialize a log header structure.
  */
 int
-logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr, const char *prefix_logname,
+logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const char *prefix_logname,
 			 DKNPAGES npages, INT64 * db_creation)
 {
   int i;
@@ -1859,7 +1858,7 @@ logpb_create_header_page (THREAD_ENTRY * thread_p)
  * NOTE: Copy a log header.
  */
 static int
-logpb_copy_log_header (THREAD_ENTRY * thread_p, struct log_header *to_hdr, const struct log_header *from_hdr)
+logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr)
 {
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (to_hdr != NULL);
@@ -1882,7 +1881,7 @@ logpb_copy_log_header (THREAD_ENTRY * thread_p, struct log_header *to_hdr, const
  * NOTE:Read the log header into the area pointed by hdr.
  */
 void
-logpb_fetch_header (THREAD_ENTRY * thread_p, struct log_header *hdr)
+logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr)
 {
   assert (hdr != NULL);
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -1905,9 +1904,9 @@ logpb_fetch_header (THREAD_ENTRY * thread_p, struct log_header *hdr)
  * NOTE:Read the log header into the area pointed by hdr
  */
 void
-logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, struct log_header *hdr, LOG_PAGE * log_pgptr)
+logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
-  struct log_header *log_hdr;	/* The log header */
+  LOG_HEADER *log_hdr;		/* The log header */
 
   assert (hdr != NULL);
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -1921,7 +1920,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, struct log_header *hdr,
       return;
     }
 
-  log_hdr = (struct log_header *) (log_pgptr->area);
+  log_hdr = (LOG_HEADER *) (log_pgptr->area);
   *hdr = *log_hdr;
 
   assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
@@ -1938,7 +1937,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, struct log_header *hdr,
 void
 logpb_flush_header (THREAD_ENTRY * thread_p)
 {
-  struct log_header *log_hdr;
+  LOG_HEADER *log_hdr;
 #if defined(CUBRID_DEBUG)
   struct timeval start_time = { 0, 0 };
   struct timeval end_time = { 0, 0 };
@@ -1963,7 +1962,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 	}
     }
 
-  log_hdr = (struct log_header *) (log_Gl.loghdr_pgptr->area);
+  log_hdr = (LOG_HEADER *) (log_Gl.loghdr_pgptr->area);
   *log_hdr = log_Gl.hdr;
 
   log_Gl.loghdr_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
@@ -2401,7 +2400,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
 			      const char *prefix_logname, PGLENGTH * io_page_size, PGLENGTH * log_page_size,
 			      INT64 * creation_time, float *db_compatibility, int *db_charset)
 {
-  struct log_header hdr;	/* Log header */
+  LOG_HEADER hdr;		/* Log header */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   int error_code = NO_ERROR;
@@ -10167,7 +10166,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   int to_vdes;			/* A volume descriptor */
   char to_volname[PATH_MAX];	/* Name of "to" volume */
   LOG_PAGE *to_malloc_log_pgptr = NULL;	/* Log header page "to" log */
-  struct log_header *to_hdr;	/* Log header for "to" log */
+  LOG_HEADER *to_hdr;		/* Log header for "to" log */
   FILE *to_volinfo_fp = NULL;	/* Pointer to new volinfo file */
   char *alloc_extpath = NULL;	/* Copy path for specific volume */
   const char *ext_name;
@@ -10295,7 +10294,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   to_malloc_log_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
   to_malloc_log_pgptr->hdr.offset = NULL_OFFSET;
 
-  to_hdr = (struct log_header *) to_malloc_log_pgptr->area;
+  to_hdr = (LOG_HEADER *) to_malloc_log_pgptr->area;
   error_code = logpb_initialize_header (thread_p, to_hdr, to_prefix_logname, log_Gl.hdr.npages + 1, &db_creation);
   if (error_code != NO_ERROR)
     {
@@ -10966,8 +10965,8 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 {
   char *vlabel;			/* Name of volume */
   char vol_fullname[PATH_MAX];	/* Name of volume */
-  struct log_header disk_hdr;	/* Log header area */
-  struct log_header *loghdr;	/* Log header pointer */
+  LOG_HEADER disk_hdr;		/* Log header area */
+  LOG_HEADER *loghdr;		/* Log header pointer */
   VOLID volid;
   FILE *db_volinfo_fp = NULL;
   int read_int_volid;
@@ -12327,8 +12326,8 @@ logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db_fullname, 
 {
   int i, error_code = NO_ERROR;
   char vol_fullname[PATH_MAX];
-  struct log_header disk_hdr;
-  struct log_header *loghdr = NULL;
+  LOG_HEADER disk_hdr;
+  LOG_HEADER *loghdr = NULL;
 
   er_clear ();
   error_code = logpb_initialize_log_names (thread_p, db_fullname, logpath, prefix_logname);

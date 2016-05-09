@@ -243,7 +243,7 @@ static void log_ascii_dump (FILE * out_fp, int length, void *data);
 static void log_hexa_dump (FILE * out_fp, int length, void *data);
 static void log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			   void (*dumpfun) (FILE * fp, int, void *), LOG_ZIP * log_dump_ptr);
-static void log_dump_header (FILE * out_fp, struct log_header *log_header_p);
+static void log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p);
 static LOG_PAGE *log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 					   LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p);
 static LOG_PAGE *log_dump_record_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p, LOG_PAGE * log_page_p,
@@ -827,7 +827,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
     temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, LOG_PAGESIZE);
     logpb_read_page_from_file (LOGPB_HEADER_PAGE_ID, temp_pgptr);
-    assert (memcmp ((struct log_header *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) != 0);
+    assert (memcmp ((LOG_HEADER *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) != 0);
   }
 #endif /* CUBRID_DEBUG */
 
@@ -846,7 +846,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
     temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, LOG_PAGESIZE);
     logpb_read_page_from_file (LOGPB_HEADER_PAGE_ID, temp_pgptr);
-    assert (memcmp ((struct log_header *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) == 0);
+    assert (memcmp ((LOG_HEADER *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) == 0);
   }
 #endif /* CUBRID_DEBUG */
 
@@ -6603,7 +6603,7 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log
 }
 
 static void
-log_dump_header (FILE * out_fp, struct log_header *log_header_p)
+log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 {
   time_t tmp_time;
   char time_val[CTIME_MAX];

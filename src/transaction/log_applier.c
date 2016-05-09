@@ -199,7 +199,7 @@ struct la_act_log
   char path[PATH_MAX];
   int log_vdes;
   LOG_PAGE *hdr_page;
-  struct log_header *log_hdr;
+  LOG_HEADER *log_hdr;
   int db_iopagesize;
   int db_logpagesize;
 };
@@ -552,9 +552,9 @@ static void la_get_adaptive_time_commit_interval (int *time_commit_interval, int
 
 static void lp_init (const char *log_path);
 static int lp_init_prefetcher (const char *database_name, const char *log_path);
-static int lp_get_log_record (struct log_header *final_log_hdr, LA_CACHE_BUFFER ** log_buf);
+static int lp_get_log_record (LOG_HEADER * final_log_hdr, LA_CACHE_BUFFER ** log_buf);
 static int lp_adjust_prefetcher_speed (void);
-static int lp_process_log_record (struct log_header *final_log_hdr, LA_CACHE_BUFFER * log_buf);
+static int lp_process_log_record (LOG_HEADER * final_log_hdr, LA_CACHE_BUFFER * log_buf);
 static int lp_prefetch_log_record (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
 static int lp_prefetch_update_or_delete (LA_ITEM * item);
 static int lp_prefetch_insert (LA_ITEM * item);
@@ -2617,7 +2617,7 @@ la_fetch_log_hdr (LA_ACT_LOG * act_log)
       return ER_LOG_READ;
     }
 
-  act_log->log_hdr = (struct log_header *) (act_log->hdr_page->area);
+  act_log->log_hdr = (LOG_HEADER *) (act_log->hdr_page->area);
 
   return error;
 }
@@ -2674,7 +2674,7 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 	  return error;
 	}
 
-      act_log->log_hdr = (struct log_header *) act_log->hdr_page->area;
+      act_log->log_hdr = (LOG_HEADER *) act_log->hdr_page->area;
 
       /* check mark will deleted */
       if (act_log->log_hdr->mark_will_del == true)
@@ -2739,7 +2739,7 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
   else if (act_log->db_logpagesize > LA_DEFAULT_LOG_PAGE_SIZE)
     {
       act_log->hdr_page = (LOG_PAGE *) realloc (act_log->hdr_page, act_log->db_logpagesize);
-      act_log->log_hdr = (struct log_header *) act_log->hdr_page->area;
+      act_log->log_hdr = (LOG_HEADER *) act_log->hdr_page->area;
     }
 
   return error;
@@ -3774,7 +3774,7 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
 	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	    {
 	      /* skip prev version lsa */
-	      (void) or_advance (buf, sizeof(LOG_LSA));
+	      (void) or_advance (buf, sizeof (LOG_LSA));
 	    }
 	}
 
@@ -6891,7 +6891,7 @@ la_shutdown (void)
  * la_print_log_header () -
  */
 void
-la_print_log_header (const char *database_name, struct log_header *hdr, bool verbose)
+la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose)
 {
   time_t tloc;
   DB_DATETIME datetime;
@@ -7221,7 +7221,7 @@ int
 lp_prefetch_log_file (const char *database_name, const char *log_path)
 {
   int error = NO_ERROR;
-  struct log_header final_log_hdr;
+  LOG_HEADER final_log_hdr;
   LA_CACHE_BUFFER *log_buf = NULL;
 
   error = lp_init_prefetcher (database_name, log_path);
@@ -7422,7 +7422,7 @@ lp_init_prefetcher (const char *database_name, const char *log_path)
 }
 
 static int
-lp_get_log_record (struct log_header *final_log_hdr, LA_CACHE_BUFFER ** log_buf)
+lp_get_log_record (LOG_HEADER * final_log_hdr, LA_CACHE_BUFFER ** log_buf)
 {
   int error = NO_ERROR;
   LA_CACHE_BUFFER *tmp_log_buf = NULL;
@@ -7442,7 +7442,7 @@ lp_get_log_record (struct log_header *final_log_hdr, LA_CACHE_BUFFER ** log_buf)
 	  return error;
 	}
 
-      memcpy (final_log_hdr, la_Info.act_log.log_hdr, sizeof (struct log_header));
+      memcpy (final_log_hdr, la_Info.act_log.log_hdr, sizeof (LOG_HEADER));
 
       if (final_log_hdr->eof_lsa.pageid < lp_Info.final_lsa.pageid)
 	{
@@ -7604,7 +7604,7 @@ lp_adjust_prefetcher_speed (void)
 }
 
 static int
-lp_process_log_record (struct log_header *final_log_hdr, LA_CACHE_BUFFER * log_buf)
+lp_process_log_record (LOG_HEADER * final_log_hdr, LA_CACHE_BUFFER * log_buf)
 {
   int error = NO_ERROR;
   LOG_LSA prev_final;
@@ -8471,7 +8471,7 @@ int
 la_apply_log_file (const char *database_name, const char *log_path, const int max_mem_size)
 {
   int error = NO_ERROR;
-  struct log_header final_log_hdr;
+  LOG_HEADER final_log_hdr;
   LA_CACHE_BUFFER *log_buf = NULL;
   LOG_PAGE *pg_ptr;
   LOG_RECORD_HEADER *lrec = NULL;
@@ -8702,7 +8702,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      max_arv_count_to_delete = 0;
 	    }
 
-	  memcpy (&final_log_hdr, la_Info.act_log.log_hdr, sizeof (struct log_header));
+	  memcpy (&final_log_hdr, la_Info.act_log.log_hdr, sizeof (LOG_HEADER));
 
 	  if (prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS) >= 0)
 	    {

@@ -263,7 +263,7 @@ logwr_read_log_header (void)
 	      return error;
 	    }
 
-	  logwr_Gl.hdr = *((struct log_header *) log_pgptr->area);
+	  logwr_Gl.hdr = *((LOG_HEADER *) log_pgptr->area);
 
 	  assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
 	  assert (log_pgptr->hdr.offset == NULL_OFFSET);
@@ -591,7 +591,7 @@ logwr_set_hdr_and_flush_info (void)
   if (num_toflush > 0)
     {
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
-      logwr_Gl.hdr = *((struct log_header *) log_pgptr->area);
+      logwr_Gl.hdr = *((LOG_HEADER *) log_pgptr->area);
       logwr_Gl.loghdr_pgptr = log_pgptr;
 
       /* Initialize archive info if it is not set */
@@ -641,9 +641,9 @@ logwr_set_hdr_and_flush_info (void)
   else
     {
       /* If it gets only the header page, compares both of the headers. There is no update for the header information */
-      struct log_header hdr;
+      LOG_HEADER hdr;
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
-      hdr = *((struct log_header *) log_pgptr->area);
+      hdr = *((LOG_HEADER *) log_pgptr->area);
 
       if ((hdr.ha_server_state != HA_SERVER_STATE_ACTIVE && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_ACTIVE
 	   && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY) && (hdr.ha_promotion_time == 0
@@ -1435,7 +1435,7 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
   char *ptr;
   char *logpg_area = NULL;
   LOG_PAGE *loghdr_pgptr;
-  struct log_header hdr;
+  LOG_HEADER hdr;
   char *atchar;
 
   atchar = strchr (db_name, '@');
@@ -1463,7 +1463,7 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
     {
 
       loghdr_pgptr = (LOG_PAGE *) logpg_area;
-      hdr = *((struct log_header *) loghdr_pgptr->area);
+      hdr = *((LOG_HEADER *) loghdr_pgptr->area);
 
       *master_eof_lsa = hdr.eof_lsa;
 
@@ -1879,7 +1879,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   int error_code;
 
   struct log_arv_header arvhdr;
-  struct log_header *hdr_ptr;
+  LOG_HEADER *hdr_ptr;
   int nxarv_num;
   LOG_PAGEID nxarv_pageid, nxarv_phy_pageid;
 
@@ -2010,7 +2010,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
   log_pgptr->hdr = log_Gl.loghdr_pgptr->hdr;
   memcpy (log_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr));
 
-  hdr_ptr = (struct log_header *) (log_pgptr->area);
+  hdr_ptr = (LOG_HEADER *) (log_pgptr->area);
   if (entry->copy_from_first_phy_page == true)
     {
       hdr_ptr->nxarv_phy_pageid = nxarv_phy_pageid;
