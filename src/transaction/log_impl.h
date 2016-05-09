@@ -1581,7 +1581,8 @@ struct log_chkpt_topops_commit_posp
 				 * since it is reset during recovery to the last reference postpone address. */
 };
 
-struct log_savept
+typedef struct log_rec_savept LOG_REC_SAVEPT;
+struct log_rec_savept
 {
   LOG_LSA prv_savept;		/* Previous savepoint record */
   int length;			/* Savepoint name */

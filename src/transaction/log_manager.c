@@ -3273,7 +3273,7 @@ log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 LOG_LSA *
 log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
 {
-  struct log_savept *savept;	/* A savept log record */
+  LOG_REC_SAVEPT *savept;	/* A savept log record */
   LOG_TDES *tdes;		/* Transaction descriptor */
   int length;			/* Length of the name of the save point */
   int tran_index;
@@ -3322,7 +3322,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
       return NULL;
     }
 
-  savept = (struct log_savept *) node->data_header;
+  savept = (LOG_REC_SAVEPT *) node->data_header;
   savept->length = length;
   LSA_COPY (&savept->prv_savept, &tdes->savept_lsa);
 
@@ -3354,7 +3354,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where a savepoint log record is located */
   LOG_RECORD_HEADER *log_rec;	/* Pointer to log record */
-  struct log_savept *savept;	/* A savepoint log record */
+  LOG_REC_SAVEPT *savept;	/* A savepoint log record */
   LOG_LSA prev_lsa;		/* Previous savepoint */
   LOG_LSA log_lsa;
   int length;			/* Length of savepoint name */
@@ -3395,7 +3395,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa, log_pgptr);
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*savept), &log_lsa, log_pgptr);
 
-	  savept = (struct log_savept *) ((char *) log_pgptr->area + log_lsa.offset);
+	  savept = (LOG_REC_SAVEPT *) ((char *) log_pgptr->area + log_lsa.offset);
 	  LSA_COPY (&prev_lsa, &savept->prv_savept);
 	  length = savept->length;
 
@@ -7054,12 +7054,12 @@ log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 static LOG_PAGE *
 log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_savept *savept;
+  LOG_REC_SAVEPT *savept;
   int length_save_point;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*savept), log_lsa, log_page_p);
-  savept = (struct log_savept *) ((char *) log_page_p->area + log_lsa->offset);
+  savept = (LOG_REC_SAVEPT *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Prev_savept_Lsa = %lld|%d, length = %d,\n", (long long int) savept->prv_savept.pageid,
 	   savept->prv_savept.offset, savept->length);

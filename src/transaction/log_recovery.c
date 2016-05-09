@@ -4700,7 +4700,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_MVCC_UNDO *mvcc_undo;	/* MVCC op undo log record */
   LOG_REC_MVCC_REDO *mvcc_redo;	/* MVCC op redo log record */
   LOG_REC_DBOUT_REDO *dbout_redo;	/* A external redo log record */
-  struct log_savept *savept;	/* A savepoint log record */
+  LOG_REC_SAVEPT *savept;	/* A savepoint log record */
   LOG_REC_COMPENSATE *compensate;	/* Compensating log record */
   LOG_REC_RUN_POSTPONE *run_posp;	/* A run postpone action */
   LOG_REC_CHKPT *chkpt;		/* Checkpoint log record */
@@ -4915,11 +4915,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_SAVEPOINT:
       /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_savept), &log_lsa, log_pgptr);
-      savept = (struct log_savept *) ((char *) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SAVEPT), &log_lsa, log_pgptr);
+      savept = (LOG_REC_SAVEPT *) ((char *) log_pgptr->area + log_lsa.offset);
       undo_length = savept->length;
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_savept), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_SAVEPT), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
       break;
 

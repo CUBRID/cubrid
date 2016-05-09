@@ -3719,7 +3719,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       break;
 
     case LOG_SAVEPOINT:
-      node->data_header_length = sizeof (struct log_savept);
+      node->data_header_length = sizeof (LOG_REC_SAVEPT);
       break;
 
     case LOG_COMMIT_WITH_POSTPONE:
