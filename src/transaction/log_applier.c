@@ -3955,7 +3955,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 
   LOG_REC_UNDOREDO *undoredo;
   LOG_REC_UNDO *undo;
-  struct log_redo *redo;
+  LOG_REC_REDO *redo;
 
   struct log_mvcc_undoredo *mvcc_undoredo = NULL;
   struct log_mvcc_undo *mvcc_undo = NULL;
@@ -4121,7 +4121,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	}
       else
 	{
-	  log_size = DB_SIZEOF (struct log_redo);
+	  log_size = DB_SIZEOF (LOG_REC_REDO);
 	}
 
       LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
@@ -4134,7 +4134,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	    }
 	  else
 	    {
-	      redo = (struct log_redo *) ((char *) pg->area + offset);
+	      redo = (LOG_REC_REDO *) ((char *) pg->area + offset);
 	    }
 
 	  temp_length = redo->length;
@@ -4253,7 +4253,7 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
   LA_OVF_PAGE_LIST *ovf_list_head = NULL;
   LA_OVF_PAGE_LIST *ovf_list_tail = NULL;
   LA_OVF_PAGE_LIST *ovf_list_data = NULL;
-  struct log_redo *redo_log;
+  LOG_REC_REDO *redo_log;
   void *log_info;
   VPID *temp_vpid;
   VPID prev_vpid;

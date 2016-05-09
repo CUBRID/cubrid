@@ -4881,7 +4881,7 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
   LOG_PAGE *log_page_p = NULL;
   LOG_ZIP *log_unzip_p = NULL;
   LOG_RECORD_HEADER *log_rec_header_p = NULL;
-  struct log_redo *redo = NULL;
+  LOG_REC_REDO *redo = NULL;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   VACUUM_DATA_ENTRY recover_blocks[VACUUM_RECOVER_BLOCKS_BUFFER_MAX_SIZE];
   LOG_LSA first_not_recovered_blocks_lsa;
@@ -4972,7 +4972,7 @@ vacuum_recover_blocks_from_log (THREAD_ENTRY * thread_p)
 
       /* Get redo structure */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*redo), &log_lsa, log_page_p);
-      redo = (struct log_redo *) ((char *) log_page_p->area + log_lsa.offset);
+      redo = (LOG_REC_REDO *) ((char *) log_page_p->area + log_lsa.offset);
       assert (redo->data.rcvindex == RVVAC_LOG_BLOCK_SAVE);
       /* Consume required information from log redo structure before advancing to redo recovery data. */
       /* Number of blocks is stored in offset */
@@ -7450,7 +7450,7 @@ vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *
  * return		: Void.
  * thread_p (in)	: Thread entry.
- * data_header (in)	: Recovery data header (struct log_redo).
+ * data_header (in)	: Recovery data header (LOG_REC_REDO).
  * rcv_data (in)	: Recovery redo data.
  * rcv_data_length (in) : Recovery data size.
  */
@@ -7495,7 +7495,7 @@ vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p, char *data_header,
 
   /* Check if recovery data fits in preallocated buffer. */
   total_data_size = CAST_BUFLEN (worker->postpone_redo_data_ptr - worker->postpone_redo_data_buffer);
-  total_data_size += sizeof (struct log_redo);
+  total_data_size += sizeof (LOG_REC_REDO);
   total_data_size += rcv_data_length;
   total_data_size += 2 * MAX_ALIGNMENT;
   if (total_data_size > IO_PAGESIZE)
@@ -7509,13 +7509,13 @@ vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p, char *data_header,
   new_entry = &worker->postpone_cached_entries[worker->postpone_cached_entries_count];
   new_entry->redo_data = worker->postpone_redo_data_ptr;
 
-  /* Cache struct log_redo from data_header */
-  memcpy (worker->postpone_redo_data_ptr, data_header, sizeof (struct log_redo));
-  worker->postpone_redo_data_ptr += sizeof (struct log_redo);
+  /* Cache LOG_REC_REDO from data_header */
+  memcpy (worker->postpone_redo_data_ptr, data_header, sizeof (LOG_REC_REDO));
+  worker->postpone_redo_data_ptr += sizeof (LOG_REC_REDO);
   worker->postpone_redo_data_ptr = PTR_ALIGN (worker->postpone_redo_data_ptr, MAX_ALIGNMENT);
 
   /* Cache recovery data. */
-  assert (((struct log_redo *) data_header)->length == rcv_data_length);
+  assert (((LOG_REC_REDO *) data_header)->length == rcv_data_length);
   if (rcv_data_length > 0)
     {
       memcpy (worker->postpone_redo_data_ptr, rcv_data, rcv_data_length);
@@ -7578,7 +7578,7 @@ vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p, LOG_LSA * start_postpone
 #if defined (SERVER_MODE)
   VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
   VACUUM_CACHE_POSTPONE_ENTRY *entry = NULL;
-  struct log_redo *redo = NULL;
+  LOG_REC_REDO *redo = NULL;
   char *rcv_data = NULL;
   int i;
   int start_index = -1;
@@ -7616,9 +7616,9 @@ vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p, LOG_LSA * start_postpone
     {
       entry = &worker->postpone_cached_entries[i];
       /* Get redo data header. */
-      redo = (struct log_redo *) entry->redo_data;
+      redo = (LOG_REC_REDO *) entry->redo_data;
       /* Get recovery data. */
-      rcv_data = entry->redo_data + sizeof (struct log_redo);
+      rcv_data = entry->redo_data + sizeof (LOG_REC_REDO);
       rcv_data = PTR_ALIGN (rcv_data, MAX_ALIGNMENT);
       (void) log_execute_run_postpone (thread_p, &entry->lsa, redo, rcv_data);
     }

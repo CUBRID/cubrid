@@ -3149,7 +3149,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 					   LOG_DATA_ADDR * addr, int num_ucrumbs, const LOG_CRUMB * ucrumbs,
 					   int num_rcrumbs, const LOG_CRUMB * rcrumbs)
 {
-  struct log_redo *redo_p = NULL;
+  LOG_REC_REDO *redo_p = NULL;
   LOG_REC_UNDO *undo_p = NULL;
   LOG_REC_UNDOREDO *undoredo_p = NULL;
   struct log_mvcc_redo *mvcc_redo_p = NULL;
@@ -3302,7 +3302,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       node->data_header_length = sizeof (struct log_mvcc_redo);
       break;
     case LOG_REDO_DATA:
-      node->data_header_length = sizeof (struct log_redo);
+      node->data_header_length = sizeof (LOG_REC_REDO);
       break;
     case LOG_MVCC_UNDOREDO_DATA:
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
@@ -3356,7 +3356,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 
       /* Fall through */
     case LOG_REDO_DATA:
-      redo_p = (node->log_header.type == LOG_REDO_DATA ? (struct log_redo *) node->data_header : &mvcc_redo_p->redo);
+      redo_p = (node->log_header.type == LOG_REDO_DATA ? (LOG_REC_REDO *) node->data_header : &mvcc_redo_p->redo);
 
       data_header_rlength_p = &redo_p->length;
       log_data_p = &redo_p->data;
@@ -3535,18 +3535,18 @@ static int
 prior_lsa_gen_postpone_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
 			       LOG_DATA_ADDR * addr, int length, char *data)
 {
-  struct log_redo *redo;
+  LOG_REC_REDO *redo;
   VPID *vpid;
   int error_code = NO_ERROR;
 
-  node->data_header_length = sizeof (struct log_redo);
+  node->data_header_length = sizeof (LOG_REC_REDO);
   node->data_header = (char *) malloc (node->data_header_length);
   if (node->data_header == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  redo = (struct log_redo *) node->data_header;
+  redo = (LOG_REC_REDO *) node->data_header;
 
   redo->data.rcvindex = rcvindex;
   if (addr->pgptr != NULL)

@@ -1454,7 +1454,8 @@ struct log_rec_undo
 };
 
 /* Information of redo log records */
-struct log_redo
+typedef struct log_rec_redo LOG_REC_REDO;
+struct log_rec_redo
 {
   struct log_data data;		/* Location of recovery data */
   int length;			/* Length of redo data */
@@ -1488,7 +1489,7 @@ struct log_mvcc_undo
 /* Information of redo log records for MVCC operations */
 struct log_mvcc_redo
 {
-  struct log_redo redo;		/* Location of recovery data */
+  LOG_REC_REDO redo;		/* Location of recovery data */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
 };
 

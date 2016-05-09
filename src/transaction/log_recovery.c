@@ -2498,7 +2498,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_RECORD_HEADER *log_rec = NULL;	/* Pointer to log record */
   LOG_REC_UNDOREDO *undoredo = NULL;	/* Undo_redo log record */
   struct log_mvcc_undoredo *mvcc_undoredo = NULL;	/* MVCC op undo/redo log record */
-  struct log_redo *redo = NULL;	/* Redo log record */
+  LOG_REC_REDO *redo = NULL;	/* Redo log record */
   struct log_mvcc_redo *mvcc_redo = NULL;	/* MVCC op redo log record */
   struct log_mvcc_undo *mvcc_undo = NULL;	/* MVCC op undo log record */
   struct log_dbout_redo *dbout_redo = NULL;	/* A external redo log record */
@@ -2964,10 +2964,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      else
 		{
 		  /* Data header is regular redo */
-		  data_header_size = sizeof (struct log_redo);
+		  data_header_size = sizeof (LOG_REC_REDO);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
 
-		  redo = (struct log_redo *) ((char *) log_pgptr->area + log_lsa.offset);
+		  redo = (LOG_REC_REDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		  mvccid = MVCCID_NULL;
 		}
@@ -4695,7 +4695,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_RECORD_HEADER *log_rec;	/* Pointer to log record */
   LOG_REC_UNDOREDO *undoredo;	/* Undo_redo log record */
   LOG_REC_UNDO *undo;		/* Undo log record */
-  struct log_redo *redo;	/* Redo log record */
+  LOG_REC_REDO *redo;		/* Redo log record */
   struct log_mvcc_undoredo *mvcc_undoredo;	/* MVCC op undo_redo log record */
   struct log_mvcc_undo *mvcc_undo;	/* MVCC op undo log record */
   struct log_mvcc_redo *mvcc_redo;	/* MVCC op redo log record */
@@ -4832,11 +4832,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_REDO_DATA:
     case LOG_POSTPONE:
       /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_redo), &log_lsa, log_pgptr);
-      redo = (struct log_redo *) ((char *) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REDO), &log_lsa, log_pgptr);
+      redo = (LOG_REC_REDO *) ((char *) log_pgptr->area + log_lsa.offset);
       redo_length = (int) GET_ZIP_LEN (redo->length);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_redo), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_REDO), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
       break;
 
@@ -5325,7 +5325,7 @@ log_recovery_complete_partial_page_deallocation (THREAD_ENTRY * thread_p, LOG_LS
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is located */
-  struct log_redo redo;		/* A redo log record */
+  LOG_REC_REDO redo;		/* A redo log record */
   int rcv_length = 0;
   char *rcv_data = NULL;
   char *area = NULL;
@@ -5347,10 +5347,10 @@ log_recovery_complete_partial_page_deallocation (THREAD_ENTRY * thread_p, LOG_LS
 
   /* Get the DATA HEADER */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_redo), &log_lsa, log_pgptr);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REDO), &log_lsa, log_pgptr);
 
-  redo = *((struct log_redo *) ((char *) log_pgptr->area + log_lsa.offset));
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_redo), &log_lsa, log_pgptr);
+  redo = *((LOG_REC_REDO *) ((char *) log_pgptr->area + log_lsa.offset));
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_REDO), &log_lsa, log_pgptr);
 
   if (log_lsa.offset + redo.length < (int) LOGAREA_SIZE)
     {

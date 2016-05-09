@@ -6706,13 +6706,13 @@ static LOG_PAGE *
 log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 		      LOG_ZIP * log_zip_p)
 {
-  struct log_redo *redo;
+  LOG_REC_REDO *redo;
   int redo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*redo), log_lsa, log_page_p);
-  redo = (struct log_redo *) ((char *) log_page_p->area + log_lsa->offset);
+  redo = (LOG_REC_REDO *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (redo->data.rcvindex));
   fprintf (stdout, "     Volid = %d Pageid = %d Offset = %d,\n     Redo (After) length = %d,\n", redo->data.volid,
@@ -8593,7 +8593,7 @@ static int
 log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_pgptr)
 {
   LOG_LSA ref_lsa;		/* The address of a postpone record */
-  struct log_redo redo;		/* A redo log record */
+  LOG_REC_REDO redo;		/* A redo log record */
   int rcv_length = 0;
   char *rcv_data = NULL;
   char *area = NULL;
@@ -8602,11 +8602,11 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 
   /* Get the DATA HEADER */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_pgptr);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_redo), log_lsa, log_pgptr);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REDO), log_lsa, log_pgptr);
 
-  redo = *((struct log_redo *) ((char *) log_pgptr->area + log_lsa->offset));
+  redo = *((LOG_REC_REDO *) ((char *) log_pgptr->area + log_lsa->offset));
 
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_redo), log_lsa, log_pgptr);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_REDO), log_lsa, log_pgptr);
 
   /* GET AFTER DATA */
 
@@ -8655,7 +8655,7 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
  * redo_rcv_data (in) : Redo recovery data.
  */
 int
-log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, struct log_redo *redo, char *redo_rcv_data)
+log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_REDO * redo, char *redo_rcv_data)
 {
   int error_code = NO_ERROR;
   LOG_RCV rcv;			/* Recovery structure for execution */
