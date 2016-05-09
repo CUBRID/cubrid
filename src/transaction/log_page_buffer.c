@@ -3153,7 +3153,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   LOG_REC_UNDO *undo_p = NULL;
   LOG_REC_UNDOREDO *undoredo_p = NULL;
   struct log_mvcc_redo *mvcc_redo_p = NULL;
-  struct log_mvcc_undo *mvcc_undo_p = NULL;
+  LOG_REC_MVCC_UNDO *mvcc_undo_p = NULL;
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo_p = NULL;
   struct log_data *log_data_p = NULL;
   struct log_vacuum_info *vacuum_info_p = NULL;
@@ -3293,7 +3293,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   switch (node->log_header.type)
     {
     case LOG_MVCC_UNDO_DATA:
-      node->data_header_length = sizeof (struct log_mvcc_undo);
+      node->data_header_length = sizeof (LOG_REC_MVCC_UNDO);
       break;
     case LOG_UNDO_DATA:
       node->data_header_length = sizeof (LOG_REC_UNDO);
@@ -3331,7 +3331,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
     {
     case LOG_MVCC_UNDO_DATA:
       /* Use undo data from MVCC undo structure */
-      mvcc_undo_p = (struct log_mvcc_undo *) node->data_header;
+      mvcc_undo_p = (LOG_REC_MVCC_UNDO *) node->data_header;
 
       /* Must also fill vacuum info */
       vacuum_info_p = &mvcc_undo_p->vacuum_info;
@@ -4006,7 +4006,7 @@ static LOG_LSA
 prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES * tdes, int with_lock)
 {
   LOG_LSA start_lsa;
-  struct log_mvcc_undo *mvcc_undo = NULL;
+  LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   struct log_vacuum_info *vacuum_info = NULL;
   int rv;
@@ -4031,7 +4031,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
       if (node->log_header.type == LOG_MVCC_UNDO_DATA)
 	{
 	  /* Read from mvcc_undo structure */
-	  mvcc_undo = (struct log_mvcc_undo *) node->data_header;
+	  mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
 	  vacuum_info = &mvcc_undo->vacuum_info;
 	  mvccid = mvcc_undo->mvccid;
 	}

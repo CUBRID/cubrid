@@ -3431,7 +3431,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
 {
   LOG_RECORD_HEADER *log_rec_header = NULL;
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
-  struct log_mvcc_undo *mvcc_undo = NULL;
+  LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
   LOG_REC_UNDOREDO *undoredo = NULL;
   LOG_REC_UNDO *undo = NULL;
   int ulength;
@@ -3465,7 +3465,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
     {
       /* Get log record mvcc_undo information */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
-      mvcc_undo = (struct log_mvcc_undo *) (log_page_p->area + log_lsa_p->offset);
+      mvcc_undo = (LOG_REC_MVCC_UNDO *) (log_page_p->area + log_lsa_p->offset);
 
       /* Get MVCCID */
       *mvccid = mvcc_undo->mvccid;

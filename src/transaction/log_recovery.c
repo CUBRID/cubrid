@@ -2500,7 +2500,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;	/* MVCC op undo/redo log record */
   LOG_REC_REDO *redo = NULL;	/* Redo log record */
   struct log_mvcc_redo *mvcc_redo = NULL;	/* MVCC op redo log record */
-  struct log_mvcc_undo *mvcc_undo = NULL;	/* MVCC op undo log record */
+  LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* MVCC op undo log record */
   struct log_dbout_redo *dbout_redo = NULL;	/* A external redo log record */
   struct log_compensate *compensate = NULL;	/* Compensating log record */
   struct log_run_postpone *run_posp = NULL;	/* A run postpone action */
@@ -3504,8 +3504,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      LSA_COPY (&rcv_lsa, &log_lsa);
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_mvcc_undo), &log_lsa, log_pgptr);
-	      mvcc_undo = (struct log_mvcc_undo *) ((char *) log_pgptr->area + log_lsa.offset);
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDO), &log_lsa, log_pgptr);
+	      mvcc_undo = (LOG_REC_MVCC_UNDO *) ((char *) log_pgptr->area + log_lsa.offset);
 	      mvccid = mvcc_undo->mvccid;
 
 	      /* Check if MVCC next ID must be updated */
@@ -3814,7 +3814,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   LOG_REC_UNDOREDO *undoredo = NULL;	/* Undo_redo log record */
   LOG_REC_UNDO *undo = NULL;	/* Undo log record */
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;	/* MVCC op Undo_redo log record */
-  struct log_mvcc_undo *mvcc_undo = NULL;	/* MVCC op Undo log record */
+  LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* MVCC op Undo log record */
   struct log_compensate *compensate;	/* Compensating log record */
   struct log_topop_result *top_result;	/* Result of top system op */
   LOG_RCVINDEX rcvindex;	/* Recovery index function */
@@ -4033,9 +4033,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		  if (is_mvcc_op)
 		    {
-		      data_header_size = sizeof (struct log_mvcc_undo);
+		      data_header_size = sizeof (LOG_REC_MVCC_UNDO);
 		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
-		      mvcc_undo = (struct log_mvcc_undo *) ((char *) log_pgptr->area + log_lsa.offset);
+		      mvcc_undo = (LOG_REC_MVCC_UNDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		      /* Get undo info */
 		      undo = &mvcc_undo->undo;
@@ -4697,7 +4697,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_UNDO *undo;		/* Undo log record */
   LOG_REC_REDO *redo;		/* Redo log record */
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo;	/* MVCC op undo_redo log record */
-  struct log_mvcc_undo *mvcc_undo;	/* MVCC op undo log record */
+  LOG_REC_MVCC_UNDO *mvcc_undo;	/* MVCC op undo log record */
   struct log_mvcc_redo *mvcc_redo;	/* MVCC op redo log record */
   struct log_dbout_redo *dbout_redo;	/* A external redo log record */
   struct log_savept *savept;	/* A savepoint log record */
@@ -4810,12 +4810,12 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_MVCC_UNDO_DATA:
       /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_mvcc_undo), &log_lsa, log_pgptr);
-      mvcc_undo = (struct log_mvcc_undo *) ((char *) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDO), &log_lsa, log_pgptr);
+      mvcc_undo = (LOG_REC_MVCC_UNDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
       undo_length = (int) GET_ZIP_LEN (mvcc_undo->undo.length);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_mvcc_undo), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_MVCC_UNDO), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
       break;
 

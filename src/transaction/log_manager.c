@@ -6774,13 +6774,13 @@ static LOG_PAGE *
 log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			   LOG_ZIP * log_zip_p)
 {
-  struct log_mvcc_undo *mvcc_undo;
+  LOG_REC_MVCC_UNDO *mvcc_undo;
   int undo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), log_lsa, log_page_p);
-  mvcc_undo = (struct log_mvcc_undo *) ((char *) log_page_p->area + log_lsa->offset);
+  mvcc_undo = (LOG_REC_MVCC_UNDO *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (mvcc_undo->undo.data.rcvindex));
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
@@ -7896,7 +7896,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   LOG_REC_UNDOREDO *undoredo = NULL;	/* An undoredo log record */
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;	/* A MVCC undoredo log rec */
   LOG_REC_UNDO *undo = NULL;	/* An undo log record */
-  struct log_mvcc_undo *mvcc_undo = NULL;	/* An undo log record */
+  LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* An undo log record */
   struct log_compensate *compensate = NULL;	/* A compensating log record */
   struct log_topop_result *top_result = NULL;	/* Partial result from top system operation */
   LOG_RCV rcv;			/* Recovery structure */
@@ -8061,7 +8061,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		  /* Data header is MVCC undo */
 		  data_header_size = sizeof (*mvcc_undo);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
-		  mvcc_undo = (struct log_mvcc_undo *) ((char *) log_pgptr->area + log_lsa.offset);
+		  mvcc_undo = (LOG_REC_MVCC_UNDO *) ((char *) log_pgptr->area + log_lsa.offset);
 		  /* Get undo info */
 		  undo = &mvcc_undo->undo;
 
@@ -9803,7 +9803,7 @@ SCAN_CODE
 log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA process_lsa, RECDES * recdes)
 {
   LOG_RECORD_HEADER *log_rec_header = NULL;
-  struct log_mvcc_undo *mvcc_undo = NULL;
+  LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   LOG_REC_UNDO *undo = NULL;
   LOG_REC_UNDOREDO *undoredo = NULL;
@@ -9825,7 +9825,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   if (log_rec_header->type == LOG_MVCC_UNDO_DATA)
     {
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), &process_lsa, log_page_p);
-      mvcc_undo = (struct log_mvcc_undo *) (log_page_p->area + process_lsa.offset);
+      mvcc_undo = (LOG_REC_MVCC_UNDO *) (log_page_p->area + process_lsa.offset);
 
       udata_length = mvcc_undo->undo.length;
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), &process_lsa, log_page_p);

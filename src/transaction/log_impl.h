@@ -1480,7 +1480,8 @@ struct log_rec_mvcc_undoredo
 };
 
 /* Information of undo log records for MVCC operations */
-struct log_mvcc_undo
+typedef struct log_rec_mvcc_undo LOG_REC_MVCC_UNDO;
+struct log_rec_mvcc_undo
 {
   LOG_REC_UNDO undo;		/* Undo information */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
