@@ -1521,7 +1521,8 @@ struct log_rec_start_postpone
 };
 
 /* This entry is included during the commit of top system operations */
-struct log_topope_start_postpone
+typedef struct log_rec_topope_start_postpone LOG_REC_TOPOPE_START_POSTPONE;
+struct log_rec_topope_start_postpone
 {
   LOG_LSA lastparent_lsa;	/* The last address of the parent transaction. */
   LOG_LSA posp_lsa;		/* Address where the first postpone operation start */

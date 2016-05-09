@@ -1217,7 +1217,7 @@ log_rv_analysis_commit_topope_with_postpone (THREAD_ENTRY * thread_p, int tran_i
 					     LOG_PAGE * log_page_p)
 {
   LOG_TDES *tdes;
-  struct log_topope_start_postpone *top_start_posp;
+  LOG_REC_TOPOPE_START_POSTPONE *top_start_posp;
 
   /* 
    * If this is the first time, the transaction is seen. Assign a new
@@ -1247,8 +1247,8 @@ log_rv_analysis_commit_topope_with_postpone (THREAD_ENTRY * thread_p, int tran_i
    * of top system operation
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_topope_start_postpone), log_lsa, log_page_p);
-  top_start_posp = ((struct log_topope_start_postpone *) ((char *) log_page_p->area + log_lsa->offset));
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_TOPOPE_START_POSTPONE), log_lsa, log_page_p);
+  top_start_posp = ((LOG_REC_TOPOPE_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset));
 
   if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
     {
@@ -4887,9 +4887,9 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
       /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_topope_start_postpone), &log_lsa, log_pgptr);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_TOPOPE_START_POSTPONE), &log_lsa, log_pgptr);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_topope_start_postpone), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_TOPOPE_START_POSTPONE), &log_lsa, log_pgptr);
       break;
 
     case LOG_COMMIT_TOPOPE:

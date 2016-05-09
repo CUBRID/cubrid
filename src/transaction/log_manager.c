@@ -4271,7 +4271,7 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
 static void
 log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa)
 {
-  struct log_topope_start_postpone *top_start_posp;	/* Start postpone of top system operations */
+  LOG_REC_TOPOPE_START_POSTPONE *top_start_posp;	/* Start postpone of top system operations */
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
 
@@ -4282,7 +4282,7 @@ log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
       return;
     }
 
-  top_start_posp = (struct log_topope_start_postpone *) node->data_header;
+  top_start_posp = (LOG_REC_TOPOPE_START_POSTPONE *) node->data_header;
   if (tdes->topops.type != LOG_TOPOPS_NORMAL)
     {
       assert (tdes->topops.last == 0 || tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT);
@@ -6998,11 +6998,11 @@ static LOG_PAGE *
 log_dump_record_commit_topope_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 					LOG_PAGE * log_page_p)
 {
-  struct log_topope_start_postpone *top_start_posp;
+  LOG_REC_TOPOPE_START_POSTPONE *top_start_posp;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_start_posp), log_lsa, log_page_p);
-  top_start_posp = ((struct log_topope_start_postpone *) ((char *) log_page_p->area + log_lsa->offset));
+  top_start_posp = ((LOG_REC_TOPOPE_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset));
   fprintf (out_fp, ", Lastparent_LSA = %lld|%d, First postpone_LSA at or after = %lld|%d\n",
 	   (long long int) top_start_posp->lastparent_lsa.pageid, top_start_posp->lastparent_lsa.offset,
 	   (long long int) top_start_posp->posp_lsa.pageid, top_start_posp->posp_lsa.offset);
