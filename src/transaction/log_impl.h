@@ -1626,7 +1626,8 @@ struct log_2pc_particp_ack
 };
 
 /* Log the time of termination of transaction */
-struct log_donetime
+typedef struct log_rec_donetime LOG_REC_DONETIME;
+struct log_rec_donetime
 {
   INT64 at_time;		/* Database creation time. For safety reasons */
 };

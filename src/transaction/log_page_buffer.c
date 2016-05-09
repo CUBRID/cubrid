@@ -3733,7 +3733,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
     case LOG_COMMIT:
     case LOG_ABORT:
       assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (struct log_donetime);
+      node->data_header_length = sizeof (LOG_REC_DONETIME);
       break;
 
     case LOG_COMMIT_TOPOPE:

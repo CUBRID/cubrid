@@ -3531,7 +3531,7 @@ static time_t
 la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
 {
   int error = NO_ERROR;
-  struct log_donetime *donetime;
+  LOG_REC_DONETIME *donetime;
   LOG_PAGEID pageid;
   PGLENGTH offset;
   LOG_PAGE *pg;
@@ -3554,7 +3554,7 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
       /* cannot get eot time */
       return 0;
     }
-  donetime = (struct log_donetime *) ((char *) pg->area + offset);
+  donetime = (LOG_REC_DONETIME *) ((char *) pg->area + offset);
 
   return donetime->at_time;
 }

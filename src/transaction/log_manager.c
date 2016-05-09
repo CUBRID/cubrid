@@ -4437,7 +4437,7 @@ static void
 log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa, LOG_RECTYPE iscommitted,
 			      enum LOG_PRIOR_LSA_LOCK with_lock)
 {
-  struct log_donetime *donetime;
+  LOG_REC_DONETIME *donetime;
   LOG_PRIOR_NODE *node;
   LOG_LSA lsa;
 
@@ -4451,7 +4451,7 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
       return;
     }
 
-  donetime = (struct log_donetime *) node->data_header;
+  donetime = (LOG_REC_DONETIME *) node->data_header;
   donetime->at_time = time (NULL);
 
   if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
@@ -6932,13 +6932,13 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 static LOG_PAGE *
 log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_donetime *donetime;
+  LOG_REC_DONETIME *donetime;
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), log_lsa, log_page_p);
-  donetime = (struct log_donetime *) ((char *) log_page_p->area + log_lsa->offset);
+  donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
   tmp_time = (time_t) donetime->at_time;
   (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp, ",\n     Transaction finish time at = %s\n", time_val);

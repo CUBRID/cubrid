@@ -1297,7 +1297,7 @@ static int
 log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			  LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
 {
-  struct log_donetime *donetime;
+  LOG_REC_DONETIME *donetime;
   int tran_index;
   time_t last_at_time;
   char time_val[CTIME_MAX];
@@ -1321,9 +1321,9 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
    * the recovery at this point.
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_donetime), log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), log_lsa, log_page_p);
 
-  donetime = (struct log_donetime *) ((char *) log_page_p->area + log_lsa->offset);
+  donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
   last_at_time = (time_t) donetime->at_time;
   if (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) < 0)
     {
@@ -2506,7 +2506,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_REC_RUN_POSTPONE *run_posp = NULL;	/* A run postpone action */
   struct log_2pc_start *start_2pc = NULL;	/* Start 2PC commit log record */
   struct log_2pc_particp_ack *received_ack = NULL;	/* A 2PC participant ack */
-  struct log_donetime *donetime = NULL;
+  LOG_REC_DONETIME *donetime = NULL;
   LOG_RCV rcv;			/* Recovery structure */
   VPID rcv_vpid;		/* VPID of data to recover */
   LOG_RCVINDEX rcvindex;	/* Recovery index function */
@@ -3485,8 +3485,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		   * the recovery at this point.
 		   */
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_donetime), &log_lsa, log_pgptr);
-		  donetime = (struct log_donetime *) ((char *) log_pgptr->area + log_lsa.offset);
+		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
+		  donetime = (LOG_REC_DONETIME *) ((char *) log_pgptr->area + log_lsa.offset);
 		  if (difftime (*stopat, (time_t) donetime->at_time) < 0)
 		    {
 		      /* 
@@ -4880,9 +4880,9 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_COMMIT:
     case LOG_ABORT:
       /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_donetime), &log_lsa, log_pgptr);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_donetime), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
       break;
 
     case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
