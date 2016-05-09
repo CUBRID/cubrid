@@ -3150,7 +3150,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 					   int num_rcrumbs, const LOG_CRUMB * rcrumbs)
 {
   struct log_redo *redo_p = NULL;
-  struct log_undo *undo_p = NULL;
+  LOG_REC_UNDO *undo_p = NULL;
   LOG_REC_UNDOREDO *undoredo_p = NULL;
   struct log_mvcc_redo *mvcc_redo_p = NULL;
   struct log_mvcc_undo *mvcc_undo_p = NULL;
@@ -3296,7 +3296,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       node->data_header_length = sizeof (struct log_mvcc_undo);
       break;
     case LOG_UNDO_DATA:
-      node->data_header_length = sizeof (struct log_undo);
+      node->data_header_length = sizeof (LOG_REC_UNDO);
       break;
     case LOG_MVCC_REDO_DATA:
       node->data_header_length = sizeof (struct log_mvcc_redo);
@@ -3341,7 +3341,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 
       /* Fall through */
     case LOG_UNDO_DATA:
-      undo_p = (node->log_header.type == LOG_UNDO_DATA ? (struct log_undo *) node->data_header : &mvcc_undo_p->undo);
+      undo_p = (node->log_header.type == LOG_UNDO_DATA ? (LOG_REC_UNDO *) node->data_header : &mvcc_undo_p->undo);
 
       data_header_ulength_p = &undo_p->length;
       log_data_p = &undo_p->data;

@@ -3433,7 +3433,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
   struct log_mvcc_undoredo *mvcc_undoredo = NULL;
   struct log_mvcc_undo *mvcc_undo = NULL;
   LOG_REC_UNDOREDO *undoredo = NULL;
-  struct log_undo *undo = NULL;
+  LOG_REC_UNDO *undo = NULL;
   int ulength;
   char *new_undo_data_buffer = NULL;
   bool is_zipped = false;

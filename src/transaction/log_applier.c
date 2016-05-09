@@ -3954,7 +3954,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
   int error = NO_ERROR;
 
   LOG_REC_UNDOREDO *undoredo;
-  struct log_undo *undo;
+  LOG_REC_UNDO *undo;
   struct log_redo *redo;
 
   struct log_mvcc_undoredo *mvcc_undoredo = NULL;
@@ -4075,7 +4075,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	}
       else
 	{
-	  log_size = DB_SIZEOF (struct log_undo);
+	  log_size = DB_SIZEOF (LOG_REC_UNDO);
 	}
 
       LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
@@ -4088,7 +4088,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	    }
 	  else
 	    {
-	      undo = (struct log_undo *) ((char *) pg->area + offset);
+	      undo = (LOG_REC_UNDO *) ((char *) pg->area + offset);
 	    }
 
 	  temp_length = undo->length;
