@@ -2972,7 +2972,7 @@ static void
 log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
 				PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes, LOG_LSA * undo_nxlsa)
 {
-  struct log_compensate *compensate;	/* Compensate log record */
+  LOG_REC_COMPENSATE *compensate;	/* Compensate log record */
   LOG_LSA prev_lsa;		/* LSA of next record to undo */
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
@@ -3001,7 +3001,7 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
 
   LSA_COPY (&prev_lsa, &tdes->undo_nxlsa);
 
-  compensate = (struct log_compensate *) node->data_header;
+  compensate = (LOG_REC_COMPENSATE *) node->data_header;
 
   compensate->data.rcvindex = rcvindex;
   compensate->data.pageid = vpid->pageid;
@@ -6890,13 +6890,13 @@ log_dump_record_dbout_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 static LOG_PAGE *
 log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_compensate *compensate;
+  LOG_REC_COMPENSATE *compensate;
   int length_compensate;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*compensate), log_lsa, log_page_p);
-  compensate = (struct log_compensate *) ((char *) log_page_p->area + log_lsa->offset);
+  compensate = (LOG_REC_COMPENSATE *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (compensate->data.rcvindex));
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Compensate length = %d, Next_to_UNDO = %lld|%d\n",
@@ -7897,7 +7897,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;	/* A MVCC undoredo log rec */
   LOG_REC_UNDO *undo = NULL;	/* An undo log record */
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* An undo log record */
-  struct log_compensate *compensate = NULL;	/* A compensating log record */
+  LOG_REC_COMPENSATE *compensate = NULL;	/* A compensating log record */
   struct log_topop_result *top_result = NULL;	/* Partial result from top system operation */
   LOG_RCV rcv;			/* Recovery structure */
   VPID rcv_vpid;		/* VPID of data to recover */
@@ -8096,7 +8096,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      /* Read the DATA HEADER */
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa, log_pgptr);
 	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*compensate), &log_lsa, log_pgptr);
-	      compensate = (struct log_compensate *) ((char *) log_pgptr->area + log_lsa.offset);
+	      compensate = (LOG_REC_COMPENSATE *) ((char *) log_pgptr->area + log_lsa.offset);
 	      LSA_COPY (&prev_tranlsa, &compensate->undo_nxlsa);
 	      break;
 

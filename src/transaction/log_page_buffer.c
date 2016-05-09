@@ -3710,7 +3710,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       break;
 
     case LOG_COMPENSATE:
-      node->data_header_length = sizeof (struct log_compensate);
+      node->data_header_length = sizeof (LOG_REC_COMPENSATE);
       break;
 
     case LOG_DUMMY_HA_SERVER_STATE:

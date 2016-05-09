@@ -1505,7 +1505,8 @@ struct log_rec_dbout_redo
 };
 
 /* Information of a compensating log records */
-struct log_compensate
+typedef struct log_rec_compensate LOG_REC_COMPENSATE;
+struct log_rec_compensate
 {
   struct log_data data;		/* Location of recovery data */
   LOG_LSA undo_nxlsa;		/* Address of next log record to undo */

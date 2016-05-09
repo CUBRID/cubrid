@@ -1087,7 +1087,7 @@ static int
 log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_TDES *tdes;
-  struct log_compensate *compensate;
+  LOG_REC_COMPENSATE *compensate;
 
   /* 
    * If this is the first time, the transaction is seen. Assign a new
@@ -1109,9 +1109,9 @@ log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_
 
   /* Read the DATA HEADER */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_compensate), log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_COMPENSATE), log_lsa, log_page_p);
 
-  compensate = (struct log_compensate *) ((char *) log_page_p->area + log_lsa->offset);
+  compensate = (LOG_REC_COMPENSATE *) ((char *) log_page_p->area + log_lsa->offset);
   LSA_COPY (&tdes->undo_nxlsa, &compensate->undo_nxlsa);
 
   return NO_ERROR;
@@ -2502,7 +2502,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_REC_MVCC_REDO *mvcc_redo = NULL;	/* MVCC op redo log record */
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* MVCC op undo log record */
   LOG_REC_DBOUT_REDO *dbout_redo = NULL;	/* A external redo log record */
-  struct log_compensate *compensate = NULL;	/* Compensating log record */
+  LOG_REC_COMPENSATE *compensate = NULL;	/* Compensating log record */
   struct log_run_postpone *run_posp = NULL;	/* A run postpone action */
   struct log_2pc_start *start_2pc = NULL;	/* Start 2PC commit log record */
   struct log_2pc_particp_ack *received_ack = NULL;	/* A 2PC participant ack */
@@ -3226,8 +3226,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      /* Get the DATA HEADER */
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_compensate), &log_lsa, log_pgptr);
-	      compensate = (struct log_compensate *) ((char *) log_pgptr->area + log_lsa.offset);
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_COMPENSATE), &log_lsa, log_pgptr);
+	      compensate = (LOG_REC_COMPENSATE *) ((char *) log_pgptr->area + log_lsa.offset);
 
 	      assert (!LOG_IS_VACUUM_DATA_RECOVERY (compensate->data.rcvindex));
 
@@ -3281,7 +3281,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      rcv.length = compensate->length;
 	      rcv.offset = compensate->data.offset;
 
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_compensate), &log_lsa, log_pgptr);
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_COMPENSATE), &log_lsa, log_pgptr);
 	      /* GET COMPENSATING DATA */
 	      LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
 #if !defined(NDEBUG)
@@ -3815,7 +3815,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   LOG_REC_UNDO *undo = NULL;	/* Undo log record */
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;	/* MVCC op Undo_redo log record */
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* MVCC op Undo log record */
-  struct log_compensate *compensate;	/* Compensating log record */
+  LOG_REC_COMPENSATE *compensate;	/* Compensating log record */
   struct log_topop_result *top_result;	/* Result of top system op */
   LOG_RCVINDEX rcvindex;	/* Recovery index function */
   LOG_RCV rcv;			/* Recovery structure */
@@ -4095,8 +4095,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		  /* Get the DATA HEADER */
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_compensate), &log_lsa, log_pgptr);
-		  compensate = (struct log_compensate *) ((char *) log_pgptr->area + log_lsa.offset);
+		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_COMPENSATE), &log_lsa, log_pgptr);
+		  compensate = (LOG_REC_COMPENSATE *) ((char *) log_pgptr->area + log_lsa.offset);
 		  LSA_COPY (&prev_tranlsa, &compensate->undo_nxlsa);
 		  break;
 
@@ -4701,7 +4701,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_MVCC_REDO *mvcc_redo;	/* MVCC op redo log record */
   LOG_REC_DBOUT_REDO *dbout_redo;	/* A external redo log record */
   struct log_savept *savept;	/* A savepoint log record */
-  struct log_compensate *compensate;	/* Compensating log record */
+  LOG_REC_COMPENSATE *compensate;	/* Compensating log record */
   struct log_run_postpone *run_posp;	/* A run postpone action */
   struct log_chkpt *chkpt;	/* Checkpoint log record */
   struct log_2pc_start *start_2pc;	/* A 2PC start log record */
@@ -4862,11 +4862,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_COMPENSATE:
       /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_compensate), &log_lsa, log_pgptr);
-      compensate = (struct log_compensate *) ((char *) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_COMPENSATE), &log_lsa, log_pgptr);
+      compensate = (LOG_REC_COMPENSATE *) ((char *) log_pgptr->area + log_lsa.offset);
       redo_length = compensate->length;
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_compensate), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_COMPENSATE), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
       break;
 
