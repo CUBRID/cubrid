@@ -1497,7 +1497,8 @@ struct log_rec_mvcc_redo
 };
 
 /* Information of database external redo log records */
-struct log_dbout_redo
+typedef struct log_rec_dbout_redo LOG_REC_DBOUT_REDO;
+struct log_rec_dbout_redo
 {
   LOG_RCVINDEX rcvindex;	/* Index to recovery function */
   int length;			/* Length of redo data */

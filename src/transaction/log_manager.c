@@ -6864,13 +6864,13 @@ log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_
 static LOG_PAGE *
 log_dump_record_dbout_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_dbout_redo *dbout_redo;
+  LOG_REC_DBOUT_REDO *dbout_redo;
   int redo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the data header */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dbout_redo), log_lsa, log_page_p);
-  dbout_redo = ((struct log_dbout_redo *) ((char *) log_page_p->area + log_lsa->offset));
+  dbout_redo = ((LOG_REC_DBOUT_REDO *) ((char *) log_page_p->area + log_lsa->offset));
 
   redo_length = dbout_redo->length;
   rcvindex = dbout_redo->rcvindex;

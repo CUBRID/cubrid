@@ -2501,7 +2501,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_REC_REDO *redo = NULL;	/* Redo log record */
   LOG_REC_MVCC_REDO *mvcc_redo = NULL;	/* MVCC op redo log record */
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* MVCC op undo log record */
-  struct log_dbout_redo *dbout_redo = NULL;	/* A external redo log record */
+  LOG_REC_DBOUT_REDO *dbout_redo = NULL;	/* A external redo log record */
   struct log_compensate *compensate = NULL;	/* Compensating log record */
   struct log_run_postpone *run_posp = NULL;	/* A run postpone action */
   struct log_2pc_start *start_2pc = NULL;	/* Start 2PC commit log record */
@@ -3098,9 +3098,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      /* Get the DATA HEADER */
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_dbout_redo), &log_lsa, log_pgptr);
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DBOUT_REDO), &log_lsa, log_pgptr);
 
-	      dbout_redo = ((struct log_dbout_redo *) ((char *) log_pgptr->area + log_lsa.offset));
+	      dbout_redo = ((LOG_REC_DBOUT_REDO *) ((char *) log_pgptr->area + log_lsa.offset));
 
 	      VPID_SET_NULL (&rcv_vpid);
 	      rcv.offset = -1;
@@ -3112,7 +3112,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      assert (!LOG_IS_VACUUM_DATA_RECOVERY (rcvindex));
 
 	      /* GET AFTER DATA */
-	      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_dbout_redo), &log_lsa, log_pgptr);
+	      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_DBOUT_REDO), &log_lsa, log_pgptr);
 
 #if !defined(NDEBUG)
 	      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
@@ -4699,7 +4699,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo;	/* MVCC op undo_redo log record */
   LOG_REC_MVCC_UNDO *mvcc_undo;	/* MVCC op undo log record */
   LOG_REC_MVCC_REDO *mvcc_redo;	/* MVCC op redo log record */
-  struct log_dbout_redo *dbout_redo;	/* A external redo log record */
+  LOG_REC_DBOUT_REDO *dbout_redo;	/* A external redo log record */
   struct log_savept *savept;	/* A savepoint log record */
   struct log_compensate *compensate;	/* Compensating log record */
   struct log_run_postpone *run_posp;	/* A run postpone action */
@@ -4852,11 +4852,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_DBEXTERN_REDO_DATA:
       /* Read the data header */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_dbout_redo), &log_lsa, log_pgptr);
-      dbout_redo = ((struct log_dbout_redo *) ((char *) log_pgptr->area + log_lsa.offset));
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DBOUT_REDO), &log_lsa, log_pgptr);
+      dbout_redo = ((LOG_REC_DBOUT_REDO *) ((char *) log_pgptr->area + log_lsa.offset));
       redo_length = dbout_redo->length;
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_dbout_redo), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_DBOUT_REDO), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
       break;
 

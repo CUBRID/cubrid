@@ -3582,17 +3582,17 @@ static int
 prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex, int length,
 				 char *data)
 {
-  struct log_dbout_redo *dbout_redo;
+  LOG_REC_DBOUT_REDO *dbout_redo;
   int error_code = NO_ERROR;
 
-  node->data_header_length = sizeof (struct log_dbout_redo);
+  node->data_header_length = sizeof (LOG_REC_DBOUT_REDO);
   node->data_header = (char *) malloc (node->data_header_length);
   if (node->data_header == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  dbout_redo = (struct log_dbout_redo *) node->data_header;
+  dbout_redo = (LOG_REC_DBOUT_REDO *) node->data_header;
 
   dbout_redo->rcvindex = rcvindex;
   dbout_redo->length = length;
