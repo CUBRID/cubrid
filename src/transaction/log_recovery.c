@@ -1483,8 +1483,8 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 				bool * may_need_synch_checkpoint_2pc)
 {
   LOG_TDES *tdes;
-  struct log_chkpt *tmp_chkpt;
-  struct log_chkpt chkpt;
+  LOG_REC_CHKPT *tmp_chkpt;
+  LOG_REC_CHKPT chkpt;
   struct log_chkpt_trans *chkpt_trans;
   struct log_chkpt_trans *chkpt_one;
   struct log_chkpt_topops_commit_posp *chkpt_topops;
@@ -1516,12 +1516,12 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 
   /* Read the DATA HEADER */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_chkpt), log_lsa, log_page_p);
-  tmp_chkpt = (struct log_chkpt *) ((char *) log_page_p->area + log_lsa->offset);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_CHKPT), log_lsa, log_page_p);
+  tmp_chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa->offset);
   chkpt = *tmp_chkpt;
 
   /* GET THE CHECKPOINT TRANSACTION INFORMATION */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_chkpt), log_lsa, log_page_p);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_CHKPT), log_lsa, log_page_p);
 
   /* Now get the data of active transactions */
 
@@ -2148,8 +2148,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   LOG_LSA log_lsa, prev_lsa;
   LOG_RECTYPE log_rtype;	/* Log record type */
   LOG_RECORD_HEADER *log_rec = NULL;	/* Pointer to log record */
-  struct log_chkpt *tmp_chkpt;	/* Temp Checkpoint log record */
-  struct log_chkpt chkpt;	/* Checkpoint log record */
+  LOG_REC_CHKPT *tmp_chkpt;	/* Temp Checkpoint log record */
+  LOG_REC_CHKPT chkpt;		/* Checkpoint log record */
   struct log_chkpt_trans *chkpt_trans;
   time_t last_at_time = -1;
   char time_val[CTIME_MAX];
@@ -2406,12 +2406,12 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
       /* Read the DATA HEADER */
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_page_p);
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_chkpt), &log_lsa, log_page_p);
-      tmp_chkpt = (struct log_chkpt *) ((char *) log_page_p->area + log_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_CHKPT), &log_lsa, log_page_p);
+      tmp_chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa.offset);
       chkpt = *tmp_chkpt;
 
       /* GET THE CHECKPOINT TRANSACTION INFORMATION */
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_chkpt), &log_lsa, log_page_p);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_CHKPT), &log_lsa, log_page_p);
 
       /* Now get the data of active transactions */
       area = NULL;
@@ -4703,7 +4703,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   struct log_savept *savept;	/* A savepoint log record */
   LOG_REC_COMPENSATE *compensate;	/* Compensating log record */
   LOG_REC_RUN_POSTPONE *run_posp;	/* A run postpone action */
-  struct log_chkpt *chkpt;	/* Checkpoint log record */
+  LOG_REC_CHKPT *chkpt;		/* Checkpoint log record */
   struct log_2pc_start *start_2pc;	/* A 2PC start log record */
   struct log_2pc_prepcommit *prepared;	/* A 2PC prepare to commit */
   struct log_replication *repl_log;
@@ -4902,12 +4902,12 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_END_CHKPT:
       /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_chkpt), &log_lsa, log_pgptr);
-      chkpt = (struct log_chkpt *) ((char *) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_CHKPT), &log_lsa, log_pgptr);
+      chkpt = (LOG_REC_CHKPT *) ((char *) log_pgptr->area + log_lsa.offset);
       undo_length = sizeof (struct log_chkpt_trans) * chkpt->ntrans;
       redo_length = (sizeof (struct log_chkpt_topops_commit_posp) * chkpt->ntops);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_chkpt), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_CHKPT), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
       if (redo_length > 0)
 	LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);

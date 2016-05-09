@@ -7028,14 +7028,14 @@ log_dump_record_topope_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
 static LOG_PAGE *
 log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_chkpt *chkpt;	/* check point log record */
+  LOG_REC_CHKPT *chkpt;		/* check point log record */
   int length_active_tran;
   int length_topope;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*chkpt), log_lsa, log_page_p);
 
-  chkpt = (struct log_chkpt *) ((char *) log_page_p->area + log_lsa->offset);
+  chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Num_trans = %d,\n", chkpt->ntrans);
   fprintf (out_fp, "     Redo_LSA = %lld|%d\n", (long long int) chkpt->redo_lsa.pageid, chkpt->redo_lsa.offset);
 

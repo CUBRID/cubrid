@@ -3656,7 +3656,7 @@ prior_lsa_gen_end_chkpt_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 {
   int error_code = NO_ERROR;
 
-  node->data_header_length = sizeof (struct log_chkpt);
+  node->data_header_length = sizeof (LOG_REC_CHKPT);
   node->data_header = (char *) malloc (node->data_header_length);
   if (node->data_header == NULL)
     {
@@ -3752,7 +3752,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       break;
 
     case LOG_END_CHKPT:
-      node->data_header_length = sizeof (struct log_chkpt);
+      node->data_header_length = sizeof (LOG_REC_CHKPT);
       break;
 
     default:
@@ -7849,7 +7849,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;		/* System transaction descriptor */
   LOG_TDES *act_tdes;		/* Transaction descriptor of an active transaction */
-  struct log_chkpt *chkpt, tmp_chkpt;	/* Checkpoint log records */
+  LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
   struct log_chkpt_trans *chkpt_trans;	/* Checkpoint tdes */
   struct log_chkpt_trans *chkpt_one;	/* Checkpoint tdes for one tran */
   struct log_chkpt_topops_commit_posp *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
@@ -8161,7 +8161,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       return NULL_PAGEID;
     }
 
-  chkpt = (struct log_chkpt *) node->data_header;
+  chkpt = (LOG_REC_CHKPT *) node->data_header;
   *chkpt = tmp_chkpt;
 
   prior_lsa_next_record_with_lock (thread_p, node, tdes);

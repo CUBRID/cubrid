@@ -1538,7 +1538,8 @@ struct log_rec_run_postpone
 };
 
 /* A checkpoint record */
-struct log_chkpt
+typedef struct log_rec_chkpt LOG_REC_CHKPT;
+struct log_rec_chkpt
 {
   LOG_LSA redo_lsa;		/* Oldest LSA of dirty data page in page buffers */
   int ntrans;			/* Number of active transactions */
