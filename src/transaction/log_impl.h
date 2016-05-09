@@ -1471,7 +1471,8 @@ struct log_vacuum_info
 };
 
 /* Information of undo_redo log records for MVCC operations */
-struct log_mvcc_undoredo
+typedef struct log_rec_mvcc_undoredo LOG_REC_MVCC_UNDOREDO;
+struct log_rec_mvcc_undoredo
 {
   LOG_REC_UNDOREDO undoredo;	/* Undoredo information */
   MVCCID mvccid;		/* MVCC Identifier for transaction */

@@ -2497,7 +2497,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_LSA log_lsa;
   LOG_RECORD_HEADER *log_rec = NULL;	/* Pointer to log record */
   LOG_REC_UNDOREDO *undoredo = NULL;	/* Undo_redo log record */
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;	/* MVCC op undo/redo log record */
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;	/* MVCC op undo/redo log record */
   LOG_REC_REDO *redo = NULL;	/* Redo log record */
   struct log_mvcc_redo *mvcc_redo = NULL;	/* MVCC op redo log record */
   struct log_mvcc_undo *mvcc_undo = NULL;	/* MVCC op undo log record */
@@ -2754,9 +2754,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      if (is_mvcc_op)
 		{
 		  /* Data header is a MVCC undoredo */
-		  data_header_size = sizeof (struct log_mvcc_undoredo);
+		  data_header_size = sizeof (LOG_REC_MVCC_UNDOREDO);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
-		  mvcc_undoredo = (struct log_mvcc_undoredo *) ((char *) log_pgptr->area + log_lsa.offset);
+		  mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		  /* Get undoredo structure */
 		  undoredo = &mvcc_undoredo->undoredo;
@@ -3813,7 +3813,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   LOG_RECORD_HEADER *log_rec = NULL;	/* Pointer to log record */
   LOG_REC_UNDOREDO *undoredo = NULL;	/* Undo_redo log record */
   LOG_REC_UNDO *undo = NULL;	/* Undo log record */
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;	/* MVCC op Undo_redo log record */
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;	/* MVCC op Undo_redo log record */
   struct log_mvcc_undo *mvcc_undo = NULL;	/* MVCC op Undo log record */
   struct log_compensate *compensate;	/* Compensating log record */
   struct log_topop_result *top_result;	/* Result of top system op */
@@ -3974,9 +3974,9 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		  if (is_mvcc_op)
 		    {
-		      data_header_size = sizeof (struct log_mvcc_undoredo);
+		      data_header_size = sizeof (LOG_REC_MVCC_UNDOREDO);
 		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
-		      mvcc_undoredo = (struct log_mvcc_undoredo *) ((char *) log_pgptr->area + log_lsa.offset);
+		      mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		      /* Get undoredo info */
 		      undoredo = &mvcc_undoredo->undoredo;
@@ -4696,7 +4696,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_UNDOREDO *undoredo;	/* Undo_redo log record */
   LOG_REC_UNDO *undo;		/* Undo log record */
   LOG_REC_REDO *redo;		/* Redo log record */
-  struct log_mvcc_undoredo *mvcc_undoredo;	/* MVCC op undo_redo log record */
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo;	/* MVCC op undo_redo log record */
   struct log_mvcc_undo *mvcc_undo;	/* MVCC op undo log record */
   struct log_mvcc_redo *mvcc_redo;	/* MVCC op redo log record */
   struct log_dbout_redo *dbout_redo;	/* A external redo log record */
@@ -4786,13 +4786,13 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_MVCC_UNDOREDO_DATA:
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
       /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_mvcc_undoredo), &log_lsa, log_pgptr);
-      mvcc_undoredo = (struct log_mvcc_undoredo *) ((char *) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDOREDO), &log_lsa, log_pgptr);
+      mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
       undo_length = (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.ulength);
       redo_length = (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.rlength);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_mvcc_undoredo), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_MVCC_UNDOREDO), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
       break;

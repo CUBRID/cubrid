@@ -3957,7 +3957,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
   LOG_REC_UNDO *undo;
   LOG_REC_REDO *redo;
 
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   struct log_mvcc_undo *mvcc_undo = NULL;
   struct log_mvcc_redo *mvcc_redo = NULL;
 
@@ -4002,7 +4002,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 
       if (is_mvcc_log == true)
 	{
-	  log_size = DB_SIZEOF (struct log_mvcc_undoredo);
+	  log_size = DB_SIZEOF (LOG_REC_MVCC_UNDOREDO);
 	}
       else
 	{
@@ -4015,7 +4015,7 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	{
 	  if (is_mvcc_log == true)
 	    {
-	      mvcc_undoredo = (struct log_mvcc_undoredo *) ((char *) pg->area + offset);
+	      mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) pg->area + offset);
 	      undoredo = &mvcc_undoredo->undoredo;
 	    }
 	  else
@@ -4407,7 +4407,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
   LOG_RECORD_HEADER *lrec;
   LOG_REC_UNDOREDO *undoredo;
   LOG_REC_UNDOREDO *prev_log;
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   int zip_len = 0;
   int temp_length = 0;
   int undo_length = 0;
@@ -4447,7 +4447,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 	      if (LOG_IS_MVCC_OP_RECORD_TYPE (lrec->type) == true)
 		{
 		  is_mvcc_log = true;
-		  log_size = DB_SIZEOF (struct log_mvcc_undoredo);
+		  log_size = DB_SIZEOF (LOG_REC_MVCC_UNDOREDO);
 		}
 	      else
 		{
@@ -4463,7 +4463,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 		{
 		  if (is_mvcc_log == true)
 		    {
-		      mvcc_undoredo = (struct log_mvcc_undoredo *) ((char *) pg->area + offset);
+		      mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) pg->area + offset);
 		      undoredo = &mvcc_undoredo->undoredo;
 		    }
 		  else

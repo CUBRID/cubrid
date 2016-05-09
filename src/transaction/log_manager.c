@@ -6734,14 +6734,14 @@ static LOG_PAGE *
 log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			       LOG_ZIP * log_zip_p)
 {
-  struct log_mvcc_undoredo *mvcc_undoredo;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo;
   int undo_length;
   int redo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), log_lsa, log_page_p);
-  mvcc_undoredo = (struct log_mvcc_undoredo *) ((char *) log_page_p->area + log_lsa->offset);
+  mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Recv_index = %s, \n", rv_rcvindex_string (mvcc_undoredo->undoredo.data.rcvindex));
   fprintf (out_fp,
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Undo(Before) length = %d, Redo(After) length = %d,\n",
@@ -7894,7 +7894,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   LOG_LSA log_lsa;
   LOG_RECORD_HEADER *log_rec = NULL;	/* The log record */
   LOG_REC_UNDOREDO *undoredo = NULL;	/* An undoredo log record */
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;	/* A MVCC undoredo log rec */
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;	/* A MVCC undoredo log rec */
   LOG_REC_UNDO *undo = NULL;	/* An undo log record */
   struct log_mvcc_undo *mvcc_undo = NULL;	/* An undo log record */
   struct log_compensate *compensate = NULL;	/* A compensating log record */
@@ -8021,7 +8021,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		  /* Data header is MVCC undoredo */
 		  data_header_size = sizeof (*mvcc_undoredo);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
-		  mvcc_undoredo = (struct log_mvcc_undoredo *) ((char *) log_pgptr->area + log_lsa.offset);
+		  mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		  /* Get undoredo info */
 		  undoredo = &mvcc_undoredo->undoredo;
@@ -9804,7 +9804,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
 {
   LOG_RECORD_HEADER *log_rec_header = NULL;
   struct log_mvcc_undo *mvcc_undo = NULL;
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   LOG_REC_UNDO *undo = NULL;
   LOG_REC_UNDOREDO *undoredo = NULL;
   int udata_length;
@@ -9833,7 +9833,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   else if (log_rec_header->type == LOG_MVCC_UNDOREDO_DATA || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA)
     {
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
-      mvcc_undoredo = (struct log_mvcc_undoredo *) (log_page_p->area + process_lsa.offset);
+      mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 
       udata_length = mvcc_undoredo->undoredo.ulength;
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);

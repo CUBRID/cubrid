@@ -3430,7 +3430,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
 			   struct log_vacuum_info *vacuum_info, bool * is_file_dropped, bool stop_after_vacuum_info)
 {
   LOG_RECORD_HEADER *log_rec_header = NULL;
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   struct log_mvcc_undo *mvcc_undo = NULL;
   LOG_REC_UNDOREDO *undoredo = NULL;
   LOG_REC_UNDO *undo = NULL;
@@ -3486,7 +3486,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
     {
       /* Get log record undoredo information */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
-      mvcc_undoredo = (struct log_mvcc_undoredo *) (log_page_p->area + log_lsa_p->offset);
+      mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + log_lsa_p->offset);
 
       /* Get MVCCID */
       *mvccid = mvcc_undoredo->mvccid;

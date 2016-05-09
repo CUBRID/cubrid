@@ -3154,7 +3154,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   LOG_REC_UNDOREDO *undoredo_p = NULL;
   struct log_mvcc_redo *mvcc_redo_p = NULL;
   struct log_mvcc_undo *mvcc_undo_p = NULL;
-  struct log_mvcc_undoredo *mvcc_undoredo_p = NULL;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo_p = NULL;
   struct log_data *log_data_p = NULL;
   struct log_vacuum_info *vacuum_info_p = NULL;
   VPID *vpid = NULL;
@@ -3306,7 +3306,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       break;
     case LOG_MVCC_UNDOREDO_DATA:
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
-      node->data_header_length = sizeof (struct log_mvcc_undoredo);
+      node->data_header_length = sizeof (LOG_REC_MVCC_UNDOREDO);
       break;
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
@@ -3365,7 +3365,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
     case LOG_MVCC_UNDOREDO_DATA:
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
       /* Use undoredo data from MVCC undoredo structure */
-      mvcc_undoredo_p = (struct log_mvcc_undoredo *) node->data_header;
+      mvcc_undoredo_p = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
 
       /* Must also fill vacuum info */
       vacuum_info_p = &mvcc_undoredo_p->vacuum_info;
@@ -4007,7 +4007,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 {
   LOG_LSA start_lsa;
   struct log_mvcc_undo *mvcc_undo = NULL;
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   struct log_vacuum_info *vacuum_info = NULL;
   int rv;
   MVCCID mvccid = MVCCID_NULL;
@@ -4041,7 +4041,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  assert (node->log_header.type == LOG_MVCC_UNDOREDO_DATA
 		  || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA);
 
-	  mvcc_undoredo = (struct log_mvcc_undoredo *) node->data_header;
+	  mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
 	  vacuum_info = &mvcc_undoredo->vacuum_info;
 	  mvccid = mvcc_undoredo->mvccid;
 	}
