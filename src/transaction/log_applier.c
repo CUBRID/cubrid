@@ -3125,7 +3125,7 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
 {
   int error = NO_ERROR;
   LA_ITEM *item = NULL;
-  struct log_replication *repl_log;
+  LOG_REC_REPLICATION *repl_log;
   LOG_PAGE *repl_log_pgptr;
   PGLENGTH offset;
   LOG_PAGEID pageid;
@@ -3138,7 +3138,7 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
   repl_log_pgptr = log_pgptr;
   pageid = lsa->pageid;
   offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
-  length = DB_SIZEOF (struct log_replication);
+  length = DB_SIZEOF (LOG_REC_REPLICATION);
 
   LA_LOG_READ_ALIGN (error, offset, pageid, repl_log_pgptr);
   if (error != NO_ERROR)
@@ -3152,7 +3152,7 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
       return NULL;
     }
 
-  repl_log = (struct log_replication *) ((char *) repl_log_pgptr->area + offset);
+  repl_log = (LOG_REC_REPLICATION *) ((char *) repl_log_pgptr->area + offset);
   offset += length;
   length = repl_log->length;
 

@@ -1547,7 +1547,8 @@ struct log_rec_chkpt
 };
 
 /* replication log structure */
-struct log_replication
+typedef struct log_rec_replication LOG_REC_REPLICATION;
+struct log_rec_replication
 {
   LOG_LSA lsa;
   int length;

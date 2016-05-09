@@ -4706,7 +4706,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_CHKPT *chkpt;		/* Checkpoint log record */
   struct log_2pc_start *start_2pc;	/* A 2PC start log record */
   struct log_2pc_prepcommit *prepared;	/* A 2PC prepare to commit */
-  struct log_replication *repl_log;
+  LOG_REC_REPLICATION *repl_log;
 
   int undo_length;		/* Undo length */
   int redo_length;		/* Redo length */
@@ -4974,12 +4974,12 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_replication), &log_lsa, log_pgptr);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REPLICATION), &log_lsa, log_pgptr);
 
-      repl_log = (struct log_replication *) ((char *) log_pgptr->area + log_lsa.offset);
+      repl_log = (LOG_REC_REPLICATION *) ((char *) log_pgptr->area + log_lsa.offset);
       repl_log_length = (int) GET_ZIP_LEN (repl_log->length);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_replication), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_REPLICATION), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, repl_log_length, &log_lsa, log_pgptr);
       break;
 

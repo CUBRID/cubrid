@@ -3744,7 +3744,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
 
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
-      node->data_header_length = sizeof (struct log_replication);
+      node->data_header_length = sizeof (LOG_REC_REPLICATION);
       break;
 
     case LOG_2PC_START:

@@ -4326,7 +4326,7 @@ static void
 log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit, int with_lock)
 {
   LOG_REPL_RECORD *repl_rec;
-  struct log_replication *log;
+  LOG_REC_REPLICATION *log;
   LOG_PRIOR_NODE *node;
 
   if (tdes->append_repl_recidx == -1	/* the first time */
@@ -4353,7 +4353,7 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
 	      continue;
 	    }
 
-	  log = (struct log_replication *) node->data_header;
+	  log = (LOG_REC_REPLICATION *) node->data_header;
 	  if (repl_rec->rcvindex == RVREPL_DATA_DELETE || repl_rec->rcvindex == RVREPL_STATEMENT)
 	    {
 	      LSA_SET_NULL (&log->lsa);
@@ -6949,13 +6949,13 @@ log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_
 static LOG_PAGE *
 log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_replication *repl_log;
+  LOG_REC_REPLICATION *repl_log;
   int length;
   const char *type;
   void (*dump_function) (FILE *, int, void *);
 
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
-  repl_log = (struct log_replication *) ((char *) log_page_p->area + log_lsa->offset);
+  repl_log = (LOG_REC_REPLICATION *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Target log lsa = %lld|%d\n", (long long int) repl_log->lsa.pageid, repl_log->lsa.offset);
   length = repl_log->length;
 
