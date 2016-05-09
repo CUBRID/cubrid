@@ -646,7 +646,7 @@ logtb_initialize_vacuum_worker_tdes (LOG_TDES * tdes, TRANID trid)
 void
 logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 {
-  struct log_addr_tdesarea *area;
+  LOG_ADDR_TDESAREA *area;
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 

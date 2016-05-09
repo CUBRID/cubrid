@@ -955,7 +955,7 @@ struct trantable
 #else				/* _AIX */
   volatile sig_atomic_t num_interrupts;
 #endif				/* _AIX */
-  struct log_addr_tdesarea *area;	/* Contiguous area to transaction descriptors */
+  LOG_ADDR_TDESAREA *area;	/* Contiguous area to transaction descriptors */
   LOG_TDES **all_tdes;		/* Pointers to all transaction descriptors */
 };
 
@@ -1643,6 +1643,7 @@ enum log_recvphase
   LOG_RECOVERY_FINISH_2PC_PHASE	/* Finishing up transactions that were in 2PC protocol at the time of the crash */
 };
 
+typedef struct log_archives LOG_ARCHIVES;
 struct log_archives
 {
   int vdes;			/* Last archived accessed */
@@ -1773,10 +1774,10 @@ typedef struct log_global LOG_GLOBAL;
 struct log_global
 {
   TRANTABLE trantable;		/* Transaction table */
-  struct log_append_info append;	/* The log append info */
+  LOG_APPEND_INFO append;	/* The log append info */
   LOG_PRIOR_LSA_INFO prior_info;
   LOG_HEADER hdr;		/* The log header */
-  struct log_archives archive;	/* Current archive information */
+  LOG_ARCHIVES archive;		/* Current archive information */
   LOG_PAGEID run_nxchkpt_atpageid;
 #if defined(SERVER_MODE)
   LOG_LSA flushed_lsa_lower_bound;	/* lsa */
