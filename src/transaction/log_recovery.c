@@ -4984,8 +4984,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       break;
 
     case LOG_DUMMY_HA_SERVER_STATE:
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_ha_server_state), &log_lsa, log_pgptr);
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_ha_server_state), &log_lsa, log_pgptr);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_HA_SERVER_STATE), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_HA_SERVER_STATE), &log_lsa, log_pgptr);
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:

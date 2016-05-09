@@ -4676,10 +4676,10 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
   return error;
 }
 
-static struct log_ha_server_state *
+static LOG_REC_HA_SERVER_STATE *
 la_get_ha_server_state (LOG_PAGE * pgptr, LOG_LSA * lsa)
 {
-  struct log_ha_server_state *state = NULL;
+  LOG_REC_HA_SERVER_STATE *state = NULL;
   int error = NO_ERROR;
   LOG_PAGEID pageid;
   PGLENGTH offset;
@@ -4690,11 +4690,11 @@ la_get_ha_server_state (LOG_PAGE * pgptr, LOG_LSA * lsa)
   offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
   pg = pgptr;
 
-  length = DB_SIZEOF (struct log_ha_server_state);
+  length = DB_SIZEOF (LOG_REC_HA_SERVER_STATE);
   LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, length, offset, pageid, pg);
   if (error == NO_ERROR)
     {
-      state = (struct log_ha_server_state *) ((char *) pg->area + offset);
+      state = (LOG_REC_HA_SERVER_STATE *) ((char *) pg->area + offset);
     }
 
   return state;
@@ -5948,7 +5948,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
   LOG_LSA required_lsa;
   LOG_PAGEID final_pageid;
   int commit_list_count;
-  struct log_ha_server_state *ha_server_state;
+  LOG_REC_HA_SERVER_STATE *ha_server_state;
   char buffer[256];
   time_t eot_time;
 

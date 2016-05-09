@@ -1633,7 +1633,8 @@ struct log_rec_donetime
 };
 
 /* Log the change of the server's HA state */
-struct log_ha_server_state
+typedef struct log_rec_ha_server_state LOG_REC_HA_SERVER_STATE;
+struct log_rec_ha_server_state
 {
   int state;			/* ha_Server_state */
   int dummy;			/* dummy for alignment */

@@ -3083,7 +3083,7 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
 {
   int tran_index;
   LOG_TDES *tdes;
-  struct log_ha_server_state *ha_server_state;
+  LOG_REC_HA_SERVER_STATE *ha_server_state;
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
 
@@ -3103,8 +3103,8 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
       return;
     }
 
-  ha_server_state = (struct log_ha_server_state *) node->data_header;
-  memset (ha_server_state, 0, sizeof (struct log_ha_server_state));
+  ha_server_state = (LOG_REC_HA_SERVER_STATE *) node->data_header;
+  memset (ha_server_state, 0, sizeof (LOG_REC_HA_SERVER_STATE));
 
   ha_server_state->state = state;
   ha_server_state->at_time = time (NULL);
@@ -7145,11 +7145,11 @@ log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, FILE * out_fp, LOG
 static LOG_PAGE *
 log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_ha_server_state *ha_server_state;
+  LOG_REC_HA_SERVER_STATE *ha_server_state;
 
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*ha_server_state), log_lsa, log_page_p);
-  ha_server_state = ((struct log_ha_server_state *) ((char *) log_page_p->area + log_lsa->offset));
+  ha_server_state = ((LOG_REC_HA_SERVER_STATE *) ((char *) log_page_p->area + log_lsa->offset));
   fprintf (out_fp, "  HA server state = %d\n", ha_server_state->state);
 
   return log_page_p;

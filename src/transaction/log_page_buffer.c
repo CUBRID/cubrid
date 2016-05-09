@@ -3715,7 +3715,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
 
     case LOG_DUMMY_HA_SERVER_STATE:
       assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (struct log_ha_server_state);
+      node->data_header_length = sizeof (LOG_REC_HA_SERVER_STATE);
       break;
 
     case LOG_SAVEPOINT:
