@@ -6258,7 +6258,7 @@ static TRAN_STATE
 log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP result)
 {
   TRAN_STATE state;
-  struct log_topop_result *top_result;	/* Partial outcome */
+  LOG_REC_TOPOP_RESULT *top_result;	/* Partial outcome */
   LOG_RECTYPE rectype;
   LOG_PRIOR_NODE *node;
 
@@ -6286,7 +6286,7 @@ log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP r
       return state;
     }
 
-  top_result = (struct log_topop_result *) node->data_header;
+  top_result = (LOG_REC_TOPOP_RESULT *) node->data_header;
 
   if (result == LOG_RESULT_TOPOP_COMMIT && tdes->topops.type != LOG_TOPOPS_NORMAL)
     {
@@ -7013,11 +7013,11 @@ log_dump_record_commit_topope_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, 
 static LOG_PAGE *
 log_dump_record_topope_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_topop_result *top_result;
+  LOG_REC_TOPOP_RESULT *top_result;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_result), log_lsa, log_page_p);
-  top_result = ((struct log_topop_result *) ((char *) log_page_p->area + log_lsa->offset));
+  top_result = ((LOG_REC_TOPOP_RESULT *) ((char *) log_page_p->area + log_lsa->offset));
   fprintf (out_fp, ",\n     Next UNDO at/before = %lld|%d, Prev_topresult_lsa = %lld|%d\n",
 	   (long long int) top_result->lastparent_lsa.pageid, top_result->lastparent_lsa.offset,
 	   (long long int) top_result->prv_topresult_lsa.pageid, top_result->prv_topresult_lsa.offset);
@@ -7898,7 +7898,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   LOG_REC_UNDO *undo = NULL;	/* An undo log record */
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* An undo log record */
   LOG_REC_COMPENSATE *compensate = NULL;	/* A compensating log record */
-  struct log_topop_result *top_result = NULL;	/* Partial result from top system operation */
+  LOG_REC_TOPOP_RESULT *top_result = NULL;	/* Partial result from top system operation */
   LOG_RCV rcv;			/* Recovery structure */
   VPID rcv_vpid;		/* VPID of data to recover */
   LOG_RCVINDEX rcvindex;	/* Recovery index */
@@ -8110,7 +8110,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      /* Read the DATA HEADER */
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa, log_pgptr);
 	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_result), &log_lsa, log_pgptr);
-	      top_result = ((struct log_topop_result *) ((char *) log_pgptr->area + log_lsa.offset));
+	      top_result = ((LOG_REC_TOPOP_RESULT *) ((char *) log_pgptr->area + log_lsa.offset));
 	      LSA_COPY (&prev_tranlsa, &top_result->lastparent_lsa);
 	      break;
 
@@ -8195,7 +8195,7 @@ int
 log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa,
 			 LOG_TOPOP_RANGE ** out_nxtop_range_stack)
 {
-  struct log_topop_result *top_result;
+  LOG_REC_TOPOP_RESULT *top_result;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
@@ -8269,8 +8269,8 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 	  /* Read the DATA HEADER */
 	  LSA_COPY (&tmp_log_lsa, &top_result_lsa);
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &tmp_log_lsa, log_pgptr);
-	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_topop_result), &tmp_log_lsa, log_pgptr);
-	  top_result = (struct log_topop_result *) ((char *) log_pgptr->area + tmp_log_lsa.offset);
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_TOPOP_RESULT), &tmp_log_lsa, log_pgptr);
+	  top_result = (LOG_REC_TOPOP_RESULT *) ((char *) log_pgptr->area + tmp_log_lsa.offset);
 	  last_fetch_page_id = tmp_log_lsa.pageid;
 
 	  /* 

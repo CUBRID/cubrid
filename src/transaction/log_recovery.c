@@ -1379,7 +1379,7 @@ static int
 log_rv_analysis_complete_topope (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_TDES *tdes;
-  struct log_topop_result *top_result;
+  LOG_REC_TOPOP_RESULT *top_result;
 
   /* 
    * The top system action is declared as finished. Pop it from the
@@ -1403,8 +1403,8 @@ log_rv_analysis_complete_topope (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA *
     {
       /* Read the DATA HEADER */
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_topop_result), log_lsa, log_page_p);
-      top_result = (struct log_topop_result *) ((char *) log_page_p->area + log_lsa->offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_TOPOP_RESULT), log_lsa, log_page_p);
+      top_result = (LOG_REC_TOPOP_RESULT *) ((char *) log_page_p->area + log_lsa->offset);
       /* Last parent lsa is overwritten. */
       LSA_COPY (&tdes->posp_nxlsa, &top_result->lastparent_lsa);
       /* No undo */
@@ -3816,7 +3816,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;	/* MVCC op Undo_redo log record */
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* MVCC op Undo log record */
   LOG_REC_COMPENSATE *compensate;	/* Compensating log record */
-  struct log_topop_result *top_result;	/* Result of top system op */
+  LOG_REC_TOPOP_RESULT *top_result;	/* Result of top system op */
   LOG_RCVINDEX rcvindex;	/* Recovery index function */
   LOG_RCV rcv;			/* Recovery structure */
   VPID rcv_vpid;		/* VPID of data to recover */
@@ -4109,8 +4109,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		  /* Read the DATA HEADER */
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_topop_result), &log_lsa, log_pgptr);
-		  top_result = ((struct log_topop_result *) ((char *) log_pgptr->area + log_lsa.offset));
+		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_TOPOP_RESULT), &log_lsa, log_pgptr);
+		  top_result = ((LOG_REC_TOPOP_RESULT *) ((char *) log_pgptr->area + log_lsa.offset));
 		  LSA_COPY (&prev_tranlsa, &top_result->lastparent_lsa);
 		  break;
 
@@ -4895,9 +4895,9 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_COMMIT_TOPOPE:
     case LOG_ABORT_TOPOPE:
       /* Read the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_topop_result), &log_lsa, log_pgptr);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_TOPOP_RESULT), &log_lsa, log_pgptr);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_topop_result), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_TOPOP_RESULT), &log_lsa, log_pgptr);
       break;
 
     case LOG_END_CHKPT:
@@ -5046,7 +5046,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
   int nxtop_count = 0;
   bool start_postpone_lsa_wasapplied = false;
 
-  struct log_topop_result *topop_result = NULL;
+  LOG_REC_TOPOP_RESULT *topop_result = NULL;
   bool found_commit_with_postpone = false;
 
   assert (ret_lsa && start_postpone_lsa && tdes && partial_dealloc_vol_page_lsa);
@@ -5235,9 +5235,9 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 			{
 			  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 
-			  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_topop_result), &log_lsa,
+			  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_TOPOP_RESULT), &log_lsa,
 							    log_pgptr);
-			  topop_result = (struct log_topop_result *) ((char *) log_pgptr->area + log_lsa.offset);
+			  topop_result = (LOG_REC_TOPOP_RESULT *) ((char *) log_pgptr->area + log_lsa.offset);
 
 			  if (LSA_EQ (start_postpone_lsa, &topop_result->lastparent_lsa))
 			    {

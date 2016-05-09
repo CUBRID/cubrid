@@ -3739,7 +3739,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
     case LOG_COMMIT_TOPOPE:
     case LOG_ABORT_TOPOPE:
       assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (struct log_topop_result);
+      node->data_header_length = sizeof (LOG_REC_TOPOP_RESULT);
       break;
 
     case LOG_REPLICATION_DATA:

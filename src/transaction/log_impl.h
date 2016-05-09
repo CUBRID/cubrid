@@ -1588,7 +1588,8 @@ struct log_rec_savept
   int length;			/* Savepoint name */
 };
 
-struct log_topop_result
+typedef struct log_rec_topop_result LOG_REC_TOPOP_RESULT;
+struct log_rec_topop_result
 {
   LOG_LSA lastparent_lsa;	/* Next log record address of transaction for UNDO purposes. Last address before the
 				 * top action */
