@@ -22116,10 +22116,9 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   if ((context->type != HEAP_OPERATION_UPDATE || context->update_in_place != UPDATE_INPLACE_OLD_MVCCID)
       && insert_from_reorganize == false)
     {
-      if (is_mvcc_op)
+#if defined (SERVER_MODE)
+      if (is_mvcc_class)
 	{
-	  assert (is_mvcc_class);
-
 	  /* get MVCC id */
 	  mvcc_id = logtb_get_current_mvccid (thread_p);
 
@@ -22132,6 +22131,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
 	}
       else
+#endif /* SERVER_MODE */
 	{
 	  int curr_header_size, new_header_size;
 
