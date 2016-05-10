@@ -8076,9 +8076,15 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
 	      goto error;
 	    }
+	  else if (mvcc_delete_info.satisfies_delete_result == DELETE_RECORD_DELETED)
+	    {
+	      /* Trying to modify version deleted by concurrent transaction, which is an isolation conflict. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
+	      goto error;
+	    }
 	  else
 	    {
-	      /* Last version is also visible version. Fall through. */
+	      /* Last version is also visible version and it is not deleted. Fall through. */
 	    }
 	}
 
