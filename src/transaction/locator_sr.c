@@ -9760,7 +9760,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
   scan_init_index_scan (&isid, NULL, mvcc_snapshot);
 
   /* Start a scan cursor and a class attribute information */
-  if (heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true, false, mvcc_snapshot) != NO_ERROR)
+  if (heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, false, false, mvcc_snapshot) != NO_ERROR)
     {
       return DISK_ERROR;
     }
@@ -9806,7 +9806,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
   inst_oid.pageid = NULL_PAGEID;
   inst_oid.slotid = NULL_SLOTID;
 
-  while ((scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &peek, &scan_cache, PEEK)) == S_SUCCESS)
+  while ((scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &peek, &scan_cache, COPY)) == S_SUCCESS)
     {
       num_heap_oids++;
 
