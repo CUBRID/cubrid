@@ -3155,8 +3155,8 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   LOG_REC_MVCC_REDO *mvcc_redo_p = NULL;
   LOG_REC_MVCC_UNDO *mvcc_undo_p = NULL;
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo_p = NULL;
-  struct log_data *log_data_p = NULL;
-  struct log_vacuum_info *vacuum_info_p = NULL;
+  LOG_DATA *log_data_p = NULL;
+  LOG_VACUUM_INFO *vacuum_info_p = NULL;
   VPID *vpid = NULL;
   int error_code = NO_ERROR;
   int i;
@@ -4008,7 +4008,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
   LOG_LSA start_lsa;
   LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
-  struct log_vacuum_info *vacuum_info = NULL;
+  LOG_VACUUM_INFO *vacuum_info = NULL;
   int rv;
   MVCCID mvccid = MVCCID_NULL;
 

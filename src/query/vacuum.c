@@ -563,8 +563,8 @@ static void vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_E
 					  bool is_vacuum_complete);
 
 static int vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_LSA * log_lsa_p,
-				      LOG_PAGE * log_page_p, struct log_data *log_record_data, MVCCID * mvccid,
-				      char **undo_data_ptr, int *undo_data_size, struct log_vacuum_info *vacuum_info,
+				      LOG_PAGE * log_page_p, LOG_DATA * log_record_data, MVCCID * mvccid,
+				      char **undo_data_ptr, int *undo_data_size, LOG_VACUUM_INFO * vacuum_info,
 				      bool * is_file_dropped, bool stop_after_vacuum_info);
 static int vacuum_compare_data_entries (const void *ptr1, const void *ptr2);
 static int vacuum_load_data_from_disk (THREAD_ENTRY * thread_p);
@@ -2699,7 +2699,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
   LOG_LSA rcv_lsa;
   LOG_PAGEID first_block_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (VACUUM_DATA_ENTRY_BLOCKID (data));
   int error_code = NO_ERROR;
-  struct log_data log_record_data;
+  LOG_DATA log_record_data;
   char *undo_data_buffer = NULL, *undo_data = NULL;
   int undo_data_size;
   char *es_uri = NULL;
@@ -2713,7 +2713,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
   MVCCID threshold_mvccid = vacuum_Global_oldest_active_mvccid;
   BTREE_MVCC_INFO mvcc_info;
   MVCCID mvccid;
-  struct log_vacuum_info log_vacuum;
+  LOG_VACUUM_INFO log_vacuum;
   OID heap_object_oid;
   bool vacuum_complete = false;
   bool was_interrupted = false;
@@ -3426,8 +3426,8 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
  */
 static int
 vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_LSA * log_lsa_p, LOG_PAGE * log_page_p,
-			   struct log_data *log_record_data, MVCCID * mvccid, char **undo_data_ptr, int *undo_data_size,
-			   struct log_vacuum_info *vacuum_info, bool * is_file_dropped, bool stop_after_vacuum_info)
+			   LOG_DATA * log_record_data, MVCCID * mvccid, char **undo_data_ptr, int *undo_data_size,
+			   LOG_VACUUM_INFO * vacuum_info, bool * is_file_dropped, bool stop_after_vacuum_info)
 {
   LOG_RECORD_HEADER *log_rec_header = NULL;
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
@@ -4572,8 +4572,8 @@ vacuum_rv_finish_vacuum_data_recovery (THREAD_ENTRY * thread_p, bool is_chkpt_bl
   LOG_PAGE *log_page_p = NULL;
   LOG_PAGEID stop_at_pageid;
   VACUUM_DATA_ENTRY chkpt_entry;
-  struct log_data dummy_log_data;
-  struct log_vacuum_info vacuum_info;
+  LOG_DATA dummy_log_data;
+  LOG_VACUUM_INFO vacuum_info;
   MVCCID mvccid;
 
   assert (chkpt_lsa != NULL);

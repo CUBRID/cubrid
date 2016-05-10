@@ -82,9 +82,9 @@
 #define TR_TABLE_CS_EXIT(thread_p) \
         csect_exit((thread_p), CSECT_TRAN_TABLE)
 
-#define LOG_ARCHIVE_CS_ENTER(thread_p)                                       \
+#define LOG_ARCHIVE_CS_ENTER(thread_p) \
         csect_enter (thread_p, CSECT_LOG_ARCHIVE, INF_WAIT)
-#define LOG_ARCHIVE_CS_ENTER_READ_MODE(thread_p)                             \
+#define LOG_ARCHIVE_CS_ENTER_READ_MODE(thread_p) \
         csect_enter_as_reader (thread_p, CSECT_LOG_ARCHIVE, INF_WAIT)
 #define LOG_ARCHIVE_CS_EXIT(thread_p) \
         csect_exit (thread_p, CSECT_LOG_ARCHIVE)
@@ -527,8 +527,8 @@ struct log_group_commit_info
   pthread_cond_t gc_cond;
 };
 
-#define LOG_GROUP_COMMIT_INFO_INITIALIZER                     \
-  {PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER}
+#define LOG_GROUP_COMMIT_INFO_INITIALIZER \
+  { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
 
 typedef enum logwr_mode LOGWR_MODE;
 enum logwr_mode
@@ -960,7 +960,7 @@ struct trantable
 };
 
 #define TRANTABLE_INITIALIZER \
-  {0, 0, 0, 0, 0, 0, NULL, NULL}
+  { 0, 0, 0, 0, 0, 0, NULL, NULL }
 
 /*
  * MVCC_TRANS_STATUS keep MVCCIDs status in bit area. Thus bit 0 means active
@@ -986,7 +986,8 @@ struct mvcc_trans_status
   volatile unsigned int version;
 };
 
-#define MVCC_STATUS_INITIALIZER {NULL, MVCCID_FIRST, 0, NULL, 0, 0}
+#define MVCC_STATUS_INITIALIZER \
+  { NULL, MVCCID_FIRST, 0, NULL, 0, 0 }
 
 typedef struct mvcctable MVCCTABLE;
 struct mvcctable
@@ -1013,11 +1014,10 @@ struct mvcctable
 
 #if defined(HAVE_ATOMIC_BUILTINS)
 #define MVCCTABLE_INITIALIZER \
-  {MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER,	\
-   PTHREAD_MUTEX_INITIALIZER}
+  { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER }
 #else
 #define MVCCTABLE_INITIALIZER \
-  {MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER}
+  { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER }
 #endif
 
 /*
@@ -1228,9 +1228,8 @@ struct log_arv_header
   INT32 dummy2;			/* Dummy field for 8byte align */
 };
 
-#define LOG_ARV_HEADER_INITIALIZER              \
-  { /* magic */ {'0'},                          \
-    0, 0, 0, 0, 0, 0, 0}
+#define LOG_ARV_HEADER_INITIALIZER \
+  { /* magic */ {'0'}, 0, 0, 0, 0, 0, 0, 0 }
 
 typedef struct log_bgarv_header LOG_BGARV_HEADER;
 struct log_bgarv_header
@@ -1244,9 +1243,9 @@ struct log_bgarv_header
   LOG_PAGEID current_page_id;
   LOG_PAGEID last_sync_pageid;
 };
-#define LOG_BGARV_HEADER_INITIALIZER		\
-  { /* magic */ {'0'}, 				\
-    0, 0, NULL_PAGEID, NULL_PAGEID, NULL_PAGEID}
+
+#define LOG_BGARV_HEADER_INITIALIZER \
+  { /* magic */ {'0'}, 0, 0, NULL_PAGEID, NULL_PAGEID, NULL_PAGEID }
 
 typedef enum log_rectype LOG_RECTYPE;
 enum log_rectype
@@ -1348,14 +1347,11 @@ enum log_repl_flush
 
 /* Is record type UNDOREDO */
 #define LOG_IS_UNDOREDO_RECORD_TYPE(type) \
-  (((type) == LOG_UNDOREDO_DATA) \
-   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
-   || ((type) == LOG_DIFF_UNDOREDO_DATA) \
-   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+  (((type) == LOG_UNDOREDO_DATA) || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_DIFF_UNDOREDO_DATA) || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
 
 #define LOG_IS_DIFF_UNDOREDO_TYPE(type) \
-  ((type) == LOG_DIFF_UNDOREDO_DATA \
-   || (type == LOG_MVCC_DIFF_UNDOREDO_DATA))
+  ((type) == LOG_DIFF_UNDOREDO_DATA || (type) == LOG_MVCC_DIFF_UNDOREDO_DATA)
 
 /* Definitions used to identify MVCC log records. Used by log manager and
  * vacuum.
@@ -1400,8 +1396,7 @@ enum log_repl_flush
    || (rcvindex) == RVVAC_COMPLETE)
 
 #define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
-  (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || \
-    (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
+  (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
    && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
 
 typedef struct log_repl LOG_REPL_RECORD;
@@ -1428,6 +1423,7 @@ struct log_rec_header
 };
 
 /* Common information of log data records */
+typedef struct log_data LOG_DATA;
 struct log_data
 {
   LOG_RCVINDEX rcvindex;	/* Index to recovery function */
@@ -1440,7 +1436,7 @@ struct log_data
 typedef struct log_rec_undoredo LOG_REC_UNDOREDO;
 struct log_rec_undoredo
 {
-  struct log_data data;		/* Location of recovery data */
+  LOG_DATA data;		/* Location of recovery data */
   int ulength;			/* Length of undo data */
   int rlength;			/* Length of redo data */
 };
@@ -1449,7 +1445,7 @@ struct log_rec_undoredo
 typedef struct log_rec_undo LOG_REC_UNDO;
 struct log_rec_undo
 {
-  struct log_data data;		/* Location of recovery data */
+  LOG_DATA data;		/* Location of recovery data */
   int length;			/* Length of undo data */
 };
 
@@ -1457,11 +1453,12 @@ struct log_rec_undo
 typedef struct log_rec_redo LOG_REC_REDO;
 struct log_rec_redo
 {
-  struct log_data data;		/* Location of recovery data */
+  LOG_DATA data;		/* Location of recovery data */
   int length;			/* Length of redo data */
 };
 
 /* Log information required for vacuum */
+typedef struct log_vacuum_info LOG_VACUUM_INFO;
 struct log_vacuum_info
 {
   LOG_LSA prev_mvcc_op_log_lsa;	/* Log lsa of previous MVCC operation log record. Used by vacuum to process log data. */
@@ -1476,7 +1473,7 @@ struct log_rec_mvcc_undoredo
 {
   LOG_REC_UNDOREDO undoredo;	/* Undoredo information */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
-  struct log_vacuum_info vacuum_info;	/* Info required for vacuum */
+  LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
 };
 
 /* Information of undo log records for MVCC operations */
@@ -1485,7 +1482,7 @@ struct log_rec_mvcc_undo
 {
   LOG_REC_UNDO undo;		/* Undo information */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
-  struct log_vacuum_info vacuum_info;	/* Info required for vacuum */
+  LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
 };
 
 /* Information of redo log records for MVCC operations */
@@ -1508,7 +1505,7 @@ struct log_rec_dbout_redo
 typedef struct log_rec_compensate LOG_REC_COMPENSATE;
 struct log_rec_compensate
 {
-  struct log_data data;		/* Location of recovery data */
+  LOG_DATA data;		/* Location of recovery data */
   LOG_LSA undo_nxlsa;		/* Address of next log record to undo */
   int length;			/* Length of compensating data */
 };
@@ -1532,7 +1529,7 @@ struct log_rec_topope_start_postpone
 typedef struct log_rec_run_postpone LOG_REC_RUN_POSTPONE;
 struct log_rec_run_postpone
 {
-  struct log_data data;		/* Location of recovery data */
+  LOG_DATA data;		/* Location of recovery data */
   LOG_LSA ref_lsa;		/* Address of the original postpone record */
   int length;			/* Length of redo data */
 };
@@ -1670,11 +1667,8 @@ struct log_archives
   int *unav_archives;		/* Unavailable archives */
 };
 
-#define LOG_ARCHIVES_INITIALIZER                     \
-  {NULL_VOLDES,                                      \
-   LOG_ARV_HEADER_INITIALIZER,                       \
-   0, 0,                                             \
-   NULL /* unav_archives */ }
+#define LOG_ARCHIVES_INITIALIZER \
+  { NULL_VOLDES, LOG_ARV_HEADER_INITIALIZER, 0, 0, NULL /* unav_archives */ }
 
 typedef struct background_archiving_info BACKGROUND_ARCHIVING_INFO;
 struct background_archiving_info
@@ -1685,8 +1679,8 @@ struct background_archiving_info
   int vdes;
 };
 
-#define BACKGROUND_ARCHIVING_INFO_INITIALIZER                     \
-  {NULL_PAGEID, NULL_PAGEID, NULL_PAGEID, NULL_VOLDES}
+#define BACKGROUND_ARCHIVING_INFO_INITIALIZER \
+  { NULL_PAGEID, NULL_PAGEID, NULL_PAGEID, NULL_VOLDES }
 
 typedef struct log_data_addr LOG_DATA_ADDR;
 struct log_data_addr
@@ -1695,6 +1689,7 @@ struct log_data_addr
   PAGE_PTR pgptr;
   PGLENGTH offset;		/* Offset or slot */
 };
+
 #define LOG_DATA_ADDR_INITIALIZER \
   { NULL, NULL, 0 }
 
@@ -1781,8 +1776,7 @@ struct global_unique_stats_table
 };
 
 #define GLOBAL_UNIQUE_STATS_TABLE_INITIALIZER \
- {LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER, \
-  LF_FREELIST_INITIALIZER, LSA_INITIALIZER, false}
+ { LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER, LF_FREELIST_INITIALIZER, LSA_INITIALIZER, false }
 
 #define GLOBAL_UNIQUE_STATS_HASH_SIZE 1000
 
