@@ -986,9 +986,20 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	{
 	  for (i = class_->fixed_count, j = 0; i < class_->att_count && j < class_->variable_count; i++, j++)
 	    {
+	      int oor_flag;
+
 	      att = &(class_->attributes[i]);
 	      mem = obj + att->offset;
-	      PRIM_READ (att->type, att->domain, buf, mem, vars[j]);
+	      oor_flag = OR_VAR_TABLE_ELEMENT_OUT_OF_ROW_BIT_INTERNAL (OR_GET_OBJECT_VAR_TABLE (buf->buffer), j, offset_size);
+
+	      if (oor_flag)
+		{
+		  PRIM_READ (pr_type_from_id (DB_TYPE_OID), att->domain, buf, mem, vars[j]);
+		}
+	      else
+		{
+		  PRIM_READ (att->type, att->domain, buf, mem, vars[j]);
+		}
 	    }
 	}
     }

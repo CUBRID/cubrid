@@ -1488,8 +1488,11 @@ extern int or_put_mvccid (OR_BUF * buf, MVCCID mvccid);
 
 /* Data unpacking functions */
 extern int or_get_byte (OR_BUF * buf, int *error);
+extern int or_get_byte_offset (OR_BUF * buf, int *error);
 extern int or_get_short (OR_BUF * buf, int *error);
+extern int or_get_short_offset (OR_BUF * buf, int *error);
 extern int or_get_int (OR_BUF * buf, int *error);
+extern int or_get_int_offset (OR_BUF * buf, int *error);
 extern DB_BIGINT or_get_bigint (OR_BUF * buf, int *error);
 extern float or_get_float (OR_BUF * buf, int *error);
 extern double or_get_double (OR_BUF * buf, int *error);
