@@ -3925,6 +3925,8 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   if (uflag == true)
     {
       HEAP_OPERATION_CONTEXT update_context;
+      MVCC_REC_HEADER *old_mvcc_header_p = NULL;
+      MVCC_REC_HEADER mvcc_header;
 
       record.length = catcls_guess_record_length (value_p);
       record.area_size = record.length;
@@ -4241,28 +4243,6 @@ catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name_p, RECD
     {
       return (catcls_insert_catalog_classes (thread_p, record_p));
     }
-
-  /* check whether mvcc update or update in place is needed */
-#if defined (SERVER_MODE)
-  if (!HEAP_IS_UPDATE_INPLACE (force_in_place))
-    {
-      bool need_mvcc_update;
-
-      if (catcls_is_mvcc_update_needed (thread_p, &oid, &need_mvcc_update) != NO_ERROR)
-	{
-	  goto error;
-	}
-      if (!need_mvcc_update)
-	{
-	  force_in_place = UPDATE_INPLACE_CURRENT_MVCCID;
-	}
-    }
-#else
-  if (!HEAP_IS_UPDATE_INPLACE (force_in_place))
-    {
-      force_in_place = UPDATE_INPLACE_CURRENT_MVCCID;
-    }
-#endif /* SERVER_MODE */
 
   value_p = catcls_get_or_value_from_class_record (thread_p, record_p);
   if (value_p == NULL)
