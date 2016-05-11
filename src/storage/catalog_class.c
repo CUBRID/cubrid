@@ -3924,8 +3924,6 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   if (uflag == true)
     {
       HEAP_OPERATION_CONTEXT update_context;
-      MVCC_REC_HEADER *old_mvcc_header_p = NULL;
-      MVCC_REC_HEADER mvcc_header;
 
       record.length = catcls_guess_record_length (value_p);
       record.area_size = record.length;
