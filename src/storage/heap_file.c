@@ -926,6 +926,7 @@ static void heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
+static bool heap_check_class_for_rr_isolation_err (const OID * class_oid);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -8049,9 +8050,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 
       /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
       if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
-	  && !oid_check_cached_class_oid (OID_CACHE_DB_ROOT_CLASS_ID, class_oid)
-	  && !oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
-	  && !oid_check_cached_class_oid (OID_CACHE_TRIGGER_CLASS_ID, class_oid))
+	  && heap_check_class_for_rr_isolation_err (class_oid))
 	{
 	  /* In these isolation levels, the transaction is not allowed to modify an object that was already
 	   * modified by other transactions. This would be true if last version matched the visible version.
@@ -26443,4 +26442,25 @@ exit:
       pgbuf_ordered_unfix (thread_p, &home_pg_watcher);
     }
   return scan;
+}
+
+/*
+ * heap_check_class_for_rr_isolation_err () - Check if the class have to be checked against serializable conflicts
+ *
+ * return		   : true if the class is not root/trigger/user class, otherwise false
+ * class_oid (in)	   : Class object identifier.
+ */
+static bool
+heap_check_class_for_rr_isolation_err (const OID * class_oid)
+{
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+
+  if (!oid_check_cached_class_oid (OID_CACHE_DB_ROOT_CLASS_ID, class_oid)
+      && !oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
+      && !oid_check_cached_class_oid (OID_CACHE_TRIGGER_CLASS_ID, class_oid))
+    {
+      return true;
+    }
+
+  return false;
 }
