@@ -148,7 +148,8 @@ static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int tr
 		      INTL_CODESET codeset, unsigned char **res, DB_TYPE * res_type, int *res_length, int *res_size);
 static void trim_leading (const unsigned char *trim_charset_ptr, int trim_charset_size, const unsigned char *src_ptr,
 			  DB_TYPE src_type, int src_length, int src_size, INTL_CODESET codeset,
-			  unsigned char **lead_trimmed_ptr, int *lead_trimmed_length, int *lead_trimmed_size);
+			  unsigned char **lead_trimmed_ptr, int *lead_trimmed_length, int *lead_trimmed_size,
+			  bool skip_spaces);
 static int qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_charset_ptr,
 		     int pad_charset_length, int pad_charset_size, const unsigned char *src_ptr, DB_TYPE src_type,
 		     int src_length, int src_size, INTL_CODESET codeset, unsigned char **result, DB_TYPE * result_type,
@@ -3574,6 +3575,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
   int lead_trimmed_length, trail_trimmed_length;
   int lead_trimmed_size, trail_trimmed_size, pad_char_size = 0;
   int error_status = NO_ERROR;
+  bool trim_ascii_spaces = false;
 
   /* default case */
   intl_pad_char (codeset, pad_char, &pad_char_size);
@@ -3582,6 +3584,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
       trim_charset = pad_char;
       trim_charset_length = 1;
       trim_charset_size = pad_char_size;
+      trim_ascii_spaces = true;
     }
 
   /* trim from front */
@@ -3592,7 +3595,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
   if (trim_operand == LEADING || trim_operand == BOTH)
     {
       trim_leading (trim_charset, trim_charset_size, src_ptr, src_type, src_length, src_size, codeset,
-		    &lead_trimmed_ptr, &lead_trimmed_length, &lead_trimmed_size);
+		    &lead_trimmed_ptr, &lead_trimmed_length, &lead_trimmed_size, trim_ascii_spaces);
     }
 
   trail_trimmed_ptr = lead_trimmed_ptr;
@@ -3602,7 +3605,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
   if (trim_operand == TRAILING || trim_operand == BOTH)
     {
       qstr_trim_trailing (trim_charset, trim_charset_size, lead_trimmed_ptr, src_type, lead_trimmed_length,
-			  lead_trimmed_size, codeset, &trail_trimmed_length, &trail_trimmed_size);
+			  lead_trimmed_size, codeset, &trail_trimmed_length, &trail_trimmed_size, trim_ascii_spaces);
     }
 
   /* setup result */
@@ -3642,6 +3645,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
  *                codeset: (in)  International codeset of source string.
  *       lead_trimmed_ptr: (out) Pointer to start of trimmed string.
  *    lead_trimmed_length: (out) Length of trimmed string.
+ *	trim_ascii_spaces: (in)  Option to trim normal spaces also. 
  *
  * Returns: nothing
  *
@@ -3657,7 +3661,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
 static void
 trim_leading (const unsigned char *trim_charset_ptr, int trim_charset_size, const unsigned char *src_ptr,
 	      DB_TYPE src_type, int src_length, int src_size, INTL_CODESET codeset, unsigned char **lead_trimmed_ptr,
-	      int *lead_trimmed_length, int *lead_trimmed_size)
+	      int *lead_trimmed_length, int *lead_trimmed_size, bool trim_ascii_spaces)
 {
   int cur_src_char_size, cur_trim_char_size;
   unsigned char *cur_src_char_ptr, *cur_trim_char_ptr;
@@ -3671,6 +3675,14 @@ trim_leading (const unsigned char *trim_charset_ptr, int trim_charset_size, cons
   /* iterate for source string */
   for (cur_src_char_ptr = (unsigned char *) src_ptr; cur_src_char_ptr < src_ptr + src_size;)
     {
+      if (trim_ascii_spaces && *cur_src_char_ptr == ' ')
+	{
+	  cur_src_char_ptr += 1;
+	  *lead_trimmed_length -= 1;
+	  *lead_trimmed_size -= 1;
+	  *lead_trimmed_ptr += 1;
+	  continue;
+	}
       for (cur_trim_char_ptr = (unsigned char *) trim_charset_ptr;
 	   cur_src_char_ptr < (src_ptr + src_size) && (cur_trim_char_ptr < trim_charset_ptr + trim_charset_size);)
 	{
@@ -3711,6 +3723,7 @@ trim_leading (const unsigned char *trim_charset_ptr, int trim_charset_size, cons
  *             src_length: (in)  Length of source string.
  *                codeset: (in)  International codeset of source string.
  *   trail_trimmed_length: (out) Length of trimmed string.
+ *      trim_ascii_spaces: (in)  Option to trim normal spaces also.
  *
  * Returns: nothing
  *
@@ -3726,7 +3739,7 @@ trim_leading (const unsigned char *trim_charset_ptr, int trim_charset_size, cons
 void
 qstr_trim_trailing (const unsigned char *trim_charset_ptr, int trim_charset_size, const unsigned char *src_ptr,
 		    DB_TYPE src_type, int src_length, int src_size, INTL_CODESET codeset, int *trail_trimmed_length,
-		    int *trail_trimmed_size)
+		    int *trail_trimmed_size, bool trim_ascii_spaces)
 {
   int prev_src_char_size, prev_trim_char_size;
   unsigned char *cur_src_char_ptr, *cur_trim_char_ptr;
@@ -3739,6 +3752,13 @@ qstr_trim_trailing (const unsigned char *trim_charset_ptr, int trim_charset_size
   /* iterate for source string */
   for (cur_src_char_ptr = (unsigned char *) src_ptr + src_size; cur_src_char_ptr > src_ptr;)
     {
+      if (trim_ascii_spaces && *(cur_src_char_ptr - 1) == ' ')
+	{
+	  cur_src_char_ptr -= 1;
+	  *trail_trimmed_length -= 1;
+	  *trail_trimmed_size -= 1;
+	  continue;
+	}
       for (cur_trim_char_ptr = (unsigned char *) trim_charset_ptr + trim_charset_size;
 	   cur_trim_char_ptr > trim_charset_ptr && cur_src_char_ptr > src_ptr;)
 	{
@@ -8449,7 +8469,7 @@ varchar_truncated (const unsigned char *s, DB_TYPE s_type, int s_length, int use
   intl_pad_char (codeset, pad, &pad_size);
   intl_char_size ((unsigned char *) s, s_length, codeset, &s_size);
 
-  qstr_trim_trailing (pad, pad_size, s, s_type, s_length, s_size, codeset, &trim_length, &trim_size);
+  qstr_trim_trailing (pad, pad_size, s, s_type, s_length, s_size, codeset, &trim_length, &trim_size, true);
 
   if (trim_length > used_chars)
     {
