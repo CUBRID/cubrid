@@ -26449,6 +26449,18 @@ exit:
  *
  * return		   : true if the class is not root/trigger/user class, otherwise false
  * class_oid (in)	   : Class object identifier.
+ *
+ * Note: Do not check system classes that are not part of catalog for rr isolation level error. Isolation consistency 
+ *	 is secured using locks anyway. These classes are in a way related to table schema's and can be accessed
+ *	 before the actual classes. db_user instances are fetched to check authorizations, while db_root and db_trigger
+ *	 are accessed when triggers are modified.
+ *	 The RR isolation has to check if an instance that we want to lock was modified by concurrent transaction. 
+ *	 If the instance was modified, then this means we have an isolation conflict. The check must verify last 
+ *	 instance version visibility over transaction snapshot. The version is visible if and only if it was not
+ *	 modified by concurrent transaction. To check visibility, we must first generate a transaction snapshot. 
+ *	 Since instances from these classes are accessed before locking tables, the snapshot is generated before 
+ *	 transaction is blocked on table lock. The results will then seem to be inconsistent with most cases when table
+ *	 locks are acquired before snapshot.
  */
 static bool
 heap_check_class_for_rr_isolation_err (const OID * class_oid)
