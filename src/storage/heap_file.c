@@ -8048,7 +8048,10 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 	      || (!OID_ISNULL (&forward_oid) && HEAP_IS_PAGE_OF_OID (fwd_page_watcher.pgptr, &forward_oid)));
 
       /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
-      if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED)
+      if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
+	  && !oid_check_cached_class_oid (OID_CACHE_DB_ROOT_CLASS_ID, class_oid)
+	  && !oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
+	  && !oid_check_cached_class_oid (OID_CACHE_TRIGGER_CLASS_ID, class_oid))
 	{
 	  /* In these isolation levels, the transaction is not allowed to modify an object that was already
 	   * modified by other transactions. This would be true if last version matched the visible version.

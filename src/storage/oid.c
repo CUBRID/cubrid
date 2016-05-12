@@ -62,6 +62,7 @@ static OID oid_User_class = { 0, 0, 0 };
 static OID oid_Password_class = { 0, 0, 0 };
 static OID oid_Authorization_class = { 0, 0, 0 };
 static OID oid_Authorizations_class = { 0, 0, 0 };
+static OID oid_DB_root_class = { 0, 0, 0 };
 
 static OID oid_Rep_Read_Tran = { 0, 0x8000, 0 };
 
@@ -102,7 +103,8 @@ OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_User_class, CT_USER_NAME},
   {&oid_Password_class, CT_PASSWORD_NAME},
   {&oid_Authorization_class, CT_AUTHORIZATION_NAME},
-  {&oid_Authorizations_class, CT_AUTHORIZATIONS_NAME}
+  {&oid_Authorizations_class, CT_AUTHORIZATIONS_NAME},
+  {&oid_DB_root_class, CT_ROOT_NAME}
 };
 
 /*
