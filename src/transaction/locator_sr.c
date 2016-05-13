@@ -5122,7 +5122,6 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   FUNC_PRED_UNPACK_INFO *local_func_preds = NULL;
   OID null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   HEAP_OPERATION_CONTEXT context;
-  bool use_bigone_maxsize = false;
 
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
@@ -5213,11 +5212,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
    * heap_insert_logical */
   recdes->type = REC_HOME;
 
-  /* use REC_BIGONE maximum record length only for partitioned classes and partitions. */
-  use_bigone_maxsize = (pruning_type != DB_NOT_PARTITIONED_CLASS);
-
   /* prepare context */
-  heap_create_insert_context (&context, &real_hfid, &real_class_oid, recdes, local_scan_cache, use_bigone_maxsize);
+  heap_create_insert_context (&context, &real_hfid, &real_class_oid, recdes, local_scan_cache);
   context.update_in_place = force_in_place;
 
   if (force_in_place == UPDATE_INPLACE_OLD_MVCCID)
@@ -5378,7 +5374,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      recdes = &new_recdes;
 	      /* Cache object has been updated, we need update the value again */
 	      heap_create_update_context (&update_context, &real_hfid, oid, &real_class_oid, recdes, local_scan_cache,
-					  UPDATE_INPLACE_CURRENT_MVCCID, false);
+					  UPDATE_INPLACE_CURRENT_MVCCID);
 	      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -5584,7 +5580,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   HEAP_SCANCACHE *local_scan_cache;
   bool no_data_new_address = false;
   REPL_INFO repl_info;
-  bool use_bigone_maxsize = false;
 
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
@@ -5681,7 +5676,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
 
       heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, scan_cache,
-				  UPDATE_INPLACE_CURRENT_MVCCID, false);
+				  UPDATE_INPLACE_CURRENT_MVCCID);
       error_code = heap_update_logical (thread_p, &update_context);
       if (error_code != NO_ERROR)
 	{
@@ -5753,7 +5748,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      OR_PUT_OID (rep_dir_offset, &rep_dir);
 
 	      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, scan_cache,
-					  UPDATE_INPLACE_CURRENT_MVCCID, false);
+					  UPDATE_INPLACE_CURRENT_MVCCID);
 	      error_code = heap_update_logical (thread_p, &update_context);
 	      if (error_code != NO_ERROR)
 		{
@@ -6147,12 +6142,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
-      /* use REC_BIGONE maximum record length only for partitioned classes and partitions. */
-      use_bigone_maxsize = (pruning_type != DB_NOT_PARTITIONED_CLASS);
-	  
-      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place,
-				  use_bigone_maxsize);
-      _er_log_debug (ARG_FILE_LINE, "heap_update_logical");
+      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place);
       error_code = heap_update_logical (thread_p, &update_context);
       if (error_code != NO_ERROR)
 	{
@@ -6177,7 +6167,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
        * We have to set UPDATE LSA number to the log info.
        * The target log info was already created when the locator_update_index
        */
-      _er_log_debug (ARG_FILE_LINE, "before repl_add_update_lsa : repl_info.need_replication:%d", repl_info.need_replication);
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true
 	  && repl_info.need_replication == true)
 	{
@@ -8200,7 +8189,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
 			     is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
-			     REPL_INFO_TYPE_RBR_NORMAL, false);
+			     REPL_INFO_TYPE_RBR_NORMAL);
 	}
       if (error_code != NO_ERROR)
 	{
@@ -8640,7 +8629,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
   mvccid = MVCCID_NULL;
 
-  _er_log_debug (ARG_FILE_LINE, "locator_update_index : OID:(%d,%d,%d)", oid->volid, oid->pageid, oid->slotid);
 #if defined(SERVER_MODE)
   if (!heap_is_mvcc_disabled_for_class (class_oid))
     {
@@ -9114,7 +9102,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     repl_info->repl_info_type, !use_mvcc);
+			     repl_info->repl_info_type);
 	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
@@ -9124,7 +9112,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	{
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     repl_info->repl_info_type, !use_mvcc);
+			     repl_info->repl_info_type);
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
 	}

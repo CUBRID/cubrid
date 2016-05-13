@@ -245,10 +245,6 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
   for (i = tdes->cur_repl_record - 1; i >= 0; i--)
     {
       repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[i];
-      _er_log_debug (ARG_FILE_LINE, "before repl_add_update_lsa : repl_rec->inst_oid:(%d,%d,%d), oid:(%d,%d,%d), repl_rec->rcvindex:%d ",
-	repl_rec->inst_oid.volid, repl_rec->inst_oid.pageid, repl_rec->inst_oid.slotid,  
-	inst_oid->volid, inst_oid->pageid, inst_oid->slotid, repl_rec->rcvindex);
-
       if (OID_EQ (&repl_rec->inst_oid, inst_oid) && !LSA_ISNULL (&tdes->repl_update_lsa))
 	{
 	  assert (repl_rec->rcvindex == RVREPL_DATA_UPDATE || repl_rec->rcvindex == RVREPL_DATA_UPDATE_START
@@ -283,13 +279,12 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  *   log_type(in): log type (DATA or SCHEMA)
  *   rcvindex(in): recovery index (INSERT or DELETE or UPDATE)
  *   key_dbvalue(in): Primary Key value
- *   is_update_inplace(in): is it in-place update
  *
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
 int
 repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
-		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info, bool is_update_inplace)
+		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -400,29 +395,11 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	}
       break;
     case RVREPL_DATA_UPDATE:
-      if (is_update_inplace == false && !LSA_ISNULL (&tdes->repl_insert_lsa))
-	{
-	  /* MVCC update */
-	  LSA_COPY (&repl_rec->lsa, &tdes->repl_insert_lsa);
-	  LSA_SET_NULL (&tdes->repl_insert_lsa);
-	  LSA_SET_NULL (&tdes->repl_update_lsa);
-	}
-      else
-	{
-	  /* 
-	   * for the update case, this function is called before the heap
-	   * file update, so we don't need to LSA for update log here.
-	   */
-	  if (LSA_ISNULL (&tdes->tail_lsa))
-	    {
-	      LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
-	    }
-	  else
-	    {
-	      LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);
-	    }
-
-	}
+      /* 
+       * for the update case, this function is called before the heap
+       * file update, so we don't need to LSA for update log here.
+       */
+      LSA_SET_NULL (&repl_rec->lsa);
       break;
     case RVREPL_DATA_DELETE:
       /* 
