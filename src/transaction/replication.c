@@ -245,11 +245,12 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
   for (i = tdes->cur_repl_record - 1; i >= 0; i--)
     {
       repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[i];
+      _er_log_debug (ARG_FILE_LINE, "before repl_add_update_lsa : repl_rec->inst_oid:(%d,%d,%d), oid:(%d,%d,%d), repl_rec->rcvindex:%d ",
+	repl_rec->inst_oid.volid, repl_rec->inst_oid.pageid, repl_rec->inst_oid.slotid,  
+	inst_oid->volid, inst_oid->pageid, inst_oid->slotid, repl_rec->rcvindex);
+
       if (OID_EQ (&repl_rec->inst_oid, inst_oid) && !LSA_ISNULL (&tdes->repl_update_lsa))
 	{
-	_er_log_debug (ARG_FILE_LINE, "before repl_add_update_lsa : oid:(%d,%d,%d), repl_rec->rcvindex:%d ",
-	  inst_oid->volid, inst_oid->pageid, inst_oid->slotid, repl_rec->rcvindex);
-
 	  assert (repl_rec->rcvindex == RVREPL_DATA_UPDATE || repl_rec->rcvindex == RVREPL_DATA_UPDATE_START
 		  || repl_rec->rcvindex == RVREPL_DATA_UPDATE_END);
 	  if (repl_rec->rcvindex == RVREPL_DATA_UPDATE || repl_rec->rcvindex == RVREPL_DATA_UPDATE_START
