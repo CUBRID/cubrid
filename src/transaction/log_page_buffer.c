@@ -4063,7 +4063,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  /* Notify vacuum of a new block */
 	  vacuum_produce_log_block_data (thread_p, &log_Gl.hdr.mvcc_op_log_lsa, log_Gl.hdr.last_block_oldest_mvccid,
 					 log_Gl.hdr.last_block_newest_mvccid);
-	  log_Gl.hdr.last_block_oldest_mvccid = mvccid;
+	  assert (log_Gl.hdr.last_block_oldest_mvccid <= vacuum_get_global_oldest_active_mvccid ());
+	  log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
 	  log_Gl.hdr.last_block_newest_mvccid = mvccid;
 	}
       else
@@ -4075,13 +4076,11 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	      /* A newer MVCCID was found */
 	      log_Gl.hdr.last_block_newest_mvccid = mvccid;
 	    }
-
-	  if (log_Gl.hdr.last_block_oldest_mvccid == MVCCID_NULL
-	      || MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid))
+	  if (log_Gl.hdr.last_block_oldest_mvccid == MVCCID_NULL)
 	    {
-	      /* An older MVCCID was found */
-	      log_Gl.hdr.last_block_oldest_mvccid = mvccid;
+	      log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
 	    }
+	  assert (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
 	}
 
       /* Replace last MVCC deleted/updated log record */
@@ -7089,7 +7088,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
     }
 
   /* Get first log pageid needed for vacuum before locking LOG_CS. */
-  vacuum_first_pageid = vacuum_data_get_first_log_pageid (thread_p);
+  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
 
   LOG_CS_ENTER (thread_p);
 
@@ -7954,13 +7953,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
   if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt) !=
       NO_ERROR)
-    {
-      LOG_CS_ENTER (thread_p);
-      goto error_cannot_chkpt;
-    }
-
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call vacuum_flush_data()\n");
-  if (vacuum_flush_data (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, false) != NO_ERROR)
     {
       LOG_CS_ENTER (thread_p);
       goto error_cannot_chkpt;

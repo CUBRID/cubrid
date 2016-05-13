@@ -294,11 +294,15 @@
  * For this reason, the first VACUUM_MAX_WORKER_COUNT negative TRANID values
  * under NULL_TRANID are reserved for vacuum workers.
  */
-#define LOG_LAST_VACUUM_WORKER_TRANID (NULL_TRANID - 1)
-#define LOG_FIRST_VACUUM_WORKER_TRANID (NULL_TRANID - VACUUM_MAX_WORKER_COUNT)
+#define LOG_VACUUM_MASTER_TRANID (NULL_TRANID - 1)
+#define LOG_LAST_VACUUM_WORKER_TRANID (LOG_VACUUM_MASTER_TRANID - 1)
+#define LOG_FIRST_VACUUM_WORKER_TRANID (LOG_VACUUM_MASTER_TRANID - VACUUM_MAX_WORKER_COUNT)
 #define LOG_IS_VACUUM_WORKER_TRANID(trid) \
   (trid <= LOG_LAST_VACUUM_WORKER_TRANID \
    && trid >= LOG_FIRST_VACUUM_WORKER_TRANID)
+#define LOG_IS_VACUUM_MASTER_TRANID(trid) ((trid) == LOG_VACUUM_MASTER_TRANID)
+#define LOG_IS_VACUUM_THREAD_TRANID(trid) \
+  (LOG_IS_VACUUM_WORKER_TRANID (trid) || LOG_IS_VACUUM_MASTER_TRANID (trid))
 
 #define LOG_SET_DATA_ADDR(data_addr, page, vol_file_id, off) \
   do \
@@ -1090,6 +1094,7 @@ struct log_header
   LOG_LSA mvcc_op_log_lsa;	/* Used to link log entries for mvcc operations. Vacuum will then process these entries */
   MVCCID last_block_oldest_mvccid;	/* Used to find the oldest MVCCID in a block of log data. */
   MVCCID last_block_newest_mvccid;	/* Used to find the newest MVCCID in a block of log data. */
+  VPID vacuum_data_first_vpid;	/* First vacuum data page VPID. */
 
   INT64 ha_promotion_time;
   INT64 db_restore_time;
@@ -1147,6 +1152,8 @@ struct log_header
      MVCCID_NULL,				 \
      /* last_block_newest_mvccid */		 \
      MVCCID_NULL,				 \
+     /* vacuum_data_first_vpid */		 \
+     VPID_INITIALIZER,				 \
      /* ha_promotion_time */ 			 \
      0, 					 \
      /* db_restore_time */			 \
@@ -1389,19 +1396,6 @@ enum log_repl_flush
   (LOG_IS_MVCC_HEAP_OPERATION (rcvindex) \
    || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
    || ((rcvindex) == RVES_NOTIFY_VACUUM))
-
-/* Is log record for a change on vacuum data */
-#define LOG_IS_VACUUM_DATA_RECOVERY(rcvindex) \
-  ((rcvindex) == RVVAC_LOG_BLOCK_APPEND	\
-   || (rcvindex) == RVVAC_LOG_BLOCK_REMOVE \
-   || (rcvindex) == RVVAC_LOG_BLOCK_SAVE \
-   || (rcvindex) == RVVAC_START_OR_END_JOB \
-   || (rcvindex) == RVVAC_COMPLETE)
-
-#define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
-  (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || \
-    (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
-   && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
 
 typedef struct log_repl LOG_REPL_RECORD;
 struct log_repl
@@ -2220,7 +2214,7 @@ extern void logtb_tran_reset_count_optim_state (THREAD_ENTRY * thread_p);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_find_log_records_count (int tran_index);
 
-extern void logtb_initialize_vacuum_worker_tdes (LOG_TDES * tdes, TRANID trid);
+extern void logtb_initialize_vacuum_thread_tdes (LOG_TDES * tdes, TRANID trid);
 extern int logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p);
 extern void logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p);
 extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oids, int *num_nulls,
