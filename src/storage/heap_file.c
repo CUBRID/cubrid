@@ -7897,7 +7897,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
   MVCC_SCAN_REEV_DATA *scan_reev_data = NULL;	/* Scan re-evaluation data. */
   DB_LOGICAL ev_res;		/* Re-evaluation result. */
   INT16 type;			/* Record type. */
-  bool is_version_locked = false;	/* True if newest version has been locked. */
+  bool is_locked = false;	/* True if object was locked. */
   HEAP_SCANCACHE local_scancache;
   bool is_record_retrieved = false;
 
@@ -8048,6 +8048,9 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
       assert (type == REC_HOME
 	      || (!OID_ISNULL (&forward_oid) && HEAP_IS_PAGE_OF_OID (fwd_page_watcher.pgptr, &forward_oid)));
 
+      /* First remember if object was locked. If some errors occur, we need to unlock it at the end. */
+      is_locked = (mvcc_delete_info.satisfies_delete_result == DELETE_RECORD_CAN_DELETE);
+
       /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
       if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
 	  && heap_check_class_for_rr_isolation_err (class_oid))
@@ -8102,8 +8105,8 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 	  assert (MVCC_IS_REC_INSERTED_BY_ME (thread_p, &mvcc_header)
 		  || lock_get_object_lock (oid, class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= lock);
 
-	  /* Set is_version_locked */
-	  is_version_locked = true;
+	  /* is_version_locked should be set */
+	  assert (is_locked);
 
 	  /* Check re-evaluation. */
 	  if (mvcc_reev_data != NULL)
@@ -8310,7 +8313,7 @@ end:
   /* Check if we need to release lock. If scan is not successful or if the evaluation test was not passed, unlock
    * object. What to do in case of S_DOESNT_FIT? Usually we are expecting the caller to retry getting object with a
    * larger area, in which case holding the lock would make sense. Is there any reason we should release the lock? */
-  if (is_version_locked
+  if (is_locked
       && ((scan_code != S_SUCCESS && scan_code != S_SUCCESS_CHN_UPTODATE && scan_code != S_DOESNT_FIT)
 	  || (mvcc_reev_data != NULL && mvcc_reev_data->filter_result != V_TRUE)))
     {
