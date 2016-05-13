@@ -3108,8 +3108,12 @@ end:
       vacuum_finished_block_vacuum (thread_p, data, vacuum_complete);
     }
 
+#if defined (SERVER_MODE)
   /* Unfix all pages now. Normally all pages should already be unfixed. */
   pgbuf_unfix_all (thread_p);
+#else /* !SERVER_MODE */ /* SA_MODE */
+  /* Do not unfix all in stand-alone. Not yet. We need to keep vacuum data pages fixed. */
+#endif /* SA_MODE */
 
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, mnt_vac_worker_execute_time);
 
