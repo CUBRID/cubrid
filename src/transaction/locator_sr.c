@@ -6176,8 +6176,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
        * We have to set UPDATE LSA number to the log info.
        * The target log info was already created when the locator_update_index
        */
-      if (HEAP_IS_UPDATE_INPLACE (force_in_place) && !LOG_CHECK_LOG_APPLIER (thread_p)
-	  && log_does_allow_replication () == true && repl_info.need_replication == true)
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true
+	  && repl_info.need_replication == true)
 	{
 	  repl_add_update_lsa (thread_p, oid);
 	}
