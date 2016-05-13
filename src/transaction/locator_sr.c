@@ -5811,6 +5811,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
     }
   else
     {
+      HEAP_OPERATION_CONTEXT update_context;
+
       local_scan_cache = scan_cache;
       if (pruning_type != DB_NOT_PARTITIONED_CLASS && pcontext != NULL)
 	{
@@ -6084,57 +6086,14 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
-      /* use REC_BIGONE maximum record length only for partitioned classes and partitions. */
-      use_bigone_maxsize = (pruning_type != DB_NOT_PARTITIONED_CLASS);
-      if (!HEAP_IS_UPDATE_INPLACE (force_in_place))
-	{
-	  HEAP_OPERATION_CONTEXT update_context;
-
-	  /* in MVCC update heap and then indexes */
-	  heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place,
-				      use_bigone_maxsize);
-	  error_code = heap_update_logical (thread_p, &update_context);
-	  if (error_code != NO_ERROR)
-	    {
-	      /*
-	       * Problems updating the object...Maybe, the transaction should be
-	       * aborted by the caller...Quit..
-	       */
-	      if (error_code == ER_FAILED)
-		{
-		  ASSERT_ERROR_AND_SET (error_code);
-		  assert (false);
-		}
-	      else
-		{
-		  ASSERT_ERROR ();
-		}
-	      goto error;
-	    }
-	  isold_object = update_context.is_logical_old;
-	}
-      /* AN INSTANCE: Update indices if any */
-
+       /* AN INSTANCE: Update indices if any */
       if (has_index)
 	{
 	  if (scan == S_SUCCESS)
 	    {
-	      if (!HEAP_IS_UPDATE_INPLACE (force_in_place))
-		{
-		  /* A new version of the object was created. The old version is not physically removed, only marked as 
-		   * deleted. Therefore, only inserting the new object in b-tree is required. */
-		  error_code =
-		    locator_update_index (thread_p, recdes, oldrecdes, att_id, n_att_id, oid, class_oid,
-					  op_type, local_scan_cache, &repl_info);
-		}
-	      else
-		{
-		  /* Old object is physically deleted and must be removed from b-tree and the new object must be added. 
-		   * Update index. */
-		  error_code =
-		    locator_update_index (thread_p, recdes, oldrecdes, att_id, n_att_id, oid, class_oid, op_type,
-					  local_scan_cache, &repl_info);
-		}
+	      error_code =
+		locator_update_index (thread_p, recdes, oldrecdes, att_id, n_att_id, oid, class_oid, op_type,
+				      local_scan_cache, &repl_info);
 	      if (error_code != NO_ERROR)
 		{
 		  /* 
@@ -6188,33 +6147,29 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
-      /* in non-MVCC or when we update in place then update indexes and then heap */
-      if (HEAP_IS_UPDATE_INPLACE (force_in_place))
+      /* use REC_BIGONE maximum record length only for partitioned classes and partitions. */
+      use_bigone_maxsize = (pruning_type != DB_NOT_PARTITIONED_CLASS);
+	  
+      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place,
+				  use_bigone_maxsize);
+      error_code = heap_update_logical (thread_p, &update_context);
+      if (error_code != NO_ERROR)
 	{
-	  HEAP_OPERATION_CONTEXT update_context;
-
-	  heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place,
-				      use_bigone_maxsize);
-	  error_code = heap_update_logical (thread_p, &update_context);
-	  if (error_code != NO_ERROR)
+	  /*
+	   * Problems updating the object...Maybe, the transaction should be aborted by the caller...Quit..
+	   */
+	  if (error_code == ER_FAILED)
 	    {
-	      /*
-	       * Problems updating the object...Maybe, the transaction should be
-	       * aborted by the caller...Quit..
-	       */
-	      if (error_code == ER_FAILED)
-		{
-		  ASSERT_ERROR_AND_SET (error_code);
-		  assert (false);
-		}
-	      else
-		{
-		  ASSERT_ERROR ();
-		}
-	      goto error;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      assert (false);
 	    }
-	  isold_object = update_context.is_logical_old;
+	  else
+	    {
+	      ASSERT_ERROR ();
+	    }
+	  goto error;
 	}
+      isold_object = update_context.is_logical_old;
 
       /* 
        * for replication,
