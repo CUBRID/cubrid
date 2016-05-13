@@ -6338,17 +6338,6 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  for (t = triggers; t != NULL && error == NO_ERROR; t = t->next)
 	    {
-	      /* If trigger is on a class, lock it (S_LOCK) to block concurrent DML statements. */
-	      trigger = tr_map_trigger (t->op, false);
-	      if (trigger->class_mop != NULL)
-		{
-		  if (locator_fetch_class (trigger->class_mop, DB_FETCH_SCAN) == NULL)
-		    {
-		      ASSERT_ERROR_AND_SET (error);
-		      break;
-		    }
-		}
-
 	      if (status != TR_STATUS_INVALID)
 		{
 		  error = tr_set_status (t->op, status, false);
@@ -6404,6 +6393,17 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  ASSERT_ERROR ();
 		  break;
+		}
+
+	      /* If trigger is on a class, lock it (S_LOCK) to block concurrent DML statements. */
+	      trigger = tr_map_trigger (t->op, false);
+	      if (trigger->class_mop != NULL)
+		{
+		  if (locator_fetch_class (trigger->class_mop, DB_FETCH_SCAN) == NULL)
+		    {
+		      ASSERT_ERROR_AND_SET (error);
+		      break;
+		    }
 		}
 	    }
 	}
