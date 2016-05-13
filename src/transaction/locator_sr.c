@@ -6152,6 +6152,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  
       heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place,
 				  use_bigone_maxsize);
+      _er_log_debug (ARG_FILE_LINE, "heap_update_logical");
       error_code = heap_update_logical (thread_p, &update_context);
       if (error_code != NO_ERROR)
 	{
@@ -6176,6 +6177,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
        * We have to set UPDATE LSA number to the log info.
        * The target log info was already created when the locator_update_index
        */
+      _er_log_debug (ARG_FILE_LINE, "before repl_add_update_lsa : repl_info.need_replication:%d", repl_info.need_replication);
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true
 	  && repl_info.need_replication == true)
 	{
@@ -8638,6 +8640,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
   mvccid = MVCCID_NULL;
 
+  _er_log_debug (ARG_FILE_LINE, "locator_update_index : OID:(%d,%d,%d)", oid->volid, oid->pageid, oid->slotid);
 #if defined(SERVER_MODE)
   if (!heap_is_mvcc_disabled_for_class (class_oid))
     {
