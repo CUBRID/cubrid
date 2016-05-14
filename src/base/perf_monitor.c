@@ -2120,7 +2120,7 @@ mnt_x_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      ADD_STATS (stats, LK_NUM_WAITED_TIME_ON_OBJECTS, amount);
+      ADD_STATS (stats, PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS, amount);
 
       module = perf_get_module_type (thread_p);
 
@@ -2130,7 +2130,7 @@ mnt_x_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 
       offset = PERF_OBJ_LOCK_STAT_OFFSET (module, lock_mode);
       assert (offset < PERF_OBJ_LOCK_STAT_COUNTERS);
 
-      ADD_STATS_IN_ARRAY (stats, OBJ_LOCK_TIME_COUNTERS, offset, amount);
+      ADD_STATS_IN_ARRAY (stats, PSTAT_OBJ_LOCK_TIME_COUNTERS, offset, amount);
     }
 }
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
@@ -2186,7 +2186,7 @@ mnt_x_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int 
       offset = PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
       assert (offset < PERF_PAGE_FIX_COUNTERS);
 
-      ADD_STATS_IN_ARRAY (stats, PBX_FIX_COUNTERS, offset, 1);
+      ADD_STATS_IN_ARRAY (stats, PSTAT_PBX_FIX_COUNTERS, offset, 1);
     }
 }
 
@@ -2216,8 +2216,8 @@ mnt_x_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, int
       offset = PERF_PAGE_PROMOTE_STAT_OFFSET (module, page_type, promote_cond, holder_latch, success);
       assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
 
-      ADD_STATS_IN_ARRAY (stats, PBX_PROMOTE_COUNTERS, offset, 1);
-      ADD_STATS_IN_ARRAY (stats, PBX_PROMOTE_TIME_COUNTERS, offset, amount);
+      ADD_STATS_IN_ARRAY (stats, PSTAT_PBX_PROMOTE_COUNTERS, offset, 1);
+      ADD_STATS_IN_ARRAY (stats, PSTAT_PBX_PROMOTE_TIME_COUNTERS, offset, amount);
     }
 }
 
@@ -2246,7 +2246,7 @@ mnt_x_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int dirt
       offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, dirtied_by_holder, holder_latch);
       assert (offset < PERF_PAGE_UNFIX_COUNTERS);
 
-      ADD_STATS_IN_ARRAY (stats, PBX_UNFIX_COUNTERS, offset, 1);
+      ADD_STATS_IN_ARRAY (stats, PSTAT_PBX_UNFIX_COUNTERS, offset, 1);
     }
 }
 
@@ -2277,7 +2277,7 @@ mnt_x_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_fo
       offset = PERF_PAGE_LOCK_TIME_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
       assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
 
-      ADD_STATS_IN_ARRAY (stats, PBX_LOCK_TIME_COUNTERS, offset, amount);
+      ADD_STATS_IN_ARRAY (stats, PSTAT_PBX_LOCK_TIME_COUNTERS, offset, amount);
     }
 }
 
@@ -2306,7 +2306,7 @@ mnt_x_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_fo
       offset = PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_found_mode, latch_mode);
       assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
 
-      ADD_STATS_IN_ARRAY (stats, PBX_HOLD_TIME_COUNTERS, offset, amount);
+      ADD_STATS_IN_ARRAY (stats, PSTAT_PBX_HOLD_TIME_COUNTERS, offset, amount);
     }
 }
 
@@ -2337,7 +2337,7 @@ mnt_x_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_fou
       offset = PERF_PAGE_FIX_TIME_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type);
       assert (offset < PERF_PAGE_FIX_TIME_COUNTERS);
 
-      ADD_STATS_IN_ARRAY (stats, PBX_FIX_TIME_COUNTERS, offset, amount);
+      ADD_STATS_IN_ARRAY (stats, PSTAT_PBX_FIX_TIME_COUNTERS, offset, amount);
     }
 }
 
@@ -2361,7 +2361,7 @@ mnt_x_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int vi
       offset = PERF_MVCC_SNAPSHOT_OFFSET (snapshot, rec_type, visibility);
       assert (offset < PERF_MVCC_SNAPSHOT_COUNTERS);
 
-      ADD_STATS_IN_ARRAY (stats, MVCC_SNAPSHOT_COUNTERS, offset, 1);
+      ADD_STATS_IN_ARRAY (stats, PSTAT_MVCC_SNAPSHOT_COUNTERS, offset, 1);
     }
 }
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
@@ -2500,52 +2500,52 @@ mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats, char *buff
 	case MNT_SERVER_PBX_FIX_STAT_POSITION:
 	  perf_stat_dump_fix_page_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[PBX_FIX_COUNTERS].statistic_offset]), p,
+					       perf_statistics[metadata_stats[PSTAT_PBX_FIX_COUNTERS].statistic_offset]), p,
 					      &remained_size, NULL, false);
 	  break;
 	case MNT_SERVER_PBX_UNFIX_STAT_POSITION:
 	  perf_stat_dump_unfix_page_array_stat (&
 						(stats->
-						 perf_statistics[metadata_stats[PBX_UNFIX_COUNTERS].statistic_offset]),
+						 perf_statistics[metadata_stats[PSTAT_PBX_UNFIX_COUNTERS].statistic_offset]),
 						p, &remained_size, NULL, false);
 	  break;
 	case MNT_SERVER_PBX_LOCK_TIME_STAT_POSITION:
 	  perf_stat_dump_page_lock_time_array_stat (&
 						    (stats->
-						     perf_statistics[metadata_stats[PBX_LOCK_TIME_COUNTERS].
+						     perf_statistics[metadata_stats[PSTAT_PBX_LOCK_TIME_COUNTERS].
 								     statistic_offset]), p, &remained_size, NULL,
 						    false);
 	  break;
 	case MNT_SERVER_PBX_HOLD_TIME_STAT_POSITION:
 	  perf_stat_dump_page_hold_time_array_stat (&
 						    (stats->
-						     perf_statistics[metadata_stats[PBX_HOLD_TIME_COUNTERS].
+						     perf_statistics[metadata_stats[PSTAT_PBX_HOLD_TIME_COUNTERS].
 								     statistic_offset]), p, &remained_size, NULL,
 						    false);
 	  break;
 	case MNT_SERVER_PBX_FIX_TIME_STAT_POSITION:
 	  perf_stat_dump_page_fix_time_array_stat (&
 						   (stats->
-						    perf_statistics[metadata_stats[PBX_FIX_TIME_COUNTERS].
+						    perf_statistics[metadata_stats[PSTAT_PBX_FIX_TIME_COUNTERS].
 								    statistic_offset]), p, &remained_size, NULL, false);
 	  break;
 	case MNT_SERVER_PROMOTE_STAT_POSITION:
 	  perf_stat_dump_promote_page_array_stat (&
 						  (stats->
-						   perf_statistics[metadata_stats[PBX_PROMOTE_COUNTERS].
+						   perf_statistics[metadata_stats[PSTAT_PBX_PROMOTE_COUNTERS].
 								   statistic_offset]), p, &remained_size, NULL, false);
 	  break;
 	case MNT_SERVER_PROMOTE_TIME_STAT_POSITION:
 	  perf_stat_dump_promote_page_array_stat (&
 						  (stats->
-						   perf_statistics[metadata_stats[PBX_PROMOTE_TIME_COUNTERS].
+						   perf_statistics[metadata_stats[PSTAT_PBX_PROMOTE_TIME_COUNTERS].
 								   statistic_offset]), p, &remained_size, NULL, false);
 	  break;
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	case MNT_SERVER_MVCC_SNAPSHOT_STAT_POSITION:
 	  perf_stat_dump_mvcc_snapshot_array_stat (&
 						   (stats->
-						    perf_statistics[metadata_stats[MVCC_SNAPSHOT_COUNTERS].
+						    perf_statistics[metadata_stats[PSTAT_MVCC_SNAPSHOT_COUNTERS].
 								    statistic_offset]), p, &remained_size, NULL, false);
 	  break;
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
@@ -2553,38 +2553,38 @@ mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats, char *buff
 	case MNT_SERVER_OBJ_LOCK_STAT_POSITION:
 	  perf_stat_dump_obj_lock_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[OBJ_LOCK_TIME_COUNTERS].
+					       perf_statistics[metadata_stats[PSTAT_OBJ_LOCK_TIME_COUNTERS].
 							       statistic_offset]), p, &remained_size, NULL, false);
 	  break;
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 	case MNT_SERVER_SNAPSHOT_TIME_STAT_POSITION:
 	  perf_stat_dump_snapshot_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[LOG_SNAPSHOT_TIME_COUNTERS].
+					       perf_statistics[metadata_stats[PSTAT_LOG_SNAPSHOT_TIME_COUNTERS].
 							       statistic_offset]), p, &remained_size, NULL, false);
 	  break;
 	case MNT_SERVER_SNAPSHOT_RETRY_CNT_STAT_POSITION:
 	  perf_stat_dump_snapshot_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[LOG_SNAPSHOT_RETRY_COUNTERS].
+					       perf_statistics[metadata_stats[PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS].
 							       statistic_offset]), p, &remained_size, NULL, false);
 	  break;
 	case MNT_SERVER_TRAN_COMPLETE_TIME_STAT_POSITION:
 	  perf_stat_dump_snapshot_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[LOG_TRAN_COMPLETE_TIME_COUNTERS].
+					       perf_statistics[metadata_stats[PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS].
 							       statistic_offset]), p, &remained_size, NULL, false);
 	  break;
 	case MNT_SERVER_OLDEST_MVCC_TIME_STAT_POSITION:
 	  perf_stat_dump_snapshot_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[LOG_OLDEST_MVCC_TIME_COUNTERS].
+					       perf_statistics[metadata_stats[PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS].
 							       statistic_offset]), p, &remained_size, NULL, false);
 	  break;
 	case MNT_SERVER_OLDEST_MVCC_RETRY_CNT_STAT_POSITION:
 	  perf_stat_dump_snapshot_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[LOG_OLDEST_MVCC_RETRY_COUNTERS].
+					       perf_statistics[metadata_stats[PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS].
 							       statistic_offset]), p, &remained_size, NULL, false);
 	  break;
 	default:
@@ -2670,50 +2670,50 @@ mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream, const
 	case MNT_SERVER_PBX_FIX_STAT_POSITION:
 	  perf_stat_dump_fix_page_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[PBX_FIX_COUNTERS].statistic_offset]),
+					       perf_statistics[metadata_stats[PSTAT_PBX_FIX_COUNTERS].statistic_offset]),
 					      NULL, NULL, stream, false);
 	  break;
 	case MNT_SERVER_PBX_UNFIX_STAT_POSITION:
 	  perf_stat_dump_unfix_page_array_stat (&
 						(stats->
-						 perf_statistics[metadata_stats[PBX_UNFIX_COUNTERS].statistic_offset]),
+						 perf_statistics[metadata_stats[PSTAT_PBX_UNFIX_COUNTERS].statistic_offset]),
 						NULL, NULL, stream, false);
 	  break;
 	case MNT_SERVER_PBX_LOCK_TIME_STAT_POSITION:
 	  perf_stat_dump_page_lock_time_array_stat (&
 						    (stats->
-						     perf_statistics[metadata_stats[PBX_LOCK_TIME_COUNTERS].
+						     perf_statistics[metadata_stats[PSTAT_PBX_LOCK_TIME_COUNTERS].
 								     statistic_offset]), NULL, NULL, stream, false);
 	  break;
 	case MNT_SERVER_PBX_HOLD_TIME_STAT_POSITION:
 	  perf_stat_dump_page_hold_time_array_stat (&
 						    (stats->
-						     perf_statistics[metadata_stats[PBX_HOLD_TIME_COUNTERS].
+						     perf_statistics[metadata_stats[PSTAT_PBX_HOLD_TIME_COUNTERS].
 								     statistic_offset]), NULL, NULL, stream, false);
 	  break;
 	case MNT_SERVER_PBX_FIX_TIME_STAT_POSITION:
 	  perf_stat_dump_page_fix_time_array_stat (&
 						   (stats->
-						    perf_statistics[metadata_stats[PBX_FIX_TIME_COUNTERS].
+						    perf_statistics[metadata_stats[PSTAT_PBX_FIX_TIME_COUNTERS].
 								    statistic_offset]), NULL, NULL, stream, false);
 	  break;
 	case MNT_SERVER_PROMOTE_STAT_POSITION:
 	  perf_stat_dump_promote_page_array_stat (&
 						  (stats->
-						   perf_statistics[metadata_stats[PBX_PROMOTE_COUNTERS].
+						   perf_statistics[metadata_stats[PSTAT_PBX_PROMOTE_COUNTERS].
 								   statistic_offset]), NULL, NULL, stream, false);
 	  break;
 	case MNT_SERVER_PROMOTE_TIME_STAT_POSITION:
 	  perf_stat_dump_promote_page_array_stat (&
 						  (stats->
-						   perf_statistics[metadata_stats[PBX_PROMOTE_TIME_COUNTERS].
+						   perf_statistics[metadata_stats[PSTAT_PBX_PROMOTE_TIME_COUNTERS].
 								   statistic_offset]), NULL, NULL, stream, false);
 	  break;
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 	case MNT_SERVER_MVCC_SNAPSHOT_STAT_POSITION:
 	  perf_stat_dump_mvcc_snapshot_array_stat (&
 						   (stats->
-						    perf_statistics[metadata_stats[MVCC_SNAPSHOT_COUNTERS].
+						    perf_statistics[metadata_stats[PSTAT_MVCC_SNAPSHOT_COUNTERS].
 								    statistic_offset]), NULL, NULL, stream, false);
 	  break;
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
@@ -2721,38 +2721,38 @@ mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream, const
 	case MNT_SERVER_OBJ_LOCK_STAT_POSITION:
 	  perf_stat_dump_obj_lock_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[OBJ_LOCK_TIME_COUNTERS].
+					       perf_statistics[metadata_stats[PSTAT_OBJ_LOCK_TIME_COUNTERS].
 							       statistic_offset]), NULL, NULL, stream, false);
 	  break;
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 	case MNT_SERVER_SNAPSHOT_TIME_STAT_POSITION:
 	  perf_stat_dump_snapshot_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[LOG_SNAPSHOT_TIME_COUNTERS].
+					       perf_statistics[metadata_stats[PSTAT_LOG_SNAPSHOT_TIME_COUNTERS].
 							       statistic_offset]), NULL, NULL, stream, false);
 	  break;
 	case MNT_SERVER_SNAPSHOT_RETRY_CNT_STAT_POSITION:
 	  perf_stat_dump_snapshot_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[LOG_SNAPSHOT_RETRY_COUNTERS].
+					       perf_statistics[metadata_stats[PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS].
 							       statistic_offset]), NULL, NULL, stream, false);
 	  break;
 	case MNT_SERVER_TRAN_COMPLETE_TIME_STAT_POSITION:
 	  perf_stat_dump_snapshot_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[LOG_TRAN_COMPLETE_TIME_COUNTERS].
+					       perf_statistics[metadata_stats[PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS].
 							       statistic_offset]), NULL, NULL, stream, false);
 	  break;
 	case MNT_SERVER_OLDEST_MVCC_TIME_STAT_POSITION:
 	  perf_stat_dump_snapshot_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[LOG_OLDEST_MVCC_TIME_COUNTERS].
+					       perf_statistics[metadata_stats[PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS].
 							       statistic_offset]), NULL, NULL, stream, false);
 	  break;
 	case MNT_SERVER_OLDEST_MVCC_RETRY_CNT_STAT_POSITION:
 	  perf_stat_dump_snapshot_array_stat (&
 					      (stats->
-					       perf_statistics[metadata_stats[LOG_OLDEST_MVCC_RETRY_COUNTERS].
+					       perf_statistics[metadata_stats[PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS].
 							       statistic_offset]), NULL, NULL, stream, false);
 	  break;
 	default:
@@ -2838,7 +2838,7 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 		      offset = PERF_PAGE_UNFIX_STAT_OFFSET (module, page_type, buf_dirty, holder_dirty, holder_latch);
 
 		      assert (offset < PERF_PAGE_UNFIX_COUNTERS);
-		      counter = &(stats->perf_statistics[metadata_stats[PBX_UNFIX_COUNTERS].statistic_offset + offset]);
+		      counter = &(stats->perf_statistics[metadata_stats[PSTAT_PBX_UNFIX_COUNTERS].statistic_offset + offset]);
 
 		      total_unfix += *counter;
 		      if (module == PERF_MODULE_VACUUM)
@@ -2865,7 +2865,7 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 		{
 		  offset = PERF_PAGE_HOLD_TIME_OFFSET (module, page_type, page_found_mode, holder_latch);
 		  assert (offset < PERF_PAGE_HOLD_TIME_COUNTERS);
-		  counter = &(stats->perf_statistics[metadata_stats[PBX_HOLD_TIME_COUNTERS].statistic_offset + offset]);
+		  counter = &(stats->perf_statistics[metadata_stats[PSTAT_PBX_HOLD_TIME_COUNTERS].statistic_offset + offset]);
 
 		  if (page_type != PAGE_LOG && *counter > 0)
 		    {
@@ -2877,7 +2877,7 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 		      offset = PERF_PAGE_FIX_TIME_OFFSET (module, page_type, page_found_mode, holder_latch, cond_type);
 		      assert (offset < PERF_PAGE_FIX_TIME_COUNTERS);
 		      counter =
-			&(stats->perf_statistics[metadata_stats[PBX_FIX_TIME_COUNTERS].statistic_offset + offset]);
+			&(stats->perf_statistics[metadata_stats[PSTAT_PBX_FIX_TIME_COUNTERS].statistic_offset + offset]);
 		      /* do not include fix time of log pages */
 		      if (page_type != PAGE_LOG && *counter > 0)
 			{
@@ -2887,7 +2887,7 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 		      offset = PERF_PAGE_LOCK_TIME_OFFSET (module, page_type, page_found_mode, holder_latch, cond_type);
 		      assert (offset < PERF_PAGE_LOCK_TIME_COUNTERS);
 		      counter =
-			&(stats->perf_statistics[metadata_stats[PBX_LOCK_TIME_COUNTERS].statistic_offset + offset]);
+			&(stats->perf_statistics[metadata_stats[PSTAT_PBX_LOCK_TIME_COUNTERS].statistic_offset + offset]);
 
 		      if (page_type != PAGE_LOG && *counter > 0)
 			{
@@ -2902,7 +2902,7 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 
 			  assert (offset < PERF_PAGE_FIX_COUNTERS);
 			  counter =
-			    &(stats->perf_statistics[metadata_stats[PBX_FIX_COUNTERS].statistic_offset + offset]);
+			    &(stats->perf_statistics[metadata_stats[PSTAT_PBX_FIX_COUNTERS].statistic_offset + offset]);
 
 			  if (module == PERF_MODULE_VACUUM)
 			    {
@@ -2919,35 +2919,35 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 	}
     }
 
-  stats->perf_statistics[PB_VACUUM_EFFICIENCY] =
+  stats->perf_statistics[PSTAT_PB_VACUUM_EFFICIENCY] =
     (total_unfix_vacuum == 0) ? 0 : (total_unfix_vacuum_dirty) * 100 * 100 / total_unfix_vacuum;
 
-  stats->perf_statistics[PB_VACUUM_FETCH_RATIO] =
+  stats->perf_statistics[PSTAT_PB_VACUUM_FETCH_RATIO] =
     (total_unfix == 0) ? 0 : (total_unfix_vacuum) * 100 * 100 / total_unfix;
 
-  stats->perf_statistics[VACUUM_DATA_HIT_RATIO] =
+  stats->perf_statistics[PSTAT_VACUUM_DATA_HIT_RATIO] =
     (total_fix_vacuum == 0) ? 0 : (total_fix_vacuum_hit) * 100 * 100 / total_fix_vacuum;
 
-  stats->perf_statistics[PB_HIT_RATIO] =
-    (stats->perf_statistics[PB_NUM_FETCHES] ==
-     0) ? 0 : (stats->perf_statistics[PB_NUM_FETCHES] -
-	       stats->perf_statistics[PB_NUM_IOREADS]) * 100 * 100 / stats->perf_statistics[PB_NUM_FETCHES];
+  stats->perf_statistics[PSTAT_PB_HIT_RATIO] =
+    (stats->perf_statistics[PSTAT_PB_NUM_FETCHES] ==
+     0) ? 0 : (stats->perf_statistics[PSTAT_PB_NUM_FETCHES] -
+	       stats->perf_statistics[PSTAT_PB_NUM_IOREADS]) * 100 * 100 / stats->perf_statistics[PSTAT_PB_NUM_FETCHES];
 
-  stats->perf_statistics[LOG_HIT_RATIO] =
-    (stats->perf_statistics[LOG_NUM_FETCHES] ==
-     0) ? 0 : (stats->perf_statistics[LOG_NUM_FETCHES] -
-	       stats->perf_statistics[LOG_NUM_FETCH_IOREADS]) * 100 * 100 / stats->perf_statistics[PB_NUM_FETCHES];
+  stats->perf_statistics[PSTAT_LOG_HIT_RATIO] =
+    (stats->perf_statistics[PSTAT_LOG_NUM_FETCHES] ==
+     0) ? 0 : (stats->perf_statistics[PSTAT_LOG_NUM_FETCHES] -
+	       stats->perf_statistics[PSTAT_LOG_NUM_FETCH_IOREADS]) * 100 * 100 / stats->perf_statistics[PSTAT_PB_NUM_FETCHES];
 
-  stats->perf_statistics[PB_PAGE_LOCK_ACQUIRE_TIME_10USEC] = 100 * lock_time_usec / 1000;
-  stats->perf_statistics[PB_PAGE_HOLD_ACQUIRE_TIME_10USEC] = 100 * hold_time_usec / 1000;
-  stats->perf_statistics[PB_PAGE_FIX_ACQUIRE_TIME_10USEC] = 100 * fix_time_usec / 1000;
+  stats->perf_statistics[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC] = 100 * lock_time_usec / 1000;
+  stats->perf_statistics[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC] = 100 * hold_time_usec / 1000;
+  stats->perf_statistics[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC] = 100 * fix_time_usec / 1000;
 
-  stats->perf_statistics[PB_PAGE_ALLOCATE_TIME_RATIO] =
-    (stats->perf_statistics[PB_PAGE_FIX_ACQUIRE_TIME_10USEC] ==
-     0) ? 0 : ((stats->perf_statistics[PB_PAGE_FIX_ACQUIRE_TIME_10USEC] -
-		stats->perf_statistics[PB_PAGE_HOLD_ACQUIRE_TIME_10USEC] -
-		stats->perf_statistics[PB_PAGE_LOCK_ACQUIRE_TIME_10USEC]) * 100 * 100 /
-	       stats->perf_statistics[PB_PAGE_FIX_ACQUIRE_TIME_10USEC]);
+  stats->perf_statistics[PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO] =
+    (stats->perf_statistics[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC] ==
+     0) ? 0 : ((stats->perf_statistics[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC] -
+		stats->perf_statistics[PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC] -
+		stats->perf_statistics[PSTAT_PB_PAGE_LOCK_ACQUIRE_TIME_10USEC]) * 100 * 100 /
+	       stats->perf_statistics[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC]);
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
     {
@@ -2963,23 +2963,23 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 		      assert (offset < PERF_PAGE_PROMOTE_COUNTERS);
 
 		      counter =
-			&(stats->perf_statistics[metadata_stats[PBX_PROMOTE_TIME_COUNTERS].statistic_offset + offset]);
+			&(stats->perf_statistics[metadata_stats[PSTAT_PBX_PROMOTE_TIME_COUNTERS].statistic_offset + offset]);
 		      if (*counter)
 			{
 			  total_promote_time += *counter;
 			}
 
-		      counter = &(stats->perf_statistics[metadata_stats[PBX_PROMOTE_COUNTERS].statistic_offset
+		      counter = &(stats->perf_statistics[metadata_stats[PSTAT_PBX_PROMOTE_COUNTERS].statistic_offset
 							 + offset]);
 		      if (*counter)
 			{
 			  if (success)
 			    {
-			      stats->perf_statistics[PB_PAGE_PROMOTE_SUCCESS] += *counter;
+			      stats->perf_statistics[PSTAT_PB_PAGE_PROMOTE_SUCCESS] += *counter;
 			    }
 			  else
 			    {
-			      stats->perf_statistics[PB_PAGE_PROMOTE_FAILED] += *counter;
+			      stats->perf_statistics[PSTAT_PB_PAGE_PROMOTE_FAILED] += *counter;
 			    }
 			}
 		    }
@@ -2988,15 +2988,15 @@ mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
 	}
     }
 
-  stats->perf_statistics[PB_PAGE_PROMOTE_TOTAL_TIME_10USEC] = 100 * total_promote_time / 1000;
-  stats->perf_statistics[PB_PAGE_PROMOTE_SUCCESS] *= 100;
-  stats->perf_statistics[PB_PAGE_PROMOTE_FAILED] *= 100;
+  stats->perf_statistics[PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC] = 100 * total_promote_time / 1000;
+  stats->perf_statistics[PSTAT_PB_PAGE_PROMOTE_SUCCESS] *= 100;
+  stats->perf_statistics[PSTAT_PB_PAGE_PROMOTE_FAILED] *= 100;
 
 #if defined (SERVER_MODE)
-  pgbuf_peek_stats (&(stats->perf_statistics[PB_FIXED_CNT]), &(stats->perf_statistics[PB_DIRTY_CNT]),
-		    &(stats->perf_statistics[PB_LRU1_CNT]), &(stats->perf_statistics[PB_LRU2_CNT]),
-		    &(stats->perf_statistics[PB_AIN_CNT]), &(stats->perf_statistics[PB_AVOID_DEALLOC_CNT]),
-		    &(stats->perf_statistics[PB_AVOID_VICTIM_CNT]), &(stats->perf_statistics[PB_VICTIM_CAND_CNT]));
+  pgbuf_peek_stats (&(stats->perf_statistics[PSTAT_PB_FIXED_CNT]), &(stats->perf_statistics[PSTAT_PB_DIRTY_CNT]),
+		    &(stats->perf_statistics[PSTAT_PB_LRU1_CNT]), &(stats->perf_statistics[PSTAT_PB_LRU2_CNT]),
+		    &(stats->perf_statistics[PSTAT_PB_AIN_CNT]), &(stats->perf_statistics[PSTAT_PB_AVOID_DEALLOC_CNT]),
+		    &(stats->perf_statistics[PSTAT_PB_AVOID_VICTIM_CNT]), &(stats->perf_statistics[PSTAT_PB_VICTIM_CAND_CNT]));
 #endif
 }
 
@@ -3857,10 +3857,10 @@ build_metadata_exec_stats ()
 {
   int i;
   int simple_stats_count = MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + MNT_COUNT_OF_SERVER_EXEC_CALC_STATS;
-  int non_ac[] = { PB_FIXED_CNT, PB_DIRTY_CNT, PB_LRU1_CNT, PB_LRU2_CNT,
-    PB_AIN_CNT, PB_AVOID_DEALLOC_CNT, PB_VICTIM_CAND_CNT,
-    HA_REPL_DELAY, PC_NUM_QUERY_STRING_HASH_ENTRIES, PC_NUM_XASL_ID_HASH_ENTRIES,
-    PC_NUM_CLASS_OID_HASH_ENTRIES
+  int non_ac[] = { PSTAT_PB_FIXED_CNT, PSTAT_PB_DIRTY_CNT, PSTAT_PB_LRU1_CNT, PSTAT_PB_LRU2_CNT,
+    PSTAT_PB_AIN_CNT, PSTAT_PB_AVOID_DEALLOC_CNT, PSTAT_PB_VICTIM_CAND_CNT,
+    PSTAT_HA_REPL_DELAY, PSTAT_PC_NUM_QUERY_STRING_HASH_ENTRIES, PSTAT_PC_NUM_XASL_ID_HASH_ENTRIES,
+    PSTAT_PC_NUM_CLASS_OID_HASH_ENTRIES
   };
 
   for (i = 0; i < simple_stats_count; i++)

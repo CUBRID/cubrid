@@ -399,6 +399,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\fault_injection.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\fixed_alloc.c"
 					>
 				</File>
@@ -480,10 +484,6 @@
 				</File>
 				<File
 					RelativePath="..\..\src\base\system_parameter.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\base\fault_injection.c"
 					>
 				</File>
 				<File
@@ -719,7 +719,7 @@
 					>
 				</File>
 				<File
-				  RelativePath="..\..\src\query\show_scan.c"
+					RelativePath="..\..\src\query\show_scan.c"
 					>
 				</File>
 				<File

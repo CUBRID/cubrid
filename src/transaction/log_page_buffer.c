@@ -1017,7 +1017,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 		      logpb_flush_all_append_pages (thread_p);
 
 		      START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
-		      mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_REPLACEMENTS);
+		      mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_REPLACEMENTS);
 		      *retry = true;
 		      return NULL;
 		    }
@@ -1182,7 +1182,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 	    {
 	      goto error;
 	    }
-	  mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_FETCH_IOREADS);
+	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_FETCH_IOREADS);
 	}
 
       /* Recall the page in the buffer pool, and hash the identifier */
@@ -1202,7 +1202,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 
   END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
-  mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_FETCHES);
+  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_FETCHES);
 
   if (is_perf_tracking)
     {
@@ -2143,7 +2143,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgpt
   if (log_bufptr == NULL)
     {
       ret_pgptr = logpb_read_page_from_file (thread_p, pageid, log_pgptr);
-      mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_FETCH_IOREADS);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_FETCH_IOREADS);
       stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
     }
 
@@ -2153,7 +2153,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgpt
       LOG_CS_EXIT (thread_p);
     }
 
-  mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_FETCHES);
+  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_FETCHES);
 
   if (is_perf_tracking)
     {
@@ -2227,7 +2227,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
        */
       phy_pageid = logpb_to_physical_pageid (pageid);
 
-      mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_IOREADS);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_IOREADS);
 
       if (fileio_read (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
 	{
@@ -2304,7 +2304,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
   phy_start_pageid = logpb_to_physical_pageid (pageid);
   num_pages = MIN (num_pages, LOGPB_ACTIVE_NPAGES - phy_start_pageid + 1);
 
-  mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_IOREADS);
+  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_IOREADS);
   if (fileio_read_pages (thread_p, log_Gl.append.vdes, (char *) log_pgptr, phy_start_pageid, num_pages, LOG_PAGESIZE) ==
       NULL)
     {
@@ -4123,7 +4123,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 
       if (log_Gl.prior_info.list_size >= LOG_PRIOR_LSA_LIST_MAX_SIZE ())
 	{
-	  mnt_x_add_value_to_statistic (thread_p, 1, PRIOR_LSA_LIST_MAXED);
+	  mnt_x_add_value_to_statistic (thread_p, 1, PSTAT_PRIOR_LSA_LIST_MAXED);
 
 #if defined(SERVER_MODE)
 	  if (!log_is_in_crash_recovery ())
@@ -4290,8 +4290,8 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 
   if (prior_list != NULL)
     {
-      mnt_add_value_to_statistic (thread_p, (unsigned int) current_size / ONE_K, PRIOR_LSA_LIST_SIZE);	/* kbytes */
-      mnt_add_value_to_statistic (thread_p, 1, PRIOR_LSA_LIST_REMOVED);
+      mnt_add_value_to_statistic (thread_p, (unsigned int) current_size / ONE_K, PSTAT_PRIOR_LSA_LIST_SIZE);	/* kbytes */
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_PRIOR_LSA_LIST_REMOVED);
 
       logpb_append_prior_lsa_list (thread_p, prior_list);
     }
@@ -4555,7 +4555,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 
   /* Record number of writes in statistics */
-  mnt_add_value_to_statistic (thread_p, flush_info->num_toflush, LOG_NUM_IOWRITES);
+  mnt_add_value_to_statistic (thread_p, flush_info->num_toflush, PSTAT_LOG_NUM_IOWRITES);
 
   for (i = 0; i < flush_info->num_toflush; i++)
     {
@@ -5141,7 +5141,7 @@ logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
 {
   if (logpb_need_wal (lsa_ptr))
     {
-      mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_WALS);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_WALS);
 
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
@@ -5181,7 +5181,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   /* Record number of append log record in statistics */
-  mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_APPENDRECS);
+  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_APPENDRECS);
 
   /* Does the new log record fit in this page ? */
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
@@ -6397,7 +6397,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	  phy_pageid = (LOG_PHY_PAGEID) (pageid - arv_hdr->fpageid + 1);
 
 	  /* Record number of reads in statistics */
-	  mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_IOREADS);
+	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_IOREADS);
 
 	  if (fileio_read (thread_p, vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
 	    {
@@ -6651,7 +6651,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	      /* Read header page and make sure the page is here */
 
 	      /* Record number of reads in statistics */
-	      mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_IOREADS);
+	      mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_IOREADS);
 
 	      if (fileio_read (thread_p, vdes, hdr_pgptr, 0, LOG_PAGESIZE) == NULL)
 		{
@@ -6825,7 +6825,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
    * Now create the archive and start copying pages
    */
 
-  mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_ARCHIVES);
+  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_ARCHIVES);
 
   fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, log_Gl.hdr.nxarv_num);
 
@@ -7892,7 +7892,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    */
 #endif /* SERVER_MODE */
 
-  mnt_x_add_value_to_statistic (thread_p, 1, LOG_NUM_START_CHECKPOINTS);
+  mnt_x_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_START_CHECKPOINTS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_STARTED, 2, log_Gl.hdr.chkpt_lsa.pageid,
 	  log_Gl.chkpt_redo_lsa.pageid);
@@ -8350,7 +8350,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   fileio_synchronize_all (thread_p, true /* include_log */ );
 #endif
 
-  mnt_add_value_to_statistic (thread_p, 1, LOG_NUM_END_CHECKPOINTS);
+  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_END_CHECKPOINTS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_FINISHED, 3, log_Gl.hdr.chkpt_lsa.pageid,
 	  log_Gl.chkpt_redo_lsa.pageid, flushed_page_cnt);

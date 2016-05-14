@@ -5463,7 +5463,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      event_log_slow_query (thread_p, &info, response_time, &diff_stats);
 	    }
 
-	  if (trace_ioreads > 0 && diff_stats.perf_statistics[PB_NUM_IOREADS] >= trace_ioreads)
+	  if (trace_ioreads > 0 && diff_stats.perf_statistics[PSTAT_PB_NUM_IOREADS] >= trace_ioreads)
 	    {
 	      event_log_many_ioreads (thread_p, &info, response_time, &diff_stats);
 	    }
@@ -5605,9 +5605,9 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
   fprintf (log_fp, "%*cbuffer: fetch=%lld, ioread=%lld, iowrite=%lld\n", indent, ' ',
-	   (long long int) diff_stats->perf_statistics[PB_NUM_FETCHES],
-	   (long long int) diff_stats->perf_statistics[PB_NUM_IOREADS],
-	   (long long int) diff_stats->perf_statistics[PB_NUM_IOWRITES]);
+	   (long long int) diff_stats->perf_statistics[PSTAT_PB_NUM_FETCHES],
+	   (long long int) diff_stats->perf_statistics[PSTAT_PB_NUM_IOREADS],
+	   (long long int) diff_stats->perf_statistics[PSTAT_PB_NUM_IOWRITES]);
   fprintf (log_fp, "%*cwait: cs=%d, lock=%d, latch=%d\n\n", indent, ' ', TO_MSEC (thread_p->event_stats.cs_waits),
 	   TO_MSEC (thread_p->event_stats.lock_waits), TO_MSEC (thread_p->event_stats.latch_waits));
 
@@ -5650,7 +5650,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
-  fprintf (log_fp, "%*cioreads: %lld\n\n", indent, ' ', (long long int) diff_stats->perf_statistics[PB_NUM_IOREADS]);
+  fprintf (log_fp, "%*cioreads: %lld\n\n", indent, ' ', (long long int) diff_stats->perf_statistics[PSTAT_PB_NUM_IOREADS]);
 
   event_log_end (thread_p);
 }

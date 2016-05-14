@@ -1136,7 +1136,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   /* call a request processing function */
   if (thread_p->tran_index > 0)
     {
-      mnt_add_value_to_statistic (thread_p, 1, NET_NUM_REQUESTS);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_NET_NUM_REQUESTS);
     }
   func = net_Requests[request].processing_function;
   assert (func != NULL);

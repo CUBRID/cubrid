@@ -2432,7 +2432,7 @@ session_store_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qent
       state_p->queries = sqentry_p;
     }
 
-  mnt_set_statistic (thread_p, ++sessions.num_holdable_cursors, QM_NUM_HOLDABLE_CURSORS);
+  mnt_set_statistic (thread_p, ++sessions.num_holdable_cursors, PSTAT_QM_NUM_HOLDABLE_CURSORS);
 }
 
 /*
@@ -2461,7 +2461,7 @@ session_free_sentry_data (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY * sentry_
       qmgr_free_temp_file_list (thread_p, sentry_p->temp_file, sentry_p->query_id, false);
     }
 
-  mnt_set_statistic (thread_p, --sessions.num_holdable_cursors, QM_NUM_HOLDABLE_CURSORS);
+  mnt_set_statistic (thread_p, --sessions.num_holdable_cursors, PSTAT_QM_NUM_HOLDABLE_CURSORS);
 }
 
 /*
@@ -2575,7 +2575,7 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id
 	    }
 
 	  free_and_init (sentry_p);
-	  mnt_set_statistic (thread_p, --sessions.num_holdable_cursors, QM_NUM_HOLDABLE_CURSORS);
+	  mnt_set_statistic (thread_p, --sessions.num_holdable_cursors, PSTAT_QM_NUM_HOLDABLE_CURSORS);
 
 	  break;
 	}

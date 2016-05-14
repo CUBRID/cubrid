@@ -540,17 +540,17 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
       case HEAP_OPERATION_INSERT: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
 					     (context)->time_track,\
-					     HEAP_INSERT_PREPARE); \
+					     PSTAT_HEAP_INSERT_PREPARE); \
 	break; \
       case HEAP_OPERATION_DELETE: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
 					     (context)->time_track,\
-					     HEAP_DELETE_PREPARE); \
+					     PSTAT_HEAP_DELETE_PREPARE); \
 	break; \
       case HEAP_OPERATION_UPDATE: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
 					     (context)->time_track,\
-					     HEAP_UPDATE_PREPARE); \
+					     PSTAT_HEAP_UPDATE_PREPARE); \
 	break; \
       default: \
 	assert (false); \
@@ -565,17 +565,17 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
       case HEAP_OPERATION_INSERT: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
 					     (context)->time_track,\
-					     HEAP_INSERT_EXECUTE); \
+					     PSTAT_HEAP_INSERT_EXECUTE); \
 	break; \
       case HEAP_OPERATION_DELETE: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
 					     (context)->time_track,\
-					     HEAP_DELETE_EXECUTE); \
+					     PSTAT_HEAP_DELETE_EXECUTE); \
 	break; \
       case HEAP_OPERATION_UPDATE: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
 					     (context)->time_track,\
-					     HEAP_UPDATE_EXECUTE); \
+					     PSTAT_HEAP_UPDATE_EXECUTE); \
 	break; \
       default: \
 	assert (false); \
@@ -590,17 +590,17 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
       case HEAP_OPERATION_INSERT: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
 					     (context)->time_track,\
-					     HEAP_INSERT_LOG); \
+					     PSTAT_HEAP_INSERT_LOG); \
 	break; \
       case HEAP_OPERATION_DELETE: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
 					     (context)->time_track,\
-					     HEAP_DELETE_LOG); \
+					     PSTAT_HEAP_DELETE_LOG); \
 	break; \
       case HEAP_OPERATION_UPDATE: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
 					     (context)->time_track,\
-					     HEAP_UPDATE_LOG); \
+					     PSTAT_HEAP_UPDATE_LOG); \
 	break; \
       default: \
 	assert (false); \
@@ -1087,7 +1087,7 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HF_MAX_BESTSPACE_ENTRIES, 1,
 	      prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES));
 
-      mnt_add_value_to_statistic (thread_p, 1, HF_NUM_STATS_MAXED);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HF_NUM_STATS_MAXED);
 
 
       ent = NULL;
@@ -1144,7 +1144,7 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
     }
 
   heap_Bestspace->num_stats_entries++;
-  mnt_x_add_value_to_statistic (thread_p, heap_Bestspace->num_stats_entries, HF_NUM_STATS_ENTRIES);
+  mnt_x_add_value_to_statistic (thread_p, heap_Bestspace->num_stats_entries, PSTAT_HF_NUM_STATS_ENTRIES);
 
 end:
 
@@ -1184,7 +1184,7 @@ heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid)
 
   heap_Bestspace->num_stats_entries -= del_cnt;
 
-  mnt_x_add_value_to_statistic (thread_p, heap_Bestspace->num_stats_entries, HF_NUM_STATS_ENTRIES);
+  mnt_x_add_value_to_statistic (thread_p, heap_Bestspace->num_stats_entries, PSTAT_HF_NUM_STATS_ENTRIES);
 
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
@@ -1219,7 +1219,7 @@ heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid)
 
   heap_Bestspace->num_stats_entries -= 1;
 
-  mnt_x_add_value_to_statistic (thread_p, heap_Bestspace->num_stats_entries, HF_NUM_STATS_ENTRIES);
+  mnt_x_add_value_to_statistic (thread_p, heap_Bestspace->num_stats_entries, PSTAT_HF_NUM_STATS_ENTRIES);
 
 end:
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
@@ -3202,7 +3202,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 
 	      heap_Bestspace->num_stats_entries--;
 
-	      mnt_x_add_value_to_statistic (thread_p, heap_Bestspace->num_stats_entries, HF_NUM_STATS_ENTRIES);
+	      mnt_x_add_value_to_statistic (thread_p, heap_Bestspace->num_stats_entries, PSTAT_HF_NUM_STATS_ENTRIES);
 
 	      notfound_cnt++;
 	    }
@@ -3610,7 +3610,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
   tsc_getticks (&start_tick);
 #endif /* CUBRID_DEBUG */
 
-  mnt_add_value_to_statistic (thread_p, 1, HEAP_NUM_STATS_SYNC_BESTSPACE);
+  mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_NUM_STATS_SYNC_BESTSPACE);
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
@@ -22578,7 +22578,7 @@ heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, P
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
-  mnt_add_value_to_statistic (thread_p, 1, HEAP_NEW_VER_INSERTS);
+  mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_NEW_VER_INSERTS);
 
   /* all ok */
   return NO_ERROR;
@@ -22952,7 +22952,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_BIG_MVCC_DELETES);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_BIG_MVCC_DELETES);
     }
   else
     {
@@ -23004,7 +23004,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_BIG_DELETES);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_BIG_DELETES);
     }
 
   /* all ok */
@@ -23143,7 +23143,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  remove_old_forward = true;
 	  update_old_home = true;
 
-	  mnt_add_value_to_statistic (thread_p, 1, HEAP_REL_TO_BIG_DELETES);
+	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_REL_TO_BIG_DELETES);
 	}
       else if (fits_in_home)
 	{
@@ -23161,7 +23161,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  remove_old_forward = true;
 	  update_old_home = true;
 
-	  mnt_add_value_to_statistic (thread_p, 1, HEAP_REL_TO_HOME_DELETES);
+	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_REL_TO_HOME_DELETES);
 	}
       else if (fits_in_forward)
 	{
@@ -23171,7 +23171,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  /* home record will not be touched */
 	  update_old_forward = true;
 
-	  mnt_add_value_to_statistic (thread_p, 1, HEAP_REL_MVCC_DELETES);
+	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_REL_MVCC_DELETES);
 	}
       else
 	{
@@ -23191,7 +23191,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  remove_old_forward = true;
 	  update_old_home = true;
 
-	  mnt_add_value_to_statistic (thread_p, 1, HEAP_REL_TO_REL_DELETES);
+	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_REL_TO_REL_DELETES);
 	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -23395,7 +23395,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_REL_DELETES);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_REL_DELETES);
     }
 
   /* all ok */
@@ -23512,7 +23512,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 		  return error_code;
 		}
 
-	      mnt_add_value_to_statistic (thread_p, 1, HEAP_HOME_TO_BIG_DELETES);
+	      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_HOME_TO_BIG_DELETES);
 	    }
 	  else
 	    {
@@ -23527,7 +23527,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 		  return error_code;
 		}
 
-	      mnt_add_value_to_statistic (thread_p, 1, HEAP_HOME_TO_REL_DELETES);
+	      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_HOME_TO_REL_DELETES);
 	    }
 
 	  /* build forwarding rebuild_record */
@@ -23581,7 +23581,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  /* we'll update the home page with the built record, since it fits in home page */
 	  home_page_updated_recdes = &built_recdes;
 
-	  mnt_add_value_to_statistic (thread_p, 1, HEAP_HOME_MVCC_DELETES);
+	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_HOME_MVCC_DELETES);
 	}
 
       /* update home page and check operation result */
@@ -23613,7 +23613,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_HOME_DELETES);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_HOME_DELETES);
 
       assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
       return error_code;
@@ -23866,7 +23866,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       COPY_OID (&context->res_oid, &context->oid);
     }
 
-  mnt_add_value_to_statistic (thread_p, 1, HEAP_BIG_UPDATES);
+  mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_BIG_UPDATES);
 
   /* all ok */
   return NO_ERROR;
@@ -23976,7 +23976,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* home record descriptor will be an overflow OID and will be placed in original home page */
       heap_build_forwarding_recdes (&new_home_recdes, REC_BIGONE, &new_forward_oid);
 
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_REL_TO_BIG_UPDATES);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_REL_TO_BIG_UPDATES);
     }
   else if (!fits_in_forward && !fits_in_home)
     {
@@ -23992,7 +23992,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* new home record will be a REC_RELOCATION and will be placed in the original home page */
       heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, &new_forward_oid);
 
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_REL_TO_REL_UPDATES);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_REL_TO_REL_UPDATES);
     }
   else if (fits_in_home)
     {
@@ -24000,14 +24000,14 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       context->recdes_p->type = REC_HOME;
       new_home_recdes = *context->recdes_p;
 
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_REL_TO_HOME_UPDATES);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_REL_TO_HOME_UPDATES);
     }
   else if (fits_in_forward)
     {
       /* updated forward record fits in old forward page */
       context->recdes_p->type = REC_NEWHOME;
 
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_REL_UPDATES);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_REL_UPDATES);
     }
   else
     {
@@ -24167,7 +24167,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* we'll be updating home with forwarding record */
       home_page_updated_recdes_p = &forwarding_recdes;
 
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_HOME_TO_BIG_UPDATES);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_HOME_TO_BIG_UPDATES);
     }
   else if (!spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
 				context->recdes_p->length))
@@ -24196,7 +24196,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* we'll be updating home with forwarding record */
       home_page_updated_recdes_p = &forwarding_recdes;
 
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_HOME_TO_REL_UPDATES);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_HOME_TO_REL_UPDATES);
     }
   else
     {
@@ -24205,7 +24205,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* updated record fits in home page */
       home_page_updated_recdes_p = context->recdes_p;
 
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_HOME_UPDATES);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_HOME_UPDATES);
     }
 
   HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -24607,15 +24607,15 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   if (context->recdes_p->type == REC_HOME)
     {
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_HOME_INSERTS);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_HOME_INSERTS);
     }
   else if (context->recdes_p->type == REC_BIGONE)
     {
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_BIG_INSERTS);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_BIG_INSERTS);
     }
   else
     {
-      mnt_add_value_to_statistic (thread_p, 1, HEAP_ASSIGN_INSERTS);
+      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_ASSIGN_INSERTS);
     }
 
 error:
