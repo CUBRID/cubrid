@@ -528,13 +528,13 @@ struct vacuum_heap_helper
   PERF_UTIME_TRACKER_START (thread_p, &(helper)->time_track);
 #define VACUUM_PERF_HEAP_TRACK_PREPARE(thread_p, helper) \
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-				       mnt_heap_vacuum_prepare_time)
+				       HEAP_VACUUM_PREPARE)
 #define VACUUM_PERF_HEAP_TRACK_EXECUTE(thread_p, helper) \
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-				       mnt_heap_vacuum_execute_time)
+				       HEAP_VACUUM_EXECUTE)
 #define VACUUM_PERF_HEAP_TRACK_LOGGING(thread_p, helper) \
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-				       mnt_heap_vacuum_log_time)
+				       HEAP_VACUUM_LOG)
 
 /* Flags used to mark rcv->offset with hints about recovery process. */
 /* Flas for reusable heap files. */
@@ -1671,7 +1671,7 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * 
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
-      mnt_heap_rel_vacuums (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, HEAP_REL_VACUUMS);
       break;
 
     case REC_BIGONE:
@@ -1700,7 +1700,7 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * 
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
-      mnt_heap_big_vacuums (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, HEAP_BIG_VACUUMS);
       break;
 
     case REC_HOME:
@@ -1744,7 +1744,7 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * 
       OID_SET_NULL (&helper->partition_links[helper->n_bulk_vacuumed]);
       helper->n_bulk_vacuumed++;
 
-      mnt_heap_home_vacuums (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, HEAP_HOME_VACUUMS);
       break;
 
     default:
@@ -1755,7 +1755,7 @@ vacuum_heap_record_insert_mvccid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * 
 
   helper->n_vacuumed++;
 
-  mnt_heap_insid_vacuums (thread_p);
+  mnt_add_value_to_statistic (thread_p, 1, HEAP_INSID_VACUUMS);
 
   /* Success. */
   return NO_ERROR;
@@ -1821,11 +1821,11 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
   if (helper->reusable || OID_ISNULL (&MVCC_GET_NEXT_VERSION (&helper->mvcc_header)))
     {
-      mnt_heap_remove_vacuums (thread_p);
+      mnt_add_value_to_statistic(thread_p, 1, HEAP_REMOVE_VACUUMS);
     }
   else
     {
-      mnt_heap_next_ver_vacuums (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, HEAP_NEXT_VER_VACUUMS);
     }
 
   if (helper->record_type != REC_HOME)
@@ -1871,7 +1871,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
-      mnt_heap_rel_vacuums (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, HEAP_REL_VACUUMS);
       break;
 
     case REC_BIGONE:
@@ -1904,13 +1904,13 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
-      mnt_heap_big_vacuums (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, HEAP_BIG_VACUUMS);
       break;
 
     case REC_HOME:
       helper->n_bulk_vacuumed++;
 
-      mnt_heap_home_vacuums (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, HEAP_HOME_VACUUMS);
       break;
 
     default:
@@ -2466,7 +2466,7 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVC
       return;
     }
 
-  mnt_vac_log_to_vacuum_pages (thread_p, vacuum_Data->log_block_npages);
+  mnt_add_value_to_statistic(thread_p, vacuum_Data->log_block_npages, VAC_NUM_TO_VACUUM_LOG_PAGES);
 }
 
 #if defined (SERVER_MODE)
@@ -2550,7 +2550,7 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
       goto finish_sa_mode;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
 
-      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
+      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, VAC_MASTER);
       return;
 #endif /* SERVER_MODE */
     }
@@ -2636,7 +2636,7 @@ restart:
 	  /* Queue is full, abort creating new jobs. */
 	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_MASTER, "VACUUM ERROR: Could not push new job.");
 
-	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
+	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, VAC_MASTER);
 	  return;
 	}
 
@@ -2667,11 +2667,12 @@ restart:
 	  vacuum_er_log (VACUUM_ER_LOG_MASTER, "VACUUM abort job creation : vacuum_Block_data_buffer size:%lld/%lld",
 			 vacuum_block_data_buffer_aprox_size, vacuum_Block_data_buffer->capacity);
 
-	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
+	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, VAC_MASTER);
 	  return;
 	}
 #else
-      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
+
+      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, VAC_MASTER);
 
       vacuum_data_entry = *entry;
       error_code = vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, false);
@@ -2729,7 +2730,7 @@ finish_sa_mode:
        * re-executed. The worst that can happen is to hit an assert in debug mode. Instead of doing a voodoo fix here,
        * it is better to live with the bug. */
 
-      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
+      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, VAC_MASTER);
 
       /* Execute vacuum. */
       (void) vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, true);
@@ -2761,7 +2762,7 @@ finish_sa_mode:
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_STAND_ALONE_VACUUM_END, 0);
   er_log_debug (ARG_FILE_LINE, "Stand-alone vacuum end.\n");
 
-  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
+  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, VAC_MASTER);
 #endif
 }
 
@@ -2904,7 +2905,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 		     thread_get_current_entry_index (), (long long int) log_lsa.pageid, (int) log_lsa.offset);
 
       worker->state = VACUUM_WORKER_STATE_PROCESS_LOG;
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, mnt_vac_worker_execute_time);
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, VAC_WORKER_EXECUTE);
 
       LSA_COPY (&rcv_lsa, &log_lsa);
 
@@ -2941,7 +2942,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 	}
 
       worker->state = VACUUM_WORKER_STATE_EXECUTE;
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, mnt_vac_worker_process_log_time);
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, VAC_WORKER_PROCESS_LOG);
 
 #if !defined (NDEBUG)
       if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid) || MVCC_ID_PRECEDES (mvccid, data->oldest_mvccid)
@@ -3119,7 +3120,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
       /* Release should not stop. Continue. */
     }
 
-  mnt_vac_log_vacuumed_pages (thread_p, vacuum_Data->log_block_npages);
+  mnt_add_value_to_statistic(thread_p, vacuum_Data->log_block_npages, VAC_NUM_VACUUMED_LOG_PAGES);
 
   vacuum_complete = true;
 
@@ -3142,7 +3143,7 @@ end:
   /* Unfix all pages now. Normally all pages should already be unfixed. */
   pgbuf_unfix_all (thread_p);
 
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, mnt_vac_worker_execute_time);
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, VAC_WORKER_EXECUTE);
 
   return error_code;
 }
@@ -7193,7 +7194,7 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_
       /* log page is cached */
       memcpy (log_page_p, buffer_page_start_ptr, LOG_PAGESIZE);
 
-      mnt_vac_prefetch_log_hits_pages (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, VAC_NUM_PREFETCH_HITS_LOG_PAGES);
     }
   else
 #endif /* SERVER_MODE */
@@ -7205,7 +7206,7 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_
 	}
     }
 
-  mnt_vac_prefetch_log_requests_pages (thread_p);
+  mnt_add_value_to_statistic (thread_p, 1, VAC_NUM_PREFETCH_REQUESTS_LOG_PAGES);
 
   return error;
 }

@@ -7386,7 +7386,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	      if (error_code == NO_ERROR)
 		{
 		  /* monitor */
-		  mnt_qm_inserts (thread_p);
+		  mnt_add_value_to_statistic(thread_p, 1, QM_NUM_INSERTS);
 		}
 	      break;
 
@@ -7402,7 +7402,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	      if (error_code == NO_ERROR)
 		{
 		  /* monitor */
-		  mnt_qm_updates (thread_p);
+		  mnt_add_value_to_statistic (thread_p, 1, QM_NUM_UPDATES);
 		}
 	      break;
 
@@ -7414,7 +7414,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	      if (error_code == NO_ERROR)
 		{
 		  /* monitor */
-		  mnt_qm_deletes (thread_p);
+		  mnt_add_value_to_statistic(thread_p, 1, QM_NUM_DELETES);
 		}
 	      break;
 
@@ -7574,7 +7574,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  if (error_code == NO_ERROR)
 	    {
 	      /* monitor */
-	      mnt_qm_inserts (thread_p);
+	      mnt_add_value_to_statistic(thread_p, 1, QM_NUM_INSERTS);
 	    }
 	  break;
 
@@ -7590,7 +7590,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  if (error_code == NO_ERROR)
 	    {
 	      /* monitor */
-	      mnt_qm_updates (thread_p);
+	      mnt_add_value_to_statistic (thread_p, 1, QM_NUM_UPDATES);
 	    }
 	  break;
 
@@ -7602,7 +7602,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  if (error_code == NO_ERROR)
 	    {
 	      /* monitor */
-	      mnt_qm_deletes (thread_p);
+	      mnt_add_value_to_statistic(thread_p, 1, QM_NUM_DELETES);
 	    }
 	  break;
 

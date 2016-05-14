@@ -3093,8 +3093,8 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS
 
       if (xasl->orderby_stats.orderby_filesort)
 	{
-	  old_sort_pages = mnt_get_sort_data_pages (thread_p);
-	  old_sort_ioreads = mnt_get_sort_io_pages (thread_p);
+	  old_sort_pages = mnt_get_from_statistic (thread_p, SORT_NUM_DATA_PAGES);
+	  old_sort_ioreads = mnt_get_from_statistic (thread_p, SORT_NUM_IO_PAGES);
 	}
     }
 
@@ -3116,8 +3116,8 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS
 
       if (xasl->orderby_stats.orderby_filesort)
 	{
-	  xasl->orderby_stats.orderby_pages = mnt_get_sort_data_pages (thread_p) - old_sort_pages;
-	  xasl->orderby_stats.orderby_ioreads = mnt_get_sort_io_pages (thread_p) - old_sort_ioreads;
+	  xasl->orderby_stats.orderby_pages = mnt_get_from_statistic (thread_p, SORT_NUM_DATA_PAGES) - old_sort_pages;
+	  xasl->orderby_stats.orderby_ioreads = mnt_get_from_statistic (thread_p, SORT_NUM_IO_PAGES) - old_sort_ioreads;
 	}
     }
 
@@ -4507,8 +4507,8 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   if (thread_is_on_trace (thread_p))
     {
       xasl->groupby_stats.groupby_sort = true;
-      old_sort_pages = mnt_get_sort_data_pages (thread_p);
-      old_sort_ioreads = mnt_get_sort_io_pages (thread_p);
+      old_sort_pages = mnt_get_from_statistic (thread_p, SORT_NUM_DATA_PAGES);
+      old_sort_ioreads = mnt_get_from_statistic (thread_p, SORT_NUM_IO_PAGES);
     }
 
   /* unsorted list is not empty; dump hash table to partial list */
@@ -4696,8 +4696,8 @@ wrapup:
 
 	if (xasl->groupby_stats.groupby_sort == true)
 	  {
-	    xasl->groupby_stats.groupby_pages = mnt_get_sort_data_pages (thread_p) - old_sort_pages;
-	    xasl->groupby_stats.groupby_ioreads = mnt_get_sort_io_pages (thread_p) - old_sort_ioreads;
+	    xasl->groupby_stats.groupby_pages = mnt_get_from_statistic (thread_p, SORT_NUM_DATA_PAGES) - old_sort_pages;
+	    xasl->groupby_stats.groupby_ioreads = mnt_get_from_statistic (thread_p, SORT_NUM_IO_PAGES) - old_sort_ioreads;
 	  }
       }
 
@@ -6505,7 +6505,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	  /* monitor */
-	  mnt_qm_iscans (thread_p);
+	  mnt_add_value_to_statistic (thread_p, 1, QM_NUM_ISCANS);
 	}
       else if (scan_type == S_INDX_NODE_INFO_SCAN)
 	{
@@ -6516,7 +6516,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	  /* monitor */
-	  mnt_qm_iscans (thread_p);
+	  mnt_add_value_to_statistic (thread_p,  1, QM_NUM_ISCANS );
 	}
       else			/* S_INDX_SCAN */
 	{
@@ -6541,7 +6541,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	  /* monitor */
-	  mnt_qm_iscans (thread_p);
+	  mnt_add_value_to_statistic (thread_p, 1, QM_NUM_ISCANS);
 	}
       break;
 
@@ -6653,11 +6653,11 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	  if (curr_spec->access == SEQUENTIAL || curr_spec->access == SEQUENTIAL_RECORD_INFO
 	      || curr_spec->access == SEQUENTIAL_PAGE_SCAN)
 	    {
-	      mnt_qm_sscans (thread_p);
+	      mnt_add_value_to_statistic (thread_p, 1, QM_NUM_SSCANS);
 	    }
 	  else if (IS_ANY_INDEX_ACCESS (curr_spec->access))
 	    {
-	      mnt_qm_iscans (thread_p);
+	      mnt_add_value_to_statistic (thread_p, 1, QM_NUM_ISCANS);
 	    }
 	  if (curr_spec->parts != NULL)
 	    {
@@ -6671,7 +6671,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	case TARGET_CLASS_ATTR:
 	  break;
 	case TARGET_LIST:
-	  mnt_qm_lscans (thread_p);
+	  mnt_add_value_to_statistic(thread_p, 1, QM_NUM_LSCANS);
 	  break;
 	case TARGET_SHOWSTMT:
 	  /* do nothing */
@@ -6680,10 +6680,10 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	  /* currently do nothing */
 	  break;
 	case TARGET_SET:
-	  mnt_qm_setscans (thread_p);
+	  mnt_add_value_to_statistic(thread_p, 1, QM_NUM_SETSCANS);
 	  break;
 	case TARGET_METHOD:
-	  mnt_qm_methscans (thread_p);
+	  mnt_add_value_to_statistic(thread_p, 1, QM_NUM_METHSCANS);
 	  break;
 	}
       scan_close_scan (thread_p, &curr_spec->s_id);
@@ -13091,8 +13091,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
     {
       tsc_getticks (&start_tick);
 
-      old_fetches = mnt_get_pb_fetches (thread_p);
-      old_ioreads = mnt_get_pb_ioreads (thread_p);
+      old_fetches = mnt_get_from_statistic (thread_p, PB_NUM_FETCHES);
+      old_ioreads = mnt_get_from_statistic (thread_p, PB_NUM_IOREADS);
     }
 
   error = qexec_execute_mainblock_internal (thread_p, xasl, xasl_state, p_class_instance_lock_info);
@@ -13103,8 +13103,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (xasl->xasl_stats.elapsed_time, tv_diff);
 
-      xasl->xasl_stats.fetches += mnt_get_pb_fetches (thread_p) - old_fetches;
-      xasl->xasl_stats.ioreads += mnt_get_pb_ioreads (thread_p) - old_ioreads;
+      xasl->xasl_stats.fetches += mnt_get_from_statistic (thread_p, PB_NUM_FETCHES) - old_fetches;
+      xasl->xasl_stats.ioreads += mnt_get_from_statistic (thread_p, PB_NUM_IOREADS) - old_ioreads;
     }
 
   thread_dec_recursion_depth (thread_p);
@@ -13194,7 +13194,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  return error;
 	}
       /* monitor */
-      mnt_qm_updates (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, QM_NUM_UPDATES);
       break;
 
     case DELETE_PROC:
@@ -13219,7 +13219,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  return error;
 	}
       /* monitor */
-      mnt_qm_deletes (thread_p);
+      mnt_add_value_to_statistic(thread_p, 1, QM_NUM_DELETES);
       break;
 
     case INSERT_PROC:
@@ -13244,7 +13244,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  return error;
 	}
       /* monitor */
-      mnt_qm_inserts (thread_p);
+      mnt_add_value_to_statistic(thread_p, 1, QM_NUM_INSERTS);
       break;
 
     case DO_PROC:
@@ -13704,7 +13704,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    {
 	      func_vector[0] = (XSAL_SCAN_FUNC) qexec_merge_fnc;
 	      /* monitor */
-	      mnt_qm_mjoins (thread_p);
+	      mnt_add_value_to_statistic (thread_p, 1, QM_NUM_MJOINS);
 	    }
 	  else
 	    {
@@ -13726,7 +13726,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		    {
 		      func_vector[level] = (XSAL_SCAN_FUNC) qexec_execute_scan;
 		      /* monitor */
-		      mnt_qm_nljoins (thread_p);
+		      mnt_add_value_to_statistic(thread_p, 1, QM_NUM_NLJOINS);
 		    }
 		}
 	    }
@@ -13806,8 +13806,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  tsc_getticks (&start_tick);
 
-		  old_fetches = mnt_get_pb_fetches (thread_p);
-		  old_ioreads = mnt_get_pb_ioreads (thread_p);
+		  old_fetches = mnt_get_from_statistic (thread_p, PB_NUM_FETCHES);
+		  old_ioreads = mnt_get_from_statistic (thread_p, PB_NUM_IOREADS);
 		}
 
 	      if (qexec_execute_connect_by (thread_p, xasl->connect_by_ptr, xasl_state, &tplrec) != NO_ERROR)
@@ -13834,8 +13834,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 		  TSC_ADD_TIMEVAL (xasl_stats->elapsed_time, tv_diff);
 
-		  xasl_stats->fetches = mnt_get_pb_fetches (thread_p) - old_fetches;
-		  xasl_stats->ioreads = mnt_get_pb_ioreads (thread_p) - old_ioreads;
+		  xasl_stats->fetches = mnt_get_from_statistic (thread_p, PB_NUM_FETCHES) - old_fetches;
+		  xasl_stats->ioreads = mnt_get_from_statistic (thread_p, PB_NUM_IOREADS) - old_ioreads;
 		}
 	    }
 	}
@@ -13947,7 +13947,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  /* skip post processing for empty list file */
 
 	  /* monitor */
-	  mnt_qm_selects (thread_p);
+	  mnt_add_value_to_statistic(thread_p, 1, QM_NUM_SELECTS);
 	  break;
 	}
 #endif
@@ -13988,7 +13988,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       /* monitor */
-      mnt_qm_selects (thread_p);
+      mnt_add_value_to_statistic(thread_p, 1, QM_NUM_SELECTS);
       break;
     }
 
@@ -14619,7 +14619,8 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
 	mht_create ("XASL stream cache (query string)", xasl_ent_cache.max_entries, qexec_xasl_qstr_ht_hash,
 		    qexec_xasl_qstr_ht_keys_are_equal);
     }
-  mnt_pc_query_string_hash_entries (thread_p, 0);
+  
+  mnt_set_statistic (thread_p, 0, PC_NUM_QUERY_STRING_HASH_ENTRIES);
 
   xasl_ent_cache.qstr_ht->build_lru_list = true;
 
@@ -14636,7 +14637,8 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
       xasl_ent_cache.xid_ht =
 	mht_create ("XASL stream cache (xasl file id)", xasl_ent_cache.max_entries, xasl_id_hash, xasl_id_hash_cmpeq);
     }
-  mnt_pc_xasl_id_hash_entries (thread_p, 0);
+  mnt_set_statistic (thread_p, 0, PC_NUM_XASL_ID_HASH_ENTRIES);
+
 
   /* memory hash table for XASL stream cache referencing by class/serial oid */
   if (xasl_ent_cache.oid_ht)
@@ -14651,7 +14653,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
       xasl_ent_cache.oid_ht =
 	mht_create ("XASL stream cache (class oid)", xasl_ent_cache.max_entries, oid_hash, oid_compare_equals);
     }
-  mnt_pc_class_oid_hash_entries (thread_p, 0);
+  mnt_set_statistic (thread_p, 0, PC_NUM_CLASS_OID_HASH_ENTRIES);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   /* init cache clone info */
@@ -14743,7 +14745,7 @@ qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p)
       mht_destroy (xasl_ent_cache.qstr_ht);
       xasl_ent_cache.qstr_ht = NULL;
     }
-  mnt_pc_query_string_hash_entries (thread_p, 0);
+  mnt_set_statistic (thread_p, 0, PC_NUM_QUERY_STRING_HASH_ENTRIES);
 
   /* memory hash table for XASL stream cache referencing by xasl file id */
   if (xasl_ent_cache.xid_ht)
@@ -14751,7 +14753,7 @@ qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p)
       mht_destroy (xasl_ent_cache.xid_ht);
       xasl_ent_cache.xid_ht = NULL;
     }
-  mnt_pc_xasl_id_hash_entries (thread_p, 0);
+  mnt_set_statistic (thread_p, 0, PC_NUM_XASL_ID_HASH_ENTRIES);
 
   /* memory hash table for XASL stream cache referencing by class/serial oid */
   if (xasl_ent_cache.oid_ht)
@@ -14759,7 +14761,7 @@ qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p)
       mht_destroy (xasl_ent_cache.oid_ht);
       xasl_ent_cache.oid_ht = NULL;
     }
-  mnt_pc_class_oid_hash_entries (thread_p, 0);
+  mnt_set_statistic (thread_p, 0, PC_NUM_CLASS_OID_HASH_ENTRIES);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   /* free all cache clone and XASL tree */
@@ -15429,7 +15431,7 @@ qexec_free_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
       xasl_cache_entry_pool.free_list = CAST_BUFLEN (pent - xasl_cache_entry_pool.pool);
     }
 
-  mnt_pc_delete (thread_p);
+  mnt_add_value_to_statistic(thread_p, 1, PC_NUM_DELETE);
 
   return NO_ERROR;
 }				/* qexec_free_xasl_cache_ent() */
@@ -15481,7 +15483,7 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr, const OI
   /* look up the hash table with the key */
   ent = (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht, &key);
   xasl_ent_cache.counter.lookup++;	/* counter */
-  mnt_pc_lookup (thread_p);
+  mnt_add_value_to_statistic(thread_p, 1, PC_NUM_LOOKUP);
 
   if (ent)
     {
@@ -15550,12 +15552,12 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr, const OI
   if (ent)
     {
       xasl_ent_cache.counter.hit++;	/* counter */
-      mnt_pc_hit (thread_p);
+      mnt_add_value_to_statistic(thread_p, 1, PC_NUM_HIT);
     }
   else
     {
       xasl_ent_cache.counter.miss++;	/* counter */
-      mnt_pc_miss (thread_p);
+      mnt_add_value_to_statistic(thread_p, 1, PC_NUM_MISS);
     }
 
 end:
@@ -15668,7 +15670,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
       /* Cache full! We need to remove some entries from the cache. We will refer to the LRU list of query string hash
        * table to find out victims. */
       xasl_ent_cache.counter.full++;	/* counter */
-      mnt_pc_full (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, PC_NUM_FULL);
 
       /* Number of entries to victimize. It will be one in normal case. */
       max_victim_count = (int) mht_count (xasl_ent_cache.qstr_ht) - xasl_ent_cache.max_entries + 1;
@@ -15826,7 +15828,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
 	}
     }
 
-  mnt_pc_query_string_hash_entries (thread_p, mht_count (xasl_ent_cache.qstr_ht));
+  mnt_set_statistic (thread_p, 0, PC_NUM_QUERY_STRING_HASH_ENTRIES);
 
   /* insert (or update) the entry into the xasl file id hash table */
   if (mht_put_new (xasl_ent_cache.xid_ht, &ent->xasl_id, ent) == NULL)
@@ -15839,7 +15841,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
       ent = NULL;
       goto end;
     }
-  mnt_pc_xasl_id_hash_entries (thread_p, mht_count (xasl_ent_cache.xid_ht));
+  mnt_set_statistic (thread_p, mht_count (xasl_ent_cache.xid_ht), PC_NUM_XASL_ID_HASH_ENTRIES);
 
   /* insert the entry into the class oid hash table Note that mht_put2() allows mutiple data with the same key */
   for (i = 0, o = ent->class_oid_list; i < n_oids; i++, o++)
@@ -15853,10 +15855,10 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
 	  goto end;
 	}
     }				/* for (i = 0, ...) */
-  mnt_pc_class_oid_hash_entries (thread_p, mht_count (xasl_ent_cache.oid_ht));
+  mnt_set_statistic (thread_p, mht_count (xasl_ent_cache.oid_ht), PC_NUM_CLASS_OID_HASH_ENTRIES);
 
   xasl_ent_cache.num++;
-  mnt_pc_add (thread_p);
+  mnt_add_value_to_statistic(thread_p, 1, PC_NUM_ADD);
 
 #if defined (SERVER_MODE)
   if (all_entries_are_fixed)
@@ -16326,7 +16328,7 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xas
 
   if (ent == NULL)
     {
-      mnt_pc_invalid_xasl_id (thread_p);
+      mnt_add_value_to_statistic(thread_p, 1, PC_NUM_INVALID_XASL_ID);
     }
 
   return ent;
@@ -16512,7 +16514,8 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			ent->sql_info.sql_hash_text);
 	}
       ent->qstr_ht_entry_ptr = NULL;
-      mnt_pc_query_string_hash_entries (thread_p, mht_count (xasl_ent_cache.qstr_ht));
+  
+      mnt_set_statistic (thread_p, mht_count (xasl_ent_cache.qstr_ht), PC_NUM_QUERY_STRING_HASH_ENTRIES);
 
       /* remove the entry from xasl file id hash table */
       if (mht_rem2 (xasl_ent_cache.xid_ht, &ent->xasl_id, ent, NULL, NULL) != NO_ERROR)
@@ -16522,7 +16525,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			" xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n", ent->xasl_id.first_vpid.pageid,
 			ent->xasl_id.first_vpid.volid, ent->xasl_id.temp_vfid.fileid, ent->xasl_id.temp_vfid.volid);
 	}
-      mnt_pc_xasl_id_hash_entries (thread_p, mht_count (xasl_ent_cache.xid_ht));
+      mnt_set_statistic (thread_p, mht_count (xasl_ent_cache.xid_ht), PC_NUM_XASL_ID_HASH_ENTRIES);
 
       /* remove the entries from class/serial oid hash table */
       for (i = 0, o = ent->class_oid_list; i < ent->n_oid_list; i++, o++)
@@ -16534,7 +16537,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			    ent->class_oid_list[i].pageid, ent->class_oid_list[i].slotid, ent->class_oid_list[i].volid);
 	    }
 	}
-      mnt_pc_class_oid_hash_entries (thread_p, mht_count (xasl_ent_cache.oid_ht));
+      mnt_set_statistic (thread_p, mht_count (xasl_ent_cache.oid_ht), PC_NUM_CLASS_OID_HASH_ENTRIES);
 
       /* destroy the temp file of XASL_ID */
       rc = NO_ERROR;
@@ -16582,7 +16585,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 	  rc = ER_FAILED;
 	}
       ent->qstr_ht_entry_ptr = NULL;
-      mnt_pc_query_string_hash_entries (thread_p, mht_count (xasl_ent_cache.qstr_ht));
+      mnt_set_statistic (thread_p, mht_count (xasl_ent_cache.qstr_ht), PC_NUM_QUERY_STRING_HASH_ENTRIES);
 
       if (rc == NO_ERROR)
 	{
@@ -16972,7 +16975,7 @@ qexec_free_mark_deleted_xasl_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * 
 			" xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n", ent->xasl_id.first_vpid.pageid,
 			ent->xasl_id.first_vpid.volid, ent->xasl_id.temp_vfid.fileid, ent->xasl_id.temp_vfid.volid);
 	}
-      mnt_pc_xasl_id_hash_entries (thread_p, mht_count (xasl_ent_cache.xid_ht));
+      mnt_set_statistic (thread_p, mht_count (xasl_ent_cache.xid_ht), PC_NUM_XASL_ID_HASH_ENTRIES);
 
       for (i = 0, o = ent->class_oid_list; i < ent->n_oid_list; i++, o++)
 	{
@@ -16983,7 +16986,7 @@ qexec_free_mark_deleted_xasl_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * 
 			    ent->class_oid_list[i].pageid, ent->class_oid_list[i].slotid, ent->class_oid_list[i].volid);
 	    }
 	}
-      mnt_pc_class_oid_hash_entries (thread_p, mht_count (xasl_ent_cache.oid_ht));
+      mnt_set_statistic (thread_p, mht_count (xasl_ent_cache.oid_ht), PC_NUM_CLASS_OID_HASH_ENTRIES);
 
       /* destroy the temp file of XASL_ID */
       if (file_destroy (thread_p, &(ent->xasl_id.temp_vfid)) != NO_ERROR)
@@ -18588,8 +18591,8 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_LIST_ID
 	    {
 	      tsc_getticks (&start_tick);
 
-	      old_sort_pages = mnt_get_sort_data_pages (thread_p);
-	      old_sort_ioreads = mnt_get_sort_io_pages (thread_p);
+	      old_sort_pages = mnt_get_from_statistic (thread_p, SORT_NUM_DATA_PAGES);
+	      old_sort_ioreads = mnt_get_from_statistic (thread_p, SORT_NUM_IO_PAGES);
 	    }
 
 	  /* sort the list file */
@@ -18649,8 +18652,8 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_LIST_ID
 
 	      xasl->orderby_stats.orderby_filesort = true;
 
-	      xasl->orderby_stats.orderby_pages += mnt_get_sort_data_pages (thread_p) - old_sort_pages;
-	      xasl->orderby_stats.orderby_ioreads += mnt_get_sort_io_pages (thread_p) - old_sort_ioreads;
+	      xasl->orderby_stats.orderby_pages += mnt_get_from_statistic (thread_p, SORT_NUM_DATA_PAGES) - old_sort_pages;
+	      xasl->orderby_stats.orderby_ioreads += mnt_get_from_statistic (thread_p, SORT_NUM_IO_PAGES) - old_sort_ioreads;
 	    }
 	}
     }				/* if */
@@ -26579,14 +26582,14 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
     {
       xasl->list_id->tuple_cnt += xasl->proc.merge.update_xasl->list_id->tuple_cnt;
       /* monitor */
-      mnt_qm_updates (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, QM_NUM_UPDATES);
     }
 
   if (xasl->proc.merge.insert_xasl)
     {
       xasl->list_id->tuple_cnt += xasl->proc.merge.insert_xasl->list_id->tuple_cnt;
       /* monitor */
-      mnt_qm_inserts (thread_p);
+       mnt_add_value_to_statistic(thread_p, 1, QM_NUM_INSERTS);
     }
 
   /* end topop */
