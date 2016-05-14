@@ -1536,7 +1536,7 @@ try_again:
       if (fetch_mode != NEW_PAGE)
 	{
 	  /* Record number of reads in statistics */
-	  mnt_pb_ioreads (thread_p);
+	  mnt_add_value_to_statistic (thread_p, 1, PB_NUM_IOREADS);
 
 #if defined(ENABLE_SYSTEMTAP)
 	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -1605,7 +1605,7 @@ try_again:
 	    }
 #endif /* NDEBUG */
 
-	  mnt_sort_io_pages (thread_p);
+	  mnt_add_value_to_statistic_with_sort_stats_active (thread_p, 1, SORT_NUM_IO_PAGES);
 	}
       else
 	{
@@ -1633,7 +1633,7 @@ try_again:
 	      bufptr->iopage_buffer->iopage.prv.volid = -1;
 	    }
 
-	  mnt_sort_data_pages (thread_p);
+	  mnt_add_value_to_statistic_with_sort_stats_active (thread_p, 1, SORT_NUM_DATA_PAGES);
 	}
       buf_lock_acquired = true;
     }
@@ -1757,7 +1757,7 @@ try_again:
 
       PGBUF_GET_PAGE_TYPE_FOR_STAT (pgptr, perf_page_type);
 
-      mnt_pb_fetches (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, PB_NUM_FETCHES);
       if (request_mode == PGBUF_LATCH_READ)
 	{
 	  perf_latch_mode = PERF_HOLDER_LATCH_READ;
@@ -3085,7 +3085,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   static THREAD_ENTRY *page_flush_thread = NULL;
 #endif /* SERVER_MODE */
 
-  mnt_pb_victims (thread_p);
+  mnt_add_value_to_statistic (thread_p, 1, PB_NUM_VICTIMS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
   er_log_debug (ARG_FILE_LINE, "start flush victim candidates\n");
@@ -3251,7 +3251,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	      flushed_pages = (error == NO_ERROR) ? 1 : 0;
 	    }
 
-	  mnt_pb_replacements (thread_p);
+	  mnt_add_value_to_statistic (thread_p, 1, PB_NUM_REPLACEMENTS);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3951,7 +3951,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	    }
 
 	  /* Record number of reads in statistics */
-	  mnt_pb_ioreads (thread_p);
+	  mnt_add_value_to_statistic (thread_p, 1, PB_NUM_IOREADS);
 
 	  if (fileio_read_user_area (thread_p, fileio_get_volume_descriptor (vpid->volid), vpid->pageid, start_offset,
 				     length, area) == NULL)
@@ -3970,7 +3970,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 
       memcpy (area, (char *) pgptr + start_offset, length);
 
-      mnt_sort_data_pages (thread_p);
+      mnt_add_value_to_statistic_with_sort_stats_active (thread_p, 1, SORT_NUM_DATA_PAGES);
 
       /* release BCB_mutex */
       pthread_mutex_unlock (&bufptr->BCB_mutex);
@@ -4044,7 +4044,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 	    }
 
 	  /* Record number of reads in statistics */
-	  mnt_pb_iowrites (thread_p, 1);
+	  mnt_add_value_to_statistic (thread_p, 1, PB_NUM_IOWRITES);
 
 	  vol_fd = fileio_get_volume_descriptor (vpid->volid);
 	  if (fileio_write_user_area (thread_p, vol_fd, vpid->pageid, start_offset, length, area) == NULL)
@@ -6847,7 +6847,7 @@ try_again:
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-      mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+      mnt_add_value_to_statistic (thread_p, lock_wait_time, PB_NUM_HASH_ANCHOR_WAITS);
     }
 #endif
   bufptr = hash_anchor->hash_next;
@@ -6945,7 +6945,7 @@ pgbuf_insert_into_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, PGBUF_BCB * bufpt
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-      mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+      mnt_add_value_to_statistic (thread_p, lock_wait_time, PB_NUM_HASH_ANCHOR_WAITS);
     }
 #endif
   bufptr->hash_next = hash_anchor->hash_next;
@@ -7003,7 +7003,7 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
     {
       tsc_getticks (&end_tick);
       lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-      mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+      mnt_add_value_to_statistic (thread_p, lock_wait_time, PB_NUM_HASH_ANCHOR_WAITS);
     }
 #endif
   if (bufptr->avoid_victim == true)
@@ -7129,7 +7129,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 		{
 		  tsc_getticks (&end_tick);
 		  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-		  mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+		  mnt_add_value_to_statistic (thread_p, lock_wait_time, PB_NUM_HASH_ANCHOR_WAITS);
 		}
 #endif
 
@@ -7151,7 +7151,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 		      thrd_entry->next_wait_thrd = NULL;
 		      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 
-		      mnt_lk_waited_on_pages (thread_p);	/* monitoring */
+		      mnt_add_value_to_statistic (thread_p, 1, LK_NUM_WAITED_ON_PAGES);	/* monitoring */
 		      return PGBUF_LOCK_WAITER;
 		    }
 		  prev_thrd_entry = thrd_entry;
@@ -7159,7 +7159,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 		}
 	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	    }
-	  mnt_lk_waited_on_pages (thread_p);	/* monitoring */
+	  mnt_add_value_to_statistic (thread_p, 1, LK_NUM_WAITED_ON_PAGES);	/* monitoring */
 	  return PGBUF_LOCK_WAITER;
 	}
       cur_buffer_lock = cur_buffer_lock->lock_next;
@@ -7177,7 +7177,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
   pthread_mutex_unlock (&hash_anchor->hash_mutex);
 #endif /* SERVER_MODE */
 
-  mnt_lk_acquired_on_pages (thread_p);	/* monitoring */
+  mnt_add_value_to_statistic (thread_p, 1, LK_NUM_ACQUIRED_ON_PAGES);	/* monitoring */
   return PGBUF_LOCK_HOLDER;
 }
 
@@ -7225,7 +7225,7 @@ pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_
 	{
 	  tsc_getticks (&end_tick);
 	  lock_wait_time = tsc_elapsed_utime (end_tick, start_tick);
-	  mnt_pb_num_hash_anchor_waits (thread_p, lock_wait_time);
+	  mnt_add_value_to_statistic (thread_p, lock_wait_time, PB_NUM_HASH_ANCHOR_WAITS);
 	}
 #endif
     }
@@ -8755,7 +8755,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   logpb_flush_log_for_wal (thread_p, &iopage->prv.lsa);
 
   /* Record number of writes in statistics */
-  mnt_pb_iowrites (thread_p, 1);
+  mnt_add_value_to_statistic (thread_p, 1, PB_NUM_IOWRITES);
 
 #if defined(ENABLE_SYSTEMTAP)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -9912,7 +9912,7 @@ pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     }
 
   /* Record number of dirties in statistics */
-  mnt_pb_dirties (thread_p);
+  mnt_x_add_value_to_statistic (thread_p, 1, PB_NUM_DIRTIES);
 }
 
 /*
@@ -10397,7 +10397,7 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
 			IO_PAGESIZE) != NULL)
 	{
 	  *flushed = true;
-	  mnt_pb_iowrites (thread_p, 1);
+	  mnt_add_value_to_statistic (thread_p, 1, PB_NUM_IOWRITES);
 	  /* ignore error, just store it for Systemtap marker */
 	  error = ER_FAILED;
 	}

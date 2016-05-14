@@ -3208,6 +3208,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       error_code = ER_TZ_LOAD_ERROR;
       goto error;
     }
+  build_metadata_exec_stats ();
 
   if (msgcat_init () != NO_ERROR)
     {

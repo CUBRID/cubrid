@@ -798,6 +798,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       error_code = ER_TZ_LOAD_ERROR;
       goto error;
     }
+  build_metadata_exec_stats ();
 
   /* database name must be specified */
   if (client_credential->db_name == NULL)

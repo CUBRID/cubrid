@@ -4750,8 +4750,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
       tsc_getticks (&start_tick);
 
-      old_fetches = mnt_get_pb_fetches (thread_p);
-      old_ioreads = mnt_get_pb_ioreads (thread_p);
+      old_fetches = mnt_get_from_statistic (thread_p, PB_NUM_FETCHES);
+      old_ioreads = mnt_get_from_statistic (thread_p, PB_NUM_IOREADS);
     }
 
   switch (scan_id->type)
@@ -4812,8 +4812,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (scan_id->stats.elapsed_scan, tv_diff);
 
-      scan_id->stats.num_fetches += mnt_get_pb_fetches (thread_p) - old_fetches;
-      scan_id->stats.num_ioreads += mnt_get_pb_ioreads (thread_p) - old_ioreads;
+      scan_id->stats.num_fetches += mnt_get_from_statistic (thread_p, PB_NUM_FETCHES) - old_fetches;
+      scan_id->stats.num_ioreads += mnt_get_from_statistic (thread_p, PB_NUM_IOREADS) - old_ioreads;
     }
 
   return status;
@@ -5621,7 +5621,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* get pages for read */
       if (!SCAN_IS_INDEX_COVERED (isidp))
 	{
-	  mnt_bt_noncovered (thread_p);
+	  mnt_add_value_to_statistic (thread_p, 1, BT_NUM_NONCOVERED);
 
 	  assert (isidp->curr_oidno >= 0);
 	  assert (isidp->curr_oidp != NULL);
@@ -5685,7 +5685,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 	    }
 
-	  mnt_bt_covered (thread_p);
+	  mnt_add_value_to_statistic (thread_p, 1, BT_NUM_COVERED);
 
 	  if (scan_id->val_list)
 	    {
@@ -7219,7 +7219,7 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * m
       multi_range_opt->tplrec.size = 0;
       multi_range_opt->tplrec.tpl = NULL;
 
-      mnt_bt_multi_range_opt (thread_p);
+      mnt_add_value_to_statistic (thread_p, 1, BT_NUM_MULTI_RANGE_OPT);
     }
 
   return err;
