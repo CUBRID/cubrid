@@ -5621,7 +5621,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* get pages for read */
       if (!SCAN_IS_INDEX_COVERED (isidp))
 	{
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_NONCOVERED);
+	  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_NONCOVERED);
 
 	  assert (isidp->curr_oidno >= 0);
 	  assert (isidp->curr_oidp != NULL);
@@ -5685,7 +5685,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 	    }
 
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_COVERED);
+	  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_COVERED);
 
 	  if (scan_id->val_list)
 	    {
@@ -7219,7 +7219,7 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * m
       multi_range_opt->tplrec.size = 0;
       multi_range_opt->tplrec.tpl = NULL;
 
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_MULTI_RANGE_OPT);
+      perfmon_inc_stat (thread_p, PSTAT_BT_NUM_MULTI_RANGE_OPT);
     }
 
   return err;

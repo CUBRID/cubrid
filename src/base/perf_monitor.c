@@ -545,11 +545,9 @@ int ar_statistics_dim[] = { PERF_PAGE_FIX_COUNTERS, PERF_PAGE_PROMOTE_COUNTERS, 
 	}												      \
     } while (0)
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
 static void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int amount, int offset);
 static void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int offset);
 static void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int timediff, int offset);
-#endif /* SERVER_MODE || SA_MODE */
 
 static void mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats);
 static void mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats);
@@ -4327,7 +4325,6 @@ xperfmon_stop_watch (THREAD_ENTRY * thread_p)
  *  Add/set stats section.
  */
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * perfmon_add_stat () - Accumulate amount to statistic.
  *
@@ -4382,7 +4379,9 @@ static void
 perfmon_add_at_offset (THREAD_ENTRY * thread_p, int amount, int offset)
 {
   UINT64 *statvalp = NULL;
+#if defined (SERVER_MODE)
   int tran_index;
+#endif /* SERVER_MODE */
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
 
@@ -4390,6 +4389,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int amount, int offset)
   statvalp = pstat_Global.global_stats + offset;
   ATOMIC_INC_64 (statvalp, amount);
 
+#if defined (SERVER_MODE)
   /* Update local statistic */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
@@ -4399,6 +4399,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int amount, int offset)
       statvalp = pstat_Global.tran_stats[tran_index] + offset;
       (*statvalp) += amount;
     }
+#endif /* SERVER_MODE */
 }
 
 /*
@@ -4441,7 +4442,9 @@ static void
 perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int offset)
 {
   UINT64 *statvalp = NULL;
+#if defined (SERVER_MODE)
   int tran_index;
+#endif /* SERVER_MODE */
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
 
@@ -4449,6 +4452,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int offset)
   statvalp = pstat_Global.global_stats + offset;
   ATOMIC_TAS_64 (statvalp, statval);
 
+#if defined (SERVER_MODE)
   /* Update local statistic */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
@@ -4458,6 +4462,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int offset)
       statvalp = pstat_Global.tran_stats[tran_index] + offset;
       (*statvalp) = statval;
     }
+#endif /* SERVER_MODE */
 }
 
 /*
@@ -4484,7 +4489,8 @@ perfmon_time_stat (THREAD_ENTRY * thread_p, int timediff, PERF_STAT_ID psid)
 
   metadata = &pstat_Metadata[psid];
   assert (metadata->valtype == PSTAT_COUNTER_TIMER_VALUE);
-
+  
+  perfmon_time_at_offset (thread_p, timediff, metadata->start_offset);
 }
 
 /*
@@ -4502,9 +4508,11 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int timediff, int offset)
 {
   /* Update global statistics */
   UINT64 *statvalp = NULL;
-  int tran_index;
   UINT64 timediff_uint64 = (UINT64) timediff;
   UINT64 max_time;
+#if defined (SERVER_MODE)
+  int tran_index;
+#endif /* SERVER_MODE */
 
   assert (offset >= 0 && offset < pstat_Global.n_stat_values);
 
@@ -4523,6 +4531,7 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int timediff, int offset)
     } while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff_uint64));
   /* Average is not computed here. */
 
+#if defined (SERVER_MODE)
   /* Update local statistic */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
@@ -4539,5 +4548,5 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int timediff, int offset)
 	}
       /* Average is not computed here. */
     }
+#endif /* SERVER_MODE */
 }
-#endif /* SERVER_MODE || SA_MODE */

@@ -2570,7 +2570,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  lock_update_non2pl_list (thread_p, res_ptr, check->tran_index, check->granted_mode);
 
 	  /* Record number of acquired locks */
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -2682,7 +2682,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  lock_update_non2pl_list (thread_p, res_ptr, check->tran_index, check->granted_mode);
 
 	  /* Record number of acquired locks */
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -2834,7 +2834,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
 	  lock_update_non2pl_list (thread_p, res_ptr, check->tran_index, check->granted_mode);
 
 	  /* Record number of acquired locks */
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -3342,7 +3342,7 @@ start:
 	  && lock_is_class_lock_escalated (lock_get_object_lock (class_oid, oid_Root_class_oid, tran_index),
 					   lock) == true)
 	{
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
 	  ret_val = LK_GRANTED;
 	  goto end;
 	}
@@ -3412,7 +3412,7 @@ start:
       res_ptr->total_holders_mode = lock;
 
       /* Record number of acquired locks */
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
+      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
       LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -3505,7 +3505,7 @@ start:
 	  lock_update_non2pl_list (thread_p, res_ptr, tran_index, lock);
 
 	  /* Record number of acquired locks */
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -3727,7 +3727,7 @@ lock_tran_lk_entry:
 	{
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	}
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
+      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
       *entry_addr_ptr = entry_ptr;
 
       ret_val = LK_GRANTED;
@@ -3915,7 +3915,7 @@ blocked:
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
   /* LK_CANWAIT(wait_msecs) : wait_msecs > 0 */
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LK_NUM_WAITED_ON_OBJECTS);
+  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
   LK_MSG_LOCK_WAITFOR (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -4007,7 +4007,7 @@ lock_conversion_treatement:
 	  break;
 	}
 
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_LK_NUM_CONVERTED_ON_OBJECTS);
+      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_CONVERTED_ON_OBJECTS);
 #if defined(LK_TRACE_OBJECT)
       LK_MSG_LOCK_CONVERTED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */

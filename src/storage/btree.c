@@ -6099,7 +6099,7 @@ xbtree_delete_with_unique_key (THREAD_ENTRY * thread_p, BTID * btid, OID * class
       if (error == NO_ERROR)
 	{
 	  /* monitor */
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_DELETES);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
 	}
 
       heap_scancache_end_modify (thread_p, &scan_cache);
@@ -7387,7 +7387,7 @@ end:
       pr_clear_value (&(env->pkeys_val[i]));
     }
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_GET_STATS);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_GET_STATS);
 
   return ret;
 
@@ -10762,7 +10762,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   pgbuf_set_dirty (thread_p, P, DONT_FREE);
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_MERGES);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_MERGES);
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
@@ -11252,7 +11252,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   right_header->node_level = -1;
   pgbuf_set_dirty (thread_p, right_pg, DONT_FREE);
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_MERGES);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_MERGES);
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
@@ -13824,7 +13824,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_SPLITS);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_SPLITS);
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
@@ -14688,7 +14688,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   pgbuf_set_dirty (thread_p, Q, DONT_FREE);
   pgbuf_set_dirty (thread_p, R, DONT_FREE);
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_SPLITS);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_SPLITS);
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, P);
@@ -14841,12 +14841,12 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE
 
 end:
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_UPDATES);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_UPDATES);
 
   return ret;
 
 exit_on_error:
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_UPDATES);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_UPDATES);
 
   assert_release (ret != NO_ERROR);
   return ret;
@@ -26898,7 +26898,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
       return error_code;
     }
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_INSERTS);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_INSERTS);
 
   if (unique != NULL)
     {
@@ -30619,7 +30619,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
       return error_code;
     }
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_DELETES);
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_DELETES);
 
   if (unique != NULL)
     {

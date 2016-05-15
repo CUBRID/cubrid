@@ -6501,7 +6501,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	  /* monitor */
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_ISCANS);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
 	}
       else if (scan_type == S_INDX_NODE_INFO_SCAN)
 	{
@@ -6512,7 +6512,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	  /* monitor */
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_ISCANS);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
 	}
       else			/* S_INDX_SCAN */
 	{
@@ -6536,7 +6536,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	      goto exit_on_error;
 	    }
 	  /* monitor */
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_ISCANS);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
 	}
       break;
 
@@ -6648,11 +6648,11 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	  if (curr_spec->access == SEQUENTIAL || curr_spec->access == SEQUENTIAL_RECORD_INFO
 	      || curr_spec->access == SEQUENTIAL_PAGE_SCAN)
 	    {
-	      mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_SSCANS);
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
 	    }
 	  else if (IS_ANY_INDEX_ACCESS (curr_spec->access))
 	    {
-	      mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_ISCANS);
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
 	    }
 	  if (curr_spec->parts != NULL)
 	    {
@@ -6666,7 +6666,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	case TARGET_CLASS_ATTR:
 	  break;
 	case TARGET_LIST:
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_LSCANS);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_LSCANS);
 	  break;
 	case TARGET_SHOWSTMT:
 	  /* do nothing */
@@ -6675,10 +6675,10 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	  /* currently do nothing */
 	  break;
 	case TARGET_SET:
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_SETSCANS);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SETSCANS);
 	  break;
 	case TARGET_METHOD:
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_METHSCANS);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
 	  break;
 	}
       scan_close_scan (thread_p, &curr_spec->s_id);
@@ -13181,7 +13181,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  return error;
 	}
       /* monitor */
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_UPDATES);
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_UPDATES);
       break;
 
     case DELETE_PROC:
@@ -13206,7 +13206,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  return error;
 	}
       /* monitor */
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_DELETES);
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
       break;
 
     case INSERT_PROC:
@@ -13231,7 +13231,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  return error;
 	}
       /* monitor */
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_INSERTS);
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_INSERTS);
       break;
 
     case DO_PROC:
@@ -13691,7 +13691,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    {
 	      func_vector[0] = (XSAL_SCAN_FUNC) qexec_merge_fnc;
 	      /* monitor */
-	      mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_MJOINS);
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_MJOINS);
 	    }
 	  else
 	    {
@@ -13713,7 +13713,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		    {
 		      func_vector[level] = (XSAL_SCAN_FUNC) qexec_execute_scan;
 		      /* monitor */
-		      mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_NLJOINS);
+		      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_NLJOINS);
 		    }
 		}
 	    }
@@ -13975,7 +13975,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       /* monitor */
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_SELECTS);
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SELECTS);
       break;
     }
 
@@ -15440,7 +15440,7 @@ qexec_free_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
       xasl_cache_entry_pool.free_list = CAST_BUFLEN (pent - xasl_cache_entry_pool.pool);
     }
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_PC_NUM_DELETE);
+  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
 
   return NO_ERROR;
 }				/* qexec_free_xasl_cache_ent() */
@@ -15489,7 +15489,7 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr, const OI
   /* look up the hash table with the key */
   ent = (XASL_CACHE_ENTRY *) mht_get (xasl_ent_cache.qstr_ht, &key);
   xasl_ent_cache.counter.lookup++;	/* counter */
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_PC_NUM_LOOKUP);
+  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_LOOKUP);
 
   if (ent)
     {
@@ -15558,12 +15558,12 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr, const OI
   if (ent)
     {
       xasl_ent_cache.counter.hit++;	/* counter */
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_PC_NUM_HIT);
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_HIT);
     }
   else
     {
       xasl_ent_cache.counter.miss++;	/* counter */
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_PC_NUM_MISS);
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_MISS);
     }
 
 end:
@@ -15683,7 +15683,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
        * We will refer to the LRU list of query string hash table to find out victims. 
        */
       xasl_ent_cache.counter.full++;	/* counter */
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_PC_NUM_FULL);
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_FULL);
 
       /* Number of entries to victimize. It will be one in normal case. */
       max_victim_count = (int) mht_count (xasl_ent_cache.qstr_ht) - xasl_ent_cache.max_entries + 1;
@@ -15871,7 +15871,7 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context,
   mnt_set_statistic (thread_p, mht_count (xasl_ent_cache.oid_ht), PSTAT_PC_NUM_CLASS_OID_HASH_ENTRIES);
 
   xasl_ent_cache.num++;
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_PC_NUM_ADD);
+  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_ADD);
 
 #if defined (SERVER_MODE)
   if (all_entries_are_fixed)
@@ -16381,7 +16381,7 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xas
 
   if (ent == NULL)
     {
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_PC_NUM_INVALID_XASL_ID);
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
     }
 
   return ent;
@@ -26646,14 +26646,14 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
     {
       xasl->list_id->tuple_cnt += xasl->proc.merge.update_xasl->list_id->tuple_cnt;
       /* monitor */
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_UPDATES);
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_UPDATES);
     }
 
   if (xasl->proc.merge.insert_xasl)
     {
       xasl->list_id->tuple_cnt += xasl->proc.merge.insert_xasl->list_id->tuple_cnt;
       /* monitor */
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_QM_NUM_INSERTS);
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_INSERTS);
     }
 
   /* end topop */

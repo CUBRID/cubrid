@@ -735,12 +735,12 @@ extern void perfmon_finalize (void);
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void xperfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void xperfmon_stop_watch (THREAD_ENTRY * thread_p);
+#endif /* SERVER_MODE || SA_MODE */
 
 extern void perfmon_add_stat (THREAD_ENTRY * thread_p, int amount, PERF_STAT_ID psid);
 extern void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid);
 extern void perfmon_set_stat (THREAD_ENTRY * thread_p, int statval, PERF_STAT_ID psid);
 extern void perfmon_time_stat (THREAD_ENTRY * thread_p, int timediff, PERF_STAT_ID psid);
-#endif /* SERVER_MODE || SA_MODE */
 
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */

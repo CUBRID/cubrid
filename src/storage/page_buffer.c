@@ -1536,7 +1536,7 @@ try_again:
       if (fetch_mode != NEW_PAGE)
 	{
 	  /* Record number of reads in statistics */
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_PB_NUM_IOREADS);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
 
 #if defined(ENABLE_SYSTEMTAP)
 	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -1757,7 +1757,7 @@ try_again:
 
       PGBUF_GET_PAGE_TYPE_FOR_STAT (pgptr, perf_page_type);
 
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_PB_NUM_FETCHES);
+      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FETCHES);
       if (request_mode == PGBUF_LATCH_READ)
 	{
 	  perf_latch_mode = PERF_HOLDER_LATCH_READ;
@@ -3085,7 +3085,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
   static THREAD_ENTRY *page_flush_thread = NULL;
 #endif /* SERVER_MODE */
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_PB_NUM_VICTIMS);
+  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_VICTIMS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
   er_log_debug (ARG_FILE_LINE, "start flush victim candidates\n");
@@ -3251,7 +3251,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 	      flushed_pages = (error == NO_ERROR) ? 1 : 0;
 	    }
 
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_PB_NUM_REPLACEMENTS);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_REPLACEMENTS);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3951,7 +3951,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	    }
 
 	  /* Record number of reads in statistics */
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_PB_NUM_IOREADS);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
 
 	  if (fileio_read_user_area (thread_p, fileio_get_volume_descriptor (vpid->volid), vpid->pageid, start_offset,
 				     length, area) == NULL)
@@ -4044,7 +4044,7 @@ pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offs
 	    }
 
 	  /* Record number of reads in statistics */
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_PB_NUM_IOWRITES);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 
 	  vol_fd = fileio_get_volume_descriptor (vpid->volid);
 	  if (fileio_write_user_area (thread_p, vol_fd, vpid->pageid, start_offset, length, area) == NULL)
@@ -7151,7 +7151,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 		      thrd_entry->next_wait_thrd = NULL;
 		      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 
-		      mnt_add_value_to_statistic (thread_p, 1, PSTAT_LK_NUM_WAITED_ON_PAGES);	/* monitoring */
+		      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_PAGES);	/* monitoring */
 		      return PGBUF_LOCK_WAITER;
 		    }
 		  prev_thrd_entry = thrd_entry;
@@ -7159,7 +7159,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
 		}
 	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
 	    }
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LK_NUM_WAITED_ON_PAGES);	/* monitoring */
+	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_WAITED_ON_PAGES);	/* monitoring */
 	  return PGBUF_LOCK_WAITER;
 	}
       cur_buffer_lock = cur_buffer_lock->lock_next;
@@ -7177,7 +7177,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
   pthread_mutex_unlock (&hash_anchor->hash_mutex);
 #endif /* SERVER_MODE */
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_LK_NUM_ACQUIRED_ON_PAGES);	/* monitoring */
+  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_PAGES);	/* monitoring */
   return PGBUF_LOCK_HOLDER;
 }
 
@@ -8755,7 +8755,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   logpb_flush_log_for_wal (thread_p, &iopage->prv.lsa);
 
   /* Record number of writes in statistics */
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_PB_NUM_IOWRITES);
+  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 
 #if defined(ENABLE_SYSTEMTAP)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -10397,7 +10397,7 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
 			IO_PAGESIZE) != NULL)
 	{
 	  *flushed = true;
-	  mnt_add_value_to_statistic (thread_p, 1, PSTAT_PB_NUM_IOWRITES);
+	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
 	  /* ignore error, just store it for Systemtap marker */
 	  error = ER_FAILED;
 	}

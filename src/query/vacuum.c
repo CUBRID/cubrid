@@ -1709,7 +1709,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_REL_VACUUMS);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_VACUUMS);
       break;
 
     case REC_BIGONE:
@@ -1737,7 +1737,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_BIG_VACUUMS);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_BIG_VACUUMS);
       break;
 
     case REC_HOME:
@@ -1777,7 +1777,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       helper->results[helper->n_bulk_vacuumed] = VACUUM_RECORD_DELETE_INSID_PREV_VER;
       helper->n_bulk_vacuumed++;
 
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_HOME_VACUUMS);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_VACUUMS);
       break;
 
     default:
@@ -1788,7 +1788,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 
   helper->n_vacuumed++;
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_INSID_VACUUMS);
+  perfmon_inc_stat (thread_p, PSTAT_HEAP_INSID_VACUUMS);
 
   /* Success. */
   return NO_ERROR;
@@ -1842,7 +1842,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
   if (helper->reusable)
     {
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_REMOVE_VACUUMS);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_REMOVE_VACUUMS);
     }
 
   if (helper->record_type != REC_HOME)
@@ -1887,7 +1887,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_REL_VACUUMS);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_VACUUMS);
       break;
 
     case REC_BIGONE:
@@ -1919,13 +1919,13 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_BIG_VACUUMS);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_BIG_VACUUMS);
       break;
 
     case REC_HOME:
       helper->n_bulk_vacuumed++;
 
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_HEAP_HOME_VACUUMS);
+      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_VACUUMS);
       break;
 
     default:
@@ -6521,7 +6521,7 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_
       /* log page is cached */
       memcpy (log_page_p, buffer_page_start_ptr, LOG_PAGESIZE);
 
-      mnt_add_value_to_statistic (thread_p, 1, PSTAT_VAC_NUM_PREFETCH_HITS_LOG_PAGES);
+      perfmon_inc_stat (thread_p, PSTAT_VAC_NUM_PREFETCH_HITS_LOG_PAGES);
     }
   else
 #endif /* SERVER_MODE */
@@ -6533,7 +6533,7 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_
 	}
     }
 
-  mnt_add_value_to_statistic (thread_p, 1, PSTAT_VAC_NUM_PREFETCH_REQUESTS_LOG_PAGES);
+  perfmon_inc_stat (thread_p, PSTAT_VAC_NUM_PREFETCH_REQUESTS_LOG_PAGES);
 
   return error;
 }

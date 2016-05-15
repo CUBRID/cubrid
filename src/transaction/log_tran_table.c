@@ -3162,7 +3162,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set
 	    {
 	      pgbuf_force_to_check_for_interrupts ();
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
-	      mnt_add_value_to_statistic (thread_p, 1, PSTAT_TRAN_NUM_INTERRUPTS);
+	      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
 	    }
 
 	  return true;
