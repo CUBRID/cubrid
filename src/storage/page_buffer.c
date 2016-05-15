@@ -1605,7 +1605,10 @@ try_again:
 	    }
 #endif /* NDEBUG */
 
-	  mnt_add_value_to_statistic_with_sort_stats_active (thread_p, 1, PSTAT_SORT_NUM_IO_PAGES);
+	  if (thread_get_sort_stats_active (thread_p))
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_IO_PAGES);
+	    }
 	}
       else
 	{
@@ -1633,7 +1636,10 @@ try_again:
 	      bufptr->iopage_buffer->iopage.prv.volid = -1;
 	    }
 
-	  mnt_add_value_to_statistic_with_sort_stats_active (thread_p, 1, PSTAT_SORT_NUM_DATA_PAGES);
+	  if (thread_get_sort_stats_active (thread_p))
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	    }
 	}
       buf_lock_acquired = true;
     }
@@ -3970,7 +3976,10 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 
       memcpy (area, (char *) pgptr + start_offset, length);
 
-      mnt_add_value_to_statistic_with_sort_stats_active (thread_p, 1, PSTAT_SORT_NUM_DATA_PAGES);
+      if (thread_get_sort_stats_active (thread_p))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	}
 
       /* release BCB_mutex */
       pthread_mutex_unlock (&bufptr->BCB_mutex);
