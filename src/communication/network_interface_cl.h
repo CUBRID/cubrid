@@ -240,7 +240,7 @@ extern int serial_get_next_value (DB_VALUE * value, OID * oid_p, int cached_num,
 extern int serial_get_current_value (DB_VALUE * value, OID * oid_p, int cached_num);
 extern int serial_decache (OID * oid);
 
-extern int mnt_server_start_stats (bool for_all_trans);
+extern int mnt_server_start_stats (void);
 extern int mnt_server_stop_stats (void);
 extern void mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats);
 extern void mnt_server_copy_global_stats (MNT_SERVER_EXEC_STATS * to_stats);

@@ -5276,7 +5276,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   if (trace_slow_msec >= 0 || trace_ioreads > 0)
     {
-      xmnt_server_start_stats (thread_p, false);
+      xperfmon_start_watch (thread_p);
       xmnt_server_copy_stats (thread_p, &base_stats);
 
       tsc_getticks (&start_tick);
@@ -5468,7 +5468,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      event_log_many_ioreads (thread_p, &info, response_time, &diff_stats);
 	    }
 
-	  xmnt_server_stop_stats (thread_p);
+	  xperfmon_stop_watch (thread_p);
 	}
 
       if (thread_p->event_stats.temp_expand_pages > 0)
@@ -6497,19 +6497,12 @@ sserial_decache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
 void
 smnt_server_start_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int success, for_all_trans;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  or_unpack_int (request, &for_all_trans);
+  xperfmon_start_watch (thread_p);
 
-  success = xmnt_server_start_stats (thread_p, (bool) for_all_trans);
-  if (success != NO_ERROR)
-    {
-      return_error_to_client (thread_p, rid);
-    }
-
-  (void) or_pack_int (reply, (int) success);
+  (void) or_pack_int (reply, NO_ERROR);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -6530,7 +6523,7 @@ smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  xmnt_server_stop_stats (thread_p);
+  xperfmon_stop_watch (thread_p);
   /* dummy reply message */
   (void) or_pack_int (reply, 1);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));

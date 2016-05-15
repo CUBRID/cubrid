@@ -1772,13 +1772,13 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       if (saved_is_stats_on == true)
 	{
-	  xmnt_server_stop_stats (thread_p);
+	  xperfmon_stop_watch (thread_p);
 	}
     }
   else if (xasl_trace == true)
     {
       thread_trace_on (thread_p);
-      xmnt_server_start_stats (thread_p, false);
+      xperfmon_start_watch (thread_p);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
 	{
@@ -2195,7 +2195,7 @@ end:
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
     {
-      xmnt_server_start_stats (thread_p, false);
+      xperfmon_start_watch (thread_p);
     }
 
 #if defined (SERVER_MODE)
@@ -2235,7 +2235,7 @@ exit_on_error:
 
   if (xasl_trace == true && saved_is_stats_on == false)
     {
-      xmnt_server_stop_stats (thread_p);
+      xperfmon_stop_watch (thread_p);
     }
 
   goto end;
@@ -2353,13 +2353,13 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
     {
       if (saved_is_stats_on == true)
 	{
-	  xmnt_server_stop_stats (thread_p);
+	  xperfmon_stop_watch (thread_p);
 	}
     }
   else if (xasl_trace == true)
     {
       thread_trace_on (thread_p);
-      xmnt_server_start_stats (thread_p, false);
+      xperfmon_start_watch (thread_p);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
 	{
@@ -2552,7 +2552,7 @@ end:
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
     {
-      xmnt_server_start_stats (thread_p, false);
+      xperfmon_start_watch (thread_p);
     }
 
 #if defined (SERVER_MODE)
@@ -2592,7 +2592,7 @@ exit_on_async_error:
 
   if (xasl_trace == true && saved_is_stats_on == false)
     {
-      xmnt_server_stop_stats (thread_p);
+      xperfmon_stop_watch (thread_p);
     }
 
   goto end;

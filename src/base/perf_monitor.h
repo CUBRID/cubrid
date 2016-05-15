@@ -732,6 +732,16 @@ extern int mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff, MNT_SERVER_E
 extern int perfmon_initialize (int num_trans);
 extern void perfmon_finalize (void);
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+extern void xperfmon_start_watch (THREAD_ENTRY * thread_p);
+extern void xperfmon_stop_watch (THREAD_ENTRY * thread_p);
+
+extern void perfmon_add_stat (THREAD_ENTRY * thread_p, int amount, PERF_STAT_ID psid);
+extern void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid);
+extern void perfmon_set_stat (THREAD_ENTRY * thread_p, int statval, PERF_STAT_ID psid);
+extern void perfmon_time_stat (THREAD_ENTRY * thread_p, int timediff, PERF_STAT_ID psid);
+#endif /* SERVER_MODE || SA_MODE */
+
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */
 typedef struct mnt_client_stat_info MNT_CLIENT_STAT_INFO;

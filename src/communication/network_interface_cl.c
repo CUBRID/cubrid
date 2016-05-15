@@ -8120,23 +8120,19 @@ serial_decache (OID * oid)
  * NOTE:
  */
 int
-mnt_server_start_stats (bool for_all_trans)
+mnt_server_start_stats (void)
 {
 #if defined(CS_MODE)
   int status = ER_FAILED;
   int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *request;
   char *reply;
 
-  request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  or_pack_int (request, for_all_trans);
   req_error =
-    net_client_request (NET_SERVER_MNT_SERVER_START_STATS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_MNT_SERVER_START_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+			NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &status);
@@ -8144,15 +8140,13 @@ mnt_server_start_stats (bool for_all_trans)
 
   return (status);
 #else /* CS_MODE */
-  int success = ER_FAILED;
-
   ENTER_SERVER ();
 
-  success = xmnt_server_start_stats (NULL, for_all_trans);
+  xperfmon_start_watch (NULL);
 
   EXIT_SERVER ();
 
-  return success;
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 
@@ -8185,7 +8179,7 @@ mnt_server_stop_stats (void)
 
   ENTER_SERVER ();
 
-  xmnt_server_stop_stats (NULL);
+  xperfmon_stop_watch (NULL);
 
   EXIT_SERVER ();
   return NO_ERROR;

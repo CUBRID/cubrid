@@ -87,10 +87,16 @@ struct pstat_global
 {
   int n_stat_values;
 
-  INT64 *global_stats;
+  UINT64 *global_stats;
 
   int n_trans;
-  INT64 **tran_stats;	    /* TODO: I don't see why we need to keep this... Is it relevant or ever used? */
+  UINT64 **tran_stats;	    /* TODO: I don't see why we need to keep this... Is it relevant or ever used? */
+  bool *is_watching;
+#if !defined (HAVE_ATOMIC_BUILTINS)
+  pthread_mutex_t watch_lock;
+#endif /* !HAVE_ATOMIC_BUILTINS */
+
+  INT32 n_watchers;
 
   bool initialized;
 };
@@ -101,6 +107,7 @@ PSTAT_GLOBAL pstat_Global =
 
     0,		    /* n_trans */
     NULL,	    /* tran_stats */
+    NULL,	    /* is_watching */
 
     false	    /* initialized */
   };
@@ -433,6 +440,22 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, "Count_get_oldest_mvcc_retry", NULL, NULL, NULL)
 };
 
+/* Count & timer values. */
+#define PSTAT_COUNTER_TIMER_COUNT_VALUE(startvalp) (startvalp)
+#define PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE(startvalp) ((startvalp) + 1)
+#define PSTAT_COUNTER_TIMER_MAX_TIME_VALUE(startvalp) ((startvalp) + 2)
+#define PSTAT_COUNTER_TIMER_AVG_TIME_VALUE(startvalp) ((startvalp) + 3)
+
+
+
+
+
+
+
+
+
+/* TODO: Remove following unused */
+
 static MNT_METADATA_EXEC_STATS metadata_stats[MNT_TOTAL_EXEC_STATS_COUNT];
 
 int ar_statistics_dim[] = { PERF_PAGE_FIX_COUNTERS, PERF_PAGE_PROMOTE_COUNTERS, PERF_PAGE_PROMOTE_COUNTERS,
@@ -522,6 +545,11 @@ int ar_statistics_dim[] = { PERF_PAGE_FIX_COUNTERS, PERF_PAGE_PROMOTE_COUNTERS, 
 	}												      \
     } while (0)
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+static void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int amount, int offset);
+static void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int offset);
+static void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int timediff, int offset);
+#endif /* SERVER_MODE || SA_MODE */
 
 static void mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats);
 static void mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats);
@@ -589,7 +617,7 @@ mnt_start_stats (bool for_all_trans)
 
   if (mnt_Iscollecting_stats != true)
     {
-      err = mnt_server_start_stats (for_all_trans);
+      err = mnt_server_start_stats ();
 
       if (err != ER_FAILED)
 	{
@@ -2119,77 +2147,6 @@ static struct mnt_server_table mnt_Server_table = {
   /* global_stats */
   NULL
 };
-
-/*
- * xmnt_server_start_stats - Start collecting server execution statistics
- *                           for the current transaction index
- *   return: NO_ERROR or ER_FAILED
- */
-int
-xmnt_server_start_stats (THREAD_ENTRY * thread_p, bool for_all_trans)
-{
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0);
-
-  if (tran_index >= mnt_Server_table.num_tran_indices)
-    {
-      return ER_FAILED;
-    }
-
-  if (mnt_Server_table.stats[tran_index].enable_local_stat == true)
-    {
-      return NO_ERROR;
-    }
-
-  memset (&mnt_Server_table.stats[tran_index], '\0', sizeof (MNT_SERVER_EXEC_STATS));
-  mnt_Server_table.stats[tran_index].enable_local_stat = true;
-
-#if defined (HAVE_ATOMIC_BUILTINS)
-  ATOMIC_INC_32 (&mnt_Num_tran_exec_stats, 1);
-#else
-  int rv = pthread_mutex_lock (&mnt_Num_tran_stats_lock);
-  mnt_Num_tran_exec_stats++;
-  pthread_mutex_unlock (&mnt_Num_tran_stats_lock);
-#endif
-
-  return NO_ERROR;
-}
-
-/*
- * xmnt_server_stop_stats - Stop collecting server execution statistics
- *                          for the current transaction index
- *   return: none
- */
-void
-xmnt_server_stop_stats (THREAD_ENTRY * thread_p)
-{
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0);
-
-  if (tran_index >= mnt_Server_table.num_tran_indices)
-    {
-      return;
-    }
-
-  if (mnt_Server_table.stats[tran_index].enable_local_stat == false)
-    {
-      return;
-    }
-
-  mnt_Server_table.stats[tran_index].enable_local_stat = false;
-
-#if defined (HAVE_ATOMIC_BUILTINS)
-  ATOMIC_INC_32 (&mnt_Num_tran_exec_stats, -1);
-#else
-  int rv = pthread_mutex_lock (&mnt_Num_tran_stats_lock);
-  mnt_Num_tran_exec_stats--;
-  pthread_mutex_unlock (&mnt_Num_tran_stats_lock);
-#endif
-}
 
 /*
  * xmnt_server_is_stats_on - Is collecting server execution statistics
@@ -4202,13 +4159,18 @@ perfmon_initialize (int num_trans)
     }
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+
+#if !defined (HAVE_ATOMIC_BUILTINS)
+  (void) pthread_mutex_init (&pstat_Global.watch_lock, NULL);
+#endif /* !HAVE_ATOMIC_BUILTINS */
+
   /* Allocate global stats. */
-  memsize = pstat_Global.n_stat_values * sizeof (INT64);
-  pstat_Global.global_stats = (INT64 *) malloc (memsize);
+  memsize = pstat_Global.n_stat_values * sizeof (UINT64);
+  pstat_Global.global_stats = (UINT64 *) malloc (memsize);
   if (pstat_Global.global_stats == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
   memset (pstat_Global.global_stats, 0, memsize);
 
@@ -4216,47 +4178,55 @@ perfmon_initialize (int num_trans)
     {
       /* TODO: Do we still need this? */
       pstat_Global.n_trans = num_trans;
-      memsize = pstat_Global.n_trans * sizeof (INT64 *);
-      pstat_Global.tran_stats = (INT64 **) malloc (memsize);
+      memsize = pstat_Global.n_trans * sizeof (UINT64 *);
+      pstat_Global.tran_stats = (UINT64 **) malloc (memsize);
       if (pstat_Global.tran_stats == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-	  free_and_init (pstat_Global.global_stats);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
 	}
       memsize = pstat_Global.n_trans * pstat_Global.n_stat_values * sizeof (INT64);
-      pstat_Global.tran_stats[0] = (INT64 *) malloc (memsize);
+      pstat_Global.tran_stats[0] = (UINT64 *) malloc (memsize);
       if (pstat_Global.tran_stats[0] == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-	  free_and_init (pstat_Global.global_stats);
-	  free_and_init (pstat_Global.tran_stats);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
 	}
       memset (pstat_Global.tran_stats[0], 0, memsize);
-      memsize = pstat_Global.n_stat_values * sizeof (INT64);
+      memsize = pstat_Global.n_stat_values * sizeof (UINT64);
       for (idx = 1; idx < pstat_Global.n_trans; idx++)
 	{
 	  pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + memsize * idx;
 	}
+
+      memsize = pstat_Global.n_trans * sizeof (bool);
+      pstat_Global.is_watching = (bool *) malloc (memsize);
+      if (pstat_Global.is_watching == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+	  goto error;
+	}
+      memset(pstat_Global.is_watching, 0, memsize);
     }
-#else /* !SERVER_MODE && !SA_MODE */ /* CS_MODE */
-  pstat_Global.global_stats = NULL;
-  pstat_Global.tran_stats = NULL;
-  pstat_Global.n_trans = 0;
-#endif	/* CS_MODE */
+
+  pstat_Global.n_watchers = 0;
 
   pstat_Global.initialized = true;
   return NO_ERROR;
+
+error:
+  perfmon_finalize ();
+  return ER_OUT_OF_VIRTUAL_MEMORY;
+
+#else /* !SERVER_MODE && !SA_MODE */ /* CS_MODE */
+  pstat_Global.initialized = true;
+  return NO_ERROR;
+#endif	/* CS_MODE */
 }
 
 void
 perfmon_finalize (void)
 {
-  if (!pstat_Global.initialized)
-    {
-      return;
-    }
   if (pstat_Global.tran_stats != NULL)
     {
       if (pstat_Global.tran_stats[0] != NULL)
@@ -4265,8 +4235,309 @@ perfmon_finalize (void)
 	}
       free_and_init (pstat_Global.tran_stats);
     }
+  if (pstat_Global.is_watching)
+    {
+      free_and_init (pstat_Global.is_watching);
+    }
   if (pstat_Global.global_stats != NULL)
     {
       free_and_init (pstat_Global.global_stats);
     }
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#if !defined (HAVE_ATOMIC_BUILTINS)
+  pthread_mutex_destroy (&pstat_Global.watch_lock);
+#endif /* !HAVE_ATOMIC_BUILTINS */
+#endif /* SERVER_MODE || SA_MODE */
 }
+
+/*
+ * Watcher section.
+ */
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/*
+ * xperfmon_start_watch () - Start watching performance statistics.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+void
+xperfmon_start_watch (THREAD_ENTRY * thread_p)
+{
+  int tran_index;
+
+  assert (pstat_Global.initialized);
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+
+  if (pstat_Global.is_watching[tran_index])
+    {
+      /* Already watching. */
+      return;
+    }
+
+#if defined (HAVE_ATOMIC_BUILTINS)
+  ATOMIC_INC_32 (&pstat_Global.n_watchers, 1);
+#else /* !HAVE_ATOMIC_BUILTINS */
+  pthread_mutex_lock (&pstat_Global.watch_lock);
+  pstat_Global.n_watchers++;
+  pthread_mutex_unlock (&pstat_Global.watch_lock);
+#endif /* !HAVE_ATOMIC_BUILTINS */
+
+  memset (pstat_Global.tran_stats[tran_index], 0, pstat_Global.n_stat_values * sizeof (UINT64));
+  pstat_Global.is_watching[tran_index] = true;
+}
+
+/*
+ * xperfmon_stop_watch () - Stop watching performance statistics.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+void
+xperfmon_stop_watch (THREAD_ENTRY * thread_p)
+{
+  int tran_index;
+
+  assert (pstat_Global.initialized);
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+
+  if (!pstat_Global.is_watching[tran_index])
+    {
+      /* Not watching. */
+      return;
+    }
+
+#if defined (HAVE_ATOMIC_BUILTINS)
+  ATOMIC_INC_32 (&pstat_Global.n_watchers, -1);
+#else /* !HAVE_ATOMIC_BUILTINS */
+  pthread_mutex_lock (&pstat_Global.watch_lock);
+  pstat_Global.n_watchers--;
+  pthread_mutex_unlock (&pstat_Global.watch_lock);
+#endif /* !HAVE_ATOMIC_BUILTINS */
+
+  pstat_Global.is_watching[tran_index] = false;
+}
+#endif /* SERVER_MODE || SA_MODE */
+
+/*
+ *  Add/set stats section.
+ */
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/*
+ * perfmon_add_stat () - Accumulate amount to statistic.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * amount (in)	 : Amount to add.
+ * psid (in)	 : Statistic ID.
+ */
+void
+perfmon_add_stat (THREAD_ENTRY * thread_p, int amount, PERF_STAT_ID psid)
+{
+  PSTAT_METADATA *metadata = NULL;
+
+  assert (pstat_Global.initialized);
+  assert (psid >= 0 && psid < PSTAT_COUNT);
+
+  if (pstat_Global.n_watchers <= 0)
+    {
+      /* No need to collect statistics since no one is interested. */
+      return;
+    }
+
+  metadata = &pstat_Metadata[psid];
+  assert (metadata->valtype == PSTAT_ACCUMULATE_SINGLE_VALUE);
+  
+  /* Update statistics. */
+  perfmon_add_at_offset (thread_p, amount, metadata->start_offset);
+}
+
+/*
+ * perfmon_inc_stat () - Increment statistic value by 1.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * psid (in)	 : Statistic ID.
+ */
+void
+perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
+{
+  perfmon_add_stat (thread_p, 1, psid);
+}
+
+/*
+ * perfmon_add_at_offset () - Add amount to statistic in global/local at offset.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * amount (in)	 : Amount to add.
+ * offset (in)	 : Offset to statistics value.
+ */
+static void
+perfmon_add_at_offset (THREAD_ENTRY * thread_p, int amount, int offset)
+{
+  UINT64 *statvalp = NULL;
+  int tran_index;
+
+  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+
+  /* Update global statistic. */
+  statvalp = pstat_Global.global_stats + offset;
+  ATOMIC_INC_64 (statvalp, amount);
+
+  /* Update local statistic */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+  if (pstat_Global.is_watching[tran_index])
+    {
+      assert (pstat_Global.tran_stats[tran_index] != NULL);
+      statvalp = pstat_Global.tran_stats[tran_index] + offset;
+      (*statvalp) += amount;
+    }
+}
+
+/*
+ * perfmon_set_stat () - Set statistic value.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * statval (in)  : New statistic value.
+ * psid (in)	 : Statistic ID.
+ */
+void
+perfmon_set_stat (THREAD_ENTRY * thread_p, int statval, PERF_STAT_ID psid)
+{
+  PSTAT_METADATA *metadata = NULL;
+
+  assert (pstat_Global.initialized);
+  assert (psid >= 0 && psid < PSTAT_COUNT);
+
+  if (pstat_Global.n_watchers <= 0)
+    {
+      /* No need to collect statistics since no one is interested. */
+      return;
+    }
+
+  metadata = &pstat_Metadata[psid];
+  assert (metadata->valtype == PSTAT_PEEK_SINGLE_VALUE);
+
+  perfmon_set_at_offset (thread_p, statval, metadata->start_offset);
+}
+
+/*
+ * perfmon_set_at_offset () - Set statistic value in global/local at offset.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * statval (in)  : New statistic value.
+ * offset (in)	 : Offset to statistic value.
+ */
+static void
+perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int offset)
+{
+  UINT64 *statvalp = NULL;
+  int tran_index;
+
+  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+
+  /* Update global statistic. */
+  statvalp = pstat_Global.global_stats + offset;
+  ATOMIC_TAS_64 (statvalp, statval);
+
+  /* Update local statistic */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+  if (pstat_Global.is_watching[tran_index])
+    {
+      assert (pstat_Global.tran_stats[tran_index] != NULL);
+      statvalp = pstat_Global.tran_stats[tran_index] + offset;
+      (*statvalp) = statval;
+    }
+}
+
+/*
+ * perfmon_time_stat () - Register statistic timer value. Counter, total time and maximum time are updated.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * timediff (in) : Time difference to register.
+ * psid (in)	 : Statistic ID.
+ */
+void
+perfmon_time_stat (THREAD_ENTRY * thread_p, int timediff, PERF_STAT_ID psid)
+{
+  PSTAT_METADATA *metadata = NULL;
+
+  assert (pstat_Global.initialized);
+  assert (psid >= 0 && psid < PSTAT_COUNT);
+
+  if (pstat_Global.n_watchers <= 0)
+    {
+      /* No need to collect statistics since no one is interested. */
+      return;
+    }
+
+  metadata = &pstat_Metadata[psid];
+  assert (metadata->valtype == PSTAT_COUNTER_TIMER_VALUE);
+
+}
+
+/*
+ * perfmon_time_at_offset () - Register timer statistics in global/local at offset.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * timediff (in) : Time difference to add to timer.
+ * offset (in)	 : Offset to timer values.
+ *
+ * NOTE: There will be three values modified: counter, total time and max time.
+ */
+static void
+perfmon_time_at_offset (THREAD_ENTRY * thread_p, int timediff, int offset)
+{
+  /* Update global statistics */
+  UINT64 *statvalp = NULL;
+  int tran_index;
+  UINT64 timediff_uint64 = (UINT64) timediff;
+  UINT64 max_time;
+
+  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+
+  /* Update global statistics. */
+  statvalp = pstat_Global.global_stats + offset;
+  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), 1);
+  ATOMIC_TAS_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff_uint64);
+  do 
+    {
+      max_time = ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), 0);
+      if (max_time >= timediff_uint64)
+	{
+	  /* No need to change max_time. */
+	  break;
+	}
+    } while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff_uint64));
+  /* Average is not computed here. */
+
+  /* Update local statistic */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+  if (pstat_Global.is_watching[tran_index])
+    {
+      assert (pstat_Global.tran_stats[tran_index] != NULL);
+      statvalp = pstat_Global.tran_stats[tran_index] + offset;
+      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += 1;
+      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff_uint64;
+      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
+      if (max_time < timediff_uint64)
+	{
+	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff_uint64;
+	}
+      /* Average is not computed here. */
+    }
+}
+#endif /* SERVER_MODE || SA_MODE */

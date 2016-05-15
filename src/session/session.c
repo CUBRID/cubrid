@@ -1005,11 +1005,11 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
     {
       if (DB_GET_INT (value) == 1)
 	{
-	  xmnt_server_start_stats (NULL, false);
+	  xperfmon_start_watch (NULL);
 	}
       else if (DB_GET_INT (value) == 0)
 	{
-	  xmnt_server_stop_stats (NULL);
+	  xperfmon_stop_watch (NULL);
 	}
     }
   else if (strncasecmp (name_str, "trace_plan", 10) == 0)
