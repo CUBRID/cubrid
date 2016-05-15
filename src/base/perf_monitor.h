@@ -530,7 +530,9 @@ typedef enum
   PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS,
   PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS,
   PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS,
-  PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS
+  PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS,
+
+  PSTAT_COUNT = PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS + 1
 } PERF_STAT_ID;
 
 
@@ -727,7 +729,7 @@ extern void mnt_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time,
 
 extern int mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff, MNT_SERVER_EXEC_STATS * new_stats,
 				MNT_SERVER_EXEC_STATS * old_stats);
-extern void build_metadata_exec_stats ();
+extern int perfmon_initialize ();
 
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */

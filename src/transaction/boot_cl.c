@@ -798,7 +798,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       error_code = ER_TZ_LOAD_ERROR;
       goto error;
     }
-  build_metadata_exec_stats ();
+
+  error_code = perfmon_initialize (0	/* No trans */);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   /* database name must be specified */
   if (client_credential->db_name == NULL)

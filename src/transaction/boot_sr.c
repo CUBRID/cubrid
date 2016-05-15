@@ -3208,7 +3208,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       error_code = ER_TZ_LOAD_ERROR;
       goto error;
     }
-  build_metadata_exec_stats ();
 
   if (msgcat_init () != NO_ERROR)
     {
@@ -3407,7 +3406,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #endif /* DIAG_DEVEL */
 #endif /* !SERVER_MODE */
 
-  mnt_server_init (MAX_NTRANS);
+  error_code = perfmon_initialize (MAX_NTRANS);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   /* 
    * Compose the full name of the database and find location of logs

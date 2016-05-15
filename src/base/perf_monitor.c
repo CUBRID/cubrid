@@ -85,17 +85,35 @@ static int rv;
 typedef struct pstat_global PSTAT_GLOBAL;
 struct pstat_global
 {
-  int stats_values_size;
+  int n_stat_values;
+
+  INT64 *global_stats;
+
+  int n_trans;
+  INT64 **tran_stats;	    /* TODO: I don't see why we need to keep this... Is it relevant or ever used? */
+
+  bool initialized;
 };
 PSTAT_GLOBAL pstat_Global =
   {
-    0		    /* stats_values_size */
+    0,		    /* stats_values_size */
+    NULL,	    /* global_stats */
+
+    0,		    /* n_trans */
+    NULL,	    /* tran_stats */
+
+    false	    /* initialized */
   };
 
 typedef enum
 {
   PSTAT_ACCUMULATE_SINGLE_VALUE,      /* A single accumulator value. */
   PSTAT_PEEK_SINGLE_VALUE,	      /* A single value peeked from database. */
+				      /* TODO: Currently this type of statistics is set by active workers. I think in
+				       *       most cases we could peek it at "compute". There can be two approaches:
+				       *       if f_compute is provided, it is read at compute phase. If not, the
+				       *       existing value is used and it must be set by active workers.
+				       */
   PSTAT_COUNTER_TIMER_VALUE,	      /* A counter/timer. Counter is incremented, timer is accumulated, max time
 				       * is compared with all registered timers and average time is computed.
 				       */
@@ -108,8 +126,8 @@ typedef enum
 } PSTAT_VALUE_TYPE;
 
 typedef void (*PSTAT_DUMP_FUNC) (FILE *);
-typedef void (*PSTAT_LOAD_FUNC) (void);
-typedef void (*PSTAT_COMPUTE_FUNC) (void);
+typedef int (*PSTAT_LOAD_FUNC) (void);
+typedef void (*PSTAT_COMPUTE_FUNC) (THREAD_ENTRY * thread_p);
 
 
 typedef struct pstat_metadata PSTAT_METADATA;
@@ -133,7 +151,8 @@ struct pstat_metadata
 #define PSTAT_VALUE_CUSTOM	      0x00000001
 
 #define PSTAT_METADATA_INIT_SINGLE_ACC(id, name) { id, name, PSTAT_ACCUMULATE_SINGLE_VALUE, 0, 0, NULL, NULL, NULL }
-#define PSTAT_METADATA_INIT_SINGLE_PEEK(id, name) { id, name, PSTAT_PEEK_SINGLE_VALUE, 0, 0, NULL, NULL, NULL }
+#define PSTAT_METADATA_INIT_SINGLE_PEEK(id, name, f_compute) \
+  { id, name, PSTAT_PEEK_SINGLE_VALUE, 0, 0, NULL, NULL, f_compute }
 #define PSTAT_METADATA_INIT_COUNTER_TIMER(id, name) { id, name, PSTAT_COUNTER_TIMER_VALUE, 0, 0, NULL, NULL, NULL }
 #define PSTAT_METADATA_INIT_COMPUTED_RATIO(id, name, f_compute) \
   { id, name, PSTAT_COMPUTED_RATIO_VALUE, 0, 0, NULL, NULL, f_compute }
@@ -160,14 +179,14 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_HASH_ANCHOR_WAITS, "Num_data_page_hash_anchor_waits"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_TIME_HASH_ANCHOR_WAIT, "Time_data_page_hash_anchor_wait"),
   /* peeked stats */
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_FIXED_CNT, "Num_data_page_fixed"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_DIRTY_CNT, "Num_data_page_dirty"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_LRU1_CNT, "Num_data_page_lru1"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_LRU2_CNT, "Num_data_page_lru2"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AIN_CNT, "Num_data_page_ain"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_DEALLOC_CNT, "Num_data_page_avoid_dealloc"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_VICTIM_CAND_CNT, "Num_data_page_victim_cand"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_FIXED_CNT, "Num_data_page_fixed", NULL),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_DIRTY_CNT, "Num_data_page_dirty", NULL),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_LRU1_CNT, "Num_data_page_lru1", NULL),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_LRU2_CNT, "Num_data_page_lru2", NULL),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AIN_CNT, "Num_data_page_ain", NULL),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_DEALLOC_CNT, "Num_data_page_avoid_dealloc", NULL),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim", NULL),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_VICTIM_CAND_CNT, "Num_data_page_victim_cand", NULL),
 
   /* Execution statistics for the log manager */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_FETCHES, "Num_log_page_fetches"),
@@ -255,7 +274,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HF_NUM_STATS_MAXED, "Num_heap_stats_bestspace_maxed"),
 
   /* HA replication delay */
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HA_REPL_DELAY, "Time_ha_replication_delay"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HA_REPL_DELAY, "Time_ha_replication_delay", NULL),
 
   /* Execution statistics for Plan cache */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PC_NUM_ADD, "Num_plan_cache_add"),
@@ -265,9 +284,10 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PC_NUM_FULL, "Num_plan_cache_full"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PC_NUM_DELETE, "Num_plan_cache_delete"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PC_NUM_INVALID_XASL_ID, "Num_plan_cache_invalid_xasl_id"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PC_NUM_QUERY_STRING_HASH_ENTRIES, "Num_plan_cache_query_string_hash_entries"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PC_NUM_XASL_ID_HASH_ENTRIES, "Num_plan_cache_xasl_id_hash_entries"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PC_NUM_CLASS_OID_HASH_ENTRIES, "Num_plan_cache_class_oid_hash_entries"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PC_NUM_QUERY_STRING_HASH_ENTRIES, "Num_plan_cache_query_string_hash_entries",
+				   NULL),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PC_NUM_XASL_ID_HASH_ENTRIES, "Num_plan_cache_xasl_id_hash_entries", NULL),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PC_NUM_CLASS_OID_HASH_ENTRIES, "Num_plan_cache_class_oid_hash_entries", NULL),
 
   /* Vacuum process log section. */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_VAC_NUM_VACUUMED_LOG_PAGES, "Num_vacuum_log_pages_vacuumed"),
@@ -393,20 +413,21 @@ PSTAT_METADATA pstat_Metadata[] = {
   /* Array type statistics */
   /* TODO: add callback functions. */
   /* TODO: I don't think all that follows is array type... */
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_COUNTERS, "Num_data_page_promote_ext", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_TIME_COUNTERS, "Num_data_page_promote_time_ext", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_UNFIX_COUNTERS, "Num_data_page_unfix_ext", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_LOCK_TIME_COUNTERS, "Time_data_page_lock_acquire_time", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_HOLD_TIME_COUNTERS, "Time_data_page_hold_acquire_time", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_TIME_COUNTERS, "Time_data_page_fix_acquire_time", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_MVCC_SNAPSHOT_COUNTERS, "Num_mvcc_snapshot_ext", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS, "Time_obj_lock_acquire_time", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_SNAPSHOT_TIME_COUNTERS, "Time_get_snapshot_acquire_time", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS, "Count_get_snapshot_retry", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS, "Time_tran_complete_time", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, "Time_get_oldest_mvcc_acquire_time", NULL, NULL),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, "Count_get_oldest_mvcc_retry", NULL, NULL)
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_COUNTERS, "Num_data_page_fix_ext", NULL, NULL, NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_COUNTERS, "Num_data_page_promote_ext", NULL, NULL, NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_PROMOTE_TIME_COUNTERS, "Num_data_page_promote_time_ext", NULL, NULL, NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_UNFIX_COUNTERS, "Num_data_page_unfix_ext", NULL, NULL, NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_LOCK_TIME_COUNTERS, "Time_data_page_lock_acquire_time", NULL, NULL, NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_HOLD_TIME_COUNTERS, "Time_data_page_hold_acquire_time", NULL, NULL, NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_PBX_FIX_TIME_COUNTERS, "Time_data_page_fix_acquire_time", NULL, NULL, NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_MVCC_SNAPSHOT_COUNTERS, "Num_mvcc_snapshot_ext", NULL, NULL, NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS, "Time_obj_lock_acquire_time", NULL, NULL, NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_SNAPSHOT_TIME_COUNTERS, "Time_get_snapshot_acquire_time", NULL, NULL, NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_SNAPSHOT_RETRY_COUNTERS, "Count_get_snapshot_retry", NULL, NULL, NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_TRAN_COMPLETE_TIME_COUNTERS, "Time_tran_complete_time", NULL, NULL, NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_OLDEST_MVCC_TIME_COUNTERS, "Time_get_oldest_mvcc_acquire_time", NULL, NULL,
+			       NULL),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_LOG_OLDEST_MVCC_RETRY_COUNTERS, "Count_get_oldest_mvcc_retry", NULL, NULL, NULL)
 };
 
 static MNT_METADATA_EXEC_STATS metadata_stats[MNT_TOTAL_EXEC_STATS_COUNT];
@@ -4181,18 +4202,20 @@ perf_stat_dump_snapshot_array_stat (const UINT64 * stats_ptr, char *s, int *rema
  * 
  */
 int
-perfmon_initialize ()
+perfmon_initialize (int num_trans)
 {
   int idx = 0;
-  pstat_Global.stats_values_size = 0;
+  int memsize = 0;
+  pstat_Global.n_stat_values = 0;
 
   for (idx = 0; idx < PSTAT_COUNT; idx++)
     {
-      pstat_Metadata[idx].start_offset = pstat_Global.stats_values_size;
+      pstat_Metadata[idx].start_offset = pstat_Global.n_stat_values;
       switch (pstat_Metadata[idx].valtype)
 	{
 	case PSTAT_ACCUMULATE_SINGLE_VALUE:
 	case PSTAT_COMPUTED_RATIO_VALUE:
+	case PSTAT_PEEK_SINGLE_VALUE:
 	  /* Only one value stored. */
 	  pstat_Metadata[idx].n_vals = 1;
 	  break;
@@ -4216,37 +4239,51 @@ perfmon_initialize ()
 	      return pstat_Metadata[idx].n_vals;
 	    }
 	}
-    }
-  int simple_stats_count = MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + MNT_COUNT_OF_SERVER_EXEC_CALC_STATS;
-  int non_ac[] = { PSTAT_PB_FIXED_CNT, PSTAT_PB_DIRTY_CNT, PSTAT_PB_LRU1_CNT, PSTAT_PB_LRU2_CNT,
-    PSTAT_PB_AIN_CNT, PSTAT_PB_AVOID_DEALLOC_CNT, PSTAT_PB_VICTIM_CAND_CNT,
-    PSTAT_HA_REPL_DELAY, PSTAT_PC_NUM_QUERY_STRING_HASH_ENTRIES, PSTAT_PC_NUM_XASL_ID_HASH_ENTRIES,
-    PSTAT_PC_NUM_CLASS_OID_HASH_ENTRIES
-  };
-
-  for (i = 0; i < simple_stats_count; i++)
-    {
-      metadata_stats[i].statistic_size = 1;
+      pstat_Global.n_stat_values += pstat_Metadata[idx].n_vals;
     }
 
-  for (i = simple_stats_count; i < MNT_TOTAL_EXEC_STATS_COUNT; i++)
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  /* Allocate global stats. */
+  memsize = pstat_Global.n_stat_values * sizeof (INT64);
+  pstat_Global.global_stats = (INT64 *) malloc (memsize);
+  if (pstat_Global.global_stats == NULL)
     {
-      metadata_stats[i].statistic_size = ar_statistics_dim[i - simple_stats_count];
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  memset (pstat_Global.global_stats, 0, memsize);
 
-  metadata_stats[0].statistic_offset = 0;
-  for (i = 1; i < MNT_TOTAL_EXEC_STATS_COUNT; i++)
+  /* TODO: Do we still need this? */
+  pstat_Global.n_trans = num_trans;
+  memsize = pstat_Global.n_trans * sizeof (INT64 *);
+  pstat_Global.tran_stats = (INT64 **) malloc (memsize);
+  if (pstat_Global.tran_stats == NULL)
     {
-      metadata_stats[i].statistic_offset = metadata_stats[i - 1].statistic_offset + metadata_stats[i].statistic_size;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      free_and_init (pstat_Global.global_stats);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  memsize = pstat_Global.n_trans * pstat_Global.n_stat_values * sizeof (INT64);
+  pstat_Global.tran_stats[0] = (INT64 *) malloc (memsize);
+  if (pstat_Global.tran_stats[0] == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+      free_and_init (pstat_Global.global_stats);
+      free_and_init (pstat_Global.tran_stats);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (pstat_Global.tran_stats[0], 0, memsize);
+  memsize = pstat_Global.n_stat_values * sizeof (INT64);
+  for (idx = 1; idx < pstat_Global.n_trans; idx++)
+    {
+      pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + memsize * idx;
+    }
+#else /* !SERVER_MODE && !SA_MODE */ /* CS_MODE */
+  pstat_Global.global_stats = NULL;
+  pstat_Global.tran_stats = NULL;
+  pstat_Global.n_trans = 0;
+#endif	/* CS_MODE */
 
-  for (i = 0; i < MNT_TOTAL_EXEC_STATS_COUNT; i++)
-    {
-      metadata_stats[i].accumulative = true;
-    }
-
-  for (i = 0; i < sizeof (non_ac) / sizeof (*non_ac); i++)
-    {
-      metadata_stats[non_ac[i]].accumulative = false;
-    }
+  pstat_Global.initialized = true;
+  return NO_ERROR;
 }
