@@ -2270,18 +2270,6 @@ mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream)
 }
 #endif
 
-void
-mnt_x_set_statistic (THREAD_ENTRY * thread_p, const int value, const int statistic_id)
-{
-  MNT_SERVER_EXEC_STATS *stats;
-
-  stats = mnt_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      SET_STATS (stats, statistic_id, value);
-    }
-}
-
 UINT64
 mnt_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
 {

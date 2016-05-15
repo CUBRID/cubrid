@@ -936,9 +936,6 @@ extern int mnt_Num_tran_exec_stats;
  * Statistics at file io level
  */
 
-#define mnt_set_statistic(thread_p, value, statistic_id) \
-  mnt_x_set_statistic (thread_p, value, statistic_id)
-
 #define mnt_add_in_statistics_array(thread_p, value, statistic_id) \
   mnt_x_add_in_statistics_array (thread_p, value, statistic_id)
 
@@ -1028,7 +1025,6 @@ extern int mnt_Num_tran_exec_stats;
           #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 
 #else /* SERVER_MODE || SA_MODE */
-#define mnt_set_statistic(thread_p, value, statistic_id)
 #define mnt_add_in_statistics_array (thread_p, value, statistic_id)
 
 #define mnt_lk_waited_time_on_objects(thread_p, lock_mode, time_usec)
