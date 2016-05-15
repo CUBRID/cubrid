@@ -4123,7 +4123,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 
       if (log_Gl.prior_info.list_size >= LOG_PRIOR_LSA_LIST_MAX_SIZE ())
 	{
-	  mnt_x_add_value_to_statistic (thread_p, 1, PSTAT_PRIOR_LSA_LIST_MAXED);
+	  perfmon_inc_stat (thread_p, PSTAT_PRIOR_LSA_LIST_MAXED);
 
 #if defined(SERVER_MODE)
 	  if (!log_is_in_crash_recovery ())
@@ -7892,7 +7892,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    */
 #endif /* SERVER_MODE */
 
-  mnt_x_add_value_to_statistic (thread_p, 1, PSTAT_LOG_NUM_START_CHECKPOINTS);
+  perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_START_CHECKPOINTS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_STARTED, 2, log_Gl.hdr.chkpt_lsa.pageid,
 	  log_Gl.chkpt_redo_lsa.pageid);

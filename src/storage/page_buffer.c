@@ -9921,7 +9921,7 @@ pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     }
 
   /* Record number of dirties in statistics */
-  mnt_x_add_value_to_statistic (thread_p, 1, PSTAT_PB_NUM_DIRTIES);
+  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_DIRTIES);
 }
 
 /*

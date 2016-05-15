@@ -6770,7 +6770,7 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr, VPID * 
 
   pgbuf_unfix_and_init (thread_p, allocset_pgptr);
 
-  mnt_x_add_value_to_statistic (thread_p, npages, PSTAT_FILE_NUM_PAGE_ALLOCS);
+  perfmon_add_stat (thread_p, npages, PSTAT_FILE_NUM_PAGE_ALLOCS);
 
   return answer;
 

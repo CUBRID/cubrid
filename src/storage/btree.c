@@ -16992,7 +16992,7 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
   else
     {
       /* resume search */
-      mnt_x_add_value_to_statistic (thread_p, 1, PSTAT_BT_NUM_RESUMES);
+      perfmon_inc_stat (thread_p, PSTAT_BT_NUM_RESUMES);
 
       error_code = btree_range_scan_resume (thread_p, bts);
       if (error_code != NO_ERROR)
