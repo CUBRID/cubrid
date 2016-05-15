@@ -13934,7 +13934,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  /* skip post processing for empty list file */
 
 	  /* monitor */
-	  mnt_add_value_to_statistic (thread_p, 1, QM_NUM_SELECTS);
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SELECTS);
 	  break;
 	}
 #endif

@@ -2271,21 +2271,6 @@ mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream)
 #endif
 
 void
-mnt_x_add_value_to_statistic (THREAD_ENTRY * thread_p, const int value, const int statistic_id)
-{
-  if (mnt_Num_tran_exec_stats > 0)
-    {
-      MNT_SERVER_EXEC_STATS *stats;
-
-      stats = mnt_server_get_stats (thread_p);
-      if (stats != NULL)
-	{
-	  ADD_STATS (stats, statistic_id, value);
-	}
-    }
-}
-
-void
 mnt_x_set_statistic (THREAD_ENTRY * thread_p, const int value, const int statistic_id)
 {
   MNT_SERVER_EXEC_STATS *stats;

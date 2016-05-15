@@ -936,9 +936,6 @@ extern int mnt_Num_tran_exec_stats;
  * Statistics at file io level
  */
 
-#define mnt_add_value_to_statistic(thread_p, value, statistic_id) \
-  mnt_x_add_value_to_statistic (thread_p, value, statistic_id)
-
 #define mnt_set_statistic(thread_p, value, statistic_id) \
   mnt_x_set_statistic (thread_p, value, statistic_id)
 
@@ -1007,7 +1004,6 @@ extern int mnt_Num_tran_exec_stats;
           #if defined(ENABLE_UNUSED_FUNCTION)
           extern void mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream);
           #endif
-          extern void mnt_x_add_value_to_statistic (THREAD_ENTRY * thread_p, const int value, const int statistic_id);
           extern void mnt_x_set_value_to_statistic (THREAD_ENTRY * thread_p, const int value, const int statistic_id);
           extern UINT64 mnt_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
           extern void mnt_x_add_in_statistics_array (THREAD_ENTRY * thread_p, UINT64 value, const int statistic_id);
@@ -1032,7 +1028,6 @@ extern int mnt_Num_tran_exec_stats;
           #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT */
 
 #else /* SERVER_MODE || SA_MODE */
-#define mnt_add_value_to_statistic(thread_p, value, statistic_id)
 #define mnt_set_statistic(thread_p, value, statistic_id)
 #define mnt_add_in_statistics_array (thread_p, value, statistic_id)
 
