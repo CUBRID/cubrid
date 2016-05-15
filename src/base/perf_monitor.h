@@ -729,7 +729,8 @@ extern void mnt_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time,
 
 extern int mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff, MNT_SERVER_EXEC_STATS * new_stats,
 				MNT_SERVER_EXEC_STATS * old_stats);
-extern int perfmon_initialize ();
+extern int perfmon_initialize (int num_trans);
+extern void perfmon_finalize (void);
 
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */
@@ -997,8 +998,6 @@ extern int mnt_Num_tran_exec_stats;
 
           extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
 
-          extern int mnt_server_init (int num_tran_indices);
-          extern void mnt_server_final (void);
           #if defined(ENABLE_UNUSED_FUNCTION)
           extern void mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream);
           #endif

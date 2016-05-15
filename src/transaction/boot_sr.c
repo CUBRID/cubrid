@@ -4776,7 +4776,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   catalog_finalize ();
   qmgr_finalize (thread_p);
   (void) heap_manager_finalize ();
-  mnt_server_final ();
+  perfmon_finalize ();
   fileio_dismount_all (thread_p);
   disk_goodvol_decache (thread_p);
   boot_server_status (BOOT_SERVER_DOWN);

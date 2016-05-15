@@ -125,12 +125,15 @@ typedef enum
 				       */
 } PSTAT_VALUE_TYPE;
 
-typedef void (*PSTAT_DUMP_FUNC) (FILE *);
-typedef int (*PSTAT_LOAD_FUNC) (void);
-typedef void (*PSTAT_COMPUTE_FUNC) (THREAD_ENTRY * thread_p);
-
-
+/* PSTAT_METADATA
+ * This structure will keep meta-data information on each statistic we are monitoring.
+ */
 typedef struct pstat_metadata PSTAT_METADATA;
+
+typedef void (*PSTAT_DUMP_FUNC) (FILE *, PSTAT_METADATA * metadata, INT64 * stat_vals);
+typedef int (*PSTAT_LOAD_FUNC) (void);
+typedef void (*PSTAT_COMPUTE_FUNC) (THREAD_ENTRY * thread_p, PSTAT_METADATA * metadata, INT64 * stat_vals);
+
 struct pstat_metadata
 {
   /* These members must be set. */
@@ -2116,59 +2119,6 @@ static struct mnt_server_table mnt_Server_table = {
   /* global_stats */
   NULL
 };
-
-/*
- * mnt_server_init - Initialize monitoring resources in the server
- *   return: NO_ERROR or ER_FAILED
- *   num_tran_indices(in): maximum number of know transaction indices
- */
-int
-mnt_server_init (int num_tran_indices)
-{
-  mnt_Server_table.num_tran_indices = num_tran_indices;
-  mnt_Num_tran_exec_stats = 0;
-
-  mnt_Server_table.stats = malloc (num_tran_indices * sizeof (MNT_SERVER_EXEC_STATS));
-
-  if (mnt_Server_table.stats == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  mnt_Server_table.global_stats = malloc (sizeof (MNT_SERVER_EXEC_STATS));
-
-  if (mnt_Server_table.global_stats == NULL)
-    {
-      free_and_init (mnt_Server_table.stats);
-      return ER_FAILED;
-    }
-
-  memset (mnt_Server_table.stats, 0, sizeof (MNT_SERVER_EXEC_STATS) * num_tran_indices);
-
-  memset (mnt_Server_table.global_stats, 0, sizeof (MNT_SERVER_EXEC_STATS));
-
-  return NO_ERROR;
-}
-
-/*
- * mnt_server_final - Terminate monitoring resources in the server
- *   return: none
- */
-void
-mnt_server_final (void)
-{
-  if (mnt_Server_table.stats != NULL)
-    {
-      free_and_init (mnt_Server_table.stats);
-    }
-  if (mnt_Server_table.global_stats != NULL)
-    {
-      free_and_init (mnt_Server_table.global_stats);
-    }
-
-  mnt_Server_table.num_tran_indices = 0;
-  mnt_Num_tran_exec_stats = 0;
-}
 
 /*
  * xmnt_server_start_stats - Start collecting server execution statistics
@@ -4197,9 +4147,10 @@ perf_stat_dump_snapshot_array_stat (const UINT64 * stats_ptr, char *s, int *rema
 }
 
 /*
- * perfmnt_initialize () - Computes the metadata values
+ * perfmnt_initialize () - Computes the metadata values & allocates/initialzes global/transaction statistics values.
  *
- * 
+ * return	  : NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY.
+ * num_trans (in) : For server/stand-alone mode to allocate transactions.
  */
 int
 perfmon_initialize (int num_trans)
@@ -4214,8 +4165,13 @@ perfmon_initialize (int num_trans)
       switch (pstat_Metadata[idx].valtype)
 	{
 	case PSTAT_ACCUMULATE_SINGLE_VALUE:
-	case PSTAT_COMPUTED_RATIO_VALUE:
 	case PSTAT_PEEK_SINGLE_VALUE:
+	  /* Only one value stored. */
+	  pstat_Metadata[idx].n_vals = 1;
+	  break;
+	case PSTAT_COMPUTED_RATIO_VALUE:
+	  /* Debug check. */
+	  assert (pstat_Metadata[idx].f_compute != NULL);
 	  /* Only one value stored. */
 	  pstat_Metadata[idx].n_vals = 1;
 	  break;
@@ -4238,6 +4194,9 @@ perfmon_initialize (int num_trans)
 	      ASSERT_ERROR ();
 	      return pstat_Metadata[idx].n_vals;
 	    }
+	  /* Debug check: we should have dump/compute too. */
+	  assert (pstat_Metadata[idx].f_dump != NULL);
+	  assert (pstat_Metadata[idx].f_compute != NULL);
 	}
       pstat_Global.n_stat_values += pstat_Metadata[idx].n_vals;
     }
@@ -4253,30 +4212,33 @@ perfmon_initialize (int num_trans)
     }
   memset (pstat_Global.global_stats, 0, memsize);
 
-  /* TODO: Do we still need this? */
-  pstat_Global.n_trans = num_trans;
-  memsize = pstat_Global.n_trans * sizeof (INT64 *);
-  pstat_Global.tran_stats = (INT64 **) malloc (memsize);
-  if (pstat_Global.tran_stats == NULL)
+  if (num_trans > 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-      free_and_init (pstat_Global.global_stats);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  memsize = pstat_Global.n_trans * pstat_Global.n_stat_values * sizeof (INT64);
-  pstat_Global.tran_stats[0] = (INT64 *) malloc (memsize);
-  if (pstat_Global.tran_stats[0] == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-      free_and_init (pstat_Global.global_stats);
-      free_and_init (pstat_Global.tran_stats);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  memset (pstat_Global.tran_stats[0], 0, memsize);
-  memsize = pstat_Global.n_stat_values * sizeof (INT64);
-  for (idx = 1; idx < pstat_Global.n_trans; idx++)
-    {
-      pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + memsize * idx;
+      /* TODO: Do we still need this? */
+      pstat_Global.n_trans = num_trans;
+      memsize = pstat_Global.n_trans * sizeof (INT64 *);
+      pstat_Global.tran_stats = (INT64 **) malloc (memsize);
+      if (pstat_Global.tran_stats == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+	  free_and_init (pstat_Global.global_stats);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memsize = pstat_Global.n_trans * pstat_Global.n_stat_values * sizeof (INT64);
+      pstat_Global.tran_stats[0] = (INT64 *) malloc (memsize);
+      if (pstat_Global.tran_stats[0] == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
+	  free_and_init (pstat_Global.global_stats);
+	  free_and_init (pstat_Global.tran_stats);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memset (pstat_Global.tran_stats[0], 0, memsize);
+      memsize = pstat_Global.n_stat_values * sizeof (INT64);
+      for (idx = 1; idx < pstat_Global.n_trans; idx++)
+	{
+	  pstat_Global.tran_stats[idx] = pstat_Global.tran_stats[0] + memsize * idx;
+	}
     }
 #else /* !SERVER_MODE && !SA_MODE */ /* CS_MODE */
   pstat_Global.global_stats = NULL;
@@ -4286,4 +4248,25 @@ perfmon_initialize (int num_trans)
 
   pstat_Global.initialized = true;
   return NO_ERROR;
+}
+
+void
+perfmon_finalize (void)
+{
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
+  if (pstat_Global.tran_stats != NULL)
+    {
+      if (pstat_Global.tran_stats[0] != NULL)
+	{
+	  free_and_init (pstat_Global.tran_stats[0]);
+	}
+      free_and_init (pstat_Global.tran_stats);
+    }
+  if (pstat_Global.global_stats != NULL)
+    {
+      free_and_init (pstat_Global.global_stats);
+    }
 }

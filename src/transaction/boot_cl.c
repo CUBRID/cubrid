@@ -1568,6 +1568,7 @@ boot_client_all_finalize (bool is_er_final)
 
       locator_free_areas ();
       sysprm_final ();
+      perfmon_finalize ();
       area_final ();
 
       msgcat_final ();
