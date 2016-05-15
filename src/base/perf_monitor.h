@@ -435,53 +435,34 @@ typedef enum
   PSTAT_HEAP_VACUUM_EXECUTE,
   PSTAT_HEAP_VACUUM_LOG,
 
-  /* B-tree op counters. */
-  PSTAT_BT_FIND_UNIQUE_CNT,
-  PSTAT_BT_RANGE_SEARCH_CNT,
-  PSTAT_BT_INSERT_CNT,
-  PSTAT_BT_DELETE_CNT,
-  PSTAT_BT_MVCC_DELETE_CNT,
-  PSTAT_BT_MARK_DELETE_CNT,
-  PSTAT_BT_UNDO_INSERT_CNT,
-  PSTAT_BT_UNDO_DELETE_CNT,
-  PSTAT_BT_UNDO_MVCC_DELETE_CNT,
-  PSTAT_BT_VACUUM_CNT,
-  PSTAT_BT_VACUUM_INSID_CNT,
-  PSTAT_BT_FIX_OVF_OIDS_CNT,
-  PSTAT_BT_UNIQUE_RLOCKS_CNT,
-  PSTAT_BT_UNIQUE_WLOCKS_CNT,
-
-  /* B-tree op timers. */
-  PSTAT_BT_FIND_UNIQUE,
-  PSTAT_BT_RANGE_SEARCH,
-  PSTAT_BT_INSERT,
-  PSTAT_BT_DELETE,
-  PSTAT_BT_MVCC_DELETE,
-  PSTAT_BT_MARK_DELETE,
-  PSTAT_BT_UNDO_INSERT,
-  PSTAT_BT_UNDO_DELETE,
-  PSTAT_BT_UNDO_MVCC_DELETE,
-  PSTAT_BT_VACUUM,
-  PSTAT_BT_VACUUM_INSID,
-
-  /* B-tree traversal timers. */
-  PSTAT_BT_TRAVERSE,
-  PSTAT_BT_FIND_UNIQUE_TRAVERSE,
-  PSTAT_BT_RANGE_SEARCH_TRAVERSE,
-  PSTAT_BT_INSERT_TRAVERSE,
-  PSTAT_BT_DELETE_TRAVERSE,
-  PSTAT_BT_MVCC_DELETE_TRAVERSE,
-  PSTAT_BT_MARK_DELETE_TRAVERSE,
-  PSTAT_BT_UNDO_INSERT_TRAVERSE,
-  PSTAT_BT_UNDO_DELETE_TRAVERSE,
-  PSTAT_BT_UNDO_MVCC_DELETE_TRAVERSE,
-  PSTAT_BT_VACUUM_TRAVERSE,
-  PSTAT_BT_VACUUM_INSID_TRAVERSE,
-
-  /* B-tree timers to fix overflow OID's and to lock for unique. */
+  /* B-tree ops detailed statistics. */
   PSTAT_BT_FIX_OVF_OIDS,
   PSTAT_BT_UNIQUE_RLOCKS,
   PSTAT_BT_UNIQUE_WLOCKS,
+  PSTAT_BT_LEAF,
+  PSTAT_BT_TRAVERSE,
+  PSTAT_BT_FIND_UNIQUE,
+  PSTAT_BT_FIND_UNIQUE_TRAVERSE,
+  PSTAT_BT_RANGE_SEARCH,
+  PSTAT_BT_RANGE_SEARCH_TRAVERSE,
+  PSTAT_BT_INSERT,
+  PSTAT_BT_INSERT_TRAVERSE,
+  PSTAT_BT_DELETE,
+  PSTAT_BT_DELETE_TRAVERSE,
+  PSTAT_BT_MVCC_DELETE,
+  PSTAT_BT_MVCC_DELETE_TRAVERSE,
+  PSTAT_BT_MARK_DELETE,
+  PSTAT_BT_MARK_DELETE_TRAVERSE,
+  PSTAT_BT_UNDO_INSERT,
+  PSTAT_BT_UNDO_INSERT_TRAVERSE,
+  PSTAT_BT_UNDO_DELETE,
+  PSTAT_BT_UNDO_DELETE_TRAVERSE,
+  PSTAT_BT_UNDO_MVCC_DELETE,
+  PSTAT_BT_UNDO_MVCC_DELETE_TRAVERSE,
+  PSTAT_BT_VACUUM,
+  PSTAT_BT_VACUUM_TRAVERSE,
+  PSTAT_BT_VACUUM_INSID,
+  PSTAT_BT_VACUUM_INSID_TRAVERSE,
 
   /* Vacuum master/worker timers. */
   PSTAT_VAC_MASTER,
@@ -909,22 +890,20 @@ struct perf_utime_tracker
       if ((track)->is_perf_tracking) tsc_getticks (&(track)->start_tick); \
     } \
   while (false)
-#define PERF_UTIME_TRACKER_TIME(thread_p, track, STATISTIC_ID) \
+#define PERF_UTIME_TRACKER_TIME(thread_p, track, psid) \
   do \
     { \
       if (!(track)->is_perf_tracking) break; \
       tsc_getticks (&(track)->end_tick); \
-      mnt_add_value_to_statistic (thread_p, \
-				  tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), STATISTIC_ID); \
+      perfmon_time_stat (thread_p, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), psid); \
     } \
   while (false)
-#define PERF_UTIME_TRACKER_TIME_AND_RESTART(thread_p, track, STATISTIC_ID) \
+#define PERF_UTIME_TRACKER_TIME_AND_RESTART(thread_p, track, psid) \
   do \
     { \
       if (!(track)->is_perf_tracking) break; \
       tsc_getticks (&(track)->end_tick); \
-       mnt_add_value_to_statistic (thread_p, \
-				   tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), STATISTIC_ID); \
+      perfmon_time_stat (thread_p, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), psid); \
       (track)->start_tick = (track)->end_tick; \
     } \
   while (false)
