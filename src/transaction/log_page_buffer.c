@@ -4290,7 +4290,7 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 
   if (prior_list != NULL)
     {
-      mnt_add_value_to_statistic (thread_p, (unsigned int) current_size / ONE_K, PSTAT_PRIOR_LSA_LIST_SIZE);	/* kbytes */
+      perfmon_add_stat (thread_p, (unsigned int) current_size / ONE_K, PSTAT_PRIOR_LSA_LIST_SIZE);	/* kbytes */
       perfmon_inc_stat (thread_p, PSTAT_PRIOR_LSA_LIST_REMOVED);
 
       logpb_append_prior_lsa_list (thread_p, prior_list);
@@ -4555,7 +4555,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 
   /* Record number of writes in statistics */
-  mnt_add_value_to_statistic (thread_p, flush_info->num_toflush, PSTAT_LOG_NUM_IOWRITES);
+  perfmon_add_stat (thread_p, flush_info->num_toflush, PSTAT_LOG_NUM_IOWRITES);
 
   for (i = 0; i < flush_info->num_toflush; i++)
     {

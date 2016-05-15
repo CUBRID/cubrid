@@ -7710,7 +7710,7 @@ file_allocset_dealloc_contiguous_pages (THREAD_ENTRY * thread_p, FILE_HEADER * f
 
   rv = thread_set_check_interrupt (thread_p, old_val);
 
-  mnt_add_value_to_statistic (thread_p, ncont_page_entries, PSTAT_FILE_NUM_PAGE_DEALLOCS);
+  perfmon_add_stat (thread_p, ncont_page_entries, PSTAT_FILE_NUM_PAGE_DEALLOCS);
 
   return ret;
 }

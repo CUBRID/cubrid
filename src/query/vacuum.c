@@ -2395,7 +2395,7 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVC
       return;
     }
 
-  mnt_add_value_to_statistic (thread_p, vacuum_Data.log_block_npages, PSTAT_VAC_NUM_TO_VACUUM_LOG_PAGES);
+  perfmon_add_stat (thread_p, vacuum_Data.log_block_npages, PSTAT_VAC_NUM_TO_VACUUM_LOG_PAGES);
 }
 
 #if defined (SERVER_MODE)
@@ -3088,7 +3088,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
       /* Release should not stop. Continue. */
     }
 
-  mnt_add_value_to_statistic (thread_p, vacuum_Data.log_block_npages, PSTAT_VAC_NUM_VACUUMED_LOG_PAGES);
+  perfmon_add_stat (thread_p, vacuum_Data.log_block_npages, PSTAT_VAC_NUM_VACUUMED_LOG_PAGES);
 
   vacuum_complete = true;
 
