@@ -399,9 +399,10 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_UNIQUE_WLOCKS, "Time_bt_unique_wlocks"),
 
   /* Vacuum master/worker timers. */
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_VAC_MASTER, "Time_vacuum_master"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_VAC_WORKER_PROCESS_LOG, "Time_vacuum_worker_process_log"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_VAC_WORKER_EXECUTE, "Time_vacuum_worker_execute"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_VAC_MASTER, "vacuum_master"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_VAC_JOB, "vacuum_job")
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_VAC_WORKER_PROCESS_LOG, "vacuum_worker_process_log"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_VAC_WORKER_EXECUTE, "vacuum_worker_execute"),
 
   /* computed statistics */
   /* TODO: add callback functions. */

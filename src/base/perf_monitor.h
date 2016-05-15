@@ -485,6 +485,7 @@ typedef enum
 
   /* Vacuum master/worker timers. */
   PSTAT_VAC_MASTER,
+  PSTAT_VAC_JOB,
   PSTAT_VAC_WORKER_PROCESS_LOG,
   PSTAT_VAC_WORKER_EXECUTE,
 

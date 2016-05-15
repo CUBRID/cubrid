@@ -2788,6 +2788,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
   bool page_found = false;
 
   PERF_UTIME_TRACKER perf_tracker;
+  PERF_UTIME_TRACKER job_time_tracker;
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
@@ -2797,6 +2798,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
   assert (worker != NULL);
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+  PERF_UTIME_TRACKER_START (thread_p, &job_time_tracker);
 
   /* Initialize log_vacuum */
   LSA_SET_NULL (&log_vacuum.prev_mvcc_op_log_lsa);
@@ -3116,6 +3118,7 @@ end:
 #endif /* SA_MODE */
 
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &perf_tracker, PSTAT_VAC_WORKER_EXECUTE);
+  PERF_UTIME_TRACKER_TIME (thread_p, &job_time_tracker, PSTAT_VAC_JOB);
 
   return error_code;
 }
