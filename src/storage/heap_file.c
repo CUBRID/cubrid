@@ -538,19 +538,13 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
       if ((context)->time_track == NULL) break; \
       switch ((context)->type) { \
       case HEAP_OPERATION_INSERT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     PSTAT_HEAP_INSERT_PREPARE); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_INSERT_PREPARE); \
 	break; \
       case HEAP_OPERATION_DELETE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     PSTAT_HEAP_DELETE_PREPARE); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_DELETE_PREPARE); \
 	break; \
       case HEAP_OPERATION_UPDATE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     PSTAT_HEAP_UPDATE_PREPARE); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_UPDATE_PREPARE); \
 	break; \
       default: \
 	assert (false); \
@@ -563,19 +557,15 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
       if ((context)->time_track == NULL) break; \
       switch ((context)->type) { \
       case HEAP_OPERATION_INSERT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, \
 					     (context)->time_track,\
 					     PSTAT_HEAP_INSERT_EXECUTE); \
 	break; \
       case HEAP_OPERATION_DELETE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     PSTAT_HEAP_DELETE_EXECUTE); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_DELETE_EXECUTE); \
 	break; \
       case HEAP_OPERATION_UPDATE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     PSTAT_HEAP_UPDATE_EXECUTE); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_UPDATE_EXECUTE); \
 	break; \
       default: \
 	assert (false); \
@@ -588,19 +578,13 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
       if ((context)->time_track == NULL) break; \
       switch ((context)->type) { \
       case HEAP_OPERATION_INSERT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     PSTAT_HEAP_INSERT_LOG); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_INSERT_LOG); \
 	break; \
       case HEAP_OPERATION_DELETE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     PSTAT_HEAP_DELETE_LOG); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_DELETE_LOG); \
 	break; \
       case HEAP_OPERATION_UPDATE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, \
-					     (context)->time_track,\
-					     PSTAT_HEAP_UPDATE_LOG); \
+	PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART (thread_p, (context)->time_track, PSTAT_HEAP_UPDATE_LOG); \
 	break; \
       default: \
 	assert (false); \
@@ -879,7 +863,6 @@ static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPE
 static int heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_context, RECDES * recdes_p,
 				OID * out_oid_p);
-static int heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint);
 static int heap_insert_physical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static void heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
 				      RECDES * recdes_p, bool is_mvcc_op, bool is_redistribute_op);
@@ -22492,105 +22475,12 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
 }
 
 /*
- * heap_insert_newver () - insert a new version of an object
- *   thread_p(in): thread entry
- *   context(in): operation context
- *   home_hint(in): if provided, will try to insert in hinted page, and will
- *                  fall back to another page if not possible
- *   do_logging(in): if true, will insert logging information
- *
- * NOTE: This operation only makes sense in MVCC
- */
-static int
-heap_insert_newver (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, PGBUF_WATCHER * home_hint)
-{
-  int rc = NO_ERROR;
-
-  assert (context != NULL);
-  assert (context->type == HEAP_OPERATION_INSERT);
-  assert (context->recdes_p != NULL);
-
-  /* fix header page if REC_BIGONE */
-  if (heap_is_big_length (context->recdes_p->length))
-    {
-      rc = heap_fix_header_page (thread_p, context);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return rc;
-	}
-    }
-
-  /* handle overflow case of new record version */
-  rc = heap_insert_handle_multipage_record (thread_p, context);
-  if (rc != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return rc;
-    }
-
-  /* if we get a page hint, try to get the insert location in it */
-  if (home_hint != NULL)
-    {
-      rc = heap_get_insert_location_with_lock (thread_p, context, home_hint);
-      if (rc != NO_ERROR && rc != ER_SP_NOSPACE_IN_PAGE)
-	{
-	  ASSERT_ERROR ();
-	  return rc;
-	}
-    }
-
-  /* if we can't insert in hinted page, get a fresh location */
-  if (context->home_page_watcher_p->pgptr == NULL)
-    {
-      assert (home_hint == NULL || rc == ER_SP_NOSPACE_IN_PAGE);
-
-      /* fix header page */
-      rc = heap_fix_header_page (thread_p, context);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return rc;
-	}
-
-      /* get new insert location */
-      rc = heap_get_insert_location_with_lock (thread_p, context, NULL);
-      if (rc != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return rc;
-	}
-    }
-
-  /* physically insert new version's home */
-  rc = heap_insert_physical (thread_p, context);
-  if (rc != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return rc;
-    }
-
-  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
-
-  /* log operation */
-  heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
-			    context->recdes_p, true, false);
-
-  HEAP_PERF_TRACK_LOGGING (thread_p, context);
-
-  perfmon_inc_stat (thread_p, PSTAT_HEAP_NEW_VER_INSERTS);
-
-  /* all ok */
-  return NO_ERROR;
-}
-
-/*
  * heap_insert_physical () - physical insert into heap page
  *   thread_p(in): thread entry
  *   context(in): operation context
  *   is_mvcc_op(in): MVCC or non-MVCC operation
  *
- * NOTE: This fuction should receive a fixed page and a location in res_oid,
+ * NOTE: This function should receive a fixed page and a location in res_oid,
  *       where the context->recdes_p will go in.
  */
 static int

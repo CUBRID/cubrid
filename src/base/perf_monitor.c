@@ -321,7 +321,6 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_REL_TO_REL_DELETES, "Num_heap_rel_to_rel_deletes"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_BIG_DELETES, "Num_heap_big_deletes"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_BIG_MVCC_DELETES, "Num_heap_big_mvcc_deletes"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_NEW_VER_INSERTS, "Num_heap_new_ver_inserts"), /* TODO: Remove this and new ver insert in heap */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_HOME_UPDATES, "Num_heap_home_updates"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_HOME_TO_REL_UPDATES, "Num_heap_home_to_rel_updates"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_HOME_TO_BIG_UPDATES, "Num_heap_home_to_big_updates"),
@@ -542,7 +541,7 @@ int ar_statistics_dim[] = { PERF_PAGE_FIX_COUNTERS, PERF_PAGE_PROMOTE_COUNTERS, 
 
 static void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int amount, int offset);
 static void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int offset);
-static void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int timediff, int offset);
+static void perfmon_time_at_offset (THREAD_ENTRY * thread_p, UINT64 timediff, int offset);
 
 static void mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats);
 static void mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats);
@@ -4454,7 +4453,7 @@ perfmon_set_at_offset (THREAD_ENTRY * thread_p, int statval, int offset)
  * psid (in)	 : Statistic ID.
  */
 void
-perfmon_time_stat (THREAD_ENTRY * thread_p, int timediff, PERF_STAT_ID psid)
+perfmon_time_stat (THREAD_ENTRY * thread_p, UINT64 timediff, PERF_STAT_ID psid)
 {
   PSTAT_METADATA *metadata = NULL;
 
@@ -4484,11 +4483,10 @@ perfmon_time_stat (THREAD_ENTRY * thread_p, int timediff, PERF_STAT_ID psid)
  * NOTE: There will be three values modified: counter, total time and max time.
  */
 static void
-perfmon_time_at_offset (THREAD_ENTRY * thread_p, int timediff, int offset)
+perfmon_time_at_offset (THREAD_ENTRY * thread_p, UINT64 timediff, int offset)
 {
   /* Update global statistics */
   UINT64 *statvalp = NULL;
-  UINT64 timediff_uint64 = (UINT64) timediff;
   UINT64 max_time;
 #if defined (SERVER_MODE)
   int tran_index;
@@ -4499,16 +4497,16 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int timediff, int offset)
   /* Update global statistics. */
   statvalp = pstat_Global.global_stats + offset;
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), 1);
-  ATOMIC_TAS_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff_uint64);
+  ATOMIC_TAS_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
   do 
     {
       max_time = ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), 0);
-      if (max_time >= timediff_uint64)
+      if (max_time >= timediff)
 	{
 	  /* No need to change max_time. */
 	  break;
 	}
-    } while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff_uint64));
+    } while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, timediff));
   /* Average is not computed here. */
 
 #if defined (SERVER_MODE)
@@ -4520,11 +4518,11 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int timediff, int offset)
       assert (pstat_Global.tran_stats[tran_index] != NULL);
       statvalp = pstat_Global.tran_stats[tran_index] + offset;
       (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += 1;
-      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff_uint64;
+      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
       max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
-      if (max_time < timediff_uint64)
+      if (max_time < timediff)
 	{
-	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff_uint64;
+	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff;
 	}
       /* Average is not computed here. */
     }

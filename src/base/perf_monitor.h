@@ -406,7 +406,6 @@ typedef enum
   PSTAT_HEAP_REL_TO_REL_DELETES,
   PSTAT_HEAP_BIG_DELETES,
   PSTAT_HEAP_BIG_MVCC_DELETES,
-  PSTAT_HEAP_NEW_VER_INSERTS,
   PSTAT_HEAP_HOME_UPDATES,
   PSTAT_HEAP_HOME_TO_REL_UPDATES,
   PSTAT_HEAP_HOME_TO_BIG_UPDATES,
@@ -722,7 +721,7 @@ extern void xperfmon_stop_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_add_stat (THREAD_ENTRY * thread_p, int amount, PERF_STAT_ID psid);
 extern void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid);
 extern void perfmon_set_stat (THREAD_ENTRY * thread_p, int statval, PERF_STAT_ID psid);
-extern void perfmon_time_stat (THREAD_ENTRY * thread_p, int timediff, PERF_STAT_ID psid);
+extern void perfmon_time_stat (THREAD_ENTRY * thread_p, UINT64 timediff, PERF_STAT_ID psid);
 
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */
@@ -890,6 +889,7 @@ struct perf_utime_tracker
       if ((track)->is_perf_tracking) tsc_getticks (&(track)->start_tick); \
     } \
   while (false)
+/* Time trackers - perfmon_time_stat is called. */
 #define PERF_UTIME_TRACKER_TIME(thread_p, track, psid) \
   do \
     { \
@@ -904,6 +904,25 @@ struct perf_utime_tracker
       if (!(track)->is_perf_tracking) break; \
       tsc_getticks (&(track)->end_tick); \
       perfmon_time_stat (thread_p, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), psid); \
+      (track)->start_tick = (track)->end_tick; \
+    } \
+  while (false)
+
+/* Time accumulators only - perfmon_add_stat is called. */
+#define PERF_UTIME_TRACKER_ADD_TIME(thread_p, track, psid) \
+  do \
+    { \
+      if (!(track)->is_perf_tracking) break; \
+      tsc_getticks (&(track)->end_tick); \
+      perfmon_time_stat (thread_p, (int) tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), psid); \
+    } \
+  while (false)
+#define PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART(thread_p, track, psid) \
+  do \
+    { \
+      if (!(track)->is_perf_tracking) break; \
+      tsc_getticks (&(track)->end_tick); \
+      perfmon_time_stat (thread_p, (int) tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), psid); \
       (track)->start_tick = (track)->end_tick; \
     } \
   while (false)
