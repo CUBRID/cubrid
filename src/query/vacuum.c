@@ -4250,6 +4250,8 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 					     0, sizeof (VPID), sizeof (VPID), &log_Gl.hdr.vacuum_data_first_vpid,
 					     &save_first_page->next_page);
 
+		  assert (VPID_EQ (pgbuf_get_vpid_ptr ((PAGE_PTR) save_first_page),
+				   &log_Gl.hdr.vacuum_data_first_vpid));
 		  VPID_COPY (&save_first_vpid, &log_Gl.hdr.vacuum_data_first_vpid);
 		  VPID_COPY (&log_Gl.hdr.vacuum_data_first_vpid, &save_first_page->next_page);
 		  vacuum_Data.first_page = data_page;
@@ -4266,6 +4268,11 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 		      return;
 		    }
 		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+
+		  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
+				 "VACUUM: Changed first VPID from %d|%d to %d|%d.\n",
+				 save_first_vpid.volid, save_first_vpid.pageid,
+				 log_Gl.hdr.vacuum_data_first_vpid.volid, log_Gl.hdr.vacuum_data_first_vpid.pageid);
 
 		  /* Continue with new page. */
 		  page_start_index = index;
