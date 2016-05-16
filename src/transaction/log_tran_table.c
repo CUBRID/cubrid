@@ -212,10 +212,10 @@ logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms)
   size = tdes->topops.max + num_elms;
   size = size * sizeof (*tdes->topops.stack);
 
-  newptr = (struct log_topops_addresses *) realloc (tdes->topops.stack, size);
+  newptr = (LOG_TOPOPS_ADDRESSES *) realloc (tdes->topops.stack, size);
   if (newptr != NULL)
     {
-      tdes->topops.stack = (struct log_topops_addresses *) newptr;
+      tdes->topops.stack = (LOG_TOPOPS_ADDRESSES *) newptr;
       if (tdes->topops.max == 0)
 	{
 	  tdes->topops.last = -1;

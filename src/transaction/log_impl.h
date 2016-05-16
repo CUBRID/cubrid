@@ -673,6 +673,7 @@ struct log_2pc_coordinator
   int *ack_received;		/* Acknowledgment received vector */
 };
 
+typedef struct log_topops_addresses LOG_TOPOPS_ADDRESSES;
 struct log_topops_addresses
 {
   LOG_LSA lastparent_lsa;	/* The last address of the parent transaction. This is needed for undo of the top
@@ -698,7 +699,7 @@ struct log_topops_stack
   LOG_TOPOPS_TYPE type;		/* Used by compensate/postpone log operation. */
   LOG_LSA ref_lsa;		/* Compensate undo_nxlsa or postpone next lsa. */
   int compensate_level;		/* The level of top operations when compensate was started. */
-  struct log_topops_addresses *stack;	/* Stack for push and pop of top system actions */
+  LOG_TOPOPS_ADDRESSES *stack;	/* Stack for push and pop of top system actions */
 };
 
 typedef struct modified_class_entry MODIFIED_CLASS_ENTRY;
