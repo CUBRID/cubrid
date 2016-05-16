@@ -6341,14 +6341,24 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (status != TR_STATUS_INVALID)
 		{
 		  error = tr_set_status (t->op, status, false);
+		  if (error != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      break;
+		    }
 		}
 
-	      if (error == NO_ERROR && p_node != NULL)
+	      if (p_node != NULL)
 		{
 		  error = tr_set_priority (t->op, priority, false);
+		  if (error != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      break;
+		    }
 		}
 
-	      if (error == NO_ERROR && trigger_owner != NULL)
+	      if (trigger_owner != NULL)
 		{
 		  assert (trigger_name != NULL);
 
@@ -6368,33 +6378,30 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  trigger_name = trigger_name->next;
 		}
 
-	      if (error == NO_ERROR && has_trigger_comment)
+	      if (has_trigger_comment)
 		{
 		  error = tr_set_comment (t->op, trigger_comment, false);
+		  if (error != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      break;
+		    }
 		}
 
-	      mop1 = ws_mvcc_latest_version (t->op);
 	      error = locator_flush_instance (t->op);
 	      if (error != NO_ERROR)
 		{
+		  ASSERT_ERROR ();
 		  break;
 		}
 
-	      mop2 = ws_mvcc_latest_version (t->op);
-	      if (ws_mop_compare (mop1, mop2) != 0)
+	      /* If trigger is on a class, lock it (S_LOCK) to block concurrent DML statements. */
+	      trigger = tr_map_trigger (t->op, false);
+	      if (trigger->class_mop != NULL)
 		{
-		  trigger = tr_map_trigger (t->op, false);
-		  if (trigger == NULL)
+		  if (locator_fetch_class (trigger->class_mop, DB_FETCH_SCAN) == NULL)
 		    {
-		      continue;
-		    }
-
-		  /* update the class hierarchy with new (latest) db_trigger instance mop. Otherwise, the class record
-		   * refer the old version of db_trigger instance. The old version may be removed by VACUUM <=> remove
-		   * class trigger. */
-		  error = sm_touch_class (trigger->class_mop);
-		  if (error != NO_ERROR)
-		    {
+		      ASSERT_ERROR_AND_SET (error);
 		      break;
 		    }
 		}
