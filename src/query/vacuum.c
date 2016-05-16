@@ -970,7 +970,7 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
   vacuum_unfix_first_and_last_data_page (thread_p);
   vacuum_Data.is_loaded = false;
   /* We should have unfixed all pages. Double-check. */
-  pgbuf_unfix_all ();
+  pgbuf_unfix_all (thread_p);
 
   /* Free all resources allocated for vacuum workers */
   for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
