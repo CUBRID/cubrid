@@ -4757,6 +4757,8 @@ vacuum_rv_redo_append_data_dump (FILE * fp, int length, void *data)
 	       (long long int) vacuum_data_entry->blockid, (long long int) vacuum_data_entry->start_lsa.pageid,
 	       (int) vacuum_data_entry->start_lsa.offset, (unsigned long long int) vacuum_data_entry->oldest_mvccid,
 	       (unsigned long long int) vacuum_data_entry->newest_mvccid);
+
+      vacuum_data_entry++;
     }
 }
 
