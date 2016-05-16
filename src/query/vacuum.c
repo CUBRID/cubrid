@@ -4284,6 +4284,13 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 				     "VACUUM ERROR: Failed to deallocate first page from vacuum data - %d|%d!!!\n",
 				     save_first_vpid.volid, save_first_vpid.pageid);
 		      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
+		      /* Revert first page change
+		       * - this is just to handle somehow the case in release. Should never happen anyway.
+		       */
+		      save_first_page = vacuum_Data.first_page;
+		      vacuum_Data.first_page = vacuum_fix_data_page (thread_p, &save_first_vpid);
+		      vacuum_unfix_data_page (thread_p, save_first_page);
 		      return;
 		    }
 		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
@@ -4330,6 +4337,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
       if (index == n_finished_blocks)
 	{
 	  /* All finished blocks have been consumed. */
+	  vacuum_unfix_data_page (thread_p, data_page);
 	  break;
 	}
       if (VPID_ISNULL (&data_page->next_page))
