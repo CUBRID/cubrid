@@ -641,7 +641,7 @@ static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEAD
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
 static void vacuum_verify_vacuum_data_debug (void);
-static void vacuum_verify_vacuum_data_page_fix_count (void);
+static void vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p);
 #define VACUUM_VERIFY_VACUUM_DATA() vacuum_verify_vacuum_data_debug ()
 #else /* NDEBUG */
 #define VACUUM_VERIFY_VACUUM_DATA()
@@ -2492,24 +2492,27 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 	}
     }
 
-#if defined (SERVER_MODE)
-
   /* Server-mode will restart if block data buffer or finished job queue are getting filled. */
+  /* Stand-alone mode will restart if finished job queue is full. */
 restart:
+
+  assert (data_page == NULL);
+
   /* Remove vacuumed entries */
   vacuum_data_mark_finished (thread_p);
 
+#if defined (SERVER_MODE)
   /* Append newly logged blocks at the end of the vacuum data table */
   (void) vacuum_consume_buffer_log_blocks (thread_p);
-
-  /* Update oldest MVCCID. */
-  vacuum_update_oldest_unvacuumed_mvccid (thread_p);
 
   if (vacuum_data_flush (thread_p) != NO_ERROR)
     {
       assert (false);
     }
 #endif /* SERVER_MODE */
+
+  /* Update oldest MVCCID. */
+  vacuum_update_oldest_unvacuumed_mvccid (thread_p);
 
   /* Search for blocks ready to be vacuumed and generate jobs. */
 
@@ -2543,6 +2546,7 @@ restart:
 	   *
 	   * Stop searching for other jobs.
 	   */
+	  vacuum_unfix_data_page (thread_p, data_page);
 	  break;
 	}
       if (!VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid))
@@ -2566,6 +2570,7 @@ restart:
 	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER,
 			     "VACUUM ERROR: Error %d while master tried to prefetch log pages for block %lld.",
 			     er_errid (), (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
+	      vacuum_unfix_data_page (thread_p, data_page);
 	      return;
 	    }
 	}
@@ -2581,6 +2586,7 @@ restart:
 	  VACUUM_BLOCK_STATUS_SET_AVAILABLE (entry->blockid);
 
 	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
+	  vacuum_unfix_data_page (thread_p, data_page);
 	  return;
 	}
 #endif /* SERVER_MODE */
@@ -2611,7 +2617,8 @@ restart:
       if (LOCK_FREE_CIRCULAR_QUEUE_IS_FULL (vacuum_Finished_job_queue))
 	{
 	  /* Consume vacuum_Finished_job_queue */
-	  vacuum_data_mark_finished (vacuum_Finished_job_queue);
+	  vacuum_unfix_data_page (thread_p, data_page);
+	  goto restart;
 	}
 #else	/* !SA_MODE */	       /* SERVER_MODE */
       /* Wakeup threads to start working on current threads. Try not to wake up more workers than necessary. */
@@ -2630,6 +2637,7 @@ restart:
       vacuum_block_data_buffer_aprox_size = LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Block_data_buffer);
       if (vacuum_block_data_buffer_aprox_size > vacuum_Block_data_buffer->capacity / 2)
 	{
+	  vacuum_unfix_data_page (thread_p, data_page);
 	  goto restart;
 	}
       /* Another buffer that is used by vacuum workers to communicate with master is the finished job queue.
@@ -2638,6 +2646,7 @@ restart:
       vacuum_finished_jobs_queue_aprox_size = LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Finished_job_queue);
       if (vacuum_finished_jobs_queue_aprox_size >= vacuum_Finished_job_queue->capacity / 2)
 	{
+	  vacuum_unfix_data_page (thread_p, data_page);
 	  goto restart;
 	}
 #endif /* SERVER_MODE */
@@ -2646,7 +2655,10 @@ restart:
       data_index++;
     }
 
-  vacuum_verify_vacuum_data_page_fix_count ();
+  assert (data_page == NULL);
+#if !defined (NDEBUG)
+  vacuum_verify_vacuum_data_page_fix_count (thread_p);
+#endif /* !NDEBUG */
 
 #if defined (SA_MODE)
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
@@ -3841,7 +3853,9 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
   vacuum_update_oldest_unvacuumed_mvccid (thread_p);
   vacuum_update_keep_from_log_pageid (thread_p);
 
-  vacuum_verify_vacuum_data_page_fix_count ();
+#if !defined (NDEBUG)
+  vacuum_verify_vacuum_data_page_fix_count (thread_p);
+#endif /* !NDEBUG */
 
   return NO_ERROR;
 
@@ -4345,7 +4359,9 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
   vacuum_update_keep_from_log_pageid (thread_p);
 
   VACUUM_VERIFY_VACUUM_DATA ();
-  vacuum_verify_vacuum_data_page_fix_count ();
+#if !defined (NDEBUG)
+  vacuum_verify_vacuum_data_page_fix_count (thread_p);
+#endif /* !NDEBUG */
 
 #undef TEMP_BUFFER_SIZE
 }
@@ -4664,7 +4680,9 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
     }
 
   VACUUM_VERIFY_VACUUM_DATA ();
-  vacuum_verify_vacuum_data_page_fix_count ();
+#if !defined (NDEBUG)
+  vacuum_verify_vacuum_data_page_fix_count (thread_p);
+#endif /* !NDEBUG */
 
   return NO_ERROR;
 }
@@ -7145,7 +7163,9 @@ exit:
   (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
 
   ATOMIC_INC_32 (&vacuum_Data.flush_vacuum_data, -1);
-  vacuum_verify_vacuum_data_page_fix_count ();
+#if !defined (NDEBUG)
+  vacuum_verify_vacuum_data_page_fix_count (thread_p);
+#endif /* !NDEBUG */
 
   return error_code;
 }
