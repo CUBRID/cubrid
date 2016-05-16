@@ -641,6 +641,7 @@ static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEAD
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
 static void vacuum_verify_vacuum_data_debug (void);
+static void vacuum_verify_vacuum_data_page_fix_count (void);
 #define VACUUM_VERIFY_VACUUM_DATA() vacuum_verify_vacuum_data_debug ()
 #else /* NDEBUG */
 #define VACUUM_VERIFY_VACUUM_DATA()
@@ -2645,6 +2646,8 @@ restart:
       data_index++;
     }
 
+  vacuum_verify_vacuum_data_page_fix_count ();
+
 #if defined (SA_MODE)
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
 
@@ -3838,6 +3841,8 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
   vacuum_update_oldest_unvacuumed_mvccid (thread_p);
   vacuum_update_keep_from_log_pageid (thread_p);
 
+  vacuum_verify_vacuum_data_page_fix_count ();
+
   return NO_ERROR;
 
 error:
@@ -4340,6 +4345,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
   vacuum_update_keep_from_log_pageid (thread_p);
 
   VACUUM_VERIFY_VACUUM_DATA ();
+  vacuum_verify_vacuum_data_page_fix_count ();
 
 #undef TEMP_BUFFER_SIZE
 }
@@ -4658,6 +4664,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
     }
 
   VACUUM_VERIFY_VACUUM_DATA ();
+  vacuum_verify_vacuum_data_page_fix_count ();
 
   return NO_ERROR;
 }
@@ -7138,6 +7145,7 @@ exit:
   (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
 
   ATOMIC_INC_32 (&vacuum_Data.flush_vacuum_data, -1);
+  vacuum_verify_vacuum_data_page_fix_count ();
 
   return error_code;
 }
@@ -7195,3 +7203,41 @@ vacuum_heap_ovf (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * ovf_object, MVCCI
 
   return error_code;
 }
+
+#if !defined (NDEBUG)
+/*
+ * vacuum_data_check_page_fix () - Check fix counts on vacuum data pages are not off.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+static void
+vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p)
+{
+  VPID vpid;
+  PAGE_PTR pgptr = NULL;
+
+  assert (pgbuf_get_fix_count ((PAGE_PTR) vacuum_Data.first_page) == 1);
+  assert (vacuum_Data.last_page == vacuum_Data.first_page
+	  || pgbuf_get_fix_count ((PAGE_PTR) vacuum_Data.last_page) == 1);
+
+  if (vacuum_Data.last_page == vacuum_Data.first_page)
+    {
+      return;
+    }
+  VPID_COPY (&vpid, &vacuum_Data.first_page->next_page);
+  while (!VPID_EQ (&vpid, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.last_page)))
+    {
+      assert (!VPID_ISNULL (&vpid));
+      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (pgptr == NULL)
+	{
+	  ASSERT_ERROR ();
+	  return;
+	}
+      assert (pgbuf_get_fix_count (pgptr) == 1);
+      VPID_COPY (&vpid, &((VACUUM_DATA_PAGE *) pgptr)->next_page);
+      pgbuf_unfix_and_init (thread_p, pgptr);
+    }
+}
+#endif /* !NDEBUG */
