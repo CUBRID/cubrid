@@ -3345,6 +3345,20 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   logpb_flush_log_for_wal (thread_p, flush_upto_lsa);
   LSA_SET_NULL (smallest_lsa);
 
+#if defined (SERVER_MODE)
+  /* Before starting the actual flush, we must first notify vacuum system to flush its vacuum data pages. For
+   * performance reasons, the only thread who has access to vacuum data is the vacuum master, and it always keeps
+   * first and last vacuum data pages write latched.
+   * Therefore, flushing those pages may be impossible. The solution for this problem is debatable, but for now,
+   * vacuum is notified, then checkpoint waits for it to finish.
+   */
+  vacuum_notify_flush_data ();
+  while (!vacuum_is_vacuum_data_flushed ())
+    {
+      thread_sleep (10);
+    }
+#endif /* SERVER_MODE */
+
   seq_flusher = &(pgbuf_Pool.seq_chkpt_flusher);
   f_list = seq_flusher->flush_list;
 
@@ -8705,7 +8719,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       PGBUF_HOLDER *holder = NULL;
 
       /* Search for bufptr in current thread holder list. */
-      for (holder = thrd_holder_info->thrd_hold_list; holder != NULL; holder = holder->next_holder)
+      for (holder = thrd_holder_info->thrd_hold_list; holder != NULL; holder = holder->thrd_link)
 	{
 	  if (holder->bufptr == bufptr)
 	    {

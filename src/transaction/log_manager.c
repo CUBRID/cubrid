@@ -137,8 +137,7 @@ static int rv;
    ((RCVI) == RVDK_LINK_PERM_VOLEXT)
 
 #define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
-   (!LOG_IS_VACUUM_DATA_RECOVERY (RCVI) \
-    && ((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
+   (((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
     && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
     && ((RCVI) != RVBT_DELETE_INDEX) \
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
@@ -1297,8 +1296,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	}
 
       /* Read the End of file record to find out the previous address */
-      eof = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
-      LOG_RESET_PREV_LSA (&eof->back_lsa);
+      if (log_Gl.hdr.append_lsa.pageid > 0 || log_Gl.hdr.append_lsa.offset > 0)
+	{
+	  eof = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
+	  LOG_RESET_PREV_LSA (&eof->back_lsa);
+	}
 
 #if defined(SERVER_MODE)
       /* fix flushed_lsa_lower_bound become NULL_LSA */
@@ -1975,7 +1977,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
@@ -2040,17 +2042,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 	}
     }
 
-  /* 
-   * Vacuum data may occupy many pages but has only one log lsa. Check if this
-   * is a change on vacuum data and pass start_lsa to be recorded.
-   */
-  if (LOG_IS_VACUUM_DATA_RECOVERY (rcvindex))
-    {
-      vacuum_set_vacuum_data_lsa (thread_p, &start_lsa, rcvindex);
-    }
-
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
-      && log_does_allow_replication () == true)
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
 	{
@@ -2107,7 +2099,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
@@ -2240,7 +2232,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
@@ -2261,17 +2253,8 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
   /* 
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
-   *
-   * NOTE: One exception for this case is the recovery of vacuum data buffer.
-   *       Because the buffer may not have been empty during the crash, the
-   *       data in the buffer cannot be recovered using log records. It is
-   *       however rebuilt in a similar manner as it is built online (by
-   *       processing undo and undoredo log records of MVCC operations).
-   *       At the end of redo recovery phase, the recovered data is consumed
-   *       and added to vacuum data, operations that needs logging.
    */
-  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes)
-      && !LOG_IS_VACUUM_DATA_BUFFER_RECOVERY (rcvindex))
+  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
     {
       /* 
        * We do not log anything when the transaction is unactive and it is not
@@ -2309,19 +2292,9 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	}
     }
 
-  /* 
-   * Vacuum data may occupy many pages but has only one log lsa. Check if this
-   * is a change on vacuum data and pass start_lsa to be recorded.
-   */
-  if (LOG_IS_VACUUM_DATA_RECOVERY (rcvindex))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
     {
-      vacuum_set_vacuum_data_lsa (thread_p, &start_lsa, rcvindex);
-    }
-
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
-      && log_does_allow_replication () == true)
-    {
-      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
+      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	{
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
 	}
@@ -2562,7 +2535,7 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
     }
 
   /* Vacuum workers are not allowed to use this type of log records. */
-  assert (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -2672,7 +2645,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       /* Vacuum worker */
       /* Must be under a system operation, otherwise postpone records will not work. */
@@ -2744,7 +2717,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     {
       return;
     }
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       /* Cache postpone log record. Redo data must be saved before calling prior_lsa_next_record, which may free this
        * prior node. */
@@ -2752,7 +2725,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     }
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       /* Cache postpone log record. An entry for this postpone log record was already created and we also need to save
        * its LSA. */
@@ -2817,7 +2790,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       /* Vacuum worker */
       /* Must be at the end of a system operation or during recovery. */
@@ -3088,7 +3061,7 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
   LOG_LSA start_lsa;
 
   /* Vacuum workers are not allowed to use this type of log records. */
-  assert (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -3283,7 +3256,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
   /* Find transaction descriptor for current logging transaction */
 
   /* Vacuum workers cannot use save points. */
-  assert (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -3537,7 +3510,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
    */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       /* System operations must be isolated and allow undo. It is impossible to use system tdes for more than one
        * thread, so vacuum workers use a reserved tdes instead. */
@@ -3550,7 +3523,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 
       vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
 		     "VACUUM: Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
-		     "tdes->tail_lsa=(%lld, %d). Worker state=%d", tdes->trid, tdes->topops.last,
+		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.\n", tdes->trid, tdes->topops.last,
 		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 		     VACUUM_GET_WORKER_STATE (thread_p));
 
@@ -3585,7 +3558,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
       if (logtb_realloc_topops_stack (tdes, 1) == NULL)
 	{
 	  /* Out of memory */
-	  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
 	    {
 #if defined(SERVER_MODE)
 	      assert (tdes->cs_topop.cs_index ==
@@ -3596,7 +3569,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 	      csect_exit_critical_section (thread_p, &tdes->cs_topop);
 	    }
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	  if (VACUUM_IS_THREAD_VACUUM (thread_p))
 	    {
 	      /* Restore state */
 	      if (tdes->topops.last < 0)
@@ -3716,7 +3689,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
   }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
       tdes = VACUUM_GET_WORKER_TDES (thread_p);
@@ -3739,14 +3712,26 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	    }
 	}
 
-      vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-		     "VACUUM: End system operation. Worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
-		     "crt_topop->last_parent_lsa=(%lld, %d), tdes->tail_lsa=(%lld, %d). Worker state=%d."
-		     "LOG_RESULT_TOPOP=%d", tdes->trid, tdes->topops.last,
-		     (long long int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.pageid,
-		     (int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.offset,
-		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-		     VACUUM_GET_WORKER_STATE (thread_p), result);
+      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	{
+	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
+			 "VACUUM: End system operation. Worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
+			 "crt_topop->last_parent_lsa=(%lld, %d), tdes->tail_lsa=(%lld, %d). Worker state=%d."
+			 "LOG_RESULT_TOPOP=%d.\n", tdes->trid, tdes->topops.last,
+			 (long long int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.pageid,
+			 (int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.offset,
+			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
+			 VACUUM_GET_WORKER_STATE (thread_p), result);
+	}
+      else
+	{
+	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_MASTER,
+			 "VACUUM: End system operation for master. tdes->trid=%d, tdes->topops.last=%d, "
+			 "crt_topop->last_parent_lsa=(%lld, %d), tdes->tail_lsa=(%lld, %d). LOG_RESULT_TOPOP=%d.\n",
+			 tdes->trid, tdes->topops.last,
+			 (int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.offset,
+			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset, result);
+	}
     }
   else
     {
@@ -3860,7 +3845,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
        */
       if (result == LOG_RESULT_TOPOP_COMMIT)
 	{
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      /* for the replication agent guarantee the order of transaction */
@@ -3880,7 +3865,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	}
       else
 	{
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      repl_log_abort_after_lsa (tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
@@ -3913,7 +3898,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
       else
 	{
 	  state = TRAN_UNACTIVE_ABORTED;
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      repl_log_abort_after_lsa (tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
@@ -3934,7 +3919,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
       (void) log_complete_system_op (thread_p, tdes, result, save_state);
     }
 
-  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
     {
 #if defined(SERVER_MODE)
       assert (tdes->cs_topop.cs_index ==
@@ -3947,7 +3932,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 
   mnt_tran_end_topops (thread_p);
 
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       if (tdes->topops.last < 0)
 	{
@@ -3962,21 +3947,21 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_RECOVERY);
 	    }
 
-	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
+	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
 			 "VACUUM: Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
 			 "tdes->tail_lsa=(%lld, %d), tdes->undo_nxlsa=(%lld, %d), "
-			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.", tdes->trid,
+			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.\n", tdes->trid,
 			 (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
 			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 			 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
 			 (long long int) tdes->tail_topresult_lsa.pageid, (int) tdes->tail_topresult_lsa.offset,
 			 VACUUM_GET_WORKER_STATE (thread_p));
 
-	  /* Vacuum workers don't have a parent transaction that is committed. Different system operations that are not 
-	   * nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log records to
-	   * undo will process all system operations until the first one. Since vacuum workers never rollback, once the 
-	   * last system operation is ended, we can reset all modified LSA's. This way, different system operations
-	   * will not be linked between them. */
+	  /* Vacuum workers/master don't have a parent transaction that is committed. Different system operations that
+	   * are not  nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
+	   * records to undo will process all system operations until the first one. Since vacuum workers.master never
+	   * rollback, once the last system operation is ended, we can reset all modified LSA's. This way, different
+	   * system operations will not be linked between them. */
 	  LSA_SET_NULL (&tdes->head_lsa);
 	  LSA_SET_NULL (&tdes->tail_lsa);
 	  LSA_SET_NULL (&tdes->undo_nxlsa);
@@ -4189,11 +4174,6 @@ log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, 
    * See also canskip_undo.
    */
   if (LOG_ISUNSAFE_TO_SKIP_RCVINDEX (rcvindex))
-    {
-      return false;
-    }
-
-  if (LOG_IS_VACUUM_DATA_RECOVERY (rcvindex))
     {
       return false;
     }
@@ -5357,7 +5337,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction 
 	   * * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
 	   * committed. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      /* for the replication agent guarantee the order of transaction */
@@ -6171,7 +6151,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction 
 	   * * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
 	   * committed. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
@@ -8365,7 +8345,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 	  assert (postpone_type == LOG_COMMIT_TOPOPE_WITH_POSTPONE);
 	  assert (tdes->topops.last >= 0);
 	  log_append_topope_commit_postpone (thread_p, tdes, start_postpone_lsa);
-	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && vacuum_do_postpone_from_cache (thread_p, start_postpone_lsa))
+	  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_do_postpone_from_cache (thread_p, start_postpone_lsa))
 	    {
 	      /* Do postpone was run from cached postpone entries. */
 	      return;
