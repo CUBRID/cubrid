@@ -4501,3 +4501,22 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, UINT64 timediff, int offset)
     }
 #endif /* SERVER_MODE */
 }
+
+/*
+ * Complex statistics sections.
+ */
+
+/* Page buffer section.
+ */
+
+/* All page buffer statistics:
+ *
+ * fix, acquire_time, lock_time, hold_time - matrix based on module, page_type, page_found_mode, latch_mode, cond_type.
+ * aggregated: total_fix, total_acquire_time, total_lock_time, total_hold_time, total_fix_vacuum, total_fix_vacuum_hit.
+ *
+ * unfix - matrix based on module, page_type, buf_dirty, dirtied_by_holder, holder_latch
+ * aggregated - total_unfix, tot_unfix_vacuum, total_unfix_vacuum_dirty
+ *
+ * promote counter, timer - matrix based on page_type, promote_cond, holder_latch, success
+ *
+ */
