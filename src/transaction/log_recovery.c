@@ -1487,10 +1487,10 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
   LOG_TDES *tdes;
   LOG_REC_CHKPT *tmp_chkpt;
   LOG_REC_CHKPT chkpt;
-  struct log_chkpt_trans *chkpt_trans;
-  struct log_chkpt_trans *chkpt_one;
-  struct log_chkpt_topops_commit_posp *chkpt_topops;
-  struct log_chkpt_topops_commit_posp *chkpt_topone;
+  LOG_INFO_CHKPT_TRANS *chkpt_trans;
+  LOG_INFO_CHKPT_TRANS *chkpt_one;
+  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topops;
+  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topone;
   int size;
   void *area;
   int i;
@@ -1528,10 +1528,10 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
   /* Now get the data of active transactions */
 
   area = NULL;
-  size = sizeof (struct log_chkpt_trans) * chkpt.ntrans;
+  size = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt.ntrans;
   if (log_lsa->offset + size < (int) LOGAREA_SIZE)
     {
-      chkpt_trans = (struct log_chkpt_trans *) ((char *) log_page_p->area + log_lsa->offset);
+      chkpt_trans = (LOG_INFO_CHKPT_TRANS *) ((char *) log_page_p->area + log_lsa->offset);
       log_lsa->offset += size;
     }
   else
@@ -1545,7 +1545,7 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 	}
       /* Copy the data */
       logpb_copy_from_log (thread_p, (char *) area, size, log_lsa, log_page_p);
-      chkpt_trans = (struct log_chkpt_trans *) area;
+      chkpt_trans = (LOG_INFO_CHKPT_TRANS *) area;
     }
 
   /* Add the transactions to the transaction table */
@@ -1611,10 +1611,10 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 
   if (chkpt.ntops > 0)
     {
-      size = sizeof (struct log_chkpt_topops_commit_posp) * chkpt.ntops;
+      size = sizeof (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP) * chkpt.ntops;
       if (log_lsa->offset + size < (int) LOGAREA_SIZE)
 	{
-	  chkpt_topops = ((struct log_chkpt_topops_commit_posp *) ((char *) log_page_p->area + log_lsa->offset));
+	  chkpt_topops = ((LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) ((char *) log_page_p->area + log_lsa->offset));
 	  log_lsa->offset += size;
 	}
       else
@@ -1628,7 +1628,7 @@ log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 	    }
 	  /* Copy the data */
 	  logpb_copy_from_log (thread_p, (char *) area, size, log_lsa, log_page_p);
-	  chkpt_topops = (struct log_chkpt_topops_commit_posp *) area;
+	  chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) area;
 	}
 
       /* Add the top system operations to the transactions */
@@ -2152,7 +2152,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   LOG_RECORD_HEADER *log_rec = NULL;	/* Pointer to log record */
   LOG_REC_CHKPT *tmp_chkpt;	/* Temp Checkpoint log record */
   LOG_REC_CHKPT chkpt;		/* Checkpoint log record */
-  struct log_chkpt_trans *chkpt_trans;
+  LOG_INFO_CHKPT_TRANS *chkpt_trans;
   time_t last_at_time = -1;
   char time_val[CTIME_MAX];
   bool may_need_synch_checkpoint_2pc = false;
@@ -2417,10 +2417,10 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
       /* Now get the data of active transactions */
       area = NULL;
-      size = sizeof (struct log_chkpt_trans) * chkpt.ntrans;
+      size = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt.ntrans;
       if (log_lsa.offset + size < (int) LOGAREA_SIZE)
 	{
-	  chkpt_trans = (struct log_chkpt_trans *) ((char *) log_page_p->area + log_lsa.offset);
+	  chkpt_trans = (LOG_INFO_CHKPT_TRANS *) ((char *) log_page_p->area + log_lsa.offset);
 	}
       else
 	{
@@ -2433,7 +2433,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 	  /* Copy the data */
 	  logpb_copy_from_log (thread_p, (char *) area, size, &log_lsa, log_page_p);
-	  chkpt_trans = (struct log_chkpt_trans *) area;
+	  chkpt_trans = (LOG_INFO_CHKPT_TRANS *) area;
 	}
 
       /* Add the transactions to the transaction table */
@@ -4784,13 +4784,15 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       /* Read the DATA HEADER */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_CHKPT), &log_lsa, log_pgptr);
       chkpt = (LOG_REC_CHKPT *) ((char *) log_pgptr->area + log_lsa.offset);
-      undo_length = sizeof (struct log_chkpt_trans) * chkpt->ntrans;
-      redo_length = (sizeof (struct log_chkpt_topops_commit_posp) * chkpt->ntops);
+      undo_length = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt->ntrans;
+      redo_length = sizeof (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP) * chkpt->ntops;
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_CHKPT), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, undo_length, &log_lsa, log_pgptr);
       if (redo_length > 0)
-	LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
+	{
+	  LOG_READ_ADD_ALIGN (thread_p, redo_length, &log_lsa, log_pgptr);
+	}
       break;
 
     case LOG_SAVEPOINT:

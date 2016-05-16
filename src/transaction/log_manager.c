@@ -7019,8 +7019,8 @@ log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   fprintf (out_fp, ", Num_trans = %d,\n", chkpt->ntrans);
   fprintf (out_fp, "     Redo_LSA = %lld|%d\n", (long long int) chkpt->redo_lsa.pageid, chkpt->redo_lsa.offset);
 
-  length_active_tran = sizeof (struct log_chkpt_trans) * chkpt->ntrans;
-  length_topope = (sizeof (struct log_chkpt_topops_commit_posp) * chkpt->ntops);
+  length_active_tran = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt->ntrans;
+  length_topope = (sizeof (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP) * chkpt->ntops);
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*chkpt), log_lsa, log_page_p);
   log_dump_data (thread_p, out_fp, length_active_tran, log_lsa, log_page_p, logpb_dump_checkpoint_trans, NULL);
   if (length_topope > 0)

@@ -1560,7 +1560,8 @@ struct log_rec_replication
 };
 
 /* Transaction descriptor */
-struct log_chkpt_trans
+typedef struct log_info_chkpt_trans LOG_INFO_CHKPT_TRANS;
+struct log_info_chkpt_trans
 {
   int isloose_end;
   TRANID trid;			/* Transaction identifier */
@@ -1576,7 +1577,8 @@ struct log_chkpt_trans
 
 };
 
-struct log_chkpt_topops_commit_posp
+typedef struct log_info_chkpt_topops_commit_posp LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP;
+struct log_info_chkpt_topops_commit_posp
 {
   TRANID trid;			/* Transaction identifier */
   LOG_LSA lastparent_lsa;	/* The last address of the parent transaction. This is needed for undo of the top

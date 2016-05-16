@@ -7849,11 +7849,11 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* System transaction descriptor */
   LOG_TDES *act_tdes;		/* Transaction descriptor of an active transaction */
   LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
-  struct log_chkpt_trans *chkpt_trans;	/* Checkpoint tdes */
-  struct log_chkpt_trans *chkpt_one;	/* Checkpoint tdes for one tran */
-  struct log_chkpt_topops_commit_posp *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+  LOG_INFO_CHKPT_TRANS *chkpt_trans;	/* Checkpoint tdes */
+  LOG_INFO_CHKPT_TRANS *chkpt_one;	/* Checkpoint tdes for one tran */
+  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
 							 * mode */
-  struct log_chkpt_topops_commit_posp *chkpt_topone;	/* One top system ope */
+  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topone;	/* One top system ope */
   LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
   LOG_LSA chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
   LOG_LSA newchkpt_lsa;		/* New address of the checkpoint record */
@@ -7988,7 +7988,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   tmp_chkpt.ntrans = log_Gl.trantable.num_assigned_indices;
   length_all_chkpt_trans = sizeof (*chkpt_trans) * tmp_chkpt.ntrans;
 
-  chkpt_trans = (struct log_chkpt_trans *) malloc (length_all_chkpt_trans);
+  chkpt_trans = (LOG_INFO_CHKPT_TRANS *) malloc (length_all_chkpt_trans);
   if (chkpt_trans == NULL)
     {
       TR_TABLE_CS_EXIT (thread_p);
@@ -8074,7 +8074,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       tmp_chkpt.ntops = log_Gl.trantable.num_assigned_indices;
       length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-      chkpt_topops = (struct log_chkpt_topops_commit_posp *) malloc (length_all_tops);
+      chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) malloc (length_all_tops);
       if (chkpt_topops == NULL)
 	{
 	  free_and_init (chkpt_trans);
@@ -8114,7 +8114,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 			      TR_TABLE_CS_EXIT (thread_p);
 			      goto error_cannot_chkpt;
 			    }
-			  chkpt_topops = (struct log_chkpt_topops_commit_posp *) ptr;
+			  chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) ptr;
 			}
 
 		      chkpt_topone = &chkpt_topops[ntops];
@@ -8379,9 +8379,9 @@ void
 logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data)
 {
   int ntrans, i;
-  struct log_chkpt_trans *chkpt_trans, *chkpt_one;	/* Checkpoint tdes */
+  LOG_INFO_CHKPT_TRANS *chkpt_trans, *chkpt_one;	/* Checkpoint tdes */
 
-  chkpt_trans = (struct log_chkpt_trans *) data;
+  chkpt_trans = (LOG_INFO_CHKPT_TRANS *) data;
   ntrans = length / sizeof (*chkpt_trans);
 
   /* Start dumping each checkpoint transaction descriptor */
@@ -8419,11 +8419,11 @@ void
 logpb_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
 {
   int ntops, i;
-  struct log_chkpt_topops_commit_posp *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
 							 * mode */
-  struct log_chkpt_topops_commit_posp *chkpt_topone;	/* One top system ope */
+  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topone;	/* One top system ope */
 
-  chkpt_topops = (struct log_chkpt_topops_commit_posp *) data;
+  chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) data;
   ntops = length / sizeof (*chkpt_topops);
 
   /* Start dumping each checkpoint top system operation */
