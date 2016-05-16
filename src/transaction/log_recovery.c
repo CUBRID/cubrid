@@ -2506,8 +2506,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_REC_DBOUT_REDO *dbout_redo = NULL;	/* A external redo log record */
   LOG_REC_COMPENSATE *compensate = NULL;	/* Compensating log record */
   LOG_REC_RUN_POSTPONE *run_posp = NULL;	/* A run postpone action */
-  struct log_2pc_start *start_2pc = NULL;	/* Start 2PC commit log record */
-  struct log_2pc_particp_ack *received_ack = NULL;	/* A 2PC participant ack */
+  LOG_REC_2PC_START *start_2pc = NULL;	/* Start 2PC commit log record */
+  LOG_REC_2PC_PARTICP_ACK *received_ack = NULL;	/* A 2PC participant ack */
   LOG_REC_DONETIME *donetime = NULL;
   LOG_RCV rcv;			/* Recovery structure */
   VPID rcv_vpid;		/* VPID of data to recover */
@@ -3270,8 +3270,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		      /* Get the DATA HEADER */
 		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 
-		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_2pc_start), &log_lsa, log_pgptr);
-		      start_2pc = ((struct log_2pc_start *) ((char *) log_pgptr->area + log_lsa.offset));
+		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_2PC_START), &log_lsa, log_pgptr);
+		      start_2pc = ((LOG_REC_2PC_START *) ((char *) log_pgptr->area + log_lsa.offset));
 
 		      /* 
 		       * Obtain the participant information
@@ -3290,7 +3290,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			  break;
 			}
 
-		      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_2pc_start), &log_lsa, log_pgptr);
+		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_START), &log_lsa, log_pgptr);
 		      LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
 
 		      /* Read in the participants info. block from the log */
@@ -3356,9 +3356,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		      /* Get the DATA HEADER */
 		      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 
-		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_2pc_particp_ack), &log_lsa,
+		      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_2PC_PARTICP_ACK), &log_lsa,
 							log_pgptr);
-		      received_ack = ((struct log_2pc_particp_ack *) ((char *) log_pgptr->area + log_lsa.offset));
+		      received_ack = ((LOG_REC_2PC_PARTICP_ACK *) ((char *) log_pgptr->area + log_lsa.offset));
 		      tdes->coord->ack_received[received_ack->particp_index] = true;
 		    }
 		}
@@ -4584,8 +4584,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_COMPENSATE *compensate;	/* Compensating log record */
   LOG_REC_RUN_POSTPONE *run_posp;	/* A run postpone action */
   LOG_REC_CHKPT *chkpt;		/* Checkpoint log record */
-  struct log_2pc_start *start_2pc;	/* A 2PC start log record */
-  struct log_2pc_prepcommit *prepared;	/* A 2PC prepare to commit */
+  LOG_REC_2PC_START *start_2pc;	/* A 2PC start log record */
+  LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit */
   LOG_REC_REPLICATION *repl_log;
 
   int undo_length;		/* Undo length */
@@ -4807,12 +4807,12 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_2PC_PREPARE:
       /* Get the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_2pc_prepcommit), &log_lsa, log_pgptr);
-      prepared = (struct log_2pc_prepcommit *) ((char *) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_2PC_PREPCOMMIT), &log_lsa, log_pgptr);
+      prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
       nobj_locks = prepared->num_object_locks;
       /* ignore npage_locks */
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_2pc_prepcommit), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_PREPCOMMIT), &log_lsa, log_pgptr);
 
       if (prepared->gtrinfo_length > 0)
 	{
@@ -4828,18 +4828,18 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_2PC_START:
       /* Get the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_2pc_start), &log_lsa, log_pgptr);
-      start_2pc = (struct log_2pc_start *) ((char *) log_pgptr->area + log_lsa.offset);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_2PC_START), &log_lsa, log_pgptr);
+      start_2pc = (LOG_REC_2PC_START *) ((char *) log_pgptr->area + log_lsa.offset);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_2pc_start), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_START), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, (start_2pc->particp_id_length * start_2pc->num_particps), &log_lsa, log_pgptr);
       break;
 
     case LOG_2PC_RECV_ACK:
       /* Get the DATA HEADER */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_2pc_particp_ack), &log_lsa, log_pgptr);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_2PC_PARTICP_ACK), &log_lsa, log_pgptr);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_2pc_particp_ack), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_PARTICP_ACK), &log_lsa, log_pgptr);
       break;
 
     case LOG_WILL_COMMIT:

@@ -7057,13 +7057,13 @@ log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 static LOG_PAGE *
 log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_2pc_prepcommit *prepared;
+  LOG_REC_2PC_PREPCOMMIT *prepared;
   unsigned int nobj_locks;
   int size;
 
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*prepared), log_lsa, log_page_p);
-  prepared = (struct log_2pc_prepcommit *) ((char *) log_page_p->area + log_lsa->offset);
+  prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Client_name = %s, Gtrid = %d, Num objlocks = %u\n", prepared->user_name, prepared->gtrid,
 	   prepared->num_object_locks);
@@ -7091,11 +7091,11 @@ log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_
 static LOG_PAGE *
 log_dump_record_2pc_start (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_2pc_start *start_2pc;	/* Start log record of 2PC protocol */
+  LOG_REC_2PC_START *start_2pc;	/* Start log record of 2PC protocol */
 
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_2pc), log_lsa, log_page_p);
-  start_2pc = (struct log_2pc_start *) ((char *) log_page_p->area + log_lsa->offset);
+  start_2pc = (LOG_REC_2PC_START *) ((char *) log_page_p->area + log_lsa->offset);
 
   /* Initilize the coordinator information */
   fprintf (out_fp, "  Client_name = %s, Gtrid = %d,  Num_participants = %d", start_2pc->user_name, start_2pc->gtrid,
@@ -7112,11 +7112,11 @@ log_dump_record_2pc_start (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
 static LOG_PAGE *
 log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_2pc_particp_ack *received_ack;	/* ack log record of 2pc protocol */
+  LOG_REC_2PC_PARTICP_ACK *received_ack;	/* ack log record of 2pc protocol */
 
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*received_ack), log_lsa, log_page_p);
-  received_ack = ((struct log_2pc_particp_ack *) ((char *) log_page_p->area + log_lsa->offset));
+  received_ack = ((LOG_REC_2PC_PARTICP_ACK *) ((char *) log_page_p->area + log_lsa->offset));
   fprintf (out_fp, "  Participant index = %d\n", received_ack->particp_index);
 
   return log_page_p;

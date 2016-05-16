@@ -1603,7 +1603,8 @@ struct log_rec_topop_result
 };
 
 /* Log a prepare to commit record */
-struct log_2pc_prepcommit
+typedef struct log_rec_2pc_prepcommit LOG_REC_2PC_PREPCOMMIT;
+struct log_rec_2pc_prepcommit
 {
   char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
   int gtrid;			/* Identifier of the global transaction */
@@ -1614,7 +1615,8 @@ struct log_2pc_prepcommit
 };
 
 /* Start 2PC protocol. Record information about identifiers of participants. */
-struct log_2pc_start
+typedef struct log_rec_2pc_start LOG_REC_2PC_START;
+struct log_rec_2pc_start
 {
   char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
   int gtrid;			/* Identifier of the global tran */
@@ -1626,7 +1628,8 @@ struct log_2pc_start
  * Log the acknowledgement from a participant that it received the commit/abort
  * decision
  */
-struct log_2pc_particp_ack
+typedef struct log_rec_2pc_particp_ack LOG_REC_2PC_PARTICP_ACK;
+struct log_rec_2pc_particp_ack
 {
   int particp_index;		/* Index of the acknowledging participant */
 };

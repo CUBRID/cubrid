@@ -3619,7 +3619,7 @@ prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node
 {
   int error_code = NO_ERROR;
 
-  node->data_header_length = sizeof (struct log_2pc_prepcommit);
+  node->data_header_length = sizeof (LOG_REC_2PC_PREPCOMMIT);
   node->data_header = (char *) malloc (node->data_header_length);
   if (node->data_header == NULL)
     {
@@ -3748,7 +3748,7 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       break;
 
     case LOG_2PC_START:
-      node->data_header_length = sizeof (struct log_2pc_start);
+      node->data_header_length = sizeof (LOG_REC_2PC_START);
       break;
 
     case LOG_END_CHKPT:
