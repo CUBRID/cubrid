@@ -2678,8 +2678,6 @@ thread_vacuum_master_thread (void *arg_p)
 
       if (tsd_ptr->shutdown)
 	{
-	  /* Finalize vacuum. */
-	  vacuum_finalize (tsd_ptr);
 	  pthread_mutex_unlock (&thread_Vacuum_master_thread.lock);
 	  break;
 	}
@@ -2689,6 +2687,9 @@ thread_vacuum_master_thread (void *arg_p)
 
       vacuum_master_start (tsd_ptr);
     }
+
+  /* Finalize vacuum. */
+  vacuum_finalize (tsd_ptr);
 
   rv = pthread_mutex_lock (&thread_Vacuum_master_thread.lock);
   thread_Vacuum_master_thread.is_available = false;
