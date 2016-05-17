@@ -3218,6 +3218,10 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   /* Save worker to thread entry */
   thread_p->vacuum_worker = worker;
 
+  vacuum_er_log (VACUUM_ER_LOG_WORKER,
+		 "VACUUM: Assigned vacuum_worker %p, index %d to thread %p, index %d.\n",
+		 worker, save_assigned_workers_count, thread_p, thread_p->index);
+
   if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_WORKERS && worker->prefetch_log_buffer == NULL)
     {
       size_worker_prefetch_log_buffer =
@@ -3237,8 +3241,6 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   /* Safe guard - it is assumed that transaction descriptor is already initialized. */
   assert (worker->tdes != NULL);
 
-  /* Increment number of assigned workers */
-  vacuum_Assigned_workers_count++;
   return NO_ERROR;
 
 error:
@@ -5080,6 +5082,9 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
      vacuum_Data.last_blockid + 1 : vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed].blockid);
   keep_from_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (keep_from_blockid);
   vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
+
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
+		 "VACUUM: Update keep_from_log_pageid to %lld", (long long int) vacuum_Data.keep_from_log_pageid);
 }
 
 /*
