@@ -12130,3 +12130,21 @@ pgbuf_consistent_str (int consistent)
 
   return consistent_str;
 }
+
+/*
+ * pgbuf_get_fix_count () - Get page fix count.
+ *
+ * return     : Fix count.
+ * pgptr (in) : Page pointer.
+ */
+int
+pgbuf_get_fix_count (PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr = NULL;
+
+  assert (pgptr != NULL);
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+
+  return bufptr->fcnt;
+}

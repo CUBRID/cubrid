@@ -455,4 +455,6 @@ extern int pgbuf_flush_control_from_dirty_ratio (void);
 
 extern int pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void pgbuf_rv_flush_page_dump (FILE * fp, int length, void *data);
+
+extern int pgbuf_get_fix_count (PAGE_PTR pgptr);
 #endif /* _PAGE_BUFFER_H_ */
