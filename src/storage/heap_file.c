@@ -23952,8 +23952,12 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
 
-  rc = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
-				     context->forward_page_watcher_p->pgptr, &prev_version_lsa);
+  if (is_mvcc_op)
+    {
+      rc = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
+	context->forward_page_watcher_p->pgptr, &prev_version_lsa);
+    }
+ 
   if (rc != NO_ERROR)
     {
       return rc;
