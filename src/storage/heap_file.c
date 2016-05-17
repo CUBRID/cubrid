@@ -22105,7 +22105,6 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 				  bool is_mvcc_op, bool is_mvcc_class)
 {
   MVCC_REC_HEADER mvcc_rec_header;
-  MVCCID mvcc_id;
   int record_size = recdes_p->length;
   bool insert_from_reorganize = false;
 
@@ -22130,7 +22129,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
       if (is_mvcc_class)
 	{
 	  /* get MVCC id */
-	  mvcc_id = logtb_get_current_mvccid (thread_p);
+	  MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
 
 	  /* set MVCC insertid if necessary */
 	  if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
@@ -24123,8 +24122,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   /* the previous version lsa address can be obtained and set only now, when logging and updating are finished */
   if (is_mvcc_op)
     {
-      heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p,
-				    context->forward_page_watcher_p, &prev_version_lsa);
+      heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
+				    context->forward_page_watcher_p->pgptr, &prev_version_lsa);
     }
 
   HEAP_PERF_TRACK_EXECUTE (thread_p, context);
