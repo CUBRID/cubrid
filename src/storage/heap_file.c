@@ -24107,6 +24107,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   RECDES forwarding_recdes;
   RECDES *home_page_updated_recdes_p = NULL;
   OID forward_oid;
+  LOG_RCVINDEX undo_rcvindex = RVHF_UPDATE;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
@@ -24127,9 +24128,21 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       return ER_FAILED;
     }
 
+#if defined (SERVER_MODE)
+  if (is_mvcc_op)
+    {
+      undo_rcvindex = RVHF_UPDATE_NOTIFY_VACUUM;
+    }
+  else if (context->home_recdes.type == REC_ASSIGN_ADDRESS && !heap_is_mvcc_disabled_for_class (&context->class_oid))
+    {
+      /* Quick fix: Assign address is update in-place. Vacuum must be notified. */
+      undo_rcvindex = RVHF_UPDATE_NOTIFY_VACUUM;
+    }
+#endif /* SERVER_MODE */
+
   /* log update undo by saving old record */
   heap_log_update_undo (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-			&context->home_recdes, (is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
+			&context->home_recdes, undo_rcvindex);
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
   if (is_mvcc_op)
