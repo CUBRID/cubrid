@@ -9659,7 +9659,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
   DISK_ISVALID isvalid = DISK_VALID;
   DISK_ISVALID isallvalid = DISK_VALID;
   OID inst_oid, *p_inst_oid = &inst_oid;
-  RECDES peek, *p_peek = &peek;	/* Record descriptor for peeking object */
+  RECDES record = RECDES_INITIALIZER, *recordp = &record;	/* Record descriptor for copying object */
   SCAN_CODE scan;
   HEAP_SCANCACHE scan_cache;
   BTREE_CHECKSCAN bt_checkscan;
@@ -9752,14 +9752,14 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
   inst_oid.pageid = NULL_PAGEID;
   inst_oid.slotid = NULL_SLOTID;
 
-  while ((scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &peek, &scan_cache, COPY)) == S_SUCCESS)
+  while ((scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &record, &scan_cache, COPY)) == S_SUCCESS)
     {
       num_heap_oids++;
 
       if (index->filter_predicate)
 	{
 	  if (locator_eval_filter_predicate (thread_p, &index->btid, index->filter_predicate, class_oid, &p_inst_oid, 1,
-					     &p_peek, &ev_res) != NO_ERROR)
+					     &recordp, &ev_res) != NO_ERROR)
 	    {
 	      isallvalid = DISK_ERROR;
 	    }
@@ -9775,8 +9775,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 	}
 
       /* Make sure that the index entry exist */
-      if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, NULL, &attr_info) != NO_ERROR)
-	  || (key = heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, &btid_info, &dbvalue, aligned_buf,
+      if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &record, NULL, &attr_info) != NO_ERROR)
+	  || (key = heap_attrvalue_get_key (thread_p, index_id, &attr_info, &record, &btid_info, &dbvalue, aligned_buf,
 					    NULL, NULL)) == NULL)
 	{
 	  if (isallvalid != DISK_INVALID)
