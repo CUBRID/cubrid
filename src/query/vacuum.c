@@ -369,6 +369,8 @@ int vacuum_Prefetch_log_mode = VACUUM_PREFETCH_LOG_MODE_MASTER;
   (VACUUM_PREFETCH_LOG_BLOCK_BUFFERS_COUNT - \
    prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT))
 
+#define VACUUM_FINISHED_JOB_QUEUE_CAPACITY  2048
+
 #define VACUUM_PREFETCH_LOG_BLOCK_BUFFER(i) \
   ((char *) (PTR_ALIGN (vacuum_Prefetch_log_buffer, MAX_ALIGNMENT)) \
    + (((size_t) (i)) * ((size_t) LOG_PAGESIZE) \
@@ -764,7 +766,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
     }
 
   /* Initialize job queue */
-  vacuum_Job_queue = lf_circular_queue_create (VACUUM_JOB_QUEUE_CAPACITY, sizeof (VACUUM_JOB_ENTRY));
+  vacuum_Job_queue = lf_circular_queue_create (VACUUM_FINISHED_JOB_QUEUE_CAPACITY, sizeof (VACUUM_JOB_ENTRY));
   if (vacuum_Job_queue == NULL)
     {
       goto error;
