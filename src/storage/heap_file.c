@@ -925,6 +925,8 @@ static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, REC
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
 static bool heap_check_class_for_rr_isolation_err (const OID * class_oid);
+static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, OID * oid, PAGE_PTR pgptr, PAGE_PTR fwd_pgptr,
+					 LOG_LSA * prev_ver_lsa);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -23609,6 +23611,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   OID overflow_oid;
   int error_code = NO_ERROR;
   bool update_old_home = true;
+  LOG_LSA prev_version_lsa;
 
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_UPDATE);
@@ -23628,18 +23631,6 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
-
-  /* update */
-  if (is_mvcc_op)
-    {
-      /* in mvcc, old ovf record is deleted at update - log mvcc delete on old overflow to notify vacuum */
-      heap_log_update_undo (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
-			    &context->oid, &context->home_recdes, RVHF_MVCC_UPDATE_OVERFLOW);
-      HEAP_PERF_TRACK_LOGGING (thread_p, context);
-
-      /* set old version lsa */
-      or_mvcc_set_log_lsa_to_record (context->recdes_p, logtb_find_current_tran_lsa (thread_p));
-    }
 
   if (heap_is_big_length (context->recdes_p->length))
     {
@@ -23714,19 +23705,12 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	}
 
       /* log home update operation */
-      if (is_mvcc_op)
-	{
-	  /* undo logging already done */
-	  heap_log_update_redo (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
-				&context->oid, &new_home_recdes, RVHF_UPDATE);
-	}
-      else
-	{
-	  heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
-				    &context->oid, &context->home_recdes, &new_home_recdes, RVHF_UPDATE);
-	}
-
+      heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid,
+				&context->oid, &context->home_recdes, &new_home_recdes,
+				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
+      LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
 
       /* remove old overflow record in non mvcc */
       if (!is_mvcc_op)
@@ -23737,6 +23721,15 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	      return ER_FAILED;
 	    }
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+	}
+      else
+	{
+	  error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
+						     context->forward_page_watcher_p->pgptr, &prev_version_lsa);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
 	}
 
       /* location did not change */
@@ -23813,34 +23806,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  /* log old record first, to be able to set new record prev_version_lsa for mvcc */
-  if (fits_in_home || (!fits_in_home && !fits_in_forward) || heap_is_big_length (context->recdes_p->length))
-    {
-      /* old forward record is deleted and the new record is inserted into old home, or into a new location */
-      heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true, &prev_version_lsa);
-      remove_old_forward = true;
-      /* old home is updated in any case */
-      update_old_home = true;
-    }
-  else
-    {
-      /* old forward record is updated in place, home record will not be touched;
-       * log just undo record, as the redo object needs the lsa from this log */
-      heap_log_update_undo (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-			    &forward_recdes, RVHF_UPDATE);
-      LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
-      update_old_forward = true;
-      /* for non mvcc operations, the redo logging can also be done here, maybe... */
-    }
-  HEAP_PERF_TRACK_LOGGING (thread_p, context);
-
-  if (is_mvcc_op)
-    {
-      /* set the previous version of the new record */
-      or_mvcc_set_log_lsa_to_record (context->recdes_p, &prev_version_lsa);
-    }
-
   /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
   if (heap_is_big_length (context->recdes_p->length))
     {
@@ -23852,6 +23817,10 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       /* home record descriptor will be an overflow OID and will be placed in original home page */
       heap_build_forwarding_recdes (&new_home_recdes, REC_BIGONE, &new_forward_oid);
+
+      /* remove old forward record */
+      remove_old_forward = true;
+      update_old_home = true;
 
       mnt_heap_rel_to_big_updates (thread_p);
     }
@@ -23869,6 +23838,10 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* new home record will be a REC_RELOCATION and will be placed in the original home page */
       heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, &new_forward_oid);
 
+      /* remove old forward record */
+      remove_old_forward = true;
+      update_old_home = true;
+
       mnt_heap_rel_to_rel_updates (thread_p);
     }
   else if (fits_in_home)
@@ -23877,12 +23850,19 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       context->recdes_p->type = REC_HOME;
       new_home_recdes = *context->recdes_p;
 
+      /* remove old forward record */
+      remove_old_forward = true;
+      update_old_home = true;
+
       mnt_heap_rel_to_home_updates (thread_p);
     }
   else if (fits_in_forward)
     {
       /* updated forward record fits in old forward page */
       context->recdes_p->type = REC_NEWHOME;
+
+      /* home record will not be touched */
+      update_old_forward = true;
 
       mnt_heap_rel_updates (thread_p);
     }
@@ -23894,25 +23874,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
     }
 
   /* The old rec_newhome must be removed or updated */
-  assert (remove_old_forward || update_old_forward);
+  assert (remove_old_forward == !update_old_forward);
   /* Remove rec_newhome only in case of old_home update */
   assert (remove_old_forward == update_old_home);
-
-  /* 
-   * Delete old forward record (if necessary)
-   */
-  if (remove_old_forward)
-    {
-      bool mark_reusable = true;
-
-      /* physical removal of forward record */
-      rc = heap_delete_physical (thread_p, &context->hfid, context->forward_page_watcher_p->pgptr, &forward_oid);
-      if (rc != NO_ERROR)
-	{
-	  return rc;
-	}
-    }
-  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
   /* 
    * Update old home record (if necessary)
@@ -23923,7 +23887,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 				&context->home_recdes, &new_home_recdes,
 				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
-
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
       /* update home record */
@@ -23932,7 +23895,25 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	{
 	  return rc;
 	}
+      HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+    }
 
+  /* 
+   * Delete old forward record (if necessary)
+   */
+  if (remove_old_forward)
+    {
+      /* log operation */
+      heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
+				&forward_recdes, true, &prev_version_lsa);
+      HEAP_PERF_TRACK_LOGGING (thread_p, context);
+
+      /* physical removal of forward record */
+      rc = heap_delete_physical (thread_p, &context->hfid, context->forward_page_watcher_p->pgptr, &forward_oid);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
 
@@ -23941,9 +23922,10 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    */
   if (update_old_forward)
     {
-      /* log redo record, undo log already done */
-      heap_log_update_redo (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-			    context->recdes_p, RVHF_UPDATE);
+      /* log operation */
+      heap_log_update_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
+				&forward_recdes, context->recdes_p, is_mvcc_op);
+      LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
 
       if (is_mvcc_op)
 	{
@@ -23970,6 +23952,10 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
 
+  rc =
+    heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
+				  context->forward_page_watcher_p->pgptr, &prev_version_lsa);
+
   /* location did not change */
   COPY_OID (&context->res_oid, &context->oid);
 
@@ -23991,6 +23977,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   RECDES *home_page_updated_recdes_p = NULL;
   OID forward_oid;
   LOG_RCVINDEX undo_rcvindex = RVHF_UPDATE;
+  LOG_LSA prev_version_lsa;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
@@ -24022,16 +24009,6 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       undo_rcvindex = RVHF_UPDATE_NOTIFY_VACUUM;
     }
 #endif /* SERVER_MODE */
-
-  /* log update undo by saving old record */
-  heap_log_update_undo (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-			&context->home_recdes, undo_rcvindex);
-  HEAP_PERF_TRACK_LOGGING (thread_p, context);
-
-  if (is_mvcc_op)
-    {
-      or_mvcc_set_log_lsa_to_record (context->recdes_p, logtb_find_current_tran_lsa (thread_p));
-    }
 
   if (heap_is_big_length (context->recdes_p->length))
     {
@@ -24119,9 +24096,10 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       HEAP_PERF_TRACK_PREPARE (thread_p, context);
     }
 
-  /* log operation redo, undo log already done */
-  heap_log_update_redo (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-			home_page_updated_recdes_p, (is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
+  /* log home update */
+  heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
+			    &context->home_recdes, home_page_updated_recdes_p, undo_rcvindex);
+  LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -24135,6 +24113,13 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       return error_code;
     }
 
+  /* the previous version lsa address can be obtained and set only now, when logging and updating are finished */
+  if (is_mvcc_op)
+    {
+      heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p,
+				    context->forward_page_watcher_p, &prev_version_lsa);
+    }
+
   HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
   /* location did not change */
@@ -24145,7 +24130,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 }
 
 /*
- * heap_update_physical () - physically update a record
+ * heap_update_physical () - physically45a record
  *   thread_p(in): thread entry
  *   page_p(in): page where record is stored
  *   slot_id(in): slot where record is stored within page
@@ -26291,4 +26276,93 @@ heap_check_class_for_rr_isolation_err (const OID * class_oid)
     }
 
   return false;
+}
+
+/*
+ * heap_update_set_prev_version () - Set prev version lsa to record according to its type. 
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * recdes (in)	 : Newly updated record.
+ * p_addr (in)	 : Log address data.
+ *
+ * Note: The records are obtained using PEEK, and modified directly, without using spage_update afterwards
+ */
+static int
+heap_update_set_prev_version (THREAD_ENTRY * thread_p, OID * oid, PAGE_PTR pgptr, PAGE_PTR fwd_pgptr,
+			      LOG_LSA * prev_ver_lsa)
+{
+  int error_code = NO_ERROR;
+  RECDES recdes, forward_recdes;
+  bool is_home_pg_fixed_locally = false, is_fwd_pg_fixed_locally = false;
+  VPID vpid, fwd_vpid;
+  OID forward_oid;
+
+  assert (oid != NULL && !OID_ISNULL (oid) && prev_ver_lsa != NULL && !LSA_ISNULL (prev_ver_lsa));
+
+  if (pgptr == NULL)
+    {
+      VPID_GET_FROM_OID (&vpid, oid);
+      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      is_home_pg_fixed_locally = true;
+    }
+
+  if (spage_get_record (pgptr, oid->slotid, &recdes, PEEK) != S_SUCCESS)
+    {
+      error_code = ER_FAILED;
+      goto end;
+    }
+
+  if (recdes.type == REC_HOME)
+    {
+      error_code = or_mvcc_set_log_lsa_to_record (&recdes, prev_ver_lsa);
+      goto end;
+    }
+  else if (recdes.type == REC_RELOCATION)
+    {
+      forward_oid = *((OID *) recdes.data);
+      if (fwd_pgptr == NULL)
+	{
+	  VPID_GET_FROM_OID (&fwd_vpid, &forward_oid);
+	  fwd_pgptr = pgbuf_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  is_fwd_pg_fixed_locally = true;
+	}
+      if (spage_get_record (fwd_pgptr, forward_oid.slotid, &forward_recdes, PEEK) != S_SUCCESS)
+	{
+	  error_code = ER_FAILED;
+	  goto end;
+	}
+      error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_ver_lsa);
+      goto end;
+    }
+  else if (recdes.type == REC_BIGONE)
+    {
+      forward_oid = *((OID *) recdes.data);
+
+      VPID_GET_FROM_OID (&fwd_vpid, &forward_oid);
+      fwd_pgptr = pgbuf_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      is_fwd_pg_fixed_locally = true;
+
+      forward_recdes.data = overflow_get_first_page_data (fwd_pgptr);
+      forward_recdes.length = OR_HEADER_SIZE (forward_recdes.data);
+
+      error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_ver_lsa);
+      goto end;
+    }
+
+  /* Unexpected record type. */
+  assert (false);
+  return ER_FAILED;
+
+end:
+  if (is_home_pg_fixed_locally)
+    {
+      pgbuf_unfix (thread_p, pgptr);
+    }
+  if (is_fwd_pg_fixed_locally)
+    {
+      pgbuf_unfix (thread_p, fwd_pgptr);
+    }
+
+  return error_code;
 }
