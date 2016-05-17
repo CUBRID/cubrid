@@ -3241,8 +3241,6 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   /* Safe guard - it is assumed that transaction descriptor is already initialized. */
   assert (worker->tdes != NULL);
 
-  /* Increment number of assigned workers */
-  vacuum_Assigned_workers_count++;
   return NO_ERROR;
 
 error:
