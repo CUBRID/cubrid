@@ -475,7 +475,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
     case DB_TYPE_VARBIT:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
-      value->data.ch.info.is_max_string = FALSE;
+      value->data.ch.info.is_max_string = false;
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "\0";	/* zero; 0 */
       value->domain.general_info.is_null = 0;
@@ -488,7 +488,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
     case DB_TYPE_VARNCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
-      value->data.ch.info.is_max_string = FALSE;
+      value->data.ch.info.is_max_string = false;
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "\40";	/* space; 32 */
       value->domain.general_info.is_null = 0;
@@ -637,9 +637,9 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
     case DB_TYPE_VARBIT:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
-      value->data.ch.info.is_max_string = TRUE;
-      value->data.ch.medium.size = 1;
-      value->data.ch.medium.buf = "";
+      value->data.ch.info.is_max_string = true;
+      value->data.ch.medium.size = 0;
+      value->data.ch.medium.buf = NULL;
       value->domain.general_info.is_null = 0;
       break;
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
@@ -650,22 +650,22 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
       /* Case for the maximum String type. Just set the is_max_string flag to TRUE. */
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
-      value->data.ch.info.is_max_string = TRUE;
+      value->data.ch.info.is_max_string = true;
       if (codeset == INTL_CODESET_UTF8)
 	{
-	  value->data.ch.medium.size = 1;
+	  value->data.ch.medium.size = 0;
 	  /* maximum supported codepoint : check with intl_is_max_bound_chr */
-	  value->data.ch.medium.buf = "";
+	  value->data.ch.medium.buf = NULL;
 	}
       else if (codeset == INTL_CODESET_KSC5601_EUC)
 	{
-	  value->data.ch.medium.size = 1;
-	  value->data.ch.medium.buf = "";
+	  value->data.ch.medium.size = 0;
+	  value->data.ch.medium.buf = NULL;
 	}
       else
 	{
-	  value->data.ch.medium.size = 1;
-	  value->data.ch.medium.buf = "";
+	  value->data.ch.medium.size = 0;
+	  value->data.ch.medium.buf = NULL;
 	}
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
@@ -675,19 +675,20 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
 	{
 	  if (codeset == INTL_CODESET_UTF8)
 	    {
-	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, (char *) "\xf4\x8f\xbf\xbf", 4, (unsigned char) codeset,
+	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset,
 				   collation_id);
 	    }
 	  else if (codeset == INTL_CODESET_KSC5601_EUC)
 	    {
-	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, (char *) "\377\377", 2, (unsigned char) codeset,
+	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset,
 				   collation_id);
 	    }
 	  else
 	    {
-	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, (char *) "\377", 1, (unsigned char) codeset,
+	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset,
 				   collation_id);
 	    }
+	  value->data.ch.info.is_max_string = true;
 	}
       else
 	{
@@ -811,7 +812,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
     case DB_TYPE_VARCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
-      value->data.ch.info.is_max_string = FALSE;
+      value->data.ch.info.is_max_string = false;
       value->data.ch.medium.size = 0;
       value->data.ch.medium.buf = (char *) "";
       value->domain.general_info.is_null = 0;
@@ -821,7 +822,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
     case DB_TYPE_VARNCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
-      value->data.ch.info.is_max_string = FALSE;
+      value->data.ch.info.is_max_string = false;
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "";
       value->domain.general_info.is_null = 0;
@@ -1627,7 +1628,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 	  value->data.ch.info.style = MEDIUM_STRING;
 	  value->data.ch.info.codeset = codeset;
 	  value->domain.char_info.collation_id = collation_id;
-	  value->data.ch.info.is_max_string = FALSE;
+	  value->data.ch.info.is_max_string = false;
 	  /* 
 	   * If size is set to the default, and the type is any
 	   * kind of character string, assume the string is NULL
@@ -2607,7 +2608,7 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int 
   value->data.enumeration.str_val.info.codeset = codeset;
   value->domain.char_info.collation_id = collation_id;
   value->data.enumeration.str_val.info.style = MEDIUM_STRING;
-  value->data.ch.info.is_max_string = FALSE;
+  value->data.ch.info.is_max_string = false;
   value->data.enumeration.str_val.medium.size = size;
   value->data.enumeration.str_val.medium.buf = str;
   value->domain.general_info.is_null = 0;
