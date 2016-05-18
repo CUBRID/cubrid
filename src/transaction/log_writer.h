@@ -51,7 +51,7 @@ enum logwr_action
 typedef struct logwr_global LOGWR_GLOBAL;
 struct logwr_global
 {
-  struct log_header hdr;
+  LOG_HEADER hdr;
   LOG_PAGE *loghdr_pgptr;
 
   char db_name[PATH_MAX];

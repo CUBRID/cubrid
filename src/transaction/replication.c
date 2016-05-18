@@ -244,7 +244,7 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 
   for (i = tdes->cur_repl_record - 1; i >= 0; i--)
     {
-      repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[i];
+      repl_rec = (LOG_REPL_RECORD *) (&tdes->repl_records[i]);
       if (OID_EQ (&repl_rec->inst_oid, inst_oid) && !LSA_ISNULL (&tdes->repl_update_lsa))
 	{
 	  assert (repl_rec->rcvindex == RVREPL_DATA_UPDATE || repl_rec->rcvindex == RVREPL_DATA_UPDATE_START
@@ -490,19 +490,21 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
       return error;
     }
 
-  repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[tdes->cur_repl_record];
+  repl_rec = (LOG_REPL_RECORD *) (&tdes->repl_records[tdes->cur_repl_record]);
   repl_rec->repl_type = LOG_REPLICATION_STATEMENT;
   repl_rec->rcvindex = RVREPL_STATEMENT;
   repl_rec->must_flush = LOG_REPL_COMMIT_NEED_FLUSH;
   OID_SET_NULL (&repl_rec->inst_oid);
 
   /* make the common info for the schema replication */
-  repl_rec->length = OR_INT_SIZE	/* REPL_INFO_SCHEMA.statement_type */
-    + or_packed_string_length (repl_info->name, &strlen1) + or_packed_string_length (repl_info->stmt_text,
-										     &strlen2) +
-    or_packed_string_length (repl_info->db_user, &strlen3) + or_packed_string_length (repl_info->sys_prm_context,
-										      &strlen4);
-  if ((repl_rec->repl_data = (char *) malloc (repl_rec->length)) == NULL)
+  repl_rec->length = (OR_INT_SIZE	/* REPL_INFO_SCHEMA.statement_type */
+		      + or_packed_string_length (repl_info->name, &strlen1)
+		      + or_packed_string_length (repl_info->stmt_text, &strlen2)
+		      + or_packed_string_length (repl_info->db_user, &strlen3)
+		      + or_packed_string_length (repl_info->sys_prm_context, &strlen4));
+
+  repl_rec->repl_data = (char *) malloc (repl_rec->length);
+  if (repl_rec->repl_data == NULL)
     {
       error = ER_REPL_ERROR;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't allocate memory");
@@ -654,7 +656,7 @@ repl_debug_info ()
       for (rnum = 0; rnum < tdes->cur_repl_record; rnum++)
 	{
 	  fprintf (stdout, "   RECORD # %d\n", rnum);
-	  repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[rnum];
+	  repl_rec = (LOG_REPL_RECORD *) (&tdes->repl_records[rnum]);
 	  fprintf (stdout, "      type: %s\n", log_to_string (repl_rec->repl_type));
 	  fprintf (stdout, "      OID: %d - %d - %d\n", repl_rec->inst_oid.volid, repl_rec->inst_oid.pageid,
 		   repl_rec->inst_oid.slotid);

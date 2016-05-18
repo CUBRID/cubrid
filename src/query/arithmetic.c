@@ -4759,15 +4759,12 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
 
     case DB_TYPE_DATETIMETZ:
       /* double can hold datetime type */
-      d1 =
-	((double) DB_GET_DATETIMETZ (value1)->datetime.date) * MILLISECONDS_OF_ONE_DAY +
-	DB_GET_DATETIMETZ (value1)->datetime.time;
-      d2 =
-	((double) DB_GET_DATETIMETZ (value2)->datetime.date) * MILLISECONDS_OF_ONE_DAY +
-	DB_GET_DATETIMETZ (value2)->datetime.time;
-      d3 =
-	((double) DB_GET_DATETIMETZ (value3)->datetime.date) * MILLISECONDS_OF_ONE_DAY +
-	DB_GET_DATETIMETZ (value3)->datetime.time;
+      d1 = (((double) DB_GET_DATETIMETZ (value1)->datetime.date) * MILLISECONDS_OF_ONE_DAY
+	    + DB_GET_DATETIMETZ (value1)->datetime.time);
+      d2 = (((double) DB_GET_DATETIMETZ (value2)->datetime.date) * MILLISECONDS_OF_ONE_DAY
+	    + DB_GET_DATETIMETZ (value2)->datetime.time);
+      d3 = (((double) DB_GET_DATETIMETZ (value3)->datetime.date) * MILLISECONDS_OF_ONE_DAY
+	    + DB_GET_DATETIMETZ (value3)->datetime.time);
       break;
 
     case DB_TYPE_TIMESTAMP:

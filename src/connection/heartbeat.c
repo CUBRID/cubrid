@@ -469,7 +469,7 @@ hb_process_master_request (void)
 	case -1:
 	  if (!IS_INVALID_SOCKET (hb_Conn->fd)
 #if defined(WINDOWS)
-	      && ioctlsocket (hb_Conn->fd, FIONREAD, (u_long *) & status) == SOCKET_ERROR
+	      && ioctlsocket (hb_Conn->fd, FIONREAD, (u_long *) (&status)) == SOCKET_ERROR
 #else /* WINDOWS */
 	      && fcntl (hb_Conn->fd, F_GETFL, status) < 0
 #endif /* WINDOWS */

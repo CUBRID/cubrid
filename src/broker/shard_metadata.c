@@ -235,7 +235,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	}
 
       assert (idx_range >= 0 && idx_range < SHARD_KEY_RANGE_MAX);
-      range_p = (T_SHARD_KEY_RANGE *) & ((key_p->range[idx_range]));
+      range_p = (T_SHARD_KEY_RANGE *) (&key_p->range[idx_range]);
       nargs = sscanf (line, "%d %d %d", &range_p->min, &range_p->max, &range_p->shard_id);
 
       range_p->key_index = idx_key;

@@ -126,7 +126,7 @@ col_api_update (API_COLLECTION * col, long pos, CI_TYPE type, void *ptr, size_t 
   res = co->indexer->ifs->check (co->indexer, (int) pos, CHECK_FOR_GET | CHECK_FOR_SET);
   if (res != NO_ERROR)
     return res;
-  res = co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) & val);
+  res = co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) (&val));
   if (res != NO_ERROR)
     return res;
   res = coerce_value_to_db_value (type, ptr, size, val, true);
@@ -153,7 +153,7 @@ col_api_delete (API_COLLECTION * col, long pos)
   res = co->indexer->ifs->check (co->indexer, (int) pos, CHECK_FOR_DELETE);
   if (res != NO_ERROR)
     return res;
-  res = co->indexer->ifs->delete (co->indexer, (int) pos, &va, (API_VALUE **) & val);
+  res = co->indexer->ifs->delete (co->indexer, (int) pos, &va, (API_VALUE **) (&val));
   if (res != NO_ERROR)
     return res;
   assert (va == NULL);
@@ -183,7 +183,7 @@ col_api_get_elem_domain_info (API_COLLECTION * col, long pos, CI_TYPE * type, in
     {
       return res;
     }
-  res = co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) & val);
+  res = co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) (&val));
   if (res != NO_ERROR)
     {
       return res;
@@ -224,7 +224,7 @@ col_api_get_elem (API_COLLECTION * col, long pos, CI_TYPE type, void *addr, size
   res = co->indexer->ifs->check (co->indexer, (int) pos, CHECK_FOR_GET);
   if (res != NO_ERROR)
     return res;
-  res = co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) & val);
+  res = co->indexer->ifs->get (co->indexer, (int) pos, &va, (API_VALUE **) (&val));
   if (res != NO_ERROR)
     return res;
   assert (val != NULL);

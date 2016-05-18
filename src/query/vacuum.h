@@ -105,8 +105,6 @@ enum vacuum_cache_postpone_status
   VACUUM_CACHE_POSTPONE_OVERFLOW
 };
 
-/* Forward definition */
-struct log_redo;
 typedef struct vacuum_cache_postpone_entry VACUUM_CACHE_POSTPONE_ENTRY;
 struct vacuum_cache_postpone_entry
 {

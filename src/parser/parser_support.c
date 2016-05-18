@@ -71,28 +71,22 @@ struct pt_host_vars
 };
 
 #define COMPATIBLE_WITH_INSTNUM(node) \
-        (pt_is_expr_node(node) \
-         && PT_EXPR_INFO_IS_FLAGED(node, PT_EXPR_INFO_INSTNUM_C))
+  (pt_is_expr_node (node) && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_INSTNUM_C))
 
 #define NOT_COMPATIBLE_WITH_INSTNUM(node) \
-        (pt_is_dot_node(node) || pt_is_attr(node) \
-         || pt_is_correlated_subquery(node) \
-         || (pt_is_expr_node(node) \
-             && PT_EXPR_INFO_IS_FLAGED(node, PT_EXPR_INFO_INSTNUM_NC)))
+  (pt_is_dot_node (node) || pt_is_attr (node) || pt_is_correlated_subquery (node) \
+   || (pt_is_expr_node (node) && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_INSTNUM_NC)))
 
 #define COMPATIBLE_WITH_GROUPBYNUM(node) \
-        ((pt_is_function(node) \
-          && node->info.function.function_type == PT_GROUPBY_NUM) \
-         || \
-         (pt_is_expr_node(node) \
-          && PT_EXPR_INFO_IS_FLAGED(node, PT_EXPR_INFO_GROUPBYNUM_C)))
+  ((pt_is_function (node) && node->info.function.function_type == PT_GROUPBY_NUM) \
+   || (pt_is_expr_node (node) && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_GROUPBYNUM_C)))
 
 #define NOT_COMPATIBLE_WITH_GROUPBYNUM(node) \
-        (pt_is_dot_node(node) || pt_is_attr(node) || pt_is_query(node) \
-         || (pt_is_expr_node(node) \
-             && PT_EXPR_INFO_IS_FLAGED(node, PT_EXPR_INFO_GROUPBYNUM_NC)))
+  (pt_is_dot_node (node) || pt_is_attr (node) || pt_is_query (node) \
+   || (pt_is_expr_node (node) && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_GROUPBYNUM_NC)))
 
-#define DB_ENUM_ELEMENTS_MAX_AGG_SIZE (DB_PAGESIZE - offsetof (BTREE_ROOT_HEADER, packed_key_domain) - 1)
+#define DB_ENUM_ELEMENTS_MAX_AGG_SIZE \
+  (DB_PAGESIZE - offsetof (BTREE_ROOT_HEADER, packed_key_domain) - 1)
 
 int qp_Packing_er_code = NO_ERROR;
 
@@ -2512,10 +2506,9 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** j
 
       assert (PT_IS_EXPR_NODE (current_conj));
       /* It is either fully CNF or not at all. */
-      assert (!
-	      (current_conj->next != NULL
-	       && (PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_AND)
-		   || PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_OR))));
+      assert (!(current_conj->next != NULL
+		&& (PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_AND)
+		    || PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_OR))));
       next_conj = current_conj->next;
       current_conj->next = NULL;
 
@@ -2523,10 +2516,9 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** j
 	{
 	  assert (PT_IS_EXPR_NODE (current_pred));
 	  /* It is either fully CNF or not at all. */
-	  assert (!
-		  (current_pred->or_next != NULL
-		   && (PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred, PT_AND)
-		       || PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred, PT_OR))));
+	  assert (!(current_pred->or_next != NULL
+		    && (PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred, PT_AND)
+			|| PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred, PT_OR))));
 	  if (pt_is_filtering_expression (parser, current_pred))
 	    {
 	      has_filter_pred = true;
@@ -3145,8 +3137,7 @@ pt_collect_host_info (PARSER_CONTEXT * parser, PT_NODE * node, void *h_var, int 
 PT_HOST_VARS *
 pt_host_info (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  PT_HOST_VARS *result = (PT_HOST_VARS *) calloc (1,
-						  sizeof (PT_HOST_VARS));
+  PT_HOST_VARS *result = (PT_HOST_VARS *) calloc (1, sizeof (PT_HOST_VARS));
 
   if (result)
     {
@@ -11811,9 +11802,9 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
       temp = node->next;
       while (temp != NULL)
 	{
-	  if (QSTR_COMPARE
-	      (domain->collation_id, node->info.value.data_value.str->bytes, node->info.value.data_value.str->length,
-	       temp->info.value.data_value.str->bytes, temp->info.value.data_value.str->length) == 0)
+	  if (QSTR_COMPARE (domain->collation_id, node->info.value.data_value.str->bytes,
+			    node->info.value.data_value.str->length, temp->info.value.data_value.str->bytes,
+			    temp->info.value.data_value.str->length) == 0)
 	    {
 	      PT_ERRORm (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ENUM_TYPE_DUPLICATE_VALUES);
 

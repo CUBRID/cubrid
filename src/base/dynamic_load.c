@@ -1678,7 +1678,7 @@ dl_resolve_symbol (DYNAMIC_LOADER * this_, struct nlist *syms)
 	      fprintf (stderr, "resolving symbols with handle: %d, value = %p\n", j, this_->handler.handles[j]);
 	    }
 #if defined(HPUX)
-	  if (shl_findsym ((shl_t *) & this_->handler.handles[j], syms[i].n_name, TYPE_PROCEDURE, &resolution) ==
+	  if (shl_findsym ((shl_t *) (&this_->handler.handles[j]), syms[i].n_name, TYPE_PROCEDURE, &resolution) ==
 	      NO_ERROR)
 #else /* HPUX */
 	  if ((resolution = dlsym (this_->handler.handles[j], syms[i].n_name)))

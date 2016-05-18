@@ -1334,11 +1334,23 @@ pt_bind_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	    /* make info set up properly */
 	    memset (&(node->info), 0, sizeof (node->info));
 	    node->info.function.arg_list = arg_list;
-	    node->info.function.function_type =
-	      (node->type_enum == PT_TYPE_SET) ? F_SET : (node->type_enum ==
-							  PT_TYPE_MULTISET) ? F_MULTISET : (node->type_enum ==
-											    PT_TYPE_SEQUENCE) ?
-	      F_SEQUENCE : (FUNC_TYPE) 0;
+	    if (node->type_enum == PT_TYPE_SET)
+	      {
+		node->info.function.function_type = F_SET;
+	      }
+	    else if (node->type_enum == PT_TYPE_MULTISET)
+	      {
+		node->info.function.function_type = F_MULTISET;
+	      }
+	    else if (node->type_enum == PT_TYPE_SEQUENCE)
+	      {
+		node->info.function.function_type = F_SEQUENCE;
+	      }
+	    else
+	      {
+		node->info.function.function_type = (FUNC_TYPE) 0;
+	      }
+
 	    /* now we need to type the innards of the set ... */
 	    /* first we tag this not typed so the type will be recomputed from scratch. */
 	    node->type_enum = PT_TYPE_NONE;
@@ -1902,8 +1914,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			  else
 			    {	/* derived table */
 			      range_var = spec->info.spec.range_var;
-			      if (pt_str_compare
-				  (attr->info.name.original, range_var->info.name.original, CASE_INSENSITIVE) == 0)
+			      if (pt_str_compare (attr->info.name.original, range_var->info.name.original,
+						  CASE_INSENSITIVE) == 0)
 				{
 				  break;
 				}
@@ -2961,9 +2973,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    node = temp;
 	  }
 
-	if (!
-	    (node->node_type == PT_DOT_
-	     && (node->info.dot.arg2->node_type == PT_METHOD_CALL || node->info.dot.arg2->node_type == PT_FUNCTION)))
+	if (!(node->node_type == PT_DOT_
+	      && (node->info.dot.arg2->node_type == PT_METHOD_CALL || node->info.dot.arg2->node_type == PT_FUNCTION)))
 	  {
 	    /* don't revisit leaves */
 	    *continue_walk = PT_LIST_WALK;
@@ -3654,12 +3665,12 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
       q = p->next;		/* q = next spec */
       while (q)
 	{			/* check that p->range != q->range to the end of list */
-	  if (!pt_str_compare
-	      (p->info.spec.range_var->info.name.original, q->info.spec.range_var->info.name.original,
-	       CASE_INSENSITIVE))
+	  if (!pt_str_compare (p->info.spec.range_var->info.name.original, q->info.spec.range_var->info.name.original,
+			       CASE_INSENSITIVE))
 	    {
 	      PT_MISC_TYPE p_type = p->info.spec.range_var->info.name.meta_class;
 	      PT_MISC_TYPE q_type = q->info.spec.range_var->info.name.meta_class;
+
 	      if (p_type != q_type && (p_type == PT_META_CLASS || q_type == PT_META_CLASS))
 		{
 		  /* this happens in statements like: SELECT class t, t.attr FROM t which are rewriten to: SELECT class 
@@ -3668,14 +3679,18 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
 		  q = q->next;	/* check the next one inner loop */
 		  continue;
 		}
+
 	      PT_ERRORmf (parser, q, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AMBIGUOUS_EXPOSED_NM,
 			  q->info.spec.range_var->info.name.original);
 	      return 0;
 	    }
+
 	  q = q->next;		/* check the next one inner loop */
 	}
+
       p = p->next;		/* go to next one outer loop */
     }
+
   return 1;			/* OK */
 }
 

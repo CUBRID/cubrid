@@ -60,8 +60,8 @@ qproc_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  set_id->cur_index = 0;
 
 	  db_value_clear (s_id->val_list->valp->val);
-	  if (fetch_copy_dbval
-	      (thread_p, &set_id->operand->value, s_id->vd, NULL, NULL, NULL, s_id->val_list->valp->val) != NO_ERROR)
+	  if (fetch_copy_dbval (thread_p, &set_id->operand->value, s_id->vd, NULL, NULL, NULL,
+				s_id->val_list->valp->val) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -77,8 +77,8 @@ qproc_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  set_id->operand = set_id->operand->next;
 
 	  db_value_clear (s_id->val_list->valp->val);
-	  if (fetch_copy_dbval
-	      (thread_p, &set_id->operand->value, s_id->vd, NULL, NULL, NULL, s_id->val_list->valp->val) != NO_ERROR)
+	  if (fetch_copy_dbval (thread_p, &set_id->operand->value, s_id->vd, NULL, NULL, NULL,
+				s_id->val_list->valp->val) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
