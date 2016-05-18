@@ -26051,6 +26051,9 @@ heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, O
 		      LOG_RCVINDEX rcvindex)
 {
   LOG_DATA_ADDR address;
+  bool need_restore_repl_lsa = false;
+  LOG_TDES *tdes = NULL;
+  LOG_LSA preserved_repl_insert_lsa, preserved_repl_update_lsa;
 
   assert (rcvindex == RVHF_UPDATE || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM || RVHF_MVCC_UPDATE_OVERFLOW);
 
@@ -26059,7 +26062,32 @@ heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, O
   address.pgptr = page_p;
   address.vfid = vfid_p;
 
+
+  if (redo_recdes->type == REC_RELOCATION || redo_recdes->type == REC_ASSIGN_ADDRESS)
+    {
+      int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      tdes = LOG_FIND_TDES (tran_index);
+
+      /* 
+       * save lsa before it is overwritten by logging the reod on such records action (REC_RELOCATION and 
+       * REC_ASSIGN_ADDRESS do not contain the updated value).
+       */
+      if (tdes != NULL)
+	{
+	  LSA_COPY (&preserved_repl_insert_lsa, &tdes->repl_insert_lsa);
+	  LSA_SET_NULL (&tdes->repl_insert_lsa);
+	  LSA_COPY (&preserved_repl_update_lsa, &tdes->repl_update_lsa);
+	  LSA_SET_NULL (&tdes->repl_update_lsa);
+	}
+    }
+
   log_append_redo_recdes (thread_p, rcvindex, &address, redo_recdes);
+
+  if (tdes != NULL)
+    {
+      LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_insert_lsa);
+      LSA_COPY (&tdes->repl_update_lsa, &preserved_repl_update_lsa);
+    }
 }
 
 /*
