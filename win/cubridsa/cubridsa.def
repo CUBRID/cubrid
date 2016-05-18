@@ -460,7 +460,6 @@ EXPORTS
     db_get_resultset
     db_get_serial_current_value
     db_get_serial_next_value
-    db_get_session_mode
     db_get_shared
     db_get_shared_attribute
     db_get_shared_attribute_names
