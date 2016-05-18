@@ -256,16 +256,6 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator, C
 	}
       else
 	{
-	  /* Set the compare_LT flag to false, and change to true if the
-	   * operation is supposed to be a "Less Than" one. 
-	   */
-	  db_value_set_compare (dbval2, 0);
-
-	  if (et_comp->rel_op == R_LT)
-	    {
-	      db_value_set_compare (dbval2, 1);
-	    }
-
 	  /* do ordinal comparison, but NULL's still yield UNKNOWN */
 	  result = tp_value_compare_with_error (dbval1, dbval2, 1, 0, &comparable);
 	}

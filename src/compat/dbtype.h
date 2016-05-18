@@ -772,7 +772,7 @@ union db_char
   {
     unsigned char style;
     unsigned char codeset;
-    bool compare_LT;
+    bool is_max_string;
   } info;
   struct
   {

@@ -475,6 +475,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
     case DB_TYPE_VARBIT:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
+      value->data.ch.info.is_max_string = FALSE;
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "\0";	/* zero; 0 */
       value->domain.general_info.is_null = 0;
@@ -487,6 +488,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type, const int precision, 
     case DB_TYPE_VARNCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
+      value->data.ch.info.is_max_string = FALSE;
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "\40";	/* space; 32 */
       value->domain.general_info.is_null = 0;
@@ -635,8 +637,9 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
     case DB_TYPE_VARBIT:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
+      value->data.ch.info.is_max_string = TRUE;
       value->data.ch.medium.size = 1;
-      value->data.ch.medium.buf = (char *) "\377";	/* 255 */
+      value->data.ch.medium.buf = "";
       value->domain.general_info.is_null = 0;
       break;
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
@@ -644,23 +647,25 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
+      /* Case for the maximum String type. Just set the is_max_string flag to TRUE. */
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
+      value->data.ch.info.is_max_string = TRUE;
       if (codeset == INTL_CODESET_UTF8)
 	{
-	  value->data.ch.medium.size = 4;
+	  value->data.ch.medium.size = 1;
 	  /* maximum supported codepoint : check with intl_is_max_bound_chr */
-	  value->data.ch.medium.buf = (char *) "\xf4\x8f\xbf\xbf";
+	  value->data.ch.medium.buf = "";
 	}
       else if (codeset == INTL_CODESET_KSC5601_EUC)
 	{
-	  value->data.ch.medium.size = 2;
-	  value->data.ch.medium.buf = (char *) "\377\377";	/* 255 255 */
+	  value->data.ch.medium.size = 1;
+	  value->data.ch.medium.buf = "";
 	}
       else
 	{
 	  value->data.ch.medium.size = 1;
-	  value->data.ch.medium.buf = (char *) "\377";	/* 255 */
+	  value->data.ch.medium.buf = "";
 	}
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
@@ -806,6 +811,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
     case DB_TYPE_VARCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
+      value->data.ch.info.is_max_string = FALSE;
       value->data.ch.medium.size = 0;
       value->data.ch.medium.buf = (char *) "";
       value->domain.general_info.is_null = 0;
@@ -815,6 +821,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type, const int precisi
     case DB_TYPE_VARNCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
+      value->data.ch.info.is_max_string = FALSE;
       value->data.ch.medium.size = 1;
       value->data.ch.medium.buf = (char *) "";
       value->domain.general_info.is_null = 0;
@@ -1620,6 +1627,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 	  value->data.ch.info.style = MEDIUM_STRING;
 	  value->data.ch.info.codeset = codeset;
 	  value->domain.char_info.collation_id = collation_id;
+	  value->data.ch.info.is_max_string = FALSE;
 	  /* 
 	   * If size is set to the default, and the type is any
 	   * kind of character string, assume the string is NULL
@@ -2599,6 +2607,7 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int 
   value->data.enumeration.str_val.info.codeset = codeset;
   value->domain.char_info.collation_id = collation_id;
   value->data.enumeration.str_val.info.style = MEDIUM_STRING;
+  value->data.ch.info.is_max_string = FALSE;
   value->data.enumeration.str_val.medium.size = size;
   value->data.enumeration.str_val.medium.buf = str;
   value->domain.general_info.is_null = 0;
@@ -6785,18 +6794,4 @@ void
 db_set_connect_status (int status)
 {
   db_Connect_status = status;
-}
-
-
-void
-db_value_set_compare (DB_VALUE * value, int set)
-{
-  if (set == 1)
-    {
-      value->data.ch.info.compare_LT = true;
-      return;
-    }
-  value->data.ch.info.compare_LT = false;
-  return;
-
 }

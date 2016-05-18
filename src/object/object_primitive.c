@@ -12194,25 +12194,28 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
       return DB_UNK;
     }
 
-
+  /*
+   *  Check if the is_max_string flag set for each DB_VALUE.
+   *  If "value1" has the flag set, return 1, meaning that "value2" is Less Than "value1".
+   *  If "value2" has the flag set, return -1, meaning that "value1" is Greater Than "value2".
+   */
+  if(value1->data.ch.info.is_max_string == TRUE)
+    {
+      return 1;
+    }
+  else
+    {
+      if(value2->data.ch.info.is_max_string == TRUE)
+	{
+	  return -1;
+	}
+    }
 
   c =
     QSTR_CHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
 		       (int) DB_GET_STRING_SIZE (value2));
   c = MR_CMP_RETURN_CODE (c);
 
-/*
- *  Check if the compare_LT flag set. If so, return -1 for the "%" and "chr(255)*" patterns.
- */
-
-  if (value2->data.ch.info.compare_LT == true)
-    {
-      if (string2[0] == 255 || string2[0] == 37)
-	{
-	  return -1;
-	}
-
-    }
   return c;
 }
 
