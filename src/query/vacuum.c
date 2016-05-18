@@ -4830,7 +4830,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   LOG_VACUUM_INFO vacuum_info;
   MVCCID mvccid;
   VACUUM_LOG_BLOCKID crt_blockid;
-  LOG_LSA mvcc_op_log_lsa;
+  LOG_LSA mvcc_op_log_lsa = LSA_INITIALIZER;
   bool is_last_block = false;
 
   if (LSA_ISNULL (&vacuum_Data.recovery_lsa))
