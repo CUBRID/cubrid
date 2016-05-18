@@ -651,22 +651,8 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
       value->data.ch.info.is_max_string = true;
-      if (codeset == INTL_CODESET_UTF8)
-	{
-	  value->data.ch.medium.size = 0;
-	  /* maximum supported codepoint : check with intl_is_max_bound_chr */
-	  value->data.ch.medium.buf = NULL;
-	}
-      else if (codeset == INTL_CODESET_KSC5601_EUC)
-	{
-	  value->data.ch.medium.size = 0;
-	  value->data.ch.medium.buf = NULL;
-	}
-      else
-	{
-	  value->data.ch.medium.size = 0;
-	  value->data.ch.medium.buf = NULL;
-	}
+      value->data.ch.medium.size = 0;
+      value->data.ch.medium.buf = NULL;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -675,18 +661,15 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
 	{
 	  if (codeset == INTL_CODESET_UTF8)
 	    {
-	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset,
-				   collation_id);
+	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset, collation_id);
 	    }
 	  else if (codeset == INTL_CODESET_KSC5601_EUC)
 	    {
-	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset,
-				   collation_id);
+	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset, collation_id);
 	    }
 	  else
 	    {
-	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset,
-				   collation_id);
+	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset, collation_id);
 	    }
 	  value->data.ch.info.is_max_string = true;
 	}

@@ -12189,20 +12189,20 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
    *  If "value2" has the flag set, return -1, meaning that "value1" is Greater Than "value2".
    */
 
-  if(value1->data.ch.info.is_max_string == TRUE)
+  if (value1->data.ch.info.is_max_string == true)
     {
-      if(value2->data.ch.info.is_max_string == TRUE)
+      if (value2->data.ch.info.is_max_string == true)
 	{
 	  /* Both strings are max_string. Therefore equal. Even though this should not happen. */
-	  return 0;
+	  return DB_EQ;
 	}
-      return 1;
+      return DB_GT;
     }
   else
     {
-      if(value2->data.ch.info.is_max_string == TRUE)
+      if (value2->data.ch.info.is_max_string == true)
 	{
-	  return -1;
+	  return DB_LT;
 	}
     }
 
