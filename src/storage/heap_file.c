@@ -24137,7 +24137,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 }
 
 /*
- * heap_update_physical () - physically45a record
+ * heap_update_physical () - physically update a record
  *   thread_p(in): thread entry
  *   page_p(in): page where record is stored
  *   slot_id(in): slot where record is stored within page
