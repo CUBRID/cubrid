@@ -1252,11 +1252,6 @@ stmt_exec_one_statement (BH_INTERFACE * bh_interface, int stmt_idx, CI_STMT_STRU
 	  return statement_id;
 	}
     }
-#if defined(CS_MODE)
-  session->parser->exec_mode = (pstmt->opt.async_query) ? ASYNC_EXEC : SYNC_EXEC;
-#else
-  session->parser->exec_mode = SYNC_EXEC;
-#endif
   pstmt->rs_info[stmt_idx].metainfo.sql_type = db_get_statement_type (session, stmt_idx + 1);
   if (HAS_RESULT (pstmt->rs_info[stmt_idx].metainfo.sql_type))
     {
@@ -2628,12 +2623,6 @@ stmt_exec_batch_query_internal (BH_INTERFACE * bh_interface, CI_STMT_STRUCTURE *
 	  batch_data = batch_data->next;
 	  continue;
 	}
-
-#if defined(CS_MODE)
-      session->parser->exec_mode = (pstmt->opt.async_query) ? ASYNC_EXEC : SYNC_EXEC;
-#else
-      session->parser->exec_mode = SYNC_EXEC;
-#endif
 
       retval = db_execute_statement_local (session, statement_id, &db_q_result);
 

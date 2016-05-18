@@ -99,7 +99,6 @@ struct statement_impl_s
   int req_handle;
   int status;
   bool opt_updatable_result;
-  bool opt_async_query;
   /* 
    * parameter and parameter meta related fields
    * - PM : parameter meta data api structure header
@@ -2248,10 +2247,6 @@ statement_execute (STATEMENT_IMPL * pstmt, T_CCI_ERROR * err_buf)
   T_CCI_QUERY_RESULT *query_result;
 
   ex_flag = CCI_EXEC_QUERY_ALL;
-  if (pstmt->opt_async_query)
-    {
-      ex_flag |= CCI_EXEC_ASYNC;
-    }
 
   res = cci_execute (pstmt->req_handle, ex_flag, 0, err_buf);
   if (res < 0)
@@ -4820,7 +4815,7 @@ ci_stmt_get_option_impl (COMMON_API_STRUCTURE * stmt, CI_STATEMENT_OPTION option
       break;
 
     case CI_STATEMENT_OPTION_ASYNC_QUERY:
-      *(int *) arg = (pstmt->opt_async_query) ? 1 : 0;
+      *(int *) arg = 0;
       break;
 
     case CI_STATEMENT_OPTION_EXEC_CONTINUE_ON_ERROR:
@@ -4857,9 +4852,6 @@ ci_stmt_set_option_impl (COMMON_API_STRUCTURE * stmt, CI_STATEMENT_OPTION option
       break;
 
     case CI_STATEMENT_OPTION_ASYNC_QUERY:
-      pstmt->opt_async_query = *(int *) arg != 0 ? true : false;
-      break;
-
     case CI_STATEMENT_OPTION_EXEC_CONTINUE_ON_ERROR:
     case CI_STATEMENT_OPTION_LAZY_EXEC:
     case CI_STATEMENT_OPTION_GET_GENERATED_KEYS:

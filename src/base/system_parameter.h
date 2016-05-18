@@ -157,7 +157,6 @@ enum param_id
   PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES,
   PRM_ID_INDEX_SCAN_KEY_BUFFER_SIZE,
   PRM_ID_DONT_REUSE_HEAP_FILE,
-  PRM_ID_QUERY_MODE_SYNC,
   PRM_ID_INSERT_MODE,
   PRM_ID_LK_MAX_SCANID_BIT,
   PRM_ID_HOSTVAR_LATE_BINDING,
@@ -492,7 +491,6 @@ extern int sysprm_check_range (const char *pname, void *value);
 extern int sysprm_get_range (const char *pname, void *min, void *max);
 extern int prm_get_master_port_id (void);
 extern bool prm_get_commit_on_shutdown (void);
-extern bool prm_get_query_mode_sync (void);
 
 extern char *sysprm_pack_session_parameters (char *ptr, SESSION_PARAM * session_parameters);
 extern int sysprm_packed_session_parameters_length (SESSION_PARAM * session_parameters, int offset);

@@ -343,7 +343,6 @@ EXPORTS
     db_error_init
     db_execute
     db_execute_and_keep_statement
-    db_execute_async
     db_execute_deferred_activities
     db_execute_oid
     db_execute_statement
@@ -497,7 +496,6 @@ EXPORTS
     db_is_instance_of
     db_is_output_marker
     db_is_partition
-    db_is_query_async_executable
     db_is_real_instance
     db_is_subclass
     db_is_superclass
@@ -609,7 +607,6 @@ EXPORTS
     db_query_format_type
     db_query_free_tplpos
     db_query_get_cache_time
-    db_query_get_info
     db_query_get_tplpos
     db_query_get_tuple_oid
     db_query_get_tuple_value
@@ -629,8 +626,6 @@ EXPORTS
     db_query_spec_next
     db_query_spec_string
     db_query_stmt_id
-    db_query_sync
-    db_query_sync_end
     db_query_tuple_count
     db_real_instance
     db_rename
@@ -686,8 +681,6 @@ EXPORTS
     db_set_method_arg_domain
     db_set_password
     db_set_print
-    db_set_session_mode_async
-    db_set_session_mode_sync
     db_set_system_parameters
     db_set_type
     db_sqlx_debug_print_result

@@ -143,7 +143,6 @@ struct t_query_result
   char stmt_type;
   char col_updatable;
   char include_oid;
-  char async_flag;
   bool is_holdable;
 #endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 };

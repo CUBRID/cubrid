@@ -3557,7 +3557,6 @@ struct parser_context
   size_t input_buffer_position;
 
   int au_save;			/* authorization to restore if longjmp while authorization turned off */
-  QUERY_EXEC_MODE exec_mode;	/* flag used to specify query exec mode */
 
   DB_VALUE sys_datetime;
   DB_VALUE sys_epochtime;

@@ -1313,7 +1313,7 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size, T_CCI_ERROR * err_
   /* Asynchronous mode is unsupported. */
   if (flag & CCI_EXEC_ASYNC)
     {
-      flag &= ~CCI_EXEC_ASYNC;
+      flag &= ~CCI_EXEC_ASYNC;	/* to make it sure */
     }
 
   if (IS_OUT_TRAN (con_handle) && IS_FORCE_FAILBACK (con_handle) && !IS_INVALID_SOCKET (con_handle->sock_fd))

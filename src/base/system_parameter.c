@@ -224,8 +224,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_DONT_REUSE_HEAP_FILE "dont_reuse_heap_file"
 
-#define PRM_NAME_QUERY_MODE_SYNC "dont_use_async_query"
-
 #define PRM_NAME_INSERT_MODE "insert_execution_mode"
 
 #define PRM_NAME_LK_MAX_SCANID_BIT "max_index_scan_count"
@@ -1087,10 +1085,6 @@ static unsigned int prm_index_scan_key_buffer_pages_flag = 0;
 bool PRM_DONT_REUSE_HEAP_FILE = false;
 static bool prm_dont_reuse_heap_file_default = false;
 static unsigned int prm_dont_reuse_heap_file_flag = 0;
-
-bool PRM_QUERY_MODE_SYNC = true;
-static bool prm_query_mode_sync_default = true;
-static unsigned int prm_query_mode_sync_flag = 0;
 
 int PRM_INSERT_MODE = 1 + 2;
 static int prm_insert_mode_default = 1 + 2;
@@ -2687,16 +2681,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_dont_reuse_heap_file_flag,
    (void *) &prm_dont_reuse_heap_file_default,
    (void *) &PRM_DONT_REUSE_HEAP_FILE,
-   (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_QUERY_MODE_SYNC,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_BOOLEAN,
-   (void *) &prm_query_mode_sync_flag,
-   (void *) &prm_query_mode_sync_default,
-   (void *) &PRM_QUERY_MODE_SYNC,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -9548,12 +9532,6 @@ bool
 prm_get_commit_on_shutdown (void)
 {
   return PRM_COMMIT_ON_SHUTDOWN;
-}
-
-bool
-prm_get_query_mode_sync (void)
-{
-  return PRM_QUERY_MODE_SYNC;
 }
 
 /*
