@@ -1865,6 +1865,7 @@ logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_H
   assert (from_hdr != NULL);
 
   to_hdr->mvcc_next_id = from_hdr->mvcc_next_id;
+  VPID_COPY (&to_hdr->vacuum_data_first_vpid, &from_hdr->vacuum_data_first_vpid);
 
   /* Add other attributes that need to be copied */
 

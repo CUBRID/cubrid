@@ -641,6 +641,7 @@ static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEAD
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
 static void vacuum_verify_vacuum_data_debug (void);
+static void vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p);
 #define VACUUM_VERIFY_VACUUM_DATA() vacuum_verify_vacuum_data_debug ()
 #else /* NDEBUG */
 #define VACUUM_VERIFY_VACUUM_DATA()
@@ -968,6 +969,8 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
   /* Finalize vacuum data. */
   vacuum_unfix_first_and_last_data_page (thread_p);
   vacuum_Data.is_loaded = false;
+  /* We should have unfixed all pages. Double-check. */
+  pgbuf_unfix_all (thread_p);
 
   /* Free all resources allocated for vacuum workers */
   for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
@@ -2491,24 +2494,27 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 	}
     }
 
-#if defined (SERVER_MODE)
-
   /* Server-mode will restart if block data buffer or finished job queue are getting filled. */
+  /* Stand-alone mode will restart if finished job queue is full. */
 restart:
+
+  assert (data_page == NULL);
+
   /* Remove vacuumed entries */
   vacuum_data_mark_finished (thread_p);
 
+#if defined (SERVER_MODE)
   /* Append newly logged blocks at the end of the vacuum data table */
   (void) vacuum_consume_buffer_log_blocks (thread_p);
-
-  /* Update oldest MVCCID. */
-  vacuum_update_oldest_unvacuumed_mvccid (thread_p);
 
   if (vacuum_data_flush (thread_p) != NO_ERROR)
     {
       assert (false);
     }
 #endif /* SERVER_MODE */
+
+  /* Update oldest MVCCID. */
+  vacuum_update_oldest_unvacuumed_mvccid (thread_p);
 
   /* Search for blocks ready to be vacuumed and generate jobs. */
 
@@ -2542,6 +2548,7 @@ restart:
 	   *
 	   * Stop searching for other jobs.
 	   */
+	  vacuum_unfix_data_page (thread_p, data_page);
 	  break;
 	}
       if (!VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid))
@@ -2565,6 +2572,7 @@ restart:
 	      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_MASTER,
 			     "VACUUM ERROR: Error %d while master tried to prefetch log pages for block %lld.",
 			     er_errid (), (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
+	      vacuum_unfix_data_page (thread_p, data_page);
 	      return;
 	    }
 	}
@@ -2580,6 +2588,7 @@ restart:
 	  VACUUM_BLOCK_STATUS_SET_AVAILABLE (entry->blockid);
 
 	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
+	  vacuum_unfix_data_page (thread_p, data_page);
 	  return;
 	}
 #endif /* SERVER_MODE */
@@ -2610,7 +2619,8 @@ restart:
       if (LOCK_FREE_CIRCULAR_QUEUE_IS_FULL (vacuum_Finished_job_queue))
 	{
 	  /* Consume vacuum_Finished_job_queue */
-	  vacuum_data_mark_finished (vacuum_Finished_job_queue);
+	  vacuum_unfix_data_page (thread_p, data_page);
+	  goto restart;
 	}
 #else	/* !SA_MODE */	       /* SERVER_MODE */
       /* Wakeup threads to start working on current threads. Try not to wake up more workers than necessary. */
@@ -2629,6 +2639,7 @@ restart:
       vacuum_block_data_buffer_aprox_size = LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Block_data_buffer);
       if (vacuum_block_data_buffer_aprox_size > vacuum_Block_data_buffer->capacity / 2)
 	{
+	  vacuum_unfix_data_page (thread_p, data_page);
 	  goto restart;
 	}
       /* Another buffer that is used by vacuum workers to communicate with master is the finished job queue.
@@ -2637,6 +2648,7 @@ restart:
       vacuum_finished_jobs_queue_aprox_size = LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Finished_job_queue);
       if (vacuum_finished_jobs_queue_aprox_size >= vacuum_Finished_job_queue->capacity / 2)
 	{
+	  vacuum_unfix_data_page (thread_p, data_page);
 	  goto restart;
 	}
 #endif /* SERVER_MODE */
@@ -2644,6 +2656,11 @@ restart:
       /* Increment block index. */
       data_index++;
     }
+
+  assert (data_page == NULL);
+#if !defined (NDEBUG)
+  vacuum_verify_vacuum_data_page_fix_count (thread_p);
+#endif /* !NDEBUG */
 
 #if defined (SA_MODE)
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
@@ -3201,6 +3218,10 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   /* Save worker to thread entry */
   thread_p->vacuum_worker = worker;
 
+  vacuum_er_log (VACUUM_ER_LOG_WORKER,
+		 "VACUUM: Assigned vacuum_worker %p, index %d to thread %p, index %d.\n",
+		 worker, save_assigned_workers_count, thread_p, thread_p->index);
+
   if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_WORKERS && worker->prefetch_log_buffer == NULL)
     {
       size_worker_prefetch_log_buffer =
@@ -3220,8 +3241,6 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
   /* Safe guard - it is assumed that transaction descriptor is already initialized. */
   assert (worker->tdes != NULL);
 
-  /* Increment number of assigned workers */
-  vacuum_Assigned_workers_count++;
   return NO_ERROR;
 
 error:
@@ -3838,6 +3857,10 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
   vacuum_update_oldest_unvacuumed_mvccid (thread_p);
   vacuum_update_keep_from_log_pageid (thread_p);
 
+#if !defined (NDEBUG)
+  vacuum_verify_vacuum_data_page_fix_count (thread_p);
+#endif /* !NDEBUG */
+
   return NO_ERROR;
 
 error:
@@ -4250,6 +4273,8 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 					     0, sizeof (VPID), sizeof (VPID), &log_Gl.hdr.vacuum_data_first_vpid,
 					     &save_first_page->next_page);
 
+		  assert (VPID_EQ (pgbuf_get_vpid_ptr ((PAGE_PTR) save_first_page),
+				   &log_Gl.hdr.vacuum_data_first_vpid));
 		  VPID_COPY (&save_first_vpid, &log_Gl.hdr.vacuum_data_first_vpid);
 		  VPID_COPY (&log_Gl.hdr.vacuum_data_first_vpid, &save_first_page->next_page);
 		  vacuum_Data.first_page = data_page;
@@ -4263,9 +4288,21 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 				     "VACUUM ERROR: Failed to deallocate first page from vacuum data - %d|%d!!!\n",
 				     save_first_vpid.volid, save_first_vpid.pageid);
 		      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
+		      /* Revert first page change
+		       * - this is just to handle somehow the case in release. Should never happen anyway.
+		       */
+		      save_first_page = vacuum_Data.first_page;
+		      vacuum_Data.first_page = vacuum_fix_data_page (thread_p, &save_first_vpid);
+		      vacuum_unfix_data_page (thread_p, save_first_page);
 		      return;
 		    }
 		  log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
+
+		  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
+				 "VACUUM: Changed first VPID from %d|%d to %d|%d.\n",
+				 save_first_vpid.volid, save_first_vpid.pageid,
+				 log_Gl.hdr.vacuum_data_first_vpid.volid, log_Gl.hdr.vacuum_data_first_vpid.pageid);
 
 		  /* Continue with new page. */
 		  page_start_index = index;
@@ -4304,6 +4341,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
       if (index == n_finished_blocks)
 	{
 	  /* All finished blocks have been consumed. */
+	  vacuum_unfix_data_page (thread_p, data_page);
 	  break;
 	}
       if (VPID_ISNULL (&data_page->next_page))
@@ -4333,6 +4371,9 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
   vacuum_update_keep_from_log_pageid (thread_p);
 
   VACUUM_VERIFY_VACUUM_DATA ();
+#if !defined (NDEBUG)
+  vacuum_verify_vacuum_data_page_fix_count (thread_p);
+#endif /* !NDEBUG */
 
 #undef TEMP_BUFFER_SIZE
 }
@@ -4651,6 +4692,9 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
     }
 
   VACUUM_VERIFY_VACUUM_DATA ();
+#if !defined (NDEBUG)
+  vacuum_verify_vacuum_data_page_fix_count (thread_p);
+#endif /* !NDEBUG */
 
   return NO_ERROR;
 }
@@ -4757,6 +4801,8 @@ vacuum_rv_redo_append_data_dump (FILE * fp, int length, void *data)
 	       (long long int) vacuum_data_entry->blockid, (long long int) vacuum_data_entry->start_lsa.pageid,
 	       (int) vacuum_data_entry->start_lsa.offset, (unsigned long long int) vacuum_data_entry->oldest_mvccid,
 	       (unsigned long long int) vacuum_data_entry->newest_mvccid);
+
+      vacuum_data_entry++;
     }
 }
 
@@ -5036,6 +5082,9 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
      vacuum_Data.last_blockid + 1 : vacuum_Data.first_page->data[vacuum_Data.first_page->index_unvacuumed].blockid);
   keep_from_blockid = VACUUM_BLOCKID_WITHOUT_FLAGS (keep_from_blockid);
   vacuum_Data.keep_from_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (keep_from_blockid);
+
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
+		 "VACUUM: Update keep_from_log_pageid to %lld", (long long int) vacuum_Data.keep_from_log_pageid);
 }
 
 /*
@@ -7129,6 +7178,9 @@ exit:
   (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
 
   ATOMIC_INC_32 (&vacuum_Data.flush_vacuum_data, -1);
+#if !defined (NDEBUG)
+  vacuum_verify_vacuum_data_page_fix_count (thread_p);
+#endif /* !NDEBUG */
 
   return error_code;
 }
@@ -7186,3 +7238,41 @@ vacuum_heap_ovf (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * ovf_object, MVCCI
 
   return error_code;
 }
+
+#if !defined (NDEBUG)
+/*
+ * vacuum_data_check_page_fix () - Check fix counts on vacuum data pages are not off.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+static void
+vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p)
+{
+  VPID vpid;
+  PAGE_PTR pgptr = NULL;
+
+  assert (pgbuf_get_fix_count ((PAGE_PTR) vacuum_Data.first_page) == 1);
+  assert (vacuum_Data.last_page == vacuum_Data.first_page
+	  || pgbuf_get_fix_count ((PAGE_PTR) vacuum_Data.last_page) == 1);
+
+  if (vacuum_Data.last_page == vacuum_Data.first_page)
+    {
+      return;
+    }
+  VPID_COPY (&vpid, &vacuum_Data.first_page->next_page);
+  while (!VPID_EQ (&vpid, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.last_page)))
+    {
+      assert (!VPID_ISNULL (&vpid));
+      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (pgptr == NULL)
+	{
+	  ASSERT_ERROR ();
+	  return;
+	}
+      assert (pgbuf_get_fix_count (pgptr) == 1);
+      VPID_COPY (&vpid, &((VACUUM_DATA_PAGE *) pgptr)->next_page);
+      pgbuf_unfix_and_init (thread_p, pgptr);
+    }
+}
+#endif /* !NDEBUG */
