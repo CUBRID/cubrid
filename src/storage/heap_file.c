@@ -23923,7 +23923,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
     {
       /* log operation */
       heap_log_update_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, context->recdes_p, is_mvcc_op);
+				&forward_recdes, context->recdes_p,
+				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
       LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
 
       if (is_mvcc_op)
@@ -23954,9 +23955,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   if (is_mvcc_op)
     {
       rc = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
-	context->forward_page_watcher_p->pgptr, &prev_version_lsa);
+					 context->forward_page_watcher_p->pgptr, &prev_version_lsa);
     }
- 
+
   if (rc != NO_ERROR)
     {
       return rc;
