@@ -25038,6 +25038,7 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_VALUE * boun
     {
       if (compute_lower_bound)
 	{
+	  db_value_set_compare(bound, 0);
 	  error_code =
 	    db_value_domain_min (bound, DB_TYPE_VARCHAR, DB_VALUE_PRECISION (pattern), DB_VALUE_SCALE (pattern),
 				 codeset, collation_id, NULL);
@@ -25048,13 +25049,17 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_VALUE * boun
 	}
       else
 	{
+	  /* Looking for an upper bound, therefore there is an LT compare.  */
+	  db_value_set_compare(bound, 1);
+
 	  error_code =
 	    db_value_domain_max (bound, DB_TYPE_VARCHAR, DB_VALUE_PRECISION (pattern), DB_VALUE_SCALE (pattern),
 				 codeset, collation_id, NULL);
+	 
 	  if (error_code != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
+	  {
+	    goto error_exit;
+	  }	      	  
 	}
 
       goto fast_exit;

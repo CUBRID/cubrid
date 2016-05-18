@@ -12194,11 +12194,25 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
       return DB_UNK;
     }
 
+
+
   c =
     QSTR_CHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
 		       (int) DB_GET_STRING_SIZE (value2));
   c = MR_CMP_RETURN_CODE (c);
 
+/*
+ *  Check if the compare_LT flag set. If so, return -1 for the "%" and "chr(255)*" patterns.
+ */
+
+  if(value2->data.ch.info.compare_LT == true)
+    {
+      if(string2[0] == 255 || string2[0] == 37)
+      {
+	return -1;
+      }
+      
+    }
   return c;
 }
 
