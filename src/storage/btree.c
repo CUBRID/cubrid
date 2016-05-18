@@ -26588,7 +26588,7 @@ btree_undo_delete_physical (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key
     {
       if (class_oid == NULL)
 	{
-	  class_oid = (OID *) & oid_Null_oid;
+	  class_oid = (OID *) (&oid_Null_oid);
 	}
       _er_log_debug (ARG_FILE_LINE,
 		     "BTREE_INSERT: Start undo physical delete %d|%d|%d, "
@@ -26637,7 +26637,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oi
     {
       if (cls_oid == NULL)
 	{
-	  cls_oid = (OID *) & oid_Null_oid;
+	  cls_oid = (OID *) (&oid_Null_oid);
 	}
       _er_log_debug (ARG_FILE_LINE,
 		     "BTREE_INSERT: Start insert object %d|%d|%d, class_oid %d|%d|%d, insert MVCCID=%llu into "
@@ -26683,7 +26683,7 @@ btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * c
     {
       if (class_oid == NULL)
 	{
-	  class_oid = (OID *) & oid_Null_oid;
+	  class_oid = (OID *) (&oid_Null_oid);
 	}
       _er_log_debug (ARG_FILE_LINE,
 		     "BTREE_INSERT: Start MVCC delete object %d|%d|%d, class_oid %d|%d|%d, delete MVCCID=%llu into "

@@ -2158,9 +2158,8 @@ db_query_next_tuple (DB_QUERY_RESULT * result)
     case T_CALL:
     case T_OBJFETCH:
       {
-	c_pos =
-	  (result->type ==
-	   T_CALL) ? (CURSOR_POSITION *) & result->res.c.crs_pos : (CURSOR_POSITION *) & result->res.o.crs_pos;
+	c_pos = ((result->type == T_CALL)
+		 ? (CURSOR_POSITION *) (&result->res.c.crs_pos) : (CURSOR_POSITION *) (&result->res.o.crs_pos));
 	switch (*c_pos)
 	  {
 	  case C_BEFORE:
@@ -2268,9 +2267,8 @@ db_query_prev_tuple (DB_QUERY_RESULT * result)
     case T_CALL:
     case T_OBJFETCH:
       {
-	c_pos =
-	  (result->type ==
-	   T_CALL) ? (CURSOR_POSITION *) & result->res.c.crs_pos : (CURSOR_POSITION *) & result->res.o.crs_pos;
+	c_pos = ((result->type == T_CALL)
+		 ? (CURSOR_POSITION *) (&result->res.c.crs_pos) : (CURSOR_POSITION *) (&result->res.o.crs_pos));
 	switch (*c_pos)
 	  {
 	  case C_BEFORE:
@@ -2681,9 +2679,8 @@ db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode)
 	{
 	case DB_CURSOR_SEEK_SET:
 	case DB_CURSOR_SEEK_END:
-	  c_pos =
-	    (result->type ==
-	     T_CALL) ? (CURSOR_POSITION *) & result->res.c.crs_pos : (CURSOR_POSITION *) & result->res.o.crs_pos;
+	  c_pos = ((result->type == T_CALL)
+		   ? (CURSOR_POSITION *) (&result->res.c.crs_pos) : (CURSOR_POSITION *) (&result->res.o.crs_pos));
 	  if (offset == 0)
 	    {
 	      *c_pos = C_ON;

@@ -1887,7 +1887,7 @@ obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc, DB_VALUE * valu
        * Note that we pass in the outer class MOP rather than an object
        * since we don't necessarily have an object at this point.
        */
-      if (sm_get_descriptor_component (template_ptr->classobj, desc, 1, &class_, (SM_COMPONENT **) & att))
+      if (sm_get_descriptor_component (template_ptr->classobj, desc, 1, &class_, (SM_COMPONENT **) (&att)))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();

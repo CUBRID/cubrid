@@ -7459,7 +7459,7 @@ do_check_fk_constraints_internal (DB_CTMPL * ctemplate, PT_NODE * constraints, b
 	  continue;
 	}
 
-      fk_info = (PT_FOREIGN_KEY_INFO *) & cnstr->info.constraint.un.foreign_key;
+      fk_info = (PT_FOREIGN_KEY_INFO *) (&cnstr->info.constraint.un.foreign_key);
       if (is_partitioned && (fk_info->delete_action == PT_RULE_SET_NULL || fk_info->update_action == PT_RULE_SET_NULL))
 	{
 	  PT_NODE *const constr_name = cnstr->info.constraint.name;

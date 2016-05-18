@@ -5200,7 +5200,7 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
   db_make_int (out_values[idx], vhdr->sys_lastpage);
   idx++;
 
-  db_localdatetime ((time_t *) & vhdr->db_creation, &create_time);
+  db_localdatetime ((time_t *) (&vhdr->db_creation), &create_time);
   db_make_datetime (out_values[idx], &create_time);
   idx++;
 

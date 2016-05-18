@@ -4716,7 +4716,7 @@ sm_object_disk_size (MOP op)
       obj = NULL;
       if (locator_is_class (op, DB_FETCH_READ))
 	{
-	  au_fetch_class (op, (SM_CLASS **) & obj, AU_FETCH_READ, AU_SELECT);
+	  au_fetch_class (op, (SM_CLASS **) (&obj), AU_FETCH_READ, AU_SELECT);
 	  if (obj != NULL)
 	    {
 	      size = tf_object_size ((MOBJ) class_, obj);

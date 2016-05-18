@@ -863,7 +863,7 @@ css_master_thread (void)
 	{
 	  if (!IS_INVALID_SOCKET (css_Pipe_to_master)
 #if defined(WINDOWS)
-	      && ioctlsocket (css_Pipe_to_master, FIONREAD, (u_long *) & status) == SockError
+	      && ioctlsocket (css_Pipe_to_master, FIONREAD, (u_long *) (&status)) == SockError
 #else /* WINDOWS */
 	      && fcntl (css_Pipe_to_master, F_GETFL, status) == SockError
 #endif /* WINDOWS */

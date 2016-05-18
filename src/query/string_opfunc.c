@@ -11668,7 +11668,7 @@ db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day)
       return error_status;
     }
 
-  db_date_decode ((DB_DATE *) & src_date->data.date, &month, &day, &year);
+  db_date_decode ((DB_DATE *) (&src_date->data.date), &month, &day, &year);
 
   if (month == 0 && day == 0 && year == 0)
     {

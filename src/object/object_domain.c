@@ -6431,7 +6431,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		err = ER_FAILED;
 		break;
 	      }
-	    db_value_put_encoded_date (target, (DB_DATE *) & src_dt->date);
+	    db_value_put_encoded_date (target, (DB_DATE *) (&src_dt->date));
 	    break;
 	  }
 	case DB_TYPE_DATETIMELTZ:
