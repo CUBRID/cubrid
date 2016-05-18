@@ -6786,17 +6786,3 @@ db_set_connect_status (int status)
 {
   db_Connect_status = status;
 }
-
-
-void
-db_value_set_compare (DB_VALUE * value, int set)
-{
-  if(set == 1)
-  {
-    value->data.ch.info.compare_LT = true;
-    return;
-  }
-  value->data.ch.info.compare_LT = false;
-  return;
-  
-}

@@ -772,7 +772,6 @@ union db_char
   {
     unsigned char style;
     unsigned char codeset;
-    bool compare_LT;
   } info;
   struct
   {
@@ -1137,7 +1136,5 @@ extern int valcnv_convert_value_to_string (DB_VALUE * value);
 
 extern int db_get_enum_codeset (const DB_VALUE * value);
 extern int db_get_enum_collation (const DB_VALUE * value);
-
-extern void db_value_set_max_string (DB_VALUE * value, int set);
 
 #endif /* _DBTYPE_H_ */
