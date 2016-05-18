@@ -5138,7 +5138,8 @@ la_apply_insert_log (LA_ITEM * item)
 
   if (recdes->type == REC_ASSIGN_ADDRESS || recdes->type == REC_RELOCATION)
     {
-      er_log_debug (ARG_FILE_LINE, "apply_insert : rectype.type = %d\n", recdes->type);
+      _er_log_debug (ARG_FILE_LINE, "apply_insert : rectype.type = %d, LSA:%d,%d\n",
+	recdes->type, item->target_lsa.pageid, item->target_lsa.offset);
       error = ER_FAILED;
 
       goto end;
