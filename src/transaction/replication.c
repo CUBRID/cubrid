@@ -256,6 +256,12 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 	      LSA_SET_NULL (&tdes->repl_update_lsa);
 	      LSA_SET_NULL (&tdes->repl_insert_lsa);
 	      find = true;
+
+
+
+	      _er_log_debug (ARG_FILE_LINE, "repl_add_update_lsa, rcvindex:%d, LSA:%d,%d, repl_type:%d",
+		repl_rec->rcvindex, repl_rec->lsa.pageid, repl_rec->lsa.offset, repl_rec->repl_type);
+
 	      break;
 	    }
 	}
@@ -441,6 +447,8 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	}
     }
 
+  _er_log_debug (ARG_FILE_LINE, "repl_log_insert, rcvindex:%d, LSA:%d,%d, repl_type:%d",
+    repl_rec->rcvindex, repl_rec->lsa.pageid, repl_rec->lsa.offset, repl_rec->repl_type);
   return error;
 }
 
