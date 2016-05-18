@@ -4201,7 +4201,7 @@ static void
 disk_id_dealloc_with_volheader (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr, DISK_RECV_MTAB_BITS_WITH * recv)
 {
   LOG_TDES *tdes;
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       tdes = VACUUM_GET_WORKER_TDES (thread_p);
     }

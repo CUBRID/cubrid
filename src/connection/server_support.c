@@ -1054,8 +1054,11 @@ css_process_new_client (SOCKET master_fd)
 
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
     {
+      /* open a temporary connection to send a reply to client.
+       * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
+       */
       css_initialize_conn (&temp_conn, new_fd);
-      csect_initialize_critical_section (&temp_conn.csect, csect_Name_conn);
+      csect_initialize_critical_section (&temp_conn.csect, NULL);
 
       reason = htonl (SERVER_INACCESSIBLE_IP);
       css_send_data (&temp_conn, rid, (char *) &reason, (int) sizeof (int));
@@ -1073,8 +1076,11 @@ css_process_new_client (SOCKET master_fd)
   conn = css_make_conn (new_fd);
   if (conn == NULL)
     {
+      /* open a temporary connection to send a reply to client.
+       * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
+       */
       css_initialize_conn (&temp_conn, new_fd);
-      csect_initialize_critical_section (&temp_conn.csect, csect_Name_conn);
+      csect_initialize_critical_section (&temp_conn.csect, NULL);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
       reason = htonl (SERVER_CLIENTS_EXCEEDED);
@@ -1679,18 +1685,12 @@ css_block_all_active_conn (unsigned short stop_phase)
 
   for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
     {
-#if defined(SERVER_MODE)
-      assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-      assert (conn->csect.name == csect_Name_conn);
-#endif
+      assert (css_is_valid_conn_csect (conn));
 
       csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
       if (conn->stop_phase != stop_phase)
 	{
-#if defined(SERVER_MODE)
-	  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-	  assert (conn->csect.name == csect_Name_conn);
-#endif
+	  assert (css_is_valid_conn_csect (conn));
 
 	  csect_exit_critical_section (NULL, &conn->csect);
 	  continue;
@@ -1702,10 +1702,7 @@ css_block_all_active_conn (unsigned short stop_phase)
 	  logtb_set_tran_index_interrupt (NULL, conn->transaction_id, 1);
 	}
 
-#if defined(SERVER_MODE)
-      assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-      assert (conn->csect.name == csect_Name_conn);
-#endif
+      assert (css_is_valid_conn_csect (conn));
 
       csect_exit_critical_section (NULL, &conn->csect);
     }
@@ -2307,20 +2304,14 @@ css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn, unsigned int e
 void
 css_end_server_request (CSS_CONN_ENTRY * conn)
 {
-#if defined(SERVER_MODE)
-  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == csect_Name_conn);
-#endif
+  assert (css_is_valid_conn_csect (conn));
 
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
 
   css_remove_all_unexpected_packets (conn);
   conn->status = CONN_CLOSING;
 
-#if defined(SERVER_MODE)
-  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == csect_Name_conn);
-#endif
+  assert (css_is_valid_conn_csect (conn));
 
   csect_exit_critical_section (NULL, &conn->csect);
 }

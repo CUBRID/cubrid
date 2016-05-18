@@ -112,4 +112,14 @@ extern int css_check_ip (IP_INFO * ip_info, unsigned char *address);
 extern void css_set_user_access_status (const char *db_user, const char *host, const char *program_name);
 extern void css_get_user_access_status (int num_user, LAST_ACCESS_STATUS ** access_status_array);
 extern void css_free_user_access_status (void);
+
+#if defined (SERVER_MODE)
+extern bool css_is_valid_conn_csect (CSS_CONN_ENTRY * conn);
+extern bool css_is_temporary_conn_csect (CSS_CONN_ENTRY * conn);
+#else
+/* ignore the functions for non-SERVER_MODE */
+#define css_is_valid_conn_csect(c) (1)
+#define css_is_temporary_conn_csect(c) (1)
+#endif /* !SERVER_MODE */
+
 #endif /* _CONNECTION_SR_H_ */
