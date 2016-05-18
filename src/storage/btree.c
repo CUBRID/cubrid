@@ -31778,13 +31778,9 @@ exit:
 }
 
 /*
- * btree_key_remove_object_and_keep_visible_first () - Remove one object and
- *						       all its info from
- *						       b-tree key. Then find
- *						       other visible version
- *						       and move it first in
- *						       leaf record. Special
- *						       case of unique index.
+ * btree_key_remove_object_and_keep_visible_first () - Remove one object and all its info from b-tree key. Then find
+ *						       other visible version and move it first in leaf record. 
+ *                                                     Special case of unique index.
  *
  * return	   : Error code.
  * thread_p (in)   : Thread entry.
@@ -31996,11 +31992,12 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
 	  goto exit;
 	}
 
+      rv_undo_data_ptr = rv_undo_data;
+      rv_redo_data_ptr = rv_redo_data;
+
 #if !defined (NDEBUG)
       /* Leaf may have been logged if object was removed from overflow page. Reset logging structures for new logging.
        */
-      rv_undo_data_ptr = rv_undo_data;
-      rv_redo_data_ptr = rv_redo_data;
       delete_helper->leaf_addr.offset = search_key->slotid;
       BTREE_RV_UNDOREDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, rv_undo_data_ptr, btid_int,
 					BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
