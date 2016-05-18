@@ -125,6 +125,16 @@ static GENERIC_FUNCTION_RECORD pt_Generic_functions[] = {
    && (node)->info.expr.arg1 != NULL					      \
    && (node)->info.expr.arg1->type_enum == PT_TYPE_MAYBE)
 
+#define PT_NODE_IS_SESSION_VARIABLE(node)   				      \
+  ((((node) != NULL) &&							      \
+    ((node)->node_type == PT_EXPR) &&					      \
+    (((node)->info.expr.op == PT_EVALUATE_VARIABLE) ||			      \
+    (((node)->info.expr.op == PT_CAST) &&				      \
+    ((node)->info.expr.arg1 != NULL) &&					      \
+    ((node)->info.expr.arg1->node_type == PT_EXPR) &&			      \
+    ((node)->info.expr.arg1->info.expr.op == PT_EVALUATE_VARIABLE))	      \
+    )) ? true : false )
+
 typedef struct compare_between_operator
 {
   PT_OP_TYPE left;
@@ -12431,7 +12441,9 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	      dt->info.data_type.units = (int) LANG_SYS_CODESET;
 	      dt->info.data_type.collation_id = LANG_SYS_COLLATION;
 	      if ((arg1 == NULL || arg1->type_enum != PT_TYPE_MAYBE)
-		  && (arg2 == NULL || arg2->type_enum != PT_TYPE_MAYBE))
+		  && (arg2 == NULL || arg2->type_enum != PT_TYPE_MAYBE)
+		  && (!((PT_NODE_IS_SESSION_VARIABLE (arg1))
+			&& (PT_NODE_IS_SESSION_VARIABLE (arg2)))))
 		{
 		  /* operator without arguments or with arguments has result with system collation */
 		  collation_flag = TP_DOMAIN_COLL_NORMAL;
