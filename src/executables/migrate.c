@@ -211,7 +211,7 @@ fix_codeset_in_active_log (const char *db_path, INTL_CODESET codeset)
     }
 
   hdr_page = (LOG_PAGE *) log_io_page;
-  hdr = (struct log_header *) hdr_page->area;
+  hdr = (LOG_HEADER *) hdr_page->area;
 
   FOPEN_AND_CHECK (fp, vol_path, "rb+");
   FREAD_AND_CHECK (log_io_page, sizeof (char), LOG_PAGESIZE, fp, vol_path);
@@ -242,7 +242,7 @@ check_and_fix_compat_level (const char *db_name, const char *db_path)
     }
 
   hdr_page = (LOG_PAGE *) log_io_page;
-  hdr = (struct log_header *) hdr_page->area;
+  hdr = (LOG_HEADER *) hdr_page->area;
 
   FOPEN_AND_CHECK (fp, vol_path, "rb+");
   FREAD_AND_CHECK (log_io_page, sizeof (char), LOG_PAGESIZE, fp, vol_path);
@@ -293,7 +293,7 @@ undo_fix_compat_level (const char *db_path)
     }
 
   hdr_page = (LOG_PAGE *) log_io_page;
-  hdr = (struct log_header *) hdr_page->area;
+  hdr = (LOG_HEADER *) hdr_page->area;
 
   FOPEN_AND_CHECK (fp, vol_path, "rb+");
   FREAD_AND_CHECK (log_io_page, sizeof (char), LOG_PAGESIZE, fp, vol_path);

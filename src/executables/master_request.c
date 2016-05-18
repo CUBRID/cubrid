@@ -197,7 +197,7 @@ css_process_shutdown_time_info (CSS_CONN_ENTRY * conn, unsigned short request_id
       return;
     }
 
-  if (time ((time_t *) & timeout.tv_sec) == (time_t) - 1)
+  if (time ((time_t *) (&timeout.tv_sec)) == (time_t) (-1))
     {
       if (css_send_data (conn, request_id, master_release, strlen (master_release) + 1) != NO_ERRORS)
 	{
@@ -736,7 +736,7 @@ css_process_shutdown (char *time_buffer)
       css_Master_timeout->tv_sec = 0;
       css_Master_timeout->tv_usec = 0;
 
-      if (time ((time_t *) & css_Master_timeout->tv_sec) == (time_t) (-1))
+      if (time ((time_t *) (&css_Master_timeout->tv_sec)) == (time_t) (-1))
 	{
 	  free_and_init (css_Master_timeout);
 	  return;

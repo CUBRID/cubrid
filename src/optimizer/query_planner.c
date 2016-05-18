@@ -906,8 +906,8 @@ qo_top_plan_new (QO_PLAN * plan)
       return plan;		/* is already top-level plan - OK */
     }
 
-  if (plan->info == NULL ||	/* worst plan */
-      (env = (plan->info)->env) == NULL || bitset_cardinality (&((plan->info)->nodes)) < env->Nnodes
+  if (plan->info == NULL	/* worst plan */
+      || (env = (plan->info)->env) == NULL || bitset_cardinality (&((plan->info)->nodes)) < env->Nnodes
       || /* sub-plan */ (tree = QO_ENV_PT_TREE (env)) == NULL
       || (parser = QO_ENV_PARSER (env)) == NULL)
     {
@@ -1125,7 +1125,9 @@ qo_generic_walk (QO_PLAN * plan, void (*child_fn) (QO_PLAN *, void *), void *chi
 		 void (*parent_fn) (QO_PLAN *, void *), void *parent_data)
 {
   if (parent_fn)
-    (*parent_fn) (plan, parent_data);
+    {
+      (*parent_fn) (plan, parent_data);
+    }
 }
 
 /*
@@ -2412,9 +2414,13 @@ qo_sort_walk (QO_PLAN * plan, void (*child_fn) (QO_PLAN *, void *), void *child_
 	      void (*parent_fn) (QO_PLAN *, void *), void *parent_data)
 {
   if (child_fn)
-    (*child_fn) (plan->plan_un.sort.subplan, child_data);
+    {
+      (*child_fn) (plan->plan_un.sort.subplan, child_data);
+    }
   if (parent_fn)
-    (*parent_fn) (plan, parent_data);
+    {
+      (*parent_fn) (plan, parent_data);
+    }
 }
 
 static void
@@ -8044,9 +8050,9 @@ qo_search_planner (QO_PLANNER * planner)
       for (subq_idx = bitset_iterate (&remaining_subqueries, &si); subq_idx != -1; subq_idx = bitset_next_member (&si))
 	{
 	  subq = &planner->subqueries[subq_idx];
-	  if (bitset_is_empty (&subq->nodes) ||	/* uncorrelated */
-	      (bitset_subset (&nodes, &(subq->nodes)) &&	/* correlated */
-	       bitset_subset (&(QO_NODE_SARGS (node)), &(subq->terms))))
+	  if (bitset_is_empty (&subq->nodes)	/* uncorrelated */
+	      || (bitset_subset (&nodes, &(subq->nodes))	/* correlated */
+		  && bitset_subset (&(QO_NODE_SARGS (node)), &(subq->terms))))
 	    {
 	      bitset_add (&subqueries, subq_idx);
 	      bitset_remove (&remaining_subqueries, subq_idx);

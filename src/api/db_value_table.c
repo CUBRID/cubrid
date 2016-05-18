@@ -694,7 +694,7 @@ vbt_api_get_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type, void *addr, 
 
   vbt = (VALUE_BIND_TABLE_ *) tbl;
 
-  res = vbt_lazy_init_db_value (vbt, index, CHECK_FOR_GET, (VALUE_AREA **) & va, &val);
+  res = vbt_lazy_init_db_value (vbt, index, CHECK_FOR_GET, (VALUE_AREA **) (&va), &val);
   if (res != NO_ERROR)
     return res;
   assert (val != NULL);
@@ -729,7 +729,7 @@ vbt_api_set_value (VALUE_BIND_TABLE * tbl, int index, CI_TYPE type, void *addr, 
   assert (tbl != NULL);
   vbt = (VALUE_BIND_TABLE_ *) tbl;
 
-  res = vbt_lazy_init_db_value (vbt, index, CHECK_FOR_SET, (VALUE_AREA **) & va, &val);
+  res = vbt_lazy_init_db_value (vbt, index, CHECK_FOR_SET, (VALUE_AREA **) (&va), &val);
   if (res != NO_ERROR)
     return res;
 

@@ -2900,7 +2900,7 @@ obj_desc_send_va (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, va_list a
     }
   else
     {
-      error = sm_get_descriptor_component (obj, desc, 0, &class_, (SM_COMPONENT **) & method);
+      error = sm_get_descriptor_component (obj, desc, 0, &class_, (SM_COMPONENT **) (&method));
       if (error == NO_ERROR)
 	{
 	  error = obj_send_method_va (obj, class_, method, returnval, args);

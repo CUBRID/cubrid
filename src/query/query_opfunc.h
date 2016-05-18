@@ -103,9 +103,8 @@ typedef enum
   INDEX_NODE_INFO		/* indexed access to obtain b-tree node info */
 } ACCESS_METHOD;
 
-#define IS_ANY_INDEX_ACCESS(access_)  \
-  ((access_) == INDEX || (access_) == INDEX_KEY_INFO \
-   || (access_) == INDEX_NODE_INFO)
+#define IS_ANY_INDEX_ACCESS(access_) \
+  ((access_) == INDEX || (access_) == INDEX_KEY_INFO || (access_) == INDEX_NODE_INFO)
 
 typedef enum
 {

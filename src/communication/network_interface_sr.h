@@ -142,8 +142,6 @@ extern void sqmgr_drop_query_plan (THREAD_ENTRY * thread_p, unsigned int rid, ch
 extern void sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sqmgr_get_query_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sserial_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sserial_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

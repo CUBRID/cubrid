@@ -4515,9 +4515,8 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	   * chunk of code can be removed.
 	   */
 	  if ((id == DB_TYPE_VARCHAR && d->precision == DB_MAX_VARCHAR_PRECISION)
-	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION) || (id == DB_TYPE_VARBIT
-											   && d->precision ==
-											   DB_MAX_VARBIT_PRECISION))
+	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION)
+	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION))
 	    {
 	      precision = 0;
 	    }
@@ -4599,9 +4598,8 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
    */
   if (domain->built_in_index)
     {
-      carrier =
-	(DB_TYPE_NULL & OR_DOMAIN_TYPE_MASK) | OR_DOMAIN_BUILTIN_FLAG | (domain->
-									 built_in_index << OR_DOMAIN_PRECISION_SHIFT);
+      carrier = ((DB_TYPE_NULL & OR_DOMAIN_TYPE_MASK) | OR_DOMAIN_BUILTIN_FLAG
+		 | (domain->built_in_index << OR_DOMAIN_PRECISION_SHIFT));
       if (is_null)
 	{
 	  carrier |= OR_DOMAIN_NULL_FLAG;

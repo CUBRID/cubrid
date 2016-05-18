@@ -469,6 +469,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
       return NO_ERROR;
     }
 
+  assert (!VACUUM_IS_THREAD_VACUUM_MASTER (thread_p));
   if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
       /* Vacuum workers do not rollback their heap changes and don't need to keep track of saved space. */
@@ -3240,8 +3241,8 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, in
 	    }
 	  memcpy ((char *) page_p + page_header_p->offset_to_free_area, (char *) page_p + slot_p->offset_to_record,
 		  offset);
-	  if ((page_header_p->offset_to_free_area + offset + record_descriptor_p->length +
-	       (slot_p->record_length - offset)) > DB_PAGESIZE)
+	  if ((page_header_p->offset_to_free_area + offset + record_descriptor_p->length
+	       + (slot_p->record_length - offset)) > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3330,8 +3331,8 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, in
 	      return SP_ERROR;
 	    }
 	  memcpy ((char *) page_p + page_header_p->offset_to_free_area, copyarea, offset);
-	  if ((page_header_p->offset_to_free_area + offset + +record_descriptor_p->length +
-	       (slot_p->record_length - offset)) > DB_PAGESIZE)
+	  if ((page_header_p->offset_to_free_area + offset + +record_descriptor_p->length
+	       + (slot_p->record_length - offset)) > DB_PAGESIZE)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      assert_release (false);
@@ -3584,8 +3585,8 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id, P
       second_old_offset = second_slot_p->offset_to_record;
       first_slot_p->offset_to_record = SPAGE_EMPTY_OFFSET;
       second_slot_p->offset_to_record = SPAGE_EMPTY_OFFSET;
-      page_header_p->total_free +=
-	(first_slot_p->record_length + second_slot_p->record_length + first_old_waste + second_old_waste);
+      page_header_p->total_free += (first_slot_p->record_length + second_slot_p->record_length + first_old_waste
+				    + second_old_waste);
       page_header_p->num_records -= 2;
 
       if (spage_compact (page_p) != NO_ERROR)
@@ -3594,8 +3595,8 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id, P
 	  ASSERT_ALIGN ((char *) page_p + first_slot_p->offset_to_record, page_header_p->alignment);
 	  second_slot_p->offset_to_record = second_old_offset;
 	  ASSERT_ALIGN ((char *) page_p + second_slot_p->offset_to_record, page_header_p->alignment);
-	  page_header_p->total_free -=
-	    (first_slot_p->record_length + second_slot_p->record_length + first_old_waste + second_old_waste);
+	  page_header_p->total_free -= (first_slot_p->record_length + second_slot_p->record_length + first_old_waste
+					+ second_old_waste);
 	  page_header_p->num_records += 2;
 	  free_and_init (copyarea);
 
@@ -4534,8 +4535,8 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 		" DB_PAGESIZE\n (%d + %d + (%d * %d)) > %d\n %d > %d\n", pgbuf_get_page_id (page_p),
 		pgbuf_get_volume_label (page_p), page_header_p->cont_free, page_header_p->offset_to_free_area,
 		sizeof (SPAGE_SLOT), page_header_p->num_slots, DB_PAGESIZE,
-		(page_header_p->cont_free + page_header_p->offset_to_free_area +
-		 sizeof (SPAGE_SLOT) * page_header_p->num_slots), DB_PAGESIZE);
+		(page_header_p->cont_free + page_header_p->offset_to_free_area
+		 + sizeof (SPAGE_SLOT) * page_header_p->num_slots), DB_PAGESIZE);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_HEADER, 3, pgbuf_get_page_id (page_p),
 	      pgbuf_get_volume_label (page_p), err_msg);
@@ -5020,15 +5021,6 @@ spage_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg
   ctx->vpid.volid = db_get_int (arg_val0);
   ctx->vpid.pageid = db_get_int (arg_val1);
 
-  /* Skip vacuum data file area, because these pages is not have header of FILEIO_PAGE_RESERVED, will raise assertion
-   * fail in pgbuf_fix() function. */
-  if (vacuum_is_page_of_vacuum_data (&ctx->vpid))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_NOT_SPAGE, 2, ctx->vpid.pageid, ctx->vpid.volid);
-      error = ER_DIAG_NOT_SPAGE;
-      goto exit_on_error;
-    }
-
   if (pgbuf_is_valid_page (thread_p, &ctx->vpid, true, NULL, NULL) != DISK_VALID)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_PAGE_NOT_FOUND, 2, ctx->vpid.pageid, ctx->vpid.volid);
@@ -5192,15 +5184,6 @@ spage_slots_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
 
   ctx->vpid.volid = db_get_int (arg_val0);
   ctx->vpid.pageid = db_get_int (arg_val1);
-
-  /* Skip vacuum data file area, because these pages is not have header of FILEIO_PAGE_RESERVED, will raise assertion
-   * fail in pgbuf_fix() function. */
-  if (vacuum_is_page_of_vacuum_data (&ctx->vpid))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DIAG_NOT_SPAGE, 2, ctx->vpid.pageid, ctx->vpid.volid);
-      error = ER_DIAG_NOT_SPAGE;
-      goto exit_on_error;
-    }
 
   if (pgbuf_is_valid_page (thread_p, &ctx->vpid, true, NULL, NULL) != DISK_VALID)
     {

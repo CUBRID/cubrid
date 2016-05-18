@@ -132,10 +132,8 @@ static void log_2pc_recovery_aborted_informing_participants (THREAD_ENTRY * thre
 void
 log_2pc_define_funs (int (*get_participants) (int *particp_id_length, void **block_particps_ids),
 		     int (*lookup_participant) (void *particp_id, int num_particps, void *block_particps_ids),
-		     char *(*sprintf_participant) (void *particp_id), void (*dump_participants) (FILE * fp,
-												 int block_length,
-												 void
-												 *block_particps_id),
+		     char *(*sprintf_participant) (void *particp_id),
+		     void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id),
 		     int (*send_prepare) (int gtrid, int num_particps, void *block_particps_ids),
 		     bool (*send_commit) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids),
 		     bool (*send_abort) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids,
@@ -1222,7 +1220,7 @@ int
 log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
-  struct log_2pc_particp_ack *received_ack;
+  LOG_REC_2PC_PARTICP_ACK *received_ack;
   int tran_index;
   LOG_LSA start_lsa;
 
@@ -1288,7 +1286,7 @@ log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index)
 
   /* ADD the data header */
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*received_ack));
-  received_ack = (struct log_2pc_particp_ack *) LOG_APPEND_PTR ();
+  received_ack = (LOG_REC_2PC_PARTICP_ACK *) LOG_APPEND_PTR ();
 
   received_ack->particp_index = particp_index;
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*received_ack));
@@ -1335,7 +1333,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   LOG_TDES *other_tdes;		/* Transaction descriptor */
-  struct log_2pc_prepcommit *prepared;	/* A prepare to commit log record */
+  LOG_REC_2PC_PREPCOMMIT *prepared;	/* A prepare to commit log record */
   LK_ACQUIRED_LOCKS acq_locks;	/* List of acquired locks */
   bool decision;		/* The decision: success or failure */
   TRAN_STATE state;		/* The state of the transaction */
@@ -1467,7 +1465,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
       return TRAN_UNACTIVE_UNKNOWN;
     }
 
-  prepared = (struct log_2pc_prepcommit *) node->data_header;
+  prepared = (LOG_REC_2PC_PREPCOMMIT *) node->data_header;
 
   memcpy (prepared->user_name, tdes->client.db_user, DB_MAX_USER_LENGTH);
   prepared->gtrid = gtrid;
@@ -1520,13 +1518,13 @@ void
 log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, LOG_TDES * tdes, LOG_LSA * log_lsa,
 		      LOG_PAGE * log_page_p)
 {
-  struct log_2pc_prepcommit *prepared;	/* A 2PC prepare to commit log record */
+  LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit log record */
   LK_ACQUIRED_LOCKS acq_locks;	/* List of acquired locks before the system crash */
   int size;
 
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*prepared), log_lsa, log_page_p);
 
-  prepared = (struct log_2pc_prepcommit *) ((char *) log_page_p->area + log_lsa->offset);
+  prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_page_p->area + log_lsa->offset);
 
   logtb_set_client_ids_all (&tdes->client, 0, NULL, prepared->user_name, NULL, NULL, NULL, -1);
 
@@ -1664,7 +1662,7 @@ log_2pc_dump_acqpage_locks (FILE * fp, int length, void *data)
 static void
 log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  struct log_2pc_start *start_2pc;	/* Start 2PC log record */
+  LOG_REC_2PC_START *start_2pc;	/* Start 2PC log record */
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
 
@@ -1677,7 +1675,7 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       return;
     }
 
-  start_2pc = (struct log_2pc_start *) node->data_header;
+  start_2pc = (LOG_REC_2PC_START *) node->data_header;
 
   memcpy (start_2pc->user_name, tdes->client.db_user, DB_MAX_USER_LENGTH);
   start_2pc->gtrid = tdes->gtrid;
@@ -2067,7 +2065,7 @@ static int
 log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			int *ack_list, int *ack_count)
 {
-  struct log_2pc_start *start_2pc;	/* A 2PC start log record */
+  LOG_REC_2PC_START *start_2pc;	/* A 2PC start log record */
   void *block_particps_ids;	/* A block of participant identifiers */
   int num_particps;
   int particp_id_length;
@@ -2077,7 +2075,7 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_2pc), log_lsa, log_page_p);
 
-  start_2pc = ((struct log_2pc_start *) ((char *) log_page_p->area + log_lsa->offset));
+  start_2pc = ((LOG_REC_2PC_START *) ((char *) log_page_p->area + log_lsa->offset));
   /* 
    * Obtain the participant information for this coordinator
    */
@@ -2221,11 +2219,11 @@ static void
 log_2pc_recovery_recv_ack (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, int *ack_list,
 			   int *ack_count)
 {
-  struct log_2pc_particp_ack *received_ack;	/* A 2PC recv decision ack */
+  LOG_REC_2PC_PARTICP_ACK *received_ack;	/* A 2PC recv decision ack */
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*received_ack), log_lsa, log_page_p);
-  received_ack = ((struct log_2pc_particp_ack *) ((char *) log_page_p->area + log_lsa->offset));
+  received_ack = ((LOG_REC_2PC_PARTICP_ACK *) ((char *) log_page_p->area + log_lsa->offset));
 
   ack_list[*ack_count] = received_ack->particp_index;
   (*ack_count)++;

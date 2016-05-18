@@ -79,8 +79,7 @@ extern void repl_schema_log_dump (FILE * fp, int length, void *data);
 extern void repl_log_send (void);
 extern int repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid);
 extern int repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
-			    LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_type,
-			    bool is_update_inplace);
+			    LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_type);
 extern int repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info);
 extern void repl_start_flush_mark (THREAD_ENTRY * thread_p);
 extern void repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo);
