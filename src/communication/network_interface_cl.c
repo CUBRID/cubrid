@@ -1455,9 +1455,8 @@ locator_find_lockhint_class_oids (int num_classes, const char **many_classnames,
   request_size = OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
   for (i = 0; i < num_classes; i++)
     {
-      request_size +=
-	(length_const_string (many_classnames[i], NULL) + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE +
-	 OR_INT_SIZE);
+      request_size += (length_const_string (many_classnames[i], NULL) + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE
+		       + OR_OID_SIZE + OR_INT_SIZE);
     }
 
   request = (char *) malloc (request_size);

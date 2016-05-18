@@ -6081,7 +6081,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
-       /* AN INSTANCE: Update indices if any */
+      /* AN INSTANCE: Update indices if any */
       if (has_index)
 	{
 	  if (scan == S_SUCCESS)
@@ -8450,7 +8450,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICAT
 	  old_pri_heap_id = db_change_private_heap (thread_p, 0);
 	}
       error_code =
-	stx_map_stream_to_filter_pred (thread_p, (PRED_EXPR_WITH_CONTEXT **) & pred_filter, or_pred->pred_stream,
+	stx_map_stream_to_filter_pred (thread_p, (PRED_EXPR_WITH_CONTEXT **) (&pred_filter), or_pred->pred_stream,
 				       or_pred->pred_stream_size, &pred_filter_cache_context);
       if (error_code != NO_ERROR)
 	{

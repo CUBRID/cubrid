@@ -107,7 +107,8 @@ struct analytic_key_metadomain
 static ANALYTIC_KEY_METADOMAIN analitic_key_metadomain_Initializer = { {0}, 0, 0, {NULL}, 0, {NULL}, false, 0, NULL };
 
 typedef enum
-{ SORT_LIST_AFTER_ISCAN = 1,
+{
+  SORT_LIST_AFTER_ISCAN = 1,
   SORT_LIST_ORDERBY,
   SORT_LIST_GROUPBY,
   SORT_LIST_AFTER_GROUPBY,
@@ -250,28 +251,32 @@ static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * p
 							      AGGREGATE_INFO * info, REGU_VARIABLE * regu);
 
 
-#define APPEND_TO_XASL(xasl_head, list, xasl_tail)                      \
-    if (xasl_head) {                                                    \
-        /* append xasl_tail to end of linked list denoted by list */    \
-        XASL_NODE **NAME2(list,ptr) = &xasl_head->list;                 \
-        while ( (*NAME2(list,ptr)) ) {                                  \
-            NAME2(list,ptr) = &(*NAME2(list,ptr))->list;                \
-        }                                                               \
-        (*NAME2(list,ptr)) = xasl_tail;                                 \
-    } else {                                                            \
-        xasl_head = xasl_tail;                                          \
-    }
+#define APPEND_TO_XASL(xasl_head, list, xasl_tail) \
+  do \
+    { \
+      if (xasl_head) \
+        { \
+          /* append xasl_tail to end of linked list denoted by list */ \
+          XASL_NODE **NAME2(list, ptr) = &xasl_head->list; \
+          while ((*NAME2(list, ptr))) \
+            { \
+              NAME2(list, ptr) = &(*NAME2(list, ptr))->list; \
+            } \
+          (*NAME2(list, ptr)) = xasl_tail; \
+        } \
+      else \
+        { \
+          xasl_head = xasl_tail; \
+        } \
+    } \
+  while (0)
 
-#define VALIDATE_REGU_KEY_HELPER(r) ((r)->type == TYPE_CONSTANT  || \
-				     (r)->type == TYPE_DBVAL     || \
-				     (r)->type == TYPE_POS_VALUE || \
-				     (r)->type == TYPE_INARITH)
+#define VALIDATE_REGU_KEY_HELPER(r) \
+  ((r)->type == TYPE_CONSTANT || (r)->type == TYPE_DBVAL || (r)->type == TYPE_POS_VALUE || (r)->type == TYPE_INARITH)
 
-#define VALIDATE_REGU_KEY(r) ((r)->type == TYPE_CONSTANT  || \
-                              (r)->type == TYPE_DBVAL     || \
-                              (r)->type == TYPE_POS_VALUE || \
-                              ((r)->type == TYPE_INARITH \
-				&& validate_regu_key_function_index ((r))))
+#define VALIDATE_REGU_KEY(r) \
+  ((r)->type == TYPE_CONSTANT || (r)->type == TYPE_DBVAL || (r)->type == TYPE_POS_VALUE \
+   || ((r)->type == TYPE_INARITH && validate_regu_key_function_index ((r))))
 
 typedef struct xasl_supp_info
 {
@@ -3448,9 +3453,8 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		}
 	    }
 
-	  (*tail)->method_type =
-	    (node->info.method_call.class_or_inst ==
-	     PT_IS_CLASS_MTHD) ? METHOD_IS_CLASS_METHOD : METHOD_IS_INSTANCE_METHOD;
+	  (*tail)->method_type = ((node->info.method_call.class_or_inst == PT_IS_CLASS_MTHD)
+				  ? METHOD_IS_CLASS_METHOD : METHOD_IS_INSTANCE_METHOD);
 
 	  /* no_method_args does not include the target by convention */
 	  (*tail)->no_method_args = pt_length_of_list (node->info.method_call.arg_list);
@@ -3870,8 +3874,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      else
 		{
 		  /* for buildlist CUME_DIST/PERCENT_RANK, we have special treatment */
-		  if (pt_fix_buildlist_aggregate_cume_dist_percent_rank
-		      (parser, tree->info.function.order_by, info, regu) != NO_ERROR)
+		  if (pt_fix_buildlist_aggregate_cume_dist_percent_rank (parser, tree->info.function.order_by, info,
+									 regu) != NO_ERROR)
 		    {
 		      return NULL;
 		    }
@@ -5079,12 +5083,26 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * col_lis
 	    {
 	      if (!pt_has_error (parser))
 		{
-		  PT_INTERNAL_ERROR (parser,
-				     (sort_mode == SORT_LIST_AFTER_ISCAN) ? "generate after_iscan" : (sort_mode ==
-												      SORT_LIST_ORDERBY)
-				     ? "generate order_by" : (sort_mode ==
-							      SORT_LIST_GROUPBY) ? "generate group_by" :
-				     "generate after_group_by");
+		  const char *sort_mode_str;
+
+		  if (sort_mode == SORT_LIST_AFTER_ISCAN)
+		    {
+		      sort_mode_str = "generate after_iscan";
+		    }
+		  else if (sort_mode == SORT_LIST_ORDERBY)
+		    {
+		      sort_mode_str = "generate order_by";
+		    }
+		  else if (sort_mode == SORT_LIST_GROUPBY)
+		    {
+		      sort_mode_str = "generate group_by";
+		    }
+		  else
+		    {
+		      sort_mode_str = "generate after_group_by";
+		    }
+
+		  PT_INTERNAL_ERROR (parser, sort_mode_str);
 		}
 	      return NULL;
 	    }
@@ -6477,7 +6495,7 @@ pt_set_numbering_node_etc (PARSER_CONTEXT * parser, PT_NODE * node_list, DB_VALU
 	    }
 
 	  node = save_node;
-	}			/* for (node = ...) */
+	}
     }
 }
 
@@ -11523,9 +11541,8 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  scan_type = TARGET_CLASS;
 		}
 
-	      if (pt_split_attrs
-		  (parser, table_info, where_part, &pred_attrs, &rest_attrs, &reserved_attrs, &pred_offsets,
-		   &rest_offsets, &reserved_offsets) != NO_ERROR)
+	      if (pt_split_attrs (parser, table_info, where_part, &pred_attrs, &rest_attrs, &reserved_attrs,
+				  &pred_offsets, &rest_offsets, &reserved_offsets) != NO_ERROR)
 		{
 		  return NULL;
 		}
@@ -11601,9 +11618,8 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      PT_RESERVED_NAME_TYPE reserved_type = RESERVED_NAME_INVALID;
 	      ACCESS_METHOD access_method;
 
-	      if (pt_split_attrs
-		  (parser, table_info, where_part, &pred_attrs, &rest_attrs, &reserved_attrs, &pred_offsets,
-		   &rest_offsets, &reserved_offsets) != NO_ERROR)
+	      if (pt_split_attrs (parser, table_info, where_part, &pred_attrs, &rest_attrs, &reserved_attrs,
+				  &pred_offsets, &rest_offsets, &reserved_offsets) != NO_ERROR)
 		{
 		  return NULL;
 		}
@@ -11698,9 +11714,8 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		    }
 		  return NULL;
 		}
-	      if (pt_split_attrs
-		  (parser, table_info, where_part, &pred_attrs, &rest_attrs, NULL, &pred_offsets, &rest_offsets,
-		   NULL) != NO_ERROR)
+	      if (pt_split_attrs (parser, table_info, where_part, &pred_attrs, &rest_attrs, NULL, &pred_offsets,
+				  &rest_offsets, NULL) != NO_ERROR)
 		{
 		  if (ipl_where_part)
 		    {
@@ -11718,9 +11733,8 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 
 	      symbols->current_class = class_;
 
-	      if (pt_get_mvcc_reev_range_data
-		  (parser, table_info, where_key_part, index_pred, &where_range, &regu_attributes_range,
-		   &cache_range) != NO_ERROR)
+	      if (pt_get_mvcc_reev_range_data (parser, table_info, where_key_part, index_pred, &where_range,
+					       &regu_attributes_range, &cache_range) != NO_ERROR)
 		{
 		  parser_free_tree (parser, key_attrs);
 		  if (key_offsets != NULL)
@@ -12850,15 +12864,20 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 	      if (selupd_list_ptr != NULL && col->node_type == PT_EXPR
 		  && (col->info.expr.op == PT_INCR || col->info.expr.op == PT_DECR))
 		{
-		  PT_NODE *upd_obj = col->info.expr.arg2;
-		  PT_NODE *upd_dom =
-		    (upd_obj) ? (upd_obj->node_type ==
-				 PT_DOT_) ? upd_obj->info.dot.arg2->data_type : upd_obj->data_type : NULL;
+		  PT_NODE *upd_obj;
+		  PT_NODE *upd_dom;
 		  PT_NODE *upd_dom_nm;
 		  DB_OBJECT *upd_dom_cls;
 		  OID nulloid;
 
-		  if (upd_obj == NULL || upd_dom == NULL)
+		  upd_obj = col->info.expr.arg2;
+		  if (upd_obj == NULL)
+		    {
+		      goto exit_on_error;
+		    }
+
+		  upd_dom = (upd_obj->node_type == PT_DOT_) ? upd_obj->info.dot.arg2->data_type : upd_obj->data_type;
+		  if (upd_dom == NULL)
 		    {
 		      goto exit_on_error;
 		    }
@@ -12868,13 +12887,11 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		      goto exit_on_error;
 		    }
 
-
 		  upd_dom_nm = upd_dom->info.data_type.entity;
 		  if (upd_dom_nm == NULL)
 		    {
 		      goto exit_on_error;
 		    }
-
 
 		  upd_dom_cls = upd_dom_nm->info.name.db_object;
 
@@ -18607,9 +18624,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 		      return NULL;
 		    }
 
-		  if (db_value_domain_default
-		      (&nv_value, dom_type, dom->precision, dom->scale, dom->codeset, dom->collation_id,
-		       &dom->enumeration) != NO_ERROR)
+		  if (db_value_domain_default (&nv_value, dom_type, dom->precision, dom->scale, dom->codeset,
+					       dom->collation_id, &dom->enumeration) != NO_ERROR)
 		    {
 		      assert (false);
 		      PT_INTERNAL_ERROR (parser, "error building default val");
@@ -19954,24 +19970,22 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
     }
 
   /* store number of ORDER BY keys in XASL tree */
-  update->no_orderby_keys =
-    pt_length_of_list (aptr_statement->info.query.q.select.list) -
-    pt_length_of_select_list (aptr_statement->info.query.q.select.list, EXCLUDE_HIDDEN_COLUMNS);
+  update->no_orderby_keys = (pt_length_of_list (aptr_statement->info.query.q.select.list)
+			     - pt_length_of_select_list (aptr_statement->info.query.q.select.list,
+							 EXCLUDE_HIDDEN_COLUMNS));
   assert (update->no_orderby_keys >= 0);
 
   /* generate xasl for non-null constraints predicates */
-  error =
-    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &no_vals, &no_consts,
-			     statement->info.update.assignment, &links);
+  error = pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &no_vals,
+				   &no_consts, statement->info.update.assignment, &links);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
   /* need to jump upd_del_class_cnt OID-CLASS OID pairs */
-  error =
-    pt_to_constraint_pred (parser, xasl, statement->info.update.spec, *non_null_attrs, select_names,
-			   (aptr_statement->info.query.upd_del_class_cnt +
-			    aptr_statement->info.query.mvcc_reev_extra_cls_cnt) * 2);
+  error = pt_to_constraint_pred (parser, xasl, statement->info.update.spec, *non_null_attrs, select_names,
+				 (aptr_statement->info.query.upd_del_class_cnt
+				  + aptr_statement->info.query.mvcc_reev_extra_cls_cnt) * 2);
   pt_restore_assignment_links (statement->info.update.assignment, links, -1);
   if (error != NO_ERROR)
     {
@@ -20183,9 +20197,8 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
       if (PT_IS_SERIAL (node->info.expr.op))
 	{
 	  /* fill in XASL cache related information; serial OID used in this XASL */
-	  if (pt_serial_to_xasl_class_oid_list
-	      (parser, node, &info->class_oid_list, &info->class_locks, &info->tcard_list, &info->n_oid_list,
-	       &info->oid_list_size) < 0)
+	  if (pt_serial_to_xasl_class_oid_list (parser, node, &info->class_oid_list, &info->class_locks,
+						&info->tcard_list, &info->n_oid_list, &info->oid_list_size) < 0)
 	    {
 	      if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
 		{
@@ -20254,9 +20267,8 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 
   is_system_generated_stmt = node->is_system_generated_stmt;
 
-  node =
-    parser_walk_tree (parser, node, pt_flush_class_and_null_xasl, NULL, pt_set_is_system_generated_stmt,
-		      &is_system_generated_stmt);
+  node = parser_walk_tree (parser, node, pt_flush_class_and_null_xasl, NULL, pt_set_is_system_generated_stmt,
+			   &is_system_generated_stmt);
 
   /* During the above parser_walk_tree the request to get a driver may cause a deadlock. We give up the following steps 
    * and propagate the error messages */
@@ -22209,8 +22221,8 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree, ANALYTIC_INFO * an
 	}
 
       /* resolve operand dbval_ptr */
-      if (pt_resolve_analytic_references
-	  (parser, func_info->arg_list, analytic_info->select_list, analytic_info->val_list) == NULL)
+      if (pt_resolve_analytic_references (parser, func_info->arg_list, analytic_info->select_list,
+					  analytic_info->val_list) == NULL)
 	{
 	  goto exit_on_error;
 	}

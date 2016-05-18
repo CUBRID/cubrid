@@ -2855,8 +2855,8 @@ qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
        * BETWEEN_GT_LT */
 
       /* make the pair node to the right operand of BETWEEN node */
-      if (pt_comp_to_between_op
-	  (lower->info.expr.op, upper->info.expr.op, PT_REDUCE_COMP_PAIR_TERMS, &pair->info.expr.op) != 0)
+      if (pt_comp_to_between_op (lower->info.expr.op, upper->info.expr.op, PT_REDUCE_COMP_PAIR_TERMS,
+				 &pair->info.expr.op) != 0)
 	{
 	  /* cannot be occurred but something wrong */
 	  continue;
@@ -3842,11 +3842,23 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return;		/* error; stop converting */
 	}
       between_and->type_enum = PT_TYPE_LOGICAL;
-      between_and->info.expr.op =
-	(op_type ==
-	 PT_GT ? PT_BETWEEN_GT_INF : (op_type ==
-				      PT_GE ? PT_BETWEEN_GE_INF : (op_type ==
-								   PT_LT ? PT_BETWEEN_INF_LT : PT_BETWEEN_INF_LE)));
+      if (op_type == PT_GT)
+	{
+	  between_and->info.expr.op = PT_BETWEEN_GT_INF;
+	}
+      else if (op_type == PT_GE)
+	{
+	  between_and->info.expr.op = PT_BETWEEN_GE_INF;
+	}
+      else if (op_type == PT_LT)
+	{
+	  between_and->info.expr.op = PT_BETWEEN_INF_LT;
+	}
+      else
+	{
+	  between_and->info.expr.op = PT_BETWEEN_INF_LE;
+	}
+
       between_and->info.expr.arg1 = node->info.expr.arg2;
       between_and->info.expr.arg2 = NULL;
       between_and->info.expr.location = node->info.expr.location;
@@ -3868,8 +3880,10 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
       in_arg2 = node->info.expr.arg2;
       if (PT_IS_COLLECTION_TYPE (node->type_enum) || PT_IS_QUERY_NODE_TYPE (in_arg2->node_type)
 	  || !PT_IS_COLLECTION_TYPE (in_arg2->type_enum))
-	/* subquery cannot be converted to RANGE */
-	return;
+	{
+	  /* subquery cannot be converted to RANGE */
+	  return;
+	}
       between_and = qo_set_value_to_range_list (parser, in_arg2);
       if (!between_and)
 	{
@@ -3979,11 +3993,22 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	      return;		/* error; stop converting */
 	    }
 	  between_and->type_enum = PT_TYPE_LOGICAL;
-	  between_and->info.expr.op =
-	    (op_type ==
-	     PT_GT ? PT_BETWEEN_GT_INF : (op_type ==
-					  PT_GE ? PT_BETWEEN_GE_INF : (op_type ==
-								       PT_LT ? PT_BETWEEN_INF_LT : PT_BETWEEN_INF_LE)));
+	  if (op_type == PT_GT)
+	    {
+	      between_and->info.expr.op = PT_BETWEEN_GT_INF;
+	    }
+	  else if (op_type == PT_GE)
+	    {
+	      between_and->info.expr.op = PT_BETWEEN_GE_INF;
+	    }
+	  else if (op_type == PT_LT)
+	    {
+	      between_and->info.expr.op = PT_BETWEEN_INF_LT;
+	    }
+	  else
+	    {
+	      between_and->info.expr.op = PT_BETWEEN_INF_LE;
+	    }
 	  between_and->info.expr.arg1 = sibling->info.expr.arg2;
 	  between_and->info.expr.arg2 = NULL;
 	  between_and->info.expr.location = sibling->info.expr.location;
@@ -6227,9 +6252,22 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 
 	      /* convert to 'attr > new_attr' */
 	      cnf_node->info.expr.arg2 = new_attr;
-	      cnf_node->info.expr.op =
-		(op_type == PT_GT_SOME) ? PT_GT : (op_type == PT_GE_SOME) ? PT_GE : (op_type ==
-										     PT_LT_SOME) ? PT_LT : PT_LE;
+	      if (op_type == PT_GT_SOME)
+		{
+		  cnf_node->info.expr.op = PT_GT;
+		}
+	      else if (op_type == PT_GE_SOME)
+		{
+		  cnf_node->info.expr.op = PT_GE;
+		}
+	      else if (op_type == PT_LT_SOME)
+		{
+		  cnf_node->info.expr.op = PT_LT;
+		}
+	      else
+		{
+		  cnf_node->info.expr.op = PT_LE;
+		}
 	      break;
 
 	    default:

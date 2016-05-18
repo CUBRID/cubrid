@@ -286,7 +286,7 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
   class_objects = 0;
 
   /* Get the class data */
-  ws_find (class_, (MOBJ *) & class_ptr);
+  ws_find (class_, (MOBJ *) (&class_ptr));
   if (class_ptr == NULL)
     {
       return;

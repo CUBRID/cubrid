@@ -1423,14 +1423,11 @@ db_string_instr (const DB_VALUE * src_string, const DB_VALUE * sub_string, const
     }
   else
     {
-      if (!
-	  (str1_type == DB_TYPE_STRING || str1_type == DB_TYPE_CHAR || str1_type == DB_TYPE_VARCHAR
-	   || str1_type == DB_TYPE_NCHAR || str1_type == DB_TYPE_VARNCHAR) || !(str2_type == DB_TYPE_STRING
-										|| str2_type == DB_TYPE_CHAR
-										|| str2_type == DB_TYPE_VARCHAR
-										|| str2_type == DB_TYPE_NCHAR
-										|| str2_type == DB_TYPE_VARNCHAR)
-	  || !(arg3_type == DB_TYPE_INTEGER || arg3_type == DB_TYPE_SHORT || arg3_type == DB_TYPE_BIGINT))
+      if ((str1_type != DB_TYPE_STRING && str1_type != DB_TYPE_CHAR && str1_type != DB_TYPE_VARCHAR
+	   && str1_type != DB_TYPE_NCHAR && str1_type != DB_TYPE_VARNCHAR)
+	  || (str2_type != DB_TYPE_STRING && str2_type != DB_TYPE_CHAR && str2_type != DB_TYPE_VARCHAR
+	      && str2_type != DB_TYPE_NCHAR && str2_type != DB_TYPE_VARNCHAR)
+	  || (arg3_type != DB_TYPE_INTEGER && arg3_type != DB_TYPE_SHORT && arg3_type != DB_TYPE_BIGINT))
 	{
 	  error_status = ER_QSTR_INVALID_DATA_TYPE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -4732,9 +4729,8 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 		  do
 		    {
 		      if (!inescape
-			  &&
-			  (((!escape_is_match_many && *expr_seq_end == LIKE_WILDCARD_MATCH_MANY)
-			    || (!escape_is_match_one && *expr_seq_end == LIKE_WILDCARD_MATCH_ONE))))
+			  && (((!escape_is_match_many && *expr_seq_end == LIKE_WILDCARD_MATCH_MANY)
+			       || (!escape_is_match_one && *expr_seq_end == LIKE_WILDCARD_MATCH_ONE))))
 			{
 			  break;
 			}
@@ -4846,9 +4842,8 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 	      do
 		{
 		  if (!inescape
-		      &&
-		      (((!escape_is_match_many && *expr_seq_end == LIKE_WILDCARD_MATCH_MANY)
-			|| (!escape_is_match_one && *expr_seq_end == LIKE_WILDCARD_MATCH_ONE))))
+		      && (((!escape_is_match_many && *expr_seq_end == LIKE_WILDCARD_MATCH_MANY)
+			   || (!escape_is_match_one && *expr_seq_end == LIKE_WILDCARD_MATCH_ONE))))
 		    {
 		      break;
 		    }
@@ -5019,12 +5014,8 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
   if ((qstr_get_category (src_string) != qstr_get_category (srch_string))
       || (!is_repl_string_omitted && (qstr_get_category (src_string) != qstr_get_category (repl_string)))
       || (!is_repl_string_omitted && (qstr_get_category (srch_string) != qstr_get_category (repl_string)))
-      || ((DB_GET_STRING_CODESET (src_string) != DB_GET_STRING_CODESET (srch_string))) || (!is_repl_string_omitted
-											   &&
-											   (DB_GET_STRING_CODESET
-											    (src_string) !=
-											    DB_GET_STRING_CODESET
-											    (repl_string))))
+      || ((DB_GET_STRING_CODESET (src_string) != DB_GET_STRING_CODESET (srch_string)))
+      || (!is_repl_string_omitted && (DB_GET_STRING_CODESET (src_string) != DB_GET_STRING_CODESET (repl_string))))
     {
       error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_CODE_SETS, 0);
@@ -5154,9 +5145,8 @@ qstr_replace (unsigned char *src_buf, int src_len, int src_size, INTL_CODESET co
     {
       int matched_size;
 
-      if (QSTR_MATCH
-	  (coll_id, src_ptr, src_buf + src_size - src_ptr, srch_str_buf, srch_str_size, NULL, false,
-	   &matched_size) == 0)
+      if (QSTR_MATCH (coll_id, src_ptr, src_buf + src_size - src_ptr, srch_str_buf, srch_str_size, NULL, false,
+		      &matched_size) == 0)
 	{
 	  /* store byte position and size of matched string */
 	  if (repl_pos_array_cnt >= repl_pos_array_size)
@@ -5804,9 +5794,8 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 	      /* check using collation */
 	      if (needle_size > 0)
 		{
-		  cmp =
-		    QSTR_MATCH (coll_id, (const unsigned char *) elem_start, stack_ptr - elem_start,
-				(const unsigned char *) needle_str, needle_size, false, false, &matched_stack_size);
+		  cmp = QSTR_MATCH (coll_id, (const unsigned char *) elem_start, stack_ptr - elem_start,
+				    (const unsigned char *) needle_str, needle_size, false, false, &matched_stack_size);
 		  if (cmp == 0 && matched_stack_size == stack_ptr - elem_start)
 		    {
 		      DB_MAKE_INT (result, position);
@@ -11679,7 +11668,7 @@ db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day)
       return error_status;
     }
 
-  db_date_decode ((DB_DATE *) & src_date->data.date, &month, &day, &year);
+  db_date_decode ((DB_DATE *) (&src_date->data.date), &month, &day, &year);
 
   if (month == 0 && day == 0 && year == 0)
     {
@@ -12800,9 +12789,8 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      goto exit;
 	    }
-	  cmp =
-	    intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
-				 (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
+	  cmp = intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
+				     (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
 
 	  if (cmp != 0)
 	    {
@@ -13353,9 +13341,8 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      goto exit;
 	    }
-	  cmp =
-	    intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
-				 (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
+	  cmp = intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
+				     (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
 
 	  if (cmp != 0)
 	    {
@@ -14144,9 +14131,8 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 	      goto exit;
 	    }
 
-	  cmp =
-	    intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
-				 (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
+	  cmp = intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
+				     (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
 
 	  if (cmp != 0)
 	    {
@@ -15102,9 +15088,8 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      goto exit;
 	    }
-	  cmp =
-	    intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
-				 (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
+	  cmp = intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
+				     (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
 
 	  if (cmp != 0)
 	    {
@@ -17128,9 +17113,9 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
 		  int symbol_size = 0;
 
 		  /* check currency symbols */
-		  if (intl_is_currency_symbol
-		      (&(res_ptr[i]), &currency, &symbol_size,
-		       CURRENCY_CHECK_MODE_CONSOLE | CURRENCY_CHECK_MODE_UTF8 | CURRENCY_CHECK_MODE_ISO88591))
+		  if (intl_is_currency_symbol (&(res_ptr[i]), &currency, &symbol_size,
+					       (CURRENCY_CHECK_MODE_CONSOLE | CURRENCY_CHECK_MODE_UTF8
+						| CURRENCY_CHECK_MODE_ISO88591)))
 		    {
 		      i += symbol_size;
 		    }
@@ -23067,8 +23052,8 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	      d = ld_fw + 1;
 	      m = 1;
 
-	      if (db_add_weeks_and_days_to_date
-		  (&d, &m, &y, dow2 >= 1 && dow2 <= 4 ? w - 2 : w - 1, dow == 0 ? 6 : dow - 1) == ER_FAILED)
+	      if (db_add_weeks_and_days_to_date (&d, &m, &y, dow2 >= 1 && dow2 <= 4 ? w - 2 : w - 1,
+						 dow == 0 ? 6 : dow - 1) == ER_FAILED)
 		{
 		  goto conversion_error;
 		}

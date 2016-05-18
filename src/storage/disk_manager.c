@@ -4576,13 +4576,18 @@ disk_isvalid_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 pageid)
 
   vhdr = (DISK_VAR_HEADER *) hdr_pgptr;
 
-  valid =
-    ((pageid <=
-      vhdr->sys_lastpage) ? DISK_VALID : ((pageid > vhdr->total_pages) ? DISK_INVALID : disk_id_isvalid (thread_p,
-													 volid,
-													 vhdr->
-													 page_alloctb_page1,
-													 pageid)));
+  if (pageid <= vhdr->sys_lastpage)
+    {
+      valid = DISK_VALID;
+    }
+  else if (pageid > vhdr->total_pages)
+    {
+      valid = DISK_INVALID;
+    }
+  else
+    {
+      valid = disk_id_isvalid (thread_p, volid, vhdr->page_alloctb_page1, pageid);
+    }
 
   (void) disk_verify_volume_header (thread_p, hdr_pgptr);
 
@@ -4803,8 +4808,8 @@ disk_check (THREAD_ENTRY * thread_p, INT16 volid, bool repair)
       goto error;
     }
 
-  nfree =
-    disk_id_get_max_frees (thread_p, volid, vhdr->page_alloctb_page1, vhdr->sys_lastpage + 1, vhdr->total_pages - 1);
+  nfree = disk_id_get_max_frees (thread_p, volid, vhdr->page_alloctb_page1, vhdr->sys_lastpage + 1,
+				 vhdr->total_pages - 1);
   if (nfree != vhdr->free_pages)
     {
       if (nfree == -1)
@@ -5195,7 +5200,7 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
   db_make_int (out_values[idx], vhdr->sys_lastpage);
   idx++;
 
-  db_localdatetime ((time_t *) & vhdr->db_creation, &create_time);
+  db_localdatetime ((time_t *) (&vhdr->db_creation), &create_time);
   db_make_datetime (out_values[idx], &create_time);
   idx++;
 
