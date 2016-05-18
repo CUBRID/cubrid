@@ -589,8 +589,8 @@ static int vacuum_data_flush (THREAD_ENTRY * thread_p);
 static int vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * block_data,
 				     BLOCK_LOG_BUFFER * block_log_buffer, bool sa_mode_partial_block);
 static int vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_LSA * log_lsa_p,
-				      LOG_PAGE * log_page_p, struct log_data *log_record_data, MVCCID * mvccid,
-				      char **undo_data_ptr, int *undo_data_size, struct log_vacuum_info *vacuum_info,
+				      LOG_PAGE * log_page_p, LOG_DATA * log_record_data, MVCCID * mvccid,
+				      char **undo_data_ptr, int *undo_data_size, LOG_VACUUM_INFO * vacuum_info,
 				      bool * is_file_dropped, bool stop_after_vacuum_info);
 static void vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * block_data,
 					  bool is_vacuum_complete);
@@ -614,7 +614,7 @@ static void vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_
 					 MVCC_SATISFIES_VACUUM_RESULT * results, bool reusable, bool all_vacuumed);
 static void vacuum_log_remove_ovf_insid (THREAD_ENTRY * thread_p, PAGE_PTR ovfpage);
 static void vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
-					       RECDES * undo_recdes,  bool reusable);
+					       RECDES * undo_recdes, bool reusable);
 
 static int vacuum_init_master_prefetch (THREAD_ENTRY * thread_p);
 #if defined (SERVER_MODE)
@@ -2783,7 +2783,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
   LOG_LSA rcv_lsa;
   LOG_PAGEID first_block_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
   int error_code = NO_ERROR;
-  struct log_data log_record_data;
+  LOG_DATA log_record_data;
   char *undo_data_buffer = NULL, *undo_data = NULL;
   int undo_data_size;
   char *es_uri = NULL;
@@ -2797,7 +2797,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
   MVCCID threshold_mvccid = vacuum_Global_oldest_active_mvccid;
   BTREE_MVCC_INFO mvcc_info;
   MVCCID mvccid;
-  struct log_vacuum_info log_vacuum;
+  LOG_VACUUM_INFO log_vacuum;
   OID heap_object_oid;
   bool vacuum_complete = false;
   bool was_interrupted = false;
@@ -3535,14 +3535,14 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
  */
 static int
 vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_LSA * log_lsa_p, LOG_PAGE * log_page_p,
-			   struct log_data *log_record_data, MVCCID * mvccid, char **undo_data_ptr, int *undo_data_size,
-			   struct log_vacuum_info *vacuum_info, bool * is_file_dropped, bool stop_after_vacuum_info)
+			   LOG_DATA * log_record_data, MVCCID * mvccid, char **undo_data_ptr, int *undo_data_size,
+			   LOG_VACUUM_INFO * vacuum_info, bool * is_file_dropped, bool stop_after_vacuum_info)
 {
   LOG_RECORD_HEADER *log_rec_header = NULL;
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
-  struct log_mvcc_undo *mvcc_undo = NULL;
-  struct log_undoredo *undoredo = NULL;
-  struct log_undo *undo = NULL;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
+  LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
+  LOG_REC_UNDOREDO *undoredo = NULL;
+  LOG_REC_UNDO *undo = NULL;
   int ulength;
   char *new_undo_data_buffer = NULL;
   bool is_zipped = false;
@@ -3574,7 +3574,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
     {
       /* Get log record mvcc_undo information */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
-      mvcc_undo = (struct log_mvcc_undo *) (log_page_p->area + log_lsa_p->offset);
+      mvcc_undo = (LOG_REC_MVCC_UNDO *) (log_page_p->area + log_lsa_p->offset);
 
       /* Get MVCCID */
       *mvccid = mvcc_undo->mvccid;
@@ -3595,7 +3595,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
     {
       /* Get log record undoredo information */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
-      mvcc_undoredo = (struct log_mvcc_undoredo *) (log_page_p->area + log_lsa_p->offset);
+      mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + log_lsa_p->offset);
 
       /* Get MVCCID */
       *mvccid = mvcc_undoredo->mvccid;
@@ -4824,8 +4824,8 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   LOG_PAGE *log_page_p = NULL;
   LOG_PAGEID stop_at_pageid;
   VACUUM_DATA_ENTRY data;
-  struct log_data dummy_log_data;
-  struct log_vacuum_info vacuum_info;
+  LOG_DATA dummy_log_data;
+  LOG_VACUUM_INFO vacuum_info;
   MVCCID mvccid;
   VACUUM_LOG_BLOCKID crt_blockid;
   LOG_LSA mvcc_op_log_lsa;
@@ -6892,7 +6892,7 @@ vacuum_rv_redo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *
  * return		: Void.
  * thread_p (in)	: Thread entry.
- * data_header (in)	: Recovery data header (struct log_redo).
+ * data_header (in)	: Recovery data header (LOG_REC_REDO).
  * rcv_data (in)	: Recovery redo data.
  * rcv_data_length (in) : Recovery data size.
  */
@@ -6937,7 +6937,7 @@ vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p, char *data_header,
 
   /* Check if recovery data fits in preallocated buffer. */
   total_data_size = CAST_BUFLEN (worker->postpone_redo_data_ptr - worker->postpone_redo_data_buffer);
-  total_data_size += sizeof (struct log_redo);
+  total_data_size += sizeof (LOG_REC_REDO);
   total_data_size += rcv_data_length;
   total_data_size += 2 * MAX_ALIGNMENT;
   if (total_data_size > IO_PAGESIZE)
@@ -6951,13 +6951,13 @@ vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p, char *data_header,
   new_entry = &worker->postpone_cached_entries[worker->postpone_cached_entries_count];
   new_entry->redo_data = worker->postpone_redo_data_ptr;
 
-  /* Cache struct log_redo from data_header */
-  memcpy (worker->postpone_redo_data_ptr, data_header, sizeof (struct log_redo));
-  worker->postpone_redo_data_ptr += sizeof (struct log_redo);
+  /* Cache LOG_REC_REDO from data_header */
+  memcpy (worker->postpone_redo_data_ptr, data_header, sizeof (LOG_REC_REDO));
+  worker->postpone_redo_data_ptr += sizeof (LOG_REC_REDO);
   worker->postpone_redo_data_ptr = PTR_ALIGN (worker->postpone_redo_data_ptr, MAX_ALIGNMENT);
 
   /* Cache recovery data. */
-  assert (((struct log_redo *) data_header)->length == rcv_data_length);
+  assert (((LOG_REC_REDO *) data_header)->length == rcv_data_length);
   if (rcv_data_length > 0)
     {
       memcpy (worker->postpone_redo_data_ptr, rcv_data, rcv_data_length);
@@ -7019,7 +7019,7 @@ vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p, LOG_LSA * start_postpone
 #if defined (SERVER_MODE)
   VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
   VACUUM_CACHE_POSTPONE_ENTRY *entry = NULL;
-  struct log_redo *redo = NULL;
+  LOG_REC_REDO *redo = NULL;
   char *rcv_data = NULL;
   int i;
   int start_index = -1;
@@ -7057,9 +7057,9 @@ vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p, LOG_LSA * start_postpone
     {
       entry = &worker->postpone_cached_entries[i];
       /* Get redo data header. */
-      redo = (struct log_redo *) entry->redo_data;
+      redo = (LOG_REC_REDO *) entry->redo_data;
       /* Get recovery data. */
-      rcv_data = entry->redo_data + sizeof (struct log_redo);
+      rcv_data = entry->redo_data + sizeof (LOG_REC_REDO);
       rcv_data = PTR_ALIGN (rcv_data, MAX_ALIGNMENT);
       (void) log_execute_run_postpone (thread_p, &entry->lsa, redo, rcv_data);
     }
