@@ -285,7 +285,6 @@ struct heap_operation_context
   OID class_oid;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
   HEAP_SCANCACHE *scan_cache_p;	/* scan cache */
-  unsigned int flags;		/* flags */
 
   /* overflow transient data */
   RECDES map_recdes;		/* built record descriptor during multipage insert */
@@ -318,16 +317,6 @@ struct heap_operation_context
   /* Performance stat dump. */
   PERF_UTIME_TRACKER *time_track;
 };
-
-/* HEAP_OPERATION_CONTEXT flags */
-enum
-{
-  HEAP_OP_CONTEXT_FLAG_BIGONE_MAXSIZE = 0x0001
-};
-
-#define HEAP_OP_CONTEXT_SET_FLAG(var, flag)          ((var) |= (flag))
-#define HEAP_OP_CONTEXT_CLEAR_FLAG(var, flag)        ((var) &= (flag))
-#define HEAP_OP_CONTEXT_IS_FLAG_SET(var, flag)       ((var) & (flag))
 
 enum
 { END_SCAN, CONTINUE_SCAN };
@@ -629,12 +618,11 @@ extern int heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thre
 extern SCAN_CODE heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, LOCK lock_mode,
 					SNAPSHOT_TYPE snapshot_type);
 extern void heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * class_oid_p,
-					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, bool bigone_max_size);
+					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p);
 extern void heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
 					HEAP_SCANCACHE * scancache_p);
 extern void heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
-					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place,
-					bool bigone_max_size);
+					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place);
 extern int heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 extern int heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 extern int heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);

@@ -212,10 +212,10 @@ logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms)
   size = tdes->topops.max + num_elms;
   size = size * sizeof (*tdes->topops.stack);
 
-  newptr = (struct log_topops_addresses *) realloc (tdes->topops.stack, size);
+  newptr = (LOG_TOPOPS_ADDRESSES *) realloc (tdes->topops.stack, size);
   if (newptr != NULL)
     {
-      tdes->topops.stack = (struct log_topops_addresses *) newptr;
+      tdes->topops.stack = (LOG_TOPOPS_ADDRESSES *) newptr;
       if (tdes->topops.max == 0)
 	{
 	  tdes->topops.last = -1;
@@ -416,9 +416,9 @@ logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, 
   LOG_CS_ENTER (thread_p);
   TR_TABLE_CS_ENTER (thread_p);
 
-  if (logpb_is_initialize_pool ())
+  if (logpb_is_pool_initialized ())
     {
-      logpb_finalize_pool ();
+      logpb_finalize_pool (thread_p);
     }
 
   (void) logtb_define_trantable_log_latch (thread_p, num_expected_tran_indices);
@@ -612,19 +612,18 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_initialize_vacuum_worker_tdes () - Allocate a transaction descriptor
- *					    for vacuum workers to use when
- *					    starting system operations.
+ * logtb_initialize_vacuum_thread_tdes () - Allocate a transaction descriptor for vacuum threads to use when starting
+ *					    system operations.
  *
  * return    : Void.
  * tdes (in) : Transaction descriptor.
  * trid (in) : Transaction identifier.
  */
 void
-logtb_initialize_vacuum_worker_tdes (LOG_TDES * tdes, TRANID trid)
+logtb_initialize_vacuum_thread_tdes (LOG_TDES * tdes, TRANID trid)
 {
   /* Check trid is a valid vacuum worker TRANID. */
-  assert (LOG_IS_VACUUM_WORKER_TRANID (trid));
+  assert (LOG_IS_VACUUM_THREAD_TRANID (trid));
 
   /* Initialize transaction descriptor. */
   logtb_initialize_tdes (tdes, LOG_SYSTEM_TRAN_INDEX);
@@ -646,7 +645,7 @@ logtb_initialize_vacuum_worker_tdes (LOG_TDES * tdes, TRANID trid)
 void
 logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 {
-  struct log_addr_tdesarea *area;
+  LOG_ADDR_TDESAREA *area;
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
@@ -1360,7 +1359,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
   int tran_index;
   VACUUM_WORKER *worker;
 
-  if (LOG_IS_VACUUM_WORKER_TRANID (trid))
+  if (LOG_IS_VACUUM_THREAD_TRANID (trid))
     {
       /* This must be the log of a vacuum worker system operation. Use vacuum worker transaction descriptor. */
       worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
@@ -1996,14 +1995,12 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
 
-  csect_initialize_critical_section (&tdes->cs_topop);
+  csect_initialize_critical_section (&tdes->cs_topop, csect_Name_tdes);
 
 #if defined(SERVER_MODE)
   assert (tdes->cs_topop.cs_index == -1);
-  assert (tdes->cs_topop.name == NULL);
 
   tdes->cs_topop.cs_index = CRITICAL_SECTION_COUNT + css_get_max_conn () + NUM_MASTER_CHANNEL + tdes->tran_index;
-  tdes->cs_topop.name = csect_Name_tdes;
 #endif
 
   tdes->topops.stack = NULL;
@@ -3444,9 +3441,9 @@ logtb_is_current_active (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
 
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-      /* Vacuum workers are always considered active (since they have no transactions). */
+      /* Vacuum workers/master are always considered active (since they have no transactions). */
       return true;
     }
 
@@ -4564,6 +4561,13 @@ start_get_oldest_active:
 	  mnt_oldest_mvcc_retry_counters (thread_p, retry_cnt - 1);
 	}
     }
+#if !defined (NDEBUG)
+  {
+    /* Safe guard: vacuum_Global_oldest_active_mvccid can never become smaller. */
+    VACUUM_LOG_BLOCKID crt_oldest = vacuum_get_global_oldest_active_mvccid ();
+    assert (!MVCC_ID_PRECEDES (lowest_active_mvccid, crt_oldest));
+  }
+#endif /* !NDEBUG */
 
   return lowest_active_mvccid;
 }
@@ -4741,7 +4745,7 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
-  if (tdes->tran_index == LOG_SYSTEM_TRAN_INDEX || VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (tdes->tran_index == LOG_SYSTEM_TRAN_INDEX || VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       /* System transactions do not have snapshots */
       return NULL;

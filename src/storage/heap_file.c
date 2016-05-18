@@ -893,7 +893,7 @@ static int heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTE
 static int heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, OID * oid_p);
 static void heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
-				      RECDES * recdes_p, bool mark_reusable);
+				      RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa);
 
 /* heap update related functions */
 static int heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
@@ -926,6 +926,7 @@ static void heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
+static bool heap_check_class_for_rr_isolation_err (const OID * class_oid);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -5827,7 +5828,7 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid
   recdes.type = REC_ASSIGN_ADDRESS;
 
   /* create context */
-  heap_create_insert_context (&insert_context, (HFID *) hfid, class_oid, &recdes, NULL, false);
+  heap_create_insert_context (&insert_context, (HFID *) hfid, class_oid, &recdes, NULL);
 
   /* insert */
   rc = heap_insert_logical (thread_p, &insert_context);
@@ -7896,7 +7897,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
   MVCC_SCAN_REEV_DATA *scan_reev_data = NULL;	/* Scan re-evaluation data. */
   DB_LOGICAL ev_res;		/* Re-evaluation result. */
   INT16 type;			/* Record type. */
-  bool is_version_locked = false;	/* True if newest version has been locked. */
+  bool is_locked = false;	/* True if object was locked. */
   HEAP_SCANCACHE local_scancache;
   bool is_record_retrieved = false;
 
@@ -8047,8 +8048,12 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
       assert (type == REC_HOME
 	      || (!OID_ISNULL (&forward_oid) && HEAP_IS_PAGE_OF_OID (fwd_page_watcher.pgptr, &forward_oid)));
 
+      /* First remember if object was locked. If some errors occur, we need to unlock it at the end. */
+      is_locked = (mvcc_delete_info.satisfies_delete_result == DELETE_RECORD_CAN_DELETE);
+
       /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
-      if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED)
+      if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
+	  && heap_check_class_for_rr_isolation_err (class_oid))
 	{
 	  /* In these isolation levels, the transaction is not allowed to modify an object that was already
 	   * modified by other transactions. This would be true if last version matched the visible version.
@@ -8076,9 +8081,15 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
 	      goto error;
 	    }
+	  else if (mvcc_delete_info.satisfies_delete_result == DELETE_RECORD_DELETED)
+	    {
+	      /* Trying to modify version deleted by concurrent transaction, which is an isolation conflict. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
+	      goto error;
+	    }
 	  else
 	    {
-	      /* Last version is also visible version. Fall through. */
+	      /* Last version is also visible version and it is not deleted. Fall through. */
 	    }
 	}
 
@@ -8094,8 +8105,8 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 	  assert (MVCC_IS_REC_INSERTED_BY_ME (thread_p, &mvcc_header)
 		  || lock_get_object_lock (oid, class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= lock);
 
-	  /* Set is_version_locked */
-	  is_version_locked = true;
+	  /* is_version_locked should be set */
+	  assert (is_locked);
 
 	  /* Check re-evaluation. */
 	  if (mvcc_reev_data != NULL)
@@ -8302,7 +8313,7 @@ end:
   /* Check if we need to release lock. If scan is not successful or if the evaluation test was not passed, unlock
    * object. What to do in case of S_DOESNT_FIT? Usually we are expecting the caller to retry getting object with a
    * larger area, in which case holding the lock would make sense. Is there any reason we should release the lock? */
-  if (is_version_locked
+  if (is_locked
       && ((scan_code != S_SUCCESS && scan_code != S_SUCCESS_CHN_UPTODATE && scan_code != S_DOESNT_FIT)
 	  || (mvcc_reev_data != NULL && mvcc_reev_data->filter_result != V_TRUE)))
     {
@@ -20263,7 +20274,7 @@ try_again:
 
   /* Check satisfies delete. */
   satisfies_delete_result = mvcc_satisfies_delete (thread_p, recdes_header);
-  if (satisfies_delete_result == DELETE_RECORD_INSERT_IN_PROGRESS && !MVCC_IS_HEADER_PREV_VERSION_VALID (recdes_header))	/* yolo */
+  if (satisfies_delete_result == DELETE_RECORD_INSERT_IN_PROGRESS && !MVCC_IS_HEADER_PREV_VERSION_VALID (recdes_header))
     {
       /* Record is too "new" and cannot be seen (the inserter is still considered active). Should be handled before
        * calling this function. */
@@ -21124,32 +21135,23 @@ heap_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * sc
   ev_res = V_TRUE;
   if (!MVCC_IS_REC_INSERTED_BY_ME (thread_p, mvcc_header_p))
     {
-      if (mvcc_reev_data_p->primary_key != NULL)
+      switch (mvcc_reev_data_p->type)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_ROW_INVALID_FOR_DELETE, 3, curr_row_version_oid_p->volid,
-		  curr_row_version_oid_p->pageid, curr_row_version_oid_p->slotid);
-	  ev_res = V_ERROR;
-	}
-      else
-	{
-	  switch (mvcc_reev_data_p->type)
-	    {
-	    case REEV_DATA_SCAN:
-	      ev_res =
-		mvcc_reevaluate_filters (thread_p, mvcc_reev_data_p->select_reev_data, curr_row_version_oid_p, recdes);
-	      mvcc_reev_data_p->filter_result = ev_res;
-	      break;
+	case REEV_DATA_SCAN:
+	  ev_res =
+	    mvcc_reevaluate_filters (thread_p, mvcc_reev_data_p->select_reev_data, curr_row_version_oid_p, recdes);
+	  mvcc_reev_data_p->filter_result = ev_res;
+	  break;
 
-	    case REEV_DATA_UPDDEL:
-	      ev_res =
-		heap_mvcc_reev_cond_assigns (thread_p, &scan_cache->node.class_oid, curr_row_version_oid_p, scan_cache,
-					     recdes, mvcc_reev_data_p->upddel_reev_data);
-	      mvcc_reev_data_p->filter_result = ev_res;
-	      break;
+	case REEV_DATA_UPDDEL:
+	  ev_res =
+	    heap_mvcc_reev_cond_assigns (thread_p, &scan_cache->node.class_oid, curr_row_version_oid_p, scan_cache,
+					 recdes, mvcc_reev_data_p->upddel_reev_data);
+	  mvcc_reev_data_p->filter_result = ev_res;
+	  break;
 
-	    default:
-	      break;
-	    }
+	default:
+	  break;
 	}
     }
   else
@@ -21828,7 +21830,6 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   OID_SET_NULL (&context->class_oid);
   context->recdes_p = NULL;
   context->scan_cache_p = NULL;
-  context->flags = 0;
 
   context->map_recdes.data = NULL;
   context->map_recdes.length = 0;
@@ -22125,10 +22126,9 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   if ((context->type != HEAP_OPERATION_UPDATE || context->update_in_place != UPDATE_INPLACE_OLD_MVCCID)
       && insert_from_reorganize == false)
     {
-      if (is_mvcc_op)
+#if defined (SERVER_MODE)
+      if (is_mvcc_class)
 	{
-	  assert (is_mvcc_class);
-
 	  /* get MVCC id */
 	  mvcc_id = logtb_get_current_mvccid (thread_p);
 
@@ -22141,6 +22141,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
 	}
       else
+#endif /* SERVER_MODE */
 	{
 	  int curr_header_size, new_header_size;
 
@@ -22194,8 +22195,6 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 static int
 heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
-  bool use_bigone_maxsize = false;
-
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_INSERT || context->type == HEAP_OPERATION_UPDATE);
   assert (context->recdes_p != NULL);
@@ -22211,8 +22210,6 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
     {
       return ER_FAILED;
     }
-
-  use_bigone_maxsize = HEAP_OP_CONTEXT_IS_FLAG_SET (context->flags, HEAP_OP_CONTEXT_FLAG_BIGONE_MAXSIZE);
 
   /* Add a map record to point to the record in overflow */
   /* NOTE: MVCC information is held in overflow record */
@@ -22451,7 +22448,7 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
   assert (parent_context->type == HEAP_OPERATION_DELETE || parent_context->type == HEAP_OPERATION_UPDATE);
 
   /* build insert context */
-  heap_create_insert_context (&ins_context, &parent_context->hfid, &parent_context->class_oid, recdes_p, NULL, false);
+  heap_create_insert_context (&ins_context, &parent_context->hfid, &parent_context->class_oid, recdes_p, NULL);
 
   /* physical insertion */
   error_code = heap_find_location_and_insert_rec_newhome (thread_p, &ins_context);
@@ -22982,7 +22979,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       /* log operation */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable);
+				&context->home_recdes, is_reusable, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23347,7 +23344,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        */
 
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable);
+				&context->home_recdes, is_reusable, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23379,7 +23376,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        * should not be referenced anywhere in the database.
        */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true);
+				&forward_recdes, true, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23601,7 +23598,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       /* log operation */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable);
+				&context->home_recdes, is_reusable, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23665,10 +23662,11 @@ heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, O
  *   oid_p(in): object identifier of deleted record
  *   recdes_p(in): record descriptor of deleted record
  *   mark_reusable(in): if true, will mark the slot as reusable
+ *   undo_lsa(out): lsa to the undo record; needed to set previous version lsa of record at update
  */
 static void
 heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, RECDES * recdes_p,
-			  bool mark_reusable)
+			  bool mark_reusable, LOG_LSA * undo_lsa)
 {
   LOG_DATA_ADDR log_addr;
 
@@ -23701,6 +23699,12 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
     {
       /* log record descriptor */
       log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p, NULL);
+    }
+
+  if (undo_lsa)
+    {
+      /* get, set undo lsa before log_append_postpone() will make it inaccessible */
+      LSA_COPY (undo_lsa, logtb_find_current_tran_lsa (thread_p));
     }
 
   /* log postponed operation */
@@ -23881,6 +23885,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   bool update_old_home = false;
   bool update_old_forward = false;
   bool remove_old_forward = false;
+  LOG_LSA prev_version_lsa;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
@@ -23930,7 +23935,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
     {
       /* old forward record is deleted and the new record is inserted into old home, or into a new location */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true);
+				&forward_recdes, true, &prev_version_lsa);
       remove_old_forward = true;
       /* old home is updated in any case */
       update_old_home = true;
@@ -23941,7 +23946,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        * log just undo record, as the redo object needs the lsa from this log */
       heap_log_update_undo (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
 			    &forward_recdes, RVHF_UPDATE);
-
+      LSA_COPY (&prev_version_lsa, logtb_find_current_tran_lsa (thread_p));
       update_old_forward = true;
       /* for non mvcc operations, the redo logging can also be done here, maybe... */
     }
@@ -23950,7 +23955,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   if (is_mvcc_op)
     {
       /* set the previous version of the new record */
-      or_mvcc_set_log_lsa_to_record (context->recdes_p, logtb_find_current_tran_lsa (thread_p));
+      or_mvcc_set_log_lsa_to_record (context->recdes_p, &prev_version_lsa);
     }
 
   /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
@@ -24102,6 +24107,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   RECDES forwarding_recdes;
   RECDES *home_page_updated_recdes_p = NULL;
   OID forward_oid;
+  LOG_RCVINDEX undo_rcvindex = RVHF_UPDATE;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
@@ -24122,9 +24128,21 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       return ER_FAILED;
     }
 
+#if defined (SERVER_MODE)
+  if (is_mvcc_op)
+    {
+      undo_rcvindex = RVHF_UPDATE_NOTIFY_VACUUM;
+    }
+  else if (context->home_recdes.type == REC_ASSIGN_ADDRESS && !heap_is_mvcc_disabled_for_class (&context->class_oid))
+    {
+      /* Quick fix: Assign address is update in-place. Vacuum must be notified. */
+      undo_rcvindex = RVHF_UPDATE_NOTIFY_VACUUM;
+    }
+#endif /* SERVER_MODE */
+
   /* log update undo by saving old record */
   heap_log_update_undo (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-			&context->home_recdes, (is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
+			&context->home_recdes, undo_rcvindex);
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
   if (is_mvcc_op)
@@ -24345,12 +24363,10 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
  *   class_oid_p(in): class OID
  *   recdes_p(in): record descriptor to insert
  *   scancache_p(in): scan cache to use (optional)
- *   bigone_max_size(in): use maximum record size
- *			      (reserve space for an extra OID) for REC_BIGONE
  */
 void
 heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * class_oid_p, RECDES * recdes_p,
-			    HEAP_SCANCACHE * scancache_p, bool bigone_max_size)
+			    HEAP_SCANCACHE * scancache_p)
 {
   assert (context != NULL);
   assert (hfid_p != NULL);
@@ -24364,10 +24380,6 @@ heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
   context->recdes_p = recdes_p;
   context->scan_cache_p = scancache_p;
   context->type = HEAP_OPERATION_INSERT;
-  if (bigone_max_size == true)
-    {
-      HEAP_OP_CONTEXT_SET_FLAG (context->flags, HEAP_OP_CONTEXT_FLAG_BIGONE_MAXSIZE);
-    }
 }
 
 /*
@@ -24403,13 +24415,10 @@ heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
  *   recdes_p(in): updated record to write
  *   scancache_p(in): scan cache to use (optional)
  *   in_place(in): specifies if the "in place" type of the update operation
- *   bigone_max_size(in): use maximum record size
- *			      (reserve space for an extra OID) for REC_BIGONE 
  */
 void
 heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
-			    RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place,
-			    bool bigone_max_size)
+			    RECDES * recdes_p, HEAP_SCANCACHE * scancache_p, UPDATE_INPLACE_STYLE in_place)
 {
   assert (context != NULL);
   assert (hfid_p != NULL);
@@ -24424,10 +24433,6 @@ heap_create_update_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID
   context->scan_cache_p = scancache_p;
   context->type = HEAP_OPERATION_UPDATE;
   context->update_in_place = in_place;
-  if (bigone_max_size == true)
-    {
-      HEAP_OP_CONTEXT_SET_FLAG (context->flags, HEAP_OP_CONTEXT_FLAG_BIGONE_MAXSIZE);
-    }
 }
 
 /*
@@ -24559,72 +24564,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 			    context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
 
   HEAP_PERF_TRACK_LOGGING (thread_p, context);
-
-  if (context->update_in_place == UPDATE_INPLACE_OLD_MVCCID)
-    {
-      MVCC_REC_HEADER mvcc_rec_header;
-      MVCCID mvcc_insid, mvcc_delid;
-      bool mutex_acquired = false, has_insid = false, has_delid = false;
-
-      or_mvcc_get_header (context->recdes_p, &mvcc_rec_header);
-      has_insid = MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
-      has_delid = MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID);
-      if (has_insid || has_delid)
-	{
-	  if (has_insid)
-	    {
-	      mvcc_insid = MVCC_GET_INSID (&mvcc_rec_header);
-	      if (MVCC_ID_PRECEDES (log_Gl.hdr.last_block_newest_mvccid, mvcc_insid)
-		  || MVCC_ID_PRECEDES (mvcc_insid, log_Gl.hdr.last_block_oldest_mvccid))
-		{
-		  /* we have a chance to update global newest/oldest */
-		  (void) pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
-		  mutex_acquired = true;
-		  /* need to check again, maybe another thread has update last_block_newest_mvccid or
-		   * last_block_oldest_mvccid meanwhile */
-		  if (MVCC_ID_PRECEDES (log_Gl.hdr.last_block_newest_mvccid, mvcc_insid))
-		    {
-		      /* A newer MVCCID was found */
-		      log_Gl.hdr.last_block_newest_mvccid = mvcc_insid;
-		    }
-		  else if (MVCC_ID_PRECEDES (mvcc_insid, log_Gl.hdr.last_block_oldest_mvccid))
-		    {
-		      /* An older MVCCID was found */
-		      log_Gl.hdr.last_block_oldest_mvccid = mvcc_insid;
-		    }
-		}
-	    }
-
-	  if (has_delid)
-	    {
-	      mvcc_delid = MVCC_GET_DELID (&mvcc_rec_header);
-	      if (MVCC_ID_PRECEDES (log_Gl.hdr.last_block_newest_mvccid, mvcc_delid)
-		  || MVCC_ID_PRECEDES (mvcc_delid, log_Gl.hdr.last_block_oldest_mvccid))
-		{
-		  if (mutex_acquired == false)
-		    {
-		      (void) pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
-		      mutex_acquired = true;
-		    }
-		  if (MVCC_ID_PRECEDES (log_Gl.hdr.last_block_newest_mvccid, mvcc_delid))
-		    {
-		      /* A newer MVCCID was found */
-		      log_Gl.hdr.last_block_newest_mvccid = mvcc_delid;
-		    }
-		  else if (MVCC_ID_PRECEDES (mvcc_delid, log_Gl.hdr.last_block_oldest_mvccid))
-		    {
-		      /* An older MVCCID was found */
-		      log_Gl.hdr.last_block_oldest_mvccid = mvcc_delid;
-		    }
-		}
-	    }
-
-	  if (mutex_acquired == true)
-	    {
-	      pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
-	    }
-	}
-    }
 
   /* mark insert page as dirty */
   pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr, DONT_FREE);
@@ -25389,7 +25328,8 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
       temp_oid.volid = vpid.volid;
       temp_oid.pageid = vpid.pageid;
       worker.n_heap_objects = spage_number_of_slots (pg_watcher.pgptr) - 1;
-      if (worker.n_heap_objects > 0)
+      if (worker.n_heap_objects > 0
+	  && heap_page_get_vacuum_status (thread_p, pg_watcher.pgptr) != HEAP_PAGE_VACUUM_NONE)
 	{
 	  for (i = 1; i <= worker.n_heap_objects; i++)
 	    {
@@ -26435,4 +26375,37 @@ exit:
       pgbuf_ordered_unfix (thread_p, &home_pg_watcher);
     }
   return scan;
+}
+
+/*
+ * heap_check_class_for_rr_isolation_err () - Check if the class have to be checked against serializable conflicts
+ *
+ * return		   : true if the class is not root/trigger/user class, otherwise false
+ * class_oid (in)	   : Class object identifier.
+ *
+ * Note: Do not check system classes that are not part of catalog for rr isolation level error. Isolation consistency 
+ *	 is secured using locks anyway. These classes are in a way related to table schema's and can be accessed
+ *	 before the actual classes. db_user instances are fetched to check authorizations, while db_root and db_trigger
+ *	 are accessed when triggers are modified.
+ *	 The RR isolation has to check if an instance that we want to lock was modified by concurrent transaction. 
+ *	 If the instance was modified, then this means we have an isolation conflict. The check must verify last 
+ *	 instance version visibility over transaction snapshot. The version is visible if and only if it was not
+ *	 modified by concurrent transaction. To check visibility, we must first generate a transaction snapshot. 
+ *	 Since instances from these classes are accessed before locking tables, the snapshot is generated before 
+ *	 transaction is blocked on table lock. The results will then seem to be inconsistent with most cases when table
+ *	 locks are acquired before snapshot.
+ */
+static bool
+heap_check_class_for_rr_isolation_err (const OID * class_oid)
+{
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+
+  if (!oid_check_cached_class_oid (OID_CACHE_DB_ROOT_CLASS_ID, class_oid)
+      && !oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
+      && !oid_check_cached_class_oid (OID_CACHE_TRIGGER_CLASS_ID, class_oid))
+    {
+      return true;
+    }
+
+  return false;
 }
