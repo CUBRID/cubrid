@@ -26329,7 +26329,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, OID * oid, PAGE_PTR pgptr
     {
       forward_oid = *((OID *) recdes.data);
       VPID_GET_FROM_OID (&fwd_vpid, &forward_oid);
-      if (fwd_pgptr == NULL || !VPID_EQ (fwd_vpid, pgbuf_get_vpid_ptr (fwd_pgptr)))
+      if (fwd_pgptr == NULL || !VPID_EQ (&fwd_vpid, pgbuf_get_vpid_ptr (fwd_pgptr)))
 	{
 	  fwd_pgptr = pgbuf_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  is_fwd_pg_fixed_locally = true;
