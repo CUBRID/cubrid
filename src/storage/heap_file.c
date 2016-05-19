@@ -26063,7 +26063,7 @@ heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, O
   address.vfid = vfid_p;
 
 
-  if (redo_recdes->type == REC_RELOCATION)
+  if (redo_recdes->type == REC_RELOCATION && rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
     {
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       tdes = LOG_FIND_TDES (tran_index);
