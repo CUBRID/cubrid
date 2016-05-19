@@ -26328,9 +26328,9 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, OID * oid, PAGE_PTR pgptr
   else if (recdes.type == REC_RELOCATION)
     {
       forward_oid = *((OID *) recdes.data);
-      if (fwd_pgptr == NULL)
+      VPID_GET_FROM_OID (&fwd_vpid, &forward_oid);
+      if (fwd_pgptr == NULL || !VPID_EQ (fwd_vpid, pgbuf_get_vpid_ptr (fwd_pgptr)))
 	{
-	  VPID_GET_FROM_OID (&fwd_vpid, &forward_oid);
 	  fwd_pgptr = pgbuf_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  is_fwd_pg_fixed_locally = true;
 	}
