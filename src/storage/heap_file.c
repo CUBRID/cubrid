@@ -874,7 +874,8 @@ static void heap_build_forwarding_recdes (RECDES * recdes_p, INT16 rec_type, OID
 static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 					     RECDES * recdes_p, bool is_mvcc_op, bool is_mvcc_class);
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
-static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
+static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
+					       PGBUF_WATCHER * home_hint_p);
 static int heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_context, RECDES * recdes_p,
 				OID * out_oid_p);
@@ -22226,6 +22227,7 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
  *				    for insert and lock the OID
  *   thread_p(in): thread entry
  *   context(in): operation context
+ *   home_hint_p(in): if not null, will try to find and lock a slot in hinted page
  *   returns: error code or NO_ERROR
  *
  * NOTE: For all operations, this function will find a suitable page, put it
@@ -22235,8 +22237,9 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
  *       lockable slot ONLY in the hinted page. If no hint is present, it will
  *       find the page on it's own.
  */
-int
-heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+static int
+heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
+				    PGBUF_WATCHER * home_hint_p)
 {
   int slot_count, slot_id, lk_result;
   LOCK lock;
@@ -22247,13 +22250,27 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
   assert (context->type == HEAP_OPERATION_INSERT);
   assert (context->recdes_p != NULL);
 
-  /* find and fix page for insert */
-  if (heap_stats_find_best_page (thread_p, &context->hfid, context->recdes_p->length,
-				 (context->recdes_p->type != REC_NEWHOME), context->recdes_p->length,
-				 context->scan_cache_p, context->home_page_watcher_p) == NULL)
+  if (home_hint_p == NULL)
     {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
+      /* find and fix page for insert */
+      if (heap_stats_find_best_page (thread_p, &context->hfid, context->recdes_p->length,
+				     (context->recdes_p->type != REC_NEWHOME), context->recdes_p->length,
+				     context->scan_cache_p, context->home_page_watcher_p) == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+    }
+  else
+    {
+      assert (home_hint_p->pgptr != NULL);
+
+      /* check page for space and use hinted page as insert page */
+      if (spage_max_space_for_new_record (thread_p, home_hint_p->pgptr) < context->recdes_p->length)
+	{
+	  return ER_SP_NOSPACE_IN_PAGE;
+	}
+      context->home_page_watcher_p = home_hint_p;
     }
   assert (context->home_page_watcher_p->pgptr != NULL);
 
@@ -22312,8 +22329,14 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 
   /* either lock error or no slot was found in page (which should not happen) */
   OID_SET_NULL (&context->res_oid);
-  pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
-
+  if (context->home_page_watcher_p != home_hint_p)
+    {
+      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+    }
+  else
+    {
+      context->home_page_watcher_p = NULL;
+    }
   assert (false);
   return ER_FAILED;
 }
@@ -24414,7 +24437,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
 
   /* get insert location (includes locking) */
-  if (heap_get_insert_location_with_lock (thread_p, context) != NO_ERROR)
+  if (heap_get_insert_location_with_lock (thread_p, context, NULL) != NO_ERROR)
     {
       return ER_FAILED;
     }
