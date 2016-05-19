@@ -926,7 +926,7 @@ static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, REC
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
 static bool heap_check_class_for_rr_isolation_err (const OID * class_oid);
-static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, OID * oid, PAGE_PTR pgptr, PAGE_PTR fwd_pgptr,
+static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR pgptr, PAGE_PTR fwd_pgptr,
 					 LOG_LSA * prev_ver_lsa);
 
 /*
@@ -22163,6 +22163,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  record_size += sizeof (LOG_LSA);
 	}
 
+      /* The prev_version_lsa will be filled at the end of the update, in heap_update_set_prev_version() */
       LSA_SET_NULL (&mvcc_rec_header.prev_version_lsa);
     }
 
@@ -23746,6 +23747,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	}
       else
 	{
+	  /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
 	  error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
 						     context->forward_page_watcher_p->pgptr, &prev_version_lsa);
 	  if (error_code != NO_ERROR)
@@ -23977,6 +23979,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
   if (is_mvcc_op)
     {
+      /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
       rc = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
 					 context->forward_page_watcher_p->pgptr, &prev_version_lsa);
     }
@@ -24143,9 +24146,9 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       return error_code;
     }
 
-  /* the previous version lsa address can be obtained and set only now, when logging and updating are finished */
   if (is_mvcc_op)
     {
+      /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
       heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
 				    context->forward_page_watcher_p->pgptr, &prev_version_lsa);
     }
@@ -26311,16 +26314,21 @@ heap_check_class_for_rr_isolation_err (const OID * class_oid)
 /*
  * heap_update_set_prev_version () - Set prev version lsa to record according to its type. 
  *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * recdes (in)	 : Newly updated record.
- * p_addr (in)	 : Log address data.
+ * return	       : error code or NO_ERROR
+ * thread_p (in)       : Thread entry.
+ * oid (in)            : Object identifier of the updated record
+ * pgptr (in)          : Record home page
+ * fwd_pgptr (in)      : Record forward page
+ * prev_version_lsa(in): LSA address of undo log record of the old record
  *
- * Note: The records are obtained using PEEK, and modified directly, without using spage_update afterwards
+ * Note: This function works only with heap_update_home/relocation/bigone functions. It is designed to set the 
+ *       prev_version_lsa to updated records by overwriting this information directly into heap file. The header of the
+ *       record should be prepared for this in heap_insert_adjust_recdes_header().
+ *       The records are obtained using PEEK, and modified directly, without using spage_update afterwards!
  */
 static int
-heap_update_set_prev_version (THREAD_ENTRY * thread_p, OID * oid, PAGE_PTR pgptr, PAGE_PTR fwd_pgptr,
-			      LOG_LSA * prev_ver_lsa)
+heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR pgptr, PAGE_PTR fwd_pgptr,
+			      LOG_LSA * prev_version_lsa)
 {
   int error_code = NO_ERROR;
   RECDES recdes, forward_recdes;
@@ -26328,7 +26336,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, OID * oid, PAGE_PTR pgptr
   VPID vpid, fwd_vpid;
   OID forward_oid;
 
-  assert (oid != NULL && !OID_ISNULL (oid) && prev_ver_lsa != NULL && !LSA_ISNULL (prev_ver_lsa));
+  assert (oid != NULL && !OID_ISNULL (oid) && prev_version_lsa != NULL && !LSA_ISNULL (prev_version_lsa));
 
   if (pgptr == NULL)
     {
@@ -26345,7 +26353,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, OID * oid, PAGE_PTR pgptr
 
   if (recdes.type == REC_HOME)
     {
-      error_code = or_mvcc_set_log_lsa_to_record (&recdes, prev_ver_lsa);
+      error_code = or_mvcc_set_log_lsa_to_record (&recdes, prev_version_lsa);
       goto end;
     }
   else if (recdes.type == REC_RELOCATION)
@@ -26362,7 +26370,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, OID * oid, PAGE_PTR pgptr
 	  error_code = ER_FAILED;
 	  goto end;
 	}
-      error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_ver_lsa);
+      error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_version_lsa);
       goto end;
     }
   else if (recdes.type == REC_BIGONE)
@@ -26376,7 +26384,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, OID * oid, PAGE_PTR pgptr
       forward_recdes.data = overflow_get_first_page_data (fwd_pgptr);
       forward_recdes.length = OR_HEADER_SIZE (forward_recdes.data);
 
-      error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_ver_lsa);
+      error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_version_lsa);
       goto end;
     }
 
