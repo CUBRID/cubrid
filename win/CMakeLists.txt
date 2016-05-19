@@ -31,48 +31,48 @@ target_compile_definitions(cubridservice PRIVATE _CONSOLE)
 
 
 set(CUBRIDTRAY_SOURCES
-  ${WIN_TOOLS_DIR}/cubridtray/ArchiveLog.cpp
+  ${WIN_TOOLS_DIR}/cubridtray/ARCHIVELOG.CPP
   ${WIN_TOOLS_DIR}/cubridtray/CASManage.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/CommonMethod.cpp
+  ${WIN_TOOLS_DIR}/cubridtray/COMMONMETHOD.CPP
   ${WIN_TOOLS_DIR}/cubridtray/CUBRIDManage.cpp
   ${WIN_TOOLS_DIR}/cubridtray/CUBRIDtray.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/DBStartUp.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/env.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/Filename.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/folder_dialog.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/lang.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/MainFrm.cpp
+  ${WIN_TOOLS_DIR}/cubridtray/DBSTARTUP.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/ENV.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/FILENAME.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/FOLDER_DIALOG.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/LANG.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/MAINFRM.CPP
   ${WIN_TOOLS_DIR}/cubridtray/Manager.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/ManageRegistry.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/ntray.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/ORDBList.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/Process.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/Property.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/Redirect.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/Shutdown.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/StartTargetDB.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/StdAfx.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/StopTargetDB.cpp
+  ${WIN_TOOLS_DIR}/cubridtray/MANAGEREGISTRY.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/NTRAY.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/ORDBLIST.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/PROCESS.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/PROPERTY.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/REDIRECT.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/SHUTDOWN.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/STARTTARGETDB.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/STDAFX.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/STOPTARGETDB.CPP
   ${WIN_TOOLS_DIR}/cubridtray/ToolManage.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/UCconf.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/UCMDetail.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/UCMInfo.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/UCPDetail.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/UCProperty.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/Vas.cpp
-  ${WIN_TOOLS_DIR}/cubridtray/Was.cpp
+  ${WIN_TOOLS_DIR}/cubridtray/UCCONF.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/UCMDETAIL.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/UCMINFO.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/UCPDETAIL.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/UCPROPERTY.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/VAS.CPP
+  ${WIN_TOOLS_DIR}/cubridtray/WAS.CPP
   ${WIN_TOOLS_DIR}/cubridtray/cubridtray.odl
   ${WIN_TOOLS_DIR}/cubridtray/cubridtray.rc
   )
-set_source_files_properties(${WIN_TOOLS_DIR}/cubridtray/stdafx.cpp
+set_source_files_properties(${WIN_TOOLS_DIR}/cubridtray/STDAFX.CPP
   PROPERTIES
-  COMPILE_FLAGS "/Ycstdafx.h"
+  COMPILE_FLAGS "/YcSTDAFX.H"
   )
 set(CMAKE_MFC_FLAG 2)
 add_executable(cubridtray WIN32 ${CUBRIDTRAY_SOURCES})
 # TODO: remove version.h in win/ directory
 target_include_directories(cubridtray PRIVATE ${CMAKE_SOURCE_DIR}/win)
-set_target_properties(cubridtray PROPERTIES COMPILE_FLAGS "/GF /Yustdafx.h")
+set_target_properties(cubridtray PROPERTIES COMPILE_FLAGS "/GF /YuSTDAFX.H")
 set_target_properties(cubridtray PROPERTIES OUTPUT_NAME "CUBRID_Service_Tray")
 if(MSVC_VERSION LESS 1600)
   # for VS 2008 (9.0) or less version
@@ -83,7 +83,7 @@ endif(MSVC_VERSION LESS 1600)
 
 
 set(SETUPMANAGE_SOURCES
-  ${WIN_TOOLS_DIR}/setupmanage/setupmanage.cpp
+  ${WIN_TOOLS_DIR}/setupmanage/SETUPMANAGE.CPP
   ${WIN_TOOLS_DIR}/setupmanage/PATHREGULATION.CPP
   ${WIN_TOOLS_DIR}/setupmanage/stdafx.cpp
   )
