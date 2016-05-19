@@ -3162,6 +3162,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   int error_code = NO_ERROR;
   int i;
   int ulength, rlength, *data_header_ulength_p, *data_header_rlength_p;
+  int total_length;
   MVCCID *mvccid_p = NULL;
   LOG_TDES *tdes = NULL;
   char *data_ptr = NULL, *tmp_ptr = NULL;
@@ -3185,12 +3186,14 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
     {
       ulength += ucrumbs[i].length;
     }
+  assert (0 <= ulength);
 
   rlength = 0;
   for (i = 0; i < num_rcrumbs; i++)
     {
       rlength += rcrumbs[i].length;
     }
+  assert (0 <= rlength);
 
   /* Check if we have undo or redo and if we can zip */
   if (LOG_IS_UNDOREDO_RECORD_TYPE (node->log_header.type))
@@ -3212,43 +3215,59 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       can_zip = log_zip_support && zip_undo;
     }
 
-  if (can_zip)
+  if (can_zip == true)
     {
       /* Try to zip undo and/or redo data */
-      if (logpb_realloc_data_ptr (thread_p, ulength + rlength))
+      total_length = 0;
+      if (ulength > 0)
+	{
+	  total_length += ulength;
+	}
+      if (rlength > 0)
+	{
+	  total_length += rlength;
+	}
+
+      if (logpb_realloc_data_ptr (thread_p, total_length))
 	{
 	  data_ptr = logpb_get_data_ptr (thread_p);
 	}
 
-      if (data_ptr)
+      if (data_ptr != NULL)
 	{
+	  tmp_ptr = data_ptr;
+
 	  if (ulength > 0)
 	    {
-	      assert (has_undo);
+	      assert (has_undo == true);
 
 	      undo_data = data_ptr;
-	      tmp_ptr = undo_data;
 
 	      for (i = 0; i < num_ucrumbs; i++)
 		{
 		  memcpy (tmp_ptr, (char *) ucrumbs[i].data, ucrumbs[i].length);
 		  tmp_ptr += ucrumbs[i].length;
 		}
+
+	      assert (CAST_BUFLEN (tmp_ptr - undo_data) == ulength);
 	    }
 
 	  if (rlength > 0)
 	    {
-	      assert (has_redo);
+	      assert (has_redo == true);
 
-	      redo_data = data_ptr + ulength;
-	      tmp_ptr = redo_data;
+	      redo_data = tmp_ptr;
 
 	      for (i = 0; i < num_rcrumbs; i++)
 		{
 		  (void) memcpy (tmp_ptr, (char *) rcrumbs[i].data, rcrumbs[i].length);
 		  tmp_ptr += rcrumbs[i].length;
 		}
+
+	      assert (CAST_BUFLEN (tmp_ptr - redo_data) == rlength);
 	    }
+
+	  assert (CAST_BUFLEN (tmp_ptr - data_ptr) == total_length);
 
 	  if (ulength > 0 && rlength > 0)
 	    {
