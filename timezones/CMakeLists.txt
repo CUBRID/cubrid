@@ -4,7 +4,8 @@ if(UNIX)
 add_custom_command(
   OUTPUT tzlib/timezones.c
   COMMAND ${CMAKE_COMMAND} -E make_directory tzlib
-  COMMAND CUBRID=${CMAKE_BINARY_DIR} LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/sa $<TARGET_FILE:cub_admin> gen_tz -i ${CMAKE_CURRENT_SOURCE_DIR}/tzdata -g new
+  COMMAND CUBRID=${CMAKE_BINARY_DIR} LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cubridsa> $<TARGET_FILE:cub_admin> gen_tz -i ${CMAKE_CURRENT_SOURCE_DIR}/tzdata -g new
+  DEPENDS gen_msgs_en_US
   )
 else(UNIX)
   if(TARGET_PLATFORM_BITS EQUAL 32)
@@ -20,17 +21,21 @@ else(UNIX)
 	${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgpg-error-0.dll
        )
   endif(TARGET_PLATFORM_BITS EQUAL 32)
-  # cmake 3.5 or higher version is required for "-E env"(>=3.1) and "-E copy multiple-sources"(>=3.5)
   add_custom_command(
     OUTPUT tzlib/timezones.c
     COMMAND ${CMAKE_COMMAND} -E make_directory tzlib
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:cubridsa> $<TARGET_FILE_DIR:cub_admin>
-    COMMAND ${CMAKE_COMMAND} -E copy ${REQUIRED_DLLS} $<TARGET_FILE_DIR:cub_admin>
-    COMMAND ${CMAKE_COMMAND} -E env "CUBRID=${CMAKE_BINARY_DIR}" $<TARGET_FILE:cub_admin> gen_tz -i ${CMAKE_CURRENT_SOURCE_DIR}/tzdata -g new
+    COMMAND set CUBRID=${CMAKE_BINARY_DIR}
+    COMMAND $<TARGET_FILE:cub_admin> gen_tz -i ${CMAKE_CURRENT_SOURCE_DIR}/tzdata -g new
+    DEPENDS gen_msgs_en_US
     )
 endif(UNIX)
 add_custom_target(gen_timezones DEPENDS cubridsa cub_admin tzlib/timezones.c)
 set_source_files_properties(tzlib/timezones.c PROPERTIES GENERATED true)
+foreach(required_file ${REQUIRED_DLLS})
+  add_custom_command(TARGET gen_timezones PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${required_file} $<TARGET_FILE_DIR:cub_admin>)
+endforeach(required_file)
 
 add_library(cubrid_timezones SHARED tzlib/timezones.c)
 set_target_properties(cubrid_timezones PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
@@ -38,7 +43,7 @@ if(WIN32)
   set_target_properties(cubrid_timezones PROPERTIES OUTPUT_NAME libcubrid_timezones)
 endif(WIN32)
 target_include_directories(cubrid_timezones PRIVATE ${CMAKE_SOURCE_DIR}/src/base)
-add_dependencies(cubrid_timezones gen_timezones gen_msgs_en_US)
+add_dependencies(cubrid_timezones gen_timezones)
 
 install(TARGETS cubrid_timezones
   RUNTIME DESTINATION ${CUBRID_LIBDIR}
