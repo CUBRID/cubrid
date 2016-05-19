@@ -4937,15 +4937,6 @@ la_apply_update_log (LA_ITEM * item)
       return error;
     }
 
-  recdes = la_assign_recdes_from_pool ();
-
-  /* retrieve the target record description */
-  error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
   /* get the target log page */
   old_pageid = item->target_lsa.pageid;
   pgptr = la_get_page (old_pageid);
@@ -4955,6 +4946,14 @@ la_apply_update_log (LA_ITEM * item)
       return er_errid ();
     }
 
+  recdes = la_assign_recdes_from_pool ();
+
+  /* retrieve the target record description */
+  error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
   if (recdes->type == REC_ASSIGN_ADDRESS || recdes->type == REC_RELOCATION)
     {
