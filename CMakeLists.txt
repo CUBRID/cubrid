@@ -431,6 +431,15 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
   #  FIXME: remove. it can increase build elapse time
   #  add_definitions(/Oi /Gy)
   #endif(CMAKE_BUILD_TYPE MATCHES "Release")
+  if(MSVC_VERSION GREATER 1400)
+    # experimental option (it can lead the build system to a halt or creating a bad object files)
+    set(PARALLEL_JOBS "0" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
+    if(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
+      add_definitions(/MP)
+    elseif(PARALLEL_JOBS GREATER 0)
+      add_definitions(/MP${PARALLEL_JOBS})
+    endif(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
+  endif(MSVC_VERSION GREATER 1400)
 endif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 
 # common definitions
@@ -813,8 +822,7 @@ if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
     externalproject_add(cubridmanager
       DEPENDS pre_cubridmanager ${CMS_DEPENDS}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cubridmanager/server
-      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_LINKER_FILE:cascci> $<TARGET_LINKER_FILE:cmdep> $<TARGET_LINKER_FILE:cmstat> <TMP_DIR>
-      COMMAND ${CMAKE_COMMAND} -E copy ${CCI_PUBLIC_HEADERS} ${CMDEP_PUBLIC_HEADERS} ${CMSTAT_PUBLIC_HEADERS} <TMP_DIR>
+      CONFIGURE_COMMAND ""
       BUILD_COMMAND cmd /c build.bat --prefix <INSTALL_DIR> --with-cubrid-libdir <TMP_DIR> --with-cubrid-includedir <TMP_DIR> ${CMS_CONFIGURE_OPTS}
       INSTALL_COMMAND ""
       BUILD_IN_SOURCE 1
