@@ -451,9 +451,12 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	}
     }
 
-  _er_log_debug (ARG_FILE_LINE, "repl_log_insert, rcvindex:%d, LSA:%d,%d, target_LSA:%d,%d, repl_type:%d",
+  _er_log_debug (ARG_FILE_LINE, "repl_log_insert, rcvindex:%d, LSA:%d,%d, target_LSA:%d,%d, repl_type:%d, OID:%d,%d,%d"
+    "CLASS_OID:%d,%d,%d",
     repl_rec->rcvindex, tdes->tail_lsa.pageid, tdes->tail_lsa.offset, 
-    repl_rec->lsa.pageid, repl_rec->lsa.offset, repl_rec->repl_type);
+    repl_rec->lsa.pageid, repl_rec->lsa.offset, repl_rec->repl_type,
+    inst_oid->volid, inst_oid->pageid, inst_oid->slotid,
+    class_oid->volid, class_oid->pageid, class_oid->slotid);
   return error;
 }
 
