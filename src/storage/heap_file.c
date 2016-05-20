@@ -24236,6 +24236,11 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 			  RECDES * new_recdes_p, LOG_RCVINDEX rcvindex)
 {
   LOG_DATA_ADDR address;
+  LOG_TDES *tdes = NULL;
+  int suppress_flag = 0;
+  LOG_LSA preserved_repl_insert_lsa;
+  LOG_LSA preserved_repl_update_lsa;
+
 
   /* build address */
   address.offset = oid_p->slotid;
@@ -24254,7 +24259,34 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 	}
     }
 
+  if (old_recdes_p->type == REC_RELOCATION && rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+    {
+      int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      tdes = LOG_FIND_TDES (tran_index);
+
+      /* 
+       * save lsa before it is overwritten by logging the redo on such records action (REC_RELOCATION and 
+       * REC_ASSIGN_ADDRESS do not contain the updated value).
+       */
+      if (tdes != NULL)
+	{
+	  suppress_flag = tdes->suppress_replication;
+	  tdes->suppress_replication = 1;
+	  LSA_COPY (&preserved_repl_insert_lsa, &tdes->repl_insert_lsa);
+	  LSA_SET_NULL (&tdes->repl_insert_lsa);
+	  LSA_COPY (&preserved_repl_update_lsa, &tdes->repl_update_lsa);
+	  LSA_SET_NULL (&tdes->repl_update_lsa);
+	}
+    }
+
   log_append_undoredo_recdes (thread_p, rcvindex, &address, old_recdes_p, new_recdes_p);
+
+  if (tdes != NULL)
+    {
+      LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_insert_lsa);
+      LSA_COPY (&tdes->repl_update_lsa, &preserved_repl_update_lsa);
+      tdes->suppress_replication = suppress_flag;
+    }
 }
 
 /*
