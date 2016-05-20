@@ -21316,12 +21316,7 @@ wrapup:
   return (analytic_state.state == NO_ERROR) ? NO_ERROR : ER_FAILED;
 
 exit_on_error:
-  assert (er_errid () != NO_ERROR);
-  analytic_state.state = er_errid ();
-  if (analytic_state.state == NO_ERROR)
-    {
-      analytic_state.state = ER_FAILED;
-    }
+  ASSERT_ERROR_AND_SET (analytic_state.state);
 
   if (!finalized)
     {
