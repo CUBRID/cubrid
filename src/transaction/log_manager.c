@@ -2428,7 +2428,7 @@ log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, con
       num_redo_crumbs = 0;
     }
 
-  if (redo_recdes->type == REC_RELOCATION && rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+  if (redo_recdes->type == REC_RELOCATION)
     {
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       tdes = LOG_FIND_TDES (tran_index);
@@ -2439,8 +2439,6 @@ log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, con
        */
       if (tdes != NULL)
 	{
-	  suppress_flag = tdes->suppress_replication;
-	  tdes->suppress_replication = 1;
 	  LSA_COPY (&preserved_repl_insert_lsa, &tdes->repl_insert_lsa);
 	  LSA_SET_NULL (&tdes->repl_insert_lsa);
 	  LSA_COPY (&preserved_repl_update_lsa, &tdes->repl_update_lsa);
@@ -2454,7 +2452,6 @@ log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, con
     {
       LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_insert_lsa);
       LSA_COPY (&tdes->repl_update_lsa, &preserved_repl_update_lsa);
-      tdes->suppress_replication = suppress_flag;
     }
 }
 

@@ -24259,7 +24259,7 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 	}
     }
 
-  if (old_recdes_p->type == REC_RELOCATION && rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+  if (old_recdes_p->type == REC_RELOCATION)
     {
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       tdes = LOG_FIND_TDES (tran_index);
@@ -24270,8 +24270,6 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
        */
       if (tdes != NULL)
 	{
-	  suppress_flag = tdes->suppress_replication;
-	  tdes->suppress_replication = 1;
 	  LSA_COPY (&preserved_repl_insert_lsa, &tdes->repl_insert_lsa);
 	  LSA_SET_NULL (&tdes->repl_insert_lsa);
 	  LSA_COPY (&preserved_repl_update_lsa, &tdes->repl_update_lsa);
@@ -24285,8 +24283,7 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
     {
       LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_insert_lsa);
       LSA_COPY (&tdes->repl_update_lsa, &preserved_repl_update_lsa);
-      tdes->suppress_replication = suppress_flag;
-    }
+     }
 }
 
 /*
@@ -25997,7 +25994,7 @@ heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, O
   address.vfid = vfid_p;
 
 
-  if (redo_recdes->type == REC_RELOCATION && rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+  if (redo_recdes->type == REC_RELOCATION)
     {
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       tdes = LOG_FIND_TDES (tran_index);
@@ -26008,8 +26005,6 @@ heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, O
        */
       if (tdes != NULL)
 	{
-	  suppress_flag = tdes->suppress_replication;
-	  tdes->suppress_replication = 1;
 	  LSA_COPY (&preserved_repl_insert_lsa, &tdes->repl_insert_lsa);
 	  LSA_SET_NULL (&tdes->repl_insert_lsa);
 	  LSA_COPY (&preserved_repl_update_lsa, &tdes->repl_update_lsa);
@@ -26023,7 +26018,6 @@ heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, O
     {
       LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_insert_lsa);
       LSA_COPY (&tdes->repl_update_lsa, &preserved_repl_update_lsa);
-      tdes->suppress_replication = suppress_flag;
     }
 }
 
