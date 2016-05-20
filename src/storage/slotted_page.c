@@ -206,8 +206,6 @@ static INLINE int spage_find_slot_for_insert (THREAD_ENTRY * thread_p, PAGE_PTR 
 					      PGSLOTID * slotid, void **slotptr, int *used_space)
   __attribute__ ((ALWAYS_INLINE));
 static SCAN_CODE spage_get_record_data (PAGE_PTR pgptr, SPAGE_SLOT * sptr, RECDES * recdes, int ispeeking);
-static SCAN_CODE spage_get_record_mvcc_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p, RECDES * record_descriptor_p,
-					     int is_peeking);
 static bool spage_has_enough_total_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, SPAGE_HEADER * sphdr, int space);
 static bool spage_has_enough_contiguous_space (PAGE_PTR pgptr, SPAGE_HEADER * sphdr, int space);
 static int spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, int offset,
@@ -3912,98 +3910,6 @@ spage_get_record_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p, RECDES * record_des
     }
 
   record_descriptor_p->length = slot_p->record_length;
-  record_descriptor_p->type = slot_p->record_type;
-
-  return S_SUCCESS;
-}
-
-/*
- * spage_get_record_mvcc () - Get only mvcc of specified record
- *   return: Either of S_SUCCESS, S_DOESNT_FIT, S_END
- *   page_p(in): Pointer to slotted page
- *   slotid(in): Slot identifier of current record
- *   recdes(out): Pointer to a record descriptor
- *   ispeeking(in): Indicates whether the record is going to be copied
- *                  (like a copy) or peeked (read at the buffer)
- */
-SCAN_CODE
-spage_get_record_mvcc (PAGE_PTR page_p, PGSLOTID slot_id, RECDES * record_descriptor_p, int is_peeking)
-{
-  SPAGE_HEADER *page_header_p;
-  SPAGE_SLOT *sptr;
-
-  assert (page_p != NULL);
-
-  page_header_p = (SPAGE_HEADER *) page_p;
-  SPAGE_VERIFY_HEADER (page_header_p);
-
-  assert (record_descriptor_p != NULL);
-
-  sptr = spage_find_slot (page_p, page_header_p, slot_id, true);
-  if (sptr == NULL)
-    {
-      record_descriptor_p->length = 0;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3, slot_id, pgbuf_get_page_id (page_p),
-	      pgbuf_get_volume_label (page_p));
-      return S_DOESNT_EXIST;
-    }
-
-  return spage_get_record_mvcc_data (page_p, sptr, record_descriptor_p, is_peeking);
-}
-
-/*
- * spage_get_record_mvcc_data () - Find the mvcc data of the record associated with
- *                              the given slot on the given page
- *   return: scan code
- *   page_p(in): Pointer to slotted page
- *   slot_p(in): Pointer to page slot
- *   record_descriptor(out): Pointer to a record descriptor
- *  
- */
-static SCAN_CODE
-spage_get_record_mvcc_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p, RECDES * record_descriptor_p, int is_peeking)
-{
-  int header_size;
-  assert (page_p != NULL);
-  assert (slot_p != NULL);
-  assert (record_descriptor_p != NULL);
-
-  header_size = OR_HEADER_SIZE ((char *) page_p + slot_p->offset_to_record);
-
-  /* 
-   * If peeking, the address of the data in the descriptor is set to the
-   * address of the record in the buffer. Otherwise, the record is copied
-   * onto the area specified by the descriptor
-   */
-  if (is_peeking == PEEK)
-    {
-      record_descriptor_p->area_size = -1;
-      record_descriptor_p->data = (char *) page_p + slot_p->offset_to_record;
-    }
-  else
-    {
-      if (record_descriptor_p->area_size < 0 || record_descriptor_p->area_size < header_size)
-	{
-	  /* 
-	   * DOES NOT FIT
-	   * Give a hint to the user of the needed length. Hint is given as a
-	   * negative value
-	   */
-	  /* do not use unary minus because slot_p->record_length is unsigned */
-	  record_descriptor_p->length = -header_size;
-	  return S_DOESNT_FIT;
-	}
-
-      if (slot_p->offset_to_record + header_size > DB_PAGESIZE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  assert_release (false);
-	  return SP_ERROR;
-	}
-      memcpy (record_descriptor_p->data, (char *) page_p + slot_p->offset_to_record, header_size);
-    }
-
-  record_descriptor_p->length = header_size;
   record_descriptor_p->type = slot_p->record_type;
 
   return S_SUCCESS;
