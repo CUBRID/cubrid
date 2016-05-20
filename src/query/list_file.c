@@ -1514,6 +1514,7 @@ qfile_allocate_new_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAG
 #if defined (SERVER_MODE)
   if (qmgr_is_query_interrupted (thread_p, list_id_p->query_id) == true)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return NULL;
     }
 #endif /* SERVER_MODE */
