@@ -4363,6 +4363,7 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
 	    }
 	  else
 	    {
+	      assert (!LSA_ISNULL (&repl_rec->lsa));
 	      LSA_COPY (&log->lsa, &repl_rec->lsa);
 	    }
 	  log->length = repl_rec->length;
