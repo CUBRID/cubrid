@@ -2428,31 +2428,7 @@ log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, con
       num_redo_crumbs = 0;
     }
 
-  if (redo_recdes->type == REC_RELOCATION)
-    {
-      int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      tdes = LOG_FIND_TDES (tran_index);
-
-      /* 
-       * save lsa before it is overwritten by logging the redo on such records action (REC_RELOCATION and 
-       * REC_ASSIGN_ADDRESS do not contain the updated value).
-       */
-      if (tdes != NULL)
-	{
-	  LSA_COPY (&preserved_repl_insert_lsa, &tdes->repl_insert_lsa);
-	  LSA_SET_NULL (&tdes->repl_insert_lsa);
-	  LSA_COPY (&preserved_repl_update_lsa, &tdes->repl_update_lsa);
-	  LSA_SET_NULL (&tdes->repl_update_lsa);
-	}
-    }
-
   log_append_undoredo_crumbs (thread_p, rcvindex, &addr, num_undo_crumbs, num_redo_crumbs, undo_crumbs, redo_crumbs);
-
-  if (tdes != NULL)
-    {
-      LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_insert_lsa);
-      LSA_COPY (&tdes->repl_update_lsa, &preserved_repl_update_lsa);
-    }
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
