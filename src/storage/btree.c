@@ -1260,7 +1260,7 @@ struct btree_delete_helper
       assert ((rv_ptr) != NULL); \
       assert ((rv_start) != NULL); \
       (rv_length) = CAST_BUFLEN ((rv_ptr) - (rv_start)); \
-      assert ((rv_length) <= BTREE_RV_BUFFER_SIZE); \
+      assert (0 <= (rv_length) && (rv_length) <= BTREE_RV_BUFFER_SIZE); \
     } \
   while (false)
 
