@@ -23898,7 +23898,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
     }
 
   /* The old rec_newhome must be removed or updated */
-  assert (remove_old_forward == !update_old_forward);
+  assert (remove_old_forward != update_old_forward);
   /* Remove rec_newhome only in case of old_home update */
   assert (remove_old_forward == update_old_home);
 
@@ -26342,6 +26342,11 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR
     {
       VPID_GET_FROM_OID (&vpid, oid);
       pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (pgptr == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto end;
+	}
       is_home_pg_fixed_locally = true;
     }
 
@@ -26354,7 +26359,12 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR
   if (recdes.type == REC_HOME)
     {
       error_code = or_mvcc_set_log_lsa_to_record (&recdes, prev_version_lsa);
-      goto end;
+      if (error_code != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
     }
   else if (recdes.type == REC_RELOCATION)
     {
@@ -26363,15 +26373,27 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR
       if (fwd_pgptr == NULL || !VPID_EQ (&fwd_vpid, pgbuf_get_vpid_ptr (fwd_pgptr)))
 	{
 	  fwd_pgptr = pgbuf_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (fwd_pgptr == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto end;
+	    }
 	  is_fwd_pg_fixed_locally = true;
 	}
+
       if (spage_get_record (fwd_pgptr, forward_oid.slotid, &forward_recdes, PEEK) != S_SUCCESS)
 	{
 	  error_code = ER_FAILED;
 	  goto end;
 	}
+
       error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_version_lsa);
-      goto end;
+      if (error_code != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      pgbuf_set_dirty (thread_p, fwd_pgptr, DONT_FREE);
     }
   else if (recdes.type == REC_BIGONE)
     {
@@ -26379,18 +26401,30 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR
 
       VPID_GET_FROM_OID (&fwd_vpid, &forward_oid);
       fwd_pgptr = pgbuf_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (fwd_pgptr == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto end;
+	}
       is_fwd_pg_fixed_locally = true;
 
       forward_recdes.data = overflow_get_first_page_data (fwd_pgptr);
       forward_recdes.length = OR_HEADER_SIZE (forward_recdes.data);
 
       error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_version_lsa);
-      goto end;
-    }
+      if (error_code != NO_ERROR)
+	{
+	  goto end;
+	}
 
-  /* Unexpected record type. */
-  assert (false);
-  return ER_FAILED;
+      pgbuf_set_dirty (thread_p, fwd_pgptr, DONT_FREE);
+    }
+  else
+    {
+      /* Unexpected record type. */
+      assert (false);
+      error_code = ER_FAILED;
+    }
 
 end:
   if (is_home_pg_fixed_locally)
