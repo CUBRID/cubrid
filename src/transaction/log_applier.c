@@ -4576,7 +4576,7 @@ la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned i
       else
 	{
 	  error =
-	    la_get_log_data (tmp_lrec, &lsa, pg, RVHF_INSERT, &rcvindex, logs, rec_type, &recdes->data,
+	    la_get_log_data (tmp_lrec, &lsa, pg, RVHF_INSERT_NEWHOME, &rcvindex, logs, rec_type, &recdes->data,
 			     &recdes->length);
 	}
       la_release_page_buffer (lsa.pageid);
