@@ -24275,6 +24275,10 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 	  LSA_SET_NULL (&tdes->repl_insert_lsa);
 	  LSA_COPY (&preserved_repl_update_lsa, &tdes->repl_update_lsa);
 	  LSA_SET_NULL (&tdes->repl_update_lsa);
+
+	  _er_log_debug (ARG_FILE_LINE, "heap_log_update_physical: skip_repl OID:%d,%d,%d",
+	    oid_p->volid, oid_p->pageid, oid_p->slotid);
+
 	}
     }
 
@@ -26010,6 +26014,9 @@ heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, O
 	  LSA_SET_NULL (&tdes->repl_insert_lsa);
 	  LSA_COPY (&preserved_repl_update_lsa, &tdes->repl_update_lsa);
 	  LSA_SET_NULL (&tdes->repl_update_lsa);
+
+	  _er_log_debug (ARG_FILE_LINE, "heap_log_update_redo: skip_repl OID:%d,%d,%d",
+	    oid_p->volid, oid_p->pageid, oid_p->slotid);
 	}
     }
 
