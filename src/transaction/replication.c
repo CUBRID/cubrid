@@ -270,13 +270,14 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 	}
     }
 
+  
+  er_print_callstack (ARG_FILE_LINE, "repl_add_update_lsa\n");
+
   if (find == false)
     {
       er_log_debug (ARG_FILE_LINE, "can't find out the UPDATE LSA");
       assert (false);
     }
-
-  er_print_callstack (ARG_FILE_LINE, "repl_add_update_lsa\n");
 
   return error;
 }
