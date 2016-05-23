@@ -256,27 +256,14 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 	      LSA_SET_NULL (&tdes->repl_update_lsa);
 	      LSA_SET_NULL (&tdes->repl_insert_lsa);
 	      find = true;
-
-	      assert (!LSA_ISNULL (&repl_rec->lsa));
-
-
-	      _er_log_debug (ARG_FILE_LINE, "repl_add_update_lsa, rcvindex:%d, LSA:%d,%d, target_LSA:%d,%d, repl_type:%d",
-		repl_rec->rcvindex, 
-		tdes->tail_lsa.pageid, tdes->tail_lsa.offset,
-		repl_rec->lsa.pageid, repl_rec->lsa.offset, repl_rec->repl_type);
-
 	      break;
 	    }
 	}
     }
 
-  
-  er_print_callstack (ARG_FILE_LINE, "repl_add_update_lsa\n");
-
   if (find == false)
     {
       er_log_debug (ARG_FILE_LINE, "can't find out the UPDATE LSA");
-      assert (false);
     }
 
   return error;
@@ -453,15 +440,6 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	  repl_rec->must_flush = LOG_REPL_NEED_FLUSH;
 	}
     }
-
-  _er_log_debug (ARG_FILE_LINE, "repl_log_insert, rcvindex:%d, LSA:%d,%d, target_LSA:%d,%d, repl_type:%d, OID:%d,%d,%d"
-    "CLASS_OID:%d,%d,%d",
-    repl_rec->rcvindex, tdes->tail_lsa.pageid, tdes->tail_lsa.offset, 
-    repl_rec->lsa.pageid, repl_rec->lsa.offset, repl_rec->repl_type,
-    inst_oid->volid, inst_oid->pageid, inst_oid->slotid,
-    class_oid->volid, class_oid->pageid, class_oid->slotid);
-
-	  er_print_callstack (ARG_FILE_LINE, "repl_log_insert\n");
 
   return error;
 }

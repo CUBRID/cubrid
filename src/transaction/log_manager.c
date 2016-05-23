@@ -2344,12 +2344,6 @@ void
 log_append_undoredo_recdes (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 			    const RECDES * undo_recdes, const RECDES * redo_recdes)
 {
-#if 0
-  er_print_callstack (ARG_FILE_LINE, "log_append_undoredo_recdes; rcvindex:%d, undo_recdes_type:%d, redo_recdes_type:%d\n",
-		      rcvindex, undo_recdes ? undo_recdes->type : -1,
-		      redo_recdes ? redo_recdes->type : -1);
-#endif
-
   log_append_undoredo_recdes2 (thread_p, rcvindex, addr->vfid, addr->pgptr, addr->offset, undo_recdes, redo_recdes);
 }
 
@@ -2363,10 +2357,6 @@ log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, con
   int num_undo_crumbs;
   int num_redo_crumbs;
   LOG_DATA_ADDR addr;
-  LOG_TDES *tdes = NULL;
-  int suppress_flag = 0;
-  LOG_LSA preserved_repl_insert_lsa;
-  LOG_LSA preserved_repl_update_lsa;
 
   addr.vfid = vfid;
   addr.pgptr = pgptr;
@@ -4374,7 +4364,6 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
 	    }
 	  else
 	    {
-	      assert (!LSA_ISNULL (&repl_rec->lsa));
 	      LSA_COPY (&log->lsa, &repl_rec->lsa);
 	    }
 	  log->length = repl_rec->length;
