@@ -4957,6 +4957,7 @@ la_apply_update_log (LA_ITEM * item)
 
   if (recdes->type == REC_ASSIGN_ADDRESS || recdes->type == REC_RELOCATION)
     {
+      er_log_debug (ARG_FILE_LINE, "apply_update : rectype.type = %d\n", recdes->type);
       error = ER_FAILED;
 
       goto end;
