@@ -3877,6 +3877,7 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
   bool write_checksum = false;
   char checksum[CHECKSUM_SIZE + 1];
   bool need_db_shutdown = false;
+  bool er_inited = false;
   DB_INFO *dir = NULL;
   DB_INFO *db_info_p = NULL;
   char *db_name = NULL;
@@ -3886,7 +3887,6 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
   arg_map = arg->arg_map;
 
   tz_gen_mode = utility_get_option_string_value (arg_map, GEN_TZ_MODE_S, 0);
-
   if (tz_gen_mode == NULL)
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GEN_TZ, GEN_TZ_MSG_USAGE),
@@ -3929,6 +3929,18 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
       input_path = inputpath_local;
     }
 
+  /* error message log file */
+  if (db_name != NULL)
+    {
+      snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
+    }
+  else
+    {
+      snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s.err", arg->command_name);
+    }
+  er_init (er_msg_file, ER_NEVER_EXIT);
+  er_inited = true;
+
   memset (checksum, 0, sizeof (checksum));
   if (timezone_compile_data (input_path, tz_gen_type, checksum) != NO_ERROR)
     {
@@ -3936,12 +3948,6 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
       goto exit;
     }
 
-  if (db_name != NULL)
-    {
-      /* error message log file */
-      snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
-      er_init (er_msg_file, ER_NEVER_EXIT);
-    }
   if (tz_gen_type == TZ_GEN_TYPE_EXTEND && checksum[0] != '\0')
     {
       AU_DISABLE_PASSWORDS ();
@@ -4002,14 +4008,21 @@ exit:
     {
       cfg_free_directory (dir);
     }
+
   if (exit_status != EXIT_SUCCESS)
     {
+      fprintf (stderr, "%s\n", db_error_string (3));
+
       if (need_db_shutdown == true)
 	{
 	  db_shutdown ();
+	  er_inited = false;
 	}
+    }
 
-      fprintf (stderr, "%s\n", db_error_string (3));
+  if (er_inited == true)
+    {
+      er_final (ER_ALL_FINAL);
     }
 
   return exit_status;
