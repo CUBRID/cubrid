@@ -24259,7 +24259,7 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 	}
     }
 
-#if 0
+
   if (old_recdes_p->type == REC_RELOCATION)
     {
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -24277,7 +24277,7 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 	  LSA_SET_NULL (&tdes->repl_update_lsa);
 	}
     }
-#endif
+
 
   log_append_undoredo_recdes (thread_p, rcvindex, &address, old_recdes_p, new_recdes_p);
 
@@ -25995,7 +25995,6 @@ heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, O
   address.pgptr = page_p;
   address.vfid = vfid_p;
 
-#if 0
   if (redo_recdes->type == REC_RELOCATION)
     {
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -26013,7 +26012,7 @@ heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, O
 	  LSA_SET_NULL (&tdes->repl_update_lsa);
 	}
     }
-#endif
+
 
   log_append_redo_recdes (thread_p, rcvindex, &address, redo_recdes);
 
