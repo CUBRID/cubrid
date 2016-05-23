@@ -918,10 +918,6 @@ static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_pa
 
 static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 					      OID * partition_oid);
-static void heap_log_update_undo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
-				  RECDES * undo_recdes, LOG_RCVINDEX rcvindex);
-static void heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
-				  RECDES * redo_recdes, LOG_RCVINDEX rcvindex);
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
@@ -25900,67 +25896,6 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
-}
-
-/*
- * heap_log_update_undo () - Log heap update undo data
- *
- * return		    : Void.
- * thread_p (in)	    : Thread entry.
- * page_p(in)		    : updated page
- * vfid_p(in)		    : virtual file id
- * oid_p(in)		    : object id
- * undo_recdes (in)	    : Recdes before update.
- * rcvindex(in)		    : Recovery index for operation
- */
-static void
-heap_log_update_undo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, RECDES * undo_recdes,
-		      LOG_RCVINDEX rcvindex)
-{
-  PGLENGTH offset = oid_p->slotid;
-
-  assert (rcvindex == RVHF_UPDATE_NOTIFY_VACUUM || rcvindex == RVHF_UPDATE || rcvindex == RVHF_MVCC_UPDATE_OVERFLOW);
-
-  /* actual logging */
-  if (LOG_IS_MVCC_HEAP_OPERATION (rcvindex))
-    {
-      HEAP_PAGE_VACUUM_STATUS vacuum_status = heap_page_get_vacuum_status (thread_p, page_p);
-      heap_page_update_chain_after_mvcc_op (thread_p, page_p, logtb_get_current_mvccid (thread_p));
-      if (heap_page_get_vacuum_status (thread_p, page_p) != vacuum_status)
-	{
-	  /* Mark vacuum status change for recovery */
-	  offset |= HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
-	}
-    }
-
-  log_append_undo_recdes2 (thread_p, rcvindex, vfid_p, page_p, offset, undo_recdes);
-}
-
-/*
- * heap_log_update_redo () - Log redo for normal MVCC heap update operation 
- *
- * return		    : Void.
- * thread_p (in)	    : Thread entry.
- * page_p(in)		    : updated page
- * vfid_p(in)		    : virtual file id
- * oid_p(in)		    : object id
- * redo_recdes (in)	    : Recdes before update.
- * rcvindex(in)		    : Recovery index for operation
- */
-static void
-heap_log_update_redo (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, RECDES * redo_recdes,
-		      LOG_RCVINDEX rcvindex)
-{
-  LOG_DATA_ADDR address;
-
-  assert (rcvindex == RVHF_UPDATE || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM || RVHF_MVCC_UPDATE_OVERFLOW);
-
-  /* build address */
-  address.offset = oid_p->slotid;
-  address.pgptr = page_p;
-  address.vfid = vfid_p;
-
-  log_append_redo_recdes (thread_p, rcvindex, &address, redo_recdes);
 }
 
 /*

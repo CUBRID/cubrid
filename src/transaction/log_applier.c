@@ -4475,7 +4475,8 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 		  temp_length = undoredo->rlength;
 		  length = GET_ZIP_LEN (undoredo->rlength);
 
-		  if (undoredo->data.rcvindex == RVHF_UPDATE && undoredo->data.pageid == prev_log->data.pageid
+		  if ((undoredo->data.rcvindex == RVHF_UPDATE || undoredo->data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+		      && undoredo->data.pageid == prev_log->data.pageid
 		      && undoredo->data.offset == prev_log->data.offset && undoredo->data.volid == prev_log->data.volid)
 		    {
 		      LA_LOG_READ_ADD_ALIGN (error, log_size, offset, pageid, pg);
