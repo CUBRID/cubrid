@@ -276,6 +276,8 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
       assert (false);
     }
 
+  er_print_callstack (ARG_FILE_LINE, "repl_add_update_lsa\n");
+
   return error;
 }
 
@@ -457,6 +459,9 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
     repl_rec->lsa.pageid, repl_rec->lsa.offset, repl_rec->repl_type,
     inst_oid->volid, inst_oid->pageid, inst_oid->slotid,
     class_oid->volid, class_oid->pageid, class_oid->slotid);
+
+	  er_print_callstack (ARG_FILE_LINE, "repl_log_insert\n");
+
   return error;
 }
 
