@@ -2344,9 +2344,11 @@ void
 log_append_undoredo_recdes (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 			    const RECDES * undo_recdes, const RECDES * redo_recdes)
 {
+#if 0
   er_print_callstack (ARG_FILE_LINE, "log_append_undoredo_recdes; rcvindex:%d, undo_recdes_type:%d, redo_recdes_type:%d\n",
 		      rcvindex, undo_recdes ? undo_recdes->type : -1,
 		      redo_recdes ? redo_recdes->type : -1);
+#endif
 
   log_append_undoredo_recdes2 (thread_p, rcvindex, addr->vfid, addr->pgptr, addr->offset, undo_recdes, redo_recdes);
 }
