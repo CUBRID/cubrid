@@ -24260,7 +24260,7 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
     }
 
 
-  if (old_recdes_p->type == REC_RELOCATION)
+  if (new_recdes_p->type == REC_RELOCATION)
     {
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       tdes = LOG_FIND_TDES (tran_index);
