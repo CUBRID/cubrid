@@ -4972,7 +4972,7 @@ la_apply_update_log (LA_ITEM * item)
       goto end;
     }
   if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK && rcvindex != RVHF_MVCC_INSERT
-      && rcvindex != RVHF_UPDATE_NOTIFY_VACUUM)
+      && rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && rcvindex != RVHF_INSERT_NEWHOME)
     {
       er_log_debug (ARG_FILE_LINE, "apply_update : rcvindex = %d\n", rcvindex);
       error = ER_FAILED;
