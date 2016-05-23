@@ -3989,6 +3989,8 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
       is_mvcc_log = true;
     }
 
+  _er_log_debug (ARG_FILE_LINE, "la_get_log_data , match_rcvindex:%d, lrec->type:%d", match_rcvindex, lrec->type);
+
   switch (lrec->type)
     {
     case LOG_UNDOREDO_DATA:
@@ -4563,6 +4565,8 @@ la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned i
   LOG_LSA lsa;
   int error = NO_ERROR;
 
+ _er_log_debug (ARG_FILE_LINE, "la_get_relocation_recdes , match_rcvindex:%d", match_rcvindex);
+
   LSA_COPY (&lsa, &lrec->prev_tranlsa);
   if (!LSA_ISNULL (&lsa))
     {
@@ -4617,6 +4621,9 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
   lrec = LOG_GET_LOG_RECORD_HEADER (pg, lsa);
 
   error = la_get_log_data (lrec, lsa, pg, 0, rcvindex, &logs, &rec_type, &recdes->data, &recdes->length);
+
+  _er_log_debug (ARG_FILE_LINE, "la_get_recdes , rcvindex:%d", *rcvindex);
+
 
   if (error == NO_ERROR && logs != NULL)
     {
