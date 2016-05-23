@@ -2067,7 +2067,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
     {
-      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
+      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	{
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
 	}
