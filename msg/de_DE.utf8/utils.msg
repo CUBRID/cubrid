@@ -1077,7 +1077,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 gen_tz: Generieren Sie Quelldateien enthält, Zeitzone Daten, die in einer gemeinsamen\n\
         Bibliothek kompiliert werden.\n\
 Anwendung: %s gen_tz [OPTION]\n\
-           %s gen_tz -g extend [OPTION] Datenbank-Name\n\
+           %s gen_tz -g extend [OPTION] [Datenbank-Name]\n\
 \n\
 gültigen Optionen:\n\
   -i, --input-folder    Pfad zu einem Eingangsordner enthält eine Version von IANA\n\

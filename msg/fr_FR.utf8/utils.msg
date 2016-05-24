@@ -1088,7 +1088,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 gen_tz: Générer les fichiers source contenant des données de fuseau horaire à être compilés dans\n\
         une bibliothèque partagée.\n\
 usage: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] database-name\n\
+       %s gen_tz -g extend [OPTION] [database-name]\n\
 \n\
 options valides:\n\
   -i, --input-folder	chemin d'accès à un dossier d'entrée contenant une version des\n\
