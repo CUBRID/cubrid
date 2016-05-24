@@ -4577,7 +4577,7 @@ la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned i
       else
 	{
 	  error =
-	    la_get_log_data (tmp_lrec, &lsa, pg, RVHF_INSERT, &rcvindex, logs, rec_type, &recdes->data,
+	    la_get_log_data (tmp_lrec, &lsa, pg, RVHF_INSERT_NEWHOME, &rcvindex, logs, rec_type, &recdes->data,
 			     &recdes->length);
 	}
       la_release_page_buffer (lsa.pageid);
@@ -4964,7 +4964,7 @@ la_apply_update_log (LA_ITEM * item)
       goto end;
     }
   if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK && rcvindex != RVHF_MVCC_INSERT
-      && rcvindex != RVHF_UPDATE_NOTIFY_VACUUM)
+      && rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && rcvindex != RVHF_INSERT_NEWHOME)
     {
       er_log_debug (ARG_FILE_LINE, "apply_update : rcvindex = %d\n", rcvindex);
       error = ER_FAILED;

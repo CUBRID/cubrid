@@ -22593,8 +22593,7 @@ heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 	}
       else if (recdes_p->type == REC_NEWHOME)
 	{
-	  /* we don't want replication for REC_NEWHOME; in any other respect RVHF_INSERT_NEWHOME is the same as
-	   * RVHF_INSERT */
+	  /* replication for REC_NEWHOME is performed by following the link (OID) from REC_RELOCATION */
 	  log_append_undoredo_recdes (thread_p, RVHF_INSERT_NEWHOME, &log_addr, NULL, recdes_p);
 	}
       else
