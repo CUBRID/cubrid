@@ -2786,8 +2786,8 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
 	   * allocate next extent of pages for the file
 	   * Don't care about initializing the pages
 	   */
-	  if (file_alloc_pages_as_noncontiguous
-	      (thread_p, &tmp_vfid_p->temp_vfid, vpid_p, &nthpg, num_pages, NULL, NULL, NULL, NULL) == NULL)
+	  if (file_alloc_pages_as_noncontiguous (thread_p, &tmp_vfid_p->temp_vfid, vpid_p, &nthpg, num_pages, NULL,
+						 NULL, NULL, NULL) == NULL)
 	    {
 	      return NULL;
 	    }
