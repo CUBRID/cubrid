@@ -160,7 +160,7 @@ static int rv;
       if (!MVCC_IS_FLAG_SET (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_PREV_VERSION)) \
 	{ \
 	  MVCC_SET_FLAG_BITS (mvcc_rec_header_p, OR_MVCC_FLAG_VALID_PREV_VERSION); \
-	  LSA_SET_NULL(&(mvcc_rec_header_p)->prev_version_lsa); \
+	  LSA_SET_NULL(&((mvcc_rec_header_p)->prev_version_lsa)); \
 	} \
     } \
   while (0)
@@ -17464,6 +17464,7 @@ heap_rv_mvcc_undo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_DELID);
   MVCC_SET_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_LONG_CHN);
   MVCC_SET_CHN (&mvcc_header, chn);
+  assert (LSA_ISNULL (&mvcc_header.prev_version_lsa) || mvcc_header.prev_version_lsa.pageid >= 0);
 
   /* Change header. */
   if (heap_set_mvcc_rec_header_on_overflow (rcv->pgptr, &mvcc_header) != NO_ERROR)
@@ -17472,6 +17473,7 @@ heap_rv_mvcc_undo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return ER_FAILED;
     }
 
+  assert (LSA_ISNULL (&mvcc_header.prev_version_lsa) || mvcc_header.prev_version_lsa.pageid >= 0);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
 }
@@ -22164,8 +22166,14 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
     }
   else
     {
+      if (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION)
+	  && mvcc_rec_header.prev_version_lsa.pageid < 0)
+	{
+	  assert (false);
+	}
+
       MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
-    } 
+    }
 
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
@@ -23744,6 +23752,14 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	      return ER_FAILED;
 	    }
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
+	  LSA_SET_NULL (&prev_version_lsa);
+	  error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
+						     context->forward_page_watcher_p->pgptr, &prev_version_lsa);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
 	}
       else
 	{
@@ -26276,7 +26292,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR
   OID forward_oid;
 
   assert (oid != NULL && !OID_ISNULL (oid) && prev_version_lsa != NULL && !LSA_ISNULL (prev_version_lsa));
-  assert (prev_version_lsa->pageid > 0 && prev_version_lsa->offset >= 0);
+  assert (prev_version_lsa->pageid > 0 && prev_version_lsa->offset > 0);
 
   if (pgptr == NULL)
     {
@@ -26367,6 +26383,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR
     }
 
 end:
+  assert (error_code == NO_ERROR);
   if (is_home_pg_fixed_locally)
     {
       pgbuf_unfix (thread_p, pgptr);

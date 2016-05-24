@@ -8173,7 +8173,8 @@ or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
 
   lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE
 		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
-		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : OR_INT_SIZE));
+		+ (((mvcc_flags) & (OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_LONG_CHN)) ? OR_MVCCID_SIZE :
+		   OR_INT_SIZE));
 
   memcpy (record->data + lsa_offset, lsa, sizeof (LOG_LSA));
 
