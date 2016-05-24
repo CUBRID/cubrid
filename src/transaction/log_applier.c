@@ -4660,7 +4660,8 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
 	    }
 	}
     }
-  else if (*rcvindex == RVHF_UPDATE && recdes->type == REC_RELOCATION)
+  else if ((*rcvindex == RVHF_UPDATE || *rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+	    && recdes->type == REC_RELOCATION)
     {
       error = la_get_relocation_recdes (lrec, pg, 0, &logs, &rec_type, recdes);
       if (error == NO_ERROR)
