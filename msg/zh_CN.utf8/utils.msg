@@ -1077,7 +1077,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: 生成包含时区数据的源文件并编译成一个共享库.\n\
 用法: %s gen_tz [选项]\n\
-       %s gen_tz -g extend [选项] 数据库名\n\
+       %s gen_tz -g extend [选项] [数据库名]\n\
 \n\
 可用选项:\n\
   -i, --input-folder    指定一个输入文件夹的路径，文件夹必须包含一个IANA的时区\n\

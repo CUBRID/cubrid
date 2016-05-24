@@ -1074,7 +1074,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 61 \
 gen_tz: 타임존 데이터를 포함하는 소스 파일을 생성하여 공유 라이브러리로 컴파일\n\
 사용법: %s gen_tz [옵션]\n\
-       %s gen_tz -g extend [옵션] database-name\n\
+       %s gen_tz -g extend [옵션] [database-name]\n\
 \n\
 valid options:\n\
   -i, --input-folder    IANA 타임존 데이터베이스 파일을 포함하는 입력 디렉터리 경로\n\

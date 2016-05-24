@@ -1077,7 +1077,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 gen_tz: 共有ライブラリにコンパイルするタイムゾーンデータが含まれている\n\
         ソースファイルを生成します。\n\
 使い方: %s gen_tz [OPTION]\n\
-        %s gen_tz -g extend [OPTION] database-name\n\
+        %s gen_tz -g extend [OPTION] [database-name]\n\
 \n\
 オプション:\n\
   -i, --input-folder    IANAのタイムゾーンデータベースファイルのバージョンが\n\
