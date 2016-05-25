@@ -22162,6 +22162,10 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
       /* The prev_version_lsa will be filled at the end of the update, in heap_update_set_prev_version() */
       LSA_SET_NULL (&mvcc_rec_header.prev_version_lsa);
     }
+  else
+    {
+      MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
+    }
 
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
@@ -23780,7 +23784,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   bool update_old_home = false;
   bool update_old_forward = false;
   bool remove_old_forward = false;
-  LOG_LSA prev_version_lsa;
+  LOG_LSA prev_version_lsa = LSA_INITIALIZER;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
@@ -26271,6 +26275,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR
   OID forward_oid;
 
   assert (oid != NULL && !OID_ISNULL (oid) && prev_version_lsa != NULL && !LSA_ISNULL (prev_version_lsa));
+  assert (prev_version_lsa->pageid > 0 && prev_version_lsa->offset >= 0);
 
   if (pgptr == NULL)
     {

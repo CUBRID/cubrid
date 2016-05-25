@@ -2322,6 +2322,7 @@ vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
 
   MVCC_SET_INSID (&rec_header, MVCCID_ALL_VISIBLE);
+  LSA_SET_NULL (&rec_header.prev_version_lsa);
 
   error = heap_set_mvcc_rec_header_on_overflow (rcv->pgptr, &rec_header);
   if (error != NO_ERROR)
@@ -3130,7 +3131,7 @@ end:
 #if defined (SERVER_MODE)
   /* Unfix all pages now. Normally all pages should already be unfixed. */
   pgbuf_unfix_all (thread_p);
-#else /* !SERVER_MODE */ /* SA_MODE */
+#else	/* !SERVER_MODE */		 /* SA_MODE */
   /* Do not unfix all in stand-alone. Not yet. We need to keep vacuum data pages fixed. */
 #endif /* SA_MODE */
 
