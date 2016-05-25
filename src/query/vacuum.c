@@ -3828,15 +3828,16 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
 	    }
 	}
       VPID_COPY (&next_vpid, &data_page->next_page);
-      if (!VPID_ISNULL (&next_vpid))
+      if (VPID_ISNULL (&next_vpid))
 	{
-	  vacuum_unfix_data_page (thread_p, data_page);
-	  data_page = vacuum_fix_data_page (thread_p, &next_vpid);
-	  if (data_page == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      goto error;
-	    }
+	  break;
+	}
+      vacuum_unfix_data_page (thread_p, data_page);
+      data_page = vacuum_fix_data_page (thread_p, &next_vpid);
+      if (data_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error;
 	}
     }
   assert (data_page != NULL);
