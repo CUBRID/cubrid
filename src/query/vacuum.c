@@ -369,8 +369,6 @@ int vacuum_Prefetch_log_mode = VACUUM_PREFETCH_LOG_MODE_MASTER;
   (VACUUM_PREFETCH_LOG_BLOCK_BUFFERS_COUNT - \
    prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT))
 
-#define VACUUM_FINISHED_JOB_QUEUE_CAPACITY  2048
-
 #define VACUUM_PREFETCH_LOG_BLOCK_BUFFER(i) \
   ((char *) (PTR_ALIGN (vacuum_Prefetch_log_buffer, MAX_ALIGNMENT)) \
    + (((size_t) (i)) * ((size_t) LOG_PAGESIZE) \
@@ -379,6 +377,8 @@ int vacuum_Prefetch_log_mode = VACUUM_PREFETCH_LOG_MODE_MASTER;
 #else /* SERVER_MODE */
 #define VACUUM_JOB_QUEUE_CAPACITY (1024)
 #endif /* SERVER_MODE */
+
+#define VACUUM_FINISHED_JOB_QUEUE_CAPACITY  2048
 
 #define VACUUM_LOG_BLOCK_BUFFER_INVALID (-1)
 
