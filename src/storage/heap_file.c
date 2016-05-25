@@ -22165,7 +22165,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   else
     {
       MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
-    } 
+    }
 
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
@@ -23785,7 +23785,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   bool update_old_home = false;
   bool update_old_forward = false;
   bool remove_old_forward = false;
-  LOG_LSA prev_version_lsa;
+  LOG_LSA prev_version_lsa = LSA_INITIALIZER;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
