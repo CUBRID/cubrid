@@ -86,16 +86,6 @@ WS_MOP_TABLE_ENTRY *ws_Mop_table = NULL;
 
 unsigned int ws_Mop_table_size = 0;
 
-#if 0				/* unused feature */
-/*
- * ws_Reference_mops
- *    Linked list of reference mops.
- */
-
-MOP ws_Reference_mops = NULL;
-#endif
-
-
 /*
  * ws_Resident_classes
  *    This is a global list of resident class objects.
@@ -113,7 +103,7 @@ DB_OBJLIST *ws_Resident_classes = NULL;
  *    This contains random information about the state of the workspace.
  */
 
-WS_STATISTICS ws_Stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+WS_STATISTICS ws_Stats = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 int ws_Num_dirty_mop = 0;
 
@@ -266,13 +256,10 @@ ws_make_mop (OID * oid)
       op->hash_link = NULL;
       op->commit_link = NULL;
       op->mvcc_link = NULL;
-      op->reference = 0;
-      op->version = NULL;
       op->oid_info.oid.volid = 0;
       op->oid_info.oid.pageid = 0;
       op->oid_info.oid.slotid = 0;
       op->is_vid = 0;
-      op->is_set = 0;
       op->is_temp = 0;
       op->released = 0;
       op->decached = 0;
@@ -341,11 +328,6 @@ ws_free_mop (MOP op)
 	}
     }
 
-  if (op->version != NULL)
-    {
-      ws_flush_properties (op);
-    }
-
   free (op);
 }
 
@@ -386,194 +368,6 @@ ws_free_temp_mop (MOP op)
       ws_Stats.temp_mops_freed++;
     }
 }
-
-#if 0				/* unused feature */
-/*
- * ws_make_reference_mop - constructs a reference mop for an attribute.
- *    return: reference mop
- *    owner(in): owning object
- *    attid(in): attribute id of reference
- *    refobj(in): pointer to reference header
- *    collector(in): callback function to perform garbage collection
- *
- * Note: The reference MOP support was added with the intention that they
- *    be used for set MOPs.  This was never actually used.  There is currently
- *    no use for reference MOPs.  Support remains in this file however
- *    for the day when we actually implement set MOPs.  Note that the
- *    kludge support for set MOPs elsewhere in this file is a temporary
- *    solution for the disconnected set garbage collection problem.
- *    It is solved in a less general way than what reference mops
- *    may ultimately provide.
- */
-static MOP
-ws_make_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj, WS_REFCOLLECTOR collector)
-{
-  MOP op;
-
-  op = malloc (sizeof (DB_OBJECT));
-  if (op != NULL)
-    {
-      op->class_ = NULL;
-      op->object = NULL;	/* points to referenced thing */
-      op->lock = NULL_LOCK;
-      op->class_link = NULL;	/* chain of reference mops */
-      op->dirty_link = NULL;
-      op->hash_link = NULL;
-      op->commit_link = NULL;
-      op->version = NULL;
-      op->dirty = 0;
-      op->deleted = 0;
-      op->no_objects = 0;
-      op->pinned = 0;
-      op->released = 0;
-      op->reference = 1;
-      OID_SET_NULL (WS_REAL_OID (op));
-
-      op->hash_link = ws_Reference_mops;
-      ws_Reference_mops = op;
-
-      /* point the reference mop at the owner */
-      WS_SET_REFMOP_OWNER (op, owner);
-      WS_SET_REFMOP_ID (op, attid);
-      WS_SET_REFMOP_OBJECT (op, refobj);
-      WS_SET_REFMOP_COLLECTOR (op, collector);
-
-      /* pointer the reference object back at the mop */
-      refobj->handle = op;
-
-      ws_Stats.refmops_allocated++;
-    }
-  else
-    {
-      /* couldnt' allocate a MOP, mgc should have set an error by now */
-      ws_abort_transaction ();
-    }
-
-  return (op);
-}
-
-/*
- * ws_find_reference_mop - find or make reference MOP
- *    return: reference MOP
- *    owner(in): owning object
- *    attid(in): attribute id of reference
- *    refobj(in): structure header of referenced object
- *    collector(in): callback function to perform garbage collection
- *
- */
-MOP
-ws_find_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj, WS_REFCOLLECTOR collector)
-{
-  MOP m, found = NULL;
-
-  for (m = ws_Reference_mops; m != NULL && found == NULL; m = m->hash_link)
-    {
-      if (ws_is_same_object (WS_GET_REFMOP_OWNER (m), owner) && WS_GET_REFMOP_ID (m) == attid)
-	found = m;
-    }
-  if (found == NULL)
-    found = ws_make_reference_mop (owner, attid, refobj, collector);
-
-  return (found);
-}
-
-/*
- * ws_set_reference_mop_owner - sets the owner and attribute information for a
- * reference mop.
- *    return: void
- *    refmop(out): a reference mop
- *    owner(in): new owing object (can be NULL if disconnecting)
- *    attid(in): reference id of reference object (-1 if disconnecting )
- *
- * Note:
- *    Sets the owner and attribute information for a reference mop.
- *    If the reference object is being disconnected from its owner, this
- *    function can be called with NULL as the owner.  When a reference mop
- *    is garbage collected, and the owner field is NULL, the attached
- *    reference object can be freed as well provided a collector function
- *    was supplied when the reference mop was created.
- */
-void
-ws_set_reference_mop_owner (MOP refmop, MOP owner, int attid)
-{
-  WS_SET_REFMOP_OWNER (refmop, owner);
-  WS_SET_REFMOP_ID (refmop, attid);
-}
-
-/*
- * ws_cull_reference_mops - cull MOPs in the reference mop list that are no
- * longer being used.
- *    return: void
- *    table(in): not used
- *    table2(in): not used
- *    size(in): not used
- *    check(in): check function
- */
-static void
-ws_cull_reference_mops (void *table, char *table2, long size, check_fn check)
-{
-  MOP mop, prev, next, owner;
-  WS_REFERENCE *ref;
-  WS_REFCOLLECTOR collector;
-  int count;
-
-  count = 0;
-  for (mop = ws_Reference_mops, prev = NULL, next = NULL; mop != NULL; mop = next)
-    {
-      next = mop->hash_link;
-      if ((*check) (mop))
-	{
-	  prev = mop;
-	}
-      else
-	{
-	  if (!mop->reference)
-	    {
-	      /* only supposed to have reference mops on this list */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CORRUPTED, 0);
-	      ws_Stats.corruptions++;
-	      /* probably fatal to continue here */
-	      continue;
-	    }
-	  /* remove it from the list */
-	  if (prev == NULL)
-	    {
-	      ws_Reference_mops = next;
-	    }
-	  else
-	    {
-	      prev->hash_link = next;
-	    }
-
-	  /* 
-	   * if there is no owner, this is a free standing reference and can
-	   * be freed if there is a supplied collector function, otherwise
-	   * just NULL out the back pointer in the reference object
-	   */
-	  ref = WS_GET_REFMOP_OBJECT (mop);
-	  if (ref != NULL)
-	    {
-	      ref->handle = NULL;
-	      owner = WS_GET_REFMOP_OWNER (mop);
-	      if (owner == NULL)
-		{
-		  collector = WS_GET_REFMOP_COLLECTOR (mop);
-		  if (collector != NULL)
-		    {
-		      (*collector) (ref);
-		    }
-		}
-	    }
-
-	  /* return mop to the garbage collector */
-	  ws_free_mop (mop);
-	  count++;
-	}
-    }
-
-  ws_Stats.refmops_freed += count;
-}
-#endif
 
 static int
 ws_check_hash_link (int slot)
@@ -1662,23 +1456,6 @@ ws_cull_mops (void)
 	    }
 	  else
 	    {
-	      if (mops->reference)
-		{
-		  /* reference mop, these aren't allowed in the MOP table */
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CORRUPTED, 0);
-		  ws_Stats.corruptions++;
-		  /* probably fatal to continue here */
-		  continue;
-		}
-
-	      if (mops->is_set)
-		{
-		  /* reference mop, these aren't allowed in the MOP table */
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_WS_CORRUPTED, 0);
-		  ws_Stats.corruptions++;
-		  continue;
-		}
-
 	      if (mops == sm_Root_class_mop)
 		{
 		  /* can't have rootclass on the garbage list */
@@ -2484,32 +2261,6 @@ ws_drop_classname (MOBJ classobj)
     }
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * ws_reset_classname_cache - clear the class name cache since this must be
- * reverified for the next transaction.
- *    return: void
- *
- * Note:
- *    This is called whenever a transaction is committed or aborted.
- *    We might consider must NULLing out the current class pointers and
- *    leaving the key strings in the table so we can avoid reallocating
- *    them again the next time names are cached.
- */
-void
-ws_reset_classname_cache (void)
-{
-  if (Classname_cache != NULL)
-    {
-      /* 
-       * don't need to map over entries because the name strings
-       * are part of the class structure
-       */
-      (void) mht_clear (Classname_cache, NULL, NULL);
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * ws_find_class - search in the workspace classname cache for the MOP of
  * a class.
@@ -2782,40 +2533,6 @@ ws_clear (void)
   ws_clear_internal (false);
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * ws_vid_clear - decaches all virtual objects in the workspace and clear all
- * locks
- *    return: void
- *
- * Note:
- *    Used to make sure that virtual objects are consistent.
- *    This function should be called only when all the dirty virtual objects
- *    have been flushed.
- */
-void
-ws_vid_clear (void)
-{
-  MOP mop;
-  unsigned int slot;
-
-  for (slot = 0; slot < ws_Mop_table_size; slot++)
-    {
-      for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
-	{
-	  /* Don't decache non-updatable view objects because they cannot be recreated.  Let garbage collection
-	   * eventually decache them. */
-	  if ((WS_ISVID (mop)) && (vid_is_updatable (mop)))
-	    {
-	      ws_decache (mop);
-	      mop->lock = NULL_LOCK;
-	      mop->deleted = 0;
-	    }
-	}
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * ws_has_updated - see if there are any dirty objects in the workspace
  *    return: true if updated, false otherwise
@@ -2949,22 +2666,6 @@ abort_it:
    */
   mop->object = NULL;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * ws_cache_dirty - caches an object and also marks it as dirty
- *    return: void
- *    obj(in): memory representation of object
- *    op(in): mop of object
- *    class(in): class of object
- */
-void
-ws_cache_dirty (MOBJ obj, MOP op, MOP class_mop)
-{
-  ws_cache (obj, op, class_mop);
-  ws_dirty (op);
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * ws_cache_with_oid - first find or create a MOP for the object's OID and
@@ -3942,60 +3643,6 @@ ws_dump_mops (void)
 }
 #endif
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * ws_makemop - find or create a MOP whose OID contains the indicated
- * identifiers
- *    return: mop found or created
- *    volid(in): volumn id
- *    pageid(in): page id
- *    slotid(in): slot id
- *
- * description:
- *    This will build (or find) a MOP whose OID contains the indicated
- *    identifiers.  This is intended as a debugging functions to get a
- *    handle on an object pointer given the three OID numbers.
- *
- * Note:
- *    This is intended as a debugging functions to get a
- *    handle on an object pointer given the three OID numbers.
- */
-MOP
-ws_makemop (int volid, int pageid, int slotid)
-{
-  OID oid;
-  MOP mop;
-
-  oid.volid = volid;
-  oid.pageid = pageid;
-  oid.slotid = slotid;
-  mop = ws_mop (&oid, NULL);
-
-  return (mop);
-}
-
-/*
- * ws_count_mops - count the number of mops in the workspace
- *    return: mop count in the workspace
- */
-int
-ws_count_mops (void)
-{
-  MOP mop;
-  unsigned int slot, count;
-
-  count = 0;
-  for (slot = 0; slot < ws_Mop_table_size; slot++)
-    {
-      for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
-	{
-	  count++;
-	}
-    }
-  return (count);
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * WORKSPACE STATISTICS
  */
@@ -4071,7 +3718,6 @@ ws_dump (FILE * fpp)
 
   /* gc stats */
   fprintf (fpp, "%d MOPs allocated, %d freed\n", ws_Stats.mops_allocated, ws_Stats.mops_freed);
-  fprintf (fpp, "%d reference MOPs allocated, %d freed\n", ws_Stats.refmops_allocated, ws_Stats.refmops_freed);
 
   /* misc stats */
   fprintf (fpp, "%d dirty list emergencies, %d uncached classes, %d corruptions\n", ws_Stats.dirty_list_emergencies,
@@ -4150,148 +3796,6 @@ ws_dump (FILE * fpp)
 
   fprintf (fpp, "WORKSPACE AREAS:\n");
   area_dump (fpp);
-}
-
-/*
- * PROPERTY LISTS
- */
-
-/*
- * This is a rather hasty initial implemenatation of a soon-to-be more
- * general purpose property list mechanism for MOPs.
- */
-
-/*
- * ws_put_prop - add a property (key value pair) to mop
- *    return: -1 if error, 0 if value replaced, 1 if a property created
- *    op(in/out): object pointer to add property
- *    key(in): key
- *    value(in): value
- */
-int
-ws_put_prop (MOP op, int key, DB_BIGINT value)
-{
-  WS_PROPERTY *p;
-  int status = -1;
-
-  /* Error if connect status is invalid */
-  if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
-    {
-      for (p = (WS_PROPERTY *) op->version; p != NULL && p->key != key; p = p->next);
-      if (p != NULL)
-	{
-	  p->value = value;
-	  status = 0;
-	}
-      else
-	{
-	  /* 
-	   * for now, allocate them in the workspace to avoid shutdown
-	   * messages.  We might not be able to do this ultimately if
-	   * they are allowed to contain other object pointers.
-	   */
-	  p = (WS_PROPERTY *) db_ws_alloc (sizeof (WS_PROPERTY));
-	  if (p != NULL)
-	    {
-	      p->key = key;
-	      p->value = value;
-	      p->next = (WS_PROPERTY *) op->version;
-	      op->version = (void *) p;
-	      status = 1;
-	    }
-	}
-    }
-  return status;
-}
-
-/*
- * ws_get_prop - get a property value
- *    return: -1 if error, 0 if not found, 1 if found
- *    op(in): object pointer
- *    key(in): property key
- *    value(out): returned property value
- */
-int
-ws_get_prop (MOP op, int key, DB_BIGINT * value)
-{
-  WS_PROPERTY *p;
-  int status = -1;
-
-  /* Error if connect status is invalid */
-  if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
-    {
-      for (p = (WS_PROPERTY *) op->version; p != NULL && p->key != key; p = p->next);
-      if (p == NULL)
-	{
-	  status = 0;
-	}
-      else
-	{
-	  if (value != NULL)
-	    {
-	      *value = p->value;
-	    }
-	  status = 1;
-	}
-    }
-  return status;
-}
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * ws_rem_prop - remove an object property
- *    return: -1 if error, 0 if property not found, 1 if successful
- *    op(in/out): object pointer
- *    key(in): property key
- */
-int
-ws_rem_prop (MOP op, int key)
-{
-  WS_PROPERTY *p, *prev;
-  int status = -1;
-
-  /* currently no possible error conditions */
-  for (p = (WS_PROPERTY *) op->version, prev = NULL; p != NULL && p->key != key; p = p->next)
-    {
-      prev = p;
-    }
-
-  if (p == NULL)
-    {
-      status = 0;
-    }
-  else
-    {
-      if (prev != NULL)
-	{
-	  prev->next = p->next;
-	}
-      else
-	{
-	  op->version = (void *) p->next;
-	}
-      db_ws_free (p);
-      status = 1;
-    }
-  return status;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-/*
- * ws_flush_properties - frees all property of an object
- *    return: void
- *    op(in/out): object pointer
- */
-static void
-ws_flush_properties (MOP op)
-{
-  WS_PROPERTY *p, *next;
-
-  for (p = (WS_PROPERTY *) op->version, next = NULL; p != NULL; p = next)
-    {
-      next = p->next;
-      db_ws_free (p);
-    }
 }
 
 /*
