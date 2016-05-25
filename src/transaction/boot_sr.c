@@ -4002,6 +4002,9 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       boot_check_db_at_num_shutdowns (true);
 #endif /* CUBRID_DEBUG */
 
+      /* Start by notifying vacuum that shutdown was requested. */
+      vacuum_notify_server_shutdown ();
+
       sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
       /* Shutdown the system with the system transaction */
       logtb_set_to_system_tran_index (thread_p);
