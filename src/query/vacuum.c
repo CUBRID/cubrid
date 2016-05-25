@@ -3800,17 +3800,8 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
   vacuum_Data.first_page = data_page;
   vacuum_Data.oldest_unvacuumed_mvccid = MVCCID_NULL;
 
-
-  while (!VPID_ISNULL (&data_page->next_page))
+  while (true)
     {
-      VPID_COPY (&next_vpid, &data_page->next_page);
-      vacuum_unfix_data_page (thread_p, data_page);
-      data_page = vacuum_fix_data_page (thread_p, &next_vpid);
-      if (data_page == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  goto error;
-	}
       if (data_page->index_unvacuumed >= 0)
 	{
 	  assert (data_page->index_unvacuumed < vacuum_Data.page_data_max_count);
@@ -3824,6 +3815,17 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
 		  VACUUM_BLOCK_STATUS_SET_AVAILABLE (entry->blockid);
 		  VACUUM_BLOCK_SET_INTERRUPTED (entry->blockid);
 		}
+	    }
+	}
+      VPID_COPY (&next_vpid, &data_page->next_page);
+      if (!VPID_ISNULL (&next_vpid))
+	{
+	  vacuum_unfix_data_page (thread_p, data_page);
+	  data_page = vacuum_fix_data_page (thread_p, &next_vpid);
+	  if (data_page == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto error;
 	    }
 	}
     }
@@ -4158,8 +4160,9 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	 && lf_circular_queue_consume (vacuum_Finished_job_queue, &finished_blocks[n_finished_blocks]))
     {
       /* Increment consumed finished blocks. */
-      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "VACUUM: Consumed from finished job queue %lld.\n",
-		     (long long int) &finished_blocks[n_finished_blocks]);
+      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "VACUUM: Consumed from finished job queue %lld (flags %lld).\n",
+		     (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (finished_blocks[n_finished_blocks]),
+		     VACUUM_BLOCKID_GET_FLAGS (finished_blocks[n_finished_blocks]));
       ++n_finished_blocks;
     }
   if (n_finished_blocks == 0)
