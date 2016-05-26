@@ -2541,7 +2541,20 @@ restart:
 	  continue;
 	}
       entry = data_page->data + data_index;
-#if defined (SERVER_MODE)
+
+#if defined (SA_MODE)
+      if (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid))
+	{
+	  /* Already vacuumed. */
+	  data_index++;
+	  continue;
+	}
+      else
+	{
+	  /* Must be available, cannot be in-progress. */
+	  assert (VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid));
+	}
+#else	/* !SA_MODE */	     /* SERVER_MODE */
       if (!MVCC_ID_PRECEDES (entry->newest_mvccid, vacuum_Global_oldest_active_mvccid)
 	  || (entry->start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.pageid))
 	{
@@ -3131,7 +3144,7 @@ end:
 #if defined (SERVER_MODE)
   /* Unfix all pages now. Normally all pages should already be unfixed. */
   pgbuf_unfix_all (thread_p);
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   /* Do not unfix all in stand-alone. Not yet. We need to keep vacuum data pages fixed. */
 #endif /* SA_MODE */
 
