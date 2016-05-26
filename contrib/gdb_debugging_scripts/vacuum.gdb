@@ -23,8 +23,8 @@ define vacuum_print_entries
     while $i < $datap->index_free
       set $entry = $datap->data + $i
       printf "blockid=%lld, flags = %llx, start_lsa=(%lld, %d), oldest=%d, newest=%d\n", \
-              $entry->blockid & 0x3FFFFFFFFFFFFFFF, \
-              $entry->blockid & 0xC000000000000000, \
+              $entry->blockid & 0x1FFFFFFFFFFFFFFF, \
+              $entry->blockid & 0xE000000000000000, \
               (long long int) $entry->start_lsa.pageid, \
               (int) $entry->start_lsa.offset, \
               $entry->oldest_mvccid, $entry->newest_mvccid
