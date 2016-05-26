@@ -2546,6 +2546,7 @@ restart:
       if (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid))
 	{
 	  /* Already vacuumed. */
+	  data_index++;
 	  continue;
 	}
       else
