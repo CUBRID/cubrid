@@ -2278,7 +2278,8 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	}
 
       /* Get current produce_cursor */
-      produce_cursor = queue->produce_cursor;
+      produce_cursor = VOLATILE_ACCESS (queue->produce_cursor, INT64);
+
       /* Compute entry's index in circular queue */
       entry_index = (int) produce_cursor % queue->capacity;
 
@@ -2349,7 +2350,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	}
 
       /* Get current consume cursor */
-      consume_cursor = queue->consume_cursor;
+      consume_cursor = VOLATILE_ACCESS (queue->consume_cursor, INT64);
 
       /* Compute entry's index in circular queue */
       entry_index = (int) consume_cursor % queue->capacity;
