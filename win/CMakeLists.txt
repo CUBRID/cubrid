@@ -1,12 +1,29 @@
+#
+# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#
 
 if(NOT WIN32)
   return()
 endif(NOT WIN32)
 
-
 set(CTRLSERVICE_SOURCES
   ${WIN_TOOLS_DIR}/ctrlservice/ctrlservice.cpp
   ${WIN_TOOLS_DIR}/ctrlservice/stdafx.cpp
+  ${CMAKE_BINARY_DIR}/version.rc
   )
 set_source_files_properties(${WIN_TOOLS_DIR}/ctrlservice/stdafx.cpp
   PROPERTIES
@@ -20,6 +37,7 @@ target_compile_definitions(ctrlservice PRIVATE _CONSOLE)
 set(CUBRIDSERVICE_SOURCES
   ${WIN_TOOLS_DIR}/cubridservice/cubridservice.cpp
   ${WIN_TOOLS_DIR}/cubridservice/stdafx.cpp
+  ${CMAKE_BINARY_DIR}/version.rc
   )
 set_source_files_properties(${WIN_TOOLS_DIR}/cubridservice/stdafx.cpp
   PROPERTIES
@@ -63,6 +81,7 @@ set(CUBRIDTRAY_SOURCES
   ${WIN_TOOLS_DIR}/cubridtray/WAS.CPP
   ${WIN_TOOLS_DIR}/cubridtray/cubridtray.odl
   ${WIN_TOOLS_DIR}/cubridtray/cubridtray.rc
+  ${CMAKE_BINARY_DIR}/version.rc
   )
 set_source_files_properties(${WIN_TOOLS_DIR}/cubridtray/STDAFX.CPP
   PROPERTIES
@@ -86,6 +105,7 @@ set(SETUPMANAGE_SOURCES
   ${WIN_TOOLS_DIR}/setupmanage/SETUPMANAGE.CPP
   ${WIN_TOOLS_DIR}/setupmanage/PATHREGULATION.CPP
   ${WIN_TOOLS_DIR}/setupmanage/stdafx.cpp
+  ${CMAKE_BINARY_DIR}/version.rc
   )
 set_source_files_properties(${WIN_TOOLS_DIR}/setupmanage/stdafx.cpp
   PROPERTIES
@@ -104,6 +124,25 @@ install(TARGETS
   setupmanage
   RUNTIME DESTINATION ${CUBRID_BINDIR}
   )
+
+# install external pre-built DLLs
+# TODO: add custom target for external dlls? 
+# ref. http://stackoverflow.com/questions/14474659/cmake-how-to-have-a-target-for-copying-files
+if(TARGET_PLATFORM_BITS EQUAL 32)
+  file(GLOB TARGET_DLLS
+    ${CMAKE_SOURCE_DIR}/win/external/dll/*.dll
+    ${CMAKE_SOURCE_DIR}/win/external/dll/Win32/*.dll
+    )
+else(TARGET_PLATFORM_BITS EQUAL 32)
+  file(GLOB TARGET_DLLS
+    ${CMAKE_SOURCE_DIR}/win/external/dll/*.dll
+    ${CMAKE_SOURCE_DIR}/win/external/dll/x64/*.dll
+    )
+endif(TARGET_PLATFORM_BITS EQUAL 32)
+
+install(FILES
+  ${TARGET_DLLS}
+  DESTINATION ${CUBRID_BINDIR})
 
 # install pdb files for debugging on windows
 install(DIRECTORY

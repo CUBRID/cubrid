@@ -1,4 +1,20 @@
-
+#
+# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#
 
 set(CMSTAT_SOURCES
   ${CM_COMMON_DIR}/cm_mem_cpu_stat.c
@@ -17,7 +33,6 @@ target_include_directories(cmstat PRIVATE ${JAVA_INC})
 if(NOT USE_CUBRID_ENV)
   target_compile_definitions(cmstat PRIVATE ${DIR_DEFS})
 endif(NOT USE_CUBRID_ENV)
-#target_compile_definitions(cmstat PRIVATE ${VERSION_DEFS})
 target_link_libraries(cmstat LINK_PRIVATE brokeradmin)
 if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
   target_link_libraries(cmstat LINK_PRIVATE perfstat)
@@ -49,6 +64,9 @@ endif()
 set(CUB_JOBSA_SOURCES
   ${CM_COMMON_DIR}/cm_class_info_sa.c
   )
+if(WIN32)
+  list(APPEND CUB_JOBSA_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+endif(WIN32)
 add_executable(cub_jobsa ${CUB_JOBSA_SOURCES})
 target_link_libraries(cub_jobsa cubridsa)
 
@@ -56,6 +74,9 @@ target_link_libraries(cub_jobsa cubridsa)
 set(CUB_SAINFO_SOURCES
   ${CM_COMMON_DIR}/cm_trigger_info_sa.c
   )
+if(WIN32)
+  list(APPEND CUB_SAINFO_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+endif(WIN32)
 add_executable(cub_sainfo ${CUB_JOBSA_SOURCES})
 target_link_libraries(cub_sainfo cubridsa)
 
