@@ -3194,7 +3194,7 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
    */
   do
     {
-      save_assigned_workers_count = vacuum_Assigned_workers_count;
+      save_assigned_workers_count = VOLATILE_ACCESS (vacuum_Assigned_workers_count, INT32);
     }
   while (!ATOMIC_CAS_32 (&vacuum_Assigned_workers_count, save_assigned_workers_count, save_assigned_workers_count + 1));
 
