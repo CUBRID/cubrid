@@ -714,6 +714,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
     }
 
   /* Initialize vacuum data */
+  vacuum_Data.shutdown_requested = false;
   /* Save vacuum data VFID. */
   VFID_COPY (&vacuum_Data.vacuum_data_file, vacuum_data_vfid);
   /* Save vacuum log block size in pages. */
@@ -778,8 +779,8 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 #endif /* SERVER_MODE */
 
   /* Initialize finished job queue. */
-  vacuum_Finished_job_queue =
-    lf_circular_queue_create (VACUUM_FINISHED_JOB_QUEUE_CAPACITY, sizeof (VACUUM_LOG_BLOCKID));
+  vacuum_Finished_job_queue = lf_circular_queue_create (VACUUM_FINISHED_JOB_QUEUE_CAPACITY,
+							sizeof (VACUUM_LOG_BLOCKID));
   if (vacuum_Finished_job_queue == NULL)
     {
       goto error;
