@@ -778,7 +778,8 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 #endif /* SERVER_MODE */
 
   /* Initialize finished job queue. */
-  vacuum_Finished_job_queue = lf_circular_queue_create (VACUUM_FINISHED_JOB_QUEUE_CAPACITY, sizeof (VACUUM_LOG_BLOCKID));
+  vacuum_Finished_job_queue =
+    lf_circular_queue_create (VACUUM_FINISHED_JOB_QUEUE_CAPACITY, sizeof (VACUUM_LOG_BLOCKID));
   if (vacuum_Finished_job_queue == NULL)
     {
       goto error;
@@ -2564,7 +2565,7 @@ restart:
 	  /* Must be available, cannot be in-progress. */
 	  assert (VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid));
 	}
-#else	/* !SA_MODE */	     /* SERVER_MODE */
+#else	/* !SA_MODE */	       /* SERVER_MODE */
       if (!MVCC_ID_PRECEDES (entry->newest_mvccid, vacuum_Global_oldest_active_mvccid)
 	  || (entry->start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.pageid))
 	{
@@ -3192,7 +3193,7 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
    */
   do
     {
-      save_assigned_workers_count = vacuum_Assigned_workers_count;
+      save_assigned_workers_count = VOLATILE_ACCESS (vacuum_Assigned_workers_count, INT32);
     }
   while (!ATOMIC_CAS_32 (&vacuum_Assigned_workers_count, save_assigned_workers_count, save_assigned_workers_count + 1));
 
