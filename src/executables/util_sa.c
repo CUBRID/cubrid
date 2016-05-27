@@ -3912,6 +3912,12 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
   else if (strcasecmp (tz_gen_mode, "update") == 0)
     {
       tz_gen_type = TZ_GEN_TYPE_UPDATE;
+
+      /* This is a temporary fix to show usages until we have the update option.
+       * Please remove the following when you are going to implement it.
+       */
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GEN_TZ, GEN_TZ_MSG_INVALID_MODE));
+      goto print_gen_tz_usage;
     }
   else
     {
