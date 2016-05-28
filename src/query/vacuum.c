@@ -4495,7 +4495,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
       else
 	{
 	  /* Save link to next page. */
-	  VPID_COPY (&save_next_vpid, &data_page->next_page)
+	  VPID_COPY (&save_next_vpid, &(*data_page)->next_page);
 	}
       /* Save data page VPID. */
       pgbuf_get_vpid ((PAGE_PTR) (*data_page), &save_page_vpid);
