@@ -6564,6 +6564,8 @@ vacuum_verify_vacuum_data_debug (void)
   VACUUM_DATA_ENTRY *entry = NULL;
   VACUUM_DATA_ENTRY *last_unvacuumed = NULL;
   VPID next_vpid;
+  int in_progess_distance = 0;
+  bool found_in_progress = false;
 
   data_page = vacuum_Data.first_page;
   /* First vacuum data page VPID matches log_Gl.hdr.vacuum_data_first_vpid. */
@@ -6588,6 +6590,10 @@ vacuum_verify_vacuum_data_debug (void)
 	  if (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid))
 	    {
 	      assert (i != data_page->index_unvacuumed);
+	      if (found_in_progress && !LSA_ISNULL (&data_page->data[i].start_lsa))
+		{
+		  in_progess_distance++;
+		}
 	      continue;
 	    }
 
@@ -6606,6 +6612,12 @@ vacuum_verify_vacuum_data_debug (void)
 	    }
 
 	  last_unvacuumed = entry;
+
+	  if (VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry->blockid))
+	    {
+	      found_in_progress = true;
+	      in_progess_distance++;
+	    }
 	}
       if (VPID_ISNULL (&data_page->next_page))
 	{
@@ -6620,6 +6632,16 @@ vacuum_verify_vacuum_data_debug (void)
       assert (data_page != NULL);
       last_unvacuumed = NULL;
     }
+
+  /* In progress distance is computed starting with first in progress entry found and by counting all following
+   * in progress or vacuumed jobs. The goal of this count is to find potential job leaks: jobs marked as in progress
+   * but that never start or that are never marked as finished. We will assume that if this distance goes beyond some
+   * value, then something bad must have happened.
+   *
+   * Theoretically, if a worker is blocked for long enough this value can be any size. However, we set a value unlikely
+   * to be reached in normal circumstances.
+   */
+  assert (in_progess_distance <= 200);
 }
 #endif /* !NDEBUG */
 
