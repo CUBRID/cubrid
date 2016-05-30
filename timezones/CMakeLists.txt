@@ -1,25 +1,41 @@
-
+#
+# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#
 
 if(UNIX)
-add_custom_command(
-  OUTPUT tzlib/timezones.c
-  COMMAND ${CMAKE_COMMAND} -E make_directory tzlib
-  COMMAND CUBRID=${CMAKE_BINARY_DIR} LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cubridsa> $<TARGET_FILE:cub_admin> gen_tz -i ${CMAKE_CURRENT_SOURCE_DIR}/tzdata -g new
-  DEPENDS gen_msgs_en_US
-  )
+  add_custom_command(
+    OUTPUT tzlib/timezones.c
+    COMMAND ${CMAKE_COMMAND} -E make_directory tzlib
+    COMMAND CUBRID=${CMAKE_BINARY_DIR} LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cubridsa> $<TARGET_FILE:cub_admin> gen_tz -i ${CMAKE_CURRENT_SOURCE_DIR}/tzdata -g new
+    DEPENDS gen_msgs_en_US
+    )
 else(UNIX)
   if(TARGET_PLATFORM_BITS EQUAL 32)
     set(REQUIRED_DLLS
-	${CMAKE_SOURCE_DIR}/win/external/dll/jansson.dll
-	${CMAKE_SOURCE_DIR}/win/external/dll/Win32/libgcrypt.dll
-	${CMAKE_SOURCE_DIR}/win/external/dll/Win32/libgpg-error-0.dll
-       )
+      ${CMAKE_SOURCE_DIR}/win/external/dll/jansson.dll
+      ${CMAKE_SOURCE_DIR}/win/external/dll/Win32/libgcrypt.dll
+      ${CMAKE_SOURCE_DIR}/win/external/dll/Win32/libgpg-error-0.dll
+      )
   else(TARGET_PLATFORM_BITS EQUAL 32)
     set(REQUIRED_DLLS
-	${CMAKE_SOURCE_DIR}/win/external/dll/jansson64.dll
-	${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgcrypt.dll
-	${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgpg-error-0.dll
-       )
+      ${CMAKE_SOURCE_DIR}/win/external/dll/jansson64.dll
+      ${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgcrypt.dll
+      ${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgpg-error-0.dll
+      )
   endif(TARGET_PLATFORM_BITS EQUAL 32)
   add_custom_command(
     OUTPUT tzlib/timezones.c

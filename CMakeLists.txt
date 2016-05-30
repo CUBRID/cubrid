@@ -1,3 +1,21 @@
+#
+# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#
+
 cmake_minimum_required(VERSION 2.8)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -5,38 +23,76 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type (default Debug)")
 endif()
 
-#option(CMAKE_USE_RELATIVE_PATHS "Use relative paths if possible" ON)
-#mark_as_advanced(CMAKE_USE_RELATIVE_PATHS)
-
 project(CUBRID)
 
 # Version info
-file(STRINGS BUILD_NUMBER version)
-set(CUBRID_VERSION ${version})
-string(REGEX REPLACE "([0-9]+)\\.([0-9]+)\\.([0-9]+)(.*)?" "\\1;\\2;\\3;\\4" VERSION_MATCHES ${version})
-list(GET VERSION_MATCHES 0 version_major)
-set(CUBRID_MAJOR_VERSION ${version_major})
-list(GET VERSION_MATCHES 1 version_minor)
-set(CUBRID_MINOR_VERSION ${version_minor})
-list(GET VERSION_MATCHES 2 version_patch)
-set(CUBRID_PATCH_VERSION ${version_patch})
-list(GET VERSION_MATCHES 3 version_extra)
-set(CUBRID_EXTRA_VERSION ${version_extra})
+# TODO: remove BUILD_NUMBER file and replace with VERSION file
+if(EXISTS ${CMAKE_SOURCE_DIR}/VERSION)
+  set(VERSION_FILE VERSION)
+elseif(EXISTS ${CMAKE_SOURCE_DIR}/BUILD_NUMBER)
+  set(VERSION_FILE BUILD_NUMBER)
+else(EXISTS ${CMAKE_SOURCE_DIR}/VERSION)
+  message(FATAL_ERROR "Could not find a VERSION file")
+endif(EXISTS ${CMAKE_SOURCE_DIR}/VERSION)
+message(STATUS "Get version information from ${VERSION_FILE}")
+# Generate the same file in other directory to trigger cmake re-configure when the file changes
+configure_file(${VERSION_FILE} ${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/${VERSION_FILE}.check_cache)
+file(STRINGS ${VERSION_FILE} VERSION_STR)
+if(VERSION_STR MATCHES "[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9_]+)?")
+  string(REGEX MATCHALL "[0-9]+|-([A-Za-z0-9_]+)" VERSION_MATCHES ${VERSION_STR})
+  list(LENGTH VERSION_MATCHES VERSION_MATCHES_LENGTH)
+  list(GET VERSION_MATCHES 0 CUBRID_MAJOR_VERSION)
+  list(GET VERSION_MATCHES 1 CUBRID_MINOR_VERSION)
+  list(GET VERSION_MATCHES 2 CUBRID_PATCH_VERSION)
+else()
+  message(FATAL_ERROR "Failed to parse a version string from ${VERSION_FILE} file")
+endif()
 
-#TODO move to config.h?
-set(VERSION_DEFS
-  MAJOR_VERSION=${CUBRID_MAJOR_VERSION}
-  MINOR_VERSION=${CUBRID_MINOR_VERSION}
-  PATCH_VERSION=${CUBRID_PATCH_VERSION}
-  RELEASE_STRING=${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}
-  MAJOR_RELEASE_STRING=${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}
-  BUILD_NUMBER=${CUBRID_VERSION}
-  BUILD_OS=${CMAKE_SYSTEM_NAME}
-  )
+if(VERSION_MATCHES_LENGTH GREATER 3)
+  list(GET VERSION_MATCHES 3 CUBRID_EXTRA_VERSION)
+else(VERSION_MATCHES_LENGTH GREATER 3)
+  find_package(Git)
+  if(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
+      OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
+      ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+      WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    if(git_result)
+      message(FATAL_ERROR "Could not get count information from Git")
+    endif(git_result)
+    set(CUBRID_EXTRA_VERSION ${commit_count})
+    execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --match '@{NEVERMATCH}@' --dirty=_modified
+      OUTPUT_VARIABLE commit_hash RESULT_VARIABLE git_result
+      ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+      WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    if(git_result)
+      message(FATAL_ERROR "Could not get hash information from Git")
+    endif(git_result)
+    set(CUBRID_HASH_TAG -${commit_hash})
+    # Generate the same file in other directory to trigger cmake re-configure when the HEAD changes
+    configure_file(".git/HEAD" ${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD.check_cache)
+  else(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
+    set(CUBRID_EXTRA_VERSION 0)
+  endif(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
+endif(VERSION_MATCHES_LENGTH GREATER 3)
+set(CUBRID_VERSION ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION}${CUBRID_HASH_TAG})
 
-set(PACKAGE_STRING "${PROJECT_NAME} ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
-set(PRODUCT_STRING "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
+set(MAJOR_RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION})
+set(PACKAGE_STRING "${PROJECT_NAME} ${MAJOR_RELEASE_STRING}")
+set(PRODUCT_STRING "${MAJOR_RELEASE_STRING}")
+# TODO: change to string type for RELEASE_STRING, BUILD_NUMBER, BUILD_OS
+# TODO: remove #if defined (VERSION_STRING) in src/base/release_string.c
+set(RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION})
+# BUILD_NUMBER (digital only version string) for legacy codes
+set(BUILD_NUMBER ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION})
+set(BUILD_OS ${CMAKE_SYSTEM_NAME})
 
+if(MSVC)
+  configure_file(version.rc.cmake ${CMAKE_BINARY_DIR}/version.rc)
+  # TODO: remove version.rc files from win/*
+endif(MSVC)
+
+# Language setting
 enable_language(C CXX)
 
 # System check
@@ -56,7 +112,7 @@ if(UNIX)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--hash-style=both")
     set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both")
-    
+
   else(CMAKE_COMPILER_IS_GNUCC)
     message(FATAL_ERROR "We currently do not support ${CMAKE_CXX_COMPILER_ID} compiler")
   endif(CMAKE_COMPILER_IS_GNUCC)
@@ -65,26 +121,26 @@ endif(UNIX)
 # check target platform
 # Test 32/64 bits
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-	set(TARGET_PLATFORM_BITS 64)
+  set(TARGET_PLATFORM_BITS 64)
 else()
-	set(TARGET_PLATFORM_BITS 32)
+  set(TARGET_PLATFORM_BITS 32)
 endif()
 
 message(STATUS "Build ${PROJECT_NAME} ${CUBRID_VERSION} ${TARGET_PLATFORM_BITS}bit ${CMAKE_BUILD_TYPE} on ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR}")
 
 # generate parser and lexer
-set(csql_grammar_input ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y)
-set(csql_grammar_output ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.c)
-set(csql_lexer_input ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.l)
-set(csql_lexer_output ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.c)
-set(loader_grammar_input ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.y)
-set(loader_grammar_output ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.c)
-set(loader_lexer_input ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.l)
-set(loader_lexer_output ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.c)
-set(esql_grammar_input ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y)
-set(esql_grammar_output ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.c)
-set(esql_lexer_input ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
-set(esql_lexer_output ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.c)
+set(CSQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y)
+set(CSQL_GRAMMAR_OUTPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.c)
+set(CSQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.l)
+set(CSQL_LEXER_OUTPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.c)
+set(LOADER_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.y)
+set(LOADER_GRAMMAR_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.c)
+set(LOADER_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.l)
+set(LOADER_LEXER_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.c)
+set(ESQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y)
+set(ESQL_GRAMMAR_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.c)
+set(ESQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
+set(ESQL_LEXER_OUTPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.c)
 
 if(USE_BISON_FLEX)
   # bison and flex check
@@ -99,55 +155,55 @@ if(USE_BISON_FLEX)
   find_package(FLEX)
 
   if(USE_BISON_NEWDIRECTIVE)
-    file(READ ${csql_grammar_input} yy )
-    string( REPLACE "%{/*%CODE_REQUIRES_START%*/" "%code requires{" mod_yy "${yy}" )
-    string( REPLACE "%{/*%CODE_PROVIDES_START%*/" "%code requires{" mod_yy "${mod_yy}" )
-    string( REPLACE "/*%CODE_END%*/%}" "}" mod_yy "${mod_yy}" )
+    file(READ ${CSQL_GRAMMAR_INPUT} yy )
+    string(REPLACE "%{/*%CODE_REQUIRES_START%*/" "%code requires{" mod_yy "${yy}" )
+    string(REPLACE "%{/*%CODE_PROVIDES_START%*/" "%code requires{" mod_yy "${mod_yy}" )
+    string(REPLACE "/*%CODE_END%*/%}" "}" mod_yy "${mod_yy}" )
     file(WRITE csql_grammar.yy ${mod_yy})
-    bison_target(csql_grammar csql_grammar.yy ${csql_grammar_output}
+    bison_target(csql_grammar csql_grammar.yy ${CSQL_GRAMMAR_OUTPUT}
       COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
   else(USE_BISON_NEWDIRECTIVE)
-    bison_target(csql_grammar ${csql_grammar_input} ${csql_grammar_output}
+    bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
       COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
   endif(USE_BISON_NEWDIRECTIVE)
-  flex_target(csql_lexer ${csql_lexer_input} ${csql_lexer_output}
+  flex_target(csql_lexer ${CSQL_LEXER_INPUT} ${CSQL_LEXER_OUTPUT}
     COMPILE_FLAGS "--noline --never-interactive --prefix=csql_yy")
   add_flex_bison_dependency(csql_lexer csql_grammar)
   add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
   add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
 
-  bison_target(loader_grammar ${loader_grammar_input} ${loader_grammar_output}
-      COMPILE_FLAGS "--no-lines --name-prefix=loader_yy -d -r all")
-  flex_target(loader_lexer ${loader_lexer_input} ${loader_lexer_output}
+  bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
+    COMPILE_FLAGS "--no-lines --name-prefix=loader_yy -d -r all")
+  flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
     COMPILE_FLAGS "--noline --never-interactive --prefix=loader_yy")
   add_flex_bison_dependency(loader_lexer loader_grammar)
   add_custom_target(gen_loader_grammar DEPENDS ${BISON_loader_grammar_OUTPUTS})
   add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
 
   if(USE_BISON_NEWDIRECTIVE)
-    file(READ ${esql_grammar_input} yy )
-    string( REPLACE "%{/*%CODE_REQUIRES_START%*/" "%code requires{" mod_yy "${yy}" )
-    string( REPLACE "%{/*%CODE_PROVIDES_START%*/" "%code requires{" mod_yy "${mod_yy}" )
-    string( REPLACE "/*%CODE_END%*/%}" "}" mod_yy "${mod_yy}" )
+    file(READ ${ESQL_GRAMMAR_INPUT} yy )
+    string(REPLACE "%{/*%CODE_REQUIRES_START%*/" "%code requires{" mod_yy "${yy}" )
+    string(REPLACE "%{/*%CODE_PROVIDES_START%*/" "%code requires{" mod_yy "${mod_yy}" )
+    string(REPLACE "/*%CODE_END%*/%}" "}" mod_yy "${mod_yy}" )
     file(WRITE esql_grammar.yy ${mod_yy})
-    bison_target(esql_grammar esql_grammar.yy ${esql_grammar_output}
+    bison_target(esql_grammar esql_grammar.yy ${ESQL_GRAMMAR_OUTPUT}
       COMPILE_FLAGS "--no-lines --name-prefix=esql_yy -d -r all")
   else(USE_BISON_NEWDIRECTIVE)
-    bison_target(esql_grammar ${esql_grammar_input} ${esql_grammar_output}
+    bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
       COMPILE_FLAGS "--no-lines --name-prefix=esql_yy -d -r all")
   endif(USE_BISON_NEWDIRECTIVE)
-  flex_target(esql_lexer ${esql_lexer_input} ${esql_lexer_output}
+  flex_target(esql_lexer ${ESQL_LEXER_INPUT} ${ESQL_LEXER_OUTPUT}
     COMPILE_FLAGS "--noline --never-interactive --prefix=esql_yy")
   add_flex_bison_dependency(esql_lexer esql_grammar)
   add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
   add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
 else(USE_BISON_FLEX)
-  set(BISON_csql_grammar_OUTPUTS ${csql_grammar_output})
-  set(FLEX_csql_lexer_OUTPUTS ${csql_lexer_output})
-  set(BISON_loader_grammar_OUTPUTS ${loader_grammar_output})
-  set(FLEX_loader_lexer_OUTPUTS ${loader_lexer_output})
-  set(BISON_esql_grammar_OUTPUTS ${esql_grammar_output})
-  set(FLEX_esql_lexer_OUTPUTS ${esql_lexer_output})
+  set(BISON_csql_grammar_OUTPUTS ${CSQL_GRAMMAR_OUTPUT})
+  set(FLEX_csql_lexer_OUTPUTS ${CSQL_LEXER_OUTPUT})
+  set(BISON_loader_grammar_OUTPUTS ${LOADER_GRAMMAR_OUTPUT})
+  set(FLEX_loader_lexer_OUTPUTS ${LOADER_LEXER_OUTPUT})
+  set(BISON_esql_grammar_OUTPUTS ${ESQL_GRAMMAR_OUTPUT})
+  set(FLEX_esql_lexer_OUTPUTS ${ESQL_LEXER_OUTPUT})
 endif(USE_BISON_FLEX)
 
 
@@ -162,7 +218,6 @@ include(FindJava)
 find_package(Java 1.5 COMPONENTS Development)
 
 # Build types
-# FIXME move to os/Linux.cmake ?
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
   set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage"
     CACHE STRING "Flags used by the c++ compiler during coverage build." FORCE )
@@ -216,7 +271,7 @@ set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/src/tools)
 set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 
-                                            
+
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(
   include
@@ -238,7 +293,8 @@ include_directories(
   src/storage
   src/thread
   src/tools
-  src/transaction)
+  src/transaction
+  )
 
 include(CheckFunctionExists)
 check_function_exists(asprintf HAVE_ASPRINTF)
@@ -315,10 +371,10 @@ if(NOT SIZEOF_SIZE_T)
 endif()
 check_type_size("pid_t" SIZEOF_PID_T)
 if(NOT SIZEOF_PID_T)
-# FIXME: util_sa.c:79 remove typedef
-if(NOT WIN32)
-  set(pid_t "int")
-endif(NOT WIN32)
+  # TODO: util_sa.c:79 remove typedef int pid_t
+  if(NOT WIN32)
+    set(pid_t "int")
+  endif(NOT WIN32)
 endif()
 set(CMAKE_REQUIRED_FLAGS "-D_LARGEFILE64_SOURCE -finfile-functions")
 check_type_size("off64_t" SIZEOF_OFF64_T)
@@ -344,9 +400,9 @@ if(HAVE_GETHOSTBYNAME_R)
 endif(HAVE_GETHOSTBYNAME_R)
 
 include(CheckSymbolExists)
-if( NOT HAVE_STDBOOL_H )
+if(NOT HAVE_STDBOOL_H )
   check_symbol_exists( "_Bool" stdbool.h HAVE__BOOL )
-endif( NOT HAVE_STDBOOL_H )
+endif(NOT HAVE_STDBOOL_H )
 
 include(CheckCSourceCompiles)
 check_c_source_compiles("#include <sys/time.h>\n#include <time.h>\nmain(){}" TIME_WITH_SYS_TIME)
@@ -381,22 +437,15 @@ endif(UNIX)
 
 
 configure_file(config.h.cmake config.h)
+# TODO: merge version.h into config.h ?
+configure_file(version.h.cmake version.h)
 
-# TODO: split multiple cmake files
-# Include the platform specifie cmake file.
-#foreach(platform_file
-#${CMAKE_SOURCE_DIR}/cmake/os/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}.cmake
-#${CMAKE_SOURCE_DIR}/cmake/os/${CMAKE_SYSTEM_NAME}.cmake)
-#if(EXISTS ${platform_file})
-#include(${platform_file})
-#break()
-#endif()
-#endforeach()
+# platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
   add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86)
-  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wlong-long -Wextra -Wno-unused")
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wlong-long -Wextra -Wno-unused")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wlong-long -Wextra -Wno-unused")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wlong-long -Wextra -Wno-unused")
   if(SIZEOF_OFF64_T)
     add_definitions( -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64)
   endif(SIZEOF_OFF64_T)
@@ -427,10 +476,6 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
   if(TARGET_PLATFORM_BITS EQUAL 64)
     string(REPLACE "/DWIN32" "/D_WIN64" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   endif(TARGET_PLATFORM_BITS EQUAL 64)
-  #if(CMAKE_BUILD_TYPE MATCHES "Release")
-  #  FIXME: remove. it can increase build elapse time
-  #  add_definitions(/Oi /Gy)
-  #endif(CMAKE_BUILD_TYPE MATCHES "Release")
   if(MSVC_VERSION GREATER 1400)
     # experimental option (it can lead the build system to a halt or creating a bad object files)
     set(PARALLEL_JOBS "0" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
@@ -448,7 +493,7 @@ set(COMMON_DEFS SYSV MAXPATHLEN=1024 -D_REENTRANT)
 
 # options
 # FIXME: linux 32bit build mode not working now
-  option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
+option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
 
 if(UNIX)
   option(USE_BISON_FLEX "Use bison and flex to generate parser and lexer" ON)
@@ -596,7 +641,7 @@ if(UNIX)
     CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
     #BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/libregex38a
     INSTALL_COMMAND make install && ${CMAKE_COMMAND} -E copy .libs/libregex38a.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib
-  )
+    )
   list(APPEND EP_TARGETS ${LIBREGEX_TARGET})
   set(LIBREGEX_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libregex38a.a)
   set(LIBREGEX_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/libregex38a)
@@ -620,7 +665,7 @@ if(UNIX)
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND make buildlib
       INSTALL_COMMAND make installlib && ${CMAKE_COMMAND} -E copy .libs/libexpat.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib
-    )
+      )
     set(LIBEXPAT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libexpat.a)
     set(LIBEXPAT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/expat)
     list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
@@ -645,7 +690,7 @@ if(UNIX)
     externalproject_add(${LIBJANSSON_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/jansson-2.4
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-    )
+      )
     set(LIBJANSSON_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libjansson.a)
     set(LIBJANSSON_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/jansson)
     list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
@@ -670,7 +715,7 @@ if(UNIX)
     externalproject_add(${LIBEDIT_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libedit-20120601-3.0
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-widec
-    )
+      )
     set(LIBEDIT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libedit.a)
     set(LIBEDIT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBEDIT_TARGET})
@@ -688,7 +733,7 @@ if(UNIX)
     externalproject_add(${LIBLZO_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/lzo-2.03
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-    )
+      )
     set(LIBLZO_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/liblzo2.a)
     set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/lzo)
     list(APPEND EP_TARGETS ${LIBLZO_TARGET})
@@ -713,7 +758,7 @@ if(UNIX)
     externalproject_add(${LIBGPGERROR_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libgpg-error-1.11
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-    )
+      )
     set(LIBGPG_ERROR_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgpg-error.a)
     set(LIBGPG_ERROR_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBGPGERROR_TARGET})
@@ -735,7 +780,7 @@ if(UNIX)
       DEPENDS libgpg-error
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libgcrypt-1.5.2
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include ${GRCYPT_EXTRA_OPTION}
-    )
+      )
     set(LIBGCRYPT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgcrypt.a)
     set(LIBGCRYPT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBGCRYPT_TARGET})
@@ -847,22 +892,3 @@ endif(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
 install(DIRECTORY DESTINATION ${CUBRID_LOGDIR})
 install(DIRECTORY DESTINATION ${CUBRID_TMPDIR})
 
-# install external pre-built DLLs
-if(WIN32)
-  # FIXME: add custom target for external dlls? - ref. http://stackoverflow.com/questions/14474659/cmake-how-to-have-a-target-for-copying-files
-  if(TARGET_PLATFORM_BITS EQUAL 32)
-    file(GLOB TARGET_DLLS
-      ${CMAKE_SOURCE_DIR}/win/external/dll/*.dll
-      ${CMAKE_SOURCE_DIR}/win/external/dll/Win32/*.dll
-    )
-  else(TARGET_PLATFORM_BITS EQUAL 32)
-    file(GLOB TARGET_DLLS
-      ${CMAKE_SOURCE_DIR}/win/external/dll/*.dll
-      ${CMAKE_SOURCE_DIR}/win/external/dll/x64/*.dll
-    )
-  endif(TARGET_PLATFORM_BITS EQUAL 32)
-
-  install(FILES
-      ${TARGET_DLLS}
-      DESTINATION ${CUBRID_BINDIR})
-endif(WIN32)
