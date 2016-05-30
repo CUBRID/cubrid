@@ -984,7 +984,7 @@ struct btree_delete_helper
   int op_type;			/* Operation type. */
   BTREE_UNIQUE_STATS *unique_stats_info;	/* Used to collect statistics of multi-row operations in unique
 						 * indexes. */
-  MVCCID match_mvccid;		/* MVCCID to be matched by either insert or delete MVCCID when looking for an object. */
+  BTREE_MVCC_INFO match_mvccinfo;	/* Used to match MVCC information when searching for object in index key. */
   OR_BUF *buffered_key;		/* Buffered key value. */
   char *printed_key;		/* Key printed value. */
   bool log_operations;		/* Debugging purpose logging. */
@@ -1014,7 +1014,7 @@ struct btree_delete_helper
     PGBUF_LATCH_READ /* non_leaf_latch_mode */, \
     SINGLE_ROW_DELETE /* op_type */, \
     NULL /* unique_stats_info */, \
-    MVCCID_NULL /* match_mvccid */, \
+    BTREE_MVCC_INFO_INITIALIZER /* match_mvccinfo */, \
     NULL /* buffered_key */, \
     NULL /* printed_key */, \
     false /* log_operations */, \
@@ -1160,6 +1160,8 @@ struct btree_delete_helper
 /* The available flags are 0x0800 and 0x0400. B-tree recovery needs 10 bits
  * for around 820 maximum possible slots.
  * IO_MAX_PAGE_SIZE / (slot size + min record size) = 16k/20 ~= 820.
+ *
+ * NOTE: 0x0800 flag is already used for insert new key and MVCC delete recovery.
  */
 
 /* B-tree redo recovery flags mask. */
@@ -1237,11 +1239,20 @@ struct btree_delete_helper
   ((flags & BTREE_RV_DEBUG_INFO_FLAG) != 0)
 
 /* Flag used only in context of insert new key. */
-#define BTREE_RV_UPDATE_MAX_KEY_LEN 0x0800
+/* The flag is used to update page maximum key length. */
+#define BTREE_RV_UPDATE_MAX_KEY_LEN			0x0800
 #define BTREE_RV_SET_UPDATE_MAX_KEY_LEN(addr) \
   ((addr)->offset |= BTREE_RV_UPDATE_MAX_KEY_LEN)
 #define BTREE_RV_IS_UPDATE_MAX_KEY_LEN(flags) \
   ((flags & BTREE_RV_UPDATE_MAX_KEY_LEN) != 0)
+
+/* Flag used only in context of MVCC delete. */
+/* The flag is used to undo delete object inserted by same transaction. The insert ID must also match. */
+#define BTREE_RV_UNDO_MVCCDEL_MYOBJ			0x0800
+#define BTREE_RV_SET_UNDO_MVCCDEL_MYOBJ(addr) \
+  ((addr)->offset |= BTREE_RV_UNDO_MVCCDEL_MYOBJ)
+#define BTREE_RV_IS_UNDO_MVCCDEL_MYOBJ(flags) \
+  ((flags & BTREE_RV_UNDO_MVCCDEL_MYOBJ) != 0)
 
 /* Default buffer size of redo recovery changes. Should cover all cases. */
 /* Just a rough estimation */
@@ -1260,7 +1271,7 @@ struct btree_delete_helper
       assert ((rv_ptr) != NULL); \
       assert ((rv_start) != NULL); \
       (rv_length) = CAST_BUFLEN ((rv_ptr) - (rv_start)); \
-      assert ((rv_length) <= BTREE_RV_BUFFER_SIZE); \
+      assert (0 <= (rv_length) && (rv_length) <= BTREE_RV_BUFFER_SIZE); \
     } \
   while (false)
 
@@ -1433,17 +1444,18 @@ static int btree_rv_write_log_record_for_key_insert (char *log_rec, int *log_len
 static int btree_rv_write_log_record (char *log_rec, int *log_length, RECDES * recp, BTREE_NODE_TYPE node_type);
 
 static int btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
-					BTREE_OP_PURPOSE purpose, MVCCID * match_mvccid, RECDES * leaf_record,
-					LEAF_REC * leaf_rec_info, int after_key_offset, PAGE_PTR * found_page,
-					PAGE_PTR * prev_page, int *offset_to_object,
+					BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
+					RECDES * leaf_record, LEAF_REC * leaf_rec_info, int after_key_offset,
+					PAGE_PTR * found_page, PAGE_PTR * prev_page, int *offset_to_object,
 					BTREE_MVCC_INFO * object_mvcc_info);
 static int btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * mvcc_info,
-						BTREE_OP_PURPOSE purpose, MVCCID * match_mvccid, bool * is_match);
+						BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
+						bool * is_match);
 static int btree_find_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * leaf_record,
-				     int after_key_offset, OID * oid, MVCCID * match_mvccid, BTREE_OP_PURPOSE purpose,
-				     int *offset_to_object, BTREE_MVCC_INFO * mvcc_info);
+				     int after_key_offset, OID * oid, BTREE_MVCC_INFO * match_mvccinfo,
+				     BTREE_OP_PURPOSE purpose, int *offset_to_object, BTREE_MVCC_INFO * mvcc_info);
 static int btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR overflow_page, OID * oid,
-				     BTREE_OP_PURPOSE purpose, MVCCID * match_mvccid, int *offset_to_object,
+				     BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo, int *offset_to_object,
 				     BTREE_MVCC_INFO * mvcc_info);
 static int btree_leaf_get_vpid_for_overflow_oids (RECDES * rec, VPID * vpid);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -1645,8 +1657,7 @@ static int btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTI
 static int btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 					   PAGE_PTR leaf_page, BTREE_SEARCH_KEY_HELPER * search_key,
 					   BTREE_INSERT_HELPER * insert_helper, RECDES * leaf_record,
-					   PAGE_PTR object_page, BTREE_MVCC_INFO * obj_prev_mvcc_info,
-					   int offset_to_found_object);
+					   PAGE_PTR object_page, int offset_to_found_object);
 static int btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 						    PAGE_PTR * leaf, bool * restart,
 						    BTREE_SEARCH_KEY_HELPER * search_key,
@@ -1679,7 +1690,7 @@ static void btree_key_record_check_no_visible (THREAD_ENTRY * thread_p, BTID_INT
 
 static int btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * class_oid,
 				  BTREE_MVCC_INFO * mvcc_info, DB_VALUE * key, OR_BUF * buffered_key, int *unique,
-				  int op_type, BTREE_UNIQUE_STATS * unique_stat_info, MVCCID match_mvccid,
+				  int op_type, BTREE_UNIQUE_STATS * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo,
 				  LOG_LSA * undo_nxlsa, BTREE_OBJECT_INFO * second_obj_info, BTREE_OP_PURPOSE purpose);
 static int btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_int, DB_VALUE * key,
 				      PAGE_PTR * root_page, bool * is_leaf, BTREE_SEARCH_KEY_HELPER * search_key,
@@ -1735,7 +1746,7 @@ static void btree_record_add_delid (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 				    BTREE_NODE_TYPE node_type, int offset_to_object, MVCCID delete_mvccid,
 				    char **rv_undo_data, char **rv_redo_data);
 static int btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid,
-				   OID * class_oid, MVCCID delete_mvccid, LOG_LSA * undo_nxlsa);
+				   OID * class_oid, BTREE_MVCC_INFO * match_mvccinfo, LOG_LSA * undo_nxlsa);
 static int btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid,
 				     OID * class_oid, MVCCID insert_mvccid, LOG_LSA * undo_nxlsa);
 static int btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key,
@@ -11853,8 +11864,7 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VP
 }
 
 /*
- * btree_find_oid_and_its_page () - Find OID in leaf/overflow pages and output
- *				    its position.
+ * btree_find_oid_and_its_page () - Find OID in leaf/overflow pages and output its position.
  *
  * return		  : Error code.
  * thread_p (in)	  : Thread entry.
@@ -11862,23 +11872,19 @@ btree_find_free_overflow_oids_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VP
  * oid (in)		  : Object OID.
  * leaf_page (in)	  : Fixed leaf page (where object's key is found).
  * purpose (in)		  : Purpose/context for the function call.
- * match_mvccid (in)	  : Pointer to MVCCID to be matched by insert or
- *			    delete MVCCID.
+ * match_mvccinfo (in)	  : Non-null value to be matched or null if it doesn't matter.
  * leaf_record (in)	  : Key leaf record.
  * leaf_rec_info (in)	  : Key leaf record info.
  * after_key_offset (in)  : Offset in leaf record where packed key is ended.
- * found_page (out)	  : Outputs leaf or overflow page where object is
- *			    found.
- * prev_page (out)	  : Previous page of the overflow page where object
- *			    object is found. If object is in leaf it will
- *			    output NULL. If object is in first overflow, it
- *			    will output leaf page. If argument is NULL,
- *			    previous overflow page is unfixed.
+ * found_page (out)	  : Outputs leaf or overflow page where object is found.
+ * prev_page (out)	  : Previous page of the overflow page where object object is found. If object is in leaf it
+ *			    will output NULL. If object is in first overflow, it will output leaf page.
+ *			    If argument is NULL, previous overflow page is unfixed.
  * offset_to_object (out) : Offset to object in the record of leaf/overflow.
  */
 static int
 btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
-			     BTREE_OP_PURPOSE purpose, MVCCID * match_mvccid, RECDES * leaf_record,
+			     BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo, RECDES * leaf_record,
 			     LEAF_REC * leaf_rec_info, int after_key_offset, PAGE_PTR * found_page,
 			     PAGE_PTR * prev_page, int *offset_to_object, BTREE_MVCC_INFO * object_mvcc_info)
 {
@@ -11901,7 +11907,7 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
 
   /* Find object in leaf. */
   error_code =
-    btree_find_oid_from_leaf (thread_p, btid_int, leaf_record, after_key_offset, oid, match_mvccid, purpose,
+    btree_find_oid_from_leaf (thread_p, btid_int, leaf_record, after_key_offset, oid, match_mvccinfo, purpose,
 			      offset_to_object, object_mvcc_info);
   if (error_code != NO_ERROR)
     {
@@ -11932,7 +11938,7 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
 	  goto error;
 	}
       error_code =
-	btree_find_oid_from_ovfl (thread_p, btid_int, overflow_page, oid, purpose, match_mvccid, offset_to_object,
+	btree_find_oid_from_ovfl (thread_p, btid_int, overflow_page, oid, purpose, match_mvccinfo, offset_to_object,
 				  object_mvcc_info);
       if (error_code != NO_ERROR)
 	{
@@ -12000,33 +12006,26 @@ error:
 }
 
 /*
- * btree_find_oid_does_mvcc_info_match () - Match an object by its MVCC info
- *					    and the purpose of search.
+ * btree_find_oid_does_mvcc_info_match () - Match an object by its MVCC info and the purpose of search.
  *
- * return	     : Error code.
- * thread_p (in)     : Thread entry.
- * mvcc_info (in)    : Object MVCC info.
- * purpose (in)	     : Btree operation purpose.
- * match_mvccid (in) : Pointer to MVCCID to be matched by insert or by delete
- *		       MVCCID.
- * is_match (out)    : Outputs true if object MVCC info matches the
- *		       expectations.
+ * return	       : Error code.
+ * thread_p (in)       : Thread entry.
+ * mvcc_info (in)      : Object MVCC info.
+ * purpose (in)	       : Btree operation purpose.
+ * match_mvccinfo (in) : MVCC info to be matched (or NULL if not necessary).
+ * is_match (out)      : Outputs true if object MVCC info matches the expectations.
  *
- * NOTE: This function can handle mismatches between information stored in
- *	 heap and b-tree. Because vacuum system doesn't clean the entries
- *	 for one object in both heap and b-trees, the information found in
- *	 them can be different (e.g. one can have insert MVCCID cleaned while
- *	 the other doesn't).
- *	 Moreover, if the object OID's are reusable, there can be duplicate
- *	 OID's in b-tree (one is deleted and must be vacuumed and one is
- *	 newer and can be recently inserted or even recently deleted).
- *	 Based on purpose of the search, we try to match the insert MVCCID or
- *	 delete MVCCID or just check that object doesn't have a valid delete
- *	 MVCCID.
+ * NOTE: This function can handle mismatches between information stored in heap and b-tree. Because vacuum system
+ *	 doesn't clean the entries for one object in both heap and b-trees, the information found in them can be
+ *	 different (e.g. one can have insert MVCCID cleaned while the other doesn't).
+ *	 Moreover, if the object OID's are reusable, there can be duplicate OID's in b-tree (one is deleted and must be
+ *	 vacuumed and one is newer and can be recently inserted or even recently deleted).
+ *	 Based on purpose of the search, we try to match the insert MVCCID or delete MVCCID or just check that object
+ *	 doesn't have a valid delete MVCCID.
  */
 static int
 btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * mvcc_info, BTREE_OP_PURPOSE purpose,
-				     MVCCID * match_mvccid, bool * is_match)
+				     BTREE_MVCC_INFO * match_mvccinfo, bool * is_match)
 {
   /* Assert expected arguments. */
   assert (mvcc_info != NULL);
@@ -12037,8 +12036,8 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
     {
     case BTREE_OP_DELETE_VACUUM_INSID:
       /* Match insert MVCCID to vacuum. */
-      assert (match_mvccid != NULL && MVCCID_IS_NOT_ALL_VISIBLE (*match_mvccid));
-      if (BTREE_MVCC_INFO_HAS_INSID (mvcc_info) && mvcc_info->insert_mvccid == *match_mvccid)
+      assert (match_mvccinfo != NULL && BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (match_mvccinfo));
+      if (BTREE_MVCC_INFO_HAS_INSID (mvcc_info) && mvcc_info->insert_mvccid == match_mvccinfo->insert_mvccid)
 	{
 	  /* This is the insert MVCCID to be vacuumed. */
 	  *is_match = true;
@@ -12052,8 +12051,8 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
     case BTREE_OP_DELETE_VACUUM_OBJECT:
       /* Match delete MVCCID to not remove the wrong object (reused). */
-      assert (match_mvccid != NULL && MVCCID_IS_NOT_ALL_VISIBLE (*match_mvccid));
-      if (BTREE_MVCC_INFO_HAS_DELID (mvcc_info) && mvcc_info->delete_mvccid == *match_mvccid)
+      assert (match_mvccinfo != NULL && BTREE_MVCC_INFO_IS_DELID_VALID (match_mvccinfo));
+      if (BTREE_MVCC_INFO_HAS_DELID (mvcc_info) && mvcc_info->delete_mvccid == match_mvccinfo->delete_mvccid)
 	{
 	  /* This is the object to be vacuumed. */
 	  *is_match = true;
@@ -12069,12 +12068,22 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
     case BTREE_OP_DELETE_UNDO_INSERT_DELID:
       /* We want to rollback an MVCC delete. Just removing the delete MVCCID is enough. If delete MVCCID does not
        * match, it means it must be an older object, before being reused, which was not vacuumed yet. */
-      assert (match_mvccid != NULL && MVCCID_IS_NOT_ALL_VISIBLE (*match_mvccid));
+      assert (match_mvccinfo != NULL && BTREE_MVCC_INFO_IS_DELID_VALID (match_mvccinfo));
       if (BTREE_MVCC_INFO_HAS_DELID (mvcc_info))
 	{
-	  if (mvcc_info->delete_mvccid == *match_mvccid)
+	  if (mvcc_info->delete_mvccid == match_mvccinfo->delete_mvccid)
 	    {
-	      *is_match = true;
+	      /* Maybe we have to match insert MVCCID too. */
+	      if (BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (match_mvccinfo)
+		  && BTREE_MVCC_INFO_INSID (mvcc_info) != match_mvccinfo->insert_mvccid)
+		{
+		  /* Not a match */
+		}
+	      else
+		{
+		  /* It's a match. */
+		  *is_match = true;
+		}
 	    }
 	  else
 	    {
@@ -12097,10 +12106,10 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
 	  /* Not a match. */
 	  return NO_ERROR;
 	}
-      if (match_mvccid != NULL && MVCCID_IS_NOT_ALL_VISIBLE (*match_mvccid))
+      if (match_mvccinfo != NULL && BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (match_mvccinfo))
 	{
 	  /* We must match insert MVCCID. */
-	  if (BTREE_MVCC_INFO_INSID (mvcc_info) == *match_mvccid)
+	  if (BTREE_MVCC_INFO_INSID (mvcc_info) == match_mvccinfo->insert_mvccid)
 	    {
 	      /* This is a match. */
 	      *is_match = true;
@@ -12151,8 +12160,7 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
 }
 
 /*
- * btree_find_oid_from_leaf () - Find OID in leaf record and output its
- *				 offset and MVCC info.
+ * btree_find_oid_from_leaf () - Find OID in leaf record and output its offset and MVCC info.
  *
  * return		  : Error code.
  * thread_p (in)	  : Thread entry.
@@ -12160,15 +12168,14 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
  * leaf_record (in)	  : Leaf record.
  * after_key_offset (in)  : Offset in record where packed key is ended.
  * oid (in)		  : OID of object to find.
- * match_mvccid (in)	  : Non-null value to be matched by either insert or
- *			    delete MVCCID.
+ * match_mvccinfo (in)	  : Non-null value to be matched or null if it doesn't matter.
  * purpose (in)		  : Purpose/context for the call.
  * offset_to_object (out) : Output offset to found object or NOT_FOUND.
  * mvcc_info (out)	  : Output object MVCC info when found.
  */
 static int
 btree_find_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * leaf_record, int after_key_offset,
-			  OID * oid, MVCCID * match_mvccid, BTREE_OP_PURPOSE purpose, int *offset_to_object,
+			  OID * oid, BTREE_MVCC_INFO * match_mvccinfo, BTREE_OP_PURPOSE purpose, int *offset_to_object,
 			  BTREE_MVCC_INFO * mvcc_info)
 {
   OR_BUF buf;			/* Buffer to read record. */
@@ -12213,7 +12220,7 @@ btree_find_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * lea
 	{
 	  /* OID matches. */
 	  /* Is MVCC info according to expectations? */
-	  error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccid, &is_match);
+	  error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccinfo, &is_match);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -12253,15 +12260,13 @@ error:
  * overflow_page (in)	  : Overflow page.
  * oid (in)		  : OID to find.
  * purpose (in)		  : Purpose of call.
- * match_mvccid (in)	  : If not NULL, this MVCCID may need to be matched
- *			    by either insert MVCCID or delete MVCCID.
- * offset_to_object (out) : If object is found, it saves the offset to object.
- *			    Otherwise, NOT_FOUND is output.
+ * match_mvccinfo (in)	  : Non-null value to be matched or null if it doesn't matter.
+ * offset_to_object (out) : If object is found, it saves the offset to object. Otherwise, NOT_FOUND is output.
  * mvcc_info (out)	  : Output MVCC info if object is found.
  */
 static int
 btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR overflow_page, OID * oid,
-			  BTREE_OP_PURPOSE purpose, MVCCID * match_mvccid, int *offset_to_object,
+			  BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo, int *offset_to_object,
 			  BTREE_MVCC_INFO * mvcc_info)
 {
   OID inst_oid;			/* OID read from record. */
@@ -12313,7 +12318,7 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 	  ptr += OR_OID_SIZE;
 	}
       (void) btree_unpack_mvccinfo (ptr, mvcc_info, BTREE_OID_HAS_MVCC_INSID_AND_DELID);
-      error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccid, &is_match);
+      error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccinfo, &is_match);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -12354,7 +12359,7 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 	  ptr += OR_OID_SIZE;
 	}
       (void) btree_unpack_mvccinfo (ptr, mvcc_info, BTREE_OID_HAS_MVCC_INSID_AND_DELID);
-      error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccid, &is_match);
+      error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccinfo, &is_match);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -12396,7 +12401,7 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 	      ptr += OR_OID_SIZE;
 	    }
 	  (void) btree_unpack_mvccinfo (ptr, mvcc_info, BTREE_OID_HAS_MVCC_INSID_AND_DELID);
-	  error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccid, &is_match);
+	  error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccinfo, &is_match);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -18630,12 +18635,12 @@ btree_rv_keyval_undo_insert_unique (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 }
 
 /*
- * btree_rv_keyval_undo_insert_mvcc_delid () -
- *   return: int
- *   recv(in): Recovery structure
+ * btree_rv_keyval_undo_insert_mvcc_delid () - Recovery function for undo MVCC delete.
+ * return   : Error code.
+ * recv (in): Recovery data.
  *
- * Note: Undo the insertion of a <key, val> pair to the B+tree,
- * by deleting the <key, val> pair from the tree.
+ * Note: Undo the insertion of a delete MVCCID by looking up <key, oid, delete_mvccid> pair in B+tree. Sometimes we
+ *	 may need to also match the insert MVCCID (if the object was also inserted by this transaction).
  */
 int
 btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p, LOG_RCV * recv)
@@ -18647,9 +18652,9 @@ btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   OID oid;
   char *datap;
   int datasize;
-  BTREE_MVCC_INFO mvcc_info;
+  BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
   int err = NO_ERROR;
-  MVCCID delete_mvccid;
+  BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
 
   /* btid needs a place to unpack the sys_btid into.  We'll use stack space. */
   btid.sys_btid = &sys_btid;
@@ -18664,15 +18669,24 @@ btree_rv_keyval_undo_insert_mvcc_delid (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   if (recv->mvcc_id == MVCCID_NULL)
     {
       /* Not a MVCC log record. MVCCID should be saved in log data. */
+      /* TODO: Is this acceptable? I don't think this code is ever touched. */
       assert (BTREE_MVCC_INFO_IS_DELID_VALID (&mvcc_info));
-      delete_mvccid = mvcc_info.delete_mvccid;
+      BTREE_MVCC_INFO_SET_DELID (&match_mvccinfo, mvcc_info.delete_mvccid);
     }
   else
     {
-      delete_mvccid = recv->mvcc_id;
+      BTREE_MVCC_INFO_SET_DELID (&match_mvccinfo, recv->mvcc_id);
     }
-  assert (MVCCID_IS_NOT_ALL_VISIBLE (delete_mvccid));
-  err = btree_undo_mvcc_delete (thread_p, btid.sys_btid, &key_buf, &oid, &cls_oid, delete_mvccid, &recv->reference_lsa);
+  assert (MVCCID_IS_VALID (BTREE_MVCC_INFO_DELID (&match_mvccinfo)));
+
+  if (BTREE_RV_IS_UNDO_MVCCDEL_MYOBJ (recv->offset))
+    {
+      /* We also need to match insert MVCCID, which is the same as delete_mvccid. */
+      BTREE_MVCC_INFO_SET_INSID (&match_mvccinfo, match_mvccinfo.delete_mvccid);
+    }
+
+  err =
+    btree_undo_mvcc_delete (thread_p, btid.sys_btid, &key_buf, &oid, &cls_oid, &match_mvccinfo, &recv->reference_lsa);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -21916,6 +21930,56 @@ btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAG
       BTREE_RV_SET_OVERFLOW_NODE (&addr);
     }
   LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
+
+  /* We need to check if insert MVCCID is the same as delete MVCCID for recovery purposes. Take next scenario:
+   *
+   * context:
+   * auto-commit off
+   * table t (a int), index on t(a)
+   * table t has row with a value 1.
+   *
+   * scenario:
+   * 1.   update t set a = 2 where a = 1;
+   * 2.   update t set a = 1 where a = 2;
+   * 3=1. update t set a = 2 where a = 1;
+   * 4.   rollback;
+   *
+   * Let's follow what happens in key 1:
+   * Before scenario: OID1-MVCCID1-MVCCID_NULL
+   * After update#1:  OID1-MVCCID1-MVCCID2
+   * After update#2:  OID1-MVCCID1-MVCCID2, OID1-MVCCID2-MVCCID_NULL.
+   * After update#3:  OID1-MVCCID1-MVCCID2, OID1-MVCCID2-MVCCID2.
+   *
+   * At rollback, we should execute undo MVCC delete key1,OID1,delid=MVCCID2, undo insert key1,OID1,insid=MVCCID2,
+   * and again undo MVCC delete key1,OID1,delid=MVCCID2.
+   * To undo MVCC delete, we usually match by key, OID and delete MVCCID. But in above case this is ambiguous, because
+   * we have two entries that can match the criteria. And this happens:
+   * Undo#1:          OID1-MVCCID1-MVCCID_NULL, OID1-MVCCID2-MVCCID2.
+   * This is obviously an invalid state, since the key never looked this way before rollback. Undo insert would not
+   * find a valid object and would fail.
+   *
+   * Somehow, we need to remove the ambiguity. Since this is a rather unlikely case, we prefer to keep the key, OID
+   * and delete MVCCID matching as a general criteria and do something special just for this case.
+   * The first MVCC delete undo should match an object that has same insert MVCCID. So, we will hack logging and
+   * rollback/undo recovery to do the right matching.
+   *
+   * Here we need to check insert MVCCID == delete MVCCID. If true, we will mark LOG_DATA_ADDR offset with a special
+   * flag.
+   *
+   * NOTE: If update#1 and update#2 are repeated several times, we end up with several OID1-MVCCID2-MVCCID2 entries.
+   *       At rollback, it does not matter which entry we pick to undo first, as long as we don't undo the original
+   *       entry.
+   */
+  assert (BTREE_MVCC_INFO_HAS_DELID (BTREE_INSERT_MVCC_INFO (insert_helper)));
+  if (BTREE_MVCC_INFO_INSID (BTREE_INSERT_MVCC_INFO (insert_helper))
+      == BTREE_INSERT_MVCC_INFO (insert_helper)->delete_mvccid)
+    {
+      /* Mark addr that we need to undo MVCC delete of my object - insert MVCCID must also match. */
+      BTREE_RV_SET_UNDO_MVCCDEL_MYOBJ (&addr);
+
+      /* Should only be possible for BTREE_OP_INSERT_MVCC_DELID. */
+      assert (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID);
+    }
 
   btree_record_add_delid (thread_p, btid, rec, node_type, oid_offset,
 			  BTREE_INSERT_MVCC_INFO (insert_helper)->delete_mvccid, NULL, &rv_redo_data_ptr);
@@ -29353,11 +29417,17 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
       goto exit;
     }
   /* Object was found. */
+  assert (!BTREE_MVCC_INFO_IS_DELID_VALID (&mvcc_info));
+  /* Copy insert ID into object info. */
+  if (BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (&mvcc_info))
+    {
+      BTREE_MVCC_INFO_SET_INSID (BTREE_INSERT_MVCC_INFO (insert_helper), mvcc_info.insert_mvccid);
+    }
 
   /* Delete its delete MVCCID. */
   error_code =
     btree_key_insert_delete_mvccid (thread_p, btid_int, key, *leaf_page, search_key, insert_helper, &record, found_page,
-				    &mvcc_info, offset_to_found_object);
+				    offset_to_found_object);
   if (found_page != NULL && found_page != *leaf_page)
     {
       pgbuf_unfix_and_init (thread_p, found_page);
@@ -29396,14 +29466,12 @@ exit:
  * insert_helper (in)	       : B-tree insert helper.
  * leaf_record (in)	       : Leaf record.
  * object_page (in)	       : Page of object that is being deleted.
- * obj_prev_mvcc_info (in)     : Existing object MVCC information.
  * offset_to_found_object (in) : Offset to object that is being deleted.
  */
 static int
 btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR leaf_page,
 				BTREE_SEARCH_KEY_HELPER * search_key, BTREE_INSERT_HELPER * insert_helper,
-				RECDES * leaf_record, PAGE_PTR object_page, BTREE_MVCC_INFO * obj_prev_mvcc_info,
-				int offset_to_found_object)
+				RECDES * leaf_record, PAGE_PTR object_page, int offset_to_found_object)
 {
   int error_code = NO_ERROR;
   RECDES overflow_record;
@@ -29420,7 +29488,6 @@ btree_key_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	      || insert_helper->op_type == MULTI_ROW_UPDATE);
 
       /* Object was found in leaf page and can be deleted. */
-      assert (!BTREE_MVCC_INFO_IS_DELID_VALID (obj_prev_mvcc_info));
       error_code =
 	btree_insert_mvcc_delid_into_page (thread_p, btid_int, leaf_page, BTREE_LEAF_NODE, key, insert_helper,
 					   search_key->slotid, leaf_record, offset_to_found_object);
@@ -30143,8 +30210,7 @@ error:
 }
 
 /*
- * btree_physical_delete () - Physically delete an object (unlike MVCC delete,
- *			      object and all its info are removed).
+ * btree_physical_delete () - Physically delete an object (unlike MVCC delete, object and all its info are removed).
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
@@ -30198,7 +30264,7 @@ btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
   else
     {
       return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, key, NULL, unique, op_type,
-				    unique_stat_info, MVCCID_NULL, NULL, NULL, BTREE_OP_DELETE_OBJECT_PHYSICAL);
+				    unique_stat_info, NULL, NULL, NULL, BTREE_OP_DELETE_OBJECT_PHYSICAL);
     }
 }
 
@@ -30218,6 +30284,7 @@ btree_vacuum_insert_mvccid (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffe
 			    MVCCID insert_mvccid)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
+  BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -30228,13 +30295,13 @@ btree_vacuum_insert_mvccid (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffe
 		     btid->vfid.fileid);
     }
 
+  BTREE_MVCC_INFO_SET_INSID (&match_mvccinfo, insert_mvccid);
   return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL, SINGLE_ROW_MODIFY,
-				NULL, insert_mvccid, NULL, NULL, BTREE_OP_DELETE_VACUUM_INSID);
+				NULL, &match_mvccinfo, NULL, NULL, BTREE_OP_DELETE_VACUUM_INSID);
 }
 
 /*
- * btree_vacuum_object () - Vacuum (remove) deleted object and all its info
- *			    from b-tree key.
+ * btree_vacuum_object () - Vacuum (remove) deleted object and all its info from b-tree key.
  *
  * return	      : Error code.
  * thread_p (in)      : Thread entry.
@@ -30249,6 +30316,7 @@ btree_vacuum_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key
 		     MVCCID delete_mvccid)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
+  BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -30259,26 +30327,26 @@ btree_vacuum_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key
 		     btid->vfid.fileid);
     }
 
+  BTREE_MVCC_INFO_SET_DELID (&match_mvccinfo, delete_mvccid);
   return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL, SINGLE_ROW_MODIFY,
-				NULL, delete_mvccid, NULL, NULL, BTREE_OP_DELETE_VACUUM_OBJECT);
+				NULL, &match_mvccinfo, NULL, NULL, BTREE_OP_DELETE_VACUUM_OBJECT);
 }
 
 /*
- * btree_undo_mvcc_delete () - Undo MVCC delete (undo the insert of delete
- *			       MVCCID).
+ * btree_undo_mvcc_delete () - Undo MVCC delete (undo the insert of delete MVCCID).
  *
- * return	      : Error code.
- * thread_p (in)      : Thread entry.
- * btid (in)	      : B-tree ID.
- * buffered_key (in)  : Key value.
- * oid (in)	      : Object OID.
- * class_oid (in)     : Object class OID.
- * delete_mvccid (in) : The delete MVCCID of object.
- * undo_nxlsa (in)	 : UNDO next lsa for logical compensate.
+ * return	       : Error code.
+ * thread_p (in)       : Thread entry.
+ * btid (in)	       : B-tree ID.
+ * buffered_key (in)   : Key value.
+ * oid (in)	       : Object OID.
+ * class_oid (in)      : Object class OID.
+ * match_mvccinfo (in) : The MVCC information to be matched.
+ * undo_nxlsa (in)     : UNDO next lsa for logical compensate.
  */
 static int
 btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid, OID * class_oid,
-			MVCCID delete_mvccid, LOG_LSA * undo_nxlsa)
+			BTREE_MVCC_INFO * match_mvccinfo, LOG_LSA * undo_nxlsa)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
 
@@ -30287,17 +30355,17 @@ btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
       _er_log_debug (ARG_FILE_LINE,
 		     "BTREE_DELETE: Start undo MVCC delete on object %d|%d|%d, class_oid %d|%d|%d and "
 		     "delete MVCCID %lld in index (%d, %d|%d).\n", oid->volid, oid->pageid, oid->slotid,
-		     class_oid->volid, class_oid->pageid, class_oid->slotid, (long long int) delete_mvccid,
-		     btid->root_pageid, btid->vfid.volid, btid->vfid.fileid);
+		     class_oid->volid, class_oid->pageid, class_oid->slotid,
+		     (long long int) match_mvccinfo->delete_mvccid, btid->root_pageid, btid->vfid.volid,
+		     btid->vfid.fileid);
     }
 
   return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL, SINGLE_ROW_MODIFY,
-				NULL, delete_mvccid, undo_nxlsa, NULL, BTREE_OP_DELETE_UNDO_INSERT_DELID);
+				NULL, match_mvccinfo, undo_nxlsa, NULL, BTREE_OP_DELETE_UNDO_INSERT_DELID);
 }
 
 /*
- * btree_undo_insert_object () - Delete object from index as part of an undo
- *				 of insert object operation.
+ * btree_undo_insert_object () - Delete object from index as part of an undo of insert object operation.
  *
  * return	      : Error code.
  * thread_p (in)      : Thread entry.
@@ -30313,6 +30381,7 @@ btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffere
 			  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
+  BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -30323,18 +30392,18 @@ btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffere
 		     btid->vfid.volid, btid->vfid.fileid);
     }
 
+  if (insert_mvccid != MVCCID_ALL_VISIBLE)
+    {
+      BTREE_MVCC_INFO_SET_INSID (&match_mvccinfo, insert_mvccid);
+    }
   return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL, SINGLE_ROW_MODIFY,
-				NULL, insert_mvccid, undo_nxlsa, NULL, BTREE_OP_DELETE_UNDO_INSERT);
+				NULL, &match_mvccinfo, undo_nxlsa, NULL, BTREE_OP_DELETE_UNDO_INSERT);
 }
 
 /*
- * btree_undo_insert_object_unique_multiupd () - Delete object from unique
- *						 index as part of an undo of
- *						 insert object operation - the
- *						 insert moved older visible
- *						 object during multi-update
- *						 and now it must be returned
- *						 to first position.
+ * btree_undo_insert_object_unique_multiupd () - Delete object from unique index as part of an undo of insert object
+ *						 operation - the insert moved older visible object during multi-update
+ *						 and now it must be returned to first position.
  *
  * return		: Error code.
  * thread_p (in)	: Thread entry.
@@ -30351,6 +30420,7 @@ btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, 
 					  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
+  BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -30364,8 +30434,12 @@ btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, 
 		     btid->vfid.volid, btid->vfid.fileid);
     }
 
+  if (insert_mvccid != MVCCID_ALL_VISIBLE)
+    {
+      BTREE_MVCC_INFO_SET_INSID (&match_mvccinfo, insert_mvccid);
+    }
   return btree_delete_internal (thread_p, btid, &inserted_object->oid, &inserted_object->class_oid, &mvcc_info, NULL,
-				buffered_key, NULL, SINGLE_ROW_MODIFY, NULL, insert_mvccid, undo_nxlsa, second_object,
+				buffered_key, NULL, SINGLE_ROW_MODIFY, NULL, &match_mvccinfo, undo_nxlsa, second_object,
 				BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
 }
 
@@ -30384,6 +30458,10 @@ static int
 btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, BTREE_OBJECT_INFO * btree_obj,
 			MVCCID tran_mvccid, LOG_LSA * reference_lsa)
 {
+  BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
+
+  assert (MVCCID_IS_VALID (tran_mvccid));
+
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
       _er_log_debug (ARG_FILE_LINE,
@@ -30395,14 +30473,14 @@ btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
 		     btid->vfid.fileid);
     }
 
+  BTREE_MVCC_INFO_SET_DELID (&match_mvccinfo, tran_mvccid);
   return btree_delete_internal (thread_p, btid, &btree_obj->oid, &btree_obj->class_oid, &btree_obj->mvcc_info, NULL,
-				buffered_key, NULL, SINGLE_ROW_MODIFY, NULL, tran_mvccid, reference_lsa, NULL,
+				buffered_key, NULL, SINGLE_ROW_MODIFY, NULL, &match_mvccinfo, reference_lsa, NULL,
 				BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
 }
 
 /*
- * btree_delete_internal () - Index internal function to delete data from a
- *			      b-tree key.
+ * btree_delete_internal () - Index internal function to delete data from a b-tree key.
  *
  * return		   : Error code.
  * thread_p (in)	   : Thread entry.
@@ -30415,17 +30493,15 @@ btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
  * unique (out)		   : Output if index is unique.
  * op_type (in)		   : Operation type.
  * unique_stat_info (in)   : Unique statistics collector.
- * match_mvccid (in)	   : MVCCID to be matched by either insert or delete
- *			     MVCCID.
+ * match_mvccinfo (in)	   : B-tree MVCC info to be matched when searching object.
  * ref_lsa (in)		   : UNDO/Postpone reference LSA.
- * second_object_info (in) : B-tree object info for new version after an MVCC
- *			     update same key.
+ * second_object_info (in) : B-tree object info for new version after an MVCC update same key.
  * purpose (in)		   : Purpose/context for function call.
  */
 static int
 btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
 		       DB_VALUE * key, OR_BUF * buffered_key, int *unique, int op_type,
-		       BTREE_UNIQUE_STATS * unique_stat_info, MVCCID match_mvccid, LOG_LSA * ref_lsa,
+		       BTREE_UNIQUE_STATS * unique_stat_info, BTREE_MVCC_INFO * match_mvccinfo, LOG_LSA * ref_lsa,
 		       BTREE_OBJECT_INFO * second_object_info, BTREE_OP_PURPOSE purpose)
 {
   /* Structure used by internal functions. */
@@ -30493,7 +30569,10 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
   delete_helper.unique_stats_info = unique_stat_info;
 
   /* Set MVCCID to be matched. */
-  delete_helper.match_mvccid = match_mvccid;
+  if (match_mvccinfo != NULL)
+    {
+      delete_helper.match_mvccinfo = *match_mvccinfo;
+    }
 
   /* Is key buffered? */
   if (buffered_key != NULL)
@@ -31511,8 +31590,7 @@ error:
 }
 
 /*
- * btree_key_delete_remove_object () - Remove one object and all its info from
- *				       b-tree key.
+ * btree_key_delete_remove_object () - Remove one object and all its info from b-tree key.
  *
  * return	   : Error code.
  * thread_p (in)   : Thread entry.
@@ -31585,8 +31663,8 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
       /* Find OID and output its location/MVCC info. */
       error_code =
 	btree_find_oid_and_its_page (thread_p, btid_int, BTREE_DELETE_OID (delete_helper), *leaf_page,
-				     delete_helper->purpose, &delete_helper->match_mvccid, &leaf_record, &leaf_rec_info,
-				     offset_after_key, &found_page, &prev_found_page, &offset_to_object,
+				     delete_helper->purpose, &delete_helper->match_mvccinfo, &leaf_record,
+				     &leaf_rec_info, offset_after_key, &found_page, &prev_found_page, &offset_to_object,
 				     BTREE_DELETE_MVCC_INFO (delete_helper));
       if (error_code != NO_ERROR)
 	{
@@ -31778,13 +31856,9 @@ exit:
 }
 
 /*
- * btree_key_remove_object_and_keep_visible_first () - Remove one object and
- *						       all its info from
- *						       b-tree key. Then find
- *						       other visible version
- *						       and move it first in
- *						       leaf record. Special
- *						       case of unique index.
+ * btree_key_remove_object_and_keep_visible_first () - Remove one object and all its info from b-tree key. Then find
+ *						       other visible version and move it first in leaf record. 
+ *                                                     Special case of unique index.
  *
  * return	   : Error code.
  * thread_p (in)   : Thread entry.
@@ -31862,8 +31936,8 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       /* Find OID and output its location/MVCC info. */
       error_code =
 	btree_find_oid_and_its_page (thread_p, btid_int, BTREE_DELETE_OID (delete_helper), *leaf_page,
-				     delete_helper->purpose, &delete_helper->match_mvccid, &leaf_record, &leaf_rec_info,
-				     offset_after_key, &found_page, &prev_found_page, &offset_to_object,
+				     delete_helper->purpose, &delete_helper->match_mvccinfo, &leaf_record,
+				     &leaf_rec_info, offset_after_key, &found_page, &prev_found_page, &offset_to_object,
 				     BTREE_DELETE_MVCC_INFO (delete_helper));
       if (error_code != NO_ERROR)
 	{
@@ -31938,9 +32012,13 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   if (BTREE_MVCC_INFO_HAS_DELID (&delete_helper->second_object_info.mvcc_info))
     {
       /* This must be an object deleted by current transaction. */
-      assert (BTREE_MVCC_INFO_DELID (&delete_helper->second_object_info.mvcc_info) == delete_helper->match_mvccid);
+      assert (BTREE_MVCC_INFO_DELID (&delete_helper->second_object_info.mvcc_info)
+	      == delete_helper->match_mvccinfo.insert_mvccid);
       /* Search with matching delete MVCCID. */
       second_object_search_purpose = BTREE_OP_DELETE_UNDO_INSERT_DELID;
+
+      /* We should not have insert MVCCID set. */
+      assert (!BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (&delete_helper->second_object_info.mvcc_info));
     }
   else
     {
@@ -31949,8 +32027,8 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
     }
   error_code =
     btree_find_oid_and_its_page (thread_p, btid_int, &delete_helper->second_object_info.oid, *leaf_page,
-				 second_object_search_purpose, &delete_helper->match_mvccid, &leaf_record,
-				 &leaf_rec_info, offset_after_key, &found_page, &prev_found_page,
+				 second_object_search_purpose, &delete_helper->second_object_info.mvcc_info,
+				 &leaf_record, &leaf_rec_info, offset_after_key, &found_page, &prev_found_page,
 				 &offset_to_second_object, &delete_helper->second_object_info.mvcc_info);
   if (error_code != NO_ERROR)
     {
@@ -31996,11 +32074,12 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
 	  goto exit;
 	}
 
+      rv_undo_data_ptr = rv_undo_data;
+      rv_redo_data_ptr = rv_redo_data;
+
 #if !defined (NDEBUG)
       /* Leaf may have been logged if object was removed from overflow page. Reset logging structures for new logging.
        */
-      rv_undo_data_ptr = rv_undo_data;
-      rv_redo_data_ptr = rv_redo_data;
       delete_helper->leaf_addr.offset = search_key->slotid;
       BTREE_RV_UNDOREDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, rv_undo_data_ptr, btid_int,
 					BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
@@ -32910,7 +32989,7 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
       /* Search object with insert MVCCID. */
       error_code =
 	btree_find_oid_and_its_page (thread_p, btid_int, BTREE_DELETE_OID (delete_helper), *leaf_page,
-				     delete_helper->purpose, &delete_helper->match_mvccid, &record, &leaf_rec_info,
+				     delete_helper->purpose, &delete_helper->match_mvccinfo, &record, &leaf_rec_info,
 				     offset_after_key, &found_page, NULL, &offset_to_object,
 				     BTREE_DELETE_MVCC_INFO (delete_helper));
       if (error_code != NO_ERROR)
@@ -33110,8 +33189,8 @@ btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
       /* Find object. */
       error_code =
 	btree_find_oid_and_its_page (thread_p, btid_int, BTREE_DELETE_OID (delete_helper), *leaf_page,
-				     delete_helper->purpose, &delete_helper->match_mvccid, &leaf_record, &leaf_rec_info,
-				     offset_after_key, &found_page, NULL, &offset_to_object,
+				     delete_helper->purpose, &delete_helper->match_mvccinfo, &leaf_record,
+				     &leaf_rec_info, offset_after_key, &found_page, NULL, &offset_to_object,
 				     BTREE_DELETE_MVCC_INFO (delete_helper));
       if (error_code != NO_ERROR)
 	{
@@ -33198,10 +33277,8 @@ exit:
 }
 
 /*
- * btree_key_remove_delete_mvccid_unique () - Remove delete MVCCID from an
- *					      object in unique index as
- *					      part of undoing a MVCC delete
- *					      operation.
+ * btree_key_remove_delete_mvccid_unique () - Remove delete MVCCID from an object in unique index as part of undoing a
+ *					      MVCC delete operation.
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
@@ -33326,8 +33403,9 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_
 		     "MVCCID %llu from object %d|%d|%d, class_oid %d|%d|%d, "
 		     "mvcc_info=%llu|%llu, leaf_page=%d|%d, slotid=%d, key=%s, prev_lsa=%lld|%d crt_lsa=%lld|%d, "
 		     "in index (%d, %d|%d). Record length = %d.\n",
-		     (unsigned long long int) delete_helper->match_mvccid, delete_helper->object_info.oid.volid,
-		     delete_helper->object_info.oid.pageid, delete_helper->object_info.oid.slotid,
+		     (unsigned long long int) delete_helper->match_mvccinfo.delete_mvccid,
+		     delete_helper->object_info.oid.volid, delete_helper->object_info.oid.pageid,
+		     delete_helper->object_info.oid.slotid,
 		     delete_helper->object_info.class_oid.volid, delete_helper->object_info.class_oid.pageid,
 		     delete_helper->object_info.class_oid.slotid,
 		     (unsigned long long int) BTREE_MVCC_INFO_INSID (&delete_helper->object_info.mvcc_info),
@@ -33347,13 +33425,9 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_
 }
 
 /*
- * btree_remove_delete_mvccid_unique_internal () - Internal function that will
- *						   remove delete MVCCID for
- *						   an object in an unique
- *						   index. It will take care to
- *						   also move the object to the
- *						   first position in leaf
- *						   record.
+ * btree_remove_delete_mvccid_unique_internal () - Internal function that will remove delete MVCCID for an object in an
+ *						   unique index. It will take care to also move the object to the
+ *						   first position in leaf record.
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
@@ -33362,15 +33436,11 @@ btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_
  * leaf_page (in)	 : Leaf node (where object key is found).
  * leaf_record (in)	 : Leaf record.
  * node_type (in)	 : Node type where object is found (leaf or overflow).
- * overflow_page (in)    : Page pointer to overflow node. Only used if object
- *			   is in an overflow node.
- * overflow_record (in)  : Overflow record. Only used if object is in an
- *			   overflow node.
+ * overflow_page (in)    : Page pointer to overflow node. Only used if object is in an overflow node.
+ * overflow_record (in)  : Overflow record. Only used if object is in an overflow node.
  * offset_to_object (in) : Offset to object in its record.
- * rv_undo_data (out)	 : If not NULL, outputs undo data recovery for leaf
- *			   node changes.
- * rv_redo_data (out)	 : If not NULL, outputs redo data recovery for leaf
- *			   node changes.
+ * rv_undo_data (out)	 : If not NULL, outputs undo data recovery for leaf node changes.
+ * rv_redo_data (out)	 : If not NULL, outputs redo data recovery for leaf node changes.
  */
 static int
 btree_remove_delete_mvccid_unique_internal (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_DELETE_HELPER * helper,
@@ -33503,7 +33573,7 @@ btree_remove_delete_mvccid_unique_internal (THREAD_ENTRY * thread_p, BTID_INT * 
 		     "BTREE_DELETE: Successfully removed delete MVCCID %llu "
 		     "and moved object %d|%d|%d, class_oid %d|%d|%d, mvcc_info=%llu|%llu leaf_page=%d|%d, key=%s, "
 		     "lsa=%lld|%d, in index (%d, %d|%d). Log not added yet (postponed).\n",
-		     (unsigned long long int) helper->match_mvccid, helper->object_info.oid.volid,
+		     (unsigned long long int) helper->match_mvccinfo.delete_mvccid, helper->object_info.oid.volid,
 		     helper->object_info.oid.pageid, helper->object_info.oid.slotid,
 		     helper->object_info.class_oid.volid, helper->object_info.class_oid.pageid,
 		     helper->object_info.class_oid.slotid,
@@ -33520,10 +33590,8 @@ btree_remove_delete_mvccid_unique_internal (THREAD_ENTRY * thread_p, BTID_INT * 
 }
 
 /*
- * btree_key_remove_delete_mvccid_non_unique () - Remove delete MVCCID from an
- *						  index object as part of
- *						  undoing a MVCC delete
- *						  operation.
+ * btree_key_remove_delete_mvccid_non_unique () - Remove delete MVCCID from an index object as part of undoing a MVCC
+ *						  delete operation.
  *
  * return		 : Error code.
  * thread_p (in)	 : Thread entry.
@@ -33535,9 +33603,8 @@ btree_remove_delete_mvccid_unique_internal (THREAD_ENTRY * thread_p, BTID_INT * 
  * node_type (in)	 : BTREE_LEAF_NODE or BTREE_OVERFLOW_NODE.
  * offset_to_object (in) : Offset to object in its record.
  *
- * NOTE: Even though this function is targeted for non-unique indexes, it can
- *	 be used in one case for unique indexes: when the object being undone
- *	 is already first in leaf record and does not require relocation.
+ * NOTE: Even though this function is targeted for non-unique indexes, it can be used in one case for unique indexes:
+ *	 when the object being undone is already first in leaf record and does not require relocation.
  */
 static int
 btree_key_remove_delete_mvccid_non_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
@@ -33603,8 +33670,9 @@ btree_key_remove_delete_mvccid_non_unique (THREAD_ENTRY * thread_p, BTID_INT * b
 		     "BTREE_DELETE: Successfully executed remove delete MVCCID %llu for object %d|%d|%d, "
 		     "class_oid %d|%d|%d, mvcc_info=%llu|%llu and key=%s, slotid=%d, "
 		     "%s page=%d|%d, lsa=%lld|%d, in index (%d, %d|%d). Record length = %d.\n",
-		     (unsigned long long int) delete_helper->match_mvccid, delete_helper->object_info.oid.volid,
-		     delete_helper->object_info.oid.pageid, delete_helper->object_info.oid.slotid,
+		     (unsigned long long int) delete_helper->match_mvccinfo.delete_mvccid,
+		     delete_helper->object_info.oid.volid, delete_helper->object_info.oid.pageid,
+		     delete_helper->object_info.oid.slotid,
 		     delete_helper->object_info.class_oid.volid, delete_helper->object_info.class_oid.pageid,
 		     delete_helper->object_info.class_oid.slotid,
 		     (unsigned long long int) delete_helper->object_info.mvcc_info.insert_mvccid,
@@ -33620,10 +33688,8 @@ btree_key_remove_delete_mvccid_non_unique (THREAD_ENTRY * thread_p, BTID_INT * b
 }
 
 /*
- * btree_overflow_record_replace_object () - Replace an object from an
- *					     overflow record with another
- *					     object. Part of remove MVCCID
- *					     algorithm for unique indexes.
+ * btree_overflow_record_replace_object () - Replace an object from an overflow record with another object. Part of
+ *					     remove MVCCID algorithm for unique indexes.
  *
  * return			  : Error code.
  * thread_p (in)		  : Thread entry.
@@ -33707,8 +33773,7 @@ btree_overflow_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_i
 }
 
 /*
- * btree_record_remove_insid () - Remove object insert MVCCID from b-tree
- *				  record.
+ * btree_record_remove_insid () - Remove object insert MVCCID from b-tree record.
  *
  * return		 : Void.
  * thread_p (in)	 : Thread entry.
@@ -33716,10 +33781,8 @@ btree_overflow_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_i
  * record (in/out)	 : B-tree record.
  * node_type (in)	 : Leaf or overflow node type.
  * offset_to_object (in) : Offset to object in record data.
- * rv_undo_data (out)	 : If not NULL, output redo recovery data for the
- *			   change.
- * rv_redo_data (out)	 : If not NULL, output redo recovery data for the
- *			   change.
+ * rv_undo_data (out)	 : If not NULL, output redo recovery data for the change.
+ * rv_redo_data (out)	 : If not NULL, output redo recovery data for the change.
  * displacement (out)	 : Output the displacement of the rest of the record.
  */
 static void
@@ -33822,8 +33885,7 @@ btree_record_remove_insid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
 }
 
 /*
- * btree_record_remove_delid () - Remove object delete MVCCID from b-tree
- *				  record.
+ * btree_record_remove_delid () - Remove object delete MVCCID from b-tree record.
  *
  * return		 : Void.
  * thread_p (in)	 : Thread entry.
@@ -33831,10 +33893,8 @@ btree_record_remove_insid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
  * record (in/out)	 : B-tree record.
  * node_type (in)	 : Leaf or overflow node type.
  * offset_to_object (in) : Offset to object in record data.
- * rv_undo_data (out)	 : If not NULL, output undo recovery data for the
- *			   change.
- * rv_redo_data (out)	 : If not NULL, output redo recovery data for the
- *			   change.
+ * rv_undo_data (out)	 : If not NULL, output undo recovery data for the change.
+ * rv_redo_data (out)	 : If not NULL, output redo recovery data for the change.
  */
 static void
 btree_record_remove_delid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type,
@@ -33950,10 +34010,8 @@ btree_record_remove_delid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
  * node_type (in)	 : Leaf or overflow node type.
  * offset_to_object (in) : Offset to object in record data.
  * delete_mvccid (in)	 : Delete MVCCID to add.
- * rv_undo_data (out)	 : If not NULL, output undo recovery data for the
- *			   change.
- * rv_redo_data (out)	 : If not NULL, output redo recovery data for the
- *			   change.
+ * rv_undo_data (out)	 : If not NULL, output undo recovery data for the change.
+ * rv_redo_data (out)	 : If not NULL, output redo recovery data for the change.
  */
 static void
 btree_record_add_delid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type,
@@ -34014,14 +34072,11 @@ btree_record_add_delid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * r
  * btid_int (in)		     : B-tree info.
  * record (in)			     : B-tree record.
  * node_type (in)		     : Leaf or overflow node type.
- * offset_to_replaced_inout (in/out) : Offset in record to object being
- *				       replaced. It will output offset to
- *				       replacing object.
+ * offset_to_replaced_inout (in/out) : Offset in record to object being replaced. It will output offset to replacing
+ *				       object.
  * replacement (in)		     : B-tree object info for replacement.
- * rv_undo_data (out)		     : Output undo data recovery for the
- *				       change.
- * rv_redo_data (out)		     : Output undo data recovery for the
- *				       change.
+ * rv_undo_data (out)		     : Output undo data recovery for the change.
+ * rv_redo_data (out)		     : Output undo data recovery for the change.
  */
 static void
 btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type,
@@ -34167,8 +34222,7 @@ btree_get_creator_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR root_page)
 }
 
 /*
- * btree_rv_undo_mark_dealloc_page () - Undo marking index page as
- *					deallocated by setting its level back.
+ * btree_rv_undo_mark_dealloc_page () - Undo marking index page as deallocated by setting its level back.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.

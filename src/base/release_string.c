@@ -89,6 +89,9 @@ static const char *major_release_string = makestring (MAJOR_RELEASE_STRING);
 static const char *build_number = makestring (BUILD_NUMBER);
 static const char *package_string = PACKAGE_STRING;
 static const char *build_os = makestring (BUILD_OS);
+#if defined (VERSION_STRING)
+static const char *version_string = VERSION_STRING;
+#endif /* VERSION_STRING */
 static int bit_platform = __WORDSIZE;
 
 static REL_COMPATIBILITY rel_get_compatible_internal (const char *base_rel_str, const char *apply_rel_str,
@@ -111,16 +114,26 @@ rel_copy_version_string (char *buf, size_t len)
   snprintf (buf, len, "%s (%s) (%dbit owfs release build for %s) (%s %s)", rel_name (), rel_build_number (),
 	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
 #else /* CUBRID_OWFS */
+#if defined (VERSION_STRING)
+  snprintf (buf, len, "%s (%s) (%dbit release build for %s) (%s %s)", rel_name (), rel_version_string (),
+	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
+#else /* VERSION_STRING */
   snprintf (buf, len, "%s (%s) (%dbit release build for %s) (%s %s)", rel_name (), rel_build_number (),
 	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
+#endif /* VERSION_STRING */
 #endif /* !CUBRID_OWFS */
 #else /* NDEBUG */
 #if defined (CUBRID_OWFS)
   snprintf (buf, len, "%s (%s) (%dbit owfs debug build for %s) (%s %s)", rel_name (), rel_build_number (),
 	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
 #else /* CUBRID_OWFS */
+#if defined (VERSION_STRING)
+  snprintf (buf, len, "%s (%s) (%dbit debug build for %s) (%s %s)", rel_name (), rel_version_string (),
+	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
+#else /* VERSION_STRING */
   snprintf (buf, len, "%s (%s) (%dbit debug build for %s) (%s %s)", rel_name (), rel_build_number (),
 	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
+#endif /* VERSION_STRING */
 #endif /* !CUBRID_OWFS */
 #endif /* !NDEBUG */
 }
@@ -174,6 +187,19 @@ rel_build_os (void)
 {
   return build_os;
 }
+
+
+#if defined (VERSION_STRING)
+/*
+ * rel_version_string - Full version string of the product
+ *   return: static char string
+ */
+const char *
+rel_version_string (void)
+{
+  return version_string;
+}
+#endif /* VERSION_STRING */
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*

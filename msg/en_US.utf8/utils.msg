@@ -1078,7 +1078,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 gen_tz: Generate source files containing timezone data to be compiled into\n\
         a shared library.\n\
 usage: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] database-name\n\
+       %s gen_tz -g extend [OPTION] [database-name]\n\
 \n\
 valid options:\n\
   -i, --input-folder    path to an input folder containing a version of\n\

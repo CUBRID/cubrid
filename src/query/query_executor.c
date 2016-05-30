@@ -1489,9 +1489,8 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      && xasl->proc.buildlist.agg_hash_context.state != HS_REJECT_ALL)
 	    {
 	      /* aggregate using hash table */
-	      if (qexec_hash_gby_agg_tuple
-		  (thread_p, xasl, xasl_state, &xasl->proc.buildlist, tplrec, &xasl->list_id->tpl_descr, xasl->list_id,
-		   &output_tuple) != NO_ERROR)
+	      if (qexec_hash_gby_agg_tuple (thread_p, xasl, xasl_state, &xasl->proc.buildlist, tplrec,
+					    &xasl->list_id->tpl_descr, xasl->list_id, &output_tuple) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -7892,9 +7891,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 			  xasl->next_scan_on = true;
 
 
-			  while ((xs_scan =
-				  (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, tplrec,
-						    next_scan_fnc + 1)) == S_SUCCESS)
+			  while ((xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, tplrec,
+							      next_scan_fnc + 1)) == S_SUCCESS)
 			    {
 
 			      /* if hierarchical query do special processing */
@@ -10900,9 +10898,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  switch (_setjmp (buf.env))
 		    {
 		    case 0:
-		      error =
-			(*(pr_type->data_readval)) (&buf, insert->vals[k], attr->domain,
-						    attr->current_default_value.val_length, copy, NULL, 0);
+		      error = (*(pr_type->data_readval)) (&buf, insert->vals[k], attr->domain,
+							  attr->current_default_value.val_length, copy, NULL, 0);
 		      if (error != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -10963,8 +10960,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (locator_start_force_scan_cache (thread_p, &scan_cache, &insert->class_hfid, &class_oid, scan_cache_op_type) !=
-	  NO_ERROR)
+      if (locator_start_force_scan_cache (thread_p, &scan_cache, &insert->class_hfid, &class_oid,
+					  scan_cache_op_type) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -10973,9 +10970,9 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       assert (xasl->scan_op_type == S_SELECT);
 
       /* force_select_lock = false */
-      if (qexec_open_scan
-	  (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan, true,
-	   &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+      if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan,
+			   specp->grouped_scan, true, &specp->s_id, xasl_state->query_id, S_SELECT, false,
+			   NULL) != NO_ERROR)
 	{
 	  if (savepoint_used)
 	    {
@@ -11027,8 +11024,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		{
 		  if (DB_IS_NULL (insert->vals[k]))
 		    {
-		      OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k],
-								     &attr_info);
+		      OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k], &attr_info);
+
 		      if (attr == NULL)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -11514,9 +11511,9 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  DB_VALUE dbval, dbval1;
 
 	  if ((db_set_size (setp) == 3) && (db_set_get (setp, 1, &dbval) == NO_ERROR)
-	      && (db_set_get (setp, 2, &dbval1) == NO_ERROR) && (DB_IS_NULL (&dbval)
-								 || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID)
-								     && OID_ISNULL (DB_GET_OID (&dbval))))
+	      && (db_set_get (setp, 2, &dbval1) == NO_ERROR)
+	      && (DB_IS_NULL (&dbval) || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID)
+					  && OID_ISNULL (DB_GET_OID (&dbval))))
 	      && (DB_VALUE_DOMAIN_TYPE (&dbval1) == DB_TYPE_OID))
 	    {
 	      dbvaloid = DB_GET_OID (&dbval1);
@@ -21316,12 +21313,7 @@ wrapup:
   return (analytic_state.state == NO_ERROR) ? NO_ERROR : ER_FAILED;
 
 exit_on_error:
-  assert (er_errid () != NO_ERROR);
-  analytic_state.state = er_errid ();
-  if (analytic_state.state == NO_ERROR)
-    {
-      analytic_state.state = ER_FAILED;
-    }
+  ASSERT_ERROR_AND_SET (analytic_state.state);
 
   if (!finalized)
     {

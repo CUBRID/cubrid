@@ -1078,6 +1078,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 gen_tz: Generare file sorgente contenenti dati fuso orario da elaborare in\n\
         una libreria condivisa.\n\
 uso: %s gen_tz [OPTION]\n\
+     %s gen_tz -g extend [OPTION] [nome-database]\n\
 \n\
 opzioni valide:\n\
   -i, --input-folder    path di una cartella di input che contiene una versione di\n\
