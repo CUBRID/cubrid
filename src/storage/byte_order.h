@@ -119,11 +119,11 @@ extern unsigned int htonl (unsigned int);
 extern UINT64 htoni64 (UINT64);
 
 #ifndef OR_HAVE_HTONF
-extern void htonf (float *, float *);
+extern float htonf (float);
 #endif /* !OR_HAVE_HTONF */
 
 #ifndef OR_HAVE_HTOND
-extern void htond (double *, double *);
+extern double htond (double);
 #endif /* !OR_HAVE_HTOND */
 
 #else /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */

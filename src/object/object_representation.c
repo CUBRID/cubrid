@@ -8310,42 +8310,44 @@ htoni64 (UINT64 from)
 }
 
 #if !defined (OR_HAVE_HTONF)
-void
-htonf (float *to, float *from)
+float
+htonf(float from)
 {
-  float temp;
-  char *ptr, *vptr;
+	float to;
+	char *p, *q;
 
-  temp = *from;
+	p = (char *)&from;
+	q = (char *)&to;
 
-  ptr = (char *) &temp;
-  vptr = (char *) to;
-  vptr[0] = ptr[3];
-  vptr[1] = ptr[2];
-  vptr[2] = ptr[1];
-  vptr[3] = ptr[0];
+	q[0] = p[3];
+	q[1] = p[2];
+	q[2] = p[1];
+	q[3] = p[0];
+
+	return to;
 }
 #endif /* !OR_HAVE_HTONL */
 
 #if !defined (OR_HAVE_NTOHD)
-void
-htond (double *to, double *from)
+double
+htond(double from)
 {
-  double temp;
-  char *ptr, *vptr;
+	double to;
+	char *p, *q;
 
-  temp = *from;
+	p = (char *)&from;
+	q = (char *)&to;
 
-  ptr = (char *) &temp;
-  vptr = (char *) to;
-  vptr[0] = ptr[7];
-  vptr[1] = ptr[6];
-  vptr[2] = ptr[5];
-  vptr[3] = ptr[4];
-  vptr[4] = ptr[3];
-  vptr[5] = ptr[2];
-  vptr[6] = ptr[1];
-  vptr[7] = ptr[0];
+	q[0] = p[7];
+	q[1] = p[6];
+	q[2] = p[5];
+	q[3] = p[4];
+	q[4] = p[3];
+	q[5] = p[2];
+	q[6] = p[1];
+	q[7] = p[0];
+
+	return to;
 }
 #endif /* ! OR_HAVE_NTOHD */
 
