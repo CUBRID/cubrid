@@ -107,7 +107,7 @@ up-to-date.  Many thanks.
 #if defined(WINDOWS)
 #include <io.h>
 #include <winsock2.h>
-#define int32_t     int
+//#define int32_t     int
 #endif
 
 #include "porting.h"

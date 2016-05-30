@@ -683,7 +683,7 @@ extern int yybuffer_pos;
 #include "system_parameter.h"
 #define JP_MAXNAME 256
 #if defined(WINDOWS)
-#define snprintf _sprintf_p
+//#define snprintf _sprintf_p
 #endif /* WINDOWS */
 #include "memory_alloc.h"
 #include "db_elo.h"

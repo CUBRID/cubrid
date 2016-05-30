@@ -30,7 +30,7 @@
 #define PATH_MAX	256
 #define MAXHOSTNAMELEN 64
 
-#define snprintf        _snprintf
+//#define snprintf        _snprintf
 #define getpid        _getpid
 #define strcasecmp(str1, str2)  _stricmp(str1, str2)
 

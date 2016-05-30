@@ -1501,7 +1501,7 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
 }
 
 double
-round (double d)
+round_local (double d)
 {
   return d >= 0 ? floor (d + 0.5) : ceil (d - 0.5);
 }

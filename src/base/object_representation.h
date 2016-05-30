@@ -207,12 +207,12 @@
   (*(short *) ((char *) (ptr)) = htons ((short) (val)))
 #define OR_PUT_INT(ptr, val) \
   (*(int *) ((char *) (ptr)) = htonl ((int) (val)))
-#define OR_PUT_FLOAT(ptr, value) \
-  htonf ((float *) ((char *) (ptr)), (float *) (value))
+#define OR_PUT_FLOAT(ptr, val) \
+  (*(float *) ((char *) (ptr)) = htonf (*(float*) (val)))
 #define OR_PUT_DOUBLE(ptr, value) \
    do { \
      double packed_value; \
-     htond (&packed_value, (double *) (value)); \
+     packed_value = htond (*(double *) (value)); \
      memcpy (ptr, &packed_value, OR_DOUBLE_SIZE); \
    } while (0)
 

@@ -113,14 +113,18 @@ extern "C"
 #include <process.h>
 #include <sys/timeb.h>
 #include <time.h>
+#define _CRT_NO_TIME_T /* this should be defined in time.h, this is not our bug */
 #include <sys/locking.h>
 #include <windows.h>
 #include <winbase.h>
 #include <errno.h>
 #include <assert.h>
+#include <stdio.h>
 
 /* not defined errno on Windows */
+#if !defined (ENOMSG)
 #define ENOMSG      100
+#endif
 
 #define PATH_MAX	256
 #define NAME_MAX	256
@@ -132,7 +136,7 @@ extern "C"
 
 #define mkdir(dir, mode)        _mkdir(dir)
 #define getpid()                _getpid()
-#define snprintf                    _sprintf_p
+//#define snprintf                    _sprintf_p
 #define strcasecmp(str1, str2)      _stricmp(str1, str2)
 #define strncasecmp(str1, str2, size)     _strnicmp(str1, str2, size)
 #define lseek(fd, offset, origin)   _lseeki64(fd, offset, origin)
@@ -523,7 +527,7 @@ extern "C"
   extern int drand48_r (struct drand48_data *buffer, double *result);
   extern int rand_r (unsigned int *seedp);
 
-  extern double round (double d);
+  //extern double round (double d);
 
   typedef struct
   {
@@ -562,14 +566,18 @@ extern "C"
 
   typedef HANDLE pthread_condattr_t;
 
+#if !defined (ETIMEDOUT)
 #define ETIMEDOUT WAIT_TIMEOUT
+#endif
 #define PTHREAD_COND_INITIALIZER	{ NULL }
 
+#if !defined (_CRT_NO_TIME_T)
   struct timespec
   {
     int tv_sec;
     int tv_nsec;
   };
+#endif
 
   extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
 
