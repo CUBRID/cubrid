@@ -113,7 +113,7 @@ extern "C"
 #include <process.h>
 #include <sys/timeb.h>
 #include <time.h>
-#define _CRT_NO_TIME_T /* this should be defined in time.h, this is not our bug */
+#define _CRT_NO_TIME_T
 #include <sys/locking.h>
 #include <windows.h>
 #include <winbase.h>
