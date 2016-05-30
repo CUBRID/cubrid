@@ -2105,7 +2105,7 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   do
     {
-      trid = log_Gl.hdr.next_trid;
+      trid = VOLATILE_ACCESS (log_Gl.hdr.next_trid, int);
 
       next_trid = trid + 1;
       if (next_trid < 0)

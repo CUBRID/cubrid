@@ -77,7 +77,7 @@ static int rv;
 #define QFILE_DEFAULT_PAGES 4
 
 #if defined (SERVER_MODE)
-#define LS_PUT_NEXT_VPID_NULL_ASYNC(ptr) \
+#define LS_PUT_NEXT_VPID(ptr) \
   do \
     { \
       OR_PUT_INT ((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, NULL_PAGEID_IN_PROGRESS); \
@@ -85,7 +85,7 @@ static int rv;
     } \
   while (0)
 #else
-#define LS_PUT_NEXT_VPID_NULL_ASYNC(ptr) \
+#define LS_PUT_NEXT_VPID(ptr) \
   do \
     { \
        OR_PUT_INT ((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, NULL_PAGEID); \
@@ -1514,6 +1514,7 @@ qfile_allocate_new_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAG
 #if defined (SERVER_MODE)
   if (qmgr_is_query_interrupted (thread_p, list_id_p->query_id) == true)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return NULL;
     }
 #endif /* SERVER_MODE */
@@ -1536,7 +1537,7 @@ qfile_allocate_new_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAG
     }
   else
     {
-      LS_PUT_NEXT_VPID_NULL_ASYNC (new_page_p);
+      LS_PUT_NEXT_VPID (new_page_p);
     }
 
   QFILE_PUT_LAST_TUPLE_OFFSET (new_page_p, QFILE_PAGE_HEADER_SIZE);
@@ -2262,7 +2263,7 @@ qfile_get_first_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 
   QFILE_PUT_TUPLE_COUNT (new_page_p, 0);
   QFILE_PUT_PREV_VPID (new_page_p, &list_id_p->last_vpid);
-  LS_PUT_NEXT_VPID_NULL_ASYNC (new_page_p);
+  LS_PUT_NEXT_VPID (new_page_p);
 
   QFILE_COPY_VPID (&list_id_p->first_vpid, &new_vpid);
   QFILE_COPY_VPID (&list_id_p->last_vpid, &new_vpid);
@@ -2374,9 +2375,6 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id, VOLID vol
 
       assert (NULL_PAGEID < query_entry_p->list_id->first_vpid.pageid);
 
-      vol_id = query_entry_p->list_id->first_vpid.volid;
-      page_id = query_entry_p->list_id->first_vpid.pageid;
-
       /* unexpected no result */
       if (vol_id == NULL_VOLID && page_id == NULL_PAGEID)
 	{
@@ -2384,8 +2382,6 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id, VOLID vol
 	  *page_size_p = 0;
 	  return NO_ERROR;
 	}
-
-      VPID_SET (&vpid, vol_id, page_id);
 
       list_id_p = query_entry_p->list_id;
       tfile_vfid_p = list_id_p->tfile_vfid;
@@ -4477,10 +4473,8 @@ qfile_scan_next (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
 	  scan_id_p->curr_tplno++;
 	  return S_SUCCESS;
 	}
-      else if (QFILE_GET_NEXT_PAGE_ID (scan_id_p->curr_pgptr) != NULL_PAGEID)
+      else if (qfile_has_next_page (scan_id_p->curr_pgptr))
 	{
-	  assert (QFILE_GET_NEXT_PAGE_ID (scan_id_p->curr_pgptr) != NULL_PAGEID_IN_PROGRESS);
-
 	  QFILE_GET_NEXT_VPID (&next_vpid, scan_id_p->curr_pgptr);
 	  next_page_p = qmgr_get_old_page (thread_p, &next_vpid, scan_id_p->list_id.tfile_vfid);
 	  if (next_page_p == NULL)

@@ -1078,7 +1078,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 gen_tz: Generar archivos fuente conteniendo datos de zona horaria a ser compilados dentro de\n\
         una biblioteca compartida.\n\
 uso: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] database-name\n\
+       %s gen_tz -g extend [OPTION] [database-name]\n\
 \n\
 opciones validas:\n\
   -i, --input-folder    camino hacia una carpeta de entradas conteniendo una version de\n\

@@ -1772,10 +1772,16 @@ log_append_undoredo_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DA
   LOG_CRUMB redo_crumb;
 
   /* Set undo length/data to crumb */
+  assert (0 <= undo_length);
+  assert (0 == undo_length || undo_data != NULL);
+
   undo_crumb.data = undo_data;
   undo_crumb.length = undo_length;
 
   /* Set redo length/data to crumb */
+  assert (0 <= redo_length);
+  assert (0 == redo_length || redo_data != NULL);
+
   redo_crumb.data = redo_data;
   redo_crumb.length = redo_length;
 
@@ -1797,10 +1803,16 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
   addr.offset = offset;
 
   /* Set undo length/data to crumb */
+  assert (0 <= undo_length);
+  assert (0 == undo_length || undo_data != NULL);
+
   undo_crumb.data = undo_data;
   undo_crumb.length = undo_length;
 
   /* Set redo length/data to crumb */
+  assert (0 <= redo_length);
+  assert (0 == redo_length || redo_data != NULL);
+
   redo_crumb.data = redo_data;
   redo_crumb.length = redo_length;
 
@@ -1839,6 +1851,9 @@ log_append_undo_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_A
   LOG_CRUMB undo_crumb;
 
   /* Set length/data to crumb */
+  assert (0 <= length);
+  assert (0 == length || data != NULL);
+
   undo_crumb.data = data;
   undo_crumb.length = length;
 
@@ -1858,6 +1873,9 @@ log_append_undo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFI
   addr.offset = offset;
 
   /* Set length/data to crumb */
+  assert (0 <= length);
+  assert (0 == length || data != NULL);
+
   undo_crumb.data = data;
   undo_crumb.length = length;
 
@@ -1895,6 +1913,9 @@ log_append_redo_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_A
   LOG_CRUMB redo_crumb;
 
   /* Set length/data to crumb */
+  assert (0 <= length);
+  assert (0 == length || data != NULL);
+
   redo_crumb.data = data;
   redo_crumb.length = length;
 
@@ -1914,6 +1935,9 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFI
   addr.offset = offset;
 
   /* Set length/data to crumb */
+  assert (0 <= length);
+  assert (0 == length || data != NULL);
+
   redo_crumb.data = data;
   redo_crumb.length = length;
 
@@ -2023,9 +2047,8 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
    * Now do the UNDO & REDO portion
    */
 
-  node =
-    prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_undo_crumbs, undo_crumbs, num_redo_crumbs,
-				     redo_crumbs);
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_undo_crumbs, undo_crumbs,
+					  num_redo_crumbs, redo_crumbs);
   if (node == NULL)
     {
       return;
@@ -2044,7 +2067,8 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
     {
-      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
+      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM
+	  || rcvindex == RVHF_INSERT_NEWHOME)
 	{
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
 	}
@@ -2535,7 +2559,7 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
     }
 
   /* Vacuum workers are not allowed to use this type of log records. */
-  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+  assert (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);

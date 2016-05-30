@@ -4475,7 +4475,8 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 		  temp_length = undoredo->rlength;
 		  length = GET_ZIP_LEN (undoredo->rlength);
 
-		  if (undoredo->data.rcvindex == RVHF_UPDATE && undoredo->data.pageid == prev_log->data.pageid
+		  if ((undoredo->data.rcvindex == RVHF_UPDATE || undoredo->data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+		      && undoredo->data.pageid == prev_log->data.pageid
 		      && undoredo->data.offset == prev_log->data.offset && undoredo->data.volid == prev_log->data.volid)
 		    {
 		      LA_LOG_READ_ADD_ALIGN (error, log_size, offset, pageid, pg);
@@ -4576,7 +4577,7 @@ la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned i
       else
 	{
 	  error =
-	    la_get_log_data (tmp_lrec, &lsa, pg, RVHF_INSERT, &rcvindex, logs, rec_type, &recdes->data,
+	    la_get_log_data (tmp_lrec, &lsa, pg, RVHF_INSERT_NEWHOME, &rcvindex, logs, rec_type, &recdes->data,
 			     &recdes->length);
 	}
       la_release_page_buffer (lsa.pageid);
@@ -4659,7 +4660,8 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
 	    }
 	}
     }
-  else if (*rcvindex == RVHF_UPDATE && recdes->type == REC_RELOCATION)
+  else if ((*rcvindex == RVHF_UPDATE || *rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+	    && recdes->type == REC_RELOCATION)
     {
       error = la_get_relocation_recdes (lrec, pg, 0, &logs, &rec_type, recdes);
       if (error == NO_ERROR)
@@ -4963,7 +4965,7 @@ la_apply_update_log (LA_ITEM * item)
       goto end;
     }
   if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK && rcvindex != RVHF_MVCC_INSERT
-      && rcvindex != RVHF_UPDATE_NOTIFY_VACUUM)
+      && rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && rcvindex != RVHF_INSERT_NEWHOME)
     {
       er_log_debug (ARG_FILE_LINE, "apply_update : rcvindex = %d\n", rcvindex);
       error = ER_FAILED;
@@ -5432,9 +5434,8 @@ la_apply_statement_log (LA_ITEM * item)
       if ((item->item_type == CUBRID_STMT_CREATE_CLASS || item->item_type == CUBRID_STMT_CREATE_SERIAL
 	   || item->item_type == CUBRID_STMT_CREATE_STORED_PROCEDURE || item->item_type == CUBRID_STMT_CREATE_TRIGGER
 	   || item->item_type == CUBRID_STMT_ALTER_CLASS || item->item_type == CUBRID_STMT_INSERT
-	   || item->item_type == CUBRID_STMT_DELETE || item->item_type == CUBRID_STMT_UPDATE) && (item->db_user != NULL
-												  && item->db_user[0] !=
-												  '\0'))
+	   || item->item_type == CUBRID_STMT_DELETE || item->item_type == CUBRID_STMT_UPDATE)
+	  && (item->db_user != NULL && item->db_user[0] != '\0'))
 	{
 	  user = au_find_user (item->db_user);
 	  if (user == NULL)

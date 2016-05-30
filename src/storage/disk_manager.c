@@ -2806,8 +2806,6 @@ xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid)
 }
 
 /*
- *
- *
  * xdisk_get_purpose_and_space_info ()
  *          Find the main purpose and space info of the volume
  *

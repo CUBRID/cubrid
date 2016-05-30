@@ -245,6 +245,9 @@ struct vacuum_data
 				 * completed.
 				 */
   bool is_loaded;		/* True if vacuum data is loaded. */
+  bool shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or executing
+				 * new jobs.
+				 */
 
   LOG_LSA recovery_lsa;		/* This is the LSA where recovery starts. It will be used to go backward in the log
 				 * if data on log blocks must be recovered.
@@ -265,6 +268,7 @@ static VACUUM_DATA vacuum_Data = {
   0,				/* log_block_npages */
   0,				/* flush_vacuum_data */
   false,			/* is_loaded */
+  false,			/* shutdown_requested */
   LSA_INITIALIZER		/* recovery_lsa */
 #if defined (SA_MODE)
     , false			/* is_vacuum_complete. */
@@ -369,8 +373,6 @@ int vacuum_Prefetch_log_mode = VACUUM_PREFETCH_LOG_MODE_MASTER;
   (VACUUM_PREFETCH_LOG_BLOCK_BUFFERS_COUNT - \
    prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT))
 
-#define VACUUM_FINISHED_JOB_QUEUE_CAPACITY  2048
-
 #define VACUUM_PREFETCH_LOG_BLOCK_BUFFER(i) \
   ((char *) (PTR_ALIGN (vacuum_Prefetch_log_buffer, MAX_ALIGNMENT)) \
    + (((size_t) (i)) * ((size_t) LOG_PAGESIZE) \
@@ -379,6 +381,8 @@ int vacuum_Prefetch_log_mode = VACUUM_PREFETCH_LOG_MODE_MASTER;
 #else /* SERVER_MODE */
 #define VACUUM_JOB_QUEUE_CAPACITY (1024)
 #endif /* SERVER_MODE */
+
+#define VACUUM_FINISHED_JOB_QUEUE_CAPACITY  2048
 
 #define VACUUM_LOG_BLOCK_BUFFER_INVALID (-1)
 
@@ -710,6 +714,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
     }
 
   /* Initialize vacuum data */
+  vacuum_Data.shutdown_requested = false;
   /* Save vacuum data VFID. */
   VFID_COPY (&vacuum_Data.vacuum_data_file, vacuum_data_vfid);
   /* Save vacuum log block size in pages. */
@@ -766,7 +771,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
     }
 
   /* Initialize job queue */
-  vacuum_Job_queue = lf_circular_queue_create (VACUUM_FINISHED_JOB_QUEUE_CAPACITY, sizeof (VACUUM_JOB_ENTRY));
+  vacuum_Job_queue = lf_circular_queue_create (VACUUM_JOB_QUEUE_CAPACITY, sizeof (VACUUM_JOB_ENTRY));
   if (vacuum_Job_queue == NULL)
     {
       goto error;
@@ -774,7 +779,8 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 #endif /* SERVER_MODE */
 
   /* Initialize finished job queue. */
-  vacuum_Finished_job_queue = lf_circular_queue_create (VACUUM_JOB_QUEUE_CAPACITY, sizeof (VACUUM_LOG_BLOCKID));
+  vacuum_Finished_job_queue = lf_circular_queue_create (VACUUM_FINISHED_JOB_QUEUE_CAPACITY,
+							sizeof (VACUUM_LOG_BLOCKID));
   if (vacuum_Finished_job_queue == NULL)
     {
       goto error;
@@ -2322,6 +2328,7 @@ vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
 
   MVCC_SET_INSID (&rec_header, MVCCID_ALL_VISIBLE);
+  LSA_SET_NULL (&rec_header.prev_version_lsa);
 
   error = heap_set_mvcc_rec_header_on_overflow (rcv->pgptr, &rec_header);
   if (error != NO_ERROR)
@@ -2518,6 +2525,12 @@ restart:
   /* Update oldest MVCCID. */
   vacuum_update_oldest_unvacuumed_mvccid (thread_p);
 
+  if (vacuum_Data.shutdown_requested)
+    {
+      /* Stop generating other jobs. */
+      return;
+    }
+
   /* Search for blocks ready to be vacuumed and generate jobs. */
 
   data_page = vacuum_Data.first_page;
@@ -2540,7 +2553,20 @@ restart:
 	  continue;
 	}
       entry = data_page->data + data_index;
-#if defined (SERVER_MODE)
+
+#if defined (SA_MODE)
+      if (VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid))
+	{
+	  /* Already vacuumed. */
+	  data_index++;
+	  continue;
+	}
+      else
+	{
+	  /* Must be available, cannot be in-progress. */
+	  assert (VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid));
+	}
+#else	/* !SA_MODE */	       /* SERVER_MODE */
       if (!MVCC_ID_PRECEDES (entry->newest_mvccid, vacuum_Global_oldest_active_mvccid)
 	  || (entry->start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.pageid))
 	{
@@ -3130,7 +3156,7 @@ end:
 #if defined (SERVER_MODE)
   /* Unfix all pages now. Normally all pages should already be unfixed. */
   pgbuf_unfix_all (thread_p);
-#else /* !SERVER_MODE */ /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   /* Do not unfix all in stand-alone. Not yet. We need to keep vacuum data pages fixed. */
 #endif /* SA_MODE */
 
@@ -3168,7 +3194,7 @@ vacuum_assign_worker (THREAD_ENTRY * thread_p)
    */
   do
     {
-      save_assigned_workers_count = vacuum_Assigned_workers_count;
+      save_assigned_workers_count = VOLATILE_ACCESS (vacuum_Assigned_workers_count, INT32);
     }
   while (!ATOMIC_CAS_32 (&vacuum_Assigned_workers_count, save_assigned_workers_count, save_assigned_workers_count + 1));
 
@@ -3420,7 +3446,7 @@ vacuum_start_new_job (THREAD_ENTRY * thread_p)
   ATOMIC_INC_32 (&vacuum_Running_workers_count, 1);
 
   /* Loop as long as job queue is not empty */
-  while (lf_circular_queue_consume (vacuum_Job_queue, &vacuum_job_entry))
+  while (!vacuum_Data.shutdown_requested && lf_circular_queue_consume (vacuum_Job_queue, &vacuum_job_entry))
     {
       /* Execute vacuum job */
       /* entry is only a copy for vacuum data */
@@ -3799,17 +3825,8 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
   vacuum_Data.first_page = data_page;
   vacuum_Data.oldest_unvacuumed_mvccid = MVCCID_NULL;
 
-
-  while (!VPID_ISNULL (&data_page->next_page))
+  while (true)
     {
-      VPID_COPY (&next_vpid, &data_page->next_page);
-      vacuum_unfix_data_page (thread_p, data_page);
-      data_page = vacuum_fix_data_page (thread_p, &next_vpid);
-      if (data_page == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  goto error;
-	}
       if (data_page->index_unvacuumed >= 0)
 	{
 	  assert (data_page->index_unvacuumed < vacuum_Data.page_data_max_count);
@@ -3824,6 +3841,18 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
 		  VACUUM_BLOCK_SET_INTERRUPTED (entry->blockid);
 		}
 	    }
+	}
+      VPID_COPY (&next_vpid, &data_page->next_page);
+      if (VPID_ISNULL (&next_vpid))
+	{
+	  break;
+	}
+      vacuum_unfix_data_page (thread_p, data_page);
+      data_page = vacuum_fix_data_page (thread_p, &next_vpid);
+      if (data_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error;
 	}
     }
   assert (data_page != NULL);
@@ -4157,8 +4186,9 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	 && lf_circular_queue_consume (vacuum_Finished_job_queue, &finished_blocks[n_finished_blocks]))
     {
       /* Increment consumed finished blocks. */
-      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "VACUUM: Consumed from finished job queue %lld.\n",
-		     (long long int) &finished_blocks[n_finished_blocks]);
+      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "VACUUM: Consumed from finished job queue %lld (flags %lld).\n",
+		     (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (finished_blocks[n_finished_blocks]),
+		     VACUUM_BLOCKID_GET_FLAGS (finished_blocks[n_finished_blocks]));
       ++n_finished_blocks;
     }
   if (n_finished_blocks == 0)
@@ -7096,6 +7126,18 @@ void
 vacuum_notify_server_crashed (LOG_LSA * recovery_lsa)
 {
   LSA_COPY (&vacuum_Data.recovery_lsa, recovery_lsa);
+}
+
+/*
+ * vacuum_notify_server_shutdown () - Notify vacuum that server shutdown was requested. It should stop executing new
+ *				      jobs.
+ *
+ * return : Void.
+ */
+void
+vacuum_notify_server_shutdown (void)
+{
+  vacuum_Data.shutdown_requested = true;
 }
 
 /*
