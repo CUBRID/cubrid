@@ -659,18 +659,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type, const int precision, 
     case DB_TYPE_ENUMERATION:
       if (enumeration == NULL || enumeration->count <= 0)
 	{
-	  if (codeset == INTL_CODESET_UTF8)
-	    {
-	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset, collation_id);
-	    }
-	  else if (codeset == INTL_CODESET_KSC5601_EUC)
-	    {
-	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset, collation_id);
-	    }
-	  else
-	    {
-	      db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset, collation_id);
-	    }
+	  db_make_enumeration (value, DB_ENUM_ELEMENTS_MAX, NULL, 0, (unsigned char) codeset, collation_id);
 	  value->data.ch.info.is_max_string = true;
 	}
       else
