@@ -150,18 +150,19 @@ test_cqueue (int num_consumers, int num_producers)
       return fail ("circular queue create fail");
     }
 
-  for (i = 0; i < num_consumers; i++)
+  for (i = 0; i < num_producers; i++)
     {
-      /* fork consumers first */
-      if (pthread_create (&threads[i], NULL, test_circular_queue_consumer, NULL) != NO_ERROR)
+      /* fork producers first */
+      if (pthread_create (&threads[i], NULL, test_circular_queue_producer, NULL) != NO_ERROR)
 	{
 	  return fail ("thread create");
 	}
     }
 
-  for (i = 0; i < num_producers; i++)
+  for (i = 0; i < num_consumers; i++)
     {
-      if (pthread_create (&threads[num_consumers + i], NULL, test_circular_queue_producer, NULL) != NO_ERROR)
+      /* fork consumers later */
+      if (pthread_create (&threads[num_producers + i], NULL, test_circular_queue_consumer, NULL) != NO_ERROR)
 	{
 	  return fail ("thread create");
 	}
