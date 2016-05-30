@@ -8311,43 +8311,43 @@ htoni64 (UINT64 from)
 
 #if !defined (OR_HAVE_HTONF)
 float
-htonf(float from)
+htonf (float from)
 {
-	float to;
-	char *p, *q;
+  float to;
+  char *p, *q;
 
-	p = (char *)&from;
-	q = (char *)&to;
+  p = (char *) &from;
+  q = (char *) &to;
 
-	q[0] = p[3];
-	q[1] = p[2];
-	q[2] = p[1];
-	q[3] = p[0];
+  q[0] = p[3];
+  q[1] = p[2];
+  q[2] = p[1];
+  q[3] = p[0];
 
-	return to;
+  return to;
 }
 #endif /* !OR_HAVE_HTONL */
 
 #if !defined (OR_HAVE_NTOHD)
 double
-htond(double from)
+htond (double from)
 {
-	double to;
-	char *p, *q;
+  double to;
+  char *p, *q;
 
-	p = (char *)&from;
-	q = (char *)&to;
+  p = (char *) &from;
+  q = (char *) &to;
 
-	q[0] = p[7];
-	q[1] = p[6];
-	q[2] = p[5];
-	q[3] = p[4];
-	q[4] = p[3];
-	q[5] = p[2];
-	q[6] = p[1];
-	q[7] = p[0];
+  q[0] = p[7];
+  q[1] = p[6];
+  q[2] = p[5];
+  q[3] = p[4];
+  q[4] = p[3];
+  q[5] = p[2];
+  q[6] = p[1];
+  q[7] = p[0];
 
-	return to;
+  return to;
 }
 #endif /* ! OR_HAVE_NTOHD */
 
