@@ -12183,6 +12183,29 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   string1 = (unsigned char *) DB_GET_STRING (value1);
   string2 = (unsigned char *) DB_GET_STRING (value2);
 
+  /*
+   *  Check if the is_max_string flag set for each DB_VALUE.
+   *  If "value1" has the flag set, return 1, meaning that "value2" is Less Than "value1".
+   *  If "value2" has the flag set, return -1, meaning that "value1" is Greater Than "value2".
+   */
+
+  if (value1->data.ch.info.is_max_string == true)
+    {
+      if (value2->data.ch.info.is_max_string == true)
+	{
+	  /* Both strings are max_string. Therefore equal. Even though this should not happen. */
+	  return DB_EQ;
+	}
+      return DB_GT;
+    }
+  else
+    {
+      if (value2->data.ch.info.is_max_string == true)
+	{
+	  return DB_LT;
+	}
+    }
+
   if (string1 == NULL || string2 == NULL || DB_GET_STRING_CODESET (value1) != DB_GET_STRING_CODESET (value1))
     {
       return DB_UNK;
