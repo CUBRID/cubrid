@@ -4518,9 +4518,9 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	  return;
 	}
       /* Update link in previous page. */
-      log_append_undoredo_data2 (thread_p, RVVAC_DATA_SET_LINK, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
-				 sizeof (VPID), sizeof (VPID), &prev_data_page->next_page, &save_next_vpid);
-      VPID_SET_NULL (&vacuum_Data.first_page->next_page);
+      log_append_undoredo_data2 (thread_p, RVVAC_DATA_SET_LINK, NULL, (PAGE_PTR) prev_data_page, 0, sizeof (VPID),
+				 sizeof (VPID), &prev_data_page->next_page, &save_next_vpid);
+      VPID_COPY (&prev_data_page->next_page, &save_next_vpid);
 
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
@@ -4536,7 +4536,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 
 	  /* Log changes. No data is actually removed, just relocated (so redo data is NULL). */
 	  log_append_redo_data2 (thread_p, RVVAC_DATA_FINISHED_BLOCKS, NULL, (PAGE_PTR) prev_data_page, 0, 0, NULL);
-	  vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
+	  vacuum_set_dirty_data_page (thread_p, prev_data_page, DONT_FREE);
 	}
 
       assert (*data_page == NULL);
