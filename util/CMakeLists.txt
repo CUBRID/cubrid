@@ -1,3 +1,20 @@
+#
+# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#
 
 set(LIBCUBRIDESQL_SOURCES
   ${EXECUTABLES_DIR}/esql_gadget.c
@@ -25,6 +42,9 @@ set(CSQL_SOURCES
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/getopt_long.c
   )
+if(WIN32)
+  list(APPEND CSQL_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+endif(WIN32)
 add_executable(csql ${CSQL_SOURCES})
 target_compile_definitions(csql PRIVATE ${COMMON_DEFS})
 target_include_directories(csql PRIVATE ${EP_INCLUDES})
@@ -47,10 +67,7 @@ set(CUB_MASTER_SOURCES
 if(UNIX)
   list(APPEND CUB_MASTER_SOURCES ${EXECUTABLES_DIR}/master_heartbeat.c)
 else(UNIX)
-  # TODO: create rc file for VS_VERSIONINFO automatically.
-  # ref. http://stackoverflow.com/questions/6693100/how-to-generate-windows-dll-versioning-information-with-cmake
-  # ref. https://git.reviewboard.kde.org/r/121400/diff/2#0
-  list(APPEND CUB_MASTER_SOURCES ${CMAKE_SOURCE_DIR}/win/cub_master/version.rc)
+  list(APPEND CUB_MASTER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(UNIX)
 add_executable(cub_master ${CUB_MASTER_SOURCES})
 target_compile_definitions(cub_master PRIVATE ${COMMON_DEFS})
@@ -63,7 +80,7 @@ endif(WIN32)
 
 set(CUB_SERVER_SOURCES ${EXECUTABLES_DIR}/server.c)
 if(WIN32)
-  list(APPEND CUB_SERVER_SOURCES ${CMAKE_SOURCE_DIR}/win/cub_server/version.rc)
+  list(APPEND CUB_SERVER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(cub_server ${CUB_SERVER_SOURCES})
 target_include_directories(cub_server PRIVATE ${EP_INCLUDES})
@@ -79,6 +96,7 @@ set(CUBRID_SOURCES
   )
 if(WIN32)
   list(APPEND CUBRID_SOURCES ${BASE_DIR}/getopt_long.c)
+  list(APPEND CUBRID_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(cubrid-bin ${CUBRID_SOURCES})
 set_target_properties(cubrid-bin PROPERTIES OUTPUT_NAME cubrid)
@@ -92,6 +110,7 @@ set(CUB_COMMDB_SOURCES
   )
 if(WIN32)
   list(APPEND CUB_COMMDB_SOURCES ${BASE_DIR}/getopt_long.c)
+  list(APPEND CUB_COMMDB_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(cub_commdb ${CUB_COMMDB_SOURCES})
 target_link_libraries(cub_commdb LINK_PRIVATE cubridcs)
@@ -101,6 +120,9 @@ endif(WIN32)
 
 
 set(CUBRID_REL_SOURCES ${EXECUTABLES_DIR}/cubrid_version.c)
+if(WIN32)
+  list(APPEND CUBRID_REL_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+endif(WIN32)
 add_executable(cubrid_rel ${CUBRID_REL_SOURCES})
 target_link_libraries(cubrid_rel LINK_PRIVATE cubridsa)
 
@@ -108,12 +130,12 @@ target_link_libraries(cubrid_rel LINK_PRIVATE cubridsa)
 set(LOADJAVA_SOURCES ${EXECUTABLES_DIR}/loadjava.c)
 if(WIN32)
   list(APPEND LOADJAVA_SOURCES ${BASE_DIR}/getopt_long.c)
+  list(APPEND LOADJAVA_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(loadjava ${LOADJAVA_SOURCES})
 if(UNIX)
   target_link_libraries(loadjava LINK_PRIVATE cubridsa)
 else(UNIX)
-  # FIXME: diff from linux build??
   target_link_libraries(loadjava LINK_PRIVATE cubridcs)
 endif(UNIX)
 
@@ -124,6 +146,9 @@ set(CUB_ADMIN_SOURCES
   ${BASE_DIR}/getopt_long.c
   ${BASE_DIR}/porting.c
   )
+if(WIN32)
+  list(APPEND CUB_ADMIN_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+endif(WIN32)
 add_executable(cub_admin ${CUB_ADMIN_SOURCES})
 target_include_directories(cub_admin PRIVATE ${EP_INCLUDES})
 target_link_libraries(cub_admin LINK_PRIVATE ${CMAKE_DL_LIBS})
@@ -147,10 +172,10 @@ set(CUBRID_ESQL_SOURCES
   )
 if(WIN32)
   list(APPEND CUBRID_ESQL_SOURCES ${BASE_DIR}/getopt_long.c)
+  list(APPEND CUBRID_ESQL_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 set_source_files_properties(${BISON_esql_grammar_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${FLEX_esql_lexer_OUTPUTS} PROPERTIES GENERATED true)
-
 add_executable(cubrid_esql ${CUBRID_ESQL_SOURCES})
 target_include_directories(cubrid_esql PRIVATE ${CMAKE_BINARY_DIR} ${EP_INCLUDES})
 target_compile_definitions(cubrid_esql PRIVATE ${COMMON_DEFS} PRODUCE_ANSI_CODE UCI_TEMPORARY)
@@ -169,6 +194,7 @@ set(GENCAT_SOURCES
   )
 if(WIN32)
   list(APPEND GENCAT_SOURCES ${BASE_DIR}/getopt_long.c)
+  list(APPEND GENCAT_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(gencat ${GENCAT_SOURCES})
 if(WIN32)
@@ -178,7 +204,11 @@ if(WIN32)
 endif(WIN32)
 
 
-add_executable(convert_password ${EXECUTABLES_DIR}/convert_password.c)
+set(CONVERT_PASSWORD_SOURCES ${EXECUTABLES_DIR}/convert_password.c)
+if(WIN32)
+  list(APPEND CONVERT_PASSWORD_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+endif(WIN32)
+add_executable(convert_password ${CONVERT_PASSWORD_SOURCES})
 target_include_directories(convert_password PRIVATE ${EP_INCLUDES})
 target_link_libraries(convert_password LINK_PRIVATE cubridsa)
 

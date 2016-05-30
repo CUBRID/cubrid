@@ -4660,7 +4660,8 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
 	    }
 	}
     }
-  else if (*rcvindex == RVHF_UPDATE && recdes->type == REC_RELOCATION)
+  else if ((*rcvindex == RVHF_UPDATE || *rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+	    && recdes->type == REC_RELOCATION)
     {
       error = la_get_relocation_recdes (lrec, pg, 0, &logs, &rec_type, recdes);
       if (error == NO_ERROR)
@@ -5433,9 +5434,8 @@ la_apply_statement_log (LA_ITEM * item)
       if ((item->item_type == CUBRID_STMT_CREATE_CLASS || item->item_type == CUBRID_STMT_CREATE_SERIAL
 	   || item->item_type == CUBRID_STMT_CREATE_STORED_PROCEDURE || item->item_type == CUBRID_STMT_CREATE_TRIGGER
 	   || item->item_type == CUBRID_STMT_ALTER_CLASS || item->item_type == CUBRID_STMT_INSERT
-	   || item->item_type == CUBRID_STMT_DELETE || item->item_type == CUBRID_STMT_UPDATE) && (item->db_user != NULL
-												  && item->db_user[0] !=
-												  '\0'))
+	   || item->item_type == CUBRID_STMT_DELETE || item->item_type == CUBRID_STMT_UPDATE)
+	  && (item->db_user != NULL && item->db_user[0] != '\0'))
 	{
 	  user = au_find_user (item->db_user);
 	  if (user == NULL)

@@ -1122,7 +1122,7 @@ opțiuni valide:\n\
                         deja în CUBRID nu sunt înlăturate, chiar dacă nu există\n\
                         în fișierul input.\n\
                         Este generat un nou fișier C, ce conține toate\n\
-                        denumirile timezone, care trebuie inclus în fișierele\n                        
+                        denumirile timezone, care trebuie inclus în fișierele\n\
                         sursă CUBRID, înainte ca noua librarie timezone să\n\
                         poată fi folosită.\n
 

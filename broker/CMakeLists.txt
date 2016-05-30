@@ -1,7 +1,22 @@
+#
+# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#
 
-
-set(BROKER_DEFS _BSD_SOURCE _XOPEN_SOURCE ASYNC_MODE DIAG_DEVEL CAS_BROKER ${VERSION_DEFS})
-
+set(BROKER_DEFS _BSD_SOURCE _XOPEN_SOURCE ASYNC_MODE DIAG_DEVEL CAS_BROKER)
 
 set(CUB_BROKER_SOURCES
   ${BROKER_DIR}/broker.c
@@ -23,7 +38,7 @@ else(UNIX)
   list(APPEND CUB_BROKER_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
   list(APPEND CUB_BROKER_SOURCES ${BROKER_DIR}/cas_meta.c)
   list(APPEND CUB_BROKER_SOURCES ${BASE_DIR}/porting.c)
-  list(APPEND CUB_BROKER_SOURCES ${CMAKE_SOURCE_DIR}/win/cub_broker/version.rc)
+  list(APPEND CUB_BROKER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(UNIX)
 # cub_broker use WinMain() on Windows platform
 add_executable(cub_broker WIN32 ${CUB_BROKER_SOURCES})
@@ -55,6 +70,7 @@ if(WIN32)
   list(APPEND BROKER_MONITOR_SOURCES ${BASE_DIR}/rand.c)
   list(APPEND BROKER_MONITOR_SOURCES ${BROKER_DIR}/broker_list.c)
   list(APPEND BROKER_MONITOR_SOURCES ${BROKER_DIR}/broker_proxy_conn.c)
+  list(APPEND BROKER_MONITOR_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(broker_monitor ${BROKER_MONITOR_SOURCES})
 target_compile_definitions(broker_monitor PRIVATE ${BROKER_DEFS})
@@ -83,6 +99,7 @@ if(WIN32)
   list(APPEND BROKER_CHANGER_SOURCES ${BASE_DIR}/porting.c)
   list(APPEND BROKER_CHANGER_SOURCES ${BROKER_DIR}/broker_list.c)
   list(APPEND BROKER_CHANGER_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
+  list(APPEND BROKER_CHANGER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(broker_changer ${BROKER_CHANGER_SOURCES})
 target_compile_definitions(broker_changer PRIVATE ${BROKER_DEFS})
@@ -115,6 +132,7 @@ if(WIN32)
   list(APPEND CUBRID_BROKER_SOURCES ${BASE_DIR}/rand.c)
   list(APPEND CUBRID_BROKER_SOURCES ${BROKER_DIR}/broker_list.c)
   list(APPEND CUBRID_BROKER_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
+  list(APPEND CUBRID_BROKER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(cubrid_broker ${CUBRID_BROKER_SOURCES})
 target_compile_definitions(cubrid_broker PRIVATE ${BROKER_DEFS})
@@ -152,6 +170,7 @@ else(UNIX)
   list(APPEND CUB_CAS_SOURCES ${BROKER_DIR}/broker_list.c)
   list(APPEND CUB_CAS_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
   list(APPEND CUB_CAS_SOURCES ${BROKER_DIR}/cas_util.c)
+  list(APPEND CUB_CAS_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(UNIX)
 
 add_executable(cub_cas WIN32 ${CUB_CAS_SOURCES})
@@ -194,7 +213,7 @@ else(UNIX)
   list(APPEND CUB_PROXY_SOURCES ${BROKER_DIR}/broker_list.c)
   list(APPEND CUB_PROXY_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
   list(APPEND CUB_PROXY_SOURCES ${BROKER_DIR}/cas_util.c)
-  list(APPEND CUB_PROXY_SOURCES ${CMAKE_SOURCE_DIR}/win/cub_proxy/version.rc)
+  list(APPEND CUB_PROXY_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(UNIX)
 add_executable(cub_proxy ${CUB_PROXY_SOURCES})
 set_target_properties(cub_proxy PROPERTIES PUBLIC_HEADER "${BROKER_DIR}/shard_key.h")
@@ -211,6 +230,9 @@ set(BROKER_LOG_CONVERTER_SOURCES
   ${BROKER_DIR}/broker_log_util.c
   ${BROKER_DIR}/log_top_string.c
   )
+if(WIN32)
+  list(APPEND BROKER_LOG_CONVERTER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+endif(WIN32)
 add_executable(broker_log_converter ${BROKER_LOG_CONVERTER_SOURCES})
 target_compile_definitions(broker_log_converter PRIVATE ${BROKER_DEFS} BROKER_LOG_CONVERTER)
 target_link_libraries(broker_log_converter LINK_PRIVATE cubridcs)
@@ -226,6 +248,7 @@ set(BROKER_LOG_RUNNER_SOURCES
   )
 if(WIN32)
   list(APPEND BROKER_LOG_RUNNER_SOURCES ${BASE_DIR}/porting.c)
+  list(APPEND BROKER_LOG_RUNNER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(broker_log_runner ${BROKER_LOG_RUNNER_SOURCES})
 target_compile_definitions(broker_log_runner PRIVATE ${BROKER_DEFS} BROKER_LOG_RUNNER)
@@ -248,6 +271,7 @@ if(WIN32)
   list(APPEND BROKER_TESTER_SOURCES ${BROKER_DIR}/broker_filename.c)
   list(APPEND BROKER_TESTER_SOURCES ${BROKER_DIR}/broker_list.c)
   list(APPEND BROKER_TESTER_SOURCES ${BROKER_DIR}/broker_util.c)
+  list(APPEND BROKER_TESTER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(broker_tester ${BROKER_TESTER_SOURCES})
 target_compile_definitions(broker_tester PRIVATE ${BROKER_DEFS} BROKER_TESTER)
@@ -266,6 +290,9 @@ set(BROKER_LOG_TOP_SOURCES
   ${BROKER_DIR}/log_top_string.c
   ${BROKER_DIR}/broker_log_top_tran.c
   )
+if(WIN32)
+  list(APPEND BROKER_LOG_TOP_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+endif(WIN32)
 add_executable(broker_log_top ${BROKER_LOG_TOP_SOURCES})
 target_compile_definitions(broker_log_top PRIVATE ${BROKER_DEFS} BROKER_LOG_TOP)
 target_link_libraries(broker_log_top LINK_PRIVATE cubridcs)
@@ -278,6 +305,7 @@ set(CUBRID_REPLAY_SOURCES
   )
 if(WIN32)
   list(APPEND CUBRID_REPLAY_SOURCES ${BASE_DIR}/porting.c)
+  list(APPEND CUBRID_REPLAY_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 add_executable(cubrid_replay ${CUBRID_REPLAY_SOURCES})
 target_compile_definitions(cubrid_replay PRIVATE ${BROKER_DEFS} CUBRID_REPLAY)
