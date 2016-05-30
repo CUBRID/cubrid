@@ -13791,6 +13791,10 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 		  assert (false);
 		  goto error;
 		}
+	      if (index != NULL && index->asc_desc[i] != 0)
+		{
+		  set_domain->is_desc = 1;
+		}
 	      next_domain = set_domain;
 	    }
 	  else
@@ -13800,6 +13804,10 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 		{
 		  assert (false);
 		  goto error;
+		}
+	      if (index != NULL && index->asc_desc[i] != 0)
+		{
+		  next_domain->next->is_desc = 1;
 		}
 	      next_domain = next_domain->next;
 	    }
