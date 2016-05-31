@@ -18,7 +18,7 @@
  */
 
 /*
- * unittest_area.c : unit tests for area manager
+ * unittest_cqueue.c : unit tests for latch free circular queue 
  */
 
 #include "porting.h"
@@ -110,16 +110,9 @@ test_circular_queue_producer (void *param)
     {
       data = 0;
       r = lf_circular_queue_produce (vacuum_Finished_job_queue, &data);
-/*
-	  if (r == false)
-	    {
-	      abort ();
-	      pthread_exit ((void *) ER_FAILED);
-	    }
-*/
 
       /* need some delay */
-      thread_sleep (50);
+      thread_sleep (10);
     }
 
   pthread_exit ((void *) NO_ERROR);
@@ -181,7 +174,7 @@ test_cqueue (int num_consumers, int num_producers)
 
   /* results */
 
-  /* destory */
+  /* destroy */
   lf_circular_queue_destroy (vacuum_Finished_job_queue);
 
   return success ();
