@@ -2244,10 +2244,63 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
  */
 
 /* States for circular queue entries */
-#define READY_FOR_PRODUCE		  (INT32) 0
-#define RESERVED_FOR_PRODUCE		  (INT32) 1
-#define READY_FOR_CONSUME		  (INT32) 2
-#define RESERVED_FOR_CONSUME		  (INT32) 3
+#define LFCQ_READY_FOR_PRODUCE		((UINT64) 0x0000000000000000)
+#define LFCQ_RESERVED_FOR_PRODUCE	((UINT64) 0x8000000000000000)
+#define LFCQ_READY_FOR_CONSUME		((UINT64) 0x4000000000000000)
+#define LFCQ_RESERVED_FOR_CONSUME	((UINT64) 0xC000000000000000)
+#define LFCQ_STATE_MASK			((UINT64) 0xC000000000000000)
+
+/*
+ * lf_circular_queue_is_full () - Quick estimate if lock-free circular queue is full.
+ *
+ * return     : True if full, false otherwise.
+ * queue (in) : Lock-free circular queue.
+ */
+bool
+lf_circular_queue_is_full (LOCK_FREE_CIRCULAR_QUEUE * queue)
+{
+  /* TODO: x86 atomic load. */
+  UINT64 cc = queue->consume_cursor;
+  UINT64 pc = queue->produce_cursor;
+
+  /* The queue is full is consume cursor is behind produce cursor with one generation (difference of capacity + 1). */
+  return cc + queue->capacity <= pc + 1;
+}
+
+/*
+ * lf_circular_queue_is_empty () - Quick estimate if lock-free circular queue is empty.
+ *
+ * return     : True if empty, false otherwise.
+ * queue (in) : Lock-free circular queue.
+ */
+bool
+lf_circular_queue_is_empty (LOCK_FREE_CIRCULAR_QUEUE * queue)
+{
+  /* TODO: x86 atomic load. */
+  UINT64 cc = queue->consume_cursor;
+  UINT64 pc = queue->produce_cursor;
+
+  /* The queue is empty if the consume cursor is equal to produce cursor. */
+  return cc <= pc;
+}
+
+/*
+ * lf_circular_queue_approx_size () - Estimate size of queue.
+ *
+ * return     : Estimated size of queue.
+ * queue (in) : Lock-free circular queue.
+ */
+int
+lf_circular_queue_approx_size (LOCK_FREE_CIRCULAR_QUEUE * queue)
+{
+  /* TODO: x86 atomic load. */
+  /* We need to read consume cursor first and then the produce cursor. We cannot afford to have a "newer" consume
+   * cursor that is bigger than the produce cursor.
+   */
+  UINT64 cc = queue->consume_cursor;
+  UINT64 pc = queue->produce_cursor;
+  return (int) (pc - cc);
+}
 
 /*
  * lf_circular_queue_produce () - Add new entry to queue.
@@ -2260,7 +2313,11 @@ bool
 lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 {
   int entry_index;
-  INT64 produce_cursor;
+  UINT64 produce_cursor;
+  UINT64 consume_cursor;
+  UINT64 old_state;
+  UINT64 new_state;
+  UINT64 *entry_state_p;
 
   assert (data != NULL);
 
@@ -2271,39 +2328,54 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
    * changes the state from READY_FOR_PRODUCE to RESERVED_FOR_PRODUCE (using compare & swap). */
   while (true)
     {
-      if (LOCK_FREE_CIRCULAR_QUEUE_IS_FULL (queue))
+      /* Get current cursors */
+      /* TODO: x86 atomic load. */
+      consume_cursor = queue->consume_cursor;
+      produce_cursor = queue->produce_cursor;
+
+      if (consume_cursor + queue->capacity >= produce_cursor + 1)
 	{
 	  /* The queue is full, cannot produce new entries */
 	  return false;
 	}
 
-      /* Get current produce_cursor */
-      produce_cursor = VOLATILE_ACCESS (queue->produce_cursor, INT64);
-
       /* Compute entry's index in circular queue */
       entry_index = (int) produce_cursor % queue->capacity;
 
-      if (ATOMIC_CAS_32 (&queue->entry_state[entry_index], READY_FOR_PRODUCE, RESERVED_FOR_PRODUCE))
+      /* Change state to RESERVED_FOR_PRODUCE. The expected current state is produce_cursor | LFCQ_READY_FOR_PRODUCE.
+       * The produce cursor is included in the state to avoid reusing same produce cursor in a scenario like:
+       * thrd1: load queue->produce_cursor and get preempted.
+       * thrd2: successfully produce at same queue->produce_cursor.
+       * thrd3: successfully consume from same queue->produce_cursor.
+       * thrd1: wake up and try to produce at the same queue->produce_cursor.
+       * This actually happened when states did not include produce_cursor.
+       * Now, producing at the same produce cursor will fail because CAS operation will fail. After entry was also
+       * consumed, the expected produce cursor was incremented by one generation (queue->capacity).
+       */
+      old_state = produce_cursor | LFCQ_READY_FOR_PRODUCE;
+      new_state = produce_cursor | LFCQ_RESERVED_FOR_PRODUCE;
+      entry_state_p = &queue->entry_state[entry_index];
+      if (ATOMIC_CAS_64 (entry_state_p, old_state, new_state))
 	{
 	  /* Entry was successfully allocated for producing data, break the loop now. */
 	  break;
 	}
       /* Produce must be tried again with a different cursor */
-      if (queue->entry_state[entry_index] == RESERVED_FOR_PRODUCE)
+      /* Did someone else reserve it? */
+      /* TODO: x86 atomic load. */
+      if ((*entry_state_p) == (produce_cursor | LFCQ_RESERVED_FOR_PRODUCE))
 	{
 	  /* The entry was already reserved by another producer, but the produce cursor may be the same. Try to
 	   * increment the cursor to avoid being spin-locked on same cursor value. The increment will fail if the
 	   * cursor was already incremented. */
 	  (void) ATOMIC_CAS_64 (&queue->produce_cursor, produce_cursor, produce_cursor + 1);
 	}
-      else if (queue->entry_state[entry_index] == RESERVED_FOR_CONSUME)
+      else
 	{
-	  /* Consumer incremented the consumer cursor but didn't change the state to READY_FOR_PRODUCE. In this case,
-	   * the list is considered full, and producer must fail. */
-	  return false;
+	  /* The entry at current produce cursor was already "produced". The cursor should already be incremented. */
+	  assert (queue->produce_cursor > produce_cursor);
 	}
-      /* For all other states, the producer which used current cursor already incremented it. */
-      /* Try again */
+      /* Loop again. */
     }
 
   /* Successfully allocated entry for new data */
@@ -2312,12 +2384,13 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   memcpy (queue->data + (entry_index * queue->data_size), data, queue->data_size);
   /* Set entry as readable. Since other should no longer race for this entry after it was allocated, we don't need an
    * atomic CAS operation. */
-  assert (queue->entry_state[entry_index] == RESERVED_FOR_PRODUCE);
+  assert ((*entry_state_p) == new_state);
 
   /* Try to increment produce cursor. If this thread was preempted after allocating entry and before increment, it may
    * have been already incremented. */
-  ATOMIC_CAS_64 (&queue->produce_cursor, produce_cursor, produce_cursor + 1);
-  queue->entry_state[entry_index] = READY_FOR_CONSUME;
+  (void) ATOMIC_CAS_64 (&queue->produce_cursor, produce_cursor, produce_cursor + 1);
+  /* TODO: x86 atomic store. */
+  *entry_state_p = produce_cursor | LFCQ_READY_FOR_CONSUME;
 
   /* Successfully produced a new entry */
   return true;
@@ -2334,7 +2407,11 @@ bool
 lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 {
   int entry_index;
-  INT64 consume_cursor;
+  UINT64 consume_cursor;
+  UINT64 produce_cursor;
+  UINT64 old_state;
+  UINT64 new_state;
+  UINT64 *entry_state_p;
 
   /* Loop until an entry can be consumed or until queue is empty */
   /* Since there may be more than one consumer and no locks is used, a consume cursor and entry states are used to
@@ -2343,40 +2420,43 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
    * different entry. */
   while (true)
     {
-      if (LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (queue))
+      /* Get current cursors */
+      /* TODO: x86 atomic load. */
+      consume_cursor = queue->consume_cursor;
+      produce_cursor = queue->produce_cursor;
+
+      if (consume_cursor >= produce_cursor)
 	{
-	  /* Queue is empty, nothing to consume */
 	  return false;
 	}
-
-      /* Get current consume cursor */
-      consume_cursor = VOLATILE_ACCESS (queue->consume_cursor, INT64);
 
       /* Compute entry's index in circular queue */
       entry_index = (int) consume_cursor % queue->capacity;
 
       /* Try to set entry state from READY_FOR_CONSUME to RESERVED_FOR_CONSUME. */
-      if (ATOMIC_CAS_32 (&queue->entry_state[entry_index], READY_FOR_CONSUME, RESERVED_FOR_CONSUME))
+      old_state = consume_cursor | LFCQ_READY_FOR_CONSUME;
+      new_state = consume_cursor | LFCQ_RESERVED_FOR_CONSUME;
+      entry_state_p = &queue->entry_state[entry_index];
+      if (ATOMIC_CAS_64 (entry_state_p, old_state, new_state))
 	{
 	  /* Entry was successfully reserved for consume. Break loop. */
 	  break;
 	}
 
       /* Consume must be tried again with a different cursor */
-      if (queue->entry_state[entry_index] == RESERVED_FOR_CONSUME)
+      if ((*entry_state_p) == (consume_cursor | LFCQ_RESERVED_FOR_CONSUME))
 	{
 	  /* The entry was already reserved by another consumer, but the consume cursor may be the same. Try to
 	   * increment the cursor to avoid being spin-locked on same cursor value. The increment will fail if the
 	   * cursor was already incremented. */
-	  ATOMIC_CAS_64 (&queue->consume_cursor, consume_cursor, consume_cursor + 1);
+	  (void) ATOMIC_CAS_64 (&queue->consume_cursor, consume_cursor, consume_cursor + 1);
 	}
-      else if (queue->entry_state[entry_index] == RESERVED_FOR_PRODUCE)
+      else if (queue->entry_state[entry_index] == LFCQ_RESERVED_FOR_PRODUCE)
 	{
-	  /* Producer didn't finish yet, consider that list is empty and there is nothing to consume. */
-	  return false;
+	  /* The entry at current consume cursor was already "consumed". The cursor should already be incremented. */
+	  assert (queue->consume_cursor > consume_cursor);
 	}
-      /* For all other states, the producer which used current cursor already incremented it. */
-      /* Try again */
+      /* Loop again. */
     }
 
   /* Successfully reserved entry to consume */
@@ -2386,6 +2466,8 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
     {
       memcpy (data, queue->data + (entry_index * queue->data_size), queue->data_size);
     }
+  
+  assert ((*entry_state_p) == new_state);
 
   /* Try to increment consume cursor. If this thread was preempted after reserving the entry and before incrementing
    * the cursor, another consumer may have already incremented it. */
@@ -2393,8 +2475,8 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 
   /* Change state to READY_TO_PRODUCE */
   /* Nobody can race us on changing this value, so CAS is not necessary */
-  assert (queue->entry_state[entry_index] == RESERVED_FOR_CONSUME);
-  queue->entry_state[entry_index] = READY_FOR_PRODUCE;
+  /* We also need to set the next expected cursor, which is the next generation value of this consume cursor. */
+  *entry_state_p = (consume_cursor + queue->capacity) | LFCQ_READY_FOR_PRODUCE;
 
   return true;
 }
@@ -2412,7 +2494,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 void *
 lf_circular_queue_async_peek (LOCK_FREE_CIRCULAR_QUEUE * queue)
 {
-  if (LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (queue))
+  if (lf_circular_queue_is_empty (queue))
     {
       return NULL;
     }
@@ -2438,7 +2520,7 @@ lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data
 
   assert (data != NULL);
 
-  if (LOCK_FREE_CIRCULAR_QUEUE_IS_FULL (queue))
+  if (lf_circular_queue_is_full (queue))
     {
       /* Cannot push data */
       return false;
@@ -2457,7 +2539,7 @@ lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data
   memcpy (queue->data + index * queue->data_size, data, queue->data_size);
 
   /* Set pushed data READY_FOR_CONSUME. */
-  queue->entry_state[index] = READY_FOR_CONSUME;
+  queue->entry_state[index] = LFCQ_READY_FOR_CONSUME;
 
   return true;
 }
@@ -2471,10 +2553,11 @@ lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data
  * data_size (in)      : Size of queue entry data.
  */
 LOCK_FREE_CIRCULAR_QUEUE *
-lf_circular_queue_create (INT32 capacity, int data_size)
+lf_circular_queue_create (UINT64 capacity, int data_size)
 {
   /* Allocate queue */
   LOCK_FREE_CIRCULAR_QUEUE *queue;
+  int index;
 
   queue = (LOCK_FREE_CIRCULAR_QUEUE *) malloc (sizeof (LOCK_FREE_CIRCULAR_QUEUE));
   if (queue == NULL)
@@ -2493,17 +2576,19 @@ lf_circular_queue_create (INT32 capacity, int data_size)
     }
 
   /* Allocate the array of entry state */
-  queue->entry_state = malloc (capacity * sizeof (INT32));
+  queue->entry_state = malloc (capacity * sizeof (UINT64));
   if (queue->entry_state == NULL)
     {
       free (queue->data);
       free (queue);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, capacity * sizeof (INT32));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, capacity * sizeof (UINT64));
       return NULL;
     }
-
-  /* Initialize all entries as READY_TO_PRODUCE */
-  memset (queue->entry_state, 0, capacity * sizeof (INT32));
+  /* Initialize all entries by expecting first generation of producers. */
+  for (index = 0; index < capacity; index ++)
+    {
+      queue->entry_state[index] = index | LFCQ_READY_FOR_PRODUCE;
+    }
 
   /* Initialize data size and capacity */
   queue->data_size = data_size;
@@ -2540,7 +2625,7 @@ lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue)
   /* Free the array of entry state */
   if (queue->entry_state != NULL)
     {
-      free (queue->entry_state);
+      free ((void *) queue->entry_state);
     }
 
   /* Free queue */
