@@ -1489,9 +1489,8 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      && xasl->proc.buildlist.agg_hash_context.state != HS_REJECT_ALL)
 	    {
 	      /* aggregate using hash table */
-	      if (qexec_hash_gby_agg_tuple
-		  (thread_p, xasl, xasl_state, &xasl->proc.buildlist, tplrec, &xasl->list_id->tpl_descr, xasl->list_id,
-		   &output_tuple) != NO_ERROR)
+	      if (qexec_hash_gby_agg_tuple (thread_p, xasl, xasl_state, &xasl->proc.buildlist, tplrec,
+					    &xasl->list_id->tpl_descr, xasl->list_id, &output_tuple) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -2909,21 +2908,25 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 
 	      QFILE_GET_OVERFLOW_VPID (&ovfl_vpid, page);
 
-	      if (ovfl_vpid.pageid == NULL_PAGEID || ovfl_vpid.pageid == NULL_PAGEID_ASYNC)
+	      if (ovfl_vpid.pageid == NULL_PAGEID)
 		{
 		  /* This is the normal case of a non-overflow tuple. We can use the page image directly, since we know 
 		   * that the tuple resides entirely on that page. */
 		  data = page + key->s.original.offset;
+
 		  /* update orderby_num() in the tuple */
 		  for (i = 0; ordby_info && i < ordby_info->ordbynum_pos_cnt; i++)
 		    {
 		      QFILE_GET_TUPLE_VALUE_HEADER_POSITION (data, ordby_info->ordbynum_pos[i], tvalhp);
 		      (void) qdata_copy_db_value_to_tuple_value (ordby_info->ordbynum_val, tvalhp, &tval_size);
 		    }
+
 		  error = qfile_add_tuple_to_list (thread_p, info->output_file, data);
 		}
 	      else
 		{
+		  assert (NULL_PAGEID < ovfl_vpid.pageid);	/* should not be NULL_PAGEID_IN_PROGRESS */
+
 		  /* Rats; this tuple requires overflow pages. We need to copy all of the pages from the input file to
 		   * the output file. */
 		  if (ordby_info && ordby_info->ordbynum_pos_cnt > 0)
@@ -7888,9 +7891,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 			  xasl->next_scan_on = true;
 
 
-			  while ((xs_scan =
-				  (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, tplrec,
-						    next_scan_fnc + 1)) == S_SUCCESS)
+			  while ((xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, tplrec,
+							      next_scan_fnc + 1)) == S_SUCCESS)
 			    {
 
 			      /* if hierarchical query do special processing */
@@ -8555,7 +8557,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   (void) logtb_get_mvcc_snapshot (thread_p);
 
   mvcc_upddel_reev_data.copyarea = NULL;
-  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE, NULL);
+  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE);
   class_oid_cnt = update->no_classes;
   mvcc_reev_class_cnt = update->no_reev_classes;
 
@@ -9471,7 +9473,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   class_oid_cnt = delete_->no_classes;
   mvcc_reev_class_cnt = delete_->no_reev_classes;
-  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE, NULL);
+  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE);
 
   mvcc_upddel_reev_data.copyarea = NULL;
 
@@ -10898,9 +10900,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  switch (_setjmp (buf.env))
 		    {
 		    case 0:
-		      error =
-			(*(pr_type->data_readval)) (&buf, insert->vals[k], attr->domain,
-						    attr->current_default_value.val_length, copy, NULL, 0);
+		      error = (*(pr_type->data_readval)) (&buf, insert->vals[k], attr->domain,
+							  attr->current_default_value.val_length, copy, NULL, 0);
 		      if (error != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -10961,8 +10962,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (locator_start_force_scan_cache (thread_p, &scan_cache, &insert->class_hfid, &class_oid, scan_cache_op_type) !=
-	  NO_ERROR)
+      if (locator_start_force_scan_cache (thread_p, &scan_cache, &insert->class_hfid, &class_oid,
+					  scan_cache_op_type) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -10971,9 +10972,9 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       assert (xasl->scan_op_type == S_SELECT);
 
       /* force_select_lock = false */
-      if (qexec_open_scan
-	  (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan, true,
-	   &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL) != NO_ERROR)
+      if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan,
+			   specp->grouped_scan, true, &specp->s_id, xasl_state->query_id, S_SELECT, false,
+			   NULL) != NO_ERROR)
 	{
 	  if (savepoint_used)
 	    {
@@ -11025,8 +11026,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		{
 		  if (DB_IS_NULL (insert->vals[k]))
 		    {
-		      OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k],
-								     &attr_info);
+		      OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k], &attr_info);
+
 		      if (attr == NULL)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -11482,7 +11483,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   XASL_NODE *xptr;
   DB_LOGICAL ev_res;
   DB_LOGICAL ev_res2;
-  RECDES oRec;
+  RECDES oRec = RECDES_INITIALIZER;
   HEAP_SCANCACHE scan_cache;
   ACCESS_SPEC_TYPE *specp = NULL;
   OID cls_oid;
@@ -11512,9 +11513,9 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  DB_VALUE dbval, dbval1;
 
 	  if ((db_set_size (setp) == 3) && (db_set_get (setp, 1, &dbval) == NO_ERROR)
-	      && (db_set_get (setp, 2, &dbval1) == NO_ERROR) && (DB_IS_NULL (&dbval)
-								 || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID)
-								     && OID_ISNULL (DB_GET_OID (&dbval))))
+	      && (db_set_get (setp, 2, &dbval1) == NO_ERROR)
+	      && (DB_IS_NULL (&dbval) || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID)
+					  && OID_ISNULL (DB_GET_OID (&dbval))))
 	      && (DB_VALUE_DOMAIN_TYPE (&dbval1) == DB_TYPE_OID))
 	    {
 	      dbvaloid = DB_GET_OID (&dbval1);
@@ -12043,7 +12044,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       /* init scan reevaluation structure */
       INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, &range_filter, &key_filter, &data_filter, &scan_id->qualification);
       /* set reevaluation data */
-      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE, NULL);
+      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
       p_mvcc_reev_data = &mvcc_reev_data;
 
       /* clear list id if all reevaluations result is false */
@@ -14127,91 +14128,87 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   struct timeb tloc;
   struct tm *c_time_struct, tm_val;
   int tran_index;
+
 #if defined(CUBRID_DEBUG)
   static int trace = -1;
   static FILE *fp = NULL;
 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-
 #endif /* CUBRID_DEBUG */
+
   struct drand48_data *rand_buf_p;
+
 #if !defined (NDEBUG)
   int amount_qlist_enter;
   int amount_qlist_exit;
   int amount_qlist_new;
 #endif /* NDEBUG */
+
 #if defined(ENABLE_SYSTEMTAP)
-  LOG_TDES *tdes = NULL;
-  QMGR_TRAN_ENTRY *tran_entry_p = NULL;
-  QMGR_QUERY_ENTRY *query_p = NULL;
   char *query_str = NULL;
   int client_id = -1;
   char *db_user = NULL;
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined(CUBRID_DEBUG)
-  {
-    /* check the consistency of the XASL tree */
-    if (!qdump_check_xasl_tree (xasl))
-      {
-	if (xasl)
-	  {
-	    qdump_print_xasl (xasl);
-	  }
-	else
-	  {
-	    printf ("<NULL XASL tree>\n");
-	  }
-      }
-  }
+  /* check the consistency of the XASL tree */
+  if (!qdump_check_xasl_tree (xasl))
+    {
+      if (xasl)
+	{
+	  qdump_print_xasl (xasl);
+	}
+      else
+	{
+	  printf ("<NULL XASL tree>\n");
+	}
+    }
 
-  {
-    if (trace == -1)
-      {
-	char *file;
+  if (trace == -1)
+    {
+      char *file;
 
-	file = envvar_get ("QUERY_TRACE_FILE");
-	if (file)
-	  {
-	    trace = 1;
-	    if (!strcmp (file, "stdout"))
-	      {
-		fp = stdout;
-	      }
-	    else if (!strcmp (file, "stderr"))
-	      {
-		fp = stderr;
-	      }
-	    else
-	      {
-		fp = fopen (file, "a");
-		if (!fp)
-		  {
-		    fprintf (stderr, "Error: QUERY_TRACE_FILE '%s'\n", file);
-		    trace = 0;
-		  }
-	      }
-	  }
-	else
-	  {
-	    trace = 0;
-	  }
-      }
+      file = envvar_get ("QUERY_TRACE_FILE");
+      if (file)
+	{
+	  trace = 1;
+	  if (!strcmp (file, "stdout"))
+	    {
+	      fp = stdout;
+	    }
+	  else if (!strcmp (file, "stderr"))
+	    {
+	      fp = stderr;
+	    }
+	  else
+	    {
+	      fp = fopen (file, "a");
+	      if (!fp)
+		{
+		  fprintf (stderr, "Error: QUERY_TRACE_FILE '%s'\n", file);
+		  trace = 0;
+		}
+	    }
+	}
+      else
+	{
+	  trace = 0;
+	}
+    }
 
-    if (trace && fp)
-      {
-	time_t loc;
-	char str[19];
+  if (trace && fp)
+    {
+      time_t loc;
+      char str[19];
 
-	time (&loc);
-	strftime (str, 19, "%x %X", localtime_r (&loc, &tm_val));
-	fprintf (fp, "start %s tid %d qid %ld query %s\n", str, LOG_FIND_THREAD_TRAN_INDEX (thread_p), query_id,
-		 (xasl->sql_hash_text ? xasl->sql_hash_text : "<NULL>"));
+      time (&loc);
+      strftime (str, 19, "%x %X", localtime_r (&loc, &tm_val));
+      fprintf (fp, "start %s tid %d qid %ld query %s\n", str, LOG_FIND_THREAD_TRAN_INDEX (thread_p), query_id,
+	       (xasl->sql_hash_text ? xasl->sql_hash_text : "<NULL>"));
 
-	tsc_getticks (&start_tick);
-      }
-  }
+      tsc_getticks (&start_tick);
+    }
 #endif /* CUBRID_DEBUG */
 
 #if !defined (NDEBUG)
@@ -14223,31 +14220,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
 #if defined(ENABLE_SYSTEMTAP)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  tran_entry_p = qmgr_get_tran_entry (tran_index);
+  query_str = qmgr_get_query_sql_user_text (thread_p, query_id, tran_index);
 
-  if (tdes != NULL)
-    {
-      client_id = tdes->client_id;
-      db_user = tdes->client.db_user;
-    }
-
-  query_p = tran_entry_p->query_entry_list_p;
-  while (query_p && query_p->query_id != query_id)
-    {
-      query_p = query_p->next;
-    }
-
-  if (query_p != NULL)
-    {
-      XASL_CACHE_ENTRY *xasl_ent = NULL;
-
-      xasl_ent = query_p->xasl_ent;
-      if (xasl_ent != NULL)
-	{
-	  query_str = xasl_ent->sql_info.sql_user_text;
-	}
-    }
   CUBRID_QUERY_EXEC_START (query_str, query_id, client_id, db_user);
 #endif /* ENABLE_SYSTEMTAP */
 
@@ -14305,123 +14279,59 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
       if (stat != NO_ERROR)
 	{
-
-	  /* Don't reexecute the query when temp file is not available. */
-#if 0
-#if defined(SERVER_MODE)
-	  if (er_errid () == ER_QPROC_NOMORE_QFILE_PAGES
-	      && num_deadlock_reexecute <= QP_MAX_RE_EXECUTES_UNDER_DEADLOCKS)
+	  switch (er_errid ())
 	    {
+	    case NO_ERROR:
+	      {
+		char buf[512];
 
-	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	      if (qmgr_get_tran_status (tran_index) == QMGR_TRAN_RESUME_DUE_DEADLOCK)
-		{
-		  num_deadlock_reexecute++;
-		}
-
-	      /* 
-	       * no more pages left in the query file. deallocate all the
-	       * pages and goto sleep.
+		/* Make sure this does NOT return error indication without setting an error message and code. If we 
+		 * get here, we most likely have a system error. qp_xasl_line is the first line to set an error
+		 * condition. */
+		snprintf (buf, 511, "Query execution failure #%d.", xasl_state.qp_xasl_line);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_EXECUTE, 2, buf, "");
+		break;
+	      }
+	    case ER_INTERRUPTED:
+	      /*
+	       * Most of the cleanup that's about to happen will get screwed up if the interrupt is still in effect
+	       * (e.g., someone will do a pb_fetch, which will quit early, and so they'll bail without actually
+	       *  finishing their cleanup), so disable it.
 	       */
-#if defined(QP_DEBUG)
-	      (void) fprintf (stderr,
-			      "*WARNING* qexec_execute_query: No more pages left in the query area.\n"
-			      " Query execution falls into sleep for transaction index %d with %d deadlocks. \n\n",
-			      tran_index, num_deadlock_reexecute);
-#endif
-	      /* 
-	       * Do ***NOT*** clear out the DB_VALUEs in this tree: if you
-	       * do, you'll get incorrect results when you restart the
-	       * query, because all of your "constants" will have turned to
-	       * NULL.
-	       */
-	      (void) qexec_clear_xasl (thread_p, xasl, false);
-	      (void) qmgr_free_query_temp_file (query_id);
-
-	      /* 
-	       * Wait until some of the holders finish
-	       */
-
-	      if (qm_addtg_waiter (tran_index, QMGR_TRAN_WAITING) != NO_ERROR)
-		{
-		  return (QFILE_LIST_ID *) NULL;
-		}
-
-	      qmgr_set_tran_status (tran_index, QMGR_TRAN_RUNNING);
-	      re_execute = true;	/* resume execution */
+	      xlogtb_set_interrupt (thread_p, false);
+	      break;
 	    }
-	  else
-#endif
-#endif
+
+	  qmgr_set_query_error (thread_p, query_id);	/* propagate error */
+
+	  if (xasl->list_id)
 	    {
-	      switch (er_errid ())
-		{
-		case NO_ERROR:
-		  {
-		    char buf[512];
+	      qfile_close_list (thread_p, xasl->list_id);
+	    }
 
-		    /* if this query was interrupted by user then, set error ER_QM_EXECUTION_INTERRUPTED */
-#if defined(SERVER_MODE)
-		    if (qmgr_is_async_query_interrupted (thread_p, query_id))
-		      {
-			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_EXECUTION_INTERRUPTED, 0);
-		      }
-		    /* Make sure this does NOT return error indication without setting an error message and code. If we 
-		     * get here, we most likely have a system error. qp_xasl_line is the first line to set an error
-		     * condition. */
-		    else
-#endif
-		      {
-			snprintf (buf, 511, "Query execution failure #%d.", xasl_state.qp_xasl_line);
-			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_EXECUTE, 2, buf, "");
-		      }
-		    break;
-		  }
-		case ER_INTERRUPTED:
-		  {
-		    /* 
-		     * Most of the cleanup that's about to happen will get
-		     * screwed up if the interrupt is still in effect (e.g.,
-		     * someone will do a pb_fetch, which will quit early, and
-		     * so they'll bail without actually finishing their
-		     * cleanup), so disable it.
-		     */
-		    xlogtb_set_interrupt (thread_p, false);
-		    break;
-		  }
-		}		/* switch */
+	  list_id = qexec_get_xasl_list_id (xasl);
 
-	      qmgr_set_query_error (thread_p, query_id);	/* propagate error */
-
-	      if (xasl->list_id)
-		{
-		  qfile_close_list (thread_p, xasl->list_id);
-		}
-
-	      list_id = qexec_get_xasl_list_id (xasl);
-
-	      (void) qexec_clear_xasl (thread_p, xasl, true);
+	  (void) qexec_clear_xasl (thread_p, xasl, true);
 
 #if !defined (NDEBUG)
-	      amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
-	      amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
-	      if (thread_rc_track_need_to_trace (thread_p))
+	  amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
+	  amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
+	  if (thread_rc_track_need_to_trace (thread_p))
+	    {
+	      if (list_id && list_id->type_list.type_cnt != 0)
 		{
-		  if (list_id && list_id->type_list.type_cnt != 0)
-		    {
-		      assert_release (amount_qlist_new == 1);
-		    }
-		  else
-		    {
-		      assert_release (amount_qlist_new == 0);
-		    }
+		  assert_release (amount_qlist_new == 1);
 		}
+	      else
+		{
+		  assert_release (amount_qlist_new == 0);
+		}
+	    }
 #endif /* NDEBUG */
 
-	      /* caller will detect the error condition and free the listid */
-	      goto end;
-	    }			/* if-else */
-	}			/* if */
+	  /* caller will detect the error condition and free the listid */
+	  goto end;
+	}
       /* for async query, clean error */
       else
 	{
@@ -14467,26 +14377,24 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 #endif /* NDEBUG */
 
 #if defined(CUBRID_DEBUG)
-  {
-    if (trace && fp)
-      {
-	time_t loc;
-	char str[19];
-	float elapsed;
+  if (trace && fp)
+    {
+      time_t loc;
+      char str[19];
+      float elapsed;
 
-	tsc_getticks (&end_tick);
-	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	elapsed = (float) (tv_diff.tv_sec) * 1000000;
-	elapsed += (float) tv_diff.tv_usec;
-	elapsed /= 1000000;
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      elapsed = (float) (tv_diff.tv_sec) * 1000000;
+      elapsed += (float) tv_diff.tv_usec;
+      elapsed /= 1000000;
 
-	time (&loc);
-	strftime (str, 19, "%x %X", localtime_r (&loc, &tm_val));
-	fprintf (fp, "end %s tid %d qid %d elapsed %.6f\n", str, LOG_FIND_THREAD_TRAN_INDEX (thread_p), query_id,
-		 elapsed);
-	fflush (fp);
-      }
-  }
+      time (&loc);
+      strftime (str, 19, "%x %X", localtime_r (&loc, &tm_val));
+      fprintf (fp, "end %s tid %d qid %d elapsed %.6f\n", str, LOG_FIND_THREAD_TRAN_INDEX (thread_p), query_id,
+	       elapsed);
+      fflush (fp);
+    }
 #endif /* CUBRID_DEBUG */
 
 end:
@@ -14580,7 +14488,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
-  if (rwlock_initialize (QEXEC_RWLOCK_XASL_CACHE, QEXEC_RWLOCK_XASL_CACHE_NAME, RWLOCK_TRACE) != NO_ERROR)
+  if (rwlock_initialize (QEXEC_RWLOCK_XASL_CACHE, QEXEC_RWLOCK_XASL_CACHE_NAME) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -21407,12 +21315,7 @@ wrapup:
   return (analytic_state.state == NO_ERROR) ? NO_ERROR : ER_FAILED;
 
 exit_on_error:
-  assert (er_errid () != NO_ERROR);
-  analytic_state.state = er_errid ();
-  if (analytic_state.state == NO_ERROR)
-    {
-      analytic_state.state = ER_FAILED;
-    }
+  ASSERT_ERROR_AND_SET (analytic_state.state);
 
   if (!finalized)
     {

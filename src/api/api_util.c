@@ -183,7 +183,7 @@ hash_new (int bucket_sz, ht_hashf hashf, ht_keyf keyf, ht_comparef comparef, has
   ht->keyf = keyf;
   ht->comparef = comparef;
   for (i = 0; i < bucket_sz; i++)
-    dlisth_init ((dlisth *) & ht->buckets[i].head);
+    dlisth_init ((dlisth *) (&ht->buckets[i].head));
 
   *rht = ht;
   return NO_ERROR;

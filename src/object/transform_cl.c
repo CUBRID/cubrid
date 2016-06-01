@@ -516,7 +516,7 @@ tf_need_permanent_oid (OR_BUF * buf, DB_OBJECT * obj)
       else
 	{
 	  /* leave the NULL oid in the buffer until we can fix it */
-	  oidp = (OID *) & oid_Null_oid;
+	  oidp = (OID *) (&oid_Null_oid);
 	}
     }
   else
@@ -4237,7 +4237,7 @@ tf_disk_to_class (OID * oid, RECDES * record)
 	}
       else
 	{
-	  class_ = (MOBJ) disk_to_class (buf, (SM_CLASS **) & class_);
+	  class_ = (MOBJ) disk_to_class (buf, (SM_CLASS **) (&class_));
 	  if (class_ != NULL)
 	    {
 	      ((SM_CLASS *) class_)->repid = repid;

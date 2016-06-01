@@ -65,10 +65,13 @@ static int rv;
  * properly that heap file scan routines will work properly.
  */
 #define UT_CAST_TO_NULL_HEAP_OID(hfidp,oidp) \
-  do { (oidp)->pageid = NULL_PAGEID; \
-       (oidp)->volid = (hfidp)->vfid.volid; \
-       (oidp)->slotid = NULL_SLOTID; \
-  } while (0)
+  do \
+    { \
+      (oidp)->pageid = NULL_PAGEID; \
+      (oidp)->volid = (hfidp)->vfid.volid; \
+      (oidp)->slotid = NULL_SLOTID; \
+    } \
+  while (0)
 
 #define GET_NTH_OID(oid_setp, n) ((OID *)((OID *)(oid_setp) + (n)))
 
@@ -4994,7 +4997,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* data filter already initialized, don't have key or range init scan reevaluation structure */
 	  INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, p_range_filter, p_key_filter, &data_filter,
 			       &scan_id->qualification);
-	  SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE, NULL);
+	  SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
 	  COPY_OID (&current_oid, &hsidp->curr_oid);
 	  if (scan_id->fixed)
 	    {
@@ -5014,6 +5017,10 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    {
 	      er_clear ();
 	      continue;
+	    }
+	  else if (sp_scan != S_SUCCESS)
+	    {
+	      return S_ERROR;
 	    }
 	}
 
@@ -5145,9 +5152,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* fetch the rest of the values from the object instance */
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list
-		  (thread_p, hsidp->rest_regu_list, scan_id->vd, &hsidp->cls_oid, p_current_oid, NULL,
-		   PEEK) != NO_ERROR)
+	      if (fetch_val_list (thread_p, hsidp->rest_regu_list, scan_id->vd, &hsidp->cls_oid, p_current_oid, NULL,
+				  PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -5167,9 +5173,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* fetch the record info values */
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list
-		  (thread_p, hsidp->recordinfo_regu_list, scan_id->vd, &hsidp->cls_oid, p_current_oid, NULL,
-		   PEEK) != NO_ERROR)
+	      if (fetch_val_list (thread_p, hsidp->recordinfo_regu_list, scan_id->vd, &hsidp->cls_oid, p_current_oid,
+				  NULL, PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -5213,14 +5218,14 @@ scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (scan_id->direction == S_FORWARD)
 	{
 	  /* move forward */
-	  sp_scan =
-	    heap_page_next (thread_p, &hpsidp->cls_oid, &hpsidp->hfid, &hpsidp->curr_vpid, hpsidp->cache_page_info);
+	  sp_scan = heap_page_next (thread_p, &hpsidp->cls_oid, &hpsidp->hfid, &hpsidp->curr_vpid,
+				    hpsidp->cache_page_info);
 	}
       else
 	{
 	  /* move backward */
-	  sp_scan =
-	    heap_page_prev (thread_p, &hpsidp->cls_oid, &hpsidp->hfid, &hpsidp->curr_vpid, hpsidp->cache_page_info);
+	  sp_scan = heap_page_prev (thread_p, &hpsidp->cls_oid, &hpsidp->hfid, &hpsidp->curr_vpid,
+				    hpsidp->cache_page_info);
 	}
 
       if (sp_scan != S_SUCCESS)
@@ -5246,8 +5251,8 @@ scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* fetch the page info values */
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list
-		  (thread_p, hpsidp->page_info_regu_list, scan_id->vd, &hpsidp->cls_oid, NULL, NULL, PEEK) != NO_ERROR)
+	      if (fetch_val_list (thread_p, hpsidp->page_info_regu_list, scan_id->vd, &hpsidp->cls_oid, NULL, NULL,
+				  PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -5664,9 +5669,9 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      assert (isidp->curr_oidno < isidp->multi_range_opt.cnt);
 	      assert (isidp->multi_range_opt.top_n_items[isidp->curr_oidno] != NULL);
 
-	      if (scan_dump_key_into_tuple
-		  (thread_p, isidp, &(isidp->multi_range_opt.top_n_items[isidp->curr_oidno]->index_value),
-		   isidp->curr_oidp, &isidp->multi_range_opt.tplrec) != NO_ERROR)
+	      if (scan_dump_key_into_tuple (thread_p, isidp,
+					    &(isidp->multi_range_opt.top_n_items[isidp->curr_oidno]->index_value),
+					    isidp->curr_oidp, &isidp->multi_range_opt.tplrec) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -5786,7 +5791,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       /* init scan reevaluation structure */
       INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, &range_filter, &key_filter, data_filter, &scan_id->qualification);
       /* set reevaluation data */
-      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE, NULL);
+      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
 
       sp_scan =
 	heap_mvcc_get_for_delete (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
@@ -5941,8 +5946,8 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       /* fetch the rest of the values from the object instance */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list
-	      (thread_p, isidp->rest_regu_list, scan_id->vd, &isidp->cls_oid, isidp->curr_oidp, NULL, PEEK) != NO_ERROR)
+	  if (fetch_val_list (thread_p, isidp->rest_regu_list, scan_id->vd, &isidp->cls_oid, isidp->curr_oidp, NULL,
+			      PEEK) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -5978,7 +5983,6 @@ scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       sp_scan =
 	btree_get_next_key_info (thread_p, &isidp->indx_info->indx_id.i.btid, &isidp->bt_scan, 1, &isidp->cls_oid,
 				 isidp, isidp->key_info_values);
-
       if (sp_scan != S_SUCCESS)
 	{
 	  return (sp_scan == S_END) ? S_END : S_ERROR;

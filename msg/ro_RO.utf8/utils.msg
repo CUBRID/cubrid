@@ -1100,7 +1100,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 gen_tz: Generează fișiere ce conțin informații timezone, pentru a fi compilate\n\
         într-o librărie shared.\n\
 utilizare: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] database-name\n\
+       %s gen_tz -g extend [OPTION] [database-name]\n\
 \n\
 opțiuni valide:\n\
   -i, --input-folder    calea pentru un fișier input ce conține o versiune a\n\
@@ -1122,7 +1122,7 @@ opțiuni valide:\n\
                         deja în CUBRID nu sunt înlăturate, chiar dacă nu există\n\
                         în fișierul input.\n\
                         Este generat un nou fișier C, ce conține toate\n\
-                        denumirile timezone, care trebuie inclus în fișierele\n                        
+                        denumirile timezone, care trebuie inclus în fișierele\n\
                         sursă CUBRID, înainte ca noua librarie timezone să\n\
                         poată fi folosită.\n
 

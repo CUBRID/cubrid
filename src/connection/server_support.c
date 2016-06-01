@@ -863,7 +863,7 @@ css_master_thread (void)
 	{
 	  if (!IS_INVALID_SOCKET (css_Pipe_to_master)
 #if defined(WINDOWS)
-	      && ioctlsocket (css_Pipe_to_master, FIONREAD, (u_long *) & status) == SockError
+	      && ioctlsocket (css_Pipe_to_master, FIONREAD, (u_long *) (&status)) == SockError
 #else /* WINDOWS */
 	      && fcntl (css_Pipe_to_master, F_GETFL, status) == SockError
 #endif /* WINDOWS */
@@ -1054,8 +1054,11 @@ css_process_new_client (SOCKET master_fd)
 
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
     {
+      /* open a temporary connection to send a reply to client.
+       * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
+       */
       css_initialize_conn (&temp_conn, new_fd);
-      csect_initialize_critical_section (&temp_conn.csect);
+      csect_initialize_critical_section (&temp_conn.csect, NULL);
 
       reason = htonl (SERVER_INACCESSIBLE_IP);
       css_send_data (&temp_conn, rid, (char *) &reason, (int) sizeof (int));
@@ -1073,8 +1076,11 @@ css_process_new_client (SOCKET master_fd)
   conn = css_make_conn (new_fd);
   if (conn == NULL)
     {
+      /* open a temporary connection to send a reply to client.
+       * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
+       */
       css_initialize_conn (&temp_conn, new_fd);
-      csect_initialize_critical_section (&temp_conn.csect);
+      csect_initialize_critical_section (&temp_conn.csect, NULL);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
       reason = htonl (SERVER_CLIENTS_EXCEEDED);
@@ -1263,7 +1269,7 @@ css_process_new_connection_request (void)
 	  void *error_string;
 
 	  css_initialize_conn (&new_conn, new_fd);
-	  csect_initialize_critical_section (&new_conn.csect);
+	  csect_initialize_critical_section (&new_conn.csect, csect_Name_conn);
 
 	  rc = css_read_header (&new_conn, &header);
 	  buffer_size = rid = 0;
@@ -1292,7 +1298,7 @@ css_process_new_connection_request (void)
 	  void *error_string;
 
 	  css_initialize_conn (&new_conn, new_fd);
-	  csect_initialize_critical_section (&new_conn.csect);
+	  csect_initialize_critical_section (&new_conn.csect, csect_Name_conn);
 
 	  rc = css_read_header (&new_conn, &header);
 	  buffer_size = rid = 0;
@@ -1679,18 +1685,12 @@ css_block_all_active_conn (unsigned short stop_phase)
 
   for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
     {
-#if defined(SERVER_MODE)
-      assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-      assert (conn->csect.name == csect_Name_conn);
-#endif
+      assert (css_is_valid_conn_csect (conn));
 
       csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
       if (conn->stop_phase != stop_phase)
 	{
-#if defined(SERVER_MODE)
-	  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-	  assert (conn->csect.name == csect_Name_conn);
-#endif
+	  assert (css_is_valid_conn_csect (conn));
 
 	  csect_exit_critical_section (NULL, &conn->csect);
 	  continue;
@@ -1702,10 +1702,7 @@ css_block_all_active_conn (unsigned short stop_phase)
 	  logtb_set_tran_index_interrupt (NULL, conn->transaction_id, 1);
 	}
 
-#if defined(SERVER_MODE)
-      assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-      assert (conn->csect.name == csect_Name_conn);
-#endif
+      assert (css_is_valid_conn_csect (conn));
 
       csect_exit_critical_section (NULL, &conn->csect);
     }
@@ -1827,8 +1824,8 @@ css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
  *   buffer(in):
  */
 void
-css_initialize_server_interfaces (int (*request_handler)
-				  (THREAD_ENTRY * thrd, unsigned int eid, int request, int size, char *buffer),
+css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, unsigned int eid, int request,
+							  int size, char *buffer),
 				  CSS_THREAD_FN connection_error_function)
 {
   css_Server_request_handler = request_handler;
@@ -2179,12 +2176,12 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 
   if (buffer3 == NULL || buffer3_size <= 0)
     {
-      return (css_send_reply_and_2_data_to_client
-	      (conn, eid, reply, reply_size, buffer1, buffer1_size, buffer2, buffer2_size));
+      return (css_send_reply_and_2_data_to_client (conn, eid, reply, reply_size, buffer1, buffer1_size, buffer2,
+						   buffer2_size));
     }
-  rc =
-    css_send_four_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2, buffer2_size,
-			buffer3, buffer3_size);
+
+  rc = css_send_four_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer1, buffer1_size, buffer2,
+			   buffer2_size, buffer3, buffer3_size);
 
   return (rc == NO_ERRORS) ? 0 : rc;
 }
@@ -2307,20 +2304,14 @@ css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn, unsigned int e
 void
 css_end_server_request (CSS_CONN_ENTRY * conn)
 {
-#if defined(SERVER_MODE)
-  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == csect_Name_conn);
-#endif
+  assert (css_is_valid_conn_csect (conn));
 
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
 
   css_remove_all_unexpected_packets (conn);
   conn->status = CONN_CLOSING;
 
-#if defined(SERVER_MODE)
-  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == csect_Name_conn);
-#endif
+  assert (css_is_valid_conn_csect (conn));
 
   csect_exit_critical_section (NULL, &conn->csect);
 }
@@ -2998,24 +2989,15 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
   assert (state >= HA_SERVER_STATE_IDLE && state <= HA_SERVER_STATE_DEAD);
 
   if (state == ha_Server_state
-      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE) || (!force
-													    &&
-													    ha_Server_state
-													    ==
-													    HA_SERVER_STATE_TO_BE_STANDBY
-													    && state ==
-													    HA_SERVER_STATE_STANDBY))
+      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE)
+      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && state == HA_SERVER_STATE_STANDBY))
     {
       return NO_ERROR;
     }
 
   if (heartbeat == false && !(ha_Server_state == HA_SERVER_STATE_STANDBY && state == HA_SERVER_STATE_MAINTENANCE)
-      && !(ha_Server_state == HA_SERVER_STATE_MAINTENANCE && state == HA_SERVER_STATE_STANDBY) && !(force
-												    && ha_Server_state
-												    ==
-												    HA_SERVER_STATE_TO_BE_ACTIVE
-												    && state ==
-												    HA_SERVER_STATE_ACTIVE))
+      && !(ha_Server_state == HA_SERVER_STATE_MAINTENANCE && state == HA_SERVER_STATE_STANDBY)
+      && !(force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE))
     {
       return NO_ERROR;
     }
@@ -3141,8 +3123,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      tdes = log_Gl.trantable.all_tdes[i];
 	      if (tdes != NULL && tdes->trid != NULL_TRANID)
 		{
-		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE
-		      (tdes->client.host_name, boot_Host_name, tdes->client.client_type))
+		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.host_name, boot_Host_name,
+							       tdes->client.client_type))
 		    {
 		      thread_slam_tran_index (thread_p, tdes->tran_index);
 		    }

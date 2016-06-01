@@ -134,7 +134,7 @@ struct boot_dbparm
   VOLID temp_nvols;		/* Number of temporary volumes that have been created */
   VOLID last_volid;		/* Next volume identifier */
   VOLID temp_last_volid;	/* Next temporary volume identifier. This goes from a higher number to a lower number */
-  int vacuum_data_npages;	/* Number of pages for vacuum data file */
+  int vacuum_log_block_npages;	/* Number of pages for vacuum data file */
   VFID vacuum_data_vfid;	/* Vacuum data file identifier */
   VFID dropped_files_vfid;	/* Vacuum dropped files file identifier */
 };
@@ -659,7 +659,7 @@ boot_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_info)
   log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (boot_db_parm_vpid), &boot_db_parm_vpid);
 
   heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-			      &recdes, NULL, NULL, UPDATE_INPLACE_CURRENT_MVCCID, false);
+			      &recdes, NULL, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
   if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       /* Return back our global area of system parameter */
@@ -812,7 +812,7 @@ boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, REMOVE_TEMP_VOL_A
       recdes.data = (char *) boot_Db_parm;
 
       heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-				  &recdes, NULL, NULL, UPDATE_INPLACE_CURRENT_MVCCID, false);
+				  &recdes, NULL, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
       if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 	{
 	  boot_Db_parm->temp_nvols++;
@@ -1849,7 +1849,7 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
       recdes.data = (char *) boot_Db_parm;
 
       heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-				  &recdes, NULL, NULL, UPDATE_INPLACE_CURRENT_MVCCID, false);
+				  &recdes, NULL, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
       if (heap_update_logical (thread_p, &update_context) != NO_ERROR
 	  || xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
 	{
@@ -1911,7 +1911,11 @@ boot_xremove_perm_volume (THREAD_ENTRY * thread_p, VOLID volid)
   recdes.data = (char *) boot_Db_parm;
 
   heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
+<<<<<<< HEAD
 			      &recdes, NULL, NULL, UPDATE_INPLACE_CURRENT_MVCCID, false);
+=======
+			      &recdes, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
+>>>>>>> 4f1000c3f4ecd8107ee57d8876b3d8bcf8c1ce47
   if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       boot_Db_parm->nvols++;
@@ -3363,6 +3367,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       error_code = ER_FAILED;
       goto error;
     }
+
+  /* note that thread entry was re-initialized */
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
   if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
     {
       error_code = ER_FAILED;
@@ -3521,7 +3530,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       /* We need to load vacuum data and initialize vacuum routine before recovery. */
       error_code =
-	vacuum_initialize (thread_p, boot_Db_parm->vacuum_data_npages, &boot_Db_parm->vacuum_data_vfid,
+	vacuum_initialize (thread_p, boot_Db_parm->vacuum_log_block_npages, &boot_Db_parm->vacuum_data_vfid,
 			   &boot_Db_parm->dropped_files_vfid);
       if (error_code != NO_ERROR)
 	{
@@ -3543,9 +3552,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       error_code = vacuum_load_dropped_files_from_disk (thread_p);
       if (error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto error;
 	}
-      vacuum_check_interrupted_jobs (thread_p);
     }
 
 
@@ -3698,7 +3707,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       recdes.data = (char *) boot_Db_parm;
 
       heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-				  &recdes, NULL, NULL, UPDATE_INPLACE_CURRENT_MVCCID, false);
+				  &recdes, NULL, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
       if (heap_update_logical (thread_p, &update_context) != NO_ERROR
 	  || xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
 	{
@@ -3997,6 +4006,9 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       boot_check_db_at_num_shutdowns (true);
 #endif /* CUBRID_DEBUG */
 
+      /* Start by notifying vacuum that shutdown was requested. */
+      vacuum_notify_server_shutdown ();
+
       sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
       /* Shutdown the system with the system transaction */
       logtb_set_to_system_tran_index (thread_p);
@@ -4011,11 +4023,6 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       (void) qexec_finalize_xasl_cache (thread_p);
       (void) qexec_finalize_filter_pred_cache (thread_p);
       session_states_finalize (thread_p);
-
-      if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
-	{
-	  vacuum_finalize (thread_p);
-	}
 
       (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
       log_final (thread_p);
@@ -4332,10 +4339,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
   conn = thread_p->conn_entry;
 
-#if defined(SERVER_MODE)
-  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == csect_Name_conn);
-#endif
+  assert (css_is_valid_conn_csect (conn));
 
   csect_enter_critical_section (thread_p, &conn->csect, INF_WAIT);
 
@@ -4349,10 +4353,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	}
     }
 
-#if defined(SERVER_MODE)
-  assert (conn->csect.cs_index == CRITICAL_SECTION_COUNT + conn->idx);
-  assert (conn->csect.name == csect_Name_conn);
-#endif
+  assert (css_is_valid_conn_csect (conn));
 
   csect_exit_critical_section (thread_p, &conn->csect);
 }
@@ -5868,7 +5869,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   /* Get parameter value for vacuum data file size. Save it to boot_Db_parm to keep the value persistent even if the
    * server is restarted and the value in config file is changed. */
-  boot_Db_parm->vacuum_data_npages = prm_get_integer_value (PRM_ID_VACUUM_DATA_PAGES);
+  boot_Db_parm->vacuum_log_block_npages = prm_get_integer_value (PRM_ID_VACUUM_LOG_BLOCK_PAGES);
   VFID_SET_NULL (&boot_Db_parm->vacuum_data_vfid);
   VFID_SET_NULL (&boot_Db_parm->dropped_files_vfid);
 
@@ -5916,7 +5917,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   recdes.data = (char *) boot_Db_parm;
 
   /* Prepare context */
-  heap_create_insert_context (&heapop_context, &boot_Db_parm->hfid, &boot_Db_parm->rootclass_oid, &recdes, NULL, NULL, false);
+  heap_create_insert_context (&heapop_context, &boot_Db_parm->hfid, &boot_Db_parm->rootclass_oid, &recdes, NULL, NULL);
 
   /* Insert and fetch location */
   if (heap_insert_logical (thread_p, &heapop_context) != NO_ERROR)
@@ -5926,8 +5927,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   COPY_OID (boot_Db_parm_oid, &heapop_context.res_oid);
 
   /* Create file for vacuum data */
-  if (vacuum_create_file_for_vacuum_data (thread_p, boot_Db_parm->vacuum_data_npages, &boot_Db_parm->vacuum_data_vfid)
-      != NO_ERROR)
+  if (vacuum_create_file_for_vacuum_data (thread_p, &boot_Db_parm->vacuum_data_vfid) != NO_ERROR)
     {
       goto error;
     }
@@ -5940,7 +5940,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   /* Update boot_Db_parm */
   heap_create_update_context (&update_context, &boot_Db_parm->hfid, boot_Db_parm_oid, &boot_Db_parm->rootclass_oid,
-			      &recdes, NULL, NULL, UPDATE_INPLACE_CURRENT_MVCCID, false);
+			      &recdes, NULL, NULL, UPDATE_INPLACE_CURRENT_MVCCID);
   if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       goto error;
@@ -6383,7 +6383,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
     {
       /* We need to load vacuum data and initialize vacuum routine before recovery. */
       error_code =
-	vacuum_initialize (thread_p, boot_Db_parm->vacuum_data_npages, &boot_Db_parm->vacuum_data_vfid,
+	vacuum_initialize (thread_p, boot_Db_parm->vacuum_log_block_npages, &boot_Db_parm->vacuum_data_vfid,
 			   &boot_Db_parm->dropped_files_vfid);
       if (error_code != NO_ERROR)
 	{

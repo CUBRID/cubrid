@@ -7385,8 +7385,8 @@ qo_discover_indexes (QO_ENV * env)
 	   * scan for record information or page informations should follow, there is no need to check for index (a
 	   * sequential scan is needed). 
 	   */
-	  if (!PT_IS_SPEC_FLAG_SET
-	      (QO_NODE_ENTITY_SPEC (nodep), (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
+	  if (!PT_IS_SPEC_FLAG_SET (QO_NODE_ENTITY_SPEC (nodep),
+				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
 	    {
 	      qo_find_node_indexes (env, nodep);
 	      /* collect statistic information on discovered indexes */
