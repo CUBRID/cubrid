@@ -413,7 +413,7 @@ extern bool lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *d
 extern bool lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
 extern void *lf_circular_queue_async_peek (LOCK_FREE_CIRCULAR_QUEUE * queue);
 extern bool lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
-extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (INT32 capacity, int data_size);
+extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (unsigned int capacity, int data_size);
 extern void lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue);
 
 /* lock free bitmap */

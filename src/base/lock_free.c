@@ -2317,7 +2317,7 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   UINT64 consume_cursor;
   UINT64 old_state;
   UINT64 new_state;
-  UINT64 *entry_state_p;
+  volatile UINT64 *entry_state_p;
 
   assert (data != NULL);
 
@@ -2333,7 +2333,7 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
       consume_cursor = queue->consume_cursor;
       produce_cursor = queue->produce_cursor;
 
-      if (consume_cursor + queue->capacity >= produce_cursor + 1)
+      if (consume_cursor + queue->capacity <= produce_cursor + 1)
 	{
 	  /* The queue is full, cannot produce new entries */
 	  return false;
@@ -2411,7 +2411,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   UINT64 produce_cursor;
   UINT64 old_state;
   UINT64 new_state;
-  UINT64 *entry_state_p;
+  volatile UINT64 *entry_state_p;
 
   /* Loop until an entry can be consumed or until queue is empty */
   /* Since there may be more than one consumer and no locks is used, a consume cursor and entry states are used to
@@ -2553,11 +2553,11 @@ lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data
  * data_size (in)      : Size of queue entry data.
  */
 LOCK_FREE_CIRCULAR_QUEUE *
-lf_circular_queue_create (UINT64 capacity, int data_size)
+lf_circular_queue_create (unsigned int capacity, int data_size)
 {
   /* Allocate queue */
   LOCK_FREE_CIRCULAR_QUEUE *queue;
-  int index;
+  UINT64 index;
 
   queue = (LOCK_FREE_CIRCULAR_QUEUE *) malloc (sizeof (LOCK_FREE_CIRCULAR_QUEUE));
   if (queue == NULL)
@@ -2592,7 +2592,7 @@ lf_circular_queue_create (UINT64 capacity, int data_size)
 
   /* Initialize data size and capacity */
   queue->data_size = data_size;
-  queue->capacity = capacity;
+  queue->capacity = (UINT64) capacity;
 
   /* Initialize cursors */
   queue->consume_cursor = queue->produce_cursor = 0;
