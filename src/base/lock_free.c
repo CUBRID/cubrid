@@ -2259,9 +2259,8 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 bool
 lf_circular_queue_is_full (LOCK_FREE_CIRCULAR_QUEUE * queue)
 {
-  /* TODO: x86 atomic load. */
-  UINT64 cc = queue->consume_cursor;
-  UINT64 pc = queue->produce_cursor;
+  UINT64 cc = ATOMIC_LOAD_64 (&queue->consume_cursor);
+  UINT64 pc = ATOMIC_LOAD_64 (&queue->produce_cursor);
 
   /* The queue is full is consume cursor is behind produce cursor with one generation (difference of capacity + 1). */
   return cc + queue->capacity <= pc + 1;
@@ -2276,9 +2275,8 @@ lf_circular_queue_is_full (LOCK_FREE_CIRCULAR_QUEUE * queue)
 bool
 lf_circular_queue_is_empty (LOCK_FREE_CIRCULAR_QUEUE * queue)
 {
-  /* TODO: x86 atomic load. */
-  UINT64 cc = queue->consume_cursor;
-  UINT64 pc = queue->produce_cursor;
+  UINT64 cc = ATOMIC_LOAD_64 (&queue->consume_cursor);
+  UINT64 pc = ATOMIC_LOAD_64 (&queue->produce_cursor);
 
   /* The queue is empty if the consume cursor is equal to produce cursor. */
   return cc <= pc;
@@ -2293,12 +2291,11 @@ lf_circular_queue_is_empty (LOCK_FREE_CIRCULAR_QUEUE * queue)
 int
 lf_circular_queue_approx_size (LOCK_FREE_CIRCULAR_QUEUE * queue)
 {
-  /* TODO: x86 atomic load. */
   /* We need to read consume cursor first and then the produce cursor. We cannot afford to have a "newer" consume
    * cursor that is bigger than the produce cursor.
    */
-  UINT64 cc = queue->consume_cursor;
-  UINT64 pc = queue->produce_cursor;
+  UINT64 cc = ATOMIC_LOAD_64 (&queue->consume_cursor);
+  UINT64 pc = ATOMIC_LOAD_64 (&queue->produce_cursor);
   return (int) (pc - cc);
 }
 
@@ -2447,7 +2444,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	   * cursor was already incremented. */
 	  (void) ATOMIC_CAS_64 (&queue->consume_cursor, consume_cursor, consume_cursor + 1);
 	}
-      else if (queue->entry_state[entry_index] == LFCQ_RESERVED_FOR_PRODUCE)
+      else
 	{
 	  /* The entry at current consume cursor was already "consumed". The cursor should already be incremented. */
 	  assert (queue->consume_cursor > consume_cursor);
