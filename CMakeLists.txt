@@ -25,6 +25,32 @@ endif()
 
 project(CUBRID)
 
+# options
+if(UNIX)
+  set(USE_BISON_FLEX_DEFAULT ON)
+  set(ENABLE_SYSTEMTAP_DEFAULT ON)
+else(UNIX)
+  set(USE_BISON_FLEX_DEFAULT OFF)
+  set(ENABLE_SYSTEMTAP_DEFAULT OFF)
+endif(UNIX)
+# FIXME: linux 32bit build mode not working now
+option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
+option(USE_BISON_FLEX "Use bison and flex to generate parser and lexer" ${USE_BISON_FLEX_DEFAULT})
+option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" ${ENABLE_SYSTEMTAP_DEFAULT})
+option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
+option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
+option(WITH_JDBC "Build JDBC driver" ON)
+option(WITH_CMSERVER "Build with Manager server" ON)
+
+# options for external libraries (BUNDLED or path)
+set(WITH_LIBREGEX "BUNDLED" CACHE STRING "Build with regex library (default: BUNDLED)")
+set(WITH_LIBEXPAT "BUNDLED" CACHE STRING "Build with expat library (default: BUNDLED)")
+set(WITH_LIBJANSSON "BUNDLED" CACHE STRING "Build with jansson library (default: BUNDLED)")
+set(WITH_LIBEDIT "BUNDLED" CACHE STRING "Build with editline library (default: BUNDLED)")
+set(WITH_LIBLZO "BUNDLED" CACHE STRING "Build with lzo library (default: BUNDLED)")
+set(WITH_LIBGPGERROR "BUNDLED" CACHE STRING "Build with gpg-error library (default: BUNDLED)")
+set(WITH_LIBGCRYPT "BUNDLED" CACHE STRING "Build with gcrypt library (default: BUNDLED)")
+
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
 if(EXISTS ${CMAKE_SOURCE_DIR}/VERSION)
@@ -220,13 +246,13 @@ find_package(Java 1.5 COMPONENTS Development)
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
   set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage"
-    CACHE STRING "Flags used by the c++ compiler during coverage build." FORCE )
+    CACHE STRING "Flags used by the c++ compiler during coverage build." FORCE)
   set(CMAKE_C_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage"
-    CACHE STRING "Flags used by the c compiler during coverage build." FORCE )
+    CACHE STRING "Flags used by the c compiler during coverage build." FORCE)
   set(CMAKE_EXE_LINKER_FLAGS_COVERAGE ""
-    CACHE STRING "Flags used for linking binaries during coverage build." FORCE )
+    CACHE STRING "Flags used for linking binaries during coverage build." FORCE)
   set(CMAKE_SHARED_LINKER_FLAGS_COVERAGE ""
-    CACHE STRING "Flags used for shared libraries during coverage build." FORCE )
+    CACHE STRING "Flags used for shared libraries during coverage build." FORCE)
 
   mark_as_advanced(
     CMAKE_CXX_FLAGS_COVERAGE
@@ -237,9 +263,9 @@ endif(CMAKE_BUILD_TYPE MATCHES "Coverage")
 
 if(CMAKE_BUILD_TYPE MATCHES "Profile")
   set(CMAKE_CXX_FLAGS_PROFILE "-g -pg"
-    CACHE STRING "Flags used by the c++ compiler during profile build." FORCE )
+    CACHE STRING "Flags used by the c++ compiler during profile build." FORCE)
   set(CMAKE_C_FLAGS_PROFILE "-g -pg"
-    CACHE STRING "Flags used by the c compiler during profile build." FORCE )
+    CACHE STRING "Flags used by the c compiler during profile build." FORCE)
 
   mark_as_advanced(CMAKE_CXX_FLAGS_PROFILE CMAKE_C_FLAGS_PROFILE)
 endif(CMAKE_BUILD_TYPE MATCHES "Profile")
@@ -376,7 +402,7 @@ if(NOT SIZEOF_PID_T)
     set(pid_t "int")
   endif(NOT WIN32)
 endif()
-set(CMAKE_REQUIRED_FLAGS "-D_LARGEFILE64_SOURCE -finfile-functions")
+set(CMAKE_REQUIRED_FLAGS "-D_LARGEFILE64_SOURCE -finline-functions")
 check_type_size("off64_t" SIZEOF_OFF64_T)
 unset(CMAKE_REQUIRED_FLAGS)
 
@@ -400,9 +426,9 @@ if(HAVE_GETHOSTBYNAME_R)
 endif(HAVE_GETHOSTBYNAME_R)
 
 include(CheckSymbolExists)
-if(NOT HAVE_STDBOOL_H )
-  check_symbol_exists( "_Bool" stdbool.h HAVE__BOOL )
-endif(NOT HAVE_STDBOOL_H )
+if(NOT HAVE_STDBOOL_H)
+  check_symbol_exists( "_Bool" stdbool.h HAVE__BOOL)
+endif(NOT HAVE_STDBOOL_H)
 
 include(CheckCSourceCompiles)
 check_c_source_compiles("#include <sys/time.h>\n#include <time.h>\nmain(){}" TIME_WITH_SYS_TIME)
@@ -491,18 +517,7 @@ endif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 set(COMMON_DEFS SYSV MAXPATHLEN=1024 -D_REENTRANT)
 
 
-# options
-# FIXME: linux 32bit build mode not working now
-option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
-
-if(UNIX)
-  option(USE_BISON_FLEX "Use bison and flex to generate parser and lexer" ON)
-  option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" ON)
-else(UNIX)
-  option(USE_BISON_FLEX "Use bison and flex to generate parser and lexer" OFF)
-  option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" OFF)
-endif(UNIX)
-
+# For systemtap options
 if(ENABLE_SYSTEMTAP)
   find_program(DTRACE dtrace)
   if(NOT DTRACE)
@@ -513,10 +528,7 @@ if(ENABLE_SYSTEMTAP)
   if(NOT HAVE_SYS_SDT_H)
     message(FATAL_ERROR "The systemtap support needs sys/sdt.h header")
   endif(NOT HAVE_SYS_SDT_H)
-  set(ENABLE_SYSTEMTAP 1)
-endif(ENABLE_SYSTEMTAP)
 
-if(ENABLE_SYSTEMTAP)
   set(PROBES_SOURCE ${CMAKE_SOURCE_DIR}/contrib/systemtap/probes.d)
   set(PROBES_HEADER ${CMAKE_BINARY_DIR}/probes.h)
   set(PROBES_OBJECT ${CMAKE_BINARY_DIR}/probes.o)
@@ -531,7 +543,7 @@ if(ENABLE_SYSTEMTAP)
 endif(ENABLE_SYSTEMTAP)
 
 
-option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
+# For duma option
 if(USE_DUMA)
   find_library(DUMA_LIBRARIES duma)
   if(NOT DUMA_LIBRARIES)
@@ -542,7 +554,7 @@ if(USE_DUMA)
 endif(USE_DUMA)
 
 
-option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
+# For CUBRID environment variable option
 if(USE_CUBRID_ENV)
   message(STATUS "Default install prefix: ${CMAKE_INSTALL_PREFIX}")
   set(CUBRID_BINDIR bin)
@@ -629,63 +641,68 @@ else(USE_CUBRID_ENV)
   set(CUBRID_COMPATDIR compat CACHE STRING "The directory for compatible files")
 endif(USE_CUBRID_ENV)
 
-# For external libraries
+
+# For external library options
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
 set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=${CMAKE_C_FLAGS} CXXFLAGS=${CMAKE_CXX_FLAGS})
 
-if(UNIX)
-  set(LIBREGEX_TARGET libregex)
-  externalproject_add(${LIBREGEX_TARGET}
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libregex38a
-    CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-    #BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/libregex38a
-    INSTALL_COMMAND make install && ${CMAKE_COMMAND} -E copy .libs/libregex38a.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib
-    )
-  list(APPEND EP_TARGETS ${LIBREGEX_TARGET})
-  set(LIBREGEX_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libregex38a.a)
-  set(LIBREGEX_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/libregex38a)
-else(UNIX)
-  if(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBREGEX_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/libregex38a.lib)
-  else(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBREGEX_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/libregex38a.lib)
-  endif(TARGET_PLATFORM_BITS EQUAL 32)
-  set(LIBREGEX_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
-endif(UNIX)
+if(WITH_LIBREGEX STREQUAL "BUNDLED")
+  if(UNIX)
+    set(LIBREGEX_TARGET libregex)
+    externalproject_add(${LIBREGEX_TARGET}
+      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libregex38a
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
+      #BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/libregex38a
+      INSTALL_COMMAND make install
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/external/lib
+      COMMAND ${CMAKE_COMMAND} -E copy .libs/libregex38a.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/
+      )
+    list(APPEND EP_TARGETS ${LIBREGEX_TARGET})
+    set(LIBREGEX_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libregex38a.a)
+    set(LIBREGEX_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/libregex38a)
+  else(UNIX)
+    if(TARGET_PLATFORM_BITS EQUAL 32)
+      set(LIBREGEX_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/libregex38a.lib)
+    else(TARGET_PLATFORM_BITS EQUAL 32)
+      set(LIBREGEX_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/libregex38a.lib)
+    endif(TARGET_PLATFORM_BITS EQUAL 32)
+    set(LIBREGEX_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
+  endif(UNIX)
+  # TODO: support system or user provided library
+endif(WITH_LIBREGEX STREQUAL "BUNDLED")
 list(APPEND EP_INCLUDES ${LIBREGEX_INCLUDES})
 list(APPEND EP_LIBS ${LIBREGEX_LIBS})
 
-if(UNIX)
-  set(WITH_LIBEXPAT "BUNDLED" CACHE STRING "Build with expat library (default: BUNDLED)")
-  if(WITH_LIBEXPAT STREQUAL "BUNDLED")
+if(WITH_LIBEXPAT STREQUAL "BUNDLED")
+  if(UNIX)
     set(LIBEXPAT_TARGET libexpat)
     externalproject_add(${LIBEXPAT_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/expat-2.0.1
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND make buildlib
-      INSTALL_COMMAND make installlib && ${CMAKE_COMMAND} -E copy .libs/libexpat.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib
+      INSTALL_COMMAND make installlib
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/external/lib
+      COMMAND ${CMAKE_COMMAND} -E copy .libs/libexpat.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/
       )
     set(LIBEXPAT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libexpat.a)
     set(LIBEXPAT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/expat)
     list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
-  else()
-    #TODO
-  endif()
-else(UNIX)
-  if(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBEXPAT_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/libexpat.lib)
-  else(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBEXPAT_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/libexpat.lib)
-  endif(TARGET_PLATFORM_BITS EQUAL 32)
-  set(LIBEXPAT_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include/expat)
-endif(UNIX)
+  else(UNIX)
+    if(TARGET_PLATFORM_BITS EQUAL 32)
+      set(LIBEXPAT_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/libexpat.lib)
+    else(TARGET_PLATFORM_BITS EQUAL 32)
+      set(LIBEXPAT_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/libexpat.lib)
+    endif(TARGET_PLATFORM_BITS EQUAL 32)
+    set(LIBEXPAT_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include/expat)
+  endif(UNIX)
+  # TODO: support system or user provided library
+endif(WITH_LIBEXPAT STREQUAL "BUNDLED")
 list(APPEND EP_INCLUDES ${LIBEXPAT_INCLUDES})
 list(APPEND EP_LIBS ${LIBEXPAT_LIBS})
 
-if(UNIX)
-  set(WITH_LIBJANSSON "BUNDLED" CACHE STRING "Build with jansson library (default: BUNDLED)")
-  if(WITH_LIBJANSSON STREQUAL "BUNDLED")
+if(WITH_LIBJANSSON STREQUAL "BUNDLED")
+  if(UNIX)
     set(LIBJANSSON_TARGET libjansson)
     externalproject_add(${LIBJANSSON_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/jansson-2.4
@@ -694,23 +711,21 @@ if(UNIX)
     set(LIBJANSSON_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libjansson.a)
     set(LIBJANSSON_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/jansson)
     list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
-  else()
-    #TODO
-  endif()
-else(UNIX)
-  if(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBJANSSON_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/jansson.lib)
-  else(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBJANSSON_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/jansson64.lib)
-  endif(TARGET_PLATFORM_BITS EQUAL 32)
-  set(LIBJANSSON_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
-endif(UNIX)
+  else(UNIX)
+    if(TARGET_PLATFORM_BITS EQUAL 32)
+      set(LIBJANSSON_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/jansson.lib)
+    else(TARGET_PLATFORM_BITS EQUAL 32)
+      set(LIBJANSSON_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/jansson64.lib)
+    endif(TARGET_PLATFORM_BITS EQUAL 32)
+    set(LIBJANSSON_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
+  endif(UNIX)
+  # TODO: support system or user provided library
+endif(WITH_LIBJANSSON STREQUAL "BUNDLED")
 list(APPEND EP_INCLUDES ${LIBJANSSON_INCLUDES})
 list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
 
-if(UNIX)
-  set(WITH_LIBEDIT "BUNDLED" CACHE STRING "Build with editline library (default: BUNDLED)")
-  if(WITH_LIBEDIT STREQUAL "BUNDLED")
+if(WITH_LIBEDIT STREQUAL "BUNDLED")
+  if(UNIX)
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libedit-20120601-3.0
@@ -719,16 +734,14 @@ if(UNIX)
     set(LIBEDIT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libedit.a)
     set(LIBEDIT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBEDIT_TARGET})
-  else()
-    #TODO
-  endif()
-  list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
-  list(APPEND EP_LIBS ${LIBEDIT_LIBS})
-endif(UNIX)
+    list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
+    list(APPEND EP_LIBS ${LIBEDIT_LIBS})
+  endif(UNIX)
+  # TODO: support system or user provided library
+endif(WITH_LIBEDIT STREQUAL "BUNDLED")
 
-if(UNIX)
-  set(WITH_LIBLZO "BUNDLED" CACHE STRING "Build with lzo library (default: BUNDLED)")
-  if(WITH_LIBLZO STREQUAL "BUNDLED")
+if(WITH_LIBLZO STREQUAL "BUNDLED")
+  if(UNIX)
     set(LIBLZO_TARGET liblzo)
     externalproject_add(${LIBLZO_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/lzo-2.03
@@ -737,23 +750,21 @@ if(UNIX)
     set(LIBLZO_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/liblzo2.a)
     set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/lzo)
     list(APPEND EP_TARGETS ${LIBLZO_TARGET})
-  else()
-    #TODO
-  endif()
-else(UNIX)
-  if(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/lzo2.lib)
-  else(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/lzo2.lib)
-  endif(TARGET_PLATFORM_BITS EQUAL 32)
-  set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include/lzo)
-endif(UNIX)
+  else(UNIX)
+    if(TARGET_PLATFORM_BITS EQUAL 32)
+      set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/lzo2.lib)
+    else(TARGET_PLATFORM_BITS EQUAL 32)
+      set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/lzo2.lib)
+    endif(TARGET_PLATFORM_BITS EQUAL 32)
+    set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include/lzo)
+  endif(UNIX)
+  # TODO: support system or user provided library
+endif(WITH_LIBLZO STREQUAL "BUNDLED")
 list(APPEND EP_INCLUDES ${LIBLZO_INCLUDES})
 list(APPEND EP_LIBS ${LIBLZO_LIBS})
 
-if(UNIX)
-  set(WITH_LIBGPGERROR "BUNDLED" CACHE STRING "Build with gpg-error library (default: BUNDLED)")
-  if(WITH_LIBGPGERROR STREQUAL "BUNDLED")
+if(WITH_LIBGPGERROR STREQUAL "BUNDLED")
+  if(UNIX)
     set(LIBGPGERROR_TARGET libgpg-error)
     externalproject_add(${LIBGPGERROR_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libgpg-error-1.11
@@ -762,16 +773,14 @@ if(UNIX)
     set(LIBGPG_ERROR_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgpg-error.a)
     set(LIBGPG_ERROR_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBGPGERROR_TARGET})
-  else()
-    #TODO
-  endif()
-endif(UNIX)
-list(APPEND EP_INCLUDES ${LIBGPG_ERROR_INCLUDES})
-list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
+  endif(UNIX)
+  list(APPEND EP_INCLUDES ${LIBGPG_ERROR_INCLUDES})
+  list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
+  # TODO: support system or user provided library
+endif(WITH_LIBGPGERROR STREQUAL "BUNDLED")
 
-if(UNIX)
-  set(WITH_LIBGCRYPT "BUNDLED" CACHE STRING "Build with gcrypt library (default: BUNDLED)")
-  if(WITH_LIBGCRYPT STREQUAL "BUNDLED")
+if(WITH_LIBGCRYPT STREQUAL "BUNDLED")
+  if(UNIX)
     set(LIBGCRYPT_TARGET libgcrypt)
     if(ENABLE_32BIT OR CMAKE_C_FLAGS MATCHES "-m32")
       set(GRCYPT_EXTRA_OPTION "--build=x86")
@@ -784,18 +793,16 @@ if(UNIX)
     set(LIBGCRYPT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgcrypt.a)
     set(LIBGCRYPT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBGCRYPT_TARGET})
-    #TODO enable-32bit upgrade? GPG_ERROR_CONFIG https://github.com/quarnster/boxeebox-xbmc/blob/master/tools/boxeebox/libs/CMakeLists.txt
-  else()
-    #TODO
-  endif()
-else(UNIX)
-  if(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBGCRYPT_LIBS ${CMAKE_SOURCE_DIR}/win/external/dll/Win32/libgcrypt.lib)
-  else(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBGCRYPT_LIBS ${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgcrypt.lib)
-  endif(TARGET_PLATFORM_BITS EQUAL 32)
-  set(LIBGCRYPT_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
-endif(UNIX)
+  else(UNIX)
+    if(TARGET_PLATFORM_BITS EQUAL 32)
+      set(LIBGCRYPT_LIBS ${CMAKE_SOURCE_DIR}/win/external/dll/Win32/libgcrypt.lib)
+    else(TARGET_PLATFORM_BITS EQUAL 32)
+      set(LIBGCRYPT_LIBS ${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgcrypt.lib)
+    endif(TARGET_PLATFORM_BITS EQUAL 32)
+    set(LIBGCRYPT_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
+  endif(UNIX)
+  # TODO: support system or user provided library
+endif(WITH_LIBGCRYPT STREQUAL "BUNDLED")
 list(APPEND EP_INCLUDES ${LIBGCRYPT_INCLUDES})
 list(APPEND EP_LIBS ${LIBGCRYPT_LIBS})
 
@@ -811,7 +818,7 @@ if(WIN32)
 endif(WIN32)
 
 
-#
+# include subdirectories
 add_subdirectory(cas)
 add_subdirectory(sa)
 add_subdirectory(cs)
@@ -828,9 +835,8 @@ add_subdirectory(tools)
 add_subdirectory(locales)
 add_subdirectory(timezones)
 
-option(WITH_JDBC "Build JDBC driver" ON)
 if(WITH_JDBC)
-  find_program(ANT ant PATHS $ENV{ANT_HOME} ENV PATH )
+  find_program(ANT ant PATHS $ENV{ANT_HOME} ENV PATH)
   if(NOT ANT)
     message(FATAL_ERROR "The ANT was not found. check PATH or install ant to build JDBC")
   endif(NOT ANT)
@@ -842,7 +848,6 @@ if(WIN32)
   add_subdirectory(win)
 endif(WIN32)
 
-option(WITH_CMSERVER "Build with Manager server" ON)
 if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
   get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
   get_target_property(CMDEP_PUBLIC_HEADERS cmdep PUBLIC_HEADER)
@@ -891,4 +896,3 @@ endif(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
 # create empty directories
 install(DIRECTORY DESTINATION ${CUBRID_LOGDIR})
 install(DIRECTORY DESTINATION ${CUBRID_TMPDIR})
-

@@ -733,6 +733,8 @@ extern "C"
 	(InterlockedExchangeAdd64(ptr, amount) + amount)
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
 	(InterlockedCompareExchange64((long long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == (long long) cmp_val)
+#define ATOMIC_LOAD_64(ptr) (*(ptr))
+#define ATOMIC_STORE_64(ptr, val) (*(ptr) = val)
 #else				/* _WIN64 */
 /*
  * These functions are used on Windows 32bit OS.
@@ -753,6 +755,8 @@ extern "C"
 	(win32_exchange_add64(ptr, amount) + amount)
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
 	(InterlockedCompareExchange((long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == (long long) cmp_val)
+#define ATOMIC_LOAD_64(ptr) ATOMIC_INC_64 (ptr, 0)
+#define ATOMIC_STORE_64(ptr, val) ATOMIC_TAS_64 (ptr, val)
 #endif				/* _WIN64 */
 
 #else				/* WINDOWS */
@@ -777,6 +781,9 @@ extern "C"
 
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
 	__sync_bool_compare_and_swap(ptr, cmp_val, swap_val)
+
+#define ATOMIC_LOAD_64(ptr) (*(ptr))
+#define ATOMIC_STORE_64(ptr, val) (*(ptr) = val)
 
 /* There is a gcc bug of __sync_synchronize in x86-64 when gcc version
  * less than 4.4. we can replace __sync_synchronize as mfence instruction.

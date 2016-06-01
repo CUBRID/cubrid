@@ -296,9 +296,8 @@ extern int vacuum_rv_undoredo_first_data_page (THREAD_ENTRY * thread_p, LOG_RCV 
 extern void vacuum_rv_undoredo_first_data_page_dump (FILE * fp, int length, void *data);
 extern int vacuum_rv_redo_data_finished (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void vacuum_rv_redo_data_finished_dump (FILE * fp, int length, void *data);
-extern int vacuum_rv_undo_data_set_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int vacuum_rv_redo_data_set_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void vacuum_rv_redo_data_set_link_dump (FILE * fp, int length, void *data);
+extern int vacuum_rv_undoredo_data_set_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern void vacuum_rv_undoredo_data_set_link_dump (FILE * fp, int length, void *data);
 extern int vacuum_rv_redo_append_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void vacuum_rv_redo_append_data_dump (FILE * fp, int length, void *data);
 
