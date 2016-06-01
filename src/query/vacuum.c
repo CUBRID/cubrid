@@ -4344,7 +4344,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	  vacuum_unfix_data_page (thread_p, data_page);
 	  return;
 	}
-      
+
       prev_data_page = data_page;
       VPID_COPY (&next_vpid, &data_page->next_page);
       data_page = vacuum_fix_data_page (thread_p, &next_vpid);
@@ -4388,7 +4388,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
    * 1. This is the first and only page. We won't deallocate, just reset the page.
    * 2. This is the first page, but there are other pages too. We will deallocate the page and update the first page.
    * 3. Page is not first and must be deallocated. If the page is last in vacuum data, vacuum_Data.last_page must be
-   *	changed to prev_data_page. Link in prev_data_page must be update.
+   *    changed to prev_data_page. Link in prev_data_page must be update.
    */
   assert (data_page != NULL && *data_page != NULL);
   assert ((*data_page)->index_unvacuumed == (*data_page)->index_free);

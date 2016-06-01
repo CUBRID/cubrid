@@ -2462,7 +2462,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
     {
       memcpy (data, queue->data + (entry_index * queue->data_size), queue->data_size);
     }
-  
+
   assert (ATOMIC_LOAD_64 (entry_state_p) == new_state);
 
   /* Try to increment consume cursor. If this thread was preempted after reserving the entry and before incrementing
@@ -2581,7 +2581,7 @@ lf_circular_queue_create (unsigned int capacity, int data_size)
       return NULL;
     }
   /* Initialize all entries by expecting first generation of producers. */
-  for (index = 0; index < capacity; index ++)
+  for (index = 0; index < capacity; index++)
     {
       queue->entry_state[index] = index | LFCQ_READY_FOR_PRODUCE;
     }
