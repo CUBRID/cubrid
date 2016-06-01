@@ -399,42 +399,21 @@ typedef struct lock_free_circular_queue LOCK_FREE_CIRCULAR_QUEUE;
 struct lock_free_circular_queue
 {
   char *data;
-  INT32 *entry_state;
+  volatile UINT64 *entry_state;
   int data_size;
-  /* Use INT64 for cursors domain to make sure domain is never consumed. Otherwise it will break the
-   * LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY and LOCK_FREE_CIRCULAR_QUEUE_IS_FULL checks. */
-  INT64 consume_cursor;
-  INT64 produce_cursor;
-  INT64 capacity;
+  volatile UINT64 consume_cursor;
+  volatile UINT64 produce_cursor;
+  UINT64 capacity;
 };
 
-/* Macro's to inspect queue status and size. Note that their results is not
- * guaranteed to be precise. They can provide false positives and negatives.
- */
-/* Check if queue is empty.
- * NOTE: It can provide false positives/negatives. Use it only as early out
- *	 but do not expect that lf_circular_queue_consume will succeed.
- */
-#define LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY(queue) \
-  (queue->produce_cursor <= queue->consume_cursor)
-/* Check if queue is full */
-/* NOTE: It can provide false positives/negatives. Use it only as early out
- *	 but do not expect that lf_circular_queue_produce will succeed.
- */
-#define LOCK_FREE_CIRCULAR_QUEUE_IS_FULL(queue) \
-  (queue->consume_cursor <= queue->produce_cursor - queue->capacity + 1)
-/* Get queue size */
-/* The functions will return the exact size if there are no concurrent
- * consumers/producers. Concurrent consumers/producers may alter the result.
- */
-#define LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE(queue) \
-  (queue->produce_cursor - queue->consume_cursor)
-
+extern bool lf_circular_queue_is_full (LOCK_FREE_CIRCULAR_QUEUE * queue);
+extern bool lf_circular_queue_is_empty (LOCK_FREE_CIRCULAR_QUEUE * queue);
+extern int lf_circular_queue_approx_size (LOCK_FREE_CIRCULAR_QUEUE * queue);
 extern bool lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
 extern bool lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
 extern void *lf_circular_queue_async_peek (LOCK_FREE_CIRCULAR_QUEUE * queue);
 extern bool lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
-extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (INT32 capacity, int data_size);
+extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (unsigned int capacity, int data_size);
 extern void lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue);
 
 /* lock free bitmap */

@@ -944,7 +944,7 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
   if (vacuum_Finished_job_queue != NULL)
     {
       vacuum_data_mark_finished (thread_p);
-      if (!LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Finished_job_queue))
+      if (!lf_circular_queue_is_empty (vacuum_Finished_job_queue))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert (0);
@@ -960,7 +960,7 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert (0);
 	}
-      if (!LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer))
+      if (!lf_circular_queue_is_empty (vacuum_Block_data_buffer))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert (0);
@@ -2646,7 +2646,7 @@ restart:
 
       PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
-      if (LOCK_FREE_CIRCULAR_QUEUE_IS_FULL (vacuum_Finished_job_queue))
+      if (lf_circular_queue_is_full (vacuum_Finished_job_queue))
 	{
 	  /* Consume vacuum_Finished_job_queue */
 	  vacuum_unfix_data_page (thread_p, data_page);
@@ -2654,7 +2654,7 @@ restart:
 	}
 #else	/* !SA_MODE */	       /* SERVER_MODE */
       /* Wakeup threads to start working on current threads. Try not to wake up more workers than necessary. */
-      n_jobs = (int) LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Job_queue);
+      n_jobs = (int) lf_circular_queue_approx_size (vacuum_Job_queue);
       n_available_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT) - vacuum_Running_workers_count;
       n_wakeup_workers = MIN (n_jobs, n_available_workers);
       if (n_wakeup_workers > 0)
@@ -2666,7 +2666,7 @@ restart:
       /* If vacuum lagged behind and this loop generated a lot of jobs, the log block buffer used by active workers
        * can fill up. We cannot allow that.
        */
-      vacuum_block_data_buffer_aprox_size = LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Block_data_buffer);
+      vacuum_block_data_buffer_aprox_size = lf_circular_queue_approx_size (vacuum_Block_data_buffer);
       if (vacuum_block_data_buffer_aprox_size > vacuum_Block_data_buffer->capacity / 2)
 	{
 	  vacuum_unfix_data_page (thread_p, data_page);
@@ -2675,7 +2675,7 @@ restart:
       /* Another buffer that is used by vacuum workers to communicate with master is the finished job queue.
        * We cannot allow this to fill either.
        */
-      vacuum_finished_jobs_queue_aprox_size = LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Finished_job_queue);
+      vacuum_finished_jobs_queue_aprox_size = lf_circular_queue_approx_size (vacuum_Finished_job_queue);
       if (vacuum_finished_jobs_queue_aprox_size >= vacuum_Finished_job_queue->capacity / 2)
 	{
 	  vacuum_unfix_data_page (thread_p, data_page);
@@ -2695,12 +2695,12 @@ restart:
 #if defined (SA_MODE)
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
 
-  assert (LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Block_data_buffer));
+  assert (lf_circular_queue_is_empty (vacuum_Block_data_buffer));
 
   /* Remove all vacuumed entries. */
   vacuum_data_mark_finished (thread_p);
 
-  assert (LOCK_FREE_CIRCULAR_QUEUE_IS_EMPTY (vacuum_Finished_job_queue));
+  assert (lf_circular_queue_is_empty (vacuum_Finished_job_queue));
   assert (vacuum_Data.first_page == vacuum_Data.last_page);
   assert (vacuum_Data.first_page->index_unvacuumed == 0);
   assert (vacuum_Data.first_page->index_free == 0);
@@ -3538,7 +3538,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 
 #if defined (SERVER_MODE)
   /* Hurry master wakeup if finished job queue is getting filled. */
-  if (LOCK_FREE_CIRCULAR_QUEUE_APPROX_SIZE (vacuum_Finished_job_queue) >= vacuum_Finished_job_queue->capacity / 2)
+  if (lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= vacuum_Finished_job_queue->capacity / 2)
     {
       /* Wakeup master to process finished jobs. */
       thread_wakeup_vacuum_master_thread ();
@@ -4344,7 +4344,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	  vacuum_unfix_data_page (thread_p, data_page);
 	  return;
 	}
-      
+
       prev_data_page = data_page;
       VPID_COPY (&next_vpid, &data_page->next_page);
       data_page = vacuum_fix_data_page (thread_p, &next_vpid);
@@ -4388,7 +4388,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
    * 1. This is the first and only page. We won't deallocate, just reset the page.
    * 2. This is the first page, but there are other pages too. We will deallocate the page and update the first page.
    * 3. Page is not first and must be deallocated. If the page is last in vacuum data, vacuum_Data.last_page must be
-   *	changed to prev_data_page. Link in prev_data_page must be update.
+   *    changed to prev_data_page. Link in prev_data_page must be update.
    */
   assert (data_page != NULL && *data_page != NULL);
   assert ((*data_page)->index_unvacuumed == (*data_page)->index_free);
