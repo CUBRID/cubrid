@@ -2329,9 +2329,8 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   while (true)
     {
       /* Get current cursors */
-      /* TODO: x86 atomic load. */
-      consume_cursor = queue->consume_cursor;
-      produce_cursor = queue->produce_cursor;
+      consume_cursor = ATOMIC_LOAD_64 (&queue->consume_cursor);
+      produce_cursor = ATOMIC_LOAD_64 (&queue->produce_cursor);
 
       if (consume_cursor + queue->capacity <= produce_cursor + 1)
 	{
@@ -2362,8 +2361,7 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	}
       /* Produce must be tried again with a different cursor */
       /* Did someone else reserve it? */
-      /* TODO: x86 atomic load. */
-      if ((*entry_state_p) == (produce_cursor | LFCQ_RESERVED_FOR_PRODUCE))
+      if (ATOMIC_LOAD_64 (entry_state_p) == (produce_cursor | LFCQ_RESERVED_FOR_PRODUCE))
 	{
 	  /* The entry was already reserved by another producer, but the produce cursor may be the same. Try to
 	   * increment the cursor to avoid being spin-locked on same cursor value. The increment will fail if the
@@ -2384,13 +2382,12 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   memcpy (queue->data + (entry_index * queue->data_size), data, queue->data_size);
   /* Set entry as readable. Since other should no longer race for this entry after it was allocated, we don't need an
    * atomic CAS operation. */
-  assert ((*entry_state_p) == new_state);
+  assert (ATOMIC_LOAD_64 (entry_state_p) == new_state);
 
   /* Try to increment produce cursor. If this thread was preempted after allocating entry and before increment, it may
    * have been already incremented. */
   (void) ATOMIC_CAS_64 (&queue->produce_cursor, produce_cursor, produce_cursor + 1);
-  /* TODO: x86 atomic store. */
-  *entry_state_p = produce_cursor | LFCQ_READY_FOR_CONSUME;
+  ATOMIC_STORE_64 (entry_state_p, produce_cursor | LFCQ_READY_FOR_CONSUME);
 
   /* Successfully produced a new entry */
   return true;
@@ -2421,9 +2418,8 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   while (true)
     {
       /* Get current cursors */
-      /* TODO: x86 atomic load. */
-      consume_cursor = queue->consume_cursor;
-      produce_cursor = queue->produce_cursor;
+      consume_cursor = ATOMIC_LOAD_64 (&queue->consume_cursor);
+      produce_cursor = ATOMIC_LOAD_64 (&queue->produce_cursor);
 
       if (consume_cursor >= produce_cursor)
 	{
@@ -2444,7 +2440,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	}
 
       /* Consume must be tried again with a different cursor */
-      if ((*entry_state_p) == (consume_cursor | LFCQ_RESERVED_FOR_CONSUME))
+      if (ATOMIC_LOAD_64 (entry_state_p) == (consume_cursor | LFCQ_RESERVED_FOR_CONSUME))
 	{
 	  /* The entry was already reserved by another consumer, but the consume cursor may be the same. Try to
 	   * increment the cursor to avoid being spin-locked on same cursor value. The increment will fail if the
@@ -2467,7 +2463,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
       memcpy (data, queue->data + (entry_index * queue->data_size), queue->data_size);
     }
   
-  assert ((*entry_state_p) == new_state);
+  assert (ATOMIC_LOAD_64 (entry_state_p) == new_state);
 
   /* Try to increment consume cursor. If this thread was preempted after reserving the entry and before incrementing
    * the cursor, another consumer may have already incremented it. */
@@ -2476,7 +2472,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   /* Change state to READY_TO_PRODUCE */
   /* Nobody can race us on changing this value, so CAS is not necessary */
   /* We also need to set the next expected cursor, which is the next generation value of this consume cursor. */
-  *entry_state_p = (consume_cursor + queue->capacity) | LFCQ_READY_FOR_PRODUCE;
+  ATOMIC_STORE_64 (entry_state_p, (consume_cursor + queue->capacity) | LFCQ_READY_FOR_PRODUCE);
 
   return true;
 }
