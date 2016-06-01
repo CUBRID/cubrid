@@ -297,7 +297,7 @@ MVCCID vacuum_Global_oldest_active_mvccid;
  * and by running vacuum manually.
  * This is a counter that tracks blocking transactions.
  */
-int vacuum_Global_oldest_active_blockers_counter;
+INT32 vacuum_Global_oldest_active_blockers_counter;
 /* vacuum_Save_log_hdr_oldest_mvccid is used to estimate oldest unvacuumed MVCCID in the corner-case of empty vacuum
  * data. When vacuum data is not empty, oldest MVCCID of first block not yet vacuumed is used.
  * However, when vacuum data is not empty, the oldest MVCCID can be either the oldest MVCCID of first block in
@@ -2474,14 +2474,14 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
-  if (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) == 0)
+  if (vacuum_Global_oldest_active_blockers_counter == 0)
     {
       local_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
 
       /* check again, maybe concurrent thread has modified the counter value */
-      if (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) == 0)
+      if (vacuum_Global_oldest_active_blockers_counter == 0)
 	{
-	  ATOMIC_TAS_64 (&vacuum_Global_oldest_active_mvccid, local_oldest_active_mvccid);
+	  ATOMIC_STORE_64 (&vacuum_Global_oldest_active_mvccid, local_oldest_active_mvccid);
 	}
     }
 
@@ -3878,7 +3878,6 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
 
   vacuum_Data.is_loaded = true;
 
-  vacuum_Global_oldest_active_mvccid = log_Gl.hdr.mvcc_next_id;
   error_code = vacuum_recover_lost_block_data (thread_p);
   if (error_code != NO_ERROR)
     {
@@ -7310,7 +7309,7 @@ vacuum_notify_server_shutdown (void)
 VACUUM_LOG_BLOCKID
 vacuum_get_global_oldest_active_mvccid (void)
 {
-  return ATOMIC_INC_64 (&vacuum_Global_oldest_active_mvccid, 0);
+  return ATOMIC_LOAD_64 (&vacuum_Global_oldest_active_mvccid);
 }
 
 #if defined (SERVER_MODE)

@@ -201,7 +201,7 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
 
-extern int vacuum_Global_oldest_active_blockers_counter;
+extern INT32 vacuum_Global_oldest_active_blockers_counter;
 
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -5908,7 +5908,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	{
 	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
 	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
+	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
 	}
 
 #if defined (HAVE_ATOMIC_BUILTINS)
@@ -6205,7 +6205,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	{
 	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
 	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
+	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
 	}
 
 #if defined(HAVE_ATOMIC_BUILTINS)
