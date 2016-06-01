@@ -2454,8 +2454,8 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   int n_wakeup_workers;
   int n_available_workers;
   int n_jobs;
-  INT64 vacuum_block_data_buffer_aprox_size;
-  INT64 vacuum_finished_jobs_queue_aprox_size;
+  UINT64 vacuum_block_data_buffer_aprox_size;
+  UINT64 vacuum_finished_jobs_queue_aprox_size;
 #else	/* !SERVER_MODE */		   /* SA_MODE */
   VACUUM_DATA_ENTRY vacuum_data_entry;
   bool save_check_interrupt;
@@ -3538,7 +3538,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 
 #if defined (SERVER_MODE)
   /* Hurry master wakeup if finished job queue is getting filled. */
-  if (lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= vacuum_Finished_job_queue->capacity / 2)
+  if ((UINT64) lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= vacuum_Finished_job_queue->capacity / 2)
     {
       /* Wakeup master to process finished jobs. */
       thread_wakeup_vacuum_master_thread ();
