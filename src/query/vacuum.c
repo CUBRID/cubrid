@@ -5296,13 +5296,13 @@ vacuum_compare_dropped_files (const void *a, const void *b)
 static int
 vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid, LOG_RCV * rcv, LOG_LSA * postpone_ref_lsa)
 {
-  MVCCID save_mvccid;
-  VPID vpid, prev_vpid;
-  int page_count, mem_size, compare;
+  MVCCID save_mvccid = MVCCID_NULL;
+  VPID vpid = VPID_INITIALIZER, prev_vpid = VPID_INITIALIZER;
+  int page_count = 0, mem_size = 0, compare = 0;
   char *ptr = NULL;
   VACUUM_DROPPED_FILES_PAGE *page = NULL, *new_page = NULL;
-  INT16 min, max, mid, position;
-  LOG_DATA_ADDR addr;
+  INT16 min = -1, max = -1, mid = -1, position = -1;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
 #if !defined (NDEBUG)
@@ -5954,12 +5954,12 @@ vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv, LOG_LSA * po
 static int
 vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
 {
-  VPID vpid;
+  VPID vpid = VPID_INITIALIZER;
   VACUUM_DROPPED_FILES_PAGE *page = NULL;
-  int page_count, mem_size;
-  VPID last_page_vpid, last_non_empty_page_vpid;
+  int page_count = 0, mem_size = 0;
+  VPID last_page_vpid = VPID_INITIALIZER, last_non_empty_page_vpid = VPID_INITIALIZER;
   INT16 removed_entries[VACUUM_DROPPED_FILES_MAX_PAGE_CAPACITY];
-  INT16 n_removed_entries, i;
+  INT16 n_removed_entries = 0, i;
 #if !defined (NDEBUG)
   VACUUM_TRACK_DROPPED_FILES *track_page = (VACUUM_TRACK_DROPPED_FILES *) vacuum_Track_dropped_files;
 #endif
