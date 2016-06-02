@@ -45,10 +45,12 @@
 
 #if defined(WINDOWS)
 #include <winsock2.h>
+#if defined(_MSC_VER) && _MSC_VER >= 1900
 #define OR_HAVE_NTOHF
 #define OR_HAVE_NTOHD
 #define OR_HAVE_HTONF
 #define OR_HAVE_HTOND
+#endif
 #endif /* WINDOWS */
 
 #define OR_LITTLE_ENDIAN 1234

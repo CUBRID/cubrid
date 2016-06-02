@@ -113,16 +113,20 @@ extern "C"
 #include <process.h>
 #include <sys/timeb.h>
 #include <time.h>
-#define _CRT_NO_TIME_T
 #include <sys/locking.h>
 #include <windows.h>
 #include <winbase.h>
 #include <errno.h>
 #include <assert.h>
-#include <stdio.h>
+#if defined(_MSC_VER) && _MSC_VER >= 1900 && !defined(_CRT_NO_TIME_T)
+#define _TIMESPEC_DEFINED
+#else
+#define snprintf                    _sprintf_p
+  extern double round (double d);
+#endif
 
-/* not defined errno on Windows */
 #if !defined (ENOMSG)
+/* not defined errno on Windows */
 #define ENOMSG      100
 #endif
 
@@ -136,7 +140,6 @@ extern "C"
 
 #define mkdir(dir, mode)        _mkdir(dir)
 #define getpid()                _getpid()
-//#define snprintf                    _sprintf_p
 #define strcasecmp(str1, str2)      _stricmp(str1, str2)
 #define strncasecmp(str1, str2, size)     _strnicmp(str1, str2, size)
 #define lseek(fd, offset, origin)   _lseeki64(fd, offset, origin)
@@ -527,8 +530,6 @@ extern "C"
   extern int drand48_r (struct drand48_data *buffer, double *result);
   extern int rand_r (unsigned int *seedp);
 
-  //extern double round (double d);
-
   typedef struct
   {
     CRITICAL_SECTION cs;
@@ -571,7 +572,7 @@ extern "C"
 #endif
 #define PTHREAD_COND_INITIALIZER	{ NULL }
 
-#if !defined (_CRT_NO_TIME_T)
+#if !defined (_TIMESPEC_DEFINED)
   struct timespec
   {
     int tv_sec;
