@@ -107,14 +107,14 @@ up-to-date.  Many thanks.
 #if defined(WINDOWS)
 #include <io.h>
 #include <winsock2.h>
-#if defined(_MSC_VER) && _MSC_VER < 1800
-/* I cannot say when exactly was int32_t included in the stind.h standard types. The reference at msdn.microsoft.com only mentions them in VS 2015. However,
- * I know for a fact that it is also present in VS 2013 (_MSC_VER 1800).
- * The windows standard types reference: https://msdn.microsoft.com/en-us/library/323b6b3k(v=vs.140).aspx
+#if !defined(_MSC_VER) || _MSC_VER < 1800
+/* ref: https://msdn.microsoft.com/en-us/library/323b6b3k(v=vs.140).aspx
+ * NOTE: Even though the intX_t types are mentioned only in VS 2015 documentation, I know for a fact that they are found in VS 2013 too (_MSC_VER 1800).
+ *	 Maybe even earlier versions, but I didn't find exact info.
  */
 typedef int int32_t;
-#endif
-#endif
+#endif /* _MSC_VER */
+#endif /* WINDOWS */
 
 #include "porting.h"
 
