@@ -4542,7 +4542,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
       /* Move *data_page to next page. */
       if (!VPID_ISNULL (&prev_data_page->next_page))
 	{
-	  *data_page = vacuum_fix_data_page (thread_p, &(*data_page)->next_page);
+	  *data_page = vacuum_fix_data_page (thread_p, &prev_data_page->next_page);
 	  assert (*data_page != NULL);
 	}
     }
