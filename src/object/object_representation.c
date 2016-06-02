@@ -29,7 +29,7 @@
 #include <string.h>
 #if defined (WINDOWS)
 #include <winsock2.h>
-#if defined(_MSC_VER) && _MSC_VER >= 1900
+#if defined(_MSC_VER) && _MSC_VER >= 1800
 #define OR_HAVE_NTOHF
 #define OR_HAVE_NTOHD
 #define OR_HAVE_HTONF
@@ -8235,29 +8235,33 @@ ntohl (unsigned int from)
 
 #if !defined (OR_HAVE_NTOHF)
 
-void
-ntohf (float *from, float *to)
+float
+ntohf (unsigned __int32 from)
 {
   char *ptr, *vptr;
+  float to;
 
-  ptr = (char *) from;
-  vptr = (char *) to;
+  ptr = (char *) &from;
+  vptr = (char *) &to;
   vptr[0] = ptr[3];
   vptr[1] = ptr[2];
   vptr[2] = ptr[1];
   vptr[3] = ptr[0];
+
+  return to;
 }
 #endif /* !OR_HAVE_NTOHF */
 
 #if !defined (OR_HAVE_NTOHD)
 
-void
-ntohd (double *from, double *to)
+double
+ntohd (unsigned __int64 from)
 {
   char *ptr, *vptr;
+  double to;
 
-  ptr = (char *) from;
-  vptr = (char *) to;
+  ptr = (char *) &from;
+  vptr = (char *) &to;
   vptr[0] = ptr[7];
   vptr[1] = ptr[6];
   vptr[2] = ptr[5];
@@ -8266,6 +8270,8 @@ ntohd (double *from, double *to)
   vptr[5] = ptr[2];
   vptr[6] = ptr[1];
   vptr[7] = ptr[0];
+
+  return to;
 }
 #endif /* !OR_HAVE_NTOHD */
 

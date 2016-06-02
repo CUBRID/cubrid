@@ -191,12 +191,12 @@
 #define OR_GET_INT(ptr) \
   ((int) ntohl (*(int *) ((char *) (ptr))))
 #define OR_GET_FLOAT(ptr, value) \
-  ntohf ((float *) ((char *) (ptr)), (float *) (value))
+  ((*(value)) = ntohf(*(unsigned __int32 *) ((char *) (ptr))))
 #define OR_GET_DOUBLE(ptr, value) \
    do { \
-     double packed_value; \
-     memcpy (&packed_value, ptr, OR_DOUBLE_SIZE); \
-     ntohd (&packed_value, (double *) (value)); \
+     unsigned __int64 packed_value; \
+     memcpy (&packed_value, ptr, OR_BIGINT_SIZE); \
+     (*(value)) = ntohd(packed_value); \
    } while (0)
 #define OR_GET_STRING(ptr) \
   ((char *) ((char *) (ptr)))
@@ -570,7 +570,7 @@
 /* OBJECT HEADER LAYOUT */
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
 
-/* representation id, MVCC insert id and CHN == 36 ?? */ 
+/* representation id, MVCC insert id and CHN == 36 ?? */
 #define OR_MVCC_MAX_HEADER_SIZE  28
 
 /* representation id and CHN */

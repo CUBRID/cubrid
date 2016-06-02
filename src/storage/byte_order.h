@@ -103,11 +103,11 @@ extern unsigned int ntohl (unsigned int);
 extern UINT64 ntohi64 (UINT64);
 
 #ifndef OR_HAVE_NTOHF
-extern void ntohf (float *, float *);
+extern float ntohf (unsigned __int32 from);
 #endif /* !OR_HAVE_NTOHF */
 
 #ifndef OR_HAVE_NTOHD
-extern void ntohd (double *, double *);
+extern double ntohd (unsigned __int64 from);
 #endif /* !OR_HAVE_NTOHD */
 
 #ifndef OR_HAVE_HTONS
