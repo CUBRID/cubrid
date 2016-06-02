@@ -7174,6 +7174,171 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID *
 #endif /* !CS_MODE */
 }
 
+/*
+ * qmgr_execute_query_and_commit - Send a NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT request to the server
+ *
+ * return:
+ *
+ *   xasl_id(in):
+ *   query_idp(in):
+ *   dbval_cnt(in):
+ *   dbvals(in):
+ *   flag(in):
+ *   clt_cache_time(in):
+ *   srv_cache_time(in):
+ *   query_timeout(in):
+ *   end_query_result(out):
+ *   tran_state(out):
+ *
+ * NOTE:
+ */
+QFILE_LIST_ID *
+qmgr_execute_query_and_commit (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt, const DB_VALUE * dbvals,
+			       QUERY_FLAG flag, CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time,
+			       int query_timeout, int *end_query_result, TRAN_STATE *tran_state)
+{
+#if defined(CS_MODE)
+  QFILE_LIST_ID *list_id = NULL;
+  int req_error, senddata_size, replydata_size_listid, replydata_size_page, replydata_size_plan;
+  char *request, *reply, *senddata = NULL;
+  char *replydata_listid = NULL, *replydata_page = NULL, *replydata_plan = NULL, *ptr;  
+  OR_ALIGNED_BUF (OR_XASL_ID_SIZE + OR_INT_SIZE * 6 + OR_CACHE_TIME_SIZE
+		  + OR_PTR_SIZE * NET_DEFER_END_QUERIES_MAX) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 7 + OR_PTR_ALIGNED_SIZE + OR_CACHE_TIME_SIZE) a_reply;
+  int i, row_count;
+  const DB_VALUE *dbval;  
+  int reset_on_commit, local_end_query_result;
+  int local_tran_state;
+
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  /* make send data using if parameter values for host variables are given */
+  senddata_size = 0;
+  for (i = 0, dbval = dbvals; i < dbval_cnt; i++, dbval++)
+    {
+      senddata_size += OR_VALUE_ALIGNED_SIZE ((DB_VALUE *) dbval);
+    }
+  if (senddata_size != 0)
+    {
+      senddata = (char *) malloc (senddata_size);
+      if (senddata == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) senddata_size);
+	  return NULL;
+	}
+
+      ptr = senddata;
+      for (i = 0, dbval = dbvals; i < dbval_cnt; i++, dbval++)
+	{
+	  ptr = or_pack_db_value (ptr, (DB_VALUE *) dbval);
+	}
+
+      /* change senddata_size as real packing size */
+      senddata_size = CAST_BUFLEN (ptr - senddata);
+    }
+
+  row_count = db_get_row_count_cache ();
+  /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a 
+   * request data */
+  ptr = request;
+  OR_PACK_XASL_ID (ptr, xasl_id);
+  ptr = or_pack_int (ptr, dbval_cnt);
+  ptr = or_pack_int (ptr, senddata_size);
+  ptr = or_pack_int (ptr, flag);
+  OR_PACK_CACHE_TIME (ptr, clt_cache_time);
+  ptr = or_pack_int (ptr, query_timeout);  
+  ptr = or_pack_int (ptr, row_count);
+  /* Pack query ids to end */
+  assert (net_Deferred_end_queries_count <= NET_DEFER_END_QUERIES_MAX);
+  ptr = or_pack_int (ptr, net_Deferred_end_queries_count);
+  for (i = 0; i < net_Deferred_end_queries_count; i++)
+    {
+      ptr = or_pack_ptr (ptr, net_Deferred_end_queries[i]);
+    }  
+
+  req_error =
+    net_client_request_with_callback (NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), senddata, senddata_size, NULL, 0,
+				      &replydata_listid, &replydata_size_listid, &replydata_page, &replydata_size_page,
+				      &replydata_plan, &replydata_size_plan);
+
+  if (replydata_plan != NULL)
+    {
+      db_set_execution_plan (replydata_plan, replydata_size_plan);
+      free_and_init (replydata_plan);
+    }
+
+  if (senddata)
+    {
+      free_and_init (senddata);
+    }
+
+  if (!req_error)
+    {
+      /* first argument should be QUERY_END ptr = or_unpack_int(reply, &status); */
+      /* second argument should be the same with replydata_size_listid ptr = or_unpack_int(ptr, &listid_length); */
+      /* third argument should be the same with replydata_size_page ptr = or_unpack_int(ptr, &page_size); */
+      /* third argument should be the same with replydata_size_plan ptr = or_unpack_int(ptr, &plan_size); */
+      /* fourth argument should be query_id */
+      ptr = or_unpack_ptr (reply + OR_INT_SIZE * 4, query_idp);
+      OR_UNPACK_CACHE_TIME (ptr, srv_cache_time);
+
+      ptr = or_unpack_int (ptr, &local_end_query_result);
+      ptr = or_unpack_int (ptr, &local_tran_state);
+      ptr = or_unpack_int (ptr, &reset_on_commit);
+
+      if (replydata_listid && replydata_size_listid)
+	{
+	  /* unpack list file id of query result from the reply data */
+	  ptr = or_unpack_unbound_listid (replydata_listid, (void **) (&list_id));
+	  /* QFILE_LIST_ID shipped with last page */
+	  if (replydata_size_page)
+	    {
+	      list_id->last_pgptr = replydata_page;
+	    }
+	  else
+	    {
+	      list_id->last_pgptr = NULL;
+	    }
+	  free_and_init (replydata_listid);
+	}
+
+      if (reset_on_commit == true && log_does_allow_replication () == true)
+  	{
+  	  /* 
+  	   * fail-back action
+  	   * make the client to reconnect to the active server
+  	   */
+  	  db_Connect_status = DB_CONNECTION_STATUS_RESET;
+  	  er_log_debug (ARG_FILE_LINE, "tran_server_commit: DB_CONNECTION_STATUS_RESET\n");
+  	}
+
+      if (end_query_result)
+	{
+	  *end_query_result = local_end_query_result;
+	}
+
+      if (tran_state)
+	{
+	  *tran_state = local_tran_state;
+	}
+
+      if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+	{
+	  net_cleanup_client_queues ();
+	}
+    }
+
+  return list_id;
+#else /* CS_MODE */
+  return NULL;
+ /* TO DO */
+#endif /* !CS_MODE */
+
+}
+
 
 /*
  * qmgr_execute_query - Send a SERVER_QM_EXECUTE request to the server

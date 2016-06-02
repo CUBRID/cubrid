@@ -120,8 +120,17 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const
 
   query_timeout = tran_get_query_timeout ();
   /* send XASL file id and host variables to the server and get QFILE_LIST_ID */
-  *list_idp =
-    qmgr_execute_query (xasl_id, query_idp, var_cnt, varptr, flag, clt_cache_time, srv_cache_time, query_timeout);
+  if (1)/* TO DO - based on flags */
+    {
+      *list_idp =
+	qmgr_execute_query_and_commit (xasl_id, query_idp, var_cnt, varptr, flag, clt_cache_time, srv_cache_time,
+				       query_timeout, NULL/* TO DO - valid parameters*/, NULL/* TO DO - valid parameters*/);
+    }
+    else
+    {
+      *list_idp =
+	qmgr_execute_query (xasl_id, query_idp, var_cnt, varptr, flag, clt_cache_time, srv_cache_time, query_timeout);      
+    }
 
   if (*list_idp == NULL)
     {
