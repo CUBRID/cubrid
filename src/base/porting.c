@@ -1500,7 +1500,7 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
   return _vsprintf_p (buffer, count, format, argptr);
 }
 
-#if defined(_MSC_VER) && _MSC_VER < 1800
+#if !defined(_MSC_VER) || _MSC_VER < 1800
 double
 round (double d)
 {

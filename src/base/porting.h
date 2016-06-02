@@ -127,7 +127,9 @@ extern "C"
 #define PATH_MAX	256
 #define NAME_MAX	256
 
+#if !defined (_MSC_VER) || _MSC_VER < 1700
 #define log2(x)                 (log ((double) x) / log ((double) 2))
+#endif /* !_MSC_VER || _MSC_VER < 1700 */
   extern char *realpath (const char *path, char *resolved_path);
 #define sleep(sec) Sleep(1000*(sec))
 #define usleep(usec) Sleep((usec)/1000)
