@@ -133,6 +133,8 @@ if(UNIX)
     set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
     set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
 
     # set has-style
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both")
@@ -183,15 +185,13 @@ if(USE_BISON_FLEX)
   if(USE_BISON_NEWDIRECTIVE)
     file(READ ${CSQL_GRAMMAR_INPUT} yy )
     string(REPLACE "%{/*%CODE_REQUIRES_START%*/" "%code requires{" mod_yy "${yy}" )
-    string(REPLACE "%{/*%CODE_PROVIDES_START%*/" "%code requires{" mod_yy "${mod_yy}" )
+    string(REPLACE "%{/*%CODE_PROVIDES_START%*/" "%code provides{" mod_yy "${mod_yy}" )
     string(REPLACE "/*%CODE_END%*/%}" "}" mod_yy "${mod_yy}" )
-    file(WRITE csql_grammar.yy ${mod_yy})
-    bison_target(csql_grammar csql_grammar.yy ${CSQL_GRAMMAR_OUTPUT}
-      COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
-  else(USE_BISON_NEWDIRECTIVE)
-    bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
-      COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
+    set(CSQL_GRAMMAR_INPUT ${CMAKE_BINARY_DIR}/csql_grammar.yy)
+    file(WRITE ${CSQL_GRAMMAR_INPUT} "${mod_yy}")
   endif(USE_BISON_NEWDIRECTIVE)
+  bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
+    COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
   flex_target(csql_lexer ${CSQL_LEXER_INPUT} ${CSQL_LEXER_OUTPUT}
     COMPILE_FLAGS "--noline --never-interactive --prefix=csql_yy")
   add_flex_bison_dependency(csql_lexer csql_grammar)
@@ -209,15 +209,13 @@ if(USE_BISON_FLEX)
   if(USE_BISON_NEWDIRECTIVE)
     file(READ ${ESQL_GRAMMAR_INPUT} yy )
     string(REPLACE "%{/*%CODE_REQUIRES_START%*/" "%code requires{" mod_yy "${yy}" )
-    string(REPLACE "%{/*%CODE_PROVIDES_START%*/" "%code requires{" mod_yy "${mod_yy}" )
+    string(REPLACE "%{/*%CODE_PROVIDES_START%*/" "%code provides{" mod_yy "${mod_yy}" )
     string(REPLACE "/*%CODE_END%*/%}" "}" mod_yy "${mod_yy}" )
-    file(WRITE esql_grammar.yy ${mod_yy})
-    bison_target(esql_grammar esql_grammar.yy ${ESQL_GRAMMAR_OUTPUT}
-      COMPILE_FLAGS "--no-lines --name-prefix=esql_yy -d -r all")
-  else(USE_BISON_NEWDIRECTIVE)
-    bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
-      COMPILE_FLAGS "--no-lines --name-prefix=esql_yy -d -r all")
+    set(ESQL_GRAMMAR_INPUT ${CMAKE_BINARY_DIR}/esql_grammar.yy)
+    file(WRITE ${ESQL_GRAMMAR_INPUT} "${mod_yy}")
   endif(USE_BISON_NEWDIRECTIVE)
+  bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
+    COMPILE_FLAGS "--no-lines --name-prefix=esql_yy -d -r all")
   flex_target(esql_lexer ${ESQL_LEXER_INPUT} ${ESQL_LEXER_OUTPUT}
     COMPILE_FLAGS "--noline --never-interactive --prefix=esql_yy")
   add_flex_bison_dependency(esql_lexer esql_grammar)
@@ -470,8 +468,8 @@ configure_file(version.h.cmake version.h)
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
   add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wlong-long -Wextra -Wno-unused")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wlong-long -Wextra -Wno-unused")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -W -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused")
   if(SIZEOF_OFF64_T)
     add_definitions( -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64)
   endif(SIZEOF_OFF64_T)
@@ -524,6 +522,11 @@ if(ENABLE_SYSTEMTAP)
     message(FATAL_ERROR "The dtrace tool was not found. check PATH or install dtrace")
   endif(NOT DTRACE)
   mark_as_advanced(DTRACE)
+  execute_process(COMMAND ${DTRACE} -V OUTPUT_VARIABLE dtrace_version)
+  if(dtrace_version MATCHES "Sun D" OR dtrace_version MATCHES "Oracle D")
+    message(WARNING "Sun or Oracle D is not supported")
+    message(FATAL_ERROR "Please use sourceware.org's systemtap [https://sourceware.org/systemtap/]")
+  endif(dtrace_version MATCHES "Sun D" OR dtrace_version MATCHES "Oracle D")
   check_include_file(sys/sdt.h HAVE_SYS_SDT_H)
   if(NOT HAVE_SYS_SDT_H)
     message(FATAL_ERROR "The systemtap support needs sys/sdt.h header")
@@ -653,8 +656,8 @@ if(WITH_LIBREGEX STREQUAL "BUNDLED")
     externalproject_add(${LIBREGEX_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libregex38a
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      #BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/libregex38a
-      INSTALL_COMMAND make install
+      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/external/lib
       COMMAND ${CMAKE_COMMAND} -E copy .libs/libregex38a.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/
       )
@@ -680,8 +683,8 @@ if(WITH_LIBEXPAT STREQUAL "BUNDLED")
     externalproject_add(${LIBEXPAT_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/expat-2.0.1
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND make buildlib
-      INSTALL_COMMAND make installlib
+      BUILD_COMMAND make buildlib AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND make installlib AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/external/lib
       COMMAND ${CMAKE_COMMAND} -E copy .libs/libexpat.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/
       )
@@ -707,6 +710,8 @@ if(WITH_LIBJANSSON STREQUAL "BUNDLED")
     externalproject_add(${LIBJANSSON_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/jansson-2.4
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBJANSSON_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libjansson.a)
     set(LIBJANSSON_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/jansson)
@@ -730,6 +735,8 @@ if(WITH_LIBEDIT STREQUAL "BUNDLED")
     externalproject_add(${LIBEDIT_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libedit-20120601-3.0
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-widec
+      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBEDIT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libedit.a)
     set(LIBEDIT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
@@ -746,6 +753,8 @@ if(WITH_LIBLZO STREQUAL "BUNDLED")
     externalproject_add(${LIBLZO_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/lzo-2.03
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBLZO_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/liblzo2.a)
     set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/lzo)
@@ -769,6 +778,8 @@ if(WITH_LIBGPGERROR STREQUAL "BUNDLED")
     externalproject_add(${LIBGPGERROR_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libgpg-error-1.11
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBGPG_ERROR_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgpg-error.a)
     set(LIBGPG_ERROR_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
@@ -789,6 +800,8 @@ if(WITH_LIBGCRYPT STREQUAL "BUNDLED")
       DEPENDS libgpg-error
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libgcrypt-1.5.2
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include ${GRCYPT_EXTRA_OPTION}
+      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBGCRYPT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgcrypt.a)
     set(LIBGCRYPT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
@@ -865,6 +878,8 @@ if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cubridmanager/server
       CONFIGURE_COMMAND sh ./autogen.sh
       COMMAND sh ./configure --prefix=<INSTALL_DIR> --with-cubrid-libdir=<TMP_DIR> --with-cubrid-includedir=<TMP_DIR> ${CMS_CONFIGURE_OPTS}
+      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       BUILD_IN_SOURCE 1
       )
   else(UNIX)
