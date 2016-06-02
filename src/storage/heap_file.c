@@ -924,15 +924,18 @@ static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, REC
 static bool heap_check_class_for_rr_isolation_err (const OID * class_oid);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR pgptr, PAGE_PTR fwd_pgptr,
 					 LOG_LSA * prev_ver_lsa);
-
+static SCAN_CODE
+heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, OID * forward_oid,
+			 PGBUF_WATCHER * home_page_watcher, PGBUF_WATCHER * fwd_page_watcher,
+			 INT16 * record_type, PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
+			 NON_EXISTENT_HANDLING non_ex_handling_type)
 /*
  * heap_hash_vpid () - Hash a page identifier
  *   return: hash value
  *   key_vpid(in): VPID to hash
  *   htsize(in): Size of hash table
  */
-static unsigned int
-heap_hash_vpid (const void *key_vpid, unsigned int htsize)
+     static unsigned int heap_hash_vpid (const void *key_vpid, unsigned int htsize)
 {
   const VPID *vpid = (VPID *) key_vpid;
 
@@ -8360,14 +8363,12 @@ error:
  *	   fix fwd page, after having home fix; first try (CONDITIONAL) will
  *	   fail, and wil trigger an ordered fix + UNCONDITIONAL.
  */
-SCAN_CODE
+static SCAN_CODE
 heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, OID * forward_oid,
 			 PGBUF_WATCHER * home_page_watcher, PGBUF_WATCHER * fwd_page_watcher, INT16 * record_type,
 			 PGBUF_LATCH_MODE latch_mode, bool is_heap_scan, NON_EXISTENT_HANDLING non_ex_handling_type)
 {
   SPAGE_SLOT *slot_p = NULL;
-  VPID home_vpid;
-  VPID forward_vpid;
   RECDES peek_recdes;
   SCAN_CODE scan = S_SUCCESS;
   int try_count = 0;
@@ -8383,51 +8384,10 @@ heap_prepare_get_record (THREAD_ENTRY * thread_p, const OID * oid, OID * class_o
 try_again:
 
   /* First make sure object home_page is fixed. */
-  VPID_GET_FROM_OID (&home_vpid, oid);
-  if (home_page_watcher->pgptr != NULL && !VPID_EQ (pgbuf_get_vpid_ptr (home_page_watcher->pgptr), &home_vpid))
+  ret = heap_prepare_object_page (thread_p, oid, home_page_watcher, latch_mode);
+  if (ret != NO_ERROR)
     {
-      pgbuf_ordered_unfix (thread_p, home_page_watcher);
-    }
-  if (home_page_watcher->pgptr == NULL)
-    {
-      ret = pgbuf_ordered_fix (thread_p, &home_vpid, OLD_PAGE, latch_mode, home_page_watcher);
-      if (ret != NO_ERROR)
-	{
-	  if (ret == ER_PB_BAD_PAGEID)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
-		      oid->slotid);
-	    }
-
-	  if (ret == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, home_vpid.volid, home_vpid.pageid);
-	    }
-	  goto error;
-	}
-    }
-  /* Home page was fixed. */
-
-  /* Output class_oid. */
-  if (class_oid != NULL && OID_ISNULL (class_oid))
-    {
-      /* Get class OID from HEAP_CHAIN. */
-      scan = spage_get_record (home_page_watcher->pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &peek_recdes, PEEK);
-      if (scan != S_SUCCESS)
-	{
-	  /* Unexpected. */
-	  assert_release (false);
-	  goto error;
-	}
-      COPY_OID (class_oid, &(((HEAP_CHAIN *) peek_recdes.data)->class_oid));
-      if (OID_ISNULL (class_oid))
-	{
-	  /* 
-	   * kludge, root class is identified with a NULL class OID but we
-	   * must substitute the actual OID here - think about this.
-	   */
-	  COPY_OID (class_oid, oid_Root_class_oid);
-	}
+      goto error;
     }
 
   /* Get slot. */
@@ -8474,25 +8434,18 @@ try_again:
 	}
       /* Output forward_oid. */
       COPY_OID (forward_oid, (OID *) peek_recdes.data);
-      /* Get forward_vpid. */
-      VPID_GET_FROM_OID (&forward_vpid, forward_oid);
-      if (fwd_page_watcher->pgptr != NULL)
+
+      /* Output class oid */
+      COPY_OID (class_oid, &(((HEAP_CHAIN *) peek_recdes.data)->class_oid));
+      if (OID_ISNULL (class_oid))
 	{
-	  if (VPID_EQ (pgbuf_get_vpid_ptr (fwd_page_watcher->pgptr), &forward_vpid))
-	    {
-	      /* Already fixed. */
-	      return S_SUCCESS;
-	    }
-	  else
-	    {
-	      pgbuf_ordered_unfix (thread_p, fwd_page_watcher);
-	    }
+	  /*root class is identified with a NULL class OID */
+	  COPY_OID (class_oid, oid_Root_class_oid);
 	}
 
       /* Try to latch forward_page. */
       PGBUF_WATCHER_COPY_GROUP (fwd_page_watcher, home_page_watcher);
-      ret = pgbuf_ordered_fix (thread_p, &forward_vpid, OLD_PAGE, latch_mode, fwd_page_watcher);
-
+      ret = heap_prepare_object_page (thread_p, forward_oid, fwd_page_watcher, latch_mode);
       if (ret == NO_ERROR)
 	{
 	  /* Pages successfully fixed. */
@@ -8508,23 +8461,13 @@ try_again:
 		}
 	      else
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, forward_vpid.volid,
-			  forward_vpid.pageid);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, forward_oid->volid,
+			  forward_oid->pageid);
 		}
 
 	      goto error;
 	    }
 	  return S_SUCCESS;
-	}
-
-      if (ret == ER_PB_BAD_PAGEID)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, forward_oid->volid, forward_oid->pageid,
-		  forward_oid->slotid);
-	}
-      else if (ret == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, forward_vpid.volid, forward_vpid.pageid);
 	}
 
       goto error;
@@ -8540,26 +8483,20 @@ try_again:
 	}
       /* Output forward_oid. */
       COPY_OID (forward_oid, (OID *) peek_recdes.data);
-      /* Get forward_vpid. */
-      VPID_GET_FROM_OID (&forward_vpid, forward_oid);
-      if (fwd_page_watcher->pgptr != NULL)
+
+      /* Output class oid */
+      COPY_OID (class_oid, &(((HEAP_CHAIN *) peek_recdes.data)->class_oid));
+      if (OID_ISNULL (class_oid))
 	{
-	  if (VPID_EQ (pgbuf_get_vpid_ptr (fwd_page_watcher->pgptr), &forward_vpid))
-	    {
-	      /* Already fixed. */
-	      return S_SUCCESS;
-	    }
-	  else
-	    {
-	      pgbuf_ordered_unfix (thread_p, fwd_page_watcher);
-	    }
+	  /*root class is identified with a NULL class OID */
+	  COPY_OID (class_oid, oid_Root_class_oid);
 	}
 
       /* Fix overflow page. Since overflow pages should be always accessed with their home pages latched, unconditional 
        * latch should work; However, we need to use the same ordered_fix approach. */
       PGBUF_WATCHER_RESET_RANK (fwd_page_watcher, PGBUF_ORDERED_HEAP_OVERFLOW);
       PGBUF_WATCHER_COPY_GROUP (fwd_page_watcher, home_page_watcher);
-      ret = pgbuf_ordered_fix (thread_p, &forward_vpid, OLD_PAGE, latch_mode, fwd_page_watcher);
+      ret = heap_prepare_object_page (thread_p, forward_oid, fwd_page_watcher, latch_mode);
       if (ret == NO_ERROR)
 	{
 	  /* Pages successfully fixed. */
@@ -8570,14 +8507,6 @@ try_again:
 	      goto error;
 	    }
 	  return S_SUCCESS;
-	}
-      if (ret == ER_PB_BAD_PAGEID)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid, oid->slotid);
-	}
-      else if (ret == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, forward_vpid.volid, forward_vpid.pageid);
 	}
 
       goto error;
@@ -26386,4 +26315,105 @@ end:
     }
 
   return error_code;
+}
+
+/*
+ * heap_get_internal2 () - Generic function for retrieving last version of heap objects, not visible versions
+ * 
+ *
+ */
+SCAN_CODE
+heap_get_last_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+		       HEAP_SCANCACHE * scan_cache, LOCK lock, int ispeeking,
+		       int old_chn, struct mvcc_reev_data * mvcc_reev_data)
+{
+  OID forward_oid = OID_INITIALIZER;
+  SCAN_CODE scan = S_SUCCESS;
+
+}
+
+/*
+ * heap_get_class_oid () - Get class of provided oid 
+ * 
+ *
+ */
+SCAN_CODE
+heap_get_class_oid2 (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
+{
+  SCAN_CODE scan;
+  PGBUF_WATCHER page_watcher;
+  RECDES peek_recdes = RECDES_INITIALIZER;
+
+  assert (oid != NULL && !OID_ISNULL (oid) && class_oid != NULL);
+
+  page_watcher.pgptr = NULL;
+  if (heap_prepare_object_page (thread_p, oid, &page_watcher) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
+  /* Get class OID from HEAP_CHAIN. */
+  scan = spage_get_record (page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &peek_recdes, PEEK);
+  if (scan != S_SUCCESS)
+    {
+      /* Unexpected. */
+      assert_release (false);
+      pgbuf_ordered_unfix (thread_p, &page_watcher);
+      return scan;
+    }
+
+  COPY_OID (class_oid, &(((HEAP_CHAIN *) peek_recdes.data)->class_oid));
+  if (OID_ISNULL (class_oid))
+    {
+      /* root class is identified with a NULL class OID */
+      COPY_OID (class_oid, oid_Root_class_oid);
+    }
+
+  pgbuf_ordered_unfix (thread_p, &page_watcher);
+  return scan;
+}
+
+/* 
+ * heap_prepare_object_page () - Check if provided page matches the page of provided OID or fix the right one
+ *
+ *
+ */
+int
+heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
+			  PGBUF_LATCH_MODE latch_mode)
+{
+  VPID object_vpid;
+  int ret = NO_ERROR;
+
+  assert (oid != NULL && !OID_ISNULL (oid));
+
+  VPID_GET_FROM_OID (&object_vpid, oid);
+
+  if (page_watcher_p->pgptr != NULL && !VPID_EQ (pgbuf_get_vpid_ptr (page_watcher_p->pgptr), &object_vpid))
+    {
+      /* unfix provided page if it does not correspond to the VPID */
+      pgbuf_ordered_unfix (thread_p, page_watcher_p);
+    }
+
+  if (page_watcher_p->pgptr == NULL)
+    {
+      /* fix required page */
+      ret = pgbuf_ordered_fix (thread_p, &object_vpid, OLD_PAGE, latch_mode, page_watcher_p);
+      if (ret != NO_ERROR)
+	{
+	  if (ret == ER_PB_BAD_PAGEID)
+	    {
+	      /* maybe this error could be removed */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
+		      oid->slotid);
+	    }
+
+	  if (ret == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, oid->volid, oid->pageid);
+	    }
+	}
+    }
+
+  return ret;
 }
