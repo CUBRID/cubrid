@@ -103,11 +103,11 @@ extern unsigned int ntohl (unsigned int);
 extern UINT64 ntohi64 (UINT64);
 
 #ifndef OR_HAVE_NTOHF
-extern float ntohf (unsigned __int32 from);
+extern float ntohf (UINT32 from);
 #endif /* !OR_HAVE_NTOHF */
 
 #ifndef OR_HAVE_NTOHD
-extern double ntohd (unsigned __int64 from);
+extern double ntohd (UINT64 from);
 #endif /* !OR_HAVE_NTOHD */
 
 #ifndef OR_HAVE_HTONS
@@ -121,11 +121,11 @@ extern unsigned int htonl (unsigned int);
 extern UINT64 htoni64 (UINT64);
 
 #ifndef OR_HAVE_HTONF
-extern float htonf (float);
+extern UINT32 htonf (float);
 #endif /* !OR_HAVE_HTONF */
 
 #ifndef OR_HAVE_HTOND
-extern double htond (double);
+extern UINT64 htond (double);
 #endif /* !OR_HAVE_HTOND */
 
 #else /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
