@@ -2296,6 +2296,11 @@ lf_circular_queue_approx_size (LOCK_FREE_CIRCULAR_QUEUE * queue)
    */
   UINT64 cc = ATOMIC_LOAD_64 (&queue->consume_cursor);
   UINT64 pc = ATOMIC_LOAD_64 (&queue->produce_cursor);
+
+  if (pc <= cc)
+    {
+      return 0;
+    }
   return (int) (pc - cc);
 }
 

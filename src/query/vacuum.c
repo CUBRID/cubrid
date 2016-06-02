@@ -2533,6 +2533,16 @@ restart:
       return;
     }
 
+#if defined (SERVER_MODE)
+  /* How many jobs can we generate? */
+  n_jobs = VACUUM_JOB_QUEUE_CAPACITY - lf_circular_queue_approx_size (vacuum_Job_queue);
+  if (n_jobs <= 0)
+    {
+      /* No jobs can be generated. Stop this iteration. */
+      return;
+    }
+#endif /* SERVER_MODE */
+
   /* Search for blocks ready to be vacuumed and generate jobs. */
 
   data_page = vacuum_Data.first_page;
@@ -2618,7 +2628,7 @@ restart:
 			     "VACUUM ERROR: Error %d while master tried to prefetch log pages for block %lld.",
 			     er_errid (), (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
 	      vacuum_unfix_data_page (thread_p, data_page);
-	      return;
+	      break;
 	    }
 	}
       else
@@ -2638,7 +2648,19 @@ restart:
 
 	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
 	  vacuum_unfix_data_page (thread_p, data_page);
-	  return;
+	  break;
+	}
+      else
+	{
+	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
+			 "VACUUM: Generated new job with blockid %lld, flags = %lld",
+			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid),
+			 (long long int) VACUUM_BLOCKID_GET_FLAGS (entry->blockid));
+	  if (n_jobs-- == 0)
+	    {
+	      /* Stop generating other jobs. */
+	      break;
+	    }
 	}
 #endif /* SERVER_MODE */
 
@@ -2649,16 +2671,6 @@ restart:
 	   * is really started to avoid locking vacuum data again (logging vacuum data cannot be done without locking).
 	   */
 	  log_append_redo_data2 (thread_p, RVVAC_START_JOB, NULL, (PAGE_PTR) data_page, data_index, 0, NULL);
-
-	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
-			 "VACUUM: Log redo for starting job for blockid %lld.\n",
-			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
-	}
-      else
-	{
-	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
-			 "VACUUM: Job for blockid %lld was interrupted before.\n",
-			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
 	}
 
 #if defined (SA_MODE)
@@ -2682,16 +2694,6 @@ restart:
 	  goto restart;
 	}
 #else	/* !SA_MODE */	       /* SERVER_MODE */
-      /* Wakeup threads to start working on current threads. Try not to wake up more workers than necessary. */
-      n_jobs = (int) lf_circular_queue_approx_size (vacuum_Job_queue);
-      n_available_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT) - vacuum_Running_workers_count;
-      n_wakeup_workers = MIN (n_jobs, n_available_workers);
-      if (n_wakeup_workers > 0)
-	{
-	  /* Wakeup more workers */
-	  thread_wakeup_vacuum_worker_threads (n_wakeup_workers);
-	}
-
       /* If vacuum lagged behind and this loop generated a lot of jobs, the log block buffer used by active workers
        * can fill up. We cannot allow that.
        */
@@ -2721,7 +2723,17 @@ restart:
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
 
-#if defined (SA_MODE)
+#if defined (SERVER_MODE)
+  /* Wakeup threads to start working on current threads. Try not to wake up more workers than necessary. */
+  n_jobs = (int) lf_circular_queue_approx_size (vacuum_Job_queue);
+  n_available_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT) - vacuum_Running_workers_count;
+  n_wakeup_workers = MIN (n_jobs, n_available_workers);
+  if (n_wakeup_workers > 0)
+    {
+      /* Wakeup more workers */
+      thread_wakeup_vacuum_worker_threads (n_wakeup_workers);
+    }
+#else /* !SERVER_MODE */ /* SA_MODE */
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
 
   assert (lf_circular_queue_is_empty (vacuum_Block_data_buffer));
@@ -2791,7 +2803,7 @@ restart:
   vacuum_Data.is_vacuum_complete = true;
 
   PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
-#endif
+#endif /* SA_MODE */
 }
 
 /*
@@ -3538,6 +3550,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 #if !defined (NDEBUG)
       /* Interrupting jobs without shutdown is unacceptable. */
       assert (thread_p->shutdown);
+      assert (vacuum_Data.shutdown_requested);
 #endif /* !NDEBUG */
 
 #else /* !SERVER_MODE */
@@ -3552,7 +3565,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
       /* Copy new block data */
       /* The only relevant information is in fact the updated start_lsa if it has changed. */
       vacuum_er_log (error_level | VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_JOBS,
-		     "VACUUM %s: Processing log block %lld is not complete!",
+		     "VACUUM %s: Processing log block %lld is interrupted!",
 		     error_level == VACUUM_ER_LOG_ERROR ? "ERROR" : "WARNING",
 		     VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
     }
