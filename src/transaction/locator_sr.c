@@ -126,7 +126,7 @@ struct locator_return_nxobj
   int area_offset;		/* Relative offset to recdes->data in the communication area */
 };
 
-extern int vacuum_Global_oldest_active_blockers_counter;
+extern INT32 vacuum_Global_oldest_active_blockers_counter;
 
 bool locator_Dont_check_foreign_key = false;
 
@@ -12560,7 +12560,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
     }
   else
     {
-      assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) > 0);
+      assert (vacuum_Global_oldest_active_blockers_counter > 0);
     }
 
   /* Can't use vacuum_Global_oldest_active_mvccid here. That's because we want to avoid scenarios where VACUUM compute
@@ -13170,7 +13170,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	}
       else
 	{
-	  assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) > 0);
+	  assert (vacuum_Global_oldest_active_blockers_counter > 0);
 	}
 
       if (threshold_mvccid == MVCCID_NULL)

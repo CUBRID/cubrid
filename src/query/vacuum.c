@@ -297,7 +297,7 @@ MVCCID vacuum_Global_oldest_active_mvccid;
  * and by running vacuum manually.
  * This is a counter that tracks blocking transactions.
  */
-int vacuum_Global_oldest_active_blockers_counter;
+INT32 vacuum_Global_oldest_active_blockers_counter;
 /* vacuum_Save_log_hdr_oldest_mvccid is used to estimate oldest unvacuumed MVCCID in the corner-case of empty vacuum
  * data. When vacuum data is not empty, oldest MVCCID of first block not yet vacuumed is used.
  * However, when vacuum data is not empty, the oldest MVCCID can be either the oldest MVCCID of first block in
@@ -2454,8 +2454,8 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   int n_wakeup_workers;
   int n_available_workers;
   int n_jobs;
-  INT64 vacuum_block_data_buffer_aprox_size;
-  INT64 vacuum_finished_jobs_queue_aprox_size;
+  UINT64 vacuum_block_data_buffer_aprox_size;
+  UINT64 vacuum_finished_jobs_queue_aprox_size;
 #else	/* !SERVER_MODE */		   /* SA_MODE */
   VACUUM_DATA_ENTRY vacuum_data_entry;
   bool save_check_interrupt;
@@ -2474,14 +2474,14 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 
-  if (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) == 0)
+  if (vacuum_Global_oldest_active_blockers_counter == 0)
     {
       local_oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
 
       /* check again, maybe concurrent thread has modified the counter value */
-      if (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) == 0)
+      if (vacuum_Global_oldest_active_blockers_counter == 0)
 	{
-	  ATOMIC_TAS_64 (&vacuum_Global_oldest_active_mvccid, local_oldest_active_mvccid);
+	  ATOMIC_STORE_64 (&vacuum_Global_oldest_active_mvccid, local_oldest_active_mvccid);
 	}
     }
 
@@ -3538,7 +3538,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 
 #if defined (SERVER_MODE)
   /* Hurry master wakeup if finished job queue is getting filled. */
-  if (lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= vacuum_Finished_job_queue->capacity / 2)
+  if ((UINT64) lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= vacuum_Finished_job_queue->capacity / 2)
     {
       /* Wakeup master to process finished jobs. */
       thread_wakeup_vacuum_master_thread ();
@@ -3878,7 +3878,6 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
 
   vacuum_Data.is_loaded = true;
 
-  vacuum_Global_oldest_active_mvccid = log_Gl.hdr.mvcc_next_id;
   error_code = vacuum_recover_lost_block_data (thread_p);
   if (error_code != NO_ERROR)
     {
@@ -4543,7 +4542,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
       /* Move *data_page to next page. */
       if (!VPID_ISNULL (&prev_data_page->next_page))
 	{
-	  *data_page = vacuum_fix_data_page (thread_p, &(*data_page)->next_page);
+	  *data_page = vacuum_fix_data_page (thread_p, &prev_data_page->next_page);
 	  assert (*data_page != NULL);
 	}
     }
@@ -5297,13 +5296,13 @@ vacuum_compare_dropped_files (const void *a, const void *b)
 static int
 vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid, LOG_RCV * rcv, LOG_LSA * postpone_ref_lsa)
 {
-  MVCCID save_mvccid;
-  VPID vpid, prev_vpid;
-  int page_count, mem_size, compare;
+  MVCCID save_mvccid = MVCCID_NULL;
+  VPID vpid = VPID_INITIALIZER, prev_vpid = VPID_INITIALIZER;
+  int page_count = 0, mem_size = 0, compare = 0;
   char *ptr = NULL;
   VACUUM_DROPPED_FILES_PAGE *page = NULL, *new_page = NULL;
-  INT16 min, max, mid, position;
-  LOG_DATA_ADDR addr;
+  INT16 min = -1, max = -1, mid = -1, position = -1;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
 #if !defined (NDEBUG)
@@ -5955,12 +5954,12 @@ vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv, LOG_LSA * po
 static int
 vacuum_cleanup_dropped_files (THREAD_ENTRY * thread_p)
 {
-  VPID vpid;
+  VPID vpid = VPID_INITIALIZER;
   VACUUM_DROPPED_FILES_PAGE *page = NULL;
-  int page_count, mem_size;
-  VPID last_page_vpid, last_non_empty_page_vpid;
+  int page_count = 0, mem_size = 0;
+  VPID last_page_vpid = VPID_INITIALIZER, last_non_empty_page_vpid = VPID_INITIALIZER;
   INT16 removed_entries[VACUUM_DROPPED_FILES_MAX_PAGE_CAPACITY];
-  INT16 n_removed_entries, i;
+  INT16 n_removed_entries = 0, i;
 #if !defined (NDEBUG)
   VACUUM_TRACK_DROPPED_FILES *track_page = (VACUUM_TRACK_DROPPED_FILES *) vacuum_Track_dropped_files;
 #endif
@@ -7310,7 +7309,7 @@ vacuum_notify_server_shutdown (void)
 VACUUM_LOG_BLOCKID
 vacuum_get_global_oldest_active_mvccid (void)
 {
-  return ATOMIC_INC_64 (&vacuum_Global_oldest_active_mvccid, 0);
+  return ATOMIC_LOAD_64 (&vacuum_Global_oldest_active_mvccid);
 }
 
 #if defined (SERVER_MODE)
