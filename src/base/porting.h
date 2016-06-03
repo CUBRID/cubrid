@@ -124,8 +124,12 @@ extern "C"
 #define ENOMSG      100
 #endif
 
+#if !defined PATH_MAX
 #define PATH_MAX	256
+#endif
+#if !defined NAME_MAX
 #define NAME_MAX	256
+#endif
 
 #if !defined (_MSC_VER) || _MSC_VER < 1700
 #define log2(x)                 (log ((double) x) / log ((double) 2))
