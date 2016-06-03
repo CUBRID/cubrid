@@ -459,12 +459,6 @@ thread_initialize_manager (void)
       thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
       thread_Daemons[daemon_index++].daemon_function = thread_log_clock_thread;
 
-      /* Initialize auto vacuum daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_VACUUM_MASTER;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Vacuum_master_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = thread_vacuum_master_thread;
-
       /* Initialize vacuum worker daemons */
       for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++, daemon_index++)
 	{
@@ -473,6 +467,12 @@ thread_initialize_manager (void)
 	  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
 	  thread_Daemons[daemon_index].daemon_function = thread_vacuum_worker_thread;
 	}
+
+      /* Initialize vacuum master daemon */
+      thread_Daemons[daemon_index].type = THREAD_DAEMON_VACUUM_MASTER;
+      thread_Daemons[daemon_index].daemon_monitor = &thread_Vacuum_master_thread;
+      thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
+      thread_Daemons[daemon_index++].daemon_function = thread_vacuum_master_thread;
 
       /* Leave these three daemons at the end. These are to be shutdown latest */
       /* Initialize page flush daemon */
@@ -957,14 +957,14 @@ thread_stop_vacuum_daemons (void)
 {
   int i;
 
-  /* Stop vacuum master. */
-  thread_stop_daemon (&thread_Vacuum_master_thread);
-
   /* Stop vacuum workers. */
   for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
     {
       thread_stop_daemon (&thread_Vacuum_worker_threads[i]);
     }
+
+  /* Stop vacuum master. */
+  thread_stop_daemon (&thread_Vacuum_master_thread);
 
   return NO_ERROR;
 }
@@ -2687,8 +2687,11 @@ thread_vacuum_master_thread (void *arg_p)
       thread_Vacuum_master_thread.is_running = true;
       pthread_mutex_unlock (&thread_Vacuum_master_thread.lock);
 
-      vacuum_master_start ();
+      vacuum_master_start (tsd_ptr);
     }
+
+  /* Finalize vacuum. */
+  vacuum_finalize (tsd_ptr);
 
   rv = pthread_mutex_lock (&thread_Vacuum_master_thread.lock);
   thread_Vacuum_master_thread.is_available = false;
@@ -5608,14 +5611,6 @@ thread_resume_status_to_string (int resume_status)
       return "CSS_QUEUE_SUSPENDED";
     case THREAD_CSS_QUEUE_RESUMED:
       return "CSS_QUEUE_RESUMED";
-    case THREAD_QMGR_ACTIVE_QRY_SUSPENDED:
-      return "QMGR_ACTIVE_QRY_SUSPENDED";
-    case THREAD_QMGR_ACTIVE_QRY_RESUMED:
-      return "QMGR_ACTIVE_QRY_RESUMED";
-    case THREAD_QMGR_MEMBUF_PAGE_SUSPENDED:
-      return "QMGR_MEMBUF_PAGE_SUSPENDED";
-    case THREAD_QMGR_MEMBUF_PAGE_RESUMED:
-      return "QMGR_MEMBUF_PAGE_RESUMED";
     case THREAD_HEAP_CLSREPR_SUSPENDED:
       return "HEAP_CLSREPR_SUSPENDED";
     case THREAD_HEAP_CLSREPR_RESUMED:

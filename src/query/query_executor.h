@@ -296,25 +296,23 @@
     while (0)
 
 #define SET_MVCC_SELECT_REEV_DATA(p_mvcc_reev_data, p_mvcc_sel_reev_data, \
-				  reev_filter_result, p_primary_key) \
+				  reev_filter_result) \
   do \
     { \
       assert ((p_mvcc_reev_data) != NULL); \
       (p_mvcc_reev_data)->type = REEV_DATA_SCAN; \
       (p_mvcc_reev_data)->select_reev_data = (p_mvcc_sel_reev_data); \
       (p_mvcc_reev_data)->filter_result = (reev_filter_result); \
-      (p_mvcc_reev_data)->primary_key = (p_primary_key); \
     } \
   while (0)
 
 #define SET_MVCC_UPDATE_REEV_DATA(p_mvcc_reev_data, p_mvcc_upddel_reev_data, \
-				  reev_filter_result, p_primary_key) \
+				  reev_filter_result) \
   do \
     { \
       (p_mvcc_reev_data)->type = REEV_DATA_UPDDEL; \
       (p_mvcc_reev_data)->upddel_reev_data = (p_mvcc_upddel_reev_data); \
       (p_mvcc_reev_data)->filter_result = (reev_filter_result); \
-      (p_mvcc_reev_data)->primary_key = (p_primary_key); \
     } \
   while (0)
 
@@ -658,7 +656,6 @@ struct mvcc_reev_data
     MVCC_SCAN_REEV_DATA *select_reev_data;	/* data for reevaluation at SELECT */
   };
   DB_LOGICAL filter_result;	/* the result of reevaluation if successful */
-  DB_VALUE *primary_key;	/* primary key value used in foreign key cascade UPDATE/DELETE reevaluation */
 };
 
 /*update/delete class info structure */
@@ -985,17 +982,14 @@ struct func_pred
 #define XASL_TO_BE_CACHED         16	/* the result will be cached */
 #define	XASL_HAS_NOCYCLE	  32	/* NOCYCLE is specified */
 #define	XASL_HAS_CONNECT_BY	  64	/* has CONNECT BY clause */
-#if 0				/* not used anymore */
-#define XASL_QEXEC_MODE_ASYNC    128	/* query exec mode (async) */
-#endif
-#define XASL_MULTI_UPDATE_AGG	 256	/* is for multi-update with aggregate */
-#define XASL_IGNORE_CYCLES	 512	/* is for LEVEL usage in connect by clause... sometimes cycles may be ignored */
-#define	XASL_OBJFETCH_IGNORE_CLASSOID 1024	/* fetch proc should ignore class oid */
-#define XASL_IS_MERGE_QUERY	      2048	/* query belongs to a merge statement */
-#define XASL_USES_MRO	      4096	/* query uses multi range optimization */
-#define XASL_KEEP_DBVAL	      8192	/* do not clear db_value */
-#define XASL_RETURN_GENERATED_KEYS	     16384	/* return generated keys */
-#define XASL_NO_FIXED_SCAN    32768	/* disable fixed scan for this proc */
+#define XASL_MULTI_UPDATE_AGG	 128	/* is for multi-update with aggregate */
+#define XASL_IGNORE_CYCLES	 256	/* is for LEVEL usage in connect by clause... sometimes cycles may be ignored */
+#define	XASL_OBJFETCH_IGNORE_CLASSOID 512	/* fetch proc should ignore class oid */
+#define XASL_IS_MERGE_QUERY	      1024	/* query belongs to a merge statement */
+#define XASL_USES_MRO	      2048	/* query uses multi range optimization */
+#define XASL_KEEP_DBVAL	      4096	/* do not clear db_value */
+#define XASL_RETURN_GENERATED_KEYS	     8192	/* return generated keys */
+#define XASL_NO_FIXED_SCAN    16384	/* disable fixed scan for this proc */
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)

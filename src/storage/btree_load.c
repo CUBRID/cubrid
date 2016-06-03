@@ -2355,9 +2355,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	  key_size = CAST_STRLEN (buf.endptr - buf.ptr);
 	}
 
-      ret =
-	(*(load_args->btid->key_type->type->data_readval)) (&buf, &this_key, load_args->btid->key_type, key_size, copy,
-							    NULL, 0);
+      ret = (*(load_args->btid->key_type->type->data_readval)) (&buf, &this_key, load_args->btid->key_type, key_size,
+								copy, NULL, 0);
       if (ret != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_CORRUPTED, 0);

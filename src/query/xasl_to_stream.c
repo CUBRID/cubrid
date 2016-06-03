@@ -43,8 +43,7 @@
 /* memory alignment unit - to align stored XASL tree nodes */
 #define	ALIGN_UNIT	sizeof(double)
 #define	ALIGN_MASK	(ALIGN_UNIT - 1)
-#define MAKE_ALIGN(x)	(((x) & ~ALIGN_MASK) + \
-			 (((x) & ALIGN_MASK) ? ALIGN_UNIT : 0 ))
+#define MAKE_ALIGN(x)	(((x) & ~ALIGN_MASK) + (((x) & ALIGN_MASK) ? ALIGN_UNIT : 0))
 
 /* to limit size of XASL trees */
 #define	OFFSETS_PER_BLOCK	4096

@@ -1512,11 +1512,11 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT
   src = NULL;
   if (tmp_trigger->info.scope.stmt->node_type == PT_TRIGGER_ACTION)
     {
-      src = (DB_VALUE **) & (tmp_trigger->info.scope.stmt->info.trigger_action.expression->etc);
+      src = (DB_VALUE **) (&tmp_trigger->info.scope.stmt->info.trigger_action.expression->etc);
     }
   else if (tmp_trigger->info.scope.stmt->node_type == PT_EVALUATE)
     {
-      src = (DB_VALUE **) & (tmp_trigger->info.scope.stmt->etc);
+      src = (DB_VALUE **) (&tmp_trigger->info.scope.stmt->etc);
     }
 
   if (src == NULL || *src == NULL)

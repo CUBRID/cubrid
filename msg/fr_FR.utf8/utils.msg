@@ -1088,7 +1088,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 gen_tz: Générer les fichiers source contenant des données de fuseau horaire à être compilés dans\n\
         une bibliothèque partagée.\n\
 usage: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] database-name\n\
+       %s gen_tz -g extend [OPTION] [database-name]\n\
 \n\
 options valides:\n\
   -i, --input-folder	chemin d'accès à un dossier d'entrée contenant une version des\n\
@@ -1098,20 +1098,20 @@ options valides:\n\
 			TYPE:\n\
 			1. NEW (par défaut): générer les fichiers source de fuseau(x) horaire(s)\n\
 			pour la bibliothèque partagée, sans tenir compte de versions précédentes;\n\
-			également générer un fichier source contenant tous les noms des pays\n\ 
-                        et des fuseaux horaires (destiné pour l'usage du développeur,\n\ 
+			également générer un fichier source contenant tous les noms des pays\n\
+                        et des fuseaux horaires (destiné pour l'usage du développeur,\n\
                         à être intégré dans une future version de CUBRID).\n\
 			2. EXTEND: génération de(s) fichier(s) source de fuseau horaire en utilisant\n\
-                        les données du dossier d'entrée; les ID des fuseaux horaires codé dans\n\ 
-                        CUBRID sont conservées; les nouveaux fuseaux horaires trouvées dans les fichiers\n\ 
-                        d'entrée sont ajoutés dans le fichier source secondaire qui est aussi généré; les \n\ 
-                        décalages GMT et les informations liés à l'heure d'été sont mises à jour (ou ajouté,\n\ 
-			dans le cas de nouveaux fuseaux horaires); les fuseaux horaires ne sont jamais enlevés\n\ 
-			si un fuseau horaire codé dans le CUBRID est manquant depuis les fichiers d'entrée, les\n\ 
-			données associées sont extraites à partir de la bibliothèque de fuseau horaire existante.\n\ 
-                        Un nouveau fichier C contenant tous les noms de fuseaux horaires est généré, et il doit\n\ 
-                        être inclus dans le dossier de fichiers source CUBRID avant que la nouvelle bibliothèque\n\ 
-			de fuseau horaire peut être utilisée.\n 
+                        les données du dossier d'entrée; les ID des fuseaux horaires codé dans\n\
+                        CUBRID sont conservées; les nouveaux fuseaux horaires trouvées dans les fichiers\n\
+                        d'entrée sont ajoutés dans le fichier source secondaire qui est aussi généré; les \n\
+                        décalages GMT et les informations liés à l'heure d'été sont mises à jour (ou ajouté,\n\
+			dans le cas de nouveaux fuseaux horaires); les fuseaux horaires ne sont jamais enlevés\n\
+			si un fuseau horaire codé dans le CUBRID est manquant depuis les fichiers d'entrée, les\n\
+			données associées sont extraites à partir de la bibliothèque de fuseau horaire existante.\n\
+                        Un nouveau fichier C contenant tous les noms de fuseaux horaires est généré, et il doit\n\
+                        être inclus dans le dossier de fichiers source CUBRID avant que la nouvelle bibliothèque\n\
+			de fuseau horaire peut être utilisée.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 L'ID du fuseau indiqué n'est pas compris dans la plage admissible. Utilisez -z pour voir tous\n\
@@ -1191,11 +1191,11 @@ options valides:\n\
 				                   par défaut: 500 lignes, minimum: 100 lignes\n\
   -s, --sleep=NUMÉRO               durée de la suspension d'exécution entre calculations de somme de contrôle; par défaut: 100 ms\n\
   -i, --include-class-file=FICHIER entrée FICHIER de noms des tables à inclure\n\
-  -e, --exclude-class-file=FICHIER entrée FICHIER de noms des tables à exclure; seulement -i ou -e peuvent être utilisé, pas le deux\n\ 
+  -e, --exclude-class-file=FICHIER entrée FICHIER de noms des tables à exclure; seulement -i ou -e peuvent être utilisé, pas le deux\n\
   -t, --timeout=NUMÉRO             délai d'attente de requête en millisecondes; par défaut: 1000ms\n\
   -n, --table-name=NOM         	   NOM de la table  pour enregistrer les résultats de somme de contrôle; par défaut: db_ha_checksums\n\
   -r, --report-only                rapporter l'intégrité de la replication en se basant sur la calculation des sommes de contrôle\n\
-				                   tous les options, avec l'exception de --table-name, seront ignorés\n\                                
+				                   tous les options, avec l'exception de --table-name, seront ignorés\n\
       --resume                     reprendre la calculation des sommes de contrôle\n\
       --schema-only                vérifier seulement la cohérence du schéma\n\
       --cont-on-error              continuer en cas d'erreur de calcul\n

@@ -6741,9 +6741,8 @@ qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_l
 	}
 
       agg_p->accumulator.curr_cnt = 0;
-      if (db_value_domain_init
-	  (agg_p->accumulator.value, DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value), DB_DEFAULT_PRECISION,
-	   DB_DEFAULT_SCALE) != NO_ERROR)
+      if (db_value_domain_init (agg_p->accumulator.value, DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value),
+				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -7853,9 +7852,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 				   QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
 
 			  (void) pr_clear_value (&dbval);
-			  error =
-			    (*(pr_type_p->data_readval)) (&buf, &dbval, list_id_p->type_list.domp[0], -1, true, NULL,
-							  0);
+			  error = (*(pr_type_p->data_readval)) (&buf, &dbval, list_id_p->type_list.domp[0], -1, true,
+								NULL, 0);
 			  if (error != NO_ERROR)
 			    {
 			      qfile_close_scan (thread_p, &scan_id);
@@ -8980,9 +8978,8 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARI
   do
     {
       /* get the parent node */
-      if (qexec_get_tuple_column_value
-	  (tuple_rec.tpl, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET, &p_pos_dbval,
-	   &tp_Bit_domain) != NO_ERROR)
+      if (qexec_get_tuple_column_value (tuple_rec.tpl, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET,
+					&p_pos_dbval, &tp_Bit_domain) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return false;
@@ -9368,8 +9365,8 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 	    }
 	}
 
-      len =
-	(strlen (sep) + (DB_IS_NULL (&cast_value) ? 0 : DB_GET_STRING_SIZE (&cast_value)) + strlen (result_path) + 1);
+      len = (strlen (sep) + (DB_IS_NULL (&cast_value) ? 0 : DB_GET_STRING_SIZE (&cast_value))
+	     + strlen (result_path) + 1);
       if (len > len_tmp || path_tmp == NULL)
 	{
 	  /* free previously alloced */
@@ -9412,9 +9409,8 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
       strcpy (result_path, path_tmp);
 
       /* get the parent node */
-      if (qexec_get_tuple_column_value
-	  (tuple_rec.tpl, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET, &p_pos_dbval,
-	   &tp_Bit_domain) != NO_ERROR)
+      if (qexec_get_tuple_column_value (tuple_rec.tpl, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET,
+					&p_pos_dbval, &tp_Bit_domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -10766,8 +10762,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 
 	  /* this type setting is necessary, it ensures that for the case average handling, which is treated like sum
 	   * until final iteration, starts with the initial data type */
-	  if (db_value_domain_init
-	      (func_p->value, DB_VALUE_DOMAIN_TYPE (opr_dbval_p), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
+	  if (db_value_domain_init (func_p->value, DB_VALUE_DOMAIN_TYPE (opr_dbval_p), DB_DEFAULT_PRECISION,
+				    DB_DEFAULT_SCALE) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto exit;
@@ -10862,16 +10858,16 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	{
 	  opr_dbval_p = &dbval;
 	  /* func_p->value contains SUM(X) */
-	  if (db_value_domain_init
-	      (func_p->value, DB_VALUE_DOMAIN_TYPE (opr_dbval_p), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
+	  if (db_value_domain_init (func_p->value, DB_VALUE_DOMAIN_TYPE (opr_dbval_p), DB_DEFAULT_PRECISION,
+				    DB_DEFAULT_SCALE) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto exit;
 	    }
 
 	  /* func_p->value contains SUM(X^2) */
-	  if (db_value_domain_init
-	      (func_p->value2, DB_VALUE_DOMAIN_TYPE (opr_dbval_p), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
+	  if (db_value_domain_init (func_p->value2, DB_VALUE_DOMAIN_TYPE (opr_dbval_p), DB_DEFAULT_PRECISION,
+				    DB_DEFAULT_SCALE) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto exit;
@@ -12270,9 +12266,8 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
 	{
 	  /* non-NULL values comparison */
 	  pr_type_p = PR_TYPE_FROM_ID (DB_VALUE_DOMAIN_TYPE (val_node));
-	  cmp =
-	    (*(pr_type_p->cmpval)) (val_node, info_p->const_array[i], 1, 0, NULL,
-				    regu_var_node->value.domain->collation_id);
+	  cmp = (*(pr_type_p->cmpval)) (val_node, info_p->const_array[i], 1, 0, NULL,
+					regu_var_node->value.domain->collation_id);
 
 	  assert (cmp != DB_UNK);
 	}

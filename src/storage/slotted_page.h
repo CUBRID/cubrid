@@ -175,8 +175,6 @@ extern SCAN_CODE spage_previous_record_dont_skip_empty (PAGE_PTR pgptr, PGSLOTID
 							int ispeeking);
 extern SCAN_CODE spage_get_page_header_info (PAGE_PTR page_p, DB_VALUE ** page_header_info);
 extern SCAN_CODE spage_get_record (PAGE_PTR pgptr, PGSLOTID slotid, RECDES * recdes, int ispeeking);
-extern SCAN_CODE spage_get_record_mvcc (PAGE_PTR page_p, PGSLOTID slot_id, RECDES * record_descriptor_p,
-					int is_peeking);
 extern bool spage_is_slot_exist (PAGE_PTR pgptr, PGSLOTID slotid);
 extern void spage_dump (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR pgptr, int isrecord_printed);
 extern SPAGE_SLOT *spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id);

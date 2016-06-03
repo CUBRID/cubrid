@@ -138,8 +138,7 @@ static int rv;
    ((RCVI) == RVDK_LINK_PERM_VOLEXT)
 
 #define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
-   (!LOG_IS_VACUUM_DATA_RECOVERY (RCVI) \
-    && ((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
+   (((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
     && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
     && ((RCVI) != RVBT_DELETE_INDEX) \
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
@@ -191,7 +190,7 @@ struct actve_log_header_scan_context
 typedef struct archive_log_header_scan_context ARCHIVE_LOG_HEADER_SCAN_CTX;
 struct archive_log_header_scan_context
 {
-  struct log_arv_header header;
+  LOG_ARV_HEADER header;
 };
 
 /*
@@ -203,7 +202,7 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
 
-extern int vacuum_Global_oldest_active_blockers_counter;
+extern INT32 vacuum_Global_oldest_active_blockers_counter;
 
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -244,7 +243,7 @@ static void log_ascii_dump (FILE * out_fp, int length, void *data);
 static void log_hexa_dump (FILE * out_fp, int length, void *data);
 static void log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			   void (*dumpfun) (FILE * fp, int, void *), LOG_ZIP * log_dump_ptr);
-static void log_dump_header (FILE * out_fp, struct log_header *log_header_p);
+static void log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p);
 static LOG_PAGE *log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p,
 					   LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p);
 static LOG_PAGE *log_dump_record_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lsa_p, LOG_PAGE * log_page_p,
@@ -828,7 +827,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
     temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, LOG_PAGESIZE);
     logpb_read_page_from_file (LOGPB_HEADER_PAGE_ID, temp_pgptr);
-    assert (memcmp ((struct log_header *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) != 0);
+    assert (memcmp ((LOG_HEADER *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) != 0);
   }
 #endif /* CUBRID_DEBUG */
 
@@ -847,7 +846,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
     temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, LOG_PAGESIZE);
     logpb_read_page_from_file (LOGPB_HEADER_PAGE_ID, temp_pgptr);
-    assert (memcmp ((struct log_header *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) == 0);
+    assert (memcmp ((LOG_HEADER *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) == 0);
   }
 #endif /* CUBRID_DEBUG */
 
@@ -892,13 +891,13 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 	}
     }
 
-  logpb_finalize_pool ();
+  logpb_finalize_pool (thread_p);
   LOG_CS_EXIT (thread_p);
 
   return NO_ERROR;
 
 error:
-  logpb_finalize_pool ();
+  logpb_finalize_pool (thread_p);
   LOG_CS_EXIT (thread_p);
 
   return (error_code == NO_ERROR) ? ER_FAILED : error_code;
@@ -1132,7 +1131,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * Call the function again... since we have a different setting for the
        * page size
        */
-      logpb_finalize_pool ();
+      logpb_finalize_pool (thread_p);
       fileio_dismount (thread_p, log_Gl.append.vdes);
       log_Gl.append.vdes = NULL_VOLDES;
 
@@ -1298,8 +1297,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	}
 
       /* Read the End of file record to find out the previous address */
-      eof = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
-      LOG_RESET_PREV_LSA (&eof->back_lsa);
+      if (log_Gl.hdr.append_lsa.pageid > 0 || log_Gl.hdr.append_lsa.offset > 0)
+	{
+	  eof = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
+	  LOG_RESET_PREV_LSA (&eof->back_lsa);
+	}
 
 #if defined(SERVER_MODE)
       /* fix flushed_lsa_lower_bound become NULL_LSA */
@@ -1627,7 +1629,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   save_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (!logpb_is_initialize_pool ())
+  if (!logpb_is_pool_initialized ())
     {
       logtb_undefine_trantable (thread_p);
       LOG_CS_EXIT (thread_p);
@@ -1636,7 +1638,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   if (log_Gl.append.vdes == NULL_VOLDES)
     {
-      logpb_finalize_pool ();
+      logpb_finalize_pool (thread_p);
       logtb_undefine_trantable (thread_p);
       LOG_CS_EXIT (thread_p);
       return;
@@ -1702,7 +1704,7 @@ log_final (THREAD_ENTRY * thread_p)
   logpb_flush_header (thread_p);
 
   /* Undefine page buffer pool and transaction table */
-  logpb_finalize_pool ();
+  logpb_finalize_pool (thread_p);
 
   logtb_undefine_trantable (thread_p);
 
@@ -1771,10 +1773,16 @@ log_append_undoredo_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DA
   LOG_CRUMB redo_crumb;
 
   /* Set undo length/data to crumb */
+  assert (0 <= undo_length);
+  assert (0 == undo_length || undo_data != NULL);
+
   undo_crumb.data = undo_data;
   undo_crumb.length = undo_length;
 
   /* Set redo length/data to crumb */
+  assert (0 <= redo_length);
+  assert (0 == redo_length || redo_data != NULL);
+
   redo_crumb.data = redo_data;
   redo_crumb.length = redo_length;
 
@@ -1796,10 +1804,16 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
   addr.offset = offset;
 
   /* Set undo length/data to crumb */
+  assert (0 <= undo_length);
+  assert (0 == undo_length || undo_data != NULL);
+
   undo_crumb.data = undo_data;
   undo_crumb.length = undo_length;
 
   /* Set redo length/data to crumb */
+  assert (0 <= redo_length);
+  assert (0 == redo_length || redo_data != NULL);
+
   redo_crumb.data = redo_data;
   redo_crumb.length = redo_length;
 
@@ -1838,6 +1852,9 @@ log_append_undo_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_A
   LOG_CRUMB undo_crumb;
 
   /* Set length/data to crumb */
+  assert (0 <= length);
+  assert (0 == length || data != NULL);
+
   undo_crumb.data = data;
   undo_crumb.length = length;
 
@@ -1857,6 +1874,9 @@ log_append_undo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFI
   addr.offset = offset;
 
   /* Set length/data to crumb */
+  assert (0 <= length);
+  assert (0 == length || data != NULL);
+
   undo_crumb.data = data;
   undo_crumb.length = length;
 
@@ -1894,6 +1914,9 @@ log_append_redo_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_A
   LOG_CRUMB redo_crumb;
 
   /* Set length/data to crumb */
+  assert (0 <= length);
+  assert (0 == length || data != NULL);
+
   redo_crumb.data = data;
   redo_crumb.length = length;
 
@@ -1913,6 +1936,9 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFI
   addr.offset = offset;
 
   /* Set length/data to crumb */
+  assert (0 <= length);
+  assert (0 == length || data != NULL);
+
   redo_crumb.data = data;
   redo_crumb.length = length;
 
@@ -1976,7 +2002,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
@@ -2022,9 +2048,8 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
    * Now do the UNDO & REDO portion
    */
 
-  node =
-    prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_undo_crumbs, undo_crumbs, num_redo_crumbs,
-				     redo_crumbs);
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_undo_crumbs, undo_crumbs,
+					  num_redo_crumbs, redo_crumbs);
   if (node == NULL)
     {
       return;
@@ -2041,19 +2066,10 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 	}
     }
 
-  /* 
-   * Vacuum data may occupy many pages but has only one log lsa. Check if this
-   * is a change on vacuum data and pass start_lsa to be recorded.
-   */
-  if (LOG_IS_VACUUM_DATA_RECOVERY (rcvindex))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
     {
-      vacuum_set_vacuum_data_lsa (thread_p, &start_lsa, rcvindex);
-    }
-
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
-      && log_does_allow_replication () == true)
-    {
-      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
+      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM
+	  || rcvindex == RVHF_INSERT_NEWHOME)
 	{
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
 	}
@@ -2108,7 +2124,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
@@ -2241,7 +2257,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
@@ -2262,17 +2278,8 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
   /* 
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
-   *
-   * NOTE: One exception for this case is the recovery of vacuum data buffer.
-   *       Because the buffer may not have been empty during the crash, the
-   *       data in the buffer cannot be recovered using log records. It is
-   *       however rebuilt in a similar manner as it is built online (by
-   *       processing undo and undoredo log records of MVCC operations).
-   *       At the end of redo recovery phase, the recovered data is consumed
-   *       and added to vacuum data, operations that needs logging.
    */
-  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes)
-      && !LOG_IS_VACUUM_DATA_BUFFER_RECOVERY (rcvindex))
+  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
     {
       /* 
        * We do not log anything when the transaction is unactive and it is not
@@ -2310,19 +2317,9 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	}
     }
 
-  /* 
-   * Vacuum data may occupy many pages but has only one log lsa. Check if this
-   * is a change on vacuum data and pass start_lsa to be recorded.
-   */
-  if (LOG_IS_VACUUM_DATA_RECOVERY (rcvindex))
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
     {
-      vacuum_set_vacuum_data_lsa (thread_p, &start_lsa, rcvindex);
-    }
-
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
-      && log_does_allow_replication () == true)
-    {
-      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK)
+      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	{
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
 	}
@@ -2673,7 +2670,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       /* Vacuum worker */
       /* Must be under a system operation, otherwise postpone records will not work. */
@@ -2745,7 +2742,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     {
       return;
     }
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       /* Cache postpone log record. Redo data must be saved before calling prior_lsa_next_record, which may free this
        * prior node. */
@@ -2753,7 +2750,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     }
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       /* Cache postpone log record. An entry for this postpone log record was already created and we also need to save
        * its LSA. */
@@ -2809,7 +2806,7 @@ void
 log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, const VPID * rcv_vpid,
 			 int length, const void *data, const LOG_LSA * ref_lsa)
 {
-  struct log_run_postpone *run_posp;	/* A run postpone record */
+  LOG_REC_RUN_POSTPONE *run_posp;	/* A run postpone record */
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
   int error_code = NO_ERROR;
@@ -2818,7 +2815,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       /* Vacuum worker */
       /* Must be at the end of a system operation or during recovery. */
@@ -2858,7 +2855,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 	  return;
 	}
 
-      run_posp = (struct log_run_postpone *) node->data_header;
+      run_posp = (LOG_REC_RUN_POSTPONE *) node->data_header;
       run_posp->data.rcvindex = rcvindex;
       run_posp->data.pageid = rcv_vpid->pageid;
       run_posp->data.volid = rcv_vpid->volid;
@@ -2973,7 +2970,7 @@ static void
 log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
 				PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes, LOG_LSA * undo_nxlsa)
 {
-  struct log_compensate *compensate;	/* Compensate log record */
+  LOG_REC_COMPENSATE *compensate;	/* Compensate log record */
   LOG_LSA prev_lsa;		/* LSA of next record to undo */
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
@@ -3002,7 +2999,7 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
 
   LSA_COPY (&prev_lsa, &tdes->undo_nxlsa);
 
-  compensate = (struct log_compensate *) node->data_header;
+  compensate = (LOG_REC_COMPENSATE *) node->data_header;
 
   compensate->data.rcvindex = rcvindex;
   compensate->data.pageid = vpid->pageid;
@@ -3084,12 +3081,12 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
 {
   int tran_index;
   LOG_TDES *tdes;
-  struct log_ha_server_state *ha_server_state;
+  LOG_REC_HA_SERVER_STATE *ha_server_state;
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
 
   /* Vacuum workers are not allowed to use this type of log records. */
-  assert (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -3104,8 +3101,8 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
       return;
     }
 
-  ha_server_state = (struct log_ha_server_state *) node->data_header;
-  memset (ha_server_state, 0, sizeof (struct log_ha_server_state));
+  ha_server_state = (LOG_REC_HA_SERVER_STATE *) node->data_header;
+  memset (ha_server_state, 0, sizeof (LOG_REC_HA_SERVER_STATE));
 
   ha_server_state->state = state;
   ha_server_state->at_time = time (NULL);
@@ -3274,7 +3271,7 @@ log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 LOG_LSA *
 log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
 {
-  struct log_savept *savept;	/* A savept log record */
+  LOG_REC_SAVEPT *savept;	/* A savept log record */
   LOG_TDES *tdes;		/* Transaction descriptor */
   int length;			/* Length of the name of the save point */
   int tran_index;
@@ -3284,7 +3281,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
   /* Find transaction descriptor for current logging transaction */
 
   /* Vacuum workers cannot use save points. */
-  assert (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
+  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -3323,7 +3320,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
       return NULL;
     }
 
-  savept = (struct log_savept *) node->data_header;
+  savept = (LOG_REC_SAVEPT *) node->data_header;
   savept->length = length;
   LSA_COPY (&savept->prv_savept, &tdes->savept_lsa);
 
@@ -3355,7 +3352,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where a savepoint log record is located */
   LOG_RECORD_HEADER *log_rec;	/* Pointer to log record */
-  struct log_savept *savept;	/* A savepoint log record */
+  LOG_REC_SAVEPT *savept;	/* A savepoint log record */
   LOG_LSA prev_lsa;		/* Previous savepoint */
   LOG_LSA log_lsa;
   int length;			/* Length of savepoint name */
@@ -3396,7 +3393,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa, log_pgptr);
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*savept), &log_lsa, log_pgptr);
 
-	  savept = (struct log_savept *) ((char *) log_pgptr->area + log_lsa.offset);
+	  savept = (LOG_REC_SAVEPT *) ((char *) log_pgptr->area + log_lsa.offset);
 	  LSA_COPY (&prev_lsa, &savept->prv_savept);
 	  length = savept->length;
 
@@ -3538,7 +3535,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
    */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       /* System operations must be isolated and allow undo. It is impossible to use system tdes for more than one
        * thread, so vacuum workers use a reserved tdes instead. */
@@ -3551,7 +3548,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 
       vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
 		     "VACUUM: Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
-		     "tdes->tail_lsa=(%lld, %d). Worker state=%d", tdes->trid, tdes->topops.last,
+		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.\n", tdes->trid, tdes->topops.last,
 		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 		     VACUUM_GET_WORKER_STATE (thread_p));
 
@@ -3586,7 +3583,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
       if (logtb_realloc_topops_stack (tdes, 1) == NULL)
 	{
 	  /* Out of memory */
-	  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
 	    {
 #if defined(SERVER_MODE)
 	      assert (tdes->cs_topop.cs_index ==
@@ -3597,7 +3594,7 @@ log_start_system_op_internal (THREAD_ENTRY * thread_p, LOG_TOPOPS_TYPE type, LOG
 	      csect_exit_critical_section (thread_p, &tdes->cs_topop);
 	    }
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	  if (VACUUM_IS_THREAD_VACUUM (thread_p))
 	    {
 	      /* Restore state */
 	      if (tdes->topops.last < 0)
@@ -3717,7 +3714,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
   }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
       tdes = VACUUM_GET_WORKER_TDES (thread_p);
@@ -3740,14 +3737,26 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	    }
 	}
 
-      vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-		     "VACUUM: End system operation. Worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
-		     "crt_topop->last_parent_lsa=(%lld, %d), tdes->tail_lsa=(%lld, %d). Worker state=%d."
-		     "LOG_RESULT_TOPOP=%d", tdes->trid, tdes->topops.last,
-		     (long long int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.pageid,
-		     (int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.offset,
-		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-		     VACUUM_GET_WORKER_STATE (thread_p), result);
+      if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	{
+	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
+			 "VACUUM: End system operation. Worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
+			 "crt_topop->last_parent_lsa=(%lld, %d), tdes->tail_lsa=(%lld, %d). Worker state=%d."
+			 "LOG_RESULT_TOPOP=%d.\n", tdes->trid, tdes->topops.last,
+			 (long long int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.pageid,
+			 (int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.offset,
+			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
+			 VACUUM_GET_WORKER_STATE (thread_p), result);
+	}
+      else
+	{
+	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_MASTER,
+			 "VACUUM: End system operation for master. tdes->trid=%d, tdes->topops.last=%d, "
+			 "crt_topop->last_parent_lsa=(%lld, %d), tdes->tail_lsa=(%lld, %d). LOG_RESULT_TOPOP=%d.\n",
+			 tdes->trid, tdes->topops.last,
+			 (int) tdes->topops.stack[tdes->topops.last].lastparent_lsa.offset,
+			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset, result);
+	}
     }
   else
     {
@@ -3861,7 +3870,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
        */
       if (result == LOG_RESULT_TOPOP_COMMIT)
 	{
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      /* for the replication agent guarantee the order of transaction */
@@ -3881,7 +3890,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	}
       else
 	{
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      repl_log_abort_after_lsa (tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
@@ -3914,7 +3923,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
       else
 	{
 	  state = TRAN_UNACTIVE_ABORTED;
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      repl_log_abort_after_lsa (tdes, &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
@@ -3935,7 +3944,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
       (void) log_complete_system_op (thread_p, tdes, result, save_state);
     }
 
-  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
     {
 #if defined(SERVER_MODE)
       assert (tdes->cs_topop.cs_index ==
@@ -3948,7 +3957,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 
   mnt_tran_end_topops (thread_p);
 
-  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       if (tdes->topops.last < 0)
 	{
@@ -3963,21 +3972,21 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_RECOVERY);
 	    }
 
-	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
+	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
 			 "VACUUM: Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
 			 "tdes->tail_lsa=(%lld, %d), tdes->undo_nxlsa=(%lld, %d), "
-			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.", tdes->trid,
+			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.\n", tdes->trid,
 			 (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
 			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 			 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
 			 (long long int) tdes->tail_topresult_lsa.pageid, (int) tdes->tail_topresult_lsa.offset,
 			 VACUUM_GET_WORKER_STATE (thread_p));
 
-	  /* Vacuum workers don't have a parent transaction that is committed. Different system operations that are not 
-	   * nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log records to
-	   * undo will process all system operations until the first one. Since vacuum workers never rollback, once the 
-	   * last system operation is ended, we can reset all modified LSA's. This way, different system operations
-	   * will not be linked between them. */
+	  /* Vacuum workers/master don't have a parent transaction that is committed. Different system operations that
+	   * are not  nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
+	   * records to undo will process all system operations until the first one. Since vacuum workers.master never
+	   * rollback, once the last system operation is ended, we can reset all modified LSA's. This way, different
+	   * system operations will not be linked between them. */
 	  LSA_SET_NULL (&tdes->head_lsa);
 	  LSA_SET_NULL (&tdes->tail_lsa);
 	  LSA_SET_NULL (&tdes->undo_nxlsa);
@@ -4194,11 +4203,6 @@ log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, 
       return false;
     }
 
-  if (LOG_IS_VACUUM_DATA_RECOVERY (rcvindex))
-    {
-      return false;
-    }
-
   if (rcvindex == RVVAC_DROPPED_FILE_ADD)
     {
       return false;
@@ -4235,7 +4239,7 @@ log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, 
 static void
 log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa)
 {
-  struct log_start_postpone *start_posp;	/* Start postpone actions */
+  LOG_REC_START_POSTPONE *start_posp;	/* Start postpone actions */
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
 
@@ -4245,7 +4249,7 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
       return;
     }
 
-  start_posp = (struct log_start_postpone *) node->data_header;
+  start_posp = (LOG_REC_START_POSTPONE *) node->data_header;
   LSA_COPY (&start_posp->posp_lsa, start_postpone_lsa);
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
@@ -4272,7 +4276,7 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
 static void
 log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa)
 {
-  struct log_topope_start_postpone *top_start_posp;	/* Start postpone of top system operations */
+  LOG_REC_TOPOPE_START_POSTPONE *top_start_posp;	/* Start postpone of top system operations */
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
 
@@ -4283,7 +4287,7 @@ log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
       return;
     }
 
-  top_start_posp = (struct log_topope_start_postpone *) node->data_header;
+  top_start_posp = (LOG_REC_TOPOPE_START_POSTPONE *) node->data_header;
   if (tdes->topops.type != LOG_TOPOPS_NORMAL)
     {
       assert (tdes->topops.last == 0 || tdes->topops.type == LOG_TOPOPS_COMPENSATE_SYSOP_ABORT);
@@ -4327,7 +4331,7 @@ static void
 log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit, int with_lock)
 {
   LOG_REPL_RECORD *repl_rec;
-  struct log_replication *log;
+  LOG_REC_REPLICATION *log;
   LOG_PRIOR_NODE *node;
 
   if (tdes->append_repl_recidx == -1	/* the first time */
@@ -4354,7 +4358,7 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
 	      continue;
 	    }
 
-	  log = (struct log_replication *) node->data_header;
+	  log = (LOG_REC_REPLICATION *) node->data_header;
 	  if (repl_rec->rcvindex == RVREPL_DATA_DELETE || repl_rec->rcvindex == RVREPL_STATEMENT)
 	    {
 	      LSA_SET_NULL (&log->lsa);
@@ -4438,7 +4442,7 @@ static void
 log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa, LOG_RECTYPE iscommitted,
 			      enum LOG_PRIOR_LSA_LOCK with_lock)
 {
-  struct log_donetime *donetime;
+  LOG_REC_DONETIME *donetime;
   LOG_PRIOR_NODE *node;
   LOG_LSA lsa;
 
@@ -4452,7 +4456,7 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
       return;
     }
 
-  donetime = (struct log_donetime *) node->data_header;
+  donetime = (LOG_REC_DONETIME *) node->data_header;
   donetime->at_time = time (NULL);
 
   if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
@@ -5338,7 +5342,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction 
 	   * * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
 	   * committed. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      /* for the replication agent guarantee the order of transaction */
@@ -5880,7 +5884,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	{
 	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
 	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
+	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
 	}
 
 #if defined (HAVE_ATOMIC_BUILTINS)
@@ -6147,7 +6151,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction 
 	   * * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
 	   * committed. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM_WORKER (thread_p)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	      && log_does_allow_replication () == true)
 	    {
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
@@ -6177,7 +6181,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	{
 	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
 	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
+	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
 	}
 
 #if defined(HAVE_ATOMIC_BUILTINS)
@@ -6234,7 +6238,7 @@ static TRAN_STATE
 log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP result)
 {
   TRAN_STATE state;
-  struct log_topop_result *top_result;	/* Partial outcome */
+  LOG_REC_TOPOP_RESULT *top_result;	/* Partial outcome */
   LOG_RECTYPE rectype;
   LOG_PRIOR_NODE *node;
 
@@ -6262,7 +6266,7 @@ log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RESULT_TOPOP r
       return state;
     }
 
-  top_result = (struct log_topop_result *) node->data_header;
+  top_result = (LOG_REC_TOPOP_RESULT *) node->data_header;
 
   if (result == LOG_RESULT_TOPOP_COMMIT && tdes->topops.type != LOG_TOPOPS_NORMAL)
     {
@@ -6579,7 +6583,7 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log
 }
 
 static void
-log_dump_header (FILE * out_fp, struct log_header *log_header_p)
+log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 {
   time_t tmp_time;
   char time_val[CTIME_MAX];
@@ -6619,14 +6623,14 @@ static LOG_PAGE *
 log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			  LOG_ZIP * log_zip_p)
 {
-  struct log_undoredo *undoredo;
+  LOG_REC_UNDOREDO *undoredo;
   int undo_length;
   int redo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undoredo), log_lsa, log_page_p);
-  undoredo = (struct log_undoredo *) ((char *) log_page_p->area + log_lsa->offset);
+  undoredo = (LOG_REC_UNDOREDO *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Recv_index = %s, \n", rv_rcvindex_string (undoredo->data.rcvindex));
   fprintf (out_fp,
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Undo(Before) length = %d, Redo(After) length = %d,\n",
@@ -6654,13 +6658,13 @@ static LOG_PAGE *
 log_dump_record_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 		      LOG_ZIP * log_zip_p)
 {
-  struct log_undo *undo;
+  LOG_REC_UNDO *undo;
   int undo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undo), log_lsa, log_page_p);
-  undo = (struct log_undo *) ((char *) log_page_p->area + log_lsa->offset);
+  undo = (LOG_REC_UNDO *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (undo->data.rcvindex));
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n", undo->data.volid,
@@ -6682,13 +6686,13 @@ static LOG_PAGE *
 log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 		      LOG_ZIP * log_zip_p)
 {
-  struct log_redo *redo;
+  LOG_REC_REDO *redo;
   int redo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*redo), log_lsa, log_page_p);
-  redo = (struct log_redo *) ((char *) log_page_p->area + log_lsa->offset);
+  redo = (LOG_REC_REDO *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (redo->data.rcvindex));
   fprintf (stdout, "     Volid = %d Pageid = %d Offset = %d,\n     Redo (After) length = %d,\n", redo->data.volid,
@@ -6710,14 +6714,14 @@ static LOG_PAGE *
 log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			       LOG_ZIP * log_zip_p)
 {
-  struct log_mvcc_undoredo *mvcc_undoredo;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo;
   int undo_length;
   int redo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), log_lsa, log_page_p);
-  mvcc_undoredo = (struct log_mvcc_undoredo *) ((char *) log_page_p->area + log_lsa->offset);
+  mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Recv_index = %s, \n", rv_rcvindex_string (mvcc_undoredo->undoredo.data.rcvindex));
   fprintf (out_fp,
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Undo(Before) length = %d, Redo(After) length = %d,\n",
@@ -6750,13 +6754,13 @@ static LOG_PAGE *
 log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			   LOG_ZIP * log_zip_p)
 {
-  struct log_mvcc_undo *mvcc_undo;
+  LOG_REC_MVCC_UNDO *mvcc_undo;
   int undo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), log_lsa, log_page_p);
-  mvcc_undo = (struct log_mvcc_undo *) ((char *) log_page_p->area + log_lsa->offset);
+  mvcc_undo = (LOG_REC_MVCC_UNDO *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (mvcc_undo->undo.data.rcvindex));
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
@@ -6783,13 +6787,13 @@ static LOG_PAGE *
 log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 			   LOG_ZIP * log_zip_p)
 {
-  struct log_mvcc_redo *mvcc_redo;
+  LOG_REC_MVCC_REDO *mvcc_redo;
   int redo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_redo), log_lsa, log_page_p);
-  mvcc_redo = (struct log_mvcc_redo *) ((char *) log_page_p->area + log_lsa->offset);
+  mvcc_redo = (LOG_REC_MVCC_REDO *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (mvcc_redo->redo.data.rcvindex));
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Redo (After) length = %d,\n",
@@ -6812,13 +6816,13 @@ log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
 static LOG_PAGE *
 log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_run_postpone *run_posp;
+  LOG_REC_RUN_POSTPONE *run_posp;
   int redo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*run_posp), log_lsa, log_page_p);
-  run_posp = (struct log_run_postpone *) ((char *) log_page_p->area + log_lsa->offset);
+  run_posp = (LOG_REC_RUN_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (run_posp->data.rcvindex));
   fprintf (out_fp,
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Run postpone (Redo/After) length = %d, corresponding"
@@ -6840,13 +6844,13 @@ log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_
 static LOG_PAGE *
 log_dump_record_dbout_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_dbout_redo *dbout_redo;
+  LOG_REC_DBOUT_REDO *dbout_redo;
   int redo_length;
   LOG_RCVINDEX rcvindex;
 
   /* Read the data header */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dbout_redo), log_lsa, log_page_p);
-  dbout_redo = ((struct log_dbout_redo *) ((char *) log_page_p->area + log_lsa->offset));
+  dbout_redo = ((LOG_REC_DBOUT_REDO *) ((char *) log_page_p->area + log_lsa->offset));
 
   redo_length = dbout_redo->length;
   rcvindex = dbout_redo->rcvindex;
@@ -6866,13 +6870,13 @@ log_dump_record_dbout_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 static LOG_PAGE *
 log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_compensate *compensate;
+  LOG_REC_COMPENSATE *compensate;
   int length_compensate;
   LOG_RCVINDEX rcvindex;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*compensate), log_lsa, log_page_p);
-  compensate = (struct log_compensate *) ((char *) log_page_p->area + log_lsa->offset);
+  compensate = (LOG_REC_COMPENSATE *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (compensate->data.rcvindex));
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Compensate length = %d, Next_to_UNDO = %lld|%d\n",
@@ -6894,11 +6898,11 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 static LOG_PAGE *
 log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_start_postpone *start_posp;
+  LOG_REC_START_POSTPONE *start_posp;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_posp), log_lsa, log_page_p);
-  start_posp = (struct log_start_postpone *) ((char *) log_page_p->area + log_lsa->offset);
+  start_posp = (LOG_REC_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", First postpone record at before or after Page = %lld and offset = %d\n",
 	   (long long int) start_posp->posp_lsa.pageid, start_posp->posp_lsa.offset);
 
@@ -6908,13 +6912,13 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 static LOG_PAGE *
 log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_donetime *donetime;
+  LOG_REC_DONETIME *donetime;
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), log_lsa, log_page_p);
-  donetime = (struct log_donetime *) ((char *) log_page_p->area + log_lsa->offset);
+  donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
   tmp_time = (time_t) donetime->at_time;
   (void) ctime_r (&tmp_time, time_val);
   fprintf (out_fp, ",\n     Transaction finish time at = %s\n", time_val);
@@ -6925,13 +6929,13 @@ log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_
 static LOG_PAGE *
 log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_replication *repl_log;
+  LOG_REC_REPLICATION *repl_log;
   int length;
   const char *type;
   void (*dump_function) (FILE *, int, void *);
 
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
-  repl_log = (struct log_replication *) ((char *) log_page_p->area + log_lsa->offset);
+  repl_log = (LOG_REC_REPLICATION *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Target log lsa = %lld|%d\n", (long long int) repl_log->lsa.pageid, repl_log->lsa.offset);
   length = repl_log->length;
 
@@ -6974,11 +6978,11 @@ static LOG_PAGE *
 log_dump_record_commit_topope_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 					LOG_PAGE * log_page_p)
 {
-  struct log_topope_start_postpone *top_start_posp;
+  LOG_REC_TOPOPE_START_POSTPONE *top_start_posp;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_start_posp), log_lsa, log_page_p);
-  top_start_posp = ((struct log_topope_start_postpone *) ((char *) log_page_p->area + log_lsa->offset));
+  top_start_posp = ((LOG_REC_TOPOPE_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset));
   fprintf (out_fp, ", Lastparent_LSA = %lld|%d, First postpone_LSA at or after = %lld|%d\n",
 	   (long long int) top_start_posp->lastparent_lsa.pageid, top_start_posp->lastparent_lsa.offset,
 	   (long long int) top_start_posp->posp_lsa.pageid, top_start_posp->posp_lsa.offset);
@@ -6989,11 +6993,11 @@ log_dump_record_commit_topope_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, 
 static LOG_PAGE *
 log_dump_record_topope_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_topop_result *top_result;
+  LOG_REC_TOPOP_RESULT *top_result;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_result), log_lsa, log_page_p);
-  top_result = ((struct log_topop_result *) ((char *) log_page_p->area + log_lsa->offset));
+  top_result = ((LOG_REC_TOPOP_RESULT *) ((char *) log_page_p->area + log_lsa->offset));
   fprintf (out_fp, ",\n     Next UNDO at/before = %lld|%d, Prev_topresult_lsa = %lld|%d\n",
 	   (long long int) top_result->lastparent_lsa.pageid, top_result->lastparent_lsa.offset,
 	   (long long int) top_result->prv_topresult_lsa.pageid, top_result->prv_topresult_lsa.offset);
@@ -7004,19 +7008,19 @@ log_dump_record_topope_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
 static LOG_PAGE *
 log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_chkpt *chkpt;	/* check point log record */
+  LOG_REC_CHKPT *chkpt;		/* check point log record */
   int length_active_tran;
   int length_topope;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*chkpt), log_lsa, log_page_p);
 
-  chkpt = (struct log_chkpt *) ((char *) log_page_p->area + log_lsa->offset);
+  chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Num_trans = %d,\n", chkpt->ntrans);
   fprintf (out_fp, "     Redo_LSA = %lld|%d\n", (long long int) chkpt->redo_lsa.pageid, chkpt->redo_lsa.offset);
 
-  length_active_tran = sizeof (struct log_chkpt_trans) * chkpt->ntrans;
-  length_topope = (sizeof (struct log_chkpt_topops_commit_posp) * chkpt->ntops);
+  length_active_tran = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt->ntrans;
+  length_topope = (sizeof (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP) * chkpt->ntops);
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*chkpt), log_lsa, log_page_p);
   log_dump_data (thread_p, out_fp, length_active_tran, log_lsa, log_page_p, logpb_dump_checkpoint_trans, NULL);
   if (length_topope > 0)
@@ -7030,12 +7034,12 @@ log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 static LOG_PAGE *
 log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_savept *savept;
+  LOG_REC_SAVEPT *savept;
   int length_save_point;
 
   /* Read the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*savept), log_lsa, log_page_p);
-  savept = (struct log_savept *) ((char *) log_page_p->area + log_lsa->offset);
+  savept = (LOG_REC_SAVEPT *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Prev_savept_Lsa = %lld|%d, length = %d,\n", (long long int) savept->prv_savept.pageid,
 	   savept->prv_savept.offset, savept->length);
@@ -7053,13 +7057,13 @@ log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 static LOG_PAGE *
 log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_2pc_prepcommit *prepared;
+  LOG_REC_2PC_PREPCOMMIT *prepared;
   unsigned int nobj_locks;
   int size;
 
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*prepared), log_lsa, log_page_p);
-  prepared = (struct log_2pc_prepcommit *) ((char *) log_page_p->area + log_lsa->offset);
+  prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_page_p->area + log_lsa->offset);
 
   fprintf (out_fp, ", Client_name = %s, Gtrid = %d, Num objlocks = %u\n", prepared->user_name, prepared->gtrid,
 	   prepared->num_object_locks);
@@ -7087,11 +7091,11 @@ log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_
 static LOG_PAGE *
 log_dump_record_2pc_start (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_2pc_start *start_2pc;	/* Start log record of 2PC protocol */
+  LOG_REC_2PC_START *start_2pc;	/* Start log record of 2PC protocol */
 
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_2pc), log_lsa, log_page_p);
-  start_2pc = (struct log_2pc_start *) ((char *) log_page_p->area + log_lsa->offset);
+  start_2pc = (LOG_REC_2PC_START *) ((char *) log_page_p->area + log_lsa->offset);
 
   /* Initilize the coordinator information */
   fprintf (out_fp, "  Client_name = %s, Gtrid = %d,  Num_participants = %d", start_2pc->user_name, start_2pc->gtrid,
@@ -7108,11 +7112,11 @@ log_dump_record_2pc_start (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
 static LOG_PAGE *
 log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_2pc_particp_ack *received_ack;	/* ack log record of 2pc protocol */
+  LOG_REC_2PC_PARTICP_ACK *received_ack;	/* ack log record of 2pc protocol */
 
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*received_ack), log_lsa, log_page_p);
-  received_ack = ((struct log_2pc_particp_ack *) ((char *) log_page_p->area + log_lsa->offset));
+  received_ack = ((LOG_REC_2PC_PARTICP_ACK *) ((char *) log_page_p->area + log_lsa->offset));
   fprintf (out_fp, "  Participant index = %d\n", received_ack->particp_index);
 
   return log_page_p;
@@ -7121,11 +7125,11 @@ log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, FILE * out_fp, LOG
 static LOG_PAGE *
 log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  struct log_ha_server_state *ha_server_state;
+  LOG_REC_HA_SERVER_STATE *ha_server_state;
 
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*ha_server_state), log_lsa, log_page_p);
-  ha_server_state = ((struct log_ha_server_state *) ((char *) log_page_p->area + log_lsa->offset));
+  ha_server_state = ((LOG_REC_HA_SERVER_STATE *) ((char *) log_page_p->area + log_lsa->offset));
   fprintf (out_fp, "  HA server state = %d\n", ha_server_state->state);
 
   return log_page_p;
@@ -7304,7 +7308,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   LOG_CS_ENTER (thread_p);
 
   xlogtb_dump_trantable (thread_p, out_fp);
-  logpb_dump (out_fp);
+  logpb_dump (thread_p, out_fp);
   logpb_flush_pages_direct (thread_p);
   logpb_flush_header (thread_p);
 
@@ -7869,12 +7873,12 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer of LSA log record */
   LOG_LSA log_lsa;
   LOG_RECORD_HEADER *log_rec = NULL;	/* The log record */
-  struct log_undoredo *undoredo = NULL;	/* An undoredo log record */
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;	/* A MVCC undoredo log rec */
-  struct log_undo *undo = NULL;	/* An undo log record */
-  struct log_mvcc_undo *mvcc_undo = NULL;	/* An undo log record */
-  struct log_compensate *compensate = NULL;	/* A compensating log record */
-  struct log_topop_result *top_result = NULL;	/* Partial result from top system operation */
+  LOG_REC_UNDOREDO *undoredo = NULL;	/* An undoredo log record */
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;	/* A MVCC undoredo log rec */
+  LOG_REC_UNDO *undo = NULL;	/* An undo log record */
+  LOG_REC_MVCC_UNDO *mvcc_undo = NULL;	/* An undo log record */
+  LOG_REC_COMPENSATE *compensate = NULL;	/* A compensating log record */
+  LOG_REC_TOPOP_RESULT *top_result = NULL;	/* Partial result from top system operation */
   LOG_RCV rcv;			/* Recovery structure */
   VPID rcv_vpid;		/* VPID of data to recover */
   LOG_RCVINDEX rcvindex;	/* Recovery index */
@@ -7997,7 +8001,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		  /* Data header is MVCC undoredo */
 		  data_header_size = sizeof (*mvcc_undoredo);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
-		  mvcc_undoredo = (struct log_mvcc_undoredo *) ((char *) log_pgptr->area + log_lsa.offset);
+		  mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		  /* Get undoredo info */
 		  undoredo = &mvcc_undoredo->undoredo;
@@ -8009,7 +8013,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		{
 		  data_header_size = sizeof (*undoredo);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
-		  undoredo = (struct log_undoredo *) ((char *) log_pgptr->area + log_lsa.offset);
+		  undoredo = (LOG_REC_UNDOREDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		  rcv.mvcc_id = MVCCID_NULL;
 		}
@@ -8037,7 +8041,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		  /* Data header is MVCC undo */
 		  data_header_size = sizeof (*mvcc_undo);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
-		  mvcc_undo = (struct log_mvcc_undo *) ((char *) log_pgptr->area + log_lsa.offset);
+		  mvcc_undo = (LOG_REC_MVCC_UNDO *) ((char *) log_pgptr->area + log_lsa.offset);
 		  /* Get undo info */
 		  undo = &mvcc_undo->undo;
 
@@ -8048,7 +8052,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 		{
 		  data_header_size = sizeof (*undo);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, data_header_size, &log_lsa, log_pgptr);
-		  undo = (struct log_undo *) ((char *) log_pgptr->area + log_lsa.offset);
+		  undo = (LOG_REC_UNDO *) ((char *) log_pgptr->area + log_lsa.offset);
 
 		  rcv.mvcc_id = MVCCID_NULL;
 		}
@@ -8072,7 +8076,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      /* Read the DATA HEADER */
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa, log_pgptr);
 	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*compensate), &log_lsa, log_pgptr);
-	      compensate = (struct log_compensate *) ((char *) log_pgptr->area + log_lsa.offset);
+	      compensate = (LOG_REC_COMPENSATE *) ((char *) log_pgptr->area + log_lsa.offset);
 	      LSA_COPY (&prev_tranlsa, &compensate->undo_nxlsa);
 	      break;
 
@@ -8086,7 +8090,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      /* Read the DATA HEADER */
 	      LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa, log_pgptr);
 	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_result), &log_lsa, log_pgptr);
-	      top_result = ((struct log_topop_result *) ((char *) log_pgptr->area + log_lsa.offset));
+	      top_result = ((LOG_REC_TOPOP_RESULT *) ((char *) log_pgptr->area + log_lsa.offset));
 	      LSA_COPY (&prev_tranlsa, &top_result->lastparent_lsa);
 	      break;
 
@@ -8171,7 +8175,7 @@ int
 log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa,
 			 LOG_TOPOP_RANGE ** out_nxtop_range_stack)
 {
-  struct log_topop_result *top_result;
+  LOG_REC_TOPOP_RESULT *top_result;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
@@ -8245,8 +8249,8 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 	  /* Read the DATA HEADER */
 	  LSA_COPY (&tmp_log_lsa, &top_result_lsa);
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &tmp_log_lsa, log_pgptr);
-	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_topop_result), &tmp_log_lsa, log_pgptr);
-	  top_result = (struct log_topop_result *) ((char *) log_pgptr->area + tmp_log_lsa.offset);
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_TOPOP_RESULT), &tmp_log_lsa, log_pgptr);
+	  top_result = (LOG_REC_TOPOP_RESULT *) ((char *) log_pgptr->area + tmp_log_lsa.offset);
 	  last_fetch_page_id = tmp_log_lsa.pageid;
 
 	  /* 
@@ -8341,7 +8345,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 	  assert (postpone_type == LOG_COMMIT_TOPOPE_WITH_POSTPONE);
 	  assert (tdes->topops.last >= 0);
 	  log_append_topope_commit_postpone (thread_p, tdes, start_postpone_lsa);
-	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) && vacuum_do_postpone_from_cache (thread_p, start_postpone_lsa))
+	  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_do_postpone_from_cache (thread_p, start_postpone_lsa))
 	    {
 	      /* Do postpone was run from cached postpone entries. */
 	      return;
@@ -8569,7 +8573,7 @@ static int
 log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_pgptr)
 {
   LOG_LSA ref_lsa;		/* The address of a postpone record */
-  struct log_redo redo;		/* A redo log record */
+  LOG_REC_REDO redo;		/* A redo log record */
   int rcv_length = 0;
   char *rcv_data = NULL;
   char *area = NULL;
@@ -8578,11 +8582,11 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 
   /* Get the DATA HEADER */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_pgptr);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_redo), log_lsa, log_pgptr);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REDO), log_lsa, log_pgptr);
 
-  redo = *((struct log_redo *) ((char *) log_pgptr->area + log_lsa->offset));
+  redo = *((LOG_REC_REDO *) ((char *) log_pgptr->area + log_lsa->offset));
 
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_redo), log_lsa, log_pgptr);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_REDO), log_lsa, log_pgptr);
 
   /* GET AFTER DATA */
 
@@ -8631,7 +8635,7 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
  * redo_rcv_data (in) : Redo recovery data.
  */
 int
-log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, struct log_redo *redo, char *redo_rcv_data)
+log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_REDO * redo, char *redo_rcv_data)
 {
   int error_code = NO_ERROR;
   LOG_RCV rcv;			/* Recovery structure for execution */
@@ -9180,7 +9184,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
 {
   LOG_CS_ENTER (thread_p);
 
-  if (log_Gl.trantable.area == NULL || !logpb_is_initialize_pool ())
+  if (log_Gl.trantable.area == NULL || !logpb_is_pool_initialized ())
     {
       LOG_CS_EXIT (thread_p);
       return;
@@ -9199,7 +9203,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
 
   /* Undefine log buffer pool and transaction table */
 
-  logpb_finalize_pool ();
+  logpb_finalize_pool (thread_p);
   logtb_undefine_trantable (thread_p);
 
   LOG_CS_EXIT (thread_p);
@@ -9621,7 +9625,7 @@ log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VA
       goto exit_on_error;
     }
 
-  memcpy (&ctx->header, page_hdr->area, sizeof (struct log_arv_header));
+  memcpy (&ctx->header, page_hdr->area, sizeof (LOG_ARV_HEADER));
   close (fd);
   fd = -1;
 
@@ -9665,7 +9669,7 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
   DB_DATETIME time_val;
 
   ARCHIVE_LOG_HEADER_SCAN_CTX *ctx = (ARCHIVE_LOG_HEADER_SCAN_CTX *) ptr;
-  struct log_arv_header *header = &ctx->header;
+  LOG_ARV_HEADER *header = &ctx->header;
 
   if (cursor >= 1)
     {
@@ -9683,7 +9687,7 @@ log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE 
       goto exit_on_error;
     }
 
-  val = offsetof (LOG_PAGE, area) + offsetof (struct log_arv_header, magic);
+  val = offsetof (LOG_PAGE, area) + offsetof (LOG_ARV_HEADER, magic);
   db_make_int (out_values[idx], val);
   idx++;
 
@@ -9779,8 +9783,10 @@ SCAN_CODE
 log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA process_lsa, RECDES * recdes)
 {
   LOG_RECORD_HEADER *log_rec_header = NULL;
-  struct log_mvcc_undo *mvcc_undo = NULL;
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
+  LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
+  LOG_REC_UNDO *undo = NULL;
+  LOG_REC_UNDOREDO *undoredo = NULL;
   int udata_length;
   int udata_size;
   char *undo_data;
@@ -9799,7 +9805,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   if (log_rec_header->type == LOG_MVCC_UNDO_DATA)
     {
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), &process_lsa, log_page_p);
-      mvcc_undo = (struct log_mvcc_undo *) (log_page_p->area + process_lsa.offset);
+      mvcc_undo = (LOG_REC_MVCC_UNDO *) (log_page_p->area + process_lsa.offset);
 
       udata_length = mvcc_undo->undo.length;
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), &process_lsa, log_page_p);
@@ -9807,14 +9813,32 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   else if (log_rec_header->type == LOG_MVCC_UNDOREDO_DATA || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA)
     {
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
-      mvcc_undoredo = (struct log_mvcc_undoredo *) (log_page_p->area + process_lsa.offset);
+      mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 
       udata_length = mvcc_undoredo->undoredo.ulength;
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
     }
+  else if (log_rec_header->type == LOG_UNDO_DATA)
+    {
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undo), &process_lsa, log_page_p);
+      undo = (LOG_REC_UNDO *) (log_page_p->area + process_lsa.offset);
+
+      udata_length = undo->length;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*undo), &process_lsa, log_page_p);
+    }
+  else if (log_rec_header->type == LOG_UNDOREDO_DATA || log_rec_header->type == LOG_DIFF_UNDOREDO_DATA)
+    {
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
+      undoredo = (LOG_REC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
+
+      udata_length = undoredo->ulength;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
+    }
   else
     {
       assert_release (log_rec_header->type == LOG_MVCC_UNDO_DATA || log_rec_header->type == LOG_MVCC_UNDOREDO_DATA
+		      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA || log_rec_header->type == LOG_UNDO_DATA
+		      || log_rec_header->type == LOG_UNDOREDO_DATA
 		      || log_rec_header->type == LOG_MVCC_DIFF_UNDOREDO_DATA);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_FATAL_ERROR, 1, "Expecting undo/undoredo log record");
       return S_ERROR;

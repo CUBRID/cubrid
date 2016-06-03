@@ -69,7 +69,6 @@ enum
   CSECT_CONN_ACTIVE,		/* Latch for Active conn list */
   CSECT_CONN_FREE,		/* Latch for Free conn list */
   CSECT_TEMPFILE_CACHE,		/* Latch for temp file cache */
-  CSECT_LOG_PB,			/* Latch for log_Pb */
   CSECT_LOG_ARCHIVE,		/* Latch for log_Gl.archive */
   CSECT_ACCESS_STATUS,		/* Latch for user access status */
   CSECT_LAST
@@ -80,10 +79,37 @@ enum
 extern const char *csect_Name_conn;
 extern const char *csect_Name_tdes;
 
+typedef enum
+{
+  SYNC_TYPE_NONE,
+
+  SYNC_TYPE_CSECT,		/* critical section primitive */
+  SYNC_TYPE_RWLOCK,		/* rwlock primitive */
+  SYNC_TYPE_RMUTEX,		/* re-entrant mutex */
+  SYNC_TYPE_MUTEX,		/* simple mutex */
+
+  SYNC_TYPE_LAST = SYNC_TYPE_MUTEX,
+  SYNC_TYPE_COUNT = SYNC_TYPE_LAST,
+  SYNC_TYPE_ALL = SYNC_TYPE_LAST
+} SYNC_PRIMITIVE_TYPE;
+
+typedef struct sync_stats
+{
+  SYNC_PRIMITIVE_TYPE type;
+  const char *name;
+
+  unsigned int nenter;		/* total number of acquisition. */
+  unsigned int nwait;		/* total number of waiting. only available for SYNC_TYPE_CSECT */
+  unsigned int nreenter;	/* total number of re-acquisition. available for SYNC_TYPE_CSECT, SYNC_TYPE_RMUTEX */
+
+  struct timeval total_elapsed;	/* total elapsed time to acquire the synchronization primitive */
+  struct timeval max_elapsed;	/* max elapsed time to acquire the synchronization primitive */
+} SYNC_STATS;
+
 typedef struct sync_critical_section
 {
-  int cs_index;
   const char *name;
+  int cs_index;
   pthread_mutex_t lock;		/* read/write monitor lock */
   int rwlock;			/* >0 = # readers, <0 = writer, 0 = none */
   unsigned int waiting_readers;	/* # of waiting readers */
@@ -93,29 +119,29 @@ typedef struct sync_critical_section
   THREAD_ENTRY *waiting_promoters_queue;	/* queue of waiting promoters */
   pthread_t owner;		/* CS owner writer */
   int tran_index;		/* transaction id acquiring CS */
-  unsigned int total_enter;
-  unsigned int total_nwaits;	/* total # of waiters */
-  struct timeval max_wait;
-  struct timeval total_wait;
+  SYNC_STATS *stats;
 } SYNC_CRITICAL_SECTION;
 
 typedef struct sync_rwlock
 {
+  const char *name;
   pthread_mutex_t read_lock;	/* read lock. Only readers will use it. */
   pthread_mutex_t global_lock;	/* global lock */
-  char *name;			/* name strduped - should be freed */
   int num_readers;		/* # of readers. Only readers will use it. */
-  int for_trace;		/* SYNC_RWLOCK_TRACE to monitor the SYNC_RWLOCK. It should be a global SYNC_RWLOCK. */
-  unsigned int total_enter;
-  struct timeval max_wait;
-  struct timeval total_wait;
+  SYNC_STATS *stats;
 } SYNC_RWLOCK;
 
-#define RWLOCK_TRACE 1
-#define RWLOCK_NOT_TRACE 0
+typedef struct sync_rmutex
+{
+  const char *name;
+  pthread_mutex_t lock;		/* mutex */
+  pthread_t owner;		/* owner thread id */
+  int lock_cnt;			/* # of times that owner enters */
+  SYNC_STATS *stats;
+} SYNC_RMUTEX;
 
-extern int csect_initialize (void);
-extern int csect_finalize (void);
+extern int csect_initialize_static_critical_sections (void);
+extern int csect_finalize_static_critical_sections (void);
 
 extern int csect_enter (THREAD_ENTRY * thread_p, int cs_index, int wait_secs);
 extern int csect_enter_as_reader (THREAD_ENTRY * thread_p, int cs_index, int wait_secs);
@@ -123,7 +149,7 @@ extern int csect_demote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs);
 extern int csect_promote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs);
 extern int csect_exit (THREAD_ENTRY * thread_p, int cs_index);
 
-extern int csect_initialize_critical_section (SYNC_CRITICAL_SECTION * cs_ptr);
+extern int csect_initialize_critical_section (SYNC_CRITICAL_SECTION * cs_ptr, const char *name);
 extern int csect_finalize_critical_section (SYNC_CRITICAL_SECTION * cs_ptr);
 extern int csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs);
 extern int csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr,
@@ -136,7 +162,7 @@ extern void csect_dump_statistics (FILE * fp);
 
 extern int csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ctx);
 
-extern int rwlock_initialize (SYNC_RWLOCK * rwlock, const char *name, int for_trace);
+extern int rwlock_initialize (SYNC_RWLOCK * rwlock, const char *name);
 extern int rwlock_finalize (SYNC_RWLOCK * rwlock);
 
 extern int rwlock_read_lock (SYNC_RWLOCK * rwlock);
@@ -145,13 +171,23 @@ extern int rwlock_read_unlock (SYNC_RWLOCK * rwlock);
 extern int rwlock_write_lock (SYNC_RWLOCK * rwlock);
 extern int rwlock_write_unlock (SYNC_RWLOCK * rwlock);
 
-extern int rwlock_initialize_rwlock_monitor (void);
-extern int rwlock_finalize_rwlock_monitor (void);
+extern int sync_initialize_sync_stats (void);
+extern int sync_finalize_sync_stats (void);
 
 extern void rwlock_dump_statistics (FILE * fp);
 
+extern int rmutex_initialize (SYNC_RMUTEX * rmutex, const char *name);
+extern int rmutex_finalize (SYNC_RMUTEX * rmutex);
+
+extern int rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex);
+extern int rmutex_unlock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex);
+
+extern void rmutex_dump_statistics (FILE * fp);
+
+extern void sync_dump_statistics (FILE * fp, SYNC_PRIMITIVE_TYPE type);
+
 #if !defined(SERVER_MODE)
-#define csect_initialize_critical_section(a)
+#define csect_initialize_critical_section(a, b)
 #define csect_finalize_critical_section(a)
 #define csect_enter(a, b, c) NO_ERROR
 #define csect_enter_as_reader(a, b, c) NO_ERROR
@@ -162,12 +198,17 @@ extern void rwlock_dump_statistics (FILE * fp);
 #define csect_check_own(a, b) 1
 #define csect_start_scan NULL
 
-#define rwlock_initialize(a, b, c) NO_ERROR
+#define rwlock_initialize(a, b) NO_ERROR
 #define rwlock_finalize(a) NO_ERROR
 #define rwlock_read_lock(a) NO_ERROR
 #define rwlock_read_unlock(a) NO_ERROR
 #define rwlock_write_lock(a) NO_ERROR
 #define rwlock_write_unlock(a) NO_ERROR
+
+#define rmutex_initialize(a, b) NO_ERROR
+#define rmutex_finalize(a) NO_ERROR
+#define rmutex_lock(a, b) NO_ERROR
+#define rmutex_unlock(a, b) NO_ERROR
 #endif /* !SERVER_MODE */
 
 #endif /* _CRITICAL_SECTION_H_ */

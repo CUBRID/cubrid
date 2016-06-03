@@ -249,7 +249,7 @@ set_referenced_subclasses (DB_OBJECT * class_)
 #endif /* CUBRID_DEBUG */
     }
 
-  ws_find (class_, (MOBJ *) & class_ptr);
+  ws_find (class_, (MOBJ *) (&class_ptr));
   if (class_ptr == NULL)
     {
       goto exit_on_error;
@@ -608,7 +608,7 @@ extractobjects (const char *exec_name)
 	  continue;
 	}
 
-      ws_find (class_table->mops[i], (MOBJ *) & class_ptr);
+      ws_find (class_table->mops[i], (MOBJ *) (&class_ptr));
       if (class_ptr == NULL)
 	{
 	  status = 1;
@@ -767,7 +767,7 @@ extractobjects (const char *exec_name)
 	      continue;
 	    }
 
-	  ws_find (class_table->mops[i], (MOBJ *) & class_ptr);
+	  ws_find (class_table->mops[i], (MOBJ *) (&class_ptr));
 	  if (class_ptr == NULL)
 	    {
 	      status = 1;
@@ -815,7 +815,7 @@ extractobjects (const char *exec_name)
 	total_req_cls++;
 	if (IS_CLASS_REFERENCED (i))
 	  {
-	    ws_find (class_table->mops[i], (MOBJ *) & class_ptr);
+	    ws_find (class_table->mops[i], (MOBJ *) (&class_ptr));
 	    if (class_ptr == NULL)
 	      {
 		status = 1;
@@ -896,7 +896,7 @@ extractobjects (const char *exec_name)
 		{
 		  char outfile[PATH_MAX];
 
-		  ws_find (class_table->mops[i], (MOBJ *) & class_ptr);
+		  ws_find (class_table->mops[i], (MOBJ *) (&class_ptr));
 		  if (class_ptr == NULL)
 		    {
 		      status = 1;
@@ -1085,7 +1085,7 @@ process_class (int cl_no)
   MARK_CLASS_PROCESSED (cl_no);
 
   /* Get the class data */
-  ws_find (class_, (MOBJ *) & class_ptr);
+  ws_find (class_, (MOBJ *) (&class_ptr));
   if (class_ptr == NULL)
     {
       goto exit_on_error;
@@ -1556,13 +1556,14 @@ process_value (DB_VALUE * value)
 
 	OID_SET_NULL (&ref_class_oid);
 
-	if ((error =
-	     locator_does_exist (ref_oid, NULL_CHN, IS_LOCK, &ref_class_oid, NULL_CHN, false, false, NULL,
-				 TM_TRAN_READ_FETCH_VERSION ())) == LC_EXIST)
+	error = locator_does_exist (ref_oid, NULL_CHN, IS_LOCK, &ref_class_oid, NULL_CHN, false, false, NULL,
+				    TM_TRAN_READ_FETCH_VERSION ());
+	if (error == LC_EXIST)
 	  {
-	    if ((classop = is_class (ref_oid, &ref_class_oid)))
+	    classop = is_class (ref_oid, &ref_class_oid);
+	    if (classop != NULL)
 	      {
-		ws_find (classop, (MOBJ *) & class_ptr);
+		ws_find (classop, (MOBJ *) (&class_ptr));
 		if (class_ptr == NULL)
 		  {
 		    goto exit_on_error;
@@ -1575,7 +1576,8 @@ process_value (DB_VALUE * value)
 	     * Lock referenced class with S_LOCK
 	     */
 	    error = NO_ERROR;	/* clear */
-	    if ((classop = is_class (&ref_class_oid, WS_OID (sm_Root_class_mop))))
+	    classop = is_class (&ref_class_oid, WS_OID (sm_Root_class_mop));
+	    if (classop != NULL)
 	      {
 		if (locator_fetch_class (classop, DB_FETCH_QUERY_READ) == NULL)
 		  {
@@ -1600,7 +1602,9 @@ process_value (DB_VALUE * value)
 	if (error != NO_ERROR)
 	  {
 	    if (!ignore_err_flag)
-	      goto exit_on_error;
+	      {
+		goto exit_on_error;
+	      }
 	    else
 	      {
 		(void) text_print (obj_out, "NULL", 4, NULL);

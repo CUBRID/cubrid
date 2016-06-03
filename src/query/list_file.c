@@ -62,7 +62,7 @@
 #include "dbval.h"
 
 /* TODO */
-#if !defined(SERVER_MODE)
+#if !defined (SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
 #define pthread_mutex_lock(a)	0
@@ -76,14 +76,22 @@ static int rv;
 
 #define QFILE_DEFAULT_PAGES 4
 
-#ifdef SERVER_MODE
-#define LS_PUT_NEXT_VPID_NULL_ASYNC(ptr) { \
-   OR_PUT_INT((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, NULL_PAGEID_ASYNC); \
-   OR_PUT_SHORT((ptr) + QFILE_NEXT_VOL_ID_OFFSET, NULL_VOLID); }
+#if defined (SERVER_MODE)
+#define LS_PUT_NEXT_VPID(ptr) \
+  do \
+    { \
+      OR_PUT_INT ((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, NULL_PAGEID_IN_PROGRESS); \
+      OR_PUT_SHORT ((ptr) + QFILE_NEXT_VOL_ID_OFFSET, NULL_VOLID); \
+    } \
+  while (0)
 #else
-#define LS_PUT_NEXT_VPID_NULL_ASYNC(ptr) { \
-   OR_PUT_INT((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, NULL_PAGEID); \
-   OR_PUT_SHORT((ptr) + QFILE_NEXT_VOL_ID_OFFSET, NULL_VOLID); }
+#define LS_PUT_NEXT_VPID(ptr) \
+  do \
+    { \
+       OR_PUT_INT ((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, NULL_PAGEID); \
+       OR_PUT_SHORT ((ptr) + QFILE_NEXT_VOL_ID_OFFSET, NULL_VOLID); \
+    } \
+  while (0)
 #endif
 
 typedef SCAN_CODE (*ADVANCE_FUCTION) (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID *, QFILE_TUPLE_RECORD *,
@@ -225,9 +233,6 @@ static int qfile_save_sort_key_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, ch
 static int qfile_save_merge_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p, char *page_p,
 				   int *tuple_length_p);
 
-#if defined(SERVER_MODE)
-static int qfile_get_list_page_with_waiting (THREAD_ENTRY * thread_p, QMGR_WAIT_ARGS * arg);
-#endif /* SERVER_MODE */
 static int qfile_compare_tuple_helper (QFILE_TUPLE lhs, QFILE_TUPLE rhs, QFILE_TUPLE_VALUE_TYPE_LIST * types, int *cmp);
 static SCAN_CODE qfile_advance_single (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * next_scan,
 				       QFILE_TUPLE_RECORD * next_tpl, QFILE_LIST_SCAN_ID * last_scan,
@@ -1500,10 +1505,13 @@ qfile_allocate_new_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAG
   PAGE_PTR new_page_p;
   VPID new_vpid;
 
-  if (qmgr_interrupt_query (thread_p, list_id_p->query_id) == true)
+#if defined (SERVER_MODE)
+  if (qmgr_is_query_interrupted (thread_p, list_id_p->query_id) == true)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return NULL;
     }
+#endif /* SERVER_MODE */
 
   new_page_p = qmgr_get_new_page (thread_p, &new_vpid, list_id_p->tfile_vfid);
   if (new_page_p == NULL)
@@ -1523,7 +1531,7 @@ qfile_allocate_new_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAG
     }
   else
     {
-      LS_PUT_NEXT_VPID_NULL_ASYNC (new_page_p);
+      LS_PUT_NEXT_VPID (new_page_p);
     }
 
   QFILE_PUT_LAST_TUPLE_OFFSET (new_page_p, QFILE_PAGE_HEADER_SIZE);
@@ -2249,7 +2257,7 @@ qfile_get_first_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 
   QFILE_PUT_TUPLE_COUNT (new_page_p, 0);
   QFILE_PUT_PREV_VPID (new_page_p, &list_id_p->last_vpid);
-  LS_PUT_NEXT_VPID_NULL_ASYNC (new_page_p);
+  LS_PUT_NEXT_VPID (new_page_p);
 
   QFILE_COPY_VPID (&list_id_p->first_vpid, &new_vpid);
   QFILE_COPY_VPID (&list_id_p->last_vpid, &new_vpid);
@@ -2297,38 +2305,6 @@ qfile_destroy_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
     }
 }
 
-#if defined(SERVER_MODE)
-/*
- * qfile_get_list_page_with_waiting
- *   return:
- *   arg(in):
- */
-static int
-qfile_get_list_page_with_waiting (THREAD_ENTRY * thread_p, QMGR_WAIT_ARGS * arg_p)
-{
-  VPID next_vpid;
-  PAGE_PTR page_p;
-
-  /* check error */
-  if (qmgr_get_query_error_with_id (thread_p, arg_p->query_id) < 0)
-    {
-      return true;
-    }
-
-  page_p = qmgr_get_old_page (thread_p, &arg_p->vpid, arg_p->tfile_vfidp);
-  if (page_p == NULL)
-    {
-      return true;
-    }
-  QFILE_GET_NEXT_VPID (&next_vpid, page_p);
-  QFILE_COPY_VPID (&(arg_p->next_vpid), &next_vpid);
-  qmgr_free_old_page_and_init (thread_p, page_p, arg_p->tfile_vfidp);
-
-  /* if the next page is not ready yet, return 0 */
-  return (next_vpid.pageid != NULL_PAGEID_ASYNC);
-}
-#endif /* SERVER_MODE */
-
 /*
  * xqfile_get_list_file_page () -
  *   return: NO_ERROR or ER_ code
@@ -2355,17 +2331,11 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id, VOLID vol
   PAGE_PTR page_p;
   int one_page_size = DB_PAGESIZE;
   int tran_index;
-#if defined(SERVER_MODE)
-  QMGR_WAIT_ARGS arg;
-  int error = NO_ERROR;
-  int rv;
-  bool is_async_query = false;
-#endif /* SERVER_MODE */
+
+  assert (NULL_PAGEID < page_id);
+  VPID_SET (&vpid, vol_id, page_id);
 
   *page_size_p = 0;
-
-  VPID_SET (&vpid, vol_id, page_id);
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   if (query_id == NULL_QUERY_ID)
     {
@@ -2379,256 +2349,37 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id, VOLID vol
     }
   else
     {
+      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
       query_entry_p = qmgr_get_query_entry (thread_p, query_id, tran_index);
       if (query_entry_p == NULL)
 	{
 	  return ER_QPROC_UNKNOWN_QUERYID;
 	}
-    }
 
-#if defined(SERVER_MODE)
-  if (query_entry_p->query_mode == ASYNC_MODE)
-    {
-      is_async_query = true;
-    }
-
-  error = qmgr_get_query_error_with_entry (query_entry_p);
-  if (error < 0)
-    {
-      if (error == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  tran_server_unilaterally_abort_tran (thread_p);
-	}
-      return error;
-    }
-
-  if (query_entry_p->list_id == NULL || page_id == NULL_PAGEID_ASYNC)
-    {
-      int sleep_msec = 0;
-
-      /* 
-       * async query does not yet make the output list file;
-       * wait for the async query to end and to make the output list file
-       */
-      /* TODO: replace fixed-constants */
-      while (query_entry_p->query_mode != QUERY_COMPLETED || query_entry_p->list_id == NULL)
-	{
-	  sleep_msec += 5;
-
-	  if (sleep_msec >= 2000)
-	    {
-	      sleep_msec = 5;
-	    }
-	  thread_sleep (sleep_msec);
-
-	  query_entry_p = qmgr_get_query_entry (thread_p, query_id, tran_index);
-	  if (query_entry_p == NULL)
-	    {
-	      /* 
-	       * if async query got an error or interrupted and its query
-	       * entry has been cleaned, then 'query_entryp == NULL'
-	       */
-	      return ER_QPROC_UNKNOWN_QUERYID;
-	    }
-	  if (query_entry_p->query_mode == QUERY_COMPLETED)
-	    {
-	      break;
-	    }
-	}
-
-      error = qmgr_get_query_error_with_entry (query_entry_p);
-      if (error < 0)
-	{
-	  if (error == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thread_p);
-	    }
-	  return error;
-	}
+      assert (query_entry_p->errid == NO_ERROR);
+      assert (query_entry_p->query_status == QUERY_COMPLETED);
 
       if (query_entry_p->list_id == NULL)
 	{
+	  assert (query_entry_p->list_id != NULL);
 	  *page_size_p = 0;
 	  return NO_ERROR;
 	}
 
-      vol_id = query_entry_p->list_id->first_vpid.volid;
-      page_id = query_entry_p->list_id->first_vpid.pageid;
+      assert (NULL_PAGEID < query_entry_p->list_id->first_vpid.pageid);
 
-      /* no result case */
+      /* unexpected no result */
       if (vol_id == NULL_VOLID && page_id == NULL_PAGEID)
 	{
+	  assert (vol_id != NULL_VOLID || page_id != NULL_PAGEID);
 	  *page_size_p = 0;
 	  return NO_ERROR;
 	}
 
-      VPID_SET (&vpid, vol_id, page_id);
+      list_id_p = query_entry_p->list_id;
+      tfile_vfid_p = list_id_p->tfile_vfid;
     }
-
-  rv = pthread_mutex_lock (&query_entry_p->lock);
-  list_id_p = query_entry_p->list_id;
-  tfile_vfid_p = list_id_p->tfile_vfid;
-  pthread_mutex_unlock (&query_entry_p->lock);
-
-  if (query_entry_p->query_mode == ASYNC_MODE)
-    {
-      if (thread_p == NULL)
-	{
-	  thread_p = thread_get_thread_entry_info ();
-	}
-
-      page_p = qmgr_get_old_page (thread_p, &vpid, tfile_vfid_p);
-      if (page_p == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-
-      /* if the next page is not ready yet, it is streaming queries and suspend the thread. */
-      QFILE_GET_NEXT_VPID (&next_vpid, page_p);
-      if (next_vpid.pageid == NULL_PAGEID_ASYNC)
-	{
-	  if (vol_id == NULL_VOLID)
-	    {
-	      /* conditional wait version */
-	      do
-		{
-		  bool slept;
-
-		  /* 
-		   * save my thread entry into tfile_vfid and conditionally
-		   * wait for qmgr_free_old_page() or qmgr_set_dirty_page() to wake me.
-		   */
-		  rv = pthread_mutex_lock (&tfile_vfid_p->membuf_mutex);
-		  if (rv != NO_ERROR)
-		    {
-		      qmgr_free_old_page_and_init (thread_p, page_p, tfile_vfid_p);
-		      return error;
-		    }
-
-		  error = qmgr_get_query_error_with_id (thread_p, query_id);
-		  if (error != NO_ERROR || (qmgr_is_async_query_interrupted (thread_p, query_id) != false))
-		    {
-		      pthread_mutex_unlock (&tfile_vfid_p->membuf_mutex);
-		      qmgr_free_old_page_and_init (thread_p, page_p, tfile_vfid_p);
-		      return error;
-		    }
-
-		  QFILE_GET_NEXT_VPID (&next_vpid, page_p);
-		  slept = false;
-		  if (next_vpid.pageid == NULL_PAGEID_ASYNC)
-		    {
-		      tfile_vfid_p->membuf_thread_p = thread_p;
-#if 0				/* async wakeup */
-		      tfile_vfid_p->wait_page_ptr = page_p;
-#endif /* 0 */
-		      slept = true;
-
-		      thread_suspend_with_other_mutex (tfile_vfid_p->membuf_thread_p, &tfile_vfid_p->membuf_mutex,
-						       INF_WAIT, NULL, THREAD_QMGR_MEMBUF_PAGE_SUSPENDED);
-		    }
-		  pthread_mutex_unlock (&tfile_vfid_p->membuf_mutex);
-
-		  error = er_errid ();
-		  if (error != NO_ERROR
-		      || (slept == true && (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)))
-		    {
-		      /* 
-		       * async query got an error or interrupted before
-		       * completing this query
-		       */
-		      qmgr_free_old_page_and_init (thread_p, page_p, tfile_vfid_p);
-		      return (error == NO_ERROR) ? ER_INTERRUPTED : error;
-		    }
-		  else if (slept == true && (thread_p->resume_status != THREAD_QMGR_MEMBUF_PAGE_RESUMED))
-		    {
-		      /* wake me with other reason */
-		      assert (0);
-
-		      qmgr_free_old_page_and_init (thread_p, page_p, tfile_vfid_p);
-		      return ER_FAILED;
-		    }
-		  else
-		    {
-		      assert (slept == false
-			      || (slept == true && (thread_p->resume_status == THREAD_QMGR_MEMBUF_PAGE_RESUMED)));
-		    }
-
-		  QFILE_GET_NEXT_VPID (&next_vpid, page_p);
-		}
-	      while (next_vpid.pageid == NULL_PAGEID_ASYNC);
-
-	      qmgr_free_old_page_and_init (thread_p, page_p, tfile_vfid_p);
-	    }
-	  else
-	    {
-	      /* busy waiting version */
-
-	      /* pack up the args for the suspend routine */
-	      arg.query_id = query_id;
-	      arg.vpid = vpid;
-	      arg.tfile_vfidp = tfile_vfid_p;
-	      VPID_SET_NULL (&arg.next_vpid);
-	      qmgr_free_old_page_and_init (thread_p, page_p, tfile_vfid_p);
-	      thread_waiting_for_function (thread_p, (CSS_THREAD_FN) qfile_get_list_page_with_waiting,
-					   (CSS_THREAD_ARG *) (&arg));
-
-	      QFILE_COPY_VPID (&next_vpid, &arg.next_vpid);
-	    }
-
-	  /* interrupted? */
-	  error = er_errid ();
-	  if (error == ER_INTERRUPTED)
-	    {
-	      return ER_INTERRUPTED;
-	    }
-	}
-      else
-	{
-	  qmgr_free_old_page_and_init (thread_p, page_p, tfile_vfid_p);
-	}
-
-      if (next_vpid.pageid == NULL_PAGEID)
-	{
-	  /* this was the last page written by async query, we wait for query completion to catch a potential execution 
-	   * error */
-	  do
-	    {
-	      query_entry_p = qmgr_get_query_entry (thread_p, query_id, tran_index);
-	      if (query_entry_p == NULL)
-		{
-		  return ER_QPROC_UNKNOWN_QUERYID;
-		}
-	      thread_sleep (10);	/* 10 msec */
-	    }
-	  while (query_entry_p->query_mode == ASYNC_MODE);
-	}
-    }
-
-  /* Check query error only if the initial status was async and it became completed. If the query is still in ASYNC
-   * status, and an error was set, we will detect the error at the next page fetching : we favor queries which are
-   * successfull, instead of checking for query error in a more aggresive way */
-  if (is_async_query && query_entry_p->query_mode == QUERY_COMPLETED)
-    {
-      error = qmgr_get_query_error_with_id (thread_p, query_id);
-      if (error < 0)
-	{
-	  if (error == ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      tran_server_unilaterally_abort_tran (thread_p);
-	    }
-	  return error;
-	}
-    }
-
-  rv = pthread_mutex_lock (&query_entry_p->lock);
-  list_id_p = query_entry_p->list_id;
-  tfile_vfid_p = (list_id_p) ? list_id_p->tfile_vfid : NULL;
-  pthread_mutex_unlock (&query_entry_p->lock);
-#else /* not SERVER_MODE */
-  list_id_p = query_entry_p->list_id;
-  tfile_vfid_p = list_id_p->tfile_vfid;
-#endif /* not SERVER_MODE */
 
 get_page:
   /* append pages until a network page is full */
@@ -2648,12 +2399,8 @@ get_page:
 	  QFILE_GET_NEXT_VPID (&next_vpid, page_p);
 	}
 
-      /* current page is not ready yet, so stop appending */
-      if (next_vpid.pageid == NULL_PAGEID_ASYNC)
-	{
-	  qmgr_free_old_page_and_init (thread_p, page_p, tfile_vfid_p);
-	  break;
-	}
+      assert (next_vpid.pageid != NULL_PAGEID_IN_PROGRESS);
+
       if (QFILE_GET_TUPLE_COUNT (page_p) == QFILE_OVERFLOW_TUPLE_COUNT_FLAG
 	  || QFILE_GET_OVERFLOW_PAGE_ID (page_p) != NULL_PAGEID)
 	{
@@ -2661,13 +2408,13 @@ get_page:
 	}
       else
 	{
-	  one_page_size =
-	    QFILE_GET_LAST_TUPLE_OFFSET (page_p) + QFILE_GET_TUPLE_LENGTH (page_p +
-									   QFILE_GET_LAST_TUPLE_OFFSET (page_p));
+	  one_page_size = (QFILE_GET_LAST_TUPLE_OFFSET (page_p)
+			   + QFILE_GET_TUPLE_LENGTH (page_p + QFILE_GET_LAST_TUPLE_OFFSET (page_p)));
 	  if (one_page_size < QFILE_PAGE_HEADER_SIZE)
 	    {
 	      one_page_size = QFILE_PAGE_HEADER_SIZE;
 	    }
+
 	  if (one_page_size > DB_PAGESIZE)
 	    {
 	      one_page_size = DB_PAGESIZE;
@@ -3785,7 +3532,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 #endif /* not SortCache */
 
 	  QFILE_GET_OVERFLOW_VPID (&vpid, page_p);
-	  if (vpid.pageid == NULL_PAGEID || vpid.pageid == NULL_PAGEID_ASYNC)
+	  if (vpid.pageid == NULL_PAGEID)
 	    {
 	      /* 
 	       * This is the normal case of a non-overflow tuple.  We can use
@@ -3797,6 +3544,8 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	    }
 	  else
 	    {
+	      assert (NULL_PAGEID < vpid.pageid);	/* should not be NULL_PAGEID_IN_PROGRESS */
+
 	      /* 
 	       * Rats; this tuple requires overflow pages.  We need to copy
 	       * all of the pages from the input file to the output file.
@@ -4718,8 +4467,7 @@ qfile_scan_next (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
 	  scan_id_p->curr_tplno++;
 	  return S_SUCCESS;
 	}
-      else if ((QFILE_GET_NEXT_PAGE_ID (scan_id_p->curr_pgptr) != NULL_PAGEID)
-	       && (QFILE_GET_NEXT_PAGE_ID (scan_id_p->curr_pgptr) != NULL_PAGEID_ASYNC))
+      else if (qfile_has_next_page (scan_id_p->curr_pgptr))
 	{
 	  QFILE_GET_NEXT_VPID (&next_vpid, scan_id_p->curr_pgptr);
 	  next_page_p = qmgr_get_old_page (thread_p, &next_vpid, scan_id_p->list_id.tfile_vfid);
@@ -6821,7 +6569,7 @@ qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 bool
 qfile_has_next_page (PAGE_PTR page_p)
 {
-  return (QFILE_GET_NEXT_PAGE_ID (page_p) != NULL_PAGEID && QFILE_GET_NEXT_PAGE_ID (page_p) != NULL_PAGEID_ASYNC);
+  return (QFILE_GET_NEXT_PAGE_ID (page_p) != NULL_PAGEID && QFILE_GET_NEXT_PAGE_ID (page_p) != NULL_PAGEID_IN_PROGRESS);
 }
 
 /*

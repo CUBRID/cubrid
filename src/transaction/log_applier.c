@@ -199,7 +199,7 @@ struct la_act_log
   char path[PATH_MAX];
   int log_vdes;
   LOG_PAGE *hdr_page;
-  struct log_header *log_hdr;
+  LOG_HEADER *log_hdr;
   int db_iopagesize;
   int db_logpagesize;
 };
@@ -210,7 +210,7 @@ struct la_arv_log
   char path[PATH_MAX];
   int log_vdes;
   LOG_PAGE *hdr_page;
-  struct log_arv_header *log_hdr;
+  LOG_ARV_HEADER *log_hdr;
   int arv_num;
 };
 
@@ -552,9 +552,9 @@ static void la_get_adaptive_time_commit_interval (int *time_commit_interval, int
 
 static void lp_init (const char *log_path);
 static int lp_init_prefetcher (const char *database_name, const char *log_path);
-static int lp_get_log_record (struct log_header *final_log_hdr, LA_CACHE_BUFFER ** log_buf);
+static int lp_get_log_record (LOG_HEADER * final_log_hdr, LA_CACHE_BUFFER ** log_buf);
 static int lp_adjust_prefetcher_speed (void);
-static int lp_process_log_record (struct log_header *final_log_hdr, LA_CACHE_BUFFER * log_buf);
+static int lp_process_log_record (LOG_HEADER * final_log_hdr, LA_CACHE_BUFFER * log_buf);
 static int lp_prefetch_log_record (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
 static int lp_prefetch_update_or_delete (LA_ITEM * item);
 static int lp_prefetch_insert (LA_ITEM * item);
@@ -761,7 +761,7 @@ static int
 la_get_range_of_archive (int arv_log_num, LOG_PAGEID * fpageid, DKNPAGES * npages)
 {
   int error = NO_ERROR;
-  struct log_arv_header *log_hdr = NULL;
+  LOG_ARV_HEADER *log_hdr = NULL;
   int arv_log_vdes = NULL_VOLDES;
   char arv_log_path[PATH_MAX];
 
@@ -805,7 +805,7 @@ log_reopen:
 	}
     }
 
-  log_hdr = (struct log_arv_header *) hdr_page->area;
+  log_hdr = (LOG_ARV_HEADER *) hdr_page->area;
   *fpageid = log_hdr->fpageid;
   *npages = log_hdr->npages;
 
@@ -825,7 +825,7 @@ la_find_archive_num (int *arv_log_num, LOG_PAGEID pageid)
 {
   int error = NO_ERROR;
   int guess_num = 0;
-  struct log_arv_header *log_hdr = NULL;
+  LOG_ARV_HEADER *log_hdr = NULL;
   LOG_PAGEID fpageid;
   DKNPAGES npages;
   int arv_log_vdes = NULL_VOLDES;
@@ -907,7 +907,7 @@ la_log_fetch_from_archive (LOG_PAGEID pageid, char *data)
   int error = NO_ERROR;
   int arv_log_num;
   bool need_guess = true;
-  struct log_arv_header *log_hdr = NULL;
+  LOG_ARV_HEADER *log_hdr = NULL;
   LOG_PAGEID fpageid;
   int npages;
 
@@ -1011,7 +1011,7 @@ log_reopen:
 	    }
 	}
 
-      la_Info.arv_log.log_hdr = (struct log_arv_header *) la_Info.arv_log.hdr_page->area;
+      la_Info.arv_log.log_hdr = (LOG_ARV_HEADER *) la_Info.arv_log.hdr_page->area;
     }
 
 
@@ -2617,7 +2617,7 @@ la_fetch_log_hdr (LA_ACT_LOG * act_log)
       return ER_LOG_READ;
     }
 
-  act_log->log_hdr = (struct log_header *) (act_log->hdr_page->area);
+  act_log->log_hdr = (LOG_HEADER *) (act_log->hdr_page->area);
 
   return error;
 }
@@ -2674,7 +2674,7 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 	  return error;
 	}
 
-      act_log->log_hdr = (struct log_header *) act_log->hdr_page->area;
+      act_log->log_hdr = (LOG_HEADER *) act_log->hdr_page->area;
 
       /* check mark will deleted */
       if (act_log->log_hdr->mark_will_del == true)
@@ -2739,7 +2739,7 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
   else if (act_log->db_logpagesize > LA_DEFAULT_LOG_PAGE_SIZE)
     {
       act_log->hdr_page = (LOG_PAGE *) realloc (act_log->hdr_page, act_log->db_logpagesize);
-      act_log->log_hdr = (struct log_header *) act_log->hdr_page->area;
+      act_log->log_hdr = (LOG_HEADER *) act_log->hdr_page->area;
     }
 
   return error;
@@ -3125,7 +3125,7 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
 {
   int error = NO_ERROR;
   LA_ITEM *item = NULL;
-  struct log_replication *repl_log;
+  LOG_REC_REPLICATION *repl_log;
   LOG_PAGE *repl_log_pgptr;
   PGLENGTH offset;
   LOG_PAGEID pageid;
@@ -3138,7 +3138,7 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
   repl_log_pgptr = log_pgptr;
   pageid = lsa->pageid;
   offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
-  length = DB_SIZEOF (struct log_replication);
+  length = DB_SIZEOF (LOG_REC_REPLICATION);
 
   LA_LOG_READ_ALIGN (error, offset, pageid, repl_log_pgptr);
   if (error != NO_ERROR)
@@ -3152,7 +3152,7 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
       return NULL;
     }
 
-  repl_log = (struct log_replication *) ((char *) repl_log_pgptr->area + offset);
+  repl_log = (LOG_REC_REPLICATION *) ((char *) repl_log_pgptr->area + offset);
   offset += length;
   length = repl_log->length;
 
@@ -3531,7 +3531,7 @@ static time_t
 la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
 {
   int error = NO_ERROR;
-  struct log_donetime *donetime;
+  LOG_REC_DONETIME *donetime;
   LOG_PAGEID pageid;
   PGLENGTH offset;
   LOG_PAGE *pg;
@@ -3554,7 +3554,7 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
       /* cannot get eot time */
       return 0;
     }
-  donetime = (struct log_donetime *) ((char *) pg->area + offset);
+  donetime = (LOG_REC_DONETIME *) ((char *) pg->area + offset);
 
   return donetime->at_time;
 }
@@ -3774,7 +3774,7 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
 	  if (mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION)
 	    {
 	      /* skip prev version lsa */
-	      (void) or_advance (buf, sizeof(LOG_LSA));
+	      (void) or_advance (buf, sizeof (LOG_LSA));
 	    }
 	}
 
@@ -3953,13 +3953,13 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
   LOG_PAGEID pageid;
   int error = NO_ERROR;
 
-  struct log_undoredo *undoredo;
-  struct log_undo *undo;
-  struct log_redo *redo;
+  LOG_REC_UNDOREDO *undoredo;
+  LOG_REC_UNDO *undo;
+  LOG_REC_REDO *redo;
 
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
-  struct log_mvcc_undo *mvcc_undo = NULL;
-  struct log_mvcc_redo *mvcc_redo = NULL;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
+  LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
+  LOG_REC_MVCC_REDO *mvcc_redo = NULL;
 
   bool is_undo_zip = false;
   int rec_len = 0;
@@ -4002,11 +4002,11 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 
       if (is_mvcc_log == true)
 	{
-	  log_size = DB_SIZEOF (struct log_mvcc_undoredo);
+	  log_size = DB_SIZEOF (LOG_REC_MVCC_UNDOREDO);
 	}
       else
 	{
-	  log_size = DB_SIZEOF (struct log_undoredo);
+	  log_size = DB_SIZEOF (LOG_REC_UNDOREDO);
 	}
 
       LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
@@ -4015,12 +4015,12 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	{
 	  if (is_mvcc_log == true)
 	    {
-	      mvcc_undoredo = (struct log_mvcc_undoredo *) ((char *) pg->area + offset);
+	      mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) pg->area + offset);
 	      undoredo = &mvcc_undoredo->undoredo;
 	    }
 	  else
 	    {
-	      undoredo = (struct log_undoredo *) ((char *) pg->area + offset);
+	      undoredo = (LOG_REC_UNDOREDO *) ((char *) pg->area + offset);
 	    }
 
 	  undo_length = undoredo->ulength;	/* undo log length */
@@ -4071,11 +4071,11 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
     case LOG_MVCC_UNDO_DATA:
       if (is_mvcc_log == true)
 	{
-	  log_size = DB_SIZEOF (struct log_mvcc_undo);
+	  log_size = DB_SIZEOF (LOG_REC_MVCC_UNDO);
 	}
       else
 	{
-	  log_size = DB_SIZEOF (struct log_undo);
+	  log_size = DB_SIZEOF (LOG_REC_UNDO);
 	}
 
       LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
@@ -4083,12 +4083,12 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	{
 	  if (is_mvcc_log == true)
 	    {
-	      mvcc_undo = (struct log_mvcc_undo *) ((char *) pg->area + offset);
+	      mvcc_undo = (LOG_REC_MVCC_UNDO *) ((char *) pg->area + offset);
 	      undo = &mvcc_undo->undo;
 	    }
 	  else
 	    {
-	      undo = (struct log_undo *) ((char *) pg->area + offset);
+	      undo = (LOG_REC_UNDO *) ((char *) pg->area + offset);
 	    }
 
 	  temp_length = undo->length;
@@ -4117,11 +4117,11 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
     case LOG_MVCC_REDO_DATA:
       if (is_mvcc_log == true)
 	{
-	  log_size = DB_SIZEOF (struct log_mvcc_redo);
+	  log_size = DB_SIZEOF (LOG_REC_MVCC_REDO);
 	}
       else
 	{
-	  log_size = DB_SIZEOF (struct log_redo);
+	  log_size = DB_SIZEOF (LOG_REC_REDO);
 	}
 
       LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
@@ -4129,12 +4129,12 @@ la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsi
 	{
 	  if (is_mvcc_log == true)
 	    {
-	      mvcc_redo = (struct log_mvcc_redo *) ((char *) pg->area + offset);
+	      mvcc_redo = (LOG_REC_MVCC_REDO *) ((char *) pg->area + offset);
 	      redo = &mvcc_redo->redo;
 	    }
 	  else
 	    {
-	      redo = (struct log_redo *) ((char *) pg->area + offset);
+	      redo = (LOG_REC_REDO *) ((char *) pg->area + offset);
 	    }
 
 	  temp_length = redo->length;
@@ -4253,7 +4253,7 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
   LA_OVF_PAGE_LIST *ovf_list_head = NULL;
   LA_OVF_PAGE_LIST *ovf_list_tail = NULL;
   LA_OVF_PAGE_LIST *ovf_list_data = NULL;
-  struct log_redo *redo_log;
+  LOG_REC_REDO *redo_log;
   void *log_info;
   VPID *temp_vpid;
   VPID prev_vpid;
@@ -4265,8 +4265,8 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
   int length = 0;
 
   LSA_COPY (&current_lsa, &log_record->prev_tranlsa);
-  prev_vpid.pageid = ((struct log_undoredo *) logs)->data.pageid;
-  prev_vpid.volid = ((struct log_undoredo *) logs)->data.volid;
+  prev_vpid.pageid = ((LOG_REC_UNDOREDO *) logs)->data.pageid;
+  prev_vpid.volid = ((LOG_REC_UNDOREDO *) logs)->data.volid;
 
   while (!LSA_ISNULL (&current_lsa))
     {
@@ -4405,9 +4405,9 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
   LOG_PAGEID pageid;
   int error = NO_ERROR;
   LOG_RECORD_HEADER *lrec;
-  struct log_undoredo *undoredo;
-  struct log_undoredo *prev_log;
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
+  LOG_REC_UNDOREDO *undoredo;
+  LOG_REC_UNDOREDO *prev_log;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   int zip_len = 0;
   int temp_length = 0;
   int undo_length = 0;
@@ -4424,7 +4424,7 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 
   pg = pgptr;
   LSA_COPY (&lsa, &prev_lrec->forw_lsa);
-  prev_log = *(struct log_undoredo **) logs;
+  prev_log = *(LOG_REC_UNDOREDO **) logs;
 
   redo_unzip_data = la_Info.redo_unzip_ptr;
 
@@ -4447,12 +4447,12 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 	      if (LOG_IS_MVCC_OP_RECORD_TYPE (lrec->type) == true)
 		{
 		  is_mvcc_log = true;
-		  log_size = DB_SIZEOF (struct log_mvcc_undoredo);
+		  log_size = DB_SIZEOF (LOG_REC_MVCC_UNDOREDO);
 		}
 	      else
 		{
 		  is_mvcc_log = false;
-		  log_size = DB_SIZEOF (struct log_undoredo);
+		  log_size = DB_SIZEOF (LOG_REC_UNDOREDO);
 		}
 
 	      offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa.offset;
@@ -4463,19 +4463,20 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 		{
 		  if (is_mvcc_log == true)
 		    {
-		      mvcc_undoredo = (struct log_mvcc_undoredo *) ((char *) pg->area + offset);
+		      mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) pg->area + offset);
 		      undoredo = &mvcc_undoredo->undoredo;
 		    }
 		  else
 		    {
-		      undoredo = (struct log_undoredo *) ((char *) pg->area + offset);
+		      undoredo = (LOG_REC_UNDOREDO *) ((char *) pg->area + offset);
 		    }
 
 		  undo_length = undoredo->ulength;
 		  temp_length = undoredo->rlength;
 		  length = GET_ZIP_LEN (undoredo->rlength);
 
-		  if (undoredo->data.rcvindex == RVHF_UPDATE && undoredo->data.pageid == prev_log->data.pageid
+		  if ((undoredo->data.rcvindex == RVHF_UPDATE || undoredo->data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+		      && undoredo->data.pageid == prev_log->data.pageid
 		      && undoredo->data.offset == prev_log->data.offset && undoredo->data.volid == prev_log->data.volid)
 		    {
 		      LA_LOG_READ_ADD_ALIGN (error, log_size, offset, pageid, pg);
@@ -4576,7 +4577,7 @@ la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned i
       else
 	{
 	  error =
-	    la_get_log_data (tmp_lrec, &lsa, pg, RVHF_INSERT, &rcvindex, logs, rec_type, &recdes->data,
+	    la_get_log_data (tmp_lrec, &lsa, pg, RVHF_INSERT_NEWHOME, &rcvindex, logs, rec_type, &recdes->data,
 			     &recdes->length);
 	}
       la_release_page_buffer (lsa.pageid);
@@ -4659,7 +4660,8 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
 	    }
 	}
     }
-  else if (*rcvindex == RVHF_UPDATE && recdes->type == REC_RELOCATION)
+  else if ((*rcvindex == RVHF_UPDATE || *rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+	    && recdes->type == REC_RELOCATION)
     {
       error = la_get_relocation_recdes (lrec, pg, 0, &logs, &rec_type, recdes);
       if (error == NO_ERROR)
@@ -4676,10 +4678,10 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
   return error;
 }
 
-static struct log_ha_server_state *
+static LOG_REC_HA_SERVER_STATE *
 la_get_ha_server_state (LOG_PAGE * pgptr, LOG_LSA * lsa)
 {
-  struct log_ha_server_state *state = NULL;
+  LOG_REC_HA_SERVER_STATE *state = NULL;
   int error = NO_ERROR;
   LOG_PAGEID pageid;
   PGLENGTH offset;
@@ -4690,11 +4692,11 @@ la_get_ha_server_state (LOG_PAGE * pgptr, LOG_LSA * lsa)
   offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
   pg = pgptr;
 
-  length = DB_SIZEOF (struct log_ha_server_state);
+  length = DB_SIZEOF (LOG_REC_HA_SERVER_STATE);
   LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, length, offset, pageid, pg);
   if (error == NO_ERROR)
     {
-      state = (struct log_ha_server_state *) ((char *) pg->area + offset);
+      state = (LOG_REC_HA_SERVER_STATE *) ((char *) pg->area + offset);
     }
 
   return state;
@@ -4962,7 +4964,8 @@ la_apply_update_log (LA_ITEM * item)
 
       goto end;
     }
-  if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK && rcvindex != RVHF_MVCC_INSERT)
+  if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK && rcvindex != RVHF_MVCC_INSERT
+      && rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && rcvindex != RVHF_INSERT_NEWHOME)
     {
       er_log_debug (ARG_FILE_LINE, "apply_update : rcvindex = %d\n", rcvindex);
       error = ER_FAILED;
@@ -5431,9 +5434,8 @@ la_apply_statement_log (LA_ITEM * item)
       if ((item->item_type == CUBRID_STMT_CREATE_CLASS || item->item_type == CUBRID_STMT_CREATE_SERIAL
 	   || item->item_type == CUBRID_STMT_CREATE_STORED_PROCEDURE || item->item_type == CUBRID_STMT_CREATE_TRIGGER
 	   || item->item_type == CUBRID_STMT_ALTER_CLASS || item->item_type == CUBRID_STMT_INSERT
-	   || item->item_type == CUBRID_STMT_DELETE || item->item_type == CUBRID_STMT_UPDATE) && (item->db_user != NULL
-												  && item->db_user[0] !=
-												  '\0'))
+	   || item->item_type == CUBRID_STMT_DELETE || item->item_type == CUBRID_STMT_UPDATE)
+	  && (item->db_user != NULL && item->db_user[0] != '\0'))
 	{
 	  user = au_find_user (item->db_user);
 	  if (user == NULL)
@@ -5948,7 +5950,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
   LOG_LSA required_lsa;
   LOG_PAGEID final_pageid;
   int commit_list_count;
-  struct log_ha_server_state *ha_server_state;
+  LOG_REC_HA_SERVER_STATE *ha_server_state;
   char buffer[256];
   time_t eot_time;
 
@@ -6891,7 +6893,7 @@ la_shutdown (void)
  * la_print_log_header () -
  */
 void
-la_print_log_header (const char *database_name, struct log_header *hdr, bool verbose)
+la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose)
 {
   time_t tloc;
   DB_DATETIME datetime;
@@ -6947,7 +6949,7 @@ la_print_log_header (const char *database_name, struct log_header *hdr, bool ver
  * la_print_log_arv_header () -
  */
 void
-la_print_log_arv_header (const char *database_name, struct log_arv_header *hdr, bool verbose)
+la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool verbose)
 {
   time_t tloc;
   DB_DATETIME datetime;
@@ -7221,7 +7223,7 @@ int
 lp_prefetch_log_file (const char *database_name, const char *log_path)
 {
   int error = NO_ERROR;
-  struct log_header final_log_hdr;
+  LOG_HEADER final_log_hdr;
   LA_CACHE_BUFFER *log_buf = NULL;
 
   error = lp_init_prefetcher (database_name, log_path);
@@ -7422,7 +7424,7 @@ lp_init_prefetcher (const char *database_name, const char *log_path)
 }
 
 static int
-lp_get_log_record (struct log_header *final_log_hdr, LA_CACHE_BUFFER ** log_buf)
+lp_get_log_record (LOG_HEADER * final_log_hdr, LA_CACHE_BUFFER ** log_buf)
 {
   int error = NO_ERROR;
   LA_CACHE_BUFFER *tmp_log_buf = NULL;
@@ -7442,7 +7444,7 @@ lp_get_log_record (struct log_header *final_log_hdr, LA_CACHE_BUFFER ** log_buf)
 	  return error;
 	}
 
-      memcpy (final_log_hdr, la_Info.act_log.log_hdr, sizeof (struct log_header));
+      memcpy (final_log_hdr, la_Info.act_log.log_hdr, sizeof (LOG_HEADER));
 
       if (final_log_hdr->eof_lsa.pageid < lp_Info.final_lsa.pageid)
 	{
@@ -7604,7 +7606,7 @@ lp_adjust_prefetcher_speed (void)
 }
 
 static int
-lp_process_log_record (struct log_header *final_log_hdr, LA_CACHE_BUFFER * log_buf)
+lp_process_log_record (LOG_HEADER * final_log_hdr, LA_CACHE_BUFFER * log_buf)
 {
   int error = NO_ERROR;
   LOG_LSA prev_final;
@@ -8471,7 +8473,7 @@ int
 la_apply_log_file (const char *database_name, const char *log_path, const int max_mem_size)
 {
   int error = NO_ERROR;
-  struct log_header final_log_hdr;
+  LOG_HEADER final_log_hdr;
   LA_CACHE_BUFFER *log_buf = NULL;
   LOG_PAGE *pg_ptr;
   LOG_RECORD_HEADER *lrec = NULL;
@@ -8702,7 +8704,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      max_arv_count_to_delete = 0;
 	    }
 
-	  memcpy (&final_log_hdr, la_Info.act_log.log_hdr, sizeof (struct log_header));
+	  memcpy (&final_log_hdr, la_Info.act_log.log_hdr, sizeof (LOG_HEADER));
 
 	  if (prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS) >= 0)
 	    {

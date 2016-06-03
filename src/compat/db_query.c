@@ -1609,7 +1609,7 @@ db_get_query_format (const char *CSQL_query, DB_QUERY_TYPE ** result, DB_QUERY_E
 {
   int error;
 
-  error = db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 0, SYNC_EXEC, true);
+  error = db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 0, true);
 
   return (error < 0 ? error : NO_ERROR);
 }				/* db_get_query_format */
@@ -1859,26 +1859,9 @@ db_query_execute (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ER
 {
   int error;
 
-  error = db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 1, SYNC_EXEC, true);
+  error = db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 1, true);
 
   return (error < 0 ? error : NO_ERROR);
-}
-
-/*
- * db_execute_async() -
- * return : error code.
- * CSQL_query(in): CSQL query string to be executed
- * result(out): Pointer to the query result structure
- * query_error(out): Set to the error information, if any.
- */
-int
-db_execute_async (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error)
-{
-  int retval;
-
-  retval = db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 1, ASYNC_EXEC, true);
-
-  return (retval);
 }
 
 /*
@@ -1904,7 +1887,7 @@ db_execute (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * 
 {
   int retval;
 
-  retval = db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 1, SYNC_EXEC, true);
+  retval = db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 1, true);
   return (retval);
 }
 
@@ -1920,7 +1903,7 @@ db_execute_oid (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERRO
 {
   int retval;
 
-  retval = db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_ROW_OIDS, 1, SYNC_EXEC, true);
+  retval = db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_ROW_OIDS, 1, true);
 
   return (retval);
 }
@@ -1943,7 +1926,7 @@ db_query_execute_immediate (const char *CSQL_query, DB_QUERY_RESULT ** result, D
   fprintf (stdout, "use the equivalent function db_execute.\n");
 #endif
 
-  r = db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 1, SYNC_EXEC, true);
+  r = db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 1, true);
 
   return r;
 }
@@ -2175,9 +2158,8 @@ db_query_next_tuple (DB_QUERY_RESULT * result)
     case T_CALL:
     case T_OBJFETCH:
       {
-	c_pos =
-	  (result->type ==
-	   T_CALL) ? (CURSOR_POSITION *) & result->res.c.crs_pos : (CURSOR_POSITION *) & result->res.o.crs_pos;
+	c_pos = ((result->type == T_CALL)
+		 ? (CURSOR_POSITION *) (&result->res.c.crs_pos) : (CURSOR_POSITION *) (&result->res.o.crs_pos));
 	switch (*c_pos)
 	  {
 	  case C_BEFORE:
@@ -2285,9 +2267,8 @@ db_query_prev_tuple (DB_QUERY_RESULT * result)
     case T_CALL:
     case T_OBJFETCH:
       {
-	c_pos =
-	  (result->type ==
-	   T_CALL) ? (CURSOR_POSITION *) & result->res.c.crs_pos : (CURSOR_POSITION *) & result->res.o.crs_pos;
+	c_pos = ((result->type == T_CALL)
+		 ? (CURSOR_POSITION *) (&result->res.c.crs_pos) : (CURSOR_POSITION *) (&result->res.o.crs_pos));
 	switch (*c_pos)
 	  {
 	  case C_BEFORE:
@@ -2452,13 +2433,6 @@ db_query_last_tuple (DB_QUERY_RESULT * result)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OPR_ON_CLOSED_QRES, 0);
       return ER_QPROC_OPR_ON_CLOSED_QRES;
     }
-
-#if !defined(SA_MODE)
-  if (db_query_sync (result, true) != NO_ERROR)
-    {
-      return DB_CURSOR_ERROR;
-    }
-#endif
 
   switch (result->type)
     {
@@ -2705,9 +2679,8 @@ db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode)
 	{
 	case DB_CURSOR_SEEK_SET:
 	case DB_CURSOR_SEEK_END:
-	  c_pos =
-	    (result->type ==
-	     T_CALL) ? (CURSOR_POSITION *) & result->res.c.crs_pos : (CURSOR_POSITION *) & result->res.o.crs_pos;
+	  c_pos = ((result->type == T_CALL)
+		   ? (CURSOR_POSITION *) (&result->res.c.crs_pos) : (CURSOR_POSITION *) (&result->res.o.crs_pos));
 	  if (offset == 0)
 	    {
 	      *c_pos = C_ON;
@@ -3150,96 +3123,6 @@ db_query_get_tuple_valuelist (DB_QUERY_RESULT * result, int size, DB_VALUE * val
 }
 
 /*
- * db_query_get_info() - This function returns information from a streaming
- *    query, including the current tuple count, as well as any existing error
- *    IDs and error strings. The tuple count in the result structure is also
- *    updated.
- * return : error code
- * result(in): the query result structure
- * done(out): set to true if the query has completed
- * count(out): address where the function will store the tuple count for
- *             the query
- * error(out): address where the last error of the query will be stored.
- * err_string(out): Pointer to the error string
- *
- * note : If the query has completed, the tuple count returned will be the
- *        total tuple count. Otherwise, it will be the number of tuples that
- *        can be retrieved without causing the client to block on the server.
- */
-int
-db_query_get_info (DB_QUERY_RESULT * result, int *done, int *count, int *error, char **err_string)
-{
-  int rc;
-
-  CHECK_1ARG_MINUSONE (result);
-
-  if (result->status == T_CLOSED)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OPR_ON_CLOSED_QRES, 0);
-      return -1;
-    }
-
-  switch (result->type)
-    {
-    case T_SELECT:
-      rc = qmgr_get_query_info (result, done, count, error, err_string);
-      break;
-
-    case T_CALL:
-    case T_OBJFETCH:
-    case T_GET:
-    default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_RESTYPE, 0);
-      rc = -1;
-      break;
-    }
-
-  return rc;
-}
-
-/*
- * db_query_sync() - This function allows a client application either to wait
- *    for a streaming query to complete, or to interrupt the query. If wait is
- *    true(non zero), then the client will be blocked until the streaming query
- *    has completed. If wait is set to false(zero), then the streaming query
- *    will be terminated abnormally. This function does not affect a query that
- *    was not initiated as a streaming query.
- * return : error code
- * result(in): Pointer to the query result structure
- * wait(in): a signal to either wait for a streaming query to complete or to
- *           interrupt it
- */
-int
-db_query_sync (DB_QUERY_RESULT * result, int wait)
-{
-  int rc;
-
-  CHECK_1ARG_RETURN_EXPR (result, ER_FAILED);
-
-  if (result->status == T_CLOSED)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OPR_ON_CLOSED_QRES, 0);
-      return ER_FAILED;
-    }
-
-  switch (result->type)
-    {
-    case T_SELECT:
-      rc = qmgr_sync_query (result, wait);
-      break;
-
-    case T_CALL:
-    case T_OBJFETCH:
-    case T_GET:
-    default:
-      rc = NO_ERROR;
-      break;
-    }
-
-  return (rc);
-}
-
-/*
  * db_query_tuple_count() - This function calculates the total number of result
  *    tuples in the query result.
  * return : number of tuples in the query result or -1 on error.
@@ -3266,10 +3149,6 @@ db_query_tuple_count (DB_QUERY_RESULT * result)
   switch (result->type)
     {
     case T_SELECT:
-      if (result->res.s.cursor_id.list_id.tuple_cnt == -1)
-	{
-	  db_query_get_info (result, &done, &count, &error, NULL);
-	}
       retval = result->res.s.cursor_id.list_id.tuple_cnt;
       break;
 
@@ -3519,42 +3398,18 @@ db_sqlx_debug_print_result (DB_QUERY_RESULT * result)
 /*
  * db_query_end() - This function must be called when the application is
  *    finished with the query result descriptor that was returned by either
- *    the db_execute() function, the db_execute_async() function, or the
- *    db_execute_oid() function. This frees the descriptor and all storage
- *    related to the query results. Since query results can be of considerable
- *    size, it is important that they be freed as soon as they are no longer
- *    necessary.
+ *    db_execute() or db_execute_oid() function. 
+ *    This frees the descriptor and all storage related to the query results. 
+ *    Since query results can be of considerable size, 
+ *    it is important that they be freed as soon as they are no longer necessary.
  * return : error code
  * result(in): Pointer to the query result structure
  *
- * note : If db_query_end() is called on a currently executing streaming query,
- *    the query is terminated and all resources are cleaned up.
  */
 int
 db_query_end (DB_QUERY_RESULT * result)
 {
   return db_query_end_internal (result, true);
-}
-
-/*
- * db_query_sync_end() -
- * return : error code
- * result(in): Pointer to the query result structure
- */
-int
-db_query_sync_end (DB_QUERY_RESULT * result)
-{
-  int rc = NO_ERROR;
-
-  if (result->status == T_OPEN && result->type == T_SELECT)
-    {
-      rc = qmgr_sync_query (result, true);
-    }
-  if (rc == NO_ERROR)
-    {
-      rc = db_query_end_internal (result, true);
-    }
-  return rc;
 }
 
 /*

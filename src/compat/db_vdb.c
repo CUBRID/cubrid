@@ -1529,76 +1529,6 @@ db_get_lock_classes (DB_SESSION * session)
 }
 
 /*
- * db_set_sync_flag() -
- * return:
- * session(in) :
- * exec_mode(in) :
- */
-void
-db_set_sync_flag (DB_SESSION * session, QUERY_EXEC_MODE exec_mode)
-{
-  session->parser->exec_mode = exec_mode;
-}
-
-/*
- * db_get_session_mode() -
- * return:
- * session(in) :
- */
-int
-db_get_session_mode (DB_SESSION * session)
-{
-  if (!session || !session->parser)
-    {
-      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION, 0);
-      return ER_IT_INVALID_SESSION;
-    }
-  else
-    {
-      return (session->parser->exec_mode == SYNC_EXEC);
-    }
-}
-
-/*
- * db_set_session_mode_sync() -
- * return:
- * session(in) :
- */
-int
-db_set_session_mode_sync (DB_SESSION * session)
-{
-  if (!session || !session->parser)
-    {
-      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION, 0);
-      return ER_IT_INVALID_SESSION;
-    }
-
-  db_set_sync_flag (session, SYNC_EXEC);
-
-  return NO_ERROR;
-}
-
-/*
- * db_set_session_mode_async() -
- * return:
- * session(in) :
- */
-int
-db_set_session_mode_async (DB_SESSION * session)
-{
-  if (!session || !session->parser)
-    {
-      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION, 0);
-      return ER_IT_INVALID_SESSION;
-    }
-
-  /* async execution mode is not supported */
-  db_set_sync_flag (session, SYNC_EXEC);
-
-  return NO_ERROR;
-}
-
-/*
  * db_execute_and_keep_statement_local() - This function executes the SQL
  *    statement identified by the stmt argument and returns the result.
  *    The statement ID must have already been returned by a successful call
@@ -3070,7 +3000,7 @@ db_compile_and_execute_local (const char *CSQL_query, void *result, DB_QUERY_ERR
   /* Default local compile & execute statements will use: - No oids for include OID mode. - True for execution, not
    * compile only. - Synchronous execution. - This is called during other statement execution, so false for new
    * statements. */
-  return db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 1, SYNC_EXEC, false);
+  return db_compile_and_execute_queries_internal (CSQL_query, result, query_error, DB_NO_OIDS, 1, false);
 }
 
 /*
@@ -3085,7 +3015,6 @@ db_compile_and_execute_local (const char *CSQL_query, void *result, DB_QUERY_ERR
  * include_oid (in)	 : Include OID mode.
  * execute (in)		 : True if query should also be executed. If argument
  *			   is false, it will only be compiled.
- * exec_mode (in)	 : Synchronous/Asynchronous execution mode.
  * is_new_statement (in) : True these are new statements. If false they are
  *			   considered as sub-execution for another statement.
  *
@@ -3095,7 +3024,7 @@ db_compile_and_execute_local (const char *CSQL_query, void *result, DB_QUERY_ERR
  */
 int
 db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, DB_QUERY_ERROR * query_error,
-					 int include_oid, int execute, QUERY_EXEC_MODE exec_mode, bool is_new_statement)
+					 int include_oid, int execute, bool is_new_statement)
 {
   int error;			/* return code from funcs */
   int stmt_no;			/* compiled stmt number */
@@ -3114,17 +3043,6 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
       /* In case of error, the session is freed */
       return error;
     }
-
-#if defined(CS_MODE)
-  /* Pass exec_mode (used for Streaming (asynchronous) queries */
-  db_set_sync_flag (session, exec_mode);
-#else
-  /* 
-   * In standalone mode, only synchronous queries are supported because there
-   * is no thread support in the standalone case.
-   */
-  db_set_sync_flag (session, SYNC_EXEC);
-#endif /* CS_MODE */
 
   if (execute)
     {
@@ -3868,60 +3786,6 @@ db_query_produce_updatable_result (DB_SESSION * session, int stmt_ndx)
     {
       return false;
     }
-}
-
-/*
- * db_is_query_async_executable() -
- * return:
- * session(in) :
- * stmt_ndx(in) :
- */
-bool
-db_is_query_async_executable (DB_SESSION * session, int stmt_ndx)
-{
-  /* async execution mode is not supported */
-  return false;
-#if 0
-  PT_NODE *statement;
-  bool sync;
-
-  /* obvious error checking - invalid parameter */
-  if (!session || !session->parser)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION, 0);
-      return false;
-    }
-  /* no statement was given in the session */
-  if (session->dimension == 0 || !session->statements)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_EMPTY_STATEMENT, 0);
-      return false;
-    }
-  /* invalid parameter */
-  statement = session->statements[--stmt_ndx];
-  if (stmt_ndx < 0 || stmt_ndx >= session->dimension || !statement)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return false;
-    }
-  /* check if the statement is compiled and prepared */
-  if (session->stage[stmt_ndx] < StatementPreparedStage)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION, 0);
-      return false;
-    }
-
-  if (pt_node_to_cmd_type (statement) != CUBRID_STMT_SELECT)
-    {
-      return false;
-    }
-
-  sync =
-    ((pt_statement_have_methods (session->parser, statement)
-      || (statement->node_type == PT_SELECT && statement->is_click_counter)) ? true : false);
-
-  return !sync;
-#endif
 }
 
 /*

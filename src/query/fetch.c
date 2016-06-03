@@ -632,8 +632,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
 
       /* get peek_righ, peed_third we use PT_BETWEEN with PT_BETWEEN_GE_LT to represent the two args. */
-      if (fetch_peek_min_max_value_of_width_bucket_func
-	  (thread_p, arithptr->rightptr, vd, obj_oid, tpl, &peek_right, &peek_third) != NO_ERROR)
+      if (fetch_peek_min_max_value_of_width_bucket_func (thread_p, arithptr->rightptr, vd, obj_oid, tpl, &peek_right,
+							 &peek_third) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -786,8 +786,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
 
     case T_CONNECT_BY_ROOT:
-      if (!qdata_evaluate_connect_by_root
-	  (thread_p, (void *) arithptr->thirdptr->xasl, arithptr->rightptr, arithptr->value, vd))
+      if (!qdata_evaluate_connect_by_root (thread_p, (void *) arithptr->thirdptr->xasl, arithptr->rightptr,
+					   arithptr->value, vd))
 	{
 	  goto error;
 	}
@@ -2332,8 +2332,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  cached_num = DB_GET_INTEGER (peek_right);
 	  num_alloc = DB_GET_INTEGER (peek_third);
 
-	  if (xserial_get_next_value
-	      (thread_p, arithptr->value, serial_oid, cached_num, num_alloc, GENERATE_SERIAL, false) != NO_ERROR)
+	  if (xserial_get_next_value (thread_p, arithptr->value, serial_oid, cached_num, num_alloc, GENERATE_SERIAL,
+				      false) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -3207,8 +3207,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
     case T_SYS_CONNECT_BY_PATH:
       {
-	if (!qdata_evaluate_sys_connect_by_path
-	    (thread_p, (void *) arithptr->thirdptr->xasl, arithptr->leftptr, peek_right, arithptr->value, vd))
+	if (!qdata_evaluate_sys_connect_by_path (thread_p, (void *) arithptr->thirdptr->xasl, arithptr->leftptr,
+						 peek_right, arithptr->value, vd))
 	  {
 	    goto error;
 	  }

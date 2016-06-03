@@ -637,26 +637,6 @@ net_server_init (void)
   req_p->processing_function = sqmgr_drop_all_query_plans;
   req_p->name = "NET_SERVER_QM_QUERY_DROP_ALL_PLANS";
 
-  req_p = &net_Requests[NET_SERVER_QM_QUERY_SYNC];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = sqmgr_sync_query;
-  req_p->name = "NET_SERVER_QM_QUERY_SYNC";
-
-  req_p = &net_Requests[NET_SERVER_QM_GET_QUERY_INFO];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = sqmgr_get_query_info;
-  req_p->name = "NET_SERVER_QM_GET_QUERY_INFO";
-
-  req_p = &net_Requests[NET_SERVER_QM_QUERY_EXECUTE_ASYNC];
-  req_p->action_attribute = (SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
-  req_p->processing_function = sqmgr_execute_query;
-  req_p->name = "NET_SERVER_QM_QUERY_EXECUTE_ASYNC";
-
-  req_p = &net_Requests[NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC];
-  req_p->action_attribute = (SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
-  req_p->processing_function = sqmgr_prepare_and_execute_query;
-  req_p->name = "NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC";
-
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DUMP_PLANS];
   req_p->processing_function = sqmgr_dump_query_plans;
   req_p->name = "NET_SERVER_QM_QUERY_DUMP_PLANS";
@@ -1165,8 +1145,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
     {
       gettimeofday (&diag_end_time, NULL);
       DIFF_TIMEVAL (diag_start_time, diag_end_time, diag_elapsed_time);
-      if (request == NET_SERVER_QM_QUERY_EXECUTE || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE
-	  || request == NET_SERVER_QM_QUERY_EXECUTE_ASYNC || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC)
+      if (request == NET_SERVER_QM_QUERY_EXECUTE || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE)
 	{
 	  SET_DIAG_VALUE_SLOW_QUERY (diag_executediag, diag_start_time, diag_end_time, 1, DIAG_VAL_SETTYPE_INC, NULL);
 	}
@@ -1271,8 +1250,6 @@ loop:
 		  wakeup_now = false;
 		  break;
 		case THREAD_CSS_QUEUE_SUSPENDED:
-		case THREAD_QMGR_ACTIVE_QRY_SUSPENDED:
-		case THREAD_QMGR_MEMBUF_PAGE_SUSPENDED:
 		case THREAD_HEAP_CLSREPR_SUSPENDED:
 		case THREAD_LOGWR_SUSPENDED:
 		  wakeup_now = true;
@@ -1287,8 +1264,6 @@ loop:
 		case THREAD_CSECT_WRITER_RESUMED:
 		case THREAD_CSECT_PROMOTER_RESUMED:
 		case THREAD_CSS_QUEUE_RESUMED:
-		case THREAD_QMGR_ACTIVE_QRY_RESUMED:
-		case THREAD_QMGR_MEMBUF_PAGE_RESUMED:
 		case THREAD_HEAP_CLSREPR_RESUMED:
 		case THREAD_LOCK_RESUMED:
 		case THREAD_LOGWR_RESUMED:
@@ -1382,15 +1357,15 @@ net_server_start (const char *server_name)
   sysprm_load_and_init (NULL, NULL);
   sysprm_set_er_log_file (server_name);
 
-  if (csect_initialize () != NO_ERROR)
+  if (sync_initialize_sync_stats () != NO_ERROR)
     {
-      PRINT_AND_LOG_ERR_MSG ("Failed to initialize critical section\n");
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize synchronization primitives monitor\n");
       status = -1;
       goto end;
     }
-  if (rwlock_initialize_rwlock_monitor () != NO_ERROR)
+  if (csect_initialize_static_critical_sections () != NO_ERROR)
     {
-      PRINT_AND_LOG_ERR_MSG ("Failed to initialize rwlock monitor\n");
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize critical section\n");
       status = -1;
       goto end;
     }
@@ -1414,7 +1389,8 @@ net_server_start (const char *server_name)
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
-  if (boot_restart_server (NULL, true, server_name, false, &check_coll_and_timezone, NULL) != NO_ERROR)
+  if (boot_restart_server (thread_get_thread_entry_info (), true, server_name, false, &check_coll_and_timezone,
+			   NULL) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -1438,11 +1414,11 @@ net_server_start (const char *server_name)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 
-	  xboot_shutdown_server (NULL, ER_THREAD_FINAL);
+	  xboot_shutdown_server (thread_get_thread_entry_info (), ER_THREAD_FINAL);
 	}
       else
 	{
-	  (void) xboot_shutdown_server (NULL, ER_ALL_FINAL);
+	  (void) xboot_shutdown_server (thread_get_thread_entry_info (), ER_ALL_FINAL);
 	}
 
 #if defined(CUBRID_DEBUG)
@@ -1463,8 +1439,8 @@ net_server_start (const char *server_name)
     }
 
   thread_final_manager ();
-  (void) rwlock_finalize_rwlock_monitor ();
-  csect_finalize ();
+  csect_finalize_static_critical_sections ();
+  (void) sync_finalize_sync_stats ();
 
 end:
 #if defined(WINDOWS)
