@@ -6683,7 +6683,7 @@ vacuum_verify_vacuum_data_debug (void)
    * Theoretically, if a worker is blocked for long enough this value can be any size. However, we set a value unlikely
    * to be reached in normal circumstances.
    */
-  assert (in_progess_distance <= 200);
+  assert (in_progess_distance <= 500);
 }
 #endif /* !NDEBUG */
 
