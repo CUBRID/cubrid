@@ -181,6 +181,8 @@ struct xasl_id
 
 #define XASL_ID_SET_NULL(X) \
   do \
+    { \
+      (X)->sha1.h[0] = 0; \
       (X)->sha1.h[1] = 0; \
       (X)->sha1.h[2] = 0; \
       (X)->sha1.h[3] = 0; \
@@ -206,18 +208,6 @@ struct xasl_id
       VFID_COPY (&((X1)->temp_vfid), &((X2)->temp_vfid)); \
       (X1)->time_stored = (X2)->time_stored; \
       /* Do not copy cache_flag. */ \
-    } \
-  while (0)
-
-#define MAKE_PSEUDO_XASL_ID_FROM_BTREE(X,B) \
-  do \
-    { \
-      (X)->first_vpid.pageid = (B)->root_pageid; \
-      (X)->first_vpid.volid  = 0x8000 | (B)->vfid.volid; \
-      (X)->temp_vfid.fileid = (B)->vfid.fileid; \
-      (X)->temp_vfid.volid = 0x8000 | (B)->vfid.volid; \
-      (X)->time_stored.sec = 0; \
-      (X)->time_stored.usec = 0; \
     } \
   while (0)
 
