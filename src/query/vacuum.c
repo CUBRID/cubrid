@@ -2659,6 +2659,7 @@ restart:
 	  if (n_jobs-- == 0)
 	    {
 	      /* Stop generating other jobs. */
+	      vacuum_unfix_data_page (thread_p, data_page);
 	      break;
 	    }
 	}
@@ -2733,7 +2734,7 @@ restart:
       /* Wakeup more workers */
       thread_wakeup_vacuum_worker_threads (n_wakeup_workers);
     }
-#else /* !SERVER_MODE */ /* SA_MODE */
+#else	/* !SERVER_MODE */		 /* SA_MODE */
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
 
   assert (lf_circular_queue_is_empty (vacuum_Block_data_buffer));
