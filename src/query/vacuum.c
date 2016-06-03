@@ -2259,7 +2259,10 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  /* Remove insert MVCCID */
 	  or_mvcc_get_header (&peek_record, &rec_header);
 	  old_header_size = or_mvcc_header_size_from_flags (MVCC_GET_FLAG (&rec_header));
+	  /* Clear insert MVCCID. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID);
+	  /* Clear previous version. */
+	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
 	  new_header_size = or_mvcc_header_size_from_flags (MVCC_GET_FLAG (&rec_header));
 
 	  /* Rebuild record */
