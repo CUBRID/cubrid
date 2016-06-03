@@ -116,6 +116,8 @@ extern "C"
 #include <sys/locking.h>
 #include <windows.h>
 #include <winbase.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <errno.h>
 #include <assert.h>
 
