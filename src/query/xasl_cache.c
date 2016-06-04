@@ -25,6 +25,8 @@
 
 #include "xasl_cache.h"
 #include "perf_monitor.h"
+#include "query_executor.h"
+#include "list_file.h"
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)
@@ -66,6 +68,7 @@ struct xcache
   INT32 entry_count;
   bool removed_temp_vols;
   bool logging_enabled;
+  int max_clones;
 
   XCACHE_STATS stats;
 };
@@ -78,6 +81,7 @@ XCACHE xcache_Global =
     0,
     false,
     false,
+    0,
     XCACHE_STATS_INITIALIZER
   };
 
@@ -89,6 +93,7 @@ XCACHE xcache_Global =
 #define xcache_Entry_count xcache_Global.entry_count
 #define xcache_Temp_vols_were_removed xcache_Global.removed_temp_vols
 #define xcache_Log xcache_Global.logging_enabled
+#define xcache_Max_clones xcache_Global.max_clones
 
 /* Statistics */
 #define XCACHE_STAT_GET(name) ATOMIC_INC_64 (&xcache_Global.stats.name, 0)
@@ -150,6 +155,8 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
 #define XCACHE_LOG_EXEINFO_TEXT		  "\t\t\t user text = %s \n"					  \
 					  "\t\t\t plan text = %s \n"					  \
 					  "\t\t\t hash text = %s \n"
+#define XCACHE_LOG_CLONE		  "\t\t\t xasl = %p \n"						  \
+					  "\t\t\t xasl_buf = %p \n"
 
 #define XCACHE_LOG_XASL_ID_TEXT(msg)									  \
   "\t\t " msg ": \n"											  \
@@ -175,6 +182,7 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
   XCACHE_LOG_XASL_ID_ARGS (&(xent)->xasl_id),								  \
   EXEINFO_AS_ARGS(&(xent)->sql_info),									  \
   (xent)->n_related_objects
+#define XCACHE_LOG_CLONE_ARGS(xclone) XASL_CLONE_AS_ARGS (xclone)
 
 #define XCACHE_LOG_OBJECT_TEXT		  "\t\t\t oid = %d|%d|%d \n"					  \
 					  "\t\t\t lock = %s \n"						  \
@@ -189,6 +197,7 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
 
 static bool xcache_fix (XASL_ID * xid);
 static bool xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
+static void xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone);
 
 /*
  * xcache_initialize () - Initialize XASL cache.
@@ -226,6 +235,8 @@ xcache_initialize (void)
       xcache_log_error ("could not init hash table.\n");
       return error_code;
     }
+
+  xcache_Max_clones = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_CLONES);
 
   xcache_Temp_vols_were_removed = false;
 
@@ -265,7 +276,27 @@ xcache_finalize (void)
 static void *
 xcache_entry_alloc (void)
 {
-  return malloc (sizeof (XASL_CACHE_ENTRY));
+  XASL_CACHE_ENTRY *xcache_entry = (XASL_CACHE_ENTRY *) malloc (sizeof (XASL_CACHE_ENTRY));
+  if (xcache_entry == NULL)
+    {
+      return NULL;
+    }
+  if (xcache_Max_clones > 0)
+    {
+      xcache_entry->cache_clones = (XASL_CLONE *) malloc (xcache_Max_clones * sizeof (XASL_CLONE));
+      if (xcache_entry->cache_clones == NULL)
+	{
+	  free (xcache_entry);
+	  return NULL;
+	}
+      memset (xcache_entry->cache_clones, 0, xcache_Max_clones * sizeof (XASL_CLONE));
+      pthread_mutex_init (&xcache_entry->cache_clones_mutex, NULL);
+    }
+  else
+    {
+      xcache_entry->cache_clones = NULL;
+    }
+  return xcache_entry;
 }
 
 /*
@@ -277,6 +308,20 @@ xcache_entry_alloc (void)
 static int
 xcache_entry_free (void *entry)
 {
+  XASL_CACHE_ENTRY *xcache_entry = (XASL_CACHE_ENTRY *) entry;
+
+  if (xcache_Max_clones > 0)
+    {
+      assert (xcache_entry->cache_clones != NULL);
+      assert (xcache_entry->n_cache_clones = 0);
+      free (xcache_entry->cache_clones);
+      pthread_mutex_destroy (&xcache_entry->cache_clones_mutex);
+    }
+  else
+    {
+      assert (xcache_entry->cache_clones == NULL);
+    }
+  xcache_entry->n_cache_clones = 0;
   free (entry);
   return NO_ERROR;
 }
@@ -302,6 +347,8 @@ xcache_entry_init (void *entry)
   XASL_ID_SET_NULL (&xcache_entry->xasl_id);
   xcache_entry->free_data_on_uninit = false;
   xcache_entry->initialized = true;
+
+  assert (xcache_entry->n_cache_clones == 0);
   return NO_ERROR;
 }
 
@@ -315,7 +362,7 @@ static int
 xcache_entry_uninit (void *entry)
 {
   XASL_CACHE_ENTRY *xcache_entry = XCACHE_PTR_TO_ENTRY (entry);
-  THREAD_ENTRY *thread_p = NULL;
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
   /* No fixed count or this is claimed & retired immediately. */
   assert ((xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) == 0
@@ -365,6 +412,15 @@ xcache_entry_uninit (void *entry)
 	    }
 	  XASL_ID_SET_NULL (&xcache_entry->xasl_id);
 	}
+
+      /* Free XASL clones. */
+      assert (xcache_entry->n_cache_clones == 0
+	      || (xcache_Max_clones > 0 && xcache_entry->n_cache_clones <= xcache_Max_clones));
+      assert (xcache_entry->n_cache_clones == 0 || xcache_entry->cache_clones != NULL);
+      while (xcache_entry->n_cache_clones > 0)
+	{
+	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
+	}
     }
   else
     {
@@ -378,6 +434,8 @@ xcache_entry_uninit (void *entry)
       xcache_entry->sql_info.sql_plan_text = NULL;
       xcache_entry->sql_info.sql_user_text = NULL;
       XASL_ID_SET_NULL (&xcache_entry->xasl_id);
+
+      assert (xcache_entry->n_cache_clones == 0);
     }
   xcache_entry->initialized = false;
   return NO_ERROR;
@@ -686,18 +744,24 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
 /*
  * xcache_find_xasl_id () - Find XASL cache entry by XASL_ID. Besides matching SHA-1, we have to match time_stored.
  *
- * return	     : NO_ERROR.
- * thread_p (in)     : Thread entry.
- * xid (in)	     : XASL_ID.
- * xcache_entry (in) : XASL cache entry if found.
+ * return	      : NO_ERROR.
+ * thread_p (in)      : Thread entry.
+ * xid (in)	      : XASL_ID.
+ * xcache_entry (out) : XASL cache entry if found.
+ * xclone (out)	      : XASL_CLONE (obtained from cache or loaded).
  */
 int
-xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry)
+xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry,
+		     XASL_CLONE * xclone)
 {
   int error_code = NO_ERROR;
+  HL_HEAPID save_heapid = 0;
+  char *xstream = NULL;
+  int xstream_size;
 
   assert (xid != NULL);
   assert (xcache_entry != NULL && *xcache_entry == NULL);
+  assert (xclone != NULL);
 
   error_code = xcache_find_sha1 (thread_p, &xid->sha1, xcache_entry);
   if (error_code != NO_ERROR)
@@ -731,6 +795,8 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
        * Instead of using time_stored, we could find another way to identify if an XASL cache entry is still usable.
        * Something that could detect if classes have been modified (and maybe serials).
        */
+
+      return NO_ERROR;
     }
   else
     {
@@ -742,6 +808,86 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 		  XCACHE_LOG_XASL_ID_ARGS (xid),
 		  XCACHE_LOG_TRAN_ARGS (thread_p));
     }
+
+  assert ((*xcache_entry) != NULL);
+
+  if (xcache_Max_clones > 0)
+    {
+      if ((*xcache_entry)->cache_clones == NULL)
+	{
+	  assert_release (false);
+	  /* Fall through. */
+	}
+      else
+	{
+	  (void) pthread_mutex_lock (&(*xcache_entry)->cache_clones_mutex);
+	  assert ((*xcache_entry)->n_cache_clones <= xcache_Max_clones);
+	  if ((*xcache_entry)->n_cache_clones > 0)
+	    {
+	      *xclone = (*xcache_entry)->cache_clones[--(*xcache_entry)->n_cache_clones];
+	      (void) pthread_mutex_unlock (&(*xcache_entry)->cache_clones_mutex);
+
+	      assert (xclone->xasl != NULL && xclone->xasl_buf != NULL);
+
+	      xcache_log ("found cached clone: \n"
+			  XCACHE_LOG_ENTRY_TEXT ("entry")
+			  XCACHE_LOG_XASL_ID_TEXT ("lookup xasl_id")
+			  XCACHE_LOG_CLONE
+			  XCACHE_LOG_TRAN_TEXT,
+			  XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+			  XCACHE_LOG_XASL_ID_ARGS (xid),
+			  XCACHE_LOG_CLONE_ARGS (xclone),
+			  XCACHE_LOG_TRAN_ARGS (thread_p));
+	      return NO_ERROR;
+	    }
+	  (void) pthread_mutex_unlock (&(*xcache_entry)->cache_clones_mutex);
+	}
+      /* Clone not found. */
+      save_heapid = db_change_private_heap (thread_p, 0);
+    }
+  /* TODO: If we want to use clones, I think it is cheap to store XASL stream in files. We can keep it in xcache_entry.
+   */
+  error_code = qfile_load_xasl (thread_p, &(*xcache_entry)->xasl_id, &xstream, &xstream_size);
+  if (error_code == NO_ERROR)
+    {
+      error_code = stx_map_stream_to_xasl (thread_p, &xclone->xasl, xstream, xstream_size, &xclone->xasl_buf);
+    }
+  if (xstream != NULL)
+    {
+      db_private_free_and_init (thread_p, xstream);
+    }
+  if (save_heapid != 0)
+    {
+      /* Restore heap id. */
+      (void) db_change_private_heap (thread_p, save_heapid);
+    }
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      assert (xclone->xasl == NULL && xclone->xasl_buf == NULL);
+      xcache_unfix (thread_p, *xcache_entry);
+      *xcache_entry = NULL;
+
+      xcache_log_error ("could not load XASL tree and buffer: \n"
+			XCACHE_LOG_XASL_ID_TEXT ("xasl_id")
+			XCACHE_LOG_TRAN_TEXT,
+			XCACHE_LOG_XASL_ID_ARGS (xid),
+			XCACHE_LOG_TRAN_ARGS (thread_p));
+
+      return error_code;
+    }
+  assert (xclone->xasl != NULL && xclone->xasl_buf != NULL);
+
+  xcache_log ("loaded xasl clone: \n"
+	      XCACHE_LOG_ENTRY_TEXT ("entry")
+	      XCACHE_LOG_XASL_ID_TEXT ("lookup xasl_id")
+	      XCACHE_LOG_CLONE
+	      XCACHE_LOG_TRAN_TEXT,
+	      XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+	      XCACHE_LOG_XASL_ID_ARGS (xid),
+	      XCACHE_LOG_CLONE_ARGS (xclone),
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
+
   return NO_ERROR;
 }
 
@@ -1485,6 +1631,61 @@ void
 xcache_notify_removed_temp_vols (void)
 {
   xcache_Temp_vols_were_removed = true;
+}
+
+/*
+ * xcache_clone_decache () - Free cached XASL clone resources.
+ *
+ * return	   : Void.
+ * thread_p (in)   : Thread entry.
+ * xclone (in/out) : XASL cache clone.
+ */
+static void
+xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone)
+{
+  HL_HEAPID save_heapid = db_change_private_heap (thread_p, 0);
+  stx_free_additional_buff (thread_p, xclone->xasl_buf);
+  stx_free_xasl_unpack_info (xclone->xasl_buf);
+  db_private_free (thread_p, xclone->xasl_buf);
+  xclone->xasl_buf = NULL;
+  xclone->xasl = NULL;
+  (void) db_change_private_heap (thread_p, save_heapid);
+}
+
+/*
+ * xcache_retire_clone () - Retire XASL clone. If clones caches are enabled, first try to cache it in xcache_entry.
+ *
+ * return	     : Void.
+ * thread_p (in)     : Thread entry.
+ * xcache_entry (in) : XASL cache entry.
+ * xclone (in)	     : XASL clone.
+ */
+void
+xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, XASL_CLONE * xclone)
+{
+  if (xcache_Max_clones > 0)
+    {
+      pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
+      if (xcache_entry->n_cache_clones < xcache_Max_clones)
+	{
+	  xcache_entry->cache_clones[xcache_entry->n_cache_clones++] = *xclone;
+	  pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
+
+	  xclone->xasl = NULL;
+	  xclone->xasl_buf = NULL;
+	  return;
+	}
+      pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
+
+      /* No more room. */
+      xcache_clone_decache (thread_p, xclone);
+      return;
+    }
+  stx_free_additional_buff (thread_p, xclone->xasl_buf);
+  stx_free_xasl_unpack_info (xclone->xasl_buf);
+  db_private_free (thread_p, xclone->xasl_buf);
+  xclone->xasl_buf = NULL;
+  xclone->xasl = NULL;
 }
 
 /* TODO more stuff
