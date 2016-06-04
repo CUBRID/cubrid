@@ -161,12 +161,18 @@ fpcache_finalize (void)
 static void *
 fpcache_entry_alloc (void)
 {
-  return malloc (sizeof (FPCACHE_ENTRY));
+  FPCACHE_ENTRY *fpcache_entry = (FPCACHE_ENTRY *) malloc (sizeof (FPCACHE_ENTRY));
+  if (fpcache_entry == NULL)
+    {
+      return NULL;
+    }
+  pthread_mutex_init (&fpcache_entry->mutex, NULL);
 }
 
 static int
 fpcache_entry_free (void *entry)
 {
+  pthread_mutex_destroy (&entry->mutex);
   free (entry);
   return NO_ERROR;
 }
