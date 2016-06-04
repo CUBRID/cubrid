@@ -167,6 +167,7 @@ fpcache_entry_alloc (void)
       return NULL;
     }
   pthread_mutex_init (&fpcache_entry->mutex, NULL);
+  return fpcache_entry;
 }
 
 static int
