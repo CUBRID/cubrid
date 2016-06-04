@@ -172,7 +172,7 @@ fpcache_entry_alloc (void)
 static int
 fpcache_entry_free (void *entry)
 {
-  pthread_mutex_destroy (&entry->mutex);
+  pthread_mutex_destroy (&((FPCACHE_ENTRY *) entry)->mutex);
   free (entry);
   return NO_ERROR;
 }
