@@ -147,7 +147,7 @@ define pgbuf_hash
     set $reverse_mask = $reverse_mask >> 1
     set $lsb_mask = $lsb_mask << 1
     set $i=$i - 1
-  end  
+  end
   set $hash_val = $arg0 ^ $reverse_volid_lsb
   set $hash_val = $hash_val & ((1 << 20) - 1)
   set $arg2 = $hash_val
@@ -175,3 +175,22 @@ define pgbuf_find_page
     set $bcb = $bcb->hash_next
   end
 end
+
+# pgbuf_cast_btop
+# $arg0 (in)  : PGBUF_BCB *
+# $arg1 (out) : PAGE_PTR
+#
+# Cast PGBUF_BCB pointer to PAGE_PTR (CAST_BFPTR_TO_PGPTR)
+#
+define pgbuf_cast_btop
+  set $arg1 = $arg0->iopage_buffer->iopage.page
+  end
+
+# pgbuf_cast_ptob
+# $arg0 (in)  : PAGE_PTR
+# $arg1 (out) : PGBUF_BCB *
+# Cast PAGE_PTR to PGBUF_BCB pointer (CAST_PGPTR_TO_BFPTR)
+#
+define pgbuf_cast_ptob
+  set $arg1 = ((PGBUF_IOPAGE_BUFFER *) (((PAGE_PTR) $arg0) - sizeof (FILEIO_PAGE_RESERVED) - sizeof (PGBUF_BCB *)))->bcb
+  end
