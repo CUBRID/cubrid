@@ -105,6 +105,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
   ${QUERY_DIR}/crypt_opfunc.c
   ${QUERY_DIR}/fetch.c
+  ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/method_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
@@ -121,6 +122,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/vacuum.c
+  ${QUERY_DIR}/xasl_cache.c
   )
 
 set(OBJECT_SOURCES
