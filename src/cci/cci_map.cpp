@@ -33,6 +33,7 @@
  */
 
 #if defined(WINDOWS)
+#define _SILENCE_STDEXT_HASH_DEPRECATION_WARNINGS
 #include <hash_map>
 #else /* WINDOWS */
 #include <ext/hash_map>

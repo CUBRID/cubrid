@@ -30,7 +30,9 @@
 #define PATH_MAX	256
 #define MAXHOSTNAMELEN 64
 
+#if defined(_MSC_VER) && _MSC_VER < 1900
 #define snprintf        _snprintf
+#endif
 #define getpid        _getpid
 #define strcasecmp(str1, str2)  _stricmp(str1, str2)
 

@@ -29,6 +29,15 @@
 #include <string.h>
 #if defined (WINDOWS)
 #include <winsock2.h>
+#if defined(_MSC_VER) && _MSC_VER >= 1800
+/* We could not find when ntohf/ntohd/htonf/htond were exactly added. The only reference we could find are here:
+ * https://msdn.microsoft.com/en-us/library/windows/desktop/jj710201(v=vs.85).aspx (ntohf, links to others at the bottom).
+ */
+#define OR_HAVE_NTOHF
+#define OR_HAVE_NTOHD
+#define OR_HAVE_HTONF
+#define OR_HAVE_HTOND
+#endif
 #endif /* WINDOWS */
 #include <setjmp.h>
 
@@ -8229,29 +8238,33 @@ ntohl (unsigned int from)
 
 #if !defined (OR_HAVE_NTOHF)
 
-void
-ntohf (float *from, float *to)
+float
+ntohf (UINT32 from)
 {
   char *ptr, *vptr;
+  float to;
 
-  ptr = (char *) from;
-  vptr = (char *) to;
+  ptr = (char *) &from;
+  vptr = (char *) &to;
   vptr[0] = ptr[3];
   vptr[1] = ptr[2];
   vptr[2] = ptr[1];
   vptr[3] = ptr[0];
+
+  return to;
 }
 #endif /* !OR_HAVE_NTOHF */
 
 #if !defined (OR_HAVE_NTOHD)
 
-void
-ntohd (double *from, double *to)
+double
+ntohd (UINT64 from)
 {
   char *ptr, *vptr;
+  double to;
 
-  ptr = (char *) from;
-  vptr = (char *) to;
+  ptr = (char *) &from;
+  vptr = (char *) &to;
   vptr[0] = ptr[7];
   vptr[1] = ptr[6];
   vptr[2] = ptr[5];
@@ -8260,6 +8273,8 @@ ntohd (double *from, double *to)
   vptr[5] = ptr[2];
   vptr[6] = ptr[1];
   vptr[7] = ptr[0];
+
+  return to;
 }
 #endif /* !OR_HAVE_NTOHD */
 
@@ -8306,42 +8321,44 @@ htoni64 (UINT64 from)
 }
 
 #if !defined (OR_HAVE_HTONF)
-void
-htonf (float *to, float *from)
+UINT32
+htonf (float from)
 {
-  float temp;
-  char *ptr, *vptr;
+  UINT32 to;
+  char *p, *q;
 
-  temp = *from;
+  p = (char *) &from;
+  q = (char *) &to;
 
-  ptr = (char *) &temp;
-  vptr = (char *) to;
-  vptr[0] = ptr[3];
-  vptr[1] = ptr[2];
-  vptr[2] = ptr[1];
-  vptr[3] = ptr[0];
+  q[0] = p[3];
+  q[1] = p[2];
+  q[2] = p[1];
+  q[3] = p[0];
+
+  return to;
 }
 #endif /* !OR_HAVE_HTONL */
 
 #if !defined (OR_HAVE_NTOHD)
-void
-htond (double *to, double *from)
+UINT64
+htond (double from)
 {
-  double temp;
-  char *ptr, *vptr;
+  UINT64 to;
+  char *p, *q;
 
-  temp = *from;
+  p = (char *) &from;
+  q = (char *) &to;
 
-  ptr = (char *) &temp;
-  vptr = (char *) to;
-  vptr[0] = ptr[7];
-  vptr[1] = ptr[6];
-  vptr[2] = ptr[5];
-  vptr[3] = ptr[4];
-  vptr[4] = ptr[3];
-  vptr[5] = ptr[2];
-  vptr[6] = ptr[1];
-  vptr[7] = ptr[0];
+  q[0] = p[7];
+  q[1] = p[6];
+  q[2] = p[5];
+  q[3] = p[4];
+  q[4] = p[3];
+  q[5] = p[2];
+  q[6] = p[1];
+  q[7] = p[0];
+
+  return to;
 }
 #endif /* ! OR_HAVE_NTOHD */
 
