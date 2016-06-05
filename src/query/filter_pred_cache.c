@@ -285,16 +285,17 @@ fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICATE * or_pred, PRE
 }
 
 int
-fpcache_retire (THREAD_ENTRY * thread_p, BTID * btid, PRED_EXPR_WITH_CONTEXT * filter_pred)
+fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR_WITH_CONTEXT * filter_pred)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
   FPCACHE_ENTRY *fpcache_entry = NULL;
   int error_code = NO_ERROR;
+  int inserted = 0;
 
   if (fpcache_Enabled)
     {
       ATOMIC_INC_64 (&fpcache_Stat_add, 1);
-      error_code = lf_hash_find_or_insert (t_entry, &fpcache_Ht, btid, (void **) &fpcache_entry, NULL);
+      error_code = lf_hash_find_or_insert (t_entry, &fpcache_Ht, btid, (void **) &fpcache_entry, &inserted);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -302,6 +303,15 @@ fpcache_retire (THREAD_ENTRY * thread_p, BTID * btid, PRED_EXPR_WITH_CONTEXT * f
 	}
       if (fpcache_entry != NULL)
 	{
+	  if (inserted)
+	    {
+	      /* Newly inserted. We must set class_oid. */
+	      COPY_OID (&fpcache_entry->class_oid, class_oid);
+	    }
+	  else
+	    {
+	      assert (OID_EQ (&fpcache_entry->class_oid, class_oid));
+	    }
 	  /* save filter_pred for later usage. */
 	  if (fpcache_entry->clone_stack_head < fpcache_Clone_stack_size - 1)
 	    {

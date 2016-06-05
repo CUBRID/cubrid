@@ -8408,7 +8408,7 @@ end:
       (void) db_change_private_heap (thread_p, old_pri_heap_id);
     }
 
-  fpcache_retire (thread_p, btid, pred_filter);
+  fpcache_retire (thread_p, class_oid, btid, pred_filter);
   return error_code;
 }
 
