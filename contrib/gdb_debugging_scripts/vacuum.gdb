@@ -408,3 +408,24 @@ define vacuum_print_log_block_records
       end
     end
   end
+  
+# vacuum_print_job_queue
+# No args
+#
+# No prerequisite
+#
+define vacuum_print_job_queue
+  set $cc = vacuum_Job_queue->consume_cursor
+  set $prodc = vacuum_Job_queue->produce_cursor
+  while $cc < $prodc
+    set $eidx = $cc % vacuum_Job_queue->capacity
+    set $jobp = ((VACUUM_JOB_ENTRY *) vacuum_Job_queue->data) + $eidx
+    printf "blockid=%lld, flags = %llx, start_lsa=(%lld, %d), oldest=%d, newest=%d\n", \
+              $jobp->vacuum_data_entry.blockid & 0x1FFFFFFFFFFFFFFF, \
+              $jobp->vacuum_data_entry.blockid & 0xE000000000000000, \
+              (long long int) $jobp->vacuum_data_entry.start_lsa.pageid, \
+              (int) $jobp->vacuum_data_entry.start_lsa.offset, \
+              $jobp->vacuum_data_entry.oldest_mvccid, $jobp->vacuum_data_entry.newest_mvccid
+    set $cc = $cc + 1
+    end
+  end

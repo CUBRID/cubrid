@@ -2259,7 +2259,10 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  /* Remove insert MVCCID */
 	  or_mvcc_get_header (&peek_record, &rec_header);
 	  old_header_size = or_mvcc_header_size_from_flags (MVCC_GET_FLAG (&rec_header));
+	  /* Clear insert MVCCID. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID);
+	  /* Clear previous version. */
+	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
 	  new_header_size = or_mvcc_header_size_from_flags (MVCC_GET_FLAG (&rec_header));
 
 	  /* Rebuild record */
@@ -2533,6 +2536,16 @@ restart:
       return;
     }
 
+#if defined (SERVER_MODE)
+  /* How many jobs can we generate? */
+  n_jobs = VACUUM_JOB_QUEUE_CAPACITY - lf_circular_queue_approx_size (vacuum_Job_queue);
+  if (n_jobs <= 0)
+    {
+      /* No jobs can be generated. Stop this iteration. */
+      return;
+    }
+#endif /* SERVER_MODE */
+
   /* Search for blocks ready to be vacuumed and generate jobs. */
 
   data_page = vacuum_Data.first_page;
@@ -2561,6 +2574,9 @@ restart:
 	{
 	  /* Already vacuumed. */
 	  data_index++;
+	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
+			 "VACUUM: Job for %lld was already executed. Skip.\n",
+			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
 	  continue;
 	}
       else
@@ -2579,6 +2595,14 @@ restart:
 	   * Stop searching for other jobs.
 	   */
 	  vacuum_unfix_data_page (thread_p, data_page);
+	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
+			 "VACUUM: Job for blockid = %lld, newest_mvccid = %llu, start_lsa = %lld cannot be generated. "
+			 "vacuum_Global_oldest_active_mvccid = %lld, log_Gl.append.prev_lsa.pageid = %d.\n",
+			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid),
+			 (unsigned long long int) entry->newest_mvccid,
+			 (long long int) entry->start_lsa.pageid, (int) entry->start_lsa.offset,
+			 (long long int) vacuum_Global_oldest_active_mvccid,
+			 (long long int) log_Gl.append.prev_lsa.pageid);
 	  break;
 	}
       if (!VACUUM_BLOCK_STATUS_IS_AVAILABLE (entry->blockid))
@@ -2587,6 +2611,10 @@ restart:
 		  || VACUUM_BLOCK_STATUS_IS_IN_PROGRESS (entry->blockid));
 	  /* Continue to other blocks. */
 	  data_index++;
+	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
+			 "VACUUM: Job for blockid = %lld %s. Skip.\n",
+			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid),
+			 VACUUM_BLOCK_STATUS_IS_VACUUMED (entry->blockid) ? "was executed" : "is in progress");
 	  continue;
 	}
 
@@ -2603,7 +2631,7 @@ restart:
 			     "VACUUM ERROR: Error %d while master tried to prefetch log pages for block %lld.",
 			     er_errid (), (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
 	      vacuum_unfix_data_page (thread_p, data_page);
-	      return;
+	      break;
 	    }
 	}
       else
@@ -2617,9 +2645,26 @@ restart:
 	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_MASTER, "VACUUM ERROR: Could not push new job.");
 	  VACUUM_BLOCK_STATUS_SET_AVAILABLE (entry->blockid);
 
+	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
+			 "VACUUM: Could not produce job for blockid = %lld. Set it as available.\n",
+			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
+
 	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
 	  vacuum_unfix_data_page (thread_p, data_page);
-	  return;
+	  break;
+	}
+      else
+	{
+	  vacuum_er_log (VACUUM_ER_LOG_JOBS,
+			 "VACUUM: Generated new job with blockid %lld, flags = %lld",
+			 (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid),
+			 (long long int) VACUUM_BLOCKID_GET_FLAGS (entry->blockid));
+	  if (n_jobs-- == 0)
+	    {
+	      /* Stop generating other jobs. */
+	      vacuum_unfix_data_page (thread_p, data_page);
+	      break;
+	    }
 	}
 #endif /* SERVER_MODE */
 
@@ -2653,16 +2698,6 @@ restart:
 	  goto restart;
 	}
 #else	/* !SA_MODE */	       /* SERVER_MODE */
-      /* Wakeup threads to start working on current threads. Try not to wake up more workers than necessary. */
-      n_jobs = (int) lf_circular_queue_approx_size (vacuum_Job_queue);
-      n_available_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT) - vacuum_Running_workers_count;
-      n_wakeup_workers = MIN (n_jobs, n_available_workers);
-      if (n_wakeup_workers > 0)
-	{
-	  /* Wakeup more workers */
-	  thread_wakeup_vacuum_worker_threads (n_wakeup_workers);
-	}
-
       /* If vacuum lagged behind and this loop generated a lot of jobs, the log block buffer used by active workers
        * can fill up. We cannot allow that.
        */
@@ -2692,7 +2727,17 @@ restart:
   vacuum_verify_vacuum_data_page_fix_count (thread_p);
 #endif /* !NDEBUG */
 
-#if defined (SA_MODE)
+#if defined (SERVER_MODE)
+  /* Wakeup threads to start working on current threads. Try not to wake up more workers than necessary. */
+  n_jobs = (int) lf_circular_queue_approx_size (vacuum_Job_queue);
+  n_available_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT) - vacuum_Running_workers_count;
+  n_wakeup_workers = MIN (n_jobs, n_available_workers);
+  if (n_wakeup_workers > 0)
+    {
+      /* Wakeup more workers */
+      thread_wakeup_vacuum_worker_threads (n_wakeup_workers);
+    }
+#else	/* !SERVER_MODE */		 /* SA_MODE */
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
 
   assert (lf_circular_queue_is_empty (vacuum_Block_data_buffer));
@@ -2762,7 +2807,7 @@ restart:
   vacuum_Data.is_vacuum_complete = true;
 
   PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
-#endif
+#endif /* SA_MODE */
 }
 
 /*
@@ -2861,7 +2906,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
   log_page_p->hdr.logical_pageid = NULL_PAGEID;
   log_page_p->hdr.offset = NULL_OFFSET;
 
-  vacuum_er_log (VACUUM_ER_LOG_WORKER,
+  vacuum_er_log (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_JOBS,
 		 "VACUUM: thread(%d): vacuum_process_log_block (): blockid(%lld) start_lsa(%lld, %d) old_mvccid(%llu)"
 		 " new_mvccid(%llu)\n", thread_get_current_entry_index (), VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid),
 		 (long long int) data->start_lsa.pageid, (int) data->start_lsa.offset, data->oldest_mvccid,
@@ -3495,7 +3540,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
       VACUUM_BLOCK_STATUS_SET_VACUUMED (data->blockid);
       VACUUM_BLOCK_CLEAR_INTERRUPTED (data->blockid);
 
-      vacuum_er_log (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_VACUUM_DATA,
+      vacuum_er_log (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_JOBS,
 		     "VACUUM: Processing log block %lld is complete. Notify master.\n",
 		     (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
     }
@@ -3509,6 +3554,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 #if !defined (NDEBUG)
       /* Interrupting jobs without shutdown is unacceptable. */
       assert (thread_p->shutdown);
+      assert (vacuum_Data.shutdown_requested);
 #endif /* !NDEBUG */
 
 #else /* !SERVER_MODE */
@@ -3522,8 +3568,8 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
       VACUUM_BLOCK_SET_INTERRUPTED (data->blockid);
       /* Copy new block data */
       /* The only relevant information is in fact the updated start_lsa if it has changed. */
-      vacuum_er_log (error_level | VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_VACUUM_DATA,
-		     "VACUUM %s: Processing log block %lld is not complete!",
+      vacuum_er_log (error_level | VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_JOBS,
+		     "VACUUM %s: Processing log block %lld is interrupted!",
 		     error_level == VACUUM_ER_LOG_ERROR ? "ERROR" : "WARNING",
 		     VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
     }
@@ -3533,7 +3579,8 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
   if (!lf_circular_queue_produce (vacuum_Finished_job_queue, &blockid))
     {
       assert_release (false);
-      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER, "VACUUM ERROR: Finished job queue is full!!!\n");
+      vacuum_er_log (VACUUM_ER_LOG_ERROR | VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_JOBS,
+		     "VACUUM ERROR: Finished job queue is full!!!\n");
     }
 
 #if defined (SERVER_MODE)
@@ -4227,7 +4274,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	      /* Block has been vacuumed. */
 	      VACUUM_BLOCK_STATUS_SET_VACUUMED (data->blockid);
 
-	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
+	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_JOBS,
 			     "VACUUM: Mark block %lld as vacuumed.\n",
 			     (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
 	    }
@@ -4237,7 +4284,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	      VACUUM_BLOCK_STATUS_SET_AVAILABLE (data->blockid);
 	      VACUUM_BLOCK_SET_INTERRUPTED (data->blockid);
 
-	      vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_VACUUM_DATA,
+	      vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_JOBS,
 			     "VACUUM WARNING: Mark block %lld as interrupted.\n",
 			     (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (data->blockid));
 	    }
@@ -6640,7 +6687,7 @@ vacuum_verify_vacuum_data_debug (void)
    * Theoretically, if a worker is blocked for long enough this value can be any size. However, we set a value unlikely
    * to be reached in normal circumstances.
    */
-  assert (in_progess_distance <= 200);
+  assert (in_progess_distance <= 500);
 }
 #endif /* !NDEBUG */
 

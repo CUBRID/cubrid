@@ -2296,6 +2296,11 @@ lf_circular_queue_approx_size (LOCK_FREE_CIRCULAR_QUEUE * queue)
    */
   UINT64 cc = ATOMIC_LOAD_64 (&queue->consume_cursor);
   UINT64 pc = ATOMIC_LOAD_64 (&queue->produce_cursor);
+
+  if (pc <= cc)
+    {
+      return 0;
+    }
   return (int) (pc - cc);
 }
 
@@ -2532,7 +2537,7 @@ lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data
   memcpy (queue->data + index * queue->data_size, data, queue->data_size);
 
   /* Set pushed data READY_FOR_CONSUME. */
-  queue->entry_state[index] = LFCQ_READY_FOR_CONSUME;
+  queue->entry_state[index] = (LFCQ_READY_FOR_CONSUME | queue->consume_cursor);
 
   return true;
 }
