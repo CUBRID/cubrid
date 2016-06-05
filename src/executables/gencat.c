@@ -107,10 +107,14 @@ up-to-date.  Many thanks.
 #if defined(WINDOWS)
 #include <io.h>
 #include <winsock2.h>
-#if defined(_MSC_VER) && _MSC_VER < 1900
-#define int32_t     int
-#endif
-#endif
+#if !defined(_MSC_VER) || _MSC_VER < 1800
+/* ref: https://msdn.microsoft.com/en-us/library/323b6b3k(v=vs.140).aspx
+ * NOTE: Even though the intX_t types are mentioned only in VS 2015 documentation, I know for a fact that they are found in VS 2013 too (_MSC_VER 1800).
+ *	 Maybe even earlier versions, but I didn't find exact info.
+ */
+typedef int int32_t;
+#endif /* _MSC_VER */
+#endif /* WINDOWS */
 
 #include "porting.h"
 
@@ -390,7 +394,7 @@ get_line (int fd)
 
   if (!curline)
     {
-      curline = xmalloc (curlen);
+      curline = (char *) xmalloc (curlen);
     }
   ++lineno;
 
@@ -412,8 +416,8 @@ get_line (int fd)
       if (cptr == cend)
 	{
 	  /* relocate cptr to hold the offset from curline */
-	  int offset = cptr - curline;
-	  curline = xrealloc (curline, curlen *= 2);
+	  int offset = (int) (cptr - curline);
+	  curline = (char *) xrealloc (curline, curlen *= 2);
 	  cptr = curline + offset;
 	  cend = curline + curlen;
 	}
@@ -478,9 +482,9 @@ getmsg (int fd, char *cptr, char quote)
   if (clen > msglen)
     {
       if (msglen)
-	msg = xrealloc (msg, clen);
+	msg = (char *) xrealloc (msg, clen);
       else
-	msg = xmalloc (clen);
+	msg = (char *) xmalloc (clen);
       msglen = clen;
     }
   tptr = msg;
@@ -514,7 +518,7 @@ getmsg (int fd, char *cptr, char quote)
 		    error ("premature end of file");
 		  msglen += strlen (cptr);
 		  i = (int) (tptr - msg);
-		  msg = xrealloc (msg, msglen);
+		  msg = (char *) xrealloc (msg, msglen);
 		  tptr = msg + i;
 		  break;
 		case 'n':
@@ -971,7 +975,7 @@ MCAddSet (int setId)
     }
   else
     {
-      p = xmalloc (sizeof (struct _setT));
+      p = (struct _setT *) xmalloc (sizeof (struct _setT));
       memset (p, '\0', sizeof (struct _setT));
       LIST_INIT (&p->msghead);
 
@@ -1019,7 +1023,7 @@ MCAddMsg (int msgId, const char *str)
     }
   else
     {
-      p = xmalloc (sizeof (struct _msgT));
+      p = (struct _msgT *) xmalloc (sizeof (struct _msgT));
       memset (p, '\0', sizeof (struct _msgT));
 
       if (q == NULL)

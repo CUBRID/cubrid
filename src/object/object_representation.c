@@ -30,6 +30,9 @@
 #if defined (WINDOWS)
 #include <winsock2.h>
 #if defined(_MSC_VER) && _MSC_VER >= 1800
+/* We could not find when ntohf/ntohd/htonf/htond were exactly added. The only reference we could find are here:
+ * https://msdn.microsoft.com/en-us/library/windows/desktop/jj710201(v=vs.85).aspx (ntohf, links to others at the bottom).
+ */
 #define OR_HAVE_NTOHF
 #define OR_HAVE_NTOHD
 #define OR_HAVE_HTONF
@@ -8236,7 +8239,7 @@ ntohl (unsigned int from)
 #if !defined (OR_HAVE_NTOHF)
 
 float
-ntohf (unsigned __int32 from)
+ntohf (UINT32 from)
 {
   char *ptr, *vptr;
   float to;
@@ -8255,7 +8258,7 @@ ntohf (unsigned __int32 from)
 #if !defined (OR_HAVE_NTOHD)
 
 double
-ntohd (unsigned __int64 from)
+ntohd (UINT64 from)
 {
   char *ptr, *vptr;
   double to;
@@ -8318,10 +8321,10 @@ htoni64 (UINT64 from)
 }
 
 #if !defined (OR_HAVE_HTONF)
-float
+UINT32
 htonf (float from)
 {
-  float to;
+  UINT32 to;
   char *p, *q;
 
   p = (char *) &from;
@@ -8337,10 +8340,10 @@ htonf (float from)
 #endif /* !OR_HAVE_HTONL */
 
 #if !defined (OR_HAVE_NTOHD)
-double
+UINT64
 htond (double from)
 {
-  double to;
+  UINT64 to;
   char *p, *q;
 
   p = (char *) &from;
