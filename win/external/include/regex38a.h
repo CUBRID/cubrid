@@ -6,7 +6,7 @@ extern "C" {
 #endif
 
 #ifdef WIN32
-#define off_t __int64
+#define off_t long
 #endif
 
 /* === regex2.h === */
