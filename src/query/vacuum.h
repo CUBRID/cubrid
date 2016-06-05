@@ -47,6 +47,7 @@
 #define VACUUM_ER_LOG_RECOVERY		512	/* Log recovery of vacuum data and dropped classes/indexes */
 #define VACUUM_ER_LOG_TOPOPS		1024	/* Log starting/ending system operations and their recovery. */
 #define VACUUM_ER_LOG_ARCHIVES		2048	/* Log when archives are removed or when vacuum fails to find archives. */
+#define VACUUM_ER_LOG_JOBS		4096	/* Log job generation, interrupt, finish */
 
 #define VACUUM_ER_LOG_VERBOSE		0xFFFFFFFF	/* Log all activity related to vacuum. */
 #define VACUUM_IS_ER_LOG_LEVEL_SET(er_log_level) \
