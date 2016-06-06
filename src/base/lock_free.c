@@ -2630,6 +2630,26 @@ lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue)
   free (queue);
 }
 
+/*
+ * lf_circular_queue_async_reset () - Reset lock-free circular queue.
+ *				      NOTE: The function should not be called while concurrent threads produce or
+ *					    consume entries.
+ *
+ * return	  : Void.
+ * queue (in/out) : Lock-free circular queue.
+ */
+void
+lf_circular_queue_async_reset (LOCK_FREE_CIRCULAR_QUEUE * queue)
+{
+  int es_idx;
+  queue->produce_cursor = 0;
+  queue->consume_cursor = 0;
+
+  for (es_idx = 0; es_idx < queue->capacity; es_idx++)
+    {
+      queue->entry_state[es_idx] = es_idx | LFCQ_READY_FOR_PRODUCE;
+    }
+}
 
 /*
  * lf_bitmap_init () - initialize lock free bitmap
