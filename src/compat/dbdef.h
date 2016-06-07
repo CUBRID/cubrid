@@ -73,6 +73,21 @@
                                        (c) == DB_CONSTRAINT_FOREIGN_KEY)       \
                                       ? true : false )
 
+#define DB_IS_QUERY_EXECUTED(qet) \
+				    ((qet) == DB_QUERY_EXECUTED_NOT_ENDED ||  \
+				     (qet) == DB_QUERY_EXECUTED_ENDED_COMMITTED ||  \
+				     (qet) == DB_QUERY_EXECUTED_ENDED_COMMITTED)
+
+#define DB_IS_QUERY_EXECUTED_ENDED(qet) \
+				    ((qet) == DB_QUERY_EXECUTED_ENDED_NOT_COMMITTED ||  \
+				     (qet) == DB_QUERY_EXECUTED_ENDED_COMMITTED)
+
+#define DB_IS_QUERY_EXECUTED_ENDED_COMMITTED(qret)  \
+				    ((qret) == DB_QUERY_EXECUTED_ENDED_COMMITTED)
+
+#define DB_IS_QUERY_EXECUTE_WITH_COMMIT_ALLOWED(qret)  \
+				    ((qret) == DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED)
+
 /* Volume purposes constants.  These are intended for use by the
    db_add_volext API function. */
 typedef enum
@@ -158,6 +173,16 @@ typedef enum
    that issue SQL statements and return their results. */
 typedef struct db_query_result DB_QUERY_RESULT;
 typedef struct db_query_type DB_QUERY_TYPE;
+
+typedef enum db_query_execution_type DB_QUERY_EXECUTION_TYPE;
+enum db_query_execution_type
+{
+  DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED = 0,	/* TO DO - alias */
+  DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED,
+  DB_QUERY_EXECUTED_NOT_ENDED,
+  DB_QUERY_EXECUTED_ENDED_NOT_COMMITTED,
+  DB_QUERY_EXECUTED_ENDED_COMMITTED
+};
 
 /* Type of the column in SELECT list within DB_QUERY_TYPE structure */
 typedef enum

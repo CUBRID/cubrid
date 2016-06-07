@@ -223,7 +223,8 @@ extern void regu_set_global_error (void);
 extern int prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream);
 extern int execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const DB_VALUE * varptr,
 			  QFILE_LIST_ID ** list_idp, QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
-			  CACHE_TIME * srv_cache_time);
+			  CACHE_TIME * srv_cache_time, int *end_query_result, TRAN_STATE * tran_state,
+			  int *reset_on_commit);
 extern int prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id, int var_cnt,
 				      DB_VALUE * varptr, QFILE_LIST_ID ** result, QUERY_FLAG flag);
 

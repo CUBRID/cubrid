@@ -222,7 +222,8 @@ extern XASL_ID *qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * str
 extern QFILE_LIST_ID * qmgr_execute_query_and_commit (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt,
 						      const DB_VALUE * dbvals, QUERY_FLAG flag,
 						      CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time,
-						      int query_timeout, int *end_query_result, TRAN_STATE *tran_state);
+						      int query_timeout, int *end_query_result, TRAN_STATE *tran_state,
+						      int *reset_on_commit);
 extern QFILE_LIST_ID *qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt,
 					  const DB_VALUE * dbvals, QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
 					  CACHE_TIME * srv_cache_time, int query_timeout);

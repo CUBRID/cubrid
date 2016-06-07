@@ -2417,7 +2417,7 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     }
 
   xtran_reset_on_commit (thread_p, &reset_on_commit);
-  ptr = or_pack_int (reply, state);  
+  ptr = or_pack_int (reply, state);
   ptr = or_pack_int (ptr, (int) reset_on_commit);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -5166,7 +5166,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 	{
 	  thread_p->event_stats.trace_slow_query = true;
 	}
-    }  
+    }
   aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -5185,7 +5185,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
   ptr = or_unpack_int (ptr, &n_query_ids);
   for (i = 0; i < n_query_ids; i++)
     {
-      ptr = or_unpack_ptr (ptr, net_Deferred_end_queries + i);      
+      ptr = or_unpack_ptr (ptr, net_Deferred_end_queries + i);
     }
 
   /* if the request contains parameter values for the query, allocate space for them */
@@ -5297,7 +5297,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 	      page_size = (offset + QFILE_GET_TUPLE_LENGTH (page_ptr + offset));
 	    }
 
-	  memcpy (aligned_page_buf, page_ptr, page_size);	  
+	  memcpy (aligned_page_buf, page_ptr, page_size);
 	  qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
 	  page_ptr = aligned_page_buf;
 	  if (VPID_EQ (&list_id->first_vpid, &list_id->last_vpid))
@@ -5326,7 +5326,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 	  return_error_to_client (thread_p, rid);
 	}
     }
-   
+
   if (tran_abort == false)
     {
       if (trace_slow_msec >= 0 || trace_ioreads > 0)
@@ -5371,7 +5371,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
   if (end_query_allowed)
     {
       for (i = 0; i < n_query_ids; i++)
-	{      
+	{
 	  if (net_Deferred_end_queries[i] > 0)
 	  {
 	    error_code = xqmgr_end_query (thread_p, net_Deferred_end_queries[i]);
@@ -5418,16 +5418,16 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
   if (end_query_allowed)
     {
       /* query ended */
-      ptr = or_pack_int (ptr, all_error_code);  
+      ptr = or_pack_int (ptr, all_error_code);
     }
   else
     {
       /* query not ended */
       ptr = or_pack_int (ptr, ER_FAILED);
-    }  
+    }
 
   /* pack commit result */
-  ptr = or_pack_int (ptr, (int) tran_state);  
+  ptr = or_pack_int (ptr, (int) tran_state);
   ptr = or_pack_int (ptr, (int) reset_on_commit);
 
 #if !defined(NDEBUG)

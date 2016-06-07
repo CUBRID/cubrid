@@ -210,7 +210,7 @@ extern DB_QUERY_RESULT *db_get_objfetch_query_result (DB_VALUE * val_list, int v
 extern int db_query_stmt_id (DB_QUERY_RESULT * result);
 #endif
 
-extern int db_query_end (DB_QUERY_RESULT * result);
+extern int db_query_end (DB_QUERY_RESULT * result, DB_QUERY_EXECUTION_TYPE query_execution_type);
 extern int db_query_sync_end (DB_QUERY_RESULT * result);
 extern int db_query_end_internal (DB_QUERY_RESULT * result, bool notify_server);
 

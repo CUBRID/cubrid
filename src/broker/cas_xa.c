@@ -201,7 +201,7 @@ fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 	  return 0;
 	}
 
-      ux_end_tran (tran_type, true);
+      ux_end_tran (tran_type, true, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
       set_xa_prepare_flag ();
     }
 

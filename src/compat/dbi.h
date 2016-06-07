@@ -105,7 +105,7 @@ extern int db_shutdown (void);
 extern int db_ping_server (int client_val, int *server_val);
 extern int db_disable_modification (void);
 extern int db_enable_modification (void);
-extern int db_commit_transaction (void);
+extern int db_commit_transaction (DB_QUERY_EXECUTION_TYPE latest_query_execution_type);
 extern int db_abort_transaction (void);
 extern int db_commit_is_needed (void);
 extern int db_savepoint_transaction (const char *savepoint_name);
@@ -706,14 +706,17 @@ extern bool db_is_query_async_executable (DB_SESSION * session, int stmtid);
 
 extern int db_query_produce_updatable_result (DB_SESSION * session, int stmtid);
 
-extern int db_execute_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result);
+extern int db_execute_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result,
+				 DB_QUERY_EXECUTION_TYPE * query_execution_type);
 
-extern int db_execute_and_keep_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result);
+extern int db_execute_and_keep_statement (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result,
+					  DB_QUERY_EXECUTION_TYPE * query_execution_type);
 extern DB_CLASS_MODIFICATION_STATUS db_has_modified_class (DB_SESSION * session, int stmt_id);
 
 extern void db_invalidate_mvcc_snapshot_after_statement (void);
 
 extern void db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Version);
+extern int db_init_statement_execution_type (DB_SESSION * session, bool auto_commit);
 
 extern int db_query_get_info (DB_QUERY_RESULT * result, int *done, int *count, int *error, char **err_string);
 
@@ -736,7 +739,7 @@ extern bool db_get_cacheinfo (DB_SESSION * session, int stmt_ndx, bool * use_pla
    it for the PC.  If we don't want them here, they should go somewhere
    else so csql.c doesn't have to have an explicit declaration.
 */
-extern void db_free_query (DB_SESSION * session);
+extern void db_free_query (DB_SESSION * session, DB_QUERY_EXECUTION_TYPE query_execution_type);
 extern DB_QUERY_TYPE *db_get_query_type_ptr (DB_QUERY_RESULT * result);
 
 /* OBSOLETE FUNCTIONS

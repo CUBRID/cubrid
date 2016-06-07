@@ -299,6 +299,6 @@ extern int xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_
 							  const OID * class_oidp);
 extern bool xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name);
 #if defined(SERVER_MODE)
-extern void xtran_reset_on_commit (THREAD_ENTRY * thread_p, bool *reset_on_commit);
+extern void xtran_reset_on_commit (THREAD_ENTRY * thread_p, bool * reset_on_commit);
 #endif
 #endif /* _XSERVER_INTERFACE_H_ */

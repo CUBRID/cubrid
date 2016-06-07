@@ -105,12 +105,27 @@ prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
  */
 int
 execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const DB_VALUE * varptr,
-	       QFILE_LIST_ID ** list_idp, QUERY_FLAG flag, CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time)
+	       QFILE_LIST_ID ** list_idp, QUERY_FLAG flag, CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time,
+	       int *end_query_result, TRAN_STATE * tran_state, int *reset_on_commit)
 {
   int query_timeout;
   int ret = NO_ERROR;
 
   *list_idp = NULL;
+  if (end_query_result)
+    {
+      /* Query not ended */
+      *end_query_result = ER_FAILED;
+    }
+  if (tran_state)
+    {
+      /* Transaction not committed */
+      *tran_state = TRAN_ACTIVE;
+    }
+  if (reset_on_commit)
+    {
+      *reset_on_commit = false;
+    }
 
   /* if QO_PARAM_LEVEL indicate no execution, just return */
   if (qo_need_skip_execution ())
@@ -120,16 +135,16 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const
 
   query_timeout = tran_get_query_timeout ();
   /* send XASL file id and host variables to the server and get QFILE_LIST_ID */
-  if (1)/* TO DO - based on flags */
+  if (flag & EXECUTE_WITH_COMMIT)
     {
       *list_idp =
 	qmgr_execute_query_and_commit (xasl_id, query_idp, var_cnt, varptr, flag, clt_cache_time, srv_cache_time,
-				       query_timeout, NULL/* TO DO - valid parameters*/, NULL/* TO DO - valid parameters*/);
+				       query_timeout, end_query_result, tran_state, reset_on_commit);
     }
-    else
+  else
     {
       *list_idp =
-	qmgr_execute_query (xasl_id, query_idp, var_cnt, varptr, flag, clt_cache_time, srv_cache_time, query_timeout);      
+	qmgr_execute_query (xasl_id, query_idp, var_cnt, varptr, flag, clt_cache_time, srv_cache_time, query_timeout);
     }
 
   if (*list_idp == NULL)

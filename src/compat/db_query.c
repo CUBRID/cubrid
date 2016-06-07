@@ -1578,7 +1578,7 @@ db_execute_with_values (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QU
 
   if (stmt_no > 0)
     {
-      error = db_execute_statement_local (session, stmt_no, result);
+      error = db_execute_statement_local (session, stmt_no, result, NULL);
     }
 
   db_close_session_local (session);
@@ -3531,9 +3531,18 @@ db_sqlx_debug_print_result (DB_QUERY_RESULT * result)
  *    the query is terminated and all resources are cleaned up.
  */
 int
-db_query_end (DB_QUERY_RESULT * result)
+db_query_end (DB_QUERY_RESULT * result, DB_QUERY_EXECUTION_TYPE query_execution_type)
 {
-  return db_query_end_internal (result, true);
+  bool notify_server;
+  if (DB_IS_QUERY_EXECUTED_ENDED (query_execution_type))
+    {
+      notify_server = false;
+    }
+  else
+    {
+      notify_server = true;
+    }
+  return db_query_end_internal (result, notify_server);
 }
 
 /*

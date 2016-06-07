@@ -190,7 +190,7 @@ compactdb_start (bool verbose_flag)
     }
   disk_final ();
 
-  db_commit_transaction ();
+  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
   if (failed_objects != 0)
     {
@@ -244,13 +244,13 @@ phase2:
 
 phase3:
   catalog_reclaim_space (NULL);
-  db_commit_transaction ();
+  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
   file_reclaim_all_deleted (NULL);
-  db_commit_transaction ();
+  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
   file_tracker_compress (NULL);
-  db_commit_transaction ();
+  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
   /* 
    * Cleanup

@@ -1118,7 +1118,7 @@ db_get_variable (DB_VALUE * name, DB_VALUE * value)
  *    the transaction will be aborted and the changes lost.
  */
 int
-db_commit_transaction (void)
+db_commit_transaction (DB_QUERY_EXECUTION_TYPE latest_query_execution_type)
 {
   int retval;
 
@@ -1126,7 +1126,7 @@ db_commit_transaction (void)
   /* CHECK_MODIFICATION_ERROR (); */
 
   /* API does not support RETAIN LOCK */
-  retval = tran_commit (false);
+  retval = tran_commit (false, latest_query_execution_type);
 
   return (retval);
 }

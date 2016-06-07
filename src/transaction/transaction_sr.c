@@ -727,7 +727,7 @@ xtran_lock_rep_read (THREAD_ENTRY * thread_p, LOCK lock_rr_tran)
  *   reset_on_commit(out): reset on commit 
  */
 void
-xtran_reset_on_commit (THREAD_ENTRY * thread_p, bool *reset_on_commit)
+xtran_reset_on_commit (THREAD_ENTRY * thread_p, bool * reset_on_commit)
 {
   int client_type;
   char *hostname;
@@ -740,12 +740,12 @@ xtran_reset_on_commit (THREAD_ENTRY * thread_p, bool *reset_on_commit)
   hostname = logtb_find_current_client_hostname (thread_p);
   ha_state = css_ha_server_state ();
   if (has_updated && ha_state == HA_SERVER_STATE_TO_BE_STANDBY && BOOT_NORMAL_CLIENT_TYPE (client_type))
-  {
-    local_reset_on_commit = true;
-    er_log_debug (ARG_FILE_LINE,
-      "stran_server_commit(): " "(has_updated && to-be-standby && normal client) "
-      "DB_CONNECTION_STATUS_RESET\n");
-  }
+    {
+      local_reset_on_commit = true;
+      er_log_debug (ARG_FILE_LINE,
+		    "stran_server_commit(): " "(has_updated && to-be-standby && normal client) "
+		    "DB_CONNECTION_STATUS_RESET\n");
+    }
   else if (ha_state == HA_SERVER_STATE_STANDBY)
   {
     /* be aware that the order of if conditions is important */
