@@ -5170,6 +5170,8 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
       return error_code;
     }
+
+  lf_circular_queue_async_reset (vacuum_Block_data_buffer);
   return NO_ERROR;
 }
 
