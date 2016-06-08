@@ -2370,6 +2370,13 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	   * cursor was already incremented. */
 	  (void) ATOMIC_CAS_64 (&queue->produce_cursor, produce_cursor, produce_cursor + 1);
 	}
+      else if (ATOMIC_LOAD_64 (entry_state_p) == ((produce_cursor - queue->capacity) | LFCQ_RESERVED_FOR_CONSUME))
+	{
+	  /* The entry at produce_cursor is being consumed still. The consume cursor is behind one generation and
+	   * it was already incremented, but the consumer did not yet finish consuming. We can consider the queue
+	   * is still full since we don't want to loop here for an indefinite time. */
+	  return false;
+	}
       else
 	{
 	  /* The entry at current produce cursor was already "produced". The cursor should already be incremented. */
@@ -2448,6 +2455,12 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	   * increment the cursor to avoid being spin-locked on same cursor value. The increment will fail if the
 	   * cursor was already incremented. */
 	  (void) ATOMIC_CAS_64 (&queue->consume_cursor, consume_cursor, consume_cursor + 1);
+	}
+      else if (ATOMIC_LOAD_64 (entry_state_p) == (consume_cursor | LFCQ_RESERVED_FOR_PRODUCE))
+	{
+	  /* We are here because produce_cursor was incremented but the entry at consume_cursor was not produced yet.
+	   * We can consider the queue empty since we don't want to loop here for an indefinite time. */
+	  return false;
 	}
       else
 	{
