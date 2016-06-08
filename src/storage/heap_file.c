@@ -8108,7 +8108,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 
 	      if (context.recdes_p == NULL)
 		{
-		  context.recdes_p = &temp_recdes;
+		  context.recdes_p = recdes = &temp_recdes;
 		  temp_recdes.data = NULL;
 		}
 
