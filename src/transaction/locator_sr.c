@@ -2385,8 +2385,7 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
       assert (!heap_is_mvcc_disabled_for_class (class_oid) && (lock_mode == NULL_LOCK));
       /* Don't lock anything and get visible object version. */
       scan =
-	heap_get_visible_version (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, COPY, NULL_CHN,
-				  false);
+	heap_get_visible_version (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, COPY, chn, false);
     }
 
   if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END)
@@ -2477,6 +2476,16 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
        * Caller does not know the class of the object. Get the class
        * identifier from disk
        */
+      /*if (heap_prepare_object_page (thread_p, oid, &context.home_page_watcher) != NO_ERROR)
+         {
+         return S_ERROR;
+         }
+         if (heap_get_class_oid_from_page (thread_p, &context.home_page_watcher, class_oid) != NO_ERROR)
+         {
+         pgbuf_ordered_unfix (thread_p, &context.home_page_watcher);
+         return ER_FAILED;
+         } */
+
       SNAPSHOT_TYPE snapshot_type = SNAPSHOT_TYPE_NONE;
 
       switch (fetch_version_type)
@@ -2536,6 +2545,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	  object_locked = true;
 	}
     }
+
   else
     {
       switch (fetch_version_type)
@@ -13328,4 +13338,97 @@ int
 xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list)
 {
   return redistribute_partition_data (thread_p, class_oid, no_oids, oid_list);
+}
+
+/*
+ *
+ *
+ */
+SCAN_CODE
+locator_lock_and_get_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes, LOCK lock_mode,
+			     HEAP_SCANCACHE * scan_cache, int chn, int ispeeking)
+{
+  HEAP_GET_CONTEXT context = HEAP_GET_CONTEXT_INITIALIZER;
+  SCAN_CODE scan = S_SUCCESS;
+  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
+
+
+  assert (oid != NULL && !OID_ISNULL (oid) && class_oid != NULL);
+
+  //PGBUF_INIT_WATCHER (&context.home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, HEAP_SCAN_ORDERED_HFID (scan_cache));
+  //PGBUF_INIT_WATCHER (&context.fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, HEAP_SCAN_ORDERED_HFID (scan_cache));
+
+  if (scan_cache != NULL && scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
+    {
+      /* switch to local page watcher */
+      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context.home_page_watcher);
+    }
+
+  if (OID_ISNULL (class_oid))
+    {
+      /* get class_oid if not provided */
+      if (heap_prepare_object_page (thread_p, oid, &context.home_page_watcher) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      if (heap_get_class_oid_from_page (thread_p, &context.home_page_watcher, class_oid) != NO_ERROR)
+	{
+	  pgbuf_ordered_unfix (thread_p, &context.home_page_watcher);
+	  return S_ERROR;
+	}
+    }
+
+  /* the type of lock depends on the class_oid; decide it now */
+  //lock_mode = locator_decide_type_of_lock (class_oid, lock_mode, op_type);
+
+  if (lock_object (thread_p, oid, class_oid, lock_mode, LK_COND_LOCK) != LK_GRANTED)
+    {
+      /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally */
+      heap_clean_get_context (thread_p, &context);
+      if (lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
+	{
+	  return S_ERROR;
+	}
+    }
+
+  /* lock should be aquired -> get recdes */
+  //scan = heap_get_last_version (thread_p, oid, &context, ispeeking, chn);
+
+  /* check visibility of the object */
+
+  //snapshot_res = 
+
+exit:
+
+  return scan;
+}
+
+LOCK
+locator_decide_type_of_lock (const OID * class_oid, LOCK lock_mode, const SCAN_OPERATION_TYPE op_type)
+{
+  if (!OID_IS_ROOTOID (class_oid) && lock_mode > NULL_LOCK)
+    {
+      /* objects should be locked only with S_LOCK or X_LOCK */
+      if (lock_mode == IS_LOCK)
+	{
+	  /* Use S_LOCK or NULL_LOCK if operations is S_SELECT and MVCC is not disabled for class OID. */
+	  if (op_type == S_SELECT && !heap_is_mvcc_disabled_for_class (class_oid))
+	    {
+	      lock_mode = NULL_LOCK;
+	    }
+	  else
+	    {
+	      lock_mode = S_LOCK;
+	    }
+
+	}
+      else if (lock_mode == IX_LOCK)
+	{
+	  assert (0);
+	  lock_mode = X_LOCK;
+	}
+      assert (lock_mode == S_LOCK || lock_mode == X_LOCK);
+    }
+
+  return lock_mode;
 }

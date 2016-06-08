@@ -358,6 +358,23 @@ typedef enum
   HEAP_PAGE_VACUUM_UNKNOWN	/* Heap page requires an unknown number of vacuum actions. */
 } HEAP_PAGE_VACUUM_STATUS;
 
+typedef struct heap_get_context HEAP_GET_CONTEXT;
+struct heap_get_context
+{
+  bool single_use;		/* if the pages must be unfixed at the end, or not (the caller may need them further) */
+  INT16 record_type;		/* record type */
+
+  /* input */
+  OID *oid_p;			/* required object identifer */
+  OID forward_oid;		/* forward oid of REC_RELOCATION or REC_BIGONE */
+  OID *class_oid_p;		/* class object identifier */
+  RECDES *recdes_p;		/* record descriptor */
+
+  /* physical page watchers  */
+  PGBUF_WATCHER home_page_watcher;	/* home page */
+  PGBUF_WATCHER fwd_page_watcher;	/* forward page */
+};
+
 /* Forward definition. */
 struct mvcc_reev_data;
 
@@ -648,5 +665,9 @@ extern SCAN_CODE heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
 							SCAN_OPERATION_TYPE op_type, int ispeeking, int old_chn,
 							struct mvcc_reev_data *mvcc_reev_data,
 							NON_EXISTENT_HANDLING non_ex_handling_type);
+extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+					HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
+extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
+extern void heap_init_get_context (HEAP_GET_CONTEXT * context, OID * oid, OID * class_oid, RECDES * recdes);
 
 #endif /* _HEAP_FILE_H_ */
