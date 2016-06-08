@@ -13348,7 +13348,7 @@ SCAN_CODE
 locator_lock_and_get_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes, LOCK lock_mode,
 			     HEAP_SCANCACHE * scan_cache, int chn, int ispeeking)
 {
-  HEAP_GET_CONTEXT context = HEAP_GET_CONTEXT_INITIALIZER;
+  HEAP_GET_CONTEXT context;	// = HEAP_GET_CONTEXT_INITIALIZER;
   SCAN_CODE scan = S_SUCCESS;
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
 
@@ -13367,7 +13367,7 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid
   if (OID_ISNULL (class_oid))
     {
       /* get class_oid if not provided */
-      if (heap_prepare_object_page (thread_p, oid, &context.home_page_watcher) != NO_ERROR)
+      if (heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}

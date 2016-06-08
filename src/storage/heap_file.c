@@ -7884,9 +7884,6 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 				       int old_chn, struct mvcc_reev_data * mvcc_reev_data,
 				       NON_EXISTENT_HANDLING non_ex_handling_type)
 {
-  OID forward_oid;		/* Forward OID - used for REC_RELOCATION/REC_NEWHOME, REC_BIGONE. */
-  SPAGE_SLOT *slot_p = NULL;	/* Pointer to slot. */
-  PGBUF_WATCHER fwd_page_watcher;	/* Page of REC_NEWHOME and first overflow page. */
   OID class_oid_local;		/* Used to store class_oid if provided argument is NULL. */
   LOCK lock;			/* Lock mode depending on type of operation. */
   SCAN_CODE scan_code;		/* SCAN_CODE result. */
@@ -7895,11 +7892,18 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
   HEAP_MVCC_DELETE_INFO mvcc_delete_info;	/* Info structure used for delete/update. */
   MVCC_SCAN_REEV_DATA *scan_reev_data = NULL;	/* Scan re-evaluation data. */
   DB_LOGICAL ev_res;		/* Re-evaluation result. */
-  INT16 type;			/* Record type. */
   bool is_locked = false;	/* True if object was locked. */
   HEAP_SCANCACHE local_scancache;
   bool is_record_retrieved = false;
   HEAP_GET_CONTEXT context;
+
+  /* Always get class_oid to check MVCC is enabled for class. */
+  if (class_oid == NULL)
+    {
+      /* Locks are required and class_oid must be obtained. It will be obtained after home_page is fixed. */
+      class_oid = &class_oid_local;
+      OID_SET_NULL (class_oid);
+    }
 
   heap_init_get_context (&context, oid, class_oid, recdes);
 
@@ -7971,14 +7975,6 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
       scan_reev_data = mvcc_reev_data->select_reev_data;
     }
 
-  /* Always get class_oid to check MVCC is enabled for class. */
-  if (class_oid == NULL)
-    {
-      /* Locks are required and class_oid must be obtained. It will be obtained after home_page is fixed. */
-      class_oid = &class_oid_local;
-      OID_SET_NULL (class_oid);
-    }
-
   /* Prepare to get record. It will obtain class_oid, record type, required pages, and forward_oid. */
   scan_code = heap_get_prepare_context (thread_p, &context, PGBUF_LATCH_READ, false, non_ex_handling_type);
   if (scan_code != S_SUCCESS)
@@ -7988,7 +7984,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
     }
   /* We are here only if a valid record was found: REC_HOME, REC_BIGONE, REC_RELOCATION. Any other case should be 
    * either S_DOESNT_EXIST or S_ERROR. */
-  assert (type == REC_HOME || type == REC_RELOCATION || type == REC_BIGONE);
+  //assert (type == REC_HOME || type == REC_RELOCATION || type == REC_BIGONE);
   /* Check forward_page and forward_oid are set when type is REC_RELOCATION or REC_BIGONE. */
   //assert (type != REC_BIGONE || contexttype != REC_RELOCATION  || (!OID_ISNULL (&contxt.forward_oid) && HEAP_IS_PAGE_OF_OID (context.fwd_page_watcher.pgptr, &context.forward_oid)));
 
@@ -8376,6 +8372,25 @@ try_again:
       goto error;
     }
 
+  /* Output class_oid. */
+  if (context->class_oid_p != NULL && OID_ISNULL (context->class_oid_p))
+    {
+      /* Get class OID from HEAP_CHAIN. */
+      scan = spage_get_record (context->home_page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &peek_recdes, PEEK);
+      if (scan != S_SUCCESS)
+	{
+	  /* Unexpected. */
+	  assert_release (false);
+	  goto error;
+	}
+      COPY_OID (context->class_oid_p, &(((HEAP_CHAIN *) peek_recdes.data)->class_oid));
+      if (OID_ISNULL (context->class_oid_p))
+	{
+	  /* root class is identified with a NULL class OID */
+	  COPY_OID (context->class_oid_p, oid_Root_class_oid);
+	}
+    }
+
   /* Get slot. */
   slot_p = spage_get_slot (context->home_page_watcher.pgptr, context->oid_p->slotid);
   if (slot_p == NULL)
@@ -8410,7 +8425,7 @@ try_again:
     {
     case REC_RELOCATION:
       /* Need to get forward_oid and fix forward page */
-      //scan = spage_get_record_data(context->home_page_watcher.pgptr, slot_p, peek_recdes, PEEK);
+      scan = spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, &peek_recdes, PEEK);
       if (scan != S_SUCCESS)
 	{
 	  /* Unexpected. */
@@ -8419,14 +8434,6 @@ try_again:
 	}
       /* Output forward_oid. */
       COPY_OID (&context->forward_oid, (OID *) peek_recdes.data);
-
-      /* Output class oid */
-      COPY_OID (context->class_oid_p, &(((HEAP_CHAIN *) peek_recdes.data)->class_oid));
-      if (OID_ISNULL (context->class_oid_p))
-	{
-	  /*root class is identified with a NULL class OID */
-	  COPY_OID (context->class_oid_p, oid_Root_class_oid);
-	}
 
       /* Try to latch forward_page. */
       PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
@@ -8468,14 +8475,6 @@ try_again:
 	}
       /* Output forward_oid. */
       COPY_OID (&context->forward_oid, (OID *) peek_recdes.data);
-
-      /* Output class oid */
-      COPY_OID (context->class_oid_p, &(((HEAP_CHAIN *) peek_recdes.data)->class_oid));
-      if (OID_ISNULL (context->class_oid_p))
-	{
-	  /*root class is identified with a NULL class OID */
-	  COPY_OID (context->class_oid_p, oid_Root_class_oid);
-	}
 
       /* Fix overflow page. Since overflow pages should be always accessed with their home pages latched, unconditional 
        * latch should work; However, we need to use the same ordered_fix approach. */
@@ -8728,7 +8727,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  context->recdes_p->data = scan_cache->area;
 	  context->recdes_p->area_size = scan_cache->area_size;
 	}
-      return spage_get_record (&context->fwd_page_watcher, context->forward_oid.slotid, context->recdes_p, COPY);
+      return spage_get_record (context->fwd_page_watcher.pgptr, context->forward_oid.slotid, context->recdes_p, COPY);
     case REC_BIGONE:
       return heap_get_bigone_content (thread_p, scan_cache, ispeeking, &context->forward_oid, context->recdes_p);
     case REC_HOME:
@@ -8751,7 +8750,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  context->recdes_p->area_size = scan_cache->area_size;
 	  /* The allocated space is enough to save the instance. */
 	}
-      return spage_get_record (&context->home_page_watcher, context->oid_p->slotid, context->recdes_p, ispeeking);
+      return spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p, ispeeking);
     default:
       break;
     }
@@ -10546,12 +10545,14 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
   char *copy_classname = NULL;
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
-  OID root_oid;
+  OID root_oid = OID_INITIALIZER;
+  HEAP_GET_CONTEXT context;
+
+  heap_init_get_context (&context, class_oid, &root_oid, &recdes);
 
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
-  if (heap_get_with_class_oid (thread_p, &root_oid, class_oid, &recdes, &scan_cache, S_SELECT, PEEK,
-			       LOG_ERROR_IF_DELETED) == S_SUCCESS)
+  if (heap_get_last_version (thread_p, &context, &scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
     {
       /* Make sure that this is a class */
       if (oid_is_root (&root_oid))
@@ -26039,7 +26040,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
   INT16 type;
-  HEAP_GET_CONTEXT context = HEAP_GET_CONTEXT_INITIALIZER;
+  HEAP_GET_CONTEXT context;	// = HEAP_GET_CONTEXT_INITIALIZER;
 
   heap_init_get_context (&context, oid, class_oid, recdes);
 
@@ -26298,34 +26299,33 @@ end:
  *
  */
 SCAN_CODE
-heap_get_last_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-		       HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP_SCANCACHE * scan_cache, int ispeeking,
+		       int old_chn)
 {
   SCAN_CODE scan = S_SUCCESS;
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
-  HEAP_GET_CONTEXT context;
 
   assert (scan_cache != NULL);
 
   if (scan_cache != NULL && scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
     {
       /* switch to local page watcher */
-      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context.home_page_watcher);
+      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context->home_page_watcher);
     }
 
-  scan = heap_get_prepare_context (thread_p, &context, PGBUF_LATCH_READ, true, LOG_WARNING_IF_DELETED);
+  scan = heap_get_prepare_context (thread_p, context, PGBUF_LATCH_READ, true, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
       goto exit;
     }
-  assert (context.record_type == REC_HOME || context.record_type == REC_BIGONE
-	  || context.record_type == REC_RELOCATION);
-  assert (context.record_type == REC_HOME
-	  || (!OID_ISNULL (&context.forward_oid) && context.fwd_page_watcher.pgptr != NULL));
+  assert (context->record_type == REC_HOME || context->record_type == REC_BIGONE
+	  || context->record_type == REC_RELOCATION);
+  assert (context->record_type == REC_HOME
+	  || (!OID_ISNULL (&context->forward_oid) && context->fwd_page_watcher.pgptr != NULL));
 
   scan =
-    heap_get_mvcc_header (thread_p, oid, &context.forward_oid, context.home_page_watcher.pgptr,
-			  context.fwd_page_watcher.pgptr, context.record_type, &mvcc_header);
+    heap_get_mvcc_header (thread_p, context->oid_p, &context->forward_oid, context->home_page_watcher.pgptr,
+			  context->fwd_page_watcher.pgptr, context->record_type, &mvcc_header);
   if (scan != S_SUCCESS)
     {
       goto exit;
@@ -26339,9 +26339,9 @@ heap_get_last_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid
       goto exit;
     }
 
-  if (recdes != NULL)
+  if (context->recdes_p != NULL)
     {
-      scan = heap_get_record_data_when_all_ready (thread_p, &context, scan_cache, ispeeking);
+      scan = heap_get_record_data_when_all_ready (thread_p, context, scan_cache, ispeeking);
     }
 
   /* Fall through to exit. */
@@ -26352,13 +26352,14 @@ exit:
     {
       /* Record was successfully obtained and scan is fixed. Save home page (or NULL if it had to be unfixed) to
        * scan_cache. */
-      pgbuf_replace_watcher (thread_p, &context.home_page_watcher, &scan_cache->page_watcher);
-      assert (context.home_page_watcher.pgptr == NULL);
+      pgbuf_replace_watcher (thread_p, &context->home_page_watcher, &scan_cache->page_watcher);
+      assert (context->home_page_watcher.pgptr == NULL);
     }
-  if (context.single_use)
+  if (context->single_use)
     {
-      heap_clean_get_context (thread_p, &context);
+      heap_clean_get_context (thread_p, context);
     }
+
   return scan;
 }
 
@@ -26377,10 +26378,10 @@ heap_get_class_oid2 (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
   assert (oid != NULL && !OID_ISNULL (oid) && class_oid != NULL);
 
   page_watcher.pgptr = NULL;
-  if (heap_prepare_object_page (thread_p, oid, &page_watcher) != NO_ERROR)
-    {
-      return S_ERROR;
-    }
+  //if (heap_prepare_object_page (thread_p, oid, &page_watcher) != NO_ERROR)
+  {
+    return S_ERROR;
+  }
 
   /* Get class OID from HEAP_CHAIN. */
   scan = spage_get_record (page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &peek_recdes, PEEK);
