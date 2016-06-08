@@ -8116,8 +8116,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 		  temp_recdes.data = NULL;
 		}
 
-	      /*scan_code =
-	         heap_get_record_data_when_all_ready (thread_p, oid, &context, scan_cache, ispeeking); */
+	      scan_code = heap_get_record_data_when_all_ready (thread_p, &context, scan_cache, ispeeking);
 	      if (scan_code != S_SUCCESS)
 		{
 		  assert (scan_code != S_ERROR || er_errid () != NO_ERROR);
@@ -26109,7 +26108,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 
   if (recdes != NULL)
     {
-      scan = heap_get_record_data_when_all_ready (thread_p, oid, &context, scan_cache, ispeeking);
+      scan = heap_get_record_data_when_all_ready (thread_p, &context, scan_cache, ispeeking);
     }
 
   /* Fall through to exit. */
