@@ -984,6 +984,8 @@ struct mvcc_trans_status
   unsigned int long_tran_mvccids_length;
 
   volatile unsigned int version;
+
+  MVCCID lowest_active_mvccid;
 };
 
 #define MVCC_STATUS_INITIALIZER {NULL, MVCCID_FIRST, 0, NULL, 0, 0}
