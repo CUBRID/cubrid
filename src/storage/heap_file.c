@@ -10406,6 +10406,46 @@ exit_on_error:
 }
 
 /*
+* heap_get_class_oid () - Get class for object. This function doesn't follow
+*			   MVCC versions. Caller must know to use right
+*			   version for this.
+*
+* return	   : Scan code.
+* thread_p (in)   : Thread entry.
+* oid (in)	   : Object OID.
+* class_oid (out) : Output class OID.
+*/
+SCAN_CODE
+heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
+{
+  SCAN_CODE scan;
+  PGBUF_WATCHER page_watcher;
+
+
+  assert (oid != NULL && !OID_ISNULL (oid) && class_oid != NULL);
+  OID_SET_NULL (class_oid);
+
+  page_watcher.pgptr = NULL;
+  if (heap_prepare_object_page (thread_p, oid, &page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
+  /* Get class OID from HEAP_CHAIN. */
+  scan = heap_get_class_oid_from_page (thread_p, &page_watcher, class_oid);
+  if (scan != S_SUCCESS)
+    {
+      /* Unexpected. */
+      assert_release (false);
+      pgbuf_ordered_unfix (thread_p, &page_watcher);
+      return scan;
+    }
+
+  pgbuf_ordered_unfix (thread_p, &page_watcher);
+  return scan;
+}
+
+/*
  * heap_get_class_oid_with_lock () - Find class oid of given instance
  *   return: OID *(class_oid on success and NULL on failure)
  *   class_oid(out): The Class oid of the instance
@@ -26032,7 +26072,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
   INT16 type;
-  HEAP_GET_CONTEXT context;	// = HEAP_GET_CONTEXT_INITIALIZER;
+  HEAP_GET_CONTEXT context;
 
   heap_init_get_context (&context, oid, class_oid, recdes);
 
@@ -26353,45 +26393,6 @@ exit:
       heap_clean_get_context (thread_p, context);
     }
 
-  return scan;
-}
-
-/*
-* heap_get_class_oid () - Get class for object. This function doesn't follow
-*			   MVCC versions. Caller must know to use right
-*			   version for this.
-*
-* return	   : Scan code.
-* thread_p (in)   : Thread entry.
-* oid (in)	   : Object OID.
-* class_oid (out) : Output class OID.
-*/
-SCAN_CODE
-heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
-{
-  SCAN_CODE scan;
-  PGBUF_WATCHER page_watcher;
-
-  assert (oid != NULL && !OID_ISNULL (oid) && class_oid != NULL);
-  OID_SET_NULL (class_oid);
-
-  page_watcher.pgptr = NULL;
-  if (heap_prepare_object_page (thread_p, oid, &page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
-    {
-      return S_ERROR;
-    }
-
-  /* Get class OID from HEAP_CHAIN. */
-  scan = heap_get_class_oid_from_page (thread_p, &page_watcher, class_oid);
-  if (scan != S_SUCCESS)
-    {
-      /* Unexpected. */
-      assert_release (false);
-      pgbuf_ordered_unfix (thread_p, &page_watcher);
-      return scan;
-    }
-
-  pgbuf_ordered_unfix (thread_p, &page_watcher);
   return scan;
 }
 
