@@ -2737,7 +2737,7 @@ restart:
       /* Wakeup more workers */
       thread_wakeup_vacuum_worker_threads (n_wakeup_workers);
     }
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
 
   assert (lf_circular_queue_is_empty (vacuum_Block_data_buffer));
@@ -6981,7 +6981,7 @@ vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_p, OID * oid, OID * 
       OID cls_oid;
       if (class_oid == NULL || OID_ISNULL (class_oid))
 	{
-	  if (heap_get_class_oid (thread_p, &cls_oid, oid) != S_SUCCESS)
+	  if (heap_get_class_oid (thread_p, oid, &cls_oid) != S_SUCCESS)
 	    {
 	      ASSERT_ERROR ();
 	      return DISK_ERROR;

@@ -6051,7 +6051,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	  /* make sure we use the correct class oid - we could be dealing with a classoid resulted from a unique btid
 	   * pruning */
-	  if (heap_get_class_oid (thread_p, class_oid, oid) != S_SUCCESS)
+	  if (heap_get_class_oid (thread_p, oid, class_oid) != S_SUCCESS)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto error;
@@ -10422,7 +10422,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 	       * check to make sure that the OID is one of the OIDs from our
 	       * list of classes.
 	       */
-	      if (heap_get_class_oid (thread_p, &cl_oid, &oid_area[i]) != S_SUCCESS)
+	      if (heap_get_class_oid (thread_p, &oid_area[i], &cl_oid) != S_SUCCESS)
 		{
 		  (void) heap_scancache_end (thread_p, &isid.scan_cache);
 		  goto error;
@@ -13345,7 +13345,7 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
  *
  */
 SCAN_CODE
-locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *context, LOCK lock_mode,
+locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, LOCK lock_mode,
 			     HEAP_SCANCACHE * scan_cache, int chn, int ispeeking)
 {
   SCAN_CODE scan = S_SUCCESS;
@@ -13356,14 +13356,15 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *context,
   assert (context->oid_p != NULL && !OID_ISNULL (context->oid_p));
 
   if (context->class_oid_p == NULL)
-  {
-    context->class_oid_p = &class_oid_local;
-  }
+    {
+      context->class_oid_p = &class_oid_local;
+    }
 
   if (OID_ISNULL (context->class_oid_p))
     {
       /* get class_oid if not provided */
-      if (heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
+      if (heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, PGBUF_LATCH_READ) !=
+	  NO_ERROR)
 	{
 	  goto error;
 	}
@@ -13389,35 +13390,35 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *context,
 
       /* Prepare for getting record again. Since pages have been unlatched, others may have changed them */
       if (heap_get_prepare_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED) != NO_ERROR)
-      {
-	goto error;
-      }
+	{
+	  goto error;
+	}
     }
   else
-  {
-    lock_acquired = true;
-  }
+    {
+      lock_acquired = true;
+    }
 
   /* lock should be aquired now -> get recdes */
   scan = heap_get_last_version (thread_p, context, scan_cache, ispeeking, chn);
 
   /* check visibility of the object if it belongs to a mvcc class */
   if (!heap_is_mvcc_disabled_for_class (context->class_oid_p))
-  {
-    MVCC_REC_HEADER recdes_header;
-    MVCC_SATISFIES_DELETE_RESULT satisfies_delete_result;
-
-    if (or_mvcc_get_header (context->recdes_p, &recdes_header) != S_SUCCESS)
     {
-      goto error;
-    }
+      MVCC_REC_HEADER recdes_header;
+      MVCC_SATISFIES_DELETE_RESULT satisfies_delete_result;
 
-    if (MVCC_IS_HEADER_DELID_VALID (&recdes_header))
-    {
-      scan = S_DOESNT_EXIST;
-      goto error;
+      if (or_mvcc_get_header (context->recdes_p, &recdes_header) != S_SUCCESS)
+	{
+	  goto error;
+	}
+
+      if (MVCC_IS_HEADER_DELID_VALID (&recdes_header))
+	{
+	  scan = S_DOESNT_EXIST;
+	  goto error;
+	}
     }
-  }
 
   /* umm, missed something? */
 
@@ -13426,9 +13427,9 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *context,
 error:
 
   if (lock_acquired)
-  {
-    lock_unlock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, true);
-  }
+    {
+      lock_unlock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, true);
+    }
 
   heap_clean_get_context (thread_p, context);
 

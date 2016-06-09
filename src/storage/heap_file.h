@@ -413,7 +413,7 @@ extern SCAN_CODE heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, O
 extern SCAN_CODE heap_get_with_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RECDES * recdes,
 					  HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE scan_operation_type,
 					  int ispeeking, NON_EXISTENT_HANDLING non_ex_handling_type);
-extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
+extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern SCAN_CODE heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
@@ -671,9 +671,11 @@ extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * 
 extern void heap_init_get_context (HEAP_GET_CONTEXT * context, OID * oid, OID * class_oid, RECDES * recdes);
 extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
 				     PGBUF_LATCH_MODE latch_mode);
-extern SCAN_CODE heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, PGBUF_LATCH_MODE latch_mode, bool is_heap_scan, NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
-  PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
-  NON_EXISTENT_HANDLING non_ex_handling_type);
+					   PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
+					   NON_EXISTENT_HANDLING non_ex_handling_type);
+extern SCAN_CODE heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
+					   PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
+					   NON_EXISTENT_HANDLING non_ex_handling_type);
 
 #endif /* _HEAP_FILE_H_ */

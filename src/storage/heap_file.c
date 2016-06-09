@@ -7824,11 +7824,11 @@ heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, R
 
   /*heap_init_get_context (&context, oid, class_oid, recdes);
 
-  scan = locator_lock_and_get_object (thread_p, &context, X_LOCK, scan_cache, old_chn, ispeeking);
+     scan = locator_lock_and_get_object (thread_p, &context, X_LOCK, scan_cache, old_chn, ispeeking);
 
-  heap_clean_get_context (thread_p, &context);
+     heap_clean_get_context (thread_p, &context);
 
-  return scan;*/
+     return scan; */
 
   return heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, recdes, scan_cache, S_DELETE, ispeeking,
 						old_chn, mvcc_reev_data, non_ex_handling_type);
@@ -10403,22 +10403,6 @@ exit_on_error:
   assert (pg_watcher.pgptr == NULL);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
-}
-
-/*
- * heap_get_class_oid () - Get class for object. This function doesn't follow
- *			   MVCC versions. Caller must know to use right
- *			   version for this.
- *
- * return	   : Scan code.
- * thread_p (in)   : Thread entry.
- * class_oid (out) : Output class OID.
- * oid (in)	   : Object OID.
- */
-SCAN_CODE
-heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
-{
-  return heap_get_with_class_oid (thread_p, class_oid, oid, NULL, NULL, S_SELECT, PEEK, LOG_ERROR_IF_DELETED);
 }
 
 /*
@@ -26373,40 +26357,38 @@ exit:
 }
 
 /*
- * heap_get_class_oid () - Get class of provided oid 
- * 
- *
- */
+* heap_get_class_oid () - Get class for object. This function doesn't follow
+*			   MVCC versions. Caller must know to use right
+*			   version for this.
+*
+* return	   : Scan code.
+* thread_p (in)   : Thread entry.
+* oid (in)	   : Object OID.
+* class_oid (out) : Output class OID.
+*/
 SCAN_CODE
-heap_get_class_oid2 (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
+heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
 {
   SCAN_CODE scan;
   PGBUF_WATCHER page_watcher;
-  RECDES peek_recdes = RECDES_INITIALIZER;
 
   assert (oid != NULL && !OID_ISNULL (oid) && class_oid != NULL);
+  OID_SET_NULL (class_oid);
 
   page_watcher.pgptr = NULL;
-  //if (heap_prepare_object_page (thread_p, oid, &page_watcher) != NO_ERROR)
-  {
-    return S_ERROR;
-  }
+  if (heap_prepare_object_page (thread_p, oid, &page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
 
   /* Get class OID from HEAP_CHAIN. */
-  scan = spage_get_record (page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &peek_recdes, PEEK);
+  scan = heap_get_class_oid_from_page (thread_p, &page_watcher, class_oid);
   if (scan != S_SUCCESS)
     {
       /* Unexpected. */
       assert_release (false);
       pgbuf_ordered_unfix (thread_p, &page_watcher);
       return scan;
-    }
-
-  COPY_OID (class_oid, &(((HEAP_CHAIN *) peek_recdes.data)->class_oid));
-  if (OID_ISNULL (class_oid))
-    {
-      /* root class is identified with a NULL class OID */
-      COPY_OID (class_oid, oid_Root_class_oid);
     }
 
   pgbuf_ordered_unfix (thread_p, &page_watcher);
