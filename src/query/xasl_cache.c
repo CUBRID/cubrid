@@ -33,6 +33,7 @@
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)
 #define XCACHE_ENTRY_WAS_RECOMPILED	    ((INT32) 0x20000000)
 #define XCACHE_ENTRY_SKIP_TO_BE_RECOMPILED  ((INT32) 0x10000000)
+#define XCACHE_ENTRY_CLEANUP		    ((INT32) 0x08000000)
 #define XCACHE_ENTRY_FLAGS_MASK		    ((INT32) 0xFF000000)
 
 #define XCACHE_ENTRY_FIX_COUNT_MASK	    ((INT32) 0x00FFFFFF)
@@ -556,6 +557,22 @@ xcache_compare_key (void *key1, void *key2)
     }
   /* SHA-1 hash matched. */
   /* Now we matched XASL_ID. */
+
+  if (lookup_key->cache_flag == XCACHE_ENTRY_CLEANUP)
+    {
+      /* Lookup for cleaning the entry from hash. The entry must not be fixed by another and must not have any
+       * flags. */
+      if (XCACHE_ATOMIC_CAS_CACHE_FLAG (entry_key, 0, XCACHE_ENTRY_MARK_DELETED))
+	{
+	  /* Successfully marked for delete. */
+	  return 0;
+	}
+      else
+	{
+	  /* Entry was fixed or had another flag set. */
+	  return -1;
+	}
+    }
 
   cache_flag = XCACHE_ATOMIC_READ_CACHE_FLAG (entry_key);
   if (cache_flag & XCACHE_ENTRY_MARK_DELETED)
@@ -1751,8 +1768,8 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   XCACHE_CLEANUP_CANDIDATE candidate;
-  int cache_flag;
   int candidate_index;
+  int success;
 
   /* We can allow only one cleanup process at a time. There is no point in duplicating this work. Therefore, anyone
    * trying to do the cleanup should first try to set xcache_Cleanup_flag. */
@@ -1778,7 +1795,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
    *	heap.
    *	NOTE: the binary heap does not story references to hash entries; it stores copies from the candidate keys and
    *	last used timer of course to sort the candidates.
-   * 2.	Mark candidates for delete if they have not been altered or reused in the meantime.
+   * 2.	Remove collected candidates from hash. Entries must be unfix and no flags must be set.
    */
 
   assert (xcache_Cleanup_bh->element_count == 0);
@@ -1812,75 +1829,45 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	      XCACHE_LOG_TRAN_ARGS (thread_p));
 
   /* Remove candidates from cache. */
-  for  (candidate_index = 0; candidate_index < xcache_Cleanup_bh->element_count; candidate_index++)
+  for (candidate_index = 0; candidate_index < xcache_Cleanup_bh->element_count; candidate_index++)
     {
       /* Get candidate at candidate_index. */
       bh_element_at (xcache_Cleanup_bh, candidate_index, &candidate);
 
-      /* Search xcache_entry in hash. */
-      xcache_entry = NULL;
-      if (lf_hash_find (t_entry, &xcache_Ht, &candidate.xid, &xcache_entry) != NO_ERROR)
+      /* Set intention to cleanup the entry. */
+      candidate.xid.cache_flag = XCACHE_ENTRY_CLEANUP;
+
+      /* Try delete. */
+      if (lf_hash_delete (t_entry, &xcache_Ht, &candidate.xid, &success) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  assert_release (xcache_entry == NULL);
-	  xcache_log_error ("failed hash lookup: \n"
-			    XCACHE_LOG_XASL_ID_TEXT ("error finding")
+	  xcache_log_error ("failed hash delete: \n"
+			    XCACHE_LOG_XASL_ID_TEXT ("xasl id")
 			    XCACHE_LOG_TRAN_TEXT,
 			    XCACHE_LOG_XASL_ID_ARGS (&candidate.xid),
 			    XCACHE_LOG_TRAN_ARGS (thread_p));
 	  continue;
 	}
-      if (xcache_entry == NULL)
+      if (success)
 	{
-	  /* Already removed */
-	  continue;
-	}
-      /* Check candidate is still valid. */
-      if (candidate.time_last_used.tv_sec < xcache_entry->time_last_used.tv_sec)
-	{
-	  /* Used again. Candidate is invalidated. */
-	  xcache_log ("cleanup: candidate was reused"
-		      XCACHE_LOG_XASL_ID_TEXT ("xasl id")
-		      XCACHE_LOG_TRAN_TEXT,
-		      XCACHE_LOG_XASL_ID_ARGS (&candidate.xid),
-		      XCACHE_LOG_TRAN_ARGS (thread_p));
-	  xcache_unfix (thread_p, xcache_entry);
-	  continue;
-	}
-      /* Try mark for delete. If not successful, somebody else accesses the entry and invalidates its candidacy for
-       * cleanup. */
-      cache_flag = xcache_entry->xasl_id.cache_flag;
-      if ((cache_flag & XCACHE_ENTRY_FLAGS_MASK) || (cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) > 1)
-	{
-	  /* Already marked for delete or recompile, or fixed by another thread. */
-	  xcache_log ("cleanup: candidate was invalidated"
-		      XCACHE_LOG_XASL_ID_TEXT ("xasl id")
-		      XCACHE_LOG_TRAN_TEXT,
-		      XCACHE_LOG_XASL_ID_ARGS (&candidate.xid),
-		      XCACHE_LOG_TRAN_ARGS (thread_p));
-	  xcache_unfix (thread_p, xcache_entry);
-	  continue;
-	}
-      if (XCACHE_ATOMIC_CAS_CACHE_FLAG (&xcache_entry->xasl_id, cache_flag, cache_flag | XCACHE_ENTRY_MARK_DELETED))
-	{
-	  xcache_log ("cleanup: candidate was marked for delete"
+	  xcache_log ("cleanup: candidate was removed from hash"
 		      XCACHE_LOG_XASL_ID_TEXT ("xasl id")
 		      XCACHE_LOG_TRAN_TEXT,
 		      XCACHE_LOG_XASL_ID_ARGS (&candidate.xid),
 		      XCACHE_LOG_TRAN_ARGS (thread_p));
 
 	  XCACHE_STAT_INC (deletes_at_cleanup);
+	  ATOMIC_INC_32 (&xcache_Entry_count, -1);
 	}
       else
 	{
-	  xcache_log ("cleanup: candidate was not marked for delete"
+	  xcache_log ("cleanup: candidate was not removed from hash"
 		      XCACHE_LOG_XASL_ID_TEXT ("xasl id")
 		      XCACHE_LOG_TRAN_TEXT,
 		      XCACHE_LOG_XASL_ID_ARGS (&candidate.xid),
 		      XCACHE_LOG_TRAN_ARGS (thread_p));
 	}
-      /* Unfix entry - this will also remove the entry from hash if it was marked for delete. */
-      xcache_unfix (thread_p, xcache_entry);
     }
 
   /* Reset binary heap. */
