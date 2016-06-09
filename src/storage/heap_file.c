@@ -10421,11 +10421,11 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
   SCAN_CODE scan;
   PGBUF_WATCHER page_watcher;
 
+  PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 
   assert (oid != NULL && !OID_ISNULL (oid) && class_oid != NULL);
   OID_SET_NULL (class_oid);
 
-  page_watcher.pgptr = NULL;
   if (heap_prepare_object_page (thread_p, oid, &page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
     {
       return S_ERROR;
