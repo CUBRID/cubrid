@@ -105,7 +105,7 @@ XCACHE xcache_Global =
 #define xcache_Cleanup_bh xcache_Global.cleanup_bh
 
 /* Statistics */
-#define XCACHE_STAT_GET(name) ATOMIC_INC_64 (&xcache_Global.stats.name, 0)
+#define XCACHE_STAT_GET(name) ATOMIC_LOAD_64 (&xcache_Global.stats.name)
 #define XCACHE_STAT_INC(name) ATOMIC_INC_64 (&xcache_Global.stats.name, 1)
 
 /* xcache_Entry_descriptor - used for latch-free hash table.
@@ -139,8 +139,6 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
     NULL,		  /* duplicates not accepted. */
   };
 
-#define XCACHE_ATOMIC_READ_CACHE_FLAG(xid) (ATOMIC_INC_32 (&(xid)->cache_flag, 0))
-#define XCACHE_ATOMIC_TAS_CACHE_FLAG(xid, cf) (ATOMIC_TAS_32 (&(xid)->cache_flag, cf))
 #define XCACHE_ATOMIC_CAS_CACHE_FLAG(xid, oldcf, newcf) (ATOMIC_CAS_32 (&(xid)->cache_flag, oldcf, newcf))
 
 /* Cleanup */
@@ -569,7 +567,7 @@ xcache_compare_key (void *key1, void *key2)
 	}
     }
 
-  cache_flag = XCACHE_ATOMIC_READ_CACHE_FLAG (entry_key);
+  cache_flag = entry_key->cache_flag;
   if (cache_flag & XCACHE_ENTRY_MARK_DELETED)
     {
       /* The entry was marked for deletion. */
@@ -965,7 +963,7 @@ xcache_fix (XASL_ID * xid)
 
   do
     {
-      cache_flag = XCACHE_ATOMIC_READ_CACHE_FLAG (xid);
+      cache_flag = xid->cache_flag;
 #if defined (SA_MODE)
       assert ((cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) == 0);
 #endif /* SA_MODE */
@@ -1013,7 +1011,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
   /* Decrement the number of users. */
   do
     {
-      cache_flag = XCACHE_ATOMIC_READ_CACHE_FLAG (&xcache_entry->xasl_id);
+      cache_flag = xcache_entry->xasl_id.cache_flag;
       new_cache_flag = cache_flag;
 
       /* There should be at least one fix. */
@@ -1096,7 +1094,7 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
   /* Mark for delete. We must successfully set XCACHE_ENTRY_MARK_DELETED flag. */
   do
     {
-      cache_flag = XCACHE_ATOMIC_READ_CACHE_FLAG (&xcache_entry->xasl_id);
+      cache_flag = xcache_entry->xasl_id.cache_flag;
       if (cache_flag & XCACHE_ENTRY_MARK_DELETED)
 	{
 	  /* Cleanup could have marked this entry for delete. */
@@ -1333,7 +1331,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	      /* Now that we inserted new cache entry, we can mark the old entry as recompiled. */
 	      do
 		{
-		  cache_flag = XCACHE_ATOMIC_READ_CACHE_FLAG (&to_be_recompiled->xasl_id);
+		  cache_flag = to_be_recompiled->xasl_id.cache_flag;
 		  if ((cache_flag & XCACHE_ENTRY_FLAGS_MASK) != XCACHE_ENTRY_TO_BE_RECOMPILED)
 		    {
 		      /* Unexpected flags. */
@@ -1379,7 +1377,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
       /* Mark existing as to be recompiled. */
       do 
 	{
-	  cache_flag = XCACHE_ATOMIC_READ_CACHE_FLAG (&(*xcache_entry)->xasl_id);
+	  cache_flag = (*xcache_entry)->xasl_id.cache_flag;
 	  if (cache_flag & XCACHE_ENTRY_MARK_DELETED)
 	    {
 	      /* Deleted? We certainly did not expect. */
@@ -1472,7 +1470,7 @@ error:
       /* Remove to be recompiled flag. */
       do 
 	{
-	  cache_flag = XCACHE_ATOMIC_READ_CACHE_FLAG (&to_be_recompiled->xasl_id);
+	  cache_flag = to_be_recompiled->xasl_id.cache_flag;
 	  new_cache_flag = cache_flag & (~XCACHE_ENTRY_TO_BE_RECOMPILED);
 	} while (!XCACHE_ATOMIC_CAS_CACHE_FLAG (&to_be_recompiled->xasl_id, cache_flag, new_cache_flag));
       xcache_unfix (thread_p, to_be_recompiled);
@@ -1647,9 +1645,9 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 	       xcache_entry->xasl_id.time_stored.sec, xcache_entry->xasl_id.time_stored.usec);
       fprintf (fp, "            } \n");
       fprintf (fp, "  fix_count = %d \n",
-	       XCACHE_ATOMIC_READ_CACHE_FLAG (&xcache_entry->xasl_id) & XCACHE_ENTRY_FIX_COUNT_MASK);
+	       xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK);
       fprintf (fp, "  cache flags = %08x \n",
-	       XCACHE_ATOMIC_READ_CACHE_FLAG (&xcache_entry->xasl_id) & XCACHE_ENTRY_FLAGS_MASK);
+	       xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FLAGS_MASK);
       fprintf (fp, "  reference count = %ld \n", ATOMIC_INC_64 (&xcache_entry->ref_count, 0));
       fprintf (fp, "  time second last used = %l \n", xcache_entry->time_last_used.tv_sec);
 
@@ -1680,7 +1678,7 @@ xcache_can_entry_cache_list (XASL_CACHE_ENTRY * xcache_entry)
       return false;
     }
   return (xcache_entry != NULL
-	  && (XCACHE_ATOMIC_READ_CACHE_FLAG (&xcache_entry->xasl_id) & XCACHE_ENTRY_FLAGS_MASK) == 0);
+	  && (xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FLAGS_MASK) == 0);
 }
 
 /*
