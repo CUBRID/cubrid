@@ -22854,7 +22854,7 @@ qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFIL
       tpl->values_size = tpldescr->tpl_size;
       topn_items->total_size += tpldescr->tpl_size;
 
-      (void) bh_insert (topn_items->heap, tpl);
+      (void) bh_insert (topn_items->heap, &tpl);
 
       return TOPN_SUCCESS;
     }
