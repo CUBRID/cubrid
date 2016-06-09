@@ -10418,7 +10418,6 @@ exit_on_error:
 SCAN_CODE
 heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
 {
-  SCAN_CODE scan;
   PGBUF_WATCHER page_watcher;
 
   PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
@@ -10432,17 +10431,16 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
     }
 
   /* Get class OID from HEAP_CHAIN. */
-  scan = heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, class_oid);
-  if (scan != S_SUCCESS)
+  if (heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, class_oid) != NO_ERROR)
     {
       /* Unexpected. */
       assert_release (false);
       pgbuf_ordered_unfix (thread_p, &page_watcher);
-      return scan;
+      return S_ERROR;
     }
 
   pgbuf_ordered_unfix (thread_p, &page_watcher);
-  return scan;
+  return S_SUCCESS;
 }
 
 /*
