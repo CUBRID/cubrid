@@ -4057,6 +4057,14 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
 
   if (OID_ISNULL (class_oid))
     {
+      /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
+       * removed with one of the refactoring issues anyway.
+       */
+      if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+	{
+	  return LC_DOESNOT_EXIST;
+	}
+
       /* 
        * Caller does not know the class of the object. Get the class identifier
        * from disk
