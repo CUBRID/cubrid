@@ -923,9 +923,6 @@ static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, REC
 static bool heap_check_class_for_rr_isolation_err (const OID * class_oid);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR pgptr, PAGE_PTR fwd_pgptr,
 					 LOG_LSA * prev_ver_lsa);
-static SCAN_CODE heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
-					   PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
-					   NON_EXISTENT_HANDLING non_ex_handling_type);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -7822,6 +7819,17 @@ heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, R
 			  HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn, MVCC_REEV_DATA * mvcc_reev_data,
 			  NON_EXISTENT_HANDLING non_ex_handling_type)
 {
+  HEAP_GET_CONTEXT context;
+  SCAN_CODE scan;
+
+  /*heap_init_get_context (&context, oid, class_oid, recdes);
+
+  scan = locator_lock_and_get_object (thread_p, &context, X_LOCK, scan_cache, old_chn, ispeeking);
+
+  heap_clean_get_context (thread_p, &context);
+
+  return scan;*/
+
   return heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, recdes, scan_cache, S_DELETE, ispeeking,
 						old_chn, mvcc_reev_data, non_ex_handling_type);
 }
@@ -8286,7 +8294,7 @@ end:
       heap_scancache_end (thread_p, &local_scancache);
       scan_cache = NULL;
     }
-  else if (scan_cache != NULL && scan_cache->cache_last_fix_page)
+  else if (scan_code != S_ERROR && scan_cache->cache_last_fix_page)
     {
       /* Record was successfully obtained and scan is fixed. Save home page (or NULL if it had to be unfixed) to
        * scan_cache. */
@@ -8349,7 +8357,7 @@ error:
  *	   fix fwd page, after having home fix; first try (CONDITIONAL) will
  *	   fail, and wil trigger an ordered fix + UNCONDITIONAL.
  */
-static SCAN_CODE
+SCAN_CODE
 heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 			  PGBUF_LATCH_MODE latch_mode, bool is_heap_scan, NON_EXISTENT_HANDLING non_ex_handling_type)
 {
@@ -26306,6 +26314,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
 
   assert (scan_cache != NULL);
+  assert (context->recdes_p != NULL);
 
   if (scan_cache != NULL && scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
     {

@@ -671,5 +671,9 @@ extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * 
 extern void heap_init_get_context (HEAP_GET_CONTEXT * context, OID * oid, OID * class_oid, RECDES * recdes);
 extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
 				     PGBUF_LATCH_MODE latch_mode);
+extern SCAN_CODE heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, PGBUF_LATCH_MODE latch_mode, bool is_heap_scan, NON_EXISTENT_HANDLING non_ex_handling_type);
+extern SCAN_CODE heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
+  PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
+  NON_EXISTENT_HANDLING non_ex_handling_type);
 
 #endif /* _HEAP_FILE_H_ */

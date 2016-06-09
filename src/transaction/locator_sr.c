@@ -13345,62 +13345,94 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
  *
  */
 SCAN_CODE
-locator_lock_and_get_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes, LOCK lock_mode,
+locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *context, LOCK lock_mode,
 			     HEAP_SCANCACHE * scan_cache, int chn, int ispeeking)
 {
-  HEAP_GET_CONTEXT context;	// = HEAP_GET_CONTEXT_INITIALIZER;
   SCAN_CODE scan = S_SUCCESS;
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
+  OID class_oid_local = OID_INITIALIZER;
+  bool lock_acquired = false;
 
+  assert (context->oid_p != NULL && !OID_ISNULL (context->oid_p));
 
-  assert (oid != NULL && !OID_ISNULL (oid) && class_oid != NULL);
+  if (context->class_oid_p == NULL)
+  {
+    context->class_oid_p = &class_oid_local;
+  }
 
-  //PGBUF_INIT_WATCHER (&context.home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, HEAP_SCAN_ORDERED_HFID (scan_cache));
-  //PGBUF_INIT_WATCHER (&context.fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, HEAP_SCAN_ORDERED_HFID (scan_cache));
-
-  if (scan_cache != NULL && scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
-    {
-      /* switch to local page watcher */
-      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context.home_page_watcher);
-    }
-
-  if (OID_ISNULL (class_oid))
+  if (OID_ISNULL (context->class_oid_p))
     {
       /* get class_oid if not provided */
-      if (heap_prepare_object_page (thread_p, oid, &context.home_page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
+      if (heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, PGBUF_LATCH_READ) != NO_ERROR)
 	{
-	  return S_ERROR;
+	  goto error;
 	}
-      if (heap_get_class_oid_from_page (thread_p, &context.home_page_watcher, class_oid) != NO_ERROR)
+      if (heap_get_class_oid_from_page (thread_p, context->home_page_watcher.pgptr, context->class_oid_p) != NO_ERROR)
 	{
-	  pgbuf_ordered_unfix (thread_p, &context.home_page_watcher);
-	  return S_ERROR;
+	  goto error;
 	}
     }
 
   /* the type of lock depends on the class_oid; decide it now */
   //lock_mode = locator_decide_type_of_lock (class_oid, lock_mode, op_type);
 
-  if (lock_object (thread_p, oid, class_oid, lock_mode, LK_COND_LOCK) != LK_GRANTED)
+  if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_COND_LOCK) != LK_GRANTED)
     {
       /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally */
       heap_clean_get_context (thread_p, &context);
-      if (lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
+      if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
 	{
-	  return S_ERROR;
+	  goto error;
 	}
+
+      lock_acquired = true;
+
+      /* Prepare for getting record again. Since pages have been unlatched, others may have changed them */
+      if (heap_get_prepare_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED) != NO_ERROR)
+      {
+	goto error;
+      }
+    }
+  else
+  {
+    lock_acquired = true;
+  }
+
+  /* lock should be aquired now -> get recdes */
+  scan = heap_get_last_version (thread_p, context, scan_cache, ispeeking, chn);
+
+  /* check visibility of the object if it belongs to a mvcc class */
+  if (!heap_is_mvcc_disabled_for_class (context->class_oid_p))
+  {
+    MVCC_REC_HEADER recdes_header;
+    MVCC_SATISFIES_DELETE_RESULT satisfies_delete_result;
+
+    if (or_mvcc_get_header (context->recdes_p, &recdes_header) != S_SUCCESS)
+    {
+      goto error;
     }
 
-  /* lock should be aquired -> get recdes */
-  //scan = heap_get_last_version (thread_p, oid, &context, ispeeking, chn);
+    if (MVCC_IS_HEADER_DELID_VALID (&recdes_header))
+    {
+      scan = S_DOESNT_EXIST;
+      goto error;
+    }
+  }
 
-  /* check visibility of the object */
-
-  //snapshot_res = 
-
-exit:
+  /* umm, missed something? */
 
   return scan;
+
+error:
+
+  if (lock_acquired)
+  {
+    lock_unlock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, true);
+  }
+
+  heap_clean_get_context (thread_p, context);
+
+  return scan != S_SUCCESS ? scan : S_ERROR;
 }
 
 LOCK

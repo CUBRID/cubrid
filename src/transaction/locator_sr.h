@@ -100,4 +100,6 @@ extern PRUNING_SCAN_CACHE *locator_get_partition_scancache (PRUNING_CONTEXT * pc
 extern int xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list);
 
 extern int locator_rv_redo_rename (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+
+extern SCAN_CODE locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, LOCK lock_mode, HEAP_SCANCACHE * scan_cache, int chn, int ispeeking);
 #endif /* _LOCATOR_SR_H_ */
