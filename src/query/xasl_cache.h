@@ -91,8 +91,8 @@ struct xasl_cache_ent
   bool initialized;
 };
 
-extern int xcache_initialize (void);
-extern void xcache_finalize (void);
+extern int xcache_initialize (THREAD_ENTRY * thread_p);
+extern void xcache_finalize (THREAD_ENTRY * thread_p);
 
 extern int xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENTRY ** xcache_entry);
 extern int xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry,

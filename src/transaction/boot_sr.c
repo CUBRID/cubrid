@@ -3578,7 +3578,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = xcache_initialize ();
+  error_code = xcache_initialize (thread_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -3899,7 +3899,7 @@ error:
   log_final (thread_p);
   fpcache_finalize ();
   qfile_finalize_list_cache (thread_p);
-  xcache_finalize ();
+  xcache_finalize (thread_p);
 
 #if defined(SERVER_MODE)
   css_final_conn_list ();
@@ -4025,7 +4025,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       /* before removing temp vols */
       (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
       qfile_finalize_list_cache (thread_p);
-      xcache_finalize ();
+      xcache_finalize (thread_p);
       fpcache_finalize ();
       session_states_finalize (thread_p);
 

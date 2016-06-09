@@ -27,6 +27,7 @@
 #include "perf_monitor.h"
 #include "query_executor.h"
 #include "list_file.h"
+#include "binaryheap.h"
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)
@@ -50,12 +51,13 @@ struct xcache_stats
   INT64 failed_recompiles;
   INT64 deletes;
   INT64 cleanups;
+  INT64 deletes_at_cleanup;
   INT64 fix;
   INT64 unfix;
   INT64 inserts;
   INT64 found_at_insert;
 };
-#define XCACHE_STATS_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+#define XCACHE_STATS_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 
 /* Structure to include all xasl cache global variable. It is easier to visualize the entire system when debugging. */
 typedef struct xcache XCACHE;
@@ -69,19 +71,23 @@ struct xcache
   bool removed_temp_vols;
   bool logging_enabled;
   int max_clones;
+  INT32 cleanup_flag;
+  BINARY_HEAP *cleanup_bh;
 
   XCACHE_STATS stats;
 };
 XCACHE xcache_Global =
   {
-    false,
-    0,
-    LF_HASH_TABLE_INITIALIZER,
-    LF_FREELIST_INITIALIZER,
-    0,
-    false,
-    false,
-    0,
+    false,			  /* enabled */
+    0,				  /* soft_capacity */
+    LF_HASH_TABLE_INITIALIZER,	  /* ht */
+    LF_FREELIST_INITIALIZER,	  /* freelist */
+    0,				  /* entry_count */
+    false,			  /* removed_temp_vols */
+    false,			  /* logging_enabled */
+    0,				  /* max_clones */
+    0,				  /* cleanup_flag */
+    NULL,			  /* cleanup_bh */
     XCACHE_STATS_INITIALIZER
   };
 
@@ -94,6 +100,8 @@ XCACHE xcache_Global =
 #define xcache_Temp_vols_were_removed xcache_Global.removed_temp_vols
 #define xcache_Log xcache_Global.logging_enabled
 #define xcache_Max_clones xcache_Global.max_clones
+#define xcache_Cleanup_flag xcache_Global.cleanup_flag
+#define xcache_Cleanup_bh xcache_Global.cleanup_bh
 
 /* Statistics */
 #define XCACHE_STAT_GET(name) ATOMIC_INC_64 (&xcache_Global.stats.name, 0)
@@ -133,6 +141,16 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
 #define XCACHE_ATOMIC_READ_CACHE_FLAG(xid) (ATOMIC_INC_32 (&(xid)->cache_flag, 0))
 #define XCACHE_ATOMIC_TAS_CACHE_FLAG(xid, cf) (ATOMIC_TAS_32 (&(xid)->cache_flag, cf))
 #define XCACHE_ATOMIC_CAS_CACHE_FLAG(xid, oldcf, newcf) (ATOMIC_CAS_32 (&(xid)->cache_flag, oldcf, newcf))
+
+/* Cleanup */
+#define XCACHE_CLEANUP_RATIO 0.2
+
+typedef struct xcache_cleanup_candidate XCACHE_CLEANUP_CANDIDATE;
+struct xcache_cleanup_candidate
+{
+  XASL_ID xid;
+  struct timeval time_last_used;
+};
 
 /* Logging macro's */
 #define xcache_check_logging() (xcache_Log = prm_get_bool_value (PRM_ID_XASL_CACHE_LOGGING))
@@ -198,14 +216,17 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
 static bool xcache_fix (XASL_ID * xid);
 static bool xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
 static void xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone);
+static void xcache_cleanup (THREAD_ENTRY * thread_p);
+static BH_CMP_RESULT xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg);
 
 /*
  * xcache_initialize () - Initialize XASL cache.
  *
- * return : Error Code.
+ * return	 : Error Code.
+ * thread_p (in) : Thread entry.
  */
 int
-xcache_initialize (void)
+xcache_initialize (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
 
@@ -224,6 +245,7 @@ xcache_initialize (void)
   if (error_code != NO_ERROR)
     {
       xcache_log_error ("could not init freelist.\n");
+      ASSERT_ERROR ();
       return error_code;
     }
   
@@ -233,10 +255,24 @@ xcache_initialize (void)
     {
       lf_freelist_destroy (&xcache_Ht_freelist);
       xcache_log_error ("could not init hash table.\n");
+      ASSERT_ERROR ();
       return error_code;
     }
 
   xcache_Max_clones = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_CLONES);
+
+  xcache_Cleanup_flag = 0;
+  xcache_Cleanup_bh =
+    bh_create (thread_p, (int) (XCACHE_CLEANUP_RATIO * xcache_Soft_capacity), sizeof (XCACHE_CLEANUP_CANDIDATE),
+	       xcache_compare_cleanup_candidates, NULL);
+  if (xcache_Cleanup_bh == NULL)
+    {
+      lf_freelist_destroy (&xcache_Ht_freelist);
+      lf_hash_destroy (&xcache_Ht);
+      xcache_log_error ("could not init hash table.\n");
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
 
   xcache_Temp_vols_were_removed = false;
 
@@ -249,10 +285,11 @@ xcache_initialize (void)
 /*
  * xcache_finalize () - Finalize XASL cache.
  *
- * return : Void.
+ * return	     : Void.
+ * thread_entry (in) : Thread entry.
  */
 void
-xcache_finalize (void)
+xcache_finalize (THREAD_ENTRY * thread_p)
 {
   if (!xcache_Enabled)
     {
@@ -264,6 +301,12 @@ xcache_finalize (void)
 
   lf_freelist_destroy (&xcache_Ht_freelist);
   lf_hash_destroy (&xcache_Ht);
+
+  if (xcache_Cleanup_bh != NULL)
+    {
+      bh_destroy (thread_p, xcache_Cleanup_bh);
+      xcache_Cleanup_bh = NULL;
+    }
 
   xcache_Enabled = false;
 }
@@ -738,6 +781,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
 	      XCACHE_LOG_TRAN_TEXT,
 	      XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
 	      XCACHE_LOG_TRAN_ARGS (thread_p));
+
   return NO_ERROR;
 }
 
@@ -1042,14 +1086,12 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
       cache_flag = XCACHE_ATOMIC_READ_CACHE_FLAG (&xcache_entry->xasl_id);
       if (cache_flag & XCACHE_ENTRY_MARK_DELETED)
 	{
-	  /* Somebody else deleted? I don't think we can accept it. */
-	  assert (false);
-	  xcache_log_error ("tried to mark entry as deleted, but somebody else already marked it: \n"
-			    XCACHE_LOG_ENTRY_TEXT ("entry")
-			    XCACHE_LOG_TRAN_TEXT,
-			    XCACHE_LOG_ENTRY_ARGS (xcache_entry),
-			    XCACHE_LOG_TRAN_ARGS (thread_p));
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  /* Cleanup could have marked this entry for delete. */
+	  xcache_log ("tried to mark entry as deleted, but somebody else already marked it: \n"
+		      XCACHE_LOG_ENTRY_TEXT ("entry")
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_ENTRY_ARGS (xcache_entry),
+		      XCACHE_LOG_TRAN_ARGS (thread_p));
 	  return false;
 	}
       if (cache_flag & XCACHE_ENTRY_TO_BE_RECOMPILED)
@@ -1382,6 +1424,8 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	}
       /* Try to insert again. */
     }
+  /* Found or inserted entry. */
+  assert (*xcache_entry != NULL);
 
   if (!inserted)
     {
@@ -1395,9 +1439,12 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	  free (sql_hash_text);
 	}
     }
-
-  /* Found or inserted entry. */
-  assert (*xcache_entry != NULL);
+  else if (xcache_Soft_capacity < xcache_Entry_count && xcache_Cleanup_flag == 0)
+    {
+      /* Try to clean up some of the oldest entries. */
+      xcache_cleanup (thread_p);
+    }
+  
   return NO_ERROR;
 
 error:
@@ -1568,6 +1615,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Fix:                        %ld\n", XCACHE_STAT_GET (fix));
   fprintf (fp, "Unfix:                      %ld\n", XCACHE_STAT_GET (unfix));
   fprintf (fp, "Cleanups:                   %ld\n", XCACHE_STAT_GET (cleanups));
+  fprintf (fp, "Deletes at cleanup:	    %ld\n", XCACHE_STAT_GET (deletes_at_cleanup));
   /* add overflow, RT checks. */
 
   fprintf (fp, "\nEntries:\n");
@@ -1590,6 +1638,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
       fprintf (fp, "  cache flags = %08x \n",
 	       XCACHE_ATOMIC_READ_CACHE_FLAG (&xcache_entry->xasl_id) & XCACHE_ENTRY_FLAGS_MASK);
       fprintf (fp, "  reference count = %ld \n", ATOMIC_INC_64 (&xcache_entry->ref_count, 0));
+      fprintf (fp, "  time second last used = %l \n", xcache_entry->time_last_used.tv_sec);
 
       fprintf (fp, "  OID_LIST (count = %d): \n", xcache_entry->n_related_objects);
       for (oid_index = 0; oid_index < xcache_entry->n_related_objects; oid_index++)
@@ -1688,22 +1737,197 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
   xclone->xasl = NULL;
 }
 
+/*
+ * xcache_cleanup () - Cleanup xasl cache when soft capacity is exceeded.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+static void
+xcache_cleanup (THREAD_ENTRY * thread_p)
+{
+  LF_HASH_TABLE_ITERATOR iter;
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
+  XASL_CACHE_ENTRY *xcache_entry = NULL;
+  XCACHE_CLEANUP_CANDIDATE candidate;
+  int cache_flag;
+  int candidate_index;
+
+  /* We can allow only one cleanup process at a time. There is no point in duplicating this work. Therefore, anyone
+   * trying to do the cleanup should first try to set xcache_Cleanup_flag. */
+  if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 0, 1))
+    {
+      /* Somebody else does the cleanup. */
+      return;
+    }
+  if (xcache_Entry_count <= xcache_Soft_capacity)
+    {
+      /* Already cleaned up. */
+      if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
+	{
+	  assert_release (false);
+	}
+      return;
+    }
+
+  /* Start cleanup. */
+
+  /* The cleanup is a two-step process:
+   * 1. Iterate through hash and select candidates for cleanup. The least recently used entries are sorted into a binary
+   *	heap.
+   *	NOTE: the binary heap does not story references to hash entries; it stores copies from the candidate keys and
+   *	last used timer of course to sort the candidates.
+   * 2.	Mark candidates for delete if they have not been altered or reused in the meantime.
+   */
+
+  assert (xcache_Cleanup_bh->element_count == 0);
+  xcache_Cleanup_bh->element_count = 0;
+
+  xcache_log ("cleanup start: entries = %d \n"
+	      XCACHE_LOG_TRAN_TEXT,
+	      xcache_Entry_count,
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
+
+  /* Collect candidates for cleanup. */
+  lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
+
+  while ((xcache_entry = lf_hash_iterate (&iter)) != NULL)
+    {
+      candidate.xid = xcache_entry->xasl_id;
+      candidate.time_last_used = xcache_entry->time_last_used;
+
+      if (candidate.xid.cache_flag | XCACHE_ENTRY_FLAGS_MASK)
+	{
+	  /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. */
+	  continue;
+	}
+
+      (void) bh_try_insert (xcache_Cleanup_bh, &candidate, NULL);
+    }
+
+  xcache_log ("cleanup collected entries = %d \n"
+	      XCACHE_LOG_TRAN_TEXT,
+	      xcache_Cleanup_bh->element_count,
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
+
+  /* Remove candidates from cache. */
+  for  (candidate_index = 0; candidate_index < xcache_Cleanup_bh->element_count; candidate_index++)
+    {
+      /* Get candidate at candidate_index. */
+      bh_element_at (xcache_Cleanup_bh, candidate_index, &candidate);
+
+      /* Search xcache_entry in hash. */
+      xcache_entry = NULL;
+      if (lf_hash_find (t_entry, &xcache_Ht, &candidate.xid, &xcache_entry) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  assert_release (xcache_entry == NULL);
+	  xcache_log_error ("failed hash lookup: \n"
+			    XCACHE_LOG_XASL_ID_TEXT ("error finding")
+			    XCACHE_LOG_TRAN_TEXT,
+			    XCACHE_LOG_XASL_ID_ARGS (&candidate.xid),
+			    XCACHE_LOG_TRAN_ARGS (thread_p));
+	  continue;
+	}
+      if (xcache_entry == NULL)
+	{
+	  /* Already removed */
+	  continue;
+	}
+      /* Check candidate is still valid. */
+      if (candidate.time_last_used.tv_sec < xcache_entry->time_last_used.tv_sec)
+	{
+	  /* Used again. Candidate is invalidated. */
+	  xcache_log ("cleanup: candidate was reused"
+		      XCACHE_LOG_XASL_ID_TEXT ("xasl id")
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_XASL_ID_ARGS (&candidate.xid),
+		      XCACHE_LOG_TRAN_ARGS (thread_p));
+	  xcache_unfix (thread_p, xcache_entry);
+	  continue;
+	}
+      /* Try mark for delete. If not successful, somebody else accesses the entry and invalidates its candidacy for
+       * cleanup. */
+      cache_flag = xcache_entry->xasl_id.cache_flag;
+      if (cache_flag | XCACHE_ENTRY_FLAGS_MASK)
+	{
+	  /* Already marked for delete or recompile. */
+	  xcache_log ("cleanup: candidate was invalidated"
+		      XCACHE_LOG_XASL_ID_TEXT ("xasl id")
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_XASL_ID_ARGS (&candidate.xid),
+		      XCACHE_LOG_TRAN_ARGS (thread_p));
+	  xcache_unfix (thread_p, xcache_entry);
+	  continue;
+	}
+      if (XCACHE_ATOMIC_CAS_CACHE_FLAG (&xcache_entry->xasl_id, cache_flag, cache_flag | XCACHE_ENTRY_MARK_DELETED))
+	{
+	  xcache_log ("cleanup: candidate was marked for delete"
+		      XCACHE_LOG_XASL_ID_TEXT ("xasl id")
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_XASL_ID_ARGS (&candidate.xid),
+		      XCACHE_LOG_TRAN_ARGS (thread_p));
+
+	  XCACHE_STAT_INC (deletes_at_cleanup);
+	}
+      else
+	{
+	  xcache_log ("cleanup: candidate was not marked for delete"
+		      XCACHE_LOG_XASL_ID_TEXT ("xasl id")
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_XASL_ID_ARGS (&candidate.xid),
+		      XCACHE_LOG_TRAN_ARGS (thread_p));
+	}
+      /* Unfix entry - this will also remove the entry from hash if it was marked for delete. */
+      xcache_unfix (thread_p, xcache_entry);
+    }
+
+  /* Reset binary heap. */
+  xcache_Cleanup_bh->element_count = 0;
+
+  xcache_log ("cleanup finished: entries = %d \n"
+	      XCACHE_LOG_TRAN_TEXT,
+	      xcache_Entry_count,
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
+
+  XCACHE_STAT_INC (cleanups);
+  if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
+    {
+      assert_release (false);
+    }
+}
+
+/*
+ * xcache_compare_cleanup_candidates () - Compare cleanup candidates by their time_last_used. Oldest candidates are
+ *					  considered "greater".
+ *
+ * return :
+ * left (in) :
+ * right (in) :
+ * ignore_arg (in) :
+ */
+static BH_CMP_RESULT
+xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg)
+{
+  struct timeval left_timeval = ((XCACHE_CLEANUP_CANDIDATE *) left)->time_last_used;
+  struct timeval right_timeval = ((XCACHE_CLEANUP_CANDIDATE *) right)->time_last_used;
+
+  /* Greater means placed in binary heap. So return BH_GT for older timeval. */
+  if (left_timeval.tv_sec < right_timeval.tv_sec)
+    {
+      return BH_GT;
+    }
+  else if (left_timeval.tv_sec == right_timeval.tv_sec)
+    {
+      return BH_EQ;
+    }
+  else
+    {
+      return BH_LT;
+    }
+}
+
 /* TODO more stuff
- * xcache_remove_when_full.
- * I have named xcache_Soft_capacity the size of xasl cache because I don't want it to be a hard limit. We will allow
- * it to overflow. When a new entry is inserted and overflow occurs, the inserter takes the responsibility to free up
- * some entries (by marking them as deleted).
- * The hard limit would have to block the xasl cache for a time. Not only that this hash-free table has no means of
- * being blocked, but it is really unnecessary.
- * Freeing up entries could be done in two ways:
- * 1. Similarly to xasl_remove_by_class, we could provide a condition to free entries in one iteration.
- * 2. We could collect a set of victims during first iterate and then delete all collected victims.
- * I don't like the second approach because is too complex, we would have to keep a sorted list of victims which gets
- * updated with each entry.
- * I'd rather like to find a condition based on how often and how recent the entry was used. Anything older than and
- * used less often than would be removed. If that did not remove enough entries, which I hope never happens, we could
- * mark everything as deleted - but the real problem would be that the xasl cache is really too small for the system
- * needs.
  *
  * xcache_check_tcard.
  * the current RT system specifics:

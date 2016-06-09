@@ -33,7 +33,6 @@ extern "C"
 {
 #endif
 
-  typedef void *BH_ELEM;
   typedef void *BH_CMP_ARG;
 
   typedef enum
@@ -51,39 +50,50 @@ extern "C"
     BH_SORTED_ARRAY
   } BH_HEAP_STATE;
 
-  typedef BH_CMP_RESULT (*bh_key_comparator) (const BH_ELEM left, const BH_ELEM right, BH_CMP_ARG arg);
+  typedef enum
+  {
+    BH_TRY_INSERT_REJECTED,
+    BH_TRY_INSERT_ACCEPTED,
+    BH_TRY_INSERT_REPLACED
+  } BH_TRY_INSERT_RESULT;
+
+  typedef BH_CMP_RESULT (*bh_key_comparator) (const void *left, const void *right, BH_CMP_ARG arg);
 
   typedef struct binary_heap BINARY_HEAP;
   struct binary_heap
   {
     int max_capacity;
+    int elem_size;
     int element_count;
     BH_HEAP_STATE state;
     bh_key_comparator cmp_func;
     BH_CMP_ARG cmp_arg;
-    BH_ELEM *members;
+    void *members;
+    void *swap_buf;
   };
 
-  extern BINARY_HEAP *bh_create (THREAD_ENTRY * thread_p, int max_capacity, bh_key_comparator cmp_func,
+  #define BH_ELEMENT(heap, i) (((char *) (heap)->members) + (heap)->elem_size * i)
+  #define BH_ROOT(heap)	((heap)->members)
+
+  extern BINARY_HEAP *bh_create (THREAD_ENTRY * thread_p, int max_capacity, int elem_size, bh_key_comparator cmp_func,
 				 BH_CMP_ARG cmp_arg);
   extern void bh_destroy (THREAD_ENTRY * thread_p, BINARY_HEAP * heap);
 
-  extern int bh_add (BINARY_HEAP * heap, BH_ELEM elem);
+  extern int bh_add (BINARY_HEAP * heap, void * elem);
   extern void bh_build_heap (BINARY_HEAP * heap);
 
-  extern int bh_insert (BINARY_HEAP * heap, BH_ELEM elem);
-  extern BH_ELEM bh_try_insert (BINARY_HEAP * heap, BH_ELEM elem);
+  extern int bh_insert (BINARY_HEAP * heap, void * elem);
+  extern BH_TRY_INSERT_RESULT bh_try_insert (BINARY_HEAP * heap, void *elem, void *replaced);
 
   extern void bh_down_heap (BINARY_HEAP * heap, int index);
-  extern BH_ELEM bh_extract_max (BINARY_HEAP * heap);
-  extern BH_ELEM bh_replace_max (BINARY_HEAP * heap, BH_ELEM elem);
-  extern BH_ELEM bh_peek_max (BINARY_HEAP * heap);
+  extern bool bh_extract_max (BINARY_HEAP * heap, void *extract_elem);
+  extern bool bh_peek_max (BINARY_HEAP * heap, void *peek_elem);
 
   extern bool bh_is_consistent (BINARY_HEAP * heap);
 
   extern void bh_to_sorted_array (BINARY_HEAP * heap);
 
-  extern BH_ELEM bh_element_at (BINARY_HEAP * heap, int index);
+  extern void bh_element_at (BINARY_HEAP * heap, int index, void *elem);
   extern bool bh_is_full (BINARY_HEAP * heap);
 #if defined(CUBRID_DEBUG)
   extern bool bh_tests_consistent (BINARY_HEAP * heap);

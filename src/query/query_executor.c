@@ -369,6 +369,8 @@ enum analytic_stage
   ANALYTIC_GROUP_PROC
 };
 
+#define QEXEC_GET_BH_TOPN_TUPLE(heap, index) (*(TOPN_TUPLE **) BH_ELEMENT (heap, index))
+
 static DB_LOGICAL qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_list, XASL_STATE * xasl_state,
 				     LK_COMPOSITE_LOCK * composite_lock, int upd_del_cls_cnt, OID * default_cls_oid);
@@ -646,7 +648,7 @@ static int qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p, ACCESS_
 						AGGREGATE_TYPE * agg_list, bool * is_scan_needed);
 
 static int qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd);
-static BH_CMP_RESULT qexec_topn_compare (const BH_ELEM left, const BH_ELEM right, BH_CMP_ARG arg);
+static BH_CMP_RESULT qexec_topn_compare (const void *left, const void *right, BH_CMP_ARG arg);
 static BH_CMP_RESULT qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec);
 static TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * sort_stop,
 					    QFILE_TUPLE_DESCRIPTOR * tpldescr);
@@ -1996,7 +1998,8 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	  heap = xasl->topn_items->heap;
 	  for (i = 0; i < heap->element_count; i++)
 	    {
-	      qexec_clear_topn_tuple (thread_p, heap->members[i], xasl->topn_items->values_count);
+	      qexec_clear_topn_tuple (thread_p, QEXEC_GET_BH_TOPN_TUPLE (heap, i),
+				      xasl->topn_items->values_count);
 	    }
 
 	  if (heap != NULL)
@@ -22668,7 +22671,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
     }
   memset (top_n->tuples, 0, ubound * sizeof (TOPN_TUPLE));
 
-  heap = bh_create (thread_p, ubound, qexec_topn_compare, top_n);
+  heap = bh_create (thread_p, ubound, sizeof (TOPN_TUPLE *), qexec_topn_compare, top_n);
   if (heap == NULL)
     {
       error = ER_FAILED;
@@ -22708,7 +22711,7 @@ error_return:
  * arg (in) :
  */
 static BH_CMP_RESULT
-qexec_topn_compare (const BH_ELEM left, const BH_ELEM right, BH_CMP_ARG arg)
+qexec_topn_compare (const void *left, const void *right, BH_CMP_ARG arg)
 {
   int pos;
   SORT_LIST *key = NULL;
@@ -22858,8 +22861,10 @@ qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFIL
 
   /* We only add a tuple to the heap if it is "smaller" than the current root. Rather than allocating memory for a new
    * tuple and testing it, we test the heap root directly on the outptr list and replace it if we have to. */
-  heap_max = bh_peek_max (topn_items->heap);
-
+  if (!bh_peek_max (topn_items->heap, &heap_max))
+    {
+      assert (false);
+    }
   assert (heap_max != NULL);
 
   for (key = topn_items->sort_items; key != NULL; key = key->next)
@@ -22960,7 +22965,7 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
   varp = xasl->outptr_list->valptrp;
   for (row = 0; row < heap->element_count; row++)
     {
-      tuple = (TOPN_TUPLE *) heap->members[row];
+      tuple = QEXEC_GET_BH_TOPN_TUPLE (heap, row);
 
       /* evaluate orderby_num predicate */
       res = qexec_eval_ordbynum_pred (thread_p, &ordby_info);
@@ -22976,12 +22981,12 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
 	    {
 	      /* skip this tuple */
 	      qexec_clear_topn_tuple (thread_p, tuple, values_count);
-	      heap->members[row] = NULL;
+	      QEXEC_GET_BH_TOPN_TUPLE (heap, row) = NULL;
 	      continue;
 	    }
 	}
 
-      tuple = (TOPN_TUPLE *) heap->members[row];
+      tuple = QEXEC_GET_BH_TOPN_TUPLE (heap, row);
       tpl_descr->tpl_size = QFILE_TUPLE_LENGTH_SIZE;
 
       tpl_descr->f_cnt = 0;
@@ -23018,7 +23023,7 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
 	}
       /* clear tuple values */
       qexec_clear_topn_tuple (thread_p, tuple, values_count);
-      heap->members[row] = NULL;
+      QEXEC_GET_BH_TOPN_TUPLE (heap, row) = NULL;
     }
 
 cleanup:
@@ -23029,11 +23034,11 @@ cleanup:
 
   for (i = row; i < heap->element_count; i++)
     {
-      if (heap->members[i] != NULL)
+      if (QEXEC_GET_BH_TOPN_TUPLE (heap, i) != NULL)
 	{
-	  tuple = (TOPN_TUPLE *) heap->members[i];
+	  tuple = QEXEC_GET_BH_TOPN_TUPLE (heap, i);
 	  qexec_clear_topn_tuple (thread_p, tuple, values_count);
-	  heap->members[row] = NULL;
+	  QEXEC_GET_BH_TOPN_TUPLE (heap, i) = NULL;
 	}
     }
 

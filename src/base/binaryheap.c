@@ -29,21 +29,23 @@
 #define BH_PARENT(i)	((i - 1)/2)
 #define BH_LEFT(i)	(2*(i) + 1)
 #define BH_RIGHT(i)	(2*(i)+2)
-#define BH_ELEMENT(heap, i) ((heap)->members[(i)])
+#define BH_ELEMENT_COPY(heap, dest, src) (memcpy (dest, src, (heap)->elem_size))
 
-#define BH_SWAP(heap, left, right)			\
-  do							\
-  {							\
-    BH_ELEM *tmp = BH_ELEMENT(heap, left);		\
-    BH_ELEMENT (heap, left) = BH_ELEMENT (heap, right);	\
-    BH_ELEMENT (heap, right) = tmp;			\
-  } while (0)
+#define BH_SWAP(heap, left, right)						      \
+  do										      \
+    {										      \
+      BH_ELEMENT_COPY (heap, (heap)->swap_buf, BH_ELEMENT (heap, left));	      \
+      BH_ELEMENT_COPY (heap, BH_ELEMENT (heap, left), BH_ELEMENT (heap, right));      \
+      BH_ELEMENT_COPY (heap, BH_ELEMENT (heap, right), (heap)->swap_buf);	      \
+    }										      \
+  while (0)
 
 #define BH_CMP(heap, l, r) \
   (heap->cmp_func (BH_ELEMENT (heap, l), BH_ELEMENT (heap, r), heap->cmp_arg))
 
 
 static void bh_up_heap (BINARY_HEAP * heap, int index);
+static void bh_replace_max (BINARY_HEAP * heap, void * elem);
 
 /*
  * bh_up_heap () - push an element up the heap to the correct position
@@ -102,32 +104,43 @@ bh_down_heap (BINARY_HEAP * heap, int index)
  * bh_create () - create an empty heap
  * return : heap or NULL
  * max_capacity (in): maximum capacity of the heap
+ * elem_size (in)   : the size of one heap element.
  * cmp_func (in)    : pointer to the comparison function
  * cmp_arg (in)	    : argument to be passed to the comparison function
  *
- *  Note: this implementation considers the heap to be a MAX heap (i.e.: the
- *    root of the heap is the "largest" element). To use the heap as a MIN
- *    heap, callers can use the comparison function to inverse the comparison
+ *  Note: This implementation considers the heap to be a MAX heap (i.e.: the root of the heap is the "largest" element).
+ *	  To use the heap as a MIN heap, callers can use the comparison function to inverse the comparison
  */
 BINARY_HEAP *
-bh_create (THREAD_ENTRY * thread_p, int max_capacity, bh_key_comparator cmp_func, BH_CMP_ARG cmp_arg)
+bh_create (THREAD_ENTRY * thread_p, int max_capacity, int elem_size, bh_key_comparator cmp_func, BH_CMP_ARG cmp_arg)
 {
   BINARY_HEAP *heap = NULL;
 
   heap = (BINARY_HEAP *) db_private_alloc (thread_p, sizeof (BINARY_HEAP));
   if (heap == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (BINARY_HEAP));
       return NULL;
     }
 
-  heap->members = (BH_ELEM *) db_private_alloc (thread_p, max_capacity * sizeof (BH_ELEM));
+  heap->members = db_private_alloc (thread_p, max_capacity * elem_size);
   if (heap->members == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_capacity * elem_size);
       db_private_free (thread_p, heap);
       return NULL;
     }
-  memset (heap->members, 0, max_capacity * sizeof (BH_ELEM));
+  heap->swap_buf = db_private_alloc (thread_p, elem_size);
+  if (heap->swap_buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, elem_size);
+      db_private_free (thread_p, heap->members);
+      db_private_free (thread_p, heap);
+      return NULL;
+    }
+  memset (heap->members, 0, max_capacity * elem_size);
   heap->max_capacity = max_capacity;
+  heap->elem_size = elem_size;
   heap->cmp_func = cmp_func;
   heap->cmp_arg = cmp_arg;
   heap->element_count = 0;
@@ -150,6 +163,10 @@ bh_destroy (THREAD_ENTRY * thread_p, BINARY_HEAP * heap)
 	{
 	  db_private_free (thread_p, heap->members);
 	}
+      if (heap->swap_buf != NULL)
+	{
+	  db_private_free (thread_p, heap->swap_buf);
+	}
       db_private_free (thread_p, heap);
     }
 }
@@ -160,13 +177,16 @@ bh_destroy (THREAD_ENTRY * thread_p, BINARY_HEAP * heap)
  * heap (in) : heap
  * elem (in) : new element
  *
- *  Note: This function is provided as a convenience to speed up heap creation
- *    It is more efficient to load about half the heap with unordered elements
- *    and call bh_build_heap to restore the heap property
+ *  Note: This function is provided as a convenience to speed up heap creation.
+ *	  It is more efficient to load about half the heap with unordered elements and call bh_build_heap to restore the
+ *	  heap property.
  */
 int
-bh_add (BINARY_HEAP * heap, BH_ELEM elem)
+bh_add (BINARY_HEAP * heap, void *elem)
 {
+  assert (heap != NULL);
+  assert (elem != NULL);
+
   heap->state = BH_HEAP_INCONSISTENT;
 
   if (heap->element_count >= heap->max_capacity)
@@ -174,7 +194,7 @@ bh_add (BINARY_HEAP * heap, BH_ELEM elem)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BINARY_HEAP_OUT_OF_RANGE, 0);
       return ER_BINARY_HEAP_OUT_OF_RANGE;
     }
-  heap->members[heap->element_count] = elem;
+  BH_ELEMENT_COPY (heap, BH_ELEMENT (heap, heap->element_count), elem);
   heap->element_count++;
 
   return NO_ERROR;
@@ -187,8 +207,11 @@ bh_add (BINARY_HEAP * heap, BH_ELEM elem)
  * elem (in) : new element
  */
 int
-bh_insert (BINARY_HEAP * heap, BH_ELEM elem)
+bh_insert (BINARY_HEAP * heap, void *elem)
 {
+  assert (heap != NULL);
+  assert (elem != NULL);
+
   if (heap->element_count != 0)
     {
       assert_release (heap->state == BH_HEAP_CONSISTENT);
@@ -205,7 +228,7 @@ bh_insert (BINARY_HEAP * heap, BH_ELEM elem)
       return ER_BINARY_HEAP_OUT_OF_RANGE;
     }
 
-  heap->members[heap->element_count] = elem;
+  BH_ELEMENT_COPY (heap, BH_ELEMENT (heap, heap->element_count), elem);
   heap->element_count++;
   bh_up_heap (heap, heap->element_count - 1);
 
@@ -213,27 +236,38 @@ bh_insert (BINARY_HEAP * heap, BH_ELEM elem)
 }
 
 /*
- * bh_try_insert () - insert an element into the heap if heap hasn't reached
- *		      the full capacity or if new element is smaller than the
- *		      top element
- * return : old root element if it was replaced
- * heap (in) : heap
- * elem (in) : new element
+ * bh_try_insert () - insert an element into the heap if heap hasn't reached the full capacity or if new element is
+ *		      smaller than the top element
+ * return    : BH_TRY_INSERT_RESULT
+ *	       - BH_TRY_INSERT_ACCEPTED if the heap was not full
+ *	       - BH_TRY_INSERT_REJECTED if the heap was full and new element was rejected
+ *	       - BH_TRY_INSERT_REPLACED if the heap was full and new element replaced old root.
+ * heap (in)	  : heap
+ * elem (in)	  : new element
+ * replaced (out) : value of replaced element (if replaced).
  */
-BH_ELEM
-bh_try_insert (BINARY_HEAP * heap, BH_ELEM elem)
+BH_TRY_INSERT_RESULT
+bh_try_insert (BINARY_HEAP * heap, void *elem, void *replaced)
 {
+  assert (heap != NULL);
+  assert (elem != NULL);
+
   if (heap->element_count < heap->max_capacity)
     {
       bh_insert (heap, elem);
-      return NULL;
+      return BH_TRY_INSERT_ACCEPTED;
     }
   /* if root is larger than new element, replace root */
-  if (heap->cmp_func (heap->members[0], elem, heap->cmp_arg) == DB_GT)
+  if (heap->cmp_func (BH_ROOT (heap), elem, heap->cmp_arg) == BH_GT)
     {
-      return bh_replace_max (heap, elem);
+      if (replaced != NULL)
+	{
+	  BH_ELEMENT_COPY (heap, replaced, BH_ROOT (heap));
+	}
+      bh_replace_max (heap, elem);
+      return BH_TRY_INSERT_REPLACED;
     }
-  return elem;
+  return BH_TRY_INSERT_REJECTED;
 }
 
 /*
@@ -245,6 +279,9 @@ void
 bh_build_heap (BINARY_HEAP * heap)
 {
   int i;
+
+  assert (heap != NULL);
+
   if (heap->state == BH_HEAP_CONSISTENT)
     {
       /* already consistent, nothing to build */
@@ -259,74 +296,93 @@ bh_build_heap (BINARY_HEAP * heap)
 }
 
 /*
- * bh_extract_max () - remove the largest element from a heap
- * return : removed element
- * heap (in) : heap
+ * bh_extract_max () - pop the largest element from a heap
+ * return	      : true if heap is not empty and element is extracted, false if heap is empty.
+ * heap (in)	      : heap
+ * extract_elem (out) : extracted element.
  */
-BH_ELEM
-bh_extract_max (BINARY_HEAP * heap)
+bool
+bh_extract_max (BINARY_HEAP * heap, void *extract_elem)
 {
-  int idx = heap->element_count - 1;
-  if (idx <= 0)
-    {
-      heap->element_count = 0;
-      return heap->members[0];
-    }
-  BH_SWAP (heap, 0, idx);
-  heap->element_count--;
-  bh_down_heap (heap, 0);
+  assert (heap != NULL);
+  assert (extract_elem != NULL);
 
-  return BH_ELEMENT (heap, idx);
+  if (heap->element_count <= 0)
+    {
+      /* empty */
+      return false;
+    }
+  /* extract algorithm is:
+   * 1. replace root with last element on the last level.
+   * 2. recursive down-swap new root with children until the order is correct.
+   */
+  /* decrement element count; this also becomes the index of last element in heap */
+  heap->element_count--;
+  /* Copy root. */
+  BH_ELEMENT_COPY (heap, extract_elem, BH_ROOT (heap));
+  if (heap->element_count > 0)
+    {
+      /* replace root with last element. */
+      BH_ELEMENT_COPY (heap, BH_ROOT (heap), BH_ELEMENT (heap, heap->element_count));
+      /* down-swap until order is correct again */
+      bh_down_heap (heap, 0);
+    }
+  return true;
 }
 
 /*
  * bh_replace_max () - replace the largest element from a heap with a new
  *		       element
- * return : replaced element
+ * return : void
  * heap (in) : heap
  * elem (in) : new element
  */
-BH_ELEM
-bh_replace_max (BINARY_HEAP * heap, BH_ELEM elem)
+void
+bh_replace_max (BINARY_HEAP * heap, void *elem)
 {
-  BH_ELEM replaced = NULL;
+  assert (heap != NULL);
+  assert (elem != NULL);
+
   /* heap_max greater than elem */
-  replaced = heap->members[0];
-  heap->members[0] = elem;
+  BH_ELEMENT_COPY (heap, BH_ROOT (heap), elem);
   bh_down_heap (heap, 0);
-  return replaced;
 }
 
 /*
  * bh_peek_max () - peek the value of the largest element in the heap
- * return : largest element
- * heap (in) : heap
- *
- * Note: The returned value should never be changed outside of the heap
- *  API, otherwise, the heap property might be invalidated
+ * return	   : true if heap is not empty and element is extracted, false if heap is empty.
+ * heap (in)	   : heap
+ * peek_elem (out) : peeked value of largest element.
  */
-BH_ELEM
-bh_peek_max (BINARY_HEAP * heap)
+bool
+bh_peek_max (BINARY_HEAP * heap, void *peek_elem)
 {
+  assert (heap != NULL);
+  assert (peek_elem != NULL);
+
   if (heap->element_count == 0)
     {
-      return NULL;
+      return false;
     }
-  return BH_ELEMENT (heap, 0);
+  BH_ELEMENT_COPY (heap, peek_elem, BH_ROOT (heap));
+  return true;
 }
 
 /*
  * bh_to_sorted_array () - transform a binary heap into a sorted array
- * return : void
+ * return    : void
  * heap (in) : heap
  *
- *  Note: the array is sorted smallest to largest (smallest element on the
- *  first position)
+ *  Note: the array is sorted smallest to largest (smallest element on the first position)
  */
 void
 bh_to_sorted_array (BINARY_HEAP * heap)
 {
-  int element_count = heap->element_count;
+  int element_count;
+
+  assert (heap != NULL);
+
+  element_count = heap->element_count;
   /* while has elements, extract max */
   while (heap->element_count > 0)
     {
@@ -352,6 +408,9 @@ int
 bh_tests_consistent (BINARY_HEAP * heap)
 {
   int i;
+
+  assert (heap != NULL);
+
   if (heap->element_count <= 1)
     {
       /* at most one element, it is consistent */
@@ -362,7 +421,7 @@ bh_tests_consistent (BINARY_HEAP * heap)
   /* test heap property: CHILD <= PARENT */
   for (i = 1; i < heap->element_count; i++)
     {
-      if (BH_CMP (heap, BH_PARENT (i), i) == DB_LT)
+      if (BH_CMP (heap, BH_PARENT (i), i) == BH_LT)
 	{
 	  heap->state = BH_HEAP_INCONSISTENT;
 	  return false;
@@ -378,12 +437,16 @@ bh_tests_consistent (BINARY_HEAP * heap)
  * return : element
  * heap (in)  : heap
  * index (in) : index
+ * elem (out) : element at index.
  */
-BH_ELEM
-bh_element_at (BINARY_HEAP * heap, int index)
+void
+bh_element_at (BINARY_HEAP * heap, int index, void *elem)
 {
-  assert_release (index < heap->element_count);
-  return BH_ELEMENT (heap, index);
+  assert (heap != NULL);
+  assert (index < heap->element_count);
+  assert (elem != NULL);
+
+  BH_ELEMENT_COPY (heap, elem, BH_ELEMENT (heap, index));
 }
 
 /*
@@ -394,6 +457,7 @@ bh_element_at (BINARY_HEAP * heap, int index)
 bool
 bh_is_consistent (BINARY_HEAP * heap)
 {
+  assert (heap != NULL);
   return (heap->state == BH_HEAP_CONSISTENT);
 }
 
@@ -405,5 +469,6 @@ bh_is_consistent (BINARY_HEAP * heap)
 bool
 bh_is_full (BINARY_HEAP * heap)
 {
+  assert (heap != NULL);
   return (heap->element_count >= heap->max_capacity);
 }

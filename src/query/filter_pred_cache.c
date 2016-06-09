@@ -37,7 +37,7 @@ struct fpcache_ent
   FPCACHE_ENTRY *next;	/* used in hash table */
   pthread_mutex_t mutex;	/* Mutex. */
   UINT64 del_id;		/* delete transaction ID (for lock free) */
-  const OID class_oid;		/* Class OID. */
+  OID class_oid;		/* Class OID. */
   struct timeval time_created;	/* when this entry created */
   struct timeval time_last_used;	/* when this entry used lastly */
 
