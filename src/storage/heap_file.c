@@ -10432,7 +10432,7 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
     }
 
   /* Get class OID from HEAP_CHAIN. */
-  scan = heap_get_class_oid_from_page (thread_p, &page_watcher, class_oid);
+  scan = heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, class_oid);
   if (scan != S_SUCCESS)
     {
       /* Unexpected. */
