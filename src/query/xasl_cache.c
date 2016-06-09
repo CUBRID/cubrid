@@ -339,6 +339,7 @@ xcache_entry_alloc (void)
     {
       xcache_entry->cache_clones = NULL;
     }
+  xcache_entry->n_cache_clones = 0;
   return xcache_entry;
 }
 
