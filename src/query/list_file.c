@@ -1142,7 +1142,7 @@ qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 
 /*
  * qfile_load_xasl () - Load the XASL stream from the temporary file
- *   return: number of pages or ER_FAILED
+ *   return: Error code.
  *   xasl_id(in): XASL file id
  *   xasl(out): XASL stream
  *   size(out): size of XASL stream
@@ -1154,20 +1154,30 @@ qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, char **xasl
   VPID next_vpid;
   char *p;
   int s, xasl_page_size, total_pages;
+  int error_code = NO_ERROR;
 
   cur_page_p = pgbuf_fix (thread_p, &xasl_id_p->first_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (cur_page_p == NULL)
     {
-      return 0;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 
   (void) pgbuf_check_page_ptype (thread_p, cur_page_p, PAGE_XASL);
 
   *size_p = QFILE_GET_XASL_PAGE_SIZE (cur_page_p);
-  if (*size_p <= 0 || (*xasl_p = (char *) db_private_alloc (thread_p, *size_p)) == NULL)
+  if (*size_p <= 0)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+  *xasl_p = (char *) db_private_alloc (thread_p, *size_p);
+  if (*xasl_p == NULL)
     {
       pgbuf_unfix_and_init (thread_p, cur_page_p);
-      return 0;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, *size_p);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   total_pages = 0;
@@ -1193,7 +1203,8 @@ qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, char **xasl
 	  if (cur_page_p == NULL)
 	    {
 	      db_private_free_and_init (thread_p, *xasl_p);
-	      return 0;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
 	    }
 
 	  (void) pgbuf_check_page_ptype (thread_p, cur_page_p, PAGE_XASL);
@@ -1206,7 +1217,7 @@ qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, char **xasl
       pgbuf_unfix_and_init (thread_p, cur_page_p);
     }
 
-  return total_pages;
+  return NO_ERROR;
 }
 
 /*

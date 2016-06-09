@@ -1098,7 +1098,7 @@ xqmgr_unpack_xasl_tree (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, char *
       assert (xasl_stream_size == 0);
       
       /* load the XASL stream from the file of xasl_id */
-      if (qfile_load_xasl (thread_p, xasl_id, &xstream, &xstream_size) == 0)
+      if (qfile_load_xasl (thread_p, xasl_id, &xstream, &xstream_size) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"xqmgr_unpack_xasl_tree: qfile_load_xasl failed xasl_id { first_vpid { %d %d } "
