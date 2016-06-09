@@ -692,17 +692,7 @@ extern int db_push_values (DB_SESSION * session, int count, DB_VALUE * in_values
 
 extern int db_execute (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error);
 
-extern int db_execute_async (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error);
-
 extern int db_execute_oid (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error);
-
-extern int db_get_session_mode (DB_SESSION * session);
-
-extern int db_set_session_mode_sync (DB_SESSION * session);
-
-extern int db_set_session_mode_async (DB_SESSION * session);
-
-extern bool db_is_query_async_executable (DB_SESSION * session, int stmtid);
 
 extern int db_query_produce_updatable_result (DB_SESSION * session, int stmtid);
 
@@ -714,10 +704,6 @@ extern DB_CLASS_MODIFICATION_STATUS db_has_modified_class (DB_SESSION * session,
 extern void db_invalidate_mvcc_snapshot_after_statement (void);
 
 extern void db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Version);
-
-extern int db_query_get_info (DB_QUERY_RESULT * result, int *done, int *count, int *error, char **err_string);
-
-extern int db_query_sync (DB_QUERY_RESULT * result, int wait);
 
 extern int db_query_set_copy_tplvalue (DB_QUERY_RESULT * result, int copy);
 

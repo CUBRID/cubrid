@@ -2329,7 +2329,7 @@ hb_add_ui_node (char *host_name, char *group_id, struct sockaddr_in saddr, int v
       node->next = NULL;
       node->prev = NULL;
 
-      hb_list_add ((HB_LIST **) & hb_Cluster->ui_nodes, (HB_LIST *) node);
+      hb_list_add ((HB_LIST **) (&hb_Cluster->ui_nodes), (HB_LIST *) node);
       hb_Cluster->num_ui_nodes++;
     }
 
@@ -5223,13 +5223,13 @@ hb_reload_config (void)
   rv = pthread_mutex_lock (&hb_Cluster->lock);
 
   /* backup old ping hosts */
-  hb_list_move ((HB_LIST **) & old_ping_hosts, (HB_LIST **) & hb_Cluster->ping_hosts);
+  hb_list_move ((HB_LIST **) (&old_ping_hosts), (HB_LIST **) (&hb_Cluster->ping_hosts));
   old_num_ping_hosts = hb_Cluster->num_ping_hosts;
 
   hb_Cluster->ping_hosts = NULL;
 
   /* backup old node list */
-  hb_list_move ((HB_LIST **) & old_nodes, (HB_LIST **) & hb_Cluster->nodes);
+  hb_list_move ((HB_LIST **) (&old_nodes), (HB_LIST **) (&hb_Cluster->nodes));
   old_myself = hb_Cluster->myself;
   old_master = hb_Cluster->master;
   old_num_nodes = hb_Cluster->num_nodes;
@@ -5310,7 +5310,7 @@ reconfig_error:
 
   hb_cluster_remove_all_ping_hosts (hb_Cluster->ping_hosts);
 
-  hb_list_move ((HB_LIST **) & hb_Cluster->ping_hosts, (HB_LIST **) & old_ping_hosts);
+  hb_list_move ((HB_LIST **) (&hb_Cluster->ping_hosts), (HB_LIST **) (&old_ping_hosts));
 
   /* restore node list */
   hb_cluster_remove_all_nodes (hb_Cluster->nodes);
@@ -5318,7 +5318,7 @@ reconfig_error:
   hb_Cluster->master = old_master;
   hb_Cluster->num_nodes = old_num_nodes;
 
-  hb_list_move ((HB_LIST **) & hb_Cluster->nodes, (HB_LIST **) & old_nodes);
+  hb_list_move ((HB_LIST **) (&hb_Cluster->nodes), (HB_LIST **) (&old_nodes));
 
   pthread_mutex_unlock (&hb_Cluster->lock);
 

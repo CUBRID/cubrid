@@ -2582,14 +2582,7 @@ get_flag_of_cci_execute (ODBC_STATEMENT * stmt)
   if (stmt == NULL)
     return 0;
 
-  if (stmt->attr_async_enable == SQL_ASYNC_ENABLE_ON)
-    {
-      return (CCI_EXEC_ASYNC | CCI_EXEC_QUERY_ALL);
-    }
-  else
-    {
-      return CCI_EXEC_QUERY_ALL;
-    }
+  return CCI_EXEC_QUERY_ALL;
 }
 
 /************************************************************************

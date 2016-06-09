@@ -1354,10 +1354,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 #endif /* SERVER_MODE */
 #if defined(ENABLE_SYSTEMTAP)
   bool pgbuf_hit = false;
-  int tran_index;
-  QMGR_TRAN_ENTRY *tran_entry;
-  QUERY_ID query_id = -1;
   bool monitored = false;
+  QUERY_ID query_id = NULL_QUERY_ID;
 #endif /* ENABLE_SYSTEMTAP */
   PERF_PAGE_MODE perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
   PERF_HOLDER_LATCH perf_latch_mode;
@@ -1539,11 +1537,9 @@ try_again:
 	  mnt_pb_ioreads (thread_p);
 
 #if defined(ENABLE_SYSTEMTAP)
-	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	  tran_entry = qmgr_get_tran_entry (tran_index);
-	  if (tran_entry->query_entry_list_p)
+	  query_id = qmgr_get_current_query_id (thread_p);
+	  if (query_id != NULL_QUERY_ID)
 	    {
-	      query_id = tran_entry->query_entry_list_p->query_id;
 	      monitored = true;
 	      CUBRID_IO_READ_START (query_id);
 	    }
@@ -3344,6 +3340,20 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   /* Things must be truly flushed up to this lsa */
   logpb_flush_log_for_wal (thread_p, flush_upto_lsa);
   LSA_SET_NULL (smallest_lsa);
+
+#if defined (SERVER_MODE)
+  /* Before starting the actual flush, we must first notify vacuum system to flush its vacuum data pages. For
+   * performance reasons, the only thread who has access to vacuum data is the vacuum master, and it always keeps
+   * first and last vacuum data pages write latched.
+   * Therefore, flushing those pages may be impossible. The solution for this problem is debatable, but for now,
+   * vacuum is notified, then checkpoint waits for it to finish.
+   */
+  vacuum_notify_flush_data ();
+  while (!vacuum_is_vacuum_data_flushed ())
+    {
+      thread_sleep (10);
+    }
+#endif /* SERVER_MODE */
 
   seq_flusher = &(pgbuf_Pool.seq_chkpt_flusher);
   f_list = seq_flusher->flush_list;
@@ -8683,9 +8693,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   LOG_LSA oldest_unflush_lsa;
   int error = NO_ERROR;
 #if defined(ENABLE_SYSTEMTAP)
-  int tran_index;
-  QMGR_TRAN_ENTRY *tran_entry;
-  QUERY_ID query_id = -1;
+  QUERY_ID query_id = NULL_QUERY_ID;
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
 
@@ -8705,7 +8713,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       PGBUF_HOLDER *holder = NULL;
 
       /* Search for bufptr in current thread holder list. */
-      for (holder = thrd_holder_info->thrd_hold_list; holder != NULL; holder = holder->next_holder)
+      for (holder = thrd_holder_info->thrd_hold_list; holder != NULL; holder = holder->thrd_link)
 	{
 	  if (holder->bufptr == bufptr)
 	    {
@@ -8744,11 +8752,9 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   mnt_pb_iowrites (thread_p, 1);
 
 #if defined(ENABLE_SYSTEMTAP)
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_entry = qmgr_get_tran_entry (tran_index);
-  if (tran_entry->query_entry_list_p)
+  query_id = qmgr_get_current_query_id (thread_p);
+  if (query_id != NULL_QUERY_ID)
     {
-      query_id = tran_entry->query_entry_list_p->query_id;
       monitored = true;
       CUBRID_IO_WRITE_START (query_id);
     }
@@ -9992,18 +9998,14 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
   int abort_reason;
   bool was_page_flushed = false;
 #if defined(ENABLE_SYSTEMTAP)
-  int tran_index;
-  QMGR_TRAN_ENTRY *tran_entry;
   QUERY_ID query_id = -1;
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined(ENABLE_SYSTEMTAP)
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_entry = qmgr_get_tran_entry (tran_index);
-  if (tran_entry->query_entry_list_p)
+  query_id = qmgr_get_current_query_id (thread_p);
+  if (query_id != NULL_QUERY_ID)
     {
-      query_id = tran_entry->query_entry_list_p->query_id;
       monitored = true;
       CUBRID_IO_WRITE_START (query_id);
     }
@@ -10316,18 +10318,14 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
 #endif /* SERVER_MODE */
 
 #if defined(ENABLE_SYSTEMTAP)
-  int tran_index;
-  QMGR_TRAN_ENTRY *tran_entry;
-  QUERY_ID query_id = -1;
+  QUERY_ID query_id = NULL_QUERY_ID;
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined(ENABLE_SYSTEMTAP)
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_entry = qmgr_get_tran_entry (tran_index);
-  if (tran_entry->query_entry_list_p)
+  query_id = qmgr_get_current_query_id (thread_p);
+  if (query_id != NULL_QUERY_ID)
     {
-      query_id = tran_entry->query_entry_list_p->query_id;
       monitored = true;
       CUBRID_IO_WRITE_START (query_id);
     }
@@ -12115,4 +12113,22 @@ pgbuf_consistent_str (int consistent)
     }
 
   return consistent_str;
+}
+
+/*
+ * pgbuf_get_fix_count () - Get page fix count.
+ *
+ * return     : Fix count.
+ * pgptr (in) : Page pointer.
+ */
+int
+pgbuf_get_fix_count (PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr = NULL;
+
+  assert (pgptr != NULL);
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+
+  return bufptr->fcnt;
 }

@@ -1393,7 +1393,7 @@ read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_
 
 #ifdef ASYNC_MODE
   FD_ZERO (&read_mask);
-  FD_SET (sock_fd, (fd_set *) & read_mask);
+  FD_SET (sock_fd, (fd_set *) (&read_mask));
   maxfd = (int) sock_fd + 1;
   nfound = select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0, timeout_ptr);
   if (nfound < 0)
@@ -1403,7 +1403,7 @@ read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_
 #endif
 
 #ifdef ASYNC_MODE
-  if (FD_ISSET (sock_fd, (fd_set *) & read_mask))
+  if (FD_ISSET (sock_fd, (fd_set *) (&read_mask)))
     {
 #endif
       read_len = READ_FROM_SOCKET (sock_fd, buf, size);
@@ -1451,7 +1451,7 @@ write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_s
 
 #ifdef ASYNC_MODE
   FD_ZERO (&write_mask);
-  FD_SET (sock_fd, (fd_set *) & write_mask);
+  FD_SET (sock_fd, (fd_set *) (&write_mask));
   maxfd = (int) sock_fd + 1;
   nfound = select (maxfd, (SELECT_MASK *) 0, &write_mask, (SELECT_MASK *) 0, timeout_ptr);
   if (nfound < 0)
@@ -1461,7 +1461,7 @@ write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_s
 #endif
 
 #ifdef ASYNC_MODE
-  if (FD_ISSET (sock_fd, (fd_set *) & write_mask))
+  if (FD_ISSET (sock_fd, (fd_set *) (&write_mask)))
     {
 #endif
       write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
@@ -2659,7 +2659,7 @@ retry:
 
 #ifdef ASYNC_MODE
   FD_ZERO (&read_mask);
-  FD_SET (sock_fd, (fd_set *) & read_mask);
+  FD_SET (sock_fd, (fd_set *) (&read_mask));
   maxfd = sock_fd + 1;
   nfound = select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0, &timeout);
   if (nfound < 1)
@@ -2673,7 +2673,7 @@ retry:
 #endif
 
 #ifdef ASYNC_MODE
-  if (FD_ISSET (sock_fd, (fd_set *) & read_mask))
+  if (FD_ISSET (sock_fd, (fd_set *) (&read_mask)))
     {
 #endif
       read_len = READ_FROM_SOCKET (sock_fd, buf, size);

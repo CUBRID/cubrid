@@ -244,7 +244,7 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 
   for (i = tdes->cur_repl_record - 1; i >= 0; i--)
     {
-      repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[i];
+      repl_rec = (LOG_REPL_RECORD *) (&tdes->repl_records[i]);
       if (OID_EQ (&repl_rec->inst_oid, inst_oid) && !LSA_ISNULL (&tdes->repl_update_lsa))
 	{
 	  assert (repl_rec->rcvindex == RVREPL_DATA_UPDATE || repl_rec->rcvindex == RVREPL_DATA_UPDATE_START
@@ -279,13 +279,12 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  *   log_type(in): log type (DATA or SCHEMA)
  *   rcvindex(in): recovery index (INSERT or DELETE or UPDATE)
  *   key_dbvalue(in): Primary Key value
- *   is_update_inplace(in): is it in-place update
  *
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
 int
 repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
-		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info, bool is_update_inplace)
+		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -396,29 +395,11 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	}
       break;
     case RVREPL_DATA_UPDATE:
-      if (is_update_inplace == false && !LSA_ISNULL (&tdes->repl_insert_lsa))
-	{
-	  /* MVCC update */
-	  LSA_COPY (&repl_rec->lsa, &tdes->repl_insert_lsa);
-	  LSA_SET_NULL (&tdes->repl_insert_lsa);
-	  LSA_SET_NULL (&tdes->repl_update_lsa);
-	}
-      else
-	{
-	  /* 
-	   * for the update case, this function is called before the heap
-	   * file update, so we don't need to LSA for update log here.
-	   */
-	  if (LSA_ISNULL (&tdes->tail_lsa))
-	    {
-	      LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
-	    }
-	  else
-	    {
-	      LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);
-	    }
-
-	}
+      /* 
+       * for the update case, this function is called before the heap
+       * file update, so we don't need to LSA for update log here.
+       */
+      LSA_SET_NULL (&repl_rec->lsa);
       break;
     case RVREPL_DATA_DELETE:
       /* 
@@ -509,19 +490,21 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
       return error;
     }
 
-  repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[tdes->cur_repl_record];
+  repl_rec = (LOG_REPL_RECORD *) (&tdes->repl_records[tdes->cur_repl_record]);
   repl_rec->repl_type = LOG_REPLICATION_STATEMENT;
   repl_rec->rcvindex = RVREPL_STATEMENT;
   repl_rec->must_flush = LOG_REPL_COMMIT_NEED_FLUSH;
   OID_SET_NULL (&repl_rec->inst_oid);
 
   /* make the common info for the schema replication */
-  repl_rec->length = OR_INT_SIZE	/* REPL_INFO_SCHEMA.statement_type */
-    + or_packed_string_length (repl_info->name, &strlen1) + or_packed_string_length (repl_info->stmt_text,
-										     &strlen2) +
-    or_packed_string_length (repl_info->db_user, &strlen3) + or_packed_string_length (repl_info->sys_prm_context,
-										      &strlen4);
-  if ((repl_rec->repl_data = (char *) malloc (repl_rec->length)) == NULL)
+  repl_rec->length = (OR_INT_SIZE	/* REPL_INFO_SCHEMA.statement_type */
+		      + or_packed_string_length (repl_info->name, &strlen1)
+		      + or_packed_string_length (repl_info->stmt_text, &strlen2)
+		      + or_packed_string_length (repl_info->db_user, &strlen3)
+		      + or_packed_string_length (repl_info->sys_prm_context, &strlen4));
+
+  repl_rec->repl_data = (char *) malloc (repl_rec->length);
+  if (repl_rec->repl_data == NULL)
     {
       error = ER_REPL_ERROR;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't allocate memory");
@@ -673,7 +656,7 @@ repl_debug_info ()
       for (rnum = 0; rnum < tdes->cur_repl_record; rnum++)
 	{
 	  fprintf (stdout, "   RECORD # %d\n", rnum);
-	  repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[rnum];
+	  repl_rec = (LOG_REPL_RECORD *) (&tdes->repl_records[rnum]);
 	  fprintf (stdout, "      type: %s\n", log_to_string (repl_rec->repl_type));
 	  fprintf (stdout, "      OID: %d - %d - %d\n", repl_rec->inst_oid.volid, repl_rec->inst_oid.pageid,
 		   repl_rec->inst_oid.slotid);

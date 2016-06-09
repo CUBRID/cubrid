@@ -153,7 +153,7 @@ extern "C"
 #define CCI_PREPARE_XASL_CACHE_PINNED 	0x10
 #define CCI_PREPARE_CALL		0x40
 
-#define CCI_EXEC_ASYNC			0x01
+#define CCI_EXEC_ASYNC			0x01	/* obsoleted */
 #define CCI_EXEC_QUERY_ALL		0x02
 #define CCI_EXEC_QUERY_INFO		0x04
 #define CCI_EXEC_ONLY_QUERY_PLAN        0x08

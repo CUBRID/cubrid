@@ -1078,7 +1078,7 @@ $set 51 MSGCAT_UTIL_SET_GEN_TZ
 gen_tz: Saat dilimi verileri ile kaynak dosyaları oluşturun paylaşılan kütüphane\n\
         derlenmiş için\n\
 kullanım: %s gen_tz [OPTION]\n\
-          %s gen_tz -g extend [OPTION] database-name\n\
+          %s gen_tz -g extend [OPTION] [database-name]\n\
 \n\
 geçerli seçenekler:\n\
   -i, --input-folder    Bir IANA saat dilimi sürümünü içeren giriş klasörünün yolunu.\n\

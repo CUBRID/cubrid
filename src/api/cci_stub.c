@@ -99,7 +99,6 @@ struct statement_impl_s
   int req_handle;
   int status;
   bool opt_updatable_result;
-  bool opt_async_query;
   /* 
    * parameter and parameter meta related fields
    * - PM : parameter meta data api structure header
@@ -551,7 +550,7 @@ complete_connection (CONNECTION_IMPL * pconn)
   COMMON_API_STRUCTURE *st;
   int res;
 
-  res = pconn->bh->bind_get_first_child (pconn->bh, (BH_BIND *) pconn, (BH_BIND **) & st);
+  res = pconn->bh->bind_get_first_child (pconn->bh, (BH_BIND *) pconn, (BH_BIND **) (&st));
   if (res != NO_ERROR)
     {
       return res;
@@ -567,7 +566,7 @@ complete_connection (CONNECTION_IMPL * pconn)
 	      return res;
 	    }
 	}
-      res = pconn->bh->bind_get_next_sibling (pconn->bh, (BH_BIND *) st, (BH_BIND **) & st);
+      res = pconn->bh->bind_get_next_sibling (pconn->bh, (BH_BIND *) st, (BH_BIND **) (&st));
       if (res != NO_ERROR)
 	{
 	  return res;
@@ -1479,7 +1478,7 @@ lazy_bind_qres_rmeta (RESULTSET_IMPL * pres)
   if (pres->got_rm_handle)
     return NO_ERROR;
 
-  prm = (API_RESULTSET_META *) & pres->RM;
+  prm = (API_RESULTSET_META *) (&pres->RM);
   res = bind_api_structure (pres->bh, (COMMON_API_STRUCTURE *) prm, (COMMON_API_STRUCTURE *) pres, &handle);
   if (res != NO_ERROR)
     {
@@ -1517,7 +1516,7 @@ api_qres_get_resultset_metadata (API_RESULTSET * rs, API_RESULTSET_META ** rimpl
 
   assert (pres->got_rm_handle);
 
-  *rimpl = (API_RESULTSET_META *) & pres->RM;
+  *rimpl = (API_RESULTSET_META *) (&pres->RM);
 
   return NO_ERROR;
 }
@@ -1624,7 +1623,7 @@ api_qres_clear_updates (API_RESULTSET * rs)
 	  return res;
 	}
 
-      res = indexer->ifs->get (indexer, i, &va, (API_VALUE **) & av);
+      res = indexer->ifs->get (indexer, i, &va, (API_VALUE **) (&av));
       if (res != NO_ERROR)
 	{
 	  return res;
@@ -1701,7 +1700,7 @@ api_qres_get_value (API_RESULTSET * rs, int index, CI_TYPE type, void *addr, siz
 	  return res;
 	}
 
-      res = indexer->ifs->get (indexer, index - 1, &va, (API_VALUE **) & av);
+      res = indexer->ifs->get (indexer, index - 1, &va, (API_VALUE **) (&av));
       if (res != NO_ERROR)
 	{
 	  return res;
@@ -1800,7 +1799,7 @@ api_qres_update_value (API_RESULTSET * rs, int index, CI_TYPE type, void *addr, 
       return res;
     }
 
-  res = indexer->ifs->get (indexer, index - 1, &va, (API_VALUE **) & av);
+  res = indexer->ifs->get (indexer, index - 1, &va, (API_VALUE **) (&av));
   if (res != NO_ERROR)
     {
       return res;
@@ -2171,7 +2170,7 @@ lazy_bind_pstmt_pmeta (STATEMENT_IMPL * pstmt)
     return NO_ERROR;
 
   res =
-    bind_api_structure (pstmt->pconn->bh, (COMMON_API_STRUCTURE *) & pstmt->PM, (COMMON_API_STRUCTURE *) pstmt,
+    bind_api_structure (pstmt->pconn->bh, (COMMON_API_STRUCTURE *) (&pstmt->PM), (COMMON_API_STRUCTURE *) pstmt,
 			&handle);
   if (res != NO_ERROR)
     return res;
@@ -2248,10 +2247,6 @@ statement_execute (STATEMENT_IMPL * pstmt, T_CCI_ERROR * err_buf)
   T_CCI_QUERY_RESULT *query_result;
 
   ex_flag = CCI_EXEC_QUERY_ALL;
-  if (pstmt->opt_async_query)
-    {
-      ex_flag |= CCI_EXEC_ASYNC;
-    }
 
   res = cci_execute (pstmt->req_handle, ex_flag, 0, err_buf);
   if (res < 0)
@@ -2400,7 +2395,7 @@ complete_statement (STATEMENT_IMPL * pstmt)
 		  return res;
 		}
 
-	      res = pstmt->params->ifs->get (pstmt->params, i, &va, (API_VALUE **) & av);
+	      res = pstmt->params->ifs->get (pstmt->params, i, &va, (API_VALUE **) (&av));
 	      if (res != NO_ERROR)
 		{
 		  return res;
@@ -3653,7 +3648,7 @@ api_col_update (API_COLLECTION * coo, long pos, CI_TYPE type, void *ptr, size_t 
       return res;
     }
 
-  res = col->indexer->ifs->get (col->indexer, (int) pos, &va, (API_VALUE **) & val);
+  res = col->indexer->ifs->get (col->indexer, (int) pos, &va, (API_VALUE **) (&val));
   if (res != NO_ERROR)
     {
       return res;
@@ -3684,7 +3679,7 @@ api_col_delete (API_COLLECTION * coo, long pos)
       return res;
     }
 
-  res = col->indexer->ifs->delete (col->indexer, (int) pos, &va, (API_VALUE **) & val);
+  res = col->indexer->ifs->delete (col->indexer, (int) pos, &va, (API_VALUE **) (&val));
   if (res != NO_ERROR)
     {
       return res;
@@ -3717,7 +3712,7 @@ api_col_get_elem_domain_info (API_COLLECTION * coo, long pos, CI_TYPE * type, in
       return res;
     }
 
-  res = col->indexer->ifs->get (col->indexer, (int) pos, &va, (API_VALUE **) & val);
+  res = col->indexer->ifs->get (col->indexer, (int) pos, &va, (API_VALUE **) (&val));
   if (res != NO_ERROR)
     {
       return res;
@@ -3762,7 +3757,7 @@ api_col_get_elem (API_COLLECTION * coo, long pos, CI_TYPE type, void *addr, size
       return res;
     }
 
-  res = col->indexer->ifs->get (col->indexer, (int) pos, &va, (API_VALUE **) & val);
+  res = col->indexer->ifs->get (col->indexer, (int) pos, &va, (API_VALUE **) (&val));
   if (res != NO_ERROR)
     {
       return res;
@@ -4091,7 +4086,7 @@ xcol_copy (CI_COLLECTION col, CI_COLLECTION * rcol)
       VALUE_AREA *va;
       API_VAL *pv, *pvc;
 
-      res = co->indexer->ifs->get (co->indexer, i, &va, (API_VALUE **) & pv);
+      res = co->indexer->ifs->get (co->indexer, i, &va, (API_VALUE **) (&pv));
       if (res != NO_ERROR)
 	{
 	  xcol_destroy (rco);
@@ -4764,7 +4759,7 @@ ci_stmt_execute_batch_impl (COMMON_API_STRUCTURE * stmt, CI_BATCH_RESULT * br)
     }
 
   res =
-    bind_api_structure (pstmt->pconn->bh, ((COMMON_API_STRUCTURE *) & pstmt->BR), (COMMON_API_STRUCTURE *) pstmt,
+    bind_api_structure (pstmt->pconn->bh, ((COMMON_API_STRUCTURE *) (&pstmt->BR)), (COMMON_API_STRUCTURE *) pstmt,
 			&handle);
   if (res != NO_ERROR)
     {
@@ -4820,7 +4815,7 @@ ci_stmt_get_option_impl (COMMON_API_STRUCTURE * stmt, CI_STATEMENT_OPTION option
       break;
 
     case CI_STATEMENT_OPTION_ASYNC_QUERY:
-      *(int *) arg = (pstmt->opt_async_query) ? 1 : 0;
+      *(int *) arg = 0;
       break;
 
     case CI_STATEMENT_OPTION_EXEC_CONTINUE_ON_ERROR:
@@ -4857,9 +4852,6 @@ ci_stmt_set_option_impl (COMMON_API_STRUCTURE * stmt, CI_STATEMENT_OPTION option
       break;
 
     case CI_STATEMENT_OPTION_ASYNC_QUERY:
-      pstmt->opt_async_query = *(int *) arg != 0 ? true : false;
-      break;
-
     case CI_STATEMENT_OPTION_EXEC_CONTINUE_ON_ERROR:
     case CI_STATEMENT_OPTION_LAZY_EXEC:
     case CI_STATEMENT_OPTION_GET_GENERATED_KEYS:
@@ -4968,7 +4960,7 @@ ci_stmt_get_resultset_metadata_impl (COMMON_API_STRUCTURE * stmt, CI_RESULTSET_M
     }
 
   pres = NULL;
-  res = pstmt->pconn->bh->lookup (pstmt->pconn->bh, pstmt->res_handle, (BH_BIND **) & pres);
+  res = pstmt->pconn->bh->lookup (pstmt->pconn->bh, pstmt->res_handle, (BH_BIND **) (&pres));
   if (res != NO_ERROR)
     {
       return res;
@@ -5053,7 +5045,7 @@ ci_stmt_get_parameter_impl (COMMON_API_STRUCTURE * stmt, int index, CI_TYPE type
       return res;
     }
 
-  res = pstmt->params->ifs->get (pstmt->params, index - 1, &va, (API_VALUE **) & pv);
+  res = pstmt->params->ifs->get (pstmt->params, index - 1, &va, (API_VALUE **) (&pv));
   if (res != NO_ERROR)
     {
       return res;
@@ -5110,7 +5102,7 @@ ci_stmt_set_parameter_impl (COMMON_API_STRUCTURE * stmt, int index, CI_TYPE type
       return res;
     }
 
-  res = pstmt->params->ifs->get (pstmt->params, index - 1, &va, (API_VALUE **) & pv);
+  res = pstmt->params->ifs->get (pstmt->params, index - 1, &va, (API_VALUE **) (&pv));
   if (res != NO_ERROR)
     {
       return res;

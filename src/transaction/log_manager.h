@@ -168,7 +168,7 @@ extern TRAN_STATE log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes
 					LOG_GETNEWTRID get_newtrid);
 extern void log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_posplsa, LOG_RECTYPE posp_type,
 			     bool append_commit_postpone);
-extern int log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, struct log_redo *redo,
+extern int log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_REDO * redo,
 				     char *redo_rcv_data);
 extern int log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			 const char *prefix_logname, DKNPAGES log_npages, FILE * outfp);

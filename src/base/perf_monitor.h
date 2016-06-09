@@ -852,10 +852,12 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYP
   ((int)((elapsed.tv_sec * 1000) + (int) (elapsed.tv_usec / 1000)))
 
 #if defined (EnableThreadMonitoring)
-#define MONITOR_WAITING_THREAD(elpased) \
+#define MONITOR_WAITING_THREAD(elapsed) \
     (prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD) > 0 \
-     && ((elpased).tv_sec * 1000 + (elpased).tv_usec / 1000) \
+     && ((elapsed).tv_sec * 1000 + (elapsed).tv_usec / 1000) \
          > prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
+#else
+#define MONITOR_WAITING_THREAD(elapsed) (0)
 #endif
 
 typedef struct perf_utime_tracker PERF_UTIME_TRACKER;

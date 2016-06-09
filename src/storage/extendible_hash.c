@@ -4676,7 +4676,7 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p, DB_
       break;
 
     case DB_TYPE_OBJECT:
-      *((OID *) & next_key) = *(OID *) bucket_record_p;
+      *((OID *) (&next_key)) = *(OID *) bucket_record_p;
       break;
 #if defined (ENABLE_UNUSED_FUNCTION)
     case DB_TYPE_DOUBLE:
@@ -4692,7 +4692,7 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p, DB_
       break;
 
     case DB_TYPE_BIGINT:
-      *((DB_BIGINT *) & next_key) = *(DB_BIGINT *) bucket_record_p;
+      *((DB_BIGINT *) (&next_key)) = *(DB_BIGINT *) bucket_record_p;
       break;
 
     case DB_TYPE_SHORT:
@@ -4700,24 +4700,24 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p, DB_
       break;
 
     case DB_TYPE_DATE:
-      *((DB_DATE *) & next_key) = *(DB_DATE *) bucket_record_p;
+      *((DB_DATE *) (&next_key)) = *(DB_DATE *) bucket_record_p;
       break;
 
     case DB_TYPE_TIME:
-      *((DB_TIME *) & next_key) = *(DB_TIME *) bucket_record_p;
+      *((DB_TIME *) (&next_key)) = *(DB_TIME *) bucket_record_p;
       break;
 
     case DB_TYPE_UTIME:
-      *((DB_UTIME *) & next_key) = *(DB_UTIME *) bucket_record_p;
+      *((DB_UTIME *) (&next_key)) = *(DB_UTIME *) bucket_record_p;
       break;
 
     case DB_TYPE_DATETIME:
-      *((DB_DATETIME *) & next_key) = *(DB_DATETIME *) bucket_record_p;
+      *((DB_DATETIME *) (&next_key)) = *(DB_DATETIME *) bucket_record_p;
       break;
 
     case DB_TYPE_MONETARY:
-      OR_MOVE_DOUBLE (&((DB_MONETARY *) bucket_record_p)->amount, &((DB_MONETARY *) & next_key)->amount);
-      ((DB_MONETARY *) & next_key)->type = ((DB_MONETARY *) bucket_record_p)->type;
+      OR_MOVE_DOUBLE (&((DB_MONETARY *) bucket_record_p)->amount, &((DB_MONETARY *) (&next_key))->amount);
+      ((DB_MONETARY *) (&next_key))->type = ((DB_MONETARY *) bucket_record_p)->type;
       break;
 #endif
     default:
