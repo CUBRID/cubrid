@@ -1797,7 +1797,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       candidate.xid = xcache_entry->xasl_id;
       candidate.time_last_used = xcache_entry->time_last_used;
 
-      if (candidate.xid.cache_flag | XCACHE_ENTRY_FLAGS_MASK)
+      if (candidate.xid.cache_flag & XCACHE_ENTRY_FLAGS_MASK)
 	{
 	  /* Either marked for delete or recompile, or already recompiled. Not a valid candidate. */
 	  continue;
@@ -1850,9 +1850,9 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       /* Try mark for delete. If not successful, somebody else accesses the entry and invalidates its candidacy for
        * cleanup. */
       cache_flag = xcache_entry->xasl_id.cache_flag;
-      if (cache_flag | XCACHE_ENTRY_FLAGS_MASK)
+      if ((cache_flag & XCACHE_ENTRY_FLAGS_MASK) || (cache_flag & XCACHE_ENTRY_FIX_COUNT_MASK) > 1)
 	{
-	  /* Already marked for delete or recompile. */
+	  /* Already marked for delete or recompile, or fixed by another thread. */
 	  xcache_log ("cleanup: candidate was invalidated"
 		      XCACHE_LOG_XASL_ID_TEXT ("xasl id")
 		      XCACHE_LOG_TRAN_TEXT,
