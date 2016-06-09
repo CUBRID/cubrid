@@ -985,6 +985,7 @@ struct mvcc_trans_status
 
   volatile unsigned int version;
 
+  /* lowest active MVCCID */
   MVCCID lowest_active_mvccid;
 };
 
