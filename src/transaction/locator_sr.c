@@ -3606,10 +3606,11 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p, OID * oid, int prune_lev
   while (stack_actual_size > 0)
     {
       ref_num = stack[--stack_actual_size];	/* Pop */
+
       /* Get the object to find out its direct references */
-      scan =
-	heap_get_with_class_oid (thread_p, &class_oid, &lockset->objects[ref_num].oid, &peek_recdes, &scan_cache,
-				 S_SELECT, PEEK, LOG_WARNING_IF_DELETED);
+      OID_SET_NULL (&class_oid);
+      scan = heap_get_visible_version (thread_p, &lockset->objects[ref_num].oid, &class_oid, &peek_recdes, &scan_cache,
+				       PEEK, NULL_CHN, false);
       if (scan != S_SUCCESS)
 	{
 	  if (scan != S_DOESNT_EXIST && (quit_on_errors == true || er_errid () == ER_INTERRUPTED))

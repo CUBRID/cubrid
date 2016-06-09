@@ -8767,46 +8767,6 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 }
 
 /*
- * heap_get_with_class_oid () - Retrieve or peek an object and get its class oid
- *   return: SCAN_CODE
- *           (Either of S_SUCCESS, S_DOESNT_FIT, S_DOESNT_EXIST, S_ERROR)
- *   class_oid(out): Class OID for the object
- *   oid(in): Object identifier
- *   recdes(in/out): Record descriptor
- *   scan_cache(in/out): Scan cache or NULL
- *   scan_operation_type(in): scan operation type
- *   ispeeking(in): PEEK when the object is peeked, scan_cache cannot be
- *                  NULL COPY when the object is copied
- *
- * Note: Same as heap_get, except that it will also return the class oid
- * for the object.  (see heap_get) description)
- */
-SCAN_CODE
-heap_get_with_class_oid (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, RECDES * recdes,
-			 HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE scan_operation_type, int ispeeking,
-			 NON_EXISTENT_HANDLING non_ex_handling_type)
-{
-  SCAN_CODE scan;
-
-  if (class_oid == NULL)
-    {
-      assert (false);
-      return S_ERROR;
-    }
-
-  OID_SET_NULL (class_oid);
-  scan =
-    heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, recdes, scan_cache, scan_operation_type, ispeeking,
-					   NULL_CHN, NULL, non_ex_handling_type);
-  if (scan != S_SUCCESS)
-    {
-      OID_SET_NULL (class_oid);
-    }
-
-  return scan;
-}
-
-/*
  * heap_next_internal () - Retrieve of peek next object.
  *
  * return		     : SCAN_CODE (Either of S_SUCCESS, S_DOESNT_FIT,
@@ -10646,66 +10606,6 @@ heap_get_class_name_of_instance (THREAD_ENTRY * thread_p, const OID * inst_oid)
   return classname;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * heap_get_class_name_with_is_class () - Find if object is a class.
- * if a class, returns its name, otherwise, get the name of its class
- *   return: Classname or NULL. The classname space must be
- *           released by the caller.
- *   oid(in): The Object identifier
- *   isclass(in/out): Set to true is object is a class, otherwise is set to
- *                    false
- *
- * Note: Find if the object associated with given oid is a class.
- * If the object is a class, returns its name, otherwise, returns
- * the name of its class.
- *
- * If the object does not exist or there is another error, NULL
- * is returned as the classname.
- *
- * Note: Classname pointer must be released by the caller using free_and_init
- */
-char *
-heap_get_class_name_with_is_class (THREAD_ENTRY * thread_p, const OID * oid, int *isclass)
-{
-  char *classname = NULL;
-  char *copy_classname = NULL;
-  RECDES recdes;
-  HEAP_SCANCACHE scan_cache;
-  OID class_oid;
-
-  *isclass = false;
-
-  heap_scancache_quick_start (&scan_cache);
-  if (heap_get_with_class_oid (thread_p, &class_oid, oid, &recdes, &scan_cache, S_SELECT, PEEK,
-			       LOG_ERROR_IF_DELETED) == S_SUCCESS)
-    {
-      /* 
-       * If oid is a class, get its name, otherwise, get the name of its class
-       */
-      *isclass = OID_IS_ROOTOID (&class_oid);
-      if (heap_get (thread_p, ((*isclass == true) ? oid : &class_oid), &recdes, &scan_cache, PEEK, NULL_CHN) ==
-	  S_SUCCESS)
-	{
-	  classname = or_class_name (&recdes);
-	  copy_classname = (char *) malloc (strlen (classname) + 1);
-	  if (copy_classname == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (classname) + 1));
-	    }
-	  else
-	    {
-	      strcpy (copy_classname, classname);
-	    }
-	}
-    }
-
-  heap_scancache_end (thread_p, &scan_cache);
-
-  return copy_classname;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * heap_attrinfo_start () - Initialize an attribute information structure
  *   return: NO_ERROR
@@ -12077,8 +11977,8 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, O
       return (error == NO_ERROR ? ER_FAILED : error);
     }
 
-  if (heap_get_with_class_oid (thread_p, &root_oid, class_oid, &recdes, &scan_cache, S_SELECT, PEEK,
-			       LOG_ERROR_IF_DELETED) != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, class_oid, &root_oid, &recdes, &scan_cache, PEEK, NULL_CHN, false) !=
+      S_SUCCESS)
     {
       error = ER_FAILED;
       goto cleanup;
@@ -26445,4 +26345,39 @@ heap_init_get_context (HEAP_GET_CONTEXT * context, OID * oid, OID * class_oid, R
 
   PGBUF_INIT_WATCHER (&context->home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
   PGBUF_INIT_WATCHER (&context->fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+}
+
+
+SCAN_CODE
+heap_get_for_operation (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+			HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, int ispeeking,
+			NON_EXISTENT_HANDLING non_ex_handling)
+{
+  HEAP_GET_CONTEXT context;
+  SCAN_CODE scan_code;
+
+  heap_init_get_context (&context, oid, class_oid, recdes);
+
+  if (op_type == S_SELECT)
+    {
+      scan_code =
+	heap_get_visible_version (thread_p, oid, class_oid, recdes, scan_cache, ispeeking, NULL_CHN, non_ex_handling);
+    }
+  else if (op_type == S_SELECT_WITH_LOCK)
+    {
+      scan_code = locator_lock_and_get_object (thread_p, &context, S_LOCK, scan_cache, NULL_CHN, ispeeking);
+    }
+  else if (op_type == S_DELETE || op_type == S_DELETE)
+    {
+      scan_code =
+	heap_mvcc_get_for_delete (thread_p, oid, class_oid, recdes, scan_cache, ispeeking, NULL_CHN, NULL,
+				  non_ex_handling);
+    }
+  else
+    {
+      assert (false);
+    }
+
+  heap_clean_get_context (thread_p, &context);
+  return scan_code;
 }

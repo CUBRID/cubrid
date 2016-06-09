@@ -11484,7 +11484,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   RECDES oRec = RECDES_INITIALIZER;
   HEAP_SCANCACHE scan_cache;
   ACCESS_SPEC_TYPE *specp = NULL;
-  OID cls_oid;
+  OID cls_oid = OID_INITIALIZER;
   int dead_end = false;
   int unqualified_dead_end = false;
   FETCH_PROC_NODE *fetch = &xasl->proc.fetch;
@@ -11585,8 +11585,8 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       scan_cache_end_needed = true;
 
       /* fetch the object and the class oid */
-      if (heap_get_with_class_oid (thread_p, &cls_oid, dbvaloid, &oRec, &scan_cache, scan_operation_type, PEEK,
-				   LOG_ERROR_IF_DELETED) != S_SUCCESS)
+      if (heap_get_for_operation (thread_p, dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, PEEK,
+				  LOG_ERROR_IF_DELETED) != S_SUCCESS)
 	{
 	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
