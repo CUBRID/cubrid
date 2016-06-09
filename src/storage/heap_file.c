@@ -10636,39 +10636,14 @@ char *
 heap_get_class_name_of_instance (THREAD_ENTRY * thread_p, const OID * inst_oid)
 {
   char *classname = NULL;
-  char *copy_classname = NULL;
-  RECDES recdes;
-  HEAP_SCANCACHE scan_cache;
   OID class_oid;
 
-  heap_scancache_quick_start (&scan_cache);
-  scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (scan_cache.mvcc_snapshot == NULL)
+  if (heap_get_class_oid (thread_p, inst_oid, &class_oid) == S_SUCCESS)
     {
-      return NULL;
+      classname = heap_get_class_name_alloc_if_diff (thread_p, &class_oid, NULL);
     }
 
-  if (heap_get_with_class_oid (thread_p, &class_oid, inst_oid, NULL, &scan_cache, S_SELECT, PEEK,
-			       LOG_ERROR_IF_DELETED) == S_SUCCESS)
-    {
-      if (heap_get (thread_p, &class_oid, &recdes, &scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
-	{
-	  classname = or_class_name (&recdes);
-	  copy_classname = (char *) malloc (strlen (classname) + 1);
-	  if (copy_classname == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (classname) + 1));
-	    }
-	  else
-	    {
-	      strcpy (copy_classname, classname);
-	    }
-	}
-    }
-
-  heap_scancache_end (thread_p, &scan_cache);
-
-  return copy_classname;
+  return classname;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
