@@ -27420,9 +27420,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
   /* Is updating max key length necessary? True if: 1. Parent node already needed an update
    * (insert_helper->need_update_max_key_len is set to true). 2. Current node. */
-  need_update_max_key_len = insert_helper->need_update_max_key_len || (is_new_key_possible
-								       && insert_helper->key_len_in_page >
-								       node_header->max_key_len);
+  need_update_max_key_len = (insert_helper->need_update_max_key_len
+			     || (is_new_key_possible && insert_helper->key_len_in_page > node_header->max_key_len));
 
   max_key_len = need_update_max_key_len ? insert_helper->key_len_in_page : node_header->max_key_len;
   max_new_data_size =
