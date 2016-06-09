@@ -182,21 +182,19 @@
 
 /* Check if insert MVCCID is valid but not visible to everyone. */
 #define BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE(mvcc_info) \
-  (BTREE_MVCC_INFO_HAS_INSID (mvcc_info) \
-   && MVCCID_IS_NOT_ALL_VISIBLE ((mvcc_info)->insert_mvccid))
+  (BTREE_MVCC_INFO_HAS_INSID (mvcc_info) && MVCCID_IS_NOT_ALL_VISIBLE ((mvcc_info)->insert_mvccid))
+
 /* Check if delete MVCCID is valid. */
 #define BTREE_MVCC_INFO_IS_DELID_VALID(mvcc_info) \
-  (BTREE_MVCC_INFO_HAS_DELID (mvcc_info) \
-   && (mvcc_info)->delete_mvccid != MVCCID_NULL)
+  (BTREE_MVCC_INFO_HAS_DELID (mvcc_info) && (mvcc_info)->delete_mvccid != MVCCID_NULL)
 
 /* Insert MVCCID based on b-tree mvcc info. */
 #define BTREE_MVCC_INFO_INSID(mvcc_info) \
-  (BTREE_MVCC_INFO_HAS_INSID (mvcc_info) ? \
-   (mvcc_info)->insert_mvccid : MVCCID_ALL_VISIBLE)
+  (BTREE_MVCC_INFO_HAS_INSID (mvcc_info) ? (mvcc_info)->insert_mvccid : MVCCID_ALL_VISIBLE)
+
 /* Delete MVCC based on b-tree mvcc info. */
 #define BTREE_MVCC_INFO_DELID(mvcc_info) \
-  (BTREE_MVCC_INFO_HAS_DELID (mvcc_info) ? \
-   (mvcc_info)->delete_mvccid : MVCCID_NULL)
+  (BTREE_MVCC_INFO_HAS_DELID (mvcc_info) ? (mvcc_info)->delete_mvccid : MVCCID_NULL)
 
 /* Set b-tree MVCC info as if it has fixed size (it includes both insert and
  * delete MVCCID.
@@ -213,7 +211,8 @@
 	  (mvcc_info)->delete_mvccid = MVCCID_NULL; \
 	} \
       (mvcc_info)->flags = BTREE_OID_HAS_MVCC_INSID_AND_DELID; \
-    } while (false)
+    } \
+  while (false)
 
 /* Clear unnecessary flags from b-tree MVCC info. */
 #define BTREE_MVCC_INFO_CLEAR_FIXED_SIZE(mvcc_info) \
@@ -227,7 +226,8 @@
 	{ \
 	  BTREE_MVCC_INFO_CLEAR_DELID(mvcc_info); \
 	} \
-    } while (false)
+    } \
+  while (false)
 
 /* Set insert MVCCID into b-tree mvcc info. */
 #define BTREE_MVCC_INFO_SET_INSID(mvcc_info, insid) \
@@ -235,14 +235,17 @@
     { \
       (mvcc_info)->flags |= BTREE_OID_HAS_MVCC_INSID; \
       (mvcc_info)->insert_mvccid = insid; \
-    } while (false)
+    } \
+  while (false)
+
 /* Set delete MVCCID into b-tree mvcc info. */
 #define BTREE_MVCC_INFO_SET_DELID(mvcc_info, delid) \
   do \
     { \
       (mvcc_info)->flags |= BTREE_OID_HAS_MVCC_DELID; \
       (mvcc_info)->delete_mvccid = delid; \
-    } while (false)
+    } \
+  while (false)
 
 /* Get an object OID from a b-tree record. If MVCC is enabled, mvcc flags are
  * cleared.
@@ -252,14 +255,8 @@
     { \
       OR_GET_OID (buf, oid_ptr); \
       BTREE_OID_CLEAR_MVCC_FLAGS (oid_ptr); \
-    } while (0)
-/* Get an object OID from b-tree record. MVCC flags are not removed */
-#define BTREE_GET_OID_WITH_MVCC_FLAGS(buf, oid_ptr) \
-  OR_GET_OID (buf, oid_ptr)
-
-/* Get a class OID from b-tree record. */
-#define BTREE_GET_CLASS_OID(buf, class_oid_ptr) \
-  OR_GET_OID (buf, class_oid_ptr)
+    } \
+  while (0)
 
 /* Initialize OR_BUF to process a b-tree record. */
 #define BTREE_RECORD_OR_BUF_INIT(buf, btree_rec) \
@@ -271,7 +268,8 @@
 	  size -= DB_ALIGN (DISK_VPID_SIZE, BTREE_MAX_ALIGN); \
 	} \
       OR_BUF_INIT (buf, (btree_rec)->data, size); \
-    } while (false)
+    } \
+  while (false)
 
 /* Get MVCC size from leaf record flags */
 /* Size is:
@@ -280,10 +278,8 @@
  * OR_MVCCID_SIZE otherwise (one flag is set).
  */
 #define BTREE_GET_MVCC_INFO_SIZE_FROM_FLAGS(mvcc_flags) \
-  (((mvcc_flags) & BTREE_OID_HAS_MVCC_INSID_AND_DELID) \
-   == BTREE_OID_HAS_MVCC_INSID_AND_DELID ? \
-   2 * OR_MVCCID_SIZE : \
-   ((mvcc_flags) == 0 ? 0 : OR_MVCCID_SIZE))
+  (((mvcc_flags) & BTREE_OID_HAS_MVCC_INSID_AND_DELID) == BTREE_OID_HAS_MVCC_INSID_AND_DELID \
+   ? 2 * OR_MVCCID_SIZE : ((mvcc_flags) == 0 ? 0 : OR_MVCCID_SIZE))
 
 /* Check if page is a valid b-tree leaf node. Usually called after unfix and
  * re-fix without validation.
@@ -294,12 +290,10 @@
  */
 #define BTREE_IS_PAGE_VALID_LEAF(thread_p, page) \
   ((page) != NULL \
-   && pgbuf_is_valid_page (thread_p, pgbuf_get_vpid_ptr (page), true, NULL, \
-			   NULL) \
+   && pgbuf_is_valid_page (thread_p, pgbuf_get_vpid_ptr (page), true, NULL, NULL) \
    && pgbuf_get_page_ptype (thread_p, page) == PAGE_BTREE \
    && spage_get_slot (page, HEADER) != NULL \
-   && spage_get_slot (page, HEADER)->record_length \
-      == sizeof (BTREE_NODE_HEADER) \
+   && spage_get_slot (page, HEADER)->record_length == sizeof (BTREE_NODE_HEADER) \
    && (btree_get_node_header (page))->node_level == 1)
 
 /*
@@ -338,90 +332,6 @@ typedef enum
   BTREE_MERGE_FORCE,
 } BTREE_MERGE_STATUS;
 
-/* Redo recovery of insert structure and flags */
-#define BTREE_INSERT_RCV_FLAG_OID_INSERTED	0x8000
-#define BTREE_INSERT_RCV_FLAG_OVFL_CHANGED	0x4000
-#define BTREE_INSERT_RCV_FLAG_NEW_OVFLPG	0x2000
-#define BTREE_INSERT_RCV_FLAG_REC_TYPE		0x1000
-#define BTREE_INSERT_RCV_FLAG_INSOID_MODE	0x0C00
-#define BTREE_INSERT_RCV_FLAG_UNIQUE		0x0200
-#define BTREE_INSERT_RCV_FLAG_KEY_DOMAIN	0x0100
-#define BTREE_INSERT_RCV_FLAG_HAS_INSID		0x0080
-#define BTREE_INSERT_RCV_FLAG_HAS_DELID		0x0040
-
-/* Check flag bits are set */
-#define BTREE_INSERT_RCV_IS_OID_INSERTED(recins) \
-  (((recins)->flags & BTREE_INSERT_RCV_FLAG_OID_INSERTED) != 0)
-#define BTREE_INSERT_RCV_IS_OVFL_CHANGED(recins) \
-  (((recins)->flags & BTREE_INSERT_RCV_FLAG_OVFL_CHANGED) != 0)
-#define BTREE_INSERT_RCV_IS_NEW_OVFLPG(recins) \
-  (((recins)->flags & BTREE_INSERT_RCV_FLAG_NEW_OVFLPG) != 0)
-#define BTREE_INSERT_RCV_IS_UNIQUE(recins) \
-  (((recins)->flags & BTREE_INSERT_RCV_FLAG_UNIQUE) != 0)
-#define BTREE_INSERT_RCV_HAS_KEY_DOMAIN(recins) \
-  (((recins)->flags & BTREE_INSERT_RCV_FLAG_KEY_DOMAIN) != 0)
-#define BTREE_INSERT_RCV_HAS_INSID(recins) \
-  (((recins)->flags & BTREE_INSERT_RCV_FLAG_HAS_INSID) != 0)
-#define BTREE_INSERT_RCV_HAS_DELID(recins) \
-  (((recins)->flags & BTREE_INSERT_RCV_FLAG_HAS_DELID) != 0)
-
-/* Set redo insert recovery flags. */
-#define BTREE_INSERT_RCV_SET_FLAGS(recins, flags_) \
-  ((recins)->flags |= (flags_))
-
-/* Check record type */
-#define BTREE_INSERT_RCV_IS_RECORD_REGULAR(recins) \
-  (((recins)->flags & BTREE_INSERT_RCV_FLAG_REC_TYPE) != 0)
-#define BTREE_INSERT_RCV_IS_RECORD_OVERFLOW(recins) \
-  (((recins)->flags & BTREE_INSERT_RCV_FLAG_REC_TYPE) == 0)
-/* Set record type */
-#define BTREE_INSERT_RCV_SET_RECORD_REGULAR(recins) \
-  ((recins)->flags |= BTREE_INSERT_RCV_FLAG_REC_TYPE)
-#define BTREE_INSERT_RCV_SET_RECORD_OVERFLOW(recins) \
-  ((recins)->flags &= ~BTREE_INSERT_RCV_FLAG_REC_TYPE)
-
-/* Check insert OID mode */
-#define BTREE_INSERT_OID_MODE_UNIQUE_MOVE_TO_END	0x0800
-#define BTREE_INSERT_OID_MODE_UNIQUE_REPLACE_FIRST	0x0400
-#define BTREE_INSERT_OID_MODE_DEFAULT			0x0C00
-
-/* Insert mode: insert new object as first in record and move current first
- * to the end of record.
- */
-#define BTREE_INSERT_RCV_IS_INSMODE_UNIQUE_MOVE_TO_END(recins) \
-  (((recins)->flags & BTREE_INSERT_RCV_FLAG_INSOID_MODE) \
-   == BTREE_INSERT_OID_MODE_UNIQUE_MOVE_TO_END)
-/* Insert mode: replace current first object with new object. */
-#define BTREE_INSERT_RCV_IS_INSMODE_UNIQUE_REPLACE_FIRST(recins) \
-  (((recins)->flags & BTREE_INSERT_RCV_FLAG_INSOID_MODE) \
-   == BTREE_INSERT_OID_MODE_UNIQUE_REPLACE_FIRST)
-/* Insert mode default: at the end of record for leaf records,
- * ordered for overflow records.
- */
-#define BTREE_INSERT_RCV_IS_INSMODE_DEFAULT(recins) \
-  (((recins)->flags & BTREE_INSERT_RCV_FLAG_INSOID_MODE) \
-   == BTREE_INSERT_OID_MODE_DEFAULT)
-
-/* Set insert OID mode */
-#define BTREE_INSERT_RCV_SET_INSMODE_UNIQUE_MOVE_TO_END(recins) \
-  ((recins)->flags = \
-   (((recins)->flags & (~BTREE_INSERT_RCV_FLAG_INSOID_MODE)) \
-    | BTREE_INSERT_OID_MODE_UNIQUE_MOVE_TO_END))
-
-#define BTREE_INSERT_RCV_SET_INSMODE_UNIQUE_REPLACE_FIRST(recins) \
-  ((recins)->flags = \
-   (((recins)->flags & (~BTREE_INSERT_RCV_FLAG_INSOID_MODE)) \
-    | BTREE_INSERT_OID_MODE_UNIQUE_REPLACE_FIRST))
-
-#define BTREE_INSERT_RCV_SET_INSMODE_DEFAULT(recins) \
-  ((recins)->flags = \
-   (((recins)->flags & (~BTREE_INSERT_RCV_FLAG_INSOID_MODE)) \
-    | BTREE_INSERT_OID_MODE_DEFAULT))
-
-/* Get insert OID mode. */
-#define BTREE_INSERT_RCV_GET_INSMODE(recins) \
-  ((recins)->flags & BTREE_INSERT_RCV_FLAG_INSOID_MODE)
-
 /* RECINS_STRUCT - redo b-tree insert recovery structure.
  */
 typedef struct recins_struct RECINS_STRUCT;
@@ -438,23 +348,6 @@ struct recins_struct
   { OID_INITIALIZER, OID_INITIALIZER, VPID_INITIALIZER, 0 }
 
 /* Redo recovery of insert delete MVCCID */
-#define BTREE_INSERT_DELID_RCV_FLAG_UNIQUE	0x80000000
-#define BTREE_INSERT_DELID_RCV_FLAG_OVERFLOW	0x40000000
-#define BTREE_INSERT_DELID_RCV_FLAG_KEY_DOMAIN	0x20000000
-
-#define BTREE_INSERT_DELID_RCV_FLAG_MASK	0xE0000000
-
-#define BTREE_INSERT_DELID_RCV_IS_UNIQUE(offset) \
-  (((offset) & BTREE_INSERT_DELID_RCV_FLAG_UNIQUE) != 0)
-#define BTREE_INSERT_DELID_RCV_IS_OVERFLOW(offset) \
-  (((offset) & BTREE_INSERT_DELID_RCV_FLAG_OVERFLOW) != 0)
-#define BTREE_INSERT_DELID_RCV_HAS_KEY_DOMAIN(offset) \
-  (((offset) & BTREE_INSERT_DELID_RCV_FLAG_KEY_DOMAIN) != 0)
-
-#define BTREE_INSERT_DELID_RCV_CLEAR_FLAGS(offset) \
-  ((offset) = (offset) & (~BTREE_INSERT_DELID_RCV_FLAG_MASK))
-
-#define BTID_DOMAIN_BUFFER_SIZE 64
 #define BTID_DOMAIN_CHECK_MAX_SIZE 1024
 
 /* Offset of the fields in the Leaf/NonLeaf Record Recovery Log Data */
@@ -598,22 +491,6 @@ struct btree_find_unique_helper
   }
 #endif /* !SA_MODE */
 
-/* BTREE_REC_FIND_OBJ_HELPER -
- * Structure used to find an object in a b-tree record.
- * TODO: Use it?
- */
-typedef struct btree_rec_find_obj_helper BTREE_REC_FIND_OBJ_HELPER;
-struct btree_rec_find_obj_helper
-{
-  OID oid;			/* OID of searched object. */
-  MVCCID check_insert;		/* Non-NULL MVCCID if insert MVCCID should also match. */
-  MVCCID check_delete;		/* Non-NULL MVCCID if delete MVCCID should also match. */
-  int found_offset;		/* Object's offset in record. */
-};
-/* BTREE_REC_FIND_OBJ_HELPER static initializer. */
-#define BTREE_RECORD_FIND_OBJECT_ARGS_INITIALIZER \
-  { OID_INITIALIZER, MVCCID_NULL, MVCCID_NULL, NOT_FOUND }
-
 /* BTREE_REC_SATISFIES_SNAPSHOT_HELPER -
  * Structure used as helper for btree_record_satisfies_snapshot function.
  */
@@ -720,7 +597,6 @@ typedef int BTREE_PROCESS_KEY_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * btid
  * data in record.
  *
  * Functions:
- * btree_record_object_compare.
  * btree_record_satisfies_snapshot.
  * btree_select_visible_object_for_range_scan.
  * btree_fk_object_does_exist.
@@ -732,24 +608,19 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
 /* Type of b-tree scans. */
 /* Covering index. */
 #define BTS_IS_INDEX_COVERED(bts) \
-  ((bts) != NULL && (bts)->index_scan_idp != NULL \
-   && SCAN_IS_INDEX_COVERED((bts)->index_scan_idp))
+  ((bts) != NULL && (bts)->index_scan_idp != NULL && SCAN_IS_INDEX_COVERED ((bts)->index_scan_idp))
 /* Multiple ranges optimization. */
 #define BTS_IS_INDEX_MRO(bts) \
-  ((bts) != NULL && (bts)->index_scan_idp != NULL \
-   && SCAN_IS_INDEX_MRO((bts)->index_scan_idp))
+  ((bts) != NULL && (bts)->index_scan_idp != NULL && SCAN_IS_INDEX_MRO ((bts)->index_scan_idp))
 /* Index skip scan. */
 #define BTS_IS_INDEX_ISS(bts) \
-  ((bts) != NULL && (bts)->index_scan_idp != NULL \
-   && SCAN_IS_INDEX_ISS((bts)->index_scan_idp))
+  ((bts) != NULL && (bts)->index_scan_idp != NULL && SCAN_IS_INDEX_ISS ((bts)->index_scan_idp))
 /* Index loose scan. */
 #define BTS_IS_INDEX_ILS(bts) \
-  ((bts) != NULL && (bts)->index_scan_idp != NULL \
-   && SCAN_IS_INDEX_ILS((bts)->index_scan_idp)    \
+  ((bts) != NULL && (bts)->index_scan_idp != NULL && SCAN_IS_INDEX_ILS ((bts)->index_scan_idp) \
    && BTS_IS_INDEX_COVERED(bts))
 #define BTS_NEED_COUNT_ONLY(bts) \
-  ((bts) != NULL && (bts)->index_scan_idp != NULL \
-   && (bts)->index_scan_idp->need_count_only)
+  ((bts) != NULL && (bts)->index_scan_idp != NULL && (bts)->index_scan_idp->need_count_only)
 
 /* Increment read OID counters for b-tree scan. */
 #define BTS_INCREMENT_READ_OIDS(bts) \
@@ -757,18 +628,17 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
     { \
       (bts)->n_oids_read++; \
       (bts)->n_oids_read_last_iteration++; \
-    } while (false)
+    } \
+  while (false)
 
 /* Soft capacity of OID buffer. It is used to stop one scan iteration as a
  * general rule. There is an exception when hard capacity is applied.
  */
 #define BTS_IS_SOFT_CAPACITY_ENOUGH(bts, count) \
-  ((count) \
-   <= (BTS_IS_INDEX_COVERED (bts) ? \
-       /* Covering index: use max tuples as soft limit. */ \
-       (bts)->index_scan_idp->indx_cov.max_tuples \
-       /* Normal scan: use max_oid_cnt as soft limit. */ \
-       : (bts)->index_scan_idp->oid_list->max_oid_cnt))
+  ((count) <= (BTS_IS_INDEX_COVERED (bts) \
+   ? /* Covering index: use max tuples as soft limit. */ (bts)->index_scan_idp->indx_cov.max_tuples \
+   : /* Normal scan: use max_oid_cnt as soft limit. */ (bts)->index_scan_idp->oid_list->max_oid_cnt))
+
 /* Hard capacity is the maximum number that can fit the OID buffer. It is
  * used when the number of objects in a single key does not fit the soft
  * capacity.
@@ -779,11 +649,9 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
  * list file, its capacity is considered infinite.
  */
 #define BTS_IS_HARD_CAPACITY_ENOUGH(bts, count) \
-  (BTS_IS_INDEX_COVERED (bts) ? \
-   /* Covering index: no hard limit. */ \
-   true \
-   /* Normal scan: use buffer capacity as hard limit. */ \
-   : (count)  <= (bts)->index_scan_idp->oid_list->capacity)
+  (BTS_IS_INDEX_COVERED (bts) \
+   ? /* Covering index: no hard limit. */ true \
+   : /* Normal scan: use buffer capacity as hard limit. */ (count) <= (bts)->index_scan_idp->oid_list->capacity)
 
 /* Save an object selected during scan into object buffer. This can only be
  * used by two types of scans:
@@ -796,18 +664,15 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
       /* Assert this is not used in an inappropriate context. */ \
       assert (!BTS_IS_INDEX_COVERED (bts)); \
       assert (!BTS_IS_INDEX_MRO (bts)); \
-      assert (!BTS_IS_INDEX_ISS (bts) \
-	      || bts->index_scan_idp->iss.current_op \
-		 == ISS_OP_DO_RANGE_SEARCH); \
+      assert (!BTS_IS_INDEX_ISS (bts) || bts->index_scan_idp->iss.current_op == ISS_OP_DO_RANGE_SEARCH); \
       COPY_OID ((bts)->oid_ptr, oid); \
       (bts)->oid_ptr++; \
       BTS_INCREMENT_READ_OIDS (bts); \
-      assert ((bts)->n_oids_read_last_iteration \
-	      <= (bts)->index_scan_idp->oid_list->capacity); \
-      assert (((bts)->oid_ptr - (bts)->index_scan_idp->oid_list->oidp) \
-	      <= (bts)->index_scan_idp->oid_list->capacity); \
+      assert ((bts)->n_oids_read_last_iteration <= (bts)->index_scan_idp->oid_list->capacity); \
+      assert (((bts)->oid_ptr - (bts)->index_scan_idp->oid_list->oidp) <= (bts)->index_scan_idp->oid_list->capacity); \
       /* Should we also increment (bts)->index_scan_idp->oid_list.oid_cnt? */ \
-    } while (false)
+    } \
+  while (false)
 
 /* Reset b-tree scan for a new range scan (it can be called internally by
  * btree_range_scan).
@@ -823,7 +688,8 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
 	{ \
 	  pgbuf_unfix_and_init (NULL, bts->C_page); \
 	} \
-    } while (false)
+    } \
+  while (false)
 
 /* BTREE_FIND_FK_OBJECT -
  * Structure used to find if a key of foreign key index has any objects.
@@ -1043,89 +909,74 @@ struct btree_delete_helper
 #define BTREE_PERF_TRACK_TIME(thread_p, helper) \
   do \
     { \
-      switch ((helper)->purpose) { \
+      switch ((helper)->purpose) \
+      { \
       case BTREE_OP_INSERT_NEW_OBJECT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_insert_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_insert_time); \
 	break; \
       case BTREE_OP_INSERT_MVCC_DELID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_mvcc_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_mvcc_delete_time); \
 	break; \
       case BTREE_OP_INSERT_MARK_DELETED: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_mark_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_mark_delete_time); \
 	break; \
       case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_undo_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_delete_time); \
 	break; \
       case BTREE_OP_DELETE_OBJECT_PHYSICAL: \
       case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_delete_time); \
 	break; \
       case BTREE_OP_DELETE_UNDO_INSERT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_undo_insert_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_insert_time); \
 	break; \
       case BTREE_OP_DELETE_UNDO_INSERT_DELID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_undo_mvcc_delete_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_mvcc_delete_time); \
 	break; \
       case BTREE_OP_DELETE_VACUUM_OBJECT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_vacuum_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_vacuum_time); \
 	break; \
       case BTREE_OP_DELETE_VACUUM_INSID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_vacuum_insid_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_vacuum_insid_time); \
 	break; \
       default: \
 	assert (false); \
       } \
     } \
   while (false)
+
 #define BTREE_PERF_TRACK_TRAVERSE_TIME(thread_p, helper) \
   do \
     { \
-      switch ((helper)->purpose) { \
+      switch ((helper)->purpose) \
+      { \
       case BTREE_OP_INSERT_NEW_OBJECT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_insert_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_insert_traverse_time); \
 	break; \
       case BTREE_OP_INSERT_MVCC_DELID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_mvcc_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_mvcc_delete_traverse_time); \
 	break; \
       case BTREE_OP_INSERT_MARK_DELETED: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_mark_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_mark_delete_traverse_time); \
 	break; \
       case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_undo_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_delete_traverse_time); \
 	break; \
       case BTREE_OP_DELETE_OBJECT_PHYSICAL: \
       case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_delete_traverse_time); \
 	break; \
       case BTREE_OP_DELETE_UNDO_INSERT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_undo_insert_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_insert_traverse_time); \
 	break; \
       case BTREE_OP_DELETE_UNDO_INSERT_DELID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_undo_mvcc_delete_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_undo_mvcc_delete_traverse_time); \
 	break; \
       case BTREE_OP_DELETE_VACUUM_OBJECT: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_vacuum_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_vacuum_traverse_time); \
 	break; \
       case BTREE_OP_DELETE_VACUUM_INSID: \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, \
-					     mnt_bt_vacuum_insid_traverse_time); \
+	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, mnt_bt_vacuum_insid_traverse_time); \
 	break; \
       default: \
 	assert (false); \
@@ -1134,17 +985,19 @@ struct btree_delete_helper
   while (false)
 
 #define BTREE_PERF_OVF_OIDS_FIX_TIME(thread_p, track) \
-  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, \
-				       mnt_bt_fix_ovf_oids_time)
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, mnt_bt_fix_ovf_oids_time)
+
 #define BTREE_PERF_UNIQUE_LOCK_TIME(thread_p, track, lock) \
   do \
     { \
       if ((lock) == S_LOCK) \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, \
-					     mnt_bt_unique_rlocks_time); \
+        { \
+	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, mnt_bt_unique_rlocks_time); \
+        } \
       else \
-	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, \
-					     mnt_bt_unique_wlocks_time); \
+        { \
+	  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, track, mnt_bt_unique_wlocks_time); \
+        } \
     } \
   while (false)
 
@@ -1171,6 +1024,7 @@ struct btree_delete_helper
 /* Set overflow flag for redo. */
 #define BTREE_RV_SET_OVERFLOW_NODE(addr) \
   ((addr)->offset |= BTREE_RV_OVERFLOW_FLAG)
+
 #if !defined (NDEBUG)
 /* Set debug info for redo.*/
 #define BTREE_RV_REDO_SET_DEBUG_INFO(addr, rv_ptr, btid_int, id) \
@@ -1180,8 +1034,7 @@ struct btree_delete_helper
       assert ((rv_ptr) != NULL); \
       assert ((btid_int) != NULL); \
       assert (!BTREE_RV_HAS_DEBUG_INFO ((addr)->offset)); \
-      if (or_packed_domain_size (btid_int->key_type, 0) \
-	  > BTID_DOMAIN_CHECK_MAX_SIZE) \
+      if (or_packed_domain_size (btid_int->key_type, 0) > BTID_DOMAIN_CHECK_MAX_SIZE) \
         { \
 	  /* Too much space required. Give up packing debug info. */ \
 	  break; \
@@ -1208,16 +1061,14 @@ struct btree_delete_helper
 /* Save debug info for redo and possible undo. Expected rv_undo_pptr is a
  * char** argument (that can be NULL).
  */
-#define BTREE_RV_UNDOREDO_SET_DEBUG_INFO(addr, rv_redo_ptr, rv_undo_ptr, \
-					 btid_int, id) \
+#define BTREE_RV_UNDOREDO_SET_DEBUG_INFO(addr, rv_redo_ptr, rv_undo_ptr, btid_int, id) \
   do \
     { \
       char *save_rv_redo_ptr = (rv_redo_ptr); \
       BTREE_RV_REDO_SET_DEBUG_INFO (addr, rv_redo_ptr, btid_int, id); \
       if ((rv_undo_ptr) != NULL) \
 	{ \
-	  memcpy (rv_undo_ptr, save_rv_redo_ptr, \
-		  CAST_BUFLEN ((rv_redo_ptr) - save_rv_redo_ptr)); \
+	  memcpy (rv_undo_ptr, save_rv_redo_ptr, CAST_BUFLEN ((rv_redo_ptr) - save_rv_redo_ptr)); \
 	  (rv_undo_ptr) += CAST_BUFLEN ((rv_redo_ptr) - save_rv_redo_ptr); \
 	} \
     } \
@@ -1290,15 +1141,11 @@ enum btree_rv_debug_id
   BTREE_RV_DEBUG_ID_REM_DELID_UNIQUE,
   BTREE_RV_DEBUG_ID_REM_DELID_NON_UNIQUE,
   BTREE_RV_DEBUG_ID_OVF_REPLACE,
-  BTREE_RV_DEBUG_ID_SWAP_OVF,
   BTREE_RV_DEBUG_ID_SWAP_LEAF,
   BTREE_RV_DEBUG_ID_OVF_LINK,
   BTREE_RV_DEBUG_ID_LAST_OID,
   BTREE_RV_DEBUG_ID_REM_OBJ,
   BTREE_RV_DEBUG_ID_INS_KEY,
-  BTREE_RV_DEBUG_ID_SAME_KEY,
-  BTREE_RV_DEBUG_ID_UNDO_UPDSK,
-  BTREE_RV_DEBUG_ID_VAC_SAME_KEY,
   BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD,
   BTREE_RV_DEBUG_ID_INS_REM_LEAF_LAST
 };
@@ -1407,9 +1254,6 @@ static int btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN
 					     bool need_to_check_null);
 static int btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * filter, OID * oid,
 				INDX_SCAN_ID * iscan_id);
-#if 0				/* TODO: currently, unused */
-static int btree_get_prev_keyvalue (BTREE_SCAN * bts, DB_VALUE * prev_key, int *prev_clr_key);
-#endif
 static DISK_ISVALID btree_find_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, int key_cnt,
 					      OID * oid, DB_VALUE * key, bool * clear_key);
 static DISK_ISVALID btree_find_key_from_nleaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, int key_cnt,
@@ -1458,9 +1302,6 @@ static int btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_in
 				     BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo, int *offset_to_object,
 				     BTREE_MVCC_INFO * mvcc_info);
 static int btree_leaf_get_vpid_for_overflow_oids (RECDES * rec, VPID * vpid);
-#if defined(ENABLE_UNUSED_FUNCTION)
-static int btree_leaf_put_first_oid (RECDES * recp, OID * oidp, short record_flag);
-#endif
 static int btree_record_get_last_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * recp,
 					 BTREE_NODE_TYPE node_type, int after_key_offset, OID * oidp, OID * class_oid,
 					 BTREE_MVCC_INFO * mvcc_info, int *last_oid_mvcc_offset);
@@ -1606,9 +1447,6 @@ static int btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_i
 static int btree_record_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
 					 RECDES * record, int after_key_offset, bool * stop,
 					 BTREE_PROCESS_OBJECT_FUNCTION * func, void *args);
-static int btree_record_object_compare (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, char *object_ptr,
-					OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info, bool * stop,
-					void *other_args);
 static int btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
 					    char *object_ptr, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
 					    bool * stop, void *args);
@@ -2748,35 +2586,6 @@ btree_record_get_num_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
   rec_oid_cnt = CEIL_PTVDIV (rec->length, fixed_object_size);
   return rec_oid_cnt;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * btree_leaf_put_first_oid () -
- *   return: NO_ERROR
- *   recp(in/out):
- *   oidp(in):
- *   record_flag(in):
- */
-static int
-btree_leaf_put_first_oid (RECDES * recp, OID * oidp, short record_flag)
-{
-  OR_BUF buf;
-  int rc;
-
-  assert ((short) (record_flag & ~BTREE_LEAF_RECORD_MASK) == 0);
-
-  or_init (&buf, recp->data, OR_OID_SIZE);
-
-  rc = or_put_int (&buf, oidp->pageid);
-  assert (rc == NO_ERROR);
-  rc = or_put_short (&buf, oidp->slotid | record_flag);
-  assert (rc == NO_ERROR);
-  rc = or_put_short (&buf, oidp->volid);
-  assert (rc == NO_ERROR);
-
-  return NO_ERROR;
-}
-#endif
 
 /*
  * btree_leaf_change_first_object () - Replace first object in record with
@@ -14683,6 +14492,7 @@ int
 btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE * new_key, OID * cls_oid, OID * oid,
 	      int op_type, BTREE_UNIQUE_STATS * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header)
 {
+  MVCC_REC_HEADER *p_local_rec_header = NULL;
   int ret = NO_ERROR;
 
   assert (old_key != NULL);
@@ -14726,68 +14536,17 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key, DB_VALUE
 	}
     }
 
-  {
-    MVCC_REC_HEADER *p_local_rec_header = NULL;
-    if (p_mvcc_rec_header != NULL)
-      {
-	p_local_rec_header = &p_mvcc_rec_header[1];
-      }
+  if (p_mvcc_rec_header != NULL)
+    {
+      p_local_rec_header = &p_mvcc_rec_header[1];
+    }
 
-    ret = btree_insert (thread_p, btid, new_key, cls_oid, oid, op_type, unique_stat_info, unique, p_local_rec_header);
-    if (ret != NO_ERROR)
-      {
-	ASSERT_ERROR ();
-	goto exit_on_error;
-      }
-  }
-
-#if 0
-  {
-    BTREE_CHECKSCAN bt_checkscan;
-    DISK_ISVALID isvalid = DISK_VALID;
-
-    /* start a check-scan on index */
-    ret = btree_keyoid_checkscan_start (thread_p, btid, &bt_checkscan);
-    if (ret != NO_ERROR)
-      {
-	ASSERT_ERROR ();
-	goto exit_on_error;
-      }
-
-    if (!DB_IS_NULL (old_key) && !btree_multicol_key_is_null (old_key))
-      {
-	isvalid = btree_keyoid_checkscan_check (thread_p, &bt_checkscan, cls_oid, old_key, oid);
-
-	if (er_errid () == ER_INTERRUPTED)
-	  {
-	    /* in case of user interrupt */
-	    ;			/* do not check isvalid */
-	  }
-	else
-	  {
-	    assert (isvalid == DISK_INVALID);	/* not found */
-	  }
-      }
-
-    if (!DB_IS_NULL (new_key) && !btree_multicol_key_is_null (new_key))
-      {
-	isvalid = btree_keyoid_checkscan_check (thread_p, &bt_checkscan, cls_oid, new_key, new_oid);
-
-	if (er_errid () == ER_INTERRUPTED)
-	  {
-	    /* in case of user interrupt */
-	    ;			/* do not check isvalid */
-	  }
-	else
-	  {
-	    assert (isvalid == DISK_VALID);	/* found */
-	  }
-      }
-
-    /* close the index check-scan */
-    btree_keyoid_checkscan_end (thread_p, &bt_checkscan);
-  }
-#endif
+  ret = btree_insert (thread_p, btid, new_key, cls_oid, oid, op_type, unique_stat_info, unique, p_local_rec_header);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
 
 end:
 
@@ -16252,8 +16011,8 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
 #if !defined(NDEBUG)
   if ((bts->P_page == NULL && bts->C_page == first_page) || (bts->P_page == first_page && bts->C_page == NULL)
-      || (bts->P_page == first_page && bts->C_page && bts->C_page != first_page) || (bts->P_page == NULL
-										     && bts->C_page == NULL)
+      || (bts->P_page == first_page && bts->C_page && bts->C_page != first_page)
+      || (bts->P_page == NULL && bts->C_page == NULL)
       || (bts->P_page == NULL && bts->C_page && bts->C_page != first_page))
     {
       /* case 1, 2, 3, 4, 5 */
@@ -16684,9 +16443,8 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 
 end:
   assert ((*is_key_range_satisfied == false && *is_key_filter_satisfied == false)
-	  || (*is_key_range_satisfied == true && *is_key_filter_satisfied == false) || (*is_key_range_satisfied == true
-											&& *is_key_filter_satisfied ==
-											true));
+	  || (*is_key_range_satisfied == true && *is_key_filter_satisfied == false)
+	  || (*is_key_range_satisfied == true && *is_key_filter_satisfied == true));
 
   return ret;
 
@@ -24544,66 +24302,6 @@ btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
 }
 
 /*
- * btree_record_object_compare () - BTREE_PROCESS_OBJECT_FUNCTION. It
- *				    will compare the record object with given
- *				    object (sometimes considering MVCC info).
- *				    When the right object is found, search
- *				    should stop.
- *
- * return	       : Error code.
- * thread_p (in)       : Thread entry.
- * btid_int (in)       : B-tree info.
- * record (in)	       : B-tree leaf/overflow record.
- * object_ptr (in)     : Pointer in record data to current object.
- * oid (in)	       : Current object OID.
- * class_oid (in)      : Current object's class OID.
- * mvcc_info (in)      : Current object's MVCC info.
- * stop (out)	       : Set to true when object/MVCC info is matched.
- * other_args (in/out) : BTREE_REC_FIND_OBJ_HELPER *.
- */
-static int
-btree_record_object_compare (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, char *object_ptr, OID * oid,
-			     OID * class_oid, BTREE_MVCC_INFO * mvcc_info, bool * stop, void *other_args)
-{
-  BTREE_REC_FIND_OBJ_HELPER *helper = NULL;	/* Find object helper. */
-
-  /* Assert expected arguments. */
-  assert (oid != NULL);
-  assert (other_args != NULL);
-  assert (mvcc_info != NULL || (!MVCCID_IS_VALID (helper->check_insert) && !MVCCID_IS_VALID (helper->check_delete)));
-  assert (object_ptr != NULL);
-
-  /* Get helper from other_args. */
-  helper = (BTREE_REC_FIND_OBJ_HELPER *) other_args;
-
-  /* Compare OID's. */
-  if (!OID_EQ (oid, &helper->oid))
-    {
-      /* This is not the object we're looking for. */
-      return NO_ERROR;
-    }
-  /* If check_insert is valid, compare it to object's insert MVCCID. */
-  if (MVCCID_IS_VALID (helper->check_insert)
-      && (helper->check_insert != BTREE_MVCC_INFO_INSID (mvcc_info)
-	  && MVCCID_ALL_VISIBLE != BTREE_MVCC_INFO_INSID (mvcc_info)))
-    {
-      /* This is not the object we're looking for. */
-      return NO_ERROR;
-    }
-  /* If check_delete is valid, compare it to object's delete MVCCID. */
-  if (MVCCID_IS_VALID (helper->check_delete) && helper->check_delete != BTREE_MVCC_INFO_DELID (mvcc_info))
-    {
-      /* This is not the object we're looking for. */
-      return NO_ERROR;
-    }
-
-  /* Object was found. */
-  helper->found_offset = CAST_BUFLEN (object_ptr - record->data);
-  *stop = true;
-  return NO_ERROR;
-}
-
-/*
  * btree_record_satisfies_snapshot () - BTREE_PROCESS_OBJECT_FUNCTION.
  *					Output visible objects according to
  *					snapshot. If snapshot is NULL, all
@@ -27722,9 +27420,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
   /* Is updating max key length necessary? True if: 1. Parent node already needed an update
    * (insert_helper->need_update_max_key_len is set to true). 2. Current node. */
-  need_update_max_key_len = insert_helper->need_update_max_key_len || (is_new_key_possible
-								       && insert_helper->key_len_in_page >
-								       node_header->max_key_len);
+  need_update_max_key_len = (insert_helper->need_update_max_key_len
+			     || (is_new_key_possible && insert_helper->key_len_in_page > node_header->max_key_len));
 
   max_key_len = need_update_max_key_len ? insert_helper->key_len_in_page : node_header->max_key_len;
   max_new_data_size =
@@ -27766,11 +27463,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
   /* Do we need to promote child node latch mode? It must currently be read and should be promoted to write. */
   if ((need_split || need_update_max_key_len)	/* need write latch */
-      && (insert_helper->nonleaf_latch_mode == PGBUF_LATCH_READ && !insert_helper->need_update_max_key_len && !is_child_leaf)	/* and 
-																 * had 
-																 * read 
-																 * latch 
-																 */ )
+      && (insert_helper->nonleaf_latch_mode == PGBUF_LATCH_READ && !insert_helper->need_update_max_key_len
+	  && !is_child_leaf) /* and had read latch */ )
     {
       error_code = pgbuf_promote_read_latch (thread_p, &child_page, PGBUF_PROMOTE_SHARED_READER);
       if (error_code == ER_PAGE_LATCH_PROMOTE_FAIL)
@@ -30736,9 +30430,8 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	}
 
       /* Read key. */
-      error_code = (*(pr_type->index_readval)) (delete_helper->buffered_key, key, btid_int->key_type, key_size, false	/* not 
-															 * copy 
-															 */ , NULL, 0);
+      error_code = (*(pr_type->index_readval)) (delete_helper->buffered_key, key, btid_int->key_type, key_size,
+						false /* not copy */ , NULL, 0);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -33918,9 +33611,8 @@ btree_record_remove_delid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
    * object should be relocated to first position. */
   assert (!BTREE_IS_UNIQUE (btid_int->unique_pk) || (node_type == BTREE_LEAF_NODE && offset_to_object == 0));
 
-  has_fixed_size = node_type == BTREE_OVERFLOW_NODE || (offset_to_object == 0
-							&& btree_leaf_is_flaged (record,
-										 BTREE_LEAF_RECORD_OVERFLOW_OIDS));
+  has_fixed_size = (node_type == BTREE_OVERFLOW_NODE
+		    || (offset_to_object == 0 && btree_leaf_is_flaged (record, BTREE_LEAF_RECORD_OVERFLOW_OIDS)));
 
   /* Set object OID pointer (to change MVCC flags). */
   oid_ptr = record->data + offset_to_object;
@@ -34232,15 +33924,19 @@ int
 btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   BTREE_NODE_HEADER *node_header = btree_get_node_header (rcv->pgptr);
+
   if (node_header == NULL)
     {
       assert (false);
       return ER_FAILED;
     }
+
   assert (rcv->length == sizeof (node_header->node_level));
   assert (sizeof (short) == sizeof (node_header->node_level));
+
   node_header->node_level = *(short *) rcv->data;
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
   return NO_ERROR;
 }
 
