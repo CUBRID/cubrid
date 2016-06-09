@@ -22716,8 +22716,8 @@ qexec_topn_compare (const void *left, const void *right, BH_CMP_ARG arg)
   int pos;
   SORT_LIST *key = NULL;
   TOPN_TUPLES *proc = (TOPN_TUPLES *) arg;
-  TOPN_TUPLE *left_tuple = (TOPN_TUPLE *) left;
-  TOPN_TUPLE *right_tuple = (TOPN_TUPLE *) right;
+  TOPN_TUPLE *left_tuple = *((TOPN_TUPLE **) left);
+  TOPN_TUPLE *right_tuple = *((TOPN_TUPLE **) right);
   BH_CMP_RESULT cmp;
 
   for (key = proc->sort_items; key != NULL; key = key->next)

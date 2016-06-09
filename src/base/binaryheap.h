@@ -72,7 +72,7 @@ extern "C"
     void *swap_buf;
   };
 
-  #define BH_ELEMENT(heap, i) (((char *) (heap)->members) + (heap)->elem_size * i)
+  #define BH_ELEMENT(heap, i) (((char *) (heap)->members) + (heap)->elem_size * (i))
   #define BH_ROOT(heap)	((heap)->members)
 
   extern BINARY_HEAP *bh_create (THREAD_ENTRY * thread_p, int max_capacity, int elem_size, bh_key_comparator cmp_func,
