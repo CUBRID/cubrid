@@ -242,6 +242,8 @@ xcache_initialize (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
+  xcache_Max_clones = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_CLONES);
+
   error_code = lf_freelist_init (&xcache_Ht_freelist, 1, xcache_Soft_capacity, &xcache_Entry_descriptor, &xcache_Ts);
   if (error_code != NO_ERROR)
     {
@@ -259,8 +261,6 @@ xcache_initialize (THREAD_ENTRY * thread_p)
       ASSERT_ERROR ();
       return error_code;
     }
-
-  xcache_Max_clones = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_CLONES);
 
   xcache_Cleanup_flag = 0;
   xcache_Cleanup_bh =
@@ -325,22 +325,12 @@ xcache_entry_alloc (void)
     {
       return NULL;
     }
-  if (xcache_Max_clones > 0)
-    {
-      xcache_entry->cache_clones = (XASL_CLONE *) malloc (xcache_Max_clones * sizeof (XASL_CLONE));
-      if (xcache_entry->cache_clones == NULL)
-	{
-	  free (xcache_entry);
-	  return NULL;
-	}
-      memset (xcache_entry->cache_clones, 0, xcache_Max_clones * sizeof (XASL_CLONE));
-      pthread_mutex_init (&xcache_entry->cache_clones_mutex, NULL);
-    }
-  else
-    {
-      xcache_entry->cache_clones = NULL;
-    }
+  xcache_entry->cache_clones = &xcache_entry->one_clone;
+  xcache_entry->one_clone.xasl = NULL;
+  xcache_entry->one_clone.xasl_buf = NULL;
+  xcache_entry->cache_clones_capacity = 1;
   xcache_entry->n_cache_clones = 0;
+  pthread_mutex_init (&xcache_entry->cache_clones_mutex, NULL);
   return xcache_entry;
 }
 
@@ -355,18 +345,13 @@ xcache_entry_free (void *entry)
 {
   XASL_CACHE_ENTRY *xcache_entry = (XASL_CACHE_ENTRY *) entry;
 
-  if (xcache_Max_clones > 0)
+  if (xcache_entry->cache_clones != &xcache_entry->one_clone)
     {
-      assert (xcache_entry->cache_clones != NULL);
-      assert (xcache_entry->n_cache_clones = 0);
+      /* Should be already freed? */
+      assert (false);
       free (xcache_entry->cache_clones);
-      pthread_mutex_destroy (&xcache_entry->cache_clones_mutex);
     }
-  else
-    {
-      assert (xcache_entry->cache_clones == NULL);
-    }
-  xcache_entry->n_cache_clones = 0;
+  pthread_mutex_destroy (&xcache_entry->cache_clones_mutex);
   free (entry);
   return NO_ERROR;
 }
@@ -465,6 +450,16 @@ xcache_entry_uninit (void *entry)
       while (xcache_entry->n_cache_clones > 0)
 	{
 	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones]);
+	}
+      if (xcache_entry->cache_clones != &xcache_entry->one_clone)
+	{
+	  /* Free cache clones. */
+	  assert (xcache_entry->cache_clones_capacity > 0);
+	  free (xcache_entry->cache_clones);
+	  xcache_entry->cache_clones = &xcache_entry->one_clone;
+	  xcache_entry->one_clone.xasl = NULL;
+	  xcache_entry->one_clone.xasl_buf = NULL;
+	  xcache_entry->cache_clones_capacity = 1;
 	}
     }
   else
@@ -1735,6 +1730,43 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
       pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
       if (xcache_entry->n_cache_clones < xcache_Max_clones)
 	{
+	  if (xcache_entry->n_cache_clones == xcache_entry->cache_clones_capacity
+	      && xcache_entry->cache_clones_capacity < xcache_Max_clones)
+	    {
+	      /* Extend cache clone buffer. */
+	      XASL_CLONE *new_clones = NULL;
+	      int new_capacity = MIN (xcache_Max_clones, xcache_entry->cache_clones_capacity * 2);
+	      if (xcache_entry->cache_clones == &xcache_entry->one_clone)
+		{
+		  assert (xcache_entry->cache_clones_capacity == 1);
+		  new_clones = (XASL_CLONE *) malloc (new_capacity * sizeof (XASL_CLONE));
+		  if (new_clones != NULL)
+		    {
+		      new_clones[0].xasl = xcache_entry->cache_clones[0].xasl;
+		      new_clones[0].xasl_buf = xcache_entry->cache_clones[0].xasl_buf;
+		    }
+		}
+	      else
+		{
+		  new_clones =
+		    (XASL_CLONE *) realloc (xcache_entry->cache_clones, new_capacity * sizeof (XASL_CLONE));
+		}
+	      if (new_clones == NULL)
+		{
+		  /* Out of memory? */
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  new_capacity * sizeof (XASL_CLONE));
+		  assert (false);
+		  pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
+
+		  /* Free the clone. */
+		  xcache_clone_decache (thread_p, xclone);
+		  return;
+		}
+	      xcache_entry->cache_clones = new_clones;
+	      xcache_entry->cache_clones_capacity = new_capacity;
+	    }
+	  assert (xcache_entry->cache_clones_capacity > xcache_entry->n_cache_clones);
 	  xcache_entry->cache_clones[xcache_entry->n_cache_clones++] = *xclone;
 	  pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
 
@@ -1748,6 +1780,7 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
       xcache_clone_decache (thread_p, xclone);
       return;
     }
+
   stx_free_additional_buff (thread_p, xclone->xasl_buf);
   stx_free_xasl_unpack_info (xclone->xasl_buf);
   db_private_free (thread_p, xclone->xasl_buf);

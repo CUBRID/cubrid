@@ -85,7 +85,9 @@ struct xasl_cache_ent
 
   /* Cache clones */
   XASL_CLONE *cache_clones;
+  XASL_CLONE one_clone;
   int n_cache_clones;
+  int cache_clones_capacity;
   pthread_mutex_t cache_clones_mutex;
 
   bool initialized;
