@@ -46,6 +46,7 @@
 #include "execute_statement.h"
 #include "show_meta.h"
 #include "network_interface_cl.h"
+#include "locator_cl.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -432,6 +433,22 @@ pt_bind_parameter (PARSER_CONTEXT * parser, PT_NODE * parameter)
   if (db_val)			/* parameter found, resolve to its matching DB_VALUE */
     {
       /* create a PT_VALUE image of the matching DB_VALUE */
+
+      /* If type is object type, the referenced object may not exist. We need to first check its existence, then we
+       * can resolve the object.
+       */
+      if (DB_VALUE_TYPE (db_val) == DB_TYPE_OBJECT)
+	{
+	  MOP mop = DB_GET_OBJECT (db_val);
+	  int does_exist = locator_does_exist_object (mop, DB_FETCH_READ);
+	  if (does_exist == LC_ERROR || does_exist == LC_DOESNOT_EXIST)
+	    {
+	      assert (does_exist == LC_DOESNOT_EXIST || er_errid () != NO_ERROR);
+	      return NULL;
+	    }
+	  assert (does_exist == LC_EXIST);
+	  /* Fall through. */
+	}
       node = pt_dbval_to_value (parser, db_val);
       if (node == NULL)
 	{
