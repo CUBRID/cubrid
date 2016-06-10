@@ -4254,7 +4254,7 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
 #if defined(HAVE_ATOMIC_BUILTINS)
 start_get_mvcc_table:
   snapshot_retry_cnt++;
-  
+
   if (p_transaction_lowest_active_mvccid)
     {
       /* 
@@ -4295,7 +4295,7 @@ start_get_mvcc_table:
   r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
   lowest_active_mvccid = mvcc_table->current_trans_status.lowest_active_mvccid;
   if (p_transaction_lowest_active_mvccid)
-    {      
+    {
       *p_transaction_lowest_active_mvccid = lowest_active_mvccid;
     }
   trans_status = &mvcc_table->current_trans_status;
@@ -4440,7 +4440,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
   size_t size;
   int i, num_elems_behind, waiting_mvccids_length;
   MVCCID *transaction_lowest_active_mvccids = NULL,
-	  local_transaction_lowest_active_mvccid[MVCC_OLDEST_ACTIVE_BUFFER_LENGTH];
+    local_transaction_lowest_active_mvccid[MVCC_OLDEST_ACTIVE_BUFFER_LENGTH];
   int *waiting_mvccids_pos = NULL, pos;
   int local_waiting_mvccids_pos[MVCC_OLDEST_ACTIVE_BUFFER_LENGTH];
 #if !defined(HAVE_ATOMIC_BUILTINS)
@@ -4508,8 +4508,8 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 	  lowest_active_mvccid = transaction_lowest_active_mvccids[i];
 	}
       else if (transaction_lowest_active_mvccids[i] == MVCCID_ALL_VISIBLE)
-	{	  
-	  waiting_mvccids_pos[waiting_mvccids_length++] = i;	 
+	{
+	  waiting_mvccids_pos[waiting_mvccids_length++] = i;
 	}
     }
 
@@ -4548,10 +4548,10 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 	  num_elems_behind = (waiting_mvccids_length - 1) - i;
 	  if (num_elems_behind > 0)
 	    {
-	      memmove (&waiting_mvccids_pos[i], &waiting_mvccids_pos[i + 1], num_elems_behind * sizeof(int));
-	    }	
+	      memmove (&waiting_mvccids_pos[i], &waiting_mvccids_pos[i + 1], num_elems_behind * sizeof (int));
+	    }
 	  waiting_mvccids_length--;
-	}	
+	}
     }
 
   if (transaction_lowest_active_mvccids != local_transaction_lowest_active_mvccid)
@@ -5117,14 +5117,14 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 					  next_trans_status_history->bit_area_length,
 					  next_trans_status_history->bit_area_start_mvccid,
 					  next_trans_status_history->long_tran_mvccids,
-					  next_trans_status_history->long_tran_mvccids_length,  &lowest_active_mvccid);	  
-advance_oldest_active_mvccid:
+					  next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
+	advance_oldest_active_mvccid:
 	  if (next_trans_status_history->version == version)
 	    {
 	      old_lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
 	      if (old_lowest_active_mvccid < lowest_active_mvccid)
 		{
-		  /* Advance with lowest active MVCCID, to allow VACUUM to advance */		  
+		  /* Advance with lowest active MVCCID, to allow VACUUM to advance */
 		  if (!ATOMIC_CAS_64 (&current_trans_status->lowest_active_mvccid, old_lowest_active_mvccid,
 				      lowest_active_mvccid))
 		    {
@@ -5132,8 +5132,8 @@ advance_oldest_active_mvccid:
 		    }
 		}
 	    }
-  	}
-      
+	}
+
       /* Debug purpose only */
       ATOMIC_TAS_64 (&(mvcc_table->trans_status_history[next_history_position].lowest_active_mvccid),
 		     lowest_active_mvccid);
@@ -6102,21 +6102,21 @@ end_completed:
   pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 
   /* Check whether advancing lowest_active_mvccid is possible */
-  lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);  
+  lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
   if ((lowest_active_mvccid == mvcc_sub_id)
       || MVCC_ID_PRECEDES (lowest_active_mvccid, next_trans_status_history->bit_area_start_mvccid))
-    {	  
+    {
       logtb_get_lowest_active_mvccid (next_trans_status_history->bit_area, next_trans_status_history->bit_area_length,
 				      next_trans_status_history->bit_area_start_mvccid,
 				      next_trans_status_history->long_tran_mvccids,
-				      next_trans_status_history->long_tran_mvccids_length,  &lowest_active_mvccid);	  
-  advance_oldest_active_mvccid:
+				      next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
+    advance_oldest_active_mvccid:
       if (next_trans_status_history->version == version)
 	{
 	  old_lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
 	  if (old_lowest_active_mvccid < lowest_active_mvccid)
 	    {
-	      /* Advance with lowest active MVCCID, to allow VACUUM to advance */		  
+	      /* Advance with lowest active MVCCID, to allow VACUUM to advance */
 	      if (!ATOMIC_CAS_64 (&current_trans_status->lowest_active_mvccid, old_lowest_active_mvccid,
 				  lowest_active_mvccid))
 		{
@@ -6127,22 +6127,21 @@ end_completed:
     }
 
   /* Debug purpose only */
-  ATOMIC_TAS_64 (&(mvcc_table->trans_status_history[next_history_position].lowest_active_mvccid),
-		 lowest_active_mvccid);
+  ATOMIC_TAS_64 (&(mvcc_table->trans_status_history[next_history_position].lowest_active_mvccid), lowest_active_mvccid);
 #else
-    lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
-    if ((lowest_active_mvccid == mvcc_sub_id)
-	|| MVCC_ID_PRECEDES (lowest_active_mvccid, next_trans_status_history->bit_area_start_mvccid))
-      {
-	logtb_get_lowest_active_mvccid (next_trans_status_history->bit_area, next_trans_status_history->bit_area_length,
-					next_trans_status_history->bit_area_start_mvccid,
-					next_trans_status_history->long_tran_mvccids,
-					next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
-	current_trans_status->lowest_active_mvccid = lowest_active_mvccid;
-      }
-    mvcc_table->trans_status_history[next_history_position].lowest_active_mvccid = lowest_active_mvccid;
-    pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
-#endif  
+  lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
+  if ((lowest_active_mvccid == mvcc_sub_id)
+      || MVCC_ID_PRECEDES (lowest_active_mvccid, next_trans_status_history->bit_area_start_mvccid))
+    {
+      logtb_get_lowest_active_mvccid (next_trans_status_history->bit_area, next_trans_status_history->bit_area_length,
+				      next_trans_status_history->bit_area_start_mvccid,
+				      next_trans_status_history->long_tran_mvccids,
+				      next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
+      current_trans_status->lowest_active_mvccid = lowest_active_mvccid;
+    }
+  mvcc_table->trans_status_history[next_history_position].lowest_active_mvccid = lowest_active_mvccid;
+  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+#endif
 
   curr_mvcc_info->is_sub_active = false;
   if (tdes->mvccinfo.snapshot.valid)
