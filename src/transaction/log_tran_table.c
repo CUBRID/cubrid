@@ -5099,24 +5099,9 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
       /* prevent code rearrangement */
       ATOMIC_TAS_32 (&mvcc_table->trans_status_history_position, next_history_position);
-#else
-      lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
-      if ((lowest_active_mvccid == mvccid)
-	  || MVCC_ID_PRECEDES (lowest_active_mvccid, next_trans_status_history->bit_area_start_mvccid))
-	{
-	  logtb_get_lowest_active_mvccid (next_trans_status_history->bit_area,
-					  next_trans_status_history->bit_area_length,
-					  next_trans_status_history->bit_area_start_mvccid,
-					  next_trans_status_history->long_tran_mvccids,
-					  next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
-	  current_trans_status->lowest_active_mvccid = lowest_active_mvccid;
-	}
-      mvcc_table->trans_status_history[next_history_position].lowest_active_mvccid = lowest_active_mvccid;
-#endif
 
       pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
-      
-#if defined(HAVE_ATOMIC_BUILTINS)
+
       /* 
        *  Check whether advancing lowest_active_mvccid is possible. Normally, we have to advance only when
        * lowest_active_mvccid == mvccid. However, for safety reason, is better to also check bit_area_start_mvccid.
@@ -5152,6 +5137,20 @@ advance_oldest_active_mvccid:
       /* Debug purpose only */
       ATOMIC_TAS_64 (&(mvcc_table->trans_status_history[next_history_position].lowest_active_mvccid),
 		     lowest_active_mvccid);
+#else
+      lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
+      if ((lowest_active_mvccid == mvccid)
+	  || MVCC_ID_PRECEDES (lowest_active_mvccid, next_trans_status_history->bit_area_start_mvccid))
+	{
+	  logtb_get_lowest_active_mvccid (next_trans_status_history->bit_area,
+					  next_trans_status_history->bit_area_length,
+					  next_trans_status_history->bit_area_start_mvccid,
+					  next_trans_status_history->long_tran_mvccids,
+					  next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
+	  current_trans_status->lowest_active_mvccid = lowest_active_mvccid;
+	}
+      mvcc_table->trans_status_history[next_history_position].lowest_active_mvccid = lowest_active_mvccid;
+      pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
     }
   else
