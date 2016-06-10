@@ -28,6 +28,8 @@
 #include "query_executor.h"
 #include "list_file.h"
 #include "binaryheap.h"
+#include "xasl_generation.h"
+#include "statistics_sr.h"
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)
@@ -57,8 +59,10 @@ struct xcache_stats
   INT64 unfix;
   INT64 inserts;
   INT64 found_at_insert;
+  INT64 rt_checks;
+  INT64 rt_true;
 };
-#define XCACHE_STATS_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+#define XCACHE_STATS_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 
 /* Structure to include all xasl cache global variable. It is easier to visualize the entire system when debugging. */
 typedef struct xcache XCACHE;
@@ -151,6 +155,11 @@ struct xcache_cleanup_candidate
   struct timeval time_last_used;
 };
 
+/* Recompile threshold */
+#define XCACHE_RT_TIMEDIFF_IN_SEC	360	/* 10 minutes */
+#define XCACHE_RT_MAX_THRESHOLD		10000	/* 10k pages */
+#define XCACHE_RT_FACTOR		10	/* 10x or 0.1x cardinal change */
+
 /* Logging macro's */
 #define xcache_check_logging() (xcache_Log = prm_get_bool_value (PRM_ID_XASL_CACHE_LOGGING))
 #define xcache_log(...) if (xcache_Log) _er_log_debug (ARG_FILE_LINE, "XASL CACHE: " __VA_ARGS__)
@@ -217,6 +226,7 @@ static bool xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY
 static void xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone);
 static void xcache_cleanup (THREAD_ENTRY * thread_p);
 static BH_CMP_RESULT xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg);
+static bool xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
 
 /*
  * xcache_initialize () - Initialize XASL cache.
@@ -1920,10 +1930,13 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
  * xcache_compare_cleanup_candidates () - Compare cleanup candidates by their time_last_used. Oldest candidates are
  *					  considered "greater".
  *
- * return :
- * left (in) :
- * right (in) :
- * ignore_arg (in) :
+ * return	   : BH_CMP_RESULT:
+ *		     BH_GT if left is older.
+ *		     BH_LT if right is older.
+ *		     BH_EQ if left and right are equal.
+ * left (in)	   : Left XCACHE cleanup candidate.
+ * right (in)	   : Right XCACHE cleanup candidate.
+ * ignore_arg (in) : Ignored.
  */
 static BH_CMP_RESULT
 xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg)
@@ -1944,6 +1957,84 @@ xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_A
     {
       return BH_LT;
     }
+}
+
+/*
+ * xcache_check_recompilation_threshold () - Check if one of the related classes suffered big changes and if we should
+ *					     try to recompile the query.
+ *
+ * return	     : True to recompile query, false otherwise.
+ * thread_p (in)     : Thread entry.
+ * xcache_entry (in) : XASL cache entry.
+ */
+static bool
+xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
+{
+  long save_secs = xcache_entry->time_last_rt_check.tv_sec;
+  struct timeval crt_time;
+  int relobj;
+  CLS_INFO *cls_info_p = NULL;
+  int npages;
+  bool recompile = false;
+
+  (void) gettimeofday (&crt_time, NULL);
+  if (crt_time.tv_sec - xcache_entry->time_last_rt_check.tv_sec < XCACHE_RT_TIMEDIFF_IN_SEC)
+    {
+      /* Too soon. */
+      return false;
+    }
+  if (!ATOMIC_CAS_32 (&xcache_entry->time_last_rt_check.tv_sec, save_secs, crt_time.tv_sec))
+    {
+      /* Somebody else started the check. */
+      return false;
+    }
+
+  for (relobj = 0; relobj < xcache_entry->n_related_objects; relobj++)
+    {
+      if (xcache_entry->related_objects[relobj].tcard < 0)
+	{
+	  assert (xcache_entry->related_objects[relobj].tcard == XASL_CLASS_NO_TCARD
+		  || xcache_entry->related_objects[relobj].tcard == XASL_SERIAL_OID_TCARD);
+	  continue;
+	}
+
+      if (xcache_entry->related_objects[relobj].tcard >= XCACHE_RT_MAX_THRESHOLD)
+	{
+	  continue;
+	}
+
+      cls_info_p = catalog_get_class_info (thread_p, &xcache_entry->related_objects[relobj].oid, NULL);
+      if (cls_info_p == NULL)
+	{
+	  /* Is this acceptable? */
+	  return false;
+	}
+      if (HFID_IS_NULL (&cls_info_p->ci_hfid))
+	{
+	  /* Is this expected?? */
+	  catalog_free_class_info (cls_info_p);
+	  continue;
+	}
+      assert (!VFID_ISNULL (&cls_info_p->ci_hfid.vfid));
+
+      npages = file_get_numpages (thread_p, &cls_info_p->ci_hfid.vfid);
+      if (npages > XCACHE_RT_FACTOR * xcache_entry->related_objects[relobj].tcard
+	  || npages < xcache_entry->related_objects[relobj].tcard / XCACHE_RT_FACTOR)
+	{
+	  cls_info_p->ci_time_stamp = stats_get_time_stamp ();
+	  if (catalog_update_class_info (thread_p, &xcache_entry->related_objects[relobj].oid, cls_info_p, NULL, true)
+	      == NULL)
+	    {
+	      /* Failed?? */
+	    }
+	  else
+	    {
+	      recompile = true;
+	    }
+	}
+      catalog_free_class_info (cls_info_p);
+    }
+  return recompile;
 }
 
 /* TODO more stuff
