@@ -1948,7 +1948,7 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
 	}
       else
 	{
-	  /* We could find real instance. */
+	  /* We could not find real instance. */
 	  ASSERT_ERROR ();
 	  return LC_ERROR;
 	}
