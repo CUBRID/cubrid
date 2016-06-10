@@ -1938,18 +1938,20 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
 
   if (WS_ISVID (mop))
     {
-#if defined(CUBRID_DEBUG)
-      /* 
-       * Don't know how to fetch virtual object. This looks like a system error
-       * of the caller
-       */
-      er_log_debug (ARG_FILE_LINE,
-		    "locator_lock_and_doesexist: ** SYSTEM ERROR don't know how to fetch virtual objects.");
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-#endif /* CUBRID_DEBUG */
-      /* if this gets occurs in a production system, we want to guard against a crash & have the same test results as
-       * the debug system. */
-      return LC_ERROR;
+      MOP temp;
+
+      /* get its real instance. */
+      temp = db_real_instance (mop);
+      if (temp != NULL && !WS_ISVID (temp))
+	{
+	  mop = temp;
+	}
+      else
+	{
+	  /* We could not find real instance. */
+	  ASSERT_ERROR ();
+	  return LC_ERROR;
+	}
     }
 
   if (ws_find (mop, &object) == WS_FIND_MOP_DELETED)
