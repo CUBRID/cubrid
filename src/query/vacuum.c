@@ -2619,6 +2619,7 @@ restart:
 	}
 
       VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (entry->blockid);
+      vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
       vacuum_job_entry.vacuum_data_entry = *entry;
 
       if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
@@ -2682,6 +2683,7 @@ restart:
       PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, mnt_vac_master_time);
 
       VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (entry->blockid);
+      vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
       vacuum_data_entry = *entry;
       error_code = vacuum_process_log_block (thread_p, &vacuum_data_entry, NULL, false);
       assert (error_code == NO_ERROR);
@@ -3861,6 +3863,7 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
   VACUUM_DATA_PAGE *data_page = NULL;
   VPID next_vpid;
   int i = 0;
+  bool is_page_dirty;
 
   assert_release (!VFID_ISNULL (&vacuum_Data.vacuum_data_file));
   assert_release (!VPID_ISNULL (&log_Gl.hdr.vacuum_data_first_vpid));
@@ -3876,6 +3879,7 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
 
   while (true)
     {
+      is_page_dirty = false;
       if (data_page->index_unvacuumed >= 0)
 	{
 	  assert (data_page->index_unvacuumed < vacuum_Data.page_data_max_count);
@@ -3888,8 +3892,13 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
 		  /* Reset in progress flag, mark the job as interrupted and update last_blockid. */
 		  VACUUM_BLOCK_STATUS_SET_AVAILABLE (entry->blockid);
 		  VACUUM_BLOCK_SET_INTERRUPTED (entry->blockid);
+		  is_page_dirty = true;
 		}
 	    }
+	}
+      if (is_page_dirty)
+	{
+	  vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 	}
       VPID_COPY (&next_vpid, &data_page->next_page);
       if (VPID_ISNULL (&next_vpid))
@@ -4215,7 +4224,7 @@ vacuum_is_work_in_progress (THREAD_ENTRY * thread_p)
 static void
 vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 {
-#define TEMP_BUFFER_SIZE 1024
+#define TEMP_BUFFER_SIZE VACUUM_FINISHED_JOB_QUEUE_CAPACITY
   VACUUM_LOG_BLOCKID finished_blocks[TEMP_BUFFER_SIZE];
   VACUUM_LOG_BLOCKID blockid;
   VACUUM_LOG_BLOCKID page_unvacuumed_blockid;
@@ -5170,6 +5179,8 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
       return error_code;
     }
+
+  lf_circular_queue_async_reset (vacuum_Block_data_buffer);
   return NO_ERROR;
 }
 
