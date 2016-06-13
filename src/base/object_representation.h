@@ -193,14 +193,7 @@
 #define OR_GET_FLOAT(ptr, value) \
   (*(value) = ntohf (*(UINT32 *) (ptr)))
 #define OR_GET_DOUBLE(ptr, value) \
-  (*(value) = ntohd (*(UINT64 *) (ptr)))
-   /* Why the complicated do while? */
-   /*do { \
-     unsigned __int64 packed_value; \
-     memcpy (&packed_value, ptr, OR_BIGINT_SIZE); \
-     (*(value)) = ntohd(packed_value); \
-   } while (0)*/
-  
+  (*(value) = ntohd (*(UINT64 *) (ptr)))  
 #define OR_GET_STRING(ptr) \
   ((char *) ((char *) (ptr)))
 
@@ -213,13 +206,7 @@
 #define OR_PUT_FLOAT(ptr, val) \
   (*(float *) (ptr) = (float) htonf (*(float*) (val)))
 #define OR_PUT_DOUBLE(ptr, val) \
-  (*(double *) (ptr) = (double) htond (*(double *) (val)))
-  /* Why the complicated do while? */
-   /*do { \
-     double packed_value; \
-     packed_value = htond (*(double *) (value)); \
-     memcpy (ptr, &packed_value, OR_DOUBLE_SIZE); \
-   } while (0)*/
+  (*(UINT64 *) (ptr) = (UINT64) htond (*(double *) (val)))
 
 #define OR_GET_BIG_VAR_OFFSET(ptr) 	OR_GET_INT (ptr)	/* 4byte */
 #define OR_PUT_BIG_VAR_OFFSET(ptr, val)	OR_PUT_INT (ptr, val)	/* 4byte */
