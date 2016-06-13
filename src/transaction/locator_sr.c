@@ -126,7 +126,7 @@ struct locator_return_nxobj
   int area_offset;		/* Relative offset to recdes->data in the communication area */
 };
 
-extern int vacuum_Global_oldest_active_blockers_counter;
+extern INT32 vacuum_Global_oldest_active_blockers_counter;
 
 bool locator_Dont_check_foreign_key = false;
 
@@ -4047,6 +4047,14 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
 
   if (OID_ISNULL (class_oid))
     {
+      /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
+       * removed with one of the refactoring issues anyway.
+       */
+      if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+	{
+	  return LC_DOESNOT_EXIST;
+	}
+
       /* 
        * Caller does not know the class of the object. Get the class identifier
        * from disk
@@ -4099,6 +4107,14 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
     }
   else
     {
+      /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
+       * removed with one of the refactoring issues anyway.
+       */
+      if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+	{
+	  return LC_DOESNOT_EXIST;
+	}
+
       /* MVCC class, call heap_mvcc_lock_object (it also verifies object exists). */
       scan_code = heap_mvcc_lock_object (thread_p, oid, class_oid, lock, snapshot_type);
       if (scan_code == S_ERROR)
@@ -5122,7 +5138,6 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   FUNC_PRED_UNPACK_INFO *local_func_preds = NULL;
   OID null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   HEAP_OPERATION_CONTEXT context;
-  bool use_bigone_maxsize = false;
 
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
@@ -5213,11 +5228,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
    * heap_insert_logical */
   recdes->type = REC_HOME;
 
-  /* use REC_BIGONE maximum record length only for partitioned classes and partitions. */
-  use_bigone_maxsize = (pruning_type != DB_NOT_PARTITIONED_CLASS);
-
   /* prepare context */
-  heap_create_insert_context (&context, &real_hfid, &real_class_oid, recdes, local_scan_cache, use_bigone_maxsize);
+  heap_create_insert_context (&context, &real_hfid, &real_class_oid, recdes, local_scan_cache);
   context.update_in_place = force_in_place;
 
   if (force_in_place == UPDATE_INPLACE_OLD_MVCCID)
@@ -5378,7 +5390,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      recdes = &new_recdes;
 	      /* Cache object has been updated, we need update the value again */
 	      heap_create_update_context (&update_context, &real_hfid, oid, &real_class_oid, recdes, local_scan_cache,
-					  UPDATE_INPLACE_CURRENT_MVCCID, false);
+					  UPDATE_INPLACE_CURRENT_MVCCID);
 	      if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -5584,7 +5596,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   HEAP_SCANCACHE *local_scan_cache;
   bool no_data_new_address = false;
   REPL_INFO repl_info;
-  bool use_bigone_maxsize = false;
 
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
@@ -5681,7 +5692,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
 
       heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, scan_cache,
-				  UPDATE_INPLACE_CURRENT_MVCCID, false);
+				  UPDATE_INPLACE_CURRENT_MVCCID);
       error_code = heap_update_logical (thread_p, &update_context);
       if (error_code != NO_ERROR)
 	{
@@ -5753,7 +5764,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      OR_PUT_OID (rep_dir_offset, &rep_dir);
 
 	      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, scan_cache,
-					  UPDATE_INPLACE_CURRENT_MVCCID, false);
+					  UPDATE_INPLACE_CURRENT_MVCCID);
 	      error_code = heap_update_logical (thread_p, &update_context);
 	      if (error_code != NO_ERROR)
 		{
@@ -5811,6 +5822,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
     }
   else
     {
+      HEAP_OPERATION_CONTEXT update_context;
+
       local_scan_cache = scan_cache;
       if (pruning_type != DB_NOT_PARTITIONED_CLASS && pcontext != NULL)
 	{
@@ -6084,57 +6097,14 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
-      /* use REC_BIGONE maximum record length only for partitioned classes and partitions. */
-      use_bigone_maxsize = (pruning_type != DB_NOT_PARTITIONED_CLASS);
-      if (!HEAP_IS_UPDATE_INPLACE (force_in_place))
-	{
-	  HEAP_OPERATION_CONTEXT update_context;
-
-	  /* in MVCC update heap and then indexes */
-	  heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place,
-				      use_bigone_maxsize);
-	  error_code = heap_update_logical (thread_p, &update_context);
-	  if (error_code != NO_ERROR)
-	    {
-	      /*
-	       * Problems updating the object...Maybe, the transaction should be
-	       * aborted by the caller...Quit..
-	       */
-	      if (error_code == ER_FAILED)
-		{
-		  ASSERT_ERROR_AND_SET (error_code);
-		  assert (false);
-		}
-	      else
-		{
-		  ASSERT_ERROR ();
-		}
-	      goto error;
-	    }
-	  isold_object = update_context.is_logical_old;
-	}
       /* AN INSTANCE: Update indices if any */
-
       if (has_index)
 	{
 	  if (scan == S_SUCCESS)
 	    {
-	      if (!HEAP_IS_UPDATE_INPLACE (force_in_place))
-		{
-		  /* A new version of the object was created. The old version is not physically removed, only marked as 
-		   * deleted. Therefore, only inserting the new object in b-tree is required. */
-		  error_code =
-		    locator_update_index (thread_p, recdes, oldrecdes, att_id, n_att_id, oid, class_oid,
-					  op_type, local_scan_cache, &repl_info);
-		}
-	      else
-		{
-		  /* Old object is physically deleted and must be removed from b-tree and the new object must be added. 
-		   * Update index. */
-		  error_code =
-		    locator_update_index (thread_p, recdes, oldrecdes, att_id, n_att_id, oid, class_oid, op_type,
-					  local_scan_cache, &repl_info);
-		}
+	      error_code =
+		locator_update_index (thread_p, recdes, oldrecdes, att_id, n_att_id, oid, class_oid, op_type,
+				      local_scan_cache, &repl_info);
 	      if (error_code != NO_ERROR)
 		{
 		  /* 
@@ -6188,41 +6158,33 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
-      /* in non-MVCC or when we update in place then update indexes and then heap */
-      if (HEAP_IS_UPDATE_INPLACE (force_in_place))
+      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place);
+      error_code = heap_update_logical (thread_p, &update_context);
+      if (error_code != NO_ERROR)
 	{
-	  HEAP_OPERATION_CONTEXT update_context;
-
-	  heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place,
-				      use_bigone_maxsize);
-	  error_code = heap_update_logical (thread_p, &update_context);
-	  if (error_code != NO_ERROR)
+	  /*
+	   * Problems updating the object...Maybe, the transaction should be aborted by the caller...Quit..
+	   */
+	  if (error_code == ER_FAILED)
 	    {
-	      /*
-	       * Problems updating the object...Maybe, the transaction should be
-	       * aborted by the caller...Quit..
-	       */
-	      if (error_code == ER_FAILED)
-		{
-		  ASSERT_ERROR_AND_SET (error_code);
-		  assert (false);
-		}
-	      else
-		{
-		  ASSERT_ERROR ();
-		}
-	      goto error;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      assert (error_code == ER_INTERRUPTED);
 	    }
-	  isold_object = update_context.is_logical_old;
+	  else
+	    {
+	      ASSERT_ERROR ();
+	    }
+	  goto error;
 	}
+      isold_object = update_context.is_logical_old;
 
       /* 
        * for replication,
        * We have to set UPDATE LSA number to the log info.
        * The target log info was already created when the locator_update_index
        */
-      if (HEAP_IS_UPDATE_INPLACE (force_in_place) && !LOG_CHECK_LOG_APPLIER (thread_p)
-	  && log_does_allow_replication () == true && repl_info.need_replication == true)
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true
+	  && repl_info.need_replication == true)
 	{
 	  repl_add_update_lsa (thread_p, oid);
 	}
@@ -8243,7 +8205,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
 			     is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
-			     REPL_INFO_TYPE_RBR_NORMAL, false);
+			     REPL_INFO_TYPE_RBR_NORMAL);
 	}
       if (error_code != NO_ERROR)
 	{
@@ -8504,7 +8466,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICAT
 	  old_pri_heap_id = db_change_private_heap (thread_p, 0);
 	}
       error_code =
-	stx_map_stream_to_filter_pred (thread_p, (PRED_EXPR_WITH_CONTEXT **) & pred_filter, or_pred->pred_stream,
+	stx_map_stream_to_filter_pred (thread_p, (PRED_EXPR_WITH_CONTEXT **) (&pred_filter), or_pred->pred_stream,
 				       or_pred->pred_stream_size, &pred_filter_cache_context);
       if (error_code != NO_ERROR)
 	{
@@ -9156,7 +9118,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     repl_info->repl_info_type, !use_mvcc);
+			     repl_info->repl_info_type);
 	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
@@ -9166,7 +9128,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	{
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     repl_info->repl_info_type, !use_mvcc);
+			     repl_info->repl_info_type);
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
 	}
@@ -9713,7 +9675,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
   DISK_ISVALID isvalid = DISK_VALID;
   DISK_ISVALID isallvalid = DISK_VALID;
   OID inst_oid, *p_inst_oid = &inst_oid;
-  RECDES peek, *p_peek = &peek;	/* Record descriptor for peeking object */
+  RECDES record = RECDES_INITIALIZER, *recordp = &record;	/* Record descriptor for copying object */
   SCAN_CODE scan;
   HEAP_SCANCACHE scan_cache;
   BTREE_CHECKSCAN bt_checkscan;
@@ -9806,14 +9768,14 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
   inst_oid.pageid = NULL_PAGEID;
   inst_oid.slotid = NULL_SLOTID;
 
-  while ((scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &peek, &scan_cache, COPY)) == S_SUCCESS)
+  while ((scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &record, &scan_cache, COPY)) == S_SUCCESS)
     {
       num_heap_oids++;
 
       if (index->filter_predicate)
 	{
 	  if (locator_eval_filter_predicate (thread_p, &index->btid, index->filter_predicate, class_oid, &p_inst_oid, 1,
-					     &p_peek, &ev_res) != NO_ERROR)
+					     &recordp, &ev_res) != NO_ERROR)
 	    {
 	      isallvalid = DISK_ERROR;
 	    }
@@ -9829,8 +9791,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 	}
 
       /* Make sure that the index entry exist */
-      if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, NULL, &attr_info) != NO_ERROR)
-	  || (key = heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, &btid_info, &dbvalue, aligned_buf,
+      if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &record, NULL, &attr_info) != NO_ERROR)
+	  || (key = heap_attrvalue_get_key (thread_p, index_id, &attr_info, &record, &btid_info, &dbvalue, aligned_buf,
 					    NULL, NULL)) == NULL)
 	{
 	  if (isallvalid != DISK_INVALID)
@@ -12614,7 +12576,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
     }
   else
     {
-      assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) > 0);
+      assert (vacuum_Global_oldest_active_blockers_counter > 0);
     }
 
   /* Can't use vacuum_Global_oldest_active_mvccid here. That's because we want to avoid scenarios where VACUUM compute
@@ -13224,7 +13186,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	}
       else
 	{
-	  assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) > 0);
+	  assert (vacuum_Global_oldest_active_blockers_counter > 0);
 	}
 
       if (threshold_mvccid == MVCCID_NULL)

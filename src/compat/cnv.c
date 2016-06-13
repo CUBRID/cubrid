@@ -8175,7 +8175,7 @@ db_timestamp_string (const DB_TIMESTAMP * the_timestamp, const char *timestamp_f
 	  value_string = fmt_monthday_string (day, token.text);
 	  break;
 	case FT_WEEKDAY:
-	  weekday = db_date_weekday ((DB_DATE *) & the_date);
+	  weekday = db_date_weekday ((DB_DATE *) (&the_date));
 	  value_string = fmt_weekday_string (weekday, token.text);
 	  break;
 

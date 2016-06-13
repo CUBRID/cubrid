@@ -212,10 +212,10 @@ logtb_realloc_topops_stack (LOG_TDES * tdes, int num_elms)
   size = tdes->topops.max + num_elms;
   size = size * sizeof (*tdes->topops.stack);
 
-  newptr = (struct log_topops_addresses *) realloc (tdes->topops.stack, size);
+  newptr = (LOG_TOPOPS_ADDRESSES *) realloc (tdes->topops.stack, size);
   if (newptr != NULL)
     {
-      tdes->topops.stack = (struct log_topops_addresses *) newptr;
+      tdes->topops.stack = (LOG_TOPOPS_ADDRESSES *) newptr;
       if (tdes->topops.max == 0)
 	{
 	  tdes->topops.last = -1;
@@ -645,7 +645,7 @@ logtb_initialize_vacuum_thread_tdes (LOG_TDES * tdes, TRANID trid)
 void
 logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 {
-  struct log_addr_tdesarea *area;
+  LOG_ADDR_TDESAREA *area;
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
@@ -2105,7 +2105,7 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   do
     {
-      trid = log_Gl.hdr.next_trid;
+      trid = VOLATILE_ACCESS (log_Gl.hdr.next_trid, int);
 
       next_trid = trid + 1;
       if (next_trid < 0)

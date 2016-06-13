@@ -47,6 +47,7 @@
 #define VACUUM_ER_LOG_RECOVERY		512	/* Log recovery of vacuum data and dropped classes/indexes */
 #define VACUUM_ER_LOG_TOPOPS		1024	/* Log starting/ending system operations and their recovery. */
 #define VACUUM_ER_LOG_ARCHIVES		2048	/* Log when archives are removed or when vacuum fails to find archives. */
+#define VACUUM_ER_LOG_JOBS		4096	/* Log job generation, interrupt, finish */
 
 #define VACUUM_ER_LOG_VERBOSE		0xFFFFFFFF	/* Log all activity related to vacuum. */
 #define VACUUM_IS_ER_LOG_LEVEL_SET(er_log_level) \
@@ -105,8 +106,6 @@ enum vacuum_cache_postpone_status
   VACUUM_CACHE_POSTPONE_OVERFLOW
 };
 
-/* Forward definition */
-struct log_redo;
 typedef struct vacuum_cache_postpone_entry VACUUM_CACHE_POSTPONE_ENTRY;
 struct vacuum_cache_postpone_entry
 {
@@ -287,6 +286,7 @@ extern void vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * st
 extern int vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID vacuum_min_log_pageid_to_keep (THREAD_ENTRY * thread_p);
 extern void vacuum_notify_server_crashed (LOG_LSA * recovery_lsa);
+extern void vacuum_notify_server_shutdown (void);
 #if defined (SERVER_MODE)
 extern void vacuum_notify_flush_data (void);
 extern bool vacuum_is_vacuum_data_flushed (void);
@@ -297,9 +297,8 @@ extern int vacuum_rv_undoredo_first_data_page (THREAD_ENTRY * thread_p, LOG_RCV 
 extern void vacuum_rv_undoredo_first_data_page_dump (FILE * fp, int length, void *data);
 extern int vacuum_rv_redo_data_finished (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void vacuum_rv_redo_data_finished_dump (FILE * fp, int length, void *data);
-extern int vacuum_rv_undo_data_set_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int vacuum_rv_redo_data_set_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void vacuum_rv_redo_data_set_link_dump (FILE * fp, int length, void *data);
+extern int vacuum_rv_undoredo_data_set_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern void vacuum_rv_undoredo_data_set_link_dump (FILE * fp, int length, void *data);
 extern int vacuum_rv_redo_append_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void vacuum_rv_redo_append_data_dump (FILE * fp, int length, void *data);
 

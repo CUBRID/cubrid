@@ -82,9 +82,9 @@
 #define TR_TABLE_CS_EXIT(thread_p) \
         csect_exit((thread_p), CSECT_TRAN_TABLE)
 
-#define LOG_ARCHIVE_CS_ENTER(thread_p)                                       \
+#define LOG_ARCHIVE_CS_ENTER(thread_p) \
         csect_enter (thread_p, CSECT_LOG_ARCHIVE, INF_WAIT)
-#define LOG_ARCHIVE_CS_ENTER_READ_MODE(thread_p)                             \
+#define LOG_ARCHIVE_CS_ENTER_READ_MODE(thread_p) \
         csect_enter_as_reader (thread_p, CSECT_LOG_ARCHIVE, INF_WAIT)
 #define LOG_ARCHIVE_CS_EXIT(thread_p) \
         csect_exit (thread_p, CSECT_LOG_ARCHIVE)
@@ -531,8 +531,8 @@ struct log_group_commit_info
   pthread_cond_t gc_cond;
 };
 
-#define LOG_GROUP_COMMIT_INFO_INITIALIZER                     \
-  {PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER}
+#define LOG_GROUP_COMMIT_INFO_INITIALIZER \
+  { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
 
 typedef enum logwr_mode LOGWR_MODE;
 enum logwr_mode
@@ -673,6 +673,7 @@ struct log_2pc_coordinator
   int *ack_received;		/* Acknowledgment received vector */
 };
 
+typedef struct log_topops_addresses LOG_TOPOPS_ADDRESSES;
 struct log_topops_addresses
 {
   LOG_LSA lastparent_lsa;	/* The last address of the parent transaction. This is needed for undo of the top
@@ -698,7 +699,7 @@ struct log_topops_stack
   LOG_TOPOPS_TYPE type;		/* Used by compensate/postpone log operation. */
   LOG_LSA ref_lsa;		/* Compensate undo_nxlsa or postpone next lsa. */
   int compensate_level;		/* The level of top operations when compensate was started. */
-  struct log_topops_addresses *stack;	/* Stack for push and pop of top system actions */
+  LOG_TOPOPS_ADDRESSES *stack;	/* Stack for push and pop of top system actions */
 };
 
 typedef struct modified_class_entry MODIFIED_CLASS_ENTRY;
@@ -959,12 +960,12 @@ struct trantable
 #else				/* _AIX */
   volatile sig_atomic_t num_interrupts;
 #endif				/* _AIX */
-  struct log_addr_tdesarea *area;	/* Contiguous area to transaction descriptors */
+  LOG_ADDR_TDESAREA *area;	/* Contiguous area to transaction descriptors */
   LOG_TDES **all_tdes;		/* Pointers to all transaction descriptors */
 };
 
 #define TRANTABLE_INITIALIZER \
-  {0, 0, 0, 0, 0, 0, NULL, NULL}
+  { 0, 0, 0, 0, 0, 0, NULL, NULL }
 
 /*
  * MVCC_TRANS_STATUS keep MVCCIDs status in bit area. Thus bit 0 means active
@@ -990,7 +991,8 @@ struct mvcc_trans_status
   volatile unsigned int version;
 };
 
-#define MVCC_STATUS_INITIALIZER {NULL, MVCCID_FIRST, 0, NULL, 0, 0}
+#define MVCC_STATUS_INITIALIZER \
+  { NULL, MVCCID_FIRST, 0, NULL, 0, 0 }
 
 typedef struct mvcctable MVCCTABLE;
 struct mvcctable
@@ -1017,11 +1019,10 @@ struct mvcctable
 
 #if defined(HAVE_ATOMIC_BUILTINS)
 #define MVCCTABLE_INITIALIZER \
-  {MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER,	\
-   PTHREAD_MUTEX_INITIALIZER}
+  { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER }
 #else
 #define MVCCTABLE_INITIALIZER \
-  {MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER}
+  { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER }
 #endif
 
 /*
@@ -1221,6 +1222,7 @@ struct log_header
      false					 \
   }
 
+typedef struct log_arv_header LOG_ARV_HEADER;
 struct log_arv_header
 {				/* Log archive header information */
   char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix utility */
@@ -1234,9 +1236,8 @@ struct log_arv_header
   INT32 dummy2;			/* Dummy field for 8byte align */
 };
 
-#define LOG_ARV_HEADER_INITIALIZER              \
-  { /* magic */ {'0'},                          \
-    0, 0, 0, 0, 0, 0, 0}
+#define LOG_ARV_HEADER_INITIALIZER \
+  { /* magic */ {'0'}, 0, 0, 0, 0, 0, 0, 0 }
 
 typedef struct log_bgarv_header LOG_BGARV_HEADER;
 struct log_bgarv_header
@@ -1250,9 +1251,9 @@ struct log_bgarv_header
   LOG_PAGEID current_page_id;
   LOG_PAGEID last_sync_pageid;
 };
-#define LOG_BGARV_HEADER_INITIALIZER		\
-  { /* magic */ {'0'}, 				\
-    0, 0, NULL_PAGEID, NULL_PAGEID, NULL_PAGEID}
+
+#define LOG_BGARV_HEADER_INITIALIZER \
+  { /* magic */ {'0'}, 0, 0, NULL_PAGEID, NULL_PAGEID, NULL_PAGEID }
 
 typedef enum log_rectype LOG_RECTYPE;
 enum log_rectype
@@ -1354,14 +1355,11 @@ enum log_repl_flush
 
 /* Is record type UNDOREDO */
 #define LOG_IS_UNDOREDO_RECORD_TYPE(type) \
-  (((type) == LOG_UNDOREDO_DATA) \
-   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
-   || ((type) == LOG_DIFF_UNDOREDO_DATA) \
-   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+  (((type) == LOG_UNDOREDO_DATA) || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_DIFF_UNDOREDO_DATA) || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
 
 #define LOG_IS_DIFF_UNDOREDO_TYPE(type) \
-  ((type) == LOG_DIFF_UNDOREDO_DATA \
-   || (type == LOG_MVCC_DIFF_UNDOREDO_DATA))
+  ((type) == LOG_DIFF_UNDOREDO_DATA || (type) == LOG_MVCC_DIFF_UNDOREDO_DATA)
 
 /* Definitions used to identify MVCC log records. Used by log manager and
  * vacuum.
@@ -1397,6 +1395,18 @@ enum log_repl_flush
    || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
    || ((rcvindex) == RVES_NOTIFY_VACUUM))
 
+/* Is log record for a change on vacuum data */
+#define LOG_IS_VACUUM_DATA_RECOVERY(rcvindex) \
+  ((rcvindex) == RVVAC_LOG_BLOCK_APPEND	\
+   || (rcvindex) == RVVAC_LOG_BLOCK_REMOVE \
+   || (rcvindex) == RVVAC_LOG_BLOCK_SAVE \
+   || (rcvindex) == RVVAC_START_OR_END_JOB \
+   || (rcvindex) == RVVAC_COMPLETE)
+
+#define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
+  (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
+   && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
+
 typedef struct log_repl LOG_REPL_RECORD;
 struct log_repl
 {
@@ -1421,6 +1431,7 @@ struct log_rec_header
 };
 
 /* Common information of log data records */
+typedef struct log_data LOG_DATA;
 struct log_data
 {
   LOG_RCVINDEX rcvindex;	/* Index to recovery function */
@@ -1430,28 +1441,32 @@ struct log_data
 };
 
 /* Information of undo_redo log records */
-struct log_undoredo
+typedef struct log_rec_undoredo LOG_REC_UNDOREDO;
+struct log_rec_undoredo
 {
-  struct log_data data;		/* Location of recovery data */
+  LOG_DATA data;		/* Location of recovery data */
   int ulength;			/* Length of undo data */
   int rlength;			/* Length of redo data */
 };
 
 /* Information of undo log records */
-struct log_undo
+typedef struct log_rec_undo LOG_REC_UNDO;
+struct log_rec_undo
 {
-  struct log_data data;		/* Location of recovery data */
+  LOG_DATA data;		/* Location of recovery data */
   int length;			/* Length of undo data */
 };
 
 /* Information of redo log records */
-struct log_redo
+typedef struct log_rec_redo LOG_REC_REDO;
+struct log_rec_redo
 {
-  struct log_data data;		/* Location of recovery data */
+  LOG_DATA data;		/* Location of recovery data */
   int length;			/* Length of redo data */
 };
 
 /* Log information required for vacuum */
+typedef struct log_vacuum_info LOG_VACUUM_INFO;
 struct log_vacuum_info
 {
   LOG_LSA prev_mvcc_op_log_lsa;	/* Log lsa of previous MVCC operation log record. Used by vacuum to process log data. */
@@ -1461,66 +1476,75 @@ struct log_vacuum_info
 };
 
 /* Information of undo_redo log records for MVCC operations */
-struct log_mvcc_undoredo
+typedef struct log_rec_mvcc_undoredo LOG_REC_MVCC_UNDOREDO;
+struct log_rec_mvcc_undoredo
 {
-  struct log_undoredo undoredo;	/* Undoredo information */
+  LOG_REC_UNDOREDO undoredo;	/* Undoredo information */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
-  struct log_vacuum_info vacuum_info;	/* Info required for vacuum */
+  LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
 };
 
 /* Information of undo log records for MVCC operations */
-struct log_mvcc_undo
+typedef struct log_rec_mvcc_undo LOG_REC_MVCC_UNDO;
+struct log_rec_mvcc_undo
 {
-  struct log_undo undo;		/* Undo information */
+  LOG_REC_UNDO undo;		/* Undo information */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
-  struct log_vacuum_info vacuum_info;	/* Info required for vacuum */
+  LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
 };
 
 /* Information of redo log records for MVCC operations */
-struct log_mvcc_redo
+typedef struct log_rec_mvcc_redo LOG_REC_MVCC_REDO;
+struct log_rec_mvcc_redo
 {
-  struct log_redo redo;		/* Location of recovery data */
+  LOG_REC_REDO redo;		/* Location of recovery data */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
 };
 
 /* Information of database external redo log records */
-struct log_dbout_redo
+typedef struct log_rec_dbout_redo LOG_REC_DBOUT_REDO;
+struct log_rec_dbout_redo
 {
   LOG_RCVINDEX rcvindex;	/* Index to recovery function */
   int length;			/* Length of redo data */
 };
 
 /* Information of a compensating log records */
-struct log_compensate
+typedef struct log_rec_compensate LOG_REC_COMPENSATE;
+struct log_rec_compensate
 {
-  struct log_data data;		/* Location of recovery data */
+  LOG_DATA data;		/* Location of recovery data */
   LOG_LSA undo_nxlsa;		/* Address of next log record to undo */
   int length;			/* Length of compensating data */
 };
 
 /* This entry is included during commit */
-struct log_start_postpone
+typedef struct log_rec_start_postpone LOG_REC_START_POSTPONE;
+struct log_rec_start_postpone
 {
   LOG_LSA posp_lsa;
 };
 
 /* This entry is included during the commit of top system operations */
-struct log_topope_start_postpone
+typedef struct log_rec_topope_start_postpone LOG_REC_TOPOPE_START_POSTPONE;
+struct log_rec_topope_start_postpone
 {
   LOG_LSA lastparent_lsa;	/* The last address of the parent transaction. */
   LOG_LSA posp_lsa;		/* Address where the first postpone operation start */
 };
 
 /* Information of execution of a postpone data */
-struct log_run_postpone
+typedef struct log_rec_run_postpone LOG_REC_RUN_POSTPONE;
+struct log_rec_run_postpone
 {
-  struct log_data data;		/* Location of recovery data */
+  LOG_DATA data;		/* Location of recovery data */
   LOG_LSA ref_lsa;		/* Address of the original postpone record */
   int length;			/* Length of redo data */
 };
 
 /* A checkpoint record */
-struct log_chkpt
+typedef struct log_rec_chkpt LOG_REC_CHKPT;
+struct log_rec_chkpt
 {
   LOG_LSA redo_lsa;		/* Oldest LSA of dirty data page in page buffers */
   int ntrans;			/* Number of active transactions */
@@ -1528,7 +1552,8 @@ struct log_chkpt
 };
 
 /* replication log structure */
-struct log_replication
+typedef struct log_rec_replication LOG_REC_REPLICATION;
+struct log_rec_replication
 {
   LOG_LSA lsa;
   int length;
@@ -1536,7 +1561,8 @@ struct log_replication
 };
 
 /* Transaction descriptor */
-struct log_chkpt_trans
+typedef struct log_info_chkpt_trans LOG_INFO_CHKPT_TRANS;
+struct log_info_chkpt_trans
 {
   int isloose_end;
   TRANID trid;			/* Transaction identifier */
@@ -1552,7 +1578,8 @@ struct log_chkpt_trans
 
 };
 
-struct log_chkpt_topops_commit_posp
+typedef struct log_info_chkpt_topops_commit_posp LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP;
+struct log_info_chkpt_topops_commit_posp
 {
   TRANID trid;			/* Transaction identifier */
   LOG_LSA lastparent_lsa;	/* The last address of the parent transaction. This is needed for undo of the top
@@ -1561,13 +1588,15 @@ struct log_chkpt_topops_commit_posp
 				 * since it is reset during recovery to the last reference postpone address. */
 };
 
-struct log_savept
+typedef struct log_rec_savept LOG_REC_SAVEPT;
+struct log_rec_savept
 {
   LOG_LSA prv_savept;		/* Previous savepoint record */
   int length;			/* Savepoint name */
 };
 
-struct log_topop_result
+typedef struct log_rec_topop_result LOG_REC_TOPOP_RESULT;
+struct log_rec_topop_result
 {
   LOG_LSA lastparent_lsa;	/* Next log record address of transaction for UNDO purposes. Last address before the
 				 * top action */
@@ -1575,7 +1604,8 @@ struct log_topop_result
 };
 
 /* Log a prepare to commit record */
-struct log_2pc_prepcommit
+typedef struct log_rec_2pc_prepcommit LOG_REC_2PC_PREPCOMMIT;
+struct log_rec_2pc_prepcommit
 {
   char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
   int gtrid;			/* Identifier of the global transaction */
@@ -1586,7 +1616,8 @@ struct log_2pc_prepcommit
 };
 
 /* Start 2PC protocol. Record information about identifiers of participants. */
-struct log_2pc_start
+typedef struct log_rec_2pc_start LOG_REC_2PC_START;
+struct log_rec_2pc_start
 {
   char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
   int gtrid;			/* Identifier of the global tran */
@@ -1598,19 +1629,22 @@ struct log_2pc_start
  * Log the acknowledgement from a participant that it received the commit/abort
  * decision
  */
-struct log_2pc_particp_ack
+typedef struct log_rec_2pc_particp_ack LOG_REC_2PC_PARTICP_ACK;
+struct log_rec_2pc_particp_ack
 {
   int particp_index;		/* Index of the acknowledging participant */
 };
 
 /* Log the time of termination of transaction */
-struct log_donetime
+typedef struct log_rec_donetime LOG_REC_DONETIME;
+struct log_rec_donetime
 {
   INT64 at_time;		/* Database creation time. For safety reasons */
 };
 
 /* Log the change of the server's HA state */
-struct log_ha_server_state
+typedef struct log_rec_ha_server_state LOG_REC_HA_SERVER_STATE;
+struct log_rec_ha_server_state
 {
   int state;			/* ha_Server_state */
   int dummy;			/* dummy for alignment */
@@ -1636,20 +1670,18 @@ enum log_recvphase
   LOG_RECOVERY_FINISH_2PC_PHASE	/* Finishing up transactions that were in 2PC protocol at the time of the crash */
 };
 
+typedef struct log_archives LOG_ARCHIVES;
 struct log_archives
 {
   int vdes;			/* Last archived accessed */
-  struct log_arv_header hdr;	/* The log archive header */
+  LOG_ARV_HEADER hdr;		/* The log archive header */
   int max_unav;			/* Max size of unavailable array */
   int next_unav;		/* Last unavailable entry */
   int *unav_archives;		/* Unavailable archives */
 };
 
-#define LOG_ARCHIVES_INITIALIZER                     \
-  {NULL_VOLDES,                                      \
-   LOG_ARV_HEADER_INITIALIZER,                       \
-   0, 0,                                             \
-   NULL /* unav_archives */ }
+#define LOG_ARCHIVES_INITIALIZER \
+  { NULL_VOLDES, LOG_ARV_HEADER_INITIALIZER, 0, 0, NULL /* unav_archives */ }
 
 typedef struct background_archiving_info BACKGROUND_ARCHIVING_INFO;
 struct background_archiving_info
@@ -1660,8 +1692,8 @@ struct background_archiving_info
   int vdes;
 };
 
-#define BACKGROUND_ARCHIVING_INFO_INITIALIZER                     \
-  {NULL_PAGEID, NULL_PAGEID, NULL_PAGEID, NULL_VOLDES}
+#define BACKGROUND_ARCHIVING_INFO_INITIALIZER \
+  { NULL_PAGEID, NULL_PAGEID, NULL_PAGEID, NULL_VOLDES }
 
 typedef struct log_data_addr LOG_DATA_ADDR;
 struct log_data_addr
@@ -1670,6 +1702,7 @@ struct log_data_addr
   PAGE_PTR pgptr;
   PGLENGTH offset;		/* Offset or slot */
 };
+
 #define LOG_DATA_ADDR_INITIALIZER \
   { NULL, NULL, 0 }
 
@@ -1756,8 +1789,7 @@ struct global_unique_stats_table
 };
 
 #define GLOBAL_UNIQUE_STATS_TABLE_INITIALIZER \
- {LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER, \
-  LF_FREELIST_INITIALIZER, LSA_INITIALIZER, false}
+ { LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER, LF_FREELIST_INITIALIZER, LSA_INITIALIZER, false }
 
 #define GLOBAL_UNIQUE_STATS_HASH_SIZE 1000
 
@@ -1766,10 +1798,10 @@ typedef struct log_global LOG_GLOBAL;
 struct log_global
 {
   TRANTABLE trantable;		/* Transaction table */
-  struct log_append_info append;	/* The log append info */
+  LOG_APPEND_INFO append;	/* The log append info */
   LOG_PRIOR_LSA_INFO prior_info;
-  struct log_header hdr;	/* The log header */
-  struct log_archives archive;	/* Current archive information */
+  LOG_HEADER hdr;		/* The log header */
+  LOG_ARCHIVES archive;		/* Current archive information */
   LOG_PAGEID run_nxchkpt_atpageid;
 #if defined(SERVER_MODE)
   LOG_LSA flushed_lsa_lower_bound;	/* lsa */
@@ -1939,11 +1971,11 @@ extern void logpb_free_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 extern void logpb_free_without_mutex (LOG_PAGE * log_pgptr);
 extern LOG_PAGEID logpb_get_page_id (LOG_PAGE * log_pgptr);
 extern int logpb_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore);
-extern int logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr, const char *prefix_logname,
+extern int logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const char *prefix_logname,
 				    DKNPAGES npages, INT64 * db_creation);
 extern LOG_PAGE *logpb_create_header_page (THREAD_ENTRY * thread_p);
-extern void logpb_fetch_header (THREAD_ENTRY * thread_p, struct log_header *hdr);
-extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, struct log_header *hdr, LOG_PAGE * log_pgptr);
+extern void logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr);
+extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
 extern void logpb_flush_header (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
@@ -1990,7 +2022,7 @@ extern bool logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p);
 extern int logpb_get_archive_number (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 extern void logpb_decache_archive_info (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr,
-					   int *ret_arv_num, struct log_arv_header *arv_hdr, bool is_fatal);
+					   int *ret_arv_num, LOG_ARV_HEADER * arv_hdr, bool is_fatal);
 extern void logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason);
 extern int logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count);
 extern void logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * log_lsa,

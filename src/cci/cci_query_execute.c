@@ -711,14 +711,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag, int
   if (req_handle->first_stmt_type == CUBRID_STMT_SELECT || req_handle->first_stmt_type == CUBRID_STMT_GET_STATS
       || req_handle->first_stmt_type == CUBRID_STMT_CALL || req_handle->first_stmt_type == CUBRID_STMT_EVALUATE)
     {
-      if (flag & CCI_EXEC_ASYNC)
-	{
-	  req_handle->num_tuple = -1;
-	}
-      else
-	{
-	  req_handle->num_tuple = res_count;
-	}
+      req_handle->num_tuple = res_count;
     }
   else if (req_handle->first_stmt_type == CUBRID_STMT_CALL_SP)
     {
@@ -983,17 +976,11 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, ch
       req_handle->num_query_res = err_code;
       req_handle->qr = qr;
     }
+
   if (req_handle->stmt_type == CUBRID_STMT_SELECT || req_handle->stmt_type == CUBRID_STMT_GET_STATS
       || req_handle->stmt_type == CUBRID_STMT_CALL || req_handle->stmt_type == CUBRID_STMT_EVALUATE)
     {
-      if (execute_flag & CCI_EXEC_ASYNC)
-	{
-	  req_handle->num_tuple = -1;
-	}
-      else
-	{
-	  req_handle->num_tuple = execute_res_count;
-	}
+      req_handle->num_tuple = execute_res_count;
     }
   else if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
     {
@@ -5717,15 +5704,6 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
   req_handle_col_info_free (req_handle);
 
   req_handle->num_tuple = result_count;
-  if (stmt_type == CUBRID_STMT_SELECT || stmt_type == CUBRID_STMT_GET_STATS || stmt_type == CUBRID_STMT_CALL
-      || stmt_type == CUBRID_STMT_EVALUATE)
-    {
-      if (req_handle->execute_flag & CCI_EXEC_ASYNC)
-	{
-	  req_handle->num_tuple = -1;
-	}
-    }
-
   req_handle->num_col_info = num_col_info;
   req_handle->col_info = col_info;
   req_handle->stmt_type = (T_CCI_CUBRID_STMT) stmt_type;

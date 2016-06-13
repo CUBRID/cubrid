@@ -1707,9 +1707,8 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** att
     {
       for (i_attr = inherited_attrs; i_attr; i_attr = i_attr->next)
 	{
-	  if (pt_str_compare
-	      (crt_attr->info.attr_def.attr_name->info.name.original,
-	       i_attr->info.attr_def.attr_name->info.name.original, CASE_INSENSITIVE) != 0)
+	  if (pt_str_compare (crt_attr->info.attr_def.attr_name->info.name.original,
+			      i_attr->info.attr_def.attr_name->info.name.original, CASE_INSENSITIVE) != 0)
 	    {
 	      /* i_attr is a keeper. */
 	      t_attr = i_attr;
@@ -1740,9 +1739,8 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE ** att
     {
       for (r = i_attr->next; r != NULL; r = r->next)
 	{
-	  if (pt_str_compare
-	      (i_attr->info.attr_def.attr_name->info.name.original, r->info.attr_def.attr_name->info.name.original,
-	       CASE_INSENSITIVE) != 0)
+	  if (pt_str_compare (i_attr->info.attr_def.attr_name->info.name.original,
+			      r->info.attr_def.attr_name->info.name.original, CASE_INSENSITIVE) != 0)
 	    {
 	      /* r is a keeper so advance t_attr. */
 	      t_attr = r;
@@ -3080,10 +3078,8 @@ pt_append_statements_on_add_attribute (PARSER_CONTEXT * parser, PT_NODE * statem
   stmt = pt_append_string (parser, stmt, " ADD tid ");
   stmt = pt_append_string (parser, stmt, class_name);
   stmt = pt_append_string (parser, stmt, ", tdata STRING ");
-  stmt =
-    pt_append_string (parser, stmt,
-		      ((attr->info.attr_def.data_default) ? parser_print_tree (parser,
-									       attr->info.attr_def.data_default) : ""));
+  stmt = pt_append_string (parser, stmt, ((attr->info.attr_def.data_default)
+					  ? parser_print_tree (parser, attr->info.attr_def.data_default) : ""));
   stmt = pt_append_string (parser, stmt, " ");
   stmt = pt_append_string (parser, stmt, ((attr->info.attr_def.constrain_not_null) ? "NOT NULL" : ""));
   stmt = pt_append_string (parser, stmt, ", CONSTRAINT ");
@@ -3434,9 +3430,8 @@ pt_append_statements_on_update (PARSER_CONTEXT * parser, PT_NODE * stmt_node, co
   stmt = pt_append_string (parser, NULL, "UPDATE ");
   stmt = pt_append_string (parser, stmt, text_class_name);
   stmt = pt_append_string (parser, stmt, " SET tdata = ");
-  stmt =
-    pt_append_string (parser, stmt,
-		      ((value->node_type == PT_NAME && value->info.name.meta_class == PT_NORMAL) ? "tid." : ""));
+  stmt = pt_append_string (parser, stmt, ((value->node_type == PT_NAME && value->info.name.meta_class == PT_NORMAL)
+					  ? "tid." : ""));
   stmt = pt_append_string (parser, stmt, parser_print_tree (parser, value));
   stmt = pt_append_string (parser, stmt, " WHERE tid IN (SELECT ");
   stmt = pt_append_string (parser, stmt, alias1_name);
@@ -3705,8 +3700,8 @@ pt_resolve_insert_external (PARSER_CONTEXT * parser, PT_NODE * insert)
 		  sprintf (param1_name, "p1_%p", insert);
 		  insert->info.insert.into_var = pt_make_parameter (parser, param1_name, 1);
 		}
-	      if (pt_append_statements_on_insert
-		  (parser, insert, class_name, attr_name, value, insert->info.insert.into_var) == NULL)
+	      if (pt_append_statements_on_insert (parser, insert, class_name, attr_name, value,
+						  insert->info.insert.into_var) == NULL)
 		{
 		  goto exit_on_error;
 		}
@@ -3739,8 +3734,8 @@ pt_resolve_insert_external (PARSER_CONTEXT * parser, PT_NODE * insert)
 		      sprintf (param1_name, "p1_%p", insert);
 		      insert->info.insert.into_var = pt_make_parameter (parser, param1_name, 1);
 		    }
-		  if (pt_append_statements_on_insert
-		      (parser, insert, class_name, attr_name, v, insert->info.insert.into_var) == NULL)
+		  if (pt_append_statements_on_insert (parser, insert, class_name, attr_name, v,
+						      insert->info.insert.into_var) == NULL)
 		    {
 		      goto exit_on_error;
 		    }
@@ -3793,9 +3788,8 @@ pt_resolve_update_external (PARSER_CONTEXT * parser, PT_NODE * update)
 		  if (db_att && sm_has_text_domain (db_att, 0))
 		    {
 		      PT_NAME_INFO_SET_FLAG (lhs, PT_NAME_INFO_EXTERNAL);
-		      if (pt_append_statements_on_update
-			  (parser, update, class_name, attr_name, alias_name, rhs,
-			   &update->info.update.search_cond) == NULL)
+		      if (pt_append_statements_on_update (parser, update, class_name, attr_name, alias_name, rhs,
+							  &update->info.update.search_cond) == NULL)
 			{
 			  goto exit_on_error;
 			}
@@ -3841,9 +3835,8 @@ pt_resolve_delete_external (PARSER_CONTEXT * parser, PT_NODE * delete)
 	{
 	  if (sm_has_text_domain (db_att, 0))
 	    {
-	      if (pt_append_statements_on_delete
-		  (parser, delete, class_name, db_attribute_name (db_att), alias_name,
-		   &delete->info.delete_.search_cond) == NULL)
+	      if (pt_append_statements_on_delete (parser, delete, class_name, db_attribute_name (db_att), alias_name,
+						  &delete->info.delete_.search_cond) == NULL)
 		{
 		  goto exit_on_error;
 		}
@@ -4798,8 +4791,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_RENAME_ATTR_MTHD:
       if (is_partitioned && keyattr[0] && (alter->info.alter.alter_clause.rename.element_type == PT_ATTRIBUTE))
 	{
-	  if (!strncmp
-	      (alter->info.alter.alter_clause.rename.old_name->info.name.original, keyattr, DB_MAX_IDENTIFIER_LENGTH))
+	  if (!strncmp (alter->info.alter.alter_clause.rename.old_name->info.name.original, keyattr,
+			DB_MAX_IDENTIFIER_LENGTH))
 	    {
 	      PT_ERRORmf (parser, alter->info.alter.alter_clause.rename.old_name, MSGCAT_SET_PARSER_SEMANTIC,
 			  MSGCAT_SEMANTIC_PARTITION_KEY_COLUMN, keyattr);
@@ -5938,8 +5931,8 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
 	  for (fpart = parts->next; fpart && fpart->node_type == PT_PARTS; fpart = fpart->next)
 	    {
-	      if (!intl_identifier_casecmp
-		  (parts->info.parts.name->info.name.original, fpart->info.parts.name->info.name.original))
+	      if (!intl_identifier_casecmp (parts->info.parts.name->info.name.original,
+					    fpart->info.parts.name->info.name.original))
 		{
 		  PT_ERRORmf (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DUPLICATE_PARTITION_DEF,
 			      fpart->info.parts.name->info.name.original);
@@ -6340,6 +6333,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
   if (smclass->partition->partition_type != PT_PARTITION_HASH)
     {
+      PT_NODE *select_list;
+
       tmp_parser = parser_create_parser ();
       if (tmp_parser == NULL)
 	{
@@ -6375,16 +6370,16 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	}
 
       assert (statements[0]->node_type == PT_SELECT && statements[0]->info.query.q.select.list != NULL);
-      if (statements[0]->info.query.q.select.list->data_type != NULL)
+
+      select_list = statements[0]->info.query.q.select.list;
+      if (select_list->data_type != NULL)
 	{
-	  column_dt = parser_copy_tree (parser, statements[0]->info.query.q.select.list->data_type);
+	  column_dt = parser_copy_tree (parser, select_list->data_type);
 	}
       else
 	{
-	  column_dt =
-	    pt_domain_to_data_type (parser,
-				    tp_domain_resolve_default (pt_type_enum_to_db
-							       (statements[0]->info.query.q.select.list->type_enum)));
+	  column_dt = pt_domain_to_data_type (parser,
+					      tp_domain_resolve_default (pt_type_enum_to_db (select_list->type_enum)));
 	}
 
       parser_free_parser (tmp_parser);
@@ -14643,9 +14638,8 @@ pt_check_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  for (n = node->info.index.column_names; n != NULL; n = n->next)
 	    {
-	      if (!pt_str_compare
-		  (arg->info.sort_spec.expr->info.name.original, n->info.sort_spec.expr->info.name.original,
-		   CASE_INSENSITIVE))
+	      if (!pt_str_compare (arg->info.sort_spec.expr->info.name.original,
+				   n->info.sort_spec.expr->info.name.original, CASE_INSENSITIVE))
 		{
 		  break;
 		}
@@ -15486,9 +15480,8 @@ pt_apply_union_select_list_collation (PARSER_CONTEXT * parser, PT_NODE * query, 
 	    {
 	      bool new_cast_added = false;
 
-	      if (pt_common_collation
-		  (&cinfo_att.coll_infer, &(cinfo[i].coll_infer), NULL, 2, false, &cinfo_att.coll_infer.coll_id,
-		   &cinfo_att.coll_infer.codeset) != 0)
+	      if (pt_common_collation (&cinfo_att.coll_infer, &(cinfo[i].coll_infer), NULL, 2, false,
+				       &cinfo_att.coll_infer.coll_id, &cinfo_att.coll_infer.codeset) != 0)
 		{
 		  PT_ERRORmf2 (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
 			       pt_short_print (parser, att), pt_short_print (parser, cinfo[i].ref_att));

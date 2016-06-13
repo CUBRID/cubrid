@@ -2253,24 +2253,21 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 
 	  /* wait until other threads finish their works A css_server_thread is always running for this transaction.
 	   * so, wait until thread_has_threads() becomes 1 (except me) */
-	  if (!qmgr_is_thread_executing_async_query (entry_ptr->thrd_entry))
+	  if (thread_has_threads (thread_p, entry_ptr->tran_index, thread_get_client_id (thread_p)) >= 1)
 	    {
-	      if (thread_has_threads (thread_p, entry_ptr->tran_index, thread_get_client_id (thread_p)) >= 1)
+	      logtb_set_tran_index_interrupt (thread_p, entry_ptr->tran_index, true);
+	      while (1)
 		{
-		  logtb_set_tran_index_interrupt (thread_p, entry_ptr->tran_index, true);
-		  while (1)
-		    {
-		      thread_sleep (10);	/* sleep 10 msec */
-		      thread_wakeup_with_tran_index (entry_ptr->tran_index, THREAD_RESUME_DUE_TO_INTERRUPT);
+		  thread_sleep (10);	/* sleep 10 msec */
+		  thread_wakeup_with_tran_index (entry_ptr->tran_index, THREAD_RESUME_DUE_TO_INTERRUPT);
 
-		      client_id = thread_get_client_id (thread_p);
-		      if (thread_has_threads (thread_p, entry_ptr->tran_index, client_id) == 0)
-			{
-			  break;
-			}
+		  client_id = thread_get_client_id (thread_p);
+		  if (thread_has_threads (thread_p, entry_ptr->tran_index, client_id) == 0)
+		    {
+		      break;
 		    }
-		  logtb_set_tran_index_interrupt (thread_p, entry_ptr->tran_index, false);
 		}
+	      logtb_set_tran_index_interrupt (thread_p, entry_ptr->tran_index, false);
 	    }
 	}
       else

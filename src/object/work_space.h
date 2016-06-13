@@ -56,7 +56,6 @@ enum vid_info_flag
   VID_INSERTING = 8		/* whether the VID is in an insert */
 };
 
-
 typedef union vid_oid VID_OID;
 union vid_oid
 {
@@ -115,7 +114,6 @@ struct ws_value_list
 
 struct db_object
 {
-
   VID_OID oid_info;		/* local copy of the OID or VID pointer */
   struct db_object *class_mop;	/* pointer to class mop */
   /* Do not ever set this to NULL without removing object from class link. */
@@ -131,7 +129,6 @@ struct db_object
   struct db_object *commit_link;	/* link for obj to be reset at commit/abort */
   struct db_object *mvcc_link;	/* Used by MVCC to link mops for different object versions. */
   WS_VALUE_LIST *label_value_list;	/* label value list */
-  void *version;		/* versioning information */
   LOCK lock;			/* object lock */
   int mvcc_snapshot_version;	/* The snapshot version at the time mop object is fetched and cached. Used only when
 				 * MVCC is enabled. */
@@ -146,9 +143,7 @@ struct db_object
   unsigned deleted:1;		/* deleted flag */
   unsigned no_objects:1;	/* optimization for classes */
   unsigned pinned:1;		/* to prevent swapping */
-  unsigned reference:1;		/* set if non-object reference mop */
   unsigned is_vid:1;		/* set if oid is vid */
-  unsigned is_set:1;		/* temporary kludge for disconnected sets */
   unsigned is_temp:1;		/* set if template MOP (for triggers) */
   unsigned released:1;		/* set by code that knows that an instance can be released, used currently by the
 				 * loader only */
@@ -157,38 +152,6 @@ struct db_object
 					 * transaction may be reverted, therefore the mvcc link is not permanent. On
 					 * rollback, mvcc link is removed. On commit mvcc link is made permanent. */
 };
-
-
-
-typedef struct ws_reference WS_REFERENCE;
-struct ws_reference
-{
-
-  DB_OBJECT *handle;
-
-};
-
-/*
- * WS_REFCOLLECTOR
- */
-typedef void (*WS_REFCOLLECTOR) (WS_REFERENCE * refobj);
-
-
-
-#define WS_IS_REFMOP(mop) 		((mop)->reference)
-
-#define WS_GET_REFMOP_OBJECT(mop) 	(WS_REFERENCE *)(mop)->object
-#define WS_SET_REFMOP_OBJECT(mop, ref) 	(mop)->object = (void *)ref
-
-#define WS_GET_REFMOP_OWNER(mop) 	(mop)->class_link
-#define WS_SET_REFMOP_OWNER(mop, cont) 	(mop)->class_link = cont
-
-#define WS_GET_REFMOP_ID(mop) 		(int)(mop)->dirty_link
-#define WS_SET_REFMOP_ID(mop, id) 	(mop)->dirty_link = (MOP)id
-
-#define WS_GET_REFMOP_COLLECTOR(mop) 	(WS_REFCOLLECTOR) (mop)->version
-#define WS_SET_REFMOP_COLLECTOR(mop, coll) (mop)->class_link = (MOP) coll
-
 
 
 typedef struct ws_memoid WS_MEMOID;
@@ -235,25 +198,6 @@ struct ws_object_header
 typedef int (*MAPFUNC) (MOP mop, void *args);
 
 /*
- * WS_MAP
- *    Performance hack used by the locator.
- *    Used to map over the MOPs in the workspace without calling a mapping
- *    function.  Probably minor performence increase by avoiding some
- *    function calls.
- */
-
-#define WS_MAP(mopvar, stuff) \
-  { int __slot__; MOP __mop__; \
-    for (__slot__ = 0 ; __slot__ < ws_Mop_table_size ; __slot__++) { \
-      for (__mop__ = ws_Mop_table[__slot__].head ; __mop__ != NULL ; \
-           __mop__ = __mop__->hash_link) { \
-        mopvar = __mop__; \
-        stuff \
-	} \
-    } \
-  }
-
-/*
  * IS_CLASS_MOP, IS_ROOT_MOP
  *    Macros for testing types of MOPs.
  *    Could make these functions so we don't need to introduce the
@@ -279,9 +223,6 @@ struct ws_statistics
   int mops_allocated;		/* total number of mops allocated */
   int mops_freed;		/* total reclaimed mops */
 
-  int refmops_allocated;
-  int refmops_freed;
-
   int dirty_list_emergencies;
   int corruptions;
   int uncached_classes;
@@ -298,37 +239,6 @@ struct ws_statistics
   int temp_mops_freed;
 };
 
-
-/*
- * WS_PROPERTY
- *    Early implementation of MOP property lists.
- *    Will be more general in the future.
- *    These can be chained and stored in the "version" field of the MOP.
- */
-
-typedef struct ws_property
-{
-  struct ws_property *next;
-
-  int key;
-  DB_BIGINT value;
-
-} WS_PROPERTY;
-
-/*
- * MOP_ITERATOR
- *   Iterator used to walk the MOP table.
- *   Used when it is not possible to access global ws_Mop_table_size
- *   and ws_Mop_table directly.
- */
-
-typedef struct mop_iterator
-{
-  MOP next;
-  unsigned int index;
-} MOP_ITERATOR;
-
-
 /*
  * MOP access macros
  *    Miscellaneous macros that access fields in the MOP structure.
@@ -336,62 +246,76 @@ typedef struct mop_iterator
  *
  */
 
-#define WS_PUT_COMMIT_MOP(mop)                                     \
-  do {                                                              \
-    if (!(mop)->commit_link) {                                      \
-      (mop)->commit_link = ws_Commit_mops ? ws_Commit_mops : (mop); \
-      ws_Commit_mops = (mop);                                       \
-     }                                                              \
-  } while (0)
+#define WS_PUT_COMMIT_MOP(mop) \
+  do \
+    { \
+      if (!(mop)->commit_link) \
+        { \
+          (mop)->commit_link = ws_Commit_mops ? ws_Commit_mops : (mop); \
+          ws_Commit_mops = (mop); \
+        } \
+    } \
+  while (0)
 
 #define WS_ISDIRTY(mop) (ws_is_dirty (mop))
 
-#define WS_SET_DIRTY(mop)            \
-  do {                               \
-    if (!WS_ISDIRTY(mop)) {          \
-      (mop)->dirty = 1;              \
-      WS_PUT_COMMIT_MOP(mop);        \
-      ws_Num_dirty_mop++;            \
-    }                                \
-  } while (0)
+#define WS_SET_DIRTY(mop) \
+  do \
+    { \
+      if (!WS_ISDIRTY(mop)) \
+        { \
+          (mop)->dirty = 1; \
+          WS_PUT_COMMIT_MOP(mop); \
+          ws_Num_dirty_mop++; \
+        } \
+    } \
+  while (0)
 
-#define WS_RESET_DIRTY(mop)          \
-  do {                               \
-    if (WS_ISDIRTY(mop)) {           \
-      (mop)->dirty = 0;              \
-      ws_Num_dirty_mop--;            \
-    }                                \
-  } while (0)
+#define WS_RESET_DIRTY(mop) \
+  do \
+    { \
+      if (WS_ISDIRTY(mop)) \
+        { \
+          (mop)->dirty = 0; \
+          ws_Num_dirty_mop--; \
+        } \
+    } \
+  while (0)
 
-#define WS_IS_DELETED(mop) (ws_is_deleted(mop))
+#define WS_IS_DELETED(mop) (ws_is_deleted (mop))
 
-#define WS_SET_DELETED(mop) (ws_set_deleted(mop))
+#define WS_SET_DELETED(mop) (ws_set_deleted (mop))
 
 #define WS_ISVID(mop) ((mop)->is_vid)
 /*
  * There are also functions for these, should use the macro since they
  * aren't very complicated
  */
-#define WS_OID(mop) \
-(WS_ISVID(mop) ? (OID *)&oid_Null_oid : &(mop)->oid_info.oid)
-#define WS_REAL_OID(mop)	(&(mop)->oid_info.oid)
-#define WS_VID_INFO(mop) 	((mop)->oid_info.vid_info)
-#define WS_CLASS_MOP(mop) 	((mop)->class_mop)
-#define WS_SET_LOCK(mop, lock)      \
-  do {                              \
-    (mop)->lock = lock;             \
-    if (lock != NULL_LOCK)          \
-      WS_PUT_COMMIT_MOP(mop);       \
-  } while (0)
+#define WS_OID(mop) (WS_ISVID (mop) ? (OID *) (&oid_Null_oid) : &(mop)->oid_info.oid)
+#define WS_REAL_OID(mop) (&(mop)->oid_info.oid)
+#define WS_VID_INFO(mop) ((mop)->oid_info.vid_info)
+#define WS_CLASS_MOP(mop) ((mop)->class_mop)
+#define WS_SET_LOCK(mop, lock) \
+  do \
+    { \
+      (mop)->lock = lock; \
+      if (lock != NULL_LOCK) \
+        { \
+          WS_PUT_COMMIT_MOP (mop); \
+        } \
+    } \
+  while (0)
 
-#define WS_GET_LOCK(mop)	((mop)->lock)
-#define WS_CHN(obj) 		(((WS_OBJECT_HEADER *)(obj))->chn)
-#define WS_ISPINNED(mop) 	((mop)->pinned)
-#define WS_SET_NO_OBJECTS(mop)      \
-  do {                              \
-    (mop)->no_objects = 1;          \
-    WS_PUT_COMMIT_MOP(mop);         \
-  } while (0)
+#define WS_GET_LOCK(mop) ((mop)->lock)
+#define WS_CHN(obj) (((WS_OBJECT_HEADER *) (obj))->chn)
+#define WS_ISPINNED(mop) ((mop)->pinned)
+#define WS_SET_NO_OBJECTS(mop) \
+  do \
+    { \
+      (mop)->no_objects = 1; \
+      WS_PUT_COMMIT_MOP (mop); \
+    } \
+  while (0)
 
 /*
  * WS_MOP_IS_NULL
@@ -402,9 +326,8 @@ typedef struct mop_iterator
  *    against the NULL OID.
  */
 
-#define WS_MOP_IS_NULL(mop)                                          \
-  (((mop == NULL) || WS_IS_DELETED(mop) ||			     \
-    (OID_ISNULL(&(mop)->oid_info.oid) && !(mop)->is_vid)) ? 1 : 0)
+#define WS_MOP_IS_NULL(mop) \
+  (((mop == NULL) || WS_IS_DELETED (mop) || (OID_ISNULL (&(mop)->oid_info.oid) && !(mop)->is_vid)) ? 1 : 0)
 
 /*
  * WS_MOP_GET_COMPOSITION_FETCH
@@ -416,14 +339,16 @@ typedef struct mop_iterator
 
 #define WS_MOP_COMPOSITION_FETCH_BIT 0x80	/* 1000 0000 */
 
-#define WS_MOP_GET_COMPOSITION_FETCH(mop)                                  \
+#define WS_MOP_GET_COMPOSITION_FETCH(mop) \
   ((mop)->composition_fetch & WS_MOP_COMPOSITION_FETCH_BIT)
 
-#define WS_MOP_SET_COMPOSITION_FETCH(mop)                                  \
-  do {                                                                     \
-    (mop)->composition_fetch |= WS_MOP_COMPOSITION_FETCH_BIT;              \
-    WS_PUT_COMMIT_MOP(mop);                                                \
-  } while (0)
+#define WS_MOP_SET_COMPOSITION_FETCH(mop) \
+  do \
+    { \
+      (mop)->composition_fetch |= WS_MOP_COMPOSITION_FETCH_BIT; \
+      WS_PUT_COMMIT_MOP (mop); \
+    } \
+  while (0)
 
 /*
  * WS_MOP_GET_PRUNE_LEVEL
@@ -433,15 +358,20 @@ typedef struct mop_iterator
  *
  */
 
-#define WS_MOP_GET_PRUNE_LEVEL(mop)                                        \
-  ((mop)->composition_fetch & ~WS_MOP_COMPOSITION_FETCH_BIT)
-#define WS_MOP_SET_PRUNE_LEVEL(mop, value)                                 \
-  do {                                                                     \
-    if (value <= 0)                                                        \
-      (mop)->composition_fetch &= WS_MOP_COMPOSITION_FETCH_BIT; /* zero */ \
-    else                                                                   \
-      (mop)->composition_fetch |= (value & ~WS_MOP_COMPOSITION_FETCH_BIT); \
-  } while (0)
+#define WS_MOP_GET_PRUNE_LEVEL(mop) ((mop)->composition_fetch & ~WS_MOP_COMPOSITION_FETCH_BIT)
+#define WS_MOP_SET_PRUNE_LEVEL(mop, value) \
+  do \
+    { \
+      if (value <= 0) \
+        { \
+          (mop)->composition_fetch &= WS_MOP_COMPOSITION_FETCH_BIT; /* zero */ \
+        } \
+      else \
+        { \
+          (mop)->composition_fetch |= (value & ~WS_MOP_COMPOSITION_FETCH_BIT); \
+        } \
+    } \
+  while (0)
 
 /* free_and_init routine */
 #define ws_free_string_and_init(str) \
@@ -474,8 +404,8 @@ typedef struct mop_iterator
  */
 
 
-typedef enum ws_map_status_ WS_MAP_STATUS;
-enum ws_map_status_
+typedef enum ws_map_status WS_MAP_STATUS;
+enum ws_map_status
 {
   WS_MAP_CONTINUE = 0,
   WS_MAP_FAIL = 1,
@@ -487,8 +417,8 @@ enum ws_map_status_
  * WS_FIND_MOP constants
  *    These are returned as status codes by the ws_find function.
  */
-typedef enum ws_find_mop_status_ WS_FIND_MOP_STATUS;
-enum ws_find_mop_status_
+typedef enum ws_find_mop_status WS_FIND_MOP_STATUS;
+enum ws_find_mop_status
 {
   WS_FIND_MOP_DELETED = 0,
   WS_FIND_MOP_NOTDELETED = 1
@@ -509,7 +439,6 @@ struct ws_mop_table_entry
  */
 extern WS_MOP_TABLE_ENTRY *ws_Mop_table;
 extern unsigned int ws_Mop_table_size;
-extern MOP ws_Reference_mops;
 extern DB_OBJLIST *ws_Resident_classes;
 extern MOP ws_Commit_mops;
 extern WS_STATISTICS ws_Stats;
@@ -540,15 +469,6 @@ extern void ws_update_oid (MOP mop, OID * newoid);
 extern int ws_update_oid_and_class (MOP mop, OID * new_oid, OID * new_class_oid);
 extern DB_VALUE *ws_keys (MOP vid, unsigned int *flags);
 
-/* Reference mops */
-
-/* so we don't have to include or.h in wspace.c, might have to anyway */
-extern MOP ws_find_reference_mop (MOP owner, int attid, WS_REFERENCE * refobj, WS_REFCOLLECTOR collector);
-extern void ws_set_reference_mop_owner (MOP refmop, MOP owner, int attid);
-
-/* Set mops */
-extern MOP ws_make_set_mop (void *setptr);
-
 /* Temp MOPs */
 extern MOP ws_make_temp_mop (void);
 extern void ws_free_temp_mop (MOP op);
@@ -575,23 +495,14 @@ extern void ws_disconnect_deleted_instances (MOP class_mop);
 
 /* object cache */
 extern void ws_cache (MOBJ obj, MOP mop, MOP class_mop);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void ws_cache_dirty (MOBJ obj, MOP mop, MOP class_mop);
-#endif
 extern MOP ws_cache_with_oid (MOBJ obj, OID * oid, MOP class_mop);
 extern void ws_decache (MOP mop);
 extern void ws_decache_all_instances (MOP classmop);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void ws_vid_clear (void);
-#endif
 
 /* Class name cache */
 extern MOP ws_find_class (const char *name);
 extern void ws_add_classname (MOBJ classobj, MOP classmop, const char *cl_name);
 extern void ws_drop_classname (MOBJ classobj);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void ws_reset_classname_cache (void);
-#endif
 
 /* MOP accessor functions */
 extern OID *ws_identifier (MOP mop);
@@ -634,22 +545,9 @@ extern void ws_dump (FILE * fpp);
 extern void ws_dump_mops (void);
 #endif
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern MOP ws_makemop (int volid, int pageid, int slotid);
-extern int ws_count_mops (void);
-#endif
-
 /* String utilities */
 extern char *ws_copy_string (const char *str);
 extern void ws_free_string (const char *str);
-
-/* Property lists */
-
-extern int ws_get_prop (MOP op, int key, DB_BIGINT * value);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int ws_rem_prop (MOP op, int key);
-#endif
-extern int ws_put_prop (MOP op, int key, DB_BIGINT value);
 
 /*
  * DB_LIST functions
@@ -674,17 +572,17 @@ extern DB_LIST *ws_list_copy (DB_LIST * list, LCOPIER copier, LFREEER freeer);
 extern DB_LIST *ws_list_nconc (DB_LIST * list1, DB_LIST * list2);
 
 #define WS_LIST_LENGTH(lst) \
-  ws_list_length((DB_LIST *)(lst))
+  ws_list_length ((DB_LIST *) (lst))
 #define WS_LIST_FREE(lst, func) \
-  ws_list_free((DB_LIST *)(lst), (LFREEER) func)
+  ws_list_free ((DB_LIST *) (lst), (LFREEER) func)
 #define WS_LIST_APPEND(lst, element) \
-  ws_list_append((DB_LIST **)(lst), (DB_LIST *)element)
+  ws_list_append ((DB_LIST **) (lst), (DB_LIST *) element)
 #define WS_LIST_COPY(lst, copier) \
-  ws_list_copy((DB_LIST *)(lst), copier, NULL)
+  ws_list_copy ((DB_LIST *) (lst), copier, NULL)
 #define WS_LIST_REMOVE(lst, element) \
-  ws_list_remove((DB_LIST **)(lst), (DB_LIST *)element)
+  ws_list_remove ((DB_LIST **) (lst), (DB_LIST *) element)
 #define WS_LIST_NCONC(lst1, lst2) \
-  ws_list_nconc((DB_LIST *)(lst1), (DB_LIST *)lst2)
+  ws_list_nconc ((DB_LIST *) (lst1), (DB_LIST *) lst2)
 
 /*
  * DB_NAMELIST functions
@@ -710,7 +608,7 @@ extern DB_NAMELIST *nlist_filter (DB_NAMELIST ** root, const char *name, NLSEARC
 extern DB_NAMELIST *nlist_copy (DB_NAMELIST * list);
 extern void nlist_free (DB_NAMELIST * list);
 
-#define NLIST_FIND(lst, name)   nlist_find((DB_NAMELIST *)(lst), name, NULL)
+#define NLIST_FIND(lst, name) nlist_find ((DB_NAMELIST *) (lst), name, NULL)
 
 /*
  * DB_OBJLIST functions

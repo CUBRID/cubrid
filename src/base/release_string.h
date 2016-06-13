@@ -57,6 +57,9 @@ extern const char *rel_release_string (void);
 extern const char *rel_major_release_string (void);
 extern const char *rel_build_number (void);
 extern const char *rel_build_os (void);
+#if defined(VERSION_STRING)
+extern const char *rel_version_string (void);
+#endif /* VERSION_STRING */
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern const char *rel_copyright_header (void);
 extern const char *rel_copyright_body (void);

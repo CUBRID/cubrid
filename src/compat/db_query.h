@@ -211,7 +211,6 @@ extern int db_query_stmt_id (DB_QUERY_RESULT * result);
 #endif
 
 extern int db_query_end (DB_QUERY_RESULT * result);
-extern int db_query_sync_end (DB_QUERY_RESULT * result);
 extern int db_query_end_internal (DB_QUERY_RESULT * result, bool notify_server);
 
 extern void db_clear_client_query_result (int notify_server, bool end_holdable);

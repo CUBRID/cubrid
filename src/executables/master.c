@@ -171,7 +171,7 @@ css_master_timeout (void)
   struct timeval timeout;
 
   /* check for timeout */
-  if (css_Master_timeout && time ((time_t *) & timeout.tv_sec) != (time_t) - 1
+  if (css_Master_timeout && time ((time_t *) (&timeout.tv_sec)) != (time_t) (-1)
       && css_Master_timeout->tv_sec < timeout.tv_sec)
     {
       return (0);

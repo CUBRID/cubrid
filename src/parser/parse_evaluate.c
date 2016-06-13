@@ -1264,9 +1264,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	   * 'pt_evaluate_db_value_expr()' */
 	  if (!pt_is_between_range_op (op) && op != PT_ASSIGN && op != PT_LIKE_ESCAPE && op != PT_CURRENT_VALUE)
 	    {
-	      if (!pt_evaluate_db_value_expr
-		  (parser, tree, op, &opd1, opd2_set_null ? NULL : &opd2, &opd3, db_values, domain, arg1, arg2, arg3,
-		   qualifier))
+	      if (!pt_evaluate_db_value_expr (parser, tree, op, &opd1, opd2_set_null ? NULL : &opd2, &opd3, db_values,
+					      domain, arg1, arg2, arg3, qualifier))
 		{
 		  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 			      pt_short_print (parser, tree));

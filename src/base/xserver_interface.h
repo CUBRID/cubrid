@@ -228,12 +228,6 @@ extern int xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p);
 extern void xqmgr_dump_query_plans (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void xqmgr_dump_query_cache (THREAD_ENTRY * thread_p, FILE * outfp);
 
-extern int xqmgr_get_query_info (THREAD_ENTRY * thread_p, QUERY_ID query_id);
-#if defined (SERVER_MODE)
-extern int xqmgr_sync_query (THREAD_ENTRY * thread_p, QUERY_ID query_id, int wait, QFILE_LIST_ID * list_id,
-			     int call_from_server);
-#endif
-
 /* server execution statistics */
 extern void xmnt_server_copy_stats (THREAD_ENTRY * thread_p, MNT_SERVER_EXEC_STATS * to_stats);
 extern void xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p, MNT_SERVER_EXEC_STATS * to_stats);

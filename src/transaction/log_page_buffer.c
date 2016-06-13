@@ -419,8 +419,7 @@ static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, 
 
 static void logpb_set_nxio_lsa (LOG_LSA * lsa);
 
-static int logpb_copy_log_header (THREAD_ENTRY * thread_p, struct log_header *to_hdr,
-				  const struct log_header *from_hdr);
+static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -1753,7 +1752,7 @@ logpb_initialize_backup_info ()
  * NOTE:Initialize a log header structure.
  */
 int
-logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr, const char *prefix_logname,
+logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const char *prefix_logname,
 			 DKNPAGES npages, INT64 * db_creation)
 {
   int i;
@@ -1859,13 +1858,14 @@ logpb_create_header_page (THREAD_ENTRY * thread_p)
  * NOTE: Copy a log header.
  */
 static int
-logpb_copy_log_header (THREAD_ENTRY * thread_p, struct log_header *to_hdr, const struct log_header *from_hdr)
+logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr)
 {
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (to_hdr != NULL);
   assert (from_hdr != NULL);
 
   to_hdr->mvcc_next_id = from_hdr->mvcc_next_id;
+  VPID_COPY (&to_hdr->vacuum_data_first_vpid, &from_hdr->vacuum_data_first_vpid);
 
   /* Add other attributes that need to be copied */
 
@@ -1882,7 +1882,7 @@ logpb_copy_log_header (THREAD_ENTRY * thread_p, struct log_header *to_hdr, const
  * NOTE:Read the log header into the area pointed by hdr.
  */
 void
-logpb_fetch_header (THREAD_ENTRY * thread_p, struct log_header *hdr)
+logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr)
 {
   assert (hdr != NULL);
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -1905,9 +1905,9 @@ logpb_fetch_header (THREAD_ENTRY * thread_p, struct log_header *hdr)
  * NOTE:Read the log header into the area pointed by hdr
  */
 void
-logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, struct log_header *hdr, LOG_PAGE * log_pgptr)
+logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
-  struct log_header *log_hdr;	/* The log header */
+  LOG_HEADER *log_hdr;		/* The log header */
 
   assert (hdr != NULL);
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -1921,7 +1921,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, struct log_header *hdr,
       return;
     }
 
-  log_hdr = (struct log_header *) (log_pgptr->area);
+  log_hdr = (LOG_HEADER *) (log_pgptr->area);
   *hdr = *log_hdr;
 
   assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
@@ -1938,7 +1938,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, struct log_header *hdr,
 void
 logpb_flush_header (THREAD_ENTRY * thread_p)
 {
-  struct log_header *log_hdr;
+  LOG_HEADER *log_hdr;
 #if defined(CUBRID_DEBUG)
   struct timeval start_time = { 0, 0 };
   struct timeval end_time = { 0, 0 };
@@ -1963,7 +1963,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 	}
     }
 
-  log_hdr = (struct log_header *) (log_Gl.loghdr_pgptr->area);
+  log_hdr = (LOG_HEADER *) (log_Gl.loghdr_pgptr->area);
   *log_hdr = log_Gl.hdr;
 
   log_Gl.loghdr_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
@@ -2401,7 +2401,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
 			      const char *prefix_logname, PGLENGTH * io_page_size, PGLENGTH * log_page_size,
 			      INT64 * creation_time, float *db_compatibility, int *db_charset)
 {
-  struct log_header hdr;	/* Log header */
+  LOG_HEADER hdr;		/* Log header */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   int error_code = NO_ERROR;
@@ -3150,18 +3150,19 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 					   LOG_DATA_ADDR * addr, int num_ucrumbs, const LOG_CRUMB * ucrumbs,
 					   int num_rcrumbs, const LOG_CRUMB * rcrumbs)
 {
-  struct log_redo *redo_p = NULL;
-  struct log_undo *undo_p = NULL;
-  struct log_undoredo *undoredo_p = NULL;
-  struct log_mvcc_redo *mvcc_redo_p = NULL;
-  struct log_mvcc_undo *mvcc_undo_p = NULL;
-  struct log_mvcc_undoredo *mvcc_undoredo_p = NULL;
-  struct log_data *log_data_p = NULL;
-  struct log_vacuum_info *vacuum_info_p = NULL;
+  LOG_REC_REDO *redo_p = NULL;
+  LOG_REC_UNDO *undo_p = NULL;
+  LOG_REC_UNDOREDO *undoredo_p = NULL;
+  LOG_REC_MVCC_REDO *mvcc_redo_p = NULL;
+  LOG_REC_MVCC_UNDO *mvcc_undo_p = NULL;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo_p = NULL;
+  LOG_DATA *log_data_p = NULL;
+  LOG_VACUUM_INFO *vacuum_info_p = NULL;
   VPID *vpid = NULL;
   int error_code = NO_ERROR;
   int i;
   int ulength, rlength, *data_header_ulength_p, *data_header_rlength_p;
+  int total_length;
   MVCCID *mvccid_p = NULL;
   LOG_TDES *tdes = NULL;
   char *data_ptr = NULL, *tmp_ptr = NULL;
@@ -3185,12 +3186,14 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
     {
       ulength += ucrumbs[i].length;
     }
+  assert (0 <= ulength);
 
   rlength = 0;
   for (i = 0; i < num_rcrumbs; i++)
     {
       rlength += rcrumbs[i].length;
     }
+  assert (0 <= rlength);
 
   /* Check if we have undo or redo and if we can zip */
   if (LOG_IS_UNDOREDO_RECORD_TYPE (node->log_header.type))
@@ -3212,43 +3215,59 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       can_zip = log_zip_support && zip_undo;
     }
 
-  if (can_zip)
+  if (can_zip == true)
     {
       /* Try to zip undo and/or redo data */
-      if (logpb_realloc_data_ptr (thread_p, ulength + rlength))
+      total_length = 0;
+      if (ulength > 0)
+	{
+	  total_length += ulength;
+	}
+      if (rlength > 0)
+	{
+	  total_length += rlength;
+	}
+
+      if (logpb_realloc_data_ptr (thread_p, total_length))
 	{
 	  data_ptr = logpb_get_data_ptr (thread_p);
 	}
 
-      if (data_ptr)
+      if (data_ptr != NULL)
 	{
+	  tmp_ptr = data_ptr;
+
 	  if (ulength > 0)
 	    {
-	      assert (has_undo);
+	      assert (has_undo == true);
 
 	      undo_data = data_ptr;
-	      tmp_ptr = undo_data;
 
 	      for (i = 0; i < num_ucrumbs; i++)
 		{
 		  memcpy (tmp_ptr, (char *) ucrumbs[i].data, ucrumbs[i].length);
 		  tmp_ptr += ucrumbs[i].length;
 		}
+
+	      assert (CAST_BUFLEN (tmp_ptr - undo_data) == ulength);
 	    }
 
 	  if (rlength > 0)
 	    {
-	      assert (has_redo);
+	      assert (has_redo == true);
 
-	      redo_data = data_ptr + ulength;
-	      tmp_ptr = redo_data;
+	      redo_data = tmp_ptr;
 
 	      for (i = 0; i < num_rcrumbs; i++)
 		{
 		  (void) memcpy (tmp_ptr, (char *) rcrumbs[i].data, rcrumbs[i].length);
 		  tmp_ptr += rcrumbs[i].length;
 		}
+
+	      assert (CAST_BUFLEN (tmp_ptr - redo_data) == rlength);
 	    }
+
+	  assert (CAST_BUFLEN (tmp_ptr - data_ptr) == total_length);
 
 	  if (ulength > 0 && rlength > 0)
 	    {
@@ -3294,24 +3313,24 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   switch (node->log_header.type)
     {
     case LOG_MVCC_UNDO_DATA:
-      node->data_header_length = sizeof (struct log_mvcc_undo);
+      node->data_header_length = sizeof (LOG_REC_MVCC_UNDO);
       break;
     case LOG_UNDO_DATA:
-      node->data_header_length = sizeof (struct log_undo);
+      node->data_header_length = sizeof (LOG_REC_UNDO);
       break;
     case LOG_MVCC_REDO_DATA:
-      node->data_header_length = sizeof (struct log_mvcc_redo);
+      node->data_header_length = sizeof (LOG_REC_MVCC_REDO);
       break;
     case LOG_REDO_DATA:
-      node->data_header_length = sizeof (struct log_redo);
+      node->data_header_length = sizeof (LOG_REC_REDO);
       break;
     case LOG_MVCC_UNDOREDO_DATA:
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
-      node->data_header_length = sizeof (struct log_mvcc_undoredo);
+      node->data_header_length = sizeof (LOG_REC_MVCC_UNDOREDO);
       break;
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
-      node->data_header_length = sizeof (struct log_undoredo);
+      node->data_header_length = sizeof (LOG_REC_UNDOREDO);
       break;
     default:
       assert (0);
@@ -3322,7 +3341,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
   node->data_header = (char *) malloc (node->data_header_length);
   if (node->data_header == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct log_undoredo));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_REC_UNDOREDO));
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -3332,7 +3351,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
     {
     case LOG_MVCC_UNDO_DATA:
       /* Use undo data from MVCC undo structure */
-      mvcc_undo_p = (struct log_mvcc_undo *) node->data_header;
+      mvcc_undo_p = (LOG_REC_MVCC_UNDO *) node->data_header;
 
       /* Must also fill vacuum info */
       vacuum_info_p = &mvcc_undo_p->vacuum_info;
@@ -3342,7 +3361,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 
       /* Fall through */
     case LOG_UNDO_DATA:
-      undo_p = (node->log_header.type == LOG_UNDO_DATA ? (struct log_undo *) node->data_header : &mvcc_undo_p->undo);
+      undo_p = (node->log_header.type == LOG_UNDO_DATA ? (LOG_REC_UNDO *) node->data_header : &mvcc_undo_p->undo);
 
       data_header_ulength_p = &undo_p->length;
       log_data_p = &undo_p->data;
@@ -3350,14 +3369,14 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
 
     case LOG_MVCC_REDO_DATA:
       /* Use redo data from MVCC redo structure */
-      mvcc_redo_p = (struct log_mvcc_redo *) node->data_header;
+      mvcc_redo_p = (LOG_REC_MVCC_REDO *) node->data_header;
 
       /* Must also fill MVCCID field */
       mvccid_p = &mvcc_redo_p->mvccid;
 
       /* Fall through */
     case LOG_REDO_DATA:
-      redo_p = (node->log_header.type == LOG_REDO_DATA ? (struct log_redo *) node->data_header : &mvcc_redo_p->redo);
+      redo_p = (node->log_header.type == LOG_REDO_DATA ? (LOG_REC_REDO *) node->data_header : &mvcc_redo_p->redo);
 
       data_header_rlength_p = &redo_p->length;
       log_data_p = &redo_p->data;
@@ -3366,7 +3385,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
     case LOG_MVCC_UNDOREDO_DATA:
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
       /* Use undoredo data from MVCC undoredo structure */
-      mvcc_undoredo_p = (struct log_mvcc_undoredo *) node->data_header;
+      mvcc_undoredo_p = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
 
       /* Must also fill vacuum info */
       vacuum_info_p = &mvcc_undoredo_p->vacuum_info;
@@ -3378,7 +3397,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
       undoredo_p = ((node->log_header.type == LOG_UNDOREDO_DATA || node->log_header.type == LOG_DIFF_UNDOREDO_DATA)
-		    ? (struct log_undoredo *) node->data_header : &mvcc_undoredo_p->undoredo);
+		    ? (LOG_REC_UNDOREDO *) node->data_header : &mvcc_undoredo_p->undoredo);
 
       data_header_ulength_p = &undoredo_p->ulength;
       data_header_rlength_p = &undoredo_p->rlength;
@@ -3536,18 +3555,18 @@ static int
 prior_lsa_gen_postpone_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
 			       LOG_DATA_ADDR * addr, int length, char *data)
 {
-  struct log_redo *redo;
+  LOG_REC_REDO *redo;
   VPID *vpid;
   int error_code = NO_ERROR;
 
-  node->data_header_length = sizeof (struct log_redo);
+  node->data_header_length = sizeof (LOG_REC_REDO);
   node->data_header = (char *) malloc (node->data_header_length);
   if (node->data_header == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  redo = (struct log_redo *) node->data_header;
+  redo = (LOG_REC_REDO *) node->data_header;
 
   redo->data.rcvindex = rcvindex;
   if (addr->pgptr != NULL)
@@ -3583,17 +3602,17 @@ static int
 prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex, int length,
 				 char *data)
 {
-  struct log_dbout_redo *dbout_redo;
+  LOG_REC_DBOUT_REDO *dbout_redo;
   int error_code = NO_ERROR;
 
-  node->data_header_length = sizeof (struct log_dbout_redo);
+  node->data_header_length = sizeof (LOG_REC_DBOUT_REDO);
   node->data_header = (char *) malloc (node->data_header_length);
   if (node->data_header == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  dbout_redo = (struct log_dbout_redo *) node->data_header;
+  dbout_redo = (LOG_REC_DBOUT_REDO *) node->data_header;
 
   dbout_redo->rcvindex = rcvindex;
   dbout_redo->length = length;
@@ -3620,7 +3639,7 @@ prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node
 {
   int error_code = NO_ERROR;
 
-  node->data_header_length = sizeof (struct log_2pc_prepcommit);
+  node->data_header_length = sizeof (LOG_REC_2PC_PREPCOMMIT);
   node->data_header = (char *) malloc (node->data_header_length);
   if (node->data_header == NULL)
     {
@@ -3657,7 +3676,7 @@ prior_lsa_gen_end_chkpt_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 {
   int error_code = NO_ERROR;
 
-  node->data_header_length = sizeof (struct log_chkpt);
+  node->data_header_length = sizeof (LOG_REC_CHKPT);
   node->data_header = (char *) malloc (node->data_header_length);
   if (node->data_header == NULL)
     {
@@ -3707,53 +3726,53 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       break;
 
     case LOG_RUN_POSTPONE:
-      node->data_header_length = sizeof (struct log_run_postpone);
+      node->data_header_length = sizeof (LOG_REC_RUN_POSTPONE);
       break;
 
     case LOG_COMPENSATE:
-      node->data_header_length = sizeof (struct log_compensate);
+      node->data_header_length = sizeof (LOG_REC_COMPENSATE);
       break;
 
     case LOG_DUMMY_HA_SERVER_STATE:
       assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (struct log_ha_server_state);
+      node->data_header_length = sizeof (LOG_REC_HA_SERVER_STATE);
       break;
 
     case LOG_SAVEPOINT:
-      node->data_header_length = sizeof (struct log_savept);
+      node->data_header_length = sizeof (LOG_REC_SAVEPT);
       break;
 
     case LOG_COMMIT_WITH_POSTPONE:
-      node->data_header_length = sizeof (struct log_start_postpone);
+      node->data_header_length = sizeof (LOG_REC_START_POSTPONE);
       break;
 
     case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-      node->data_header_length = sizeof (struct log_topope_start_postpone);
+      node->data_header_length = sizeof (LOG_REC_TOPOPE_START_POSTPONE);
       break;
 
     case LOG_COMMIT:
     case LOG_ABORT:
       assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (struct log_donetime);
+      node->data_header_length = sizeof (LOG_REC_DONETIME);
       break;
 
     case LOG_COMMIT_TOPOPE:
     case LOG_ABORT_TOPOPE:
       assert (length == 0 && data == NULL);
-      node->data_header_length = sizeof (struct log_topop_result);
+      node->data_header_length = sizeof (LOG_REC_TOPOP_RESULT);
       break;
 
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
-      node->data_header_length = sizeof (struct log_replication);
+      node->data_header_length = sizeof (LOG_REC_REPLICATION);
       break;
 
     case LOG_2PC_START:
-      node->data_header_length = sizeof (struct log_2pc_start);
+      node->data_header_length = sizeof (LOG_REC_2PC_START);
       break;
 
     case LOG_END_CHKPT:
-      node->data_header_length = sizeof (struct log_chkpt);
+      node->data_header_length = sizeof (LOG_REC_CHKPT);
       break;
 
     default:
@@ -4007,9 +4026,9 @@ static LOG_LSA
 prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES * tdes, int with_lock)
 {
   LOG_LSA start_lsa;
-  struct log_mvcc_undo *mvcc_undo = NULL;
-  struct log_mvcc_undoredo *mvcc_undoredo = NULL;
-  struct log_vacuum_info *vacuum_info = NULL;
+  LOG_REC_MVCC_UNDO *mvcc_undo = NULL;
+  LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
+  LOG_VACUUM_INFO *vacuum_info = NULL;
   int rv;
   MVCCID mvccid = MVCCID_NULL;
 
@@ -4032,7 +4051,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
       if (node->log_header.type == LOG_MVCC_UNDO_DATA)
 	{
 	  /* Read from mvcc_undo structure */
-	  mvcc_undo = (struct log_mvcc_undo *) node->data_header;
+	  mvcc_undo = (LOG_REC_MVCC_UNDO *) node->data_header;
 	  vacuum_info = &mvcc_undo->vacuum_info;
 	  mvccid = mvcc_undo->mvccid;
 	}
@@ -4042,7 +4061,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  assert (node->log_header.type == LOG_MVCC_UNDOREDO_DATA
 		  || node->log_header.type == LOG_MVCC_DIFF_UNDOREDO_DATA);
 
-	  mvcc_undoredo = (struct log_mvcc_undoredo *) node->data_header;
+	  mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) node->data_header;
 	  vacuum_info = &mvcc_undoredo->vacuum_info;
 	  mvccid = mvcc_undoredo->mvccid;
 	}
@@ -4066,6 +4085,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 	  assert (log_Gl.hdr.last_block_oldest_mvccid <= vacuum_get_global_oldest_active_mvccid ());
 	  log_Gl.hdr.last_block_oldest_mvccid = vacuum_get_global_oldest_active_mvccid ();
 	  log_Gl.hdr.last_block_newest_mvccid = mvccid;
+	  assert (!MVCC_ID_PRECEDES (mvccid, log_Gl.hdr.last_block_oldest_mvccid));
 	}
       else
 	{
@@ -6278,11 +6298,11 @@ logpb_is_archive_available (int arv_num)
  */
 LOG_PAGE *
 logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr, int *ret_arv_num,
-			  struct log_arv_header * ret_arv_hdr, bool is_fatal)
+			  LOG_ARV_HEADER * ret_arv_hdr, bool is_fatal)
 {
   char hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_hdr_pgbuf;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
-  struct log_arv_header *arv_hdr;
+  LOG_ARV_HEADER *arv_hdr;
   LOG_PAGE *hdr_pgptr;
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;
   char arv_name[PATH_MAX];
@@ -6352,7 +6372,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 		  return NULL;
 		}
 	      error_code = NO_ERROR;
-	      arv_hdr = (struct log_arv_header *) hdr_pgptr->area;
+	      arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
 	      if (log_Gl.append.vdes != NULL_VOLDES)
 		{
 		  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
@@ -6662,7 +6682,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 
 		  return NULL;
 		}
-	      arv_hdr = (struct log_arv_header *) hdr_pgptr->area;
+	      arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
 	      if (log_Gl.append.vdes != NULL_VOLDES)
 		{
 		  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
@@ -6722,7 +6742,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 {
   char arv_name[PATH_MAX] = { '\0' };	/* Archive name */
   LOG_PAGE *malloc_arv_hdr_pgptr = NULL;	/* Archive header page PTR */
-  struct log_arv_header *arvhdr;	/* Archive header */
+  LOG_ARV_HEADER *arvhdr;	/* Archive header */
   BACKGROUND_ARCHIVING_INFO *bg_arv_info;
   char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
   char *aligned_log_pgbuf;
@@ -6774,7 +6794,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   malloc_arv_hdr_pgptr->hdr.offset = NULL_OFFSET;
 
   /* Construct the archive log header */
-  arvhdr = (struct log_arv_header *) malloc_arv_hdr_pgptr->area;
+  arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
   strncpy (arvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
   arvhdr->db_creation = log_Gl.hdr.db_creation;
   arvhdr->next_trid = log_Gl.hdr.next_trid;
@@ -6977,7 +6997,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 	    }
 	  else
 	    {
-	      struct log_arv_header min_arvhdr;
+	      LOG_ARV_HEADER min_arvhdr;
 	      if (logpb_fetch_from_archive (thread_p, min_fpageid, NULL, NULL, &min_arvhdr, false) != NULL)
 		{
 		  unneeded_arvnum = min_arvhdr.arv_num - 1;
@@ -7357,7 +7377,7 @@ logpb_get_archive_num_from_info_table (THREAD_ENTRY * thread_p, LOG_PAGEID page_
 static int
 logpb_get_remove_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID safe_pageid, int archive_num)
 {
-  struct log_arv_header *arvhdr;
+  LOG_ARV_HEADER *arvhdr;
   char arv_name[PATH_MAX];
   char arv_hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_arv_hdr_pgbuf;
   LOG_PAGE *arv_hdr_pgptr;
@@ -7392,7 +7412,7 @@ logpb_get_remove_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID safe_pageid, i
 	    }
 	  fileio_dismount (thread_p, vdes);
 
-	  arvhdr = (struct log_arv_header *) arv_hdr_pgptr->area;
+	  arvhdr = (LOG_ARV_HEADER *) arv_hdr_pgptr->area;
 	  if (safe_pageid > arvhdr->fpageid + arvhdr->npages)
 	    {
 	      break;
@@ -7849,12 +7869,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;		/* System transaction descriptor */
   LOG_TDES *act_tdes;		/* Transaction descriptor of an active transaction */
-  struct log_chkpt *chkpt, tmp_chkpt;	/* Checkpoint log records */
-  struct log_chkpt_trans *chkpt_trans;	/* Checkpoint tdes */
-  struct log_chkpt_trans *chkpt_one;	/* Checkpoint tdes for one tran */
-  struct log_chkpt_topops_commit_posp *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+  LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
+  LOG_INFO_CHKPT_TRANS *chkpt_trans;	/* Checkpoint tdes */
+  LOG_INFO_CHKPT_TRANS *chkpt_one;	/* Checkpoint tdes for one tran */
+  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
 							 * mode */
-  struct log_chkpt_topops_commit_posp *chkpt_topone;	/* One top system ope */
+  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topone;	/* One top system ope */
   LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
   LOG_LSA chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
   LOG_LSA newchkpt_lsa;		/* New address of the checkpoint record */
@@ -7989,7 +8009,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   tmp_chkpt.ntrans = log_Gl.trantable.num_assigned_indices;
   length_all_chkpt_trans = sizeof (*chkpt_trans) * tmp_chkpt.ntrans;
 
-  chkpt_trans = (struct log_chkpt_trans *) malloc (length_all_chkpt_trans);
+  chkpt_trans = (LOG_INFO_CHKPT_TRANS *) malloc (length_all_chkpt_trans);
   if (chkpt_trans == NULL)
     {
       TR_TABLE_CS_EXIT (thread_p);
@@ -8075,7 +8095,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       tmp_chkpt.ntops = log_Gl.trantable.num_assigned_indices;
       length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-      chkpt_topops = (struct log_chkpt_topops_commit_posp *) malloc (length_all_tops);
+      chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) malloc (length_all_tops);
       if (chkpt_topops == NULL)
 	{
 	  free_and_init (chkpt_trans);
@@ -8115,7 +8135,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 			      TR_TABLE_CS_EXIT (thread_p);
 			      goto error_cannot_chkpt;
 			    }
-			  chkpt_topops = (struct log_chkpt_topops_commit_posp *) ptr;
+			  chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) ptr;
 			}
 
 		      chkpt_topone = &chkpt_topops[ntops];
@@ -8154,7 +8174,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       return NULL_PAGEID;
     }
 
-  chkpt = (struct log_chkpt *) node->data_header;
+  chkpt = (LOG_REC_CHKPT *) node->data_header;
   *chkpt = tmp_chkpt;
 
   prior_lsa_next_record_with_lock (thread_p, node, tdes);
@@ -8380,9 +8400,9 @@ void
 logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data)
 {
   int ntrans, i;
-  struct log_chkpt_trans *chkpt_trans, *chkpt_one;	/* Checkpoint tdes */
+  LOG_INFO_CHKPT_TRANS *chkpt_trans, *chkpt_one;	/* Checkpoint tdes */
 
-  chkpt_trans = (struct log_chkpt_trans *) data;
+  chkpt_trans = (LOG_INFO_CHKPT_TRANS *) data;
   ntrans = length / sizeof (*chkpt_trans);
 
   /* Start dumping each checkpoint transaction descriptor */
@@ -8420,11 +8440,11 @@ void
 logpb_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
 {
   int ntops, i;
-  struct log_chkpt_topops_commit_posp *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
 							 * mode */
-  struct log_chkpt_topops_commit_posp *chkpt_topone;	/* One top system ope */
+  LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *chkpt_topone;	/* One top system ope */
 
-  chkpt_topops = (struct log_chkpt_topops_commit_posp *) data;
+  chkpt_topops = (LOG_INFO_CHKPT_TOPOPS_COMMIT_POSP *) data;
   ntops = length / sizeof (*chkpt_topops);
 
   /* Start dumping each checkpoint top system operation */
@@ -10159,7 +10179,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   int to_vdes;			/* A volume descriptor */
   char to_volname[PATH_MAX];	/* Name of "to" volume */
   LOG_PAGE *to_malloc_log_pgptr = NULL;	/* Log header page "to" log */
-  struct log_header *to_hdr;	/* Log header for "to" log */
+  LOG_HEADER *to_hdr;		/* Log header for "to" log */
   FILE *to_volinfo_fp = NULL;	/* Pointer to new volinfo file */
   char *alloc_extpath = NULL;	/* Copy path for specific volume */
   const char *ext_name;
@@ -10287,7 +10307,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   to_malloc_log_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
   to_malloc_log_pgptr->hdr.offset = NULL_OFFSET;
 
-  to_hdr = (struct log_header *) to_malloc_log_pgptr->area;
+  to_hdr = (LOG_HEADER *) to_malloc_log_pgptr->area;
   error_code = logpb_initialize_header (thread_p, to_hdr, to_prefix_logname, log_Gl.hdr.npages + 1, &db_creation);
   if (error_code != NO_ERROR)
     {
@@ -10958,8 +10978,8 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 {
   char *vlabel;			/* Name of volume */
   char vol_fullname[PATH_MAX];	/* Name of volume */
-  struct log_header disk_hdr;	/* Log header area */
-  struct log_header *loghdr;	/* Log header pointer */
+  LOG_HEADER disk_hdr;		/* Log header area */
+  LOG_HEADER *loghdr;		/* Log header pointer */
   VOLID volid;
   FILE *db_volinfo_fp = NULL;
   int read_int_volid;
@@ -12205,7 +12225,7 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
   LOG_PAGEID page_id = NULL_PAGEID;
   int vdes = NULL_VOLDES;
   int arv_num;
-  struct log_arv_header *arv_hdr;
+  LOG_ARV_HEADER *arv_hdr;
   char arv_hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_arv_hdr_pgbuf;
   LOG_PAGE *arv_hdr_pgptr;
   char arv_name[PATH_MAX];
@@ -12246,7 +12266,7 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
 	  return NULL_PAGEID;
 	}
 
-      arv_hdr = (struct log_arv_header *) arv_hdr_pgptr->area;
+      arv_hdr = (LOG_ARV_HEADER *) arv_hdr_pgptr->area;
       if (log_Gl.append.vdes != NULL_VOLDES)
 	{
 	  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
@@ -12319,8 +12339,8 @@ logpb_remove_all_in_log_path (THREAD_ENTRY * thread_p, const char *db_fullname, 
 {
   int i, error_code = NO_ERROR;
   char vol_fullname[PATH_MAX];
-  struct log_header disk_hdr;
-  struct log_header *loghdr = NULL;
+  LOG_HEADER disk_hdr;
+  LOG_HEADER *loghdr = NULL;
 
   er_clear ();
   error_code = logpb_initialize_log_names (thread_p, db_fullname, logpath, prefix_logname);

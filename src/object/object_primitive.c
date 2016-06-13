@@ -5703,7 +5703,7 @@ mr_data_writemem_object (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 #else /* SERVER_MODE */
   /* should never get here but in case we do, dump a NULL OID into the buffer. */
   printf ("mr_writemem_object: called on the server !\n");
-  or_put_oid (buf, (OID *) & oid_Null_oid);
+  or_put_oid (buf, (OID *) (&oid_Null_oid));
 #endif /* !SERVER_MODE */
 }
 

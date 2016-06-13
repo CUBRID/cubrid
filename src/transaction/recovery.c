@@ -418,12 +418,12 @@ struct rvfun RV_fun[] = {
    heap_rv_undoredo_update_and_update_chain,
    log_rv_dump_hexa,
    log_rv_dump_hexa},
-  {RVHF_MVCC_REMOVE_PARTITION_LINK,	    /* Obsolete */
+  {RVHF_MVCC_REMOVE_PARTITION_LINK,	/* Obsolete */
    "RVHF_MVCC_REMOVE_PARTITION_LINK",
    NULL,
    NULL,
    NULL, NULL},
-  {RVHF_PARTITION_LINK_FLAG,	      /* Obsolete */
+  {RVHF_PARTITION_LINK_FLAG,	/* Obsolete */
    "RVHF_PARTITION_LINK_FLAG",
    NULL,
    NULL,
@@ -478,7 +478,7 @@ struct rvfun RV_fun[] = {
    overflow_rv_link,
    overflow_rv_link_dump,
    overflow_rv_link_dump},
-  {RVOVF_NEWPAGE_DELETE_RELOCATED,	      /* Obsolete. */
+  {RVOVF_NEWPAGE_DELETE_RELOCATED,	/* Obsolete. */
    "RVOVF_NEWPAGE_DELETE_RELOCATED",
    NULL,
    NULL,
@@ -677,7 +677,7 @@ struct rvfun RV_fun[] = {
    btree_rv_redo_delete_index,
    NULL,
    NULL},
-   {RVBT_MVCC_UPDATE_SAME_KEY,
+  {RVBT_MVCC_UPDATE_SAME_KEY,
    "RVBT_MVCC_UPDATE_SAME_KEY",
    NULL,
    NULL,
@@ -875,11 +875,11 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL},
   {RVVAC_DATA_SET_LINK,
-   "RVVAC_DATA_INIT_NEW_PAGE",
-   vacuum_rv_undo_data_set_link,
-   vacuum_rv_redo_data_set_link,
-   NULL,
-   vacuum_rv_redo_data_set_link_dump},
+   "RVVAC_DATA_SET_LINK",
+   vacuum_rv_undoredo_data_set_link,
+   vacuum_rv_undoredo_data_set_link,
+   vacuum_rv_undoredo_data_set_link_dump,
+   vacuum_rv_undoredo_data_set_link_dump},
   {RVVAC_DATA_FINISHED_BLOCKS,
    "RVVAC_DATA_FINISHED_BLOCKS",
    NULL,

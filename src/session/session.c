@@ -2370,10 +2370,8 @@ sentry_to_qentry (const SESSION_QUERY_ENTRY * sentry_p, QMGR_QUERY_ENTRY * qentr
   qentry_p->list_ent = NULL;
   qentry_p->num_tmp = sentry_p->num_tmp;
   qentry_p->total_count = sentry_p->total_count;
-  qentry_p->query_mode = QUERY_COMPLETED;
+  qentry_p->query_status = QUERY_COMPLETED;
   qentry_p->query_flag = sentry_p->query_flag;
-  qentry_p->save_vpid.pageid = NULL_PAGEID;
-  qentry_p->save_vpid.volid = NULL_VOLID;
   XASL_ID_SET_NULL (&qentry_p->xasl_id);
   qentry_p->xasl_ent = NULL;
   qentry_p->er_msg = NULL;

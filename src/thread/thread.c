@@ -2678,8 +2678,6 @@ thread_vacuum_master_thread (void *arg_p)
 
       if (tsd_ptr->shutdown)
 	{
-	  /* Finalize vacuum. */
-	  vacuum_finalize (tsd_ptr);
 	  pthread_mutex_unlock (&thread_Vacuum_master_thread.lock);
 	  break;
 	}
@@ -2689,6 +2687,9 @@ thread_vacuum_master_thread (void *arg_p)
 
       vacuum_master_start (tsd_ptr);
     }
+
+  /* Finalize vacuum. */
+  vacuum_finalize (tsd_ptr);
 
   rv = pthread_mutex_lock (&thread_Vacuum_master_thread.lock);
   thread_Vacuum_master_thread.is_available = false;
@@ -5610,14 +5611,6 @@ thread_resume_status_to_string (int resume_status)
       return "CSS_QUEUE_SUSPENDED";
     case THREAD_CSS_QUEUE_RESUMED:
       return "CSS_QUEUE_RESUMED";
-    case THREAD_QMGR_ACTIVE_QRY_SUSPENDED:
-      return "QMGR_ACTIVE_QRY_SUSPENDED";
-    case THREAD_QMGR_ACTIVE_QRY_RESUMED:
-      return "QMGR_ACTIVE_QRY_RESUMED";
-    case THREAD_QMGR_MEMBUF_PAGE_SUSPENDED:
-      return "QMGR_MEMBUF_PAGE_SUSPENDED";
-    case THREAD_QMGR_MEMBUF_PAGE_RESUMED:
-      return "QMGR_MEMBUF_PAGE_RESUMED";
     case THREAD_HEAP_CLSREPR_SUSPENDED:
       return "HEAP_CLSREPR_SUSPENDED";
     case THREAD_HEAP_CLSREPR_RESUMED:
