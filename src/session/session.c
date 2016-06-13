@@ -1720,8 +1720,7 @@ error:
 }
 
 /*
- * session_get_prepared_statement () - get available information about a
- *				       prepared statement
+ * session_get_prepared_statement () - get available information about a prepared statement
  * return:   NO_ERROR or error code
  * thread_p (in)	:
  * name (in)		: the name of the prepared statement
@@ -1729,9 +1728,8 @@ error:
  * info_len (out)	: serialized buffer length
  * xasl_id (out)	: XASL ID for this statement
  *
- * Note: This function allocates memory for query, columns and parameters
- * using db_private_alloc. This memory must be freed by the caller by using
- * db_private_free.
+ * Note: This function allocates memory for query, columns and parameters using db_private_alloc. This memory must be
+ *	 freed by the caller by using db_private_free.
  */
 int
 session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
@@ -1800,7 +1798,7 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
     }
 
   *xasl_entry = NULL;
-  err = xcache_find_sha1 (thread_p, &stmt_p->sha1, xasl_entry);
+  err = xcache_find_sha1 (thread_p, &stmt_p->sha1, xasl_entry, NULL);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();

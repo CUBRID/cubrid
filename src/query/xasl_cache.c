@@ -691,9 +691,11 @@ xcache_hash_key (void *key, int hash_table_size)
  * thread_p (in)      : Thread entry.
  * sha1 (in)	      : SHA-1 hash.
  * xcache_entry (out) : XASL cache entry if found.
+ * rt_check (out)     : True if recompile is needed (due to recompile threshold).
  */
 int
-xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENTRY ** xcache_entry)
+xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENTRY ** xcache_entry,
+		  bool * rt_check)
 {
   XASL_ID lookup_key;
   int error_code = NO_ERROR;
@@ -790,6 +792,8 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
       XCACHE_STAT_INC (miss);
       mnt_pc_miss (thread_p);
       *xcache_entry = NULL;
+
+      return NO_ERROR;
     }
   else
     {
@@ -797,6 +801,21 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
       mnt_pc_hit (thread_p);
     }
 
+  assert (*xcache_entry != NULL);
+  if (rt_check)
+    {
+      *rt_check = xcache_check_recompilation_threshold (thread_p, *xcache_entry);
+      if (*rt_check)
+	{
+	  /* We need to recompile. */
+	  xcache_unfix (thread_p, *xcache_entry);
+	  *xcache_entry = NULL;
+
+	  return NO_ERROR;
+	}
+    }
+
+  assert (*xcache_entry != NULL);
   xcache_log ("found cache entry by sha1: \n"
 	      XCACHE_LOG_ENTRY_TEXT("entry")
 	      XCACHE_LOG_TRAN_TEXT,
@@ -828,7 +847,7 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
   assert (xcache_entry != NULL && *xcache_entry == NULL);
   assert (xclone != NULL);
 
-  error_code = xcache_find_sha1 (thread_p, &xid->sha1, xcache_entry);
+  error_code = xcache_find_sha1 (thread_p, &xid->sha1, xcache_entry, NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

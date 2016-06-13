@@ -5107,6 +5107,8 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   int error = NO_ERROR;
   COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0, false, false };
   XASL_STREAM stream = { NULL, NULL, NULL, 0 };
+  bool was_recompile_xasl = false;
+  bool force_recompile = false;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -5161,6 +5163,14 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   stream.xasl_id = &xasl_id;
   XASL_ID_SET_NULL (stream.xasl_id);
 
+  /* Force recompile must be set to true if client did not intend to recompile, but must reconsider. This can happen
+   * if recompile threshold is checked and if one of the related classes suffered significant changes to justify the
+   * recompiling.
+   * If client already means to recompile, force_recompile is not required.
+   * xqmgr_prepare_query will change context.recompile_xasl if force recompile is required.
+   */
+  was_recompile_xasl = context.recompile_xasl;
+
   error = xqmgr_prepare_query (thread_p, &context, &stream);
   if (stream.xasl_stream)
     {
@@ -5176,10 +5186,15 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     }
   else
     {
-      if (stream.xasl_id != NULL && !XASL_ID_IS_NULL (stream.xasl_id) && get_xasl_header)
+      /* Check if we need to force client to recompile. */
+      force_recompile = !was_recompile_xasl && context.recompile_xasl;
+      if (stream.xasl_id != NULL && !XASL_ID_IS_NULL (stream.xasl_id) && (get_xasl_header || force_recompile))
 	{
 	  /* pack XASL node header */
-	  reply_buffer_size = XASL_NODE_HEADER_SIZE;
+	  reply_buffer_size = get_xasl_header ? XASL_NODE_HEADER_SIZE : 0;
+	  reply_buffer_size += force_recompile ? OR_INT_SIZE : 0;
+	  assert (reply_buffer_size > 0);
+
 	  reply_buffer = (char *) malloc (reply_buffer_size);
 	  if (reply_buffer == NULL)
 	    {
@@ -5190,7 +5205,15 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  else
 	    {
 	      ptr = reply_buffer;
-	      OR_PACK_XASL_NODE_HEADER (ptr, stream.xasl_header);
+	      if (get_xasl_header)
+		{
+		  OR_PACK_XASL_NODE_HEADER (ptr, stream.xasl_header);
+		}
+	      if (force_recompile)
+		{
+		  /* Doesn't really matter what we pack... */
+		  ptr = or_pack_int (ptr, 1);
+		}
 	    }
 	}
 

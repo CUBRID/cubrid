@@ -7157,10 +7157,20 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
 	  /* NULL XASL_ID will be returned when cache not found */
 	  OR_UNPACK_XASL_ID (ptr, stream->xasl_id);
 
-	  if (get_xasl_header && reply_buffer != NULL && reply_buffer_size != 0)
+	  if (reply_buffer != NULL && reply_buffer_size != 0)
 	    {
 	      ptr = reply_buffer;
-	      OR_UNPACK_XASL_NODE_HEADER (ptr, stream->xasl_header);
+	      if (get_xasl_header)
+		{
+		  OR_UNPACK_XASL_NODE_HEADER (ptr, stream->xasl_header);
+		}
+	      if (ptr < reply_buffer + reply_buffer_size)
+		{
+		  /* Doesn't really matter what it's packed... We need to force recompile; see sqmgr_prepare_query */
+		  assert ((ptr + OR_INT_SIZE) == (reply_buffer + reply_buffer_size));
+		  assert (!context->recompile_xasl);
+		  context->recompile_xasl = true;
+		}
 	    }
 	}
       else

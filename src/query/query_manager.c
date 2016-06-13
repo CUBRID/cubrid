@@ -922,6 +922,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
   int dbval_cnt;
   XASL_ID temp_xasl_id;
   int error_code = NO_ERROR;
+  bool recompile_due_to_threshold = false;
 
   /* If xasl_stream is NULL, it means that the client requested looking up the XASL cache to know there's a reusable
    * execution plan (XASL) for this query. The XASL is stored as a file so that the XASL file id (XASL_ID) will be
@@ -938,7 +939,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
   XASL_ID_SET_NULL (stream->xasl_id);
   if (!context->recompile_xasl)
     {
-      error_code = xcache_find_sha1 (thread_p, &context->sha1, &cache_entry_p);
+      error_code = xcache_find_sha1 (thread_p, &context->sha1, &cache_entry_p, &recompile_due_to_threshold);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
@@ -959,6 +960,11 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
       if (stream->xasl_stream == NULL)
 	{
 	  /* No entry found. */
+	  if (recompile_due_to_threshold)
+	    {
+	      /* We need to force recompile. */
+	      context->recompile_xasl = true;
+	    }
 	  return NO_ERROR;
 	}
     }
