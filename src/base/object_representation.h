@@ -193,7 +193,7 @@
 #define OR_GET_FLOAT(ptr, value) \
   (*(value) = ntohf (*(UINT32 *) (ptr)))
 #define OR_GET_DOUBLE(ptr, value) \
-  (*(value) = ntohd (*(UINT64 *) (ptr)))  
+  (*(value) = ntohd (*(UINT64 *) (ptr)))
 #define OR_GET_STRING(ptr) \
   ((char *) ((char *) (ptr)))
 
@@ -204,9 +204,9 @@
 #define OR_PUT_INT(ptr, val) \
   (*(int *) ((char *) (ptr)) = htonl ((int) (val)))
 #define OR_PUT_FLOAT(ptr, val) \
-  (*(float *) (ptr) = (float) htonf (*(float*) (val)))
+  (*(UINT32 *) (ptr) = htonf (*(float*) (val)))
 #define OR_PUT_DOUBLE(ptr, val) \
-  (*(UINT64 *) (ptr) = (UINT64) htond (*(double *) (val)))
+  (*(UINT64 *) (ptr) = htond (*(double *) (val)))
 
 #define OR_GET_BIG_VAR_OFFSET(ptr) 	OR_GET_INT (ptr)	/* 4byte */
 #define OR_PUT_BIG_VAR_OFFSET(ptr, val)	OR_PUT_INT (ptr, val)	/* 4byte */
