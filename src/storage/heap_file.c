@@ -26367,7 +26367,7 @@ heap_get_for_operation (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oi
     {
       scan_code = locator_lock_and_get_object (thread_p, &context, S_LOCK, scan_cache, NULL_CHN, ispeeking);
     }
-  else if (op_type == S_DELETE || op_type == S_DELETE)
+  else if (op_type == S_DELETE || op_type == S_UPDATE)
     {
       scan_code =
 	heap_mvcc_get_for_delete (thread_p, oid, class_oid, recdes, scan_cache, ispeeking, NULL_CHN, NULL,
