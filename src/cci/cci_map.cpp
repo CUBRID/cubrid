@@ -32,26 +32,30 @@
  * cci_map.cpp
  */
 
-#if defined(WINDOWS)
-#define _SILENCE_STDEXT_HASH_DEPRECATION_WARNINGS
+#if defined (_MSC_VER) && _MSC_VER >= 1700
+#include <unordered_map>
+#elif defined (WINDOWS)
 #include <hash_map>
-#else /* WINDOWS */
+#else
 #include <ext/hash_map>
-#endif /* WINDOWS */
-#include <map>
+#endif
 
+#include <map>
 #include "cci_handle_mng.h"
 #include "cas_cci.h"
 #include "cci_mutex.h"
 #include "cci_map.h"
 
-#if defined(WINDOWS)
+#if defined (_UNORDERED_MAP_)
+typedef std::unordered_map<T_CCI_CONN, T_CCI_CONN> MapConnection;
+typedef std::unordered_map<T_CCI_REQ, T_CCI_REQ> MapStatement;
+#elif defined (WINDOWS)
 typedef stdext::hash_map<T_CCI_CONN, T_CCI_CONN> MapConnection;
 typedef stdext::hash_map<T_CCI_REQ, T_CCI_REQ> MapStatement;
-#else /* WINDOWS */
+#else
 typedef __gnu_cxx::hash_map<T_CCI_CONN, T_CCI_CONN> MapConnection;
 typedef __gnu_cxx::hash_map<T_CCI_REQ, T_CCI_REQ> MapStatement;
-#endif /* WINDOWS */
+#endif
 
 typedef MapConnection::iterator IteratorMapConnection;
 typedef MapStatement::iterator IteratorMapStatement;
