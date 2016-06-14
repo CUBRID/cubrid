@@ -1,0 +1,8 @@
+# Stop cubrid before uninstalling it
+if [ -x /etc/init.d/cubrid ] ; then
+  /etc/init.d/cubrid stop > /dev/null
+  # Remove autostart of cubrid
+  if [ -x /sbin/chkconfig ] ; then
+    /sbin/chkconfig --del cubrid
+  fi
+fi
