@@ -1619,6 +1619,10 @@ static int btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF 
 				   BTREE_OBJECT_INFO * btree_obj, MVCCID tran_mvccid, LOG_LSA * reference_lsa);
 
 static MVCCID btree_get_creator_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR root_page);
+static int btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, RECDES *ovf_record,
+					 char *initial_oid_ptr, char *oid_ptr_lower_bound, char *oid_ptr_upper_bound,
+					 BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
+					 int *offset_to_object, BTREE_MVCC_INFO * mvcc_info);
 
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID,
@@ -3641,7 +3645,6 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
   OID mid_oid;
   int size = BTREE_OBJECT_FIXED_SIZE (btid_int);
   int offset_to_object = 0;
-  bool duplicate_oid = false;
 
   /* Assert expected arguments. */
   assert (record != NULL);
@@ -3672,8 +3675,7 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
 	{
 	  /* With MVCC, this case is possible if some conditions are met: 1. OID is reusable. 2. Vacuum cleaned heap
 	   * entry but didn't clean b-tree entry. 3. A new record is inserted in the same slot. 4. The key for old
-	   * record and new record is the same. Just replace the old OID's insert/delete information. */
-	  duplicate_oid = true;
+	   * record and new record is the same. Just add the OID here. */
 	  break;
 	}
       else if (OID_GT (oid, &mid_oid))
@@ -3693,15 +3695,12 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
   if (rv_undo_data_ptr != NULL && *rv_undo_data_ptr != NULL)
     {
       *rv_undo_data_ptr =
-	log_rv_pack_undo_record_changes (*rv_undo_data_ptr, offset_to_object, duplicate_oid ? size : 0, size, oid_ptr);
+	log_rv_pack_undo_record_changes (*rv_undo_data_ptr, offset_to_object, 0, size, oid_ptr);
     }
 
   /* oid_ptr points to the address where the new object should be saved */
-  if (!duplicate_oid)
-    {
-      /* Make room for a new OID */
-      RECORD_MOVE_DATA (record, offset_to_object + size, offset_to_object);
-    }
+  /* Make room for a new OID */
+  RECORD_MOVE_DATA (record, offset_to_object + size, offset_to_object);
 
   (void) btree_pack_object (oid_ptr, btid_int, BTREE_OVERFLOW_NODE, record, object_info);
 
@@ -3713,7 +3712,7 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
   if (rv_redo_data_ptr != NULL && *rv_redo_data_ptr != NULL)
     {
       *rv_redo_data_ptr =
-	log_rv_pack_redo_record_changes (*rv_redo_data_ptr, offset_to_object, duplicate_oid ? size : 0, size, oid_ptr);
+	log_rv_pack_redo_record_changes (*rv_redo_data_ptr, offset_to_object, 0, size, oid_ptr);
     }
 
   if (offset_to_objptr != NULL)
@@ -12202,6 +12201,9 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
       /* Check OID. */
       if (OID_EQ (oid, &inst_oid))
 	{
+	  char *oid_ptr_lower_bound;
+	  char *oid_ptr_upper_bound;
+
 	  /* OID matched. */
 	  /* Check MVCC info. */
 	  ptr = oid_ptr + OR_OID_SIZE;
@@ -12222,7 +12224,11 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 	      *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record.data);
 	    }
 	  /* Not in this page. */
-	  return NO_ERROR;
+	  oid_ptr_lower_bound = oid_ptr - size * (mid - min);
+	  oid_ptr_upper_bound = oid_ptr + size * (max - mid);
+	  return btree_seq_find_oid_from_ovfl (thread_p, btid_int, oid, &ovf_record, oid_ptr, oid_ptr_lower_bound,
+					       oid_ptr_upper_bound, purpose, match_mvccinfo, offset_to_object,
+					       mvcc_info);
 	}
       else if (OID_GT (oid, &inst_oid))
 	{
@@ -12239,6 +12245,121 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 
   /* Not found. */
   return NO_ERROR;
+}
+
+/*
+ * btree_seq_find_oid_from_ovfl () - Find object in overflow page.
+ *
+ * return		  : Error code.
+ * thread_p (in)	  : Thread entry.
+ * btid_int (in)	  : B-tree info.
+ * oid (in)		  : OID to find.
+ * ovf_record(in)	  : overflow record
+ * initial_oid_ptr (in)   : pointer to OID initially found
+ * oid_ptr_lower_bound (in) : pointer lower allowed bound within OID buffer
+ * oid_ptr_upper_bound (in) : pointer upper allowed bound within OID buffer
+ * purpose (in)		  : Purpose of call.
+ * match_mvccinfo (in)	  : Non-null value to be matched or null if it doesn't matter.
+ * offset_to_object (out) : If object is found, it saves the offset to object. Otherwise, NOT_FOUND is output.
+ * mvcc_info (out)	  : Output MVCC info if object is found.
+ */
+static int
+btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
+			      RECDES *ovf_record, char *initial_oid_ptr, char *oid_ptr_lower_bound,
+			      char *oid_ptr_upper_bound, BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
+			      int *offset_to_object, BTREE_MVCC_INFO * mvcc_info)
+{
+  OID inst_oid;
+  char *oid_ptr;
+  char *ptr;
+  int obj_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
+  int error_code;
+  bool is_match;
+
+  /* first, check previous OIDs */
+  oid_ptr = initial_oid_ptr - obj_size;
+
+  while (oid_ptr >= oid_ptr_lower_bound)
+    {
+      BTREE_GET_OID (oid_ptr, &inst_oid);
+      assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
+      assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+
+      /* Check OID. */
+      if (!OID_EQ (oid, &inst_oid))
+	{
+	  break;
+	}
+
+      /* OID matched. */
+      /* Check MVCC info. */
+      ptr = oid_ptr + OR_OID_SIZE;
+      if (BTREE_IS_UNIQUE (btid_int->unique_pk))
+	{
+	  ptr += OR_OID_SIZE;
+	}
+
+      (void) btree_unpack_mvccinfo (ptr, mvcc_info, BTREE_OID_HAS_MVCC_INSID_AND_DELID);
+      error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccinfo, &is_match);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      if (is_match)
+	{
+	  /* Object is a match. */
+	  *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record->data);
+	  return NO_ERROR;
+	}
+
+      oid_ptr -= obj_size; 
+    }
+
+  /* check next OIDs */
+  oid_ptr = initial_oid_ptr + obj_size;
+
+  while (oid_ptr <= oid_ptr_upper_bound)
+    {
+      BTREE_GET_OID (oid_ptr, &inst_oid);
+      assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
+      assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+
+      /* Check OID. */
+      if (!OID_EQ (oid, &inst_oid))
+	{
+	  break;
+	}
+
+      /* OID matched. */
+      /* Check MVCC info. */
+      ptr = oid_ptr + OR_OID_SIZE;
+      if (BTREE_IS_UNIQUE (btid_int->unique_pk))
+	{
+	  ptr += OR_OID_SIZE;
+	}
+
+      (void) btree_unpack_mvccinfo (ptr, mvcc_info, BTREE_OID_HAS_MVCC_INSID_AND_DELID);
+      error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccinfo, &is_match);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      if (is_match)
+	{
+	  /* Object is a match. */
+	  *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record->data);
+	  return NO_ERROR;
+	}
+
+      oid_ptr += obj_size; 
+    }
+
+  return NO_ERROR;
+  
 }
 
 /*
