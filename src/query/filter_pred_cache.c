@@ -315,7 +315,7 @@ fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR
 	  /* save filter_pred for later usage. */
 	  if (fpcache_entry->clone_stack_head < fpcache_Clone_stack_size - 1)
 	    {
-	      fpcache_entry->clone_stack[fpcache_Clone_stack_size++] = filter_pred;
+	      fpcache_entry->clone_stack[++fpcache_entry->clone_stack_head] = filter_pred;
 	      filter_pred = NULL;
 	      ATOMIC_INC_64 (&fpcache_Stat_clone_add, 1);
 	      ATOMIC_INC_32 (&fpcache_Clone_counter, 1);
