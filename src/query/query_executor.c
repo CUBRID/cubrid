@@ -11571,6 +11571,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       int scan_cache_end_needed = false;
       int status = NO_ERROR;
       MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+      SCAN_CODE scan;
 
       /* Start heap file scan operation */
       /* A new argument(is_indexscan = false) is appended */
@@ -11585,10 +11586,10 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       scan_cache_end_needed = true;
 
       /* fetch the object and the class oid */
-      if (heap_get_for_operation (thread_p, dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, PEEK,
-				  LOG_ERROR_IF_DELETED) != S_SUCCESS)
+      scan = heap_get_for_operation (thread_p, dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, PEEK, LOG_ERROR_IF_DELETED);
+      if (scan != S_SUCCESS)
 	{
-	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
 	      /* dangling object reference */
 	      dead_end = true;
