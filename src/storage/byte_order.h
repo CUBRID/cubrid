@@ -45,7 +45,10 @@
 
 #if defined(WINDOWS)
 #include <winsock2.h>
-#if defined(_MSC_VER) && _MSC_VER >= 1900
+#if defined(_MSC_VER) && _MSC_VER >= 1700
+/* We could not find when ntohf/ntohd/htonf/htond were exactly added. The only reference we could find are here:
+* https://msdn.microsoft.com/en-us/library/windows/desktop/jj710201(v=vs.85).aspx (ntohf, links to others at the bottom).
+*/
 #define OR_HAVE_NTOHF
 #define OR_HAVE_NTOHD
 #define OR_HAVE_HTONF
