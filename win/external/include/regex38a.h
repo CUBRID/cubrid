@@ -5,10 +5,6 @@
 extern "C" {
 #endif
 
-#ifdef WIN32
-#define off_t long
-#endif
-
 /* === regex2.h === */
 typedef off_t cub_regoff_t;
 typedef struct {

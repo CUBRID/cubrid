@@ -4927,7 +4927,7 @@ tz_resolve_os_timezone (char *timezone, int buf_len)
   size_t tzret;
   tz_data = tz_get_data ();
   tzset ();
-  _get_tzname(&tzret, tzname, sizeof(tzname), 0);
+  _get_tzname (&tzret, tzname, sizeof (tzname), 0);
   iana_zone_id = tz_get_iana_zone_id_by_windows_zone (tzname);
   if (iana_zone_id < 0)
     {
