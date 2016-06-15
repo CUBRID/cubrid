@@ -2120,8 +2120,7 @@ locator_find_lockset_missing_class_oids (THREAD_ENTRY * thread_p, LC_LOCKSET * l
        * Caller does not know the class identifier of the requested object.
        * Get the class identifier from disk
        */
-      if (heap_get_class_oid_with_lock (thread_p, &class_oid, &reqobjs[i].oid, SNAPSHOT_TYPE_MVCC, NULL_LOCK) !=
-	  S_SUCCESS)
+      if (heap_get_class_oid (thread_p, &reqobjs[i].oid, &class_oid) != S_SUCCESS)
 	{
 	  /* 
 	   * Unable to find the class of the object. Remove the object from
