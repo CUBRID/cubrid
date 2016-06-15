@@ -4842,10 +4842,8 @@ csession_create_prepared_statement (const char *name, const char *alias_print, c
       goto cleanup;
     }
 
-  /* user */
-  ptr = or_pack_oid (request, ws_identifier (db_get_user ()));
   /* name */
-  ptr = pack_const_string_with_length (ptr, name, name_len);
+  ptr = pack_const_string_with_length (request, name, name_len);
   /* alias_print */
   ptr = pack_const_string_with_length (ptr, alias_print, alias_print_len);
   /* data size */
@@ -4879,14 +4877,11 @@ cleanup:
   return req_error;
 #else
   int result = NO_ERROR;
-  OID *user;
   char *local_name = NULL;
   char *local_alias_print = NULL;
   char *local_stmt_info = NULL;
   int len = 0;
   SHA1Hash alias_sha1 = SHA1_HASH_INITIALIZER;
-
-  user = ws_identifier (db_get_user ());
 
   ENTER_SERVER ();
 
@@ -4943,7 +4938,7 @@ cleanup:
     }
 
   result =
-    xsession_create_prepared_statement (NULL, *user, local_name, local_alias_print, &alias_sha1, local_stmt_info,
+    xsession_create_prepared_statement (NULL, local_name, local_alias_print, &alias_sha1, local_stmt_info,
 				        info_length);
   if (result != NO_ERROR)
     {

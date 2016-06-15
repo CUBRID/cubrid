@@ -269,8 +269,8 @@ extern int xsession_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE *
 extern int xsession_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value, bool update_last_insert_id);
 extern int xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p);
 
-extern int xsession_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name, char *alias_print,
-					       SHA1Hash * sha1, char *info, int info_len);
+extern int xsession_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1,
+                                               char *info, int info_len);
 extern int xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
 					    XASL_ID * xasl_id, XASL_NODE_HEADER * xasl_header_p);
 extern int xsession_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name);

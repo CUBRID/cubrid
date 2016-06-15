@@ -92,7 +92,6 @@ struct session_variable
 typedef struct prepared_statement PREPARED_STATEMENT;
 struct prepared_statement
 {
-  OID user;
   char *name;
   char *alias_print;
   SHA1Hash sha1;
@@ -1605,8 +1604,7 @@ session_set_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARAM * session
  * session_create_prepared_statement () - create a prepared statement and add
  *					  it to the prepared statements list
  * return : NO_ERROR or error code
- * thread_p (in)	:
- * user (in)		: OID of the user who prepared this statement
+ * thread_p (in)	: thread entry
  * name (in)		: the name of the statement
  * alias_print (in)	: the printed compiled statement
  * sha1 (in)		: sha1 hash for printed compiled statement
@@ -1619,8 +1617,8 @@ session_set_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARAM * session
  * will free the memory allocated for its arguments.
  */
 int
-session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name, char *alias_print, SHA1Hash * sha1,
-				   char *info, int info_len)
+session_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1, char *info,
+                                   int info_len)
 {
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;
@@ -1634,7 +1632,6 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name
       goto error;
     }
 
-  COPY_OID (&(stmt_p->user), &user);
   stmt_p->name = name;
   stmt_p->alias_print = alias_print;
   stmt_p->sha1 = *sha1;
@@ -1782,9 +1779,6 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
       memcpy (data, stmt_p->info, stmt_p->info_length);
       *info = data;
     }
-
-  /* copy the user identifier, we will need it below */
-  COPY_OID (&user, &stmt_p->user);
 
   /* since the xasl id is not session specific, we can fetch it outside of the session critical section */
   if (alias_print == NULL)

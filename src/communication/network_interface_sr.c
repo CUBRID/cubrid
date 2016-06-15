@@ -9083,16 +9083,13 @@ ssession_create_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, c
   char *data_request = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   int data_size = 0, err = 0, i = 0;
-  OID user;
   char *info = NULL;
   SHA1Hash alias_sha1 = SHA1_HASH_INITIALIZER;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  /* user */
-  ptr = or_unpack_oid (request, &user);
   /* name */
-  ptr = or_unpack_string_alloc (ptr, &name);
+  ptr = or_unpack_string_alloc (request, &name);
   /* alias_print */
   ptr = or_unpack_string_alloc (ptr, &alias_print);
   /* data_size */
@@ -9128,7 +9125,7 @@ ssession_create_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, c
     }
   memcpy (info, data_request, data_size);
 
-  err = xsession_create_prepared_statement (thread_p, user, name, alias_print, &alias_sha1, info, data_size);
+  err = xsession_create_prepared_statement (thread_p, name, alias_print, &alias_sha1, info, data_size);
 
   if (err != NO_ERROR)
     {

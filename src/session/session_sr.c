@@ -153,11 +153,9 @@ xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p)
 }
 
 /*
- * xsession_create_prepared_statement () - create a prepared statement and add
- *					   it to the prepared statements list
+ * xsession_create_prepared_statement () - create a prepared statement and add it to the prepared statements list
  * return : NO_ERROR or error code
- * thread_p (in)	:
- * user (in)		: OID of the user who prepared this statement
+ * thread_p (in)	: thread entry
  * name (in)		: the name of the statement
  * alias_print(in)	: the printed compiled statement
  * info (in)		: serialized prepared statement info
@@ -169,10 +167,10 @@ xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p)
  * will free the memory allocated for its arguments
  */
 int
-xsession_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name, char *alias_print, SHA1Hash * sha1,
-				    char *info, int info_len)
+xsession_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1, char *info,
+                                    int info_len)
 {
-  return session_create_prepared_statement (thread_p, user, name, alias_print, sha1, info, info_len);
+  return session_create_prepared_statement (thread_p, name, alias_print, sha1, info, info_len);
 }
 
 /*
