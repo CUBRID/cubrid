@@ -22129,7 +22129,7 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree, ANALYTIC_INFO * an
       sort_list = NULL;
     }
 
-  list_entry = parser_new_node (parser, PT_POINTER);
+  list_entry = parser_new_node (parser, PT_NODE_POINTER);
   if (list_entry == NULL)
     {
       PT_INTERNAL_ERROR (parser, "alloc node");
@@ -22293,7 +22293,7 @@ unlink_and_exit:
  * NOTE: This function has the following behavior:
  *
  *   1. When it receives an analytic function node, it  will put it in ex_list
- *   and will return a reference PT_POINTER to the node.
+ *   and will return a reference PT_NODE_POINTER to the node.
  *
  *   2. When it receives an expression containing analytic functions, it will
  *   put all analytic nodes AND subexpressions that DO NOT contain analytic
@@ -22435,7 +22435,7 @@ pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE ** e
 	  arg = save_next;
 	}
 
-      /* we're left with function with PT_POINTER arguments */
+      /* we're left with function with PT_NODE_POINTER arguments */
       return tree;
     }
 
