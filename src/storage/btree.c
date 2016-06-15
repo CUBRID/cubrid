@@ -12204,28 +12204,10 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 	  char *oid_ptr_lower_bound;
 	  char *oid_ptr_upper_bound;
 
-	  /* OID matched. */
-	  /* Check MVCC info. */
-	  ptr = oid_ptr + OR_OID_SIZE;
-	  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
-	    {
-	      ptr += OR_OID_SIZE;
-	    }
-	  (void) btree_unpack_mvccinfo (ptr, mvcc_info, BTREE_OID_HAS_MVCC_INSID_AND_DELID);
-	  error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccinfo, &is_match);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
-	  if (is_match)
-	    {
-	      /* Object is a match. */
-	      *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record.data);
-	    }
-	  /* Not in this page. */
+	  /* check a sequence of objects (same OID with different MVCC info) */
 	  oid_ptr_lower_bound = oid_ptr - size * (mid - min);
 	  oid_ptr_upper_bound = oid_ptr + size * (max - mid);
+
 	  return btree_seq_find_oid_from_ovfl (thread_p, btid_int, oid, &ovf_record, oid_ptr, oid_ptr_lower_bound,
 					       oid_ptr_upper_bound, purpose, match_mvccinfo, offset_to_object,
 					       mvcc_info);
@@ -12276,8 +12258,8 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
   int error_code;
   bool is_match;
 
-  /* first, check previous OIDs */
-  oid_ptr = initial_oid_ptr - obj_size;
+  /* first, check OID and previous ones */
+  oid_ptr = initial_oid_ptr;
 
   while (oid_ptr >= oid_ptr_lower_bound)
     {
