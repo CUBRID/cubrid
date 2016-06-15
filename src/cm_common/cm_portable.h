@@ -31,8 +31,10 @@
 #define MAXHOSTNAMELEN 64
 
 #if defined(_MSC_VER) && _MSC_VER < 1900
+/* Ref: https://msdn.microsoft.com/en-us/library/2ts7cx93(v=vs.120).aspx */
 #define snprintf        _snprintf
-#endif
+#endif /* _MSC_VER && _MSC_VER < 1900 */
+
 #define getpid        _getpid
 #define strcasecmp(str1, str2)  _stricmp(str1, str2)
 
