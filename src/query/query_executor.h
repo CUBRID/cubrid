@@ -662,18 +662,18 @@ struct mvcc_reev_data
 typedef struct upddel_class_info UPDDEL_CLASS_INFO;
 struct upddel_class_info
 {
-  int no_subclasses;		/* total number of subclasses */
+  int num_subclasses;		/* total number of subclasses */
   OID *class_oid;		/* OID's of the classes */
   HFID *class_hfid;		/* Heap file ID's of the classes */
-  int no_attrs;			/* total number of attrs involved */
+  int num_attrs;		/* total number of attrs involved */
   int *att_id;			/* ID's of attributes (array) */
   int needs_pruning;		/* perform partition pruning */
   int has_uniques;		/* whether there are unique constraints */
 
-  int *no_lob_attrs;		/* number of lob attributes for each subclass */
+  int *num_lob_attrs;		/* number of lob attributes for each subclass */
   int **lob_attr_ids;		/* list of log attribute ids for each subclass */
 
-  int no_extra_assign_reev;	/* no of integers in mvcc_extra_assign_reev */
+  int num_extra_assign_reev;	/* no of integers in mvcc_extra_assign_reev */
   int *mvcc_extra_assign_reev;	/* indexes of classes in the select list that are referenced in assignments to the
 				 * attributes of current class and are not referenced in conditions */
 };
@@ -681,16 +681,16 @@ struct upddel_class_info
 typedef struct update_proc_node UPDATE_PROC_NODE;
 struct update_proc_node
 {
-  int no_classes;		/* total number of classes involved */
+  int num_classes;		/* total number of classes involved */
   UPDDEL_CLASS_INFO *classes;	/* details for each class in the update list */
   PRED_EXPR *cons_pred;		/* constraint predicate */
-  int no_assigns;		/* total no. of assignments */
+  int num_assigns;		/* total no. of assignments */
   UPDATE_ASSIGNMENT *assigns;	/* assignments array */
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
-  int no_orderby_keys;		/* no of keys for ORDER_BY */
-  int no_assign_reev_classes;
-  int no_reev_classes;		/* no of classes involved in mvcc condition and assignment reevaluation */
+  int num_orderby_keys;		/* no of keys for ORDER_BY */
+  int num_assign_reev_classes;
+  int num_reev_classes;		/* no of classes involved in mvcc condition and assignment reevaluation */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions and assignment reevaluation */
 };
@@ -700,7 +700,7 @@ typedef struct odku_info ODKU_INFO;
 struct odku_info
 {
   PRED_EXPR *cons_pred;		/* constraint predicate */
-  int no_assigns;		/* number of assignments */
+  int num_assigns;		/* number of assignments */
   UPDATE_ASSIGNMENT *assignments;	/* assignments */
   HEAP_CACHE_ATTRINFO *attr_info;	/* attr info */
   int *attr_ids;		/* ID's of attributes (array) */
@@ -711,8 +711,8 @@ struct insert_proc_node
 {
   OID class_oid;		/* OID of the class involved */
   HFID class_hfid;		/* Heap file ID of the class */
-  int no_vals;			/* total number of attrs involved */
-  int no_default_expr;		/* total number of attrs which require a default value to be inserted */
+  int num_vals;			/* total number of attrs involved */
+  int num_default_expr;		/* total number of attrs which require a default value to be inserted */
   int *att_id;			/* ID's of attributes (array) */
   DB_VALUE **vals;		/* values (array) */
   PRED_EXPR *cons_pred;		/* constraint predicate */
@@ -722,7 +722,7 @@ struct insert_proc_node
   int no_logging;		/* no logging */
   int do_replace;		/* duplicate tuples should be replaced */
   int pruning_type;		/* DB_CLASS_PARTITION_TYPE indicating the way in which pruning should be performed */
-  int no_val_lists;		/* number of value lists in values clause */
+  int num_val_lists;		/* number of value lists in values clause */
   VALPTR_LIST **valptr_lists;	/* OUTPTR lists for each list of values */
   DB_VALUE *obj_oid;		/* Inserted object OID, used for sub-inserts */
 };
@@ -731,10 +731,10 @@ typedef struct delete_proc_node DELETE_PROC_NODE;
 struct delete_proc_node
 {
   UPDDEL_CLASS_INFO *classes;	/* classes info */
-  int no_classes;		/* total number of classes involved */
+  int num_classes;		/* total number of classes involved */
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
-  int no_reev_classes;		/* no of classes involved in mvcc condition */
+  int num_reev_classes;		/* no of classes involved in mvcc condition */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions */
 };

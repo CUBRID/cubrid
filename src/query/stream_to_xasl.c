@@ -134,8 +134,8 @@ static ARITH_TYPE *stx_restore_arith_type (THREAD_ENTRY * thread_p, char *ptr);
 static INDX_INFO *stx_restore_indx_info (THREAD_ENTRY * thread_p, char *ptr);
 static OUTPTR_LIST *stx_restore_outptr_list (THREAD_ENTRY * thread_p, char *ptr);
 static SELUPD_LIST *stx_restore_selupd_list (THREAD_ENTRY * thread_p, char *ptr);
-static UPDDEL_CLASS_INFO *stx_restore_update_class_info_array (THREAD_ENTRY * thread_p, char *ptr, int no_classes);
-static UPDATE_ASSIGNMENT *stx_restore_update_assignment_array (THREAD_ENTRY * thread_p, char *ptr, int no_assigns);
+static UPDDEL_CLASS_INFO *stx_restore_update_class_info_array (THREAD_ENTRY * thread_p, char *ptr, int num_classes);
+static UPDATE_ASSIGNMENT *stx_restore_update_assignment_array (THREAD_ENTRY * thread_p, char *ptr, int num_assigns);
 static ODKU_INFO *stx_restore_odku_info (THREAD_ENTRY * thread_p, char *ptr);
 static PRED_EXPR *stx_restore_pred_expr (THREAD_ENTRY * thread_p, char *ptr);
 static REGU_VARIABLE *stx_restore_regu_variable (THREAD_ENTRY * thread_p, char *ptr);
@@ -2529,7 +2529,7 @@ stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG_LIST *
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
-  ptr = or_unpack_int (ptr, (int *) &method_sig_list->no_methods);
+  ptr = or_unpack_int (ptr, (int *) &method_sig_list->num_methods);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -2539,7 +2539,7 @@ stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG_LIST *
   else
     {
       method_sig_list->method_sig =
-	stx_restore_method_sig (thread_p, &xasl_unpack_info->packed_xasl[offset], method_sig_list->no_methods);
+	stx_restore_method_sig (thread_p, &xasl_unpack_info->packed_xasl[offset], method_sig_list->num_methods);
       if (method_sig_list->method_sig == NULL)
 	{
 	  goto error;
@@ -2555,7 +2555,7 @@ stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG_LIST *
       {
 	i++;
       }
-    assert (method_sig_list->no_methods == i);
+    assert (method_sig_list->num_methods == i);
   }
 #endif
 
@@ -2570,7 +2570,7 @@ static char *
 stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_sig, int count)
 {
   int offset;
-  int no_args, n;
+  int num_args, n;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2587,17 +2587,17 @@ stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_si
   method_sig->class_name = stx_restore_string (thread_p, &xasl_unpack_info->packed_xasl[offset]);
 
   ptr = or_unpack_int (ptr, (int *) &method_sig->method_type);
-  ptr = or_unpack_int (ptr, &method_sig->no_method_args);
+  ptr = or_unpack_int (ptr, &method_sig->num_method_args);
 
-  no_args = method_sig->no_method_args + 1;
+  num_args = method_sig->num_method_args + 1;
 
-  method_sig->method_arg_pos = (int *) stx_alloc_struct (thread_p, sizeof (int) * no_args);
+  method_sig->method_arg_pos = (int *) stx_alloc_struct (thread_p, sizeof (int) * num_args);
   if (method_sig->method_arg_pos == NULL)
     {
       goto error;
     }
 
-  for (n = 0; n < no_args; n++)
+  for (n = 0; n < num_args; n++)
     {
       ptr = or_unpack_int (ptr, &(method_sig->method_arg_pos[n]));
     }
@@ -3341,19 +3341,19 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr, UPDDEL_CLASS_IN
 
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
-  /* no_subclasses */
-  ptr = or_unpack_int (ptr, &upd_cls->no_subclasses);
+  /* num_subclasses */
+  ptr = or_unpack_int (ptr, &upd_cls->num_subclasses);
 
   /* class_oid */
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || upd_cls->no_subclasses == 0)
+  if (offset == 0 || upd_cls->num_subclasses == 0)
     {
       upd_cls->class_oid = NULL;
     }
   else
     {
       upd_cls->class_oid =
-	stx_restore_OID_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->no_subclasses);
+	stx_restore_OID_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->num_subclasses);
       if (upd_cls->class_oid == NULL)
 	{
 	  return NULL;
@@ -3362,24 +3362,24 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr, UPDDEL_CLASS_IN
 
   /* class_hfid */
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || upd_cls->no_subclasses == 0)
+  if (offset == 0 || upd_cls->num_subclasses == 0)
     {
       upd_cls->class_hfid = NULL;
     }
   else
     {
       upd_cls->class_hfid =
-	stx_restore_hfid_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->no_subclasses);
+	stx_restore_hfid_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->num_subclasses);
       if (upd_cls->class_hfid == NULL)
 	{
 	  return NULL;
 	}
     }
 
-  /* no_attrs & att_id */
-  ptr = or_unpack_int (ptr, &upd_cls->no_attrs);
+  /* num_attrs & att_id */
+  ptr = or_unpack_int (ptr, &upd_cls->num_attrs);
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || upd_cls->no_attrs == 0)
+  if (offset == 0 || upd_cls->num_attrs == 0)
     {
       upd_cls->att_id = NULL;
     }
@@ -3387,7 +3387,7 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr, UPDDEL_CLASS_IN
     {
       upd_cls->att_id =
 	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset],
-			       upd_cls->no_attrs * upd_cls->no_subclasses);
+			       upd_cls->num_attrs * upd_cls->num_subclasses);
       if (upd_cls->att_id == NULL)
 	{
 	  return NULL;
@@ -3399,47 +3399,47 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr, UPDDEL_CLASS_IN
   /* has_uniques */
   ptr = or_unpack_int (ptr, &upd_cls->has_uniques);
 
-  /* no_lob_attrs */
+  /* num_lob_attrs */
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || upd_cls->no_subclasses == 0)
+  if (offset == 0 || upd_cls->num_subclasses == 0)
     {
-      upd_cls->no_lob_attrs = NULL;
+      upd_cls->num_lob_attrs = NULL;
     }
   else
     {
-      upd_cls->no_lob_attrs =
-	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->no_subclasses);
-      if (upd_cls->no_lob_attrs == NULL)
+      upd_cls->num_lob_attrs =
+	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->num_subclasses);
+      if (upd_cls->num_lob_attrs == NULL)
 	{
 	  return NULL;
 	}
     }
   /* lob_attr_ids */
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || upd_cls->no_subclasses == 0)
+  if (offset == 0 || upd_cls->num_subclasses == 0)
     {
       upd_cls->lob_attr_ids = NULL;
     }
   else
     {
-      upd_cls->lob_attr_ids = (int **) stx_alloc_struct (thread_p, upd_cls->no_subclasses * sizeof (int *));
+      upd_cls->lob_attr_ids = (int **) stx_alloc_struct (thread_p, upd_cls->num_subclasses * sizeof (int *));
       if (!upd_cls->lob_attr_ids)
 	{
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
       p = &xasl_unpack_info->packed_xasl[offset];
-      for (i = 0; i < upd_cls->no_subclasses; i++)
+      for (i = 0; i < upd_cls->num_subclasses; i++)
 	{
 	  p = or_unpack_int (p, &offset);
-	  if (offset == 0 || upd_cls->no_lob_attrs[i] == 0)
+	  if (offset == 0 || upd_cls->num_lob_attrs[i] == 0)
 	    {
 	      upd_cls->lob_attr_ids[i] = NULL;
 	    }
 	  else
 	    {
 	      upd_cls->lob_attr_ids[i] =
-		stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->no_lob_attrs[i]);
+		stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->num_lob_attrs[i]);
 	      if (upd_cls->lob_attr_ids[i] == NULL)
 		{
 		  return NULL;
@@ -3447,20 +3447,20 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr, UPDDEL_CLASS_IN
 	    }
 	}
     }
-  /* make sure no_lob_attrs and lob_attr_ids are both NULL or are both not NULL */
-  assert ((upd_cls->no_lob_attrs && upd_cls->lob_attr_ids) || (!upd_cls->no_lob_attrs && !upd_cls->lob_attr_ids));
+  /* make sure num_lob_attrs and lob_attr_ids are both NULL or are both not NULL */
+  assert ((upd_cls->num_lob_attrs && upd_cls->lob_attr_ids) || (!upd_cls->num_lob_attrs && !upd_cls->lob_attr_ids));
 
-  /* no_extra_assign_reev & mvcc_extra_assign_reev */
-  ptr = or_unpack_int (ptr, &upd_cls->no_extra_assign_reev);
+  /* num_extra_assign_reev & mvcc_extra_assign_reev */
+  ptr = or_unpack_int (ptr, &upd_cls->num_extra_assign_reev);
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || upd_cls->no_extra_assign_reev == 0)
+  if (offset == 0 || upd_cls->num_extra_assign_reev == 0)
     {
       upd_cls->mvcc_extra_assign_reev = NULL;
     }
   else
     {
       upd_cls->mvcc_extra_assign_reev =
-	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->no_extra_assign_reev);
+	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], upd_cls->num_extra_assign_reev);
       if (upd_cls->mvcc_extra_assign_reev == NULL)
 	{
 	  return NULL;
@@ -3471,20 +3471,20 @@ stx_build_update_class_info (THREAD_ENTRY * thread_p, char *ptr, UPDDEL_CLASS_IN
 }
 
 static UPDDEL_CLASS_INFO *
-stx_restore_update_class_info_array (THREAD_ENTRY * thread_p, char *ptr, int no_classes)
+stx_restore_update_class_info_array (THREAD_ENTRY * thread_p, char *ptr, int num_classes)
 {
   int idx;
   UPDDEL_CLASS_INFO *classes = NULL;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
-  classes = (UPDDEL_CLASS_INFO *) stx_alloc_struct (thread_p, sizeof (*classes) * no_classes);
+  classes = (UPDDEL_CLASS_INFO *) stx_alloc_struct (thread_p, sizeof (*classes) * num_classes);
   if (classes == NULL)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       return NULL;
     }
 
-  for (idx = 0; idx < no_classes; idx++)
+  for (idx = 0; idx < num_classes; idx++)
     {
       ptr = stx_build_update_class_info (thread_p, ptr, &classes[idx]);
       if (ptr == NULL)
@@ -3538,20 +3538,20 @@ stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNME
 }
 
 static UPDATE_ASSIGNMENT *
-stx_restore_update_assignment_array (THREAD_ENTRY * thread_p, char *ptr, int no_assigns)
+stx_restore_update_assignment_array (THREAD_ENTRY * thread_p, char *ptr, int num_assigns)
 {
   int idx;
   UPDATE_ASSIGNMENT *assigns = NULL;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
-  assigns = (UPDATE_ASSIGNMENT *) stx_alloc_struct (thread_p, sizeof (*assigns) * no_assigns);
+  assigns = (UPDATE_ASSIGNMENT *) stx_alloc_struct (thread_p, sizeof (*assigns) * num_assigns);
   if (assigns == NULL)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       return NULL;
     }
 
-  for (idx = 0; idx < no_assigns; idx++)
+  for (idx = 0; idx < num_assigns; idx++)
     {
       ptr = stx_build_update_assignment (thread_p, ptr, &assigns[idx]);
       if (ptr == NULL)
@@ -3578,8 +3578,8 @@ stx_restore_odku_info (THREAD_ENTRY * thread_p, char *ptr)
       return NULL;
     }
 
-  /* no_assigns */
-  ptr = or_unpack_int (ptr, &odku_info->no_assigns);
+  /* num_assigns */
+  ptr = or_unpack_int (ptr, &odku_info->num_assigns);
 
   /* attr_ids */
   ptr = or_unpack_int (ptr, &offset);
@@ -3590,7 +3590,7 @@ stx_restore_odku_info (THREAD_ENTRY * thread_p, char *ptr)
   else
     {
       odku_info->attr_ids =
-	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], odku_info->no_assigns);
+	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], odku_info->num_assigns);
       if (odku_info->attr_ids == NULL)
 	{
 	  return NULL;
@@ -3606,7 +3606,7 @@ stx_restore_odku_info (THREAD_ENTRY * thread_p, char *ptr)
   else
     {
       odku_info->assignments =
-	stx_restore_update_assignment_array (thread_p, &xasl_unpack_info->packed_xasl[offset], odku_info->no_assigns);
+	stx_restore_update_assignment_array (thread_p, &xasl_unpack_info->packed_xasl[offset], odku_info->num_assigns);
       if (odku_info->assignments == NULL)
 	{
 	  return NULL;
@@ -3653,9 +3653,9 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr, UPDATE_PROC_NODE * up
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   /* classes */
-  ptr = or_unpack_int (ptr, &update_info->no_classes);
+  ptr = or_unpack_int (ptr, &update_info->num_classes);
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || update_info->no_classes == 0)
+  if (offset == 0 || update_info->num_classes == 0)
     {
       stx_set_xasl_errcode (thread_p, ER_GENERIC_ERROR);
       return NULL;
@@ -3663,7 +3663,8 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr, UPDATE_PROC_NODE * up
   else
     {
       update_info->classes =
-	stx_restore_update_class_info_array (thread_p, &xasl_unpack_info->packed_xasl[offset], update_info->no_classes);
+	stx_restore_update_class_info_array (thread_p, &xasl_unpack_info->packed_xasl[offset],
+					     update_info->num_classes);
       if (update_info->classes == NULL)
 	{
 	  goto error;
@@ -3671,16 +3672,17 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr, UPDATE_PROC_NODE * up
     }
 
   /* assigns */
-  ptr = or_unpack_int (ptr, &update_info->no_assigns);
+  ptr = or_unpack_int (ptr, &update_info->num_assigns);
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || update_info->no_classes == 0)
+  if (offset == 0 || update_info->num_classes == 0)
     {
       update_info->assigns = NULL;
     }
   else
     {
       update_info->assigns =
-	stx_restore_update_assignment_array (thread_p, &xasl_unpack_info->packed_xasl[offset], update_info->no_assigns);
+	stx_restore_update_assignment_array (thread_p, &xasl_unpack_info->packed_xasl[offset],
+					     update_info->num_assigns);
       if (update_info->assigns == NULL)
 	{
 	  goto error;
@@ -3704,20 +3706,20 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr, UPDATE_PROC_NODE * up
 
   ptr = or_unpack_int (ptr, &update_info->wait_msecs);
   ptr = or_unpack_int (ptr, &update_info->no_logging);
-  ptr = or_unpack_int (ptr, &(update_info->no_orderby_keys));
+  ptr = or_unpack_int (ptr, &update_info->num_orderby_keys);
 
   /* restore MVCC condition reevaluation data */
-  ptr = or_unpack_int (ptr, &update_info->no_assign_reev_classes);
-  ptr = or_unpack_int (ptr, &update_info->no_reev_classes);
+  ptr = or_unpack_int (ptr, &update_info->num_assign_reev_classes);
+  ptr = or_unpack_int (ptr, &update_info->num_reev_classes);
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || update_info->no_reev_classes == 0)
+  if (offset == 0 || update_info->num_reev_classes == 0)
     {
       update_info->mvcc_reev_classes = NULL;
     }
   else
     {
       update_info->mvcc_reev_classes =
-	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], update_info->no_reev_classes);
+	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], update_info->num_reev_classes);
       if (update_info->mvcc_reev_classes == NULL)
 	{
 	  goto error;
@@ -3737,17 +3739,18 @@ stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr, DELETE_PROC_NODE * de
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
-  ptr = or_unpack_int (ptr, &delete_info->no_classes);
+  ptr = or_unpack_int (ptr, &delete_info->num_classes);
 
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || delete_info->no_classes == 0)
+  if (offset == 0 || delete_info->num_classes == 0)
     {
       delete_info->classes = NULL;
     }
   else
     {
       delete_info->classes =
-	stx_restore_update_class_info_array (thread_p, &xasl_unpack_info->packed_xasl[offset], delete_info->no_classes);
+	stx_restore_update_class_info_array (thread_p, &xasl_unpack_info->packed_xasl[offset],
+					     delete_info->num_classes);
       if (delete_info->classes == NULL)
 	{
 	  goto error;
@@ -3758,16 +3761,16 @@ stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr, DELETE_PROC_NODE * de
   ptr = or_unpack_int (ptr, &delete_info->no_logging);
 
   /* restore MVCC condition reevaluation data */
-  ptr = or_unpack_int (ptr, &delete_info->no_reev_classes);
+  ptr = or_unpack_int (ptr, &delete_info->num_reev_classes);
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || delete_info->no_reev_classes == 0)
+  if (offset == 0 || delete_info->num_reev_classes == 0)
     {
       delete_info->mvcc_reev_classes = NULL;
     }
   else
     {
       delete_info->mvcc_reev_classes =
-	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], delete_info->no_reev_classes);
+	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], delete_info->num_reev_classes);
       if (delete_info->mvcc_reev_classes == NULL)
 	{
 	  goto error;
@@ -3792,19 +3795,19 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 
   ptr = or_unpack_hfid (ptr, &insert_info->class_hfid);
 
-  ptr = or_unpack_int (ptr, &insert_info->no_vals);
+  ptr = or_unpack_int (ptr, &insert_info->num_vals);
 
-  ptr = or_unpack_int (ptr, &insert_info->no_default_expr);
+  ptr = or_unpack_int (ptr, &insert_info->num_default_expr);
 
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0 || insert_info->no_vals == 0)
+  if (offset == 0 || insert_info->num_vals == 0)
     {
       insert_info->att_id = NULL;
     }
   else
     {
       insert_info->att_id =
-	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], insert_info->no_vals);
+	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], insert_info->num_vals);
       if (insert_info->att_id == NULL)
 	{
 	  goto error;
@@ -3812,14 +3815,14 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
     }
 
   /* Make space for the subquery values. */
-  insert_info->vals = (DB_VALUE **) stx_alloc_struct (thread_p, sizeof (DB_VALUE *) * insert_info->no_vals);
-  if (insert_info->no_vals)
+  insert_info->vals = (DB_VALUE **) stx_alloc_struct (thread_p, sizeof (DB_VALUE *) * insert_info->num_vals);
+  if (insert_info->num_vals)
     {
       if (insert_info->vals == NULL)
 	{
 	  goto error;
 	}
-      for (i = 0; i < insert_info->no_vals; ++i)
+      for (i = 0; i < insert_info->num_vals; ++i)
 	{
 	  insert_info->vals[i] = (DB_VALUE *) 0;
 	}
@@ -3859,23 +3862,23 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	}
     }
 
-  ptr = or_unpack_int (ptr, &insert_info->no_val_lists);
-  if (insert_info->no_val_lists == 0)
+  ptr = or_unpack_int (ptr, &insert_info->num_val_lists);
+  if (insert_info->num_val_lists == 0)
     {
       insert_info->valptr_lists = NULL;
     }
   else
     {
-      assert (insert_info->no_val_lists > 0);
+      assert (insert_info->num_val_lists > 0);
 
       insert_info->valptr_lists =
-	(OUTPTR_LIST **) stx_alloc_struct (thread_p, sizeof (OUTPTR_LIST *) * insert_info->no_val_lists);
+	(OUTPTR_LIST **) stx_alloc_struct (thread_p, sizeof (OUTPTR_LIST *) * insert_info->num_val_lists);
       if (insert_info->valptr_lists == NULL)
 	{
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
-      for (i = 0; i < insert_info->no_val_lists; i++)
+      for (i = 0; i < insert_info->num_val_lists; i++)
 	{
 	  ptr = or_unpack_int (ptr, &offset);
 	  if (ptr == 0)

@@ -4108,6 +4108,14 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
     }
   else
     {
+      /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
+       * removed with one of the refactoring issues anyway.
+       */
+      if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+	{
+	  return LC_DOESNOT_EXIST;
+	}
+
       /* MVCC class, call heap_mvcc_lock_object (it also verifies object exists). */
       scan_code = heap_mvcc_lock_object (thread_p, oid, class_oid, lock, snapshot_type);
       if (scan_code == S_ERROR)

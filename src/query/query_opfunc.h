@@ -81,7 +81,7 @@ struct method_sig_node
   char *method_name;		/* method name */
   char *class_name;		/* class for the method */
   METHOD_TYPE method_type;	/* instance or class method */
-  int no_method_args;		/* number of arguments */
+  int num_method_args;		/* number of arguments */
   int *method_arg_pos;		/* arg position in list file */
 };
 
@@ -89,7 +89,7 @@ typedef struct method_sig_list METHOD_SIG_LIST;
 struct method_sig_list
 {				/* signature for methods */
   METHOD_SIG *method_sig;	/* one method signature */
-  int no_methods;		/* number of signatures */
+  int num_methods;		/* number of signatures */
 };
 
 typedef enum

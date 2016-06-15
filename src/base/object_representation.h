@@ -194,13 +194,9 @@
 #define OR_GET_INT(ptr) \
   ((int) ntohl (*(int *) ((char *) (ptr))))
 #define OR_GET_FLOAT(ptr, value) \
-  ntohf ((float *) ((char *) (ptr)), (float *) (value))
+  (*(value) = ntohf (*(UINT32 *) (ptr)))
 #define OR_GET_DOUBLE(ptr, value) \
-   do { \
-     double packed_value; \
-     memcpy (&packed_value, ptr, OR_DOUBLE_SIZE); \
-     ntohd (&packed_value, (double *) (value)); \
-   } while (0)
+  (*(value) = ntohd (*(UINT64 *) (ptr)))
 #define OR_GET_STRING(ptr) \
   ((char *) ((char *) (ptr)))
 
@@ -210,14 +206,10 @@
   (*(short *) ((char *) (ptr)) = htons ((short) (val)))
 #define OR_PUT_INT(ptr, val) \
   (*(int *) ((char *) (ptr)) = htonl ((int) (val)))
-#define OR_PUT_FLOAT(ptr, value) \
-  htonf ((float *) ((char *) (ptr)), (float *) (value))
-#define OR_PUT_DOUBLE(ptr, value) \
-   do { \
-     double packed_value; \
-     htond (&packed_value, (double *) (value)); \
-     memcpy (ptr, &packed_value, OR_DOUBLE_SIZE); \
-   } while (0)
+#define OR_PUT_FLOAT(ptr, val) \
+  (*(UINT32 *) (ptr) = htonf (*(float*) (val)))
+#define OR_PUT_DOUBLE(ptr, val) \
+  (*(UINT64 *) (ptr) = htond (*(double *) (val)))
 
 #define OR_GET_BIG_VAR_OFFSET(ptr) 	OR_GET_INT (ptr)	/* 4byte */
 #define OR_PUT_BIG_VAR_OFFSET(ptr, val)	OR_PUT_INT (ptr, val)	/* 4byte */
@@ -591,7 +583,7 @@
 /* OBJECT HEADER LAYOUT */
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
 
-/* representation id, MVCC insert id and CHN == 36 ?? */ 
+/* representation id, MVCC insert id and CHN == 36 ?? */
 #define OR_MVCC_MAX_HEADER_SIZE  28
 
 /* representation id and CHN */

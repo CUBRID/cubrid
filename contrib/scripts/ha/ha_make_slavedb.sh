@@ -32,7 +32,7 @@ current_host=$(uname -n)
 current_state=
 target_state=
 cubrid_user=$(whoami)
-script_version=$(cat ${CURR_DIR}/BUILD_NUMBER)
+script_version=$(cat ${CURR_DIR}/VERSION)
 now=$(date +"%Y%m%d_%H%M%S")
 
 ha_temp_home=$HOME/.ha

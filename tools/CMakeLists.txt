@@ -25,5 +25,5 @@ if(UNIX)
   target_link_libraries(cci_applier cascci)
 
   install(TARGETS cci_applier
-    RUNTIME DESTINATION ${CUBRID_BINDIR})
+    RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application)
 endif(UNIX)
