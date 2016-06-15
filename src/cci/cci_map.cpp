@@ -32,11 +32,14 @@
  * cci_map.cpp
  */
 
-#if defined (_MSC_VER) && _MSC_VER >= 1700
+/* hash_map is deprecated and should be replaced with unordered_map if compiler supports it */
+#if defined WINDOWS
+#if defined _MSC_VER && _MSC_VER > 1500
 #include <unordered_map>
-#elif defined (WINDOWS)
+#else /* !_MSC_VER || _MSC_VER < 1500 */
 #include <hash_map>
-#else
+#endif /* !_MSC_VER || _MSC_VER < 1500 */
+#else /* !WINDOWS */
 #include <ext/hash_map>
 #endif
 
