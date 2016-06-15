@@ -330,6 +330,7 @@ logtb_initialize_mvcc_testing (int num_threads, THREAD_ENTRY ** thread_array)
   for (i = 0; i < num_threads; i++)
     {
       thread_p = thread_array[i];
+      thread_p->type = TT_WORKER;	/* init */
       thread_p->index = i;
     }
 
@@ -454,6 +455,8 @@ test_new_mvcc_complete (void *param)
 
   for (i = 0; i < NOPS_COMPLPETE; i++)
     {
+      (void) logtb_get_current_mvccid (thread_p);
+
       logtb_complete_mvcc (thread_p, tdes, committed);
       committed = !committed;
 
