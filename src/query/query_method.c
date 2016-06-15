@@ -277,7 +277,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
   CURSOR_ID cursor_id;
   int turn_on_auth = 1;
   int cursor_result;
-  int method_no;
+  int num_method;
   int no_args;
   int pos;
   int arg;
@@ -299,7 +299,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
   meth_sig_p = method_sig_list_p->method_sig;
   value_count = 0;
 
-  for (method_no = 0; method_no < method_sig_list_p->no_methods; method_no++)
+  for (num_method = 0; num_method < method_sig_list_p->num_methods; num_method++)
     {
       value_count += meth_sig_p->no_method_args + 1;
       meth_sig_p = meth_sig_p->next;
@@ -332,11 +332,11 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
       return ER_FAILED;
     }
 
-  oid_cols = (int *) malloc (sizeof (int) * method_sig_list_p->no_methods);
+  oid_cols = (int *) malloc (sizeof (int) * method_sig_list_p->num_methods);
   if (oid_cols == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (int) * method_sig_list_p->no_methods);
+	      sizeof (int) * method_sig_list_p->num_methods);
       method_clear_vacomm_buffer (&vacomm_buffer);
       free_and_init (val_list_p);
       free_and_init (values_p);
@@ -344,9 +344,9 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
     }
 
   meth_sig_p = method_sig_list_p->method_sig;
-  for (method_no = 0; method_no < method_sig_list_p->no_methods; method_no++)
+  for (num_method = 0; num_method < method_sig_list_p->num_methods; num_method++)
     {
-      oid_cols[method_no] = meth_sig_p->method_arg_pos[0];
+      oid_cols[num_method] = meth_sig_p->method_arg_pos[0];
       meth_sig_p = meth_sig_p->next;
     }
 
@@ -362,7 +362,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
   /* tfile_vfid pointer as query id for method scan */
   cursor_id.query_id = (QUERY_ID) list_id_p->tfile_vfid;
 
-  cursor_set_oid_columns (&cursor_id, oid_cols, method_sig_list_p->no_methods);
+  cursor_set_oid_columns (&cursor_id, oid_cols, method_sig_list_p->num_methods);
 
   while (true)
     {
@@ -378,8 +378,8 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
 	  goto end;
 	}
 
-      for (method_no = 0, meth_sig_p = method_sig_list_p->method_sig; method_no < method_sig_list_p->no_methods;
-	   ++method_no, meth_sig_p = meth_sig_p->next)
+      for (num_method = 0, meth_sig_p = method_sig_list_p->method_sig; num_method < method_sig_list_p->num_methods;
+	   ++num_method, meth_sig_p = meth_sig_p->next)
 	{
 	  /* The first position # is for the object ID */
 	  no_args = meth_sig_p->no_method_args + 1;

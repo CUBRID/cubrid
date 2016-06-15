@@ -2529,7 +2529,7 @@ stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG_LIST *
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
-  ptr = or_unpack_int (ptr, (int *) &method_sig_list->no_methods);
+  ptr = or_unpack_int (ptr, (int *) &method_sig_list->num_methods);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -2539,7 +2539,7 @@ stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG_LIST *
   else
     {
       method_sig_list->method_sig =
-	stx_restore_method_sig (thread_p, &xasl_unpack_info->packed_xasl[offset], method_sig_list->no_methods);
+	stx_restore_method_sig (thread_p, &xasl_unpack_info->packed_xasl[offset], method_sig_list->num_methods);
       if (method_sig_list->method_sig == NULL)
 	{
 	  goto error;
@@ -2555,7 +2555,7 @@ stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG_LIST *
       {
 	i++;
       }
-    assert (method_sig_list->no_methods == i);
+    assert (method_sig_list->num_methods == i);
   }
 #endif
 

@@ -5720,7 +5720,7 @@ regu_free_method_sig (METHOD_SIG * method_sig)
 void
 regu_method_sig_list_init (METHOD_SIG_LIST * ptr)
 {
-  ptr->no_methods = 0;
+  ptr->num_methods = 0;
   ptr->method_sig = (METHOD_SIG *) 0;
 }
 

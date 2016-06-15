@@ -3431,7 +3431,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 
       if (*tail && node->node_type == PT_METHOD_CALL && node->info.method_call.method_name)
 	{
-	  (sig_list->no_methods)++;
+	  (sig_list->num_methods)++;
 
 	  (*tail)->method_name = (char *) node->info.method_call.method_name->info.name.original;
 

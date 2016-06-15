@@ -87,7 +87,7 @@ method_open_value_array_scan (METHOD_SCAN_BUFFER * scan_buffer_p)
 {
   int num_methods;
 
-  num_methods = scan_buffer_p->s.method_ctl.method_sig_list->no_methods;
+  num_methods = scan_buffer_p->s.method_ctl.method_sig_list->num_methods;
   if (num_methods <= 0)
     {
       num_methods = MAX_XS_SCANBUF_DBVALS;	/* for safe-guard */
@@ -238,7 +238,7 @@ method_scan_next (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p, V
 
   if (scan_result == S_SUCCESS)
     {
-      value_list_p->val_cnt = scan_buffer_p->s.method_ctl.method_sig_list->no_methods;
+      value_list_p->val_cnt = scan_buffer_p->s.method_ctl.method_sig_list->num_methods;
       scan_result = method_scan_next_value_array (scan_buffer_p, value_list_p);
     }
 
@@ -258,7 +258,7 @@ method_invoke_from_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_bu
 static int
 method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 {
-  int meth_no;
+  int meth_num;
   int val_cnt;
   int i;
   METHOD_INFO *method_ctl_p;
@@ -272,7 +272,7 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
   val_cnt = 0;
   meth_sig = method_sig_list->method_sig;
 
-  for (meth_no = 0; meth_no < method_sig_list->no_methods; meth_no++)
+  for (meth_num = 0; meth_num < method_sig_list->num_methods; meth_num++)
     {
       val_cnt += meth_sig->no_method_args + 1;
       meth_sig = meth_sig->next;
@@ -310,7 +310,7 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
       return ER_FAILED;
     }
 
-  scan_buffer_p->oid_cols = (int *) malloc (sizeof (int) * method_sig_list->no_methods);
+  scan_buffer_p->oid_cols = (int *) malloc (sizeof (int) * method_sig_list->num_methods);
 
   if (scan_buffer_p->oid_cols == NULL)
     {
@@ -319,9 +319,9 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
     }
 
   meth_sig = method_sig_list->method_sig;
-  for (meth_no = 0; meth_no < method_sig_list->no_methods; meth_no++)
+  for (meth_num = 0; meth_num < method_sig_list->num_methods; meth_num++)
     {
-      scan_buffer_p->oid_cols[meth_no] = meth_sig->method_arg_pos[0];
+      scan_buffer_p->oid_cols[meth_num] = meth_sig->method_arg_pos[0];
       meth_sig = meth_sig->next;
     }
 
@@ -334,7 +334,7 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
   /* tfile_vfid pointer as query id for method scan */
   scan_buffer_p->crs_id.query_id = (QUERY_ID) method_ctl_p->list_id->tfile_vfid;
 
-  cursor_set_oid_columns (&scan_buffer_p->crs_id, scan_buffer_p->oid_cols, method_sig_list->no_methods);
+  cursor_set_oid_columns (&scan_buffer_p->crs_id, scan_buffer_p->oid_cols, method_sig_list->num_methods);
 
   return NO_ERROR;
 }
@@ -360,7 +360,7 @@ static SCAN_CODE
 method_receive_results_for_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p)
 {
   QPROC_DB_VALUE_LIST dbval_list;
-  int meth_no, i;
+  int meth_num, i;
   METHOD_SIG *meth_sig_p;
   SCAN_CODE result;
   DB_VALUE *dbval_p;
@@ -370,7 +370,7 @@ method_receive_results_for_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER *
   meth_sig_p = method_sig_list_p->method_sig;
   dbval_list = scan_buffer_p->dbval_list;
 
-  for (meth_no = 0; meth_no < method_sig_list_p->no_methods; ++meth_no)
+  for (meth_num = 0; meth_num < method_sig_list_p->num_methods; ++meth_num)
     {
       dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE));
       dbval_list->val = dbval_p;
@@ -387,7 +387,7 @@ method_receive_results_for_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER *
 
       if (result != S_SUCCESS)
 	{
-	  for (i = 0; i <= meth_no; i++)
+	  for (i = 0; i <= meth_num; i++)
 	    {
 	      if (scan_buffer_p->dbval_list[i].val)
 		{
@@ -417,7 +417,7 @@ static SCAN_CODE
 method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 {
   QPROC_DB_VALUE_LIST dbval_list;
-  int meth_no;
+  int meth_num;
   METHOD_SIG *meth_sig;
   int crs_result;
   int no_args;
@@ -457,7 +457,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
       meth_sig = method_sig_list->method_sig;
       dbval_list = scan_buffer_p->dbval_list;
 
-      for (meth_no = 0; meth_no < method_sig_list->no_methods; meth_no++)
+      for (meth_num = 0; meth_num < method_sig_list->num_methods; meth_num++)
 	{
 	  /* The first position # is for the object ID */
 	  no_args = meth_sig->no_method_args + 1;

@@ -5374,13 +5374,13 @@ xts_process_method_sig_list (char *ptr, const METHOD_SIG_LIST * method_sig_list)
       {
 	i++;
       }
-    assert (method_sig_list->no_methods == i);
+    assert (method_sig_list->num_methods == i);
   }
 #endif
 
-  ptr = or_pack_int (ptr, method_sig_list->no_methods);
+  ptr = or_pack_int (ptr, method_sig_list->num_methods);
 
-  offset = xts_save_method_sig (method_sig_list->method_sig, method_sig_list->no_methods);
+  offset = xts_save_method_sig (method_sig_list->method_sig, method_sig_list->num_methods);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -7019,7 +7019,7 @@ xts_sizeof_method_sig_list (const METHOD_SIG_LIST * method_sig_list)
 {
   int size = 0;
 
-  size += (OR_INT_SIZE		/* no_methods */
+  size += (OR_INT_SIZE		/* num_methods */
 	   + PTR_SIZE);		/* method_sig */
 
   return size;

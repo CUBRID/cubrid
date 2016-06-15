@@ -89,7 +89,7 @@ typedef struct method_sig_list METHOD_SIG_LIST;
 struct method_sig_list
 {				/* signature for methods */
   METHOD_SIG *method_sig;	/* one method signature */
-  int no_methods;		/* number of signatures */
+  int num_methods;		/* number of signatures */
 };
 
 typedef enum
