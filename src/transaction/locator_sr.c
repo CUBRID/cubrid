@@ -2841,7 +2841,7 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn, con
        * Caller does not know the class of the object. Get the class identifier
        * from disk
        */
-      if (heap_get_class_oid_with_lock (thread_p, class_oid, oid, SNAPSHOT_TYPE_MVCC, NULL_LOCK) != S_SUCCESS)
+      if (heap_get_class_oid(thread_p, oid, class_oid) != S_SUCCESS)
 	{
 	  /* 
 	   * Unable to find out the class identifier.
