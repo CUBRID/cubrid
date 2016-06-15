@@ -81,9 +81,9 @@ add_executable(cub_sainfo ${CUB_JOBSA_SOURCES})
 target_link_libraries(cub_sainfo cubridsa)
 
 install(TARGETS cmstat cmdep cub_jobsa cub_sainfo
-  RUNTIME DESTINATION ${CUBRID_BINDIR}
-  LIBRARY DESTINATION ${CUBRID_LIBDIR}
-  ARCHIVE DESTINATION ${CUBRID_LIBDIR}
+  RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
+  LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
+  ARCHIVE DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR}
   )
 
@@ -91,8 +91,8 @@ install(TARGETS cmstat cmdep cub_jobsa cub_sainfo
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY
-    ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/
-    DESTINATION ${CUBRID_BINDIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/
+    DESTINATION ${CUBRID_BINDIR} COMPONENT Debuginfo
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)
