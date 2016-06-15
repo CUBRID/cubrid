@@ -35,8 +35,6 @@
 
 // your DLL function prototypes
 
-#include "../../../version.h"
-
 // ---- script function prototypes -----
 prototype   BOOL USER.SendMessageTimeout(HWND, SHORT, SHORT, POINTER, SHORT, SHORT, POINTER);
 prototype   BOOL Shell32.SHGetSpecialFolderPathA(HWND,BYREF STRING , NUMBER, BOOL);

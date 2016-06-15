@@ -331,10 +331,8 @@
 		<row><td>cubrid_replay.pdb</td><td>CUBRID</td><td>cubrid_replay.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_replay.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubrid_service_tray.exe</td><td>CUBRID</td><td>CUBRID_Service_Tray.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\CUBRID_Service_Tray.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubridcs.dll</td><td>CUBRID</td><td>cubridcs.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridcs.dll</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>cubridcs.lib</td><td>CUBRID</td><td>cubridcs.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cubridcs.lib</td><td>1</td><td>NewSubFolder7</td></row>
 		<row><td>cubridcs.pdb</td><td>CUBRID</td><td>cubridcs.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridcs.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubridsa.dll</td><td>CUBRID</td><td>cubridsa.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridsa.dll</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>cubridsa.lib</td><td>CUBRID</td><td>cubridsa.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cubridsa.lib</td><td>1</td><td>NewSubFolder7</td></row>
 		<row><td>cubridsa.pdb</td><td>CUBRID</td><td>cubridsa.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridsa.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubridservice.exe</td><td>CUBRID</td><td>cubridservice.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridservice.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cubridservice.pdb</td><td>CUBRID</td><td>cubridservice.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridservice.pdb</td><td>1</td><td>NewSubFolder5</td></row>
@@ -349,7 +347,6 @@
 		<row><td>libcubrid.dll</td><td>CUBRID</td><td>libcubrid.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libcubrid.dll</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>libcubrid.pdb</td><td>CUBRID</td><td>libcubrid.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libcubrid.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>libesql.dll</td><td>CUBRID</td><td>libesql.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libesql.dll</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>libesql.lib</td><td>CUBRID</td><td>libesql.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\libesql.lib</td><td>1</td><td>NewSubFolder7</td></row>
 		<row><td>libesql.pdb</td><td>CUBRID</td><td>libesql.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libesql.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>libgcrypt.dll</td><td>CUBRID</td><td>libgcrypt.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libgcrypt.dll</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>libgpg_error_0.dll</td><td>CUBRID</td><td>libgpg-error-0.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libgpg-error-0.dll</td><td>1</td><td>NewSubFolder5</td></row>
@@ -360,12 +357,9 @@
 		<row><td>make_tz.bat</td><td>CUBRID</td><td>make_tz.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\make_tz.bat</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>libcubrid_timezones.dll</td><td>CUBRID</td><td>libcubrid_timezones.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\libcubrid_timezones.dll</td><td>1</td><td>NewSubFolder7</td></row>
 		<row><td>makedemo_is.bat</td><td>CUBRID</td><td>makedemo_is.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;ISPROJECTDIR&gt;\makedemo_is.bat</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>migrate_91_to_92.exe</td><td>CUBRID</td><td>migrate_91_to_92.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\migrate_91_to_92.exe</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>migrate_91_to_92.pdb</td><td>CUBRID</td><td>migrate_91_to_92.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\migrate_91_to_92.pdb</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>readme</td><td>CUBRID</td><td>README</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\README</td><td>1</td><td/></row>
 		<row><td>setupmanage.exe</td><td>CUBRID</td><td>setupmanage.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\setupmanage.exe</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>setupmanage.pdb</td><td>CUBRID</td><td>setupmanage.pdb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\setupmanage.pdb</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>shard.conf_dist</td><td>CUBRID</td><td>shard.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>shard_connection.txt_dist</td><td>CUBRID</td><td>shard_connection.txt-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard_connection.txt-dist</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>shard_key.txt_dist</td><td>CUBRID</td><td>shard_key.txt-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\shard_key.txt-dist</td><td>1</td><td>NewSubFolder4</td></row>
 	</table>
