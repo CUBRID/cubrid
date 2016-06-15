@@ -13178,23 +13178,25 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  out_of_row_recdes->recdes_capacity = overflow_columns_cnt;
 	  out_of_row_recdes->recdes_cnt = 0;
 	  out_of_row_recdes->oor_recdes = (RECDES *)
-	    db_private_alloc (thread_p, out_of_row_recdes->recdes_capacity * sizeof (RECDES));
+	    db_private_alloc (thread_p, out_of_row_recdes->recdes_capacity * sizeof (out_of_row_recdes->oor_recdes[0]));
 	  if (out_of_row_recdes->oor_recdes == NULL)
 	    {
 	      /* TODO[arnia] : */
 	      return S_ERROR;
 	    }
-	  memset (out_of_row_recdes->oor_recdes, 0, sizeof (out_of_row_recdes->oor_recdes[0]));
+	  memset (out_of_row_recdes->oor_recdes, 0, out_of_row_recdes->recdes_capacity
+		  * sizeof (out_of_row_recdes->oor_recdes[0]));
 
 	  out_of_row_recdes->home_recdes_oid_offsets =
-	    (int *) db_private_alloc (thread_p, out_of_row_recdes->recdes_capacity * sizeof (int));
+	    (int *) db_private_alloc (thread_p, out_of_row_recdes->recdes_capacity
+				      * sizeof (out_of_row_recdes->home_recdes_oid_offsets[0]));
 	  if (out_of_row_recdes->home_recdes_oid_offsets == NULL)
 	    {
 	      /* TODO[arnia] : */
 	      return S_ERROR;
 	    }
 	  memset (out_of_row_recdes->home_recdes_oid_offsets, 0,
-		  sizeof (out_of_row_recdes->home_recdes_oid_offsets[0]));
+		  out_of_row_recdes->recdes_capacity * sizeof (out_of_row_recdes->home_recdes_oid_offsets[0]));
 	}
       else
 	{
@@ -22474,6 +22476,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
       for (i = 0; i < context->out_of_row_recdes->recdes_cnt; i++)
 	{
 	  context->out_of_row_recdes->home_recdes_oid_offsets[i] -= curr_header_size - new_header_size;
+	  assert (context->out_of_row_recdes->home_recdes_oid_offsets[i] >= 0);
 	}
     }
 
