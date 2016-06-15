@@ -45,9 +45,9 @@ packages=""
 # variables
 product_name="CUBRID"
 product_name_lower=$(echo $product_name | tr '[:upper:]' '[:lower:]')
-typeset -i major
-typeset -i minor
-typeset -i maintanance
+typeset -i major_version
+typeset -i minor_version
+typeset -i patch_version
 version=""
 last_checking_msg=""
 output_packages=""
@@ -115,24 +115,24 @@ function build_initialize ()
     version_file=VERSION-DIST
   fi
   version=$(cat $source_dir/$version_file)
-  major=$(echo $version | cut -d . -f 1)
-  minor=$(echo $version | cut -d . -f 2)
-  maintanance=$(echo $version | cut -d . -f 3)
-  extra=$(echo $version | cut -d . -f 4)
-  if [ "x$extra" != "x" ]; then
-    serial=$(echo $extra | cut -d - -f 1)
+  major_version=$(echo $version | cut -d . -f 1)
+  minor_version=$(echo $version | cut -d . -f 2)
+  patch_version=$(echo $version | cut -d . -f 3)
+  extra_version=$(echo $version | cut -d . -f 4)
+  if [ "x$extra_version" != "x" ]; then
+    serial_number=$(echo $extra_version | cut -d - -f 1)
   elif [ -d $source_dir/.git ]; then
-    serial=$(cd $source_dir && git rev-list --count HEAD)
+    serial_number=$(cd $source_dir && git rev-list --count HEAD)
     hash_tag=$(cd $source_dir && git describe --always --match '@{NEVERMATCH}@' --dirty=_modified)
-    extra="$serial-$hash_tag"
+    extra_version="$serial_number-$hash_tag"
   else
-    extra=0000-unknown
-    serial=0000
+    extra_version=0000-unknown
+    serial_number=0000
   fi
-  print_info "version: $version ($major.$minor.$maintanance.$extra)"
-  version="$major.$minor.$maintanance.$extra"
+  print_info "version: $version ($major_version.$minor_version.$patch_version.$extra_version)"
+  version="$major_version.$minor_version.$patch_version.$extra_version"
   # old style version string (digital only version string) for legacy codes
-  build_number="$major.$minor.$maintanance.$serial"
+  build_number="$major_version.$minor_version.$patch_version.$serial_number"
   print_result "OK"
 }
 
