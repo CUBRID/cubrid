@@ -7973,7 +7973,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
 	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 	}
 
-      for (i = 0; i < update->no_assigns; i++)
+      for (i = 0; i < update->num_assigns; i++)
 	{
 	  if (update->assigns[i].constant)
 	    {
@@ -8738,7 +8738,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    {
 		      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 		    }
-		  for (i = update->no_assigns - 1; i >= 0; i--)
+		  for (i = update->num_assigns - 1; i >= 0; i--)
 		    {
 		      if (update->assigns[i].constant)
 			{
@@ -15665,7 +15665,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  int i;
 		  UPDATE_PROC_NODE *update = &contextp->xasl->proc.merge.update_xasl->proc.update;
 
-		  for (i = update->no_assigns - 1; i >= 0; i--)
+		  for (i = update->num_assigns - 1; i >= 0; i--)
 		    {
 		      if (update->assigns[i].constant)
 			{

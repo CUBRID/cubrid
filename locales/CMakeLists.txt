@@ -48,5 +48,5 @@ install(DIRECTORY
 
 install(FILES
   ${CMAKE_SOURCE_DIR}/src/base/locale_lib_common.h
-  DESTINATION ${CUBRID_SHLOCALESDIR}/loclib)
+  DESTINATION ${CUBRID_SHLOCALESDIR}/loclib COMPONENT Header)
 

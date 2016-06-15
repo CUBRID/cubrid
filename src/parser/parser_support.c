@@ -5506,12 +5506,12 @@ regu_upddel_class_info_init (UPDDEL_CLASS_INFO * ptr)
   ptr->class_hfid = NULL;
   ptr->class_oid = NULL;
   ptr->has_uniques = 0;
-  ptr->no_subclasses = 0;
-  ptr->no_attrs = 0;
+  ptr->num_subclasses = 0;
+  ptr->num_attrs = 0;
   ptr->needs_pruning = DB_NOT_PARTITIONED_CLASS;
-  ptr->no_lob_attrs = NULL;
+  ptr->num_lob_attrs = NULL;
   ptr->lob_attr_ids = NULL;
-  ptr->no_extra_assign_reev = 0;
+  ptr->num_extra_assign_reev = 0;
   ptr->mvcc_extra_assign_reev = NULL;
 }
 
@@ -5567,7 +5567,7 @@ regu_odku_info_alloc (void)
   ptr->assignments = NULL;
   ptr->attr_ids = NULL;
   ptr->cons_pred = NULL;
-  ptr->no_assigns = 0;
+  ptr->num_assigns = 0;
   ptr->attr_info = NULL;
   return ptr;
 }
@@ -5636,7 +5636,7 @@ regu_method_sig_init (METHOD_SIG * ptr)
   ptr->method_name = NULL;
   ptr->class_name = NULL;
   ptr->method_type = 0;
-  ptr->no_method_args = 0;
+  ptr->num_method_args = 0;
   ptr->method_arg_pos = NULL;
 }
 
@@ -5720,7 +5720,7 @@ regu_free_method_sig (METHOD_SIG * method_sig)
 void
 regu_method_sig_list_init (METHOD_SIG_LIST * ptr)
 {
-  ptr->no_methods = 0;
+  ptr->num_methods = 0;
   ptr->method_sig = (METHOD_SIG *) 0;
 }
 

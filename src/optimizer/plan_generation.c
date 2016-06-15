@@ -1075,11 +1075,14 @@ static int
 is_normal_access_term (QO_TERM * term)
 {
   if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
-    return 0;
-  if (QO_TERM_CLASS (term) == QO_TC_OTHER ||
-      /* QO_TERM_CLASS(term) == QO_TC_DURING_JOIN || */
+    {
+      return 0;
+    }
+
+  if (QO_TERM_CLASS (term) == QO_TC_OTHER
+      /* || QO_TERM_CLASS(term) == QO_TC_DURING_JOIN || */
       /* nl outer join treats during join terms as sarged terms of inner */
-      QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
+      || QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
     {
       return 0;
     }
@@ -1155,8 +1158,8 @@ is_totally_after_join_term (QO_TERM * term)
 static int
 is_follow_if_term (QO_TERM * term)
 {
-  if (QO_TERM_CLASS (term) == QO_TC_DURING_JOIN /* ? */  ||
-      QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
+  if (QO_TERM_CLASS (term) == QO_TC_DURING_JOIN	/* ? */
+      || QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
     {
       return 0;
     }
@@ -1213,12 +1216,14 @@ make_pred_from_bitset (QO_ENV * env, BITSET * predset, ELIGIBILITY_FN safe)
 
       /* We need to use predicate pointer. modifying WHERE clause structure in place gives us no way to compile the
        * query if the optimizer bails out. */
-      if ((pt_expr = QO_TERM_PT_EXPR (term)) == NULL)
+      pt_expr = QO_TERM_PT_EXPR (term);
+      if (pt_expr == NULL)
 	{
 	  /* is possible ? */
 	  goto exit_on_error;
 	}
-      if ((pointer = pt_point (parser, pt_expr)) == NULL)
+      pointer = pt_point (parser, pt_expr);
+      if (pointer == NULL)
 	{
 	  goto exit_on_error;
 	}
@@ -1338,9 +1343,8 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
   /* if key filter(predicates) is not required */
   if (predp != NULL && (key_predp == NULL || qo_index_infop == NULL))
     {
-      *predp =
-	make_pred_from_bitset (env, &(plan->sarged_terms),
-			       bitset_has_path (env, &(plan->sarged_terms)) ? path_access_term : is_normal_access_term);
+      *predp = (make_pred_from_bitset (env, &(plan->sarged_terms), bitset_has_path (env, &(plan->sarged_terms))
+				       ? path_access_term : is_normal_access_term));
       return;
     }
 
@@ -1353,9 +1357,8 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
   /* make predicate list for data filter */
   if (predp != NULL)
     {
-      *predp =
-	make_pred_from_bitset (env, &(plan->sarged_terms),
-			       bitset_has_path (env, &(plan->sarged_terms)) ? path_access_term : is_normal_access_term);
+      *predp = (make_pred_from_bitset (env, &(plan->sarged_terms), bitset_has_path (env, &(plan->sarged_terms))
+				       ? path_access_term : is_normal_access_term));
     }
 }
 
@@ -1400,7 +1403,7 @@ make_instnum_pred_from_plan (QO_ENV * env, QO_PLAN * plan)
 {
   /* is it enough? */
   return make_pred_from_bitset (env, &(plan->sarged_terms), is_totally_after_join_term);
-}				/* make_instnum_pred_from_plan() */
+}
 
 /*
  * make_namelist_from_projected_segs () -
@@ -1529,7 +1532,6 @@ make_outer_instnum (QO_ENV * env, QO_PLAN * outer, QO_PLAN * plan)
 
   for (t = bitset_iterate (&(plan->sarged_terms), &iter); t != -1; t = bitset_next_member (&iter))
     {
-
       termp = QO_ENV_TERM (env, t);
 
       if (is_totally_after_join_term (termp))
@@ -1730,7 +1732,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		{
 		  bitset_union (&fake_subqueries, &(QO_TERM_SUBQUERIES (term)));
 		}
-	    }			/* for (i = ... ) */
+	    }
 
 	  bitset_difference (&new_subqueries, &fake_subqueries);
 
@@ -1782,7 +1784,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 			}
 		    }
 		}
-	    }			/* for (i = ... ) */
+	    }
 	  /* exclude totally after join term and push into inner */
 	  bitset_difference (&predset, &taj_terms);
 
@@ -1911,7 +1913,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		  {
 		    bitset_union (&plan_segs, &(QO_TERM_SEGS (term)));
 		  }
-	      }			/* for (i = ...) */
+	      }
 
 	    /* build outer segs namelist */
 	    bitset_assign (&temp_segs, &((outer->info)->projected_segs));	/* save */
@@ -2013,15 +2015,23 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		    xasl = NULL;	/* cause error */
 
 		    if (left_list)
-		      parser_free_tree (parser, left_list);
+		      {
+			parser_free_tree (parser, left_list);
+		      }
 		    if (rght_list)
-		      parser_free_tree (parser, rght_list);
+		      {
+			parser_free_tree (parser, rght_list);
+		      }
 
 		    if (seg_nlist)
-		      parser_free_tree (parser, seg_nlist);
+		      {
+			parser_free_tree (parser, seg_nlist);
+		      }
 
 		    if (seg_pos_list)
-		      free_and_init (seg_pos_list);
+		      {
+			free_and_init (seg_pos_list);
+		      }
 
 		    bitset_delset (&plan_segs);
 		    bitset_delset (&temp_segs);
@@ -2067,22 +2077,30 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		      }
 
 		    p++;	/* increase */
-		  }		/* for (attr = seg_nlist; ...) */
+		  }
 
 		if (pos == -1)
 		  {		/* error */
 		    xasl = NULL;	/* cause error */
 
 		    if (left_list)
-		      parser_free_tree (parser, left_list);
+		      {
+			parser_free_tree (parser, left_list);
+		      }
 		    if (rght_list)
-		      parser_free_tree (parser, rght_list);
+		      {
+			parser_free_tree (parser, rght_list);
+		      }
 
 		    if (seg_nlist)
-		      parser_free_tree (parser, seg_nlist);
+		      {
+			parser_free_tree (parser, seg_nlist);
+		      }
 
 		    if (seg_pos_list)
-		      free_and_init (seg_pos_list);
+		      {
+			free_and_init (seg_pos_list);
+		      }
 
 		    bitset_delset (&plan_segs);
 		    bitset_delset (&temp_segs);
@@ -2090,7 +2108,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		    bitset_delset (&rght_exprs);
 		    break;
 		  }
-	      }			/* if (seg_nlen > 0 ...) */
+	      }
 
 	    if (xasl)
 	      {
@@ -2100,15 +2118,23 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	      }
 
 	    if (left_list)
-	      parser_free_tree (parser, left_list);
+	      {
+		parser_free_tree (parser, left_list);
+	      }
 	    if (rght_list)
-	      parser_free_tree (parser, rght_list);
+	      {
+		parser_free_tree (parser, rght_list);
+	      }
 
 	    if (seg_nlist)
-	      parser_free_tree (parser, seg_nlist);
+	      {
+		parser_free_tree (parser, seg_nlist);
+	      }
 
 	    if (seg_pos_list)
-	      free_and_init (seg_pos_list);
+	      {
+		free_and_init (seg_pos_list);
+	      }
 
 	    bitset_delset (&plan_segs);
 	    bitset_delset (&temp_segs);
@@ -2125,7 +2151,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 
 	default:
 	  break;
-	}			/* switch (plan->plan_un.join.join_method) */
+	}
 
       break;
 
@@ -2243,7 +2269,9 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
       scan = make_scan_proc (env);
       scan = init_list_scan_proc (env, scan, listfile, namelist, predset, NULL);
       if (namelist)
-	parser_free_tree (env->parser, namelist);
+	{
+	  parser_free_tree (env->parser, namelist);
+	}
       scan = add_scan_proc (env, scan, inner_scans);
       scan = add_fetch_proc (env, scan, fetches);
       scan = add_subqueries (env, scan, &new_subqueries);
@@ -2721,7 +2749,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       assert (!qo_is_index_iss_scan (plan) || pos != 0);
 
       index_infop->term_exprs[pos] = QO_TERM_PT_EXPR (termp);
-    }				/* for (t = bitset_iterate(...); ...) */
+    }
 
   /* return QO_XASL_INDEX_INFO */
   return index_infop;
@@ -3759,7 +3787,7 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	      return NO_ERROR;
 	    }
 	}
-    }				/* for (t = bitset_iterate(...); ...) */
+    }
 
   /* check key list terms */
   if (kl_terms > 1)
@@ -3804,7 +3832,7 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	      used_cols[pos]++;
 	    }
 	}
-    }				/* for (t = bitset_iterate(...); ...) */
+    }
 
   /* check used columns */
   for (i = 0; i < first_sort_col_idx; i++)

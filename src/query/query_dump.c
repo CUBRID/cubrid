@@ -318,26 +318,26 @@ qdump_print_update_proc_node (UPDATE_PROC_NODE * node_p)
   int i = 0, cnt = 0, idx = 0;
   UPDDEL_CLASS_INFO *cls = NULL;
 
-  cnt = node_p->no_classes;
+  cnt = node_p->num_classes;
   for (idx = 0; idx < cnt; idx++)
     {
       cls = node_p->classes;
 
-      fprintf (foutput, "[number of HFID's to use:%d]", cls->no_subclasses);
+      fprintf (foutput, "[number of HFID's to use:%d]", cls->num_subclasses);
 
-      for (i = 0; i < cls->no_subclasses; ++i)
+      for (i = 0; i < cls->num_subclasses; ++i)
 	{
 	  qdump_print_oid (&cls->class_oid[i]);
 	}
 
-      for (i = 0; i < cls->no_subclasses; ++i)
+      for (i = 0; i < cls->num_subclasses; ++i)
 	{
 	  qdump_print_hfid (cls->class_hfid[i]);
 	}
 
-      qdump_print_attribute ("update", cls->no_attrs, cls->att_id);
+      qdump_print_attribute ("update", cls->num_attrs, cls->att_id);
     }
-  fprintf (foutput, "[numer of ORDER BY keys:%d]", node_p->no_orderby_keys);
+  fprintf (foutput, "[numer of ORDER BY keys:%d]", node_p->num_orderby_keys);
 
   return true;
 }
@@ -355,21 +355,21 @@ qdump_print_delete_proc_node (DELETE_PROC_NODE * node_p)
   /* actual number of HFID's is no_classes + number of subclasses for each class */
 
 
-  for (i = 0; i < node_p->no_classes; ++i)
+  for (i = 0; i < node_p->num_classes; ++i)
     {
-      hfid_count += node_p->classes[i].no_subclasses;
+      hfid_count += node_p->classes[i].num_subclasses;
     }
 
   fprintf (foutput, "[number of HFID's to use:%d]", hfid_count);
 
-  for (i = 0; i < node_p->no_classes; ++i)
+  for (i = 0; i < node_p->num_classes; ++i)
     {
-      for (j = 0; j < node_p->classes[i].no_subclasses; ++j)
+      for (j = 0; j < node_p->classes[i].num_subclasses; ++j)
 	{
 	  qdump_print_oid (&node_p->classes[i].class_oid[j]);
 	}
 
-      for (j = 0; j < node_p->classes[i].no_subclasses; ++j)
+      for (j = 0; j < node_p->classes[i].num_subclasses; ++j)
 	{
 	  qdump_print_hfid (node_p->classes[i].class_hfid[j]);
 	}
@@ -389,7 +389,7 @@ qdump_print_insert_proc_node (INSERT_PROC_NODE * node_p)
   fprintf (foutput, "class oid[%d %d %d]", node_p->class_oid.pageid, node_p->class_oid.slotid, node_p->class_oid.volid);
 
   qdump_print_hfid (node_p->class_hfid);
-  qdump_print_attribute ("insert", node_p->no_vals, node_p->att_id);
+  qdump_print_attribute ("insert", node_p->num_vals, node_p->att_id);
 
   return true;
 }

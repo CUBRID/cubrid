@@ -7323,9 +7323,9 @@ or_pack_method_sig (char *ptr, void *method_sig_ptr)
   ptr = or_pack_string (ptr, method_sig->method_name);
   ptr = or_pack_string (ptr, method_sig->class_name);
   ptr = or_pack_int (ptr, method_sig->method_type);
-  ptr = or_pack_int (ptr, method_sig->no_method_args);
+  ptr = or_pack_int (ptr, method_sig->num_method_args);
 
-  for (n = 0; n < method_sig->no_method_args + 1; n++)
+  for (n = 0; n < method_sig->num_method_args + 1; n++)
     {
       ptr = or_pack_int (ptr, method_sig->method_arg_pos[n]);
     }
@@ -7360,16 +7360,16 @@ or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n)
   ptr = or_unpack_string (ptr, &method_sig->method_name);
   ptr = or_unpack_string (ptr, &method_sig->class_name);
   ptr = or_unpack_int (ptr, (int *) &method_sig->method_type);
-  ptr = or_unpack_int (ptr, &method_sig->no_method_args);
+  ptr = or_unpack_int (ptr, &method_sig->num_method_args);
 
-  method_sig->method_arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * (method_sig->no_method_args + 1));
+  method_sig->method_arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * (method_sig->num_method_args + 1));
   if (method_sig->method_arg_pos == (int *) 0)
     {
       db_private_free_and_init (NULL, method_sig);
       return NULL;
     }
 
-  for (n = 0; n < method_sig->no_method_args + 1; n++)
+  for (n = 0; n < method_sig->num_method_args + 1; n++)
     {
       ptr = or_unpack_int (ptr, &method_sig->method_arg_pos[n]);
     }
@@ -7392,7 +7392,7 @@ or_pack_method_sig_list (char *ptr, void *method_sig_list_ptr)
 {
   METHOD_SIG_LIST *method_sig_list = (METHOD_SIG_LIST *) method_sig_list_ptr;
 
-  ptr = or_pack_int (ptr, method_sig_list->no_methods);
+  ptr = or_pack_int (ptr, method_sig_list->num_methods);
 
 #if !defined(NDEBUG)
   {
@@ -7403,7 +7403,7 @@ or_pack_method_sig_list (char *ptr, void *method_sig_list_ptr)
       {
 	i++;
       }
-    assert (method_sig_list->no_methods == i);
+    assert (method_sig_list->num_methods == i);
   }
 #endif
 
@@ -7430,8 +7430,8 @@ or_unpack_method_sig_list (char *ptr, void **method_sig_list_ptr)
       return NULL;
     }
 
-  ptr = or_unpack_int (ptr, &method_sig_list->no_methods);
-  ptr = or_unpack_method_sig (ptr, (void **) &method_sig_list->method_sig, method_sig_list->no_methods);
+  ptr = or_unpack_int (ptr, &method_sig_list->num_methods);
+  ptr = or_unpack_method_sig (ptr, (void **) &method_sig_list->method_sig, method_sig_list->num_methods);
 
 #if !defined(NDEBUG)
   {
@@ -7442,7 +7442,7 @@ or_unpack_method_sig_list (char *ptr, void **method_sig_list_ptr)
       {
 	i++;
       }
-    assert (method_sig_list->no_methods == i);
+    assert (method_sig_list->num_methods == i);
   }
 #endif
 
@@ -7464,17 +7464,17 @@ or_method_sig_list_length (void *method_sig_list_ptr)
 {
   METHOD_SIG_LIST *method_sig_list = (METHOD_SIG_LIST *) method_sig_list_ptr;
   METHOD_SIG *method_sig;
-  int length = OR_INT_SIZE;	/* no_methods */
+  int length = OR_INT_SIZE;	/* num_methods */
   int n;
 
-  for (n = 0, method_sig = method_sig_list->method_sig; n < method_sig_list->no_methods;
+  for (n = 0, method_sig = method_sig_list->method_sig; n < method_sig_list->num_methods;
        ++n, method_sig = method_sig->next)
     {
       length += or_packed_string_length (method_sig->method_name, NULL);
       length += or_packed_string_length (method_sig->class_name, NULL);
-      length += OR_INT_SIZE * 2;	/* method_type & no_method_args */
+      length += OR_INT_SIZE * 2;	/* method_type & num_method_args */
       /* + object ptr */
-      length += OR_INT_SIZE * (method_sig->no_method_args + 1);
+      length += OR_INT_SIZE * (method_sig->num_method_args + 1);
       /* method_arg_pos */
     }
   return length;
