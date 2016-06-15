@@ -7199,7 +7199,7 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * m
       /* we don't have sort information here, just set an invalid value */
       multi_range_opt->sort_att_idx = NULL;
       multi_range_opt->is_desc_order = NULL;
-      multi_range_opt->no_attrs = 0;
+      multi_range_opt->num_attrs = 0;
 
       multi_range_opt->top_n_items =
 	(RANGE_OPT_ITEM **) db_private_alloc (thread_p, max_size * sizeof (RANGE_OPT_ITEM *));

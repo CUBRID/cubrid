@@ -3581,11 +3581,11 @@ xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls)
   int i;
   char *p;
 
-  /* no_subclasses */
-  ptr = or_pack_int (ptr, upd_cls->no_subclasses);
+  /* num_subclasses */
+  ptr = or_pack_int (ptr, upd_cls->num_subclasses);
 
   /* class_oid */
-  offset = xts_save_oid_array (upd_cls->class_oid, upd_cls->no_subclasses);
+  offset = xts_save_oid_array (upd_cls->class_oid, upd_cls->num_subclasses);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3593,18 +3593,18 @@ xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls)
   ptr = or_pack_int (ptr, offset);
 
   /* class_hfid */
-  offset = xts_save_hfid_array (upd_cls->class_hfid, upd_cls->no_subclasses);
+  offset = xts_save_hfid_array (upd_cls->class_hfid, upd_cls->num_subclasses);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
 
-  /* no_attrs */
-  ptr = or_pack_int (ptr, upd_cls->no_attrs);
+  /* num_attrs */
+  ptr = or_pack_int (ptr, upd_cls->num_attrs);
 
   /* att_id */
-  offset = xts_save_int_array (upd_cls->att_id, upd_cls->no_attrs * upd_cls->no_subclasses);
+  offset = xts_save_int_array (upd_cls->att_id, upd_cls->num_attrs * upd_cls->num_subclasses);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3615,10 +3615,10 @@ xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls)
   /* has_uniques */
   ptr = or_pack_int (ptr, upd_cls->has_uniques);
 
-  /* make sure no_lob_attrs and lob_attr_ids are both NULL or are both not NULL */
-  assert ((upd_cls->no_lob_attrs && upd_cls->lob_attr_ids) || (!upd_cls->no_lob_attrs && !upd_cls->lob_attr_ids));
-  /* no_lob_attrs */
-  offset = xts_save_int_array (upd_cls->no_lob_attrs, upd_cls->no_subclasses);
+  /* make sure num_lob_attrs and lob_attr_ids are both NULL or are both not NULL */
+  assert ((upd_cls->num_lob_attrs && upd_cls->lob_attr_ids) || (!upd_cls->num_lob_attrs && !upd_cls->lob_attr_ids));
+  /* num_lob_attrs */
+  offset = xts_save_int_array (upd_cls->num_lob_attrs, upd_cls->num_subclasses);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3627,16 +3627,16 @@ xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls)
   /* lob_attr_ids */
   if (upd_cls->lob_attr_ids)
     {
-      offset = xts_reserve_location_in_stream (upd_cls->no_subclasses * sizeof (int));
+      offset = xts_reserve_location_in_stream (upd_cls->num_subclasses * sizeof (int));
       if (offset == ER_FAILED)
 	{
 	  return NULL;
 	}
       ptr = or_pack_int (ptr, offset);
       p = &xts_Stream_buffer[offset];
-      for (i = 0; i < upd_cls->no_subclasses; i++)
+      for (i = 0; i < upd_cls->num_subclasses; i++)
 	{
-	  offset = xts_save_int_array (upd_cls->lob_attr_ids[i], upd_cls->no_lob_attrs[i]);
+	  offset = xts_save_int_array (upd_cls->lob_attr_ids[i], upd_cls->num_lob_attrs[i]);
 	  if (offset == ER_FAILED)
 	    {
 	      return NULL;
@@ -3650,10 +3650,10 @@ xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls)
     }
 
   /* no of indexes in mvcc assignments extra classes */
-  ptr = or_pack_int (ptr, upd_cls->no_extra_assign_reev);
+  ptr = or_pack_int (ptr, upd_cls->num_extra_assign_reev);
 
   /* mvcc assignments extra classes */
-  offset = xts_save_int_array (upd_cls->mvcc_extra_assign_reev, upd_cls->no_extra_assign_reev);
+  offset = xts_save_int_array (upd_cls->mvcc_extra_assign_reev, upd_cls->num_extra_assign_reev);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3823,11 +3823,11 @@ xts_save_odku_info (const ODKU_INFO * odku_info)
       return ER_FAILED;
     }
 
-  /* no_assigns */
-  ptr = or_pack_int (ptr, odku_info->no_assigns);
+  /* num_assigns */
+  ptr = or_pack_int (ptr, odku_info->num_assigns);
 
   /* attr_ids */
-  offset = xts_save_int_array (odku_info->attr_ids, odku_info->no_assigns);
+  offset = xts_save_int_array (odku_info->attr_ids, odku_info->num_assigns);
   if (offset == ER_FAILED)
     {
       goto end;
@@ -3835,7 +3835,7 @@ xts_save_odku_info (const ODKU_INFO * odku_info)
   ptr = or_pack_int (ptr, offset);
 
   /* assignments */
-  offset = xts_save_update_assignment_array (odku_info->assignments, odku_info->no_assigns);
+  offset = xts_save_update_assignment_array (odku_info->assignments, odku_info->num_assigns);
   if (offset == ER_FAILED)
     {
       goto end;
@@ -3889,8 +3889,8 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
   int offset;
 
   /* classes */
-  ptr = or_pack_int (ptr, update_info->no_classes);
-  offset = xts_save_upddel_class_info_array (update_info->classes, update_info->no_classes);
+  ptr = or_pack_int (ptr, update_info->num_classes);
+  offset = xts_save_upddel_class_info_array (update_info->classes, update_info->num_classes);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3898,8 +3898,8 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
   ptr = or_pack_int (ptr, offset);
 
   /* assigns */
-  ptr = or_pack_int (ptr, update_info->no_assigns);
-  offset = xts_save_update_assignment_array (update_info->assigns, update_info->no_assigns);
+  ptr = or_pack_int (ptr, update_info->num_assigns);
+  offset = xts_save_update_assignment_array (update_info->assigns, update_info->num_assigns);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3920,17 +3920,17 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
   /* no_logging */
   ptr = or_pack_int (ptr, update_info->no_logging);
 
-  /* no_orderby_keys */
-  ptr = or_pack_int (ptr, update_info->no_orderby_keys);
+  /* num_orderby_keys */
+  ptr = or_pack_int (ptr, update_info->num_orderby_keys);
 
-  /* no_assign_reev_classes */
-  ptr = or_pack_int (ptr, update_info->no_assign_reev_classes);
+  /* num_assign_reev_classes */
+  ptr = or_pack_int (ptr, update_info->num_assign_reev_classes);
 
   /* mvcc condition reevaluation data */
-  ptr = or_pack_int (ptr, update_info->no_reev_classes);
-  if (update_info->no_reev_classes)
+  ptr = or_pack_int (ptr, update_info->num_reev_classes);
+  if (update_info->num_reev_classes)
     {
-      offset = xts_save_int_array (update_info->mvcc_reev_classes, update_info->no_reev_classes);
+      offset = xts_save_int_array (update_info->mvcc_reev_classes, update_info->num_reev_classes);
       if (offset == ER_FAILED)
 	{
 	  return NULL;
@@ -3950,9 +3950,9 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
 {
   int offset;
 
-  ptr = or_pack_int (ptr, delete_info->no_classes);
+  ptr = or_pack_int (ptr, delete_info->num_classes);
 
-  offset = xts_save_upddel_class_info_array (delete_info->classes, delete_info->no_classes);
+  offset = xts_save_upddel_class_info_array (delete_info->classes, delete_info->num_classes);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3964,10 +3964,10 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
   ptr = or_pack_int (ptr, delete_info->no_logging);
 
   /* mvcc condition reevaluation data */
-  ptr = or_pack_int (ptr, delete_info->no_reev_classes);
-  if (delete_info->no_reev_classes)
+  ptr = or_pack_int (ptr, delete_info->num_reev_classes);
+  if (delete_info->num_reev_classes)
     {
-      offset = xts_save_int_array (delete_info->mvcc_reev_classes, delete_info->no_reev_classes);
+      offset = xts_save_int_array (delete_info->mvcc_reev_classes, delete_info->num_reev_classes);
       if (offset == ER_FAILED)
 	{
 	  return NULL;
@@ -3991,11 +3991,11 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 
   ptr = or_pack_hfid (ptr, &insert_info->class_hfid);
 
-  ptr = or_pack_int (ptr, insert_info->no_vals);
+  ptr = or_pack_int (ptr, insert_info->num_vals);
 
-  ptr = or_pack_int (ptr, insert_info->no_default_expr);
+  ptr = or_pack_int (ptr, insert_info->num_default_expr);
 
-  offset = xts_save_int_array (insert_info->att_id, insert_info->no_vals);
+  offset = xts_save_int_array (insert_info->att_id, insert_info->num_vals);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -4026,9 +4026,9 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
     }
   ptr = or_pack_int (ptr, offset);
 
-  ptr = or_pack_int (ptr, insert_info->no_val_lists);
+  ptr = or_pack_int (ptr, insert_info->num_val_lists);
 
-  for (i = 0; i < insert_info->no_val_lists; i++)
+  for (i = 0; i < insert_info->num_val_lists; i++)
     {
       offset = xts_save_outptr_list (insert_info->valptr_lists[i]);
       if (offset == ER_FAILED)
@@ -5374,13 +5374,13 @@ xts_process_method_sig_list (char *ptr, const METHOD_SIG_LIST * method_sig_list)
       {
 	i++;
       }
-    assert (method_sig_list->no_methods == i);
+    assert (method_sig_list->num_methods == i);
   }
 #endif
 
-  ptr = or_pack_int (ptr, method_sig_list->no_methods);
+  ptr = or_pack_int (ptr, method_sig_list->num_methods);
 
-  offset = xts_save_method_sig (method_sig_list->method_sig, method_sig_list->no_methods);
+  offset = xts_save_method_sig (method_sig_list->method_sig, method_sig_list->num_methods);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -5413,9 +5413,9 @@ xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int count)
   ptr = or_pack_int (ptr, offset);
 
   ptr = or_pack_int (ptr, method_sig->method_type);
-  ptr = or_pack_int (ptr, method_sig->no_method_args);
+  ptr = or_pack_int (ptr, method_sig->num_method_args);
 
-  for (n = 0; n < method_sig->no_method_args + 1; n++)
+  for (n = 0; n < method_sig->num_method_args + 1; n++)
     {
       ptr = or_pack_int (ptr, method_sig->method_arg_pos[n]);
     }
@@ -5953,16 +5953,16 @@ xts_sizeof_upddel_class_info (const UPDDEL_CLASS_INFO * upd_cls)
 {
   int size = 0;
 
-  size += (OR_INT_SIZE		/* no_subclasses */
+  size += (OR_INT_SIZE		/* num_subclasses */
 	   + PTR_SIZE		/* class_oid */
 	   + PTR_SIZE		/* class_hfid */
-	   + OR_INT_SIZE	/* no_attrs */
+	   + OR_INT_SIZE	/* num_attrs */
 	   + PTR_SIZE		/* att_id */
 	   + OR_INT_SIZE	/* needs pruning */
 	   + OR_INT_SIZE	/* has_uniques */
-	   + PTR_SIZE		/* no_lob_attrs */
+	   + PTR_SIZE		/* num_lob_attrs */
 	   + PTR_SIZE		/* lob_attr_ids */
-	   + OR_INT_SIZE	/* no_extra_assign_reev */
+	   + OR_INT_SIZE	/* num_extra_assign_reev */
 	   + PTR_SIZE);		/* mvcc_extra_assign_reev */
 
   return size;
@@ -5991,7 +5991,7 @@ xts_sizeof_odku_info (const ODKU_INFO * odku_info)
 {
   int size = 0;
 
-  size += (OR_INT_SIZE		/* no_assigns */
+  size += (OR_INT_SIZE		/* num_assigns */
 	   + PTR_SIZE		/* attr_ids */
 	   + PTR_SIZE		/* assignments */
 	   + PTR_SIZE		/* cons_pred */
@@ -6010,16 +6010,16 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
 {
   int size = 0;
 
-  size += (OR_INT_SIZE		/* no_classes */
+  size += (OR_INT_SIZE		/* num_classes */
 	   + PTR_SIZE		/* classes */
 	   + PTR_SIZE		/* cons_pred */
-	   + OR_INT_SIZE	/* no_assigns */
+	   + OR_INT_SIZE	/* num_assigns */
 	   + PTR_SIZE		/* assignments */
 	   + OR_INT_SIZE	/* wait_msecs */
 	   + OR_INT_SIZE	/* no_logging */
-	   + OR_INT_SIZE	/* no_orderby_keys */
-	   + OR_INT_SIZE	/* no_assign_reev_classes */
-	   + OR_INT_SIZE	/* no_cond_reev_classes */
+	   + OR_INT_SIZE	/* num_orderby_keys */
+	   + OR_INT_SIZE	/* num_assign_reev_classes */
+	   + OR_INT_SIZE	/* num_cond_reev_classes */
 	   + PTR_SIZE);		/* mvcc_cond_reev_classes */
 
   return size;
@@ -6036,10 +6036,10 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
   int size = 0;
 
   size += (PTR_SIZE		/* classes */
-	   + OR_INT_SIZE	/* no_classes */
+	   + OR_INT_SIZE	/* num_classes */
 	   + OR_INT_SIZE	/* wait_msecs */
 	   + OR_INT_SIZE	/* no_logging */
-	   + OR_INT_SIZE	/* no_cond_reev_classes */
+	   + OR_INT_SIZE	/* num_cond_reev_classes */
 	   + PTR_SIZE);		/* mvcc_cond_reev_classes */
 
   return size;
@@ -6057,8 +6057,8 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 
   size += (OR_OID_SIZE		/* class_oid */
 	   + OR_HFID_SIZE	/* class_hfid */
-	   + OR_INT_SIZE	/* no_vals */
-	   + OR_INT_SIZE	/* no_default_expr */
+	   + OR_INT_SIZE	/* num_vals */
+	   + OR_INT_SIZE	/* num_default_expr */
 	   + PTR_SIZE		/* array pointer: att_id */
 	   + PTR_SIZE		/* constraint predicate: cons_pred */
 	   + PTR_SIZE		/* odku */
@@ -6067,9 +6067,9 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + OR_INT_SIZE	/* no_logging */
 	   + OR_INT_SIZE	/* do_replace */
 	   + OR_INT_SIZE	/* needs pruning */
-	   + OR_INT_SIZE	/* no_val_lists */
+	   + OR_INT_SIZE	/* num_val_lists */
 	   + PTR_SIZE		/* obj_oid */
-	   + (insert_info->no_val_lists * PTR_SIZE));	/* valptr_lists */
+	   + (insert_info->num_val_lists * PTR_SIZE));	/* valptr_lists */
 
   return size;
 }
@@ -7019,7 +7019,7 @@ xts_sizeof_method_sig_list (const METHOD_SIG_LIST * method_sig_list)
 {
   int size = 0;
 
-  size += (OR_INT_SIZE		/* no_methods */
+  size += (OR_INT_SIZE		/* num_methods */
 	   + PTR_SIZE);		/* method_sig */
 
   return size;
@@ -7033,8 +7033,8 @@ xts_sizeof_method_sig (const METHOD_SIG * method_sig)
   size += (PTR_SIZE		/* method_name */
 	   + PTR_SIZE		/* class_name */
 	   + OR_INT_SIZE	/* method_type */
-	   + OR_INT_SIZE	/* no_method_args */
-	   + (OR_INT_SIZE * (method_sig->no_method_args + 1))	/* method_arg_pos */
+	   + OR_INT_SIZE	/* num_method_args */
+	   + (OR_INT_SIZE * (method_sig->num_method_args + 1))	/* method_arg_pos */
 	   + PTR_SIZE);		/* next */
 
   return size;

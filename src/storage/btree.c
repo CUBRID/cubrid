@@ -1340,7 +1340,7 @@ static PAGE_PTR btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 static int btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 						MULTI_RANGE_OPT * multi_range_opt, OID * p_new_oid, bool * key_added);
 static int btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, TP_DOMAIN ** domains,
-					    bool * desc_order, DB_VALUE * new_key_values, int no_keys, int first,
+					    bool * desc_order, DB_VALUE * new_key_values, int num_keys, int first,
 					    int last, int *new_pos);
 static int btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss);
 static int btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
@@ -19478,22 +19478,22 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 
   *key_added = true;
 
-  assert (multi_range_opt->no_attrs != 0);
-  if (multi_range_opt->no_attrs == 0)
+  assert (multi_range_opt->num_attrs != 0);
+  if (multi_range_opt->num_attrs == 0)
     {
       return ER_FAILED;
     }
 
   new_mkey = DB_PULL_MIDXKEY (&(bts->cur_key));
-  new_key_value = (DB_VALUE *) db_private_alloc (thread_p, multi_range_opt->no_attrs * sizeof (DB_VALUE));
+  new_key_value = (DB_VALUE *) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (DB_VALUE));
   if (new_key_value == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (DB_VALUE *) * multi_range_opt->no_attrs);
+	      sizeof (DB_VALUE *) * multi_range_opt->num_attrs);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  for (i = 0; i < multi_range_opt->no_attrs; i++)
+  for (i = 0; i < multi_range_opt->num_attrs; i++)
     {
       DB_MAKE_NULL (&new_key_value[i]);
       error = pr_midxkey_get_element_nocopy (new_mkey, multi_range_opt->sort_att_idx[i], &new_key_value[i], NULL, NULL);
@@ -19518,7 +19518,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 
       /* if all keys are equal, the new element is rejected */
       reject_new_elem = true;
-      for (i = 0; i < multi_range_opt->no_attrs; i++)
+      for (i = 0; i < multi_range_opt->num_attrs; i++)
 	{
 	  DB_MAKE_NULL (&comp_key_value);
 	  error = pr_midxkey_get_element_nocopy (comp_mkey, multi_range_opt->sort_att_idx[i], &comp_key_value, NULL,
@@ -19579,14 +19579,14 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       if (multi_range_opt->sort_col_dom == NULL)
 	{
 	  multi_range_opt->sort_col_dom =
-	    (TP_DOMAIN **) db_private_alloc (thread_p, multi_range_opt->no_attrs * sizeof (TP_DOMAIN *));
+	    (TP_DOMAIN **) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (TP_DOMAIN *));
 	  if (multi_range_opt->sort_col_dom == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto exit;
 	    }
 
-	  for (i = 0; i < multi_range_opt->no_attrs; i++)
+	  for (i = 0; i < multi_range_opt->num_attrs; i++)
 	    {
 	      multi_range_opt->sort_col_dom[i] = tp_domain_resolve_value (&new_key_value[i], NULL);
 	    }
@@ -19601,7 +19601,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       error =
 	btree_top_n_items_binary_search (multi_range_opt->top_n_items, multi_range_opt->sort_att_idx,
 					 multi_range_opt->sort_col_dom, multi_range_opt->is_desc_order, new_key_value,
-					 multi_range_opt->no_attrs, 0, multi_range_opt->cnt - 1, &pos);
+					 multi_range_opt->num_attrs, 0, multi_range_opt->cnt - 1, &pos);
       if (error != NO_ERROR)
 	{
 	  goto exit;
@@ -19647,7 +19647,7 @@ exit:
  * desc_order (in)     : is descending order for midxkey attributes
  *			 if NULL, ascending order will be considered
  * new_key_values (in) : key values for the new item
- * no_keys (in)	       : number of keys that are compared
+ * num_keys (in)       : number of keys that are compared
  * first (in)	       : position of the first item in current range
  * last (in)	       : position of the last item in current range
  * new_pos (out)       : the position where the new item fits
@@ -19665,7 +19665,7 @@ exit:
  */
 static int
 btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, TP_DOMAIN ** domains, bool * desc_order,
-				 DB_VALUE * new_key_values, int no_keys, int first, int last, int *new_pos)
+				 DB_VALUE * new_key_values, int num_keys, int first, int last, int *new_pos)
 {
   DB_MIDXKEY *comp_mkey = NULL;
   DB_VALUE comp_key_value;
@@ -19683,7 +19683,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 	  comp_item = top_n_items[0];
 	  comp_mkey = DB_PULL_MIDXKEY (&(comp_item->index_value));
 
-	  for (i = 0; i < no_keys; i++)
+	  for (i = 0; i < num_keys; i++)
 	    {
 	      DB_MAKE_NULL (&comp_key_value);
 	      error = pr_midxkey_get_element_nocopy (comp_mkey, att_idxs[i], &comp_key_value, NULL, NULL);
@@ -19720,7 +19720,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
   comp_item = top_n_items[middle];
   comp_mkey = DB_PULL_MIDXKEY (&(comp_item->index_value));
 
-  for (i = 0; i < no_keys; i++)
+  for (i = 0; i < num_keys; i++)
     {
       DB_MAKE_NULL (&comp_key_value);
       error = pr_midxkey_get_element_nocopy (comp_mkey, att_idxs[i], &comp_key_value, NULL, NULL);
@@ -19741,7 +19741,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 	      /* the new value is better than the one in the middle */
 	      last = middle;
 	    }
-	  return btree_top_n_items_binary_search (top_n_items, att_idxs, domains, desc_order, new_key_values, no_keys,
+	  return btree_top_n_items_binary_search (top_n_items, att_idxs, domains, desc_order, new_key_values, num_keys,
 						  first, last, new_pos);
 	}
     }
