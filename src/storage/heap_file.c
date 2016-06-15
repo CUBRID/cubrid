@@ -929,7 +929,8 @@ static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, REC
 static bool heap_check_class_for_rr_isolation_err (const OID * class_oid);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR pgptr, PAGE_PTR fwd_pgptr,
 					 LOG_LSA * prev_ver_lsa);
-static HFID * heap_oor_find_hfid (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs, HFID *oor_hfid, bool docreate);
+static HFID * heap_oor_find_hfid (THREAD_ENTRY * thread_p, OID *class_oid, HFID * hfid, int exp_npgs, HFID *oor_hfid,
+				  bool docreate);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -22387,7 +22388,6 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 				  bool is_mvcc_op, bool is_mvcc_class, bool is_oor_buf)
 {
   MVCC_REC_HEADER mvcc_rec_header;
-  MVCCID mvcc_id;
   int curr_header_size, new_header_size;
   int record_size = recdes_p->length;
   bool insert_from_reorganize = false;
@@ -22561,7 +22561,8 @@ heap_insert_handle_out_of_row_records (THREAD_ENTRY * thread_p, HEAP_OPERATION_C
 
 	  if (HFID_IS_NULL (&context->oor_hfid))
 	    {
-	      if (heap_oor_find_hfid (thread_p, &context->hfid, 3, &context->oor_hfid, true) == NULL)
+	      if (heap_oor_find_hfid (thread_p, &context->class_oid, &context->hfid, 3, &context->oor_hfid, true)
+				      == NULL)
 		{
 		  ASSERT_ERROR ();
 		  return rc;
@@ -26678,7 +26679,7 @@ exit:
  * exist, it may be created depending of the value of argument create.
  */
 static HFID *
-heap_oor_find_hfid (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs, HFID *oor_hfid, bool docreate)
+heap_oor_find_hfid (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, int exp_npgs, HFID *oor_hfid, bool docreate)
 {
   HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure */
   LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
@@ -26743,7 +26744,7 @@ heap_oor_find_hfid (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs, HFID *oo
 	  /* Initialize description of overflow heap file */
 	  HFID_COPY (&hfdes_ovf.hfid, hfid);
 
-	  if (heap_create_internal (thread_p, oor_hfid, 3, NULL, false, true) != NULL)
+	  if (heap_create_internal (thread_p, oor_hfid, 3, class_oid, false, true) != NULL)
 	    {
 	      /* Log undo, then redo */
 	      log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
