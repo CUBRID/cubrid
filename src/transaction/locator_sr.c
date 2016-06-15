@@ -2471,108 +2471,47 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 
   if (OID_ISNULL (class_oid))
     {
-      /* 
+      /*
        * Caller does not know the class of the object. Get the class
        * identifier from disk
        */
-      /*if (heap_prepare_object_page (thread_p, oid, &context.home_page_watcher) != NO_ERROR)
-         {
-         return S_ERROR;
-         }
-         if (heap_get_class_oid_from_page (thread_p, &context.home_page_watcher, class_oid) != NO_ERROR)
-         {
-         pgbuf_ordered_unfix (thread_p, &context.home_page_watcher);
-         return ER_FAILED;
-         } */
-
-      SNAPSHOT_TYPE snapshot_type = SNAPSHOT_TYPE_NONE;
-
-      switch (fetch_version_type)
-	{
-	case LC_FETCH_MVCC_VERSION:
-	  snapshot_type = SNAPSHOT_TYPE_MVCC;
-	  operation_type = S_SELECT;
-	  break;
-
-	case LC_FETCH_DIRTY_VERSION:
-	  snapshot_type = SNAPSHOT_TYPE_DIRTY;
-	  operation_type = S_SELECT_WITH_LOCK;
-	  break;
-
-	case LC_FETCH_CURRENT_VERSION:
-	  snapshot_type = SNAPSHOT_TYPE_NONE;
-	  operation_type = S_SELECT;
-	  break;
-
-	default:
-	  assert (0);
-	}
-
-      scan = heap_get_class_oid_with_lock (thread_p, class_oid, oid, snapshot_type, lock);
+      scan = heap_get_class_oid (thread_p, oid, class_oid);
       if (scan != S_SUCCESS)
 	{
 	  /* Unable to find the class of the object.. return */
 	  *fetch_area = NULL;
-
-	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
+	  error_code = ER_HEAP_UNKNOWN_OBJECT;
+	  if (er_errid () != error_code)
 	    {
-	      error_code = ER_HEAP_UNKNOWN_OBJECT;
-	      if (er_errid () != error_code)
-		{
-		  /* error has not been previously set */
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, oid->volid, oid->pageid, oid->slotid);
-		}
-	      return error_code;
+	      /* error has not been previously set */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, oid->volid, oid->pageid, oid->slotid);
 	    }
-	  else
-	    {
-	      assert (scan == S_ERROR);
-	      ASSERT_ERROR_AND_SET (error_code);
-	      return error_code;
-	    }
-	}
-
-      /* prepare for getting the current OID (no snapshot) without lock */
-      mvcc_snapshot = NULL;
-      operation_type = S_SELECT;
-
-      /* object already locked or it doesn't need locking */
-      object_need_locking = false;
-
-      if (lock > NULL_LOCK && (snapshot_type != SNAPSHOT_TYPE_MVCC || heap_is_mvcc_disabled_for_class (class_oid)))
-	{
-	  object_locked = true;
+	  return error_code;
 	}
     }
 
-  else
+  switch (fetch_version_type)
     {
-      switch (fetch_version_type)
+    case LC_FETCH_MVCC_VERSION:
+      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+      if (mvcc_snapshot == NULL)
 	{
-	case LC_FETCH_MVCC_VERSION:
-	  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-	  if (mvcc_snapshot == NULL)
-	    {
-	      error_code = er_errid ();
-	      return (error_code == NO_ERROR ? ER_FAILED : error_code);
-	    }
-	  operation_type = S_SELECT;
-	  break;
-
-	case LC_FETCH_DIRTY_VERSION:
-	  mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
-	  mvcc_snapshot = &mvcc_snapshot_dirty;
-	  operation_type = S_SELECT_WITH_LOCK;
-	  break;
-
-	case LC_FETCH_CURRENT_VERSION:
-	  mvcc_snapshot = NULL;
-	  operation_type = S_SELECT;
-	  break;
-
-	default:
-	  assert (0);
+	  error_code = er_errid ();
+	  return (error_code == NO_ERROR ? ER_FAILED : error_code);
 	}
+      operation_type = S_SELECT;
+      break;
+
+    case LC_FETCH_DIRTY_VERSION:
+      mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
+      mvcc_snapshot = &mvcc_snapshot_dirty;
+      operation_type = S_SELECT_WITH_LOCK;
+      break;
+
+    case LC_FETCH_CURRENT_VERSION:
+      mvcc_snapshot = NULL;
+      operation_type = S_SELECT;
+      break;
     }
 
   assert (!OID_ISNULL (class_oid));
@@ -2681,7 +2620,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
        * If the object does not fit even when the copy area seems to be
        * large enough, increase the copy area by at least one page size.
        */
-      if (scan == S_DOESNT_EXIST)
+      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
 	  heap_scancache_end (thread_p, &nxobj.area_scancache);
 	  nxobj.comm_area = *fetch_area = NULL;
@@ -2841,7 +2780,7 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn, con
        * Caller does not know the class of the object. Get the class identifier
        * from disk
        */
-      if (heap_get_class_oid(thread_p, oid, class_oid) != S_SUCCESS)
+      if (heap_get_class_oid (thread_p, oid, class_oid) != S_SUCCESS)
 	{
 	  /* 
 	   * Unable to find out the class identifier.
