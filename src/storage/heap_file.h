@@ -452,8 +452,6 @@ extern int heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid
 extern INT32 heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p, int total_nobjs, int avg_obj_size, int num_attrs,
 					     int num_var_attrs);
 
-extern SCAN_CODE heap_get_class_oid_with_lock (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
-					       SNAPSHOT_TYPE snapshot_type, LOCK lock_mode);
 extern char *heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern char *heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oid, char *guess_classname);
 extern char *heap_get_class_name_of_instance (THREAD_ENTRY * thread_p, const OID * inst_oid);

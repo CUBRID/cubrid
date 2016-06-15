@@ -4008,8 +4008,7 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
        * Caller does not know the class of the object. Get the class identifier
        * from disk
        */
-      class_chn = CHN_UNKNOWN_ATCLIENT;
-      scan_code = heap_get_class_oid_with_lock (thread_p, class_oid, oid, snapshot_type, lock);
+      scan_code = heap_get_class_oid (thread_p, oid, class_oid);
       if (scan_code == S_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4020,23 +4019,9 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
 	  /* Unable to find the class of the object.. return */
 	  return LC_DOESNOT_EXIST;
 	}
-
-      if (heap_is_mvcc_disabled_for_class (class_oid))
-	{
-	  if (!heap_does_exist (thread_p, class_oid, oid))
-	    {
-	      if (lock != NULL_LOCK)
-		{
-		  lock_unlock_object (thread_p, oid, class_oid, lock, false);
-		}
-	      return LC_DOESNOT_EXIST;
-	    }
-	}
-
-      /* fetch current version without lock */
-      fetch_version_type = LC_FETCH_CURRENT_VERSION;
     }
-  else if (heap_is_mvcc_disabled_for_class (class_oid))
+
+  if (heap_is_mvcc_disabled_for_class (class_oid))
     {
       /* Non-MVCC class, just lock and check object exists. */
       if (lock != NULL_LOCK && (lock_object (thread_p, oid, class_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED))
