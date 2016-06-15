@@ -291,6 +291,19 @@ logtb_finalize_mvcctable ()
   pthread_mutex_destroy (&mvcc_table->active_trans_mutex);
 }
 
+static unsigned int
+logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size)
+{
+  return 0;
+}
+
+static unsigned int
+logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size)
+{
+  return 0;
+}
+
+
 static void
 logtb_initialize_tdes_for_mvcc_testing (LOG_TDES * tdes, int tran_index)
 {
@@ -299,6 +312,9 @@ logtb_initialize_tdes_for_mvcc_testing (LOG_TDES * tdes, int tran_index)
   tdes->trid = NULL_TRANID;
 
   MVCC_INIT_MVCC_INFO (&tdes->mvccinfo);
+
+  tdes->log_upd_stats.unique_stats_hash =
+    mht_create ("Tran_unique_stats", 101, logtb_tran_btid_hash_func, logtb_tran_btid_hash_cmp_func);
 }
 
 
@@ -395,7 +411,35 @@ error:
 static void
 logtb_finalize_mvcc_testing (THREAD_ENTRY ** thread_array)
 {
+  LOG_TDES *tdes;
+  MVCC_INFO *curr_mvcc_info;
+  int i;
+
   logtb_finalize_mvcctable ();
+
+  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      tdes = log_Gl.trantable.all_tdes[i];
+      curr_mvcc_info = &tdes->mvccinfo;
+
+      if (curr_mvcc_info->snapshot.long_tran_mvccids != NULL)
+	{
+	  free_and_init (curr_mvcc_info->snapshot.long_tran_mvccids);
+	  curr_mvcc_info->snapshot.long_tran_mvccids_length = 0;
+	}
+
+      if (curr_mvcc_info->snapshot.bit_area != NULL)
+	{
+	  free_and_init (curr_mvcc_info->snapshot.bit_area);
+	  curr_mvcc_info->snapshot.bit_area_length = 0;
+	}
+
+      if (tdes->log_upd_stats.unique_stats_hash != NULL)
+	{
+	  mht_destroy (tdes->log_upd_stats.unique_stats_hash);
+	  tdes->log_upd_stats.unique_stats_hash = NULL;
+	}
+    }
 
   if (thread_array && *thread_array)
     {
