@@ -48,6 +48,7 @@
 #define VACUUM_ER_LOG_TOPOPS		1024	/* Log starting/ending system operations and their recovery. */
 #define VACUUM_ER_LOG_ARCHIVES		2048	/* Log when archives are removed or when vacuum fails to find archives. */
 #define VACUUM_ER_LOG_JOBS		4096	/* Log job generation, interrupt, finish */
+#define VACUUM_ER_LOG_FLUSH_DATA	8192	/* Log flushing vacuum data. */
 
 #define VACUUM_ER_LOG_VERBOSE		0xFFFFFFFF	/* Log all activity related to vacuum. */
 #define VACUUM_IS_ER_LOG_LEVEL_SET(er_log_level) \
@@ -287,10 +288,7 @@ extern int vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID vacuum_min_log_pageid_to_keep (THREAD_ENTRY * thread_p);
 extern void vacuum_notify_server_crashed (LOG_LSA * recovery_lsa);
 extern void vacuum_notify_server_shutdown (void);
-#if defined (SERVER_MODE)
-extern void vacuum_notify_flush_data (void);
-extern bool vacuum_is_vacuum_data_flushed (void);
-#endif /* SERVER_MODE */
+extern void vacuum_notify_need_flush (int need_flush);
 extern int vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int vacuum_rv_redo_initialize_data_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int vacuum_rv_undoredo_first_data_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
