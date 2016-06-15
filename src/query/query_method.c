@@ -101,7 +101,7 @@ method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer_p, unsigned int r
     }
 
   vacomm_buffer_p->buffer = vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_SIZE;
-  vacomm_buffer_p->no_vals = 0;
+  vacomm_buffer_p->num_vals = 0;
   vacomm_buffer_p->cur_pos = 0;
   vacomm_buffer_p->size = VACOMM_BUFFER_SIZE - VACOMM_BUFFER_HEADER_SIZE;
   vacomm_buffer_p->action = VACOMM_BUFFER_SEND;
@@ -153,7 +153,7 @@ method_send_value_to_server (DB_VALUE * dbval_p, VACOMM_BUFFER * vacomm_buffer_p
 	      length = vacomm_buffer_p->cur_pos + VACOMM_BUFFER_HEADER_SIZE;
 	      p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_LENGTH_OFFSET, length);
 	      p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_STATUS_OFFSET, (int) METHOD_SUCCESS);
-	      p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET, vacomm_buffer_p->no_vals);
+	      p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET, vacomm_buffer_p->num_vals);
 	      error =
 		net_client_send_data (vacomm_buffer_p->host, vacomm_buffer_p->rc, vacomm_buffer_p->area,
 				      vacomm_buffer_p->cur_pos + VACOMM_BUFFER_HEADER_SIZE);
@@ -175,11 +175,11 @@ method_send_value_to_server (DB_VALUE * dbval_p, VACOMM_BUFFER * vacomm_buffer_p
 		}
 	    }
 	  vacomm_buffer_p->cur_pos = 0;
-	  vacomm_buffer_p->no_vals = 0;
+	  vacomm_buffer_p->num_vals = 0;
 	}
     }
 
-  ++vacomm_buffer_p->no_vals;
+  ++vacomm_buffer_p->num_vals;
   p = or_pack_db_value (vacomm_buffer_p->buffer + vacomm_buffer_p->cur_pos, dbval_p);
 
 #if !defined(NDEBUG)
@@ -216,7 +216,7 @@ method_send_eof_to_server (VACOMM_BUFFER * vacomm_buffer_p)
   length = vacomm_buffer_p->cur_pos + VACOMM_BUFFER_HEADER_SIZE;
   p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_LENGTH_OFFSET, length);
   p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_STATUS_OFFSET, (int) METHOD_EOF);
-  p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET, vacomm_buffer_p->no_vals);
+  p = or_pack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET, vacomm_buffer_p->num_vals);
 
   error =
     net_client_send_data (vacomm_buffer_p->host, vacomm_buffer_p->rc, vacomm_buffer_p->area,
@@ -278,7 +278,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
   int turn_on_auth = 1;
   int cursor_result;
   int num_method;
-  int no_args;
+  int num_args;
   int pos;
   int arg;
   int value_count;
@@ -301,7 +301,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
 
   for (num_method = 0; num_method < method_sig_list_p->num_methods; num_method++)
     {
-      value_count += meth_sig_p->no_method_args + 1;
+      value_count += meth_sig_p->num_method_args + 1;
       meth_sig_p = meth_sig_p->next;
     }
 
@@ -382,14 +382,14 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
 	   ++num_method, meth_sig_p = meth_sig_p->next)
 	{
 	  /* The first position # is for the object ID */
-	  no_args = meth_sig_p->no_method_args + 1;
-	  for (arg = 0; arg < no_args; ++arg)
+	  num_args = meth_sig_p->num_method_args + 1;
+	  for (arg = 0; arg < num_args; ++arg)
 	    {
 	      pos = meth_sig_p->method_arg_pos[arg];
 	      values_p[arg] = &val_list_p[pos];
 	    }
 
-	  values_p[no_args] = (DB_VALUE *) 0;
+	  values_p[num_args] = (DB_VALUE *) 0;
 	  DB_MAKE_NULL (&value);
 
 	  if (meth_sig_p->class_name != NULL)
@@ -425,7 +425,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
 	      turn_on_auth = 0;
 	      AU_ENABLE (turn_on_auth);
 	      db_disable_modification ();
-	      error = jsp_call_from_server (&value, values_p, meth_sig_p->method_name, meth_sig_p->no_method_args);
+	      error = jsp_call_from_server (&value, values_p, meth_sig_p->method_name, meth_sig_p->num_method_args);
 	      db_enable_modification ();
 	      AU_DISABLE (turn_on_auth);
 	    }

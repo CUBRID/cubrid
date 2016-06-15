@@ -1329,16 +1329,18 @@ pt_get_next_assignment (PT_ASSIGNMENTS_HELPER * ea)
   PT_NODE *lhs = ea->lhs, *rhs = NULL;
 
   ea->is_rhs_const = false;
-  if (lhs)
+  if (lhs != NULL)
     {
-      if (lhs->next)
+      if (lhs->next != NULL)
 	{
 	  ea->is_n_column = true;
-	  return ea->lhs = lhs->next;
+	  ea->lhs = lhs->next;
+	  return ea->lhs;
 	}
       ea->assignment = ea->assignment->next;
     }
-  if (ea->assignment)
+
+  if (ea->assignment != NULL)
     {
       lhs = ea->assignment->info.expr.arg1;
       ea->rhs = rhs = ea->assignment->info.expr.arg2;
@@ -1346,21 +1348,23 @@ pt_get_next_assignment (PT_ASSIGNMENTS_HELPER * ea)
       if (lhs->node_type == PT_NAME)
 	{
 	  ea->is_n_column = false;
-	  return ea->lhs = lhs;
+	  ea->lhs = lhs;
+	  return ea->lhs;
 	}
       else
 	{			/* PT_IS_N_COLUMN_UPDATE_EXPR(lhs) == true */
 	  ea->is_n_column = true;
-	  return ea->lhs = lhs->info.expr.arg1;
+	  ea->lhs = lhs->info.expr.arg1;
+	  return ea->lhs;
 	}
     }
-
-  ea->assignment = NULL;
-  ea->lhs = NULL;
-  ea->rhs = NULL;
-  ea->is_n_column = false;
-
-  return NULL;
+  else
+    {
+      ea->lhs = NULL;
+      ea->rhs = NULL;
+      ea->is_n_column = false;
+      return NULL;
+    }
 }
 
 /*
