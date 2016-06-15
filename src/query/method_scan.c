@@ -258,7 +258,7 @@ method_invoke_from_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_bu
 static int
 method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 {
-  int meth_no;
+  int meth_num;
   int val_cnt;
   int i;
   METHOD_INFO *method_ctl_p;
@@ -272,7 +272,7 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
   val_cnt = 0;
   meth_sig = method_sig_list->method_sig;
 
-  for (meth_no = 0; meth_no < method_sig_list->num_methods; meth_no++)
+  for (meth_num = 0; meth_num < method_sig_list->num_methods; meth_num++)
     {
       val_cnt += meth_sig->num_method_args + 1;
       meth_sig = meth_sig->next;
@@ -319,9 +319,9 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
     }
 
   meth_sig = method_sig_list->method_sig;
-  for (meth_no = 0; meth_no < method_sig_list->num_methods; meth_no++)
+  for (meth_num = 0; meth_num < method_sig_list->num_methods; meth_num++)
     {
-      scan_buffer_p->oid_cols[meth_no] = meth_sig->method_arg_pos[0];
+      scan_buffer_p->oid_cols[meth_num] = meth_sig->method_arg_pos[0];
       meth_sig = meth_sig->next;
     }
 
@@ -360,7 +360,7 @@ static SCAN_CODE
 method_receive_results_for_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p)
 {
   QPROC_DB_VALUE_LIST dbval_list;
-  int meth_no, i;
+  int meth_num, i;
   METHOD_SIG *meth_sig_p;
   SCAN_CODE result;
   DB_VALUE *dbval_p;
@@ -370,7 +370,7 @@ method_receive_results_for_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER *
   meth_sig_p = method_sig_list_p->method_sig;
   dbval_list = scan_buffer_p->dbval_list;
 
-  for (meth_no = 0; meth_no < method_sig_list_p->num_methods; ++meth_no)
+  for (meth_num = 0; meth_num < method_sig_list_p->num_methods; ++meth_num)
     {
       dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE));
       dbval_list->val = dbval_p;
@@ -387,7 +387,7 @@ method_receive_results_for_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER *
 
       if (result != S_SUCCESS)
 	{
-	  for (i = 0; i <= meth_no; i++)
+	  for (i = 0; i <= meth_num; i++)
 	    {
 	      if (scan_buffer_p->dbval_list[i].val)
 		{
@@ -417,7 +417,7 @@ static SCAN_CODE
 method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 {
   QPROC_DB_VALUE_LIST dbval_list;
-  int meth_no;
+  int meth_num;
   METHOD_SIG *meth_sig;
   int crs_result;
   int num_args;
@@ -457,7 +457,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
       meth_sig = method_sig_list->method_sig;
       dbval_list = scan_buffer_p->dbval_list;
 
-      for (meth_no = 0; meth_no < method_sig_list->num_methods; meth_no++)
+      for (meth_num = 0; meth_num < method_sig_list->num_methods; meth_num++)
 	{
 	  /* The first position # is for the object ID */
 	  num_args = meth_sig->num_method_args + 1;

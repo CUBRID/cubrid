@@ -277,7 +277,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
   CURSOR_ID cursor_id;
   int turn_on_auth = 1;
   int cursor_result;
-  int method_no;
+  int num_method;
   int num_args;
   int pos;
   int arg;
@@ -299,7 +299,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
   meth_sig_p = method_sig_list_p->method_sig;
   value_count = 0;
 
-  for (method_no = 0; method_no < method_sig_list_p->num_methods; method_no++)
+  for (num_method = 0; num_method < method_sig_list_p->num_methods; num_method++)
     {
       value_count += meth_sig_p->num_method_args + 1;
       meth_sig_p = meth_sig_p->next;
@@ -344,9 +344,9 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
     }
 
   meth_sig_p = method_sig_list_p->method_sig;
-  for (method_no = 0; method_no < method_sig_list_p->num_methods; method_no++)
+  for (num_method = 0; num_method < method_sig_list_p->num_methods; num_method++)
     {
-      oid_cols[method_no] = meth_sig_p->method_arg_pos[0];
+      oid_cols[num_method] = meth_sig_p->method_arg_pos[0];
       meth_sig_p = meth_sig_p->next;
     }
 
@@ -378,8 +378,8 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
 	  goto end;
 	}
 
-      for (method_no = 0, meth_sig_p = method_sig_list_p->method_sig; method_no < method_sig_list_p->num_methods;
-	   ++method_no, meth_sig_p = meth_sig_p->next)
+      for (num_method = 0, meth_sig_p = method_sig_list_p->method_sig; num_method < method_sig_list_p->num_methods;
+	   ++num_method, meth_sig_p = meth_sig_p->next)
 	{
 	  /* The first position # is for the object ID */
 	  num_args = meth_sig_p->num_method_args + 1;
