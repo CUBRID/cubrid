@@ -899,11 +899,10 @@ if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
     externalproject_add(cubridmanager
       DEPENDS pre_cubridmanager ${CMS_DEPENDS}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cubridmanager/server
-      CONFIGURE_COMMAND sh ./autogen.sh
-      COMMAND sh ./configure --prefix=<INSTALL_DIR> --with-cubrid-libdir=<TMP_DIR> --with-cubrid-includedir=<TMP_DIR> ${CMS_CONFIGURE_OPTS}
+      CONFIGURE_COMMAND sh <SOURCE_DIR>/autogen.sh
+      COMMAND sh <SOURCE_DIR>/configure --prefix=<INSTALL_DIR> --with-cubrid-libdir=<TMP_DIR> --with-cubrid-includedir=<TMP_DIR> ${CMS_CONFIGURE_OPTS}
       BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      BUILD_IN_SOURCE 1
       )
   else(UNIX)
     set(CMS_DEPENDS cascci cmstat cmdep)
