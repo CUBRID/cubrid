@@ -714,6 +714,7 @@ struct out_of_row_recdes
   int recdes_capacity;		/* allowed RECDES elements in RECDES array */
   int recdes_cnt;		/* current count of elements in RECDES array */
 
+  /* TODO[arnia]: only for debug */
   bool home_oid_updated;
 };
 

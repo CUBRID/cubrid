@@ -24203,6 +24203,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   bool update_old_home = false;
   bool update_old_forward = false;
   bool remove_old_forward = false;
+  bool insert_oor = false;
   LOG_LSA prev_version_lsa = LSA_INITIALIZER;
 
   assert (context != NULL);
@@ -24270,6 +24271,18 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
     {
       /* insert a new forward record */
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
+      if (context->out_of_row_recdes != NULL
+	  && context->out_of_row_recdes->recdes_cnt > 0)
+	{
+	  rc = heap_insert_handle_out_of_row_records (thread_p, context);
+	  if (rc != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return rc;
+	    }
+	}
+
       context->recdes_p->type = REC_NEWHOME;
       rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid);
       if (rc != NO_ERROR)
@@ -24295,6 +24308,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* remove old forward record */
       remove_old_forward = true;
       update_old_home = true;
+      insert_oor = true;
 
       mnt_heap_rel_to_home_updates (thread_p);
     }
@@ -24305,6 +24319,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       /* home record will not be touched */
       update_old_forward = true;
+      insert_oor = true;
 
       mnt_heap_rel_updates (thread_p);
     }
@@ -24320,6 +24335,19 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   /* Remove rec_newhome only in case of old_home update */
   assert (remove_old_forward == update_old_home);
 
+  if (insert_oor)
+    {
+      if (context->out_of_row_recdes != NULL
+	  && context->out_of_row_recdes->recdes_cnt > 0)
+	{
+	  rc = heap_insert_handle_out_of_row_records (thread_p, context);
+	  if (rc != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return rc;
+	    }
+	}
+    }
   /* 
    * Update old home record (if necessary)
    */
@@ -25294,11 +25322,6 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  /* TODO[arnia] */
-  if (context->out_of_row_recdes != NULL && context->out_of_row_recdes->recdes_cnt > 0)
-    {
-      assert (context->out_of_row_recdes->home_oid_updated == true);
-    }
   /* 
    * Update record
    */
@@ -25325,6 +25348,12 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	      context->oid.slotid);
       rc = ER_HEAP_BAD_OBJECT_TYPE;
       goto exit;
+    }
+
+  /* TODO[arnia] */
+  if (context->out_of_row_recdes != NULL && context->out_of_row_recdes->recdes_cnt > 0)
+    {
+      assert (context->out_of_row_recdes->home_oid_updated == true);
     }
 
   /* check return code of operation */
