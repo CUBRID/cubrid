@@ -6150,19 +6150,15 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
 
       /* TODO[arnia] : out_of_row */
-      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, NULL, local_scan_cache, force_in_place);
+      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, out_of_row_recdes, local_scan_cache,
+				  force_in_place);
       error_code = heap_update_logical (thread_p, &update_context);
       if (error_code != NO_ERROR)
 	{
-	  HEAP_OPERATION_CONTEXT update_context;
-
-	  heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, out_of_row_recdes,
-				      local_scan_cache, force_in_place);
-	  error_code = heap_update_logical (thread_p, &update_context);
-	  if (error_code != NO_ERROR)
+	  if (error_code == ER_FAILED)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
-	      assert (false);
+	      assert (error_code == ER_INTERRUPTED);
 	    }
 	  else
 	    {
