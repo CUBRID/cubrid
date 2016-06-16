@@ -26,9 +26,9 @@
 #include <pthread.h>
 #include <log_impl.h>
 
-#define NOPS_SNAPSHOT   100000
-#define NOPS_COMPLPETE  100000
-#define NOPS_OLDEST     100000
+#define NOPS_SNAPSHOT   1000000
+#define NOPS_COMPLPETE  1000000
+#define NOPS_OLDEST     2000000
 
 /* bit area sizes expressed in bits */
 #define MVCC_BITAREA_ELEMENT_BITS 64
@@ -64,7 +64,7 @@ begin (char *test_name)
     {
       putchar (' ');
     }
-  printf ("...");
+  printf ("...\n");
 
   gettimeofday (&start_time, NULL);
 
@@ -460,7 +460,10 @@ logtb_finalize_mvcc_testing (THREAD_ENTRY ** thread_array)
     }
 }
 
-static unsigned int count_snapshots = 0;
+static UINT64 count_snapshots = 0;
+static UINT64 count_complete = 0;
+static UINT64 count_oldest = 0;
+
 THREAD_RET_T THREAD_CALLING_CONVENTION
 test_mvcc_get_snapshot (void *param)
 {
@@ -485,12 +488,13 @@ test_mvcc_get_snapshot (void *param)
       MVCC_CLEAR_MVCC_INFO (curr_mvcc_info);
     }
 
-  ATOMIC_INC_32 (&count_snapshots, local_count_snapshots);
+  ATOMIC_INC_64 (&count_snapshots, local_count_snapshots);
+  fprintf (stdout, "snapshot worker thread (%p) is leaving\n", thread_p);
+  fflush (stdout);
 
   return (THREAD_RET_T) 0;
 }
 
-static int count_complete = 0;
 THREAD_RET_T THREAD_CALLING_CONVENTION
 test_new_mvcc_complete (void *param)
 {
@@ -525,12 +529,13 @@ test_new_mvcc_complete (void *param)
 	}
     }
 
-  ATOMIC_INC_32 (&count_complete, local_count_complete);
+  ATOMIC_INC_64 (&count_complete, local_count_complete);
+  fprintf (stdout, "complete worker thread (%p) is leaving\n", thread_p);
+  fflush (stdout);
 
   return (THREAD_RET_T) 0;
 }
 
-static int count_oldest = 0;
 THREAD_RET_T THREAD_CALLING_CONVENTION
 test_mvcc_get_oldest (void *param)
 {
@@ -553,7 +558,10 @@ test_mvcc_get_oldest (void *param)
       local_count_oldest++;
     }
 
-  ATOMIC_INC_32 (&count_oldest, local_count_oldest);
+  ATOMIC_INC_64 (&count_oldest, local_count_oldest);
+
+  fprintf (stdout, "get_oldest thread (%p) is leaving\n", thread_p);
+  fflush (stdout);
 
   return (THREAD_RET_T) 0;
 }
@@ -586,6 +594,7 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
       return ER_FAILED;
     }
 
+  count_snapshots = count_complete = count_oldest = 0;
   idx_thread_entry = 0;
   for (i = 0; i < num_snapshot_threads; i++, idx_thread_entry++)
     {
@@ -629,21 +638,24 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
 	}
     }
 
-  if (count_snapshots != num_snapshot_threads * NOPS_SNAPSHOT)
+  if (count_snapshots != (UINT64) num_snapshot_threads * NOPS_SNAPSHOT)
     {
-      printf ("snapshot count fail (%d != %d)", count_snapshots, num_snapshot_threads * NOPS_SNAPSHOT);
+      printf ("snapshot count fail (%llu != %llu)",
+	      (unsigned long long) count_snapshots, (unsigned long long) num_snapshot_threads * NOPS_SNAPSHOT);
       return ER_FAILED;
     }
 
-  if (count_complete != num_complete_threads * NOPS_COMPLPETE)
+  if (count_complete != (UINT64) num_complete_threads * NOPS_COMPLPETE)
     {
-      printf ("complete count fail (%d != %d)", count_complete, num_complete_threads * NOPS_COMPLPETE);
+      printf ("complete count fail (%llu != %llu)",
+	      (unsigned long long) count_complete, (unsigned long long) num_complete_threads * NOPS_COMPLPETE);
       return ER_FAILED;
     }
 
-  if (count_oldest != num_oldest_mvccid_threads * NOPS_OLDEST)
+  if (count_oldest != (UINT64) num_oldest_mvccid_threads * NOPS_OLDEST)
     {
-      printf ("oldest count fail (%d != %d)", count_oldest, num_oldest_mvccid_threads * NOPS_OLDEST);
+      printf ("oldest count fail (%llu != %llu)",
+	      (unsigned long long) count_oldest, (unsigned long long) num_oldest_mvccid_threads * NOPS_OLDEST);
       return ER_FAILED;
     }
 
@@ -656,8 +668,8 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
 int
 main (int argc, char **argv)
 {
-#define MAX_SNAPSHOT_THREADS 1
-#define MAX_COMPLETE_THREADS 1
+#define MAX_SNAPSHOT_THREADS 10
+#define MAX_COMPLETE_THREADS 10
 #define MAX_OLDEST_THREADS 1
 
   int num_snapshot_threads, num_complete_threads, num_oldest_threads;
@@ -669,7 +681,7 @@ main (int argc, char **argv)
     {
       for (num_complete_threads = 1; num_complete_threads <= MAX_COMPLETE_THREADS; num_complete_threads++)
 	{
-	  for (num_snapshot_threads = 1; num_snapshot_threads <= MAX_OLDEST_THREADS; num_snapshot_threads++)
+	  for (num_snapshot_threads = 1; num_snapshot_threads <= MAX_SNAPSHOT_THREADS; num_snapshot_threads++)
 	    {
 	      if (test_mvcc_operations (num_snapshot_threads, num_complete_threads, num_oldest_threads,
 					thread_array) != NO_ERROR)
