@@ -9979,15 +9979,8 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
   copy_mvcc_snapshot.snapshot_fnc = mvcc_is_not_deleted_for_snapshot;
   scan_cache.mvcc_snapshot = &copy_mvcc_snapshot;
 
-  /* Check if object is visible (chain must be followed if version is old but has next version). If version is too
-   * "new", then it means the visible version does exist somewhere in the chain previous to this version.
-   * NOTE: We needed this kind of check, because sometimes the given argument could be last version (if it was
-   *       locked). If we would check only visibility, this last version could be invisible and the function result
-   *       could be inaccurate.
-   */
-  scan =
-    heap_mvcc_lock_and_get_object_version (thread_p, (OID *) oid, class_oid, NULL, &scan_cache, S_SELECT, PEEK,
-					   NULL_CHN, NULL, LOG_WARNING_IF_DELETED);
+  /* Check only if the last version of the object is not deleted, see mvcc_is_not_deleted_for_snapshot return values */
+  scan = heap_get_visible_version (thread_p, oid, class_oid, NULL, &scan_cache, PEEK, NULL_CHN, false);
   if (scan != S_SUCCESS)
     {
       goto exit_on_end;
