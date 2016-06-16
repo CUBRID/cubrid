@@ -679,7 +679,9 @@ xcache_hash_key (void *key, int hash_table_size)
 	      XCACHE_LOG_SHA1_TEXT
 	      "\t\t hash index value = %d \n"
 	      XCACHE_LOG_TRAN_TEXT,
-	      XCACHE_LOG_SHA1_ARGS (&xasl_id->sha1));
+	      XCACHE_LOG_SHA1_ARGS (&xasl_id->sha1),
+              hash_index,
+              XCACHE_LOG_TRAN_ARGS (NULL));
 
   return hash_index;
 }
