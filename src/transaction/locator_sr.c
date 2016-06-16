@@ -7843,6 +7843,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       break;
     }
 
+  heap_free_oor_context (thread_p, &out_of_row_recdes);
+
   return error_code;
 }
 

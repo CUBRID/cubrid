@@ -674,5 +674,5 @@ extern SCAN_CODE heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
 							SCAN_OPERATION_TYPE op_type, int ispeeking, int old_chn,
 							struct mvcc_reev_data *mvcc_reev_data,
 							NON_EXISTENT_HANDLING non_ex_handling_type);
-
+extern void heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_RECDES *oor_context);
 #endif /* _HEAP_FILE_H_ */

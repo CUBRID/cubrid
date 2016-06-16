@@ -26944,3 +26944,40 @@ end:
 
   return error_code;
 }
+
+/*
+ * heap_free_oor_context () -
+ *
+ * thread_p (in)       : Thread entry.
+ * oor_context (in/out)	: out of row context
+ */
+void
+heap_free_oor_context (THREAD_ENTRY * thread_p, OUT_OF_ROW_RECDES *oor_context)
+
+{
+  if (oor_context->recdes_cnt > 0)
+    {
+        int i;
+
+	assert (oor_context->oor_recdes != NULL);
+	assert (oor_context->home_recdes_oid_offsets != NULL);
+
+	for (i = 0; i < oor_context->recdes_cnt; i++)
+	  {
+	    if (oor_context->oor_recdes->data != NULL)
+	      {
+		db_private_free (thread_p, oor_context->oor_recdes->data);
+		oor_context->oor_recdes->data = NULL;
+	      }
+	  }
+
+	db_private_free (thread_p, oor_context->oor_recdes);
+	oor_context->oor_recdes = NULL;
+
+	db_private_free (thread_p, oor_context->home_recdes_oid_offsets);
+	oor_context->home_recdes_oid_offsets = NULL;
+    }
+
+  oor_context->recdes_cnt = 0;
+  oor_context->recdes_capacity = 0;
+}
