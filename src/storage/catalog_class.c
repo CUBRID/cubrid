@@ -2906,7 +2906,7 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
       if (DB_VALUE_TYPE (&element) == DB_TYPE_OID)
 	{
 	  oid_p = DB_PULL_OID (&element);
-	  
+
 	  scan_code = heap_get_class_oid (thread_p, oid_p, &class_oid);
 	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
