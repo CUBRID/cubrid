@@ -24908,7 +24908,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
    */
 
   /* TODO[arnia] */
-  if (context->out_of_row_recdes != NULL)
+  if (context->out_of_row_recdes != NULL && context->out_of_row_recdes->recdes_cnt > 0)
     {
       assert (context->out_of_row_recdes->home_oid_updated == true);
     }
@@ -25295,7 +25295,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   /* TODO[arnia] */
-  if (context->out_of_row_recdes != NULL)
+  if (context->out_of_row_recdes != NULL && context->out_of_row_recdes->recdes_cnt > 0)
     {
       assert (context->out_of_row_recdes->home_oid_updated == true);
     }
