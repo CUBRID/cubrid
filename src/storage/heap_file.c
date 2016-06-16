@@ -25843,7 +25843,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
  *   old_chn (in): Cache coherency number for existing record data. It is
  *		   used by clients to avoid resending record data when
  *		   it was not updated.
- *   is_heap_scan(in): required for heap_prepare_record
+ *   is_heap_scan(in): required for heap_get_prepare_context
  */
 SCAN_CODE
 heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
@@ -25865,7 +25865,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
       pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context.home_page_watcher);
     }
 
-  scan = heap_get_prepare_context (thread_p, &context, PGBUF_LATCH_READ, true, LOG_WARNING_IF_DELETED);
+  scan = heap_get_prepare_context (thread_p, &context, PGBUF_LATCH_READ, is_heap_scan, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
       goto exit;
