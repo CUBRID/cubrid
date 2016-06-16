@@ -22390,7 +22390,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 				  bool is_mvcc_op, bool is_mvcc_class, bool is_oor_buf)
 {
   MVCC_REC_HEADER mvcc_rec_header;
-  int curr_header_size, new_header_size;
+  int header_size_adj = 0;
   int record_size = recdes_p->length;
   bool insert_from_reorganize = false;
 
@@ -22428,13 +22428,15 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
       else
 #endif /* SERVER_MODE */
 	{
+	  int curr_header_size, new_header_size;
 	  /* strip MVCC information */
 	  curr_header_size = or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
 	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
 	  new_header_size = or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
 
 	  /* compute new record size */
-	  record_size -= (curr_header_size - new_header_size);
+	  header_size_adj = (curr_header_size - new_header_size);
+	  record_size -= header_size_adj;
 	}
     }
 
@@ -22469,13 +22471,13 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   if (is_oor_buf == false
       && context->out_of_row_recdes != NULL
       && context->out_of_row_recdes->recdes_cnt > 0
-      && curr_header_size != new_header_size)
+      && header_size_adj != 0)
     {
       int i;
 
       for (i = 0; i < context->out_of_row_recdes->recdes_cnt; i++)
 	{
-	  context->out_of_row_recdes->home_recdes_oid_offsets[i] -= curr_header_size - new_header_size;
+	  context->out_of_row_recdes->home_recdes_oid_offsets[i] -= header_size_adj;
 	  assert (context->out_of_row_recdes->home_recdes_oid_offsets[i] >= 0);
 	  /* TODO[arnia]:*/
 	  assert (context->out_of_row_recdes->home_recdes_oid_offsets[i] < DB_PAGESIZE);
