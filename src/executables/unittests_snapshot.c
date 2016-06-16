@@ -349,7 +349,7 @@ logtb_initialize_mvcc_testing (int num_threads, THREAD_ENTRY ** thread_array)
       thread_p = *thread_array + i;
       thread_p->type = TT_WORKER;	/* init */
       thread_p->index = i;
-      thread_p->tran_index = i;
+      thread_p->tran_index = i + 1;	/* quick fix to avoid issue in logtb_get_mvcc_snapshot - LOG_SYSTEM_TRAN_INDEX */
     }
 
   size = num_threads * sizeof (*log_Gl.trantable.all_tdes);
@@ -468,6 +468,9 @@ test_mvcc_get_snapshot (void *param)
   THREAD_ENTRY *thread_p = (THREAD_ENTRY *) param;
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   unsigned int local_count_snapshots = 0;
+  MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
+  volatile MVCCID *p_transaction_lowest_active_mvccid =
+    LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
   for (i = 0; i < NOPS_SNAPSHOT; i++)
     {
@@ -476,11 +479,10 @@ test_mvcc_get_snapshot (void *param)
 	  local_count_snapshots++;
 	}
 
-      if (tdes->mvccinfo.snapshot.valid)
-	{
-	  /* Invalidate snapshot */
-	  tdes->mvccinfo.snapshot.valid = false;
-	}
+      /* Invalidate snapshot */
+      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_NULL);
+      curr_mvcc_info->recent_snapshot_lowest_active_mvccid = MVCCID_NULL;
+      MVCC_CLEAR_MVCC_INFO (curr_mvcc_info);
     }
 
   ATOMIC_INC_32 (&count_snapshots, local_count_snapshots);
@@ -499,10 +501,16 @@ test_new_mvcc_complete (void *param)
   bool committed = true;
   volatile MVCCID *p_transaction_lowest_active_mvccid =
     LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
+  MVCCID mvccid;
 
   for (i = 0; i < NOPS_COMPLPETE; i++)
     {
-      (void) logtb_get_current_mvccid (thread_p);
+      mvccid = logtb_get_current_mvccid (thread_p);
+      if (mvccid == MVCCID_NULL)
+	{
+	  abort ();
+	}
 
       logtb_complete_mvcc (thread_p, tdes, committed);
       committed = !committed;
@@ -536,8 +544,9 @@ test_mvcc_get_oldest (void *param)
     {
       prev_oldest = curr_oldest;
       curr_oldest = logtb_get_oldest_active_mvccid (thread_p);
-      if (MVCC_ID_FOLLOW_OR_EQUAL (prev_oldest, curr_oldest))
+      if (MVCC_ID_PRECEDES (curr_oldest, prev_oldest))
 	{
+	  abort ();
 	  continue;
 	}
 
@@ -561,7 +570,8 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
   char msg[256];
 
   numthreads = num_snapshot_threads + num_complete_threads + num_oldest_mvccid_threads;
-  sprintf (msg, "test_mvcc_operations (%d snapshot threads, %d complete threads, %d oldest threads)", numthreads);
+  sprintf (msg, "test_mvcc_operations (%d snapshot threads, %d complete threads, %d oldest threads)",
+	   num_snapshot_threads, num_complete_threads, num_oldest_mvccid_threads);
   begin (msg);
 
   if (num_snapshot_threads < 0 || num_complete_threads < 0 || num_oldest_mvccid_threads < 0)
@@ -579,7 +589,7 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
   idx_thread_entry = 0;
   for (i = 0; i < num_snapshot_threads; i++, idx_thread_entry++)
     {
-      if (pthread_create (&threads[i], NULL, test_mvcc_get_snapshot,
+      if (pthread_create (&threads[idx_thread_entry], NULL, test_mvcc_get_snapshot,
 			  (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
 	{
 	  printf (" %s: %s\n", "FAILED", "thread create error");
@@ -589,7 +599,7 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
 
   for (i = 0; i < num_complete_threads; i++, idx_thread_entry++)
     {
-      if (pthread_create (&threads[i], NULL, test_new_mvcc_complete,
+      if (pthread_create (&threads[idx_thread_entry], NULL, test_new_mvcc_complete,
 			  (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
 	{
 	  printf (" %s: %s\n", "FAILED", "thread create error");
@@ -599,7 +609,7 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
 
   for (i = 0; i < num_oldest_mvccid_threads; i++, idx_thread_entry++)
     {
-      if (pthread_create (&threads[i], NULL, test_mvcc_get_oldest,
+      if (pthread_create (&threads[idx_thread_entry], NULL, test_mvcc_get_oldest,
 			  (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
 	{
 	  printf (" %s: %s\n", "FAILED", "thread create error");
