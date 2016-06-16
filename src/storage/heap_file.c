@@ -13177,6 +13177,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	{
 	  out_of_row_recdes->recdes_capacity = overflow_columns_cnt;
 	  out_of_row_recdes->recdes_cnt = 0;
+	  out_of_row_recdes->home_oid_updated = false;
 	  out_of_row_recdes->oor_recdes = (RECDES *)
 	    db_private_alloc (thread_p, out_of_row_recdes->recdes_capacity * sizeof (out_of_row_recdes->oor_recdes[0]));
 	  if (out_of_row_recdes->oor_recdes == NULL)
@@ -22623,6 +22624,8 @@ heap_insert_handle_out_of_row_records (THREAD_ENTRY * thread_p, HEAP_OPERATION_C
       OR_BUF_INIT2 (home_oid_buf, context->recdes_p->data + context->out_of_row_recdes->home_recdes_oid_offsets[i], OR_OID_SIZE);
 
       pr_type_oid->data_writeval (&home_oid_buf, &out_of_row_oid_val);
+
+      context->out_of_row_recdes->home_oid_updated = true;
     }
 
   /* all ok */
@@ -24903,6 +24906,13 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* 
    * Operation logging
    */
+
+  /* TODO[arnia] */
+  if (context->out_of_row_recdes != NULL)
+    {
+      assert (context->out_of_row_recdes->home_oid_updated == true);
+    }
+
   heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
 			    context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
 
@@ -25284,6 +25294,11 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
+  /* TODO[arnia] */
+  if (context->out_of_row_recdes != NULL)
+    {
+      assert (context->out_of_row_recdes->home_oid_updated == true);
+    }
   /* 
    * Update record
    */

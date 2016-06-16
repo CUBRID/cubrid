@@ -713,6 +713,8 @@ struct out_of_row_recdes
   int *home_recdes_oid_offsets;	/* array of offsets into home record for OIDs of out of row values */
   int recdes_capacity;		/* allowed RECDES elements in RECDES array */
   int recdes_cnt;		/* current count of elements in RECDES array */
+
+  bool home_oid_updated;
 };
 
 #define OUT_OF_ROW_RECDES_INITILIAZER {NULL, NULL, 0, 0}
