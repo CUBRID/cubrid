@@ -7821,14 +7821,14 @@ heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, R
 {
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan;
+  /*
+     heap_init_get_context (&context, oid, class_oid, recdes);
 
-  heap_init_get_context (&context, oid, class_oid, recdes);
+     scan = locator_lock_and_get_object (thread_p, &context, X_LOCK, scan_cache, old_chn, ispeeking);
 
-  scan = locator_lock_and_get_object (thread_p, &context, X_LOCK, scan_cache, old_chn, ispeeking);
+     heap_clean_get_context (thread_p, &context);
 
-  heap_clean_get_context (thread_p, &context);
-
-  return scan;
+     return scan; */
 
   return heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, recdes, scan_cache, S_DELETE, ispeeking,
 						old_chn, mvcc_reev_data, non_ex_handling_type);

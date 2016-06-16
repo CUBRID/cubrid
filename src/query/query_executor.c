@@ -11586,9 +11586,8 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       scan_cache_end_needed = true;
 
       /* fetch the object and the class oid */
-      scan =
-	heap_get_for_operation (thread_p, dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, PEEK,
-				LOG_ERROR_IF_DELETED);
+      scan = heap_get_for_operation (thread_p, dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, PEEK,
+				     LOG_ERROR_IF_DELETED);
       if (scan != S_SUCCESS)
 	{
 	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
