@@ -8682,7 +8682,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
 	  contextp->sql_hash_text = (char *) statement->alias_print;
 	  err =
-	    SHA1Compute ((unsigned char *) contextp->sql_user_text, (unsigned) strlen (contextp->sql_hash_text),
+	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 			 &contextp->sha1);
 	  if (err != NO_ERROR)
 	    {
@@ -9961,7 +9961,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
 	  contextp->sql_hash_text = (char *) statement->alias_print;
 	  err =
-	    SHA1Compute ((unsigned char *) contextp->sql_user_text, (unsigned) strlen (contextp->sql_hash_text),
+	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 			 &contextp->sha1);
 	  if (err != NO_ERROR)
 	    {
@@ -10575,7 +10575,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
   contextp->sql_hash_text = (char *) statement->alias_print;
   error =
-    SHA1Compute ((unsigned char *) contextp->sql_user_text, (unsigned) strlen (contextp->sql_hash_text),
+    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 		 &contextp->sha1);
   if (error != NO_ERROR)
     {
@@ -13875,7 +13875,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_USER));
   contextp->sql_hash_text = (char *) statement->alias_print;
   err =
-    SHA1Compute ((unsigned char *) contextp->sql_user_text, (unsigned) strlen (contextp->sql_hash_text),
+    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 		 &contextp->sha1);
   if (err != NO_ERROR)
     {
@@ -15624,7 +15624,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
       contextp->sql_hash_text = (char *) statement->alias_print;
       err =
-	SHA1Compute ((unsigned char *) contextp->sql_user_text, (unsigned) strlen (contextp->sql_hash_text),
+	SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 		     &contextp->sha1);
       if (err != NO_ERROR)
 	{
