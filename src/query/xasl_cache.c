@@ -1680,7 +1680,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
       fprintf (fp, "  cache flags = %08x \n",
 	       xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FLAGS_MASK);
       fprintf (fp, "  reference count = %ld \n", ATOMIC_INC_64 (&xcache_entry->ref_count, 0));
-      fprintf (fp, "  time second last used = %d \n", xcache_entry->time_last_used.tv_sec);
+      fprintf (fp, "  time second last used = %lld \n", (long long) xcache_entry->time_last_used.tv_sec);
 
       fprintf (fp, "  OID_LIST (count = %d): \n", xcache_entry->n_related_objects);
       for (oid_index = 0; oid_index < xcache_entry->n_related_objects; oid_index++)
