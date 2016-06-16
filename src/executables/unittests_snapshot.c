@@ -297,8 +297,8 @@ logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size)
   return 0;
 }
 
-static unsigned int
-logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size)
+static int
+logtb_tran_btid_hash_cmp_func (const void *key1, const void *key2)
 {
   return 0;
 }
@@ -343,11 +343,13 @@ logtb_initialize_mvcc_testing (int num_threads, THREAD_ENTRY ** thread_array)
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
+  memset (*thread_array, 0, size);
   for (i = 0; i < num_threads; i++)
     {
-      thread_p = thread_array[i];
+      thread_p = *thread_array + i;
       thread_p->type = TT_WORKER;	/* init */
       thread_p->index = i;
+      thread_p->tran_index = i;
     }
 
   size = num_threads * sizeof (*log_Gl.trantable.all_tdes);
@@ -386,6 +388,7 @@ logtb_initialize_mvcc_testing (int num_threads, THREAD_ENTRY ** thread_array)
     {
       goto error;
     }
+  log_Gl.hdr.mvcc_next_id = MVCCID_FIRST;
 
   return NO_ERROR;
 
