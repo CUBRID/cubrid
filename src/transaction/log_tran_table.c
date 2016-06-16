@@ -4483,6 +4483,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 	}
     }
 
+  lowest_active_mvccid = ATOMIC_INC_64 (&mvcc_table->current_trans_status.lowest_active_mvccid, 0LL);
 #if defined(HAVE_ATOMIC_BUILTINS)
   /* read transaction_lowest_active_mvccids */
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
@@ -4496,10 +4497,10 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
     {
       transaction_lowest_active_mvccids[i] = mvcc_table->transaction_lowest_active_mvccids[i];
     }
+  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
 
   waiting_mvccids_length = 0;
-  lowest_active_mvccid = ATOMIC_INC_64 (&mvcc_table->current_trans_status.lowest_active_mvccid, 0LL);
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       if (MVCCID_IS_NORMAL (transaction_lowest_active_mvccids[i])
