@@ -22477,6 +22477,8 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	{
 	  context->out_of_row_recdes->home_recdes_oid_offsets[i] -= curr_header_size - new_header_size;
 	  assert (context->out_of_row_recdes->home_recdes_oid_offsets[i] >= 0);
+	  /* TODO[arnia]:*/
+	  assert (context->out_of_row_recdes->home_recdes_oid_offsets[i] < DB_PAGESIZE);
 	}
     }
 
