@@ -238,6 +238,7 @@ int
 xcache_initialize (THREAD_ENTRY * thread_p)
 {
   int error_code = NO_ERROR;
+  HL_HEAPID save_heapid;
 
   xcache_Enabled = false;
 
@@ -270,10 +271,13 @@ xcache_initialize (THREAD_ENTRY * thread_p)
       return error_code;
     }
 
+  /* Use global heap */
+  save_heapid = db_change_private_heap (thread_p, 0);
   xcache_Cleanup_flag = 0;
   xcache_Cleanup_bh =
     bh_create (thread_p, (int) (XCACHE_CLEANUP_RATIO * xcache_Soft_capacity), sizeof (XCACHE_CLEANUP_CANDIDATE),
 	       xcache_compare_cleanup_candidates, NULL);
+  (void) db_change_private_heap (thread_p, save_heapid);
   if (xcache_Cleanup_bh == NULL)
     {
       lf_freelist_destroy (&xcache_Ht_freelist);
@@ -300,6 +304,8 @@ xcache_initialize (THREAD_ENTRY * thread_p)
 void
 xcache_finalize (THREAD_ENTRY * thread_p)
 {
+  HL_HEAPID save_heapid;
+
   if (!xcache_Enabled)
     {
       return;
@@ -311,11 +317,14 @@ xcache_finalize (THREAD_ENTRY * thread_p)
   lf_freelist_destroy (&xcache_Ht_freelist);
   lf_hash_destroy (&xcache_Ht);
 
+  /* Use global heap */
+  save_heapid = db_change_private_heap (thread_p, 0);
   if (xcache_Cleanup_bh != NULL)
     {
       bh_destroy (thread_p, xcache_Cleanup_bh);
       xcache_Cleanup_bh = NULL;
     }
+  (void) db_change_private_heap (thread_p, 0);
 
   xcache_Enabled = false;
 }
