@@ -1500,11 +1500,13 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
   return _vsprintf_p (buffer, count, format, argptr);
 }
 
+#if !defined(_MSC_VER) || _MSC_VER < 1800
 double
 round (double d)
 {
   return d >= 0 ? floor (d + 0.5) : ceil (d - 0.5);
 }
+#endif
 
 int
 pthread_mutex_init (pthread_mutex_t * mutex, pthread_mutexattr_t * attr)
