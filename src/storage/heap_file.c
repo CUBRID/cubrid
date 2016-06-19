@@ -922,8 +922,8 @@ static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, REC
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
 static bool heap_check_class_for_rr_isolation_err (const OID * class_oid);
-static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR pgptr, PAGE_PTR fwd_pgptr,
-					 LOG_LSA * prev_ver_lsa);
+static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * home_pg_watcher,
+					 PGBUF_WATCHER * fwd_pg_watcher, LOG_LSA * prev_version_lsa);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
