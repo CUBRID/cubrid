@@ -26374,7 +26374,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WA
 	  goto end;
 	}
 
-      pgbuf_set_dirty (thread_p, home_pg_watcher, DONT_FREE);
+      pgbuf_set_dirty (thread_p, home_pg_watcher->pgptr, DONT_FREE);
     }
   else if (recdes.type == REC_RELOCATION)
     {
