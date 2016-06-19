@@ -222,7 +222,6 @@ add_library(cubrid SHARED
   ${PROBES_OBJECT}
   )
 set_target_properties(cubrid PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
-set_target_properties(cubrid PROPERTIES PUBLIC_HEADER "${COMPAT_DIR}/dbi.h")
 if(WIN32)
   # change library file name to libcubrid
   set_target_properties(cubrid PROPERTIES OUTPUT_NAME libcubrid)
@@ -259,7 +258,12 @@ endif(ENABLE_SYSTEMTAP)
 install(TARGETS cubrid
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
-  PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  )
+
+install(FILES
+  ${COMPAT_DIR}/dbi_compat.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  RENAME dbi.h
   )
 
 

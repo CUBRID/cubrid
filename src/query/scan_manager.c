@@ -950,8 +950,24 @@ scan_alloc_oid_list (BTREE_ISCAN_OID_LIST ** oid_list_p)
 }
 
 /*
- * scan_alloc_iscan_oid_buf_list () - Allocate or use a preallocated buffer
- *				      for index scan OID list.
+ * scan_free_oid_list () - Free an index scan OID list.
+ *
+ * return		  : void
+ */
+static void
+scan_free_oid_list (BTREE_ISCAN_OID_LIST * oid_list_p)
+{
+  assert (oid_list_p != NULL);
+
+  if (oid_list_p->oidp != NULL)
+    {
+      free_and_init (oid_list_p->oidp);
+    }
+  free_and_init (oid_list_p);
+}
+
+/*
+ * scan_alloc_iscan_oid_buf_list () - Allocate or use a preallocated buffer for index scan OID list.
  *
  * return	  : Error code.
  * oid_list (out) : Output OID list with allocated buffer.
@@ -1010,8 +1026,7 @@ scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list)
 }
 
 /*
- * scan_free_iscan_oid_buf_list () - Free OID buffer from OID list of index
- *				     scan.
+ * scan_free_iscan_oid_buf_list () - Free OID buffer from OID list of index scan.
  *
  * return	 : Void.
  * oid_list (in) : OID list to free.
@@ -1036,7 +1051,7 @@ scan_free_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST * oid_list)
   else
     {
       /* Too many buffers, just free it. */
-      free_and_init (oid_list);
+      scan_free_oid_list (oid_list);
     }
   pthread_mutex_unlock (&scan_Iscan_oid_buf_list_mutex);
 }
@@ -7001,9 +7016,9 @@ scan_finalize (void)
       scan_Iscan_oid_buf_list = oid_list_p->next_list;
 
       /* Free current. */
-      free_and_init (oid_list_p->oidp);
-      free_and_init (oid_list_p);
+      scan_free_oid_list (oid_list_p);
     }
+
   /* Reset count. */
   scan_Iscan_oid_buf_list_count = 0;
 }
