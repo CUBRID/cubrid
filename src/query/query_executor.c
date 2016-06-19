@@ -11590,6 +11590,11 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 				     LOG_ERROR_IF_DELETED);
       if (scan != S_SUCCESS)
 	{
+	  /* setting ER_HEAP_UNKNOWN_OBJECT error for deleted or invisible objects should be replaced by a more clear 
+	   * way of handling the return code; it is imposible to decide at low level heap get functions if it is
+	   * expected to reach a deleted object and also it is difficult to propagate the NON_EXISTENT_HANDLING 
+	   * argument through all the callers; this system can currently generate some irrelevant error log that is
+	   * hard to eliminate */
 	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
 	      /* dangling object reference */

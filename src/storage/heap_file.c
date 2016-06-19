@@ -8381,22 +8381,11 @@ try_again:
     }
 
   /* Output class_oid. */
-  if (context->class_oid_p != NULL && OID_ISNULL (context->class_oid_p))
+  if (heap_get_class_oid_from_page (thread_p, context->home_page_watcher.pgptr, context->class_oid_p) != NO_ERROR)
     {
-      /* Get class OID from HEAP_CHAIN. */
-      scan = spage_get_record (context->home_page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &peek_recdes, PEEK);
-      if (scan != S_SUCCESS)
-	{
-	  /* Unexpected. */
-	  assert_release (false);
-	  goto error;
-	}
-      COPY_OID (context->class_oid_p, &(((HEAP_CHAIN *) peek_recdes.data)->class_oid));
-      if (OID_ISNULL (context->class_oid_p))
-	{
-	  /* root class is identified with a NULL class OID */
-	  COPY_OID (context->class_oid_p, oid_Root_class_oid);
-	}
+      /* Unexpected. */
+      assert_release (false);
+      goto error;
     }
 
   /* Get slot. */
