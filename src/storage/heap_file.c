@@ -23653,6 +23653,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   bool update_old_home = true;
   LOG_LSA prev_version_lsa;
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
+  PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
 
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_UPDATE);
@@ -23663,8 +23664,9 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
   if (is_mvcc_op)
     {
-      /* necessary to set prev version, which is required only for mvcc objects */
-      PGBUF_INIT_WATCHER (&newhome_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+      /* necessary to set prev version, which is required only for mvcc objects, in case a newhome object is created */
+      newhome_pg_watcher_p = &newhome_pg_watcher;
+      PGBUF_INIT_WATCHER (newhome_pg_watcher_p, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
     }
 
   /* read OID of overflow record */
@@ -23733,7 +23735,8 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  /* insert new home */
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	  context->recdes_p->type = REC_NEWHOME;
-	  if (heap_insert_newhome (thread_p, context, context->recdes_p, &newhome_oid, &newhome_pg_watcher) != NO_ERROR)
+	  if (heap_insert_newhome (thread_p, context, context->recdes_p, &newhome_oid, newhome_pg_watcher_p) !=
+	      NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -23772,7 +23775,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       else
 	{
 	  /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
-	  error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
+	  error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p,
 						     &newhome_pg_watcher, &prev_version_lsa);
 	  if (newhome_pg_watcher.pgptr != NULL)
 	    {
@@ -23816,6 +23819,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   bool remove_old_forward = false;
   LOG_LSA prev_version_lsa = LSA_INITIALIZER;
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
+  PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
@@ -23823,6 +23827,13 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   assert (context->home_page_watcher_p != NULL);
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
+
+  if (is_mvcc_op)
+    {
+      /* necessary to set prev version, which is required only for mvcc objects, in case a newhome object is created */
+      newhome_pg_watcher_p = &newhome_pg_watcher;
+      PGBUF_INIT_WATCHER (newhome_pg_watcher_p, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+    }
 
   /* get forward oid */
   forward_oid = *((OID *) context->home_recdes.data);
@@ -23883,7 +23894,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* insert a new forward record */
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
       context->recdes_p->type = REC_NEWHOME;
-      rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid, &newhome_pg_watcher);
+      rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid, newhome_pg_watcher_p);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -24009,23 +24020,15 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
   if (is_mvcc_op)
     {
-      PGBUF_WATCHER *new_fwd_pg_watcher_p;
-
-      if (newhome_pg_watcher.pgptr != NULL || new_home_recdes.type == REC_BIGONE)
+      if (newhome_pg_watcher.pgptr == NULL)
 	{
-	  /* a new forward record was inserted and we need the newhome watcher, 
-	   * or the new record is BIGONE and we need just a clean watcher */
-	  new_fwd_pg_watcher_p = &newhome_pg_watcher;
-	}
-      else
-	{
-	  /* the updated record may be in the old forward page */
-	  new_fwd_pg_watcher_p = context->forward_page_watcher_p;
+	  /* the update did not generate a newhome; use the forward watcher of the old newhome */
+	  newhome_pg_watcher_p = context->forward_page_watcher_p;
 	}
 
       /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
       rc = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p,
-					 new_fwd_pg_watcher_p, &prev_version_lsa);
+					 newhome_pg_watcher_p, &prev_version_lsa);
 
       if (newhome_pg_watcher.pgptr != NULL)
 	{
@@ -24062,6 +24065,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   LOG_RCVINDEX undo_rcvindex = RVHF_UPDATE;
   LOG_LSA prev_version_lsa;
   PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
+  PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
@@ -24072,8 +24076,9 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
   if (is_mvcc_op)
     {
-      /* necessary to set prev version, which is required only for mvcc objects */
-      PGBUF_INIT_WATCHER (&newhome_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+      /* necessary to set prev version, which is required only for mvcc objects, in case a newhome object is created */
+      newhome_pg_watcher_p = &newhome_pg_watcher;
+      PGBUF_INIT_WATCHER (newhome_pg_watcher_p, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
     }
 
   if (!HEAP_IS_UPDATE_INPLACE (context->update_in_place) && context->home_recdes.type == REC_ASSIGN_ADDRESS)
@@ -24140,7 +24145,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* insert new home record */
       HEAP_PERF_TRACK_PREPARE (thread_p, context);
       context->recdes_p->type = REC_NEWHOME;
-      error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &forward_oid, &newhome_pg_watcher);
+      error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &forward_oid, newhome_pg_watcher_p);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
