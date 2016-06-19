@@ -24211,7 +24211,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   if (is_mvcc_op)
     {
       /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
-      error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
+      error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p,
 						 &newhome_pg_watcher, &prev_version_lsa);
       if (newhome_pg_watcher.pgptr != NULL)
 	{
