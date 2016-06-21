@@ -3488,7 +3488,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 exit:
   LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
-  log_Gl.mvcc_table.current_trans_status.lowest_active_mvccid = log_Gl.hdr.mvcc_next_id;
 
   return;
 }
