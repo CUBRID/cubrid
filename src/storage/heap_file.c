@@ -26192,11 +26192,13 @@ heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHE
 	      /* maybe this error could be removed */
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
 		      oid->slotid);
+	      ret = ER_HEAP_UNKNOWN_OBJECT;
 	    }
 
 	  if (ret == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, oid->volid, oid->pageid);
+	      ret = ER_PAGE_LATCH_ABORTED;
 	    }
 	}
     }

@@ -669,9 +669,6 @@ extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, P
 extern SCAN_CODE heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 					   PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
 					   NON_EXISTENT_HANDLING non_ex_handling_type);
-extern SCAN_CODE heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
-					   PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
-					   NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE heap_get_for_operation (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 					 HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, int ispeeking,
 					 NON_EXISTENT_HANDLING non_ex_handling);
