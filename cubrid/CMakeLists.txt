@@ -222,7 +222,6 @@ add_library(cubrid SHARED
   ${PROBES_OBJECT}
   )
 set_target_properties(cubrid PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
-set_target_properties(cubrid PROPERTIES PUBLIC_HEADER "${COMPAT_DIR}/dbi.h")
 if(WIN32)
   # change library file name to libcubrid
   set_target_properties(cubrid PROPERTIES OUTPUT_NAME libcubrid)
@@ -242,7 +241,8 @@ if(WIN32)
 endif(WIN32)
 target_include_directories(cubrid PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${JAVA_INC} ${EP_INCLUDES})
 if(UNIX)
-  target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
+  target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
@@ -256,17 +256,22 @@ if(ENABLE_SYSTEMTAP)
 endif(ENABLE_SYSTEMTAP)
 
 install(TARGETS cubrid
-  RUNTIME DESTINATION ${CUBRID_BINDIR}
-  LIBRARY DESTINATION ${CUBRID_LIBDIR}
-  PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR}
+  RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Library
+  LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
+  )
+
+install(FILES
+  ${COMPAT_DIR}/dbi_compat.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  RENAME dbi.h
   )
 
 
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY
-    ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/
-    DESTINATION ${CUBRID_BINDIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/
+    DESTINATION ${CUBRID_BINDIR} COMPONENT Debuginfo
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)

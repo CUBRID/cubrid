@@ -543,7 +543,7 @@
           (n)->info.function.analytic.is_analytic )
 
 #define PT_IS_POINTER_REF_NODE(n) \
-        ( (n) && (n)->node_type == PT_POINTER && \
+        ( (n) && (n)->node_type == PT_NODE_POINTER && \
           (n)->info.pointer.type == PT_POINTER_REF )
 
 #define PT_IS_VACUUM_NODE(n) \
@@ -659,7 +659,7 @@
 
 #define CAST_POINTER_TO_NODE(p)                             \
     do {                                                    \
-        while ((p) && (p)->node_type == PT_POINTER &&       \
+        while ((p) && (p)->node_type == PT_NODE_POINTER &&       \
                (p)->info.pointer.type == PT_POINTER_NORMAL) \
         {                                                   \
             (p) = (p)->info.pointer.node;                   \
@@ -910,7 +910,7 @@ enum pt_node_type
   PT_TRIGGER_ACTION,
   PT_TRIGGER_SPEC_LIST,
   PT_VALUE,
-  PT_POINTER,
+  PT_NODE_POINTER,
   PT_NODE_LIST,
   PT_TABLE_OPTION,
   PT_ATTR_ORDERING,

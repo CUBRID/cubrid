@@ -126,7 +126,7 @@ struct locator_return_nxobj
   int area_offset;		/* Relative offset to recdes->data in the communication area */
 };
 
-extern int vacuum_Global_oldest_active_blockers_counter;
+extern INT32 vacuum_Global_oldest_active_blockers_counter;
 
 bool locator_Dont_check_foreign_key = false;
 
@@ -4047,6 +4047,14 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
 
   if (OID_ISNULL (class_oid))
     {
+      /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
+       * removed with one of the refactoring issues anyway.
+       */
+      if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+	{
+	  return LC_DOESNOT_EXIST;
+	}
+
       /* 
        * Caller does not know the class of the object. Get the class identifier
        * from disk
@@ -4099,6 +4107,14 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
     }
   else
     {
+      /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
+       * removed with one of the refactoring issues anyway.
+       */
+      if (HEAP_ISVALID_OID (oid) != DISK_VALID)
+	{
+	  return LC_DOESNOT_EXIST;
+	}
+
       /* MVCC class, call heap_mvcc_lock_object (it also verifies object exists). */
       scan_code = heap_mvcc_lock_object (thread_p, oid, class_oid, lock, snapshot_type);
       if (scan_code == S_ERROR)
@@ -6152,7 +6168,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  if (error_code == ER_FAILED)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
-	      assert (false);
+	      assert (error_code == ER_INTERRUPTED);
 	    }
 	  else
 	    {
@@ -12560,7 +12576,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
     }
   else
     {
-      assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) > 0);
+      assert (vacuum_Global_oldest_active_blockers_counter > 0);
     }
 
   /* Can't use vacuum_Global_oldest_active_mvccid here. That's because we want to avoid scenarios where VACUUM compute
@@ -13170,7 +13186,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	}
       else
 	{
-	  assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) > 0);
+	  assert (vacuum_Global_oldest_active_blockers_counter > 0);
 	}
 
       if (threshold_mvccid == MVCCID_NULL)

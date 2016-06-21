@@ -28,7 +28,7 @@ else(UNIX)
     set(MAKE_LOCALE_SCRIPT make_locale_Win32.bat)
     set(MAKE_LOCLIB_DIR loclib_win_Win32)
   else(TARGET_PLATFORM_BITS EQUAL 32)
-    set(MAKE_LOCALE_SCRIPT make_locale_Win32.bat)
+    set(MAKE_LOCALE_SCRIPT make_locale_x64.bat)
     set(MAKE_LOCLIB_DIR loclib_win_x64)
   endif(TARGET_PLATFORM_BITS EQUAL 32)
   install(PROGRAMS
@@ -48,5 +48,5 @@ install(DIRECTORY
 
 install(FILES
   ${CMAKE_SOURCE_DIR}/src/base/locale_lib_common.h
-  DESTINATION ${CUBRID_SHLOCALESDIR}/loclib)
+  DESTINATION ${CUBRID_SHLOCALESDIR}/loclib COMPONENT Header)
 

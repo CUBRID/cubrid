@@ -3341,20 +3341,6 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   logpb_flush_log_for_wal (thread_p, flush_upto_lsa);
   LSA_SET_NULL (smallest_lsa);
 
-#if defined (SERVER_MODE)
-  /* Before starting the actual flush, we must first notify vacuum system to flush its vacuum data pages. For
-   * performance reasons, the only thread who has access to vacuum data is the vacuum master, and it always keeps
-   * first and last vacuum data pages write latched.
-   * Therefore, flushing those pages may be impossible. The solution for this problem is debatable, but for now,
-   * vacuum is notified, then checkpoint waits for it to finish.
-   */
-  vacuum_notify_flush_data ();
-  while (!vacuum_is_vacuum_data_flushed ())
-    {
-      thread_sleep (10);
-    }
-#endif /* SERVER_MODE */
-
   seq_flusher = &(pgbuf_Pool.seq_chkpt_flusher);
   f_list = seq_flusher->flush_list;
 
@@ -3722,11 +3708,39 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	       * bufptr->avoid_victim is released by pgbuf_flush_with_wal()
 	       * only if buf is dirty at the time of flush
 	       */
+	      PAGE_TYPE page_type = bufptr->iopage_buffer->iopage.prv.ptype;
 	      bufptr->avoid_victim = true;
 	      vpid = bufptr->vpid;
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
 
-	      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      if (page_type == PAGE_VACUUM_DATA)
+		{
+		  /* Flushing vacuum data pages is tricky because first and last pages are permanently fixed. Try
+		   * a conditional latch, and if that doesn't work, notify vacuum of intention to flush vacuum data
+		   * pages.
+		   * Master will then unfix the pages and checkpoint can have a chance flush the pages.
+		   */
+		  pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+		  if (pgptr == NULL)
+		    {
+		      /* Notify vacuum to unfix the page. */
+		      vacuum_notify_need_flush (1);
+		      vacuum_er_log (VACUUM_ER_LOG_FLUSH_DATA,
+				     "VACUUM: Checkpoint thread notified vacuum of intention to flush page %d|%d.\n",
+				     vpid.volid, vpid.pageid);
+		      pgptr =
+			pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+
+		      vacuum_er_log (VACUUM_ER_LOG_FLUSH_DATA,
+				     "VACUUM: Checkpoint thread %s page %d|%d.\n",
+				     pgptr != NULL ? "successfully fixed" : "failed fixing", vpid.volid, vpid.pageid);
+		    }
+		}
+	      else
+		{
+		  pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+		}
+
 	      if (pgptr == NULL || pgbuf_flush_with_wal (thread_p, pgptr) == NULL)
 		{
 #if !defined(NDEBUG)
@@ -3763,6 +3777,12 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 
 		  /* pgbuf_flush_with_wal successful */
 		  seq_flusher->flushed_pages++;
+		}
+
+	      if (page_type == PAGE_VACUUM_DATA)
+		{
+		  /* Notify vacuum that page was flushed and it no longer needs to unfix the page. */
+		  vacuum_notify_need_flush (0);
 		}
 
 	      if (pgptr != NULL)
