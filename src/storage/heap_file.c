@@ -23669,6 +23669,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   error_code = heap_fix_header_page (thread_p, context);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto exit;
     }
 
@@ -23683,6 +23684,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  error_code = heap_insert_handle_multipage_record (thread_p, context);
 	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto exit;
 	    }
 	  /* old home will be updated with the forward record */
@@ -23691,7 +23693,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	{
 	  if (heap_ovf_update (thread_p, &context->hfid, &overflow_oid, context->recdes_p) == NULL)
 	    {
-	      error_code = ER_FAILED;
+	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit;
 	    }
 	  update_old_home = false;
@@ -23740,6 +23742,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &newhome_oid, newhome_pg_watcher_p);
 	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto exit;
 	    }
 
@@ -23751,6 +23754,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	    heap_update_physical (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, &new_home_recdes);
 	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto exit;
 	    }
 
@@ -23771,7 +23775,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  if (heap_ovf_delete (thread_p, &context->hfid, &overflow_oid, NULL) == NULL)
 	    {
 	      assert (false);
-	      error_code = ER_FAILED;
+	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit;
 	    }
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -23783,6 +23787,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 						     newhome_pg_watcher_p, &prev_version_lsa);
 	  if (error_code != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto exit;
 	    }
 	}
@@ -23843,6 +23848,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   rc = heap_fix_forward_page (thread_p, context, &forward_oid);
   if (rc != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto exit;
     }
 
@@ -23858,6 +23864,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       rc = heap_fix_header_page (thread_p, context);
       if (rc != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
     }
@@ -23868,7 +23875,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   if (spage_get_record (context->forward_page_watcher_p->pgptr, forward_oid.slotid, &forward_recdes, COPY) != S_SUCCESS)
     {
       assert (false);
-      rc = ER_FAILED;
+      ASSERT_ERROR_AND_SET (rc);
       goto exit;
     }
 
@@ -23880,7 +23887,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* insert new overflow record */
       if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid, context->recdes_p) == NULL)
 	{
-	  rc = ER_FAILED;
+	  ASSERT_ERROR_AND_SET (rc);
 	  goto exit;
 	}
 
@@ -23909,6 +23916,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid, newhome_pg_watcher_p);
       if (rc != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
 
@@ -23971,6 +23979,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       rc = heap_update_physical (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, &new_home_recdes);
       if (rc != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -23990,6 +23999,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       rc = heap_delete_physical (thread_p, &context->hfid, context->forward_page_watcher_p->pgptr, &forward_oid);
       if (rc != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -24025,6 +24035,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 				 context->recdes_p);
       if (rc != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
 
@@ -24040,6 +24051,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       if (rc != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
     }
@@ -24197,8 +24209,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       if (spage_get_record (context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
 			    is_peeking) != S_SUCCESS)
 	{
-	  assert (false);
-	  error_code = ER_FAILED;
+	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
       HEAP_PERF_TRACK_PREPARE (thread_p, context);
@@ -24217,6 +24228,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 			  home_page_updated_recdes_p);
   if (error_code != NO_ERROR)
     {
+      assert (false);
       ASSERT_ERROR ();
       goto exit;
     }
@@ -24228,6 +24240,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 						 newhome_pg_watcher_p, &prev_version_lsa);
       if (error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto exit;
 	}
     }
