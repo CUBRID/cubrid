@@ -6888,12 +6888,14 @@ logtb_reset_bit_area_start_mvccid (void)
   trans_status = &log_Gl.mvcc_table.current_trans_status;
   assert (trans_status->bit_area_length == 0 && trans_status->bit_area[0] == 0);
   trans_status->bit_area_start_mvccid = log_Gl.hdr.mvcc_next_id;
+  trans_status->lowest_active_mvccid = log_Gl.hdr.mvcc_next_id;
 
   history_position = (log_Gl.mvcc_table).trans_status_history_position;
   assert ((history_position >= 0) && (history_position < TRANS_STATUS_HISTORY_MAX_SIZE));
   trans_status = log_Gl.mvcc_table.trans_status_history + history_position;
   assert (trans_status->bit_area_length == 0);
   trans_status->bit_area_start_mvccid = log_Gl.hdr.mvcc_next_id;
+  trans_status->lowest_active_mvccid = log_Gl.hdr.mvcc_next_id;
 }
 
 /*
