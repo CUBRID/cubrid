@@ -7925,7 +7925,8 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
 	  || (ispeeking == COPY && scan_cache == NULL && recdes->data == NULL)))
     {
       assert_release (false);
-      return S_ERROR;
+      scan_code = S_ERROR;
+      goto end;
     }
 
   if (scan_cache != NULL && scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
@@ -7943,7 +7944,8 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
     {
       if (heap_scancache_quick_start (&local_scancache) != NO_ERROR)
 	{
-	  return S_ERROR;
+	  scan_code = S_ERROR;
+	  goto end;
 	}
       scan_cache = &local_scancache;
     }
@@ -7972,7 +7974,8 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
     {
       /* Unexpected/invalid case. */
       assert_release (false);
-      return S_ERROR;
+      scan_code = S_ERROR;
+      goto end;
     }
 
   /* Initialize MVCC delete info. */
