@@ -26424,13 +26424,15 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WA
       forward_recdes.length = OR_HEADER_SIZE (forward_recdes.data);
 
       error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_version_lsa);
+
+      /* unfix overflow page; it is used only locally */
+      pgbuf_set_dirty (thread_p, overflow_pg_watcher.pgptr, DONT_FREE);
+      pgbuf_ordered_unfix (thread_p, &overflow_pg_watcher);
+
       if (error_code != NO_ERROR)
 	{
 	  goto end;
 	}
-
-      pgbuf_set_dirty (thread_p, overflow_pg_watcher.pgptr, DONT_FREE);
-      pgbuf_ordered_unfix (thread_p, &overflow_pg_watcher);
     }
   else
     {
