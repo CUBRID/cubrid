@@ -10981,7 +10981,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     {
       error = db_value_domain_init (dest, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0);
     }
-  else if (DB_IS_NULL (src) || (src_str = db_get_string (src)) == NULL)
+  else if (DB_IS_NULL (src) || ((src_str = db_get_string (src)) == NULL && src->data.ch.info.is_max_string == false))
     {
       error = db_value_domain_init (dest, DB_TYPE_VARCHAR, db_value_precision (src), 0);
     }
@@ -11020,6 +11020,10 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
     }
 
+  if (src && src->data.ch.info.is_max_string == true)
+    {
+      dest->data.ch.info.is_max_string = true;
+    }
   return error;
 }
 
