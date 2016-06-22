@@ -3141,9 +3141,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_NUMERIC:
-      if (numeric_coerce_string_to_num
-	  (value->info.value.data_value.str->bytes, value->info.value.data_value.str->length, codeset,
-	   db_value) != NO_ERROR)
+      if (numeric_coerce_string_to_num (value->info.value.data_value.str->bytes,
+					value->info.value.data_value.str->length, codeset, db_value) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
 		      value->info.value.data_value.str->bytes);

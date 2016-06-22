@@ -87,7 +87,7 @@ method_open_value_array_scan (METHOD_SCAN_BUFFER * scan_buffer_p)
 {
   int num_methods;
 
-  num_methods = scan_buffer_p->s.method_ctl.method_sig_list->no_methods;
+  num_methods = scan_buffer_p->s.method_ctl.method_sig_list->num_methods;
   if (num_methods <= 0)
     {
       num_methods = MAX_XS_SCANBUF_DBVALS;	/* for safe-guard */
@@ -238,7 +238,7 @@ method_scan_next (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p, V
 
   if (scan_result == S_SUCCESS)
     {
-      value_list_p->val_cnt = scan_buffer_p->s.method_ctl.method_sig_list->no_methods;
+      value_list_p->val_cnt = scan_buffer_p->s.method_ctl.method_sig_list->num_methods;
       scan_result = method_scan_next_value_array (scan_buffer_p, value_list_p);
     }
 
@@ -258,7 +258,7 @@ method_invoke_from_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_bu
 static int
 method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 {
-  int meth_no;
+  int meth_num;
   int val_cnt;
   int i;
   METHOD_INFO *method_ctl_p;
@@ -272,9 +272,9 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
   val_cnt = 0;
   meth_sig = method_sig_list->method_sig;
 
-  for (meth_no = 0; meth_no < method_sig_list->no_methods; meth_no++)
+  for (meth_num = 0; meth_num < method_sig_list->num_methods; meth_num++)
     {
-      val_cnt += meth_sig->no_method_args + 1;
+      val_cnt += meth_sig->num_method_args + 1;
       meth_sig = meth_sig->next;
     }
 
@@ -310,7 +310,7 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
       return ER_FAILED;
     }
 
-  scan_buffer_p->oid_cols = (int *) malloc (sizeof (int) * method_sig_list->no_methods);
+  scan_buffer_p->oid_cols = (int *) malloc (sizeof (int) * method_sig_list->num_methods);
 
   if (scan_buffer_p->oid_cols == NULL)
     {
@@ -319,9 +319,9 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
     }
 
   meth_sig = method_sig_list->method_sig;
-  for (meth_no = 0; meth_no < method_sig_list->no_methods; meth_no++)
+  for (meth_num = 0; meth_num < method_sig_list->num_methods; meth_num++)
     {
-      scan_buffer_p->oid_cols[meth_no] = meth_sig->method_arg_pos[0];
+      scan_buffer_p->oid_cols[meth_num] = meth_sig->method_arg_pos[0];
       meth_sig = meth_sig->next;
     }
 
@@ -334,7 +334,7 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
   /* tfile_vfid pointer as query id for method scan */
   scan_buffer_p->crs_id.query_id = (QUERY_ID) method_ctl_p->list_id->tfile_vfid;
 
-  cursor_set_oid_columns (&scan_buffer_p->crs_id, scan_buffer_p->oid_cols, method_sig_list->no_methods);
+  cursor_set_oid_columns (&scan_buffer_p->crs_id, scan_buffer_p->oid_cols, method_sig_list->num_methods);
 
   return NO_ERROR;
 }
@@ -360,7 +360,7 @@ static SCAN_CODE
 method_receive_results_for_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p)
 {
   QPROC_DB_VALUE_LIST dbval_list;
-  int meth_no, i;
+  int meth_num, i;
   METHOD_SIG *meth_sig_p;
   SCAN_CODE result;
   DB_VALUE *dbval_p;
@@ -370,7 +370,7 @@ method_receive_results_for_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER *
   meth_sig_p = method_sig_list_p->method_sig;
   dbval_list = scan_buffer_p->dbval_list;
 
-  for (meth_no = 0; meth_no < method_sig_list_p->no_methods; ++meth_no)
+  for (meth_num = 0; meth_num < method_sig_list_p->num_methods; ++meth_num)
     {
       dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE));
       dbval_list->val = dbval_p;
@@ -387,7 +387,7 @@ method_receive_results_for_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER *
 
       if (result != S_SUCCESS)
 	{
-	  for (i = 0; i <= meth_no; i++)
+	  for (i = 0; i <= meth_num; i++)
 	    {
 	      if (scan_buffer_p->dbval_list[i].val)
 		{
@@ -417,10 +417,10 @@ static SCAN_CODE
 method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 {
   QPROC_DB_VALUE_LIST dbval_list;
-  int meth_no;
+  int meth_num;
   METHOD_SIG *meth_sig;
   int crs_result;
-  int no_args;
+  int num_args;
   int pos;
   int arg;
   int turn_on_auth = 1;
@@ -445,9 +445,9 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	  pr_clear_value (ptr);
 	}
 
-      if (cursor_get_tuple_value_list
-	  (&scan_buffer_p->crs_id, scan_buffer_p->s.method_ctl.list_id->type_list.type_cnt,
-	   scan_buffer_p->vallist) != NO_ERROR)
+      if (cursor_get_tuple_value_list (&scan_buffer_p->crs_id,
+				       scan_buffer_p->s.method_ctl.list_id->type_list.type_cnt,
+				       scan_buffer_p->vallist) != NO_ERROR)
 	{
 	  method_clear_scan_buffer (scan_buffer_p);
 	  ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
@@ -457,17 +457,17 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
       meth_sig = method_sig_list->method_sig;
       dbval_list = scan_buffer_p->dbval_list;
 
-      for (meth_no = 0; meth_no < method_sig_list->no_methods; meth_no++)
+      for (meth_num = 0; meth_num < method_sig_list->num_methods; meth_num++)
 	{
 	  /* The first position # is for the object ID */
-	  no_args = meth_sig->no_method_args + 1;
-	  for (arg = 0; arg < no_args; ++arg)
+	  num_args = meth_sig->num_method_args + 1;
+	  for (arg = 0; arg < num_args; ++arg)
 	    {
 	      pos = meth_sig->method_arg_pos[arg];
 	      scan_buffer_p->valptrs[arg] = &scan_buffer_p->vallist[pos];
 	    }
 
-	  scan_buffer_p->valptrs[no_args] = NULL;
+	  scan_buffer_p->valptrs[num_args] = NULL;
 	  DB_MAKE_NULL (&val);
 
 	  if (meth_sig->class_name != NULL)
@@ -493,9 +493,8 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 		  AU_ENABLE (turn_on_auth);
 		  db_disable_modification ();
 		  ++method_Num_method_jsp_calls;
-		  error =
-		    obj_send_array (DB_GET_OBJECT (scan_buffer_p->valptrs[0]), meth_sig->method_name, &val,
-				    &scan_buffer_p->valptrs[1]);
+		  error = obj_send_array (DB_GET_OBJECT (scan_buffer_p->valptrs[0]), meth_sig->method_name, &val,
+					  &scan_buffer_p->valptrs[1]);
 		  --method_Num_method_jsp_calls;
 		  db_enable_modification ();
 		  AU_DISABLE (turn_on_auth);
@@ -508,8 +507,8 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	      AU_ENABLE (turn_on_auth);
 	      db_disable_modification ();
 	      ++method_Num_method_jsp_calls;
-	      error =
-		jsp_call_from_server (&val, scan_buffer_p->valptrs, meth_sig->method_name, meth_sig->no_method_args);
+	      error = jsp_call_from_server (&val, scan_buffer_p->valptrs, meth_sig->method_name,
+					    meth_sig->num_method_args);
 	      --method_Num_method_jsp_calls;
 	      db_enable_modification ();
 	      AU_DISABLE (turn_on_auth);
@@ -660,7 +659,7 @@ method_initialize_vacomm_buffer (void)
   vacomm_buffer->status = 0;
   vacomm_buffer->action = VACOMM_BUFFER_SEND;
   vacomm_buffer->error = 0;
-  vacomm_buffer->no_vals = 0;
+  vacomm_buffer->num_vals = 0;
   vacomm_buffer->area = NULL;
   vacomm_buffer->buffer = NULL;
   vacomm_buffer->cur_pos = 0;
@@ -710,7 +709,7 @@ method_receive_value (THREAD_ENTRY * thread_p, DB_VALUE * dbval_p, VACOMM_BUFFER
 	  else
 	    {
 	      p =
-		or_unpack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET, &vacomm_buffer_p->no_vals);
+		or_unpack_int (vacomm_buffer_p->area + VACOMM_BUFFER_HEADER_NO_VALS_OFFSET, &vacomm_buffer_p->num_vals);
 	    }
 
 	  if (vacomm_buffer_p->status == METHOD_SUCCESS)
@@ -734,18 +733,18 @@ method_receive_value (THREAD_ENTRY * thread_p, DB_VALUE * dbval_p, VACOMM_BUFFER
       return S_ERROR;
     }
 
-  if (vacomm_buffer_p->no_vals > 0)
+  if (vacomm_buffer_p->num_vals > 0)
     {
       p = or_unpack_db_value (vacomm_buffer_p->buffer + vacomm_buffer_p->cur_pos, dbval_p);
       vacomm_buffer_p->cur_pos += OR_VALUE_ALIGNED_SIZE (dbval_p);
-      vacomm_buffer_p->no_vals--;
+      vacomm_buffer_p->num_vals--;
     }
   else
     {
       return S_END;
     }
 
-  if (vacomm_buffer_p->no_vals == 0)
+  if (vacomm_buffer_p->num_vals == 0)
     {
       vacomm_buffer_p->cur_pos = 0;
     }

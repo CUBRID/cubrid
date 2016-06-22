@@ -174,10 +174,10 @@ set_server_error (int error)
 	{
 	case ER_DB_NO_MODIFICATIONS:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 0);
-	  return (server_error);
+	  return server_error;
 	case ER_AU_DBA_ONLY:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 1, "");
-	  return (server_error);
+	  return server_error;
 	}
       /* no break; fall through */
     default:
@@ -197,7 +197,7 @@ set_server_error (int error)
       boot_server_die_or_changed ();
     }
 
-  return (server_error);
+  return server_error;
 }
 
 /*
@@ -296,8 +296,8 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
   if ((client_cap ^ server_cap) & NET_CAP_INTERRUPT_ENABLED)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_HS_INCOMPAT_INTERRUPTIBILITY, 3, net_Server_host,
-	      get_capability_string (client_cap, NET_CAP_INTERRUPT_ENABLED), get_capability_string (server_cap,
-												    NET_CAP_INTERRUPT_ENABLED));
+	      get_capability_string (client_cap, NET_CAP_INTERRUPT_ENABLED),
+	      get_capability_string (server_cap, NET_CAP_INTERRUPT_ENABLED));
       server_cap ^= NET_CAP_INTERRUPT_ENABLED;
     }
 
@@ -316,8 +316,8 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
       if ((client_cap ^ server_cap) & NET_CAP_UPDATE_DISABLED)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_HS_INCOMPAT_RW_MODE, 3, net_Server_host,
-		  get_capability_string (client_cap, NET_CAP_UPDATE_DISABLED), get_capability_string (server_cap,
-												      NET_CAP_UPDATE_DISABLED));
+		  get_capability_string (client_cap, NET_CAP_UPDATE_DISABLED),
+		  get_capability_string (server_cap, NET_CAP_UPDATE_DISABLED));
 	  server_cap ^= NET_CAP_UPDATE_DISABLED;
 
 	  db_set_host_status (net_Server_host, DB_HS_MISMATCHED_RW_MODE);
@@ -593,10 +593,6 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_QM_QUERY_END].name = "NET_SERVER_QM_QUERY_END";
   net_Req_buffer[NET_SERVER_QM_QUERY_DROP_PLAN].name = "NET_SERVER_QM_QUERY_DROP_PLAN";
   net_Req_buffer[NET_SERVER_QM_QUERY_DROP_ALL_PLANS].name = "NET_SERVER_QM_QUERY_DROP_ALL_PLANS";
-  net_Req_buffer[NET_SERVER_QM_QUERY_SYNC].name = "NET_SERVER_QM_QUERY_SYNC";
-  net_Req_buffer[NET_SERVER_QM_GET_QUERY_INFO].name = "NET_SERVER_QM_GET_QUERY_INFO";
-  net_Req_buffer[NET_SERVER_QM_QUERY_EXECUTE_ASYNC].name = "NET_SERVER_QM_QUERY_EXECUTE_ASYNC";
-  net_Req_buffer[NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC].name = "NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC";
   net_Req_buffer[NET_SERVER_QM_QUERY_DUMP_PLANS].name = "NET_SERVER_QM_QUERY_DUMP_PLANS";
   net_Req_buffer[NET_SERVER_QM_QUERY_DUMP_CACHE].name = "NET_SERVER_QM_QUERY_DUMP_CACHE";
 
@@ -1031,7 +1027,7 @@ net_client_request_internal (int request, char *argbuf, int argsize, char *reply
       net_histo_request_finished (request, replysize + replydatasize);
     }
 #endif /* HISTO */
-  return (error);
+  return error;
 }
 
 /*
@@ -1057,8 +1053,8 @@ int
 net_client_request (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf, int datasize,
 		    char *replydata, int replydatasize)
 {
-  return (net_client_request_internal
-	  (request, argbuf, argsize, replybuf, replysize, databuf, datasize, replydata, replydatasize));
+  return (net_client_request_internal (request, argbuf, argsize, replybuf, replysize, databuf, datasize, replydata,
+				       replydatasize));
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -1107,9 +1103,8 @@ net_client_request_send_large_data (int request, char *argbuf, int argsize, char
     }
 #endif /* HISTO */
 
-  rc =
-    css_send_req_to_server_with_large_data (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf,
-					    replysize);
+  rc = css_send_req_to_server_with_large_data (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf,
+					       replysize);
 
   if (rc == 0)
     {
@@ -1154,7 +1149,7 @@ net_client_request_send_large_data (int request, char *argbuf, int argsize, char
       net_histo_request_finished (request, replysize + replydatasize);
     }
 #endif /* HISTO */
-  return (error);
+  return error;
 }
 
 /*
@@ -1263,7 +1258,7 @@ net_client_request_recv_large_data (int request, char *argbuf, int argsize, char
 	}
 #endif /* HISTO */
     }
-  return (error);
+  return error;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -1369,7 +1364,7 @@ net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int
       net_histo_request_finished (request, replysize + *replydatasize_ptr);
     }
 #endif /* HISTO */
-  return (error);
+  return error;
 }
 
 /*
@@ -1463,7 +1458,7 @@ net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *rep
 	}
 #endif /* HISTO */
     }
-  return (error);
+  return error;
 }
 
 /*
@@ -1516,9 +1511,8 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
 	  net_histo_add_entry (request, argsize + datasize1 + datasize2);
 	}
 #endif /* HISTO */
-      rid =
-	css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1, databuf2,
-				       datasize2, NULL, 0);
+      rid = css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1, databuf2,
+					   datasize2, NULL, 0);
       if (rid == 0)
 	{
 	  return set_server_error (css_Errno);
@@ -1541,7 +1535,7 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
 	  if (p1_size == 0)
 	    {
 	      COMPARE_AND_FREE_BUFFER (reply0, reply);
-	      return (rc);
+	      return rc;
 	    }
 
 	  css_queue_receive_data_buffer (rid, reply1, p1_size);
@@ -1581,7 +1575,7 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
 	}
 #endif /* HISTO */
     }
-  return (rc);
+  return rc;
 }
 
 /*
@@ -1656,9 +1650,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	  net_histo_add_entry (request, argsize + datasize1 + datasize2);
 	}
 #endif /* HISTO */
-      rc =
-	css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1, databuf2,
-				       datasize2, replybuf, replysize);
+      rc = css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1, databuf2,
+					  datasize2, replybuf, replysize);
       if (rc == 0)
 	{
 	  return set_server_error (css_Errno);
@@ -2158,7 +2151,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	}
 #endif /* HISTO */
     }
-  return (error);
+  return error;
 }
 
 /*
@@ -2191,9 +2184,8 @@ net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize,
       if (ctx_ptr->rc == -1)
 	{
 	  /* HEADER PAGE REQUEST */
-	  rc =
-	    css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, NULL, 0, NULL, 0, replybuf,
-					   replysize);
+	  rc = css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, NULL, 0, NULL, 0, replybuf,
+					      replysize);
 	  if (rc == 0)
 	    {
 	      return set_server_error (css_Errno);
@@ -2430,7 +2422,7 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
 	}
 #endif /* HISTO */
     }
-  return (error);
+  return error;
 }
 
 /*
@@ -2577,7 +2569,7 @@ net_client_request_buffer (unsigned int rc, char **buf_ptr, int expected_size)
       SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, 1);
     }
 
-  return (error);
+  return error;
 }
 
 /*
@@ -2689,7 +2681,7 @@ net_client_request3 (int request, char *argbuf, int argsize, char *replybuf, int
 	}
 #endif /* HISTO */
     }
-  return (error);
+  return error;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -2772,8 +2764,8 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 	{
 	  if (error == NO_ERROR && reply_copy_area != NULL)
 	    {
-	      *reply_copy_area =
-		locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr, content_size);
+	      *reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
+								 content_size);
 	      if (*reply_copy_area != NULL)
 		{
 		  if (packed_desc != NULL && packed_desc_size > 0)
@@ -2865,7 +2857,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 	}
 #endif /* HISTO */
     }
-  return (error);
+  return error;
 }
 
 /*
@@ -3015,8 +3007,8 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
     {
       if (error == NO_ERROR)
 	{
-	  *reply_copy_area =
-	    locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr, content_size);
+	  *reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
+							     content_size);
 	  if (*reply_copy_area != NULL)
 	    {
 	      if (packed_desc != NULL && packed_desc_size > 0)
@@ -3095,7 +3087,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
       net_histo_request_finished (request, replysize + recvbuffer_size + content_size + packed_desc_size);
     }
 #endif /* HISTO */
-  return (error);
+  return error;
 }
 
 /*
@@ -3177,8 +3169,8 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
     {
       if (error == NO_ERROR)
 	{
-	  *reply_copy_area =
-	    locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr, content_size);
+	  *reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
+							     content_size);
 	  if (*reply_copy_area != NULL)
 	    {
 	      if (packed_desc != NULL && packed_desc_size > 0)
@@ -3257,7 +3249,7 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
       net_histo_request_finished (request, replysize + recvbuffer_size + content_size + packed_desc_size);
     }
 #endif /* HISTO */
-  return (error);
+  return error;
 }
 
 /*
@@ -3473,7 +3465,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
     }
 #endif /* HISTO */
 
-  return (error);
+  return error;
 }
 
 /*
@@ -3747,9 +3739,8 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
     }
 #endif /* HISTO */
 
-  rc =
-    css_send_req_to_server (net_Server_host, request, send_argbuffer, send_argsize, databuf, datasize, recv_replybuf,
-			    recv_replybuf_size);
+  rc = css_send_req_to_server (net_Server_host, request, send_argbuffer, send_argsize, databuf, datasize, recv_replybuf,
+			       recv_replybuf_size);
   if (rc == 0)
     {
       error = set_server_error (css_Errno);
@@ -3820,7 +3811,7 @@ end:
   free_and_init (send_argbuffer);
   free_and_init (recv_replybuf);
 
-  return (error);
+  return error;
 }
 
 /*
@@ -3851,9 +3842,8 @@ net_client_ping_server (int client_val, int *server_val, int timeout)
 
   /* you can envelope something useful into the request */
   or_pack_int (request, client_val);
-  eid =
-    css_send_request_to_server_with_buffer (net_Server_host, NET_SERVER_PING, request, OR_INT_SIZE, reply_buf,
-					    OR_INT_SIZE);
+  eid = css_send_request_to_server_with_buffer (net_Server_host, NET_SERVER_PING, request, OR_INT_SIZE, reply_buf,
+						OR_INT_SIZE);
   if (eid == 0)
     {
       error = ER_NET_CANT_CONNECT_SERVER;
@@ -3909,18 +3899,16 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
 
   client_release = rel_release_string ();
 
-  request_size =
-    or_packed_string_length (client_release, &strlen1) + (OR_INT_SIZE * 2) + or_packed_string_length (boot_Host_name,
-												      &strlen2);
+  request_size = (or_packed_string_length (client_release, &strlen1) + (OR_INT_SIZE * 2)
+		  + or_packed_string_length (boot_Host_name, &strlen2));
   ptr = or_pack_string_with_length (request, client_release, strlen1);
   ptr = or_pack_int (ptr, client_capabilities ());
   ptr = or_pack_int (ptr, rel_bit_platform ());
   ptr = or_pack_int (ptr, client_type);
   ptr = or_pack_string_with_length (ptr, boot_Host_name, strlen2);
 
-  eid =
-    css_send_request_to_server_with_buffer (net_Server_host, NET_SERVER_PING_WITH_HANDSHAKE, request, request_size,
-					    reply, reply_size);
+  eid = css_send_request_to_server_with_buffer (net_Server_host, NET_SERVER_PING_WITH_HANDSHAKE, request, request_size,
+						reply, reply_size);
   if (eid == 0)
     {
       error = ER_NET_CANT_CONNECT_SERVER;
@@ -4070,7 +4058,7 @@ end:
       css_terminate (false);
     }
 
-  return (error);
+  return error;
 }
 
 /*
@@ -4100,7 +4088,7 @@ int
 net_client_final (void)
 {
   css_terminate (false);
-  return (NO_ERROR);
+  return NO_ERROR;
 }
 
 /*
@@ -4184,5 +4172,5 @@ net_client_receive_action (int rc, int *action)
       free_and_init (reply);
     }
 
-  return (error);
+  return error;
 }

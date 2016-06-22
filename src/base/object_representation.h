@@ -191,13 +191,9 @@
 #define OR_GET_INT(ptr) \
   ((int) ntohl (*(int *) ((char *) (ptr))))
 #define OR_GET_FLOAT(ptr, value) \
-  ntohf ((float *) ((char *) (ptr)), (float *) (value))
+  (*(value) = ntohf (*(UINT32 *) (ptr)))
 #define OR_GET_DOUBLE(ptr, value) \
-   do { \
-     double packed_value; \
-     memcpy (&packed_value, ptr, OR_DOUBLE_SIZE); \
-     ntohd (&packed_value, (double *) (value)); \
-   } while (0)
+  (*(value) = ntohd (*(UINT64 *) (ptr)))
 #define OR_GET_STRING(ptr) \
   ((char *) ((char *) (ptr)))
 
@@ -207,14 +203,10 @@
   (*(short *) ((char *) (ptr)) = htons ((short) (val)))
 #define OR_PUT_INT(ptr, val) \
   (*(int *) ((char *) (ptr)) = htonl ((int) (val)))
-#define OR_PUT_FLOAT(ptr, value) \
-  htonf ((float *) ((char *) (ptr)), (float *) (value))
-#define OR_PUT_DOUBLE(ptr, value) \
-   do { \
-     double packed_value; \
-     htond (&packed_value, (double *) (value)); \
-     memcpy (ptr, &packed_value, OR_DOUBLE_SIZE); \
-   } while (0)
+#define OR_PUT_FLOAT(ptr, val) \
+  (*(UINT32 *) (ptr) = htonf (*(float*) (val)))
+#define OR_PUT_DOUBLE(ptr, val) \
+  (*(UINT64 *) (ptr) = htond (*(double *) (val)))
 
 #define OR_GET_BIG_VAR_OFFSET(ptr) 	OR_GET_INT (ptr)	/* 4byte */
 #define OR_PUT_BIG_VAR_OFFSET(ptr, val)	OR_PUT_INT (ptr, val)	/* 4byte */
@@ -570,7 +562,7 @@
 /* OBJECT HEADER LAYOUT */
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
 
-/* representation id, MVCC insert id and CHN == 36 ?? */ 
+/* representation id, MVCC insert id and CHN == 36 ?? */
 #define OR_MVCC_MAX_HEADER_SIZE  28
 
 /* representation id and CHN */
@@ -771,20 +763,16 @@
 /* These are the most useful ones if we're only testing a single attribute */
 
 #define OR_FIXED_ATT_IS_BOUND(obj, nvars, fsize, position) \
-  (!OR_GET_BOUND_BIT_FLAG (obj) \
-   || OR_GET_BOUND_BIT (OR_GET_BOUND_BITS (obj, nvars, fsize), position))
+  (!OR_GET_BOUND_BIT_FLAG (obj) || OR_GET_BOUND_BIT (OR_GET_BOUND_BITS (obj, nvars, fsize), position))
 
 #define OR_FIXED_ATT_IS_UNBOUND(obj, nvars, fsize, position) \
-  (OR_GET_BOUND_BIT_FLAG (obj) \
-   && !OR_GET_BOUND_BIT (OR_GET_BOUND_BITS (obj, nvars, fsize), position))
+  (OR_GET_BOUND_BIT_FLAG (obj) && !OR_GET_BOUND_BIT (OR_GET_BOUND_BITS (obj, nvars, fsize), position))
 
 #define OR_ENABLE_BOUND_BIT(bitptr, element) \
-  *OR_GET_BOUND_BIT_BYTE (bitptr, element) = \
-    *OR_GET_BOUND_BIT_BYTE (bitptr, element) | OR_BOUND_BIT_MASK (element)
+  *OR_GET_BOUND_BIT_BYTE (bitptr, element) = *OR_GET_BOUND_BIT_BYTE (bitptr, element) | OR_BOUND_BIT_MASK (element)
 
 #define OR_CLEAR_BOUND_BIT(bitptr, element) \
-  *OR_GET_BOUND_BIT_BYTE (bitptr, element) = \
-    *OR_GET_BOUND_BIT_BYTE (bitptr, element) & ~OR_BOUND_BIT_MASK (element)
+  *OR_GET_BOUND_BIT_BYTE (bitptr, element) = *OR_GET_BOUND_BIT_BYTE (bitptr, element) & ~OR_BOUND_BIT_MASK (element)
 
 /* SET HEADER */
 
@@ -808,8 +796,7 @@
   (DB_TYPE) ((OR_GET_INT ((char *) (setptr))) & OR_SET_TYPE_MASK)
 
 #define OR_SET_ELEMENT_TYPE(setptr)  \
-  (DB_TYPE) ((OR_GET_INT ((char *) (setptr)) & OR_SET_ETYPE_MASK) \
-             >> OR_SET_ETYPE_SHIFT)
+  (DB_TYPE) ((OR_GET_INT ((char *) (setptr)) & OR_SET_ETYPE_MASK) >> OR_SET_ETYPE_SHIFT)
 
 #define OR_SET_HAS_BOUND_BITS(setptr) \
   (OR_GET_INT ((char *) (setptr)) & OR_SET_BOUND_BIT)
@@ -860,8 +847,7 @@
   ((char *)(bitptr) + ((int)(element) >> 3))
 
 #define OR_MULTI_GET_BOUND_BIT(bitptr, element) \
-  ((*OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element)) \
-   & OR_MULTI_BOUND_BIT_MASK(element))
+  ((*OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element)) & OR_MULTI_BOUND_BIT_MASK(element))
 
 #define OR_MULTI_GET_BOUND_BITS(bitptr, fsize) \
   (char *) (((char *) (bitptr)) + fsize)
@@ -872,15 +858,12 @@
   (!OR_MULTI_GET_BOUND_BIT (bitptr, element))
 
 #define OR_MULTI_ENABLE_BOUND_BIT(bitptr, element) \
-  *OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) \
-  = (*OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) \
-     | OR_MULTI_BOUND_BIT_MASK (element))
+  *OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) = (*OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) \
+						    | OR_MULTI_BOUND_BIT_MASK (element))
 
 #define OR_MULTI_CLEAR_BOUND_BIT(bitptr, element) \
-  *OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) \
-  = (*OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) \
-     & ~OR_MULTI_BOUND_BIT_MASK (element))
-
+  *OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) = (*OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) \
+						    & ~OR_MULTI_BOUND_BIT_MASK (element))
 
 
 /*

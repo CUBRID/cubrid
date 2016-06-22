@@ -4716,7 +4716,7 @@ sm_object_disk_size (MOP op)
       obj = NULL;
       if (locator_is_class (op, DB_FETCH_READ))
 	{
-	  au_fetch_class (op, (SM_CLASS **) & obj, AU_FETCH_READ, AU_SELECT);
+	  au_fetch_class (op, (SM_CLASS **) (&obj), AU_FETCH_READ, AU_SELECT);
 	  if (obj != NULL)
 	    {
 	      size = tf_object_size ((MOBJ) class_, obj);
@@ -10623,10 +10623,9 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT 
 	  reverse = SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (con->type);
 	  not_null = con->type == SM_CONSTRAINT_PRIMARY_KEY ? true : false;
 
-	  if (allocate_index
-	      (classop, class_, local_subclasses, con->attributes, asc_desc, con->attrs_prefix_length, unique_pk,
-	       not_null, reverse, con->name, &con->index_btid, NULL, NULL, NULL, con->filter_predicate,
-	       con->func_index_info))
+	  if (allocate_index (classop, class_, local_subclasses, con->attributes, asc_desc, con->attrs_prefix_length,
+			      unique_pk, not_null, reverse, con->name, &con->index_btid, NULL, NULL, NULL,
+			      con->filter_predicate, con->func_index_info))
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
@@ -10694,9 +10693,8 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
 	      || existing_con->type == SM_CONSTRAINT_PRIMARY_KEY || existing_con->type == SM_CONSTRAINT_INDEX);
       if (existing_con->type != SM_CONSTRAINT_FOREIGN_KEY)
 	{
-	  if (check_fk_validity
-	      (classop, class_, con->attributes, con->asc_desc, &(con->fk_info->ref_class_oid),
-	       &(con->fk_info->ref_class_pk_btid), (char *) con->fk_info->name) != NO_ERROR)
+	  if (check_fk_validity (classop, class_, con->attributes, con->asc_desc, &(con->fk_info->ref_class_oid),
+				 &(con->fk_info->ref_class_pk_btid), (char *) con->fk_info->name) != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
@@ -14015,14 +14013,34 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
 
-      /* Constraint Type */
-      prefix =
-	(type == DB_CONSTRAINT_INDEX) ? "i_" : (type == DB_CONSTRAINT_UNIQUE) ? "u_" : (type ==
-											DB_CONSTRAINT_PRIMARY_KEY) ?
-	"pk_" : (type == DB_CONSTRAINT_FOREIGN_KEY) ? "fk_" : (type == DB_CONSTRAINT_NOT_NULL) ? "n_" : (type ==
-													 DB_CONSTRAINT_REVERSE_UNIQUE)
-	? "ru_" : (type == DB_CONSTRAINT_REVERSE_INDEX) ? "ri_" :
-	/* UNKNOWN TYPE */ "x_";
+      switch (type)
+	{
+	case DB_CONSTRAINT_INDEX:
+	  prefix = "i_";
+	  break;
+	case DB_CONSTRAINT_UNIQUE:
+	  prefix = "u_";
+	  break;
+	case DB_CONSTRAINT_PRIMARY_KEY:
+	  prefix = "pk_";
+	  break;
+	case DB_CONSTRAINT_FOREIGN_KEY:
+	  prefix = "fk_";
+	  break;
+	case DB_CONSTRAINT_NOT_NULL:
+	  prefix = "n_";
+	  break;
+	case DB_CONSTRAINT_REVERSE_UNIQUE:
+	  prefix = "ru_";
+	  break;
+	case DB_CONSTRAINT_REVERSE_INDEX:
+	  prefix = "ri_";
+	  break;
+	default:
+	  assert (false);
+	  prefix = "x_";	/* unknown */
+	  break;
+	}
 
       /* 
        *  Count the number of characters that we'll need for the name

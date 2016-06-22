@@ -603,12 +603,10 @@ cursor_get_list_file_page (CURSOR_ID * cursor_id_p, VPID * vpid_p)
   /* if not found, get the page from server */
   if (cursor_id_p->buffer == NULL)
     {
-      int ret_val = qfile_get_list_file_page (cursor_id_p->query_id,
-					      vpid_p->volid,
-					      vpid_p->pageid,
-					      cursor_id_p->buffer_area,
-					      &cursor_id_p->buffer_filled_size);
+      int ret_val;
 
+      ret_val = qfile_get_list_file_page (cursor_id_p->query_id, vpid_p->volid, vpid_p->pageid,
+					  cursor_id_p->buffer_area, &cursor_id_p->buffer_filled_size);
       if (ret_val != NO_ERROR)
 	{
 	  return ret_val;
@@ -866,8 +864,8 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
     }
 
   return cursor_fetch_oids (cursor_id_p, oid_index, cursor_id_p->prefetch_lock_mode,
-			    (cursor_id_p->prefetch_lock_mode ==
-			     DB_FETCH_WRITE) ? DB_FETCH_QUERY_WRITE : DB_FETCH_QUERY_READ);
+			    ((cursor_id_p->prefetch_lock_mode == DB_FETCH_WRITE)
+			     ? DB_FETCH_QUERY_WRITE : DB_FETCH_QUERY_READ));
 }
 
 static int

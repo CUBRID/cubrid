@@ -295,25 +295,23 @@
     while (0)
 
 #define SET_MVCC_SELECT_REEV_DATA(p_mvcc_reev_data, p_mvcc_sel_reev_data, \
-				  reev_filter_result, p_primary_key) \
+				  reev_filter_result) \
   do \
     { \
       assert ((p_mvcc_reev_data) != NULL); \
       (p_mvcc_reev_data)->type = REEV_DATA_SCAN; \
       (p_mvcc_reev_data)->select_reev_data = (p_mvcc_sel_reev_data); \
       (p_mvcc_reev_data)->filter_result = (reev_filter_result); \
-      (p_mvcc_reev_data)->primary_key = (p_primary_key); \
     } \
   while (0)
 
 #define SET_MVCC_UPDATE_REEV_DATA(p_mvcc_reev_data, p_mvcc_upddel_reev_data, \
-				  reev_filter_result, p_primary_key) \
+				  reev_filter_result) \
   do \
     { \
       (p_mvcc_reev_data)->type = REEV_DATA_UPDDEL; \
       (p_mvcc_reev_data)->upddel_reev_data = (p_mvcc_upddel_reev_data); \
       (p_mvcc_reev_data)->filter_result = (reev_filter_result); \
-      (p_mvcc_reev_data)->primary_key = (p_primary_key); \
     } \
   while (0)
 
@@ -657,25 +655,24 @@ struct mvcc_reev_data
     MVCC_SCAN_REEV_DATA *select_reev_data;	/* data for reevaluation at SELECT */
   };
   DB_LOGICAL filter_result;	/* the result of reevaluation if successful */
-  DB_VALUE *primary_key;	/* primary key value used in foreign key cascade UPDATE/DELETE reevaluation */
 };
 
 /*update/delete class info structure */
 typedef struct upddel_class_info UPDDEL_CLASS_INFO;
 struct upddel_class_info
 {
-  int no_subclasses;		/* total number of subclasses */
+  int num_subclasses;		/* total number of subclasses */
   OID *class_oid;		/* OID's of the classes */
   HFID *class_hfid;		/* Heap file ID's of the classes */
-  int no_attrs;			/* total number of attrs involved */
+  int num_attrs;		/* total number of attrs involved */
   int *att_id;			/* ID's of attributes (array) */
   int needs_pruning;		/* perform partition pruning */
   int has_uniques;		/* whether there are unique constraints */
 
-  int *no_lob_attrs;		/* number of lob attributes for each subclass */
+  int *num_lob_attrs;		/* number of lob attributes for each subclass */
   int **lob_attr_ids;		/* list of log attribute ids for each subclass */
 
-  int no_extra_assign_reev;	/* no of integers in mvcc_extra_assign_reev */
+  int num_extra_assign_reev;	/* no of integers in mvcc_extra_assign_reev */
   int *mvcc_extra_assign_reev;	/* indexes of classes in the select list that are referenced in assignments to the
 				 * attributes of current class and are not referenced in conditions */
 };
@@ -683,16 +680,16 @@ struct upddel_class_info
 typedef struct update_proc_node UPDATE_PROC_NODE;
 struct update_proc_node
 {
-  int no_classes;		/* total number of classes involved */
+  int num_classes;		/* total number of classes involved */
   UPDDEL_CLASS_INFO *classes;	/* details for each class in the update list */
   PRED_EXPR *cons_pred;		/* constraint predicate */
-  int no_assigns;		/* total no. of assignments */
+  int num_assigns;		/* total no. of assignments */
   UPDATE_ASSIGNMENT *assigns;	/* assignments array */
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
-  int no_orderby_keys;		/* no of keys for ORDER_BY */
-  int no_assign_reev_classes;
-  int no_reev_classes;		/* no of classes involved in mvcc condition and assignment reevaluation */
+  int num_orderby_keys;		/* no of keys for ORDER_BY */
+  int num_assign_reev_classes;
+  int num_reev_classes;		/* no of classes involved in mvcc condition and assignment reevaluation */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions and assignment reevaluation */
 };
@@ -702,7 +699,7 @@ typedef struct odku_info ODKU_INFO;
 struct odku_info
 {
   PRED_EXPR *cons_pred;		/* constraint predicate */
-  int no_assigns;		/* number of assignments */
+  int num_assigns;		/* number of assignments */
   UPDATE_ASSIGNMENT *assignments;	/* assignments */
   HEAP_CACHE_ATTRINFO *attr_info;	/* attr info */
   int *attr_ids;		/* ID's of attributes (array) */
@@ -713,8 +710,8 @@ struct insert_proc_node
 {
   OID class_oid;		/* OID of the class involved */
   HFID class_hfid;		/* Heap file ID of the class */
-  int no_vals;			/* total number of attrs involved */
-  int no_default_expr;		/* total number of attrs which require a default value to be inserted */
+  int num_vals;			/* total number of attrs involved */
+  int num_default_expr;		/* total number of attrs which require a default value to be inserted */
   int *att_id;			/* ID's of attributes (array) */
   DB_VALUE **vals;		/* values (array) */
   PRED_EXPR *cons_pred;		/* constraint predicate */
@@ -724,7 +721,7 @@ struct insert_proc_node
   int no_logging;		/* no logging */
   int do_replace;		/* duplicate tuples should be replaced */
   int pruning_type;		/* DB_CLASS_PARTITION_TYPE indicating the way in which pruning should be performed */
-  int no_val_lists;		/* number of value lists in values clause */
+  int num_val_lists;		/* number of value lists in values clause */
   VALPTR_LIST **valptr_lists;	/* OUTPTR lists for each list of values */
   DB_VALUE *obj_oid;		/* Inserted object OID, used for sub-inserts */
 };
@@ -733,10 +730,10 @@ typedef struct delete_proc_node DELETE_PROC_NODE;
 struct delete_proc_node
 {
   UPDDEL_CLASS_INFO *classes;	/* classes info */
-  int no_classes;		/* total number of classes involved */
+  int num_classes;		/* total number of classes involved */
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
-  int no_reev_classes;		/* no of classes involved in mvcc condition */
+  int num_reev_classes;		/* no of classes involved in mvcc condition */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions */
 };
@@ -983,17 +980,14 @@ struct func_pred
 #define XASL_TO_BE_CACHED         16	/* the result will be cached */
 #define	XASL_HAS_NOCYCLE	  32	/* NOCYCLE is specified */
 #define	XASL_HAS_CONNECT_BY	  64	/* has CONNECT BY clause */
-#if 0				/* not used anymore */
-#define XASL_QEXEC_MODE_ASYNC    128	/* query exec mode (async) */
-#endif
-#define XASL_MULTI_UPDATE_AGG	 256	/* is for multi-update with aggregate */
-#define XASL_IGNORE_CYCLES	 512	/* is for LEVEL usage in connect by clause... sometimes cycles may be ignored */
-#define	XASL_OBJFETCH_IGNORE_CLASSOID 1024	/* fetch proc should ignore class oid */
-#define XASL_IS_MERGE_QUERY	      2048	/* query belongs to a merge statement */
-#define XASL_USES_MRO	      4096	/* query uses multi range optimization */
-#define XASL_KEEP_DBVAL	      8192	/* do not clear db_value */
-#define XASL_RETURN_GENERATED_KEYS	     16384	/* return generated keys */
-#define XASL_NO_FIXED_SCAN    32768	/* disable fixed scan for this proc */
+#define XASL_MULTI_UPDATE_AGG	 128	/* is for multi-update with aggregate */
+#define XASL_IGNORE_CYCLES	 256	/* is for LEVEL usage in connect by clause... sometimes cycles may be ignored */
+#define	XASL_OBJFETCH_IGNORE_CLASSOID 512	/* fetch proc should ignore class oid */
+#define XASL_IS_MERGE_QUERY	      1024	/* query belongs to a merge statement */
+#define XASL_USES_MRO	      2048	/* query uses multi range optimization */
+#define XASL_KEEP_DBVAL	      4096	/* do not clear db_value */
+#define XASL_RETURN_GENERATED_KEYS	     8192	/* return generated keys */
+#define XASL_NO_FIXED_SCAN    16384	/* disable fixed scan for this proc */
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)

@@ -41,8 +41,7 @@ typedef enum
   JOIN_CSELECT
 } JOIN_TYPE;
 
-#define IS_OUTER_JOIN_TYPE(t) \
-  ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
+#define IS_OUTER_JOIN_TYPE(t) ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
 
 /*
  *                          SCAN FETCH MODE
@@ -67,44 +66,53 @@ struct cache_time
   int usec;
 };
 
-#define CACHE_TIME_EQ(T1, T2)               \
-        (((T1)->sec != 0) &&                \
-         ((T1)->sec == (T2)->sec) &&        \
-         ((T1)->usec == (T2)->usec))
+#define CACHE_TIME_EQ(T1, T2) \
+  (((T1)->sec != 0) && ((T1)->sec == (T2)->sec) && ((T1)->usec == (T2)->usec))
 
-#define CACHE_TIME_RESET(T)     \
-        do {                    \
-          (T)->sec = 0;         \
-          (T)->usec = 0;        \
-        } while (0)
+#define CACHE_TIME_RESET(T) \
+  do \
+    { \
+      (T)->sec = 0; \
+      (T)->usec = 0; \
+    } \
+  while (0)
 
-#define CACHE_TIME_MAKE(CT, TV)         \
-        do {                            \
-          (CT)->sec = (TV)->tv_sec;     \
-          (CT)->usec = (TV)->tv_usec;   \
-        } while (0)
+#define CACHE_TIME_MAKE(CT, TV) \
+  do \
+    { \
+      (CT)->sec = (TV)->tv_sec; \
+      (CT)->usec = (TV)->tv_usec; \
+    } \
+  while (0)
 
-#define OR_CACHE_TIME_SIZE      (OR_INT_SIZE * 2)
+#define OR_CACHE_TIME_SIZE (OR_INT_SIZE * 2)
 
-#define OR_PACK_CACHE_TIME(PTR, T)                      \
-        do {                                            \
-          if ((CACHE_TIME *) (T) != NULL) {                                      \
-            PTR = or_pack_int(PTR, (T)->sec);           \
-            PTR = or_pack_int(PTR, (T)->usec);          \
-          }                                             \
-          else {                                        \
-            PTR = or_pack_int(PTR, 0);                  \
-            PTR = or_pack_int(PTR, 0);                  \
-          }                                             \
-        } while (0)
+#define OR_PACK_CACHE_TIME(PTR, T) \
+  do \
+    { \
+      if ((CACHE_TIME *) (T) != NULL) \
+        { \
+          PTR = or_pack_int (PTR, (T)->sec); \
+          PTR = or_pack_int (PTR, (T)->usec); \
+        } \
+    else \
+      { \
+        PTR = or_pack_int (PTR, 0); \
+        PTR = or_pack_int (PTR, 0); \
+      } \
+    } \
+  while (0)
 
-#define OR_UNPACK_CACHE_TIME(PTR, T)                    \
-        do {                                            \
-          if ((CACHE_TIME *) (T) != NULL) {                                      \
-            PTR = or_unpack_int(PTR, &((T)->sec));      \
-            PTR = or_unpack_int(PTR, &((T)->usec));     \
-          }                                             \
-        } while (0)
+#define OR_UNPACK_CACHE_TIME(PTR, T) \
+  do \
+    { \
+      if ((CACHE_TIME *) (T) != NULL) \
+        { \
+          PTR = or_unpack_int (PTR, &((T)->sec)); \
+          PTR = or_unpack_int (PTR, &((T)->usec)); \
+        } \
+    } \
+  while (0)
 
 /* XASL HEADER */
 /*
@@ -116,42 +124,45 @@ struct cache_time
 typedef struct xasl_node_header XASL_NODE_HEADER;
 struct xasl_node_header
 {
-  int xasl_flag;		/* multi range optimization, async_mode flags */
+  int xasl_flag;		/* query flags (e.g, multi range optimization) */
 };
 
 #define XASL_NODE_HEADER_SIZE OR_INT_SIZE	/* xasl_flag */
 
-#define OR_PACK_XASL_NODE_HEADER(PTR, X)	  \
-  do					  \
-  {					  \
-    if ((PTR) == NULL)			  \
-      {					  \
-	break;				  \
-      }					  \
-    ASSERT_ALIGN ((PTR), INT_ALIGNMENT);	  \
-    (PTR) = or_pack_int ((PTR), (X)->xasl_flag);  \
-  } while (0)
+#define OR_PACK_XASL_NODE_HEADER(PTR, X) \
+  do \
+    { \
+      if ((PTR) == NULL) \
+        { \
+	  break; \
+        } \
+      ASSERT_ALIGN ((PTR), INT_ALIGNMENT); \
+      (PTR) = or_pack_int ((PTR), (X)->xasl_flag); \
+    } \
+  while (0)
 
-#define OR_UNPACK_XASL_NODE_HEADER(PTR, X)	  \
-  do					  \
-  {					  \
-    if ((PTR) == NULL)			  \
-      {					  \
-	break;				  \
-      }					  \
-    ASSERT_ALIGN ((PTR), INT_ALIGNMENT);	  \
-    (PTR) = or_unpack_int ((PTR), &(X)->xasl_flag); \
-  } while (0)
+#define OR_UNPACK_XASL_NODE_HEADER(PTR, X) \
+  do \
+    { \
+      if ((PTR) == NULL) \
+        { \
+	  break; \
+        } \
+      ASSERT_ALIGN ((PTR), INT_ALIGNMENT); \
+      (PTR) = or_unpack_int ((PTR), &(X)->xasl_flag); \
+    } \
+  while (0)
 
-#define INIT_XASL_NODE_HEADER(X)		  \
-  do					  \
-  {					  \
-    if ((X) == NULL)			  \
-      {					  \
-	break;				  \
-      }					  \
-    memset ((X), 0x00, XASL_NODE_HEADER_SIZE);	  \
-  } while (0)
+#define INIT_XASL_NODE_HEADER(X) \
+  do \
+    { \
+      if ((X) == NULL) \
+        { \
+	  break; \
+        } \
+      memset ((X), 0x00, XASL_NODE_HEADER_SIZE); \
+    } \
+  while (0)
 
 /* XASL FILE IDENTIFICATION */
 
@@ -164,69 +175,71 @@ struct xasl_id
 };				/* XASL plan file identifier */
 
 #define XASL_ID_SET_NULL(X) \
-    do { \
-        (X)->first_vpid.pageid = NULL_PAGEID;\
-        (X)->first_vpid.volid  = NULL_VOLID;\
-        (X)->temp_vfid.fileid = NULL_FILEID;\
-        (X)->temp_vfid.volid = NULL_VOLID;\
-        /*CACHE_TIME_RESET(&((X)->time_stored))*/ \
-        (X)->time_stored.sec = 0;\
-        (X)->time_stored.usec = 0;\
-    } while (0)
+  do \
+    { \
+      (X)->first_vpid.pageid = NULL_PAGEID; \
+      (X)->first_vpid.volid  = NULL_VOLID; \
+      (X)->temp_vfid.fileid = NULL_FILEID; \
+      (X)->temp_vfid.volid = NULL_VOLID; \
+      /*CACHE_TIME_RESET(&((X)->time_stored))*/ \
+      (X)->time_stored.sec = 0; \
+      (X)->time_stored.usec = 0; \
+    } \
+  while (0)
 
-#define XASL_ID_IS_NULL(X) \
-    (((XASL_ID *) (X) != NULL) && (X)->first_vpid.pageid == NULL_PAGEID)
+#define XASL_ID_IS_NULL(X) (((XASL_ID *) (X) != NULL) && (X)->first_vpid.pageid == NULL_PAGEID)
 
 #define XASL_ID_COPY(X1, X2) \
-    *(X1) = *(X2)
+  *(X1) = *(X2)
 
 #define MAKE_PSEUDO_XASL_ID_FROM_BTREE(X,B) \
-    do { \
-        (X)->first_vpid.pageid = (B)->root_pageid;\
-        (X)->first_vpid.volid  = 0x8000 | (B)->vfid.volid;\
-        (X)->temp_vfid.fileid = (B)->vfid.fileid;\
-        (X)->temp_vfid.volid = 0x8000 | (B)->vfid.volid;\
-        (X)->time_stored.sec = 0;\
-        (X)->time_stored.usec = 0;\
-    } while (0)
+  do \
+    { \
+      (X)->first_vpid.pageid = (B)->root_pageid; \
+      (X)->first_vpid.volid  = 0x8000 | (B)->vfid.volid; \
+      (X)->temp_vfid.fileid = (B)->vfid.fileid; \
+      (X)->temp_vfid.volid = 0x8000 | (B)->vfid.volid; \
+      (X)->time_stored.sec = 0; \
+      (X)->time_stored.usec = 0; \
+    } \
+  while (0)
 
 /* do not compare with X.time_stored */
 #define XASL_ID_EQ(X1, X2) \
-    ((X1) == (X2) || \
-      /*VPID_EQ(&((X1)->first_vpid), &((X2)->first_vpid))*/ \
-     ((X1)->first_vpid.pageid == (X2)->first_vpid.pageid && \
-       (X1)->first_vpid.volid == (X2)->first_vpid.volid && \
-      /*VFID_EQ(&((X1)->temp_vfid), &((X2)->temp_vfid))*/ \
-      (X1)->temp_vfid.fileid == (X2)->temp_vfid.fileid && \
-       (X1)->temp_vfid.volid == (X2)->temp_vfid.volid))
+    ((X1) == (X2) \
+     || (((X1)->first_vpid.pageid == (X2)->first_vpid.pageid && (X1)->first_vpid.volid == (X2)->first_vpid.volid) \
+         && ((X1)->temp_vfid.fileid == (X2)->temp_vfid.fileid && (X1)->temp_vfid.volid == (X2)->temp_vfid.volid)))
 
 #define OR_XASL_ID_SIZE (OR_LOID_SIZE + OR_CACHE_TIME_SIZE)
 
 /* pack XASL file id (XASL_ID)
      - borrow LOID structure only for transmission purpose
  */
-#define OR_PACK_XASL_ID(PTR, X)                                \
-        do {                                                   \
-          CACHE_TIME _t;                                       \
-                                                               \
-          PTR = or_pack_loid (PTR, (LOID *) (X));              \
-          CACHE_TIME_RESET (&_t);                              \
-          if ((XASL_ID *) (X) != NULL)                                               \
-            {                                                  \
-              _t = (X)->time_stored;                           \
-            }                                                  \
-          OR_PACK_CACHE_TIME (PTR, &_t);                       \
-        } while (0)
+#define OR_PACK_XASL_ID(PTR, X) \
+  do \
+    { \
+      CACHE_TIME _t; \
+      PTR = or_pack_loid (PTR, (LOID *) (X)); \
+      CACHE_TIME_RESET (&_t); \
+      if ((XASL_ID *) (X) != NULL) \
+        { \
+          _t = (X)->time_stored; \
+        } \
+      OR_PACK_CACHE_TIME (PTR, &_t); \
+    } \
+  while (0)
 
 /* unpack XASL file id (XASL_ID)
      - borrow LOID structure only for transmission purpose
      - NULL XASL_ID will be returned when cache not found
  */
-#define OR_UNPACK_XASL_ID(PTR, X)                              \
-        do {                                                   \
-          PTR = or_unpack_loid (PTR, (LOID *) (X));            \
-          OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored));     \
-        } while (0)
+#define OR_UNPACK_XASL_ID(PTR, X) \
+  do \
+    { \
+      PTR = or_unpack_loid (PTR, (LOID *) (X)); \
+      OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored)); \
+    } \
+  while (0)
 
 /* PAGE CONSTANTS */
 
@@ -252,28 +265,28 @@ struct xasl_id
  */
 
 #define QFILE_GET_TUPLE_COUNT(ptr) \
-  OR_GET_INT( (ptr) + QFILE_TUPLE_COUNT_OFFSET )
+  OR_GET_INT ((ptr) + QFILE_TUPLE_COUNT_OFFSET)
 
 #define QFILE_GET_PREV_PAGE_ID(ptr) \
-  (PAGEID) OR_GET_INT( (ptr) + QFILE_PREV_PAGE_ID_OFFSET )
+  (PAGEID) OR_GET_INT ((ptr) + QFILE_PREV_PAGE_ID_OFFSET)
 
 #define QFILE_GET_NEXT_PAGE_ID(ptr) \
-  (PAGEID) OR_GET_INT( (ptr) + QFILE_NEXT_PAGE_ID_OFFSET )
+  (PAGEID) OR_GET_INT ((ptr) + QFILE_NEXT_PAGE_ID_OFFSET)
 
 #define QFILE_GET_LAST_TUPLE_OFFSET(ptr) \
-  (PAGEID) OR_GET_INT( (ptr) + QFILE_LAST_TUPLE_OFFSET )
+  (PAGEID) OR_GET_INT ((ptr) + QFILE_LAST_TUPLE_OFFSET)
 
 #define QFILE_GET_OVERFLOW_PAGE_ID(ptr) \
-  (PAGEID) OR_GET_INT( (ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET )
+  (PAGEID) OR_GET_INT ((ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET)
 
 #define QFILE_GET_PREV_VOLUME_ID(ptr) \
-  (VOLID) OR_GET_SHORT((ptr) + QFILE_PREV_VOL_ID_OFFSET )
+  (VOLID) OR_GET_SHORT ((ptr) + QFILE_PREV_VOL_ID_OFFSET)
 
 #define QFILE_GET_NEXT_VOLUME_ID(ptr) \
-  (VOLID) OR_GET_SHORT((ptr) + QFILE_NEXT_VOL_ID_OFFSET )
+  (VOLID) OR_GET_SHORT ((ptr) + QFILE_NEXT_VOL_ID_OFFSET)
 
 #define QFILE_GET_OVERFLOW_VOLUME_ID(ptr) \
-  (VOLID) OR_GET_SHORT((ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET )
+  (VOLID) OR_GET_SHORT ((ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET)
 
 /*
  * Don't change the order of reading VPID's member in 'GET_XXX_VPID' series.
@@ -281,46 +294,52 @@ struct xasl_id
  */
 
 #define QFILE_GET_PREV_VPID(des,ptr) \
-  do { \
-    (des)->pageid = (PAGEID) OR_GET_INT( (ptr) + QFILE_PREV_PAGE_ID_OFFSET ); \
-    (des)->volid = (VOLID) OR_GET_SHORT( (ptr) + QFILE_PREV_VOL_ID_OFFSET); \
-  } while(0)
+  do \
+    { \
+      (des)->pageid = (PAGEID) OR_GET_INT ((ptr) + QFILE_PREV_PAGE_ID_OFFSET); \
+      (des)->volid = (VOLID) OR_GET_SHORT ((ptr) + QFILE_PREV_VOL_ID_OFFSET); \
+    } \
+  while (0)
 
 #define QFILE_GET_NEXT_VPID(des,ptr) \
-  do { \
-    (des)->pageid = (PAGEID) OR_GET_INT( (ptr) + QFILE_NEXT_PAGE_ID_OFFSET ); \
-    (des)->volid = (VOLID) OR_GET_SHORT( (ptr) + QFILE_NEXT_VOL_ID_OFFSET); \
-  } while(0)
+  do \
+    { \
+      (des)->pageid = (PAGEID) OR_GET_INT ((ptr) + QFILE_NEXT_PAGE_ID_OFFSET); \
+      (des)->volid = (VOLID) OR_GET_SHORT ((ptr) + QFILE_NEXT_VOL_ID_OFFSET); \
+    } \
+  while (0)
 
 #define QFILE_GET_OVERFLOW_VPID(des,ptr) \
-  do { \
-    (des)->pageid = (PAGEID) OR_GET_INT( (ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET ); \
-    (des)->volid = (VOLID) OR_GET_SHORT( (ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET); \
-  } while(0)
+  do \
+    { \
+      (des)->pageid = (PAGEID) OR_GET_INT ((ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET); \
+      (des)->volid = (VOLID) OR_GET_SHORT ((ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET); \
+    } \
+  while (0)
 
 #define QFILE_PUT_TUPLE_COUNT(ptr,val) \
-   OR_PUT_INT( (ptr) + QFILE_TUPLE_COUNT_OFFSET, (val) )
+   OR_PUT_INT ((ptr) + QFILE_TUPLE_COUNT_OFFSET, (val))
 
 #define QFILE_PUT_PREV_PAGE_ID(ptr,val) \
-   OR_PUT_INT( (ptr) + QFILE_PREV_PAGE_ID_OFFSET, (val) )
+   OR_PUT_INT ((ptr) + QFILE_PREV_PAGE_ID_OFFSET, (val))
 
 #define QFILE_PUT_NEXT_PAGE_ID(ptr,val) \
-   OR_PUT_INT( (ptr) + QFILE_NEXT_PAGE_ID_OFFSET, (val) )
+   OR_PUT_INT ((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, (val))
 
 #define QFILE_PUT_LAST_TUPLE_OFFSET(ptr,val) \
-   OR_PUT_INT( (ptr) + QFILE_LAST_TUPLE_OFFSET, (val) )
+   OR_PUT_INT ((ptr) + QFILE_LAST_TUPLE_OFFSET, (val))
 
 #define QFILE_PUT_OVERFLOW_PAGE_ID(ptr,val) \
-   OR_PUT_INT( (ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET, (val) )
+   OR_PUT_INT ((ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET, (val))
 
 #define QFILE_PUT_PREV_VOLUME_ID(ptr,val) \
-   OR_PUT_SHORT( (ptr) + QFILE_PREV_VOL_ID_OFFSET, (val) )
+   OR_PUT_SHORT ((ptr) + QFILE_PREV_VOL_ID_OFFSET, (val))
 
 #define QFILE_PUT_NEXT_VOLUME_ID(ptr,val) \
-   OR_PUT_SHORT( (ptr) + QFILE_NEXT_VOL_ID_OFFSET, (val) )
+   OR_PUT_SHORT ((ptr) + QFILE_NEXT_VOL_ID_OFFSET, (val))
 
 #define QFILE_PUT_OVERFLOW_VOLUME_ID(ptr,val) \
-   OR_PUT_SHORT( (ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET, (val) )
+   OR_PUT_SHORT ((ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET, (val))
 
 /*
  * Don't change the order of writing VPID's member in 'PUT_XXX_VPID' series.
@@ -328,66 +347,80 @@ struct xasl_id
  */
 
 #define QFILE_PUT_PREV_VPID(ptr,vpid) \
-  do { \
-    OR_PUT_SHORT((ptr) + QFILE_PREV_VOL_ID_OFFSET, (vpid)->volid); \
-    OR_PUT_INT((ptr) + QFILE_PREV_PAGE_ID_OFFSET, (vpid)->pageid); \
-  } while(0)
+  do \
+    { \
+      OR_PUT_SHORT ((ptr) + QFILE_PREV_VOL_ID_OFFSET, (vpid)->volid); \
+      OR_PUT_INT ((ptr) + QFILE_PREV_PAGE_ID_OFFSET, (vpid)->pageid); \
+    } \
+  while (0)
 
 #define QFILE_PUT_NEXT_VPID(ptr,vpid) \
-  do { \
-    OR_PUT_SHORT((ptr) + QFILE_NEXT_VOL_ID_OFFSET, (vpid)->volid); \
-    OR_PUT_INT((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, (vpid)->pageid); \
-  } while(0)
+  do \
+    { \
+      OR_PUT_SHORT ((ptr) + QFILE_NEXT_VOL_ID_OFFSET, (vpid)->volid); \
+      OR_PUT_INT ((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, (vpid)->pageid); \
+    } \
+  while (0)
 
 #define QFILE_PUT_OVERFLOW_VPID(ptr,vpid) \
-  do { \
-    OR_PUT_SHORT((ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET, (vpid)->volid); \
-    OR_PUT_INT((ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET, (vpid)->pageid); \
-  } while(0)
+  do \
+    { \
+      OR_PUT_SHORT ((ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET, (vpid)->volid); \
+      OR_PUT_INT ((ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET, (vpid)->pageid); \
+    } \
+  while (0)
 
 #define QFILE_PUT_PREV_VPID_NULL(ptr) \
-  do { \
-    OR_PUT_SHORT((ptr) + QFILE_PREV_VOL_ID_OFFSET, NULL_VOLID); \
-    OR_PUT_INT((ptr) + QFILE_PREV_PAGE_ID_OFFSET, NULL_PAGEID); \
-  } while(0)
+  do \
+    { \
+      OR_PUT_SHORT ((ptr) + QFILE_PREV_VOL_ID_OFFSET, NULL_VOLID); \
+      OR_PUT_INT ((ptr) + QFILE_PREV_PAGE_ID_OFFSET, NULL_PAGEID); \
+    } \
+  while (0)
 
 #define QFILE_PUT_NEXT_VPID_NULL(ptr) \
-  do { \
-    OR_PUT_SHORT((ptr) + QFILE_NEXT_VOL_ID_OFFSET, NULL_VOLID); \
-    OR_PUT_INT((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, NULL_PAGEID); \
-  } while(0)
+  do \
+    { \
+      OR_PUT_SHORT ((ptr) + QFILE_NEXT_VOL_ID_OFFSET, NULL_VOLID); \
+      OR_PUT_INT ((ptr) + QFILE_NEXT_PAGE_ID_OFFSET, NULL_PAGEID); \
+    } \
+  while (0)
 
 #define QFILE_PUT_OVERFLOW_VPID_NULL(ptr) \
-  do { \
-    OR_PUT_SHORT((ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET, NULL_VOLID); \
-    OR_PUT_INT((ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET, NULL_PAGEID); \
-  } while(0)
+  do \
+    { \
+      OR_PUT_SHORT ((ptr) + QFILE_OVERFLOW_VOL_ID_OFFSET, NULL_VOLID); \
+      OR_PUT_INT ((ptr) + QFILE_OVERFLOW_PAGE_ID_OFFSET, NULL_PAGEID); \
+    } \
+  while (0)
 
 #define QFILE_COPY_VPID(ptr1, ptr2) \
-  do { \
-    (ptr1)->pageid = (ptr2)->pageid;\
-    (ptr1)->volid  = (ptr2)->volid; \
-  } while(0)
+  do \
+    { \
+      (ptr1)->pageid = (ptr2)->pageid; \
+      (ptr1)->volid  = (ptr2)->volid; \
+    } \
+  while (0)
 
 /* XASL TREE STORAGE CONSTANTS */
 
 #define QFILE_XASL_PAGE_SIZE_OFFSET     12
 
 #define QFILE_GET_XASL_PAGE_SIZE(ptr) \
-  (int) OR_GET_INT( (ptr) + QFILE_XASL_PAGE_SIZE_OFFSET )
+  (int) OR_GET_INT ((ptr) + QFILE_XASL_PAGE_SIZE_OFFSET)
 
 #define QFILE_PUT_XASL_PAGE_SIZE(ptr,val) \
-  OR_PUT_INT( (ptr) + QFILE_XASL_PAGE_SIZE_OFFSET, (val) )
+  OR_PUT_INT ((ptr) + QFILE_XASL_PAGE_SIZE_OFFSET, (val))
 
 /* OVERFLOW PAGE CONSTANTS */
 
 #define QFILE_OVERFLOW_TUPLE_PAGE_SIZE_OFFSET   12
 
 #define QFILE_GET_OVERFLOW_TUPLE_PAGE_SIZE(ptr) \
-  (int) OR_GET_INT( (ptr) + QFILE_OVERFLOW_TUPLE_PAGE_SIZE_OFFSET )
+  (int) OR_GET_INT ((ptr) + QFILE_OVERFLOW_TUPLE_PAGE_SIZE_OFFSET)
 
 #define QFILE_PUT_OVERFLOW_TUPLE_PAGE_SIZE(ptr,val) \
-  OR_PUT_INT( (ptr) + QFILE_OVERFLOW_TUPLE_PAGE_SIZE_OFFSET, (val) )
+  OR_PUT_INT ((ptr) + QFILE_OVERFLOW_TUPLE_PAGE_SIZE_OFFSET, (val))
 
 /* QFILE_TUPLE CONSTANTS */
 
@@ -413,36 +446,40 @@ struct xasl_id
 /* READERS/WRITERS FOR QFILE_TUPLE FIELDS */
 
 #define QFILE_GET_TUPLE_LENGTH(tpl) \
-  OR_GET_INT((tpl) + QFILE_TUPLE_LENGTH_OFFSET)
+  OR_GET_INT ((tpl) + QFILE_TUPLE_LENGTH_OFFSET)
 
 #define QFILE_GET_PREV_TUPLE_LENGTH(tpl) \
-  OR_GET_INT((tpl) + QFILE_TUPLE_PREV_LENGTH_OFFSET)
+  OR_GET_INT ((tpl) + QFILE_TUPLE_PREV_LENGTH_OFFSET)
 
 #define QFILE_PUT_TUPLE_LENGTH(tpl,val) \
-  OR_PUT_INT((tpl) + QFILE_TUPLE_LENGTH_OFFSET,val)
+  OR_PUT_INT ((tpl) + QFILE_TUPLE_LENGTH_OFFSET,val)
 
 #define QFILE_PUT_PREV_TUPLE_LENGTH(tpl,val) \
-  OR_PUT_INT((tpl) + QFILE_TUPLE_PREV_LENGTH_OFFSET,val)
+  OR_PUT_INT ((tpl) + QFILE_TUPLE_PREV_LENGTH_OFFSET,val)
 
 #define QFILE_GET_TUPLE_VALUE_FLAG(ptr) \
-  (QFILE_TUPLE_VALUE_FLAG) OR_GET_INT( (ptr) + QFILE_TUPLE_VALUE_FLAG_OFFSET )
+  (QFILE_TUPLE_VALUE_FLAG) OR_GET_INT ((ptr) + QFILE_TUPLE_VALUE_FLAG_OFFSET)
 
 #define QFILE_GET_TUPLE_VALUE_LENGTH(ptr) \
-  (int) OR_GET_INT( (ptr) + QFILE_TUPLE_VALUE_LENGTH_OFFSET )
+  (int) OR_GET_INT ((ptr) + QFILE_TUPLE_VALUE_LENGTH_OFFSET)
 
 #define QFILE_PUT_TUPLE_VALUE_FLAG(ptr,val) \
-  OR_PUT_INT((ptr) + QFILE_TUPLE_VALUE_FLAG_OFFSET, (val))
+  OR_PUT_INT ((ptr) + QFILE_TUPLE_VALUE_FLAG_OFFSET, (val))
 
 #define QFILE_PUT_TUPLE_VALUE_LENGTH(ptr,val) \
-  OR_PUT_INT((ptr) + QFILE_TUPLE_VALUE_LENGTH_OFFSET, (val))
+  OR_PUT_INT ((ptr) + QFILE_TUPLE_VALUE_LENGTH_OFFSET, (val))
 
 #define QFILE_GET_TUPLE_VALUE_HEADER_POSITION(tpl,ind,valp) \
-  do { \
-    int _k; \
-    (valp) = (char*)(tpl) + QFILE_TUPLE_LENGTH_SIZE; \
-    for (_k = 0; _k < (ind); _k++) \
-      (valp) += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH((valp)); \
-  } while(0)
+  do \
+    { \
+      int _k; \
+      (valp) = (char*) (tpl) + QFILE_TUPLE_LENGTH_SIZE; \
+      for (_k = 0; _k < (ind); _k++) \
+        { \
+          (valp) += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH ((valp)); \
+        } \
+    } \
+  while (0)
 
 /* Special flag set in the TUPLE_CNT field to indicate an overflow page */
 #define QFILE_OVERFLOW_TUPLE_COUNT_FLAG -2
@@ -602,35 +639,37 @@ struct qfile_list_id
 };
 
 #define QFILE_CLEAR_LIST_ID(list_id) \
-  do { \
-    (list_id)->type_list.type_cnt = 0; \
-    (list_id)->type_list.domp = NULL; \
-    (list_id)->sort_list = NULL; \
-    (list_id)->tuple_cnt = 0; \
-    (list_id)->page_cnt = 0; \
-    (list_id)->first_vpid.pageid = NULL_PAGEID; \
-    (list_id)->first_vpid.volid  = NULL_VOLID; \
-    (list_id)->last_vpid.pageid = NULL_PAGEID; \
-    (list_id)->last_vpid.volid  = NULL_VOLID; \
-    (list_id)->last_pgptr = NULL; \
-    (list_id)->last_offset = QFILE_NULL_PAGE_OFFSET; \
-    (list_id)->lasttpl_len = 0; \
-    (list_id)->query_id = 0; \
-    (list_id)->temp_vfid.fileid = NULL_PAGEID; \
-    (list_id)->temp_vfid.volid = NULL_VOLID; \
-    (list_id)->tfile_vfid = NULL; \
-    (list_id)->tpl_descr.item = NULL; \
-    (list_id)->tpl_descr.item_size = 0; \
-    (list_id)->tpl_descr.tpl_size = 0; \
-    (list_id)->tpl_descr.f_cnt = 0; \
-    (list_id)->tpl_descr.f_valp = NULL; \
-    (list_id)->tpl_descr.sortkey_info = NULL; \
-    (list_id)->tpl_descr.sort_rec = NULL; \
-    (list_id)->tpl_descr.tplrec1 = NULL; \
-    (list_id)->tpl_descr.tplrec2 = NULL; \
-    (list_id)->tpl_descr.merge_info = NULL; \
-    (list_id)->is_domain_resolved = false; \
-  } while (0)
+  do \
+    { \
+      (list_id)->type_list.type_cnt = 0; \
+      (list_id)->type_list.domp = NULL; \
+      (list_id)->sort_list = NULL; \
+      (list_id)->tuple_cnt = 0; \
+      (list_id)->page_cnt = 0; \
+      (list_id)->first_vpid.pageid = NULL_PAGEID; \
+      (list_id)->first_vpid.volid  = NULL_VOLID; \
+      (list_id)->last_vpid.pageid = NULL_PAGEID; \
+      (list_id)->last_vpid.volid  = NULL_VOLID; \
+      (list_id)->last_pgptr = NULL; \
+      (list_id)->last_offset = QFILE_NULL_PAGE_OFFSET; \
+      (list_id)->lasttpl_len = 0; \
+      (list_id)->query_id = 0; \
+      (list_id)->temp_vfid.fileid = NULL_PAGEID; \
+      (list_id)->temp_vfid.volid = NULL_VOLID; \
+      (list_id)->tfile_vfid = NULL; \
+      (list_id)->tpl_descr.item = NULL; \
+      (list_id)->tpl_descr.item_size = 0; \
+      (list_id)->tpl_descr.tpl_size = 0; \
+      (list_id)->tpl_descr.f_cnt = 0; \
+      (list_id)->tpl_descr.f_valp = NULL; \
+      (list_id)->tpl_descr.sortkey_info = NULL; \
+      (list_id)->tpl_descr.sort_rec = NULL; \
+      (list_id)->tpl_descr.tplrec1 = NULL; \
+      (list_id)->tpl_descr.tplrec2 = NULL; \
+      (list_id)->tpl_descr.merge_info = NULL; \
+      (list_id)->is_domain_resolved = false; \
+    } \
+  while (0)
 
 /* Tuple position structure */
 typedef struct qfile_tuple_position QFILE_TUPLE_POSITION;
@@ -678,8 +717,7 @@ enum
 #define QFILE_SET_FLAG(var, flag)          ((var) |= (flag))
 #define QFILE_CLEAR_FLAG(var, flag)        ((var) &= (flag))
 #define QFILE_IS_FLAG_SET(var, flag)       ((var) & (flag))
-#define QFILE_IS_FLAG_SET_BOTH(var, flag1, flag2) \
-  (((var) & (flag1)) && (var) & (flag2))
+#define QFILE_IS_FLAG_SET_BOTH(var, flag1, flag2) (((var) & (flag1)) && ((var) & (flag2)))
 
 /* SORTING RELATED DEFINITIONS */
 
@@ -703,35 +741,27 @@ struct qfile_sort_scan_id
 typedef enum
 {
   SYNC_EXEC = 0,
-  ASYNC_EXEC = 1
+  DEFAULT_EXEC_MODE = SYNC_EXEC
 } QUERY_EXEC_MODE;
 
 enum
 {
-  ASYNC_EXECUTABLE = 0x00,
-  ASYNC_UNEXECUTABLE = 0x02,
-  EXECUTE_WITH_COMMIT = 0x04,
-  NOT_FROM_RESULT_CACHE = 0x08,
-  RESULT_CACHE_REQUIRED = 0x10,
-  RESULT_CACHE_INHIBITED = 0x20,
-  RESULT_HOLDABLE = 0x40,
-  DONT_COLLECT_EXEC_STATS = 0x80,
-  MRO_CANDIDATE = 0x0100,
-  MRO_IS_USED = 0x0200,
-  SORT_LIMIT_CANDIDATE = 0x0400,
-  SORT_LIMIT_USED = 0x0800,
-  XASL_TRACE_TEXT = 0x1000,
-  XASL_TRACE_JSON = 0x2000,
-  TRIGGER_IS_INVOLVED = 0x4000,
-  RETURN_GENERATED_KEYS = 0x8000,
-  XASL_CACHE_PINNED_REFERENCE = 0x10000
+  NOT_FROM_RESULT_CACHE = 0x0001,
+  RESULT_CACHE_REQUIRED = 0x0002,
+  RESULT_CACHE_INHIBITED = 0x0004,
+  RESULT_HOLDABLE = 0x0008,
+  DONT_COLLECT_EXEC_STATS = 0x0010,
+  MRO_CANDIDATE = 0x0020,
+  MRO_IS_USED = 0x0040,
+  SORT_LIMIT_CANDIDATE = 0x0080,
+  SORT_LIMIT_USED = 0x0100,
+  XASL_TRACE_TEXT = 0x0200,
+  XASL_TRACE_JSON = 0x0400,
+  TRIGGER_IS_INVOLVED = 0x0800,
+  RETURN_GENERATED_KEYS = 0x1000,
+  XASL_CACHE_PINNED_REFERENCE = 0x2000,
+  EXECUTE_WITH_COMMIT = 0x04
 };
-
-#define IS_SYNC_EXEC_MODE(flag) (!((flag) & ASYNC_EXEC))
-#define IS_ASYNC_EXEC_MODE(flag) ((flag) & ASYNC_EXEC)
-
-#define IS_ASYNC_UNEXECUTABLE(flag) ((flag) & ASYNC_UNEXECUTABLE)
-#define IS_ASYNC_EXECUTABLE(flag) (!((flag) & ASYNC_UNEXECUTABLE))
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
 

@@ -71,28 +71,22 @@ struct pt_host_vars
 };
 
 #define COMPATIBLE_WITH_INSTNUM(node) \
-        (pt_is_expr_node(node) \
-         && PT_EXPR_INFO_IS_FLAGED(node, PT_EXPR_INFO_INSTNUM_C))
+  (pt_is_expr_node (node) && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_INSTNUM_C))
 
 #define NOT_COMPATIBLE_WITH_INSTNUM(node) \
-        (pt_is_dot_node(node) || pt_is_attr(node) \
-         || pt_is_correlated_subquery(node) \
-         || (pt_is_expr_node(node) \
-             && PT_EXPR_INFO_IS_FLAGED(node, PT_EXPR_INFO_INSTNUM_NC)))
+  (pt_is_dot_node (node) || pt_is_attr (node) || pt_is_correlated_subquery (node) \
+   || (pt_is_expr_node (node) && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_INSTNUM_NC)))
 
 #define COMPATIBLE_WITH_GROUPBYNUM(node) \
-        ((pt_is_function(node) \
-          && node->info.function.function_type == PT_GROUPBY_NUM) \
-         || \
-         (pt_is_expr_node(node) \
-          && PT_EXPR_INFO_IS_FLAGED(node, PT_EXPR_INFO_GROUPBYNUM_C)))
+  ((pt_is_function (node) && node->info.function.function_type == PT_GROUPBY_NUM) \
+   || (pt_is_expr_node (node) && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_GROUPBYNUM_C)))
 
 #define NOT_COMPATIBLE_WITH_GROUPBYNUM(node) \
-        (pt_is_dot_node(node) || pt_is_attr(node) || pt_is_query(node) \
-         || (pt_is_expr_node(node) \
-             && PT_EXPR_INFO_IS_FLAGED(node, PT_EXPR_INFO_GROUPBYNUM_NC)))
+  (pt_is_dot_node (node) || pt_is_attr (node) || pt_is_query (node) \
+   || (pt_is_expr_node (node) && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_GROUPBYNUM_NC)))
 
-#define DB_ENUM_ELEMENTS_MAX_AGG_SIZE (DB_PAGESIZE - offsetof (BTREE_ROOT_HEADER, packed_key_domain) - 1)
+#define DB_ENUM_ELEMENTS_MAX_AGG_SIZE \
+  (DB_PAGESIZE - offsetof (BTREE_ROOT_HEADER, packed_key_domain) - 1)
 
 int qp_Packing_er_code = NO_ERROR;
 
@@ -2512,10 +2506,9 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** j
 
       assert (PT_IS_EXPR_NODE (current_conj));
       /* It is either fully CNF or not at all. */
-      assert (!
-	      (current_conj->next != NULL
-	       && (PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_AND)
-		   || PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_OR))));
+      assert (!(current_conj->next != NULL
+		&& (PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_AND)
+		    || PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_OR))));
       next_conj = current_conj->next;
       current_conj->next = NULL;
 
@@ -2523,10 +2516,9 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** j
 	{
 	  assert (PT_IS_EXPR_NODE (current_pred));
 	  /* It is either fully CNF or not at all. */
-	  assert (!
-		  (current_pred->or_next != NULL
-		   && (PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred, PT_AND)
-		       || PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred, PT_OR))));
+	  assert (!(current_pred->or_next != NULL
+		    && (PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred, PT_AND)
+			|| PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred, PT_OR))));
 	  if (pt_is_filtering_expression (parser, current_pred))
 	    {
 	      has_filter_pred = true;
@@ -3145,8 +3137,7 @@ pt_collect_host_info (PARSER_CONTEXT * parser, PT_NODE * node, void *h_var, int 
 PT_HOST_VARS *
 pt_host_info (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  PT_HOST_VARS *result = (PT_HOST_VARS *) calloc (1,
-						  sizeof (PT_HOST_VARS));
+  PT_HOST_VARS *result = (PT_HOST_VARS *) calloc (1, sizeof (PT_HOST_VARS));
 
   if (result)
     {
@@ -5515,12 +5506,12 @@ regu_upddel_class_info_init (UPDDEL_CLASS_INFO * ptr)
   ptr->class_hfid = NULL;
   ptr->class_oid = NULL;
   ptr->has_uniques = 0;
-  ptr->no_subclasses = 0;
-  ptr->no_attrs = 0;
+  ptr->num_subclasses = 0;
+  ptr->num_attrs = 0;
   ptr->needs_pruning = DB_NOT_PARTITIONED_CLASS;
-  ptr->no_lob_attrs = NULL;
+  ptr->num_lob_attrs = NULL;
   ptr->lob_attr_ids = NULL;
-  ptr->no_extra_assign_reev = 0;
+  ptr->num_extra_assign_reev = 0;
   ptr->mvcc_extra_assign_reev = NULL;
 }
 
@@ -5576,7 +5567,7 @@ regu_odku_info_alloc (void)
   ptr->assignments = NULL;
   ptr->attr_ids = NULL;
   ptr->cons_pred = NULL;
-  ptr->no_assigns = 0;
+  ptr->num_assigns = 0;
   ptr->attr_info = NULL;
   return ptr;
 }
@@ -5645,7 +5636,7 @@ regu_method_sig_init (METHOD_SIG * ptr)
   ptr->method_name = NULL;
   ptr->class_name = NULL;
   ptr->method_type = 0;
-  ptr->no_method_args = 0;
+  ptr->num_method_args = 0;
   ptr->method_arg_pos = NULL;
 }
 
@@ -5729,7 +5720,7 @@ regu_free_method_sig (METHOD_SIG * method_sig)
 void
 regu_method_sig_list_init (METHOD_SIG_LIST * ptr)
 {
-  ptr->no_methods = 0;
+  ptr->num_methods = 0;
   ptr->method_sig = (METHOD_SIG *) 0;
 }
 
@@ -11759,7 +11750,7 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
 		       dt->info.data_type.units, &char_count);
       qstr_trim_trailing (pad, pad_size, node->info.value.data_value.str->bytes, pt_node_to_db_type (node), char_count,
 			  node->info.value.data_value.str->length, dt->info.data_type.units, &trimmed_length,
-			  &trimmed_size);
+			  &trimmed_size, true);
       if (trimmed_size < node->info.value.data_value.str->length)
 	{
 	  node->info.value.data_value.str =
@@ -11811,9 +11802,9 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
       temp = node->next;
       while (temp != NULL)
 	{
-	  if (QSTR_COMPARE
-	      (domain->collation_id, node->info.value.data_value.str->bytes, node->info.value.data_value.str->length,
-	       temp->info.value.data_value.str->bytes, temp->info.value.data_value.str->length) == 0)
+	  if (QSTR_COMPARE (domain->collation_id, node->info.value.data_value.str->bytes,
+			    node->info.value.data_value.str->length, temp->info.value.data_value.str->bytes,
+			    temp->info.value.data_value.str->length) == 0)
 	    {
 	      PT_ERRORm (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ENUM_TYPE_DUPLICATE_VALUES);
 

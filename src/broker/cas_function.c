@@ -2222,7 +2222,7 @@ bind_value_print (char type, void *net_value, bool slow_log)
     case CCI_U_TYPE_UBIGINT:
       {
 	UINT64 ubi_val;
-	net_arg_get_bigint ((INT64 *) & ubi_val, net_value);
+	net_arg_get_bigint ((INT64 *) (&ubi_val), net_value);
 	write2_func ("%llu", (unsigned long long) ubi_val);
       }
       break;

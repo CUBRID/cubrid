@@ -1354,10 +1354,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 #endif /* SERVER_MODE */
 #if defined(ENABLE_SYSTEMTAP)
   bool pgbuf_hit = false;
-  int tran_index;
-  QMGR_TRAN_ENTRY *tran_entry;
-  QUERY_ID query_id = -1;
   bool monitored = false;
+  QUERY_ID query_id = NULL_QUERY_ID;
 #endif /* ENABLE_SYSTEMTAP */
   PERF_PAGE_MODE perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
   PERF_HOLDER_LATCH perf_latch_mode;
@@ -1539,11 +1537,9 @@ try_again:
 	  mnt_pb_ioreads (thread_p);
 
 #if defined(ENABLE_SYSTEMTAP)
-	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	  tran_entry = qmgr_get_tran_entry (tran_index);
-	  if (tran_entry->query_entry_list_p)
+	  query_id = qmgr_get_current_query_id (thread_p);
+	  if (query_id != NULL_QUERY_ID)
 	    {
-	      query_id = tran_entry->query_entry_list_p->query_id;
 	      monitored = true;
 	      CUBRID_IO_READ_START (query_id);
 	    }
@@ -3712,11 +3708,39 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	       * bufptr->avoid_victim is released by pgbuf_flush_with_wal()
 	       * only if buf is dirty at the time of flush
 	       */
+	      PAGE_TYPE page_type = bufptr->iopage_buffer->iopage.prv.ptype;
 	      bufptr->avoid_victim = true;
 	      vpid = bufptr->vpid;
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
 
-	      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      if (page_type == PAGE_VACUUM_DATA)
+		{
+		  /* Flushing vacuum data pages is tricky because first and last pages are permanently fixed. Try
+		   * a conditional latch, and if that doesn't work, notify vacuum of intention to flush vacuum data
+		   * pages.
+		   * Master will then unfix the pages and checkpoint can have a chance flush the pages.
+		   */
+		  pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+		  if (pgptr == NULL)
+		    {
+		      /* Notify vacuum to unfix the page. */
+		      vacuum_notify_need_flush (1);
+		      vacuum_er_log (VACUUM_ER_LOG_FLUSH_DATA,
+				     "VACUUM: Checkpoint thread notified vacuum of intention to flush page %d|%d.\n",
+				     vpid.volid, vpid.pageid);
+		      pgptr =
+			pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+
+		      vacuum_er_log (VACUUM_ER_LOG_FLUSH_DATA,
+				     "VACUUM: Checkpoint thread %s page %d|%d.\n",
+				     pgptr != NULL ? "successfully fixed" : "failed fixing", vpid.volid, vpid.pageid);
+		    }
+		}
+	      else
+		{
+		  pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+		}
+
 	      if (pgptr == NULL || pgbuf_flush_with_wal (thread_p, pgptr) == NULL)
 		{
 #if !defined(NDEBUG)
@@ -3753,6 +3777,12 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 
 		  /* pgbuf_flush_with_wal successful */
 		  seq_flusher->flushed_pages++;
+		}
+
+	      if (page_type == PAGE_VACUUM_DATA)
+		{
+		  /* Notify vacuum that page was flushed and it no longer needs to unfix the page. */
+		  vacuum_notify_need_flush (0);
 		}
 
 	      if (pgptr != NULL)
@@ -8683,9 +8713,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   LOG_LSA oldest_unflush_lsa;
   int error = NO_ERROR;
 #if defined(ENABLE_SYSTEMTAP)
-  int tran_index;
-  QMGR_TRAN_ENTRY *tran_entry;
-  QUERY_ID query_id = -1;
+  QUERY_ID query_id = NULL_QUERY_ID;
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
 
@@ -8705,7 +8733,7 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       PGBUF_HOLDER *holder = NULL;
 
       /* Search for bufptr in current thread holder list. */
-      for (holder = thrd_holder_info->thrd_hold_list; holder != NULL; holder = holder->next_holder)
+      for (holder = thrd_holder_info->thrd_hold_list; holder != NULL; holder = holder->thrd_link)
 	{
 	  if (holder->bufptr == bufptr)
 	    {
@@ -8744,11 +8772,9 @@ pgbuf_flush_page_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   mnt_pb_iowrites (thread_p, 1);
 
 #if defined(ENABLE_SYSTEMTAP)
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_entry = qmgr_get_tran_entry (tran_index);
-  if (tran_entry->query_entry_list_p)
+  query_id = qmgr_get_current_query_id (thread_p);
+  if (query_id != NULL_QUERY_ID)
     {
-      query_id = tran_entry->query_entry_list_p->query_id;
       monitored = true;
       CUBRID_IO_WRITE_START (query_id);
     }
@@ -9992,18 +10018,14 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
   int abort_reason;
   bool was_page_flushed = false;
 #if defined(ENABLE_SYSTEMTAP)
-  int tran_index;
-  QMGR_TRAN_ENTRY *tran_entry;
   QUERY_ID query_id = -1;
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined(ENABLE_SYSTEMTAP)
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_entry = qmgr_get_tran_entry (tran_index);
-  if (tran_entry->query_entry_list_p)
+  query_id = qmgr_get_current_query_id (thread_p);
+  if (query_id != NULL_QUERY_ID)
     {
-      query_id = tran_entry->query_entry_list_p->query_id;
       monitored = true;
       CUBRID_IO_WRITE_START (query_id);
     }
@@ -10316,18 +10338,14 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
 #endif /* SERVER_MODE */
 
 #if defined(ENABLE_SYSTEMTAP)
-  int tran_index;
-  QMGR_TRAN_ENTRY *tran_entry;
-  QUERY_ID query_id = -1;
+  QUERY_ID query_id = NULL_QUERY_ID;
   bool monitored = false;
 #endif /* ENABLE_SYSTEMTAP */
 
 #if defined(ENABLE_SYSTEMTAP)
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_entry = qmgr_get_tran_entry (tran_index);
-  if (tran_entry->query_entry_list_p)
+  query_id = qmgr_get_current_query_id (thread_p);
+  if (query_id != NULL_QUERY_ID)
     {
-      query_id = tran_entry->query_entry_list_p->query_id;
       monitored = true;
       CUBRID_IO_WRITE_START (query_id);
     }
@@ -12115,4 +12133,22 @@ pgbuf_consistent_str (int consistent)
     }
 
   return consistent_str;
+}
+
+/*
+ * pgbuf_get_fix_count () - Get page fix count.
+ *
+ * return     : Fix count.
+ * pgptr (in) : Page pointer.
+ */
+int
+pgbuf_get_fix_count (PAGE_PTR pgptr)
+{
+  PGBUF_BCB *bufptr = NULL;
+
+  assert (pgptr != NULL);
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+
+  return bufptr->fcnt;
 }

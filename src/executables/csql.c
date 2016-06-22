@@ -1733,9 +1733,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
-#if defined(CS_MODE)
-  bool prm_query_mode_sync = prm_get_query_mode_sync ();
-#endif
   DB_QUERY_EXECUTION_TYPE query_execution_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
 
   csql_Num_failures = 0;
@@ -1880,25 +1877,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       attr_spec = db_get_query_type_list (session, stmt_id);
       stmt_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_id);
 
-
-#if defined(CS_MODE)
-      if (prm_query_mode_sync)
-	{
-	  db_set_session_mode_sync (session);
-	}
-      else
-	{
-	  db_set_session_mode_async (session);
-	}
-
-#else /* !CS_MODE */
-      db_set_session_mode_sync (session);
-#endif /* CS_MODE */
-      
       db_init_statement_execution_type (session, csql_arg->auto_commit);
 
       db_error = db_execute_statement (session, stmt_id, &result, &query_execution_type);
-
       if (db_error < 0)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -1935,14 +1916,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
 	    csql_results (csql_arg, result, attr_spec, stmt_start_line_no, stmt_type);
 
-#if defined(CS_MODE)
-	    if (prm_query_mode_sync)
-	      {
-		csql_Row_count = db_error;
-	      }
-#else /* !CS_MODE */
 	    csql_Row_count = db_error;
-#endif /* CS_MODE */
 
 	    msg_p = ((csql_Row_count > 1) ? csql_get_message (CSQL_ROWS) : csql_get_message (CSQL_ROW));
 	    snprintf (stmt_msg, LINE_BUFFER_SIZE, msg_p, csql_Row_count, "selected");
@@ -3079,8 +3053,6 @@ csql_display_trace (void)
     {
       goto end;
     }
-
-  db_set_session_mode_sync (session);
 
   db_error = db_execute_statement (session, stmt_id, &result, &query_execution_type);
 

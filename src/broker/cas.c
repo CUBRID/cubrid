@@ -908,7 +908,7 @@ cas_main (void)
 
 #if defined(WINDOWS)
 	client_sock_fd = br_sock_fd;
-	if (ioctlsocket (client_sock_fd, FIONBIO, (u_long *) & one) < 0)
+	if (ioctlsocket (client_sock_fd, FIONBIO, (u_long *) (&one)) < 0)
 	  {
 	    goto finish_cas;
 	  }

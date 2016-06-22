@@ -543,7 +543,7 @@
           (n)->info.function.analytic.is_analytic )
 
 #define PT_IS_POINTER_REF_NODE(n) \
-        ( (n) && (n)->node_type == PT_POINTER && \
+        ( (n) && (n)->node_type == PT_NODE_POINTER && \
           (n)->info.pointer.type == PT_POINTER_REF )
 
 #define PT_IS_VACUUM_NODE(n) \
@@ -659,7 +659,7 @@
 
 #define CAST_POINTER_TO_NODE(p)                             \
     do {                                                    \
-        while ((p) && (p)->node_type == PT_POINTER &&       \
+        while ((p) && (p)->node_type == PT_NODE_POINTER &&       \
                (p)->info.pointer.type == PT_POINTER_NORMAL) \
         {                                                   \
             (p) = (p)->info.pointer.node;                   \
@@ -910,7 +910,7 @@ enum pt_node_type
   PT_TRIGGER_ACTION,
   PT_TRIGGER_SPEC_LIST,
   PT_VALUE,
-  PT_POINTER,
+  PT_NODE_POINTER,
   PT_NODE_LIST,
   PT_TABLE_OPTION,
   PT_ATTR_ORDERING,
@@ -2415,7 +2415,6 @@ typedef enum
   RESERVED_T_MVCC_DELID,
   RESERVED_T_MVCC_FLAGS,
   RESERVED_T_MVCC_PREV_VERSION_LSA,
-  RESERVED_T_MVCC_PARTITION_OID,
 
   /* Reserved page info names */
   RESERVED_P_CLASS_OID,
@@ -2455,7 +2454,7 @@ typedef enum
   /* make sure you update these values when adding or removing items */
   RESERVED_FIRST_RECORD_INFO = RESERVED_T_PAGEID,
   RESERVED_FIRST_MVCC_INFO = RESERVED_T_MVCC_INSID,
-  RESERVED_LAST_RECORD_INFO = RESERVED_T_MVCC_PARTITION_OID,
+  RESERVED_LAST_RECORD_INFO = RESERVED_T_MVCC_PREV_VERSION_LSA,
 
   RESERVED_FIRST_PAGE_INFO = RESERVED_P_CLASS_OID,
   RESERVED_LAST_PAGE_INFO = RESERVED_P_UPDATE_BEST,
@@ -3558,7 +3557,6 @@ struct parser_context
   size_t input_buffer_position;
 
   int au_save;			/* authorization to restore if longjmp while authorization turned off */
-  QUERY_EXEC_MODE exec_mode;	/* flag used to specify query exec mode */
 
   DB_VALUE sys_datetime;
   DB_VALUE sys_epochtime;

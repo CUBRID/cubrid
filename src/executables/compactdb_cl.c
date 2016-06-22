@@ -573,7 +573,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
   num_classes = 0;
   for (i = 0; i < num_class_mops; i++)
     {
-      ws_find (class_mops[i], (MOBJ *) & class_ptr);
+      ws_find (class_mops[i], (MOBJ *) (&class_ptr));
       if (class_ptr == NULL)
 	{
 	  continue;

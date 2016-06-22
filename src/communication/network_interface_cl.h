@@ -235,8 +235,6 @@ extern int qmgr_drop_query_plan (const char *qstmt, const OID * user_oid, const 
 extern int qmgr_drop_all_query_plans (void);
 extern void qmgr_dump_query_plans (FILE * outfp);
 extern void qmgr_dump_query_cache (FILE * outfp);
-extern int qmgr_get_query_info (DB_QUERY_RESULT * query_result, int *done, int *count, int *error, char **error_string);
-extern int qmgr_sync_query (DB_QUERY_RESULT * query_result, int wait);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int qp_get_sys_timestamp (DB_VALUE * value);
 #endif

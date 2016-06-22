@@ -1858,7 +1858,7 @@ tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str, const int tz_
       assert (offset >= TZ_MIN_OFFSET && offset <= TZ_MAX_OFFSET);
 
       offset = (offset < 0) ? (-offset) : offset;
-      db_time_decode ((DB_TIME *) & offset, &hour, &min, &sec);
+      db_time_decode ((DB_TIME *) (&offset), &hour, &min, &sec);
 
       if (sec > 0)
 	{
@@ -4168,7 +4168,7 @@ tz_explain_tz_id (const TZ_ID * tz_id, char *tzr, const int tzr_size, char *tzds
 	}
 
       offset = (offset < 0) ? (-offset) : offset;
-      db_time_decode ((DB_TIME *) & offset, &hour, &min, &sec);
+      db_time_decode ((DB_TIME *) (&offset), &hour, &min, &sec);
 
       *tzh = hour;
       *tzm = min;
@@ -4923,9 +4923,12 @@ tz_resolve_os_timezone (char *timezone, int buf_len)
   int len_iana_zone, iana_zone_id;
 
 #if defined (WINDOWS)
+  char tzname[64];
+  size_t tzret;
   tz_data = tz_get_data ();
   tzset ();
-  iana_zone_id = tz_get_iana_zone_id_by_windows_zone (tzname[0]);
+  _get_tzname (&tzret, tzname, sizeof (tzname), 0);
+  iana_zone_id = tz_get_iana_zone_id_by_windows_zone (tzname);
   if (iana_zone_id < 0)
     {
       return iana_zone_id;

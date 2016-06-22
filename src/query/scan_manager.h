@@ -132,7 +132,7 @@ struct multi_range_opt
   bool use;			/* true/false */
   int cnt;			/* current number of entries */
   int size;			/* expected number of entries */
-  int no_attrs;			/* number of order by attributes */
+  int num_attrs;		/* number of order by attributes */
   bool *is_desc_order;		/* sorting in descending order */
   int *sort_att_idx;		/* index of MIDXKEY attribute on which the sort is performed */
   QFILE_TUPLE_RECORD tplrec;	/* tuple record to dump MIDXKEYs into */

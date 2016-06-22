@@ -7057,27 +7057,10 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 	      trigger->name = newname;
 	      db_make_string (&value, newname);
 	      newname = NULL;
-	      if (db_put_internal (trigger_object, TR_ATT_NAME, &value))
+	      error = db_put_internal (trigger_object, TR_ATT_NAME, &value);
+	      if (error == NO_ERROR)
 		{
-		  assert (er_errid () != NO_ERROR);
-		  error = er_errid ();
-		}
-	      else
-		{
-		  mop1 = ws_mvcc_latest_version (trigger_object);
 		  error = locator_flush_instance (trigger_object);
-		  if (error == NO_ERROR)
-		    {
-		      mop2 = ws_mvcc_latest_version (trigger_object);
-		      if (ws_mop_compare (mop1, mop2) != 0)
-			{
-			  /* update the class hierarchy with new (latest) db_trigger instance mop. Otherwise, the class 
-			   * record refer the old version of db_trigger instance. The old version may be removed by
-			   * VACUUM <=> remove class trigger. 
-			   */
-			  error = sm_touch_class (trigger->class_mop);
-			}
-		    }
 		}
 
 	      if (error != NO_ERROR)
@@ -7086,6 +7069,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
 		   * hmm, couldn't set the new name, put the old one back,
 		   * we might need to abort the transaction here ?
 		   */
+		  ASSERT_ERROR ();
 		  newname = trigger->name;
 		  trigger->name = oldname;
 		  /* if we can't do this, the transaction better abort */

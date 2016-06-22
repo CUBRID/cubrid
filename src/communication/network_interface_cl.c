@@ -1455,9 +1455,8 @@ locator_find_lockhint_class_oids (int num_classes, const char **many_classnames,
   request_size = OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
   for (i = 0; i < num_classes; i++)
     {
-      request_size +=
-	(length_const_string (many_classnames[i], NULL) + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE +
-	 OR_INT_SIZE);
+      request_size += (length_const_string (many_classnames[i], NULL) + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE
+		       + OR_OID_SIZE + OR_INT_SIZE);
     }
 
   request = (char *) malloc (request_size);
@@ -7564,7 +7563,7 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
   OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE) a_reply;
   char *reply;
   char *page_ptr;
-  int page_size, dummy_plan_size, request_type;
+  int page_size, dummy_plan_size;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -7600,20 +7599,10 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
   /* change senddata_size as real packing size */
   senddata_size = CAST_BUFLEN (ptr - senddata);
 
-  if (IS_SYNC_EXEC_MODE (flag))
-    {
-      request_type = NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE;
-    }
-  else
-    {
-      request_type = NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC;
-    }
-
-  req_error =
-    net_client_request_with_callback (request_type, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), xasl_stream, xasl_stream_size, senddata,
-				      senddata_size, &replydata, &replydata_size_listid, &page_ptr,
-				      &replydata_size_page, NULL, NULL);
+  req_error = net_client_request_with_callback (NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE, request,
+						OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply),
+						xasl_stream, xasl_stream_size, senddata, senddata_size, &replydata,
+						&replydata_size_listid, &page_ptr, &replydata_size_page, NULL, NULL);
   if (!req_error)
     {
       /* should be the same as replydata_size */
@@ -7916,163 +7905,6 @@ qmgr_dump_query_cache (FILE * outfp)
   xqmgr_dump_query_cache (NULL, outfp);
 
   EXIT_SERVER ();
-#endif /* !CS_MODE */
-}
-
-/*
- * qmgr_get_query_info -
- *
- * return:
- *
- *   query_result(in):
- *   done(in):
- *   count(in):
- *   error(in):
- *   error_string(in):
- *
- * NOTE:
- */
-int
-qmgr_get_query_info (DB_QUERY_RESULT * query_result, int *done, int *count, int *error, char **error_string)
-{
-#if defined(CS_MODE)
-  int req_error;
-  OR_ALIGNED_BUF (OR_PTR_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *area = NULL, *reply, *ptr;
-  int area_size;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  or_pack_ptr (request, query_result->res.s.query_id);
-
-  req_error =
-    net_client_request2 (NET_SERVER_QM_GET_QUERY_INFO, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
-  if (!req_error && area != NULL)
-    {
-      int dummy_int;
-      char *dummy_str = NULL;
-
-      ptr = or_unpack_int (area, &area_size);
-      ptr = or_unpack_int (ptr, done);
-      ptr = or_unpack_int (ptr, count);
-      query_result->res.s.cursor_id.list_id.tuple_cnt = *count;
-
-      /* 
-       * Have to unpack these fields unconditionally to keep from screwing
-       * up others who need to understand the buffer layout.  (Well, I
-       * suppose we could blow off the string if we wanted to [since it's
-       * last], but sure as we do, someone will add something to the end of
-       * this message format and forget about this problem.)
-       */
-      ptr = or_unpack_int (ptr, error ? error : &dummy_int);
-      ptr = or_unpack_string_nocopy (ptr, &dummy_str);
-      if (error_string)
-	{
-	  if (dummy_str == NULL)
-	    {
-	      *error_string = NULL;
-	    }
-	  else
-	    {
-	      /* 
-	       * we're handing it off to API-land and
-	       * making them responsible for freeing it.  In that case, we'd
-	       * better copy it into a buffer that can be free'd via ordinary free().
-	       */
-	      int size;
-
-	      size = strlen (dummy_str) + 1;
-	      *error_string = (char *) malloc (size);
-	      if (*error_string == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
-		  *done = ER_OUT_OF_VIRTUAL_MEMORY;
-		}
-	      else
-		{
-		  strcpy (*error_string, dummy_str);
-		}
-	    }
-	}
-
-      free_and_init (area);
-      return *done;
-    }
-
-  return req_error;
-
-#else /* CS_MODE */
-  /* Cannot run in standalone mode */
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "query info");
-  return ER_FAILED;
-#endif /* !CS_MODE */
-}
-
-/*
- * qmgr_sync_query -
- *
- * return:
- *
- *   query_result(in):
- *   wait(in):
- *
- * NOTE:
- */
-int
-qmgr_sync_query (DB_QUERY_RESULT * query_result, int wait)
-{
-#if defined(CS_MODE)
-#if defined (ENABLE_UNUSED_FUNCTION)
-  int req_error;
-  OR_ALIGNED_BUF (OR_PTR_SIZE + OR_INT_SIZE) a_request;
-  char *request, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
-  char *reply;
-  int status = ER_FAILED;
-  QFILE_LIST_ID *list_id;
-  char *replydata = 0;
-  int replydata_size;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = or_pack_ptr (request, query_result->res.s.query_id);
-  ptr = or_pack_int (ptr, wait);
-
-  req_error =
-    net_client_request2 (NET_SERVER_QM_QUERY_SYNC, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &replydata, &replydata_size);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &replydata_size);
-      ptr = or_unpack_int (ptr, &status);
-      if (replydata && replydata_size)
-	{
-	  ptr = or_unpack_unbound_listid (replydata, (void **) &list_id);
-	  /* free old list_id */
-	  cursor_free_list_id (&query_result->res.s.cursor_id.list_id, false);
-	  cursor_copy_list_id (&query_result->res.s.cursor_id.list_id, list_id);
-	  cursor_free_list_id (list_id, true);
-
-	  free_and_init (replydata);
-	}
-    }
-
-  return status;
-#else /* ENABLE_UNUSED_FUNCTION */
-  /* We are not using ASYNC_EXEC mode. */
-  return NO_ERROR;
-#endif /* !ENABLE_UNUSED_FUNCTION */
-
-#else /* CS_MODE */
-
-  /* Cannot run in standalone mode */
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "query sync");
-  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 

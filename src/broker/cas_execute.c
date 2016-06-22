@@ -1199,17 +1199,6 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       stmt_id = srv_handle->q_result->stmt_id;
     }
 
-  if ((flag & CCI_EXEC_ASYNC) || (max_row > 0))
-    {
-      db_set_session_mode_async (session);
-      srv_handle->q_result->async_flag = TRUE;
-    }
-  else
-    {
-      db_set_session_mode_sync (session);
-      srv_handle->q_result->async_flag = FALSE;
-    }
-
   db_session_set_holdable (srv_handle->session, srv_handle->is_holdable);
   srv_handle->is_from_current_transaction = true;
 
@@ -1250,22 +1239,6 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
     {
       /* success; peek the values in tuples */
       (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
-      if (srv_handle->q_result->async_flag == TRUE)
-	{
-	  int tmp_err_code;
-
-	  tmp_err_code = db_query_first_tuple (result);
-	  if (tmp_err_code == DB_CURSOR_END)
-	    {
-	      n = 0;
-	      srv_handle->q_result->async_flag = FALSE;
-	    }
-	  else if (tmp_err_code < 0)
-	    {
-	      n = tmp_err_code;
-	      err_code = ERROR_INFO_SET (n, DBMS_ERROR_INDICATOR);
-	    }
-	}
     }
 
   if (flag & CCI_EXEC_QUERY_INFO)
@@ -1289,8 +1262,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       goto execute_error;
     }
 
-  if ((!(flag & CCI_EXEC_ASYNC)) && (max_row > 0) && (db_get_statement_type (session, stmt_id) == CUBRID_STMT_SELECT)
-      && *clt_cache_reusable == FALSE)
+  if (max_row > 0 && db_get_statement_type (session, stmt_id) == CUBRID_STMT_SELECT && *clt_cache_reusable == FALSE)
     {
       err_code = db_query_seek_tuple (result, max_row, 1);
       if (err_code < 0)
@@ -1300,7 +1272,6 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 	}
       else if (err_code == DB_CURSOR_END)
 	{
-	  db_query_sync (result, true);
 	  n = db_query_tuple_count (result);
 	}
       else
@@ -1308,7 +1279,6 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 	  n = max_row;
 	}
       n = MIN (n, max_row);
-      srv_handle->q_result->async_flag = FALSE;
     }
 
   net_buf_cp_int (net_buf, n, NULL);
@@ -1448,7 +1418,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   int n;
   int stmt_type = -1, stmt_id = -1;
   int q_res_idx;
-  char is_prepared, async_flag;
+  char is_prepared;
   char is_first_stmt = TRUE;
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
@@ -1548,17 +1518,6 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	    }
 	}
 
-      if ((flag & CCI_EXEC_ASYNC) || (max_row > 0))
-	{
-	  db_set_session_mode_async (session);
-	  async_flag = TRUE;
-	}
-      else
-	{
-	  db_set_session_mode_sync (session);
-	  async_flag = FALSE;
-	}
-
       db_session_set_holdable (srv_handle->session, srv_handle->is_holdable);
       srv_handle->is_from_current_transaction = true;
 
@@ -1602,25 +1561,9 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	{
 	  /* success; peek the values in tuples */
 	  (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
-	  if (is_first_stmt == TRUE && async_flag == TRUE)
-	    {
-	      int tmp_err_code;
-	      tmp_err_code = db_query_first_tuple (result);
-	      if (tmp_err_code == DB_CURSOR_END)
-		{
-		  n = 0;
-		  async_flag = FALSE;
-		}
-	      else if (tmp_err_code < 0)
-		{
-		  err_code = ERROR_INFO_SET (tmp_err_code, DBMS_ERROR_INDICATOR);
-		  goto execute_all_error;
-		}
-	    }
 	}
 
-      if ((!(flag & CCI_EXEC_ASYNC)) && (max_row > 0)
-	  && (db_get_statement_type (session, stmt_id) == CUBRID_STMT_SELECT) && *clt_cache_reusable == FALSE)
+      if (max_row > 0 && db_get_statement_type (session, stmt_id) == CUBRID_STMT_SELECT && *clt_cache_reusable == FALSE)
 	{
 	  err_code = db_query_seek_tuple (result, max_row, 1);
 	  if (err_code < 0)
@@ -1630,7 +1573,6 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	    }
 	  else if (err_code == DB_CURSOR_END)
 	    {
-	      db_query_sync (result, true);
 	      n = db_query_tuple_count (result);
 	    }
 	  else
@@ -1638,7 +1580,6 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	      n = max_row;
 	    }
 	  n = MIN (n, max_row);
-	  async_flag = FALSE;
 	}
 
       if (is_first_stmt == TRUE)
@@ -1669,7 +1610,6 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
       db_get_cacheinfo (session, stmt_id, &srv_handle->use_plan_cache, &srv_handle->use_query_cache);
 
-      q_result->async_flag = async_flag;
       q_result->result = result;
       q_result->query_execution_type = query_execution_type;
       q_result->tuple_count = n;
@@ -1852,8 +1792,6 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
     }
 
   stmt_id = srv_handle->q_result->stmt_id;
-  db_set_session_mode_sync (session);
-  srv_handle->q_result->async_flag = FALSE;
 
   jsp_set_prepare_call ();
   n = db_execute_and_keep_statement (session, stmt_id, &result, &query_execution_type);
@@ -2012,24 +1950,6 @@ ux_next_result (T_SRV_HANDLE * srv_handle, char flag, T_NET_BUF * net_buf, T_REQ
     }
 
   cur_result = &(srv_handle->q_result[srv_handle->cur_result_index]);
-
-  if (cur_result->async_flag == TRUE)
-    {
-      int tmp_err_code;
-
-      tmp_err_code = db_query_first_tuple ((DB_QUERY_RESULT *) cur_result->result);
-
-      if (tmp_err_code == DB_CURSOR_END)
-	{
-	  cur_result->tuple_count = 0;
-	  cur_result->async_flag = FALSE;
-	}
-      else if (tmp_err_code < 0)
-	{
-	  err_code = ERROR_INFO_SET (tmp_err_code, DBMS_ERROR_INDICATOR);
-	  goto next_result_error;
-	}
-    }
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
 
@@ -2732,135 +2652,10 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
       goto cursor_error;
     }
 
-  if (cur_result->async_flag == FALSE)
-    {
-      count = cur_result->tuple_count;
-      net_buf_cp_int (net_buf, 0, NULL);	/* result code */
-      net_buf_cp_int (net_buf, count, NULL);	/* result msg */
-      return 0;
-    }
-
-  result = (DB_QUERY_RESULT *) cur_result->result;
-  if (result == NULL)
-    {
-      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_DATA, CAS_ERROR_INDICATOR);
-      goto cursor_error;
-    }
-
-  if (origin == CCI_CURSOR_FIRST)
-    {
-      err_code = db_query_seek_tuple (result, offset - 1, 1);
-      if (err_code < 0)
-	{
-	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	  goto cursor_error;
-	}
-      else if (err_code == DB_CURSOR_END)
-	{
-	  err_code = db_query_sync (result, true);
-	  if (err_code < 0)
-	    {
-	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	      goto cursor_error;
-	    }
-
-	  count = db_query_tuple_count (result);
-	  if (count < 0)
-	    {
-	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	      goto cursor_error;
-	    }
-
-	  if (srv_handle->max_row > 0)
-	    {
-	      count = MIN (count, srv_handle->max_row);
-	    }
-	}
-      else
-	{
-	  srv_handle->cursor_pos = offset;
-	  count = 0;
-	  err_code = db_query_get_info (result, &done, &count, &error, &err_str);
-	  if (err_code < 0 || error < 0)
-	    {
-	      count = -1;
-	    }
-
-	  if ((srv_handle->max_row > 0) && (count >= srv_handle->max_row))
-	    {
-	      count = srv_handle->max_row;
-	    }
-	  else
-	    {
-	      if (done != true || count < 0)
-		{
-		  count = -1;
-		}
-#ifdef UNIXWARE7
-	      if (count < offset)
-		{
-		  err_code = db_query_sync (result, true);
-		  if (err_code < 0)
-		    {
-		      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-		      goto cursor_error;
-		    }
-		  count = db_query_tuple_count (result);
-		  if (count < 0)
-		    {
-		      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-		      goto cursor_error2;
-		    }
-		  if ((srv_handle->max_row > 0) && (count >= srv_handle->max_row))
-		    {
-		      count = srv_handle->max_row;
-		    }
-		}
-#endif /* UNIXWARE7 */
-	    }
-	}
-    }
-  else if (origin == CCI_CURSOR_LAST)
-    {
-      if (srv_handle->max_row > 0)
-	{
-	  err_code = db_query_seek_tuple (result, srv_handle->max_row, 1);
-	  if (err_code < 0)
-	    {
-	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	      goto cursor_error;
-	    }
-
-	  err_code = 0;
-	  count = db_query_tuple_count (result);
-	  count = MIN (count, srv_handle->max_row);
-	}
-      else
-	{
-	  err_code = db_query_sync (result, true);
-	  if (err_code < 0)
-	    {
-	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	      goto cursor_error;
-	    }
-
-	  count = db_query_tuple_count (result);
-	  if (count < 0)
-	    {
-	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	      goto cursor_error;
-	    }
-	}
-    }
-  else
-    {
-      err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
-      goto cursor_error;
-    }
-
+  count = cur_result->tuple_count;
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, count, NULL);	/* result msg */
-  FREE_MEM (err_str);
+
   return 0;
 
 cursor_error:
@@ -9301,7 +9096,6 @@ create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result, DB_QUERY_TYP
   q_result->stmt_type = src_q_result->stmt_type;
   q_result->col_updatable = FALSE;
   q_result->include_oid = FALSE;
-  q_result->async_flag = FALSE;
   q_result->num_column = src_q_result->num_column;
   q_result->column_info = column_info;
   q_result->is_holdable = src_q_result->is_holdable;
@@ -9924,9 +9718,7 @@ static bool
 check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
 {
   if (srv_handle->auto_commit_mode == TRUE && srv_handle->cur_result_index == srv_handle->num_q_result
-      && srv_handle->forward_only_cursor == TRUE && srv_handle->is_updatable == FALSE && (srv_handle->q_result == NULL
-											  || srv_handle->q_result->
-											  async_flag == false))
+      && srv_handle->forward_only_cursor == TRUE && srv_handle->is_updatable == FALSE)
     {
       return true;
     }

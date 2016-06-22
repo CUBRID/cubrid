@@ -302,7 +302,6 @@ extern int db_add_attribute_internal (MOP class_, const char *name, const char *
 				      SM_NAME_SPACE name_space);
 extern int db_rename_internal (DB_OBJECT * classobj, const char *name, int class_namespace, const char *newname);
 extern int db_drop_attribute_internal (DB_OBJECT * classobj, const char *name);
-extern void db_set_sync_flag (DB_SESSION * session, QUERY_EXEC_MODE flag);
 extern DB_SESSION *db_open_buffer_local (const char *buffer);
 extern int db_compile_statement_local (DB_SESSION * session);
 extern int db_execute_statement_local (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result,
@@ -311,8 +310,7 @@ extern int db_open_buffer_and_compile_first_statement (const char *CSQL_query, D
 						       int include_oid, DB_SESSION ** session, int *stmt_no);
 extern int db_compile_and_execute_local (const char *CSQL_query, void *result, DB_QUERY_ERROR * query_error);
 extern int db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, DB_QUERY_ERROR * query_error,
-						    int include_oid, int execute, QUERY_EXEC_MODE exec_mode,
-						    bool is_new_statement);
+						    int include_oid, int execute, bool is_new_statement);
 extern int db_set_system_generated_statement (DB_SESSION * session);
 extern void db_close_session_local (DB_SESSION * session);
 extern int db_savepoint_transaction_internal (const char *savepoint_name);

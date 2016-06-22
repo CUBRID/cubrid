@@ -148,7 +148,8 @@ static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int tr
 		      INTL_CODESET codeset, unsigned char **res, DB_TYPE * res_type, int *res_length, int *res_size);
 static void trim_leading (const unsigned char *trim_charset_ptr, int trim_charset_size, const unsigned char *src_ptr,
 			  DB_TYPE src_type, int src_length, int src_size, INTL_CODESET codeset,
-			  unsigned char **lead_trimmed_ptr, int *lead_trimmed_length, int *lead_trimmed_size);
+			  unsigned char **lead_trimmed_ptr, int *lead_trimmed_length, int *lead_trimmed_size,
+			  bool skip_spaces);
 static int qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_charset_ptr,
 		     int pad_charset_length, int pad_charset_size, const unsigned char *src_ptr, DB_TYPE src_type,
 		     int src_length, int src_size, INTL_CODESET codeset, unsigned char **result, DB_TYPE * result_type,
@@ -1422,14 +1423,11 @@ db_string_instr (const DB_VALUE * src_string, const DB_VALUE * sub_string, const
     }
   else
     {
-      if (!
-	  (str1_type == DB_TYPE_STRING || str1_type == DB_TYPE_CHAR || str1_type == DB_TYPE_VARCHAR
-	   || str1_type == DB_TYPE_NCHAR || str1_type == DB_TYPE_VARNCHAR) || !(str2_type == DB_TYPE_STRING
-										|| str2_type == DB_TYPE_CHAR
-										|| str2_type == DB_TYPE_VARCHAR
-										|| str2_type == DB_TYPE_NCHAR
-										|| str2_type == DB_TYPE_VARNCHAR)
-	  || !(arg3_type == DB_TYPE_INTEGER || arg3_type == DB_TYPE_SHORT || arg3_type == DB_TYPE_BIGINT))
+      if ((str1_type != DB_TYPE_STRING && str1_type != DB_TYPE_CHAR && str1_type != DB_TYPE_VARCHAR
+	   && str1_type != DB_TYPE_NCHAR && str1_type != DB_TYPE_VARNCHAR)
+	  || (str2_type != DB_TYPE_STRING && str2_type != DB_TYPE_CHAR && str2_type != DB_TYPE_VARCHAR
+	      && str2_type != DB_TYPE_NCHAR && str2_type != DB_TYPE_VARNCHAR)
+	  || (arg3_type != DB_TYPE_INTEGER && arg3_type != DB_TYPE_SHORT && arg3_type != DB_TYPE_BIGINT))
 	{
 	  error_status = ER_QSTR_INVALID_DATA_TYPE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -3574,6 +3572,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
   int lead_trimmed_length, trail_trimmed_length;
   int lead_trimmed_size, trail_trimmed_size, pad_char_size = 0;
   int error_status = NO_ERROR;
+  bool trim_ascii_spaces = false;
 
   /* default case */
   intl_pad_char (codeset, pad_char, &pad_char_size);
@@ -3582,6 +3581,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
       trim_charset = pad_char;
       trim_charset_length = 1;
       trim_charset_size = pad_char_size;
+      trim_ascii_spaces = true;
     }
 
   /* trim from front */
@@ -3592,7 +3592,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
   if (trim_operand == LEADING || trim_operand == BOTH)
     {
       trim_leading (trim_charset, trim_charset_size, src_ptr, src_type, src_length, src_size, codeset,
-		    &lead_trimmed_ptr, &lead_trimmed_length, &lead_trimmed_size);
+		    &lead_trimmed_ptr, &lead_trimmed_length, &lead_trimmed_size, trim_ascii_spaces);
     }
 
   trail_trimmed_ptr = lead_trimmed_ptr;
@@ -3602,7 +3602,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
   if (trim_operand == TRAILING || trim_operand == BOTH)
     {
       qstr_trim_trailing (trim_charset, trim_charset_size, lead_trimmed_ptr, src_type, lead_trimmed_length,
-			  lead_trimmed_size, codeset, &trail_trimmed_length, &trail_trimmed_size);
+			  lead_trimmed_size, codeset, &trail_trimmed_length, &trail_trimmed_size, trim_ascii_spaces);
     }
 
   /* setup result */
@@ -3642,6 +3642,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
  *                codeset: (in)  International codeset of source string.
  *       lead_trimmed_ptr: (out) Pointer to start of trimmed string.
  *    lead_trimmed_length: (out) Length of trimmed string.
+ *	trim_ascii_spaces: (in)  Option to trim normal spaces also. 
  *
  * Returns: nothing
  *
@@ -3657,7 +3658,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
 static void
 trim_leading (const unsigned char *trim_charset_ptr, int trim_charset_size, const unsigned char *src_ptr,
 	      DB_TYPE src_type, int src_length, int src_size, INTL_CODESET codeset, unsigned char **lead_trimmed_ptr,
-	      int *lead_trimmed_length, int *lead_trimmed_size)
+	      int *lead_trimmed_length, int *lead_trimmed_size, bool trim_ascii_spaces)
 {
   int cur_src_char_size, cur_trim_char_size;
   unsigned char *cur_src_char_ptr, *cur_trim_char_ptr;
@@ -3671,6 +3672,14 @@ trim_leading (const unsigned char *trim_charset_ptr, int trim_charset_size, cons
   /* iterate for source string */
   for (cur_src_char_ptr = (unsigned char *) src_ptr; cur_src_char_ptr < src_ptr + src_size;)
     {
+      if (trim_ascii_spaces && *cur_src_char_ptr == ' ')
+	{
+	  cur_src_char_ptr += 1;
+	  *lead_trimmed_length -= 1;
+	  *lead_trimmed_size -= 1;
+	  *lead_trimmed_ptr += 1;
+	  continue;
+	}
       for (cur_trim_char_ptr = (unsigned char *) trim_charset_ptr;
 	   cur_src_char_ptr < (src_ptr + src_size) && (cur_trim_char_ptr < trim_charset_ptr + trim_charset_size);)
 	{
@@ -3711,6 +3720,7 @@ trim_leading (const unsigned char *trim_charset_ptr, int trim_charset_size, cons
  *             src_length: (in)  Length of source string.
  *                codeset: (in)  International codeset of source string.
  *   trail_trimmed_length: (out) Length of trimmed string.
+ *      trim_ascii_spaces: (in)  Option to trim normal spaces also.
  *
  * Returns: nothing
  *
@@ -3726,7 +3736,7 @@ trim_leading (const unsigned char *trim_charset_ptr, int trim_charset_size, cons
 void
 qstr_trim_trailing (const unsigned char *trim_charset_ptr, int trim_charset_size, const unsigned char *src_ptr,
 		    DB_TYPE src_type, int src_length, int src_size, INTL_CODESET codeset, int *trail_trimmed_length,
-		    int *trail_trimmed_size)
+		    int *trail_trimmed_size, bool trim_ascii_spaces)
 {
   int prev_src_char_size, prev_trim_char_size;
   unsigned char *cur_src_char_ptr, *cur_trim_char_ptr;
@@ -3739,6 +3749,13 @@ qstr_trim_trailing (const unsigned char *trim_charset_ptr, int trim_charset_size
   /* iterate for source string */
   for (cur_src_char_ptr = (unsigned char *) src_ptr + src_size; cur_src_char_ptr > src_ptr;)
     {
+      if (trim_ascii_spaces && *(cur_src_char_ptr - 1) == ' ')
+	{
+	  cur_src_char_ptr -= 1;
+	  *trail_trimmed_length -= 1;
+	  *trail_trimmed_size -= 1;
+	  continue;
+	}
       for (cur_trim_char_ptr = (unsigned char *) trim_charset_ptr + trim_charset_size;
 	   cur_trim_char_ptr > trim_charset_ptr && cur_src_char_ptr > src_ptr;)
 	{
@@ -4712,9 +4729,8 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 		  do
 		    {
 		      if (!inescape
-			  &&
-			  (((!escape_is_match_many && *expr_seq_end == LIKE_WILDCARD_MATCH_MANY)
-			    || (!escape_is_match_one && *expr_seq_end == LIKE_WILDCARD_MATCH_ONE))))
+			  && (((!escape_is_match_many && *expr_seq_end == LIKE_WILDCARD_MATCH_MANY)
+			       || (!escape_is_match_one && *expr_seq_end == LIKE_WILDCARD_MATCH_ONE))))
 			{
 			  break;
 			}
@@ -4826,9 +4842,8 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 	      do
 		{
 		  if (!inescape
-		      &&
-		      (((!escape_is_match_many && *expr_seq_end == LIKE_WILDCARD_MATCH_MANY)
-			|| (!escape_is_match_one && *expr_seq_end == LIKE_WILDCARD_MATCH_ONE))))
+		      && (((!escape_is_match_many && *expr_seq_end == LIKE_WILDCARD_MATCH_MANY)
+			   || (!escape_is_match_one && *expr_seq_end == LIKE_WILDCARD_MATCH_ONE))))
 		    {
 		      break;
 		    }
@@ -4999,12 +5014,8 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
   if ((qstr_get_category (src_string) != qstr_get_category (srch_string))
       || (!is_repl_string_omitted && (qstr_get_category (src_string) != qstr_get_category (repl_string)))
       || (!is_repl_string_omitted && (qstr_get_category (srch_string) != qstr_get_category (repl_string)))
-      || ((DB_GET_STRING_CODESET (src_string) != DB_GET_STRING_CODESET (srch_string))) || (!is_repl_string_omitted
-											   &&
-											   (DB_GET_STRING_CODESET
-											    (src_string) !=
-											    DB_GET_STRING_CODESET
-											    (repl_string))))
+      || ((DB_GET_STRING_CODESET (src_string) != DB_GET_STRING_CODESET (srch_string)))
+      || (!is_repl_string_omitted && (DB_GET_STRING_CODESET (src_string) != DB_GET_STRING_CODESET (repl_string))))
     {
       error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_CODE_SETS, 0);
@@ -5134,9 +5145,8 @@ qstr_replace (unsigned char *src_buf, int src_len, int src_size, INTL_CODESET co
     {
       int matched_size;
 
-      if (QSTR_MATCH
-	  (coll_id, src_ptr, src_buf + src_size - src_ptr, srch_str_buf, srch_str_size, NULL, false,
-	   &matched_size) == 0)
+      if (QSTR_MATCH (coll_id, src_ptr, src_buf + src_size - src_ptr, srch_str_buf, srch_str_size, NULL, false,
+		      &matched_size) == 0)
 	{
 	  /* store byte position and size of matched string */
 	  if (repl_pos_array_cnt >= repl_pos_array_size)
@@ -5784,9 +5794,8 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 	      /* check using collation */
 	      if (needle_size > 0)
 		{
-		  cmp =
-		    QSTR_MATCH (coll_id, (const unsigned char *) elem_start, stack_ptr - elem_start,
-				(const unsigned char *) needle_str, needle_size, false, false, &matched_stack_size);
+		  cmp = QSTR_MATCH (coll_id, (const unsigned char *) elem_start, stack_ptr - elem_start,
+				    (const unsigned char *) needle_str, needle_size, false, false, &matched_stack_size);
 		  if (cmp == 0 && matched_stack_size == stack_ptr - elem_start)
 		    {
 		      DB_MAKE_INT (result, position);
@@ -8449,7 +8458,7 @@ varchar_truncated (const unsigned char *s, DB_TYPE s_type, int s_length, int use
   intl_pad_char (codeset, pad, &pad_size);
   intl_char_size ((unsigned char *) s, s_length, codeset, &s_size);
 
-  qstr_trim_trailing (pad, pad_size, s, s_type, s_length, s_size, codeset, &trim_length, &trim_size);
+  qstr_trim_trailing (pad, pad_size, s, s_type, s_length, s_size, codeset, &trim_length, &trim_size, true);
 
   if (trim_length > used_chars)
     {
@@ -11659,7 +11668,7 @@ db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day)
       return error_status;
     }
 
-  db_date_decode ((DB_DATE *) & src_date->data.date, &month, &day, &year);
+  db_date_decode ((DB_DATE *) (&src_date->data.date), &month, &day, &year);
 
   if (month == 0 && day == 0 && year == 0)
     {
@@ -12780,9 +12789,8 @@ db_to_date (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      goto exit;
 	    }
-	  cmp =
-	    intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
-				 (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
+	  cmp = intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
+				     (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
 
 	  if (cmp != 0)
 	    {
@@ -13333,9 +13341,8 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      goto exit;
 	    }
-	  cmp =
-	    intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
-				 (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
+	  cmp = intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
+				     (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
 
 	  if (cmp != 0)
 	    {
@@ -14124,9 +14131,8 @@ db_to_timestamp (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB
 	      goto exit;
 	    }
 
-	  cmp =
-	    intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
-				 (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
+	  cmp = intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
+				     (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
 
 	  if (cmp != 0)
 	    {
@@ -15082,9 +15088,8 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      goto exit;
 	    }
-	  cmp =
-	    intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
-				 (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
+	  cmp = intl_case_match_tok (date_lang_id, codeset, (unsigned char *) (cur_format_str_ptr + 1),
+				     (unsigned char *) cs, cur_format_size - 2, strlen (cs), &cs_byte_size);
 
 	  if (cmp != 0)
 	    {
@@ -17108,9 +17113,9 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
 		  int symbol_size = 0;
 
 		  /* check currency symbols */
-		  if (intl_is_currency_symbol
-		      (&(res_ptr[i]), &currency, &symbol_size,
-		       CURRENCY_CHECK_MODE_CONSOLE | CURRENCY_CHECK_MODE_UTF8 | CURRENCY_CHECK_MODE_ISO88591))
+		  if (intl_is_currency_symbol (&(res_ptr[i]), &currency, &symbol_size,
+					       (CURRENCY_CHECK_MODE_CONSOLE | CURRENCY_CHECK_MODE_UTF8
+						| CURRENCY_CHECK_MODE_ISO88591)))
 		    {
 		      i += symbol_size;
 		    }
@@ -23047,8 +23052,8 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	      d = ld_fw + 1;
 	      m = 1;
 
-	      if (db_add_weeks_and_days_to_date
-		  (&d, &m, &y, dow2 >= 1 && dow2 <= 4 ? w - 2 : w - 1, dow == 0 ? 6 : dow - 1) == ER_FAILED)
+	      if (db_add_weeks_and_days_to_date (&d, &m, &y, dow2 >= 1 && dow2 <= 4 ? w - 2 : w - 1,
+						 dow == 0 ? 6 : dow - 1) == ER_FAILED)
 		{
 		  goto conversion_error;
 		}

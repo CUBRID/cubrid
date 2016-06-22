@@ -1087,7 +1087,7 @@ parser_copy_tree_list (PARSER_CONTEXT * parser, PT_NODE * tree)
 
 /*
  * parser_get_tree_list_diff  () - get the difference list1 minus list2
- *   return: a PT_POINTER list to the nodes in difference
+ *   return: a PT_NODE_POINTER list to the nodes in difference
  *   list1(in): the first tree list
  *   list2(in): the second tree list
  */
@@ -1160,7 +1160,7 @@ pt_point (PARSER_CONTEXT * parser, const PT_NODE * in_tree)
 
   CAST_POINTER_TO_NODE (tree);
 
-  pointer = parser_new_node (parser, PT_POINTER);
+  pointer = parser_new_node (parser, PT_NODE_POINTER);
   if (!pointer)
     {
       return NULL;
@@ -1227,7 +1227,7 @@ exit_on_error:
 
 
 /*
- * pt_point_ref () - creates a reference PT_POINTER
+ * pt_point_ref () - creates a reference PT_NODE_POINTER
  *   return: pointer PT_NODE
  *   parser(in): parser context
  *   node(in): node to point to
@@ -1245,7 +1245,7 @@ pt_point_ref (PARSER_CONTEXT * parser, const PT_NODE * node)
 }
 
 /*
- * pt_pointer_stack_push () - push a new PT_POINTER, pointing to node, on a
+ * pt_pointer_stack_push () - push a new PT_NODE_POINTER, pointing to node, on a
  *                            stack of similar pointers
  *   returns: stack base
  *   parser(in): parser context
@@ -1281,7 +1281,7 @@ pt_pointer_stack_push (PARSER_CONTEXT * parser, PT_NODE * stack, PT_NODE * node)
 }
 
 /*
- * pt_pointer_stack_pop () - push a new PT_POINTER, pointing to node, on a
+ * pt_pointer_stack_pop () - push a new PT_NODE_POINTER, pointing to node, on a
  *                            stack of similar pointers
  *   returns: new stack base
  *   parser(in): parser context
@@ -1296,7 +1296,7 @@ pt_pointer_stack_pop (PARSER_CONTEXT * parser, PT_NODE * stack, PT_NODE ** node)
 
   if (stack == NULL)
     {
-      PT_INTERNAL_ERROR (parser, "pop operation on empty PT_POINTER stack");
+      PT_INTERNAL_ERROR (parser, "pop operation on empty PT_NODE_POINTER stack");
       return NULL;
     }
 
@@ -1336,7 +1336,7 @@ pt_pointer_stack_pop (PARSER_CONTEXT * parser, PT_NODE * stack, PT_NODE ** node)
 static PT_NODE *
 free_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  if (node->node_type == PT_POINTER)
+  if (node->node_type == PT_NODE_POINTER)
     {
       /* do must not free original node; cut-off link to original node */
       node->info.pointer.node = NULL;
@@ -2350,9 +2350,8 @@ pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
   int error = NO_ERROR;
   SETOBJ *setobj;
 
-  if (!
-      (val->node_type == PT_VALUE || val->node_type == PT_HOST_VAR
-       || (val->node_type == PT_NAME && val->info.name.meta_class == PT_PARAMETER)))
+  if (val->node_type != PT_VALUE && val->node_type != PT_HOST_VAR
+      && (val->node_type != PT_NAME || val->info.name.meta_class != PT_PARAMETER))
     {
       return NULL;
     }
@@ -2430,8 +2429,9 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
     {
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
-      temp =
-	pt_append_nulstring (parser, NULL, pt_show_type_enum ((PT_TYPE_ENUM) pt_db_to_type_enum (DB_VALUE_TYPE (val))));
+      temp = pt_append_nulstring (parser, NULL,
+				  pt_show_type_enum ((PT_TYPE_ENUM) pt_db_to_type_enum (DB_VALUE_TYPE (val))));
+
       /* fall thru */
     case DB_TYPE_SEQUENCE:
       temp = pt_append_nulstring (parser, temp, "{");
@@ -4856,7 +4856,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_VALUE] = pt_apply_value;
   pt_apply_func_array[PT_ZZ_ERROR_MSG] = pt_apply_error_msg;
   pt_apply_func_array[PT_CONSTRAINT] = pt_apply_constraint;
-  pt_apply_func_array[PT_POINTER] = pt_apply_pointer;
+  pt_apply_func_array[PT_NODE_POINTER] = pt_apply_pointer;
   pt_apply_func_array[PT_CREATE_STORED_PROCEDURE] = pt_apply_stored_procedure;
   pt_apply_func_array[PT_ALTER_STORED_PROCEDURE] = pt_apply_stored_procedure;
   pt_apply_func_array[PT_DROP_STORED_PROCEDURE] = pt_apply_stored_procedure;
@@ -4969,7 +4969,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_VALUE] = pt_init_value;
   pt_init_func_array[PT_ZZ_ERROR_MSG] = pt_init_error_msg;
   pt_init_func_array[PT_CONSTRAINT] = pt_init_constraint;
-  pt_init_func_array[PT_POINTER] = pt_init_pointer;
+  pt_init_func_array[PT_NODE_POINTER] = pt_init_pointer;
 
   pt_init_func_array[PT_CREATE_STORED_PROCEDURE] = pt_init_stored_procedure;
   pt_init_func_array[PT_ALTER_STORED_PROCEDURE] = pt_init_stored_procedure;
@@ -5083,7 +5083,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_VALUE] = pt_print_value;
   pt_print_func_array[PT_ZZ_ERROR_MSG] = pt_print_error_msg;
   pt_print_func_array[PT_CONSTRAINT] = pt_print_constraint;
-  pt_print_func_array[PT_POINTER] = pt_print_pointer;
+  pt_print_func_array[PT_NODE_POINTER] = pt_print_pointer;
   pt_print_func_array[PT_CREATE_STORED_PROCEDURE] = pt_print_create_stored_procedure;
   pt_print_func_array[PT_ALTER_STORED_PROCEDURE] = pt_print_alter_stored_procedure;
   pt_print_func_array[PT_DROP_STORED_PROCEDURE] = pt_print_drop_stored_procedure;
@@ -6471,12 +6471,27 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	      break;
 	    default:
 	      /* variable data type: only show non-maximum(i.e., default) parameter */
-	      show_precision =
-		(precision == TP_FLOATING_PRECISION_VALUE) ? (false) : (p->type_enum == PT_TYPE_VARCHAR) ? (precision !=
-													    DB_MAX_VARCHAR_PRECISION)
-		: (p->type_enum == PT_TYPE_VARNCHAR) ? (precision != DB_MAX_VARNCHAR_PRECISION) : (p->type_enum ==
-												   PT_TYPE_VARBIT)
-		? (precision != DB_MAX_VARBIT_PRECISION) : (precision != 7);
+	      if (precision == TP_FLOATING_PRECISION_VALUE)
+		{
+		  show_precision = false;
+		}
+	      else if (p->type_enum == PT_TYPE_VARCHAR)
+		{
+		  show_precision = (precision != DB_MAX_VARCHAR_PRECISION);
+		}
+	      else if (p->type_enum == PT_TYPE_VARNCHAR)
+		{
+		  show_precision = (precision != DB_MAX_VARNCHAR_PRECISION);
+		}
+	      else if (p->type_enum == PT_TYPE_VARBIT)
+		{
+		  show_precision = (precision != DB_MAX_VARBIT_PRECISION);
+		}
+	      else
+		{
+		  show_precision = (precision != 7);
+		}
+	      break;
 	    }
 
 	  if (show_precision == true)
@@ -8383,12 +8398,28 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	    break;
 	  default:
 	    /* variable data type: only show non-maximum(i.e., default) parameter */
-	    show_precision =
-	      (precision == TP_FLOATING_PRECISION_VALUE) ? (false) : (p->type_enum == PT_TYPE_VARCHAR) ? (precision !=
-													  DB_MAX_VARCHAR_PRECISION)
-	      : (p->type_enum == PT_TYPE_VARNCHAR) ? (precision != DB_MAX_VARNCHAR_PRECISION) : (p->type_enum ==
-												 PT_TYPE_VARBIT)
-	      ? (precision != DB_MAX_VARBIT_PRECISION) : (precision != 7);
+	    if (precision == TP_FLOATING_PRECISION_VALUE)
+	      {
+		show_precision = false;
+	      }
+	    else if (p->type_enum == PT_TYPE_VARCHAR)
+	      {
+		show_precision = (precision != DB_MAX_VARCHAR_PRECISION);
+	      }
+	    else if (p->type_enum == PT_TYPE_VARNCHAR)
+	      {
+		show_precision = (precision != DB_MAX_VARNCHAR_PRECISION);
+	      }
+	    else if (p->type_enum == PT_TYPE_VARBIT)
+	      {
+		show_precision = (precision != DB_MAX_VARBIT_PRECISION);
+	      }
+	    else
+	      {
+		show_precision = (precision != 7);
+	      }
+
+	    break;
 	  }
 
 	if (show_precision == true)
@@ -11398,9 +11429,8 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r2 = r1 = pt_print_bytes (parser, arg3);
 	}
       r3 = pt_print_bytes (parser, p->info.expr.arg1);
-      r4 =
-	((p->info.expr.arg2 == NULL
-	  || p->info.expr.arg2->type_enum == PT_TYPE_NULL) ? NULL : pt_print_bytes (parser, p->info.expr.arg2));
+      r4 = ((p->info.expr.arg2 == NULL || p->info.expr.arg2->type_enum == PT_TYPE_NULL)
+	    ? NULL : pt_print_bytes (parser, p->info.expr.arg2));
       if (!p->info.expr.continued_case)
 	{
 	  q = pt_append_nulstring (parser, q, "decode(");
@@ -12695,8 +12725,9 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, " ");
     }
 
-  for (crt_list = p->info.insert.value_clauses, is_first_list = true, multiple_values_insert =
-       (crt_list != NULL && crt_list->next != NULL); crt_list != NULL; crt_list = crt_list->next, is_first_list = false)
+  for (crt_list = p->info.insert.value_clauses, is_first_list = true,
+       multiple_values_insert = (crt_list != NULL && crt_list->next != NULL);
+       crt_list != NULL; crt_list = crt_list->next, is_first_list = false)
     {
       if (!is_first_list)
 	{
@@ -14508,10 +14539,8 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.query.q.select.with_increment)
 	{
 	  temp = p->info.query.q.select.with_increment;
-	  q =
-	    pt_append_nulstring (parser, q,
-				 ((temp->node_type == PT_EXPR
-				   && temp->info.expr.op == PT_DECR) ? "with decrement for " : "with increment for "));
+	  q = pt_append_nulstring (parser, q, ((temp->node_type == PT_EXPR && temp->info.expr.op == PT_DECR)
+					       ? "with decrement for " : "with increment for "));
 	  q = pt_append_varchar (parser, q, pt_print_bytes_l (parser, p->info.query.q.select.with_increment));
 	}
 
