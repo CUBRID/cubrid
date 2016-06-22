@@ -4127,7 +4127,9 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_
       return ER_FAILED;
     }
   vacuum_data_initialize_new_page (thread_p, data_page);
-  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0, 0, NULL);
+  data_page->data->blockid = 0;
+  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0,
+                         sizeof (data_page->data->blockid), &data_page->data->blockid);
 
   VPID_COPY (&log_Gl.hdr.vacuum_data_first_vpid, &first_page_vpid);
   log_append_redo_data2 (thread_p, RVVAC_DATA_MODIFY_FIRST_PAGE, NULL, (PAGE_PTR) data_page, 0,
@@ -4150,7 +4152,7 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_
 static void
 vacuum_data_initialize_new_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page)
 {
-  memset (data_page, DB_PAGESIZE, 0);
+  memset (data_page, 0, DB_PAGESIZE);
 
   VPID_SET_NULL (&data_page->next_page);
   data_page->index_unvacuumed = 0;
@@ -4173,12 +4175,8 @@ vacuum_rv_redo_initialize_data_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VACUUM_LOG_BLOCKID last_blockid = VACUUM_NULL_LOG_BLOCKID;
 
   assert (data_page != NULL);
-
-  if (rcv->length > 0)
-    {
-      assert (rcv->length == sizeof (last_blockid));
-      last_blockid = *((VACUUM_LOG_BLOCKID *) rcv->data);
-    }
+  assert (rcv->length == sizeof (last_blockid));
+  last_blockid = *((VACUUM_LOG_BLOCKID *) rcv->data);
 
   vacuum_data_initialize_new_page (thread_p, data_page);
   data_page->data->blockid = last_blockid;
