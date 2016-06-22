@@ -203,7 +203,7 @@
         { \
           assert (log_pgptr != NULL); \
           (lsa)->pageid++; \
-          if ((logpb_fetch_page ((thread_p), (lsa)->pageid, log_pgptr)) == \
+          if ((logpb_fetch_page ((thread_p), (lsa)->pageid, LOGPB_MODE_RW, log_pgptr)) == \
               NULL) \
             { \
               logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
@@ -1913,6 +1913,11 @@ typedef struct log_logging_stat
   /* async commit request count */
   unsigned long async_commit_request_count;
 } LOG_LOGGING_STAT;
+
+
+typedef enum logpb_access_mode LOGPB_ACCESS_MODE;
+enum logpb_access_mode
+{ LOGPB_MODE_RW, LOGPB_MODE_SAFE_READ };
 
 
 #if !defined(SERVER_MODE)

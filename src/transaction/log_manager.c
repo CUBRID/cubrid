@@ -3367,7 +3367,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
   while (!LSA_ISNULL (&prev_lsa) && found == false)
     {
 
-      if (logpb_fetch_page (thread_p, prev_lsa.pageid, log_pgptr) == NULL)
+      if (logpb_fetch_page (thread_p, prev_lsa.pageid, LOGPB_MODE_RW, log_pgptr) == NULL)
 	{
 	  break;
 	}
@@ -7390,7 +7390,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   /* Start dumping all log records following the given direction */
   while (!LSA_ISNULL (&lsa) && dump_npages-- > 0)
     {
-      if ((logpb_fetch_page (thread_p, lsa.pageid, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, lsa.pageid, LOGPB_MODE_RW, log_pgptr)) == NULL)
 	{
 	  fprintf (out_fp, " Error reading page %lld... Quit\n", (long long int) lsa.pageid);
 	  if (log_dump_ptr != NULL)
@@ -7965,7 +7965,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
       /* Fetch the page where the LSA record to undo is located */
       log_lsa.pageid = prev_tranlsa.pageid;
 
-      if ((logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, log_lsa.pageid, LOGPB_MODE_RW, log_pgptr)) == NULL)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rollback");
@@ -8255,7 +8255,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 
       if (last_fetch_page_id != top_result_lsa.pageid)
 	{
-	  if (logpb_fetch_page (thread_p, top_result_lsa.pageid, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, top_result_lsa.pageid, LOGPB_MODE_RW, log_pgptr) == NULL)
 	    {
 	      if (nxtop_stack != *out_nxtop_range_stack)
 		{
@@ -8433,7 +8433,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 	{
 	  /* Fetch the page where the postpone LSA record is located */
 	  log_lsa.pageid = forward_lsa.pageid;
-	  if (logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, log_lsa.pageid, LOGPB_MODE_RW, log_pgptr) == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_do_postpone");
 	      goto end;
@@ -8789,7 +8789,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
   while (type != LOG_END_OF_LOG && !LSA_ISNULL (end_lsa))
     {
       /* Fetch the page */
-      if ((logpb_fetch_page (thread_p, end_lsa->pageid, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, end_lsa->pageid, LOGPB_MODE_RW, log_pgptr)) == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_find_end_log");
 	  goto error;

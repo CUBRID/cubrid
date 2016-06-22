@@ -412,7 +412,8 @@ static void logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const 
 static void logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty);
 static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
-static LOG_PAGE *logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
+static LOG_PAGE *logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOGPB_ACCESS_MODE access_mode,
+				  LOG_PAGE * log_pgptr);
 
 static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_flush, const char *file_name,
 					const int lineno, const char *fmt, va_list ap);
@@ -1913,7 +1914,8 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (log_pgptr != NULL);
 
-  if ((logpb_fetch_page (thread_p, LOGPB_HEADER_PAGE_ID, log_pgptr)) == NULL)
+  /* TODO[arnia]: */
+  if ((logpb_fetch_page (thread_p, LOGPB_HEADER_PAGE_ID, LOGPB_MODE_RW, log_pgptr)) == NULL)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_fetch_hdr_with_buf");
       /* This statement should not be reached */
@@ -1997,7 +1999,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
  *              If not, read log page from log.
  */
 LOG_PAGE *
-logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr)
+logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOGPB_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
 {
   LOG_PAGE *ret_pgptr = NULL;
 
@@ -2011,8 +2013,9 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgp
    *          logpb_flush_all_append_pages is cleared so there is no EOL
    *          in log page (in delayed_free_log_pgptr)
    */
-  if ((pageid >= log_Gl.hdr.append_lsa.pageid)	/* for case 1 */
-      || (pageid >= log_Gl.append.prev_lsa.pageid))	/* for case 2 */
+  if (access_mode != LOGPB_MODE_SAFE_READ
+      && (pageid >= log_Gl.hdr.append_lsa.pageid)	/* for case 1 */
+	  || (pageid >= log_Gl.append.prev_lsa.pageid))	/* for case 2 */
     {
       LOG_CS_ENTER (thread_p);
 
@@ -2031,13 +2034,13 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgp
        * calling logpb_copy_page in LOG_CS boundary ensures exclusive running
        * with logpb_flush_all_append_pages.
        */
-      ret_pgptr = logpb_copy_page (thread_p, pageid, log_pgptr);
+      ret_pgptr = logpb_copy_page (thread_p, pageid, access_mode, log_pgptr);
       LOG_CS_EXIT (thread_p);
 
       return ret_pgptr;
     }
 
-  ret_pgptr = logpb_copy_page (thread_p, pageid, log_pgptr);
+  ret_pgptr = logpb_copy_page (thread_p, pageid, access_mode, log_pgptr);
 
   return ret_pgptr;
 }
@@ -2057,7 +2060,8 @@ logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG
   assert (pageid != NULL_PAGEID);
   assert (pageid <= log_Gl.hdr.append_lsa.pageid);
 
-  ret_pgptr = logpb_copy_page (thread_p, pageid, log_pgptr);
+  /* TODO[arnia]: */
+  ret_pgptr = logpb_copy_page (thread_p, pageid, LOGPB_MODE_RW, log_pgptr);
 
   return ret_pgptr;
 }
@@ -2093,6 +2097,7 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
  * return: Pointer to the page or NULL
  *
  *   pageid(in): Page identifier
+ *   access_mode(in): access mode (reader, safe reader, writer)
  *   log_pgptr(in): Page buffer to copy
  *
  * NOTE:Fetch the log page identified by pageid into a log buffer and return such buffer.
@@ -2100,7 +2105,7 @@ logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE 
  *              If not, read log page from log.
  */
 static LOG_PAGE *
-logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr)
+logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOGPB_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
 {
   LOG_BUFFER *log_bufptr = NULL;
   LOG_PAGE *ret_pgptr = NULL;
@@ -2121,9 +2126,8 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgpt
       tsc_getticks (&start_tick);
     }
 
-  if (!VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
+  if (access_mode != LOGPB_MODE_SAFE_READ)
     {
-      /* TODO: Avoid any locks for vacuum workers. Investigate if any unwanted consequences are possible. */
       LOG_CS_ENTER_READ_MODE (thread_p);
       log_csect_entered = true;
     }
@@ -2943,7 +2947,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	{
 	  /* to flush all omitted pages by the previous archiving */
 	  log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-	  if (logpb_fetch_page (thread_p, pageid, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, pageid, LOGPB_MODE_RW, log_pgptr) == NULL)
 	    {
 	      fileio_dismount (thread_p, bg_arv_info->vdes);
 	      bg_arv_info->vdes = NULL_VOLDES;

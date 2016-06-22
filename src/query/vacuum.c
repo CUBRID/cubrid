@@ -5124,7 +5124,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	  if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
 	    {
 	      /* Get log page. */
-	      if (logpb_fetch_page (thread_p, log_lsa.pageid, log_page_p) == NULL)
+	      if (logpb_fetch_page (thread_p, log_lsa.pageid, LOGPB_MODE_SAFE_READ, log_page_p) == NULL)
 		{
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
 		  return ER_FAILED;
@@ -5175,7 +5175,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	{
 	  if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
 	    {
-	      if (logpb_fetch_page (thread_p, log_lsa.pageid, log_page_p) == NULL)
+	      if (logpb_fetch_page (thread_p, log_lsa.pageid, LOGPB_MODE_SAFE_READ, log_page_p) == NULL)
 		{
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
 		  return ER_FAILED;
@@ -6798,7 +6798,7 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * e
   for (i = 0; i < VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES && log_pageid <= entry->start_lsa.pageid + 1;
        i++, log_pageid++)
     {
-      if (logpb_fetch_page (thread_p, log_pageid, (LOG_PAGE *) log_page) == NULL)
+      if (logpb_fetch_page (thread_p, log_pageid, LOGPB_MODE_SAFE_READ, (LOG_PAGE *) log_page) == NULL)
 	{
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR, "VACUUM ERROR : cannot prefetch log page %d", log_pageid);
 	  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
@@ -6870,7 +6870,7 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_
   else
 #endif /* SERVER_MODE */
     {
-      if (logpb_fetch_page (thread_p, log_pageid, log_page_p) == NULL)
+      if (logpb_fetch_page (thread_p, log_pageid, LOGPB_MODE_SAFE_READ, log_page_p) == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_copy_log_page");
 	  error = ER_FAILED;
