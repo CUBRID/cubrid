@@ -4175,12 +4175,8 @@ vacuum_rv_redo_initialize_data_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VACUUM_LOG_BLOCKID last_blockid = VACUUM_NULL_LOG_BLOCKID;
 
   assert (data_page != NULL);
-
-  if (rcv->length > 0)
-    {
-      assert (rcv->length == sizeof (last_blockid));
-      last_blockid = *((VACUUM_LOG_BLOCKID *) rcv->data);
-    }
+  assert (rcv->length == sizeof (last_blockid));
+  last_blockid = *((VACUUM_LOG_BLOCKID *) rcv->data);
 
   vacuum_data_initialize_new_page (thread_p, data_page);
   data_page->data->blockid = last_blockid;
