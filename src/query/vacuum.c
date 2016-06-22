@@ -4152,7 +4152,7 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_
 static void
 vacuum_data_initialize_new_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page)
 {
-  memset (data_page, DB_PAGESIZE, 0);
+  memset (data_page, 0, DB_PAGESIZE);
 
   VPID_SET_NULL (&data_page->next_page);
   data_page->index_unvacuumed = 0;
