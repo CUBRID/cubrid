@@ -4127,7 +4127,9 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_
       return ER_FAILED;
     }
   vacuum_data_initialize_new_page (thread_p, data_page);
-  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0, 0, NULL);
+  data_page->data->blockid = 0;
+  log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0,
+                         sizeof (data_page->data->blockid), &data_page->data->blockid);
 
   VPID_COPY (&log_Gl.hdr.vacuum_data_first_vpid, &first_page_vpid);
   log_append_redo_data2 (thread_p, RVVAC_DATA_MODIFY_FIRST_PAGE, NULL, (PAGE_PTR) data_page, 0,
