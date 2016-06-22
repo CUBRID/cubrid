@@ -878,7 +878,7 @@ static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPE
 					       PGBUF_WATCHER * home_hint_p);
 static int heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_context, RECDES * recdes_p,
-				OID * out_oid_p);
+				OID * out_oid_p, PGBUF_WATCHER * newhome_pg_watcher);
 static int heap_insert_physical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static void heap_log_insert_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
 				      RECDES * recdes_p, bool is_mvcc_op, bool is_redistribute_op);
@@ -922,8 +922,8 @@ static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, REC
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
 static bool heap_check_class_for_rr_isolation_err (const OID * class_oid);
-static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR pgptr, PAGE_PTR fwd_pgptr,
-					 LOG_LSA * prev_ver_lsa);
+static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * home_pg_watcher,
+					 PGBUF_WATCHER * fwd_pg_watcher, LOG_LSA * prev_version_lsa);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -22441,6 +22441,8 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
  *   recdes_p(in): record descriptor of newhome record
  *   out_oid_p(in): pointer to an OID object to be populated with the result
  *                  OID of the insert
+ *   newhome_pg_watcher(out): if not null, should keep the page watcher of newhome
+                              - necessary to set prev version afterwards
  *   returns: error code or NO_ERROR
  *
  * NOTE: This function works ONLY in an MVCC operation. It will create a new
@@ -22448,7 +22450,7 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
  */
 static int
 heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_context, RECDES * recdes_p,
-		     OID * out_oid_p)
+		     OID * out_oid_p, PGBUF_WATCHER * newhome_pg_watcher)
 {
   HEAP_OPERATION_CONTEXT ins_context;
   int error_code = NO_ERROR;
@@ -22486,8 +22488,14 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
       COPY_OID (out_oid_p, &ins_context.res_oid);
     }
 
-  /* mark insert page as dirty and unfix it */
+  /* mark insert page as dirty */
   pgbuf_set_dirty (thread_p, ins_context.home_page_watcher_p->pgptr, DONT_FREE);
+
+  if (newhome_pg_watcher != NULL)
+    {
+      /* keep the page watcher, necessary for heap_update_set_prev_version() */
+      pgbuf_replace_watcher (thread_p, ins_context.home_page_watcher_p, newhome_pg_watcher);
+    }
 
   /* unfix all pages of insert context */
   heap_unfix_watchers (thread_p, &ins_context);
@@ -23089,7 +23097,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  /* doesn't fit in either home or forward page */
 	  /* insert a new forward record */
 	  new_forward_recdes.type = REC_NEWHOME;
-	  rc = heap_insert_newhome (thread_p, context, &new_forward_recdes, &new_forward_oid);
+	  rc = heap_insert_newhome (thread_p, context, &new_forward_recdes, &new_forward_oid, NULL);
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
@@ -23431,7 +23439,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	      forwarding_recdes.type = REC_RELOCATION;
 
 	      /* insert NEWHOME record */
-	      error_code = heap_insert_newhome (thread_p, context, &built_recdes, &forward_oid);
+	      error_code = heap_insert_newhome (thread_p, context, &built_recdes, &forward_oid, NULL);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -23644,6 +23652,8 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   int error_code = NO_ERROR;
   bool update_old_home = true;
   LOG_LSA prev_version_lsa;
+  PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
+  PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
 
   assert (context != NULL);
   assert (context->type == HEAP_OPERATION_UPDATE);
@@ -23659,7 +23669,8 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   error_code = heap_fix_header_page (thread_p, context);
   if (error_code != NO_ERROR)
     {
-      return ER_FAILED;
+      ASSERT_ERROR ();
+      goto exit;
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
@@ -23673,7 +23684,8 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  error_code = heap_insert_handle_multipage_record (thread_p, context);
 	  if (error_code != NO_ERROR)
 	    {
-	      return error_code;
+	      ASSERT_ERROR ();
+	      goto exit;
 	    }
 	  /* old home will be updated with the forward record */
 	}
@@ -23681,7 +23693,8 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	{
 	  if (heap_ovf_update (thread_p, &context->hfid, &overflow_oid, context->recdes_p) == NULL)
 	    {
-	      return ER_FAILED;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
 	    }
 	  update_old_home = false;
 	}
@@ -23716,21 +23729,33 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  OID newhome_oid;
 
 	  /* insert new home */
+
+	  if (is_mvcc_op)
+	    {
+	      /* necessary later to set prev version, which is required only for mvcc objects */
+	      newhome_pg_watcher_p = &newhome_pg_watcher;
+	      PGBUF_INIT_WATCHER (newhome_pg_watcher_p, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+	    }
+
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	  context->recdes_p->type = REC_NEWHOME;
-	  if (heap_insert_newhome (thread_p, context, context->recdes_p, &newhome_oid) != NO_ERROR)
+	  error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &newhome_oid, newhome_pg_watcher_p);
+	  if (error_code != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      ASSERT_ERROR ();
+	      goto exit;
 	    }
 
 	  /* prepare record descriptor */
 	  heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, &newhome_oid);
 
 	  /* update home */
-	  if (heap_update_physical (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
-				    &new_home_recdes) != NO_ERROR)
+	  error_code =
+	    heap_update_physical (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, &new_home_recdes);
+	  if (error_code != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      ASSERT_ERROR ();
+	      goto exit;
 	    }
 
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -23750,18 +23775,20 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  if (heap_ovf_delete (thread_p, &context->hfid, &overflow_oid, NULL) == NULL)
 	    {
 	      assert (false);
-	      return ER_FAILED;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
 	    }
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	}
       else
 	{
 	  /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
-	  error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
-						     context->forward_page_watcher_p->pgptr, &prev_version_lsa);
+	  error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p,
+						     newhome_pg_watcher_p, &prev_version_lsa);
 	  if (error_code != NO_ERROR)
 	    {
-	      return error_code;
+	      ASSERT_ERROR ();
+	      goto exit;
 	    }
 	}
 
@@ -23771,8 +23798,17 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
   mnt_heap_big_updates (thread_p);
 
-  /* all ok */
-  return NO_ERROR;
+  /* Fall through to exit. */
+
+exit:
+
+  if (newhome_pg_watcher_p != NULL && newhome_pg_watcher_p->pgptr != NULL)
+    {
+      /* newhome_pg_watcher is used only locally; must be unfixed */
+      pgbuf_ordered_unfix (thread_p, newhome_pg_watcher_p);
+    }
+
+  return error_code;
 }
 
 /*
@@ -23795,6 +23831,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   bool update_old_forward = false;
   bool remove_old_forward = false;
   LOG_LSA prev_version_lsa = LSA_INITIALIZER;
+  PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
+  PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
@@ -23807,9 +23845,11 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   forward_oid = *((OID *) context->home_recdes.data);
 
   /* fix forward page */
-  if (heap_fix_forward_page (thread_p, context, &forward_oid) != NO_ERROR)
+  rc = heap_fix_forward_page (thread_p, context, &forward_oid);
+  if (rc != NO_ERROR)
     {
-      return ER_FAILED;
+      ASSERT_ERROR ();
+      goto exit;
     }
 
   /* fix header if necessary */
@@ -23824,7 +23864,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       rc = heap_fix_header_page (thread_p, context);
       if (rc != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  ASSERT_ERROR ();
+	  goto exit;
 	}
     }
 
@@ -23834,7 +23875,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   if (spage_get_record (context->forward_page_watcher_p->pgptr, forward_oid.slotid, &forward_recdes, COPY) != S_SUCCESS)
     {
       assert (false);
-      return ER_FAILED;
+      ASSERT_ERROR_AND_SET (rc);
+      goto exit;
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
@@ -23845,7 +23887,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* insert new overflow record */
       if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid, context->recdes_p) == NULL)
 	{
-	  return ER_FAILED;
+	  ASSERT_ERROR_AND_SET (rc);
+	  goto exit;
 	}
 
       /* home record descriptor will be an overflow OID and will be placed in original home page */
@@ -23860,12 +23903,21 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   else if (!fits_in_forward && !fits_in_home)
     {
       /* insert a new forward record */
+
+      if (is_mvcc_op)
+	{
+	  /* necessary later to set prev version, which is required only for mvcc objects */
+	  newhome_pg_watcher_p = &newhome_pg_watcher;
+	  PGBUF_INIT_WATCHER (newhome_pg_watcher_p, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+	}
+
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
       context->recdes_p->type = REC_NEWHOME;
-      rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid);
+      rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid, newhome_pg_watcher_p);
       if (rc != NO_ERROR)
 	{
-	  return rc;
+	  ASSERT_ERROR ();
+	  goto exit;
 	}
 
       /* new home record will be a REC_RELOCATION and will be placed in the original home page */
@@ -23903,7 +23955,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
     {
       /* impossible case */
       assert (false);
-      return ER_FAILED;
+      rc = ER_FAILED;
+      goto exit;
     }
 
   /* The old rec_newhome must be removed or updated */
@@ -23926,7 +23979,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       rc = heap_update_physical (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, &new_home_recdes);
       if (rc != NO_ERROR)
 	{
-	  return rc;
+	  ASSERT_ERROR ();
+	  goto exit;
 	}
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
@@ -23945,7 +23999,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       rc = heap_delete_physical (thread_p, &context->hfid, context->forward_page_watcher_p->pgptr, &forward_oid);
       if (rc != NO_ERROR)
 	{
-	  return rc;
+	  ASSERT_ERROR ();
+	  goto exit;
 	}
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
@@ -23980,7 +24035,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 				 context->recdes_p);
       if (rc != NO_ERROR)
 	{
-	  return rc;
+	  ASSERT_ERROR ();
+	  goto exit;
 	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -23989,20 +24045,29 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   if (is_mvcc_op)
     {
       /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
-      rc = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
-					 context->forward_page_watcher_p->pgptr, &prev_version_lsa);
-    }
+      rc = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p,
+					 newhome_pg_watcher_p ? newhome_pg_watcher_p : context->forward_page_watcher_p,
+					 &prev_version_lsa);
 
-  if (rc != NO_ERROR)
-    {
-      return rc;
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
     }
 
   /* location did not change */
   COPY_OID (&context->res_oid, &context->oid);
 
-  /* all ok */
-  return NO_ERROR;
+exit:
+
+  if (newhome_pg_watcher_p != NULL && newhome_pg_watcher_p->pgptr != NULL)
+    {
+      /* newhome_pg_watcher is used only locally; must be unfixed */
+      pgbuf_ordered_unfix (thread_p, newhome_pg_watcher_p);
+    }
+
+  return rc;
 }
 
 /*
@@ -24020,6 +24085,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   OID forward_oid;
   LOG_RCVINDEX undo_rcvindex = RVHF_UPDATE;
   LOG_LSA prev_version_lsa;
+  PGBUF_WATCHER newhome_pg_watcher;	/* fwd pg watcher required for heap_update_set_prev_version() */
+  PGBUF_WATCHER *newhome_pg_watcher_p = NULL;
 
   assert (context != NULL);
   assert (context->recdes_p != NULL);
@@ -24037,7 +24104,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 		    "heap_update_home: ** SYSTEM_ERROR ** update"
 		    " mvcc update was attempted on REC_ASSIGN_ADDRESS home record");
 #endif
-      return ER_FAILED;
+      error_code = ER_FAILED;
+      goto exit;
     }
 
 #if defined (SERVER_MODE)
@@ -24059,7 +24127,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto exit;
 	}
 
       /* insert new overflow record */
@@ -24067,7 +24135,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid, context->recdes_p) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
+	  goto exit;
 	}
 
       /* forwarding record is REC_BIGONE */
@@ -24081,22 +24149,31 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   else if (!spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
 				context->recdes_p->length))
     {
+      /* insert new home */
+
+      if (is_mvcc_op)
+	{
+	  /* necessary later to set prev version, which is required only for mvcc objects */
+	  newhome_pg_watcher_p = &newhome_pg_watcher;
+	  PGBUF_INIT_WATCHER (newhome_pg_watcher_p, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+	}
+
       /* fix header page */
       error_code = heap_fix_header_page (thread_p, context);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto exit;
 	}
 
       /* insert new home record */
       HEAP_PERF_TRACK_PREPARE (thread_p, context);
       context->recdes_p->type = REC_NEWHOME;
-      error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &forward_oid);
+      error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &forward_oid, newhome_pg_watcher_p);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto exit;
 	}
 
       /* forwarding record is REC_RELOCATION */
@@ -24132,8 +24209,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       if (spage_get_record (context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
 			    is_peeking) != S_SUCCESS)
 	{
-	  assert (false);
-	  return ER_FAILED;
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
 	}
       HEAP_PERF_TRACK_PREPARE (thread_p, context);
     }
@@ -24151,15 +24228,21 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 			  home_page_updated_recdes_p);
   if (error_code != NO_ERROR)
     {
+      assert (false);
       ASSERT_ERROR ();
-      return error_code;
+      goto exit;
     }
 
   if (is_mvcc_op)
     {
       /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
-      heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p->pgptr,
-				    context->forward_page_watcher_p->pgptr, &prev_version_lsa);
+      error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p,
+						 newhome_pg_watcher_p, &prev_version_lsa);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
     }
 
   HEAP_PERF_TRACK_EXECUTE (thread_p, context);
@@ -24167,8 +24250,17 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   /* location did not change */
   COPY_OID (&context->res_oid, &context->oid);
 
-  /* all ok */
-  return NO_ERROR;
+  /* Fall through to exit. */
+
+exit:
+
+  if (newhome_pg_watcher_p != NULL && newhome_pg_watcher_p->pgptr != NULL)
+    {
+      /* newhome_pg_watcher is used only locally; must be unfixed */
+      pgbuf_ordered_unfix (thread_p, newhome_pg_watcher_p);
+    }
+
+  return error_code;
 }
 
 /*
@@ -26265,43 +26357,34 @@ heap_check_class_for_rr_isolation_err (const OID * class_oid)
  * return	       : error code or NO_ERROR
  * thread_p (in)       : Thread entry.
  * oid (in)            : Object identifier of the updated record
- * pgptr (in)          : Record home page
- * fwd_pgptr (in)      : Record forward page
+ * home_pg_watcher (in): Home page watcher; must be  
+ * fwd_pg_watcher (in) : Forward page watcher
  * prev_version_lsa(in): LSA address of undo log record of the old record
  *
  * Note: This function works only with heap_update_home/relocation/bigone functions. It is designed to set the 
  *       prev_version_lsa to updated records by overwriting this information directly into heap file. The header of the
  *       record should be prepared for this in heap_insert_adjust_recdes_header().
  *       The records are obtained using PEEK, and modified directly, without using spage_update afterwards!
+ * Note: It is expected to have the home page fixed and also the forward page in case of relocation.
  */
 static int
-heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR pgptr, PAGE_PTR fwd_pgptr,
-			      LOG_LSA * prev_version_lsa)
+heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * home_pg_watcher,
+			      PGBUF_WATCHER * fwd_pg_watcher, LOG_LSA * prev_version_lsa)
 {
   int error_code = NO_ERROR;
   RECDES recdes, forward_recdes;
-  bool is_home_pg_fixed_locally = false, is_fwd_pg_fixed_locally = false;
   VPID vpid, fwd_vpid;
   OID forward_oid;
+  PGBUF_WATCHER overflow_pg_watcher;
 
   assert (oid != NULL && !OID_ISNULL (oid) && prev_version_lsa != NULL && !LSA_ISNULL (prev_version_lsa));
   assert (prev_version_lsa->pageid > 0 && prev_version_lsa->offset >= 0);
 
-  if (pgptr == NULL)
+  /* the home page should be already fixed */
+  assert (home_pg_watcher != NULL && home_pg_watcher->pgptr != NULL);
+  if (spage_get_record (home_pg_watcher->pgptr, oid->slotid, &recdes, PEEK) != S_SUCCESS)
     {
-      VPID_GET_FROM_OID (&vpid, oid);
-      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (pgptr == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  goto end;
-	}
-      is_home_pg_fixed_locally = true;
-    }
-
-  if (spage_get_record (pgptr, oid->slotid, &recdes, PEEK) != S_SUCCESS)
-    {
-      error_code = ER_FAILED;
+      ASSERT_ERROR_AND_SET (error_code);
       goto end;
     }
 
@@ -26310,63 +26393,63 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR
       error_code = or_mvcc_set_log_lsa_to_record (&recdes, prev_version_lsa);
       if (error_code != NO_ERROR)
 	{
+	  assert (false);
 	  goto end;
 	}
 
-      pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
+      pgbuf_set_dirty (thread_p, home_pg_watcher->pgptr, DONT_FREE);
     }
   else if (recdes.type == REC_RELOCATION)
     {
       forward_oid = *((OID *) recdes.data);
       VPID_GET_FROM_OID (&fwd_vpid, &forward_oid);
-      if (fwd_pgptr == NULL || !VPID_EQ (&fwd_vpid, pgbuf_get_vpid_ptr (fwd_pgptr)))
-	{
-	  fwd_pgptr = pgbuf_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	  if (fwd_pgptr == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      goto end;
-	    }
-	  is_fwd_pg_fixed_locally = true;
-	}
 
-      if (spage_get_record (fwd_pgptr, forward_oid.slotid, &forward_recdes, PEEK) != S_SUCCESS)
+      /* the forward page should be already fixed */
+      assert (fwd_pg_watcher != NULL && fwd_pg_watcher->pgptr != NULL);
+      assert (VPID_EQ (&fwd_vpid, pgbuf_get_vpid_ptr (fwd_pg_watcher->pgptr)));
+
+      if (spage_get_record (fwd_pg_watcher->pgptr, forward_oid.slotid, &forward_recdes, PEEK) != S_SUCCESS)
 	{
-	  error_code = ER_FAILED;
+	  ASSERT_ERROR_AND_SET (error_code);
 	  goto end;
 	}
 
       error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_version_lsa);
       if (error_code != NO_ERROR)
 	{
+	  assert (false);
 	  goto end;
 	}
 
-      pgbuf_set_dirty (thread_p, fwd_pgptr, DONT_FREE);
+      pgbuf_set_dirty (thread_p, fwd_pg_watcher->pgptr, DONT_FREE);
     }
   else if (recdes.type == REC_BIGONE)
     {
       forward_oid = *((OID *) recdes.data);
 
       VPID_GET_FROM_OID (&fwd_vpid, &forward_oid);
-      fwd_pgptr = pgbuf_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (fwd_pgptr == NULL)
+      PGBUF_INIT_WATCHER (&overflow_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+      PGBUF_WATCHER_COPY_GROUP (&overflow_pg_watcher, home_pg_watcher);
+      if (pgbuf_ordered_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &overflow_pg_watcher) != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto end;
 	}
-      is_fwd_pg_fixed_locally = true;
 
-      forward_recdes.data = overflow_get_first_page_data (fwd_pgptr);
+      forward_recdes.data = overflow_get_first_page_data (overflow_pg_watcher.pgptr);
       forward_recdes.length = OR_HEADER_SIZE (forward_recdes.data);
 
       error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_version_lsa);
+
+      /* unfix overflow page; it is used only locally */
+      pgbuf_set_dirty (thread_p, overflow_pg_watcher.pgptr, DONT_FREE);
+      pgbuf_ordered_unfix (thread_p, &overflow_pg_watcher);
+
       if (error_code != NO_ERROR)
 	{
+	  assert (false);
 	  goto end;
 	}
-
-      pgbuf_set_dirty (thread_p, fwd_pgptr, DONT_FREE);
     }
   else
     {
@@ -26376,14 +26459,5 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PAGE_PTR
     }
 
 end:
-  if (is_home_pg_fixed_locally)
-    {
-      pgbuf_unfix (thread_p, pgptr);
-    }
-  if (is_fwd_pg_fixed_locally)
-    {
-      pgbuf_unfix (thread_p, fwd_pgptr);
-    }
-
   return error_code;
 }
