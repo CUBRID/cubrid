@@ -26393,6 +26393,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WA
       error_code = or_mvcc_set_log_lsa_to_record (&recdes, prev_version_lsa);
       if (error_code != NO_ERROR)
 	{
+	  assert (false);
 	  goto end;
 	}
 
@@ -26416,6 +26417,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WA
       error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_version_lsa);
       if (error_code != NO_ERROR)
 	{
+	  assert (false);
 	  goto end;
 	}
 
@@ -26445,6 +26447,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WA
 
       if (error_code != NO_ERROR)
 	{
+	  assert (false);
 	  goto end;
 	}
     }
