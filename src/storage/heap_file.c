@@ -26434,7 +26434,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WA
 	  goto end;
 	}
 
-      forward_recdes.data = overflow_get_first_page_data (&overflow_pg_watcher);
+      forward_recdes.data = overflow_get_first_page_data (overflow_pg_watcher.pgptr);
       forward_recdes.length = OR_HEADER_SIZE (forward_recdes.data);
 
       error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_version_lsa);
