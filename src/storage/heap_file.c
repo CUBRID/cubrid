@@ -26427,6 +26427,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WA
 
       VPID_GET_FROM_OID (&fwd_vpid, &forward_oid);
       PGBUF_INIT_WATCHER (&overflow_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+      PGBUF_WATCHER_COPY_GROUP (&overflow_pg_watcher, home_pg_watcher);
       if (pgbuf_ordered_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &overflow_pg_watcher) != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
