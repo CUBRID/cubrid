@@ -2420,7 +2420,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LS
   while (!LSA_ISNULL (&prev_tranlsa) && (search_2pc_prepare || search_2pc_start))
     {
       lsa.pageid = prev_tranlsa.pageid;
-      if ((logpb_fetch_page (thread_p, &lsa, LOG_CS_FORCE_USE, log_page_p)) == NULL)
+      if ((logpb_fetch_page (thread_p, &lsa, LOG_CS_SAFE_READER, log_page_p)) == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
 	  break;

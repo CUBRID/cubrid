@@ -3685,12 +3685,12 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
   /* Get log record header */
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, log_lsa_p);
   log_rec_type = log_rec_header->type;
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), log_lsa_p, log_page_p);
+  LOG_SAFE_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), log_lsa_p, log_page_p);
 
   if (log_rec_type == LOG_MVCC_UNDO_DATA)
     {
       /* Get log record mvcc_undo information */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
+      LOG_SAFE_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
       mvcc_undo = (LOG_REC_MVCC_UNDO *) (log_page_p->area + log_lsa_p->offset);
 
       /* Get MVCCID */
@@ -3706,12 +3706,12 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa);
       VFID_COPY (&vacuum_info->vfid, &mvcc_undo->vacuum_info.vfid);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
+      LOG_SAFE_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
     }
   else if (log_rec_type == LOG_MVCC_UNDOREDO_DATA || log_rec_type == LOG_MVCC_DIFF_UNDOREDO_DATA)
     {
       /* Get log record undoredo information */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
+      LOG_SAFE_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
       mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + log_lsa_p->offset);
 
       /* Get MVCCID */
@@ -3727,7 +3727,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa);
       VFID_COPY (&vacuum_info->vfid, &mvcc_undoredo->vacuum_info.vfid);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
+      LOG_SAFE_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
     }
   else
     {
@@ -6770,7 +6770,7 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * e
   int error = NO_ERROR;
   LOG_LSA req_lsa;
 
-  req_lsa.offset = 0;
+  req_lsa.offset = DB_PAGESIZE;
 
   assert (entry != NULL);
   assert (block_log_buffer != NULL);
@@ -6875,7 +6875,7 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_
       LOG_LSA req_lsa;
 
       req_lsa.pageid = log_pageid;
-      req_lsa.offset = 0;
+      req_lsa.offset = DB_PAGESIZE;
 
       if (logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, log_page_p) == NULL)
 	{

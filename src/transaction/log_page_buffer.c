@@ -1915,7 +1915,6 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (log_pgptr != NULL);
 
-  /* TODO[arnia]: */
   if ((logpb_fetch_page (thread_p, &header_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_fetch_hdr_with_buf");
@@ -2062,7 +2061,6 @@ logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG
   assert (pageid != NULL_PAGEID);
   assert (pageid <= log_Gl.hdr.append_lsa.pageid);
 
-  /* TODO[arnia]: */
   ret_pgptr = logpb_copy_page (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
 
   return ret_pgptr;
