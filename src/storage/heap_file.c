@@ -7840,7 +7840,7 @@ heap_mvcc_get_for_delete_new (THREAD_ENTRY * thread_p, OID * oid, OID * class_oi
 
   if (recdes == NULL && mvcc_reev_data != NULL)
     {
-      /* for reevaluation */
+      /* peek if only for reevaluation */
       recdes = &recdes_local;
       ispeeking = PEEK;
       old_chn = NULL_CHN;
@@ -8769,13 +8769,13 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
   SCAN_CODE scan = S_SUCCESS;
 
   /* We have everything set up to get record data. */
+  assert (context != NULL);
 
-  /* Assert ispeeking, scan_cache and recdes are compatible. If ispeeking is PEEK, we must be able to keep page
-   * latched. This means scan_cache must not be NULL and cache_last_fix_page must be true. If ispeeking is COPY, we
-   * must have a preallocated area to copy to. This means either scan_cache is not NULL (and scan_cache->area can be
-   * used) or recdes->data is not NULL (and recdes->area_size defines how much can be copied). */
-  assert ((ispeeking == PEEK && scan_cache != NULL && scan_cache->cache_last_fix_page)
-	  || (ispeeking == COPY && (scan_cache != NULL || context->recdes_p->data != NULL)));
+  /* Assert ispeeking, scan_cache and recdes are compatible. If ispeeking is PEEK, it is the caller responsabilty to
+   * keep the page latched while the recdes don't go out of scope. If ispeeking is COPY, we must have a preallocated
+   * area to copy to. This means either scan_cache is not NULL (and scan_cache->area can be used) or recdes->data is 
+   * not NULL (and recdes->area_size defines how much can be copied). */
+  assert ((ispeeking == PEEK) || (ispeeking == COPY && (scan_cache != NULL || context->recdes_p->data != NULL)));
 
   switch (context->record_type)
     {
