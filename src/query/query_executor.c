@@ -12223,8 +12223,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 		}
 	      /* need to handle reevaluation */
 	      scan_code =
-		heap_mvcc_get_for_delete (thread_p, oid, class_oid, NULL, &scan_cache, COPY, NULL_CHN, p_mvcc_reev_data,
-					  LOG_WARNING_IF_DELETED);
+		heap_mvcc_get_for_delete_new (thread_p, oid, class_oid, NULL, &scan_cache, COPY, NULL_CHN,
+					      p_mvcc_reev_data, LOG_WARNING_IF_DELETED);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();

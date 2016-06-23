@@ -410,6 +410,10 @@ extern SCAN_CODE heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, O
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
 					   struct mvcc_reev_data *mvcc_reev_data,
 					   NON_EXISTENT_HANDLING non_ex_handling_type);
+extern SCAN_CODE heap_mvcc_get_for_delete_new (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
+					       HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
+					       struct mvcc_reev_data *mvcc_reev_data,
+					       NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);

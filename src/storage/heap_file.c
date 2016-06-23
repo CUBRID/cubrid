@@ -7821,17 +7821,87 @@ heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, R
 {
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan;
-  /*
-     heap_init_get_context (&context, oid, class_oid, recdes);
-
-     scan = locator_lock_and_get_object (thread_p, &context, X_LOCK, scan_cache, old_chn, ispeeking);
-
-     heap_clean_get_context (thread_p, &context);
-
-     return scan; */
 
   return heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, recdes, scan_cache, S_DELETE, ispeeking,
 						old_chn, mvcc_reev_data, non_ex_handling_type);
+}
+
+/* new version that uses locator_lock_and_get_object (); supports reevaluation also */
+SCAN_CODE
+heap_mvcc_get_for_delete_new (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
+			      HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn, MVCC_REEV_DATA * mvcc_reev_data,
+			      NON_EXISTENT_HANDLING non_ex_handling_type)
+{
+  HEAP_GET_CONTEXT context;
+  SCAN_CODE scan;
+  RECDES recdes_local;
+  MVCC_REC_HEADER mvcc_header;
+  DB_LOGICAL ev_res;		/* Re-evaluation result. */
+
+  if (recdes == NULL && mvcc_reev_data != NULL)
+    {
+      /* for reevaluation */
+      recdes = &recdes_local;
+      ispeeking = PEEK;
+      old_chn = NULL_CHN;
+    }
+
+  heap_init_get_context (&context, oid, class_oid, recdes);
+
+  if (scan_cache != NULL && scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
+    {
+      /* switch to local page watcher */
+      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context.home_page_watcher);
+    }
+
+  if (mvcc_reev_data != NULL)
+    {
+      context.single_use = false;
+    }
+
+  scan = locator_lock_and_get_object (thread_p, &context, X_LOCK, scan_cache, old_chn, ispeeking);
+
+  if (mvcc_reev_data != NULL && scan != S_DOESNT_EXIST)
+    {
+      if (scan == S_SUCCESS_CHN_UPTODATE)
+	{
+	  scan = heap_get_record_data_when_all_ready (thread_p, &context, scan_cache, PEEK);
+	  assert (scan == S_SUCCESS);
+	}
+
+      if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)
+	{
+	  scan = S_ERROR;
+	  goto exit;
+	}
+
+      ev_res = heap_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
+      switch (ev_res)
+	{
+	case V_TRUE:
+	  /* Object was locked and passed re-evaluation. Get record. */
+	  goto exit;
+	case V_ERROR:
+	  /* Error. */
+	  assert (er_errid () != NO_ERROR);
+	  scan = S_ERROR;
+	  goto exit;
+	case V_FALSE:
+	case V_UNKNOWN:
+	  /* Record didn't pass re-evaluation. Return S_SUCCESS and let the caller handle the case. */
+	  goto exit;
+	default:
+	  /* Unhandled. */
+	  assert_release (false);
+	  scan = S_ERROR;
+	  goto exit;
+	}
+
+    }
+
+exit:
+  heap_clean_get_context (thread_p, &context);
+  return scan;
 }
 
 /*
@@ -8383,8 +8453,9 @@ try_again:
       goto error;
     }
 
-  /* Output class_oid. */
-  if (heap_get_class_oid_from_page (thread_p, context->home_page_watcher.pgptr, context->class_oid_p) != NO_ERROR)
+  /* Output class_oid if necessary. */
+  if (context->class_oid_p != NULL && OID_ISNULL (context->class_oid_p)
+      && heap_get_class_oid_from_page (thread_p, context->home_page_watcher.pgptr, context->class_oid_p) != NO_ERROR)
     {
       /* Unexpected. */
       assert_release (false);
@@ -26186,7 +26257,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP
       pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context->home_page_watcher);
     }
 
-  scan = heap_get_prepare_context (thread_p, context, PGBUF_LATCH_READ, true, LOG_WARNING_IF_DELETED);
+  scan = heap_get_prepare_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
       goto exit;
@@ -26339,8 +26410,8 @@ heap_get_for_operation (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oi
   else if (op_type == S_DELETE || op_type == S_UPDATE)
     {
       scan_code =
-	heap_mvcc_get_for_delete (thread_p, oid, class_oid, recdes, scan_cache, ispeeking, NULL_CHN, NULL,
-				  non_ex_handling);
+	heap_mvcc_get_for_delete_new (thread_p, oid, class_oid, recdes, scan_cache, ispeeking, NULL_CHN, NULL,
+				      non_ex_handling);
     }
   else
     {
