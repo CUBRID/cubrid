@@ -8386,8 +8386,6 @@ is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs, in
   DB_OBJECT *class_obj = NULL;
   int save_au;
 
-  assert (non_null_attrs != NULL && has_uniques != NULL && server_allowed != NULL);
-  assert (*non_null_attrs == NULL);
   *has_uniques = 0;
   *server_allowed = 0;
 
@@ -10522,9 +10520,6 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (false);
       return ER_GENERIC_ERROR;
     }
-
-  assert (statement->info.insert.do_replace == false);
-  assert (statement->info.insert.odku_assignments == NULL);
 
   contextp->sql_user_text = statement->sql_user_text;
   contextp->sql_user_text_len = statement->sql_user_text_len;
@@ -13205,6 +13200,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   int upd_has_uniques = 0;
   bool has_default_values_list = false;
   PT_NODE *attr_list;
+  PT_NODE *update = NULL;
 
   if (statement == NULL || statement->node_type != PT_INSERT || statement->info.insert.spec == NULL
       || statement->info.insert.spec->info.spec.flat_entity_list == NULL)
@@ -13216,22 +13212,6 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   statement->etc = NULL;
   class_ = statement->info.insert.spec->info.spec.flat_entity_list;
   values = statement->info.insert.value_clauses;
-
-  /* prepare only when simple insert clause are used */
-  if (values->info.node_list.list_type != PT_IS_VALUE)
-    {
-      return NO_ERROR;
-    }
-
-  /* prevent multi statements */
-  /* prevent multi values insert */
-  /* prevent do replace */
-  /* prevent dup key update */
-  if (pt_length_of_list (statement) > 1 || pt_length_of_list (values) > 1 || statement->info.insert.do_replace
-      || statement->info.insert.odku_assignments != NULL)
-    {
-      return NO_ERROR;
-    }
 
   /* prevent blob, clob plan cache */
   for (attr_list = statement->info.insert.attr_list; attr_list != NULL; attr_list = attr_list->next)
@@ -13259,6 +13239,32 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (error != NO_ERROR || statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
     {
       return error;
+    }
+
+  if (statement->info.insert.odku_assignments != NULL)
+    {
+      /* Test if server UPDATE is allowed */
+      update = do_create_odku_stmt (parser, statement);
+      if (update == NULL)
+	{
+	  error = ER_FAILED;
+	  return error;
+	}
+      if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
+	{
+	  int server_allowed = 0;
+	  error =
+	    is_server_update_allowed (parser, &statement->info.insert.odku_non_null_attrs, &upd_has_uniques,
+				      &server_allowed, update);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  if (!server_allowed)
+	    {
+	      statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
+	    }
+	}
     }
 
   error = do_prepare_insert_internal (parser, statement);
