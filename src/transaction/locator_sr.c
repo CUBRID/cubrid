@@ -4595,6 +4595,12 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 						  NULL_CHN, NULL, LOG_ERROR_IF_DELETED);
 		  if (scan_code != S_SUCCESS)
 		    {
+		      if (scan_code == S_DOESNT_EXIST)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, oid_ptr->volid,
+				  oid_ptr->pageid, oid_ptr->slotid);
+			}
+
 		      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 			{
 			  er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n",
@@ -4913,6 +4919,11 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 						  NULL_CHN, NULL, LOG_ERROR_IF_DELETED);
 		  if (scan_code != S_SUCCESS)
 		    {
+		      if (scan_code == S_DOESNT_EXIST)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, oid_ptr->volid,
+				  oid_ptr->pageid, oid_ptr->slotid);
+			}
 		      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 			{
 			  er_log_debug (ARG_FILE_LINE, "locator_update_force: unknown oid ( %d|%d|%d )\n",
@@ -6301,7 +6312,6 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
   if (scan_code != S_SUCCESS)
     {
-      assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
 
       if (error_code == ER_HEAP_NODATA_NEWADDRESS)
@@ -6311,7 +6321,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
 	  error_code = NO_ERROR;
 	}
-      else if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+      else if (error_code == ER_HEAP_UNKNOWN_OBJECT || scan_code == S_DOESNT_EXIST)
 	{
 	  isold_object = false;
 	  er_clear ();
@@ -7673,26 +7683,15 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	}
       else if (scan == S_DOESNT_EXIST)
 	{
-	  int err_id;
-
-	  assert (er_errid () != NO_ERROR);
-	  err_id = er_errid ();
+	  int err_id = er_errid ();
 	  if (err_id == ER_HEAP_NODATA_NEWADDRESS)
 	    {
 	      /* it is an immature record. go ahead to update */
 	      er_clear ();	/* clear ER_HEAP_NODATA_NEWADDRESS */
 	    }
-	  else if (err_id == ER_HEAP_UNKNOWN_OBJECT)
-	    {
-	      /* This means that the object we're looking for does not exist. This information is useful for the caller 
-	       * of this function so return this error code instead of ER_FAILD. An example for which we need to know
-	       * this error code is when we're updating partitioned tables and previous iterations removed this record
-	       * and placed it in another partition. */
-	      return err_id;
-	    }
 	  else
 	    {
-	      return ((err_id == NO_ERROR) ? ER_FAILED : err_id);
+	      return ((err_id == NO_ERROR) ? ER_HEAP_UNKNOWN_OBJECT : err_id);	/* other errors should return S_ERROR? */
 	    }
 	}
       else if (scan == S_SNAPSHOT_NOT_SATISFIED)

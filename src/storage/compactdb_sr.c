@@ -215,7 +215,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
 				  NULL_CHN, NULL, LOG_WARNING_IF_DELETED);
   if (scan_code != S_SUCCESS)
     {
-      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+      if (scan_code == S_DOESNT_EXIST || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	{
 	  er_clear ();
 	  return 0;

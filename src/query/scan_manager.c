@@ -5028,7 +5028,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    {
 	      continue;
 	    }
-	  else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	  else if (er_errid () == ER_HEAP_UNKNOWN_OBJECT || sp_scan == S_DOESNT_EXIST)
 	    {
 	      er_clear ();
 	      continue;
@@ -5825,7 +5825,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 	}
     }
 
-  if (sp_scan == S_DOESNT_EXIST && er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+  if (sp_scan == S_DOESNT_EXIST || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
     {
       er_clear ();
       if (SCAN_IS_INDEX_COVERED (isidp))
