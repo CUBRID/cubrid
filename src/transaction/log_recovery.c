@@ -2189,7 +2189,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
     {
       /* Fetch the page where the LSA record to undo is located */
       log_lsa.pageid = lsa.pageid;
-      if (logpb_fetch_page (thread_p, log_lsa.pageid, LOGPB_MODE_RW, log_page_p) == NULL)
+      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) == NULL)
 	{
 	  if (is_media_crash == true)
 	    {
@@ -2395,7 +2395,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
       log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
 
-      if (logpb_fetch_page (thread_p, log_lsa.pageid, LOGPB_MODE_RW, log_page_p) == NULL)
+      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) == NULL)
 	{
 	  /* 
 	   * There is a problem. We have just read this page a little while ago
@@ -2574,7 +2574,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
     {
       /* Fetch the page where the LSA record to undo is located */
       log_lsa.pageid = lsa.pageid;
-      if (logpb_fetch_page (thread_p, log_lsa.pageid, LOGPB_MODE_RW, log_pgptr) == NULL)
+      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	{
 	  if (end_redo_lsa != NULL && (LSA_ISNULL (end_redo_lsa) || LSA_GT (&lsa, end_redo_lsa)))
 	    {
@@ -2809,12 +2809,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			    {
 			      temp_length -= LOGAREA_SIZE - (int) (log_lsa.offset);
 			      assert (log_pgptr != NULL);
-			      if ((logpb_fetch_page (thread_p, ++log_lsa.pageid, LOGPB_MODE_RW, log_pgptr)) == NULL)
+			      if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
 				{
 				  LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 				  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_redo");
 				  return;
 				}
+			      ++log_lsa.pageid;
 			      log_lsa.offset = 0;
 			      LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
 			    }
@@ -3763,7 +3764,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
     {
       /* Fetch the page where the LSA record to undo is located */
       log_lsa.pageid = lsa_ptr->pageid;
-      if (logpb_fetch_page (thread_p, log_lsa.pageid, LOGPB_MODE_RW, log_pgptr) == NULL)
+      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	{
 	  log_zip_free (undo_unzip_ptr);
 
@@ -4407,7 +4408,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa, bool i
 
 	  newappend_pgptr = (LOG_PAGE *) aligned_newappend_pgbuf;
 
-	  if ((logpb_fetch_page (thread_p, new_append_lsa->pageid, LOGPB_MODE_RW, newappend_pgptr)) == NULL)
+	  if ((logpb_fetch_page (thread_p, new_append_lsa, LOG_CS_FORCE_USE, newappend_pgptr)) == NULL)
 	    {
 	      newappend_pgptr = NULL;
 	    }
@@ -4603,7 +4604,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
-  if (logpb_fetch_page (thread_p, lsa->pageid, LOGPB_MODE_RW, log_pgptr) == NULL)
+  if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
     {
       fprintf (stdout, " Error reading page %lld... Quit\n", (long long int) lsa->pageid);
       goto error;
@@ -5007,7 +5008,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
 	{
 	  /* Fetch the page where the postpone LSA record is located */
 	  log_lsa.pageid = forward_lsa.pageid;
-	  if (logpb_fetch_page (thread_p, log_lsa.pageid, LOGPB_MODE_RW, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_find_first_postpone");
 	      goto end;
@@ -5220,7 +5221,7 @@ log_recovery_complete_partial_page_deallocation (THREAD_ENTRY * thread_p, LOG_LS
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   LSA_COPY (&log_lsa, partial_dealloc_lsa);
-  if (logpb_fetch_page (thread_p, log_lsa.pageid, LOGPB_MODE_RW, log_pgptr) == NULL)
+  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_complete_partial_page_deallocation");
       goto end;

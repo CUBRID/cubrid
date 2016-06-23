@@ -5122,7 +5122,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	  if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
 	    {
 	      /* Get log page. */
-	      if (logpb_fetch_page (thread_p, log_lsa.pageid, LOGPB_MODE_SAFE_READ, log_page_p) == NULL)
+	      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_SAFE_READER, log_page_p) == NULL)
 		{
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
 		  return ER_FAILED;
@@ -5173,7 +5173,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	{
 	  if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
 	    {
-	      if (logpb_fetch_page (thread_p, log_lsa.pageid, LOGPB_MODE_SAFE_READ, log_page_p) == NULL)
+	      if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_SAFE_READER, log_page_p) == NULL)
 		{
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
 		  return ER_FAILED;
@@ -6768,6 +6768,9 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * e
   LOG_PAGEID start_log_pageid, log_pageid;
   VACUUM_WORKER *worker = VACUUM_GET_VACUUM_WORKER (thread_p);
   int error = NO_ERROR;
+  LOG_LSA req_lsa;
+
+  req_lsa.offset = 0;
 
   assert (entry != NULL);
   assert (block_log_buffer != NULL);
@@ -6796,7 +6799,8 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * e
   for (i = 0; i < VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES && log_pageid <= entry->start_lsa.pageid + 1;
        i++, log_pageid++)
     {
-      if (logpb_fetch_page (thread_p, log_pageid, LOGPB_MODE_SAFE_READ, (LOG_PAGE *) log_page) == NULL)
+      req_lsa.pageid = log_pageid;
+      if (logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, (LOG_PAGE *) log_page) == NULL)
 	{
 	  vacuum_er_log (VACUUM_ER_LOG_ERROR, "VACUUM ERROR : cannot prefetch log page %d", log_pageid);
 	  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
@@ -6868,7 +6872,12 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_
   else
 #endif /* SERVER_MODE */
     {
-      if (logpb_fetch_page (thread_p, log_pageid, LOGPB_MODE_SAFE_READ, log_page_p) == NULL)
+      LOG_LSA req_lsa;
+
+      req_lsa.pageid = log_pageid;
+      req_lsa.offset = 0;
+
+      if (logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, log_page_p) == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_copy_log_page");
 	  error = ER_FAILED;
