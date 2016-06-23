@@ -240,6 +240,14 @@ if(UNIX)
   target_compile_definitions(unittests_cqueue PRIVATE SERVER_MODE ${COMMON_DEFS})
   target_include_directories(unittests_cqueue PRIVATE ${EP_INCLUDES})
   target_link_libraries(unittests_cqueue LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
+  
+  set(UNITTESTS_SNAPSHOT_SOURCES
+      ${EXECUTABLES_DIR}/unittests_snapshot.c
+      )
+    add_executable(unittests_snapshot ${UNITTESTS_SNAPSHOT_SOURCES})
+    target_compile_definitions(unittests_snapshot PRIVATE SERVER_MODE ${COMMON_DEFS})
+    target_include_directories(unittests_snapshot PRIVATE ${EP_INCLUDES})
+    target_link_libraries(unittests_snapshot LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
 endif(UNIX)
 
 

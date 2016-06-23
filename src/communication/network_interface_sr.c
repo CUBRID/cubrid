@@ -3110,7 +3110,7 @@ sboot_initialize_server (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE + OR_HFID_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  memset (&client_credential, sizeof (client_credential), 0);
+  memset (&client_credential, 0, sizeof (client_credential));
   ptr = or_unpack_int (request, &xint);
   client_credential.client_type = (BOOT_CLIENT_TYPE) xint;
   ptr = or_unpack_string_nocopy (ptr, &client_credential.client_info);
@@ -3126,7 +3126,7 @@ sboot_initialize_server (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
   ptr = or_unpack_int (ptr, &db_npages);
   ptr = or_unpack_int (ptr, &db_desired_log_page_size);
   ptr = or_unpack_int (ptr, &log_npages);
-  memset (&db_path_info, sizeof (db_path_info), 0);
+  memset (&db_path_info, 0, sizeof (db_path_info));
   ptr = or_unpack_string_nocopy (ptr, &db_path_info.db_path);
   ptr = or_unpack_string_nocopy (ptr, &db_path_info.vol_path);
   ptr = or_unpack_string_nocopy (ptr, &db_path_info.log_path);
@@ -3182,8 +3182,8 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  memset (&client_credential, sizeof (client_credential), 0);
-  memset (&server_credential, sizeof (server_credential), 0);
+  memset (&client_credential, 0, sizeof (client_credential));
+  memset (&server_credential, 0, sizeof (server_credential));
 
   ptr = or_unpack_int (request, &xint);
   client_credential.client_type = (BOOT_CLIENT_TYPE) xint;
@@ -3202,9 +3202,9 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
   SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REQ, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif
-  tran_index =
-    xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
-			   &server_credential);
+
+  tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
+				      &server_credential);
   if (tran_index == NULL_TRAN_INDEX)
     {
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
@@ -3216,18 +3216,18 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
   else
     {
-      area_size = OR_INT_SIZE	/* tran_index */
-	+ OR_INT_SIZE		/* tran_state */
-	+ or_packed_string_length (server_credential.db_full_name, &strlen1)	/* db_full_name */
-	+ or_packed_string_length (server_credential.host_name, &strlen2)	/* host_name */
-	+ or_packed_string_length (server_credential.lob_path, &strlen3)	/* lob_path */
-	+ OR_INT_SIZE		/* process_id */
-	+ OR_OID_SIZE		/* root_class_oid */
-	+ OR_HFID_SIZE		/* root_class_hfid */
-	+ OR_INT_SIZE		/* page_size */
-	+ OR_INT_SIZE		/* log_page_size */
-	+ OR_FLOAT_SIZE		/* disk_compatibility */
-	+ OR_INT_SIZE;		/* ha_server_state */
+      area_size = (OR_INT_SIZE	/* tran_index */
+		   + OR_INT_SIZE	/* tran_state */
+		   + or_packed_string_length (server_credential.db_full_name, &strlen1)	/* db_full_name */
+		   + or_packed_string_length (server_credential.host_name, &strlen2)	/* host_name */
+		   + or_packed_string_length (server_credential.lob_path, &strlen3)	/* lob_path */
+		   + OR_INT_SIZE	/* process_id */
+		   + OR_OID_SIZE	/* root_class_oid */
+		   + OR_HFID_SIZE	/* root_class_hfid */
+		   + OR_INT_SIZE	/* page_size */
+		   + OR_INT_SIZE	/* log_page_size */
+		   + OR_FLOAT_SIZE	/* disk_compatibility */
+		   + OR_INT_SIZE);	/* ha_server_state */
 
       area_size += OR_INT_SIZE;	/* db_charset */
       area_size += or_packed_string_length (server_credential.db_lang, &strlen4);
