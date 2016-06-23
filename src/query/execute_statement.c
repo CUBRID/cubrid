@@ -13192,7 +13192,7 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
 int
 do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, flag = 0;
   PT_NODE *class_;
   int has_check_option = 0;
   PT_NODE *values = NULL;
@@ -13233,6 +13233,37 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (error != NO_ERROR)
     {
       return error;
+    }
+
+  /* clear any previous error indicator because the rest of do_insert is sensitive to er_errid(). */
+  er_clear ();
+
+  /* fetch the class for instance write purpose */
+  if (!locator_fetch_class (class_->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE))
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  flag = statement->info.insert.spec->info.spec.flag;
+  if (statement->info.insert.do_replace || statement->info.insert.odku_assignments != NULL)
+    {
+      /* Check to see if the class into which we are inserting is part of an inheritance chain. We do not allow these
+       * statements to be executed in these cases as we might have undefined behavior, such as trying to update a
+       * column that belongs to a child for a duplicate key in the parent table that does not have that column. */
+      int allowed = 0;
+      error = is_replace_or_odku_allowed (class_->info.name.db_object, &allowed);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (!allowed)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLACE_ODKU_NOT_ALLOWED, 0);
+	  error = er_errid ();
+	  return error;
+	}
     }
 
   error = is_server_insert_allowed (parser, statement);
