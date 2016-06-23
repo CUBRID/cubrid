@@ -2777,7 +2777,7 @@ restart:
       /* Wakeup more workers */
       thread_wakeup_vacuum_worker_threads (n_wakeup_workers);
     }
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
 
   assert (lf_circular_queue_is_empty (vacuum_Block_data_buffer));
@@ -4129,7 +4129,7 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_
   vacuum_data_initialize_new_page (thread_p, data_page);
   data_page->data->blockid = 0;
   log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0,
-                         sizeof (data_page->data->blockid), &data_page->data->blockid);
+			 sizeof (data_page->data->blockid), &data_page->data->blockid);
 
   VPID_COPY (&log_Gl.hdr.vacuum_data_first_vpid, &first_page_vpid);
   log_append_redo_data2 (thread_p, RVVAC_DATA_MODIFY_FIRST_PAGE, NULL, (PAGE_PTR) data_page, 0,
