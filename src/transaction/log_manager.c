@@ -7965,7 +7965,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
       /* Fetch the page where the LSA record to undo is located */
       log_lsa.pageid = prev_tranlsa.pageid;
 
-      if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_SAFE_READER, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rollback");
