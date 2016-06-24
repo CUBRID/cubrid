@@ -60,6 +60,7 @@ struct xasl_cache_ent
 {
   XASL_ID xasl_id;		/* XASL file identifier */
 				/* Not really a file identifier anymore. Maybe we should rename this to XASL_KEY? */
+  XASL_STREAM stream;           /* XASL packed stream. */
   
   /* Latch-free stuff. */
   XASL_CACHE_ENTRY *stack;	/* used in freelist */

@@ -175,8 +175,6 @@ struct xcache_cleanup_candidate
 #define XCACHE_LOG_SHA1_TEXT		  "\t\t\t sha1 = %08x | %08x | %08x | %08x | %08x \n"
 #define XCACHE_LOG_SHA1_ARGS(sha1) SHA1_AS_ARGS (sha1)
 
-#define XCACHE_LOG_FVPID_TEXT		  "\t\t\t first vpid = %d|%d \n"
-#define XCACHE_LOG_TEMPVFID_TEXT	  "\t\t\t temp vfid = %d|%d \n"
 #define XCACHE_LOG_TIME_STORED_TEXT	  "\t\t\t time stored = %d sec, %d usec \n"
 #define XCACHE_LOG_EXEINFO_TEXT		  "\t\t\t user text = %s \n"					  \
 					  "\t\t\t plan text = %s \n"					  \
@@ -187,13 +185,9 @@ struct xcache_cleanup_candidate
 #define XCACHE_LOG_XASL_ID_TEXT(msg)									  \
   "\t\t " msg ": \n"											  \
   XCACHE_LOG_SHA1_TEXT											  \
-  XCACHE_LOG_FVPID_TEXT											  \
-  XCACHE_LOG_TEMPVFID_TEXT										  \
   XCACHE_LOG_TIME_STORED_TEXT
 #define XCACHE_LOG_XASL_ID_ARGS(xid)									  \
   SHA1_AS_ARGS (&(xid)->sha1),										  \
-  VPID_AS_ARGS (&(xid)->first_vpid),									  \
-  VFID_AS_ARGS (&(xid)->temp_vfid),									  \
   CACHE_TIME_AS_ARGS (&(xid)->time_stored)
 
 #define XCACHE_LOG_ENTRY_TEXT(msg)	 								  \
@@ -392,6 +386,9 @@ xcache_entry_init (void *entry)
   xcache_entry->sql_info.sql_plan_text = NULL;
 
   XASL_ID_SET_NULL (&xcache_entry->xasl_id);
+  xcache_entry->stream.xasl_id = NULL;
+  xcache_entry->stream.xasl_stream = NULL;
+
   xcache_entry->free_data_on_uninit = false;
   xcache_entry->initialized = true;
 
@@ -441,24 +438,7 @@ xcache_entry_uninit (void *entry)
 	  free_and_init (xcache_entry->sql_info.sql_hash_text);
 	}
 
-      if (XASL_ID_IS_NULL (&xcache_entry->xasl_id))
-	{
-	  assert (false);
-	}
-      else
-	{
-	  /* NOTE: During shutdown, some lock-free hash entries may remain in so called "retired list". They were not
-	   *       uninitialized when xcache_finalize () was called, and are uninitialized much later, after temporary
-	   *       volumes have been destroyed.
-	   *       In this case, xcache_Temp_vols_were_removed should be true, and we have to skip destroying temp_vfid.
-	   */
-	  if (!xcache_Temp_vols_were_removed)
-	    {
-	      /* Destroy the temporary file used to store the XASL. */
-	      (void) file_destroy (thread_get_thread_entry_info (), &xcache_entry->xasl_id.temp_vfid);
-	    }
-	  XASL_ID_SET_NULL (&xcache_entry->xasl_id);
-	}
+      XASL_ID_SET_NULL (&xcache_entry->xasl_id);
 
       /* Free XASL clones. */
       assert (xcache_entry->n_cache_clones == 0
@@ -478,6 +458,10 @@ xcache_entry_uninit (void *entry)
 	  xcache_entry->one_clone.xasl_buf = NULL;
 	  xcache_entry->cache_clones_capacity = 1;
 	}
+      if (xcache_entry->stream.xasl_stream != NULL)
+        {
+          free_and_init (xcache_entry->stream.xasl_stream);
+        }
     }
   else
     {
@@ -851,8 +835,6 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 {
   int error_code = NO_ERROR;
   HL_HEAPID save_heapid = 0;
-  char *xstream = NULL;
-  int xstream_size;
 
   assert (xid != NULL);
   assert (xcache_entry != NULL && *xcache_entry == NULL);
@@ -942,15 +924,9 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
     }
   /* TODO: If we want to use clones, I think it is cheap to store XASL stream in files. We can keep it in xcache_entry.
    */
-  error_code = qfile_load_xasl (thread_p, &(*xcache_entry)->xasl_id, &xstream, &xstream_size);
-  if (error_code == NO_ERROR)
-    {
-      error_code = stx_map_stream_to_xasl (thread_p, &xclone->xasl, xstream, xstream_size, &xclone->xasl_buf);
-    }
-  if (xstream != NULL)
-    {
-      db_private_free_and_init (thread_p, xstream);
-    }
+  error_code =
+    stx_map_stream_to_xasl (thread_p, &xclone->xasl, (*xcache_entry)->stream.xasl_stream,
+                            (*xcache_entry)->stream.xasl_stream_size, &xclone->xasl_buf);
   if (save_heapid != 0)
     {
       /* Restore heap id. */
@@ -1326,6 +1302,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
       (*xcache_entry)->sql_info.sql_hash_text = sql_hash_text;
       (*xcache_entry)->sql_info.sql_user_text = sql_user_text;
       (*xcache_entry)->sql_info.sql_plan_text = sql_plan_text;
+      (*xcache_entry)->stream = *stream;
 
       /* Now that new entry is initialized, we can try to insert it. */
       error_code = lf_hash_insert_given (t_entry, &xcache_Ht, &xid, (void **) xcache_entry, &inserted);
@@ -1494,6 +1471,9 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
     {
       /* Try to clean up some of the oldest entries. */
       xcache_cleanup (thread_p);
+
+      /* Stream is used. */
+      stream->xasl_stream = NULL;
     }
   
   return NO_ERROR;
@@ -1677,10 +1657,6 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
       fprintf (fp, "  XASL_ID = { \n");
       fprintf (fp, "              sha1 = { %08x %08x %08x %08x %08x }, \n",
 	       SHA1_AS_ARGS (&xcache_entry->xasl_id.sha1));
-      fprintf (fp, "              first_vpid = %d|%d, \n",
-	       xcache_entry->xasl_id.first_vpid.volid, xcache_entry->xasl_id.first_vpid.pageid);
-      fprintf (fp, "              temp_vfid = %d|%d, \n",
-	       xcache_entry->xasl_id.temp_vfid.volid, xcache_entry->xasl_id.temp_vfid.fileid);
       fprintf (fp, "	          time_stored = %d sec, %d usec \n",
 	       xcache_entry->xasl_id.time_stored.sec, xcache_entry->xasl_id.time_stored.usec);
       fprintf (fp, "            } \n");

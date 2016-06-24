@@ -7191,12 +7191,42 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
   return error;
 #else /* CS_MODE */
   int error_code = NO_ERROR;
+  XASL_STREAM server_stream;
 
   ENTER_SERVER ();
 
-  INIT_XASL_NODE_HEADER (stream->xasl_header);
+  /* We cannot use the stream created on client context. XASL cache will save the stream in cache entry and it will
+   * suppose the stream buffer was allocated using malloc.
+   * Duplicate the stream for server context.
+   */
+  server_stream.xasl_id = stream->xasl_id;
+  server_stream.xasl_header = stream->xasl_header;
+  server_stream.xasl_stream_size = stream->xasl_stream_size;
+  if (stream->xasl_stream_size > 0)
+    {
+      server_stream.xasl_stream = (char *) malloc (stream->xasl_stream_size);
+      if (server_stream.xasl_stream == NULL)
+        {
+          EXIT_SERVER ();
+
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, stream->xasl_stream_size);
+          return ER_OUT_OF_VIRTUAL_MEMORY;
+        }
+    }
+  else
+    {
+      /* No stream. This is just a lookup for existing entry. */
+      server_stream.xasl_stream = NULL;
+    }
+
+  INIT_XASL_NODE_HEADER (server_stream.xasl_header);
+
   /* call the server routine of query prepare */
-  error_code = xqmgr_prepare_query (NULL, context, stream);
+  error_code = xqmgr_prepare_query (NULL, context, &server_stream);
+  if (server_stream.xasl_stream != NULL)
+    {
+      free_and_init (server_stream.xasl_stream);
+    }
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

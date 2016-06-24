@@ -174,8 +174,6 @@ struct xasl_id
 {
   SHA1Hash sha1;		/* SHA-1 hash generated from query string. */
   volatile INT32 cache_flag;	/* Multiple-purpose field used to handle XASL cache. */
-  VPID first_vpid;		/* first page real identifier */
-  VFID temp_vfid;		/* temp file volume and file identifier */
   CACHE_TIME time_stored;	/* when this XASL plan stored */
 };				/* XASL plan file identifier */
 
@@ -188,24 +186,17 @@ struct xasl_id
       (X)->sha1.h[3] = 0; \
       (X)->sha1.h[4] = 0; \
       (X)->cache_flag = 0; \
-      (X)->first_vpid.pageid = NULL_PAGEID; \
-      (X)->first_vpid.volid  = NULL_VOLID; \
-      (X)->temp_vfid.fileid = NULL_FILEID; \
-      (X)->temp_vfid.volid = NULL_VOLID; \
-      /*CACHE_TIME_RESET(&((X)->time_stored))*/ \
       (X)->time_stored.sec = 0; \
       (X)->time_stored.usec = 0; \
     } \
   while (0)
 
-#define XASL_ID_IS_NULL(X) (((XASL_ID *) (X) != NULL) && (X)->first_vpid.pageid == NULL_PAGEID)
+#define XASL_ID_IS_NULL(X) (((XASL_ID *) (X) != NULL) && (X)->time_stored.sec == 0)
 
 #define XASL_ID_COPY(X1, X2) \
   do \
     { \
       (X1)->sha1 = (X2)->sha1; \
-      VPID_COPY (&((X1)->first_vpid), &((X2)->first_vpid)); \
-      VFID_COPY (&((X1)->temp_vfid), &((X2)->temp_vfid)); \
       (X1)->time_stored = (X2)->time_stored; \
       /* Do not copy cache_flag. */ \
     } \
@@ -214,8 +205,9 @@ struct xasl_id
 /* do not compare with X.time_stored */
 #define XASL_ID_EQ(X1, X2) \
     ((X1) == (X2) \
-     || (((X1)->first_vpid.pageid == (X2)->first_vpid.pageid && (X1)->first_vpid.volid == (X2)->first_vpid.volid) \
-         && ((X1)->temp_vfid.fileid == (X2)->temp_vfid.fileid && (X1)->temp_vfid.volid == (X2)->temp_vfid.volid)))
+     || (SHA1Compare (&(X1)->sha1, &(X2)->sha1) == 0 \
+         && (X1)->time_stored.sec == (X2)->time_stored.sec \
+         && (X1)->time_stored.usec == (X2)->time_stored.usec))
 
 #define OR_XASL_ID_SIZE (OR_SHA1_SIZE + OR_LOID_SIZE + OR_CACHE_TIME_SIZE)
 
@@ -227,7 +219,6 @@ struct xasl_id
     { \
       assert ((X) != NULL);				       \
       PTR = or_pack_sha1 (PTR, &(X)->sha1);		       \
-      PTR = or_pack_loid (PTR, (LOID *) &(X)->first_vpid); \
       OR_PACK_CACHE_TIME (PTR, &(X)->time_stored);         \
     } \
   while (0)
@@ -241,7 +232,6 @@ struct xasl_id
     { \
       assert ((X) != NULL);					  \
       PTR = or_unpack_sha1 (PTR, &(X)->sha1);		  \
-      PTR = or_unpack_loid (PTR, (LOID *) &(X)->first_vpid);  \
       OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored));	  \
     } \
   while (0)

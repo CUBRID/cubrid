@@ -7326,9 +7326,8 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
       else
 	{
-	  vpid_to_string (vpid_buf, sizeof (vpid_buf), &xasl_val.first_vpid);
-	  vfid_to_string (vfid_buf, sizeof (vfid_buf), &xasl_val.temp_vfid);
-	  snprintf (buf, sizeof (buf), "vpid: %s, vfid: %s", vpid_buf, vfid_buf);
+          snprintf (buf, sizeof (buf), "sha1 = %08x | %08x | %08x | %08x | %08x, time_stored = %d sec %d usec",
+                    SHA1_AS_ARGS (&xasl_val.sha1), CACHE_TIME_AS_ARGS (&xasl_val.time_stored));
 	  error = db_make_string_copy (&vals[idx], buf);
 	  if (error != NO_ERROR)
 	    {

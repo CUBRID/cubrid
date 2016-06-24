@@ -155,8 +155,6 @@ static QMGR_QUERY_ENTRY *qmgr_find_query_entry (QMGR_QUERY_ENTRY * query_list_p,
 static void qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int trans_ind);
 static void qmgr_free_tran_entries (THREAD_ENTRY * thread_p);
 
-static int xqmgr_unpack_xasl_tree (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, char *xasl_stream,
-				   int xasl_stream_size, XASL_NODE ** xasl_tree, void **xasl_unpack_info_ptr);
 static void qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p);
 static OID_BLOCK_LIST *qmgr_allocate_oid_block (THREAD_ENTRY * thread_p);
 static void qmgr_free_oid_block (THREAD_ENTRY * thread_p, OID_BLOCK_LIST * oid_block);
@@ -701,8 +699,8 @@ qmgr_dump_query_entry (QMGR_QUERY_ENTRY * query_p)
 
   fprintf (stdout, "\t\tQuery Entry Structures:\n");
   fprintf (stdout, "\t\tquery_id: %lld\n", (long long) query_p->query_id);
-  fprintf (stdout, "\t\txasl_id: {{%d, %d}, {%d, %d}}\n", query_p->xasl_id.first_vpid.pageid,
-	   query_p->xasl_id.first_vpid.volid, query_p->xasl_id.temp_vfid.fileid, query_p->xasl_id.temp_vfid.volid);
+  fprintf (stdout, "\t\txasl_id: {{%08x | %08x | %08x | %08x | %08x}, {%d sec %d usec}}\n",
+           SHA1_AS_ARGS (&query_p->xasl_id.sha1), CACHE_TIME_AS_ARGS (&query_p->xasl_id.time_stored));
   fprintf (stdout, "\t\tlist_id: %p\n", (void *) query_p->list_id);
 
   if (query_p->list_id)
@@ -920,7 +918,6 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
   int n_oid_list, *tcard_list_p = NULL;
   int *class_locks = NULL;
   int dbval_cnt;
-  XASL_ID temp_xasl_id;
   int error_code = NO_ERROR;
   bool recompile_due_to_threshold = false;
 
@@ -932,7 +929,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
   if (stream->xasl_stream == NULL && context->recompile_xasl)
     {
       /* Recompile requested by no xasl_stream is provided. */
-      assert (false);
+      assert_release (false);
       return ER_FAILED;
     }
 
@@ -952,7 +949,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
 	  if (stream->xasl_stream == NULL && stream->xasl_header != NULL)
 	    {
 	      /* also header was requested. */
-	      qfile_load_xasl_node_header (thread_p, stream->xasl_id, stream->xasl_header);
+	      qfile_load_xasl_node_header (thread_p, stream->xasl_stream, stream->xasl_header);
 	    }
 	  xcache_unfix (thread_p, cache_entry_p);
 	  goto exit_on_end;
@@ -971,17 +968,6 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
   /* Add new entry to xasl cache. */
   assert (cache_entry_p == NULL);
   assert (stream->xasl_stream != NULL);
-
-  if (qfile_store_xasl (thread_p, stream) == 0)
-    {
-      /* TODO: qfile_store_xasl return error. */
-      er_log_debug (ARG_FILE_LINE, "xqmgr_prepare_query: ls_store_xasl failed\n");
-      ASSERT_ERROR_AND_SET (error_code);
-      goto exit_on_error;
-    }
-
-  /* save the returned XASL_ID for check later */
-  XASL_ID_COPY (&temp_xasl_id, stream->xasl_id);
 
   /* get some information from the XASL stream */
   p = or_unpack_int ((char *) stream->xasl_stream, &header_size);
@@ -1026,24 +1012,17 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      (void) file_destroy (thread_p, &stream->xasl_id->temp_vfid);
       goto exit_on_error;
     }
   if (cache_entry_p == NULL)
     {
       assert (false);
-      (void) file_destroy (thread_p, &stream->xasl_id->temp_vfid);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error_code = ER_FAILED;
       goto exit_on_error;
     }
   XASL_ID_COPY (stream->xasl_id, &cache_entry_p->xasl_id);
   xcache_unfix (thread_p, cache_entry_p);
-
-  if (!XASL_ID_EQ (&temp_xasl_id, stream->xasl_id))
-    {
-      (void) file_destroy (thread_p, &temp_xasl_id.temp_vfid);
-    }
 
 exit_on_end:
 
@@ -1067,91 +1046,6 @@ exit_on_error:
   assert (error_code != NO_ERROR);
   ASSERT_ERROR ();
   goto exit_on_end;
-}
-
-/*
- * xqmgr_unpack_xasl_tree () -
- *   return			: Error code.
- *   thread_p (in)		: Thread entry.
- *   xasl_id (in)		: XASL ID. If not null, it will be used to load the stream from file. If NULL,
- *				  xasl_stream argument must be used (and must not be NULL).
- *   xasl_stream (in)		: XASL stream (if 
- *   xasl_stream_size (in)	: xasl_stream size if xasl_id is NULL.
- *   xasl_tree(out)		: pointer to where to return the root of the unpacked XASL tree
- *   xasl_unpack_info_ptr (out) : pointer to where to return the pack info
- *
- * Note: load xasl stream and
- *       unpack the linear byte stream in disk representation to an XASL tree.
- *
- * Note: the caller is responsible for freeing the memory of
- * xasl_unpack_info_ptr. The free function is stx_free_xasl_unpack_info().
- */
-static int
-xqmgr_unpack_xasl_tree (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, char *xasl_stream, int xasl_stream_size,
-			XASL_NODE ** xasl_tree, void **xasl_unpack_info_ptr)
-{
-  char *xstream;
-  int xstream_size;
-  int ret = NO_ERROR;
-
-  xstream = NULL;
-  xstream_size = 0;
-
-  /* not found clone */
-  if (xasl_id != NULL && !XASL_ID_IS_NULL (xasl_id))
-    {
-      assert (xasl_stream == NULL);
-      assert (xasl_stream_size == 0);
-      
-      /* load the XASL stream from the file of xasl_id */
-      if (qfile_load_xasl (thread_p, xasl_id, &xstream, &xstream_size) != NO_ERROR)
-	{
-	  er_log_debug (ARG_FILE_LINE,
-			"xqmgr_unpack_xasl_tree: qfile_load_xasl failed xasl_id { first_vpid { %d %d } "
-			"temp_vfid { %d %d } }\n", xasl_id->first_vpid.pageid, xasl_id->first_vpid.volid,
-			xasl_id->temp_vfid.fileid, xasl_id->temp_vfid.volid);
-	  
-	  goto exit_on_error;
-	}
-      
-      /* unpack the XASL stream to the XASL tree for execution */
-      if (stx_map_stream_to_xasl (thread_p, xasl_tree, xstream, xstream_size, xasl_unpack_info_ptr) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-    }
-  else
-    {
-      assert (xasl_stream != NULL);
-      assert (xasl_stream_size > 0);
-      
-      /* unpack the XASL stream to the XASL tree for execution */
-      if (stx_map_stream_to_xasl (thread_p, xasl_tree, xasl_stream, xasl_stream_size, xasl_unpack_info_ptr) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-    }
-
-  assert (*xasl_tree != NULL);
-  assert (*xasl_unpack_info_ptr != NULL);
-
-end:
-
-  /* free xasl_stream allocated in the qfile_load_xasl() */
-  if (xstream)
-    {
-      db_private_free_and_init (thread_p, xstream);
-    }
-
-  return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = ER_FAILED;
-    }
-  goto end;
 }
 
 /*
@@ -1213,8 +1107,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
   else
     {
       /* TODO: get rid of xqmgr_unpack_xasl_tree. */
-      if (xqmgr_unpack_xasl_tree (thread_p, NULL, xasl_stream, xasl_stream_size, &xasl_p, &xasl_buf_info)
-	  != NO_ERROR)
+      if (stx_map_stream_to_xasl (thread_p, &xasl_p, xasl_stream, xasl_stream_size, &xasl_buf_info) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -1597,9 +1490,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	      s = (params.size > 0) ? pr_valstring (&params.vals[0]) : NULL;
 	      er_log_debug (ARG_FILE_LINE,
 			    "xqmgr_execute_query: ls_update_xasl failed "
-			    "xasl_id { first_vpid { %d %d } temp_vfid { %d %d } } params { %d %s ... }\n",
-			    xasl_id_p->first_vpid.pageid, xasl_id_p->first_vpid.volid, xasl_id_p->temp_vfid.fileid,
-			    xasl_id_p->temp_vfid.volid, params.size, s ? s : "(null)");
+			    "xasl_id { sha1 { %08x | %08x | %08x | %08x | %08x } time_stored { %d sec %d usec } } "
+                            "params { %d %s ... }\n",
+                            SHA1_AS_ARGS (&xasl_id_p->sha1), CACHE_TIME_AS_ARGS (&xasl_id_p->time_stored),
+                            params.size, s ? s : "(null)");
 	      if (s)
 		{
 		  free_and_init (s);
