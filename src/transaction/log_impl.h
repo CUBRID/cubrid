@@ -176,7 +176,7 @@
         { \
           assert (log_pgptr != NULL); \
           (lsa)->pageid++; \
-          if (logpb_fetch_page ((thread_p), (lsa), LOG_CS_SAFE_READER, (log_pgptr)) == \
+          if (logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, (log_pgptr)) == \
               NULL) \
 	    { \
               logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
@@ -203,7 +203,7 @@
         { \
           assert (log_pgptr != NULL); \
           (lsa)->pageid++; \
-          if ((logpb_fetch_page ((thread_p), (lsa), LOG_CS_SAFE_READER, log_pgptr)) == \
+          if ((logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, log_pgptr)) == \
               NULL) \
             { \
               logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
