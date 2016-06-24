@@ -13245,7 +13245,6 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   error = is_server_insert_allowed (parser, statement);
   if (error != NO_ERROR || statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
     {
-      ASSERT_ERROR ();
       goto cleanup;
     }
 
