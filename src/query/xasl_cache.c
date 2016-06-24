@@ -1191,7 +1191,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 
   assert (xcache_entry != NULL && *xcache_entry == NULL);
   assert (stream != NULL);
-  assert (stream->xasl_id != NULL && !XASL_ID_IS_NULL (stream->xasl_id));
+  assert (stream->xasl_stream != NULL || !context->recompile_xasl);
 
   if (!xcache_Enabled)
     {
