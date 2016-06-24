@@ -2194,7 +2194,6 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,  LOG_CS_A
 
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
-  assert (LOG_CS_OWN (thread_p));
 
   if (access_mode != LOG_CS_SAFE_READER)
     {
