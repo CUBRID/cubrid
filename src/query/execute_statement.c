@@ -13192,7 +13192,7 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
 int
 do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int error = NO_ERROR, flag = 0;
+  int error = NO_ERROR;
   PT_NODE *class_;
   int has_check_option = 0;
   PT_NODE *values = NULL;
@@ -13213,14 +13213,6 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   class_ = statement->info.insert.spec->info.spec.flat_entity_list;
   values = statement->info.insert.value_clauses;
 
-  /* prevent blob, clob plan cache */
-  for (attr_list = statement->info.insert.attr_list; attr_list != NULL; attr_list = attr_list->next)
-    {
-      if (attr_list->type_enum == PT_TYPE_BLOB || attr_list->type_enum == PT_TYPE_CLOB)
-
-	return NO_ERROR;
-    }
-
   /* check non null attrs */
   if (values->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
     {
@@ -13232,20 +13224,31 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 				  has_default_values_list);
   if (error != NO_ERROR)
     {
-      return error;
+      ASSERT_ERROR ();
+      goto cleanup;
     }
-
-  /* clear any previous error indicator because the rest of do_insert is sensitive to er_errid(). */
-  er_clear ();
 
   /* fetch the class for instance write purpose */
-  if (!locator_fetch_class (class_->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE))
+  if (locator_fetch_class (class_->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE) == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
     }
 
-  flag = statement->info.insert.spec->info.spec.flag;
+  /* We do not allow multi statements */
+  if (pt_length_of_list (statement) > 1)
+    {
+      assert (false);
+      goto cleanup;
+    }
+
+  error = is_server_insert_allowed (parser, statement);
+  if (error != NO_ERROR || statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
   if (statement->info.insert.do_replace || statement->info.insert.odku_assignments != NULL)
     {
       /* Check to see if the class into which we are inserting is part of an inheritance chain. We do not allow these
@@ -13255,21 +13258,16 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = is_replace_or_odku_allowed (class_->info.name.db_object, &allowed);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  ASSERT_ERROR ();
+	  goto cleanup;
 	}
 
       if (!allowed)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLACE_ODKU_NOT_ALLOWED, 0);
-	  error = er_errid ();
-	  return error;
+	  ASSERT_ERROR_AND_SET (error);
+	  goto cleanup;
 	}
-    }
-
-  error = is_server_insert_allowed (parser, statement);
-  if (error != NO_ERROR || statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
-    {
-      return error;
     }
 
   if (statement->info.insert.odku_assignments != NULL)
@@ -13279,7 +13277,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (update == NULL)
 	{
 	  error = ER_FAILED;
-	  return error;
+	  goto cleanup;
 	}
       if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
 	{
@@ -13287,19 +13285,45 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error =
 	    is_server_update_allowed (parser, &statement->info.insert.odku_non_null_attrs, &upd_has_uniques,
 				      &server_allowed, update);
+
 	  if (error != NO_ERROR)
 	    {
-	      return error;
+	      ASSERT_ERROR ();
+	      goto cleanup;
 	    }
 	  if (!server_allowed)
 	    {
 	      statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
+	      goto cleanup;
 	    }
 	}
     }
 
+  /* prevent blob, clob plan cache */
+  for (attr_list = statement->info.insert.attr_list; attr_list != NULL; attr_list = attr_list->next)
+    {
+      if (attr_list->type_enum == PT_TYPE_BLOB || attr_list->type_enum == PT_TYPE_CLOB)
+	{
+	  goto cleanup;
+	}
+    }
+
+  /* All above checks are required before any early outs. */
+
   error = do_prepare_insert_internal (parser, statement);
 
+cleanup:
+  /* Free update attribute. */
+  if (update != NULL)
+    {
+      update->info.update.assignment = NULL;
+      update->info.update.spec = NULL;
+      if (update->info.update.check_where != NULL)
+	{
+	  update->info.update.check_where->info.check_option.expr = NULL;
+	}
+      parser_free_tree (parser, update);
+    }
   return error;
 }
 
