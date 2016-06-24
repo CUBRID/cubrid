@@ -1915,7 +1915,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (log_pgptr != NULL);
 
-  if ((logpb_fetch_page (thread_p, &header_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
+  if ((logpb_fetch_page (thread_p, &header_lsa, LOG_CS_SAFE_READER, log_pgptr)) == NULL)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_fetch_hdr_with_buf");
       /* This statement should not be reached */
@@ -2034,7 +2034,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
 
       /* 
        * most of the cases, we don't need calling logpb_copy_page with LOG_CS exclusive access,
-       * if needed we acquire READ mode in logpb_copy_page
+       * if needed, we acquire READ mode in logpb_copy_page
        */
       ret_pgptr = logpb_copy_page (thread_p, req_lsa->pageid, access_mode, log_pgptr);
 
@@ -2153,7 +2153,6 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
 
   if (log_csect_entered)
     {
-      /* TODO: Avoid any locks for vacuum workers. Investigate if any unwanted consequences are possible. */
       LOG_CS_EXIT (thread_p);
     }
 
@@ -2210,10 +2209,9 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,  LOG_CS_A
   if (logpb_is_page_in_archive (pageid)
       && (LOG_ISRESTARTED () == false || (pageid + LOGPB_ACTIVE_NPAGES) <= log_Gl.hdr.append_lsa.pageid))
     {
-      if (log_csect_entered == false && access_mode != LOG_CS_SAFE_READER)
+      if (access_mode != LOG_CS_SAFE_READER)
 	{
-	  LOG_CS_ENTER_READ_MODE (thread_p);
-	  log_csect_entered = true;
+	  assert (log_csect_entered == true);
 	}
 
       if (logpb_fetch_from_archive (thread_p, pageid, log_pgptr, NULL, NULL, true) == NULL)
@@ -2240,7 +2238,6 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,  LOG_CS_A
 
       mnt_log_ioreads (thread_p);
 
-      /* TODO[arnia] : avoid using CS if not boundary case (active log about to be archived) */
       if (log_csect_entered == false)
 	{
 	  LOG_CS_ENTER_READ_MODE (thread_p);
