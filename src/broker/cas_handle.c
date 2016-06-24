@@ -340,7 +340,7 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 	{
 	  if (q_result[i].copied != TRUE && q_result[i].result)
 	    {
-	      ux_free_result (q_result[i].result, q_result[i].query_execution_type);
+	      ux_free_result (q_result[i].result, q_result[i].query_execution_end_type);
 
 	      if (q_result[i].is_holdable == true)
 		{

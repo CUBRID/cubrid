@@ -246,12 +246,11 @@ bool tm_Use_OID_preflush = true;
  *              cached in the workspace are cleared.
  */
 int
-tran_commit (bool retain_lock, DB_QUERY_EXECUTION_TYPE latest_query_execution_type)
+tran_commit (bool retain_lock, DB_QUERY_EXECUTION_END_TYPE latest_query_execution_end_type)
 {
   TRAN_STATE state;
   int error_code = NO_ERROR;
   bool query_end_notify_server;
-  bool commit_notify_server;
 
   /* check deferred trigger activities, these may prevent the transaction from being committed. */
   error_code = tr_check_commit_triggers (TR_TIME_BEFORE);
@@ -280,14 +279,9 @@ tran_commit (bool retain_lock, DB_QUERY_EXECUTION_TYPE latest_query_execution_ty
     }
 
   query_end_notify_server = true;
-  commit_notify_server = true;
-  if (DB_IS_QUERY_EXECUTED_ENDED (latest_query_execution_type))
+  if (DB_IS_QUERY_EXECUTED_ENDED (latest_query_execution_end_type))
     {
       query_end_notify_server = false;
-      if (DB_IS_QUERY_EXECUTED_ENDED_COMMITTED (latest_query_execution_type))
-	{
-	  commit_notify_server = false;
-	}
     }
 
   /* TO DO - clear depend by query execute state */
@@ -297,7 +291,7 @@ tran_commit (bool retain_lock, DB_QUERY_EXECUTION_TYPE latest_query_execution_ty
   /* if the commit fails or not, we should clear the clients savepoint list */
   tran_free_savepoint_list ();
 
-  if (commit_notify_server)
+  if (!DB_IS_QUERY_EXECUTED_COMMITTED (latest_query_execution_end_type))
     {
       /* Forward the commit the transaction manager in the server */
       state = tran_server_commit (retain_lock);
@@ -348,7 +342,16 @@ tran_commit (bool retain_lock, DB_QUERY_EXECUTION_TYPE latest_query_execution_ty
     }
   else
     {
-      /* TO DO - reset_on_commit */
+      if (DB_IS_QUERY_EXECUTED_COMMITTED_WITH_RESET (latest_query_execution_end_type)
+	  && log_does_allow_replication () == true)
+	{
+	  /* 
+	   * fail-back action
+	   * make the client to reconnect to the active server
+	   */
+	  db_Connect_status = DB_CONNECTION_STATUS_RESET;
+	  er_log_debug (ARG_FILE_LINE, "tran_server_commit: DB_CONNECTION_STATUS_RESET\n");
+	}
     }
 
   /* Increment snapshot version in work space */

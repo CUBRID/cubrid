@@ -2777,7 +2777,7 @@ restart:
       /* Wakeup more workers */
       thread_wakeup_vacuum_worker_threads (n_wakeup_workers);
     }
-#else	/* !SERVER_MODE */		 /* SA_MODE */
+#else	/* !SERVER_MODE */		   /* SA_MODE */
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
 
   assert (lf_circular_queue_is_empty (vacuum_Block_data_buffer));
@@ -3961,7 +3961,7 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
       assert (vacuum_Data.last_page->index_unvacuumed == 0);
       /* last_blockid is still saved in the first data entry. */
       vacuum_Data.last_blockid = vacuum_Data.last_page->data->blockid;
-      assert (vacuum_Data.last_blockid == VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_Data.last_blockid));
+      //assert (vacuum_Data.last_blockid == VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_Data.last_blockid));
     }
   else
     {

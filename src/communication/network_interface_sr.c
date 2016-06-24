@@ -79,6 +79,7 @@
 
 #define STATDUMP_BUF_SIZE (16 * 1024)
 #define QUERY_INFO_BUF_SIZE (2048 + STATDUMP_BUF_SIZE)
+#define NET_DEFER_END_QUERIES_MAX 10
 
 /* This file is only included in the server.  So set the on_server flag on */
 unsigned int db_on_server = 1;
@@ -5125,7 +5126,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
   XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
   int row_count = DB_ROW_COUNT_NOT_SET;
   int n_query_ids = 0, i = 0;
-  QUERY_ID net_Deferred_end_queries[5 /* TO DO - define */ ];
+  QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX], *p_net_Deferred_end_queries = net_Deferred_end_queries;
   TRAN_STATE tran_state;
 
   int response_time = 0;
@@ -5178,9 +5179,20 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 
   ptr = or_unpack_int (ptr, &row_count);
   ptr = or_unpack_int (ptr, &n_query_ids);
+  if (n_query_ids + 1 > NET_DEFER_END_QUERIES_MAX)
+    {
+      p_net_Deferred_end_queries = (QUERY_ID *) malloc ((n_query_ids + 1) * sizeof (QUERY_ID));
+      if (p_net_Deferred_end_queries == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) (n_query_ids + 1) * sizeof (QUERY_ID));
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  return;
+	}
+    }
   for (i = 0; i < n_query_ids; i++)
     {
-      ptr = or_unpack_ptr (ptr, net_Deferred_end_queries + i);
+      ptr = or_unpack_ptr (ptr, p_net_Deferred_end_queries + i);
     }
 
   /* if the request contains parameter values for the query, allocate space for them */
@@ -5196,6 +5208,12 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 	    {
 	      free_and_init (data);
 	    }
+
+	  if (p_net_Deferred_end_queries != net_Deferred_end_queries)
+	    {
+	      free_and_init (p_net_Deferred_end_queries);
+	    }
+
 	  return;		/* error */
 	}
     }
@@ -5366,11 +5384,12 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
   tran_state = tdes->state;
   if (end_query_allowed)
     {
+      p_net_Deferred_end_queries[n_query_ids++] = query_id;
       for (i = 0; i < n_query_ids; i++)
 	{
-	  if (net_Deferred_end_queries[i] > 0)
+	  if (p_net_Deferred_end_queries[i] > 0)
 	    {
-	      error_code = xqmgr_end_query (thread_p, net_Deferred_end_queries[i]);
+	      error_code = xqmgr_end_query (thread_p, p_net_Deferred_end_queries[i]);
 	      if (error_code != NO_ERROR)
 		{
 		  all_error_code = error_code;
@@ -5442,6 +5461,10 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
   if (list_id)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
+    }
+  if (p_net_Deferred_end_queries != net_Deferred_end_queries)
+    {
+      free_and_init (p_net_Deferred_end_queries);
     }
 }
 

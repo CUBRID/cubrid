@@ -102,30 +102,17 @@ prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
  *   flag(in)   : flag 
  *   clt_cache_time(in) :
  *   srv_cache_time(in) :
+ *   query_execution_end_type(in/out) : query execution end type
  */
 int
 execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const DB_VALUE * varptr,
 	       QFILE_LIST_ID ** list_idp, QUERY_FLAG flag, CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time,
-	       int *end_query_result, TRAN_STATE * tran_state, int *reset_on_commit)
+	       DB_QUERY_EXECUTION_END_TYPE * query_execution_end_type)
 {
   int query_timeout;
   int ret = NO_ERROR;
 
   *list_idp = NULL;
-  if (end_query_result)
-    {
-      /* Query not ended */
-      *end_query_result = ER_FAILED;
-    }
-  if (tran_state)
-    {
-      /* Transaction not committed */
-      *tran_state = TRAN_ACTIVE;
-    }
-  if (reset_on_commit)
-    {
-      *reset_on_commit = false;
-    }
 
   /* if QO_PARAM_LEVEL indicate no execution, just return */
   if (qo_need_skip_execution ())
@@ -135,16 +122,21 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const
 
   query_timeout = tran_get_query_timeout ();
   /* send XASL file id and host variables to the server and get QFILE_LIST_ID */
-  if (flag & EXECUTE_WITH_COMMIT)
+
+  if ((query_execution_end_type != NULL) && ((*query_execution_end_type) == DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED))
     {
       *list_idp =
-	qmgr_execute_query_and_commit (xasl_id, query_idp, var_cnt, varptr, flag, clt_cache_time, srv_cache_time,
-				       query_timeout, end_query_result, tran_state, reset_on_commit);
+	qmgr_execute_query_with_commit (xasl_id, query_idp, var_cnt, varptr, flag, clt_cache_time, srv_cache_time,
+					query_timeout, query_execution_end_type);
     }
   else
     {
       *list_idp =
 	qmgr_execute_query (xasl_id, query_idp, var_cnt, varptr, flag, clt_cache_time, srv_cache_time, query_timeout);
+      if (list_idp && query_execution_end_type)
+	{
+	  *query_execution_end_type = DB_QUERY_EXECUTED_NOT_ENDED;
+	}
     }
 
   if (*list_idp == NULL)

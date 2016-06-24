@@ -120,7 +120,7 @@ static int net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_
 static void set_db_connection_info (void);
 static void clear_db_connection_info (void);
 static bool need_database_reconnect (void);
-static DB_QUERY_EXECUTION_TYPE cas_get_query_execution_type (T_SERVER_FUNC server_fn, int argc, void **argv);
+static DB_QUERY_EXECUTION_END_TYPE cas_get_query_execution_end_type (T_SERVER_FUNC server_fn, int argc, void **argv);
 
 
 #else /* !LIBCAS_FOR_JSP */
@@ -2007,10 +2007,10 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (fn_ret == FN_KEEP_CONN && net_buf->err_code == 0 && as_info->con_status == CON_STATUS_IN_TRAN
       && req_info->need_auto_commit != TRAN_NOT_AUTOCOMMIT && err_info.err_number != CAS_ER_STMT_POOLING)
     {
-      DB_QUERY_EXECUTION_TYPE query_execution_type;
-      query_execution_type = cas_get_query_execution_type (server_fn, argc, argv);
+      DB_QUERY_EXECUTION_END_TYPE query_execution_end_type;
+      query_execution_end_type = cas_get_query_execution_end_type (server_fn, argc, argv);
       /* no communication error and auto commit is needed */
-      err_code = ux_auto_commit (net_buf, req_info, query_execution_type);
+      err_code = ux_auto_commit (net_buf, req_info, query_execution_end_type);
       if (err_code < 0)
 	{
 	  fn_ret = FN_CLOSE_CONN;
@@ -2865,17 +2865,23 @@ cas_get_client_version (void)
   return req_info.client_version;
 }
 
-static DB_QUERY_EXECUTION_TYPE
-cas_get_query_execution_type (T_SERVER_FUNC server_fn, int argc, void **argv)
+/*
+ * cas_get_query_execution_end_type () - Get query execution end type.
+ *   return: query execution end type
+ *   server_fn(in): server function
+ *   argc(in): arguments count
+ *   argv(in): argument values
+ */
+static DB_QUERY_EXECUTION_END_TYPE
+cas_get_query_execution_end_type (T_SERVER_FUNC server_fn, int argc, void **argv)
 {
+#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
-  DB_QUERY_EXECUTION_TYPE query_execution_type;
+  DB_QUERY_EXECUTION_END_TYPE query_execution_end_type;
   T_QUERY_RESULT *q_result;
 
-  query_execution_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
-
-#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  query_execution_end_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
   if (server_fn == fn_execute || server_fn == fn_execute_array)
     {
       net_arg_get_int (&srv_h_id, argv[0]);
@@ -2885,11 +2891,12 @@ cas_get_query_execution_type (T_SERVER_FUNC server_fn, int argc, void **argv)
 	  q_result = &(srv_handle->q_result[srv_handle->num_q_result - 1]);
 	  if (q_result)
 	    {
-	      query_execution_type = q_result->query_execution_type;
+	      query_execution_end_type = q_result->query_execution_end_type;
 	    }
 	}
     }
+  return query_execution_end_type;
+#else
+  return DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
 #endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-
-  return query_execution_type;
-};
+}
