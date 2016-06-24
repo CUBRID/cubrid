@@ -8255,7 +8255,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 
       if (last_fetch_page_id != top_result_lsa.pageid)
 	{
-	  if (logpb_fetch_page (thread_p, &top_result_lsa, LOG_CS_SAFE_READER, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, &top_result_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	    {
 	      if (nxtop_stack != *out_nxtop_range_stack)
 		{
