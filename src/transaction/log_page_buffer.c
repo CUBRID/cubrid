@@ -2030,13 +2030,13 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
 	  logpb_prior_lsa_append_all_list (thread_p);
 	}
 
-      LOG_CS_EXIT (thread_p);
-
       /* 
        * most of the cases, we don't need calling logpb_copy_page with LOG_CS exclusive access,
        * if needed, we acquire READ mode in logpb_copy_page
        */
       ret_pgptr = logpb_copy_page (thread_p, req_lsa->pageid, access_mode, log_pgptr);
+
+      LOG_CS_EXIT (thread_p);
 
       return ret_pgptr;
     }
