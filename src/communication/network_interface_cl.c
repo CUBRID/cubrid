@@ -7212,6 +7212,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
           er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, stream->xasl_stream_size);
           return ER_OUT_OF_VIRTUAL_MEMORY;
         }
+      memcpy (server_stream.xasl_stream, stream->xasl_stream, stream->xasl_stream_size);
     }
   else
     {
