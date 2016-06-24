@@ -2199,8 +2199,10 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,  LOG_CS_A
 
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
-
+#if 0
   if (access_mode != LOG_CS_SAFE_READER)
+#endif
+  if (1)
     {
       /* This is added here to block others from creating new archive or mounting/dismounting archives while the vacuum 
        * workers is trying to fetch its page from file. */
