@@ -11797,65 +11797,14 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   /* clear any previous error indicator because the rest of do_insert is sensitive to er_errid(). */
   er_clear ();
 
-  /* fetch the class for instance write purpose */
-  if (!locator_fetch_class (class_->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE))
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  flag = statement->info.insert.spec->info.spec.flag;
-  if (statement->info.insert.do_replace || statement->info.insert.odku_assignments != NULL)
-    {
-      /* Check to see if the class into which we are inserting is part of an inheritance chain. We do not allow these
-       * statements to be executed in these cases as we might have undefined behavior, such as trying to update a
-       * column that belongs to a child for a duplicate key in the parent table that does not have that column. */
-      int allowed = 0;
-      error = is_replace_or_odku_allowed (class_->info.name.db_object, &allowed);
-      if (error != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      if (!allowed)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLACE_ODKU_NOT_ALLOWED, 0);
-	  error = er_errid ();
-	  goto cleanup;
-	}
-    }
-
-  error = is_server_insert_allowed (parser, statement);
+  error = do_preliminary_checks (parser, statement, class_, update, value_clauses);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto cleanup;
     }
 
-  if (statement->info.insert.odku_assignments != NULL)
-    {
-      /* Test if server UPDATE is allowed */
-      update = do_create_odku_stmt (parser, statement);
-      if (update == NULL)
-	{
-	  error = ER_FAILED;
-	  goto cleanup;
-	}
-      if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
-	{
-	  int server_allowed = 0;
-	  error =
-	    is_server_update_allowed (parser, &statement->info.insert.odku_non_null_attrs, &upd_has_uniques,
-				      &server_allowed, update);
-	  if (error != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-	  if (!server_allowed)
-	    {
-	      statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
-	    }
-	}
-    }
+  flag = statement->info.insert.spec->info.spec.flag;
 
   into = statement->info.insert.into_var;
   if (into != NULL && PT_IS_NAME_NODE (into) && into->info.name.meta_class == PT_PARAMETER)
@@ -13197,7 +13146,6 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   int has_check_option = 0;
   PT_NODE *values = NULL;
   int has_trigger = 0;
-  int upd_has_uniques = 0;
   bool has_default_values_list = false;
   PT_NODE *attr_list;
   PT_NODE *update = NULL;
@@ -13209,105 +13157,25 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       return ER_GENERIC_ERROR;
     }
 
-  statement->etc = NULL;
-  class_ = statement->info.insert.spec->info.spec.flat_entity_list;
-  values = statement->info.insert.value_clauses;
-
-  /* check non null attrs */
-  if (values->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
-    {
-      has_default_values_list = true;
-    }
-
-  error =
-    check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
-				  has_default_values_list);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto cleanup;
-    }
-
-  /* fetch the class for instance write purpose */
-  if (locator_fetch_class (class_->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE) == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto cleanup;
-    }
-
-  /* We do not allow multi statements */
+  /* We do not allow multi statements. To be checked! */
   if (pt_length_of_list (statement) > 1)
     {
       assert (false);
       goto cleanup;
     }
 
-  error = is_server_insert_allowed (parser, statement);
-  if (error != NO_ERROR || statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
+  statement->etc = NULL;
+  class_ = statement->info.insert.spec->info.spec.flat_entity_list;
+  values = statement->info.insert.value_clauses;
+
+  error = do_preliminary_checks (parser, statement, class_, update, values);
+  if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto cleanup;
     }
 
-  if (statement->info.insert.do_replace || statement->info.insert.odku_assignments != NULL)
-    {
-      /* Check to see if the class into which we are inserting is part of an inheritance chain. We do not allow these
-       * statements to be executed in these cases as we might have undefined behavior, such as trying to update a
-       * column that belongs to a child for a duplicate key in the parent table that does not have that column. */
-      int allowed = 0;
-      error = is_replace_or_odku_allowed (class_->info.name.db_object, &allowed);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto cleanup;
-	}
-
-      if (!allowed)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLACE_ODKU_NOT_ALLOWED, 0);
-	  ASSERT_ERROR_AND_SET (error);
-	  goto cleanup;
-	}
-    }
-
-  if (statement->info.insert.odku_assignments != NULL)
-    {
-      /* Test if server UPDATE is allowed */
-      update = do_create_odku_stmt (parser, statement);
-      if (update == NULL)
-	{
-	  error = ER_FAILED;
-	  goto cleanup;
-	}
-      if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
-	{
-	  int server_allowed = 0;
-	  error =
-	    is_server_update_allowed (parser, &statement->info.insert.odku_non_null_attrs, &upd_has_uniques,
-				      &server_allowed, update);
-
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto cleanup;
-	    }
-	  if (!server_allowed)
-	    {
-	      statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
-	      goto cleanup;
-	    }
-	}
-    }
-
-  /* prevent blob, clob plan cache */
-  for (attr_list = statement->info.insert.attr_list; attr_list != NULL; attr_list = attr_list->next)
-    {
-      if (attr_list->type_enum == PT_TYPE_BLOB || attr_list->type_enum == PT_TYPE_CLOB)
-	{
-	  goto cleanup;
-	}
-    }
-
-  /* All above checks are required before any early outs. */
+  /* Check above is required before any early outs. */
 
   error = do_prepare_insert_internal (parser, statement);
 
@@ -17192,4 +17060,95 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
       csession_set_session_variables (var, 2);
       free_and_init (plan_str);
     }
+}
+
+static int
+do_preliminary_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_, PT_NODE * update,
+		       PT_NODE * values)
+{
+  int error = NO_ERROR;
+  int upd_has_uniques = 0;
+  bool has_default_values_list = false;
+
+  /* Check if server allows an insert. */
+  error = is_server_insert_allowed (parser, statement);
+  if (error != NO_ERROR || statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
+    {
+      return error;
+    }
+
+  /* Check non null attrs. */
+  if (values->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
+    {
+      has_default_values_list = true;
+    }
+
+  error =
+    check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
+				  has_default_values_list);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  /* Test if server UPDATE is allowed */
+
+  if (statement->info.insert.odku_assignments != NULL)
+    {
+      update = do_create_odku_stmt (parser, statement);
+      if (update == NULL)
+	{
+	  error = ER_FAILED;
+	  return error;
+	}
+      if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
+	{
+	  int server_allowed = 0;
+	  error =
+	    is_server_update_allowed (parser, &statement->info.insert.odku_non_null_attrs, &upd_has_uniques,
+				      &server_allowed, update);
+
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error;
+	    }
+	  if (!server_allowed)
+	    {
+	      statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
+	      return error;
+	    }
+	}
+    }
+
+  /* fetch the class for instance write purpose */
+  if (!locator_fetch_class (class_->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE))
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+  /* Check to see if the class into which we are inserting is part of an inheritance chain. We do not allow these
+   * statements to be executed in these cases as we might have undefined behavior, such as trying to update a
+   * column that belongs to a child for a duplicate key in the parent table that does not have that column. */
+
+  if (statement->info.insert.do_replace || statement->info.insert.odku_assignments != NULL)
+    {
+      int allowed = 0;
+      error = is_replace_or_odku_allowed (class_->info.name.db_object, &allowed);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+
+      if (!allowed)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLACE_ODKU_NOT_ALLOWED, 0);
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+    }
+
+  return error;
 }
