@@ -11797,7 +11797,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   /* clear any previous error indicator because the rest of do_insert is sensitive to er_errid(). */
   er_clear ();
 
-  error = do_preliminary_checks (parser, statement, class_, update, value_clauses);
+  error = do_insert_checks (parser, statement, class_, update, &value_clauses);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -13168,7 +13168,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   class_ = statement->info.insert.spec->info.spec.flat_entity_list;
   values = statement->info.insert.value_clauses;
 
-  error = do_preliminary_checks (parser, statement, class_, update, values);
+  error = do_insert_checks (parser, statement, class_, update, &values);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17063,7 +17063,7 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
 }
 
 static int
-do_preliminary_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_, PT_NODE * update,
+do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_, PT_NODE ** update,
 		       PT_NODE * values)
 {
   int error = NO_ERROR;
@@ -17096,8 +17096,8 @@ do_preliminary_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * c
 
   if (statement->info.insert.odku_assignments != NULL)
     {
-      update = do_create_odku_stmt (parser, statement);
-      if (update == NULL)
+      *update = do_create_odku_stmt (parser, statement);
+      if (*update == NULL)
 	{
 	  error = ER_FAILED;
 	  return error;
@@ -17107,7 +17107,7 @@ do_preliminary_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * c
 	  int server_allowed = 0;
 	  error =
 	    is_server_update_allowed (parser, &statement->info.insert.odku_non_null_attrs, &upd_has_uniques,
-				      &server_allowed, update);
+				      &server_allowed, *update);
 
 	  if (error != NO_ERROR)
 	    {
