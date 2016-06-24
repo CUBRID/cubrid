@@ -1466,13 +1466,17 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	{
 	  free (sql_hash_text);
 	}
+      free_and_init (stream->xasl_stream);
     }
-  else if (xcache_Soft_capacity < xcache_Entry_count && xcache_Cleanup_flag == 0)
+  else
     {
-      /* Try to clean up some of the oldest entries. */
-      xcache_cleanup (thread_p);
+      if (xcache_Soft_capacity < xcache_Entry_count && xcache_Cleanup_flag == 0)
+        {
+          /* Try to clean up some of the oldest entries. */
+          xcache_cleanup (thread_p);
+        }
 
-      /* Stream is used. */
+      /* XASL stream was used. Remove from argument. */
       stream->xasl_stream = NULL;
     }
   
