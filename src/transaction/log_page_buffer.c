@@ -2030,7 +2030,10 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
        * copy prior lsa list to log page buffer to ensure that required
        * pageid is in log page buffer
        */
+#if 0
       if (!LSA_LT (req_lsa, &log_Gl.hdr.append_lsa))	/* retry with mutex */
+#endif
+	if (req_lsa->pageid >= log_Gl.hdr.append_lsa.pageid)
 	{
 	  logpb_prior_lsa_append_all_list (thread_p);
 	}
