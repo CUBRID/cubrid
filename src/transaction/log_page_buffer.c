@@ -1909,11 +1909,14 @@ void
 logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
   LOG_HEADER *log_hdr;		/* The log header */
-  LOG_LSA header_lsa = {LOGPB_HEADER_PAGE_ID, 0};
+  LOG_LSA header_lsa;
 
   assert (hdr != NULL);
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (log_pgptr != NULL);
+
+  header_lsa.pageid = LOGPB_HEADER_PAGE_ID;
+  header_lsa.offset = DB_PAGESIZE;
 
   if ((logpb_fetch_page (thread_p, &header_lsa, LOG_CS_SAFE_READER, log_pgptr)) == NULL)
     {
@@ -2023,6 +2026,12 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
    *          logpb_flush_all_append_pages is cleared so there is no EOL
    *          in log page (in delayed_free_log_pgptr)
    */
+  _er_log_debug (ARG_FILE_LINE, "logpb_fetch_page: LOG_LSA:{%d,%d}, append_LSA{%d,%d}, append_prev{%d,%d}",
+    req_lsa->pageid, req_lsa->offset,
+    log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset,
+    log_Gl.append.prev_lsa.pageid, log_Gl.append.prev_lsa.offset);
+
+
   if ((LSA_LE (req_lsa, &append_lsa) && LSA_LE (req_lsa, &log_Gl.hdr.append_lsa))		/* for case 1 */
       || (LSA_LE(req_lsa, &append_prev_lsa) && LSA_LE(req_lsa, &log_Gl.append.prev_lsa)))	/* for case 2 */
 
@@ -2247,12 +2256,6 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,  LOG_CS_A
       phy_pageid = logpb_to_physical_pageid (pageid);
 
       mnt_log_ioreads (thread_p);
-
-      if (log_csect_entered == false)
-	{
-	  LOG_CS_ENTER_READ_MODE (thread_p);
-	  log_csect_entered = true;
-	}
 
       if (fileio_read (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
 	{
@@ -2969,7 +2972,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	  LOG_LSA current_lsa;
 
 	  current_lsa.pageid = pageid;
-	  current_lsa.offset = 0;
+	  current_lsa.offset = DB_PAGESIZE;
 	  /* to flush all omitted pages by the previous archiving */
 	  log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 	  if (logpb_fetch_page (thread_p, &current_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)

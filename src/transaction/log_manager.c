@@ -7963,7 +7963,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   while (!LSA_ISNULL (&prev_tranlsa) && !isdone)
     {
       /* Fetch the page where the LSA record to undo is located */
-      log_lsa.pageid = prev_tranlsa.pageid;
+      LSA_COPY (&log_lsa, &prev_tranlsa);
 
       if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
 	{
@@ -8432,7 +8432,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
       while (!LSA_ISNULL (&forward_lsa) && !isdone)
 	{
 	  /* Fetch the page where the postpone LSA record is located */
-	  log_lsa.pageid = forward_lsa.pageid;
+	  LSA_COPY (&log_lsa, &forward_lsa);
 	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_SAFE_READER, log_pgptr) == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_do_postpone");

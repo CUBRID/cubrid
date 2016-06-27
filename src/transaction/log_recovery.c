@@ -2188,7 +2188,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   while (!LSA_ISNULL (&lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
-      log_lsa.pageid = lsa.pageid;
+      LSA_COPY (&log_lsa, &lsa);
       if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_page_p) == NULL)
 	{
 	  if (is_media_crash == true)
@@ -2573,7 +2573,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   while (!LSA_ISNULL (&lsa))
     {
       /* Fetch the page where the LSA record to undo is located */
-      log_lsa.pageid = lsa.pageid;
+      LSA_COPY (&log_lsa, &lsa);
       if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	{
 	  if (end_redo_lsa != NULL && (LSA_ISNULL (end_redo_lsa) || LSA_GT (&lsa, end_redo_lsa)))
@@ -3763,7 +3763,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   while (lsa_ptr != NULL && !LSA_ISNULL (lsa_ptr))
     {
       /* Fetch the page where the LSA record to undo is located */
-      log_lsa.pageid = lsa_ptr->pageid;
+      LSA_COPY (&log_lsa, lsa_ptr);
       if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	{
 	  log_zip_free (undo_unzip_ptr);
@@ -5007,7 +5007,7 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
       while (!LSA_ISNULL (&forward_lsa) && !isdone)
 	{
 	  /* Fetch the page where the postpone LSA record is located */
-	  log_lsa.pageid = forward_lsa.pageid;
+	  LSA_COPY (&log_lsa, &forward_lsa);
 	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_find_first_postpone");
