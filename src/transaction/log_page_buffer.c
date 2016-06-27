@@ -2210,6 +2210,10 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,  LOG_CS_A
       LOG_CS_ENTER_READ_MODE (thread_p);
       log_csect_entered = true;
     }
+  else
+    {
+      assert (LOG_CS_OWN (thread_p));
+    }
 
   if (logpb_is_page_in_archive (pageid)
       && (LOG_ISRESTARTED () == false || (pageid + LOGPB_ACTIVE_NPAGES) <= log_Gl.hdr.append_lsa.pageid))
