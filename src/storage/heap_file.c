@@ -7837,6 +7837,7 @@ heap_mvcc_get_for_delete_new (THREAD_ENTRY * thread_p, OID * oid, OID * class_oi
   RECDES recdes_local;
   MVCC_REC_HEADER mvcc_header;
   DB_LOGICAL ev_res;		/* Re-evaluation result. */
+  OID class_oid_local = OID_INITIALIZER;
 
   if (recdes == NULL && mvcc_reev_data != NULL)
     {
@@ -7844,6 +7845,11 @@ heap_mvcc_get_for_delete_new (THREAD_ENTRY * thread_p, OID * oid, OID * class_oi
       recdes = &recdes_local;
       ispeeking = PEEK;
       old_chn = NULL_CHN;
+    }
+
+  if (class_oid == NULL)
+    {
+      class_oid = &class_oid_local;
     }
 
   heap_init_get_context (&context, oid, class_oid, recdes);
@@ -7861,7 +7867,7 @@ heap_mvcc_get_for_delete_new (THREAD_ENTRY * thread_p, OID * oid, OID * class_oi
 
   scan = locator_lock_and_get_object (thread_p, &context, X_LOCK, scan_cache, old_chn, ispeeking);
 
-  if (mvcc_reev_data != NULL && scan != S_DOESNT_EXIST)
+  if (mvcc_reev_data != NULL && (scan == S_SUCCESS || scan == S_SUCCESS_CHN_UPTODATE))
     {
       if (scan == S_SUCCESS_CHN_UPTODATE)
 	{
@@ -7876,6 +7882,11 @@ heap_mvcc_get_for_delete_new (THREAD_ENTRY * thread_p, OID * oid, OID * class_oi
 	}
 
       ev_res = heap_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
+      if (ev_res != V_TRUE)
+	{
+	  /* did not pass the evaluation or error occurred - unlock object */
+	  lock_unlock_object (thread_p, oid, class_oid, X_LOCK, true);
+	}
       switch (ev_res)
 	{
 	case V_TRUE:
