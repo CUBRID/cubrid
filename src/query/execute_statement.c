@@ -125,51 +125,51 @@ static int
 do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class_, PT_NODE ** update, PT_NODE * values);
 
 #define MAX_SERIAL_INVARIANT	8
-     typedef struct serial_invariant SERIAL_INVARIANT;
+typedef struct serial_invariant SERIAL_INVARIANT;
 
 /* an invariant which serial must hold */
-     struct serial_invariant
-     {
-       DB_VALUE val1;
-       DB_VALUE val2;
-       PT_OP_TYPE cmp_op;
-       int val1_msgid;		/* the proper message id for val1. 0 means val1 should not be responsible for the
+struct serial_invariant
+{
+  DB_VALUE val1;
+  DB_VALUE val2;
+  PT_OP_TYPE cmp_op;
+  int val1_msgid;		/* the proper message id for val1. 0 means val1 should not be responsible for the
 				 * invariant voilation */
-       int val2_msgid;		/* the proper message id for val2. 0 means val2 should not be responsible for the
+  int val2_msgid;		/* the proper message id for val2. 0 means val2 should not be responsible for the
 				 * invariant voilation */
-       int error_type;		/* ER_QPROC_SERIAL_RANGE_OVERFLOW or ER_INVALID_SERIAL_VALUE */
-     };
+  int error_type;		/* ER_QPROC_SERIAL_RANGE_OVERFLOW or ER_INVALID_SERIAL_VALUE */
+};
 
 /*
  * eval_insert_value -
  * Structure is passed as argument to parser_walk_tree when insert values are
  * evaluated and stores the information required for evaluation.
  */
-     typedef struct eval_insert_value EVAL_INSERT_VALUE;
-     struct eval_insert_value
-     {
-       UINTPTR spec_id;		/* insert spec_id */
-       PT_NODE *attr_list;	/* list of insert attribute names */
-       PT_NODE *value_list;	/* list of insert values values */
-       int crt_attr_index;	/* current attribute index */
-       bool reevaluate_needed;	/* currently evaluated insert value may need to be reevaluated with next execution */
-       bool replace_names;	/* true if names may need to be replaced with each evaluation */
-     };
+typedef struct eval_insert_value EVAL_INSERT_VALUE;
+struct eval_insert_value
+{
+  UINTPTR spec_id;		/* insert spec_id */
+  PT_NODE *attr_list;		/* list of insert attribute names */
+  PT_NODE *value_list;		/* list of insert values values */
+  int crt_attr_index;		/* current attribute index */
+  bool reevaluate_needed;	/* currently evaluated insert value may need to be reevaluated with next execution */
+  bool replace_names;		/* true if names may need to be replaced with each evaluation */
+};
 
-     static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
-					      PT_OP_TYPE cmp_op, int val1_msgid, int val2_msgid, int error_type);
-     static int check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int *ret_msg_id);
-     static bool truncate_need_repl_log (PT_NODE * statement);
-     static int do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
+static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
+					 PT_OP_TYPE cmp_op, int val1_msgid, int val2_msgid, int error_type);
+static int check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int *ret_msg_id);
+static bool truncate_need_repl_log (PT_NODE * statement);
+static int do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
 
-     static int do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement);
-     static void do_clear_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement);
-     static PT_NODE *do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
-							     int *continue_walk);
-     static int do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement);
-     static int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * statement,
-				    const char **savepoint_name, int *row_count_ptr);
-     static void init_compile_context (PARSER_CONTEXT * parser);
+static int do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement);
+static void do_clear_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement);
+static PT_NODE *do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+							int *continue_walk);
+static int do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement);
+static int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * statement,
+			       const char **savepoint_name, int *row_count_ptr);
+static void init_compile_context (PARSER_CONTEXT * parser);
 
 /*
  * initialize_serial_invariant() - initialize a serial invariant
@@ -184,9 +184,9 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
  *
  * Note:
  */
-     static void
-       initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2, PT_OP_TYPE cmp_op,
-				    int val1_msgid, int val2_msgid, int error_type)
+static void
+initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2, PT_OP_TYPE cmp_op,
+			     int val1_msgid, int val2_msgid, int error_type)
 {
   invariant->val1 = val1;
   invariant->val2 = val2;
