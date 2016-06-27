@@ -2002,6 +2002,7 @@ LOG_PAGE *
 logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
 {
   LOG_PAGE *ret_pgptr = NULL;
+  LOG_LSA append_lsa, append_prev_lsa;
 
   assert (log_pgptr != NULL);
   assert (req_lsa != NULL);
@@ -2012,6 +2013,9 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
       access_mode = LOG_CS_SAFE_READER;
     }
 
+  LSA_COPY (&append_lsa, &log_Gl.hdr.append_lsa);
+  LSA_COPY (&append_prev_lsa, &log_Gl.append.prev_lsa);
+
   /* 
    * This If block ensure belows,
    *  case 1. log page (of pageid) is in log page buffer (not prior_lsa list)
@@ -2019,13 +2023,13 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
    *          logpb_flush_all_append_pages is cleared so there is no EOL
    *          in log page (in delayed_free_log_pgptr)
    */
-  if (!LSA_LT (req_lsa, &log_Gl.hdr.append_lsa)		/* for case 1 */
-      || !LSA_LT(req_lsa, &log_Gl.append.prev_lsa))	/* for case 2 */
+  if (!LSA_LT (req_lsa, &append_lsa)		/* for case 1 */
+      || !LSA_LT(req_lsa, &append_prev_lsa))	/* for case 2 */
 
     {
       LOG_CS_ENTER (thread_p);
 
-      assert (LSA_LE (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa));
+      assert (LSA_LE (&append_prev_lsa, &append_lsa));
 
       /* 
        * copy prior lsa list to log page buffer to ensure that required
