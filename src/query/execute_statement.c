@@ -13175,6 +13175,12 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto cleanup;
     }
 
+  /* One additional check for insert.server_allowed. */
+  if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
+    {
+      goto cleanup;
+    }
+
   /* prevent blob, clob plan cache */
   for (attr_list = statement->info.insert.attr_list; attr_list != NULL; attr_list = attr_list->next)
     {
