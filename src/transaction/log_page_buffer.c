@@ -2019,12 +2019,8 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
    *          logpb_flush_all_append_pages is cleared so there is no EOL
    *          in log page (in delayed_free_log_pgptr)
    */
-#if 0
   if (!LSA_LT (req_lsa, &log_Gl.hdr.append_lsa)		/* for case 1 */
       || !LSA_LT(req_lsa, &log_Gl.append.prev_lsa))	/* for case 2 */
-#endif
-      if (req_lsa->pageid >= log_Gl.hdr.append_lsa.pageid		/* for case 1 */
-	  || req_lsa->pageid >= log_Gl.append.prev_lsa.pageid)	/* for case 2 */
 
     {
       LOG_CS_ENTER (thread_p);
@@ -2035,10 +2031,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
        * copy prior lsa list to log page buffer to ensure that required
        * pageid is in log page buffer
        */
-#if 0
       if (!LSA_LT (req_lsa, &log_Gl.hdr.append_lsa))	/* retry with mutex */
-#endif
-	if (req_lsa->pageid >= log_Gl.hdr.append_lsa.pageid)
 	{
 	  logpb_prior_lsa_append_all_list (thread_p);
 	}
@@ -2207,6 +2200,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,  LOG_CS_A
 
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
+
   if (access_mode == LOG_CS_SAFE_READER)
     {
       /* This is added here to block others from creating new archive or mounting/dismounting archives while the vacuum 
@@ -2220,11 +2214,6 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,  LOG_CS_A
   if (logpb_is_page_in_archive (pageid)
       && (LOG_ISRESTARTED () == false || (pageid + LOGPB_ACTIVE_NPAGES) <= log_Gl.hdr.append_lsa.pageid))
     {
-      if (access_mode != LOG_CS_SAFE_READER)
-	{
-	  assert (log_csect_entered == true);
-	}
-
       if (logpb_fetch_from_archive (thread_p, pageid, log_pgptr, NULL, NULL, true) == NULL)
 	{
 #if defined (SERVER_MODE)
