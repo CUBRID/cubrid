@@ -11806,7 +11806,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 
   /* Check if server allows an insert. */
   error = is_server_insert_allowed (parser, statement);
-  if (error != NO_ERROR || statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
+  if (error != NO_ERROR)
     {
       goto cleanup;
     }
@@ -13175,17 +13175,18 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   class_ = statement->info.insert.spec->info.spec.flat_entity_list;
   values = statement->info.insert.value_clauses;
 
-  error = do_insert_checks (parser, statement, &class_, &update, values);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto cleanup;
-    }
-
   /* Check if server allows an insert. */
   error = is_server_insert_allowed (parser, statement);
   if (error != NO_ERROR || statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
     {
+      goto cleanup;
+    }
+
+
+  error = do_insert_checks (parser, statement, &class_, &update, values);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
       goto cleanup;
     }
 
