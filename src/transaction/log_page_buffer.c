@@ -2023,8 +2023,8 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
    *          logpb_flush_all_append_pages is cleared so there is no EOL
    *          in log page (in delayed_free_log_pgptr)
    */
-  if (!LSA_LT (req_lsa, &append_lsa)		/* for case 1 */
-      || !LSA_LT(req_lsa, &append_prev_lsa))	/* for case 2 */
+  if ((!LSA_LT (req_lsa, &append_lsa) && !LSA_LT (req_lsa, &log_Gl.hdr.append_lsa))		/* for case 1 */
+      || (!LSA_LT(req_lsa, &append_prev_lsa) && !LSA_LT(req_lsa, &log_Gl.append.prev_lsa)))	/* for case 2 */
 
     {
       LOG_CS_ENTER (thread_p);
