@@ -1340,8 +1340,9 @@ static int
 or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 {
   int net_charlen;
-  char *start;
-  int rc = NO_ERROR;
+  char *start, *compressed_string = NULL;
+  int rc = NO_ERROR, compressable = 0, compressed_length = 0;
+  lzo_voidp wrkmem = NULL;
 
   start = buf->ptr;
   /* store the size prefix */
@@ -1352,11 +1353,11 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
   else
     {
       rc = or_put_byte (buf, 0xFF);
-
-      if (rc == NO_ERROR)
-	{
-	  OR_PUT_INT (&net_charlen, charlen);
-	  rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+      compressable = 1;
+      if (rc == NO_ERROR)		
+	{		
+	  OR_PUT_INT (&net_charlen, charlen);		
+	  rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);		
 	}
     }
   if (rc != NO_ERROR)
@@ -1364,6 +1365,32 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       return rc;
     }
 
+  if(compressable == 1)
+    {
+      /* Alloc memory */
+      wrkmem = (lzo_voidp) malloc(LZO1X_1_MEM_COMPRESS);
+      if(wrkmem == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
+	}
+      compressed_string = (char*)malloc((charlen + (charlen/16) + 64 + 3) * sizeof (char));
+      /* Compress the string */
+      rc = lzo1x_1_compress(string, charlen, compressed_string, &compressed_length, wrkmem);
+      
+      if(wrkmem != NULL)
+	{
+	  free_and_init(wrkmem);
+	}
+      
+      if(rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
+
+ 
+  
+  
   /* store the string bytes */
   rc = or_put_data (buf, string, charlen);
   if (rc != NO_ERROR)
@@ -1382,6 +1409,11 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
       /* round up to a word boundary */
       rc = or_put_align32 (buf);
+    }
+
+  if(compressed_string != NULL)
+    {
+      free_and_init(compressed_string);
     }
 
   return rc;
