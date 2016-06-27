@@ -2002,7 +2002,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
  *              If not, read log page from log.
  */
 LOG_PAGE *
-logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
+logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
 {
   LOG_PAGE *ret_pgptr = NULL;
   LOG_LSA append_lsa, append_prev_lsa;
@@ -2027,7 +2027,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
    *          in log page (in delayed_free_log_pgptr)
    */
 
-  if ((LSA_LE (&append_lsa, req_lsa))		/* for case 1 */
+  if ((LSA_LE (&append_lsa, req_lsa))	/* for case 1 */
       || (LSA_LE (&append_prev_lsa, req_lsa)))	/* for case 2 */
     {
       LOG_CS_ENTER (thread_p);
@@ -2200,7 +2200,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
  * NOTE:read the log page identified by pageid into a buffer from from archive or active log.
  */
 LOG_PAGE *
-logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,  LOG_CS_ACCESS_MODE access_mode,
+logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 			   LOG_PAGE * log_pgptr)
 {
   bool log_csect_entered = false;
