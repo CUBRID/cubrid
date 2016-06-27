@@ -2032,15 +2032,13 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
     log_Gl.append.prev_lsa.pageid, log_Gl.append.prev_lsa.offset);
 
 
-  if ((!LSA_LT (req_lsa, &append_lsa) && !LSA_LT (req_lsa, &log_Gl.hdr.append_lsa))		/* for case 1 */
-      || (!LSA_LT(req_lsa, &append_prev_lsa) && !LSA_LT(req_lsa, &log_Gl.append.prev_lsa)))	/* for case 2 */
+  if ((LSA_LE (&append_lsa, req_lsa))		/* for case 1 */
+      || (LSA_LE (&append_prev_lsa, req_lsa)))	/* for case 2 */
 
     {
       LOG_CS_ENTER (thread_p);
 
-      assert (!LSA_LT (req_lsa, &log_Gl.hdr.append_lsa) || !LSA_LT (req_lsa, &log_Gl.append.prev_lsa));
-
-      assert (LSA_LE (&append_prev_lsa, &append_lsa));
+      assert (LSA_LE (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa));
 
       /* 
        * copy prior lsa list to log page buffer to ensure that required
@@ -2051,13 +2049,13 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
 	  logpb_prior_lsa_append_all_list (thread_p);
 	}
 
+      LOG_CS_EXIT (thread_p);
+
       /* 
        * most of the cases, we don't need calling logpb_copy_page with LOG_CS exclusive access,
        * if needed, we acquire READ mode in logpb_copy_page
        */
       ret_pgptr = logpb_copy_page (thread_p, req_lsa->pageid, access_mode, log_pgptr);
-
-      LOG_CS_EXIT (thread_p);
 
       return ret_pgptr;
     }
