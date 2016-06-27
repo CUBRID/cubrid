@@ -11797,7 +11797,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   /* clear any previous error indicator because the rest of do_insert is sensitive to er_errid(). */
   er_clear ();
 
-  error = do_insert_checks (parser, statement, class_, update, &value_clauses);
+  error = do_insert_checks (parser, statement, class_, &update, value_clauses);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -13168,14 +13168,22 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   class_ = statement->info.insert.spec->info.spec.flat_entity_list;
   values = statement->info.insert.value_clauses;
 
-  error = do_insert_checks (parser, statement, class_, update, &values);
+  error = do_insert_checks (parser, statement, class_, &update, values);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto cleanup;
     }
 
-  /* Check above is required before any early outs. */
+  /* prevent blob, clob plan cache */
+  for (attr_list = statement->info.insert.attr_list; attr_list != NULL; attr_list = attr_list->next)
+    {
+      if (attr_list->type_enum == PT_TYPE_BLOB || attr_list->type_enum == PT_TYPE_CLOB)
+	{
+	  goto cleanup;
+	}
+    }
+  /* Checks above are required before any early outs. */
 
   error = do_prepare_insert_internal (parser, statement);
 
@@ -17063,8 +17071,7 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
 }
 
 static int
-do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_, PT_NODE ** update,
-		       PT_NODE * values)
+do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_, PT_NODE ** update, PT_NODE * values)
 {
   int error = NO_ERROR;
   int upd_has_uniques = 0;
@@ -17122,12 +17129,6 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_
 	}
     }
 
-  /* fetch the class for instance write purpose */
-  if (!locator_fetch_class (class_->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE))
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
-    }
   /* Check to see if the class into which we are inserting is part of an inheritance chain. We do not allow these
    * statements to be executed in these cases as we might have undefined behavior, such as trying to update a
    * column that belongs to a child for a duplicate key in the parent table that does not have that column. */
@@ -17148,6 +17149,13 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_
 	  ASSERT_ERROR_AND_SET (error);
 	  return error;
 	}
+    }
+
+  /* fetch the class for instance write purpose */
+  if (!locator_fetch_class (class_->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE))
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
     }
 
   return error;
