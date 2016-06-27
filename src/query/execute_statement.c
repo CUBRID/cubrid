@@ -11804,6 +11804,13 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
       goto cleanup;
     }
 
+  /* Check if server allows an insert. */
+  error = is_server_insert_allowed (parser, statement);
+  if (error != NO_ERROR || statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
+    {
+      goto cleanup;
+    }
+
   flag = statement->info.insert.spec->info.spec.flag;
 
   into = statement->info.insert.into_var;
@@ -13175,8 +13182,9 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto cleanup;
     }
 
-  /* One additional check for insert.server_allowed. */
-  if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
+  /* Check if server allows an insert. */
+  error = is_server_insert_allowed (parser, statement);
+  if (error != NO_ERROR || statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
     {
       goto cleanup;
     }
@@ -17082,13 +17090,6 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
   int error = NO_ERROR;
   int upd_has_uniques = 0;
   bool has_default_values_list = false;
-
-  /* Check if server allows an insert. */
-  error = is_server_insert_allowed (parser, statement);
-  if (error != NO_ERROR || statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
-    {
-      return error;
-    }
 
   /* Check non null attrs. */
   if (values->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
