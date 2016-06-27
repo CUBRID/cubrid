@@ -2007,6 +2007,11 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE 
   assert (req_lsa != NULL);
   assert (req_lsa->pageid != NULL_PAGEID);
 
+  if (access_mode != LOG_CS_SAFE_READER && VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p))
+    {
+      access_mode = LOG_CS_SAFE_READER;
+    }
+
   /* 
    * This If block ensure belows,
    *  case 1. log page (of pageid) is in log page buffer (not prior_lsa list)
