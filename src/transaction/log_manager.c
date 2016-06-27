@@ -7964,6 +7964,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
     {
       /* Fetch the page where the LSA record to undo is located */
       LSA_COPY (&log_lsa, &prev_tranlsa);
+      log_lsa.offset = DB_PAGESIZE;
 
       if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
 	{
