@@ -986,7 +986,7 @@ qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, char * xasl_stream, XASL_N
     }
 
   /* get XASL node header from stream */
-  if (stx_map_stream_to_xasl_node_header (thread_p, xasl_header_p, xasl_stream + QFILE_PAGE_HEADER_SIZE) != NO_ERROR)
+  if (stx_map_stream_to_xasl_node_header (thread_p, xasl_header_p, xasl_stream) != NO_ERROR)
     {
       assert (false);
     }
