@@ -1545,4 +1545,7 @@ extern char *or_pack_mvccid (char *ptr, const MVCCID mvccid);
 extern char *or_unpack_mvccid (char *ptr, MVCCID * mvccid);
 extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
 
+/* Get the compressed and the uncompressed lengths of a string stored in buffer */
+extern int or_get_varchar_comp_lengths (OR_BUF * buf, int *compressed_size, int *uncompressed_size);
+
 #endif /* _OBJECT_REPRESENTATION_H_ */

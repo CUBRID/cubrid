@@ -149,6 +149,8 @@ extern unsigned int db_on_server;
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
 
+/* Minimum size of a compressed string */
+#define MIN_SIZE_FOR_COMP 255
 
 static void mr_initmem_string (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
@@ -13712,9 +13714,10 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 #if !defined (SERVER_MODE)
   INTL_CODESET codeset;
 #endif
-  char *new_, *start = NULL;
+  char *new_, *start = NULL, *decompressed_string = NULL;
   int str_length;
   int rc = NO_ERROR;
+  int compressed_size = 0, uncompressed_size = 0;
 
   if (value == NULL)
     {
@@ -13750,14 +13753,44 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
       /* Branch according to convention based on size */
       if (!copy)
 	{
-	  str_length = or_get_varchar_length (buf, &rc);
+	  /* Get the length of the string, be it compressed or uncompressed. */
+	  rc = or_get_varchar_comp_lengths (buf, &compressed_size, &uncompressed_size);
+
 	  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
 	    {
 	      assert (false);
 	      return ER_FAILED;
 	    }
-	  db_make_varnchar (value, precision, buf->ptr, str_length, TP_DOMAIN_CODESET (domain),
-			    TP_DOMAIN_COLLATION (domain));
+
+	  /* Check if the string needs decompression */
+	  if (compressed_size > 0)
+	    {
+	      lzo_uint unc_size = 0;
+	      /* Handle decompression */
+	      decompressed_string = (char *) malloc (uncompressed_size * sizeof (char));
+	      if (decompressed_string == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  (size_t) uncompressed_size * sizeof (char));
+		  return rc;
+		}
+	      /* decompressing the string */
+	      lzo1x_decompress_safe (buf->ptr, (lzo_uint) compressed_size, decompressed_string, (lzo_uintp) (&unc_size),
+				     NULL);
+	      if (unc_size != uncompressed_size)
+		{
+		  /* Decompression failed. It shouldn't. */
+		  assert (false);
+		}
+	      db_make_varnchar (value, precision, decompressed_string, uncompressed_size, TP_DOMAIN_CODESET (domain),
+				TP_DOMAIN_COLLATION (domain));
+
+	    }
+	  else
+	    {
+	      db_make_varnchar (value, precision, buf->ptr, str_length, TP_DOMAIN_CODESET (domain),
+				TP_DOMAIN_COLLATION (domain));
+	    }
 	  value->need_clear = false;
 	  or_skip_varchar_remainder (buf, str_length, align);
 	}
