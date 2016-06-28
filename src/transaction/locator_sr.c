@@ -4591,8 +4591,9 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  /* TO DO - handle reevaluation */
 
 		  scan_code =
-		    heap_mvcc_get_for_delete_new (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache, COPY,
-						  NULL_CHN, NULL, LOG_ERROR_IF_DELETED);
+		    locator_lock_and_get_object_with_evaluation (thread_p, oid_ptr, &fkref->self_oid, &recdes,
+								 &scan_cache, COPY, NULL_CHN, NULL,
+								 LOG_ERROR_IF_DELETED);
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST)
@@ -4624,7 +4625,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			  goto error1;
 			}
 
-		      /* oid already locked at heap_mvcc_get_for_delete */
+		      /* oid already locked at locator_lock_and_get_object_with_evaluation */
 		      error_code =
 			locator_delete_force (thread_p, &hfid, oid_ptr, true, SINGLE_ROW_DELETE, &scan_cache,
 					      &force_count, NULL, false);
@@ -4654,7 +4655,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			      goto error1;
 			    }
 			}
-		      /* oid already locked at heap_mvcc_get_for_delete */
+		      /* oid already locked at locator_lock_and_get_object_with_evaluation */
 		      error_code =
 			locator_attribute_info_force (thread_p, &hfid, oid_ptr, &attr_info, attr_ids, index->n_atts,
 						      LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, &scan_cache, &force_count,
@@ -4915,8 +4916,9 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  /* TO DO - handle reevaluation */
 
 		  scan_code =
-		    heap_mvcc_get_for_delete_new (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache, COPY,
-						  NULL_CHN, NULL, LOG_ERROR_IF_DELETED);
+		    locator_lock_and_get_object_with_evaluation (thread_p, oid_ptr, &fkref->self_oid, &recdes,
+								 &scan_cache, COPY, NULL_CHN, NULL,
+								 LOG_ERROR_IF_DELETED);
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST)
@@ -4964,7 +4966,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		    {
 		      assert (false);
 		    }
-		  /* oid already locked at heap_mvcc_get_for_delete */
+		  /* oid already locked at locator_lock_and_get_object_with_evaluation */
 		  error_code =
 		    locator_attribute_info_force (thread_p, &hfid, oid_ptr, &attr_info, attr_ids, index->n_atts,
 						  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, &scan_cache, &force_count, false,
@@ -5807,15 +5809,17 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  if (pruning_type == DB_NOT_PARTITIONED_CLASS)
 		    {
 		      scan =
-			heap_mvcc_get_for_delete_new (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY,
-						      NULL_CHN, mvcc_reev_data, LOG_ERROR_IF_DELETED);
+			locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
+								     local_scan_cache, COPY, NULL_CHN, mvcc_reev_data,
+								     LOG_ERROR_IF_DELETED);
 		    }
 		  else
 		    {
 		      /* do not affect class_oid since is used at partition pruning */
 		      scan =
-			heap_mvcc_get_for_delete_new (thread_p, oid, NULL, &copy_recdes, local_scan_cache, COPY,
-						      NULL_CHN, mvcc_reev_data, LOG_ERROR_IF_DELETED);
+			locator_lock_and_get_object_with_evaluation (thread_p, oid, NULL, &copy_recdes,
+								     local_scan_cache, COPY, NULL_CHN, mvcc_reev_data,
+								     LOG_ERROR_IF_DELETED);
 		    }
 		}
 	      else
@@ -6302,8 +6306,9 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
   /* IMPORTANT TODO: use a different get function when need_locking==false, but make sure it gets the last version,
      not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
-  scan_code = heap_mvcc_get_for_delete_new (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
-					    mvcc_reev_data, LOG_WARNING_IF_DELETED);
+  scan_code =
+    locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
+						 mvcc_reev_data, LOG_WARNING_IF_DELETED);
 
   if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
     {
@@ -7655,8 +7660,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  if (need_locking)
 	    {
 	      scan =
-		heap_mvcc_get_for_delete_new (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN, NULL,
-					      LOG_ERROR_IF_DELETED);
+		locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY,
+							     NULL_CHN, NULL, LOG_ERROR_IF_DELETED);
 	    }
 	  else
 	    {			/* unreachable code. need_locking == false is covered above */
@@ -13297,7 +13302,7 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context
   OID class_oid_local = OID_INITIALIZER;
   bool lock_acquired = false;
 
-  assert (context->oid_p != NULL && !OID_ISNULL (context->oid_p));
+  assert (lock_mode != NULL && context->oid_p != NULL && !OID_ISNULL (context->oid_p));
 
   if (context->class_oid_p == NULL)
     {
@@ -13344,10 +13349,13 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context
     }
 
   /* lock should be aquired now -> get recdes */
-  scan = heap_get_last_version (thread_p, context, scan_cache, ispeeking, chn);
-  if (scan != S_SUCCESS)
+  if (context->recdes_p != NULL)
     {
-      goto error;
+      scan = heap_get_last_version (thread_p, context, scan_cache, ispeeking, chn);
+      if (scan != S_SUCCESS)
+	{
+	  goto error;
+	}
     }
 
   /* check visibility of the object if it belongs to a mvcc class */
@@ -13356,7 +13364,15 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context
       MVCC_REC_HEADER recdes_header;
       MVCC_SATISFIES_DELETE_RESULT satisfies_delete_result;
 
-      if (or_mvcc_get_header (context->recdes_p, &recdes_header) != NO_ERROR)
+      if (context->recdes_p == NULL)
+	{
+	  scan = heap_get_mvcc_header (thread_p, context, &recdes_header);
+	  if (scan != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      else if (or_mvcc_get_header (context->recdes_p, &recdes_header) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -13414,4 +13430,112 @@ locator_decide_type_of_lock (const OID * class_oid, LOCK lock_mode, const SCAN_O
     }
 
   return lock_mode;
+}
+
+/*
+* locator_lock_and_get_object_with_evaluation () - Get MVCC object version for delete/update and check reevaluation.
+*
+* return	       : SCAN_CODE.
+* thread_p (in)       : Thread entry.
+* oid (in)	       : Object OID.
+* class_oid (in)      : Class OID.
+* recdes (out)	       : Record descriptor.
+* scan_cache (in)     : Heap scan cache.
+* ispeeking (in)      : PEEK or COPY.
+* old_chn (in)	       : CHN of known record data.
+* mvcc_reev_data (in) : MVCC reevaluation data.
+* (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
+*				ER_HEAP_UNKNOWN_OBJECT error to log
+*                            - LOG_WARNING_IF_DELETED: set only warning
+*/
+SCAN_CODE
+locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
+					     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
+					     MVCC_REEV_DATA * mvcc_reev_data,
+					     NON_EXISTENT_HANDLING non_ex_handling_type)
+{
+  HEAP_GET_CONTEXT context;
+  SCAN_CODE scan;
+  RECDES recdes_local = RECDES_INITIALIZER;
+  MVCC_REC_HEADER mvcc_header;
+  DB_LOGICAL ev_res;		/* Re-evaluation result. */
+  OID class_oid_local = OID_INITIALIZER;
+
+  if (recdes == NULL && mvcc_reev_data != NULL)
+    {
+      /* peek if only for reevaluation */
+      recdes = &recdes_local;
+      ispeeking = PEEK;
+      old_chn = NULL_CHN;
+    }
+
+  if (class_oid == NULL)
+    {
+      class_oid = &class_oid_local;
+    }
+
+  heap_init_get_context (&context, oid, class_oid, recdes);
+
+  if (scan_cache != NULL && scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
+    {
+      /* switch to local page watcher */
+      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context.home_page_watcher);
+    }
+
+  if (mvcc_reev_data != NULL)
+    {
+      /* don't unfix pages in case of reevaluation; in case of up-to-date chn, the record have to be obtained again */
+      context.single_use = false;
+    }
+
+  scan = locator_lock_and_get_object (thread_p, &context, X_LOCK, scan_cache, old_chn, ispeeking);
+
+  /* perform reevaluation */
+  if (mvcc_reev_data != NULL && (scan == S_SUCCESS || scan == S_SUCCESS_CHN_UPTODATE))
+    {
+      if (scan == S_SUCCESS_CHN_UPTODATE)
+	{
+	  /* PEEK record */
+	  scan = heap_get_record_data_when_all_ready (thread_p, &context, scan_cache, PEEK);
+	  assert (scan == S_SUCCESS);
+	}
+
+      if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)
+	{
+	  scan = S_ERROR;
+	  goto exit;
+	}
+
+      ev_res = heap_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
+      if (ev_res != V_TRUE)
+	{
+	  /* did not pass the evaluation or error occurred - unlock object */
+	  lock_unlock_object (thread_p, oid, class_oid, X_LOCK, true);
+	}
+      switch (ev_res)
+	{
+	case V_TRUE:
+	  /* Object was locked and passed re-evaluation. Get record. */
+	  goto exit;
+	case V_ERROR:
+	  /* Error. */
+	  assert (er_errid () != NO_ERROR);
+	  scan = S_ERROR;
+	  goto exit;
+	case V_FALSE:
+	case V_UNKNOWN:
+	  /* Record didn't pass re-evaluation. Return S_SUCCESS and let the caller handle the case. */
+	  goto exit;
+	default:
+	  /* Unhandled. */
+	  assert_release (false);
+	  scan = S_ERROR;
+	  goto exit;
+	}
+
+    }
+
+exit:
+  heap_clean_get_context (thread_p, &context);
+  return scan;
 }

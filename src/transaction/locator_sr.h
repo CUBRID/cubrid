@@ -103,4 +103,9 @@ extern int locator_rv_redo_rename (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern SCAN_CODE locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, LOCK lock_mode,
 					      HEAP_SCANCACHE * scan_cache, int chn, int ispeeking);
+extern SCAN_CODE locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
+							      RECDES * recdes, HEAP_SCANCACHE * scan_cache,
+							      int ispeeking, int old_chn,
+							      struct mvcc_reev_data *mvcc_reev_data,
+							      NON_EXISTENT_HANDLING non_ex_handling_type);
 #endif /* _LOCATOR_SR_H_ */

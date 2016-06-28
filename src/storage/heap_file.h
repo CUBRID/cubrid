@@ -406,14 +406,6 @@ extern int heap_get_chn (THREAD_ENTRY * thread_p, const OID * oid);
 #endif
 extern SCAN_CODE heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 			   int ispeeking, int chn);
-extern SCAN_CODE heap_mvcc_get_for_delete (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
-					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
-					   struct mvcc_reev_data *mvcc_reev_data,
-					   NON_EXISTENT_HANDLING non_ex_handling_type);
-extern SCAN_CODE heap_mvcc_get_for_delete_new (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
-					       HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
-					       struct mvcc_reev_data *mvcc_reev_data,
-					       NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
@@ -604,8 +596,7 @@ extern SCAN_CODE heap_page_next (THREAD_ENTRY * thread_p, const OID * class_oid,
 				 DB_VALUE ** cache_pageinfo);
 extern int heap_vpid_next (const HFID * hfid, PAGE_PTR pgptr, VPID * next_vpid);
 extern int heap_vpid_prev (const HFID * hfid, PAGE_PTR pgptr, VPID * prev_vpid);
-extern SCAN_CODE heap_get_mvcc_header (THREAD_ENTRY * thread_p, const OID * oid, const OID * forward_oid,
-				       PAGE_PTR home_page, PAGE_PTR forward_page, INT16 record_type,
+extern SCAN_CODE heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 				       MVCC_REC_HEADER * mvcc_header);
 extern int heap_get_mvcc_rec_header_from_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_header,
 						   RECDES * peek_recdes);
@@ -676,5 +667,7 @@ extern SCAN_CODE heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CON
 extern SCAN_CODE heap_get_for_operation (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 					 HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, int ispeeking,
 					 NON_EXISTENT_HANDLING non_ex_handling);
+extern SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
+						      HEAP_SCANCACHE * scan_cache, int ispeeking);
 
 #endif /* _HEAP_FILE_H_ */

@@ -5022,8 +5022,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  /* get with lock and reevaluate if the visible version wasn't the latest version */
 	  sp_scan =
-	    heap_mvcc_get_for_delete_new (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache, is_peeking,
-					  NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
+	    locator_lock_and_get_object_with_evaluation (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache,
+							 is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
 	  if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
 	    {
 	      continue;
@@ -5809,8 +5809,8 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
 
       sp_scan =
-	heap_mvcc_get_for_delete_new (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
-				      NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
+	locator_lock_and_get_object_with_evaluation (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache,
+						     scan_id->fixed, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
       if (sp_scan == S_SUCCESS)
 	{
 	  switch (mvcc_reev_data.filter_result)
