@@ -1346,7 +1346,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
   lzo_uint compressed_length = 0;
   lzo_voidp wrkmem = NULL;
 
-  start = buf->ptr;
+  start = buf;
   /* store the size prefix */
   if (charlen < 0xFF)
     {
@@ -1356,11 +1356,6 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
     {
       rc = or_put_byte (buf, 0xFF);
       compressable = 1;
-      if (rc == NO_ERROR)
-	{
-	  OR_PUT_INT (&net_charlen, charlen);
-	  rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-	}
     }
   if (rc != NO_ERROR)
     {
@@ -1394,22 +1389,22 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	  goto cleanup;
 	}
 
-      if (compressed_length > charlen)
+      if (compressed_length >= charlen - 8)
 	{
 	  /* Compression failed */
 	  compressed_length = 0;
 	}
 
       /* Store the compression size */
-      assert (compressed_length <= charlen);
-      rc = or_put_int (buf, (int) compressed_length);
+      assert (compressed_length < charlen - 8);
+      rc = or_put_data (buf, (char *) &compressed_length, OR_INT_SIZE);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
 	}
 
       /* Store the uncompressed data size */
-      rc = or_put_int (buf, (int) charlen);
+      rc = or_put_data (buf, (char *) &charlen, OR_INT_SIZE);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -1438,13 +1433,6 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
   else
     {
       /* No compression needed */
-      /* Store the original string size */
-      rc = or_put_int (buf, (int) charlen);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
       /* Store the string */
       rc = or_put_data (buf, string, charlen);
       if (rc != NO_ERROR)
@@ -8460,7 +8448,7 @@ or_get_varchar_comp_lengths (OR_BUF * buf, int *compressed_size, int *uncompress
   int size_prefix = 0;
 
   /* Make sure the string is compressed */
-  size_prefix = or_get_byte (buf, rc);
+  size_prefix = or_get_byte (buf, &rc);
   if (rc != NO_ERROR)
     {
       assert (size_prefix == 0);
@@ -8478,21 +8466,20 @@ or_get_varchar_comp_lengths (OR_BUF * buf, int *compressed_size, int *uncompress
 	  return rc;
 	}
       *compressed_size = OR_GET_INT (&comp_charlen);
+      /* Get the uncompressed size */
+      rc = or_get_data (buf, (char *) &uncomp_charlen, OR_INT_SIZE);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      *uncompressed_size = OR_GET_INT (&uncomp_charlen);
     }
   else
     {
       /* String was not compressed so we set compressed_size to -1 to know that no compression happened. */
       *compressed_size = -1;
+      *uncompressed_size = size_prefix;
     }
-
-
-  /* Get the uncompressed size */
-  rc = or_get_data (buf, (char *) &uncomp_charlen, OR_INT_SIZE);
-  if (rc != NO_ERROR)
-    {
-      return rc;
-    }
-  *uncompressed_size = OR_GET_INT (&uncomp_charlen);
 
   return rc;
 }
