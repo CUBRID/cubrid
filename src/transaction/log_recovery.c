@@ -2807,15 +2807,20 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			{
 			  if (temp_length + log_lsa.offset >= (int) LOGAREA_SIZE)
 			    {
+			      LOG_LSA fetch_lsa;
+
 			      temp_length -= LOGAREA_SIZE - (int) (log_lsa.offset);
 			      assert (log_pgptr != NULL);
-			      if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
+
+			      fetch_lsa.pageid = ++log_lsa.pageid;
+			      fetch_lsa.offset = LOG_PAGESIZE;
+
+			      if ((logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
 				{
 				  LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 				  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_redo");
 				  return;
 				}
-			      ++log_lsa.pageid;
 			      log_lsa.offset = 0;
 			      LOG_READ_ALIGN (thread_p, &log_lsa, log_pgptr);
 			    }

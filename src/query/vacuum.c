@@ -6770,7 +6770,7 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * e
   int error = NO_ERROR;
   LOG_LSA req_lsa;
 
-  req_lsa.offset = DB_PAGESIZE;
+  req_lsa.offset = LOG_PAGESIZE;
 
   assert (entry != NULL);
   assert (block_log_buffer != NULL);
@@ -6875,7 +6875,7 @@ vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_
       LOG_LSA req_lsa;
 
       req_lsa.pageid = log_pageid;
-      req_lsa.offset = DB_PAGESIZE;
+      req_lsa.offset = LOG_PAGESIZE;
 
       if (logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, log_page_p) == NULL)
 	{

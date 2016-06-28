@@ -1916,7 +1916,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
   assert (log_pgptr != NULL);
 
   header_lsa.pageid = LOGPB_HEADER_PAGE_ID;
-  header_lsa.offset = DB_PAGESIZE;
+  header_lsa.offset = LOG_PAGESIZE;
 
   if ((logpb_fetch_page (thread_p, &header_lsa, LOG_CS_SAFE_READER, log_pgptr)) == NULL)
     {
@@ -2027,7 +2027,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
    *          in log page (in delayed_free_log_pgptr)
    */
 
-  if ((LSA_LE (&append_lsa, req_lsa))	/* for case 1 */
+  if ((LSA_LE (&append_lsa, req_lsa))		/* for case 1 */
       || (LSA_LE (&append_prev_lsa, req_lsa)))	/* for case 2 */
     {
       LOG_CS_ENTER (thread_p);
@@ -2964,7 +2964,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 	  LOG_LSA current_lsa;
 
 	  current_lsa.pageid = pageid;
-	  current_lsa.offset = DB_PAGESIZE;
+	  current_lsa.offset = LOG_PAGESIZE;
 	  /* to flush all omitted pages by the previous archiving */
 	  log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 	  if (logpb_fetch_page (thread_p, &current_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)

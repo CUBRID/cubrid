@@ -3366,8 +3366,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
 
   while (!LSA_ISNULL (&prev_lsa) && found == false)
     {
-
-      if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_SAFE_READER, log_pgptr) == NULL)
+      if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	{
 	  break;
 	}
@@ -7964,7 +7963,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
     {
       /* Fetch the page where the LSA record to undo is located */
       LSA_COPY (&log_lsa, &prev_tranlsa);
-      log_lsa.offset = DB_PAGESIZE;
+      log_lsa.offset = LOG_PAGESIZE;
 
       if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
 	{
@@ -8434,7 +8433,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 	{
 	  /* Fetch the page where the postpone LSA record is located */
 	  LSA_COPY (&log_lsa, &forward_lsa);
-	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_SAFE_READER, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_do_postpone");
 	      goto end;
@@ -8790,7 +8789,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
   while (type != LOG_END_OF_LOG && !LSA_ISNULL (end_lsa))
     {
       /* Fetch the page */
-      if ((logpb_fetch_page (thread_p, end_lsa, LOG_CS_SAFE_READER, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, end_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_find_end_log");
 	  goto error;
