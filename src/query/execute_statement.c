@@ -121,8 +121,8 @@
 static void do_set_trace_to_query_flag (QUERY_FLAG * query_flag);
 static void do_send_plan_trace_to_session (PARSER_CONTEXT * parser);
 static int do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement);
-static int
-do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class_, PT_NODE ** update, PT_NODE * values);
+static int do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class_,
+			     PT_NODE ** update, PT_NODE * values);
 
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
@@ -11793,7 +11793,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 
   degree = 0;
   class_ = statement->info.insert.spec->info.spec.flat_entity_list;
-
+  flag = statement->info.insert.spec->info.spec.flag;
   /* clear any previous error indicator because the rest of do_insert is sensitive to er_errid(). */
   er_clear ();
 
@@ -11803,8 +11803,6 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
       ASSERT_ERROR ();
       goto cleanup;
     }
-
-  flag = statement->info.insert.spec->info.spec.flag;
 
   into = statement->info.insert.into_var;
   if (into != NULL && PT_IS_NAME_NODE (into) && into->info.name.meta_class == PT_PARAMETER)
@@ -17075,12 +17073,25 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
     }
 }
 
+/*
+ * do_insert_checks ()	  : - Does preliminary checks for an insert statement.
+ *
+ * return		  : NO_ERROR or error code.
+ * parser(in)		  : Parser context.
+ * statement(in)	  : Parse tree of the insert statement to be checked.
+ * class_(in)		  : 
+ * update(in/out)	  : Update attribute.
+ * values(in)		  : Values to be inserted.
+ */
+
 static int
 do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class_, PT_NODE ** update, PT_NODE * values)
 {
   int error = NO_ERROR;
   int upd_has_uniques = 0;
   bool has_default_values_list = false;
+
+  *update = NULL;
 
   /* Check if server allows an insert. */
   error = is_server_insert_allowed (parser, statement);
