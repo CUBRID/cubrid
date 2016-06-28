@@ -4820,8 +4820,7 @@ csession_create_prepared_statement (const char *name, const char *alias_print, c
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  /* packed size for user oid */
-  req_size = OR_OID_SIZE;
+  req_size = 0;
   /* packed size for name */
   req_size += length_const_string (name, &name_len);
   /* packed size for alias_print */

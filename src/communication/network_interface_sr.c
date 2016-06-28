@@ -9093,7 +9093,7 @@ ssession_create_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, c
   /* alias_print */
   ptr = or_unpack_string_alloc (ptr, &alias_print);
   /* data_size */
-  ptr = or_unpack_int (request, &data_size);
+  ptr = or_unpack_int (ptr, &data_size);
   if (data_size <= 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
