@@ -45,7 +45,7 @@
 
 
 static void bh_up_heap (BINARY_HEAP * heap, int index);
-static void bh_replace_max (BINARY_HEAP * heap, void * elem);
+static void bh_replace_max (BINARY_HEAP * heap, void *elem);
 
 /*
  * bh_up_heap () - push an element up the heap to the correct position

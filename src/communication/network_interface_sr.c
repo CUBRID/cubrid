@@ -5097,7 +5097,7 @@ void
 sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   XASL_ID xasl_id;
-  char *ptr= NULL;
+  char *ptr = NULL;
   char *reply = NULL, *reply_buffer = NULL;
   int csserror, reply_buffer_size = 0, get_xasl_header = 0;
   int xasl_cache_pinned = 0, recompile_xasl_cache_pinned = 0;

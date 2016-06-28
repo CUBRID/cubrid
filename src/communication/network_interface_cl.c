@@ -4937,8 +4937,7 @@ cleanup:
     }
 
   result =
-    xsession_create_prepared_statement (NULL, local_name, local_alias_print, &alias_sha1, local_stmt_info,
-				        info_length);
+    xsession_create_prepared_statement (NULL, local_name, local_alias_print, &alias_sha1, local_stmt_info, info_length);
   if (result != NO_ERROR)
     {
       goto error;
@@ -7205,12 +7204,12 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
     {
       server_stream.xasl_stream = (char *) malloc (stream->xasl_stream_size);
       if (server_stream.xasl_stream == NULL)
-        {
-          EXIT_SERVER ();
+	{
+	  EXIT_SERVER ();
 
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, stream->xasl_stream_size);
-          return ER_OUT_OF_VIRTUAL_MEMORY;
-        }
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, stream->xasl_stream_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
       memcpy (server_stream.xasl_stream, stream->xasl_stream, stream->xasl_stream_size);
     }
   else

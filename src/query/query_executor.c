@@ -1998,8 +1998,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	  heap = xasl->topn_items->heap;
 	  for (i = 0; i < heap->element_count; i++)
 	    {
-	      qexec_clear_topn_tuple (thread_p, QEXEC_GET_BH_TOPN_TUPLE (heap, i),
-				      xasl->topn_items->values_count);
+	      qexec_clear_topn_tuple (thread_p, QEXEC_GET_BH_TOPN_TUPLE (heap, i), xasl->topn_items->values_count);
 	    }
 
 	  if (heap != NULL)

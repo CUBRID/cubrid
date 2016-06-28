@@ -431,7 +431,7 @@ static PT_NODE *pt_init_use (PT_NODE * p);
 static PARSER_VARCHAR *pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p);
 #endif
 
-static int parser_print_user (char * user_text, int len);
+static int parser_print_user (char *user_text, int len);
 
 static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
@@ -2577,7 +2577,7 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
  * len (in)	  : Size of buffer.
  */
 static int
-parser_print_user (char * user_text, int len)
+parser_print_user (char *user_text, int len)
 {
   char *p = user_text;
   OID *oid = ws_identifier (db_get_user ());

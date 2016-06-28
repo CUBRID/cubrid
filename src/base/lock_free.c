@@ -69,9 +69,9 @@ static bool tran_systems_initialized = false;
 #define OF_GET_PTR_DEREF(p,o)	(*OF_GET_REF (p,o))
 
 static int lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
-				    LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int * inserted);
+				    LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int *inserted);
 static int lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry,
-				    int * inserted);
+				    int *inserted);
 static int lf_hash_delete_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, int *success);
 
 /*
@@ -1225,7 +1225,7 @@ restart_search:
  */
 static int
 lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
-			 LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int * inserted)
+			 LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int *inserted)
 {
   pthread_mutex_t *entry_mutex;
   void **curr_p;
@@ -1372,7 +1372,7 @@ restart_search:
 	  if (*entry == NULL)
 	    {
 	      assert (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN));
-	      
+
 	      *entry = lf_freelist_claim (tran, freelist);
 	      if (*entry == NULL)
 		{
@@ -1386,14 +1386,14 @@ restart_search:
 		  return ER_FAILED;
 		}
 	    }
-	  
+
 	  if (edesc->using_mutex)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
 	    }
-	  
+
 	  /* attempt an add */
 	  if (!ATOMIC_CAS_ADDR (curr_p, NULL, (*entry)))
 	    {
@@ -1403,7 +1403,7 @@ restart_search:
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
 		  pthread_mutex_unlock (entry_mutex);
 		}
-	      
+
 	      /* someone added before us, restart process */
 	      if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_RETURN_ON_RESTART))
 		{
@@ -1421,7 +1421,7 @@ restart_search:
 		  goto restart_search;
 		}
 	    }
-	  
+
 	  /* end transaction if mutex is acquired */
 	  if (edesc->using_mutex)
 	    {
@@ -1431,10 +1431,10 @@ restart_search:
 	    {
 	      *inserted = 1;
 	    }
-	  
+
 	  /* done! */
 	  return NO_ERROR;
-	    
+
 	}
     }
 
@@ -1769,7 +1769,7 @@ restart:
  */
 static int
 lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry,
-			 int * inserted)
+			 int *inserted)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   unsigned int hash_value;
@@ -1819,7 +1819,7 @@ restart:
  *
  */
 int
-lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted)
+lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted)
 {
   return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_FIND_OR_INSERT, entry,
 				  inserted);
@@ -1836,7 +1836,7 @@ lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, 
  *
  */
 int
-lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted)
+lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted)
 {
   return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART, entry, inserted);
 }
@@ -1852,7 +1852,7 @@ lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **e
  *
  */
 int
-lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted)
+lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted)
 {
   assert (entry != NULL && *entry != NULL);
   return lf_hash_insert_internal (tran, table, key,

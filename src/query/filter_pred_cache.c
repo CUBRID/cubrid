@@ -30,11 +30,11 @@
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent
 {
-  BTID btid;		/* B-tree identifier. */
-  
+  BTID btid;			/* B-tree identifier. */
+
   /* Latch-free stuff. */
-  FPCACHE_ENTRY *stack;	/* used in freelist */
-  FPCACHE_ENTRY *next;	/* used in hash table */
+  FPCACHE_ENTRY *stack;		/* used in freelist */
+  FPCACHE_ENTRY *next;		/* used in hash table */
   pthread_mutex_t mutex;	/* Mutex. */
   UINT64 del_id;		/* delete transaction ID (for lock free) */
   OID class_oid;		/* Class OID. */
@@ -71,7 +71,7 @@ static INT64 fpcache_Stat_clone_add;
 /* fpcache_Entry_descriptor - used for latch-free hash table.
  * we have to declare member functions before instantiating fpcache_Entry_descriptor.
  */
-static void * fpcache_entry_alloc (void);
+static void *fpcache_entry_alloc (void);
 static int fpcache_entry_free (void *entry);
 static int fpcache_entry_init (void *entry);
 static int fpcache_entry_uninit (void *entry);
@@ -80,24 +80,24 @@ static int fpcache_compare_key (void *key1, void *key2);
 static unsigned int fpcache_hash_key (void *key, int hash_table_size);
 
 static LF_ENTRY_DESCRIPTOR fpcache_Entry_descriptor = {
-    offsetof (FPCACHE_ENTRY, stack),
-    offsetof (FPCACHE_ENTRY, next),
-    offsetof (FPCACHE_ENTRY, del_id),
-    offsetof (FPCACHE_ENTRY, btid),
-    offsetof (FPCACHE_ENTRY, mutex),	/* No mutex. */
+  offsetof (FPCACHE_ENTRY, stack),
+  offsetof (FPCACHE_ENTRY, next),
+  offsetof (FPCACHE_ENTRY, del_id),
+  offsetof (FPCACHE_ENTRY, btid),
+  offsetof (FPCACHE_ENTRY, mutex),	/* No mutex. */
 
-    /* using mutex? */
-    LF_EM_USING_MUTEX,
+  /* using mutex? */
+  LF_EM_USING_MUTEX,
 
-    fpcache_entry_alloc,
-    fpcache_entry_free,
-    fpcache_entry_init,
-    fpcache_entry_uninit,
-    fpcache_copy_key,
-    btree_compare_btids,
-    btree_hash_btid,
-    NULL,		  /* duplicates not accepted. */
-  };
+  fpcache_entry_alloc,
+  fpcache_entry_free,
+  fpcache_entry_init,
+  fpcache_entry_uninit,
+  fpcache_copy_key,
+  btree_compare_btids,
+  btree_hash_btid,
+  NULL,				/* duplicates not accepted. */
+};
 
 int
 fpcache_initialize (void)
@@ -105,7 +105,7 @@ fpcache_initialize (void)
   int error_code = NO_ERROR;
 
   fpcache_Enabled = false;
-  
+
   fpcache_Soft_capacity = prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES);
   if (fpcache_Soft_capacity <= 0)
     {
@@ -119,9 +119,8 @@ fpcache_initialize (void)
     {
       return error_code;
     }
-  
-  error_code =
-    lf_hash_init (&fpcache_Ht, &fpcache_Ht_freelist, fpcache_Soft_capacity, &fpcache_Entry_descriptor);
+
+  error_code = lf_hash_init (&fpcache_Ht, &fpcache_Ht_freelist, fpcache_Soft_capacity, &fpcache_Entry_descriptor);
   if (error_code != NO_ERROR)
     {
       lf_freelist_destroy (&fpcache_Ht_freelist);

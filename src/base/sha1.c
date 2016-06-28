@@ -369,7 +369,7 @@ SHA1PadMessage (SHA1Context * context)
 }
 
 int
-SHA1Compute (const unsigned char * message_array, unsigned length, SHA1Hash * hash)
+SHA1Compute (const unsigned char *message_array, unsigned length, SHA1Hash * hash)
 {
   SHA1Context context;
 

@@ -168,7 +168,7 @@ xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p)
  */
 int
 xsession_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1, char *info,
-                                    int info_len)
+				    int info_len)
 {
   return session_create_prepared_statement (thread_p, name, alias_print, sha1, info, info_len);
 }

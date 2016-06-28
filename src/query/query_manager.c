@@ -700,7 +700,7 @@ qmgr_dump_query_entry (QMGR_QUERY_ENTRY * query_p)
   fprintf (stdout, "\t\tQuery Entry Structures:\n");
   fprintf (stdout, "\t\tquery_id: %lld\n", (long long) query_p->query_id);
   fprintf (stdout, "\t\txasl_id: {{%08x | %08x | %08x | %08x | %08x}, {%d sec %d usec}}\n",
-           SHA1_AS_ARGS (&query_p->xasl_id.sha1), CACHE_TIME_AS_ARGS (&query_p->xasl_id.time_stored));
+	   SHA1_AS_ARGS (&query_p->xasl_id.sha1), CACHE_TIME_AS_ARGS (&query_p->xasl_id.time_stored));
   fprintf (stdout, "\t\tlist_id: %p\n", (void *) query_p->list_id);
 
   if (query_p->list_id)
@@ -1491,9 +1491,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	      er_log_debug (ARG_FILE_LINE,
 			    "xqmgr_execute_query: ls_update_xasl failed "
 			    "xasl_id { sha1 { %08x | %08x | %08x | %08x | %08x } time_stored { %d sec %d usec } } "
-                            "params { %d %s ... }\n",
-                            SHA1_AS_ARGS (&xasl_id_p->sha1), CACHE_TIME_AS_ARGS (&xasl_id_p->time_stored),
-                            params.size, s ? s : "(null)");
+			    "params { %d %s ... }\n",
+			    SHA1_AS_ARGS (&xasl_id_p->sha1), CACHE_TIME_AS_ARGS (&xasl_id_p->time_stored),
+			    params.size, s ? s : "(null)");
 	      if (s)
 		{
 		  free_and_init (s);

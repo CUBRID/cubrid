@@ -834,7 +834,7 @@ session_remove_expired_sessions (struct timeval *timeout)
 
   /* Loop until all expired sessions are removed.
    * NOTE: We cannot call lf_hash_delete while iterating... lf_hash_delete may have to retry, which also resets the
-   *	   lock-free transaction. And resetting lock-free transaction can break our iterator.
+   *       lock-free transaction. And resetting lock-free transaction can break our iterator.
    */
   while (!finished)
     {
@@ -855,7 +855,7 @@ session_remove_expired_sessions (struct timeval *timeout)
 	      err = ER_FAILED;
 	      goto exit_on_end;
 	    }
-	  
+
 	  if (is_expired)
 	    {
 	      expired_sid_buffer[n_expired_sids++] = state->id;
@@ -1618,7 +1618,7 @@ session_set_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARAM * session
  */
 int
 session_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1, char *info,
-                                   int info_len)
+				   int info_len)
 {
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;

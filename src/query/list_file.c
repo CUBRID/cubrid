@@ -969,7 +969,7 @@ qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  * xasl_header_p (out) : pointer to XASL node header
  */
 void
-qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, char * xasl_stream, XASL_NODE_HEADER * xasl_header_p)
+qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, char *xasl_stream, XASL_NODE_HEADER * xasl_header_p)
 {
   if (xasl_header_p == NULL)
     {

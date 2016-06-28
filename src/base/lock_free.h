@@ -312,7 +312,7 @@ extern int lf_io_list_find_or_insert (void **list_p, void *new_entry, LF_ENTRY_D
 
 /* flags that can be given to lf_list_* functions */
 #define LF_LIST_BF_RETURN_ON_RESTART	  0x01
-#define LF_LIST_BF_RESTART_ON_DUPLICATE	  0x02	    /* Not used for now. */
+#define LF_LIST_BF_RESTART_ON_DUPLICATE	  0x02	/* Not used for now. */
 #define LF_LIST_BF_INSERT_GIVEN		  0x04
 #define LF_LIST_BF_FIND_OR_INSERT	  0x08
 #define LF_LIST_BF_LOCK_ON_DELETE	  0x10
@@ -321,7 +321,7 @@ extern int lf_io_list_find_or_insert (void **list_p, void *new_entry, LF_ENTRY_D
 
 /* responses to flags from lf_list_* functions */
 #define LF_LIST_BR_RESTARTED		  0x100
-#define LF_LIST_BR_DUPLICATE		  0x200	    /* Not used for now. */
+#define LF_LIST_BR_DUPLICATE		  0x200	/* Not used for now. */
 #define LF_LIST_BR_IS_FLAG_SET(br, flag) ((*(br) & (flag)))
 #define LF_LIST_BR_SET_FLAG(br, flag) (*(br) = *(br) | (flag))
 
@@ -364,10 +364,9 @@ extern int lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned
 extern void lf_hash_destroy (LF_HASH_TABLE * table);
 
 extern int lf_hash_find (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry);
-extern int lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry,
-				   int * inserted);
-extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted);
-extern int lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int * inserted);
+extern int lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
+extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
+extern int lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
 extern int lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
 extern int lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
 extern int lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table);

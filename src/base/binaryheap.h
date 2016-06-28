@@ -72,17 +72,17 @@ extern "C"
     void *swap_buf;
   };
 
-  #define BH_ELEMENT(heap, i) (((char *) (heap)->members) + (heap)->elem_size * (i))
-  #define BH_ROOT(heap)	((heap)->members)
+#define BH_ELEMENT(heap, i) (((char *) (heap)->members) + (heap)->elem_size * (i))
+#define BH_ROOT(heap)	((heap)->members)
 
   extern BINARY_HEAP *bh_create (THREAD_ENTRY * thread_p, int max_capacity, int elem_size, bh_key_comparator cmp_func,
 				 BH_CMP_ARG cmp_arg);
   extern void bh_destroy (THREAD_ENTRY * thread_p, BINARY_HEAP * heap);
 
-  extern int bh_add (BINARY_HEAP * heap, void * elem);
+  extern int bh_add (BINARY_HEAP * heap, void *elem);
   extern void bh_build_heap (BINARY_HEAP * heap);
 
-  extern int bh_insert (BINARY_HEAP * heap, void * elem);
+  extern int bh_insert (BINARY_HEAP * heap, void *elem);
   extern BH_TRY_INSERT_RESULT bh_try_insert (BINARY_HEAP * heap, void *elem, void *replaced);
 
   extern void bh_down_heap (BINARY_HEAP * heap, int index);

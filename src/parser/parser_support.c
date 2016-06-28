@@ -6874,7 +6874,7 @@ pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser, const char *identif
       char string_name2[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
       PT_NODE *name1 = NULL;
       PT_NODE *name2 = NULL;
-      int position =  CAST_BUFLEN (p_dot - identifier_str);
+      int position = CAST_BUFLEN (p_dot - identifier_str);
       int remaining = strlen (identifier_str) - position - 1;
 
       assert ((remaining > 0) && (remaining < strlen (identifier_str) - 1));

@@ -964,7 +964,7 @@ struct pred_expr_with_context
   int num_attrs_pred;		/* number of atts from the predicate */
   ATTR_ID *attrids_pred;	/* array of attr ids from the pred */
   HEAP_CACHE_ATTRINFO *cache_pred;	/* cache for the pred attrs */
-  void *unpack_info;			/* Buffer information. */
+  void *unpack_info;		/* Buffer information. */
 };
 
 /* new type used by function index for cleaner code */

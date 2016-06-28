@@ -304,7 +304,7 @@ area_alloc_block (AREA * area)
     }
 
   if (lf_bitmap_init (&new_block->bitmap, LF_BITMAP_LIST_OF_CHUNKS, (int) area->alloc_count, LF_AREA_BITMAP_USAGE_RATIO)
-		      != NO_ERROR)
+      != NO_ERROR)
     {
       goto error;
     }
