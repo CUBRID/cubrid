@@ -11180,6 +11180,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 
       if (!copy)
 	{
+	  unsigned char domain_type = value->domain.general_info.type;
 	  /* Get the length of the string, be it compressed or uncompressed. */
 	  rc = or_get_varchar_comp_lengths (buf, &compressed_size, &uncompressed_size);
 	  str_length = uncompressed_size;
@@ -11210,15 +11211,20 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  /* Decompression failed. It shouldn't. */
 		  assert (false);
 		}
-	      db_make_varnchar (value, precision, decompressed_string, uncompressed_size, TP_DOMAIN_CODESET (domain),
-				TP_DOMAIN_COLLATION (domain));
+	      db_make_varchar (value, precision, decompressed_string, uncompressed_size, TP_DOMAIN_CODESET (domain),
+			       TP_DOMAIN_COLLATION (domain));
 
 	    }
 	  else
 	    {
-	      db_make_varnchar (value, precision, buf->ptr, str_length, TP_DOMAIN_CODESET (domain),
-				TP_DOMAIN_COLLATION (domain));
+	      db_make_varchar (value, precision, buf->ptr, str_length, TP_DOMAIN_CODESET (domain),
+			       TP_DOMAIN_COLLATION (domain));
 	    }
+	  /* No domain saving. WHY?? */
+
+
+
+
 	  value->need_clear = false;
 	  or_skip_varchar_remainder (buf, str_length, align);
 	}
