@@ -1341,7 +1341,8 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 {
   int net_charlen;
   char *start, *compressed_string = NULL;
-  int rc = NO_ERROR, compressable = 0, compressed_length = 0;
+  int rc = NO_ERROR, compressable = 0;
+  lzo_uint compressed_length = 0;
   lzo_voidp wrkmem = NULL;
 
   start = buf->ptr;
@@ -1372,6 +1373,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       if(wrkmem == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
+	  goto cleanup;
 	}
       compressed_string = (char*)malloc((charlen + (charlen/16) + 64 + 3) * sizeof (char));
       /* Compress the string */
@@ -1384,12 +1386,52 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       
       if(rc != NO_ERROR)
 	{
-	  return rc;
+	  goto cleanup;
 	}
+
+      /* Store the compressed data size */
+      if(compressed_length > charlen)
+        {
+	  /* Compression failed */
+	  goto no_compression;
+        }
+      assert(compressed_length <= charlen);
+      rc = or_put_int(buf, (int)compressed_length);
+      if(rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      
+      /* Store the uncompressed data size */
+      rc = or_put_int(buf, (int)charlen);
+      if(rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      /* Store the string bytes */
+      rc = or_put_data (buf, compressed_string, compressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      if (align == INT_ALIGNMENT)
+      {
+	/* kludge, temporary NULL terminator */
+	rc = or_put_byte (buf, 0);
+	if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+	/* round up to a word boundary */
+	rc = or_put_align32 (buf);
+      }
+      goto cleanup;
     }
 
  
-  
+no_compression:  
   
   /* store the string bytes */
   rc = or_put_data (buf, string, charlen);
@@ -1410,6 +1452,8 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       /* round up to a word boundary */
       rc = or_put_align32 (buf);
     }
+
+cleanup:
 
   if(compressed_string != NULL)
     {
