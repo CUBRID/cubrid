@@ -1272,6 +1272,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 
   /* save stored time */
   (void) gettimeofday (&time_stored, NULL);
+  CACHE_TIME_MAKE (&stream->xasl_id->time_stored, &time_stored);
 
 
   /* We need to do a loop here for recompile_xasl case. It will break after the first iteration if recompile_xasl flag
@@ -1301,7 +1302,6 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
       XASL_ID_COPY (&(*xcache_entry)->xasl_id, stream->xasl_id);
       (*xcache_entry)->xasl_id.sha1 = context->sha1;
       (*xcache_entry)->xasl_id.cache_flag = 1;	  /* Start with fix count = 1. */
-      CACHE_TIME_MAKE (&(*xcache_entry)->xasl_id.time_stored, &time_stored);
       (*xcache_entry)->n_related_objects = n_oid;
       (*xcache_entry)->related_objects = related_objects;
       (*xcache_entry)->sql_info.sql_hash_text = sql_hash_text;
