@@ -2346,6 +2346,7 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
+  bool has_updated;
   int row_count = DB_ROW_COUNT_NOT_SET;
   int n_query_ids = 0, i = 0;
   QUERY_ID query_id;
@@ -2367,6 +2368,8 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   retain_lock = (bool) xretain_lock;
 
+  has_updated = logtb_has_updated (thread_p);
+
   /* set row count */
   xsession_set_row_count (thread_p, row_count);
 
@@ -2380,7 +2383,7 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       return_error_to_client (thread_p, rid);
     }
 
-  xtran_reset_on_commit (thread_p, &reset_on_commit);
+  xtran_reset_on_commit (thread_p, has_updated, &reset_on_commit);
   ptr = or_pack_int (reply, (int) state);
   ptr = or_pack_int (ptr, (int) reset_on_commit);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -2402,10 +2405,13 @@ void
 stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   TRAN_STATE state;
-  int reset_on_commit = false;
+  bool reset_on_commit = false;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
+  bool has_updated;
+
+  has_updated = logtb_has_updated (thread_p);
 
   state = xtran_server_abort (thread_p);
 
@@ -2417,7 +2423,7 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       return_error_to_client (thread_p, rid);
     }
 
-  xtran_reset_on_commit (thread_p, &reset_on_commit);
+  xtran_reset_on_commit (thread_p, has_updated, &reset_on_commit);
   ptr = or_pack_int (reply, state);
   ptr = or_pack_int (ptr, (int) reset_on_commit);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -5147,6 +5153,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
   bool end_query_allowed = true;
   bool reset_on_commit;
   LOG_TDES *tdes;
+  bool has_updated;
 
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
   trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
@@ -5404,6 +5411,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 	  return_error_to_client (thread_p, rid);
 	}
 
+      has_updated = logtb_has_updated (thread_p);
       xsession_set_row_count (thread_p, row_count);
       tran_state = xtran_server_commit (thread_p, false);
       net_cleanup_server_queues (rid);
@@ -5412,7 +5420,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 	  /* Likely the commit failed.. somehow */
 	  return_error_to_client (thread_p, rid);
 	}
-      xtran_reset_on_commit (thread_p, &reset_on_commit);
+      xtran_reset_on_commit (thread_p, has_updated, &reset_on_commit);
     }
 
   (void) or_pack_listid (replydata, list_id);

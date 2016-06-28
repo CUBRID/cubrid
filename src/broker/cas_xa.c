@@ -52,7 +52,7 @@ static int compare_xid (XID * xid1, XID * xid2);
 static bool xa_prepare_flag = false;
 
 int
-fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *srv_h_id)
 {
 #ifdef CAS_SUPPORT_XA
   XID xid;
@@ -102,7 +102,7 @@ fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
 }
 
 int
-fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *srv_h_id)
 {
 #ifdef CAS_SUPPORT_XA
   int count;
@@ -141,7 +141,7 @@ fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
 }
 
 int
-fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *srv_h_id)
 {
 #ifdef CAS_SUPPORT_XA
   int tran_type;

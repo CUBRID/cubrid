@@ -223,7 +223,7 @@ extern QFILE_LIST_ID *qmgr_execute_query_with_commit (const XASL_ID * xasl_id, Q
 						      const DB_VALUE * dbvals, QUERY_FLAG flag,
 						      CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time,
 						      int query_timeout,
-						      DB_QUERY_EXECUTION_END_TYPE * query_execution_end_type);
+						      DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type);
 extern QFILE_LIST_ID *qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt,
 					  const DB_VALUE * dbvals, QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
 					  CACHE_TIME * srv_cache_time, int query_timeout);

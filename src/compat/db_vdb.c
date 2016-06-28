@@ -72,7 +72,7 @@ static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
 static DB_SESSION *initialize_session (DB_SESSION * session);
 static int db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
-						DB_QUERY_EXECUTION_END_TYPE * query_execution_end_type);
+						DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type);
 static DB_OBJLIST *db_get_all_chosen_classes (int (*p) (MOBJ o));
 static int is_vclass_object (MOBJ class_);
 static char *get_reasonable_predicate (DB_ATTRIBUTE * att);
@@ -1546,7 +1546,7 @@ db_get_lock_classes (DB_SESSION * session)
  */
 static int
 db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
-				     DB_QUERY_EXECUTION_END_TYPE * query_execution_end_type)
+				     DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
   PARSER_CONTEXT *parser;
   PT_NODE *statement;
@@ -1562,9 +1562,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     {
       *result = NULL;
     }
-  if (query_execution_end_type)
+  if (query_execution_ending_type)
     {
-      *query_execution_end_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
+      *query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
     }
 
   /* obvious error checking - invalid parameter */
@@ -1962,9 +1962,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	}			/* else */
 
       *result = qres;
-      if (query_execution_end_type)
+      if (query_execution_ending_type)
 	{
-	  *query_execution_end_type = statement->query_execution_end_type;
+	  *query_execution_ending_type = statement->query_execution_ending_type;
 	}
     }				/* if (result) */
 
@@ -2841,17 +2841,17 @@ db_has_modified_class (DB_SESSION * session, int stmt_id)
  * session(in) : contains the SQL query that has been compiled
  * stmt(in) : int returned by a successful compilation
  * result(out): query results descriptor
- * query_execution_end_type(in/out): query execution type
+ * query_execution_ending_type(in/out): query execution ending type
  */
 int
 db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
-			       DB_QUERY_EXECUTION_END_TYPE * query_execution_end_type)
+			       DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
   int err;
 
   CHECK_CONNECT_MINUSONE ();
 
-  err = db_execute_and_keep_statement_local (session, stmt_ndx, result, query_execution_end_type);
+  err = db_execute_and_keep_statement_local (session, stmt_ndx, result, query_execution_ending_type);
 
   db_invalidate_mvcc_snapshot_after_statement ();
 
@@ -2871,7 +2871,7 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESU
  * session(in) : contains the SQL query that has been compiled
  * stmt(in) : int returned by a successful compilation
  * result(out): query results descriptor
- * query_execution_end_type(out): query execution type
+ * query_execution_ending_type(out): query execution type
  *
  * note : You must free the results of calling this function by using the
  *    db_query_end() function. The resources for the identified compiled
@@ -2880,7 +2880,7 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESU
  */
 int
 db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
-			    DB_QUERY_EXECUTION_END_TYPE * query_execution_end_type)
+			    DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
   int err;
   PT_NODE *statement;
@@ -2891,7 +2891,7 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT 
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  err = db_execute_and_keep_statement_local (session, stmt_ndx, result, query_execution_end_type);
+  err = db_execute_and_keep_statement_local (session, stmt_ndx, result, query_execution_ending_type);
 
   statement = session->statements[stmt_ndx - 1];
   if (statement != NULL)
@@ -2920,17 +2920,17 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT 
  */
 int
 db_execute_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
-		      DB_QUERY_EXECUTION_END_TYPE * query_execution_end_type)
+		      DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
   int err;
 
   CHECK_CONNECT_MINUSONE ();
 
-  assert (query_execution_end_type != NULL);
-  assert (*query_execution_end_type == DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED
-	  || *query_execution_end_type == DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+  assert (query_execution_ending_type != NULL);
+  assert (*query_execution_ending_type == DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED
+	  || *query_execution_ending_type == DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
-  err = db_execute_statement_local (session, stmt_ndx, result, query_execution_end_type);
+  err = db_execute_statement_local (session, stmt_ndx, result, query_execution_ending_type);
 
   db_invalidate_mvcc_snapshot_after_statement ();
 
@@ -3629,9 +3629,9 @@ db_validate (DB_OBJECT * vc)
  * session(in) : session handle
  */
 void
-db_free_query (DB_SESSION * session, DB_QUERY_EXECUTION_END_TYPE query_execution_end_type)
+db_free_query (DB_SESSION * session, DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type)
 {
-  if (DB_IS_QUERY_EXECUTED_ENDED (query_execution_end_type))
+  if (DB_IS_QUERY_EXECUTED_ENDED (query_execution_ending_type))
     {
       session->parser->query_id = NULL_QUERY_ID;
     }
@@ -3889,7 +3889,7 @@ db_init_statement_execution_type (DB_SESSION * session, bool auto_commit)
       return er_errid ();
     }
 
-  statement->query_execution_end_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
+  statement->query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
   if (!(auto_commit && db_session_is_last_statement (session)))
     {
       return NO_ERROR;
@@ -3913,7 +3913,7 @@ db_init_statement_execution_type (DB_SESSION * session, bool auto_commit)
       /* Do not use the optimization if OIDs included */
       if (!statement->info.query.oids_included)
 	{
-	  statement->query_execution_end_type = DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED;
+	  statement->query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED;
 	}
       break;
 
@@ -3921,7 +3921,7 @@ db_init_statement_execution_type (DB_SESSION * session, bool auto_commit)
       /* Do not use optimization in case of insert execution on broker side */
       if (statement->info.insert.server_allowed)
 	{
-	  statement->query_execution_end_type = DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED;
+	  statement->query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED;
 	}
       break;
 
@@ -3929,7 +3929,7 @@ db_init_statement_execution_type (DB_SESSION * session, bool auto_commit)
       /* Do not use optimization in case of update execution on broker side */
       if (statement->info.update.server_update)
 	{
-	  statement->query_execution_end_type = DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED;
+	  statement->query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED;
 	}
       break;
 
@@ -3937,7 +3937,7 @@ db_init_statement_execution_type (DB_SESSION * session, bool auto_commit)
       /* Do not use optimization in case of delete execution on broker side */
       if (statement->info.delete_.server_delete)
 	{
-	  statement->query_execution_end_type = DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED;
+	  statement->query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED;
 	}
       break;
 

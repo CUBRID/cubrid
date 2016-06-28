@@ -3405,10 +3405,10 @@ db_sqlx_debug_print_result (DB_QUERY_RESULT * result)
  *
  */
 int
-db_query_end (DB_QUERY_RESULT * result, DB_QUERY_EXECUTION_END_TYPE query_execution_end_type)
+db_query_end (DB_QUERY_RESULT * result, DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type)
 {
   bool notify_server;
-  if (DB_IS_QUERY_EXECUTED_ENDED (query_execution_end_type))
+  if (DB_IS_QUERY_EXECUTED_ENDED (query_execution_ending_type))
     {
       notify_server = false;
     }
@@ -3688,16 +3688,16 @@ db_free_execution_plan (void)
 }
 
 /*
- * db_get_end_type_after_executed_query : get end type after executed query
+ * db_get_end_type_after_query_execution : get end type after query execution
  *   end_query_result(in): end query result
  *   committed(in): true, if transaction was committed
  *   reset_on_commit(in): true, if reset is needed
  *
- * return: query execution end type
+ * return: query execution ending type
  *
  */
-DB_QUERY_EXECUTION_END_TYPE
-db_get_end_type_after_executed_query (int end_query_result, bool committed, int reset_on_commit)
+DB_QUERY_EXECUTION_ENDING_TYPE
+db_get_end_type_after_query_execution (int end_query_result, bool committed, int reset_on_commit)
 {
   if (end_query_result == NO_ERROR)
     {

@@ -7186,14 +7186,14 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream, const OID *
  *   clt_cache_time(in):
  *   srv_cache_time(in):
  *   query_timeout(in):
- *   query_execution_end_type(in/out): query execution end type
+ *   query_execution_ending_type(in/out): query execution end type
  *
  * NOTE:
  */
 QFILE_LIST_ID *
 qmgr_execute_query_with_commit (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt, const DB_VALUE * dbvals,
 				QUERY_FLAG flag, CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time,
-				int query_timeout, DB_QUERY_EXECUTION_END_TYPE * query_execution_end_type)
+				int query_timeout, DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
 #if defined(CS_MODE)
   QFILE_LIST_ID *list_id = NULL;
@@ -7314,9 +7314,10 @@ qmgr_execute_query_with_commit (const XASL_ID * xasl_id, QUERY_ID * query_idp, i
 	  committed = true;
 	}
 
-      if (query_execution_end_type)
+      if (query_execution_ending_type)
 	{
-	  *query_execution_end_type = db_get_execution_end_type (end_query_result, committed, reset_on_commit);
+	  *query_execution_ending_type =
+	    db_get_end_type_after_query_execution (end_query_result, committed, reset_on_commit);
 	}
 
       if (committed)
@@ -7382,9 +7383,9 @@ qmgr_execute_query_with_commit (const XASL_ID * xasl_id, QUERY_ID * query_idp, i
     xqmgr_execute_query (NULL, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time, srv_cache_time,
 			 query_timeout, NULL);
   /* do not call end query or tran commit since there is no optimization on SA */
-  if (list_id && query_execution_end_type)
+  if (list_id && query_execution_ending_type)
     {
-      *query_execution_end_type = DB_QUERY_EXECUTED_NOT_ENDED;
+      *query_execution_ending_type = DB_QUERY_EXECUTED_NOT_ENDED;
     }
 
 cleanup:

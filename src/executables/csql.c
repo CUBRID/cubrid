@@ -1733,7 +1733,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
-  DB_QUERY_EXECUTION_END_TYPE query_execution_end_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
+  DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
 
   csql_Num_failures = 0;
   er_clear ();
@@ -1879,7 +1879,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
       db_init_statement_execution_type (session, csql_arg->auto_commit);
 
-      db_error = db_execute_statement (session, stmt_id, &result, &query_execution_end_type);
+      db_error = db_execute_statement (session, stmt_id, &result, &query_execution_ending_type);
       if (db_error < 0)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -1971,7 +1971,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
       if (result != NULL)
 	{
-	  db_query_end (result, query_execution_end_type);
+	  db_query_end (result, query_execution_ending_type);
 	  result = NULL;
 	}
       else
@@ -1981,7 +1981,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	   * run implicitly by the statement.  If so, we need to end the
 	   * query on the server.
 	   */
-	  db_free_query (session, query_execution_end_type);
+	  db_free_query (session, query_execution_ending_type);
 	}
 
       if (csql_Is_time_on)
@@ -1998,7 +1998,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT) && stmt_type != CUBRID_STMT_COMMIT_WORK
 	  && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	{
-	  db_error = db_commit_transaction (query_execution_end_type);
+	  db_error = db_commit_transaction (query_execution_ending_type);
 	  if (db_error < 0)
 	    {
 	      csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -3032,7 +3032,7 @@ csql_display_trace (void)
   DB_VALUE trace;
   FILE *pf;
   int save_row_count;
-  DB_QUERY_EXECUTION_END_TYPE query_execution_end_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
+  DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
 
   er_clear ();
   db_set_interrupt (0);
@@ -3054,7 +3054,7 @@ csql_display_trace (void)
       goto end;
     }
 
-  db_error = db_execute_statement (session, stmt_id, &result, &query_execution_end_type);
+  db_error = db_execute_statement (session, stmt_id, &result, &query_execution_ending_type);
 
   if (db_error < 0)
     {
@@ -3085,7 +3085,7 @@ end:
 
   if (result != NULL)
     {
-      db_query_end (result, query_execution_end_type);
+      db_query_end (result, query_execution_ending_type);
     }
 
   if (session != NULL)

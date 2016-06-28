@@ -62,7 +62,7 @@
 static FN_RETURN fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 				      int *ret_srv_h_id);
 static FN_RETURN fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-				      int *prepared_srv_h_id);
+				      int *prepared_srv_h_id, int *ret_srv_h_id);
 static const char *get_schema_type_str (int schema_type);
 static const char *get_tran_type_str (int tran_type);
 static void bind_value_print (char type, void *net_value, bool slow_log);
@@ -146,7 +146,7 @@ static const char *type_str_tbl[] = {
 };
 
 FN_RETURN
-fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int tran_type;
   int err_code;
@@ -169,6 +169,11 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
       ERROR_INFO_SET (CAS_ER_TRAN_TYPE, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_CONN;
+    }
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
     }
 
   cas_log_write (0, false, "end_tran %s", get_tran_type_str (tran_type));
@@ -265,33 +270,46 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
-fn_end_session (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_end_session (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   /* ignore all request to close session from drivers */
   net_buf_cp_int (net_buf, NO_ERROR, NULL);
+  if (ret_srv_h_id != NULL)
+    {
+      *ret_srv_h_id = -1;
+    }
 
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_get_row_count (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_get_row_count (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   ux_get_row_count (net_buf);
+  if (ret_srv_h_id != NULL)
+    {
+      *ret_srv_h_id = -1;
+    }
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_get_last_insert_id (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_get_last_insert_id (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+		       int *ret_srv_h_id)
 {
   ux_get_last_insert_id (net_buf);
+  if (ret_srv_h_id != NULL)
+    {
+      *ret_srv_h_id = -1;
+    }
   return FN_KEEP_CONN;
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 FN_RETURN
-fn_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
-  return (fn_prepare_internal (sock_fd, argc, argv, net_buf, req_info, NULL));
+  return (fn_prepare_internal (sock_fd, argc, argv, net_buf, req_info, ret_srv_h_id));
 }
 
 
@@ -396,16 +414,16 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 }
 
 FN_RETURN
-fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
-  FN_RETURN ret = fn_execute_internal (sock_fd, argc, argv, net_buf, req_info, NULL);
+  FN_RETURN ret = fn_execute_internal (sock_fd, argc, argv, net_buf, req_info, NULL, ret_srv_h_id);
 
   return ret;
 }
 
 static FN_RETURN
 fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-		     int *prepared_srv_h_id)
+		     int *prepared_srv_h_id, int *ret_srv_h_id)
 {
   int srv_h_id;
   char flag;
@@ -460,6 +478,10 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   else
     {
       net_arg_get_int (&srv_h_id, argv[arg_idx++]);
+    }
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
     }
   srv_handle = hm_find_srv_handle (srv_h_id);
 
@@ -735,7 +757,8 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
-fn_prepare_and_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_prepare_and_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+			int *ret_srv_h_id)
 {
   int prepare_argc_count;
   int srv_h_id;
@@ -750,7 +773,7 @@ fn_prepare_and_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_b
     }
 
   /* execute argv begins at prepare argv + 1 + prepare_argc_count */
-  fn_execute_internal (sock_fd, 10, argv + 1 + prepare_argc_count, net_buf, req_info, &srv_h_id);
+  fn_execute_internal (sock_fd, 10, argv + 1 + prepare_argc_count, net_buf, req_info, &srv_h_id, ret_srv_h_id);
   if (IS_ERROR_INFO_SET ())
     {
       srv_handle = hm_find_srv_handle (srv_h_id);
@@ -763,7 +786,8 @@ prepare_and_execute_end:
 }
 
 FN_RETURN
-fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+		     int *ret_srv_h_id)
 {
   int param_name;
 
@@ -852,11 +876,17 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       return FN_KEEP_CONN;
     }
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+		     int *ret_srv_h_id)
 {
   int param_name;
 
@@ -944,11 +974,17 @@ fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       return FN_KEEP_CONN;
     }
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_set_cas_change_mode (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_set_cas_change_mode (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+			int *ret_srv_h_id)
 {
   int mode;
 
@@ -972,12 +1008,18 @@ fn_set_cas_change_mode (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_b
 
   ux_set_cas_change_mode (mode, net_buf);
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_KEEP_CONN;
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 FN_RETURN
-fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+		     int *ret_srv_h_id)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
@@ -991,6 +1033,10 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
 
   if (argc > 1)
     {
@@ -1019,7 +1065,7 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
-fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int srv_h_id;
   int offset;
@@ -1033,6 +1079,10 @@ fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INF
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
   net_arg_get_int (&offset, argv[1]);
   net_arg_get_char (origin, argv[2]);
 
@@ -1043,7 +1093,7 @@ fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INF
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 FN_RETURN
-fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int srv_h_id;
   int cursor_pos;
@@ -1063,6 +1113,10 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
   net_arg_get_int (&cursor_pos, argv[1]);
   net_arg_get_int (&fetch_count, argv[2]);
   net_arg_get_char (fetch_flag, argv[3]);
@@ -1087,7 +1141,7 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
-fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int schema_type;
   char *arg1, *arg2;
@@ -1121,13 +1175,18 @@ fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 
   srv_h_id = ux_schema_info (schema_type, arg1, arg2, flag, net_buf, req_info, query_seq_num_current_value ());
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
+
   cas_log_write (query_seq_num_current_value (), false, "schema_info srv_h_id %d", srv_h_id);
 
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_oid_get (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_oid_get (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int pageid;
   short slotid, volid;
@@ -1144,12 +1203,17 @@ fn_oid_get (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
 
   ret = ux_oid_get (argc, argv, net_buf);
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   cas_log_write (0, true, "oid_get @%d|%d|%d %s", pageid, slotid, volid, (ret < 0 ? "ERR" : ""));
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_oid_put (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_oid_put (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   if (argc < 3 || argc % 3 != 1)
     {
@@ -1162,13 +1226,18 @@ fn_oid_put (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
 
   ux_oid_put (argc, argv, net_buf);
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_KEEP_CONN;
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 
 FN_RETURN
-fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   char auto_commit_mode;
   cas_log_write (0, true, "get_version");
@@ -1191,12 +1260,18 @@ fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
     }
 #endif /* !LIBCAS_FOR_JSP */
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_KEEP_CONN;
 }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
-fn_get_class_num_objs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_get_class_num_objs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+		       int *ret_srv_h_id)
 {
   char *class_name;
   char flag;
@@ -1216,11 +1291,16 @@ fn_get_class_num_objs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
 
   ux_get_class_num_objs (class_name, flag, net_buf);
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   DB_OBJECT *obj;
   char cmd;
@@ -1334,15 +1414,24 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
 	}
     }
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
   return FN_KEEP_CONN;
 
 fn_oid_error:
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
   NET_BUF_ERR_SET (net_buf);
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   char cmd;
   DB_OBJECT *obj;
@@ -1531,16 +1620,24 @@ fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   db_col_free (collection);
   db_value_clear (&val);
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
   return FN_KEEP_CONN;
 
 fn_col_finale:
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
   NET_BUF_ERR_SET (net_buf);
   return FN_KEEP_CONN;
 }
 
 /* MYSQL : NOT SUPPORT MULTIPLE STATEMENT */
 FN_RETURN
-fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int srv_h_id;
   char flag;
@@ -1557,6 +1654,10 @@ fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
   net_arg_get_char (flag, argv[1]);
 
   srv_handle = hm_find_srv_handle (srv_h_id);
@@ -1576,7 +1677,7 @@ fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 }
 
 FN_RETURN
-fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int arg_index = 0;
   char auto_commit_mode;
@@ -1605,12 +1706,17 @@ fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
   cas_log_write (0, true, "execute_batch end");
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_KEEP_CONN;
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 FN_RETURN
-fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
@@ -1640,6 +1746,10 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
   net_arg_get_int (&srv_h_id, argv[arg_index]);
   arg_index++;
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
 
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (srv_handle == NULL)
@@ -1757,7 +1867,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
-fn_cursor_update (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_cursor_update (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int srv_h_id;
   int cursor_pos;
@@ -1784,12 +1894,16 @@ fn_cursor_update (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 }
 
 FN_RETURN
-fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
 
   net_arg_get_int (&srv_h_id, argv[0]);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
 
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (srv_handle == NULL || srv_handle->num_q_result < 1)
@@ -1806,7 +1920,8 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
 }
 
 FN_RETURN
-fn_get_attr_type_str (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_get_attr_type_str (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+		      int *ret_srv_h_id)
 {
   int size;
   char *class_name;
@@ -1824,11 +1939,16 @@ fn_get_attr_type_str (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf
 
   ux_get_attr_type_str (class_name, attr_name, net_buf, req_info);
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   char info_type;
   T_SRV_HANDLE *srv_handle = NULL;
@@ -1836,7 +1956,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
   char *sql_stmt = NULL;
   DB_SESSION *session;
   DB_QUERY_RESULT *result = NULL;
-  DB_QUERY_EXECUTION_END_TYPE query_execution_end_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
+  DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
 
   if (argc < 2)
     {
@@ -1846,6 +1966,11 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
+
   net_arg_get_char (info_type, argv[1]);
   if (argc >= 3)
     {
@@ -1884,7 +2009,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
        * which cannot be prepared, such as serial, we should execute it to get its plan. And, currently, we cannot see
        * a plan for a statement which includes both "cannot be prepared" term and host variable. This limitation also
        * exists in csql. */
-      err = db_execute_statement (session, stmt_id, &result, &query_execution_end_type);
+      err = db_execute_statement (session, stmt_id, &result, &query_execution_ending_type);
       if (err < 0 && err != ER_UCI_TOO_FEW_HOST_VARS)
 	{
 	  /* We will ignore an error "too few host variables are given" to return a plan for a statement including host 
@@ -1896,7 +2021,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 	}
       if (result != NULL)
 	{
-	  db_query_end (result, query_execution_end_type);
+	  db_query_end (result, query_execution_ending_type);
 	}
 
       db_close_session (session);
@@ -1915,7 +2040,7 @@ end:
 }
 
 FN_RETURN
-fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int err_code;
   char cmd;
@@ -1933,6 +2058,11 @@ fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   net_arg_get_str (&savepoint_name, &savepoint_name_size, argv[1]);
   if (savepoint_name == NULL)
     savepoint_name = (char *) "";
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
 
   if (cmd == 1)
     {				/* set */
@@ -1965,7 +2095,7 @@ fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
 }
 
 FN_RETURN
-fn_parameter_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_parameter_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int srv_h_id;
 
@@ -1977,6 +2107,10 @@ fn_parameter_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
 
   ux_get_parameter_info (srv_h_id, net_buf);
 
@@ -1986,15 +2120,21 @@ fn_parameter_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 FN_RETURN
-fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   cas_log_write (0, true, "con_close");
   net_buf_cp_int (net_buf, 0, NULL);
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_CLOSE_CONN;
 }
 
 FN_RETURN
-fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int retcode = 0;
 
@@ -2011,6 +2151,11 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
       cas_log_write (0, true, "check_cas %d", retcode);
     }
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   if (retcode < 0)
     {
       ERROR_INFO_SET (retcode, CAS_ERROR_INDICATOR);
@@ -2025,7 +2170,7 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
 
 #if !defined(CAS_FOR_MYSQL)
 FN_RETURN
-fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int srv_h_id;
 
@@ -2037,21 +2182,31 @@ fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
+
   ux_make_out_rs (srv_h_id, net_buf, req_info);
 
   return FN_KEEP_CONN;
 }
 #else /* !defined(CAS_FOR_MYSQL) */
 FN_RETURN
-fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
   return fn_not_supported (sock_fd, argc, argv, net_buf, req_info);
 }
 #endif /* !defined(CAS_FOR_MYSQL) */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
-fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+		       int *ret_srv_h_id)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
@@ -2064,6 +2219,10 @@ fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
   srv_handle = hm_find_srv_handle (srv_h_id);
 
   if (srv_handle == NULL)
@@ -2437,11 +2596,16 @@ get_error_log_eids (int err)
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
-fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   int lob_type, err_code;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval lob_new_begin, lob_new_end;
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
 
   if (argc != 1)
     {
@@ -2481,7 +2645,7 @@ fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
 }
 
 FN_RETURN
-fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   DB_VALUE lob_dbval;
   INT64 offset;
@@ -2489,6 +2653,11 @@ fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   int err_code, data_length = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval lob_new_begin, lob_new_end;
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
 
   if (argc != 3)
     {
@@ -2522,13 +2691,18 @@ fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
 }
 
 FN_RETURN
-fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   DB_VALUE lob_dbval;
   INT64 offset;
   int err_code, data_length = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval lob_new_begin, lob_new_end;
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
 
   if (argc != 3)
     {
@@ -2562,7 +2736,7 @@ fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 }
 
 FN_RETURN
-fn_deprecated (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_deprecated (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
 #if defined(CAS_FOR_DBMS)
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
@@ -2570,15 +2744,24 @@ fn_deprecated (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
 #else /* CAS_FOR_DBMS */
   net_buf_cp_int (net_buf, CAS_ER_NOT_IMPLEMENTED, NULL);
 #endif /* CAS_FOR_DBMS */
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
   return FN_KEEP_CONN;
 }
 #endif
 
 FN_RETURN
-fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (net_buf);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
   return FN_KEEP_CONN;
 }
 

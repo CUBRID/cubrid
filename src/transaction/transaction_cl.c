@@ -246,7 +246,7 @@ bool tm_Use_OID_preflush = true;
  *              cached in the workspace are cleared.
  */
 int
-tran_commit (bool retain_lock, DB_QUERY_EXECUTION_END_TYPE latest_query_execution_end_type)
+tran_commit (bool retain_lock, DB_QUERY_EXECUTION_ENDING_TYPE latest_query_execution_ending_type)
 {
   TRAN_STATE state;
   int error_code = NO_ERROR;
@@ -279,7 +279,7 @@ tran_commit (bool retain_lock, DB_QUERY_EXECUTION_END_TYPE latest_query_executio
     }
 
   query_end_notify_server = true;
-  if (DB_IS_QUERY_EXECUTED_ENDED (latest_query_execution_end_type))
+  if (DB_IS_QUERY_EXECUTED_ENDED (latest_query_execution_ending_type))
     {
       query_end_notify_server = false;
     }
@@ -291,7 +291,7 @@ tran_commit (bool retain_lock, DB_QUERY_EXECUTION_END_TYPE latest_query_executio
   /* if the commit fails or not, we should clear the clients savepoint list */
   tran_free_savepoint_list ();
 
-  if (!DB_IS_QUERY_EXECUTED_COMMITTED (latest_query_execution_end_type))
+  if (!DB_IS_QUERY_EXECUTED_COMMITTED (latest_query_execution_ending_type))
     {
       /* Forward the commit the transaction manager in the server */
       state = tran_server_commit (retain_lock);
@@ -342,7 +342,7 @@ tran_commit (bool retain_lock, DB_QUERY_EXECUTION_END_TYPE latest_query_executio
     }
   else
     {
-      if (DB_IS_QUERY_EXECUTED_COMMITTED_WITH_RESET (latest_query_execution_end_type)
+      if (DB_IS_QUERY_EXECUTED_COMMITTED_WITH_RESET (latest_query_execution_ending_type)
 	  && log_does_allow_replication () == true)
 	{
 	  /* 
