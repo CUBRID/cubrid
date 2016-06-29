@@ -220,7 +220,9 @@ typedef unsigned long long UINTPTR;
 # endif
 #endif
 
-typedef off_t FSIZE_T;
+#if defined(WINDOWS)
+#define off_t __int64
+#endif
 
 /* standard constants for use with variables of type bool */
 #ifndef TRUE

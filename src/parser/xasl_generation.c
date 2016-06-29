@@ -17771,6 +17771,7 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
 		  prev = node;
 		  continue;
 		}
+	      /* Found attribute in non null list. */
 
 	      if (DB_IS_NULL (val))
 		{
@@ -17780,20 +17781,7 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
 		  error = ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
 		  goto exit_on_error;
 		}
-	      /* remove the node from the non_null_attrs list since we've already checked that the attr will be
-	       * non-null and the engine need not check again. */
-	      if (prev == NULL)
-		{
-		  insert->info.insert.odku_non_null_attrs = insert->info.insert.odku_non_null_attrs->next;
-		}
-	      else
-		{
-		  prev->next = node->next;
-		}
-
-	      /* free the node */
-	      node->next = NULL;	/* cut-off link */
-	      parser_free_tree (parser, node);
+	      /* Break loop since we already found attribute. */
 	      break;
 	    }
 

@@ -826,7 +826,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 
     temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, LOG_PAGESIZE);
-    logpb_read_page_from_file (LOGPB_HEADER_PAGE_ID, temp_pgptr);
+    logpb_read_page_from_file (thread_p, LOGPB_HEADER_PAGE_ID, LOG_CS_FORCE_USE, temp_pgptr);
     assert (memcmp ((LOG_HEADER *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) != 0);
   }
 #endif /* CUBRID_DEBUG */
@@ -845,7 +845,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 
     temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, LOG_PAGESIZE);
-    logpb_read_page_from_file (LOGPB_HEADER_PAGE_ID, temp_pgptr);
+    logpb_read_page_from_file (thread_p, LOGPB_HEADER_PAGE_ID, LOG_CS_FORCE_USE, temp_pgptr);
     assert (memcmp ((LOG_HEADER *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) == 0);
   }
 #endif /* CUBRID_DEBUG */
@@ -3367,8 +3367,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
 
   while (!LSA_ISNULL (&prev_lsa) && found == false)
     {
-
-      if (logpb_fetch_page (thread_p, prev_lsa.pageid, log_pgptr) == NULL)
+      if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	{
 	  break;
 	}
@@ -7366,7 +7365,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   /* Start dumping all log records following the given direction */
   while (!LSA_ISNULL (&lsa) && dump_npages-- > 0)
     {
-      if ((logpb_fetch_page (thread_p, lsa.pageid, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &lsa, LOG_CS_SAFE_READER, log_pgptr)) == NULL)
 	{
 	  fprintf (out_fp, " Error reading page %lld... Quit\n", (long long int) lsa.pageid);
 	  if (log_dump_ptr != NULL)
@@ -7939,9 +7938,10 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   while (!LSA_ISNULL (&prev_tranlsa) && !isdone)
     {
       /* Fetch the page where the LSA record to undo is located */
-      log_lsa.pageid = prev_tranlsa.pageid;
+      LSA_COPY (&log_lsa, &prev_tranlsa);
+      log_lsa.offset = LOG_PAGESIZE;
 
-      if ((logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rollback");
@@ -8231,7 +8231,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 
       if (last_fetch_page_id != top_result_lsa.pageid)
 	{
-	  if (logpb_fetch_page (thread_p, top_result_lsa.pageid, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, &top_result_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	    {
 	      if (nxtop_stack != *out_nxtop_range_stack)
 		{
@@ -8408,8 +8408,8 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
       while (!LSA_ISNULL (&forward_lsa) && !isdone)
 	{
 	  /* Fetch the page where the postpone LSA record is located */
-	  log_lsa.pageid = forward_lsa.pageid;
-	  if (logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr) == NULL)
+	  LSA_COPY (&log_lsa, &forward_lsa);
+	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_do_postpone");
 	      goto end;
@@ -8765,7 +8765,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
   while (type != LOG_END_OF_LOG && !LSA_ISNULL (end_lsa))
     {
       /* Fetch the page */
-      if ((logpb_fetch_page (thread_p, end_lsa->pageid, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, end_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_find_end_log");
 	  goto error;
