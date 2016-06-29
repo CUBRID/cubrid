@@ -5341,7 +5341,11 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
     {
       /* pack list file id as a reply data */
       replydata = (char *) db_private_alloc (thread_p, replydata_size);
-      if (replydata == NULL)
+      if (replydata)
+	{
+	  (void) or_pack_listid (replydata, list_id);
+	}
+      else
 	{
 	  replydata_size = 0;
 	  return_error_to_client (thread_p, rid);
@@ -5386,7 +5390,6 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 						    IS_XASL_CACHE_PINNED_REFERENCE (query_flag));
     }
 
-  (void) or_pack_listid (replydata, list_id);
   reset_on_commit = false;
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   tran_state = tdes->state;
