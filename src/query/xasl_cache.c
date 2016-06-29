@@ -1454,6 +1454,13 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	  xid.cache_flag = XCACHE_ENTRY_SKIP_TO_BE_RECOMPILED;
 	  /* We don't unfix yet. */
 	}
+      else
+        {
+          /* Failed marking entry for recompile; we need to try again, but just to avoid burning CPU sleep a little
+           * first.
+           */
+          thread_sleep (1);
+        }
       /* Try to insert again. */
     }
   /* Found or inserted entry. */
