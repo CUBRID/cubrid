@@ -381,7 +381,7 @@ get_codeset_from_db_root (void)
       db_status = db_query_get_tuple_value (query_result, 0, &value);
       if (db_status != NO_ERROR)
 	{
-	  db_query_end (query_result);
+	  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	  return db_status;
 	}
     }
@@ -394,7 +394,7 @@ get_codeset_from_db_root (void)
       return db_status;
     }
 
-  db_query_end (query_result);
+  db_query_end (query_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
   return db_get_int (&value);
 }
 
@@ -547,7 +547,7 @@ main (int argc, char *argv[])
       db_abort_transaction ();
       goto error_undo_vol_header;
     }
-  db_commit_transaction ();
+  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
   au_disable ();
 
