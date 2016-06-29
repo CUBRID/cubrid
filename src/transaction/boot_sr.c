@@ -1820,8 +1820,6 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
 
   delete_action_arg = ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION;
 
-  xcache_notify_removed_temp_vols ();
-
   /* 
    * if volumes exist beyond bo_Dbparm.temp_last_volid,
    * we remove the volumes.

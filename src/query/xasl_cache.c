@@ -73,7 +73,6 @@ struct xcache
   LF_HASH_TABLE ht;
   LF_FREELIST freelist;
   INT32 entry_count;
-  bool removed_temp_vols;
   bool logging_enabled;
   int max_clones;
   INT32 cleanup_flag;
@@ -87,7 +86,6 @@ XCACHE xcache_Global = {
   LF_HASH_TABLE_INITIALIZER,	/* ht */
   LF_FREELIST_INITIALIZER,	/* freelist */
   0,				/* entry_count */
-  false,			/* removed_temp_vols */
   false,			/* logging_enabled */
   0,				/* max_clones */
   0,				/* cleanup_flag */
@@ -101,7 +99,6 @@ XCACHE xcache_Global = {
 #define xcache_Ht xcache_Global.ht
 #define xcache_Ht_freelist xcache_Global.freelist
 #define xcache_Entry_count xcache_Global.entry_count
-#define xcache_Temp_vols_were_removed xcache_Global.removed_temp_vols
 #define xcache_Log xcache_Global.logging_enabled
 #define xcache_Max_clones xcache_Global.max_clones
 #define xcache_Cleanup_flag xcache_Global.cleanup_flag
@@ -278,8 +275,6 @@ xcache_initialize (THREAD_ENTRY * thread_p)
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
-
-  xcache_Temp_vols_were_removed = false;
 
   xcache_log ("init successful.\n");
 
@@ -1703,18 +1698,6 @@ xcache_can_entry_cache_list (XASL_CACHE_ENTRY * xcache_entry)
       return false;
     }
   return (xcache_entry != NULL && (xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_FLAGS_MASK) == 0);
-}
-
-/*
- * xcache_notify_removed_temp_vols () - Notify XASL cache system that temporary files have been removed. Any entries
- *				        that are uninitialized afterwards should not destroy temporary files.
- *
- * return    : Void.
- */
-void
-xcache_notify_removed_temp_vols (void)
-{
-  xcache_Temp_vols_were_removed = true;
 }
 
 /*
