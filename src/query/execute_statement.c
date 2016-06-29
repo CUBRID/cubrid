@@ -17090,16 +17090,18 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
   int error = NO_ERROR;
   int upd_has_uniques = 0;
   bool has_default_values_list = false;
-
+  int save_au;
   *update = NULL;
 
+  AU_DISABLE (save_au);
   /* Check if server allows an insert. */
   error = is_server_insert_allowed (parser, statement);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return error;
+      goto exit;
     }
+
 
   /* Check non null attrs. */
   if (values->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
@@ -17110,10 +17112,13 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
   error =
     check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
 				  has_default_values_list);
+
+
+
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return error;
+      goto exit;
     }
 
   /* Test if server UPDATE is allowed */
@@ -17121,10 +17126,11 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
   if (statement->info.insert.odku_assignments != NULL)
     {
       *update = do_create_odku_stmt (parser, statement);
+
       if (*update == NULL)
 	{
 	  error = ER_FAILED;
-	  return error;
+	  goto exit;
 	}
       if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
 	{
@@ -17136,12 +17142,12 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      return error;
+	      goto exit;
 	    }
 	  if (!server_allowed)
 	    {
 	      statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
-	      return error;
+	      goto exit;
 	    }
 	}
     }
@@ -17153,18 +17159,20 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
   if (statement->info.insert.do_replace || statement->info.insert.odku_assignments != NULL)
     {
       int allowed = 0;
+
       error = is_replace_or_odku_allowed ((*class_)->info.name.db_object, &allowed);
+
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error;
+	  goto exit;
 	}
 
       if (!allowed)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLACE_ODKU_NOT_ALLOWED, 0);
 	  ASSERT_ERROR_AND_SET (error);
-	  return error;
+	  goto exit;
 	}
     }
 
@@ -17172,8 +17180,10 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
   if (!locator_fetch_class ((*class_)->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE))
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto exit;
     }
 
+exit:
+  AU_ENABLE (save_au);
   return error;
 }
