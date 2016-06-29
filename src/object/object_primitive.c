@@ -11262,8 +11262,14 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		{
 		  return ER_FAILED;
 		}
-	      str_length = uncompressed_size;
-
+	      if (compressed_size <= 0)
+		{
+		  str_length = uncompressed_size;
+		}
+	      else
+		{
+		  str_length = compressed_size;
+		}
 	      if (copy_buf && copy_buf_len >= str_length + 1)
 		{
 		  /* read buf image into the copy_buf */
@@ -11315,6 +11321,38 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		      return ER_FAILED;
 		    }
 		  /* Handle decompression if there was any */
+		  if (compressed_size > 0)
+		    {
+		      /* String was compressed */
+		      lzo_uint unc_size = 0;
+		      /* Handle decompression */
+		      decompressed_string = (char *) malloc (uncompressed_size * sizeof (char));
+		      if (decompressed_string == NULL)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+				  (size_t) uncompressed_size * sizeof (char));
+			  return rc;
+			}
+		      /* decompressing the string */
+		      rc =
+			lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, decompressed_string,
+					  &unc_size, NULL);
+		      if (rc != LZO_E_OK)
+			{
+			  goto cleanup;
+			}
+		      if (unc_size != uncompressed_size)
+			{
+			  /* Decompression failed. It shouldn't. */
+			  assert (false);
+			}
+		      /* TODO: Copy decompressed_string to new_ */
+		    cleanup:
+		      if (decompressed_string != NULL)
+			{
+			  free_and_init (decompressed_string);
+			}
+		    }
 
 		  new_[str_length] = '\0';	/* append the kludge NULL terminator */
 		  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
