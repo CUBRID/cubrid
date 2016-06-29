@@ -969,8 +969,8 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 /*
  * xcache_fix () - Fix XASL cache entry by incrementing fix count in cache flag.
  *
- * return   : Error code.
- * xid (in) : XASL_ID.
+ * return       : Error code.
+ * xid (in/out) : XASL_ID.
  */
 static bool
 xcache_fix (XASL_ID * xid)
@@ -1003,9 +1003,9 @@ xcache_fix (XASL_ID * xid)
  * xcache_unfix () - Unfix XASL cache entry by decrementing fix count in cache flag. If we are last to use entry
  *		     remove it from hash.
  *
- * return	     : Void.
- * thread_p (in)     : Thread entry.
- * xcache_entry (in) : XASL cache entry.
+ * return	         : Void.
+ * thread_p (in)         : Thread entry.
+ * xcache_entry (in/out) : XASL cache entry.
  */
 void
 xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
@@ -1228,7 +1228,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
       for (index = 0; index < n_oid; index++)
 	{
 	  related_objects[index].oid = class_oids[index];
-	  related_objects[index].lock = class_locks[index];
+	  related_objects[index].lock = (LOCK) class_locks[index];
 	  related_objects[index].tcard = tcards[index];
 	}
     }
@@ -1298,7 +1298,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
   while (true)
     {
       /* Claim a new entry from freelist to initialize. */
-      *xcache_entry = lf_freelist_claim (t_entry, &xcache_Ht_freelist);
+      *xcache_entry = (XASL_CACHE_ENTRY *) lf_freelist_claim (t_entry, &xcache_Ht_freelist);
       if (*xcache_entry == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -1578,7 +1578,7 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid)
        */
       while (true)
 	{
-	  xcache_entry = lf_hash_iterate (&iter);
+	  xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter);
 	  if (xcache_entry == NULL)
 	    {
 	      finished = true;
@@ -1677,7 +1677,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 
   fprintf (fp, "\nEntries:\n");
   lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
-  while ((xcache_entry = lf_hash_iterate (&iter)) != NULL)
+  while ((xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL)
     {
       fprintf (fp, "\n");
       fprintf (fp, "  XASL_ID = { \n");
@@ -1865,7 +1865,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   /* Collect candidates for cleanup. */
   lf_hash_create_iterator (&iter, t_entry, &xcache_Ht);
 
-  while ((xcache_entry = lf_hash_iterate (&iter)) != NULL)
+  while ((xcache_entry = (XASL_CACHE_ENTRY *) lf_hash_iterate (&iter)) != NULL)
     {
       candidate.xid = xcache_entry->xasl_id;
       candidate.time_last_used = xcache_entry->time_last_used;
@@ -2051,20 +2051,3 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
     }
   return recompile;
 }
-
-/* TODO more stuff
- *
- * xcache_check_tcard.
- * the current RT system specifics:
- * 1. it is called only prepare query. It is not called if prepared query execution is called directly (which is the
- * most likely usage).
- * 2. it is called only if original tcard is less than 50 pages.
- * 3. it doesn't care when it was last time called, so if preparing queries is usual, it may get called very often.
- * I think some of the stuff above are not ok.
- * 1. We should be able to check RT for both prepare and execute prepared. So forcing the check on getting xasl cache
- *    entry would be better.
- * 2. There should be no limit on tcard. We could treat the small/big tcards in two ways, but I think both can be
- *    handled.
- * 3. We can have some conditions of when to call it. If we limit the calls to every now and then, the file header page
- *    fix would not have any impact to the overall throughput.
- */
