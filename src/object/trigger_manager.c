@@ -578,10 +578,13 @@ static int
 merge_trigger_list (TR_TRIGLIST ** list, TR_TRIGLIST * more, int destructive)
 {
   TR_TRIGLIST *t1, *t2, *prev, *new_tr, *t2_next;
+  int error;
 
   /* quick exit if nothing to do */
   if (more == NULL)
-    return NO_ERROR;
+    {
+      return NO_ERROR;
+    }
 
   t1 = *list;
   t2 = more;
@@ -604,8 +607,8 @@ merge_trigger_list (TR_TRIGLIST ** list, TR_TRIGLIST * more, int destructive)
 	  new_tr = (TR_TRIGLIST *) db_ws_alloc (sizeof (TR_TRIGLIST));
 	  if (new_tr == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
 	    }
 	  new_tr->trigger = t2->trigger;
 	  new_tr->target = NULL;
@@ -2485,8 +2488,7 @@ tr_add_cache_trigger (TR_SCHEMA_CACHE * cache, DB_OBJECT * trigger_object)
 	  trigger = tr_map_trigger (trigger_object, 1);
 	  if (trigger == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      error = er_errid ();
+	      ASSERT_ERROR_AND_SET (error);
 	    }
 	  else
 	    {
@@ -2651,8 +2653,8 @@ tr_validate_schema_cache (TR_SCHEMA_CACHE * cache, MOP class_mop)
 
 	  if (insert_trigger_list (&(cache->triggers[trigger->event]), trigger))
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();	/* memory error */
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;	/* memory error */
 	    }
 	  prev = object_list;
 	}
