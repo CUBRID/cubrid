@@ -522,12 +522,14 @@ xcache_compare_key (void *key1, void *key2)
    * If SHA-1 does not match, the entry does not belong to the same query (so clearly no match).
    *
    * Even if SHA-1 hash matches, the cache flags can still invalidate the entry.
-   * 1. Marked deleted entry can only be found with the scope of deleting entry (the lookup key must also be marked as
+   * 1. If this is a cleanup lookup, the entry must be unfixed and unmarked (its cache_flag must be 0). Successful
+   *    cleanup can occur if cache-flag is CASed to XCACHE_ENTRY_MARK_DELETED.
+   * 2. Marked deleted entry can only be found with the scope of deleting entry (the lookup key must also be marked as
    *    deleted.
-   * 2. Was recompiled entry can never be found. They are followed by another entry with similar SHA-1 which will can
+   * 3. Was recompiled entry can never be found. They are followed by another entry with similar SHA-1 which will can
    *    be found.
-   * 3. To be recompiled entry cannot be found by its recompiler - lookup key is marked as skip to be recompiled.
-   * 4. When all previous flags do not invalidate entry, the thread looking for entry must also increment fix count.
+   * 4. To be recompiled entry cannot be found by its recompiler - lookup key is marked as skip to be recompiled.
+   * 5. When all previous flags do not invalidate entry, the thread looking for entry must also increment fix count.
    *    Incrementing fix count can fail if concurrent thread mark entry as deleted.
    */
 
