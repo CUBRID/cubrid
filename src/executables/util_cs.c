@@ -645,7 +645,7 @@ delvoldb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  db_commit_transaction ();
+  db_commit_transaction (DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
   db_shutdown ();
 

@@ -5386,6 +5386,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 						    IS_XASL_CACHE_PINNED_REFERENCE (query_flag));
     }
 
+  (void) or_pack_listid (replydata, list_id);
   reset_on_commit = false;
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   tran_state = tdes->state;
@@ -5423,12 +5424,11 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
       xtran_reset_on_commit (thread_p, has_updated, &reset_on_commit);
     }
 
-  (void) or_pack_listid (replydata, list_id);
   /* pack 'QUERY_END' as a first argument of the reply */
   ptr = or_pack_int (reply, QUERY_END);
   /* pack size of list file id to return as a second argument of the reply */
   ptr = or_pack_int (ptr, replydata_size);
-  /* pack size of a page to return as a third argumnet of the reply */
+  /* pack size of a page to return as a third argument of the reply */
   ptr = or_pack_int (ptr, page_size);
   ptr = or_pack_int (ptr, queryinfo_string_length);
 

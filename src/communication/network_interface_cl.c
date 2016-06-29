@@ -7256,6 +7256,7 @@ qmgr_execute_query_with_commit (const XASL_ID * xasl_id, QUERY_ID * query_idp, i
     {
       ptr = or_pack_ptr (ptr, net_Deferred_end_queries[i]);
     }
+  net_Deferred_end_queries_count = 0;
 
   req_error =
     net_client_request_with_callback (NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT, request, OR_ALIGNED_BUF_SIZE (a_request),
