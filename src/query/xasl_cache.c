@@ -892,6 +892,7 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 
   if (xcache_Max_clones > 0)
     {
+      /* Try to fetch a cached clone. */
       if ((*xcache_entry)->cache_clones == NULL)
 	{
 	  assert_release (false);
@@ -903,6 +904,7 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 	  assert ((*xcache_entry)->n_cache_clones <= xcache_Max_clones);
 	  if ((*xcache_entry)->n_cache_clones > 0)
 	    {
+              /* A clone is available. */
 	      *xclone = (*xcache_entry)->cache_clones[--(*xcache_entry)->n_cache_clones];
 	      (void) pthread_mutex_unlock (&(*xcache_entry)->cache_clones_mutex);
 
@@ -922,10 +924,10 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 	  (void) pthread_mutex_unlock (&(*xcache_entry)->cache_clones_mutex);
 	}
       /* Clone not found. */
+      /* When clones are activated, we use global heap to generate the XASL's; this way, other threads can use the
+       * clone. */
       save_heapid = db_change_private_heap (thread_p, 0);
     }
-  /* TODO: If we want to use clones, I think it is cheap to store XASL stream in files. We can keep it in xcache_entry.
-   */
   error_code =
     stx_map_stream_to_xasl (thread_p, &xclone->xasl, (*xcache_entry)->stream.xasl_stream,
 			    (*xcache_entry)->stream.xasl_stream_size, &xclone->xasl_buf);
