@@ -8465,14 +8465,14 @@ or_get_varchar_comp_lengths (OR_BUF * buf, int *compressed_size, int *uncompress
 	{
 	  return rc;
 	}
-      *compressed_size = OR_GET_INT (&comp_charlen);
+      *compressed_size = comp_charlen;
       /* Get the uncompressed size */
       rc = or_get_data (buf, (char *) &uncomp_charlen, OR_INT_SIZE);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
-      *uncompressed_size = OR_GET_INT (&uncomp_charlen);
+      *uncompressed_size = uncomp_charlen;
     }
   else
     {
