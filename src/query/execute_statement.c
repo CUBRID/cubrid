@@ -13147,6 +13147,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool has_default_values_list = false;
   PT_NODE *attr_list;
   PT_NODE *update = NULL;
+  int save_au;
 
   if (statement == NULL || statement->node_type != PT_INSERT || statement->info.insert.spec == NULL
       || statement->info.insert.spec->info.spec.flat_entity_list == NULL)
@@ -13154,6 +13155,8 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (false);
       return ER_GENERIC_ERROR;
     }
+
+  AU_DISABLE (save_au);
 
   /* We do not allow multi statements. To be checked! */
   if (pt_length_of_list (statement) > 1)
@@ -13202,6 +13205,9 @@ cleanup:
 	}
       parser_free_tree (parser, update);
     }
+
+  AU_ENABLE (save_au);
+
   return error;
 }
 
@@ -17090,10 +17096,8 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
   int error = NO_ERROR;
   int upd_has_uniques = 0;
   bool has_default_values_list = false;
-  int save_au;
   *update = NULL;
 
-  AU_DISABLE (save_au);
   /* Check if server allows an insert. */
   error = is_server_insert_allowed (parser, statement);
   if (error != NO_ERROR)
@@ -17184,6 +17188,5 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
     }
 
 exit:
-  AU_ENABLE (save_au);
   return error;
 }
