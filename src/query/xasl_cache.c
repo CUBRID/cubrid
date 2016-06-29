@@ -739,6 +739,11 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
   lf_tran_end_with_mb (t_entry);
 
   /* Get lock on all classes in xasl cache entry. */
+  /* The reason we need to do the locking here is to confirm the entry validity. Without the locks, we cannot guarantee
+   * the entry will remain valid (somebody holding SCH_M_LOCK may invalidate it). Moreover, in most cases, the
+   * transaction did not have locks up to this point (because it executes a prepared query).
+   * So, we have to get all locks and then check the entry validity.
+   */
   for (oid_index = 0; oid_index < (*xcache_entry)->n_related_objects; oid_index++)
     {
       if ((*xcache_entry)->related_objects[oid_index].lock <= NULL_LOCK)
@@ -768,6 +773,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
 	}
     }
 
+  /* Check the entry is still valid. */
   if ((*xcache_entry)->xasl_id.cache_flag & XCACHE_ENTRY_MARK_DELETED)
     {
       /* Someone has marked entry as deleted. */
@@ -791,8 +797,10 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
     }
 
   assert (*xcache_entry != NULL);
+
   if (rt_check)
     {
+      /* Check if query should be recompile. */
       *rt_check = xcache_check_recompilation_threshold (thread_p, *xcache_entry);
       if (*rt_check)
 	{
