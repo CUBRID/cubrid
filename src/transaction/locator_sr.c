@@ -13506,6 +13506,18 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	  goto exit;
 	}
 
+      if (scan_cache->mvcc_snapshot)
+	{
+	  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
+
+	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
+	  if (snapshot_res == SNAPSHOT_SATISFIED)
+	    {
+	      /* Skip the re-evaluation if last version is visible. It should be the same as the visible version
+	       * which was already evaluated. */
+	      goto exit;
+	    }
+	}
       ev_res = heap_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
       if (ev_res != V_TRUE)
 	{
