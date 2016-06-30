@@ -7280,8 +7280,8 @@ qmgr_execute_query_with_commit (const XASL_ID * xasl_id, QUERY_ID * query_idp, i
       /* first argument should be QUERY_END ptr = or_unpack_int(reply, &status); */
       /* second argument should be the same with replydata_size_listid ptr = or_unpack_int(ptr, &listid_length); */
       /* third argument should be the same with replydata_size_page ptr = or_unpack_int(ptr, &page_size); */
-      /* third argument should be the same with replydata_size_plan ptr = or_unpack_int(ptr, &plan_size); */
-      /* fourth argument should be query_id */
+      /* fourth argument should be the same with replydata_size_plan ptr = or_unpack_int(ptr, &plan_size); */
+      /* fifth argument should be query_id */
       ptr = or_unpack_ptr (reply + OR_INT_SIZE * 4, query_idp);
       OR_UNPACK_CACHE_TIME (ptr, &local_srv_cache_time);
 
@@ -7402,9 +7402,7 @@ cleanup:
   EXIT_SERVER ();
 
   return list_id;
-  return NULL;
 #endif /* !CS_MODE */
-
 }
 
 
@@ -7506,8 +7504,8 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
       /* first argument should be QUERY_END ptr = or_unpack_int(reply, &status); */
       /* second argument should be the same with replydata_size_listid ptr = or_unpack_int(ptr, &listid_length); */
       /* third argument should be the same with replydata_size_page ptr = or_unpack_int(ptr, &page_size); */
-      /* third argument should be the same with replydata_size_plan ptr = or_unpack_int(ptr, &plan_size); */
-      /* fourth argument should be query_id */
+      /* fourth argument should be the same with replydata_size_plan ptr = or_unpack_int(ptr, &plan_size); */
+      /* fifth argument should be query_id */
       ptr = or_unpack_ptr (reply + OR_INT_SIZE * 4, query_idp);
       OR_UNPACK_CACHE_TIME (ptr, srv_cache_time);
 

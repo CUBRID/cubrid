@@ -183,7 +183,7 @@ typedef struct db_query_type DB_QUERY_TYPE;
 /*
  *  The DB_QUERY_EXECUTION_ENDING_TYPE enumeration is used to reduce the number of message communication between
  * client and server. Thus, when possible, "execute query", "end query" and "commit" can be executed using only one
- * message. This optimization has a serious impact on performance. Check db_init_statement_execution_type function
+ * message. This optimization has a serious impact on performance. Check db_init_statement_execution_end_type function
  * to see when the optimization can be used.
 */
 typedef enum db_query_execution_ending_type DB_QUERY_EXECUTION_ENDING_TYPE;

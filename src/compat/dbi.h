@@ -706,7 +706,7 @@ extern DB_CLASS_MODIFICATION_STATUS db_has_modified_class (DB_SESSION * session,
 extern void db_invalidate_mvcc_snapshot_after_statement (void);
 
 extern void db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Version);
-extern int db_init_statement_execution_type (DB_SESSION * session, bool auto_commit);
+extern int db_init_statement_execution_end_type (DB_SESSION * session, bool auto_commit);
 
 extern int db_query_set_copy_tplvalue (DB_QUERY_RESULT * result, int copy);
 

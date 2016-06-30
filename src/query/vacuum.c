@@ -3961,7 +3961,7 @@ vacuum_load_data_from_disk (THREAD_ENTRY * thread_p)
       assert (vacuum_Data.last_page->index_unvacuumed == 0);
       /* last_blockid is still saved in the first data entry. */
       vacuum_Data.last_blockid = vacuum_Data.last_page->data->blockid;
-      //assert (vacuum_Data.last_blockid == VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_Data.last_blockid));
+      assert (vacuum_Data.last_blockid == VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_Data.last_blockid));
     }
   else
     {
@@ -4127,6 +4127,7 @@ vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_
       return ER_FAILED;
     }
   vacuum_data_initialize_new_page (thread_p, data_page);
+  data_page->data->blockid = 0;
   log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) data_page, 0, 0, NULL);
 
   VPID_COPY (&log_Gl.hdr.vacuum_data_first_vpid, &first_page_vpid);

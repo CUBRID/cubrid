@@ -1877,7 +1877,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       attr_spec = db_get_query_type_list (session, stmt_id);
       stmt_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_id);
 
-      db_init_statement_execution_type (session, csql_arg->auto_commit);
+      db_init_statement_execution_end_type (session, csql_arg->auto_commit);
 
       db_error = db_execute_statement (session, stmt_id, &result, &query_execution_ending_type);
       if (db_error < 0)

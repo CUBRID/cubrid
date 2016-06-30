@@ -3720,6 +3720,8 @@ db_get_end_type_after_query_execution (int end_query_result, bool committed, int
 	  return DB_QUERY_EXECUTED_ENDED_NOT_COMMITTED;
 	}
     }
-
-  return DB_QUERY_EXECUTED_NOT_ENDED;
+  else
+    {
+      return DB_QUERY_EXECUTED_NOT_ENDED;
+    }
 }

@@ -5104,7 +5104,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
  *
  * return:
  *
- *   thrd(in):
+ *   thread_p(in):
  *   rid(in):
  *   request(in):
  *   reqlen(in):
@@ -5150,7 +5150,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
   bool tran_abort = false;
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
-  bool end_query_allowed = true;
+  bool end_query_allowed;
   bool reset_on_commit;
   LOG_TDES *tdes;
   bool has_updated;
@@ -5242,11 +5242,10 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
       info = xasl_cache_entry_p->sql_info;
     }
 
-#if 0
-  if (list_id == NULL && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
-#else
+  end_query_allowed = false;
+  page_size = 0;
+  page_ptr = NULL;
   if (list_id == NULL)
-#endif
     {
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
@@ -5288,11 +5287,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 
       return_error_to_client (thread_p, rid);
     }
-
-  page_size = 0;
-  page_ptr = NULL;
-  /* TO DO - check whether is sync exec mode */
-  if (list_id)
+  else
     {
       /* get the first page of the list file */
       if (VPID_ISNULL (&(list_id->first_vpid)))
@@ -5323,11 +5318,8 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 	  page_ptr = aligned_page_buf;
 	  if (VPID_EQ (&list_id->first_vpid, &list_id->last_vpid))
 	    {
+	      /* for now, allow end query if there is only one page */
 	      end_query_allowed = true;
-	    }
-	  else
-	    {
-	      end_query_allowed = false;
 	    }
 	}
       else
@@ -5411,20 +5403,21 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 
       if (all_error_code != NO_ERROR)
 	{
-	  /* TO DO - error code */
 	  return_error_to_client (thread_p, rid);
 	}
-
-      has_updated = logtb_has_updated (thread_p);
-      xsession_set_row_count (thread_p, row_count);
-      tran_state = xtran_server_commit (thread_p, false);
-      net_cleanup_server_queues (rid);
-      if (tran_state != TRAN_UNACTIVE_COMMITTED && tran_state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+      else
 	{
-	  /* Likely the commit failed.. somehow */
-	  return_error_to_client (thread_p, rid);
+	  has_updated = logtb_has_updated (thread_p);
+	  xsession_set_row_count (thread_p, row_count);
+	  tran_state = xtran_server_commit (thread_p, false);
+	  net_cleanup_server_queues (rid);
+	  if (tran_state != TRAN_UNACTIVE_COMMITTED && tran_state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+	    {
+	      /* Likely the commit failed.. somehow */
+	      return_error_to_client (thread_p, rid);
+	    }
+	  xtran_reset_on_commit (thread_p, has_updated, &reset_on_commit);
 	}
-      xtran_reset_on_commit (thread_p, has_updated, &reset_on_commit);
     }
 
   /* pack 'QUERY_END' as a first argument of the reply */

@@ -329,7 +329,7 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 
   if (free_flag == TRUE)
     {
-      ux_free_result (q_result, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+      ux_free_result (q_result, q_result->query_execution_ending_type);
       FREE_MEM (q_result);
       srv_handle->q_result = NULL;
     }

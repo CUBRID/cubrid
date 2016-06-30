@@ -2882,9 +2882,7 @@ cas_get_client_version (void)
 /*
  * cas_get_query_execution_ending_type () - Get query execution ending type.
  *   return: query execution ending type
- *   server_fn(in): server function
- *   argc(in): arguments count
- *   argv(in): argument values
+ *   srv_h_id(in): server handle id
  */
 static DB_QUERY_EXECUTION_ENDING_TYPE
 cas_get_query_execution_ending_type (int srv_h_id)
@@ -2912,7 +2910,7 @@ cas_get_query_execution_ending_type (int srv_h_id)
 	  for (i = 0; i < srv_handle->num_q_result - 1; i++)
 	    {
 	      q_result = &(srv_handle->q_result[i]);
-	      assert (!DB_IS_QUERY_EXECUTED_COMMITTED (q_result->query_execution_ending_type));	      
+	      assert (!DB_IS_QUERY_EXECUTED_COMMITTED (q_result->query_execution_ending_type));
 	    }
 #endif
 	}

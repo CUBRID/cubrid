@@ -171,11 +171,6 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
       return FN_KEEP_CONN;
     }
 
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = -1;
-    }
-
   cas_log_write (0, false, "end_tran %s", get_tran_type_str (tran_type));
 
   gettimeofday (&end_tran_begin, NULL);
@@ -252,6 +247,11 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
       sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, true);
     }
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   if (!ux_is_database_connected ())
     {
       cas_log_debug (ARG_FILE_LINE, "fn_end_tran: !ux_is_database_connected()");
@@ -264,6 +264,11 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
     }
   return FN_KEEP_CONN;
 #endif /* !LIBCAS_FOR_JSP */
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
 
   return FN_CLOSE_CONN;
 }
@@ -799,7 +804,6 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
   net_arg_get_int (&param_name, argv[0]);
-
   if (param_name == CCI_PARAM_ISOLATION_LEVEL)
     {
       int isol_level;
@@ -1033,11 +1037,6 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = srv_h_id;
-    }
-
   if (argc > 1)
     {
       net_arg_get_char (auto_commit_mode, argv[1]);
@@ -1060,6 +1059,11 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   net_buf_cp_int (net_buf, 0, NULL);	/* res code */
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
+
   return FN_KEEP_CONN;
 }
 
@@ -1079,14 +1083,15 @@ fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INF
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = srv_h_id;
-    }
   net_arg_get_int (&offset, argv[1]);
   net_arg_get_char (origin, argv[2]);
 
   ux_cursor (srv_h_id, offset, origin, net_buf);
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
 
   return FN_KEEP_CONN;
 }
@@ -1113,10 +1118,6 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = srv_h_id;
-    }
   net_arg_get_int (&cursor_pos, argv[1]);
   net_arg_get_int (&fetch_count, argv[2]);
   net_arg_get_char (fetch_flag, argv[3]);
@@ -1135,6 +1136,11 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO
 		 srv_h_id, cursor_pos, fetch_count);
 
   ux_fetch (srv_handle, cursor_pos, fetch_count, fetch_flag, result_set_index, net_buf, req_info);
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
 
   return FN_KEEP_CONN;
 }
@@ -1175,12 +1181,12 @@ fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 
   srv_h_id = ux_schema_info (schema_type, arg1, arg2, flag, net_buf, req_info, query_seq_num_current_value ());
 
+  cas_log_write (query_seq_num_current_value (), false, "schema_info srv_h_id %d", srv_h_id);
+
   if (ret_srv_h_id)
     {
       *ret_srv_h_id = srv_h_id;
     }
-
-  cas_log_write (query_seq_num_current_value (), false, "schema_info srv_h_id %d", srv_h_id);
 
   return FN_KEEP_CONN;
 }
@@ -1203,12 +1209,13 @@ fn_oid_get (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
 
   ret = ux_oid_get (argc, argv, net_buf);
 
+  cas_log_write (0, true, "oid_get @%d|%d|%d %s", pageid, slotid, volid, (ret < 0 ? "ERR" : ""));
+
   if (ret_srv_h_id)
     {
       *ret_srv_h_id = -1;
     }
 
-  cas_log_write (0, true, "oid_get @%d|%d|%d %s", pageid, slotid, volid, (ret < 0 ? "ERR" : ""));
   return FN_KEEP_CONN;
 }
 
@@ -1654,10 +1661,6 @@ fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = srv_h_id;
-    }
   net_arg_get_char (flag, argv[1]);
 
   srv_handle = hm_find_srv_handle (srv_h_id);
@@ -1672,6 +1675,10 @@ fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 		 (srv_handle->use_query_cache == true) ? "(QC)" : "");
 
   ux_next_result (srv_handle, flag, net_buf, req_info);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
 
   return FN_KEEP_CONN;
 }
@@ -1746,11 +1753,6 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
   net_arg_get_int (&srv_h_id, argv[arg_index]);
   arg_index++;
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = srv_h_id;
-    }
-
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (srv_handle == NULL)
     {
@@ -1862,6 +1864,11 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
     }
 #endif /* !LIBCAS_FOR_JSP */
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
+
   return FN_KEEP_CONN;
 }
 
@@ -1889,6 +1896,10 @@ fn_cursor_update (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 		 cursor_pos);
 
   ux_cursor_update (srv_handle, cursor_pos, argc, argv, net_buf);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
 
   return FN_KEEP_CONN;
 }
@@ -1900,11 +1911,6 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
   T_SRV_HANDLE *srv_handle;
 
   net_arg_get_int (&srv_h_id, argv[0]);
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = srv_h_id;
-    }
-
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (srv_handle == NULL || srv_handle->num_q_result < 1)
     {
@@ -1915,6 +1921,11 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor_close srv_h_id %d", srv_h_id);
 
   ux_cursor_close (srv_handle);
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
 
   return FN_KEEP_CONN;
 }
@@ -1966,11 +1977,6 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = srv_h_id;
-    }
-
   net_arg_get_char (info_type, argv[1]);
   if (argc >= 3)
     {
@@ -2034,6 +2040,12 @@ end:
     {
       reset_optimization_level_as_saved ();
       hm_srv_handle_free (srv_h_id);
+      srv_h_id = -1;
+    }
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
     }
 
   return FN_KEEP_CONN;
@@ -2058,11 +2070,6 @@ fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   net_arg_get_str (&savepoint_name, &savepoint_name_size, argv[1]);
   if (savepoint_name == NULL)
     savepoint_name = (char *) "";
-
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = -1;
-    }
 
   if (cmd == 1)
     {				/* set */
@@ -2091,6 +2098,11 @@ fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
       net_buf_cp_int (net_buf, 0, NULL);
     }
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_KEEP_CONN;
 }
 
@@ -2107,12 +2119,12 @@ fn_parameter_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
+  ux_get_parameter_info (srv_h_id, net_buf);
+
   if (ret_srv_h_id)
     {
       *ret_srv_h_id = srv_h_id;
     }
-
-  ux_get_parameter_info (srv_h_id, net_buf);
 
   return FN_KEEP_CONN;
 }
@@ -2151,21 +2163,19 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
       cas_log_write (0, true, "check_cas %d", retcode);
     }
 
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = -1;
-    }
-
   if (retcode < 0)
     {
       ERROR_INFO_SET (retcode, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_SESS;
     }
-  else
+
+  if (ret_srv_h_id)
     {
-      return FN_KEEP_CONN;
+      *ret_srv_h_id = -1;
     }
+
+  return FN_KEEP_CONN;
 }
 
 #if !defined(CAS_FOR_MYSQL)
@@ -2182,12 +2192,12 @@ fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
+  ux_make_out_rs (srv_h_id, net_buf, req_info);
+
   if (ret_srv_h_id)
     {
       *ret_srv_h_id = srv_h_id;
     }
-
-  ux_make_out_rs (srv_h_id, net_buf, req_info);
 
   return FN_KEEP_CONN;
 }
@@ -2195,11 +2205,7 @@ fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 FN_RETURN
 fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = -1;
-    }
-  return fn_not_supported (sock_fd, argc, argv, net_buf, req_info);
+  return fn_not_supported (sock_fd, argc, argv, net_buf, req_info, ret_srv_h_id);
 }
 #endif /* !defined(CAS_FOR_MYSQL) */
 
@@ -2219,10 +2225,6 @@ fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
     }
 
   net_arg_get_int (&srv_h_id, argv[0]);
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = srv_h_id;
-    }
   srv_handle = hm_find_srv_handle (srv_h_id);
 
   if (srv_handle == NULL)
@@ -2235,6 +2237,10 @@ fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "get_generated_keys %d", srv_h_id);
 
   ux_get_generated_keys (srv_handle, net_buf);
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = srv_h_id;
+    }
 
   return FN_KEEP_CONN;
 }
@@ -2602,11 +2608,6 @@ fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval lob_new_begin, lob_new_end;
 
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = -1;
-    }
-
   if (argc != 1)
     {
 #if defined(CAS_FOR_DBMS)
@@ -2641,6 +2642,11 @@ fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
   cas_log_write (0, false, "lob_new %s%d time %d.%03d%s", err_code < 0 ? "error:" : "", err_info.err_number,
 		 elapsed_sec, elapsed_msec, get_error_log_eids (err_info.err_number));
 
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_KEEP_CONN;
 }
 
@@ -2653,11 +2659,6 @@ fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   int err_code, data_length = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval lob_new_begin, lob_new_end;
-
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = -1;
-    }
 
   if (argc != 3)
     {
@@ -2687,6 +2688,12 @@ fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
 		 elapsed_sec, elapsed_msec, get_error_log_eids (err_info.err_number));
 
   db_value_clear (&lob_dbval);
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_KEEP_CONN;
 }
 
@@ -2698,11 +2705,6 @@ fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   int err_code, data_length = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval lob_new_begin, lob_new_end;
-
-  if (ret_srv_h_id)
-    {
-      *ret_srv_h_id = -1;
-    }
 
   if (argc != 3)
     {
@@ -2732,6 +2734,12 @@ fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 		 elapsed_sec, elapsed_msec, get_error_log_eids (err_info.err_number));
 
   db_value_clear (&lob_dbval);
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
   return FN_KEEP_CONN;
 }
 

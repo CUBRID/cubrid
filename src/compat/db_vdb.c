@@ -1543,6 +1543,7 @@ db_get_lock_classes (DB_SESSION * session)
  * session(in) : contains the SQL query that has been compiled
  * stmt(in) : int returned by a successful compilation
  * result(out): query results descriptor
+ * query_execution_ending_type(out): query execution end type
  */
 static int
 db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
@@ -3860,9 +3861,15 @@ db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Ve
   tm_Tran_read_fetch_instance_version = read_Fetch_Instance_Version;
 }
 
-/* TO DO - rename */
+/*
+ * db_init_statement_execution_end_type () - Init statement execution end type.
+ *
+ * return : error code.
+ * session(in): compiled session
+ * auto_commit(in): true, if auto commit
+ */
 int
-db_init_statement_execution_type (DB_SESSION * session, bool auto_commit)
+db_init_statement_execution_end_type (DB_SESSION * session, bool auto_commit)
 {
   PT_NODE *statement;
   int stmt_ndx;

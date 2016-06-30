@@ -278,13 +278,15 @@ tran_commit (bool retain_lock, DB_QUERY_EXECUTION_ENDING_TYPE latest_query_execu
 	}
     }
 
-  query_end_notify_server = true;
   if (DB_IS_QUERY_EXECUTED_ENDED (latest_query_execution_ending_type))
     {
       query_end_notify_server = false;
     }
+  else
+    {
+      query_end_notify_server = true;
+    }
 
-  /* TO DO - clear depend by query execute state */
   /* Clear all the queries */
   db_clear_client_query_result (query_end_notify_server, false);
 
@@ -342,6 +344,7 @@ tran_commit (bool retain_lock, DB_QUERY_EXECUTION_ENDING_TYPE latest_query_execu
     }
   else
     {
+#if defined(CS_MODE)
       if (DB_IS_QUERY_EXECUTED_COMMITTED_WITH_RESET (latest_query_execution_ending_type)
 	  && log_does_allow_replication () == true)
 	{
@@ -352,6 +355,7 @@ tran_commit (bool retain_lock, DB_QUERY_EXECUTION_ENDING_TYPE latest_query_execu
 	  db_Connect_status = DB_CONNECTION_STATUS_RESET;
 	  er_log_debug (ARG_FILE_LINE, "tran_server_commit: DB_CONNECTION_STATUS_RESET\n");
 	}
+#endif
     }
 
   /* Increment snapshot version in work space */
