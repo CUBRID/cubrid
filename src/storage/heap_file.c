@@ -21251,6 +21251,7 @@ heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, LOCK
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
   SCAN_OPERATION_TYPE scan_operation_type = S_SELECT;
   SCAN_CODE scan_code;
+  HEAP_GET_CONTEXT context;
   bool scan_cache_started = false;
 
   assert (oid != NULL);
@@ -21290,9 +21291,9 @@ heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, LOCK
       scan_cache.mvcc_snapshot = &mvcc_snapshot_dirty;
     }
 
-  scan_code =
-    heap_mvcc_lock_and_get_object_version (thread_p, oid, NULL, NULL, &scan_cache, scan_operation_type, true, NULL_CHN,
-					   NULL, LOG_ERROR_IF_DELETED);
+  heap_init_get_context (&context, oid, class_oid, NULL);
+  scan_code = locator_lock_and_get_object (thread_p, &context, lock_mode, &scan_cache, NULL_CHN, PEEK);
+  heap_clean_get_context (thread_p, &context);
   if (scan_code == S_ERROR)
     {
       ASSERT_ERROR ();

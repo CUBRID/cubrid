@@ -2374,17 +2374,33 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
   else if (lock_mode == X_LOCK || lock_mode == S_LOCK)
     {
       /* Get and lock last object version. */
-      scan =
-	heap_mvcc_lock_and_get_object_version (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache,
-					       op_type, COPY, chn, NULL, LOG_WARNING_IF_DELETED);
+      HEAP_GET_CONTEXT context;
+
+      heap_init_get_context (&context, oid, class_oid, &assign->recdes);
+      if (assign->ptr_scancache->cache_last_fix_page && assign->ptr_scancache->page_watcher.pgptr != NULL)
+	{
+	  /* switch to local page watcher */
+	  pgbuf_replace_watcher (thread_p, &assign->ptr_scancache->page_watcher, &context.home_page_watcher);
+	}
+
+      scan = locator_lock_and_get_object (thread_p, &context, lock_mode, assign->ptr_scancache, chn, COPY);
+
+      if (scan != S_ERROR && assign->ptr_scancache != NULL && assign->ptr_scancache->cache_last_fix_page)
+	{
+	  /* Record was successfully obtained and scan is fixed. Save home page (or NULL if it had to be unfixed) to
+	   * scan_cache. */
+	  pgbuf_replace_watcher (thread_p, &context.home_page_watcher, &assign->ptr_scancache->page_watcher);
+	  assert (context.home_page_watcher.pgptr == NULL);
+	}
+      heap_clean_get_context (thread_p, &context);
     }
   else
     {
       /* !heap_is_mvcc_disabled_for_class && (lock_mode == NULL_LOCK) */
       assert (!heap_is_mvcc_disabled_for_class (class_oid) && (lock_mode == NULL_LOCK));
       /* Don't lock anything and get visible object version. */
-      scan =
-	heap_get_visible_version (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, COPY, chn, false);
+      scan = heap_get_visible_version (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, COPY, chn,
+				       false);
     }
 
   if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END)
