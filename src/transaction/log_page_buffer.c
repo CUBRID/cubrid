@@ -2027,8 +2027,8 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
    *          in log page (in delayed_free_log_pgptr)
    */
 
-  if ((LSA_LE (&append_lsa, req_lsa))		/* for case 1 */
-      || (LSA_LE (&append_prev_lsa, req_lsa)))	/* for case 2 */
+  if (LSA_LE (&append_lsa, req_lsa)		/* for case 1 */
+      || LSA_LE (&append_prev_lsa, req_lsa))	/* for case 2 */
     {
       LOG_CS_ENTER (thread_p);
 
@@ -2038,7 +2038,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
        * copy prior lsa list to log page buffer to ensure that required
        * pageid is in log page buffer
        */
-      if (!LSA_LT (req_lsa, &log_Gl.hdr.append_lsa))	/* retry with mutex */
+      if (LSA_LE (&log_Gl.hdr.append_lsa, req_lsa))	/* retry with mutex */
 	{
 	  logpb_prior_lsa_append_all_list (thread_p);
 	}

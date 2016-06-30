@@ -8407,9 +8407,12 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
       isdone = false;
       while (!LSA_ISNULL (&forward_lsa) && !isdone)
 	{
+	  LOG_LSA fetch_lsa;
 	  /* Fetch the page where the postpone LSA record is located */
 	  LSA_COPY (&log_lsa, &forward_lsa);
-	  if (logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
+	  fetch_lsa.pageid = log_lsa.pageid;
+	  fetch_lsa.offset = LOG_PAGESIZE;
+	  if (logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_do_postpone");
 	      goto end;
@@ -8764,8 +8767,13 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 
   while (type != LOG_END_OF_LOG && !LSA_ISNULL (end_lsa))
     {
+      LOG_LSA fetch_lsa;
+
+      fetch_lsa.pageid = end_lsa->pageid;
+      fetch_lsa.offset = LOG_PAGESIZE;
+
       /* Fetch the page */
-      if ((logpb_fetch_page (thread_p, end_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_find_end_log");
 	  goto error;
