@@ -1106,7 +1106,6 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
     }
   else
     {
-      /* TODO: get rid of xqmgr_unpack_xasl_tree. */
       if (stx_map_stream_to_xasl (thread_p, &xasl_p, xasl_stream, xasl_stream_size, &xasl_buf_info) != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -3028,7 +3027,6 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP_
 
 #if defined (SERVER_MODE)
 /*
-  if (xqmgr_unpack_xasl_tree (thread_p, xasl_id, xasl_stream, xasl_stream_size, cache_clone_p, &xasl_p, &xasl_buf_info)
  * qmgr_is_query_interrupted () -
  *   return:
  *   query_id(in)       :

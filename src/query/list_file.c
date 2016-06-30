@@ -201,7 +201,6 @@ static LF_ENTRY_DESCRIPTOR qfile_sort_list_entry_desc = {
  */
 int qfile_Is_list_cache_disabled;
 
-static int qfile_Xasl_page_size;
 static int qfile_Max_tuple_page_size;
 
 static int qfile_get_sort_list_size (SORT_LIST * sort_list);
@@ -1008,7 +1007,6 @@ qfile_initialize (void)
      || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0));
 
   qfile_Max_tuple_page_size = QFILE_MAX_TUPLE_SIZE_IN_PAGE;
-  qfile_Xasl_page_size = spage_max_record_size () - QFILE_PAGE_HEADER_SIZE;
 
   if (lf_freelist_init (&qfile_sort_list_Freelist, 10, 100, &qfile_sort_list_entry_desc, &free_sort_list_Ts) !=
       NO_ERROR)

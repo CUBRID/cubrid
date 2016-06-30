@@ -834,7 +834,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
 
   del_op_count = 0;
 
-  sprintf (msg, "hash (mutex=%s, %d threads)", edesc->using_mutex, nthreads);
+  sprintf (msg, "hash (mutex=%s, %d threads)", edesc->using_mutex ? "y" : "n", nthreads);
   begin (msg);
 
   /* initialization */

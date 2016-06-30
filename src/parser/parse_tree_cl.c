@@ -2535,7 +2535,7 @@ pt_print_alias (PARSER_CONTEXT * parser, const PT_NODE * node)
 char *
 parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
-#define PT_QUERT_STRING_USER_TEXT ( \
+#define PT_QUERY_STRING_USER_TEXT ( \
   5	  /* user= */ \
   + 6	  /* volid| (values up to 16384) */ \
   + 11	  /* pageid| (values up to 2147483647) */ \
@@ -2543,7 +2543,7 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
   + 1	  /* \0 */)
 
   PARSER_VARCHAR *string;
-  char user_text_buffer[PT_QUERT_STRING_USER_TEXT];
+  char user_text_buffer[PT_QUERY_STRING_USER_TEXT];
 
   string = pt_print_bytes (parser, node);
   if (string)
@@ -2558,7 +2558,7 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
       if ((parser->custom_print & PT_PRINT_USER) != 0)
 	{
 	  /* Print user text. */
-	  if (parser_print_user (user_text_buffer, PT_QUERT_STRING_USER_TEXT) > 0)
+	  if (parser_print_user (user_text_buffer, PT_QUERY_STRING_USER_TEXT) > 0)
 	    {
 	      string = pt_append_nulstring (parser, string, user_text_buffer);
 	    }
@@ -2566,7 +2566,7 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
       return (char *) string->bytes;
     }
   return NULL;
-#undef PT_QUERT_STRING_USER_TEXT
+#undef PT_QUERY_STRING_USER_TEXT
 }
 
 /*

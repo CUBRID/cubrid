@@ -209,7 +209,7 @@ struct xasl_id
          && (X1)->time_stored.sec == (X2)->time_stored.sec \
          && (X1)->time_stored.usec == (X2)->time_stored.usec))
 
-#define OR_XASL_ID_SIZE (OR_SHA1_SIZE + OR_LOID_SIZE + OR_CACHE_TIME_SIZE)
+#define OR_XASL_ID_SIZE (OR_SHA1_SIZE + OR_CACHE_TIME_SIZE)
 
 /* pack XASL file id (XASL_ID)
      - borrow LOID structure only for transmission purpose
@@ -396,16 +396,6 @@ struct xasl_id
       (ptr1)->volid  = (ptr2)->volid; \
     } \
   while (0)
-
-/* XASL TREE STORAGE CONSTANTS */
-
-#define QFILE_XASL_PAGE_SIZE_OFFSET     12
-
-#define QFILE_GET_XASL_PAGE_SIZE(ptr) \
-  (int) OR_GET_INT ((ptr) + QFILE_XASL_PAGE_SIZE_OFFSET)
-
-#define QFILE_PUT_XASL_PAGE_SIZE(ptr,val) \
-  OR_PUT_INT ((ptr) + QFILE_XASL_PAGE_SIZE_OFFSET, (val))
 
 /* OVERFLOW PAGE CONSTANTS */
 
