@@ -17675,6 +17675,7 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   char data_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   RECDES rebuild_record;
   INT32 chn;
+  int dummy_delta_size;
 
   /* Read chn */
   chn = (INT32) OR_GET_INT (rcv->data);
@@ -17704,7 +17705,7 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID);
   MVCC_SET_CHN (&mvcc_rec_header, chn);
 
-  if (or_mvcc_set_header (&rebuild_record, &mvcc_rec_header) != NO_ERROR)
+  if (or_mvcc_set_header (&rebuild_record, &mvcc_rec_header, &dummy_delta_size) != NO_ERROR)
     {
       assert_release (false);
       return ER_FAILED;
@@ -17779,6 +17780,7 @@ heap_rv_mvcc_redo_delete_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PGSLO
   RECDES rebuild_record;
   char data_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   MVCC_REC_HEADER mvcc_rec_header;
+  int dummy_delta_size;
 
   assert (page != NULL);
   assert (MVCCID_IS_NORMAL (mvccid));
@@ -17805,7 +17807,7 @@ heap_rv_mvcc_redo_delete_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PGSLO
   MVCC_SET_DELID (&mvcc_rec_header, mvccid);
 
   /* Change header. */
-  if (or_mvcc_set_header (&rebuild_record, &mvcc_rec_header) != NO_ERROR)
+  if (or_mvcc_set_header (&rebuild_record, &mvcc_rec_header, &dummy_delta_size) != NO_ERROR)
     {
       assert_release (false);
       return ER_FAILED;
@@ -20806,6 +20808,7 @@ int
 heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_header)
 {
   RECDES ovf_recdes;
+  int dummy_delta_size;
 
   assert (ovf_page != NULL);
   assert (mvcc_header != NULL);
@@ -20830,7 +20833,7 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
     }
   /* Safe guard */
   assert (or_mvcc_header_size_from_flags (MVCC_GET_FLAG (mvcc_header)) == OR_MVCC_MAX_HEADER_SIZE);
-  return or_mvcc_set_header (&ovf_recdes, mvcc_header);
+  return or_mvcc_set_header (&ovf_recdes, mvcc_header, &dummy_delta_size);
 }
 
 /*
@@ -22394,6 +22397,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   int header_size_adj = 0;
   int record_size = recdes_p->length;
   bool insert_from_reorganize = false;
+  int dummy_delta_size;
 
   /* read MVCC header from record */
   if (or_mvcc_get_header (recdes_p, &mvcc_rec_header) != NO_ERROR)
@@ -22464,10 +22468,12 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
     }
 
   /* write the header back to the record */
-  if (or_mvcc_set_header (recdes_p, &mvcc_rec_header) != NO_ERROR)
+  if (or_mvcc_set_header (recdes_p, &mvcc_rec_header, &dummy_delta_size) != NO_ERROR)
     {
       return ER_FAILED;
     }
+
+  assert (dummy_delta_size == header_size_adj);
 
   if (is_oor_buf == false
       && context->out_of_row_recdes != NULL

@@ -1669,6 +1669,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
   /* Buffer for update_record data. */
   char update_record_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   int error_code = NO_ERROR;	/* Error code. */
+  int dummy_delta_size;
 
   /* Assert expected arguments. */
   assert (helper != NULL);
@@ -1695,7 +1696,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       update_record.length = helper->record.length;
 
       /* Modify header. It will move data inside record if required. */
-      error_code = or_mvcc_set_header (&update_record, &helper->mvcc_header);
+      error_code = or_mvcc_set_header (&update_record, &helper->mvcc_header, &dummy_delta_size);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1767,7 +1768,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       update_record.length = helper->record.length;
 
       /* Modify header. It will move data inside record if required. */
-      error_code = or_mvcc_set_header (&update_record, &helper->mvcc_header);
+      error_code = or_mvcc_set_header (&update_record, &helper->mvcc_header, &dummy_delta_size);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2178,6 +2179,7 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   char data_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   bool reusable;
   bool all_vacuumed;
+  int dummy_delta_size;
 
   page_p = rcv->pgptr;
 
@@ -2268,7 +2270,7 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  memcpy (rebuild_record.data, peek_record.data, peek_record.length);
 
 	  /* Set new header */
-	  or_mvcc_set_header (&rebuild_record, &rec_header);
+	  or_mvcc_set_header (&rebuild_record, &rec_header, &dummy_delta_size);
 	  /* Copy record data */
 	  memcpy (rebuild_record.data + new_header_size, peek_record.data + old_header_size,
 		  peek_record.length - old_header_size);
