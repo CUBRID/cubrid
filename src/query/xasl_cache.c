@@ -30,6 +30,7 @@
 #include "binaryheap.h"
 #include "xasl_generation.h"
 #include "statistics_sr.h"
+#include "thread.h"
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)
@@ -1466,10 +1467,12 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	}
       else
         {
+#if defined (SERVER_MODE)
           /* Failed marking entry for recompile; we need to try again, but just to avoid burning CPU sleep a little
            * first.
            */
           thread_sleep (1);
+#endif /* SERVER_MODE */
         }
       /* Try to insert again. */
     }
@@ -1897,7 +1900,6 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
       if (lf_hash_delete (t_entry, &xcache_Ht, &candidate.xid, &success) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  assert_release (xcache_entry == NULL);
 	  xcache_log_error ("failed hash delete: \n"
 			    XCACHE_LOG_XASL_ID_TEXT ("xasl id")
 			    XCACHE_LOG_TRAN_TEXT,
