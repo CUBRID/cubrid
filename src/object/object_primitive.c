@@ -11207,7 +11207,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 				     NULL);
 	      if (rc != LZO_E_OK)
 		{
-		  goto cleanup;
+		  return rc;
 		}
 	      if (unc_size != uncompressed_size)
 		{
@@ -11216,12 +11216,6 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		}
 	      db_make_varchar (value, precision, decompressed_string, uncompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
-
-	    cleanup:
-	      if (decompressed_string != NULL)
-		{
-		  free_and_init (decompressed_string);
-		}
 	    }
 	  else
 	    {

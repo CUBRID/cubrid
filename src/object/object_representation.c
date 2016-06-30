@@ -1410,7 +1410,6 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	  goto cleanup;
 	}
 
-      assert (buf->buffer + 9 == buf->ptr);
       if (compressed_length == 0)
 	{
 	  /* Compression failed. */
@@ -1430,7 +1429,6 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	    {
 	      goto cleanup;
 	    }
-	  assert (buf->buffer + 1 + 4 + 4 + compressed_length == buf->ptr);
 	}
     }
   else
