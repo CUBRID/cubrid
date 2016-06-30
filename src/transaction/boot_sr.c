@@ -3595,7 +3595,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = fpcache_initialize ();
+  error_code = fpcache_initialize (thread_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -3895,7 +3895,7 @@ error:
   logtb_finalize_global_unique_stats_table (thread_p);
 
   log_final (thread_p);
-  fpcache_finalize ();
+  fpcache_finalize (thread_p);
   qfile_finalize_list_cache (thread_p);
   xcache_finalize (thread_p);
 
@@ -4024,7 +4024,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
       qfile_finalize_list_cache (thread_p);
       xcache_finalize (thread_p);
-      fpcache_finalize ();
+      fpcache_finalize (thread_p);
       session_states_finalize (thread_p);
 
       (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);

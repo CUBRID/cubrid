@@ -29,8 +29,8 @@
 #include "btree.h"
 #include "query_opfunc.h"
 
-extern int fpcache_initialize (void);
-extern void fpcache_finalize (void);
+extern int fpcache_initialize (THREAD_ENTRY * thread_p);
+extern void fpcache_finalize (THREAD_ENTRY * thread_p);
 extern int fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICATE * or_pred,
 			  PRED_EXPR_WITH_CONTEXT ** pred_expr);
 extern int fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR_WITH_CONTEXT * filter_pred);
