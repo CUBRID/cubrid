@@ -7565,11 +7565,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	    {
 	      heap_attrinfo_end (thread_p, isidp->range_attrs.attr_cache);
 
-	      /* some attributes might remain also cached in this regu variables
-	       * regu_var.value.attr_descr.cache_dbvalp might point to attr_cache values
+	      /* some attributes might remain also cached in pred_expr
+	       * (lhs|rhs).value.attr_descr.cache_dbvalp might point to attr_cache values
 	       * see fetch_peek_dbval for example */
-	      qexec_reset_regu_variable (isidp->range_pred.pred_expr->pe.eval_term.et.et_comp.lhs);
-	      qexec_reset_regu_variable (isidp->range_pred.pred_expr->pe.eval_term.et.et_comp.rhs);
+	      qexec_reset_pred_expr (isidp->range_pred.pred_expr);
 	    }
 	  if (isidp->key_pred.regu_list)
 	    {
