@@ -11217,7 +11217,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	      db_make_varchar (value, precision, decompressed_string, uncompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
 
-
+	      str_length = compressed_size;
 	    cleanup:
 	      if (decompressed_string != NULL)
 		{
@@ -11230,9 +11230,9 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			       TP_DOMAIN_COLLATION (domain));
 	    }
 
-
+	  buf->ptr = buf->ptr + compressed_size;
 	  value->need_clear = false;
-	  or_skip_varchar_remainder (buf, str_length, align);
+	  or_skip_varchar_remainder (buf, 0, align);
 	}
       else
 	{
@@ -11335,11 +11335,11 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			}
 		      /* decompressing the string */
 		      rc =
-			lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, decompressed_string,
+			lzo1x_decompress ((lzo_bytep) new_, (lzo_uint) compressed_size, decompressed_string,
 					  &unc_size, NULL);
 		      if (rc != LZO_E_OK)
 			{
-			  goto cleanup;
+			  goto clean_up;
 			}
 		      if (unc_size != uncompressed_size)
 			{
@@ -11347,7 +11347,33 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			  assert (false);
 			}
 		      /* TODO: Copy decompressed_string to new_ */
-		    cleanup:
+		      if (new_ != NULL)
+			{
+			  db_private_free_and_init (NULL, new_);
+			}
+
+		      new_ = db_private_alloc (NULL, unc_size + 1);
+		      if (new_ == NULL)
+			{
+			  /* need to be able to return errors ! */
+			  if (domain)
+			    {
+			      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
+			    }
+			  or_abort (buf);
+			  if (decompressed_string != NULL)
+			    {
+			      free_and_init (decompressed_string);
+			    }
+			  return ER_FAILED;
+			}
+		      else
+			{
+			  memcpy (new_, decompressed_string, unc_size);
+			  str_length = unc_size;
+			}
+
+		    clean_up:
 		      if (decompressed_string != NULL)
 			{
 			  free_and_init (decompressed_string);
