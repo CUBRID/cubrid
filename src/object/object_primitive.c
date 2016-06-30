@@ -11217,7 +11217,6 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	      db_make_varchar (value, precision, decompressed_string, uncompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
 
-	      str_length = compressed_size;
 	    cleanup:
 	      if (decompressed_string != NULL)
 		{
@@ -11229,10 +11228,17 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	      db_make_varchar (value, precision, buf->ptr, str_length, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
 	    }
+	  if (compressed_size > 0)
+	    {
+	      str_length = compressed_size;
+	    }
+	  else
+	    {
+	      str_length = uncompressed_size;
+	    }
 
-	  buf->ptr = buf->ptr + compressed_size;
 	  value->need_clear = false;
-	  or_skip_varchar_remainder (buf, 0, align);
+	  or_skip_varchar_remainder (buf, str_length, align);
 	}
       else
 	{
