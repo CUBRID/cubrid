@@ -13383,12 +13383,13 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context
       if (context->recdes_p == NULL)
 	{
 	  /* ensure context is prepared to get header of the record */
-	  if (heap_get_prepare_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED) != NO_ERROR)
+	  scan = heap_get_prepare_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
+	  if (scan != S_SUCCESS)
 	    {
 	      goto error;
 	    }
 	  scan = heap_get_mvcc_header (thread_p, context, &recdes_header);
-	  if (scan != NO_ERROR)
+	  if (scan != S_SUCCESS)
 	    {
 	      goto error;
 	    }
