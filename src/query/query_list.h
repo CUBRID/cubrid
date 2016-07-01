@@ -211,28 +211,23 @@ struct xasl_id
 
 #define OR_XASL_ID_SIZE (OR_SHA1_SIZE + OR_CACHE_TIME_SIZE)
 
-/* pack XASL file id (XASL_ID)
-     - borrow LOID structure only for transmission purpose
- */
+/* pack XASL_ID */
 #define OR_PACK_XASL_ID(PTR, X) \
   do \
     { \
-      assert ((X) != NULL);				       \
-      PTR = or_pack_sha1 (PTR, &(X)->sha1);		       \
-      OR_PACK_CACHE_TIME (PTR, &(X)->time_stored);         \
+      assert ((X) != NULL);				      \
+      PTR = or_pack_sha1 (PTR, &(X)->sha1);		      \
+      OR_PACK_CACHE_TIME (PTR, &(X)->time_stored);            \
     } \
   while (0)
 
-/* unpack XASL file id (XASL_ID)
-     - borrow LOID structure only for transmission purpose
-     - NULL XASL_ID will be returned when cache not found
- */
+/* unpack XASL_ID */
 #define OR_UNPACK_XASL_ID(PTR, X) \
   do \
     { \
-      assert ((X) != NULL);					  \
-      PTR = or_unpack_sha1 (PTR, &(X)->sha1);		  \
-      OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored));	  \
+      assert ((X) != NULL);				      \
+      PTR = or_unpack_sha1 (PTR, &(X)->sha1);		      \
+      OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored));	      \
     } \
   while (0)
 
