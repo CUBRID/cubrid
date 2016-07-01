@@ -11180,55 +11180,45 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 
       if (!copy)
 	{
-	  /* Get the length of the string, be it compressed or uncompressed. */
-	  rc = or_get_varchar_comp_lengths (buf, &compressed_size, &uncompressed_size);
-	  str_length = uncompressed_size;
-
+	  char *string = NULL;
 	  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
 	    {
 	      assert (false);
 	      return ER_FAILED;
 	    }
 
-	  /* Check if the string needs decompression */
-	  if (compressed_size > 0)
+	  rc = or_get_varchar_comp_lengths (buf, &compressed_size, &uncompressed_size);
+	  if (rc != NO_ERROR)
 	    {
-	      lzo_uint unc_size = 0;
-	      /* Handle decompression */
-	      decompressed_string = (char *) malloc (uncompressed_size * sizeof (char));
-	      if (decompressed_string == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  (size_t) uncompressed_size * sizeof (char));
-		  return rc;
-		}
-	      /* decompressing the string */
-	      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, decompressed_string, &unc_size,
-				     NULL);
-	      if (rc != LZO_E_OK)
-		{
-		  return rc;
-		}
-	      if (unc_size != uncompressed_size)
-		{
-		  /* Decompression failed. It shouldn't. */
-		  assert (false);
-		}
-	      db_make_varchar (value, precision, decompressed_string, uncompressed_size, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
+	      return rc;
 	    }
-	  else
-	    {
-	      db_make_varchar (value, precision, buf->ptr, str_length, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
-	    }
+
 	  if (compressed_size > 0)
 	    {
 	      str_length = compressed_size;
+	      string = db_private_alloc (NULL, uncompressed_size);
+	      if (string == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  uncompressed_size * sizeof (char));
+		  return rc;
+		}
+
+	      rc = do_get_compressed_data_from_buffer (buf, string, compressed_size, uncompressed_size);
+
+	      if (rc != NO_ERROR)
+		{
+		  return rc;
+		}
+
+	      db_make_varchar (value, precision, string, uncompressed_size, TP_DOMAIN_CODESET (domain),
+			       TP_DOMAIN_COLLATION (domain));
 	    }
 	  else
 	    {
 	      str_length = uncompressed_size;
+	      db_make_varchar (value, precision, buf->ptr, uncompressed_size, TP_DOMAIN_CODESET (domain),
+			       TP_DOMAIN_COLLATION (domain));
 	    }
 
 	  value->need_clear = false;
@@ -12084,6 +12074,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
   char *new_;
   int rc = NO_ERROR;
 
+  assert (false);
   precision = domain->precision;
   if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
     {
@@ -13823,10 +13814,9 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 #if !defined (SERVER_MODE)
   INTL_CODESET codeset;
 #endif
-  char *new_, *start = NULL, *decompressed_string = NULL;
+  char *new_, *start = NULL;
   int str_length;
   int rc = NO_ERROR;
-  int compressed_size = 0, uncompressed_size = 0;
 
   if (value == NULL)
     {
@@ -13862,44 +13852,14 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
       /* Branch according to convention based on size */
       if (!copy)
 	{
-	  /* Get the length of the string, be it compressed or uncompressed. */
-	  rc = or_get_varchar_comp_lengths (buf, &compressed_size, &uncompressed_size);
-
+	  str_length = or_get_varchar_length (buf, &rc);
 	  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
 	    {
 	      assert (false);
 	      return ER_FAILED;
 	    }
-
-	  /* Check if the string needs decompression */
-	  if (compressed_size > 0)
-	    {
-	      lzo_uint unc_size = 0;
-	      /* Handle decompression */
-	      decompressed_string = (char *) malloc (uncompressed_size * sizeof (char));
-	      if (decompressed_string == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  (size_t) uncompressed_size * sizeof (char));
-		  return rc;
-		}
-	      /* decompressing the string */
-	      lzo1x_decompress_safe (buf->ptr, (lzo_uint) compressed_size, decompressed_string, (lzo_uintp) (&unc_size),
-				     NULL);
-	      if (unc_size != uncompressed_size)
-		{
-		  /* Decompression failed. It shouldn't. */
-		  assert (false);
-		}
-	      db_make_varnchar (value, precision, decompressed_string, uncompressed_size, TP_DOMAIN_CODESET (domain),
-				TP_DOMAIN_COLLATION (domain));
-
-	    }
-	  else
-	    {
-	      db_make_varnchar (value, precision, buf->ptr, str_length, TP_DOMAIN_CODESET (domain),
-				TP_DOMAIN_COLLATION (domain));
-	    }
+	  db_make_varnchar (value, precision, buf->ptr, str_length, TP_DOMAIN_CODESET (domain),
+			    TP_DOMAIN_COLLATION (domain));
 	  value->need_clear = false;
 	  or_skip_varchar_remainder (buf, str_length, align);
 	}
@@ -15844,29 +15804,18 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
 }
 
 int
-do_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int *compressed_size, int *uncompressed_size)
+do_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int uncompressed_size)
 {
   int rc = NO_ERROR;
 
-
-
-  rc = or_get_varchar_comp_lengths (buf, &compressed_size, &uncompressed_size);
-
-  data = (char *) malloc (*uncompressed_size * sizeof (char));
-  if (data == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) uncompressed_size * sizeof (char));
-      return rc;
-    }
   /* Check if the string needs decompression */
-  if (*compressed_size > 0)
+  if (compressed_size > 0)
     {
       lzo_uint unc_size = 0;
       /* Handle decompression */
 
       /* decompressing the string */
-      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) * compressed_size, data, &unc_size, NULL);
+      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, data, &unc_size, NULL);
       if (rc != LZO_E_OK)
 	{
 	  return rc;
@@ -15881,6 +15830,7 @@ do_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int *compressed_si
     {
       /* String is not compressed and buf->ptr is pointing towards an array of char's of length equal to
        * uncompressed_size */
+
       rc = or_get_data (buf, data, uncompressed_size);
     }
 

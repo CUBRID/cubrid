@@ -8456,7 +8456,6 @@ or_get_varchar_comp_lengths (OR_BUF * buf, int *compressed_size, int *uncompress
       return rc;
     }
 
-
   if (size_prefix == 0xFF)
     {
       /* String was compressed */
