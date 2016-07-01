@@ -1053,7 +1053,6 @@ extern QFILE_LIST_ID *qexec_get_xasl_list_id (XASL_NODE * xasl);
 extern void get_xasl_dumper_linked_in ();
 #endif
 
-/* XASL cache entry manipulation functions */
 extern int qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern bool qdump_print_xasl (XASL_NODE * xasl);
 #if defined(CUBRID_DEBUG)
