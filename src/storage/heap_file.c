@@ -22427,6 +22427,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	    {
 	      MVCC_SET_FLAG (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
 	      record_size += OR_MVCCID_SIZE;
+	      header_size_adj = -OR_MVCCID_SIZE;
 	    }
 	  MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
 	}
