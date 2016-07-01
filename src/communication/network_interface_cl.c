@@ -7074,11 +7074,10 @@ qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *b
  * return the cached XASL file id if found, otherwise return NULL.
  * This function is a counter part to sqmgr_prepare_query().
  *
- * return: XASL_ID
+ * return: Error Code.
  *
  *   context(in): query string & plan
- *   stream(in/out): xasl stream, size & xasl_header
- *   user_oid(in):
+ *   stream(in/out): xasl stream, size, xasl ID & xasl_header
  *
  * NOTE: If xasl_header_p is not null, also XASL node header will be requested
  */
