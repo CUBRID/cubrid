@@ -632,7 +632,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
   FUNCTION_INDEX_INFO func_index_info;
   DB_TYPE single_node_type = DB_TYPE_NULL;
-  void *buf_info = NULL;
   void *func_unpack_info = NULL;
   VPID *ret_vpid;
   bool btree_id_complete = false, has_fk;
