@@ -1543,7 +1543,7 @@ db_get_lock_classes (DB_SESSION * session)
  * session(in) : contains the SQL query that has been compiled
  * stmt(in) : int returned by a successful compilation
  * result(out): query results descriptor
- * query_execution_ending_type(out): query execution end type
+ * query_execution_ending_type(out): query execution ending type
  */
 static int
 db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
@@ -2872,7 +2872,7 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESU
  * session(in) : contains the SQL query that has been compiled
  * stmt(in) : int returned by a successful compilation
  * result(out): query results descriptor
- * query_execution_ending_type(out): query execution type
+ * query_execution_ending_type(out): query execution ending type
  *
  * note : You must free the results of calling this function by using the
  *    db_query_end() function. The resources for the identified compiled
@@ -2915,6 +2915,7 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT 
  * session(in) : contains the SQL query that has been compiled
  * stmt(in) : int returned by a successful compilation
  * result(out): query results descriptor
+ * query_execution_ending_type(out): query execution ending type
  *
  * NOTE: db_execute_statement should be used only as entry point for statement
  *	 execution. Otherwise, db_execute_statement_local should be used.

@@ -1113,6 +1113,7 @@ db_get_variable (DB_VALUE * name, DB_VALUE * value)
  * db_commit_transaction() - Commits the current transaction.
  *    You must call this function if you want changes to be made permanent.
  * return : error code.
+ * latest_query_execution_ending_type(in): latest query execution ending type
  *
  * note : If you call db_shutdown without calling this function,
  *    the transaction will be aborted and the changes lost.

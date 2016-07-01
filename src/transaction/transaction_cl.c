@@ -231,6 +231,7 @@ bool tm_Use_OID_preflush = true;
  *
  *   retain_lock(in): false = release locks (default)
  *                    true  = retain locks
+ *   latest_query_execution_ending_type(in): latest query execution ending type
  *
  * NOTE: commit the current transaction. All objects that have been
  *              updated by the transaction and are still dirty in the

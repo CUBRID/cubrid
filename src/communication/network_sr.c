@@ -935,7 +935,7 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT];
   req_p->action_attribute = (SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
-  req_p->processing_function = sqmgr_execute_query_and_commit;
+  req_p->processing_function = sqmgr_execute_query_with_commit;
   req_p->name = "NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT";
 }
 

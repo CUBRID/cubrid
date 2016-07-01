@@ -3402,6 +3402,7 @@ db_sqlx_debug_print_result (DB_QUERY_RESULT * result)
  *    it is important that they be freed as soon as they are no longer necessary.
  * return : error code
  * result(in): Pointer to the query result structure
+ * query_execution_ending_type(in): query execution ending type
  *
  */
 int
@@ -3688,7 +3689,7 @@ db_free_execution_plan (void)
 }
 
 /*
- * db_get_end_type_after_query_execution : get end type after query execution
+ * db_get_end_type_after_query_execution : get ending type after query execution
  *   end_query_result(in): end query result
  *   committed(in): true, if transaction was committed
  *   reset_on_commit(in): true, if reset is needed

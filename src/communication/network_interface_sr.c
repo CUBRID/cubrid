@@ -5100,22 +5100,22 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
 
 /*
- * sqmgr_execute_query_and_commit - Process a SERVER_QM_EXECUTE_AND_COMMIT request
+ * sqmgr_execute_query_with_commit - Process a SERVER_QM_EXECUTE_AND_COMMIT request
  *
  * return:
  *
- *   thread_p(in):
- *   rid(in):
- *   request(in):
- *   reqlen(in):
+ *   thread_p(in): thread entry
+ *   rid(in): request id
+ *   request(in): request data
+ *   reqlen(in): request data length
  *
  * NOTE:
  * Receive XASL file id and parameter values if exist and return list file id
  * that contains query result. If an error occurs, return NULL QFILE_LIST_ID.
- * This function is a counter part to qmgr_execute_query().
+ * This function is a counter part to qmgr_execute_query_with_commit().
  */
 void
-sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+sqmgr_execute_query_with_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   XASL_ID xasl_id;
   QFILE_LIST_ID *list_id;
@@ -5317,9 +5317,9 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 	  memcpy (aligned_page_buf, page_ptr, page_size);
 	  qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
 	  page_ptr = aligned_page_buf;
+	  /* for now, allow end query if there is only one page */
 	  if (!VPID_EQ (&list_id->first_vpid, &list_id->last_vpid))
 	    {
-	      /* for now, allow end query if there is only one page */
 	      end_query_allowed = false;
 	    }
 	}
@@ -5340,6 +5340,7 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 	}
       else
 	{
+	  end_query_allowed = false;
 	  replydata_size = 0;
 	  return_error_to_client (thread_p, rid);
 	}
