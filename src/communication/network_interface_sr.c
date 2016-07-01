@@ -5242,13 +5242,14 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
       info = xasl_cache_entry_p->sql_info;
     }
 
-  end_query_allowed = false;
+  end_query_allowed = true;
   page_size = 0;
   page_ptr = NULL;
   if (list_id == NULL)
     {
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
+      end_query_allowed = false;
 
       if (error_code != NO_ERROR)
 	{
@@ -5316,10 +5317,10 @@ sqmgr_execute_query_and_commit (THREAD_ENTRY * thread_p, unsigned int rid, char 
 	  memcpy (aligned_page_buf, page_ptr, page_size);
 	  qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
 	  page_ptr = aligned_page_buf;
-	  if (VPID_EQ (&list_id->first_vpid, &list_id->last_vpid))
+	  if (!VPID_EQ (&list_id->first_vpid, &list_id->last_vpid))
 	    {
 	      /* for now, allow end query if there is only one page */
-	      end_query_allowed = true;
+	      end_query_allowed = false;
 	    }
 	}
       else
