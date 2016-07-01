@@ -21249,7 +21249,7 @@ heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, LOCK
 {
   HEAP_SCANCACHE scan_cache;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
-  SCAN_OPERATION_TYPE scan_operation_type = S_SELECT; /* unnecessary */
+  SCAN_OPERATION_TYPE scan_operation_type = S_SELECT;	/* unnecessary */
   SCAN_CODE scan_code;
   HEAP_GET_CONTEXT context;
   bool scan_cache_started = false;
@@ -21265,11 +21265,13 @@ heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, LOCK
   if (lock_mode <= S_LOCK)
     {
       /* S_LOCK */
+      lock_mode = S_LOCK;
       scan_operation_type = S_SELECT_WITH_LOCK;
     }
   else
     {
       /* X_LOCK */
+      lock_mode = S_LOCK;
       scan_operation_type = S_DELETE;
     }
 
