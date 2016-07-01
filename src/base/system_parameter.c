@@ -9215,17 +9215,10 @@ prm_tune_parameters (void)
   assert (max_query_cache_entries_prm != NULL);
   assert (query_cache_size_in_pages_prm != NULL);
 
-#if defined (ENABLE_UNUSED_FUNCTION)
   if (max_plan_cache_entries_prm == NULL || query_cache_mode_prm == NULL || max_query_cache_entries_prm == NULL)
     {
       return;
     }
-#else /* ENABLE_UNUSED_FUNCTION */
-  if (max_plan_cache_entries_prm == NULL || query_cache_mode_prm == NULL || max_query_cache_entries_prm == NULL)
-    {
-      return;
-    }
-#endif /* !ENABLE_UNUSED_FUNCTION */
 
   if (PRM_GET_INT (max_plan_cache_entries_prm->value) == 0)
     {
