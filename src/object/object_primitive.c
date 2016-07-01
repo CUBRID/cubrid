@@ -15842,3 +15842,47 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
 
   return MR_CMP (s1, s2);
 }
+
+int
+do_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int *compressed_size, int *uncompressed_size)
+{
+  int rc = NO_ERROR;
+
+
+
+  rc = or_get_varchar_comp_lengths (buf, &compressed_size, &uncompressed_size);
+
+  data = (char *) malloc (*uncompressed_size * sizeof (char));
+  if (data == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) uncompressed_size * sizeof (char));
+      return rc;
+    }
+  /* Check if the string needs decompression */
+  if (*compressed_size > 0)
+    {
+      lzo_uint unc_size = 0;
+      /* Handle decompression */
+
+      /* decompressing the string */
+      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) * compressed_size, data, &unc_size, NULL);
+      if (rc != LZO_E_OK)
+	{
+	  return rc;
+	}
+      if (unc_size != uncompressed_size)
+	{
+	  /* Decompression failed. It shouldn't. */
+	  assert (false);
+	}
+    }
+  else
+    {
+      /* String is not compressed and buf->ptr is pointing towards an array of char's of length equal to
+       * uncompressed_size */
+      rc = or_get_data (buf, data, uncompressed_size);
+    }
+
+  return rc;
+}
