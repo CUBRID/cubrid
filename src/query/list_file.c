@@ -964,7 +964,7 @@ qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  *
  * return	       : void
  * thread_p (in)       : thread entry
- * xasl_id_p (in)      : XASL file id
+ * xasl_stream (in)    : XASL stream
  * xasl_header_p (out) : pointer to XASL node header
  */
 void
