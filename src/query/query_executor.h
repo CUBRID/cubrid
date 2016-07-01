@@ -1030,11 +1030,6 @@ struct xasl_state
   int qp_xasl_line;		/* Error line */
 };				/* XASL Tree State Information */
 
-
-/*
- * xasl head node information
- */
-
 typedef struct upddel_class_instances_lock_info UPDDEL_CLASS_INSTANCE_LOCK_INFO;
 struct upddel_class_instances_lock_info
 {
