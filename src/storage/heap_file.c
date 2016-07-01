@@ -22397,7 +22397,6 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   int header_size_adj = 0;
   int record_size = recdes_p->length;
   bool insert_from_reorganize = false;
-  int dummy_delta_size;
 
   /* read MVCC header from record */
   if (or_mvcc_get_header (recdes_p, &mvcc_rec_header) != NO_ERROR)
@@ -22427,7 +22426,6 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	    {
 	      MVCC_SET_FLAG (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
 	      record_size += OR_MVCCID_SIZE;
-	      header_size_adj = -OR_MVCCID_SIZE;
 	    }
 	  MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
 	}
@@ -22441,8 +22439,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  new_header_size = or_mvcc_header_size_from_flags (mvcc_rec_header.mvcc_flag);
 
 	  /* compute new record size */
-	  header_size_adj = (curr_header_size - new_header_size);
-	  record_size -= header_size_adj;
+	  record_size -= (curr_header_size - new_header_size);
 	}
     }
 
@@ -22469,12 +22466,10 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
     }
 
   /* write the header back to the record */
-  if (or_mvcc_set_header (recdes_p, &mvcc_rec_header, &dummy_delta_size) != NO_ERROR)
+  if (or_mvcc_set_header (recdes_p, &mvcc_rec_header, &header_size_adj) != NO_ERROR)
     {
       return ER_FAILED;
     }
-
-  assert (dummy_delta_size == header_size_adj);
 
   if (is_oor_buf == false
       && context->out_of_row_recdes != NULL
