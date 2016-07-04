@@ -149,8 +149,6 @@ extern unsigned int db_on_server;
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
 
-/* Minimum size of a compressed string */
-#define MIN_SIZE_FOR_COMP 255
 
 static void mr_initmem_string (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
@@ -890,7 +888,6 @@ static int mr_index_cmpdisk_enumeration (void *mem1, void *mem2, TP_DOMAIN * dom
 static int mr_index_writeval_enumeration (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_enumeration (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 					 char *copy_buf, int copy_buf_len);
-
 
 /*
  * Value_area

@@ -54,5 +54,15 @@ endif()
 
 # TODO: for windows package
 if(CPACK_GENERATOR STREQUAL "WIX")
+  set(CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}/src/win_tools/cubridtray/RES/cubrid_icon.ico")
+  set(CPACK_WIX_PRODUCT_GUID "4BD68AC1-ADE8-4CBE-85E8-8FCD42C33327")
+  set(CPACK_WIX_UPGRADE_GUID "9F39B147-9FA2-48BE-AB0E-43EC0EF46343")
+  set(CPACK_PACKAGE_VERSION "${RELEASE_STRING}")
+  set(CPACK_PACKAGE_INSTALL_DIRECTORY "CUBRID")
+  # CMake 3.5 or higher version is required for below variables
+  set(CPACK_WIX_PATCH_FILE "${CMAKE_BINARY_DIR}/wix_patch.xml")
+  set(CPACK_WIX_UI_REF "WixUI_CUBRIDInstall")
+  set(CPACK_WIX_EXTENSIONS "WixUtilExtension")
+  set(CPACK_WIX_PROPERTY_ARPURLINFOABOUT "http://cubrid.org")
+  set(CPACK_WIX_PRODUCT_ICON "${CMAKE_SOURCE_DIR}/src/win_tools/cubridtray/RES/cubrid_icon.ico")
 endif(CPACK_GENERATOR STREQUAL "WIX")
-

@@ -1,0 +1,159 @@
+<CPackWiXPatch>
+  <CPackWiXFragment Id="#PRODUCT">
+<!-- Set root directory to Windows Volume drive -->
+    <SetDirectory Id="@WIX_PROGRAMFILESFOLDER@" Value="[WindowsVolume]"/>
+<!-- Check System -->
+    <Condition Message="This application is only supported on Windows Vista, Windows Server 2008, or higher."><![CDATA[Installed OR (VersionNT >= 600)]]></Condition>
+    <Condition Message="This installer is only supported on Windows @WIX_SUPPORTED_PLATFORM@."><![CDATA[Installed OR @WIX_SUPPORTED_PLATFORM_CONDITION@]]></Condition>
+<!-- Check Java requirements ONLY on "install", but not on modify or uninstall -->
+    <Property Id="JAVA_CURRENT_VERSION">
+      <RegistrySearch Id="JRE_CURRENT_VERSION_REGSEARCH" Root="HKLM" Key="SOFTWARE\JavaSoft\Java Runtime Environment" Name="CurrentVersion" Type="raw"/>
+    </Property>
+    <UI>
+      <Dialog Id="JavaWarningDlg" Width="284" Height="73" Title="Java Runtime" NoMinimize="yes">
+        <Control Id="Text" Type="Text" X="38" Y="8" Width="240" Height="40" TabSkip="no">
+          <Text>JRE version 1.5 or higher for Windows @WIX_SUPPORTED_PLATFORM@ is required for Java Stored Procedure to function correctly. You may proceed with installation, but be sure to install JRE if you will be using Java Stored Procedure.</Text>
+        </Control>
+        <Control Id="OK" Type="PushButton" X="114" Y="52" Width="56" Height="17" Default="yes" Cancel="yes" Text="OK">
+          <Publish Event="EndDialog" Value="Return">1</Publish>
+        </Control>
+      </Dialog>
+      <InstallUISequence>
+<!-- Warn if Java is not installed -->
+        <Show Dialog="JavaWarningDlg" Before="ResumeDlg"><![CDATA[NOT Installed AND JAVA_CURRENT_VERSION < "1.5"]]></Show>
+      </InstallUISequence>
+    </UI>
+<!-- Install the Visual C++ Redistributable -->
+    <DirectoryRef Id="TARGETDIR">
+      <Merge Id="VCRedist" SourceFile="$(env.ProgramFiles)\Common Files\Merge Modules\@WIX_VCREDIST_MSM@" DiskId="1" Language="0"/>
+    </DirectoryRef>
+    <Feature Id="VCRedist" Title="Visual C++ 9.0 Runtime" AllowAdvertise="no" Display="hidden" Level="1">
+      <MergeRef Id="VCRedist"/>
+<?endif?>
+    </Feature>
+<!-- Create Env Var -->
+    <ComponentGroup Id="CG_CREATE_ENV_VARS" Directory="CM_DP_Application.bin">
+      <Component Id="CM_CREATE_ENV_VARS" Guid="{5a720552-96df-4eb4-b305-ac86d4276748}" KeyPath="yes">
+        <Environment Id="SetEnv_CUBRID" Action="set" Name="CUBRID" Value="[INSTALL_ROOT]" System="yes"/>
+        <Environment Id="SetEnv_CUBRID_DATABASES" Action="set" Name="CUBRID_DATABASES" Value="[INSTALL_ROOT]databases" System="yes"/>
+        <Environment Id="SetEnv_PATH" Action="set" Part="first" Name="PATH" Value="[CM_DP_Application.bin]" System="yes"/>
+      </Component>
+    </ComponentGroup>
+    <InstallExecuteSequence>
+      <Custom Action="RegisterService" After="InstallFiles"><![CDATA[NOT Installed]]></Custom>
+      <Custom Action="CreateScheduledTask" After="RegisterService"><![CDATA[NOT Installed]]></Custom>
+      <Custom Action="CreateDemodb" After="CreateScheduledTask"><![CDATA[NOT Installed AND INSTALLWITHDEMODB]]></Custom>
+      <Custom Action="DeleteScheduledTask" After="InstallInitialize"><![CDATA[Installed]]></Custom>
+      <Custom Action="KillTray" Before="DeleteScheduledTask"><![CDATA[Installed]]></Custom>
+    </InstallExecuteSequence>
+<!-- Register Service -->
+    <SetProperty Id="RegisterService" Before="RegisterService" Sequence="execute" Value="&quot;[#CM_FP_Application.bin.ctrlservice.exe]&quot; -i [CM_DP_Application.bin]"/>
+    <CustomAction Id="RegisterService" Return="check" Impersonate="no" Execute="deferred" BinaryKey="WixCA" DllEntry="WixQuietExec"/>
+<!-- Control Service -->
+    <DirectoryRef Id="INSTALL_ROOT">
+      <Component Id="CM_CUBRID_SERVICE" Guid="{13c34fc2-c421-461d-8ce2-2cb28449702d}" KeyPath="yes">
+        <ServiceControl Id="CUBRIDServiceControl" Name="CUBRIDService" Remove="both" Stop="both" Start="install" Wait="yes"/>
+      </Component>
+    </DirectoryRef>
+<!-- Create a schedule for autorun tray -->
+    <SetProperty Id="CreateScheduledTask" Before="CreateScheduledTask" Sequence="execute" Value="&quot;[SystemFolder]SCHTASKS.EXE&quot; /CREATE /SC ONLOGON /TN &quot;CUBRID Service Tray&quot; /TR &quot;[#CM_FP_Application.bin.CUBRID_Service_Tray.exe]&quot; /RU &quot;NT Authority\System&quot; /RP /RL HIGHEST"/>
+    <CustomAction Id="CreateScheduledTask" Return="check" Impersonate="no" Execute="deferred" BinaryKey="WixCA" DllEntry="WixQuietExec"/>
+    <SetProperty Id="DeleteScheduledTask" Before="DeleteScheduledTask" Sequence="execute" Value="&quot;[SystemFolder]SCHTASKS.EXE&quot; /DELETE /TN &quot;CUBRID Service Tray&quot; /F"/>
+    <CustomAction Id="DeleteScheduledTask" Return="ignore" Impersonate="no" Execute="deferred" BinaryKey="WixCA" DllEntry="WixQuietExec"/>
+<!-- Kill Tray before uninstall -->
+    <SetProperty Id="KillTray" Before="KillTray" Sequence="execute" Value="&quot;[SystemFolder]TASKKILL.EXE&quot; /F /IM CUBRID_Service_Tray.exe"/>
+    <CustomAction Id="KillTray" Return="ignore" Impersonate="no" Execute="deferred" BinaryKey="WixCA" DllEntry="WixQuietExec"/>
+<!-- Create demodb -->
+    <Property Id="INSTALLWITHDEMODB" Value="1"/>
+    <SetProperty Id="CreateDemodb" Before="CreateDemodb" Sequence="execute" Value="&quot;[SystemFolder]CMD.EXE&quot; /C &quot;[#CM_FP_Unspecified.demo.make_cubrid_demo.bat] demodb [INSTALL_ROOT]&quot;"/>
+    <CustomAction Id="CreateDemodb" BinaryKey="WixCA" DllEntry="CAQuietExec" Execute="deferred" Return="ignore"/>
+<!-- Start Tray after install -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1"/>
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch CUBRID Service Tray"/>
+    <Property Id="WixShellExecTarget" Value="[#CM_FP_Application.bin.CUBRID_Service_Tray.exe]"/>
+    <CustomAction Id="LaunchApplication" BinaryKey="WixCA" DllEntry="WixShellExec" Impersonate="yes"/>
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication"><![CDATA[WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed]]></Publish>
+    </UI>
+<!-- Information in final dialog -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="Since CUBRID broker and server versions should match, please make sure that you are running the same version if you operate them in separate machines."/>
+<!-- Add shortcut -->
+    <DirectoryRef Id="PROGRAM_MENU_FOLDER">
+      <Component Id="CM_SHORTCUTS" Guid="{966577b3-3bfc-4c12-acb0-ded4c06403e6}">
+        <util:InternetShortcut xmlns:util="http://schemas.microsoft.com/wix/UtilExtension" Id="OnlineDocumentationShortcut" Name="CUBRID Online Documentation" Target="http://www.cubrid.org/"/>
+        <Shortcut Id="UninstallProductShortcut" Name="Uninstall @CPACK_PACKAGE_NAME@" Description="Uninstalls @CPACK_PACKAGE_NAME@" Target="[System64Folder]msiexec.exe" Arguments="/x [ProductCode]"/>
+        <RegistryValue Root="HKCU" Key="Software\@CPACK_PACKAGE_VENDOR@\@CPACK_PACKAGE_NAME@" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
+      </Component>
+    </DirectoryRef>
+<!-- Customized WixUI_InstallDIR -->
+    <UI Id="WixUI_CUBRIDInstall">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8"/>
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12"/>
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes"/>
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal"/>
+      <Property Id="WixUI_Mode" Value="InstallDir"/>
+      <DialogRef Id="BrowseDlg"/>
+      <DialogRef Id="DiskCostDlg"/>
+      <DialogRef Id="ErrorDlg"/>
+      <DialogRef Id="FatalError"/>
+      <DialogRef Id="FilesInUse"/>
+      <DialogRef Id="MsiRMFilesInUse"/>
+      <DialogRef Id="PrepareDlg"/>
+      <DialogRef Id="ProgressDlg"/>
+      <DialogRef Id="ResumeDlg"/>
+      <DialogRef Id="UserExit"/>
+      <Publish Dialog="BrowseDlg" Control="OK" Event="DoAction" Value="WixUIValidatePath" Order="3">1</Publish>
+      <Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="InvalidDirDlg" Order="4"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg">NOT Installed</Publish>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">Installed AND PATCH</Publish>
+      <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg">1</Publish>
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="CustomInstallDirDlg">LicenseAccepted = "1"</Publish>
+      <Publish Dialog="CustomInstallDirDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg">1</Publish>
+      <Publish Dialog="CustomInstallDirDlg" Control="Next" Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+      <Publish Dialog="CustomInstallDirDlg" Control="Next" Event="DoAction" Value="WixUIValidatePath" Order="2">NOT WIXUI_DONTVALIDATEPATH</Publish>
+      <Publish Dialog="CustomInstallDirDlg" Control="Next" Event="SpawnDialog" Value="InvalidDirDlg" Order="3"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
+      <Publish Dialog="CustomInstallDirDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="4">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
+      <Publish Dialog="CustomInstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+      <Publish Dialog="CustomInstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2">1</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="CustomInstallDirDlg" Order="1">NOT Installed</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2">Installed AND NOT PATCH</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2">Installed AND PATCH</Publish>
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg">1</Publish>
+      <Property Id="ARPNOMODIFY" Value="1"/>
+      <Dialog Id="CustomInstallDirDlg" Width="370" Height="270" Title="!(loc.InstallDirDlg_Title)">
+        <Control Id="OptionalText" Type="Text" X="120" Y="215" Width="250" Height="18" Transparent="yes" NoPrefix="yes" Hidden="yes" Text="The directory name may not consist of white space.">
+          <Condition Action="show"><![CDATA[INSTALL_ROOT >< " "]]></Condition>
+          <Condition Action="hide"><![CDATA[NOT INSTALL_ROOT >< " "]]></Condition>
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <Condition Action="disable"><![CDATA[INSTALL_ROOT >< " "]]></Condition>
+          <Condition Action="enable"><![CDATA[NOT INSTALL_ROOT >< " "]]></Condition>
+        </Control>
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)"/>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+        </Control>
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.InstallDirDlgDescription)"/>
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.InstallDirDlgTitle)"/>
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)"/>
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0"/>
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0"/>
+        <Control Id="FolderLabel" Type="Text" X="20" Y="60" Width="290" Height="30" NoPrefix="yes" Text="!(loc.InstallDirDlgFolderLabel)"/>
+        <Control Id="Folder" Type="PathEdit" X="20" Y="100" Width="320" Height="18" Property="WIXUI_INSTALLDIR" Indirect="yes"/>
+        <Control Id="ChangeFolder" Type="PushButton" X="20" Y="120" Width="56" Height="17" Text="!(loc.InstallDirDlgChange)"/>
+        <Control Id="CreateDemodbCheckBox" Type="CheckBox" X="20" Y="160" Width="290" Height="17" Property="INSTALLWITHDEMODB" CheckBoxValue="1" Text="Create a sample &quot;demodb&quot; database"/>
+      </Dialog>
+    </UI>
+    <UIRef Id="WixUI_Common"/>
+  </CPackWiXFragment>
+
+  <CPackWiXFragment Id="#PRODUCTFEATURE">
+    <ComponentRef Id="CM_CUBRID_SERVICE"/>
+    <ComponentRef Id="CM_CREATE_ENV_VARS"/>
+    <ComponentRef Id="CM_SHORTCUTS"/>
+  </CPackWiXFragment>
+</CPackWiXPatch>
