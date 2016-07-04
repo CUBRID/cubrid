@@ -1883,7 +1883,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  goto error;
 	}
-      
+
       db_error = db_execute_statement (session, stmt_id, &result, &query_execution_ending_type);
       if (db_error < 0)
 	{

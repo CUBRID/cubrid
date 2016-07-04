@@ -2268,7 +2268,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
 #if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
       if (db_init_statement_execution_end_type (session, srv_handle->auto_commit_mode,
-					        &query_execution_ending_type) != NO_ERROR)
+						&query_execution_ending_type) != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto exec_db_error;

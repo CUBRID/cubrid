@@ -3911,7 +3911,7 @@ db_init_statement_execution_end_type (DB_SESSION * session, bool auto_commit,
       for (stmt_ndx = 0; stmt_ndx < session->dimension; stmt_ndx++)
 	{
 	  if ((session->statements[stmt_ndx]) && ((session->statements[stmt_ndx])->node_type == PT_SELECT))
-	    {	     
+	    {
 	      goto end;
 	    }
 	}
