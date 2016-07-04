@@ -13897,7 +13897,6 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 			       TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = false;
 	    }
-
 	  
 	  or_skip_varchar_remainder (buf, str_length, align);
 	}
