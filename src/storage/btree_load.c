@@ -2770,6 +2770,11 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
       /* set level 1 to leaf */
       load_args->leaf.hdr.node_level = 1;
 
+      if (this_key.need_clear)
+	{
+	  copy = true;
+	}
+
       btree_clear_key_value (&copy, &this_key);
 
       if (next)
@@ -3265,9 +3270,9 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 					   sort_args->fk_refcls_oid, sort_args->fk_refcls_pk_btid,
 					   sort_args->fk_name) != NO_ERROR)
 		{
-		  if (dbvalue_ptr == &dbvalue)
+		  if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
 		    {
-		      pr_clear_value (&dbvalue);
+		      pr_clear_value (dbvalue_ptr);
 		    }
 		  return SORT_ERROR_OCCURRED;
 		}
@@ -3282,9 +3287,9 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (sort_args->not_null_flag && value_has_null && snapshot_dirty_satisfied == SNAPSHOT_SATISFIED)
 	{
-	  if (dbvalue_ptr == &dbvalue)
+	  if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
 	    {
-	      pr_clear_value (&dbvalue);
+	      pr_clear_value (dbvalue_ptr);
 	    }
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE, 0);
@@ -3300,9 +3305,9 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	      sort_args->n_oids++;	/* Increment the OID counter */
 	      sort_args->n_nulls++;	/* Increment the NULL counter */
 	    }
-	  if (dbvalue_ptr == &dbvalue)
+	  if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
 	    {
-	      pr_clear_value (&dbvalue);
+	      pr_clear_value (dbvalue_ptr);
 	    }
 	  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	    {
@@ -3425,9 +3430,9 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
 	  temp_recdes->length = CAST_STRLEN (buf.ptr - buf.buffer);
 
-	  if (dbvalue_ptr == &dbvalue)
+	  if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
 	    {
-	      pr_clear_value (&dbvalue);
+	      pr_clear_value (dbvalue_ptr);
 	    }
 	}
 
@@ -3448,9 +3453,9 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
 nofit:
 
-  if (dbvalue_ptr == &dbvalue)
+  if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
     {
-      pr_clear_value (&dbvalue);
+      pr_clear_value (dbvalue_ptr);
     }
 
   return SORT_REC_DOESNT_FIT;

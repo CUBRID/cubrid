@@ -11194,6 +11194,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	  if (compressed_size > 0)
 	    {
 	      str_length = compressed_size;
+
 	      string = db_private_alloc (NULL, uncompressed_size);
 	      if (string == NULL)
 		{
@@ -13897,7 +13898,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 			       TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = false;
 	    }
-	  
+
 	  or_skip_varchar_remainder (buf, str_length, align);
 	}
       else
