@@ -22,6 +22,7 @@ rem CUBRID build script for MS Windows.
 rem
 rem Requirements
 rem - cmake, ant, zip, md5sum
+rem - wix for msi installer
 rem - Windows 2003 or later
 
 if NOT "%OS%"=="Windows_NT" echo "ERROR: Not supported OS" & GOTO :EOF
@@ -82,7 +83,7 @@ for /f "tokens=* delims= " %%a IN ("%BUILD_LIST%") DO set BUILD_LIST=%%a
 echo Build list is [%BUILD_LIST%].
 set BUILD_LIST=%BUILD_LIST:ALL=BUILD DIST%
 set BUILD_LIST=%BUILD_LIST:BUILD=CUBRID%
-set BUILD_LIST=%BUILD_LIST:DIST=EXE_PACKAGE ZIP_PACKAGE CCI_PACKAGE%
+set BUILD_LIST=%BUILD_LIST:DIST=MSI_PACKAGE ZIP_PACKAGE CCI_PACKAGE%
 
 call :BUILD_PREPARE
 if ERRORLEVEL 1 echo *** [%DATE% %TIME%] Preparing failed. & GOTO :EOF
@@ -205,6 +206,21 @@ set DIST_PKGS=%DIST_PKGS% %CUBRID_PACKAGE_NAME%.exe
 GOTO :EOF
 
 
+:BUILD_MSI_PACKAGE
+echo Buiding msi packages in %BUILD_DIR% ...
+if NOT EXIST %BUILD_DIR% echo Cannot found built directory. & GOTO :EOF
+cd /d %BUILD_DIR%
+
+if "%BUILD_TARGET%" == "Win32" (set CUBRID_PACKAGE_NAME=CUBRID-Windows-x86-%VERSION%) ELSE set CUBRID_PACKAGE_NAME=CUBRID-Windows-x64-%VERSION%
+echo drop %CUBRID_PACKAGE_NAME%.msi into %DIST_DIR%
+"%CPACK_PATH%" -C %BUILD_TYPE% -G WIX -B "%DIST_DIR%"
+if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
+rmdir /s /q "%DIST_DIR%"\_CPack_Packages
+echo Package created. [%DIST_DIR%\%CUBRID_PACKAGE_NAME%.msi]
+set DIST_PKGS=%DIST_PKGS% %CUBRID_PACKAGE_NAME%.msi
+GOTO :EOF
+
+
 :BUILD_ZIP_PACKAGE
 echo Buiding zip packages in %BUILD_DIR% ...
 if NOT EXIST %BUILD_DIR% echo Cannot found built directory. & GOTO :EOF
@@ -263,7 +279,7 @@ GOTO :EOF
 @echo. TARGETS
 @echo.  ALL                BUILD and DIST (default)
 @echo.  BUILD              Build all applications
-@echo.  DIST               Create all packages (exe, zip, jar, CCI)
+@echo.  DIST               Create all packages (msi, zip, jar, CCI)
 @echo.
 @echo. Examples:
 @echo.  %0                 # Build and pack all packages (32/release)
