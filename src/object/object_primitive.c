@@ -11211,15 +11211,16 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 
 	      db_make_varchar (value, precision, string, uncompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
+	      value->need_clear = true;
 	    }
 	  else
 	    {
 	      str_length = uncompressed_size;
 	      db_make_varchar (value, precision, buf->ptr, uncompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
+	      value->need_clear = false;
 	    }
 
-	  value->need_clear = false;
 	  or_skip_varchar_remainder (buf, str_length, align);
 	}
       else
@@ -13886,6 +13887,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 
 	      db_make_varchar (value, precision, string, uncompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
+	      value->need_clear = true;
 	    }
 	  else
 	    {
@@ -13893,9 +13895,10 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	      str_length = uncompressed_size;
 	      db_make_varchar (value, precision, buf->ptr, uncompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
+	      value->need_clear = false;
 	    }
-	  assert (false);
-	  value->need_clear = false;
+
+	  
 	  or_skip_varchar_remainder (buf, str_length, align);
 	}
       else

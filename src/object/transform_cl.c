@@ -1490,7 +1490,7 @@ string_disk_size (const char *string)
   if (str_length >= 255)
     {
       str_length = or_get_compression_length (string, str_length);
-      if (str_length <= 255)
+      if (str_length < 255)
 	{
 	  str_length = str_length + 256;
 	  compressed = 1;
@@ -1505,7 +1505,7 @@ string_disk_size (const char *string)
    * length less than 255, therefore if we have a string that compressed has length less then 255, it will not
    * compute also the 4 bytes of uncompressed_size stored in the buffer and it will fail. Therefore, if the string
    * is to be compressed, we add 256 on its size, and after alignments and stuff we just substract that 256 from the
-   * final result. */
+   * final result. We do this only for data that needs to be compressed. */
   if (compressed == 1)
     {
       return length - 256;
