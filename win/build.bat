@@ -43,7 +43,6 @@ set BUILD_TYPE=RelWithDebInfo
 set CMAKE_PATH=C:\Program Files\CMake\bin\cmake.exe
 set CPACK_PATH=C:\Program Files\CMake\bin\cpack.exe
 set GIT_PATH=C:\Program Files\Git\bin\git.exe
-set IS_PATH=C:\IS_2010\System\IsCmdBld.exe
 rem default list is all
 set BUILD_LIST=ALL
 rem unset BUILD_ARGS
@@ -119,9 +118,6 @@ echo Checking for root source path [%SOURCE_DIR%]...
 if NOT EXIST "%SOURCE_DIR%\src" echo Root path for source is not valid. & GOTO :EOF
 if NOT EXIST "%SOURCE_DIR%\VERSION" set VERSION_FILE=VERSION-DIST
 
-echo Checking for InstallShield [%IS_PATH%]...
-if NOT EXIST "%IS_PATH%" echo InstallShield not found. & GOTO :EOF
-
 echo Checking build number with [%SOURCE_DIR%\%VERSION_FILE%]...
 for /f %%i IN (%SOURCE_DIR%\%VERSION_FILE%) DO set VERSION=%%i
 if ERRORLEVEL 1 echo Cannot check build number. & GOTO :EOF
@@ -160,49 +156,6 @@ if ERRORLEVEL 1 (echo FAILD. & GOTO :EOF) ELSE echo OK.
 copy %SOURCE_DIR%\README %BUILD_PREFIX%\
 copy %SOURCE_DIR%\CREDITS %BUILD_PREFIX%\
 copy %SOURCE_DIR%\COPYING %BUILD_PREFIX%\
-GOTO :EOF
-
-
-:BUILD_EXE_PACKAGE
-echo Buiding exe packages in %BUILD_DIR% ...
-if NOT EXIST %BUILD_PREFIX% echo Cannot found built directory. & GOTO :EOF
-cd /d %BUILD_PREFIX%
-
-copy /y conf\cubrid.conf conf\cubrid.conf-dist
-copy /y conf\cubrid_broker.conf conf\cubrid_broker.conf-dist
-copy /y conf\cm.conf conf\cm.conf-dist
-copy /y conf\cmdb.pass conf\cmdb.pass-dist
-copy /y conf\cm.pass conf\cm.pass-dist
-copy /y conf\shard_connection.txt conf\shard_connection.txt-dist
-copy /y conf\shard_key.txt conf\shard_key.txt-dist
-copy /y conf\cubrid_locales.all.txt conf\cubrid_locales.all.txt-dist
-copy /y conf\cubrid_locales.txt conf\cubrid_locales.txt-dist
-
-cd /d %SOURCE_DIR%\win\install\Installshield
-if "%BUILD_TARGET%" == "Win32" (set CUBRID_ISM="CUBRID.ism") ELSE set CUBRID_ISM="CUBRID_x64.ism"
-
-rem run installshield
-"%IS_PATH%" -p %CUBRID_ISM% -r "CUBRID" -c COMP -x
-if NOT ERRORLEVEL 0 echo FAILD. & GOTO :EOF
-if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
-
-if "%BUILD_TARGET%" == "Win32" (set CUBRID_PACKAGE_NAME=CUBRID-Windows-x86-%VERSION%) ELSE set CUBRID_PACKAGE_NAME=CUBRID-Windows-x64-%VERSION%
-echo drop %CUBRID_PACKAGE_NAME%.exe into %DIST_DIR%
-move /y packaging\product\Package\CUBRID.EXE %DIST_DIR%\%CUBRID_PACKAGE_NAME%.exe
-if ERRORLEVEL 1 echo FAILD. & GOTO :EOF
-
-cd /d %BUILD_PREFIX%
-del conf\cubrid.conf-dist
-del conf\cubrid_broker.conf-dist
-del conf\cm.conf-dist
-del conf\cmdb.pass-dist
-del conf\cm.pass-dist
-del conf\shard_connection.txt-dist
-del conf\shard_key.txt-dist
-del conf\cubrid_locales.all.txt-dist
-del conf\cubrid_locales.txt-dist
-echo Package created. [%DIST_DIR%\%CUBRID_PACKAGE_NAME%.exe]
-set DIST_PKGS=%DIST_PKGS% %CUBRID_PACKAGE_NAME%.exe
 GOTO :EOF
 
 

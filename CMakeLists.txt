@@ -951,13 +951,6 @@ if(UNIX)
   set(CPACK_SOURCE_GENERATOR "TGZ")
 else(UNIX)
   set(CPACK_GENERATOR "ZIP")
-  # TODO: change installer packaging tool
-  configure_file(win/install/Installshield/CUBRID.ism.in
-    ${CMAKE_SOURCE_DIR}/win/install/Installshield/CUBRID.ism
-    @ONLY NEWLINE_STYLE WIN32)
-  configure_file(win/install/Installshield/CUBRID_x64.ism.in
-    ${CMAKE_SOURCE_DIR}/win/install/Installshield/CUBRID_x64.ism
-    @ONLY NEWLINE_STYLE WIN32)
 endif(UNIX)
 
 set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
