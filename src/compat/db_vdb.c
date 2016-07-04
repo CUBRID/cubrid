@@ -3868,9 +3868,11 @@ db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Ve
  * return : error code.
  * session(in): compiled session
  * auto_commit(in): true, if auto commit
+ * query_execution_ending_type(out): query execution ending type
  */
 int
-db_init_statement_execution_end_type (DB_SESSION * session, bool auto_commit)
+db_init_statement_execution_end_type (DB_SESSION * session, bool auto_commit,
+				      DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
   PT_NODE *statement;
   int stmt_ndx;
@@ -3900,7 +3902,7 @@ db_init_statement_execution_end_type (DB_SESSION * session, bool auto_commit)
   statement->query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
   if (!(auto_commit && db_session_is_last_statement (session)))
     {
-      return NO_ERROR;
+      goto end;
     }
 
   if (session->dimension > 1)
@@ -3908,9 +3910,9 @@ db_init_statement_execution_end_type (DB_SESSION * session, bool auto_commit)
       /* Do not use the optimization if have more than one statement and at least one is SELECT. */
       for (stmt_ndx = 0; stmt_ndx < session->dimension; stmt_ndx++)
 	{
-	  if ((session->statements[stmt_ndx])->node_type == PT_SELECT)
-	    {
-	      return NO_ERROR;
+	  if ((session->statements[stmt_ndx]) && ((session->statements[stmt_ndx])->node_type == PT_SELECT))
+	    {	     
+	      goto end;
 	    }
 	}
     }
@@ -3953,5 +3955,10 @@ db_init_statement_execution_end_type (DB_SESSION * session, bool auto_commit)
       break;
     }
 
+end:
+  if (query_execution_ending_type)
+    {
+      *query_execution_ending_type = statement->query_execution_ending_type;
+    }
   return NO_ERROR;
 }

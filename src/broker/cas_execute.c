@@ -1213,7 +1213,8 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
     }
 
 #if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  if (db_init_statement_execution_end_type (session, srv_handle->auto_commit_mode) != NO_ERROR)
+  if (db_init_statement_execution_end_type (session, srv_handle->auto_commit_mode,
+					    &query_execution_ending_type) != NO_ERROR)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       goto execute_error;
@@ -1527,7 +1528,8 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	}
 
 #if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-      if (db_init_statement_execution_end_type (session, srv_handle->auto_commit_mode) != NO_ERROR)
+      if (db_init_statement_execution_end_type (session, srv_handle->auto_commit_mode,
+						&query_execution_ending_type) != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto execute_all_error;
@@ -2035,7 +2037,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
 
 #if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-      if (db_init_statement_execution_end_type (session, auto_commit_mode) != NO_ERROR)
+      if (db_init_statement_execution_end_type (session, auto_commit_mode, &query_execution_ending_type) != NO_ERROR)
 	{
 	  cas_log_write2 ("");
 	  goto batch_error;
@@ -2265,7 +2267,8 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	}
 
 #if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-      if (db_init_statement_execution_end_type (session, srv_handle->auto_commit_mode) != NO_ERROR)
+      if (db_init_statement_execution_end_type (session, srv_handle->auto_commit_mode,
+					        &query_execution_ending_type) != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto exec_db_error;
