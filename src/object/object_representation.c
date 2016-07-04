@@ -1341,12 +1341,11 @@ static int
 or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 {
   int net_charlen;
-  char *start, *compressed_string = NULL;
+  char *compressed_string = NULL;
   int rc = NO_ERROR, compressable = 0;
   lzo_uint compressed_length = 0;
   lzo_voidp wrkmem = NULL;
 
-  start = buf;
   /* store the size prefix */
   if (charlen < 0xFF)
     {

@@ -348,5 +348,6 @@ extern int pr_area_init (void);
 extern void pr_area_final (void);
 
 extern int pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain);
+extern int or_get_compression_length (char *string, int charlen);
 
 #endif /* _OBJECT_PRIMITIVE_H_ */
