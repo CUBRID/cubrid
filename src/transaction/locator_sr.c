@@ -4057,6 +4057,7 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
     }
   else
     {
+      HEAP_GET_CONTEXT context;
       /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
        * removed with one of the refactoring issues anyway.
        */
@@ -4065,16 +4066,37 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
 	  return LC_DOESNOT_EXIST;
 	}
 
-      /* MVCC class, call heap_mvcc_lock_object (it also verifies object exists). */
-      scan_code = heap_mvcc_lock_object (thread_p, oid, class_oid, lock, snapshot_type);
-      if (scan_code == S_ERROR)
+      /* MVCC class, call locator_lock_and_get_object (it also verifies object exists). */
+      if (lock == NULL_LOCK)
 	{
-	  ASSERT_ERROR ();
-	  return LC_ERROR;
+	  /* what if object doesn't exist?? */
+	  scan_code = S_SUCCESS;
 	}
-      else if (scan_code != S_SUCCESS)
+      else
 	{
-	  return LC_DOESNOT_EXIST;
+	  if (lock <= S_LOCK)
+	    {
+	      /* S_SELECT_WITH_LOCK */
+	      lock = S_LOCK;
+	    }
+	  else
+	    {
+	      /* S_DELETE */
+	      lock = S_LOCK;
+	    }
+
+	  heap_init_get_context (&context, oid, class_oid, NULL);
+	  scan_code = locator_lock_and_get_object (thread_p, &context, lock, NULL, NULL_CHN, PEEK);
+	  heap_clean_get_context (thread_p, &context);
+	  if (scan_code == S_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return LC_ERROR;
+	    }
+	  else if (scan_code != S_SUCCESS)
+	    {
+	      return LC_DOESNOT_EXIST;
+	    }
 	}
       /* Fall through to fetch if needed. */
     }
@@ -13572,4 +13594,49 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 exit:
   heap_clean_get_context (thread_p, &context);
   return scan;
+}
+
+/*
+ * locator_get_object () - Retrieve heap objects and decide the type of lock according to the operation type
+ *
+ * return	  : Scan code.
+ * thread_p (in)  : Thread entry.
+ * oid (in)       : Object identifier.
+ * class_oid (in) : Class oid.
+ * recdes (out)	  : Record descriptor.
+ * scan_cache (in): Scan cache.
+ * op_type (in)	  : Requested type of operation.
+ * ispeeking (in) : Peek record or copy.
+ */
+SCAN_CODE
+locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+		    HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, int ispeeking)
+{
+  HEAP_GET_CONTEXT context;
+  SCAN_CODE scan_code;
+
+  heap_init_get_context (&context, oid, class_oid, recdes);
+
+  if (op_type == S_SELECT)
+    {
+      /* NULL_LOCK */
+      scan_code = heap_get_visible_version (thread_p, oid, class_oid, recdes, scan_cache, ispeeking, NULL_CHN, false);
+    }
+  else if (op_type == S_SELECT_WITH_LOCK)
+    {
+      /* S_LOCK */
+      scan_code = locator_lock_and_get_object (thread_p, &context, S_LOCK, scan_cache, NULL_CHN, ispeeking);
+    }
+  else if (op_type == S_DELETE || op_type == S_UPDATE)
+    {
+      /* X_LOCK */
+      scan_code = locator_lock_and_get_object (thread_p, &context, X_LOCK, scan_cache, NULL_CHN, ispeeking);
+    }
+  else
+    {
+      assert (false);
+    }
+
+  heap_clean_get_context (thread_p, &context);
+  return scan_code;
 }

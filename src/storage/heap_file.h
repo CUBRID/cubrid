@@ -617,8 +617,6 @@ extern int heap_scancache_quick_start_with_class_hfid (THREAD_ENTRY * thread_p, 
 						       const HFID * hfid);
 extern int heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 							     OID * class_oid);
-extern SCAN_CODE heap_mvcc_lock_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, LOCK lock_mode,
-					SNAPSHOT_TYPE snapshot_type);
 extern void heap_create_insert_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * class_oid_p,
 					RECDES * recdes_p, HEAP_SCANCACHE * scancache_p);
 extern void heap_create_delete_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p, OID * oid_p, OID * class_oid_p,
@@ -664,9 +662,6 @@ extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, P
 extern SCAN_CODE heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 					   PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
 					   NON_EXISTENT_HANDLING non_ex_handling_type);
-extern SCAN_CODE heap_get_for_operation (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-					 HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, int ispeeking,
-					 NON_EXISTENT_HANDLING non_ex_handling);
 extern SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 						      HEAP_SCANCACHE * scan_cache, int ispeeking);
 

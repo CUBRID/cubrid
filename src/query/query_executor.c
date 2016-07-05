@@ -11591,8 +11591,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       scan_cache_end_needed = true;
 
       /* fetch the object and the class oid */
-      scan = heap_get_for_operation (thread_p, dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, PEEK,
-				     LOG_ERROR_IF_DELETED);
+      scan = locator_get_object (thread_p, dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, PEEK);
       if (scan != S_SUCCESS)
 	{
 	  /* setting ER_HEAP_UNKNOWN_OBJECT error for deleted or invisible objects should be replaced by a more clear 
