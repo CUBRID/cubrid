@@ -1483,6 +1483,8 @@ string_disk_size (const char *string)
     {
       str_length = 0;
     }
+  if (str_length == 956)
+    assert (true);
 
   /* We need to simulate a compression of the string to be stored in buffer, so we can know how much we need
    * to store on the disk.
@@ -1590,7 +1592,6 @@ put_string (OR_BUF * buf, const char *string)
     {
       str_length = 0;
     }
-
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   (*(tp_VarNChar.data_writeval)) (buf, &value);
 }

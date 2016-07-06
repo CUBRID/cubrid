@@ -14055,7 +14055,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		      assert (false);
 		      return ER_FAILED;
 		    }
-
+		  new_[str_length] = '\0';
 		  db_make_varnchar (value, precision, new_, str_length, TP_DOMAIN_CODESET (domain),
 				    TP_DOMAIN_COLLATION (domain));
 		  value->need_clear = (new_ != copy_buf) ? true : false;
