@@ -985,7 +985,7 @@ lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock)
 static unsigned int
 lock_get_hash_value (const OID * oid, int htsize)
 {
-  int next_base_slotid, addr;
+  unsigned int next_base_slotid, addr;
 
   if (oid->slotid <= 0)
     {
