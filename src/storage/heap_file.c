@@ -7872,7 +7872,7 @@ heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid,
       OID_SET_NULL (class_oid);
     }
 
-  heap_init_get_context (&context, oid, class_oid, recdes);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache);
 
   /* Assert ispeeking, scan_cache and recdes are compatible. If ispeeking is PEEK, we must be able to keep page
    * latched. This means scan_cache must not be NULL and cache_last_fix_page must be true. If ispeeking is COPY, we
@@ -8254,15 +8254,8 @@ end:
       heap_scancache_end (thread_p, &local_scancache);
       scan_cache = NULL;
     }
-  else if (scan_code != S_ERROR && scan_cache->cache_last_fix_page)
-    {
-      /* Record was successfully obtained and scan is fixed. Save home page (or NULL if it had to be unfixed) to
-       * scan_cache. */
-      pgbuf_replace_watcher (thread_p, &context.home_page_watcher, &scan_cache->page_watcher);
-      assert (context.home_page_watcher.pgptr == NULL);
-    }
 
-  heap_clean_get_context (thread_p, &context);
+  heap_clean_get_context (thread_p, &context, (scan_code == S_ERROR) ? NULL : scan_cache);
 
   /* Check if we need to release lock. If scan is not successful or if the evaluation test was not passed, unlock
    * object. What to do in case of S_DOESNT_FIT? Usually we are expecting the caller to retry getting object with a
@@ -8529,7 +8522,7 @@ try_again:
 error:
   assert (er_errid () != NO_ERROR);
 
-  heap_clean_get_context (thread_p, context);
+  heap_clean_get_context (thread_p, context, NULL);
   return S_ERROR;
 }
 
@@ -10378,7 +10371,7 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
   OID root_oid = OID_INITIALIZER;
   HEAP_GET_CONTEXT context;
 
-  heap_init_get_context (&context, class_oid, &root_oid, &recdes);
+  heap_init_get_context (thread_p, &context, class_oid, &root_oid, &recdes, NULL);
 
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
@@ -20005,7 +19998,7 @@ try_again:
 
       /* Prepare for getting record again. Since pages have been unlatched, others may have changed them (even our
        * record). */
-      heap_init_get_context (&context, oid, class_oid, NULL);
+      heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL);
       if (heap_get_prepare_context (thread_p, &context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED) != S_SUCCESS)
 	{
 	  goto error;
@@ -25798,15 +25791,9 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
   INT16 type;
   HEAP_GET_CONTEXT context;
 
-  heap_init_get_context (&context, oid, class_oid, recdes);
-
   assert (scan_cache != NULL);
 
-  if (scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
-    {
-      /* switch to local page watcher */
-      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context.home_page_watcher);
-    }
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache);
 
   scan = heap_get_prepare_context (thread_p, &context, PGBUF_LATCH_READ, is_heap_scan, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
@@ -25870,17 +25857,9 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 
 exit:
 
-  if (scan != S_ERROR && scan_cache != NULL && scan_cache->cache_last_fix_page)
-    {
-      /* Record was successfully obtained and scan is fixed. Save home page (or NULL if it had to be unfixed) to
-       * scan_cache. */
-      pgbuf_replace_watcher (thread_p, &context.home_page_watcher, &scan_cache->page_watcher);
-      assert (context.home_page_watcher.pgptr == NULL);
-    }
-
   if (context.single_use)
     {
-      heap_clean_get_context (thread_p, &context);
+      heap_clean_get_context (thread_p, &context, (scan == S_ERROR) ? NULL : scan_cache);
     }
   return scan;
 }
@@ -26045,12 +26024,6 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP
   assert (scan_cache != NULL);
   assert (context->recdes_p != NULL);
 
-  if (scan_cache != NULL && scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
-    {
-      /* switch to local page watcher */
-      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context->home_page_watcher);
-    }
-
   scan = heap_get_prepare_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
@@ -26084,16 +26057,9 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP
 
 exit:
 
-  if (scan != S_ERROR && scan_cache != NULL && scan_cache->cache_last_fix_page)
-    {
-      /* Record was successfully obtained and scan is fixed. Save home page (or NULL if it had to be unfixed) to
-       * scan_cache. */
-      pgbuf_replace_watcher (thread_p, &context->home_page_watcher, &scan_cache->page_watcher);
-      assert (context->home_page_watcher.pgptr == NULL);
-    }
   if (context->single_use)
     {
-      heap_clean_get_context (thread_p, context);
+      heap_clean_get_context (thread_p, context, (scan == S_ERROR) ? NULL : scan_cache);
     }
 
   return scan;
@@ -26146,10 +26112,24 @@ heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHE
   return ret;
 }
 
+/* 
+ * heap_clean_get_context () - Unfix page watchers of get context and save home page to scan_cache if possible 
+ * 
+ * thread_p (in)   : Thread_identifier.
+ * context (in)	   : Heap get context.
+ * scan_cache (in) : Scan cache. 
+ */
 void
-heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP_SCANCACHE * scan_cache)
 {
   assert (context != NULL);
+
+  if (scan_cache != NULL && scan_cache->cache_last_fix_page)
+    {
+      /* Save home page (or NULL if it had to be unfixed) to scan_cache. */
+      pgbuf_replace_watcher (thread_p, &context->home_page_watcher, &scan_cache->page_watcher);
+      assert (context->home_page_watcher.pgptr == NULL);
+    }
 
   if (context->home_page_watcher.pgptr)
     {
@@ -26166,8 +26146,19 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   assert (context->home_page_watcher.pgptr == NULL && context->fwd_page_watcher.pgptr == NULL);
 }
 
+/* 
+ * heap_init_get_context () - Initiate all heap get context fields with generic informations
+ *
+ * thread_p (in)   : Thread_identifier.
+ * context (in)	   : Heap get context.
+ * oid (in)	   : Object identifier.
+ * class_oid (in)  : Class oid.
+ * recdes (in)     : Record descriptor.
+ * scan_cache (in) : Scan cache. 
+*/
 void
-heap_init_get_context (HEAP_GET_CONTEXT * context, OID * oid, OID * class_oid, RECDES * recdes)
+heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, OID * oid, OID * class_oid, RECDES * recdes,
+		       HEAP_SCANCACHE * scan_cache)
 {
   context->single_use = true;
   context->oid_p = oid;
@@ -26177,4 +26168,10 @@ heap_init_get_context (HEAP_GET_CONTEXT * context, OID * oid, OID * class_oid, R
 
   PGBUF_INIT_WATCHER (&context->home_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
   PGBUF_INIT_WATCHER (&context->fwd_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+
+  if (scan_cache != NULL && scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
+    {
+      /* switch to local page watcher */
+      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context->home_page_watcher);
+    }
 }

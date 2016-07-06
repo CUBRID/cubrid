@@ -2374,25 +2374,8 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
   else if (lock_mode == X_LOCK || lock_mode == S_LOCK)
     {
       /* Get and lock last object version. */
-      HEAP_GET_CONTEXT context;
-
-      heap_init_get_context (&context, oid, class_oid, &assign->recdes);
-      if (assign->ptr_scancache->cache_last_fix_page && assign->ptr_scancache->page_watcher.pgptr != NULL)
-	{
-	  /* switch to local page watcher */
-	  pgbuf_replace_watcher (thread_p, &assign->ptr_scancache->page_watcher, &context.home_page_watcher);
-	}
-
-      scan = locator_lock_and_get_object (thread_p, &context, lock_mode, assign->ptr_scancache, chn, COPY);
-
-      if (scan != S_ERROR && assign->ptr_scancache != NULL && assign->ptr_scancache->cache_last_fix_page)
-	{
-	  /* Record was successfully obtained and scan is fixed. Save home page (or NULL if it had to be unfixed) to
-	   * scan_cache. */
-	  pgbuf_replace_watcher (thread_p, &context.home_page_watcher, &assign->ptr_scancache->page_watcher);
-	  assert (context.home_page_watcher.pgptr == NULL);
-	}
-      heap_clean_get_context (thread_p, &context);
+      scan = locator_lock_and_get_object (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, lock_mode,
+					  COPY, chn, LOG_WARNING_IF_DELETED);
     }
   else
     {
@@ -4057,7 +4040,6 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
     }
   else
     {
-      HEAP_GET_CONTEXT context;
       /* Quick fix: we need to check if OID is valid - meaning that page is still valid. This code is going to be
        * removed with one of the refactoring issues anyway.
        */
@@ -4085,9 +4067,8 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
 	      lock = S_LOCK;
 	    }
 
-	  heap_init_get_context (&context, oid, class_oid, NULL);
-	  scan_code = locator_lock_and_get_object (thread_p, &context, lock, NULL, NULL_CHN, PEEK);
-	  heap_clean_get_context (thread_p, &context);
+	  scan_code = locator_lock_and_get_object (thread_p, oid, class_oid, NULL, NULL, lock, PEEK, NULL_CHN,
+						   LOG_WARNING_IF_DELETED);
 	  if (scan_code == S_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -13332,8 +13313,8 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
  *
  */
 SCAN_CODE
-locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, LOCK lock_mode,
-			     HEAP_SCANCACHE * scan_cache, int chn, int ispeeking)
+locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, LOCK lock_mode,
+				      HEAP_SCANCACHE * scan_cache, int chn, int ispeeking)
 {
   SCAN_CODE scan = S_SUCCESS;
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
@@ -13367,7 +13348,7 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context
   if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_COND_LOCK) != LK_GRANTED)
     {
       /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally */
-      heap_clean_get_context (thread_p, &context);
+      heap_clean_get_context (thread_p, &context, NULL);
       if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
 	{
 	  goto error;
@@ -13389,6 +13370,7 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context
   /* lock should be aquired now -> get recdes */
   if (context->recdes_p != NULL)
     {
+      context->single_use = false;	/* prevent unfix as pages will be needed later */
       scan = heap_get_last_version (thread_p, context, scan_cache, ispeeking, chn);
       if (scan != S_SUCCESS)
 	{
@@ -13428,8 +13410,6 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context
 	}
     }
 
-  /* umm, missed something? */
-
   return scan;
 
 error:
@@ -13441,7 +13421,7 @@ error:
 
   if (context->single_use)
     {
-      heap_clean_get_context (thread_p, context);
+      heap_clean_get_context (thread_p, context, NULL);
     }
   return scan != S_SUCCESS ? scan : S_ERROR;
 }
@@ -13491,6 +13471,8 @@ locator_decide_type_of_lock (const OID * class_oid, LOCK lock_mode, const SCAN_O
 * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
 *				ER_HEAP_UNKNOWN_OBJECT error to log
 *                            - LOG_WARNING_IF_DELETED: set only warning
+* 
+* Note: This function will lock the object with X_LOCK. This lock type should correspond to delete/update operations.
 */
 SCAN_CODE
 locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
@@ -13518,13 +13500,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       class_oid = &class_oid_local;
     }
 
-  heap_init_get_context (&context, oid, class_oid, recdes);
-
-  if (scan_cache != NULL && scan_cache->cache_last_fix_page && scan_cache->page_watcher.pgptr != NULL)
-    {
-      /* switch to local page watcher */
-      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context.home_page_watcher);
-    }
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache);
 
   if (mvcc_reev_data != NULL)
     {
@@ -13532,7 +13508,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       context.single_use = false;
     }
 
-  scan = locator_lock_and_get_object (thread_p, &context, X_LOCK, scan_cache, old_chn, ispeeking);
+  scan = locator_lock_and_get_object_internal (thread_p, &context, X_LOCK, scan_cache, old_chn, ispeeking);
 
   /* perform reevaluation */
   if (mvcc_reev_data != NULL && (scan == S_SUCCESS || scan == S_SUCCESS_CHN_UPTODATE))
@@ -13592,7 +13568,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
     }
 
 exit:
-  heap_clean_get_context (thread_p, &context);
+  heap_clean_get_context (thread_p, &context, (scan == S_ERROR) ? NULL : scan_cache);
   return scan;
 }
 
@@ -13612,10 +13588,7 @@ SCAN_CODE
 locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 		    HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, int ispeeking)
 {
-  HEAP_GET_CONTEXT context;
   SCAN_CODE scan_code;
-
-  heap_init_get_context (&context, oid, class_oid, recdes);
 
   if (op_type == S_SELECT)
     {
@@ -13625,18 +13598,52 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
   else if (op_type == S_SELECT_WITH_LOCK)
     {
       /* S_LOCK */
-      scan_code = locator_lock_and_get_object (thread_p, &context, S_LOCK, scan_cache, NULL_CHN, ispeeking);
+      scan_code = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, S_LOCK, ispeeking,
+					       NULL_CHN, LOG_WARNING_IF_DELETED);
     }
   else if (op_type == S_DELETE || op_type == S_UPDATE)
     {
       /* X_LOCK */
-      scan_code = locator_lock_and_get_object (thread_p, &context, X_LOCK, scan_cache, NULL_CHN, ispeeking);
+      scan_code = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, ispeeking,
+					       NULL_CHN, LOG_WARNING_IF_DELETED);
     }
   else
     {
       assert (false);
     }
 
-  heap_clean_get_context (thread_p, &context);
+  return scan_code;
+}
+
+
+/*
+* locator_lock_and_get_object () - Get MVCC object version for delete/update.
+*
+* return	       : SCAN_CODE.
+* thread_p (in)       : Thread entry.
+* oid (in)	       : Object OID.
+* class_oid (in)      : Class OID.
+* recdes (out)	       : Record descriptor.
+* scan_cache (in)     : Heap scan cache.
+* ispeeking (in)      : PEEK or COPY.
+* old_chn (in)	       : CHN of known record data.
+* mvcc_reev_data (in) : MVCC reevaluation data.
+* (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
+*				ER_HEAP_UNKNOWN_OBJECT error to log
+*                            - LOG_WARNING_IF_DELETED: set only warning
+*/
+SCAN_CODE
+locator_lock_and_get_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
+			     HEAP_SCANCACHE * scan_cache, LOCK lock, int ispeeking, int old_chn,
+			     NON_EXISTENT_HANDLING non_ex_handling_type)
+{
+  HEAP_GET_CONTEXT context;
+  SCAN_CODE scan_code;
+
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache);
+
+  scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock, scan_cache, old_chn, ispeeking);
+
+  heap_clean_get_context (thread_p, &context, (scan_code == S_ERROR) ? NULL : scan_cache);
   return scan_code;
 }

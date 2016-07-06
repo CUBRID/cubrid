@@ -601,7 +601,6 @@ extern SCAN_CODE heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT
 extern int heap_get_mvcc_rec_header_from_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_header,
 						   RECDES * peek_recdes);
 extern int heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_header);
-extern OID *heap_get_serial_class_oid (THREAD_ENTRY * thread_p);
 extern bool heap_is_mvcc_disabled_for_class (const OID * class_oid);
 extern int heap_rv_undoredo_update_and_update_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
@@ -644,8 +643,6 @@ extern void heap_stats_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HF
 extern bool heap_should_try_update_stat (const int current_freespace, const int prev_freespace);
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
-extern int heap_rv_mvcc_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int heap_rv_mvcc_redo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn, bool is_heap_scan);
 extern SCAN_CODE heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
@@ -655,8 +652,9 @@ extern SCAN_CODE heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p,
 							NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 					HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
-extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
-extern void heap_init_get_context (HEAP_GET_CONTEXT * context, OID * oid, OID * class_oid, RECDES * recdes);
+extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP_SCANCACHE * scan_cache);
+extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, OID * oid, OID * class_oid,
+				   RECDES * recdes, HEAP_SCANCACHE * scan_cache);
 extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
 				     PGBUF_LATCH_MODE latch_mode);
 extern SCAN_CODE heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
