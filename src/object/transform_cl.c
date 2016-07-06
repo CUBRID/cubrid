@@ -1492,7 +1492,7 @@ string_disk_size (const char *string)
   if (str_length >= 255)
     {
       str_length = or_get_compression_length (string, str_length);
-      if (str_length < 255)
+      if (str_length <= 255)
 	{
 	  str_length = str_length + 256;
 	  compressed = 1;

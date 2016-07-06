@@ -20016,9 +20016,10 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 {
   int c = DB_UNK;
   char *str1, *str2;
-  int str_length1, str_length2;
+  int str_length1, str_length2, str1c = 0, str2c = 0, str1u = 0, str2u = 0;
   OR_BUF buf1, buf2;
   int rc = NO_ERROR;
+  char *string1 = NULL, *string2 = NULL;
 
   str1 = (char *) mem1;
   str2 = (char *) mem2;
@@ -20037,16 +20038,70 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
   assert (str_length1 == 0xFF || str_length2 == 0xFF);
 
   or_init (&buf1, str1, 0);
-  str_length1 = or_get_varchar_length (&buf1, &rc);
+  rc = or_get_varchar_comp_lengths (&buf1, &str1c, &str1u);
+
+  if (rc != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  string1 = malloc (str1u);
+  if (string1 == NULL)
+    {
+      /* Error report */
+      ;
+    }
+
+  rc = do_get_compressed_data_from_buffer (&buf1, string1, str1c, str1u);
+  if (rc != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  str_length1 = str1u;
+
   if (rc == NO_ERROR)
     {
       or_init (&buf2, str2, 0);
-      str_length2 = or_get_varchar_length (&buf2, &rc);
+
+      rc = or_get_varchar_comp_lengths (&buf2, &str2c, &str2u);
+
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      string2 = malloc (str2u);
+      if (string2 == NULL)
+	{
+	  /* Error report */
+	  ;
+	}
+
+      rc = do_get_compressed_data_from_buffer (&buf2, string2, str2c, str2u);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      str_length2 = str2u;
+
       if (rc == NO_ERROR)
 	{
-	  c = bf2df_str_compare ((unsigned char *) buf1.ptr, str_length1, (unsigned char *) buf2.ptr, str_length2);
+	  c = bf2df_str_compare ((unsigned char *) string1, str_length1, (unsigned char *) string2, str_length2);
 	  return c;
 	}
+    }
+
+cleanup:
+  if (string1 != NULL)
+    {
+      free_and_init (string1);
+    }
+
+  if (string2 != NULL)
+    {
+      free_and_init (string2);
     }
 
   return DB_UNK;
