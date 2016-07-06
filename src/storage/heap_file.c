@@ -7844,6 +7844,7 @@ end:
  *	 of current object, ignoring completely MVCC versions (actually there
  *	 shouldn't be any). No locks are acquired either (it's up to the
  *	 caller to handle locks for non-MVCC classes).
+ * Obsolete!
  */
 SCAN_CODE
 heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
@@ -19902,6 +19903,7 @@ heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_o
  *    REC_MVCC_NEXT_VERSION when transaction resume after unconditional locking,
  *    recdes_header is filled with informations that may be used by caller
  *    to advance to the next version.
+ *  Obsolete!
  */
 static int
 heap_mvcc_check_and_lock_for_delete (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, LOCK lock,

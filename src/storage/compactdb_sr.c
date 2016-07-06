@@ -210,9 +210,9 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
 
   copy_recdes.data = NULL;
 
-  scan_code =
-    locator_lock_and_get_object_with_evaluation (thread_p, oid, &upd_scancache->node.class_oid, &copy_recdes,
-						 upd_scancache, COPY, NULL_CHN, NULL, LOG_WARNING_IF_DELETED);
+  /* get object with X_LOCK */
+  scan_code = locator_lock_and_get_object (thread_p, oid, &upd_scancache->node.class_oid, &copy_recdes, upd_scancache,
+					   X_LOCK, COPY, NULL_CHN, LOG_WARNING_IF_DELETED);
   if (scan_code != S_SUCCESS)
     {
       if (scan_code == S_DOESNT_EXIST || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
@@ -250,7 +250,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
       || (attr_info->read_classrepr != NULL && attr_info->last_classrepr != NULL
 	  && attr_info->read_classrepr->id != attr_info->last_classrepr->id))
     {
-      /* oid already locked at locator_lock_and_get_object_with_evaluation */
+      /* oid already locked at locator_lock_and_get_object */
       error_code =
 	locator_attribute_info_force (thread_p, &upd_scancache->node.hfid, oid, attr_info, atts_id, updated_n_attrs_id,
 				      LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, upd_scancache, &force_count, false,

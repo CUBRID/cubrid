@@ -236,6 +236,9 @@ static DISK_ISVALID locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID
 static void locator_generate_class_pseudo_oid (THREAD_ENTRY * thread_p, OID * class_oid);
 
 static int redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list);
+static SCAN_CODE locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
+						       LOCK lock_mode, HEAP_SCANCACHE * scan_cache, int chn,
+						       int ispeeking);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -4609,10 +4612,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  recdes.data = NULL;
 		  /* TO DO - handle reevaluation */
 
-		  scan_code =
-		    locator_lock_and_get_object_with_evaluation (thread_p, oid_ptr, &fkref->self_oid, &recdes,
-								 &scan_cache, COPY, NULL_CHN, NULL,
-								 LOG_ERROR_IF_DELETED);
+		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
+							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST)
@@ -4644,7 +4645,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			  goto error1;
 			}
 
-		      /* oid already locked at locator_lock_and_get_object_with_evaluation */
+		      /* oid already locked at locator_lock_and_get_object */
 		      error_code =
 			locator_delete_force (thread_p, &hfid, oid_ptr, true, SINGLE_ROW_DELETE, &scan_cache,
 					      &force_count, NULL, false);
@@ -4674,7 +4675,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			      goto error1;
 			    }
 			}
-		      /* oid already locked at locator_lock_and_get_object_with_evaluation */
+		      /* oid already locked at locator_lock_and_get_object */
 		      error_code =
 			locator_attribute_info_force (thread_p, &hfid, oid_ptr, &attr_info, attr_ids, index->n_atts,
 						      LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, &scan_cache, &force_count,
@@ -4934,10 +4935,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  recdes.data = NULL;
 		  /* TO DO - handle reevaluation */
 
-		  scan_code =
-		    locator_lock_and_get_object_with_evaluation (thread_p, oid_ptr, &fkref->self_oid, &recdes,
-								 &scan_cache, COPY, NULL_CHN, NULL,
-								 LOG_ERROR_IF_DELETED);
+		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
+							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST)
@@ -4985,7 +4984,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		    {
 		      assert (false);
 		    }
-		  /* oid already locked at locator_lock_and_get_object_with_evaluation */
+		  /* oid already locked at locator_lock_and_get_object */
 		  error_code =
 		    locator_attribute_info_force (thread_p, &hfid, oid_ptr, &attr_info, attr_ids, index->n_atts,
 						  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, &scan_cache, &force_count, false,
@@ -7676,20 +7675,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	      scan_cache->mvcc_snapshot = NULL;
 	    }
 
-	  if (need_locking)
-	    {
-	      scan =
-		locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY,
-							     NULL_CHN, NULL, LOG_ERROR_IF_DELETED);
-	    }
-	  else
-	    {			/* unreachable code. need_locking == false is covered above */
-	      assert ((lock_get_object_lock (oid, &class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= X_LOCK)
-		      || (lock_get_object_lock (&class_oid, oid_Root_class_oid,
-						LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
-	      scan = heap_get (thread_p, oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
-	    }
-
+	  scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, X_LOCK, COPY,
+					      NULL_CHN, LOG_ERROR_IF_DELETED);
 	  if (saved_mvcc_snapshot != NULL)
 	    {
 	      scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
