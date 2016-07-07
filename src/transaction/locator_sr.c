@@ -13341,7 +13341,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_COND_LOCK) != LK_GRANTED)
     {
       /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally */
-      heap_clean_get_context (thread_p, &context, NULL);
+      heap_clean_get_context (thread_p, context, NULL);
       if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
 	{
 	  goto error;
