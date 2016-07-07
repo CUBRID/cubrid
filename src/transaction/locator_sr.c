@@ -13329,9 +13329,6 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 	}
     }
 
-  /* the type of lock depends on the class_oid; decide it now */
-  //lock_mode = locator_decide_type_of_lock (class_oid, lock_mode, op_type);
-
   if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_COND_LOCK) != LK_GRANTED)
     {
       /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally */
@@ -13388,6 +13385,48 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
       else if (or_mvcc_get_header (context->recdes_p, &recdes_header) != NO_ERROR)
 	{
 	  goto error;
+	}
+
+      /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
+      if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
+	  && heap_check_class_for_rr_isolation_err (context->class_oid_p))
+	{
+	  /* In these isolation levels, the transaction is not allowed to modify an object that was already
+	   * modified by other transactions. This would be true if last version matched the visible version.
+	   *
+	   * TODO: We already know here that this last row version is not deleted. It would be enough to just
+	   * check whether the insert MVCCID is considered active relatively to transaction's snapshot.
+	   */
+	  MVCC_SNAPSHOT *tran_snapshot = logtb_get_mvcc_snapshot (thread_p);
+	  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
+
+	  assert (tran_snapshot != NULL && tran_snapshot->snapshot_fnc != NULL);
+	  snapshot_res = tran_snapshot->snapshot_fnc (thread_p, &recdes_header, tran_snapshot);
+	  if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
+	    {
+	      /* Not visible. */
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid_p->volid,
+		      context->oid_p->pageid, context->oid_p->slotid);
+	      scan = S_DOESNT_EXIST;
+	      goto error;
+	    }
+	  else if (snapshot_res == TOO_NEW_FOR_SNAPSHOT)
+	    {
+	      /* Trying to modify a version already modified by concurrent transaction, which is an isolation conflict.
+	       */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
+	      goto error;
+	    }
+	  else if (MVCC_IS_HEADER_DELID_VALID (&recdes_header))
+	    {
+	      /* Trying to modify version deleted by concurrent transaction, which is an isolation conflict. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
+	      goto error;
+	    }
+	  else
+	    {
+	      /* Last version is also visible version and it is not deleted. Fall through. */
+	    }
 	}
 
       if (MVCC_IS_HEADER_DELID_VALID (&recdes_header))
