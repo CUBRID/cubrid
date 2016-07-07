@@ -10828,7 +10828,7 @@ mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
 {
   OR_BUF buf;
   int charlen;
-  int rc = NO_ERROR;
+  int rc = NO_ERROR, comp_size = 0, uncomp_size = 0, length = 0;
 
   /* generally, index key-value is short enough */
   charlen = OR_GET_BYTE (memptr);
@@ -10841,9 +10841,25 @@ mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain)
 
   or_init (&buf, memptr, -1);
 
-  charlen = or_get_varchar_length (&buf, &rc);
+  rc = or_get_varchar_comp_lengths (&buf, &comp_size, &uncomp_size);
 
-  return or_varchar_length (charlen);
+  if (comp_size > 0)
+    {
+      /* 4 bytes of compressed size, 4 bytes of uncompressed size */
+      charlen = comp_size;
+    }
+  else
+    {
+      charlen = uncomp_size;
+    }
+
+  charlen += 4;
+
+  charlen += 256;
+
+  length = or_varchar_length (charlen);
+
+  return length - 256;
 }
 
 static void
