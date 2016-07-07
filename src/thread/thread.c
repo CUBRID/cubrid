@@ -1162,6 +1162,8 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->tran_entries[THREAD_TS_FREE_SORT_LIST] = lf_tran_request_entry (&free_sort_list_Ts);
   entry_p->tran_entries[THREAD_TS_GLOBAL_UNIQUE_STATS] = lf_tran_request_entry (&global_unique_stats_Ts);
   entry_p->tran_entries[THREAD_TS_HFID_TABLE] = lf_tran_request_entry (&hfid_table_Ts);
+  entry_p->tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
+  entry_p->tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
 
   entry_p->vacuum_worker = NULL;
 
@@ -2932,7 +2934,7 @@ thread_checkpoint_thread (void *arg_p)
     {
       er_clear ();
 
-      to.tv_sec = time (NULL) + prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS);
+      to.tv_sec = (int) (time (NULL) + prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS));
 
       rv = pthread_mutex_lock (&thread_Checkpoint_thread.lock);
       pthread_cond_timedwait (&thread_Checkpoint_thread.cond, &thread_Checkpoint_thread.lock, &to);
@@ -3009,14 +3011,14 @@ thread_purge_archive_logs_thread (void *arg_p)
 
       if (prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL) > 0)
 	{
-	  to.tv_sec = time (NULL);
+	  to.tv_sec = (int) time (NULL);
 	  if (to.tv_sec > last_deleted_time + prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL))
 	    {
 	      to.tv_sec += prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
 	    }
 	  else
 	    {
-	      to.tv_sec = last_deleted_time + prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
+	      to.tv_sec = (int) (last_deleted_time + prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL));
 	    }
 	}
 
@@ -5018,7 +5020,6 @@ static void
 thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int enter_mode, void *ptr)
 {
   int cs_idx;
-  int i;
   unsigned char enter_count;
 
   assert (meter != NULL);
@@ -5986,7 +5987,7 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       idx++;
 
       /* Thread_id */
-      db_make_bigint (&vals[idx], thrd->tid);
+      db_make_bigint (&vals[idx], (DB_BIGINT) thrd->tid);
       idx++;
 
       /* Tran_index */

@@ -56,6 +56,8 @@ LF_TRAN_SYSTEM free_sort_list_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM global_unique_stats_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM partition_link_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 LF_TRAN_SYSTEM hfid_table_Ts = LF_TRAN_SYSTEM_INITIALIZER;
+LF_TRAN_SYSTEM xcache_Ts = LF_TRAN_SYSTEM_INITIALIZER;
+LF_TRAN_SYSTEM fpcache_Ts = LF_TRAN_SYSTEM_INITIALIZER;
 
 static bool tran_systems_initialized = false;
 
@@ -65,6 +67,12 @@ static bool tran_systems_initialized = false;
 #define OF_GET_REF(p,o)		(void * volatile *) (((char *)(p)) + (o))
 #define OF_GET_PTR(p,o)		(void *) (((char *)(p)) + (o))
 #define OF_GET_PTR_DEREF(p,o)	(*OF_GET_REF (p,o))
+
+static int lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
+				    LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int *inserted);
+static int lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry,
+				    int *inserted);
+static int lf_hash_delete_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, int *success);
 
 /*
  * lf_callback_vpid_hash () - hash a VPID
@@ -98,7 +106,7 @@ lf_callback_vpid_compare (void *vpid_1, void *vpid_2)
 /*
  * lf_callback_vpid_copy () - copy a vpid
  *   returns: error code or NO_ERROR
- *   stc(in): source VPID
+ *   src(in): source VPID
  *   dest(in): destination to copy to
  */
 int
@@ -149,6 +157,7 @@ lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads)
       sys->entries[i].tran_system = sys;
       sys->entries[i].entry_idx = i;
       sys->entries[i].transaction_id = LF_NULL_TRANSACTION_ID;
+      sys->entries[i].did_incr = false;
       sys->entries[i].last_cleanup_id = 0;
       sys->entries[i].retired_list = NULL;
       sys->entries[i].temp_entry = NULL;
@@ -302,7 +311,7 @@ lf_tran_destroy_entry (LF_TRAN_ENTRY * entry)
  *   return: error code or NO_ERROR
  *   sys(in): tran system
  */
-int
+void
 lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys)
 {
   UINT64 minvalue = LF_NULL_TRANSACTION_ID;
@@ -328,9 +337,6 @@ lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys)
 
   /* store new minimum for later fetching */
   ATOMIC_TAS_64 (&sys->min_active_transaction_id, minvalue);
-
-  /* all ok */
-  return NO_ERROR;
 }
 
 /*
@@ -339,32 +345,31 @@ lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys)
  *   entry(in): tran entry
  *   incr(in): increment global counter?
  */
-int
+void
 lf_tran_start (LF_TRAN_ENTRY * entry, bool incr)
 {
   LF_TRAN_SYSTEM *sys;
 
   assert (entry != NULL);
   assert (entry->tran_system != NULL);
+  assert (entry->transaction_id == LF_NULL_TRANSACTION_ID || (!entry->did_incr && incr));
 
   sys = entry->tran_system;
 
-  if (incr)
+  if (incr && !entry->did_incr)
     {
       entry->transaction_id = ATOMIC_INC_64 (&sys->global_transaction_id, 1);
+      entry->did_incr = true;
 
       if (entry->transaction_id % entry->tran_system->mati_refresh_interval == 0)
 	{
-	  return lf_tran_compute_minimum_transaction_id (entry->tran_system);
+	  lf_tran_compute_minimum_transaction_id (entry->tran_system);
 	}
     }
   else
     {
       entry->transaction_id = VOLATILE_ACCESS (sys->global_transaction_id, UINT64);
     }
-
-  /* all ok */
-  return NO_ERROR;
 }
 
 /*
@@ -373,14 +378,13 @@ lf_tran_start (LF_TRAN_ENTRY * entry, bool incr)
  *   sys(in): tran system
  *   entry(in): tran entry
  */
-int
+void
 lf_tran_end (LF_TRAN_ENTRY * entry)
 {
   /* maximum value of domain */
+  assert (entry->transaction_id != LF_NULL_TRANSACTION_ID);
   entry->transaction_id = LF_NULL_TRANSACTION_ID;
-
-  /* all ok */
-  return NO_ERROR;
+  entry->did_incr = false;
 }
 
 /*
@@ -434,6 +438,18 @@ lf_initialize_transaction_systems (int max_threads)
       goto error;
     }
 
+  if (lf_tran_system_init (&xcache_Ts, max_threads) != NO_ERROR)
+    {
+      /* TODO: Could we not use an array for tran systems? */
+      goto error;
+    }
+
+  if (lf_tran_system_init (&fpcache_Ts, max_threads) != NO_ERROR)
+    {
+      /* TODO: Could we not use an array for tran systems? */
+      goto error;
+    }
+
   tran_systems_initialized = true;
   return NO_ERROR;
 
@@ -457,6 +473,8 @@ lf_destroy_transaction_systems (void)
   lf_tran_system_destroy (&global_unique_stats_Ts);
   lf_tran_system_destroy (&partition_link_Ts);
   lf_tran_system_destroy (&hfid_table_Ts);
+  lf_tran_system_destroy (&xcache_Ts);
+  lf_tran_system_destroy (&fpcache_Ts);
 
   tran_systems_initialized = false;
 }
@@ -699,11 +717,13 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
   if (tran_entry->transaction_id == LF_NULL_TRANSACTION_ID)
     {
       local_tran = true;
-      if (lf_tran_start (tran_entry, true) != NO_ERROR)
-	{
-	  return NULL;
-	}
-      MEMORY_BARRIER ();
+      /* TODO: Analyze if increment is necessary here. Vasi says it might not be necessary. */
+      lf_tran_start_with_mb (tran_entry, true);
+    }
+  else if (!tran_entry->did_incr)
+    {
+      /* TODO: Analyze if increment is necessary here. Vasi says it might not be necessary. */
+      lf_tran_start_with_mb (tran_entry, true);
     }
 
   /* clean retired list, if possible */
@@ -714,8 +734,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	  /* end local transaction */
 	  if (local_tran)
 	    {
-	      MEMORY_BARRIER ();
-	      (void) lf_tran_end (tran_entry);
+	      lf_tran_end_with_mb (tran_entry);
 	    }
 	  return NULL;
 	}
@@ -737,8 +756,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	      /* end local transaction */
 	      if (local_tran)
 		{
-		  MEMORY_BARRIER ();
-		  (void) lf_tran_end (tran_entry);
+		  lf_tran_end_with_mb (tran_entry);
 		}
 	      /* can't initialize it */
 	      return NULL;
@@ -750,8 +768,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	  /* end local transaction */
 	  if (local_tran)
 	    {
-	      MEMORY_BARRIER ();
-	      (void) lf_tran_end (tran_entry);
+	      lf_tran_end_with_mb (tran_entry);
 	    }
 
 	  /* done! */
@@ -767,8 +784,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 	      /* end local transaction */
 	      if (local_tran)
 		{
-		  MEMORY_BARRIER ();
-		  (void) lf_tran_end (tran_entry);
+		  lf_tran_end_with_mb (tran_entry);
 		}
 	      return NULL;
 	    }
@@ -806,11 +822,11 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
   if (tran_entry->transaction_id == LF_NULL_TRANSACTION_ID)
     {
       local_tran = true;
-      if (lf_tran_start (tran_entry, true) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-      MEMORY_BARRIER ();
+      lf_tran_start_with_mb (tran_entry, true);
+    }
+  else if (!tran_entry->did_incr)
+    {
+      lf_tran_start_with_mb (tran_entry, true);
     }
 
   /* do a retired list cleanup, if possible */
@@ -837,11 +853,7 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
   /* end local transaction */
   if (local_tran)
     {
-      MEMORY_BARRIER ();
-      if (lf_tran_end (tran_entry) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
+      lf_tran_end_with_mb (tran_entry);
     }
 
   return ret;
@@ -991,7 +1003,7 @@ lf_io_list_find (void **list_p, void *key, LF_ENTRY_DESCRIPTOR * edesc, void **e
       if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	{
 	  /* found! */
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
@@ -1053,7 +1065,7 @@ restart_search:
 	  if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	    {
 	      /* found! */
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	      if (edesc->using_mutex)
 		{
 		  /* entry has a mutex protecting it's members; lock it */
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
@@ -1072,7 +1084,7 @@ restart_search:
 	{
 	  /* end of bucket, we must insert */
 	  (*entry) = new_entry;
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
@@ -1082,7 +1094,7 @@ restart_search:
 	  /* attempt an add */
 	  if (!ATOMIC_CAS_ADDR (curr_p, NULL, (*entry)))
 	    {
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	      if (edesc->using_mutex)
 		{
 		  /* link failed, unlock mutex */
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
@@ -1128,13 +1140,9 @@ lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flag
   /* by default, not found */
   (*entry) = NULL;
 
-restart_search:
-  if (lf_tran_start (tran, false) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  MEMORY_BARRIER ();
+  lf_tran_start_with_mb (tran, false);
 
+restart_search:
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
 
@@ -1144,18 +1152,14 @@ restart_search:
       if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	{
 	  /* found! */
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
 
 	      /* mutex has been locked, no need to keep transaction */
-	      MEMORY_BARRIER ();
-	      if (lf_tran_end (tran) != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
+	      lf_tran_end_with_mb (tran);
 
 	      if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		{
@@ -1165,8 +1169,8 @@ restart_search:
 		  if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		    {
 		      *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-		      MEMORY_BARRIER ();
-		      return lf_tran_end (tran);
+		      lf_tran_end_with_mb (tran);
+		      return NO_ERROR;
 		    }
 		  else
 		    {
@@ -1185,11 +1189,12 @@ restart_search:
     }
 
   /* all ok but not found */
-  return lf_tran_end (tran);
+  lf_tran_end_with_mb (tran);
+  return NO_ERROR;
 }
 
 /*
- * lf_list_find_or_insert () - find or insert an entry
+ * lf_list_insert_internal () - insert an entry into latch-free list.
  *   returns: error code or NO_ERROR
  *   tran(in): lock free transaction system
  *   list_p(in): address of list head
@@ -1197,14 +1202,30 @@ restart_search:
  *   behavior_flags(in/out): flags that control restart behavior
  *   edesc(in): entry descriptor
  *   freelist(in): freelist to fetch new entries from
- *   entry(out): found entry or inserted entry
+ *   entry(in/out): found entry or inserted entry
+ *   inserted(out): returns 1 if inserted, 0 if found or not inserted.
  *
- * NOTE: This function will search for an entry with the specified key; if none
- * is found, it will add the entry in the hash table and return it in "entry".
+ * Behavior flags:
+ *
+ * LF_LIST_BF_RETURN_ON_RESTART - When insert fails because last entry in bucket was deleted, if this flag is set,
+ *				  then the operation is restarted from here, instead of looping inside
+ *				  lf_list_insert_internal (as a consequence, hash key is recalculated).
+ *				  NOTE: Currently, this flag is always used (I must find out why).
+ *
+ * LF_LIST_BF_INSERT_GIVEN	- If this flag is set, the caller means to force its own entry into hash table.
+ *				  When the flag is not set, a new entry is claimed from freelist.
+ *				  NOTE: If an entry with the same key already exists, the entry given as argument is
+ *					automatically retired.
+ *
+ * LF_LIST_BF_FIND_OR_INSERT	- If this flag is set and an entry for the same key already exists, the existing
+ *				  key will be output. If the flag is not set and key exists, insert just gives up
+ *				  and a NULL entry is output.
+ *				  NOTE: insert will not give up when key exists, if edesc->f_update is provided.
+ *					a new key is generated and insert is restarted.
  */
-int
-lf_list_find_or_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
-			LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry)
+static int
+lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
+			 LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int *inserted)
 {
   pthread_mutex_t *entry_mutex;
   void **curr_p;
@@ -1215,50 +1236,47 @@ lf_list_find_or_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *beh
   assert (list_p != NULL && edesc != NULL);
   assert (key != NULL && entry != NULL);
   assert (freelist != NULL);
+  assert (behavior_flags != NULL);
 
-  /* by default, not found */
-  (*entry) = NULL;
+  assert ((*entry != NULL) == LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN));
+
+  if (inserted != NULL)
+    {
+      *inserted = 0;
+    }
+
+  lf_tran_start_with_mb (tran, false);
 
 restart_search:
-  if (lf_tran_start (tran, false) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  MEMORY_BARRIER ();
-
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
 
   /* search */
   while (curr_p != NULL)
     {
-      /* is this the droid we are looking for? */
       if (curr != NULL)
 	{
 	  if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	    {
-	      if ((*entry) != NULL)
+	      /* found an entry with the same key. */
+
+	      if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN) && entry != NULL)
 		{
-		  /* save this for further (local) use */
+		  /* save this for further (local) use. */
 		  tran->temp_entry = *entry;
 
-		  /* this operation may fail as well, so don't keep the entry around */
-		  (*entry) = NULL;
+		  /* don't keep the entry around. */
+		  *entry = NULL;
 		}
 
-	      /* found! */
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	      if (edesc->using_mutex)
 		{
 		  /* entry has a mutex protecting it's members; lock it */
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 		  rv = pthread_mutex_lock (entry_mutex);
 
 		  /* mutex has been locked, no need to keep transaction alive */
-		  MEMORY_BARRIER ();
-		  if (lf_tran_end (tran) != NO_ERROR)
-		    {
-		      return ER_FAILED;
-		    }
+		  lf_tran_end_with_mb (tran);
 
 		  if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		    {
@@ -1268,8 +1286,7 @@ restart_search:
 		      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 			{
 			  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-			  MEMORY_BARRIER ();
-			  return lf_tran_end (tran);
+			  return NO_ERROR;
 			}
 		      else
 			{
@@ -1278,8 +1295,70 @@ restart_search:
 		    }
 		}
 
-	      assert (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0);
-	      (*entry) = curr;
+	      if (edesc->f_duplicate != NULL)
+		{
+		  /* we have a duplicate key callback. */
+		  if (edesc->f_duplicate (key, curr) != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      lf_tran_end_with_mb (tran);
+		      return NO_ERROR;
+		    }
+#if 1
+		  LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
+		  lf_tran_end_with_mb (tran);
+		  return NO_ERROR;
+#else /* !1 = 0 */
+		  /* Could we have such cases that we just update existing entry without modifying anything else?
+		   * And would it be usable with just a flag?
+		   * Then this code may be used.
+		   * So far we have only one usage for f_duplicate, which increment SESSION_ID and requires
+		   * restarting hash search. This will be the usual approach if f_duplicate.
+		   * If we just increment a counter in existing entry, we don't need to do anything else. This however
+		   * most likely depends on f_duplicate implementation. Maybe it is more useful to give behavior_flags
+		   * argument to f_duplicate to tell us if restart is or is not needed.
+		   */
+		  if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_RESTART_ON_DUPLICATE))
+		    {
+		      LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
+		      lf_tran_end_with_mb (tran);
+		      return NO_ERROR;
+		    }
+		  else
+		    {
+		      /* duplicate does not require restarting search. */
+		      if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN))
+			{
+			  /* Could not be inserted. Retire the entry. */
+			  lf_freelist_retire (tran, freelist, *entry);
+			  *entry = NULL;
+			}
+
+		      /* fall through to output current entry. */
+		    }
+#endif /* 0 */
+		}
+	      else
+		{
+		  if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN))
+		    {
+		      /* the given entry could not be inserted. retire it. */
+		      lf_freelist_retire (tran, freelist, *entry);
+		      *entry = NULL;
+		    }
+
+		  if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_FIND_OR_INSERT))
+		    {
+		      /* found entry is not accepted */
+		      lf_tran_end_with_mb (tran);
+		      return NO_ERROR;
+		    }
+
+		  /* fall through to output current entry. */
+		}
+
+	      assert (*entry == NULL);
+	      *entry = curr;
 	      return NO_ERROR;
 	    }
 
@@ -1290,22 +1369,16 @@ restart_search:
       else
 	{
 	  /* end of bucket, we must insert */
-	  if ((*entry) == NULL)
+	  if (*entry == NULL)
 	    {
-	      if (tran->temp_entry != NULL)
+	      assert (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN));
+
+	      *entry = lf_freelist_claim (tran, freelist);
+	      if (*entry == NULL)
 		{
-		  *entry = tran->temp_entry;
-		  tran->temp_entry = NULL;
+		  assert (false);
+		  return ER_FAILED;
 		}
-	      else
-		{
-		  *entry = lf_freelist_claim (tran, freelist);
-		  if (*entry == NULL)
-		    {
-		      return ER_FAILED;
-		    }
-		}
-	      assert ((*entry) != NULL);
 
 	      /* set it's key */
 	      if (edesc->f_key_copy (key, OF_GET_PTR (*entry, edesc->of_key)) != NO_ERROR)
@@ -1314,7 +1387,7 @@ restart_search:
 		}
 	    }
 
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
@@ -1324,7 +1397,7 @@ restart_search:
 	  /* attempt an add */
 	  if (!ATOMIC_CAS_ADDR (curr_p, NULL, (*entry)))
 	    {
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	      if (edesc->using_mutex)
 		{
 		  /* link failed, unlock mutex */
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
@@ -1332,16 +1405,16 @@ restart_search:
 		}
 
 	      /* someone added before us, restart process */
-	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
+	      if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_RETURN_ON_RESTART))
 		{
-		  if (*entry != NULL)
+		  if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN))
 		    {
 		      tran->temp_entry = *entry;
 		      *entry = NULL;
 		    }
-		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-		  MEMORY_BARRIER ();
-		  return lf_tran_end (tran);
+		  LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
+		  lf_tran_end_with_mb (tran);
+		  return NO_ERROR;
 		}
 	      else
 		{
@@ -1350,182 +1423,22 @@ restart_search:
 	    }
 
 	  /* end transaction if mutex is acquired */
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
-	      MEMORY_BARRIER ();
-	      if (lf_tran_end (tran) != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
+	      lf_tran_end_with_mb (tran);
+	    }
+	  if (inserted)
+	    {
+	      *inserted = 1;
 	    }
 
 	  /* done! */
 	  return NO_ERROR;
+
 	}
     }
 
   /* impossible case */
-  assert (false);
-  return ER_FAILED;
-}
-
-/*
- * lf_list_insert () - insert an entry into a list
- *   returns: error code or NO_ERROR
- *   tran(in): lock free transaction system
- *   list_p(in): address of list head
- *   key(in): key to insert
- *   behavior_flags(in/out): flags that control restart behavior
- *   edesc(in): entry descriptor
- *   freelist(in): freelist to fetch new entries from
- *   entry(out): entry (if found) or NULL
- *   inserted_count(out): number of inserted entries (will return 0 on restart)
- *
- * NOTE: If key already exists, the function will call f_duplicate of the entry
- * descriptor and then retry the insert. If f_duplicate is NULL or does not
- * modify the key then it will consequently spin until the entry with the given
- * key is removed;
- * NOTE: The default use case would be for f_duplicate to increment the key.
- */
-int
-lf_list_insert (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
-		LF_FREELIST * freelist, void **entry, int *inserted_count)
-{
-  pthread_mutex_t *entry_mutex;
-  void **curr_p;
-  void *curr;
-  int rv;
-
-  assert (tran != NULL);
-  assert (list_p != NULL && edesc != NULL);
-  assert (key != NULL && entry != NULL);
-  assert (inserted_count != NULL);
-  assert (freelist != NULL);
-
-  *inserted_count = 0;
-
-  if (tran->temp_entry != NULL)
-    {
-      *entry = tran->temp_entry;
-      tran->temp_entry = NULL;
-    }
-  else
-    {
-      *entry = lf_freelist_claim (tran, freelist);
-    }
-  if ((*entry) == NULL)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-restart_search:
-  if (lf_tran_start (tran, false) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  MEMORY_BARRIER ();
-
-  curr_p = list_p;
-  curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
-
-  /* search */
-  while (curr_p != NULL)
-    {
-      if (curr != NULL)
-	{
-	  if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
-	    {
-	      /* found an entry with the same key */
-	      if (edesc->f_duplicate != NULL)
-		{
-		  /* we have duplicate key callback */
-		  if (edesc->f_duplicate (key, curr) != NO_ERROR)
-		    {
-		      return ER_FAILED;
-		    }
-
-		  if (*behavior_flags & LF_LIST_BF_RETURN_ON_DUPLICATE)
-		    {
-		      *behavior_flags = (*behavior_flags) | LF_LIST_BR_DUPLICATE;
-		      MEMORY_BARRIER ();
-		      return lf_tran_end (tran);
-		    }
-		}
-
-	      /* retry insert */
-	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
-		{
-		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-		  MEMORY_BARRIER ();
-		  return lf_tran_end (tran);
-		}
-	      else
-		{
-		  goto restart_search;
-		}
-	    }
-
-	  /* advance */
-	  curr_p = (void **) OF_GET_REF (curr, edesc->of_next);
-	  curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
-	}
-      else
-	{
-	  /* end of bucket, we must insert */
-	  /* set entry's key */
-	  if (edesc->f_key_copy (key, OF_GET_PTR (*entry, edesc->of_key)) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
-	    {
-	      /* entry has a mutex protecting it's members; lock it */
-	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
-	      rv = pthread_mutex_lock (entry_mutex);
-	    }
-
-	  /* attempt an add */
-	  if (!ATOMIC_CAS_ADDR (curr_p, NULL, (*entry)))
-	    {
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
-		{
-		  /* link failed, unlock mutex */
-		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
-		  pthread_mutex_unlock (entry_mutex);
-		}
-
-	      /* someone added or deleted before us, restart process */
-	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
-		{
-		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-		  MEMORY_BARRIER ();
-		  return lf_tran_end (tran);
-		}
-	      else
-		{
-		  goto restart_search;
-		}
-	    }
-
-	  /* end transaction if we have mutex acquired */
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
-	    {
-	      MEMORY_BARRIER ();
-	      if (lf_tran_end (tran) != NO_ERROR)
-		{
-		  return ER_FAILED;
-		}
-	    }
-
-	  /* done! */
-	  *inserted_count = 1;
-	  return NO_ERROR;
-	}
-    }
-
-  /* all not ok */
   assert (false);
   return ER_FAILED;
 }
@@ -1560,14 +1473,10 @@ lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_fl
   assert (freelist != NULL);
   assert (tran != NULL && tran->tran_system != NULL);
 
-restart_search:
-  if (lf_tran_start (tran, false) != NO_ERROR)
-    {
-/* read transaction; we start a write transaction only after remove */
-      return ER_FAILED;
-    }
-  MEMORY_BARRIER ();
+  /* read transaction; we start a write transaction only after remove */
+  lf_tran_start_with_mb (tran, false);
 
+restart_search:
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
 
@@ -1589,8 +1498,8 @@ restart_search:
 		{
 		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		  assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
-		  MEMORY_BARRIER ();
-		  return lf_tran_end (tran);
+		  lf_tran_end_with_mb (tran);
+		  return NO_ERROR;
 		}
 	      else
 		{
@@ -1599,7 +1508,7 @@ restart_search:
 	    }
 
 	  /* lock mutex if necessary */
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE)
+	  if (edesc->using_mutex && LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
 	    {
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
@@ -1611,7 +1520,7 @@ restart_search:
 	  if (!ATOMIC_CAS_ADDR (curr_p, curr, next))
 	    {
 	      /* unlink failed; first step is to remove lock (if applicable) */
-	      if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE)
+	      if (edesc->using_mutex && LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
 		{
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 		  pthread_mutex_unlock (entry_mutex);
@@ -1628,8 +1537,8 @@ restart_search:
 		{
 		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		  assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
-		  MEMORY_BARRIER ();
-		  return lf_tran_end (tran);
+		  lf_tran_end_with_mb (tran);
+		  return NO_ERROR;
 		}
 	      else
 		{
@@ -1638,18 +1547,14 @@ restart_search:
 	    }
 
 	  /* unlock mutex if necessary */
-	  if (edesc->mutex_flags & LF_EM_FLAG_UNLOCK_AFTER_DELETE)
+	  if (edesc->using_mutex)
 	    {
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      pthread_mutex_unlock (entry_mutex);
 	    }
 
 	  MEMORY_BARRIER ();
-	  if (lf_tran_start (tran, true) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	  MEMORY_BARRIER ();
+	  lf_tran_start_with_mb (tran, true);
 
 	  /* now we can feed the entry to the freelist and forget about it */
 	  if (lf_freelist_retire (tran, freelist, curr) != NO_ERROR)
@@ -1658,11 +1563,7 @@ restart_search:
 	    }
 
 	  /* end the transaction */
-	  MEMORY_BARRIER ();
-	  if (lf_tran_end (tran) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
+	  lf_tran_end_with_mb (tran);
 
 	  /* set success flag */
 	  if (success != NULL)
@@ -1680,11 +1581,7 @@ restart_search:
     }
 
   /* search yielded no result so no delete was performed */
-  MEMORY_BARRIER ();
-  if (lf_tran_end (tran) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
+  lf_tran_end_with_mb (tran);
   return NO_ERROR;
 }
 
@@ -1843,27 +1740,54 @@ restart:
 }
 
 /*
- * lf_hash_find_or_insert () - find or insert an entry in the hash table
+ * lf_hash_insert_internal () - hash insert function.
  *   returns: error code or NO_ERROR
  *   tran(in): LF transaction entry
  *   table(in): hash table
  *   key(in): key of entry that we seek
+ *   bflags(in): behavior flags
  *   entry(out): existing or new entry
+ *   inserted(out): returns 1 if inserted, 0 if found or not inserted.
  *
+ * Behavior flags:
+ *
+ * LF_LIST_BF_RETURN_ON_RESTART - When insert fails because last entry in bucket was deleted, if this flag is set,
+ *				  then the operation is restarted from here, instead of looping inside
+ *				  lf_list_insert_internal (as a consequence, hash key is recalculated).
+ *				  NOTE: Currently, this flag is always used (I must find out why).
+ *
+ * LF_LIST_BF_INSERT_GIVEN	- If this flag is set, the caller means to force its own entry into hash table.
+ *				  When the flag is not set, a new entry is claimed from freelist.
+ *				  NOTE: If an entry with the same key already exists, the entry given as argument is
+ *					automatically retired.
+ *
+ * LF_LIST_BF_FIND_OR_INSERT	- If this flag is set and an entry for the same key already exists, the existing
+ *				  key will be output. If the flag is not set and key exists, insert just gives up
+ *				  and a NULL entry is output.
+ *				  NOTE: insert will not give up when key exists, if edesc->f_update is provided.
+ *					a new key is generated and insert is restarted.
  */
-int
-lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry)
+static int
+lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry,
+			 int *inserted)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   unsigned int hash_value;
-  int rc, bflags;
+  int rc;
 
   assert (table != NULL && key != NULL && entry != NULL);
   edesc = table->entry_desc;
   assert (edesc != NULL);
 
 restart:
-  *entry = NULL;
+  if (LF_LIST_BF_IS_FLAG_SET (&bflags, LF_LIST_BF_INSERT_GIVEN))
+    {
+      assert (*entry != NULL);
+    }
+  else
+    {
+      *entry = NULL;
+    }
   hash_value = edesc->f_hash (key, table->hash_size);
   if (hash_value >= table->hash_size)
     {
@@ -1871,10 +1795,11 @@ restart:
       return ER_FAILED;
     }
 
-  bflags = LF_LIST_BF_RETURN_ON_RESTART;
-  rc = lf_list_find_or_insert (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, entry);
+  rc =
+    lf_list_insert_internal (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, entry, inserted);
   if ((rc == NO_ERROR) && (bflags & LF_LIST_BR_RESTARTED))
     {
+      bflags &= ~LF_LIST_BR_RESTARTED;
       goto restart;
     }
   else
@@ -1884,47 +1809,91 @@ restart:
 }
 
 /*
- * lf_hash_insert () - insert a new entry with a specified key
+ * lf_hash_find_or_insert () - find or insert an entry in the hash table
+ *   returns: error code or NO_ERROR
+ *   tran(in): LF transaction entry
+ *   table(in): hash table
+ *   key(in): key of entry that we seek
+ *   entry(out): existing or new entry
+ *   inserted(out): returns 1 if inserted, 0 if found or not inserted.
+ *
+ */
+int
+lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted)
+{
+  return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_FIND_OR_INSERT, entry,
+				  inserted);
+}
+
+/*
+ * lf_hash_insert () - insert a new entry with a specified key.
  *   returns: error code or NO_ERROR
  *   tran(in): LF transaction entry
  *   table(in): hash table
  *   key(in): key of entry to insert
  *   entry(out): new entry
+ *   inserted(out): returns 1 if inserted, 0 if found or not inserted.
  *
  */
 int
-lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry)
+lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted)
 {
-  LF_ENTRY_DESCRIPTOR *edesc;
-  unsigned int hash_value;
-  int inserted_count = 0, err = NO_ERROR, bflags;
-
-  assert (table != NULL && key != NULL && entry != NULL);
-  edesc = table->entry_desc;
-  assert (edesc != NULL);
-  *entry = NULL;
-
-  while (inserted_count == 0)
-    {
-      /* if duplicate is found then key may have been modified, so rehashing is necessary */
-      hash_value = edesc->f_hash (key, table->hash_size);
-      if (hash_value >= table->hash_size)
-	{
-	  assert (false);
-	  return ER_FAILED;
-	}
-
-      bflags = LF_LIST_BF_RETURN_ON_DUPLICATE | LF_LIST_BF_RETURN_ON_RESTART;
-      if (lf_list_insert
-	  (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, entry, &inserted_count) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
-
-  /* all ok */
-  return NO_ERROR;
+  return lf_hash_insert_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART, entry, inserted);
 }
+
+/*
+ * lf_hash_insert_given () - insert entry given as argument. if same key exists however, replace it with existing key.
+ *   returns: error code or NO_ERROR
+ *   tran(in): LF transaction entry
+ *   table(in): hash table
+ *   key(in): key of entry to insert
+ *   entry(in/out): new entry
+ *   inserted(out): returns 1 if inserted, 0 if found or not inserted.
+ *
+ */
+int
+lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted)
+{
+  assert (entry != NULL && *entry != NULL);
+  return lf_hash_insert_internal (tran, table, key,
+				  LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_INSERT_GIVEN | LF_LIST_BF_FIND_OR_INSERT,
+				  entry, inserted);
+}
+
+/*
+ * lf_hash_delete_already_locked () - Delete hash entry without locking mutex.
+ *
+ * return	 : error code or NO_ERROR
+ * tran (in)	 : LF transaction entry
+ * table (in)	 : hash table
+ * key (in)	 : key to seek
+ * success (out) : 1 if entry is deleted, 0 otherwise
+ *
+ * NOTE: Careful when calling this function. The typical scenario to call this function is to first find entry using
+ *	 lf_hash_find and then call lf_hash_delete on the found entry.
+ * NOTE: lf_hash_delete_already_locks and lf_hash_delete have identical behavior is entries do not have mutexes.
+ */
+int
+lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success)
+{
+  return lf_hash_delete_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART, success);
+}
+
+/*
+ * lf_hash_delete () - Delete hash entry. If the entries have mutex, it will lock the mutex before deleting.
+ *
+ * return	 : error code or NO_ERROR
+ * tran (in)	 : LF transaction entry
+ * table (in)	 : hash table
+ * key (in)	 : key to seek
+ * success (out) : 1 if entry is deleted, 0 otherwise
+ */
+int
+lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success)
+{
+  return lf_hash_delete_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_LOCK_ON_DELETE, success);
+}
+
 
 /*
  * lf_hash_delete () - delete an entry from the hash table
@@ -1932,13 +1901,14 @@ lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **e
  *   tran(in): LF transaction entry
  *   table(in): hash table
  *   key(in): key to seek
+ *   success(out): 1 if entry is deleted, 0 otherwise.
  */
-int
-lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success)
+static int
+lf_hash_delete_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, int *success)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   unsigned int hash_value;
-  int rc, bflags;
+  int rc;
 
   assert (table != NULL && key != NULL);
   edesc = table->entry_desc;
@@ -1956,7 +1926,6 @@ restart:
       return ER_FAILED;
     }
 
-  bflags = LF_LIST_BF_RETURN_ON_RESTART;
   rc = lf_list_delete (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, success);
   if ((rc == NO_ERROR) && (bflags & LF_LIST_BR_RESTARTED))
     {
@@ -2032,7 +2001,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 	  while (!ATOMIC_CAS_ADDR (next_p, next, ADDR_WITH_MARK (next)));
 
 	  /* wait for mutex */
-	  if ((edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND) || (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE))
+	  if (edesc->using_mutex)
 	    {
 	      mutex_p = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 
@@ -2065,12 +2034,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
   if (ret_head != NULL)
     {
       /* reuse entries */
-      if (lf_tran_start (tran, true) != NO_ERROR)
-	{
-	  pthread_mutex_unlock (&table->backbuffer_mutex);
-	  return ER_FAILED;
-	}
-      MEMORY_BARRIER ();
+      lf_tran_start_with_mb (tran, true);
 
       for (curr = ret_head; curr != NULL; curr = OF_GET_PTR_DEREF (curr, edesc->of_local_next))
 	{
@@ -2083,12 +2047,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 
       ATOMIC_INC_32 (&table->freelist->retired_cnt, ret_count);
 
-      MEMORY_BARRIER ();
-      if (lf_tran_end (tran) != NO_ERROR)
-	{
-	  pthread_mutex_unlock (&table->backbuffer_mutex);
-	  return ER_FAILED;
-	}
+      lf_tran_end_with_mb (tran);
     }
 
   /* unlock mutex and return to caller */
@@ -2145,7 +2104,7 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
       /* save current leader as trailer */
       if (it->curr != NULL)
 	{
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      /* follow house rules: lock mutex */
 	      pthread_mutex_t *mx;
@@ -2161,20 +2120,11 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
       else
 	{
 	  /* reset transaction for each bucket */
-	  MEMORY_BARRIER ();
-	  if (lf_tran_end (tran_entry) != NO_ERROR)
+	  if (it->bucket_index >= 0)
 	    {
-	      /* should not happen */
-	      assert (false);
-	      return NULL;
+	      lf_tran_end_with_mb (tran_entry);
 	    }
-	  if (lf_tran_start (tran_entry, false) != NO_ERROR)
-	    {
-	      /* should not happen */
-	      assert (false);
-	      return NULL;
-	    }
-	  MEMORY_BARRIER ();
+	  lf_tran_start_with_mb (tran_entry, false);
 
 	  /* load next bucket */
 	  it->bucket_index++;
@@ -2186,19 +2136,14 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 	  else
 	    {
 	      /* end */
-	      MEMORY_BARRIER ();
-	      if (lf_tran_end (tran_entry) != NO_ERROR)
-		{
-		  /* nothing we can report here, but shouldn't happen */
-		  assert (false);
-		}
+	      lf_tran_end_with_mb (tran_entry);
 	      return NULL;
 	    }
 	}
 
       if (it->curr != NULL)
 	{
-	  if (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND)
+	  if (edesc->using_mutex)
 	    {
 	      pthread_mutex_t *mx;
 	      int rv;

@@ -74,10 +74,12 @@ prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
     }
 
   /* send XASL stream to the server and get XASL_ID */
-  if (qmgr_prepare_query (context, stream, ws_identifier (db_get_user ())) == NULL)
+  ret = qmgr_prepare_query (context, stream);
+  if (ret != NO_ERROR)
     {
       free_and_init (stream->xasl_id);
-      return ((ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+      ASSERT_ERROR ();
+      return ret;
     }
 
   /* if the query is not found in the cache */

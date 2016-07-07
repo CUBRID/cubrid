@@ -1144,7 +1144,7 @@ csql_string_to_plain_string (const char *string_value, int length, int *result_l
       return NULL;
     }
 
-  ptr = string_value;
+  ptr = (char *) string_value;
   while (*ptr != '\0')
     {
       if (*ptr == '\t' || *ptr == '\n' || *ptr == '\\')

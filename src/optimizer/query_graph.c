@@ -5948,7 +5948,7 @@ qo_discover_edges (QO_ENV * env)
 static void
 qo_classify_outerjoin_terms (QO_ENV * env)
 {
-  bool is_null_padded, found_left, found_right;
+  bool is_null_padded;
   int n, i, t;
   BITSET_ITERATOR iter;
   QO_NODE *node, *on_node;

@@ -9696,7 +9696,7 @@ pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
       goto exit_on_error;
     }
 
-  return buf->ptr - buf->buffer;
+  return CAST_BUFLEN (buf->ptr - buf->buffer);
 
 exit_on_error:
 
@@ -9776,7 +9776,7 @@ int
 pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
 {
   DB_MIDXKEY *midx_key;
-  int i, start, offset, size;
+  int i, start, offset;
 
   midx_key = DB_PULL_MIDXKEY (key);
 

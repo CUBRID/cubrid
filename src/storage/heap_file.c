@@ -25188,7 +25188,7 @@ heap_initialize_hfid_table (void)
   edesc->of_del_tran_id = offsetof (HEAP_HFID_TABLE_ENTRY, del_id);
   edesc->of_key = offsetof (HEAP_HFID_TABLE_ENTRY, class_oid);
   edesc->of_mutex = 0;
-  edesc->mutex_flags = LF_EM_NOT_USING_MUTEX;
+  edesc->using_mutex = LF_EM_NOT_USING_MUTEX;
   edesc->f_alloc = heap_hfid_table_entry_alloc;
   edesc->f_free = heap_hfid_table_entry_free;
   edesc->f_init = heap_hfid_table_entry_init;
@@ -25390,7 +25390,8 @@ heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, 
       return NO_ERROR;
     }
 
-  error_code = lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry);
+  error_code =
+    lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -25399,7 +25400,7 @@ heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, 
   assert (entry->hfid.hpgid == NULL_PAGEID);
 
   HFID_COPY (&entry->hfid, hfid);
-  (void) lf_tran_end (t_entry);
+  lf_tran_end_with_mb (t_entry);
 
   /* Successfully cached. */
   return NO_ERROR;
@@ -25425,8 +25426,8 @@ heap_get_hfid_from_cache (THREAD_ENTRY * thread_p, const OID * class_oid, HFID *
 
   assert (class_oid != NULL);
 
-  error_code = lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry);
-
+  error_code =
+    lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -25451,7 +25452,7 @@ heap_get_hfid_from_cache (THREAD_ENTRY * thread_p, const OID * class_oid, HFID *
       HFID_SET_NULL (hfid);
     }
 
-  (void) lf_tran_end (t_entry);
+  lf_tran_end_with_mb (t_entry);
   return error_code;
 }
 

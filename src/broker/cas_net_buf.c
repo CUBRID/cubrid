@@ -279,7 +279,9 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code, cha
   char msg_buf[1024];
 #endif
 #ifndef LIBCAS_FOR_JSP
+#if defined(CAS_CUBRID) || defined(CAS_FOR_MYSQL) || defined(CAS_FOR_ORACLE)
   T_BROKER_VERSION ver;
+#endif /* CAS_CUBRID || CAS_FOR_MYSQL || CAS_FOR_ORACLE */
 #endif /* !LIBCAS_FOR_JSP */
   size_t err_msg_len = 0;
   char err_msg[ERR_MSG_LENGTH];
@@ -324,7 +326,7 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code, cha
     }
   else
     {
-      net_buf_cp_str (net_buf, err_msg, err_msg_len + 1);
+      net_buf_cp_str (net_buf, err_msg, (int) err_msg_len + 1);
     }
 }
 

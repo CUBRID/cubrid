@@ -1619,7 +1619,7 @@ static int btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF 
 				   BTREE_OBJECT_INFO * btree_obj, MVCCID tran_mvccid, LOG_LSA * reference_lsa);
 
 static MVCCID btree_get_creator_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR root_page);
-static int btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, RECDES *ovf_record,
+static int btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, RECDES * ovf_record,
 					 char *initial_oid_ptr, char *oid_ptr_lower_bound, char *oid_ptr_upper_bound,
 					 BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
 					 int *offset_to_object, BTREE_MVCC_INFO * mvcc_info);
@@ -3694,8 +3694,7 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
 
   if (rv_undo_data_ptr != NULL && *rv_undo_data_ptr != NULL)
     {
-      *rv_undo_data_ptr =
-	log_rv_pack_undo_record_changes (*rv_undo_data_ptr, offset_to_object, 0, size, oid_ptr);
+      *rv_undo_data_ptr = log_rv_pack_undo_record_changes (*rv_undo_data_ptr, offset_to_object, 0, size, oid_ptr);
     }
 
   /* oid_ptr points to the address where the new object should be saved */
@@ -3711,8 +3710,7 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
   /* Log redo changes. */
   if (rv_redo_data_ptr != NULL && *rv_redo_data_ptr != NULL)
     {
-      *rv_redo_data_ptr =
-	log_rv_pack_redo_record_changes (*rv_redo_data_ptr, offset_to_object, 0, size, oid_ptr);
+      *rv_redo_data_ptr = log_rv_pack_redo_record_changes (*rv_redo_data_ptr, offset_to_object, 0, size, oid_ptr);
     }
 
   if (offset_to_objptr != NULL)
@@ -12247,7 +12245,7 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
  */
 static int
 btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
-			      RECDES *ovf_record, char *initial_oid_ptr, char *oid_ptr_lower_bound,
+			      RECDES * ovf_record, char *initial_oid_ptr, char *oid_ptr_lower_bound,
 			      char *oid_ptr_upper_bound, BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
 			      int *offset_to_object, BTREE_MVCC_INFO * mvcc_info)
 {
@@ -12296,7 +12294,7 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
 	  return NO_ERROR;
 	}
 
-      oid_ptr -= obj_size; 
+      oid_ptr -= obj_size;
     }
 
   /* check next OIDs */
@@ -12337,11 +12335,10 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
 	  return NO_ERROR;
 	}
 
-      oid_ptr += obj_size; 
+      oid_ptr += obj_size;
     }
 
   return NO_ERROR;
-  
 }
 
 /*
@@ -22399,7 +22396,7 @@ btree_clear_mvcc_flags_from_oid (OID * oid)
  * mem_btid2 (in) : Pointer to second btid value.
  */
 int
-btree_compare_btids (const void *mem_btid1, const void *mem_btid2)
+btree_compare_btids (void *mem_btid1, void *mem_btid2)
 {
   const BTID *btid1 = (const BTID *) mem_btid1;
   const BTID *btid2 = (const BTID *) mem_btid2;
@@ -34041,4 +34038,17 @@ btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
+}
+
+/*
+ * btree_hash_btid () - Create hash value from btid.
+ *
+ * return	  : Hash value
+ * btid (in)	  : Pointer to b-tree ID.
+ * hash_size (in) : Hash size.
+ */
+unsigned int
+btree_hash_btid (void *btid, int hash_size)
+{
+  return ((BTID *) btid)->vfid.fileid % hash_size;
 }

@@ -306,17 +306,13 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_AUTO_RESTART_SERVER "auto_restart_server"
 
-#define PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES "max_plan_cache_entries"
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-#define PRM_NAME_XASL_MAX_PLAN_CACHE_CLONES "max_plan_cache_clones"
-#endif /* ENABLE_UNUSED_FUNCTION */
+#define PRM_NAME_XASL_CACHE_MAX_ENTRIES "max_plan_cache_entries"
+#define PRM_NAME_XASL_CACHE_MAX_CLONES "max_plan_cache_clones"
+#define PRM_NAME_XASL_CACHE_TIMEOUT "plan_cache_timeout"
+#define PRM_NAME_XASL_CACHE_LOGGING "plan_cache_logging"
 
 #define PRM_NAME_FILTER_PRED_MAX_CACHE_ENTRIES "max_filter_pred_cache_entries"
-
 #define PRM_NAME_FILTER_PRED_MAX_CACHE_CLONES "max_filter_pred_cache_clones"
-
-#define PRM_NAME_XASL_PLAN_CACHE_TIMEOUT "plan_cache_timeout"
 
 #define PRM_NAME_LIST_QUERY_CACHE_MODE "query_cache_mode"
 
@@ -1266,15 +1262,23 @@ bool PRM_AUTO_RESTART_SERVER = true;
 static bool prm_auto_restart_server_default = true;
 static unsigned int prm_auto_restart_server_flag = 0;
 
-int PRM_XASL_MAX_PLAN_CACHE_ENTRIES = 1000;
-static int prm_xasl_max_plan_cache_entries_default = 1000;
-static unsigned int prm_xasl_max_plan_cache_entries_flag = 0;
+int PRM_XASL_CACHE_MAX_ENTRIES = 1000;
+static int prm_xasl_cache_max_entries_default = 1000;
+static unsigned int prm_xasl_cache_max_entries_flag = 0;
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-int PRM_XASL_MAX_PLAN_CACHE_CLONES = -1;
-static int prm_xasl_max_plan_cache_clones_default = -1;	/* disabled */
-static unsigned int prm_xasl_max_plan_cache_clones_flag = 0;
-#endif /* ENABLE_UNUSED_FUNCTION */
+int PRM_XASL_CACHE_MAX_CLONES = 1000;
+static int prm_xasl_cache_max_clones_default = 0;
+static int prm_xasl_cache_max_clones_lower = 0;
+static int prm_xasl_cache_max_clones_upper = 2000;
+static unsigned int prm_xasl_cache_max_clones_flag = 0;
+
+int PRM_XASL_CACHE_TIMEOUT = -1;
+static int prm_xasl_cache_timeout_default = -1;	/* infinity */
+static unsigned int prm_xasl_cache_timeout_flag = 0;
+
+bool PRM_XASL_CACHE_LOGGING = false;
+static bool prm_xasl_cache_logging_default = false;
+static unsigned int prm_xasl_cache_logging_flag = 0;
 
 int PRM_FILTER_PRED_MAX_CACHE_ENTRIES = 1000;
 static int prm_filter_pred_max_cache_entries_default = 1000;
@@ -1283,10 +1287,6 @@ static unsigned int prm_filter_pred_max_cache_entries_flag = 0;
 int PRM_FILTER_PRED_MAX_CACHE_CLONES = 10;
 static int prm_filter_pred_max_cache_clones_default = 10;
 static unsigned int prm_filter_pred_max_cache_clones_flag = 0;
-
-int PRM_XASL_PLAN_CACHE_TIMEOUT = -1;
-static int prm_xasl_plan_cache_timeout_default = -1;	/* infinity */
-static unsigned int prm_xasl_plan_cache_timeout_flag = 0;
 
 int PRM_LIST_QUERY_CACHE_MODE = 0;
 static int prm_list_query_cache_mode_default = 0;	/* disabled */
@@ -3100,28 +3100,48 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES,
+  {PRM_NAME_XASL_CACHE_MAX_ENTRIES,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_INTEGER,
-   (void *) &prm_xasl_max_plan_cache_entries_flag,
-   (void *) &prm_xasl_max_plan_cache_entries_default,
-   (void *) &PRM_XASL_MAX_PLAN_CACHE_ENTRIES,
+   (void *) &prm_xasl_cache_max_entries_flag,
+   (void *) &prm_xasl_cache_max_entries_default,
+   (void *) &PRM_XASL_CACHE_MAX_ENTRIES,
+   /* TODO: define a maximum value. We cannot have any size hash table. */
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-#if defined (ENABLE_UNUSED_FUNCTION)
-  {PRM_NAME_XASL_MAX_PLAN_CACHE_CLONES,
-   (PRM_HIDDEN),
+  {PRM_NAME_XASL_CACHE_MAX_CLONES,
+   (PRM_FOR_SERVER),
    PRM_INTEGER,
-   (void *) &prm_xasl_max_plan_cache_clones_flag,
-   (void *) &prm_xasl_max_plan_cache_clones_default,
-   (void *) &PRM_XASL_MAX_PLAN_CACHE_CLONES,
+   (void *) &prm_xasl_cache_max_clones_flag,
+   (void *) &prm_xasl_cache_max_clones_default,
+   (void *) &PRM_XASL_CACHE_MAX_CLONES,
+   (void *) &prm_xasl_cache_max_clones_upper,
+   (void *) &prm_xasl_cache_max_clones_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_NAME_XASL_CACHE_TIMEOUT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   (void *) &prm_xasl_cache_timeout_flag,
+   (void *) &prm_xasl_cache_timeout_default,
+   (void *) &PRM_XASL_CACHE_TIMEOUT,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-#endif /* ENABLE_UNUSED_FUNCTION */
+  {PRM_NAME_XASL_CACHE_LOGGING,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   (void *) &prm_xasl_cache_logging_flag,
+   (void *) &prm_xasl_cache_logging_default,
+   (void *) &PRM_XASL_CACHE_LOGGING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_NAME_FILTER_PRED_MAX_CACHE_ENTRIES,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER),
    PRM_INTEGER,
@@ -3138,16 +3158,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_filter_pred_max_cache_clones_flag,
    (void *) &prm_filter_pred_max_cache_clones_default,
    (void *) &PRM_FILTER_PRED_MAX_CACHE_CLONES,
-   (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_NAME_XASL_PLAN_CACHE_TIMEOUT,
-   (PRM_FOR_SERVER),
-   PRM_INTEGER,
-   (void *) &prm_xasl_plan_cache_timeout_flag,
-   (void *) &prm_xasl_plan_cache_timeout_default,
-   (void *) &PRM_XASL_PLAN_CACHE_TIMEOUT,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -6392,7 +6402,7 @@ static SYSPRM_ERR
 sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_list)
 {
   SYSPRM_PARAM *prm = NULL;
-  SYSPRM_ASSIGN_VALUE *assignment = NULL;
+  const SYSPRM_ASSIGN_VALUE *assignment = NULL;
   bool set_require_like_escape, set_no_backslash_escape;
   bool is_require_like_escape, is_no_backslash_escape;
 
@@ -8198,7 +8208,7 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, bo
     case PRM_STRING:
       {
 	/* duplicate string */
-	char *val = NULL;
+	const char *val = NULL;
 
 	if (set_default)
 	  {
@@ -9124,9 +9134,6 @@ prm_tune_parameters (void)
 {
   SYSPRM_PARAM *max_clients_prm;
   SYSPRM_PARAM *max_plan_cache_entries_prm;
-#if defined (ENABLE_UNUSED_FUNCTION)
-  SYSPRM_PARAM *max_plan_cache_clones_prm;
-#endif /* ENABLE_UNUSED_FUNCTION */
   SYSPRM_PARAM *query_cache_mode_prm;
   SYSPRM_PARAM *max_query_cache_entries_prm;
   SYSPRM_PARAM *query_cache_size_in_pages_prm;
@@ -9150,10 +9157,7 @@ prm_tune_parameters (void)
 
   /* Find the parameters that require tuning */
   max_clients_prm = prm_find (PRM_NAME_CSS_MAX_CLIENTS, NULL);
-  max_plan_cache_entries_prm = prm_find (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, NULL);
-#if defined (ENABLE_UNUSED_FUNCTION)
-  max_plan_cache_clones_prm = prm_find (PRM_NAME_XASL_MAX_PLAN_CACHE_CLONES, NULL);
-#endif /* ENABLE_UNUSED_FUNCTION */
+  max_plan_cache_entries_prm = prm_find (PRM_NAME_XASL_CACHE_MAX_ENTRIES, NULL);
   query_cache_mode_prm = prm_find (PRM_NAME_LIST_QUERY_CACHE_MODE, NULL);
   max_query_cache_entries_prm = prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_ENTRIES, NULL);
   query_cache_size_in_pages_prm = prm_find (PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES, NULL);
@@ -9210,22 +9214,11 @@ prm_tune_parameters (void)
   assert (query_cache_mode_prm != NULL);
   assert (max_query_cache_entries_prm != NULL);
   assert (query_cache_size_in_pages_prm != NULL);
-#if defined (ENABLE_UNUSED_FUNCTION)
-  assert (max_plan_cache_clones_prm != NULL);
-#endif /* ENABLE_UNUSED_FUNCTION */
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-  if (max_plan_cache_entries_prm == NULL || max_plan_cache_clones_prm == NULL || query_cache_mode_prm == NULL
-      || max_query_cache_entries_prm == NULL)
-    {
-      return;
-    }
-#else /* ENABLE_UNUSED_FUNCTION */
   if (max_plan_cache_entries_prm == NULL || query_cache_mode_prm == NULL || max_query_cache_entries_prm == NULL)
     {
       return;
     }
-#endif /* !ENABLE_UNUSED_FUNCTION */
 
   if (PRM_GET_INT (max_plan_cache_entries_prm->value) == 0)
     {
@@ -9236,27 +9229,12 @@ prm_tune_parameters (void)
   if (PRM_GET_INT (max_plan_cache_entries_prm->value) <= 0)
     {
       /* disable all by default */
-#if defined (ENABLE_UNUSED_FUNCTION)
-      (void) prm_set_default (max_plan_cache_clones_prm);
-#endif /* ENABLE_UNUSED_FUNCTION */
       (void) prm_set_default (query_cache_mode_prm);
       (void) prm_set_default (max_query_cache_entries_prm);
       (void) prm_set_default (query_cache_size_in_pages_prm);
     }
   else
     {
-#if defined (ENABLE_UNUSED_FUNCTION)
-#if 1				/* block XASL clone feature because of new heap layer */
-      if (PRM_GET_INT (max_plan_cache_clones_prm->value) >= PRM_GET_INT (max_plan_cache_entries_prm->value))
-#else
-      if ((PRM_GET_INT (max_plan_cache_clones_prm->value) >= PRM_GET_INT (max_plan_cache_entries_prm->value))
-	  || (PRM_GET_INT (max_plan_cache_clones_prm->value) < 0))
-#endif
-	{
-	  sprintf (newval, "%d", PRM_GET_INT (max_plan_cache_entries_prm->value));
-	  (void) prm_set (max_plan_cache_clones_prm, newval, false);
-	}
-#endif /* ENABLE_UNUSED_FUNCTION */
       if (PRM_GET_INT (query_cache_mode_prm->value) == 0)
 	{
 	  (void) prm_set_default (max_query_cache_entries_prm);
@@ -9421,7 +9399,7 @@ prm_tune_parameters (void)
   char host_name[MAXHOSTNAMELEN];
 
   /* Find the parameters that require tuning */
-  max_plan_cache_entries_prm = prm_find (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, NULL);
+  max_plan_cache_entries_prm = prm_find (PRM_NAME_XASL_CACHE_MAX_ENTRIES, NULL);
   ha_node_list_prm = prm_find (PRM_NAME_HA_NODE_LIST, NULL);
 
   ha_mode_prm = prm_find (PRM_NAME_HA_MODE, NULL);
@@ -10717,7 +10695,7 @@ sysprm_free_assign_values (SYSPRM_ASSIGN_VALUE ** assign_values_ptr)
 static PARAM_ID
 sysprm_get_id (const SYSPRM_PARAM * prm)
 {
-  int id = (prm - prm_Def);
+  int id = (int) (prm - prm_Def);
 
   assert (id >= PRM_FIRST_ID && id <= PRM_LAST_ID);
 

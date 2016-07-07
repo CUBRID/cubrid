@@ -217,7 +217,7 @@ static LF_ENTRY_DESCRIPTOR catalog_entry_Descriptor = {
   offsetof (CATALOG_ENTRY, key),
   0,
 
-  /* mutex flags */
+  /* using mutex? */
   LF_EM_NOT_USING_MUTEX,
 
   catalog_entry_alloc,
@@ -2232,7 +2232,8 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
       repr_item_p->slot_id = catalog_value_p->key.r_slot_id;
 
       /* end transaction */
-      return lf_tran_end (t_entry);
+      lf_tran_end_with_mb (t_entry);
+      return NO_ERROR;
     }
   else
     {
@@ -2268,14 +2269,15 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
       catalog_key.r_slot_id = repr_item_p->slot_id;
 
       /* insert value */
-      if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p) !=
-	  NO_ERROR)
+      if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p, NULL)
+	  != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
       else if (catalog_value_p != NULL)
 	{
-	  return lf_tran_end (t_entry);
+	  lf_tran_end_with_mb (t_entry);
+	  return NO_ERROR;
 	}
       else
 	{
@@ -5666,7 +5668,8 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
       dir_oid_p->slotid = catalog_value_p->key.r_slot_id;
 
       /* end transaction */
-      return lf_tran_end (t_entry);
+      lf_tran_end_with_mb (t_entry);
+      return NO_ERROR;
     }
 
   /* not found in cache, get it from class record */
@@ -5699,14 +5702,15 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
   catalog_key.r_slot_id = dir_oid_p->slotid;
 
   /* insert value */
-  if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p) !=
-      NO_ERROR)
+  if (lf_hash_find_or_insert (t_entry, &catalog_Hash_table, (void *) &catalog_key, (void **) &catalog_value_p, NULL)
+      != NO_ERROR)
     {
       return ER_FAILED;
     }
   else if (catalog_value_p != NULL)
     {
-      return lf_tran_end (t_entry);
+      lf_tran_end_with_mb (t_entry);
+      return NO_ERROR;
     }
   else
     {

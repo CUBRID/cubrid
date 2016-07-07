@@ -361,7 +361,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 	{
 	  goto print_addvol_usage;
 	}
-      ext_info.max_writesize_in_sec = volext_max_writesize / ONE_K;
+      ext_info.max_writesize_in_sec = (int) (volext_max_writesize / ONE_K);
     }
   else
     {
@@ -4067,7 +4067,9 @@ int
 vacuumdb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+#if defined (SA_MODE)
   char er_msg_file[PATH_MAX];
+#endif /* SA_MODE */
   const char *database_name;
 
   if (utility_get_option_string_table_size (arg_map) < 1)

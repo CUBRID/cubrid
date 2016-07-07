@@ -222,11 +222,7 @@ test_freelist_proc (void *param)
 
   for (i = 0; i < NOPS; i++)
     {
-      if (lf_tran_start (te, true) != NO_ERROR)
-	{
-	  pthread_exit (ER_FAILED);
-	  return ER_FAILED;
-	}
+      lf_tran_start_with_mb (te, true);
 
       if (i % 2 == 0)
 	{
@@ -246,11 +242,7 @@ test_freelist_proc (void *param)
 	    }
 	}
 
-      if (lf_tran_end (te) != NO_ERROR)
-	{
-	  pthread_exit (ER_FAILED);
-	  return ER_FAILED;
-	}
+      lf_tran_end_with_mb (te);
     }
 
   if (lf_tran_return_entry (te) != NO_ERROR)
@@ -299,12 +291,12 @@ test_hash_proc_1 (void *param)
       if (i % 10 < 5)
 	{
 	  entry = NULL;
-	  if (lf_hash_find_or_insert (te, hash, &key, &entry) != NO_ERROR)
+	  if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	    {
 	      pthread_exit (ER_FAILED);
 	      return ER_FAILED;
 	    }
-	  lf_tran_end (te);
+	  lf_tran_end_with_mb (te);
 	}
       else
 	{
@@ -361,7 +353,7 @@ test_hash_proc_2 (void *param)
 
       if (i % 10 < 5)
 	{
-	  if (lf_hash_find_or_insert (te, hash, &key, &entry) != NO_ERROR)
+	  if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	    {
 	      pthread_exit (ER_FAILED);
 	      return ER_FAILED;
@@ -430,7 +422,7 @@ test_hash_proc_3 (void *param)
     {
       key = random_numbers[rand_base + i] % 1000;
 
-      if (lf_hash_find_or_insert (te, hash, &key, &entry) != NO_ERROR)
+      if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	{
 	  pthread_exit (ER_FAILED);
 	  return ER_FAILED;
@@ -520,12 +512,12 @@ test_clear_proc_1 (void *param)
 	  if (i % 10 < 8)
 	    {
 	      entry = NULL;
-	      if (lf_hash_find_or_insert (te, hash, &key, &entry) != NO_ERROR)
+	      if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 		{
 		  pthread_exit (ER_FAILED);
 		  return ER_FAILED;
 		}
-	      lf_tran_end (te);
+	      lf_tran_end_with_mb (te);
 	    }
 	  else if (i % 1000 < 999)
 	    {
@@ -593,7 +585,7 @@ test_clear_proc_2 (void *param)
 	{
 	  if (i % 10 < 5)
 	    {
-	      if (lf_hash_find_or_insert (te, hash, &key, &entry) != NO_ERROR)
+	      if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 		{
 		  pthread_exit (ER_FAILED);
 		  return ER_FAILED;
@@ -680,7 +672,7 @@ test_clear_proc_3 (void *param)
 	  continue;
 	}
 
-      if (lf_hash_find_or_insert (te, hash, &key, &entry) != NO_ERROR)
+      if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	{
 	  pthread_exit (ER_FAILED);
 	  return ER_FAILED;
@@ -713,7 +705,7 @@ test_clear_proc_3 (void *param)
 	  pthread_mutex_unlock (&entry->mutex);
 	}
 
-      lf_tran_end (te);
+      lf_tran_end_with_mb (te);
     }
 
   if (lf_tran_return_entry (te) != NO_ERROR)
@@ -842,9 +834,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
 
   del_op_count = 0;
 
-  sprintf (msg, "hash (lf=%s, ld=%s, ud=%s, %d threads)", (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_FIND ? "y" : "n"),
-	   (edesc->mutex_flags & LF_EM_FLAG_LOCK_ON_DELETE ? "y" : "n"),
-	   (edesc->mutex_flags & LF_EM_FLAG_UNLOCK_AFTER_DELETE ? "y" : "n"), nthreads);
+  sprintf (msg, "hash (mutex=%s, %d threads)", edesc->using_mutex ? "y" : "n", nthreads);
   begin (msg);
 
   /* initialization */
@@ -889,7 +879,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
     }
 
   /* count operations */
-  if (edesc->mutex_flags == (LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_UNLOCK_AFTER_DELETE))
+  if (edesc->using_mutex)
     {
       XENTRY *e;
       int nondel_op_count = 0;
@@ -1016,7 +1006,7 @@ test_hash_iterator ()
     {
       XENTRY *entry;
 
-      if (lf_hash_find_or_insert (te, &hash, &i, &entry) != NO_ERROR)
+      if (lf_hash_find_or_insert (te, &hash, &i, &entry, NULL) != NO_ERROR)
 	{
 	  return fail ("insert error");
 	}
@@ -1111,7 +1101,7 @@ main (int argc, char **argv)
     }
 
   /* hash table - entry mutex, no lock between find and delete */
-  xentry_desc.mutex_flags = LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_LOCK_ON_DELETE | LF_EM_FLAG_UNLOCK_AFTER_DELETE;
+  xentry_desc.using_mutex = LF_EM_USING_MUTEX;
   for (i = 1; i <= 64; i *= 2)
     {
       if (test_hash_table (&xentry_desc, i, test_hash_proc_2) != NO_ERROR)
@@ -1126,7 +1116,7 @@ main (int argc, char **argv)
     }
 
   /* hash table - entry mutex, hold lock between find and delete */
-  xentry_desc.mutex_flags = LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_UNLOCK_AFTER_DELETE;
+  xentry_desc.using_mutex = LF_EM_USING_MUTEX;
   for (i = 1; i <= 64; i *= 2)
     {
       if (test_hash_table (&xentry_desc, i, test_hash_proc_3) != NO_ERROR)
