@@ -645,11 +645,6 @@ extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rc
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn, bool is_heap_scan);
-extern SCAN_CODE heap_mvcc_lock_and_get_object_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
-							RECDES * recdes, HEAP_SCANCACHE * scan_cache,
-							SCAN_OPERATION_TYPE op_type, int ispeeking, int old_chn,
-							struct mvcc_reev_data *mvcc_reev_data,
-							NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 					HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP_SCANCACHE * scan_cache);

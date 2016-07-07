@@ -239,6 +239,15 @@ static int redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid
 static SCAN_CODE locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 						       LOCK lock_mode, HEAP_SCANCACHE * scan_cache, int chn,
 						       int ispeeking);
+static bool locator_check_class_for_rr_isolation_err (const OID * class_oid);
+static DB_LOGICAL locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
+						  HEAP_SCANCACHE * scan_cache, RECDES * recdes,
+						  MVCC_UPDDEL_REEV_DATA * mvcc_reev_data);
+static DB_LOGICAL locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid,
+						    HEAP_SCANCACHE * scan_cache, RECDES * recdes,
+						    UPDDEL_MVCC_COND_REEVAL * mvcc_cond_reeval, bool is_upddel);
+static DB_LOGICAL mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data,
+					   const OID * oid, RECDES * recdes);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -13389,7 +13398,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 
       /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
       if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
-	  && heap_check_class_for_rr_isolation_err (context->class_oid_p))
+	  && locator_check_class_for_rr_isolation_err (context->class_oid_p))
 	{
 	  /* In these isolation levels, the transaction is not allowed to modify an object that was already
 	   * modified by other transactions. This would be true if last version matched the visible version.
@@ -13564,7 +13573,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	      goto exit;
 	    }
 	}
-      ev_res = heap_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
+      ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
       if (ev_res != V_TRUE)
 	{
 	  /* did not pass the evaluation or error occurred - unlock object */
@@ -13672,4 +13681,375 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid
 
   heap_clean_get_context (thread_p, &context, (scan_code == S_ERROR) ? NULL : scan_cache);
   return scan_code;
+}
+
+/*
+* locator_check_class_for_rr_isolation_err () - Check if the class have to be checked against serializable conflicts
+*
+* return		   : true if the class is not root/trigger/user class, otherwise false
+* class_oid (in)	   : Class object identifier.
+*
+* Note: Do not check system classes that are not part of catalog for rr isolation level error. Isolation consistency
+*	 is secured using locks anyway. These classes are in a way related to table schema's and can be accessed
+*	 before the actual classes. db_user instances are fetched to check authorizations, while db_root and db_trigger
+*	 are accessed when triggers are modified.
+*	 The RR isolation has to check if an instance that we want to lock was modified by concurrent transaction.
+*	 If the instance was modified, then this means we have an isolation conflict. The check must verify last
+*	 instance version visibility over transaction snapshot. The version is visible if and only if it was not
+*	 modified by concurrent transaction. To check visibility, we must first generate a transaction snapshot.
+*	 Since instances from these classes are accessed before locking tables, the snapshot is generated before
+*	 transaction is blocked on table lock. The results will then seem to be inconsistent with most cases when table
+*	 locks are acquired before snapshot.
+*/
+static bool
+locator_check_class_for_rr_isolation_err (const OID * class_oid)
+{
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+
+  if (!oid_check_cached_class_oid (OID_CACHE_DB_ROOT_CLASS_ID, class_oid)
+      && !oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
+      && !oid_check_cached_class_oid (OID_CACHE_TRIGGER_CLASS_ID, class_oid))
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
+* locator_mvcc_reev_cond_and_assignment () -
+*
+*   return: DB_LOGICAL
+*   thread_p(in): thread entry
+*   scan_cache(in):
+*   mvcc_reev_data_p(in/out):
+*   mvcc_header_p(in):
+*   curr_row_version_oid_p(in):
+*   recdes(in):
+*/
+/* TODO: We need to reevaluate relation between primary key * and foreign key. */
+DB_LOGICAL
+locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
+				       MVCC_REEV_DATA * mvcc_reev_data_p, MVCC_REC_HEADER * mvcc_header_p,
+				       const OID * curr_row_version_oid_p, RECDES * recdes)
+{
+  bool ev_res = V_TRUE;
+
+  if (mvcc_reev_data_p == NULL)
+    {
+      return ev_res;
+    }
+
+  assert (mvcc_header_p != NULL && curr_row_version_oid_p != NULL);
+
+  ev_res = V_TRUE;
+  if (!MVCC_IS_REC_INSERTED_BY_ME (thread_p, mvcc_header_p))
+    {
+      switch (mvcc_reev_data_p->type)
+	{
+	case REEV_DATA_SCAN:
+	  ev_res =
+	    mvcc_reevaluate_filters (thread_p, mvcc_reev_data_p->select_reev_data, curr_row_version_oid_p, recdes);
+	  mvcc_reev_data_p->filter_result = ev_res;
+	  break;
+
+	case REEV_DATA_UPDDEL:
+	  ev_res =
+	    locator_mvcc_reev_cond_assigns (thread_p, &scan_cache->node.class_oid, curr_row_version_oid_p, scan_cache,
+					    recdes, mvcc_reev_data_p->upddel_reev_data);
+	  mvcc_reev_data_p->filter_result = ev_res;
+	  break;
+
+	default:
+	  break;
+	}
+    }
+  else
+    {
+      mvcc_reev_data_p->filter_result = V_TRUE;
+    }
+
+  return ev_res;
+}
+
+/*
+* locator_mvcc_reev_cond_assigns () - reevaluates conditions and assignments
+*				    at update/delete stage of an UPDATE/DELETE
+*				    statement
+*   return: result of reevaluation
+*   thread_p(in): thread entry
+*   class_oid(in): OID of the class that triggered reevaluation
+*   oid(in) : The OID of the latest version of record that triggered
+*	       reevaluation
+*   scan_cache(in): scan_cache
+*   recdes(in): Record descriptor that will contain the updated/deleted record
+*   mvcc_reev_data(in): The structure that contains data needed for
+*			 reevaluation
+*
+*  Note: the current transaction already acquired X-LOCK on oid parameter
+*	    before calling this function. If the condition returns false then
+*	    the lock must be released by the caller.
+*	  The function reevaluates entire condition: key range, key filter and
+*	    data filter.
+*	  This function allocates memory for recdes and deallocates it if it
+*	    was already allocated for previous reevaluated record. After last
+*	    reevaluation this memory must be deallocated by one of its callers
+*	    (e.g. qexec_execute_update).
+*/
+static DB_LOGICAL
+locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, HEAP_SCANCACHE * scan_cache,
+				RECDES * recdes, MVCC_UPDDEL_REEV_DATA * mvcc_reev_data)
+{
+  DB_LOGICAL ev_res = V_TRUE;
+  UPDDEL_MVCC_COND_REEVAL *mvcc_cond_reeval = NULL;
+  int idx;
+
+  /* reevaluate condition for each class involved into */
+  for (mvcc_cond_reeval = mvcc_reev_data->mvcc_cond_reev_list; mvcc_cond_reeval != NULL;
+       mvcc_cond_reeval = mvcc_cond_reeval->next)
+    {
+      ev_res =
+	locator_mvcc_reeval_scan_filters (thread_p, oid, scan_cache, recdes, mvcc_cond_reeval,
+					  mvcc_reev_data->curr_upddel == mvcc_cond_reeval);
+      if (ev_res != V_TRUE)
+	{
+	  goto end;
+	}
+    }
+
+  if (mvcc_reev_data->new_recdes == NULL)
+    {
+      /* Seems that the caller wants to reevaluate only the condition */
+      goto end;
+    }
+
+  /* reload data from classes involved only in right side of assignments (not in condition) */
+  if (mvcc_reev_data->curr_extra_assign_reev != NULL)
+    {
+      for (idx = 0; idx < mvcc_reev_data->curr_extra_assign_cnt; idx++)
+	{
+	  mvcc_cond_reeval = mvcc_reev_data->curr_extra_assign_reev[idx];
+	  ev_res = locator_mvcc_reeval_scan_filters (thread_p, oid, scan_cache, recdes, mvcc_cond_reeval, false);
+	  if (ev_res != V_TRUE)
+	    {
+	      goto end;
+	    }
+	}
+    }
+
+  /* after reevaluation perform assignments */
+  if (mvcc_reev_data->curr_assigns != NULL)
+    {
+      UPDATE_MVCC_REEV_ASSIGNMENT *assign = mvcc_reev_data->curr_assigns;
+      int rc;
+      DB_VALUE *dbval = NULL;
+
+      if (heap_attrinfo_clear_dbvalues (mvcc_reev_data->curr_attrinfo) != NO_ERROR)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+      for (; assign != NULL; assign = assign->next)
+	{
+	  if (assign->constant != NULL)
+	    {
+	      rc = heap_attrinfo_set (oid, assign->att_id, assign->constant, mvcc_reev_data->curr_attrinfo);
+	    }
+	  else
+	    {
+	      if (fetch_peek_dbval (thread_p, assign->regu_right, mvcc_reev_data->vd, (OID *) class_oid, (OID *) oid,
+				    NULL, &dbval) != NO_ERROR)
+		{
+		  ev_res = V_ERROR;
+		  goto end;
+		}
+	      rc = heap_attrinfo_set (oid, assign->att_id, dbval, mvcc_reev_data->curr_attrinfo);
+	    }
+	  if (rc != NO_ERROR)
+	    {
+	      ev_res = V_ERROR;
+	      goto end;
+	    }
+	}
+
+      /* TO DO - reuse already allocated area */
+      if (mvcc_reev_data->copyarea != NULL)
+	{
+	  locator_free_copy_area (mvcc_reev_data->copyarea);
+	  mvcc_reev_data->new_recdes->data = NULL;
+	  mvcc_reev_data->new_recdes->area_size = 0;
+	}
+      mvcc_reev_data->copyarea =
+	locator_allocate_copy_area_by_attr_info (thread_p, mvcc_reev_data->curr_attrinfo, recdes,
+						 mvcc_reev_data->new_recdes, -1, LOB_FLAG_INCLUDE_LOB);
+      if (mvcc_reev_data->copyarea == NULL)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+    }
+
+end:
+
+  return ev_res;
+}
+
+/*
+* locator_mvcc_reeval_scan_filters () - reevaluates conditions for a scan table
+*				    at update/delete stage of an UPDATE/DELETE
+*				    statement
+*   return: result of reevaluation
+*   thread_p(in): thread entry
+*   oid(in) : The OID of the latest version of record that triggered
+*	       reevaluation
+*   scan_cache(in): scan_cache
+*   recdes(in): Record descriptor of the record to be updated/deleted.
+*   mvcc_cond_reeval(in): The structure that contains data needed for
+*			   reevaluation
+*   is_upddel(in): true if current scan is updated/deleted when reevaluation
+*		    occured.
+*
+*  Note: The current transaction already acquired X-LOCK on oid parameter
+*	    before calling this function. If the condition returns false then
+*	    the lock must be released by the caller.
+*	  The function reevaluates entire condition: key range, key filter and
+*	    data filter.
+*/
+static DB_LOGICAL
+locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP_SCANCACHE * scan_cache,
+				  RECDES * recdes, UPDDEL_MVCC_COND_REEVAL * mvcc_cond_reeval, bool is_upddel)
+{
+  OID *cls_oid = NULL;
+  const OID *oid_inst = NULL;
+  MVCC_SCAN_REEV_DATA scan_reev;
+  RECDES temp_recdes, *recdesp = NULL;
+  HEAP_SCANCACHE local_scan_cache;
+  bool scan_cache_inited = false;
+  SCAN_CODE scan_code;
+  DB_LOGICAL ev_res = V_TRUE;
+
+  cls_oid = &mvcc_cond_reeval->cls_oid;
+  if (!is_upddel)
+    {
+      /* the class is different than the class to be updated/deleted, so use the latest version of row */
+      recdesp = &temp_recdes;
+      oid_inst = oid;
+      if (heap_scancache_quick_start_with_class_hfid (thread_p, &local_scan_cache, &scan_cache->node.hfid) != NO_ERROR)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+      scan_cache_inited = true;
+      scan_code = heap_get (thread_p, oid_inst, recdesp, &local_scan_cache, PEEK, NULL_CHN);
+      if (scan_code != S_SUCCESS)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+    }
+  else
+    {
+      /* the class to be updated/deleted */
+      recdesp = recdes;
+      oid_inst = mvcc_cond_reeval->inst_oid;
+    }
+
+  if (mvcc_cond_reeval->rest_attrs->num_attrs != 0)
+    {
+      if (heap_attrinfo_read_dbvalues (thread_p, oid_inst, recdesp, NULL, mvcc_cond_reeval->rest_attrs->attr_cache) !=
+	  NO_ERROR)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+
+      if (fetch_val_list (thread_p, mvcc_cond_reeval->rest_regu_list, NULL, cls_oid, (OID *) oid_inst, NULL, PEEK)
+	  != NO_ERROR)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+    }
+
+  if (mvcc_cond_reeval->range_filter.scan_pred != NULL || mvcc_cond_reeval->key_filter.scan_pred != NULL
+      || mvcc_cond_reeval->data_filter.scan_pred != NULL)
+    {
+      /* evaluate conditions */
+      scan_reev.range_filter = &mvcc_cond_reeval->range_filter;
+      scan_reev.key_filter = &mvcc_cond_reeval->key_filter;
+      scan_reev.data_filter = &mvcc_cond_reeval->data_filter;
+      scan_reev.qualification = &mvcc_cond_reeval->qualification;
+      ev_res = mvcc_reevaluate_filters (thread_p, &scan_reev, oid_inst, recdesp);
+    }
+
+end:
+  if (scan_cache_inited)
+    {
+      heap_scancache_end (thread_p, &local_scan_cache);
+    }
+
+  return ev_res;
+}
+
+/*
+* mvcc_reevaluate_filters () - reevaluates key range, key filter and data
+*				filter predicates
+*   return: result of reevaluation
+*   thread_p(in): thread entry
+*   mvcc_reev_data(in): The structure that contains data needed for
+*			 reevaluation
+*   oid(in) : The record that was modified by other transactions and is
+*	       involved in filters.
+*   recdes(in): Record descriptor that will contain the record
+*/
+static DB_LOGICAL
+mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data, const OID * oid,
+			 RECDES * recdes)
+{
+  FILTER_INFO *filter;
+  DB_LOGICAL ev_res = V_TRUE;
+
+  filter = mvcc_reev_data->range_filter;
+  if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
+    {
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, filter->scan_attrs->attr_cache) != NO_ERROR)
+	{
+	  return V_ERROR;
+	}
+      ev_res =
+	(*filter->scan_pred->pr_eval_fnc) (thread_p, filter->scan_pred->pred_expr, filter->val_descr, (OID *) oid);
+      ev_res = update_logical_result (thread_p, ev_res, NULL, NULL, NULL, NULL);
+      if (ev_res != V_TRUE)
+	{
+	  goto end;
+	}
+    }
+
+  filter = mvcc_reev_data->key_filter;
+  if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
+    {
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, filter->scan_attrs->attr_cache) != NO_ERROR)
+	{
+	  return V_ERROR;
+	}
+      ev_res =
+	(*filter->scan_pred->pr_eval_fnc) (thread_p, filter->scan_pred->pred_expr, filter->val_descr, (OID *) oid);
+      ev_res = update_logical_result (thread_p, ev_res, NULL, NULL, NULL, NULL);
+      if (ev_res != V_TRUE)
+	{
+	  goto end;
+	}
+    }
+
+  filter = mvcc_reev_data->data_filter;
+  if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
+    {
+      ev_res = eval_data_filter (thread_p, (OID *) oid, recdes, NULL, filter);
+      ev_res =
+	update_logical_result (thread_p, ev_res, (int *) mvcc_reev_data->qualification, mvcc_reev_data->key_filter,
+			       recdes, oid);
+    }
+
+end:
+  return ev_res;
 }
