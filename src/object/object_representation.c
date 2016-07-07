@@ -8278,7 +8278,6 @@ ntohl (unsigned int from)
 #endif /* !OR_HAVE_NTOHL */
 
 #if !defined (OR_HAVE_NTOHF)
-
 float
 ntohf (UINT32 from)
 {
@@ -8297,7 +8296,6 @@ ntohf (UINT32 from)
 #endif /* !OR_HAVE_NTOHF */
 
 #if !defined (OR_HAVE_NTOHD)
-
 double
 ntohd (UINT64 from)
 {
@@ -8380,7 +8378,7 @@ htonf (float from)
 }
 #endif /* !OR_HAVE_HTONL */
 
-#if !defined (OR_HAVE_NTOHD)
+#if !defined (OR_HAVE_HTOND)
 UINT64
 htond (double from)
 {
@@ -8401,6 +8399,6 @@ htond (double from)
 
   return to;
 }
-#endif /* ! OR_HAVE_NTOHD */
+#endif /* ! OR_HAVE_HTOND */
 
 #endif /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
