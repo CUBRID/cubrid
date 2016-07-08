@@ -17524,6 +17524,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			    {
 			      pr_clear_value (index_valp);
 			    }
+
 			  /* set index string pseudocolumn value to tuples from START WITH list */
 			  DB_MAKE_STRING (index_valp, father_index);
 			}
@@ -17819,15 +17820,6 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (son_index)
-    {
-      db_private_free_and_init (thread_p, son_index);
-    }
-  if (father_index)
-    {
-      db_private_free_and_init (thread_p, father_index);
-    }
-
   /* sort resulting list file BF to DF */
   {
     /* make a special domain for custom compare of paths strings */
@@ -17885,6 +17877,15 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (index_valp != NULL && index_valp->need_clear)
     {
       pr_clear_value (index_valp);
+    }
+
+  if (father_index != NULL)
+    {
+      db_private_free_and_init (NULL, father_index);
+    }
+  if (son_index != NULL)
+    {
+      db_private_free_and_init (NULL, son_index);
     }
 
   xasl->status = XASL_SUCCESS;
@@ -20118,6 +20119,15 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
       if (rc == NO_ERROR)
 	{
 	  c = bf2df_str_compare ((unsigned char *) string1, str_length1, (unsigned char *) string2, str_length2);
+	  if (string1 != NULL)
+	    {
+	      free_and_init (string1);
+	    }
+
+	  if (string2 != NULL)
+	    {
+	      free_and_init (string2);
+	    }
 	  return c;
 	}
     }

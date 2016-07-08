@@ -11212,12 +11212,6 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	      str_length = compressed_size;
 
 	      string = db_private_alloc (NULL, uncompressed_size);
-
-	      if (uncompressed_size == 255)
-		{
-		  assert (true);
-		}
-
 	      if (string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -11226,11 +11220,11 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		}
 
 	      rc = do_get_compressed_data_from_buffer (buf, string, compressed_size, uncompressed_size);
-
 	      if (rc != NO_ERROR)
 		{
 		  return rc;
 		}
+	      string[uncompressed_size] = '\0';
 
 	      db_make_varchar (value, precision, string, uncompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
