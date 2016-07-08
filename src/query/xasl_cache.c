@@ -1264,6 +1264,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
       (*xcache_entry)->sql_info.sql_user_text = sql_user_text;
       (*xcache_entry)->sql_info.sql_plan_text = sql_plan_text;
       (*xcache_entry)->stream = *stream;
+      (*xcache_entry)->time_last_rt_check = time_stored;
 
       /* Now that new entry is initialized, we can try to insert it. */
       error_code = lf_hash_insert_given (t_entry, &xcache_Ht, &xid, (void **) xcache_entry, &inserted);
