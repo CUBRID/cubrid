@@ -1597,7 +1597,7 @@ int
 lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned int hash_size, LF_ENTRY_DESCRIPTOR * edesc)
 {
   assert (table != NULL && freelist != NULL && edesc != NULL);
-  assert (hash_size > 1);
+  assert (hash_size > 0);
 
   if (table->buckets != NULL)
     {
