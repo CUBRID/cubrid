@@ -1169,7 +1169,6 @@ restart_search:
 		  if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		    {
 		      *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-		      lf_tran_end_with_mb (tran);
 		      return NO_ERROR;
 		    }
 		  else
@@ -1597,7 +1596,7 @@ int
 lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned int hash_size, LF_ENTRY_DESCRIPTOR * edesc)
 {
   assert (table != NULL && freelist != NULL && edesc != NULL);
-  assert (hash_size > 1);
+  assert (hash_size > 0);
 
   if (table->buckets != NULL)
     {
