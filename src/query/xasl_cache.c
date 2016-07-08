@@ -676,8 +676,6 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
   XASL_ID lookup_key;
   int error_code = NO_ERROR;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
-  int oid_index;
-  int lock_result;
 
   assert (xcache_entry != NULL && *xcache_entry == NULL);
 
@@ -721,60 +719,8 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENT
   /* We have incremented fix count, we don't need lf_tran anymore. */
   lf_tran_end_with_mb (t_entry);
 
-  /* Get lock on all classes in xasl cache entry. */
-  /* The reason we need to do the locking here is to confirm the entry validity. Without the locks, we cannot guarantee
-   * the entry will remain valid (somebody holding SCH_M_LOCK may invalidate it). Moreover, in most cases, the
-   * transaction did not have locks up to this point (because it executes a prepared query).
-   * So, we have to get all locks and then check the entry validity.
-   */
-  for (oid_index = 0; oid_index < (*xcache_entry)->n_related_objects; oid_index++)
-    {
-      if ((*xcache_entry)->related_objects[oid_index].lock <= NULL_LOCK)
-	{
-	  /* No lock. */
-	  continue;
-	}
-      lock_result =
-	lock_scan (thread_p, &(*xcache_entry)->related_objects[oid_index].oid, LK_UNCOND_LOCK,
-		   (*xcache_entry)->related_objects[oid_index].lock);
-      if (lock_result != LK_GRANTED)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  xcache_unfix (thread_p, *xcache_entry);
-	  *xcache_entry = NULL;
-	  XCACHE_STAT_INC (miss);
-	  mnt_pc_miss (thread_p);
-	  xcache_log ("could not get cache entry because lock on oid failed: \n"
-		      XCACHE_LOG_ENTRY_TEXT ("entry")
-		      XCACHE_LOG_ENTRY_OBJECT_TEXT ("object that could not be locked")
-		      XCACHE_LOG_TRAN_TEXT,
-		      XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
-		      XCACHE_LOG_ENTRY_OBJECT_ARGS (*xcache_entry, oid_index), XCACHE_LOG_TRAN_ARGS (thread_p));
-
-	  return error_code;
-	}
-    }
-
-  /* Check the entry is still valid. */
-  if ((*xcache_entry)->xasl_id.cache_flag & XCACHE_ENTRY_MARK_DELETED)
-    {
-      /* Someone has marked entry as deleted. */
-      xcache_log ("could not get cache entry because it was deleted until locked: \n"
-		  XCACHE_LOG_ENTRY_TEXT ("entry")
-		  XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_ENTRY_ARGS (*xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
-
-      xcache_unfix (thread_p, *xcache_entry);
-      XCACHE_STAT_INC (miss);
-      mnt_pc_miss (thread_p);
-      *xcache_entry = NULL;
-
-      return NO_ERROR;
-    }
-  else
-    {
-      XCACHE_STAT_INC (hits);
-      mnt_pc_hit (thread_p);
-    }
+  mnt_pc_hit (thread_p);
+  XCACHE_STAT_INC (hits);
 
   assert (*xcache_entry != NULL);
 
@@ -815,6 +761,8 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 {
   int error_code = NO_ERROR;
   HL_HEAPID save_heapid = 0;
+  int oid_index;
+  int lock_result;
 
   assert (xid != NULL);
   assert (xcache_entry != NULL && *xcache_entry == NULL);
@@ -862,6 +810,53 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 		  XCACHE_LOG_TRAN_TEXT,
 		  XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
 		  XCACHE_LOG_XASL_ID_ARGS (xid), XCACHE_LOG_TRAN_ARGS (thread_p));
+    }
+
+  assert ((*xcache_entry) != NULL);
+
+  /* Get lock on all classes in xasl cache entry. */
+  /* The reason we need to do the locking here is to confirm the entry validity. Without the locks, we cannot guarantee
+   * the entry will remain valid (somebody holding SCH_M_LOCK may invalidate it). Moreover, in most cases, the
+   * transaction did not have locks up to this point (because it executes a prepared query).
+   * So, we have to get all locks and then check the entry validity.
+   */
+  for (oid_index = 0; oid_index < (*xcache_entry)->n_related_objects; oid_index++)
+    {
+      if ((*xcache_entry)->related_objects[oid_index].lock <= NULL_LOCK)
+	{
+	  /* No lock. */
+	  continue;
+	}
+      lock_result =
+	lock_scan (thread_p, &(*xcache_entry)->related_objects[oid_index].oid, LK_UNCOND_LOCK,
+		   (*xcache_entry)->related_objects[oid_index].lock);
+      if (lock_result != LK_GRANTED)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  xcache_unfix (thread_p, *xcache_entry);
+	  *xcache_entry = NULL;
+	  xcache_log ("could not get cache entry because lock on oid failed: \n"
+		      XCACHE_LOG_ENTRY_TEXT ("entry")
+		      XCACHE_LOG_ENTRY_OBJECT_TEXT ("object that could not be locked")
+		      XCACHE_LOG_TRAN_TEXT,
+		      XCACHE_LOG_ENTRY_ARGS (*xcache_entry),
+		      XCACHE_LOG_ENTRY_OBJECT_ARGS (*xcache_entry, oid_index), XCACHE_LOG_TRAN_ARGS (thread_p));
+
+	  return error_code;
+	}
+    }
+
+  /* Check the entry is still valid. */
+  if ((*xcache_entry)->xasl_id.cache_flag & XCACHE_ENTRY_MARK_DELETED)
+    {
+      /* Someone has marked entry as deleted. */
+      xcache_log ("could not get cache entry because it was deleted until locked: \n"
+		  XCACHE_LOG_ENTRY_TEXT ("entry")
+		  XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_ENTRY_ARGS (*xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
+
+      xcache_unfix (thread_p, *xcache_entry);
+      *xcache_entry = NULL;
+      return NO_ERROR;
     }
 
   assert ((*xcache_entry) != NULL);
