@@ -13937,6 +13937,10 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
       k++;
     }
 
+  if (value.need_clear == true)
+    {
+      pr_clear_value (&value);
+    }
   midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
   midxkey->ncolumns = num_vals;
   midxkey->domain = NULL;
