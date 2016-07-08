@@ -1608,7 +1608,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   fprintf (fp, "Deletes:                    %ld\n", XCACHE_STAT_GET (deletes));
   fprintf (fp, "Fix:                        %ld\n", XCACHE_STAT_GET (fix));
   fprintf (fp, "Unfix:                      %ld\n", XCACHE_STAT_GET (unfix));
-  fprintf (fp, "Cleanups:                   %ld\n", XCACHE_STAT_GET (cleanups));
+  fprintf (fp, "Full cache cleanups:        %ld\n", XCACHE_STAT_GET (cleanups));
   fprintf (fp, "Deletes at cleanup:	    %ld\n", XCACHE_STAT_GET (deletes_at_cleanup));
   /* add overflow, RT checks. */
 
