@@ -1928,6 +1928,8 @@ restart:
   rc = lf_list_delete (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, success);
   if ((rc == NO_ERROR) && (bflags & LF_LIST_BR_RESTARTED))
     {
+      /* Remove LF_LIST_BR_RESTARTED from behavior flags. */
+      bflags &= ~LF_LIST_BR_RESTARTED;
       goto restart;
     }
   else

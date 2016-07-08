@@ -311,17 +311,17 @@ extern int lf_io_list_find_or_insert (void **list_p, void *new_entry, LF_ENTRY_D
 #define LF_LIST_BF_NONE			  0x0
 
 /* flags that can be given to lf_list_* functions */
-#define LF_LIST_BF_RETURN_ON_RESTART	  0x01
-#define LF_LIST_BF_RESTART_ON_DUPLICATE	  0x02	/* Not used for now. */
-#define LF_LIST_BF_INSERT_GIVEN		  0x04
-#define LF_LIST_BF_FIND_OR_INSERT	  0x08
-#define LF_LIST_BF_LOCK_ON_DELETE	  0x10
+#define LF_LIST_BF_RETURN_ON_RESTART	  ((int) 0x01)
+#define LF_LIST_BF_RESTART_ON_DUPLICATE	  ((int) 0x02)	/* Not used for now. */
+#define LF_LIST_BF_INSERT_GIVEN		  ((int) 0x04)
+#define LF_LIST_BF_FIND_OR_INSERT	  ((int) 0x08)
+#define LF_LIST_BF_LOCK_ON_DELETE	  ((int) 0x10)
 #define LF_LIST_BF_IS_FLAG_SET(bf, flag) ((*(bf) & (flag)) != 0)
 #define LF_LIST_BF_SET_FLAG(bf, flag) (*(bf) = *(bf) | (flag))
 
 /* responses to flags from lf_list_* functions */
-#define LF_LIST_BR_RESTARTED		  0x100
-#define LF_LIST_BR_DUPLICATE		  0x200	/* Not used for now. */
+#define LF_LIST_BR_RESTARTED		  ((int) 0x100)
+#define LF_LIST_BR_DUPLICATE		  ((int) 0x200)	/* Not used for now. */
 #define LF_LIST_BR_IS_FLAG_SET(br, flag) ((*(br) & (flag)))
 #define LF_LIST_BR_SET_FLAG(br, flag) (*(br) = *(br) | (flag))
 
