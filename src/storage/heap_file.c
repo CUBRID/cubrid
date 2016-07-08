@@ -13782,6 +13782,10 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	}
 
+      if (value.need_clear == true)
+	{
+	  pr_clear_value (&value);
+	}
       if (key_domain != NULL)
 	{
 	  if (k == 0)
