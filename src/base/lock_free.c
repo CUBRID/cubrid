@@ -1169,7 +1169,6 @@ restart_search:
 		  if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		    {
 		      *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
-		      lf_tran_end_with_mb (tran);
 		      return NO_ERROR;
 		    }
 		  else
