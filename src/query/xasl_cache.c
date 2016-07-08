@@ -1152,6 +1152,8 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
   char *sql_user_text = NULL;
   char *sql_plan_text = NULL;
   struct timeval time_stored;
+  int sql_hash_text_len = 0, sql_user_text_len = 0, sql_plan_text_len = 0;
+  char *strbuf = NULL;
 
   assert (xcache_entry != NULL && *xcache_entry == NULL);
   assert (stream != NULL);
@@ -1189,48 +1191,39 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
 	}
     }
 
-  if (xcache_Log)
+  sql_hash_text_len = strlen (context->sql_hash_text) + 1;
+  if (context->sql_user_text != NULL)
     {
-      /* Do we want to add the strings even if xcache logging is not enabled?
-       * E.g. to print them when XASL cache is dumped?
-       */
-      int sql_hash_text_len = 0, sql_user_text_len = 0, sql_plan_text_len = 0;
-      char *strbuf = NULL;
+      sql_user_text_len = strlen (context->sql_user_text) + 1;
+    }
+  if (context->sql_plan_text != NULL)
+    {
+      sql_plan_text_len = strlen (context->sql_plan_text) + 1;
+    }
+  strbuf = (char *) malloc (sql_hash_text_len + sql_user_text_len + sql_plan_text_len);
+  if (strbuf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sql_hash_text_len + sql_user_text_len + sql_plan_text_len);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
 
-      sql_hash_text_len = strlen (context->sql_hash_text) + 1;
-      if (context->sql_user_text != NULL)
-	{
-	  sql_user_text_len = strlen (context->sql_user_text) + 1;
-	}
-      if (context->sql_plan_text != NULL)
-	{
-	  sql_plan_text_len = strlen (context->sql_plan_text) + 1;
-	}
-      strbuf = (char *) malloc (sql_hash_text_len + sql_user_text_len + sql_plan_text_len);
-      if (strbuf == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  sql_hash_text_len + sql_user_text_len + sql_plan_text_len);
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
+  memcpy (strbuf, context->sql_hash_text, sql_hash_text_len);
+  sql_hash_text = strbuf;
+  strbuf += sql_hash_text_len;
 
-      memcpy (strbuf, context->sql_hash_text, sql_hash_text_len);
-      sql_hash_text = strbuf;
-      strbuf += sql_hash_text_len;
+  if (sql_user_text_len > 0)
+    {
+      memcpy (strbuf, context->sql_user_text, sql_user_text_len);
+      sql_user_text = strbuf;
+      strbuf += sql_user_text_len;
+    }
 
-      if (sql_user_text_len > 0)
-	{
-	  memcpy (strbuf, context->sql_user_text, sql_user_text_len);
-	  sql_user_text = strbuf;
-	  strbuf += sql_user_text_len;
-	}
-
-      if (sql_plan_text_len > 0)
-	{
-	  memcpy (strbuf, context->sql_plan_text, sql_plan_text_len);
-	  sql_plan_text = strbuf;
-	}
+  if (sql_plan_text_len > 0)
+    {
+      memcpy (strbuf, context->sql_plan_text, sql_plan_text_len);
+      sql_plan_text = strbuf;
     }
 
   /* save stored time */
