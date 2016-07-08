@@ -11212,6 +11212,12 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	      str_length = compressed_size;
 
 	      string = db_private_alloc (NULL, uncompressed_size);
+
+	      if (uncompressed_size == 255)
+		{
+		  assert (true);
+		}
+
 	      if (string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,

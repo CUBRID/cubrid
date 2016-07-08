@@ -1762,7 +1762,7 @@ btree_get_node_level (PAGE_PTR page_ptr)
 bool
 btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
 {
-  if (*clear_flag == true)
+  if (*clear_flag == true || key_value->need_clear == true)
     {
       pr_clear_value (key_value);
       *clear_flag = false;

@@ -17520,6 +17520,10 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		    {
 		      if (listfile1 == connect_by->start_with_list_id)
 			{
+			  if (index_valp != NULL && index_valp->need_clear == true)
+			    {
+			      pr_clear_value (index_valp);
+			    }
 			  /* set index string pseudocolumn value to tuples from START WITH list */
 			  DB_MAKE_STRING (index_valp, father_index);
 			}
@@ -17579,6 +17583,11 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			      GOTO_EXIT_ON_ERROR;
 			    }
 
+			  if (index_valp != NULL && index_valp->need_clear == true)
+			    {
+			      pr_clear_value (index_valp);
+			    }
+
 			  DB_MAKE_STRING (index_valp, son_index);
 
 			  if (qexec_insert_tuple_into_list (thread_p, listfile2, xasl->outptr_list, &xasl_state->vd,
@@ -17628,6 +17637,11 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
 	      if (listfile1 == connect_by->start_with_list_id)
 		{
+		  if (index_valp != NULL && index_valp->need_clear == true)
+		    {
+		      pr_clear_value (index_valp);
+		    }
+
 		  DB_MAKE_STRING (index_valp, father_index);
 		}
 
@@ -17702,6 +17716,11 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  if (bf2df_str_son_index (thread_p, &son_index, father_index, &len_son_index, index) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
+		    }
+
+		  if (index_valp != NULL && index_valp->need_clear == true)
+		    {
+		      pr_clear_value (index_valp);
 		    }
 
 		  DB_MAKE_STRING (index_valp, son_index);
@@ -17863,6 +17882,11 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
   qexec_reset_pseudocolumns_val_pointers (level_valp, isleaf_valp, iscycle_valp, parent_pos_valp, index_valp);
 
+  if (index_valp != NULL && index_valp->need_clear)
+    {
+      pr_clear_value (index_valp);
+    }
+
   xasl->status = XASL_SUCCESS;
 
   return NO_ERROR;
@@ -17957,6 +17981,11 @@ exit_on_error:
     }
 
   qfile_close_scan (thread_p, &lfscan_id);
+
+  if (index_valp != NULL && index_valp->need_clear)
+    {
+      pr_clear_value (index_valp);
+    }
 
   xasl->status = XASL_FAILURE;
 
