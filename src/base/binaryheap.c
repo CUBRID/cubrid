@@ -384,7 +384,7 @@ bh_to_sorted_array (BINARY_HEAP * heap)
 
   element_count = heap->element_count;
   /* while has elements, extract max */
-  while (heap->element_count > 0)
+  while (heap->element_count > 1)
     {
       BH_SWAP (heap, 0, heap->element_count - 1);
       heap->element_count--;
