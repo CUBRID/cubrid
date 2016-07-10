@@ -13305,10 +13305,17 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
 }
 
 /*
+ * locator_lock_and_get_object_internal () - Internal function: aquire lock and return object
  *
- *
+ * return : scan code
+ * thread_p (in)   : 
+ * context (in/out): Heap get context .
+ * lock_mode (in)  : Type of lock.
+ * scan_cache (in) :
+ * chn (in)	   :
+ * ispeeking (in)  :
  */
-SCAN_CODE
+static SCAN_CODE
 locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, LOCK lock_mode,
 				      HEAP_SCANCACHE * scan_cache, int chn, int ispeeking)
 {
@@ -13359,6 +13366,8 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
     {
       lock_acquired = true;
     }
+
+  assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK);
 
   /* lock should be aquired now -> get recdes */
   if (context->recdes_p != NULL)
