@@ -1265,6 +1265,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_ST
       (*xcache_entry)->sql_info.sql_plan_text = sql_plan_text;
       (*xcache_entry)->stream = *stream;
       (*xcache_entry)->time_last_rt_check = time_stored;
+      (*xcache_entry)->time_last_used = time_stored;
 
       /* Now that new entry is initialized, we can try to insert it. */
       error_code = lf_hash_insert_given (t_entry, &xcache_Ht, &xid, (void **) xcache_entry, &inserted);
@@ -1628,16 +1629,16 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
       fprintf (fp, "  reference count = %ld \n", ATOMIC_INC_64 (&xcache_entry->ref_count, 0));
       fprintf (fp, "  time second last used = %lld \n", (long long) xcache_entry->time_last_used.tv_sec);
       if (xcache_Max_clones > 0)
-        {
-          fprintf (fp, "  clone count = %d \n", xcache_entry->n_cache_clones);
-        }
+	{
+	  fprintf (fp, "  clone count = %d \n", xcache_entry->n_cache_clones);
+	}
       fprintf (fp, "  sql info: \n");
       fprintf (fp, "    sql hash text = %s \n", xcache_entry->sql_info.sql_hash_text);
       if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
-        {
-          fprintf (fp, "    sql plan text = %s \n",
-                   xcache_entry->sql_info.sql_plan_text ? xcache_entry->sql_info.sql_plan_text : "(NONE)");
-        }
+	{
+	  fprintf (fp, "    sql plan text = %s \n",
+		   xcache_entry->sql_info.sql_plan_text ? xcache_entry->sql_info.sql_plan_text : "(NONE)");
+	}
 
       fprintf (fp, "  OID_LIST (count = %d): \n", xcache_entry->n_related_objects);
       for (oid_index = 0; oid_index < xcache_entry->n_related_objects; oid_index++)
