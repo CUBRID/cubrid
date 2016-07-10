@@ -294,6 +294,8 @@ fpcache_entry_uninit (void *entry)
     {
       pred_expr = fpcache_entry->clone_stack[head];
       assert (pred_expr != NULL);
+
+      qexec_clear_pred_context (thread_p, pred_expr, true);
       stx_free_additional_buff (thread_p, pred_expr->unpack_info);
       stx_free_xasl_unpack_info (pred_expr->unpack_info);
       db_private_free_and_init (thread_p, pred_expr->unpack_info);
