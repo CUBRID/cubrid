@@ -13460,7 +13460,7 @@ error:
 
   if (lock_acquired)
     {
-      lock_unlock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, true);
+      lock_unlock_object_donot_move_to_non2pl (thread_p, context->oid_p, context->class_oid_p, lock_mode);
     }
 
   if (context->single_use)
@@ -13530,6 +13530,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
   MVCC_REC_HEADER mvcc_header;
   DB_LOGICAL ev_res;		/* Re-evaluation result. */
   OID class_oid_local = OID_INITIALIZER;
+  LOCK lock_mode = X_LOCK;
 
   if (recdes == NULL && mvcc_reev_data != NULL)
     {
@@ -13552,7 +13553,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       context.single_use = false;
     }
 
-  scan = locator_lock_and_get_object_internal (thread_p, &context, X_LOCK, scan_cache, old_chn, ispeeking);
+  scan = locator_lock_and_get_object_internal (thread_p, &context, lock_mode, scan_cache, old_chn, ispeeking);
 
   /* perform reevaluation */
   if (mvcc_reev_data != NULL && (scan == S_SUCCESS || scan == S_SUCCESS_CHN_UPTODATE))
@@ -13586,7 +13587,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       if (ev_res != V_TRUE)
 	{
 	  /* did not pass the evaluation or error occurred - unlock object */
-	  lock_unlock_object (thread_p, oid, class_oid, X_LOCK, true);
+	  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
 	}
       switch (ev_res)
 	{
