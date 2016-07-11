@@ -73,7 +73,7 @@ struct xcache
   int soft_capacity;
   LF_HASH_TABLE ht;
   LF_FREELIST freelist;
-  INT32 entry_count;
+  volatile INT32 entry_count;
   bool logging_enabled;
   int max_clones;
   INT32 cleanup_flag;
@@ -144,7 +144,9 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
 
 /* Cleanup */
 #define XCACHE_CLEANUP_RATIO 0.2
-#define XCACHE_CLEANUP_NUM_ENTRIES(capacity) (MAX ((int) (XCACHE_CLEANUP_RATIO * (capacity)), 1))
+#define XCACHE_CLEANUP_MIN_NUM_ENTRIES 20
+#define XCACHE_CLEANUP_NUM_ENTRIES(capacity) \
+  (MAX ((int) (2 * XCACHE_CLEANUP_RATIO * (capacity)), XCACHE_CLEANUP_MIN_NUM_ENTRIES))
 
 typedef struct xcache_cleanup_candidate XCACHE_CLEANUP_CANDIDATE;
 struct xcache_cleanup_candidate
@@ -1777,6 +1779,9 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   XCACHE_CLEANUP_CANDIDATE candidate;
   int candidate_index;
   int success;
+  int cleanup_count;
+  BINARY_HEAP *bh = NULL;
+  int save_max_capacity = 0;
 
   /* We can allow only one cleanup process at a time. There is no point in duplicating this work. Therefore, anyone
    * trying to do the cleanup should first try to set xcache_Cleanup_flag. */
@@ -1797,6 +1802,43 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 
   /* Start cleanup. */
 
+  /* How many entries do we need to cleanup? */
+  cleanup_count = XCACHE_CLEANUP_RATIO * xcache_Soft_capacity + (xcache_Entry_count - xcache_Soft_capacity);
+  if (cleanup_count <= 0)
+    {
+      /* Not enough to cleanup */
+      if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
+	{
+	  assert_release (false);
+	}
+      return;
+    }
+
+  /* Can we use preallocated binary heap? */
+  if (cleanup_count <= xcache_Cleanup_bh->max_capacity)
+    {
+      bh = xcache_Cleanup_bh;
+      /* Hack binary heap max capacity to the desired cleanup count. */
+      save_max_capacity = bh->max_capacity;
+      bh->max_capacity = cleanup_count;
+    }
+  else
+    {
+      /* We need a larger binary heap. */
+      bh =
+	bh_create (thread_p, cleanup_count, sizeof (XCACHE_CLEANUP_CANDIDATE), xcache_compare_cleanup_candidates, NULL);
+      if (bh == NULL)
+	{
+	  /* Not really expected */
+	  assert (false);
+	  if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
+	    {
+	      assert_release (false);
+	    }
+	  return;
+	}
+    }
+
   /* The cleanup is a two-step process:
    * 1. Iterate through hash and select candidates for cleanup. The least recently used entries are sorted into a binary
    *    heap.
@@ -1805,8 +1847,8 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
    * 2. Remove collected candidates from hash. Entries must be unfix and no flags must be set.
    */
 
-  assert (xcache_Cleanup_bh->element_count == 0);
-  xcache_Cleanup_bh->element_count = 0;
+  assert (bh->element_count == 0);
+  bh->element_count = 0;
 
   xcache_log ("cleanup start: entries = %d \n"
 	      XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, XCACHE_LOG_TRAN_ARGS (thread_p));
@@ -1825,17 +1867,17 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 	  continue;
 	}
 
-      (void) bh_try_insert (xcache_Cleanup_bh, &candidate, NULL);
+      (void) bh_try_insert (bh, &candidate, NULL);
     }
 
   xcache_log ("cleanup collected entries = %d \n"
 	      XCACHE_LOG_TRAN_TEXT, xcache_Cleanup_bh->element_count, XCACHE_LOG_TRAN_ARGS (thread_p));
 
   /* Remove candidates from cache. */
-  for (candidate_index = 0; candidate_index < xcache_Cleanup_bh->element_count; candidate_index++)
+  for (candidate_index = 0; candidate_index < bh->element_count; candidate_index++)
     {
       /* Get candidate at candidate_index. */
-      bh_element_at (xcache_Cleanup_bh, candidate_index, &candidate);
+      bh_element_at (bh, candidate_index, &candidate);
 
       /* Set intention to cleanup the entry. */
       candidate.xid.cache_flag = XCACHE_ENTRY_CLEANUP;
@@ -1868,7 +1910,18 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
     }
 
   /* Reset binary heap. */
-  xcache_Cleanup_bh->element_count = 0;
+  bh->element_count = 0;
+
+  if (bh != xcache_Cleanup_bh)
+    {
+      /* Destroy bh */
+      bh_destroy (thread_p, bh);
+    }
+  else
+    {
+      /* Reset binary heap max capacity. */
+      xcache_Cleanup_bh->max_capacity = save_max_capacity;
+    }
 
   xcache_log ("cleanup finished: entries = %d \n"
 	      XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, XCACHE_LOG_TRAN_ARGS (thread_p));
