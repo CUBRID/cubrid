@@ -1633,6 +1633,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 	  fprintf (fp, "  clone count = %d \n", xcache_entry->n_cache_clones);
 	}
       fprintf (fp, "  sql info: \n");
+      fprintf (fp, "    sql user text = %s \n", xcache_entry->sql_info.sql_user_text);
       fprintf (fp, "    sql hash text = %s \n", xcache_entry->sql_info.sql_hash_text);
       if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
 	{
