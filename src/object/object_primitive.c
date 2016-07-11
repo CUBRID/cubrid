@@ -13906,16 +13906,16 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		}
 
 	      string[uncompressed_size] = '\0';
-	      db_make_varchar (value, precision, string, uncompressed_size, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
+	      db_make_varnchar (value, precision, string, uncompressed_size, TP_DOMAIN_CODESET (domain),
+				TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
 	    }
 	  else
 	    {
 	      /* If there is no decompression, then buf->ptr points to the data stored in buffer. */
 	      str_length = uncompressed_size;
-	      db_make_varchar (value, precision, buf->ptr, uncompressed_size, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
+	      db_make_varnchar (value, precision, buf->ptr, uncompressed_size, TP_DOMAIN_CODESET (domain),
+				TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = false;
 	    }
 
