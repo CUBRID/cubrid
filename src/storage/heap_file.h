@@ -361,7 +361,6 @@ typedef enum
 typedef struct heap_get_context HEAP_GET_CONTEXT;
 struct heap_get_context
 {
-  bool single_use;		/* if the pages must be unfixed at the end, or not (the caller may need them further) */
   INT16 record_type;		/* record type */
 
   /* input */
@@ -369,10 +368,15 @@ struct heap_get_context
   OID forward_oid;		/* forward oid of REC_RELOCATION or REC_BIGONE */
   OID *class_oid_p;		/* class object identifier */
   RECDES *recdes_p;		/* record descriptor */
+  HEAP_SCANCACHE *scan_cache;	/* scan cache */
 
   /* physical page watchers  */
   PGBUF_WATCHER home_page_watcher;	/* home page */
   PGBUF_WATCHER fwd_page_watcher;	/* forward page */
+
+  /* retrieving parameters */
+  int ispeeking;		/* PEEK or COPY */
+  int old_chn;			/* Cache number coherency */
 };
 
 /* Forward definition. */
@@ -645,17 +649,15 @@ extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rc
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn, bool is_heap_scan);
-extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
-					HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
+extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP_SCANCACHE * scan_cache);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, OID * oid, OID * class_oid,
-				   RECDES * recdes, HEAP_SCANCACHE * scan_cache);
+				   RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
 extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
 				     PGBUF_LATCH_MODE latch_mode);
-extern SCAN_CODE heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
+extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 					   PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
 					   NON_EXISTENT_HANDLING non_ex_handling_type);
-extern SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
-						      HEAP_SCANCACHE * scan_cache, int ispeeking);
+extern SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 
 #endif /* _HEAP_FILE_H_ */

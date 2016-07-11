@@ -69,6 +69,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "db.h"
+#include "fetch.h"
 
 #if defined(DMALLOC)
 #include "dmalloc.h"
@@ -237,8 +238,7 @@ static void locator_generate_class_pseudo_oid (THREAD_ENTRY * thread_p, OID * cl
 
 static int redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list);
 static SCAN_CODE locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
-						       LOCK lock_mode, HEAP_SCANCACHE * scan_cache, int chn,
-						       int ispeeking);
+						       LOCK lock_mode);
 static bool locator_check_class_for_rr_isolation_err (const OID * class_oid);
 static DB_LOGICAL locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 						  HEAP_SCANCACHE * scan_cache, RECDES * recdes,
@@ -13311,16 +13311,13 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
  * thread_p (in)   : 
  * context (in/out): Heap get context .
  * lock_mode (in)  : Type of lock.
- * scan_cache (in) :
- * chn (in)	   :
- * ispeeking (in)  :
+ *
+ * NOTE: Caller must handle the cleanup of context
  */
 static SCAN_CODE
-locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, LOCK lock_mode,
-				      HEAP_SCANCACHE * scan_cache, int chn, int ispeeking)
+locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, LOCK lock_mode)
 {
   SCAN_CODE scan = S_SUCCESS;
-  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
   OID class_oid_local = OID_INITIALIZER;
   bool lock_acquired = false;
 
@@ -13357,7 +13354,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
       lock_acquired = true;
 
       /* Prepare for getting record again. Since pages have been unlatched, others may have changed them */
-      if (heap_get_prepare_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED) != NO_ERROR)
+      if (heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -13372,24 +13369,22 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   /* lock should be aquired now -> get recdes */
   if (context->recdes_p != NULL)
     {
-      context->single_use = false;	/* prevent unfix as pages will be needed later */
-      scan = heap_get_last_version (thread_p, context, scan_cache, ispeeking, chn);
+      scan = heap_get_last_version (thread_p, context);
       if (scan != S_SUCCESS)
 	{
 	  goto error;
 	}
     }
 
-  /* check visibility of the object if it belongs to a mvcc class */
+  /* Check isolation restrictions and the visibility of the object if it belongs to a mvcc class */
   if (!heap_is_mvcc_disabled_for_class (context->class_oid_p))
     {
       MVCC_REC_HEADER recdes_header;
-      MVCC_SATISFIES_DELETE_RESULT satisfies_delete_result;
 
       if (context->recdes_p == NULL)
 	{
 	  /* ensure context is prepared to get header of the record */
-	  scan = heap_get_prepare_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
+	  scan = heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
 	  if (scan != S_SUCCESS)
 	    {
 	      goto error;
@@ -13463,10 +13458,6 @@ error:
       lock_unlock_object_donot_move_to_non2pl (thread_p, context->oid_p, context->class_oid_p, lock_mode);
     }
 
-  if (context->single_use)
-    {
-      heap_clean_get_context (thread_p, context, NULL);
-    }
   return scan != S_SUCCESS ? scan : S_ERROR;
 }
 
@@ -13545,15 +13536,9 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       class_oid = &class_oid_local;
     }
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
 
-  if (mvcc_reev_data != NULL)
-    {
-      /* don't unfix pages in case of reevaluation; in case of up-to-date chn, the record have to be obtained again */
-      context.single_use = false;
-    }
-
-  scan = locator_lock_and_get_object_internal (thread_p, &context, lock_mode, scan_cache, old_chn, ispeeking);
+  scan = locator_lock_and_get_object_internal (thread_p, &context, lock_mode);
 
   /* perform reevaluation */
   if (mvcc_reev_data != NULL && (scan == S_SUCCESS || scan == S_SUCCESS_CHN_UPTODATE))
@@ -13561,7 +13546,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       if (scan == S_SUCCESS_CHN_UPTODATE)
 	{
 	  /* PEEK record */
-	  scan = heap_get_record_data_when_all_ready (thread_p, &context, scan_cache, PEEK);
+	  scan = heap_get_record_data_when_all_ready (thread_p, &context);
 	  assert (scan == S_SUCCESS);
 	}
 
@@ -13678,16 +13663,16 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
 *                            - LOG_WARNING_IF_DELETED: set only warning
 */
 SCAN_CODE
-locator_lock_and_get_object (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
+locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 			     HEAP_SCANCACHE * scan_cache, LOCK lock, int ispeeking, int old_chn,
 			     NON_EXISTENT_HANDLING non_ex_handling_type)
 {
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan_code;
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
 
-  scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock, scan_cache, old_chn, ispeeking);
+  scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock);
 
   heap_clean_get_context (thread_p, &context, (scan_code == S_ERROR) ? NULL : scan_cache);
   return scan_code;
@@ -13738,7 +13723,7 @@ locator_check_class_for_rr_isolation_err (const OID * class_oid)
 *   recdes(in):
 */
 /* TODO: We need to reevaluate relation between primary key * and foreign key. */
-DB_LOGICAL
+static DB_LOGICAL
 locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 				       MVCC_REEV_DATA * mvcc_reev_data_p, MVCC_REC_HEADER * mvcc_header_p,
 				       const OID * curr_row_version_oid_p, RECDES * recdes)

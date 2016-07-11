@@ -7780,7 +7780,7 @@ end:
 }
 
 /*
- * heap_get_prepare_context () - Prepare for obtaining/processing heap object.
+ * heap_prepare_get_context () - Prepare for obtaining/processing heap object.
  *				It may get class_oid, record_type, home page
  *				and also forward_oid and forward_page in some
  *				cases.
@@ -7809,7 +7809,7 @@ end:
  *	   fail, and wil trigger an ordered fix + UNCONDITIONAL.
  */
 SCAN_CODE
-heap_get_prepare_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
+heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 			  PGBUF_LATCH_MODE latch_mode, bool is_heap_scan, NON_EXISTENT_HANDLING non_ex_handling_type)
 {
   SPAGE_SLOT *slot_p = NULL;
@@ -8133,14 +8133,12 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_
  * return	      : SCAN_CODE: S_SUCCESS, S_ERROR, S_DOESNT_FIT.
  * thread_p (in)      : Thread entry.
  * context (in/out)   : Heap get context. Should contain all required information for object retrieving
- * scan_cache (in)    : Heap scan cache.
- * int ispeeking (in) : PEEK or COPY.
  */
 SCAN_CODE
-heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
-				     HEAP_SCANCACHE * scan_cache, int ispeeking)
+heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
   SCAN_CODE scan = S_SUCCESS;
+  HEAP_SCANCACHE *scan_cache_p = context->scan_cache;
 
   /* We have everything set up to get record data. */
   assert (context != NULL);
@@ -8149,53 +8147,56 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
    * keep the page latched while the recdes don't go out of scope. If ispeeking is COPY, we must have a preallocated
    * area to copy to. This means either scan_cache is not NULL (and scan_cache->area can be used) or recdes->data is 
    * not NULL (and recdes->area_size defines how much can be copied). */
-  assert ((ispeeking == PEEK) || (ispeeking == COPY && (scan_cache != NULL || context->recdes_p->data != NULL)));
+  assert ((context->ispeeking == PEEK)
+	  || (context->ispeeking == COPY && (scan_cache_p != NULL || context->recdes_p->data != NULL)));
 
   switch (context->record_type)
     {
     case REC_RELOCATION:
       /* Don't peek REC_RELOCATION. */
-      if (scan_cache != NULL && (ispeeking == PEEK || context->recdes_p->data == NULL))
+      if (scan_cache_p != NULL && (context->ispeeking == PEEK || context->recdes_p->data == NULL))
 	{
-	  if (scan_cache->area == NULL)
+	  if (scan_cache_p->area == NULL)
 	    {
 	      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better
 	       * estimates. */
-	      scan_cache->area_size = DB_PAGESIZE * 2;
-	      scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-	      if (scan_cache->area == NULL)
+	      context->scan_cache->area_size = DB_PAGESIZE * 2;
+	      scan_cache_p->area = (char *) db_private_alloc (thread_p, scan_cache_p->area_size);
+	      if (scan_cache_p->area == NULL)
 		{
-		  scan_cache->area_size = -1;
+		  scan_cache_p->area_size = -1;
 		  return S_ERROR;
 		}
 	    }
-	  context->recdes_p->data = scan_cache->area;
-	  context->recdes_p->area_size = scan_cache->area_size;
+	  context->recdes_p->data = scan_cache_p->area;
+	  context->recdes_p->area_size = scan_cache_p->area_size;
 	}
       return spage_get_record (context->fwd_page_watcher.pgptr, context->forward_oid.slotid, context->recdes_p, COPY);
     case REC_BIGONE:
-      return heap_get_bigone_content (thread_p, scan_cache, ispeeking, &context->forward_oid, context->recdes_p);
+      return heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking, &context->forward_oid,
+				      context->recdes_p);
     case REC_HOME:
-      if (scan_cache != NULL && ispeeking == COPY && context->recdes_p->data == NULL)
+      if (scan_cache_p != NULL && context->ispeeking == COPY && context->recdes_p->data == NULL)
 	{
 	  /* It is guaranteed that scan_cache is not NULL. */
-	  if (scan_cache->area == NULL)
+	  if (scan_cache_p->area == NULL)
 	    {
 	      /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better
 	       * estimates. */
-	      scan_cache->area_size = DB_PAGESIZE * 2;
-	      scan_cache->area = (char *) db_private_alloc (thread_p, scan_cache->area_size);
-	      if (scan_cache->area == NULL)
+	      scan_cache_p->area_size = DB_PAGESIZE * 2;
+	      scan_cache_p->area = (char *) db_private_alloc (thread_p, scan_cache_p->area_size);
+	      if (scan_cache_p->area == NULL)
 		{
-		  scan_cache->area_size = -1;
+		  scan_cache_p->area_size = -1;
 		  return S_ERROR;
 		}
 	    }
-	  context->recdes_p->data = scan_cache->area;
-	  context->recdes_p->area_size = scan_cache->area_size;
+	  context->recdes_p->data = scan_cache_p->area;
+	  context->recdes_p->area_size = scan_cache_p->area_size;
 	  /* The allocated space is enough to save the instance. */
 	}
-      return spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p, ispeeking);
+      return spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p,
+			       context->ispeeking);
     default:
       break;
     }
@@ -9876,11 +9877,10 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
   OID root_oid = OID_INITIALIZER;
   HEAP_GET_CONTEXT context;
 
-  heap_init_get_context (thread_p, &context, class_oid, &root_oid, &recdes, NULL);
-
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  heap_init_get_context (thread_p, &context, class_oid, &root_oid, &recdes, NULL, PEEK, NULL_CHN);
 
-  if (heap_get_last_version (thread_p, &context, &scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
+  if (heap_get_last_version (thread_p, &context) == S_SUCCESS)
     {
       /* Make sure that this is a class */
       if (oid_is_root (&root_oid))
@@ -24745,35 +24745,57 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
  *   old_chn (in): Cache coherency number for existing record data. It is
  *		   used by clients to avoid resending record data when
  *		   it was not updated.
- *   is_heap_scan(in): required for heap_get_prepare_context
+ *   is_heap_scan(in): required for heap_prepare_get_context
  */
 SCAN_CODE
 heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 			  HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn, bool is_heap_scan)
 {
   SCAN_CODE scan = S_SUCCESS;
+  HEAP_GET_CONTEXT context;
+
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+
+  scan = heap_get_visible_version_internal (thread_p, &context, is_heap_scan);
+
+  heap_clean_get_context (thread_p, &context, (scan == S_ERROR) ? NULL : scan_cache);
+
+  return scan;
+}
+
+/*
+ * heap_get_visible_version_internal () - Retrieve the visible version of an object according to snapshot 
+ * 
+ *  return SCAN_CODE.
+ *  thread_p (in): Thread entry.
+ *  context (in): Heap get context. 
+ *  is_heap_scan (in): required for heap_prepare_get_context
+ */
+SCAN_CODE
+heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan)
+{
+  SCAN_CODE scan;
+
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
   INT16 type;
-  HEAP_GET_CONTEXT context;
 
-  assert (scan_cache != NULL);
+  assert (context->scan_cache != NULL);
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache);
-
-  scan = heap_get_prepare_context (thread_p, &context, PGBUF_LATCH_READ, is_heap_scan, LOG_WARNING_IF_DELETED);
+  scan = heap_prepare_get_context (thread_p, &context, PGBUF_LATCH_READ, is_heap_scan, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
       goto exit;
     }
-  assert (context.record_type == REC_HOME || context.record_type == REC_BIGONE
-	  || context.record_type == REC_RELOCATION);
-  assert (context.record_type == REC_HOME
-	  || (!OID_ISNULL (&context.forward_oid) && context.fwd_page_watcher.pgptr != NULL));
+  assert (context->record_type == REC_HOME || context->record_type == REC_BIGONE
+	  || context->record_type == REC_RELOCATION);
+  assert (context->record_type == REC_HOME
+	  || (!OID_ISNULL (&context->forward_oid) && context->fwd_page_watcher.pgptr != NULL));
 
-  if (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
+  if (context->scan_cache != NULL && context->scan_cache->mvcc_snapshot != NULL
+      && context->scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
     {
-      mvcc_snapshot = scan_cache->mvcc_snapshot;
+      mvcc_snapshot = context->scan_cache->mvcc_snapshot;
     }
   if (mvcc_snapshot != NULL)
     {
@@ -24789,8 +24811,8 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 	{
 	  /* current version is not visible, check previous versions from log and skip record get from heap */
 	  scan =
-	    heap_get_visible_version_from_log (thread_p, recdes, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header), scan_cache,
-					       old_chn);
+	    heap_get_visible_version_from_log (thread_p, context->recdes_p, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header),
+					       context->scan_cache, context->old_chn);
 	  if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE && scan != S_ERROR)
 	    {
 	      scan = S_SNAPSHOT_NOT_SATISFIED;
@@ -24806,7 +24828,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
       /* else...fall through to heap get */
     }
 
-  if (MVCC_IS_CHN_UPTODATE (thread_p, &mvcc_header, old_chn))
+  if (MVCC_IS_CHN_UPTODATE (thread_p, &mvcc_header, context->old_chn))
     {
       /* Object version didn't change and CHN is up-to-date. Don't get record data and return
        * S_SUCCESS_CHN_UPTODATE instead. */
@@ -24814,19 +24836,14 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
       goto exit;
     }
 
-  if (recdes != NULL)
+  if (context->recdes_p != NULL)
     {
-      scan = heap_get_record_data_when_all_ready (thread_p, &context, scan_cache, ispeeking);
+      scan = heap_get_record_data_when_all_ready (thread_p, &context);
     }
 
   /* Fall through to exit. */
 
 exit:
-
-  if (context.single_use)
-    {
-      heap_clean_get_context (thread_p, &context, (scan == S_ERROR) ? NULL : scan_cache);
-    }
   return scan;
 }
 
@@ -24944,20 +24961,21 @@ end:
 /*
  * heap_get_last_version () - Generic function for retrieving last version of heap objects (not considering visibility)
  *
- * 
+ * return    : Scan code.
+ * thread_p (in) : Thread entry.
+ * context (in) : Heap get context
  *
+ * NOTE: Caller must handle the cleanup of context
  */
 SCAN_CODE
-heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP_SCANCACHE * scan_cache, int ispeeking,
-		       int old_chn)
+heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
   SCAN_CODE scan = S_SUCCESS;
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
 
-  assert (scan_cache != NULL);
   assert (context->recdes_p != NULL);
 
-  scan = heap_get_prepare_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
+  scan = heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
       goto exit;
@@ -24973,7 +24991,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP
       goto exit;
     }
 
-  if (MVCC_IS_CHN_UPTODATE (thread_p, &mvcc_header, old_chn))
+  if (MVCC_IS_CHN_UPTODATE (thread_p, &mvcc_header, context->old_chn))
     {
       /* Object version didn't change and CHN is up-to-date. Don't get record data and return
        * S_SUCCESS_CHN_UPTODATE instead. */
@@ -24983,17 +25001,12 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP
 
   if (context->recdes_p != NULL)
     {
-      scan = heap_get_record_data_when_all_ready (thread_p, context, scan_cache, ispeeking);
+      scan = heap_get_record_data_when_all_ready (thread_p, context);
     }
 
   /* Fall through to exit. */
 
 exit:
-
-  if (context->single_use)
-    {
-      heap_clean_get_context (thread_p, context, (scan == S_ERROR) ? NULL : scan_cache);
-    }
 
   return scan;
 }
@@ -25083,17 +25096,18 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEA
  * heap_init_get_context () - Initiate all heap get context fields with generic informations
  *
  * thread_p (in)   : Thread_identifier.
- * context (in)	   : Heap get context.
+ * context (out)   : Heap get context.
  * oid (in)	   : Object identifier.
  * class_oid (in)  : Class oid.
  * recdes (in)     : Record descriptor.
  * scan_cache (in) : Scan cache. 
+ * is_peeking (in) : PEEK or COPY.
+ * old_chn (in)	   : Cache coherency number. 
 */
 void
 heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, OID * oid, OID * class_oid, RECDES * recdes,
-		       HEAP_SCANCACHE * scan_cache)
+		       HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
-  context->single_use = true;
   context->oid_p = oid;
   context->class_oid_p = class_oid;
   OID_SET_NULL (&context->forward_oid);
@@ -25107,4 +25121,8 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, OID 
       /* switch to local page watcher */
       pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &context->home_page_watcher);
     }
+
+  context->scan_cache = scan_cache;
+  context->ispeeking = ispeeking;
+  context->old_chn = old_chn;
 }
