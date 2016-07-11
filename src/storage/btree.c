@@ -16652,6 +16652,10 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int 
 
 	  attr_value->state = HEAP_WRITTEN_ATTRVALUE;
 	  attr_value++;
+	  if (attr_value->dbvalue.need_clear == true)
+	    {
+	      pr_clear_value (&(attr_value->dbvalue));
+	    }
 	}
     }
 
