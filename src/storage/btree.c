@@ -16513,6 +16513,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 			{
 			  allow_null_in_midxkey = true;	/* is Empty-string */
 			}
+		      pr_clear_value (&ep);
 		    }
 		}
 

@@ -8266,6 +8266,7 @@ pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN 
 {
   int c;
   DB_VALUE val1, val2;
+  bool error = false;
   OR_BUF buf_val1, buf_val2;
   bool comparable = true;
 
@@ -8280,21 +8281,44 @@ pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN 
 
   if ((*(dom1->type->index_readval)) (&buf_val1, &val1, dom1, -1, false, NULL, 0) != NO_ERROR)
     {
-      return DB_UNK;
+      error = true;
+      goto clean_up;
     }
 
   if ((*(dom2->type->index_readval)) (&buf_val2, &val2, dom2, -1, false, NULL, 0) != NO_ERROR)
     {
-      return DB_UNK;
+      error = true;
+      goto clean_up;
     }
 
   c = tp_value_compare_with_error (&val1, &val2, do_coercion, total_order, &comparable);
+
+  goto clean_up;
+
+exit:
   if (!comparable)
     {
       return DB_UNK;
     }
 
   return c;
+
+clean_up:
+  if (!DB_IS_NULL (&val1) && val1.need_clear == true)
+    {
+      pr_clear_value (&val1);
+    }
+
+  if (!DB_IS_NULL (&val2) && val2.need_clear == true)
+    {
+      pr_clear_value (&val2);
+    }
+
+  if (error == true)
+    {
+      return DB_UNK;
+    }
+  goto exit;
 }
 
 
