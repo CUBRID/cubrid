@@ -11165,7 +11165,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
   int str_length;
   int rc = NO_ERROR;
   int compressed_size = 0, uncompressed_size = 0;
-  char *decompressed_string = NULL;
+  char *decompressed_string = NULL, *string = NULL;
 
   if (value == NULL)
     {
@@ -11194,7 +11194,6 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 
       if (!copy)
 	{
-	  char *string = NULL;
 	  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
 	    {
 	      assert (false);
@@ -11211,7 +11210,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	    {
 	      str_length = compressed_size;
 
-	      string = db_private_alloc (NULL, uncompressed_size);
+	      string = db_private_alloc (NULL, uncompressed_size + 1);
 	      if (string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -11331,6 +11330,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		    {
 		      /* String was compressed */
 		      lzo_uint unc_size = 0;
+
 		      /* Handle decompression */
 		      decompressed_string = (char *) malloc (uncompressed_size * sizeof (char));
 		      if (decompressed_string == NULL)
@@ -11339,6 +11339,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 				  (size_t) uncompressed_size * sizeof (char));
 			  return rc;
 			}
+
 		      /* decompressing the string */
 		      rc =
 			lzo1x_decompress ((lzo_bytep) new_, (lzo_uint) compressed_size, decompressed_string,
@@ -11352,7 +11353,8 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			  /* Decompression failed. It shouldn't. */
 			  assert (false);
 			}
-		      /* TODO: Copy decompressed_string to new_ */
+
+		      /* Copy decompressed_string to new_ */
 		      if (new_ != NULL)
 			{
 			  db_private_free_and_init (NULL, new_);
@@ -11367,6 +11369,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
 			    }
 			  or_abort (buf);
+
 			  if (decompressed_string != NULL)
 			    {
 			      free_and_init (decompressed_string);
@@ -13886,7 +13889,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	  if (compressed_size > 0)
 	    {
 	      str_length = compressed_size;
-	      string = db_private_alloc (NULL, uncompressed_size);
+	      string = db_private_alloc (NULL, uncompressed_size + 1);
 	      if (string == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -13902,6 +13905,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		  return rc;
 		}
 
+	      string[uncompressed_size] = '\0';
 	      db_make_varchar (value, precision, string, uncompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
