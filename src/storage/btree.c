@@ -6519,6 +6519,11 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
 	  pr_clear_value (&(env->pkeys_val[i]));	/* clear saved */
 	  pr_clone_value (&elem, &(env->pkeys_val[i]));	/* save */
 
+	  if (elem.need_clear == true)
+	    {
+	      pr_clear_value (&elem);
+	    }
+
 	  /* propagate to the following partial key-values */
 	  prev_k_index = prev_i_index;
 	  prev_k_ptr = prev_i_ptr;
@@ -6534,6 +6539,11 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
 	      env->stat_info->pkeys[k]++;
 	      pr_clear_value (&(env->pkeys_val[k]));	/* clear saved */
 	      pr_clone_value (&elem, &(env->pkeys_val[k]));	/* save */
+
+	      if (elem.need_clear == true)
+		{
+		  pr_clear_value (&elem);
+		}
 	    }
 
 	  break;
