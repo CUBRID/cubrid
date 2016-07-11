@@ -16513,7 +16513,6 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 			{
 			  allow_null_in_midxkey = true;	/* is Empty-string */
 			}
-		      pr_clear_value (&ep);
 		    }
 		}
 
@@ -16538,6 +16537,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 	    }
 	}
 
+
       /* 
        * Only in case that key_range_satisfied is true,
        * the key filter can be applied to the current key value.
@@ -16559,6 +16559,11 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
     }
 
 end:
+  if (!DB_IS_NULL (&ep) && ep.need_clear)
+    {
+      pr_clear_value (&ep);
+    }
+
   assert ((*is_key_range_satisfied == false && *is_key_filter_satisfied == false)
 	  || (*is_key_range_satisfied == true && *is_key_filter_satisfied == false)
 	  || (*is_key_range_satisfied == true && *is_key_filter_satisfied == true));
