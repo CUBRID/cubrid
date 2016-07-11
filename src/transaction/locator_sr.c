@@ -248,6 +248,10 @@ static DB_LOGICAL locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, con
 						    UPDDEL_MVCC_COND_REEVAL * mvcc_cond_reeval, bool is_upddel);
 static DB_LOGICAL mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data,
 					   const OID * oid, RECDES * recdes);
+static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
+							 MVCC_REEV_DATA * mvcc_reev_data_p,
+							 MVCC_REC_HEADER * mvcc_header_p,
+							 const OID * curr_row_version_oid_p, RECDES * recdes);
 
 /*
  * locator_initialize () - Initialize the locator on the server

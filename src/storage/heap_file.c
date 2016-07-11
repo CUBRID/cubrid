@@ -904,6 +904,8 @@ static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, REC
 						    int has_chn);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * home_pg_watcher,
 					 PGBUF_WATCHER * fwd_pg_watcher, LOG_LSA * prev_version_lsa);
+static SCAN_CODE heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
+						    bool is_heap_scan);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -24771,18 +24773,17 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
  *  context (in): Heap get context. 
  *  is_heap_scan (in): required for heap_prepare_get_context
  */
-SCAN_CODE
+static SCAN_CODE
 heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan)
 {
   SCAN_CODE scan;
 
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
-  INT16 type;
 
   assert (context->scan_cache != NULL);
 
-  scan = heap_prepare_get_context (thread_p, &context, PGBUF_LATCH_READ, is_heap_scan, LOG_WARNING_IF_DELETED);
+  scan = heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, is_heap_scan, LOG_WARNING_IF_DELETED);
   if (scan != S_SUCCESS)
     {
       goto exit;
@@ -24800,7 +24801,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
   if (mvcc_snapshot != NULL)
     {
       MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
-      scan = heap_get_mvcc_header (thread_p, &context, &mvcc_header);
+      scan = heap_get_mvcc_header (thread_p, context, &mvcc_header);
       if (scan != S_SUCCESS)
 	{
 	  goto exit;
@@ -24838,7 +24839,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 
   if (context->recdes_p != NULL)
     {
-      scan = heap_get_record_data_when_all_ready (thread_p, &context);
+      scan = heap_get_record_data_when_all_ready (thread_p, context);
     }
 
   /* Fall through to exit. */
@@ -24869,7 +24870,7 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WA
 {
   int error_code = NO_ERROR;
   RECDES recdes, forward_recdes;
-  VPID vpid, fwd_vpid;
+  VPID fwd_vpid;
   OID forward_oid;
   PGBUF_WATCHER overflow_pg_watcher;
 
