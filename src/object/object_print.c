@@ -3729,6 +3729,11 @@ describe_midxkey (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const 
 	{
 	  buffer = pt_append_nulstring (parser, buffer, ", ");
 	}
+
+      if (!DB_IS_NULL (&value) && value.need_clear == true)
+	{
+	  pr_clear_value (&value);
+	}
     }
   if (i < size)
     {
