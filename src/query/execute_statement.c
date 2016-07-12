@@ -13289,12 +13289,6 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* end the query; reset query_id and call qmgr_end_query() */
   pt_end_query (parser, query_id_self);
 
-  if ((err < NO_ERROR) && er_errid () != NO_ERROR)
-    {
-      pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number, er_msg (),
-		       NULL);
-    }
-
   return err;
 }
 
