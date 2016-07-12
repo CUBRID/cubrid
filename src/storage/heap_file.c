@@ -8029,7 +8029,7 @@ try_again:
 error:
   assert (er_errid () != NO_ERROR);
 
-  heap_clean_get_context (thread_p, context, NULL);
+  heap_clean_get_context (thread_p, context);
   return S_ERROR;
 }
 
@@ -9880,7 +9880,7 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
   HEAP_GET_CONTEXT context;
 
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
-  heap_init_get_context (thread_p, &context, class_oid, &root_oid, &recdes, NULL, PEEK, NULL_CHN);
+  heap_init_get_context (thread_p, &context, class_oid, &root_oid, &recdes, &scan_cache, PEEK, NULL_CHN);
 
   if (heap_get_last_version (thread_p, &context) == S_SUCCESS)
     {
@@ -24760,7 +24760,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 
   scan = heap_get_visible_version_internal (thread_p, &context, is_heap_scan);
 
-  heap_clean_get_context (thread_p, &context, (scan == S_ERROR) ? NULL : scan_cache);
+  heap_clean_get_context (thread_p, &context) ;
 
   return scan;
 }
@@ -24974,6 +24974,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   SCAN_CODE scan = S_SUCCESS;
   MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
 
+  assert (context->scan_cache != NULL);
   assert (context->recdes_p != NULL);
 
   scan = heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
@@ -25064,17 +25065,17 @@ heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHE
  * 
  * thread_p (in)   : Thread_identifier.
  * context (in)	   : Heap get context.
- * scan_cache (in) : Scan cache. 
  */
 void
-heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, HEAP_SCANCACHE * scan_cache)
+heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
   assert (context != NULL);
 
-  if (scan_cache != NULL && scan_cache->cache_last_fix_page)
+  if (context->scan_cache != NULL && context->scan_cache->cache_last_fix_page
+      && context->home_page_watcher.pgptr != NULL)
     {
       /* Save home page (or NULL if it had to be unfixed) to scan_cache. */
-      pgbuf_replace_watcher (thread_p, &context->home_page_watcher, &scan_cache->page_watcher);
+      pgbuf_replace_watcher (thread_p, &context->home_page_watcher, &context->scan_cache->page_watcher);
       assert (context->home_page_watcher.pgptr == NULL);
     }
 

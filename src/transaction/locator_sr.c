@@ -13349,7 +13349,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_COND_LOCK) != LK_GRANTED)
     {
       /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally */
-      heap_clean_get_context (thread_p, context, NULL);
+      heap_clean_get_context (thread_p, context);
       if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
 	{
 	  goto error;
@@ -13602,7 +13602,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
     }
 
 exit:
-  heap_clean_get_context (thread_p, &context, (scan == S_ERROR) ? NULL : scan_cache);
+  heap_clean_get_context (thread_p, &context);
   return scan;
 }
 
@@ -13678,7 +13678,7 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * cla
 
   scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock);
 
-  heap_clean_get_context (thread_p, &context, (scan_code == S_ERROR) ? NULL : scan_cache);
+  heap_clean_get_context (thread_p, &context);
   return scan_code;
 }
 
