@@ -16559,7 +16559,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
     }
 
 end:
-  if (!DB_IS_NULL (&ep) && ep.need_clear)
+  if (!DB_IS_NULL (&ep) && ep.need_clear == true)
     {
       pr_clear_value (&ep);
     }
@@ -16571,6 +16571,10 @@ end:
   return ret;
 
 exit_on_error:
+  if (!DB_IS_NULL (&ep) && ep.need_clear == true)
+    {
+      pr_clear_value (&ep);
+    }
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
