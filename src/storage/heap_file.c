@@ -9917,6 +9917,7 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
 	}
     }
 
+  heap_clean_get_context (thread_p, &context);
   heap_scancache_end (thread_p, &scan_cache);
 
   return copy_classname;
@@ -24760,7 +24761,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 
   scan = heap_get_visible_version_internal (thread_p, &context, is_heap_scan);
 
-  heap_clean_get_context (thread_p, &context) ;
+  heap_clean_get_context (thread_p, &context);
 
   return scan;
 }
