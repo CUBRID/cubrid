@@ -23,6 +23,8 @@
 
 #ident "$Id$"
 
+#include "config.h"
+
 #include "xasl_cache.h"
 #include "perf_monitor.h"
 #include "query_executor.h"
@@ -31,6 +33,7 @@
 #include "xasl_generation.h"
 #include "statistics_sr.h"
 #include "thread.h"
+#include "query_manager.h"
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)
@@ -1583,6 +1586,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   int oid_index;
+  char *sql_id = NULL;
 
   assert (fp);
 
@@ -1633,6 +1637,15 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 	  fprintf (fp, "  clone count = %d \n", xcache_entry->n_cache_clones);
 	}
       fprintf (fp, "  sql info: \n");
+
+      qmgr_get_sql_id (thread_p, &sql_id, xcache_entry->sql_info.sql_hash_text,
+		       strlen (xcache_entry->sql_info.sql_hash_text));
+      fprintf (fp, "    SQL_ID = %s \n", sql_id ? sql_id : "(UNKNOWN)");
+      if (sql_id != NULL)
+	{
+	  free_and_init (sql_id);
+	}
+
       fprintf (fp, "    sql user text = %s \n", xcache_entry->sql_info.sql_user_text);
       fprintf (fp, "    sql hash text = %s \n", xcache_entry->sql_info.sql_hash_text);
       if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
