@@ -1964,10 +1964,10 @@ xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_A
   struct timeval left_timeval = ((XCACHE_CLEANUP_CANDIDATE *) left)->time_last_used;
   struct timeval right_timeval = ((XCACHE_CLEANUP_CANDIDATE *) right)->time_last_used;
 
-  /* Greater means placed in binary heap. So return BH_GT for older timeval. */
+  /* Lesser means placed in binary heap. So return BH_LT for older timeval. */
   if (left_timeval.tv_sec < right_timeval.tv_sec)
     {
-      return BH_GT;
+      return BH_LT;
     }
   else if (left_timeval.tv_sec == right_timeval.tv_sec)
     {
@@ -1975,7 +1975,7 @@ xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_A
     }
   else
     {
-      return BH_LT;
+      return BH_GT;
     }
 }
 
