@@ -11577,6 +11577,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       int status = NO_ERROR;
       MVCC_SNAPSHOT *mvcc_snapshot = NULL;
       SCAN_CODE scan;
+      LOCK lock_mode;
 
       /* Start heap file scan operation */
       /* A new argument(is_indexscan = false) is appended */
@@ -11590,8 +11591,26 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       (void) heap_scancache_start (thread_p, &scan_cache, NULL, NULL, true, false, mvcc_snapshot);
       scan_cache_end_needed = true;
 
+      /* must choose corresponding lock_mode for scan_operation_type. 
+       *  for root classes the lock_mode is considered, not the operation type */
+      switch (scan_operation_type)
+	{
+	case S_SELECT:
+	case S_SELECT_WITH_LOCK:
+	  lock_mode = S_LOCK;
+	  break;
+	case S_UPDATE:
+	case S_DELETE:
+	  lock_mode = X_LOCK;
+	  break;
+	default:
+	  assert (false);
+	}
+
       /* fetch the object and the class oid */
-      scan = locator_get_object (thread_p, dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, PEEK);
+      scan =
+	locator_get_object (thread_p, dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, X_LOCK, PEEK,
+			    NULL_CHN);
       if (scan != S_SUCCESS)
 	{
 	  /* setting ER_HEAP_UNKNOWN_OBJECT error for deleted or invisible objects should be replaced by a more clear 
