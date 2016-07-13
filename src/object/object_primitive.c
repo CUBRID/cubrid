@@ -11379,10 +11379,12 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			}
 
 		      /* Copy decompressed_string to new_ */
-		      if (new_ != NULL)
+		      if (new_ != NULL && new_ != copy_buf)
 			{
 			  db_private_free_and_init (NULL, new_);
 			}
+
+		      new_ = NULL;
 
 		      new_ = db_private_alloc (NULL, unc_size + 1);
 		      if (new_ == NULL)
@@ -14060,10 +14062,13 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 			}
 		      /* The compressed string stored in buf is now decompressed in decompressed_string
 		       * and is needed now to be copied over new_. */
-		      if (new_ != NULL)
+		      if (new_ != NULL && new_ != copy_buf)
 			{
 			  db_private_free_and_init (NULL, new_);
 			}
+
+		      new_ = NULL;
+
 		      /* Copy the decompressed string to new_. */
 		      new_ = db_private_alloc (NULL, unc_size + 1);
 		      if (new_ == NULL)
