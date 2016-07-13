@@ -224,6 +224,9 @@ static void xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone);
 static void xcache_cleanup (THREAD_ENTRY * thread_p);
 static BH_CMP_RESULT xcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_ARG ignore_arg);
 static bool xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
+static void xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XASL_CACHE_ENTRY *, void *),
+				       void *arg);
+static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, void *arg);
 
 /*
  * xcache_initialize () - Initialize XASL cache.
@@ -1481,20 +1484,21 @@ error:
 }
 
 /*
- * xcache_remove_by_oid () - Remove all XASL cache entries related to given object.
+ * xcache_invalidate_entries () - Invalidate all cache entries which pass the invalidation check. If there is no
+ *				  invalidation check, all cache entries are removed.
  *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * oid (in)	 : Object ID.
+ * return		 : Void.
+ * thread_p (in)	 : Thread entry.
+ * invalidate_check (in) : Invalidation check function.
+ * arg (in)		 : Argument for invalidation check function.
  */
-void
-xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid)
+static void
+xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XASL_CACHE_ENTRY *, void *), void *arg)
 {
 #define XCACHE_DELETE_XIDS_SIZE 1024
   LF_HASH_TABLE_ITERATOR iter;
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
   XASL_CACHE_ENTRY *xcache_entry = NULL;
-  int oid_idx;
   bool can_delete = false;
   int success;
   XASL_ID delete_xids[XCACHE_DELETE_XIDS_SIZE];
@@ -1506,11 +1510,6 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid)
     {
       return;
     }
-
-  xcache_check_logging ();
-
-  xcache_log ("remove all entries: \n"
-	      "\t OID = %d|%d|%d \n" XCACHE_LOG_TRAN_TEXT, OID_AS_ARGS (oid), XCACHE_LOG_TRAN_ARGS (thread_p));
 
   while (!finished)
     {
@@ -1530,17 +1529,14 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid)
 	      break;
 	    }
 
-	  for (oid_idx = 0; oid_idx < xcache_entry->n_related_objects; oid_idx++)
+	  /* Check invalidation conditions. */
+	  if (invalidate_check == NULL || invalidate_check (xcache_entry, arg))
 	    {
-	      if (OID_EQ (&xcache_entry->related_objects[oid_idx].oid, oid))
+	      /* Mark entry as deleted. */
+	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
 		{
-		  /* Mark entry as deleted. */
-		  if (xcache_entry_mark_deleted (thread_p, xcache_entry))
-		    {
-		      /* Successfully marked for delete. Save it to delete after the iteration. */
-		      delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
-		    }
-		  break;
+		  /* Successfully marked for delete. Save it to delete after the iteration. */
+		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
 		}
 	    }
 
@@ -1572,6 +1568,66 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid)
     }
 
 #undef XCACHE_DELETE_XIDS_SIZE
+}
+
+/*
+ * xcache_entry_is_related_to_oid () - Is XASL cache entry related to the OID given as argument.
+ *
+ * return	     : True if entry is related, false otherwise.
+ * xcache_entry (in) : XASL cache entry.
+ * arg (in)	     : Pointer to OID.
+ */
+static bool
+xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, void *arg)
+{
+  OID *related_to_oid = (OID *) arg;
+  int oid_idx = 0;
+
+  assert (xcache_entry != NULL);
+  assert (related_to_oid != NULL);
+
+  for (oid_idx = 0; oid_idx < xcache_entry->n_related_objects; oid_idx++)
+    {
+      if (OID_EQ (&xcache_entry->related_objects[oid_idx].oid, related_to_oid))
+	{
+	  /* Found relation. */
+	  return true;
+	}
+    }
+  /* Not related. */
+  return false;
+}
+
+/*
+ * xcache_remove_by_oid () - Remove all XASL cache entries related to given object.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * oid (in)	 : Object ID.
+ */
+void
+xcache_remove_by_oid (THREAD_ENTRY * thread_p, OID * oid)
+{
+  xcache_check_logging ();
+
+  xcache_log ("remove all entries: \n"
+	      "\t OID = %d|%d|%d \n" XCACHE_LOG_TRAN_TEXT, OID_AS_ARGS (oid), XCACHE_LOG_TRAN_ARGS (thread_p));
+  xcache_invalidate_entries (thread_p, xcache_entry_is_related_to_oid, oid);
+}
+
+/*
+ * xcache_drop_all () - Remove all entries from XASL cache.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+void
+xcache_drop_all (THREAD_ENTRY * thread_p)
+{
+  xcache_check_logging ();
+
+  xcache_log ("drop all queries \n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
+  xcache_invalidate_entries (thread_p, NULL, NULL);
 }
 
 /*
@@ -1816,7 +1872,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   /* Start cleanup. */
 
   /* How many entries do we need to cleanup? */
-  cleanup_count = XCACHE_CLEANUP_RATIO * xcache_Soft_capacity + (xcache_Entry_count - xcache_Soft_capacity);
+  cleanup_count = (int) XCACHE_CLEANUP_RATIO *xcache_Soft_capacity + (xcache_Entry_count - xcache_Soft_capacity);
   if (cleanup_count <= 0)
     {
       /* Not enough to cleanup */

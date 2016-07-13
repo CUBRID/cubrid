@@ -35,6 +35,7 @@ extern int fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICATE * o
 			  PRED_EXPR_WITH_CONTEXT ** pred_expr);
 extern int fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR_WITH_CONTEXT * filter_pred);
 extern void fpcache_remove_by_class (THREAD_ENTRY * thread_p, OID * class_oid);
+extern void fpcache_drop_all (THREAD_ENTRY * thread_p);
 extern void fpcache_dump (THREAD_ENTRY * thread_p, FILE * fp);
 
 #endif /* _XASL_CACHE_H_ */

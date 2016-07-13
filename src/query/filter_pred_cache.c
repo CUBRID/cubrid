@@ -743,3 +743,16 @@ fpcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_
       return BH_LT;
     }
 }
+
+/*
+ * fpcache_drop_all () - Free all filter predicate cache entries.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+void
+fpcache_drop_all (THREAD_ENTRY * thread_p)
+{
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
+  lf_hash_clear (t_entry, &fpcache_Ht);
+}

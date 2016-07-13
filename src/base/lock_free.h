@@ -369,7 +369,7 @@ extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *ke
 extern int lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
 extern int lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
 extern int lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
-extern int lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table);
+extern void lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table);
 
 /*
  * Lock free hash table iterator

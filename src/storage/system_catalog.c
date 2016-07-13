@@ -5048,10 +5048,7 @@ catalog_clear_hash_table ()
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_CATALOG);
 
-  if (lf_hash_clear (t_entry, &catalog_Hash_table) != NO_ERROR)
-    {
-      assert (false);
-    }
+  lf_hash_clear (t_entry, &catalog_Hash_table);
 }
 
 
