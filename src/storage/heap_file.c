@@ -24939,8 +24939,7 @@ static int
 heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, RECDES * recdes_p,
 				      int size)
 {
-
-  assert (scan_cache_p != NULL && recdes_p != NULL && recdes_p->data == NULL);
+  assert (scan_cache_p != NULL && recdes_p != NULL);
 
   if (scan_cache_p->area == NULL)
     {
@@ -24957,7 +24956,5 @@ heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * 
   recdes_p->data = scan_cache_p->area;
   recdes_p->area_size = scan_cache_p->area_size;
 
-
   return NO_ERROR;
-
 }
