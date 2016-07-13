@@ -239,7 +239,6 @@ static void locator_generate_class_pseudo_oid (THREAD_ENTRY * thread_p, OID * cl
 static int redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list);
 static SCAN_CODE locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 						       LOCK lock_mode);
-static bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 static DB_LOGICAL locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 						  HEAP_SCANCACHE * scan_cache, RECDES * recdes,
 						  MVCC_UPDDEL_REEV_DATA * mvcc_reev_data);
@@ -13680,39 +13679,6 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * cla
 
   heap_clean_get_context (thread_p, &context);
   return scan_code;
-}
-
-/*
- * logtb_check_class_for_rr_isolation_err () - Check if the class have to be checked against serializable conflicts
- *
- * return		   : true if the class is not root/trigger/user class, otherwise false
- * class_oid (in)	   : Class object identifier.
- *
- * Note: Do not check system classes that are not part of catalog for rr isolation level error. Isolation consistency
- *	 is secured using locks anyway. These classes are in a way related to table schema's and can be accessed
- *	 before the actual classes. db_user instances are fetched to check authorizations, while db_root and db_trigger
- *	 are accessed when triggers are modified.
- *	 The RR isolation has to check if an instance that we want to lock was modified by concurrent transaction.
- *	 If the instance was modified, then this means we have an isolation conflict. The check must verify last
- *	 instance version visibility over transaction snapshot. The version is visible if and only if it was not
- *	 modified by concurrent transaction. To check visibility, we must first generate a transaction snapshot.
- *	 Since instances from these classes are accessed before locking tables, the snapshot is generated before
- *	 transaction is blocked on table lock. The results will then seem to be inconsistent with most cases when table
- *	 locks are acquired before snapshot.
- */
-static bool
-logtb_check_class_for_rr_isolation_err (const OID * class_oid)
-{
-  assert (class_oid != NULL && !OID_ISNULL (class_oid));
-
-  if (!oid_check_cached_class_oid (OID_CACHE_DB_ROOT_CLASS_ID, class_oid)
-      && !oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
-      && !oid_check_cached_class_oid (OID_CACHE_TRIGGER_CLASS_ID, class_oid))
-    {
-      return true;
-    }
-
-  return false;
 }
 
 /*

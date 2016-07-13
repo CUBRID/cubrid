@@ -1985,11 +1985,11 @@ extern LOG_PAGE *logpb_create_header_page (THREAD_ENTRY * thread_p);
 extern void logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr);
 extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
 extern void logpb_flush_header (THREAD_ENTRY * thread_p);
-extern LOG_PAGE *logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE access_mode,
+extern LOG_PAGE *logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE access_mode,
 				   LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
-extern LOG_PAGE *logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,  LOG_CS_ACCESS_MODE access_mode,
+extern LOG_PAGE *logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 					    LOG_PAGE * log_pgptr);
 extern int logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages,
 					    LOG_PAGE * log_pgptr);
@@ -2286,5 +2286,7 @@ extern int logtb_collect_local_clients (int **local_client_pids);
 #endif /* !NDEBUG */
 
 extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
+
+extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 
 #endif /* _LOG_IMPL_H_ */

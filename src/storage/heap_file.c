@@ -8156,6 +8156,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  && heap_scan_cache_allocate_recdes_data (thread_p, scan_cache_p, context->recdes_p,
 						   DB_PAGESIZE * 2) != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  return S_ERROR;
 	}
 
@@ -8168,6 +8169,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  && heap_scan_cache_allocate_recdes_data (thread_p, scan_cache_p, context->recdes_p,
 						   DB_PAGESIZE * 2) != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  return S_ERROR;
 	}
       return spage_get_record (context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p,
@@ -24950,6 +24952,7 @@ heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * 
       if (scan_cache_p->area == NULL)
 	{
 	  scan_cache_p->area_size = -1;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  return ER_FAILED;
 	}
     }

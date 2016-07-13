@@ -7450,7 +7450,7 @@ tran_abort_reason_to_string (TRAN_ABORT_REASON val)
  *	 transaction is blocked on table lock. The results will then seem to be inconsistent with most cases when table
  *	 locks are acquired before snapshot.
  */
-static bool
+bool
 logtb_check_class_for_rr_isolation_err (const OID * class_oid)
 {
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
