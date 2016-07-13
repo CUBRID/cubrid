@@ -16535,6 +16535,10 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 		  goto end;	/* give up */
 		}
 	    }
+	  if (!DB_IS_NULL (&ep) && ep.need_clear == true)
+	    {
+	      pr_clear_value (&ep);
+	    }
 	}
 
 
@@ -16559,11 +16563,6 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
     }
 
 end:
-  if (!DB_IS_NULL (&ep) && ep.need_clear == true)
-    {
-      pr_clear_value (&ep);
-    }
-
   assert ((*is_key_range_satisfied == false && *is_key_filter_satisfied == false)
 	  || (*is_key_range_satisfied == true && *is_key_filter_satisfied == false)
 	  || (*is_key_range_satisfied == true && *is_key_filter_satisfied == true));
@@ -16571,11 +16570,6 @@ end:
   return ret;
 
 exit_on_error:
-  if (!DB_IS_NULL (&ep) && ep.need_clear == true)
-    {
-      pr_clear_value (&ep);
-    }
-
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
