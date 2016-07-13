@@ -1619,7 +1619,7 @@ static int btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF 
 				   BTREE_OBJECT_INFO * btree_obj, MVCCID tran_mvccid, LOG_LSA * reference_lsa);
 
 static MVCCID btree_get_creator_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR root_page);
-static int btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, RECDES *ovf_record,
+static int btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, RECDES * ovf_record,
 					 char *initial_oid_ptr, char *oid_ptr_lower_bound, char *oid_ptr_upper_bound,
 					 BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
 					 int *offset_to_object, BTREE_MVCC_INFO * mvcc_info);
@@ -3694,8 +3694,7 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
 
   if (rv_undo_data_ptr != NULL && *rv_undo_data_ptr != NULL)
     {
-      *rv_undo_data_ptr =
-	log_rv_pack_undo_record_changes (*rv_undo_data_ptr, offset_to_object, 0, size, oid_ptr);
+      *rv_undo_data_ptr = log_rv_pack_undo_record_changes (*rv_undo_data_ptr, offset_to_object, 0, size, oid_ptr);
     }
 
   /* oid_ptr points to the address where the new object should be saved */
@@ -3711,8 +3710,7 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
   /* Log redo changes. */
   if (rv_redo_data_ptr != NULL && *rv_redo_data_ptr != NULL)
     {
-      *rv_redo_data_ptr =
-	log_rv_pack_redo_record_changes (*rv_redo_data_ptr, offset_to_object, 0, size, oid_ptr);
+      *rv_redo_data_ptr = log_rv_pack_redo_record_changes (*rv_redo_data_ptr, offset_to_object, 0, size, oid_ptr);
     }
 
   if (offset_to_objptr != NULL)
@@ -12247,7 +12245,7 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
  */
 static int
 btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
-			      RECDES *ovf_record, char *initial_oid_ptr, char *oid_ptr_lower_bound,
+			      RECDES * ovf_record, char *initial_oid_ptr, char *oid_ptr_lower_bound,
 			      char *oid_ptr_upper_bound, BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
 			      int *offset_to_object, BTREE_MVCC_INFO * mvcc_info)
 {
@@ -12296,7 +12294,7 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
 	  return NO_ERROR;
 	}
 
-      oid_ptr -= obj_size; 
+      oid_ptr -= obj_size;
     }
 
   /* check next OIDs */
@@ -12337,11 +12335,11 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
 	  return NO_ERROR;
 	}
 
-      oid_ptr += obj_size; 
+      oid_ptr += obj_size;
     }
 
   return NO_ERROR;
-  
+
 }
 
 /*
@@ -24560,7 +24558,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
        * Otherwise, use dirty version with lock since need to check whether the
        * object exists.
        */
-      if (heap_is_mvcc_disabled_for_class (class_oid))
+      if (mvcc_is_mvcc_disabled_class (class_oid))
 	{
 	  find_unique_helper.snapshot = logtb_get_mvcc_snapshot (thread_p);
 	  key_function = btree_key_find_unique_version_oid;
@@ -30584,7 +30582,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 
 	      /* BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED is used only for non-MVCC classes. */
 	      assert (delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED || !LOG_ISRESTARTED ()
-		      || heap_is_mvcc_disabled_for_class (BTREE_DELETE_CLASS_OID (delete_helper)));
+		      || mvcc_is_mvcc_disabled_class (BTREE_DELETE_CLASS_OID (delete_helper)));
 	    }
 	  if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
 	      && OID_ISNULL (&delete_helper->second_object_info.class_oid))

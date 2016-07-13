@@ -7168,7 +7168,7 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 	      /* Don't release locks on classes. READ COMMITTED isolation is only applied on instances, classes must
 	       * have at least REPEATABLE READ isolation. */
 	    }
-	  else if (heap_is_mvcc_disabled_for_class (class_oid))
+	  else if (mvcc_is_mvcc_disabled_class (class_oid))
 	    {
 	      /* Release S_LOCK after reading object. */
 	      lock_unlock_shared_inst_lock (thread_p, tran_index, oid);

@@ -706,8 +706,6 @@ typedef enum
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
 
-#define HEAP_GET_CONTEXT_INITIALIZER { .oid_p = NULL }
-
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);
 extern INT16 db_log_page_size (void);

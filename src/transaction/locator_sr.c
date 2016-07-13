@@ -239,7 +239,7 @@ static void locator_generate_class_pseudo_oid (THREAD_ENTRY * thread_p, OID * cl
 static int redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list);
 static SCAN_CODE locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 						       LOCK lock_mode);
-static bool locator_check_class_for_rr_isolation_err (const OID * class_oid);
+static bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 static DB_LOGICAL locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
 						  HEAP_SCANCACHE * scan_cache, RECDES * recdes,
 						  MVCC_UPDDEL_REEV_DATA * mvcc_reev_data);
@@ -2354,7 +2354,7 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
 	{
 	  /* Use S_LOCK. This lock will be transformed into NULL_LOCK if op_type is S_SELECT and MVCC is not disabled
 	   * for class OID. */
-	  if (op_type == S_SELECT && !heap_is_mvcc_disabled_for_class (class_oid))
+	  if (op_type == S_SELECT && !mvcc_is_mvcc_disabled_class (class_oid))
 	    {
 	      lock_mode = NULL_LOCK;
 	    }
@@ -2372,7 +2372,7 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
       assert (lock_mode == S_LOCK || lock_mode == X_LOCK);
     }
 
-  if (heap_is_mvcc_disabled_for_class (class_oid))
+  if (mvcc_is_mvcc_disabled_class (class_oid))
     {
       if (lock_mode > NULL_LOCK)
 	{
@@ -2395,8 +2395,8 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
     }
   else
     {
-      /* !heap_is_mvcc_disabled_for_class && (lock_mode == NULL_LOCK) */
-      assert (!heap_is_mvcc_disabled_for_class (class_oid) && (lock_mode == NULL_LOCK));
+      /* !mvcc_is_mvcc_disabled_class && (lock_mode == NULL_LOCK) */
+      assert (!mvcc_is_mvcc_disabled_class (class_oid) && (lock_mode == NULL_LOCK));
       /* Don't lock anything and get visible object version. */
       scan = heap_get_visible_version (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, COPY, chn,
 				       false);
@@ -2603,7 +2603,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	  if (object_need_locking)
 	    {
 	      object_need_locking = false;
-	      is_mvcc_disabled_class = heap_is_mvcc_disabled_for_class (class_oid);
+	      is_mvcc_disabled_class = mvcc_is_mvcc_disabled_class (class_oid);
 	      if (is_mvcc_disabled_class == true)
 		{
 		  if (lock > NULL_LOCK)
@@ -2741,7 +2741,7 @@ error:
 	    }
 	}
       else if (is_mvcc_disabled_class == true
-	       || (is_mvcc_disabled_class == -1 && heap_is_mvcc_disabled_for_class (class_oid)))
+	       || (is_mvcc_disabled_class == -1 && mvcc_is_mvcc_disabled_class (class_oid)))
 	{
 	  if (lock <= S_LOCK)
 	    {
@@ -4036,7 +4036,7 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
 	}
     }
 
-  if (heap_is_mvcc_disabled_for_class (class_oid))
+  if (mvcc_is_mvcc_disabled_class (class_oid))
     {
       /* Non-MVCC class, just lock and check object exists. */
       if (lock != NULL_LOCK && (lock_object (thread_p, oid, class_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED))
@@ -5823,7 +5823,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
       /* There will be no pruning after this point so we should reset op_type to a non pruning operation */
 
-      if (!heap_is_mvcc_disabled_for_class (class_oid))
+      if (!mvcc_is_mvcc_disabled_class (class_oid))
 	{
 	  if (oldrecdes == NULL)
 	    {
@@ -6453,7 +6453,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
       if (isold_object == true && has_index)
 	{
 	  /* if MVCC then delete before updating index */
-	  if (!heap_is_mvcc_disabled_for_class (&class_oid))
+	  if (!mvcc_is_mvcc_disabled_class (&class_oid))
 	    {
 	      HEAP_OPERATION_CONTEXT delete_context;
 
@@ -7970,7 +7970,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
 #if defined(SERVER_MODE)
-  if (!heap_is_mvcc_disabled_for_class (class_oid))
+  if (!mvcc_is_mvcc_disabled_class (class_oid))
     {
       /* Use MVCC if it's not disabled for current class */
       use_mvcc = true;
@@ -8608,7 +8608,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   mvccid = MVCCID_NULL;
 
 #if defined(SERVER_MODE)
-  if (!heap_is_mvcc_disabled_for_class (class_oid))
+  if (!mvcc_is_mvcc_disabled_class (class_oid))
     {
       use_mvcc = true;
 
@@ -13325,7 +13325,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   OID class_oid_local = OID_INITIALIZER;
   bool lock_acquired = false;
 
-  assert (lock_mode != NULL && context->oid_p != NULL && !OID_ISNULL (context->oid_p));
+  assert (lock_mode != NULL_LOCK && context->oid_p != NULL && !OID_ISNULL (context->oid_p));
 
   if (context->class_oid_p == NULL)
     {
@@ -13381,7 +13381,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
     }
 
   /* Check isolation restrictions and the visibility of the object if it belongs to a mvcc class */
-  if (!heap_is_mvcc_disabled_for_class (context->class_oid_p))
+  if (!mvcc_is_mvcc_disabled_class (context->class_oid_p))
     {
       MVCC_REC_HEADER recdes_header;
 
@@ -13406,7 +13406,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 
       /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
       if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
-	  && locator_check_class_for_rr_isolation_err (context->class_oid_p))
+	  && logtb_check_class_for_rr_isolation_err (context->class_oid_p))
 	{
 	  /* In these isolation levels, the transaction is not allowed to modify an object that was already
 	   * modified by other transactions. This would be true if last version matched the visible version.
@@ -13474,7 +13474,7 @@ locator_decide_type_of_lock (const OID * class_oid, LOCK lock_mode, const SCAN_O
       if (lock_mode == IS_LOCK)
 	{
 	  /* Use S_LOCK or NULL_LOCK if operations is S_SELECT and MVCC is not disabled for class OID. */
-	  if (op_type == S_SELECT && !heap_is_mvcc_disabled_for_class (class_oid))
+	  if (op_type == S_SELECT && !mvcc_is_mvcc_disabled_class (class_oid))
 	    {
 	      lock_mode = NULL_LOCK;
 	    }
@@ -13496,23 +13496,23 @@ locator_decide_type_of_lock (const OID * class_oid, LOCK lock_mode, const SCAN_O
 }
 
 /*
-* locator_lock_and_get_object_with_evaluation () - Get MVCC object version for delete/update and check reevaluation.
-*
-* return	       : SCAN_CODE.
-* thread_p (in)       : Thread entry.
-* oid (in)	       : Object OID.
-* class_oid (in)      : Class OID.
-* recdes (out)	       : Record descriptor.
-* scan_cache (in)     : Heap scan cache.
-* ispeeking (in)      : PEEK or COPY.
-* old_chn (in)	       : CHN of known record data.
-* mvcc_reev_data (in) : MVCC reevaluation data.
-* (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
-*				ER_HEAP_UNKNOWN_OBJECT error to log
-*                            - LOG_WARNING_IF_DELETED: set only warning
-* 
-* Note: This function will lock the object with X_LOCK. This lock type should correspond to delete/update operations.
-*/
+ * locator_lock_and_get_object_with_evaluation () - Get MVCC object version for delete/update and check reevaluation.
+ *
+ * return	       : SCAN_CODE.
+ * thread_p (in)       : Thread entry.
+ * oid (in)	       : Object OID.
+ * class_oid (in)      : Class OID.
+ * recdes (out)	       : Record descriptor.
+ * scan_cache (in)     : Heap scan cache.
+ * ispeeking (in)      : PEEK or COPY.
+ * old_chn (in)	       : CHN of known record data.
+ * mvcc_reev_data (in) : MVCC reevaluation data.
+ * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
+ *				ER_HEAP_UNKNOWN_OBJECT error to log
+ *                            - LOG_WARNING_IF_DELETED: set only warning
+ * 
+ * Note: This function will lock the object with X_LOCK. This lock type should correspond to delete/update operations.
+ */
 SCAN_CODE
 locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
 					     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
@@ -13651,21 +13651,21 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
 
 
 /*
-* locator_lock_and_get_object () - Get MVCC object version for delete/update.
-*
-* return	       : SCAN_CODE.
-* thread_p (in)       : Thread entry.
-* oid (in)	       : Object OID.
-* class_oid (in)      : Class OID.
-* recdes (out)	       : Record descriptor.
-* scan_cache (in)     : Heap scan cache.
-* ispeeking (in)      : PEEK or COPY.
-* old_chn (in)	       : CHN of known record data.
-* mvcc_reev_data (in) : MVCC reevaluation data.
-* (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
-*				ER_HEAP_UNKNOWN_OBJECT error to log
-*                            - LOG_WARNING_IF_DELETED: set only warning
-*/
+ * locator_lock_and_get_object () - Get MVCC object version for delete/update.
+ *
+ * return	       : SCAN_CODE.
+ * thread_p (in)       : Thread entry.
+ * oid (in)	       : Object OID.
+ * class_oid (in)      : Class OID.
+ * recdes (out)	       : Record descriptor.
+ * scan_cache (in)     : Heap scan cache.
+ * ispeeking (in)      : PEEK or COPY.
+ * old_chn (in)	       : CHN of known record data.
+ * mvcc_reev_data (in) : MVCC reevaluation data.
+ * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
+ *				ER_HEAP_UNKNOWN_OBJECT error to log
+ *                            - LOG_WARNING_IF_DELETED: set only warning
+ */
 SCAN_CODE
 locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 			     HEAP_SCANCACHE * scan_cache, LOCK lock, int ispeeking, int old_chn,
@@ -13683,25 +13683,25 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * cla
 }
 
 /*
-* locator_check_class_for_rr_isolation_err () - Check if the class have to be checked against serializable conflicts
-*
-* return		   : true if the class is not root/trigger/user class, otherwise false
-* class_oid (in)	   : Class object identifier.
-*
-* Note: Do not check system classes that are not part of catalog for rr isolation level error. Isolation consistency
-*	 is secured using locks anyway. These classes are in a way related to table schema's and can be accessed
-*	 before the actual classes. db_user instances are fetched to check authorizations, while db_root and db_trigger
-*	 are accessed when triggers are modified.
-*	 The RR isolation has to check if an instance that we want to lock was modified by concurrent transaction.
-*	 If the instance was modified, then this means we have an isolation conflict. The check must verify last
-*	 instance version visibility over transaction snapshot. The version is visible if and only if it was not
-*	 modified by concurrent transaction. To check visibility, we must first generate a transaction snapshot.
-*	 Since instances from these classes are accessed before locking tables, the snapshot is generated before
-*	 transaction is blocked on table lock. The results will then seem to be inconsistent with most cases when table
-*	 locks are acquired before snapshot.
-*/
+ * logtb_check_class_for_rr_isolation_err () - Check if the class have to be checked against serializable conflicts
+ *
+ * return		   : true if the class is not root/trigger/user class, otherwise false
+ * class_oid (in)	   : Class object identifier.
+ *
+ * Note: Do not check system classes that are not part of catalog for rr isolation level error. Isolation consistency
+ *	 is secured using locks anyway. These classes are in a way related to table schema's and can be accessed
+ *	 before the actual classes. db_user instances are fetched to check authorizations, while db_root and db_trigger
+ *	 are accessed when triggers are modified.
+ *	 The RR isolation has to check if an instance that we want to lock was modified by concurrent transaction.
+ *	 If the instance was modified, then this means we have an isolation conflict. The check must verify last
+ *	 instance version visibility over transaction snapshot. The version is visible if and only if it was not
+ *	 modified by concurrent transaction. To check visibility, we must first generate a transaction snapshot.
+ *	 Since instances from these classes are accessed before locking tables, the snapshot is generated before
+ *	 transaction is blocked on table lock. The results will then seem to be inconsistent with most cases when table
+ *	 locks are acquired before snapshot.
+ */
 static bool
-locator_check_class_for_rr_isolation_err (const OID * class_oid)
+logtb_check_class_for_rr_isolation_err (const OID * class_oid)
 {
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
@@ -13716,16 +13716,16 @@ locator_check_class_for_rr_isolation_err (const OID * class_oid)
 }
 
 /*
-* locator_mvcc_reev_cond_and_assignment () -
-*
-*   return: DB_LOGICAL
-*   thread_p(in): thread entry
-*   scan_cache(in):
-*   mvcc_reev_data_p(in/out):
-*   mvcc_header_p(in):
-*   curr_row_version_oid_p(in):
-*   recdes(in):
-*/
+ * locator_mvcc_reev_cond_and_assignment () -
+ *
+ *   return: DB_LOGICAL
+ *   thread_p(in): thread entry
+ *   scan_cache(in):
+ *   mvcc_reev_data_p(in/out):
+ *   mvcc_header_p(in):
+ *   curr_row_version_oid_p(in):
+ *   recdes(in):
+ */
 /* TODO: We need to reevaluate relation between primary key * and foreign key. */
 static DB_LOGICAL
 locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
@@ -13772,29 +13772,29 @@ locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE *
 }
 
 /*
-* locator_mvcc_reev_cond_assigns () - reevaluates conditions and assignments
-*				    at update/delete stage of an UPDATE/DELETE
-*				    statement
-*   return: result of reevaluation
-*   thread_p(in): thread entry
-*   class_oid(in): OID of the class that triggered reevaluation
-*   oid(in) : The OID of the latest version of record that triggered
-*	       reevaluation
-*   scan_cache(in): scan_cache
-*   recdes(in): Record descriptor that will contain the updated/deleted record
-*   mvcc_reev_data(in): The structure that contains data needed for
-*			 reevaluation
-*
-*  Note: the current transaction already acquired X-LOCK on oid parameter
-*	    before calling this function. If the condition returns false then
-*	    the lock must be released by the caller.
-*	  The function reevaluates entire condition: key range, key filter and
-*	    data filter.
-*	  This function allocates memory for recdes and deallocates it if it
-*	    was already allocated for previous reevaluated record. After last
-*	    reevaluation this memory must be deallocated by one of its callers
-*	    (e.g. qexec_execute_update).
-*/
+ * locator_mvcc_reev_cond_assigns () - reevaluates conditions and assignments
+ *				    at update/delete stage of an UPDATE/DELETE
+ *				    statement
+ *   return: result of reevaluation
+ *   thread_p(in): thread entry
+ *   class_oid(in): OID of the class that triggered reevaluation
+ *   oid(in) : The OID of the latest version of record that triggered
+ *	       reevaluation
+ *   scan_cache(in): scan_cache
+ *   recdes(in): Record descriptor that will contain the updated/deleted record
+ *   mvcc_reev_data(in): The structure that contains data needed for
+ *			 reevaluation
+ *
+ *  Note: the current transaction already acquired X-LOCK on oid parameter
+ *	    before calling this function. If the condition returns false then
+ *	    the lock must be released by the caller.
+ *	  The function reevaluates entire condition: key range, key filter and
+ *	    data filter.
+ *	  This function allocates memory for recdes and deallocates it if it
+ *	    was already allocated for previous reevaluated record. After last
+ *	    reevaluation this memory must be deallocated by one of its callers
+ *	    (e.g. qexec_execute_update).
+ */
 static DB_LOGICAL
 locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, HEAP_SCANCACHE * scan_cache,
 				RECDES * recdes, MVCC_UPDDEL_REEV_DATA * mvcc_reev_data)
@@ -13894,26 +13894,26 @@ end:
 }
 
 /*
-* locator_mvcc_reeval_scan_filters () - reevaluates conditions for a scan table
-*				    at update/delete stage of an UPDATE/DELETE
-*				    statement
-*   return: result of reevaluation
-*   thread_p(in): thread entry
-*   oid(in) : The OID of the latest version of record that triggered
-*	       reevaluation
-*   scan_cache(in): scan_cache
-*   recdes(in): Record descriptor of the record to be updated/deleted.
-*   mvcc_cond_reeval(in): The structure that contains data needed for
-*			   reevaluation
-*   is_upddel(in): true if current scan is updated/deleted when reevaluation
-*		    occured.
-*
-*  Note: The current transaction already acquired X-LOCK on oid parameter
-*	    before calling this function. If the condition returns false then
-*	    the lock must be released by the caller.
-*	  The function reevaluates entire condition: key range, key filter and
-*	    data filter.
-*/
+ * locator_mvcc_reeval_scan_filters () - reevaluates conditions for a scan table
+ *				    at update/delete stage of an UPDATE/DELETE
+ *				    statement
+ *   return: result of reevaluation
+ *   thread_p(in): thread entry
+ *   oid(in) : The OID of the latest version of record that triggered
+ *	       reevaluation
+ *   scan_cache(in): scan_cache
+ *   recdes(in): Record descriptor of the record to be updated/deleted.
+ *   mvcc_cond_reeval(in): The structure that contains data needed for
+ *			   reevaluation
+ *   is_upddel(in): true if current scan is updated/deleted when reevaluation
+ *		    occured.
+ *
+ *  Note: The current transaction already acquired X-LOCK on oid parameter
+ *	    before calling this function. If the condition returns false then
+ *	    the lock must be released by the caller.
+ *	  The function reevaluates entire condition: key range, key filter and
+ *	    data filter.
+ */
 static DB_LOGICAL
 locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP_SCANCACHE * scan_cache,
 				  RECDES * recdes, UPDDEL_MVCC_COND_REEVAL * mvcc_cond_reeval, bool is_upddel)
@@ -13991,16 +13991,16 @@ end:
 }
 
 /*
-* mvcc_reevaluate_filters () - reevaluates key range, key filter and data
-*				filter predicates
-*   return: result of reevaluation
-*   thread_p(in): thread entry
-*   mvcc_reev_data(in): The structure that contains data needed for
-*			 reevaluation
-*   oid(in) : The record that was modified by other transactions and is
-*	       involved in filters.
-*   recdes(in): Record descriptor that will contain the record
-*/
+ * mvcc_reevaluate_filters () - reevaluates key range, key filter and data
+ *				filter predicates
+ *   return: result of reevaluation
+ *   thread_p(in): thread entry
+ *   mvcc_reev_data(in): The structure that contains data needed for
+ *			 reevaluation
+ *   oid(in) : The record that was modified by other transactions and is
+ *	       involved in filters.
+ *   recdes(in): Record descriptor that will contain the record
+ */
 static DB_LOGICAL
 mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_reev_data, const OID * oid,
 			 RECDES * recdes)

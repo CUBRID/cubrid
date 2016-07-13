@@ -108,26 +108,16 @@
 #define MVCC_IS_REC_DELETED_BY(rec_header_p, mvcc_id) \
   ((rec_header_p)->delid_chn.mvcc_del_id == mvcc_id)
 
-/* Check if record has a valid chn. This is true when:
- *  1. MVCC is disabled for current record (and in-place update is used).
- *  2. MVCC is inserted by current transaction (checking whether it was
- *     deleted is not necessary. Other transactions cannot delete it, while
- *     current transaction would remove it completely.
- *  TODO: change this macro after delid and chn are splitted.
- */
-#define MVCC_SHOULD_TEST_CHN(thread_p, rec_header_p) \
-  (!MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_DELID) \
-   || MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header_p))
-
 /* Check if given CHN is up-to-date according to MVCC header:
  * 1. Given CHN must be non-NULL.
- * 2. MVCC header CHN is either invalid (CHN is irrelevant) or header CHN
- *    matches given CHN.
+ * 2. DELID flag is not set (currently this means that header have CHN info)
+ * 2. header CHN matches given CHN.
+ *  TODO: change this macro after delid and chn are splitted.
  */
-#define MVCC_IS_CHN_UPTODATE(thread_p, rec_header_p, chn) \
+#define MVCC_IS_CHN_UPTODATE(rec_header_p, chn) \
   (chn != NULL_CHN \
-   && (!MVCC_SHOULD_TEST_CHN (thread_p, rec_header_p) \
-       || chn == MVCC_GET_CHN (rec_header_p)))
+   && (!MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_DELID) \
+   && (chn == MVCC_GET_CHN (rec_header_p))))
 
 #define MVCC_GET_BITAREA_ELEMENT_PTR(bitareaptr, position) \
   ((UINT64 *)(bitareaptr) + ((position) >> 6))
@@ -262,11 +252,11 @@ typedef enum mvcc_satisfies_delete_result MVCC_SATISFIES_DELETE_RESULT;
 enum mvcc_satisfies_delete_result
 {
   DELETE_RECORD_INSERT_IN_PROGRESS,	/* invisible - created after scan started */
-  DELETE_RECORD_CAN_DELETE,		/* is visible and valid - can be deleted */
-  DELETE_RECORD_DELETED,		/* deleted by committed transaction */
+  DELETE_RECORD_CAN_DELETE,	/* is visible and valid - can be deleted */
+  DELETE_RECORD_DELETED,	/* deleted by committed transaction */
   DELETE_RECORD_DELETE_IN_PROGRESS,	/* deleted by other in progress transaction */
-  DELETE_RECORD_SELF_DELETED		/* deleted by the current transaction */
-};					/* Heap record satisfies delete result */
+  DELETE_RECORD_SELF_DELETED	/* deleted by the current transaction */
+};				/* Heap record satisfies delete result */
 
 typedef enum mvcc_satisfies_vacuum_result MVCC_SATISFIES_VACUUM_RESULT;
 enum mvcc_satisfies_vacuum_result
@@ -288,5 +278,6 @@ extern MVCC_SATISFIES_DELETE_RESULT mvcc_satisfies_delete (THREAD_ENTRY * thread
 
 extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 							    MVCC_SNAPSHOT * snapshot);
+extern bool mvcc_is_mvcc_disabled_class (const OID * class_oid);
 
 #endif /* _MVCC_H_ */
