@@ -1906,7 +1906,7 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 
   assert (query_p->query_status == QUERY_COMPLETED);
 
-  /* end use of the list file of the cahed result */
+  /* end use of the list file of the cached result */
   if (query_p->xasl_ent && query_p->list_ent)
     {
       (void) qfile_end_use_of_list_cache_entry (thread_p, query_p->list_ent, false);
@@ -1931,12 +1931,13 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
  * xqmgr_drop_all_query_plans () - Drop all the stored query plans
  *   return: NO_ERROR or ER_FAILED
  *
- * Note: Clear all XASL cache entires out upon request of the client.
+ * Note: Clear all XASL/filter predicate cache entries out upon request of the client.
  */
 int
 xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p)
 {
-  /* TODO: Do we want to drop all query plans? */
+  xcache_drop_all (thread_p);
+  fpcache_drop_all (thread_p);
   return NO_ERROR;
 }
 

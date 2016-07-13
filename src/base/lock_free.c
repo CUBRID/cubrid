@@ -1637,7 +1637,7 @@ lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned int hash_s
       /* put backbuffer in a "locked" state */
       for (i = 0; i < (int) hash_size; i++)
 	{
-	  table->backbuffer[i] = ADDR_WITH_MARK (NULL);
+	  table->backbuffer[i] = NULL;
 	}
 
       /* initialize mutex */
@@ -1940,20 +1940,19 @@ restart:
 
 /*
  * lf_hash_clear () - clear the hash table
- *   returns: error code or NO_ERROR
+ *   returns: Void
  *   tran(in): LF transaction entry
  *   table(in): hash table to clear
  *
  * NOTE: This function is NOT lock free.
  */
-int
+void
 lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   void **old_buckets, *curr, **next_p, *next;
   void *ret_head = NULL, *ret_tail = NULL;
   pthread_mutex_t *mutex_p;
-  int ret = NO_ERROR;
   int rv, i, ret_count = 0;
 
   assert (tran != NULL && table != NULL && table->freelist != NULL);
@@ -1962,6 +1961,14 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 
   /* lock mutex */
   rv = pthread_mutex_lock (&table->backbuffer_mutex);
+
+#if !defined (NDEBUG)
+  /* clear bucket buffer, containing remains of old entries marked for delete */
+  for (i = 0; i < (int) table->hash_size; i++)
+    {
+      assert (table->backbuffer[i] == NULL);
+    }
+#endif /* !NDEBUG */
 
   /* swap bucket pointer with current backbuffer */
   do
@@ -1972,13 +1979,6 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 
   /* register new backbuffer */
   table->backbuffer = old_buckets;
-
-  /* clear bucket buffer, containing remains of old entries marked for delete */
-  for (i = 0; i < (int) table->hash_size; i++)
-    {
-      assert (table->buckets[i] == ADDR_WITH_MARK (NULL));
-      table->buckets[i] = NULL;
-    }
 
   /* retire all entries from old buckets; note that threads currently operating on the entries will not be disturbed
    * since the actual deletion is performed when the entries are no longer handled by active transactions */
@@ -2051,9 +2051,15 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
       lf_tran_end_with_mb (tran);
     }
 
+  /* clear bucket buffer, containing remains of old entries marked for delete */
+  for (i = 0; i < (int) table->hash_size; i++)
+    {
+      assert (table->backbuffer[i] == ADDR_WITH_MARK (NULL));
+      table->backbuffer[i] = NULL;
+    }
+
   /* unlock mutex and return to caller */
   pthread_mutex_unlock (&table->backbuffer_mutex);
-  return ret;
 }
 
 /*

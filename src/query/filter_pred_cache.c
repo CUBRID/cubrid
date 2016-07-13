@@ -54,8 +54,8 @@ static INT32 fpcache_Soft_capacity = 0;
 static LF_HASH_TABLE fpcache_Ht = LF_HASH_TABLE_INITIALIZER;
 static LF_FREELIST fpcache_Ht_freelist = LF_FREELIST_INITIALIZER;
 /* TODO: Handle counter >= soft capacity. */
-static INT32 fpcache_Entry_counter = 0;
-static INT32 fpcache_Clone_counter = 0;
+static volatile INT32 fpcache_Entry_counter = 0;
+static volatile INT32 fpcache_Clone_counter = 0;
 static int fpcache_Clone_stack_size;
 
 /* Cleanup */
@@ -742,4 +742,28 @@ fpcache_compare_cleanup_candidates (const void *left, const void *right, BH_CMP_
     {
       return BH_GT;
     }
+}
+
+/*
+ * fpcache_drop_all () - Free all filter predicate cache entries.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ */
+void
+fpcache_drop_all (THREAD_ENTRY * thread_p)
+{
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
+
+  /* Reset fpcache_Entry_counter and fpcache_Clone_counter.
+   * NOTE: If entries/clones are created concurrently to this, the counters may become a little off. However, exact
+   *       counters are not mandatory.
+   */
+  ATOMIC_INC_64 (&fpcache_Stat_discard, fpcache_Entry_counter);
+  fpcache_Entry_counter = 0;
+
+  ATOMIC_INC_64 (&fpcache_Stat_clone_discard, fpcache_Clone_counter);
+  fpcache_Clone_counter = 0;
+
+  lf_hash_clear (t_entry, &fpcache_Ht);
 }
