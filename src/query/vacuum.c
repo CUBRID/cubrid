@@ -4631,8 +4631,9 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 
 	  /* Log changes. No data is actually removed, just relocated (so redo data is NULL). */
 	  log_append_redo_data2 (thread_p, RVVAC_DATA_FINISHED_BLOCKS, NULL, (PAGE_PTR) prev_data_page, 0, 0, NULL);
-	  vacuum_set_dirty_data_page (thread_p, prev_data_page, DONT_FREE);
 	}
+
+      vacuum_set_dirty_data_page (thread_p, prev_data_page, DONT_FREE);
 
       assert (*data_page == NULL);
       /* Move *data_page to next page. */
