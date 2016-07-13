@@ -4535,7 +4535,8 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
       VPID_COPY (&log_Gl.hdr.vacuum_data_first_vpid, &save_first_page->next_page);
       vacuum_Data.first_page = *data_page;
 
-      vacuum_unfix_data_page (thread_p, save_first_page);
+      /* to make it sure the page is marked as dirty */
+      vacuum_set_dirty_data_page (thread_p, save_first_page, FREE);
       if (file_dealloc_page (thread_p, &vacuum_Data.vacuum_data_file, &save_first_vpid, FILE_VACUUM_DATA) != NO_ERROR)
 	{
 	  assert_release (false);
