@@ -3615,6 +3615,17 @@ compare_driver (const void *first, const void *second, void *arg)
 	}
 
       c = btree_compare_key (&val1, &val2, key_type, 0, 1, NULL);
+
+      /* Clear the values if it is required */
+      if (!DB_IS_NULL (&val1) && val1.need_clear == true)
+	{
+	  pr_clear_value (&val1);
+	}
+
+      if (!DB_IS_NULL (&val2) && val2.need_clear == true)
+	{
+	  pr_clear_value (&val2);
+	}
     }
 
   assert (c == DB_LT || c == DB_EQ || c == DB_GT);
