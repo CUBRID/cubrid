@@ -11356,7 +11356,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		      lzo_uint unc_size = 0;
 
 		      /* Handle decompression */
-		      decompressed_string = (char *) malloc (uncompressed_size * sizeof (char));
+		      decompressed_string = db_private_alloc (NULL, uncompressed_size + 1);
 		      if (decompressed_string == NULL)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -11370,7 +11370,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 					  &unc_size, NULL);
 		      if (rc != LZO_E_OK)
 			{
-			  goto clean_up;
+			  return rc;
 			}
 		      if (unc_size != uncompressed_size)
 			{
@@ -11378,41 +11378,13 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 			  assert (false);
 			}
 
-		      /* Copy decompressed_string to new_ */
 		      if (new_ != NULL && new_ != copy_buf)
 			{
 			  db_private_free_and_init (NULL, new_);
 			}
 
-		      new_ = NULL;
-
-		      new_ = db_private_alloc (NULL, unc_size + 1);
-		      if (new_ == NULL)
-			{
-			  /* need to be able to return errors ! */
-			  if (domain)
-			    {
-			      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
-			    }
-			  or_abort (buf);
-
-			  if (decompressed_string != NULL)
-			    {
-			      free_and_init (decompressed_string);
-			    }
-			  return ER_FAILED;
-			}
-		      else
-			{
-			  memcpy (new_, decompressed_string, unc_size);
-			  str_length = unc_size;
-			}
-
-		    clean_up:
-		      if (decompressed_string != NULL)
-			{
-			  free_and_init (decompressed_string);
-			}
+		      new_ = decompressed_string;
+		      str_length = uncompressed_size;
 		    }
 
 		  new_[str_length] = '\0';	/* append the kludge NULL terminator */
@@ -14039,7 +14011,8 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		      /* String was compressed */
 		      lzo_uint unc_size = 0;
 		      /* Handle decompression */
-		      decompressed_string = (char *) malloc (uncompressed_size * sizeof (char));
+		      decompressed_string = db_private_alloc (NULL, uncompressed_size + 1);
+
 		      if (decompressed_string == NULL)
 			{
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -14052,7 +14025,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 					  &unc_size, NULL);
 		      if (rc != LZO_E_OK)
 			{
-			  goto clean_up;
+			  return rc;
 			}
 
 		      if (unc_size != uncompressed_size)
@@ -14067,36 +14040,8 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 			  db_private_free_and_init (NULL, new_);
 			}
 
-		      new_ = NULL;
-
-		      /* Copy the decompressed string to new_. */
-		      new_ = db_private_alloc (NULL, unc_size + 1);
-		      if (new_ == NULL)
-			{
-			  /* need to be able to return errors ! */
-			  if (domain)
-			    {
-			      db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
-			    }
-			  or_abort (buf);
-
-			  if (decompressed_string != NULL)
-			    {
-			      free_and_init (decompressed_string);
-			    }
-			  return ER_FAILED;
-			}
-		      else
-			{
-			  memcpy (new_, decompressed_string, unc_size);
-			  str_length = unc_size;
-			}
-
-		    clean_up:
-		      if (decompressed_string != NULL)
-			{
-			  free_and_init (decompressed_string);
-			}
+		      new_ = decompressed_string;
+		      str_length = uncompressed_size;
 		    }
 
 		  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
