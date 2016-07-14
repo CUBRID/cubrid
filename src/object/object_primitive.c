@@ -10825,7 +10825,7 @@ mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 static int
 mr_data_lengthmem_string (void *memptr, TP_DOMAIN * domain, int disk)
 {
-  char **mem, *cur;
+  char **mem, *cur, *string, **start;
   int len;
 
   len = 0;
@@ -10840,7 +10840,16 @@ mr_data_lengthmem_string (void *memptr, TP_DOMAIN * domain, int disk)
       if (cur != NULL)
 	{
 	  len = *(int *) cur;
-	  len = or_packed_varchar_length (len);
+	  if (len >= 0xFF)
+	    {
+	      len = or_get_compression_length ((cur + 4), len) + 256;
+	      len = or_packed_varchar_length (len) - 256;
+	    }
+	  else
+	    {
+	      len = or_packed_varchar_length (len);
+	    }
+
 	}
     }
 
