@@ -38,20 +38,21 @@
  *   buf(in):
  *   stats(in):
  *
- * NOTE: This must match STAT_SIZE_MEMORY & STAT_SIZE_PACKED
  *
  */
 char *
-net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
+net_pack_stats (char *buf, UINT64 * stats)
 {
   char *ptr;
   int i;
+  int nr_statistic_values;
 
   ptr = buf;
+  nr_statistic_values = get_number_of_statistic_values();
 
-  for (i = 0; i < MNT_TOTAL_SIZE_EXEC_STATS; i++)
+  for (i = 0; i < nr_statistic_values; i++)
     {
-      OR_PUT_INT64 (ptr, &(stats->perf_statistics[i]));
+      OR_PUT_INT64 (ptr, &(stats[i]));
       ptr += OR_INT64_SIZE;
     }
 
@@ -66,19 +67,20 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
  *   buf(in):
  *   stats(in):
  *
- * NOTE: This must match STAT_SIZE_MEMORY & STAT_SIZE_PACKED
  */
 char *
-net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
+net_unpack_stats (char *buf, UINT64 * stats)
 {
   char *ptr;
   int i;
+  int nr_statistic_values;
 
+  nr_statistic_values = get_number_of_statistic_values();
   ptr = buf;
 
-  for (i = 0; i < MNT_TOTAL_SIZE_EXEC_STATS; i++)
+  for (i = 0; i < nr_statistic_values; i++)
     {
-      OR_GET_INT64 (ptr, &(stats->perf_statistics[i]));
+      OR_GET_INT64 (ptr, &(stats[i]));
       ptr += OR_INT64_SIZE;
     }
 

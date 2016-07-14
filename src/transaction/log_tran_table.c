@@ -4216,7 +4216,7 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
   bool is_perf_tracking = false;
   UINT64 snapshot_retry_cnt = 0;
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
 
   if (is_perf_tracking)
     {
@@ -4451,7 +4451,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
   UINT64 oldest_time, retry_cnt = 0;
   bool is_perf_tracking = false;
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -4800,7 +4800,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
   assert (tdes != NULL);
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);

@@ -496,8 +496,6 @@ typedef enum
   /* total promotion time */
   PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC,
 
-  /* array counters : do not include in MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS */
-  /* change MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS and MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS */
   PSTAT_PBX_FIX_COUNTERS,
   PSTAT_PBX_PROMOTE_COUNTERS,
   PSTAT_PBX_PROMOTE_TIME_COUNTERS,
@@ -602,29 +600,6 @@ enum t_diag_server_type
 };
 typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
 
-/* number of fields of MNT_SERVER_EXEC_STATS structure (includes computed stats) */
-#define MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS 196	/* TODO: Get rid of this thing! */
-
-/* number of array stats of MNT_SERVER_EXEC_STATS structure */
-#define MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS 14
-
-/* number of computed stats of MNT_SERVER_EXEC_STATS structure */
-#define MNT_COUNT_OF_SERVER_EXEC_CALC_STATS 12
-
-#define MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS \
-  MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS
-
-#define MNT_SIZE_OF_SERVER_EXEC_CALC_STATS \
-  MNT_COUNT_OF_SERVER_EXEC_CALC_STATS
-
-#define MNT_SERVER_EXEC_STATS_COUNT \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS \
-  + MNT_COUNT_OF_SERVER_EXEC_ARRAY_STATS)
-
-#define MNT_TOTAL_EXEC_STATS_COUNT \
-  (MNT_SERVER_EXEC_STATS_COUNT \
-  + MNT_COUNT_OF_SERVER_EXEC_CALC_STATS)
-
 #define MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS \
   (PERF_PAGE_FIX_COUNTERS + PERF_PAGE_PROMOTE_COUNTERS \
   + PERF_PAGE_PROMOTE_COUNTERS + PERF_PAGE_UNFIX_COUNTERS \
@@ -633,92 +608,27 @@ typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
   + PERF_OBJ_LOCK_STAT_COUNTERS + PERF_MODULE_CNT + PERF_MODULE_CNT \
   + PERF_MODULE_CNT + PERF_MODULE_CNT + PERF_MODULE_CNT)
 
-#define MNT_SIZE_OF_SERVER_EXEC_STATS \
-  (MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS \
-  + MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS)
+extern void mnt_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr);
 
-#define MNT_TOTAL_SIZE_EXEC_STATS \
-  (MNT_SIZE_OF_SERVER_EXEC_SINGLE_STATS \
-  + MNT_SIZE_OF_SERVER_EXEC_CALC_STATS  \
-  + MNT_SIZE_OF_SERVER_EXEC_ARRAY_STATS)
-
-/* The exact size of mnt_server_exec_stats structure */
-#define MNT_SERVER_EXEC_STATS_SIZEOF \
-  (offsetof (MNT_SERVER_EXEC_STATS, enable_local_stat) + sizeof (bool))
-
-
-/*
- * Server execution statistic structure
- * If members are added or removed in this structure then changes must be made
- * also in MNT_SIZE_OF_SERVER_EXEC_STATS, STAT_SIZE_MEMORY and
- * MNT_SERVER_EXEC_STATS_SIZEOF
- */
-typedef struct mnt_server_exec_stats MNT_SERVER_EXEC_STATS;
-struct mnt_server_exec_stats
-{
-  /* Array of performance statistics */
-  UINT64 perf_statistics[MNT_TOTAL_SIZE_EXEC_STATS];
-  bool enable_local_stat;	/* used for local stats */
-};
-
-typedef struct mnt_metadata_exec_stats MNT_METADATA_EXEC_STATS;
-struct mnt_metadata_exec_stats
-{
-  /* Gives the number of elements for the statistic */
-  unsigned int statistic_size;
-  /* Gives the start offset in the perf_statistics array */
-  unsigned int statistic_offset;
-  /* Flag that tells if the statistic is accumulative or not */
-  bool accumulative;
-};
-
-#define MNT_SERVER_PBX_FIX_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 0)
-#define MNT_SERVER_PROMOTE_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 1)
-#define MNT_SERVER_PROMOTE_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 2)
-#define MNT_SERVER_PBX_UNFIX_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 3)
-#define MNT_SERVER_PBX_LOCK_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 4)
-#define MNT_SERVER_PBX_HOLD_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 5)
-#define MNT_SERVER_PBX_FIX_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 6)
-#define MNT_SERVER_MVCC_SNAPSHOT_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 7)
-#define MNT_SERVER_OBJ_LOCK_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 8)
-#define MNT_SERVER_SNAPSHOT_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 9)
-#define MNT_SERVER_SNAPSHOT_RETRY_CNT_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 10)
-#define MNT_SERVER_TRAN_COMPLETE_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 11)
-#define MNT_SERVER_OLDEST_MVCC_TIME_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 12)
-#define MNT_SERVER_OLDEST_MVCC_RETRY_CNT_STAT_POSITION \
-  (MNT_COUNT_OF_SERVER_EXEC_SINGLE_STATS + 13)
-
-extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream, const char *substr);
-
-extern void mnt_server_dump_stats_to_buffer (const MNT_SERVER_EXEC_STATS * stats, char *buffer, int buf_size,
+extern void mnt_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size,
 					     const char *substr);
 
 extern void mnt_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
 
-extern int mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff, MNT_SERVER_EXEC_STATS * new_stats,
-				MNT_SERVER_EXEC_STATS * old_stats);
+extern int mnt_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats,
+				UINT64 * old_stats);
 extern int perfmon_initialize (int num_trans);
 extern void perfmon_finalize (void);
+extern int get_number_of_statistic_values();
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void xperfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void xperfmon_stop_watch (THREAD_ENTRY * thread_p);
+extern bool mnt_is_perf_tracking ();
 #endif /* SERVER_MODE || SA_MODE */
 
-extern void perfmon_add_stat (THREAD_ENTRY * thread_p, int amount, PERF_STAT_ID psid);
+extern void perfmon_add_stat (THREAD_ENTRY * thread_p, UINT64 amount, PERF_STAT_ID psid);
+extern void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, UINT64 amount, const int offset, PERF_STAT_ID psid);
 extern void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid);
 extern void perfmon_set_stat (THREAD_ENTRY * thread_p, int statval, PERF_STAT_ID psid);
 extern void perfmon_time_stat (THREAD_ENTRY * thread_p, UINT64 timediff, PERF_STAT_ID psid);
@@ -731,10 +641,10 @@ struct mnt_client_stat_info
   time_t cpu_start_usr_time;
   time_t cpu_start_sys_time;
   time_t elapsed_start_time;
-  MNT_SERVER_EXEC_STATS *base_server_stats;
-  MNT_SERVER_EXEC_STATS *current_server_stats;
-  MNT_SERVER_EXEC_STATS *old_global_stats;
-  MNT_SERVER_EXEC_STATS *current_global_stats;
+  UINT64 *base_server_stats;
+  UINT64 *current_server_stats;
+  UINT64 *old_global_stats;
+  UINT64 *current_global_stats;
 };
 
 extern bool mnt_Iscollecting_stats;
@@ -742,11 +652,11 @@ extern bool mnt_Iscollecting_stats;
 extern int mnt_start_stats (bool for_all_trans);
 extern int mnt_stop_stats (void);
 extern void mnt_reset_stats (void);
-extern void mnt_print_stats (FILE * stream);
-extern void mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr);
-extern MNT_SERVER_EXEC_STATS *mnt_get_stats (void);
-extern MNT_SERVER_EXEC_STATS *mnt_get_global_stats (void);
-extern int mnt_get_global_diff_stats (MNT_SERVER_EXEC_STATS * diff_stats);
+extern int mnt_print_stats (FILE * stream);
+extern int mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr);
+extern int mnt_get_stats (void);
+extern int mnt_get_global_stats (void);
+extern int mnt_get_global_diff_stats (UINT64 * diff_stats);
 #endif /* CS_MODE || SA_MODE */
 
 #if defined (DIAG_DEVEL)
@@ -885,7 +795,7 @@ struct perf_utime_tracker
 #define PERF_UTIME_TRACKER_START(thread_p, track) \
   do \
     { \
-      (track)->is_perf_tracking = mnt_is_perf_tracking (thread_p); \
+      (track)->is_perf_tracking = mnt_is_perf_tracking (); \
       if ((track)->is_perf_tracking) tsc_getticks (&(track)->start_tick); \
     } \
   while (false)
@@ -928,10 +838,6 @@ struct perf_utime_tracker
   while (false)
 
 #if defined(SERVER_MODE) || defined (SA_MODE)
-extern int mnt_Num_tran_exec_stats;
-
-#define mnt_is_perf_tracking(thread_p) \
-  ((mnt_Num_tran_exec_stats > 0) ? true : false)
 /*
  * Statistics at file io level
  */
@@ -944,56 +850,55 @@ extern int mnt_Num_tran_exec_stats;
  * Statistics at lock level
  */
 #define mnt_lk_waited_time_on_objects(thread_p, lock_mode, time_usec) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_waited_time_on_objects(thread_p, \
-								   lock_mode, \
-								   time_usec)
+							    mnt_x_lk_waited_time_on_objects(thread_p, \
+							    lock_mode, \
+							    time_usec)
 
 /* Execution statistics for the heap manager */
 
 #define mnt_pbx_fix(thread_p,page_type,page_found_mode,latch_mode,cond_type) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_fix(thread_p, page_type, \
+						 mnt_x_pbx_fix(thread_p, page_type, \
 						 page_found_mode,latch_mode, \
 						 cond_type)
 #define mnt_pbx_promote(thread_p,page_type,promote_cond,holder_latch,success, amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_promote(thread_p, page_type, \
-						     promote_cond, \
-						     holder_latch, \
-						     success, amount)
+						 mnt_x_pbx_promote(thread_p, page_type, \
+						 promote_cond, \
+						 holder_latch, \
+						 success, amount)
 #define mnt_pbx_unfix(thread_p,page_type,buf_dirty,dirtied_by_holder,holder_latch) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_unfix(thread_p, page_type, \
+						   mnt_x_pbx_unfix(thread_p, page_type, \
 						   buf_dirty, \
 						   dirtied_by_holder, \
 						   holder_latch)
 #define mnt_pbx_hold_acquire_time(thread_p,page_type,page_found_mode,latch_mode,amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_hold_acquire_time(thread_p, \
-							       page_type, \
-							       page_found_mode, \
-							       latch_mode, \
-							       amount)
+						   mnt_x_pbx_hold_acquire_time(thread_p, \
+						   page_type, \
+						   page_found_mode, \
+						   latch_mode, \
+						   amount)
 #define mnt_pbx_lock_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_lock_acquire_time(thread_p, \
-							       page_type, \
-							       page_found_mode, \
-							       latch_mode, \
-							       cond_type, \
-							       amount)
+						  mnt_x_pbx_lock_acquire_time(thread_p, \
+						  page_type, \
+						  page_found_mode, \
+						  latch_mode, \
+						  cond_type, \
+						  amount)
 #define mnt_pbx_fix_acquire_time(thread_p,page_type,page_found_mode,latch_mode,cond_type,amount) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pbx_fix_acquire_time(thread_p, \
-							      page_type, \
-							      page_found_mode, \
-							      latch_mode, \
-							      cond_type, \
-							      amount)
+						  mnt_x_pbx_fix_acquire_time(thread_p, \
+						  page_type, \
+						  page_found_mode, \
+						  latch_mode, \
+						  cond_type, \
+						  amount)
 #if defined(PERF_ENABLE_MVCC_SNAPSHOT_STAT)
 #define mnt_mvcc_snapshot(thread_p,snapshot,rec_type,visibility) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_mvcc_snapshot(thread_p, \
-						       snapshot, \
-						       rec_type, \
-						       visibility)
+						  mnt_x_mvcc_snapshot(thread_p, \
+						  snapshot, \
+						  rec_type, \
+						  visibility)
 #endif /* PERF_ENABLE_MVCC_SNAPSHOT_STAT * /
 
           #define mnt_heap_update_log_time(thread_p,amount) \
-          if (mnt_Num_tran_exec_stats > 0) \
           mnt_x_heap_update_log_time (thread_p, amount)
 
           extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);

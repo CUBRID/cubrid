@@ -694,7 +694,7 @@ net_histo_clear (void)
  *
  * Note:
  */
-void
+int
 net_histo_print (FILE * stream)
 {
   unsigned int i;
@@ -702,6 +702,7 @@ net_histo_print (FILE * stream)
   int total_size_received = 0;
   float server_time, total_server_time = 0;
   float avg_response_time, avg_client_time;
+  int err = NO_ERROR;
 
   if (stream == NULL)
     {
@@ -742,8 +743,9 @@ net_histo_print (FILE * stream)
     }
   if (net_Histo_setup_mnt)
     {
-      mnt_print_stats (stream);
+      err = mnt_print_stats (stream);
     }
+  return err;
 }
 
 /*
@@ -753,13 +755,16 @@ net_histo_print (FILE * stream)
  *
  * Note:
  */
-void
+int
 net_histo_print_global_stats (FILE * stream, bool cumulative, const char *substr)
 {
+  int err = NO_ERROR;
+
   if (net_Histo_setup_mnt)
     {
-      mnt_print_global_stats (stream, cumulative, substr);
+      err = mnt_print_global_stats (stream, cumulative, substr);
     }
+  return err;
 }
 
 /*

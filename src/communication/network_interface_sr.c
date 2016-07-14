@@ -90,11 +90,11 @@ static int check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap, i
 static void sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen,
 					 bool is_replication);
 static int er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time,
-			      MNT_SERVER_EXEC_STATS * diff_stats, char *queryinfo_string);
+			      UINT64 * diff_stats, char *queryinfo_string);
 static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time,
-				  MNT_SERVER_EXEC_STATS * diff_stats);
+				  UINT64 * diff_stats);
 static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time,
-				    MNT_SERVER_EXEC_STATS * diff_stats);
+				    UINT64 * diff_stats);
 static void event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
 
 
@@ -5221,7 +5221,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 /*
  * sqmgr_execute_query - Process a SERVER_QM_EXECUTE request
  *
- * return:
+ * return:error or no error
  *
  *   thrd(in):
  *   rid(in):
@@ -5258,21 +5258,52 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   int queryinfo_string_length = 0;
   char queryinfo_string[QUERY_INFO_BUF_SIZE];
 
-  MNT_SERVER_EXEC_STATS base_stats, current_stats, diff_stats;
+  UINT64* base_stats;
+  UINT64* current_stats;
+  UINT64* diff_stats;
   char *sql_id = NULL;
   int error_code = NO_ERROR;
   int trace_slow_msec, trace_ioreads;
   bool tran_abort = false;
-
+  int nr_statistic_values;
+  
   EXECUTION_INFO info = { NULL, NULL, NULL };
 
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
   trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
+  nr_statistic_values = get_number_of_statistic_values();
+
+  base_stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+  if(base_stats == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * sizeof(UINT64));
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  current_stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+  if(current_stats == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * sizeof(UINT64));
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      free_and_init (base_stats);
+      return;
+    }
+
+  diff_stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+  if(diff_stats == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_statistic_values * sizeof(UINT64));
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      free_and_init (base_stats);
+      free_and_init (current_stats);
+      return;
+    }
 
   if (trace_slow_msec >= 0 || trace_ioreads > 0)
     {
       xperfmon_start_watch (thread_p);
-      xmnt_server_copy_stats (thread_p, &base_stats);
+      xmnt_server_copy_stats (thread_p, base_stats);
 
       tsc_getticks (&start_tick);
 
@@ -5448,19 +5479,19 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	  response_time = (tv_diff.tv_sec * 1000) + (tv_diff.tv_usec / 1000);
 
-	  xmnt_server_copy_stats (thread_p, &current_stats);
-	  mnt_calc_diff_stats (&diff_stats, &current_stats, &base_stats);
+	  xmnt_server_copy_stats (thread_p, current_stats);
+	  mnt_calc_diff_stats (diff_stats, current_stats, base_stats);
 
 	  if (response_time >= trace_slow_msec)
 	    {
 	      queryinfo_string_length =
-		er_log_slow_query (thread_p, &info, response_time, &diff_stats, queryinfo_string);
-	      event_log_slow_query (thread_p, &info, response_time, &diff_stats);
+		er_log_slow_query (thread_p, &info, response_time, diff_stats, queryinfo_string);
+	      event_log_slow_query (thread_p, &info, response_time, diff_stats);
 	    }
 
-	  if (trace_ioreads > 0 && diff_stats.perf_statistics[PSTAT_PB_NUM_IOREADS] >= trace_ioreads)
+	  if (trace_ioreads > 0 && diff_stats[PSTAT_PB_NUM_IOREADS] >= trace_ioreads)
 	    {
-	      event_log_many_ioreads (thread_p, &info, response_time, &diff_stats);
+	      event_log_many_ioreads (thread_p, &info, response_time, diff_stats);
 	    }
 
 	  xperfmon_stop_watch (thread_p);
@@ -5514,7 +5545,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
  *   queryinfo_string(out):
  */
 static int
-er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, MNT_SERVER_EXEC_STATS * diff_stats,
+er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats,
 		   char *queryinfo_string)
 {
   char stat_buf[STATDUMP_BUF_SIZE];
@@ -5574,7 +5605,7 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, MNT
  *   bind_vals(in):
  */
 static void
-event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, MNT_SERVER_EXEC_STATS * diff_stats)
+event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats)
 {
   FILE *log_fp;
   int indent = 2;
@@ -5600,9 +5631,9 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
   fprintf (log_fp, "%*cbuffer: fetch=%lld, ioread=%lld, iowrite=%lld\n", indent, ' ',
-	   (long long int) diff_stats->perf_statistics[PSTAT_PB_NUM_FETCHES],
-	   (long long int) diff_stats->perf_statistics[PSTAT_PB_NUM_IOREADS],
-	   (long long int) diff_stats->perf_statistics[PSTAT_PB_NUM_IOWRITES]);
+	   (long long int) diff_stats[PSTAT_PB_NUM_FETCHES],
+	   (long long int) diff_stats[PSTAT_PB_NUM_IOREADS],
+	   (long long int) diff_stats[PSTAT_PB_NUM_IOWRITES]);
   fprintf (log_fp, "%*cwait: cs=%d, lock=%d, latch=%d\n\n", indent, ' ', TO_MSEC (thread_p->event_stats.cs_waits),
 	   TO_MSEC (thread_p->event_stats.lock_waits), TO_MSEC (thread_p->event_stats.latch_waits));
 
@@ -5620,7 +5651,7 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
  *   bind_vals(in):
  */
 static void
-event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, MNT_SERVER_EXEC_STATS * diff_stats)
+event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats)
 {
   FILE *log_fp;
   int indent = 2;
@@ -5645,7 +5676,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
     }
 
   fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
-  fprintf (log_fp, "%*cioreads: %lld\n\n", indent, ' ', (long long int) diff_stats->perf_statistics[PSTAT_PB_NUM_IOREADS]);
+  fprintf (log_fp, "%*cioreads: %lld\n\n", indent, ' ', (long long int) diff_stats[PSTAT_PB_NUM_IOREADS]);
 
   event_log_end (thread_p);
 }
@@ -6426,16 +6457,33 @@ smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 void
 smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (STAT_SIZE_PACKED) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  MNT_SERVER_EXEC_STATS stats;
+  char *reply = NULL;
+  char *reply_start = NULL;
+  int nr_statistic_values;
+  UINT64* stats = NULL;
 
-  /* check to see if the pack/unpack functions match the current structure definition */
-  assert (STAT_SIZE_MEMORY == MNT_SERVER_EXEC_STATS_SIZEOF);
+  nr_statistic_values = get_number_of_statistic_values ();
+  stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+  
+  if(stats == NULL)
+    {
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
 
-  xmnt_server_copy_stats (thread_p, &stats);
-  net_pack_stats (reply, &stats);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  reply = (char *) malloc(nr_statistic_values * sizeof(UINT64) + MAX_ALIGNMENT);
+  if(reply == NULL)
+    {
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+  reply_start = PTR_ALIGN(reply, MAX_ALIGNMENT);
+
+  xmnt_server_copy_stats (thread_p, stats);
+  net_pack_stats (reply_start, stats);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply_start, nr_statistic_values * sizeof(UINT64));
+  free_and_init(stats);
+  free_and_init(reply);
 }
 
 /*
@@ -6452,13 +6500,34 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 void
 smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (STAT_SIZE_PACKED) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-  MNT_SERVER_EXEC_STATS stats;
+  char *reply = NULL;
+  char *reply_start = NULL;
+  int nr_statistic_values;
+  UINT64* stats = NULL;
 
-  xmnt_server_copy_global_stats (thread_p, &stats);
-  net_pack_stats (reply, &stats);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  nr_statistic_values = get_number_of_statistic_values();
+  stats = (UINT64 *) malloc(nr_statistic_values * sizeof(UINT64));
+
+  if(stats == NULL)
+    {
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  reply = (char *) malloc(nr_statistic_values * sizeof(UINT64) + MAX_ALIGNMENT);
+
+  if(reply == NULL)
+    {
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+  reply_start = PTR_ALIGN(reply, MAX_ALIGNMENT);
+
+  xmnt_server_copy_global_stats (thread_p, stats);
+  net_pack_stats (reply_start, stats);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply_start, nr_statistic_values * sizeof(UINT64));
+  free_and_init (stats);
+  free_and_init (reply);
 }
 
 /*

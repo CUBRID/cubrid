@@ -38,11 +38,8 @@
    routines follow the current structure definition.
    This must be the byte size of the structure
    as returned by sizeof().  Note that MEMORY_STAT_SIZE and PACKED_STAT_SIZE
-   are not necesarily the same although they will be in most cases.
+   are not necessarily the same although they will be in most cases.
 */
-#define STAT_SIZE_PACKED \
-        (OR_INT64_SIZE * MNT_SIZE_OF_SERVER_EXEC_STATS)
-#define STAT_SIZE_MEMORY (STAT_SIZE_PACKED+sizeof(bool))
 
 /* These define the requests that the server will respond to */
 enum net_server_request
@@ -275,8 +272,8 @@ enum net_server_request
 #define NET_CAP_HA_REPLICA              0x00000004
 #define NET_CAP_HA_IGNORE_REPL_DELAY	0x00000002
 
-extern char *net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
-extern char *net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
+extern char *net_pack_stats (char *buf, UINT64 * stats);
+extern char *net_unpack_stats (char *buf, UINT64 * stats);
 
 
 /* Server startup */

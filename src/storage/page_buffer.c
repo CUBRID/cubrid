@@ -1412,7 +1412,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
   lock_wait_time = 0;
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
 
   if (is_perf_tracking)
     {
@@ -1891,7 +1891,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 
 #if defined(SERVER_MODE)	/* SERVER_MODE */
   /* performance tracking - get start counter */
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -2174,7 +2174,7 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     }
 #endif /* CUBRID_DEBUG */
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
   if (is_perf_tracking)
     {
       PGBUF_GET_PAGE_TYPE_FOR_STAT (pgptr, perf_page_type);
@@ -6773,7 +6773,7 @@ pgbuf_search_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid)
 
 #if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
 #endif
 
   mbw_cnt = prm_get_integer_value (PRM_ID_MUTEX_BUSY_WAITING_CNT);
@@ -6935,7 +6935,7 @@ pgbuf_insert_into_hash_chain (PGBUF_BUFFER_HASH * hash_anchor, PGBUF_BCB * bufpt
 
 #if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -6989,7 +6989,7 @@ pgbuf_delete_from_hash_chain (PGBUF_BCB * bufptr)
 
 #if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
   thread_p = thread_get_thread_entry_info ();
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -7100,7 +7100,7 @@ pgbuf_lock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const
     }
 
 #if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
 #endif
 
   cur_thrd_entry = thread_p;
@@ -7218,7 +7218,7 @@ pgbuf_unlock_page (PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid, int need_
     {
 #if defined (PERF_ENABLE_PB_HASH_ANCHOR_STAT)
       thread_p = thread_get_thread_entry_info ();
-      is_perf_tracking = mnt_is_perf_tracking (thread_p);
+      is_perf_tracking = mnt_is_perf_tracking ();
       if (is_perf_tracking)
 	{
 	  tsc_getticks (&start_tick);

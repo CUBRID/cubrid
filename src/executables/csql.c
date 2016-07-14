@@ -1295,7 +1295,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_Is_histo_on == HISTO_ON)
 	    {
-	      histo_print (csql_Output_fp);
+	      if(histo_print (csql_Output_fp) != NO_ERROR)
+		{
+		  return DO_CMD_FAILURE;
+		}
 	      fprintf (csql_Output_fp, "\n");
 	    }
 	  else
@@ -1316,7 +1319,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_Is_histo_on == HISTO_ON)
 	    {
-	      histo_print (csql_Output_fp);
+	      if(histo_print (csql_Output_fp) != NO_ERROR)
+		{
+		  return DO_CMD_FAILURE;
+		}
 	      histo_clear ();
 	      fprintf (csql_Output_fp, "\n");
 	    }

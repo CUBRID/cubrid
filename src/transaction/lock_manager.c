@@ -3287,7 +3287,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   thrd_entry = thread_p;
 
 #if defined(PERF_ENABLE_LOCK_OBJECT_STAT)
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
 #endif /* PERF_ENABLE_LOCK_OBJECT_STAT */
 
   new_mode = group_mode = old_mode = NULL_LOCK;

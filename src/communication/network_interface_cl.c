@@ -8027,27 +8027,46 @@ mnt_server_stop_stats (void)
  *
  * NOTE:
  */
-void
-mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats)
+int
+mnt_server_copy_stats (UINT64 * to_stats)
 {
 #if defined(CS_MODE)
   int req_error;
-  OR_ALIGNED_BUF (STAT_SIZE_PACKED) a_reply;
   char *reply;
+  char *reply_start;
+  int nr_statistic_values;
+  int err = NO_ERROR;
 
-  reply = OR_ALIGNED_BUF_START (a_reply);
+  nr_statistic_values = get_number_of_statistic_values();
+  /* Align to 8 bytes */
+  reply = (char * ) malloc(nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
+  
+  if(reply == NULL)
+    {
+        err = ER_OUT_OF_VIRTUAL_MEMORY;
+	goto error;
+    }
+
+  reply_start = PTR_ALIGN (reply, MAX_ALIGNMENT);
 
   req_error =
-    net_client_request (NET_SERVER_MNT_SERVER_COPY_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL,
+    net_client_request (NET_SERVER_MNT_SERVER_COPY_STATS, NULL, 0, reply_start, nr_statistic_values * OR_INT64_SIZE, NULL, 0, NULL,
 			0);
   if (!req_error)
     {
-      net_unpack_stats (reply, to_stats);
+      net_unpack_stats (reply_start, to_stats);
     }
   else
     {
       mnt_Iscollecting_stats = false;
     }
+error:
+    if(reply != NULL)
+      {
+	free_and_init(reply);
+      }
+    return err;
+
 #else /* CS_MODE */
 
   ENTER_SERVER ();
@@ -8055,6 +8074,7 @@ mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats)
   xmnt_server_copy_stats (NULL, to_stats);
 
   EXIT_SERVER ();
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 
@@ -8067,27 +8087,43 @@ mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats)
  *
  * NOTE:
  */
-void
-mnt_server_copy_global_stats (MNT_SERVER_EXEC_STATS * to_stats)
+int
+mnt_server_copy_global_stats (UINT64 * to_stats)
 {
 #if defined(CS_MODE)
   int req_error;
-  OR_ALIGNED_BUF (STAT_SIZE_PACKED) a_reply;
-  char *reply;
+  char *reply = NULL;
+  char* reply_start = NULL;
+  int nr_statistic_values;
+  int err = NO_ERROR;
 
-  reply = OR_ALIGNED_BUF_START (a_reply);
+  nr_statistic_values = get_number_of_statistic_values();
+  /* Align to 8 bytes */
+  reply = (char * ) malloc(nr_statistic_values * OR_INT64_SIZE + MAX_ALIGNMENT);
+  if(reply == NULL)
+    {
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+  reply_start = PTR_ALIGN (reply, MAX_ALIGNMENT);
 
   req_error =
-    net_client_request (NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+    net_client_request (NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS, NULL, 0, reply_start, nr_statistic_values * OR_INT64_SIZE, NULL, 0,
 			NULL, 0);
   if (!req_error)
     {
-      net_unpack_stats (reply, to_stats);
+      net_unpack_stats (reply_start, to_stats);
     }
   else
     {
       mnt_Iscollecting_stats = false;
     }
+error:
+  if(reply != NULL)
+    {
+      free_and_init(reply);
+    }
+  return err;
 #else /* CS_MODE */
 
   ENTER_SERVER ();
@@ -8095,6 +8131,7 @@ mnt_server_copy_global_stats (MNT_SERVER_EXEC_STATS * to_stats)
   xmnt_server_copy_global_stats (NULL, to_stats);
 
   EXIT_SERVER ();
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 
@@ -9630,24 +9667,32 @@ histo_stop (void)
 #endif /* !CS_MODE */
 }
 
-void
+int
 histo_print (FILE * stream)
 {
+  int err = NO_ERROR;
+
 #if defined (CS_MODE)
-  net_histo_print (stream);
+  err = net_histo_print (stream);
 #else /* CS_MODE */
-  mnt_print_stats (stream);
+  err = mnt_print_stats (stream);
 #endif /* !CS_MODE */
+
+  return err;
 }
 
-void
+int
 histo_print_global_stats (FILE * stream, bool cumulative, const char *substr)
 {
+  int err = NO_ERROR;
+
 #if defined (CS_MODE)
-  net_histo_print_global_stats (stream, cumulative, substr);
+  err = net_histo_print_global_stats (stream, cumulative, substr);
 #else /* CS_MODE */
-  mnt_print_global_stats (stream, cumulative, substr);
+  err = mnt_print_global_stats (stream, cumulative, substr);
 #endif /* !CS_MODE */
+
+  return err;
 }
 
 void

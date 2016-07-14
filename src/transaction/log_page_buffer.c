@@ -1112,7 +1112,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
   UINT64 fix_wait_time;
   PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);
@@ -2115,7 +2115,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgpt
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
 
-  is_perf_tracking = mnt_is_perf_tracking (thread_p);
+  is_perf_tracking = mnt_is_perf_tracking ();
   if (is_perf_tracking)
     {
       tsc_getticks (&start_tick);

@@ -22476,6 +22476,11 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
 
   /* unfix all pages of insert context */
   heap_unfix_watchers (thread_p, &ins_context);
+  /* all ok */
+  return NO_ERROR;
+}
+
+/*
  * heap_insert_physical () - physical insert into heap page
  *   thread_p(in): thread entry
  *   context(in): operation context

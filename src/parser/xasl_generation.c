@@ -23344,8 +23344,7 @@ PT_NODE *
 pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MERGE_INFO * info)
 {
   PT_NODE *statement, *where, *group_by, *oid, *save_next;
-  PT_NODE *spec;
-
+  
   statement = parser_new_node (parser, PT_SELECT);
   if (!statement)
     {
@@ -25110,7 +25109,7 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_N
   VAL_LIST *value_list;
   TP_DOMAIN *domain;
   PT_NODE *pnode, *order, *pname;
-  int i, len;
+  int i;
 
   assert (parser != NULL && node != NULL && info != NULL && regu != NULL && regu->type == TYPE_REGU_VAR_LIST);
 

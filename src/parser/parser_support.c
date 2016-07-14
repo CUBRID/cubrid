@@ -9008,7 +9008,6 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   DB_OBJECT *class_op;
   CLASS_HELP *class_schema = NULL;
   PARSER_VARCHAR *buffer;
-  char **line_ptr;
   int is_class = 0;
 
   /* look up class in all schema's */
