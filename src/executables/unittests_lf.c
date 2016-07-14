@@ -530,11 +530,7 @@ test_clear_proc_1 (void *param)
 	}
       else
 	{
-	  if (lf_hash_clear (te, hash) != NO_ERROR)
-	    {
-	      pthread_exit (ER_FAILED);
-	      return ER_FAILED;
-	    }
+	  lf_hash_clear (te, hash);
 	}
     }
 
@@ -609,11 +605,7 @@ test_clear_proc_2 (void *param)
 	}
       else
 	{
-	  if (lf_hash_clear (te, hash) != NO_ERROR)
-	    {
-	      pthread_exit (ER_FAILED);
-	      return ER_FAILED;
-	    }
+	  lf_hash_clear (te, hash);
 	}
     }
 
@@ -663,12 +655,7 @@ test_clear_proc_3 (void *param)
 
       if (i % 1000 == 999)
 	{
-	  if (lf_hash_clear (te, hash) != NO_ERROR)
-	    {
-	      pthread_exit (ER_FAILED);
-	      return ER_FAILED;
-	    }
-
+	  lf_hash_clear (te, hash);
 	  continue;
 	}
 
@@ -1040,10 +1027,7 @@ test_hash_iterator ()
   }
 
   /* reset */
-  if (lf_hash_clear (te, &hash) != NO_ERROR)
-    {
-      return fail ("clear error");
-    }
+  lf_hash_clear (te, &hash);
 
   /* multi-threaded test */
   /* TODO TODO TODO */
