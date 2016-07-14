@@ -2455,27 +2455,25 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	  error_code = er_errid ();
 	  return (error_code == NO_ERROR ? ER_FAILED : error_code);
 	}
-      operation_type = S_SELECT;
       break;
 
     case LC_FETCH_DIRTY_VERSION:
       mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
       mvcc_snapshot = &mvcc_snapshot_dirty;
-      if (lock < X_LOCK)
-	{
-	  operation_type = S_SELECT_WITH_LOCK;
-	}
-      else
-	{
-	  /* fetch dirty can be used for update also */
-	  operation_type = S_UPDATE;
-	}
       break;
 
     case LC_FETCH_CURRENT_VERSION:
       mvcc_snapshot = NULL;
-      operation_type = S_SELECT;
       break;
+    }
+
+  operation_type = get_op_type_from_lock_mode (lock);
+  if (lock > NULL_LOCK && lock <= S_LOCK
+      && (fetch_version_type == LC_FETCH_MVCC_VERSION || fetch_version_type == LC_FETCH_CURRENT_VERSION))
+    {
+      /* In this situation, the operation type must be changed to S_SELECT */
+      assert (operation_type == S_SELECT_WITH_LOCK);
+      operation_type = S_SELECT;
     }
 
   assert (!OID_ISNULL (class_oid));
@@ -13959,6 +13957,7 @@ get_op_type_from_lock_mode (LOCK lock_mode)
   else
     {
       return S_DELETE;
+      /* or S_UPDATE */
     }
 }
 
