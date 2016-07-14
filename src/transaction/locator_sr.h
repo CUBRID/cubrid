@@ -112,4 +112,6 @@ extern SCAN_CODE locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thr
 extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 				     HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, LOCK lock_mode,
 				     int ispeeking, int chn);
+extern SCAN_OPERATION_TYPE get_op_type_from_lock_mode (LOCK lock_mode);
+extern LOCK get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type);
 #endif /* _LOCATOR_SR_H_ */
