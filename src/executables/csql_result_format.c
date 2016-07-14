@@ -900,7 +900,8 @@ object_to_string (DB_OBJECT * object, int format)
 static char *
 numeric_to_string (DB_VALUE * value, bool commas)
 {
-  char *return_string, *conv_str;
+  char str_buf[NUMERIC_MAX_STRING_SIZE];
+  char *return_string;
   int prec;
   int comma_length;
   int max_length;
@@ -918,13 +919,13 @@ numeric_to_string (DB_VALUE * value, bool commas)
       return (NULL);
     }
 
-  conv_str = numeric_db_value_print (value);
-  if (strlen (conv_str) > max_length - 1)
+  numeric_db_value_print (value, str_buf);
+  if (strlen (str_buf) > max_length - 1)
     {
       free_and_init (return_string);
       return (duplicate_string ("NUM OVERFLOW"));
     }
-  strcpy (return_string, conv_str);
+  strcpy (return_string, str_buf);
 
   return return_string;
 }
