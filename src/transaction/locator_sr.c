@@ -13394,6 +13394,8 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       class_oid = &class_oid_local;
     }
 
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
     {
@@ -13405,8 +13407,6 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	  return ER_FAILED;
 	}
     }
-
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
 
   scan = locator_lock_and_get_object_internal (thread_p, &context, lock_mode);
 
