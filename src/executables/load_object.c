@@ -1524,7 +1524,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       break;
 
     case DB_TYPE_NUMERIC:
-      ptr = numeric_db_value_print (value);
+      ptr = numeric_db_value_print (value, buf);
 
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, !strchr (ptr, '.') ? "%s." : "%s", ptr));
       break;

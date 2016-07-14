@@ -16850,7 +16850,7 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
 		DB_VALUE * result_str, const TP_DOMAIN * domain)
 {
   int error_status = NO_ERROR;
-  char tmp_str[64];
+  char tmp_str[NUMERIC_MAX_STRING_SIZE];
   char *tmp_buf;
 
   char *cs;			/* current source string pointer */
@@ -16898,8 +16898,8 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
   switch (DB_VALUE_TYPE (src_value))
     {
     case DB_TYPE_NUMERIC:
-      tmp_buf = numeric_db_value_print ((DB_VALUE *) src_value);
-      cs = (char *) db_private_alloc (NULL, strlen (tmp_buf) + 1);
+      numeric_db_value_print ((DB_VALUE *) src_value, tmp_str);
+      cs = (char *) db_private_alloc (NULL, strlen (tmp_str) + 1);
       if (cs == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -16907,9 +16907,9 @@ number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const D
 	}
       if (number_lang_id != INTL_LANG_ENGLISH)
 	{
-	  convert_locale_number (tmp_buf, strlen (tmp_buf), INTL_LANG_ENGLISH, number_lang_id);
+	  convert_locale_number (tmp_str, strlen (tmp_str), INTL_LANG_ENGLISH, number_lang_id);
 	}
-      strcpy (cs, tmp_buf);
+      strcpy (cs, tmp_str);
       break;
 
     case DB_TYPE_INTEGER:
@@ -26243,6 +26243,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
   unsigned char res_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
   char *num_p_str = (char *) num_str, *res_p_str = NULL;
   char *num_end_ptr = NULL;
+  char str_buf[NUMERIC_MAX_STRING_SIZE];
   unsigned char swap = 0;
   int num_size = 0, res_size = 0;
 
@@ -26307,7 +26308,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  num_p_str = numeric_db_value_print ((DB_VALUE *) num);
+	  num_p_str = numeric_db_value_print ((DB_VALUE *) num, str_buf);
 	  /* set the decimal point to '\0' to bypass end_ptr check, make it looks like we already trucated out the
 	   * fractional part, as we do to float. */
 	  for (i = 0; num_p_str[i] != '\0'; ++i)
