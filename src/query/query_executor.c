@@ -17872,20 +17872,21 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
     }
 
+  if (father_index != NULL)
+    {
+      db_private_free_and_init (NULL, father_index);
+    }
+
+  if (son_index != NULL)
+    {
+      db_private_free_and_init (NULL, son_index);
+    }
+
   qexec_reset_pseudocolumns_val_pointers (level_valp, isleaf_valp, iscycle_valp, parent_pos_valp, index_valp);
 
   if (index_valp != NULL && index_valp->need_clear)
     {
       pr_clear_value (index_valp);
-    }
-
-  if (father_index != NULL)
-    {
-      db_private_free_and_init (NULL, father_index);
-    }
-  if (son_index != NULL)
-    {
-      db_private_free_and_init (NULL, son_index);
     }
 
   xasl->status = XASL_SUCCESS;
@@ -20080,7 +20081,8 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
   if (string1 == NULL)
     {
       /* Error report */
-      ;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str1_decompressed_length);
+      return rc;
     }
 
   rc = do_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
@@ -20106,7 +20108,8 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
       if (string2 == NULL)
 	{
 	  /* Error report */
-	  ;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
+	  return rc;
 	}
 
       rc = do_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);

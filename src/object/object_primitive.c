@@ -13907,7 +13907,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	      return ER_FAILED;
 	    }
 
-	  /* Get the uncompressed and compressed size of the string stored in buffer.
+	  /* Get the decompressed and compressed size of the string stored in buffer.
 	     If compressed_size is set to -1, then the string is not compressed at all.
 	     If compressed_size is set to 0, the string was attempted to be compressed, however it failed.
 	   */
