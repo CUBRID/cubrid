@@ -1226,10 +1226,53 @@ static int
 lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
 			 LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int *inserted)
 {
-  pthread_mutex_t *entry_mutex;
+  /* Macro's to avoid repeating the code (and making mistakes) */
+
+  /* Assert used to make sure the current entry is procted by either transaction or mutex. */
+#define LF_ASSERT_USE_MUTEX_OR_TRAN_STARTED() \
+  assert (is_tran_started == !edesc->using_mutex); /* The transaction is started if and only if we don't use mutex */ \
+  assert (!edesc->using_mutex || entry_mutex) /* If we use mutex, we have a mutex locked. */
+
+  /* Start a transaction */
+#define LF_START_TRAN() \
+  if (!is_tran_started) lf_tran_start_with_mb (tran, false); is_tran_started = true
+#define LF_START_TRAN_FORCE() \
+  assert (!is_tran_started); lf_tran_start_with_mb (tran, false); is_tran_started = true
+
+  /* End a transaction if started */
+#define LF_END_TRAN() \
+  if (is_tran_started) lf_tran_end_with_mb (tran)
+  /* Force end transaction; a transaction is expected */
+#define LF_END_TRAN_FORCE() \
+  assert (is_tran_started); lf_tran_end_with_mb (tran); is_tran_started = false
+
+  /* Lock current entry (using mutex is expected) */
+#define LF_LOCK_ENTRY(tolock) \
+  assert (edesc->using_mutex); \
+  assert ((tolock) != NULL); \
+  assert (entry_mutex == NULL); \
+  /* entry has a mutex protecting it's members; lock it */ \
+  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (tolock, edesc->of_mutex); \
+  rv = pthread_mutex_lock (entry_mutex)
+
+  /* Unlock current entry (if it was locked). */
+#define LF_UNLOCK_ENTRY() \
+  if (edesc->using_mutex && entry_mutex) \
+    { \
+      pthread_mutex_unlock (entry_mutex); \
+      entry_mutex = NULL; \
+    }
+  /* Force unlocking current entry (it is expected to be locked). */
+#define LF_UNLOCK_ENTRY_FORCE() \
+  assert (edesc->using_mutex && entry_mutex != NULL); \
+  pthread_mutex_unlock (entry_mutex); \
+  entry_mutex = NULL
+
+  pthread_mutex_t *entry_mutex = NULL;	/* Locked entry mutex when not NULL */
   void **curr_p;
   void *curr;
   int rv;
+  bool is_tran_started = false;
 
   assert (tran != NULL);
   assert (list_p != NULL && edesc != NULL);
@@ -1244,7 +1287,7 @@ lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *be
       *inserted = 0;
     }
 
-  lf_tran_start_with_mb (tran, false);
+  LF_START_TRAN_FORCE ();
 
 restart_search:
   curr_p = list_p;
@@ -1253,6 +1296,9 @@ restart_search:
   /* search */
   while (curr_p != NULL)
     {
+      assert (is_tran_started);
+      assert (entry_mutex == NULL);
+
       if (curr != NULL)
 	{
 	  if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
@@ -1271,16 +1317,15 @@ restart_search:
 	      if (edesc->using_mutex)
 		{
 		  /* entry has a mutex protecting it's members; lock it */
-		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
-		  rv = pthread_mutex_lock (entry_mutex);
+		  LF_LOCK_ENTRY (curr);
 
 		  /* mutex has been locked, no need to keep transaction alive */
-		  lf_tran_end_with_mb (tran);
+		  LF_END_TRAN_FORCE ();
 
 		  if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		    {
 		      /* while waiting for lock, somebody else deleted the entry; restart the search */
-		      pthread_mutex_unlock (entry_mutex);
+		      LF_UNLOCK_ENTRY_FORCE ();
 
 		      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 			{
@@ -1289,23 +1334,28 @@ restart_search:
 			}
 		      else
 			{
+			  /* We need to restart transaction. */
+			  LF_START_TRAN ();
 			  goto restart_search;
 			}
 		    }
 		}
 
+	      LF_ASSERT_USE_MUTEX_OR_TRAN_STARTED ();
 	      if (edesc->f_duplicate != NULL)
 		{
 		  /* we have a duplicate key callback. */
 		  if (edesc->f_duplicate (key, curr) != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
-		      lf_tran_end_with_mb (tran);
+		      LF_END_TRAN ();
+		      LF_UNLOCK_ENTRY ();
 		      return NO_ERROR;
 		    }
 #if 1
 		  LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
-		  lf_tran_end_with_mb (tran);
+		  LF_END_TRAN ();
+		  LF_UNLOCK_ENTRY ();
 		  return NO_ERROR;
 #else /* !1 = 0 */
 		  /* Could we have such cases that we just update existing entry without modifying anything else?
@@ -1320,7 +1370,16 @@ restart_search:
 		  if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_RESTART_ON_DUPLICATE))
 		    {
 		      LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
-		      lf_tran_end_with_mb (tran);
+		      assert (is_tran_started == !edesc->using_mutex);
+		      if (is_tran_started)
+			{
+			  lf_tran_end_with_mb (tran);
+			}
+		      assert (!edesc->using_mutex || entry_mutex);
+		      if (edesc->using_mutex && entry_mutex)
+			{
+			  pthread_mutex_unlock (entry_mutex);
+			}
 		      return NO_ERROR;
 		    }
 		  else
@@ -1349,7 +1408,8 @@ restart_search:
 		  if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_FIND_OR_INSERT))
 		    {
 		      /* found entry is not accepted */
-		      lf_tran_end_with_mb (tran);
+		      LF_END_TRAN ();
+		      LF_UNLOCK_ENTRY ();
 		      return NO_ERROR;
 		    }
 
@@ -1357,6 +1417,8 @@ restart_search:
 		}
 
 	      assert (*entry == NULL);
+	      LF_ASSERT_USE_MUTEX_OR_TRAN_STARTED ();
+	      /* We don't end transaction or unlock mutex here. */
 	      *entry = curr;
 	      return NO_ERROR;
 	    }
@@ -1376,12 +1438,15 @@ restart_search:
 	      if (*entry == NULL)
 		{
 		  assert (false);
+		  LF_END_TRAN_FORCE ();
 		  return ER_FAILED;
 		}
 
 	      /* set it's key */
 	      if (edesc->f_key_copy (key, OF_GET_PTR (*entry, edesc->of_key)) != NO_ERROR)
 		{
+		  ASSERT_ERROR ();
+		  LF_END_TRAN_FORCE ();
 		  return ER_FAILED;
 		}
 	    }
@@ -1389,8 +1454,7 @@ restart_search:
 	  if (edesc->using_mutex)
 	    {
 	      /* entry has a mutex protecting it's members; lock it */
-	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
-	      rv = pthread_mutex_lock (entry_mutex);
+	      LF_LOCK_ENTRY (*entry);
 	    }
 
 	  /* attempt an add */
@@ -1399,8 +1463,7 @@ restart_search:
 	      if (edesc->using_mutex)
 		{
 		  /* link failed, unlock mutex */
-		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR ((*entry), edesc->of_mutex);
-		  pthread_mutex_unlock (entry_mutex);
+		  LF_UNLOCK_ENTRY_FORCE ();
 		}
 
 	      /* someone added before us, restart process */
@@ -1412,11 +1475,12 @@ restart_search:
 		      *entry = NULL;
 		    }
 		  LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
-		  lf_tran_end_with_mb (tran);
+		  LF_END_TRAN_FORCE ();
 		  return NO_ERROR;
 		}
 	      else
 		{
+		  assert (is_tran_started);
 		  goto restart_search;
 		}
 	    }
@@ -1424,7 +1488,7 @@ restart_search:
 	  /* end transaction if mutex is acquired */
 	  if (edesc->using_mutex)
 	    {
-	      lf_tran_end_with_mb (tran);
+	      LF_END_TRAN_FORCE ();
 	    }
 	  if (inserted)
 	    {
@@ -1433,13 +1497,21 @@ restart_search:
 
 	  /* done! */
 	  return NO_ERROR;
-
 	}
     }
 
   /* impossible case */
   assert (false);
   return ER_FAILED;
+
+#undef LF_ASSERT_USE_MUTEX_OR_TRAN_STARTED
+#undef LF_START_TRAN
+#undef LF_START_TRAN_FORCE
+#undef LF_END_TRAN
+#undef LF_END_TRAN_FORCE
+#undef LF_LOCK_ENTRY
+#undef LF_UNLOCK_ENTRY
+#undef LF_UNLOCK_ENTRY_FORCE
 }
 
 /*
