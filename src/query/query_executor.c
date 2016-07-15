@@ -17520,7 +17520,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		    {
 		      if (listfile1 == connect_by->start_with_list_id)
 			{
-			  if (index_valp != NULL && index_valp->need_clear == true)
+			  if (!DB_IS_NULL (index_valp) && index_valp->need_clear == true)
 			    {
 			      pr_clear_value (index_valp);
 			    }
@@ -17584,7 +17584,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			      GOTO_EXIT_ON_ERROR;
 			    }
 
-			  if (index_valp != NULL && index_valp->need_clear == true)
+			  if (!DB_IS_NULL (index_valp) && index_valp->need_clear == true)
 			    {
 			      pr_clear_value (index_valp);
 			    }
@@ -17638,7 +17638,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
 	      if (listfile1 == connect_by->start_with_list_id)
 		{
-		  if (index_valp != NULL && index_valp->need_clear == true)
+		  if (!DB_IS_NULL (index_valp) && index_valp->need_clear == true)
 		    {
 		      pr_clear_value (index_valp);
 		    }
@@ -17719,7 +17719,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		      GOTO_EXIT_ON_ERROR;
 		    }
 
-		  if (index_valp != NULL && index_valp->need_clear == true)
+		  if (!DB_IS_NULL (index_valp) && index_valp->need_clear == true)
 		    {
 		      pr_clear_value (index_valp);
 		    }
