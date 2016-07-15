@@ -8436,13 +8436,13 @@ htond (double from)
  * return			  :   NO_ERROR or error_code.
  * buf(in)			  :   The buffer where the string is stored.
  * compressed_size(out)		  :   The compressed size of the string. Set to -1 if the string was not compressed.
- * uncompressed_size(out)	  :   The uncompressed size of the string.
+ * decompressed_size(out)	  :   The uncompressed size of the string.
  */
 
 int
-or_get_varchar_comp_lengths (OR_BUF * buf, int *compressed_size, int *uncompressed_size)
+or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
 {
-  int comp_charlen = 0, uncomp_charlen = 0, rc = NO_ERROR;
+  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR;
   int size_prefix = 0;
 
   /* Make sure the string is compressed */
@@ -8457,25 +8457,25 @@ or_get_varchar_comp_lengths (OR_BUF * buf, int *compressed_size, int *uncompress
     {
       /* String was compressed */
       /* Get the compressed size */
-      rc = or_get_data (buf, (char *) &comp_charlen, OR_INT_SIZE);
+      rc = or_get_data (buf, (char *) &compressed_length, OR_INT_SIZE);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
-      *compressed_size = comp_charlen;
-      /* Get the uncompressed size */
-      rc = or_get_data (buf, (char *) &uncomp_charlen, OR_INT_SIZE);
+      *compressed_size = compressed_length;
+      /* Get the decompressed size */
+      rc = or_get_data (buf, (char *) &decompressed_length, OR_INT_SIZE);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
-      *uncompressed_size = uncomp_charlen;
+      *decompressed_size = decompressed_length;
     }
   else
     {
       /* String was not compressed so we set compressed_size to -1 to know that no compression happened. */
       *compressed_size = -1;
-      *uncompressed_size = size_prefix;
+      *decompressed_size = size_prefix;
     }
 
   return rc;

@@ -20046,7 +20046,8 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 {
   int c = DB_UNK;
   char *str1, *str2;
-  int str_length1, str_length2, str1c = 0, str2c = 0, str1u = 0, str2u = 0;
+  int str_length1, str1_compressed_length = 0, str1_decompressed_length = 0;
+  int str_length2, str2_compressed_length = 0, str2_decompressed_length = 0;
   OR_BUF buf1, buf2;
   int rc = NO_ERROR;
   char *string1 = NULL, *string2 = NULL;
@@ -20068,53 +20069,53 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
   assert (str_length1 == 0xFF || str_length2 == 0xFF);
 
   or_init (&buf1, str1, 0);
-  rc = or_get_varchar_comp_lengths (&buf1, &str1c, &str1u);
+  rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
 
   if (rc != NO_ERROR)
     {
       goto cleanup;
     }
 
-  string1 = malloc (str1u);
+  string1 = malloc (str1_decompressed_length);
   if (string1 == NULL)
     {
       /* Error report */
       ;
     }
 
-  rc = do_get_compressed_data_from_buffer (&buf1, string1, str1c, str1u);
+  rc = do_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
   if (rc != NO_ERROR)
     {
       goto cleanup;
     }
 
-  str_length1 = str1u;
+  str_length1 = str1_decompressed_length;
 
   if (rc == NO_ERROR)
     {
       or_init (&buf2, str2, 0);
 
-      rc = or_get_varchar_comp_lengths (&buf2, &str2c, &str2u);
+      rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
 
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
 	}
 
-      string2 = malloc (str2u);
+      string2 = malloc (str2_decompressed_length);
       if (string2 == NULL)
 	{
 	  /* Error report */
 	  ;
 	}
 
-      rc = do_get_compressed_data_from_buffer (&buf2, string2, str2c, str2u);
+      rc = do_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
 	}
 
-      str_length2 = str2u;
+      str_length2 = str2_decompressed_length;
 
       if (rc == NO_ERROR)
 	{
