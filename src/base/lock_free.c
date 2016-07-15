@@ -1287,9 +1287,10 @@ lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *be
       *inserted = 0;
     }
 
+restart_search:
+
   LF_START_TRAN_FORCE ();
 
-restart_search:
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
 
@@ -1335,8 +1336,6 @@ restart_search:
 			}
 		      else
 			{
-			  /* We need to restart transaction. */
-			  LF_START_TRAN ();
 			  goto restart_search;
 			}
 		    }
@@ -1371,16 +1370,8 @@ restart_search:
 		  if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_RESTART_ON_DUPLICATE))
 		    {
 		      LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
-		      assert (is_tran_started == !edesc->using_mutex);
-		      if (is_tran_started)
-			{
-			  lf_tran_end_with_mb (tran);
-			}
-		      assert (!edesc->using_mutex || entry_mutex);
-		      if (edesc->using_mutex && entry_mutex)
-			{
-			  pthread_mutex_unlock (entry_mutex);
-			}
+		      LF_END_TRAN ();
+		      LF_UNLOCK_ENTRY ();
 		      return NO_ERROR;
 		    }
 		  else
@@ -1482,7 +1473,7 @@ restart_search:
 		}
 	      else
 		{
-		  assert (is_tran_started);
+		  LF_END_TRAN_FORCE ();
 		  goto restart_search;
 		}
 	    }
@@ -1531,10 +1522,39 @@ int
 lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
 		LF_FREELIST * freelist, int *success)
 {
+  /* Start a transaction */
+#define LF_START_TRAN_FORCE() \
+  assert (!is_tran_started); lf_tran_start_with_mb (tran, false); is_tran_started = true
+
+  /* Promote from transaction without incremented transaction ID to transaction with incremented transaction ID. */
+#define LF_PROMOTE_TRAN_FORCE() \
+  assert (is_tran_started); MEMORY_BARRIER (); lf_tran_start_with_mb (tran, true)
+
+  /* End a transaction */
+  /* Force end transaction; a transaction is expected */
+#define LF_END_TRAN_FORCE() \
+  assert (is_tran_started); lf_tran_end_with_mb (tran); is_tran_started = false
+
+  /* Lock current entry (using mutex is expected) */
+#define LF_LOCK_ENTRY(tolock) \
+  assert (edesc->using_mutex); \
+  assert ((tolock) != NULL); \
+  assert (entry_mutex == NULL); \
+  /* entry has a mutex protecting it's members; lock it */ \
+  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (tolock, edesc->of_mutex); \
+  rv = pthread_mutex_lock (entry_mutex)
+
+  /* Force unlocking current entry (it is expected to be locked). */
+#define LF_UNLOCK_ENTRY_FORCE() \
+  assert (edesc->using_mutex && entry_mutex != NULL); \
+  pthread_mutex_unlock (entry_mutex); \
+  entry_mutex = NULL
+
   pthread_mutex_t *entry_mutex;
   void **curr_p, **next_p;
   void *curr, *next;
   int rv;
+  bool is_tran_started = false;
 
   /* reset success flag */
   if (success != NULL)
@@ -1546,10 +1566,11 @@ lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_fl
   assert (freelist != NULL);
   assert (tran != NULL && tran->tran_system != NULL);
 
-  /* read transaction; we start a write transaction only after remove */
-  lf_tran_start_with_mb (tran, false);
-
 restart_search:
+
+  /* read transaction; we start a write transaction only after remove */
+  LF_START_TRAN_FORCE ();
+
   curr_p = list_p;
   curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
 
@@ -1567,11 +1588,11 @@ restart_search:
 	  if (!ATOMIC_CAS_ADDR (next_p, next, ADDR_WITH_MARK (next)))
 	    {
 	      /* joke's on us, this time; somebody else marked it before */
+	      LF_END_TRAN_FORCE ();
 	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		{
 		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		  assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
-		  lf_tran_end_with_mb (tran);
 		  return NO_ERROR;
 		}
 	      else
@@ -1583,8 +1604,7 @@ restart_search:
 	  /* lock mutex if necessary */
 	  if (edesc->using_mutex && LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
 	    {
-	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
-	      rv = pthread_mutex_lock (entry_mutex);
+	      LF_LOCK_ENTRY (curr);
 
 	      /* since we set the mark, nobody else can delete it, so we have nothing else to check */
 	    }
@@ -1595,22 +1615,23 @@ restart_search:
 	      /* unlink failed; first step is to remove lock (if applicable) */
 	      if (edesc->using_mutex && LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
 		{
-		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
-		  pthread_mutex_unlock (entry_mutex);
+		  LF_UNLOCK_ENTRY_FORCE ();
 		}
 
 	      /* remove mark and restart search */
 	      if (!ATOMIC_CAS_ADDR (next_p, ADDR_WITH_MARK (next), next))
 		{
 		  /* impossible case */
+		  assert (false);
+		  LF_END_TRAN_FORCE ();
 		  return ER_FAILED;
 		}
 
+	      LF_END_TRAN_FORCE ();
 	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		{
 		  *behavior_flags = (*behavior_flags) | LF_LIST_BR_RESTARTED;
 		  assert ((*behavior_flags) & LF_LIST_BR_RESTARTED);
-		  lf_tran_end_with_mb (tran);
 		  return NO_ERROR;
 		}
 	      else
@@ -1618,25 +1639,26 @@ restart_search:
 		  goto restart_search;
 		}
 	    }
+	  /* unlink successful */
 
-	  /* unlock mutex if necessary */
+	  /* unlock mutex */
 	  if (edesc->using_mutex)
 	    {
-	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
-	      pthread_mutex_unlock (entry_mutex);
+	      LF_UNLOCK_ENTRY_FORCE ();
 	    }
 
-	  MEMORY_BARRIER ();
-	  lf_tran_start_with_mb (tran, true);
+	  LF_PROMOTE_TRAN_FORCE ();
 
 	  /* now we can feed the entry to the freelist and forget about it */
 	  if (lf_freelist_retire (tran, freelist, curr) != NO_ERROR)
 	    {
+	      assert (false);
+	      LF_END_TRAN_FORCE ();
 	      return ER_FAILED;
 	    }
 
 	  /* end the transaction */
-	  lf_tran_end_with_mb (tran);
+	  LF_END_TRAN_FORCE ();
 
 	  /* set success flag */
 	  if (success != NULL)
@@ -1654,8 +1676,14 @@ restart_search:
     }
 
   /* search yielded no result so no delete was performed */
-  lf_tran_end_with_mb (tran);
+  LF_END_TRAN_FORCE ();
   return NO_ERROR;
+
+#undef LF_START_TRAN_FORCE
+#undef LF_PROMOTE_TRAN_FORCE
+#undef LF_END_TRAN_FORCE
+#undef LF_LOCK_ENTRY
+#undef LF_UNLOCK_ENTRY_FORCE
 }
 
 /*
