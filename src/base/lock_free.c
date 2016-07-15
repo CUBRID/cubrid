@@ -1711,7 +1711,7 @@ lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned int hash_s
       /* put backbuffer in a "locked" state */
       for (i = 0; i < (int) hash_size; i++)
 	{
-	  table->backbuffer[i] = NULL;
+	  table->backbuffer[i] = ADDR_WITH_MARK (NULL);
 	}
 
       /* initialize mutex */
@@ -2036,20 +2036,19 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
   /* lock mutex */
   rv = pthread_mutex_lock (&table->backbuffer_mutex);
 
-#if !defined (NDEBUG)
-  /* clear bucket buffer, containing remains of old entries marked for delete */
-  for (i = 0; i < (int) table->hash_size; i++)
-    {
-      assert (table->backbuffer[i] == NULL);
-    }
-#endif /* !NDEBUG */
-
   /* swap bucket pointer with current backbuffer */
   do
     {
       old_buckets = VOLATILE_ACCESS (table->buckets, void **);
     }
   while (!ATOMIC_CAS_ADDR (&table->buckets, old_buckets, table->backbuffer));
+
+  /* clear bucket buffer, containing remains of old entries marked for delete */
+  for (i = 0; i < (int) table->hash_size; i++)
+    {
+      assert (table->backbuffer[i] == ADDR_WITH_MARK (NULL));
+      table->buckets[i] = NULL;
+    }
 
   /* register new backbuffer */
   table->backbuffer = old_buckets;
@@ -2123,13 +2122,6 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
       ATOMIC_INC_32 (&table->freelist->retired_cnt, ret_count);
 
       lf_tran_end_with_mb (tran);
-    }
-
-  /* clear bucket buffer, containing remains of old entries marked for delete */
-  for (i = 0; i < (int) table->hash_size; i++)
-    {
-      assert (table->backbuffer[i] == ADDR_WITH_MARK (NULL));
-      table->backbuffer[i] = NULL;
     }
 
   /* unlock mutex and return to caller */
