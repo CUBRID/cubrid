@@ -9660,7 +9660,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 	    numeric_db_value_print ((DB_VALUE *) src, str_buf);
 
-	    max_size = strlen (str_buf);
+	    max_size = strlen (str_buf) + 1;
 	    new_string = (char *) db_private_alloc (NULL, max_size);
 	    if (new_string == NULL)
 	      {
@@ -9670,7 +9670,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    strcpy (new_string, str_buf);
 
 	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
-		&& db_value_precision (target) < (int) strlen (new_string))
+		&& db_value_precision (target) < max_size - 1)
 	      {
 		status = DOMAIN_OVERFLOW;
 		db_private_free_and_init (NULL, new_string);
