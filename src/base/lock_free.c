@@ -1305,7 +1305,7 @@ restart_search:
 	    {
 	      /* found an entry with the same key. */
 
-	      if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN) && entry != NULL)
+	      if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN) && *entry != NULL)
 		{
 		  /* save this for further (local) use. */
 		  assert (tran->temp_entry == NULL);
