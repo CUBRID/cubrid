@@ -11124,7 +11124,7 @@ mr_data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
 static int
 mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
 {
-  int len;
+  int len, compressable = 0;
   const char *str;
 
   if (DB_IS_NULL (value))
@@ -11146,13 +11146,28 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
     {
       return len;
     }
-  else if (align == INT_ALIGNMENT)
-    {
-      return or_packed_varchar_length (len);
-    }
   else
     {
-      return or_varchar_length (len);
+      if (len >= 255)
+	{
+	  len = or_get_compression_length (str, len) + 256;
+	  compressable = 1;
+	}
+
+      if (align == INT_ALIGNMENT)
+	{
+	  len = or_packed_varchar_length (len);
+	}
+      else
+	{
+	  len = or_varchar_length (len);
+	}
+
+      if (compressable == 1)
+	{
+	  return len - 256;
+	}
+      return len;
     }
 }
 
