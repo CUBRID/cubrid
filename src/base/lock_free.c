@@ -1308,6 +1308,7 @@ restart_search:
 	      if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN) && entry != NULL)
 		{
 		  /* save this for further (local) use. */
+		  assert (tran->temp_entry == NULL);
 		  tran->temp_entry = *entry;
 
 		  /* don't keep the entry around. */
@@ -1471,6 +1472,7 @@ restart_search:
 		{
 		  if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN))
 		    {
+		      assert (tran->temp_entry == NULL);
 		      tran->temp_entry = *entry;
 		      *entry = NULL;
 		    }
