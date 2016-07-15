@@ -445,7 +445,7 @@ test_hash_proc_3 (void *param)
 	  int success = 0;
 
 	  local_del_op_count += entry->data;
-	  if (lf_hash_delete (te, hash, &key, &success) != NO_ERROR)
+	  if (lf_hash_delete_already_locked (te, hash, &key, &success) != NO_ERROR)
 	    {
 	      pthread_exit (ER_FAILED);
 	      return ER_FAILED;
@@ -676,7 +676,7 @@ test_clear_proc_3 (void *param)
 	{
 	  int success = 0;
 
-	  if (lf_hash_delete (te, hash, &key, &success) != NO_ERROR)
+	  if (lf_hash_delete_already_locked (te, hash, &key, &success) != NO_ERROR)
 	    {
 	      pthread_exit (ER_FAILED);
 	      return ER_FAILED;
