@@ -388,7 +388,7 @@ test_hash_proc_2 (void *param)
 #undef NOPS
 }
 
-static int del_op_count = 0;
+static int del_op_count = -1;
 
 void *
 test_hash_proc_3 (void *param)
@@ -701,8 +701,6 @@ test_clear_proc_3 (void *param)
       return ER_FAILED;
     }
 
-  del_op_count = -1;
-
   pthread_exit (NO_ERROR);
 
 #undef NOPS
@@ -818,8 +816,6 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
   pthread_t threads[MAX_THREADS];
   char msg[256];
   int i;
-
-  del_op_count = 0;
 
   sprintf (msg, "hash (mutex=%s, %d threads)", edesc->using_mutex ? "y" : "n", nthreads);
   begin (msg);
@@ -962,8 +958,6 @@ test_hash_iterator ()
   pthread_t threads[NUM_THREADS];
   int i;
 
-  del_op_count = 0;
-
   begin ("hash table iterator");
 
   /* initialization */
@@ -1105,10 +1099,13 @@ main (int argc, char **argv)
   xentry_desc.using_mutex = LF_EM_USING_MUTEX;
   for (i = 1; i <= 64; i *= 2)
     {
+      /* test_hash_proc_3 uses global del_op_count */
+      del_op_count = 0;
       if (test_hash_table (&xentry_desc, i, test_hash_proc_3) != NO_ERROR)
 	{
 	  goto fail;
 	}
+      del_op_count = -1;
       if (test_hash_table (&xentry_desc, i, test_clear_proc_3) != NO_ERROR)
 	{
 	  goto fail;
