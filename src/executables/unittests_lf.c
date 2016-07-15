@@ -1004,6 +1004,8 @@ test_hash_iterator ()
       else
 	{
 	  entry->data = i;
+	  /* end transaction */
+	  lf_tran_end_with_mb (te);
 	}
     }
 
