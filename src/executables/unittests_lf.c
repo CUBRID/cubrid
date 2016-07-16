@@ -691,8 +691,6 @@ test_clear_proc_3 (void *param)
 	{
 	  pthread_mutex_unlock (&entry->mutex);
 	}
-
-      lf_tran_end_with_mb (te);
     }
 
   if (lf_tran_return_entry (te) != NO_ERROR)
