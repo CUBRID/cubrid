@@ -68,6 +68,57 @@ static bool tran_systems_initialized = false;
 #define OF_GET_PTR(p,o)		(void *) (((char *)(p)) + (o))
 #define OF_GET_PTR_DEREF(p,o)	(*OF_GET_REF (p,o))
 
+static INT64 lf_inserts;
+static INT64 lf_inserts_restart;
+static INT64 lf_list_inserts;
+static INT64 lf_list_inserts_found;
+static INT64 lf_list_inserts_save_temp_1;
+static INT64 lf_list_inserts_save_temp_2;
+static INT64 lf_list_inserts_claim;
+static INT64 lf_list_inserts_fail_link;
+static INT64 lf_list_inserts_success_link;
+
+static INT64 lf_deletes;
+static INT64 lf_deletes_restart;
+static INT64 lf_list_deletes;
+static INT64 lf_list_deletes_found;
+static INT64 lf_list_deletes_fail_mark_next;
+static INT64 lf_list_deletes_fail_unlink;
+static INT64 lf_list_deletes_success_unlink;
+static INT64 lf_list_deletes_not_found;
+
+static INT64 lf_retires;
+static INT64 lf_claims;
+static INT64 lf_claims_temp;
+static INT64 lf_transports;
+
+void
+lf_reset_counters (void)
+{
+  lf_inserts = 0;
+  lf_inserts_restart = 0;
+  lf_list_inserts_found = 0;
+  lf_list_inserts_save_temp_1 = 0;
+  lf_list_inserts_save_temp_2 = 0;
+  lf_list_inserts_claim = 0;
+  lf_list_inserts_fail_link = 0;
+  lf_list_inserts_success_link = 0;
+
+  lf_deletes = 0;
+  lf_deletes_restart = 0;
+  lf_list_deletes = 0;
+  lf_list_deletes_found = 0;
+  lf_list_deletes_fail_mark_next = 0;
+  lf_list_deletes_fail_unlink = 0;
+  lf_list_deletes_success_unlink = 0;
+  lf_list_deletes_not_found = 0;
+
+  lf_retires = 0;
+  lf_claims = 0;
+  lf_claims_temp = 0;
+  lf_transports = 0;
+}
+
 static int lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
 				    LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int *inserted);
 static int lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry,
@@ -704,12 +755,16 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 
   edesc = freelist->entry_desc;
 
+  ATOMIC_INC_64 (&lf_claims, 1);
+
   /* first check temporary entry */
   if (tran_entry->temp_entry != NULL)
     {
       entry = tran_entry->temp_entry;
       tran_entry->temp_entry = NULL;
       OF_GET_PTR_DEREF (entry, edesc->of_next) = NULL;
+
+      ATOMIC_INC_64 (&lf_claims_temp, 1);
       return entry;
     }
 
@@ -795,6 +850,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
     }
 
   /* impossible! */
+  assert (false);
   return NULL;
 }
 
@@ -848,6 +904,12 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
     {
       /* for stats purposes */
       ATOMIC_INC_32 (&freelist->retired_cnt, 1);
+
+      ATOMIC_INC_64 (&lf_retires, 1);
+    }
+  else
+    {
+      assert (false);
     }
 
   /* end local transaction */
@@ -963,6 +1025,8 @@ lf_freelist_transport (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
       /* update counters */
       ATOMIC_INC_32 (&freelist->available_cnt, transported_count);
       ATOMIC_INC_32 (&freelist->retired_cnt, -transported_count);
+
+      ATOMIC_INC_64 (&lf_transports, transported_count);
     }
 
   /* register cleanup */
@@ -1228,7 +1292,7 @@ lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *be
 {
   /* Macro's to avoid repeating the code (and making mistakes) */
 
-  /* Assert used to make sure the current entry is procted by either transaction or mutex. */
+  /* Assert used to make sure the current entry is protected by either transaction or mutex. */
 #define LF_ASSERT_USE_MUTEX_OR_TRAN_STARTED() \
   assert (is_tran_started == !edesc->using_mutex); /* The transaction is started if and only if we don't use mutex */ \
   assert (!edesc->using_mutex || entry_mutex) /* If we use mutex, we have a mutex locked. */
@@ -1289,6 +1353,8 @@ lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *be
 
 restart_search:
 
+  ATOMIC_INC_64 (&lf_list_inserts, 1);
+
   LF_START_TRAN_FORCE ();
 
   curr_p = list_p;
@@ -1306,11 +1372,15 @@ restart_search:
 	    {
 	      /* found an entry with the same key. */
 
+	      ATOMIC_INC_64 (&lf_list_inserts_found, 1);
+
 	      if (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN) && *entry != NULL)
 		{
 		  /* save this for further (local) use. */
 		  assert (tran->temp_entry == NULL);
 		  tran->temp_entry = *entry;
+
+		  ATOMIC_INC_64 (&lf_list_inserts_save_temp_1, 1);
 
 		  /* don't keep the entry around. */
 		  *entry = NULL;
@@ -1434,10 +1504,12 @@ restart_search:
 		  return ER_FAILED;
 		}
 
+	      ATOMIC_INC_64 (&lf_list_inserts_claim, 1);
+
 	      /* set it's key */
 	      if (edesc->f_key_copy (key, OF_GET_PTR (*entry, edesc->of_key)) != NO_ERROR)
 		{
-		  ASSERT_ERROR ();
+		  assert (false);
 		  LF_END_TRAN_FORCE ();
 		  return ER_FAILED;
 		}
@@ -1458,6 +1530,8 @@ restart_search:
 		  LF_UNLOCK_ENTRY_FORCE ();
 		}
 
+	      ATOMIC_INC_64 (&lf_list_inserts_fail_link, 1);
+
 	      /* someone added before us, restart process */
 	      if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_RETURN_ON_RESTART))
 		{
@@ -1466,6 +1540,8 @@ restart_search:
 		      assert (tran->temp_entry == NULL);
 		      tran->temp_entry = *entry;
 		      *entry = NULL;
+
+		      ATOMIC_INC_64 (&lf_list_inserts_save_temp_2, 1);
 		    }
 		  LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
 		  LF_END_TRAN_FORCE ();
@@ -1477,6 +1553,8 @@ restart_search:
 		  goto restart_search;
 		}
 	    }
+
+	  ATOMIC_INC_64 (&lf_list_inserts_success_link, 1);
 
 	  /* end transaction if mutex is acquired */
 	  if (edesc->using_mutex)
@@ -1568,6 +1646,8 @@ lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_fl
 
 restart_search:
 
+  ATOMIC_INC_64 (&lf_list_deletes, 1);
+
   /* read transaction; we start a write transaction only after remove */
   LF_START_TRAN_FORCE ();
 
@@ -1584,10 +1664,15 @@ restart_search:
 	  next_p = (void **) OF_GET_REF (curr, edesc->of_next);
 	  next = ADDR_STRIP_MARK (*((void *volatile *) next_p));
 
+	  ATOMIC_INC_64 (&lf_list_deletes_found, 1);
+
 	  /* set mark on next pointer; this way, if anyone else is trying to delete the next entry, it will fail */
 	  if (!ATOMIC_CAS_ADDR (next_p, next, ADDR_WITH_MARK (next)))
 	    {
 	      /* joke's on us, this time; somebody else marked it before */
+
+	      ATOMIC_INC_64 (&lf_list_deletes_fail_mark_next, 1);
+
 	      LF_END_TRAN_FORCE ();
 	      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		{
@@ -1618,6 +1703,8 @@ restart_search:
 		  LF_UNLOCK_ENTRY_FORCE ();
 		}
 
+	      ATOMIC_INC_64 (&lf_list_deletes_fail_unlink, 1);
+
 	      /* remove mark and restart search */
 	      if (!ATOMIC_CAS_ADDR (next_p, ADDR_WITH_MARK (next), next))
 		{
@@ -1640,6 +1727,8 @@ restart_search:
 		}
 	    }
 	  /* unlink successful */
+
+	  ATOMIC_INC_64 (&lf_list_deletes_success_unlink, 1);
 
 	  /* unlock mutex */
 	  if (edesc->using_mutex)
@@ -1674,6 +1763,8 @@ restart_search:
       curr_p = (void **) OF_GET_REF (curr, edesc->of_next);
       curr = ADDR_STRIP_MARK (*((void *volatile *) curr_p));
     }
+
+  ATOMIC_INC_64 (&lf_list_deletes_not_found, 1);
 
   /* search yielded no result so no delete was performed */
   LF_END_TRAN_FORCE ();
@@ -1880,6 +1971,8 @@ lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key,
   edesc = table->entry_desc;
   assert (edesc != NULL);
 
+  ATOMIC_INC_64 (&lf_inserts, 1);
+
 restart:
   if (LF_LIST_BF_IS_FLAG_SET (&bflags, LF_LIST_BF_INSERT_GIVEN))
     {
@@ -1901,6 +1994,7 @@ restart:
   if ((rc == NO_ERROR) && (bflags & LF_LIST_BR_RESTARTED))
     {
       bflags &= ~LF_LIST_BR_RESTARTED;
+      ATOMIC_INC_64 (&lf_inserts_restart, 1);
       goto restart;
     }
   else
@@ -2015,6 +2109,8 @@ lf_hash_delete_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key,
   edesc = table->entry_desc;
   assert (edesc != NULL);
 
+  ATOMIC_INC_64 (&lf_deletes, 1);
+
 restart:
   if (success != NULL)
     {
@@ -2032,6 +2128,7 @@ restart:
     {
       /* Remove LF_LIST_BR_RESTARTED from behavior flags. */
       bflags &= ~LF_LIST_BR_RESTARTED;
+      ATOMIC_INC_64 (&lf_deletes_restart, 1);
       goto restart;
     }
   else

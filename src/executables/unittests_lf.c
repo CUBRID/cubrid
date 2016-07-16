@@ -182,7 +182,7 @@ static int
 fail (const char *message)
 {
   printf (" %s: %s\n", "FAILED", message);
-  assert (false);
+  abort ();
   return ER_FAILED;
 }
 
@@ -819,6 +819,8 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
 
   sprintf (msg, "hash (mutex=%s, %d threads)", edesc->using_mutex ? "y" : "n", nthreads);
   begin (msg);
+
+  lf_reset_counters ();
 
   /* initialization */
   if (nthreads > MAX_THREADS)
