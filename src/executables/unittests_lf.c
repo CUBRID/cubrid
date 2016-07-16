@@ -930,8 +930,8 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
 
     if (ecount + freelist.available_cnt + freelist.retired_cnt != freelist.alloc_cnt)
       {
-	sprintf (msg, "leak check fail (%d + %d + %d != %d)", ecount, freelist.available_cnt, freelist.retired_cnt,
-		 freelist.alloc_cnt);
+	sprintf (msg, "leak check fail (%d + %d + %d = %d != %d)", ecount, freelist.available_cnt, freelist.retired_cnt,
+		 ecount + freelist.available_cnt + freelist.retired_cnt, freelist.alloc_cnt);
 	return fail (msg);
       }
   }
