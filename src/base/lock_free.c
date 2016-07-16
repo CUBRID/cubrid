@@ -1628,7 +1628,7 @@ lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_fl
   pthread_mutex_unlock (entry_mutex); \
   entry_mutex = NULL
 
-  pthread_mutex_t *entry_mutex;
+  pthread_mutex_t *entry_mutex = NULL;
   void **curr_p, **next_p;
   void *curr, *next;
   int rv;
