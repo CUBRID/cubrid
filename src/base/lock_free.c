@@ -68,35 +68,42 @@ static bool tran_systems_initialized = false;
 #define OF_GET_PTR(p,o)		(void *) (((char *)(p)) + (o))
 #define OF_GET_PTR_DEREF(p,o)	(*OF_GET_REF (p,o))
 
-static INT64 lf_inserts;
-static INT64 lf_inserts_restart;
-static INT64 lf_list_inserts;
-static INT64 lf_list_inserts_found;
-static INT64 lf_list_inserts_save_temp_1;
-static INT64 lf_list_inserts_save_temp_2;
-static INT64 lf_list_inserts_claim;
-static INT64 lf_list_inserts_fail_link;
-static INT64 lf_list_inserts_success_link;
 
-static INT64 lf_deletes;
-static INT64 lf_deletes_restart;
-static INT64 lf_list_deletes;
-static INT64 lf_list_deletes_found;
-static INT64 lf_list_deletes_fail_mark_next;
-static INT64 lf_list_deletes_fail_unlink;
-static INT64 lf_list_deletes_success_unlink;
-static INT64 lf_list_deletes_not_found;
+static INT64 lf_hash_size = 0;
 
-static INT64 lf_retires;
-static INT64 lf_claims;
-static INT64 lf_claims_temp;
-static INT64 lf_transports;
+static INT64 lf_inserts = 0;
+static INT64 lf_inserts_restart = 0;
+static INT64 lf_list_inserts = 0;
+static INT64 lf_list_inserts_found = 0;
+static INT64 lf_list_inserts_save_temp_1 = 0;
+static INT64 lf_list_inserts_save_temp_2 = 0;
+static INT64 lf_list_inserts_claim = 0;
+static INT64 lf_list_inserts_fail_link = 0;
+static INT64 lf_list_inserts_success_link = 0;
+
+static INT64 lf_deletes = 0;
+static INT64 lf_deletes_restart = 0;
+static INT64 lf_list_deletes = 0;
+static INT64 lf_list_deletes_found = 0;
+static INT64 lf_list_deletes_fail_mark_next = 0;
+static INT64 lf_list_deletes_fail_unlink = 0;
+static INT64 lf_list_deletes_success_unlink = 0;
+static INT64 lf_list_deletes_not_found = 0;
+
+static INT64 lf_retires = 0;
+static INT64 lf_claims = 0;
+static INT64 lf_claims_temp = 0;
+static INT64 lf_transports = 0;
+static INT64 lf_temps = 0;
 
 void
 lf_reset_counters (void)
 {
+  lf_hash_size = 0;
+
   lf_inserts = 0;
   lf_inserts_restart = 0;
+  lf_list_inserts = 0;
   lf_list_inserts_found = 0;
   lf_list_inserts_save_temp_1 = 0;
   lf_list_inserts_save_temp_2 = 0;
@@ -117,6 +124,7 @@ lf_reset_counters (void)
   lf_claims = 0;
   lf_claims_temp = 0;
   lf_transports = 0;
+  lf_temps = 0;
 }
 
 static int lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
@@ -765,6 +773,7 @@ lf_freelist_claim (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
       OF_GET_PTR_DEREF (entry, edesc->of_next) = NULL;
 
       ATOMIC_INC_64 (&lf_claims_temp, 1);
+      ATOMIC_INC_64 (&lf_temps, -1);
       return entry;
     }
 
@@ -1381,6 +1390,7 @@ restart_search:
 		  tran->temp_entry = *entry;
 
 		  ATOMIC_INC_64 (&lf_list_inserts_save_temp_1, 1);
+		  ATOMIC_INC_64 (&lf_temps, 1);
 
 		  /* don't keep the entry around. */
 		  *entry = NULL;
@@ -1542,6 +1552,7 @@ restart_search:
 		      *entry = NULL;
 
 		      ATOMIC_INC_64 (&lf_list_inserts_save_temp_2, 1);
+		      ATOMIC_INC_64 (&lf_temps, 1);
 		    }
 		  LF_LIST_BR_SET_FLAG (behavior_flags, LF_LIST_BR_RESTARTED);
 		  LF_END_TRAN_FORCE ();
@@ -1565,6 +1576,7 @@ restart_search:
 	    {
 	      *inserted = 1;
 	    }
+	  ATOMIC_INC_64 (&lf_hash_size, 1);
 
 	  /* done! */
 	  return NO_ERROR;
@@ -1762,6 +1774,7 @@ restart_search:
 	    {
 	      *success = 1;
 	    }
+	  ATOMIC_INC_64 (&lf_hash_size, -1);
 
 	  /* success! */
 	  return NO_ERROR;
