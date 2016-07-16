@@ -1687,9 +1687,17 @@ restart_search:
 	    }
 
 	  /* lock mutex if necessary */
-	  if (edesc->using_mutex && LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
+	  if (edesc->using_mutex)
 	    {
-	      LF_LOCK_ENTRY (curr);
+	      if (LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE))
+		{
+		  LF_LOCK_ENTRY (curr);
+		}
+	      else
+		{
+		  /* Must be already locked! */
+		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
+		}
 
 	      /* since we set the mark, nobody else can delete it, so we have nothing else to check */
 	    }
