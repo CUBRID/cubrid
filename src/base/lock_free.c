@@ -90,6 +90,8 @@ static INT64 lf_list_deletes_fail_unlink = 0;
 static INT64 lf_list_deletes_success_unlink = 0;
 static INT64 lf_list_deletes_not_found = 0;
 
+static INT64 lf_clears = 0;
+
 static INT64 lf_retires = 0;
 static INT64 lf_claims = 0;
 static INT64 lf_claims_temp = 0;
@@ -119,6 +121,8 @@ lf_reset_counters (void)
   lf_list_deletes_fail_unlink = 0;
   lf_list_deletes_success_unlink = 0;
   lf_list_deletes_not_found = 0;
+
+  lf_clears = 0;
 
   lf_retires = 0;
   lf_claims = 0;
@@ -2266,6 +2270,8 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
       tran->retired_list = ret_head;
 
       ATOMIC_INC_32 (&table->freelist->retired_cnt, ret_count);
+
+      ATOMIC_INC_64 (&lf_clears, ret_count);
 
       lf_tran_end_with_mb (tran);
     }
