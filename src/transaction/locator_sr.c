@@ -3945,7 +3945,7 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
   /* Prefetch the object if that operation is desirable */
   if (need_fetching && fetch_area != NULL)
     {
-      int ret = xlocator_fetch (thread_p, oid, NULL_CHN, NULL_LOCK, fetch_version_type, fetch_version_type,
+      int ret = xlocator_fetch (thread_p, oid, NULL_CHN, lock, fetch_version_type, fetch_version_type,
 				class_oid, class_chn, prefetching, fetch_area);
       if (ret == ER_FAILED)
 	{
