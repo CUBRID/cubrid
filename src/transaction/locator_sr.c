@@ -13307,7 +13307,11 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 
 error:
 
-  ASSERT_ERROR ();
+  if (scan != S_DOESNT_EXIST)
+  {
+    /* Caller should handle error setting for non-existent objects. */
+    ASSERT_ERROR ();
+  }
 
   if (lock_acquired)
     {
