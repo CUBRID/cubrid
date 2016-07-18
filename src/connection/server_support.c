@@ -1037,7 +1037,7 @@ static void
 css_process_new_client (SOCKET master_fd)
 {
   SOCKET new_fd;
-  int reason;
+  int reason, r;
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
   CSS_CONN_ENTRY temp_conn;
@@ -1058,7 +1058,8 @@ css_process_new_client (SOCKET master_fd)
        * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
        */
       css_initialize_conn (&temp_conn, new_fd);
-      csect_initialize_critical_section (&temp_conn.csect, NULL);
+      r = rmutex_initialize (&temp_conn.rmutex, NULL);
+      assert (r == NO_ERROR);
 
       reason = htonl (SERVER_INACCESSIBLE_IP);
       css_send_data (&temp_conn, rid, (char *) &reason, (int) sizeof (int));
@@ -1068,7 +1069,7 @@ css_process_new_client (SOCKET master_fd)
       temp_conn.db_error = ER_INACCESSIBLE_IP;
       css_send_error (&temp_conn, rid, (const char *) area, length);
       css_shutdown_conn (&temp_conn);
-      css_dealloc_conn_csect (&temp_conn);
+      css_dealloc_conn_rmutex (&temp_conn);
       er_clear ();
       return;
     }
@@ -1080,7 +1081,8 @@ css_process_new_client (SOCKET master_fd)
        * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
        */
       css_initialize_conn (&temp_conn, new_fd);
-      csect_initialize_critical_section (&temp_conn.csect, NULL);
+      r = rmutex_initialize (&temp_conn.rmutex, NULL);
+      assert (r == NO_ERROR);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
       reason = htonl (SERVER_CLIENTS_EXCEEDED);
@@ -1091,7 +1093,7 @@ css_process_new_client (SOCKET master_fd)
       temp_conn.db_error = ER_CSS_CLIENTS_EXCEEDED;
       css_send_error (&temp_conn, rid, (const char *) area, length);
       css_shutdown_conn (&temp_conn);
-      css_dealloc_conn_csect (&temp_conn);
+      css_dealloc_conn_rmutex (&temp_conn);
       er_clear ();
       return;
     }
@@ -1255,7 +1257,7 @@ css_process_new_connection_request (void)
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
   char *buffer[1024];
-  int length = 1024;
+  int length = 1024, r;
 
   NET_HEADER header = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -1269,7 +1271,8 @@ css_process_new_connection_request (void)
 	  void *error_string;
 
 	  css_initialize_conn (&new_conn, new_fd);
-	  csect_initialize_critical_section (&new_conn.csect, csect_Name_conn);
+	  r = rmutex_initialize (&new_conn.rmutex, rmutex_Name_conn);
+	  assert (r == NO_ERROR);
 
 	  rc = css_read_header (&new_conn, &header);
 	  buffer_size = rid = 0;
@@ -1281,7 +1284,7 @@ css_process_new_connection_request (void)
 	  new_conn.db_error = ER_INACCESSIBLE_IP;
 	  css_send_error (&new_conn, rid, (const char *) error_string, length);
 	  css_shutdown_conn (&new_conn);
-	  css_dealloc_conn_csect (&new_conn);
+	  css_dealloc_conn_rmutex (&new_conn);
 
 	  er_clear ();
 	  return -1;
@@ -1298,7 +1301,8 @@ css_process_new_connection_request (void)
 	  void *error_string;
 
 	  css_initialize_conn (&new_conn, new_fd);
-	  csect_initialize_critical_section (&new_conn.csect, csect_Name_conn);
+	  r = rmutex_initialize (&new_conn.rmutex, rmutex_Name_conn);
+	  assert (r == NO_ERROR);
 
 	  rc = css_read_header (&new_conn, &header);
 	  buffer_size = rid = 0;
@@ -1310,7 +1314,7 @@ css_process_new_connection_request (void)
 	  new_conn.db_error = ER_CSS_CLIENTS_EXCEEDED;
 	  css_send_error (&new_conn, rid, (const char *) error_string, length);
 	  css_shutdown_conn (&new_conn);
-	  css_dealloc_conn_csect (&new_conn);
+	  css_dealloc_conn_rmutex (&new_conn);
 
 	  er_clear ();
 	  return -1;
@@ -1680,19 +1684,19 @@ void
 css_block_all_active_conn (unsigned short stop_phase)
 {
   CSS_CONN_ENTRY *conn;
+  int r;
 
   csect_enter (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
 
   for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
     {
-      assert (css_is_valid_conn_csect (conn));
+      r = rmutex_lock (NULL, &conn->rmutex);
+      assert (r == NO_ERROR);
 
-      csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
       if (conn->stop_phase != stop_phase)
 	{
-	  assert (css_is_valid_conn_csect (conn));
-
-	  csect_exit_critical_section (NULL, &conn->csect);
+	  r = rmutex_unlock (NULL, &conn->rmutex);
+	  assert (r == NO_ERROR);
 	  continue;
 	}
       css_end_server_request (conn);
@@ -1702,9 +1706,8 @@ css_block_all_active_conn (unsigned short stop_phase)
 	  logtb_set_tran_index_interrupt (NULL, conn->transaction_id, 1);
 	}
 
-      assert (css_is_valid_conn_csect (conn));
-
-      csect_exit_critical_section (NULL, &conn->csect);
+      r = rmutex_unlock (NULL, &conn->rmutex);
+      assert (r == NO_ERROR);
     }
 
   csect_exit (NULL, CSECT_CONN_ACTIVE);
@@ -2305,16 +2308,16 @@ css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn, unsigned int e
 void
 css_end_server_request (CSS_CONN_ENTRY * conn)
 {
-  assert (css_is_valid_conn_csect (conn));
+  int r;
 
-  csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   css_remove_all_unexpected_packets (conn);
   conn->status = CONN_CLOSING;
 
-  assert (css_is_valid_conn_csect (conn));
-
-  csect_exit_critical_section (NULL, &conn->csect);
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 }
 
 /*
