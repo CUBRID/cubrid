@@ -13206,7 +13206,8 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
       lock_acquired = true;
 
       /* Prepare for getting record again. Since pages have been unlatched, others may have changed them */
-      if (heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED) != NO_ERROR)
+      scan = heap_prepare_get_context (thread_p, context, PGBUF_LATCH_READ, false, LOG_WARNING_IF_DELETED);
+      if (scan != S_SUCCESS)
 	{
 	  goto error;
 	}
@@ -13222,6 +13223,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   if (context->recdes_p != NULL)
     {
       scan = heap_get_last_version (thread_p, context);
+      /* this scan_code must be preserved until the end of this function to be returned; - unless an error occur */
       if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE)
 	{
 	  goto error;
