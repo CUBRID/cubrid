@@ -99,7 +99,7 @@ static INT64 lf_transports = 0;
 static INT64 lf_temps = 0;
 
 static pthread_mutex_t *lf_locked_mutex = NULL;
-const int lf_locked_line = 0;
+int lf_locked_line = 0;
 
 void
 lf_reset_counters (void)
