@@ -2610,7 +2610,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid, LAS
   heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
   scan_cache_inited = true;
 
-  if (heap_get (thread_p, class_oid, &recdes, &scan_cache, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();

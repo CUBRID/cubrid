@@ -5413,7 +5413,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   /* Due to the length of time that we hold onto the oid list, it is possible at lower isolation levels (UNCOMMITTED
    * INSTANCES) that the index/heap may have changed since the oid list was read from the btree.  In particular, some
-   * of the instances that we are reading may have been deleted by the time we go to fetch them via heap_get ().
+   * of the instances that we are reading may have been deleted by the time we go to fetch them via heap_get_visible_version ().
    * According to the semantics of UNCOMMITTED, it is ok if they are deleted out from under us and we can ignore the
    * SCAN_DOESNT_EXIST error. */
 

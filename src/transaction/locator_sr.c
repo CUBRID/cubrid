@@ -5519,7 +5519,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      old_record.data = NULL;
 	      old_recdes = &old_record;
 
-	      if (heap_get (thread_p, oid, old_recdes, scan_cache, PEEK, NULL_CHN) == S_SUCCESS)
+	      if (heap_get_class_record (thread_p, oid, old_recdes, scan_cache, PEEK) == S_SUCCESS)
 		{
 		  or_class_rep_dir (old_recdes, &old_rep_dir);
 
@@ -5720,7 +5720,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		}
 	      else
 		{
-		  scan = heap_get (thread_p, oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN);
+		  scan = heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN);
 		}
 
 
@@ -5860,7 +5860,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  goto error;
 		}
 
-	      scan = heap_get (thread_p, oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN);
+	      scan = heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN);
 	      if (scan == S_SUCCESS)
 		{
 		  oldrecdes = &copy_recdes;
@@ -6181,7 +6181,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
   /* Update note : While scanning objects, the given scancache does not fix the last accessed page. So, the object must 
    * be copied to the record descriptor. Changes : (1) variable name : peek_recdes => copy_recdes (2) function call :
-   * heap_get(..., PEEK, ...) => heap_get(..., COPY, ...) (3) SCAN_CODE scan, char *new_area are added */
+   * heap_get_visible_version(..., PEEK, ...) => heap_get_visible_version(..., COPY, ...) (3) SCAN_CODE scan, char *new_area are added */
 
   copy_recdes.data = NULL;
 
@@ -6481,7 +6481,7 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
 	    }
 	  scan_cache_inited = true;
 	  copy_recdes.data = NULL;
-	  scan = heap_get (thread_p, oid, &copy_recdes, &scan_cache, COPY, NULL_CHN);
+	  scan = heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, &scan_cache, COPY, NULL_CHN);
 	  if (scan != S_SUCCESS)
 	    {
 	      goto error;
@@ -6912,7 +6912,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
     {
       assert (OID_ISNULL (&obj->oid) != true);
 
-      scan = heap_get (thread_p, &obj->oid, old_recdes, force_scancache, PEEK, NULL_CHN);
+      scan = heap_get_visible_version (thread_p, &obj->oid, &obj->class_oid, old_recdes, force_scancache, PEEK, NULL_CHN);
 
       if (scan != S_SUCCESS)
 	{
@@ -7536,7 +7536,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	}
       else if (HEAP_IS_UPDATE_INPLACE (force_update_inplace) || need_locking == false)
 	{
-	  scan = heap_get (thread_p, oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
+	  scan = heap_get_visible_version (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
 	  assert ((lock_get_object_lock (oid, &class_oid, LOG_FIND_THREAD_TRAN_INDEX (thread_p)) >= X_LOCK)
 		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid,
 					    LOG_FIND_THREAD_TRAN_INDEX (thread_p) >= X_LOCK)));
@@ -10625,7 +10625,7 @@ locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
       return DISK_ERROR;
     }
 
-  if (heap_get (thread_p, cls_oid, &copy_rec, &scan, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, cls_oid, &copy_rec, &scan, COPY) != S_SUCCESS)
     {
       heap_scancache_end (thread_p, &scan);
       return DISK_ERROR;
@@ -10646,7 +10646,7 @@ locator_check_by_class_oid (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
 	}
 
       copy_rec.data = NULL;
-      if (heap_get (thread_p, cls_oid, &copy_rec, &scan, COPY, NULL_CHN) != S_SUCCESS)
+      if (heap_get_class_record (thread_p, cls_oid, &copy_rec, &scan, COPY) != S_SUCCESS)
 	{
 	  lock_unlock_object (thread_p, cls_oid, oid_Root_class_oid, IS_LOCK, true);
 	  heap_scancache_end (thread_p, &scan);
@@ -10748,7 +10748,7 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
 	    }
 
 	  copy_rec.data = NULL;
-	  code = heap_get (thread_p, &oid, &copy_rec, &scan, COPY, NULL_CHN);
+	  code = heap_get_class_record (thread_p, &oid, &copy_rec, &scan, COPY);
 	  if (code != S_SUCCESS)
 	    {
 	      break;
@@ -10928,7 +10928,7 @@ locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lockhint_subc
 	   * Get the class to find out its immediate subclasses
 	   */
 
-	  scan = heap_get (thread_p, &lockhint->classes[ref_num].oid, &peek_recdes, &scan_cache, PEEK, NULL_CHN);
+	  scan = heap_get_class_record (thread_p, &lockhint->classes[ref_num].oid, &peek_recdes, &scan_cache, PEEK);
 	  if (scan != S_SUCCESS)
 	    {
 	      if (scan != S_DOESNT_EXIST && (lockhint->quit_on_errors == true || er_errid () == ER_INTERRUPTED))
@@ -11970,7 +11970,7 @@ xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p, OID * class_oid, RECDES 
       return ER_FAILED;
     }
 
-  if (heap_get (thread_p, class_oid, &classrec, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, class_oid, &classrec, &scan, PEEK) != S_SUCCESS)
     {
       heap_scancache_end (thread_p, &scan);
       return ER_FAILED;
@@ -12035,7 +12035,7 @@ xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, BTID * btid, O
 	  return ER_FAILED;
 	}
 
-      if (heap_get (thread_p, &unique_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+      if (heap_get_visible_version (thread_p, &unique_oid, class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
 	{
 	  heap_scancache_end (thread_p, &scan);
 	  return ER_FAILED;
@@ -12188,7 +12188,7 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		  continue;
 		}
 
-	      scan = heap_get (thread_p, &oid, &recdes, &scan_cache, COPY, NULL_CHN);
+	      scan = heap_get_visible_version (thread_p, &oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN);
 	      if (scan != S_SUCCESS)
 		{
 		  (*nfailed_instance_locks)++;
@@ -13102,7 +13102,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
 	      recdes.data = NULL;
 
-	      if (heap_get (thread_p, &inst_oid, &recdes, &scan_cache, COPY, NULL_CHN) != S_SUCCESS)
+	      if (heap_get_visible_version (thread_p, &inst_oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN) != S_SUCCESS)
 		{
 		  error = ER_FAILED;
 		  goto exit;
@@ -13827,7 +13827,7 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
 	  goto end;
 	}
       scan_cache_inited = true;
-      scan_code = heap_get (thread_p, oid_inst, recdesp, &local_scan_cache, PEEK, NULL_CHN);
+      scan_code = heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, PEEK, NULL_CHN);
       if (scan_code != S_SUCCESS)
 	{
 	  ev_res = V_ERROR;

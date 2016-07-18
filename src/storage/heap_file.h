@@ -405,11 +405,6 @@ extern int heap_scancache_quick_start_modify (HEAP_SCANCACHE * scan_cache);
 extern int heap_scancache_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 extern int heap_scancache_end_when_scan_will_resume (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int heap_get_chn (THREAD_ENTRY * thread_p, const OID * oid);
-#endif
-extern SCAN_CODE heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache,
-			   int ispeeking, int chn);
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
@@ -436,12 +431,14 @@ extern SCAN_CODE heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCAN
 extern SCAN_CODE heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, OID * last_oid);
 extern SCAN_CODE heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes,
 				      HEAP_SCANRANGE * scan_range, int ispeeking);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern SCAN_CODE heap_scanrange_prev (THREAD_ENTRY * thread_p, OID * prev_oid, RECDES * recdes,
 				      HEAP_SCANRANGE * scan_range, int ispeeking);
 extern SCAN_CODE heap_scanrange_first (THREAD_ENTRY * thread_p, OID * first_oid, RECDES * recdes,
 				       HEAP_SCANRANGE * scan_range, int ispeeking);
 extern SCAN_CODE heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid, RECDES * recdes,
 				      HEAP_SCANRANGE * scan_range, int ispeeking);
+#endif
 
 extern bool heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
 extern bool heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
@@ -647,7 +644,9 @@ extern bool heap_should_try_update_stat (const int current_freespace, const int 
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn, bool is_heap_scan);
+					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
+extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+  HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid,
@@ -661,5 +660,6 @@ extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CON
 extern SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern SCAN_CODE heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 						    bool is_heap_scan);
+extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, OID *class_oid, RECDES * recdes_p, HEAP_SCANCACHE * scan_cache, int ispeeking);
 
 #endif /* _HEAP_FILE_H_ */
