@@ -2542,6 +2542,15 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
   LSA_COPY (&lsa, start_redolsa);
 
+  if (stopat != NULL)
+    {
+      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : stopat: %lld", *stopat);
+    }
+  else
+    {
+      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : stopat: NULL");
+    }
+
   /* Defense for illegal start_redolsa */
   if ((lsa.offset + (int) sizeof (LOG_RECORD_HEADER)) >= LOGAREA_SIZE)
     {
@@ -2660,6 +2669,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      LSA_SET_NULL (&lsa);
 	      break;
 	    }
+
+	  _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : log_rtype: %d", log_rtype);
 
 	  switch (log_rtype)
 	    {
@@ -3393,12 +3404,16 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
 		  donetime = (LOG_REC_DONETIME *) ((char *) log_pgptr->area + log_lsa.offset);
+
+		  _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : donetime: %lld", donetime->at_time);
+
 		  if (difftime (*stopat, (time_t) donetime->at_time) < 0)
 		    {
 		      /* 
 		       * Stop the recovery process at this point
 		       */
 		      LSA_SET_NULL (&lsa);
+		      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : STOP");
 		    }
 		}
 
