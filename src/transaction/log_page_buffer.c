@@ -114,21 +114,11 @@ SYNC_RMUTEX logpb_Rmutex_log_pb;
 #define LOGPB_RMUTEX_LOG_PB (&logpb_Rmutex_log_pb)
 #define LOGPB_RMUTEX_LOG_PB_NAME "LOGPB_RMUTEX_LOG_PB"
 #define PB_DATA_SIZE 666013
-#define START_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p) \
-  do \
-    { \
-      (r) = rmutex_lock ((thread_p), LOGPB_RMUTEX_LOG_PB); \
-      assert ((r) == NO_ERROR); \
-    } \
-  while (0)
+#define START_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p) r=NO_ERROR
+  
 
-#define END_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p) \
-  do \
-    { \
-      (r) = rmutex_unlock ((thread_p), LOGPB_RMUTEX_LOG_PB); \
-      assert ((r) == NO_ERROR); \
-    } \
-  while (0)
+#define END_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p)  r=NO_ERROR
+
 
 
 #define LOGPB_FIND_BUFPTR(bufid) log_Pb.pool[(bufid)]
@@ -1052,7 +1042,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
        * aborted at the same time or it is likely that there is a bug in the
        * system (e.g., buffer are not being freed).
        */
-      /* do we reach here?*/
+      /* do we reach here? */
       END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
       error_code = logpb_expand_pool (thread_p, -1);
@@ -2192,7 +2182,7 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
     {
       log_bufptr = log_Pb.data[MOD (pageid)];
       if (log_bufptr != NULL)
-        {
+	{
 	  if (log_bufptr->pageid != pageid)
 	    {
 	      logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, &log_bufptr->logpage);
