@@ -350,4 +350,8 @@ extern void pr_area_final (void);
 extern int pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain);
 extern int or_get_compression_length (char *string, int charlen);
 
+#define MINIMUM_LENGTH_FOR_COMPRESSION 255
+#define TEMPORARY_DISK_SIZE 256
+#define SIZE_OF_COMPRESSION_LENGTHS 4
+
 #endif /* _OBJECT_PRIMITIVE_H_ */

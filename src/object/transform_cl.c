@@ -1486,12 +1486,12 @@ string_disk_size (const char *string)
   /* We need to simulate a compression of the string to be stored in buffer, so we can know how much we need
    * to store on the disk.
    */
-  if (str_length >= 255)
+  if (str_length >= MINIMUM_LENGTH_FOR_COMPRESSION)
     {
       str_length = or_get_compression_length (string, str_length);
-      if (str_length <= 255)
+      if (str_length <= MINIMUM_LENGTH_FOR_COMPRESSION)
 	{
-	  str_length = str_length + 256;
+	  str_length = str_length + TEMPORARY_DISK_SIZE;
 	  compressed = 1;
 	}
     }
@@ -1507,7 +1507,7 @@ string_disk_size (const char *string)
    * final result. We do this only for data that needs to be compressed. */
   if (compressed == 1)
     {
-      return length - 256;
+      return length - TEMPORARY_DISK_SIZE;
     }
 
   return length;

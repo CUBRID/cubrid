@@ -149,11 +149,6 @@ extern unsigned int db_on_server;
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
 
-#define MINIMUM_LENGTH_FOR_COMPRESSION 255
-#define TEMPORARY_DISK_SIZE 256
-#define SIZE_OF_COMPRESSION_LENGTHS 4
-
-
 static void mr_initmem_string (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -11156,9 +11151,9 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
     }
   else
     {
-      if (len >= 255)
+      if (len >= MINIMUM_LENGTH_FOR_COMPRESSION)
 	{
-	  len = or_get_compression_length (str, len) + 256;
+	  len = or_get_compression_length (str, len) + TEMPORARY_DISK_SIZE;
 	  compressable = 1;
 	}
 
@@ -11173,7 +11168,7 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
 
       if (compressable == 1)
 	{
-	  return len - 256;
+	  return len - TEMPORARY_DISK_SIZE;
 	}
       return len;
     }
