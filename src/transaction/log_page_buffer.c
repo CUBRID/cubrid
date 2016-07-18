@@ -114,11 +114,21 @@ SYNC_RMUTEX logpb_Rmutex_log_pb;
 #define LOGPB_RMUTEX_LOG_PB (&logpb_Rmutex_log_pb)
 #define LOGPB_RMUTEX_LOG_PB_NAME "LOGPB_RMUTEX_LOG_PB"
 #define PB_DATA_SIZE 666013
-#define START_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p) r=NO_ERROR
-  
+#define START_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p) \
+  do \
+    { \
+      (r) = rmutex_lock ((thread_p), LOGPB_RMUTEX_LOG_PB); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
 
-#define END_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p)  r=NO_ERROR
-
+#define END_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p) \
+  do \
+    { \
+      (r) = rmutex_unlock ((thread_p), LOGPB_RMUTEX_LOG_PB); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
 
 
 #define LOGPB_FIND_BUFPTR(bufid) log_Pb.pool[(bufid)]
