@@ -2272,6 +2272,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
       ATOMIC_INC_32 (&table->freelist->retired_cnt, ret_count);
 
       ATOMIC_INC_64 (&lf_clears, ret_count);
+      ATOMIC_INC_64 (&lf_hash_size, -ret_count);
 
       lf_tran_end_with_mb (tran);
     }
