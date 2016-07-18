@@ -10762,7 +10762,7 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, O
       return (error == NO_ERROR ? ER_FAILED : error);
     }
 
-  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {
       error = ER_FAILED;
       goto cleanup;
