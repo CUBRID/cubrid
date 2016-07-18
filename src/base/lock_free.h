@@ -331,7 +331,7 @@ extern int lf_io_list_find_or_insert (void **list_p, void *new_entry, LF_ENTRY_D
 
 extern int lf_list_find (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
 			 LF_ENTRY_DESCRIPTOR * edesc, void **entry);
-extern int lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
+extern int lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, void *locked_entry, int *behavior_flags,
 			   LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, int *success);
 /* TODO: Add lf_list_insert functions. So far, they are only used for lf_hash_insert. */
 
@@ -372,7 +372,8 @@ extern int lf_hash_find_or_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, 
 extern int lf_hash_insert (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
 extern int lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void **entry, int *inserted);
 extern int lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
-extern int lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success);
+extern int lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void *locked_entry,
+					  int *success);
 extern void lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table);
 
 /*

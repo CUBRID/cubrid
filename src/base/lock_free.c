@@ -89,6 +89,7 @@ static INT64 lf_list_deletes_fail_mark_next = 0;
 static INT64 lf_list_deletes_fail_unlink = 0;
 static INT64 lf_list_deletes_success_unlink = 0;
 static INT64 lf_list_deletes_not_found = 0;
+static INT64 lf_list_deletes_not_match = 0;
 
 static INT64 lf_clears = 0;
 
@@ -121,6 +122,7 @@ lf_reset_counters (void)
   lf_list_deletes_fail_unlink = 0;
   lf_list_deletes_success_unlink = 0;
   lf_list_deletes_not_found = 0;
+  lf_list_deletes_not_match = 0;
 
   lf_clears = 0;
 
@@ -135,7 +137,8 @@ static int lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *k
 				    LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int *inserted);
 static int lf_hash_insert_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, void **entry,
 				    int *inserted);
-static int lf_hash_delete_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, int *success);
+static int lf_hash_delete_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void *locked_entry,
+				    int bflags, int *success);
 
 /*
  * lf_callback_vpid_hash () - hash a VPID
@@ -1620,14 +1623,15 @@ restart_search:
  *   tran(in): lock free transaction system
  *   list_p(in): address of list head
  *   key(in): key to search for
+ *   locked_entry(in): entry already locked.
  *   behavior_flags(in/out): flags that control restart behavior
  *   edesc(in): entry descriptor
  *   freelist(in): freelist to place deleted entries to
  *   success(out): 1 if entry was deleted, 0 otherwise
  */
 int
-lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags, LF_ENTRY_DESCRIPTOR * edesc,
-		LF_FREELIST * freelist, int *success)
+lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, void *locked_entry, int *behavior_flags,
+		LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, int *success)
 {
   /* Start a transaction */
 #define LF_START_TRAN_FORCE() \
@@ -1729,8 +1733,20 @@ restart_search:
 		}
 	      else
 		{
+		  assert (locked_entry != NULL);
+		  if (locked_entry != curr)
+		    {
+		      /* This is a different entry. This is possible (see description of lf_hash_delete_already_locked).
+		       * We do not delete this entry.
+		       */
+		      ATOMIC_INC_64 (&lf_list_deletes_not_match, 1);
+		      LF_END_TRAN_FORCE ();
+		      return NO_ERROR;
+		    }
 		  /* Must be already locked! */
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
+
+		  assert (tran->locked_mutex != NULL && tran->locked_mutex == entry_mutex);
 		}
 
 	      /* since we set the mark, nobody else can delete it, so we have nothing else to check */
@@ -2101,20 +2117,30 @@ lf_hash_insert_given (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, vo
 /*
  * lf_hash_delete_already_locked () - Delete hash entry without locking mutex.
  *
- * return	 : error code or NO_ERROR
- * tran (in)	 : LF transaction entry
- * table (in)	 : hash table
- * key (in)	 : key to seek
- * success (out) : 1 if entry is deleted, 0 otherwise
+ * return	     : error code or NO_ERROR
+ * tran (in)	     : LF transaction entry
+ * table (in)	     : hash table
+ * key (in)	     : key to seek
+ * locked_entry (in) : locked entry
+ * success (out)     : 1 if entry is deleted, 0 otherwise
  *
  * NOTE: Careful when calling this function. The typical scenario to call this function is to first find entry using
  *	 lf_hash_find and then call lf_hash_delete on the found entry.
- * NOTE: lf_hash_delete_already_locks and lf_hash_delete have identical behavior is entries do not have mutexes.
+ * NOTE: lf_hash_delete_already_locks can be called only if entry has mutexes.
+ * NOTE: The delete will be successful only if the entry found by key matches the given entry.
+ *	 Usually, the entry will match. However, we do have a limited scenario when a different entry with the same
+ *	 key may be found:
+ *	 1. Entry was found or inserted by this transaction.
+ *	 2. Another transaction cleared the hash. All current entries are moved to back buffer and will be soon retired.
+ *	 3. A third transaction inserts a new entry with the same key.
+ *	 4. This transaction tries to delete the entry but the entry inserted by the third transaction si found.
  */
 int
-lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success)
+lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void *locked_entry, int *success)
 {
-  return lf_hash_delete_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART, success);
+  assert (locked_entry != NULL);
+  assert (table->entry_desc->using_mutex);
+  return lf_hash_delete_internal (tran, table, key, locked_entry, LF_LIST_BF_RETURN_ON_RESTART, success);
 }
 
 /*
@@ -2129,7 +2155,8 @@ lf_hash_delete_already_locked (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void
 int
 lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *success)
 {
-  return lf_hash_delete_internal (tran, table, key, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_LOCK_ON_DELETE, success);
+  return lf_hash_delete_internal (tran, table, key, NULL, LF_LIST_BF_RETURN_ON_RESTART | LF_LIST_BF_LOCK_ON_DELETE,
+				  success);
 }
 
 
@@ -2138,11 +2165,13 @@ lf_hash_delete (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int *suc
  *   returns: error code or NO_ERROR
  *   tran(in): LF transaction entry
  *   table(in): hash table
+ *   locked_entry(in): locked entry
  *   key(in): key to seek
  *   success(out): 1 if entry is deleted, 0 otherwise.
  */
 static int
-lf_hash_delete_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, int bflags, int *success)
+lf_hash_delete_internal (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table, void *key, void *locked_entry, int bflags,
+			 int *success)
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   unsigned int hash_value;
@@ -2166,7 +2195,7 @@ restart:
       return ER_FAILED;
     }
 
-  rc = lf_list_delete (tran, &table->buckets[hash_value], key, &bflags, edesc, table->freelist, success);
+  rc = lf_list_delete (tran, &table->buckets[hash_value], key, locked_entry, &bflags, edesc, table->freelist, success);
   if ((rc == NO_ERROR) && (bflags & LF_LIST_BR_RESTARTED))
     {
       /* Remove LF_LIST_BR_RESTARTED from behavior flags. */
