@@ -438,5 +438,6 @@ extern int lf_bitmap_get_entry (LF_BITMAP * bitmap);
 extern int lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx);
 
 extern void lf_reset_counters (void);
+extern void lf_check_no_mutex (void);
 
 #endif /* _LOCK_FREE_H_ */
