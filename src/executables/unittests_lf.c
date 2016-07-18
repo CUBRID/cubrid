@@ -34,6 +34,8 @@
 #define RAND_SIZE	RAND_BLOCKS * RAND_BLOCK_SIZE
 static int random_numbers[RAND_SIZE];
 
+#define PTHREAD_ABORT_AND_EXIT(code) abort (); pthread_exit (code)
+
 static void
 generate_random ()
 {
@@ -216,7 +218,7 @@ test_freelist_proc (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -229,7 +231,7 @@ test_freelist_proc (void *param)
 	  entry = (XENTRY *) lf_freelist_claim (te, freelist);
 	  if (entry == NULL)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	}
@@ -237,7 +239,7 @@ test_freelist_proc (void *param)
 	{
 	  if (lf_freelist_retire (te, freelist, (void *) entry) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	}
@@ -247,7 +249,7 @@ test_freelist_proc (void *param)
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -270,13 +272,13 @@ test_hash_proc_1 (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
   if (te->entry_idx >= RAND_BLOCKS || te->entry_idx < 0)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
   else
@@ -293,7 +295,7 @@ test_hash_proc_1 (void *param)
 	  entry = NULL;
 	  if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	  lf_tran_end_with_mb (te);
@@ -302,7 +304,7 @@ test_hash_proc_1 (void *param)
 	{
 	  if (lf_hash_delete (te, hash, &key, NULL) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	}
@@ -310,7 +312,7 @@ test_hash_proc_1 (void *param)
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -333,13 +335,13 @@ test_hash_proc_2 (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
   if (te->entry_idx >= RAND_BLOCKS || te->entry_idx < 0)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
   else
@@ -355,12 +357,12 @@ test_hash_proc_2 (void *param)
 	{
 	  if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	  if (entry == NULL)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 
@@ -370,7 +372,7 @@ test_hash_proc_2 (void *param)
 	{
 	  if (lf_hash_delete (te, hash, &key, NULL) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	}
@@ -378,7 +380,7 @@ test_hash_proc_2 (void *param)
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -404,13 +406,13 @@ test_hash_proc_3 (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
   if (te->entry_idx >= RAND_BLOCKS || te->entry_idx < 0)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
   else
@@ -424,17 +426,17 @@ test_hash_proc_3 (void *param)
 
       if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	{
-	  pthread_exit (ER_FAILED);
+	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	  return ER_FAILED;
 	}
       if (entry == NULL)
 	{
-	  pthread_exit (ER_FAILED);
+	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	  return ER_FAILED;
 	}
       if (entry->key != key)
 	{
-	  pthread_exit (ER_FAILED);
+	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	  return ER_FAILED;
 	}
 
@@ -447,12 +449,12 @@ test_hash_proc_3 (void *param)
 	  local_del_op_count += entry->data;
 	  if (lf_hash_delete_already_locked (te, hash, &key, &success) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	  else if (!success)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	}
@@ -464,7 +466,7 @@ test_hash_proc_3 (void *param)
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -488,13 +490,13 @@ test_clear_proc_1 (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
   if (te->entry_idx >= RAND_BLOCKS || te->entry_idx < 0)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
   else
@@ -514,7 +516,7 @@ test_clear_proc_1 (void *param)
 	      entry = NULL;
 	      if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 		{
-		  pthread_exit (ER_FAILED);
+		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 		  return ER_FAILED;
 		}
 	      lf_tran_end_with_mb (te);
@@ -523,7 +525,7 @@ test_clear_proc_1 (void *param)
 	    {
 	      if (lf_hash_delete (te, hash, &key, NULL) != NO_ERROR)
 		{
-		  pthread_exit (ER_FAILED);
+		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 		  return ER_FAILED;
 		}
 	    }
@@ -536,7 +538,7 @@ test_clear_proc_1 (void *param)
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -559,13 +561,13 @@ test_clear_proc_2 (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
   if (te->entry_idx >= RAND_BLOCKS || te->entry_idx < 0)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
   else
@@ -583,12 +585,12 @@ test_clear_proc_2 (void *param)
 	    {
 	      if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 		{
-		  pthread_exit (ER_FAILED);
+		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 		  return ER_FAILED;
 		}
 	      if (entry == NULL)
 		{
-		  pthread_exit (ER_FAILED);
+		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 		  return ER_FAILED;
 		}
 
@@ -598,7 +600,7 @@ test_clear_proc_2 (void *param)
 	    {
 	      if (lf_hash_delete (te, hash, &key, NULL) != NO_ERROR)
 		{
-		  pthread_exit (ER_FAILED);
+		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 		  return ER_FAILED;
 		}
 	    }
@@ -611,7 +613,7 @@ test_clear_proc_2 (void *param)
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -635,13 +637,13 @@ test_clear_proc_3 (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
   if (te->entry_idx >= RAND_BLOCKS || te->entry_idx < 0)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
   else
@@ -661,12 +663,12 @@ test_clear_proc_3 (void *param)
 
       if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	{
-	  pthread_exit (ER_FAILED);
+	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	  return ER_FAILED;
 	}
       if (entry == NULL)
 	{
-	  pthread_exit (ER_FAILED);
+	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	  return ER_FAILED;
 	}
 
@@ -678,7 +680,7 @@ test_clear_proc_3 (void *param)
 
 	  if (lf_hash_delete_already_locked (te, hash, &key, &success) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	  else if (!success)
@@ -695,7 +697,7 @@ test_clear_proc_3 (void *param)
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
