@@ -20077,7 +20077,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
       goto cleanup;
     }
 
-  string1 = malloc (str1_decompressed_length);
+  string1 = db_private_alloc (NULL, str1_decompressed_length);
   if (string1 == NULL)
     {
       /* Error report */
@@ -20104,7 +20104,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	  goto cleanup;
 	}
 
-      string2 = malloc (str2_decompressed_length);
+      string2 = db_private_alloc (NULL, str2_decompressed_length);
       if (string2 == NULL)
 	{
 	  /* Error report */
@@ -20125,12 +20125,12 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	  c = bf2df_str_compare ((unsigned char *) string1, str_length1, (unsigned char *) string2, str_length2);
 	  if (string1 != NULL)
 	    {
-	      free_and_init (string1);
+	      db_private_free_and_init (NULL, string1);
 	    }
 
 	  if (string2 != NULL)
 	    {
-	      free_and_init (string2);
+	      db_private_free_and_init (NULL, string2);
 	    }
 	  return c;
 	}
@@ -20139,12 +20139,12 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 cleanup:
   if (string1 != NULL)
     {
-      free_and_init (string1);
+      db_private_free_and_init (NULL, string1);
     }
 
   if (string2 != NULL)
     {
-      free_and_init (string2);
+      db_private_free_and_init (NULL, string2);
     }
 
   return DB_UNK;
