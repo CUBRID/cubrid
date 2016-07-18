@@ -349,6 +349,7 @@ extern void pr_area_final (void);
 
 extern int pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain);
 extern int or_get_compression_length (char *string, int charlen);
+extern int do_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size);
 
 #define MINIMUM_LENGTH_FOR_COMPRESSION 255
 #define TEMPORARY_DISK_SIZE 256

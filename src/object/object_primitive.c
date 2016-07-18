@@ -11461,9 +11461,11 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 {
   int c = DB_UNK;
   char *str1, *str2;
-  int str_length1, str_length2;
+  int str_length1, str1_compressed_length = 0, str1_decompressed_length = 0;
+  int str_length2, str2_compressed_length = 0, str2_decompressed_length = 0;
   OR_BUF buf1, buf2;
   int rc = NO_ERROR;
+  char *string1 = NULL, *string2 = NULL;
 
   assert (domain != NULL);
 
@@ -11485,19 +11487,85 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   assert (str_length1 == 0xFF || str_length2 == 0xFF);
 
   or_init (&buf1, str1, 0);
-  str_length1 = or_get_varchar_length (&buf1, &rc);
+  rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
+  if (rc != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  string1 = db_private_alloc (NULL, str1_decompressed_length + 1);
+  if (string1 == NULL)
+    {
+      /* Error report */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str1_decompressed_length);
+      return rc;
+    }
+
+  rc = do_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
+  if (rc != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  str_length1 = str1_decompressed_length;
+
   if (rc == NO_ERROR)
     {
       or_init (&buf2, str2, 0);
-      str_length2 = or_get_varchar_length (&buf2, &rc);
+      rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
+
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      string2 = db_private_alloc (NULL, str2_decompressed_length + 1);
+      if (string2 == NULL)
+	{
+	  /* Error report */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
+	  return rc;
+	}
+
+      rc = do_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      str_length2 = str2_decompressed_length;
+
       if (rc == NO_ERROR)
 	{
+	  string1[str_length1] = '\0';
+	  string2[str_length2] = '\0';
 	  c =
-	    QSTR_COMPARE (domain->collation_id, (unsigned char *) buf1.ptr, str_length1, (unsigned char *) buf2.ptr,
+	    QSTR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1, (unsigned char *) string2,
 			  str_length2);
 	  c = MR_CMP_RETURN_CODE (c);
+
+	  /* Clean up the strings */
+	  if (string1 != NULL)
+	    {
+	      db_private_free_and_init (NULL, string1);
+	    }
+
+	  if (string2 != NULL)
+	    {
+	      db_private_free_and_init (NULL, string2);
+	    }
+
 	  return c;
 	}
+    }
+
+cleanup:
+  if (string1 != NULL)
+    {
+      db_private_free_and_init (NULL, string1);
+    }
+
+  if (string2 != NULL)
+    {
+      db_private_free_and_init (NULL, string2);
     }
 
   return DB_UNK;

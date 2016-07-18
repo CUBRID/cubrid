@@ -17121,7 +17121,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
       goto cleanup;
     }
 
-  string1 = db_private_alloc (NULL, str1_decompressed_length);
+  string1 = db_private_alloc (NULL, str1_decompressed_length + 1);
   if (string1 == NULL)
     {
       /* Error report */
@@ -17148,7 +17148,7 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	  goto cleanup;
 	}
 
-      string2 = db_private_alloc (NULL, str2_decompressed_length);
+      string2 = db_private_alloc (NULL, str2_decompressed_length + 1);
       if (string2 == NULL)
 	{
 	  /* Error report */
