@@ -2191,6 +2191,13 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
   else if (log_Pb.cursor - PB_DATA_SIZE < pageid)
     {
       log_bufptr = log_Pb.data[MOD (pageid)];
+      if (log_bufptr != NULL)
+        {
+	  if (log_bufptr->pageid != pageid)
+	    {
+	      logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, &log_bufptr->logpage);
+	    }
+	}
     }
   else
     {
