@@ -17166,6 +17166,8 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 
       if (rc == NO_ERROR)
 	{
+	  string1[str_length1] = '\0';
+	  string2[str_length2] = '\0';
 	  c = bf2df_str_compare ((unsigned char *) string1, str_length1, (unsigned char *) string2, str_length2);
 	  if (string1 != NULL)
 	    {

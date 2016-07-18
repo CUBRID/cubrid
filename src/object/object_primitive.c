@@ -15941,37 +15941,39 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
  * buf(in)					  : The buffer from which is needed decompression.
  * data(out)					  : The result of the decompression. !!! Needs to be alloc'ed !!!
  * compressed_size(in)				  : The compressed data size.
- * uncompressed_size(in)			  : The uncompressed data size.
+ * decompressed_size(in)			  : The uncompressed data size.
  */
 int
-do_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int uncompressed_size)
+do_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size)
 {
   int rc = NO_ERROR;
 
   /* Check if the string needs decompression */
   if (compressed_size > 0)
     {
-      lzo_uint unc_size = 0;
+      lzo_uint decompression_size = 0;
       /* Handle decompression */
 
       /* decompressing the string */
-      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, data, &unc_size, NULL);
+      rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, data, &decompression_size, NULL);
       if (rc != LZO_E_OK)
 	{
 	  return rc;
 	}
-      if (unc_size != uncompressed_size)
+      if (decompression_size != decompressed_size)
 	{
 	  /* Decompression failed. It shouldn't. */
 	  assert (false);
 	}
+      data[decompressed_size] = '\0';
     }
   else
     {
       /* String is not compressed and buf->ptr is pointing towards an array of char's of length equal to
-       * uncompressed_size */
+       * decompressed_size */
 
-      rc = or_get_data (buf, data, uncompressed_size);
+      rc = or_get_data (buf, data, decompressed_size);
+      data[decompressed_size] = '\0';
     }
 
   return rc;
