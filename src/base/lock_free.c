@@ -1698,6 +1698,18 @@ restart_search:
       /* is this the droid we are looking for? */
       if (edesc->f_key_cmp (key, OF_GET_PTR (curr, edesc->of_key)) == 0)
 	{
+	  if (locked_entry != NULL && locked_entry != curr)
+	    {
+	      assert (edesc->using_mutex && !LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_LOCK_ON_DELETE));
+
+	      /* We are here because lf_hash_delete_already_locked was called. The entry found by matching key is
+	       * different from the entry we were trying to delete.
+	       * This is possible (please find the description of lf_hash_delete_already_locked). */
+	      ATOMIC_INC_64 (&lf_list_deletes_not_match, 1);
+	      LF_END_TRAN_FORCE ();
+	      return NO_ERROR;
+	    }
+
 	  /* fetch next entry */
 	  next_p = (void **) OF_GET_REF (curr, edesc->of_next);
 	  next = ADDR_STRIP_MARK (*((void *volatile *) next_p));
@@ -1733,17 +1745,8 @@ restart_search:
 		}
 	      else
 		{
-		  assert (locked_entry != NULL);
-		  if (locked_entry != curr)
-		    {
-		      /* This is a different entry. This is possible (see description of lf_hash_delete_already_locked).
-		       * We do not delete this entry.
-		       */
-		      ATOMIC_INC_64 (&lf_list_deletes_not_match, 1);
-		      LF_END_TRAN_FORCE ();
-		      return NO_ERROR;
-		    }
 		  /* Must be already locked! */
+		  assert (locked_entry != NULL && locked_entry == curr);
 		  entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 
 		  assert (tran->locked_mutex != NULL && tran->locked_mutex == entry_mutex);
