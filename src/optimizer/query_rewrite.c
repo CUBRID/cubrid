@@ -7129,7 +7129,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
       /* auto-parameterization is safe when it is done as the last step of rewrite optimization */
       if (!prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING)
-	  && prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0 && node->cannot_prepare == 0)
+	  && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && node->cannot_prepare == 0)
 	{
 	  call_auto_parameterize = true;
 	}

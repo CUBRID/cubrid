@@ -1474,7 +1474,7 @@ read_file (char *filename, char **outbuf)
     {
       return -1;
     }
-  size = statbuf.st_size;
+  size = (int) statbuf.st_size;
 
   if (size <= 0)
     {

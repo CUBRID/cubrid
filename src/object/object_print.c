@@ -4193,7 +4193,9 @@ PARSER_VARCHAR *
 describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_VALUE * value)
 {
   INTL_CODESET codeset = INTL_CODESET_NONE;
+#if defined (SERVER_MODE) || defined (SA_MODE)
   char str_int[30];
+#endif /* SERVER_MODE || SA_MODE */
 
   assert (parser != NULL);
 

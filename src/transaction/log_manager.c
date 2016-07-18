@@ -78,6 +78,7 @@
 #include "partition.h"
 #include "connection_support.h"
 #include "log_writer.h"
+#include "filter_pred_cache.h"
 
 #include "fault_injection.h"
 
@@ -4718,24 +4719,9 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, v
   (void) partition_decache_class (thread_p, &t->m_class_oid);
 
   /* remove XASL cache entries which are relevant with this class */
-  if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
-      && (qexec_remove_xasl_cache_ent_by_class (thread_p, &t->m_class_oid, 1) != NO_ERROR))
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "log_cleanup_modified_class: qexec_remove_xasl_cache_ent_by_class"
-		    " failed for class { %d %d %d }\n", t->m_class_oid.pageid, t->m_class_oid.slotid,
-		    t->m_class_oid.volid);
-    }
-  /* remove filter predicatecache entries which are relevant with this class */
-  if (prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) > 0
-      && qexec_remove_filter_pred_cache_ent_by_class (thread_p, &t->m_class_oid) != NO_ERROR)
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "log_cleanup_modified_class: xs_remove_filter_pred_cache_ent_by_class"
-		    " failed for class { %d %d %d }\n", t->m_class_oid.pageid, t->m_class_oid.slotid,
-		    t->m_class_oid.volid);
-    }
-
+  xcache_remove_by_oid (thread_p, &t->m_class_oid);
+  /* remove filter predicate cache entries which are relevant with this class */
+  fpcache_remove_by_class (thread_p, &t->m_class_oid);
 }
 
 extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa);
@@ -5294,11 +5280,6 @@ RB_GENERATE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
 TRAN_STATE
 log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran)
 {
-  if (tdes->num_pinned_xasl_cache_entries > 0)
-    {
-      qexec_clear_my_leaked_pinned_xasl_cache_entries (thread_p);
-    }
-
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
 
   /* log_clear_lob_locator_list and logtb_complete_mvcc operations must be done before entering unactive state because
@@ -5432,11 +5413,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 TRAN_STATE
 log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 {
-  if (tdes->num_pinned_xasl_cache_entries > 0)
-    {
-      qexec_clear_my_leaked_pinned_xasl_cache_entries (thread_p);
-    }
-
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, true);
 
   tdes->state = TRAN_UNACTIVE_ABORTED;

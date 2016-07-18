@@ -4858,7 +4858,7 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 	  end--;
 	}
 
-      size = end - p + 1;
+      size = CAST_BUFLEN (end - p) + 1;
 
       if (size > sizeof (str) - 1)
 	{

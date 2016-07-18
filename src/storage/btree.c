@@ -12354,7 +12354,6 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
     }
 
   return NO_ERROR;
-
 }
 
 /*
@@ -22416,7 +22415,7 @@ btree_clear_mvcc_flags_from_oid (OID * oid)
  * mem_btid2 (in) : Pointer to second btid value.
  */
 int
-btree_compare_btids (const void *mem_btid1, const void *mem_btid2)
+btree_compare_btids (void *mem_btid1, void *mem_btid2)
 {
   const BTID *btid1 = (const BTID *) mem_btid1;
   const BTID *btid2 = (const BTID *) mem_btid2;
@@ -34058,4 +34057,17 @@ btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
+}
+
+/*
+ * btree_hash_btid () - Create hash value from btid.
+ *
+ * return	  : Hash value
+ * btid (in)	  : Pointer to b-tree ID.
+ * hash_size (in) : Hash size.
+ */
+unsigned int
+btree_hash_btid (void *btid, int hash_size)
+{
+  return ((BTID *) btid)->vfid.fileid % hash_size;
 }

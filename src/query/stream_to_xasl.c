@@ -352,11 +352,11 @@ end:
  *
  * Note: map the linear byte stream in disk representation to an predicate
  *       with context. The caller is responsible for freeing the memory of
- *       pred_unpack_info_ptr by calling stx_free_xasl_unpack_info().
+ *       (*pred)->unpack_info by calling stx_free_xasl_unpack_info().
  */
 int
 stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT ** pred, char *pred_stream,
-			       int pred_stream_size, void **pred_unpack_info_ptr)
+			       int pred_stream_size)
 {
   PRED_EXPR_WITH_CONTEXT *pwc = NULL;
   char *p = NULL;
@@ -364,7 +364,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT *
   int offset;
   XASL_UNPACK_INFO *unpack_info_p = NULL;
 
-  if (!pred || !pred_stream || !pred_unpack_info_ptr || pred_stream_size <= 0)
+  if (!pred || !pred_stream || pred_stream_size <= 0)
     {
       return ER_QPROC_INVALID_XASLNODE;
     }
@@ -393,8 +393,8 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT *
     }
 
   /* set result */
+  pwc->unpack_info = unpack_info_p;
   *pred = pwc;
-  *pred_unpack_info_ptr = unpack_info_p;
 
 end:
   stx_free_visited_ptrs (thread_p);

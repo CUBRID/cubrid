@@ -6087,6 +6087,9 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
       assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
       assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
 
+      /* When oldest_unflush_lsa of a page is set, its dirty mark should also be set */
+      assert (LSA_ISNULL (&bufptr->oldest_unflush_lsa) || bufptr->dirty);
+
       /* there could be some synchronous flushers on the BCB queue */
       /* When the page buffer in LRU_1_Zone, do not move the page buffer into the top of LRU. This is an intention for
        * performance. */

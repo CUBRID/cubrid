@@ -431,7 +431,12 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   char *eid_string;
   int err_number_execute;
   int arg_idx = 0;
-  char *plan;
+
+#ifndef LIBCAS_FOR_JSP
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  char *plan = NULL;
+#endif
+#endif
 
   bind_value_index = 9;
   /* 

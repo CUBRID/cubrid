@@ -8677,8 +8677,16 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->dont_prt_long_string = 1;
 	  parser->long_string_skipped = 0;
 	  parser->print_type_ambiguity = 0;
-	  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
+	  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
 	  contextp->sql_hash_text = (char *) statement->alias_print;
+	  err =
+	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
+			 &contextp->sha1);
+	  if (err != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return err;
+	    }
 	  parser->dont_prt_long_string = 0;
 	  if (parser->long_string_skipped || parser->print_type_ambiguity)
 	    {
@@ -8696,19 +8704,15 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   */
 
 	  /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
+	  contextp->recompile_xasl = statement->recompile;
 	  if (statement->recompile == 0)
 	    {
 	      err = prepare_query (contextp, &stream);
 
 	      if (err != NO_ERROR)
 		{
-		  assert (er_errid () != NO_ERROR);
-		  err = er_errid ();
+		  ASSERT_ERROR_AND_SET (err);
 		}
-	    }
-	  else
-	    {
-	      err = qmgr_drop_query_plan (contextp->sql_hash_text, ws_identifier (db_get_user ()), NULL);
 	    }
 
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -9952,8 +9956,16 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  parser->dont_prt_long_string = 1;
 	  parser->long_string_skipped = 0;
 	  parser->print_type_ambiguity = 0;
-	  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
+	  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
 	  contextp->sql_hash_text = (char *) statement->alias_print;
+	  err =
+	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
+			 &contextp->sha1);
+	  if (err != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return err;
+	    }
 	  parser->dont_prt_long_string = 0;
 	  if (parser->long_string_skipped || parser->print_type_ambiguity)
 	    {
@@ -9963,18 +9975,14 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	    }
 
 	  /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
+	  contextp->recompile_xasl = statement->recompile;
 	  if (statement->recompile == 0)
 	    {
 	      err = prepare_query (contextp, &stream);
 	      if (err != NO_ERROR)
 		{
-		  assert (er_errid () != NO_ERROR);
-		  err = er_errid ();
+		  ASSERT_ERROR_AND_SET (err);
 		}
-	    }
-	  else
-	    {
-	      err = qmgr_drop_query_plan (contextp->sql_hash_text, ws_identifier (db_get_user ()), NULL);
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
 	    {
@@ -10559,8 +10567,16 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->dont_prt_long_string = 1;
   parser->long_string_skipped = 0;
   parser->print_type_ambiguity = 0;
-  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
+  PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
   contextp->sql_hash_text = (char *) statement->alias_print;
+  error =
+    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
+		 &contextp->sha1);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
   parser->dont_prt_long_string = 0;
   if (parser->long_string_skipped || parser->print_type_ambiguity)
     {
@@ -10569,18 +10585,14 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
+  contextp->recompile_xasl = statement->recompile;
   if (statement->recompile == 0)
     {
       error = prepare_query (contextp, &stream);
       if (error != NO_ERROR)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  ASSERT_ERROR_AND_SET (error);
 	}
-    }
-  else
-    {
-      error = qmgr_drop_query_plan (contextp->sql_hash_text, ws_identifier (db_get_user ()), NULL);
     }
 
   if (stream.xasl_id == NULL && error == NO_ERROR)
@@ -13289,12 +13301,6 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* end the query; reset query_id and call qmgr_end_query() */
   pt_end_query (parser, query_id_self);
 
-  if ((err < NO_ERROR) && er_errid () != NO_ERROR)
-    {
-      pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number, er_msg (),
-		       NULL);
-    }
-
   return err;
 }
 
@@ -13805,8 +13811,16 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->long_string_skipped = 0;
   parser->print_type_ambiguity = 0;
   PT_NODE_PRINT_TO_ALIAS (parser, statement,
-			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS));
+			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_USER));
   contextp->sql_hash_text = (char *) statement->alias_print;
+  err =
+    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
+		 &contextp->sha1);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
   parser->dont_prt_long_string = 0;
   if (parser->long_string_skipped || parser->print_type_ambiguity)
     {
@@ -13815,6 +13829,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
+  contextp->recompile_xasl = statement->recompile;
   if (statement->recompile == 0)
     {
       XASL_NODE_HEADER xasl_header;
@@ -13823,22 +13838,18 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = prepare_query (contextp, &stream);
       if (err != NO_ERROR)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  err = er_errid ();
+	  ASSERT_ERROR_AND_SET (err);
 	}
       else if (stream.xasl_id != NULL)
 	{
 	  /* check xasl header */
+	  /* TODO: we can treat the different cases of MRO by hacking query string. */
 	  if (pt_recompile_for_limit_optimizations (parser, statement, stream.xasl_header->xasl_flag))
 	    {
-	      err = qmgr_drop_query_plan (contextp->sql_hash_text, ws_identifier (db_get_user ()), NULL);
+	      contextp->recompile_xasl = 1;
 	      stream.xasl_id = NULL;
 	    }
 	}
-    }
-  else
-    {
-      err = qmgr_drop_query_plan (contextp->sql_hash_text, ws_identifier (db_get_user ()), NULL);
     }
   if (stream.xasl_id == NULL && err == NO_ERROR)
     {
@@ -15549,8 +15560,16 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser->dont_prt_long_string = 1;
       parser->long_string_skipped = 0;
       parser->print_type_ambiguity = 0;
-      PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
+      PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
       contextp->sql_hash_text = (char *) statement->alias_print;
+      err =
+	SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
+		     &contextp->sha1);
+      if (err != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return err;
+	}
       parser->dont_prt_long_string = 0;
       if (parser->long_string_skipped || parser->print_type_ambiguity)
 	{
@@ -15559,18 +15578,14 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* lookup in XASL cache */
+      contextp->recompile_xasl = statement->recompile;
       if (statement->recompile == 0)
 	{
 	  err = prepare_query (contextp, &stream);
 	  if (err != NO_ERROR)
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      err = er_errid ();
+	      ASSERT_ERROR_AND_SET (err);
 	    }
-	}
-      else
-	{
-	  err = qmgr_drop_query_plan (contextp->sql_hash_text, ws_identifier (db_get_user ()), NULL);
 	}
 
       if (stream.xasl_id == NULL && err == NO_ERROR)
