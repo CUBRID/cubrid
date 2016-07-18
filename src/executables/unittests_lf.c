@@ -376,6 +376,8 @@ test_hash_proc_2 (void *param)
 	      return ER_FAILED;
 	    }
 	}
+
+      assert (te->locked_mutex == NULL);
     }
 
   if (lf_tran_return_entry (te) != NO_ERROR)
@@ -694,7 +696,7 @@ test_clear_proc_3 (void *param)
 	  pthread_mutex_unlock (&entry->mutex);
 	}
 
-      lf_check_no_mutex ();
+      assert (te->locked_mutex == NULL);
     }
 
   if (lf_tran_return_entry (te) != NO_ERROR)

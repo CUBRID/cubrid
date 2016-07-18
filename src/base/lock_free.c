@@ -98,9 +98,6 @@ static INT64 lf_claims_temp = 0;
 static INT64 lf_transports = 0;
 static INT64 lf_temps = 0;
 
-static pthread_mutex_t *lf_locked_mutex = NULL;
-int lf_locked_line = 0;
-
 void
 lf_reset_counters (void)
 {
@@ -132,21 +129,6 @@ lf_reset_counters (void)
   lf_claims_temp = 0;
   lf_transports = 0;
   lf_temps = 0;
-
-  if (lf_locked_mutex != NULL)
-    {
-      abort ();
-    }
-  lf_locked_mutex = NULL;
-}
-
-void
-lf_check_no_mutex (void)
-{
-  if (lf_locked_mutex)
-    {
-      abort ();
-    }
 }
 
 static int lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
@@ -242,6 +224,9 @@ lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads)
       sys->entries[i].last_cleanup_id = 0;
       sys->entries[i].retired_list = NULL;
       sys->entries[i].temp_entry = NULL;
+
+      sys->entries[i].locked_mutex = NULL;
+      sys->entries[i].locked_mutex_line = -1;
     }
 
   sys->used_entry_count = 0;
@@ -313,6 +298,9 @@ lf_tran_request_entry (LF_TRAN_SYSTEM * sys)
   entry = &sys->entries[entry_idx];
 
   assert (entry->transaction_id == LF_NULL_TRANSACTION_ID);
+
+  entry->locked_mutex = NULL;
+  entry->locked_mutex_line = -1;
 
   return entry;
 }
@@ -1343,30 +1331,30 @@ lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *be
 
   /* Lock current entry (using mutex is expected) */
 #define LF_LOCK_ENTRY(tolock) \
-  assert (lf_locked_mutex == NULL); \
+  assert (tran->locked_mutex == NULL); \
   assert (edesc->using_mutex); \
   assert ((tolock) != NULL); \
   assert (entry_mutex == NULL); \
   /* entry has a mutex protecting it's members; lock it */ \
   entry_mutex = (pthread_mutex_t *) OF_GET_PTR (tolock, edesc->of_mutex); \
-  lf_locked_line = __LINE__; \
-  lf_locked_mutex = entry_mutex; \
+  tran->locked_mutex_line = __LINE__; \
+  tran->locked_mutex = entry_mutex; \
   rv = pthread_mutex_lock (entry_mutex)
 
   /* Unlock current entry (if it was locked). */
 #define LF_UNLOCK_ENTRY() \
   if (edesc->using_mutex && entry_mutex) \
     { \
-      assert (lf_locked_mutex == entry_mutex); \
-      lf_locked_mutex = NULL; \
+      assert (tran->locked_mutex == entry_mutex); \
+      tran->locked_mutex = NULL; \
       pthread_mutex_unlock (entry_mutex); \
       entry_mutex = NULL; \
     }
   /* Force unlocking current entry (it is expected to be locked). */
 #define LF_UNLOCK_ENTRY_FORCE() \
   assert (edesc->using_mutex && entry_mutex != NULL); \
-  assert (lf_locked_mutex == entry_mutex); \
-  lf_locked_mutex = NULL; \
+  assert (tran->locked_mutex == entry_mutex); \
+  tran->locked_mutex = NULL; \
   pthread_mutex_unlock (entry_mutex); \
   entry_mutex = NULL
 
@@ -1661,15 +1649,16 @@ lf_list_delete (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_fl
   assert (entry_mutex == NULL); \
   /* entry has a mutex protecting it's members; lock it */ \
   entry_mutex = (pthread_mutex_t *) OF_GET_PTR (tolock, edesc->of_mutex); \
-  assert (lf_locked_mutex == NULL); \
-  lf_locked_mutex = entry_mutex; \
+  assert (tran->locked_mutex == NULL); \
+  tran->locked_mutex = entry_mutex; \
+  tran->locked_mutex_line = __LINE__; \
   rv = pthread_mutex_lock (entry_mutex)
 
   /* Force unlocking current entry (it is expected to be locked). */
 #define LF_UNLOCK_ENTRY_FORCE() \
   assert (edesc->using_mutex && entry_mutex != NULL); \
-  assert (lf_locked_mutex == entry_mutex); \
-  lf_locked_mutex = NULL; \
+  assert (tran->locked_mutex == entry_mutex); \
+  tran->locked_mutex = NULL; \
   pthread_mutex_unlock (entry_mutex); \
   entry_mutex = NULL
 
@@ -2212,7 +2201,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
   edesc = table->entry_desc;
   assert (edesc != NULL);
 
-  lf_check_no_mutex ();
+  assert (tran->locked_mutex == NULL);
 
   /* lock mutex */
   rv = pthread_mutex_lock (&table->backbuffer_mutex);
