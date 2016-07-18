@@ -366,6 +366,11 @@ test_hash_proc_2 (void *param)
 	      return ER_FAILED;
 	    }
 
+	  if (te->locked_mutex != &entry->mutex)
+	    {
+	      abort ();
+	    }
+	  te->locked_mutex = NULL;
 	  pthread_mutex_unlock (&entry->mutex);
 	}
       else
@@ -462,8 +467,15 @@ test_hash_proc_3 (void *param)
 	}
       else
 	{
+	  if (te->locked_mutex != &entry->mutex)
+	    {
+	      abort ();
+	    }
+	  te->locked_mutex = NULL;
 	  pthread_mutex_unlock (&entry->mutex);
 	}
+
+      assert (te->locked_mutex == NULL);
     }
 
   if (lf_tran_return_entry (te) != NO_ERROR)
@@ -596,6 +608,12 @@ test_clear_proc_2 (void *param)
 		  return ER_FAILED;
 		}
 
+
+	      if (te->locked_mutex != &entry->mutex)
+		{
+		  abort ();
+		}
+	      te->locked_mutex = NULL;
 	      pthread_mutex_unlock (&entry->mutex);
 	    }
 	  else
@@ -611,6 +629,7 @@ test_clear_proc_2 (void *param)
 	{
 	  lf_hash_clear (te, hash);
 	}
+      assert (te->locked_mutex == NULL);
     }
 
   if (lf_tran_return_entry (te) != NO_ERROR)
@@ -688,11 +707,21 @@ test_clear_proc_3 (void *param)
 	  else if (!success)
 	    {
 	      /* cleared in the meantime */
+	      if (te->locked_mutex != &entry->mutex)
+		{
+		  abort ();
+		}
+	      te->locked_mutex = NULL;
 	      pthread_mutex_unlock (&entry->mutex);
 	    }
 	}
       else
 	{
+	  if (te->locked_mutex != &entry->mutex)
+	    {
+	      abort ();
+	    }
+	  te->locked_mutex = NULL;
 	  pthread_mutex_unlock (&entry->mutex);
 	}
 
