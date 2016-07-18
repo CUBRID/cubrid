@@ -862,15 +862,6 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
   free_and_init (log_Pb.pool);
   log_Pb.num_buffers = 0;
 
-  /* 
-   * Remove all the buffer pool areas
-
-   while ((area = log_Pb.poolarea) != NULL)
-   {
-   log_Pb.poolarea = area->next;
-   free_and_init (area);
-   }
-   */
   END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
 
   logpb_finalize_flush_info ();
@@ -1061,6 +1052,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
        * aborted at the same time or it is likely that there is a bug in the
        * system (e.g., buffer are not being freed).
        */
+      /* do we reach here?*/
       END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
       error_code = logpb_expand_pool (thread_p, -1);
