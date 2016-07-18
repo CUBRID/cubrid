@@ -8864,7 +8864,7 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
   scan_cache.mvcc_snapshot = &copy_mvcc_snapshot;
 
   /* Check only if the last version of the object is not deleted, see mvcc_is_not_deleted_for_snapshot return values */
-  scan = heap_get_visible_version (thread_p, oid, class_oid, NULL, &scan_cache, PEEK, NULL_CHN, false);
+  scan = heap_get_visible_version (thread_p, oid, class_oid, NULL, &scan_cache, PEEK, NULL_CHN);
   if (scan != S_SUCCESS)
     {
       goto exit_on_end;

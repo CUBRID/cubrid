@@ -5750,7 +5750,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
     }
 
   sp_scan = heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
-				      NULL_CHN, false);
+				      NULL_CHN);
   if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)
     {
       if (SCAN_IS_INDEX_COVERED (isidp))
