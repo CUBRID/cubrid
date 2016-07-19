@@ -849,6 +849,7 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
   pthread_t threads[MAX_THREADS];
   char msg[256];
   int i;
+  XENTRY *e = NULL;
 
   sprintf (msg, "hash (mutex=%s, %d threads)", edesc->using_mutex ? "y" : "n", nthreads);
   begin (msg);
@@ -908,7 +909,6 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
   /* count operations */
   if (edesc->using_mutex)
     {
-      XENTRY *e;
       int nondel_op_count = 0;
 
       for (i = 0; i < HASH_SIZE; i++)
