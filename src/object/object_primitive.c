@@ -11270,7 +11270,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		{
 		  return rc;
 		}
-
+	      string[decompressed_size] = '\0';
 	      db_make_varchar (value, precision, string, decompressed_size, TP_DOMAIN_CODESET (domain),
 			       TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
@@ -11502,6 +11502,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 
       str_length1 = str1_decompressed_length;
       alloced_string1 = true;
+      string1[str_length1] = '\0';
     }
   else
     {
@@ -11532,6 +11533,7 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 
 	  str_length2 = str2_decompressed_length;
 	  alloced_string2 = true;
+	  string2[str_length2] = '\0';
 	}
       else
 	{
@@ -11540,9 +11542,6 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 
       if (rc == NO_ERROR)
 	{
-	  string1[str_length1] = '\0';
-	  string2[str_length2] = '\0';
-
 	  c =
 	    QSTR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1, (unsigned char *) string2,
 			  str_length2);
@@ -14003,7 +14002,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		{
 		  return rc;
 		}
-
+	      string[decompressed_size] = '\0';
 	      db_make_varnchar (value, precision, string, decompressed_size, TP_DOMAIN_CODESET (domain),
 				TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
