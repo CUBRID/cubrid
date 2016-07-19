@@ -805,7 +805,6 @@ error:
 void
 logpb_finalize_pool (THREAD_ENTRY * thread_p)
 {
-  LOG_BUFAREA *area;		/* Buffer area to free */
   int r, i;
 
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
@@ -923,7 +922,7 @@ void
 logpb_invalidate_pool (THREAD_ENTRY * thread_p)
 {
   LOG_BUFFER *log_bufptr;	/* A log buffer */
-  int i, rv;
+  int i;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
@@ -944,7 +943,7 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
       if ((log_bufptr->pageid == LOGPB_HEADER_PAGE_ID || log_bufptr->pageid > NULL_PAGEID) && log_bufptr->fcnt <= 0
 	  && log_bufptr->dirty == false)
 	{
-	  log_Pb.data[MOD (log_bufptr->pageid)] = NULL;
+	  log_Pb.data[MOD ((int)log_bufptr->pageid)] = NULL;
 	  logpb_initialize_log_buffer (log_bufptr);
 	  logpb_reset_clock_hand (log_bufptr->ipool);
 	}
@@ -1103,16 +1102,16 @@ logpb_create (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
 static LOG_PAGE *
 logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetch_mode)
 {
-  LOG_BUFFER *log_bufptr;	/* A log buffer */
-  LOG_BUFFER *log_bufptr2;
+  LOG_BUFFER *log_bufptr = NULL;	/* A log buffer */
   LOG_PHY_PAGEID phy_pageid = NULL_PAGEID;	/* The corresponding physical page */
-  int rv, i;
+  int rv;
   bool retry;
   bool is_perf_tracking;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 fix_wait_time;
   PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
+  LOG_PAGE *log_pgptr;
 
   is_perf_tracking = mnt_is_perf_tracking (thread_p);
   if (is_perf_tracking)
@@ -1128,7 +1127,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
     log_bufptr = NULL;
   else if (log_Pb.cursor - PB_DATA_SIZE < pageid)
     {
-      log_bufptr = log_Pb.data[MOD (pageid)];
+      log_bufptr = log_Pb.data[MOD ((int)pageid)];
       if (log_bufptr != NULL)
 	{
 	  if (log_bufptr->pageid != pageid)
@@ -1139,6 +1138,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
     }
   else
     {
+      log_bufptr = (LOG_BUFFER*) malloc(sizeof(LOG_BUFFER));
       logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, &log_bufptr->logpage);
     }
   if (log_bufptr == NULL)
@@ -1179,7 +1179,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 	log_Pb.header_buffer = NULL;
       else if (log_bufptr->pageid != NULL_PAGEID)
 	{
-	  log_Pb.data[MOD (log_bufptr->pageid)] = NULL;
+	  log_Pb.data[MOD ((int)log_bufptr->pageid)] = NULL;
 	}
 
       /* Fix the page and mark its pageid invalid */
@@ -1208,7 +1208,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
       if (log_bufptr->pageid == LOGPB_HEADER_PAGE_ID)
 	log_Pb.header_buffer = log_bufptr;
       else
-	log_Pb.data[MOD (log_bufptr->pageid)] = log_bufptr;
+	log_Pb.data[MOD ((int)log_bufptr->pageid)] = log_bufptr;
       ATOMIC_INC_64 (&log_Pb.cursor, 1);
     }
   else
@@ -2134,9 +2134,7 @@ static LOG_PAGE *
 logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode, LOG_PAGE * log_pgptr)
 {
   LOG_BUFFER *log_bufptr = NULL;
-  LOG_BUFFER *log_bufptr2 = NULL;
   LOG_PAGE *ret_pgptr = NULL;
-  int rv;
   bool is_perf_tracking;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
@@ -2163,18 +2161,18 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
     log_bufptr = NULL;
   else if (log_Pb.cursor - PB_DATA_SIZE < pageid)
     {
-      log_bufptr = log_Pb.data[MOD (pageid)];
+      log_bufptr = log_Pb.data[MOD ((int)pageid)];
       if (log_bufptr != NULL)
 	{
 	  if (log_bufptr->pageid != pageid)
 	    {
-	      logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, &log_bufptr->logpage);
+	      ret_pgptr = logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
 	    }
 	}
     }
   else
     {
-      logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, &log_bufptr->logpage);
+      ret_pgptr = logpb_read_page_from_file (thread_p, pageid, LOG_CS_FORCE_USE, log_pgptr);
     }
   if (log_bufptr != NULL)
     {
