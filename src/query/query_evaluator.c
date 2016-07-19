@@ -2199,7 +2199,7 @@ eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
       return V_TRUE;
     }
 
-  if (DB_VALUE_DOMAIN_TYPE (peek_val1) == DB_TYPE_OID && !heap_does_exist (thread_p, NULL, DB_PULL_OID (peek_val1)))	// !heap_is_object_not_null (thread_p, (OID *) NULL, DB_PULL_OID (peek_val1)))
+  if (DB_VALUE_DOMAIN_TYPE (peek_val1) == DB_TYPE_OID && !heap_is_object_not_null (thread_p, (OID *) NULL, DB_PULL_OID (peek_val1)))
     {
       return V_TRUE;
     }

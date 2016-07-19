@@ -24112,6 +24112,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 
   if (mvcc_snapshot != NULL || context->old_chn != NULL_CHN)
   {
+    /* */
     scan = heap_get_mvcc_header (thread_p, context, &mvcc_header);
     if (scan != S_SUCCESS)
     {
@@ -24510,7 +24511,7 @@ heap_get_class_record (THREAD_ENTRY * thread_p, OID *class_oid, RECDES * recdes_
 
 #if !defined(NDEBUG)
   assert (OID_ISNULL (&root_oid) || OID_IS_ROOTOID (&root_oid));
-#endif
+#endif // !NDEBUG
 
   return scan;
 }

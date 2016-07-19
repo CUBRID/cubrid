@@ -215,9 +215,14 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
 					   X_LOCK, COPY, NULL_CHN, LOG_WARNING_IF_DELETED);
   if (scan_code != S_SUCCESS)
     {
-      if (scan_code == S_DOESNT_EXIST || er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-	{
-	  er_clear ();
+      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+      {
+	assert (scan_code == S_DOESNT_EXIST || scan_code == S_SNAPSHOT_NOT_SATISFIED);
+	er_clear ();
+      }
+
+      if (scan_code == S_DOESNT_EXIST || scan_code == S_SNAPSHOT_NOT_SATISFIED)
+      {
 	  return 0;
 	}
 
