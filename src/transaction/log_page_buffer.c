@@ -555,7 +555,6 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-
   START_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
 
   if (num_new_buffers <= 0)
@@ -590,7 +589,7 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
 	    }
 	}
     }
-
+  
   while ((unsigned int) num_new_buffers > LOG_MAX_NUM_CONTIGUOUS_BUFFERS)
     {
       /* Note that we control overflow of size in this way */
@@ -646,7 +645,6 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
 	  logpb_initialize_log_buffer (log_bufptr);
 	  log_bufptr->ipool = bufid;
 	}
-
       log_Pb.pool = buffer_pool;
       logpb_reset_clock_hand (log_Pb.num_buffers);
       log_Pb.num_buffers = total_buffers;
@@ -735,7 +733,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
     {
       logpb_finalize_pool (thread_p);
     }
-
+  
   assert (log_Pb.pool == NULL && log_Pb.data == NULL);
 
   log_Pb.num_buffers = 0;
@@ -1216,7 +1214,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 	      goto error;
 	    }
 	  mnt_log_fetch_ioreads (thread_p);
-	}
+}	
 
       /* Recall the page in the buffer pool, and hash the identifier */
       log_bufptr->pageid = pageid;
