@@ -1451,14 +1451,14 @@ unset_hang_check_time (void)
 bool
 check_server_alive (const char *db_name, const char *db_host)
 {
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#if !defined(LIBCAS_FOR_JSP)
   int i, u_index;
   char *unusable_db_name;
   char *unusable_db_host;
   const char *check_db_host = db_host;
   const char *check_db_name = db_name;
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#if !defined(LIBCAS_FOR_JSP)
   if (cas_shard_flag == OFF && as_info != NULL && shm_appl != NULL && shm_appl->monitor_server_flag)
     {
       /* if db_name is NULL, use the CAS shared memory */

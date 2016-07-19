@@ -1432,6 +1432,7 @@ jsp_readn (SOCKET fd, void *vptr, int n)
 static int
 jsp_get_value_size (DB_VALUE * value)
 {
+  char str_buf[NUMERIC_MAX_STRING_SIZE];
   int type, size = 0;
 
   type = DB_VALUE_TYPE (value);
@@ -1456,7 +1457,7 @@ jsp_get_value_size (DB_VALUE * value)
       break;
 
     case DB_TYPE_NUMERIC:
-      size = or_packed_string_length (numeric_db_value_print (value), NULL);
+      size = or_packed_string_length (numeric_db_value_print (value, str_buf), NULL);
       break;
 
     case DB_TYPE_CHAR:
@@ -1665,12 +1666,12 @@ jsp_pack_double_argument (char *buffer, DB_VALUE * value)
 static char *
 jsp_pack_numeric_argument (char *buffer, DB_VALUE * value)
 {
-  char *v;
+  char str_buf[NUMERIC_MAX_STRING_SIZE];
   char *ptr;
 
   ptr = buffer;
-  v = numeric_db_value_print (value);
-  ptr = or_pack_string (ptr, v);
+  numeric_db_value_print (value, str_buf);
+  ptr = or_pack_string (ptr, str_buf);
 
   return ptr;
 }

@@ -201,7 +201,6 @@ static LF_ENTRY_DESCRIPTOR qfile_sort_list_entry_desc = {
  */
 int qfile_Is_list_cache_disabled;
 
-static int qfile_Xasl_page_size;
 static int qfile_Max_tuple_page_size;
 
 static int qfile_get_sort_list_size (SORT_LIST * sort_list);
@@ -961,156 +960,16 @@ qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 }
 
 /*
- * qfile_store_xasl () - Store the XASL stream into the temporary file
- *   return: number of pages or ER_FAILED
- *   stream(in/out): xasl_stream & xasl_stream_size in, xasl_id out
- *                   stream->xasl_id is a pointer to XASL_ID that
- *                   will be set to XASL file id set to XASL file id;
- *                   first_vpid and temp_vfid
- */
-int
-qfile_store_xasl (THREAD_ENTRY * thread_p, XASL_STREAM * stream)
-{
-  VPID *cur_vpid_p, prev_vpid, vpid;
-  DKNPAGES nth_page, num_pages;
-  PAGE_PTR cur_page_p, prev_page_p;
-  int xasl_page_size, demand_pages;
-  struct timeval time_stored;
-  FILE_ALLOC_ITERATOR iter;
-  FILE_ALLOC_ITERATOR *iter_p = &iter;
-
-  XASL_ID *xasl_id = stream->xasl_id;
-  int xasl_stream_size = stream->xasl_stream_size;
-  char *xasl_stream = stream->xasl_stream;
-
-  if (xasl_stream_size <= 0)
-    {
-      assert (false);
-      return 0;
-    }
-
-  XASL_ID_SET_NULL (xasl_id);
-
-  if (file_create_queryarea (thread_p, &xasl_id->temp_vfid, QFILE_DEFAULT_PAGES, "XASL stream file") == NULL)
-    {
-      return 0;
-    }
-
-  num_pages = file_get_numpages (thread_p, &xasl_id->temp_vfid);
-  demand_pages = (xasl_stream_size / qfile_Xasl_page_size) + 1;
-
-  VPID_SET_NULL (&prev_vpid);
-  prev_page_p = NULL;
-
-  if (num_pages < demand_pages)
-    {
-      if (file_alloc_pages_as_noncontiguous (thread_p, &xasl_id->temp_vfid, &vpid, &nth_page, demand_pages - num_pages,
-					     NULL, NULL, NULL, NULL) == NULL)
-	{
-	  goto error;
-	}
-
-      num_pages = file_get_numpages (thread_p, &xasl_id->temp_vfid);
-    }
-
-  assert (num_pages >= demand_pages);
-
-  /* create the iterator of temporary file pages */
-  if (file_alloc_iterator_init (thread_p, &xasl_id->temp_vfid, iter_p) == NULL)
-    {
-      /* probably the thread was interrupted. */
-      goto error;
-    }
-
-  nth_page = 0;
-
-  while (iter_p)
-    {
-      if (file_alloc_iterator_get_current_page (thread_p, iter_p, &vpid) == NULL)
-	{
-	  assert (er_errid () == ER_INTERRUPTED);
-	  goto error;
-	}
-
-      assert (!VPID_ISNULL (&vpid));
-
-      cur_vpid_p = &vpid;
-      cur_page_p = pgbuf_fix (thread_p, cur_vpid_p, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (cur_page_p == NULL)
-	{
-	  goto error;
-	}
-
-      (void) pgbuf_set_page_ptype (thread_p, cur_page_p, PAGE_XASL);
-
-      qfile_initialize_page_header (cur_page_p);
-
-      qfile_set_dirty_page_and_skip_logging (thread_p, cur_page_p, &xasl_id->temp_vfid, DONT_FREE);
-
-      xasl_page_size = MIN (xasl_stream_size, qfile_Xasl_page_size);
-      if (prev_page_p == NULL)
-	{
-	  /* this is the first page */
-	  xasl_id->first_vpid = *cur_vpid_p;
-	  QFILE_PUT_XASL_PAGE_SIZE (cur_page_p, xasl_stream_size);
-	}
-      else
-	{
-	  /* other than first page */
-	  QFILE_PUT_XASL_PAGE_SIZE (cur_page_p, xasl_page_size);
-	  QFILE_PUT_PREV_VPID (cur_page_p, &prev_vpid);
-	  QFILE_PUT_NEXT_VPID (prev_page_p, cur_vpid_p);
-
-	  qfile_set_dirty_page_and_skip_logging (thread_p, prev_page_p, NULL, FREE);
-	}
-
-      memcpy (cur_page_p + QFILE_PAGE_HEADER_SIZE, xasl_stream, xasl_page_size);
-
-      xasl_stream_size -= xasl_page_size;
-      xasl_stream += xasl_page_size;
-      prev_page_p = cur_page_p;
-      prev_vpid = *cur_vpid_p;
-      nth_page++;
-
-      iter_p = file_alloc_iterator_next (thread_p, iter_p);
-    }
-
-  if (prev_page_p)
-    {
-      qfile_set_dirty_page_and_skip_logging (thread_p, prev_page_p, NULL, FREE);
-    }
-
-  /* save stored time */
-  (void) gettimeofday (&time_stored, NULL);
-  CACHE_TIME_MAKE (&xasl_id->time_stored, &time_stored);
-
-  return (int) nth_page;
-
-error:
-  if (prev_page_p)
-    {
-      pgbuf_unfix_and_init (thread_p, prev_page_p);
-    }
-  file_destroy (thread_p, &xasl_id->temp_vfid);
-  XASL_ID_SET_NULL (xasl_id);
-
-  return 0;
-}
-
-/*
  * qfile_load_xasl_node_header () - Load XASL node header from xasl stream
  *
  * return	       : void
  * thread_p (in)       : thread entry
- * xasl_id_p (in)      : XASL file id
+ * xasl_stream (in)    : XASL stream
  * xasl_header_p (out) : pointer to XASL node header
  */
 void
-qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, XASL_NODE_HEADER * xasl_header_p)
+qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, char *xasl_stream, XASL_NODE_HEADER * xasl_header_p)
 {
-  char *xasl_stream = NULL;
-  PAGE_PTR xasl_page_p = NULL;
-
   if (xasl_header_p == NULL)
     {
       /* cannot save XASL node header */
@@ -1119,94 +978,17 @@ qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
   /* initialize XASL node header */
   INIT_XASL_NODE_HEADER (xasl_header_p);
 
-  if (xasl_id_p == NULL || XASL_ID_IS_NULL (xasl_id_p))
+  if (xasl_stream == NULL)
     {
       /* cannot obtain XASL stream */
       return;
     }
 
-  /* get XASL stream page */
-  xasl_page_p = pgbuf_fix (thread_p, &xasl_id_p->first_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (xasl_page_p == NULL)
-    {
-      return;
-    }
-
-  (void) pgbuf_check_page_ptype (thread_p, xasl_page_p, PAGE_XASL);
-
-  xasl_stream = xasl_page_p + QFILE_PAGE_HEADER_SIZE;
   /* get XASL node header from stream */
-  (void) stx_map_stream_to_xasl_node_header (thread_p, xasl_header_p, xasl_stream);
-  pgbuf_unfix_and_init (thread_p, xasl_page_p);
-}
-
-/*
- * qfile_load_xasl () - Load the XASL stream from the temporary file
- *   return: number of pages or ER_FAILED
- *   xasl_id(in): XASL file id
- *   xasl(out): XASL stream
- *   size(out): size of XASL stream
- */
-int
-qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, char **xasl_p, int *size_p)
-{
-  PAGE_PTR cur_page_p;
-  VPID next_vpid;
-  char *p;
-  int s, xasl_page_size, total_pages;
-
-  cur_page_p = pgbuf_fix (thread_p, &xasl_id_p->first_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (cur_page_p == NULL)
+  if (stx_map_stream_to_xasl_node_header (thread_p, xasl_header_p, xasl_stream) != NO_ERROR)
     {
-      return 0;
+      assert (false);
     }
-
-  (void) pgbuf_check_page_ptype (thread_p, cur_page_p, PAGE_XASL);
-
-  *size_p = QFILE_GET_XASL_PAGE_SIZE (cur_page_p);
-  if (*size_p <= 0 || (*xasl_p = (char *) db_private_alloc (thread_p, *size_p)) == NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, cur_page_p);
-      return 0;
-    }
-
-  total_pages = 0;
-  s = *size_p;
-  p = *xasl_p;
-
-  do
-    {
-      total_pages++;
-      xasl_page_size = QFILE_GET_XASL_PAGE_SIZE (cur_page_p);
-      xasl_page_size = MIN (xasl_page_size, qfile_Xasl_page_size);
-      QFILE_GET_NEXT_VPID (&next_vpid, cur_page_p);
-
-      memcpy (p, cur_page_p + QFILE_PAGE_HEADER_SIZE, xasl_page_size);
-
-      s -= xasl_page_size;
-      p += xasl_page_size;
-
-      pgbuf_unfix_and_init (thread_p, cur_page_p);
-      if (!VPID_ISNULL (&next_vpid))
-	{
-	  cur_page_p = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	  if (cur_page_p == NULL)
-	    {
-	      db_private_free_and_init (thread_p, *xasl_p);
-	      return 0;
-	    }
-
-	  (void) pgbuf_check_page_ptype (thread_p, cur_page_p, PAGE_XASL);
-	}
-    }
-  while (s > 0 && !VPID_ISNULL (&next_vpid));
-
-  if (cur_page_p != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, cur_page_p);
-    }
-
-  return total_pages;
 }
 
 /*
@@ -1220,18 +1002,11 @@ qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, char **xasl
 int
 qfile_initialize (void)
 {
-  SORT_LIST *sort_list_p;
-  int i;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
   qfile_Is_list_cache_disabled =
     ((prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE) == QFILE_LIST_QUERY_CACHE_MODE_OFF)
      || (prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0));
 
   qfile_Max_tuple_page_size = QFILE_MAX_TUPLE_SIZE_IN_PAGE;
-  qfile_Xasl_page_size = spage_max_record_size () - QFILE_PAGE_HEADER_SIZE;
 
   if (lf_freelist_init (&qfile_sort_list_Freelist, 10, 100, &qfile_sort_list_entry_desc, &free_sort_list_Ts) !=
       NO_ERROR)
@@ -5053,7 +4828,7 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
   else
     {
       /* create */
-      qfile_List_cache.n_hts = prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) + 10;
+      qfile_List_cache.n_hts = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) + 10;
       qfile_List_cache.list_hts = (MHT_TABLE **) calloc (qfile_List_cache.n_hts, sizeof (MHT_TABLE *));
       if (qfile_List_cache.list_hts == NULL)
 	{

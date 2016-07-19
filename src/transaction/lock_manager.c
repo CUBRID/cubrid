@@ -575,7 +575,7 @@ LF_ENTRY_DESCRIPTOR obj_lock_res_desc = {
   offsetof (LK_RES, key),
   offsetof (LK_RES, res_mutex),
 
-  LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_UNLOCK_AFTER_DELETE,
+  LF_EM_USING_MUTEX,
 
   lock_alloc_resource,
   lock_dealloc_resource,
@@ -1225,7 +1225,7 @@ lock_remove_resource (LK_RES * res_ptr)
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_OBJ_LOCK_RES);
   int success = 0, rc;
 
-  rc = lf_hash_delete (t_entry, &lk_Gl.obj_hash_table, (void *) &res_ptr->key, &success);
+  rc = lf_hash_delete_already_locked (t_entry, &lk_Gl.obj_hash_table, (void *) &res_ptr->key, &success);
   if (!success)
     {
       /* this should not happen, as the hash entry is mutex protected and no clear operations are performed on the hash 
@@ -3358,7 +3358,7 @@ start:
 
   /* find or add the lockable object in the lock table */
   search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid, (BTID *) btid);
-  rv = lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table, (void *) &search_key, (void **) &res_ptr);
+  rv = lf_hash_find_or_insert (t_entry_res, &lk_Gl.obj_hash_table, (void *) &search_key, (void **) &res_ptr, NULL);
   if (rv != NO_ERROR)
     {
       return rv;

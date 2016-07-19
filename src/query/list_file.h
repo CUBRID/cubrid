@@ -161,12 +161,7 @@ int qfile_end_use_of_list_cache_entry (THREAD_ENTRY * thread_p, QFILE_LIST_CACHE
 extern int qfile_modify_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_LIST_ID * list_id);
 extern void qfile_clear_list_id (QFILE_LIST_ID * list_id);
 
-extern int qfile_store_xasl (THREAD_ENTRY * thread_p, XASL_STREAM * ctx);
-
-
-extern int qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, char **xasl, int *size);
-extern void qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
-					 XASL_NODE_HEADER * xasl_header_p);
+extern void qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, char *xasl_stream, XASL_NODE_HEADER * xasl_header_p);
 extern QFILE_LIST_ID *qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 				       SORT_LIST * sort_list, QUERY_ID query_id, int flag);
 extern int qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p);

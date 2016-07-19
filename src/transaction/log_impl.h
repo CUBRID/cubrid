@@ -917,8 +917,6 @@ struct log_tdes
   INT64 tran_start_time;
   XASL_ID xasl_id;		/* xasl id of current query */
   LK_RES *waiting_for_res;	/* resource that i'm waiting for */
-
-  int num_pinned_xasl_cache_entries;	/* the number of pinned xasl cache entries in this in this transaction */
   int disable_modifications;	/* db_Disable_modification for each tran */
 
   TRAN_ABORT_REASON tran_abort_reason;

@@ -37,6 +37,8 @@
 #define OID_INITIALIZER \
   {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}
 
+#define OID_AS_ARGS(oidp) (oidp)->volid, (oidp)->pageid, (oidp)->slotid
+
 #if !defined(SERVER_MODE)
 #define OID_TEMPID_MIN          INT_MIN
 #define OID_INIT_TEMPID()       (oid_Next_tempid = NULL_PAGEID)

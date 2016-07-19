@@ -4205,7 +4205,7 @@ or_packed_stream_length (size_t len)
 	{
 	  pad = 0;
 	}
-      total += len + pad;
+      total += (int) len + pad;
     }
   return total;
 }
@@ -8079,6 +8079,56 @@ or_unpack_mvccid (char *ptr, MVCCID * mvccid)
 
   OR_GET_MVCCID (ptr, mvccid);
   return (((char *) ptr) + OR_MVCCID_SIZE);
+}
+
+/* SHA-1 */
+
+
+/*
+ * or_pack_sha1 () - Pack SHA-1 hash.
+ *
+ * return    : Pointer after packed.
+ * ptr (in)  : Pointer where to pack.
+ * sha1 (in) : Value to pack.
+ */
+char *
+or_pack_sha1 (char *ptr, SHA1Hash * sha1)
+{
+  assert (sha1 != NULL);
+
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  OR_PUT_SHA1 (ptr, sha1);
+  return ptr + OR_SHA1_SIZE;
+}
+
+/*
+ * or_unpack_sha1 () - Unpack SHA-1 hash.
+ *
+ * return     : Pointer after unpacked.
+ * ptr (in)   : Pointer where to unpack.
+ * sha1 (out) : Value to unpack.
+ */
+char *
+or_unpack_sha1 (char *ptr, SHA1Hash * sha1)
+{
+  assert (sha1 != NULL);
+
+  if (ptr == NULL)
+    {
+      memset (sha1, 0, sizeof (*sha1));
+      return NULL;
+    }
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  OR_GET_SHA1 (ptr, sha1);
+  return ptr + OR_SHA1_SIZE;
 }
 
 /*

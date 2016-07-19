@@ -180,7 +180,6 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
   VPID root_vpid;
   PAGE_PTR root;
-  RECDES rec;
   BTREE_ROOT_HEADER *root_header = NULL;
   BTID_INT btid_int;
 
@@ -968,8 +967,6 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * clas
 	  ptr += OR_OID_SIZE;
 	}
     }
-
-end:
 
   /* If we have a valid HFID, then add this class to the array */
   or_class_hfid (&record, &hfid);

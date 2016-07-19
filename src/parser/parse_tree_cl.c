@@ -431,6 +431,8 @@ static PT_NODE *pt_init_use (PT_NODE * p);
 static PARSER_VARCHAR *pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p);
 #endif
 
+static int parser_print_user (char *user_text, int len);
+
 static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
 extern char *g_query_string;
@@ -2533,7 +2535,15 @@ pt_print_alias (PARSER_CONTEXT * parser, const PT_NODE * node)
 char *
 parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
+#define PT_QUERY_STRING_USER_TEXT ( \
+  5	  /* user= */ \
+  + 6	  /* volid| (values up to 16384) */ \
+  + 11	  /* pageid| (values up to 2147483647) */ \
+  + 5	  /* slotid (values up to 16384) */ \
+  + 1	  /* \0 */)
+
   PARSER_VARCHAR *string;
+  char user_text_buffer[PT_QUERY_STRING_USER_TEXT];
 
   string = pt_print_bytes (parser, node);
   if (string)
@@ -2545,9 +2555,41 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  string = pt_append_nulstring (parser, string, str);
 	  free_and_init (str);
 	}
+      if ((parser->custom_print & PT_PRINT_USER) != 0)
+	{
+	  /* Print user text. */
+	  if (parser_print_user (user_text_buffer, PT_QUERY_STRING_USER_TEXT) > 0)
+	    {
+	      string = pt_append_nulstring (parser, string, user_text_buffer);
+	    }
+	}
       return (char *) string->bytes;
     }
   return NULL;
+#undef PT_QUERY_STRING_USER_TEXT
+}
+
+/*
+ * parser_print_user () - Create a text to include user in query string.
+ *
+ * return	  : Size of user text.
+ * user_text (in) : User text.
+ * len (in)	  : Size of buffer.
+ */
+static int
+parser_print_user (char *user_text, int len)
+{
+  char *p = user_text;
+  OID *oid = ws_identifier (db_get_user ());
+
+  memset (user_text, 0, len);
+
+  if (oid == NULL)
+    {
+      return 0;
+    }
+
+  return snprintf (p, len - 1, "user=%d|%d|%d", oid->volid, oid->pageid, oid->slotid);
 }
 
 /*
@@ -16538,7 +16580,7 @@ pt_init_constraint (PT_NODE * node)
 static PARSER_VARCHAR *
 pt_print_col_def_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *b = 0, *r1, *r2, *r3;
+  PARSER_VARCHAR *b = 0, *r1, *r2;
 
   assert (p->node_type == PT_CONSTRAINT);
   assert (p->info.constraint.name == NULL);
@@ -16637,7 +16679,7 @@ pt_print_col_def_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *b = 0, *r1, *r2, *r3;
+  PARSER_VARCHAR *b = 0, *r1, *r2;
 
   if (p->info.constraint.name)
     {

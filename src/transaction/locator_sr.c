@@ -69,6 +69,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "db.h"
+#include "filter_pred_cache.h"
 #include "fetch.h"
 
 #if defined(DMALLOC)
@@ -5637,20 +5638,14 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       /* system class do not include foreign keys. we need not check here. */
 
       /* remove XASL cache entries which is relevant with that class */
-      if (!OID_IS_ROOTOID (oid) && prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
-	  && qexec_remove_xasl_cache_ent_by_class (thread_p, oid, 1) != NO_ERROR)
+      if (!OID_IS_ROOTOID (oid))
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"locator_update_force: qexec_remove_xasl_cache_ent_by_class"
-			" failed for class { %d %d %d }\n", oid->pageid, oid->slotid, oid->volid);
+	  xcache_remove_by_oid (thread_p, oid);
 	}
 
-      if (!OID_IS_ROOTOID (oid) && prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) > 0
-	  && qexec_remove_filter_pred_cache_ent_by_class (thread_p, oid) != NO_ERROR)
+      if (!OID_IS_ROOTOID (oid))
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"locator_update_force: xs_remove_filter_pred_cache_ent_by_class"
-			" failed for class { %d %d %d }\n", oid->pageid, oid->slotid, oid->volid);
+	  fpcache_remove_by_class (thread_p, oid);
 	}
     }
   else
@@ -6268,20 +6263,14 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	}
 
       /* remove XASL cache entries which is relevant with that class */
-      if (!OID_IS_ROOTOID (oid) && prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
-	  && qexec_remove_xasl_cache_ent_by_class (thread_p, oid, 1) != NO_ERROR)
+      if (!OID_IS_ROOTOID (oid))
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"locator_delete_force: qexec_remove_xasl_cache_ent_by_class"
-			" failed for class { %d %d %d }\n", oid->pageid, oid->slotid, oid->volid);
+	  xcache_remove_by_oid (thread_p, oid);
 	}
 
-      if (!OID_IS_ROOTOID (oid) && prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) > 0
-	  && qexec_remove_filter_pred_cache_ent_by_class (thread_p, oid) != NO_ERROR)
+      if (!OID_IS_ROOTOID (oid))
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"locator_delete_force: xs_remove_filter_pred_cache_ent_by_class"
-			" failed for class { %d %d %d }\n", oid->pageid, oid->slotid, oid->volid);
+	  fpcache_remove_by_class (thread_p, oid);
 	}
     }
   else
@@ -8177,13 +8166,7 @@ static int
 locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICATE * or_pred, OID * class_oid,
 			       OID ** inst_oids, int num_insts, RECDES ** recs, DB_LOGICAL * results)
 {
-  XASL_CACHE_ENTRY *cache_entry_p = NULL;
-  XASL_CACHE_ENTRY *checked_entry_p = NULL;
-  OID null_oid;
-  XASL_ID pseudo_xasl_id, temp_xasl_id;
   int i;
-  XASL_CACHE_CLONE *cache_clone_p = NULL;
-  void *pred_filter_cache_context = NULL;
   PRED_EXPR_WITH_CONTEXT *pred_filter = NULL;
   PR_EVAL_FNC filter_eval_func = NULL;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -8193,130 +8176,24 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICAT
   if (or_pred == NULL || class_oid == NULL || recs == NULL || inst_oids == NULL || num_insts <= 0 || results == NULL
       || or_pred->pred_stream == NULL || btid == NULL)
     {
+      assert (false);
       return ER_FAILED;
     }
 
-  OR_PUT_NULL_OID (&null_oid);
-  XASL_ID_SET_NULL (&pseudo_xasl_id);
-  cache_entry_p = qexec_lookup_filter_pred_cache_ent (thread_p, or_pred->pred_string, &null_oid);
-  if (cache_entry_p == NULL)
+  error_code = fpcache_claim (thread_p, btid, or_pred, &pred_filter);
+  if (error_code != NO_ERROR)
     {
-      struct timeval time_stored;
-
-      /* make unique pseudo XASL_ID from BTID */
-      MAKE_PSEUDO_XASL_ID_FROM_BTREE (&pseudo_xasl_id, btid);
-      (void) gettimeofday (&time_stored, NULL);
-      CACHE_TIME_MAKE (&(pseudo_xasl_id.time_stored), &time_stored);
-      XASL_ID_COPY (&temp_xasl_id, &pseudo_xasl_id);
-
-      /* create new entry */
-      cache_entry_p =
-	qexec_update_filter_pred_cache_ent (thread_p, or_pred->pred_string, &pseudo_xasl_id, &null_oid, 1, class_oid,
-					    NULL, 0);
-      if (cache_entry_p == NULL)
-	{
-	  er_log_debug (ARG_FILE_LINE,
-			"locator_eval_filter_predicate: qexec_update_predxasl_cache_ent failed pseudo_xasl_id"
-			" { first_vpid { %d %d } temp_vfid { %d %d } }\n", pseudo_xasl_id.first_vpid.pageid,
-			pseudo_xasl_id.first_vpid.volid, pseudo_xasl_id.temp_vfid.fileid,
-			pseudo_xasl_id.temp_vfid.volid);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-	  return ER_QPROC_INVALID_XASLNODE;
-	}
-
-      /* check whether qexec_update_xasl_cache_ent() changed the XASL_ID */
-      if (!XASL_ID_EQ (&temp_xasl_id, &pseudo_xasl_id))
-	{
-	  (void) qexec_end_use_of_filter_pred_cache_ent (thread_p, &pseudo_xasl_id, false);
-	  er_log_debug (ARG_FILE_LINE,
-			"locator_eval_filter_predicate: "
-			"qexec_update_xasl_cache_ent changed pseudo_xasl_id { first_vpid {"
-			"%d %d } temp_vfid { %d %d } } to pseudo_xasl_id { first_vpid"
-			"{ %d %d } temp_vfid { %d %d } }\n", temp_xasl_id.first_vpid.pageid,
-			temp_xasl_id.first_vpid.volid, temp_xasl_id.temp_vfid.fileid, temp_xasl_id.temp_vfid.volid,
-			pseudo_xasl_id.first_vpid.pageid, pseudo_xasl_id.first_vpid.volid,
-			pseudo_xasl_id.temp_vfid.fileid, pseudo_xasl_id.temp_vfid.volid);
-	  /* the other competing thread which is running the has updated the cache very after the moment of the
-	   * previous check; however pseudo_xasl_id generated by the other thread must be equal with pseudo_xasl_id
-	   * generated by the current thread That's because pseudo_xasl_id is generated from BTID */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-	  return ER_QPROC_INVALID_XASLNODE;
-	}
+      ASSERT_ERROR ();
+      return error_code;
     }
-  else
-    {
-      XASL_ID_COPY (&pseudo_xasl_id, &cache_entry_p->xasl_id);
-    }
-
-  cache_clone_p = NULL;		/* mark as pop */
-  checked_entry_p = qexec_check_filter_pred_cache_ent_by_xasl (thread_p, &pseudo_xasl_id, 0, &cache_clone_p);
-  if (checked_entry_p == NULL)
-    {
-      /* It doesn't be there or was marked to be deleted. */
-      er_log_debug (ARG_FILE_LINE,
-		    "locator_eval_filter_predicate: qexec_check_xasl_cache_ent_by_xasl failed"
-		    " pseudo_xasl_id { first_vpid { %d %d } temp_vfid { %d %d } }\n", pseudo_xasl_id.first_vpid.pageid,
-		    pseudo_xasl_id.first_vpid.volid, pseudo_xasl_id.temp_vfid.fileid, pseudo_xasl_id.temp_vfid.volid);
-
-      (void) qexec_end_use_of_filter_pred_cache_ent (thread_p, &pseudo_xasl_id, false);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-      return ER_QPROC_INVALID_XASLNODE;
-    }
-
-  /* load the XASL stream from the file of pseudo_xasl_id */
-  if (cache_clone_p == NULL || cache_clone_p->xasl == NULL)
-    {
-      if (cache_clone_p)
-	{
-	  /* use predicate cloning, allocate in global heap context (0, malloc/free) */
-	  old_pri_heap_id = db_change_private_heap (thread_p, 0);
-	}
-      error_code =
-	stx_map_stream_to_filter_pred (thread_p, (PRED_EXPR_WITH_CONTEXT **) (&pred_filter), or_pred->pred_stream,
-				       or_pred->pred_stream_size, &pred_filter_cache_context);
-      if (error_code != NO_ERROR)
-	{
-	  /* error occurred during unpacking */
-	  if (cache_clone_p)
-	    {
-	      /* free allocated memory */
-	      if (pred_filter_cache_context)
-		{
-		  stx_free_additional_buff (thread_p, pred_filter_cache_context);
-		  stx_free_xasl_unpack_info (pred_filter_cache_context);
-		  db_private_free_and_init (thread_p, pred_filter_cache_context);
-		}
-	      pred_filter = NULL;
-	      (void) db_change_private_heap (thread_p, old_pri_heap_id);
-	      /* add clone to free list */
-	      qexec_free_filter_pred_cache_clo (thread_p, cache_clone_p);
-	      cache_clone_p = NULL;
-	    }
-
-	  goto end;
-	}
-
-      if (cache_clone_p)
-	{
-	  /* restore private heap */
-	  (void) db_change_private_heap (thread_p, old_pri_heap_id);
-	  /* save unpacked XASL tree info */
-	  cache_clone_p->xasl = pred_filter;
-	  cache_clone_p->xasl_buf_info = pred_filter_cache_context;
-	  pred_filter_cache_context = NULL;	/* clear */
-	}
-    }
-  else
-    {
-      pred_filter = cache_clone_p->xasl;
-    }
+  assert (pred_filter != NULL);
 
   error_code =
     heap_attrinfo_start (thread_p, class_oid, pred_filter->num_attrs_pred, pred_filter->attrids_pred,
 			 pred_filter->cache_pred);
   if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto end;
     }
   filter_eval_func = eval_fnc (thread_p, pred_filter->pred, &single_node_type);
@@ -8354,26 +8231,7 @@ end:
       (void) db_change_private_heap (thread_p, old_pri_heap_id);
     }
 
-  if (cache_clone_p)
-    {
-      /* cloned - save XASL tree */
-      (void) qexec_check_filter_pred_cache_ent_by_xasl (thread_p, &pseudo_xasl_id, -1, &cache_clone_p);
-    }
-  else
-    {
-      /* not cloned, predicate was allocated in private space free the filter predicatetree */
-      if (pred_filter_cache_context)
-	{
-	  stx_free_additional_buff (thread_p, pred_filter_cache_context);
-	  stx_free_xasl_unpack_info (pred_filter_cache_context);
-	  db_private_free_and_init (thread_p, pred_filter_cache_context);
-	  pred_filter = NULL;
-	}
-    }
-  if (cache_entry_p)
-    {
-      (void) qexec_end_use_of_filter_pred_cache_ent (thread_p, &pseudo_xasl_id, false);
-    }
+  fpcache_retire (thread_p, class_oid, btid, pred_filter);
   return error_code;
 }
 

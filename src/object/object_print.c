@@ -557,6 +557,7 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE
   char *start;
   PARSER_VARCHAR *buffer;
   char line[SM_MAX_IDENTIFIER_LENGTH + 4];	/* Include room for _:_\0 */
+  char str_buf[NUMERIC_MAX_STRING_SIZE];
 
   if (attribute_p == NULL)
     {
@@ -618,8 +619,9 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser, SM_ATTRIBUTE
 		  return NULL;
 		}
 
-	      offset = snprintf (buf, DB_MAX_NUMERIC_PRECISION + 3, "(%s, ", numeric_db_value_print (&min_val));
-	      snprintf (buf + offset, DB_MAX_NUMERIC_PRECISION + 1, "%s)", numeric_db_value_print (&inc_val));
+	      offset =
+		snprintf (buf, DB_MAX_NUMERIC_PRECISION + 3, "(%s, ", numeric_db_value_print (&min_val, str_buf));
+	      snprintf (buf + offset, DB_MAX_NUMERIC_PRECISION + 1, "%s)", numeric_db_value_print (&inc_val, str_buf));
 	      buffer = pt_append_nulstring (parser, buffer, buf);
 
 	      pr_clear_value (&min_val);
@@ -3937,7 +3939,7 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  buffer = pt_append_nulstring (parser, buffer, numeric_db_value_print ((DB_VALUE *) value));
+	  buffer = pt_append_nulstring (parser, buffer, numeric_db_value_print ((DB_VALUE *) value, line));
 	  break;
 
 	case DB_TYPE_BIT:
@@ -4188,7 +4190,9 @@ PARSER_VARCHAR *
 describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_VALUE * value)
 {
   INTL_CODESET codeset = INTL_CODESET_NONE;
+#if defined (SERVER_MODE) || defined (SA_MODE)
   char str_int[30];
+#endif /* SERVER_MODE || SA_MODE */
 
   assert (parser != NULL);
 

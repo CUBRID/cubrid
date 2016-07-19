@@ -2714,6 +2714,7 @@ restart:
 	   * is really started to avoid locking vacuum data again (logging vacuum data cannot be done without locking).
 	   */
 	  log_append_redo_data2 (thread_p, RVVAC_START_JOB, NULL, (PAGE_PTR) data_page, data_index, 0, NULL);
+	  vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
 	}
 
 #if defined (SA_MODE)
@@ -2828,6 +2829,7 @@ restart:
 
   log_append_redo_data2 (thread_p, RVVAC_COMPLETE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
 			 sizeof (log_Gl.hdr.mvcc_next_id), &log_Gl.hdr.mvcc_next_id);
+  vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
   logpb_flush_pages_direct (thread_p);
 
   /* Cleanup dropped files. */
@@ -2873,6 +2875,8 @@ vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   LSA_SET_NULL (&log_Gl.hdr.mvcc_op_log_lsa);
   log_Gl.hdr.last_block_oldest_mvccid = MVCCID_NULL;
   log_Gl.hdr.last_block_newest_mvccid = MVCCID_NULL;
+
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
 }
@@ -4526,7 +4530,11 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 
       (void) log_start_system_op (thread_p);
 
-      log_append_undoredo_data2 (thread_p, RVVAC_DATA_MODIFY_FIRST_PAGE, NULL, (PAGE_PTR) save_first_page, 0,
+      /* Log log_Gl.hdr.vacuum_data_first_vpid change. We need to log it in new first page, since old first page is
+       * being deallocated. When redo recovery is run, we need to make sure the page for redo log record is not
+       * deallocated; redo is skipped otherwise.
+       */
+      log_append_undoredo_data2 (thread_p, RVVAC_DATA_MODIFY_FIRST_PAGE, NULL, (PAGE_PTR) (*data_page), 0,
 				 sizeof (VPID), sizeof (VPID), &log_Gl.hdr.vacuum_data_first_vpid,
 				 &save_first_page->next_page);
 
@@ -4535,6 +4543,9 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
       VPID_COPY (&log_Gl.hdr.vacuum_data_first_vpid, &save_first_page->next_page);
       vacuum_Data.first_page = *data_page;
 
+      /* Make sure the new first page is marked as dirty */
+      vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
+      /* Unfix old first page. */
       vacuum_unfix_data_page (thread_p, save_first_page);
       if (file_dealloc_page (thread_p, &vacuum_Data.vacuum_data_file, &save_first_vpid, FILE_VACUUM_DATA) != NO_ERROR)
 	{
@@ -4630,8 +4641,10 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 
 	  /* Log changes. No data is actually removed, just relocated (so redo data is NULL). */
 	  log_append_redo_data2 (thread_p, RVVAC_DATA_FINISHED_BLOCKS, NULL, (PAGE_PTR) prev_data_page, 0, 0, NULL);
-	  vacuum_set_dirty_data_page (thread_p, prev_data_page, DONT_FREE);
 	}
+      vacuum_set_dirty_data_page (thread_p, prev_data_page, DONT_FREE);
+
+      vacuum_set_dirty_data_page (thread_p, prev_data_page, DONT_FREE);
 
       assert (*data_page == NULL);
       /* Move *data_page to next page. */

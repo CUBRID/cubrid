@@ -312,8 +312,8 @@ rel_get_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups)
 	{
 	  float base_level, apply_level;
 
-	  base_level = rule->base.major + (rule->base.minor / 10.0);
-	  apply_level = rule->apply.major + (rule->apply.minor / 10.0);
+	  base_level = (float) (rule->base.major + (rule->base.minor / 10.0));
+	  apply_level = (float) (rule->apply.major + (rule->apply.minor / 10.0));
 
 	  if (base_level == db_level && apply_level == disk_compatibility_level)
 	    {
