@@ -453,7 +453,6 @@ logpb_reset_clock_hand (int buffer_index)
 int
 MOD (int x)
 {
-  // printf("%d\n",x);
   return x % PB_DATA_SIZE;
 }
 
@@ -589,7 +588,7 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
 	    }
 	}
     }
-  
+
   while ((unsigned int) num_new_buffers > LOG_MAX_NUM_CONTIGUOUS_BUFFERS)
     {
       /* Note that we control overflow of size in this way */
@@ -733,7 +732,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
     {
       logpb_finalize_pool (thread_p);
     }
-  
+
   assert (log_Pb.pool == NULL && log_Pb.data == NULL);
 
   log_Pb.num_buffers = 0;
@@ -748,14 +747,13 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
       goto error;
     }
 
-  // log_Pb.ht = mht_create ("Log buffer pool hash table", log_Pb.num_buffers, mht_logpageidhas, mht_compare_logpageids_are_equal);
   log_Pb.data = (LOG_BUFFER **) malloc (PB_DATA_SIZE * sizeof (LOG_BUFFER *));
   log_Pb.header_buffer = (LOG_BUFFER *) malloc (sizeof (LOG_BUFFER));
-/*  if (log_Pb.ht == NULL)
+  if (log_Pb.header_buffer == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
-    } */
+    }
   if (log_Pb.data == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -843,11 +841,7 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
   /* 
    * Remove hash table
    */
-  /*if (log_Pb.ht != NULL)
-     {
-     mht_destroy (log_Pb.ht);
-     log_Pb.ht = NULL;
-     } */
+
   if (log_Pb.data != NULL)
     {
       for (i = 0; i < PB_DATA_SIZE; i++)
@@ -944,22 +938,18 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
    */
   logpb_flush_pages_direct (thread_p);
 
-  //START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
-
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
       log_bufptr = LOGPB_FIND_BUFPTR (i);
       if ((log_bufptr->pageid == LOGPB_HEADER_PAGE_ID || log_bufptr->pageid > NULL_PAGEID) && log_bufptr->fcnt <= 0
 	  && log_bufptr->dirty == false)
 	{
-	  // (void) mht_rem (log_Pb.ht, &log_bufptr->pageid, NULL, NULL);
 	  log_Pb.data[MOD (log_bufptr->pageid)] = NULL;
 	  logpb_initialize_log_buffer (log_bufptr);
 	  logpb_reset_clock_hand (log_bufptr->ipool);
 	}
     }
 
-  //END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 }
 
 /*
@@ -1134,9 +1124,6 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
   assert ((fetch_mode == NEW_PAGE) || (fetch_mode == OLD_PAGE));
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  //START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
-
-  //log_bufptr = (LOG_BUFFER *) mht_get (log_Pb.ht, &pageid);
   if (pageid == LOGPB_HEADER_PAGE_ID)
     log_bufptr = NULL;
   else if (log_Pb.cursor - PB_DATA_SIZE < pageid)
@@ -1192,7 +1179,6 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 	log_Pb.header_buffer = NULL;
       else if (log_bufptr->pageid != NULL_PAGEID)
 	{
-	  //(void) mht_rem (log_Pb.ht, &log_bufptr->pageid, NULL, NULL);
 	  log_Pb.data[MOD (log_bufptr->pageid)] = NULL;
 	}
 
@@ -1214,7 +1200,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 	      goto error;
 	    }
 	  mnt_log_fetch_ioreads (thread_p);
-}	
+	}
 
       /* Recall the page in the buffer pool, and hash the identifier */
       log_bufptr->pageid = pageid;
@@ -1224,18 +1210,11 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
       else
 	log_Pb.data[MOD (log_bufptr->pageid)] = log_bufptr;
       ATOMIC_INC_64 (&log_Pb.cursor, 1);
-      /*   if (mht_put (log_Pb.ht, &log_bufptr->pageid, log_bufptr) == NULL)
-         {
-         logpb_initialize_log_buffer (log_bufptr);
-         log_bufptr = NULL;
-         } */
     }
   else
     {
       log_bufptr->fcnt++;
     }
-
-  //END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   mnt_log_fetches (thread_p);
 
@@ -1615,7 +1594,6 @@ logpb_dump_information (FILE * out_fp)
   fprintf (out_fp, "\n\n ** DUMP OF LOG BUFFER POOL INFORMATION **\n\n");
 
   fprintf (out_fp, "\nHash table dump\n");
-  // mht_dump (out_fp, log_Pb.ht, false, logpb_print_hash_entry, NULL);
   for (i = 0; i < PB_DATA_SIZE; i++)
     {
       fprintf (out_fp, "Pageid = %5lld, Address = %p\n", (long long int) i + log_Pb.cursor, (void *) log_Pb.data[i]);
@@ -2181,9 +2159,6 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       log_csect_entered = true;
     }
 
-  /* TODO: Can we use a latch free structure here? */
-  // START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
-  // log_bufptr = (LOG_BUFFER *) mht_get (log_Pb.ht, &pageid);
   if (pageid == LOGPB_HEADER_PAGE_ID)
     log_bufptr = NULL;
   else if (log_Pb.cursor - PB_DATA_SIZE < pageid)
@@ -2206,8 +2181,6 @@ logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE 
       memcpy (log_pgptr, &log_bufptr->logpage, LOG_PAGESIZE);
       ret_pgptr = log_pgptr;
     }
-
-  // END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   if (log_bufptr == NULL)
     {
