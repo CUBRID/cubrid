@@ -899,10 +899,13 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
 
   for (i = 0; i < HASH_SIZE; i++)
     {
-      if (edesc->f_hash (e->key, HASH_SIZE) != i)
+      for (e = hash.buckets[i]; e != NULL; e = e->next)
 	{
-	  sprintf (msg, "hash (%d) = %d != %d", e->key, edesc->f_hash (e->key, HASH_SIZE), i);
-	  return fail (msg);
+	  if (edesc->f_hash (e->key, HASH_SIZE) != i)
+	    {
+	      sprintf (msg, "hash (%d) = %d != %d", e->key, edesc->f_hash (e->key, HASH_SIZE), i);
+	      return fail (msg);
+	    }
 	}
     }
 
