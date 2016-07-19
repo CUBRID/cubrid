@@ -1340,9 +1340,10 @@ or_packed_put_varchar (OR_BUF * buf, char *string, int charlen)
 static int
 or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 {
-  int net_charlen;
+  int net_charlen = 0;
   char *compressed_string = NULL;
-  int rc = NO_ERROR, compressable = 0;
+  int rc = NO_ERROR;
+  bool compressable = false;
   lzo_uint compressed_length = 0;
   lzo_voidp wrkmem = NULL;
 
@@ -1354,15 +1355,16 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
   else
     {
       rc = or_put_byte (buf, 0xFF);
-      compressable = 1;
+      compressable = true;
     }
   if (rc != NO_ERROR)
     {
       return rc;
     }
 
-  if (compressable == 1)
+  if (compressable == true)
     {
+      /* Future optimization : use a preallocated object for wrkmem in thread_entry. */
       /* Alloc memory */
       wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
       if (wrkmem == NULL)
@@ -1372,17 +1374,17 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	}
 
       /* Alloc memory for the compressed string */
+      /* Worst case LZO compression size from their FAQ */
       compressed_string = (char *) malloc ((charlen + (charlen / 16) + 64 + 3) * sizeof (char));
+      if (compressed_string == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (size_t) (charlen + (charlen / 16) + 64 + 3));
+	  goto cleanup;
+	}
 
       /* Compress the string */
       rc = lzo1x_1_compress (string, charlen, compressed_string, &compressed_length, wrkmem);
-
-      /* Free the working memory needed for compression */
-      if (wrkmem != NULL)
-	{
-	  free_and_init (wrkmem);
-	}
-
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -1396,14 +1398,17 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
       /* Store the compression size */
       assert (compressed_length < charlen - 8);
-      rc = or_put_data (buf, (char *) &compressed_length, OR_INT_SIZE);
+      OR_PUT_INT (&net_charlen, compressed_length);
+      rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
 	}
 
+      net_charlen = 0;
       /* Store the uncompressed data size */
-      rc = or_put_data (buf, (char *) &charlen, OR_INT_SIZE);
+      OR_PUT_INT (&net_charlen, charlen);
+      rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
@@ -1433,7 +1438,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
   else
     {
       /* No compression needed */
-      /* Store the string */
+      /* Store the string in its raw form */
       rc = or_put_data (buf, string, charlen);
       if (rc != NO_ERROR)
 	{
@@ -1459,6 +1464,11 @@ cleanup:
   if (compressed_string != NULL)
     {
       free_and_init (compressed_string);
+    }
+
+  if (wrkmem != NULL)
+    {
+      free_and_init (wrkmem);
     }
 
   return rc;
@@ -8492,7 +8502,7 @@ htond (double from)
 int
 or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
 {
-  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR;
+  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR, net_charlen = 0;
   int size_prefix = 0;
 
   /* Make sure the string is compressed */
@@ -8507,14 +8517,19 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
     {
       /* String was compressed */
       /* Get the compressed size */
-      rc = or_get_data (buf, (char *) &compressed_length, OR_INT_SIZE);
+      rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+      OR_GET_INT (&compressed_length, (char *) &net_charlen);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
       *compressed_size = compressed_length;
+
+      net_charlen = 0;
+
       /* Get the decompressed size */
-      rc = or_get_data (buf, (char *) &decompressed_length, OR_INT_SIZE);
+      rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+      OR_GET_INT (&decompressed_length, (char *) &net_charlen);
       if (rc != NO_ERROR)
 	{
 	  return rc;
