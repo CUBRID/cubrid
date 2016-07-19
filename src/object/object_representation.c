@@ -8518,7 +8518,7 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
       /* String was compressed */
       /* Get the compressed size */
       rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-      OR_GET_INT (&compressed_length, (char *) &net_charlen);
+      compressed_length = OR_GET_INT ((char *) &net_charlen);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -8529,7 +8529,7 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
 
       /* Get the decompressed size */
       rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-      OR_GET_INT (&decompressed_length, (char *) &net_charlen);
+      decompressed_length = OR_GET_INT ((char *) &net_charlen);
       if (rc != NO_ERROR)
 	{
 	  return rc;
