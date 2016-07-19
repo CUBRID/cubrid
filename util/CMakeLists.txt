@@ -220,7 +220,7 @@ if(UNIX)
     ${EXECUTABLES_DIR}/unittests_lf.c
     )
   add_executable(unittests_lf ${UNITTESTS_LF_SOURCES})
-  target_compile_definitions(unittests_lf PRIVATE SERVER_MODE ${COMMON_DEFS})
+  target_compile_definitions(unittests_lf PRIVATE UNITTEST_LF SERVER_MODE ${COMMON_DEFS})
   target_include_directories(unittests_lf PRIVATE ${EP_INCLUDES})
   target_link_libraries(unittests_lf LINK_PRIVATE cubridcs)
 

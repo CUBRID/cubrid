@@ -710,7 +710,7 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
   assert (session_p->ref_count == 0);
 #endif
 
-  error = lf_hash_delete_already_locked (t_entry, &sessions.sessions_table, (void *) &id, &success);
+  error = lf_hash_delete_already_locked (t_entry, &sessions.sessions_table, (void *) &id, session_p, &success);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
