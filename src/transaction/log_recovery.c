@@ -2670,7 +2670,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      break;
 	    }
 
-	  _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : log_rtype: %d", log_rtype);
+	    {
+
+	      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : log_rtype:%d", log_rtype);
+	    }
 
 	  switch (log_rtype)
 	    {
@@ -2733,6 +2736,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		  mvccid = MVCCID_NULL;
 		}
+
+	      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : mvccid:%lld", mvccid);
 
 	      if (is_mvcc_op)
 		{
@@ -2924,6 +2929,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		  mvccid = MVCCID_NULL;
 		}
+
+	      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : mvccid:%lld", mvccid);
 
 	      /* Do we need to redo anything ? */
 
@@ -3849,6 +3856,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    {
 	      LSA_COPY (&tdes->undo_nxlsa, &prev_tranlsa);
 
+	      _er_log_debug (ARG_FILE_LINE, "log_recovery_undo : log_rtype:%d", log_rtype);
+
 	      switch (log_rtype)
 		{
 		case LOG_MVCC_UNDOREDO_DATA:
@@ -3893,6 +3902,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		      rcv.mvcc_id = MVCCID_NULL;
 		    }
+
+		  _er_log_debug (ARG_FILE_LINE, "log_recovery_undo : rcv.mvcc_id:%lld", rcv.mvcc_id);
 
 		  rcvindex = undoredo->data.rcvindex;
 		  rcv.length = undoredo->ulength;
@@ -3952,6 +3963,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		      rcv.mvcc_id = MVCCID_NULL;
 		    }
+
+		  _er_log_debug (ARG_FILE_LINE, "log_recovery_undo : rcv.mvcc_id:%lld", rcv.mvcc_id);
 
 		  rcvindex = undo->data.rcvindex;
 		  rcv.length = undo->length;
