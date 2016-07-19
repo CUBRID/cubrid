@@ -143,9 +143,11 @@ struct lf_tran_entry
   /* Was transaction ID incremented? */
   bool did_incr;
 
+#if defined (UNITTEST_LF)
   /* Debug */
   pthread_mutex_t *locked_mutex;
   int locked_mutex_line;
+#endif				/* UNITTEST_LF */
 };
 
 #define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1, false }
@@ -442,6 +444,8 @@ extern void lf_bitmap_destroy (LF_BITMAP * bitmap);
 extern int lf_bitmap_get_entry (LF_BITMAP * bitmap);
 extern int lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx);
 
+#if defined (UNITTEST_LF)
 extern void lf_reset_counters (void);
+#endif /* UNITTEST_LF */
 
 #endif /* _LOCK_FREE_H_ */
