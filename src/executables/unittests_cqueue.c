@@ -81,6 +81,8 @@ fail (const char *message)
   return ER_FAILED;
 }
 
+static volatile INT64 nconsumed;
+
 /* thread entry functions */
 void *
 test_circular_queue_consumer (void *param)
@@ -89,9 +91,13 @@ test_circular_queue_consumer (void *param)
   VACUUM_LOG_BLOCKID data;
   bool r;
 
-  while (1)
+  while (nconsumed < NOPS)
     {
       r = lf_circular_queue_consume (vacuum_Finished_job_queue, &data);
+      if (r)
+	{
+	  ATOMIC_INC_64 (&nconsumed, 1);
+	}
     }
 
   pthread_exit ((void *) NO_ERROR);
@@ -105,11 +111,16 @@ test_circular_queue_producer (void *param)
 #define NOPS	  1000000	/* 1M */
   VACUUM_LOG_BLOCKID data;
   bool r;
+  int nproduced = 0;
 
-  while (1)
+  while (nproduced < NOPS)
     {
       data = 0;
       r = lf_circular_queue_produce (vacuum_Finished_job_queue, &data);
+      if (r)
+	{
+	  nproduced++;
+	}
 
       /* need some delay */
       thread_sleep (10);
@@ -135,6 +146,8 @@ test_cqueue (int num_consumers, int num_producers)
     {
       return fail ("too many threads");
     }
+
+  nconsumed = 0;
 
   vacuum_Finished_job_queue =
     lf_circular_queue_create (VACUUM_FINISHED_JOB_QUEUE_CAPACITY, sizeof (VACUUM_LOG_BLOCKID));
