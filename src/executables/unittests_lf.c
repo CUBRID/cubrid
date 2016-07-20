@@ -34,6 +34,8 @@
 #define RAND_SIZE	RAND_BLOCKS * RAND_BLOCK_SIZE
 static int random_numbers[RAND_SIZE];
 
+#define PTHREAD_ABORT_AND_EXIT(code) abort (); pthread_exit (code)
+
 static void
 generate_random ()
 {
@@ -182,7 +184,7 @@ static int
 fail (const char *message)
 {
   printf (" %s: %s\n", "FAILED", message);
-  assert (false);
+  abort ();
   return ER_FAILED;
 }
 
@@ -216,7 +218,7 @@ test_freelist_proc (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -229,7 +231,7 @@ test_freelist_proc (void *param)
 	  entry = (XENTRY *) lf_freelist_claim (te, freelist);
 	  if (entry == NULL)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	}
@@ -237,7 +239,7 @@ test_freelist_proc (void *param)
 	{
 	  if (lf_freelist_retire (te, freelist, (void *) entry) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	}
@@ -247,7 +249,7 @@ test_freelist_proc (void *param)
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -270,13 +272,13 @@ test_hash_proc_1 (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
   if (te->entry_idx >= RAND_BLOCKS || te->entry_idx < 0)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
   else
@@ -293,7 +295,7 @@ test_hash_proc_1 (void *param)
 	  entry = NULL;
 	  if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	  lf_tran_end_with_mb (te);
@@ -302,7 +304,7 @@ test_hash_proc_1 (void *param)
 	{
 	  if (lf_hash_delete (te, hash, &key, NULL) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	}
@@ -310,7 +312,7 @@ test_hash_proc_1 (void *param)
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -333,13 +335,13 @@ test_hash_proc_2 (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
   if (te->entry_idx >= RAND_BLOCKS || te->entry_idx < 0)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
   else
@@ -355,30 +357,37 @@ test_hash_proc_2 (void *param)
 	{
 	  if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	  if (entry == NULL)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 
+	  if (te->locked_mutex != &entry->mutex)
+	    {
+	      abort ();
+	    }
+	  te->locked_mutex = NULL;
 	  pthread_mutex_unlock (&entry->mutex);
 	}
       else
 	{
 	  if (lf_hash_delete (te, hash, &key, NULL) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	}
+
+      assert (te->locked_mutex == NULL);
     }
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -388,7 +397,7 @@ test_hash_proc_2 (void *param)
 #undef NOPS
 }
 
-static int del_op_count = 0;
+static int del_op_count = -1;
 
 void *
 test_hash_proc_3 (void *param)
@@ -404,13 +413,13 @@ test_hash_proc_3 (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
   if (te->entry_idx >= RAND_BLOCKS || te->entry_idx < 0)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
   else
@@ -424,17 +433,17 @@ test_hash_proc_3 (void *param)
 
       if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	{
-	  pthread_exit (ER_FAILED);
+	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	  return ER_FAILED;
 	}
       if (entry == NULL)
 	{
-	  pthread_exit (ER_FAILED);
+	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	  return ER_FAILED;
 	}
       if (entry->key != key)
 	{
-	  pthread_exit (ER_FAILED);
+	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	  return ER_FAILED;
 	}
 
@@ -445,26 +454,33 @@ test_hash_proc_3 (void *param)
 	  int success = 0;
 
 	  local_del_op_count += entry->data;
-	  if (lf_hash_delete (te, hash, &key, &success) != NO_ERROR)
+	  if (lf_hash_delete_already_locked (te, hash, &key, entry, &success) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	  else if (!success)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	}
       else
 	{
+	  if (te->locked_mutex != &entry->mutex)
+	    {
+	      abort ();
+	    }
+	  te->locked_mutex = NULL;
 	  pthread_mutex_unlock (&entry->mutex);
 	}
+
+      assert (te->locked_mutex == NULL);
     }
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -488,13 +504,13 @@ test_clear_proc_1 (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
   if (te->entry_idx >= RAND_BLOCKS || te->entry_idx < 0)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
   else
@@ -514,7 +530,7 @@ test_clear_proc_1 (void *param)
 	      entry = NULL;
 	      if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 		{
-		  pthread_exit (ER_FAILED);
+		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 		  return ER_FAILED;
 		}
 	      lf_tran_end_with_mb (te);
@@ -523,24 +539,20 @@ test_clear_proc_1 (void *param)
 	    {
 	      if (lf_hash_delete (te, hash, &key, NULL) != NO_ERROR)
 		{
-		  pthread_exit (ER_FAILED);
+		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 		  return ER_FAILED;
 		}
 	    }
 	}
       else
 	{
-	  if (lf_hash_clear (te, hash) != NO_ERROR)
-	    {
-	      pthread_exit (ER_FAILED);
-	      return ER_FAILED;
-	    }
+	  lf_hash_clear (te, hash);
 	}
     }
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -563,13 +575,13 @@ test_clear_proc_2 (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
   if (te->entry_idx >= RAND_BLOCKS || te->entry_idx < 0)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
   else
@@ -587,39 +599,42 @@ test_clear_proc_2 (void *param)
 	    {
 	      if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 		{
-		  pthread_exit (ER_FAILED);
+		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 		  return ER_FAILED;
 		}
 	      if (entry == NULL)
 		{
-		  pthread_exit (ER_FAILED);
+		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 		  return ER_FAILED;
 		}
 
+
+	      if (te->locked_mutex != &entry->mutex)
+		{
+		  abort ();
+		}
+	      te->locked_mutex = NULL;
 	      pthread_mutex_unlock (&entry->mutex);
 	    }
 	  else
 	    {
 	      if (lf_hash_delete (te, hash, &key, NULL) != NO_ERROR)
 		{
-		  pthread_exit (ER_FAILED);
+		  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 		  return ER_FAILED;
 		}
 	    }
 	}
       else
 	{
-	  if (lf_hash_clear (te, hash) != NO_ERROR)
-	    {
-	      pthread_exit (ER_FAILED);
-	      return ER_FAILED;
-	    }
+	  lf_hash_clear (te, hash);
 	}
+      assert (te->locked_mutex == NULL);
     }
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
@@ -643,13 +658,13 @@ test_clear_proc_3 (void *param)
   te = lf_tran_request_entry (ts);
   if (te == NULL)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
 
   if (te->entry_idx >= RAND_BLOCKS || te->entry_idx < 0)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
   else
@@ -663,23 +678,18 @@ test_clear_proc_3 (void *param)
 
       if (i % 1000 == 999)
 	{
-	  if (lf_hash_clear (te, hash) != NO_ERROR)
-	    {
-	      pthread_exit (ER_FAILED);
-	      return ER_FAILED;
-	    }
-
+	  lf_hash_clear (te, hash);
 	  continue;
 	}
 
       if (lf_hash_find_or_insert (te, hash, &key, &entry, NULL) != NO_ERROR)
 	{
-	  pthread_exit (ER_FAILED);
+	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	  return ER_FAILED;
 	}
       if (entry == NULL)
 	{
-	  pthread_exit (ER_FAILED);
+	  PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	  return ER_FAILED;
 	}
 
@@ -689,32 +699,40 @@ test_clear_proc_3 (void *param)
 	{
 	  int success = 0;
 
-	  if (lf_hash_delete (te, hash, &key, &success) != NO_ERROR)
+	  if (lf_hash_delete_already_locked (te, hash, &key, entry, &success) != NO_ERROR)
 	    {
-	      pthread_exit (ER_FAILED);
+	      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
 	      return ER_FAILED;
 	    }
 	  else if (!success)
 	    {
 	      /* cleared in the meantime */
+	      if (te->locked_mutex != &entry->mutex)
+		{
+		  abort ();
+		}
+	      te->locked_mutex = NULL;
 	      pthread_mutex_unlock (&entry->mutex);
 	    }
 	}
       else
 	{
+	  if (te->locked_mutex != &entry->mutex)
+	    {
+	      abort ();
+	    }
+	  te->locked_mutex = NULL;
 	  pthread_mutex_unlock (&entry->mutex);
 	}
 
-      lf_tran_end_with_mb (te);
+      assert (te->locked_mutex == NULL);
     }
 
   if (lf_tran_return_entry (te) != NO_ERROR)
     {
-      pthread_exit (ER_FAILED);
+      PTHREAD_ABORT_AND_EXIT (ER_FAILED);
       return ER_FAILED;
     }
-
-  del_op_count = -1;
 
   pthread_exit (NO_ERROR);
 
@@ -831,11 +849,12 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
   pthread_t threads[MAX_THREADS];
   char msg[256];
   int i;
-
-  del_op_count = 0;
+  XENTRY *e = NULL;
 
   sprintf (msg, "hash (mutex=%s, %d threads)", edesc->using_mutex ? "y" : "n", nthreads);
   begin (msg);
+
+  lf_reset_counters ();
 
   /* initialization */
   if (nthreads > MAX_THREADS)
@@ -878,10 +897,21 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
 	}
     }
 
+  for (i = 0; i < HASH_SIZE; i++)
+    {
+      for (e = hash.buckets[i]; e != NULL; e = e->next)
+	{
+	  if (edesc->f_hash (&e->key, HASH_SIZE) != i)
+	    {
+	      sprintf (msg, "hash (%d) = %d != %d", e->key, edesc->f_hash (&e->key, HASH_SIZE), i);
+	      return fail (msg);
+	    }
+	}
+    }
+
   /* count operations */
   if (edesc->using_mutex)
     {
-      XENTRY *e;
       int nondel_op_count = 0;
 
       for (i = 0; i < HASH_SIZE; i++)
@@ -945,8 +975,8 @@ test_hash_table (LF_ENTRY_DESCRIPTOR * edesc, int nthreads, void *(*proc) (void 
 
     if (ecount + freelist.available_cnt + freelist.retired_cnt != freelist.alloc_cnt)
       {
-	sprintf (msg, "leak check fail (%d + %d + %d != %d)", ecount, freelist.available_cnt, freelist.retired_cnt,
-		 freelist.alloc_cnt);
+	sprintf (msg, "leak check fail (%d + %d + %d = %d != %d)", ecount, freelist.available_cnt, freelist.retired_cnt,
+		 ecount + freelist.available_cnt + freelist.retired_cnt, freelist.alloc_cnt);
 	return fail (msg);
       }
   }
@@ -974,8 +1004,6 @@ test_hash_iterator ()
   static LF_TRAN_ENTRY *te;
   pthread_t threads[NUM_THREADS];
   int i;
-
-  del_op_count = 0;
 
   begin ("hash table iterator");
 
@@ -1017,6 +1045,8 @@ test_hash_iterator ()
       else
 	{
 	  entry->data = i;
+	  /* end transaction */
+	  lf_tran_end_with_mb (te);
 	}
     }
 
@@ -1040,10 +1070,7 @@ test_hash_iterator ()
   }
 
   /* reset */
-  if (lf_hash_clear (te, &hash) != NO_ERROR)
-    {
-      return fail ("clear error");
-    }
+  lf_hash_clear (te, &hash);
 
   /* multi-threaded test */
   /* TODO TODO TODO */
@@ -1119,10 +1146,13 @@ main (int argc, char **argv)
   xentry_desc.using_mutex = LF_EM_USING_MUTEX;
   for (i = 1; i <= 64; i *= 2)
     {
+      /* test_hash_proc_3 uses global del_op_count */
+      del_op_count = 0;
       if (test_hash_table (&xentry_desc, i, test_hash_proc_3) != NO_ERROR)
 	{
 	  goto fail;
 	}
+      del_op_count = -1;
       if (test_hash_table (&xentry_desc, i, test_clear_proc_3) != NO_ERROR)
 	{
 	  goto fail;

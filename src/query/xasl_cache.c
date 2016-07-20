@@ -1872,7 +1872,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   /* Start cleanup. */
 
   /* How many entries do we need to cleanup? */
-  cleanup_count = (int) XCACHE_CLEANUP_RATIO *xcache_Soft_capacity + (xcache_Entry_count - xcache_Soft_capacity);
+  cleanup_count = (int) (XCACHE_CLEANUP_RATIO * xcache_Soft_capacity) + (xcache_Entry_count - xcache_Soft_capacity);
   if (cleanup_count <= 0)
     {
       /* Not enough to cleanup */

@@ -4193,15 +4193,13 @@ pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa)
   return 0;
 }
 
-
 /*
  * pgbuf_set_lsa () - Set the log sequence address of the page to the given lsa
  *   return: page lsa or NULL
  *   pgptr(in): Pointer to page
  *   lsa_ptr(in): Log Sequence address
  *
- * Note: This function is for the exclusive use of the log and recovery
- *       manager.
+ * Note: This function is for the exclusive use of the log and recovery manager.
  */
 const LOG_LSA *
 pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
@@ -4278,6 +4276,14 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
 	}
       LSA_COPY (&bufptr->oldest_unflush_lsa, lsa_ptr);
     }
+
+#if defined (NDEBUG)
+  /* We expect the page was or will be set as dirty before unfix. However, there might be a missing case to set dirty.
+   * It is correct to set dirty here. Note that we have set lsa of the page and it should be also flushed.
+   * But we also want to find missing cases and fix them. Make everything sure for release builds.
+   */
+  pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
+#endif /* NDEBUG */
 
   return lsa_ptr;
 }
@@ -9916,6 +9922,7 @@ static void
 pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   PGBUF_HOLDER *holder;
+
   assert (bufptr != NULL);
 
   PGBUF_SET_DIRTY (bufptr);
@@ -11233,6 +11240,12 @@ exit:
 	{
 	  pgbuf_unfix_and_init (thread_p, ret_pgptr);
 	}
+    }
+
+  if (req_page_has_group == false && ret_pgptr != NULL && req_watcher->curr_rank != PGBUF_ORDERED_HEAP_HDR
+      && VPID_EQ (&req_watcher->group_id, req_vpid))
+    {
+      req_watcher->curr_rank = PGBUF_ORDERED_HEAP_HDR;
     }
 
   return er_status;
