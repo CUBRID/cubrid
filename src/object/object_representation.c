@@ -1556,7 +1556,14 @@ or_get_varchar_length (OR_BUF * buf, int *rc)
     {
       buf->ptr = start;
       rc = or_get_varchar_compression_lengths (buf, &compressed_length, &decompressed_length);
-      charlen = compressed_length > 0 ? compressed_length : decompressed_length;
+      if (compressed_length > 0)
+	{
+	  charlen = compressed_length;
+	}
+      else
+	{
+	  charlen = decompressed_length;
+	}
     }
 
   return charlen;
