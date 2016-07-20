@@ -105,6 +105,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
   ${QUERY_DIR}/crypt_opfunc.c
   ${QUERY_DIR}/fetch.c
+  ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/method_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
@@ -121,6 +122,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/vacuum.c
+  ${QUERY_DIR}/xasl_cache.c
   )
 
 set(OBJECT_SOURCES
@@ -222,7 +224,6 @@ add_library(cubrid SHARED
   ${PROBES_OBJECT}
   )
 set_target_properties(cubrid PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
-set_target_properties(cubrid PROPERTIES PUBLIC_HEADER "${COMPAT_DIR}/dbi.h")
 if(WIN32)
   # change library file name to libcubrid
   set_target_properties(cubrid PROPERTIES OUTPUT_NAME libcubrid)
@@ -238,7 +239,7 @@ if(WIN32)
     target_compile_definitions(cubrid PRIVATE _USE_32BIT_TIME_T)
   endif(TARGET_PLATFORM_BITS EQUAL 32)
   target_link_libraries(cubrid LINK_PRIVATE ws2_32 ${JVM_LIBS})
-  set_target_properties(cubrid PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libcubrid/libcubrid.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib"  LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
+  set_target_properties(cubrid PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/libcubrid/libcubrid.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
 target_include_directories(cubrid PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${JAVA_INC} ${EP_INCLUDES})
 if(UNIX)
@@ -257,17 +258,22 @@ if(ENABLE_SYSTEMTAP)
 endif(ENABLE_SYSTEMTAP)
 
 install(TARGETS cubrid
-  RUNTIME DESTINATION ${CUBRID_BINDIR}
-  LIBRARY DESTINATION ${CUBRID_LIBDIR}
-  PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR}
+  RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Library
+  LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
+  )
+
+install(FILES
+  ${COMPAT_DIR}/dbi_compat.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  RENAME dbi.h
   )
 
 
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY
-    ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/
-    DESTINATION ${CUBRID_BINDIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/
+    DESTINATION ${CUBRID_BINDIR} COMPONENT Debuginfo
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)

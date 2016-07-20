@@ -1551,7 +1551,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
       /* Since an already cached object of a reuse_oid table may be deleted after it is cached to my workspace and
        * then another object may occupy its slot, unfortunately the cached CHN has no meaning. When the new object
        * occasionally has the same CHN with that of the cached object and we don't fetch the object from server again, 
-       * * we will incorrectly reuse the cached deleted object. We need to refetch the cached object if it is an
+       * we will incorrectly reuse the cached deleted object. We need to refetch the cached object if it is an
        * instance of reuse_oid table. Server will fetch the object since client passes NULL_CHN. */
       chn = NULL_CHN;
     }

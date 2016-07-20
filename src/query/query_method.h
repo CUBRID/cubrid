@@ -36,7 +36,7 @@ struct vacomm_buffer
   char *host;			/* server machine name */
   char *server_name;		/* server name */
   int rc;			/* trans request ID */
-  int no_vals;			/* number of values */
+  int num_vals;			/* number of values */
   char *area;			/* buffer + header */
   char *buffer;			/* buffer */
   int cur_pos;			/* current position */

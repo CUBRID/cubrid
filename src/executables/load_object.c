@@ -1524,7 +1524,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       break;
 
     case DB_TYPE_NUMERIC:
-      ptr = numeric_db_value_print (value);
+      ptr = numeric_db_value_print (value, buf);
 
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, !strchr (ptr, '.') ? "%s." : "%s", ptr));
       break;
@@ -1687,7 +1687,7 @@ lo_migrate_out (LOID * loid, const char *pathname)
   int error, fd, length, offset, readlen;
 
   error = 0;
-  if ((length = largeobjmgr_length (loid)) < 0)
+  if ((length = (int) largeobjmgr_length (loid)) < 0)
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MIGDB, MIGDB_MSG_CANT_ACCESS_LO));
       error = 1;

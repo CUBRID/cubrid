@@ -415,7 +415,7 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser)
     }
 
   ftime (&curr_client_timeb);
-  diff_time = curr_client_timeb.time - base_client_timeb.time;
+  diff_time = (int) (curr_client_timeb.time - base_client_timeb.time);
   diff_mtime = curr_client_timeb.millitm - base_client_timeb.millitm;
 
   if (diff_time > MAX_SERVER_TIME_CACHE)
@@ -674,7 +674,7 @@ db_compile_statement_local (DB_SESSION * session)
    * is disabled, old interface of do_statement() will be used instead. do_statement() makes a XASL everytime rather
    * than using XASL cache. Also, it can be executed in the server without touching the XASL cache by calling
    * prepare_and_execute_query(). */
-  if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0 && statement->cannot_prepare == 0)
+  if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->cannot_prepare == 0)
     {
 
       /* now, prepare the statement by calling do_prepare_statement() */
@@ -1727,7 +1727,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	  err = er_errid ();
 	}
     }
-  else if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0 && statement->cannot_prepare == 0)
+  else if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->cannot_prepare == 0)
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
@@ -3095,8 +3095,6 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
 int
 db_set_system_generated_statement (DB_SESSION * session)
 {
-  PT_NODE *statement;
-
   CHECK_CONNECT_MINUSONE ();
 
   if (session == NULL || session->parser == NULL)

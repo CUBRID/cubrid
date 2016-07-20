@@ -176,7 +176,7 @@
         { \
           assert (log_pgptr != NULL); \
           (lsa)->pageid++; \
-          if (logpb_fetch_page ((thread_p), (lsa)->pageid, (log_pgptr)) == \
+          if (logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, (log_pgptr)) == \
               NULL) \
 	    { \
               logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
@@ -203,7 +203,7 @@
         { \
           assert (log_pgptr != NULL); \
           (lsa)->pageid++; \
-          if ((logpb_fetch_page ((thread_p), (lsa)->pageid, log_pgptr)) == \
+          if ((logpb_fetch_page ((thread_p), (lsa), LOG_CS_FORCE_USE, log_pgptr)) == \
               NULL) \
             { \
               logpb_fatal_error ((thread_p), true, ARG_FILE_LINE, \
@@ -917,8 +917,6 @@ struct log_tdes
   INT64 tran_start_time;
   XASL_ID xasl_id;		/* xasl id of current query */
   LK_RES *waiting_for_res;	/* resource that i'm waiting for */
-
-  int num_pinned_xasl_cache_entries;	/* the number of pinned xasl cache entries in this in this transaction */
   int disable_modifications;	/* db_Disable_modification for each tran */
 
   TRAN_ABORT_REASON tran_abort_reason;
@@ -989,6 +987,9 @@ struct mvcc_trans_status
   unsigned int long_tran_mvccids_length;
 
   volatile unsigned int version;
+
+  /* lowest active MVCCID */
+  MVCCID lowest_active_mvccid;
 };
 
 #define MVCC_STATUS_INITIALIZER \
@@ -1912,6 +1913,11 @@ typedef struct log_logging_stat
 } LOG_LOGGING_STAT;
 
 
+typedef enum log_cs_access_mode LOG_CS_ACCESS_MODE;
+enum log_cs_access_mode
+{ LOG_CS_FORCE_USE, LOG_CS_SAFE_READER };
+
+
 #if !defined(SERVER_MODE)
 extern int log_Tran_index;	/* Index onto transaction table for current thread of execution (client) */
 #endif /* !SERVER_MODE */
@@ -1977,10 +1983,12 @@ extern LOG_PAGE *logpb_create_header_page (THREAD_ENTRY * thread_p);
 extern void logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr);
 extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_PAGE * log_pgptr);
 extern void logpb_flush_header (THREAD_ENTRY * thread_p);
-extern LOG_PAGE *logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
+extern LOG_PAGE *logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE access_mode,
+				   LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_copy_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
-extern LOG_PAGE *logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
+extern LOG_PAGE *logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,  LOG_CS_ACCESS_MODE access_mode,
+					    LOG_PAGE * log_pgptr);
 extern int logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int num_pages,
 					    LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAGEID logical_pageid);

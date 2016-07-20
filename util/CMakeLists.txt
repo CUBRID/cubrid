@@ -240,6 +240,14 @@ if(UNIX)
   target_compile_definitions(unittests_cqueue PRIVATE SERVER_MODE ${COMMON_DEFS})
   target_include_directories(unittests_cqueue PRIVATE ${EP_INCLUDES})
   target_link_libraries(unittests_cqueue LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
+  
+  set(UNITTESTS_SNAPSHOT_SOURCES
+      ${EXECUTABLES_DIR}/unittests_snapshot.c
+      )
+    add_executable(unittests_snapshot ${UNITTESTS_SNAPSHOT_SOURCES})
+    target_compile_definitions(unittests_snapshot PRIVATE SERVER_MODE ${COMMON_DEFS})
+    target_include_directories(unittests_snapshot PRIVATE ${EP_INCLUDES})
+    target_link_libraries(unittests_snapshot LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
 endif(UNIX)
 
 
@@ -278,9 +286,9 @@ install(TARGETS
   cub_admin
   cubrid_esql
   convert_password
-  RUNTIME DESTINATION ${CUBRID_BINDIR}
-  LIBRARY DESTINATION ${CUBRID_LIBDIR}
-  PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR}
+  RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
+  LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
+  PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
 
 # install compats
@@ -304,7 +312,7 @@ if(UNIX)
     spacedb
     sqlx
     unloaddb
-    RUNTIME DESTINATION ${CUBRID_COMPATDIR}
+    RUNTIME DESTINATION ${CUBRID_COMPATDIR} COMPONENT Application
     )
   # TODO: compat scripts start|stop_cubrid?
 endif(UNIX)
@@ -313,8 +321,8 @@ endif(UNIX)
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY
-    ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/
-    DESTINATION ${CUBRID_BINDIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/
+    DESTINATION ${CUBRID_BINDIR} COMPONENT Debuginfo
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)

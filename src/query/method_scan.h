@@ -44,7 +44,7 @@ struct vacomm_buffer
   int length;			/* trans length */
   int status;			/* trans status */
   int error;			/* client error */
-  int no_vals;			/* number of values */
+  int num_vals;			/* number of values */
   char *area;			/* buffer + header */
   char *buffer;			/* buffer */
   int cur_pos;			/* current position */

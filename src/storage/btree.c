@@ -1342,7 +1342,7 @@ static PAGE_PTR btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 static int btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 						MULTI_RANGE_OPT * multi_range_opt, OID * p_new_oid, bool * key_added);
 static int btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, TP_DOMAIN ** domains,
-					    bool * desc_order, DB_VALUE * new_key_values, int no_keys, int first,
+					    bool * desc_order, DB_VALUE * new_key_values, int num_keys, int first,
 					    int last, int *new_pos);
 static int btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss);
 static int btree_insert_mvcc_delid_into_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr,
@@ -1621,6 +1621,10 @@ static int btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF 
 				   BTREE_OBJECT_INFO * btree_obj, MVCCID tran_mvccid, LOG_LSA * reference_lsa);
 
 static MVCCID btree_get_creator_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR root_page);
+static int btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, RECDES * ovf_record,
+					 char *initial_oid_ptr, char *oid_ptr_lower_bound, char *oid_ptr_upper_bound,
+					 BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
+					 int *offset_to_object, BTREE_MVCC_INFO * mvcc_info);
 
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID,
@@ -3643,7 +3647,6 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
   OID mid_oid;
   int size = BTREE_OBJECT_FIXED_SIZE (btid_int);
   int offset_to_object = 0;
-  bool duplicate_oid = false;
 
   /* Assert expected arguments. */
   assert (record != NULL);
@@ -3674,8 +3677,7 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
 	{
 	  /* With MVCC, this case is possible if some conditions are met: 1. OID is reusable. 2. Vacuum cleaned heap
 	   * entry but didn't clean b-tree entry. 3. A new record is inserted in the same slot. 4. The key for old
-	   * record and new record is the same. Just replace the old OID's insert/delete information. */
-	  duplicate_oid = true;
+	   * record and new record is the same. Just add the OID here. */
 	  break;
 	}
       else if (OID_GT (oid, &mid_oid))
@@ -3694,16 +3696,12 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
 
   if (rv_undo_data_ptr != NULL && *rv_undo_data_ptr != NULL)
     {
-      *rv_undo_data_ptr =
-	log_rv_pack_undo_record_changes (*rv_undo_data_ptr, offset_to_object, duplicate_oid ? size : 0, size, oid_ptr);
+      *rv_undo_data_ptr = log_rv_pack_undo_record_changes (*rv_undo_data_ptr, offset_to_object, 0, size, oid_ptr);
     }
 
   /* oid_ptr points to the address where the new object should be saved */
-  if (!duplicate_oid)
-    {
-      /* Make room for a new OID */
-      RECORD_MOVE_DATA (record, offset_to_object + size, offset_to_object);
-    }
+  /* Make room for a new OID */
+  RECORD_MOVE_DATA (record, offset_to_object + size, offset_to_object);
 
   (void) btree_pack_object (oid_ptr, btid_int, BTREE_OVERFLOW_NODE, record, object_info);
 
@@ -3714,8 +3712,7 @@ btree_insert_object_ordered_by_oid (RECDES * record, BTID_INT * btid_int, BTREE_
   /* Log redo changes. */
   if (rv_redo_data_ptr != NULL && *rv_redo_data_ptr != NULL)
     {
-      *rv_redo_data_ptr =
-	log_rv_pack_redo_record_changes (*rv_redo_data_ptr, offset_to_object, duplicate_oid ? size : 0, size, oid_ptr);
+      *rv_redo_data_ptr = log_rv_pack_redo_record_changes (*rv_redo_data_ptr, offset_to_object, 0, size, oid_ptr);
     }
 
   if (offset_to_objptr != NULL)
@@ -12204,27 +12201,16 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
       /* Check OID. */
       if (OID_EQ (oid, &inst_oid))
 	{
-	  /* OID matched. */
-	  /* Check MVCC info. */
-	  ptr = oid_ptr + OR_OID_SIZE;
-	  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
-	    {
-	      ptr += OR_OID_SIZE;
-	    }
-	  (void) btree_unpack_mvccinfo (ptr, mvcc_info, BTREE_OID_HAS_MVCC_INSID_AND_DELID);
-	  error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccinfo, &is_match);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
-	  if (is_match)
-	    {
-	      /* Object is a match. */
-	      *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record.data);
-	    }
-	  /* Not in this page. */
-	  return NO_ERROR;
+	  char *oid_ptr_lower_bound;
+	  char *oid_ptr_upper_bound;
+
+	  /* check a sequence of objects (same OID with different MVCC info) */
+	  oid_ptr_lower_bound = oid_ptr - size * (mid - min);
+	  oid_ptr_upper_bound = oid_ptr + size * (max - mid);
+
+	  return btree_seq_find_oid_from_ovfl (thread_p, btid_int, oid, &ovf_record, oid_ptr, oid_ptr_lower_bound,
+					       oid_ptr_upper_bound, purpose, match_mvccinfo, offset_to_object,
+					       mvcc_info);
 	}
       else if (OID_GT (oid, &inst_oid))
 	{
@@ -12240,6 +12226,120 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
     }
 
   /* Not found. */
+  return NO_ERROR;
+}
+
+/*
+ * btree_seq_find_oid_from_ovfl () - Find object in overflow page.
+ *
+ * return		  : Error code.
+ * thread_p (in)	  : Thread entry.
+ * btid_int (in)	  : B-tree info.
+ * oid (in)		  : OID to find.
+ * ovf_record(in)	  : overflow record
+ * initial_oid_ptr (in)   : pointer to OID initially found
+ * oid_ptr_lower_bound (in) : pointer lower allowed bound within OID buffer
+ * oid_ptr_upper_bound (in) : pointer upper allowed bound within OID buffer
+ * purpose (in)		  : Purpose of call.
+ * match_mvccinfo (in)	  : Non-null value to be matched or null if it doesn't matter.
+ * offset_to_object (out) : If object is found, it saves the offset to object. Otherwise, NOT_FOUND is output.
+ * mvcc_info (out)	  : Output MVCC info if object is found.
+ */
+static int
+btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
+			      RECDES * ovf_record, char *initial_oid_ptr, char *oid_ptr_lower_bound,
+			      char *oid_ptr_upper_bound, BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
+			      int *offset_to_object, BTREE_MVCC_INFO * mvcc_info)
+{
+  OID inst_oid;
+  char *oid_ptr;
+  char *ptr;
+  int obj_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
+  int error_code;
+  bool is_match;
+
+  /* first, check OID and previous ones */
+  oid_ptr = initial_oid_ptr;
+
+  while (oid_ptr >= oid_ptr_lower_bound)
+    {
+      BTREE_GET_OID (oid_ptr, &inst_oid);
+      assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
+      assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+
+      /* Check OID. */
+      if (!OID_EQ (oid, &inst_oid))
+	{
+	  break;
+	}
+
+      /* OID matched. */
+      /* Check MVCC info. */
+      ptr = oid_ptr + OR_OID_SIZE;
+      if (BTREE_IS_UNIQUE (btid_int->unique_pk))
+	{
+	  ptr += OR_OID_SIZE;
+	}
+
+      (void) btree_unpack_mvccinfo (ptr, mvcc_info, BTREE_OID_HAS_MVCC_INSID_AND_DELID);
+      error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccinfo, &is_match);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      if (is_match)
+	{
+	  /* Object is a match. */
+	  *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record->data);
+	  return NO_ERROR;
+	}
+
+      oid_ptr -= obj_size;
+    }
+
+  /* check next OIDs */
+  oid_ptr = initial_oid_ptr + obj_size;
+
+  while (oid_ptr <= oid_ptr_upper_bound)
+    {
+      BTREE_GET_OID (oid_ptr, &inst_oid);
+      assert ((inst_oid.slotid & BTREE_LEAF_RECORD_MASK) == 0);
+      assert ((inst_oid.volid & BTREE_OID_MVCC_FLAGS_MASK) == 0);
+
+      /* Check OID. */
+      if (!OID_EQ (oid, &inst_oid))
+	{
+	  break;
+	}
+
+      /* OID matched. */
+      /* Check MVCC info. */
+      ptr = oid_ptr + OR_OID_SIZE;
+      if (BTREE_IS_UNIQUE (btid_int->unique_pk))
+	{
+	  ptr += OR_OID_SIZE;
+	}
+
+      (void) btree_unpack_mvccinfo (ptr, mvcc_info, BTREE_OID_HAS_MVCC_INSID_AND_DELID);
+      error_code = btree_find_oid_does_mvcc_info_match (thread_p, mvcc_info, purpose, match_mvccinfo, &is_match);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      if (is_match)
+	{
+	  /* Object is a match. */
+	  *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record->data);
+	  return NO_ERROR;
+	}
+
+      oid_ptr += obj_size;
+    }
+
   return NO_ERROR;
 }
 
@@ -19377,22 +19477,22 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 
   *key_added = true;
 
-  assert (multi_range_opt->no_attrs != 0);
-  if (multi_range_opt->no_attrs == 0)
+  assert (multi_range_opt->num_attrs != 0);
+  if (multi_range_opt->num_attrs == 0)
     {
       return ER_FAILED;
     }
 
   new_mkey = DB_PULL_MIDXKEY (&(bts->cur_key));
-  new_key_value = (DB_VALUE *) db_private_alloc (thread_p, multi_range_opt->no_attrs * sizeof (DB_VALUE));
+  new_key_value = (DB_VALUE *) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (DB_VALUE));
   if (new_key_value == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (DB_VALUE *) * multi_range_opt->no_attrs);
+	      sizeof (DB_VALUE *) * multi_range_opt->num_attrs);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  for (i = 0; i < multi_range_opt->no_attrs; i++)
+  for (i = 0; i < multi_range_opt->num_attrs; i++)
     {
       DB_MAKE_NULL (&new_key_value[i]);
       error = pr_midxkey_get_element_nocopy (new_mkey, multi_range_opt->sort_att_idx[i], &new_key_value[i], NULL, NULL);
@@ -19417,7 +19517,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 
       /* if all keys are equal, the new element is rejected */
       reject_new_elem = true;
-      for (i = 0; i < multi_range_opt->no_attrs; i++)
+      for (i = 0; i < multi_range_opt->num_attrs; i++)
 	{
 	  DB_MAKE_NULL (&comp_key_value);
 	  error = pr_midxkey_get_element_nocopy (comp_mkey, multi_range_opt->sort_att_idx[i], &comp_key_value, NULL,
@@ -19478,14 +19578,14 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       if (multi_range_opt->sort_col_dom == NULL)
 	{
 	  multi_range_opt->sort_col_dom =
-	    (TP_DOMAIN **) db_private_alloc (thread_p, multi_range_opt->no_attrs * sizeof (TP_DOMAIN *));
+	    (TP_DOMAIN **) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (TP_DOMAIN *));
 	  if (multi_range_opt->sort_col_dom == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto exit;
 	    }
 
-	  for (i = 0; i < multi_range_opt->no_attrs; i++)
+	  for (i = 0; i < multi_range_opt->num_attrs; i++)
 	    {
 	      multi_range_opt->sort_col_dom[i] = tp_domain_resolve_value (&new_key_value[i], NULL);
 	    }
@@ -19500,7 +19600,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       error =
 	btree_top_n_items_binary_search (multi_range_opt->top_n_items, multi_range_opt->sort_att_idx,
 					 multi_range_opt->sort_col_dom, multi_range_opt->is_desc_order, new_key_value,
-					 multi_range_opt->no_attrs, 0, multi_range_opt->cnt - 1, &pos);
+					 multi_range_opt->num_attrs, 0, multi_range_opt->cnt - 1, &pos);
       if (error != NO_ERROR)
 	{
 	  goto exit;
@@ -19546,7 +19646,7 @@ exit:
  * desc_order (in)     : is descending order for midxkey attributes
  *			 if NULL, ascending order will be considered
  * new_key_values (in) : key values for the new item
- * no_keys (in)	       : number of keys that are compared
+ * num_keys (in)       : number of keys that are compared
  * first (in)	       : position of the first item in current range
  * last (in)	       : position of the last item in current range
  * new_pos (out)       : the position where the new item fits
@@ -19564,7 +19664,7 @@ exit:
  */
 static int
 btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, TP_DOMAIN ** domains, bool * desc_order,
-				 DB_VALUE * new_key_values, int no_keys, int first, int last, int *new_pos)
+				 DB_VALUE * new_key_values, int num_keys, int first, int last, int *new_pos)
 {
   DB_MIDXKEY *comp_mkey = NULL;
   DB_VALUE comp_key_value;
@@ -19582,7 +19682,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 	  comp_item = top_n_items[0];
 	  comp_mkey = DB_PULL_MIDXKEY (&(comp_item->index_value));
 
-	  for (i = 0; i < no_keys; i++)
+	  for (i = 0; i < num_keys; i++)
 	    {
 	      DB_MAKE_NULL (&comp_key_value);
 	      error = pr_midxkey_get_element_nocopy (comp_mkey, att_idxs[i], &comp_key_value, NULL, NULL);
@@ -19619,7 +19719,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
   comp_item = top_n_items[middle];
   comp_mkey = DB_PULL_MIDXKEY (&(comp_item->index_value));
 
-  for (i = 0; i < no_keys; i++)
+  for (i = 0; i < num_keys; i++)
     {
       DB_MAKE_NULL (&comp_key_value);
       error = pr_midxkey_get_element_nocopy (comp_mkey, att_idxs[i], &comp_key_value, NULL, NULL);
@@ -19640,7 +19740,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 	      /* the new value is better than the one in the middle */
 	      last = middle;
 	    }
-	  return btree_top_n_items_binary_search (top_n_items, att_idxs, domains, desc_order, new_key_values, no_keys,
+	  return btree_top_n_items_binary_search (top_n_items, att_idxs, domains, desc_order, new_key_values, num_keys,
 						  first, last, new_pos);
 	}
     }
@@ -22298,7 +22398,7 @@ btree_clear_mvcc_flags_from_oid (OID * oid)
  * mem_btid2 (in) : Pointer to second btid value.
  */
 int
-btree_compare_btids (const void *mem_btid1, const void *mem_btid2)
+btree_compare_btids (void *mem_btid1, void *mem_btid2)
 {
   const BTID *btid1 = (const BTID *) mem_btid1;
   const BTID *btid2 = (const BTID *) mem_btid2;
@@ -33949,4 +34049,17 @@ btree_rv_undo_mark_dealloc_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;
+}
+
+/*
+ * btree_hash_btid () - Create hash value from btid.
+ *
+ * return	  : Hash value
+ * btid (in)	  : Pointer to b-tree ID.
+ * hash_size (in) : Hash size.
+ */
+unsigned int
+btree_hash_btid (void *btid, int hash_size)
+{
+  return ((BTID *) btid)->vfid.fileid % hash_size;
 }

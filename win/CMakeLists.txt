@@ -101,28 +101,11 @@ else(MSVC_VERSION LESS 1600)
 endif(MSVC_VERSION LESS 1600)
 
 
-set(SETUPMANAGE_SOURCES
-  ${WIN_TOOLS_DIR}/setupmanage/SETUPMANAGE.CPP
-  ${WIN_TOOLS_DIR}/setupmanage/PATHREGULATION.CPP
-  ${WIN_TOOLS_DIR}/setupmanage/stdafx.cpp
-  ${CMAKE_BINARY_DIR}/version.rc
-  )
-set_source_files_properties(${WIN_TOOLS_DIR}/setupmanage/stdafx.cpp
-  PROPERTIES
-  COMPILE_FLAGS "/Ycstdafx.h"
-  )
-add_executable(setupmanage ${CUBRIDSERVICE_SOURCES})
-set_target_properties(setupmanage PROPERTIES COMPILE_FLAGS "/Yustdafx.h")
-target_compile_definitions(setupmanage PRIVATE _CONSOLE)
-target_link_libraries(setupmanage LINK_PRIVATE ${WIN_TOOLS_DIR}/setupmanage/UTSKEY.LIB)
-
-
 install(TARGETS
   ctrlservice
   cubridservice
   cubridtray
-  setupmanage
-  RUNTIME DESTINATION ${CUBRID_BINDIR}
+  RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   )
 
 # install external pre-built DLLs
@@ -142,11 +125,11 @@ endif(TARGET_PLATFORM_BITS EQUAL 32)
 
 install(FILES
   ${TARGET_DLLS}
-  DESTINATION ${CUBRID_BINDIR})
+  DESTINATION ${CUBRID_BINDIR} COMPONENT Library)
 
 # install pdb files for debugging on windows
 install(DIRECTORY
-  ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/
-  DESTINATION ${CUBRID_BINDIR}
+  ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/
+  DESTINATION ${CUBRID_BINDIR} COMPONENT Debuginfo
   FILES_MATCHING PATTERN "*.pdb"
   )

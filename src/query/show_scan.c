@@ -386,7 +386,7 @@ showstmt_alloc_tuple_in_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT
 
   if (ctx->num_used == ctx->num_total)
     {
-      num_new_total = ctx->num_total * 1.5 + 1;
+      num_new_total = (int) (ctx->num_total * 1.5 + 1);
       new_tuples = (DB_VALUE **) db_private_realloc (thread_p, ctx->tuples, sizeof (DB_VALUE *) * num_new_total);
       if (new_tuples == NULL)
 	{

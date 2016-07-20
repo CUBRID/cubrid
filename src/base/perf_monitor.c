@@ -350,10 +350,8 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PC_NUM_FULL, "Num_plan_cache_full"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PC_NUM_DELETE, "Num_plan_cache_delete"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PC_NUM_INVALID_XASL_ID, "Num_plan_cache_invalid_xasl_id"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PC_NUM_QUERY_STRING_HASH_ENTRIES, "Num_plan_cache_query_string_hash_entries"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PC_NUM_XASL_ID_HASH_ENTRIES, "Num_plan_cache_xasl_id_hash_entries"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PC_NUM_CLASS_OID_HASH_ENTRIES, "Num_plan_cache_class_oid_hash_entries"),
-
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PC_NUM_CACHE_ENTRIES, "Num_plan_cache_entries"),
+  
   /* Vacuum process log section. */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_VAC_NUM_VACUUMED_LOG_PAGES, "Num_vacuum_log_pages_vacuumed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_VAC_NUM_TO_VACUUM_LOG_PAGES, "Num_vacuum_log_pages_to_vacuum"),

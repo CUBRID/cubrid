@@ -62,8 +62,8 @@ target_include_directories(cubrid_timezones PRIVATE ${CMAKE_SOURCE_DIR}/src/base
 add_dependencies(cubrid_timezones gen_timezones)
 
 install(TARGETS cubrid_timezones
-  RUNTIME DESTINATION ${CUBRID_LIBDIR}
-  LIBRARY DESTINATION ${CUBRID_LIBDIR}
+  RUNTIME DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
+  LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   )
 
 if(UNIX)
@@ -97,7 +97,7 @@ install(DIRECTORY
 
 install(FILES
   ${CMAKE_SOURCE_DIR}/src/base/timezone_lib_common.h
-  DESTINATION ${CUBRID_TZDIR}/tzlib)
+  DESTINATION ${CUBRID_TZDIR}/tzlib COMPONENT Header)
 
 
 
@@ -105,8 +105,8 @@ install(FILES
 # TODO: move the pdb files to CUBRID/symbols directory
 if(WIN32)
   install(DIRECTORY
-    ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/
-    DESTINATION ${CUBRID_BINDIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/
+    DESTINATION ${CUBRID_BINDIR} COMPONENT Debuginfo
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)

@@ -20,9 +20,8 @@
 # Build and package script for CUBRID
 # Requirements
 # - Bash shell
-# - Build tool - autotools, make, gcc
-# - Utils - GNU tar, ...
-# - RPM tool - rpmbuild
+# - Build tool - cmake, gcc
+# - Utils - GNU tar, git, ...
 
 # scrtip directory
 script_dir=$(dirname $(readlink -f $0))
@@ -30,9 +29,7 @@ script_dir=$(dirname $(readlink -f $0))
 # variables for options
 build_target="x86_64"
 build_mode="release"
-increase_build_number="no"
 source_dir=`pwd`
-run_autogen="no"
 default_java_dir="/usr/java/default"
 java_dir=""
 configure_options=""
@@ -48,11 +45,10 @@ packages=""
 # variables
 product_name="CUBRID"
 product_name_lower=$(echo $product_name | tr '[:upper:]' '[:lower:]')
-typeset -i major
-typeset -i minor
-typeset -i maintanance
-typeset -i serial
-build_number=""
+typeset -i major_version
+typeset -i minor_version
+typeset -i patch_version
+version=""
 last_checking_msg=""
 output_packages=""
 without_cmserver=""
@@ -98,79 +94,46 @@ function build_initialize ()
 {
   # check for source dir
   print_check "Checking for root source path [$source_dir]"
-  if [ -d $source_dir -a -d $source_dir/src -a -f $source_dir/BUILD_NUMBER ]
+  if [ -d $source_dir -a -d $source_dir/src ]
   then
     print_result "OK"
   else
     print_fatal "Root path for source is not valid"
   fi
 
-  print_check "Checking for compiler"
-  which_gcc=$(which gcc)
-  [ $? -eq 0 ] && print_info "$which_gcc" || print_fatal "GCC not found"
-  gcc_version=$(gcc --version | grep GCC)
-  [ $? -eq 0 ] && print_info "$gcc_version" || print_info "unknown GCC version"
+  # check Git
+  print_check "Checking for Git"
+  which_git=$(which git)
+  [ $? -eq 0 ] && print_info "$which_git" || print_fatal "Git not found"
   print_result "OK"
 
   # check version
-  print_check "Checking BUILD NUMBER"
-  build_number=$(cat $source_dir/BUILD_NUMBER)
-  major=$(echo $build_number | cut -d . -f 1)
-  minor=$(echo $build_number | cut -d . -f 2)
-  maintanance=$(echo $build_number | cut -d . -f 3)
-  serial=10#$(echo $build_number | cut -d . -f 4)
-  print_info "version: $build_number ($major.$minor.$maintanance.$serial)"
-  print_result "OK"
-}
-
-
-function build_increase_version ()
-{
-  # check for increase_build_number
-  if [ "$increase_build_number" = "yes" ]; then
-    print_check "Increasing BUILD NUMBER"
-    serial_num=$(printf "%04d" $(expr $serial + 1))
-    build_number="$major.$minor.$maintanance.$serial_num"
-    #build_number=$(cat $source_dir/BUILD_NUMBER | awk -F'.' '{ printf("%d.%d.%d.%04d\n", $1, $2, $3, $4+1) }')
-
-    print_info "Modifing Version to $build_number"
-    # BUILD_NUMBER
-    echo $build_number > $source_dir/BUILD_NUMBER
-
-    # copy right
-    current_year=`date +"%Y"`
-    sed --in-place -r "s/Copyright \(C\) 2008-[0-9]{4} Search Solution/Copyright (C) 2008-${current_year} Search Solution/g" $source_dir/COPYING
-    sed --in-place -r "s/Copyright \(C\) 2008-[0-9]{4} Search Solution/Copyright (C) 2008-${current_year} Search Solution/g" "$source_dir/win/install/Installshield/Setup Files/Compressed Files/Language Independent/OS Independent/license.txt"
-
-    # win version
-    win_version_h="$source_dir/win/version.h"
-    echo "#define RELEASE_STRING ${major}.${minor}.${maintanance}" > ${win_version_h}
-    echo "#define MAJOR_RELEASE_STRING ${major}.${minor}" >> ${win_version_h}
-    echo "#define BUILD_NUMBER ${build_number}" >> ${win_version_h}
-    echo "#define MAJOR_VERSION ${major}" >> ${win_version_h}
-    echo "#define MINOR_VERSION ${minor}" >> ${win_version_h}
-    echo "#define PATCH_VERSION ${maintanance}" >> ${win_version_h}
-    echo "#define BUILD_SERIAL_NUMBER ${serial_num}" >> ${win_version_h}
-    echo "#define VERSION_STRING \"${build_number}\"" >> ${win_version_h}
-    echo "#define PRODUCT_STRING \"${major}.${minor}\"" >> ${win_version_h}
-    echo "#define PACKAGE_STRING \"CUBRID ${major}.${minor}\"" >> ${win_version_h}
-    echo "" >> ${win_version_h}
-
-    # Install-Shield's release number
-    sed --in-place -r "s|<td>[0-9]+\.[0-9]+</td>|<td>${major}.${minor}</td>|g" $source_dir/win/install/Installshield/CUBRID.ism
-    sed --in-place -r "s|<td>ProductVersion</td><td>.*</td><td/>|<td>ProductVersion</td><td>${build_number}</td><td/>|g" $source_dir/win/install/Installshield/CUBRID.ism
-    sed --in-place -r "s|<td>[0-9]+\.[0-9]+</td>|<td>${major}.${minor}</td>|g" $source_dir/win/install/Installshield/CUBRID_x64.ism
-    sed --in-place -r "s|<td>ProductVersion</td><td>.*</td><td/>|<td>ProductVersion</td><td>${build_number}</td><td/>|g" $source_dir/win/install/Installshield/CUBRID_x64.ism
-
-    # php's release number
-    sed --in-place -r "s/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/${build_number}/g" $source_dir/contrib/php4/src/php_cubrid_version.h
-    sed --in-place -r "s/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/${build_number}/g" $source_dir/contrib/php5/php_cubrid_version.h
-
-    # RPM spec's release number
-    sed --in-place -r -e "s/cubrid_version [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/cubrid_version ${build_number}/g" -e "s/build_version  [0-9]+\.[0-9]+\.[0-9]+/build_version  ${major}.${minor}.${maintanance}/g" $source_dir/contrib/rpm/cubrid.spec
-
-    print_result "OK"
+  print_check "Checking VERSION"
+  if [ -f $source_dir/VERSION ]; then
+    version_file=VERSION
+  elif [ -f $source_dir/VERSION-DIST ]; then
+    version_file=VERSION-DIST
   fi
+  version=$(cat $source_dir/$version_file)
+  major_version=$(echo $version | cut -d . -f 1)
+  minor_version=$(echo $version | cut -d . -f 2)
+  patch_version=$(echo $version | cut -d . -f 3)
+  extra_version=$(echo $version | cut -d . -f 4)
+  if [ "x$extra_version" != "x" ]; then
+    serial_number=$(echo $extra_version | cut -d - -f 1)
+  elif [ -d $source_dir/.git ]; then
+    serial_number=$(cd $source_dir && git rev-list --count HEAD)
+    hash_tag=$(cd $source_dir && git rev-parse --short HEAD)
+    extra_version="$serial_number-$hash_tag"
+  else
+    extra_version=0000-unknown
+    serial_number=0000
+  fi
+  print_info "version: $version ($major_version.$minor_version.$patch_version.$extra_version)"
+  version="$major_version.$minor_version.$patch_version.$extra_version"
+  # old style version string (digital only version string) for legacy codes
+  build_number="$major_version.$minor_version.$patch_version.$serial_number"
+  print_result "OK"
 }
 
 
@@ -194,36 +157,13 @@ function build_clean ()
     fi
 
     if [ $build_dir -ef $source_dir ]; then
-      [ -f "$build_dir/Makefile" ] && make -C $build_dir distclean
+      [ -f "$build_dir/Makefile" ] && make -C $build_dir clean
     else
       print_info "All files in $build_dir is removing"
       rm -rf $build_dir/*
     fi
   fi
   print_result "OK"
-}
-
-
-function build_autogen ()
-{
-  # run autogen if needed
-  if [ $run_autogen = "yes" -o $source_dir/BUILD_NUMBER -nt $source_dir/configure ]; then
-    print_check "Running autogen.sh"
-    (cd $source_dir && sh ./autogen.sh)
-    [ $? -eq 0 ] && print_result "OK" || print_fatal "Result failed"
-  fi
-  
-  # run autogen of cubrid manager if needed
-  print_check "Checking manager server directory"
-  if [ -d "$source_dir/cubridmanager" -a -d "$source_dir/cubridmanager/server" ]; then 
-    print_result "OK"
-    
-    print_check "Running autogen.sh of cubrid manager" 
-    (cd $source_dir/cubridmanager/server && sh ./autogen.sh) 
-    [ $? -eq 0 ] && print_result "OK" || print_fatal "Result failed"
-  else
-    print_info "Manager server source path is not exist. It will not be built"
-  fi
 }
 
 
@@ -253,12 +193,12 @@ function build_configure ()
 
   print_check "Prepare configure options"
   # set up prefix
-  configure_prefix="--prefix=$prefix_dir"
+  configure_prefix="-DCMAKE_INSTALL_PREFIX=$prefix_dir"
 
   # set up target
   case "$build_target" in
     i386)
-      configure_options="--disable-64bit $configure_options" ;;
+      configure_options="-DENABLE_32BIT=ON $configure_options" ;;
     x86_64);;
     *)
       print_fatal "Build target [$build_target] is not valid target" ;;
@@ -266,22 +206,17 @@ function build_configure ()
 
   # set up build mode
   case "$build_mode" in
-    release) ;;
+    release)
+      configure_options="$configure_options -DCMAKE_BUILD_TYPE=RelWithDebInfo" ;;
     debug)
-      configure_options="$configure_options --enable-debug" ;;
+      configure_options="$configure_options -DCMAKE_BUILD_TYPE=Debug" ;;
     coverage)
-      configure_options="$configure_options --enable-debug --enable-coverage" ;;
+      configure_options="$configure_options -DCMAKE_BUILD_TYPE=Coverage" ;;
+    profile)
+      configure_options="$configure_options -DCMAKE_BUILD_TYPE=Profile" ;;
     *)
       print_fatal "Build mode [$build_mode] is not valid build mode" ;;
   esac
-
-  if [ $build_mode = "release" ]; then
-    # check conflict
-    case "$configure_options" in
-      *"--enable-debug"*)
-	print_fatal "Conflict release mode with debug mode. check options";;
-    esac
-  fi
   print_result "OK"
 
   print_check "Configuring [with $configure_options]"
@@ -290,7 +225,7 @@ function build_configure ()
   else
     configure_dir="$source_dir"
   fi
-  (cd $build_dir && $configure_dir/configure $configure_prefix $configure_options)
+  (cd $build_dir && cmake $configure_prefix $configure_options $source_dir)
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Configuring failed"
 }
 
@@ -313,439 +248,6 @@ function build_install ()
 }
 
 
-function print_install_sh ()
-{
-cat << \END_OF_FILE
-#!/bin/sh
-
-PRODUCT_NAME=CUBRID
-
-install_file="$0"
-
-tail +20 "$install_file" > install.${PRODUCT_NAME}.tmp 2> /dev/null
-if [ "$?" != "0" ]
-then
-  tail -n +20 "$install_file" > install.${PRODUCT_NAME}.tmp 2> /dev/null
-fi
-
-tar xf install.${PRODUCT_NAME}.tmp
-
-./${PRODUCT_NAME}_Setup.sh "$0"
-
-rm -f ./${PRODUCT_NAME}_Setup.sh ${PRODUCT_NAME}-product.tar.gz ${PRODUCT_NAME}-product.tar ./install.${PRODUCT_NAME}.tmp ./confcp.sh ./version.sh check_glibc_version COPYING
-
-exit 0
-END_OF_FILE
-}
-
-function print_setup_sh ()
-{
-cat << \END_OF_FILE
-#!/bin/sh
-
-PRODUCT_CODE=cubrid
-PRODUCT_NAME=CUBRID
-
-target_input=""
-cp_old_dbtxt="no"
-cwd=`pwd`
-is_protego="no" 
-
-cat COPYING | more -d
-while true; do
-	echo -n "Do you agree to the above license terms? (yes or no) : "
-	read agree_terms
-
-	if [ "$agree_terms" = "yes" ]; then
-		break
-	elif [ "$agree_terms" = "no" ]; then
-		echo "If you don't agree to the license you can't install this software."
-		exit 0
-	fi
-done
-
-echo -n "Do you want to install this software($PRODUCT_NAME) to the default(${cwd}/${PRODUCT_NAME}) directory? (yes or no) [Default: yes] : "
-read ans_install_dir
-
-if [ "$ans_install_dir" = "no" ] || [ "$ans_install_dir" = "n" ]; then
-	echo -n "Input the $PRODUCT_NAME install directory. [Default: ${cwd}/${PRODUCT_NAME}] : "
-	read target_input
-fi
-
-if [ "$target_input" = "" ]; then
-    target_dir=$cwd/$PRODUCT_NAME
-else
-    target_dir=$target_input
-fi
-
-echo "Install ${PRODUCT_NAME} to '$target_dir' ..."
-
-XDBMS_ENV_FILE1=$HOME/.${PRODUCT_CODE}.csh
-XDBMS_ENV_FILE2=$HOME/.${PRODUCT_CODE}.sh
-
-if [ -d $target_dir ]; then
-    echo "Directory '$target_dir' exist! "
-    echo "If a ${PRODUCT_NAME} service is running on this directory, it may be terminated abnormally."
-    echo "And if you don't have right access permission on this directory(subdirectories or files), install operation will be failed."
-    echo -n "Overwrite anyway? (yes or no) [Default: no] : "
-    read overwrite
-
-    if [ "$overwrite" != "y" ] && [ "$overwrite" != "yes" ]; then
-        exit 0
-    fi
-else
-    mkdir -p $target_dir
-fi
-
-. ./version.sh
-echo "Since CUBRID broker and server versions should match, please make sure that you are running the same version if you operate them in separate machines. For installation of CUBRID tools like Query Browser, Manager and Web Manager, please refer to http://www.cubrid.org/wiki_tools."
-echo -n "Do you want to continue? (yes or no) [Default: yes] : "
-read cont
-if [ "$cont" = "n" ] || [ "$cont" = "no" ]; then
-    exit 0
-fi
-
-if [ -w $XDBMS_ENV_FILE1 ]; then
-    echo "Copying old .${PRODUCT_CODE}.csh to .${PRODUCT_CODE}.csh.bak ..."
-    rm -f ${XDBMS_ENV_FILE1}.bak
-    cp $XDBMS_ENV_FILE1 ${XDBMS_ENV_FILE1}.bak
-fi
-
-if [ -w $XDBMS_ENV_FILE2 ]; then
-    echo "Copying old .${PRODUCT_CODE}.sh to .${PRODUCT_CODE}.sh.bak ..."
-    rm -f ${XDBMS_ENV_FILE2}.bak
-    cp $XDBMS_ENV_FILE2 ${XDBMS_ENV_FILE2}.bak
-fi
-
-if [ ! -w $target_dir/databases/databases.txt ]; then
-    if [ -w $target_dir/CUBRID_DATABASES/databases.txt ]; then
-        cp_old_dbtxt="yes"
-    fi
-fi
-
-#gzip -d ${PRODUCT_CODE}-product.tar.gz
-gzip -d ${PRODUCT_NAME}-product.tar.gz
-
-(cd $target_dir && tar --extract --no-same-owner --file=$cwd/${PRODUCT_NAME}-product.tar > /dev/null 2>&1)
-if [ $? != 0 ]; then
-    (cd $target_dir && tar xfo $cwd/${PRODUCT_NAME}-product.tar)
-    if [ $? != 0 ]; then
-        exit 1
-    fi
-fi
-
-mkdir -p $target_dir/var/log/error_log
-chmod 777 $target_dir/var/log/error_log
-
-target_dir=`readlink -f $target_dir`
-
-sh_profile=""
-
-if [ -w $target_dir/protego_manager ]; then
-    is_protego="yes"
-fi
-
-case $SHELL in 
-    */csh ) sh_profile=$HOME/.cshrc;;
-    */tcsh )
-        if [ ! -r "$HOME/.tcshrc" ]; then
-            sh_profile=$HOME/.cshrc
-        else
-            sh_profile=$HOME/.tcshrc
-        fi
-        ;;
-    */bash )
-        if [ -r $HOME/.bash_profile ]; then
-            sh_profile=$HOME/.bash_profile
-        elif [ -r $HOME/.bashrc ]; then
-            sh_profile=$HOME/.bashrc
-        elif [ -r $HOME/.bash_login ]; then
-            sh_profile=$HOME/.bash_login
-        else
-            sh_profile=$HOME/.profile
-        fi
-        ;;
-    */zsh )
-        if [ -r $HOME/.zprofile ]; then
-            sh_profile=$HOME/.zprofile
-        elif [ -r $HOME/.zshrc ]; then
-            sh_profile=$HOME/.zshrc
-        elif [ -r $HOME/.zshenv ]; then
-            sh_profile=$HOME/.zshenv
-        elif [ -r $HOME/.zlogin ]; then
-            sh_profile=$HOME/.zlogin
-        else
-            sh_profile=$HOME/.profile
-        fi 
-        ;;
-    */sh | */ksh | */ash | */bsh )
-        sh_profile=$HOME/.profile
-        ;;
-esac
-
-case $SHELL in
-    */csh | */tcsh ) 
-    echo "setenv    CUBRID                  $target_dir"             > $XDBMS_ENV_FILE1
-    echo "setenv    CUBRID_DATABASES        $target_dir/databases"          >> $XDBMS_ENV_FILE1
-
-    echo 'if (${?LD_LIBRARY_PATH}) then' >> $XDBMS_ENV_FILE1
-    echo 'setenv    LD_LIBRARY_PATH         $CUBRID/lib:${LD_LIBRARY_PATH}'  >> $XDBMS_ENV_FILE1
-    echo 'else'                                                                                     >> $XDBMS_ENV_FILE1
-    echo 'setenv    LD_LIBRARY_PATH         $CUBRID/lib'     >> $XDBMS_ENV_FILE1
-    echo 'endif'                                                                                    >> $XDBMS_ENV_FILE1
-    echo 'setenv    SHLIB_PATH              $LD_LIBRARY_PATH'                                       >> $XDBMS_ENV_FILE1
-    echo 'setenv    LIBPATH                 $LD_LIBRARY_PATH'                                       >> $XDBMS_ENV_FILE1
-    echo 'set       path=($CUBRID/{bin,cubridmanager} $path)'      >> $XDBMS_ENV_FILE1
-    ;;
-esac
-
-#
-# make $XDBMS_ENV_FILE2 (.cubrid.sh) to make demodb/subway in this script
-#
-echo "CUBRID=$target_dir"                   > $XDBMS_ENV_FILE2
-echo "CUBRID_DATABASES=$target_dir/databases"      >> $XDBMS_ENV_FILE2
-
-echo 'ld_lib_path=`printenv LD_LIBRARY_PATH`'          >> $XDBMS_ENV_FILE2
-echo 'if [ "$ld_lib_path" = "" ]'                      >> $XDBMS_ENV_FILE2
-echo 'then'                                             >> $XDBMS_ENV_FILE2
-echo 'LD_LIBRARY_PATH=$CUBRID/lib'               >> $XDBMS_ENV_FILE2
-echo 'else'                                             >> $XDBMS_ENV_FILE2
-echo 'LD_LIBRARY_PATH=$CUBRID/lib:$LD_LIBRARY_PATH' >> $XDBMS_ENV_FILE2
-echo 'fi'                                               >> $XDBMS_ENV_FILE2
-echo 'SHLIB_PATH=$LD_LIBRARY_PATH'                      >> $XDBMS_ENV_FILE2
-echo 'LIBPATH=$LD_LIBRARY_PATH'                         >> $XDBMS_ENV_FILE2
-echo 'PATH=$CUBRID/bin:$CUBRID/cubridmanager:$PATH' >> $XDBMS_ENV_FILE2
-echo "export CUBRID"                                    >> $XDBMS_ENV_FILE2
-echo "export CUBRID_DATABASES"                          >> $XDBMS_ENV_FILE2
-echo 'export LD_LIBRARY_PATH'                           >> $XDBMS_ENV_FILE2
-echo 'export SHLIB_PATH'                                >> $XDBMS_ENV_FILE2
-echo 'export LIBPATH'                                   >> $XDBMS_ENV_FILE2
-echo 'export PATH'                                      >> $XDBMS_ENV_FILE2
-
-append_profile=""
-if [ -n $sh_profile ]; then
-    append_profile=`grep "${PRODUCT_NAME} environment" ${sh_profile}`
-fi
-
-if [ -z "${append_profile}" ]; then
-    echo ''                                                                                 >> $sh_profile
-    echo '#-------------------------------------------------------------------------------' >> $sh_profile
-    echo '# set '${PRODUCT_NAME}' environment variables'                                               >> $sh_profile
-    echo '#-------------------------------------------------------------------------------' >> $sh_profile
-
-    case $SHELL in
-        */csh | */tcsh )
-            echo "source $XDBMS_ENV_FILE1"                                                 >> $sh_profile
-        ;;
-        * )
-            echo ". $XDBMS_ENV_FILE2"                                                      >> $sh_profile
-        ;;
-    esac
-
-    echo ''                                                                                 >> $sh_profile
-    echo ''                                                                                 >> $sh_profile
-fi
-
-if [ $? = 0 ]; then
-    echo ""
-    echo "${PRODUCT_NAME} has been successfully installed."
-    echo ""
-else
-    echo ""
-    echo "Cannot install CUBRID."
-    echo ""
-    exit 1
-fi
-
-# Make demodb
-if [ -r "$XDBMS_ENV_FILE2" ]; then
-    . $XDBMS_ENV_FILE2
-
-    if [ $cp_old_dbtxt = "yes" ]; then
-        rm -f $target_dir/databases/databases.txt
-        cp $target_dir/CUBRID_DATABASES/databases.txt $target_dir/databases
-    fi
-
-    if [ $is_protego = "no" ]; then
-        if [ -r $CUBRID/demo/make_cubrid_demo.sh ]; then
-#       echo 'Create demodb...'
-            (mkdir -p $CUBRID_DATABASES/demodb ; cd $CUBRID_DATABASES/demodb ; $CUBRID/demo/make_cubrid_demo.sh > /dev/null 2>&1)
-            if [ $? = 0 ]; then
-                echo "demodb has been successfully created."
-            else
-                echo "Cannot create demodb."
-            fi
-        fi
-    fi
-fi
-
-echo ""
-echo "If you want to use ${PRODUCT_NAME}, run the following commands"
-
-case $SHELL in
-    */csh | */tcsh )
-        echo "  % source $XDBMS_ENV_FILE1"
-    ;;
-    * )
-        echo "  % . $XDBMS_ENV_FILE2"
-    ;;
-esac
-
-echo "  % cubrid service start"
-echo ""
-#if (${?demodb} && $demodb == 'true')  then
-#       echo 'If you want to start up demodb, run the following commans'
-#       echo "  % start_server demodb"
-#endif
-
-#./confcp.sh $target_dir
-targets=$(ls $target_dir/conf/*-dist)
-
-for arg in $targets
-do
-    file=${arg%%-dist}
-    # save old conf file
-    if [ -f $file ]; then
-      mv -f "$file" "$file".save > /dev/null 2>&1
-    fi
-    mv -f "$file"-dist "$file" > /dev/null 2>&1
-done
-
-cp -f COPYING $CUBRID
-END_OF_FILE
-}
-
-
-function print_check_glibc_version_c ()
-{
-cat << \END_OF_FILE
-#include <stdio.h>
-#include <gnu/libc-version.h>
-
-int build_version = BUILD_VERSION;
-
-int (main)(void)
-{
-    const char *v = gnu_get_libc_version();
-    if (v == NULL)
-        return 1;
-
-    switch (build_version) {
-    case 232:
-        if (strcmp(v, "2.3.2") == 0)
-            return 0;
-        break;
-    case 234:
-        if (strcmp(v, "2.3.4") >= 0)
-            return 0;
-        break;
-    }
-
-    return 1;
-}
-
-END_OF_FILE
-}
-
-
-function build_bin_pack ()
-{
-  if [ $# -lt 2 ]; then
-    print_error "Missing product name or target"
-    return 1
-  else
-    package_file="$1"
-    pack_target="$2"
-  fi
-
-  archive_dir="$install_dir/$product_name"
-  if [ "$prefix_dir" != "$archive_dir" ]; then
-    cp -rf $prefix_dir $archive_dir
-  fi
-
-  if [ "$pack_target" = "tarball" ]; then
-    (cd $install_dir && tar czf $package_file $product_name)
-    return $?
-  elif [ "$pack_target" != "shell" ]; then
-    print_error "Unknown target"
-    return 1
-  fi
-
-  # prepare extra files
-  cp $source_dir/COPYING $install_dir
-  print_install_sh > $install_dir/CUBRID_Install.sh
-  chmod a+x $install_dir/CUBRID_Install.sh
-  print_setup_sh > $install_dir/CUBRID_Setup.sh
-  chmod a+x $install_dir/CUBRID_Setup.sh
-  print_check_glibc_version_c > $install_dir/check_glibc_version.c
-  if ! gcc -o $install_dir/check_glibc_version -DBUILD_VERSION=234 $install_dir/check_glibc_version.c; then
-    print_fatal "Check_glibc_version build error"
-  fi
-
-  echo "version=\"$major.$minor\"" > $install_dir/version.sh
-  echo "BuildNumber=$build_number" >> $install_dir/version.sh
-
-  conf_files=$(ls $archive_dir/conf/*.conf $archive_dir/conf/*.pass $archive_dir/conf/*.txt 2> /dev/null)
-  for file in $conf_files; do
-    if [ -f $file ]; then
-      mv -f $file $file-dist
-    fi
-    if [ ! -f $file-dist ]; then
-      print_fatal "Config file [$file-dist] not found"
-    fi
-  done
-
-  (cd $install_dir/$product_name &&
-    tar zcf $install_dir/CUBRID-product.tar.gz * &&
-    cd $install_dir && mv -f CUBRID_Install.sh $package_file &&
-    tar cf - CUBRID-product.tar.gz CUBRID_Setup.sh COPYING version.sh check_glibc_version >> $package_file)
-
-  for file in $conf_files; do
-    mv -f $file-dist $file
-  done
-}
-
-
-function build_rpm ()
-{
-  print_check "Preparing RPM package directory"
-
-  if [ $# -lt 2 ]; then
-    print_error "Missing source tarball filename or target"
-    return 1
-  else
-    source_tarball="$1"
-    rpm_target="$2"
-  fi
-
-  if [ ! -f "$source_tarball" ]; then
-    print_error "Source tarball [$source_tarball] is not exist"
-    return 1
-  else
-    print_info "Using source tarball [$source_tarball]"
-    rpm_output_dir=$(dirname $source_tarball)
-  fi
-
-  mkdir -p $install_dir/rpmbuild/{BUILD,RPMS,SPECS,SOURCES,SRPMS}
-  print_result "OK"
-
-  case $rpm_target in
-    srpm)
-      rpmbuild --define="_topdir $install_dir/rpmbuild" --clean -ts $source_tarball
-      [ $? -eq 0 ] && mv -f $install_dir/rpmbuild/SRPMS/$product_name_lower-$build_number-*.src.rpm $rpm_output_dir
-    ;;
-    rpm)
-      rpmbuild --define="_topdir $install_dir/rpmbuild" --define="_tmppath $install_dir/rpmbuild/tmp" --clean -tb --target=$build_target $source_tarball
-      [ $? -eq 0 ] && mv -f $install_dir/rpmbuild/RPMS/$build_target/$product_name_lower-$build_number-*.$build_target.rpm $rpm_output_dir
-    ;;
-    *)
-      print_error "Unknown target"
-      return 1
-      ;;
-  esac
-}
-
-
 function build_package ()
 {
   print_check "Preparing package directory"
@@ -764,214 +266,71 @@ function build_package ()
     mkdir -p $output_dir
   fi
   
-  # create additional dirs for binary package
-  pre_created_dirs="databases var var/log var/tmp var/run var/lock var/manager log log/manager"
-  for dir in $pre_created_dirs; do
-    mkdir -p "$prefix_dir/$dir"
-  done
-
-  # copy files for binary package
-  pre_installed_files="COPYING README CREDITS"
-  for file in $pre_installed_files; do
-    cp $source_dir/$file "$prefix_dir"
-  done
-
-  src_package_name="$product_name_lower-$build_number.tar.gz"
   print_result "OK"
 
   for package in $packages; do
     print_check "Packing package for $package"
     case $package in
-      src)
-	if [ ! "$build_mode" = "release" ]; then
-	  print_info "$build_mode mode source tarball is not supported. Skip"
-	  package_name="NONE"
+      src|zip_src)
+	src_package_name="$product_name_lower-$version"
+	if [ "$package" = "src" ]; then
+	  package_name="$src_package_name.tar.gz"
+	  archive_cmd="tar czf $build_dir/$package_name -T -"
 	else
-	  package_name="$src_package_name"
-	  # make dist for pack sources
-	  (cd $build_dir && make dist)
-	  if [ $? -eq 0 ]; then
-	    output_packages="$output_packages $package_name"
-	    [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
-	  else
-	    false
-	  fi
+	  package_name="$src_package_name.zip"
+	  archive_cmd="zip -q $build_dir/$package_name -@"
+	fi
+	# add VERSION-DIST instead of VERSION file for full version string
+	(cd $source_dir && echo "$version" > VERSION-DIST && ln -sfT . cubrid-$version &&
+	  (git ls-files -o VERSION-DIST ; git ls-files &&
+	    (cd $source_dir/cubridmanager && git ls-files) | sed -e "s|^|cubridmanager/|") | sed -e "/^VERSION$/d" -e "s|^|cubrid-$version/|" | $archive_cmd &&
+	    rm cubrid-$version VERSION-DIST)
+	if [ $? -eq 0 ]; then
+	  output_packages="$output_packages $package_name"
+	  [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
+	else
+	  false
 	fi
       ;;
-      zip_src)
-        if [ ! "$build_mode" = "release" ]; then
-	  print_info "$build_mode mode source zip is not supported. Skip"
-	  package_name="NONE"
-	else
-	  package_name="$product_name_lower-$build_number.zip"
-	  # make dist-zip for pack sources
-	  (cd $build_dir && make dist-zip)
-	  if [ $? -eq 0 ]; then
-	    output_packages="$output_packages $package_name"
-	    [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
-	  else
-	    false
-	  fi
-	fi
-      ;;
-      cci_src)
-	if [ ! "$build_mode" = "release" ]; then
-	  print_info "$build_mode mode cci source tarball is not supported. Skip"
-	  package_name="NONE"
-	else
-	  package_basename="$product_name_lower-cci"
-	  package_name="$package_basename-$build_number.tar.gz"
-	  # make dist for pack cci sources
-	  if [ -d "$build_dir/$package_basename" ]; then
-	    rm -rf $build_dir/$package_basename
-	  fi
-	  mkdir $build_dir/$package_basename
-	  if [ "$(readlink -f $build_dir/..)" = "$source_dir" ]; then
-	    configure_dir="../.."
-	  else
-	    configure_dir="$source_dir"
-	  fi
-	  (cd $build_dir/$package_basename && $configure_dir/configure --with-cci-only && make PACKAGE=$package_basename dist && mv $package_name $build_dir)
-	  if [ $? -eq 0 ]; then
-	    output_packages="$output_packages $package_name"
-	    [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
-	  else
-	    false
-	  fi
-	fi
-      ;;
-	php_src)
-	  if [ ! "$build_mode" = "release" ]; then
-	  print_info "$build_mode mode php source tarball is not supported. Skip"
-	  package_name="NONE"
-	else
-	  package_basename="$product_name-php-$build_number"
-	  package_name="$package_basename.tar.gz"
-	  if [ -d "$build_dir/$package_basename" ]; then
-	    rm -rf $build_dir/$package_basename
-	  fi
-	  mkdir $build_dir/$package_basename
-	  cp -r $source_dir/contrib/php* $build_dir/$package_basename/
-	  (cd $build_dir && tar czf $output_dir/$package_name $package_basename)
-	  if [ $? -eq 0 ]; then
-	    output_packages="$output_packages $package_name"
-	    rm -rf $build_dir/$package_basename
-	  else
-	    false
-	  fi
-	fi
-      ;;
-      tarball|shell)
+      tarball|shell|cci|rpm)
 	if [ ! -d "$install_dir" -o ! -d "$prefix_dir" ]; then
 	  print_fatal "Installed directory or prefix directory not found"
 	fi
 
-      	package_basename="$product_name-$build_number-linux.$build_target"
+	if [ "$package" = "cci" ]; then
+          package_basename="$product_name-CCI-$version-Linux.$build_target"
+        else
+          package_basename="$product_name-$version-Linux.$build_target"
+        fi
 	if [ ! "$build_mode" = "release" ]; then
 	  package_basename="$package_basename-$build_mode"
 	fi
-	if [ "$package" = tarball ]; then
+	if [ "$package" = "tarball" ]; then
 	  package_name="$package_basename.tar.gz"
-	else
+	  (cd $build_dir && cpack -G TGZ -B $output_dir)
+	elif [ "$package" = "shell" ]; then
 	  package_name="$package_basename.sh"
-	fi
-	if [ "$package" = "shell" -a "$without_cmserver" = "true" ]; then
-	  print_info "CUBRID manager server is disabled. Skip shell package"
-	else
-	  build_bin_pack $output_dir/$package_name $package
-	fi
-	[ $? -eq 0 ] && output_packages="$output_packages $package_name"
-      ;;
-      cci)
-	if [ ! -d "$install_dir" ]; then
-	  print_fatal "Installed directory not found"
-	fi
-
-      	package_basename="$product_name-CCI-$build_number-$build_target"
-	if [ ! "$build_mode" = "release" ]; then
-	  package_name="$package_basename-$build_mode.tar.gz"
-	else
+	  (cd $build_dir && cpack -G STGZ -B $output_dir)
+	elif [ "$package" = "cci" ]; then
 	  package_name="$package_basename.tar.gz"
+	  (cd $build_dir && cpack -G TGZ -D CPACK_COMPONENTS_ALL="CCI" -B $output_dir)
+	elif [ "$package" = "rpm" ]; then
+	  package_name="$package_basename.rpm"
+	  (cd $build_dir && cpack -G RPM -B $output_dir)
 	fi
-	cci_headers="include/cas_cci.h include/cas_error.h"
-	cci_libs="lib/libcascci.a lib/libcascci.so*"
-	for file in $cci_headers $cci_libs; do
-	  pack_file_list="$pack_file_list $product_name/$file"
-	done
-	(cd $install_dir && tar czf $output_dir/$package_name $pack_file_list)
-	[ $? -eq 0 ] && output_packages="$output_packages $package_name"
-      ;;
-      jdbc)
-	if [ ! "$build_mode" = "release" ]; then
-	  print_info "$build_mode mode JDBC is not supported. Skip"
-	  package_name="NONE"
-	else
-	  package_name="JDBC-$build_number-$product_name_lower"
-	  jar_files=$(cd $build_dir/jdbc && ls $package_name*.jar)
-	  cp $build_dir/jdbc/$package_name*.jar $output_dir
-	  [ $? -eq 0 ] && output_packages="$output_packages $jar_files"
-	fi
-      ;;
-      srpm)
-	if [ "$without_cmserver" = "true" ]; then
-	  print_info "CUBRID manager server is disabled. Skip SRPM build"
-	elif [ ! "$build_mode" = "release" ]; then
-	  print_info "$build_mode mode SRPM is not supported. Skip"
-	  package_name="NONE"
-	else
-	  package_name="$product_name-$build_number...src.rpm"
-	  build_rpm $output_dir/$src_package_name $package
-	  if [ $? -eq 0 ]; then
-	    rpm_pkgs=$(cd $output_dir && ls $product_name_lower-$build_number-*.src.rpm)
-	    [ $? -eq 0 ] && output_packages="$output_packages $rpm_pkgs"
-	  else
-	    false
-	  fi
-	fi
-      ;;
-      rpm)
-	if [ "$without_cmserver" = "true" ]; then
-	  print_info "CUBRID manager server is disabled. Skip RPM build"
-	elif [ ! "$build_mode" = "release" ]; then
-	  print_info "$build_mode mode RPM or SRPM is not supported. Skip"
-	  package_name="NONE"
-	else
-	  package_name="$product_name-$build_number...rpm"
-	  build_rpm $output_dir/$src_package_name $package
-	  if [ $? -eq 0 ]; then
-	    rpm_pkgs=$(cd $output_dir && ls $product_name_lower-$build_number-*.$build_target.rpm)
-	    [ $? -eq 0 ] && output_packages="$output_packages $rpm_pkgs"
-	  else
-	    false
-	  fi
-	fi
-      ;;
-      owfs)
-	package_basename="$product_name-owfs-$build_number-$build_target"
-	if [ ! "$build_mode" = "release" ]; then
-	  package_name="$package_basename-$build_mode.tar.gz"
-	else
-	  package_name="$package_basename.tar.gz"
-	fi
-	owfs_build_dir="$build_dir/$package_basename"
-	owfs_install_dir="$owfs_build_dir/$package_basename"
-	if [ -d "$owfs_build_dir" ]; then
-	  rm -rf $owfs_build_dir
-	fi
-	mkdir $owfs_build_dir
-	mkdir $owfs_install_dir
-	if [ "$(readlink -f $build_dir/..)" = "$source_dir" ]; then
-	  configure_dir="../.."
-	else
-	  configure_dir="$source_dir"
-	fi
-	(cd $owfs_build_dir && $configure_dir/configure --prefix=$owfs_install_dir --enable-owfs $configure_options && make -j && make install)
 	if [ $? -eq 0 ]; then
-	  (cd $owfs_build_dir && tar czf $output_dir/$package_name $package_basename)
-	  [ $? -eq 0 ] && output_packages="$output_packages $package_name"
+	  output_packages="$output_packages $package_name"
+	  # clean temp directory for pack
+	  rm -rf $output_dir/_CPack_Packages
 	else
 	  false
 	fi
+      ;;
+      jdbc)
+	package_name="JDBC-$build_number-$product_name_lower"
+	jar_files=$(cd $build_dir/jdbc && ls $package_name*.jar)
+	cp $build_dir/jdbc/$package_name*.jar $output_dir
+	[ $? -eq 0 ] && output_packages="$output_packages $jar_files"
       ;;
     esac
     [ $? -eq 0 ] && print_result "OK [$package_name]" || print_fatal "Packaging for $package failed"
@@ -986,7 +345,7 @@ function build_post ()
   echo ""
   echo "*** Summary ***"
   echo "  Target [$build_args]"
-  echo "  Version [$build_number]"
+  echo "  Version [$version]"
   echo "  Build mode [$build_target/$build_mode]"
   if [ -n "$configure_options" ]; then
     echo "    Configured with [$configure_options]"
@@ -1019,13 +378,12 @@ function show_usage ()
   else
     echo "  -j path Set JAVA_HOME path; [default: $JAVA_HOME]"
   fi
-  echo "  -z arg  Package to generate (src,zip_src,cci_src,php_src,shell,tarball,cci,jdbc,srpm,rpm,owfs);"
+  echo "  -z arg  Package to generate (src,zip_src,shell,tarball,cci,jdbc,rpm,owfs);"
   echo "          [default: all]"
   echo "  -? | -h Show this help message and exit"
   echo ""
   echo " TARGET"
   echo "  all     Build and create packages (default)"
-  echo "  prepare Prepare only (check increase version and autogen option)"
   echo "  build   Build only"
   echo "  dist    Create packages only"
   echo ""
@@ -1043,12 +401,10 @@ function get_options ()
     case $opt in
       t ) build_target="$OPTARG" ;;
       m ) build_mode="$OPTARG" ;;
-      i ) increase_build_number="yes" ;;
       s ) source_dir="$OPTARG" ;;
       b ) build_dir="$OPTARG" ;;
       p ) prefix_dir="$OPTARG" ;;
       o ) output_dir="$OPTARG" ;;
-      a ) run_autogen="yes" ;;
       j ) java_dir="$OPTARG" ;;
       c )
 	for optval in "$OPTARG"
@@ -1107,7 +463,14 @@ function get_options ()
     fi
   done
   if [ "$packages" = "all" -o "$packages" = "ALL" ]; then
-    packages="src zip_src cci_src php_src tarball shell cci jdbc srpm rpm"
+    case $build_mode in
+      release)
+	packages="src zip_src tarball shell cci jdbc rpm"
+	;;
+      *)
+	packages="tarball shell cci"
+	;;
+    esac
   fi
 
   if [ "x$output_dir" = "x" ]; then
@@ -1129,26 +492,14 @@ function build_dist ()
     print_error "Pakcages with coverage mode is not supported. Skip"
     return 0
   fi
-  # check coverage mode in configure option
-  case "$configure_options" in
-    *"--enable-coverage"*)
-      print_error "Pakcages with coverage mode is not supported. Skip"
-      return 0
-  esac
 
   build_package
 }
 
 
-function build_prepare ()
-{
-  build_increase_version && build_autogen
-}
-
-
 function build_build ()
 {
-  build_prepare && build_configure && build_compile && build_install
+  build_configure && build_compile && build_install
 }
 
 
@@ -1164,7 +515,14 @@ function build_build ()
   declare -f target
 
   if [ "$build_args" = "all" -o "$build_args" = "ALL" ]; then
-    build_args="clean build dist"
+    case $build_mode in
+      release|debug)
+	build_args="clean build dist"
+	;;
+      *)
+	build_args="clean build"
+	;;
+    esac
   fi
 
   for i in $build_args; do

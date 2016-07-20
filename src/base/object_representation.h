@@ -43,6 +43,7 @@
 #include "dbtype.h"
 #include "byte_order.h"
 #include "memory_alloc.h"
+#include "sha1.h"
 
 /*
  * NUMERIC TYPE SIZES
@@ -139,6 +140,8 @@
 #define OR_ELO_LENGTH_SIZE	4
 #define OR_ELO_HEADER_SIZE	(OR_LOID_SIZE + OR_ELO_LENGTH_SIZE)
 
+#define OR_SHA1_SIZE		(5 * OR_INT_SIZE)
+
 /* NUMERIC RANGES */
 #define OR_MAX_BYTE 127
 #define OR_MIN_BYTE -128
@@ -191,13 +194,9 @@
 #define OR_GET_INT(ptr) \
   ((int) ntohl (*(int *) ((char *) (ptr))))
 #define OR_GET_FLOAT(ptr, value) \
-  ntohf ((float *) ((char *) (ptr)), (float *) (value))
+  (*(value) = ntohf (*(UINT32 *) (ptr)))
 #define OR_GET_DOUBLE(ptr, value) \
-   do { \
-     double packed_value; \
-     memcpy (&packed_value, ptr, OR_DOUBLE_SIZE); \
-     ntohd (&packed_value, (double *) (value)); \
-   } while (0)
+  (*(value) = ntohd (*(UINT64 *) (ptr)))
 #define OR_GET_STRING(ptr) \
   ((char *) ((char *) (ptr)))
 
@@ -207,14 +206,10 @@
   (*(short *) ((char *) (ptr)) = htons ((short) (val)))
 #define OR_PUT_INT(ptr, val) \
   (*(int *) ((char *) (ptr)) = htonl ((int) (val)))
-#define OR_PUT_FLOAT(ptr, value) \
-  htonf ((float *) ((char *) (ptr)), (float *) (value))
-#define OR_PUT_DOUBLE(ptr, value) \
-   do { \
-     double packed_value; \
-     htond (&packed_value, (double *) (value)); \
-     memcpy (ptr, &packed_value, OR_DOUBLE_SIZE); \
-   } while (0)
+#define OR_PUT_FLOAT(ptr, val) \
+  (*(UINT32 *) (ptr) = htonf (*(float*) (val)))
+#define OR_PUT_DOUBLE(ptr, val) \
+  (*(UINT64 *) (ptr) = htond (*(double *) (val)))
 
 #define OR_GET_BIG_VAR_OFFSET(ptr) 	OR_GET_INT (ptr)	/* 4byte */
 #define OR_PUT_BIG_VAR_OFFSET(ptr, val)	OR_PUT_INT (ptr, val)	/* 4byte */
@@ -385,6 +380,24 @@
     OR_PUT_INT (((char *) (ptr)) + OR_MONETARY_TYPE, (int) (value)->type); \
     OR_PUT_DOUBLE (&pack_value, &((value)->amount)); \
     memcpy (((char *) (ptr)) + OR_MONETARY_AMOUNT, &pack_value, OR_DOUBLE_SIZE); \
+  } while (0)
+
+/* Sha1 */
+#define OR_GET_SHA1(ptr, value) \
+  do { \
+    int i = 0; \
+    for (; i < 5; i++) \
+      { \
+	((SHA1Hash *) (value))->h[i] = (INT32) OR_GET_INT (ptr + i * OR_INT_SIZE); \
+      } \
+  } while (0)
+#define OR_PUT_SHA1(ptr, value) \
+  do { \
+    int i = 0; \
+    for (; i < 5; i++) \
+      { \
+	OR_PUT_INT (ptr + i * OR_INT_SIZE, ((SHA1Hash *) (value))->h[i]); \
+      } \
   } while (0)
 
 /* DISK IDENTIFIERS */
@@ -570,7 +583,7 @@
 /* OBJECT HEADER LAYOUT */
 /* header fixed-size in non-MVCC only, in MVCC the header has variable size */
 
-/* representation id, MVCC insert id and CHN == 36 ?? */ 
+/* representation id, MVCC insert id and CHN == 36 ?? */
 #define OR_MVCC_MAX_HEADER_SIZE  28
 
 /* representation id and CHN */
@@ -1552,5 +1565,8 @@ extern int or_mvcc_header_size_from_flags (char mvcc_flags);
 extern char *or_pack_mvccid (char *ptr, const MVCCID mvccid);
 extern char *or_unpack_mvccid (char *ptr, MVCCID * mvccid);
 extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
+
+extern char *or_pack_sha1 (char *ptr, SHA1Hash * sha1);
+extern char *or_unpack_sha1 (char *ptr, SHA1Hash * sha1);
 
 #endif /* _OBJECT_REPRESENTATION_H_ */

@@ -211,8 +211,7 @@ extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id
 				      char *page_bufp, int *page_sizep);
 
 /* new query interface */
-extern XASL_ID *xqmgr_prepare_query (THREAD_ENTRY * thrd, COMPILE_CONTEXT * ctx, XASL_STREAM * stream,
-				     const OID * user_oid);
+extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, COMPILE_CONTEXT * ctx, XASL_STREAM * stream);
 
 extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd, const XASL_ID * xasl_id, QUERY_ID * query_idp,
 					   int dbval_cnt, void *data, QUERY_FLAG * flagp, CACHE_TIME * clt_cache_time,
@@ -222,8 +221,6 @@ extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, char
 						       QUERY_ID * query_id, int dbval_cnt, void *data,
 						       QUERY_FLAG * flag, int query_timeout);
 extern int xqmgr_end_query (THREAD_ENTRY * thrd, QUERY_ID query_id);
-extern int xqmgr_drop_query_plan (THREAD_ENTRY * thread_p, const char *qstmt, const OID * user_oid,
-				  const XASL_ID * xasl_id);
 extern int xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p);
 extern void xqmgr_dump_query_plans (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void xqmgr_dump_query_cache (THREAD_ENTRY * thread_p, FILE * outfp);
@@ -270,7 +267,7 @@ extern int xsession_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE *
 extern int xsession_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value, bool update_last_insert_id);
 extern int xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p);
 
-extern int xsession_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name, char *alias_print,
+extern int xsession_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1,
 					       char *info, int info_len);
 extern int xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
 					    XASL_ID * xasl_id, XASL_NODE_HEADER * xasl_header_p);

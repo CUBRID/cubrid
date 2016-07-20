@@ -5506,12 +5506,12 @@ regu_upddel_class_info_init (UPDDEL_CLASS_INFO * ptr)
   ptr->class_hfid = NULL;
   ptr->class_oid = NULL;
   ptr->has_uniques = 0;
-  ptr->no_subclasses = 0;
-  ptr->no_attrs = 0;
+  ptr->num_subclasses = 0;
+  ptr->num_attrs = 0;
   ptr->needs_pruning = DB_NOT_PARTITIONED_CLASS;
-  ptr->no_lob_attrs = NULL;
+  ptr->num_lob_attrs = NULL;
   ptr->lob_attr_ids = NULL;
-  ptr->no_extra_assign_reev = 0;
+  ptr->num_extra_assign_reev = 0;
   ptr->mvcc_extra_assign_reev = NULL;
 }
 
@@ -5567,7 +5567,7 @@ regu_odku_info_alloc (void)
   ptr->assignments = NULL;
   ptr->attr_ids = NULL;
   ptr->cons_pred = NULL;
-  ptr->no_assigns = 0;
+  ptr->num_assigns = 0;
   ptr->attr_info = NULL;
   return ptr;
 }
@@ -5636,7 +5636,7 @@ regu_method_sig_init (METHOD_SIG * ptr)
   ptr->method_name = NULL;
   ptr->class_name = NULL;
   ptr->method_type = 0;
-  ptr->no_method_args = 0;
+  ptr->num_method_args = 0;
   ptr->method_arg_pos = NULL;
 }
 
@@ -5720,7 +5720,7 @@ regu_free_method_sig (METHOD_SIG * method_sig)
 void
 regu_method_sig_list_init (METHOD_SIG_LIST * ptr)
 {
-  ptr->no_methods = 0;
+  ptr->num_methods = 0;
   ptr->method_sig = (METHOD_SIG *) 0;
 }
 
@@ -6874,7 +6874,7 @@ pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser, const char *identif
       char string_name2[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
       PT_NODE *name1 = NULL;
       PT_NODE *name2 = NULL;
-      int position = p_dot - identifier_str;
+      int position = CAST_BUFLEN (p_dot - identifier_str);
       int remaining = strlen (identifier_str) - position - 1;
 
       assert ((remaining > 0) && (remaining < strlen (identifier_str) - 1));
@@ -10430,7 +10430,7 @@ pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC
     {
       /* add reference for column in select list */
       as_attr = pt_name (parser, "rowoid_");
-      as_attr->info.name.original = pt_append_string (parser, as_attr->info.name.original, spec_name);
+      as_attr->info.name.original = (const char *) pt_append_string (parser, as_attr->info.name.original, spec_name);
       as_attr->info.name.spec_id = spec->info.spec.id;
       as_attr->info.name.meta_class = PT_OID_ATTR;
       as_attr->type_enum = col->type_enum;

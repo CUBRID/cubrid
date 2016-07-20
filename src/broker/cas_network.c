@@ -715,7 +715,7 @@ net_write_error (int sock, int version, char *driver_info, char *cas_info, int c
     {
       len += err_msg_len + 1;
     }
-  net_write_int (sock, len);
+  net_write_int (sock, (int) len);
 
   if (cas_info_size > 0)
     {
@@ -739,6 +739,6 @@ net_write_error (int sock, int version, char *driver_info, char *cas_info, int c
   net_write_int (sock, code);
   if (err_msg_len > 0)
     {
-      net_write_stream (sock, err_msg, err_msg_len + 1);
+      net_write_stream (sock, err_msg, (int) err_msg_len + 1);
     }
 }

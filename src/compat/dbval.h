@@ -535,6 +535,7 @@
 
 #define db_make_db_char(v, c, coll, p, s) \
     ((v)->data.ch.info.style = MEDIUM_STRING, \
+     (v)->data.ch.info.is_max_string = false, \
      (v)->data.ch.medium.codeset = (c), \
      (v)->data.ch.medium.size = (s), \
      (v)->data.ch.medium.buf = (char *) (p), \

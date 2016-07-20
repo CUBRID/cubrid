@@ -102,12 +102,7 @@ typedef struct tr_triglist
 
   TR_TRIGGER *trigger;
   DB_OBJECT *target;		/* associated target instance */
-
-  /* saved recursion level for a deferred activity */
-  int recursion_level;
 } TR_TRIGLIST;
-
-
 
 typedef struct tr_deferred_context
 {

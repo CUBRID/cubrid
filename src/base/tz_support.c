@@ -933,7 +933,7 @@ tz_get_timezone_offset (const char *tz_str, int tz_size, char *result, DB_DATETI
 	  return ER_TZ_INVALID_TIMEZONE;
 	}
 
-      zone_id = tz_get_zone_id_by_name (save_poz, p - save_poz);
+      zone_id = tz_get_zone_id_by_name (save_poz, CAST_BUFLEN (p - save_poz));
       if (zone_id == -1)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
@@ -1170,7 +1170,7 @@ tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INF
 	  dst_str = NULL;
 	}
 
-      zone_id = tz_get_zone_id_by_name (zone_str, reg_str_end - zone_str);
+      zone_id = tz_get_zone_id_by_name (zone_str, CAST_BUFLEN (reg_str_end - zone_str));
       if (zone_id == -1)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
@@ -1280,7 +1280,7 @@ tz_str_to_region (const char *tz_str, const int tz_str_size, TZ_REGION * tz_regi
 	  reg_str_end++;
 	}
 
-      reg_zone_id = tz_get_zone_id_by_name (zone_str, reg_str_end - zone_str);
+      reg_zone_id = tz_get_zone_id_by_name (zone_str, CAST_BUFLEN (reg_str_end - zone_str));
       if (reg_zone_id == -1)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
@@ -1580,7 +1580,7 @@ tz_create_timetz_ext (const DB_TIME * time, const char *timezone, int len_timezo
       return ER_TZ_INVALID_TIMEZONE;
     }
 
-  err_status = tz_str_to_region (zone_str, len_timezone - (zone_str - timezone), &region);
+  err_status = tz_str_to_region (zone_str, len_timezone - CAST_BUFLEN (zone_str - timezone), &region);
   if (err_status != NO_ERROR)
     {
       return err_status;
@@ -4923,9 +4923,12 @@ tz_resolve_os_timezone (char *timezone, int buf_len)
   int len_iana_zone, iana_zone_id;
 
 #if defined (WINDOWS)
+  char tzname[64];
+  size_t tzret;
   tz_data = tz_get_data ();
   tzset ();
-  iana_zone_id = tz_get_iana_zone_id_by_windows_zone (tzname[0]);
+  _get_tzname (&tzret, tzname, sizeof (tzname), 0);
+  iana_zone_id = tz_get_iana_zone_id_by_windows_zone (tzname);
   if (iana_zone_id < 0)
     {
       return iana_zone_id;
@@ -5136,7 +5139,7 @@ tz_full_timezones_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE *
 
   /* Get the current time in seconds */
   time (&cur_time);
-  tz_timestamp_decode_no_leap_sec (cur_time, &year, &month, &day, &hour, &minute, &second);
+  tz_timestamp_decode_no_leap_sec ((int) cur_time, &year, &month, &day, &hour, &minute, &second);
 
   error = db_datetime_encode (&utc_datetime, month + 1, day, year, hour, minute, second, 0);
   if (error != NO_ERROR)

@@ -64,7 +64,6 @@ enum
   CSECT_HA_SERVER_STATE,	/* Latch for HA server mode change */
   CSECT_COMPACTDB_ONE_INSTANCE,	/* Latch for compactdb */
   CSECT_ACL,			/* Latch for accessible IP list table */
-  CSECT_QPROC_FILTER_PRED_CACHE,	/* Latch for PRED XASL cache */
   CSECT_PARTITION_CACHE,	/* Latch for partitions cache */
   CSECT_EVENT_LOG_FILE,		/* Latch for event log file */
   CSECT_CONN_ACTIVE,		/* Latch for Active conn list */

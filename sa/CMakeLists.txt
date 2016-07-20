@@ -158,6 +158,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_dump.c
   ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/fetch.c
+  ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/query.c
@@ -175,6 +176,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/crypt_opfunc.c
   ${QUERY_DIR}/vacuum.c
+  ${QUERY_DIR}/xasl_cache.c
   )
 
 set(OBJECT_SOURCES
@@ -302,12 +304,13 @@ endif(NOT USE_CUBRID_ENV)
 if(WIN32)
   set_source_files_properties(${BASE_DIR}/message_catalog.c PROPERTIES COMPILE_FLAGS -DNDEBUG)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
+  set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES COMPILE_FLAGS -Og-)
   target_compile_definitions(cubridsa PRIVATE YY_NO_UNISTD_H)
   if(TARGET_PLATFORM_BITS EQUAL 32)
     target_compile_definitions(cubridsa PRIVATE _USE_32BIT_TIME_T)
   endif(TARGET_PLATFORM_BITS EQUAL 32)
   target_link_libraries(cubridsa LINK_PRIVATE ws2_32 ${JVM_LIBS})
-  set_target_properties(cubridsa PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridsa/cubridsa.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib"  LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
+  set_target_properties(cubridsa PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridsa/cubridsa.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
 target_include_directories(cubridsa PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${JAVA_INC} ${EP_INCLUDES})
 if(UNIX)
@@ -329,16 +332,16 @@ if(ENABLE_SYSTEMTAP)
 endif(ENABLE_SYSTEMTAP)
 
 install(TARGETS cubridsa
-  RUNTIME DESTINATION ${CUBRID_BINDIR}
-  LIBRARY DESTINATION ${CUBRID_LIBDIR}
+  RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Library
+  LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   )
 
 
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY
-    ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/
-    DESTINATION ${CUBRID_BINDIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/
+    DESTINATION ${CUBRID_BINDIR} COMPONENT Debuginfo
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)

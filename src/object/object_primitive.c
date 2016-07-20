@@ -9696,7 +9696,7 @@ pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
       goto exit_on_error;
     }
 
-  return buf->ptr - buf->buffer;
+  return CAST_BUFLEN (buf->ptr - buf->buffer);
 
 exit_on_error:
 
@@ -9776,7 +9776,7 @@ int
 pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
 {
   DB_MIDXKEY *midx_key;
-  int i, start, offset, size;
+  int i, start, offset;
 
   midx_key = DB_PULL_MIDXKEY (key);
 
@@ -10984,6 +10984,11 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   else if (DB_IS_NULL (src) || (src_str = db_get_string (src)) == NULL)
     {
       error = db_value_domain_init (dest, DB_TYPE_VARCHAR, db_value_precision (src), 0);
+      if (!DB_IS_NULL (src) && src->data.ch.info.is_max_string)
+	{
+	  dest->data.ch.info.is_max_string = true;
+	  dest->domain.general_info.is_null = 0;
+	}
     }
   else
     {
@@ -10992,6 +10997,8 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       src_length = db_get_string_size (src);
       if (src_length < 0)
 	src_length = strlen (src_str);
+
+      assert (src->data.ch.info.is_max_string == false);
 
       /* should we be paying attention to this? it is extremely dangerous */
       if (!copy)
@@ -11360,6 +11367,31 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
   string2 = (unsigned char *) DB_GET_STRING (value2);
+
+
+  /*
+   *  Check if the is_max_string flag set for each DB_VALUE.
+   *  If "value1" has the flag set, return 1, meaning that "value2" is Less Than "value1".
+   *  If "value2" has the flag set, return -1, meaning that "value1" is Greater Than "value2".
+   */
+
+  if (value1->data.ch.info.is_max_string == true)
+    {
+      if (value2->data.ch.info.is_max_string == true)
+	{
+	  /* Both strings are max_string. Therefore equal. Even though this should not happen. */
+	  assert (false);
+	  return DB_EQ;
+	}
+      return DB_GT;
+    }
+  else
+    {
+      if (value2->data.ch.info.is_max_string == true)
+	{
+	  return DB_LT;
+	}
+    }
 
   if (string1 == NULL || string2 == NULL || DB_GET_STRING_CODESET (value1) != DB_GET_STRING_CODESET (value1))
     {
@@ -12182,6 +12214,30 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
   string1 = (unsigned char *) DB_GET_STRING (value1);
   string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  /*
+   *  Check if the is_max_string flag set for each DB_VALUE.
+   *  If "value1" has the flag set, return 1, meaning that "value2" is Less Than "value1".
+   *  If "value2" has the flag set, return -1, meaning that "value1" is Greater Than "value2".
+   */
+
+  if (value1->data.ch.info.is_max_string == true)
+    {
+      if (value2->data.ch.info.is_max_string == true)
+	{
+	  /* Both strings are max_string. Therefore equal. Even though this should not happen. */
+	  assert (false);
+	  return DB_EQ;
+	}
+      return DB_GT;
+    }
+  else
+    {
+      if (value2->data.ch.info.is_max_string == true)
+	{
+	  return DB_LT;
+	}
+    }
 
   if (string1 == NULL || string2 == NULL || DB_GET_STRING_CODESET (value1) != DB_GET_STRING_CODESET (value1))
     {
