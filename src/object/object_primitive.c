@@ -11322,8 +11322,6 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  str_length = compressed_size;
 		}
 
-	      assert (0 < str_length);
-
 	      if (copy_buf && copy_buf_len >= str_length + 1)
 		{
 		  /* read buf image into the copy_buf */
