@@ -101,7 +101,7 @@ test_circular_queue_consumer (void *param)
 	  local_nconsumed = ATOMIC_INC_64 (&global_nconsumed, 1);
 	  if (local_nconsumed % 100000 == 0)
 	    {
-	      printf (" Consumed %d entries \n ", local_nconsumed);
+	      printf (" Consumed %d entries \n", local_nconsumed);
 	    }
 	}
     }
@@ -155,6 +155,8 @@ test_cqueue (int num_consumers, int num_producers)
     {
       return fail ("too many threads");
     }
+
+  begin ("one consumer / 50 producers");
 
   global_nconsumed = 0;
   global_nproduced = 0;
