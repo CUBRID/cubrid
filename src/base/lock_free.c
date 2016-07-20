@@ -101,15 +101,17 @@ static INT64 lf_temps = 0;
 
 #if defined (UNITTEST_LF)
 #define LF_UNITTEST_INC(lf_stat, incval) ATOMIC_INC_64 (lf_stat, incval)
+#else /* !UNITTEST_LF */
+#define LF_UNITTEST_INC(lf_stat, incval)
+#endif
 
+#if defined (UNITTEST_LF) || defined (UNITTEST_CQ)
 #if defined (NDEBUG)
 /* Abort when calling assert even if it is not debug */
 #define assert(cond) if (!(cond)) abort ()
 #define assert_release(cond) if (!(cond)) abort ()
 #endif /* NDEBUG */
-#else /* !UNITTEST_LF */
-#define LF_UNITTEST_INC(lf_stat, incval)
-#endif
+#endif /* UNITTEST_LF || UNITTEST_CQ */
 
 static int lf_list_insert_internal (LF_TRAN_ENTRY * tran, void **list_p, void *key, int *behavior_flags,
 				    LF_ENTRY_DESCRIPTOR * edesc, LF_FREELIST * freelist, void **entry, int *inserted);
@@ -2559,6 +2561,14 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 
       /* Compute entry's index in circular queue */
       entry_index = (int) produce_cursor % queue->capacity;
+      entry_state_p = &queue->entry_state[entry_index];
+      if (ATOMIC_LOAD_64 (entry_state_p) == ((produce_cursor - queue->capacity) | LFCQ_RESERVED_FOR_CONSUME))
+	{
+	  /* The entry at produce_cursor is being consumed still. The consume cursor is behind one generation and
+	   * it was already incremented, but the consumer did not yet finish consuming. We can consider the queue
+	   * is still full since we don't want to loop here for an indefinite time. */
+	  return false;
+	}
 
       /* Change state to RESERVED_FOR_PRODUCE. The expected current state is produce_cursor | LFCQ_READY_FOR_PRODUCE.
        * The produce cursor is included in the state to avoid reusing same produce cursor in a scenario like:
@@ -2572,7 +2582,6 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
        */
       old_state = produce_cursor | LFCQ_READY_FOR_PRODUCE;
       new_state = produce_cursor | LFCQ_RESERVED_FOR_PRODUCE;
-      entry_state_p = &queue->entry_state[entry_index];
       if (ATOMIC_CAS_64 (entry_state_p, old_state, new_state))
 	{
 	  /* Entry was successfully allocated for producing data, break the loop now. */
@@ -2655,10 +2664,17 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
       /* Compute entry's index in circular queue */
       entry_index = (int) consume_cursor % queue->capacity;
 
+      entry_state_p = &queue->entry_state[entry_index];
+      if (ATOMIC_LOAD_64 (entry_state_p) == (consume_cursor | LFCQ_RESERVED_FOR_PRODUCE))
+	{
+	  /* We are here because produce_cursor was incremented but the entry at consume_cursor was not produced yet.
+	   * We can consider the queue empty since we don't want to loop here for an indefinite time. */
+	  return false;
+	}
+
       /* Try to set entry state from READY_FOR_CONSUME to RESERVED_FOR_CONSUME. */
       old_state = consume_cursor | LFCQ_READY_FOR_CONSUME;
       new_state = consume_cursor | LFCQ_RESERVED_FOR_CONSUME;
-      entry_state_p = &queue->entry_state[entry_index];
       if (ATOMIC_CAS_64 (entry_state_p, old_state, new_state))
 	{
 	  /* Entry was successfully reserved for consume. Break loop. */
