@@ -16161,7 +16161,7 @@ int
 mr_get_compression_length (char *string, int charlen)
 {
   lzo_voidp wrkmem;
-  char *compressed_string;
+  char *compressed_string = NULL;
   lzo_uint compressed_length = 0;
   int rc = NO_ERROR;
 
