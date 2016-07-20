@@ -2539,6 +2539,9 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   UINT64 old_state;
   UINT64 new_state;
   volatile UINT64 *entry_state_p;
+#if !defined (NDEBUG) || defined (UNITTEST_CQ)
+  bool was_not_ready = false;
+#endif /* !NDEBUG || UNITTEST_CQ */
 
   assert (data != NULL);
 
@@ -2562,13 +2565,11 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
       /* Compute entry's index in circular queue */
       entry_index = (int) produce_cursor % queue->capacity;
       entry_state_p = &queue->entry_state[entry_index];
-      if (ATOMIC_LOAD_64 (entry_state_p) == ((produce_cursor - queue->capacity) | LFCQ_RESERVED_FOR_CONSUME))
-	{
-	  /* The entry at produce_cursor is being consumed still. The consume cursor is behind one generation and
-	   * it was already incremented, but the consumer did not yet finish consuming. We can consider the queue
-	   * is still full since we don't want to loop here for an indefinite time. */
-	  return false;
-	}
+
+#if !defined (NDEBUG) || defined (UNITTEST_CQ)
+      was_not_ready =
+	ATOMIC_LOAD_64 (entry_state_p) == ((produce_cursor - queue->capacity) | LFCQ_RESERVED_FOR_CONSUME);
+#endif /* !NDEBUG || UNITTEST_CQ */
 
       /* Change state to RESERVED_FOR_PRODUCE. The expected current state is produce_cursor | LFCQ_READY_FOR_PRODUCE.
        * The produce cursor is included in the state to avoid reusing same produce cursor in a scenario like:
@@ -2605,8 +2606,11 @@ lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	}
       else
 	{
-	  /* The entry at current produce cursor was already "produced". The cursor should already be incremented. */
-	  assert (queue->produce_cursor > produce_cursor);
+#if !defined (NDEBUG) || defined (UNITTEST_CQ)
+	  /* The entry at current produce cursor was already "produced". The cursor should already be incremented or
+	   * maybe it was not ready when ATOMIC_CAS was called, but now it is. */
+	  assert ((queue->produce_cursor > produce_cursor) || was_not_ready);
+#endif /* !NDEBUG || UNITTEST_CQ */
 	}
       /* Loop again. */
     }
@@ -2644,6 +2648,9 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
   UINT64 old_state;
   UINT64 new_state;
   volatile UINT64 *entry_state_p;
+#if !defined (NDEBUG) || defined (UNITTEST_CQ)
+  bool was_not_ready = false;
+#endif /* !NDEBUG || UNITTEST_CQ */
 
   /* Loop until an entry can be consumed or until queue is empty */
   /* Since there may be more than one consumer and no locks is used, a consume cursor and entry states are used to
@@ -2663,14 +2670,10 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 
       /* Compute entry's index in circular queue */
       entry_index = (int) consume_cursor % queue->capacity;
-
       entry_state_p = &queue->entry_state[entry_index];
-      if (ATOMIC_LOAD_64 (entry_state_p) == (consume_cursor | LFCQ_RESERVED_FOR_PRODUCE))
-	{
-	  /* We are here because produce_cursor was incremented but the entry at consume_cursor was not produced yet.
-	   * We can consider the queue empty since we don't want to loop here for an indefinite time. */
-	  return false;
-	}
+#if !defined (NDEBUG) || defined (UNITTEST_CQ)
+      was_not_ready = ATOMIC_LOAD_64 (entry_state_p) == (consume_cursor | LFCQ_RESERVED_FOR_PRODUCE);
+#endif /* !NDEBUG || UNITTEST_CQ */
 
       /* Try to set entry state from READY_FOR_CONSUME to RESERVED_FOR_CONSUME. */
       old_state = consume_cursor | LFCQ_READY_FOR_CONSUME;
@@ -2697,8 +2700,11 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 	}
       else
 	{
-	  /* The entry at current consume cursor was already "consumed". The cursor should already be incremented. */
+#if !defined (NDEBUG) || defined (UNITTEST_CQ)
+	  /* The entry at current consume cursor was already "consumed". The cursor should already be incremented or it
+	   * was not ready when ATOMIC_CAS was called but now it is. */
 	  assert (queue->consume_cursor > consume_cursor);
+#endif /* !NDEBUG || UNITTEST_CQ */
 	}
       /* Loop again. */
     }
