@@ -11321,6 +11321,9 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		{
 		  str_length = compressed_size;
 		}
+
+	      assert (0 < str_length);
+
 	      if (copy_buf && copy_buf_len >= str_length + 1)
 		{
 		  /* read buf image into the copy_buf */
@@ -11392,7 +11395,8 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 					  &decompression_size, NULL);
 		      if (rc != LZO_E_OK)
 			{
-			  return rc;
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 1, 0);
+			  return ER_IO_LZO_DECOMPRESS_FAIL;
 			}
 		      if (decompression_size != decompressed_size)
 			{
@@ -11499,6 +11503,10 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	}
 
       rc = mr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
 
       str_length1 = str1_decompressed_length;
       alloced_string1 = true;
@@ -11530,6 +11538,10 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	    }
 
 	  rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
+	  if (rc != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
 
 	  str_length2 = str2_decompressed_length;
 	  alloced_string2 = true;
@@ -13976,8 +13988,8 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	    }
 
 	  /* Get the decompressed and compressed size of the string stored in buffer.
-	     If compressed_size is set to -1, then the string is not compressed at all.
-	     If compressed_size is set to 0, the string was attempted to be compressed, however it failed.
+	   * If compressed_size is set to -1, then the string is not compressed at all.
+	   * If compressed_size is set to 0, the string was attempted to be compressed, however it failed.
 	   */
 	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &decompressed_size);
 	  if (rc != NO_ERROR)
@@ -14124,7 +14136,8 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 					  &decompression_size, NULL);
 		      if (rc != LZO_E_OK)
 			{
-			  return rc;
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 1, 0);
+			  return ER_IO_LZO_DECOMPRESS_FAIL;
 			}
 
 		      if (decompression_size != decompressed_size)
@@ -14215,8 +14228,11 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 {
   int c = DB_UNK;
   char *str1, *str2;
-  int str_length1, str_length2;
+  int str_length1, str1_compressed_length = 0, str1_decompressed_length = 0;
+  int str_length2, str2_compressed_length = 0, str2_decompressed_length = 0;
   OR_BUF buf1, buf2;
+  char *string1 = NULL, *string2 = NULL;
+  bool alloced_string1 = false, alloced_string2 = false;
   int rc = NO_ERROR;
 
   assert (domain != NULL);
@@ -14241,11 +14257,70 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   assert (str_length1 == 0xFF || str_length2 == 0xFF);
 
   or_init (&buf1, str1, 0);
-  str_length1 = or_get_varchar_length (&buf1, &rc);
+  if (str_length1 == 0xFF)
+    {
+      rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      string1 = db_private_alloc (NULL, str1_decompressed_length + 1);
+      if (string1 == NULL)
+	{
+	  /* Error report */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str1_decompressed_length);
+	  goto cleanup;
+	}
+
+      rc = mr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      str_length1 = str1_decompressed_length;
+      alloced_string1 = true;
+      string1[str_length1] = '\0';
+    }
+  else
+    {
+      string1 = buf1.ptr;
+    }
+
   if (rc == NO_ERROR)
     {
       or_init (&buf2, str2, 0);
-      str_length2 = or_get_varchar_length (&buf2, &rc);
+      if (str_length2 == 0xFF)
+	{
+	  rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
+	  if (rc != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+
+	  string2 = db_private_alloc (NULL, str2_decompressed_length + 1);
+	  if (string2 == NULL)
+	    {
+	      /* Error report */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
+	      goto cleanup;
+	    }
+
+	  rc = mr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
+	  if (rc != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+
+	  str_length2 = str2_decompressed_length;
+	  alloced_string2 = true;
+	  string2[str_length2] = '\0';
+	}
+      else
+	{
+	  string2 = buf2.ptr;
+	}
       if (rc == NO_ERROR)
 	{
 
@@ -14253,8 +14328,30 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	    QSTR_NCHAR_COMPARE (domain->collation_id, (unsigned char *) buf1.ptr, str_length1,
 				(unsigned char *) buf2.ptr, str_length2, (INTL_CODESET) TP_DOMAIN_CODESET (domain));
 	  c = MR_CMP_RETURN_CODE (c);
+	  /* Clean up the strings */
+	  if (string1 != NULL && alloced_string1 == true)
+	    {
+	      db_private_free_and_init (NULL, string1);
+	    }
+
+	  if (string2 != NULL && alloced_string2 == true)
+	    {
+	      db_private_free_and_init (NULL, string2);
+	    }
+
 	  return c;
 	}
+    }
+
+cleanup:
+  if (string1 != NULL && alloced_string1 == true)
+    {
+      db_private_free_and_init (NULL, string1);
+    }
+
+  if (string2 != NULL && alloced_string2 == true)
+    {
+      db_private_free_and_init (NULL, string2);
     }
 
   return DB_UNK;
@@ -16030,7 +16127,8 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_siz
       rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, data, &decompression_size, NULL);
       if (rc != LZO_E_OK)
 	{
-	  return rc;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 1, 0);
+	  return ER_IO_LZO_DECOMPRESS_FAIL;
 	}
       if (decompression_size != decompressed_size)
 	{
@@ -16065,6 +16163,7 @@ mr_get_compression_length (char *string, int charlen)
   lzo_voidp wrkmem;
   char *compressed_string;
   lzo_uint compressed_length = 0;
+  int rc = NO_ERROR;
 
   wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
   if (wrkmem == NULL)
@@ -16084,7 +16183,16 @@ mr_get_compression_length (char *string, int charlen)
     }
 
   /* Compress the string */
-  lzo1x_1_compress (string, charlen, compressed_string, &compressed_length, wrkmem);
+  rc = lzo1x_1_compress (string, charlen, compressed_string, &compressed_length, wrkmem);
+  if (rc != LZO_E_OK)
+    {
+      /* We should not be having any kind of errors here. Because if this compression fails, there is not warranty
+       * that the compression from putting data into buffer will fail as well. This needs to be checked but for now
+       * we leave it as it is.
+       */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 1, 0);
+      goto cleanup;
+    }
 
   if (charlen >= compressed_length + 8)
     {

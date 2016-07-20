@@ -1503,7 +1503,7 @@ string_disk_size (const char *string)
   /* Because of how mr_data_lengthval_varnchar works, it will not align with 4 more bytes for data with
    * length less than 255, therefore if we have a string that compressed has length less then 255, it will not
    * compute also the 4 bytes of uncompressed_size stored in the buffer and it will fail. Therefore, if the string
-   * is to be compressed, we add 256 on its size, and after alignments and stuff we just substract that 256 from the
+   * is to be compressed, we add 256 on its size, and after alignments and stuff we just subtract that 256 from the
    * final result. We do this only for data that needs to be compressed. */
   if (compressed == 1)
     {

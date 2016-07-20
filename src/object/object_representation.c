@@ -1385,8 +1385,10 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
       /* Compress the string */
       rc = lzo1x_1_compress (string, charlen, compressed_string, &compressed_length, wrkmem);
-      if (rc != NO_ERROR)
+      if (rc != LZO_E_OK)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 1, 0);
+	  rc = ER_IO_LZO_DECOMPRESS_FAIL;
 	  goto cleanup;
 	}
 
