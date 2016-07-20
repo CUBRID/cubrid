@@ -117,7 +117,7 @@ SYNC_RMUTEX logpb_Rmutex_log_pb;
 #define START_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p) \
   do \
     { \
-      (r) = rmutex_lock ((thread_p), LOGPB_RMUTEX_LOG_PB); \
+      (r) =NO_ERROR; \
       assert ((r) == NO_ERROR); \
     } \
   while (0)
@@ -125,7 +125,7 @@ SYNC_RMUTEX logpb_Rmutex_log_pb;
 #define END_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p) \
   do \
     { \
-      (r) = rmutex_unlock ((thread_p), LOGPB_RMUTEX_LOG_PB); \
+      (r) = NO_ERROR; \
       assert ((r) == NO_ERROR); \
     } \
   while (0)
