@@ -1538,7 +1538,8 @@ or_get_varchar (OR_BUF * buf, int *length_ptr)
 int
 or_get_varchar_length (OR_BUF * buf, int *rc)
 {
-  int net_charlen, charlen;
+  int net_charlen, charlen, compressed_length = 0, decompressed_length = 0;
+  char *start = buf->ptr;
 
   /* unpack the size prefix */
   charlen = or_get_byte (buf, rc);
@@ -1551,8 +1552,9 @@ or_get_varchar_length (OR_BUF * buf, int *rc)
 
   if (charlen == 0xFF)
     {
-      *rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-      charlen = OR_GET_INT (&net_charlen);
+      buf->ptr = start;
+      rc = or_get_varchar_compression_lengths (buf, &compressed_length, &decompressed_length);
+      charlen = compressed_length > 0 ? compressed_length : decompressed_length;
     }
 
   return charlen;
