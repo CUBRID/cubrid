@@ -16188,7 +16188,7 @@ mr_get_compression_length (char *string, int charlen)
        * that the compression from putting data into buffer will fail as well. This needs to be checked but for now
        * we leave it as it is.
        */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 1, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 1, 0);
       goto cleanup;
     }
 
