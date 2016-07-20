@@ -81,45 +81,53 @@ fail (const char *message)
   return ER_FAILED;
 }
 
-static volatile INT64 nconsumed;
+static volatile INT64 global_nconsumed;
+static volatile INT64 global_nproduced;
 
 /* thread entry functions */
 void *
 test_circular_queue_consumer (void *param)
 {
-#define NOPS	  1000000	/* 1M */
   VACUUM_LOG_BLOCKID data;
   bool r;
+  INT64 local_nconsumed;
+  int n_tocons = *((int *) param);
 
-  while (nconsumed < NOPS)
+  while ((int) global_nconsumed < n_tocons)
     {
       r = lf_circular_queue_consume (vacuum_Finished_job_queue, &data);
       if (r)
 	{
-	  ATOMIC_INC_64 (&nconsumed, 1);
+	  local_nconsumed = ATOMIC_INC_64 (&global_nconsumed, 1);
+	  if (local_nconsumed % 100000 == 0)
+	    {
+	      printf (" Consumed %d entries \n ", local_nconsumed);
+	    }
 	}
     }
 
   pthread_exit ((void *) NO_ERROR);
-
-#undef NOPS
 }
 
 void *
 test_circular_queue_producer (void *param)
 {
-#define NOPS	  1000000	/* 1M */
   VACUUM_LOG_BLOCKID data;
   bool r;
-  int nproduced = 0;
+  INT64 local_nproduced;
+  int ntoprod = *((int *) param);
 
-  while (nproduced < NOPS)
+  while ((int) global_nproduced < ntoprod)
     {
       data = 0;
       r = lf_circular_queue_produce (vacuum_Finished_job_queue, &data);
       if (r)
 	{
-	  nproduced++;
+	  local_nproduced = ATOMIC_INC_64 (&global_nproduced, 1);
+	  if (local_nproduced % 100000 == 0)
+	    {
+	      printf (" Produced %d entries \n", local_nproduced);
+	    }
 	}
 
       /* need some delay */
@@ -127,8 +135,6 @@ test_circular_queue_producer (void *param)
     }
 
   pthread_exit ((void *) NO_ERROR);
-
-#undef NOPS
 }
 
 #define VACUUM_FINISHED_JOB_QUEUE_CAPACITY 2048
@@ -138,8 +144,11 @@ static int
 test_cqueue (int num_consumers, int num_producers)
 {
 #define MAX_THREADS 64
+#define NOPS 1000000		/* 1M */
   pthread_t threads[MAX_THREADS];
   int i;
+  int n_toprod;
+  int n_tocons;
 
   /* initialization */
   if (MAX_THREADS < num_consumers + num_producers)
@@ -147,7 +156,11 @@ test_cqueue (int num_consumers, int num_producers)
       return fail ("too many threads");
     }
 
-  nconsumed = 0;
+  global_nconsumed = 0;
+  global_nproduced = 0;
+
+  n_toprod = NOPS;
+  n_tocons = NOPS;
 
   vacuum_Finished_job_queue =
     lf_circular_queue_create (VACUUM_FINISHED_JOB_QUEUE_CAPACITY, sizeof (VACUUM_LOG_BLOCKID));
@@ -159,7 +172,7 @@ test_cqueue (int num_consumers, int num_producers)
   for (i = 0; i < num_producers; i++)
     {
       /* fork producers first */
-      if (pthread_create (&threads[i], NULL, test_circular_queue_producer, NULL) != NO_ERROR)
+      if (pthread_create (&threads[i], NULL, test_circular_queue_producer, &n_toprod) != NO_ERROR)
 	{
 	  return fail ("thread create");
 	}
@@ -168,7 +181,7 @@ test_cqueue (int num_consumers, int num_producers)
   for (i = 0; i < num_consumers; i++)
     {
       /* fork consumers later */
-      if (pthread_create (&threads[num_producers + i], NULL, test_circular_queue_consumer, NULL) != NO_ERROR)
+      if (pthread_create (&threads[num_producers + i], NULL, test_circular_queue_consumer, &n_tocons) != NO_ERROR)
 	{
 	  return fail ("thread create");
 	}
@@ -192,6 +205,7 @@ test_cqueue (int num_consumers, int num_producers)
 
   return success ();
 
+#undef NOPS
 #undef MAX_THREADS
 }
 
