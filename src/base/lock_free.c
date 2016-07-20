@@ -2703,7 +2703,7 @@ lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data)
 #if !defined (NDEBUG) || defined (UNITTEST_CQ)
 	  /* The entry at current consume cursor was already "consumed". The cursor should already be incremented or it
 	   * was not ready when ATOMIC_CAS was called but now it is. */
-	  assert (queue->consume_cursor > consume_cursor);
+	  assert ((queue->consume_cursor > consume_cursor) || was_not_ready);
 #endif /* !NDEBUG || UNITTEST_CQ */
 	}
       /* Loop again. */
