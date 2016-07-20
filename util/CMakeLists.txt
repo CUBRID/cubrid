@@ -233,11 +233,11 @@ if(UNIX)
   target_include_directories(unittests_area PRIVATE ${EP_INCLUDES})
   target_link_libraries(unittests_area LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
 
-  set(UNITTESTS_AREA_SOURCES
+  set(UNITTESTS_CQUEUE_SOURCES
     ${EXECUTABLES_DIR}/unittests_cqueue.c
     )
-  add_executable(unittests_cqueue ${UNITTESTS_AREA_SOURCES})
-  target_compile_definitions(unittests_cqueue PRIVATE SERVER_MODE ${COMMON_DEFS})
+  add_executable(unittests_cqueue ${UNITTESTS_CQUEUE_SOURCES})
+  target_compile_definitions(unittests_cqueue PRIVATE UNITTEST_CQ SERVER_MODE ${COMMON_DEFS})
   target_include_directories(unittests_cqueue PRIVATE ${EP_INCLUDES})
   target_link_libraries(unittests_cqueue LINK_PRIVATE cubrid ${CURSES_LIBRARIES})
   
