@@ -50,7 +50,7 @@ begin (char *test_name)
     {
       putchar (' ');
     }
-  printf ("...");
+  printf ("... \n");
 
   gettimeofday (&start_time, NULL);
 
