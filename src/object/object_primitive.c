@@ -11393,7 +11393,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 					  &decompression_size, NULL);
 		      if (rc != LZO_E_OK)
 			{
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 1, 0);
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
 			  return ER_IO_LZO_DECOMPRESS_FAIL;
 			}
 		      if (decompression_size != decompressed_size)
@@ -14146,7 +14146,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 					  &decompression_size, NULL);
 		      if (rc != LZO_E_OK)
 			{
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 1, 0);
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
 			  return ER_IO_LZO_DECOMPRESS_FAIL;
 			}
 
@@ -16137,7 +16137,7 @@ mr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_siz
       rc = lzo1x_decompress ((lzo_bytep) buf->ptr, (lzo_uint) compressed_size, data, &decompression_size, NULL);
       if (rc != LZO_E_OK)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 1, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_DECOMPRESS_FAIL, 0);
 	  return ER_IO_LZO_DECOMPRESS_FAIL;
 	}
       if (decompression_size != decompressed_size)
