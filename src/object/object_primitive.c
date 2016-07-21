@@ -10813,7 +10813,7 @@ mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
  * for some code on the server that still manufactures pointers directly into
  * the disk buffer and assumes it is a NULL terminated string.  This terminator
  * can be removed after the server has been updated.  The logic for maintaining
- * the terminator is actuall in the or_put_varchar, family of functions.
+ * the terminator is actually in the or_put_varchar, family of functions.
  */
 static int
 mr_data_lengthmem_string (void *memptr, TP_DOMAIN * domain, int disk)
@@ -10843,7 +10843,6 @@ mr_data_lengthmem_string (void *memptr, TP_DOMAIN * domain, int disk)
 	    {
 	      len = or_packed_varchar_length (len);
 	    }
-
 	}
     }
 
@@ -13566,7 +13565,7 @@ mr_getmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool cop
  * for some code on the server that still manufactures pointers directly into
  * the disk buffer and assumes it is a NULL terminated string.  This terminator
  * can be removed after the server has been updated.  The logic for maintaining
- * the terminator is actuall in the or_put_varchar, family of functions.
+ * the terminator is actually in the or_put_varchar, family of functions.
  */
 static int
 mr_data_lengthmem_varnchar (void *memptr, TP_DOMAIN * domain, int disk)
@@ -16200,7 +16199,7 @@ mr_get_compression_length (char *string, int charlen)
        * that the compression from putting data into buffer will fail as well. This needs to be checked but for now
        * we leave it as it is.
        */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 1, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 4, 1, 1, 1, 1);
       goto cleanup;
     }
 
