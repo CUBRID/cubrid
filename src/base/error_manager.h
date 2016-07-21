@@ -160,7 +160,7 @@ typedef void (*PTR_FNERLOG) (int err_id);
 
 /* Macros to assert that error is set. */
 #define ASSERT_ERROR() \
-  (assert (er_errid () != NO_ERROR))
+  assert (er_errid () != NO_ERROR)
 /* This macro will also make sure the error_code to be returned is not
  * NO_ERROR.
  */

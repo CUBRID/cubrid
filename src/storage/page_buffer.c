@@ -11251,6 +11251,12 @@ exit:
 	}
     }
 
+  if (req_page_has_group == false && ret_pgptr != NULL && req_watcher->curr_rank != PGBUF_ORDERED_HEAP_HDR
+      && VPID_EQ (&req_watcher->group_id, req_vpid))
+    {
+      req_watcher->curr_rank = PGBUF_ORDERED_HEAP_HDR;
+    }
+
   return er_status;
 }
 
