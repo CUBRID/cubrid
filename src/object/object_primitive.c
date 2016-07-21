@@ -16208,6 +16208,11 @@ mr_get_compression_length (char *string, int charlen)
       /* Compressed length + the uncompressed size of 4 bytes */
       charlen = (int) compressed_length + 4;
     }
+  else
+    {
+      /* Compression failed but we still add the 4 bytes of uncompressed_length  */
+      charlen = (int) charlen + 4;
+    }
 
 cleanup:
   /* Free the working memory needed for compression */

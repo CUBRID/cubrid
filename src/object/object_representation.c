@@ -1541,29 +1541,14 @@ int
 or_get_varchar_length (OR_BUF * buf, int *rc)
 {
   int net_charlen, charlen, compressed_length = 0, decompressed_length = 0;
-  char *start = buf->ptr;
-
-  /* unpack the size prefix */
-  charlen = or_get_byte (buf, rc);
-
-  if (*rc != NO_ERROR)
+  rc = or_get_varchar_compression_lengths (buf, &compressed_length, &decompressed_length);
+  if (compressed_length > 0)
     {
-      assert (charlen == 0);
-      return charlen;
+      charlen = compressed_length;
     }
-
-  if (charlen == 0xFF)
+  else
     {
-      buf->ptr = start;
-      rc = or_get_varchar_compression_lengths (buf, &compressed_length, &decompressed_length);
-      if (compressed_length > 0)
-	{
-	  charlen = compressed_length;
-	}
-      else
-	{
-	  charlen = decompressed_length;
-	}
+      charlen = decompressed_length;
     }
 
   return charlen;
@@ -8516,7 +8501,7 @@ or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *dec
   int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR, net_charlen = 0;
   int size_prefix = 0;
 
-  /* Make sure the string is compressed */
+  /* Check if the string is compressed */
   size_prefix = or_get_byte (buf, &rc);
   if (rc != NO_ERROR)
     {
