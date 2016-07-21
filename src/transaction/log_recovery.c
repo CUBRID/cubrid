@@ -3372,35 +3372,48 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
-	      tran_index = logtb_find_tran_index (thread_p, tran_id);
-	      if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
-		{
-#if !defined (NDEBUG)
-		  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+	      {
+		bool free_tran = false;
 
-		  assert (tdes && tdes->state != TRAN_ACTIVE);
-#endif
-		  logtb_free_tran_index (thread_p, tran_index);
-		}
+		tran_index = logtb_find_tran_index (thread_p, tran_id);
+		if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
+		  {
+  #if !defined (NDEBUG)
+		    LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
 
-	      if (stopat != NULL && *stopat != -1)
-		{
-		  /* 
-		   * Need to read the donetime record to find out if we need to stop
-		   * the recovery at this point.
-		   */
-		  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
-		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
-		  donetime = (LOG_REC_DONETIME *) ((char *) log_pgptr->area + log_lsa.offset);
+		    assert (tdes && tdes->state != TRAN_ACTIVE);
+  #endif
+		    free_tran = true;
+		  }
 
-		  if (difftime (*stopat, (time_t) donetime->at_time) < 0)
-		    {
-		      /* 
-		       * Stop the recovery process at this point
-		       */
-		      LSA_SET_NULL (&lsa);
-		    }
-		}
+		if (stopat != NULL && *stopat != -1)
+		  {
+		    /* 
+		     * Need to read the donetime record to find out if we need to stop
+		     * the recovery at this point.
+		     */
+		    LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &log_lsa, log_pgptr);
+		    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
+		    donetime = (LOG_REC_DONETIME *) ((char *) log_pgptr->area + log_lsa.offset);
+
+		    if (difftime (*stopat, (time_t) donetime->at_time) < 0)
+		      {
+			/* 
+			 * Stop the recovery process at this point
+			 */
+			LSA_SET_NULL (&lsa);
+			if (tdes != NULL)
+			  {
+			    tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+			  }
+			free_tran = false;
+		      }
+		  }
+		if (free_tran == true)
+		  {
+		    logtb_free_tran_index (thread_p, tran_index);
+		  }
+	      }
 
 	      break;
 
