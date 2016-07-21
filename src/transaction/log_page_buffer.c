@@ -983,71 +983,73 @@ static LOG_BUFFER *logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 	      
 		/* 
 		 * Has this buffer recently been freed ?
-		 /*
-		 if (log_bufptr->recently_freed)
-		 {
-		 /* Set it to false for new cycle */ 
-		log_bufptr->recently_freed = false;
-	    }
-	  
-	  else
-	    
-	    {
-	      
-		/* 
-		 * Replace current buffer.
-		 * Force the log if the current page is dirty.
 		 */ 
-		ixpool = log_bufptr->ipool;
-	      if (log_bufptr->dirty == true)
+		if (log_bufptr->recently_freed)
 		
 		{
-		  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-		  log_Stat.log_buffer_flush_count_by_replacement++;
-		  logpb_flush_all_append_pages (thread_p);
-		  mnt_log_replacements (thread_p);
-		  *retry = true;
-		  return NULL;
+		  
+		    /* Set it to false for new cycle */ 
+		    log_bufptr->recently_freed = false;
 		}
-	      break;
+	      
+	      else
+		
+		{
+		  
+		    /* 
+		     * Replace current buffer.
+		     * Force the log if the current page is dirty.
+		     */ 
+		    ixpool = log_bufptr->ipool;
+		  if (log_bufptr->dirty == true)
+		    
+		    {
+		      assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+		      log_Stat.log_buffer_flush_count_by_replacement++;
+		      logpb_flush_all_append_pages (thread_p);
+		      mnt_log_replacements (thread_p);
+		      *retry = true;
+		      return NULL;
+		    }
+		  break;
+		}
 	    }
 	}
     }
-}
-assert (log_bufptr != NULL);
-
-  /* 
-   * The page is not resident or we are requesting a buffer for working
-   * purposes.
-   */ 
-  if (ixpool == -1)
-  
-  {
+  assert (log_bufptr != NULL);
+  
+    /* 
+     * The page is not resident or we are requesting a buffer for working
+     * purposes.
+     */ 
+    if (ixpool == -1)
     
-      /* 
-       * All log buffers are fixed. There are many concurrent transactions being
-       * aborted at the same time or it is likely that there is a bug in the
-       * system (e.g., buffer are not being freed).
-       */ 
-      /* do we reach here? */ 
-      assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-    error_code = logpb_expand_pool (thread_p, -1);
-    if (error_code != NO_ERROR)
+    {
       
-      {
-	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_ALL_BUFFERS_FIXED, 0);
-	error_code = ER_LOG_ALL_BUFFERS_FIXED;
-	*retry = false;
-      }
-    
-    else
+	/* 
+	 * All log buffers are fixed. There are many concurrent transactions being
+	 * aborted at the same time or it is likely that there is a bug in the
+	 * system (e.g., buffer are not being freed).
+	 */ 
+	/* do we reach here? */ 
+	assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+      error_code = logpb_expand_pool (thread_p, -1);
+      if (error_code != NO_ERROR)
+	
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_ALL_BUFFERS_FIXED, 0);
+	  error_code = ER_LOG_ALL_BUFFERS_FIXED;
+	  *retry = false;
+	}
       
-      {
-	*retry = true;
-      }
-    log_bufptr = NULL;
-  }
-return log_bufptr;
+      else
+	
+	{
+	  *retry = true;
+	}
+      log_bufptr = NULL;
+    }
+  return log_bufptr;
 }
 
 /*
