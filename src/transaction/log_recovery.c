@@ -2514,7 +2514,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_RCVINDEX rcvindex;	/* Recovery index function */
   LOG_LSA rcv_lsa;		/* Address of redo log record */
   LOG_LSA *rcv_page_lsaptr;	/* LSA of data page for log record to redo */
-  LOG_TDES *tdes = NULL;	/* Transaction descriptor */
+  LOG_TDES *tdes;	/* Transaction descriptor */
   int num_particps;		/* Number of participating sites */
   int particp_id_length;	/* Length of particp_ids block */
   void *block_particps_ids;	/* A block of participant ids */
@@ -2591,6 +2591,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
       /* Check all log records in this phase */
       while (lsa.pageid == log_lsa.pageid)
 	{
+	  tdes = NULL;
 	  /* 
 	   * Do we want to stop the recovery redo process at this time ?
 	   */
