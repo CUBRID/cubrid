@@ -768,7 +768,7 @@ int logpb_initialize_pool (THREAD_ENTRY * thread_p)
     }
   for (i = 0; i < PB_DATA_SIZE; i++)
     log_Pb.data[i] = NULL;
-  error_code = logpb_initialize_flush_info ();
+  error_code = logpb_initialize_flush_info ();
   if (error_code != NO_ERROR)
     
     {
