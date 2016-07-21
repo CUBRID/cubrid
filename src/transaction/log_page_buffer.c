@@ -117,7 +117,7 @@ SYNC_RMUTEX logpb_Rmutex_log_pb;
 #define START_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p) \
   do \
     { \
-      (r) =NO_ERROR; \
+      (r) = rmutex_lock ((thread_p), LOGPB_RMUTEX_LOG_PB); \
       assert ((r) == NO_ERROR); \
     } \
   while (0)
@@ -125,7 +125,7 @@ SYNC_RMUTEX logpb_Rmutex_log_pb;
 #define END_EXCLUSIVE_ACCESS_LOG_PB(r, thread_p) \
   do \
     { \
-      (r) = NO_ERROR; \
+      (r) = rmutex_unlock ((thread_p), LOGPB_RMUTEX_LOG_PB); \
       assert ((r) == NO_ERROR); \
     } \
   while (0)
@@ -555,7 +555,6 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-  //START_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
 
   if (num_new_buffers <= 0)
     {
@@ -593,14 +592,13 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
   while ((unsigned int) num_new_buffers > LOG_MAX_NUM_CONTIGUOUS_BUFFERS)
     {
       /* Note that we control overflow of size in this way */
-      //END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
+
 
       error_code = logpb_expand_pool (thread_p, LOG_MAX_NUM_CONTIGUOUS_BUFFERS);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
-      //START_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
       num_new_buffers -= LOG_MAX_NUM_CONTIGUOUS_BUFFERS;
     }
 
@@ -618,7 +616,7 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
       area = (LOG_BUFAREA *) malloc (size);
       if (area == NULL)
 	{
-	  //END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
+
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
@@ -629,7 +627,7 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
 	{
 	  free_and_init (area);
 
-	  //END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
+
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_buffers * sizeof (*log_Pb.pool));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -650,7 +648,7 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
       log_Pb.num_buffers = total_buffers;
     }
 
-  //END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
+
 
   log_Stat.log_buffer_expand_count++;
 
@@ -806,12 +804,9 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
 
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
 
-  //START_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
-
   if (log_Pb.pool == NULL)
     {
       /* logpb already finalized */
-      //END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
       return;
     }
 
@@ -850,7 +845,7 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
   free_and_init (log_Pb.pool);
   log_Pb.num_buffers = 0;
 
-  //END_EXCLUSIVE_ACCESS_LOG_PB (r, thread_p);
+
 
   logpb_finalize_flush_info ();
 
@@ -1006,13 +1001,12 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 		  ixpool = log_bufptr->ipool;
 		  if (log_bufptr->dirty == true)
 		    {
-		      //END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+
 
 		      assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 		      log_Stat.log_buffer_flush_count_by_replacement++;
 		      logpb_flush_all_append_pages (thread_p);
 
-		      //START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 		      mnt_log_replacements (thread_p);
 		      *retry = true;
 		      return NULL;
@@ -1411,7 +1405,6 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  //START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
 #if defined(CUBRID_DEBUG)
   if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
@@ -4613,7 +4606,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   rv = pthread_mutex_lock (&flush_info->flush_mutex);
   hold_flush_mutex = true;
 
-  //START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
   hold_lpb_cs = true;
 
 #if defined(CUBRID_DEBUG)
@@ -4659,7 +4651,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	       *
 	       * Flush the accumulated contiguous pages
 	       */
-	      //END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+
 	      hold_lpb_cs = false;
 
 	      if (logpb_writev_append_pages (thread_p, &(flush_info->toflush[idxflush]), i - idxflush) == NULL)
@@ -4690,7 +4682,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 		  idxflush = -1;
 		}
 
-	      //START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 	      hold_lpb_cs = true;
 	    }
 	}
@@ -4713,7 +4704,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * If there are any accumulated pages, flush them at this point
    */
 
-  //END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+
   hold_lpb_cs = false;
 
   if (idxflush != -1)
@@ -4803,7 +4794,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    * any more.
    */
 
-  //START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
   hold_lpb_cs = true;
 
   for (i = 0; i < flush_info->num_toflush; i++)
@@ -4822,7 +4812,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   assert (flush_page_count == dirty_page_count);
 #endif /* CUBRID_DEBUG */
 
-  //END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+
   hold_lpb_cs = false;
 
 #if defined(CUBRID_DEBUG)
@@ -4982,7 +4972,7 @@ error:
 
   if (hold_lpb_cs)
     {
-      //END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+      ;
     }
   if (hold_flush_mutex)
     {
