@@ -2542,15 +2542,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
   LSA_COPY (&lsa, start_redolsa);
 
-  if (stopat != NULL)
-    {
-      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : stopat: %lld", *stopat);
-    }
-  else
-    {
-      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : stopat: NULL");
-    }
-
   /* Defense for illegal start_redolsa */
   if ((lsa.offset + (int) sizeof (LOG_RECORD_HEADER)) >= LOGAREA_SIZE)
     {
@@ -2668,11 +2659,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_redo");
 	      LSA_SET_NULL (&lsa);
 	      break;
-	    }
-
-	    {
-
-	      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : log_rtype:%d", log_rtype);
 	    }
 
 	  switch (log_rtype)
@@ -2927,8 +2913,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 		  mvccid = MVCCID_NULL;
 		}
-
-	      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : mvccid:%lld", mvccid);
 
 	      /* Do we need to redo anything ? */
 
@@ -3401,8 +3385,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      if (stopat != NULL && *stopat != -1)
 		{
-		  double diff;
-
 		  /* 
 		   * Need to read the donetime record to find out if we need to stop
 		   * the recovery at this point.
@@ -3411,20 +3393,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
 		  donetime = (LOG_REC_DONETIME *) ((char *) log_pgptr->area + log_lsa.offset);
 
-		  _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : donetime: %lld, tran_id:%d", donetime->at_time, tran_id);
-
-		  diff = difftime (*stopat, (time_t) donetime->at_time);
-		  if (diff < 0)
+		  if (difftime (*stopat, (time_t) donetime->at_time) < 0)
 		    {
 		      /* 
 		       * Stop the recovery process at this point
 		       */
-		      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
-		      LSA_COPY (&tdes->undo_nxlsa, &lsa);
-		      tdes->trid = tran_id;
-
 		      LSA_SET_NULL (&lsa);
-		      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : STOP, diff:%f", diff);
 		    }
 		}
 
@@ -3790,8 +3764,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
       return;
     }
 
-  _er_log_debug (ARG_FILE_LINE, "log_recovery_undo lsa_ptr_pageid:%d, lsa_ptr_offset:%d", lsa_ptr->pageid, lsa_ptr->offset);
-
   while (lsa_ptr != NULL && !LSA_ISNULL (lsa_ptr))
     {
       /* Fetch the page where the LSA record to undo is located */
@@ -3861,8 +3833,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	    {
 	      LSA_COPY (&tdes->undo_nxlsa, &prev_tranlsa);
 
-	      _er_log_debug (ARG_FILE_LINE, "log_recovery_undo : log_rtype:%d", log_rtype);
-
 	      switch (log_rtype)
 		{
 		case LOG_MVCC_UNDOREDO_DATA:
@@ -3907,8 +3877,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		      rcv.mvcc_id = MVCCID_NULL;
 		    }
-
-		  _er_log_debug (ARG_FILE_LINE, "log_recovery_undo : rcv.mvcc_id:%lld", rcv.mvcc_id);
 
 		  rcvindex = undoredo->data.rcvindex;
 		  rcv.length = undoredo->ulength;
@@ -3968,8 +3936,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 
 		      rcv.mvcc_id = MVCCID_NULL;
 		    }
-
-		  _er_log_debug (ARG_FILE_LINE, "log_recovery_undo : rcv.mvcc_id:%lld", rcv.mvcc_id);
 
 		  rcvindex = undo->data.rcvindex;
 		  rcv.length = undo->length;
