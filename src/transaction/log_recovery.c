@@ -2737,8 +2737,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  mvccid = MVCCID_NULL;
 		}
 
-	      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : mvccid:%lld", mvccid);
-
 	      if (is_mvcc_op)
 		{
 		  /* Save last MVCC operation LOG_LSA. */
@@ -3403,6 +3401,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      if (stopat != NULL && *stopat != -1)
 		{
+		  double diff;
 
 		  /* 
 		   * Need to read the donetime record to find out if we need to stop
@@ -3412,15 +3411,20 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
 		  donetime = (LOG_REC_DONETIME *) ((char *) log_pgptr->area + log_lsa.offset);
 
-		  _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : donetime: %lld", donetime->at_time);
+		  _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : donetime: %lld, tran_id:%d", donetime->at_time, tran_id);
 
-		  if (difftime (*stopat, (time_t) donetime->at_time) < 0)
+		  diff = difftime (*stopat, (time_t) donetime->at_time);
+		  if (diff < 0)
 		    {
 		      /* 
 		       * Stop the recovery process at this point
 		       */
+		      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
+		      LSA_COPY (&tdes->undo_nxlsa, &lsa);
+		      tdes->trid = tran_id;
+
 		      LSA_SET_NULL (&lsa);
-		      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : STOP");
+		      _er_log_debug (ARG_FILE_LINE, "log_recovery_redo : STOP, diff:%f", diff);
 		    }
 		}
 
@@ -3739,7 +3743,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
 
-
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   /* 
@@ -3786,6 +3789,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_undo");
       return;
     }
+
+  _er_log_debug (ARG_FILE_LINE, "log_recovery_undo lsa_ptr_pageid:%d, lsa_ptr_offset:%d", lsa_ptr->pageid, lsa_ptr->offset);
 
   while (lsa_ptr != NULL && !LSA_ISNULL (lsa_ptr))
     {
