@@ -2514,7 +2514,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_RCVINDEX rcvindex;	/* Recovery index function */
   LOG_LSA rcv_lsa;		/* Address of redo log record */
   LOG_LSA *rcv_page_lsaptr;	/* LSA of data page for log record to redo */
-  LOG_TDES *tdes;		/* Transaction descriptor */
+  LOG_TDES *tdes = NULL;	/* Transaction descriptor */
   int num_particps;		/* Number of participating sites */
   int particp_id_length;	/* Length of particp_ids block */
   void *block_particps_ids;	/* A block of participant ids */
@@ -3378,12 +3378,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		tran_index = logtb_find_tran_index (thread_p, tran_id);
 		if (tran_index != NULL_TRAN_INDEX && tran_index != LOG_SYSTEM_TRAN_INDEX)
 		  {
-  #if !defined (NDEBUG)
-		    LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-
+		    tdes = LOG_FIND_TDES (tran_index);
 		    assert (tdes && tdes->state != TRAN_ACTIVE);
-  #endif
-		    free_tran = true;
+  		    free_tran = true;
 		  }
 
 		if (stopat != NULL && *stopat != -1)
@@ -3402,6 +3399,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			 * Stop the recovery process at this point
 			 */
 			LSA_SET_NULL (&lsa);
+
+			/* Commit/abort record was recorded after the stopat recovery time. The transaction needs to
+			 * undo all its changes (log_recovery_undo), so transaction descriptor needs to be kept,
+			 * and transaction state should be changed to aborted. The undo process starts from this
+			 * record's LSA and undoes all previous changes of the transaction
+			 * (See log_find_unilaterally_largest_undo_lsa usage from log_recovery_undo) */
 			if (tdes != NULL)
 			  {
 			    tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
