@@ -39,7 +39,7 @@ if(WIN32)
   list(APPEND LIBCAS_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
 endif(WIN32)
 
-add_library(cas STATIC ${LIBCAS_SOURCES})
+add_library(cas SHARED ${LIBCAS_SOURCES})
 if(UNIX)
   set_target_properties(cas PROPERTIES COMPILE_FLAGS "-fPIC")
 endif(UNIX)
