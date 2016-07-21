@@ -1483,32 +1483,9 @@ string_disk_size (const char *string)
     {
       str_length = 0;
     }
-  /* We need to simulate a compression of the string to be stored in buffer, so we can know how much we need
-   * to store on the disk.
-   */
-  if (str_length >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
-    {
-      str_length = mr_get_compression_length (string, str_length);
-      if (str_length <= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
-	{
-	  str_length = str_length + PRIM_TEMPORARY_DISK_SIZE;
-	  compressed = 1;
-	}
-    }
-  /* This does not take in consideration the string so it is useless to have the compressed string
-   * stored in the dbvalue. Important here is the str_length field. */
+
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   length = (*(tp_VarNChar.data_lengthval)) (&value, 1);
-
-  /* Because of how mr_data_lengthval_varnchar works, it will not align with 4 more bytes for data with
-   * length less than 255, therefore if we have a string that compressed has length less then 255, it will not
-   * compute also the 4 bytes of uncompressed_size stored in the buffer and it will fail. Therefore, if the string
-   * is to be compressed, we add 256 on its size, and after alignments and stuff we just subtract that 256 from the
-   * final result. We do this only for data that needs to be compressed. */
-  if (compressed == 1)
-    {
-      return length - PRIM_TEMPORARY_DISK_SIZE;
-    }
 
   return length;
 }

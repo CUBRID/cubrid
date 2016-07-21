@@ -13817,8 +13817,10 @@ mr_data_readval_varnchar (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 static int
 mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 {
-  int src_length, len;
+  int src_length, len, rc = NO_ERROR;
   const char *str;
+  bool compressable = false;
+
 #if !defined (SERVER_MODE)
   INTL_CODESET src_codeset;
 #endif
@@ -13829,6 +13831,12 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
       src_length = db_get_string_size (value);	/* size in bytes */
       if (src_length < 0)
 	src_length = strlen (str);
+
+      if (src_length >= PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+	{
+	  src_length = mr_get_compression_length (str, src_length) + PRIM_TEMPORARY_DISK_SIZE;
+	  compressable = true;
+	}
 
 #if !defined (SERVER_MODE)
       src_codeset = (INTL_CODESET) db_get_string_codeset (value);
@@ -13862,6 +13870,10 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 	{
 	  len = or_varchar_length (src_length);
 	}
+    }
+  if (compressable == true)
+    {
+      len -= PRIM_TEMPORARY_DISK_SIZE;
     }
 
   return len;
