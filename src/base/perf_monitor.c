@@ -4010,13 +4010,13 @@ perfmon_initialize (int num_trans)
 	case PSTAT_PEEK_SINGLE_VALUE:
 	  /* Only one value stored. */
 	  pstat_Metadata[idx].n_vals = 1;
-	  ++pstat_Global.n_single_stats;
+	  pstat_Global.n_single_stats++;
 	  break;
 	case PSTAT_COMPUTED_RATIO_VALUE:
 	  /* Only one value stored. */
 	  pstat_Metadata[idx].n_vals = 1;
-	  ++pstat_Global.n_single_stats;
-	  ++pstat_Global.n_calc_stats;
+	  pstat_Global.n_single_stats++;
+	  pstat_Global.n_calc_stats++;
 	  break;
 	case PSTAT_COUNTER_TIMER_VALUE:
 	  /* We have:
@@ -4026,10 +4026,10 @@ perfmon_initialize (int num_trans)
 	   * 4. average time
 	   */
 	  pstat_Metadata[idx].n_vals = 4;
-	  ++pstat_Global.n_single_stats;
+	  pstat_Global.n_single_stats++;
 	  break;
 	case PSTAT_COMPLEX_VALUE:
-	  ++pstat_Global.n_array_stats;
+	  pstat_Global.n_array_stats++;
 	  /* We should have a load function. */
 	  assert (pstat_Metadata[idx].f_load != NULL);
 	  pstat_Metadata[idx].n_vals = pstat_Metadata[idx].f_load ();

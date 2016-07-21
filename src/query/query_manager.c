@@ -1268,14 +1268,14 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       /* XASL cache entry not found. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-      mnt_pc_invalid_xasl_id (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
       return NULL;
     }
   if (xclone.xasl == NULL || xclone.xasl_buf == NULL)
     {
       assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-      mnt_pc_invalid_xasl_id (thread_p);
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
       return NULL;
     }
 
