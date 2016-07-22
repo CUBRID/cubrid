@@ -1338,6 +1338,7 @@ logpb_is_any_dirty (THREAD_ENTRY * thread_p)
   int i, rv;
   bool ret;
 
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   ret = false;
