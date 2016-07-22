@@ -1257,7 +1257,7 @@ void
 logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 {
   LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
-  bool old_cs = true;
+  int rv;
   /* Get the address of the buffer from the page. */
   bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
 
@@ -1269,23 +1269,15 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
     }
 #endif /* CUBRID_DEBUG */
 
-  if (csect_check_own (thread_p, CSECT_LOG_ARCHIVE) != 1)
-    {
-      printf ("CV\n");
-      //old_cs = false;
-      LOG_CS_ENTER (thread_p);
-      printf ("entered\n");
-    }
+  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+
   bufptr->dirty = true;
   if (free_page == FREE)
     {
       logpb_unfix_page (bufptr);
     }
-  if (old_cs == false)
-    {
-      LOG_CS_EXIT (thread_p);
-      printf ("exited\n");
-    }
+
+  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
 }
 
@@ -1555,8 +1547,8 @@ logpb_dump (THREAD_ENTRY * thread_p, FILE * out_fp)
     {
       return;
     }
-
-  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+  /* modified mutex with assertion of CS */
+  LOG_CS_OWN_WRITE_MODE (thread_p);
 
   logpb_dump_information (out_fp);
 
@@ -1570,7 +1562,6 @@ logpb_dump (THREAD_ENTRY * thread_p, FILE * out_fp)
 
   logpb_dump_pages (out_fp);
 
-  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 }
 
 /*
