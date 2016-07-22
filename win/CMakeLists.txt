@@ -95,7 +95,7 @@ set_target_properties(cubridtray PROPERTIES COMPILE_FLAGS "/GF /YuSTDAFX.H")
 set_target_properties(cubridtray PROPERTIES OUTPUT_NAME "CUBRID_Service_Tray")
 if(MSVC_VERSION LESS 1600)
   # for VS 2008 (9.0) or less version
-  set_target_properties(cubridtray PROPERTIES LINK_FLAGS  "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\"")
+  set_target_properties(cubridtray PROPERTIES LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\"")
 else(MSVC_VERSION LESS 1600)
   set_target_properties(cubridtray PROPERTIES LINK_FLAGS "/level='requireAdministrator' /uiAccess='false'")
 endif(MSVC_VERSION LESS 1600)
