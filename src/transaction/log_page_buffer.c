@@ -753,7 +753,9 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
       goto error;
     }
   for (i = 0; i < PB_DATA_SIZE; i++)
-    log_Pb.data[i] = NULL;
+    {
+      log_Pb.data[i] = NULL;
+    }
   log_Pb.cursor = 0;
   error_code = logpb_initialize_flush_info ();
   if (error_code != NO_ERROR)
@@ -1139,10 +1141,17 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
 	  return &(log_bufptr->logpage);
 	}
       else
-	return &(log_bufptr->logpage);
+	{
+	  return &(log_bufptr->logpage);
+	}
     }
-  else if (fetch_mode == NEW_PAGE)
-    log_bufptr = log_Pb.data[MOD ((int) pageid)];
+  else
+    {
+      if (fetch_mode == NEW_PAGE)
+	{
+	  log_bufptr = log_Pb.data[MOD ((int) pageid)];
+	}
+    }
   if (log_bufptr == NULL)
     {
       /* 
@@ -1208,11 +1217,17 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
       log_bufptr->pageid = pageid;
       log_bufptr->phy_pageid = phy_pageid;
       if (pageid != LOGPB_HEADER_PAGE_ID)
-	ATOMIC_INC_64 (&log_Pb.cursor, 1);
+	{
+	  ATOMIC_INC_64 (&log_Pb.cursor, 1);
+	}
       if (log_bufptr->pageid == LOGPB_HEADER_PAGE_ID)
-	log_Pb.header_buffer = log_bufptr;
+	{
+	  log_Pb.header_buffer = log_bufptr;
+	}
       else
-	log_Pb.data[MOD ((int) log_bufptr->pageid)] = log_bufptr;
+	{
+	  log_Pb.data[MOD ((int) log_bufptr->pageid)] = log_bufptr;
+	}
 
     }
   else
@@ -1238,7 +1253,6 @@ error:
       logpb_initialize_log_buffer (log_bufptr);
       logpb_reset_clock_hand (log_bufptr->ipool);
     }
-  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
   return NULL;
 }
@@ -1403,14 +1417,14 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
   if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
       && (bufptr->pageid < LOGPB_NEXT_ARCHIVE_PAGE_ID || bufptr->pageid > LOGPB_LAST_ACTIVE_PAGE_ID))
     {
-      END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+      /*END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p); end without start- could be deleted */
 
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSHING_UNUPDATABLE, 1, bufptr->pageid);
       return ER_LOG_FLUSHING_UNUPDATABLE;
     }
   if (bufptr->phy_pageid == NULL_PAGEID || bufptr->phy_pageid != logpb_to_physical_pageid (bufptr->pageid))
     {
-      END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+      /*END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p); end without start- could be deleted */
 
       /* Bad physical log page for such logical page */
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, bufptr->pageid);
@@ -1446,12 +1460,12 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
       logpb_unfix_page (bufptr);
     }
 
-  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+  /*END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p); end without start- could be deleted */
 
   return NO_ERROR;
 
 error:
-  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+  /*END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p); end without start- could be deleted */
 
   return ER_FAILED;
 }
