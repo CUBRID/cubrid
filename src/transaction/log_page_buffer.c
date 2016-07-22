@@ -238,12 +238,12 @@ struct log_buffer
 {
   LOG_PAGEID pageid;		/* Logical page of the log. (Page identifier of the infinite log) */
   LOG_PHY_PAGEID phy_pageid;	/* Physical pageid for the active log portion */
-  int fcnt;			/* Fix count - nu */
+  int fcnt;			/* Fix count */
   int ipool;			/* Buffer pool index. Used to optimize the Clock algorithm and to find the address of
-				 * buffer given the page address -nu */
-  bool dirty;			/* Is page dirty - da? */
+				 * buffer given the page address  */
+  bool dirty;			/* Is page dirty */
   bool recently_freed;		/* Reference value 0/1 used by the clock algorithm - NU */
-  bool flush_running;		/* Is page beging flushed ? - ? */
+  bool flush_running;		/* Is page beging flushed ? */
 
   bool dummy_for_align;		/* Dummy field for 8byte alignment of log page */
   LOG_PAGE logpage;		/* The actual buffered log page */
@@ -551,7 +551,6 @@ logpb_expand_pool (THREAD_ENTRY * thread_p, int num_new_buffers)
   float expand_rate;
   LOG_BUFFER **buffer_pool;
   int error_code = NO_ERROR;
-  int r;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -800,7 +799,7 @@ error:
 void
 logpb_finalize_pool (THREAD_ENTRY * thread_p)
 {
-  int r, i;
+  int i;
 
   assert (LOG_CS_OWN_WRITE_MODE (NULL));
 
@@ -960,7 +959,6 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
   int ixpool = -1;
   int num_unfixed = 1;
   int error_code = NO_ERROR;
-  int rv;
 
   assert (retry != NULL);
 
@@ -1031,9 +1029,8 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
        * aborted at the same time or it is likely that there is a bug in the
        * system (e.g., buffer are not being freed).
        */
-      /* do we reach here? */
-      END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 
+      /* we are in critical section here, we don't need mutex */
       error_code = logpb_expand_pool (thread_p, -1);
 
       if (error_code != NO_ERROR)
@@ -1048,7 +1045,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 	}
       log_bufptr = NULL;
 
-      START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
+
     }
 
   return log_bufptr;
@@ -1099,11 +1096,8 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
   int rv;
   bool retry;
   bool is_perf_tracking;
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  UINT64 fix_wait_time;
+  TSC_TICKS start_tick;
   PERF_PAGE_MODE stat_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
-  LOG_PAGE *log_pgptr;
 
   is_perf_tracking = mnt_is_perf_tracking (thread_p);
   if (is_perf_tracking)
@@ -1154,7 +1148,6 @@ logpb_fix_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE fetc
       /* 
        * Page is not resident. Find a replacement buffer for it
        */
-    null:
       stat_page_found = PERF_PAGE_MODE_OLD_LOCK_WAIT;
 
       while (1)
@@ -1264,8 +1257,7 @@ void
 logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
 {
   LOG_BUFFER *bufptr;		/* Log buffer associated with given page */
-  int rv;
-
+  bool old_cs = true;
   /* Get the address of the buffer from the page. */
   bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
 
@@ -1277,15 +1269,21 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
     }
 #endif /* CUBRID_DEBUG */
 
-  START_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
-
+  if (!csect_check_own (thread_p, CSECT_LOG_ARCHIVE))
+    {
+      old_cs = false;
+      LOG_CS_ENTER (thread_p);
+    }
   bufptr->dirty = true;
   if (free_page == FREE)
     {
       logpb_unfix_page (bufptr);
     }
+  if (old_cs == false)
+    {
+      LOG_CS_EXIT (thread_p);
+    }
 
-  END_EXCLUSIVE_ACCESS_LOG_PB (rv, thread_p);
 }
 
 /*
