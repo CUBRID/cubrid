@@ -18082,7 +18082,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 {
   int i, idx_in_cache;
   char *classname = NULL;
-  char *attr_name;
+  char *attr_name = NULL;
   RECDES recdes;		/* Used to obtain attribute name */
   char serial_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
   HEAP_ATTRVALUE *value;
@@ -18153,6 +18153,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		  goto exit_on_error;
 		}
 
+	      attr_name = string;
 	      if (attr_name == NULL)
 		{
 		  ret = ER_FAILED;
