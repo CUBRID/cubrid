@@ -18925,11 +18925,11 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	      goto exit;
 	    }
 
+	  er_clear ();
+
 	  if (error == ER_IT_DATA_OVERFLOW)
 	    {
 	      int is_positive = -1;	/* -1:UNKNOWN, 0:negative, 1:positive */
-
-	      er_clear ();
 
 	      /* determine sign of orginal value: */
 	      switch (src_type)
