@@ -21078,20 +21078,34 @@ index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p, RECDES * rec
 {
   int i, n, remain_size;
   char *buf_p = NULL;
-  const char *attr_name = NULL;
+  char *attr_name;
   char format[20];
   int error = NO_ERROR;
+  int alloced_string = 0;
+  char *string = NULL;
 
   buf_p = buf;
   remain_size = buf_size;
 
   for (i = 0; i < index_p->n_atts; i++)
     {
-      attr_name = or_get_attrname (recdes, index_p->atts[i]->id);
+      bool set_break = false;
+      alloced_string = 0;
+      string = NULL;
+
+      error = or_get_attrname (recdes, index_p->atts[i]->id, &string, &alloced_string);
+      if (error != NO_ERROR)
+	{
+	  set_break = true;
+	  goto clean_string;
+	}
+      attr_name = string;
+
       if (attr_name == NULL)
 	{
 	  error = ER_FAILED;
-	  break;
+	  set_break = true;
+	  goto clean_string;
 	}
 
       format[0] = '\0';
@@ -21111,6 +21125,17 @@ index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p, RECDES * rec
 	}
 
       n = snprintf (buf_p, remain_size, format, attr_name);
+
+    clean_string:
+      if (string != NULL && alloced_string == 1)
+	{
+	  db_private_free_and_init (NULL, string);
+	}
+
+      if (set_break == true)
+	{
+	  break;
+	}
 
       if (n >= remain_size)	/* The buffer has not enough space */
 	{
