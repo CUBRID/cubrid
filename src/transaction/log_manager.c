@@ -78,6 +78,7 @@
 #include "partition.h"
 #include "connection_support.h"
 #include "log_writer.h"
+#include "filter_pred_cache.h"
 
 #include "fault_injection.h"
 
@@ -201,7 +202,7 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
 
-extern int vacuum_Global_oldest_active_blockers_counter;
+extern INT32 vacuum_Global_oldest_active_blockers_counter;
 
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -825,7 +826,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 
     temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, LOG_PAGESIZE);
-    logpb_read_page_from_file (LOGPB_HEADER_PAGE_ID, temp_pgptr);
+    logpb_read_page_from_file (thread_p, LOGPB_HEADER_PAGE_ID, LOG_CS_FORCE_USE, temp_pgptr);
     assert (memcmp ((LOG_HEADER *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) != 0);
   }
 #endif /* CUBRID_DEBUG */
@@ -844,7 +845,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 
     temp_pgptr = (LOG_PAGE *) aligned_temp_pgbuf;
     memset (temp_pgptr, 0, LOG_PAGESIZE);
-    logpb_read_page_from_file (LOGPB_HEADER_PAGE_ID, temp_pgptr);
+    logpb_read_page_from_file (thread_p, LOGPB_HEADER_PAGE_ID, LOG_CS_FORCE_USE, temp_pgptr);
     assert (memcmp ((LOG_HEADER *) temp_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr)) == 0);
   }
 #endif /* CUBRID_DEBUG */
@@ -3366,8 +3367,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
 
   while (!LSA_ISNULL (&prev_lsa) && found == false)
     {
-
-      if (logpb_fetch_page (thread_p, prev_lsa.pageid, log_pgptr) == NULL)
+      if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	{
 	  break;
 	}
@@ -4719,24 +4719,9 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, v
   (void) partition_decache_class (thread_p, &t->m_class_oid);
 
   /* remove XASL cache entries which are relevant with this class */
-  if (prm_get_integer_value (PRM_ID_XASL_MAX_PLAN_CACHE_ENTRIES) > 0
-      && (qexec_remove_xasl_cache_ent_by_class (thread_p, &t->m_class_oid, 1) != NO_ERROR))
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "log_cleanup_modified_class: qexec_remove_xasl_cache_ent_by_class"
-		    " failed for class { %d %d %d }\n", t->m_class_oid.pageid, t->m_class_oid.slotid,
-		    t->m_class_oid.volid);
-    }
-  /* remove filter predicatecache entries which are relevant with this class */
-  if (prm_get_integer_value (PRM_ID_FILTER_PRED_MAX_CACHE_ENTRIES) > 0
-      && qexec_remove_filter_pred_cache_ent_by_class (thread_p, &t->m_class_oid) != NO_ERROR)
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "log_cleanup_modified_class: xs_remove_filter_pred_cache_ent_by_class"
-		    " failed for class { %d %d %d }\n", t->m_class_oid.pageid, t->m_class_oid.slotid,
-		    t->m_class_oid.volid);
-    }
-
+  xcache_remove_by_oid (thread_p, &t->m_class_oid);
+  /* remove filter predicate cache entries which are relevant with this class */
+  fpcache_remove_by_class (thread_p, &t->m_class_oid);
 }
 
 extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa);
@@ -5295,11 +5280,6 @@ RB_GENERATE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
 TRAN_STATE
 log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran)
 {
-  if (tdes->num_pinned_xasl_cache_entries > 0)
-    {
-      qexec_clear_my_leaked_pinned_xasl_cache_entries (thread_p);
-    }
-
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
 
   /* log_clear_lob_locator_list and logtb_complete_mvcc operations must be done before entering unactive state because
@@ -5433,11 +5413,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 TRAN_STATE
 log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 {
-  if (tdes->num_pinned_xasl_cache_entries > 0)
-    {
-      qexec_clear_my_leaked_pinned_xasl_cache_entries (thread_p);
-    }
-
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, true);
 
   tdes->state = TRAN_UNACTIVE_ABORTED;
@@ -5908,7 +5883,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	{
 	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
 	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
+	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
 	}
 
 #if defined (HAVE_ATOMIC_BUILTINS)
@@ -6205,7 +6180,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	{
 	  ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, -1);
 	  tdes->block_global_oldest_active_until_commit = false;
-	  assert (ATOMIC_INC_32 (&vacuum_Global_oldest_active_blockers_counter, 0) >= 0);
+	  assert (vacuum_Global_oldest_active_blockers_counter >= 0);
 	}
 
 #if defined(HAVE_ATOMIC_BUILTINS)
@@ -7390,7 +7365,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   /* Start dumping all log records following the given direction */
   while (!LSA_ISNULL (&lsa) && dump_npages-- > 0)
     {
-      if ((logpb_fetch_page (thread_p, lsa.pageid, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &lsa, LOG_CS_SAFE_READER, log_pgptr)) == NULL)
 	{
 	  fprintf (out_fp, " Error reading page %lld... Quit\n", (long long int) lsa.pageid);
 	  if (log_dump_ptr != NULL)
@@ -7963,9 +7938,10 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   while (!LSA_ISNULL (&prev_tranlsa) && !isdone)
     {
       /* Fetch the page where the LSA record to undo is located */
-      log_lsa.pageid = prev_tranlsa.pageid;
+      LSA_COPY (&log_lsa, &prev_tranlsa);
+      log_lsa.offset = LOG_PAGESIZE;
 
-      if ((logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
 	{
 	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rollback");
@@ -8255,7 +8231,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 
       if (last_fetch_page_id != top_result_lsa.pageid)
 	{
-	  if (logpb_fetch_page (thread_p, top_result_lsa.pageid, log_pgptr) == NULL)
+	  if (logpb_fetch_page (thread_p, &top_result_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	    {
 	      if (nxtop_stack != *out_nxtop_range_stack)
 		{
@@ -8431,9 +8407,12 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
       isdone = false;
       while (!LSA_ISNULL (&forward_lsa) && !isdone)
 	{
+	  LOG_LSA fetch_lsa;
 	  /* Fetch the page where the postpone LSA record is located */
-	  log_lsa.pageid = forward_lsa.pageid;
-	  if (logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr) == NULL)
+	  LSA_COPY (&log_lsa, &forward_lsa);
+	  fetch_lsa.pageid = log_lsa.pageid;
+	  fetch_lsa.offset = LOG_PAGESIZE;
+	  if (logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr) == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_do_postpone");
 	      goto end;
@@ -8788,8 +8767,13 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 
   while (type != LOG_END_OF_LOG && !LSA_ISNULL (end_lsa))
     {
+      LOG_LSA fetch_lsa;
+
+      fetch_lsa.pageid = end_lsa->pageid;
+      fetch_lsa.offset = LOG_PAGESIZE;
+
       /* Fetch the page */
-      if ((logpb_fetch_page (thread_p, end_lsa->pageid, log_pgptr)) == NULL)
+      if ((logpb_fetch_page (thread_p, &fetch_lsa, LOG_CS_FORCE_USE, log_pgptr)) == NULL)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_find_end_log");
 	  goto error;

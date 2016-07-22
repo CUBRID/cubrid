@@ -4291,7 +4291,6 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
   int chn;
   TF_STATUS status;
   int rc = 0;
-  DB_VALUE partval;
   volatile int prop_free = 0;
   unsigned int repid;
 

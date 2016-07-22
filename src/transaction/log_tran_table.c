@@ -180,8 +180,6 @@ static void *logtb_global_unique_stat_alloc (void);
 static int logtb_global_unique_stat_free (void *unique_stat);
 static int logtb_global_unique_stat_init (void *unique_stat);
 static int logtb_global_unique_stat_key_copy (void *src, void *dest);
-static unsigned int logtb_global_unique_stat_key_hash (void *key, int hash_table_size);
-static int logtb_global_unique_stat_key_compare (void *k1, void *k2);
 static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
 static int logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * snapshot);
 
@@ -960,7 +958,6 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->first_save_entry = NULL;
   tdes->num_new_files = 0;
   tdes->num_new_temp_files = 0;
-  tdes->num_pinned_xasl_cache_entries = 0;
   RB_INIT (&tdes->lob_locator_root);
 }
 
@@ -1142,6 +1139,7 @@ logtb_initialize_mvcctable (void)
     }
   current_trans_status->long_tran_mvccids_length = 0;
   current_trans_status->version = 0;
+  current_trans_status->lowest_active_mvccid = MVCCID_FIRST;
 
   mvcc_table->transaction_lowest_active_mvccids = (MVCCID *) malloc (size);
   if (mvcc_table->transaction_lowest_active_mvccids == NULL)
@@ -1196,6 +1194,7 @@ logtb_initialize_mvcctable (void)
 	}
       trans_status_history->long_tran_mvccids_length = 0;
       trans_status_history->version = 0;
+      trans_status_history->lowest_active_mvccid = MVCCID_FIRST;
     }
   mvcc_table->trans_status_history_position = 0;
 
@@ -1943,7 +1942,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
-  assert (tdes->num_pinned_xasl_cache_entries == 0);
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
@@ -2023,7 +2021,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->first_save_entry = NULL;
   tdes->num_new_files = 0;
   tdes->num_new_temp_files = 0;
-  tdes->num_pinned_xasl_cache_entries = 0;
   tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
   tdes->query_timeout = 0;
@@ -2605,7 +2602,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 #if defined(SERVER_MODE)
   UINT64 current_msec = 0;
   TRAN_QUERY_EXEC_INFO *query_exec_info = NULL;
-  XASL_CACHE_ENTRY *ent;
+  XASL_CACHE_ENTRY *ent = NULL;
 #endif
 
   /* Note, we'll be in a critical section while we gather the data but the section ends as soon as we return the data.
@@ -2666,7 +2663,12 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	  if (!XASL_ID_IS_NULL (&tdes->xasl_id))
 	    {
 	      /* retrieve query statement in the xasl_cache entry */
-	      ent = qexec_check_xasl_cache_ent_by_xasl (thread_p, &tdes->xasl_id, -1, NULL, false);
+	      error_code = xcache_find_sha1 (thread_p, &tdes->xasl_id.sha1, &ent, NULL);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto error;
+		}
 
 	      /* entry can be NULL, if xasl cache entry is deleted */
 	      if (ent != NULL)
@@ -2693,7 +2695,8 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 			  goto error;
 			}
 		    }
-		  (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, ent, true, false);
+		  xcache_unfix (thread_p, ent);
+		  ent = NULL;
 		}
 
 	      /* structure copy */
@@ -2789,6 +2792,11 @@ error:
 	    }
 	}
       free_and_init (query_exec_info);
+    }
+
+  if (ent != NULL)
+    {
+      xcache_unfix (thread_p, ent);
     }
 #endif
 
@@ -4191,7 +4199,7 @@ logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p)
 static int
 logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
 {
-  MVCCID lowest_active_mvccid, bit_area_start_mvccid, highest_completed_mvccid, last_bit_area_start_mvccid;
+  MVCCID lowest_active_mvccid, bit_area_start_mvccid, highest_completed_mvccid;
   LOG_TDES *curr_tdes = NULL;
   int tran_index, error_code = NO_ERROR;
   LOG_TDES *tdes;
@@ -4252,6 +4260,36 @@ logtb_get_mvcc_snapshot_data (THREAD_ENTRY * thread_p)
 #if defined(HAVE_ATOMIC_BUILTINS)
 start_get_mvcc_table:
   snapshot_retry_cnt++;
+
+  if (p_transaction_lowest_active_mvccid)
+    {
+      /* 
+       *  First, by setting MVCCID_ALL_VISIBLE we will tell to VACUUM that transaction lowest MVCCID will be set soon.
+       *  This is needed since setting p_transaction_lowest_active_mvccid is not an atomic operation (global
+       * lowest_active_mvccid must be obtained first). We want to avoid a possible scenario (even if the chances
+       *  are minimal) like the following one:
+       *    - the snapshot thread reads the initial value of global lowest active MVCCID but the thread is suspended
+       *  (due to thread switching) just before setting p_transaction_lowest_active_mvccid
+       *    - the transaction having global lowest active MVCCID commits, so the global value is updated (advanced)
+       *    - the VACCUM thread computes the MVCCID threshold as the updated global lowest active MVCCID
+       *    - the snapshot thread resumes and p_transaction_lowest_active_mvccid is set to initial value of global
+       *  lowest active MVCCID
+       *    - the VACUUM thread computes the threshold again and found a value (initial global lowest active MVCCID)
+       *  less than the previously threshold
+       */
+      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_ALL_VISIBLE);
+      /* 
+       * Is important that between next two code lines to not have delays (to not execute any other code).
+       * Otherwise, VACUUM may delay, waiting more in logtb_get_oldest_active_mvccid.
+       */
+      lowest_active_mvccid = ATOMIC_INC_64 (&mvcc_table->current_trans_status.lowest_active_mvccid, 0LL);
+      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, lowest_active_mvccid);
+    }
+  else
+    {
+      lowest_active_mvccid = ATOMIC_INC_64 (&mvcc_table->current_trans_status.lowest_active_mvccid, 0LL);
+    }
+
   index = ATOMIC_INC_32 (&mvcc_table->trans_status_history_position, 0);
   assert (index < TRANS_STATUS_HISTORY_MAX_SIZE && index >= 0);
   trans_status = &mvcc_table->trans_status_history[index];
@@ -4261,6 +4299,11 @@ start_get_mvcc_table:
   bit_area_length = ATOMIC_INC_32 (&trans_status->bit_area_length, 0);
 #else
   r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
+  lowest_active_mvccid = mvcc_table->current_trans_status.lowest_active_mvccid;
+  if (p_transaction_lowest_active_mvccid)
+    {
+      *p_transaction_lowest_active_mvccid = lowest_active_mvccid;
+    }
   trans_status = &mvcc_table->current_trans_status;
   bit_area_start_mvccid = trans_status->bit_area_start_mvccid;
   bit_area_length = trans_status->bit_area_length;
@@ -4297,35 +4340,6 @@ start_get_mvcc_table:
 #else
   pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
-
-  logtb_get_lowest_active_mvccid (snapshot->bit_area, bit_area_length, bit_area_start_mvccid,
-				  snapshot->long_tran_mvccids, long_tran_mvccids_length, &lowest_active_mvccid);
-  /* set atomically the lowest active MVCC id - only once / transaction */
-  if (p_transaction_lowest_active_mvccid && (*p_transaction_lowest_active_mvccid) != lowest_active_mvccid)
-    {
-#if defined(HAVE_ATOMIC_BUILTINS)
-      /* logtb_get_lowest_active_mvccid will atomically read lowest active MVCCID using read mode in this case */
-      ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, lowest_active_mvccid);
-      last_bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
-      if (lowest_active_mvccid < last_bit_area_start_mvccid)
-	{
-	  /* protect against following scenario: - current transaction start snapshot acquisition but didn't set
-	   * transaction_lowest_active_mvccids yet - many transactions commits and mvcc_table->current_trans_status.
-	   * bit_area_start_mvccid is advanced - vacuum starts and consider mvcc_table->current_trans_status.
-	   * bit_area_start_mvccid as threshold, since all transaction_lowest_active_mvccids are NULL_MVCCID - current
-	   * transaction sets its transaction_lowest_active_mvccid (behind
-	   * mvcc_table->current_trans_status.bit_area_start_mvccid) - vacuum can now delete rows still visible for
-	   * current transaction */
-	  goto start_get_mvcc_table;
-	}
-#else
-      /* Need to guarantee lowest active MVCCID atomicity. logtb_get_lowest_active_mvccid will read lowest active
-       * MVCCID using write mode in this case */
-      r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
-      *p_transaction_lowest_active_mvccid = lowest_active_mvccid;
-      pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
-#endif
-    }
 
   logtb_get_highest_completed_mvccid (snapshot->bit_area, bit_area_length, bit_area_start_mvccid,
 				      &highest_completed_mvccid);
@@ -4427,22 +4441,14 @@ MVCCID
 logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 {
   MVCCID lowest_active_mvccid = 0;
-  MVCC_INFO *elem = NULL, *curr_mvcc_info = NULL;
-  UINT64 local_bit_area[MVCC_BITAREA_MAXIMUM_ELEMENTS];
-  int local_bit_area_length = MVCC_BITAREA_MAXIMUM_ELEMENTS;
-  MVCC_INFO *mvccinfo = NULL;
   MVCCTABLE *mvcc_table = NULL;
-  int try_count = 0;
   UINT64 *lowest_bit_area = NULL;
-  UINT64 local_bit_start_mvccid;
-  MVCCID *tran_lowest_act_mvccid = NULL;
-  int i, size;
-  MVCCID *transaction_lowest_active_mvccids =
-    NULL, local_transaction_lowest_active_mvccid[MVCC_OLDEST_ACTIVE_BUFFER_LENGTH];
-  MVCCID oldest_long_time_mvccid = MVCCID_NULL;
-  MVCC_TRANS_STATUS *current_trans_status;
-  int index;
-  unsigned int current_trans_status_version;
+  size_t size;
+  int i, num_elems_behind, waiting_mvccids_length;
+  MVCCID *transaction_lowest_active_mvccids = NULL,
+    local_transaction_lowest_active_mvccid[MVCC_OLDEST_ACTIVE_BUFFER_LENGTH];
+  int *waiting_mvccids_pos = NULL, pos;
+  int local_waiting_mvccids_pos[MVCC_OLDEST_ACTIVE_BUFFER_LENGTH];
 #if !defined(HAVE_ATOMIC_BUILTINS)
   int r;
 #endif
@@ -4462,6 +4468,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
   if (NUM_TOTAL_TRAN_INDICES <= MVCC_OLDEST_ACTIVE_BUFFER_LENGTH)
     {
       transaction_lowest_active_mvccids = local_transaction_lowest_active_mvccid;
+      waiting_mvccids_pos = local_waiting_mvccids_pos;
     }
   else
     {
@@ -4472,78 +4479,96 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+      size = NUM_TOTAL_TRAN_INDICES * sizeof (int);
+      waiting_mvccids_pos = (int *) malloc (size);
+      if (waiting_mvccids_pos == NULL)
+	{
+	  free (transaction_lowest_active_mvccids);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
     }
 
+  lowest_active_mvccid = ATOMIC_INC_64 (&mvcc_table->current_trans_status.lowest_active_mvccid, 0LL);
 #if defined(HAVE_ATOMIC_BUILTINS)
-start_get_oldest_active:
-  retry_cnt++;
-
-  /* read transactions status from current history position, prevent code rearrangement */
-  index = ATOMIC_INC_32 (&mvcc_table->trans_status_history_position, 0);
-  current_trans_status = &mvcc_table->trans_status_history[index];
-  current_trans_status_version = ATOMIC_INC_32 (&current_trans_status->version, 0);
-
   /* read transaction_lowest_active_mvccids */
-  current_trans_status = &mvcc_table->current_trans_status;
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
-      transaction_lowest_active_mvccids[i] = ATOMIC_INC_64 (&mvcc_table->transaction_lowest_active_mvccids[i], 0ULL);
+      transaction_lowest_active_mvccids[i] = ATOMIC_INC_64 (&mvcc_table->transaction_lowest_active_mvccids[i], 0LL);
     }
-  current_trans_status = &mvcc_table->trans_status_history[index];
-  local_bit_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
-  local_bit_area_length = ATOMIC_INC_32 (&current_trans_status->bit_area_length, 0);
 #else
-  current_trans_status = &mvcc_table->current_trans_status;
   /* need atomic read for lowest active mvccid */
   r = pthread_mutex_lock (&mvcc_table->active_trans_mutex);
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       transaction_lowest_active_mvccids[i] = mvcc_table->transaction_lowest_active_mvccids[i];
     }
-  local_bit_start_mvccid = current_trans_status->bit_area_start_mvccid;
-  local_bit_area_length = current_trans_status->bit_area_length;
+  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 #endif
 
-  if (local_bit_area_length > 0)
+  waiting_mvccids_length = 0;
+  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
-      memcpy (local_bit_area, (void *) current_trans_status->bit_area,
-	      MVCC_BITAREA_BITS_TO_BYTES (local_bit_area_length));
-    }
-
-  if (current_trans_status->long_tran_mvccids_length > 0)
-    {
-      oldest_long_time_mvccid = current_trans_status->long_tran_mvccids[0];
-    }
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-  if (current_trans_status_version != ATOMIC_INC_32 (&current_trans_status->version, 0))
-    {
-      /* Transaction status overwritten, need to read again */
-      goto start_get_oldest_active;
-    }
-#else
-  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
-#endif /* HAVE_ATOMIC_BUILTINS */
-
-  logtb_get_lowest_active_mvccid (local_bit_area, local_bit_area_length, local_bit_start_mvccid, NULL, 0,
-				  &lowest_active_mvccid);
-  if (oldest_long_time_mvccid != MVCCID_NULL && oldest_long_time_mvccid < lowest_active_mvccid)
-    {
-      lowest_active_mvccid = oldest_long_time_mvccid;
-    }
-  tran_lowest_act_mvccid = transaction_lowest_active_mvccids;
-  for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++, tran_lowest_act_mvccid++)
-    {
-      if (MVCCID_IS_NORMAL (*tran_lowest_act_mvccid)
-	  && MVCC_ID_PRECEDES (*tran_lowest_act_mvccid, lowest_active_mvccid))
+      if (MVCCID_IS_NORMAL (transaction_lowest_active_mvccids[i])
+	  && MVCC_ID_PRECEDES (transaction_lowest_active_mvccids[i], lowest_active_mvccid))
 	{
-	  lowest_active_mvccid = *tran_lowest_act_mvccid;
+	  lowest_active_mvccid = transaction_lowest_active_mvccids[i];
+	}
+      else if (transaction_lowest_active_mvccids[i] == MVCCID_ALL_VISIBLE)
+	{
+	  waiting_mvccids_pos[waiting_mvccids_length++] = i;
+	}
+    }
+
+  while (waiting_mvccids_length > 0)
+    {
+      /* It happens rare. In such cases we have to wait the snapshot thread to set transaction_lowest_active_mvccids. */
+      retry_cnt++;
+
+#if defined(SERVER_MODE)
+      if (retry_cnt % 20 == 0)
+	{
+	  thread_sleep (10);
+	}
+#endif
+
+      for (i = waiting_mvccids_length - 1; i >= 0; i--)
+	{
+	  pos = waiting_mvccids_pos[i];
+	  transaction_lowest_active_mvccids[pos] =
+	    ATOMIC_INC_64 (&mvcc_table->transaction_lowest_active_mvccids[pos], 0LL);
+
+	  if (transaction_lowest_active_mvccids[pos] == MVCCID_ALL_VISIBLE)
+	    {
+	      /* Not set yet, need to wait more. */
+	      continue;
+	    }
+
+	  if (MVCCID_IS_NORMAL (transaction_lowest_active_mvccids[pos])
+	      && MVCC_ID_PRECEDES (transaction_lowest_active_mvccids[pos], lowest_active_mvccid))
+	    {
+	      /* Update lowest active MVCCID. */
+	      lowest_active_mvccid = transaction_lowest_active_mvccids[pos];
+	    }
+
+	  /* Remove current element from waiting array. */
+	  num_elems_behind = (waiting_mvccids_length - 1) - i;
+	  if (num_elems_behind > 0)
+	    {
+	      memmove (&waiting_mvccids_pos[i], &waiting_mvccids_pos[i + 1], num_elems_behind * sizeof (int));
+	    }
+	  waiting_mvccids_length--;
 	}
     }
 
   if (transaction_lowest_active_mvccids != local_transaction_lowest_active_mvccid)
     {
       free (transaction_lowest_active_mvccids);
+    }
+
+  if (waiting_mvccids_pos != local_waiting_mvccids_pos)
+    {
+      free (waiting_mvccids_pos);
     }
   assert (MVCCID_IS_NORMAL (lowest_active_mvccid));
 
@@ -4797,6 +4822,8 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
   TSCTIMEVAL tv_diff;
   UINT64 tran_complete_time;
   bool is_perf_tracking = false;
+  MVCCID lowest_active_mvccid, old_lowest_active_mvccid;
+  int version;
 
   assert (tdes != NULL);
 
@@ -4882,6 +4909,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
       ATOMIC_INC_32 (&current_trans_status->version, 1);
       ATOMIC_TAS_32 (&next_trans_status_history->version, current_trans_status->version);
+      version = next_trans_status_history->version;
       bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
 #endif
 
@@ -5078,9 +5106,59 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
       /* prevent code rearrangement */
       ATOMIC_TAS_32 (&mvcc_table->trans_status_history_position, next_history_position);
-#endif
 
       pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+
+      /* 
+       *  Check whether advancing lowest_active_mvccid is possible. Normally, we have to advance only when
+       * lowest_active_mvccid == mvccid. However, for safety reason, is better to also check bit_area_start_mvccid.
+       *  If lowest_active_mvccid < bit_area_start_mvccid, it means that something wrong happened (except long
+       * transaction case) - lowest_active_mvccid was wrongly not updated in a previous commit. So, lowest_active_mvccid
+       * must be corrected, otherwise VACUUM can't advance.
+       */
+      lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
+      if ((lowest_active_mvccid == mvccid)
+	  || MVCC_ID_PRECEDES (lowest_active_mvccid, next_trans_status_history->bit_area_start_mvccid))
+	{
+	  logtb_get_lowest_active_mvccid (next_trans_status_history->bit_area,
+					  next_trans_status_history->bit_area_length,
+					  next_trans_status_history->bit_area_start_mvccid,
+					  next_trans_status_history->long_tran_mvccids,
+					  next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
+	advance_oldest_active_mvccid:
+	  if (next_trans_status_history->version == version)
+	    {
+	      old_lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
+	      if (old_lowest_active_mvccid < lowest_active_mvccid)
+		{
+		  /* Advance with lowest active MVCCID, to allow VACUUM to advance */
+		  if (!ATOMIC_CAS_64 (&current_trans_status->lowest_active_mvccid, old_lowest_active_mvccid,
+				      lowest_active_mvccid))
+		    {
+		      goto advance_oldest_active_mvccid;
+		    }
+		}
+	    }
+	}
+
+      /* Debug purpose only */
+      ATOMIC_TAS_64 (&(mvcc_table->trans_status_history[next_history_position].lowest_active_mvccid),
+		     lowest_active_mvccid);
+#else
+      lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
+      if ((lowest_active_mvccid == mvccid)
+	  || MVCC_ID_PRECEDES (lowest_active_mvccid, next_trans_status_history->bit_area_start_mvccid))
+	{
+	  logtb_get_lowest_active_mvccid (next_trans_status_history->bit_area,
+					  next_trans_status_history->bit_area_length,
+					  next_trans_status_history->bit_area_start_mvccid,
+					  next_trans_status_history->long_tran_mvccids,
+					  next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
+	  current_trans_status->lowest_active_mvccid = lowest_active_mvccid;
+	}
+      mvcc_table->trans_status_history[next_history_position].lowest_active_mvccid = lowest_active_mvccid;
+      pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+#endif
     }
   else
     {
@@ -5787,7 +5865,8 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   int bit_area_long_transaction_threshold = MVCC_BITAREA_MAXIMUM_BITS - NUM_TOTAL_TRAN_INDICES;
   MVCCID *p_area = NULL;
   UINT64 mask;
-  int r;
+  MVCCID lowest_active_mvccid, old_lowest_active_mvccid;
+  int r, version;
 
   assert (tdes != NULL);
 
@@ -5821,6 +5900,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
       ATOMIC_INC_32 (&current_trans_status->version, 1);
       ATOMIC_TAS_32 (&next_trans_status_history->version, current_trans_status->version);
+      version = next_trans_status_history->version;
       bit_area_start_mvccid = ATOMIC_INC_64 (&current_trans_status->bit_area_start_mvccid, 0LL);
 #endif
 
@@ -6000,6 +6080,7 @@ check_if_full_bitarea:
 #endif
 
 end_completed:
+#if defined(HAVE_ATOMIC_BUILTINS)
   /* need to copy the current bit area - other threads may read next_trans_status_history, but only the current thread
    * can modify it */
 
@@ -6024,10 +6105,52 @@ end_completed:
 
   /* prevent code rearrangement */
   ATOMIC_TAS_32 (&mvcc_table->trans_status_history_position, next_history_position);
+
   pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 
-  curr_mvcc_info->is_sub_active = false;
+  /* Check whether advancing lowest_active_mvccid is possible */
+  lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
+  if ((lowest_active_mvccid == mvcc_sub_id)
+      || MVCC_ID_PRECEDES (lowest_active_mvccid, next_trans_status_history->bit_area_start_mvccid))
+    {
+      logtb_get_lowest_active_mvccid (next_trans_status_history->bit_area, next_trans_status_history->bit_area_length,
+				      next_trans_status_history->bit_area_start_mvccid,
+				      next_trans_status_history->long_tran_mvccids,
+				      next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
+    advance_oldest_active_mvccid:
+      if (next_trans_status_history->version == version)
+	{
+	  old_lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
+	  if (old_lowest_active_mvccid < lowest_active_mvccid)
+	    {
+	      /* Advance with lowest active MVCCID, to allow VACUUM to advance */
+	      if (!ATOMIC_CAS_64 (&current_trans_status->lowest_active_mvccid, old_lowest_active_mvccid,
+				  lowest_active_mvccid))
+		{
+		  goto advance_oldest_active_mvccid;
+		}
+	    }
+	}
+    }
 
+  /* Debug purpose only */
+  ATOMIC_TAS_64 (&(mvcc_table->trans_status_history[next_history_position].lowest_active_mvccid), lowest_active_mvccid);
+#else
+  lowest_active_mvccid = ATOMIC_INC_64 (&current_trans_status->lowest_active_mvccid, 0LL);
+  if ((lowest_active_mvccid == mvcc_sub_id)
+      || MVCC_ID_PRECEDES (lowest_active_mvccid, next_trans_status_history->bit_area_start_mvccid))
+    {
+      logtb_get_lowest_active_mvccid (next_trans_status_history->bit_area, next_trans_status_history->bit_area_length,
+				      next_trans_status_history->bit_area_start_mvccid,
+				      next_trans_status_history->long_tran_mvccids,
+				      next_trans_status_history->long_tran_mvccids_length, &lowest_active_mvccid);
+      current_trans_status->lowest_active_mvccid = lowest_active_mvccid;
+    }
+  mvcc_table->trans_status_history[next_history_position].lowest_active_mvccid = lowest_active_mvccid;
+  pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
+#endif
+
+  curr_mvcc_info->is_sub_active = false;
   if (tdes->mvccinfo.snapshot.valid)
     {
       /* adjust snapshot to reflect committed sub-transaction, since the parent transaction didn't finished yet */
@@ -6305,56 +6428,6 @@ logtb_global_unique_stat_key_copy (void *src, void *dest)
 }
 
 /*
- * logtb_global_unique_stat_key_hash () - hashing function for the global
- *					  unique statistics hash
- *   return: int
- *   key(in): Session key
- *   hash_table_size(in): Memory Hash Table Size
- *
- * Note: Generate a hash number for the given key for the given hash table
- *	 size.
- */
-static unsigned int
-logtb_global_unique_stat_key_hash (void *key, int hash_table_size)
-{
-  return (((BTID *) key)->vfid.fileid % hash_table_size);
-}
-
-/*
- * logtb_global_unique_stat_key_compare () - Compare two global unique
- *					     statistics keys (BTIDs)
- *   return: int (true or false)
- *   k1  (in) : First BTID key
- *   k2 (in) : Second BTID key
- */
-static int
-logtb_global_unique_stat_key_compare (void *k1, void *k2)
-{
-  BTID *key1, *key2;
-
-  key1 = (BTID *) k1;
-  key2 = (BTID *) k2;
-
-  if (k1 == NULL || k2 == NULL)
-    {
-      /* should not happen */
-      assert (false);
-      return 0;
-    }
-
-  if (BTID_IS_EQUAL (key1, key2))
-    {
-      /* equal */
-      return 0;
-    }
-  else
-    {
-      /* not equal */
-      return 1;
-    }
-}
-
-/*
  * logtb_initialize_global_unique_stats_table () - Creates and initializes
  *						   global structure for global
  *						   unique statistics
@@ -6376,14 +6449,14 @@ logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p)
   edesc->of_del_tran_id = offsetof (GLOBAL_UNIQUE_STATS, del_id);
   edesc->of_key = offsetof (GLOBAL_UNIQUE_STATS, btid);
   edesc->of_mutex = offsetof (GLOBAL_UNIQUE_STATS, mutex);
-  edesc->mutex_flags = LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_LOCK_ON_DELETE | LF_EM_FLAG_UNLOCK_AFTER_DELETE;
+  edesc->using_mutex = LF_EM_USING_MUTEX;
   edesc->f_alloc = logtb_global_unique_stat_alloc;
   edesc->f_free = logtb_global_unique_stat_free;
   edesc->f_init = logtb_global_unique_stat_init;
   edesc->f_uninit = NULL;
   edesc->f_key_copy = logtb_global_unique_stat_key_copy;
-  edesc->f_key_cmp = logtb_global_unique_stat_key_compare;
-  edesc->f_hash = logtb_global_unique_stat_key_hash;
+  edesc->f_key_cmp = btree_compare_btids;
+  edesc->f_hash = btree_hash_btid;
   edesc->f_duplicate = NULL;
 
   /* initialize freelist */
@@ -6481,7 +6554,7 @@ logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid, bool 
 	    }
 	}
       error_code =
-	lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid, (void **) &stats);
+	lf_hash_find_or_insert (t_entry, &log_Gl.unique_stats_table.unique_stats_hash, btid, (void **) &stats, NULL);
       if (error_code != NO_ERROR || stats == NULL)
 	{
 	  return NULL;
@@ -6771,12 +6844,14 @@ logtb_reset_bit_area_start_mvccid (void)
   trans_status = &log_Gl.mvcc_table.current_trans_status;
   assert (trans_status->bit_area_length == 0 && trans_status->bit_area[0] == 0);
   trans_status->bit_area_start_mvccid = log_Gl.hdr.mvcc_next_id;
+  trans_status->lowest_active_mvccid = log_Gl.hdr.mvcc_next_id;
 
   history_position = (log_Gl.mvcc_table).trans_status_history_position;
   assert ((history_position >= 0) && (history_position < TRANS_STATUS_HISTORY_MAX_SIZE));
   trans_status = log_Gl.mvcc_table.trans_status_history + history_position;
   assert (trans_status->bit_area_length == 0);
   trans_status->bit_area_start_mvccid = log_Gl.hdr.mvcc_next_id;
+  trans_status->lowest_active_mvccid = log_Gl.hdr.mvcc_next_id;
 }
 
 /*
@@ -7251,9 +7326,8 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
 	}
       else
 	{
-	  vpid_to_string (vpid_buf, sizeof (vpid_buf), &xasl_val.first_vpid);
-	  vfid_to_string (vfid_buf, sizeof (vfid_buf), &xasl_val.temp_vfid);
-	  snprintf (buf, sizeof (buf), "vpid: %s, vfid: %s", vpid_buf, vfid_buf);
+	  snprintf (buf, sizeof (buf), "sha1 = %08x | %08x | %08x | %08x | %08x, time_stored = %d sec %d usec",
+		    SHA1_AS_ARGS (&xasl_val.sha1), CACHE_TIME_AS_ARGS (&xasl_val.time_stored));
 	  error = db_make_string_copy (&vals[idx], buf);
 	  if (error != NO_ERROR)
 	    {

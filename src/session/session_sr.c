@@ -153,11 +153,9 @@ xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p)
 }
 
 /*
- * xsession_create_prepared_statement () - create a prepared statement and add
- *					   it to the prepared statements list
+ * xsession_create_prepared_statement () - create a prepared statement and add it to the prepared statements list
  * return : NO_ERROR or error code
- * thread_p (in)	:
- * user (in)		: OID of the user who prepared this statement
+ * thread_p (in)	: thread entry
  * name (in)		: the name of the statement
  * alias_print(in)	: the printed compiled statement
  * info (in)		: serialized prepared statement info
@@ -169,10 +167,10 @@ xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p)
  * will free the memory allocated for its arguments
  */
 int
-xsession_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name, char *alias_print, char *info,
+xsession_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1, char *info,
 				    int info_len)
 {
-  return session_create_prepared_statement (thread_p, user, name, alias_print, info, info_len);
+  return session_create_prepared_statement (thread_p, name, alias_print, sha1, info, info_len);
 }
 
 /*
@@ -192,24 +190,33 @@ xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char
 				 XASL_ID * xasl_id, XASL_NODE_HEADER * xasl_header_p)
 {
   XASL_CACHE_ENTRY *xasl_entry = NULL;
-
-  int error = session_get_prepared_statement (thread_p, name, info, info_len,
-					      &xasl_entry);
+  int error = NO_ERROR;
 
   assert (xasl_id != NULL);
-  XASL_ID_SET_NULL (xasl_id);
 
-  if (error == NO_ERROR && xasl_entry != NULL)
+  XASL_ID_SET_NULL (xasl_id);
+  error = session_get_prepared_statement (thread_p, name, info, info_len, &xasl_entry);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      assert (xasl_entry == NULL);
+      return error;
+    }
+  if (xasl_entry != NULL)
     {
       XASL_ID_COPY (xasl_id, &xasl_entry->xasl_id);
 
       if (xasl_header_p != NULL)
 	{
 	  /* get XASL node header from XASL stream */
-	  qfile_load_xasl_node_header (thread_p, xasl_id, xasl_header_p);
+	  qfile_load_xasl_node_header (thread_p, xasl_entry->stream.xasl_stream, xasl_header_p);
 	}
 
-      (void) qexec_remove_my_tran_id_in_xasl_entry (thread_p, xasl_entry, true, false);
+      xcache_unfix (thread_p, xasl_entry);
+    }
+  else
+    {
+      mnt_pc_invalid_xasl_id (thread_p);
     }
 
   return error;

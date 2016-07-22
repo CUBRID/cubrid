@@ -2226,6 +2226,7 @@ ldr_str_db_char (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE *
   val.domain = ldr_char_tmpl.domain;
   val.domain.char_info.length = char_count;
   val.data.ch.info.style = MEDIUM_STRING;
+  val.data.ch.info.is_max_string = false;
   val.data.ch.medium.size = len;
   val.data.ch.medium.buf = (char *) str;
 
@@ -2294,6 +2295,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
   val.data.ch.medium.size = len;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.info.style = MEDIUM_STRING;
+  val.data.ch.info.is_max_string = false;
 
   mem = context->mobj + att->offset;
   CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
@@ -6194,7 +6196,7 @@ ldr_is_ignore_class (const char *classname, size_t size)
     {
       for (i = 0, p = ignore_class_list; i < ignore_class_num; i++, p++)
 	{
-	  if (intl_identifier_ncasecmp (*p, classname, MAX (strlen (*p), size)) == 0)
+	  if (intl_identifier_ncasecmp (*p, classname, (int) MAX (strlen (*p), size)) == 0)
 	    {
 	      return true;
 	    }

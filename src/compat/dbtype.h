@@ -705,6 +705,8 @@ struct vpid
 #define VPID_INITIALIZER \
   { NULL_PAGEID, NULL_VOLID }
 
+#define VPID_AS_ARGS(vpidp) (vpidp)->volid, (vpidp)->pageid
+
 typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
 struct vfid
 {
@@ -713,6 +715,8 @@ struct vfid
 };
 #define VFID_INITIALIZER \
   { NULL_FILEID, NULL_VOLID }
+
+#define VFID_AS_ARGS(vfidp) (vfidp)->volid, (vfidp)->fileid
 
 typedef struct loid LOID;	/* LARGE OBJECT IDENTIFIER */
 struct loid
@@ -772,6 +776,7 @@ union db_char
   {
     unsigned char style;
     unsigned char codeset;
+    bool is_max_string;
   } info;
   struct
   {

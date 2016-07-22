@@ -92,9 +92,9 @@ struct session_variable
 typedef struct prepared_statement PREPARED_STATEMENT;
 struct prepared_statement
 {
-  OID user;
   char *name;
   char *alias_print;
+  SHA1Hash sha1;
   int info_length;
   char *info;
   PREPARED_STATEMENT *next;
@@ -156,7 +156,7 @@ static LF_ENTRY_DESCRIPTOR session_state_Descriptor = {
   offsetof (SESSION_STATE, id),
   offsetof (SESSION_STATE, mutex),
 
-  LF_EM_FLAG_LOCK_ON_FIND | LF_EM_FLAG_UNLOCK_AFTER_DELETE,
+  LF_EM_USING_MUTEX,
 
   session_state_alloc,
   session_state_free,
@@ -596,7 +596,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   *id = next_session_id;
 
   /* insert new entry into hash table */
-  ret = lf_hash_insert (t_entry, &sessions.sessions_table, (void *) id, (void **) &session_p);
+  ret = lf_hash_insert (t_entry, &sessions.sessions_table, (void *) id, (void **) &session_p, NULL);
   if (ret != NO_ERROR)
     {
       return ret;
@@ -710,7 +710,7 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
   assert (session_p->ref_count == 0);
 #endif
 
-  error = lf_hash_delete (t_entry, &sessions.sessions_table, (void *) &id, &success);
+  error = lf_hash_delete_already_locked (t_entry, &sessions.sessions_table, (void *) &id, session_p, &success);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
@@ -816,67 +816,85 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
 int
 session_remove_expired_sessions (struct timeval *timeout)
 {
+#define EXPIRED_SESSION_BUFFER_SIZE 1024
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_SESSIONS);
   LF_HASH_TABLE_ITERATOR it;
-  SESSION_STATE *state, *next_state = NULL, *session_p;
+  SESSION_STATE *state = NULL;
   int err = NO_ERROR, success = 0;
   bool is_expired = false;
   SESSION_TIMEOUT_INFO timeout_info;
+  SESSION_ID expired_sid_buffer[EXPIRED_SESSION_BUFFER_SIZE];
+  int n_expired_sids = 0;
+  int sid_index;
+  bool finished = false;
 
   timeout_info.count = -1;
   timeout_info.session_ids = NULL;
   timeout_info.timeout = timeout;
 
-  lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
-  state = lf_hash_iterate (&it);
-  while (state)
+  /* Loop until all expired sessions are removed.
+   * NOTE: We cannot call lf_hash_delete while iterating... lf_hash_delete may have to retry, which also resets the
+   *       lock-free transaction. And resetting lock-free transaction can break our iterator.
+   */
+  while (!finished)
     {
-      /* iterate next. the mutex lock of the current state will be released */
-      next_state = lf_hash_iterate (&it);
-
-      if (lf_hash_find (t_entry, &sessions.sessions_table, (void *) &state->id, (void **) &session_p) != NO_ERROR)
+      lf_hash_create_iterator (&it, t_entry, &sessions.sessions_table);
+      while (true)
 	{
-	  err = ER_FAILED;
-	  break;
-	}
-      else if (session_p == NULL)
-	{
-	  err = ER_FAILED;
-	  break;
-	}
-
-      if (session_check_timeout (state, &timeout_info, &is_expired) != NO_ERROR)
-	{
-	  pthread_mutex_unlock (&session_p->mutex);
-	  err = ER_FAILED;
-	  break;
-	}
-
-      if (is_expired)
-	{
-	  if (lf_hash_delete (t_entry, &sessions.sessions_table, (void *) &state->id, &success) != NO_ERROR)
+	  state = lf_hash_iterate (&it);
+	  if (state == NULL)
 	    {
-	      err = ER_FAILED;
+	      finished = true;
 	      break;
 	    }
 
+	  /* iterate next. the mutex lock of the current state will be released */
+	  if (session_check_timeout (state, &timeout_info, &is_expired) != NO_ERROR)
+	    {
+	      pthread_mutex_unlock (&state->mutex);
+	      err = ER_FAILED;
+	      goto exit_on_end;
+	    }
+
+	  if (is_expired)
+	    {
+	      expired_sid_buffer[n_expired_sids++] = state->id;
+	      if (n_expired_sids == EXPIRED_SESSION_BUFFER_SIZE)
+		{
+		  /* No more room in buffer */
+
+		  /* Interrupt iteration. */
+		  /* Free current entry mutex. */
+		  pthread_mutex_unlock (&state->mutex);
+		  /* End lock-free transaction started by iterator. */
+		  lf_tran_end_with_mb (t_entry);
+		  break;
+		}
+	    }
+	}
+
+      /* Remove expired sessions. */
+      for (sid_index = 0; sid_index < n_expired_sids; sid_index++)
+	{
+	  err = lf_hash_delete (t_entry, &sessions.sessions_table, &expired_sid_buffer[sid_index], &success);
+	  if (err != NO_ERROR)
+	    {
+	      /* I don't think we can expect errors. */
+	      assert (false);
+	      goto exit_on_end;
+	    }
 	  if (!success)
 	    {
 	      /* we don't have clear operations on this hash table, this shouldn't happen */
-	      pthread_mutex_unlock (&session_p->mutex);
 	      assert_release (false);
 	      err = ER_FAILED;
-	      break;
+	      goto exit_on_end;
 	    }
 	}
-      else
-	{
-	  pthread_mutex_unlock (&session_p->mutex);
-	}
-
-      state = next_state;
+      n_expired_sids = 0;
     }
 
+exit_on_end:
   if (timeout_info.session_ids != NULL)
     {
       assert (timeout_info.count > 0);
@@ -884,6 +902,8 @@ session_remove_expired_sessions (struct timeval *timeout)
     }
 
   return err;
+
+#undef EXPIRED_SESSION_BUFFER_SIZE
 }
 
 /*
@@ -1584,10 +1604,10 @@ session_set_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARAM * session
  * session_create_prepared_statement () - create a prepared statement and add
  *					  it to the prepared statements list
  * return : NO_ERROR or error code
- * thread_p (in)	:
- * user (in)		: OID of the user who prepared this statement
+ * thread_p (in)	: thread entry
  * name (in)		: the name of the statement
- * alias_print(in)	: the printed compiled statement
+ * alias_print (in)	: the printed compiled statement
+ * sha1 (in)		: sha1 hash for printed compiled statement
  * info (in)		: serialized prepared statement info
  * info_len (in)	: serialized buffer length
  *
@@ -1597,7 +1617,7 @@ session_set_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARAM * session
  * will free the memory allocated for its arguments.
  */
 int
-session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name, char *alias_print, char *info,
+session_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1, char *info,
 				   int info_len)
 {
   SESSION_STATE *state_p = NULL;
@@ -1612,9 +1632,9 @@ session_create_prepared_statement (THREAD_ENTRY * thread_p, OID user, char *name
       goto error;
     }
 
-  COPY_OID (&(stmt_p->user), &user);
   stmt_p->name = name;
   stmt_p->alias_print = alias_print;
+  stmt_p->sha1 = *sha1;
   stmt_p->info_length = info_len;
   stmt_p->info = info;
   stmt_p->next = NULL;
@@ -1697,8 +1717,7 @@ error:
 }
 
 /*
- * session_get_prepared_statement () - get available information about a
- *				       prepared statement
+ * session_get_prepared_statement () - get available information about a prepared statement
  * return:   NO_ERROR or error code
  * thread_p (in)	:
  * name (in)		: the name of the prepared statement
@@ -1706,9 +1725,8 @@ error:
  * info_len (out)	: serialized buffer length
  * xasl_id (out)	: XASL ID for this statement
  *
- * Note: This function allocates memory for query, columns and parameters
- * using db_private_alloc. This memory must be freed by the caller by using
- * db_private_free.
+ * Note: This function allocates memory for query, columns and parameters using db_private_alloc. This memory must be
+ *	 freed by the caller by using db_private_free.
  */
 int
 session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
@@ -1717,7 +1735,6 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;
   int err = NO_ERROR;
-  XASL_CACHE_ENTRY *entry = NULL;
   OID user;
   const char *alias_print;
   char *data = NULL;
@@ -1763,13 +1780,10 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
       *info = data;
     }
 
-  /* copy the user identifier, we will need it below */
-  COPY_OID (&user, &stmt_p->user);
-
   /* since the xasl id is not session specific, we can fetch it outside of the session critical section */
   if (alias_print == NULL)
     {
-      /* if we don't have an alias print, we do not search for the XASL id */
+      /* if we don't have an alias print, we do not search for the XASL entry */
       *xasl_entry = NULL;
 #if defined (SESSION_DEBUG)
       er_log_debug (ARG_FILE_LINE, "found null xasl_id for %s(%d)\n", name, state_p->id);
@@ -1777,21 +1791,13 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
       return NO_ERROR;
     }
 
-  entry = qexec_lookup_xasl_cache_ent (thread_p, alias_print, &user, false, false);
-  if (entry == NULL)
+  *xasl_entry = NULL;
+  err = xcache_find_sha1 (thread_p, &stmt_p->sha1, xasl_entry, NULL);
+  if (err != NO_ERROR)
     {
-#if defined (SESSION_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "found null xasl_id for %s(%d)\n", name, state_p->id);
-#endif /* SESSION_DEBUG */
+      ASSERT_ERROR ();
+      return err;
     }
-  else
-    {
-#if defined (SESSION_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "found xasl_id for %s(%d)\n", name, state_p->id);
-#endif /* SESSION_DEBUG */
-    }
-
-  *xasl_entry = entry;
 
   return NO_ERROR;
 }
@@ -2268,6 +2274,7 @@ session_dump_prepared_statement (PREPARED_STATEMENT * stmt_p)
   if (stmt_p->alias_print != NULL)
     {
       fprintf (stdout, "%s\n", stmt_p->alias_print);
+      fprintf (stdout, "sha1 = %08x | %08x | %08x | %08x | %08x\n", SHA1_AS_ARGS (&stmt_p->sha1));
     }
 }
 

@@ -116,16 +116,26 @@ extern "C"
 #include <sys/locking.h>
 #include <windows.h>
 #include <winbase.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <errno.h>
 #include <assert.h>
 
+#if !defined (ENOMSG)
 /* not defined errno on Windows */
 #define ENOMSG      100
+#endif
 
+#if !defined PATH_MAX
 #define PATH_MAX	256
+#endif
+#if !defined NAME_MAX
 #define NAME_MAX	256
+#endif
 
+#if !defined (_MSC_VER) || _MSC_VER < 1700
 #define log2(x)                 (log ((double) x) / log ((double) 2))
+#endif /* !_MSC_VER || _MSC_VER < 1700 */
   extern char *realpath (const char *path, char *resolved_path);
 #define sleep(sec) Sleep(1000*(sec))
 #define usleep(usec) Sleep((usec)/1000)
@@ -482,7 +492,10 @@ extern "C"
 
 #if defined (WINDOWS)
 #define atoll(a)	_atoi64((a))
+#if !defined(_MSC_VER) || _MSC_VER < 1800
+/* ref: https://msdn.microsoft.com/en-us/library/a206stx2.aspx */
 #define llabs(a)	_abs64((a))
+#endif /* _MSC_VER && _MSC_VER < 1800 */
 #endif
 
 #if defined (AIX) && !defined (NAME_MAX)
@@ -523,7 +536,10 @@ extern "C"
   extern int drand48_r (struct drand48_data *buffer, double *result);
   extern int rand_r (unsigned int *seedp);
 
+#if !defined(_MSC_VER) || _MSC_VER < 1800
+  /* Ref: https://msdn.microsoft.com/en-us/library/dn353646(v=vs.140).aspx */
   extern double round (double d);
+#endif /* !_MSC_VER || _MSC_VER < 1800 */
 
   typedef struct
   {
@@ -562,14 +578,22 @@ extern "C"
 
   typedef HANDLE pthread_condattr_t;
 
+#if !defined (ETIMEDOUT)
 #define ETIMEDOUT WAIT_TIMEOUT
+#endif
 #define PTHREAD_COND_INITIALIZER	{ NULL }
 
+#if defined(_MSC_VER) && _MSC_VER >= 1900 && !defined(_CRT_NO_TIME_T)
+#define _TIMESPEC_DEFINED
+#endif /* _MSC_VER && _MSC_VER >= 1900 && !_CRT_NO_TIME_T */
+#if !defined(_TIMESPEC_DEFINED)
+#define _TIMESPEC_DEFINED
   struct timespec
   {
     int tv_sec;
     int tv_nsec;
   };
+#endif /* !_TIMESPEC_DEFINED */
 
   extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
 
@@ -725,6 +749,8 @@ extern "C"
 	(InterlockedExchangeAdd64(ptr, amount) + amount)
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
 	(InterlockedCompareExchange64((long long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == (long long) cmp_val)
+#define ATOMIC_LOAD_64(ptr) (*(ptr))
+#define ATOMIC_STORE_64(ptr, val) (*(ptr) = val)
 #else				/* _WIN64 */
 /*
  * These functions are used on Windows 32bit OS.
@@ -745,6 +771,8 @@ extern "C"
 	(win32_exchange_add64(ptr, amount) + amount)
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
 	(InterlockedCompareExchange((long volatile *) ptr, (long long) swap_val, (long long) cmp_val) == (long long) cmp_val)
+#define ATOMIC_LOAD_64(ptr) ATOMIC_INC_64 (ptr, 0)
+#define ATOMIC_STORE_64(ptr, val) ATOMIC_TAS_64 (ptr, val)
 #endif				/* _WIN64 */
 
 #else				/* WINDOWS */
@@ -769,6 +797,9 @@ extern "C"
 
 #define ATOMIC_CAS_ADDR(ptr, cmp_val, swap_val) \
 	__sync_bool_compare_and_swap(ptr, cmp_val, swap_val)
+
+#define ATOMIC_LOAD_64(ptr) (*(ptr))
+#define ATOMIC_STORE_64(ptr, val) (*(ptr) = val)
 
 /* There is a gcc bug of __sync_synchronize in x86-64 when gcc version
  * less than 4.4. we can replace __sync_synchronize as mfence instruction.

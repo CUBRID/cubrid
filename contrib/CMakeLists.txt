@@ -50,7 +50,10 @@ if(UNIX)
     ${CMAKE_SOURCE_DIR}/contrib/scripts/ha/ha_make_slavedb.sh
     DESTINATION ${CUBRID_DATADIR}/scripts/ha)
   install(FILES
-    ${CMAKE_SOURCE_DIR}/BUILD_NUMBER
+    ${CMAKE_SOURCE_DIR}/${VERSION_FILE}
+    DESTINATION ${CUBRID_DATADIR}/scripts/ha
+    RENAME VERSION)
+  install(FILES
     ${CMAKE_SOURCE_DIR}/contrib/scripts/ha/README
     DESTINATION ${CUBRID_DATADIR}/scripts/ha)
   install(FILES

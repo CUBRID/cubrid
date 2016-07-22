@@ -613,6 +613,7 @@ export_serial (FILE * outfp)
   DB_QUERY_ERROR query_error;
   DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
   DB_DOMAIN *domain;
+  char str_buf[NUMERIC_MAX_STRING_SIZE];
 
   /* 
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
@@ -762,10 +763,10 @@ export_serial (FILE * outfp)
       fprintf (outfp, "call [find_user]('%s') on class [db_user] to [auser];\n",
 	       DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
       fprintf (outfp, "create serial %s%s%s\n", PRINT_IDENTIFIER (DB_PULL_STRING (&values[SERIAL_NAME])));
-      fprintf (outfp, "\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL]));
-      fprintf (outfp, "\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL]));
-      fprintf (outfp, "\t minvalue %s\n", numeric_db_value_print (&values[SERIAL_MIN_VAL]));
-      fprintf (outfp, "\t maxvalue %s\n", numeric_db_value_print (&values[SERIAL_MAX_VAL]));
+      fprintf (outfp, "\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
+      fprintf (outfp, "\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
+      fprintf (outfp, "\t minvalue %s\n", numeric_db_value_print (&values[SERIAL_MIN_VAL], str_buf));
+      fprintf (outfp, "\t maxvalue %s\n", numeric_db_value_print (&values[SERIAL_MAX_VAL], str_buf));
       fprintf (outfp, "\t %scycle\n", (DB_GET_INTEGER (&values[SERIAL_CYCLIC]) == 0 ? "no" : ""));
       if (DB_GET_INTEGER (&values[SERIAL_CACHED_NUM]) <= 1)
 	{
@@ -1664,6 +1665,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type, int *has_i
   int index_flag = 0;
   DB_VALUE cur_val, started_val, min_val, max_val, inc_val, sr_name;
   const char *name, *start_with;
+  char str_buf[NUMERIC_MAX_STRING_SIZE];
 
   attribute_list = db_get_attributes (class_);
 
@@ -1934,7 +1936,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type, int *has_i
 		  cur_val = answer_val;
 		}
 
-	      start_with = numeric_db_value_print (&cur_val);
+	      start_with = numeric_db_value_print (&cur_val, str_buf);
 	      if (start_with[0] == '\0')
 		{
 		  start_with = "NULL";
@@ -2816,6 +2818,7 @@ emit_autoincrement_def (DB_ATTRIBUTE * attribute)
 {
   int error = NO_ERROR;
   DB_VALUE min_val, inc_val;
+  char str_buf[NUMERIC_MAX_STRING_SIZE];
 
   if (attribute->auto_increment != NULL)
     {
@@ -2835,8 +2838,8 @@ emit_autoincrement_def (DB_ATTRIBUTE * attribute)
 	  return error;
 	}
 
-      fprintf (output_file, " AUTO_INCREMENT(%s", numeric_db_value_print (&min_val));
-      fprintf (output_file, ", %s)", numeric_db_value_print (&inc_val));
+      fprintf (output_file, " AUTO_INCREMENT(%s", numeric_db_value_print (&min_val, str_buf));
+      fprintf (output_file, ", %s)", numeric_db_value_print (&inc_val, str_buf));
 
       pr_clear_value (&min_val);
       pr_clear_value (&inc_val);

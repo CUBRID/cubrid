@@ -3341,20 +3341,6 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   logpb_flush_log_for_wal (thread_p, flush_upto_lsa);
   LSA_SET_NULL (smallest_lsa);
 
-#if defined (SERVER_MODE)
-  /* Before starting the actual flush, we must first notify vacuum system to flush its vacuum data pages. For
-   * performance reasons, the only thread who has access to vacuum data is the vacuum master, and it always keeps
-   * first and last vacuum data pages write latched.
-   * Therefore, flushing those pages may be impossible. The solution for this problem is debatable, but for now,
-   * vacuum is notified, then checkpoint waits for it to finish.
-   */
-  vacuum_notify_flush_data ();
-  while (!vacuum_is_vacuum_data_flushed ())
-    {
-      thread_sleep (10);
-    }
-#endif /* SERVER_MODE */
-
   seq_flusher = &(pgbuf_Pool.seq_chkpt_flusher);
   f_list = seq_flusher->flush_list;
 
@@ -3722,11 +3708,39 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	       * bufptr->avoid_victim is released by pgbuf_flush_with_wal()
 	       * only if buf is dirty at the time of flush
 	       */
+	      PAGE_TYPE page_type = bufptr->iopage_buffer->iopage.prv.ptype;
 	      bufptr->avoid_victim = true;
 	      vpid = bufptr->vpid;
 	      pthread_mutex_unlock (&bufptr->BCB_mutex);
 
-	      pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      if (page_type == PAGE_VACUUM_DATA)
+		{
+		  /* Flushing vacuum data pages is tricky because first and last pages are permanently fixed. Try
+		   * a conditional latch, and if that doesn't work, notify vacuum of intention to flush vacuum data
+		   * pages.
+		   * Master will then unfix the pages and checkpoint can have a chance flush the pages.
+		   */
+		  pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+		  if (pgptr == NULL)
+		    {
+		      /* Notify vacuum to unfix the page. */
+		      vacuum_notify_need_flush (1);
+		      vacuum_er_log (VACUUM_ER_LOG_FLUSH_DATA,
+				     "VACUUM: Checkpoint thread notified vacuum of intention to flush page %d|%d.\n",
+				     vpid.volid, vpid.pageid);
+		      pgptr =
+			pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+
+		      vacuum_er_log (VACUUM_ER_LOG_FLUSH_DATA,
+				     "VACUUM: Checkpoint thread %s page %d|%d.\n",
+				     pgptr != NULL ? "successfully fixed" : "failed fixing", vpid.volid, vpid.pageid);
+		    }
+		}
+	      else
+		{
+		  pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_EXISTS, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+		}
+
 	      if (pgptr == NULL || pgbuf_flush_with_wal (thread_p, pgptr) == NULL)
 		{
 #if !defined(NDEBUG)
@@ -3763,6 +3777,12 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 
 		  /* pgbuf_flush_with_wal successful */
 		  seq_flusher->flushed_pages++;
+		}
+
+	      if (page_type == PAGE_VACUUM_DATA)
+		{
+		  /* Notify vacuum that page was flushed and it no longer needs to unfix the page. */
+		  vacuum_notify_need_flush (0);
 		}
 
 	      if (pgptr != NULL)
@@ -4173,15 +4193,13 @@ pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa)
   return 0;
 }
 
-
 /*
  * pgbuf_set_lsa () - Set the log sequence address of the page to the given lsa
  *   return: page lsa or NULL
  *   pgptr(in): Pointer to page
  *   lsa_ptr(in): Log Sequence address
  *
- * Note: This function is for the exclusive use of the log and recovery
- *       manager.
+ * Note: This function is for the exclusive use of the log and recovery manager.
  */
 const LOG_LSA *
 pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
@@ -4258,6 +4276,14 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
 	}
       LSA_COPY (&bufptr->oldest_unflush_lsa, lsa_ptr);
     }
+
+#if defined (NDEBUG)
+  /* We expect the page was or will be set as dirty before unfix. However, there might be a missing case to set dirty.
+   * It is correct to set dirty here. Note that we have set lsa of the page and it should be also flushed.
+   * But we also want to find missing cases and fix them. Make everything sure for release builds.
+   */
+  pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
+#endif /* NDEBUG */
 
   return lsa_ptr;
 }
@@ -6066,6 +6092,9 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
     {
       assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM);
       assert (bufptr->latch_mode != PGBUF_LATCH_VICTIM_INVALID);
+
+      /* When oldest_unflush_lsa of a page is set, its dirty mark should also be set */
+      assert (LSA_ISNULL (&bufptr->oldest_unflush_lsa) || bufptr->dirty);
 
       /* there could be some synchronous flushers on the BCB queue */
       /* When the page buffer in LRU_1_Zone, do not move the page buffer into the top of LRU. This is an intention for
@@ -9893,6 +9922,7 @@ static void
 pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   PGBUF_HOLDER *holder;
+
   assert (bufptr != NULL);
 
   PGBUF_SET_DIRTY (bufptr);
@@ -11210,6 +11240,12 @@ exit:
 	{
 	  pgbuf_unfix_and_init (thread_p, ret_pgptr);
 	}
+    }
+
+  if (req_page_has_group == false && ret_pgptr != NULL && req_watcher->curr_rank != PGBUF_ORDERED_HEAP_HDR
+      && VPID_EQ (&req_watcher->group_id, req_vpid))
+    {
+      req_watcher->curr_rank = PGBUF_ORDERED_HEAP_HDR;
     }
 
   return er_status;

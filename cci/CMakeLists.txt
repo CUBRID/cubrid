@@ -43,9 +43,12 @@ target_include_directories(cascci PRIVATE ${EP_INCLUDES})
 target_link_libraries(cascci LINK_PRIVATE ${EP_LIBS} ${CMAKE_THREAD_LIBS_INIT})
 if(WIN32)
   target_compile_definitions(cascci PRIVATE CAS_CCI_DL)
+  if(TARGET_PLATFORM_BITS EQUAL 32)
+    target_compile_definitions(cascci PRIVATE _USE_32BIT_TIME_T)
+  endif(TARGET_PLATFORM_BITS EQUAL 32)
   # TODO: remove version.h in win/ directory
   target_include_directories(cascci PRIVATE ${CMAKE_SOURCE_DIR}/win)
-  set_target_properties(cascci PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cascci/cascci.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib"  LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
+  set_target_properties(cascci PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cascci/cascci.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
   target_link_libraries(cascci LINK_PRIVATE ws2_32)
 endif(WIN32)
 if(UNIX)
@@ -53,17 +56,17 @@ if(UNIX)
 endif(UNIX)
 
 install(TARGETS cascci
-  RUNTIME DESTINATION ${CUBRID_BINDIR}
-  LIBRARY DESTINATION ${CUBRID_LIBDIR}
-  ARCHIVE DESTINATION ${CUBRID_LIBDIR}
-  PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR}
+  RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT CCI
+  LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT CCI
+  ARCHIVE DESTINATION ${CUBRID_LIBDIR} COMPONENT CCI
+  PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT CCI
   )
 
 # install pdb files for debugging on windows
 if(WIN32)
   install(DIRECTORY
-    ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/
-    DESTINATION ${CUBRID_BINDIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/
+    DESTINATION ${CUBRID_BINDIR} COMPONENT Debuginfo
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)

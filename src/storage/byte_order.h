@@ -45,6 +45,15 @@
 
 #if defined(WINDOWS)
 #include <winsock2.h>
+#if defined(_MSC_VER) && _MSC_VER >= 1700
+/* We could not find when ntohf/ntohd/htonf/htond were exactly added. The only reference we could find are here:
+* https://msdn.microsoft.com/en-us/library/windows/desktop/jj710201(v=vs.85).aspx (ntohf, links to others at the bottom).
+*/
+#define OR_HAVE_NTOHF
+#define OR_HAVE_NTOHD
+#define OR_HAVE_HTONF
+#define OR_HAVE_HTOND
+#endif
 #endif /* WINDOWS */
 
 #define OR_LITTLE_ENDIAN 1234
@@ -97,11 +106,11 @@ extern unsigned int ntohl (unsigned int);
 extern UINT64 ntohi64 (UINT64);
 
 #ifndef OR_HAVE_NTOHF
-extern void ntohf (float *, float *);
+extern float ntohf (UINT32 from);
 #endif /* !OR_HAVE_NTOHF */
 
 #ifndef OR_HAVE_NTOHD
-extern void ntohd (double *, double *);
+extern double ntohd (UINT64 from);
 #endif /* !OR_HAVE_NTOHD */
 
 #ifndef OR_HAVE_HTONS
@@ -115,11 +124,11 @@ extern unsigned int htonl (unsigned int);
 extern UINT64 htoni64 (UINT64);
 
 #ifndef OR_HAVE_HTONF
-extern void htonf (float *, float *);
+extern UINT32 htonf (float);
 #endif /* !OR_HAVE_HTONF */
 
 #ifndef OR_HAVE_HTOND
-extern void htond (double *, double *);
+extern UINT64 htond (double);
 #endif /* !OR_HAVE_HTOND */
 
 #else /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */

@@ -1,0 +1,68 @@
+#
+# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#
+
+# This file is configured at cmake time, and loaded at cpack time.
+# To pass variables to cpack from cmake, they must be configured
+# in this file.
+
+if(CPACK_COMPONENTS_ALL STREQUAL "CCI")
+  set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
+  set(CPACK_PACKAGE_FILE_NAME "${CCI_PACKAGE_FILE_NAME}")
+  set(CPACK_SOURCE_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CUBRID_VERSION}-src")
+  set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
+  set(CPACK_COMPONENT_INCLUDE_TOPLEVEL_DIRECTORY ON)
+elseif (CPACK_GENERATOR MATCHES "^TGZ|ZIP")
+  set(CPACK_MONOLITHIC_INSTALL ON)
+  set(CPACK_PACKAGING_INSTALL_PREFIX "/CUBRID")
+  set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+elseif(CPACK_GENERATOR STREQUAL "RPM")
+  set(CPACK_PACKAGING_INSTALL_PREFIX "/opt/cubrid")
+  set(CPACK_RPM_PACKAGE_DESCRIPTION "Please see the documentation and the manual or visit http://www.cubrid.org for more information.")
+  set(CPACK_RPM_PACKAGE_LICENSE "GPLv2+ and BSD")
+  set(CPACK_RPM_PACKAGE_GROUP "Applications/Databases")
+  set(CPACK_RPM_PACKAGE_URL "http://www.cubrid.org")
+  set(CPACK_RPM_PACKAGE_REQUIRES "ncurses libstdc++ libgcrypt coreutils /sbin/chkconfig /usr/sbin/useradd /usr/sbin/groupadd")
+  set(CPACK_RPM_PACKAGE_ARCHITECTURE "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+  set(CPACK_RPM_PACKAGE_RELOCATABLE FALSE)
+  set(CPACK_RPM_PRE_INSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/cmake/CPack_preinstall.sh.in")
+  set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/cmake/CPack_postinstall.sh.in")
+  set(CPACK_RPM_PRE_UNINSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/cmake/CPack_preuninstall.sh.in")
+  set(CPACK_RPM_USER_FILELIST
+    "%config(noreplace) /opt/cubrid/conf"
+    %dir "/opt/cubrid/databases"
+    "/etc/profile.d/cubrid.csh"
+    "/etc/profile.d/cubrid.sh"
+    "/etc/init.d/cubrid"
+    "/etc/init.d/cubrid-ha"
+    )
+endif()
+
+# TODO: for windows package
+if(CPACK_GENERATOR STREQUAL "WIX")
+  set(CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}/src/win_tools/cubridtray/RES/cubrid_icon.ico")
+  set(CPACK_WIX_PRODUCT_GUID "4BD68AC1-ADE8-4CBE-85E8-8FCD42C33327")
+  set(CPACK_WIX_UPGRADE_GUID "9F39B147-9FA2-48BE-AB0E-43EC0EF46343")
+  set(CPACK_PACKAGE_VERSION "${RELEASE_STRING}")
+  set(CPACK_PACKAGE_INSTALL_DIRECTORY "CUBRID")
+  # CMake 3.5 or higher version is required for below variables
+  set(CPACK_WIX_PATCH_FILE "${CMAKE_BINARY_DIR}/wix_patch.xml")
+  set(CPACK_WIX_UI_REF "WixUI_CUBRIDInstall")
+  set(CPACK_WIX_EXTENSIONS "WixUtilExtension")
+  set(CPACK_WIX_PROPERTY_ARPURLINFOABOUT "http://cubrid.org")
+  set(CPACK_WIX_PRODUCT_ICON "${CMAKE_SOURCE_DIR}/src/win_tools/cubridtray/RES/cubrid_icon.ico")
+endif(CPACK_GENERATOR STREQUAL "WIX")
