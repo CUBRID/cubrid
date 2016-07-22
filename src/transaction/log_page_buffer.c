@@ -1269,10 +1269,11 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
     }
 #endif /* CUBRID_DEBUG */
 
-  if (!csect_check_own (thread_p, CSECT_LOG_ARCHIVE))
+  if (csect_check_own (thread_p, CSECT_LOG_ARCHIVE) != 2)
     {
-      old_cs = false;
-      LOG_CS_ENTER (thread_p);
+      printf ("CV\n");
+      //old_cs = false;
+      // LOG_CS_ENTER (thread_p);
     }
   bufptr->dirty = true;
   if (free_page == FREE)
@@ -1281,7 +1282,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
     }
   if (old_cs == false)
     {
-      LOG_CS_EXIT (thread_p);
+      // LOG_CS_EXIT (thread_p);
     }
 
 }
