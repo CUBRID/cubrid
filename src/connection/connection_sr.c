@@ -125,6 +125,9 @@ CSS_CONN_ENTRY *css_Conn_array = NULL;
 CSS_CONN_ENTRY *css_Active_conn_anchor = NULL;
 static int css_Num_active_conn = 0;
 
+SYNC_RWLOCK css_Rwlock_active_conn_anchor;
+SYNC_RWLOCK css_Rwlock_free_conn_anchor;
+
 static LAST_ACCESS_STATUS *css_Access_status_anchor = NULL;
 int css_Num_access_user = 0;
 
@@ -427,6 +430,20 @@ css_init_conn_list (void)
       return NO_ERROR;
     }
 
+  err = rwlock_initialize (CSS_RWLOCK_ACTIVE_CONN_ANCHOR, CSS_RWLOCK_ACTIVE_CONN_ANCHOR_NAME);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
+
+  err = rwlock_initialize (CSS_RWLOCK_FREE_CONN_ANCHOR, CSS_RWLOCK_FREE_CONN_ANCHOR_NAME);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return err;
+    }
+
   /* 
    * allocate NUM_MASTER_CHANNEL + the total number of
    *  conn entries
@@ -516,6 +533,9 @@ css_final_conn_list (void)
 
       free_and_init (css_Conn_array);
     }
+
+  (void) rwlock_finalize (CSS_RWLOCK_ACTIVE_CONN_ANCHOR);
+  (void) rwlock_finalize (CSS_RWLOCK_FREE_CONN_ANCHOR);
 }
 
 /*
@@ -528,8 +548,9 @@ CSS_CONN_ENTRY *
 css_make_conn (SOCKET fd)
 {
   CSS_CONN_ENTRY *conn = NULL;
+  int r;
 
-  csect_enter (NULL, CSECT_CONN_FREE, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
   if (css_Free_conn_anchor != NULL)
     {
@@ -541,7 +562,7 @@ css_make_conn (SOCKET fd)
       assert (css_Num_free_conn >= 0);
     }
 
-  csect_exit (NULL, CSECT_CONN_FREE);
+  END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
   if (conn != NULL)
     {
@@ -565,7 +586,9 @@ css_make_conn (SOCKET fd)
 void
 css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn)
 {
-  csect_enter (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+  int r;
+
+  START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
   conn->next = css_Active_conn_anchor;
   css_Active_conn_anchor = conn;
@@ -575,7 +598,7 @@ css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn)
   assert (css_Num_active_conn > 0);
   assert (css_Num_active_conn <= css_Num_max_conn);
 
-  csect_exit (NULL, CSECT_CONN_ACTIVE);
+  END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 }
 
 /*
@@ -597,7 +620,9 @@ css_dealloc_conn_rmutex (CSS_CONN_ENTRY * conn)
 static void
 css_dealloc_conn (CSS_CONN_ENTRY * conn)
 {
-  csect_enter (NULL, CSECT_CONN_FREE, INF_WAIT);
+  int r;
+
+  START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
   conn->next = css_Free_conn_anchor;
   css_Free_conn_anchor = conn;
@@ -607,7 +632,7 @@ css_dealloc_conn (CSS_CONN_ENTRY * conn)
   assert (css_Num_free_conn > 0);
   assert (css_Num_free_conn <= css_Num_max_conn);
 
-  csect_exit (NULL, CSECT_CONN_FREE);
+  END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 }
 
 /*
@@ -816,8 +841,9 @@ void
 css_free_conn (CSS_CONN_ENTRY * conn)
 {
   CSS_CONN_ENTRY *p, *prev = NULL, *next;
+  int r;
 
-  csect_enter (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
   /* find and remove from active conn list */
   for (p = css_Active_conn_anchor; p != NULL; p = next)
@@ -850,7 +876,7 @@ css_free_conn (CSS_CONN_ENTRY * conn)
   css_dealloc_conn (conn);
   css_decrement_num_conn (conn->client_type);
 
-  csect_exit (NULL, CSECT_CONN_ACTIVE);
+  END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 }
 
 void
@@ -912,11 +938,11 @@ void
 css_print_conn_list (void)
 {
   CSS_CONN_ENTRY *conn, *next;
-  int i;
+  int i, r;
 
   if (css_Active_conn_anchor != NULL)
     {
-      csect_enter_as_reader (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+      START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
       fprintf (stderr, "active conn list (%d)\n", css_Num_active_conn);
 
@@ -928,7 +954,7 @@ css_print_conn_list (void)
 
       assert (i == css_Num_active_conn);
 
-      csect_exit (NULL, CSECT_CONN_ACTIVE);
+      END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
     }
 }
 
@@ -940,11 +966,11 @@ void
 css_print_free_conn_list (void)
 {
   CSS_CONN_ENTRY *conn, *next;
-  int i;
+  int i, r;
 
   if (css_Free_conn_anchor != NULL)
     {
-      csect_enter_as_reader (NULL, CSECT_CONN_FREE, INF_WAIT);
+      START_SHARED_ACCESS_FREE_CONN_ANCHOR (r);
 
       fprintf (stderr, "free conn list (%d)\n", css_Num_free_conn);
 
@@ -956,7 +982,7 @@ css_print_free_conn_list (void)
 
       assert (i == css_Num_free_conn);
 
-      csect_exit (NULL, CSECT_CONN_FREE);
+      END_SHARED_ACCESS_FREE_CONN_ANCHOR (r);
     }
 }
 
@@ -1180,10 +1206,11 @@ CSS_CONN_ENTRY *
 css_find_conn_by_tran_index (int tran_index)
 {
   CSS_CONN_ENTRY *conn = NULL, *next;
+  int r;
 
   if (css_Active_conn_anchor != NULL)
     {
-      csect_enter_as_reader (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+      START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
       for (conn = css_Active_conn_anchor; conn != NULL; conn = next)
 	{
@@ -1194,7 +1221,7 @@ css_find_conn_by_tran_index (int tran_index)
 	    }
 	}
 
-      csect_exit (NULL, CSECT_CONN_ACTIVE);
+      END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
     }
 
   return conn;
@@ -1209,10 +1236,11 @@ CSS_CONN_ENTRY *
 css_find_conn_from_fd (SOCKET fd)
 {
   CSS_CONN_ENTRY *conn = NULL, *next;
+  int r;
 
   if (css_Active_conn_anchor != NULL)
     {
-      csect_enter_as_reader (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+      START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
       for (conn = css_Active_conn_anchor; conn != NULL; conn = next)
 	{
@@ -1223,7 +1251,7 @@ css_find_conn_from_fd (SOCKET fd)
 	    }
 	}
 
-      csect_exit (NULL, CSECT_CONN_ACTIVE);
+      END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
     }
   return conn;
 }
@@ -1239,7 +1267,7 @@ css_get_session_ids_for_active_connections (SESSION_ID ** session_ids, int *coun
 {
   CSS_CONN_ENTRY *conn = NULL, *next = NULL;
   SESSION_ID *sessions_p = NULL;
-  int error = NO_ERROR, i = 0;
+  int error = NO_ERROR, i = 0, r;
 
   assert (count != NULL);
   if (count == NULL)
@@ -1255,7 +1283,7 @@ css_get_session_ids_for_active_connections (SESSION_ID ** session_ids, int *coun
       return NO_ERROR;
     }
 
-  csect_enter_as_reader (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+  START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
   *count = css_Num_active_conn;
   sessions_p = (SESSION_ID *) malloc (css_Num_active_conn * sizeof (SESSION_ID));
 
@@ -1263,7 +1291,7 @@ css_get_session_ids_for_active_connections (SESSION_ID ** session_ids, int *coun
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, css_Num_active_conn * sizeof (SESSION_ID));
       error = ER_FAILED;
-      csect_exit (NULL, CSECT_CONN_ACTIVE);
+      END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
       goto error_return;
     }
 
@@ -1274,7 +1302,7 @@ css_get_session_ids_for_active_connections (SESSION_ID ** session_ids, int *coun
       i++;
     }
 
-  csect_exit (NULL, CSECT_CONN_ACTIVE);
+  END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
   *session_ids = sessions_p;
   return error;
 
@@ -1304,10 +1332,11 @@ void
 css_shutdown_conn_by_tran_index (int tran_index)
 {
   CSS_CONN_ENTRY *conn = NULL;
+  int r;
 
   if (css_Active_conn_anchor != NULL)
     {
-      csect_enter (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+      START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
       for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
 	{
@@ -1321,7 +1350,7 @@ css_shutdown_conn_by_tran_index (int tran_index)
 	    }
 	}
 
-      csect_exit (NULL, CSECT_CONN_ACTIVE);
+      END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
     }
 }
 

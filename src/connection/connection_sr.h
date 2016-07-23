@@ -51,6 +51,80 @@ struct ip_info
 extern CSS_CONN_ENTRY *css_Conn_array;
 extern CSS_CONN_ENTRY *css_Active_conn_anchor;
 
+extern SYNC_RWLOCK css_Rwlock_active_conn_anchor;
+
+#define CSS_RWLOCK_ACTIVE_CONN_ANCHOR (&css_Rwlock_active_conn_anchor)
+#define CSS_RWLOCK_ACTIVE_CONN_ANCHOR_NAME "CSS_RWLOCK_ACTIVE_CONN_ANCHOR"
+
+#define START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_write_lock (CSS_RWLOCK_ACTIVE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_write_unlock (CSS_RWLOCK_ACTIVE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_read_lock (CSS_RWLOCK_ACTIVE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_read_unlock (CSS_RWLOCK_ACTIVE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+extern SYNC_RWLOCK css_Rwlock_free_conn_anchor;
+
+#define CSS_RWLOCK_FREE_CONN_ANCHOR (&css_Rwlock_free_conn_anchor)
+#define CSS_RWLOCK_FREE_CONN_ANCHOR_NAME "CSS_RWLOCK_FREE_CONN_ANCHOR"
+
+#define START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_write_lock (CSS_RWLOCK_FREE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_write_unlock (CSS_RWLOCK_FREE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define START_SHARED_ACCESS_FREE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_read_lock (CSS_RWLOCK_FREE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
+#define END_SHARED_ACCESS_FREE_CONN_ANCHOR(r) \
+  do \
+    { \
+      (r) = rwlock_read_unlock (CSS_RWLOCK_FREE_CONN_ANCHOR); \
+      assert ((r) == NO_ERROR); \
+    } \
+  while (0)
+
 extern int css_Num_access_user;
 
 extern int (*css_Connect_handler) (CSS_CONN_ENTRY *);
