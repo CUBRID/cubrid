@@ -2064,7 +2064,7 @@ rwlock_dump_statistics (FILE * fp)
   SYNC_STATS *stats;
   int i, cnt;
 
-  fprintf (fp, "\n         RWlock Name         |Total Enter|  Max elapsed  |  Total elapsed\n");
+  fprintf (fp, "\n         RWlock Name          |Total Enter|  Max elapsed  |  Total elapsed\n");
 
   pthread_mutex_lock (&sync_Stats_lock);
 
@@ -2078,7 +2078,7 @@ rwlock_dump_statistics (FILE * fp)
 	    {
 	      cnt++;
 
-	      fprintf (fp, "%-28s |%10d | %6ld.%06ld | %6ld.%06ld\n", stats->name, stats->nenter,
+	      fprintf (fp, "%-29s |%10d | %6ld.%06ld | %6ld.%06ld\n", stats->name, stats->nenter,
 		       stats->max_elapsed.tv_sec, stats->max_elapsed.tv_usec,
 		       stats->total_elapsed.tv_sec, stats->total_elapsed.tv_usec);
 
