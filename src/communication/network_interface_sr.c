@@ -5310,28 +5310,28 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int (ptr, &data_size);
   ptr = or_unpack_int (ptr, &query_flag);
   OR_UNPACK_CACHE_TIME (ptr, &clt_cache_time);
-  ptr = or_unpack_int (ptr, &query_timeout);  
+  ptr = or_unpack_int (ptr, &query_timeout);
   if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (query_flag))
     {
       assert (data_size < EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE);
       aligned_data_buf = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
       data = aligned_data_buf;
       memcpy (data, ptr, data_size);
-    }  
+    }
   else if (0 < dbval_cnt)
     {
-	  /* receive parameter values (DB_VALUE) from the client */
-	  csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &data, &data_size);
-	  if (csserror || data == NULL)
+      /* receive parameter values (DB_VALUE) from the client */
+      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &data, &data_size);
+      if (csserror || data == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  if (data)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
-	      css_send_abort_to_client (thread_p->conn_entry, rid);
-	      if (data)
-		{
-		  free_and_init (data);
-		}
-	      return;		/* error */
+	      free_and_init (data);
 	    }
+	  return;		/* error */
+	}
     }
 
   CACHE_TIME_RESET (&srv_cache_time);
