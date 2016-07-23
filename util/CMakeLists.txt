@@ -97,6 +97,9 @@ set(CUBRID_SOURCES
 if(WIN32)
   list(APPEND CUBRID_SOURCES ${BASE_DIR}/getopt_long.c)
   list(APPEND CUBRID_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+endif(WIN32)
+add_executable(cubrid-bin ${CUBRID_SOURCES})
+if(WIN32)
   if(MSVC_VERSION LESS 1600)
     # for VS 2008 (9.0) or less version
     set_target_properties(cubrid-bin PROPERTIES LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\"")
@@ -104,7 +107,6 @@ if(WIN32)
     set_target_properties(cubrid-bin PROPERTIES LINK_FLAGS "/level='requireAdministrator' /uiAccess='false'")
   endif(MSVC_VERSION LESS 1600)
 endif(WIN32)
-add_executable(cubrid-bin ${CUBRID_SOURCES})
 set_target_properties(cubrid-bin PROPERTIES OUTPUT_NAME cubrid)
 target_link_libraries(cubrid-bin LINK_PRIVATE cubridsa)
 
