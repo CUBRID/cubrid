@@ -1336,7 +1336,7 @@ css_shutdown_conn_by_tran_index (int tran_index)
 
   if (css_Active_conn_anchor != NULL)
     {
-      START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
+      START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
       for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
 	{
@@ -1350,7 +1350,7 @@ css_shutdown_conn_by_tran_index (int tran_index)
 	    }
 	}
 
-      END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
+      END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
     }
 }
 

@@ -2504,7 +2504,7 @@ css_number_of_clients (void)
   int n = 0, r;
   CSS_CONN_ENTRY *conn;
 
-  START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
+  START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
   for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
     {
@@ -2514,7 +2514,7 @@ css_number_of_clients (void)
 	}
     }
 
-  END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
+  END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
   return n;
 }
