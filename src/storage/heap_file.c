@@ -22443,7 +22443,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	}
     }
 
-  if (is_mvcc_op && context->type == HEAP_OPERATION_UPDATE)
+  if (is_mvcc_op && context->type == HEAP_OPERATION_UPDATE && is_oor_buf == false)
     {
       if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
 	{
