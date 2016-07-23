@@ -95,7 +95,7 @@ static const char *csect_Names[] = {
   "ACCESS_STATUS"
 };
 
-const char *csect_Name_conn = "CONN_ENTRY";
+const char *rmutex_Name_conn = "CONN_ENTRY";
 const char *csect_Name_tdes = "TDES";
 
 #define CSECT_NAME(c) ((c)->name ? (c)->name : "TEMP CONN_ENTRY")

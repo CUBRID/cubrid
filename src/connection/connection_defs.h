@@ -447,7 +447,8 @@ struct css_conn_entry
 #if defined(SERVER_MODE)
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;
-  SYNC_CRITICAL_SECTION csect;
+  SYNC_RMUTEX rmutex;		/* connection mutex */
+
   bool stop_talk;		/* block and stop this connection */
   bool ignore_repl_delay;	/* don't do reset_on_commit by the delay of replication */
   unsigned short stop_phase;
