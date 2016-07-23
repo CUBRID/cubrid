@@ -7139,7 +7139,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
   const char *comment = NULL;
   size_t buf_size;
 
-  fk_info = (PT_FOREIGN_KEY_INFO *) & (cnstr->info.constraint.un.foreign_key);
+  fk_info = (PT_FOREIGN_KEY_INFO *) (&cnstr->info.constraint.un.foreign_key);
 
   n_atts = pt_length_of_list (fk_info->attrs);
   i = 0;

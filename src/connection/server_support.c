@@ -1688,7 +1688,7 @@ css_block_all_active_conn (unsigned short stop_phase)
   CSS_CONN_ENTRY *conn;
   int r;
 
-  csect_enter (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
   for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
     {
@@ -1712,7 +1712,7 @@ css_block_all_active_conn (unsigned short stop_phase)
       assert (r == NO_ERROR);
     }
 
-  csect_exit (NULL, CSECT_CONN_ACTIVE);
+  END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 }
 
 /*
@@ -2501,10 +2501,10 @@ css_cleanup_server_queues (unsigned int eid)
 int
 css_number_of_clients (void)
 {
-  int n = 0;
+  int n = 0, r;
   CSS_CONN_ENTRY *conn;
 
-  csect_enter_as_reader (NULL, CSECT_CONN_ACTIVE, INF_WAIT);
+  START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
   for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
     {
@@ -2514,7 +2514,7 @@ css_number_of_clients (void)
 	}
     }
 
-  csect_exit (NULL, CSECT_CONN_ACTIVE);
+  END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
   return n;
 }
