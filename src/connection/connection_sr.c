@@ -441,6 +441,7 @@ css_init_conn_list (void)
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
+      (void) rwlock_finalize (CSS_RWLOCK_ACTIVE_CONN_ANCHOR);
       return err;
     }
 
@@ -451,7 +452,10 @@ css_init_conn_list (void)
   css_Conn_array = (CSS_CONN_ENTRY *) malloc (sizeof (CSS_CONN_ENTRY) * (css_Num_max_conn));
   if (css_Conn_array == NULL)
     {
-      return ER_CSS_CONN_INIT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (CSS_CONN_ENTRY) * (css_Num_max_conn));
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
 
   /* initialize all CSS_CONN_ENTRY */
@@ -463,14 +467,16 @@ css_init_conn_list (void)
       if (err != NO_ERROR)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT, 0);
-	  return ER_CSS_CONN_INIT;
+	  err = ER_CSS_CONN_INIT;
+	  goto error;
 	}
 
       err = rmutex_initialize (&conn->rmutex, rmutex_Name_conn);
       if (err != NO_ERROR)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT, 0);
-	  return ER_CSS_CONN_INIT;
+	  err = ER_CSS_CONN_INIT;
+	  goto error;
 	}
 
       if (i < css_Num_max_conn - 1)
@@ -489,6 +495,17 @@ css_init_conn_list (void)
   css_Num_free_conn = css_Num_max_conn;
 
   return NO_ERROR;
+
+error:
+  (void) rwlock_finalize (CSS_RWLOCK_ACTIVE_CONN_ANCHOR);
+  (void) rwlock_finalize (CSS_RWLOCK_FREE_CONN_ANCHOR);
+
+  if (css_Conn_array != NULL)
+    {
+      free_and_init (css_Conn_array);
+    }
+
+  return err;
 }
 
 /*
@@ -532,10 +549,10 @@ css_final_conn_list (void)
 	}
 
       free_and_init (css_Conn_array);
-    }
 
-  (void) rwlock_finalize (CSS_RWLOCK_ACTIVE_CONN_ANCHOR);
-  (void) rwlock_finalize (CSS_RWLOCK_FREE_CONN_ANCHOR);
+      (void) rwlock_finalize (CSS_RWLOCK_ACTIVE_CONN_ANCHOR);
+      (void) rwlock_finalize (CSS_RWLOCK_FREE_CONN_ANCHOR);
+    }
 }
 
 /*
