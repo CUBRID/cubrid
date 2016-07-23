@@ -85,6 +85,7 @@
 #endif /* WINDOWS */
 
 static struct timeval css_Shutdown_timeout = { 0, 0 };
+
 static char *css_Master_server_name = NULL;	/* database identifier */
 static int css_Master_port_id;
 static CSS_CONN_ENTRY *css_Master_conn;
@@ -198,6 +199,7 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
   {-1, HA_LOG_APPLIER_STATE_NA},
   {-1, HA_LOG_APPLIER_STATE_NA}
 };
+
 static int ha_Log_applier_state_num = 0;
 
 static int css_free_job_entry_func (void *data, void *dummy);

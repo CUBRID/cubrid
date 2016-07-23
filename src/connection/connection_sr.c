@@ -2639,7 +2639,6 @@ css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, in
 {
   int rc = NO_ERRORS, r;
 
-
   r = rmutex_lock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
 

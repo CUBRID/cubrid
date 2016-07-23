@@ -7305,7 +7305,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
       senddata_size = CAST_BUFLEN (ptr - senddata);
       if (senddata_size < EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE)
 	{
-	  flag |= EXECUTE_QUERY_WITHOUT_DATA_BUFFERS;	  
+	  flag |= EXECUTE_QUERY_WITHOUT_DATA_BUFFERS;
 	}
     }
 
@@ -7317,37 +7317,36 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   ptr = or_pack_int (ptr, senddata_size);
   ptr = or_pack_int (ptr, flag);
   OR_PACK_CACHE_TIME (ptr, clt_cache_time);
-  ptr = or_pack_int (ptr, query_timeout);  
+  ptr = or_pack_int (ptr, query_timeout);
 
   request_len = OR_XASL_ID_SIZE + OR_INT_SIZE * 4 + OR_CACHE_TIME_SIZE;
   if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (flag))
     {
       /* Execute without data buffers. The data has small size. Include the data in the argument buffer. */
+      assert (senddata != NULL && 0 < senddata_size);
+
       memcpy (ptr, senddata, senddata_size);
       request_len += senddata_size;
-      req_error =
-	net_client_request_with_callback (NET_SERVER_QM_QUERY_EXECUTE, request, request_len, reply,
-					  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0,
-					  &replydata_listid, &replydata_size_listid, &replydata_page,
-					  &replydata_size_page, &replydata_plan, &replydata_size_plan);
+
+      free_and_init (senddata);
+      senddata_size = 0;
     }
   else
     {
       /* Execute with data buffer. The data has big size. */
-      req_error =
-	net_client_request_with_callback (NET_SERVER_QM_QUERY_EXECUTE, request, request_len, reply,
-					  OR_ALIGNED_BUF_SIZE (a_reply), senddata, senddata_size, NULL, 0,
-					  &replydata_listid, &replydata_size_listid, &replydata_page,
-					  &replydata_size_page, &replydata_plan, &replydata_size_plan);
-    }  
+    }
 
+  req_error = net_client_request_with_callback (NET_SERVER_QM_QUERY_EXECUTE, request, request_len, reply,
+						OR_ALIGNED_BUF_SIZE (a_reply), senddata, senddata_size, NULL, 0,
+						&replydata_listid, &replydata_size_listid, &replydata_page,
+						&replydata_size_page, &replydata_plan, &replydata_size_plan);
   if (replydata_plan != NULL)
     {
       db_set_execution_plan (replydata_plan, replydata_size_plan);
       free_and_init (replydata_plan);
     }
 
-  if (senddata)
+  if (senddata != NULL)
     {
       free_and_init (senddata);
     }
