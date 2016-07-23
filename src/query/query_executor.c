@@ -8235,6 +8235,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   /* get the snapshot, before acquiring locks, since the transaction may be blocked and we need the snapshot when
    * update starts, not later */
@@ -8552,7 +8553,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		      if (scan_code == S_SUCCESS)
 			{
 			  error =
-			    heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, NULL, &crt_del_lob_info->attr_info, HEAPATTR_READ_OOR);
+			    heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, NULL, &crt_del_lob_info->attr_info,
+							 &oor_context);
 			  if (error != NO_ERROR)
 			    {
 			      GOTO_EXIT_ON_ERROR;
@@ -9150,6 +9152,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   /* get the snapshot, before acquiring locks, since the transaction may be blocked and we need the snapshot when
    * delete starts, not later */
@@ -9407,7 +9410,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 		  if (scan_code == S_SUCCESS)
 		    {
-		      error = heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, NULL, &crt_del_lob_info->attr_info, HEAPATTR_READ_OOR);
+		      error = heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, NULL, &crt_del_lob_info->attr_info,
+							   &oor_context);
 		      if (error != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -9769,6 +9773,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
   int local_op_type = SINGLE_ROW_DELETE;
   HEAP_SCANCACHE *local_scan_cache = NULL;
   BTREE_SEARCH r;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   *removed_count = 0;
 
@@ -9788,7 +9793,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 
   if (idx_info->has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &new_recdes, NULL, index_attr_info, HEAPATTR_READ_OOR);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &new_recdes, NULL, index_attr_info,
+					        &oor_context);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -9994,6 +10000,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
   bool is_global_index = false;
   int local_op_type = SINGLE_ROW_UPDATE;
   BTREE_SEARCH r;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   assert (pruned_partition_scan_cache != NULL);
 
@@ -10020,7 +10027,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 
   if (idx_info->has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &recdes, NULL, index_attr_info, HEAPATTR_READ_OOR);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &recdes, NULL, index_attr_info, &oor_context);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -10193,6 +10200,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   OID unique_oid;
   int local_op_type = SINGLE_ROW_UPDATE;
   HEAP_SCANCACHE *local_scan_cache = NULL;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
   int ispeeking;
 
   OID_SET_NULL (&unique_oid);
@@ -10239,7 +10247,8 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
       local_op_type = (BTREE_IS_MULTI_ROW_OP (op_type) ? MULTI_ROW_UPDATE : SINGLE_ROW_UPDATE);
     }
 
-  error = heap_attrinfo_read_dbvalues (thread_p, &unique_oid, &rec_descriptor, local_scan_cache, odku->attr_info, HEAPATTR_READ_OOR);
+  error = heap_attrinfo_read_dbvalues (thread_p, &unique_oid, &rec_descriptor, local_scan_cache, odku->attr_info,
+				       &oor_context);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -11169,6 +11178,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   DB_LOGICAL ev_res2;
   RECDES oRec = RECDES_INITIALIZER;
   HEAP_SCANCACHE scan_cache;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
   ACCESS_SPEC_TYPE *specp = NULL;
   OID cls_oid;
   int dead_end = false;
@@ -11382,7 +11392,8 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  fetch_init_val_list (specp->s.cls_node.cls_regu_list_rest);
 
 	  /* read the predicate values from the heap into the scancache */
-	  status = heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_pred, HEAPATTR_READ_OOR);
+	  status = heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_pred,
+						&oor_context);
 	  if (status != NO_ERROR)
 	    {
 	      goto wrapup;
@@ -11423,7 +11434,8 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      fetch->fetch_res = true;
 	      /* read the rest of the values from the heap */
 	      status =
-		heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_rest, HEAPATTR_READ_OOR);
+		heap_attrinfo_read_dbvalues (thread_p, dbvaloid, &oRec, &scan_cache, specp->s.cls_node.cache_rest,
+					     &oor_context);
 	      if (status != NO_ERROR)
 		{
 		  goto wrapup;

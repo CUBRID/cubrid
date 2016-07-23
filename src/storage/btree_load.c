@@ -3204,8 +3204,10 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (sort_args->filter)
 	{
+	  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
+
 	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, NULL,
-					   sort_args->filter->cache_pred, HEAPATTR_READ_OOR) != NO_ERROR)
+					   sort_args->filter->cache_pred, &oor_context) != NO_ERROR)
 	    {
 	      return SORT_ERROR_OCCURRED;
 	    }
@@ -3223,9 +3225,11 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (sort_args->func_index_info && sort_args->func_index_info->expr)
 	{
+	  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
+
 	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, NULL,
 					   ((FUNC_PRED *) sort_args->func_index_info->expr)->cache_attrinfo,
-					   HEAPATTR_READ_OOR) != NO_ERROR)
+					   &oor_context) != NO_ERROR)
 	    {
 	      return SORT_ERROR_OCCURRED;
 	    }
@@ -3233,8 +3237,9 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
       if (sort_args->n_attrs == 1)
 	{			/* single-column index */
+	  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 	  if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid, &sort_args->in_recdes, NULL,
-					   &sort_args->attr_info, HEAPATTR_READ_OOR) != NO_ERROR)
+					   &sort_args->attr_info, &oor_context) != NO_ERROR)
 	    {
 	      return SORT_ERROR_OCCURRED;
 	    }

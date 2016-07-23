@@ -331,13 +331,6 @@ typedef enum
   SNAPSHOT_TYPE_DIRTY		/* use dirty snapshot */
 } SNAPSHOT_TYPE;
 
-typedef enum
-{
-  HEAPATTR_IGNORE_OOR = 0,
-  HEAPATTR_READ_OOR
-} HEAPATTR_OOR_MODE;
-
-
 /* values with this size or above are stored in out of record data (heap or overflow) */
 #define HEAP_OOR_THRESHOLD_SIZE 50
 /* values with size below this threshold are stored in heap file */
@@ -472,7 +465,7 @@ extern void heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * at
 extern int heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
 					HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
-					HEAPATTR_OOR_MODE oor_read_mode);
+					OUT_OF_ROW_CONTEXT *oor_context);
 extern int heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);

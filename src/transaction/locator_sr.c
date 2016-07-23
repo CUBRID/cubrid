@@ -4209,6 +4209,7 @@ locator_check_primary_key_upddel (THREAD_ENTRY * thread_p, OID * class_oid, OID 
   OR_INDEX *index;
   bool is_null;
   int error_code = NO_ERROR;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   DB_MAKE_NULL (&dbvalue);
 
@@ -4222,7 +4223,7 @@ locator_check_primary_key_upddel (THREAD_ENTRY * thread_p, OID * class_oid, OID 
 
   if (idx_info.has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo, HEAPATTR_READ_OOR);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo, &oor_context);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -4324,6 +4325,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
   OR_CLASSREP *classrepr = NULL;
   int classrepr_cacheindex = -1;
   BTREE_SEARCH ret;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   DB_MAKE_NULL (&dbvalue);
 
@@ -4337,7 +4339,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 
   if (idx_info.has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo, HEAPATTR_READ_OOR);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo, &oor_context);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -8012,6 +8014,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   bool use_mvcc = false;
   MVCCID mvccid;
   MVCC_REC_HEADER *p_mvcc_rec_header = NULL;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
 /* temporary disable standalone optimization (non-mvcc insert/delete style).
  * Must be activated when dynamic heap is introduced */
@@ -8064,7 +8067,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
    */
   if (idx_info.has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo, HEAPATTR_READ_OOR);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, NULL, &index_attrinfo, &oor_context);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -8400,6 +8403,7 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICAT
   DB_TYPE single_node_type = DB_TYPE_NULL;
   HL_HEAPID old_pri_heap_id = HL_NULL_HEAPID;
   int error_code = NO_ERROR;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   if (or_pred == NULL || class_oid == NULL || recs == NULL || inst_oids == NULL || num_insts <= 0 || results == NULL
       || or_pred->pred_stream == NULL || btid == NULL)
@@ -8429,7 +8433,8 @@ locator_eval_filter_predicate (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICAT
 
   for (i = 0; i < num_insts; i++)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oids[i], recs[i], NULL, pred_filter->cache_pred, HEAPATTR_READ_OOR);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oids[i], recs[i], NULL, pred_filter->cache_pred,
+						&oor_context);
       if (error_code != NO_ERROR)
 	{
 	  goto end;
@@ -8532,6 +8537,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   LOG_TDES *tdes;
   LOG_LSA preserved_repl_lsa;
   int tran_index;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
@@ -8606,12 +8612,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   new_attrinfo = &space_attrinfo[0];
   old_attrinfo = &space_attrinfo[1];
 
-  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, new_recdes, NULL, new_attrinfo, HEAPATTR_READ_OOR);
+  /* TODO[arnia] : get oor_context to use oor_recdes */
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, new_recdes, NULL, new_attrinfo, &oor_context);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
-  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, old_recdes, NULL, old_attrinfo, HEAPATTR_READ_OOR);
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, old_recdes, NULL, old_attrinfo, &oor_context);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -9134,6 +9141,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
   OR_INDEX *index = NULL;
   DB_LOGICAL ev_res;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
     {
@@ -9220,7 +9228,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	  continue;
 	}
 
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &copy_rec, NULL, &index_attrinfo, HEAPATTR_READ_OOR);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &copy_rec, NULL, &index_attrinfo, &oor_context);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -9592,6 +9600,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
   OR_CLASSREP *classrepr = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   BTID btid_info;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 #if defined(SERVER_MODE)
   int tran_index;
 #endif /* SERVER_MODE */
@@ -9684,7 +9693,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 	}
 
       /* Make sure that the index entry exist */
-      if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &record, NULL, &attr_info, HEAPATTR_READ_OOR) != NO_ERROR)
+      if ((n_attr_ids == 1
+	   && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &record, NULL, &attr_info, &oor_context) != NO_ERROR)
 	  || (key = heap_attrvalue_get_key (thread_p, index_id, &attr_info, &record, &btid_info, &dbvalue, aligned_buf,
 					    NULL, NULL)) == NULL)
 	{
@@ -10004,6 +10014,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
   DB_LOGICAL ev_res;
   int partition_local_index = 0;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 #if defined(SERVER_MODE)
   int tran_index;
 #else
@@ -10121,7 +10132,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 	    }
 
 	  /* Make sure that the index entry exists */
-	  if ((heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, NULL, &attr_info, HEAPATTR_READ_OOR) != NO_ERROR)
+	  if ((heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, NULL, &attr_info, &oor_context) != NO_ERROR)
 	      ||
 	      ((key =
 		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL,
@@ -11949,6 +11960,7 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   int error_code;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   if (mvcc_snapshot == NULL)
@@ -11982,7 +11994,7 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
     {
       if (n_attrs == 1)
 	{
-	  error_code = heap_attrinfo_read_dbvalues (thread_p, &oid, &copy_recdes, NULL, &attr_info, HEAPATTR_READ_OOR);
+	  error_code = heap_attrinfo_read_dbvalues (thread_p, &oid, &copy_recdes, NULL, &attr_info, &oor_context);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto end;
@@ -12433,6 +12445,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
   int tran_index;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   MVCCID threshold_mvccid;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   HFID_SET_NULL (&hfid);
   OID_SET_NULL (&last_oid);
@@ -12536,7 +12549,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
 	      goto error_exit;
 	    }
 
-	  error = heap_attrinfo_read_dbvalues (thread_p, &obj->oid, &recdes, NULL, &attr_info, HEAPATTR_READ_OOR);
+	  error = heap_attrinfo_read_dbvalues (thread_p, &obj->oid, &recdes, NULL, &attr_info, &oor_context);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;

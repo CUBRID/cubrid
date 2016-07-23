@@ -724,7 +724,7 @@ static int heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, int *off
 				       int *size_gain_overflow_columns);
 
 static int heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * value,
-				HEAP_CACHE_ATTRINFO * attr_info, HEAPATTR_OOR_MODE oor_read_mode);
+				HEAP_CACHE_ATTRINFO * attr_info, OUT_OF_ROW_CONTEXT *oor_context);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info);
@@ -11484,7 +11484,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
  */
 static int
 heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
-		     HEAPATTR_OOR_MODE oor_read_mode)
+		     OUT_OF_ROW_CONTEXT *oor_context)
 {
   OR_BUF buf;
   PR_TYPE *pr_type;		/* Primitive type array function structure */
@@ -11651,11 +11651,11 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 		  break;
 		}
 	      
-	      if (oor_read_mode == HEAPATTR_IGNORE_OOR)
+	      if (oor_context == NULL || oor_context->oor_mode == HEAPATTR_IGNORE_OOR)
 		{
 		  (*(pr_type_oid->data_readval)) (&buf, &value->dbvalue, NULL, disk_length, false, NULL, 0);
 		}
-	      else
+	      else if (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_HEAP)
 		{
 		  (*(pr_type_oid->data_readval)) (&buf, &oid_value, NULL, disk_length, false, NULL, 0);
 
@@ -11693,6 +11693,11 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 
 		  heap_scancache_end (thread_p, &local_scan_cache);
 		}
+	      else
+		{
+		  assert (oor_context->oor_mode == HEAPATTR_READ_OOR_FROM_OOR_RECDES);
+		  /* TODO[arnia] : which position in oor_recdes array is the attribute ? */
+		}
 
 	    }
 	  else
@@ -11703,7 +11708,7 @@ heap_attrvalue_read (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_ATTRVALUE * 
 		  (*(pr_type->data_readval)) (&buf, &value->dbvalue, attrepr->domain, disk_length, false, NULL, 0);
 		}
 	    }
-	  if (is_out_of_row && oor_read_mode == HEAPATTR_IGNORE_OOR)
+	  if (is_out_of_row && oor_context->oor_mode == HEAPATTR_IGNORE_OOR)
 	    {
 	      value->state = HEAP_READ_ATTRVALUE_OOR_OID;
 	    }
@@ -11828,7 +11833,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
  *   recdes(in): The instance Record descriptor
  *   attr_info(in/out): The attribute information structure which describe the
  *                      desired attributes
- *   oor_read_mode(in): Flag to read or not the out of record attributes' values
+ *   oor_context(in): out of row context
  *
  * Note: Find DB_VALUES of desired attributes of given instance.
  * The attr_info structure must have already been initialized
@@ -11841,7 +11846,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 int
 heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
 			     HEAP_SCANCACHE * scan_cache, HEAP_CACHE_ATTRINFO * attr_info,
-			     HEAPATTR_OOR_MODE oor_read_mode)
+			     OUT_OF_ROW_CONTEXT *oor_context)
 {
   int i;
   REPR_ID reprid;		/* The disk representation of the object */
@@ -11880,7 +11885,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
   for (i = 0; i < attr_info->num_values; i++)
     {
       value = &attr_info->values[i];
-      ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, oor_read_mode);
+      ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, oor_context);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -11910,6 +11915,7 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
   REPR_ID reprid;		/* The disk representation of the object */
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   int ret = NO_ERROR;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   /* check to make sure the attr_info has been used */
   if (attr_info->num_values == -1)
@@ -11944,7 +11950,7 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
     {
       value = &attr_info->values[i];
       /* TODO[arnia] : oor_read_mode */
-      ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, HEAPATTR_READ_OOR);
+      ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, &oor_context);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -11973,6 +11979,7 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 {
   int i;
   HEAP_ATTRVALUE *value;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
   int ret = NO_ERROR;
 
   assert (attr_info != NULL);
@@ -12008,7 +12015,7 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 	{
 	  if (value->state == HEAP_UNINIT_ATTRVALUE && recdes != NULL)
 	    {
-	      ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, HEAPATTR_READ_OOR);
+	      ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, &oor_context);
 	      if (ret != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -12841,7 +12848,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
       value = &attr_info->values[i];
       if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
-	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, HEAPATTR_IGNORE_OOR);
+	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, NULL);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -12855,7 +12862,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	  db_value_clear (&value->dbvalue);
 
 	  /* read and delete old value */
-	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, HEAPATTR_IGNORE_OOR);
+	  ret = heap_attrvalue_read (thread_p, recdes, value, attr_info, NULL);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -14891,6 +14898,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
   int cnt;			/* set element count */
   int new_max_oid;
   int i, j;			/* loop counters */
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   /* 
    * We don't support class references in this function
@@ -14901,7 +14909,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
     }
 
   if ((heap_attrinfo_start_refoids (thread_p, class_oid, &attr_info) != NO_ERROR)
-      || heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes, NULL, &attr_info, HEAPATTR_READ_OOR) != NO_ERROR)
+      || heap_attrinfo_read_dbvalues (thread_p, obj_oid, recdes, NULL, &attr_info, &oor_context) != NO_ERROR)
     {
       goto error;
     }
@@ -15763,6 +15771,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
   int ret = NO_ERROR;
   PGBUF_WATCHER pg_watcher;
   PGBUF_WATCHER old_pg_watcher;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
@@ -15883,7 +15892,8 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 	      fprintf (fp, "Object-OID = %2d|%4d|%2d,\n  Length on disk = %d,\n", oid.volid, oid.pageid, oid.slotid,
 		       peek_recdes.length);
 
-	      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, NULL, &attr_info, HEAPATTR_READ_OOR) != NO_ERROR)
+	      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &peek_recdes, NULL, &attr_info, &oor_context)
+		  != NO_ERROR)
 		{
 		  fprintf (fp, "  Error ... continue\n");
 		  continue;
@@ -19145,6 +19155,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
   ATTR_ID *atts = NULL;
   bool atts_free = false, attrinfo_clear = false, attrinfo_end = false;
   HEAP_CACHE_ATTRINFO *cache_attr_info = NULL;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   if (func_index_info == NULL && btid_index > -1 && n_atts == -1)
     {
@@ -19207,7 +19218,8 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
 	  attrinfo_end = true;
 	}
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes, NULL, cache_attr_info, HEAPATTR_READ_OOR) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes, NULL, cache_attr_info, &oor_context)
+	  != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto end;
@@ -20924,11 +20936,13 @@ mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_ree
 {
   FILTER_INFO *filter;
   DB_LOGICAL ev_res = V_TRUE;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   filter = mvcc_reev_data->range_filter;
   if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
     {
-      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, filter->scan_attrs->attr_cache, HEAPATTR_READ_OOR) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, filter->scan_attrs->attr_cache, &oor_context)
+	  != NO_ERROR)
 	{
 	  return V_ERROR;
 	}
@@ -20944,7 +20958,8 @@ mvcc_reevaluate_filters (THREAD_ENTRY * thread_p, MVCC_SCAN_REEV_DATA * mvcc_ree
   filter = mvcc_reev_data->key_filter;
   if (filter != NULL && filter->scan_pred != NULL && filter->scan_pred->pred_expr != NULL)
     {
-      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, filter->scan_attrs->attr_cache, HEAPATTR_READ_OOR) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdes, NULL, filter->scan_attrs->attr_cache, &oor_context)
+	  != NO_ERROR)
 	{
 	  return V_ERROR;
 	}
@@ -21003,6 +21018,7 @@ heap_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP_SC
   bool scan_cache_inited = false;
   SCAN_CODE scan_code;
   DB_LOGICAL ev_res = V_TRUE;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   cls_oid = &mvcc_cond_reeval->cls_oid;
   if (!is_upddel)
@@ -21033,7 +21049,7 @@ heap_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP_SC
   if (mvcc_cond_reeval->rest_attrs->num_attrs != 0)
     {
       if (heap_attrinfo_read_dbvalues (thread_p, oid_inst, recdesp, NULL, mvcc_cond_reeval->rest_attrs->attr_cache,
-				       HEAPATTR_READ_OOR) != NO_ERROR)
+				       &oor_context) != NO_ERROR)
 	{
 	  ev_res = V_ERROR;
 	  goto end;

@@ -718,6 +718,20 @@ struct out_of_row_recdes
   bool home_oid_updated;
 };
 
+typedef enum
+{
+  HEAPATTR_IGNORE_OOR = 0,
+  HEAPATTR_READ_OOR_FROM_HEAP,
+  HEAPATTR_READ_OOR_FROM_OOR_RECDES
+} HEAPATTR_OOR_MODE;
+
+typedef struct out_of_row_context OUT_OF_ROW_CONTEXT;
+struct out_of_row_context
+{
+  OUT_OF_ROW_RECDES *oor_recdes;
+  HEAPATTR_OOR_MODE oor_mode;
+};
+
 #define OUT_OF_ROW_RECDES_INITILIAZER {NULL, NULL, 0, 0}
 
 extern INT16 db_page_size (void);

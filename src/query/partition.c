@@ -2918,6 +2918,7 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
   int error = NO_ERROR, count = 0, pos;
   PRUNING_OP op = PO_EQ;
   REPR_ID repr_id = NULL_REPRID;
+  OUT_OF_ROW_CONTEXT oor_context = { NULL, HEAPATTR_READ_OOR_FROM_HEAP };
 
   assert (partition_oid != NULL);
   assert (partition_hfid != NULL);
@@ -2940,7 +2941,8 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
   repr_id = or_rep_id (recdes);
   or_set_rep_id (recdes, pinfo->root_repr_id);
 
-  error = heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid, recdes, NULL, &pinfo->attr_info, HEAPATTR_READ_OOR);
+  error = heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid, recdes, NULL, &pinfo->attr_info,
+				       &oor_context);
 
   or_set_rep_id (recdes, repr_id);
   if (error != NO_ERROR)
