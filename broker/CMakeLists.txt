@@ -108,6 +108,12 @@ if(UNIX)
   target_link_libraries(broker_changer LINK_PRIVATE rt)
 else(UNIX)
   target_link_libraries(broker_changer LINK_PRIVATE ws2_32)
+  if(MSVC_VERSION LESS 1600)
+    # for VS 2008 (9.0) or less version
+    set_target_properties(broker_changer PROPERTIES LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\"")
+  else(MSVC_VERSION LESS 1600)
+    set_target_properties(broker_changer PROPERTIES LINK_FLAGS "/level='requireAdministrator' /uiAccess='false'")
+  endif(MSVC_VERSION LESS 1600)
 endif(UNIX)
 
 
@@ -139,6 +145,12 @@ target_compile_definitions(cubrid_broker PRIVATE ${BROKER_DEFS})
 target_link_libraries(cubrid_broker LINK_PRIVATE cubridcs)
 if(WIN32)
   target_link_libraries(cubrid_broker LINK_PRIVATE ws2_32)
+  if(MSVC_VERSION LESS 1600)
+    # for VS 2008 (9.0) or less version
+    set_target_properties(cubrid_broker PROPERTIES LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\"")
+  else(MSVC_VERSION LESS 1600)
+    set_target_properties(cubrid_broker PROPERTIES LINK_FLAGS "/level='requireAdministrator' /uiAccess='false'")
+  endif(MSVC_VERSION LESS 1600)
 endif(WIN32)
 
 
@@ -342,6 +354,7 @@ if(WIN32)
   list(APPEND BROKERADMIN_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
 endif(WIN32)
 add_library(brokeradmin SHARED ${BROKERADMIN_SOURCES})
+set_target_properties(brokeradmin PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 target_compile_definitions(brokeradmin PRIVATE ${BROKER_DEFS} _UC_ADMIN_SO_ DIAG_DEVEL)
 target_link_libraries(brokeradmin LINK_PRIVATE cubridcs)
 if(WIN32)

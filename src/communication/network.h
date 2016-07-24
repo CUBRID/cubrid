@@ -41,6 +41,9 @@
    are not necessarily the same although they will be in most cases.
 */
 
+#define EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE  512
+
+
 /* These define the requests that the server will respond to */
 enum net_server_request
 {

@@ -5264,6 +5264,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   CACHE_TIME srv_cache_time;
   int query_timeout;
   XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
+  char data_buf[EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE + MAX_ALIGNMENT], *aligned_data_buf = NULL;
 
   int response_time = 0;
 
@@ -5332,7 +5333,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  /* unpack XASL file id (XASL_ID), number of parameter values, size of the reecieved data, and query execution mode
+  /* unpack XASL file id (XASL_ID), number of parameter values, size of the recieved data, and query execution mode
    * flag from the request data */
   ptr = request;
   OR_UNPACK_XASL_ID (ptr, &xasl_id);
@@ -5341,9 +5342,14 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int (ptr, &query_flag);
   OR_UNPACK_CACHE_TIME (ptr, &clt_cache_time);
   ptr = or_unpack_int (ptr, &query_timeout);
-
-  /* if the request contains parameter values for the query, allocate space for them */
-  if (0 < dbval_cnt)
+  if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (query_flag))
+    {
+      assert (data_size < EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE);
+      aligned_data_buf = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
+      data = aligned_data_buf;
+      memcpy (data, ptr, data_size);
+    }
+  else if (0 < dbval_cnt)
     {
       /* receive parameter values (DB_VALUE) from the client */
       csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &data, &data_size);
@@ -5366,7 +5372,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, data, &query_flag, &clt_cache_time, &srv_cache_time,
 			 query_timeout, &xasl_cache_entry_p);
 
-  if (data)
+  if (data && data != aligned_data_buf)
     {
       free_and_init (data);
     }

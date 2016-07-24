@@ -31693,6 +31693,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   int offset_to_object = NOT_FOUND;	/* Offset in record where object to be removed is found. */
   int offset_to_second_object = NOT_FOUND;	/* Offset to second visible object. */
   BTREE_OP_PURPOSE second_object_search_purpose;	/* Purpose used for searching second object. */
+  BTREE_MVCC_INFO match_2nd_obj_mvccinfo;	/* MVCC info of second object to be matched. */
 
   /* Recovery structures. */
   /* Undo recovery structures. */
@@ -31829,11 +31830,13 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       /* Previous object was not deleted. Search as if we'd want to delete it. */
       second_object_search_purpose = BTREE_OP_DELETE_OBJECT_PHYSICAL;
     }
+  /* Copy second object MVCC info we want to match (so it is not overwritten). */
+  match_2nd_obj_mvccinfo = delete_helper->second_object_info.mvcc_info;
   error_code =
     btree_find_oid_and_its_page (thread_p, btid_int, &delete_helper->second_object_info.oid, *leaf_page,
-				 second_object_search_purpose, &delete_helper->second_object_info.mvcc_info,
-				 &leaf_record, &leaf_rec_info, offset_after_key, &found_page, &prev_found_page,
-				 &offset_to_second_object, &delete_helper->second_object_info.mvcc_info);
+				 second_object_search_purpose, &match_2nd_obj_mvccinfo, &leaf_record, &leaf_rec_info,
+				 offset_after_key, &found_page, &prev_found_page, &offset_to_second_object,
+				 &delete_helper->second_object_info.mvcc_info);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
