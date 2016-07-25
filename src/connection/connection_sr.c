@@ -2584,7 +2584,7 @@ int
 css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer, int *buffer_size, int *rc)
 {
   CSS_QUEUE_ENTRY *p;
-  int r = 0;
+  int ret = 0, r;
 
   r = rmutex_lock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
@@ -2597,13 +2597,13 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char 
       *rc = p->db_error;
       p->buffer = NULL;
       css_free_queue_entry (conn, p);
-      r = 1;
+      ret = 1;
     }
 
   r = rmutex_unlock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
 
-  return r;
+  return ret;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
