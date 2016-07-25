@@ -2646,7 +2646,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid, LAS
     clean_string:
       if (string != NULL && alloced_string == 1)
 	{
-	  db_private_free_and_init (NULL, string);
+	  db_private_free_and_init (thread_p, string);
 	}
 
       if (set_break == true)

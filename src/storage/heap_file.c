@@ -2658,7 +2658,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 
       if (string != NULL && alloced_string == 1)
 	{
-	  db_private_free_and_init (NULL, string);
+	  db_private_free_and_init (thread_p, string);
 	}
 
       if (!OID_ISNULL (&attrepr->classoid) && !OID_EQ (&attrepr->classoid, class_oid))
@@ -12281,7 +12281,7 @@ heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATT
 
       if (string != NULL && alloced_string == 1)
 	{
-	  db_private_free_and_init (NULL, string);
+	  db_private_free_and_init (thread_p, string);
 	}
     }
 
@@ -18164,7 +18164,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
 	      if (string != NULL && alloced_string == 1)
 		{
-		  db_private_free_and_init (NULL, string);
+		  db_private_free_and_init (thread_p, string);
 		}
 
 	      free_and_init (classname);

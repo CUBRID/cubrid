@@ -4301,7 +4301,7 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 
 		  if (string != NULL && alloced_string == 1)
 		    {
-		      db_private_free_and_init (NULL, string);
+		      db_private_free_and_init (thread_p, string);
 		    }
 
 		  break;
@@ -4310,7 +4310,7 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 
 	  if (string != NULL && alloced_string == 1)
 	    {
-	      db_private_free_and_init (NULL, string);
+	      db_private_free_and_init (thread_p, string);
 	    }
 	}
       if (heap_scancache_end (thread_p, &scan) != NO_ERROR)
@@ -4450,7 +4450,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, int *charset_id_p, char 
     clean_string:
       if (string != NULL && alloced_string == 1)
 	{
-	  db_private_free_and_init (NULL, string);
+	  db_private_free_and_init (thread_p, string);
 	}
 
       if (set_break == true)
@@ -4890,7 +4890,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
 
       if (string != NULL && alloced_string == 1)
 	{
-	  db_private_free_and_init (NULL, string);
+	  db_private_free_and_init (thread_p, string);
 	}
 
       if (att_id_cnt >= 4)
@@ -5109,7 +5109,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
 
 	  if (string != NULL && alloced_string == 1)
 	    {
-	      db_private_free_and_init (NULL, string);
+	      db_private_free_and_init (thread_p, string);
 	    }
 
 	  break;
@@ -5117,7 +5117,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
 
       if (string != NULL && alloced_string == 1)
 	{
-	  db_private_free_and_init (NULL, string);
+	  db_private_free_and_init (thread_p, string);
 	}
     }
 
